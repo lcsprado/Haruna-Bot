@@ -18,6 +18,7 @@ import {
   getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
   approveSubscriptionOrder, cancelSubscriptionOrder,
+  saveQuickFlow, getStoredQuickFlow, deleteQuickFlow, cleanupQuickFlows,
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
@@ -75,9 +76,11 @@ if(!connectionWatchdog){
 const quickGameFlows=new Map()
 const quickFlowKey=(chat,sender)=>`${chat}|${sender}`
 function setQuickFlow(chat,sender,stage,data={},ttlMs=90000){
-  quickGameFlows.set(quickFlowKey(chat,sender),{
-    stage,data,expiresAt:Date.now()+ttlMs
-  })
+  const key=quickFlowKey(chat,sender)
+  const flow={stage,data,expiresAt:Date.now()+ttlMs}
+  quickGameFlows.set(key,flow)
+  saveQuickFlow(key,chat,sender,stage,data,flow.expiresAt)
+    .catch(err=>console.error('[flow] falha ao persistir menu',err?.message||err))
 }
 function getQuickFlow(chat,sender){
   const key=quickFlowKey(chat,sender)
@@ -85,12 +88,22 @@ function getQuickFlow(chat,sender){
   if(!flow) return null
   if(flow.expiresAt<=Date.now()){
     quickGameFlows.delete(key)
+    deleteQuickFlow(key).catch(()=>{})
     return null
   }
   return flow
 }
+async function recoverQuickFlow(chat,sender){
+  const key=quickFlowKey(chat,sender)
+  const stored=await getStoredQuickFlow(key)
+  if(!stored) return null
+  quickGameFlows.set(key,stored)
+  return stored
+}
 function clearQuickFlow(chat,sender){
-  quickGameFlows.delete(quickFlowKey(chat,sender))
+  const key=quickFlowKey(chat,sender)
+  quickGameFlows.delete(key)
+  deleteQuickFlow(key).catch(err=>console.error('[flow] falha ao limpar menu persistido',err?.message||err))
 }
 
 function textOf(msg) {
@@ -217,6 +230,7 @@ function resolveShopItem(input){
 
 async function start() {
   await initDatabase()
+  await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
   await initProgression()
   await acquireRuntimeLock(sessionId)
@@ -311,7 +325,10 @@ Você possui: *${stock}*
   }
 
   async function handleQuickGameFlow({chat,sender,body,reply,msg}){
-    const flow=getQuickFlow(chat,sender)
+    let flow=getQuickFlow(chat,sender)
+    if(!flow){
+      flow=await recoverQuickFlow(chat,sender)
+    }
     if(!flow) return false
     const rawInput=String(body||'').trim()
     const input=rawInput.toLowerCase()
