@@ -5,6 +5,7 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   getContentType,
+  generateWAMessageFromContent,
   makeCacheableSignalKeyStore
 } from 'baileys'
 import pino from 'pino'
@@ -538,27 +539,42 @@ async function start() {
   async function showShopCategoryMenu(chat,sender,reply){
     setQuickFlow(chat,sender,'shop_category',{},90000)
 
-    // Teste de lista nativa: concentra as categorias em um único seletor.
-    // Se o cliente/versão do WhatsApp rejeitar a lista, volta ao menu numérico.
+    const sections=[{
+      title:'Categorias da loja',
+      rows:[
+        {title:'🧪 Poções',description:'Consumíveis para recuperar HP',id:'1'},
+        {title:'⚔️ Armas',description:'Equipamentos que aumentam seu ATK',id:'2'},
+        {title:'🛡️ Armaduras',description:'Equipamentos que aumentam sua DEF',id:'3'},
+        {title:'🎁 Caixas',description:'Caixas e recompensas especiais',id:'4'},
+        {title:'🎭 Diversão',description:'Piadas, horóscopo e extras',id:'5'}
+      ]
+    }]
+
     try{
-      await sock.sendMessage(chat,{
-        text:'Escolha uma categoria para continuar.',
-        title:'🍀 LOJA DO ALPHA BOT',
-        buttonText:'🛒 Abrir categorias',
-        sections:[{
-          title:'Categorias da loja',
-          rows:[
-            {title:'🧪 Poções',description:'Consumíveis para recuperar HP',rowId:'1'},
-            {title:'⚔️ Armas',description:'Equipamentos que aumentam seu ATK',rowId:'2'},
-            {title:'🛡️ Armaduras',description:'Equipamentos que aumentam sua DEF',rowId:'3'},
-            {title:'🎁 Caixas',description:'Caixas e recompensas especiais',rowId:'4'},
-            {title:'🎭 Diversão',description:'Piadas, horóscopo e extras',rowId:'5'}
-          ]
-        }]
-      })
+      const interactiveMessage={
+        header:{title:'🍀 LOJA DO ALPHA BOT',hasMediaAttachment:false},
+        body:{text:'Escolha uma categoria sem precisar mandar números no grupo.'},
+        footer:{text:'Alpha Bot'},
+        nativeFlowMessage:{
+          buttons:[{
+            name:'single_select',
+            buttonParamsJson:JSON.stringify({
+              title:'🛒 Abrir loja',
+              sections
+            })
+          }],
+          messageParamsJson:''
+        }
+      }
+      const generated=await generateWAMessageFromContent(
+        chat,
+        {viewOnceMessage:{message:{interactiveMessage}}},
+        {}
+      )
+      await sock.relayMessage(chat,generated.message,{messageId:generated.key.id})
       return
     }catch(err){
-      console.error('[loja] seletor nativo indisponível; usando fallback',err?.message||err)
+      console.error('[loja] Native Flow indisponível; usando fallback',err?.message||err)
     }
 
     await reply(
@@ -663,7 +679,16 @@ Você possui: *${stock}*
       flow=await recoverQuickFlow(chat,sender)
     }
     if(!flow) return false
+    let nativeFlowSelection=''
+    try{
+      const params=msg?.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson
+      if(params){
+        const parsed=JSON.parse(params)
+        nativeFlowSelection=parsed?.id || parsed?.row_id || parsed?.selectedRowId || ''
+      }
+    }catch{}
     const listSelection=
+      nativeFlowSelection ||
       msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
       msg?.message?.templateButtonReplyMessage?.selectedId ||
       msg?.message?.buttonsResponseMessage?.selectedButtonId ||
