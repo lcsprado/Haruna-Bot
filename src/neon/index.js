@@ -1888,6 +1888,142 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       return true
     }
 
+    if(flow.stage==='inventory_category'){
+      if(input==='9'){
+        setQuickFlow(chat,sender,'nav_items',{},90000)
+        await reply('🛒 *ITENS E INVENTÁRIO*\n\n1️⃣ Loja\n2️⃣ Inventário\n3️⃣ Equipar\n4️⃣ Usar poção\n5️⃣ Abrir caixas\n\n0️⃣ Sair')
+        return true
+      }
+      const items=await getInventory(sender)
+      if(input==='1'){
+        await equipmentMenu()
+        return true
+      }
+      if(input==='2'){
+        const usable=items.filter(i=>i.category==='consumable')
+        if(!usable.length){
+          await reply('🧪 Você não possui poções.')
+          return true
+        }
+        setQuickFlow(chat,sender,'use_select',{items:usable.map(i=>i.item_id)},90000)
+        let text='🧪 *POÇÕES*\n\n'
+        usable.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
+        text+='\n9️⃣ Voltar\n0️⃣ Sair'
+        await reply(text)
+        return true
+      }
+      if(input==='3'){
+        const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
+        if(!boxes.length){
+          await reply('🎁 Você não possui caixas.')
+          return true
+        }
+        if(boxes.length===1){
+          await boxQuantityMenu(boxes[0])
+          return true
+        }
+        setQuickFlow(chat,sender,'inventory_boxes_select',{boxes},90000)
+        let text='🎁 *SUAS CAIXAS*\n\n'
+        boxes.forEach((b,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(b.rarity)+' — *'+b.name+'* ×'+b.quantity+'\n')
+        text+='\n9️⃣ Voltar\n0️⃣ Sair'
+        await reply(text)
+        return true
+      }
+      if(input==='4'){
+        const others=items.filter(i=>!['weapon','armor','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
+        if(!others.length){
+          await reply('📦 Você não possui outros itens no momento.')
+          return true
+        }
+        let text='📦 *OUTROS ITENS*\n\n'
+        others.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
+        text+='\n9️⃣ Voltar\n0️⃣ Sair'
+        await reply(text)
+        return true
+      }
+      if(input==='5'){
+        await sellMenu()
+        return true
+      }
+      await reply('🎒 Escolha uma opção de *1 a 5*.')
+      return true
+    }
+
+    if(flow.stage==='inventory_sell_select'){
+      if(input==='9'){
+        await inventoryMenu()
+        return true
+      }
+      const item=flow.data.items?.[Number(input)-1]
+      if(!item){
+        await reply('💰 Escolha um item pelo número.')
+        return true
+      }
+      const p=await getCombatProfile(sender)
+      const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id)
+      const sellable=Math.max(0,Number(item.quantity)-(equipped?1:0))
+      if(sellable<1){
+        await reply('🔒 Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
+        return true
+      }
+      setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable},90000)
+      await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
+      return true
+    }
+
+    if(flow.stage==='inventory_sell_qty'){
+      if(input==='9'){
+        await sellMenu()
+        return true
+      }
+      if(input==='5'){
+        setQuickFlow(chat,sender,'inventory_sell_custom',flow.data,90000)
+        await reply('⌨️ Digite a quantidade que deseja vender. Máximo: *'+flow.data.sellable+'*.')
+        return true
+      }
+      const qtyMap={1:1,2:5,3:10,4:Number(flow.data.sellable)}
+      const qty=qtyMap[input]
+      if(!qty || qty<1){
+        await reply('💰 Escolha *1, 2, 3, 4 ou 5*.')
+        return true
+      }
+      if(qty>Number(flow.data.sellable)){
+        await reply('💰 Você pode vender no máximo *'+flow.data.sellable+'* unidade(s).')
+        return true
+      }
+      setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty},90000)
+      const warn=flow.data.rarity==='legendary'?'\n🌟 *ATENÇÃO: ESTE É UM ITEM LENDÁRIO!*\n':''
+      await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVocê receberá: *R$ '+fmt(Number(flow.data.unit)*qty)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
+      return true
+    }
+
+    if(flow.stage==='inventory_sell_custom'){
+      const qty=parseInt(input,10)
+      if(!Number.isInteger(qty)||qty<1||qty>Number(flow.data.sellable)){
+        await reply('💰 Digite uma quantidade de *1 a '+flow.data.sellable+'*.')
+        return true
+      }
+      setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty},90000)
+      const warn=flow.data.rarity==='legendary'?'\n🌟 *ATENÇÃO: ESTE É UM ITEM LENDÁRIO!*\n':''
+      await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVocê receberá: *R$ '+fmt(Number(flow.data.unit)*qty)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
+      return true
+    }
+
+    if(flow.stage==='inventory_sell_confirm'){
+      if(input==='2'){
+        await reply('✅ Venda cancelada.')
+        await sellMenu()
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Confirmar venda* ou *2 Cancelar*.')
+        return true
+      }
+      const r=await sellItem(sender,flow.data.itemId,flow.data.qty)
+      await reply('💰 *VENDA CONCLUÍDA*\n\n📦 '+r.item.name+' ×'+r.qty+'\n💵 Recebido: *R$ '+fmt(r.total)+'*\n🎒 Restante: *'+r.remaining+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*')
+      await inventoryMenu()
+      return true
+    }
     if(flow.stage==='shop_category'){
       if(!['1','2','3','4'].includes(input)){
         await reply('🍀 Escolha *1, 2, 3 ou 4*.')
