@@ -374,7 +374,7 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
     if(flow.stage.startsWith('admin_')){
       if(sender!==ownerJid){
         clearQuickFlow(chat,sender)
-        await reply('⛔ Painel restrito ao dono.')
+        await reply('⛔ Comando não disponível para Beta.')
         return true
       }
 
@@ -3203,14 +3203,14 @@ Expira em: *${fmtDate(order.expires_at)}*`
           )
 
         } else if(['setlinkpagamento','setlink'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const value=args.join(' ').trim()
           if(!value) return await reply(`Uso: *${prefix}setlinkpagamento https://...*`)
           const link=await setPaymentLink(value)
           await reply(`👑 Link de pagamento atualizado:\n${link}`)
 
         } else if(['pedidos'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const rows=await listPendingSubscriptionOrders(30)
           if(!rows.length) return await reply('🧾 Nenhum pedido pendente.')
           let text='🧾 *PEDIDOS PENDENTES*\n\n'
@@ -3221,7 +3221,7 @@ Expira em: *${fmtDate(order.expires_at)}*`
           await reply(text)
 
         } else if(['aprovarpedido'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const code=String(args[0]||'').toUpperCase()
           if(!code) return await reply(`Uso: *${prefix}aprovarpedido TREVO-XXXXXX*`)
           const r=await approveSubscriptionOrder(code,sender)
@@ -3247,34 +3247,34 @@ Obrigado por apoiar o Trevo 🍀`
           }
 
         } else if(['cancelarpedido'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const code=String(args[0]||'').toUpperCase()
           if(!code) return await reply(`Uso: *${prefix}cancelarpedido TREVO-XXXXXX*`)
           const r=await cancelSubscriptionOrder(code)
           await reply(`🚫 Pedido *${r.code}* cancelado.`)
 
         } else if(['setpreco'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const raw=args[0]
           if(!raw) return await reply(`Uso: *${prefix}setpreco 5*`)
           const value=await setLaunchPrice(raw)
           await reply(`👑 Preço de lançamento atualizado para *R$ ${value.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias*.`)
 
         } else if(['ativargrupo'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja ativar.')
           const days=parseInt(args[0]||'30',10)
           const lic=await activateGroupLicense(chat,days,sender,'basic')
           await reply(`👑 Grupo ativado por *${days} dias*.\n📅 Validade: *${fmtDate(lic.paid_until)}*`)
 
         } else if(['bloqueargrupo'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja bloquear.')
           await blockGroupLicense(chat,sender)
           await reply('🔒 Grupo bloqueado pelo dono.')
 
         } else if(['gruposativos'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const rows=await listGroupLicenses(50)
           if(!rows.length) return await reply('Nenhum grupo registrado ainda.')
           let text='👑 *GRUPOS REGISTRADOS*\n\n'
@@ -3285,40 +3285,40 @@ Obrigado por apoiar o Trevo 🍀`
           await reply(text.trim())
 
         } else if(['addsaldo'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
           if(!amount) return await reply(`Uso: *${prefix}addsaldo 50000* ou *${prefix}addsaldo @pessoa 50000*`)
           const p=await ownerAddBalance(ownerTarget,amount)
           await reply(`👑 Saldo adicionado.\n💰 Novo saldo: R$ ${fmt(p.cash)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['remsaldo'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
           if(!amount) return await reply(`Uso: *${prefix}remsaldo 10000* ou *${prefix}remsaldo @pessoa 10000*`)
           const r=await ownerRemoveBalance(ownerTarget,amount)
           await reply(`👑 Saldo removido: R$ ${fmt(r.removed)}\n💰 Saldo atual: R$ ${fmt(r.cash)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['addexp'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const amount=parseAmount(args.find(a=>/^\d+$/.test(a)))
           if(!amount) return await reply(`Uso: *${prefix}addexp 500* ou *${prefix}addexp @pessoa 500*`)
           const r=await ownerAddExp(ownerTarget,amount)
           await reply(`👑 EXP adicionada: +${fmt(amount)}\n⭐ Nível: ${r.level}\n✨ EXP atual: ${r.exp}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['setnivel'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const level=parseInt(args.find(a=>/^\d+$/.test(a))||'0',10)
           if(!level) return await reply(`Uso: *${prefix}setnivel 10* ou *${prefix}setnivel @pessoa 10*`)
           const r=await ownerSetLevel(ownerTarget,level)
           await reply(`👑 Nível alterado: ${r.oldLevel} → ${r.level}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['curar'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const r=await ownerHeal(ownerTarget)
           await reply(`👑 Cura completa. ❤️ ${r.hp}/${r.max_hp}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['daritem'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const itemArg=args.find(a=>SHOP_IDS.includes(a.toLowerCase()))
           const qtyArg=args.find(a=>/^\d+$/.test(a))
           const qty=parseInt(qtyArg||'1',10)
@@ -3327,7 +3327,7 @@ Obrigado por apoiar o Trevo 🍀`
           await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['admin','ownermenu','adminmenu','donocomandos'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
           await reply(
 `👑 *ADMIN TREVO*
