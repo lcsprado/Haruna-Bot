@@ -3,7 +3,7 @@ const cache=new Map()
 async function api(path,params,ttl){
  const k=path+'?'+new URLSearchParams(params); const old=cache.get(k); if(old&&old.exp>Date.now()) return old.data
  const r=await fetch(BASE+path+'?'+new URLSearchParams(params),{headers:{'x-apisports-key':process.env.API_FOOTBALL_KEY||''}}); if(!r.ok) throw new Error('API de futebol indisponível.')
- const d=await r.json(); if(d.errors&&Object.keys(d.errors).length) throw new Error('Erro na API de futebol.'); cache.set(k,{data:d,exp:Date.now()+ttl}); return d
+ const d=await r.json(); if(d.errors&&Object.keys(d.errors).length) throw new Error(Object.values(d.errors).join(' | ')); cache.set(k,{data:d,exp:Date.now()+ttl}); return d
 }
 function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()}
 function day(off){const d=new Date(Date.now()+off*86400000);return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d)}
