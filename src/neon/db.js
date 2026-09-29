@@ -1133,6 +1133,128 @@ export async function ownerRemoveBalance(jid, amount) {
   })
 }
 
+
+export async function ownerSetBalance(jid, amount) {
+  amount=Number(amount)
+  if(!Number.isSafeInteger(amount) || amount<0) throw new Error('Valor inválido.')
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const r=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const oldCash=Number(r.rows[0]?.cash||0)
+    await client.query(
+      'UPDATE wallets SET cash=$1,updated_at='+nowSql+' WHERE jid=$2',
+      [amount,jid]
+    )
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('owner',$1,$2,'owner_set_balance',$3)
+    `,[jid,Math.abs(amount-oldCash),`from:${oldCash};to:${amount}`])
+    return { oldCash, cash:amount, bank:Number(r.rows[0]?.bank||0) }
+  })
+}
+
+export async function ownerResetBalance(jid) {
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const r=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const cash=Number(r.rows[0]?.cash||0)
+    const bank=Number(r.rows[0]?.bank||0)
+    await client.query(
+      'UPDATE wallets SET cash=0,bank=0,updated_at='+nowSql+' WHERE jid=$1',
+      [jid]
+    )
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'owner',$2,'owner_reset_balance','admin reset cash+bank')
+    `,[jid,cash+bank])
+    return { oldCash:cash, oldBank:bank, cash:0, bank:0 }
+  })
+}
+
+export async function ownerResetExp(jid) {
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const u=await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
+    const oldLevel=Number(u.rows[0]?.level||1)
+    const oldExp=Number(u.rows[0]?.exp||0)
+    await client.query(
+      'UPDATE users SET level=1,exp=0,updated_at='+nowSql+' WHERE jid=$1',
+      [jid]
+    )
+    await client.query(`
+      UPDATE stats
+      SET hp=100,max_hp=100,atk=10,def=5,spd=10,updated_at=${nowSql}
+      WHERE jid=$1
+    `,[jid])
+    return { oldLevel, oldExp, level:1, exp:0 }
+  })
+}
+
+export async function ownerResetInventory(jid) {
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const r=await client.query('SELECT COALESCE(SUM(quantity),0)::BIGINT AS qty FROM inventories WHERE jid=$1',[jid])
+    const removed=Number(r.rows[0]?.qty||0)
+    await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
+    await client.query(
+      'UPDATE stats SET weapon_id=NULL,armor_id=NULL,updated_at='+nowSql+' WHERE jid=$1',
+      [jid]
+    )
+    return { removed }
+  })
+}
+
+export async function ownerResetTotal(jid) {
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const u=await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
+    const w=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const inv=await client.query('SELECT COALESCE(SUM(quantity),0)::BIGINT AS qty FROM inventories WHERE jid=$1',[jid])
+
+    const previous={
+      level:Number(u.rows[0]?.level||1),
+      exp:Number(u.rows[0]?.exp||0),
+      cash:Number(w.rows[0]?.cash||0),
+      bank:Number(w.rows[0]?.bank||0),
+      inventory:Number(inv.rows[0]?.qty||0)
+    }
+
+    await client.query(
+      'UPDATE users SET level=1,exp=0,updated_at='+nowSql+' WHERE jid=$1',
+      [jid]
+    )
+    await client.query(
+      'UPDATE wallets SET cash=0,bank=0,bank_limit=10000,updated_at='+nowSql+' WHERE jid=$1',
+      [jid]
+    )
+    await client.query(`
+      UPDATE stats
+      SET hp=100,max_hp=100,atk=10,def=5,spd=10,
+          weapon_id=NULL,armor_id=NULL,win=0,loss=0,updated_at=${nowSql}
+      WHERE jid=$1
+    `,[jid])
+    await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
+    await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%:${jid}`])
+
+    // Tabelas de progressão são criadas por initProgression() antes dos comandos serem usados.
+    await client.query('DELETE FROM daily_missions WHERE jid=$1',[jid])
+    await client.query('DELETE FROM user_homes WHERE jid=$1',[jid])
+    await client.query('DELETE FROM user_cars WHERE jid=$1',[jid])
+
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'owner',$2,'owner_reset_total','admin full gameplay reset')
+    `,[jid,previous.cash+previous.bank])
+
+    return { ...previous, level:1, exp:0, cash:0, bank:0, inventory:0 }
+  })
+}
+
 export async function ownerAddExp(jid, amount) {
   amount=Number(amount)
   if(!Number.isSafeInteger(amount) || amount<=0 || amount>MAX_ADMIN_EXP) {
