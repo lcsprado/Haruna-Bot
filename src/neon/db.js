@@ -537,6 +537,103 @@ export async function sellItem(jid, itemId, qty=1) {
   })
 }
 
+export async function sellItemsBatch(jid, selections=[]) {
+  if(!Array.isArray(selections) || selections.length<1 || selections.length>50) {
+    throw new Error('Seleção de venda inválida.')
+  }
+
+  const normalized=selections.map(s=>({
+    itemId:String(s?.itemId||''),
+    qty:Number(s?.qty||0)
+  }))
+
+  if(normalized.some(s=>!s.itemId || !Number.isInteger(s.qty) || s.qty<1 || s.qty>9999)) {
+    throw new Error('Quantidade inválida na venda em lote.')
+  }
+
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const statsR=await client.query(
+      'SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
+      [jid]
+    )
+    const stats=statsR.rows[0]||{}
+    const sold=[]
+    let grandTotal=0
+    let totalUnits=0
+
+    for(const sel of normalized){
+      const invR=await client.query(
+        'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+        [jid,sel.itemId]
+      )
+      const owned=Number(invR.rows[0]?.quantity||0)
+      if(owned<1) throw new Error('Um dos itens selecionados não está mais no inventário.')
+
+      const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
+      const item=itemR.rows[0]
+      if(!item) throw new Error('Item não encontrado.')
+      if(item.rarity==='legendary') throw new Error('Itens lendários não entram em venda em lote.')
+
+      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId)
+      const minimumKeep=1
+      const maxBatch=Math.max(0,owned-minimumKeep)
+
+      if(sel.qty>maxBatch){
+        throw new Error(`A venda em lote de ${item.name} deve manter pelo menos 1 cópia.`)
+      }
+
+      let unit
+      if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
+      else if(item.rarity==='epic') unit=25000
+      else if(item.rarity==='rare') unit=7500
+      else if(item.rarity==='uncommon') unit=2500
+      else unit=500
+
+      const total=unit*sel.qty
+      await client.query(
+        'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
+        [sel.qty,jid,sel.itemId]
+      )
+
+      sold.push({
+        itemId:item.id,
+        name:item.name,
+        rarity:item.rarity,
+        qty:sel.qty,
+        remaining:owned-sel.qty,
+        unit,
+        total,
+        equipped
+      })
+      grandTotal+=total
+      totalUnits+=sel.qty
+    }
+
+    await client.query(
+      'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+      [grandTotal,jid]
+    )
+
+    for(const row of sold){
+      await client.query(`
+        INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+        VALUES('shop',$1,$2,'sale_batch',$3)
+      `,[jid,row.total,`${row.itemId} x${row.qty}`])
+    }
+
+    const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
+    return {
+      sold,
+      types:sold.length,
+      totalUnits,
+      total:grandTotal,
+      cash:Number(walletR.rows[0]?.cash||0)
+    }
+  })
+}
+
 export async function leaderboard(limit=10) {
   const { rows } = await db.query(`
     SELECT u.jid,u.push_name,u.level,
