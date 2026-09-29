@@ -9,7 +9,7 @@ import makeWASocket, {
 } from 'baileys'
 import pino from 'pino'
 import {
-  initDatabase, ensureUser, getProfile, claimDaily, work,
+  initDatabase, ensureUser, getProfile, getDailyStreak, claimDaily, work,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard,
   equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
@@ -210,6 +210,19 @@ function duration(sec){
   const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60)
   return h ? `${h}h ${m}min` : `${m}min`
 }
+
+function dailyResultText(r){
+  let text=`🔥 *DAILY ALPHA*\n\n💰 +R$ ${fmt(r.totalCash)}\n🔥 Sequência: *${r.streak} dia${r.streak===1?'':'s'}*\n🏅 Recorde: *${r.bestStreak} dia${r.bestStreak===1?'':'s'}*`
+  if(r.reward){
+    text+=`\n\n🎉 *RECOMPENSA DE SEQUÊNCIA!*\n${r.reward.label}`
+  }
+  if(r.next){
+    text+=`\n\n🎯 Próxima recompensa: *Dia ${r.next.day} — ${r.next.label}*`
+    if(r.next.days>0) text+=`\n⏳ Faltam *${r.next.days} dia${r.next.days===1?'':'s'}* mantendo a sequência.`
+  }
+  return text
+}
+
 function parseAmount(s){
   if(!s) return 0
   const clean=String(s).replace(/\./g,'').replace(',','.')
@@ -2013,7 +2026,7 @@ Dano final: ${r.damage}
 `💰 *ECONOMIA*
 
 1️⃣ Ver saldo
-2️⃣ Daily
+2️⃣ Daily + sequência 🔥
 3️⃣ Trabalhar
 4️⃣ Depositar
 5️⃣ Sacar
@@ -2173,10 +2186,10 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       if(input==='2'){
         const r=await claimDaily(sender)
         clearQuickFlow(chat,sender)
-        if(!r.ok) await reply(`⏳ Daily já coletado. Volte em ${duration(r.remaining)}.`)
+        if(!r.ok) await reply(`⏳ Daily já coletado hoje.\n🔥 Sequência atual: *${r.streak} dia${r.streak===1?'':'s'}*.\n🌙 Volte em aproximadamente ${duration(r.remaining)}.`)
         else{
           await progressDailyMission(sender,'daily')
-          await reply(`🍀 Daily coletado! +R$ ${fmt(r.amount)}`)
+          await reply(dailyResultText(r))
         }
         return true
       }
@@ -3595,7 +3608,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
         }
 
         if(isGroup && !isOwner){
-          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
@@ -3747,7 +3760,7 @@ Se precisar de mais ajuda, use *!suporte*.`
 `💰 *ECONOMIA*
 
 1️⃣ Ver saldo
-2️⃣ Daily
+2️⃣ Daily + sequência 🔥
 3️⃣ Trabalhar
 4️⃣ Depositar
 5️⃣ Sacar
@@ -3884,12 +3897,13 @@ ${prefix}comandos — mostra esta lista
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['perfil','profile'].includes(cmd)){
-          const [p,clan,home,cars,pat]=await Promise.all([
+          const [p,clan,home,cars,pat,streak]=await Promise.all([
             getCombatProfile(sender),
             getClanForUser(sender),
             getHome(sender),
             getGarage(sender),
-            getPatrimony(sender)
+            getPatrimony(sender),
+            getDailyStreak(sender)
           ])
           await reply(
 `👤 *${p.push_name || 'Jogador'}*
@@ -3908,16 +3922,31 @@ ${prefix}comandos — mostra esta lista
 🚗 Garagem: ${cars.length}/5
 
 💰 Saldo: R$ ${fmt(Number(p.cash)+Number(p.bank))}
-💎 Patrimônio: *R$ ${fmt(pat.total)}*`
+💎 Patrimônio: *R$ ${fmt(pat.total)}*
+🔥 Daily: *${streak.streak} dia${streak.streak===1?'':'s'}* (recorde ${streak.bestStreak})`
           )
 
         } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
-          if(!r.ok) await reply(`⏳ Daily já coletado. Volte em ${duration(r.remaining)}.`)
+          if(!r.ok) await reply(`⏳ Daily já coletado hoje.\n🔥 Sequência atual: *${r.streak} dia${r.streak===1?'':'s'}*.\n🌙 Volte em aproximadamente ${duration(r.remaining)}.`)
           else {
             await progressDailyMission(sender,'daily')
-            await reply(`🍀 Daily coletado! +R$ ${fmt(r.amount)}`)
+            await reply(dailyResultText(r))
           }
+
+        } else if(['streak','sequencia','sequência'].includes(cmd)){
+          const s=await getDailyStreak(sender)
+          const status=s.claimedToday?'✅ Daily de hoje já coletado.':'🎁 Daily de hoje disponível.'
+          await reply(
+`🔥 *SEQUÊNCIA DAILY*
+
+🔥 Atual: *${s.streak} dia${s.streak===1?'':'s'}*
+🏅 Recorde: *${s.bestStreak} dia${s.bestStreak===1?'':'s'}*
+${status}
+
+🎯 Próxima recompensa: *Dia ${s.next.day} — ${s.next.label}*
+⏳ Faltam *${s.next.days} dia${s.next.days===1?'':'s'}* mantendo a sequência.`
+          )
 
         } else if(['trabalhar','work','trampo'].includes(cmd)){
           const r=await work(sender)

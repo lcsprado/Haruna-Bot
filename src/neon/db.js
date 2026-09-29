@@ -100,6 +100,14 @@ export async function initDatabase() {
       expires_at BIGINT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS daily_streaks (
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      streak INTEGER NOT NULL DEFAULT 0,
+      best_streak INTEGER NOT NULL DEFAULT 0,
+      last_claim_day DATE,
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
     CREATE TABLE IF NOT EXISTS transactions (
       id BIGSERIAL PRIMARY KEY,
       from_jid TEXT NOT NULL,
@@ -306,18 +314,133 @@ async function claimCooldown(key, seconds) {
   })
 }
 
-export async function claimDaily(jid) {
-  const cd = await claimCooldown(`daily:${jid}`, 20*60*60)
-  if (!cd.ok) return cd
+function streakRewardFor(streak){
+  const cycleDay=((Number(streak)-1)%30)+1
+  if(cycleDay===3) return { label:'🎁 Caixa da Sorte', itemId:'caixa_sorte', qty:1, bonusCash:0 }
+  if(cycleDay===7) return { label:'🔵 Caixa Rara', itemId:'caixa_rara', qty:1, bonusCash:0 }
+  if(cycleDay===15) return { label:'🟣 Caixa Épica', itemId:'caixa_epica', qty:1, bonusCash:0 }
+  if(cycleDay===30) return { label:'🏆 R$ 20.000 + Caixa Épica', itemId:'caixa_epica', qty:1, bonusCash:20000 }
+  return null
+}
 
-  await transaction(async client => {
-    await client.query('UPDATE wallets SET cash=cash+5000, updated_at='+nowSql+' WHERE jid=$1',[jid])
+function nextStreakMilestone(streak){
+  const cycleDay=((Math.max(1,Number(streak)||1)-1)%30)+1
+  const checkpoints=[3,7,15,30]
+  const next=checkpoints.find(n=>n>cycleDay) ?? 30
+  const days=next-cycleDay
+  const labels={3:'Caixa da Sorte',7:'Caixa Rara',15:'Caixa Épica',30:'R$ 20.000 + Caixa Épica'}
+  return { day:next, days:Math.max(0,days), label:labels[next] }
+}
+
+export async function getDailyStreak(jid) {
+  await ensureUser(jid)
+  const {rows}=await db.query(`
+    SELECT d.streak,d.best_streak,d.last_claim_day,
+           TO_CHAR(NOW() AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS today
+    FROM (SELECT $1::text AS jid) x
+    LEFT JOIN daily_streaks d ON d.jid=x.jid
+  `,[jid])
+
+  const row=rows[0]||{}
+  const streak=Number(row.streak||0)
+  const bestStreak=Number(row.best_streak||0)
+  const lastClaimDay=row.last_claim_day ? String(row.last_claim_day).slice(0,10) : null
+  const today=String(row.today||'')
+  return {
+    streak,
+    bestStreak,
+    lastClaimDay,
+    claimedToday:Boolean(lastClaimDay && lastClaimDay===today),
+    next:nextStreakMilestone(streak)
+  }
+}
+
+export async function claimDaily(jid) {
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const clock=await client.query(`
+      SELECT
+        TO_CHAR(NOW() AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS today,
+        TO_CHAR((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1,'YYYY-MM-DD') AS yesterday,
+        GREATEST(
+          1,
+          FLOOR(EXTRACT(EPOCH FROM (
+            (((NOW() AT TIME ZONE 'America/Sao_Paulo')::date + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo')
+            - NOW()
+          )))
+        )::INT AS remaining
+    `)
+    const {today,yesterday,remaining}=clock.rows[0]
+
+    await client.query(`
+      INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
+      VALUES($1,0,0,NULL)
+      ON CONFLICT(jid) DO NOTHING
+    `,[jid])
+
+    const stateR=await client.query(
+      'SELECT streak,best_streak,last_claim_day FROM daily_streaks WHERE jid=$1 FOR UPDATE',
+      [jid]
+    )
+    const state=stateR.rows[0]
+    const lastDay=state.last_claim_day ? String(state.last_claim_day).slice(0,10) : null
+
+    if(lastDay===today){
+      return {
+        ok:false,
+        remaining:Number(remaining||1),
+        streak:Number(state.streak||0),
+        bestStreak:Number(state.best_streak||0)
+      }
+    }
+
+    const continued=lastDay===yesterday
+    const streak=continued ? Number(state.streak||0)+1 : 1
+    const bestStreak=Math.max(Number(state.best_streak||0),streak)
+    const baseAmount=5000
+    const reward=streakRewardFor(streak)
+    const bonusCash=Number(reward?.bonusCash||0)
+    const totalCash=baseAmount+bonusCash
+
+    await client.query(
+      `UPDATE daily_streaks
+       SET streak=$1,best_streak=$2,last_claim_day=$3::date,updated_at=${nowSql}
+       WHERE jid=$4`,
+      [streak,bestStreak,today,jid]
+    )
+
+    await client.query(
+      'UPDATE wallets SET cash=cash+$1, updated_at='+nowSql+' WHERE jid=$2',
+      [totalCash,jid]
+    )
+
     await client.query(`
       INSERT INTO transactions (from_jid,to_jid,amount,type,note)
-      VALUES ('system',$1,5000,'reward','daily')
-    `,[jid])
+      VALUES ('system',$1,$2,'reward',$3)
+    `,[jid,totalCash,`daily streak:${streak}`])
+
+    if(reward?.itemId){
+      await client.query(`
+        INSERT INTO inventories(jid,item_id,quantity)
+        VALUES($1,$2,$3)
+        ON CONFLICT(jid,item_id)
+        DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
+      `,[jid,reward.itemId,reward.qty||1])
+    }
+
+    return {
+      ok:true,
+      amount:baseAmount,
+      bonusCash,
+      totalCash,
+      streak,
+      bestStreak,
+      continued,
+      reward:reward ? {label:reward.label,itemId:reward.itemId,qty:reward.qty||0,bonusCash} : null,
+      next:nextStreakMilestone(streak)
+    }
   })
-  return { ok:true, amount:5000 }
 }
 
 export async function work(jid) {
@@ -1240,6 +1363,7 @@ export async function ownerResetTotal(jid) {
     `,[jid])
     await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
     await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%:${jid}`])
+    await client.query('DELETE FROM daily_streaks WHERE jid=$1',[jid])
 
     // Tabelas de progressão são criadas por initProgression() antes dos comandos serem usados.
     await client.query('DELETE FROM daily_missions WHERE jid=$1',[jid])
