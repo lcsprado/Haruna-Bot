@@ -107,6 +107,16 @@ export async function initDatabase() {
       created_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS group_licenses (
+      chat_jid TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'blocked',
+      plan TEXT NOT NULL DEFAULT 'trial',
+      trial_started_at BIGINT,
+      paid_until BIGINT,
+      activated_by TEXT,
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
     CREATE TABLE IF NOT EXISTS auth_creds (
       session_id TEXT NOT NULL,
       key TEXT NOT NULL,
@@ -745,4 +755,70 @@ export async function ownerGrantItem(jid, itemId, qty=1) {
 
     return { item, qty }
   })
+}
+
+
+export async function getGroupLicense(chatJid) {
+  const { rows } = await db.query(
+    'SELECT * FROM group_licenses WHERE chat_jid=$1',
+    [chatJid]
+  )
+  return rows[0] || null
+}
+
+export async function ensureGroupTrial(chatJid) {
+  const now=Math.floor(Date.now()/1000)
+  const trialUntil=now+(3*24*60*60)
+  await db.query(`
+    INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,updated_at)
+    VALUES($1,'active','trial',$2,$3,${nowSql})
+    ON CONFLICT(chat_jid) DO NOTHING
+  `,[chatJid,now,trialUntil])
+  return getGroupLicense(chatJid)
+}
+
+export async function activateGroupLicense(chatJid,days=30,activatedBy='owner',plan='basic') {
+  days=Number(days)
+  if(!Number.isInteger(days)||days<1||days>3650) throw new Error('Dias inválidos.')
+  const now=Math.floor(Date.now()/1000)
+  const current=await getGroupLicense(chatJid)
+  const base=current?.paid_until && Number(current.paid_until)>now ? Number(current.paid_until) : now
+  const paidUntil=base+(days*24*60*60)
+
+  await db.query(`
+    INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
+    VALUES($1,'active',$2,NULL,$3,$4,${nowSql})
+    ON CONFLICT(chat_jid)
+    DO UPDATE SET status='active',plan=EXCLUDED.plan,paid_until=EXCLUDED.paid_until,
+                  activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
+  `,[chatJid,plan,paidUntil,activatedBy])
+
+  return getGroupLicense(chatJid)
+}
+
+export async function blockGroupLicense(chatJid,activatedBy='owner') {
+  await db.query(`
+    INSERT INTO group_licenses(chat_jid,status,plan,activated_by,updated_at)
+    VALUES($1,'blocked','blocked',$2,${nowSql})
+    ON CONFLICT(chat_jid)
+    DO UPDATE SET status='blocked',plan='blocked',activated_by=EXCLUDED.activated_by,
+                  updated_at=EXCLUDED.updated_at
+  `,[chatJid,activatedBy])
+  return getGroupLicense(chatJid)
+}
+
+export async function listGroupLicenses(limit=50) {
+  const { rows } = await db.query(`
+    SELECT chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at
+    FROM group_licenses
+    ORDER BY updated_at DESC
+    LIMIT $1
+  `,[limit])
+  return rows
+}
+
+export function groupLicenseIsActive(license) {
+  if(!license || license.status!=='active') return false
+  const now=Math.floor(Date.now()/1000)
+  return Number(license.paid_until||0)>now
 }
