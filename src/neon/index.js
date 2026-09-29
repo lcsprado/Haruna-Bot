@@ -204,7 +204,8 @@ async function start() {
   async function handleQuickGameFlow({chat,sender,body,reply,msg}){
     const flow=getQuickFlow(chat,sender)
     if(!flow) return false
-    const input=String(body||'').trim().toLowerCase()
+    const rawInput=String(body||'').trim()
+    const input=rawInput.toLowerCase()
 
     if(['0','sair','cancelar','cancel'].includes(input)){
       clearQuickFlow(chat,sender)
@@ -249,6 +250,101 @@ async function start() {
       )
     }
 
+    const adminMainMenu=async()=>{
+      setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
+      await reply(
+`👑 *ADMIN TREVO*
+
+1️⃣ 👤 Jogadores
+2️⃣ 💚 Grupos / assinaturas
+3️⃣ 🧾 Pedidos pendentes
+4️⃣ ⚙️ Configurações comerciais
+5️⃣ 🩺 Diagnóstico
+
+0️⃣ Sair
+
+_Responda apenas com o número._`
+      )
+    }
+
+    const adminPlayersMenu=async()=>{
+      setQuickFlow(chat,sender,'admin_players',{},5*60*1000)
+      await reply(
+`👤 *ADMIN — JOGADORES*
+
+1️⃣ Adicionar saldo
+2️⃣ Remover saldo
+3️⃣ Adicionar EXP
+4️⃣ Alterar nível
+5️⃣ Curar jogador
+6️⃣ Dar item
+
+9️⃣ Voltar
+0️⃣ Sair`
+      )
+    }
+
+    const adminGroupsMenu=async()=>{
+      setQuickFlow(chat,sender,'admin_groups',{},5*60*1000)
+      await reply(
+`💚 *ADMIN — GRUPOS*
+
+1️⃣ Status deste grupo
+2️⃣ Ativar este grupo por 30 dias
+3️⃣ Ativar por outro período
+4️⃣ Bloquear este grupo
+5️⃣ Ver grupos registrados
+
+9️⃣ Voltar
+0️⃣ Sair`
+      )
+    }
+
+    const adminOrdersMenu=async()=>{
+      const rows=await listPendingSubscriptionOrders(30)
+      const codes=rows.map(r=>r.code)
+      setQuickFlow(chat,sender,'admin_orders',{codes},5*60*1000)
+      if(!rows.length){
+        await reply(
+`🧾 *PEDIDOS PENDENTES*
+
+Nenhum pedido pendente agora.
+
+9️⃣ Voltar
+0️⃣ Sair`
+        )
+        return
+      }
+      let text='🧾 *PEDIDOS PENDENTES*\n\n'
+      rows.forEach((r,i)=>{
+        text+=`${i+1}️⃣ *${r.code}* — R$ ${Number(r.amount).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}\n`
+      })
+      text+='\n👉 Escolha o número do pedido.\n\n9️⃣ Voltar\n0️⃣ Sair'
+      await reply(text)
+    }
+
+    const adminSettingsMenu=async()=>{
+      setQuickFlow(chat,sender,'admin_settings',{},5*60*1000)
+      await reply(
+`⚙️ *ADMIN — CONFIGURAÇÕES*
+
+1️⃣ Ver preço atual
+2️⃣ Alterar preço
+3️⃣ Alterar link de pagamento
+
+9️⃣ Voltar
+0️⃣ Sair`
+      )
+    }
+
+    const adminBackFor=async(action)=>{
+      if(['addsaldo','remsaldo','addexp','setnivel','curar','daritem'].includes(action)) return adminPlayersMenu()
+      if(['activategroup','blockgroup'].includes(action)) return adminGroupsMenu()
+      if(['approveorder','cancelorder'].includes(action)) return adminOrdersMenu()
+      if(['setprice','setlink'].includes(action)) return adminSettingsMenu()
+      return adminMainMenu()
+    }
+
     const afterGame=async(game,data,text)=>{
       setQuickFlow(chat,sender,'game_after',{game,...data},5*60*1000)
       await reply(
@@ -273,6 +369,465 @@ async function start() {
 
 _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
+    }
+
+    if(flow.stage.startsWith('admin_')){
+      if(sender!==ownerJid){
+        clearQuickFlow(chat,sender)
+        await reply('⛔ Painel restrito ao dono.')
+        return true
+      }
+
+      if(flow.stage==='admin_main'){
+        if(input==='1') return await adminPlayersMenu(),true
+        if(input==='2') return await adminGroupsMenu(),true
+        if(input==='3') return await adminOrdersMenu(),true
+        if(input==='4') return await adminSettingsMenu(),true
+        if(input==='5'){
+          const age=(ts)=>ts?Math.max(0,Math.floor((Date.now()-ts)/1000)):null
+          const lastUpsert=age(trevoHealth.lastUpsertAt)
+          const lastInbound=age(trevoHealth.lastInboundAt)
+          await reply(
+`🩺 *DIAGNÓSTICO TREVO*
+
+WhatsApp: *${String(trevoHealth.whatsapp||'desconhecido').toUpperCase()}*
+Mensagens observadas: *${Number(trevoHealth.messagesSeen||0)}*
+Último evento: *${lastUpsert===null?'ainda nenhum':lastUpsert+'s atrás'}*
+Última mensagem recebida: *${lastInbound===null?'ainda nenhuma':lastInbound+'s atrás'}*
+Processo ativo há: *${Math.floor(process.uptime()/60)} min*
+
+9️⃣ Voltar
+0️⃣ Sair`
+          )
+          setQuickFlow(chat,sender,'admin_diag',{},5*60*1000)
+          return true
+        }
+        await reply('👑 Escolha uma opção de *1 a 5* ou *0* para sair.')
+        return true
+      }
+
+      if(flow.stage==='admin_diag'){
+        if(input==='9') return await adminMainMenu(),true
+        await reply('🩺 Digite *9* para voltar ou *0* para sair.')
+        return true
+      }
+
+      if(flow.stage==='admin_players'){
+        if(input==='9') return await adminMainMenu(),true
+        const actions={1:'addsaldo',2:'remsaldo',3:'addexp',4:'setnivel',5:'curar',6:'daritem'}
+        const action=actions[input]
+        if(!action){
+          await reply('👤 Escolha uma opção de *1 a 6*, *9* para voltar ou *0* para sair.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_player_target',{action},5*60*1000)
+        await reply(
+`👤 *ESCOLHA O JOGADOR*
+
+1️⃣ Aplicar em mim
+ou marque a pessoa com *@*.
+
+9️⃣ Voltar
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(flow.stage==='admin_player_target'){
+        if(input==='9') return await adminPlayersMenu(),true
+        const action=flow.data.action
+        const mentioned=mentionsOf(msg)[0]
+        const target=input==='1'?sender:mentioned
+        if(!target){
+          await reply('👤 Marque a pessoa com *@* ou mande *1* para aplicar em você.')
+          return true
+        }
+
+        if(action==='curar'){
+          setQuickFlow(chat,sender,'admin_confirm',{action,target},5*60*1000)
+          await reply('❤️ Curar completamente o jogador selecionado?\n\n1️⃣ Confirmar\n2️⃣ Cancelar',{mentions:target===sender?[]:[target]})
+          return true
+        }
+
+        if(action==='daritem'){
+          const shop=await getShop()
+          const items=shop.filter(i=>SHOP_IDS.includes(i.id || i.item_id))
+          const ids=items.map(i=>i.id || i.item_id)
+          let text='🎁 *ESCOLHA O ITEM*\n\n'
+          items.forEach((i,idx)=>text+=`${idx+1}️⃣ ${i.name}\n`)
+          text+='\n9️⃣ Voltar\n0️⃣ Sair'
+          setQuickFlow(chat,sender,'admin_item_select',{action,target,ids},5*60*1000)
+          await reply(text,{mentions:target===sender?[]:[target]})
+          return true
+        }
+
+        if(action==='setnivel'){
+          setQuickFlow(chat,sender,'admin_level_value',{action,target},5*60*1000)
+          await reply('⭐ Digite o *novo nível* do jogador.\nExemplo: *10*\n\n9️⃣ Voltar\n0️⃣ Sair')
+          return true
+        }
+
+        const isExp=action==='addexp'
+        const presets=isExp?[100,500,1000]:[1000,5000,10000]
+        setQuickFlow(chat,sender,'admin_amount',{action,target,presets},5*60*1000)
+        await reply(
+`💰 *ESCOLHA O VALOR*
+
+1️⃣ ${fmt(presets[0])}
+2️⃣ ${fmt(presets[1])}
+3️⃣ ${fmt(presets[2])}
+4️⃣ Outro valor
+
+9️⃣ Voltar
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(flow.stage==='admin_amount'){
+        if(input==='9') return await adminPlayersMenu(),true
+        const {action,target,presets}=flow.data
+        if(input==='4'){
+          setQuickFlow(chat,sender,'admin_amount_custom',{action,target},5*60*1000)
+          await reply('⌨️ Digite o valor desejado.\nExemplo: *25000*')
+          return true
+        }
+        const amount=presets?.[Number(input)-1]
+        if(!amount){
+          await reply('Escolha *1, 2, 3 ou 4*.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action,target,amount},5*60*1000)
+        await reply(
+`⚠️ *CONFIRMAR AÇÃO*
+
+${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar saldo'}: *${action==='addexp'?fmt(amount):'R$ '+fmt(amount)}*
+
+1️⃣ Confirmar
+2️⃣ Cancelar`,
+          {mentions:target===sender?[]:[target]}
+        )
+        return true
+      }
+
+      if(flow.stage==='admin_amount_custom'){
+        const {action,target}=flow.data
+        const amount=parseAmount(rawInput)
+        if(amount<1){
+          await reply('Digite um valor válido maior que zero.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action,target,amount},5*60*1000)
+        await reply(
+`⚠️ *CONFIRMAR AÇÃO*
+
+${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar saldo'}: *${action==='addexp'?fmt(amount):'R$ '+fmt(amount)}*
+
+1️⃣ Confirmar
+2️⃣ Cancelar`,
+          {mentions:target===sender?[]:[target]}
+        )
+        return true
+      }
+
+      if(flow.stage==='admin_level_value'){
+        if(input==='9') return await adminPlayersMenu(),true
+        const level=parseInt(input,10)
+        if(!Number.isInteger(level)||level<1||level>999){
+          await reply('⭐ Digite um nível entre *1 e 999*.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action:'setnivel',target:flow.data.target,level},5*60*1000)
+        await reply(`⚠️ Alterar o nível para *${level}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+        return true
+      }
+
+      if(flow.stage==='admin_item_select'){
+        if(input==='9') return await adminPlayersMenu(),true
+        const idx=Number(input)-1
+        const itemId=flow.data.ids?.[idx]
+        if(!itemId){
+          await reply('🎁 Escolha um dos números da lista.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_item_qty',{target:flow.data.target,itemId},5*60*1000)
+        await reply('🎁 *QUANTIDADE*\n\n1️⃣ 1 unidade\n2️⃣ 5 unidades\n3️⃣ 10 unidades\n4️⃣ Outra quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
+        return true
+      }
+
+      if(flow.stage==='admin_item_qty'){
+        if(input==='9') return await adminPlayersMenu(),true
+        if(input==='4'){
+          setQuickFlow(chat,sender,'admin_item_qty_custom',flow.data,5*60*1000)
+          await reply('⌨️ Digite a quantidade.')
+          return true
+        }
+        const qtyMap={1:1,2:5,3:10}
+        const qty=qtyMap[input]
+        if(!qty){
+          await reply('Escolha *1, 2, 3 ou 4*.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action:'daritem',...flow.data,qty},5*60*1000)
+        await reply(`⚠️ Entregar *${qty} unidade(s)* deste item?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+        return true
+      }
+
+      if(flow.stage==='admin_item_qty_custom'){
+        const qty=parseInt(input,10)
+        if(!Number.isInteger(qty)||qty<1||qty>999){
+          await reply('Digite uma quantidade entre *1 e 999*.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action:'daritem',...flow.data,qty},5*60*1000)
+        await reply(`⚠️ Entregar *${qty} unidade(s)* deste item?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+        return true
+      }
+
+      if(flow.stage==='admin_groups'){
+        if(input==='9') return await adminMainMenu(),true
+
+        if(input==='1'){
+          if(!chat.endsWith('@g.us')){
+            await reply('💚 Use esta opção dentro do grupo que deseja consultar.')
+            return true
+          }
+          const lic=await getGroupLicense(chat)
+          await reply(!lic
+            ? '🍀 Este grupo ainda não iniciou o período grátis.'
+            : `💚 *STATUS DO GRUPO*\nStatus: *${groupLicenseIsActive(lic)?'ATIVO':'INATIVO'}*\nPlano: *${lic.plan}*\nValidade: *${fmtDate(lic.paid_until)}*`)
+          return true
+        }
+
+        if(input==='2'){
+          if(!chat.endsWith('@g.us')){
+            await reply('💚 Use esta opção dentro do grupo que deseja ativar.')
+            return true
+          }
+          setQuickFlow(chat,sender,'admin_confirm',{action:'activategroup',days:30},5*60*1000)
+          await reply('⚠️ Ativar este grupo por *30 dias*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
+          return true
+        }
+
+        if(input==='3'){
+          if(!chat.endsWith('@g.us')){
+            await reply('💚 Use esta opção dentro do grupo que deseja ativar.')
+            return true
+          }
+          setQuickFlow(chat,sender,'admin_group_days',{},5*60*1000)
+          await reply('📅 Digite a quantidade de dias.\nExemplo: *30*\n\n9️⃣ Voltar\n0️⃣ Sair')
+          return true
+        }
+
+        if(input==='4'){
+          if(!chat.endsWith('@g.us')){
+            await reply('💚 Use esta opção dentro do grupo que deseja bloquear.')
+            return true
+          }
+          setQuickFlow(chat,sender,'admin_confirm',{action:'blockgroup'},5*60*1000)
+          await reply('⚠️ *Bloquear este grupo?*\nO acesso do Trevo será interrompido.\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
+          return true
+        }
+
+        if(input==='5'){
+          const rows=await listGroupLicenses(50)
+          if(!rows.length){
+            await reply('Nenhum grupo registrado ainda.')
+            return true
+          }
+          let text='💚 *GRUPOS REGISTRADOS*\n\n'
+          rows.forEach((r,i)=>text+=`${i+1}. ${groupLicenseIsActive(r)?'✅':'❌'} ${r.plan} — ${fmtDate(r.paid_until)}\n`)
+          text+='\n9️⃣ Voltar'
+          await reply(text.trim())
+          return true
+        }
+
+        await reply('💚 Escolha uma opção de *1 a 5*, *9* para voltar ou *0* para sair.')
+        return true
+      }
+
+      if(flow.stage==='admin_group_days'){
+        if(input==='9') return await adminGroupsMenu(),true
+        const days=parseInt(input,10)
+        if(!Number.isInteger(days)||days<1||days>3650){
+          await reply('📅 Digite um período entre *1 e 3650 dias*.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action:'activategroup',days},5*60*1000)
+        await reply(`⚠️ Ativar este grupo por *${days} dias*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+        return true
+      }
+
+      if(flow.stage==='admin_orders'){
+        if(input==='9') return await adminMainMenu(),true
+        const idx=Number(input)-1
+        const code=flow.data.codes?.[idx]
+        if(!code){
+          await reply('🧾 Escolha o número de um pedido ou *9* para voltar.')
+          return true
+        }
+        const order=await getSubscriptionOrder(code)
+        if(!order){
+          await reply('Pedido não encontrado. Atualizando lista...')
+          await adminOrdersMenu()
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_order_action',{code},5*60*1000)
+        await reply(
+`🧾 *${order.code}*
+
+Status: *${String(order.status).toUpperCase()}*
+Valor: *R$ ${Number(order.amount).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}*
+Criado: *${fmtDate(order.created_at)}*
+
+1️⃣ ✅ Aprovar
+2️⃣ 🚫 Cancelar
+9️⃣ Voltar
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(flow.stage==='admin_order_action'){
+        if(input==='9') return await adminOrdersMenu(),true
+        if(input==='1'){
+          setQuickFlow(chat,sender,'admin_confirm',{action:'approveorder',code:flow.data.code},5*60*1000)
+          await reply(`⚠️ Aprovar o pedido *${flow.data.code}* e liberar 30 dias?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+          return true
+        }
+        if(input==='2'){
+          setQuickFlow(chat,sender,'admin_confirm',{action:'cancelorder',code:flow.data.code},5*60*1000)
+          await reply(`⚠️ Cancelar o pedido *${flow.data.code}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+          return true
+        }
+        await reply('Escolha *1 Aprovar*, *2 Cancelar* ou *9 Voltar*.')
+        return true
+      }
+
+      if(flow.stage==='admin_settings'){
+        if(input==='9') return await adminMainMenu(),true
+
+        if(input==='1'){
+          const [price,link]=await Promise.all([getLaunchPrice(),getPaymentLink()])
+          await reply(
+`⚙️ *CONFIGURAÇÃO ATUAL*
+
+💰 Preço: *R$ ${Number(price).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias*
+💳 Link: ${link}
+
+9️⃣ Voltar`
+          )
+          return true
+        }
+
+        if(input==='2'){
+          setQuickFlow(chat,sender,'admin_price_value',{},5*60*1000)
+          await reply('💰 Digite o novo preço.\nExemplo: *5* ou *5,90*\n\n9️⃣ Voltar\n0️⃣ Sair')
+          return true
+        }
+
+        if(input==='3'){
+          setQuickFlow(chat,sender,'admin_link_value',{},5*60*1000)
+          await reply('💳 Envie o novo link de pagamento completo.\n\n9️⃣ Voltar\n0️⃣ Sair')
+          return true
+        }
+
+        await reply('⚙️ Escolha *1, 2 ou 3*, *9* para voltar ou *0* para sair.')
+        return true
+      }
+
+      if(flow.stage==='admin_price_value'){
+        if(input==='9') return await adminSettingsMenu(),true
+        const raw=rawInput.replace(',','.')
+        const price=Number(raw)
+        if(!Number.isFinite(price)||price<=0||price>10000){
+          await reply('💰 Digite um preço válido maior que zero.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action:'setprice',price},5*60*1000)
+        await reply(`⚠️ Alterar o preço para *R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+        return true
+      }
+
+      if(flow.stage==='admin_link_value'){
+        if(input==='9') return await adminSettingsMenu(),true
+        if(!/^https?:\/\//i.test(rawInput)){
+          await reply('💳 Envie um link completo começando com *https://*.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action:'setlink',link:rawInput},5*60*1000)
+        await reply('⚠️ Atualizar o link de pagamento?\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
+        return true
+      }
+
+      if(flow.stage==='admin_confirm'){
+        const data=flow.data
+        if(input==='2'){
+          await reply('✅ Ação cancelada.')
+          await adminBackFor(data.action)
+          return true
+        }
+        if(input!=='1'){
+          await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
+          return true
+        }
+
+        if(data.action==='addsaldo'){
+          const p=await ownerAddBalance(data.target,data.amount)
+          await reply(`✅ Saldo adicionado. Novo saldo: *R$ ${fmt(p.cash)}*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='remsaldo'){
+          const r=await ownerRemoveBalance(data.target,data.amount)
+          await reply(`✅ Removido *R$ ${fmt(r.removed)}*. Saldo atual: *R$ ${fmt(r.cash)}*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='addexp'){
+          const r=await ownerAddExp(data.target,data.amount)
+          await reply(`✅ +${fmt(data.amount)} EXP. Nível: *${r.level}*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='setnivel'){
+          const r=await ownerSetLevel(data.target,data.level)
+          await reply(`✅ Nível alterado: *${r.oldLevel} → ${r.level}*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='curar'){
+          const r=await ownerHeal(data.target)
+          await reply(`✅ Cura completa: ❤️ *${r.hp}/${r.max_hp}*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='daritem'){
+          const r=await ownerGrantItem(data.target,data.itemId,data.qty)
+          await reply(`✅ Item entregue: *${r.item.name} ×${r.qty}*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='activategroup'){
+          const lic=await activateGroupLicense(chat,data.days,sender,'basic')
+          await reply(`✅ Grupo ativado por *${data.days} dias*.\n📅 Validade: *${fmtDate(lic.paid_until)}*`)
+        }else if(data.action==='blockgroup'){
+          await blockGroupLicense(chat,sender)
+          await reply('✅ Grupo bloqueado.')
+        }else if(data.action==='approveorder'){
+          const r=await approveSubscriptionOrder(data.code,sender)
+          await reply(`✅ Pedido *${r.code}* aprovado.\n📅 Grupo liberado até: *${fmtDate(r.paid_until)}*`)
+          try{
+            await sock.sendMessage(r.chat_jid,{text:
+`💚 *PAGAMENTO CONFIRMADO!*
+
+🧾 Pedido: *${r.code}*
+✅ Trevo liberado por mais *30 dias*.
+📅 Validade: *${fmtDate(r.paid_until)}*
+
+Obrigado por apoiar o Trevo 🍀`
+            })
+          }catch(err){
+            console.error('[assinatura] não foi possível avisar o grupo',err?.message||err)
+          }
+        }else if(data.action==='cancelorder'){
+          const r=await cancelSubscriptionOrder(data.code)
+          await reply(`✅ Pedido *${r.code}* cancelado.`)
+        }else if(data.action==='setprice'){
+          const value=await setLaunchPrice(data.price)
+          await reply(`✅ Preço atualizado para *R$ ${value.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias*.`)
+        }else if(data.action==='setlink'){
+          await setPaymentLink(data.link)
+          await reply('✅ Link de pagamento atualizado.')
+        }
+
+        await adminBackFor(data.action)
+        return true
+      }
+
+      return true
     }
 
     if(flow.stage==='game_after'){
@@ -2771,32 +3326,22 @@ Obrigado por apoiar o Trevo 🍀`
           const r=await ownerGrantItem(ownerTarget,itemArg.toLowerCase(),qty)
           await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
-        } else if(['ownermenu','adminmenu','donocomandos'].includes(cmd)){
+        } else if(['admin','ownermenu','adminmenu','donocomandos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
           await reply(
-`👑 *TREVO — COMANDOS DO DONO*
+`👑 *ADMIN TREVO*
 
-💰 *Jogadores*
-${prefix}addsaldo @pessoa 5000
-${prefix}remsaldo @pessoa 5000
-${prefix}addexp @pessoa 500
-${prefix}setnivel @pessoa 10
-${prefix}curar @pessoa
-${prefix}daritem @pessoa espada_ferro 1
+1️⃣ 👤 Jogadores
+2️⃣ 💚 Grupos / assinaturas
+3️⃣ 🧾 Pedidos pendentes
+4️⃣ ⚙️ Configurações comerciais
+5️⃣ 🩺 Diagnóstico
 
-💚 *Grupos*
-${prefix}ativargrupo 30
-${prefix}bloqueargrupo
-${prefix}gruposativos
+0️⃣ Sair
 
-💳 *Assinaturas*
-${prefix}pedidos
-${prefix}aprovarpedido TREVO-XXXXXX
-${prefix}cancelarpedido TREVO-XXXXXX
-${prefix}setpreco 5
-${prefix}setlinkpagamento https://...
-
-_Use estes comandos com cuidado: alterações de saldo, nível e assinatura são administrativas._`
+_Responda apenas com o número._
+_Os comandos administrativos antigos continuam funcionando._`
           )
 
         } else if(['menu','help','ajuda'].includes(cmd)){
