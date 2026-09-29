@@ -4,156 +4,99 @@ const W=1200,H=1500
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n))
 const money=n=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0}).format(Number(n||0))
 
-function rounded(ctx,x,y,w,h,r=24){
-  r=Math.min(r,w/2,h/2)
-  ctx.beginPath()
-  ctx.moveTo(x+r,y)
-  ctx.arcTo(x+w,y,x+w,y+h,r)
-  ctx.arcTo(x+w,y+h,x,y+h,r)
-  ctx.arcTo(x,y+h,x,y,r)
-  ctx.arcTo(x,y,x+w,y,r)
-  ctx.closePath()
+function rr(ctx,x,y,w,h,r=24){
+  r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r)
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()
 }
-
-function panel(ctx,x,y,w,h){
-  ctx.save()
-  rounded(ctx,x,y,w,h,28)
-  ctx.fillStyle='rgba(10,14,28,.84)'
-  ctx.fill()
-  ctx.strokeStyle='rgba(84,207,255,.25)'
-  ctx.lineWidth=2
-  ctx.stroke()
-  ctx.restore()
+function panel(ctx,x,y,w,h,r=26){
+  ctx.save();ctx.shadowColor='rgba(65,211,255,.10)';ctx.shadowBlur=24
+  rr(ctx,x,y,w,h,r);ctx.fillStyle='rgba(8,12,25,.91)';ctx.fill()
+  ctx.shadowBlur=0;ctx.strokeStyle='rgba(82,207,255,.20)';ctx.lineWidth=2;ctx.stroke();ctx.restore()
 }
-
-function fitText(ctx,text,maxWidth,start=48,min=22){
-  let size=start
-  while(size>min){
-    ctx.font=`800 ${size}px sans-serif`
-    if(ctx.measureText(String(text)).width<=maxWidth) return size
-    size-=2
-  }
-  return min
+function fit(ctx,text,max,start=48,min=20,weight=800){
+  let s=start;while(s>min){ctx.font=`${weight} ${s}px Arial, sans-serif`;if(ctx.measureText(String(text)).width<=max)return s;s-=2}return min
 }
-
-function stat(ctx,x,y,label,value,accent){
-  ctx.save()
-  ctx.fillStyle='rgba(255,255,255,.06)'
-  rounded(ctx,x,y,205,112,20);ctx.fill()
-  ctx.fillStyle=accent
-  ctx.font='900 27px sans-serif';ctx.fillText(label,x+20,y+36)
-  ctx.fillStyle='#fff'
-  ctx.font='900 47px sans-serif';ctx.fillText(String(value),x+20,y+88)
-  ctx.restore()
+function label(ctx,text,x,y){ctx.fillStyle='#7f8ba9';ctx.font='800 18px Arial, sans-serif';ctx.fillText(text,x,y)}
+function stat(ctx,x,y,w,labelText,value,accent){
+  const g=ctx.createLinearGradient(x,y,x+w,y+110);g.addColorStop(0,'rgba(255,255,255,.075)');g.addColorStop(1,'rgba(255,255,255,.025)')
+  rr(ctx,x,y,w,112,20);ctx.fillStyle=g;ctx.fill()
+  ctx.fillStyle=accent;ctx.font='900 21px Arial, sans-serif';ctx.fillText(labelText,x+18,y+32)
+  const fs=fit(ctx,value,w-36,43,24,900);ctx.font=`900 ${fs}px Arial, sans-serif`;ctx.fillStyle='#f8fbff';ctx.fillText(String(value),x+18,y+82)
 }
-
-function badge(ctx,x,y,text){
-  ctx.font='800 20px sans-serif'
-  const w=Math.min(300,ctx.measureText(text).width+34)
-  ctx.fillStyle='rgba(126,87,255,.18)'
-  rounded(ctx,x,y,w,40,20);ctx.fill()
-  ctx.strokeStyle='rgba(156,125,255,.65)';ctx.lineWidth=1.5;ctx.stroke()
-  ctx.fillStyle='#e8e1ff';ctx.fillText(text,x+17,y+27)
-  return w
+function pill(ctx,x,y,text,accent='#8b6cff'){
+  ctx.font='800 18px Arial, sans-serif';const w=Math.min(300,ctx.measureText(text).width+34)
+  rr(ctx,x,y,w,38,19);ctx.fillStyle='rgba(115,82,255,.15)';ctx.fill();ctx.strokeStyle=accent;ctx.lineWidth=1.4;ctx.stroke()
+  ctx.fillStyle='#e8e6ff';ctx.fillText(text,x+17,y+25);return w
 }
+function safeText(s,n=30){s=String(s||'—');return s.length>n?s.slice(0,n-1)+'…':s}
 
 export async function renderProfileCard(d){
   const canvas=createCanvas(W,H),ctx=canvas.getContext('2d')
-
-  const bg=ctx.createLinearGradient(0,0,W,H)
-  bg.addColorStop(0,'#05070f');bg.addColorStop(.45,'#101329');bg.addColorStop(1,'#070a16')
+  const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#030611');bg.addColorStop(.52,'#0b1024');bg.addColorStop(1,'#050713')
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H)
+  let glow=ctx.createRadialGradient(1010,100,0,1010,100,620);glow.addColorStop(0,'rgba(43,205,255,.28)');glow.addColorStop(.42,'rgba(83,80,255,.10)');glow.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=glow;ctx.fillRect(0,0,W,H)
+  glow=ctx.createRadialGradient(80,1370,0,80,1370,480);glow.addColorStop(0,'rgba(142,75,255,.16)');glow.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=glow;ctx.fillRect(0,950,650,550)
+  ctx.fillStyle='#49d8ff';ctx.fillRect(0,0,W,6);ctx.fillStyle='#9d62ff';ctx.fillRect(0,H-6,W,6)
 
-  const glow=ctx.createRadialGradient(900,150,20,900,150,650)
-  glow.addColorStop(0,'rgba(67,213,255,.30)');glow.addColorStop(.45,'rgba(104,75,255,.12)');glow.addColorStop(1,'rgba(0,0,0,0)')
-  ctx.fillStyle=glow;ctx.fillRect(0,0,W,H)
+  // HERO
+  panel(ctx,42,38,1116,330,32)
+  ctx.save();ctx.beginPath();ctx.arc(190,190,112,0,Math.PI*2);ctx.clip()
+  if(d.avatar){try{const im=await loadImage(d.avatar),sc=Math.max(224/im.width,224/im.height),sw=224/sc,sh=224/sc;ctx.drawImage(im,(im.width-sw)/2,(im.height-sh)/2,sw,sh,78,78,224,224)}catch{ctx.fillStyle='#151b31';ctx.fillRect(78,78,224,224)}}else{ctx.fillStyle='#151b31';ctx.fillRect(78,78,224,224);ctx.fillStyle='#50d9ff';ctx.font='900 92px Arial';ctx.textAlign='center';ctx.fillText('A',190,220)}
+  ctx.restore();ctx.beginPath();ctx.arc(190,190,116,0,Math.PI*2);ctx.strokeStyle='#50d9ff';ctx.lineWidth=6;ctx.stroke()
+  ctx.textAlign='left';ctx.fillStyle='#50d9ff';ctx.font='900 18px Arial';ctx.fillText('ALPHA PLAYER',340,82)
+  const ns=fit(ctx,String(d.name).toUpperCase(),760,55,30,900);ctx.font=`900 ${ns}px Arial`;ctx.fillStyle='#fff';ctx.fillText(String(d.name).toUpperCase(),340,142)
+  ctx.fillStyle='#bfc8e6';ctx.font='800 27px Arial';ctx.fillText(d.title,340,188)
+  if(d.badge){pill(ctx,340,210,d.badge,'#4edcff')}
+  ctx.fillStyle='#a46dff';ctx.font='900 23px Arial';ctx.fillText(`NÍVEL ${d.level}`,340,288)
+  const need=Math.max(100,d.level*100),cur=clamp(d.exp,0,need),ratio=cur/need
+  rr(ctx,340,305,760,16,8);ctx.fillStyle='rgba(255,255,255,.09)';ctx.fill()
+  if(ratio>0){rr(ctx,340,305,760*ratio,16,8);const xp=ctx.createLinearGradient(340,0,1100,0);xp.addColorStop(0,'#43ddff');xp.addColorStop(1,'#9568ff');ctx.fillStyle=xp;ctx.fill()}
+  ctx.fillStyle='#7f8ba9';ctx.font='700 16px Arial';ctx.fillText(`${money(cur)} / ${money(need)} XP`,340,345)
 
-  ctx.fillStyle='#53d7ff';ctx.fillRect(0,0,W,7)
-  ctx.fillStyle='#9d69ff';ctx.fillRect(0,H-7,W,7)
+  // CORE STATS
+  label(ctx,'PODER DE COMBATE',58,408)
+  stat(ctx,58,430,248,'HP',`${d.hp}/${d.maxHp}`,'#ff6688')
+  stat(ctx,324,430,248,'ATK',d.atk,'#ffad55')
+  stat(ctx,590,430,248,'DEF',d.def,'#4edcff')
+  stat(ctx,856,430,248,'SPD',d.spd,'#b26cff')
 
-  // avatar
-  ctx.save()
-  ctx.beginPath();ctx.arc(178,190,118,0,Math.PI*2);ctx.clip()
-  if(d.avatar){
-    try{
-      const img=await loadImage(d.avatar)
-      const scale=Math.max(236/img.width,236/img.height)
-      const sw=236/scale,sh=236/scale
-      ctx.drawImage(img,(img.width-sw)/2,(img.height-sh)/2,sw,sh,60,72,236,236)
-    }catch{
-      ctx.fillStyle='#171b2d';ctx.fillRect(60,72,236,236)
-    }
-  }else{
-    ctx.fillStyle='#171b2d';ctx.fillRect(60,72,236,236)
-    ctx.fillStyle='#53d7ff';ctx.font='900 88px sans-serif';ctx.textAlign='center';ctx.fillText('A',178,220)
-  }
-  ctx.restore()
-  ctx.beginPath();ctx.arc(178,190,123,0,Math.PI*2);ctx.strokeStyle='#53d7ff';ctx.lineWidth=7;ctx.stroke()
+  // battle strip
+  panel(ctx,58,565,1046,105,22)
+  ctx.fillStyle='#fff';ctx.font='900 25px Arial';ctx.fillText(`${d.wins} VITÓRIAS`,86,610)
+  ctx.fillStyle='#687390';ctx.fillText('•',250,610)
+  ctx.fillStyle='#c8cfe2';ctx.fillText(`${d.losses} DERROTAS`,280,610)
+  const total=d.wins+d.losses,wr=total?Math.round(d.wins/total*100):0
+  ctx.fillStyle='#9d6cff';ctx.fillText(`${wr}% WIN RATE`,510,610)
+  ctx.textAlign='right';ctx.fillStyle='#50d9ff';ctx.fillText(`RANK #${d.combatRank}`,1074,610);ctx.textAlign='left'
+  ctx.fillStyle='#6f7897';ctx.font='700 15px Arial';ctx.fillText('ARENA',86,642)
 
-  ctx.textAlign='left'
-  ctx.fillStyle='#53d7ff';ctx.font='900 23px sans-serif';ctx.fillText('ALPHA PLAYER CARD',340,92)
-  const nameSize=fitText(ctx,d.name,760,62,34)
-  ctx.font=`900 ${nameSize}px sans-serif`;ctx.fillStyle='#fff';ctx.fillText(String(d.name).toUpperCase(),340,158)
-  ctx.font='800 29px sans-serif';ctx.fillStyle='#c8cce0';ctx.fillText(d.title,340,205)
-  if(d.badge){ctx.font='800 23px sans-serif';ctx.fillStyle='#aef5ff';ctx.fillText(d.badge,340,246)}
-  ctx.font='900 25px sans-serif';ctx.fillStyle='#9d69ff';ctx.fillText(`NÍVEL ${d.level}`,340,290)
+  // Equipment + economy
+  panel(ctx,58,700,505,275);panel(ctx,585,700,519,275)
+  label(ctx,'EQUIPAMENTO',86,742)
+  ctx.fillStyle='#fff';ctx.font='900 21px Arial';ctx.fillText('ARMA',86,790);ctx.fillStyle='#a8b2d1';ctx.font=`700 ${fit(ctx,safeText(d.weapon),430,25,18,700)}px Arial`;ctx.fillText(safeText(d.weapon),86,827)
+  ctx.fillStyle='#fff';ctx.font='900 21px Arial';ctx.fillText('ARMADURA',86,878);ctx.fillStyle='#a8b2d1';ctx.font=`700 ${fit(ctx,safeText(d.armor),430,25,18,700)}px Arial`;ctx.fillText(safeText(d.armor),86,915)
+  label(ctx,'IMPÉRIO',613,742)
+  ctx.fillStyle='#fff';ctx.font='900 34px Arial';ctx.fillText(`R$ ${money(d.patrimony)}`,613,795);ctx.fillStyle='#7783a2';ctx.font='700 16px Arial';ctx.fillText('PATRIMÔNIO',613,820)
+  ctx.fillStyle='#dce4f8';ctx.font='800 26px Arial';ctx.fillText(`R$ ${money(d.balance)}`,613,865);ctx.fillStyle='#7783a2';ctx.font='700 16px Arial';ctx.fillText('SALDO',613,890)
+  ctx.fillStyle='#50d9ff';ctx.font='900 21px Arial';ctx.fillText(`#${d.economyRank} DE ${d.players} • RANK GLOBAL`,613,936)
 
-  // XP
-  const needed=Math.max(100,d.level*100),current=clamp(d.exp,0,needed),ratio=current/needed
-  ctx.fillStyle='rgba(255,255,255,.10)';rounded(ctx,340,310,790,22,11);ctx.fill()
-  if(ratio>0){ctx.fillStyle='#53d7ff';rounded(ctx,340,310,790*ratio,22,11);ctx.fill()}
-  ctx.font='700 18px sans-serif';ctx.fillStyle='#aab0c8';ctx.fillText(`${money(current)} / ${money(needed)} XP`,340,360)
+  // Journey
+  panel(ctx,58,1002,1046,175)
+  label(ctx,'JORNADA',86,1044)
+  ctx.fillStyle='#fff';ctx.font='800 22px Arial';ctx.fillText(`🔥 ${d.streak} dias  •  recorde ${d.bestStreak}`,86,1090)
+  ctx.fillText(`🏴 ${safeText(d.clan,24)}`,570,1090)
+  ctx.fillText(`🏠 ${safeText(d.home,24)}  •  🚗 ${d.cars}/5`,86,1133)
+  ctx.fillStyle='#8490ae';ctx.fillText(`🐾 Pet: ${d.pet}`,570,1133)
 
-  panel(ctx,50,400,1100,190)
-  ctx.fillStyle='#9ca5c8';ctx.font='800 21px sans-serif';ctx.fillText('ATRIBUTOS',78,438)
-  stat(ctx,78,458,'❤️ HP',`${d.hp}/${d.maxHp}`,'#ff6d8a')
-  stat(ctx,305,458,'⚔ ATK',d.atk,'#ffb45c')
-  stat(ctx,532,458,'🛡 DEF',d.def,'#53d7ff')
-  stat(ctx,759,458,'⚡ SPD',d.spd,'#b881ff')
-  ctx.fillStyle='#fff';ctx.font='900 25px sans-serif';ctx.fillText(`🏆 ${d.wins}V / ${d.losses}D`,982,493)
-  ctx.fillStyle='#9ca5c8';ctx.font='700 18px sans-serif';ctx.fillText(`Rank #${d.combatRank}`,982,530)
+  // Achievements compact
+  panel(ctx,58,1204,1046,155)
+  label(ctx,'CONQUISTAS',86,1244)
+  const list=(d.achievements||[]).slice(0,7)
+  if(list.length){let x=86,y=1268;for(const b of list){ctx.font='800 18px Arial';const bw=Math.min(300,ctx.measureText(b).width+34);if(x+bw>1075){x=86;y+=48}x+=pill(ctx,x,y,b)+12}}
+  else{ctx.fillStyle='#6f7897';ctx.font='700 20px Arial';ctx.fillText('Jogue para desbloquear seus primeiros badges.',86,1300)}
 
-  panel(ctx,50,620,530,300)
-  ctx.fillStyle='#9ca5c8';ctx.font='800 21px sans-serif';ctx.fillText('EQUIPAMENTO',78,660)
-  ctx.fillStyle='#fff';ctx.font='800 26px sans-serif';ctx.fillText('⚔ ARMA',78,710)
-  let fs=fitText(ctx,d.weapon,445,28,19);ctx.font=`700 ${fs}px sans-serif`;ctx.fillStyle='#cfd5eb';ctx.fillText(d.weapon,78,750)
-  ctx.fillStyle='#fff';ctx.font='800 26px sans-serif';ctx.fillText('🛡 ARMADURA',78,814)
-  fs=fitText(ctx,d.armor,445,28,19);ctx.font=`700 ${fs}px sans-serif`;ctx.fillStyle='#cfd5eb';ctx.fillText(d.armor,78,854)
-
-  panel(ctx,610,620,540,300)
-  ctx.fillStyle='#9ca5c8';ctx.font='800 21px sans-serif';ctx.fillText('IMPÉRIO',638,660)
-  ctx.fillStyle='#fff';ctx.font='900 32px sans-serif';ctx.fillText(`R$ ${money(d.balance)}`,638,716)
-  ctx.fillStyle='#8f97b8';ctx.font='700 19px sans-serif';ctx.fillText('SALDO TOTAL',638,744)
-  ctx.fillStyle='#fff';ctx.font='900 32px sans-serif';ctx.fillText(`R$ ${money(d.patrimony)}`,638,800)
-  ctx.fillStyle='#8f97b8';ctx.font='700 19px sans-serif';ctx.fillText('PATRIMÔNIO',638,828)
-  ctx.fillStyle='#53d7ff';ctx.font='900 24px sans-serif';ctx.fillText(`#${d.economyRank} / ${d.players} GLOBAL`,638,878)
-
-  panel(ctx,50,950,1100,180)
-  ctx.fillStyle='#9ca5c8';ctx.font='800 21px sans-serif';ctx.fillText('JORNADA',78,990)
-  ctx.fillStyle='#fff';ctx.font='800 24px sans-serif'
-  ctx.fillText(`🔥 ${d.streak} dias  •  Recorde ${d.bestStreak}`,78,1038)
-  ctx.fillText(`🏴 ${d.clan}`,570,1038)
-  ctx.fillText(`🏠 ${d.home}  •  🚗 ${d.cars}/5`,78,1082)
-  ctx.fillText(`🐾 Pet: ${d.pet}`,570,1082)
-
-  panel(ctx,50,1160,1100,205)
-  ctx.fillStyle='#9ca5c8';ctx.font='800 21px sans-serif';ctx.fillText('CONQUISTAS',78,1200)
-  const list=(d.achievements||[]).slice(0,8)
-  if(!list.length){
-    ctx.fillStyle='#6f789b';ctx.font='700 23px sans-serif';ctx.fillText('Continue evoluindo para desbloquear badges.',78,1260)
-  }else{
-    let x=78,y=1230
-    for(const b of list){
-      ctx.font='800 20px sans-serif'
-      const bw=Math.min(300,ctx.measureText(b).width+34)
-      if(x+bw>1110){x=78;y+=54}
-      const used=badge(ctx,x,y,b);x+=used+12
-    }
-  }
-
-  ctx.textAlign='center'
-  ctx.fillStyle='#fff';ctx.font='900 29px sans-serif';ctx.fillText('🍀 ALPHA BOT',W/2,1415)
-  ctx.fillStyle='#7d86a8';ctx.font='700 19px sans-serif';ctx.fillText('!perfil  •  evolua, conquiste e compartilhe',W/2,1450)
-
+  ctx.textAlign='center';ctx.fillStyle='#fff';ctx.font='900 27px Arial';ctx.fillText('ALPHA BOT',W/2,1410)
+  ctx.fillStyle='#50d9ff';ctx.font='800 17px Arial';ctx.fillText('!perfil',W/2,1440)
+  ctx.fillStyle='#687390';ctx.font='700 15px Arial';ctx.fillText('EVOLUA • CONQUISTE • COMPARTILHE',W/2,1468)
   return canvas.toBuffer('image/png')
 }
