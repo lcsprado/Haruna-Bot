@@ -43,6 +43,32 @@ const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
 const sessionId=process.env.SESSION_ID || 'default'
 const ownerJid=process.env.OWNER_JID || ''
 
+const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
+  whatsapp:'starting',
+  lastChange:Date.now(),
+  lastOpen:0,
+  everConnected:false
+})
+let connectionWatchdog=null
+function setWhatsAppHealth(state){
+  trevoHealth.whatsapp=state
+  trevoHealth.lastChange=Date.now()
+  if(state==='open'){
+    trevoHealth.lastOpen=Date.now()
+    trevoHealth.everConnected=true
+  }
+}
+if(!connectionWatchdog){
+  connectionWatchdog=setInterval(()=>{
+    const grace=trevoHealth.everConnected ? 45000 : 120000
+    if(trevoHealth.whatsapp!=='open' && Date.now()-trevoHealth.lastChange>grace){
+      console.error('[Watchdog] WhatsApp não recuperou a conexão; reiniciando processo')
+      process.exit(1)
+    }
+  },10000)
+  connectionWatchdog.unref?.()
+}
+
 const quickGameFlows=new Map()
 const quickFlowKey=(chat,sender)=>`${chat}|${sender}`
 function setQuickFlow(chat,sender,stage,data={},ttlMs=90000){
@@ -1487,8 +1513,15 @@ Valor: *R$ ${fmt(item.price)}*
   }
 
   sock.ev.on('connection.update',({connection,lastDisconnect})=>{
-    if(connection==='open') console.log('[WhatsApp] TREVO CONECTADO')
+    if(connection==='connecting') setWhatsAppHealth('connecting')
+
+    if(connection==='open'){
+      setWhatsAppHealth('open')
+      console.log('[WhatsApp] TREVO CONECTADO')
+    }
+
     if(connection==='close'){
+      setWhatsAppHealth('closed')
       const code=lastDisconnect?.error?.output?.statusCode
       const loggedOut=code===DisconnectReason.loggedOut
       const replaced=code===440
@@ -1499,8 +1532,15 @@ Valor: *R$ ${fmt(item.price)}*
         return
       }
 
-      console.log('[WhatsApp] conexão fechada',code,loggedOut?'logged out':'reconectando')
-      if(!loggedOut) setTimeout(()=>start().catch(console.error),3000)
+      if(loggedOut){
+        console.error('[WhatsApp] sessão deslogada; reinício automático não consegue recuperar sem novo pareamento')
+        return
+      }
+
+      console.log('[WhatsApp] conexão fechada',code,'reconectando')
+      setTimeout(()=>start().catch(err=>{
+        console.error('[WhatsApp] falha na reconexão',err)
+      }),3000)
     }
   })
 
