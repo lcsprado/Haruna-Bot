@@ -332,6 +332,153 @@ Fale com o responsável pelo Trevo para ativação.`
 
 
 
+        } else if(['missoes','missões','missions'].includes(cmd)){
+          const r=await getDailyMissions(sender)
+          let text='📋 *MISSÕES DIÁRIAS*\n\n'
+          for(const m of r.missions){
+            const done=Number(m.progress)>=Number(m.target)
+            const reward=[
+              Number(m.reward_cash)>0?`R$ ${fmt(m.reward_cash)}`:null,
+              Number(m.reward_box)>0?`${m.reward_box}x Caixa da Sorte`:null
+            ].filter(Boolean).join(' + ')
+            text+=`${done?'✅':'⬜'} *${m.title}* — ${m.progress}/${m.target}\n🎁 ${reward}${m.claimed?' _(resgatada)_':''}\n\n`
+          }
+          text+=`Use *${prefix}resgatarmissoes* para coletar missões concluídas.`
+          await reply(text.trim())
+
+        } else if(['resgatarmissoes','resgatarmissao','claimmissions'].includes(cmd)){
+          const r=await claimDailyMissions(sender)
+          if(!r.claimed) return await reply('📋 Você não tem missão concluída e não resgatada agora.')
+          await reply(
+`🎁 *MISSÕES RESGATADAS!*
+
+✅ Missões: ${r.claimed}
+💰 Dinheiro: R$ ${fmt(r.cash)}
+🎁 Caixas da Sorte: ${r.boxes}`
+          )
+
+        } else if(['cla','clã','clacofre'].includes(cmd)){
+          const c=await getClanForUser(sender)
+          if(!c) return await reply(`🏴 Você ainda não pertence a um clã.\nCrie um com *${prefix}criarcla Nome do Clã*.`)
+          await reply(
+`🏴 *CLÃ ${c.name}*
+
+⭐ Nível: ${c.level}
+👥 Membros: ${c.members}
+💰 Cofre: R$ ${fmt(c.treasury)}
+✨ XP do clã: ${fmt(c.xp)}
+👑 Seu cargo: *${c.role==='leader'?'Líder':'Membro'}*`
+          )
+
+        } else if(['criarcla','criarclã'].includes(cmd)){
+          const name=args.join(' ')
+          if(!name) return await reply(`Uso: *${prefix}criarcla Trevo Negro*\n💰 Custo: R$ 10.000`)
+          const c=await createClan(sender,name)
+          await reply(`🏴 Clã *${c.name}* criado!\n👑 Você é o líder.\n💰 Custo: R$ 10.000`)
+
+        } else if(['claconvidar','clãconvidar','convidarcla'].includes(cmd)){
+          const target=mentionsOf(msg)[0]
+          if(!target) return await reply(`Uso: *${prefix}claconvidar @pessoa*`)
+          const r=await inviteToClan(sender,target)
+          await reply(
+`🏴 Convite enviado para entrar no clã *${r.clan.name}*.\nA pessoa deve usar *${prefix}claaceitar* em até 24h.`,
+            {mentions:[target]}
+          )
+
+        } else if(['claaceitar','clãaceitar','aceitarcla'].includes(cmd)){
+          const r=await acceptClanInvite(sender)
+          await reply(`🏴 Você entrou no clã *${r.name}*!`)
+
+        } else if(['cladoar','clãdoar','doarcla'].includes(cmd)){
+          const amount=parseAmount(args[0])
+          if(!amount) return await reply(`Uso: *${prefix}cladoar 1000*`)
+          const r=await donateClan(sender,amount)
+          await reply(
+`🏴 *DOAÇÃO AO CLÃ*
+
+💰 Doado: R$ ${fmt(r.amount)}
+🏦 Cofre: R$ ${fmt(r.treasury)}
+⭐ Nível do clã: ${r.level}`
+          )
+
+        } else if(['saircla','sairclã'].includes(cmd)){
+          const r=await leaveClan(sender)
+          if(r.dissolved) await reply(`🏴 O clã *${r.name}* foi encerrado porque você era o único membro.`)
+          else await reply(`🏴 Você saiu do clã *${r.name}*.`)
+
+        } else if(['clas','clãs','rankingclas','topclas'].includes(cmd)){
+          const rows=await listClans(10)
+          if(!rows.length) return await reply('🏴 Ainda não existem clãs.')
+          let text='🏴 *RANKING DE CLÃS*\n\n'
+          rows.forEach((c,i)=>{
+            const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}º`
+            text+=`${medal} *${c.name}* — Nv.${c.level} | ${c.members} membros | R$ ${fmt(c.treasury)}\n`
+          })
+          await reply(text.trim())
+
+        } else if(['casas','imoveis','imóveis'].includes(cmd)){
+          let text='🏠 *IMÓVEIS DO TREVO*\n\n'
+          HOUSES.forEach((h,i)=>text+=`*${i+1}.* ${h.name} — R$ ${fmt(h.price)}\n`)
+          text+=`\n🏡 Para comprar: *${prefix}comprarcasa 1*\nAo melhorar de casa, sua atual vale *60%* como entrada.`
+          await reply(text)
+
+        } else if(['comprarcasa'].includes(cmd)){
+          const input=args[0]
+          if(!input) return await reply(`Uso: *${prefix}comprarcasa 1*`)
+          const r=await buyHouse(sender,input)
+          let text=`🏠 *NOVA CASA!*\n\n🏡 ${r.house.name}\n💰 Valor: R$ ${fmt(r.house.price)}\n`
+          if(r.previous) text+=`🔁 Entrada da ${r.previous.name}: R$ ${fmt(r.tradeIn)}\n`
+          text+=`💸 Pago agora: R$ ${fmt(r.cost)}`
+          await reply(text)
+
+        } else if(['minhacasa','casa'].includes(cmd)){
+          const h=await getHome(sender)
+          if(!h) return await reply(`🏠 Você ainda não possui imóvel. Veja *${prefix}casas*.`)
+          await reply(`🏠 *SUA CASA*\n\n🏡 ${h.name}\n💰 Valor patrimonial: R$ ${fmt(h.price)}`)
+
+        } else if(['carros','concessionaria','concessionária'].includes(cmd)){
+          let text='🚗 *CONCESSIONÁRIA DO TREVO*\n\n'
+          CARS.forEach((c,i)=>text+=`*${i+1}.* ${c.name} — R$ ${fmt(c.price)}\n`)
+          text+=`\n🔑 Para comprar: *${prefix}comprarcarro 1*\nGaragem atual comporta até *5 carros*.`
+          await reply(text)
+
+        } else if(['comprarcarro'].includes(cmd)){
+          const input=args[0]
+          if(!input) return await reply(`Uso: *${prefix}comprarcarro 1*`)
+          const c=await buyCar(sender,input)
+          await reply(`🚗 *CARRO COMPRADO!*\n\n🔑 ${c.name}\n💰 R$ ${fmt(c.price)}`)
+
+        } else if(['garagem','meuscarros'].includes(cmd)){
+          const cars=await getGarage(sender)
+          if(!cars.length) return await reply(`🚗 Sua garagem está vazia. Veja *${prefix}carros*.`)
+          let text=`🚗 *SUA GARAGEM* — ${cars.length}/5\n\n`
+          cars.forEach((c,i)=>text+=`${i+1}. *${c.name}* — R$ ${fmt(c.price)}\n`)
+          await reply(text.trim())
+
+        } else if(['patrimonio','patrimônio'].includes(cmd)){
+          const p=await getPatrimony(sender)
+          await reply(
+`💎 *SEU PATRIMÔNIO*
+
+🪙 Carteira: R$ ${fmt(p.cash)}
+🏦 Banco: R$ ${fmt(p.bank)}
+🎒 Itens: R$ ${fmt(p.inventory_value)}
+🏠 Imóvel: R$ ${fmt(p.home_value)}
+🚗 Veículos: R$ ${fmt(p.cars_value)}
+
+💰 *Total: R$ ${fmt(p.total)}*`
+          )
+
+        } else if(['rankingpatrimonio','rankingpatrimônio','toppatrimonio'].includes(cmd)){
+          const rows=await patrimonyLeaderboard(10)
+          if(!rows.length) return await reply('💎 Ainda não há dados de patrimônio.')
+          let text='💎 *RANKING DE PATRIMÔNIO*\n\n'
+          rows.forEach((r,i)=>{
+            const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}º`
+            text+=`${medal} *${r.push_name||'Jogador'}* — R$ ${fmt(r.total)}\n`
+          })
+          await reply(text.trim())
+
         } else if(['games','jogos'].includes(cmd)){
           await reply(
 `🎮 *MINIGAMES DO TREVO*
@@ -721,6 +868,16 @@ ${prefix}forca
 ${prefix}quiz
 ${prefix}numero
 ${prefix}boss
+
+📋 *Progressão*
+${prefix}missoes
+${prefix}resgatarmissoes
+${prefix}cla
+${prefix}clas
+${prefix}casas
+${prefix}carros
+${prefix}patrimonio
+${prefix}rankingpatrimonio
 
 🏆 *Competição*
 ${prefix}ranking
