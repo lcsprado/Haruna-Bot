@@ -584,23 +584,33 @@ const POTIONS = {
   elixir_supremo: { heal:999999, name:'Elixir Supremo' },
 }
 
+const MAX_LEVEL=999
+const MAX_ADMIN_EXP=50_000_000
+
 function expNeeded(level) {
   return Math.max(100, Number(level) * 100)
 }
 
 async function applyExp(client, jid, gain) {
+  const numericGain=Number(gain)
+  if(!Number.isSafeInteger(numericGain) || numericGain<0) throw new Error('EXP inválida.')
+
   const r = await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
   if (!r.rows[0]) return { level:1, exp:0, levels:0 }
 
-  let level=Number(r.rows[0].level)
-  let exp=Number(r.rows[0].exp)+Number(gain)
+  let level=Math.min(MAX_LEVEL,Math.max(1,Number(r.rows[0].level)||1))
+  let exp=Math.max(0,Number(r.rows[0].exp)||0)+numericGain
   let levels=0
 
-  while(exp >= expNeeded(level)) {
-    exp -= expNeeded(level)
+  // Nunca passa de 998 iterações, mesmo com EXP enorme.
+  while(level<MAX_LEVEL && exp>=expNeeded(level)) {
+    exp-=expNeeded(level)
     level++
     levels++
   }
+
+  // Nível máximo não acumula EXP infinito.
+  if(level>=MAX_LEVEL) exp=0
 
   await client.query(
     'UPDATE users SET level=$1,exp=$2,updated_at='+nowSql+' WHERE jid=$3',
@@ -982,7 +992,9 @@ export async function ownerRemoveBalance(jid, amount) {
 
 export async function ownerAddExp(jid, amount) {
   amount=Number(amount)
-  if(!Number.isInteger(amount) || amount<=0) throw new Error('EXP inválida.')
+  if(!Number.isSafeInteger(amount) || amount<=0 || amount>MAX_ADMIN_EXP) {
+    throw new Error('EXP inválida. Use no máximo 50.000.000 por ação.')
+  }
   await ensureUser(jid)
   return transaction(async client=>applyExp(client,jid,amount))
 }
