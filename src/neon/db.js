@@ -142,6 +142,16 @@ export async function initDatabase() {
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS group_settings (
+      chat_jid TEXT PRIMARY KEY,
+      economy_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      rpg_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      games_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      progression_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_by TEXT,
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
     CREATE TABLE IF NOT EXISTS auth_creds (
       session_id TEXT NOT NULL,
       key TEXT NOT NULL,
@@ -703,6 +713,30 @@ export async function acquireRuntimeLock(sessionId) {
   }
 }
 
+
+export async function getGroupSettings(chatJid) {
+  const { rows } = await db.query(`
+    INSERT INTO group_settings(chat_jid)
+    VALUES ($1)
+    ON CONFLICT(chat_jid) DO UPDATE SET chat_jid=EXCLUDED.chat_jid
+    RETURNING *
+  `,[chatJid])
+  return rows[0]
+}
+
+export async function setGroupSetting(chatJid, key, enabled, updatedBy='') {
+  const allowed=new Set(['economy_enabled','rpg_enabled','games_enabled','progression_enabled'])
+  if(!allowed.has(key)) throw new Error('Configuração de grupo inválida.')
+  await getGroupSettings(chatJid)
+  const { rows } = await db.query(
+    `UPDATE group_settings
+     SET ${key}=$1, updated_by=$2, updated_at=${nowSql}
+     WHERE chat_jid=$3
+     RETURNING *`,
+    [Boolean(enabled),updatedBy,chatJid]
+  )
+  return rows[0]
+}
 
 export async function ownerAddBalance(jid, amount) {
   amount=Number(amount)
