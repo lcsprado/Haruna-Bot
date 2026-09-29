@@ -864,7 +864,7 @@ export async function openLuckyBox(jid) {
       'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
       [jid,'caixa_sorte']
     )
-    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui uma Caixa da Sorte.')
+    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui uma Caixa da Sorte. Compre uma na loja com comprar 7.')
 
     await client.query(
       'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
@@ -912,8 +912,6 @@ export async function openLuckyBox(jid) {
 
 export async function dungeon(jid) {
   await ensureUser(jid)
-  const cd=await claimCooldown(`dungeon:${jid}`,20*60)
-  if(!cd.ok) return {ok:false,remaining:cd.remaining}
 
   return transaction(async client=>{
     const p=await client.query(`
@@ -925,6 +923,16 @@ export async function dungeon(jid) {
     const row=p.rows[0]
     if(!row) throw new Error('Perfil não encontrado.')
     if(Number(row.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes.')
+
+    const now=Math.floor(Date.now()/1000)
+    const cdKey=`dungeon:${jid}`
+    const cdR=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[cdKey])
+    const activeUntil=Number(cdR.rows[0]?.expires_at||0)
+    if(activeUntil>now) return {ok:false,remaining:activeUntil-now}
+    await client.query(`
+      INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
+    `,[cdKey,now+(20*60)])
 
     const weapon=EQUIPMENT[row.weapon_id]||{atk:0,def:0}
     const armor=EQUIPMENT[row.armor_id]||{atk:0,def:0}
