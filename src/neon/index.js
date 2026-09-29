@@ -325,6 +325,21 @@ Fale com o responsável pelo Trevo para ativação.`
 
 
 
+        } else if(['games','jogos'].includes(cmd)){
+          await reply(
+`🎮 *MINIGAMES DO TREVO*
+
+🎰 ${prefix}roleta 100 vermelho
+🪙 ${prefix}cara 100 / ${prefix}coroa 100
+✊ ${prefix}ppt pedra
+🔤 ${prefix}forca
+🧠 ${prefix}quiz
+🔢 ${prefix}numero
+👹 ${prefix}boss
+
+_Use ${prefix}menu para ver todos os comandos._`
+          )
+
         } else if(['roleta'].includes(cmd)){
           const amount=parseAmount(args[0])
           const choice=(args[1]||'').toLowerCase()
@@ -371,9 +386,15 @@ Fale com o responsável pelo Trevo para ativação.`
 
         } else if(['quiz'].includes(cmd)){
           const q=await startQuiz(chat)
+          if(q.already){
+            let text=`🧠 *JÁ EXISTE UM QUIZ ATIVO*\n\n${q.q}\n\n`
+            q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
+            text+=`\n⏳ Expira em cerca de *${q.remaining}s*.\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
+            return await reply(text)
+          }
           let text=`🧠 *QUIZ DO TREVO*\n\n${q.q}\n\n`
           q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
-          text+=`\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
+          text+=`\n⏳ Você tem *2 minutos*.\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
           await reply(text)
 
         } else if(['resposta'].includes(cmd)){
@@ -401,7 +422,8 @@ Fale com o responsável pelo Trevo para ativação.`
 
         } else if(['atacar'].includes(cmd)){
           const r=await attackBoss(chat,sender,msg.pushName||'Jogador')
-          if(r.dead) return await reply(`💥 *BOSS DERROTADO!*\nDano final: ${r.damage}\n👥 Participantes: ${r.players}\n💰 Cada participante recebeu R$ ${fmt(r.rewardEach)}`)
+          if(r.cooldown) return await reply(`⏳ Aguarde *${r.remaining}s* para atacar o boss novamente.`)
+          if(r.dead) return await reply(`💥 *BOSS DERROTADO!*\nDano final: ${r.damage}\n👥 Participantes: ${r.players}\n💰 Cada participante recebeu R$ ${fmt(r.rewardEach)}\n🎁 Premiação total: R$ ${fmt(r.pot)}`)
           await reply(`⚔️ Você causou *${r.damage}* de dano!\n👹 Boss: ❤️ ${r.hp}/${r.maxHp}`)
 
         } else if(['dungeon','masmorra'].includes(cmd)){
@@ -619,6 +641,34 @@ Expira em: *${fmtDate(order.expires_at)}*`
           const r=await ownerGrantItem(ownerTarget,itemArg.toLowerCase(),qty)
           await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
+        } else if(['ownermenu','adminmenu','donocomandos'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          await reply(
+`👑 *TREVO — COMANDOS DO DONO*
+
+💰 *Jogadores*
+${prefix}addsaldo @pessoa 5000
+${prefix}remsaldo @pessoa 5000
+${prefix}addexp @pessoa 500
+${prefix}setnivel @pessoa 10
+${prefix}curar @pessoa
+${prefix}daritem @pessoa espada_ferro 1
+
+💚 *Grupos*
+${prefix}ativargrupo 30
+${prefix}bloqueargrupo
+${prefix}gruposativos
+
+💳 *Assinaturas*
+${prefix}pedidos
+${prefix}aprovarpedido TREVO-XXXXXX
+${prefix}cancelarpedido TREVO-XXXXXX
+${prefix}setpreco 5
+${prefix}setlinkpagamento https://...
+
+_Use estes comandos com cuidado: alterações de saldo, nível e assinatura são administrativas._`
+          )
+
         } else if(['menu','help','ajuda'].includes(cmd)){
           await reply(
 `🍀 *TREVO — MENU*
@@ -647,6 +697,7 @@ ${prefix}caixa_sorte
 ${prefix}rankingrpg
 
 🎮 *Minigames*
+${prefix}games
 ${prefix}roleta 100 vermelho
 ${prefix}cara 100 / ${prefix}coroa 100
 ${prefix}ppt pedra
