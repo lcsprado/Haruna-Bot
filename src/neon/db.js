@@ -10,6 +10,8 @@ export const db = new Pool({
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 15000,
+  statement_timeout: 12000,
+  query_timeout: 15000,
 })
 
 db.on('error', err => console.error('[Neon] pool error', err))
