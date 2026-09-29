@@ -666,6 +666,11 @@ export async function acquireRuntimeLock(sessionId) {
 
       if (rows[0]?.locked) {
         runtimeLockClient = client
+        client.on('error', err=>{
+          console.error('[Runtime] conexão do lock Neon encerrada',err?.message || err)
+          if(runtimeLockClient===client) runtimeLockClient=null
+          setTimeout(()=>process.exit(1),100)
+        })
         console.log('[Runtime] lock exclusivo adquirido para', sessionId)
         return true
       }
@@ -1094,9 +1099,6 @@ export async function setPixName(value) {
 
 export async function createSubscriptionOrder(chatJid, requesterJid) {
   if(!chatJid?.endsWith('@g.us')) throw new Error('A assinatura é vinculada a um grupo.')
-  const pix=await getPixSettings()
-  if(!pix.key) throw new Error('Pagamento Pix ainda não foi configurado pelo dono.')
-
   const price=await getLaunchPrice()
   const now=Math.floor(Date.now()/1000)
   const expires=now+(24*60*60)
@@ -1107,7 +1109,7 @@ export async function createSubscriptionOrder(chatJid, requesterJid) {
     ORDER BY created_at DESC
     LIMIT 1
   `,[chatJid,now])
-  if(existing.rows[0]) return {order:existing.rows[0],pix,reused:true}
+  if(existing.rows[0]) return {order:existing.rows[0],reused:true}
 
   for(let attempt=0;attempt<8;attempt++){
     const code=orderCode()
@@ -1117,7 +1119,7 @@ export async function createSubscriptionOrder(chatJid, requesterJid) {
         VALUES($1,$2,$3,$4,'pending',$5)
         RETURNING *
       `,[code,chatJid,requesterJid,price,expires])
-      return {order:rows[0],pix,reused:false}
+      return {order:rows[0],reused:false}
     }catch(err){
       if(err?.code!=='23505') throw err
     }
