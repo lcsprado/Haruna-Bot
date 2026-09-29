@@ -28,6 +28,13 @@ import {
   startNumberGame, guessNumber,
   startBoss, attackBoss
 } from './games.js'
+import {
+  initProgression, HOUSES, CARS,
+  getDailyMissions, progressDailyMission, claimDailyMissions,
+  getClanForUser, createClan, inviteToClan, acceptClanInvite, leaveClan, donateClan, listClans,
+  getHome, buyHouse, getGarage, buyCar,
+  getPatrimony, patrimonyLeaderboard
+} from './progression.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -93,6 +100,7 @@ function resolveShopItem(input){
 async function start() {
   await initDatabase()
   await initGames()
+  await initProgression()
   await acquireRuntimeLock(sessionId)
   const { state, saveCreds }=await useNeonAuthState(sessionId)
   const { version }=await fetchLatestBaileysVersion()
