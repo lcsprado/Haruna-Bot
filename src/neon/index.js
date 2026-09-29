@@ -13,7 +13,7 @@ import {
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetLevel, ownerHeal, ownerGrantItem,
   getGroupLicense, ensureGroupTrial, activateGroupLicense, blockGroupLicense,
-  listGroupLicenses, groupLicenseIsActive,
+  listGroupLicenses, groupLicenseIsActive, getGroupSettings, setGroupSetting,
   getLaunchPrice, setLaunchPrice,
   getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
@@ -200,6 +200,30 @@ async function start() {
   })
 
   sock.ev.on('creds.update',saveCreds)
+
+  async function senderIsGroupAdmin(chatJid,userJid){
+    if(userJid===ownerJid) return true
+    if(!chatJid?.endsWith('@g.us')) return false
+    try{
+      const meta=await sock.groupMetadata(chatJid)
+      const p=meta.participants?.find(x=>
+        x.id===userJid ||
+        x.jid===userJid ||
+        x.lid===userJid ||
+        x.phoneNumber===userJid
+      )
+      return Boolean(p?.admin)
+    }catch(err){
+      console.error('[grupo] falha ao validar admin',err?.message||err)
+      return false
+    }
+  }
+
+  async function groupModuleEnabled(chatJid,key){
+    if(!chatJid?.endsWith('@g.us')) return true
+    const settings=await getGroupSettings(chatJid)
+    return settings?.[key]!==false
+  }
 
   async function handleQuickGameFlow({chat,sender,body,reply,msg}){
     const flow=getQuickFlow(chat,sender)
@@ -1294,6 +1318,11 @@ Dano final: ${r.damage}
       }
 
       if(input==='2'){
+        if(sender!==ownerJid && !(await groupModuleEnabled(chat,'economy_enabled'))){
+          clearQuickFlow(chat,sender)
+          await reply('🔒 *Economia* foi desativada pelo administrador deste grupo.')
+          return true
+        }
         setQuickFlow(chat,sender,'nav_economy',{},90000)
         await reply(
 `💰 *ECONOMIA*
@@ -1328,6 +1357,11 @@ Dano final: ${r.damage}
       }
 
       if(input==='4'){
+        if(sender!==ownerJid && !(await groupModuleEnabled(chat,'rpg_enabled'))){
+          clearQuickFlow(chat,sender)
+          await reply('🔒 *RPG* foi desativado pelo administrador deste grupo.')
+          return true
+        }
         setQuickFlow(chat,sender,'nav_rpg',{},90000)
         await reply(
 `⚔️ *RPG*
@@ -1344,6 +1378,11 @@ Dano final: ${r.damage}
       }
 
       if(input==='5'){
+        if(sender!==ownerJid && !(await groupModuleEnabled(chat,'games_enabled'))){
+          clearQuickFlow(chat,sender)
+          await reply('🔒 *Minigames* foram desativados pelo administrador deste grupo.')
+          return true
+        }
         setQuickFlow(chat,sender,'main',{},90000)
         await reply(
 `🎮 *MINIGAMES DO TREVO*
@@ -1362,6 +1401,11 @@ Dano final: ${r.damage}
       }
 
       if(input==='6'){
+        if(sender!==ownerJid && !(await groupModuleEnabled(chat,'progression_enabled'))){
+          clearQuickFlow(chat,sender)
+          await reply('🔒 *Progressão* foi desativada pelo administrador deste grupo.')
+          return true
+        }
         setQuickFlow(chat,sender,'nav_progress',{},90000)
         await reply(
 `📋 *PROGRESSÃO*
@@ -1379,6 +1423,11 @@ Dano final: ${r.damage}
       }
 
       if(input==='7'){
+        if(sender!==ownerJid && !(await groupModuleEnabled(chat,'progression_enabled'))){
+          clearQuickFlow(chat,sender)
+          await reply('🔒 *Progressão* foi desativada pelo administrador deste grupo.')
+          return true
+        }
         const clan=await getClanForUser(sender)
         setQuickFlow(chat,sender,'clan_menu',{},90000)
         if(!clan){
@@ -1416,6 +1465,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 1️⃣ Status do grupo
 2️⃣ Assinar / renovar
 3️⃣ Termos
+4️⃣ ⚙️ Configurações do grupo
 
 0️⃣ Sair`
         )
@@ -1605,6 +1655,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
     if(flow.stage==='nav_items'){
       if(input==='1'){
+        if(sender!==ownerJid && !(await groupModuleEnabled(chat,'economy_enabled'))){
+          clearQuickFlow(chat,sender)
+          await reply('🔒 A *Loja* foi desativada junto com a Economia deste grupo.')
+          return true
+        }
         const items=await getShop()
         const byId=new Map(items.map(i=>[i.id,i]))
         setQuickFlow(chat,sender,'shop_item',{items:SHOP_IDS},90000)
@@ -2182,6 +2237,109 @@ Valor: *R$ ${fmt(item.price)}*
       return true
     }
 
+    if(flow.stage==='group_config'){
+      if(!chat.endsWith('@g.us')){
+        clearQuickFlow(chat,sender)
+        await reply('💚 Esta configuração só existe dentro de grupos.')
+        return true
+      }
+      if(!(await senderIsGroupAdmin(chat,sender))){
+        clearQuickFlow(chat,sender)
+        await reply('🔒 Apenas administradores deste grupo podem alterar estas configurações.')
+        return true
+      }
+
+      if(input==='9'){
+        setQuickFlow(chat,sender,'nav_group',{},90000)
+        await reply(
+`💚 *GRUPO / ASSINATURA*
+
+1️⃣ Status do grupo
+2️⃣ Assinar / renovar
+3️⃣ Termos
+4️⃣ ⚙️ Configurações do grupo
+
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      const map={
+        '1':['economy_enabled','Economia'],
+        '2':['rpg_enabled','RPG'],
+        '3':['games_enabled','Minigames'],
+        '4':['progression_enabled','Progressão']
+      }
+      const selected=map[input]
+      if(!selected){
+        await reply('⚙️ Escolha *1, 2, 3 ou 4*, *9* para voltar ou *0* para sair.')
+        return true
+      }
+      const [key,label]=selected
+      const current=await getGroupSettings(chat)
+      const next=!(current?.[key]!==false)
+      setQuickFlow(chat,sender,'group_config_confirm',{key,label,next},90000)
+      await reply(
+`⚙️ *${label.toUpperCase()}*
+
+Estado atual: *${current?.[key]!==false?'ATIVADO ✅':'DESATIVADO ❌'}*
+
+Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
+
+1️⃣ Confirmar
+2️⃣ Cancelar
+9️⃣ Voltar`
+      )
+      return true
+    }
+
+    if(flow.stage==='group_config_confirm'){
+      if(!chat.endsWith('@g.us')){
+        clearQuickFlow(chat,sender)
+        return true
+      }
+      if(!(await senderIsGroupAdmin(chat,sender))){
+        clearQuickFlow(chat,sender)
+        await reply('🔒 Apenas administradores deste grupo podem alterar estas configurações.')
+        return true
+      }
+      if(input==='9' || input==='2'){
+        const st=await getGroupSettings(chat)
+        setQuickFlow(chat,sender,'group_config',{},5*60*1000)
+        await reply(
+`⚙️ *CONFIGURAÇÕES DO GRUPO*
+
+1️⃣ Economia: *${st.economy_enabled?'ON ✅':'OFF ❌'}*
+2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
+3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
+4️⃣ Progressão: *${st.progression_enabled?'ON ✅':'OFF ❌'}*
+
+9️⃣ Voltar
+0️⃣ Sair`
+        )
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Confirmar*, *2 Cancelar* ou *9 Voltar*.')
+        return true
+      }
+      const {key,label,next}=flow.data
+      const st=await setGroupSetting(chat,key,next,sender)
+      setQuickFlow(chat,sender,'group_config',{},5*60*1000)
+      await reply(
+`✅ *${label}* foi ${next?'ativado':'desativado'} neste grupo.
+
+1️⃣ Economia: *${st.economy_enabled?'ON ✅':'OFF ❌'}*
+2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
+3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
+4️⃣ Progressão: *${st.progression_enabled?'ON ✅':'OFF ❌'}*
+
+9️⃣ Voltar
+0️⃣ Sair`
+      )
+      return true
+    }
+
     if(flow.stage==='nav_group'){
       if(input==='1'){
         if(!chat.endsWith('@g.us')){
@@ -2216,7 +2374,39 @@ Valor: *R$ ${fmt(item.price)}*
         await reply(`📄 *TERMOS RESUMIDOS*\n\nPreço atual: R$ ${Number(price).toLocaleString('pt-BR',{minimumFractionDigits:2})} / 30 dias.\nO Trevo utiliza integração não oficial com o WhatsApp e pode sofrer desconexões ou limitações da plataforma.`)
         return true
       }
-      await reply('💚 Escolha *1, 2 ou 3*.')
+      if(input==='4'){
+        if(!chat.endsWith('@g.us')){
+          clearQuickFlow(chat,sender)
+          await reply('⚙️ Use esta opção dentro do grupo que deseja configurar.')
+          return true
+        }
+        if(!(await senderIsGroupAdmin(chat,sender))){
+          clearQuickFlow(chat,sender)
+          await reply('🔒 Apenas administradores deste grupo podem abrir as configurações.')
+          return true
+        }
+        const lic=await getGroupLicense(chat)
+        if(!lic || !groupLicenseIsActive(lic)){
+          clearQuickFlow(chat,sender)
+          await reply('🔒 As configurações ficam disponíveis quando o Trevo está ativo neste grupo.')
+          return true
+        }
+        const st=await getGroupSettings(chat)
+        setQuickFlow(chat,sender,'group_config',{},5*60*1000)
+        await reply(
+`⚙️ *CONFIGURAÇÕES DO GRUPO*
+
+1️⃣ Economia: *${st.economy_enabled?'ON ✅':'OFF ❌'}*
+2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
+3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
+4️⃣ Progressão: *${st.progression_enabled?'ON ✅':'OFF ❌'}*
+
+9️⃣ Voltar
+0️⃣ Sair`
+        )
+        return true
+      }
+      await reply('💚 Escolha *1, 2, 3 ou 4*.')
       return true
     }
 
@@ -2309,7 +2499,7 @@ Valor: *R$ ${fmt(item.price)}*
         const cmd=(rawCmd||'').toLowerCase()
         const ownerTarget=mentionsOf(msg)[0] || sender
 
-        if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pedido'].includes(cmd)){
+        if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pedido','configgrupo','configuragrupo'].includes(cmd)){
           let license=await getGroupLicense(chat)
           if(!license) license=await ensureGroupTrial(chat)
 
@@ -2328,7 +2518,41 @@ Fale com o responsável pelo Trevo para ativação.`
           }
         }
 
-        if(['economia','eco'].includes(cmd)){
+        if(isGroup && !isOwner){
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy'])
+          const RPG_CMDS=new Set(['rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
+          const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
+          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
+          let key=null,label=null
+          if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
+          else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
+          else if(GAME_CMDS.has(cmd)){ key='games_enabled'; label='Minigames' }
+          else if(PROGRESS_CMDS.has(cmd)){ key='progression_enabled'; label='Progressão' }
+          if(key && !(await groupModuleEnabled(chat,key))){
+            return await reply(`🔒 *${label}* foi desativado pelo administrador deste grupo.`)
+          }
+        }
+
+        if(['configgrupo','configuragrupo'].includes(cmd)){
+          if(!isGroup) return await reply('⚙️ Use este comando dentro do grupo que deseja configurar.')
+          if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores deste grupo podem abrir as configurações.')
+          const lic=await getGroupLicense(chat)
+          if(!lic || !groupLicenseIsActive(lic)) return await reply('🔒 As configurações ficam disponíveis quando o Trevo está ativo neste grupo.')
+          const st=await getGroupSettings(chat)
+          setQuickFlow(chat,sender,'group_config',{},5*60*1000)
+          await reply(
+`⚙️ *CONFIGURAÇÕES DO GRUPO*
+
+1️⃣ Economia: *${st.economy_enabled?'ON ✅':'OFF ❌'}*
+2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
+3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
+4️⃣ Progressão: *${st.progression_enabled?'ON ✅':'OFF ❌'}*
+
+9️⃣ Voltar
+0️⃣ Sair`
+          )
+
+        } else if(['economia','eco'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_economy',{},90000)
           await reply(
 `💰 *ECONOMIA*
@@ -2395,6 +2619,7 @@ Fale com o responsável pelo Trevo para ativação.`
 1️⃣ Status do grupo
 2️⃣ Assinar / renovar
 3️⃣ Termos
+4️⃣ ⚙️ Configurações do grupo
 
 0️⃣ Sair`
           )
@@ -2455,6 +2680,7 @@ ${prefix}games — minigames
 ${prefix}progressao — missões, casas, carros e patrimônio
 ${prefix}cla — menu do seu clã
 ${prefix}grupo — assinatura e status do grupo
+${prefix}configgrupo — configurações do grupo (admins)
 ${prefix}perfil — seu perfil completo
 ${prefix}comandos — mostra esta lista
 
