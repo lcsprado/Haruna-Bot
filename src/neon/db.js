@@ -181,13 +181,40 @@ export async function initDatabase() {
   `)
 
   const starterItems = [
-    ['pocao_p','Poção Pequena','Recupera energia para futuras funções RPG.','consumable',500,'common'],
-    ['pocao_m','Poção Média','Poção intermediária.','consumable',1200,'uncommon'],
-    ['espada_madeira','Espada de Madeira','Arma inicial do Trevo.','weapon',1500,'common'],
-    ['espada_ferro','Espada de Ferro','Arma mais forte.','weapon',5000,'uncommon'],
-    ['armadura_couro','Armadura de Couro','Proteção inicial.','armor',2000,'common'],
-    ['armadura_ferro','Armadura de Ferro','Proteção reforçada.','armor',6500,'uncommon'],
-    ['caixa_sorte','Caixa da Sorte','Item especial para futuras recompensas.','special',3000,'rare'],
+    // Poções
+    ['pocao_p','Poção Pequena','Recupera 35 HP.','consumable',500,'common'],
+    ['pocao_m','Poção Média','Recupera 80 HP.','consumable',1200,'uncommon'],
+    ['pocao_g','Poção Grande','Recupera 160 HP.','consumable',3000,'rare'],
+    ['elixir_supremo','Elixir Supremo','Recupera uma grande quantidade de HP.','consumable',9000,'epic'],
+
+    // Armas
+    ['espada_madeira','Espada de Madeira','Arma inicial do Trevo. +5 ATK.','weapon',1500,'common'],
+    ['espada_ferro','Espada de Ferro','Arma reforçada. +12 ATK.','weapon',5000,'uncommon'],
+    ['espada_aco','Espada de Aço','Lâmina rara. +20 ATK.','weapon',12000,'rare'],
+    ['machado_guerra','Machado de Guerra','Golpes pesados. +24 ATK.','weapon',18000,'rare'],
+    ['katana_sombria','Katana Sombria','Lâmina veloz e rara. +28 ATK.','weapon',25000,'rare'],
+    ['espada_flamas','Espada das Chamas','Arma épica. +40 ATK.','weapon',60000,'epic'],
+    ['tridente_tempestade','Tridente da Tempestade','Arma épica. +48 ATK.','weapon',95000,'epic'],
+    ['lamina_abissal','Lâmina Abissal','Arma épica de alto nível. +55 ATK.','weapon',140000,'epic'],
+    ['excalibur','Excalibur','Arma lendária. +85 ATK. Apenas por drop.','weapon',0,'legendary'],
+    ['katana_divina','Katana Divina','Arma lendária raríssima. +95 ATK. Apenas por drop.','weapon',0,'legendary'],
+
+    // Armaduras
+    ['armadura_couro','Armadura de Couro','Proteção inicial. +5 DEF.','armor',2000,'common'],
+    ['armadura_ferro','Armadura de Ferro','Proteção reforçada. +12 DEF.','armor',6500,'uncommon'],
+    ['armadura_aco','Armadura de Aço','Proteção rara. +20 DEF.','armor',14000,'rare'],
+    ['armadura_samurai','Armadura Samurai','Proteção rara. +24 DEF.','armor',22000,'rare'],
+    ['armadura_cavaleiro','Armadura do Cavaleiro','Proteção rara superior. +28 DEF.','armor',30000,'rare'],
+    ['armadura_dragao','Armadura de Dragão','Proteção épica. +40 DEF.','armor',70000,'epic'],
+    ['armadura_abissal','Armadura Abissal','Proteção épica. +48 DEF.','armor',110000,'epic'],
+    ['armadura_celestial','Armadura Celestial','Proteção épica de alto nível. +55 DEF.','armor',155000,'epic'],
+    ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF. Apenas por drop.','armor',0,'legendary'],
+    ['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF. Apenas por drop.','armor',0,'legendary'],
+
+    // Caixas
+    ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
+    ['caixa_rara','Caixa Rara','Melhores chances de itens raros. Lendário: 0,3%.','special',12000,'rare'],
+    ['caixa_epica','Caixa Épica','Loot de alto nível. Lendário: 1%.','special',35000,'epic'],
   ]
 
   for (const item of starterItems) {
@@ -418,13 +445,32 @@ export async function leaderboard(limit=10) {
 const EQUIPMENT = {
   espada_madeira: { category:'weapon', atk:5, def:0, name:'Espada de Madeira' },
   espada_ferro: { category:'weapon', atk:12, def:0, name:'Espada de Ferro' },
+  espada_aco: { category:'weapon', atk:20, def:0, name:'Espada de Aço' },
+  machado_guerra: { category:'weapon', atk:24, def:0, name:'Machado de Guerra' },
+  katana_sombria: { category:'weapon', atk:28, def:0, name:'Katana Sombria' },
+  espada_flamas: { category:'weapon', atk:40, def:0, name:'Espada das Chamas' },
+  tridente_tempestade: { category:'weapon', atk:48, def:0, name:'Tridente da Tempestade' },
+  lamina_abissal: { category:'weapon', atk:55, def:0, name:'Lâmina Abissal' },
+  excalibur: { category:'weapon', atk:85, def:0, name:'Excalibur' },
+  katana_divina: { category:'weapon', atk:95, def:0, name:'Katana Divina' },
+
   armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
   armadura_ferro: { category:'armor', atk:0, def:12, name:'Armadura de Ferro' },
+  armadura_aco: { category:'armor', atk:0, def:20, name:'Armadura de Aço' },
+  armadura_samurai: { category:'armor', atk:0, def:24, name:'Armadura Samurai' },
+  armadura_cavaleiro: { category:'armor', atk:0, def:28, name:'Armadura do Cavaleiro' },
+  armadura_dragao: { category:'armor', atk:0, def:40, name:'Armadura de Dragão' },
+  armadura_abissal: { category:'armor', atk:0, def:48, name:'Armadura Abissal' },
+  armadura_celestial: { category:'armor', atk:0, def:55, name:'Armadura Celestial' },
+  armadura_titan: { category:'armor', atk:0, def:85, name:'Armadura do Titã' },
+  armadura_divina: { category:'armor', atk:0, def:95, name:'Armadura Divina' },
 }
 
 const POTIONS = {
   pocao_p: { heal:35, name:'Poção Pequena' },
   pocao_m: { heal:80, name:'Poção Média' },
+  pocao_g: { heal:160, name:'Poção Grande' },
+  elixir_supremo: { heal:999999, name:'Elixir Supremo' },
 }
 
 function expNeeded(level) {
@@ -909,49 +955,101 @@ export function groupLicenseIsActive(license) {
 }
 
 
-export async function openLuckyBoxes(jid, qty=1) {
+const BOX_CONFIG = {
+  caixa_sorte: {
+    legendary:0.001,
+    epic:0.015,
+    rare:0.08,
+    uncommon:0.25,
+    cashChance:0.38,
+    expChance:0.18,
+    cash:[800,4500],
+    exp:[60,220]
+  },
+  caixa_rara: {
+    legendary:0.003,
+    epic:0.05,
+    rare:0.25,
+    uncommon:0.40,
+    cashChance:0.20,
+    expChance:0.10,
+    cash:[2500,12000],
+    exp:[120,450]
+  },
+  caixa_epica: {
+    legendary:0.01,
+    epic:0.20,
+    rare:0.50,
+    uncommon:0.70,
+    cashChance:0.12,
+    expChance:0.08,
+    cash:[7000,30000],
+    exp:[250,900]
+  }
+}
+
+const LOOT_POOLS = {
+  common:['pocao_p','espada_madeira','armadura_couro'],
+  uncommon:['pocao_m','espada_ferro','armadura_ferro'],
+  rare:['pocao_g','espada_aco','machado_guerra','katana_sombria','armadura_aco','armadura_samurai','armadura_cavaleiro'],
+  epic:['elixir_supremo','espada_flamas','tridente_tempestade','lamina_abissal','armadura_dragao','armadura_abissal','armadura_celestial'],
+  legendary:['excalibur','katana_divina','armadura_titan','armadura_divina']
+}
+
+function pick(arr){
+  return arr[Math.floor(Math.random()*arr.length)]
+}
+
+export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
   await ensureUser(jid)
   qty=Number(qty)
+  const config=BOX_CONFIG[boxId]
+  if(!config) throw new Error('Essa caixa não pode ser aberta.')
   if(!Number.isInteger(qty) || qty<1 || qty>5000) throw new Error('Quantidade inválida de caixas.')
 
   return transaction(async client=>{
     const inv=await client.query(
       'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-      [jid,'caixa_sorte']
+      [jid,boxId]
     )
     const available=Number(inv.rows[0]?.quantity||0)
     if(available<qty){
-      throw new Error(`Você possui apenas ${available} Caixa(s) da Sorte.`)
+      throw new Error(`Você possui apenas ${available} caixa(s) desse tipo.`)
     }
 
     await client.query(
       'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
-      [qty,jid,'caixa_sorte']
+      [qty,jid,boxId]
     )
 
     let cash=0
     let exp=0
     const rewards=new Map()
+    const rarityCounts={common:0,uncommon:0,rare:0,epic:0,legendary:0}
 
     for(let i=0;i<qty;i++){
+      const utilityRoll=Math.random()
+      if(utilityRoll<config.cashChance){
+        const [min,max]=config.cash
+        cash+=min+Math.floor(Math.random()*(max-min+1))
+        continue
+      }
+      if(utilityRoll<config.cashChance+config.expChance){
+        const [min,max]=config.exp
+        exp+=min+Math.floor(Math.random()*(max-min+1))
+        continue
+      }
+
       const roll=Math.random()
-      if(roll<0.55){
-        cash+=1000+Math.floor(Math.random()*4001)
-        continue
-      }
+      let rarity='common'
+      if(roll<config.legendary) rarity='legendary'
+      else if(roll<config.epic) rarity='epic'
+      else if(roll<config.rare) rarity='rare'
+      else if(roll<config.uncommon) rarity='uncommon'
 
-      if(roll<0.80){
-        const itemId=Math.random()<0.65?'pocao_m':'espada_madeira'
-        rewards.set(itemId,(rewards.get(itemId)||0)+1)
-        continue
-      }
-
-      if(roll<0.95){
-        exp+=100+Math.floor(Math.random()*201)
-        continue
-      }
-
-      rewards.set('espada_ferro',(rewards.get('espada_ferro')||0)+1)
+      rarityCounts[rarity]++
+      const itemId=pick(LOOT_POOLS[rarity])
+      rewards.set(itemId,(rewards.get(itemId)||0)+1)
     }
 
     if(cash>0){
@@ -961,8 +1059,8 @@ export async function openLuckyBoxes(jid, qty=1) {
       )
       await client.query(`
         INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-        VALUES('system',$1,$2,'lucky_box',$3)
-      `,[jid,cash,`cash x${qty}`])
+        VALUES('system',$1,$2,'loot_box',$3)
+      `,[jid,cash,`${boxId} x${qty}`])
     }
 
     let level=null
@@ -970,12 +1068,16 @@ export async function openLuckyBoxes(jid, qty=1) {
 
     const itemIds=[...rewards.keys()]
     const names=new Map()
+    const rarities=new Map()
     if(itemIds.length){
       const itemRows=await client.query(
-        'SELECT id,name FROM items WHERE id = ANY($1::text[])',
+        'SELECT id,name,rarity FROM items WHERE id = ANY($1::text[])',
         [itemIds]
       )
-      for(const row of itemRows.rows) names.set(row.id,row.name)
+      for(const row of itemRows.rows){
+        names.set(row.id,row.name)
+        rarities.set(row.id,row.rarity)
+      }
 
       for(const [itemId,itemQty] of rewards){
         await client.query(`
@@ -991,24 +1093,30 @@ export async function openLuckyBoxes(jid, qty=1) {
     const remaining=Math.max(0,available-qty)
 
     return {
+      boxId,
       opened:qty,
       remaining,
       cash,
       exp,
       level,
       balance:Number(wallet.rows[0]?.cash||0),
+      rarityCounts,
       items:[...rewards.entries()].map(([itemId,itemQty])=>({
         itemId,
         name:names.get(itemId)||itemId,
+        rarity:rarities.get(itemId)||'common',
         qty:itemQty
       }))
     }
   })
 }
 
+export async function openLuckyBoxes(jid, qty=1) {
+  return openLootBoxes(jid,'caixa_sorte',qty)
+}
+
 export async function openLuckyBox(jid) {
-  const r=await openLuckyBoxes(jid,1)
-  return r
+  return openLootBoxes(jid,'caixa_sorte',1)
 }
 
 export async function dungeon(jid) {
