@@ -14,6 +14,7 @@ import {
   ownerSetLevel, ownerHeal, ownerGrantItem,
   getGroupLicense, ensureGroupTrial, activateGroupLicense, blockGroupLicense,
   listGroupLicenses, groupLicenseIsActive,
+  getLaunchPrice, setLaunchPrice,
   openLuckyBox, dungeon, robPlayer
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
@@ -419,10 +420,11 @@ Fale com o responsável pelo Trevo para ativação.`
           else await reply(`🚓 *VOCÊ FOI PEGO!*\n💸 Multa: R$ ${fmt(r.fine)}\nTente novamente mais tarde.`,{mentions:[target]})
 
         } else if(['termos'].includes(cmd)){
+          const price=await getLaunchPrice()
           await reply(
 `📄 *TERMOS DO TREVO — RESUMO*
 
-💚 *Plano básico:* R$ 2 por grupo / 30 dias
+🎉 *Preço de lançamento:* R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} por grupo / 30 dias
 🎁 *Teste:* 3 dias grátis no primeiro uso do grupo
 
 ⚠️ *Aviso importante*
@@ -446,8 +448,28 @@ O pagamento refere-se ao acesso às funcionalidades do bot durante o período co
 Status: *${active?'ATIVO':'INATIVO'}*
 Plano: *${lic.plan}*
 Validade: *${fmtDate(lic.paid_until)}*
-${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':'💚 Plano básico: R$ 2 / 30 dias.'}`
+${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':`💚 Plano atual: R$ ${Number(await getLaunchPrice()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias.`}`
           )
+
+        } else if(['assinar','plano','preco'].includes(cmd)){
+          const price=await getLaunchPrice()
+          await reply(
+`💚 *TREVO — PREÇO DE LANÇAMENTO*
+
+R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} por grupo / 30 dias
+
+🎁 O primeiro uso do grupo inclui 3 dias grátis.
+📄 Leia *${prefix}termos* antes de contratar.
+
+_Este é um valor promocional de lançamento e poderá mudar futuramente para novas contratações e renovações._`
+          )
+
+        } else if(['setpreco'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const raw=args[0]
+          if(!raw) return await reply(`Uso: *${prefix}setpreco 5*`)
+          const value=await setLaunchPrice(raw)
+          await reply(`👑 Preço de lançamento atualizado para *R$ ${value.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias*.`)
 
         } else if(['ativargrupo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
@@ -560,6 +582,7 @@ ${prefix}ping
 
 💚 *Grupo*
 ${prefix}statusgrupo
+${prefix}assinar
 ${prefix}termos
 
 _Em breve: clãs, família, casas e carros._`
