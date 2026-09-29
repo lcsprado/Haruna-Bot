@@ -533,6 +533,9 @@ Nenhum pedido pendente agora.
 
     const shopCategoryMenu=async()=>showShopCategoryMenu(chat,sender,reply)
     const boxQuantityMenu=async(box)=>showBoxQuantityMenu(chat,sender,reply,box)
+    const inventoryMenu=async()=>showInventoryMenu(chat,sender,reply)
+    const equipmentMenu=async()=>showEquipmentMenu(chat,sender,reply)
+    const sellMenu=async()=>showSellMenu(chat,sender,reply)
 
     const afterGame=async(game,data,text)=>{
       setQuickFlow(chat,sender,'game_after',{game,...data},5*60*1000)
@@ -1525,7 +1528,7 @@ Dano final: ${r.damage}
 2️⃣ Inventário
 3️⃣ Equipar
 4️⃣ Usar poção
-5️⃣ Abrir Caixa da Sorte
+5️⃣ Abrir caixas
 
 0️⃣ Sair`
         )
@@ -1840,32 +1843,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       if(input==='2'){
-        const items=await getInventory(sender)
-        if(!items.length){
-          clearQuickFlow(chat,sender)
-          await reply('🎒 Seu inventário está vazio.')
-          return true
-        }
-        setQuickFlow(chat,sender,'inventory_select',{items},90000)
-        let text='🎒 *SEU INVENTÁRIO*\n\n'
-        items.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
-        text+='\n👉 Escolha um item pelo número.\n0️⃣ Sair'
-        await reply(text)
+        await inventoryMenu()
         return true
       }
       if(input==='3'){
-        const items=await getInventory(sender)
-        const equipables=items.filter(i=>['weapon','armor'].includes(i.category))
-        if(!equipables.length){
-          clearQuickFlow(chat,sender)
-          await reply('⚙️ Você não possui equipamento.')
-          return true
-        }
-        setQuickFlow(chat,sender,'equip_select',{items:equipables.map(i=>i.item_id)},90000)
-        let text='⚙️ *O QUE QUER EQUIPAR?*\n\n'
-        equipables.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name}\n`)
-        text+='\n👉 Responda só com o número.'
-        await reply(text)
+        await equipmentMenu()
         return true
       }
       if(input==='4'){
@@ -2856,7 +2838,7 @@ Fale com o responsável pelo Trevo para ativação.`
 2️⃣ Inventário
 3️⃣ Equipar
 4️⃣ Usar poção
-5️⃣ Abrir Caixa da Sorte
+5️⃣ Abrir caixas
 
 0️⃣ Sair`
           )
