@@ -73,9 +73,10 @@ export async function roulette(jid,amount,choice){
   return tx(async c=>{
     await debit(c,jid,amount)
     const n=Math.floor(Math.random()*37)
-    const color=n===0?'verde':(n%2===0?'preto':'vermelho')
+    const redNumbers=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
+    const color=n===0?'verde':(redNumbers.has(n)?'vermelho':'preto')
     let payout=0
-    if(choice===color) payout=choice==='verde'?amount*14:amount*2
+    if(choice===color) payout=choice==='verde'?amount*36:amount*2
     if(payout) await credit(c,jid,payout,'roleta')
     return {number:n,color,choice,amount,payout,profit:payout-amount}
   })
@@ -177,8 +178,15 @@ const QUIZZES=[
 
 export async function startQuiz(chat){
   return tx(async c=>{
+    const current=await loadGame(c,chat,'quiz')
+    const now=Date.now()
+    const ttl=2*60*1000
+    if(current && now-Number(current.started||0)<ttl){
+      return {already:true,...current,remaining:Math.ceil((ttl-(now-Number(current.started||0)))/1000)}
+    }
+    if(current) await clearGame(c,chat,'quiz')
     const item=QUIZZES[Math.floor(Math.random()*QUIZZES.length)]
-    const state={...item,started:Date.now()}
+    const state={...item,started:now}
     await saveGame(c,chat,'quiz',state)
     return state
   })
@@ -191,6 +199,11 @@ export async function answerQuiz(chat,jid,answer){
   return tx(async c=>{
     const s=await loadGame(c,chat,'quiz')
     if(!s) throw new Error('Não há quiz ativo. Use !quiz.')
+    const expired=Date.now()-Number(s.started||0)>=2*60*1000
+    if(expired){
+      await clearGame(c,chat,'quiz')
+      throw new Error('Esse quiz expirou. Use !quiz para iniciar outro.')
+    }
     await clearGame(c,chat,'quiz')
     const correct=answer===Number(s.c)
     const reward=correct?1000:0
@@ -237,7 +250,7 @@ export async function startBoss(chat){
     const current=await loadGame(c,chat,'boss')
     if(current && Number(current.hp)>0) return {already:true,...current}
     const maxHp=500+Math.floor(Math.random()*501)
-    const state={name:'Golem do Trevo',hp:maxHp,maxHp,participants:{}}
+    const state={name:'Golem do Trevo',hp:maxHp,maxHp,participants:{},lastAttack:{}}
     await saveGame(c,chat,'boss',state)
     return state
   })
@@ -248,6 +261,16 @@ export async function attackBoss(chat,jid,name){
   return tx(async c=>{
     const s=await loadGame(c,chat,'boss')
     if(!s||Number(s.hp)<=0) throw new Error('Não há boss ativo. Use !boss.')
+
+    const now=Date.now()
+    s.lastAttack=s.lastAttack||{}
+    const last=Number(s.lastAttack[jid]||0)
+    const cooldownMs=10*1000
+    if(now-last<cooldownMs){
+      return {cooldown:true,remaining:Math.ceil((cooldownMs-(now-last))/1000),hp:Number(s.hp),maxHp:Number(s.maxHp)}
+    }
+    s.lastAttack[jid]=now
+
     const st=await c.query('SELECT atk,weapon_id FROM stats WHERE jid=$1',[jid])
     const base=Number(st.rows[0]?.atk||10)
     const weapon=st.rows[0]?.weapon_id
@@ -259,10 +282,10 @@ export async function attackBoss(chat,jid,name){
 
     if(s.hp<=0){
       const entries=Object.entries(s.participants)
-      const rewardEach=Math.max(500,Math.floor(5000/Math.max(1,entries.length)))
+      const rewardEach=Math.max(1,Math.floor(5000/Math.max(1,entries.length)))
       for(const [pjid] of entries) await credit(c,pjid,rewardEach,'boss')
       await clearGame(c,chat,'boss')
-      return {dead:true,damage,hp:0,maxHp:s.maxHp,rewardEach,players:entries.length}
+      return {dead:true,damage,hp:0,maxHp:s.maxHp,rewardEach,players:entries.length,pot:rewardEach*entries.length}
     }
 
     await saveGame(c,chat,'boss',s)
