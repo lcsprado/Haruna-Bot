@@ -205,9 +205,15 @@ export async function initDatabase() {
     VALUES
       ('launch_price','2'::jsonb),
       ('pix_key','""'::jsonb),
-      ('pix_name','"Trevo"'::jsonb),
+      ('pix_name','"Alpha Bot"'::jsonb),
       ('payment_link','"https://mpago.la/1Aqm14o"'::jsonb)
     ON CONFLICT(key) DO NOTHING
+  `)
+
+  await db.query(`
+    UPDATE trevo_settings
+    SET value='"Alpha Bot"'::jsonb, updated_at=${nowSql}
+    WHERE key='pix_name' AND value='"Trevo"'::jsonb
   `)
 
   const starterItems = [
@@ -218,7 +224,7 @@ export async function initDatabase() {
     ['elixir_supremo','Elixir Supremo','Recupera uma grande quantidade de HP.','consumable',9000,'epic'],
 
     // Armas
-    ['espada_madeira','Espada de Madeira','Arma inicial do Trevo. +5 ATK.','weapon',1500,'common'],
+    ['espada_madeira','Espada de Madeira','Arma inicial do Alpha Bot. +5 ATK.','weapon',1500,'common'],
     ['espada_ferro','Espada de Ferro','Arma reforçada. +12 ATK.','weapon',5000,'uncommon'],
     ['espada_aco','Espada de Aço','Lâmina rara. +20 ATK.','weapon',12000,'rare'],
     ['machado_guerra','Machado de Guerra','Golpes pesados. +24 ATK.','weapon',18000,'rare'],
@@ -1584,7 +1590,7 @@ export async function setLaunchPrice(value) {
 
 function orderCode() {
   const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let out='TREVO-'
+  let out='ALPHA-'
   const bytes=crypto.randomBytes(6)
   for(let i=0;i<6;i++) out+=alphabet[bytes[i]%alphabet.length]
   return out
@@ -1598,7 +1604,7 @@ export async function getPixSettings() {
   const map=Object.fromEntries(rows.map(r=>[r.key,r.value]))
   return {
     key:String(map.pix_key ?? ''),
-    name:String(map.pix_name ?? 'Trevo')
+    name:String(map.pix_name ?? 'Alpha Bot')
   }
 }
 
