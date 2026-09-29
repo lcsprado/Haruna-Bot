@@ -14,6 +14,13 @@ import {
   ownerSetLevel, ownerHeal, ownerGrantItem
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
+import {
+  initGames, roulette, coinFlip, rps,
+  startHangman, hangmanLetter, hangmanWord,
+  startQuiz, answerQuiz,
+  startNumberGame, guessNumber,
+  startBoss, attackBoss
+} from './games.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -70,6 +77,7 @@ function resolveShopItem(input){
 
 async function start() {
   await initDatabase()
+  await initGames()
   await acquireRuntimeLock(sessionId)
   const { state, saveCreds }=await useNeonAuthState(sessionId)
   const { version }=await fetchLatestBaileysVersion()
@@ -273,6 +281,86 @@ async function start() {
           await reply(text.trim())
 
 
+
+        } else if(['roleta'].includes(cmd)){
+          const amount=parseAmount(args[0])
+          const choice=(args[1]||'').toLowerCase()
+          if(!amount||!choice) return await reply(`Uso: *${prefix}roleta 100 vermelho*\nCores: vermelho, preto ou verde`)
+          const r=await roulette(sender,amount,choice)
+          const result=r.payout>0
+            ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+            : `💸 Você perdeu R$ ${fmt(r.amount)}.`
+          await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\nSua escolha: *${r.choice}*\n\n${result}`)
+
+        } else if(['cara','coroa'].includes(cmd)){
+          const choice=cmd
+          const amount=parseAmount(args[0])
+          if(!amount) return await reply(`Uso: *${prefix}${choice} 100*`)
+          const r=await coinFlip(sender,amount,choice)
+          await reply(`🪙 *CARA OU COROA*\n\nResultado: *${r.result}*\nVocê escolheu: *${r.choice}*\n${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
+
+        } else if(['ppt'].includes(cmd)){
+          const choice=(args[0]||'').toLowerCase()
+          if(!choice) return await reply(`Uso: *${prefix}ppt pedra*\nOpções: pedra, papel ou tesoura`)
+          const r=rps(choice)
+          const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
+          await reply(`✊ *PEDRA, PAPEL E TESOURA*\n\nVocê: *${r.choice}*\nTrevo: *${r.bot}*\n\n${emoji} *${r.result.toUpperCase()}*`)
+
+        } else if(['forca'].includes(cmd)){
+          const r=await startHangman(chat)
+          if(r.already) return await reply(`🔤 Já existe uma forca ativa.\nDica: *${r.hint}*\nPalavra: ${r.word.split('').map(ch=>r.letters.includes(ch)?ch:'_').join(' ')}\n❤️ Vidas: ${r.lives}`)
+          await reply(`🔤 *FORCA INICIADA!*\n\nDica: *${r.hint}*\nPalavra: ${r.word.split('').map(()=> '_').join(' ')}\n❤️ Vidas: 6\n\nUse *${prefix}letra a* ou *${prefix}palavra resposta*`)
+
+        } else if(['letra'].includes(cmd)){
+          const r=await hangmanLetter(chat,args[0])
+          if(r.repeat) return await reply(`🔁 Essa letra já foi usada.\n${r.masked}\n❤️ Vidas: ${r.lives}`)
+          if(r.won) return await reply(`🎉 *FORCA VENCIDA!*\nA palavra era *${r.word}*.`)
+          if(r.lost) return await reply(`💀 *FORCA ENCERRADA!*\nA palavra era *${r.word}*.`)
+          await reply(`🔤 ${r.masked}\n❤️ Vidas: ${r.lives}\n❌ Erros: ${r.wrong.join(', ')||'nenhum'}`)
+
+        } else if(['palavra'].includes(cmd)){
+          const guess=args.join(' ')
+          if(!guess) return await reply(`Uso: *${prefix}palavra resposta*`)
+          const r=await hangmanWord(chat,guess)
+          if(r.won) return await reply(`🎉 *ACERTOU!* A palavra era *${r.word}*.`)
+          if(r.lost) return await reply(`💀 Acabaram as vidas. A palavra era *${r.word}*.`)
+          await reply(`❌ Não é essa.\n${r.masked}\n❤️ Vidas: ${r.lives}`)
+
+        } else if(['quiz'].includes(cmd)){
+          const q=await startQuiz(chat)
+          let text=`🧠 *QUIZ DO TREVO*\n\n${q.q}\n\n`
+          q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
+          text+=`\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
+          await reply(text)
+
+        } else if(['resposta'].includes(cmd)){
+          const n=parseInt(args[0]||'0',10)
+          const r=await answerQuiz(chat,sender,n)
+          if(r.correct) await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
+          else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
+
+        } else if(['numero','adivinhar'].includes(cmd)){
+          const r=await startNumberGame(chat)
+          if(r.already) return await reply(`🔢 Já existe um número secreto ativo de 1 a 100.\nUse *${prefix}chute 50*.`)
+          await reply(`🔢 *ADIVINHE O NÚMERO*\n\nEscolhi um número de *1 a 100*.\nVocês têm até *10 tentativas*.\nUse *${prefix}chute 50*.`)
+
+        } else if(['chute'].includes(cmd)){
+          const guess=parseInt(args[0]||'0',10)
+          const r=await guessNumber(chat,sender,guess)
+          if(r.won) return await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\nTentativas: ${r.attempts}\n💰 Prêmio: R$ ${fmt(r.reward)}`)
+          if(r.lost) return await reply(`💀 Acabaram as tentativas. O número era *${r.number}*.`)
+          await reply(`❌ Não foi dessa vez. O número é *${r.hint}* que ${guess}.\nTentativas restantes: ${r.left}`)
+
+        } else if(['boss'].includes(cmd)){
+          const r=await startBoss(chat)
+          if(r.already) return await reply(`👹 *${r.name}* ainda está vivo!\n❤️ HP: ${r.hp}/${r.maxHp}\nUse *${prefix}atacar*.`)
+          await reply(`👹 *BOSS APARECEU!*\n\n*${r.name}*\n❤️ HP: ${r.hp}/${r.maxHp}\n\nTodos podem atacar com *${prefix}atacar*.`)
+
+        } else if(['atacar'].includes(cmd)){
+          const r=await attackBoss(chat,sender,msg.pushName||'Jogador')
+          if(r.dead) return await reply(`💥 *BOSS DERROTADO!*\nDano final: ${r.damage}\n👥 Participantes: ${r.players}\n💰 Cada participante recebeu R$ ${fmt(r.rewardEach)}`)
+          await reply(`⚔️ Você causou *${r.damage}* de dano!\n👹 Boss: ❤️ ${r.hp}/${r.maxHp}`)
+
         } else if(['addsaldo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
           const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
@@ -338,6 +426,15 @@ ${prefix}usar <id>
 ${prefix}status
 ${prefix}batalhar @pessoa
 ${prefix}rankingrpg
+
+🎮 *Minigames*
+${prefix}roleta 100 vermelho
+${prefix}cara 100 / ${prefix}coroa 100
+${prefix}ppt pedra
+${prefix}forca
+${prefix}quiz
+${prefix}numero
+${prefix}boss
 
 🏆 *Competição*
 ${prefix}ranking
