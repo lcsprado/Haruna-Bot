@@ -8,7 +8,7 @@ import makeWASocket, {
 import pino from 'pino'
 import {
   initDatabase, ensureUser, getProfile, claimDaily, work,
-  deposit, withdraw, transfer, getShop, buyItem, getInventory, sellItem, leaderboard,
+  deposit, withdraw, transfer, getShop, buyItem, getInventory, sellItem, sellItemsBatch, leaderboard,
   equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -381,7 +381,7 @@ Você possui: *${stock}*
     items.forEach((i,idx)=>{
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
     })
-    text+='\n⚠️ Equipamento ativo mantém 1 cópia protegida.\n9️⃣ Voltar\n0️⃣ Sair'
+    text+='\n👉 Um item: mande só o número.\n📦 Vários itens: mande os números separados por vírgula. Ex.: *1,3,5*\n_No lote, o Trevo vende as cópias repetidas e mantém 1 de cada. Lendários ficam de fora._\n\n⚠️ Equipamento ativo mantém 1 cópia protegida.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
   }
   async function handleQuickGameFlow({chat,sender,body,reply,msg}){
@@ -2001,6 +2001,49 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await inventoryMenu()
         return true
       }
+
+      if(input.includes(',')){
+        const indexes=[...new Set(input.split(',').map(x=>Number(x.trim())-1).filter(Number.isInteger))]
+        const selected=indexes.map(i=>flow.data.items?.[i]).filter(Boolean)
+        if(selected.length<2){
+          await reply('📦 Para vender vários itens, mande pelo menos dois números. Exemplo: *1,3,5*.')
+          return true
+        }
+
+        const batch=[]
+        const skipped=[]
+        for(const item of selected){
+          if(item.rarity==='legendary'){
+            skipped.push(item.name+' (lendário)')
+            continue
+          }
+          const qty=Math.max(0,Number(item.quantity)-1)
+          if(qty<1){
+            skipped.push(item.name+' (sem repetidos)')
+            continue
+          }
+          batch.push({itemId:item.item_id,name:item.name,rarity:item.rarity,qty,unit:Number(item.sell_unit)})
+        }
+
+        if(!batch.length){
+          await reply('📦 Nenhum dos itens escolhidos possui cópias repetidas vendáveis.')
+          return true
+        }
+
+        const total=batch.reduce((sum,i)=>sum+(i.qty*i.unit),0)
+        let text='⚠️ *CONFIRMAR VENDA EM LOTE*\n\n'
+        for(const i of batch){
+          text+='• '+rarityLabel(i.rarity)+' *'+i.name+'* ×'+i.qty+' — R$ '+fmt(i.qty*i.unit)+'\n'
+        }
+        text+='\n📦 Tipos de item: *'+batch.length+'*\n💵 Total estimado: *R$ '+fmt(total)+'*'
+        if(skipped.length) text+='\n\n⏭️ Ignorados: '+skipped.join(', ')
+        text+='\n\n1️⃣ Confirmar venda\n2️⃣ Cancelar'
+
+        setQuickFlow(chat,sender,'inventory_sell_batch_confirm',{batch},90000)
+        await reply(text)
+        return true
+      }
+
       const item=flow.data.items?.[Number(input)-1]
       if(!item){
         await reply('💰 Escolha um item pelo número.')
@@ -2056,6 +2099,28 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       return true
     }
 
+    if(flow.stage==='inventory_sell_batch_confirm'){
+      if(input==='2'){
+        await reply('✅ Venda em lote cancelada.')
+        await sellMenu()
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Confirmar venda* ou *2 Cancelar*.')
+        return true
+      }
+      const selections=(flow.data.batch||[]).map(i=>({itemId:i.itemId,qty:i.qty}))
+      const r=await sellItemsBatch(sender,selections)
+      let text='💰 *VENDA EM LOTE CONCLUÍDA*\n\n'
+      r.sold.forEach(i=>{ text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(i.total)+'\n' })
+      text+='\n📦 Tipos vendidos: *'+r.types+'*'
+      text+='\n🧮 Unidades vendidas: *'+r.totalUnits+'*'
+      text+='\n💵 Total recebido: *R$ '+fmt(r.total)+'*'
+      text+='\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
+      await reply(text)
+      await inventoryMenu()
+      return true
+    }
     if(flow.stage==='inventory_sell_confirm'){
       if(input==='2'){
         await reply('✅ Venda cancelada.')
