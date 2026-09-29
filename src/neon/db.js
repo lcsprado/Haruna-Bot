@@ -636,3 +636,113 @@ export async function acquireRuntimeLock(sessionId) {
     await new Promise(resolve => setTimeout(resolve, 2500))
   }
 }
+
+
+export async function ownerAddBalance(jid, amount) {
+  amount=Number(amount)
+  if(!Number.isInteger(amount) || amount<=0) throw new Error('Valor inválido.')
+  await ensureUser(jid)
+  await transaction(async client=>{
+    await client.query(
+      'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+      [amount,jid]
+    )
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('owner',$1,$2,'owner_credit','admin')
+    `,[jid,amount])
+  })
+  return getProfile(jid)
+}
+
+export async function ownerRemoveBalance(jid, amount) {
+  amount=Number(amount)
+  if(!Number.isInteger(amount) || amount<=0) throw new Error('Valor inválido.')
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const r=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const current=Number(r.rows[0]?.cash||0)
+    const removed=Math.min(current,amount)
+    await client.query(
+      'UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',
+      [amount,jid]
+    )
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'owner',$2,'owner_debit','admin')
+    `,[jid,removed])
+    return { removed, cash:current-removed }
+  })
+}
+
+export async function ownerAddExp(jid, amount) {
+  amount=Number(amount)
+  if(!Number.isInteger(amount) || amount<=0) throw new Error('EXP inválida.')
+  await ensureUser(jid)
+  return transaction(async client=>applyExp(client,jid,amount))
+}
+
+export async function ownerSetLevel(jid, level) {
+  level=Number(level)
+  if(!Number.isInteger(level) || level<1 || level>999) throw new Error('Nível inválido.')
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const r=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])
+    const current=Number(r.rows[0]?.level||1)
+    const diff=level-current
+
+    await client.query(
+      'UPDATE users SET level=$1,exp=0,updated_at='+nowSql+' WHERE jid=$2',
+      [level,jid]
+    )
+
+    if(diff>0){
+      await client.query(`
+        UPDATE stats
+        SET max_hp=max_hp+$1,
+            hp=max_hp+$1,
+            atk=atk+$2,
+            def=def+$3,
+            spd=spd+$4,
+            updated_at=${nowSql}
+        WHERE jid=$5
+      `,[diff*8,diff*2,diff,diff,jid])
+    }
+
+    return { oldLevel:current, level }
+  })
+}
+
+export async function ownerHeal(jid) {
+  await ensureUser(jid)
+  const {rows}=await db.query(`
+    UPDATE stats
+    SET hp=max_hp,updated_at=${nowSql}
+    WHERE jid=$1
+    RETURNING hp,max_hp
+  `,[jid])
+  return rows[0]
+}
+
+export async function ownerGrantItem(jid, itemId, qty=1) {
+  qty=Number(qty)
+  if(!Number.isInteger(qty) || qty<1 || qty>999) throw new Error('Quantidade inválida.')
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const itemR=await client.query('SELECT id,name FROM items WHERE id=$1',[itemId])
+    const item=itemR.rows[0]
+    if(!item) throw new Error('Item não encontrado.')
+
+    await client.query(`
+      INSERT INTO inventories(jid,item_id,quantity)
+      VALUES($1,$2,$3)
+      ON CONFLICT(jid,item_id)
+      DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
+    `,[jid,itemId,qty])
+
+    return { item, qty }
+  })
+}
