@@ -5,7 +5,6 @@ import makeWASocket, {
   downloadMediaMessage,
   fetchLatestBaileysVersion,
   getContentType,
-  generateWAMessageFromContent,
   makeCacheableSignalKeyStore
 } from 'baileys'
 import pino from 'pino'
@@ -538,45 +537,6 @@ async function start() {
 
   async function showShopCategoryMenu(chat,sender,reply){
     setQuickFlow(chat,sender,'shop_category',{},90000)
-
-    const sections=[{
-      title:'Categorias da loja',
-      rows:[
-        {title:'🧪 Poções',description:'Consumíveis para recuperar HP',id:'1'},
-        {title:'⚔️ Armas',description:'Equipamentos que aumentam seu ATK',id:'2'},
-        {title:'🛡️ Armaduras',description:'Equipamentos que aumentam sua DEF',id:'3'},
-        {title:'🎁 Caixas',description:'Caixas e recompensas especiais',id:'4'},
-        {title:'🎭 Diversão',description:'Piadas, horóscopo e extras',id:'5'}
-      ]
-    }]
-
-    try{
-      const interactiveMessage={
-        header:{title:'🍀 LOJA DO ALPHA BOT',hasMediaAttachment:false},
-        body:{text:'Escolha uma categoria sem precisar mandar números no grupo.'},
-        footer:{text:'Alpha Bot'},
-        nativeFlowMessage:{
-          buttons:[{
-            name:'single_select',
-            buttonParamsJson:JSON.stringify({
-              title:'🛒 Abrir loja',
-              sections
-            })
-          }],
-          messageParamsJson:''
-        }
-      }
-      const generated=await generateWAMessageFromContent(
-        chat,
-        {viewOnceMessage:{message:{interactiveMessage}}},
-        {}
-      )
-      await sock.relayMessage(chat,generated.message,{messageId:generated.key.id})
-      return
-    }catch(err){
-      console.error('[loja] Native Flow indisponível; usando fallback',err?.message||err)
-    }
-
     await reply(
 `🍀 *LOJA DO ALPHA BOT*
 
@@ -586,7 +546,9 @@ async function start() {
 4️⃣ 🎁 Caixas
 5️⃣ 🎭 Diversão
 
-0️⃣ Sair`
+0️⃣ Sair
+
+_Responda só com o número._`
     )
   }
 
