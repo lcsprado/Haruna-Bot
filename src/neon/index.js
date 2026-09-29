@@ -16,6 +16,7 @@ import {
   listGroupLicenses, groupLicenseIsActive,
   getLaunchPrice, setLaunchPrice,
   getPixSettings, setPixKey, setPixName,
+  getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
   approveSubscriptionOrder, cancelSubscriptionOrder,
   openLuckyBox, dungeon, robPlayer
@@ -458,6 +459,7 @@ ${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':`💚
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja assinar.')
           const r=await createSubscriptionOrder(chat,sender)
           const price=Number(r.order.amount)
+          const paymentLink=await getPaymentLink()
           await reply(
 `💚 *TREVO — ASSINATURA*
 
@@ -465,11 +467,10 @@ ${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':`💚
 📅 Acesso: *30 dias*
 🧾 Pedido: *${r.order.code}*
 
-💠 *PIX*
-Chave: *${r.pix.key}*
-Nome: *${r.pix.name}*
+💳 *PAGAMENTO PELO MERCADO PAGO*
+${paymentLink}
 
-Após pagar, envie o comprovante ao responsável pelo Trevo junto com o código *${r.order.code}*.
+Após o pagamento, envie o comprovante ao responsável pelo Trevo junto com o código *${r.order.code}*.
 
 ⏳ O pedido fica válido por 24 horas.
 📄 Antes de pagar, leia *${prefix}termos*.
@@ -492,6 +493,13 @@ Valor: *R$ ${Number(order.amount).toLocaleString('pt-BR',{minimumFractionDigits:
 Criado em: *${fmtDate(order.created_at)}*
 Expira em: *${fmtDate(order.expires_at)}*`
           )
+
+        } else if(['setlinkpagamento','setlink'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const value=args.join(' ').trim()
+          if(!value) return await reply(`Uso: *${prefix}setlinkpagamento https://...*`)
+          const link=await setPaymentLink(value)
+          await reply(`👑 Link de pagamento atualizado:\n${link}`)
 
         } else if(['setpix'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
