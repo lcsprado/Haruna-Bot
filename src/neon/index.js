@@ -100,6 +100,25 @@ function parseAmount(s){
   return Number.isFinite(n) ? Math.floor(n) : 0
 }
 
+function normalizeItemText(value){
+  return String(value||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/[_-]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim()
+}
+
+function resolveOwnedItem(items,input,categories=null){
+  const allowed=categories ? items.filter(i=>categories.includes(i.category)) : items
+  const raw=normalizeItemText(input)
+  if(/^\d+$/.test(raw)) return allowed[Number(raw)-1] || null
+  return allowed.find(i=>
+    normalizeItemText(i.item_id)===raw ||
+    normalizeItemText(i.name)===raw
+  ) || null
+}
+
 const SHOP_IDS=[
   'pocao_p',
   'pocao_m',
@@ -464,6 +483,33 @@ Dano final: ${r.damage}
       return true
     }
 
+    if(flow.stage==='equip_select'){
+      const index=Number(input)-1
+      const itemId=flow.data.items?.[index]
+      if(!itemId){
+        await reply('⚙️ Escolha um dos números da lista ou digite *0* para cancelar.')
+        return true
+      }
+      const r=await equipItem(sender,itemId)
+      clearQuickFlow(chat,sender)
+      const tipo=r.category==='weapon'?'arma':'armadura'
+      await reply(`✅ *EQUIPADO!*\n\n${r.name} agora é sua ${tipo} ativa.`)
+      return true
+    }
+
+    if(flow.stage==='use_select'){
+      const index=Number(input)-1
+      const itemId=flow.data.items?.[index]
+      if(!itemId){
+        await reply('🧪 Escolha um dos números da lista ou digite *0* para cancelar.')
+        return true
+      }
+      const r=await usePotion(sender,itemId)
+      clearQuickFlow(chat,sender)
+      await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+      return true
+    }
+
     clearQuickFlow(chat,sender)
     return false
   }
@@ -654,20 +700,78 @@ Fale com o responsável pelo Trevo para ativação.`
           const items=await getInventory(sender)
           if(!items.length) return await reply('🎒 Seu inventário está vazio.')
           let text='🎒 *SEU INVENTÁRIO*\n\n'
-          for(const i of items) text+=`• *${i.name}* ×${i.quantity} _[${i.rarity}]_\n`
+          items.forEach((i,idx)=>{
+            const action=['weapon','armor'].includes(i.category)
+              ? '⚙️ Equipável'
+              : i.category==='consumable'
+                ? '🧪 Utilizável'
+                : i.item_id==='caixa_sorte'
+                  ? '🎁 Abrível'
+                  : '📦 Item'
+            text+=`*${idx+1}.* ${i.name} ×${i.quantity} _[${i.rarity}]_\n   ${action}\n`
+          })
+          text+=`\n⚙️ Para escolher equipamento: *${prefix}equipar*\n🧪 Para usar poção: *${prefix}usar*`
+          if(items.some(i=>i.item_id==='caixa_sorte')) text+=`\n🎁 Para abrir caixa: *${prefix}caixa_sorte*`
           await reply(text.trim())
 
         } else if(['equipar','equip'].includes(cmd)){
-          const id=(args[0]||'').toLowerCase()
-          if(!id) return await reply(`Uso: *${prefix}equipar espada_madeira*`)
-          const r=await equipItem(sender,id)
+          const items=await getInventory(sender)
+          const equipables=items.filter(i=>['weapon','armor'].includes(i.category))
+          if(!equipables.length) return await reply('⚙️ Você não possui arma ou armadura para equipar.')
+
+          const query=args.join(' ').trim()
+          if(!query){
+            setQuickFlow(chat,sender,'equip_select',{items:equipables.map(i=>i.item_id)},90000)
+            let text='⚙️ *O QUE QUER EQUIPAR?*\n\n'
+            equipables.forEach((i,idx)=>{
+              const icon=i.category==='weapon'?'⚔️':'🛡️'
+              text+=`*${idx+1}.* ${icon} ${i.name}\n`
+            })
+            text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
+            return await reply(text)
+          }
+
+          const anyItem=resolveOwnedItem(items,query)
+          if(anyItem && !['weapon','armor'].includes(anyItem.category)){
+            if(anyItem.item_id==='caixa_sorte'){
+              return await reply(`🎁 *${anyItem.name}* não é equipamento.\nUse *${prefix}caixa_sorte* para abrir.`)
+            }
+            return await reply(`❌ *${anyItem.name}* não pode ser equipado.`)
+          }
+
+          const item=resolveOwnedItem(items,query,['weapon','armor'])
+          if(!item){
+            return await reply(`❌ Não encontrei esse equipamento no seu inventário.\nUse *${prefix}equipar* para escolher pela lista.`)
+          }
+
+          const r=await equipItem(sender,item.item_id)
           const tipo=r.category==='weapon'?'arma':'armadura'
-          await reply(`⚙️ *Equipado!*\n${r.name} agora é sua ${tipo} ativa.`)
+          await reply(`✅ *EQUIPADO!*\n\n${r.name} agora é sua ${tipo} ativa.`)
 
         } else if(['usar','use'].includes(cmd)){
-          const id=(args[0]||'').toLowerCase()
-          if(!id) return await reply(`Uso: *${prefix}usar pocao_p*`)
-          const r=await usePotion(sender,id)
+          const items=await getInventory(sender)
+          const usable=items.filter(i=>i.category==='consumable')
+          const query=args.join(' ').trim()
+
+          if(!query){
+            if(!usable.length) return await reply('🧪 Você não possui poções utilizáveis no momento.')
+            setQuickFlow(chat,sender,'use_select',{items:usable.map(i=>i.item_id)},90000)
+            let text='🧪 *QUAL ITEM QUER USAR?*\n\n'
+            usable.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
+            text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
+            return await reply(text)
+          }
+
+          const item=resolveOwnedItem(items,query,['consumable'])
+          if(!item){
+            const anyItem=resolveOwnedItem(items,query)
+            if(anyItem?.item_id==='caixa_sorte'){
+              return await reply(`🎁 Para abrir a Caixa da Sorte, use *${prefix}caixa_sorte*.`)
+            }
+            return await reply(`❌ Não encontrei uma poção com esse nome.\nUse *${prefix}usar* para ver as opções.`)
+          }
+
+          const r=await usePotion(sender,item.item_id)
           await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
 
         } else if(['status','rpg'].includes(cmd)){
