@@ -376,7 +376,7 @@ async function start() {
   async function showShopCategoryMenu(chat,sender,reply){
     setQuickFlow(chat,sender,'shop_category',{},90000)
     await reply(
-`🍀 *LOJA DO TREVO*
+`🍀 *LOJA DO ALPHA BOT*
 
 1️⃣ 🧪 Poções
 2️⃣ ⚔️ Armas
@@ -468,7 +468,7 @@ Você possui: *${stock}*
     items.forEach((i,idx)=>{
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
     })
-    text+='\n👉 Um item: mande só o número.\n📦 Vários itens: mande os números separados por vírgula. Ex.: *1,3,5*\n_No lote, o Trevo vende as cópias repetidas e mantém 1 de cada. Lendários ficam de fora._\n\n⚠️ Equipamento ativo mantém 1 cópia protegida.\n9️⃣ Voltar\n0️⃣ Sair'
+    text+='\n👉 Um item: mande só o número.\n📦 Vários itens: mande os números separados por vírgula. Ex.: *1,3,5*\n_No lote, o Alpha Bot vende as cópias repetidas e mantém 1 de cada. Lendários ficam de fora._\n\n⚠️ Equipamento ativo mantém 1 cópia protegida.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
   }
   async function handleQuickGameFlow({chat,sender,body,reply,msg}){
@@ -489,7 +489,7 @@ Você possui: *${stock}*
     const gamesMenu=async()=>{
       setQuickFlow(chat,sender,'main',{},90000)
       await reply(
-`🎮 *MINIGAMES DO TREVO*
+`🎮 *MINIGAMES DO ALPHA BOT*
 
 1️⃣ 🎰 Roleta
 2️⃣ 🪙 Cara ou Coroa
@@ -506,7 +506,7 @@ Você possui: *${stock}*
     const mainMenu=async()=>{
       setQuickFlow(chat,sender,'nav_main',{},90000)
       await reply(
-`🍀 *TREVO — MENU PRINCIPAL*
+`🍀 *ALPHA BOT — MENU PRINCIPAL*
 
 1️⃣ 👤 Meu perfil
 2️⃣ 💰 Economia
@@ -527,7 +527,7 @@ Você possui: *${stock}*
     const adminMainMenu=async()=>{
       setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
       await reply(
-`👑 *ADMIN TREVO*
+`👑 *ADMIN ALPHA BOT*
 
 1️⃣ 👤 Jogadores
 2️⃣ 💚 Grupos / assinaturas
@@ -615,7 +615,7 @@ Nenhum pedido pendente agora.
     const supportMenu=async()=>{
       setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
       await reply(
-`🆘 *SUPORTE TREVO*
+`🆘 *SUPORTE ALPHA BOT*
 
 Como podemos ajudar?
 
@@ -673,7 +673,7 @@ Nenhum chamado aberto agora.
       await reply(
 `🎭 *DIVERSÃO*
 
-1️⃣ 😂 Piada do Trevo — R$ ${fmt(FUN_PRICES.joke)}
+1️⃣ 😂 Piada do Alpha Bot — R$ ${fmt(FUN_PRICES.joke)}
 2️⃣ 🔮 Horóscopo do dia — R$ ${fmt(FUN_PRICES.horoscope)}
 
 9️⃣ Voltar
@@ -762,7 +762,7 @@ Explique o que aconteceu com o máximo de detalhes que conseguir.
 Protocolo: *${ticket.code}*
 Assunto: *${flow.data.label}*
 
-Sua mensagem foi enviada ao suporte do Trevo.
+Sua mensagem foi enviada ao suporte do Alpha Bot.
 Quando houver resposta, ela chegará por aqui.
 
 Guarde o protocolo: *${ticket.code}*`
@@ -780,7 +780,7 @@ Guarde o protocolo: *${ticket.code}*`
             }
           }
           await sock.sendMessage(ownerJid,{text:
-`🆘 *NOVO CHAMADO TREVO*
+`🆘 *NOVO CHAMADO ALPHA BOT*
 
 Protocolo: *${ticket.code}*
 Categoria: *${flow.data.label}*
@@ -817,7 +817,7 @@ Abra *!admin* → *Chamados de suporte* para responder.`
           const lastUpsert=age(trevoHealth.lastUpsertAt)
           const lastInbound=age(trevoHealth.lastInboundAt)
           await reply(
-`🩺 *DIAGNÓSTICO TREVO*
+`🩺 *DIAGNÓSTICO ALPHA BOT*
 
 WhatsApp: *${String(trevoHealth.whatsapp||'desconhecido').toUpperCase()}*
 Mensagens observadas: *${Number(trevoHealth.messagesSeen||0)}*
@@ -891,7 +891,7 @@ ${ticket.message}
         let delivered=false
         try{
           await sock.sendMessage(ticket.requester_jid,{text:
-`🆘 *RESPOSTA DO SUPORTE TREVO*
+`🆘 *RESPOSTA DO SUPORTE ALPHA BOT*
 
 Protocolo: *${ticket.code}*
 
@@ -904,7 +904,7 @@ Se precisar de mais ajuda, use *!suporte* para abrir um novo chamado.`
           console.error('[suporte] falha ao enviar resposta direta',err?.message||err)
           try{
             await sock.sendMessage(ticket.chat_jid,{text:
-`🆘 *RESPOSTA DO SUPORTE TREVO*
+`🆘 *RESPOSTA DO SUPORTE ALPHA BOT*
 
 Protocolo: *${ticket.code}*
 
@@ -1143,7 +1143,7 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
             return true
           }
           setQuickFlow(chat,sender,'admin_confirm',{action:'blockgroup'},5*60*1000)
-          await reply('⚠️ *Bloquear este grupo?*\nO acesso do Trevo será interrompido.\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
+          await reply('⚠️ *Bloquear este grupo?*\nO acesso do Alpha Bot será interrompido.\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
           return true
         }
 
@@ -1333,10 +1333,10 @@ Criado: *${fmtDate(order.created_at)}*
 `💚 *PAGAMENTO CONFIRMADO!*
 
 🧾 Pedido: *${r.code}*
-✅ Trevo liberado por mais *30 dias*.
+✅ Alpha Bot liberado por mais *30 dias*.
 📅 Validade: *${fmtDate(r.paid_until)}*
 
-Obrigado por apoiar o Trevo 🍀`
+Obrigado por apoiar o Alpha Bot 🍀`
             })
           }catch(err){
             console.error('[assinatura] não foi possível avisar o grupo',err?.message||err)
@@ -1415,7 +1415,7 @@ ${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}
 `✊ *PEDRA, PAPEL E TESOURA*
 
 Você: *${r.choice}*
-Trevo: *${r.bot}*
+Alpha Bot: *${r.bot}*
 
 ${emoji} *${r.result.toUpperCase()}*`)
         return true
@@ -1444,7 +1444,7 @@ Digite uma *letra* ou tente a *palavra inteira*.
         if(!q.already) await progressDailyMission(sender,'game')
         const ttl=Math.max(10,Number(q.remaining||120))*1000
         setQuickFlow(chat,sender,'quiz_answer',{},ttl)
-        let text=`🧠 *QUIZ DO TREVO*\n\n${q.q}\n\n`
+        let text=`🧠 *QUIZ DO ALPHA BOT*\n\n${q.q}\n\n`
         q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
         text+='\n_Responda só com 1, 2, 3 ou 4._'
         await reply(text)
@@ -1535,7 +1535,7 @@ Digite *0* para sair do modo rápido.`
         if(!q.already) await progressDailyMission(sender,'game')
         const ttl=Math.max(10,Number(q.remaining||120))*1000
         setQuickFlow(chat,sender,'quiz_answer',{},ttl)
-        let text=`🧠 *QUIZ DO TREVO*\n\n${q.q}\n\n`
+        let text=`🧠 *QUIZ DO ALPHA BOT*\n\n${q.q}\n\n`
         q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
         text+='\n_Responda só com 1, 2, 3 ou 4._'
         await reply(text)
@@ -1683,7 +1683,7 @@ ${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}
 `✊ *PEDRA, PAPEL E TESOURA*
 
 Você: *${r.choice}*
-Trevo: *${r.bot}*
+Alpha Bot: *${r.bot}*
 
 ${emoji} *${r.result.toUpperCase()}*`)
       return true
@@ -1934,7 +1934,7 @@ Dano final: ${r.damage}
         }
         setQuickFlow(chat,sender,'main',{},90000)
         await reply(
-`🎮 *MINIGAMES DO TREVO*
+`🎮 *MINIGAMES DO ALPHA BOT*
 
 1️⃣ 🎰 Roleta
 2️⃣ 🪙 Cara ou Coroa
@@ -2471,7 +2471,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       if(input==='1'){
         setQuickFlow(chat,sender,'fun_confirm',{service:'joke',price:FUN_PRICES.joke},90000)
-        await reply('😂 Comprar uma *Piada do Trevo* por *R$ '+fmt(FUN_PRICES.joke)+'*?\n\n1️⃣ Comprar\n2️⃣ Cancelar')
+        await reply('😂 Comprar uma *Piada do Alpha Bot* por *R$ '+fmt(FUN_PRICES.joke)+'*?\n\n1️⃣ Comprar\n2️⃣ Cancelar')
         return true
       }
       if(input==='2'){
@@ -2523,7 +2523,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       if(service==='joke'){
         setQuickFlow(chat,sender,'fun_after',{service:'joke'},5*60*1000)
         await reply(
-          '😂 *PIADA DO TREVO*\n\n'+jokeText()+
+          '😂 *PIADA DO ALPHA BOT*\n\n'+jokeText()+
           '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'+
           '\n\n1️⃣ 😂 Comprar outra — R$ '+fmt(FUN_PRICES.joke)+
           '\n0️⃣ Sair'
@@ -2550,7 +2550,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         const r=await purchaseService(sender,'joke',FUN_PRICES.joke)
         setQuickFlow(chat,sender,'fun_after',{service:'joke'},5*60*1000)
         await reply(
-          '😂 *PIADA DO TREVO*\n\n'+jokeText()+
+          '😂 *PIADA DO ALPHA BOT*\n\n'+jokeText()+
           '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'+
           '\n\n1️⃣ 😂 Comprar outra — R$ '+fmt(FUN_PRICES.joke)+
           '\n0️⃣ Sair'
@@ -3303,13 +3303,13 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const r=await createSubscriptionOrder(chat,sender)
         const link=await getPaymentLink()
         clearQuickFlow(chat,sender)
-        await reply(`💚 *ASSINATURA TREVO*\n💰 R$ ${Number(r.order.amount).toLocaleString('pt-BR',{minimumFractionDigits:2})}\n🧾 Pedido: *${r.order.code}*\n\n💳 ${link}`)
+        await reply(`💚 *ASSINATURA ALPHA BOT*\n💰 R$ ${Number(r.order.amount).toLocaleString('pt-BR',{minimumFractionDigits:2})}\n🧾 Pedido: *${r.order.code}*\n\n💳 ${link}`)
         return true
       }
       if(input==='3'){
         const price=await getLaunchPrice()
         clearQuickFlow(chat,sender)
-        await reply(`📄 *TERMOS RESUMIDOS*\n\nPreço atual: R$ ${Number(price).toLocaleString('pt-BR',{minimumFractionDigits:2})} / 30 dias.\nO Trevo utiliza integração não oficial com o WhatsApp e pode sofrer desconexões ou limitações da plataforma.`)
+        await reply(`📄 *TERMOS RESUMIDOS*\n\nPreço atual: R$ ${Number(price).toLocaleString('pt-BR',{minimumFractionDigits:2})} / 30 dias.\nO Alpha Bot utiliza integração não oficial com o WhatsApp e pode sofrer desconexões ou limitações da plataforma.`)
         return true
       }
       if(input==='4'){
@@ -3326,7 +3326,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const lic=await getGroupLicense(chat)
         if(!lic || !groupLicenseIsActive(lic)){
           clearQuickFlow(chat,sender)
-          await reply('🔒 As configurações ficam disponíveis quando o Trevo está ativo neste grupo.')
+          await reply('🔒 As configurações ficam disponíveis quando o Alpha Bot está ativo neste grupo.')
           return true
         }
         const st=await getGroupSettings(chat)
@@ -3371,7 +3371,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
     if(connection==='open'){
       setWhatsAppHealth('open')
-      console.log('[WhatsApp] TREVO CONECTADO')
+      console.log('[WhatsApp] ALPHA BOT CONECTADO')
     }
 
     if(connection==='close'){
@@ -3445,7 +3445,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
           if(!groupLicenseIsActive(license)){
             return await reply(
-`🔒 *TREVO BLOQUEADO NESTE GRUPO*
+`🔒 *ALPHA BOT BLOQUEADO NESTE GRUPO*
 
 O período de acesso terminou ou este grupo foi bloqueado.
 
@@ -3453,7 +3453,7 @@ O período de acesso terminou ou este grupo foi bloqueado.
 📄 Leia: *${prefix}termos*
 📅 Consulte: *${prefix}statusgrupo*
 
-Fale com o responsável pelo Trevo para ativação.`
+Fale com o responsável pelo Alpha Bot para ativação.`
             )
           }
         }
@@ -3476,7 +3476,7 @@ Fale com o responsável pelo Trevo para ativação.`
         if(['suporte','support','ajuda'].includes(cmd)){
           setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
           await reply(
-`🆘 *SUPORTE TREVO*
+`🆘 *SUPORTE ALPHA BOT*
 
 Como podemos ajudar?
 
@@ -3515,7 +3515,7 @@ ${ticket.answer?'\n💬 Resposta:\n'+ticket.answer:''}`
           let delivered=false
           try{
             await sock.sendMessage(ticket.requester_jid,{text:
-`🆘 *RESPOSTA DO SUPORTE TREVO*
+`🆘 *RESPOSTA DO SUPORTE ALPHA BOT*
 
 Protocolo: *${ticket.code}*
 
@@ -3533,7 +3533,7 @@ Se precisar de mais ajuda, use *!suporte*.`
           if(!isGroup) return await reply('⚙️ Use este comando dentro do grupo que deseja configurar.')
           if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores deste grupo podem abrir as configurações.')
           const lic=await getGroupLicense(chat)
-          if(!lic || !groupLicenseIsActive(lic)) return await reply('🔒 As configurações ficam disponíveis quando o Trevo está ativo neste grupo.')
+          if(!lic || !groupLicenseIsActive(lic)) return await reply('🔒 As configurações ficam disponíveis quando o Alpha Bot está ativo neste grupo.')
           const st=await getGroupSettings(chat)
           setQuickFlow(chat,sender,'group_config',{},5*60*1000)
           await reply(
@@ -3651,7 +3651,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         } else if(['minigames','minigame'].includes(cmd)){
           setQuickFlow(chat,sender,'main',{},90000)
           await reply(
-`🎮 *MINIGAMES DO TREVO*
+`🎮 *MINIGAMES DO ALPHA BOT*
 
 1️⃣ 🎰 Roleta
 2️⃣ 🪙 Cara ou Coroa
@@ -3666,7 +3666,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
         } else if(['comandos','commands'].includes(cmd)){
           await reply(
-`🍀 *ATALHOS DO TREVO*
+`🍀 *ATALHOS DO ALPHA BOT*
 
 ${prefix}menu — menu principal
 ${prefix}economia — dinheiro, banco e PIX
@@ -3684,7 +3684,7 @@ ${prefix}comandos — mostra esta lista
           )
 
         } else if(['ping','p'].includes(cmd)){
-          await reply('🍀 Pong! Trevo online e conectado ao Neon.')
+          await reply('🍀 Pong! Alpha Bot online e conectado ao Neon.')
 
         } else if(['saldo','balance','bal'].includes(cmd)){
           const p=await getProfile(sender)
@@ -3800,7 +3800,7 @@ ${prefix}comandos — mostra esta lista
 
         } else if(['piada','joke'].includes(cmd)){
           setQuickFlow(chat,sender,'fun_confirm',{service:'joke',price:FUN_PRICES.joke},90000)
-          await reply('😂 Comprar uma *Piada do Trevo* por *R$ '+fmt(FUN_PRICES.joke)+'*?\n\n1️⃣ Comprar\n2️⃣ Cancelar')
+          await reply('😂 Comprar uma *Piada do Alpha Bot* por *R$ '+fmt(FUN_PRICES.joke)+'*?\n\n1️⃣ Comprar\n2️⃣ Cancelar')
 
         } else if(['horoscopo','horóscopo'].includes(cmd)){
           setQuickFlow(chat,sender,'horoscope_sign',{},90000)
@@ -3923,7 +3923,7 @@ ${prefix}comandos — mostra esta lista
           if(!r.ok) return await reply(`⏳ Você poderá batalhar novamente em ${duration(r.remaining)}.`)
 
           const last=r.log.slice(-6)
-          let text='⚔️ *BATALHA DO TREVO*\n\n'
+          let text='⚔️ *BATALHA DO ALPHA BOT*\n\n'
           for(const l of last){
             text+=`${l.crit?'💥 CRÍTICO! ':'⚔️ '}${l.from} causou *${l.dmg}* em ${l.to} — ❤️ ${l.hp}\n`
           }
@@ -4107,7 +4107,7 @@ ${prefix}clas — ranking de clãs`
 
         } else if(['casas','imoveis','imóveis'].includes(cmd)){
           setQuickFlow(chat,sender,'house_select',{},90000)
-          let text='🏠 *IMÓVEIS DO TREVO*\n\n'
+          let text='🏠 *IMÓVEIS DO ALPHA BOT*\n\n'
           HOUSES.forEach((h,i)=>text+=`*${i+1}.* ${h.name} — R$ ${fmt(h.price)}\n`)
           text+='\n🏡 Sua casa atual vale 60% como entrada em uma melhor.\n👉 *Responda com o número do imóvel.*\n0️⃣ Cancelar'
           await reply(text)
@@ -4134,7 +4134,7 @@ ${prefix}clas — ranking de clãs`
 
         } else if(['carros','concessionaria','concessionária'].includes(cmd)){
           setQuickFlow(chat,sender,'car_select',{},90000)
-          let text='🚗 *CONCESSIONÁRIA DO TREVO*\n\n'
+          let text='🚗 *CONCESSIONÁRIA DO ALPHA BOT*\n\n'
           CARS.forEach((c,i)=>text+=`*${i+1}.* ${c.name} — R$ ${fmt(c.price)}\n`)
           text+='\n🚗 Garagem atual comporta até 5 carros.\n👉 *Responda com o número do carro.*\n0️⃣ Cancelar'
           await reply(text)
@@ -4185,7 +4185,7 @@ ${prefix}clas — ranking de clãs`
         } else if(['games','jogos'].includes(cmd)){
           setQuickFlow(chat,sender,'main',{},90000)
           await reply(
-`🎮 *MINIGAMES DO TREVO*
+`🎮 *MINIGAMES DO ALPHA BOT*
 
 1️⃣ 🎰 Roleta
 2️⃣ 🪙 Cara ou Coroa
@@ -4228,7 +4228,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           const r=rps(choice)
           const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
           await progressDailyMission(sender,'game')
-          await reply(`✊ *PEDRA, PAPEL E TESOURA*\n\nVocê: *${r.choice}*\nTrevo: *${r.bot}*\n\n${emoji} *${r.result.toUpperCase()}*`)
+          await reply(`✊ *PEDRA, PAPEL E TESOURA*\n\nVocê: *${r.choice}*\nAlpha Bot: *${r.bot}*\n\n${emoji} *${r.result.toUpperCase()}*`)
 
         } else if(['forca'].includes(cmd)){
           const r=await startHangman(chat)
@@ -4260,7 +4260,7 @@ _Os comandos antigos continuam funcionando normalmente._`
             return await reply(text)
           }
           await progressDailyMission(sender,'game')
-          let text=`🧠 *QUIZ DO TREVO*\n\n${q.q}\n\n`
+          let text=`🧠 *QUIZ DO ALPHA BOT*\n\n${q.q}\n\n`
           q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
           text+=`\n⏳ Você tem *2 minutos*.\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
           await reply(text)
@@ -4319,15 +4319,15 @@ _Os comandos antigos continuam funcionando normalmente._`
         } else if(['termos'].includes(cmd)){
           const price=await getLaunchPrice()
           await reply(
-`📄 *TERMOS DO TREVO — RESUMO*
+`📄 *TERMOS DO ALPHA BOT — RESUMO*
 
 🎉 *Preço de lançamento:* R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} por grupo / 30 dias
 🎁 *Teste:* 3 dias grátis no primeiro uso do grupo
 
 ⚠️ *Aviso importante*
-O Trevo utiliza integração não oficial com o WhatsApp. Por esse motivo, podem ocorrer desconexões, limitações ou bloqueios do número utilizado pelo bot por decisão da própria plataforma.
+O Alpha Bot utiliza integração não oficial com o WhatsApp. Por esse motivo, podem ocorrer desconexões, limitações ou bloqueios do número utilizado pelo bot por decisão da própria plataforma.
 
-Ao contratar o acesso, o responsável pelo grupo declara estar ciente desse risco. O Trevo não garante funcionamento ininterrupto nem pode impedir eventuais restrições aplicadas pelo WhatsApp.
+Ao contratar o acesso, o responsável pelo grupo declara estar ciente desse risco. O Alpha Bot não garante funcionamento ininterrupto nem pode impedir eventuais restrições aplicadas pelo WhatsApp.
 
 O pagamento refere-se ao acesso às funcionalidades do bot durante o período contratado, enquanto o serviço estiver disponível.
 
@@ -4344,7 +4344,7 @@ O pagamento refere-se ao acesso às funcionalidades do bot durante o período co
 Status: *AINDA NÃO INICIADO*
 🎁 O grupo tem direito a *3 dias grátis*.
 
-O teste começa quando alguém usar um comando normal do Trevo pela primeira vez.
+O teste começa quando alguém usar um comando normal do Alpha Bot pela primeira vez.
 Para contratar direto, use *${prefix}assinar*.`
             )
           }
@@ -4364,7 +4364,7 @@ ${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':`💚
           const price=Number(r.order.amount)
           const paymentLink=await getPaymentLink()
           await reply(
-`💚 *TREVO — ASSINATURA*
+`💚 *ALPHA BOT — ASSINATURA*
 
 🎉 Preço de lançamento: *R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}*
 📅 Acesso: *30 dias*
@@ -4373,7 +4373,7 @@ ${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':`💚
 💳 *PAGAMENTO PELO MERCADO PAGO*
 ${paymentLink}
 
-Após o pagamento, envie o comprovante ao responsável pelo Trevo junto com o código *${r.order.code}*.
+Após o pagamento, envie o comprovante ao responsável pelo Alpha Bot junto com o código *${r.order.code}*.
 
 ⏳ O pedido fica válido por 24 horas.
 📄 Antes de pagar, leia *${prefix}termos*.
@@ -4383,7 +4383,7 @@ _${r.reused?'Este grupo já tinha um pedido pendente; reutilizei o mesmo código
 
         } else if(['pedido'].includes(cmd)){
           const code=String(args[0]||'').toUpperCase()
-          if(!code) return await reply(`Uso: *${prefix}pedido TREVO-XXXXXX*`)
+          if(!code) return await reply(`Uso: *${prefix}pedido ALPHA-XXXXXX*`)
           const order=await getSubscriptionOrder(code)
           if(!order) return await reply('❌ Pedido não encontrado.')
           if(!isOwner && order.chat_jid!==chat) return await reply('⛔ Esse pedido pertence a outro grupo.')
@@ -4412,13 +4412,13 @@ Expira em: *${fmtDate(order.expires_at)}*`
           rows.forEach((r,i)=>{
             text+=`${i+1}. *${r.code}* — R$ ${Number(r.amount).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}\n   criado: ${fmtDate(r.created_at)}\n`
           })
-          text+=`\nPara aprovar: *${prefix}aprovarpedido TREVO-XXXXXX*`
+          text+=`\nPara aprovar: *${prefix}aprovarpedido ALPHA-XXXXXX*`
           await reply(text)
 
         } else if(['aprovarpedido'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const code=String(args[0]||'').toUpperCase()
-          if(!code) return await reply(`Uso: *${prefix}aprovarpedido TREVO-XXXXXX*`)
+          if(!code) return await reply(`Uso: *${prefix}aprovarpedido ALPHA-XXXXXX*`)
           const r=await approveSubscriptionOrder(code,sender)
           await reply(
 `✅ *PEDIDO APROVADO*
@@ -4432,10 +4432,10 @@ Expira em: *${fmtDate(order.expires_at)}*`
 `💚 *PAGAMENTO CONFIRMADO!*
 
 🧾 Pedido: *${r.code}*
-✅ Trevo liberado por mais *30 dias*.
+✅ Alpha Bot liberado por mais *30 dias*.
 📅 Validade: *${fmtDate(r.paid_until)}*
 
-Obrigado por apoiar o Trevo 🍀`
+Obrigado por apoiar o Alpha Bot 🍀`
             })
           }catch(err){
             console.error('[assinatura] não foi possível avisar o grupo',err?.message||err)
@@ -4444,7 +4444,7 @@ Obrigado por apoiar o Trevo 🍀`
         } else if(['cancelarpedido'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const code=String(args[0]||'').toUpperCase()
-          if(!code) return await reply(`Uso: *${prefix}cancelarpedido TREVO-XXXXXX*`)
+          if(!code) return await reply(`Uso: *${prefix}cancelarpedido ALPHA-XXXXXX*`)
           const r=await cancelSubscriptionOrder(code)
           await reply(`🚫 Pedido *${r.code}* cancelado.`)
 
@@ -4534,7 +4534,7 @@ Obrigado por apoiar o Trevo 🍀`
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
           await reply(
-`👑 *ADMIN TREVO*
+`👑 *ADMIN ALPHA BOT*
 
 1️⃣ 👤 Jogadores
 2️⃣ 💚 Grupos / assinaturas
@@ -4551,7 +4551,7 @@ _Os comandos administrativos antigos continuam funcionando._`
         } else if(['menu','help','ajuda'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_main',{},90000)
           await reply(
-`🍀 *TREVO — MENU PRINCIPAL*
+`🍀 *ALPHA BOT — MENU PRINCIPAL*
 
 1️⃣ 👤 Meu perfil
 2️⃣ 💰 Economia
