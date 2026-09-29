@@ -659,9 +659,20 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
             await reply('Nenhum grupo registrado ainda.')
             return true
           }
+          const named=await Promise.all(rows.map(async r=>{
+            try{
+              const meta=await sock.groupMetadata(r.chat_jid)
+              return {...r,group_name:meta?.subject||'Grupo sem nome'}
+            }catch{
+              return {...r,group_name:'Grupo registrado'}
+            }
+          }))
           let text='💚 *GRUPOS REGISTRADOS*\n\n'
-          rows.forEach((r,i)=>text+=`${i+1}. ${groupLicenseIsActive(r)?'✅':'❌'} ${r.plan} — ${fmtDate(r.paid_until)}\n`)
-          text+='\n9️⃣ Voltar'
+          named.forEach((r,i)=>{
+            const plan=String(r.plan||'').toLowerCase()==='trial'?'Trial':String(r.plan||'Plano')
+            text+=`${i+1}. ${groupLicenseIsActive(r)?'✅':'❌'} *${r.group_name}*\n   Plano: *${plan}*\n   Validade: *${fmtDate(r.paid_until)}*\n\n`
+          })
+          text+='9️⃣ Voltar'
           await reply(text.trim())
           return true
         }
@@ -3503,10 +3514,19 @@ Obrigado por apoiar o Trevo 🍀`
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const rows=await listGroupLicenses(50)
           if(!rows.length) return await reply('Nenhum grupo registrado ainda.')
+          const named=await Promise.all(rows.map(async r=>{
+            try{
+              const meta=await sock.groupMetadata(r.chat_jid)
+              return {...r,group_name:meta?.subject||'Grupo sem nome'}
+            }catch{
+              return {...r,group_name:'Grupo registrado'}
+            }
+          }))
           let text='👑 *GRUPOS REGISTRADOS*\n\n'
-          rows.forEach((r,i)=>{
+          named.forEach((r,i)=>{
             const active=groupLicenseIsActive(r)
-            text+=`${i+1}. ${active?'✅':'❌'} ${r.plan} — ${fmtDate(r.paid_until)}\n`
+            const plan=String(r.plan||'').toLowerCase()==='trial'?'Trial':String(r.plan||'Plano')
+            text+=`${i+1}. ${active?'✅':'❌'} *${r.group_name}*\n   Plano: *${plan}*\n   Validade: *${fmtDate(r.paid_until)}*\n\n`
           })
           await reply(text.trim())
 
