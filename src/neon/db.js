@@ -822,3 +822,171 @@ export function groupLicenseIsActive(license) {
   const now=Math.floor(Date.now()/1000)
   return Number(license.paid_until||0)>now
 }
+
+
+export async function openLuckyBox(jid) {
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const inv=await client.query(
+      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+      [jid,'caixa_sorte']
+    )
+    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui uma Caixa da Sorte.')
+
+    await client.query(
+      'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
+      [jid,'caixa_sorte']
+    )
+
+    const roll=Math.random()
+    if(roll<0.55){
+      const cash=1000+Math.floor(Math.random()*4001)
+      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+      await client.query(`
+        INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+        VALUES('system',$1,$2,'lucky_box','cash')
+      `,[jid,cash])
+      return {type:'cash',cash}
+    }
+
+    if(roll<0.80){
+      const itemId=Math.random()<0.65?'pocao_m':'espada_madeira'
+      const item=await client.query('SELECT name FROM items WHERE id=$1',[itemId])
+      await client.query(`
+        INSERT INTO inventories(jid,item_id,quantity)
+        VALUES($1,$2,1)
+        ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1
+      `,[jid,itemId])
+      return {type:'item',itemId,name:item.rows[0]?.name||itemId,qty:1}
+    }
+
+    if(roll<0.95){
+      const exp=100+Math.floor(Math.random()*201)
+      const level=await applyExp(client,jid,exp)
+      return {type:'exp',exp,level}
+    }
+
+    const itemId='espada_ferro'
+    const item=await client.query('SELECT name FROM items WHERE id=$1',[itemId])
+    await client.query(`
+      INSERT INTO inventories(jid,item_id,quantity)
+      VALUES($1,$2,1)
+      ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1
+    `,[jid,itemId])
+    return {type:'rare',itemId,name:item.rows[0]?.name||itemId,qty:1}
+  })
+}
+
+export async function dungeon(jid) {
+  await ensureUser(jid)
+  const cd=await claimCooldown(`dungeon:${jid}`,20*60)
+  if(!cd.ok) return {ok:false,remaining:cd.remaining}
+
+  return transaction(async client=>{
+    const p=await client.query(`
+      SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id
+      FROM users u JOIN stats s ON s.jid=u.jid
+      WHERE u.jid=$1
+      FOR UPDATE OF u,s
+    `,[jid])
+    const row=p.rows[0]
+    if(!row) throw new Error('Perfil não encontrado.')
+    if(Number(row.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes.')
+
+    const weapon=EQUIPMENT[row.weapon_id]||{atk:0,def:0}
+    const armor=EQUIPMENT[row.armor_id]||{atk:0,def:0}
+    const atk=Number(row.atk)+weapon.atk+armor.atk
+    const def=Number(row.def)+weapon.def+armor.def
+    const level=Number(row.level)
+
+    const monsters=[
+      {name:'Slime Sombrio',hp:45,atk:8,def:2,mult:1},
+      {name:'Goblin do Beco',hp:70,atk:12,def:4,mult:1.2},
+      {name:'Orc Brutal',hp:105,atk:17,def:7,mult:1.5},
+      {name:'Cavaleiro Espectral',hp:145,atk:22,def:10,mult:2}
+    ]
+    const idx=Math.min(monsters.length-1,Math.floor((level-1)/3)+Math.floor(Math.random()*2))
+    const m={...monsters[Math.min(idx,monsters.length-1)]}
+    m.hp+=level*6
+    m.atk+=Math.floor(level*1.3)
+    m.def+=Math.floor(level*.7)
+
+    let php=Number(row.hp),mhp=m.hp,rounds=0
+    while(php>0&&mhp>0&&rounds<25){
+      rounds++
+      const pdmg=Math.max(1,Math.round((atk-m.def*.4)*(0.85+Math.random()*.3)))
+      mhp=Math.max(0,mhp-pdmg)
+      if(mhp<=0) break
+      const mdmg=Math.max(1,Math.round((m.atk-def*.35)*(0.85+Math.random()*.3)))
+      php=Math.max(0,php-mdmg)
+    }
+
+    if(php<=0){
+      const recover=Math.max(1,Math.floor(Number(row.max_hp)*.30))
+      await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[recover,jid])
+      const expRes=await applyExp(client,jid,10)
+      return {ok:true,won:false,monster:m.name,hp:recover,maxHp:Number(row.max_hp),exp:10,level:expRes}
+    }
+
+    const cash=Math.floor((700+Math.random()*801)*m.mult)
+    const exp=Math.floor((35+Math.random()*31)*m.mult)
+    await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
+    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('system',$1,$2,'dungeon_reward',$3)
+    `,[jid,cash,m.name])
+    const expRes=await applyExp(client,jid,exp)
+    return {ok:true,won:true,monster:m.name,hp:Math.max(1,php),maxHp:Number(row.max_hp),cash,exp,level:expRes}
+  })
+}
+
+export async function robPlayer(thiefJid,targetJid) {
+  if(thiefJid===targetJid) throw new Error('Você não pode roubar a si mesmo.')
+  await ensureUser(thiefJid)
+  await ensureUser(targetJid)
+
+  const cd=await claimCooldown(`rob:${thiefJid}`,60*60)
+  if(!cd.ok) return {ok:false,remaining:cd.remaining}
+
+  return transaction(async client=>{
+    const ids=[thiefJid,targetJid].sort()
+    const wallets=await client.query(
+      'SELECT jid,cash FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+      [ids]
+    )
+    const stats=await client.query(
+      'SELECT jid,spd FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+      [ids]
+    )
+    const tw=wallets.rows.find(r=>r.jid===thiefJid)
+    const vw=wallets.rows.find(r=>r.jid===targetJid)
+    const ts=stats.rows.find(r=>r.jid===thiefJid)
+    const vs=stats.rows.find(r=>r.jid===targetJid)
+    const victimCash=Number(vw?.cash||0)
+    if(victimCash<100) throw new Error('Essa pessoa está praticamente sem dinheiro na carteira.')
+
+    const speedDiff=Number(ts?.spd||10)-Number(vs?.spd||10)
+    const chance=Math.max(.25,Math.min(.70,.45+(speedDiff*.015)))
+    const success=Math.random()<chance
+
+    if(success){
+      const pct=.05+Math.random()*.10
+      const amount=Math.min(3000,Math.max(50,Math.floor(victimCash*pct)))
+      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[amount,thiefJid])
+      await client.query('UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',[amount,targetJid])
+      await client.query(`
+        INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+        VALUES($1,$2,$3,'robbery','success')
+      `,[targetJid,thiefJid,amount])
+      return {ok:true,success:true,amount,chance}
+    }
+
+    const thiefCash=Number(tw?.cash||0)
+    const fine=Math.min(500,thiefCash)
+    if(fine>0){
+      await client.query('UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',[fine,thiefJid])
+    }
+    return {ok:true,success:false,fine,chance}
+  })
+}
