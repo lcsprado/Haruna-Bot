@@ -273,6 +273,43 @@ async function start() {
     return settings?.[key]!==false
   }
 
+  async function showShopCategoryMenu(chat,sender,reply){
+    setQuickFlow(chat,sender,'shop_category',{},90000)
+    await reply(
+`🍀 *LOJA DO TREVO*
+
+1️⃣ 🧪 Poções
+2️⃣ ⚔️ Armas
+3️⃣ 🛡️ Armaduras
+4️⃣ 🎁 Caixas
+
+0️⃣ Sair`
+    )
+  }
+
+  async function showBoxQuantityMenu(chat,sender,reply,box){
+    const stock=Number(box?.quantity||0)
+    setQuickFlow(chat,sender,'inventory_box_qty',{
+      boxId:box.item_id,
+      boxName:box.name,
+      stock
+    },90000)
+    await reply(
+`🎁 *${box.name.toUpperCase()}*
+
+Você possui: *${stock}*
+
+1️⃣ Abrir 1
+2️⃣ Abrir 5
+3️⃣ Abrir 10
+4️⃣ Abrir todas
+5️⃣ Escolher quantidade
+
+9️⃣ Voltar
+0️⃣ Sair`
+    )
+  }
+
   async function handleQuickGameFlow({chat,sender,body,reply,msg}){
     const flow=getQuickFlow(chat,sender)
     if(!flow) return false
@@ -417,42 +454,8 @@ Nenhum pedido pendente agora.
       return adminMainMenu()
     }
 
-    const shopCategoryMenu=async()=>{
-      setQuickFlow(chat,sender,'shop_category',{},90000)
-      await reply(
-`🍀 *LOJA DO TREVO*
-
-1️⃣ 🧪 Poções
-2️⃣ ⚔️ Armas
-3️⃣ 🛡️ Armaduras
-4️⃣ 🎁 Caixas
-
-0️⃣ Sair`
-      )
-    }
-
-    const boxQuantityMenu=async(box)=>{
-      const stock=Number(box?.quantity||0)
-      setQuickFlow(chat,sender,'inventory_box_qty',{
-        boxId:box.item_id,
-        boxName:box.name,
-        stock
-      },90000)
-      await reply(
-`🎁 *${box.name.toUpperCase()}*
-
-Você possui: *${stock}*
-
-1️⃣ Abrir 1
-2️⃣ Abrir 5
-3️⃣ Abrir 10
-4️⃣ Abrir todas
-5️⃣ Escolher quantidade
-
-9️⃣ Voltar
-0️⃣ Sair`
-      )
-    }
+    const shopCategoryMenu=async()=>showShopCategoryMenu(chat,sender,reply)
+    const boxQuantityMenu=async(box)=>showBoxQuantityMenu(chat,sender,reply,box)
 
     const afterGame=async(game,data,text)=>{
       setQuickFlow(chat,sender,'game_after',{game,...data},5*60*1000)
@@ -3002,13 +3005,13 @@ ${prefix}comandos — mostra esta lista
           await reply(`💸 *PIX realizado!*\n\n➡️ Enviado: R$ ${fmt(r.amount)}\n🧾 Taxa: R$ ${fmt(r.fee)}\n💰 Total debitado: R$ ${fmt(r.total)}`,{mentions:[target]})
 
         } else if(['loja','shop'].includes(cmd)){
-          await shopCategoryMenu()
+          await showShopCategoryMenu(chat,sender,reply)
 
         } else if(['comprar','buy'].includes(cmd)){
           const id=resolveShopItem(args[0])
           const qty=parseInt(args[1]||'1',10)
           if(!id){
-            await shopCategoryMenu()
+            await showShopCategoryMenu(chat,sender,reply)
             return
           }
           const r=await buyItem(sender,id,qty)
@@ -3019,7 +3022,7 @@ ${prefix}comandos — mostra esta lista
           const items=await getInventory(sender)
           const box=items.find(i=>i.item_id===cmd)
           if(!box) return await reply('🎁 Você não possui essa caixa.')
-          await boxQuantityMenu(box)
+          await showBoxQuantityMenu(chat,sender,reply,box)
 
         } else if(SHOP_IDS.includes(cmd) && !BOX_IDS.includes(cmd)){
           const r=await buyItem(sender,cmd,1)
