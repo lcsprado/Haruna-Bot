@@ -163,7 +163,7 @@ export async function getProfile(jid) {
   const { rows } = await db.query(`
     SELECT u.jid,u.push_name,u.level,u.exp,u.premium,
            w.cash,w.bank,w.bank_limit,
-           s.hp,s.max_hp,s.atk,s.def,s.spd,s.win,s.loss
+           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.win,s.loss
     FROM users u
     JOIN wallets w ON w.jid=u.jid
     JOIN stats s ON s.jid=u.jid
@@ -354,6 +354,248 @@ export async function leaderboard(limit=10) {
     JOIN wallets w ON w.jid=u.jid
     WHERE u.jid NOT LIKE '%@local'
     ORDER BY total DESC,u.level DESC,u.created_at ASC
+    LIMIT $1
+  `,[limit])
+  return rows
+}
+
+
+const EQUIPMENT = {
+  espada_madeira: { category:'weapon', atk:5, def:0, name:'Espada de Madeira' },
+  espada_ferro: { category:'weapon', atk:12, def:0, name:'Espada de Ferro' },
+  armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
+  armadura_ferro: { category:'armor', atk:0, def:12, name:'Armadura de Ferro' },
+}
+
+const POTIONS = {
+  pocao_p: { heal:35, name:'Poção Pequena' },
+  pocao_m: { heal:80, name:'Poção Média' },
+}
+
+function expNeeded(level) {
+  return Math.max(100, Number(level) * 100)
+}
+
+async function applyExp(client, jid, gain) {
+  const r = await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  if (!r.rows[0]) return { level:1, exp:0, levels:0 }
+
+  let level=Number(r.rows[0].level)
+  let exp=Number(r.rows[0].exp)+Number(gain)
+  let levels=0
+
+  while(exp >= expNeeded(level)) {
+    exp -= expNeeded(level)
+    level++
+    levels++
+  }
+
+  await client.query(
+    'UPDATE users SET level=$1,exp=$2,updated_at='+nowSql+' WHERE jid=$3',
+    [level,exp,jid]
+  )
+
+  if(levels>0){
+    await client.query(`
+      UPDATE stats
+      SET max_hp=max_hp+$1,
+          hp=max_hp+$1,
+          atk=atk+$2,
+          def=def+$3,
+          spd=spd+$4,
+          updated_at=${nowSql}
+      WHERE jid=$5
+    `,[levels*8,levels*2,levels,levels,jid])
+  }
+
+  return { level, exp, levels }
+}
+
+export async function equipItem(jid, itemId) {
+  const eq=EQUIPMENT[itemId]
+  if(!eq) throw new Error('Esse item não pode ser equipado.')
+
+  return transaction(async client=>{
+    const inv=await client.query(
+      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+      [jid,itemId]
+    )
+    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) {
+      throw new Error('Você não possui esse item.')
+    }
+
+    const field=eq.category==='weapon' ? 'weapon_id' : 'armor_id'
+    await client.query(
+      `UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,
+      [itemId,jid]
+    )
+    return { ...eq, itemId }
+  })
+}
+
+export async function usePotion(jid, itemId) {
+  const potion=POTIONS[itemId]
+  if(!potion) throw new Error('Esse item não é uma poção utilizável.')
+
+  return transaction(async client=>{
+    const inv=await client.query(
+      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+      [jid,itemId]
+    )
+    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) {
+      throw new Error('Você não possui essa poção.')
+    }
+
+    const st=await client.query(
+      'SELECT hp,max_hp FROM stats WHERE jid=$1 FOR UPDATE',
+      [jid]
+    )
+    const hp=Number(st.rows[0].hp)
+    const maxHp=Number(st.rows[0].max_hp)
+    if(hp>=maxHp) throw new Error('Seu HP já está cheio.')
+
+    const newHp=Math.min(maxHp,hp+potion.heal)
+    const healed=newHp-hp
+
+    await client.query(
+      'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
+      [jid,itemId]
+    )
+    await client.query(
+      'UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',
+      [newHp,jid]
+    )
+    return { ...potion, healed, hp:newHp, maxHp }
+  })
+}
+
+export async function getCombatProfile(jid) {
+  const p=await getProfile(jid)
+  if(!p) return null
+  const weapon=EQUIPMENT[p.weapon_id] || {atk:0,def:0,name:'Nenhuma'}
+  const armor=EQUIPMENT[p.armor_id] || {atk:0,def:0,name:'Nenhuma'}
+  return {
+    ...p,
+    effective_atk:Number(p.atk)+weapon.atk+armor.atk,
+    effective_def:Number(p.def)+weapon.def+armor.def,
+    weapon_name:weapon.name,
+    armor_name:armor.name,
+  }
+}
+
+export async function battle(attackerJid, defenderJid) {
+  if(attackerJid===defenderJid) throw new Error('Você não pode batalhar contra si mesmo.')
+  await ensureUser(defenderJid)
+
+  const cd=await claimCooldown(`battle:${attackerJid}`,10*60)
+  if(!cd.ok) return { ok:false, remaining:cd.remaining }
+
+  return transaction(async client=>{
+    const ids=[attackerJid,defenderJid].sort()
+    const statsR=await client.query(
+      'SELECT * FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+      [ids]
+    )
+    const usersR=await client.query(
+      'SELECT jid,push_name,level,exp FROM users WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+      [ids]
+    )
+
+    const statFor=jid=>statsR.rows.find(r=>r.jid===jid)
+    const userFor=jid=>usersR.rows.find(r=>r.jid===jid)
+    const a=statFor(attackerJid)
+    const b=statFor(defenderJid)
+    const au=userFor(attackerJid)
+    const bu=userFor(defenderJid)
+    if(!a || !b) throw new Error('Não foi possível carregar os jogadores.')
+    if(Number(a.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes de batalhar.')
+    if(Number(b.hp)<=0) throw new Error('O adversário está sem HP.')
+
+    const aeW=EQUIPMENT[a.weapon_id]||{atk:0,def:0}
+    const aeA=EQUIPMENT[a.armor_id]||{atk:0,def:0}
+    const beW=EQUIPMENT[b.weapon_id]||{atk:0,def:0}
+    const beA=EQUIPMENT[b.armor_id]||{atk:0,def:0}
+
+    const A={
+      jid:attackerJid,name:au?.push_name||'Jogador',
+      hp:Number(a.hp),maxHp:Number(a.max_hp),
+      atk:Number(a.atk)+aeW.atk+aeA.atk,
+      def:Number(a.def)+aeW.def+aeA.def,
+      spd:Number(a.spd)
+    }
+    const B={
+      jid:defenderJid,name:bu?.push_name||'Jogador',
+      hp:Number(b.hp),maxHp:Number(b.max_hp),
+      atk:Number(b.atk)+beW.atk+beA.atk,
+      def:Number(b.def)+beW.def+beA.def,
+      spd:Number(b.spd)
+    }
+
+    const log=[]
+    let first=A.spd>=B.spd?A:B
+    let second=first===A?B:A
+
+    const hit=(from,to)=>{
+      const variance=0.85+Math.random()*0.30
+      const crit=Math.random()<0.10
+      const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
+      const dmg=crit?Math.round(raw*1.6):raw
+      to.hp=Math.max(0,to.hp-dmg)
+      log.push({from:from.name,to:to.name,dmg,crit,hp:to.hp})
+    }
+
+    for(let round=1;round<=20 && A.hp>0 && B.hp>0;round++){
+      hit(first,second)
+      if(second.hp<=0) break
+      hit(second,first)
+    }
+
+    let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
+    let loser=winner===A?B:A
+    if(A.hp>0 && B.hp>0){
+      loser.hp=0
+    }
+
+    const reward=600+Math.floor(Math.random()*601)
+    await client.query(
+      'UPDATE stats SET hp=$1,win=win+1,updated_at='+nowSql+' WHERE jid=$2',
+      [Math.max(1,winner.hp),winner.jid]
+    )
+    await client.query(
+      'UPDATE stats SET hp=$1,loss=loss+1,updated_at='+nowSql+' WHERE jid=$2',
+      [Math.max(1,Math.floor(loser.maxHp*0.25)),loser.jid]
+    )
+    await client.query(
+      'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+      [reward,winner.jid]
+    )
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('system',$1,$2,'battle_reward','pvp victory')
+    `,[winner.jid,reward])
+
+    const winExp=await applyExp(client,winner.jid,40)
+    const loseExp=await applyExp(client,loser.jid,15)
+
+    return {
+      ok:true,winner,loser,reward,log,
+      winExp,loseExp,
+      final:{
+        attackerHp: A.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(A.maxHp*0.25)),
+        defenderHp: B.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(B.maxHp*0.25))
+      }
+    }
+  })
+}
+
+export async function combatLeaderboard(limit=10) {
+  const {rows}=await db.query(`
+    SELECT u.jid,u.push_name,u.level,s.win,s.loss,
+           (s.win*3-s.loss) AS score
+    FROM users u
+    JOIN stats s ON s.jid=u.jid
+    WHERE u.jid NOT LIKE '%@local'
+    ORDER BY score DESC,s.win DESC,u.level DESC
     LIMIT $1
   `,[limit])
   return rows
