@@ -8,7 +8,7 @@ import makeWASocket, {
 import pino from 'pino'
 import {
   initDatabase, ensureUser, getProfile, claimDaily, work,
-  deposit, withdraw, transfer, getShop, buyItem, getInventory, sellItem, sellItemsBatch, leaderboard,
+  deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard,
   equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -228,6 +228,91 @@ function resolveShopItem(input){
   return SHOP_IDS.includes(raw) ? raw : null
 }
 
+
+const FUN_PRICES={
+  joke:250,
+  horoscope:500
+}
+
+const JOKES=[
+  'Por que o computador foi ao médico? Porque ele estava com um vírus. 🤧💻',
+  'Qual é o café mais perigoso? O ex-presso. ☕😂',
+  'O que o zero disse para o oito? Belo cinto! 😄',
+  'Por que a matemática ficou triste? Porque tinha muitos problemas. 📚😂',
+  'Qual é o animal mais antigo? A zebra, porque ainda é preto e branco. 🦓',
+  'O que uma impressora falou para a outra? Essa folha é sua ou é impressão minha? 🖨️😂',
+  'Por que o livro de história terminou o namoro? Porque vivia preso ao passado. 📖',
+  'O que o tomate foi fazer no banco? Tirar extrato. 🍅💰',
+  'Por que o celular foi para a escola? Para melhorar a recepção. 📱😂',
+  'Qual é o contrário de volátil? Vem cá, sobrinho. 😅',
+  'O que o pato falou para a pata? Vem quá! 🦆',
+  'Por que o relógio foi expulso da sala? Porque ficava fazendo hora. ⌚',
+  'O que o Wi-Fi disse para o roteador? Sinto uma conexão entre nós. 📶❤️',
+  'Por que a moeda foi ao psicólogo? Porque estava sem valor. 🪙😂',
+  'Qual é a tecla preferida do astronauta? Espaço. 🚀⌨️',
+  'O que o chão falou para a mesa? Você tem quatro pernas e eu que aguento tudo. 😂',
+  'Por que o programador levou shampoo para o trabalho? Porque o código tinha muitos bugs. 🐛',
+  'Como o elétron atende o telefone? Próton? ⚛️😂',
+  'O que a parede falou para a outra? A gente se encontra na esquina. 🧱',
+  'Por que o banco de dados terminou o namoro? Faltava relacionamento. 🗄️😂'
+]
+
+const SIGNS=[
+  ['aries','Áries'],['touro','Touro'],['gemeos','Gêmeos'],['cancer','Câncer'],
+  ['leao','Leão'],['virgem','Virgem'],['libra','Libra'],['escorpiao','Escorpião'],
+  ['sagitario','Sagitário'],['capricornio','Capricórnio'],['aquario','Aquário'],['peixes','Peixes']
+]
+
+const HOROSCOPE_MOODS=[
+  'Dia bom para organizar ideias e terminar algo que ficou pela metade.',
+  'Uma conversa leve pode trazer uma surpresa positiva.',
+  'Vale desacelerar antes de tomar decisões por impulso.',
+  'Sua energia favorece criatividade, humor e novos planos.',
+  'O dia pede equilíbrio entre diversão e responsabilidade.',
+  'Pode surgir uma oportunidade pequena que vale atenção.',
+  'Evite gastar energia discutindo por coisas que não importam tanto.',
+  'Bom momento para retomar contato com alguém ou um projeto esquecido.',
+  'Seu foco tende a melhorar quando você resolve primeiro as tarefas menores.',
+  'Hoje a sorte está mais ligada a iniciativa do que a esperar acontecer.'
+]
+
+const HOROSCOPE_LUCK=[
+  '🍀 Sorte: boa',
+  '🍀 Sorte: moderada',
+  '🍀 Sorte: aparecendo nos detalhes',
+  '🍀 Sorte: melhor no fim do dia',
+  '🍀 Sorte: favorece quem arrisca com calma'
+]
+
+function dayKeySaoPaulo(){
+  return new Intl.DateTimeFormat('en-CA',{
+    timeZone:'America/Sao_Paulo',
+    year:'numeric',month:'2-digit',day:'2-digit'
+  }).format(new Date())
+}
+
+function hashText(text){
+  let h=2166136261
+  for(const ch of String(text)){
+    h^=ch.charCodeAt(0)
+    h=Math.imul(h,16777619)
+  }
+  return h>>>0
+}
+
+function jokeText(){
+  return JOKES[Math.floor(Math.random()*JOKES.length)]
+}
+
+function horoscopeText(signId,signName){
+  const seed=hashText(signId+'|'+dayKeySaoPaulo())
+  const mood=HOROSCOPE_MOODS[seed%HOROSCOPE_MOODS.length]
+  const luck=HOROSCOPE_LUCK[Math.floor(seed/17)%HOROSCOPE_LUCK.length]
+  return '🔮 *HORÓSCOPO DO DIA — '+signName.toUpperCase()+'*\n\n'+
+    mood+'\n\n'+luck+
+    '\n\n_Leitura criada só por diversão/entretenimento._'
+}
+
 async function start() {
   await initDatabase()
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
@@ -296,6 +381,7 @@ async function start() {
 2️⃣ ⚔️ Armas
 3️⃣ 🛡️ Armaduras
 4️⃣ 🎁 Caixas
+5️⃣ 🎭 Diversão
 
 0️⃣ Sair`
     )
@@ -536,6 +622,26 @@ Nenhum pedido pendente agora.
     const inventoryMenu=async()=>showInventoryMenu(chat,sender,reply)
     const equipmentMenu=async()=>showEquipmentMenu(chat,sender,reply)
     const sellMenu=async()=>showSellMenu(chat,sender,reply)
+    const funMenu=async()=>{
+      setQuickFlow(chat,sender,'fun_shop',{},90000)
+      await reply(
+`🎭 *DIVERSÃO*
+
+1️⃣ 😂 Piada do Trevo — R$ ${fmt(FUN_PRICES.joke)}
+2️⃣ 🔮 Horóscopo do dia — R$ ${fmt(FUN_PRICES.horoscope)}
+
+9️⃣ Voltar
+0️⃣ Sair`
+      )
+    }
+
+    const horoscopeSignMenu=async()=>{
+      setQuickFlow(chat,sender,'horoscope_sign',{},90000)
+      let text='🔮 *ESCOLHA SEU SIGNO*\n\n'
+      SIGNS.forEach((s,i)=>text+='*'+(i+1)+'.* '+s[1]+'\n')
+      text+='\n9️⃣ Voltar\n0️⃣ Sair'
+      await reply(text)
+    }
 
     const afterGame=async(game,data,text)=>{
       setQuickFlow(chat,sender,'game_after',{game,...data},5*60*1000)
@@ -2136,9 +2242,81 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await inventoryMenu()
       return true
     }
+    if(flow.stage==='fun_shop'){
+      if(input==='9'){
+        await shopCategoryMenu()
+        return true
+      }
+      if(input==='1'){
+        setQuickFlow(chat,sender,'fun_confirm',{service:'joke',price:FUN_PRICES.joke},90000)
+        await reply('😂 Comprar uma *Piada do Trevo* por *R$ '+fmt(FUN_PRICES.joke)+'*?\n\n1️⃣ Comprar\n2️⃣ Cancelar')
+        return true
+      }
+      if(input==='2'){
+        await horoscopeSignMenu()
+        return true
+      }
+      await reply('🎭 Escolha *1 Piada* ou *2 Horóscopo*.')
+      return true
+    }
+
+    if(flow.stage==='horoscope_sign'){
+      if(input==='9'){
+        await funMenu()
+        return true
+      }
+      const sign=SIGNS[Number(input)-1]
+      if(!sign){
+        await reply('🔮 Escolha um signo de *1 a 12*.')
+        return true
+      }
+      setQuickFlow(chat,sender,'fun_confirm',{
+        service:'horoscope',
+        price:FUN_PRICES.horoscope,
+        signId:sign[0],
+        signName:sign[1]
+      },90000)
+      await reply(
+        '🔮 Comprar o horóscopo de *'+sign[1]+'* por *R$ '+fmt(FUN_PRICES.horoscope)+'*?\n\n'+
+        '1️⃣ Comprar\n2️⃣ Cancelar'
+      )
+      return true
+    }
+
+    if(flow.stage==='fun_confirm'){
+      if(input==='2'){
+        await funMenu()
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Comprar* ou *2 Cancelar*.')
+        return true
+      }
+
+      const r=await purchaseService(sender,flow.data.service,Number(flow.data.price))
+      clearQuickFlow(chat,sender)
+
+      if(flow.data.service==='joke'){
+        await reply(
+          '😂 *PIADA DO TREVO*\n\n'+jokeText()+
+          '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
+        )
+      }else{
+        await reply(
+          horoscopeText(flow.data.signId,flow.data.signName)+
+          '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
+        )
+      }
+      return true
+    }
+
     if(flow.stage==='shop_category'){
+      if(input==='5'){
+        await funMenu()
+        return true
+      }
       if(!['1','2','3','4'].includes(input)){
-        await reply('🍀 Escolha *1, 2, 3 ou 4*.')
+        await reply('🍀 Escolha *1, 2, 3, 4 ou 5*.')
         return true
       }
       const items=await getShop()
@@ -3027,7 +3205,7 @@ Fale com o responsável pelo Trevo para ativação.`
         }
 
         if(isGroup && !isOwner){
-          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell'])
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
@@ -3309,6 +3487,17 @@ ${prefix}comandos — mostra esta lista
           }
           const r=await transfer(sender,target,amount)
           await reply(`💸 *PIX realizado!*\n\n➡️ Enviado: R$ ${fmt(r.amount)}\n🧾 Taxa: R$ ${fmt(r.fee)}\n💰 Total debitado: R$ ${fmt(r.total)}`,{mentions:[target]})
+
+        } else if(['piada','joke'].includes(cmd)){
+          setQuickFlow(chat,sender,'fun_confirm',{service:'joke',price:FUN_PRICES.joke},90000)
+          await reply('😂 Comprar uma *Piada do Trevo* por *R$ '+fmt(FUN_PRICES.joke)+'*?\n\n1️⃣ Comprar\n2️⃣ Cancelar')
+
+        } else if(['horoscopo','horóscopo'].includes(cmd)){
+          setQuickFlow(chat,sender,'horoscope_sign',{},90000)
+          let text='🔮 *ESCOLHA SEU SIGNO*\n\n'
+          SIGNS.forEach((sg,i)=>text+='*'+(i+1)+'.* '+sg[1]+'\n')
+          text+='\n0️⃣ Sair'
+          await reply(text)
 
         } else if(['loja','shop'].includes(cmd)){
           await showShopCategoryMenu(chat,sender,reply)
