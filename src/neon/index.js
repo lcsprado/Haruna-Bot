@@ -66,7 +66,7 @@ async function start() {
   }
 
   sock.ev.on('connection.update',({connection,lastDisconnect})=>{
-    if(connection==='open') console.log('[WhatsApp] BOT CONECTADO')
+    if(connection==='open') console.log('[WhatsApp] TREVO CONECTADO')
     if(connection==='close'){
       const code=lastDisconnect?.error?.output?.statusCode
       const loggedOut=code===DisconnectReason.loggedOut
@@ -87,11 +87,11 @@ async function start() {
         if(!body.startsWith(prefix)) continue
 
         await ensureUser(sender,msg.pushName || '')
-        const [cmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
+        const [cmd]=body.slice(prefix.length).trim().split(/\s+/)
         const reply=text=>sock.sendMessage(chat,{text},{quoted:msg})
 
         if(['ping','p'].includes(cmd.toLowerCase())){
-          await reply('🏓 Pong! Bot online e conectado ao Neon.')
+          await reply('🍀 Pong! Trevo online e conectado ao Neon.')
         } else if(['saldo','balance','bal'].includes(cmd.toLowerCase())){
           const p=await getProfile(sender)
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
@@ -101,9 +101,9 @@ async function start() {
         } else if(['daily','diario'].includes(cmd.toLowerCase())){
           const r=await claimDaily(sender)
           if(!r.ok) await reply(`⏳ Daily já coletado. Volte em ${duration(r.remaining)}.`)
-          else await reply(`🎁 Daily coletado! +R$ ${fmt(r.amount)}`)
+          else await reply(`🍀 Daily coletado! +R$ ${fmt(r.amount)}`)
         } else if(['menu','help','ajuda'].includes(cmd.toLowerCase())){
-          await reply(`🤖 *Haruna Neon*\n\n${prefix}ping — testar bot\n${prefix}saldo — ver dinheiro\n${prefix}perfil — ver personagem\n${prefix}daily — prêmio diário\n\nBackend: Neon PostgreSQL`)
+          await reply(`🍀 *Trevo*\n\n${prefix}ping — testar bot\n${prefix}saldo — ver dinheiro\n${prefix}perfil — ver personagem\n${prefix}daily — prêmio diário\n\nBackend: Neon PostgreSQL`)
         }
       }catch(err){
         console.error('[mensagem] erro',err)
