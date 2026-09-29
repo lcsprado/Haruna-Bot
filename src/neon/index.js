@@ -47,7 +47,10 @@ const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
   whatsapp:'starting',
   lastChange:Date.now(),
   lastOpen:0,
-  everConnected:false
+  everConnected:false,
+  lastUpsertAt:0,
+  lastInboundAt:0,
+  messagesSeen:0
 })
 let connectionWatchdog=null
 function setWhatsAppHealth(state){
@@ -181,11 +184,19 @@ async function start() {
     logger:logger.child({level:'silent'}),
     browser:Browsers.ubuntu('Chrome'),
     printQRInTerminal:!pairingNumber,
-    markOnlineOnConnect:false,
+    markOnlineOnConnect:true,
     syncFullHistory:false,
     connectTimeoutMs:60000,
     defaultQueryTimeoutMs:60000,
-    keepAliveIntervalMs:10000
+    keepAliveIntervalMs:25000,
+    retryRequestDelayMs:500,
+    fireInitQueries:true,
+    emitOwnEvents:true,
+    enableAutoSessionRecreation:true,
+    transactionOpts:{
+      maxCommitRetries:3,
+      delayBetweenTriesMs:500
+    }
   })
 
   sock.ev.on('creds.update',saveCreds)
@@ -1705,10 +1716,13 @@ Valor: *R$ ${fmt(item.price)}*
   })
 
   sock.ev.on('messages.upsert',async({messages,type})=>{
+    trevoHealth.lastUpsertAt=Date.now()
+    trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
     if(type!=='notify') return
     for(const msg of messages){
       try{
         if(!msg?.message || msg.key.fromMe) continue
+        trevoHealth.lastInboundAt=Date.now()
         const chat=msg.key.remoteJid
         if(!chat || chat==='status@broadcast') continue
         const sender=msg.key.participant || chat
