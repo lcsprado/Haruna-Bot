@@ -18,7 +18,7 @@ import {
   getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
   approveSubscriptionOrder, cancelSubscriptionOrder,
-  openLuckyBox, dungeon, robPlayer
+  openLuckyBox, openLuckyBoxes, dungeon, robPlayer
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
@@ -110,6 +110,19 @@ function mentionsOf(msg) {
 }
 
 function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
+
+function luckyBoxSummary(r){
+  let text=`🎁 *CAIXA DA SORTE — RESULTADO*\n\n📦 Caixas abertas: *${r.opened}*\n`
+  if(r.cash>0) text+=`💰 Dinheiro: *R$ ${fmt(r.cash)}*\n`
+  if(r.exp>0) text+=`✨ EXP: *+${fmt(r.exp)}*\n`
+  if(r.items?.length){
+    text+='🎒 Itens:\n'
+    for(const item of r.items) text+=`   • ${item.name} ×${item.qty}\n`
+  }
+  if(r.cash<=0 && r.exp<=0 && !r.items?.length) text+='🍃 Nenhum prêmio registrado.\n'
+  text+=`\n📦 Caixas restantes: *${r.remaining}*\n💵 Carteira: *R$ ${fmt(r.balance)}*`
+  return text
+}
 function fmtDate(epoch){
   if(!epoch) return '—'
   return new Date(Number(epoch)*1000).toLocaleString('pt-BR',{
@@ -1728,11 +1741,29 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       if(input==='5'){
-        const r=await openLuckyBox(sender)
-        clearQuickFlow(chat,sender)
-        if(r.type==='cash') await reply(`🎁 *CAIXA DA SORTE*\n💰 Você encontrou *R$ ${fmt(r.cash)}*!`)
-        else if(r.type==='exp') await reply(`🎁 *CAIXA DA SORTE*\n✨ Você recebeu *+${r.exp} EXP*!`)
-        else await reply(`🎁 *CAIXA DA SORTE*\nVocê recebeu *${r.name}* ×${r.qty}!`)
+        const items=await getInventory(sender)
+        const box=items.find(i=>i.item_id==='caixa_sorte')
+        const stock=Number(box?.quantity||0)
+        if(stock<1){
+          clearQuickFlow(chat,sender)
+          await reply('🎁 Você não possui Caixa da Sorte.')
+          return true
+        }
+        setQuickFlow(chat,sender,'inventory_box_qty',{stock},90000)
+        await reply(
+`🎁 *ABRIR CAIXA DA SORTE*
+
+Você possui: *${stock}*
+
+1️⃣ Abrir 1
+2️⃣ Abrir 5
+3️⃣ Abrir 10
+4️⃣ Abrir todas
+5️⃣ Escolher quantidade
+
+9️⃣ Voltar
+0️⃣ Sair`
+        )
         return true
       }
       await reply('🛒 Escolha de *1 a 5* ou *0* para sair.')
@@ -1812,8 +1843,22 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       if(item.item_id==='caixa_sorte'){
-        setQuickFlow(chat,sender,'inventory_box_confirm',{},90000)
-        await reply('🎁 Abrir uma *Caixa da Sorte*?\n\n1️⃣ Sim\n2️⃣ Não')
+        const stock=Number(item.quantity||0)
+        setQuickFlow(chat,sender,'inventory_box_qty',{stock},90000)
+        await reply(
+`🎁 *ABRIR CAIXA DA SORTE*
+
+Você possui: *${stock}*
+
+1️⃣ Abrir 1
+2️⃣ Abrir 5
+3️⃣ Abrir 10
+4️⃣ Abrir todas
+5️⃣ Escolher quantidade
+
+9️⃣ Voltar
+0️⃣ Sair`
+        )
         return true
       }
       clearQuickFlow(chat,sender)
@@ -1853,21 +1898,84 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       return true
     }
 
-    if(flow.stage==='inventory_box_confirm'){
+    if(flow.stage==='inventory_box_qty'){
+      if(input==='9'){
+        const items=await getInventory(sender)
+        setQuickFlow(chat,sender,'inventory_select',{items},90000)
+        let text='🎒 *SEU INVENTÁRIO*\n\n'
+        items.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
+        text+='\n👉 Escolha um item pelo número.\n0️⃣ Sair'
+        await reply(text)
+        return true
+      }
+
+      const stock=Number(flow.data.stock||0)
+      if(input==='4'){
+        setQuickFlow(chat,sender,'inventory_box_all_confirm',{qty:stock},90000)
+        await reply(
+`⚠️ *ABRIR TODAS AS CAIXAS?*
+
+Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
+
+1️⃣ Confirmar
+2️⃣ Cancelar`
+        )
+        return true
+      }
+
+      if(input==='5'){
+        setQuickFlow(chat,sender,'inventory_box_custom',{stock},90000)
+        await reply(`⌨️ Digite quantas caixas quer abrir.\nVocê possui *${stock}*.\n\n0️⃣ Sair`)
+        return true
+      }
+
+      const qtyMap={1:1,2:5,3:10}
+      const qty=qtyMap[input]
+      if(!qty){
+        await reply('🎁 Escolha *1, 2, 3, 4 ou 5*.')
+        return true
+      }
+      if(qty>stock){
+        await reply(`🎁 Você possui apenas *${stock}* caixa(s). Escolha outra quantidade.`)
+        return true
+      }
+
+      const r=await openLuckyBoxes(sender,qty)
+      clearQuickFlow(chat,sender)
+      await reply(luckyBoxSummary(r))
+      return true
+    }
+
+    if(flow.stage==='inventory_box_custom'){
+      const stock=Number(flow.data.stock||0)
+      const qty=parseInt(input,10)
+      if(!Number.isInteger(qty)||qty<1){
+        await reply('🎁 Digite uma quantidade válida maior que zero.')
+        return true
+      }
+      if(qty>stock){
+        await reply(`🎁 Você possui apenas *${stock}* caixa(s).`)
+        return true
+      }
+      const r=await openLuckyBoxes(sender,qty)
+      clearQuickFlow(chat,sender)
+      await reply(luckyBoxSummary(r))
+      return true
+    }
+
+    if(flow.stage==='inventory_box_all_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
-        await reply('✅ Cancelado.')
+        await reply('✅ Abertura cancelada.')
         return true
       }
       if(input!=='1'){
-        await reply('Escolha *1 Sim* ou *2 Não*.')
+        await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
         return true
       }
-      const r=await openLuckyBox(sender)
+      const r=await openLuckyBoxes(sender,Number(flow.data.qty||0))
       clearQuickFlow(chat,sender)
-      if(r.type==='cash') await reply(`🎁 Você encontrou *R$ ${fmt(r.cash)}*!`)
-      else if(r.type==='exp') await reply(`🎁 Você recebeu *+${r.exp} EXP*!`)
-      else await reply(`🎁 Você recebeu *${r.name}* ×${r.qty}!`)
+      await reply(luckyBoxSummary(r))
       return true
     }
 
@@ -2845,11 +2953,25 @@ ${prefix}comandos — mostra esta lista
           await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
 
         } else if(cmd==='caixa_sorte'){
-          const r=await openLuckyBox(sender)
-          if(r.type==='cash') await reply(`🎁 *CAIXA DA SORTE*\n💰 Você encontrou *R$ ${fmt(r.cash)}*!`)
-          else if(r.type==='exp') await reply(`🎁 *CAIXA DA SORTE*\n✨ Você recebeu *+${r.exp} EXP*!\n⭐ Nível atual: ${r.level.level}`)
-          else if(r.type==='rare') await reply(`🌟 *PRÊMIO RARO!*\nVocê recebeu *${r.name}* ×${r.qty}!`)
-          else await reply(`🎁 *CAIXA DA SORTE*\nVocê recebeu *${r.name}* ×${r.qty}!`)
+          const items=await getInventory(sender)
+          const box=items.find(i=>i.item_id==='caixa_sorte')
+          const stock=Number(box?.quantity||0)
+          if(stock<1) return await reply('🎁 Você não possui Caixa da Sorte.')
+          setQuickFlow(chat,sender,'inventory_box_qty',{stock},90000)
+          await reply(
+`🎁 *ABRIR CAIXA DA SORTE*
+
+Você possui: *${stock}*
+
+1️⃣ Abrir 1
+2️⃣ Abrir 5
+3️⃣ Abrir 10
+4️⃣ Abrir todas
+5️⃣ Escolher quantidade
+
+9️⃣ Voltar
+0️⃣ Sair`
+          )
 
         } else if(SHOP_IDS.includes(cmd) && cmd!=='caixa_sorte'){
           const r=await buyItem(sender,cmd,1)
