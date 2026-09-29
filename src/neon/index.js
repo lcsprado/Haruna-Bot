@@ -8,7 +8,8 @@ import makeWASocket, {
 import pino from 'pino'
 import {
   initDatabase, ensureUser, getProfile, claimDaily, work,
-  deposit, withdraw, transfer, getShop, buyItem, getInventory, leaderboard
+  deposit, withdraw, transfer, getShop, buyItem, getInventory, leaderboard,
+  equipItem, usePotion, getCombatProfile, battle, combatLeaderboard
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 
@@ -172,6 +173,64 @@ async function start() {
           for(const i of items) text+=`• *${i.name}* ×${i.quantity} _[${i.rarity}]_\n`
           await reply(text.trim())
 
+        } else if(['equipar','equip'].includes(cmd)){
+          const id=(args[0]||'').toLowerCase()
+          if(!id) return await reply(`Uso: *${prefix}equipar espada_madeira*`)
+          const r=await equipItem(sender,id)
+          const tipo=r.category==='weapon'?'arma':'armadura'
+          await reply(`⚙️ *Equipado!*\n${r.name} agora é sua ${tipo} ativa.`)
+
+        } else if(['usar','use'].includes(cmd)){
+          const id=(args[0]||'').toLowerCase()
+          if(!id) return await reply(`Uso: *${prefix}usar pocao_p*`)
+          const r=await usePotion(sender,id)
+          await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+
+        } else if(['status','rpg'].includes(cmd)){
+          const p=await getCombatProfile(sender)
+          await reply(
+`⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
+
+⭐ Nível: ${p.level}
+✨ EXP: ${p.exp}/${p.level*100}
+❤️ HP: ${p.hp}/${p.max_hp}
+⚔️ ATK: ${p.effective_atk}
+🛡️ DEF: ${p.effective_def}
+💨 SPD: ${p.spd}
+
+🗡️ Arma: ${p.weapon_name}
+🥋 Armadura: ${p.armor_name}
+
+🏆 Vitórias: ${p.win}
+💀 Derrotas: ${p.loss}`
+          )
+
+        } else if(['batalhar','batalha','battle','duelo'].includes(cmd)){
+          const target=mentionsOf(msg)[0]
+          if(!target) return await reply(`Uso no grupo: *${prefix}batalhar @pessoa*`)
+          const r=await battle(sender,target)
+          if(!r.ok) return await reply(`⏳ Você poderá batalhar novamente em ${duration(r.remaining)}.`)
+
+          const last=r.log.slice(-6)
+          let text='⚔️ *BATALHA DO TREVO*\n\n'
+          for(const l of last){
+            text+=`${l.crit?'💥 CRÍTICO! ':'⚔️ '}${l.from} causou *${l.dmg}* em ${l.to} — ❤️ ${l.hp}\n`
+          }
+          text+=`\n🏆 *Vencedor: ${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}\n✨ EXP: +40 vencedor / +15 derrotado`
+          if(r.winExp.levels>0) text+=`\n⬆️ ${r.winner.name} subiu ${r.winExp.levels} nível(is)!`
+          if(r.loseExp.levels>0) text+=`\n⬆️ ${r.loser.name} subiu ${r.loseExp.levels} nível(is)!`
+          await reply(text,{mentions:[target]})
+
+        } else if(['rankingrpg','rankrpg','toprpg'].includes(cmd)){
+          const rows=await combatLeaderboard(10)
+          if(!rows.length) return await reply('⚔️ Ainda não há jogadores no ranking RPG.')
+          let text='⚔️ *RANKING RPG*\n\n'
+          rows.forEach((r,i)=>{
+            const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}º`
+            text+=`${medal} *${r.push_name || 'Jogador'}* — Nv.${r.level} | ${r.win}V/${r.loss}D\n`
+          })
+          await reply(text.trim())
+
         } else if(['ranking','rank','top'].includes(cmd)){
           const rows=await leaderboard(10)
           if(!rows.length) return await reply('🏆 Ainda não há jogadores no ranking.')
@@ -198,6 +257,13 @@ ${prefix}pix @pessoa <valor>
 ${prefix}loja
 ${prefix}comprar <id> [qtd]
 ${prefix}inventario
+${prefix}equipar <id>
+${prefix}usar <id>
+
+⚔️ *RPG*
+${prefix}status
+${prefix}batalhar @pessoa
+${prefix}rankingrpg
 
 🏆 *Competição*
 ${prefix}ranking
@@ -206,7 +272,7 @@ ${prefix}ranking
 ${prefix}perfil
 ${prefix}ping
 
-_Novos sistemas de RPG, clãs e família virão nas próximas versões._`
+_Em breve: dungeon, roubo, clãs e família._`
           )
         }
       }catch(err){
