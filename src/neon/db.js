@@ -163,7 +163,8 @@ export async function initDatabase() {
     VALUES
       ('launch_price','2'::jsonb),
       ('pix_key','""'::jsonb),
-      ('pix_name','"Trevo"'::jsonb)
+      ('pix_name','"Trevo"'::jsonb),
+      ('payment_link','"https://mpago.la/1Aqm14o"'::jsonb)
     ON CONFLICT(key) DO NOTHING
   `)
 
@@ -1205,4 +1206,31 @@ export async function cancelSubscriptionOrder(code) {
   `,[code,now])
   if(!rows[0]) throw new Error('Pedido pendente não encontrado.')
   return rows[0]
+}
+
+
+export async function getPaymentLink() {
+  const { rows } = await db.query(
+    "SELECT value FROM trevo_settings WHERE key='payment_link'"
+  )
+  return String(rows[0]?.value ?? 'https://mpago.la/1Aqm14o')
+}
+
+export async function setPaymentLink(value) {
+  value=String(value||'').trim()
+  try{
+    const u=new URL(value)
+    if(!['http:','https:'].includes(u.protocol)) throw new Error()
+  }catch{
+    throw new Error('Link de pagamento inválido.')
+  }
+
+  await db.query(`
+    INSERT INTO trevo_settings(key,value,updated_at)
+    VALUES('payment_link',$1::jsonb,${nowSql})
+    ON CONFLICT(key)
+    DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+  `,[JSON.stringify(value)])
+
+  return value
 }
