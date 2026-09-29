@@ -9,7 +9,8 @@ import pino from 'pino'
 import {
   initDatabase, ensureUser, getProfile, claimDaily, work,
   deposit, withdraw, transfer, getShop, buyItem, getInventory, leaderboard,
-  equipItem, usePotion, getCombatProfile, battle, combatLeaderboard
+  equipItem, usePotion, getCombatProfile, battle, combatLeaderboard,
+  acquireRuntimeLock
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 
@@ -67,6 +68,7 @@ function resolveShopItem(input){
 
 async function start() {
   await initDatabase()
+  await acquireRuntimeLock(sessionId)
   const { state, saveCreds }=await useNeonAuthState(sessionId)
   const { version }=await fetchLatestBaileysVersion()
 
