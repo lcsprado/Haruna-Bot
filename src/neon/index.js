@@ -705,8 +705,11 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
       if(flow.stage==='admin_amount_custom'){
         const {action,target}=flow.data
         const amount=parseAmount(rawInput)
-        if(amount<1){
-          await reply('Digite um valor válido maior que zero.')
+        const max=action==='addexp' ? 50_000_000 : 1_000_000_000_000
+        if(!Number.isSafeInteger(amount) || amount<1 || amount>max){
+          await reply(action==='addexp'
+            ? '⚠️ EXP inválida. Use um valor entre *1 e 50.000.000*.'
+            : '⚠️ Valor inválido. Use um valor entre *1 e 1.000.000.000.000*.')
           return true
         }
         setQuickFlow(chat,sender,'admin_confirm',{action,target,amount},5*60*1000)
