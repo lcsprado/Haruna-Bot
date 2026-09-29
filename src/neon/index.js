@@ -2225,12 +2225,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
     if(flow.stage==='inventory_box_qty'){
       if(input==='9'){
-        const items=await getInventory(sender)
-        setQuickFlow(chat,sender,'inventory_select',{items},90000)
-        let text='🎒 *SEU INVENTÁRIO*\n\n'
-        items.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
-        text+='\n👉 Escolha um item pelo número.\n0️⃣ Sair'
-        await reply(text)
+        await inventoryMenu()
         return true
       }
 
