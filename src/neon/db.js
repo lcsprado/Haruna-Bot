@@ -430,13 +430,111 @@ export async function buyItem(jid, itemId, qty=1) {
 
 export async function getInventory(jid) {
   const { rows } = await db.query(`
-    SELECT i.item_id,i.quantity,it.name,it.category,it.rarity
+    SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,
+           CASE
+             WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
+             WHEN it.rarity='legendary' THEN 100000
+             WHEN it.rarity='epic' THEN 25000
+             WHEN it.rarity='rare' THEN 7500
+             WHEN it.rarity='uncommon' THEN 2500
+             ELSE 500
+           END::bigint AS sell_unit
     FROM inventories i
     JOIN items it ON it.id=i.item_id
     WHERE i.jid=$1 AND i.quantity>0
-    ORDER BY it.category,it.name
+    ORDER BY
+      CASE it.category
+        WHEN 'weapon' THEN 1
+        WHEN 'armor' THEN 2
+        WHEN 'consumable' THEN 3
+        WHEN 'special' THEN 4
+        ELSE 5
+      END,
+      CASE it.rarity
+        WHEN 'legendary' THEN 5
+        WHEN 'epic' THEN 4
+        WHEN 'rare' THEN 3
+        WHEN 'uncommon' THEN 2
+        ELSE 1
+      END DESC,
+      it.name
   `,[jid])
   return rows
+}
+
+export async function sellItem(jid, itemId, qty=1) {
+  qty=Number(qty)
+  if(!Number.isInteger(qty) || qty<1 || qty>9999) throw new Error('Quantidade inválida.')
+
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const invR=await client.query(
+      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+      [jid,itemId]
+    )
+    const owned=Number(invR.rows[0]?.quantity||0)
+    if(owned<1) throw new Error('Você não possui esse item.')
+
+    const itemR=await client.query('SELECT * FROM items WHERE id=$1',[itemId])
+    const item=itemR.rows[0]
+    if(!item) throw new Error('Item não encontrado.')
+
+    const statsR=await client.query(
+      'SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
+      [jid]
+    )
+    const stats=statsR.rows[0]||{}
+    const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId) ? 1 : 0
+    const sellable=Math.max(0,owned-equipped)
+
+    if(sellable<1){
+      throw new Error('Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
+    }
+    if(qty>sellable){
+      throw new Error(`Você pode vender no máximo ${sellable} unidade(s); 1 cópia está equipada.`)
+    }
+
+    let unit
+    if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
+    else if(item.rarity==='legendary') unit=100000
+    else if(item.rarity==='epic') unit=25000
+    else if(item.rarity==='rare') unit=7500
+    else if(item.rarity==='uncommon') unit=2500
+    else unit=500
+
+    const total=unit*qty
+
+    await client.query(
+      'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
+      [qty,jid,itemId]
+    )
+    await client.query(
+      'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+      [total,jid]
+    )
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('shop',$1,$2,'sale',$3)
+    `,[jid,total,`${itemId} x${qty}`])
+
+    const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
+
+    return {
+      item:{
+        id:item.id,
+        name:item.name,
+        rarity:item.rarity,
+        category:item.category
+      },
+      qty,
+      unit,
+      total,
+      remaining:owned-qty,
+      equipped:Boolean(equipped),
+      cash:Number(walletR.rows[0]?.cash||0)
+    }
+  })
 }
 
 export async function leaderboard(limit=10) {
