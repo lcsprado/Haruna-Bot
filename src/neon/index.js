@@ -18,6 +18,7 @@ import {
   getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
   approveSubscriptionOrder, cancelSubscriptionOrder,
+  createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket,
   saveQuickFlow, getStoredQuickFlow, deleteQuickFlow, cleanupQuickFlows,
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer
 } from './db.js'
@@ -515,6 +516,7 @@ Você possui: *${stock}*
 6️⃣ 📋 Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo / assinatura
+9️⃣ 🆘 Falar com suporte
 
 👉 *Responda apenas com o número.*
 
@@ -532,6 +534,7 @@ Você possui: *${stock}*
 3️⃣ 🧾 Pedidos pendentes
 4️⃣ ⚙️ Configurações comerciais
 5️⃣ 🩺 Diagnóstico
+6️⃣ 🆘 Chamados de suporte
 
 0️⃣ Sair
 
@@ -609,6 +612,49 @@ Nenhum pedido pendente agora.
       )
     }
 
+    const supportMenu=async()=>{
+      setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
+      await reply(
+`🆘 *SUPORTE TREVO*
+
+Como podemos ajudar?
+
+1️⃣ 💳 Pagamento / assinatura
+2️⃣ 🛠️ Problema técnico
+3️⃣ ❓ Dúvida sobre comandos
+4️⃣ 🐞 Reportar erro / bug
+5️⃣ 💬 Outro assunto
+
+0️⃣ Sair`
+      )
+    }
+
+    const adminSupportMenu=async()=>{
+      const rows=await listOpenSupportTickets(30)
+      const codes=rows.map(r=>r.code)
+      setQuickFlow(chat,sender,'admin_support',{codes},10*60*1000)
+
+      if(!rows.length){
+        await reply(
+`🆘 *CHAMADOS DE SUPORTE*
+
+Nenhum chamado aberto agora.
+
+9️⃣ Voltar
+0️⃣ Sair`
+        )
+        return
+      }
+
+      let text='🆘 *CHAMADOS DE SUPORTE*\n\n'
+      rows.forEach((r,i)=>{
+        const preview=String(r.message||'').replace(/\s+/g,' ').slice(0,55)
+        text+=`${i+1}. *${r.code}* — ${r.category}\n   ${preview}${String(r.message||'').length>55?'…':''}\n\n`
+      })
+      text+='👉 Escolha o número do chamado.\n\n9️⃣ Voltar\n0️⃣ Sair'
+      await reply(text.trim())
+    }
+
     const adminBackFor=async(action)=>{
       if(['addsaldo','remsaldo','addexp','setnivel','curar','daritem'].includes(action)) return adminPlayersMenu()
       if(['activategroup','blockgroup'].includes(action)) return adminGroupsMenu()
@@ -669,6 +715,89 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
     }
 
+    if(flow.stage==='support_menu'){
+      const categories={
+        '1':['pagamento','💳 Pagamento / assinatura'],
+        '2':['tecnico','🛠️ Problema técnico'],
+        '3':['comandos','❓ Dúvida sobre comandos'],
+        '4':['bug','🐞 Erro / bug'],
+        '5':['outro','💬 Outro assunto']
+      }
+      const selected=categories[input]
+      if(!selected){
+        await reply('🆘 Escolha uma opção de *1 a 5* ou *0* para sair.')
+        return true
+      }
+      setQuickFlow(chat,sender,'support_message',{category:selected[0],label:selected[1]},15*60*1000)
+      await reply(
+`🆘 *${selected[1]}*
+
+Escreva agora sua mensagem para o suporte.
+
+Explique o que aconteceu com o máximo de detalhes que conseguir.
+
+0️⃣ Cancelar`
+      )
+      return true
+    }
+
+    if(flow.stage==='support_message'){
+      const message=rawInput.trim()
+      if(message.length<3){
+        await reply('🆘 Escreva uma mensagem um pouco mais detalhada.')
+        return true
+      }
+
+      const ticket=await createSupportTicket(
+        sender,
+        chat,
+        flow.data.category,
+        message
+      )
+      clearQuickFlow(chat,sender)
+
+      await reply(
+`✅ *CHAMADO ABERTO*
+
+Protocolo: *${ticket.code}*
+Assunto: *${flow.data.label}*
+
+Sua mensagem foi enviada ao suporte do Trevo.
+Quando houver resposta, ela chegará por aqui.
+
+Guarde o protocolo: *${ticket.code}*`
+      )
+
+      if(ownerJid){
+        try{
+          let origin='Conversa privada'
+          if(chat.endsWith('@g.us')){
+            try{
+              const meta=await sock.groupMetadata(chat)
+              origin='Grupo: '+(meta?.subject||'grupo')
+            }catch{
+              origin='Grupo do WhatsApp'
+            }
+          }
+          await sock.sendMessage(ownerJid,{text:
+`🆘 *NOVO CHAMADO TREVO*
+
+Protocolo: *${ticket.code}*
+Categoria: *${flow.data.label}*
+Usuário: *${msg.pushName||'Usuário'}*
+Origem: *${origin}*
+
+📝 ${message}
+
+Abra *!admin* → *Chamados de suporte* para responder.`
+          })
+        }catch(err){
+          console.error('[suporte] não foi possível avisar o dono',err?.message||err)
+        }
+      }
+      return true
+    }
+
     if(flow.stage.startsWith('admin_')){
       if(sender!==ownerJid){
         clearQuickFlow(chat,sender)
@@ -681,6 +810,8 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
         if(input==='2') return await adminGroupsMenu(),true
         if(input==='3') return await adminOrdersMenu(),true
         if(input==='4') return await adminSettingsMenu(),true
+        if(input==='6') return await adminSupportMenu(),true
+
         if(input==='5'){
           const age=(ts)=>ts?Math.max(0,Math.floor((Date.now()-ts)/1000)):null
           const lastUpsert=age(trevoHealth.lastUpsertAt)
@@ -700,7 +831,7 @@ Processo ativo há: *${Math.floor(process.uptime()/60)} min*
           setQuickFlow(chat,sender,'admin_diag',{},5*60*1000)
           return true
         }
-        await reply('👑 Escolha uma opção de *1 a 5* ou *0* para sair.')
+        await reply('👑 Escolha uma opção de *1 a 6* ou *0* para sair.')
         return true
       }
 
@@ -708,6 +839,92 @@ Processo ativo há: *${Math.floor(process.uptime()/60)} min*
         if(input==='9') return await adminMainMenu(),true
         await reply('🩺 Digite *9* para voltar ou *0* para sair.')
         return true
+      }
+
+      if(flow.stage==='admin_support'){
+        if(input==='9') return await adminMainMenu(),true
+        const code=flow.data.codes?.[Number(input)-1]
+        if(!code){
+          await reply('🆘 Escolha um chamado pelo número, *9* para voltar ou *0* para sair.')
+          return true
+        }
+        const ticket=await getSupportTicket(code)
+        if(!ticket || ticket.status!=='open'){
+          await reply('Esse chamado não está mais aberto.')
+          return await adminSupportMenu(),true
+        }
+        setQuickFlow(chat,sender,'admin_support_ticket',{code},10*60*1000)
+        await reply(
+`🆘 *${ticket.code}*
+
+Categoria: *${ticket.category}*
+Criado: *${fmtDate(ticket.created_at)}*
+
+📝 *Mensagem:*
+${ticket.message}
+
+1️⃣ Responder
+9️⃣ Voltar
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(flow.stage==='admin_support_ticket'){
+        if(input==='9') return await adminSupportMenu(),true
+        if(input!=='1'){
+          await reply('🆘 Escolha *1 Responder*, *9 Voltar* ou *0 Sair*.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_support_answer',{code:flow.data.code},15*60*1000)
+        await reply('✍️ Digite agora a resposta que será enviada ao usuário.\n\n0️⃣ Cancelar')
+        return true
+      }
+
+      if(flow.stage==='admin_support_answer'){
+        const answer=rawInput.trim()
+        if(answer.length<1){
+          await reply('Digite uma resposta antes de enviar.')
+          return true
+        }
+        const ticket=await answerSupportTicket(flow.data.code,sender,answer)
+        let delivered=false
+        try{
+          await sock.sendMessage(ticket.requester_jid,{text:
+`🆘 *RESPOSTA DO SUPORTE TREVO*
+
+Protocolo: *${ticket.code}*
+
+💬 ${answer}
+
+Se precisar de mais ajuda, use *!suporte* para abrir um novo chamado.`
+          })
+          delivered=true
+        }catch(err){
+          console.error('[suporte] falha ao enviar resposta direta',err?.message||err)
+          try{
+            await sock.sendMessage(ticket.chat_jid,{text:
+`🆘 *RESPOSTA DO SUPORTE TREVO*
+
+Protocolo: *${ticket.code}*
+
+💬 ${answer}
+
+Se precisar de mais ajuda, use *!suporte*.`
+            })
+            delivered=true
+          }catch(err2){
+            console.error('[suporte] falha no fallback da resposta',err2?.message||err2)
+          }
+        }
+
+        await reply(
+`✅ *CHAMADO RESPONDIDO*
+
+Protocolo: *${ticket.code}*
+Entrega: *${delivered?'enviada ao usuário':'não foi possível entregar automaticamente'}*`
+        )
+        return await adminSupportMenu(),true
       }
 
       if(flow.stage==='admin_players'){
@@ -1620,8 +1837,8 @@ Dano final: ${r.damage}
 
 
     if(flow.stage==='nav_main'){
-      if(!/^[1-8]$/.test(input)){
-        await reply('🍀 Escolha uma opção de *1 a 8* ou digite *0* para sair.')
+      if(!/^[1-9]$/.test(input)){
+        await reply('🍀 Escolha uma opção de *1 a 9* ou digite *0* para sair.')
         return true
       }
 
@@ -1801,6 +2018,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
 0️⃣ Sair`
         )
+        return true
+      }
+
+      if(input==='9'){
+        await supportMenu()
         return true
       }
     }
@@ -3193,15 +3415,17 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const isGroup=chat.endsWith('@g.us')
 
         if(!body.startsWith(prefix)){
-          const flow=getQuickFlow(chat,sender)
+          let flow=getQuickFlow(chat,sender)
+          if(!flow) flow=await recoverQuickFlow(chat,sender)
           if(!flow) continue
 
           await ensureUser(sender,msg.pushName || '')
-          if(isGroup && !isOwner){
+          const supportFlow=String(flow.stage||'').startsWith('support_')
+          if(isGroup && !isOwner && !supportFlow){
             const license=await getGroupLicense(chat)
             if(!license || !groupLicenseIsActive(license)){
               clearQuickFlow(chat,sender)
-              await reply('🔒 O acesso deste grupo terminou. Use *!statusgrupo* ou *!assinar*.')
+              await reply('🔒 O acesso deste grupo terminou. Use *!statusgrupo*, *!assinar* ou *!suporte*.')
               continue
             }
           }
@@ -3215,7 +3439,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const cmd=(rawCmd||'').toLowerCase()
         const ownerTarget=mentionsOf(msg)[0] || sender
 
-        if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pedido','configgrupo','configuragrupo'].includes(cmd)){
+        if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pedido','configgrupo','configuragrupo','suporte','support','ajuda','chamado'].includes(cmd)){
           let license=await getGroupLicense(chat)
           if(!license) license=await ensureGroupTrial(chat)
 
@@ -3249,7 +3473,63 @@ Fale com o responsável pelo Trevo para ativação.`
           }
         }
 
-        if(['configgrupo','configuragrupo'].includes(cmd)){
+        if(['suporte','support','ajuda'].includes(cmd)){
+          setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
+          await reply(
+`🆘 *SUPORTE TREVO*
+
+Como podemos ajudar?
+
+1️⃣ 💳 Pagamento / assinatura
+2️⃣ 🛠️ Problema técnico
+3️⃣ ❓ Dúvida sobre comandos
+4️⃣ 🐞 Reportar erro / bug
+5️⃣ 💬 Outro assunto
+
+0️⃣ Sair`
+          )
+
+        } else if(['chamado'].includes(cmd)){
+          const code=String(args[0]||'').toUpperCase()
+          if(!code) return await reply(`Uso: *${prefix}chamado SUP-XXXXXX*`)
+          const ticket=await getSupportTicket(code)
+          if(!ticket || (!isOwner && ticket.requester_jid!==sender)){
+            return await reply('❌ Chamado não encontrado.')
+          }
+          const statusLabel={open:'ABERTO',answered:'RESPONDIDO'}[ticket.status]||String(ticket.status||'').toUpperCase()
+          await reply(
+`🆘 *${ticket.code}*
+
+Status: *${statusLabel}*
+Categoria: *${ticket.category}*
+Criado: *${fmtDate(ticket.created_at)}*
+${ticket.answer?'\n💬 Resposta:\n'+ticket.answer:''}`
+          )
+
+        } else if(['responder','responderchamado'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
+          const code=String(args[0]||'').toUpperCase()
+          const answer=args.slice(1).join(' ').trim()
+          if(!code || !answer) return await reply(`Uso: *${prefix}responder SUP-XXXXXX sua resposta*`)
+          const ticket=await answerSupportTicket(code,sender,answer)
+          let delivered=false
+          try{
+            await sock.sendMessage(ticket.requester_jid,{text:
+`🆘 *RESPOSTA DO SUPORTE TREVO*
+
+Protocolo: *${ticket.code}*
+
+💬 ${answer}
+
+Se precisar de mais ajuda, use *!suporte*.`
+            })
+            delivered=true
+          }catch(err){
+            console.error('[suporte] falha ao enviar resposta',err?.message||err)
+          }
+          await reply(`✅ Chamado *${ticket.code}* respondido. ${delivered?'Resposta entregue.':'Não foi possível entregar automaticamente.'}`)
+
+        } else if(['configgrupo','configuragrupo'].includes(cmd)){
           if(!isGroup) return await reply('⚙️ Use este comando dentro do grupo que deseja configurar.')
           if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores deste grupo podem abrir as configurações.')
           const lic=await getGroupLicense(chat)
