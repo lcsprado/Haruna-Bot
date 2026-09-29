@@ -2964,7 +2964,7 @@ Fale com o responsável pelo Trevo para ativação.`
         }
 
         if(isGroup && !isOwner){
-          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy'])
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell'])
           const RPG_CMDS=new Set(['rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
@@ -3273,24 +3273,10 @@ ${prefix}comandos — mostra esta lista
           await reply(`🛒 Compra rápida concluída!\n📦 ${r.item.name} ×1\n💸 R$ ${fmt(r.total)}`)
 
         } else if(['inventario','inventory','inv'].includes(cmd)){
-          const items=await getInventory(sender)
-          if(!items.length) return await reply('🎒 Seu inventário está vazio.')
-          let text='🎒 *SEU INVENTÁRIO*\n\n'
-          items.forEach((i,idx)=>{
-            const action=['weapon','armor'].includes(i.category)
-              ? '⚙️ Equipável'
-              : i.category==='consumable'
-                ? '🧪 Utilizável'
-                : BOX_IDS.includes(i.item_id)
-                  ? '🎁 Abrível'
-                  : '📦 Item'
-            text+=`*${idx+1}.* ${i.name} ×${i.quantity} _[${i.rarity}]_\n   ${action}\n`
-          })
-          text+=`\n⚙️ Para escolher equipamento: *${prefix}equipar*\n🧪 Para usar poção: *${prefix}usar*`
-          if(items.some(i=>BOX_IDS.includes(i.item_id))) text+=`\n🎁 Caixas podem ser abertas pelo inventário.`
-          text+='\n\n👉 *Responda com o número do item* para escolher o que fazer.\n0️⃣ Sair'
-          setQuickFlow(chat,sender,'inventory_select',{items},90000)
-          await reply(text.trim())
+          await showInventoryMenu(chat,sender,reply)
+
+        } else if(['vender','sell'].includes(cmd)){
+          await showSellMenu(chat,sender,reply)
 
         } else if(['equipar','equip'].includes(cmd)){
           const items=await getInventory(sender)
@@ -3299,14 +3285,8 @@ ${prefix}comandos — mostra esta lista
 
           const query=args.join(' ').trim()
           if(!query){
-            setQuickFlow(chat,sender,'equip_select',{items:equipables.map(i=>i.item_id)},90000)
-            let text='⚙️ *O QUE QUER EQUIPAR?*\n\n'
-            equipables.forEach((i,idx)=>{
-              const icon=i.category==='weapon'?'⚔️':'🛡️'
-              text+=`*${idx+1}.* ${icon} ${i.name}\n`
-            })
-            text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
-            return await reply(text)
+            await showEquipmentMenu(chat,sender,reply)
+            return
           }
 
           const anyItem=resolveOwnedItem(items,query)
