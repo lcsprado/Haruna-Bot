@@ -31,7 +31,8 @@ import {
 import {
   initProgression, HOUSES, CARS,
   getDailyMissions, progressDailyMission, claimDailyMissions,
-  getClanForUser, createClan, inviteToClan, acceptClanInvite, leaveClan, donateClan, listClans,
+  getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
+  kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getGarage, buyCar,
   getPatrimony, patrimonyLeaderboard
 } from './progression.js'
@@ -192,8 +193,32 @@ Fale com o responsável pelo Trevo para ativação.`
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['perfil','profile'].includes(cmd)){
-          const p=await getCombatProfile(sender)
-          await reply(`👤 *${p.push_name || 'Jogador'}*\n⭐ Nível: ${p.level}\n✨ EXP: ${p.exp}\n❤️ HP: ${p.hp}/${p.max_hp}\n⚔️ ATK: ${p.effective_atk}\n🛡️ DEF: ${p.effective_def}\n💨 SPD: ${p.spd}\n🗡️ Arma: ${p.weapon_name}\n🥋 Armadura: ${p.armor_name}\n💰 Saldo: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
+          const [p,clan,home,cars,pat]=await Promise.all([
+            getCombatProfile(sender),
+            getClanForUser(sender),
+            getHome(sender),
+            getGarage(sender),
+            getPatrimony(sender)
+          ])
+          await reply(
+`👤 *${p.push_name || 'Jogador'}*
+
+⭐ Nível: ${p.level}
+✨ EXP: ${p.exp}
+❤️ HP: ${p.hp}/${p.max_hp}
+⚔️ ATK: ${p.effective_atk}
+🛡️ DEF: ${p.effective_def}
+💨 SPD: ${p.spd}
+
+🗡️ Arma: ${p.weapon_name}
+🥋 Armadura: ${p.armor_name}
+🏴 Clã: ${clan?clan.name:'Nenhum'}
+🏠 Casa: ${home?home.name:'Nenhuma'}
+🚗 Garagem: ${cars.length}/5
+
+💰 Saldo: R$ ${fmt(Number(p.cash)+Number(p.bank))}
+💎 Patrimônio: *R$ ${fmt(pat.total)}*`
+          )
 
         } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
@@ -376,7 +401,24 @@ Fale com o responsável pelo Trevo para ativação.`
 👥 Membros: ${c.members}
 💰 Cofre: R$ ${fmt(c.treasury)}
 ✨ XP do clã: ${fmt(c.xp)}
-👑 Seu cargo: *${c.role==='leader'?'Líder':'Membro'}*`
+👑 Seu cargo: *${c.role==='leader'?'Líder':'Membro'}*
+
+Use *${prefix}claajuda* para ver os comandos do clã.`
+          )
+
+        } else if(['claajuda','clãajuda'].includes(cmd)){
+          await reply(
+`🏴 *COMANDOS DE CLÃ*
+
+${prefix}cla — informações do seu clã
+${prefix}criarcla Nome — criar por R$ 10.000
+${prefix}claconvidar @pessoa — convidar
+${prefix}claaceitar — aceitar convite
+${prefix}cladoar 1000 — doar ao cofre
+${prefix}clapromover @pessoa — transferir liderança
+${prefix}claexpulsar @pessoa — expulsar membro
+${prefix}saircla — sair do clã
+${prefix}clas — ranking de clãs`
           )
 
         } else if(['criarcla','criarclã'].includes(cmd)){
@@ -397,6 +439,18 @@ Fale com o responsável pelo Trevo para ativação.`
         } else if(['claaceitar','clãaceitar','aceitarcla'].includes(cmd)){
           const r=await acceptClanInvite(sender)
           await reply(`🏴 Você entrou no clã *${r.name}*!`)
+
+        } else if(['clapromover','clãpromover'].includes(cmd)){
+          const target=mentionsOf(msg)[0]
+          if(!target) return await reply(`Uso: *${prefix}clapromover @pessoa*`)
+          const r=await transferClanLeadership(sender,target)
+          await reply(`👑 Liderança do clã *${r.name}* transferida.`,{mentions:[target]})
+
+        } else if(['claexpulsar','clãexpulsar'].includes(cmd)){
+          const target=mentionsOf(msg)[0]
+          if(!target) return await reply(`Uso: *${prefix}claexpulsar @pessoa*`)
+          const r=await kickClanMember(sender,target)
+          await reply(`🚪 Membro removido do clã *${r.name}*.`,{mentions:[target]})
 
         } else if(['cladoar','clãdoar','doarcla'].includes(cmd)){
           const amount=parseAmount(args[0])
