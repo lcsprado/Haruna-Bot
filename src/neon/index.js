@@ -43,6 +43,7 @@ import {
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
 import { renderProfileCard } from './profile-card.js'
+import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -721,7 +722,7 @@ Escolha o que quer consultar:
 6️⃣ 📋 Progressão & patrimônio
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo & assinatura
-9️⃣ 🛠️ Utilidades
+9️⃣ ⚽ Futebol & utilidades
 
 👉 Responda só com o número.
 0️⃣ Fechar`
@@ -4645,6 +4646,15 @@ ${prefix}clas — ranking de clãs`
           })
           await reply(text.trim())
 
+        } else if(['futebol','fut'].includes(cmd)){
+          await reply('⚽ *ALPHA FUTEBOL*\n\n*!partidas* — jogos brasileiros de hoje\n*!partidas amanha* — jogos de amanhã\n*!tabela* — Brasileirão Série A\n*!time Corinthians* — último e próximo jogo\n\n💡 *!jogos* continua sendo o menu de minigames.')
+        } else if(['partidas','jogoshoje'].includes(cmd)){
+          const tomorrow=['amanha','amanhã'].includes((args[0]||'').toLowerCase()); const fs=await footballToday(tomorrow?1:0)
+          await reply('⚽ *JOGOS '+(tomorrow?'DE AMANHÃ':'DE HOJE')+' — BRASIL*\n\n'+formatFixtures(fs))
+        } else if(['tabela','brasileirao','brasileirão'].includes(cmd)){
+          const rows=await brazilStandings(); if(!rows.length)return await reply('📊 Classificação indisponível agora.'); let out='🇧🇷 *BRASILEIRÃO SÉRIE A — TABELA*\n\n'; rows.slice(0,20).forEach(r=>out+=r.rank+'. *'+r.team.name+'* — '+r.points+' pts | '+r.all.played+'J | '+r.all.win+'V '+r.all.draw+'E '+r.all.lose+'D\n'); await reply(out.trim())
+        } else if(['time','clube'].includes(cmd)){
+          const q=args.join(' ').trim(); if(!q)return await reply('Uso: *'+prefix+'time Corinthians*'); const r=await teamSummary(q); await reply('⚽ *'+r.team.name.toUpperCase()+'*\n\n⬅️ *Último jogo*\n'+formatTeamFixture(r.last)+'\n\n➡️ *Próximo jogo*\n'+formatTeamFixture(r.next))
         } else if(['games','jogos'].includes(cmd)){
           setQuickFlow(chat,sender,'main',{},90000)
           await reply(
