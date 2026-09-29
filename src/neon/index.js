@@ -11,6 +11,7 @@ import {
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard,
   equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
+  ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
   getGroupLicense, ensureGroupTrial, activateGroupLicense, blockGroupLicense,
   listGroupLicenses, groupLicenseIsActive, getGroupSettings, setGroupSetting,
@@ -553,6 +554,7 @@ _Responda apenas com o número._`
 4️⃣ Alterar nível
 5️⃣ Curar jogador
 6️⃣ Dar item
+7️⃣ Resetar / ajustar jogador
 
 9️⃣ Voltar
 0️⃣ Sair`
@@ -656,7 +658,7 @@ Nenhum chamado aberto agora.
     }
 
     const adminBackFor=async(action)=>{
-      if(['addsaldo','remsaldo','addexp','setnivel','curar','daritem'].includes(action)) return adminPlayersMenu()
+      if(['addsaldo','remsaldo','addexp','setnivel','curar','daritem','setsaldo','resetsaldo','resetxp','resetinventory','resettotal'].includes(action)) return adminPlayersMenu()
       if(['activategroup','blockgroup'].includes(action)) return adminGroupsMenu()
       if(['approveorder','cancelorder'].includes(action)) return adminOrdersMenu()
       if(['setprice','setlink'].includes(action)) return adminSettingsMenu()
@@ -929,10 +931,10 @@ Entrega: *${delivered?'enviada ao usuário':'não foi possível entregar automat
 
       if(flow.stage==='admin_players'){
         if(input==='9') return await adminMainMenu(),true
-        const actions={1:'addsaldo',2:'remsaldo',3:'addexp',4:'setnivel',5:'curar',6:'daritem'}
+        const actions={1:'addsaldo',2:'remsaldo',3:'addexp',4:'setnivel',5:'curar',6:'daritem',7:'resetplayer'}
         const action=actions[input]
         if(!action){
-          await reply('👤 Escolha uma opção de *1 a 6*, *9* para voltar ou *0* para sair.')
+          await reply('👤 Escolha uma opção de *1 a 7*, *9* para voltar ou *0* para sair.')
           return true
         }
         setQuickFlow(chat,sender,'admin_player_target',{action},5*60*1000)
@@ -955,6 +957,24 @@ ou marque a pessoa com *@*.
         const target=input==='1'?sender:mentioned
         if(!target){
           await reply('👤 Marque a pessoa com *@* ou mande *1* para aplicar em você.')
+          return true
+        }
+
+        if(action==='resetplayer'){
+          setQuickFlow(chat,sender,'admin_player_reset',{target},5*60*1000)
+          await reply(
+`🧹 *RESET / AJUSTE DO JOGADOR*
+
+1️⃣ Zerar saldo (carteira + banco)
+2️⃣ Resetar EXP e nível
+3️⃣ Limpar inventário
+4️⃣ Definir saldo da carteira
+5️⃣ ⚠️ RESET TOTAL
+
+9️⃣ Voltar
+0️⃣ Sair`,
+            {mentions:target===sender?[]:[target]}
+          )
           return true
         }
 
@@ -996,6 +1016,52 @@ ou marque a pessoa com *@*.
 9️⃣ Voltar
 0️⃣ Sair`
         )
+        return true
+      }
+
+      if(flow.stage==='admin_player_reset'){
+        if(input==='9') return await adminPlayersMenu(),true
+        const target=flow.data.target
+
+        if(input==='4'){
+          setQuickFlow(chat,sender,'admin_set_balance_value',{target},5*60*1000)
+          await reply('💰 Digite o novo saldo da *carteira*.\nExemplo: *5000*\nPara zerar, envie *0*.')
+          return true
+        }
+
+        const actions={1:'resetsaldo',2:'resetxp',3:'resetinventory',5:'resettotal'}
+        const action=actions[input]
+        if(!action){
+          await reply('🧹 Escolha *1, 2, 3, 4 ou 5*, *9* para voltar ou *0* para sair.')
+          return true
+        }
+
+        setQuickFlow(chat,sender,'admin_confirm',{action,target},5*60*1000)
+        const warning=action==='resettotal'
+          ? '⚠️ *RESET TOTAL* apaga saldo, banco, EXP, nível, inventário, equipamentos, vitórias/derrotas, missões, casa, carros e cooldowns do jogador.\n\n1️⃣ Confirmar\n2️⃣ Cancelar'
+          : action==='resetsaldo'
+            ? '⚠️ Zerar *carteira e banco* deste jogador?\n\n1️⃣ Confirmar\n2️⃣ Cancelar'
+            : action==='resetxp'
+              ? '⚠️ Resetar *nível e EXP* para o início?\n\n1️⃣ Confirmar\n2️⃣ Cancelar'
+              : '⚠️ Limpar todo o *inventário e equipamentos* deste jogador?\n\n1️⃣ Confirmar\n2️⃣ Cancelar'
+        await reply(warning,{mentions:target===sender?[]:[target]})
+        return true
+      }
+
+      if(flow.stage==='admin_set_balance_value'){
+        if(input==='9') return await adminPlayersMenu(),true
+        const target=flow.data.target
+        if(!/^\d[\d.]*$/.test(rawInput)){
+          await reply('💰 Digite um valor inteiro. Exemplo: *5000* ou *0*.')
+          return true
+        }
+        const amount=parseAmount(rawInput)
+        if(!Number.isSafeInteger(amount) || amount<0){
+          await reply('💰 Valor inválido.')
+          return true
+        }
+        setQuickFlow(chat,sender,'admin_confirm',{action:'setsaldo',target,amount},5*60*1000)
+        await reply(`⚠️ Definir o saldo da carteira para *R$ ${fmt(amount)}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`,{mentions:target===sender?[]:[target]})
         return true
       }
 
@@ -1304,6 +1370,21 @@ Criado: *${fmtDate(order.created_at)}*
         if(data.action==='addsaldo'){
           const p=await ownerAddBalance(data.target,data.amount)
           await reply(`✅ Saldo adicionado. Novo saldo: *R$ ${fmt(p.cash)}*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='setsaldo'){
+          const r=await ownerSetBalance(data.target,data.amount)
+          await reply(`✅ Saldo definido: *R$ ${fmt(r.oldCash)} → R$ ${fmt(r.cash)}*.\n🏦 Banco mantido: *R$ ${fmt(r.bank)}*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='resetsaldo'){
+          const r=await ownerResetBalance(data.target)
+          await reply(`✅ Saldo resetado.\n💵 Carteira anterior: *R$ ${fmt(r.oldCash)}*\n🏦 Banco anterior: *R$ ${fmt(r.oldBank)}*\n💰 Agora: *R$ 0*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='resetxp'){
+          const r=await ownerResetExp(data.target)
+          await reply(`✅ EXP resetada.\n⭐ Nível: *${r.oldLevel} → 1*\n✨ EXP: *${fmt(r.oldExp)} → 0*.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='resetinventory'){
+          const r=await ownerResetInventory(data.target)
+          await reply(`✅ Inventário limpo. *${fmt(r.removed)} item(ns)* removidos e equipamentos desequipados.`,{mentions:data.target===sender?[]:[data.target]})
+        }else if(data.action==='resettotal'){
+          const r=await ownerResetTotal(data.target)
+          await reply(`✅ *RESET TOTAL CONCLUÍDO*\n\n💰 Saldo anterior: R$ ${fmt(r.cash+r.bank)}\n⭐ Nível anterior: ${r.level}\n✨ EXP anterior: ${fmt(r.exp)}\n🎒 Itens anteriores: ${fmt(r.inventory)}\n\nO jogador voltou ao estado inicial.`,{mentions:data.target===sender?[]:[data.target]})
         }else if(data.action==='remsaldo'){
           const r=await ownerRemoveBalance(data.target,data.amount)
           await reply(`✅ Removido *R$ ${fmt(r.removed)}*. Saldo atual: *R$ ${fmt(r.cash)}*.`,{mentions:data.target===sender?[]:[data.target]})
@@ -4487,6 +4568,60 @@ Obrigado por apoiar o Alpha Bot 🍀`
             text+=`${i+1}. ${active?'✅':'❌'} *${r.group_name}*\n   Plano: *${plan}*\n   Validade: *${fmtDate(r.paid_until)}*\n\n`
           })
           await reply(text.trim())
+
+        } else if(['reset','resetsaldo','resetxp','resetinventario','resettotal'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
+
+          let kind=cmd
+          if(cmd==='reset') kind=String(args[0]||'').toLowerCase()
+          const aliases={
+            saldo:'resetsaldo',carteira:'resetsaldo',resetsaldo:'resetsaldo',
+            xp:'resetxp',exp:'resetxp',resetxp:'resetxp',
+            inventario:'resetinventario','inventário':'resetinventario',resetinventario:'resetinventario',
+            total:'resettotal',resettotal:'resettotal'
+          }
+          kind=aliases[kind]||kind
+
+          if(!['resetsaldo','resetxp','resetinventario','resettotal'].includes(kind)){
+            return await reply(
+`Uso:
+*${prefix}reset saldo [@pessoa]*
+*${prefix}reset xp [@pessoa]*
+*${prefix}reset inventario [@pessoa]*
+*${prefix}reset total [@pessoa]*`
+            )
+          }
+
+          if(kind==='resettotal'){
+            setQuickFlow(chat,sender,'admin_confirm',{action:'resettotal',target:ownerTarget},5*60*1000)
+            return await reply(
+'⚠️ *RESET TOTAL* apaga saldo, banco, EXP, nível, inventário, equipamentos, vitórias/derrotas, missões, casa, carros e cooldowns do jogador.\n\n1️⃣ Confirmar\n2️⃣ Cancelar',
+              {mentions:ownerTarget===sender?[]:[ownerTarget]}
+            )
+          }
+
+          if(kind==='resetsaldo'){
+            const r=await ownerResetBalance(ownerTarget)
+            return await reply(`👑 Saldo resetado. Carteira e banco agora estão em *R$ 0*.\nAntes: R$ ${fmt(r.oldCash+r.oldBank)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+          }
+          if(kind==='resetxp'){
+            const r=await ownerResetExp(ownerTarget)
+            return await reply(`👑 EXP resetada. Nível *${r.oldLevel} → 1* e EXP *${fmt(r.oldExp)} → 0*.`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+          }
+          const r=await ownerResetInventory(ownerTarget)
+          return await reply(`👑 Inventário resetado. *${fmt(r.removed)} item(ns)* removidos.`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+
+        } else if(['set','setsaldo'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
+          if(cmd==='set' && String(args[0]||'').toLowerCase()!=='saldo'){
+            return await reply(`Uso: *${prefix}set saldo 5000* ou *${prefix}set saldo @pessoa 5000*`)
+          }
+          const amountToken=args.find(a=>/^\d[\d.]*$/.test(a))
+          if(amountToken===undefined) return await reply(`Uso: *${prefix}setsaldo 5000* ou *${prefix}setsaldo @pessoa 5000*`)
+          const amount=parseAmount(amountToken)
+          if(!Number.isSafeInteger(amount) || amount<0) return await reply('Valor inválido.')
+          const r=await ownerSetBalance(ownerTarget,amount)
+          await reply(`👑 Saldo definido: R$ ${fmt(r.oldCash)} → *R$ ${fmt(r.cash)}*\n🏦 Banco mantido: R$ ${fmt(r.bank)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['addsaldo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
