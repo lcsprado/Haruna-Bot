@@ -1,0 +1,19 @@
+name: Keep Alpha Bot Awake
+
+on:
+  schedule:
+    - cron: '4,17,30,43,56 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      - name: Ping Alpha Bot health endpoint
+        run: |
+          echo "Pinging Alpha Bot..."
+          curl --silent --show-error --max-time 60 \
+            -o /dev/null \
+            -w "HTTP %{http_code}\n" \
+            https://haruna-bot-2fi0.onrender.com/health || true
