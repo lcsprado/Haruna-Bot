@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import pg from 'pg'
 
 const { Pool } = pg
@@ -113,6 +114,22 @@ export async function initDatabase() {
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS subscription_orders (
+      code TEXT PRIMARY KEY,
+      chat_jid TEXT NOT NULL,
+      requester_jid TEXT NOT NULL,
+      amount NUMERIC(10,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      expires_at BIGINT NOT NULL,
+      approved_at BIGINT,
+      approved_by TEXT,
+      cancelled_at BIGINT
+    );
+
+    CREATE INDEX IF NOT EXISTS subscription_orders_chat_idx
+      ON subscription_orders(chat_jid, status);
+
     CREATE TABLE IF NOT EXISTS group_licenses (
       chat_jid TEXT PRIMARY KEY,
       status TEXT NOT NULL DEFAULT 'blocked',
@@ -143,7 +160,10 @@ export async function initDatabase() {
 
   await db.query(`
     INSERT INTO trevo_settings(key,value)
-    VALUES ('launch_price','2'::jsonb)
+    VALUES
+      ('launch_price','2'::jsonb),
+      ('pix_key','""'::jsonb),
+      ('pix_name','"Trevo"'::jsonb)
     ON CONFLICT(key) DO NOTHING
   `)
 
@@ -1026,4 +1046,163 @@ export async function setLaunchPrice(value) {
   `,[JSON.stringify(value)])
 
   return value
+}
+
+
+function orderCode() {
+  const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let out='TREVO-'
+  const bytes=crypto.randomBytes(6)
+  for(let i=0;i<6;i++) out+=alphabet[bytes[i]%alphabet.length]
+  return out
+}
+
+export async function getPixSettings() {
+  const { rows } = await db.query(
+    "SELECT key,value FROM trevo_settings WHERE key=ANY($1::text[])",
+    [['pix_key','pix_name']]
+  )
+  const map=Object.fromEntries(rows.map(r=>[r.key,r.value]))
+  return {
+    key:String(map.pix_key ?? ''),
+    name:String(map.pix_name ?? 'Trevo')
+  }
+}
+
+export async function setPixKey(value) {
+  value=String(value||'').trim()
+  if(value.length<3 || value.length>200) throw new Error('Chave Pix inválida.')
+  await db.query(`
+    INSERT INTO trevo_settings(key,value,updated_at)
+    VALUES('pix_key',$1::jsonb,${nowSql})
+    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+  `,[JSON.stringify(value)])
+  return value
+}
+
+export async function setPixName(value) {
+  value=String(value||'').trim()
+  if(value.length<2 || value.length>100) throw new Error('Nome Pix inválido.')
+  await db.query(`
+    INSERT INTO trevo_settings(key,value,updated_at)
+    VALUES('pix_name',$1::jsonb,${nowSql})
+    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+  `,[JSON.stringify(value)])
+  return value
+}
+
+export async function createSubscriptionOrder(chatJid, requesterJid) {
+  if(!chatJid?.endsWith('@g.us')) throw new Error('A assinatura é vinculada a um grupo.')
+  const pix=await getPixSettings()
+  if(!pix.key) throw new Error('Pagamento Pix ainda não foi configurado pelo dono.')
+
+  const price=await getLaunchPrice()
+  const now=Math.floor(Date.now()/1000)
+  const expires=now+(24*60*60)
+
+  const existing=await db.query(`
+    SELECT * FROM subscription_orders
+    WHERE chat_jid=$1 AND status='pending' AND expires_at>$2
+    ORDER BY created_at DESC
+    LIMIT 1
+  `,[chatJid,now])
+  if(existing.rows[0]) return {order:existing.rows[0],pix,reused:true}
+
+  for(let attempt=0;attempt<8;attempt++){
+    const code=orderCode()
+    try{
+      const {rows}=await db.query(`
+        INSERT INTO subscription_orders(code,chat_jid,requester_jid,amount,status,expires_at)
+        VALUES($1,$2,$3,$4,'pending',$5)
+        RETURNING *
+      `,[code,chatJid,requesterJid,price,expires])
+      return {order:rows[0],pix,reused:false}
+    }catch(err){
+      if(err?.code!=='23505') throw err
+    }
+  }
+  throw new Error('Não foi possível gerar o pedido. Tente novamente.')
+}
+
+export async function getSubscriptionOrder(code) {
+  code=String(code||'').trim().toUpperCase()
+  const {rows}=await db.query(
+    'SELECT * FROM subscription_orders WHERE code=$1',
+    [code]
+  )
+  return rows[0]||null
+}
+
+export async function listPendingSubscriptionOrders(limit=30) {
+  const now=Math.floor(Date.now()/1000)
+  await db.query(
+    "UPDATE subscription_orders SET status='expired' WHERE status='pending' AND expires_at<=$1",
+    [now]
+  )
+  const {rows}=await db.query(`
+    SELECT * FROM subscription_orders
+    WHERE status='pending'
+    ORDER BY created_at ASC
+    LIMIT $1
+  `,[limit])
+  return rows
+}
+
+export async function approveSubscriptionOrder(code, ownerJid) {
+  code=String(code||'').trim().toUpperCase()
+  return transaction(async client=>{
+    const now=Math.floor(Date.now()/1000)
+    const r=await client.query(
+      'SELECT * FROM subscription_orders WHERE code=$1 FOR UPDATE',
+      [code]
+    )
+    const order=r.rows[0]
+    if(!order) throw new Error('Pedido não encontrado.')
+    if(order.status==='approved') throw new Error('Esse pedido já foi aprovado.')
+    if(order.status!=='pending') throw new Error(`Pedido está ${order.status}.`)
+    if(Number(order.expires_at)<=now){
+      await client.query(
+        "UPDATE subscription_orders SET status='expired' WHERE code=$1",
+        [code]
+      )
+      throw new Error('Esse pedido expirou. Gere outro com !assinar.')
+    }
+
+    const lic=await client.query(
+      'SELECT paid_until FROM group_licenses WHERE chat_jid=$1 FOR UPDATE',
+      [order.chat_jid]
+    )
+    const currentUntil=Number(lic.rows[0]?.paid_until||0)
+    const base=currentUntil>now?currentUntil:now
+    const paidUntil=base+(30*24*60*60)
+
+    await client.query(`
+      INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
+      VALUES($1,'active','basic',NULL,$2,$3,${nowSql})
+      ON CONFLICT(chat_jid)
+      DO UPDATE SET status='active',plan='basic',paid_until=EXCLUDED.paid_until,
+                    activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
+    `,[order.chat_jid,paidUntil,ownerJid])
+
+    await client.query(`
+      UPDATE subscription_orders
+      SET status='approved',approved_at=$2,approved_by=$3
+      WHERE code=$1
+    `,[code,now,ownerJid])
+
+    return {...order,status:'approved',approved_at:now,approved_by:ownerJid,paid_until:paidUntil}
+  })
+}
+
+export async function cancelSubscriptionOrder(code) {
+  code=String(code||'').trim().toUpperCase()
+  const now=Math.floor(Date.now()/1000)
+  const {rows}=await db.query(`
+    UPDATE subscription_orders
+    SET status='cancelled',cancelled_at=$2
+    WHERE code=$1 AND status='pending'
+    RETURNING *
+  `,[code,now])
+  if(!rows[0]) throw new Error('Pedido pendente não encontrado.')
+  return rows[0]
 }
