@@ -623,6 +623,11 @@ async function applyExp(client, jid, gain) {
   return { level, exp, levels }
 }
 
+export function getEquipmentInfo(itemId) {
+  const eq=EQUIPMENT[itemId]
+  return eq ? {...eq,itemId} : null
+}
+
 export async function equipItem(jid, itemId) {
   const eq=EQUIPMENT[itemId]
   if(!eq) throw new Error('Esse item não pode ser equipado.')
