@@ -8,8 +8,8 @@ import makeWASocket, {
 import pino from 'pino'
 import {
   initDatabase, ensureUser, getProfile, claimDaily, work,
-  deposit, withdraw, transfer, getShop, buyItem, getInventory, leaderboard,
-  equipItem, usePotion, getCombatProfile, battle, combatLeaderboard,
+  deposit, withdraw, transfer, getShop, buyItem, getInventory, sellItem, leaderboard,
+  equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetLevel, ownerHeal, ownerGrantItem,
   getGroupLicense, ensureGroupTrial, activateGroupLicense, blockGroupLicense,
@@ -324,6 +324,66 @@ Você possui: *${stock}*
     )
   }
 
+  async function showInventoryMenu(chat,sender,reply){
+    const items=await getInventory(sender)
+    if(!items.length){
+      clearQuickFlow(chat,sender)
+      await reply('🎒 Seu inventário está vazio.')
+      return
+    }
+    const equip=items.filter(i=>['weapon','armor'].includes(i.category))
+    const potions=items.filter(i=>i.category==='consumable')
+    const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
+    const others=items.filter(i=>!['weapon','armor','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
+    setQuickFlow(chat,sender,'inventory_category',{},5*60*1000)
+    await reply(
+      '🎒 *INVENTÁRIO*\n\n'+
+      '1️⃣ ⚔️ Equipamentos — '+equip.length+' tipos\n'+
+      '2️⃣ 🧪 Poções — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
+      '3️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
+      '4️⃣ 📦 Outros — '+others.length+' tipos\n'+
+      '5️⃣ 💰 Vender itens\n\n'+
+      '0️⃣ Sair'
+    )
+  }
+
+  async function showEquipmentMenu(chat,sender,reply){
+    const [items,p]=await Promise.all([getInventory(sender),getCombatProfile(sender)])
+    const equipables=items.filter(i=>['weapon','armor'].includes(i.category))
+    if(!equipables.length){
+      clearQuickFlow(chat,sender)
+      await reply('⚙️ Você não possui arma ou armadura para equipar.')
+      return
+    }
+    setQuickFlow(chat,sender,'equip_select',{items:equipables.map(i=>i.item_id)},5*60*1000)
+    let text='⚙️ *EQUIPAMENTOS*\n\n'
+    text+='🗡️ Arma atual: *'+p.weapon_name+'*'+(p.weapon_atk?' +'+p.weapon_atk+' ATK':'')+'\n'
+    text+='🛡️ Armadura atual: *'+p.armor_name+'*'+(p.armor_def?' +'+p.armor_def+' DEF':'')+'\n\n'
+    equipables.forEach((i,idx)=>{
+      const info=getEquipmentInfo(i.item_id)
+      const stat=i.category==='weapon' ? '+'+Number(info?.atk||0)+' ATK' : '+'+Number(info?.def||0)+' DEF'
+      const active=(p.weapon_id===i.item_id || p.armor_id===i.item_id) ? ' ✅ *ATIVO*' : ''
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n   '+stat+active+'\n'
+    })
+    text+='\n9️⃣ Voltar\n0️⃣ Sair'
+    await reply(text)
+  }
+
+  async function showSellMenu(chat,sender,reply){
+    const items=await getInventory(sender)
+    if(!items.length){
+      clearQuickFlow(chat,sender)
+      await reply('💰 Você não possui itens para vender.')
+      return
+    }
+    setQuickFlow(chat,sender,'inventory_sell_select',{items},5*60*1000)
+    let text='💰 *VENDER ITENS*\n\n'
+    items.forEach((i,idx)=>{
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
+    })
+    text+='\n⚠️ Equipamento ativo mantém 1 cópia protegida.\n9️⃣ Voltar\n0️⃣ Sair'
+    await reply(text)
+  }
   async function handleQuickGameFlow({chat,sender,body,reply,msg}){
     let flow=getQuickFlow(chat,sender)
     if(!flow){
