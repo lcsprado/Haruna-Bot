@@ -1491,6 +1491,14 @@ Valor: *R$ ${fmt(item.price)}*
     if(connection==='close'){
       const code=lastDisconnect?.error?.output?.statusCode
       const loggedOut=code===DisconnectReason.loggedOut
+      const replaced=code===440
+
+      if(replaced){
+        console.log('[WhatsApp] sessão assumida por outra instância; encerrando esta instância')
+        setTimeout(()=>process.exit(0),100)
+        return
+      }
+
       console.log('[WhatsApp] conexão fechada',code,loggedOut?'logged out':'reconectando')
       if(!loggedOut) setTimeout(()=>start().catch(console.error),3000)
     }
