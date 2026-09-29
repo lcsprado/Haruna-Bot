@@ -332,8 +332,31 @@ function nextStreakMilestone(streak){
   return { day:next, days:Math.max(0,days), label:labels[next] }
 }
 
+async function ensureDailyStreakState(queryable,jid){
+  await queryable.query(`
+    INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
+    SELECT
+      $1,
+      1,
+      1,
+      (to_timestamp(expires_at - 72000) AT TIME ZONE 'America/Sao_Paulo')::date
+    FROM cooldowns
+    WHERE key=$2
+      AND (to_timestamp(expires_at - 72000) AT TIME ZONE 'America/Sao_Paulo')::date
+          >= ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1)
+    ON CONFLICT(jid) DO NOTHING
+  `,[jid,`daily:${jid}`])
+
+  await queryable.query(`
+    INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
+    VALUES($1,0,0,NULL)
+    ON CONFLICT(jid) DO NOTHING
+  `,[jid])
+}
+
 export async function getDailyStreak(jid) {
   await ensureUser(jid)
+  await ensureDailyStreakState(db,jid)
   const {rows}=await db.query(`
     SELECT d.streak,d.best_streak,d.last_claim_day,
            TO_CHAR(NOW() AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS today
@@ -373,11 +396,7 @@ export async function claimDaily(jid) {
     `)
     const {today,yesterday,remaining}=clock.rows[0]
 
-    await client.query(`
-      INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
-      VALUES($1,0,0,NULL)
-      ON CONFLICT(jid) DO NOTHING
-    `,[jid])
+    await ensureDailyStreakState(client,jid)
 
     const stateR=await client.query(
       'SELECT streak,best_streak,last_claim_day FROM daily_streaks WHERE jid=$1 FOR UPDATE',
