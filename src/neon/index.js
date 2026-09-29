@@ -15,7 +15,6 @@ import {
   getGroupLicense, ensureGroupTrial, activateGroupLicense, blockGroupLicense,
   listGroupLicenses, groupLicenseIsActive,
   getLaunchPrice, setLaunchPrice,
-  getPixSettings, setPixKey, setPixName,
   getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
   approveSubscriptionOrder, cancelSubscriptionOrder,
@@ -465,8 +464,18 @@ O pagamento refere-se ao acesso às funcionalidades do bot durante o período co
 
         } else if(['statusgrupo'].includes(cmd)){
           if(!isGroup) return await reply('Este comando funciona dentro de grupos.')
-          let lic=await getGroupLicense(chat)
-          if(!lic) lic=await ensureGroupTrial(chat)
+          const lic=await getGroupLicense(chat)
+          if(!lic){
+            return await reply(
+`🍀 *STATUS DO GRUPO*
+
+Status: *AINDA NÃO INICIADO*
+🎁 O grupo tem direito a *3 dias grátis*.
+
+O teste começa quando alguém usar um comando normal do Trevo pela primeira vez.
+Para contratar direto, use *${prefix}assinar*.`
+            )
+          }
           const active=groupLicenseIsActive(lic)
           await reply(
 `🍀 *STATUS DO GRUPO*
@@ -523,20 +532,7 @@ Expira em: *${fmtDate(order.expires_at)}*`
           const link=await setPaymentLink(value)
           await reply(`👑 Link de pagamento atualizado:\n${link}`)
 
-        } else if(['setpix'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
-          const value=args.join(' ').trim()
-          if(!value) return await reply(`Uso: *${prefix}setpix sua-chave-pix*`)
-          await setPixKey(value)
-          await reply('👑 Chave Pix atualizada.')
-
-        } else if(['setpixnome'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
-          const value=args.join(' ').trim()
-          if(!value) return await reply(`Uso: *${prefix}setpixnome Nome do recebedor*`)
-          await setPixName(value)
-          await reply(`👑 Nome do Pix atualizado para *${value}*.`)
-
+25521
         } else if(['pedidos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
           const rows=await listPendingSubscriptionOrders(30)
@@ -560,6 +556,19 @@ Expira em: *${fmtDate(order.expires_at)}*`
 💰 R$ ${Number(r.amount).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 📅 Grupo liberado até: *${fmtDate(r.paid_until)}*`
           )
+          try{
+            await sock.sendMessage(r.chat_jid,{text:
+`💚 *PAGAMENTO CONFIRMADO!*
+
+🧾 Pedido: *${r.code}*
+✅ Trevo liberado por mais *30 dias*.
+📅 Validade: *${fmtDate(r.paid_until)}*
+
+Obrigado por apoiar o Trevo 🍀`
+            })
+          }catch(err){
+            console.error('[assinatura] não foi possível avisar o grupo',err?.message||err)
+          }
 
         } else if(['cancelarpedido'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
