@@ -14,16 +14,16 @@ http.createServer((req, res) => {
     res.writeHead(connected ? 200 : 503, { 'content-type': 'application/json' })
     return res.end(JSON.stringify({
       ok: connected,
-      service: 'trevo-bot',
+      service: 'alpha-bot',
       whatsapp: health.whatsapp,
       lastOpen: health.lastOpen || null
     }))
   }
 
   res.writeHead(200, { 'content-type': 'text/plain' })
-  res.end('Trevo Bot online')
+  res.end('Alpha Bot online')
 }).listen(port, '0.0.0.0', () => {
-  console.log('[HTTP] Trevo listening on port ' + port)
+  console.log('[HTTP] Alpha Bot listening on port ' + port)
 })
 
 await import('./index.js')
