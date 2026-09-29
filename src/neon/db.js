@@ -909,57 +909,106 @@ export function groupLicenseIsActive(license) {
 }
 
 
-export async function openLuckyBox(jid) {
+export async function openLuckyBoxes(jid, qty=1) {
   await ensureUser(jid)
+  qty=Number(qty)
+  if(!Number.isInteger(qty) || qty<1 || qty>5000) throw new Error('Quantidade inválida de caixas.')
+
   return transaction(async client=>{
     const inv=await client.query(
       'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
       [jid,'caixa_sorte']
     )
-    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui uma Caixa da Sorte. Compre uma na loja com comprar 7.')
+    const available=Number(inv.rows[0]?.quantity||0)
+    if(available<qty){
+      throw new Error(`Você possui apenas ${available} Caixa(s) da Sorte.`)
+    }
 
     await client.query(
-      'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
-      [jid,'caixa_sorte']
+      'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
+      [qty,jid,'caixa_sorte']
     )
 
-    const roll=Math.random()
-    if(roll<0.55){
-      const cash=1000+Math.floor(Math.random()*4001)
-      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+    let cash=0
+    let exp=0
+    const rewards=new Map()
+
+    for(let i=0;i<qty;i++){
+      const roll=Math.random()
+      if(roll<0.55){
+        cash+=1000+Math.floor(Math.random()*4001)
+        continue
+      }
+
+      if(roll<0.80){
+        const itemId=Math.random()<0.65?'pocao_m':'espada_madeira'
+        rewards.set(itemId,(rewards.get(itemId)||0)+1)
+        continue
+      }
+
+      if(roll<0.95){
+        exp+=100+Math.floor(Math.random()*201)
+        continue
+      }
+
+      rewards.set('espada_ferro',(rewards.get('espada_ferro')||0)+1)
+    }
+
+    if(cash>0){
+      await client.query(
+        'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+        [cash,jid]
+      )
       await client.query(`
         INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-        VALUES('system',$1,$2,'lucky_box','cash')
-      `,[jid,cash])
-      return {type:'cash',cash}
+        VALUES('system',$1,$2,'lucky_box',$3)
+      `,[jid,cash,`cash x${qty}`])
     }
 
-    if(roll<0.80){
-      const itemId=Math.random()<0.65?'pocao_m':'espada_madeira'
-      const item=await client.query('SELECT name FROM items WHERE id=$1',[itemId])
-      await client.query(`
-        INSERT INTO inventories(jid,item_id,quantity)
-        VALUES($1,$2,1)
-        ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1
-      `,[jid,itemId])
-      return {type:'item',itemId,name:item.rows[0]?.name||itemId,qty:1}
+    let level=null
+    if(exp>0) level=await applyExp(client,jid,exp)
+
+    const itemIds=[...rewards.keys()]
+    const names=new Map()
+    if(itemIds.length){
+      const itemRows=await client.query(
+        'SELECT id,name FROM items WHERE id = ANY($1::text[])',
+        [itemIds]
+      )
+      for(const row of itemRows.rows) names.set(row.id,row.name)
+
+      for(const [itemId,itemQty] of rewards){
+        await client.query(`
+          INSERT INTO inventories(jid,item_id,quantity)
+          VALUES($1,$2,$3)
+          ON CONFLICT(jid,item_id) DO UPDATE
+          SET quantity=inventories.quantity+EXCLUDED.quantity
+        `,[jid,itemId,itemQty])
+      }
     }
 
-    if(roll<0.95){
-      const exp=100+Math.floor(Math.random()*201)
-      const level=await applyExp(client,jid,exp)
-      return {type:'exp',exp,level}
-    }
+    const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
+    const remaining=Math.max(0,available-qty)
 
-    const itemId='espada_ferro'
-    const item=await client.query('SELECT name FROM items WHERE id=$1',[itemId])
-    await client.query(`
-      INSERT INTO inventories(jid,item_id,quantity)
-      VALUES($1,$2,1)
-      ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1
-    `,[jid,itemId])
-    return {type:'rare',itemId,name:item.rows[0]?.name||itemId,qty:1}
+    return {
+      opened:qty,
+      remaining,
+      cash,
+      exp,
+      level,
+      balance:Number(wallet.rows[0]?.cash||0),
+      items:[...rewards.entries()].map(([itemId,itemQty])=>({
+        itemId,
+        name:names.get(itemId)||itemId,
+        qty:itemQty
+      }))
+    }
   })
+}
+
+export async function openLuckyBox(jid) {
+  const r=await openLuckyBoxes(jid,1)
+  return r
 }
 
 export async function dungeon(jid) {
