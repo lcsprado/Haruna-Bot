@@ -108,6 +108,13 @@ export async function initDatabase() {
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS profile_avatars (
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      image_data TEXT NOT NULL,
+      mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
     CREATE TABLE IF NOT EXISTS transactions (
       id BIGSERIAL PRIMARY KEY,
       from_jid TEXT NOT NULL,
@@ -823,6 +830,34 @@ export async function sellItemsBatch(jid, selections=[]) {
 }
 
 
+
+export async function getProfileAvatar(jid){
+  const {rows}=await db.query('SELECT image_data,mime_type FROM profile_avatars WHERE jid=$1',[jid])
+  if(!rows[0]) return null
+  try{
+    return { buffer:Buffer.from(rows[0].image_data,'base64'), mimeType:rows[0].mime_type }
+  }catch{return null}
+}
+
+export async function setProfileAvatar(jid,buffer,mimeType='image/jpeg'){
+  await ensureUser(jid)
+  const b=Buffer.from(buffer)
+  if(!b.length) throw new Error('Imagem vazia.')
+  if(b.length>8*1024*1024) throw new Error('A imagem deve ter no máximo 8 MB.')
+  await db.query(`
+    INSERT INTO profile_avatars(jid,image_data,mime_type,updated_at)
+    VALUES($1,$2,$3,${nowSql})
+    ON CONFLICT(jid) DO UPDATE
+    SET image_data=EXCLUDED.image_data,mime_type=EXCLUDED.mime_type,updated_at=${nowSql}
+  `,[jid,b.toString('base64'),mimeType])
+  return true
+}
+
+export async function removeProfileAvatar(jid){
+  const r=await db.query('DELETE FROM profile_avatars WHERE jid=$1',[jid])
+  return r.rowCount>0
+}
+
 export async function getPlayerRanks(jid) {
   const {rows}=await db.query(`
     SELECT
@@ -1405,6 +1440,7 @@ export async function ownerResetTotal(jid) {
     await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
     await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%:${jid}`])
     await client.query('DELETE FROM daily_streaks WHERE jid=$1',[jid])
+    await client.query('DELETE FROM profile_avatars WHERE jid=$1',[jid])
 
     // Tabelas de progressão são criadas por initProgression() antes dos comandos serem usados.
     await client.query('DELETE FROM daily_missions WHERE jid=$1',[jid])

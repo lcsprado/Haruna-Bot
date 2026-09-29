@@ -10,7 +10,7 @@ import makeWASocket, {
 import pino from 'pino'
 import {
   initDatabase, ensureUser, getProfile, getDailyStreak, claimDaily, work,
-  deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks,
+  deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
   equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
@@ -244,13 +244,18 @@ async function sendAlphaProfile(sock,chat,jid,msg){
   if(!p) throw new Error('Perfil não encontrado.')
 
   let avatar=null
-  try{
-    const photo=await sock.profilePictureUrl(jid,'image')
-    if(photo){
-      const res=await fetch(photo)
-      if(res.ok) avatar=Buffer.from(await res.arrayBuffer())
-    }
-  }catch{}
+  const customAvatar=await getProfileAvatar(jid)
+  if(customAvatar?.buffer?.length){
+    avatar=customAvatar.buffer
+  }else{
+    try{
+      const photo=await sock.profilePictureUrl(jid,'image')
+      if(photo){
+        const res=await fetch(photo)
+        if(res.ok) avatar=Buffer.from(await res.arrayBuffer())
+      }
+    }catch{}
+  }
 
   const wins=Number(p.win||0),loss=Number(p.loss||0)
   const title=alphaTitle(p,pat.total)
@@ -676,6 +681,7 @@ Você possui: *${stock}*
 9️⃣ 🆘 Falar com suporte
 
 ✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
+🖼️ *Seu card:* use *!setfoto* numa foto para personalizar o *!perfil*.
 
 👉 *Responda apenas com o número.*
 
@@ -3681,7 +3687,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
 
         if(isGroup && !isOwner){
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
-          const RPG_CMDS=new Set(['rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
+          const RPG_CMDS=new Set(['perfil','profile','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
           let key=null,label=null
@@ -3969,7 +3975,40 @@ ${prefix}comandos — mostra esta lista
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['perfil','profile'].includes(cmd)){
-          await sendAlphaProfile(sock,chat,sender,msg)
+          const profileTarget=mentionsOf(msg)[0] || sender
+          await ensureUser(profileTarget)
+          await sendAlphaProfile(sock,chat,profileTarget,msg)
+
+        } else if(['setfoto','fotoperfil','avatar'].includes(cmd)){
+          const media=stickerMediaOf(msg)
+          if(!media || media.type!=='imageMessage'){
+            return await reply(
+`🖼️ *FOTO DO CARD*
+
+Envie uma foto com a legenda *${prefix}setfoto*
+ou responda uma foto com *${prefix}setfoto*.
+
+Essa foto será usada só no seu card do Alpha e não altera seu WhatsApp.`
+            )
+          }
+          try{
+            const image=await downloadMediaMessage(media.raw,'buffer',{},{
+              logger,
+              reuploadRequest:sock.updateMediaMessage
+            })
+            if(!image?.length) throw new Error('Não consegui baixar a foto.')
+            await setProfileAvatar(sender,Buffer.from(image),'image/jpeg')
+            await reply(`✅ Foto personalizada salva!\nUse *${prefix}perfil* para ver o card.`)
+          }catch(err){
+            console.error('[perfil] erro ao salvar foto',err)
+            await reply('❌ Não consegui salvar essa foto. Tente outra imagem menor.')
+          }
+
+        } else if(['removerfoto','resetfoto','fotowpp'].includes(cmd)){
+          const removed=await removeProfileAvatar(sender)
+          await reply(removed
+            ? `✅ Foto personalizada removida. Agora o *${prefix}perfil* volta a usar sua foto do WhatsApp.`
+            : 'ℹ️ Você já está usando a foto do WhatsApp no card.')
 
         } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
@@ -4884,6 +4923,7 @@ _Os comandos administrativos antigos continuam funcionando._`
 8️⃣ 💚 Grupo / assinatura
 
 ✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
+🖼️ *Seu card:* use *!setfoto* numa foto para personalizar o *!perfil*.
 
 👉 *Responda apenas com o número.*
 Você não precisa usar ! enquanto estiver no menu.
