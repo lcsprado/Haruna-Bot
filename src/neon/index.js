@@ -201,6 +201,55 @@ async function start() {
       return true
     }
 
+    const gamesMenu=async()=>{
+      setQuickFlow(chat,sender,'main',{},90000)
+      await reply(
+`🎮 *MINIGAMES DO TREVO*
+
+1️⃣ 🎰 Roleta
+2️⃣ 🪙 Cara ou Coroa
+3️⃣ ✊ Pedra, Papel e Tesoura
+4️⃣ 🔤 Forca
+5️⃣ 🧠 Quiz
+6️⃣ 🔢 Adivinhe o Número
+7️⃣ 👹 Boss
+
+0️⃣ Sair`
+      )
+    }
+
+    const mainMenu=async()=>{
+      setQuickFlow(chat,sender,'nav_main',{},90000)
+      await reply(
+`🍀 *TREVO — MENU PRINCIPAL*
+
+1️⃣ 👤 Meu perfil
+2️⃣ 💰 Economia
+3️⃣ 🛒 Itens e inventário
+4️⃣ ⚔️ RPG
+5️⃣ 🎮 Minigames
+6️⃣ 📋 Progressão
+7️⃣ 🏴 Clãs
+8️⃣ 💚 Grupo / assinatura
+
+👉 *Responda apenas com o número.*
+
+0️⃣ Sair`
+      )
+    }
+
+    const afterGame=async(game,data,text)=>{
+      setQuickFlow(chat,sender,'game_after',{game,...data},5*60*1000)
+      await reply(
+`${text}
+
+1️⃣ *Jogar novamente*
+2️⃣ Voltar aos minigames
+9️⃣ Menu principal
+0️⃣ Sair`
+      )
+    }
+
     const askBet=(stage)=> {
       setQuickFlow(chat,sender,stage,{},90000)
       return reply(
@@ -213,6 +262,133 @@ async function start() {
 
 _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
+    }
+
+    if(flow.stage==='game_after'){
+      const game=flow.data.game
+
+      if(input==='2'){
+        await gamesMenu()
+        return true
+      }
+
+      if(input==='9'){
+        await mainMenu()
+        return true
+      }
+
+      if(input!=='1'){
+        await reply('🎮 Escolha *1 Jogar novamente*, *2 Minigames*, *9 Menu principal* ou *0 Sair*.')
+        return true
+      }
+
+      if(game==='roulette'){
+        const r=await roulette(sender,flow.data.amount,flow.data.choice)
+        await progressDailyMission(sender,'game')
+        const result=r.payout>0
+          ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+          : `💸 Você perdeu R$ ${fmt(r.amount)}.`
+        await afterGame('roulette',{amount:flow.data.amount,choice:flow.data.choice},
+`🎰 *ROLETA*
+
+Número: *${r.number}*
+Cor: *${r.color}*
+Sua escolha: *${r.choice}*
+
+${result}`)
+        return true
+      }
+
+      if(game==='coin'){
+        const r=await coinFlip(sender,flow.data.amount,flow.data.choice)
+        await progressDailyMission(sender,'game')
+        await afterGame('coin',{amount:flow.data.amount,choice:flow.data.choice},
+`🪙 *CARA OU COROA*
+
+Resultado: *${r.result}*
+Você escolheu: *${r.choice}*
+
+${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
+        return true
+      }
+
+      if(game==='ppt'){
+        const r=rps(flow.data.choice)
+        await progressDailyMission(sender,'game')
+        const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
+        await afterGame('ppt',{choice:flow.data.choice},
+`✊ *PEDRA, PAPEL E TESOURA*
+
+Você: *${r.choice}*
+Trevo: *${r.bot}*
+
+${emoji} *${r.result.toUpperCase()}*`)
+        return true
+      }
+
+      if(game==='hangman'){
+        const r=await startHangman(chat)
+        setQuickFlow(chat,sender,'hangman',{},5*60*1000)
+        if(!r.already) await progressDailyMission(sender,'game')
+        const masked=r.word.split('').map(ch=>r.letters?.includes(ch)?ch:'_').join(' ')
+        await reply(
+`🔤 *FORCA*
+
+Dica: *${r.hint}*
+Palavra: ${masked}
+❤️ Vidas: ${r.lives||6}
+
+Digite uma *letra* ou tente a *palavra inteira*.
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(game==='quiz'){
+        const q=await startQuiz(chat)
+        if(!q.already) await progressDailyMission(sender,'game')
+        const ttl=Math.max(10,Number(q.remaining||120))*1000
+        setQuickFlow(chat,sender,'quiz_answer',{},ttl)
+        let text=`🧠 *QUIZ DO TREVO*\n\n${q.q}\n\n`
+        q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
+        text+='\n_Responda só com 1, 2, 3 ou 4._'
+        await reply(text)
+        return true
+      }
+
+      if(game==='number'){
+        const r=await startNumberGame(chat)
+        if(!r.already) await progressDailyMission(sender,'game')
+        setQuickFlow(chat,sender,'number_guess',{},5*60*1000)
+        await reply(
+`🔢 *ADIVINHE O NÚMERO*
+
+Escolhi um número de *1 a 100*.
+Vocês têm até *10 tentativas*.
+
+Digite apenas seu chute.
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(game==='boss'){
+        const r=await startBoss(chat)
+        if(!r.already) await progressDailyMission(sender,'game')
+        setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
+        await reply(
+`👹 *${r.name}*
+
+❤️ ${r.hp}/${r.maxHp}
+
+1️⃣ Atacar
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      await gamesMenu()
+      return true
     }
 
     if(flow.stage==='main'){
@@ -365,21 +541,17 @@ _Responda só com o número._`
       }
       const r=await roulette(sender,flow.data.amount,choice)
       await progressDailyMission(sender,'game')
-      clearQuickFlow(chat,sender)
       const result=r.payout>0
         ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
         : `💸 Você perdeu R$ ${fmt(r.amount)}.`
-      await reply(
+      await afterGame('roulette',{amount:flow.data.amount,choice},
 `🎰 *ROLETA*
 
 Número: *${r.number}*
 Cor: *${r.color}*
 Sua escolha: *${r.choice}*
 
-${result}
-
-_Use !games para jogar novamente._`
-      )
+${result}`)
       return true
     }
 
@@ -392,17 +564,13 @@ _Use !games para jogar novamente._`
       }
       const r=await coinFlip(sender,flow.data.amount,choice)
       await progressDailyMission(sender,'game')
-      clearQuickFlow(chat,sender)
-      await reply(
+      await afterGame('coin',{amount:flow.data.amount,choice},
 `🪙 *CARA OU COROA*
 
 Resultado: *${r.result}*
 Você escolheu: *${r.choice}*
 
-${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}
-
-_Use !games para jogar novamente._`
-      )
+${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
       return true
     }
 
@@ -415,18 +583,14 @@ _Use !games para jogar novamente._`
       }
       const r=rps(choice)
       await progressDailyMission(sender,'game')
-      clearQuickFlow(chat,sender)
       const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
-      await reply(
+      await afterGame('ppt',{choice},
 `✊ *PEDRA, PAPEL E TESOURA*
 
 Você: *${r.choice}*
 Trevo: *${r.bot}*
 
-${emoji} *${r.result.toUpperCase()}*
-
-_Use !games para jogar novamente._`
-      )
+${emoji} *${r.result.toUpperCase()}*`)
       return true
     }
 
@@ -440,13 +604,11 @@ _Use !games para jogar novamente._`
         return true
       }
       if(r.won){
-        clearQuickFlow(chat,sender)
-        await reply(`🎉 *ACERTOU!* A palavra era *${r.word}*.\n\n_Use !games para jogar novamente._`)
+        await afterGame('hangman',{},`🎉 *ACERTOU!* A palavra era *${r.word}*.`)
         return true
       }
       if(r.lost){
-        clearQuickFlow(chat,sender)
-        await reply(`💀 *FORCA ENCERRADA!* A palavra era *${r.word}*.\n\n_Use !games para jogar novamente._`)
+        await afterGame('hangman',{},`💀 *FORCA ENCERRADA!* A palavra era *${r.word}*.`)
         return true
       }
       await reply(`🔤 ${r.masked}\n❤️ Vidas: ${r.lives}${r.wrong?`\n❌ Erros: ${r.wrong.join(', ')||'nenhum'}`:''}`)
@@ -460,9 +622,10 @@ _Use !games para jogar novamente._`
         return true
       }
       const r=await answerQuiz(chat,sender,n)
-      clearQuickFlow(chat,sender)
-      if(r.correct) await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
-      else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
+      const resultText=r.correct
+        ? `✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`
+        : `❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`
+      await afterGame('quiz',{},resultText)
       return true
     }
 
@@ -474,11 +637,9 @@ _Use !games para jogar novamente._`
       }
       const r=await guessNumber(chat,sender,n)
       if(r.won){
-        clearQuickFlow(chat,sender)
-        await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\n💰 +R$ ${fmt(r.reward)}\nTentativas: ${r.attempts}`)
+        await afterGame('number',{},`🎉 *ACERTOU!* O número era *${r.number}*.\n💰 +R$ ${fmt(r.reward)}\nTentativas: ${r.attempts}`)
       }else if(r.lost){
-        clearQuickFlow(chat,sender)
-        await reply(`💀 Acabaram as tentativas. O número era *${r.number}*.`)
+        await afterGame('number',{},`💀 Acabaram as tentativas. O número era *${r.number}*.`)
       }else{
         await reply(`🔢 É *${r.hint}*!\nTentativas restantes: *${r.left}*\n\nDigite outro número.`)
       }
@@ -496,8 +657,7 @@ _Use !games para jogar novamente._`
         return true
       }
       if(r.dead){
-        clearQuickFlow(chat,sender)
-        await reply(
+        await afterGame('boss',{},
 `💥 *BOSS DERROTADO!*
 Dano final: ${r.damage}
 👥 Participantes: ${r.players}
