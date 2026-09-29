@@ -171,7 +171,7 @@ async function start() {
 
     if(['0','sair','cancelar','cancel'].includes(input)){
       clearQuickFlow(chat,sender)
-      await reply('✅ Modo rápido encerrado. Use *!games* quando quiser abrir novamente.')
+      await reply('✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
       return true
     }
 
@@ -507,6 +507,907 @@ Dano final: ${r.damage}
       const r=await usePotion(sender,itemId)
       clearQuickFlow(chat,sender)
       await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+      return true
+    }
+
+
+    if(flow.stage==='nav_main'){
+      if(!/^[1-8]$/.test(input)){
+        await reply('🍀 Escolha uma opção de *1 a 8* ou digite *0* para sair.')
+        return true
+      }
+
+      if(input==='1'){
+        const [p,clan,home,cars,pat]=await Promise.all([
+          getCombatProfile(sender),
+          getClanForUser(sender),
+          getHome(sender),
+          getGarage(sender),
+          getPatrimony(sender)
+        ])
+        clearQuickFlow(chat,sender)
+        await reply(
+`👤 *${p.push_name || 'Jogador'}*
+
+⭐ Nível: ${p.level}
+❤️ HP: ${p.hp}/${p.max_hp}
+⚔️ ATK: ${p.effective_atk}
+🛡️ DEF: ${p.effective_def}
+🏴 Clã: ${clan?clan.name:'Nenhum'}
+🏠 Casa: ${home?home.name:'Nenhuma'}
+🚗 Garagem: ${cars.length}/5
+💎 Patrimônio: *R$ ${fmt(pat.total)}*`
+        )
+        return true
+      }
+
+      if(input==='2'){
+        setQuickFlow(chat,sender,'nav_economy',{},90000)
+        await reply(
+`💰 *ECONOMIA*
+
+1️⃣ Ver saldo
+2️⃣ Daily
+3️⃣ Trabalhar
+4️⃣ Depositar
+5️⃣ Sacar
+6️⃣ Ranking dos mais ricos
+
+0️⃣ Voltar/sair`
+        )
+        return true
+      }
+
+      if(input==='3'){
+        setQuickFlow(chat,sender,'nav_items',{},90000)
+        await reply(
+`🛒 *ITENS E INVENTÁRIO*
+
+1️⃣ Loja
+2️⃣ Inventário
+3️⃣ Equipar
+4️⃣ Usar poção
+5️⃣ Abrir Caixa da Sorte
+
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(input==='4'){
+        setQuickFlow(chat,sender,'nav_rpg',{},90000)
+        await reply(
+`⚔️ *RPG*
+
+1️⃣ Status
+2️⃣ Dungeon
+3️⃣ Batalhar com alguém
+4️⃣ Roubar alguém
+5️⃣ Ranking RPG
+
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(input==='5'){
+        setQuickFlow(chat,sender,'main',{},90000)
+        await reply(
+`🎮 *MINIGAMES DO TREVO*
+
+1️⃣ 🎰 Roleta
+2️⃣ 🪙 Cara ou Coroa
+3️⃣ ✊ Pedra, Papel e Tesoura
+4️⃣ 🔤 Forca
+5️⃣ 🧠 Quiz
+6️⃣ 🔢 Adivinhe o Número
+7️⃣ 👹 Boss
+
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(input==='6'){
+        setQuickFlow(chat,sender,'nav_progress',{},90000)
+        await reply(
+`📋 *PROGRESSÃO*
+
+1️⃣ Missões diárias
+2️⃣ Resgatar missões
+3️⃣ Casas
+4️⃣ Carros
+5️⃣ Patrimônio
+6️⃣ Ranking de patrimônio
+
+0️⃣ Sair`
+        )
+        return true
+      }
+
+      if(input==='7'){
+        const clan=await getClanForUser(sender)
+        setQuickFlow(chat,sender,'clan_menu',{},90000)
+        if(!clan){
+          await reply(
+`🏴 *CLÃS*
+
+1️⃣ Criar um clã
+2️⃣ Aceitar convite
+3️⃣ Ranking de clãs
+
+0️⃣ Sair`
+          )
+        }else{
+          const leader=clan.role==='leader'
+          await reply(
+`🏴 *CLÃ ${clan.name}*
+
+1️⃣ Ver informações
+2️⃣ Doar ao cofre
+3️⃣ Convidar pessoa
+4️⃣ Ranking de clãs
+${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'5️⃣ Sair do clã'}
+
+0️⃣ Sair`
+          )
+        }
+        return true
+      }
+
+      if(input==='8'){
+        setQuickFlow(chat,sender,'nav_group',{},90000)
+        await reply(
+`💚 *GRUPO / ASSINATURA*
+
+1️⃣ Status do grupo
+2️⃣ Assinar / renovar
+3️⃣ Termos
+
+0️⃣ Sair`
+        )
+        return true
+      }
+    }
+
+    if(flow.stage==='nav_economy'){
+      if(input==='1'){
+        const p=await getProfile(sender)
+        clearQuickFlow(chat,sender)
+        await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
+        return true
+      }
+      if(input==='2'){
+        const r=await claimDaily(sender)
+        clearQuickFlow(chat,sender)
+        if(!r.ok) await reply(`⏳ Daily já coletado. Volte em ${duration(r.remaining)}.`)
+        else{
+          await progressDailyMission(sender,'daily')
+          await reply(`🍀 Daily coletado! +R$ ${fmt(r.amount)}`)
+        }
+        return true
+      }
+      if(input==='3'){
+        const r=await work(sender)
+        clearQuickFlow(chat,sender)
+        if(!r.ok) await reply(`⏳ Você já trabalhou. Tente novamente em ${duration(r.remaining)}.`)
+        else{
+          await progressDailyMission(sender,'work')
+          await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
+        }
+        return true
+      }
+      if(input==='4'){
+        setQuickFlow(chat,sender,'deposit_amount',{},90000)
+        await reply(
+`🏦 *DEPOSITAR*
+
+1️⃣ R$ 100
+2️⃣ R$ 500
+3️⃣ R$ 1.000
+4️⃣ R$ 5.000
+5️⃣ Máximo possível
+6️⃣ Outro valor
+
+0️⃣ Cancelar`
+        )
+        return true
+      }
+      if(input==='5'){
+        setQuickFlow(chat,sender,'withdraw_amount',{},90000)
+        await reply(
+`💵 *SACAR*
+
+1️⃣ R$ 100
+2️⃣ R$ 500
+3️⃣ R$ 1.000
+4️⃣ R$ 5.000
+5️⃣ Todo o saldo do banco
+6️⃣ Outro valor
+
+0️⃣ Cancelar`
+        )
+        return true
+      }
+      if(input==='6'){
+        const rows=await leaderboard(10)
+        clearQuickFlow(chat,sender)
+        let text='🏆 *RANKING — MAIS RICOS*\n\n'
+        rows.forEach((r,i)=>{
+          const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}º`
+          text+=`${medal} *${r.push_name || 'Jogador'}* — R$ ${fmt(r.total)}\n`
+        })
+        await reply(text.trim())
+        return true
+      }
+      await reply('💰 Escolha de *1 a 6* ou *0* para sair.')
+      return true
+    }
+
+    if(flow.stage==='deposit_amount' || flow.stage==='withdraw_amount'){
+      const presets={1:100,2:500,3:1000,4:5000}
+      if(input==='6'){
+        setQuickFlow(chat,sender,flow.stage==='deposit_amount'?'deposit_custom':'withdraw_custom',{},90000)
+        await reply('Digite apenas o valor. Exemplo: *2500*')
+        return true
+      }
+
+      let amount=presets[input]
+      if(input==='5'){
+        const p=await getProfile(sender)
+        amount=flow.stage==='deposit_amount'
+          ? Math.max(0,Math.min(Number(p.cash),Number(p.bank_limit)-Number(p.bank)))
+          : Number(p.bank)
+      }
+      if(!amount || amount<1){
+        await reply('Escolha uma opção válida.')
+        return true
+      }
+
+      if(flow.stage==='deposit_amount'){
+        const r=await deposit(sender,amount)
+        clearQuickFlow(chat,sender)
+        await reply(`🏦 Depósito concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
+      }else{
+        const r=await withdraw(sender,amount)
+        clearQuickFlow(chat,sender)
+        await reply(`💵 Saque concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
+      }
+      return true
+    }
+
+    if(flow.stage==='deposit_custom' || flow.stage==='withdraw_custom'){
+      const amount=parseAmount(input)
+      if(amount<1){
+        await reply('Digite um valor válido.')
+        return true
+      }
+      if(flow.stage==='deposit_custom'){
+        const r=await deposit(sender,amount)
+        clearQuickFlow(chat,sender)
+        await reply(`🏦 Depósito concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
+      }else{
+        const r=await withdraw(sender,amount)
+        clearQuickFlow(chat,sender)
+        await reply(`💵 Saque concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
+      }
+      return true
+    }
+
+    if(flow.stage==='nav_items'){
+      if(input==='1'){
+        const items=await getShop()
+        const byId=new Map(items.map(i=>[i.id,i]))
+        setQuickFlow(chat,sender,'shop_item',{items:SHOP_IDS},90000)
+        let text='🍀 *LOJA DO TREVO*\n\n'
+        SHOP_IDS.forEach((id,idx)=>{
+          const i=byId.get(id)
+          if(i) text+=`*${idx+1}.* ${i.name} — R$ ${fmt(i.price)}\n`
+        })
+        text+='\n👉 Responda com o número do item.\n0️⃣ Cancelar'
+        await reply(text)
+        return true
+      }
+      if(input==='2'){
+        const items=await getInventory(sender)
+        if(!items.length){
+          clearQuickFlow(chat,sender)
+          await reply('🎒 Seu inventário está vazio.')
+          return true
+        }
+        setQuickFlow(chat,sender,'inventory_select',{items},90000)
+        let text='🎒 *SEU INVENTÁRIO*\n\n'
+        items.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
+        text+='\n👉 Escolha um item pelo número.\n0️⃣ Sair'
+        await reply(text)
+        return true
+      }
+      if(input==='3'){
+        const items=await getInventory(sender)
+        const equipables=items.filter(i=>['weapon','armor'].includes(i.category))
+        if(!equipables.length){
+          clearQuickFlow(chat,sender)
+          await reply('⚙️ Você não possui equipamento.')
+          return true
+        }
+        setQuickFlow(chat,sender,'equip_select',{items:equipables.map(i=>i.item_id)},90000)
+        let text='⚙️ *O QUE QUER EQUIPAR?*\n\n'
+        equipables.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name}\n`)
+        text+='\n👉 Responda só com o número.'
+        await reply(text)
+        return true
+      }
+      if(input==='4'){
+        const items=await getInventory(sender)
+        const usable=items.filter(i=>i.category==='consumable')
+        if(!usable.length){
+          clearQuickFlow(chat,sender)
+          await reply('🧪 Você não possui poções utilizáveis.')
+          return true
+        }
+        setQuickFlow(chat,sender,'use_select',{items:usable.map(i=>i.item_id)},90000)
+        let text='🧪 *QUAL ITEM QUER USAR?*\n\n'
+        usable.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
+        text+='\n👉 Responda só com o número.'
+        await reply(text)
+        return true
+      }
+      if(input==='5'){
+        const r=await openLuckyBox(sender)
+        clearQuickFlow(chat,sender)
+        if(r.type==='cash') await reply(`🎁 *CAIXA DA SORTE*\n💰 Você encontrou *R$ ${fmt(r.cash)}*!`)
+        else if(r.type==='exp') await reply(`🎁 *CAIXA DA SORTE*\n✨ Você recebeu *+${r.exp} EXP*!`)
+        else await reply(`🎁 *CAIXA DA SORTE*\nVocê recebeu *${r.name}* ×${r.qty}!`)
+        return true
+      }
+      await reply('🛒 Escolha de *1 a 5* ou *0* para sair.')
+      return true
+    }
+
+    if(flow.stage==='shop_item'){
+      const index=Number(input)-1
+      const itemId=flow.data.items?.[index]
+      if(!itemId){
+        await reply('🛒 Escolha um item pelo número.')
+        return true
+      }
+      const shop=await getShop()
+      const item=shop.find(i=>i.id===itemId)
+      setQuickFlow(chat,sender,'shop_qty',{itemId,itemName:item?.name||itemId,price:Number(item?.price||0)},90000)
+      await reply(
+`🛒 *${item?.name||itemId}*
+
+1️⃣ 1 unidade
+2️⃣ 2 unidades
+3️⃣ 5 unidades
+4️⃣ 10 unidades
+5️⃣ Outra quantidade
+
+0️⃣ Cancelar`
+      )
+      return true
+    }
+
+    if(flow.stage==='shop_qty'){
+      const qtyMap={1:1,2:2,3:5,4:10}
+      if(input==='5'){
+        setQuickFlow(chat,sender,'shop_qty_custom',flow.data,90000)
+        await reply('Digite apenas a quantidade desejada, de *1 a 99*.')
+        return true
+      }
+      const qty=qtyMap[input]
+      if(!qty){
+        await reply('Escolha de *1 a 5*.')
+        return true
+      }
+      const r=await buyItem(sender,flow.data.itemId,qty)
+      await progressDailyMission(sender,'shop')
+      clearQuickFlow(chat,sender)
+      await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
+      return true
+    }
+
+    if(flow.stage==='shop_qty_custom'){
+      const qty=parseInt(input,10)
+      if(!Number.isInteger(qty)||qty<1||qty>99){
+        await reply('Digite uma quantidade de *1 a 99*.')
+        return true
+      }
+      const r=await buyItem(sender,flow.data.itemId,qty)
+      await progressDailyMission(sender,'shop')
+      clearQuickFlow(chat,sender)
+      await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
+      return true
+    }
+
+    if(flow.stage==='inventory_select'){
+      const item=flow.data.items?.[Number(input)-1]
+      if(!item){
+        await reply('🎒 Escolha um item pelo número.')
+        return true
+      }
+      if(['weapon','armor'].includes(item.category)){
+        setQuickFlow(chat,sender,'inventory_equip_confirm',{itemId:item.item_id,name:item.name},90000)
+        await reply(`⚙️ Equipar *${item.name}*?\n\n1️⃣ Sim\n2️⃣ Não`)
+        return true
+      }
+      if(item.category==='consumable'){
+        setQuickFlow(chat,sender,'inventory_use_confirm',{itemId:item.item_id,name:item.name},90000)
+        await reply(`🧪 Usar *${item.name}*?\n\n1️⃣ Sim\n2️⃣ Não`)
+        return true
+      }
+      if(item.item_id==='caixa_sorte'){
+        setQuickFlow(chat,sender,'inventory_box_confirm',{},90000)
+        await reply('🎁 Abrir uma *Caixa da Sorte*?\n\n1️⃣ Sim\n2️⃣ Não')
+        return true
+      }
+      clearQuickFlow(chat,sender)
+      await reply(`📦 *${item.name}* não possui ação direta no momento.`)
+      return true
+    }
+
+    if(flow.stage==='inventory_equip_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Cancelado.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Sim* ou *2 Não*.')
+        return true
+      }
+      const r=await equipItem(sender,flow.data.itemId)
+      clearQuickFlow(chat,sender)
+      await reply(`✅ *EQUIPADO!*\n${r.name} agora está ativo.`)
+      return true
+    }
+
+    if(flow.stage==='inventory_use_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Cancelado.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Sim* ou *2 Não*.')
+        return true
+      }
+      const r=await usePotion(sender,flow.data.itemId)
+      clearQuickFlow(chat,sender)
+      await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+      return true
+    }
+
+    if(flow.stage==='inventory_box_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Cancelado.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Sim* ou *2 Não*.')
+        return true
+      }
+      const r=await openLuckyBox(sender)
+      clearQuickFlow(chat,sender)
+      if(r.type==='cash') await reply(`🎁 Você encontrou *R$ ${fmt(r.cash)}*!`)
+      else if(r.type==='exp') await reply(`🎁 Você recebeu *+${r.exp} EXP*!`)
+      else await reply(`🎁 Você recebeu *${r.name}* ×${r.qty}!`)
+      return true
+    }
+
+    if(flow.stage==='nav_rpg'){
+      if(input==='1'){
+        const p=await getCombatProfile(sender)
+        clearQuickFlow(chat,sender)
+        await reply(
+`⚔️ *STATUS RPG*
+⭐ Nível: ${p.level}
+❤️ HP: ${p.hp}/${p.max_hp}
+⚔️ ATK: ${p.effective_atk}
+🛡️ DEF: ${p.effective_def}
+🗡️ ${p.weapon_name}
+🥋 ${p.armor_name}`
+        )
+        return true
+      }
+      if(input==='2'){
+        const r=await dungeon(sender)
+        clearQuickFlow(chat,sender)
+        if(!r.ok) await reply(`⏳ Nova dungeon em ${duration(r.remaining)}.`)
+        else{
+          await progressDailyMission(sender,'dungeon')
+          if(r.won) await reply(`🏆 Você venceu *${r.monster}*!\n💰 +R$ ${fmt(r.cash)}\n✨ +${r.exp} EXP\n❤️ HP: ${r.hp}/${r.maxHp}`)
+          else await reply(`💀 Você perdeu para *${r.monster}*.\n❤️ Recuperou para ${r.hp}/${r.maxHp} HP.`)
+        }
+        return true
+      }
+      if(input==='3'){
+        setQuickFlow(chat,sender,'battle_target',{},90000)
+        await reply('⚔️ Agora *marque a pessoa* que você quer desafiar.')
+        return true
+      }
+      if(input==='4'){
+        setQuickFlow(chat,sender,'rob_target',{},90000)
+        await reply('🥷 Agora *marque a pessoa* que você quer tentar roubar.')
+        return true
+      }
+      if(input==='5'){
+        const rows=await combatLeaderboard(10)
+        clearQuickFlow(chat,sender)
+        let text='⚔️ *RANKING RPG*\n\n'
+        rows.forEach((r,i)=>text+=`${i+1}. *${r.push_name || 'Jogador'}* — Nv.${r.level} | ${r.win}V/${r.loss}D\n`)
+        await reply(text.trim())
+        return true
+      }
+      await reply('⚔️ Escolha de *1 a 5*.')
+      return true
+    }
+
+    if(flow.stage==='battle_target'){
+      const target=mentionsOf(msg)[0]
+      if(!target){
+        await reply('⚔️ Marque uma pessoa usando @.')
+        return true
+      }
+      const r=await battle(sender,target)
+      if(!r.ok){
+        clearQuickFlow(chat,sender)
+        await reply(`⏳ Você poderá batalhar novamente em ${duration(r.remaining)}.`)
+        return true
+      }
+      await progressDailyMission(sender,'battle')
+      clearQuickFlow(chat,sender)
+      await reply(`⚔️ *BATALHA ENCERRADA!*\n🏆 Vencedor: *${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}`,{mentions:[target]})
+      return true
+    }
+
+    if(flow.stage==='rob_target'){
+      const target=mentionsOf(msg)[0]
+      if(!target){
+        await reply('🥷 Marque uma pessoa usando @.')
+        return true
+      }
+      const r=await robPlayer(sender,target)
+      clearQuickFlow(chat,sender)
+      if(!r.ok) await reply(`⏳ Tente roubar novamente em ${duration(r.remaining)}.`)
+      else if(r.success) await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.`,{mentions:[target]})
+      else await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:[target]})
+      return true
+    }
+
+    if(flow.stage==='nav_progress'){
+      if(input==='1'){
+        const r=await getDailyMissions(sender)
+        clearQuickFlow(chat,sender)
+        let text='📋 *MISSÕES DIÁRIAS*\n\n'
+        r.missions.forEach((m,i)=>text+=`${i+1}. ${Number(m.progress)>=Number(m.target)?'✅':'⬜'} *${m.title}* — ${m.progress}/${m.target}\n`)
+        await reply(text.trim())
+        return true
+      }
+      if(input==='2'){
+        const r=await claimDailyMissions(sender)
+        clearQuickFlow(chat,sender)
+        if(!r.claimed) await reply('📋 Nenhuma missão concluída para resgatar.')
+        else await reply(`🎁 Missões resgatadas: ${r.claimed}\n💰 R$ ${fmt(r.cash)}\n🎁 Caixas: ${r.boxes}`)
+        return true
+      }
+      if(input==='3'){
+        setQuickFlow(chat,sender,'house_select',{},90000)
+        let text='🏠 *ESCOLHA UM IMÓVEL*\n\n'
+        HOUSES.forEach((h,i)=>text+=`*${i+1}.* ${h.name} — R$ ${fmt(h.price)}\n`)
+        text+='\n0️⃣ Cancelar'
+        await reply(text)
+        return true
+      }
+      if(input==='4'){
+        setQuickFlow(chat,sender,'car_select',{},90000)
+        let text='🚗 *ESCOLHA UM CARRO*\n\n'
+        CARS.forEach((c,i)=>text+=`*${i+1}.* ${c.name} — R$ ${fmt(c.price)}\n`)
+        text+='\n0️⃣ Cancelar'
+        await reply(text)
+        return true
+      }
+      if(input==='5'){
+        const p=await getPatrimony(sender)
+        clearQuickFlow(chat,sender)
+        await reply(`💎 *SEU PATRIMÔNIO*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n🎒 Itens: R$ ${fmt(p.inventory_value)}\n🏠 Imóvel: R$ ${fmt(p.home_value)}\n🚗 Veículos: R$ ${fmt(p.cars_value)}\n\n💰 *Total: R$ ${fmt(p.total)}*`)
+        return true
+      }
+      if(input==='6'){
+        const rows=await patrimonyLeaderboard(10)
+        clearQuickFlow(chat,sender)
+        let text='💎 *RANKING DE PATRIMÔNIO*\n\n'
+        rows.forEach((r,i)=>text+=`${i+1}. *${r.push_name||'Jogador'}* — R$ ${fmt(r.total)}\n`)
+        await reply(text.trim())
+        return true
+      }
+      await reply('📋 Escolha de *1 a 6*.')
+      return true
+    }
+
+    if(flow.stage==='house_select'){
+      const item=HOUSES[Number(input)-1]
+      if(!item){
+        await reply('🏠 Escolha um imóvel pelo número.')
+        return true
+      }
+      const current=await getHome(sender)
+      const tradeIn=current?Math.floor(current.price*.60):0
+      const cost=Math.max(0,item.price-tradeIn)
+      setQuickFlow(chat,sender,'house_confirm',{id:item.id,name:item.name,cost,tradeIn,current:current?.name||null},90000)
+      await reply(
+`🏠 *CONFIRMAR COMPRA*
+
+Imóvel: *${item.name}*
+Valor: R$ ${fmt(item.price)}
+${current?`Entrada da ${current.name}: R$ ${fmt(tradeIn)}\n`:''}💸 A pagar: *R$ ${fmt(cost)}*
+
+1️⃣ Confirmar
+2️⃣ Cancelar`
+      )
+      return true
+    }
+
+    if(flow.stage==='house_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Compra cancelada.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
+        return true
+      }
+      const r=await buyHouse(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply(`🏠 *NOVA CASA!*\n🏡 ${r.house.name}\n💸 Pago: R$ ${fmt(r.cost)}`)
+      return true
+    }
+
+    if(flow.stage==='car_select'){
+      const item=CARS[Number(input)-1]
+      if(!item){
+        await reply('🚗 Escolha um carro pelo número.')
+        return true
+      }
+      setQuickFlow(chat,sender,'car_confirm',{id:item.id,name:item.name,price:item.price},90000)
+      await reply(
+`🚗 *CONFIRMAR COMPRA*
+
+Carro: *${item.name}*
+Valor: *R$ ${fmt(item.price)}*
+
+1️⃣ Confirmar
+2️⃣ Cancelar`
+      )
+      return true
+    }
+
+    if(flow.stage==='car_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Compra cancelada.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
+        return true
+      }
+      const c=await buyCar(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply(`🚗 *CARRO COMPRADO!*\n🔑 ${c.name}\n💰 R$ ${fmt(c.price)}`)
+      return true
+    }
+
+    if(flow.stage==='clan_menu'){
+      const clan=await getClanForUser(sender)
+      if(!clan){
+        if(input==='1'){
+          setQuickFlow(chat,sender,'clan_create_name',{},90000)
+          await reply('🏴 Digite agora o *nome do clã* que deseja criar.\n💰 Custo: R$ 10.000')
+          return true
+        }
+        if(input==='2'){
+          const r=await acceptClanInvite(sender)
+          clearQuickFlow(chat,sender)
+          await reply(`🏴 Você entrou no clã *${r.name}*!`)
+          return true
+        }
+        if(input==='3'){
+          const rows=await listClans(10)
+          clearQuickFlow(chat,sender)
+          let text='🏴 *RANKING DE CLÃS*\n\n'
+          rows.forEach((c,i)=>text+=`${i+1}. *${c.name}* — Nv.${c.level} | ${c.members} membros\n`)
+          await reply(text.trim())
+          return true
+        }
+        await reply('🏴 Escolha *1, 2 ou 3*.')
+        return true
+      }
+
+      const leader=clan.role==='leader'
+      if(input==='1'){
+        clearQuickFlow(chat,sender)
+        await reply(`🏴 *CLÃ ${clan.name}*\n⭐ Nível: ${clan.level}\n👥 Membros: ${clan.members}\n💰 Cofre: R$ ${fmt(clan.treasury)}\n👑 Cargo: ${leader?'Líder':'Membro'}`)
+        return true
+      }
+      if(input==='2'){
+        setQuickFlow(chat,sender,'clan_donate',{},90000)
+        await reply(
+`💰 *QUANTO DOAR AO CLÃ?*
+
+1️⃣ R$ 100
+2️⃣ R$ 1.000
+3️⃣ R$ 5.000
+4️⃣ R$ 10.000
+5️⃣ Outro valor
+
+0️⃣ Cancelar`
+        )
+        return true
+      }
+      if(input==='3'){
+        setQuickFlow(chat,sender,'clan_invite_target',{},90000)
+        await reply('🏴 Agora *marque a pessoa* que deseja convidar.')
+        return true
+      }
+      if(input==='4'){
+        const rows=await listClans(10)
+        clearQuickFlow(chat,sender)
+        let text='🏴 *RANKING DE CLÃS*\n\n'
+        rows.forEach((c,i)=>text+=`${i+1}. *${c.name}* — Nv.${c.level} | ${c.members} membros\n`)
+        await reply(text.trim())
+        return true
+      }
+      if(leader && input==='5'){
+        setQuickFlow(chat,sender,'clan_transfer_target',{},90000)
+        await reply('👑 Marque o membro que receberá a liderança.')
+        return true
+      }
+      if(leader && input==='6'){
+        setQuickFlow(chat,sender,'clan_kick_target',{},90000)
+        await reply('🚪 Marque o membro que deseja expulsar.')
+        return true
+      }
+      if((leader && input==='7') || (!leader && input==='5')){
+        setQuickFlow(chat,sender,'clan_leave_confirm',{},90000)
+        await reply('🏴 Tem certeza que deseja sair do clã?\n\n1️⃣ Sim\n2️⃣ Não')
+        return true
+      }
+      await reply('🏴 Escolha uma das opções exibidas.')
+      return true
+    }
+
+    if(flow.stage==='clan_create_name'){
+      const name=String(body||'').trim()
+      if(name.length<3){
+        await reply('O nome precisa ter pelo menos 3 caracteres.')
+        return true
+      }
+      const c=await createClan(sender,name)
+      clearQuickFlow(chat,sender)
+      await reply(`🏴 Clã *${c.name}* criado!\n👑 Você é o líder.\n💰 Custo: R$ 10.000`)
+      return true
+    }
+
+    if(flow.stage==='clan_donate'){
+      const values={1:100,2:1000,3:5000,4:10000}
+      if(input==='5'){
+        setQuickFlow(chat,sender,'clan_donate_custom',{},90000)
+        await reply('Digite apenas o valor da doação.')
+        return true
+      }
+      const amount=values[input]
+      if(!amount){
+        await reply('Escolha de *1 a 5*.')
+        return true
+      }
+      const r=await donateClan(sender,amount)
+      clearQuickFlow(chat,sender)
+      await reply(`🏴 Doação realizada: R$ ${fmt(r.amount)}\n🏦 Cofre: R$ ${fmt(r.treasury)}\n⭐ Nível: ${r.level}`)
+      return true
+    }
+
+    if(flow.stage==='clan_donate_custom'){
+      const amount=parseAmount(input)
+      if(amount<100){
+        await reply('Doação mínima: R$ 100.')
+        return true
+      }
+      const r=await donateClan(sender,amount)
+      clearQuickFlow(chat,sender)
+      await reply(`🏴 Doação realizada: R$ ${fmt(r.amount)}\n🏦 Cofre: R$ ${fmt(r.treasury)}`)
+      return true
+    }
+
+    if(flow.stage==='clan_invite_target'){
+      const target=mentionsOf(msg)[0]
+      if(!target){
+        await reply('🏴 Marque alguém usando @.')
+        return true
+      }
+      const r=await inviteToClan(sender,target)
+      clearQuickFlow(chat,sender)
+      await reply(`🏴 Convite enviado para entrar no clã *${r.clan.name}*.`,{mentions:[target]})
+      return true
+    }
+
+    if(flow.stage==='clan_transfer_target'){
+      const target=mentionsOf(msg)[0]
+      if(!target){
+        await reply('👑 Marque um membro usando @.')
+        return true
+      }
+      const r=await transferClanLeadership(sender,target)
+      clearQuickFlow(chat,sender)
+      await reply(`👑 Liderança do clã *${r.name}* transferida.`,{mentions:[target]})
+      return true
+    }
+
+    if(flow.stage==='clan_kick_target'){
+      const target=mentionsOf(msg)[0]
+      if(!target){
+        await reply('🚪 Marque um membro usando @.')
+        return true
+      }
+      const r=await kickClanMember(sender,target)
+      clearQuickFlow(chat,sender)
+      await reply(`🚪 Membro removido do clã *${r.name}*.`,{mentions:[target]})
+      return true
+    }
+
+    if(flow.stage==='clan_leave_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Cancelado.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Sim* ou *2 Não*.')
+        return true
+      }
+      const r=await leaveClan(sender)
+      clearQuickFlow(chat,sender)
+      await reply(r.dissolved?`🏴 O clã *${r.name}* foi encerrado.`:`🏴 Você saiu do clã *${r.name}*.`)
+      return true
+    }
+
+    if(flow.stage==='nav_group'){
+      if(input==='1'){
+        if(!chat.endsWith('@g.us')){
+          clearQuickFlow(chat,sender)
+          await reply('💚 Esse status existe apenas dentro de grupos.')
+          return true
+        }
+        const lic=await getGroupLicense(chat)
+        clearQuickFlow(chat,sender)
+        if(!lic){
+          await reply('🍀 Grupo ainda não iniciou os 3 dias grátis.')
+        }else{
+          await reply(`🍀 *STATUS DO GRUPO*\nStatus: *${groupLicenseIsActive(lic)?'ATIVO':'INATIVO'}*\nPlano: *${lic.plan}*\nValidade: *${fmtDate(lic.paid_until)}*`)
+        }
+        return true
+      }
+      if(input==='2'){
+        if(!chat.endsWith('@g.us')){
+          clearQuickFlow(chat,sender)
+          await reply('Use a assinatura dentro do grupo que deseja ativar.')
+          return true
+        }
+        const r=await createSubscriptionOrder(chat,sender)
+        const link=await getPaymentLink()
+        clearQuickFlow(chat,sender)
+        await reply(`💚 *ASSINATURA TREVO*\n💰 R$ ${Number(r.order.amount).toLocaleString('pt-BR',{minimumFractionDigits:2})}\n🧾 Pedido: *${r.order.code}*\n\n💳 ${link}`)
+        return true
+      }
+      if(input==='3'){
+        const price=await getLaunchPrice()
+        clearQuickFlow(chat,sender)
+        await reply(`📄 *TERMOS RESUMIDOS*\n\nPreço atual: R$ ${Number(price).toLocaleString('pt-BR',{minimumFractionDigits:2})} / 30 dias.\nO Trevo utiliza integração não oficial com o WhatsApp e pode sofrer desconexões ou limitações da plataforma.`)
+        return true
+      }
+      await reply('💚 Escolha *1, 2 ou 3*.')
       return true
     }
 
