@@ -604,3 +604,35 @@ export async function combatLeaderboard(limit=10) {
   `,[limit])
   return rows
 }
+
+
+let runtimeLockClient = null
+
+export async function acquireRuntimeLock(sessionId) {
+  if (runtimeLockClient) return true
+
+  const lockName = `trevo-whatsapp:${sessionId}`
+
+  while (true) {
+    const client = await db.connect()
+    try {
+      const { rows } = await client.query(
+        'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',
+        [lockName]
+      )
+
+      if (rows[0]?.locked) {
+        runtimeLockClient = client
+        console.log('[Runtime] lock exclusivo adquirido para', sessionId)
+        return true
+      }
+    } catch (err) {
+      client.release()
+      throw err
+    }
+
+    client.release()
+    console.log('[Runtime] outra instância ainda usa a sessão; aguardando...')
+    await new Promise(resolve => setTimeout(resolve, 2500))
+  }
+}
