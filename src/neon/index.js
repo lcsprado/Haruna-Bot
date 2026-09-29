@@ -532,7 +532,6 @@ Expira em: *${fmtDate(order.expires_at)}*`
           const link=await setPaymentLink(value)
           await reply(`👑 Link de pagamento atualizado:\n${link}`)
 
-25521
         } else if(['pedidos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
           const rows=await listPendingSubscriptionOrders(30)
