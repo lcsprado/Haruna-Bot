@@ -6,7 +6,10 @@ import makeWASocket, {
   makeCacheableSignalKeyStore
 } from 'baileys'
 import pino from 'pino'
-import { initDatabase, ensureUser, getProfile, claimDaily } from './db.js'
+import {
+  initDatabase, ensureUser, getProfile, claimDaily, work,
+  deposit, withdraw, transfer, getShop, buyItem, getInventory, leaderboard
+} from './db.js'
 import { useNeonAuthState } from './auth.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
@@ -23,10 +26,23 @@ function textOf(msg) {
     || ''
 }
 
+function mentionsOf(msg) {
+  return msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid
+    || msg?.message?.imageMessage?.contextInfo?.mentionedJid
+    || msg?.message?.videoMessage?.contextInfo?.mentionedJid
+    || []
+}
+
 function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
 function duration(sec){
   const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60)
   return h ? `${h}h ${m}min` : `${m}min`
+}
+function parseAmount(s){
+  if(!s) return 0
+  const clean=String(s).replace(/\./g,'').replace(',','.')
+  const n=Number(clean)
+  return Number.isFinite(n) ? Math.floor(n) : 0
 }
 
 async function start() {
@@ -87,26 +103,118 @@ async function start() {
         if(!body.startsWith(prefix)) continue
 
         await ensureUser(sender,msg.pushName || '')
-        const [cmd]=body.slice(prefix.length).trim().split(/\s+/)
-        const reply=text=>sock.sendMessage(chat,{text},{quoted:msg})
+        const [rawCmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
+        const cmd=(rawCmd||'').toLowerCase()
+        const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
 
-        if(['ping','p'].includes(cmd.toLowerCase())){
+        if(['ping','p'].includes(cmd)){
           await reply('🍀 Pong! Trevo online e conectado ao Neon.')
-        } else if(['saldo','balance','bal'].includes(cmd.toLowerCase())){
+
+        } else if(['saldo','balance','bal'].includes(cmd)){
           const p=await getProfile(sender)
-          await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
-        } else if(['perfil','profile'].includes(cmd.toLowerCase())){
+          await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
+
+        } else if(['perfil','profile'].includes(cmd)){
           const p=await getProfile(sender)
           await reply(`👤 *${p.push_name || 'Jogador'}*\n⭐ Nível: ${p.level}\n✨ EXP: ${p.exp}\n❤️ HP: ${p.hp}/${p.max_hp}\n⚔️ ATK: ${p.atk}\n🛡️ DEF: ${p.def}\n💨 SPD: ${p.spd}\n💰 Saldo: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
-        } else if(['daily','diario'].includes(cmd.toLowerCase())){
+
+        } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
           if(!r.ok) await reply(`⏳ Daily já coletado. Volte em ${duration(r.remaining)}.`)
           else await reply(`🍀 Daily coletado! +R$ ${fmt(r.amount)}`)
-        } else if(['menu','help','ajuda'].includes(cmd.toLowerCase())){
-          await reply(`🍀 *Trevo*\n\n${prefix}ping — testar bot\n${prefix}saldo — ver dinheiro\n${prefix}perfil — ver personagem\n${prefix}daily — prêmio diário\n\nBackend: Neon PostgreSQL`)
+
+        } else if(['trabalhar','work','trampo'].includes(cmd)){
+          const r=await work(sender)
+          if(!r.ok) await reply(`⏳ Você já trabalhou. Tente novamente em ${duration(r.remaining)}.`)
+          else await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
+
+        } else if(['depositar','deposit','dep'].includes(cmd)){
+          const amount=parseAmount(args[0])
+          if(!amount) return await reply(`Uso: *${prefix}depositar 1000*`)
+          const r=await deposit(sender,amount)
+          await reply(`🏦 Depósito concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
+
+        } else if(['sacar','withdraw','saque'].includes(cmd)){
+          const amount=parseAmount(args[0])
+          if(!amount) return await reply(`Uso: *${prefix}sacar 1000*`)
+          const r=await withdraw(sender,amount)
+          await reply(`💵 Saque concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
+
+        } else if(['pix','transferir','transfer'].includes(cmd)){
+          const mentions=mentionsOf(msg)
+          const target=mentions[0]
+          const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
+          if(!target || !amount) return await reply(`Uso no grupo: *${prefix}pix @pessoa 1000*`)
+          const r=await transfer(sender,target,amount)
+          await reply(`💸 *PIX realizado!*\n\n➡️ Enviado: R$ ${fmt(r.amount)}\n🧾 Taxa: R$ ${fmt(r.fee)}\n💰 Total debitado: R$ ${fmt(r.total)}`,{mentions:[target]})
+
+        } else if(['loja','shop'].includes(cmd)){
+          const items=await getShop()
+          const visible=items.filter(i=>['pocao_p','pocao_m','espada_madeira','espada_ferro','armadura_couro','armadura_ferro','caixa_sorte'].includes(i.id))
+          let text='🍀 *LOJA DO TREVO*\n\n'
+          for(const i of visible){
+            text+=`📦 *${i.name}* — R$ ${fmt(i.price)}\nID: \`${i.id}\`\n_${i.description}_\n\n`
+          }
+          text+=`Comprar: *${prefix}comprar <id> [quantidade]*`
+          await reply(text.trim())
+
+        } else if(['comprar','buy'].includes(cmd)){
+          const id=(args[0]||'').toLowerCase()
+          const qty=parseInt(args[1]||'1',10)
+          if(!id) return await reply(`Uso: *${prefix}comprar espada_madeira 1*`)
+          const r=await buyItem(sender,id,qty)
+          await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
+
+        } else if(['inventario','inventory','inv'].includes(cmd)){
+          const items=await getInventory(sender)
+          if(!items.length) return await reply('🎒 Seu inventário está vazio.')
+          let text='🎒 *SEU INVENTÁRIO*\n\n'
+          for(const i of items) text+=`• *${i.name}* ×${i.quantity} _[${i.rarity}]_\n`
+          await reply(text.trim())
+
+        } else if(['ranking','rank','top'].includes(cmd)){
+          const rows=await leaderboard(10)
+          if(!rows.length) return await reply('🏆 Ainda não há jogadores no ranking.')
+          let text='🏆 *RANKING — MAIS RICOS*\n\n'
+          rows.forEach((r,i)=>{
+            const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}º`
+            text+=`${medal} *${r.push_name || 'Jogador'}* — R$ ${fmt(r.total)}\n`
+          })
+          await reply(text.trim())
+
+        } else if(['menu','help','ajuda'].includes(cmd)){
+          await reply(
+`🍀 *TREVO — MENU*
+
+💰 *Economia*
+${prefix}saldo
+${prefix}daily
+${prefix}trabalhar
+${prefix}depositar <valor>
+${prefix}sacar <valor>
+${prefix}pix @pessoa <valor>
+
+🛒 *Itens*
+${prefix}loja
+${prefix}comprar <id> [qtd]
+${prefix}inventario
+
+🏆 *Competição*
+${prefix}ranking
+
+👤 *Perfil*
+${prefix}perfil
+${prefix}ping
+
+_Novos sistemas de RPG, clãs e família virão nas próximas versões._`
+          )
         }
       }catch(err){
         console.error('[mensagem] erro',err)
+        try{
+          const chat=msg.key.remoteJid
+          await sock.sendMessage(chat,{text:`❌ ${err.message || 'Ocorreu um erro.'}`},{quoted:msg})
+        }catch{}
       }
     }
   })
