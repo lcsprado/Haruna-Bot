@@ -388,6 +388,29 @@ export async function transfer(fromJid, toJid, amount) {
   })
 }
 
+export async function purchaseService(jid, serviceId, price) {
+  price=Number(price)
+  if(!Number.isSafeInteger(price) || price<1) throw new Error('Preço de serviço inválido.')
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const wallet=walletR.rows[0]
+    if(!wallet || Number(wallet.cash)<price) throw new Error('Saldo insuficiente para essa compra.')
+
+    await client.query(
+      'UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',
+      [price,jid]
+    )
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'shop',$2,'service',$3)
+    `,[jid,price,serviceId])
+
+    return { serviceId, price, cash:Number(wallet.cash)-price }
+  })
+}
+
 export async function getShop() {
   const { rows } = await db.query(`
     SELECT id,name,description,category,price,rarity
