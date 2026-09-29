@@ -2,7 +2,9 @@ import 'dotenv/config'
 import makeWASocket, {
   Browsers,
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
+  getContentType,
   makeCacheableSignalKeyStore
 } from 'baileys'
 import pino from 'pino'
@@ -39,6 +41,7 @@ import {
   getHome, buyHouse, getGarage, buyCar,
   getPatrimony, patrimonyLeaderboard
 } from './progression.js'
+import { toStickerBuffer } from './sticker.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -122,6 +125,56 @@ function mentionsOf(msg) {
     || msg?.message?.imageMessage?.contextInfo?.mentionedJid
     || msg?.message?.videoMessage?.contextInfo?.mentionedJid
     || []
+}
+
+function unwrapMessageContent(message){
+  let current=message
+  for(let i=0;i<6;i++){
+    const next=current?.ephemeralMessage?.message
+      || current?.viewOnceMessage?.message
+      || current?.viewOnceMessageV2?.message
+      || current?.viewOnceMessageV2Extension?.message
+      || current?.documentWithCaptionMessage?.message
+      || current?.editedMessage?.message
+      || current?.associatedChildMessage?.message
+    if(!next) break
+    current=next
+  }
+  return current
+}
+
+function stickerMediaOf(msg){
+  const supported=new Set(['imageMessage','videoMessage','stickerMessage'])
+  const directMessage=unwrapMessageContent(msg?.message)
+  const directType=directMessage ? getContentType(directMessage) : null
+
+  if(directType && supported.has(directType)){
+    return {
+      type:directType,
+      raw:{key:msg.key,message:directMessage}
+    }
+  }
+
+  const directContent=directType ? directMessage?.[directType] : null
+  const ctx=directContent?.contextInfo
+  const quotedMessage=unwrapMessageContent(ctx?.quotedMessage)
+  const quotedType=quotedMessage ? getContentType(quotedMessage) : null
+
+  if(quotedType && supported.has(quotedType)){
+    return {
+      type:quotedType,
+      raw:{
+        key:{
+          remoteJid:msg?.key?.remoteJid,
+          id:ctx?.stanzaId,
+          participant:ctx?.participant
+        },
+        message:quotedMessage
+      }
+    }
+  }
+
+  return null
 }
 
 function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
@@ -518,6 +571,8 @@ Você possui: *${stock}*
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo / assinatura
 9️⃣ 🆘 Falar com suporte
+
+✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
 
 👉 *Responda apenas com o número.*
 
@@ -3554,7 +3609,64 @@ Fale com o responsável pelo Alpha Bot para ativação.`
           }
         }
 
-        if(['suporte','support','ajuda'].includes(cmd)){
+        if(['sticker','s','stiker','fig','figurinha'].includes(cmd)){
+          const source=stickerMediaOf(msg)
+          if(!source){
+            return await reply(
+`🖼️ *CRIAR FIGURINHA*
+
+Responda uma *foto*, *vídeo* ou *figurinha* com *${prefix}sticker*.
+
+Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
+
+🎬 Vídeos usam os primeiros segundos automaticamente.`
+            )
+          }
+
+          try{
+            await sock.sendMessage(chat,{react:{text:'⏳',key:msg.key}})
+          }catch{}
+
+          try{
+            const media=await downloadMediaMessage(
+              source.raw,
+              'buffer',
+              {},
+              {
+                logger,
+                reuploadRequest:sock.updateMediaMessage
+              }
+            )
+            if(!media || !media.length) throw new Error('Não consegui baixar essa mídia.')
+
+            const customPack=args.join(' ').trim()
+            const sticker=await toStickerBuffer(Buffer.from(media),{
+              packName:customPack || 'Alpha Bot',
+              packPublish:'Alpha Bot'
+            })
+
+            await sock.sendMessage(
+              chat,
+              {
+                sticker,
+                mimetype:'image/webp',
+                contextInfo:{forwardingScore:0,isForwarded:false}
+              },
+              {quoted:msg}
+            )
+
+            try{
+              await sock.sendMessage(chat,{react:{text:'✅',key:msg.key}})
+            }catch{}
+          }catch(err){
+            console.error('[sticker] erro',err)
+            try{
+              await sock.sendMessage(chat,{react:{text:'❌',key:msg.key}})
+            }catch{}
+            await reply('❌ Não consegui criar a figurinha. Tente outra foto ou um vídeo menor.')
+          }
+
+        } else if(['suporte','support','ajuda'].includes(cmd)){
           setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
           await reply(
 `🆘 *SUPORTE ALPHA BOT*
@@ -4696,6 +4808,8 @@ _Os comandos administrativos antigos continuam funcionando._`
 6️⃣ 📋 Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo / assinatura
+
+✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
 
 👉 *Responda apenas com o número.*
 Você não precisa usar ! enquanto estiver no menu.
