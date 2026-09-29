@@ -18,7 +18,7 @@ import {
   getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
   approveSubscriptionOrder, cancelSubscriptionOrder,
-  openLuckyBox, openLuckyBoxes, dungeon, robPlayer
+  openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
@@ -112,14 +112,21 @@ function mentionsOf(msg) {
 function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
 
 function luckyBoxSummary(r){
-  let text=`🎁 *CAIXA DA SORTE — RESULTADO*\n\n📦 Caixas abertas: *${r.opened}*\n`
+  let text=`🎁 *CAIXAS — RESULTADO*\n\n📦 Caixas abertas: *${r.opened}*\n`
   if(r.cash>0) text+=`💰 Dinheiro: *R$ ${fmt(r.cash)}*\n`
   if(r.exp>0) text+=`✨ EXP: *+${fmt(r.exp)}*\n`
+
+  const rc=r.rarityCounts||{}
+  if(Number(rc.legendary||0)>0) text+=`\n🌟🌟 *LENDÁRIO ENCONTRADO!* ×${rc.legendary}\n`
   if(r.items?.length){
-    text+='🎒 Itens:\n'
-    for(const item of r.items) text+=`   • ${item.name} ×${item.qty}\n`
+    text+='\n🎒 *Itens recebidos:*\n'
+    const order={legendary:5,epic:4,rare:3,uncommon:2,common:1}
+    const sorted=[...r.items].sort((a,b)=>(order[b.rarity]||0)-(order[a.rarity]||0))
+    for(const item of sorted){
+      text+=`   • ${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n`
+    }
   }
-  if(r.cash<=0 && r.exp<=0 && !r.items?.length) text+='🍃 Nenhum prêmio registrado.\n'
+
   text+=`\n📦 Caixas restantes: *${r.remaining}*\n💵 Carteira: *R$ ${fmt(r.balance)}*`
   return text
 }
@@ -162,14 +169,42 @@ function resolveOwnedItem(items,input,categories=null){
 }
 
 const SHOP_IDS=[
-  'pocao_p',
-  'pocao_m',
-  'espada_madeira',
-  'espada_ferro',
-  'armadura_couro',
-  'armadura_ferro',
-  'caixa_sorte'
+  'pocao_p','pocao_m','pocao_g','elixir_supremo',
+  'espada_madeira','espada_ferro','espada_aco','machado_guerra','katana_sombria',
+  'espada_flamas','tridente_tempestade','lamina_abissal',
+  'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
+  'armadura_dragao','armadura_abissal','armadura_celestial',
+  'caixa_sorte','caixa_rara','caixa_epica'
 ]
+
+const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica']
+
+const RARITY_META={
+  common:['⚪','Comum'],
+  uncommon:['🟢','Incomum'],
+  rare:['🔵','Raro'],
+  epic:['🟣','Épico'],
+  legendary:['🟠','Lendário']
+}
+
+function rarityLabel(rarity){
+  const [icon,label]=RARITY_META[rarity]||['⚪',String(rarity||'Comum')]
+  return `${icon} ${label}`
+}
+
+function shopCategoryLabel(category){
+  if(category==='consumable') return '🧪 POÇÕES'
+  if(category==='weapon') return '⚔️ ARMAS'
+  if(category==='armor') return '🛡️ ARMADURAS'
+  return '🎁 CAIXAS'
+}
+
+function shopCategoryItems(items,choice){
+  const category={1:'consumable',2:'weapon',3:'armor',4:'special'}[choice]
+  if(!category) return []
+  return items.filter(i=>i.category===category && SHOP_IDS.includes(i.id))
+}
+
 
 function resolveShopItem(input){
   const raw=String(input||'').toLowerCase().trim()
@@ -380,6 +415,43 @@ Nenhum pedido pendente agora.
       if(['approveorder','cancelorder'].includes(action)) return adminOrdersMenu()
       if(['setprice','setlink'].includes(action)) return adminSettingsMenu()
       return adminMainMenu()
+    }
+
+    const shopCategoryMenu=async()=>{
+      setQuickFlow(chat,sender,'shop_category',{},90000)
+      await reply(
+`🍀 *LOJA DO TREVO*
+
+1️⃣ 🧪 Poções
+2️⃣ ⚔️ Armas
+3️⃣ 🛡️ Armaduras
+4️⃣ 🎁 Caixas
+
+0️⃣ Sair`
+      )
+    }
+
+    const boxQuantityMenu=async(box)=>{
+      const stock=Number(box?.quantity||0)
+      setQuickFlow(chat,sender,'inventory_box_qty',{
+        boxId:box.item_id,
+        boxName:box.name,
+        stock
+      },90000)
+      await reply(
+`🎁 *${box.name.toUpperCase()}*
+
+Você possui: *${stock}*
+
+1️⃣ Abrir 1
+2️⃣ Abrir 5
+3️⃣ Abrir 10
+4️⃣ Abrir todas
+5️⃣ Escolher quantidade
+
+9️⃣ Voltar
+0️⃣ Sair`
+      )
     }
 
     const afterGame=async(game,data,text)=>{
@@ -1684,16 +1756,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           await reply('🔒 A *Loja* foi desativada junto com a Economia deste grupo.')
           return true
         }
-        const items=await getShop()
-        const byId=new Map(items.map(i=>[i.id,i]))
-        setQuickFlow(chat,sender,'shop_item',{items:SHOP_IDS},90000)
-        let text='🍀 *LOJA DO TREVO*\n\n'
-        SHOP_IDS.forEach((id,idx)=>{
-          const i=byId.get(id)
-          if(i) text+=`*${idx+1}.* ${i.name} — R$ ${fmt(i.price)}\n`
-        })
-        text+='\n👉 Responda com o número do item.\n0️⃣ Cancelar'
-        await reply(text)
+        await shopCategoryMenu()
         return true
       }
       if(input==='2'){
@@ -1742,35 +1805,56 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       if(input==='5'){
         const items=await getInventory(sender)
-        const box=items.find(i=>i.item_id==='caixa_sorte')
-        const stock=Number(box?.quantity||0)
-        if(stock<1){
+        const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
+        if(!boxes.length){
           clearQuickFlow(chat,sender)
-          await reply('🎁 Você não possui Caixa da Sorte.')
+          await reply('🎁 Você não possui nenhuma caixa.')
           return true
         }
-        setQuickFlow(chat,sender,'inventory_box_qty',{stock},90000)
-        await reply(
-`🎁 *ABRIR CAIXA DA SORTE*
-
-Você possui: *${stock}*
-
-1️⃣ Abrir 1
-2️⃣ Abrir 5
-3️⃣ Abrir 10
-4️⃣ Abrir todas
-5️⃣ Escolher quantidade
-
-9️⃣ Voltar
-0️⃣ Sair`
-        )
+        if(boxes.length===1){
+          await boxQuantityMenu(boxes[0])
+          return true
+        }
+        setQuickFlow(chat,sender,'inventory_boxes_select',{boxes},90000)
+        let text='🎁 *QUAL CAIXA QUER ABRIR?*\n\n'
+        boxes.forEach((b,idx)=>text+=`*${idx+1}.* ${rarityLabel(b.rarity)} — ${b.name} ×${b.quantity}\n`)
+        text+='\n0️⃣ Sair'
+        await reply(text)
         return true
       }
       await reply('🛒 Escolha de *1 a 5* ou *0* para sair.')
       return true
     }
 
+    if(flow.stage==='shop_category'){
+      if(!['1','2','3','4'].includes(input)){
+        await reply('🍀 Escolha *1, 2, 3 ou 4*.')
+        return true
+      }
+      const items=await getShop()
+      const filtered=shopCategoryItems(items,input)
+      if(!filtered.length){
+        await reply('Nenhum item disponível nesta categoria.')
+        return true
+      }
+      setQuickFlow(chat,sender,'shop_item',{
+        items:filtered.map(i=>i.id),
+        category:input
+      },90000)
+      let text=`${shopCategoryLabel(filtered[0].category)}\n\n`
+      filtered.forEach((i,idx)=>{
+        text+=`*${idx+1}.* ${rarityLabel(i.rarity)} — *${i.name}*\n💰 R$ ${fmt(i.price)}\n_${i.description}_\n\n`
+      })
+      text+='9️⃣ Voltar\n0️⃣ Sair'
+      await reply(text.trim())
+      return true
+    }
+
     if(flow.stage==='shop_item'){
+      if(input==='9'){
+        await shopCategoryMenu()
+        return true
+      }
       const index=Number(input)-1
       const itemId=flow.data.items?.[index]
       if(!itemId){
@@ -1842,23 +1926,8 @@ Você possui: *${stock}*
         await reply(`🧪 Usar *${item.name}*?\n\n1️⃣ Sim\n2️⃣ Não`)
         return true
       }
-      if(item.item_id==='caixa_sorte'){
-        const stock=Number(item.quantity||0)
-        setQuickFlow(chat,sender,'inventory_box_qty',{stock},90000)
-        await reply(
-`🎁 *ABRIR CAIXA DA SORTE*
-
-Você possui: *${stock}*
-
-1️⃣ Abrir 1
-2️⃣ Abrir 5
-3️⃣ Abrir 10
-4️⃣ Abrir todas
-5️⃣ Escolher quantidade
-
-9️⃣ Voltar
-0️⃣ Sair`
-        )
+      if(BOX_IDS.includes(item.item_id)){
+        await boxQuantityMenu(item)
         return true
       }
       clearQuickFlow(chat,sender)
@@ -1898,6 +1967,16 @@ Você possui: *${stock}*
       return true
     }
 
+    if(flow.stage==='inventory_boxes_select'){
+      const box=flow.data.boxes?.[Number(input)-1]
+      if(!box){
+        await reply('🎁 Escolha uma caixa pelo número.')
+        return true
+      }
+      await boxQuantityMenu(box)
+      return true
+    }
+
     if(flow.stage==='inventory_box_qty'){
       if(input==='9'){
         const items=await getInventory(sender)
@@ -1910,8 +1989,9 @@ Você possui: *${stock}*
       }
 
       const stock=Number(flow.data.stock||0)
+      const boxId=flow.data.boxId||'caixa_sorte'
       if(input==='4'){
-        setQuickFlow(chat,sender,'inventory_box_all_confirm',{qty:stock},90000)
+        setQuickFlow(chat,sender,'inventory_box_all_confirm',{qty:stock,boxId,boxName:flow.data.boxName},90000)
         await reply(
 `⚠️ *ABRIR TODAS AS CAIXAS?*
 
@@ -1924,7 +2004,7 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
       }
 
       if(input==='5'){
-        setQuickFlow(chat,sender,'inventory_box_custom',{stock},90000)
+        setQuickFlow(chat,sender,'inventory_box_custom',{stock,boxId,boxName:flow.data.boxName},90000)
         await reply(`⌨️ Digite quantas caixas quer abrir.\nVocê possui *${stock}*.\n\n0️⃣ Sair`)
         return true
       }
@@ -1940,7 +2020,7 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
         return true
       }
 
-      const r=await openLuckyBoxes(sender,qty)
+      const r=await openLootBoxes(sender,boxId,qty)
       clearQuickFlow(chat,sender)
       await reply(luckyBoxSummary(r))
       return true
@@ -1957,7 +2037,7 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
         await reply(`🎁 Você possui apenas *${stock}* caixa(s).`)
         return true
       }
-      const r=await openLuckyBoxes(sender,qty)
+      const r=await openLootBoxes(sender,flow.data.boxId||'caixa_sorte',qty)
       clearQuickFlow(chat,sender)
       await reply(luckyBoxSummary(r))
       return true
@@ -1973,7 +2053,7 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
         await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
         return true
       }
-      const r=await openLuckyBoxes(sender,Number(flow.data.qty||0))
+      const r=await openLootBoxes(sender,flow.data.boxId||'caixa_sorte',Number(flow.data.qty||0))
       clearQuickFlow(chat,sender)
       await reply(luckyBoxSummary(r))
       return true
@@ -2922,58 +3002,26 @@ ${prefix}comandos — mostra esta lista
           await reply(`💸 *PIX realizado!*\n\n➡️ Enviado: R$ ${fmt(r.amount)}\n🧾 Taxa: R$ ${fmt(r.fee)}\n💰 Total debitado: R$ ${fmt(r.total)}`,{mentions:[target]})
 
         } else if(['loja','shop'].includes(cmd)){
-          const items=await getShop()
-          const byId=new Map(items.map(i=>[i.id,i]))
-          setQuickFlow(chat,sender,'shop_item',{items:SHOP_IDS},90000)
-          let text='🍀 *LOJA DO TREVO*\n\n'
-          SHOP_IDS.forEach((id,idx)=>{
-            const i=byId.get(id)
-            if(i) text+=`*${idx+1}.* ${i.name} — R$ ${fmt(i.price)}\n_${i.description}_\n\n`
-          })
-          text+='👉 *Responda apenas com o número do item.*\n0️⃣ Cancelar'
-          await reply(text.trim())
+          await shopCategoryMenu()
 
         } else if(['comprar','buy'].includes(cmd)){
           const id=resolveShopItem(args[0])
           const qty=parseInt(args[1]||'1',10)
           if(!id){
-            const items=await getShop()
-            const byId=new Map(items.map(i=>[i.id,i]))
-            setQuickFlow(chat,sender,'shop_item',{items:SHOP_IDS},90000)
-            let text='🍀 *O QUE QUER COMPRAR?*\n\n'
-            SHOP_IDS.forEach((sid,idx)=>{
-              const i=byId.get(sid)
-              if(i) text+=`*${idx+1}.* ${i.name} — R$ ${fmt(i.price)}\n`
-            })
-            text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
-            return await reply(text)
+            await shopCategoryMenu()
+            return
           }
           const r=await buyItem(sender,id,qty)
           await progressDailyMission(sender,'shop')
           await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
 
-        } else if(cmd==='caixa_sorte'){
+        } else if(BOX_IDS.includes(cmd)){
           const items=await getInventory(sender)
-          const box=items.find(i=>i.item_id==='caixa_sorte')
-          const stock=Number(box?.quantity||0)
-          if(stock<1) return await reply('🎁 Você não possui Caixa da Sorte.')
-          setQuickFlow(chat,sender,'inventory_box_qty',{stock},90000)
-          await reply(
-`🎁 *ABRIR CAIXA DA SORTE*
+          const box=items.find(i=>i.item_id===cmd)
+          if(!box) return await reply('🎁 Você não possui essa caixa.')
+          await boxQuantityMenu(box)
 
-Você possui: *${stock}*
-
-1️⃣ Abrir 1
-2️⃣ Abrir 5
-3️⃣ Abrir 10
-4️⃣ Abrir todas
-5️⃣ Escolher quantidade
-
-9️⃣ Voltar
-0️⃣ Sair`
-          )
-
-        } else if(SHOP_IDS.includes(cmd) && cmd!=='caixa_sorte'){
+        } else if(SHOP_IDS.includes(cmd) && !BOX_IDS.includes(cmd)){
           const r=await buyItem(sender,cmd,1)
           await progressDailyMission(sender,'shop')
           await reply(`🛒 Compra rápida concluída!\n📦 ${r.item.name} ×1\n💸 R$ ${fmt(r.total)}`)
@@ -2987,13 +3035,13 @@ Você possui: *${stock}*
               ? '⚙️ Equipável'
               : i.category==='consumable'
                 ? '🧪 Utilizável'
-                : i.item_id==='caixa_sorte'
+                : BOX_IDS.includes(i.item_id)
                   ? '🎁 Abrível'
                   : '📦 Item'
             text+=`*${idx+1}.* ${i.name} ×${i.quantity} _[${i.rarity}]_\n   ${action}\n`
           })
           text+=`\n⚙️ Para escolher equipamento: *${prefix}equipar*\n🧪 Para usar poção: *${prefix}usar*`
-          if(items.some(i=>i.item_id==='caixa_sorte')) text+=`\n🎁 Caixa da Sorte pode ser aberta.`
+          if(items.some(i=>BOX_IDS.includes(i.item_id))) text+=`\n🎁 Caixas podem ser abertas pelo inventário.`
           text+='\n\n👉 *Responda com o número do item* para escolher o que fazer.\n0️⃣ Sair'
           setQuickFlow(chat,sender,'inventory_select',{items},90000)
           await reply(text.trim())
@@ -3017,8 +3065,8 @@ Você possui: *${stock}*
 
           const anyItem=resolveOwnedItem(items,query)
           if(anyItem && !['weapon','armor'].includes(anyItem.category)){
-            if(anyItem.item_id==='caixa_sorte'){
-              return await reply(`🎁 *${anyItem.name}* não é equipamento.\nUse *${prefix}caixa_sorte* para abrir.`)
+            if(BOX_IDS.includes(anyItem.item_id)){
+              return await reply(`🎁 *${anyItem.name}* não é equipamento.\nAbra pelo *${prefix}inventario*.`)
             }
             return await reply(`❌ *${anyItem.name}* não pode ser equipado.`)
           }
