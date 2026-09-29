@@ -10,7 +10,8 @@ import {
   initDatabase, ensureUser, getProfile, claimDaily, work,
   deposit, withdraw, transfer, getShop, buyItem, getInventory, leaderboard,
   equipItem, usePotion, getCombatProfile, battle, combatLeaderboard,
-  acquireRuntimeLock
+  acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
+  ownerSetLevel, ownerHeal, ownerGrantItem
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 
@@ -18,6 +19,7 @@ const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
 const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
 const sessionId=process.env.SESSION_ID || 'default'
+const ownerJid=process.env.OWNER_JID || ''
 
 function textOf(msg) {
   const m=msg?.message
@@ -128,6 +130,8 @@ async function start() {
         const [rawCmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
         const cmd=(rawCmd||'').toLowerCase()
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
+        const isOwner=ownerJid && sender===ownerJid
+        const ownerTarget=mentionsOf(msg)[0] || sender
 
         if(['ping','p'].includes(cmd)){
           await reply('🍀 Pong! Trevo online e conectado ao Neon.')
@@ -267,6 +271,49 @@ async function start() {
             text+=`${medal} *${r.push_name || 'Jogador'}* — R$ ${fmt(r.total)}\n`
           })
           await reply(text.trim())
+
+
+        } else if(['addsaldo'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
+          if(!amount) return await reply(`Uso: *${prefix}addsaldo 50000* ou *${prefix}addsaldo @pessoa 50000*`)
+          const p=await ownerAddBalance(ownerTarget,amount)
+          await reply(`👑 Saldo adicionado.\n💰 Novo saldo: R$ ${fmt(p.cash)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+
+        } else if(['remsaldo'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
+          if(!amount) return await reply(`Uso: *${prefix}remsaldo 10000* ou *${prefix}remsaldo @pessoa 10000*`)
+          const r=await ownerRemoveBalance(ownerTarget,amount)
+          await reply(`👑 Saldo removido: R$ ${fmt(r.removed)}\n💰 Saldo atual: R$ ${fmt(r.cash)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+
+        } else if(['addexp'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const amount=parseAmount(args.find(a=>/^\d+$/.test(a)))
+          if(!amount) return await reply(`Uso: *${prefix}addexp 500* ou *${prefix}addexp @pessoa 500*`)
+          const r=await ownerAddExp(ownerTarget,amount)
+          await reply(`👑 EXP adicionada: +${fmt(amount)}\n⭐ Nível: ${r.level}\n✨ EXP atual: ${r.exp}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+
+        } else if(['setnivel'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const level=parseInt(args.find(a=>/^\d+$/.test(a))||'0',10)
+          if(!level) return await reply(`Uso: *${prefix}setnivel 10* ou *${prefix}setnivel @pessoa 10*`)
+          const r=await ownerSetLevel(ownerTarget,level)
+          await reply(`👑 Nível alterado: ${r.oldLevel} → ${r.level}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+
+        } else if(['curar'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const r=await ownerHeal(ownerTarget)
+          await reply(`👑 Cura completa. ❤️ ${r.hp}/${r.max_hp}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+
+        } else if(['daritem'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const itemArg=args.find(a=>SHOP_IDS.includes(a.toLowerCase()))
+          const qtyArg=args.find(a=>/^\d+$/.test(a))
+          const qty=parseInt(qtyArg||'1',10)
+          if(!itemArg) return await reply(`Uso: *${prefix}daritem espada_ferro 1* ou *${prefix}daritem @pessoa espada_ferro 1*`)
+          const r=await ownerGrantItem(ownerTarget,itemArg.toLowerCase(),qty)
+          await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['menu','help','ajuda'].includes(cmd)){
           await reply(
