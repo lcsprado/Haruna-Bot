@@ -46,6 +46,25 @@ function parseAmount(s){
   return Number.isFinite(n) ? Math.floor(n) : 0
 }
 
+const SHOP_IDS=[
+  'pocao_p',
+  'pocao_m',
+  'espada_madeira',
+  'espada_ferro',
+  'armadura_couro',
+  'armadura_ferro',
+  'caixa_sorte'
+]
+
+function resolveShopItem(input){
+  const raw=String(input||'').toLowerCase().trim()
+  if(/^\d+$/.test(raw)){
+    const idx=Number(raw)-1
+    return SHOP_IDS[idx] || null
+  }
+  return SHOP_IDS.includes(raw) ? raw : null
+}
+
 async function start() {
   await initDatabase()
   const { state, saveCreds }=await useNeonAuthState(sessionId)
@@ -151,20 +170,26 @@ async function start() {
 
         } else if(['loja','shop'].includes(cmd)){
           const items=await getShop()
-          const visible=items.filter(i=>['pocao_p','pocao_m','espada_madeira','espada_ferro','armadura_couro','armadura_ferro','caixa_sorte'].includes(i.id))
+          const byId=new Map(items.map(i=>[i.id,i]))
           let text='🍀 *LOJA DO TREVO*\n\n'
-          for(const i of visible){
-            text+=`📦 *${i.name}* — R$ ${fmt(i.price)}\nID: \`${i.id}\`\n_${i.description}_\n\n`
-          }
-          text+=`Comprar: *${prefix}comprar <id> [quantidade]*`
+          SHOP_IDS.forEach((id,idx)=>{
+            const i=byId.get(id)
+            if(!i) return
+            text+=`*${idx+1}.* ${i.name} — R$ ${fmt(i.price)}\n_${i.description}_\n\n`
+          })
+          text+=`🛒 Comprar rápido:\n*${prefix}comprar 1*\n*${prefix}comprar 4 2*  _(2 unidades)_\n\n⚡ Atalho direto:\n*${prefix}espada_madeira*\n*${prefix}caixa_sorte*`
           await reply(text.trim())
 
         } else if(['comprar','buy'].includes(cmd)){
-          const id=(args[0]||'').toLowerCase()
+          const id=resolveShopItem(args[0])
           const qty=parseInt(args[1]||'1',10)
-          if(!id) return await reply(`Uso: *${prefix}comprar espada_madeira 1*`)
+          if(!id) return await reply(`Uso: *${prefix}comprar 1* ou *${prefix}comprar espada_madeira*`)
           const r=await buyItem(sender,id,qty)
           await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
+
+        } else if(SHOP_IDS.includes(cmd)){
+          const r=await buyItem(sender,cmd,1)
+          await reply(`🛒 Compra rápida concluída!\n📦 ${r.item.name} ×1\n💸 R$ ${fmt(r.total)}`)
 
         } else if(['inventario','inventory','inv'].includes(cmd)){
           const items=await getInventory(sender)
@@ -255,7 +280,7 @@ ${prefix}pix @pessoa <valor>
 
 🛒 *Itens*
 ${prefix}loja
-${prefix}comprar <id> [qtd]
+${prefix}comprar <número> [qtd]
 ${prefix}inventario
 ${prefix}equipar <id>
 ${prefix}usar <id>
