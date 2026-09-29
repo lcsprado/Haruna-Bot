@@ -132,6 +132,23 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS subscription_orders_chat_idx
       ON subscription_orders(chat_jid, status);
 
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      code TEXT PRIMARY KEY,
+      requester_jid TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      category TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      answer TEXT,
+      created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+      answered_at BIGINT,
+      answered_by TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS support_tickets_status_idx
+      ON support_tickets(status, created_at);
+
     CREATE TABLE IF NOT EXISTS group_licenses (
       chat_jid TEXT PRIMARY KEY,
       status TEXT NOT NULL DEFAULT 'blocked',
@@ -1720,6 +1737,72 @@ export async function cancelSubscriptionOrder(code) {
   return rows[0]
 }
 
+
+function supportCode(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let out='SUP-'
+  for(let i=0;i<6;i++) out+=chars[Math.floor(Math.random()*chars.length)]
+  return out
+}
+
+export async function createSupportTicket(requesterJid, chatJid, category, message) {
+  category=String(category||'outro').trim().slice(0,40)
+  message=String(message||'').trim()
+  if(message.length<3) throw new Error('Descreva o problema com um pouco mais de detalhe.')
+  if(message.length>1500) throw new Error('Mensagem muito longa. Use no máximo 1.500 caracteres.')
+
+  for(let attempt=0;attempt<8;attempt++){
+    const code=supportCode()
+    try{
+      const {rows}=await db.query(`
+        INSERT INTO support_tickets(code,requester_jid,chat_jid,category,message)
+        VALUES($1,$2,$3,$4,$5)
+        RETURNING *
+      `,[code,requesterJid,chatJid,category,message])
+      return rows[0]
+    }catch(err){
+      if(err?.code!=='23505') throw err
+    }
+  }
+  throw new Error('Não foi possível abrir o chamado. Tente novamente.')
+}
+
+export async function getSupportTicket(code) {
+  code=String(code||'').trim().toUpperCase()
+  const {rows}=await db.query('SELECT * FROM support_tickets WHERE code=$1',[code])
+  return rows[0]||null
+}
+
+export async function listOpenSupportTickets(limit=30) {
+  const {rows}=await db.query(`
+    SELECT * FROM support_tickets
+    WHERE status='open'
+    ORDER BY created_at ASC
+    LIMIT $1
+  `,[limit])
+  return rows
+}
+
+export async function answerSupportTicket(code, ownerJid, answer) {
+  code=String(code||'').trim().toUpperCase()
+  answer=String(answer||'').trim()
+  if(answer.length<1) throw new Error('A resposta não pode ficar vazia.')
+  if(answer.length>1800) throw new Error('Resposta muito longa. Use no máximo 1.800 caracteres.')
+
+  const now=Math.floor(Date.now()/1000)
+  const {rows}=await db.query(`
+    UPDATE support_tickets
+    SET status='answered',
+        answer=$2,
+        answered_at=$3,
+        answered_by=$4,
+        updated_at=${nowSql}
+    WHERE code=$1 AND status='open'
+    RETURNING *
+  `,[code,answer,now,ownerJid])
+  if(!rows[0]) throw new Error('Chamado aberto não encontrado.')
+  return rows[0]
+}
 
 export async function getPaymentLink() {
   const { rows } = await db.query(
