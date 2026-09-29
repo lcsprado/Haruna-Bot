@@ -1,17 +1,18 @@
-const BASE='https://v3.football.api-sports.io'
+const BASE='https://api.football-data.org/v4'
 const cache=new Map()
-async function api(path,params,ttl){
- const k=path+'?'+new URLSearchParams(params); const old=cache.get(k); if(old&&old.exp>Date.now()) return old.data
- const r=await fetch(BASE+path+'?'+new URLSearchParams(params),{headers:{'x-apisports-key':process.env.API_FOOTBALL_KEY||''}}); if(!r.ok) throw new Error('API de futebol indisponível.')
- const d=await r.json(); if(d.errors&&Object.keys(d.errors).length) throw new Error(Object.values(d.errors).join(' | ')); cache.set(k,{data:d,exp:Date.now()+ttl}); return d
+async function api(path,params={},ttl=600000){
+ const q=new URLSearchParams(params);const k=path+'?'+q;const old=cache.get(k);if(old&&old.exp>Date.now())return old.data
+ const r=await fetch(BASE+path+(q.size?'?'+q:''),{headers:{'X-Auth-Token':process.env.FOOTBALL_DATA_KEY||''}})
+ const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||('Football Data HTTP '+r.status))
+ cache.set(k,{data:d,exp:Date.now()+ttl});return d
 }
 function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()}
-function day(off){const d=new Date(Date.now()+off*86400000);return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d)}
+function isoDay(off=0){const d=new Date(Date.now()+off*86400000);return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(d)}
 function tm(x){return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(x))}
-function line(f){const s=f.fixture.status.short;const live=['1H','2H','HT','ET','P'].includes(s);const done=['FT','AET','PEN'].includes(s);const mid=done?(f.goals.home+' x '+f.goals.away):(live?('🔴 '+f.goals.home+' x '+f.goals.away):tm(f.fixture.date));return '⚽ *'+f.teams.home.name+'* '+mid+' *'+f.teams.away.name+'*\n🏆 '+f.league.name}
-async function leagues(){return (await api('/leagues',{country:'Brazil',season:'2024'},86400000)).response||[]}
-export async function footballToday(off=0){const ls=await leagues();const wanted=ls.filter(x=>/serie a|serie b|copa do brasil|paulista|carioca|mineiro|gaucho|nordeste/.test(norm(x.league.name))).slice(0,12);let out=[];for(const l of wanted){const d=await api('/fixtures',{league:l.league.id,season:2024,date:day(off),timezone:'America/Sao_Paulo'},600000);out.push(...(d.response||[]))}out.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));return out}
-export async function brazilStandings(){const ls=await leagues();const l=ls.find(x=>norm(x.league.name)==='serie a')||ls.find(x=>norm(x.league.name).includes('serie a'));if(!l)throw new Error('Brasileirão Série A não encontrado.');const d=await api('/standings',{league:l.league.id,season:2024},3600000);return d.response?.[0]?.league?.standings?.[0]||[]}
-export async function teamSummary(name){const d=await api('/teams',{search:name},86400000);const arr=d.response||[];const hit=arr.find(x=>norm(x.team.country)==='brazil')||arr[0];if(!hit)throw new Error('Time não encontrado.');const id=hit.team.id;const fx=await api('/fixtures',{team:id,season:2024,timezone:'America/Sao_Paulo'},900000);const games=fx.response||[];const now=Date.now();const past=games.filter(f=>new Date(f.fixture.date).getTime()<now).sort((x,y)=>new Date(y.fixture.date)-new Date(x.fixture.date));const future=games.filter(f=>new Date(f.fixture.date).getTime()>=now).sort((x,y)=>new Date(x.fixture.date)-new Date(y.fixture.date));return {team:hit.team,last:past[0],next:future[0]}}
-export function formatFixtures(a){if(!a.length)return 'Nenhum jogo brasileiro encontrado.';return a.slice(0,18).map(line).join('\n\n')+(a.length>18?'\n\n… e mais '+(a.length-18)+' jogo(s).':'')}
+function line(m){const done=['FINISHED','AWARDED'].includes(m.status),live=['IN_PLAY','PAUSED'].includes(m.status);const mid=done?((m.score?.fullTime?.home??'-')+' x '+(m.score?.fullTime?.away??'-')):live?('🔴 '+(m.score?.fullTime?.home??m.score?.halfTime?.home??0)+' x '+(m.score?.fullTime?.away??m.score?.halfTime?.away??0)):tm(m.utcDate);return '⚽ *'+m.homeTeam.name+'* '+mid+' *'+m.awayTeam.name+'*\n🏆 '+(m.competition?.name||'Competição')}
+async function brasileirao(){return api('/competitions/BSA',{},86400000)}
+export async function footballToday(off=0){await brasileirao();const date=isoDay(off);const d=await api('/competitions/BSA/matches',{dateFrom:date,dateTo:date},300000);return d.matches||[]}
+export async function brazilStandings(){await brasileirao();const d=await api('/competitions/BSA/standings',{},1800000);return d.standings?.find(x=>x.type==='TOTAL')?.table||d.standings?.[0]?.table||[]}
+export async function teamSummary(name){const comp=await brasileirao();const teams=await api('/competitions/BSA/teams',{},86400000);const hit=(teams.teams||[]).find(t=>norm(t.name).includes(norm(name))||norm(t.shortName).includes(norm(name))||norm(t.tla)===norm(name));if(!hit)throw new Error('Time não encontrado no Brasileirão.');const d=await api('/teams/'+hit.id+'/matches',{competitions:'BSA',limit:100},600000);const games=d.matches||[],now=Date.now();const past=games.filter(m=>new Date(m.utcDate).getTime()<now&&['FINISHED','AWARDED'].includes(m.status)).sort((a,b)=>new Date(b.utcDate)-new Date(a.utcDate));const future=games.filter(m=>new Date(m.utcDate).getTime()>=now&&!['FINISHED','AWARDED','CANCELLED'].includes(m.status)).sort((a,b)=>new Date(a.utcDate)-new Date(b.utcDate));return {team:hit,last:past[0],next:future[0],competition:comp}}
+export function formatFixtures(a){if(!a.length)return 'Nenhum jogo do Brasileirão encontrado.';return a.slice(0,18).map(line).join('\n\n')}
 export function formatTeamFixture(f){return f?line(f):'Nenhum encontrado.'}
