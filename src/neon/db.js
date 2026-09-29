@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
 
-const { Pool } = pg
+const { Pool, Client } = pg
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
 
@@ -651,14 +651,30 @@ export async function combatLeaderboard(limit=10) {
 
 let runtimeLockClient = null
 
+function directDatabaseUrl() {
+  const url = new URL(process.env.DATABASE_URL)
+  url.hostname = url.hostname.replace('-pooler.', '.')
+  return url.toString()
+}
+
 export async function acquireRuntimeLock(sessionId) {
   if (runtimeLockClient) return true
 
-  const lockName = `trevo-whatsapp:${sessionId}`
+  // v2 intentionally uses a new key because older releases acquired the
+  // session advisory lock through PgBouncer, which could leave it pinned
+  // to a pooled backend after a rolling deploy.
+  const lockName = `trevo-whatsapp-v2:${sessionId}`
+  const connectionString = directDatabaseUrl()
 
   while (true) {
-    const client = await db.connect()
+    const client = new Client({
+      connectionString,
+      connectionTimeoutMillis: 15000,
+      application_name: 'trevo-runtime-lock'
+    })
+
     try {
+      await client.connect()
       const { rows } = await client.query(
         'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',
         [lockName]
@@ -667,19 +683,19 @@ export async function acquireRuntimeLock(sessionId) {
       if (rows[0]?.locked) {
         runtimeLockClient = client
         client.on('error', err=>{
-          console.error('[Runtime] conexão do lock Neon encerrada',err?.message || err)
+          console.error('[Runtime] conexão direta do lock Neon encerrada',err?.message || err)
           if(runtimeLockClient===client) runtimeLockClient=null
           setTimeout(()=>process.exit(1),100)
         })
-        console.log('[Runtime] lock exclusivo adquirido para', sessionId)
+        console.log('[Runtime] lock exclusivo direto adquirido para', sessionId)
         return true
       }
     } catch (err) {
-      client.release()
+      await client.end().catch(()=>{})
       throw err
     }
 
-    client.release()
+    await client.end().catch(()=>{})
     console.log('[Runtime] outra instância ainda usa a sessão; aguardando...')
     await new Promise(resolve => setTimeout(resolve, 2500))
   }
