@@ -739,27 +739,22 @@ export async function ownerSetLevel(jid, level) {
   return transaction(async client=>{
     const r=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])
     const current=Number(r.rows[0]?.level||1)
-    const diff=level-current
+    const maxHp=100+((level-1)*8)
+    const atk=10+((level-1)*2)
+    const def=5+(level-1)
+    const spd=10+(level-1)
 
     await client.query(
       'UPDATE users SET level=$1,exp=0,updated_at='+nowSql+' WHERE jid=$2',
       [level,jid]
     )
+    await client.query(`
+      UPDATE stats
+      SET max_hp=$1,hp=$1,atk=$2,def=$3,spd=$4,updated_at=${nowSql}
+      WHERE jid=$5
+    `,[maxHp,atk,def,spd,jid])
 
-    if(diff>0){
-      await client.query(`
-        UPDATE stats
-        SET max_hp=max_hp+$1,
-            hp=max_hp+$1,
-            atk=atk+$2,
-            def=def+$3,
-            spd=spd+$4,
-            updated_at=${nowSql}
-        WHERE jid=$5
-      `,[diff*8,diff*2,diff,diff,jid])
-    }
-
-    return { oldLevel:current, level }
+    return { oldLevel:current, level, maxHp, atk, def, spd }
   })
 }
 
@@ -984,9 +979,6 @@ export async function robPlayer(thiefJid,targetJid) {
   await ensureUser(thiefJid)
   await ensureUser(targetJid)
 
-  const cd=await claimCooldown(`rob:${thiefJid}`,60*60)
-  if(!cd.ok) return {ok:false,remaining:cd.remaining}
-
   return transaction(async client=>{
     const ids=[thiefJid,targetJid].sort()
     const wallets=await client.query(
@@ -1003,6 +995,18 @@ export async function robPlayer(thiefJid,targetJid) {
     const vs=stats.rows.find(r=>r.jid===targetJid)
     const victimCash=Number(vw?.cash||0)
     if(victimCash<100) throw new Error('Essa pessoa está praticamente sem dinheiro na carteira.')
+
+    const now=Math.floor(Date.now()/1000)
+    const cdKey=`rob:${thiefJid}`
+    const cdR=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[cdKey])
+    const activeUntil=Number(cdR.rows[0]?.expires_at||0)
+    if(activeUntil>now) return {ok:false,remaining:activeUntil-now}
+
+    const expires=now+(60*60)
+    await client.query(`
+      INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
+    `,[cdKey,expires])
 
     const speedDiff=Number(ts?.spd||10)-Number(vs?.spd||10)
     const chance=Math.max(.25,Math.min(.70,.45+(speedDiff*.015)))
@@ -1028,7 +1032,6 @@ export async function robPlayer(thiefJid,targetJid) {
     return {ok:true,success:false,fine,chance}
   })
 }
-
 
 export async function getLaunchPrice() {
   const { rows } = await db.query(
