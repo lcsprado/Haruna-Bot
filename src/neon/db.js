@@ -107,6 +107,12 @@ export async function initDatabase() {
       created_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS trevo_settings (
+      key TEXT PRIMARY KEY,
+      value JSONB NOT NULL,
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
     CREATE TABLE IF NOT EXISTS group_licenses (
       chat_jid TEXT PRIMARY KEY,
       status TEXT NOT NULL DEFAULT 'blocked',
@@ -133,6 +139,12 @@ export async function initDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (session_id, type, id)
     );
+  `)
+
+  await db.query(`
+    INSERT INTO trevo_settings(key,value)
+    VALUES ('launch_price','2'::jsonb)
+    ON CONFLICT(key) DO NOTHING
   `)
 
   const starterItems = [
@@ -989,4 +1001,29 @@ export async function robPlayer(thiefJid,targetJid) {
     }
     return {ok:true,success:false,fine,chance}
   })
+}
+
+
+export async function getLaunchPrice() {
+  const { rows } = await db.query(
+    "SELECT value FROM trevo_settings WHERE key='launch_price'"
+  )
+  const raw=rows[0]?.value
+  const value=Number(raw ?? 2)
+  return Number.isFinite(value) && value>0 ? value : 2
+}
+
+export async function setLaunchPrice(value) {
+  value=Number(String(value).replace(',','.'))
+  if(!Number.isFinite(value) || value<=0 || value>9999) throw new Error('Preço inválido.')
+  value=Math.round(value*100)/100
+
+  await db.query(`
+    INSERT INTO trevo_settings(key,value,updated_at)
+    VALUES('launch_price',$1::jsonb,${nowSql})
+    ON CONFLICT(key)
+    DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+  `,[JSON.stringify(value)])
+
+  return value
 }
