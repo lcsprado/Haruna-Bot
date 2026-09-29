@@ -1599,7 +1599,140 @@ Fale com o responsável pelo Trevo para ativação.`
           }
         }
 
-        if(['ping','p'].includes(cmd)){
+        if(['economia','eco'].includes(cmd)){
+          setQuickFlow(chat,sender,'nav_economy',{},90000)
+          await reply(
+`💰 *ECONOMIA*
+
+1️⃣ Ver saldo
+2️⃣ Daily
+3️⃣ Trabalhar
+4️⃣ Depositar
+5️⃣ Sacar
+6️⃣ Ranking dos mais ricos
+7️⃣ PIX para jogador
+
+0️⃣ Sair`
+          )
+
+        } else if(['itens','item','mochila'].includes(cmd)){
+          setQuickFlow(chat,sender,'nav_items',{},90000)
+          await reply(
+`🛒 *ITENS E INVENTÁRIO*
+
+1️⃣ Loja
+2️⃣ Inventário
+3️⃣ Equipar
+4️⃣ Usar poção
+5️⃣ Abrir Caixa da Sorte
+
+0️⃣ Sair`
+          )
+
+        } else if(['rpg'].includes(cmd)){
+          setQuickFlow(chat,sender,'nav_rpg',{},90000)
+          await reply(
+`⚔️ *RPG*
+
+1️⃣ Status
+2️⃣ Dungeon
+3️⃣ Batalhar com alguém
+4️⃣ Roubar alguém
+5️⃣ Ranking RPG
+
+0️⃣ Sair`
+          )
+
+        } else if(['progressao','progressão','progresso'].includes(cmd)){
+          setQuickFlow(chat,sender,'nav_progress',{},90000)
+          await reply(
+`📋 *PROGRESSÃO*
+
+1️⃣ Missões diárias
+2️⃣ Resgatar missões
+3️⃣ Casas
+4️⃣ Carros
+5️⃣ Patrimônio
+6️⃣ Ranking de patrimônio
+
+0️⃣ Sair`
+          )
+
+        } else if(['grupo','assinatura'].includes(cmd)){
+          setQuickFlow(chat,sender,'nav_group',{},90000)
+          await reply(
+`💚 *GRUPO / ASSINATURA*
+
+1️⃣ Status do grupo
+2️⃣ Assinar / renovar
+3️⃣ Termos
+
+0️⃣ Sair`
+          )
+
+        } else if(['clans','clanes','clãsmenu'].includes(cmd)){
+          const clan=await getClanForUser(sender)
+          setQuickFlow(chat,sender,'clan_menu',{},90000)
+          if(!clan){
+            await reply(
+`🏴 *CLÃS*
+
+1️⃣ Criar um clã
+2️⃣ Aceitar convite
+3️⃣ Ranking de clãs
+
+0️⃣ Sair`
+            )
+          }else{
+            const leader=clan.role==='leader'
+            await reply(
+`🏴 *CLÃ ${clan.name}*
+
+1️⃣ Ver informações
+2️⃣ Doar ao cofre
+3️⃣ Convidar pessoa
+4️⃣ Ranking de clãs
+${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'5️⃣ Sair do clã'}
+
+0️⃣ Sair`
+            )
+          }
+
+        } else if(['minigames','minigame'].includes(cmd)){
+          setQuickFlow(chat,sender,'main',{},90000)
+          await reply(
+`🎮 *MINIGAMES DO TREVO*
+
+1️⃣ 🎰 Roleta
+2️⃣ 🪙 Cara ou Coroa
+3️⃣ ✊ Pedra, Papel e Tesoura
+4️⃣ 🔤 Forca
+5️⃣ 🧠 Quiz
+6️⃣ 🔢 Adivinhe o Número
+7️⃣ 👹 Boss
+
+0️⃣ Sair`
+          )
+
+        } else if(['comandos','commands'].includes(cmd)){
+          await reply(
+`🍀 *ATALHOS DO TREVO*
+
+${prefix}menu — menu principal
+${prefix}economia — dinheiro, banco e PIX
+${prefix}itens — loja e inventário
+${prefix}rpg — batalhas e dungeon
+${prefix}games — minigames
+${prefix}progressao — missões, casas, carros e patrimônio
+${prefix}cla — menu do seu clã
+${prefix}grupo — assinatura e status do grupo
+${prefix}perfil — seu perfil completo
+${prefix}comandos — mostra esta lista
+
+👉 Nos menus, responda apenas com o número.`
+          )
+
+        } else if(['ping','p'].includes(cmd)){
           await reply('🍀 Pong! Trevo online e conectado ao Neon.')
 
         } else if(['saldo','balance','bal'].includes(cmd)){
@@ -1837,7 +1970,7 @@ Fale com o responsável pelo Trevo para ativação.`
           const r=await usePotion(sender,item.item_id)
           await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
 
-        } else if(['status','rpg'].includes(cmd)){
+        } else if(['status'].includes(cmd)){
           const p=await getCombatProfile(sender)
           await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
