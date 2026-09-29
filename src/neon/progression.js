@@ -54,13 +54,11 @@ function dayKey(){
 
 function dailySelection(jid,key){
   const digest=crypto.createHash('sha256').update(`${jid}:${key}:trevo`).digest()
-  const chosen=[]
-  let cursor=0
-  while(chosen.length<3){
-    const idx=digest[cursor++ % digest.length] % MISSION_POOL.length
-    if(!chosen.includes(idx)) chosen.push(idx)
-  }
-  return chosen.map(i=>MISSION_POOL[i])
+  return MISSION_POOL
+    .map((mission,index)=>({mission,score:digest[index]}))
+    .sort((a,b)=>a.score-b.score)
+    .slice(0,3)
+    .map(x=>x.mission)
 }
 
 export async function initProgression(){
@@ -303,6 +301,40 @@ export async function acceptClanInvite(jid){
     await c.query('DELETE FROM clan_invites WHERE invitee_jid=$1',[jid])
     return {clanId:inv.clan_id,name:inv.name}
   })
+}
+
+export async function transferClanLeadership(jid,targetJid){
+  if(!targetJid||targetJid===jid) throw new Error('Marque outro membro do clã.')
+  const clan=await getClanForUser(jid)
+  if(!clan) throw new Error('Você não pertence a um clã.')
+  if(clan.role!=='leader') throw new Error('Somente o líder pode transferir a liderança.')
+
+  return tx(async c=>{
+    const target=await c.query(
+      'SELECT role FROM clan_members WHERE jid=$1 AND clan_id=$2 FOR UPDATE',
+      [targetJid,clan.id]
+    )
+    if(!target.rows[0]) throw new Error('Essa pessoa não pertence ao seu clã.')
+
+    await c.query("UPDATE clan_members SET role='member' WHERE jid=$1",[jid])
+    await c.query("UPDATE clan_members SET role='leader' WHERE jid=$1",[targetJid])
+    await c.query('UPDATE clans SET owner_jid=$1 WHERE id=$2',[targetJid,clan.id])
+    return {name:clan.name,targetJid}
+  })
+}
+
+export async function kickClanMember(jid,targetJid){
+  if(!targetJid||targetJid===jid) throw new Error('Marque outro membro do clã.')
+  const clan=await getClanForUser(jid)
+  if(!clan) throw new Error('Você não pertence a um clã.')
+  if(clan.role!=='leader') throw new Error('Somente o líder pode expulsar membros.')
+
+  const {rows}=await db.query(
+    'DELETE FROM clan_members WHERE jid=$1 AND clan_id=$2 RETURNING jid',
+    [targetJid,clan.id]
+  )
+  if(!rows[0]) throw new Error('Essa pessoa não pertence ao seu clã.')
+  return {name:clan.name,targetJid}
 }
 
 export async function leaveClan(jid){
