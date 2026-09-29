@@ -1439,20 +1439,64 @@ Dano final: ${r.damage}
     }
 
     if(flow.stage==='equip_select'){
+      if(input==='9'){
+        await inventoryMenu()
+        return true
+      }
       const index=Number(input)-1
       const itemId=flow.data.items?.[index]
       if(!itemId){
-        await reply('⚙️ Escolha um dos números da lista ou digite *0* para cancelar.')
+        await reply('⚙️ Escolha um dos números da lista, *9* para voltar ou *0* para sair.')
         return true
       }
-      const r=await equipItem(sender,itemId)
-      clearQuickFlow(chat,sender)
-      const tipo=r.category==='weapon'?'arma':'armadura'
-      await reply(`✅ *EQUIPADO!*\n\n${r.name} agora é sua ${tipo} ativa.`)
+      const [p,items]=await Promise.all([getCombatProfile(sender),getInventory(sender)])
+      const item=items.find(i=>i.item_id===itemId)
+      const info=getEquipmentInfo(itemId)
+      if(!item || !info){
+        await reply('❌ Não consegui carregar esse equipamento.')
+        return true
+      }
+      const isWeapon=info.category==='weapon'
+      const currentName=isWeapon?p.weapon_name:p.armor_name
+      const before=isWeapon?Number(p.effective_atk):Number(p.effective_def)
+      const after=isWeapon
+        ? before-Number(p.weapon_atk||0)+Number(info.atk||0)
+        : before-Number(p.armor_def||0)+Number(info.def||0)
+      const stat=isWeapon?'ATK':'DEF'
+      const delta=after-before
+      const arrow=delta>0?'📈':delta<0?'📉':'➖'
+      setQuickFlow(chat,sender,'equip_compare_confirm',{itemId},90000)
+      await reply(
+        '⚙️ *TROCAR EQUIPAMENTO?*\n\n'+
+        (isWeapon?'🗡️':'🛡️')+' Atual: *'+currentName+'*\n'+
+        '➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+'*\n\n'+
+        arrow+' *'+stat+': '+before+' → '+after+'*'+(delta>0?' (+'+delta+')':delta<0?' ('+delta+')':'')+'\n\n'+
+        '1️⃣ Equipar\n2️⃣ Cancelar\n9️⃣ Voltar'
+      )
+      return true
+    }
+
+    if(flow.stage==='equip_compare_confirm'){
+      if(input==='9' || input==='2'){
+        await equipmentMenu()
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Equipar*, *2 Cancelar* ou *9 Voltar*.')
+        return true
+      }
+      const r=await equipItem(sender,flow.data.itemId)
+      const p=await getCombatProfile(sender)
+      await reply('✅ *EQUIPADO!*\n\n'+r.name+' agora é sua '+(r.category==='weapon'?'arma':'armadura')+' ativa.\n\n⚔️ ATK atual: *'+p.effective_atk+'*\n🛡️ DEF atual: *'+p.effective_def+'*')
+      await equipmentMenu()
       return true
     }
 
     if(flow.stage==='use_select'){
+      if(input==='9'){
+        await inventoryMenu()
+        return true
+      }
       const index=Number(input)-1
       const itemId=flow.data.items?.[index]
       if(!itemId){
@@ -2166,6 +2210,10 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='inventory_boxes_select'){
+      if(input==='9'){
+        await inventoryMenu()
+        return true
+      }
       const box=flow.data.boxes?.[Number(input)-1]
       if(!box){
         await reply('🎁 Escolha uma caixa pelo número.')
