@@ -537,6 +537,30 @@ async function start() {
 
   async function showShopCategoryMenu(chat,sender,reply){
     setQuickFlow(chat,sender,'shop_category',{},90000)
+
+    // Teste de lista nativa: concentra as categorias em um único seletor.
+    // Se o cliente/versão do WhatsApp rejeitar a lista, volta ao menu numérico.
+    try{
+      await sock.sendMessage(chat,{
+        text:'Escolha uma categoria para continuar.',
+        title:'🍀 LOJA DO ALPHA BOT',
+        buttonText:'🛒 Abrir categorias',
+        sections:[{
+          title:'Categorias da loja',
+          rows:[
+            {title:'🧪 Poções',description:'Consumíveis para recuperar HP',rowId:'1'},
+            {title:'⚔️ Armas',description:'Equipamentos que aumentam seu ATK',rowId:'2'},
+            {title:'🛡️ Armaduras',description:'Equipamentos que aumentam sua DEF',rowId:'3'},
+            {title:'🎁 Caixas',description:'Caixas e recompensas especiais',rowId:'4'},
+            {title:'🎭 Diversão',description:'Piadas, horóscopo e extras',rowId:'5'}
+          ]
+        }]
+      })
+      return
+    }catch(err){
+      console.error('[loja] seletor nativo indisponível; usando fallback',err?.message||err)
+    }
+
     await reply(
 `🍀 *LOJA DO ALPHA BOT*
 
@@ -639,7 +663,12 @@ Você possui: *${stock}*
       flow=await recoverQuickFlow(chat,sender)
     }
     if(!flow) return false
-    const rawInput=String(body||'').trim()
+    const listSelection=
+      msg?.message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+      msg?.message?.templateButtonReplyMessage?.selectedId ||
+      msg?.message?.buttonsResponseMessage?.selectedButtonId ||
+      ''
+    const rawInput=String(listSelection || body || '').trim()
     const input=rawInput.toLowerCase()
 
     if(['0','sair','cancelar','cancel'].includes(input)){
