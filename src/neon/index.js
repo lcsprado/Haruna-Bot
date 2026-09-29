@@ -11,7 +11,10 @@ import {
   deposit, withdraw, transfer, getShop, buyItem, getInventory, leaderboard,
   equipItem, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
-  ownerSetLevel, ownerHeal, ownerGrantItem
+  ownerSetLevel, ownerHeal, ownerGrantItem,
+  getGroupLicense, ensureGroupTrial, activateGroupLicense, blockGroupLicense,
+  listGroupLicenses, groupLicenseIsActive,
+  openLuckyBox, dungeon, robPlayer
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
@@ -45,6 +48,14 @@ function mentionsOf(msg) {
 }
 
 function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
+function fmtDate(epoch){
+  if(!epoch) return '—'
+  return new Date(Number(epoch)*1000).toLocaleString('pt-BR',{
+    timeZone:'America/Sao_Paulo',
+    day:'2-digit',month:'2-digit',year:'numeric',
+    hour:'2-digit',minute:'2-digit'
+  })
+}
 function duration(sec){
   const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60)
   return h ? `${h}h ${m}min` : `${m}min`
@@ -140,6 +151,26 @@ async function start() {
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
         const isOwner=ownerJid && sender===ownerJid
         const ownerTarget=mentionsOf(msg)[0] || sender
+        const isGroup=chat.endsWith('@g.us')
+
+        if(isGroup && !isOwner && !['termos','statusgrupo'].includes(cmd)){
+          let license=await getGroupLicense(chat)
+          if(!license) license=await ensureGroupTrial(chat)
+
+          if(!groupLicenseIsActive(license)){
+            return await reply(
+`🔒 *TREVO BLOQUEADO NESTE GRUPO*
+
+O período de acesso terminou ou este grupo foi bloqueado.
+
+💚 Plano simbólico: *R$ 2 por 30 dias*
+📄 Leia: *${prefix}termos*
+📅 Consulte: *${prefix}statusgrupo*
+
+Fale com o responsável pelo Trevo para ativação.`
+            )
+          }
+        }
 
         if(['ping','p'].includes(cmd)){
           await reply('🍀 Pong! Trevo online e conectado ao Neon.')
@@ -201,7 +232,14 @@ async function start() {
           const r=await buyItem(sender,id,qty)
           await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
 
-        } else if(SHOP_IDS.includes(cmd)){
+        } else if(cmd==='caixa_sorte'){
+          const r=await openLuckyBox(sender)
+          if(r.type==='cash') await reply(`🎁 *CAIXA DA SORTE*\n💰 Você encontrou *R$ ${fmt(r.cash)}*!`)
+          else if(r.type==='exp') await reply(`🎁 *CAIXA DA SORTE*\n✨ Você recebeu *+${r.exp} EXP*!\n⭐ Nível atual: ${r.level.level}`)
+          else if(r.type==='rare') await reply(`🌟 *PRÊMIO RARO!*\nVocê recebeu *${r.name}* ×${r.qty}!`)
+          else await reply(`🎁 *CAIXA DA SORTE*\nVocê recebeu *${r.name}* ×${r.qty}!`)
+
+        } else if(SHOP_IDS.includes(cmd) && cmd!=='caixa_sorte'){
           const r=await buyItem(sender,cmd,1)
           await reply(`🛒 Compra rápida concluída!\n📦 ${r.item.name} ×1\n💸 R$ ${fmt(r.total)}`)
 
@@ -361,6 +399,80 @@ async function start() {
           if(r.dead) return await reply(`💥 *BOSS DERROTADO!*\nDano final: ${r.damage}\n👥 Participantes: ${r.players}\n💰 Cada participante recebeu R$ ${fmt(r.rewardEach)}`)
           await reply(`⚔️ Você causou *${r.damage}* de dano!\n👹 Boss: ❤️ ${r.hp}/${r.maxHp}`)
 
+        } else if(['dungeon','masmorra'].includes(cmd)){
+          const r=await dungeon(sender)
+          if(!r.ok) return await reply(`⏳ Você poderá entrar novamente na dungeon em ${duration(r.remaining)}.`)
+          if(r.won){
+            let text=`🏰 *DUNGEON CONCLUÍDA!*\n\n👹 Inimigo: *${r.monster}*\n❤️ HP restante: ${r.hp}/${r.maxHp}\n💰 Recompensa: R$ ${fmt(r.cash)}\n✨ EXP: +${r.exp}`
+            if(r.level.levels>0) text+=`\n⬆️ Você subiu ${r.level.levels} nível(is)!`
+            await reply(text)
+          }else{
+            await reply(`💀 *DERROTA NA DUNGEON*\n\n👹 ${r.monster} venceu.\n❤️ Você se recuperou para ${r.hp}/${r.maxHp}\n✨ Consolação: +${r.exp} EXP`)
+          }
+
+        } else if(['roubar','roubo'].includes(cmd)){
+          const target=mentionsOf(msg)[0]
+          if(!target) return await reply(`Uso no grupo: *${prefix}roubar @pessoa*`)
+          const r=await robPlayer(sender,target)
+          if(!r.ok) return await reply(`⏳ Você poderá tentar outro roubo em ${duration(r.remaining)}.`)
+          if(r.success) await reply(`🕵️ *ROUBO BEM-SUCEDIDO!*\n💰 Você roubou *R$ ${fmt(r.amount)}*.`,{mentions:[target]})
+          else await reply(`🚓 *VOCÊ FOI PEGO!*\n💸 Multa: R$ ${fmt(r.fine)}\nTente novamente mais tarde.`,{mentions:[target]})
+
+        } else if(['termos'].includes(cmd)){
+          await reply(
+`📄 *TERMOS DO TREVO — RESUMO*
+
+💚 *Plano básico:* R$ 2 por grupo / 30 dias
+🎁 *Teste:* 3 dias grátis no primeiro uso do grupo
+
+⚠️ *Aviso importante*
+O Trevo utiliza integração não oficial com o WhatsApp. Por esse motivo, podem ocorrer desconexões, limitações ou bloqueios do número utilizado pelo bot por decisão da própria plataforma.
+
+Ao contratar o acesso, o responsável pelo grupo declara estar ciente desse risco. O Trevo não garante funcionamento ininterrupto nem pode impedir eventuais restrições aplicadas pelo WhatsApp.
+
+O pagamento refere-se ao acesso às funcionalidades do bot durante o período contratado, enquanto o serviço estiver disponível.
+
+🚫 Spam, automações abusivas ou uso que coloque o bot em risco podem resultar na suspensão do grupo.`
+          )
+
+        } else if(['statusgrupo'].includes(cmd)){
+          if(!isGroup) return await reply('Este comando funciona dentro de grupos.')
+          let lic=await getGroupLicense(chat)
+          if(!lic) lic=await ensureGroupTrial(chat)
+          const active=groupLicenseIsActive(lic)
+          await reply(
+`🍀 *STATUS DO GRUPO*
+
+Status: *${active?'ATIVO':'INATIVO'}*
+Plano: *${lic.plan}*
+Validade: *${fmtDate(lic.paid_until)}*
+${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':'💚 Plano básico: R$ 2 / 30 dias.'}`
+          )
+
+        } else if(['ativargrupo'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isGroup) return await reply('Use este comando dentro do grupo que deseja ativar.')
+          const days=parseInt(args[0]||'30',10)
+          const lic=await activateGroupLicense(chat,days,sender,'basic')
+          await reply(`👑 Grupo ativado por *${days} dias*.\n📅 Validade: *${fmtDate(lic.paid_until)}*`)
+
+        } else if(['bloqueargrupo'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          if(!isGroup) return await reply('Use este comando dentro do grupo que deseja bloquear.')
+          await blockGroupLicense(chat,sender)
+          await reply('🔒 Grupo bloqueado pelo dono.')
+
+        } else if(['gruposativos'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
+          const rows=await listGroupLicenses(50)
+          if(!rows.length) return await reply('Nenhum grupo registrado ainda.')
+          let text='👑 *GRUPOS REGISTRADOS*\n\n'
+          rows.forEach((r,i)=>{
+            const active=groupLicenseIsActive(r)
+            text+=`${i+1}. ${active?'✅':'❌'} ${r.plan} — ${fmtDate(r.paid_until)}\n`
+          })
+          await reply(text.trim())
+
         } else if(['addsaldo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando restrito ao dono.')
           const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
@@ -425,6 +537,9 @@ ${prefix}usar <id>
 ⚔️ *RPG*
 ${prefix}status
 ${prefix}batalhar @pessoa
+${prefix}dungeon
+${prefix}roubar @pessoa
+${prefix}caixa_sorte
 ${prefix}rankingrpg
 
 🎮 *Minigames*
@@ -443,7 +558,11 @@ ${prefix}ranking
 ${prefix}perfil
 ${prefix}ping
 
-_Em breve: dungeon, roubo, clãs e família._`
+💚 *Grupo*
+${prefix}statusgrupo
+${prefix}termos
+
+_Em breve: clãs, família, casas e carros._`
           )
         }
       }catch(err){
