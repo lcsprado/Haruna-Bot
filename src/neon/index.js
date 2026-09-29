@@ -679,6 +679,7 @@ Você possui: *${stock}*
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo / assinatura
 9️⃣ 🆘 Falar com suporte
+📚 Catálogo completo: *!comandos*
 
 ✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
 🖼️ *Seu card:* use *!setfoto* numa foto para personalizar o *!perfil*.
@@ -687,6 +688,131 @@ Você possui: *${stock}*
 
 0️⃣ Sair`
       )
+    }
+
+    const commandsMenu=async()=>{
+      setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
+      await reply(
+`📚 *COMANDOS DO ALPHA*
+
+Escolha o que quer consultar:
+
+1️⃣ 👤 Perfil & conta
+2️⃣ 💰 Economia
+3️⃣ 🛒 Loja & inventário
+4️⃣ ⚔️ RPG & combate
+5️⃣ 🎮 Minigames
+6️⃣ 📋 Progressão & patrimônio
+7️⃣ 🏴 Clãs
+8️⃣ 💚 Grupo & assinatura
+9️⃣ 🛠️ Utilidades
+
+👉 Responda só com o número.
+0️⃣ Fechar`
+      )
+    }
+
+    const commandCategory=async(input)=>{
+      const pages={
+        '1':`👤 *PERFIL & CONTA*
+
+*!perfil* — gera seu card
+*!perfil @pessoa* — card de outro jogador
+*!setfoto* — define foto personalizada do card
+*!removerfoto* — volta à foto do WhatsApp
+*!daily* — recompensa diária
+*!streak* — sequência do Daily
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+        '2':`💰 *ECONOMIA*
+
+*!saldo* — carteira e banco
+*!daily* — recompensa diária
+*!trabalhar* — ganhar dinheiro
+*!depositar valor* — guardar no banco
+*!sacar valor* — retirar do banco
+*!pix @pessoa valor* — transferir
+*!ranking* — ranking de riqueza
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+        '3':`🛒 *LOJA & INVENTÁRIO*
+
+*!loja* — ver itens disponíveis
+*!inventario* — seus itens
+*!equipar* — escolher equipamento
+*!usar* — usar consumível
+*!abrircaixa* — abrir caixas
+*!vender* — vender itens
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+        '4':`⚔️ *RPG & COMBATE*
+
+*!status* — atributos de combate
+*!dungeon* — enfrentar uma dungeon
+*!batalhar @pessoa* — desafiar jogador
+*!roubar @pessoa* — tentar um roubo
+*!rankingrpg* — ranking de combate
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+        '5':`🎮 *MINIGAMES*
+
+*!games* — menu de jogos
+*!roleta* — roleta
+*!cara* / *!coroa* — moeda
+*!ppt* — pedra, papel e tesoura
+*!forca* — forca
+*!quiz* — perguntas
+*!numero* — adivinhar número
+*!boss* — boss global
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+        '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
+
+*!missoes* — missões diárias
+*!resgatarmissoes* — coletar recompensas
+*!casas* — imóveis
+*!carros* — concessionária
+*!garagem* — seus veículos
+*!patrimonio* — patrimônio total
+*!rankingpatrimonio* — ranking
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+        '7':`🏴 *CLÃS*
+
+*!cla* — menu do seu clã
+*!criarcla* — criar clã
+*!claconvidar @pessoa* — convidar
+*!claaceitar* — aceitar convite
+*!cladoar valor* — doar ao cofre
+*!rankingclas* — ranking de clãs
+*!saircla* — sair do clã
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+        '8':`💚 *GRUPO & ASSINATURA*
+
+*!grupo* — informações do grupo
+*!statusgrupo* — situação da assinatura
+*!assinar* — assinatura/renovação
+*!termos* — termos resumidos
+
+⚙️ Configurações do grupo aparecem apenas para administradores.
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+        '9':`🛠️ *UTILIDADES*
+
+*!sticker* — cria figurinha de foto/vídeo
+*!s* / *!fig* — atalhos de figurinha
+*!menu* — menu para usar o Alpha
+*!comandos* — catálogo de comandos
+*!suporte* — falar com suporte
+
+9️⃣ Voltar • 0️⃣ Fechar`
+      }
+      const page=pages[input]
+      if(!page) return false
+      setQuickFlow(chat,sender,'commands_category',{},5*60*1000)
+      await reply(page)
+      return true
     }
 
     const adminMainMenu=async()=>{
@@ -2080,6 +2206,21 @@ Dano final: ${r.damage}
       return true
     }
 
+
+    if(flow.stage==='commands_main'){
+      if(await commandCategory(input)) return true
+      await reply('📚 Escolha uma categoria de *1 a 9* ou *0* para fechar.')
+      return true
+    }
+
+    if(flow.stage==='commands_category'){
+      if(input==='9'){
+        await commandsMenu()
+        return true
+      }
+      await reply('📚 Digite *9* para voltar às categorias ou *0* para fechar.')
+      return true
+    }
 
     if(flow.stage==='nav_main'){
       if(!/^[1-9]$/.test(input)){
@@ -4908,6 +5049,9 @@ _Responda apenas com o número._
 _Os comandos administrativos antigos continuam funcionando._`
           )
 
+        } else if(['comandos','comando','commands','cmds'].includes(cmd)){
+          await commandsMenu()
+
         } else if(['menu','help','ajuda'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_main',{},90000)
           await reply(
@@ -4921,6 +5065,7 @@ _Os comandos administrativos antigos continuam funcionando._`
 6️⃣ 📋 Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo / assinatura
+📚 Catálogo completo: *!comandos*
 
 ✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
 🖼️ *Seu card:* use *!setfoto* numa foto para personalizar o *!perfil*.
