@@ -2293,20 +2293,50 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
 
-      const r=await purchaseService(sender,flow.data.service,Number(flow.data.price))
-      clearQuickFlow(chat,sender)
+      const service=flow.data.service
+      const signId=flow.data.signId
+      const signName=flow.data.signName
+      const r=await purchaseService(sender,service,Number(flow.data.price))
 
-      if(flow.data.service==='joke'){
+      if(service==='joke'){
+        setQuickFlow(chat,sender,'fun_after',{service:'joke'},5*60*1000)
         await reply(
           '😂 *PIADA DO TREVO*\n\n'+jokeText()+
-          '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
+          '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'+
+          '\n\n1️⃣ 😂 Comprar outra — R$ '+fmt(FUN_PRICES.joke)+
+          '\n0️⃣ Sair'
         )
       }else{
+        setQuickFlow(chat,sender,'fun_after',{service:'horoscope'},5*60*1000)
         await reply(
-          horoscopeText(flow.data.signId,flow.data.signName)+
-          '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
+          horoscopeText(signId,signName)+
+          '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'+
+          '\n\n1️⃣ 🔮 Comprar outro horóscopo — R$ '+fmt(FUN_PRICES.horoscope)+
+          '\n0️⃣ Sair'
         )
       }
+      return true
+    }
+
+    if(flow.stage==='fun_after'){
+      if(input!=='1'){
+        await reply('Escolha *1 Comprar outro* ou *0 Sair*.')
+        return true
+      }
+
+      if(flow.data.service==='joke'){
+        const r=await purchaseService(sender,'joke',FUN_PRICES.joke)
+        setQuickFlow(chat,sender,'fun_after',{service:'joke'},5*60*1000)
+        await reply(
+          '😂 *PIADA DO TREVO*\n\n'+jokeText()+
+          '\n\n💸 Pago: *R$ '+fmt(r.price)+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'+
+          '\n\n1️⃣ 😂 Comprar outra — R$ '+fmt(FUN_PRICES.joke)+
+          '\n0️⃣ Sair'
+        )
+        return true
+      }
+
+      await horoscopeSignMenu()
       return true
     }
 
