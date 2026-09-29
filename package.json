@@ -1,7 +1,7 @@
 {
-  "name": "harunabot-neon",
-  "version": "4.1.1",
-  "description": "Haruna-Bot fork with Neon PostgreSQL backend",
+  "name": "trevo-bot-neon",
+  "version": "4.1.2",
+  "description": "Trevo WhatsApp bot with Neon PostgreSQL backend",
   "type": "module",
   "main": "src/neon/render.js",
   "scripts": {
