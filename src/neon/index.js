@@ -42,6 +42,7 @@ import {
   getPatrimony, patrimonyLeaderboard
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
+import { renderProfileCard } from './profile-card.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -241,45 +242,65 @@ async function sendAlphaProfile(sock,chat,jid,msg){
     getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid)
   ])
   if(!p) throw new Error('Perfil não encontrado.')
-  const xp=xpBar(p.exp,p.level)
-  const wins=Number(p.win||0),loss=Number(p.loss||0),battles=wins+loss
-  const rate=battles?Math.round(wins/battles*100):0
+
+  let avatar=null
+  try{
+    const photo=await sock.profilePictureUrl(jid,'image')
+    if(photo){
+      const res=await fetch(photo)
+      if(res.ok) avatar=Buffer.from(await res.arrayBuffer())
+    }
+  }catch{}
+
+  const wins=Number(p.win||0),loss=Number(p.loss||0)
   const title=alphaTitle(p,pat.total)
   const badge=founderBadge(p)
-  const caption=`╭━━━ 👤 *PERFIL ALPHA* ━━━╮
-┃ *${p.push_name||'Jogador'}*
-┃ ${title}
-${badge?`┃ ${badge}\n`:''}┣━━━━━━━━━━━━━━━━━━━━
-┃ ⭐ Nível *${p.level}*
-┃ ✨ ${xp.bar} *${fmt(xp.current)}/${fmt(xp.needed)} XP*
-┃ 🔥 Daily *${streak.streak} dias* • recorde ${streak.bestStreak}
-┣━━━ ⚔️ COMBATE
-┃ ❤️ HP *${p.hp}/${p.max_hp}*
-┃ ⚔️ ATK *${p.effective_atk}* • 🛡️ DEF *${p.effective_def}* • 💨 SPD *${p.spd}*
-┃ 🗡️ ${p.weapon_name}
-┃ 🛡️ ${p.armor_name}
-┃ 🏆 *${wins}V / ${loss}D* • ${rate}% vitórias
-┃ 🥊 Ranking combate *#${ranks.combatRank}*
-┣━━━ 💰 IMPÉRIO
-┃ 💵 Saldo *R$ ${fmt(Number(p.cash)+Number(p.bank))}*
-┃ 💎 Patrimônio *R$ ${fmt(pat.total)}*
-┃ 🌍 Ranking riqueza *#${ranks.economyRank} de ${ranks.players}*
-┃ 🏴 Clã: *${clan?.name||'Sem clã'}*
-┃ 🏠 Casa: *${home?.name||'Nenhuma'}* • 🚗 Garagem: *${cars.length}/5*
-┣━━━━━━━━━━━━━━━━━━━━
-┃ 🐾 Pet: *Em breve*
-╰━━ 🍀 *ALPHA BOT* ━━━━━╯`
-  let photo=null
-  try{ photo=await sock.profilePictureUrl(jid,'image') }catch{}
-  if(photo){
-    try{
-      await sock.sendMessage(chat,{image:{url:photo},caption},{quoted:msg})
-      return
-    }catch(err){ console.error('[perfil] foto falhou; usando texto',err?.message||err) }
-  }
-  await sock.sendMessage(chat,{text:caption},{quoted:msg})
-}
+  const achievements=[
+    badge,
+    wins>=5?'⚔️ LUTADOR':null,
+    wins>=25?'🏆 GLADIADOR':null,
+    Number(p.level)>=50?'🔥 VETERANO':null,
+    Number(pat.total)>=250000?'💰 INVESTIDOR':null,
+    Number(pat.total)>=1000000?'💎 MAGNATA':null,
+    Number(streak.bestStreak)>=7?'🔥 7 DIAS':null,
+    Number(streak.bestStreak)>=30?'🌟 30 DIAS':null
+  ].filter(Boolean)
 
+  const card=await renderProfileCard({
+    name:p.push_name||'Jogador',
+    title,
+    badge,
+    avatar,
+    level:Number(p.level||1),
+    exp:Number(p.exp||0),
+    hp:Number(p.hp||0),
+    maxHp:Number(p.max_hp||0),
+    atk:Number(p.effective_atk||0),
+    def:Number(p.effective_def||0),
+    spd:Number(p.spd||0),
+    wins,
+    losses:loss,
+    combatRank:Number(ranks.combatRank||0),
+    economyRank:Number(ranks.economyRank||0),
+    players:Number(ranks.players||0),
+    balance:Number(p.cash||0)+Number(p.bank||0),
+    patrimony:Number(pat.total||0),
+    streak:Number(streak.streak||0),
+    bestStreak:Number(streak.bestStreak||0),
+    weapon:p.weapon_name||'Sem arma',
+    armor:p.armor_name||'Sem armadura',
+    clan:clan?.name||'Sem clã',
+    home:home?.name||'Nenhuma',
+    cars:Array.isArray(cars)?cars.length:0,
+    pet:'Em breve',
+    achievements
+  })
+
+  await sock.sendMessage(chat,{
+    image:card,
+    caption:`👤 *${p.push_name||'Jogador'}* • ${title}\n🍀 *ALPHA BOT* — digite *!perfil* para gerar o seu.`
+  },{quoted:msg})
+}
 function dailyResultText(r){
   let text=`🔥 *DAILY ALPHA*\n\n💰 +R$ ${fmt(r.totalCash)}\n🔥 Sequência: *${r.streak} dia${r.streak===1?'':'s'}*\n🏅 Recorde: *${r.bestStreak} dia${r.bestStreak===1?'':'s'}*`
   if(r.reward){
