@@ -287,7 +287,7 @@ export async function ensureUser(jid, pushName='') {
 
 export async function getProfile(jid) {
   const { rows } = await db.query(`
-    SELECT u.jid,u.push_name,u.level,u.exp,u.premium,
+    SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
            w.cash,w.bank,w.bank_limit,
            s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.win,s.loss
     FROM users u
@@ -820,6 +820,28 @@ export async function sellItemsBatch(jid, selections=[]) {
       cash:Number(walletR.rows[0]?.cash||0)
     }
   })
+}
+
+
+export async function getPlayerRanks(jid) {
+  const {rows}=await db.query(`
+    SELECT
+      1+(SELECT COUNT(*) FROM users x JOIN wallets wx ON wx.jid=x.jid
+         WHERE x.jid NOT LIKE '%@local' AND
+         ((wx.cash+wx.bank)>(w.cash+w.bank) OR
+          ((wx.cash+wx.bank)=(w.cash+w.bank) AND x.level>u.level) OR
+          ((wx.cash+wx.bank)=(w.cash+w.bank) AND x.level=u.level AND x.created_at<u.created_at))) AS economy_rank,
+      1+(SELECT COUNT(*) FROM users x JOIN stats sx ON sx.jid=x.jid
+         WHERE x.jid NOT LIKE '%@local' AND
+         ((sx.win*3-sx.loss)>(s.win*3-s.loss) OR
+          ((sx.win*3-sx.loss)=(s.win*3-s.loss) AND sx.win>s.win) OR
+          ((sx.win*3-sx.loss)=(s.win*3-s.loss) AND sx.win=s.win AND x.level>u.level))) AS combat_rank,
+      (SELECT COUNT(*) FROM users x WHERE x.jid NOT LIKE '%@local') AS players
+    FROM users u JOIN wallets w ON w.jid=u.jid JOIN stats s ON s.jid=u.jid
+    WHERE u.jid=$1
+  `,[jid])
+  const r=rows[0]||{}
+  return {economyRank:Number(r.economy_rank||0),combatRank:Number(r.combat_rank||0),players:Number(r.players||0)}
 }
 
 export async function leaderboard(limit=10) {

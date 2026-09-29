@@ -10,7 +10,7 @@ import makeWASocket, {
 import pino from 'pino'
 import {
   initDatabase, ensureUser, getProfile, getDailyStreak, claimDaily, work,
-  deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard,
+  deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks,
   equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
@@ -209,6 +209,75 @@ function fmtDate(epoch){
 function duration(sec){
   const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60)
   return h ? `${h}h ${m}min` : `${m}min`
+}
+
+
+function alphaTitle(p,patrimony){
+  const wins=Number(p?.win||0), level=Number(p?.level||1), total=Number(patrimony||0)
+  if(wins>=100) return '👑 Lenda da Arena'
+  if(total>=1_000_000) return '💎 Magnata'
+  if(level>=100) return '🌌 Lenda Alpha'
+  if(wins>=25) return '⚔️ Gladiador'
+  if(level>=50) return '🔥 Veterano'
+  if(total>=250_000) return '💰 Investidor'
+  if(wins>=5) return '🥊 Lutador'
+  return '🌱 Novato'
+}
+
+function founderBadge(p){
+  return Number(p?.created_at||0)>0 && Number(p.created_at)<=1790748000 ? '🍀 FUNDADOR ALPHA' : ''
+}
+
+function xpBar(exp,level){
+  const needed=Math.max(100,Number(level||1)*100)
+  const current=Math.max(0,Math.min(needed,Number(exp||0)))
+  const filled=Math.max(0,Math.min(10,Math.floor((current/needed)*10)))
+  return {bar:'█'.repeat(filled)+'░'.repeat(10-filled),current,needed}
+}
+
+async function sendAlphaProfile(sock,chat,jid,msg){
+  const [p,clan,home,cars,pat,streak,ranks]=await Promise.all([
+    getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
+    getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid)
+  ])
+  if(!p) throw new Error('Perfil não encontrado.')
+  const xp=xpBar(p.exp,p.level)
+  const wins=Number(p.win||0),loss=Number(p.loss||0),battles=wins+loss
+  const rate=battles?Math.round(wins/battles*100):0
+  const title=alphaTitle(p,pat.total)
+  const badge=founderBadge(p)
+  const caption=`╭━━━ 👤 *PERFIL ALPHA* ━━━╮
+┃ *${p.push_name||'Jogador'}*
+┃ ${title}
+${badge?`┃ ${badge}\n`:''}┣━━━━━━━━━━━━━━━━━━━━
+┃ ⭐ Nível *${p.level}*
+┃ ✨ ${xp.bar} *${fmt(xp.current)}/${fmt(xp.needed)} XP*
+┃ 🔥 Daily *${streak.streak} dias* • recorde ${streak.bestStreak}
+┣━━━ ⚔️ COMBATE
+┃ ❤️ HP *${p.hp}/${p.max_hp}*
+┃ ⚔️ ATK *${p.effective_atk}* • 🛡️ DEF *${p.effective_def}* • 💨 SPD *${p.spd}*
+┃ 🗡️ ${p.weapon_name}
+┃ 🛡️ ${p.armor_name}
+┃ 🏆 *${wins}V / ${loss}D* • ${rate}% vitórias
+┃ 🥊 Ranking combate *#${ranks.combatRank}*
+┣━━━ 💰 IMPÉRIO
+┃ 💵 Saldo *R$ ${fmt(Number(p.cash)+Number(p.bank))}*
+┃ 💎 Patrimônio *R$ ${fmt(pat.total)}*
+┃ 🌍 Ranking riqueza *#${ranks.economyRank} de ${ranks.players}*
+┃ 🏴 Clã: *${clan?.name||'Sem clã'}*
+┃ 🏠 Casa: *${home?.name||'Nenhuma'}* • 🚗 Garagem: *${cars.length}/5*
+┣━━━━━━━━━━━━━━━━━━━━
+┃ 🐾 Pet: *Em breve*
+╰━━ 🍀 *ALPHA BOT* ━━━━━╯`
+  let photo=null
+  try{ photo=await sock.profilePictureUrl(jid,'image') }catch{}
+  if(photo){
+    try{
+      await sock.sendMessage(chat,{image:{url:photo},caption},{quoted:msg})
+      return
+    }catch(err){ console.error('[perfil] foto falhou; usando texto',err?.message||err) }
+  }
+  await sock.sendMessage(chat,{text:caption},{quoted:msg})
 }
 
 function dailyResultText(r){
@@ -1992,26 +2061,8 @@ Dano final: ${r.damage}
       }
 
       if(input==='1'){
-        const [p,clan,home,cars,pat]=await Promise.all([
-          getCombatProfile(sender),
-          getClanForUser(sender),
-          getHome(sender),
-          getGarage(sender),
-          getPatrimony(sender)
-        ])
         clearQuickFlow(chat,sender)
-        await reply(
-`👤 *${p.push_name || 'Jogador'}*
-
-⭐ Nível: ${p.level}
-❤️ HP: ${p.hp}/${p.max_hp}
-⚔️ ATK: ${p.effective_atk}
-🛡️ DEF: ${p.effective_def}
-🏴 Clã: ${clan?clan.name:'Nenhum'}
-🏠 Casa: ${home?home.name:'Nenhuma'}
-🚗 Garagem: ${cars.length}/5
-💎 Patrimônio: *R$ ${fmt(pat.total)}*`
-        )
+        await sendAlphaProfile(sock,chat,sender,msg)
         return true
       }
 
@@ -3897,34 +3948,7 @@ ${prefix}comandos — mostra esta lista
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['perfil','profile'].includes(cmd)){
-          const [p,clan,home,cars,pat,streak]=await Promise.all([
-            getCombatProfile(sender),
-            getClanForUser(sender),
-            getHome(sender),
-            getGarage(sender),
-            getPatrimony(sender),
-            getDailyStreak(sender)
-          ])
-          await reply(
-`👤 *${p.push_name || 'Jogador'}*
-
-⭐ Nível: ${p.level}
-✨ EXP: ${p.exp}
-❤️ HP: ${p.hp}/${p.max_hp}
-⚔️ ATK: ${p.effective_atk}
-🛡️ DEF: ${p.effective_def}
-💨 SPD: ${p.spd}
-
-🗡️ Arma: ${p.weapon_name}
-🥋 Armadura: ${p.armor_name}
-🏴 Clã: ${clan?clan.name:'Nenhum'}
-🏠 Casa: ${home?home.name:'Nenhuma'}
-🚗 Garagem: ${cars.length}/5
-
-💰 Saldo: R$ ${fmt(Number(p.cash)+Number(p.bank))}
-💎 Patrimônio: *R$ ${fmt(pat.total)}*
-🔥 Daily: *${streak.streak} dia${streak.streak===1?'':'s'}* (recorde ${streak.bestStreak})`
-          )
+          await sendAlphaProfile(sock,chat,sender,msg)
 
         } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
