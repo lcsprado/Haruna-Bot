@@ -116,8 +116,8 @@ async function start() {
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['perfil','profile'].includes(cmd)){
-          const p=await getProfile(sender)
-          await reply(`👤 *${p.push_name || 'Jogador'}*\n⭐ Nível: ${p.level}\n✨ EXP: ${p.exp}\n❤️ HP: ${p.hp}/${p.max_hp}\n⚔️ ATK: ${p.atk}\n🛡️ DEF: ${p.def}\n💨 SPD: ${p.spd}\n💰 Saldo: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
+          const p=await getCombatProfile(sender)
+          await reply(`👤 *${p.push_name || 'Jogador'}*\n⭐ Nível: ${p.level}\n✨ EXP: ${p.exp}\n❤️ HP: ${p.hp}/${p.max_hp}\n⚔️ ATK: ${p.effective_atk}\n🛡️ DEF: ${p.effective_def}\n💨 SPD: ${p.spd}\n🗡️ Arma: ${p.weapon_name}\n🥋 Armadura: ${p.armor_name}\n💰 Saldo: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
@@ -194,8 +194,8 @@ async function start() {
 ⭐ Nível: ${p.level}
 ✨ EXP: ${p.exp}/${p.level*100}
 ❤️ HP: ${p.hp}/${p.max_hp}
-⚔️ ATK: ${p.effective_atk}
-🛡️ DEF: ${p.effective_def}
+⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)
+🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
 💨 SPD: ${p.spd}
 
 🗡️ Arma: ${p.weapon_name}
