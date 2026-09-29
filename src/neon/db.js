@@ -476,8 +476,12 @@ export async function getCombatProfile(jid) {
   const armor=EQUIPMENT[p.armor_id] || {atk:0,def:0,name:'Nenhuma'}
   return {
     ...p,
-    effective_atk:Number(p.atk)+weapon.atk+armor.atk,
-    effective_def:Number(p.def)+weapon.def+armor.def,
+    base_atk:Number(p.atk),
+    base_def:Number(p.def),
+    weapon_atk:Number(weapon.atk||0),
+    armor_def:Number(armor.def||0),
+    effective_atk:Number(p.atk)+Number(weapon.atk||0)+Number(armor.atk||0),
+    effective_def:Number(p.def)+Number(weapon.def||0)+Number(armor.def||0),
     weapon_name:weapon.name,
     armor_name:armor.name,
   }
