@@ -198,12 +198,18 @@ Fale com o responsável pelo Trevo para ativação.`
         } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
           if(!r.ok) await reply(`⏳ Daily já coletado. Volte em ${duration(r.remaining)}.`)
-          else await reply(`🍀 Daily coletado! +R$ ${fmt(r.amount)}`)
+          else {
+            await progressDailyMission(sender,'daily')
+            await reply(`🍀 Daily coletado! +R$ ${fmt(r.amount)}`)
+          }
 
         } else if(['trabalhar','work','trampo'].includes(cmd)){
           const r=await work(sender)
           if(!r.ok) await reply(`⏳ Você já trabalhou. Tente novamente em ${duration(r.remaining)}.`)
-          else await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
+          else {
+            await progressDailyMission(sender,'work')
+            await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
+          }
 
         } else if(['depositar','deposit','dep'].includes(cmd)){
           const amount=parseAmount(args[0])
@@ -242,6 +248,7 @@ Fale com o responsável pelo Trevo para ativação.`
           const qty=parseInt(args[1]||'1',10)
           if(!id) return await reply(`Uso: *${prefix}comprar 1* ou *${prefix}comprar espada_madeira*`)
           const r=await buyItem(sender,id,qty)
+          await progressDailyMission(sender,'shop')
           await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
 
         } else if(cmd==='caixa_sorte'){
@@ -253,6 +260,7 @@ Fale com o responsável pelo Trevo para ativação.`
 
         } else if(SHOP_IDS.includes(cmd) && cmd!=='caixa_sorte'){
           const r=await buyItem(sender,cmd,1)
+          await progressDailyMission(sender,'shop')
           await reply(`🛒 Compra rápida concluída!\n📦 ${r.item.name} ×1\n💸 R$ ${fmt(r.total)}`)
 
         } else if(['inventario','inventory','inv'].includes(cmd)){
@@ -308,6 +316,7 @@ Fale com o responsável pelo Trevo para ativação.`
           text+=`\n🏆 *Vencedor: ${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}\n✨ EXP: +40 vencedor / +15 derrotado`
           if(r.winExp.levels>0) text+=`\n⬆️ ${r.winner.name} subiu ${r.winExp.levels} nível(is)!`
           if(r.loseExp.levels>0) text+=`\n⬆️ ${r.loser.name} subiu ${r.loseExp.levels} nível(is)!`
+          await progressDailyMission(sender,'battle')
           await reply(text,{mentions:[target]})
 
         } else if(['rankingrpg','rankrpg','toprpg'].includes(cmd)){
@@ -502,6 +511,7 @@ _Use ${prefix}menu para ver todos os comandos._`
           const result=r.payout>0
             ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
             : `💸 Você perdeu R$ ${fmt(r.amount)}.`
+          await progressDailyMission(sender,'game')
           await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\nSua escolha: *${r.choice}*\n\n${result}`)
 
         } else if(['cara','coroa'].includes(cmd)){
@@ -509,6 +519,7 @@ _Use ${prefix}menu para ver todos os comandos._`
           const amount=parseAmount(args[0])
           if(!amount) return await reply(`Uso: *${prefix}${choice} 100*`)
           const r=await coinFlip(sender,amount,choice)
+          await progressDailyMission(sender,'game')
           await reply(`🪙 *CARA OU COROA*\n\nResultado: *${r.result}*\nVocê escolheu: *${r.choice}*\n${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
 
         } else if(['ppt'].includes(cmd)){
@@ -516,11 +527,13 @@ _Use ${prefix}menu para ver todos os comandos._`
           if(!choice) return await reply(`Uso: *${prefix}ppt pedra*\nOpções: pedra, papel ou tesoura`)
           const r=rps(choice)
           const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
+          await progressDailyMission(sender,'game')
           await reply(`✊ *PEDRA, PAPEL E TESOURA*\n\nVocê: *${r.choice}*\nTrevo: *${r.bot}*\n\n${emoji} *${r.result.toUpperCase()}*`)
 
         } else if(['forca'].includes(cmd)){
           const r=await startHangman(chat)
           if(r.already) return await reply(`🔤 Já existe uma forca ativa.\nDica: *${r.hint}*\nPalavra: ${r.word.split('').map(ch=>r.letters.includes(ch)?ch:'_').join(' ')}\n❤️ Vidas: ${r.lives}`)
+          await progressDailyMission(sender,'game')
           await reply(`🔤 *FORCA INICIADA!*\n\nDica: *${r.hint}*\nPalavra: ${r.word.split('').map(()=> '_').join(' ')}\n❤️ Vidas: 6\n\nUse *${prefix}letra a* ou *${prefix}palavra resposta*`)
 
         } else if(['letra'].includes(cmd)){
@@ -546,6 +559,7 @@ _Use ${prefix}menu para ver todos os comandos._`
             text+=`\n⏳ Expira em cerca de *${q.remaining}s*.\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
             return await reply(text)
           }
+          await progressDailyMission(sender,'game')
           let text=`🧠 *QUIZ DO TREVO*\n\n${q.q}\n\n`
           q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
           text+=`\n⏳ Você tem *2 minutos*.\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
@@ -560,6 +574,7 @@ _Use ${prefix}menu para ver todos os comandos._`
         } else if(['numero','adivinhar'].includes(cmd)){
           const r=await startNumberGame(chat)
           if(r.already) return await reply(`🔢 Já existe um número secreto ativo de 1 a 100.\nUse *${prefix}chute 50*.`)
+          await progressDailyMission(sender,'game')
           await reply(`🔢 *ADIVINHE O NÚMERO*\n\nEscolhi um número de *1 a 100*.\nVocês têm até *10 tentativas*.\nUse *${prefix}chute 50*.`)
 
         } else if(['chute'].includes(cmd)){
@@ -572,6 +587,7 @@ _Use ${prefix}menu para ver todos os comandos._`
         } else if(['boss'].includes(cmd)){
           const r=await startBoss(chat)
           if(r.already) return await reply(`👹 *${r.name}* ainda está vivo!\n❤️ HP: ${r.hp}/${r.maxHp}\nUse *${prefix}atacar*.`)
+          await progressDailyMission(sender,'game')
           await reply(`👹 *BOSS APARECEU!*\n\n*${r.name}*\n❤️ HP: ${r.hp}/${r.maxHp}\n\nTodos podem atacar com *${prefix}atacar*.`)
 
         } else if(['atacar'].includes(cmd)){
@@ -583,6 +599,7 @@ _Use ${prefix}menu para ver todos os comandos._`
         } else if(['dungeon','masmorra'].includes(cmd)){
           const r=await dungeon(sender)
           if(!r.ok) return await reply(`⏳ Você poderá entrar novamente na dungeon em ${duration(r.remaining)}.`)
+          await progressDailyMission(sender,'dungeon')
           if(r.won){
             let text=`🏰 *DUNGEON CONCLUÍDA!*\n\n👹 Inimigo: *${r.monster}*\n❤️ HP restante: ${r.hp}/${r.maxHp}\n💰 Recompensa: R$ ${fmt(r.cash)}\n✨ EXP: +${r.exp}`
             if(r.level.levels>0) text+=`\n⬆️ Você subiu ${r.level.levels} nível(is)!`
