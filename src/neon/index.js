@@ -43,6 +43,27 @@ const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
 const sessionId=process.env.SESSION_ID || 'default'
 const ownerJid=process.env.OWNER_JID || ''
 
+const quickGameFlows=new Map()
+const quickFlowKey=(chat,sender)=>`${chat}|${sender}`
+function setQuickFlow(chat,sender,stage,data={},ttlMs=90000){
+  quickGameFlows.set(quickFlowKey(chat,sender),{
+    stage,data,expiresAt:Date.now()+ttlMs
+  })
+}
+function getQuickFlow(chat,sender){
+  const key=quickFlowKey(chat,sender)
+  const flow=quickGameFlows.get(key)
+  if(!flow) return null
+  if(flow.expiresAt<=Date.now()){
+    quickGameFlows.delete(key)
+    return null
+  }
+  return flow
+}
+function clearQuickFlow(chat,sender){
+  quickGameFlows.delete(quickFlowKey(chat,sender))
+}
+
 function textOf(msg) {
   const m=msg?.message
   return m?.conversation
@@ -124,6 +145,330 @@ async function start() {
 
   sock.ev.on('creds.update',saveCreds)
 
+  async function handleQuickGameFlow({chat,sender,body,reply,msg}){
+    const flow=getQuickFlow(chat,sender)
+    if(!flow) return false
+    const input=String(body||'').trim().toLowerCase()
+
+    if(['0','sair','cancelar','cancel'].includes(input)){
+      clearQuickFlow(chat,sender)
+      await reply('✅ Modo rápido encerrado. Use *!games* quando quiser abrir novamente.')
+      return true
+    }
+
+    const askBet=(stage)=> {
+      setQuickFlow(chat,sender,stage,{},90000)
+      return reply(
+`💰 *QUANTO QUER APOSTAR?*
+
+1️⃣ R$ 100
+2️⃣ R$ 500
+3️⃣ R$ 1.000
+4️⃣ Outro valor
+
+_Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
+      )
+    }
+
+    if(flow.stage==='main'){
+      if(!/^[1-7]$/.test(input)){
+        await reply('🎮 Escolha uma opção de *1 a 7* ou digite *0* para sair.')
+        return true
+      }
+
+      if(input==='1'){
+        await askBet('roulette_bet')
+        return true
+      }
+      if(input==='2'){
+        await askBet('coin_bet')
+        return true
+      }
+      if(input==='3'){
+        setQuickFlow(chat,sender,'ppt_choice',{},90000)
+        await reply(
+`✊ *PEDRA, PAPEL E TESOURA*
+
+1️⃣ Pedra
+2️⃣ Papel
+3️⃣ Tesoura
+
+_Responda só com o número._`
+        )
+        return true
+      }
+      if(input==='4'){
+        const r=await startHangman(chat)
+        setQuickFlow(chat,sender,'hangman',{},5*60*1000)
+        if(!r.already) await progressDailyMission(sender,'game')
+        const masked=r.word.split('').map(ch=>r.letters?.includes(ch)?ch:'_').join(' ')
+        await reply(
+`🔤 *FORCA*
+
+Dica: *${r.hint}*
+Palavra: ${masked}
+❤️ Vidas: ${r.lives||6}
+
+Digite apenas uma *letra* ou tente a *palavra inteira*.
+Digite *0* para sair do modo rápido.`
+        )
+        return true
+      }
+      if(input==='5'){
+        const q=await startQuiz(chat)
+        if(!q.already) await progressDailyMission(sender,'game')
+        const ttl=Math.max(10,Number(q.remaining||120))*1000
+        setQuickFlow(chat,sender,'quiz_answer',{},ttl)
+        let text=`🧠 *QUIZ DO TREVO*\n\n${q.q}\n\n`
+        q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
+        text+='\n_Responda só com 1, 2, 3 ou 4._'
+        await reply(text)
+        return true
+      }
+      if(input==='6'){
+        const r=await startNumberGame(chat)
+        if(!r.already) await progressDailyMission(sender,'game')
+        setQuickFlow(chat,sender,'number_guess',{},5*60*1000)
+        await reply(
+`🔢 *ADIVINHE O NÚMERO*
+
+Escolhi um número de *1 a 100*.
+Vocês têm até *10 tentativas*.
+
+Digite apenas seu chute, por exemplo: *50*.
+Digite *0* para sair do modo rápido.`
+        )
+        return true
+      }
+      if(input==='7'){
+        const r=await startBoss(chat)
+        if(!r.already) await progressDailyMission(sender,'game')
+        setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
+        await reply(
+`👹 *${r.name}*
+
+❤️ ${r.hp}/${r.maxHp}
+
+1️⃣ Atacar
+0️⃣ Sair do modo rápido
+
+_Enquanto estiver neste modo, mande apenas 1 para atacar._`
+        )
+        return true
+      }
+    }
+
+    if(flow.stage==='roulette_bet' || flow.stage==='coin_bet'){
+      const presets={1:100,2:500,3:1000}
+      if(input==='4'){
+        setQuickFlow(chat,sender,flow.stage==='roulette_bet'?'roulette_custom':'coin_custom',{},90000)
+        await reply('💰 Digite o valor que quer apostar. Exemplo: *2500*')
+        return true
+      }
+      const amount=presets[input]
+      if(!amount){
+        await reply('Escolha *1, 2, 3 ou 4*.')
+        return true
+      }
+      if(flow.stage==='roulette_bet'){
+        setQuickFlow(chat,sender,'roulette_color',{amount},90000)
+        await reply(
+`🎰 *ESCOLHA A COR*
+
+1️⃣ 🔴 Vermelho
+2️⃣ ⚫ Preto
+3️⃣ 🟢 Verde
+
+_Responda só com o número._`
+        )
+      }else{
+        setQuickFlow(chat,sender,'coin_side',{amount},90000)
+        await reply(
+`🪙 *CARA OU COROA*
+
+1️⃣ Cara
+2️⃣ Coroa
+
+_Responda só com o número._`
+        )
+      }
+      return true
+    }
+
+    if(flow.stage==='roulette_custom' || flow.stage==='coin_custom'){
+      const amount=parseAmount(input)
+      if(amount<1){
+        await reply('Digite um valor válido. Exemplo: *2500*.')
+        return true
+      }
+      if(flow.stage==='roulette_custom'){
+        setQuickFlow(chat,sender,'roulette_color',{amount},90000)
+        await reply('🎰 Escolha: *1 Vermelho*, *2 Preto* ou *3 Verde*.')
+      }else{
+        setQuickFlow(chat,sender,'coin_side',{amount},90000)
+        await reply('🪙 Escolha: *1 Cara* ou *2 Coroa*.')
+      }
+      return true
+    }
+
+    if(flow.stage==='roulette_color'){
+      const colors={1:'vermelho',2:'preto',3:'verde'}
+      const choice=colors[input]
+      if(!choice){
+        await reply('Escolha *1, 2 ou 3*.')
+        return true
+      }
+      const r=await roulette(sender,flow.data.amount,choice)
+      await progressDailyMission(sender,'game')
+      clearQuickFlow(chat,sender)
+      const result=r.payout>0
+        ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+        : `💸 Você perdeu R$ ${fmt(r.amount)}.`
+      await reply(
+`🎰 *ROLETA*
+
+Número: *${r.number}*
+Cor: *${r.color}*
+Sua escolha: *${r.choice}*
+
+${result}
+
+_Use !games para jogar novamente._`
+      )
+      return true
+    }
+
+    if(flow.stage==='coin_side'){
+      const sides={1:'cara',2:'coroa'}
+      const choice=sides[input]
+      if(!choice){
+        await reply('Escolha *1 ou 2*.')
+        return true
+      }
+      const r=await coinFlip(sender,flow.data.amount,choice)
+      await progressDailyMission(sender,'game')
+      clearQuickFlow(chat,sender)
+      await reply(
+`🪙 *CARA OU COROA*
+
+Resultado: *${r.result}*
+Você escolheu: *${r.choice}*
+
+${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}
+
+_Use !games para jogar novamente._`
+      )
+      return true
+    }
+
+    if(flow.stage==='ppt_choice'){
+      const choices={1:'pedra',2:'papel',3:'tesoura'}
+      const choice=choices[input]
+      if(!choice){
+        await reply('Escolha *1, 2 ou 3*.')
+        return true
+      }
+      const r=rps(choice)
+      await progressDailyMission(sender,'game')
+      clearQuickFlow(chat,sender)
+      const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
+      await reply(
+`✊ *PEDRA, PAPEL E TESOURA*
+
+Você: *${r.choice}*
+Trevo: *${r.bot}*
+
+${emoji} *${r.result.toUpperCase()}*
+
+_Use !games para jogar novamente._`
+      )
+      return true
+    }
+
+    if(flow.stage==='hangman'){
+      let r
+      if(input.length===1) r=await hangmanLetter(chat,input)
+      else r=await hangmanWord(chat,input)
+
+      if(r.repeat){
+        await reply(`🔁 Essa letra já foi usada.\n${r.masked}\n❤️ Vidas: ${r.lives}`)
+        return true
+      }
+      if(r.won){
+        clearQuickFlow(chat,sender)
+        await reply(`🎉 *ACERTOU!* A palavra era *${r.word}*.\n\n_Use !games para jogar novamente._`)
+        return true
+      }
+      if(r.lost){
+        clearQuickFlow(chat,sender)
+        await reply(`💀 *FORCA ENCERRADA!* A palavra era *${r.word}*.\n\n_Use !games para jogar novamente._`)
+        return true
+      }
+      await reply(`🔤 ${r.masked}\n❤️ Vidas: ${r.lives}${r.wrong?`\n❌ Erros: ${r.wrong.join(', ')||'nenhum'}`:''}`)
+      return true
+    }
+
+    if(flow.stage==='quiz_answer'){
+      const n=parseInt(input,10)
+      if(![1,2,3,4].includes(n)){
+        await reply('Responda apenas com *1, 2, 3 ou 4*.')
+        return true
+      }
+      const r=await answerQuiz(chat,sender,n)
+      clearQuickFlow(chat,sender)
+      if(r.correct) await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
+      else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
+      return true
+    }
+
+    if(flow.stage==='number_guess'){
+      const n=parseInt(input,10)
+      if(!Number.isInteger(n)||n<1||n>100){
+        await reply('Digite um número de *1 a 100*.')
+        return true
+      }
+      const r=await guessNumber(chat,sender,n)
+      if(r.won){
+        clearQuickFlow(chat,sender)
+        await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\n💰 +R$ ${fmt(r.reward)}\nTentativas: ${r.attempts}`)
+      }else if(r.lost){
+        clearQuickFlow(chat,sender)
+        await reply(`💀 Acabaram as tentativas. O número era *${r.number}*.`)
+      }else{
+        await reply(`🔢 É *${r.hint}*!\nTentativas restantes: *${r.left}*\n\nDigite outro número.`)
+      }
+      return true
+    }
+
+    if(flow.stage==='boss_attack'){
+      if(input!=='1'){
+        await reply('👹 Mande *1* para atacar ou *0* para sair.')
+        return true
+      }
+      const r=await attackBoss(chat,sender,msg.pushName||'Jogador')
+      if(r.cooldown){
+        await reply(`⏳ Aguarde *${r.remaining}s* para atacar novamente.`)
+        return true
+      }
+      if(r.dead){
+        clearQuickFlow(chat,sender)
+        await reply(
+`💥 *BOSS DERROTADO!*
+Dano final: ${r.damage}
+👥 Participantes: ${r.players}
+💰 Cada participante recebeu R$ ${fmt(r.rewardEach)}`
+        )
+      }else{
+        await reply(`⚔️ Você causou *${r.damage}* de dano!\n👹 Boss: ❤️ ${r.hp}/${r.maxHp}\n\nMande *1* para atacar novamente.`)
+      }
+      return true
+    }
+
+    clearQuickFlow(chat,sender)
+    return false
+  }
+
+
   if(pairingNumber && !state.creds.registered){
     setTimeout(async()=>{
       try{
@@ -156,15 +501,32 @@ async function start() {
         if(!chat || chat==='status@broadcast') continue
         const sender=msg.key.participant || chat
         const body=textOf(msg).trim()
-        if(!body.startsWith(prefix)) continue
+        const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
+        const isOwner=ownerJid && sender===ownerJid
+        const isGroup=chat.endsWith('@g.us')
+
+        if(!body.startsWith(prefix)){
+          const flow=getQuickFlow(chat,sender)
+          if(!flow) continue
+
+          await ensureUser(sender,msg.pushName || '')
+          if(isGroup && !isOwner){
+            const license=await getGroupLicense(chat)
+            if(!license || !groupLicenseIsActive(license)){
+              clearQuickFlow(chat,sender)
+              await reply('🔒 O acesso deste grupo terminou. Use *!statusgrupo* ou *!assinar*.')
+              continue
+            }
+          }
+
+          await handleQuickGameFlow({chat,sender,body,reply,msg})
+          continue
+        }
 
         await ensureUser(sender,msg.pushName || '')
         const [rawCmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
         const cmd=(rawCmd||'').toLowerCase()
-        const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
-        const isOwner=ownerJid && sender===ownerJid
         const ownerTarget=mentionsOf(msg)[0] || sender
-        const isGroup=chat.endsWith('@g.us')
 
         if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pedido'].includes(cmd)){
           let license=await getGroupLicense(chat)
@@ -543,18 +905,24 @@ ${prefix}clas — ranking de clãs`
           await reply(text.trim())
 
         } else if(['games','jogos'].includes(cmd)){
+          setQuickFlow(chat,sender,'main',{},90000)
           await reply(
 `🎮 *MINIGAMES DO TREVO*
 
-🎰 ${prefix}roleta 100 vermelho
-🪙 ${prefix}cara 100 / ${prefix}coroa 100
-✊ ${prefix}ppt pedra
-🔤 ${prefix}forca
-🧠 ${prefix}quiz
-🔢 ${prefix}numero
-👹 ${prefix}boss
+1️⃣ 🎰 Roleta
+2️⃣ 🪙 Cara ou Coroa
+3️⃣ ✊ Pedra, Papel e Tesoura
+4️⃣ 🔤 Forca
+5️⃣ 🧠 Quiz
+6️⃣ 🔢 Adivinhe o Número
+7️⃣ 👹 Boss
 
-_Use ${prefix}menu para ver todos os comandos._`
+👉 *Responda apenas com o número do jogo.*
+Você não precisa usar ! enquanto estiver neste menu.
+
+0️⃣ Sair
+
+_Os comandos antigos continuam funcionando normalmente._`
           )
 
         } else if(['roleta'].includes(cmd)){
