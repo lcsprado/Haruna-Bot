@@ -152,6 +152,19 @@ export async function initDatabase() {
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS quick_flows (
+      flow_key TEXT PRIMARY KEY,
+      chat_jid TEXT NOT NULL,
+      sender_jid TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      expires_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
+    CREATE INDEX IF NOT EXISTS quick_flows_expires_idx
+      ON quick_flows(expires_at);
+
     CREATE TABLE IF NOT EXISTS auth_creds (
       session_id TEXT NOT NULL,
       key TEXT NOT NULL,
@@ -759,6 +772,48 @@ export async function acquireRuntimeLock(sessionId) {
   }
 }
 
+
+export async function saveQuickFlow(flowKey, chatJid, senderJid, stage, data, expiresAtMs) {
+  const expiresAt=Math.floor(Number(expiresAtMs)/1000)
+  await db.query(`
+    INSERT INTO quick_flows(flow_key,chat_jid,sender_jid,stage,data,expires_at,updated_at)
+    VALUES($1,$2,$3,$4,$5::jsonb,$6,${nowSql})
+    ON CONFLICT(flow_key) DO UPDATE
+    SET chat_jid=EXCLUDED.chat_jid,
+        sender_jid=EXCLUDED.sender_jid,
+        stage=EXCLUDED.stage,
+        data=EXCLUDED.data,
+        expires_at=EXCLUDED.expires_at,
+        updated_at=${nowSql}
+  `,[flowKey,chatJid,senderJid,stage,JSON.stringify(data??{}),expiresAt])
+}
+
+export async function getStoredQuickFlow(flowKey) {
+  const now=Math.floor(Date.now()/1000)
+  const {rows}=await db.query(
+    'SELECT stage,data,expires_at FROM quick_flows WHERE flow_key=$1 AND expires_at>$2',
+    [flowKey,now]
+  )
+  const row=rows[0]
+  if(!row){
+    await db.query('DELETE FROM quick_flows WHERE flow_key=$1',[flowKey]).catch(()=>{})
+    return null
+  }
+  return {
+    stage:row.stage,
+    data:row.data||{},
+    expiresAt:Number(row.expires_at)*1000
+  }
+}
+
+export async function deleteQuickFlow(flowKey) {
+  await db.query('DELETE FROM quick_flows WHERE flow_key=$1',[flowKey])
+}
+
+export async function cleanupQuickFlows() {
+  const now=Math.floor(Date.now()/1000)
+  await db.query('DELETE FROM quick_flows WHERE expires_at<=$1',[now])
+}
 
 export async function getGroupSettings(chatJid) {
   const { rows } = await db.query(`
