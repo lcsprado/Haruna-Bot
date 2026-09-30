@@ -227,6 +227,23 @@ function mentionsOf(msg) {
     || []
 }
 
+async function resolvePlayerJid(sock,chat,jid) {
+  if(!jid || !jid.endsWith('@lid')) return jid
+  try{
+    const pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)
+    if(pn) return pn
+  }catch{}
+  try{
+    if(chat?.endsWith('@g.us')){
+      const meta=await sock.groupMetadata(chat)
+      const part=(meta?.participants||[]).find(p=>p?.id===jid || p?.lid===jid)
+      const candidate=part?.phoneNumber || part?.pn || part?.jid
+      if(candidate?.endsWith('@s.whatsapp.net')) return candidate
+    }
+  }catch{}
+  return jid
+}
+
 function unwrapMessageContent(message){
   let current=message
   for(let i=0;i<6;i++){
@@ -4376,35 +4393,14 @@ ${prefix}configgrupo — módulos do bot (admins do grupo)
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['perfil','profile'].includes(cmd)){
-          let profileTarget=mentionsOf(msg)[0] || sender
-          const mentioned=Boolean(mentionsOf(msg)[0])
-
-          // Grupos novos do WhatsApp usam LID nas menções. O jogo, porém, foi
-          // criado com JID telefônico. Resolve LID -> PN sem criar perfil fantasma.
-          if(profileTarget?.endsWith('@lid')){
-            const originalLid=profileTarget
-            try{
-              let pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(originalLid)
-              if(!pn && isGroup){
-                const meta=await sock.groupMetadata(chat)
-                const part=(meta?.participants||[]).find(p=>
-                  p?.id===originalLid || p?.lid===originalLid
-                )
-                pn=part?.phoneNumber || (part?.id?.endsWith('@s.whatsapp.net')?part.id:null)
-              }
-              if(pn) profileTarget=pn
-            }catch(err){
-              console.warn('[perfil] não foi possível resolver LID',originalLid,err?.message||err)
-            }
-          }
+          const mentioned=mentionsOf(msg)[0]
+          const profileTarget=await resolvePlayerJid(sock,chat,mentioned || sender)
 
           try{
-            // Para perfil próprio, garante cadastro. Para @menção, nunca cria um
-            // usuário vazio: isso era o que gerava "JOGADOR / R$ 0 / nível 1".
             if(!mentioned) await ensureUser(profileTarget,msg.pushName||'')
             const existing=await getProfile(profileTarget)
             if(!existing){
-              return await reply('⚠️ Não encontrei o perfil real dessa pessoa ainda. Peça para ela usar *!perfil* uma vez e tente novamente.')
+              return await reply('⚠️ Não encontrei o cadastro dessa pessoa. Peça para ela enviar qualquer comando do bot e tente novamente.')
             }
             await sendAlphaProfile(sock,chat,profileTarget,msg)
           }catch(err){
@@ -4634,7 +4630,9 @@ ${status}
           await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
 
         } else if(['status'].includes(cmd)){
-          const p=await getCombatProfile(sender)
+          const mentioned=mentionsOf(msg)[0]
+          const statusTarget=await resolvePlayerJid(sock,chat,mentioned || sender)
+          const p=await getCombatProfile(statusTarget)
           await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
 
