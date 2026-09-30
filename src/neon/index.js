@@ -23,6 +23,7 @@ import {
   approveSubscriptionOrder, cancelSubscriptionOrder,
   createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket,
   saveQuickFlow, getStoredQuickFlow, deleteQuickFlow, cleanupQuickFlows,
+  saveSnipeMessage, markSnipeDeleted, getLastDeletedSnipe, cleanupSnipeMessages,
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
@@ -86,7 +87,7 @@ const SNIPE_TTL_MS=30*60*1000
 function messageCacheKey(key={}){
   return [key.remoteJid||'',key.participant||'',key.id||''].join('|')
 }
-function cacheIncomingMessage(msg){
+async function cacheIncomingMessage(sock,msg){
   const chat=msg?.key?.remoteJid
   if(!chat?.endsWith('@g.us') || !msg?.key?.id || msg?.key?.fromMe) return
   const content=unwrapMessageContent(msg.message)
@@ -94,11 +95,59 @@ function cacheIncomingMessage(msg){
   const text=textOf({...msg,message:content}).trim()
   const mediaLabel=type==='imageMessage'?'📷 Foto':type==='videoMessage'?'🎥 Vídeo':type==='audioMessage'?'🎵 Áudio':type==='stickerMessage'?'🖼️ Figurinha':type==='documentMessage'?'📄 Documento':''
   if(!text && !mediaLabel) return
+
+  const supportedMedia=['imageMessage','videoMessage','audioMessage','stickerMessage'].includes(type)
+  const mediaNode=type ? content?.[type] : null
+  const mimeType=mediaNode?.mimetype || (type==='stickerMessage'?'image/webp':null)
+  const rawLength=mediaNode?.fileLength
+  const declaredSize=Number(rawLength?.toString?.() || rawLength || 0)
+  let mediaBuffer=null
+
+  if(supportedMedia && (!declaredSize || declaredSize<=8*1024*1024)){
+    try{
+      const downloaded=await downloadMediaMessage(
+        msg,
+        'buffer',
+        {},
+        {logger,reuploadRequest:sock.updateMediaMessage}
+      )
+      if(downloaded?.length && downloaded.length<=8*1024*1024){
+        mediaBuffer=Buffer.from(downloaded)
+      }else if(downloaded?.length){
+        console.log('[Snipe] mídia ignorada por exceder 8 MB')
+      }
+    }catch(err){
+      console.log('[Snipe] não foi possível armazenar mídia:',err?.message||err)
+    }
+  }else if(supportedMedia && declaredSize>8*1024*1024){
+    console.log('[Snipe] mídia ignorada por exceder 8 MB')
+  }
+
+  const entry={
+    chat,
+    messageId:msg.key.id,
+    sender:msg.key.participant||chat,
+    pushName:msg.pushName||'',
+    text,
+    mediaLabel,
+    mediaType:supportedMedia?type:null,
+    mimeType,
+    mediaBuffer,
+    createdAt:Date.now(),
+    expiresAt:Date.now()+SNIPE_TTL_MS
+  }
   const key=messageCacheKey(msg.key)
-  deletedMessageCache.set(key,{chat,sender:msg.key.participant||chat,pushName:msg.pushName||'',text,mediaLabel,createdAt:Date.now()})
+  deletedMessageCache.set(key,entry)
   setTimeout(()=>deletedMessageCache.delete(key),SNIPE_TTL_MS).unref?.()
+
+  try{
+    await saveSnipeMessage(entry)
+  }catch(err){
+    console.error('[Snipe] falha ao persistir mensagem:',err?.message||err)
+  }
 }
-function rememberDeletedMessage(key,source='unknown'){
+
+async function rememberDeletedMessage(key,source='unknown'){
   const exact=deletedMessageCache.get(messageCacheKey(key))
   let hit=exact
   if(!hit && key?.id && key?.remoteJid){
@@ -106,14 +155,23 @@ function rememberDeletedMessage(key,source='unknown'){
       if(cacheKey.endsWith('|'+key.id) && value.chat===key.remoteJid){ hit=value; break }
     }
   }
+
+  try{
+    const persisted=await markSnipeDeleted(key?.remoteJid,key?.id)
+    if(!hit && persisted) hit=persisted
+  }catch(err){
+    console.error('[Snipe] falha ao marcar exclusão:',err?.message||err)
+  }
+
   if(!hit){
     console.log('[Snipe] exclusão recebida sem mensagem no cache ('+source+')')
     return false
   }
-  lastDeletedByChat.set(hit.chat,{...hit,deletedAt:Date.now()})
-  console.log('[Snipe] mensagem apagada capturada ('+source+')')
+  const deletedAt=Date.now()
+  lastDeletedByChat.set(hit.chat,{...hit,deletedAt})
+  console.log('[Snipe] mensagem apagada capturada ('+source+')'+(hit.mediaBuffer?' com mídia':''))
   setTimeout(()=>{
-    if(lastDeletedByChat.get(hit.chat)?.deletedAt===hit.deletedAt) lastDeletedByChat.delete(hit.chat)
+    if(lastDeletedByChat.get(hit.chat)?.deletedAt===deletedAt) lastDeletedByChat.delete(hit.chat)
   },SNIPE_TTL_MS).unref?.()
   return true
 }
@@ -3821,25 +3879,22 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     }
   })
 
-  sock.ev.on('messages.delete',(event)=>{
-    for(const key of event?.keys||[]) rememberDeletedMessage(key,'messages.delete')
+  sock.ev.on('messages.delete',async(event)=>{
+    for(const key of event?.keys||[]) await rememberDeletedMessage(key,'messages.delete')
   })
 
-  sock.ev.on('messages.update',(updates)=>{
+  sock.ev.on('messages.update',async(updates)=>{
     for(const entry of updates||[]){
       const change=entry?.update||{}
       const content=unwrapMessageContent(change.message)
       const protocol=content?.protocolMessage
       if(protocol?.type===0 && protocol?.key){
-        rememberDeletedMessage(protocol.key,'messages.update/protocol')
+        await rememberDeletedMessage(protocol.key,'messages.update/protocol')
         continue
       }
 
-      // Baileys representa "Apagar para todos" como messages.update com
-      // message=null + messageStubType=REVOKE. A key do próprio update já
-      // aponta para o ID da mensagem original apagada.
       if(change.message===null && change.messageStubType!=null){
-        rememberDeletedMessage(entry?.key,'messages.update/revoke')
+        await rememberDeletedMessage(entry?.key,'messages.update/revoke')
       }
     }
   })
@@ -3860,7 +3915,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const isOwner=ownerJid && sender===ownerJid
         const isGroup=chat.endsWith('@g.us')
 
-        cacheIncomingMessage(msg)
+        await cacheIncomingMessage(sock,msg)
         if(!body.startsWith(prefix)){
           let flow=getQuickFlow(chat,sender)
           if(!flow) flow=await recoverQuickFlow(chat,sender)
@@ -4853,11 +4908,35 @@ _Os comandos antigos continuam funcionando normalmente._`
 
         } else if(['snipe','apagada','apagou'].includes(cmd)){
           if(!isGroup) return await reply('Use este comando dentro de um grupo.')
-          const deleted=lastDeletedByChat.get(chat)
+          let deleted=lastDeletedByChat.get(chat)
+          if(!deleted || Date.now()-deleted.deletedAt>SNIPE_TTL_MS){
+            try{ deleted=await getLastDeletedSnipe(chat) }catch{}
+          }
           if(!deleted || Date.now()-deleted.deletedAt>SNIPE_TTL_MS) return await reply('🕵️ Não tenho nenhuma mensagem apagada recente deste grupo.')
+
           const who=deleted.pushName ? '*'+deleted.pushName+'*' : '@'+String(deleted.sender||'').split('@')[0]
-          const content=[deleted.mediaLabel,deleted.text].filter(Boolean).join(deleted.mediaLabel&&deleted.text?' — ':'')
-          await reply('🕵️ *ÚLTIMA MENSAGEM APAGADA*\n\n👤 '+who+'\n💬 '+content+'\n\n_A memória do !snipe expira em 30 minutos._',{mentions:deleted.pushName?[]:[deleted.sender]})
+          const content=[deleted.mediaLabel,deleted.text].filter(Boolean).join(deleted.mediaLabel&&deleted.text?' — ':'') || 'Mensagem sem texto'
+          const caption='🕵️ *ÚLTIMA MENSAGEM APAGADA*\n\n👤 '+who+'\n💬 '+content+'\n\n_A memória do !snipe expira em 30 minutos._'
+          const mentions=deleted.pushName?[]:[deleted.sender]
+
+          if(deleted.mediaBuffer?.length){
+            const media=Buffer.from(deleted.mediaBuffer)
+            if(deleted.mediaType==='imageMessage'){
+              await sock.sendMessage(chat,{image:media,caption,mentions},{quoted:msg})
+            }else if(deleted.mediaType==='videoMessage'){
+              await sock.sendMessage(chat,{video:media,mimetype:deleted.mimeType||'video/mp4',caption,mentions},{quoted:msg})
+            }else if(deleted.mediaType==='audioMessage'){
+              await sock.sendMessage(chat,{audio:media,mimetype:deleted.mimeType||'audio/ogg; codecs=opus',ptt:false},{quoted:msg})
+              await reply(caption,{mentions})
+            }else if(deleted.mediaType==='stickerMessage'){
+              await sock.sendMessage(chat,{sticker:media,mimetype:'image/webp'},{quoted:msg})
+              await reply(caption,{mentions})
+            }else{
+              await reply(caption,{mentions})
+            }
+          }else{
+            await reply(caption+(deleted.mediaLabel?'\n\n⚠️ A mídia era grande demais ou não pôde ser armazenada.':''),{mentions})
+          }
 
         } else if(['termos'].includes(cmd)){
           const price=await getLaunchPrice()

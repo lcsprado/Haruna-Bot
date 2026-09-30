@@ -115,6 +115,28 @@ export async function initDatabase() {
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS snipe_messages (
+      chat_jid TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      sender_jid TEXT NOT NULL DEFAULT '',
+      push_name TEXT NOT NULL DEFAULT '',
+      text_content TEXT NOT NULL DEFAULT '',
+      media_label TEXT NOT NULL DEFAULT '',
+      media_type TEXT,
+      mime_type TEXT,
+      media_data TEXT,
+      created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      deleted_at BIGINT,
+      expires_at BIGINT NOT NULL,
+      PRIMARY KEY(chat_jid,message_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS snipe_messages_exp_idx
+      ON snipe_messages(expires_at);
+
+    CREATE INDEX IF NOT EXISTS snipe_messages_deleted_idx
+      ON snipe_messages(chat_jid,deleted_at DESC);
+
     CREATE TABLE IF NOT EXISTS transactions (
       id BIGSERIAL PRIMARY KEY,
       from_jid TEXT NOT NULL,
@@ -829,6 +851,86 @@ export async function sellItemsBatch(jid, selections=[]) {
   })
 }
 
+
+
+export async function saveSnipeMessage({
+  chat,messageId,sender='',pushName='',text='',mediaLabel='',
+  mediaType=null,mimeType=null,mediaBuffer=null,createdAt=Date.now(),expiresAt=Date.now()+30*60*1000
+}){
+  if(!chat || !messageId) return false
+  const buf=mediaBuffer ? Buffer.from(mediaBuffer) : null
+  if(buf && buf.length>8*1024*1024) throw new Error('Snipe media exceeds 8 MB.')
+  await db.query('DELETE FROM snipe_messages WHERE expires_at < $1',[Date.now()])
+  await db.query(`
+    INSERT INTO snipe_messages(
+      chat_jid,message_id,sender_jid,push_name,text_content,media_label,
+      media_type,mime_type,media_data,created_at,expires_at
+    )
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    ON CONFLICT(chat_jid,message_id) DO UPDATE SET
+      sender_jid=EXCLUDED.sender_jid,
+      push_name=EXCLUDED.push_name,
+      text_content=EXCLUDED.text_content,
+      media_label=EXCLUDED.media_label,
+      media_type=EXCLUDED.media_type,
+      mime_type=EXCLUDED.mime_type,
+      media_data=EXCLUDED.media_data,
+      created_at=EXCLUDED.created_at,
+      expires_at=EXCLUDED.expires_at
+  `,[
+    chat,messageId,sender,pushName,text,mediaLabel,mediaType,mimeType,
+    buf?.length ? buf.toString('base64') : null,
+    Math.floor(Number(createdAt)||Date.now()),
+    Math.floor(Number(expiresAt)||Date.now()+30*60*1000)
+  ])
+  return true
+}
+
+function snipeRow(row){
+  if(!row) return null
+  let mediaBuffer=null
+  try{ if(row.media_data) mediaBuffer=Buffer.from(row.media_data,'base64') }catch{}
+  return {
+    chat:row.chat_jid,
+    messageId:row.message_id,
+    sender:row.sender_jid,
+    pushName:row.push_name||'',
+    text:row.text_content||'',
+    mediaLabel:row.media_label||'',
+    mediaType:row.media_type||null,
+    mimeType:row.mime_type||null,
+    mediaBuffer,
+    createdAt:Number(row.created_at||0),
+    deletedAt:Number(row.deleted_at||0),
+    expiresAt:Number(row.expires_at||0)
+  }
+}
+
+export async function markSnipeDeleted(chat,messageId){
+  if(!chat || !messageId) return null
+  const {rows}=await db.query(`
+    UPDATE snipe_messages
+    SET deleted_at=${nowSql}
+    WHERE chat_jid=$1 AND message_id=$2 AND expires_at >= $3
+    RETURNING *
+  `,[chat,messageId,Date.now()])
+  return snipeRow(rows[0])
+}
+
+export async function getLastDeletedSnipe(chat){
+  const {rows}=await db.query(`
+    SELECT * FROM snipe_messages
+    WHERE chat_jid=$1 AND deleted_at IS NOT NULL AND expires_at >= $2
+    ORDER BY deleted_at DESC
+    LIMIT 1
+  `,[chat,Date.now()])
+  return snipeRow(rows[0])
+}
+
+export async function cleanupSnipeMessages(){
+  const r=await db.query('DELETE FROM snipe_messages WHERE expires_at < $1',[Date.now()])
+  return r.rowCount
+}
 
 
 export async function getProfileAvatar(jid){
