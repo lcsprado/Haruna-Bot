@@ -227,11 +227,19 @@ function mentionsOf(msg) {
     || []
 }
 
-async function resolvePlayerJid(sock,chat,jid) {
+async function resolvePlayerJid(sock,chat,jid,msg=null) {
   if(!jid || !jid.endsWith('@lid')) return jid
+
+  // Baileys pode trazer o PN real junto da própria mensagem. Para o autor,
+  // participantAlt é mais confiável que criar/consultar uma conta @lid.
+  const key=msg?.key||{}
+  if((key.participant===jid || key.remoteJid===jid) && key.participantAlt?.endsWith('@s.whatsapp.net')){
+    return key.participantAlt
+  }
+
   try{
     const pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)
-    if(pn) return pn
+    if(pn?.endsWith('@s.whatsapp.net')) return pn
   }catch{}
   try{
     if(chat?.endsWith('@g.us')){
@@ -4394,7 +4402,7 @@ ${prefix}configgrupo — módulos do bot (admins do grupo)
 
         } else if(['perfil','profile'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
-          const profileTarget=await resolvePlayerJid(sock,chat,mentioned || sender)
+          const profileTarget=await resolvePlayerJid(sock,chat,mentioned || sender,msg)
 
           try{
             if(!mentioned) await ensureUser(profileTarget,msg.pushName||'')
@@ -4631,7 +4639,7 @@ ${status}
 
         } else if(['status'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
-          const statusTarget=await resolvePlayerJid(sock,chat,mentioned || sender)
+          const statusTarget=await resolvePlayerJid(sock,chat,mentioned || sender,msg)
           const p=await getCombatProfile(statusTarget)
           await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
