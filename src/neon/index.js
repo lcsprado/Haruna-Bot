@@ -4260,21 +4260,107 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
         } else if(['comandos','commands'].includes(cmd)){
           await reply(
-`🍀 *ATALHOS DO ALPHA BOT*
+`🍀 *TODOS OS COMANDOS DO ALPHA BOT*
 
+🏠 *GERAL*
 ${prefix}menu — menu principal
-${prefix}economia — dinheiro, banco e PIX
-${prefix}itens — loja e inventário
-${prefix}rpg — batalhas e dungeon
-${prefix}games — minigames
-${prefix}progressao — missões, casas, carros e patrimônio
-${prefix}cla — menu do seu clã
-${prefix}grupo — assinatura e status do grupo
-${prefix}configgrupo — configurações do grupo (admins)
-${prefix}perfil — seu perfil completo
-${prefix}comandos — mostra esta lista
+${prefix}comandos — todos os comandos
+${prefix}ping — testar o bot
+${prefix}perfil — seu perfil
+${prefix}perfil @pessoa — perfil de outra pessoa
+${prefix}setfoto — definir foto do card
+${prefix}removerfoto — voltar à foto do WhatsApp
+${prefix}sticker — criar figurinha
+${prefix}suporte — abrir suporte
+${prefix}chamado CÓDIGO — consultar chamado
 
-👉 Nos menus, responda apenas com o número.`
+💰 *ECONOMIA*
+${prefix}economia — menu de economia
+${prefix}saldo — carteira e banco
+${prefix}daily — recompensa diária
+${prefix}streak — sequência do daily
+${prefix}trabalhar — trabalhar
+${prefix}depositar VALOR — depositar no banco
+${prefix}sacar VALOR — sacar do banco
+${prefix}pix @pessoa VALOR — transferir dinheiro
+${prefix}ranking — ranking dos mais ricos
+${prefix}piada — piada aleatória
+${prefix}horoscopo SIGNO — horóscopo
+
+🎒 *ITENS*
+${prefix}itens — menu de itens
+${prefix}loja — abrir loja
+${prefix}comprar ITEM — comprar item
+${prefix}inventario — ver inventário
+${prefix}vender ITEM — vender item
+${prefix}equipar ITEM — equipar
+${prefix}usar ITEM — usar item/poção
+
+⚔️ *RPG*
+${prefix}rpg — menu RPG
+${prefix}status — atributos de combate
+${prefix}batalhar @pessoa — desafiar jogador
+${prefix}rankingrpg — ranking de combate
+${prefix}dungeon — entrar na dungeon
+${prefix}roubar @pessoa — tentar roubar jogador
+
+📋 *PROGRESSÃO*
+${prefix}progressao — menu de progressão
+${prefix}missoes — missões diárias
+${prefix}resgatarmissoes — resgatar recompensas
+${prefix}casas — imóveis disponíveis
+${prefix}comprarcasa — comprar imóvel
+${prefix}minhacasa — ver sua casa
+${prefix}carros — concessionária
+${prefix}comprarcarro — comprar carro
+${prefix}garagem — seus carros
+${prefix}patrimonio — patrimônio total
+${prefix}rankingpatrimonio — ranking de patrimônio
+
+🏴 *CLÃS*
+${prefix}cla — informações/menu do clã
+${prefix}claajuda — ajuda de clãs
+${prefix}criarcla NOME — criar clã
+${prefix}claconvidar @pessoa — convidar
+${prefix}claaceitar — aceitar convite
+${prefix}clapromover @pessoa — transferir liderança
+${prefix}claexpulsar @pessoa — expulsar membro
+${prefix}cladoar VALOR — doar ao cofre
+${prefix}saircla — sair do clã
+${prefix}clas — ranking de clãs
+
+⚽ *FUTEBOL*
+${prefix}futebol — menu de futebol
+${prefix}partidas — jogos de hoje
+${prefix}tabela — tabela do Brasileirão
+${prefix}time NOME — informações do time
+
+🎮 *MINIGAMES*
+${prefix}games — menu de minigames
+${prefix}roleta VALOR COR — roleta
+${prefix}cara VALOR — cara ou coroa
+${prefix}coroa VALOR — cara ou coroa
+${prefix}ppt ESCOLHA — pedra, papel ou tesoura
+${prefix}forca — iniciar forca
+${prefix}letra LETRA — jogar letra
+${prefix}palavra PALAVRA — tentar palavra
+${prefix}quiz — iniciar quiz
+${prefix}resposta RESPOSTA — responder quiz
+${prefix}numero — adivinhe o número
+${prefix}chute NÚMERO — dar palpite
+${prefix}boss — iniciar boss
+${prefix}atacar — atacar boss
+
+🕵️ *UTILIDADES*
+${prefix}snipe — recuperar última mensagem apagada
+${prefix}grupo — menu do grupo/assinatura
+${prefix}statusgrupo — status da assinatura
+${prefix}assinar — assinar/renovar
+${prefix}pedido — consultar pedido
+${prefix}termos — termos do Alpha Bot
+${prefix}configgrupo — módulos do bot (admins do grupo)
+
+💡 Alguns comandos possuem apelidos, mas aqui estão os nomes principais.`
           )
 
         } else if(['ping','p'].includes(cmd)){
