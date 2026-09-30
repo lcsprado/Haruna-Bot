@@ -1,0 +1,14 @@
+name: Keep Alpha Awake C
+
+on:
+  schedule:
+    - cron: '12,27,42,57 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      - name: Ping Alpha health
+        run: curl --fail --silent --show-error --max-time 60 --retry 2 --retry-delay 5 https://haruna-bot-2fi0.onrender.com/health
