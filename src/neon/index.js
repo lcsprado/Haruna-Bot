@@ -803,22 +803,153 @@ Você possui: *${stock}*
       )
     }
 
+    const commandPages={
+      '1':`👤 *PERFIL & CONTA*
+
+*!perfil* — gera seu card
+*!perfil @pessoa* — vê o card de outra pessoa
+*!setfoto* — define foto personalizada do card
+*!removerfoto* — volta a usar a foto do WhatsApp
+*!daily* — coleta a recompensa diária
+*!streak* — mostra sua sequência do Daily
+*!ping* — verifica se o Alpha Bot está online
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+      '2':`💰 *ECONOMIA & DIVERSÃO*
+
+*!economia* — abre o menu de economia
+*!saldo* — carteira, banco e total
+*!trabalhar* — trabalha para ganhar dinheiro
+*!depositar valor* — deposita no banco
+*!sacar valor* — saca do banco
+*!pix @pessoa valor* — transfere dinheiro
+*!ranking* — ranking dos mais ricos
+*!piada* — compra uma piada do Alpha
+*!horoscopo* — consulta o horóscopo
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+      '3':`🛒 *LOJA & INVENTÁRIO*
+
+*!itens* — abre o menu de itens
+*!loja* — abre a loja
+*!comprar item quantidade* — compra um item
+*!inventario* — abre seu inventário
+*!vender* — abre a venda de itens
+*!equipar* — equipa arma ou armadura
+*!usar* — usa um consumível
+
+💡 Caixas são abertas pelo *!inventario*.
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+      '4':`⚔️ *RPG & COMBATE*
+
+*!rpg* — abre o menu de RPG
+*!status* — mostra seus atributos
+*!batalhar @pessoa* — desafia outro jogador
+*!dungeon* — entra em uma dungeon
+*!roubar @pessoa* — tenta roubar outro jogador
+*!rankingrpg* — ranking de combate
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+      '5':`🎮 *MINIGAMES*
+
+*!games* — abre o menu de minigames
+*!minigames* — atalho para o menu de minigames
+*!roleta valor cor* — aposta na roleta
+*!cara valor* — aposta em cara
+*!coroa valor* — aposta em coroa
+*!ppt pedra|papel|tesoura* — pedra, papel e tesoura
+*!forca* — inicia a forca
+*!letra a* — tenta uma letra na forca
+*!palavra resposta* — tenta a palavra da forca
+*!quiz* — inicia um quiz
+*!resposta 1* — responde o quiz
+*!numero* — inicia adivinhe o número
+*!chute 50* — dá um palpite
+*!boss* — inicia/mostra o boss
+*!atacar* — ataca o boss
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+      '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
+
+*!progressao* — abre o menu de progressão
+*!missoes* — mostra missões diárias
+*!resgatarmissoes* — coleta recompensas das missões
+*!casas* — lista imóveis
+*!comprarcasa número* — compra um imóvel
+*!minhacasa* — mostra sua casa
+*!carros* — abre a concessionária
+*!comprarcarro número* — compra um carro
+*!garagem* — mostra seus carros
+*!patrimonio* — mostra seu patrimônio total
+*!rankingpatrimonio* — ranking de patrimônio
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+      '7':`🏴 *CLÃS*
+
+*!clans* — abre o menu de clãs
+*!cla* — mostra seu clã/cofre
+*!claajuda* — ajuda específica de clãs
+*!criarcla Nome* — cria um clã
+*!claconvidar @pessoa* — convida uma pessoa
+*!claaceitar* — aceita convite
+*!clapromover @pessoa* — transfere a liderança
+*!claexpulsar @pessoa* — expulsa um membro
+*!cladoar valor* — doa para o cofre
+*!rankingclas* — ranking de clãs
+*!saircla* — sai do clã
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+      '8':`💚 *GRUPO & ASSINATURA*
+
+*!grupo* — abre o menu do grupo
+*!statusgrupo* — mostra o status da assinatura
+*!assinar* — cria/renova a assinatura
+*!pedido CODIGO* — consulta seu pedido
+*!termos* — mostra os termos resumidos
+
+🔒 Comandos de administração não aparecem neste catálogo.
+
+9️⃣ Voltar • 0️⃣ Fechar`,
+      '9':`⚽ *FUTEBOL, UTILIDADES & SUPORTE*
+
+⚽ *Futebol*
+*!futebol* — abre a ajuda de futebol
+*!partidas* — jogos brasileiros de hoje
+*!partidas amanha* — jogos de amanhã
+*!tabela* — tabela do Brasileirão Série A
+*!time Corinthians* — último e próximo jogo do time
+
+🛠️ *Utilidades*
+*!sticker* — cria figurinha de foto ou vídeo
+*!s* / *!fig* — atalhos do sticker
+*!snipe* — recupera a última mensagem apagada do grupo
+*!menu* — abre o menu principal
+*!comandos* — abre este catálogo
+
+🆘 *Suporte*
+*!suporte* — abre um chamado
+*!chamado CODIGO* — consulta seu chamado
+
+9️⃣ Voltar • 0️⃣ Fechar`
+    }
+
     const commandsMenu=async()=>{
       setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
       await reply(
 `📚 *COMANDOS DO ALPHA*
 
-Escolha o que quer consultar:
+Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
 
 1️⃣ 👤 Perfil & conta
-2️⃣ 💰 Economia
+2️⃣ 💰 Economia & diversão
 3️⃣ 🛒 Loja & inventário
 4️⃣ ⚔️ RPG & combate
 5️⃣ 🎮 Minigames
 6️⃣ 📋 Progressão & patrimônio
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo & assinatura
-9️⃣ ⚽ Futebol & utilidades
+9️⃣ ⚽ Futebol, utilidades & suporte
 
 👉 Responda só com o número.
 0️⃣ Fechar`
@@ -826,108 +957,12 @@ Escolha o que quer consultar:
     }
 
     const commandCategory=async(input)=>{
-      const pages={
-        '1':`👤 *PERFIL & CONTA*
-
-*!perfil* — gera seu card
-*!perfil @pessoa* — card de outro jogador
-*!setfoto* — define foto personalizada do card
-*!removerfoto* — volta à foto do WhatsApp
-*!daily* — recompensa diária
-*!streak* — sequência do Daily
-
-9️⃣ Voltar • 0️⃣ Fechar`,
-        '2':`💰 *ECONOMIA*
-
-*!saldo* — carteira e banco
-*!daily* — recompensa diária
-*!trabalhar* — ganhar dinheiro
-*!depositar valor* — guardar no banco
-*!sacar valor* — retirar do banco
-*!pix @pessoa valor* — transferir
-*!ranking* — ranking de riqueza
-
-9️⃣ Voltar • 0️⃣ Fechar`,
-        '3':`🛒 *LOJA & INVENTÁRIO*
-
-*!loja* — ver itens disponíveis
-*!inventario* — seus itens
-*!equipar* — escolher equipamento
-*!usar* — usar consumível
-*!abrircaixa* — abrir caixas
-*!vender* — vender itens
-
-9️⃣ Voltar • 0️⃣ Fechar`,
-        '4':`⚔️ *RPG & COMBATE*
-
-*!status* — atributos de combate
-*!dungeon* — enfrentar uma dungeon
-*!batalhar @pessoa* — desafiar jogador
-*!roubar @pessoa* — tentar um roubo
-*!rankingrpg* — ranking de combate
-
-9️⃣ Voltar • 0️⃣ Fechar`,
-        '5':`🎮 *MINIGAMES*
-
-*!games* — menu de jogos
-*!roleta* — roleta
-*!cara* / *!coroa* — moeda
-*!ppt* — pedra, papel e tesoura
-*!forca* — forca
-*!quiz* — perguntas
-*!numero* — adivinhar número
-*!boss* — boss global
-
-9️⃣ Voltar • 0️⃣ Fechar`,
-        '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
-
-*!missoes* — missões diárias
-*!resgatarmissoes* — coletar recompensas
-*!casas* — imóveis
-*!carros* — concessionária
-*!garagem* — seus veículos
-*!patrimonio* — patrimônio total
-*!rankingpatrimonio* — ranking
-
-9️⃣ Voltar • 0️⃣ Fechar`,
-        '7':`🏴 *CLÃS*
-
-*!cla* — menu do seu clã
-*!criarcla* — criar clã
-*!claconvidar @pessoa* — convidar
-*!claaceitar* — aceitar convite
-*!cladoar valor* — doar ao cofre
-*!rankingclas* — ranking de clãs
-*!saircla* — sair do clã
-
-9️⃣ Voltar • 0️⃣ Fechar`,
-        '8':`💚 *GRUPO & ASSINATURA*
-
-*!grupo* — informações do grupo
-*!statusgrupo* — situação da assinatura
-*!assinar* — assinatura/renovação
-*!termos* — termos resumidos
-
-⚙️ Configurações do grupo aparecem apenas para administradores.
-
-9️⃣ Voltar • 0️⃣ Fechar`,
-        '9':`🛠️ *UTILIDADES*
-
-*!sticker* — cria figurinha de foto/vídeo
-*!s* / *!fig* — atalhos de figurinha
-*!menu* — menu para usar o Alpha
-*!comandos* — catálogo de comandos
-*!suporte* — falar com suporte
-*!snipe* — mostra a última mensagem apagada do grupo (até 30 min)\n
-9️⃣ Voltar • 0️⃣ Fechar`
-      }
-      const page=pages[input]
+      const page=commandPages[input]
       if(!page) return false
       setQuickFlow(chat,sender,'commands_category',{},5*60*1000)
       await reply(page)
       return true
     }
-
     const adminMainMenu=async()=>{
       setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
       await reply(
