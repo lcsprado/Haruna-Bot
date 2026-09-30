@@ -219,9 +219,11 @@ function textOf(msg) {
 }
 
 function mentionsOf(msg) {
-  return msg?.message?.extendedTextMessage?.contextInfo?.mentionedJid
-    || msg?.message?.imageMessage?.contextInfo?.mentionedJid
-    || msg?.message?.videoMessage?.contextInfo?.mentionedJid
+  const m=unwrapMessageContent(msg?.message)
+  return m?.extendedTextMessage?.contextInfo?.mentionedJid
+    || m?.imageMessage?.contextInfo?.mentionedJid
+    || m?.videoMessage?.contextInfo?.mentionedJid
+    || m?.conversation?.contextInfo?.mentionedJid
     || []
 }
 
@@ -346,9 +348,12 @@ async function sendAlphaProfile(sock,chat,jid,msg){
     avatar=customAvatar.buffer
   }else{
     try{
-      const photo=await sock.profilePictureUrl(jid,'image')
+      const photo=await Promise.race([
+        sock.profilePictureUrl(jid,'image'),
+        new Promise(resolve=>setTimeout(()=>resolve(null),3500))
+      ])
       if(photo){
-        const res=await fetch(photo)
+        const res=await fetch(photo,{signal:AbortSignal.timeout(5000)})
         if(res.ok) avatar=Buffer.from(await res.arrayBuffer())
       }
     }catch{}
