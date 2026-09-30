@@ -3974,7 +3974,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         trevoHealth.lastInboundAt=Date.now()
         const chat=msg.key.remoteJid
         if(!chat || chat==='status@broadcast') continue
-        const sender=msg.key.participant || chat
+        const rawSender=msg.key.participant || chat
+        const sender=await resolvePlayerJid(sock,chat,rawSender,msg)
         const body=textOf(msg).trim()
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
         const isOwner=ownerJid && sender===ownerJid
