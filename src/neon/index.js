@@ -28,7 +28,7 @@ import {
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
-  initGames, roulette, coinFlip, rps,
+  initGames, roulette, coinFlip, createCoinDuel, acceptCoinDuel, rps,
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
@@ -4970,11 +4970,27 @@ _Os comandos antigos continuam funcionando normalmente._`
 
         } else if(['cara','coroa'].includes(cmd)){
           const choice=cmd
-          const amount=parseAmount(args[0])
-          if(!amount) return await reply(`Uso: *${prefix}${choice} 100*`)
-          const r=await coinFlip(sender,amount,choice)
-          await progressDailyMission(sender,'game')
+          const targetRaw=mentionsOf(msg)[0]
+          const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
+          if(targetRaw){
+            if(!amount) return await reply(`Uso: *${prefix}${choice} @pessoa 5000*`)
+            const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
+            const challenger=await resolvePlayerJid(sock,chat,sender,msg)
+            const r=await createCoinDuel(chat,challenger,target,amount,choice)
+            return await reply(`🪙 *DESAFIO — CARA OU COROA*\n\n💰 Aposta de cada jogador: *R$ ${fmt(r.amount)}*\n🪙 Você escolheu: *${r.choice}*\n💵 Prêmio total: *R$ ${fmt(r.amount*2)}*\n\nA pessoa marcada tem *2 minutos* para usar *${prefix}aceitar*.`,{mentions:[targetRaw]})
+          }
+          if(!amount) return await reply(`Uso: *${prefix}${choice} 100*\nPvP: *${prefix}${choice} @pessoa 5000*`)
+          const player=await resolvePlayerJid(sock,chat,sender,msg)
+          const r=await coinFlip(player,amount,choice)
+          await progressDailyMission(player,'game')
           await reply(`🪙 *CARA OU COROA*\n\nResultado: *${r.result}*\nVocê escolheu: *${r.choice}*\n${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
+
+        } else if(['aceitar'].includes(cmd)){
+          const player=await resolvePlayerJid(sock,chat,sender,msg)
+          const r=await acceptCoinDuel(chat,player)
+          await progressDailyMission(player,'game')
+          await progressDailyMission(r.challenger,'game')
+          await reply(`🪙 *CARA OU COROA — PvP*\n\nResultado: *${r.result.toUpperCase()}*\n💰 Pote: *R$ ${fmt(r.pot)}*\n🏆 Vencedor: @${String(r.winner).split('@')[0]}\n\nO prêmio foi creditado automaticamente.`,{mentions:[r.winner]})
 
         } else if(['ppt'].includes(cmd)){
           const choice=(args[0]||'').toLowerCase()

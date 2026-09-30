@@ -98,6 +98,42 @@ export async function coinFlip(jid,amount,choice){
   })
 }
 
+export async function createCoinDuel(chat,challenger,target,amount,choice){
+  amount=Number(amount); choice=String(choice||'').toLowerCase()
+  if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
+  if(!['cara','coroa'].includes(choice)) throw new Error('Escolha cara ou coroa.')
+  if(!target || target===challenger) throw new Error('Marque outra pessoa para desafiar.')
+  await ensureUser(challenger); await ensureUser(target)
+  return tx(async c=>{
+    await debit(c,challenger,amount)
+    const type='coin_duel:'+target
+    const old=await loadGame(c,chat,type)
+    if(old && Number(old.expiresAt||0)>Date.now()) throw new Error('Essa pessoa já tem um desafio pendente neste grupo.')
+    const state={challenger,target,amount,choice,expiresAt:Date.now()+120000}
+    await saveGame(c,chat,type,state)
+    return state
+  })
+}
+
+export async function acceptCoinDuel(chat,target){
+  return tx(async c=>{
+    const type='coin_duel:'+target
+    const state=await loadGame(c,chat,type)
+    if(!state) throw new Error('Você não tem desafio de cara ou coroa pendente.')
+    if(Number(state.expiresAt||0)<Date.now()){
+      await credit(c,state.challenger,Number(state.amount),'cara-ou-coroa-pvp-estorno')
+      await clearGame(c,chat,type)
+      throw new Error('O desafio expirou. A aposta foi devolvida.')
+    }
+    await debit(c,target,Number(state.amount))
+    const result=Math.random()<0.5?'cara':'coroa'
+    const winner=result===state.choice?state.challenger:target
+    await credit(c,winner,Number(state.amount)*2,'cara-ou-coroa-pvp')
+    await clearGame(c,chat,type)
+    return {...state,result,winner,pot:Number(state.amount)*2}
+  })
+}
+
 export function rps(choice){
   const valid=['pedra','papel','tesoura']
   choice=String(choice||'').toLowerCase()
