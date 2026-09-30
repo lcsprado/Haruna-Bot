@@ -4652,7 +4652,7 @@ ${prefix}clas — ranking de clãs`
           const tomorrow=['amanha','amanhã'].includes((args[0]||'').toLowerCase()); const fs=await footballToday(tomorrow?1:0)
           await reply('⚽ *JOGOS '+(tomorrow?'DE AMANHÃ':'DE HOJE')+' — BRASIL*\n\n'+formatFixtures(fs))
         } else if(['tabela','brasileirao','brasileirão'].includes(cmd)){
-          const rows=await brazilStandings(); if(!rows.length)return await reply('📊 Classificação indisponível agora.'); let out='🇧🇷 *BRASILEIRÃO SÉRIE A — TABELA*\n\n'; rows.slice(0,20).forEach(r=>out+=r.rank+'. *'+r.team.name+'* — '+r.points+' pts | '+r.all.played+'J | '+r.all.win+'V '+r.all.draw+'E '+r.all.lose+'D\n'); await reply(out.trim())
+          const rows=await brazilStandings(); if(!rows.length)return await reply('📊 Classificação indisponível agora.'); let out='🇧🇷 *BRASILEIRÃO SÉRIE A — TABELA*\n\n'; rows.slice(0,20).forEach(r=>out+=(r.position||r.rank)+'. *'+r.team.name+'* — '+r.points+' pts | '+(r.playedGames??r.all?.played??0)+'J | '+(r.won??r.all?.win??0)+'V '+(r.draw??r.all?.draw??0)+'E '+(r.lost??r.all?.lose??0)+'D\n'); await reply(out.trim())
         } else if(['time','clube'].includes(cmd)){
           const q=args.join(' ').trim(); if(!q)return await reply('Uso: *'+prefix+'time Corinthians*'); const r=await teamSummary(q); await reply('⚽ *'+r.team.name.toUpperCase()+'*\n\n⬅️ *Último jogo*\n'+formatTeamFixture(r.last)+'\n\n➡️ *Próximo jogo*\n'+formatTeamFixture(r.next))
         } else if(['games','jogos'].includes(cmd)){
