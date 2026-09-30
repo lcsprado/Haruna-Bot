@@ -80,6 +80,39 @@ if(!connectionWatchdog){
   connectionWatchdog.unref?.()
 }
 
+const deletedMessageCache=new Map()
+const lastDeletedByChat=new Map()
+const SNIPE_TTL_MS=30*60*1000
+function messageCacheKey(key={}){
+  return [key.remoteJid||'',key.participant||'',key.id||''].join('|')
+}
+function cacheIncomingMessage(msg){
+  const chat=msg?.key?.remoteJid
+  if(!chat?.endsWith('@g.us') || !msg?.key?.id || msg?.key?.fromMe) return
+  const content=unwrapMessageContent(msg.message)
+  const type=content ? getContentType(content) : null
+  const text=textOf({...msg,message:content}).trim()
+  const mediaLabel=type==='imageMessage'?'📷 Foto':type==='videoMessage'?'🎥 Vídeo':type==='audioMessage'?'🎵 Áudio':type==='stickerMessage'?'🖼️ Figurinha':type==='documentMessage'?'📄 Documento':''
+  if(!text && !mediaLabel) return
+  const key=messageCacheKey(msg.key)
+  deletedMessageCache.set(key,{chat,sender:msg.key.participant||chat,pushName:msg.pushName||'',text,mediaLabel,createdAt:Date.now()})
+  setTimeout(()=>deletedMessageCache.delete(key),SNIPE_TTL_MS).unref?.()
+}
+function rememberDeletedMessage(key){
+  const exact=deletedMessageCache.get(messageCacheKey(key))
+  let hit=exact
+  if(!hit && key?.id && key?.remoteJid){
+    for(const [cacheKey,value] of deletedMessageCache){
+      if(cacheKey.endsWith('|'+key.id) && value.chat===key.remoteJid){ hit=value; break }
+    }
+  }
+  if(!hit) return
+  lastDeletedByChat.set(hit.chat,{...hit,deletedAt:Date.now()})
+  setTimeout(()=>{
+    if(lastDeletedByChat.get(hit.chat)?.deletedAt===hit.deletedAt) lastDeletedByChat.delete(hit.chat)
+  },SNIPE_TTL_MS).unref?.()
+}
+
 const quickGameFlows=new Map()
 const quickFlowKey=(chat,sender)=>`${chat}|${sender}`
 function setQuickFlow(chat,sender,stage,data={},ttlMs=90000){
@@ -822,7 +855,7 @@ Escolha o que quer consultar:
 *!menu* — menu para usar o Alpha
 *!comandos* — catálogo de comandos
 *!suporte* — falar com suporte
-
+*!snipe* — mostra a última mensagem apagada do grupo (até 30 min)\n
 9️⃣ Voltar • 0️⃣ Fechar`
       }
       const page=pages[input]
@@ -3783,6 +3816,17 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     }
   })
 
+  sock.ev.on('messages.delete',({keys})=>{
+    for(const key of keys||[]) rememberDeletedMessage(key)
+  })
+
+  sock.ev.on('messages.update',(updates)=>{
+    for(const update of updates||[]){
+      const protocol=update?.update?.message?.protocolMessage
+      if(protocol?.type===0 && protocol?.key) rememberDeletedMessage(protocol.key)
+    }
+  })
+
   sock.ev.on('messages.upsert',async({messages,type})=>{
     trevoHealth.lastUpsertAt=Date.now()
     trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
@@ -3799,6 +3843,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const isOwner=ownerJid && sender===ownerJid
         const isGroup=chat.endsWith('@g.us')
 
+        cacheIncomingMessage(msg)
         if(!body.startsWith(prefix)){
           let flow=getQuickFlow(chat,sender)
           if(!flow) flow=await recoverQuickFlow(chat,sender)
@@ -4788,6 +4833,14 @@ _Os comandos antigos continuam funcionando normalmente._`
           if(!r.ok) return await reply(`⏳ Você poderá tentar outro roubo em ${duration(r.remaining)}.`)
           if(r.success) await reply(`🕵️ *ROUBO BEM-SUCEDIDO!*\n💰 Você roubou *R$ ${fmt(r.amount)}*.`,{mentions:[target]})
           else await reply(`🚓 *VOCÊ FOI PEGO!*\n💸 Multa: R$ ${fmt(r.fine)}\nTente novamente mais tarde.`,{mentions:[target]})
+
+        } else if(['snipe','apagada','apagou'].includes(cmd)){
+          if(!isGroup) return await reply('Use este comando dentro de um grupo.')
+          const deleted=lastDeletedByChat.get(chat)
+          if(!deleted || Date.now()-deleted.deletedAt>SNIPE_TTL_MS) return await reply('🕵️ Não tenho nenhuma mensagem apagada recente deste grupo.')
+          const who=deleted.pushName ? '*'+deleted.pushName+'*' : '@'+String(deleted.sender||'').split('@')[0]
+          const content=[deleted.mediaLabel,deleted.text].filter(Boolean).join(deleted.mediaLabel&&deleted.text?' — ':'')
+          await reply('🕵️ *ÚLTIMA MENSAGEM APAGADA*\n\n👤 '+who+'\n💬 '+content+'\n\n_A memória do !snipe expira em 30 minutos._',{mentions:deleted.pushName?[]:[deleted.sender]})
 
         } else if(['termos'].includes(cmd)){
           const price=await getLaunchPrice()
