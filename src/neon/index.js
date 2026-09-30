@@ -28,7 +28,7 @@ import {
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
-  initGames, roulette, coinFlip, createCoinDuel, acceptCoinDuel, rps,
+  initGames, roulette, createGroupRoulette, joinGroupRoulette, spinGroupRoulette, coinFlip, createCoinDuel, acceptCoinDuel, rps,
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
@@ -4958,15 +4958,40 @@ _Os comandos antigos continuam funcionando normalmente._`
           )
 
         } else if(['roleta'].includes(cmd)){
+          const sub=(args[0]||'').toLowerCase()
+          if(['grupo','galera','multi'].includes(sub)){
+            const amount=parseAmount(args[1]); const choice=(args[2]||'').toLowerCase()
+            if(!amount||!choice) return await reply(`Uso: *${prefix}roleta grupo 1000 vermelho*`)
+            const player=await resolvePlayerJid(sock,chat,sender,msg)
+            await createGroupRoulette(chat,player,amount,choice)
+            return await reply(`🎰 *ROLETA COLETIVA ABERTA!*\n\nSua aposta: *R$ ${fmt(amount)} — ${choice}*\n\n👥 Quem quiser jogar tem *2 minutos* para mandar:\n*${prefix}apostar 500 preto*\n\nQuando todos entrarem, você pode usar *${prefix}girar*.`)
+          }
           const amount=parseAmount(args[0])
           const choice=(args[1]||'').toLowerCase()
-          if(!amount||!choice) return await reply(`Uso: *${prefix}roleta 100 vermelho*\nCores: vermelho, preto ou verde`)
-          const r=await roulette(sender,amount,choice)
+          if(!amount||!choice) return await reply(`Uso: *${prefix}roleta 100 vermelho*\nColetiva: *${prefix}roleta grupo 1000 vermelho*`)
+          const player=await resolvePlayerJid(sock,chat,sender,msg)
+          const r=await roulette(player,amount,choice)
           const result=r.payout>0
             ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
             : `💸 Você perdeu R$ ${fmt(r.amount)}.`
-          await progressDailyMission(sender,'game')
+          await progressDailyMission(player,'game')
           await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\nSua escolha: *${r.choice}*\n\n${result}`)
+
+        } else if(['apostar'].includes(cmd)){
+          const amount=parseAmount(args[0]); const choice=(args[1]||'').toLowerCase()
+          if(!amount||!choice) return await reply(`Uso: *${prefix}apostar 500 preto*`)
+          const player=await resolvePlayerJid(sock,chat,sender,msg)
+          await joinGroupRoulette(chat,player,amount,choice)
+          await reply(`✅ Você entrou na roleta coletiva com *R$ ${fmt(amount)}* no *${choice}*.`)
+
+        } else if(['girar'].includes(cmd)){
+          const player=await resolvePlayerJid(sock,chat,sender,msg)
+          const r=await spinGroupRoulette(chat,player)
+          let out=`🎰 *ROLETA COLETIVA*\n\n🎯 Número: *${r.number}*\n🎨 Cor: *${r.color.toUpperCase()}*\n\n`
+          for(const x of r.results){
+            out+=`@${String(x.jid).split('@')[0]} — R$ ${fmt(x.amount)} no ${x.choice}: ${x.payout>0?`🏆 ganhou R$ ${fmt(x.payout)}`:'💸 perdeu'}\n`
+          }
+          await reply(out.trim(),{mentions:r.results.map(x=>x.jid)})
 
         } else if(['cara','coroa'].includes(cmd)){
           const choice=cmd

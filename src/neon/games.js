@@ -82,6 +82,56 @@ export async function roulette(jid,amount,choice){
   })
 }
 
+export async function createGroupRoulette(chat,host,amount,choice){
+  amount=Number(amount); choice=String(choice||'').toLowerCase()
+  if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
+  if(!['vermelho','preto','verde'].includes(choice)) throw new Error('Escolha vermelho, preto ou verde.')
+  await ensureUser(host)
+  return tx(async c=>{
+    const old=await loadGame(c,chat,'roulette_group')
+    if(old && Number(old.expiresAt||0)>Date.now()) throw new Error('Já existe uma roleta coletiva aberta neste grupo.')
+    await debit(c,host,amount)
+    const state={host,players:{[host]:{amount,choice}},expiresAt:Date.now()+120000}
+    await saveGame(c,chat,'roulette_group',state)
+    return state
+  })
+}
+
+export async function joinGroupRoulette(chat,jid,amount,choice){
+  amount=Number(amount); choice=String(choice||'').toLowerCase()
+  if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
+  if(!['vermelho','preto','verde'].includes(choice)) throw new Error('Escolha vermelho, preto ou verde.')
+  await ensureUser(jid)
+  return tx(async c=>{
+    const state=await loadGame(c,chat,'roulette_group')
+    if(!state || Number(state.expiresAt||0)<Date.now()) throw new Error('Não existe roleta coletiva aberta.')
+    if(state.players?.[jid]) throw new Error('Você já entrou nesta rodada.')
+    await debit(c,jid,amount)
+    state.players={...(state.players||{}),[jid]:{amount,choice}}
+    await saveGame(c,chat,'roulette_group',state)
+    return state
+  })
+}
+
+export async function spinGroupRoulette(chat,jid){
+  return tx(async c=>{
+    const state=await loadGame(c,chat,'roulette_group')
+    if(!state) throw new Error('Não existe roleta coletiva aberta.')
+    if(state.host!==jid) throw new Error('Só quem abriu a roleta pode girar.')
+    const n=Math.floor(Math.random()*37)
+    const reds=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
+    const color=n===0?'verde':(reds.has(n)?'vermelho':'preto')
+    const results=[]
+    for(const [player,bet] of Object.entries(state.players||{})){
+      const payout=bet.choice===color?(bet.choice==='verde'?Number(bet.amount)*36:Number(bet.amount)*2):0
+      if(payout) await credit(c,player,payout,'roleta-coletiva')
+      results.push({jid:player,amount:Number(bet.amount),choice:bet.choice,payout})
+    }
+    await clearGame(c,chat,'roulette_group')
+    return {number:n,color,results}
+  })
+}
+
 export async function coinFlip(jid,amount,choice){
   amount=Number(amount)
   choice=String(choice||'').toLowerCase()
