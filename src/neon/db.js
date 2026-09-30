@@ -589,20 +589,23 @@ export async function purchaseService(jid, serviceId, price) {
   await ensureUser(jid)
 
   return transaction(async client=>{
-    const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const walletR=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     const wallet=walletR.rows[0]
-    if(!wallet || Number(wallet.cash)<price) throw new Error('Saldo insuficiente para essa compra.')
+    const cash=Number(wallet?.cash||0), bank=Number(wallet?.bank||0)
+    if(!wallet || cash+bank<price) throw new Error('Saldo insuficiente para essa compra.')
+    const fromCash=Math.min(cash,price)
+    const fromBank=price-fromCash
 
     await client.query(
-      'UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',
-      [price,jid]
+      'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
+      [fromCash,fromBank,jid]
     )
     await client.query(`
       INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'shop',$2,'service',$3)
     `,[jid,price,serviceId])
 
-    return { serviceId, price, cash:Number(wallet.cash)-price }
+    return { serviceId, price, cash:cash-fromCash, bank:bank-fromBank }
   })
 }
 
@@ -626,11 +629,14 @@ export async function buyItem(jid, itemId, qty=1) {
     if (!item) throw new Error('Item não encontrado.')
 
     const total = Number(item.price)*qty
-    const walletR = await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const walletR = await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     const wallet=walletR.rows[0]
-    if (!wallet || Number(wallet.cash) < total) throw new Error('Saldo insuficiente para essa compra.')
+    const cash=Number(wallet?.cash||0), bank=Number(wallet?.bank||0)
+    if (!wallet || cash+bank < total) throw new Error('Saldo insuficiente para essa compra.')
+    const fromCash=Math.min(cash,total)
+    const fromBank=total-fromCash
 
-    await client.query('UPDATE wallets SET cash=cash-$1, updated_at='+nowSql+' WHERE jid=$2',[total,jid])
+    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2, updated_at='+nowSql+' WHERE jid=$3',[fromCash,fromBank,jid])
     await client.query(`
       INSERT INTO inventories (jid,item_id,quantity)
       VALUES ($1,$2,$3)
