@@ -55,7 +55,7 @@ export async function initDatabase() {
       jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
       cash BIGINT NOT NULL DEFAULT 0,
       bank BIGINT NOT NULL DEFAULT 0,
-      bank_limit BIGINT NOT NULL DEFAULT 10000,
+      bank_limit BIGINT NOT NULL DEFAULT 9223372036854775807,
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
@@ -252,6 +252,9 @@ export async function initDatabase() {
     SET value='"Alpha Bot"'::jsonb, updated_at=${nowSql}
     WHERE key='pix_name' AND value='"Trevo"'::jsonb
   `)
+
+  // Banco sem teto prático: remove o antigo limite de R$ 10.000 também das contas já existentes.
+  await db.query('UPDATE wallets SET bank_limit=9223372036854775807 WHERE bank_limit<9223372036854775807')
 
   const starterItems = [
     // Poções
@@ -524,9 +527,7 @@ export async function deposit(jid, amount) {
     const { rows } = await client.query('SELECT * FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     const w=rows[0]
     if (!w || Number(w.cash) < amount) throw new Error('Saldo em carteira insuficiente.')
-    if (Number(w.bank)+amount > Number(w.bank_limit)) throw new Error('Esse depósito ultrapassa seu limite bancário.')
-
-    await client.query(`
+        await client.query(`
       UPDATE wallets
       SET cash=cash-$1, bank=bank+$1, updated_at=${nowSql}
       WHERE jid=$2
@@ -1530,7 +1531,7 @@ export async function ownerResetTotal(jid) {
       [jid]
     )
     await client.query(
-      'UPDATE wallets SET cash=0,bank=0,bank_limit=10000,updated_at='+nowSql+' WHERE jid=$1',
+      'UPDATE wallets SET cash=0,bank=0,bank_limit=9223372036854775807,updated_at='+nowSql+' WHERE jid=$1',
       [jid]
     )
     await client.query(`
