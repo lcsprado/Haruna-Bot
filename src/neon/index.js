@@ -4285,9 +4285,26 @@ ${prefix}comandos — mostra esta lista
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['perfil','profile'].includes(cmd)){
-          const profileTarget=mentionsOf(msg)[0] || sender
-          await ensureUser(profileTarget)
-          await sendAlphaProfile(sock,chat,profileTarget,msg)
+          let profileTarget=mentionsOf(msg)[0] || sender
+
+          // Em grupos o WhatsApp pode entregar menções como LID. O banco usa o
+          // JID telefônico, então resolvemos o LID antes de consultar o perfil.
+          if(profileTarget?.endsWith('@lid')){
+            try{
+              const pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(profileTarget)
+              if(pn) profileTarget=pn
+            }catch(err){
+              console.warn('[perfil] não foi possível resolver LID',profileTarget,err?.message||err)
+            }
+          }
+
+          try{
+            await ensureUser(profileTarget)
+            await sendAlphaProfile(sock,chat,profileTarget,msg)
+          }catch(err){
+            console.error('[perfil] erro ao gerar perfil',profileTarget,err)
+            await reply('⚠️ Não consegui gerar esse perfil agora. Tente novamente em alguns segundos.')
+          }
 
         } else if(['setfoto','fotoperfil','avatar'].includes(cmd)){
           const media=stickerMediaOf(msg)
