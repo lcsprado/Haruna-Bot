@@ -227,26 +227,34 @@ function mentionsOf(msg) {
     || []
 }
 
-async function resolvePlayerJid(sock,chat,jid,msg=null) {
-  if(!jid || !jid.endsWith('@lid')) return jid
+function canonicalPlayerJid(jid){
+  if(!jid) return jid
+  // Baileys pode devolver PNs com device id (ex.: numero:2@s.whatsapp.net).
+  // O banco histórico usa numero@s.whatsapp.net; nunca deixe o device criar outro jogador.
+  if(jid.endsWith('@s.whatsapp.net')) return jid.replace(/:\\d+(?=@)/,'')
+  return jid
+}
 
-  // Baileys pode trazer o PN real junto da própria mensagem. Para o autor,
-  // participantAlt é mais confiável que criar/consultar uma conta @lid.
+async function resolvePlayerJid(sock,chat,jid,msg=null) {
+  if(!jid) return jid
+  if(!jid.endsWith('@lid')) return canonicalPlayerJid(jid)
+
   const key=msg?.key||{}
-  if((key.participant===jid || key.remoteJid===jid) && key.participantAlt?.endsWith('@s.whatsapp.net')){
-    return key.participantAlt
+  const altCandidates=[key.participantAlt,key.remoteJidAlt]
+  for(const alt of altCandidates){
+    if(alt?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(alt)
   }
 
   try{
     const pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)
-    if(pn?.endsWith('@s.whatsapp.net')) return pn
+    if(pn?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(pn)
   }catch{}
   try{
     if(chat?.endsWith('@g.us')){
       const meta=await sock.groupMetadata(chat)
       const part=(meta?.participants||[]).find(p=>p?.id===jid || p?.lid===jid)
       const candidate=part?.phoneNumber || part?.pn || part?.jid
-      if(candidate?.endsWith('@s.whatsapp.net')) return candidate
+      if(candidate?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(candidate)
     }
   }catch{}
   return jid
