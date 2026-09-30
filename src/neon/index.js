@@ -4377,20 +4377,35 @@ ${prefix}configgrupo — módulos do bot (admins do grupo)
 
         } else if(['perfil','profile'].includes(cmd)){
           let profileTarget=mentionsOf(msg)[0] || sender
+          const mentioned=Boolean(mentionsOf(msg)[0])
 
-          // Em grupos o WhatsApp pode entregar menções como LID. O banco usa o
-          // JID telefônico, então resolvemos o LID antes de consultar o perfil.
+          // Grupos novos do WhatsApp usam LID nas menções. O jogo, porém, foi
+          // criado com JID telefônico. Resolve LID -> PN sem criar perfil fantasma.
           if(profileTarget?.endsWith('@lid')){
+            const originalLid=profileTarget
             try{
-              const pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(profileTarget)
+              let pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(originalLid)
+              if(!pn && isGroup){
+                const meta=await sock.groupMetadata(chat)
+                const part=(meta?.participants||[]).find(p=>
+                  p?.id===originalLid || p?.lid===originalLid
+                )
+                pn=part?.phoneNumber || (part?.id?.endsWith('@s.whatsapp.net')?part.id:null)
+              }
               if(pn) profileTarget=pn
             }catch(err){
-              console.warn('[perfil] não foi possível resolver LID',profileTarget,err?.message||err)
+              console.warn('[perfil] não foi possível resolver LID',originalLid,err?.message||err)
             }
           }
 
           try{
-            await ensureUser(profileTarget)
+            // Para perfil próprio, garante cadastro. Para @menção, nunca cria um
+            // usuário vazio: isso era o que gerava "JOGADOR / R$ 0 / nível 1".
+            if(!mentioned) await ensureUser(profileTarget,msg.pushName||'')
+            const existing=await getProfile(profileTarget)
+            if(!existing){
+              return await reply('⚠️ Não encontrei o perfil real dessa pessoa ainda. Peça para ela usar *!perfil* uma vez e tente novamente.')
+            }
             await sendAlphaProfile(sock,chat,profileTarget,msg)
           }catch(err){
             console.error('[perfil] erro ao gerar perfil',profileTarget,err)
