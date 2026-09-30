@@ -98,7 +98,7 @@ function cacheIncomingMessage(msg){
   deletedMessageCache.set(key,{chat,sender:msg.key.participant||chat,pushName:msg.pushName||'',text,mediaLabel,createdAt:Date.now()})
   setTimeout(()=>deletedMessageCache.delete(key),SNIPE_TTL_MS).unref?.()
 }
-function rememberDeletedMessage(key){
+function rememberDeletedMessage(key,source='unknown'){
   const exact=deletedMessageCache.get(messageCacheKey(key))
   let hit=exact
   if(!hit && key?.id && key?.remoteJid){
@@ -106,11 +106,16 @@ function rememberDeletedMessage(key){
       if(cacheKey.endsWith('|'+key.id) && value.chat===key.remoteJid){ hit=value; break }
     }
   }
-  if(!hit) return
+  if(!hit){
+    console.log('[Snipe] exclusão recebida sem mensagem no cache ('+source+')')
+    return false
+  }
   lastDeletedByChat.set(hit.chat,{...hit,deletedAt:Date.now()})
+  console.log('[Snipe] mensagem apagada capturada ('+source+')')
   setTimeout(()=>{
     if(lastDeletedByChat.get(hit.chat)?.deletedAt===hit.deletedAt) lastDeletedByChat.delete(hit.chat)
   },SNIPE_TTL_MS).unref?.()
+  return true
 }
 
 const quickGameFlows=new Map()
@@ -3816,14 +3821,26 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     }
   })
 
-  sock.ev.on('messages.delete',({keys})=>{
-    for(const key of keys||[]) rememberDeletedMessage(key)
+  sock.ev.on('messages.delete',(event)=>{
+    for(const key of event?.keys||[]) rememberDeletedMessage(key,'messages.delete')
   })
 
   sock.ev.on('messages.update',(updates)=>{
-    for(const update of updates||[]){
-      const protocol=update?.update?.message?.protocolMessage
-      if(protocol?.type===0 && protocol?.key) rememberDeletedMessage(protocol.key)
+    for(const entry of updates||[]){
+      const change=entry?.update||{}
+      const content=unwrapMessageContent(change.message)
+      const protocol=content?.protocolMessage
+      if(protocol?.type===0 && protocol?.key){
+        rememberDeletedMessage(protocol.key,'messages.update/protocol')
+        continue
+      }
+
+      // Baileys representa "Apagar para todos" como messages.update com
+      // message=null + messageStubType=REVOKE. A key do próprio update já
+      // aponta para o ID da mensagem original apagada.
+      if(change.message===null && change.messageStubType!=null){
+        rememberDeletedMessage(entry?.key,'messages.update/revoke')
+      }
     }
   })
 
