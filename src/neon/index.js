@@ -4006,7 +4006,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           (!isGroup && String(chat||'').endsWith('@s.whatsapp.net') &&
             String(canonicalPlayerJid(chat)).split('@')[0].replace(/\D/g,'')===configuredOwnerDigits)
         )
-        const isGroup=chat.endsWith('@g.us')
 
         await cacheIncomingMessage(sock,msg)
         if(!body.startsWith(prefix)){
