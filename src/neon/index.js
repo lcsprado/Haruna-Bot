@@ -5578,8 +5578,13 @@ _Os comandos antigos continuam funcionando normalmente._`
         } else if(['roubar','roubo','fazol'].includes(cmd)){
           const target=mentionsOf(msg)[0]
           if(!target) return await reply(`Uso no grupo: *${prefix}roubar @pessoa* ou *${prefix}fazoL @pessoa*`)
-          const r=await robPlayer(sender,target)
-          if(!r.ok) return await reply(`⏳ Você poderá tentar outro roubo em ${duration(r.remaining)}.`)
+          let r
+          try{ r=await robPlayer(sender,target) }
+          catch(err){
+            if(cmd==='fazol' && String(err?.message||'').includes('praticamente sem dinheiro')) return await reply('🍺 *É SÓ PRA TOMAR UMA CERVEJINHA!* 😂\n\nSó que essa pessoa tá tão quebrada que não paga nem a gelada. Escolhe outra vítima! 🍻',{mentions:[target]})
+            throw err
+          }
+          if(!r.ok) return await reply(cmd==='fazol'?`🍺 A cervejinha vai ter que esperar... tente novamente em ${duration(r.remaining)}.`:`⏳ Você poderá tentar outro roubo em ${duration(r.remaining)}.`)
           if(r.success){
             const successText=cmd==='fazol'
               ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!*\n\n💰 Você roubou *R$ ${fmt(r.amount)}*.\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
