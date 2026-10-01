@@ -284,26 +284,21 @@ function normalizedAddressJid(jid){
   return String(jid||'').replace(/:\d+(?=@)/,'')
 }
 
-async function resolvePlayerJid(sock,chat,jid,msg=null) {
-  if(!jid) return jid
-  if(!jid.endsWith('@lid')) return canonicalPlayerJid(jid)
-
+async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
+  if(!jid) return {jid,aliases:[]}
+  const aliases=new Set([jid])
+  let phoneJid=jid.endsWith('@s.whatsapp.net') ? canonicalPlayerJid(jid) : null
   const key=msg?.key||{}
-  // participantAlt/remoteJidAlt identify the sender of the message, not a
-  // person mentioned in its text. Reusing them for an @mention made
-  // "!perfil @alguém" resolve back to whoever sent the command.
   const jidIsMessageSender=jid===key.participant || jid===key.remoteJid
   if(jidIsMessageSender){
     const altCandidates=[key.participantAlt,key.remoteJidAlt]
     for(const alt of altCandidates){
-      if(alt?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(alt)
+      if(!alt) continue
+      aliases.add(alt)
+      if(alt.endsWith('@s.whatsapp.net')) phoneJid=canonicalPlayerJid(alt)
     }
   }
 
-  try{
-    const pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)
-    if(pn?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(pn)
-  }catch{}
   try{
     if(chat?.endsWith('@g.us')){
       const meta=await sock.groupMetadata(chat)
@@ -312,14 +307,36 @@ async function resolvePlayerJid(sock,chat,jid,msg=null) {
         [p?.id,p?.lid,p?.phoneNumber,p?.pn,p?.jid]
           .some(value=>normalizedAddressJid(value)===wanted)
       )
-      // Depending on the Baileys/WhatsApp version, the real phone JID may be
-      // exposed as id while lid contains the opaque mention identifier.
-      const candidate=[part?.phoneNumber,part?.pn,part?.jid,part?.id]
-        .find(value=>value?.endsWith('@s.whatsapp.net'))
-      if(candidate?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(candidate)
+      for(const value of [part?.phoneNumber,part?.pn,part?.jid,part?.id,part?.lid]){
+        if(!value) continue
+        aliases.add(value)
+        if(value.endsWith('@s.whatsapp.net')) phoneJid=canonicalPlayerJid(value)
+      }
     }
   }catch{}
-  return jid
+
+  // Try every LID we collected. This covers both directions used by WhatsApp:
+  // a message can arrive by LID while a mention arrives by phone JID, or the
+  // opposite. Keeping every alias is what allows the database rows to merge.
+  if(!phoneJid){
+    for(const alias of aliases){
+      if(!alias?.endsWith('@lid')) continue
+      try{
+        const pn=await sock.signalRepository?.lidMapping?.getPNForLID?.(alias)
+        if(pn?.endsWith('@s.whatsapp.net')){
+          aliases.add(pn)
+          phoneJid=canonicalPlayerJid(pn)
+          break
+        }
+      }catch{}
+    }
+  }
+
+  return {jid:phoneJid || canonicalPlayerJid(jid),aliases:[...aliases]}
+}
+
+async function resolvePlayerJid(sock,chat,jid,msg=null) {
+  return (await resolvePlayerIdentity(sock,chat,jid,msg)).jid
 }
 
 function unwrapMessageContent(message){
@@ -4135,7 +4152,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const chat=msg.key.remoteJid
         if(!chat || chat==='status@broadcast') continue
         const rawSender=msg.key.participant || chat
-        const sender=await resolvePlayerJid(sock,chat,rawSender,msg)
+        const senderIdentity=await resolvePlayerIdentity(sock,chat,rawSender,msg)
+        const sender=senderIdentity.jid
         const body=textOf(msg).trim()
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
         const isGroup=chat.endsWith('@g.us')
@@ -4159,11 +4177,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             String(canonicalPlayerJid(chat)).split('@')[0].replace(/\D/g,'')===configuredOwnerDigits)
         )
 
-        await consolidateUserIdentity(sender,[
-          rawSender,
-          msg.key?.participantAlt,
-          msg.key?.remoteJidAlt
-        ],msg.pushName||'').catch(err=>{
+        await consolidateUserIdentity(sender,senderIdentity.aliases,msg.pushName||'').catch(err=>{
           console.error('[identidade] falha ao consolidar cadastro',err?.message||err)
         })
         await cacheIncomingMessage(sock,msg)
@@ -4779,7 +4793,8 @@ ${prefix}configgrupo — módulos do bot (admins do grupo)\n${prefix}banir @pess
 
         } else if(['perfil','profile'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
-          const profileTarget=await resolvePlayerJid(sock,chat,mentioned || sender,msg)
+          const profileIdentity=await resolvePlayerIdentity(sock,chat,mentioned || sender,msg)
+          const profileTarget=profileIdentity.jid
 
           try{
             if(!mentioned) await ensureUser(profileTarget,msg.pushName||'')
@@ -4787,7 +4802,7 @@ ${prefix}configgrupo — módulos do bot (admins do grupo)\n${prefix}banir @pess
               return await reply('⚠️ Não consegui identificar o número dessa pessoa no grupo. Peça para ela enviar qualquer comando do bot e tente novamente.')
             }
             if(mentioned){
-              await consolidateUserIdentity(profileTarget,[mentioned])
+              await consolidateUserIdentity(profileTarget,profileIdentity.aliases)
             }
             const existing=await getProfile(profileTarget)
             if(!existing){
