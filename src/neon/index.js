@@ -245,9 +245,15 @@ async function resolvePlayerJid(sock,chat,jid,msg=null) {
   if(!jid.endsWith('@lid')) return canonicalPlayerJid(jid)
 
   const key=msg?.key||{}
-  const altCandidates=[key.participantAlt,key.remoteJidAlt]
-  for(const alt of altCandidates){
-    if(alt?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(alt)
+  // participantAlt/remoteJidAlt identify the sender of the message, not a
+  // person mentioned in its text. Reusing them for an @mention made
+  // "!perfil @alguém" resolve back to whoever sent the command.
+  const jidIsMessageSender=jid===key.participant || jid===key.remoteJid
+  if(jidIsMessageSender){
+    const altCandidates=[key.participantAlt,key.remoteJidAlt]
+    for(const alt of altCandidates){
+      if(alt?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(alt)
+    }
   }
 
   try{
