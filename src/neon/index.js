@@ -5173,8 +5173,17 @@ _Os comandos antigos continuam funcionando normalmente._`
           if(!target) return await reply(`Uso no grupo: *${prefix}roubar @pessoa* ou *${prefix}fazoL @pessoa*`)
           const r=await robPlayer(sender,target)
           if(!r.ok) return await reply(`⏳ Você poderá tentar outro roubo em ${duration(r.remaining)}.`)
-          if(r.success) await reply(`🕵️ *ROUBO BEM-SUCEDIDO!*\n💰 Você roubou *R$ ${fmt(r.amount)}*.`,{mentions:[target]})
-          else await reply(`🚓 *VOCÊ FOI PEGO!*\n💸 Multa: R$ ${fmt(r.fine)}\nTente novamente mais tarde.`,{mentions:[target]})
+          if(r.success){
+            const successText=cmd==='fazol'
+              ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!*\n\n💰 Você roubou *R$ ${fmt(r.amount)}*.\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
+              : `🕵️ *ROUBO BEM-SUCEDIDO!*\n💰 Você roubou *R$ ${fmt(r.amount)}*.`
+            await reply(successText,{mentions:[target]})
+          } else {
+            const failText=cmd==='fazol'
+              ? `🚓 *A CERVEJINHA DEU RUIM!* 😂\n💸 Multa: R$ ${fmt(r.fine)}\nDessa vez não deu pra tomar a gelada.`
+              : `🚓 *VOCÊ FOI PEGO!*\n💸 Multa: R$ ${fmt(r.fine)}\nTente novamente mais tarde.`
+            await reply(failText,{mentions:[target]})
+          }
 
         } else if(['snipe','apagada','apagou'].includes(cmd)){
           if(!isGroup) return await reply('Use este comando dentro de um grupo.')
