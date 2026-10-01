@@ -2472,6 +2472,7 @@ export async function initCommunityPack(){
     ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antibadword_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antidelete_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS rules_text TEXT NOT NULL DEFAULT '';
+    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antiflood_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
     CREATE TABLE IF NOT EXISTS group_warnings(
       chat_jid TEXT NOT NULL,
@@ -2522,6 +2523,16 @@ export async function initCommunityPack(){
       sold_at BIGINT
     );
     CREATE INDEX IF NOT EXISTS market_active_idx ON market_listings(status,created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS group_activity(
+      chat_jid TEXT NOT NULL,
+      jid TEXT NOT NULL,
+      day DATE NOT NULL DEFAULT CURRENT_DATE,
+      messages INTEGER NOT NULL DEFAULT 0,
+      commands INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(chat_jid,jid,day)
+    );
+    CREATE INDEX IF NOT EXISTS group_activity_week_idx ON group_activity(chat_jid,day DESC);
   `)
 }
 
@@ -2530,7 +2541,7 @@ export async function getCommunitySettings(chatJid){
   return st
 }
 export async function setCommunitySetting(chatJid,key,enabled,updatedBy=''){
-  const allowed=new Set(['welcome_enabled','antilink_enabled','antibadword_enabled','antidelete_enabled'])
+  const allowed=new Set(['welcome_enabled','antilink_enabled','antibadword_enabled','antidelete_enabled','antiflood_enabled'])
   if(!allowed.has(key)) throw new Error('Configuração inválida.')
   await getGroupSettings(chatJid)
   const {rows}=await db.query(`UPDATE group_settings SET ${key}=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[Boolean(enabled),updatedBy,chatJid])
@@ -2588,6 +2599,46 @@ export async function petAction(jid,action){
 }
 export async function petLeaderboard(limit=10){
   const {rows}=await db.query(`SELECT p.*,u.push_name FROM pets p JOIN users u ON u.jid=p.jid ORDER BY p.level DESC,p.power DESC,p.xp DESC LIMIT $1`,[Math.min(20,Math.max(1,Number(limit)||10))]); return rows
+}
+
+export async function recordGroupActivity(chatJid,jid,isCommand=false){
+  if(!chatJid?.endsWith('@g.us')||!jid) return
+  await db.query(`INSERT INTO group_activity(chat_jid,jid,day,messages,commands) VALUES($1,$2,CURRENT_DATE,1,$3)
+    ON CONFLICT(chat_jid,jid,day) DO UPDATE SET messages=group_activity.messages+1,commands=group_activity.commands+EXCLUDED.commands`,[chatJid,jid,isCommand?1:0])
+}
+export async function weeklyActivityLeaderboard(chatJid,limit=10){
+  const {rows}=await db.query(`SELECT a.jid,COALESCE(NULLIF(u.push_name,''),'Jogador') push_name,SUM(a.messages)::int messages,SUM(a.commands)::int commands
+    FROM group_activity a LEFT JOIN users u ON u.jid=a.jid WHERE a.chat_jid=$1 AND a.day>=CURRENT_DATE-6
+    GROUP BY a.jid,u.push_name ORDER BY SUM(a.messages) DESC,SUM(a.commands) DESC LIMIT $2`,[chatJid,Math.min(20,Math.max(1,Number(limit)||10))]); return rows
+}
+export async function getAchievements(jid){
+  const [p,pet,rel,streak,inv]=await Promise.all([getCombatProfile(jid),getPet(jid),getRelationship(jid),getDailyStreak(jid),db.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM inventories WHERE jid=$1',[jid])])
+  if(!p) return []
+  const total=Number(p.cash||0)+Number(p.bank||0), out=[]
+  if(Number(streak?.bestStreak||0)>=7) out.push('🔥 Sequência de 7 dias')
+  if(Number(streak?.bestStreak||0)>=30) out.push('🌟 Sequência de 30 dias')
+  if(total>=1000000) out.push('💎 Primeiro milhão')
+  if(Number(p.win||0)>=10) out.push('⚔️ 10 vitórias')
+  if(Number(p.win||0)>=100) out.push('👑 100 vitórias')
+  if(pet) out.push('🐾 Melhor amigo')
+  if(Number(pet?.level||0)>=10) out.push('🦁 Pet nível 10')
+  if(rel) out.push('💍 Comprometido')
+  if(Number(inv.rows[0]?.qty||0)>=25) out.push('🎒 Colecionador')
+  return out
+}
+export async function petDuel(challengerJid,targetJid){
+  if(challengerJid===targetJid) throw new Error('Escolha outro jogador.')
+  const [a,b]=await Promise.all([getPet(challengerJid),getPet(targetJid)])
+  if(!a||!b) throw new Error('Os dois jogadores precisam ter um pet.')
+  const scoreA=Number(a.power)+Number(a.level)*2+Math.floor(Math.random()*11)
+  const scoreB=Number(b.power)+Number(b.level)*2+Math.floor(Math.random()*11)
+  const winner=scoreA===scoreB?(Math.random()<.5?'a':'b'):(scoreA>scoreB?'a':'b')
+  const winJid=winner==='a'?challengerJid:targetJid,loseJid=winner==='a'?targetJid:challengerJid
+  await transaction(async client=>{
+    await client.query('UPDATE pets SET wins=wins+1,xp=xp+25 WHERE jid=$1',[winJid])
+    await client.query('UPDATE pets SET losses=losses+1,xp=xp+10 WHERE jid=$1',[loseJid])
+  })
+  return {winnerJid:winJid,loserJid:loseJid,winner:winner==='a'?a:b,loser:winner==='a'?b:a}
 }
 
 export async function proposeRelationship(fromJid,toJid){
