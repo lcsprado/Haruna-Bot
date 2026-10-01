@@ -456,7 +456,7 @@ function xpBar(exp,level){
   return {bar:'█'.repeat(filled)+'░'.repeat(10-filled),current,needed}
 }
 
-async function sendAlphaProfile(sock,chat,jid,msg){
+async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const [p,clan,home,cars,pat,streak,ranks]=await Promise.all([
     getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
     getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid)
@@ -468,16 +468,25 @@ async function sendAlphaProfile(sock,chat,jid,msg){
   if(customAvatar?.buffer?.length){
     avatar=customAvatar.buffer
   }else{
-    try{
-      const photo=await Promise.race([
-        sock.profilePictureUrl(jid,'image'),
-        new Promise(resolve=>setTimeout(()=>resolve(null),3500))
-      ])
-      if(photo){
+    const photoCandidates=[
+      ...identityAliases.filter(value=>value?.endsWith('@lid')),
+      jid,
+      ...identityAliases.filter(value=>!value?.endsWith('@lid'))
+    ].filter((value,index,list)=>value && list.indexOf(value)===index)
+    for(const candidate of photoCandidates){
+      try{
+        const photo=await Promise.race([
+          sock.profilePictureUrl(candidate,'image'),
+          new Promise(resolve=>setTimeout(()=>resolve(null),2500))
+        ])
+        if(!photo) continue
         const res=await fetch(photo,{signal:AbortSignal.timeout(5000)})
-        if(res.ok) avatar=Buffer.from(await res.arrayBuffer())
-      }
-    }catch{}
+        if(res.ok){
+          avatar=Buffer.from(await res.arrayBuffer())
+          break
+        }
+      }catch{}
+    }
   }
 
   const wins=Number(p.win||0),loss=Number(p.loss||0)
@@ -4808,7 +4817,7 @@ ${prefix}configgrupo — módulos do bot (admins do grupo)\n${prefix}banir @pess
             if(!existing){
               return await reply('⚠️ Não encontrei o cadastro dessa pessoa. Peça para ela enviar qualquer comando do bot e tente novamente.')
             }
-            await sendAlphaProfile(sock,chat,profileTarget,msg)
+            await sendAlphaProfile(sock,chat,profileTarget,msg,profileIdentity.aliases)
           }catch(err){
             console.error('[perfil] erro ao gerar perfil',profileTarget,err)
             await reply('⚠️ Não consegui gerar esse perfil agora. Tente novamente em alguns segundos.')
