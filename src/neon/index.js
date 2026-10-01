@@ -4755,7 +4755,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
         } else if(['comandos','comando','commands','cmds'].includes(cmd)){
           // Uma única fonte para o catálogo. Evita a lista antiga ficar desatualizada.
-          await commandsMenu()
+          await showCommandsMainMenu(chat,sender,reply)
 
         } else if(['ping','p'].includes(cmd)){
           await reply('🍀 Pong! Alpha Bot online e conectado ao Neon.')
