@@ -3986,20 +3986,24 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const sender=await resolvePlayerJid(sock,chat,rawSender,msg)
         const body=textOf(msg).trim()
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
-        const ownerCanonical=canonicalPlayerJid(ownerJid)
+        const isGroup=chat.endsWith('@g.us')\n        const ownerCanonical=canonicalPlayerJid(ownerJid)
         const senderCanonical=canonicalPlayerJid(sender)
         const senderDigits=String(senderCanonical||'').split('@')[0].replace(/\D/g,'')
         const ownerDigits=String(ownerCanonical||'').split('@')[0].replace(/\D/g,'')
         const altDigits=[msg.key?.participantAlt,msg.key?.remoteJidAlt]
           .filter(Boolean)
           .map(v=>String(canonicalPlayerJid(v)).split('@')[0].replace(/\D/g,''))
-        const isOwner=Boolean(ownerJid || pairingNumber) && (
+        const configuredOwnerDigits=ownerDigits || pairingNumber
+        const isOwner=Boolean(configuredOwnerDigits) && (
           sender===ownerJid ||
           senderCanonical===ownerCanonical ||
-          (ownerDigits && senderDigits===ownerDigits) ||
+          senderDigits===configuredOwnerDigits ||
           (pairingNumber && senderDigits===pairingNumber) ||
-          (ownerDigits && altDigits.includes(ownerDigits)) ||
-          (pairingNumber && altDigits.includes(pairingNumber))
+          altDigits.includes(configuredOwnerDigits) ||
+          (pairingNumber && altDigits.includes(pairingNumber)) ||
+          // No privado, o remoteJid é a própria conta do usuário e é a fonte mais estável.
+          (!isGroup && String(chat||'').endsWith('@s.whatsapp.net') &&
+            String(canonicalPlayerJid(chat)).split('@')[0].replace(/\D/g,'')===configuredOwnerDigits)
         )
         const isGroup=chat.endsWith('@g.us')
 
