@@ -29,7 +29,8 @@ import {
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   adoptPet, getPet, petAction, petLeaderboard,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
-  createMarketListing, listMarket, buyMarketListing, cancelMarketListing
+  createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
+  recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
@@ -86,6 +87,7 @@ if(!connectionWatchdog){
   connectionWatchdog.unref?.()
 }
 
+const floodTracker=new Map()
 const deletedMessageCache=new Map()
 const lastDeletedByChat=new Map()
 const SNIPE_TTL_MS=30*60*1000
@@ -971,6 +973,7 @@ Você possui: *${stock}*
 *!aceitarcasamento @pessoa* — aceita o pedido
 *!casal* — mostra seu relacionamento
 *!divorciar* — encerra o relacionamento
+*!conquistas* — badges e objetivos desbloqueados
 *!ping* — verifica se o Alpha está online
 
 9️⃣ Voltar • 0️⃣ Fechar`,
@@ -1028,6 +1031,7 @@ Você possui: *${stock}*
 *!treinarpet* — treina
 *!aventurapet* — manda para aventura
 *!rankpet* — ranking de pets
+*!duelopet @pessoa* — duelo entre pets
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '5':`🎮 *MINIGAMES*
@@ -1090,13 +1094,14 @@ Você possui: *${stock}*
 *!advertir @pessoa* — registra aviso (ADM)
 *!avisos @pessoa* — consulta avisos
 *!limparavisos @pessoa* — zera avisos (ADM)
+*!topativo* — ranking de atividade dos últimos 7 dias
 *!abrirgrupo* — libera mensagens (ADM)
 *!fechargrupo* — restringe mensagens (ADM)
 *!banir @pessoa* — remove participante (ADM)
 *!promover @pessoa* — promove a ADM
 *!rebaixar @pessoa* — remove ADM
 
-⚙️ No *!configgrupo*: Anti-link, Anti-palavrão, Anti-delete, Boas-vindas e módulos do Alpha.
+⚙️ No *!configgrupo*: Anti-link, Anti-palavrão, Anti-delete, Antiflood, Boas-vindas e módulos do Alpha.
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '9':`⚽ *FUTEBOL, UTILIDADES & SUPORTE*
@@ -3930,11 +3935,12 @@ Valor: *R$ ${fmt(item.price)}*
         '5':['welcome_enabled','Boas-vindas'],
         '6':['antilink_enabled','Anti-link'],
         '7':['antibadword_enabled','Anti-palavrão'],
-        '8':['antidelete_enabled','Anti-delete']
+        '8':['antidelete_enabled','Anti-delete'],
+        '9':['antiflood_enabled','Antiflood']
       }
       const selected=map[input]
       if(!selected){
-        await reply('⚙️ Escolha de *1 a 8*, *9* para voltar ou *0* para sair.')
+        await reply('⚙️ Escolha de *1 a 9* ou *0* para sair.')
         return true
       }
       const [key,label]=selected
@@ -3979,8 +3985,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 6️⃣ Anti-link: *${st.antilink_enabled?'ON ✅':'OFF ❌'}*
 7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
 8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
+9️⃣ Antiflood: *${st.antiflood_enabled?'ON ✅':'OFF ❌'}*
 
-9️⃣ Voltar
 0️⃣ Sair`
         )
         return true
@@ -3990,7 +3996,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         return true
       }
       const {key,label,next}=flow.data
-      const st=['welcome_enabled','antilink_enabled','antibadword_enabled','antidelete_enabled'].includes(key) ? await setCommunitySetting(chat,key,next,sender) : await setGroupSetting(chat,key,next,sender)
+      const st=['welcome_enabled','antilink_enabled','antibadword_enabled','antidelete_enabled','antiflood_enabled'].includes(key) ? await setCommunitySetting(chat,key,next,sender) : await setGroupSetting(chat,key,next,sender)
       setQuickFlow(chat,sender,'group_config',{},5*60*1000)
       await reply(
 `✅ *${label}* foi ${next?'ativado':'desativado'} neste grupo.
@@ -4003,6 +4009,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 6️⃣ Anti-link: *${st.antilink_enabled?'ON ✅':'OFF ❌'}*
 7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
 8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
+9️⃣ Antiflood: *${st.antiflood_enabled?'ON ✅':'OFF ❌'}*
 
 9️⃣ Voltar
 0️⃣ Sair`
@@ -4070,6 +4077,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 6️⃣ Anti-link: *${st.antilink_enabled?'ON ✅':'OFF ❌'}*
 7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
 8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
+9️⃣ Antiflood: *${st.antiflood_enabled?'ON ✅':'OFF ❌'}*
 
 9️⃣ Voltar
 0️⃣ Sair`
@@ -4190,6 +4198,24 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           console.error('[identidade] falha ao consolidar cadastro',err?.message||err)
         })
         await cacheIncomingMessage(sock,msg)
+        if(isGroup) await recordGroupActivity(chat,sender,body.startsWith(prefix)).catch(()=>{})
+        if(isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))){
+          try{
+            const cs=await getCommunitySettings(chat)
+            if(cs.antiflood_enabled){
+              const fk=chat+'|'+sender, now=Date.now()
+              const recent=(floodTracker.get(fk)||[]).filter(t=>now-t<12000)
+              recent.push(now); floodTracker.set(fk,recent)
+              if(recent.length>=7){
+                floodTracker.set(fk,[])
+                const n=await addGroupWarning(chat,sender)
+                await sock.sendMessage(chat,{delete:msg.key}).catch(()=>{})
+                await reply(`🚦 *ANTIFLOOD:* muitas mensagens em sequência. Avisos: *${n}/3*.`)
+                continue
+              }
+            }
+          }catch(err){ console.error('[antiflood]',err?.message||err) }
+        }
         if(isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))){
           try{
             const cs=await getCommunitySettings(chat)
@@ -4416,11 +4442,17 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['adotar','meupet','alimentar','banho','passear','treinarpet','aventurapet','rankpet'].includes(cmd)){
+        } else if(['adotar','meupet','alimentar','banho','passear','treinarpet','aventurapet','rankpet','duelopet'].includes(cmd)){
           try{
             if(cmd==='adotar'){
               const pet=await adoptPet(sender,args[0]||'cachorro',args.slice(1).join(' ')||msg.pushName||'Alpha')
               return await reply(`🐾 Você adotou *${pet.name}*, um(a) *${pet.species}*! Use *!meupet*.`)
+            }
+            if(cmd==='duelopet'){
+              const targetRaw=mentionsOf(msg)[0]; if(!targetRaw) return await reply('Uso: *!duelopet @pessoa*')
+              const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
+              const r=await petDuel(sender,target)
+              return await reply(`🐾⚔️ *DUELO DE PETS*\n\n🏆 ${r.winner.name} venceu ${r.loser.name}!\n+25 XP para o vencedor • +10 XP para o desafiante derrotado.`,{mentions:[targetRaw]})
             }
             if(cmd==='rankpet'){
               const rows=await petLeaderboard(10)
@@ -4434,6 +4466,15 @@ Se precisar de mais ajuda, use *!suporte*.`
             const p=await petAction(sender,action)
             await reply(`🐾 *${p.name}* completou a ação! +XP\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n🍖 ${p.hunger}/100 • 🧼 ${p.hygiene}/100 • ⚡ ${p.energy}/100`)
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível cuidar do pet.')) }
+
+        } else if(['conquistas','achievements'].includes(cmd)){
+          const rows=await getAchievements(sender)
+          await reply(rows.length?'🏆 *SUAS CONQUISTAS*\n\n'+rows.map((x,i)=>`${i+1}. ${x}`).join('\n'):'🏆 Você ainda não desbloqueou conquistas. Continue jogando!')
+
+        } else if(['topativo','atividade'].includes(cmd)){
+          if(!isGroup) return await reply('📊 Use este comando em um grupo.')
+          const rows=await weeklyActivityLeaderboard(chat,10)
+          await reply('📊 *TOP ATIVIDADE — ÚLTIMOS 7 DIAS*\n\n'+(rows.map((x,i)=>`${i+1}º ${x.push_name} — ${x.messages} msgs • ${x.commands} cmds`).join('\n')||'Sem atividade registrada ainda.'))
 
         } else if(['casar','aceitarcasamento','divorciar','casal'].includes(cmd)){
           try{
@@ -4567,6 +4608,7 @@ Se precisar de mais ajuda, use *!suporte*.`
 6️⃣ Anti-link: *${st.antilink_enabled?'ON ✅':'OFF ❌'}*
 7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
 8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
+9️⃣ Antiflood: *${st.antiflood_enabled?'ON ✅':'OFF ❌'}*
 
 9️⃣ Voltar
 0️⃣ Sair`
