@@ -4491,7 +4491,7 @@ Se precisar de mais ajuda, use *!suporte*.`
           try{
             if(cmd==='adotar'){
               const pet=await adoptPet(sender,args[0]||'cachorro',args.slice(1).join(' ')||msg.pushName||'Alpha')
-              return await reply(`🐾 Você adotou *${pet.name}*, um(a) *${pet.species}*! Use *!meupet*.`)
+              return await reply(`🐾 ${pet.replaced?'Você trocou seu pet por':'Você adotou'} *${pet.name}*, um(a) *${pet.species}*!${pet.fee?`\n💰 Taxa: R$ ${fmt(pet.fee)}`:''}\n\n🐶 Cachorro — Nv.1 • grátis\n🐱 Gato — Nv.3 • R$ 5.000\n🦊 Raposa — Nv.7 • R$ 25.000\n🐉 Dragão — Nv.15 • R$ 100.000\n\nUse *!meupet*.`)
             }
             if(cmd==='duelopet'){
               const targetRaw=mentionsOf(msg)[0]; if(!targetRaw) return await reply('Uso: *!duelopet @pessoa*')
