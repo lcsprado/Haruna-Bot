@@ -214,6 +214,46 @@ function clearQuickFlow(chat,sender){
   deleteQuickFlow(key).catch(err=>console.error('[flow] falha ao limpar menu persistido',err?.message||err))
 }
 
+async function showAdminMainMenu(chat,sender,reply){
+  setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
+  await reply(
+`👑 *ADMIN ALPHA BOT*
+
+1️⃣ 👤 Jogadores
+2️⃣ 💚 Grupos / assinaturas
+3️⃣ 🧾 Pedidos pendentes
+4️⃣ ⚙️ Configurações comerciais
+5️⃣ 🩺 Diagnóstico
+6️⃣ 🆘 Chamados de suporte
+
+0️⃣ Sair
+
+_Responda apenas com o número._`
+  )
+}
+
+async function showCommandsMainMenu(chat,sender,reply){
+  setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
+  await reply(
+`📚 *COMANDOS DO ALPHA*
+
+Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
+
+1️⃣ 👤 Perfil & conta
+2️⃣ 💰 Economia & diversão
+3️⃣ 🛒 Loja & inventário
+4️⃣ ⚔️ RPG & combate
+5️⃣ 🎮 Minigames
+6️⃣ 📋 Progressão & patrimônio
+7️⃣ 🏴 Clãs
+8️⃣ 💚 Grupo & assinatura
+9️⃣ ⚽ Futebol, utilidades & suporte
+
+👉 Responda só com o número.
+0️⃣ Fechar`
+  )
+}
+
 function textOf(msg) {
   const m=msg?.message
   return m?.conversation
@@ -5703,10 +5743,10 @@ Obrigado por apoiar o Alpha Bot 🍀`
 
         } else if(['admin','ownermenu','adminmenu','donocomandos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
-          await adminMainMenu()
+          await showAdminMainMenu(chat,sender,reply)
 
         } else if(['comandos','comando','commands','cmds'].includes(cmd)){
-          await commandsMenu()
+          await showCommandsMainMenu(chat,sender,reply)
 
         } else if(['menu','help','ajuda'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_main',{},90000)
