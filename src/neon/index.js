@@ -34,7 +34,7 @@ import {
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
-  initGames, roulette, createGroupRoulette, joinGroupRoulette, spinGroupRoulette, coinFlip, createCoinDuel, acceptCoinDuel, rps,
+  initGames, roulette, createGroupRoulette, joinGroupRoulette, spinGroupRoulette, coinFlip, createCoinDuel, acceptCoinDuel, createRpsDuel, acceptRpsDuel, createTournament, joinTournament, startTournament, rps,
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
@@ -1039,7 +1039,15 @@ Você possui: *${stock}*
 *!games* / *!minigames* — menu de jogos
 *!roleta valor cor* — roleta
 *!cara valor* / *!coroa valor* — cara ou coroa
-*!ppt pedra|papel|tesoura* — pedra, papel e tesoura
+*!ppt pedra|papel|tesoura* — contra o Alpha
+*!ppt @pessoa 5000 pedra* — desafia jogador valendo dinheiro
+*!aceitarppt pedra* — aceita desafio de PPT
+*!roletagrupo 5000 vermelho* — abre roleta coletiva
+*!entrarroleta 5000 preto* — entra na roleta coletiva
+*!girarroleta* — criador gira a roleta
+*!torneio 5000* — cria torneio com aposta
+*!entrartorneio* — entra no torneio
+*!iniciartorneio* — criador inicia
 *!forca* — inicia a forca
 *!letra a* — tenta uma letra
 *!palavra resposta* — tenta a palavra
@@ -5409,12 +5417,38 @@ _Os comandos antigos continuam funcionando normalmente._`
           await reply(`🪙 *CARA OU COROA — PvP*\n\nResultado: *${r.result.toUpperCase()}*\n💰 Pote: *R$ ${fmt(r.pot)}*\n🏆 Vencedor: @${String(r.winner).split('@')[0]}\n\nO prêmio foi creditado automaticamente.`,{mentions:[r.winner]})
 
         } else if(['ppt'].includes(cmd)){
+          const targetRaw=mentionsOf(msg)[0]
+          if(targetRaw){
+            const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
+            const choice=args.map(x=>String(x).toLowerCase()).find(x=>['pedra','papel','tesoura'].includes(x))
+            if(!amount||!choice) return await reply(`Uso PvP: *${prefix}ppt @pessoa 5000 pedra*`)
+            const target=await resolvePlayerJid(sock,chat,targetRaw,msg), challenger=await resolvePlayerJid(sock,chat,sender,msg)
+            const r=await createRpsDuel(chat,challenger,target,amount,choice)
+            return await reply(`✊ *DESAFIO PPT*\n\n💰 Cada jogador: R$ ${fmt(r.amount)}\n💵 Pote: R$ ${fmt(r.amount*2)}\n\nA pessoa marcada tem 2 minutos para usar *${prefix}aceitarppt pedra|papel|tesoura*.`,{mentions:[targetRaw]})
+          }
           const choice=(args[0]||'').toLowerCase()
-          if(!choice) return await reply(`Uso: *${prefix}ppt pedra*\nOpções: pedra, papel ou tesoura`)
-          const r=rps(choice)
-          const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
+          if(!choice) return await reply(`Uso: *${prefix}ppt pedra*\nPvP: *${prefix}ppt @pessoa 5000 pedra*`)
+          const r=rps(choice), emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
           await progressDailyMission(sender,'game')
           await reply(`✊ *PEDRA, PAPEL E TESOURA*\n\nVocê: *${r.choice}*\nAlpha Bot: *${r.bot}*\n\n${emoji} *${r.result.toUpperCase()}*`)
+
+        } else if(cmd==='aceitarppt'){
+          const player=await resolvePlayerJid(sock,chat,sender,msg), r=await acceptRpsDuel(chat,player,args[0])
+          await reply(r.winner?`✊ *PPT PvP*\n\n🏆 Vencedor: @${String(r.winner).split('@')[0]}\n💰 Pote: R$ ${fmt(r.pot)}`:`🤝 *EMPATE!* As apostas foram devolvidas.`,{mentions:r.winner?[r.winner]:[r.challenger,player]})
+
+        } else if(cmd==='torneio'){
+          if(!isGroup) return await reply('🏆 Torneios funcionam em grupos.')
+          const amount=parseAmount(args[0])||0, host=await resolvePlayerJid(sock,chat,sender,msg)
+          const r=await createTournament(chat,host,amount)
+          await reply(`🏆 *TORNEIO ABERTO!*\n\n💰 Entrada: R$ ${fmt(r.amount)}\n⏱️ Inscrições por 5 minutos.\n\nUse *${prefix}entrartorneio*.\nO criador inicia com *${prefix}iniciartorneio*.`)
+
+        } else if(cmd==='entrartorneio'){
+          const player=await resolvePlayerJid(sock,chat,sender,msg),r=await joinTournament(chat,player)
+          await reply(`🏆 Você entrou no torneio! Participantes: *${r.players.length}*.`)
+
+        } else if(cmd==='iniciartorneio'){
+          const player=await resolvePlayerJid(sock,chat,sender,msg),r=await startTournament(chat,player)
+          await reply(`🏆 *TORNEIO ENCERRADO!*\n\n👥 Participantes: ${r.players.length}\n🏆 Campeão: @${String(r.winner).split('@')[0]}\n💰 Prêmio: R$ ${fmt(r.pot)}`,{mentions:[r.winner]})
 
         } else if(['forca'].includes(cmd)){
           const r=await startHangman(chat)
