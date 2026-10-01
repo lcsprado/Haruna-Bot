@@ -922,15 +922,19 @@ Você possui: *${stock}*
     }
 
     const commandPages={
-      '1':`👤 *PERFIL & CONTA*
+      '1':`👤 *PERFIL, CONTA & SOCIAL*
 
 *!perfil* — gera seu card
 *!perfil @pessoa* — vê o card de outra pessoa
 *!setfoto* — define foto personalizada do card
-*!removerfoto* — volta a usar a foto do WhatsApp
+*!removerfoto* — volta à foto do WhatsApp
 *!daily* — coleta a recompensa diária
-*!streak* — mostra sua sequência do Daily
-*!ping* — verifica se o Alpha Bot está online
+*!streak* — mostra sua sequência
+*!casar @pessoa* — envia pedido de casamento
+*!aceitarcasamento @pessoa* — aceita o pedido
+*!casal* — mostra seu relacionamento
+*!divorciar* — encerra o relacionamento
+*!ping* — verifica se o Alpha está online
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '2':`💰 *ECONOMIA & DIVERSÃO*
@@ -942,47 +946,65 @@ Você possui: *${stock}*
 *!sacar valor* — saca do banco
 *!pix @pessoa valor* — transfere dinheiro
 *!ranking* — ranking dos mais ricos
-*!piada* — compra uma piada do Alpha
-*!horoscopo* — consulta o horóscopo
+*!piada* — piada do Alpha
+*!horoscopo* — horóscopo do dia
+*!dado* — joga um dado
+*!chance* — gera uma porcentagem
+*!escolher A | B* — Alpha escolhe uma opção
+*!ship @pessoa @pessoa* — compatibilidade
+*!verdade* — pergunta de verdade
+*!desafio* — gera um desafio
 
 9️⃣ Voltar • 0️⃣ Fechar`,
-      '3':`🛒 *LOJA & INVENTÁRIO*
+      '3':`🛒 *LOJA, INVENTÁRIO & MERCADO*
 
 *!itens* — abre o menu de itens
 *!loja* — abre a loja
-*!comprar item quantidade* — compra um item
+*!comprar item quantidade* — compra da loja
 *!inventario* — abre seu inventário
-*!vender* — abre a venda de itens
+*!vender* — vende itens ao sistema
 *!equipar* — equipa arma ou armadura
 *!usar* — usa um consumível
 
-💡 Caixas são abertas pelo *!inventario*.
+🏪 *Mercado entre jogadores*
+*!mercado* — lista anúncios
+*!anunciar ITEM QTD PREÇO* — cria anúncio
+*!comprarmercado ID* — compra um anúncio
+*!cancelarvenda ID* — cancela seu anúncio
 
 9️⃣ Voltar • 0️⃣ Fechar`,
-      '4':`⚔️ *RPG & COMBATE*
+      '4':`⚔️ *RPG, COMBATE & PETS*
 
 *!rpg* — abre o menu de RPG
 *!status* — mostra seus atributos
 *!batalhar @pessoa* — desafia outro jogador
 *!dungeon* — entra em uma dungeon
-*!roubar @pessoa* / *!fazoL @pessoa* — tenta roubar outro jogador
+*!roubar @pessoa* / *!fazoL @pessoa* — tenta roubar
 *!rankingrpg* — ranking de combate
+
+🐾 *Pets*
+*!adotar cachorro Nome* — adota um pet
+*!meupet* — mostra seu pet
+*!alimentar* — alimenta
+*!banho* — dá banho
+*!passear* — passeia
+*!treinarpet* — treina
+*!aventurapet* — manda para aventura
+*!rankpet* — ranking de pets
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '5':`🎮 *MINIGAMES*
 
-*!games* — abre o menu de minigames
-*!minigames* — atalho para o menu de minigames
-*!roleta valor cor* — aposta na roleta
-*!cara valor* — aposta em cara
-*!coroa valor* — aposta em coroa
+*!games* / *!minigames* — menu de jogos
+*!roleta valor cor* — roleta
+*!cara valor* / *!coroa valor* — cara ou coroa
 *!ppt pedra|papel|tesoura* — pedra, papel e tesoura
 *!forca* — inicia a forca
-*!letra a* — tenta uma letra na forca
-*!palavra resposta* — tenta a palavra da forca
-*!quiz* — inicia um quiz
+*!letra a* — tenta uma letra
+*!palavra resposta* — tenta a palavra
+*!quiz* — inicia quiz
 *!resposta 1* — responde o quiz
-*!numero* — inicia adivinhe o número
+*!numero* — adivinhe o número
 *!chute 50* — dá um palpite
 *!boss* — inicia/mostra o boss
 *!atacar* — ataca o boss
@@ -990,64 +1012,78 @@ Você possui: *${stock}*
 9️⃣ Voltar • 0️⃣ Fechar`,
       '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
 
-*!progressao* — abre o menu de progressão
-*!missoes* — mostra missões diárias
-*!resgatarmissoes* — coleta recompensas das missões
+*!progressao* — menu de progressão
+*!missoes* — missões diárias
+*!resgatarmissoes* — coleta recompensas
 *!casas* — lista imóveis
-*!comprarcasa número* — compra um imóvel
+*!comprarcasa número* — compra imóvel
 *!minhacasa* — mostra sua casa
-*!carros* — abre a concessionária
-*!comprarcarro número* — compra um carro
+*!carros* — concessionária
+*!comprarcarro número* — compra carro
 *!garagem* — mostra seus carros
-*!patrimonio* — mostra seu patrimônio total
+*!patrimonio* — patrimônio total
 *!rankingpatrimonio* — ranking de patrimônio
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '7':`🏴 *CLÃS*
 
-*!clans* — abre o menu de clãs
+*!clans* — menu de clãs
 *!cla* — mostra seu clã/cofre
-*!claajuda* — ajuda específica de clãs
+*!claajuda* — ajuda de clãs
 *!criarcla Nome* — cria um clã
-*!claconvidar @pessoa* — convida uma pessoa
+*!claconvidar @pessoa* — convida
 *!claaceitar* — aceita convite
-*!clapromover @pessoa* — transfere a liderança
-*!claexpulsar @pessoa* — expulsa um membro
-*!cladoar valor* — doa para o cofre
-*!rankingclas* — ranking de clãs
+*!clapromover @pessoa* — transfere liderança
+*!claexpulsar @pessoa* — expulsa membro
+*!cladoar valor* — doa ao cofre
+*!rankingclas* — ranking
 *!saircla* — sai do clã
 
 9️⃣ Voltar • 0️⃣ Fechar`,
-      '8':`💚 *GRUPO & ASSINATURA*
+      '8':`💚 *GRUPO & MODERAÇÃO*
 
-*!grupo* — abre o menu do grupo
-*!statusgrupo* — mostra o status da assinatura
-*!assinar* — cria/renova a assinatura
-*!pedido CODIGO* — consulta seu pedido
-*!termos* — mostra os termos resumidos
+*!grupo* — menu do grupo
+*!statusgrupo* — status da assinatura
+*!assinar* — cria/renova assinatura
+*!pedido CODIGO* — consulta pedido
+*!termos* — termos resumidos
+*!configgrupo* — painel de módulos (ADM do grupo)
+*!regras* — mostra as regras
+*!setregras texto* — define regras (ADM)
+*!advertir @pessoa* — registra aviso (ADM)
+*!avisos @pessoa* — consulta avisos
+*!limparavisos @pessoa* — zera avisos (ADM)
+*!abrirgrupo* — libera mensagens (ADM)
+*!fechargrupo* — restringe mensagens (ADM)
+*!banir @pessoa* — remove participante (ADM)
+*!promover @pessoa* — promove a ADM
+*!rebaixar @pessoa* — remove ADM
 
-🔒 Comandos de administração não aparecem neste catálogo.
+⚙️ No *!configgrupo*: Anti-link, Anti-palavrão, Anti-delete, Boas-vindas e módulos do Alpha.
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '9':`⚽ *FUTEBOL, UTILIDADES & SUPORTE*
 
 ⚽ *Futebol*
-*!futebol* — abre a ajuda de futebol
+*!futebol* — ajuda de futebol
 *!partidas* — jogos brasileiros de hoje
 *!partidas amanha* — jogos de amanhã
-*!tabela* — tabela do Brasileirão Série A
-*!time Corinthians* — último e próximo jogo do time
+*!tabela* — Brasileirão Série A
+*!time Corinthians* — resumo do clube
 
-🛠️ *Utilidades*
-*!sticker* — cria figurinha de foto ou vídeo
-*!s* / *!fig* — atalhos do sticker
-*!snipe* — recupera a última mensagem apagada do grupo
-*!menu* — abre o menu principal
-*!comandos* — abre este catálogo
+🛠️ *Utilidades & resenha*
+*!sticker* / *!s* / *!fig* — cria figurinha
+*!snipe* — última mensagem apagada do grupo
+*!xingar @pessoa* — meme aleatório
+*!arrogante @pessoa* — meme
+*!gado @pessoa* — meme
+*!burro @pessoa* — meme
+*!menu* — menu principal
+*!comandos* — este catálogo
 
 🆘 *Suporte*
-*!suporte* — abre um chamado
-*!chamado CODIGO* — consulta seu chamado
+*!suporte* — abre chamado
+*!chamado CODIGO* — consulta chamado
 
 9️⃣ Voltar • 0️⃣ Fechar`
     }
