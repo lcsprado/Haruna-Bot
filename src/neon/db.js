@@ -2462,3 +2462,205 @@ export async function setPaymentLink(value) {
 
   return value
 }
+
+
+// ===== Alpha Community Pack: moderação, pets, relacionamentos e mercado P2P =====
+export async function initCommunityPack(){
+  await db.query(`
+    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS welcome_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antilink_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antibadword_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antidelete_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS rules_text TEXT NOT NULL DEFAULT '';
+
+    CREATE TABLE IF NOT EXISTS group_warnings(
+      chat_jid TEXT NOT NULL,
+      jid TEXT NOT NULL,
+      warnings INTEGER NOT NULL DEFAULT 0,
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+      PRIMARY KEY(chat_jid,jid)
+    );
+
+    CREATE TABLE IF NOT EXISTS pets(
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      species TEXT NOT NULL,
+      name TEXT NOT NULL,
+      level INTEGER NOT NULL DEFAULT 1,
+      xp INTEGER NOT NULL DEFAULT 0,
+      hunger INTEGER NOT NULL DEFAULT 100,
+      hygiene INTEGER NOT NULL DEFAULT 100,
+      energy INTEGER NOT NULL DEFAULT 100,
+      power INTEGER NOT NULL DEFAULT 10,
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      last_action BIGINT NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
+    CREATE TABLE IF NOT EXISTS relationship_proposals(
+      from_jid TEXT NOT NULL,
+      to_jid TEXT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      PRIMARY KEY(from_jid,to_jid)
+    );
+
+    CREATE TABLE IF NOT EXISTS relationships(
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      partner_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      since_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
+    CREATE TABLE IF NOT EXISTS market_listings(
+      id BIGSERIAL PRIMARY KEY,
+      seller_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      item_id TEXT NOT NULL REFERENCES items(id),
+      quantity INTEGER NOT NULL CHECK(quantity>0),
+      price BIGINT NOT NULL CHECK(price>0),
+      status TEXT NOT NULL DEFAULT 'active',
+      buyer_jid TEXT,
+      created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      sold_at BIGINT
+    );
+    CREATE INDEX IF NOT EXISTS market_active_idx ON market_listings(status,created_at DESC);
+  `)
+}
+
+export async function getCommunitySettings(chatJid){
+  const st=await getGroupSettings(chatJid)
+  return st
+}
+export async function setCommunitySetting(chatJid,key,enabled,updatedBy=''){
+  const allowed=new Set(['welcome_enabled','antilink_enabled','antibadword_enabled','antidelete_enabled'])
+  if(!allowed.has(key)) throw new Error('Configuração inválida.')
+  await getGroupSettings(chatJid)
+  const {rows}=await db.query(`UPDATE group_settings SET ${key}=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[Boolean(enabled),updatedBy,chatJid])
+  return rows[0]
+}
+export async function setGroupRules(chatJid,text,updatedBy=''){
+  await getGroupSettings(chatJid)
+  const {rows}=await db.query(`UPDATE group_settings SET rules_text=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[String(text||'').slice(0,3000),updatedBy,chatJid])
+  return rows[0]
+}
+export async function addGroupWarning(chatJid,jid){
+  const {rows}=await db.query(`INSERT INTO group_warnings(chat_jid,jid,warnings) VALUES($1,$2,1)
+    ON CONFLICT(chat_jid,jid) DO UPDATE SET warnings=group_warnings.warnings+1,updated_at=${nowSql} RETURNING warnings`,[chatJid,jid])
+  return Number(rows[0]?.warnings||0)
+}
+export async function getGroupWarnings(chatJid,jid){
+  const {rows}=await db.query('SELECT warnings FROM group_warnings WHERE chat_jid=$1 AND jid=$2',[chatJid,jid])
+  return Number(rows[0]?.warnings||0)
+}
+export async function clearGroupWarnings(chatJid,jid){
+  await db.query('DELETE FROM group_warnings WHERE chat_jid=$1 AND jid=$2',[chatJid,jid])
+}
+
+export async function adoptPet(jid,species='cachorro',name='Alpha'){
+  await ensureUser(jid)
+  const valid=new Set(['cachorro','gato','raposa','dragao','dragão'])
+  species=String(species||'cachorro').toLowerCase()
+  if(!valid.has(species)) throw new Error('Escolha: cachorro, gato, raposa ou dragão.')
+  const {rows}=await db.query(`INSERT INTO pets(jid,species,name) VALUES($1,$2,$3)
+    ON CONFLICT(jid) DO NOTHING RETURNING *`,[jid,species,String(name||'Alpha').slice(0,24)])
+  if(!rows[0]) throw new Error('Você já possui um pet.')
+  return rows[0]
+}
+export async function getPet(jid){
+  const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid]); return rows[0]||null
+}
+export async function petAction(jid,action){
+  const pet=await getPet(jid); if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+  const now=Math.floor(Date.now()/1000)
+  if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
+  const map={
+    alimentar:{hunger:25,hygiene:-2,energy:2,xp:8},
+    banho:{hunger:-3,hygiene:30,energy:-2,xp:8},
+    passear:{hunger:-8,hygiene:-6,energy:-12,xp:15},
+    treinar:{hunger:-10,hygiene:-4,energy:-15,xp:25,power:1},
+    aventura:{hunger:-15,hygiene:-10,energy:-20,xp:40,power:1}
+  }
+  const a=map[action]; if(!a) throw new Error('Ação de pet inválida.')
+  const xp=Number(pet.xp)+a.xp, level=1+Math.floor(xp/100)
+  const {rows}=await db.query(`UPDATE pets SET
+    hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
+    energy=LEAST(100,GREATEST(0,energy+$3)),xp=$4,level=$5,power=power+$6,last_action=$7
+    WHERE jid=$8 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,a.power||0,now,jid])
+  return rows[0]
+}
+export async function petLeaderboard(limit=10){
+  const {rows}=await db.query(`SELECT p.*,u.push_name FROM pets p JOIN users u ON u.jid=p.jid ORDER BY p.level DESC,p.power DESC,p.xp DESC LIMIT $1`,[Math.min(20,Math.max(1,Number(limit)||10))]); return rows
+}
+
+export async function proposeRelationship(fromJid,toJid){
+  if(fromJid===toJid) throw new Error('Você não pode casar consigo mesmo.')
+  await ensureUser(toJid)
+  const taken=await db.query('SELECT jid FROM relationships WHERE jid=ANY($1::text[])',[[fromJid,toJid]])
+  if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
+  await db.query(`INSERT INTO relationship_proposals(from_jid,to_jid) VALUES($1,$2)
+    ON CONFLICT(from_jid,to_jid) DO UPDATE SET created_at=${nowSql}`,[fromJid,toJid])
+}
+export async function acceptRelationship(toJid,fromJid){
+  await ensureUser(fromJid); await ensureUser(toJid)
+  return transaction(async client=>{
+    const p=await client.query('SELECT 1 FROM relationship_proposals WHERE from_jid=$1 AND to_jid=$2 FOR UPDATE',[fromJid,toJid])
+    if(!p.rowCount) throw new Error('Pedido de casamento não encontrado.')
+    const taken=await client.query('SELECT jid FROM relationships WHERE jid=ANY($1::text[])',[[fromJid,toJid]])
+    if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
+    await client.query('INSERT INTO relationships(jid,partner_jid) VALUES($1,$2),($2,$1)',[fromJid,toJid])
+    await client.query('DELETE FROM relationship_proposals WHERE from_jid=$1 AND to_jid=$2',[fromJid,toJid])
+    return true
+  })
+}
+export async function divorceRelationship(jid){
+  return transaction(async client=>{
+    const r=await client.query('SELECT partner_jid FROM relationships WHERE jid=$1 FOR UPDATE',[jid])
+    const partner=r.rows[0]?.partner_jid; if(!partner) throw new Error('Você não está casado(a).')
+    await client.query('DELETE FROM relationships WHERE jid=ANY($1::text[])',[[jid,partner]])
+    return partner
+  })
+}
+export async function getRelationship(jid){
+  const {rows}=await db.query(`SELECT r.*,u.push_name AS partner_name FROM relationships r LEFT JOIN users u ON u.jid=r.partner_jid WHERE r.jid=$1`,[jid]); return rows[0]||null
+}
+
+export async function createMarketListing(jid,itemId,qty,price){
+  qty=Number(qty); price=Number(price)
+  if(!Number.isInteger(qty)||qty<1||!Number.isSafeInteger(price)||price<1) throw new Error('Quantidade ou preço inválido.')
+  return transaction(async client=>{
+    const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+    if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
+    const stats=await client.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1',[jid])
+    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id].includes(itemId)?1:0
+    if(Number(inv.rows[0].quantity)-equipped<qty) throw new Error('Não é possível anunciar sua única cópia equipada.')
+    await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,jid,itemId])
+    const r=await client.query(`INSERT INTO market_listings(seller_jid,item_id,quantity,price) VALUES($1,$2,$3,$4) RETURNING *`,[jid,itemId,qty,price])
+    return r.rows[0]
+  })
+}
+export async function listMarket(limit=15){
+  const {rows}=await db.query(`SELECT m.*,i.name,u.push_name AS seller_name FROM market_listings m JOIN items i ON i.id=m.item_id LEFT JOIN users u ON u.jid=m.seller_jid WHERE m.status='active' ORDER BY m.created_at DESC LIMIT $1`,[Math.min(30,Math.max(1,Number(limit)||15))]); return rows
+}
+export async function buyMarketListing(buyerJid,id){
+  await ensureUser(buyerJid)
+  return transaction(async client=>{
+    const r=await client.query(`SELECT m.*,i.name FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
+    const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio não está mais disponível.')
+    if(x.seller_jid===buyerJid) throw new Error('Você não pode comprar seu próprio anúncio.')
+    const w=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[buyerJid])
+    const cash=Number(w.rows[0]?.cash||0),bank=Number(w.rows[0]?.bank||0),price=Number(x.price)
+    if(cash+bank<price) throw new Error('Saldo insuficiente.')
+    const fromCash=Math.min(cash,price),fromBank=price-fromCash
+    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fromBank,buyerJid])
+    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[price,x.seller_jid])
+    await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[buyerJid,x.item_id,x.quantity])
+    await client.query(`UPDATE market_listings SET status='sold',buyer_jid=$1,sold_at=${nowSql} WHERE id=$2`,[buyerJid,x.id])
+    return x
+  })
+}
+export async function cancelMarketListing(jid,id){
+  return transaction(async client=>{
+    const r=await client.query('SELECT * FROM market_listings WHERE id=$1 AND seller_jid=$2 FOR UPDATE',[Number(id),jid])
+    const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio ativo não encontrado.')
+    await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[jid,x.item_id,x.quantity])
+    await client.query(`UPDATE market_listings SET status='cancelled' WHERE id=$1`,[x.id]); return x
+  })
+}
