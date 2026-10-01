@@ -5254,9 +5254,9 @@ Para contratar direto, use *${prefix}assinar*.`
 `🍀 *STATUS DO GRUPO*
 
 Status: *${active?'ATIVO':'INATIVO'}*
-Plano: *${lic.plan}*
-Validade: *${fmtDate(lic.paid_until)}*
-${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':`💚 Plano atual: R$ ${Number(await getLaunchPrice()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias.`}`
+Plano: *${lic.plan==='permanent'?'Permanente':lic.plan}*
+Validade: *${lic.plan==='permanent'?'Sem expiração':fmtDate(lic.paid_until)}*
+${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':lic.plan==='permanent'?'♾️ Este grupo possui acesso vitalício.':`💚 Plano atual: R$ ${Number(await getLaunchPrice()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias.`}`
           )
 
         } else if(['assinar','plano','preco'].includes(cmd)){
@@ -5359,7 +5359,12 @@ Obrigado por apoiar o Alpha Bot 🍀`
         } else if(['ativargrupo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja ativar.')
-          const days=parseInt(args[0]||'30',10)
+          const mode=String(args[0]||'30').toLowerCase()
+          if(['permanente','vitalicio','vitalício','infinito'].includes(mode)){
+            const lic=await activateGroupLicense(chat,3650,sender,'permanent')
+            return await reply('👑 *GRUPO PERMANENTE ATIVADO!*\n♾️ Este grupo agora tem acesso vitalício ao Alpha Bot.\n📅 Validade: *Sem expiração*')
+          }
+          const days=parseInt(mode,10)
           const lic=await activateGroupLicense(chat,days,sender,'basic')
           await reply(`👑 Grupo ativado por *${days} dias*.\n📅 Validade: *${fmtDate(lic.paid_until)}*`)
 
