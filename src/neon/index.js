@@ -2751,7 +2751,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       if(input==='1'){
         const p=await getProfile(sender)
         clearQuickFlow(chat,sender)
-        await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
+        await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
         return true
       }
       if(input==='2'){
@@ -2889,7 +2889,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       if(input==='5'){
         const p=await getProfile(sender)
         amount=flow.stage==='deposit_amount'
-          ? Math.max(0,Math.min(Number(p.cash),Number(p.bank_limit)-Number(p.bank)))
+          ? Math.max(0,Number(p.cash))
           : Number(p.bank)
       }
       if(!amount || amount<1){
@@ -4798,7 +4798,7 @@ ${prefix}configgrupo — módulos do bot (admins do grupo)\n${prefix}banir @pess
 
         } else if(['saldo','balance','bal'].includes(cmd)){
           const p=await getProfile(sender)
-          await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)} / R$ ${fmt(p.bank_limit)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
+          await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
         } else if(['perfil','profile'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
