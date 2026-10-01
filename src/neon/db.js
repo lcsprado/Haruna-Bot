@@ -399,7 +399,9 @@ export async function getDailyStreak(jid) {
   const row=rows[0]||{}
   const streak=Number(row.streak||0)
   const bestStreak=Number(row.best_streak||0)
-  const lastClaimDay=row.last_claim_day ? String(row.last_claim_day).slice(0,10) : null
+  const lastClaimDay=row.last_claim_day instanceof Date
+    ? row.last_claim_day.toISOString().slice(0,10)
+    : (String(row.last_claim_day||'').match(/\\d{4}-\\d{2}-\\d{2}/)?.[0] || null)
   const today=String(row.today||'')
   return {
     streak,
@@ -435,7 +437,16 @@ export async function claimDaily(jid) {
       [jid]
     )
     const state=stateR.rows[0]
-    const lastDay=state.last_claim_day ? String(state.last_claim_day).slice(0,10) : null
+    // pg devolve DATE como Date em UTC em muitos ambientes. String(Date).slice(0,10)
+    // vira "Wed O..." e fazia a sequência reiniciar em 1 diariamente.
+    const dateKey=(value)=>{
+      if(!value) return null
+      if(value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0,10)
+      const raw=String(value)
+      const iso=raw.match(/\\d{4}-\\d{2}-\\d{2}/)
+      return iso ? iso[0] : null
+    }
+    const lastDay=dateKey(state.last_claim_day)
 
     if(lastDay===today){
       return {
