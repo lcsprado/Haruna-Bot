@@ -1710,6 +1710,7 @@ export async function listGroupLicenses(limit=50) {
 
 export function groupLicenseIsActive(license) {
   if(!license || license.status!=='active') return false
+  if(String(license.plan||'').toLowerCase()==='permanent') return true
   const now=Math.floor(Date.now()/1000)
   return Number(license.paid_until||0)>now
 }
