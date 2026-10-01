@@ -184,6 +184,44 @@ export async function acceptCoinDuel(chat,target){
   })
 }
 
+export async function createRpsDuel(chat,challenger,target,amount,choice){
+  amount=Number(amount); choice=String(choice||'').toLowerCase()
+  if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
+  if(!['pedra','papel','tesoura'].includes(choice)) throw new Error('Escolha pedra, papel ou tesoura.')
+  if(!target||target===challenger) throw new Error('Marque outra pessoa para desafiar.')
+  await ensureUser(challenger); await ensureUser(target)
+  return tx(async c=>{
+    const old=await loadGame(c,chat,'rps_duel:'+target)
+    if(old&&Number(old.expiresAt||0)>Date.now()) throw new Error('Essa pessoa já tem um desafio de PPT pendente.')
+    await debit(c,challenger,amount)
+    const state={challenger,target,amount,choice,expiresAt:Date.now()+120000}
+    await saveGame(c,chat,'rps_duel:'+target,state); return state
+  })
+}
+export async function acceptRpsDuel(chat,target,choice){
+  choice=String(choice||'').toLowerCase(); if(!['pedra','papel','tesoura'].includes(choice)) throw new Error('Use !aceitarppt pedra, papel ou tesoura.')
+  return tx(async c=>{
+    const type='rps_duel:'+target,s=await loadGame(c,chat,type); if(!s) throw new Error('Você não tem desafio de PPT pendente.')
+    if(Number(s.expiresAt||0)<Date.now()){await credit(c,s.challenger,Number(s.amount),'ppt-pvp-estorno');await clearGame(c,chat,type);throw new Error('O desafio expirou. A aposta foi devolvida.')}
+    await debit(c,target,Number(s.amount)); const a=s.choice,b=choice
+    let winner=null; if(a!==b) winner=((a==='pedra'&&b==='tesoura')||(a==='papel'&&b==='pedra')||(a==='tesoura'&&b==='papel'))?s.challenger:target
+    if(winner) await credit(c,winner,Number(s.amount)*2,'ppt-pvp'); else {await credit(c,s.challenger,Number(s.amount),'ppt-pvp-empate');await credit(c,target,Number(s.amount),'ppt-pvp-empate')}
+    await clearGame(c,chat,type); return {...s,targetChoice:b,winner,pot:Number(s.amount)*2}
+  })
+}
+
+export async function createTournament(chat,host,amount){
+  amount=Number(amount); if(!Number.isInteger(amount)||amount<0) throw new Error('Valor inválido.')
+  await ensureUser(host)
+  return tx(async c=>{const old=await loadGame(c,chat,'tournament');if(old&&Number(old.expiresAt||0)>Date.now())throw new Error('Já existe um torneio aberto neste grupo.');if(amount)await debit(c,host,amount);const st={host,amount,players:[host],started:false,expiresAt:Date.now()+5*60*1000};await saveGame(c,chat,'tournament',st);return st})
+}
+export async function joinTournament(chat,jid){
+  await ensureUser(jid); return tx(async c=>{const s=await loadGame(c,chat,'tournament');if(!s||s.started||Number(s.expiresAt||0)<Date.now())throw new Error('Não existe torneio aberto.');if(s.players.includes(jid))return s;if(s.amount)await debit(c,jid,Number(s.amount));s.players.push(jid);await saveGame(c,chat,'tournament',s);return s})
+}
+export async function startTournament(chat,jid){
+  return tx(async c=>{const s=await loadGame(c,chat,'tournament');if(!s)throw new Error('Não existe torneio aberto.');if(s.host!==jid)throw new Error('Só quem criou pode iniciar.');if(s.players.length<2)throw new Error('É preciso pelo menos 2 jogadores.');const shuffled=[...s.players].sort(()=>Math.random()-.5);const winner=shuffled[Math.floor(Math.random()*shuffled.length)],pot=Number(s.amount)*s.players.length;if(pot)await credit(c,winner,pot,'torneio');await clearGame(c,chat,'tournament');return {winner,pot,players:s.players}})
+}
+
 export function rps(choice){
   const valid=['pedra','papel','tesoura']
   choice=String(choice||'').toLowerCase()
