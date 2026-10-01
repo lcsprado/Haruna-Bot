@@ -3572,11 +3572,18 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
     }
 
     if(flow.stage==='battle_target'){
-      const target=mentionsOf(msg)[0]
-      if(!target){
+      const targetMention=mentionsOf(msg)[0]
+      if(!targetMention){
         await reply('⚔️ Marque uma pessoa usando @.')
         return true
       }
+      const targetIdentity=await resolvePlayerIdentity(sock,chat,targetMention,msg)
+      const target=targetIdentity.jid
+      if(!target?.endsWith('@s.whatsapp.net')){
+        await reply('⚠️ Não consegui identificar essa pessoa. Peça para ela enviar qualquer comando e tente novamente.')
+        return true
+      }
+      await consolidateUserIdentity(target,targetIdentity.aliases)
       const r=await battle(sender,target)
       if(!r.ok){
         clearQuickFlow(chat,sender)
@@ -3585,21 +3592,28 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
       }
       await progressDailyMission(sender,'battle')
       clearQuickFlow(chat,sender)
-      await reply(`⚔️ *BATALHA ENCERRADA!*\n🏆 Vencedor: *${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}`,{mentions:[target]})
+      await reply(`⚔️ *BATALHA ENCERRADA!*\n🏆 Vencedor: *${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}`,{mentions:[targetMention]})
       return true
     }
 
     if(flow.stage==='rob_target'){
-      const target=mentionsOf(msg)[0]
-      if(!target){
+      const targetMention=mentionsOf(msg)[0]
+      if(!targetMention){
         await reply('🥷 Marque uma pessoa usando @.')
         return true
       }
+      const targetIdentity=await resolvePlayerIdentity(sock,chat,targetMention,msg)
+      const target=targetIdentity.jid
+      if(!target?.endsWith('@s.whatsapp.net')){
+        await reply('⚠️ Não consegui identificar essa pessoa. Peça para ela enviar qualquer comando e tente novamente.')
+        return true
+      }
+      await consolidateUserIdentity(target,targetIdentity.aliases)
       const r=await robPlayer(sender,target)
       clearQuickFlow(chat,sender)
       if(!r.ok) await reply(`⏳ Tente roubar novamente em ${duration(r.remaining)}.`)
-      else if(r.success) await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.`,{mentions:[target]})
-      else await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:[target]})
+      else if(r.success) await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.`,{mentions:[targetMention]})
+      else await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:[targetMention]})
       return true
     }
 
@@ -4611,7 +4625,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             `${tag} tem opinião premium com argumento versão grátis. 💀`
           ]
           const text=fixed[cmd] || memes[Math.floor(Math.random()*memes.length)]
-          await reply(text,{mentions:[target]})
+          await reply(text,{mentions:[targetMention]})
 
         } else if(['configgrupo','configuragrupo'].includes(cmd)){
           if(!isGroup) return await reply('⚙️ Use este comando dentro do grupo que deseja configurar.')
@@ -5030,11 +5044,17 @@ ${status}
           )
 
         } else if(['batalhar','batalha','battle','duelo'].includes(cmd)){
-          const target=mentionsOf(msg)[0]
-          if(!target){
+          const targetMention=mentionsOf(msg)[0]
+          if(!targetMention){
             setQuickFlow(chat,sender,'battle_target',{},90000)
             return await reply('⚔️ Marque agora a pessoa que você quer desafiar.')
           }
+          const targetIdentity=await resolvePlayerIdentity(sock,chat,targetMention,msg)
+          const target=targetIdentity.jid
+          if(!target?.endsWith('@s.whatsapp.net')){
+            return await reply('⚠️ Não consegui identificar essa pessoa. Peça para ela enviar qualquer comando e tente novamente.')
+          }
+          await consolidateUserIdentity(target,targetIdentity.aliases)
           const r=await battle(sender,target)
           if(!r.ok) return await reply(`⏳ Você poderá batalhar novamente em ${duration(r.remaining)}.`)
 
@@ -5475,12 +5495,18 @@ _Os comandos antigos continuam funcionando normalmente._`
           }
 
         } else if(['roubar','roubo','fazol'].includes(cmd)){
-          const target=mentionsOf(msg)[0]
-          if(!target) return await reply(`Uso no grupo: *${prefix}roubar @pessoa* ou *${prefix}fazoL @pessoa*`)
+          const targetMention=mentionsOf(msg)[0]
+          if(!targetMention) return await reply(`Uso no grupo: *${prefix}roubar @pessoa* ou *${prefix}fazoL @pessoa*`)
+          const targetIdentity=await resolvePlayerIdentity(sock,chat,targetMention,msg)
+          const target=targetIdentity.jid
+          if(!target?.endsWith('@s.whatsapp.net')){
+            return await reply('⚠️ Não consegui identificar essa pessoa. Peça para ela enviar qualquer comando e tente novamente.')
+          }
+          await consolidateUserIdentity(target,targetIdentity.aliases)
           let r
           try{ r=await robPlayer(sender,target) }
           catch(err){
-            if(cmd==='fazol' && String(err?.message||'').includes('praticamente sem dinheiro')) return await reply('🍺 *É SÓ PRA TOMAR UMA CERVEJINHA!* 😂\n\nSó que essa pessoa tá tão quebrada que não paga nem a gelada. Escolhe outra vítima! 🍻',{mentions:[target]})
+            if(cmd==='fazol' && String(err?.message||'').includes('praticamente sem dinheiro')) return await reply('🍺 *É SÓ PRA TOMAR UMA CERVEJINHA!* 😂\n\nSó que essa pessoa tá tão quebrada que não paga nem a gelada. Escolhe outra vítima! 🍻',{mentions:[targetMention]})
             throw err
           }
           if(!r.ok) return await reply(cmd==='fazol'?`🍺 A cervejinha vai ter que esperar... tente novamente em ${duration(r.remaining)}.`:`⏳ Você poderá tentar outro roubo em ${duration(r.remaining)}.`)
@@ -5488,12 +5514,12 @@ _Os comandos antigos continuam funcionando normalmente._`
             const successText=cmd==='fazol'
               ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!*\n\n💰 Você roubou *R$ ${fmt(r.amount)}*.\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
               : `🕵️ *ROUBO BEM-SUCEDIDO!*\n💰 Você roubou *R$ ${fmt(r.amount)}*.`
-            await reply(successText,{mentions:[target]})
+            await reply(successText,{mentions:[targetMention]})
           } else {
             const failText=cmd==='fazol'
               ? `🚓 *A CERVEJINHA DEU RUIM!* 😂\n💸 Multa: R$ ${fmt(r.fine)}\nDessa vez não deu pra tomar a gelada.`
               : `🚓 *VOCÊ FOI PEGO!*\n💸 Multa: R$ ${fmt(r.fine)}\nTente novamente mais tarde.`
-            await reply(failText,{mentions:[target]})
+            await reply(failText,{mentions:[targetMention]})
           }
 
         } else if(['snipe','apagada','apagou'].includes(cmd)){
