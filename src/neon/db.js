@@ -2567,13 +2567,29 @@ export async function clearGroupWarnings(chatJid,jid){
 
 export async function adoptPet(jid,species='cachorro',name='Alpha'){
   await ensureUser(jid)
-  const valid=new Set(['cachorro','gato','raposa','dragao','dragão'])
-  species=String(species||'cachorro').toLowerCase()
-  if(!valid.has(species)) throw new Error('Escolha: cachorro, gato, raposa ou dragão.')
-  const {rows}=await db.query(`INSERT INTO pets(jid,species,name) VALUES($1,$2,$3)
-    ON CONFLICT(jid) DO NOTHING RETURNING *`,[jid,species,String(name||'Alpha').slice(0,24)])
-  if(!rows[0]) throw new Error('Você já possui um pet.')
-  return rows[0]
+  species=String(species||'cachorro').toLowerCase().replace('dragão','dragao')
+  const rules={
+    cachorro:{level:1,price:0,label:'🐶 Cachorro'},
+    gato:{level:3,price:5000,label:'🐱 Gato'},
+    raposa:{level:7,price:25000,label:'🦊 Raposa'},
+    dragao:{level:15,price:100000,label:'🐉 Dragão'}
+  }
+  const rule=rules[species]; if(!rule) throw new Error('Escolha: cachorro, gato, raposa ou dragão.')
+  return transaction(async client=>{
+    const ur=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid]); const level=Number(ur.rows[0]?.level||1)
+    if(level<rule.level) throw new Error(`${rule.label} exige nível ${rule.level}. Seu nível atual: ${level}.`)
+    const old=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const fee=old?rule.price:Math.floor(rule.price/2)
+    if(fee>0){
+      const wr=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0],cash=Number(wr?.cash||0),bank=Number(wr?.bank||0)
+      if(cash+bank<fee) throw new Error(`Você precisa de R$ ${fee.toLocaleString('pt-BR')} para ${old?'trocar':'adotar'} esse pet.`)
+      const fromCash=Math.min(cash,fee); await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
+    }
+    const petName=String(name||'Alpha').slice(0,24)
+    const {rows}=await client.query(`INSERT INTO pets(jid,species,name) VALUES($1,$2,$3)
+      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=5,hunger=100,hygiene=100,energy=100,wins=0,losses=0,last_action=0 RETURNING *`,[jid,species,petName])
+    return {...rows[0],fee,replaced:Boolean(old)}
+  })
 }
 export async function getPet(jid){
   const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid]); return rows[0]||null
