@@ -4138,6 +4138,29 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     }
   })
 
+  sock.ev.on('group-participants.update',async(event)=>{
+    try{
+      const chat=event?.id
+      if(!chat?.endsWith('@g.us')) return
+      const st=await getCommunitySettings(chat)
+      if(!st?.welcome_enabled) return
+      const people=event?.participants||[]
+      if(event.action==='add'){
+        const meta=await sock.groupMetadata(chat).catch(()=>null)
+        for(const jid of people){
+          const tag='@'+String(jid).split('@')[0].split(':')[0]
+          const rules=String(st.rules_text||'').trim()
+          await sock.sendMessage(chat,{text:`👋 *BEM-VINDO(A) AO GRUPO!*\n\n${tag}, seja bem-vindo(a) ao *${meta?.subject||'grupo'}*! 🎉${rules?'\n\n📜 *REGRAS*\n'+rules:''}\n\n🍀 Digite *!comandos* para conhecer o Alpha Bot.`,mentions:[jid]})
+        }
+      }else if(event.action==='remove'){
+        for(const jid of people){
+          const tag='@'+String(jid).split('@')[0].split(':')[0]
+          await sock.sendMessage(chat,{text:`👋 ${tag} saiu do grupo. Até a próxima!`,mentions:[jid]}).catch(()=>{})
+        }
+      }
+    }catch(err){ console.error('[boas-vindas]',err?.message||err) }
+  })
+
   sock.ev.on('messages.delete',async(event)=>{
     for(const key of event?.keys||[]) await rememberDeletedMessage(key,'messages.delete')
   })
