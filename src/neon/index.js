@@ -239,14 +239,14 @@ async function showCommandsMainMenu(chat,sender,reply){
 
 Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
 
-1️⃣ 👤 Perfil & conta
+1️⃣ 👤 Perfil, conta, casamento & social
 2️⃣ 💰 Economia & diversão
-3️⃣ 🛒 Loja & inventário
-4️⃣ ⚔️ RPG & combate
+3️⃣ 🛒 Loja, inventário & mercado
+4️⃣ 🐾 RPG, combate & PETS
 5️⃣ 🎮 Minigames
 6️⃣ 📋 Progressão & patrimônio
 7️⃣ 🏴 Clãs
-8️⃣ 💚 Grupo & assinatura
+8️⃣ 🛡️ Grupo & moderação
 9️⃣ ⚽ Futebol, utilidades & suporte
 
 👉 Responda só com o número.
@@ -1132,14 +1132,14 @@ Você possui: *${stock}*
 
 Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
 
-1️⃣ 👤 Perfil & conta
+1️⃣ 👤 Perfil, conta, casamento & social
 2️⃣ 💰 Economia & diversão
-3️⃣ 🛒 Loja & inventário
-4️⃣ ⚔️ RPG & combate
+3️⃣ 🛒 Loja, inventário & mercado
+4️⃣ 🐾 RPG, combate & PETS
 5️⃣ 🎮 Minigames
 6️⃣ 📋 Progressão & patrimônio
 7️⃣ 🏴 Clãs
-8️⃣ 💚 Grupo & assinatura
+8️⃣ 🛡️ Grupo & moderação
 9️⃣ ⚽ Futebol, utilidades & suporte
 
 👉 Responda só com o número.
