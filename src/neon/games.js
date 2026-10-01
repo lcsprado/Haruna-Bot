@@ -290,14 +290,66 @@ export async function hangmanWord(chat,guess){
 }
 
 const QUIZZES=[
-  {q:'Qual planeta é conhecido como Planeta Vermelho?',a:['Vênus','Marte','Júpiter','Saturno'],c:2},
-  {q:'Quanto é 7 × 8?',a:['54','56','58','64'],c:2},
-  {q:'Qual é a capital do Japão?',a:['Seul','Pequim','Tóquio','Osaka'],c:3},
-  {q:'Qual animal é o maior mamífero do mundo?',a:['Elefante africano','Baleia-azul','Girafa','Hipopótamo'],c:2},
-  {q:'Em qual continente fica o Egito?',a:['África','Ásia','Europa','América'],c:1},
-  {q:'Qual gás as plantas absorvem principalmente na fotossíntese?',a:['Oxigênio','Nitrogênio','Dióxido de carbono','Hidrogênio'],c:3},
-  {q:'Quantos lados tem um hexágono?',a:['5','6','7','8'],c:2},
-  {q:'Qual oceano é o maior?',a:['Atlântico','Índico','Ártico','Pacífico'],c:4}
+  {q:"Qual é o maior planeta do Sistema Solar?",a:["Terra","Saturno","Júpiter","Netuno"],c:3},
+  {q:"Qual oceano é o maior do planeta?",a:["Atlântico","Índico","Pacífico","Ártico"],c:3},
+  {q:"Qual é a capital da Argentina?",a:["Santiago","Buenos Aires","Montevidéu","Lima"],c:2},
+  {q:"Quantos lados tem um octógono?",a:["6","7","8","9"],c:3},
+  {q:"Quanto é 12 × 9?",a:["96","108","118","128"],c:2},
+  {q:"Qual elemento químico tem símbolo O?",a:["Ouro","Oxigênio","Ósmio","Prata"],c:2},
+  {q:"Quem pintou a Mona Lisa?",a:["Michelangelo","Leonardo da Vinci","Van Gogh","Picasso"],c:2},
+  {q:"Em que país ficam as pirâmides de Gizé?",a:["México","Egito","Peru","Índia"],c:2},
+  {q:"Qual é o maior animal terrestre?",a:["Rinoceronte","Elefante-africano","Hipopótamo","Girafa"],c:2},
+  {q:"Qual planeta possui os anéis mais visíveis?",a:["Marte","Saturno","Mercúrio","Vênus"],c:2},
+  {q:"Quantos minutos há em 3 horas?",a:["120","150","180","210"],c:3},
+  {q:"Qual é a capital da França?",a:["Roma","Madri","Paris","Lisboa"],c:3},
+  {q:"Qual órgão bombeia sangue pelo corpo?",a:["Pulmão","Fígado","Coração","Rim"],c:3},
+  {q:"Qual é o idioma oficial do Brasil?",a:["Espanhol","Português","Inglês","Francês"],c:2},
+  {q:"Quanto é 144 ÷ 12?",a:["10","11","12","14"],c:3},
+  {q:"Qual destes é um mamífero?",a:["Tubarão","Golfinho","Polvo","Pinguim"],c:2},
+  {q:"Qual país sediou a Copa do Mundo de 2014?",a:["Brasil","Alemanha","Rússia","África do Sul"],c:1},
+  {q:"Qual é a moeda oficial do Japão?",a:["Won","Yuan","Iene","Dólar"],c:3},
+  {q:"Quantos estados tem o Brasil?",a:["25","26","27","28"],c:2},
+  {q:"Qual é a capital do estado de São Paulo?",a:["Campinas","Santos","São Paulo","Sorocaba"],c:3},
+  {q:"Que gás é mais abundante na atmosfera terrestre?",a:["Oxigênio","Nitrogênio","Hélio","Hidrogênio"],c:2},
+  {q:"Qual é o maior órgão do corpo humano?",a:["Fígado","Cérebro","Pele","Pulmão"],c:3},
+  {q:"Qual metal é líquido próximo da temperatura ambiente?",a:["Ferro","Mercúrio","Alumínio","Cobre"],c:2},
+  {q:"Qual é a raiz quadrada de 81?",a:["7","8","9","10"],c:3},
+  {q:"Qual país tem formato frequentemente comparado a uma bota?",a:["Portugal","Itália","Grécia","Croácia"],c:2},
+  {q:"Quem escreveu Dom Casmurro?",a:["Machado de Assis","José de Alencar","Carlos Drummond","Jorge Amado"],c:1},
+  {q:"Qual é o satélite natural da Terra?",a:["Sol","Lua","Marte","Vênus"],c:2},
+  {q:"Qual instrumento mede a temperatura?",a:["Barômetro","Termômetro","Higrômetro","Altímetro"],c:2},
+  {q:"Quantos segundos há em 5 minutos?",a:["250","300","350","500"],c:2},
+  {q:"Qual é a capital de Minas Gerais?",a:["Uberlândia","Ouro Preto","Belo Horizonte","Juiz de Fora"],c:3},
+  {q:"Qual destes animais é uma ave?",a:["Morcego","Avestruz","Baleia","Ornitorrinco"],c:2},
+  {q:"Em qual esporte se usa uma cesta e uma bola?",a:["Vôlei","Basquete","Tênis","Golfe"],c:2},
+  {q:"Qual é o resultado de 15 + 27?",a:["40","41","42","43"],c:3},
+  {q:"Qual camada protege a Terra de grande parte da radiação ultravioleta?",a:["Camada de ozônio","Núcleo","Manto","Troposfera"],c:1},
+  {q:"Qual é a capital do Canadá?",a:["Toronto","Vancouver","Ottawa","Montreal"],c:3},
+  {q:"Qual continente contém o Brasil?",a:["América do Sul","Europa","Ásia","África"],c:1},
+  {q:"Qual é o processo pelo qual plantas produzem alimento usando luz?",a:["Respiração","Fotossíntese","Fermentação","Digestão"],c:2},
+  {q:"Qual é o número primo entre estes?",a:["21","27","29","33"],c:3},
+  {q:"Qual país é conhecido pela Torre Eiffel?",a:["Itália","França","Bélgica","Suíça"],c:2},
+  {q:"Quantos dias tem um ano comum?",a:["360","364","365","366"],c:3},
+  {q:"Qual é a capital da Bahia?",a:["Salvador","Recife","Fortaleza","Maceió"],c:1},
+  {q:"Qual destes é um réptil?",a:["Sapo","Cobra","Atum","Águia"],c:2},
+  {q:"Quanto é 25% de 200?",a:["25","40","50","75"],c:3},
+  {q:"Qual cientista é associado às leis do movimento e gravitação clássica?",a:["Newton","Darwin","Pasteur","Mendel"],c:1},
+  {q:"Qual é a capital da Alemanha?",a:["Munique","Berlim","Hamburgo","Frankfurt"],c:2},
+  {q:"Qual planeta é o mais próximo do Sol?",a:["Vênus","Terra","Mercúrio","Marte"],c:3},
+  {q:"Qual é o plural de 'cidadão' mais comum no português padrão?",a:["cidadões","cidadãos","cidadães","cidadans"],c:2},
+  {q:"Qual destes números é par?",a:["37","51","64","79"],c:3},
+  {q:"Em qual continente fica a Austrália?",a:["Oceania","Ásia","Europa","América"],c:1},
+  {q:"Qual é a fórmula química da água?",a:["CO2","O2","H2O","NaCl"],c:3},
+  {q:"Qual é a capital de Pernambuco?",a:["Natal","Recife","João Pessoa","Aracaju"],c:2},
+  {q:"Quantos meses têm 31 dias?",a:["5","6","7","8"],c:3},
+  {q:"Qual é o maior osso do corpo humano?",a:["Fêmur","Tíbia","Úmero","Rádio"],c:1},
+  {q:"Qual país é famoso pelas ruínas de Machu Picchu?",a:["Chile","Bolívia","Peru","Equador"],c:3},
+  {q:"Quanto é 11²?",a:["111","121","131","141"],c:2},
+  {q:"Qual é a capital da Itália?",a:["Milão","Roma","Nápoles","Turim"],c:2},
+  {q:"Qual animal passa por metamorfose de lagarta para adulto?",a:["Abelha","Borboleta","Aranha","Minhoca"],c:2},
+  {q:"Qual é a unidade básica de informação digital?",a:["Byte","Bit","Pixel","Hertz"],c:2},
+  {q:"Qual é a capital do Ceará?",a:["Fortaleza","Teresina","Natal","Belém"],c:1},
+  {q:"Qual destes é um planeta anão?",a:["Plutão","Europa","Titã","Lua"],c:1}
 ]
 
 export async function startQuiz(chat){
@@ -309,8 +361,10 @@ export async function startQuiz(chat){
       return {already:true,...current,remaining:Math.ceil((ttl-(now-Number(current.started||0)))/1000)}
     }
     if(current) await clearGame(c,chat,'quiz')
-    const item=QUIZZES[Math.floor(Math.random()*QUIZZES.length)]
-    const state={...item,started:now}
+    const recent=Array.isArray(current?.recentQuestions)?current.recentQuestions:[]
+    const pool=QUIZZES.filter(x=>!recent.includes(x.q))
+    const item=(pool.length?pool:QUIZZES)[Math.floor(Math.random()*(pool.length?pool.length:QUIZZES.length))]
+    const state={...item,started:now,recentQuestions:[...recent,item.q].slice(-15)}
     await saveGame(c,chat,'quiz',state)
     return state
   })
