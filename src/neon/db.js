@@ -317,6 +317,160 @@ export async function ensureUser(jid, pushName='') {
   await db.query('INSERT INTO stats (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
 }
 
+// WhatsApp can identify the same person as a phone JID, a device JID or a LID.
+// Consolidate an old alias as soon as Baileys gives us the stable phone JID so
+// profile cards and rankings never read split/outdated player records.
+export async function consolidateUserIdentity(targetJid, aliases=[], pushName='') {
+  if(!targetJid?.endsWith('@s.whatsapp.net')) return false
+  const targetDigits=targetJid.split('@')[0].replace(/:\d+$/,'')
+  const sources=[...new Set((aliases||[]).filter(Boolean))].filter(alias=>{
+    if(alias===targetJid) return false
+    if(alias.endsWith('@lid')) return true
+    if(alias.endsWith('@s.whatsapp.net')){
+      return alias.split('@')[0].replace(/:\d+$/,'')===targetDigits
+    }
+    return false
+  })
+  if(!sources.length) return false
+
+  return transaction(async client=>{
+    await client.query(`
+      INSERT INTO users(jid,pn,push_name)
+      VALUES($1,$1,$2)
+      ON CONFLICT(jid) DO UPDATE SET
+        pn=COALESCE(users.pn,EXCLUDED.pn),
+        push_name=CASE WHEN EXCLUDED.push_name<>'' THEN EXCLUDED.push_name ELSE users.push_name END,
+        updated_at=${nowSql}
+    `,[targetJid,pushName])
+    await client.query('INSERT INTO wallets(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING',[targetJid])
+    await client.query('INSERT INTO stats(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING',[targetJid])
+
+    let changed=false
+    for(const sourceJid of sources){
+      const sourceR=await client.query('SELECT * FROM users WHERE jid=$1 FOR UPDATE',[sourceJid])
+      if(!sourceR.rows[0]) continue
+      changed=true
+      const source=sourceR.rows[0]
+
+      await client.query(`
+        UPDATE users SET
+          push_name=COALESCE(NULLIF($2,''),NULLIF(push_name,''),$3),
+          level=GREATEST(level,$4),
+          exp=CASE WHEN $4>level THEN $5 ELSE GREATEST(exp,$5) END,
+          premium=premium OR $6,
+          premium_exp=GREATEST(premium_exp,$7),
+          banned=banned OR $8,
+          created_at=LEAST(created_at,$9),
+          pn=$1,
+          updated_at=${nowSql}
+        WHERE jid=$1
+      `,[targetJid,pushName,source.push_name,Number(source.level||1),Number(source.exp||0),Boolean(source.premium),Number(source.premium_exp||0),Boolean(source.banned),Number(source.created_at||Math.floor(Date.now()/1000))])
+
+      await client.query(`
+        UPDATE wallets t SET
+          cash=t.cash+COALESCE(s.cash,0),
+          bank=t.bank+COALESCE(s.bank,0),
+          bank_limit=GREATEST(t.bank_limit,COALESCE(s.bank_limit,0)),
+          updated_at=${nowSql}
+        FROM wallets s WHERE t.jid=$1 AND s.jid=$2
+      `,[targetJid,sourceJid])
+
+      await client.query(`
+        UPDATE stats t SET
+          hp=GREATEST(t.hp,COALESCE(s.hp,0)),
+          max_hp=GREATEST(t.max_hp,COALESCE(s.max_hp,0)),
+          atk=GREATEST(t.atk,COALESCE(s.atk,0)),
+          def=GREATEST(t.def,COALESCE(s.def,0)),
+          spd=GREATEST(t.spd,COALESCE(s.spd,0)),
+          weapon_id=COALESCE(t.weapon_id,s.weapon_id),
+          armor_id=COALESCE(t.armor_id,s.armor_id),
+          win=t.win+COALESCE(s.win,0),
+          loss=t.loss+COALESCE(s.loss,0),
+          updated_at=${nowSql}
+        FROM stats s WHERE t.jid=$1 AND s.jid=$2
+      `,[targetJid,sourceJid])
+
+      await client.query(`
+        INSERT INTO inventories(jid,item_id,quantity,data,created_at)
+        SELECT $1,item_id,quantity,data,created_at FROM inventories WHERE jid=$2
+        ON CONFLICT(jid,item_id) DO UPDATE
+        SET quantity=inventories.quantity+EXCLUDED.quantity
+      `,[targetJid,sourceJid])
+
+      await client.query(`
+        INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day,updated_at)
+        SELECT $1,streak,best_streak,last_claim_day,${nowSql} FROM daily_streaks WHERE jid=$2
+        ON CONFLICT(jid) DO UPDATE SET
+          streak=GREATEST(daily_streaks.streak,EXCLUDED.streak),
+          best_streak=GREATEST(daily_streaks.best_streak,EXCLUDED.best_streak),
+          last_claim_day=GREATEST(daily_streaks.last_claim_day,EXCLUDED.last_claim_day),
+          updated_at=${nowSql}
+      `,[targetJid,sourceJid])
+
+      await client.query(`
+        INSERT INTO profile_avatars(jid,image_data,mime_type,updated_at)
+        SELECT $1,image_data,mime_type,updated_at FROM profile_avatars WHERE jid=$2
+        ON CONFLICT(jid) DO NOTHING
+      `,[targetJid,sourceJid])
+
+      // Progression tables are initialized before messages start arriving.
+      await client.query(`
+        INSERT INTO daily_missions(jid,day_key,mission_type,title,target,reward_cash,reward_box,progress,claimed,created_at)
+        SELECT $1,day_key,mission_type,title,target,reward_cash,reward_box,progress,claimed,created_at
+        FROM daily_missions WHERE jid=$2
+        ON CONFLICT(jid,day_key,mission_type) DO UPDATE SET
+          progress=GREATEST(daily_missions.progress,EXCLUDED.progress),
+          claimed=daily_missions.claimed OR EXCLUDED.claimed
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO user_cars(jid,car_id,price_paid,acquired_at)
+        SELECT $1,car_id,price_paid,acquired_at FROM user_cars WHERE jid=$2
+        ON CONFLICT(jid,car_id) DO NOTHING
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO user_homes(jid,house_id,price_paid,acquired_at)
+        SELECT $1,house_id,price_paid,acquired_at FROM user_homes WHERE jid=$2
+        ON CONFLICT(jid) DO UPDATE SET
+          house_id=CASE WHEN EXCLUDED.price_paid>user_homes.price_paid THEN EXCLUDED.house_id ELSE user_homes.house_id END,
+          price_paid=GREATEST(user_homes.price_paid,EXCLUDED.price_paid),
+          acquired_at=LEAST(user_homes.acquired_at,EXCLUDED.acquired_at)
+      `,[targetJid,sourceJid])
+      await client.query(`UPDATE clans SET owner_jid=$1 WHERE owner_jid=$2`,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO clan_members(jid,clan_id,role,joined_at)
+        SELECT $1,clan_id,role,joined_at FROM clan_members WHERE jid=$2
+        ON CONFLICT(jid) DO NOTHING
+      `,[targetJid,sourceJid])
+
+      const cooldowns=await client.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1',[`%${sourceJid}%`])
+      for(const row of cooldowns.rows){
+        const nextKey=String(row.key).replaceAll(sourceJid,targetJid)
+        await client.query(`
+          INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+          ON CONFLICT(key) DO UPDATE SET expires_at=GREATEST(cooldowns.expires_at,EXCLUDED.expires_at)
+        `,[nextKey,row.expires_at])
+      }
+
+      await client.query('UPDATE transactions SET from_jid=$1 WHERE from_jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE transactions SET to_jid=$1 WHERE to_jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE subscription_orders SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE support_tickets SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE snipe_messages SET sender_jid=$1 WHERE sender_jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE clan_invites SET inviter_jid=$1 WHERE inviter_jid=$2',[targetJid,sourceJid])
+
+      await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%${sourceJid}%`])
+      await client.query('DELETE FROM daily_missions WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM clan_members WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM clan_invites WHERE invitee_jid=$1',[sourceJid])
+      await client.query('DELETE FROM user_homes WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM user_cars WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM quick_flows WHERE sender_jid=$1',[sourceJid])
+      await client.query('DELETE FROM users WHERE jid=$1',[sourceJid])
+    }
+    return changed
+  })
+}
+
 export async function getProfile(jid) {
   const { rows } = await db.query(`
     SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
@@ -982,16 +1136,29 @@ export async function getPlayerRanks(jid) {
   const {rows}=await db.query(`
     SELECT
       1+(SELECT COUNT(*) FROM users x JOIN wallets wx ON wx.jid=x.jid
-         WHERE x.jid NOT LIKE '%@local' AND
+         WHERE x.jid NOT LIKE '%@local'
+           AND x.jid NOT LIKE '%@lid'
+           AND x.jid NOT LIKE '%:%@s.whatsapp.net'
+           AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
+           AND LOWER(BTRIM(x.push_name))<>'jogador' AND
          ((wx.cash+wx.bank)>(w.cash+w.bank) OR
           ((wx.cash+wx.bank)=(w.cash+w.bank) AND x.level>u.level) OR
           ((wx.cash+wx.bank)=(w.cash+w.bank) AND x.level=u.level AND x.created_at<u.created_at))) AS economy_rank,
       1+(SELECT COUNT(*) FROM users x JOIN stats sx ON sx.jid=x.jid
-         WHERE x.jid NOT LIKE '%@local' AND
+         WHERE x.jid NOT LIKE '%@local'
+           AND x.jid NOT LIKE '%@lid'
+           AND x.jid NOT LIKE '%:%@s.whatsapp.net'
+           AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
+           AND LOWER(BTRIM(x.push_name))<>'jogador' AND
          ((sx.win*3-sx.loss)>(s.win*3-s.loss) OR
           ((sx.win*3-sx.loss)=(s.win*3-s.loss) AND sx.win>s.win) OR
           ((sx.win*3-sx.loss)=(s.win*3-s.loss) AND sx.win=s.win AND x.level>u.level))) AS combat_rank,
-      (SELECT COUNT(*) FROM users x WHERE x.jid NOT LIKE '%@local') AS players
+      (SELECT COUNT(*) FROM users x
+       WHERE x.jid NOT LIKE '%@local'
+         AND x.jid NOT LIKE '%@lid'
+         AND x.jid NOT LIKE '%:%@s.whatsapp.net'
+         AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
+         AND LOWER(BTRIM(x.push_name))<>'jogador') AS players
     FROM users u JOIN wallets w ON w.jid=u.jid JOIN stats s ON s.jid=u.jid
     WHERE u.jid=$1
   `,[jid])
@@ -999,7 +1166,8 @@ export async function getPlayerRanks(jid) {
   return {economyRank:Number(r.economy_rank||0),combatRank:Number(r.combat_rank||0),players:Number(r.players||0)}
 }
 
-export async function leaderboard(limit=10) {
+export async function leaderboard(limit=10, participantJids=[]) {
+  const participants=[...new Set((participantJids||[]).filter(Boolean))]
   const { rows } = await db.query(`
     SELECT u.jid,u.push_name,u.level,
            COALESCE(w.cash,0)::bigint AS cash,
@@ -1012,9 +1180,10 @@ export async function leaderboard(limit=10) {
       AND u.jid NOT LIKE '%:%@s.whatsapp.net'
       AND COALESCE(NULLIF(BTRIM(u.push_name),''),'') <> ''
       AND LOWER(BTRIM(u.push_name)) <> 'jogador'
+      AND (CARDINALITY($2::text[])=0 OR u.jid=ANY($2::text[]))
     ORDER BY total DESC,u.level DESC,u.created_at ASC
     LIMIT $1
-  `,[limit])
+  `,[limit,participants])
   return rows
 }
 
@@ -1669,6 +1838,16 @@ export async function ensureGroupTrial(chatJid) {
 }
 
 export async function activateGroupLicense(chatJid,days=30,activatedBy='owner',plan='basic') {
+  if(String(plan).toLowerCase()==='permanent'){
+    await db.query(`
+      INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
+      VALUES($1,'active','permanent',NULL,NULL,$2,${nowSql})
+      ON CONFLICT(chat_jid)
+      DO UPDATE SET status='active',plan='permanent',trial_started_at=NULL,paid_until=NULL,
+                    activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
+    `,[chatJid,activatedBy])
+    return getGroupLicense(chatJid)
+  }
   days=Number(days)
   if(!Number.isInteger(days)||days<1||days>3650) throw new Error('Dias inválidos.')
   const now=Math.floor(Date.now()/1000)

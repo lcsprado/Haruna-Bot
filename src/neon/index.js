@@ -9,7 +9,7 @@ import makeWASocket, {
 } from 'baileys'
 import pino from 'pino'
 import {
-  initDatabase, ensureUser, getProfile, getDailyStreak, claimDaily, work,
+  initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
   equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
@@ -338,6 +338,15 @@ function fmtDate(epoch){
     day:'2-digit',month:'2-digit',year:'numeric',
     hour:'2-digit',minute:'2-digit'
   })
+}
+function groupLicenseStatusText(license,title='🍀 *STATUS DO GRUPO*'){
+  if(!license){
+    return `${title}\n\nStatus: *AINDA NÃO INICIADO*\nPlano: *Teste grátis*\nValidade: *3 dias após o primeiro comando*`
+  }
+  const permanent=String(license.plan||'').toLowerCase()==='permanent'
+  const plan=permanent?'Permanente':String(license.plan||'—')
+  const validity=permanent?'Sem expiração':fmtDate(license.paid_until)
+  return `${title}\n\nStatus: *${groupLicenseIsActive(license)?'ATIVO ✅':'INATIVO ❌'}*\nPlano: *${plan}*\nValidade: *${validity}*${permanent?'\n♾️ Acesso vitalício ativo.':''}`
 }
 function duration(sec){
   const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60)
@@ -670,6 +679,25 @@ async function start() {
     return settings?.[key]!==false
   }
 
+  async function currentGroupPlayerJids(chatJid){
+    if(!chatJid?.endsWith('@g.us')) return []
+    try{
+      const meta=await sock.groupMetadata(chatJid)
+      const resolved=await Promise.all((meta?.participants||[]).map(async participant=>{
+        const candidates=[participant?.phoneNumber,participant?.pn,participant?.id,participant?.jid,participant?.lid].filter(Boolean)
+        for(const candidate of candidates){
+          const jid=await resolvePlayerJid(sock,chatJid,candidate)
+          if(jid?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(jid)
+        }
+        return null
+      }))
+      return [...new Set(resolved.filter(Boolean))]
+    }catch(err){
+      console.error('[ranking] falha ao listar participantes',err?.message||err)
+      return []
+    }
+  }
+
   async function showShopCategoryMenu(chat,sender,reply){
     setQuickFlow(chat,sender,'shop_category',{},90000)
     await reply(
@@ -770,7 +798,7 @@ Você possui: *${stock}*
     text+='\n👉 Um item: mande só o número.\n📦 Vários itens: mande os números separados por vírgula. Ex.: *1,3,5*\n_No lote, o Alpha Bot vende as cópias repetidas e mantém 1 de cada. Lendários ficam de fora._\n\n⚠️ Equipamento ativo mantém 1 cópia protegida.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
   }
-  async function handleQuickGameFlow({chat,sender,body,reply,msg}){
+  async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false}){
     let flow=getQuickFlow(chat,sender)
     if(!flow){
       flow=await recoverQuickFlow(chat,sender)
@@ -1045,8 +1073,9 @@ _Responda apenas com o número._`
 1️⃣ Status deste grupo
 2️⃣ Ativar este grupo por 30 dias
 3️⃣ Ativar por outro período
-4️⃣ Bloquear este grupo
-5️⃣ Ver grupos registrados
+4️⃣ Tornar este grupo permanente
+5️⃣ Bloquear este grupo
+6️⃣ Ver grupos registrados
 
 9️⃣ Voltar
 0️⃣ Sair`
@@ -1135,7 +1164,7 @@ Nenhum chamado aberto agora.
 
     const adminBackFor=async(action)=>{
       if(['addsaldo','remsaldo','addexp','setnivel','curar','daritem','setsaldo','resetsaldo','resetxp','resetinventory','resettotal'].includes(action)) return adminPlayersMenu()
-      if(['activategroup','blockgroup'].includes(action)) return adminGroupsMenu()
+      if(['activategroup','activategrouppermanent','blockgroup'].includes(action)) return adminGroupsMenu()
       if(['approveorder','cancelorder'].includes(action)) return adminOrdersMenu()
       if(['setprice','setlink'].includes(action)) return adminSettingsMenu()
       return adminMainMenu()
@@ -1277,7 +1306,7 @@ Abra *!admin* → *Chamados de suporte* para responder.`
     }
 
     if(flow.stage.startsWith('admin_')){
-      if(sender!==ownerJid){
+      if(!isOwner){
         clearQuickFlow(chat,sender)
         await reply('⛔ Comando não disponível para Beta.')
         return true
@@ -1653,9 +1682,7 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
             return true
           }
           const lic=await getGroupLicense(chat)
-          await reply(!lic
-            ? '🍀 Este grupo ainda não iniciou o período grátis.'
-            : `💚 *STATUS DO GRUPO*\nStatus: *${groupLicenseIsActive(lic)?'ATIVO':'INATIVO'}*\nPlano: *${lic.plan}*\nValidade: *${fmtDate(lic.paid_until)}*`)
+          await reply(groupLicenseStatusText(lic,'💚 *STATUS DO GRUPO*'))
           return true
         }
 
@@ -1681,6 +1708,16 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
 
         if(input==='4'){
           if(!chat.endsWith('@g.us')){
+            await reply('💚 Use esta opção dentro do grupo que deseja tornar permanente.')
+            return true
+          }
+          setQuickFlow(chat,sender,'admin_confirm',{action:'activategrouppermanent'},5*60*1000)
+          await reply('⚠️ Tornar este grupo *PERMANENTE*?\n\n♾️ Ele não terá data de expiração.\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
+          return true
+        }
+
+        if(input==='5'){
+          if(!chat.endsWith('@g.us')){
             await reply('💚 Use esta opção dentro do grupo que deseja bloquear.')
             return true
           }
@@ -1689,7 +1726,7 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
           return true
         }
 
-        if(input==='5'){
+        if(input==='6'){
           const rows=await listGroupLicenses(50)
           if(!rows.length){
             await reply('Nenhum grupo registrado ainda.')
@@ -1705,15 +1742,16 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
           }))
           let text='💚 *GRUPOS REGISTRADOS*\n\n'
           named.forEach((r,i)=>{
-            const plan=String(r.plan||'').toLowerCase()==='trial'?'Trial':String(r.plan||'Plano')
-            text+=`${i+1}. ${groupLicenseIsActive(r)?'✅':'❌'} *${r.group_name}*\n   Plano: *${plan}*\n   Validade: *${fmtDate(r.paid_until)}*\n\n`
+            const permanent=String(r.plan||'').toLowerCase()==='permanent'
+            const plan=permanent?'Permanente':String(r.plan||'Plano')
+            text+=`${i+1}. ${groupLicenseIsActive(r)?'✅':'❌'} *${r.group_name}*\n   Plano: *${plan}*\n   Validade: *${permanent?'Sem expiração':fmtDate(r.paid_until)}*\n\n`
           })
           text+='9️⃣ Voltar'
           await reply(text.trim())
           return true
         }
 
-        await reply('💚 Escolha uma opção de *1 a 5*, *9* para voltar ou *0* para sair.')
+        await reply('💚 Escolha uma opção de *1 a 6*, *9* para voltar ou *0* para sair.')
         return true
       }
 
@@ -1879,6 +1917,9 @@ Criado: *${fmtDate(order.created_at)}*
         }else if(data.action==='activategroup'){
           const lic=await activateGroupLicense(chat,data.days,sender,'basic')
           await reply(`✅ Grupo ativado por *${data.days} dias*.\n📅 Validade: *${fmtDate(lic.paid_until)}*`)
+        }else if(data.action==='activategrouppermanent'){
+          await activateGroupLicense(chat,null,sender,'permanent')
+          await reply('✅ *GRUPO PERMANENTE ATIVADO!*\n♾️ Este grupo agora não possui data de expiração.')
         }else if(data.action==='blockgroup'){
           await blockGroupLicense(chat,sender)
           await reply('✅ Grupo bloqueado.')
@@ -2641,7 +2682,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       if(input==='6'){
-        const rows=await leaderboard(10)
+        const rows=await leaderboard(10,await currentGroupPlayerJids(chat))
         clearQuickFlow(chat,sender)
         let text='🏆 *RANKING — MAIS RICOS*\n\n'
         rows.forEach((r,i)=>{
@@ -3841,11 +3882,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         }
         const lic=await getGroupLicense(chat)
         clearQuickFlow(chat,sender)
-        if(!lic){
-          await reply('🍀 Grupo ainda não iniciou os 3 dias grátis.')
-        }else{
-          await reply(`🍀 *STATUS DO GRUPO*\nStatus: *${groupLicenseIsActive(lic)?'ATIVO':'INATIVO'}*\nPlano: *${lic.plan}*\nValidade: *${fmtDate(lic.paid_until)}*`)
-        }
+        await reply(groupLicenseStatusText(lic))
         return true
       }
       if(input==='2'){
@@ -4007,22 +4044,13 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             String(canonicalPlayerJid(chat)).split('@')[0].replace(/\D/g,'')===configuredOwnerDigits)
         )
 
-        if(['admin','ownermenu','adminmenu','donocomandos','ativargrupo'].includes(String(body||'').slice(prefix.length).trim().split(/\\s+/)[0]?.toLowerCase())){
-          console.log('[owner-debug]',{
-            isGroup,
-            isOwner,
-            ownerConfigured:Boolean(ownerJid),
-            pairingConfigured:Boolean(pairingNumber),
-            senderDomain:String(sender||'').split('@')[1]||'',
-            rawSenderDomain:String(rawSender||'').split('@')[1]||'',
-            senderHasDevice:/:\\d+@/.test(String(sender||'')),
-            rawSenderHasDevice:/:\\d+@/.test(String(rawSender||'')),
-            hasParticipantAlt:Boolean(msg.key?.participantAlt),
-            hasRemoteJidAlt:Boolean(msg.key?.remoteJidAlt),
-            senderMatchesOwner:Boolean(ownerDigits && senderDigits===ownerDigits),
-            altMatchesOwner:Boolean(ownerDigits && altDigits.includes(ownerDigits))
-          })
-        }
+        await consolidateUserIdentity(sender,[
+          rawSender,
+          msg.key?.participantAlt,
+          msg.key?.remoteJidAlt
+        ],msg.pushName||'').catch(err=>{
+          console.error('[identidade] falha ao consolidar cadastro',err?.message||err)
+        })
         await cacheIncomingMessage(sock,msg)
         if(!body.startsWith(prefix)){
           let flow=getQuickFlow(chat,sender)
@@ -4040,7 +4068,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             }
           }
 
-          await handleQuickGameFlow({chat,sender,body,reply,msg})
+          await handleQuickGameFlow({chat,sender,body,reply,msg,isOwner})
           continue
         }
 
@@ -4788,7 +4816,7 @@ ${status}
           await reply(text.trim())
 
         } else if(['ranking','rank','top'].includes(cmd)){
-          const rows=await leaderboard(10)
+          const rows=await leaderboard(10,await currentGroupPlayerJids(chat))
           if(!rows.length) return await reply('🏆 Ainda não há jogadores no ranking.')
           let text='🏆 *RANKING — MAIS RICOS*\n\n'
           rows.forEach((r,i)=>{
@@ -5272,26 +5300,11 @@ O pagamento refere-se ao acesso às funcionalidades do bot durante o período co
         } else if(['statusgrupo'].includes(cmd)){
           if(!isGroup) return await reply('Este comando funciona dentro de grupos.')
           const lic=await getGroupLicense(chat)
-          if(!lic){
-            return await reply(
-`🍀 *STATUS DO GRUPO*
-
-Status: *AINDA NÃO INICIADO*
-🎁 O grupo tem direito a *3 dias grátis*.
-
-O teste começa quando alguém usar um comando normal do Alpha Bot pela primeira vez.
-Para contratar direto, use *${prefix}assinar*.`
-            )
-          }
-          const active=groupLicenseIsActive(lic)
-          await reply(
-`🍀 *STATUS DO GRUPO*
-
-Status: *${active?'ATIVO':'INATIVO'}*
-Plano: *${lic.plan==='permanent'?'Permanente':lic.plan}*
-Validade: *${lic.plan==='permanent'?'Sem expiração':fmtDate(lic.paid_until)}*
-${lic.plan==='trial'?'🎁 Este grupo está no período de teste grátis.':lic.plan==='permanent'?'♾️ Este grupo possui acesso vitalício.':`💚 Plano atual: R$ ${Number(await getLaunchPrice()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias.`}`
-          )
+          let text=groupLicenseStatusText(lic)
+          if(!lic) text+=`\n\nO teste começa quando alguém usar um comando normal do Alpha Bot pela primeira vez.\nPara contratar direto, use *${prefix}assinar*.`
+          else if(lic.plan==='trial') text+='\n🎁 Este grupo está no período de teste grátis.'
+          else if(lic.plan!=='permanent') text+=`\n💚 Plano atual: R$ ${Number(await getLaunchPrice()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias.`
+          await reply(text)
 
         } else if(['assinar','plano','preco'].includes(cmd)){
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja assinar.')
@@ -5395,7 +5408,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja ativar.')
           const mode=String(args[0]||'30').toLowerCase()
           if(['permanente','vitalicio','vitalício','infinito'].includes(mode)){
-            const lic=await activateGroupLicense(chat,3650,sender,'permanent')
+            await activateGroupLicense(chat,null,sender,'permanent')
             return await reply('👑 *GRUPO PERMANENTE ATIVADO!*\n♾️ Este grupo agora tem acesso vitalício ao Alpha Bot.\n📅 Validade: *Sem expiração*')
           }
           const days=parseInt(mode,10)
@@ -5423,8 +5436,9 @@ Obrigado por apoiar o Alpha Bot 🍀`
           let text='👑 *GRUPOS REGISTRADOS*\n\n'
           named.forEach((r,i)=>{
             const active=groupLicenseIsActive(r)
-            const plan=String(r.plan||'').toLowerCase()==='trial'?'Trial':String(r.plan||'Plano')
-            text+=`${i+1}. ${active?'✅':'❌'} *${r.group_name}*\n   Plano: *${plan}*\n   Validade: *${fmtDate(r.paid_until)}*\n\n`
+            const permanent=String(r.plan||'').toLowerCase()==='permanent'
+            const plan=permanent?'Permanente':String(r.plan||'Plano')
+            text+=`${i+1}. ${active?'✅':'❌'} *${r.group_name}*\n   Plano: *${plan}*\n   Validade: *${permanent?'Sem expiração':fmtDate(r.paid_until)}*\n\n`
           })
           await reply(text.trim())
 
@@ -5526,21 +5540,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
 
         } else if(['admin','ownermenu','adminmenu','donocomandos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
-          setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
-          await reply(
-`👑 *ADMIN ALPHA BOT*
-
-1️⃣ 👤 Jogadores
-2️⃣ 💚 Grupos / assinaturas
-3️⃣ 🧾 Pedidos pendentes
-4️⃣ ⚙️ Configurações comerciais
-5️⃣ 🩺 Diagnóstico
-
-0️⃣ Sair
-
-_Responda apenas com o número._
-_Os comandos administrativos antigos continuam funcionando._`
-          )
+          await adminMainMenu()
 
         } else if(['comandos','comando','commands','cmds'].includes(cmd)){
           await commandsMenu()
