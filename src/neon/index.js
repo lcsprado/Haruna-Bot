@@ -24,7 +24,12 @@ import {
   createSupportTicket, getSupportTicket, listOpenSupportTickets, answerSupportTicket,
   saveQuickFlow, getStoredQuickFlow, deleteQuickFlow, cleanupQuickFlows,
   saveSnipeMessage, markSnipeDeleted, getLastDeletedSnipe, cleanupSnipeMessages,
-  openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer
+  openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
+  initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
+  addGroupWarning, getGroupWarnings, clearGroupWarnings,
+  adoptPet, getPet, petAction, petLeaderboard,
+  proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
+  createMarketListing, listMarket, buyMarketListing, cancelMarketListing
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
@@ -622,6 +627,7 @@ function horoscopeText(signId,signName){
 
 async function start() {
   await initDatabase()
+  await initCommunityPack()
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
   await initProgression()
@@ -3801,11 +3807,15 @@ Valor: *R$ ${fmt(item.price)}*
         '1':['economy_enabled','Economia'],
         '2':['rpg_enabled','RPG'],
         '3':['games_enabled','Minigames'],
-        '4':['progression_enabled','Progressão']
+        '4':['progression_enabled','Progressão'],
+        '5':['welcome_enabled','Boas-vindas'],
+        '6':['antilink_enabled','Anti-link'],
+        '7':['antibadword_enabled','Anti-palavrão'],
+        '8':['antidelete_enabled','Anti-delete']
       }
       const selected=map[input]
       if(!selected){
-        await reply('⚙️ Escolha *1, 2, 3 ou 4*, *9* para voltar ou *0* para sair.')
+        await reply('⚙️ Escolha de *1 a 8*, *9* para voltar ou *0* para sair.')
         return true
       }
       const [key,label]=selected
@@ -3846,6 +3856,10 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
 3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
 4️⃣ Progressão: *${st.progression_enabled?'ON ✅':'OFF ❌'}*
+5️⃣ Boas-vindas: *${st.welcome_enabled?'ON ✅':'OFF ❌'}*
+6️⃣ Anti-link: *${st.antilink_enabled?'ON ✅':'OFF ❌'}*
+7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
+8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
 
 9️⃣ Voltar
 0️⃣ Sair`
@@ -3857,7 +3871,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         return true
       }
       const {key,label,next}=flow.data
-      const st=await setGroupSetting(chat,key,next,sender)
+      const st=['welcome_enabled','antilink_enabled','antibadword_enabled','antidelete_enabled'].includes(key) ? await setCommunitySetting(chat,key,next,sender) : await setGroupSetting(chat,key,next,sender)
       setQuickFlow(chat,sender,'group_config',{},5*60*1000)
       await reply(
 `✅ *${label}* foi ${next?'ativado':'desativado'} neste grupo.
@@ -3866,6 +3880,10 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
 3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
 4️⃣ Progressão: *${st.progression_enabled?'ON ✅':'OFF ❌'}*
+5️⃣ Boas-vindas: *${st.welcome_enabled?'ON ✅':'OFF ❌'}*
+6️⃣ Anti-link: *${st.antilink_enabled?'ON ✅':'OFF ❌'}*
+7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
+8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
 
 9️⃣ Voltar
 0️⃣ Sair`
@@ -3929,6 +3947,10 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
 3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
 4️⃣ Progressão: *${st.progression_enabled?'ON ✅':'OFF ❌'}*
+5️⃣ Boas-vindas: *${st.welcome_enabled?'ON ✅':'OFF ❌'}*
+6️⃣ Anti-link: *${st.antilink_enabled?'ON ✅':'OFF ❌'}*
+7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
+8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
 
 9️⃣ Voltar
 0️⃣ Sair`
@@ -4052,6 +4074,24 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           console.error('[identidade] falha ao consolidar cadastro',err?.message||err)
         })
         await cacheIncomingMessage(sock,msg)
+        if(isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))){
+          try{
+            const cs=await getCommunitySettings(chat)
+            const lowerBody=body.toLowerCase()
+            const linkHit=/(https?:\/\/|www\.|chat\.whatsapp\.com\/|wa\.me\/)/i.test(body)
+            const badHit=/\b(porra|caralho|fdp|filho da puta|vai se foder|vsf)\b/i.test(lowerBody)
+            if((cs.antilink_enabled && linkHit) || (cs.antibadword_enabled && badHit)){
+              await sock.sendMessage(chat,{delete:msg.key}).catch(()=>{})
+              const reason=cs.antilink_enabled && linkHit?'link não permitido':'palavra bloqueada'
+              const n=await addGroupWarning(chat,sender)
+              await reply(`🛡️ Mensagem removida: *${reason}*. Avisos: *${n}/3*.`)
+              if(n>=3){
+                await reply('⚠️ Limite de avisos atingido. Um administrador pode usar *!limparavisos @pessoa* após revisar o caso.')
+              }
+              continue
+            }
+          }catch(err){ console.error('[moderacao]',err?.message||err) }
+        }
         if(!body.startsWith(prefix)){
           let flow=getQuickFlow(chat,sender)
           if(!flow) flow=await recoverQuickFlow(chat,sender)
@@ -4224,6 +4264,119 @@ Se precisar de mais ajuda, use *!suporte*.`
           }
           await reply(`✅ Chamado *${ticket.code}* respondido. ${delivered?'Resposta entregue.':'Não foi possível entregar automaticamente.'}`)
 
+        } else if(['regras','rules'].includes(cmd)){
+          if(!isGroup) return await reply('📜 Use este comando em um grupo.')
+          const st=await getCommunitySettings(chat)
+          await reply(st.rules_text ? `📜 *REGRAS DO GRUPO*\n\n${st.rules_text}` : '📜 Este grupo ainda não definiu regras.')
+
+        } else if(['setregras'].includes(cmd)){
+          if(!isGroup || !(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores do grupo podem definir as regras.')
+          const rules=args.join(' ').trim()
+          if(!rules) return await reply(`Uso: *${prefix}setregras texto das regras*`)
+          await setGroupRules(chat,rules,sender)
+          await reply('✅ Regras do grupo atualizadas.')
+
+        } else if(['advertir','aviso','avisos','limparavisos'].includes(cmd)){
+          if(!isGroup) return await reply('🛡️ Use este comando em um grupo.')
+          const targetRaw=mentionsOf(msg)[0]
+          if(!targetRaw) return await reply(`Uso: *${prefix}${cmd} @pessoa*`)
+          const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
+          if(cmd==='avisos'){
+            const n=await getGroupWarnings(chat,target)
+            return await reply(`⚠️ Esta pessoa possui *${n} aviso(s)*.`,{mentions:[targetRaw]})
+          }
+          if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores podem alterar avisos.')
+          if(cmd==='limparavisos'){
+            await clearGroupWarnings(chat,target)
+            return await reply('✅ Avisos zerados.',{mentions:[targetRaw]})
+          }
+          const n=await addGroupWarning(chat,target)
+          await reply(`⚠️ Advertência registrada. Total: *${n}/3*.`,{mentions:[targetRaw]})
+
+        } else if(['abrirgrupo','fechargrupo'].includes(cmd)){
+          if(!isGroup || !(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores podem alterar o grupo.')
+          try{
+            await sock.groupSettingUpdate(chat,cmd==='fechargrupo'?'announcement':'not_announcement')
+            await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
+          }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
+
+        } else if(['adotar','meupet','alimentar','banho','passear','treinarpet','aventurapet','rankpet'].includes(cmd)){
+          try{
+            if(cmd==='adotar'){
+              const pet=await adoptPet(sender,args[0]||'cachorro',args.slice(1).join(' ')||msg.pushName||'Alpha')
+              return await reply(`🐾 Você adotou *${pet.name}*, um(a) *${pet.species}*! Use *!meupet*.`)
+            }
+            if(cmd==='rankpet'){
+              const rows=await petLeaderboard(10)
+              return await reply('🏆 *RANKING DE PETS*\n\n'+rows.map((p,i)=>`${i+1}º ${p.name} — Nv.${p.level} • ⚔️ ${p.power} (${p.push_name||'Jogador'})`).join('\n'))
+            }
+            if(cmd==='meupet'){
+              const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
+              return await reply(`🐾 *${p.name.toUpperCase()}*\n${p.species} • Nível ${p.level} • XP ${p.xp}\n⚔️ Poder: ${p.power}\n🍖 Fome: ${p.hunger}/100\n🧼 Higiene: ${p.hygiene}/100\n⚡ Energia: ${p.energy}/100\n🏆 ${p.wins}V / ${p.losses}D`)
+            }
+            const action={alimentar:'alimentar',banho:'banho',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
+            const p=await petAction(sender,action)
+            await reply(`🐾 *${p.name}* completou a ação! +XP\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n🍖 ${p.hunger}/100 • 🧼 ${p.hygiene}/100 • ⚡ ${p.energy}/100`)
+          }catch(err){ await reply('❌ '+(err?.message||'Não foi possível cuidar do pet.')) }
+
+        } else if(['casar','aceitarcasamento','divorciar','casal'].includes(cmd)){
+          try{
+            if(cmd==='casal'){
+              const r=await getRelationship(sender)
+              return await reply(r?`💍 Você está em um relacionamento com *${r.partner_name||'seu par'}*.`:'💔 Você está solteiro(a).')
+            }
+            if(cmd==='divorciar'){
+              const partner=await divorceRelationship(sender)
+              return await reply('💔 Relacionamento encerrado.',{mentions:[partner]})
+            }
+            const targetRaw=mentionsOf(msg)[0]
+            if(!targetRaw) return await reply(`Uso: *${prefix}${cmd} @pessoa*`)
+            const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
+            if(cmd==='casar'){
+              await proposeRelationship(sender,target)
+              return await reply('💍 Pedido de casamento enviado! A pessoa pode responder com *!aceitarcasamento @você*.',{mentions:[targetRaw]})
+            }
+            await acceptRelationship(sender,target)
+            await reply('💍 *CASAMENTO CONFIRMADO!* 🎉',{mentions:[targetRaw]})
+          }catch(err){ await reply('❌ '+(err?.message||'Não foi possível concluir.')) }
+
+        } else if(['mercado','anunciar','comprarmercado','cancelarvenda'].includes(cmd)){
+          try{
+            if(cmd==='mercado'){
+              const rows=await listMarket(15)
+              if(!rows.length) return await reply('🏪 O mercado está vazio.')
+              return await reply('🏪 *MERCADO ENTRE JOGADORES*\n\n'+rows.map(x=>`#${x.id} • ${x.name} ×${x.quantity} — R$ ${Number(x.price).toLocaleString('pt-BR')}\n👤 ${x.seller_name||'Jogador'}`).join('\n\n')+`\n\nComprar: *!comprarmercado ID*`)
+            }
+            if(cmd==='anunciar'){
+              const [itemId,qtyRaw,priceRaw]=args
+              if(!itemId||!qtyRaw||!priceRaw) return await reply('*Uso:* !anunciar espada_ferro 1 10000')
+              const x=await createMarketListing(sender,itemId,Number(qtyRaw),Number(priceRaw))
+              return await reply(`🏪 Anúncio #${x.id} criado por *R$ ${Number(x.price).toLocaleString('pt-BR')}*.`)
+            }
+            if(cmd==='comprarmercado'){
+              const x=await buyMarketListing(sender,args[0])
+              return await reply(`✅ Compra concluída: *${x.name} ×${x.quantity}*.`)
+            }
+            const x=await cancelMarketListing(sender,args[0])
+            await reply(`↩️ Anúncio #${x.id} cancelado e item devolvido ao inventário.`)
+          }catch(err){ await reply('❌ '+(err?.message||'Erro no mercado.')) }
+
+        } else if(['dado','chance','escolher','ship','verdade','desafio'].includes(cmd)){
+          if(cmd==='dado') return await reply(`🎲 Caiu *${1+Math.floor(Math.random()*6)}*.`)
+          if(cmd==='chance') return await reply(`🎯 Chance: *${Math.floor(Math.random()*101)}%*.`)
+          if(cmd==='escolher'){
+            const opts=args.join(' ').split('|').map(x=>x.trim()).filter(Boolean)
+            if(opts.length<2) return await reply('Uso: *!escolher pizza | hambúrguer | sushi*')
+            return await reply('🤖 Eu escolho: *'+opts[Math.floor(Math.random()*opts.length)]+'*')
+          }
+          if(cmd==='ship'){
+            const m=mentionsOf(msg); if(m.length<2) return await reply('Uso: *!ship @pessoa1 @pessoa2*')
+            return await reply(`💘 Compatibilidade: *${Math.floor(Math.random()*101)}%* 💞`,{mentions:m.slice(0,2)})
+          }
+          const truths=['Qual foi a última mentira que você contou?','Quem do grupo você levaria para uma viagem?','Qual hábito seu quase ninguém conhece?','Qual foi sua maior vergonha?']
+          const dares=['Mande um áudio cantando por 10 segundos.','Troque sua foto por 10 minutos.','Elogie alguém do grupo sem ironia.','Mande o último emoji usado 5 vezes.']
+          return await reply((cmd==='verdade'?'🤔 *VERDADE*\n':'🔥 *DESAFIO*\n')+(cmd==='verdade'?truths:dares)[Math.floor(Math.random()*4)])
+
         } else if(['banir','kick','expulsar','promover','rebaixar'].includes(cmd)){
           if(!isGroup) return await reply('⚙️ Use este comando dentro de um grupo.')
           if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores do grupo podem usar este comando.')
@@ -4294,6 +4447,10 @@ Se precisar de mais ajuda, use *!suporte*.`
 2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
 3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
 4️⃣ Progressão: *${st.progression_enabled?'ON ✅':'OFF ❌'}*
+5️⃣ Boas-vindas: *${st.welcome_enabled?'ON ✅':'OFF ❌'}*
+6️⃣ Anti-link: *${st.antilink_enabled?'ON ✅':'OFF ❌'}*
+7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
+8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
 
 9️⃣ Voltar
 0️⃣ Sair`
