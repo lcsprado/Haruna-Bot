@@ -1008,6 +1008,10 @@ export async function leaderboard(limit=10) {
     FROM users u
     JOIN wallets w ON w.jid=u.jid
     WHERE u.jid NOT LIKE '%@local'
+      AND u.jid NOT LIKE '%@lid'
+      AND u.jid NOT LIKE '%:%@s.whatsapp.net'
+      AND COALESCE(NULLIF(BTRIM(u.push_name),''),'') <> ''
+      AND LOWER(BTRIM(u.push_name)) <> 'jogador'
     ORDER BY total DESC,u.level DESC,u.created_at ASC
     LIMIT $1
   `,[limit])
