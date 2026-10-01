@@ -3986,7 +3986,14 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const sender=await resolvePlayerJid(sock,chat,rawSender,msg)
         const body=textOf(msg).trim()
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
-        const isOwner=ownerJid && sender===ownerJid
+        const ownerCanonical=canonicalPlayerJid(ownerJid)
+        const senderCanonical=canonicalPlayerJid(sender)
+        const isOwner=Boolean(ownerJid) && (
+          sender===ownerJid ||
+          senderCanonical===ownerCanonical ||
+          // O número pareado é o dono operacional do bot; evita falso "Beta" por LID/device JID.
+          (pairingNumber && senderCanonical===pairingNumber+'@s.whatsapp.net')
+        )
         const isGroup=chat.endsWith('@g.us')
 
         await cacheIncomingMessage(sock,msg)
