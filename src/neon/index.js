@@ -3988,11 +3988,18 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
         const ownerCanonical=canonicalPlayerJid(ownerJid)
         const senderCanonical=canonicalPlayerJid(sender)
-        const isOwner=Boolean(ownerJid) && (
+        const senderDigits=String(senderCanonical||'').split('@')[0].replace(/\D/g,'')
+        const ownerDigits=String(ownerCanonical||'').split('@')[0].replace(/\D/g,'')
+        const altDigits=[msg.key?.participantAlt,msg.key?.remoteJidAlt]
+          .filter(Boolean)
+          .map(v=>String(canonicalPlayerJid(v)).split('@')[0].replace(/\D/g,''))
+        const isOwner=Boolean(ownerJid || pairingNumber) && (
           sender===ownerJid ||
           senderCanonical===ownerCanonical ||
-          // O número pareado é o dono operacional do bot; evita falso "Beta" por LID/device JID.
-          (pairingNumber && senderCanonical===pairingNumber+'@s.whatsapp.net')
+          (ownerDigits && senderDigits===ownerDigits) ||
+          (pairingNumber && senderDigits===pairingNumber) ||
+          (ownerDigits && altDigits.includes(ownerDigits)) ||
+          (pairingNumber && altDigits.includes(pairingNumber))
         )
         const isGroup=chat.endsWith('@g.us')
 
