@@ -280,6 +280,10 @@ function canonicalPlayerJid(jid){
   return jid
 }
 
+function normalizedAddressJid(jid){
+  return String(jid||'').replace(/:\d+(?=@)/,'')
+}
+
 async function resolvePlayerJid(sock,chat,jid,msg=null) {
   if(!jid) return jid
   if(!jid.endsWith('@lid')) return canonicalPlayerJid(jid)
@@ -303,8 +307,15 @@ async function resolvePlayerJid(sock,chat,jid,msg=null) {
   try{
     if(chat?.endsWith('@g.us')){
       const meta=await sock.groupMetadata(chat)
-      const part=(meta?.participants||[]).find(p=>p?.id===jid || p?.lid===jid)
-      const candidate=part?.phoneNumber || part?.pn || part?.jid
+      const wanted=normalizedAddressJid(jid)
+      const part=(meta?.participants||[]).find(p=>
+        [p?.id,p?.lid,p?.phoneNumber,p?.pn,p?.jid]
+          .some(value=>normalizedAddressJid(value)===wanted)
+      )
+      // Depending on the Baileys/WhatsApp version, the real phone JID may be
+      // exposed as id while lid contains the opaque mention identifier.
+      const candidate=[part?.phoneNumber,part?.pn,part?.jid,part?.id]
+        .find(value=>value?.endsWith('@s.whatsapp.net'))
       if(candidate?.endsWith('@s.whatsapp.net')) return canonicalPlayerJid(candidate)
     }
   }catch{}
@@ -4772,6 +4783,12 @@ ${prefix}configgrupo — módulos do bot (admins do grupo)\n${prefix}banir @pess
 
           try{
             if(!mentioned) await ensureUser(profileTarget,msg.pushName||'')
+            if(mentioned && !profileTarget?.endsWith('@s.whatsapp.net')){
+              return await reply('⚠️ Não consegui identificar o número dessa pessoa no grupo. Peça para ela enviar qualquer comando do bot e tente novamente.')
+            }
+            if(mentioned){
+              await consolidateUserIdentity(profileTarget,[mentioned])
+            }
             const existing=await getProfile(profileTarget)
             if(!existing){
               return await reply('⚠️ Não encontrei o cadastro dessa pessoa. Peça para ela enviar qualquer comando do bot e tente novamente.')
