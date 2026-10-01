@@ -4162,6 +4162,62 @@ Se precisar de mais ajuda, use *!suporte*.`
           }
           await reply(`✅ Chamado *${ticket.code}* respondido. ${delivered?'Resposta entregue.':'Não foi possível entregar automaticamente.'}`)
 
+        } else if(['banir','kick','expulsar','promover','rebaixar'].includes(cmd)){
+          if(!isGroup) return await reply('⚙️ Use este comando dentro de um grupo.')
+          if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores do grupo podem usar este comando.')
+          const targetRaw=mentionsOf(msg)[0]
+          if(!targetRaw) return await reply(`Uso: *${prefix}${cmd} @pessoa*`)
+          const meta=await sock.groupMetadata(chat)
+          const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
+          const findParticipant=(jid)=>meta.participants?.find(p=>{
+            const ids=[p.id,p.jid,p.lid,p.phoneNumber].filter(Boolean)
+            return ids.includes(jid) || ids.map(canonicalPlayerJid).includes(canonicalPlayerJid(jid))
+          })
+          const meRaw=sock.user?.id
+          const me=canonicalPlayerJid(meRaw)
+          const botPart=findParticipant(meRaw)||findParticipant(me)
+          if(!botPart?.admin) return await reply('🤖 Eu também preciso ser administrador do grupo para fazer isso.')
+          const targetPart=findParticipant(targetRaw)||findParticipant(target)
+          if(!targetPart) return await reply('⚠️ Não encontrei essa pessoa entre os participantes do grupo.')
+          const targetId=targetPart.id || targetPart.jid || targetRaw
+          if(canonicalPlayerJid(targetId)===me || targetId===sock.user?.lid) return await reply('🤖 Não vou aplicar esse comando em mim mesmo.')
+          if(cmd==='banir'||cmd==='kick'||cmd==='expulsar'){
+            if(targetPart.admin) return await reply('🔒 Por segurança, não removo outro administrador. Rebaixe-o primeiro.')
+            await sock.groupParticipantsUpdate(chat,[targetId],'remove')
+            return await reply('👢 Participante removido do grupo.',{mentions:[targetRaw]})
+          }
+          if(cmd==='promover'){
+            if(targetPart.admin) return await reply('ℹ️ Essa pessoa já é administradora.')
+            await sock.groupParticipantsUpdate(chat,[targetId],'promote')
+            return await reply('👑 Participante promovido a administrador.',{mentions:[targetRaw]})
+          }
+          if(!targetPart.admin) return await reply('ℹ️ Essa pessoa não é administradora.')
+          await sock.groupParticipantsUpdate(chat,[targetId],'demote')
+          return await reply('⬇️ Administrador rebaixado para participante.',{mentions:[targetRaw]})
+
+        } else if(['xingar','arrogante','gado','burro'].includes(cmd)){
+          if(!isGroup) return await reply('😂 Use esse comando em um grupo.')
+          const target=mentionsOf(msg)[0]
+          if(!target) return await reply(`Uso: *${prefix}${cmd} @pessoa*`)
+          const tag='@'+String(target).split('@')[0]
+          const fixed={
+            arrogante:`${tag} tá com 99 de confiança e 3 de humildade. 🗿`,
+            gado:`${tag} ouviu um “oi” e já escolheu o nome dos filhos. 🐂`,
+            burro:`${tag} tentou pensar duas vezes e deu timeout. 🧠💀`
+          }
+          const memes=[
+            `${tag} fala muito e entrega pouco. 📢`,
+            `${tag} foi refutado pelo próprio Wi-Fi. 📶`,
+            `${tag} tem 99 de confiança e 3 de habilidade. 🗿`,
+            `${tag} entrou na discussão sem argumento e saiu sem dignidade. 😂`,
+            `${tag} está jogando no modo tutorial e ainda pediu ajuda. 🎮`,
+            `${tag} é a prova de que o botão “tentar novamente” existe por um motivo. 🔄`,
+            `${tag} acordou e escolheu passar vergonha no grupo. 🤡`,
+            `${tag} tem opinião premium com argumento versão grátis. 💀`
+          ]
+          const text=fixed[cmd] || memes[Math.floor(Math.random()*memes.length)]
+          await reply(text,{mentions:[target]})
+
         } else if(['configgrupo','configuragrupo'].includes(cmd)){
           if(!isGroup) return await reply('⚙️ Use este comando dentro do grupo que deseja configurar.')
           if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores deste grupo podem abrir as configurações.')
@@ -4397,7 +4453,7 @@ ${prefix}statusgrupo — status da assinatura
 ${prefix}assinar — assinar/renovar
 ${prefix}pedido — consultar pedido
 ${prefix}termos — termos do Alpha Bot
-${prefix}configgrupo — módulos do bot (admins do grupo)
+${prefix}configgrupo — módulos do bot (admins do grupo)\n${prefix}banir @pessoa — remove participante (ADM)\n${prefix}promover @pessoa — promove para ADM\n${prefix}rebaixar @pessoa — remove ADM\n${prefix}xingar @pessoa — meme/zoeira aleatória\n${prefix}arrogante @pessoa — meme arrogante\n${prefix}gado @pessoa — meme gado\n${prefix}burro @pessoa — meme burro
 
 💡 Alguns comandos possuem apelidos, mas aqui estão os nomes principais.`
           )
