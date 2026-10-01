@@ -4007,6 +4007,22 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             String(canonicalPlayerJid(chat)).split('@')[0].replace(/\D/g,'')===configuredOwnerDigits)
         )
 
+        if(['admin','ownermenu','adminmenu','donocomandos','ativargrupo'].includes(String(body||'').slice(prefix.length).trim().split(/\\s+/)[0]?.toLowerCase())){
+          console.log('[owner-debug]',{
+            isGroup,
+            isOwner,
+            ownerConfigured:Boolean(ownerJid),
+            pairingConfigured:Boolean(pairingNumber),
+            senderDomain:String(sender||'').split('@')[1]||'',
+            rawSenderDomain:String(rawSender||'').split('@')[1]||'',
+            senderHasDevice:/:\\d+@/.test(String(sender||'')),
+            rawSenderHasDevice:/:\\d+@/.test(String(rawSender||'')),
+            hasParticipantAlt:Boolean(msg.key?.participantAlt),
+            hasRemoteJidAlt:Boolean(msg.key?.remoteJidAlt),
+            senderMatchesOwner:Boolean(ownerDigits && senderDigits===ownerDigits),
+            altMatchesOwner:Boolean(ownerDigits && altDigits.includes(ownerDigits))
+          })
+        }
         await cacheIncomingMessage(sock,msg)
         if(!body.startsWith(prefix)){
           let flow=getQuickFlow(chat,sender)
