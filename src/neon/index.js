@@ -5835,9 +5835,39 @@ Obrigado por apoiar o Alpha Bot 🍀`
           await reply(`👑 Nível alterado: ${r.oldLevel} → ${r.level}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['curar'].includes(cmd)){
-          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
-          const r=await ownerHeal(ownerTarget)
-          await reply(`👑 Cura completa. ❤️ ${r.hp}/${r.max_hp}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+          const items=await getInventory(sender)
+          const potions=items.filter(i=>i.category==='consumable' && ['pocao_p','pocao_m','pocao_g','elixir_supremo'].includes(i.item_id))
+
+          if(!potions.length){
+            return await reply(`🧪 Você não possui nenhuma poção no inventário.\nCompre uma em *${prefix}loja* para recuperar HP.`)
+          }
+
+          const profile=await getCombatProfile(sender)
+          if(Number(profile.hp)>=Number(profile.max_hp)){
+            return await reply(`❤️ Seu HP já está cheio: *${profile.hp}/${profile.max_hp}*.`)
+          }
+
+          const requested=args.join(' ').trim()
+          let potion=null
+          if(requested){
+            potion=resolveOwnedItem(potions,requested,['consumable'])
+            if(!potion) return await reply(`❌ Não encontrei essa poção no seu inventário.\nUse *${prefix}curar* para escolher uma.`)
+          }
+
+          if(!potion){
+            if(potions.length===1){
+              potion=potions[0]
+            }else{
+              setQuickFlow(chat,sender,'use_select',{items:potions.map(i=>i.item_id)},90000)
+              let text=`🧪 *QUAL POÇÃO QUER USAR PARA SE CURAR?*\n\n❤️ HP atual: *${profile.hp}/${profile.max_hp}*\n\n`
+              potions.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
+              text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
+              return await reply(text)
+            }
+          }
+
+          const r=await usePotion(sender,potion.item_id)
+          await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 1 poção consumida do inventário.`)
 
         } else if(['daritem'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
