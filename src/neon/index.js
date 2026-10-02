@@ -1109,7 +1109,7 @@ Você possui: *${stock}*
 *!minhasmotos* — mostra seus veículos de delivery
 *!venderbike N* — vende bicicleta por 70% do valor pago
 *!vendermoto N* — vende moto por 70% do valor pago
-*!depositar valor* — deposita no banco
+*!depositar valor* / *!depositar total* — deposita no banco
 *!sacar valor* — saca do banco
 *!pix @pessoa valor* — transfere dinheiro
 *!ranking* — ranking dos mais ricos
@@ -3135,12 +3135,10 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
       let amount=presets[input]
       if(input==='5'){
-        const p=await getProfile(sender)
-        amount=flow.stage==='deposit_amount'
-          ? Math.max(0,Number(p.cash))
-          : Number(p.bank)
+        if(flow.stage==='deposit_amount') amount='total'
+        else {const p=await getProfile(sender);amount=Number(p.bank)}
       }
-      if(!amount || amount<1){
+      if(!amount || (amount!=='total'&&amount<1)){
         await reply('Escolha uma opção válida.')
         return true
       }
@@ -5326,7 +5324,8 @@ ${status}
           }
 
         } else if(['depositar','deposit','dep'].includes(cmd)){
-          const amount=parseAmount(args[0])
+          const depositAll=['total','tudo'].includes(normalizeItemText(args[0]||''))
+          const amount=depositAll?'total':parseAmount(args[0])
           if(!amount){
             setQuickFlow(chat,sender,'deposit_amount',{},90000)
             return await reply(
