@@ -113,7 +113,7 @@ async function runBossSession(chat,jid,name,reply){
   if(bossSessions.has(key)) return false
   bossSessions.set(key,true)
   ;(async()=>{
-    let totalDamage=0,attacks=0,heals=[]
+    let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null
     try{
       for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name)
@@ -121,7 +121,7 @@ async function runBossSession(chat,jid,name,reply){
           await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura disponível.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
           return
         }
-        attacks++; totalDamage+=Number(r.damage||0)
+        attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.dead){
           await grantBossXp(r.rewards)
