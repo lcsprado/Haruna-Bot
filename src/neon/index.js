@@ -4300,6 +4300,20 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           }catch(err){ console.error('[moderacao]',err?.message||err) }
         }
         if(!body.startsWith(prefix)){
+          // Durante um quiz ativo, uma mensagem contendo apenas 1–4 vale como resposta.
+          // Não exige mais "!resposta N".
+          if(/^[1-4]$/.test(body)){
+            try{
+              const r=await answerQuiz(chat,sender,Number(body))
+              if(r.correct) await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
+              else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
+              continue
+            }catch(err){
+              // Se não houver quiz ativo, segue normalmente para menus/fluxos numéricos.
+              if(!String(err?.message||'').includes('Não há quiz ativo')) throw err
+            }
+          }
+
           let flow=getQuickFlow(chat,sender)
           if(!flow) flow=await recoverQuickFlow(chat,sender)
           if(!flow) continue
@@ -5556,13 +5570,13 @@ _Os comandos antigos continuam funcionando normalmente._`
           if(q.already){
             let text=`🧠 *JÁ EXISTE UM QUIZ ATIVO*\n\n${q.q}\n\n`
             q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
-            text+=`\n⏳ Expira em cerca de *${q.remaining}s*.\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
+            text+=`\n⏳ Expira em cerca de *${q.remaining}s*.\nResponda apenas com *1, 2, 3 ou 4*.`
             return await reply(text)
           }
           await progressDailyMission(sender,'game')
           let text=`🧠 *QUIZ DO ALPHA BOT*\n\n${q.q}\n\n`
           q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
-          text+=`\n⏳ Você tem *2 minutos*.\nResponda com *${prefix}resposta 1*, 2, 3 ou 4.`
+          text+=`\n⏳ Você tem *2 minutos*.\nResponda apenas com *1, 2, 3 ou 4*.`
           await reply(text)
 
         } else if(['resposta'].includes(cmd)){
