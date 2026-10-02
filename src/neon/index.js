@@ -5639,7 +5639,9 @@ ${prefix}clas — ranking de clãs`
 🏦 Banco: R$ ${fmt(p.bank)}
 🎒 Itens: R$ ${fmt(p.inventory_value)}
 🏠 Imóvel: R$ ${fmt(p.home_value)}
-🚗 Veículos: R$ ${fmt(p.cars_value)}
+🚗 Carros: R$ ${fmt(p.cars_value)}
+🏍️ Motos/Bike: R$ ${fmt(p.motorcycles_value)}
+🏪 Negócios: R$ ${fmt(p.businesses_value)}
 
 💰 *Total: R$ ${fmt(p.total)}*`
           )
