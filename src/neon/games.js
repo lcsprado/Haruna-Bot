@@ -501,25 +501,32 @@ async function giveBossDrops(c,jid,position,extraChance=0){
 }
 export async function startBoss(chat){
   const weekend=bossWeekendInfo()
-  if(!weekend.open) throw new Error('O Boss do Grupo fica disponível de sexta 00:00 até sábado 23:59 (horário de São Paulo).')
   return tx(async c=>{
     const current=await loadGame(c,chat,'boss')
-    const currentIsValid=current && Number(current.hp)>0 && Number(current.maxHp)>=25000 &&
-      current.weekendKey===weekend.weekendKey && Number(current.endsAt||0)>Date.now()
-    if(currentIsValid) return {already:true,...current,endsLabel:weekend.endsLabel}
-    if(current) await clearGame(c,chat,'boss')
-    const maxHp=25000+Math.floor(Math.random()*10001)
-    const state={name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
+    const weeklyCompleted=Boolean(current?.weeklyCompleted&&current.weekendKey===weekend.weekendKey)
+    if(weekend.open&&!weeklyCompleted){
+      if(current?.mode==='weekly'&&current.weekendKey===weekend.weekendKey&&Number(current.hp)>0&&Number(current.endsAt||0)>Date.now()){
+        return {already:true,...current,endsLabel:weekend.endsLabel}
+      }
+      const maxHp=25000+Math.floor(Math.random()*10001)
+      const state={mode:'weekly',name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:false,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
+      await saveGame(c,chat,'boss',state); return state
+    }
+    if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
+    const maxHp=900+Math.floor(Math.random()*1101)
+    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:10,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted}
     await saveGame(c,chat,'boss',state); return state
   })
 }
 export async function attackBoss(chat,jid,name,usePet=true){
   await ensureUser(jid,name||'')
   const weekend=bossWeekendInfo()
-  if(!weekend.open) throw new Error('O Boss do Grupo encerrou. Ele volta sexta-feira às 00:00 (horário de São Paulo).')
   return tx(async c=>{
+    const sleeping=await c.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[jid,Math.floor(Date.now()/1000)])
+    if(sleeping.rows.length) throw new Error('Você está dormindo e não pode atacar o Boss agora.')
     const s=await loadGame(c,chat,'boss')
-    if(!s||Number(s.hp)<=0||Number(s.maxHp)<25000||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now()) throw new Error('Não há Boss de Grupo ativo. Use !boss para iniciar o Boss deste fim de semana.')
+    if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss para iniciar um.')
+    if(s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     let pet=usePet?(await c.query('SELECT species,name,level,energy FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null:null
@@ -560,19 +567,20 @@ export async function attackBoss(chat,jid,name,usePet=true){
       const total=entries.reduce((n,x)=>n+x.damage,0)||1,rewards=[]
       for(let i=0;i<entries.length;i++){
         const p=entries[i],position=i+1,share=p.damage/total
-        const tier=BOSS_PLACEMENT[i]||{cash:0,xp:0}
-        // Todos recebem base; dano divide um fundo fixo e colocação dá um bônus separado.
-        const cash=5000+Math.floor(150000*share)+tier.cash
         const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null
         const pb=petBossBonus(pp)
-        const exp=Math.floor((150+1000*share+tier.xp)*(1+pb.xp))
-        await credit(c,p.jid,cash,'boss_weekend')
+        const weekly=s.mode==='weekly'
+        const tier=weekly?(BOSS_PLACEMENT[i]||{cash:0,xp:0}):{cash:0,xp:0}
+        const cash=weekly?5000+Math.floor(150000*share)+tier.cash:500+Math.floor(8000*share)
+        const exp=Math.floor((weekly?150+1000*share+tier.xp:30+100*share)*(1+pb.xp))
+        await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
         await grantExpInTransaction(c,p.jid,exp)
-        const drops=await giveBossDrops(c,p.jid,position,pb.drop)
+        const drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.10+pb.drop?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
         rewards.push({...p,position,cash,exp,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
-      await clearGame(c,chat,'boss')
-      return {dead:true,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petUnavailable}
+      const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0}
+      await saveGame(c,chat,'boss',marker)
+      return {dead:true,mode:s.mode,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petUnavailable}
     }
     await saveGame(c,chat,'boss',s)
     return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petUnavailable,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy}:null}
