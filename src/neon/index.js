@@ -1181,6 +1181,7 @@ Você possui: *${stock}*
 *!economia* — abre o menu de economia
 *!saldo* — carteira, banco e total
 *!trabalhar* — trabalha, ganha dinheiro e evolui sua carreira
+*!all* — faz Trabalho + Uber + iFood disponíveis de uma vez (TAXADE 3×); não coleta negócios
 *!carreira* — mostra cargo e progresso profissional
 *!ifood* — coloca toda sua frota de bike/motos para entregar
 *!ifoodbike* — alias do !ifood
@@ -5024,7 +5025,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
         }
 
         if(isGroup && !isOwner){
-          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','entrarraide','iniciarraide','cancelarraide'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
@@ -5588,6 +5589,39 @@ ${status}
 
 🎯 Próxima recompensa: *Dia ${s.next.day} — ${s.next.label}*
 ⏳ Faltam *${s.next.days} dia${s.next.days===1?'':'s'}* mantendo a sequência.`
+          )
+
+        } else if(['all','tudo'].includes(cmd)){
+          const results=[]
+          let grossTotal=0,taxTotal=0,netTotal=0
+          const add=async(label,icon,fn)=>{
+            try{
+              const r=await fn()
+              if(!r?.ok){
+                results.push(`${icon} *${label}:* ⏳ cooldown — ${duration(r?.remaining||0)}`)
+                return
+              }
+              grossTotal+=Number(r.gross||0); taxTotal+=Number(r.tax||0); netTotal+=Number(r.amount??r.total??0)
+              results.push(`${icon} *${label}:* R$ ${fmt(r.gross)} bruto • TAXADE ${r.taxRate}%: -R$ ${fmt(r.tax)} • *R$ ${fmt(r.amount??r.total??0)} líquido*`)
+              await progressDailyMission(sender,'work')
+              if(isGroup) await progressGroupMission(chat,sender,'work')
+            }catch(err){
+              results.push(`${icon} *${label}:* ⚠️ ${String(err?.message||'indisponível')}`)
+            }
+          }
+          await add('Trabalho','💼',()=>work(sender,3))
+          await add('Uber','🚗',()=>driveUber(sender,3))
+          await add('iFood','🍔',()=>deliverIfood(sender,3))
+          await reply(
+`⚡ *ALL — ATIVIDADES EM LOTE*
+
+${results.join('\n')}
+
+💵 Bruto executado: *R$ ${fmt(grossTotal)}*
+🧾 TAXADE te pegou 3×: *-R$ ${fmt(taxTotal)}*
+💰 Líquido recebido: *R$ ${fmt(netTotal)}*
+
+🏪 *!coletar* não faz parte do !all.`
           )
 
         } else if(['trabalhar','work','trampo'].includes(cmd)){
