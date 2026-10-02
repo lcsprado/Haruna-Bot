@@ -803,19 +803,24 @@ export async function work(jid) {
 }
 
 export async function deposit(jid, amount) {
-  amount = Number(amount)
-  if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
+  const depositAll=['total','tudo'].includes(String(amount||'').trim().toLowerCase())
+  if(!depositAll){
+    amount = Number(amount)
+    if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
+  }
 
   return transaction(async client => {
     const { rows } = await client.query('SELECT * FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     const w=rows[0]
+    if(depositAll) amount=Number(w?.cash||0)
+    if(amount<=0) throw new Error('Você não possui dinheiro na carteira para depositar.')
     if (!w || Number(w.cash) < amount) throw new Error('Saldo em carteira insuficiente.')
         await client.query(`
       UPDATE wallets
       SET cash=cash-$1, bank=bank+$1, updated_at=${nowSql}
       WHERE jid=$2
     `,[amount,jid])
-    return { cash:Number(w.cash)-amount, bank:Number(w.bank)+amount }
+    return { amount,cash:Number(w.cash)-amount, bank:Number(w.bank)+amount }
   })
 }
 
