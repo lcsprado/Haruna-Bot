@@ -134,7 +134,7 @@ async function runBossSession(chat,jid,name,reply){
         }
         if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
       }
-      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 ${petName} (${petBonus}) ajudou com ~*${petDamage.toLocaleString('pt-BR')}* de dano`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{bossSessions.delete(key)}
   })()
@@ -1015,7 +1015,7 @@ Você possui: *${stock}*
     const mainMenu=async()=>{
       setQuickFlow(chat,sender,'nav_main',{},90000)
       await reply(
-`🍀 *ALPHA BOT — MENU PRINCIPAL*
+`🤖 *ALPHA BOT — MENU PRINCIPAL*
 
 1️⃣ 👤 Meu perfil
 2️⃣ 💰 Economia
@@ -1029,7 +1029,7 @@ Você possui: *${stock}*
 
 🔥 *DESTAQUES 2.0*
 🐾 Pets agora dão bônus estratégicos no Boss
-👹 Boss de sexta e sábado com combate automático
+👹 Boss de Grupo: sexta 00:00 → sábado 23:59, com combate automático e drops
 🏢 Negócios, upgrades e renda passiva
 💼 Carreira no !trabalhar
 🚗 Uber com sua frota • 🏍️ iFood com bikes/motos
@@ -1182,8 +1182,9 @@ function petStatusBonus(p){
 *!resposta 1* — forma alternativa de responder
 *!numero* — adivinhe o número
 *!chute 50* — dá um palpite
-*!boss* — inicia/mostra o Boss de sexta e sábado
+*!boss* — inicia/mostra o Boss de Grupo (sexta 00:00 → sábado 23:59)
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
+🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
 🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
 
 9️⃣ Voltar • 0️⃣ Fechar`,
@@ -2355,9 +2356,11 @@ Digite apenas seu chute.
         await reply(
 `👹 *${r.name}*
 
-❤️ ${r.hp}/${r.maxHp}
+❤️ ${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}
+📅 Disponível: *sexta 00:00 → sábado 23:59*
+⏰ Encerra: *${r.endsLabel}* (São Paulo)
 
-1️⃣ Atacar
+1️⃣ Iniciar combate automático
 0️⃣ Sair`
         )
         return true
@@ -2444,12 +2447,14 @@ Digite *0* para sair do modo rápido.`
         await reply(
 `👹 *${r.name}*
 
-❤️ ${r.hp}/${r.maxHp}
+❤️ ${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}
+📅 Disponível: *sexta 00:00 → sábado 23:59*
+⏰ Encerra: *${r.endsLabel}* (São Paulo)
 
-1️⃣ Atacar
+1️⃣ Iniciar combate automático
 0️⃣ Sair do modo rápido
 
-_Enquanto estiver neste modo, mande apenas 1 para atacar._`
+_Ao mandar 1, começa uma sessão automática de até 5 minutos._`
         )
         return true
       }
@@ -2625,24 +2630,13 @@ ${emoji} *${r.result.toUpperCase()}*`)
 
     if(flow.stage==='boss_attack'){
       if(input!=='1'){
-        await reply('👹 Mande *1* para atacar ou *0* para sair.')
+        await reply('👹 Mande *1* para iniciar o combate automático ou *0* para sair.')
         return true
       }
-      const r=await attackBoss(chat,sender,msg.pushName||'Jogador')
-      if(r.cooldown){
-        await reply(`⏳ Aguarde *${r.remaining}s* para atacar novamente.`)
-        return true
-      }
-      if(r.dead){
-        await afterGame('boss',{},
-`💥 *BOSS DERROTADO!*
-Dano final: ${r.damage}
-👥 Participantes: ${r.players}
-💰 Cada participante recebeu R$ ${fmt(r.rewardEach)}`
-        )
-      }else{
-        await reply(`⚔️ Você causou *${r.damage}* de dano!\n👹 Boss: ❤️ ${r.hp}/${r.maxHp}\n\nMande *1* para atacar novamente.`)
-      }
+      clearQuickFlow(chat,sender)
+      const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
+      if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
+      await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Até *5 minutos* • 🥊 ataque a cada *10 segundos*\n🧪 Cura automática quando possível.\n📅 O Boss encerra *sábado às 23:59* (São Paulo).\n\nUse *!boss* para acompanhar o HP.')
       return true
     }
 
@@ -5962,9 +5956,9 @@ _Os comandos antigos continuam funcionando normalmente._`
 
         } else if(['boss'].includes(cmd)){
           const r=await startBoss(chat)
-          if(r.already) return await reply(`👹 *${r.name}* ainda está vivo!\n❤️ HP: ${r.hp}/${r.maxHp}\nUse *${prefix}atacar*.`)
+          if(r.already) return await reply(`👹 *BOSS DE GRUPO — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n\n⚔️ Use *${prefix}atacar* para iniciar até 5 min de combate automático.`)
           await progressDailyMission(sender,'game')
-          await reply(`👹 *BOSS APARECEU!*\n\n*${r.name}*\n❤️ HP: ${r.hp}/${r.maxHp}\n\nTodos podem atacar com *${prefix}atacar*.`)
+          await reply(`👹 *BOSS DE GRUPO APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n🎁 Drops: Poção Grande, Elixir Supremo, Lâmina/Armadura Abissal e lendários raros.\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['atacar'].includes(cmd)){
           const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
