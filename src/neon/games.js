@@ -498,11 +498,11 @@ export async function createRaid(chat,host,name='Jogador',level=10){
     const old=await loadGame(c,chat,'raid')
     if(old&&['lobby','active'].includes(old.status)&&Number(old.expiresAt||0)>Date.now()) throw new Error('Já existe uma Raid aberta neste grupo.')
     const u=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[host])).rows[0]
-    if(Number(u?.level||1)<cfg.level) throw new Error(\`Essa Raid exige nível \${cfg.level}. Seu nível atual: \${Number(u?.level||1)}.\`)
+    if(Number(u?.level||1)<cfg.level) throw new Error(`Essa Raid exige nível ${cfg.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[host])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de abrir a Raid.')
     const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[host,cfg.keyId])).rows[0]
-    if(Number(key?.quantity||0)<1) throw new Error(\`Você precisa da Chave de Raid Lv.\${cfg.level}. Use !chaveraid \${cfg.level}.\`)
+    if(Number(key?.quantity||0)<1) throw new Error(`Você precisa da Chave de Raid Lv.${cfg.level}. Use !chaveraid ${cfg.level}.`)
     const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+5*60*1000}
     await saveGame(c,chat,'raid',state)
     return state
@@ -517,7 +517,7 @@ export async function joinRaid(chat,jid,name='Jogador'){
     if(s.players?.[jid]) return {already:true,...s}
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     const u=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(Number(u?.level||1)<Number(s.level)) throw new Error(\`Essa Raid exige nível \${s.level}. Seu nível atual: \${Number(u?.level||1)}.\`)
+    if(Number(u?.level||1)<Number(s.level)) throw new Error(`Essa Raid exige nível ${s.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
     s.players={...(s.players||{}),[jid]:{jid,name:name||'Jogador',damage:0,alive:true}}
@@ -598,7 +598,7 @@ async function finishRaidRewards(c,s,cfg){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
     const cash=Math.max(250,Math.floor(cfg.cashPool*(.10+.90*share)))
     const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
-    await credit(c,p.jid,cash,\`raid_\${cfg.level}\`)
+    await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
     const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     if(petXp) await raidPetXp(c,p.jid,petXp)
