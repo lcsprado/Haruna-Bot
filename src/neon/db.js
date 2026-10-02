@@ -2726,6 +2726,25 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
 export async function getPet(jid){
   const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid]); return rows[0]||null
 }
+export async function renamePet(jid,name){
+  const newName=String(name||'').replace(/[\u0000-\u001F\u007F]/g,'').replace(/\s+/g,' ').trim()
+  if(newName.length<2||newName.length>24) throw new Error('O nome do pet deve ter entre 2 e 24 caracteres.')
+  const fee=1000
+  return transaction(async client=>{
+    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    if(pet.name.toLocaleLowerCase('pt-BR')===newName.toLocaleLowerCase('pt-BR')) throw new Error('Esse já é o nome do seu pet.')
+    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+    if(cash+bank<fee) throw new Error('Você precisa de R$ 1.000 para trocar o nome do pet.')
+    const fromCash=Math.min(cash,fee)
+    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
+    const updated=(await client.query('UPDATE pets SET name=$1 WHERE jid=$2 RETURNING *',[newName,jid])).rows[0]
+    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'system',$2,'pet_rename',$3)`,[jid,fee,`${pet.name} -> ${newName}`])
+    return {...updated,oldName:pet.name,fee}
+  })
+}
 export async function petAction(jid,action){
   const map={
     alimentar:{hunger:25,hygiene:-2,energy:2,xp:8},
