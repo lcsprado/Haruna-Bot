@@ -41,11 +41,11 @@ import {
   startBoss, attackBoss
 } from './games.js'
 import {
-  initProgression, HOUSES, CARS,
+  initProgression, HOUSES, CARS, MOTORCYCLES,
   getDailyMissions, progressDailyMission, claimDailyMissions,
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
-  getHome, buyHouse, getGarage, buyCar, driveUber,
+  getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
   getPatrimony, patrimonyLeaderboard
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
@@ -983,6 +983,9 @@ Você possui: *${stock}*
 *!saldo* — carteira, banco e total
 *!trabalhar* — trabalha para ganhar dinheiro
 *!uber* — faz uma corrida usando seu melhor carro
+*!ifood* — faz uma entrega usando sua melhor moto
+*!motos* — vê e compra motos
+*!minhasmotos* — mostra sua garagem de motos
 *!depositar valor* — deposita no banco
 *!sacar valor* — saca do banco
 *!pix @pessoa valor* — transfere dinheiro
@@ -4325,10 +4328,10 @@ Fale com o responsável pelo Alpha Bot para ativação.`
         }
 
         if(isGroup && !isOwner){
-          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','uber','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','uber','ifood','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
-          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
+          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
           let key=null,label=null
           if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
           else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
@@ -4870,6 +4873,40 @@ ${status}
           else {
             await progressDailyMission(sender,'work')
             await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
+          }
+
+        } else if(['motos','motocicletas'].includes(cmd)){
+          const owned=await getMotorcycleGarage(sender)
+          let text='🏍️ *LOJA DE MOTOS*\n\n'
+          MOTORCYCLES.forEach((m,i)=>{
+            const has=owned.some(x=>x.id===m.id)
+            text+=`${i+1}️⃣ *${m.name}* — R$ ${fmt(m.price)}${has?' ✅':''}\n`
+          })
+          text+=`\n🛒 Para comprar: *${prefix}comprarmoto número ou nome*\n🍔 Depois use *${prefix}ifood* para fazer entregas.`
+          await reply(text)
+
+        } else if(['comprarmoto'].includes(cmd)){
+          if(!args.length) return await reply(`🏍️ Use *${prefix}motos* para ver as opções e depois *${prefix}comprarmoto número ou nome*.`)
+          const m=await buyMotorcycle(sender,args.join(' '))
+          await reply(`🏍️ *Moto comprada!*\n\n${m.name}\n💰 R$ ${fmt(m.price)}\n\n🍔 Agora você pode usar *${prefix}ifood*.`)
+
+        } else if(['minhasmotos','garagemmotos'].includes(cmd)){
+          const rows=await getMotorcycleGarage(sender)
+          if(!rows.length) return await reply(`🏍️ Sua garagem de motos está vazia. Veja *${prefix}motos*.`)
+          let text='🏍️ *MINHAS MOTOS*\n\n'
+          rows.forEach((m,i)=>text+=`${i+1}. *${m.name}* — R$ ${fmt(m.price)}\n`)
+          await reply(text.trim())
+
+        } else if(['ifood'].includes(cmd)){
+          const r=await deliverIfood(sender)
+          if(!r.ok){
+            await reply(`🍔 Você já fez uma entrega. Próxima disponível em *${duration(r.remaining)}*.`)
+          }else{
+            await progressDailyMission(sender,'work')
+            let text=`🍔 *ENTREGA CONCLUÍDA!*\n\n🏍️ Moto: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
+            if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
+            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega em 15 minutos.`
+            await reply(text)
           }
 
         } else if(['uber'].includes(cmd)){
