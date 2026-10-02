@@ -1020,12 +1020,19 @@ Você possui: *${stock}*
 1️⃣ 👤 Meu perfil
 2️⃣ 💰 Economia
 3️⃣ 🛒 Itens e inventário
-4️⃣ ⚔️ RPG
-5️⃣ 🎮 Minigames
-6️⃣ 📋 Progressão
+4️⃣ ⚔️ RPG, Dungeon & Pets
+5️⃣ 🎮 Minigames & Boss
+6️⃣ 📋 Progressão & patrimônio
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo / assinatura
-9️⃣ 🆘 Falar com suporte
+9️⃣ 🆘 Futebol, utilidades & suporte
+
+🔥 *DESTAQUES 2.0*
+🐾 Pets agora dão bônus estratégicos no Boss
+👹 Boss de sexta e sábado com combate automático
+🏢 Negócios, upgrades e renda passiva
+💼 Carreira no !trabalhar
+🚗 Uber com sua frota • 🏍️ iFood com bikes/motos
 📚 Catálogo completo: *!comandos*
 
 ✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
@@ -1108,13 +1115,15 @@ Você possui: *${stock}*
 *!rpg* — abre o menu de RPG
 *!status* — mostra seus atributos
 *!batalhar @pessoa* — desafia outro jogador
-*!dungeon* — entra em uma dungeon
+*!dungeon* — entra em uma dungeon e ganha dinheiro/XP
+*!curar* — recupera HP usando cura disponível
 *!roubar @pessoa* / *!fazoL @pessoa* — tenta roubar
 *!rankingrpg* — ranking de combate
 
 🐾 *Pets*
 *!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adota ou troca seu pet
-*!meupet* — mostra seu pet
+*!meupet* — mostra seu pet e evolução
+🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
 *!alimentar* — alimenta
 *!banho* — dá banho
 *!passear* — passeia
@@ -1147,8 +1156,9 @@ Você possui: *${stock}*
 *!resposta 1* — forma alternativa de responder
 *!numero* — adivinhe o número
 *!chute 50* — dá um palpite
-*!boss* — inicia/mostra o boss
-*!atacar* — ataca o boss
+*!boss* — inicia/mostra o Boss de sexta e sábado
+*!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
+🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
