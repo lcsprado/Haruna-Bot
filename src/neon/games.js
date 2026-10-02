@@ -749,9 +749,56 @@ async function giveBossDrops(c,jid,position,extraChance=0){
   return drops
 }
 
+async function maybeGrantEventRelic(c,jid,chance){
+  const owned=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'insignia_eclipse'])).rows[0]
+  if(Number(owned?.quantity||0)>0 || Math.random()>=Math.max(0,Math.min(.50,Number(chance)||0))) return null
+  await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+    ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)`,[jid,'insignia_eclipse'])
+  return {id:'insignia_eclipse',name:'Insígnia do Eclipse',rarity:'Evento Único'}
+}
+
+export async function getBossEventStatus(chat){
+  return tx(async c=>{
+    const s=await loadGame(c,chat,'boss_event')
+    return s&&s.active!==false&&Number(s.hp)>0?s:null
+  })
+}
+
+export async function activateBossEvent(chat){
+  return tx(async c=>{
+    const current=await loadGame(c,chat,'boss_event')
+    if(current&&current.active!==false&&Number(current.hp)>0) return {already:true,...current}
+    const maxHp=55000+Math.floor(Math.random()*12001)
+    const state={
+      mode:'event',
+      eventId:'eclipse',
+      active:true,
+      name:'Imperador do Eclipse',
+      hp:maxHp,
+      maxHp,
+      atk:26,
+      participants:{},
+      startedAt:Date.now()
+    }
+    await saveGame(c,chat,'boss_event',state)
+    return state
+  })
+}
+
+export async function deactivateBossEvent(chat){
+  return tx(async c=>{
+    const current=await loadGame(c,chat,'boss_event')
+    if(!current||current.active===false||Number(current.hp)<=0) return {active:false,already:true}
+    await clearGame(c,chat,'boss_event')
+    return {active:false,stopped:true,name:current.name,hp:Number(current.hp),maxHp:Number(current.maxHp)}
+  })
+}
+
 export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
+    const event=await loadGame(c,chat,'boss_event')
+    if(event&&event.active!==false&&Number(event.hp)>0) return {already:true,...event}
     const current=await loadGame(c,chat,'boss')
     // Sessões criadas antes da separação semanal/comum não possuíam `mode`.
     // Normalize-as sem apagar participantes, para que a conclusão semanal seja persistida.
@@ -794,12 +841,15 @@ export async function attackBoss(chat,jid,name,usePet=true){
   return tx(async c=>{
     const sleeping=await c.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[jid,Math.floor(Date.now()/1000)])
     if(sleeping.rows.length) throw new Error('Você está dormindo e não pode atacar o Boss agora.')
-    const s=await loadGame(c,chat,'boss')
+    const event=await loadGame(c,chat,'boss_event')
+    const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0)
+    const gameType=eventActive?'boss_event':'boss'
+    const s=eventActive?event:await loadGame(c,chat,'boss')
     if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss para iniciar um.')
-    if(!s.mode&&Number(s.maxHp)>=25000&&s.weekendKey===weekend.weekendKey){
+    if(gameType==='boss'&&!s.mode&&Number(s.maxHp)>=25000&&s.weekendKey===weekend.weekendKey){
       s.mode='weekly'; s.weeklyCompleted=false
     }
-    if(s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
+    if(gameType==='boss'&&s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     let pet=usePet?(await c.query('SELECT species,name,level,energy FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null:null
@@ -849,20 +899,44 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null
         const pb=petBossBonus(pp)
         const weekly=s.mode==='weekly'
+        const eventMode=s.mode==='event'
         const tier=weekly?(BOSS_PLACEMENT[i]||{cash:0,xp:0}):{cash:0,xp:0}
-        // Boss comum é atividade secundária: recompensa muito abaixo do Superboss semanal.
-        const cash=weekly?5000+Math.floor(150000*share)+tier.cash:150+Math.floor(2500*share)
-        const exp=Math.floor((weekly?150+1000*share+tier.xp:10+35*share)*(1+pb.xp))
-        await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
-        await grantExpInTransaction(c,p.jid,exp)
-        const drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
-        rewards.push({...p,position,cash,exp,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
+        let cash=0,exp=0,petXp=0,drops=[]
+        if(eventMode){
+          const positionXp=[900,600,350,200,100][i]||50
+          cash=5000+Math.floor(80000*share)
+          exp=Math.floor((900+6000*share+positionXp)*(1+pb.xp))
+          await credit(c,p.jid,cash,'boss_event_eclipse')
+          await grantExpInTransaction(c,p.jid,exp)
+          if(pp){
+            petXp=Math.floor(200+1200*share+(i===0?300:i===1?150:0))
+            await raidPetXp(c,p.jid,petXp)
+          }
+          if(i===0) drops.push(await grantBossItem(c,p.jid,{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'}))
+          else if(i<3) drops.push(await grantBossItem(c,p.jid,{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'}))
+          else if(Math.random()<.35) drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
+          const uniqueBase=[.25,.18,.12,.08,.06][i]||.05
+          const relic=await maybeGrantEventRelic(c,p.jid,Math.min(.35,uniqueBase+Number(pb.drop||0)))
+          if(relic) drops.push(relic)
+        }else{
+          // Boss comum é atividade secundária: recompensa muito abaixo do Superboss semanal.
+          cash=weekly?5000+Math.floor(150000*share)+tier.cash:150+Math.floor(2500*share)
+          exp=Math.floor((weekly?150+1000*share+tier.xp:10+35*share)*(1+pb.xp))
+          await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
+          await grantExpInTransaction(c,p.jid,exp)
+          drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
+        }
+        rewards.push({...p,position,cash,exp,petXp,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
-      const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
-      await saveGame(c,chat,'boss',marker)
+      if(s.mode==='event'){
+        await clearGame(c,chat,'boss_event')
+      }else{
+        const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
+        await saveGame(c,chat,'boss',marker)
+      }
       return {dead:true,mode:s.mode,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petUnavailable}
     }
-    await saveGame(c,chat,'boss',s)
+    await saveGame(c,chat,gameType,s)
     return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petUnavailable,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy}:null}
   })
 }
