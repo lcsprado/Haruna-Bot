@@ -513,7 +513,7 @@ export async function startBoss(chat){
     await saveGame(c,chat,'boss',state); return state
   })
 }
-export async function attackBoss(chat,jid,name){
+export async function attackBoss(chat,jid,name,usePet=true){
   await ensureUser(jid,name||'')
   const weekend=bossWeekendInfo()
   if(!weekend.open) throw new Error('O Boss do Grupo encerrou. Ele volta sexta-feira às 00:00 (horário de São Paulo).')
@@ -522,7 +522,7 @@ export async function attackBoss(chat,jid,name){
     if(!s||Number(s.hp)<=0||Number(s.maxHp)<25000||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now()) throw new Error('Não há Boss de Grupo ativo. Use !boss para iniciar o Boss deste fim de semana.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
-    const pet=(await c.query('SELECT species,name,level,energy FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
+    const pet=usePet?(await c.query('SELECT species,name,level,energy FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null:null
     if(pet && Number(pet.energy)<2) throw new Error(`Seu pet está sem energia para atacar. Use !descansar. Energia atual: ${pet.energy}/100.`)
     if(pet){
       pet.energy=Number(pet.energy)-2
