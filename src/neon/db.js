@@ -1503,7 +1503,10 @@ export function equipmentStatsAtLevel(itemId,level=1){
   const eq=EQUIPMENT[itemId]
   if(!eq) return null
   level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
-  const mult=1+((level-1)*0.04)
+  // Curva progressiva: upgrades iniciais já são perceptíveis e os níveis altos escalam mais.
+  // Lv.10 chega a ~2,08x o atributo base sem alterar a identidade/raridade do equipamento.
+  const multipliers=[1,1.0833,1.1667,1.2708,1.375,1.5,1.625,1.7708,1.9167,2.0833]
+  const mult=multipliers[level-1]
   return {
     ...eq,itemId,level,mult,
     atk:Math.round(Number(eq.atk||0)*mult),
