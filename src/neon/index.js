@@ -1291,7 +1291,7 @@ Você possui: *${stock}*
 *!casas* — lista imóveis
 *!comprarcasa número* — compra imóvel
 *!minhacasa* — mostra sua casa
-*!carros* — concessionária
+*!carros* — concessionária com carros reais: Corsa, HB20, Civic Type R, Porsche, Ferrari, Lamborghini, McLaren e Bugatti
 *!comprarcarro número* — compra carro
 *!garagem* — mostra seus carros
 *!vendercarro N* — vende carro por 70% do valor pago
