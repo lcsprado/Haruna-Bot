@@ -2784,6 +2784,39 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
     }
 
+    if(flow.stage==='business_buy_select'){
+      if(!/^([1-9])$/.test(input)){
+        await reply('🏪 Escolha um negócio de *1 a 9* ou digite *0* para cancelar.')
+        return true
+      }
+      const b=BUSINESSES[Number(input)-1]
+      if(!b){ await reply('❌ Negócio inválido.'); return true }
+      const owned=await getBusinesses(sender)
+      if(owned.some(x=>x.id===b.id)){
+        await reply(`⚠️ Você já possui *${b.name}*. Escolha outro negócio.`)
+        return true
+      }
+      setQuickFlow(chat,sender,'business_buy_confirm',{id:b.id,name:b.name,price:b.price,profitHour:b.profitHour,capacityHours:b.capacityHours},90000)
+      await reply(`🏪 Comprar *${b.name}* por *R$ ${fmt(b.price)}*?\n\n💵 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+      return true
+    }
+
+    if(flow.stage==='business_buy_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('❌ Compra cancelada.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
+        return true
+      }
+      const b=await buyBusiness(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply(`✅ *NEGÓCIO COMPRADO!*\n\n🏪 ${b.name}\n💰 Investimento: R$ ${fmt(b.price)}\n📈 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h.\n\nUse *${prefix}coletar* para receber os lucros.`)
+      return true
+    }
+
     if(flow.stage==='confirm_sell_car'){
       if(['nao','não','n'].includes(input)){ clearQuickFlow(chat,sender); await reply('❌ Venda cancelada.'); return true }
       if(!['sim','s'].includes(input)){ await reply('⚠️ Responda *SIM* para vender ou *NÃO* para cancelar.'); return true }
@@ -5014,12 +5047,13 @@ ${status}
 
         } else if(['negocios','negócios'].includes(cmd)){
           const owned=await getBusinesses(sender)
+          setQuickFlow(chat,sender,'business_buy_select',{},90000)
           let text='🏪 *NEGÓCIOS — RENDA PASSIVA*\n\n'
           BUSINESSES.forEach((b,i)=>{
             const has=owned.some(x=>x.id===b.id)
-            text+=`${i+1}️⃣ *${b.name}* — R$ ${fmt(b.price)}\n   💵 R$ ${fmt(b.profitHour)}/h • acumula ${b.capacityHours}h${has?' ✅':''}\n`
+            text+=`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}\n   💵 R$ ${fmt(b.profitHour)}/h • acumula ${b.capacityHours}h${has?' ✅':''}\n`
           })
-          text+=`\n🛒 Compre: *${prefix}comprarnegocio número*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*`
+          text+=`\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
           await reply(text)
 
         } else if(['comprarnegocio','comprarnegócio'].includes(cmd)){
