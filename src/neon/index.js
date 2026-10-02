@@ -117,7 +117,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   ;(async()=>{
     let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false
     try{
-      while(true){
+      for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name,usePet)
         if(r.petUnavailable&&!petExitWarned){
           petExitWarned=true
