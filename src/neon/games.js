@@ -526,8 +526,15 @@ export async function startBoss(chat){
       await saveGame(c,chat,'boss',state); return state
     }
     if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
+    // Boss comum: no máximo 1 novo Boss por grupo a cada 2 horas após a derrota.
+    const commonCooldownMs=2*60*60*1000
+    const lastCommonEndedAt=Number(current?.lastCommonEndedAt||0)
+    if(lastCommonEndedAt&&Date.now()-lastCommonEndedAt<commonCooldownMs){
+      const remaining=Math.ceil((commonCooldownMs-(Date.now()-lastCommonEndedAt))/60000)
+      return {cooldown:true,mode:'common',remainingMinutes:remaining,weeklyCompleted:Boolean(weeklyCompleted)}
+    }
     const maxHp=900+Math.floor(Math.random()*1101)
-    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:10,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:Boolean(weeklyCompleted)}
+    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:10,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:Boolean(weeklyCompleted),lastCommonEndedAt}
     await saveGame(c,chat,'boss',state); return state
   })
 }
@@ -587,14 +594,15 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const pb=petBossBonus(pp)
         const weekly=s.mode==='weekly'
         const tier=weekly?(BOSS_PLACEMENT[i]||{cash:0,xp:0}):{cash:0,xp:0}
-        const cash=weekly?5000+Math.floor(150000*share)+tier.cash:500+Math.floor(8000*share)
-        const exp=Math.floor((weekly?150+1000*share+tier.xp:30+100*share)*(1+pb.xp))
+        // Boss comum é atividade secundária: recompensa muito abaixo do Superboss semanal.
+        const cash=weekly?5000+Math.floor(150000*share)+tier.cash:150+Math.floor(2500*share)
+        const exp=Math.floor((weekly?150+1000*share+tier.xp:10+35*share)*(1+pb.xp))
         await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
         await grantExpInTransaction(c,p.jid,exp)
-        const drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.10+pb.drop?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
+        const drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
         rewards.push({...p,position,cash,exp,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
-      const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0}
+      const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
       await saveGame(c,chat,'boss',marker)
       return {dead:true,mode:s.mode,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petUnavailable}
     }
