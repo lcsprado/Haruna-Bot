@@ -4877,7 +4877,7 @@ ${status}
 
         } else if(['motos','motocicletas'].includes(cmd)){
           const owned=await getMotorcycleGarage(sender)
-          let text='🏍️ *LOJA DE MOTOS*\n\n'
+          let text='🚲🏍️ *DELIVERY — BICICLETAS E MOTOS*\n\n'
           MOTORCYCLES.forEach((m,i)=>{
             const has=owned.some(x=>x.id===m.id)
             text+=`${i+1}️⃣ *${m.name}* — R$ ${fmt(m.price)}${has?' ✅':''}\n`
@@ -4888,12 +4888,12 @@ ${status}
         } else if(['comprarmoto'].includes(cmd)){
           if(!args.length) return await reply(`🏍️ Use *${prefix}motos* para ver as opções e depois *${prefix}comprarmoto número ou nome*.`)
           const m=await buyMotorcycle(sender,args.join(' '))
-          await reply(`🏍️ *Moto comprada!*\n\n${m.name}\n💰 R$ ${fmt(m.price)}\n\n🍔 Agora você pode usar *${prefix}ifood*.`)
+          await reply(`🚲🏍️ *Veículo comprado!*\n\n${m.name}\n💰 R$ ${fmt(m.price)}\n\n🍔 Agora você pode usar *${prefix}ifood*.`)
 
         } else if(['minhasmotos','garagemmotos'].includes(cmd)){
           const rows=await getMotorcycleGarage(sender)
-          if(!rows.length) return await reply(`🏍️ Sua garagem de motos está vazia. Veja *${prefix}motos*.`)
-          let text='🏍️ *MINHAS MOTOS*\n\n'
+          if(!rows.length) return await reply(`🚲🏍️ Sua garagem de delivery está vazia. Veja *${prefix}motos*.`)
+          let text='🚲🏍️ *MEUS VEÍCULOS DE DELIVERY*\n\n'
           rows.forEach((m,i)=>text+=`${i+1}. *${m.name}* — R$ ${fmt(m.price)}\n`)
           await reply(text.trim())
 
@@ -4903,7 +4903,7 @@ ${status}
             await reply(`🍔 Você já fez uma entrega. Próxima disponível em *${duration(r.remaining)}*.`)
           }else{
             await progressDailyMission(sender,'work')
-            let text=`🍔 *ENTREGA CONCLUÍDA!*\n\n🏍️ Moto: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
+            let text=`🍔 *ENTREGA CONCLUÍDA!*\n\n🚲🏍️ Veículo: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
             if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
             text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega em 10 minutos.`
             await reply(text)
