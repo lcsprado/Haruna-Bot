@@ -1200,7 +1200,8 @@ Você possui: *${stock}*
 🏪 *Mercado entre jogadores*
 *!mercado* — lista anúncios
 *!anunciar* — abre seu inventário, escolhe o item e define o preço
-*!compraritem* — abre os anúncios e confirma a compra
+*!comprar#3* / *!comprar #3* — abre o anúncio #3 e confirma a compra
+*!compraritem* — abre a lista de anúncios
 *!cancelarvenda ID* — cancela seu anúncio
 
 9️⃣ Voltar • 0️⃣ Fechar`,
@@ -4868,7 +4869,11 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
         await ensureUser(sender,msg.pushName || '')
         const [rawCmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
-        const cmd=(rawCmd||'').toLowerCase()
+        const rawCmdLower=(rawCmd||'').toLowerCase()
+        const compactMarketBuy=rawCmdLower.match(/^comprar#(\d+)$/)
+        const spacedMarketBuy=rawCmdLower==='comprar' && /^#\d+$/.test(String(args[0]||''))
+        if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
+        const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
         const ownerTarget=mentionsOf(msg)[0] || sender
         const sleep=await resolvePlayerSleep(sender)
         if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
@@ -5170,7 +5175,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='mercado'){
               const rows=await listMarket(15)
               if(!rows.length) return await reply('🏪 O mercado está vazio.')
-              return await reply('🏪 *MERCADO ENTRE JOGADORES*\n\n'+rows.map((x,i)=>`*${i+1}.* ${x.name} ×${x.quantity} — R$ ${Number(x.price).toLocaleString('pt-BR')}\n👤 ${x.seller_name||'Jogador'}`).join('\n\n')+`\n\nPara comprar use *!compraritem*.`)
+              return await reply('🏪 *MERCADO ENTRE JOGADORES*\n\n'+rows.map(x=>`#${x.id} • ${x.name} ×${x.quantity} — R$ ${Number(x.price).toLocaleString('pt-BR')}\n👤 ${x.seller_name||'Jogador'}`).join('\n\n')+`\n\nComprar direto: *!comprar#ID*\nEx.: *!comprar#3*`)
             }
             if(cmd==='anunciar'){
               const items=(await getInventory(sender)).filter(i=>Number(i.quantity||0)>0)
@@ -5182,8 +5187,18 @@ Se precisar de mais ajuda, use *!suporte*.`
               return await reply(text)
             }
             if(cmd==='compraritem'){
-              const rows=await listMarket(15)
+              const rows=await listMarket(50)
               if(!rows.length) return await reply('🏪 Não há anúncios disponíveis agora.')
+              const directRaw=String(args[0]||'').replace(/^#/,'')
+              const directId=Number(directRaw)
+              if(Number.isInteger(directId)&&directId>0){
+                const x=rows.find(r=>Number(r.id)===directId)
+                if(!x) return await reply(`❌ O anúncio *#${directId}* não existe ou já foi vendido/cancelado.`)
+                if(x.seller_jid===sender || x.seller===sender) return await reply('⚠️ Você não pode comprar o seu próprio anúncio.')
+                const item={id:x.id,name:x.name,quantity:Number(x.quantity||1),price:Number(x.price||0),seller_name:x.seller_name||'Jogador'}
+                setQuickFlow(chat,sender,'market_buy_confirm',item,90000)
+                return await reply(`🛒 *COMPRAR ANÚNCIO #${item.id}?*\n\n📦 *${item.name}* ×${item.quantity}\n👤 Vendedor: *${item.seller_name}*\n💰 Valor: *R$ ${item.price.toLocaleString('pt-BR')}*\n\n1️⃣ Sim\n2️⃣ Não`)
+              }
               const ownFiltered=rows.filter(x=>x.seller_jid!==sender && x.seller!==sender)
               const available=ownFiltered.length?ownFiltered:rows
               const items=available.map(x=>({id:x.id,name:x.name,quantity:Number(x.quantity||1),price:Number(x.price||0),seller_name:x.seller_name||'Jogador'}))
@@ -5194,8 +5209,8 @@ Se precisar de mais ajuda, use *!suporte*.`
               }
               setQuickFlow(chat,sender,'market_buy_select',{items},5*60*1000)
               let text='🛒 *ITENS À VENDA*\n\n'
-              items.forEach((x,i)=>{text+=`*${i+1}.* *${x.name}* ×${x.quantity}\n👤 ${x.seller_name} • 💰 R$ ${x.price.toLocaleString('pt-BR')}\n\n`})
-              text+='👉 Escolha o número do anúncio.\n0️⃣ Cancelar'
+              items.forEach((x,i)=>{text+=`*${i+1}.* #${x.id} • *${x.name}* ×${x.quantity}\n👤 ${x.seller_name} • 💰 R$ ${x.price.toLocaleString('pt-BR')}\n\n`})
+              text+='👉 Use *!comprar#ID* para ir direto. Ex.: *!comprar#3*\n0️⃣ Cancelar'
               return await reply(text)
             }
             if(cmd==='comprarmercado'){
