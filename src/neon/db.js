@@ -2216,6 +2216,8 @@ export function groupLicenseIsActive(license) {
 
 const BOX_CONFIG = {
   caixa_sorte: {
+    label:'Caixa da Sorte',
+    minRarity:'common',
     legendary:0.001,
     epic:0.015,
     rare:0.08,
@@ -2226,6 +2228,8 @@ const BOX_CONFIG = {
     exp:[60,220]
   },
   caixa_rara: {
+    label:'Caixa Rara',
+    minRarity:'uncommon',
     legendary:0.003,
     epic:0.05,
     rare:0.35,
@@ -2236,6 +2240,8 @@ const BOX_CONFIG = {
     exp:[200,700]
   },
   caixa_epica: {
+    label:'Caixa Épica',
+    minRarity:'rare',
     legendary:0.01,
     epic:0.25,
     rare:1.00,
@@ -2306,6 +2312,11 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
       else if(roll<config.rare) rarity='rare'
       else if(roll<config.uncommon) rarity='uncommon'
 
+      const rarityOrder={common:0,uncommon:1,rare:2,epic:3,legendary:4}
+      if(rarityOrder[rarity]<rarityOrder[config.minRarity]){
+        rarity=config.minRarity
+      }
+
       rarityCounts[rarity]++
       const itemId=pick(LOOT_POOLS[rarity])
       rewards.set(itemId,(rewards.get(itemId)||0)+1)
@@ -2353,6 +2364,7 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
 
     return {
       boxId,
+      boxName:config.label||boxId,
       opened:qty,
       remaining,
       cash,
