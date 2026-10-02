@@ -324,6 +324,22 @@ export async function initDatabase() {
           category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
     `, item)
   }
+
+  // A fusão foi descontinuada. Preserva qualquer equipamento já fundido,
+  // devolvendo o equivalente em cópias normais (T2=2, T3=4, T4=8...).
+  await transaction(async client=>{
+    await client.query(`
+      INSERT INTO inventories(jid,item_id,quantity)
+      SELECT jid,item_id,SUM(quantity * (1::bigint << (tier-1)))::integer
+      FROM equipment_fusions
+      WHERE quantity>0
+      GROUP BY jid,item_id
+      ON CONFLICT(jid,item_id) DO UPDATE
+      SET quantity=inventories.quantity+EXCLUDED.quantity
+    `)
+    await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
+    await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
+  })
 }
 
 export async function ensureUser(jid, pushName='') {
@@ -1161,6 +1177,18 @@ export async function sellItemsBatch(jid, selections=[]) {
 
 
 
+export async function sellDuplicateEquipment(jid) {
+  await ensureUser(jid)
+  const items=await getInventory(jid)
+  const selections=items
+    .filter(i=>['weapon','armor'].includes(i.category) && i.rarity!=='legendary' && Number(i.quantity)>1)
+    .map(i=>({itemId:i.item_id,qty:Number(i.quantity)-1}))
+
+  if(!selections.length) return {sold:[],types:0,totalUnits:0,total:0,cash:null}
+  return sellItemsBatch(jid,selections)
+}
+
+
 export async function saveSnipeMessage({
   chat,messageId,sender='',pushName='',text='',mediaLabel='',
   mediaType=null,mimeType=null,mediaBuffer=null,createdAt=Date.now(),expiresAt=Date.now()+30*60*1000
@@ -1411,69 +1439,17 @@ export function getEquipmentInfo(itemId) {
   return eq ? {...eq,itemId} : null
 }
 
-export async function getFuseCandidates(jid){
-  const [base,fused]=await Promise.all([
-    db.query(`SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity FROM inventories inv JOIN items i ON i.id=inv.item_id WHERE inv.jid=$1 AND inv.quantity>=2 AND i.category IN ('weapon','armor') ORDER BY i.name`,[jid]),
-    db.query(`SELECT f.item_id,f.tier,f.quantity,i.name,i.category,i.rarity FROM equipment_fusions f JOIN items i ON i.id=f.item_id WHERE f.jid=$1 AND f.quantity>=2 AND f.tier<10 ORDER BY f.tier DESC,i.name`,[jid])
-  ])
-  return [
-    ...base.rows.map(r=>({...r,tier:1})),
-    ...fused.rows.map(r=>({...r,tier:Number(r.tier)}))
-  ]
-}
-
-export async function fuseEquipment(jid,itemId,tier=1){
-  tier=Number(tier||1)
-  if(!Number.isInteger(tier)||tier<1||tier>=10) throw new Error('Tier inválido.')
-  const eq=EQUIPMENT[itemId]
-  if(!eq) throw new Error('Somente armas e armaduras podem ser fundidas.')
-  return transaction(async client=>{
-    let available=0
-    if(tier===1){
-      const r=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
-      available=Number(r.rows[0]?.quantity||0)
-      if(available<2) throw new Error('Você precisa de 2 equipamentos T1 iguais para criar 1 T2.')
-      await client.query('UPDATE inventories SET quantity=quantity-2 WHERE jid=$1 AND item_id=$2',[jid,itemId])
-    }else{
-      const r=await client.query('SELECT quantity FROM equipment_fusions WHERE jid=$1 AND item_id=$2 AND tier=$3 FOR UPDATE',[jid,itemId,tier])
-      available=Number(r.rows[0]?.quantity||0)
-      if(available<2) throw new Error(`Você precisa de 2 equipamentos T${tier} iguais para criar 1 T${tier+1}.`)
-      await client.query('UPDATE equipment_fusions SET quantity=quantity-2 WHERE jid=$1 AND item_id=$2 AND tier=$3',[jid,itemId,tier])
-    }
-    await client.query(`INSERT INTO equipment_fusions(jid,item_id,tier,quantity) VALUES($1,$2,$3,1)
-      ON CONFLICT(jid,item_id,tier) DO UPDATE SET quantity=equipment_fusions.quantity+1`,[jid,itemId,tier+1])
-    return {...eq,itemId,fromTier:tier,tier:tier+1,normalCopies:2**tier}
-  })
-}
-export async function getFusedEquipment(jid){
-  const {rows}=await db.query(`SELECT f.item_id,f.tier,f.quantity,i.name,i.category,i.rarity FROM equipment_fusions f JOIN items i ON i.id=f.item_id WHERE f.jid=$1 AND f.quantity>0 ORDER BY f.tier DESC,i.name`,[jid])
-  return rows
-}
-export function equipmentTierStats(itemId,tier=1){
-  const eq=EQUIPMENT[itemId]; if(!eq) return null
-  tier=Math.max(1,Number(tier||1))
-  const mult=1+Math.min(.45,(tier-1)*.05)
-  return {...eq,itemId,tier,atk:Math.round(Number(eq.atk||0)*mult),def:Math.round(Number(eq.def||0)*mult),mult}
-}
-
-export async function equipItem(jid, itemId, tier=1) {
+export async function equipItem(jid, itemId) {
   const eq=EQUIPMENT[itemId]
   if(!eq) throw new Error('Esse item não pode ser equipado.')
 
   return transaction(async client=>{
-    tier=Math.max(1,Number(tier||1))
-    if(tier===1){
-      const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
-      if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
-    }else{
-      const inv=await client.query('SELECT quantity FROM equipment_fusions WHERE jid=$1 AND item_id=$2 AND tier=$3',[jid,itemId,tier])
-      if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error(`Você não possui esse equipamento T${tier}.`)
-    }
+    const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
 
     const field=eq.category==='weapon' ? 'weapon_id' : 'armor_id'
-    const tierField=eq.category==='weapon' ? 'weapon_tier' : 'armor_tier'
-    await client.query(`UPDATE stats SET ${field}=$1,${tierField}=$2,updated_at=${nowSql} WHERE jid=$3`,[itemId,tier,jid])
-    return equipmentTierStats(itemId,tier)
+    await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
+    return {...eq,itemId}
   })
 }
 
