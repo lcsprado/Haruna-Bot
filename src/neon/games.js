@@ -527,7 +527,7 @@ export async function startBoss(chat){
     }
     if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
     // Boss comum: no máximo 1 novo Boss por grupo a cada 2 horas após a derrota.
-    const commonCooldownMs=2*60*60*1000
+    const commonCooldownMs=60*60*1000
     const lastCommonEndedAt=Number(current?.lastCommonEndedAt||0)
     if(lastCommonEndedAt&&Date.now()-lastCommonEndedAt<commonCooldownMs){
       const remaining=Math.ceil((commonCooldownMs-(Date.now()-lastCommonEndedAt))/60000)
