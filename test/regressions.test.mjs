@@ -82,6 +82,15 @@ test('rendas de trabalho, frotas e negócios descontam imposto de 10%',async()=>
   assert.match(progression,/TAXADE te pegou 10% \| negócios/)
   assert.match(indexSource,/TAXADE te pegou/)
 })
+
+test('depositar total resolve o saldo dentro da transação',async()=>{
+  const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
+  const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
+  assert.match(dbSource,/depositAll=\['total','tudo'\]/)
+  assert.match(dbSource,/FOR UPDATE[\s\S]{0,160}if\(depositAll\) amount=Number\(w\?\.cash\|\|0\)/)
+  assert.match(indexSource,/depositAll\?\s*'total':parseAmount/)
+  assert.match(indexSource,/\*!depositar total\*/)
+})
 test('regressões conhecidas de escopo não reaparecem',async()=>{
   const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(source,/const text=fixed\[cmd\][\s\S]{0,160}mentions:\[target\]/)
