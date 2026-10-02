@@ -11,7 +11,7 @@ import pino from 'pino'
 import {
   initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, fuseEquipment, getFusedEquipment, equipmentTierStats, usePotion, getCombatProfile, battle, combatLeaderboard,
+  equipItem, getEquipmentInfo, fuseEquipment, getFuseCandidates, getFusedEquipment, equipmentTierStats, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -1134,7 +1134,7 @@ Você possui: *${stock}*
 *!inventario* — abre seu inventário
 *!vender* — vende itens ao sistema
 *!equipar* — equipa arma ou armadura
-*!fundir ITEM TIER* — funde 2 equipamentos iguais do mesmo tier (2×T1→T2, 2×T2→T3)
+*!fundir* — mostra somente equipamentos que podem ser fundidos e permite escolher pelo número
 *!usar* — usa um consumível
 
 🏪 *Mercado entre jogadores*
@@ -2646,6 +2646,18 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
       if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
       await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Até *5 minutos* • 🥊 ataque a cada *10 segundos*\n🧪 Cura automática quando possível.\n📅 O Boss encerra *sábado às 23:59* (São Paulo).\n\nUse *!boss* para acompanhar o HP.')
+      return true
+    }
+
+    if(flow.stage==='fuse_select'){
+      const n=Number(input), candidates=flow.data?.candidates||[]
+      if(!Number.isInteger(n)||n<1||n>candidates.length){ await reply('❌ Escolha um número da lista de fusões disponíveis.'); return true }
+      const pick=candidates[n-1]
+      try{
+        const r=await fuseEquipment(sender,pick.itemId,pick.tier)
+        clearQuickFlow(chat,sender)
+        await reply(`🔥 *FUSÃO CONCLUÍDA!*\n\n⚙️ ${r.name}\n⬆️ T${r.fromTier} → *T${r.tier}*\n📦 Equivale a *${r.normalCopies} cópias T1*\n💪 Bônus: *+${Math.round((r.mult-1)*100)}%* nos atributos.\n\nUse *!fundir* novamente para ver as próximas disponíveis.`)
+      }catch(err){ clearQuickFlow(chat,sender); await reply('❌ '+(err?.message||'Não foi possível fundir.')) }
       return true
     }
 
@@ -6403,13 +6415,17 @@ Obrigado por apoiar o Alpha Bot 🍀`
           await showCommandsMainMenu(chat,sender,reply)
 
         } else if(cmd==='fundir'){
-          const itemId=String(args[0]||'').toLowerCase()
-          const tierRaw=String(args[1]||'t1').toLowerCase().replace('t','')
-          if(!itemId) return await reply('🔥 Use *!fundir ITEM TIER*.\nEx.: *!fundir espada_ferro t1*\n\n2× T1 → 1× T2\n2× T2 → 1× T3\n2× T3 → 1× T4')
-          try{
-            const r=await fuseEquipment(sender,itemId,Number(tierRaw)||1)
-            await reply(`🔥 *FUSÃO CONCLUÍDA!*\n\n⚙️ ${r.name}\n⬆️ T${r.fromTier} → *T${r.tier}*\n📦 Equivale a *${r.normalCopies} cópias T1*\n💪 Bônus do tier: *+${Math.round((r.mult-1)*100)}%* nos atributos do equipamento.\n\n💡 Para o próximo tier, junte *2 equipamentos T${r.tier} iguais*.`)
-          }catch(err){ await reply('❌ '+(err?.message||'Não foi possível fundir.')) }
+          const candidates=await getFuseCandidates(sender)
+          if(!candidates.length) return await reply('🔥 *FUSÃO DE EQUIPAMENTOS*\n\nVocê não tem nenhuma fusão disponível agora.\n\n💡 É preciso ter *2 equipamentos iguais do mesmo tier*.\n2× T1 → T2 • 2× T2 → T3 • 2× T3 → T4')
+          setQuickFlow(chat,sender,'fuse_select',{candidates:candidates.map(c=>({itemId:c.item_id,tier:Number(c.tier)}))},5*60*1000)
+          let text='🔥 *EQUIPAMENTOS QUE PODEM SER FUNDIDOS*\n\n'
+          candidates.forEach((c,i)=>{
+            const info=equipmentTierStats(c.item_id,c.tier)
+            const stat=c.category==='weapon'?`⚔️ ${info?.atk||0} ATK`:`🛡️ ${info?.def||0} DEF`
+            text+=`*${i+1}.* ${c.name} ×${c.quantity} — *T${c.tier} → T${Number(c.tier)+1}*\n   ${stat}\n`
+          })
+          text+='\n👉 Responda apenas com o *número* para fundir.\n0️⃣ Cancelar'
+          await reply(text)
         } else if(['menu','help','ajuda'].includes(cmd)){
           await showMainMenu(chat,sender,reply)
         } else {
