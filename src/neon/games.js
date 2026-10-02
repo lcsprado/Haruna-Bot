@@ -1,4 +1,4 @@
-import { db, ensureUser, getEquipmentInfo } from './db.js'
+import { db, ensureUser, getEquipmentInfo, grantExp } from './db.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -423,50 +423,81 @@ export async function guessNumber(chat,jid,guess){
   })
 }
 
+function bossWeekendOpen(){
+  const weekday=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short'}).format(new Date())
+  return weekday==='Fri'||weekday==='Sat'
+}
+const BOSS_DROPS=[
+  {id:'pocao_g',name:'Poção Grande',chance:.45,rarity:'Raro'},
+  {id:'elixir_supremo',name:'Elixir Supremo',chance:.18,rarity:'Épico'},
+  {id:'lamina_abissal',name:'Lâmina Abissal',chance:.07,rarity:'Épico'},
+  {id:'armadura_abissal',name:'Armadura Abissal',chance:.07,rarity:'Épico'},
+  {id:'excalibur',name:'Excalibur',chance:.018,rarity:'Lendário'},
+  {id:'armadura_titan',name:'Armadura do Titã',chance:.018,rarity:'Lendário'},
+]
+async function giveBossDrop(c,jid,bonus=false){
+  for(let rollNo=0;rollNo<(bonus?2:1);rollNo++){
+    const roll=Math.random(); let acc=0
+    for(const d of BOSS_DROPS){
+      acc+=d.chance
+      if(roll<acc){
+        await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+          ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,d.id])
+        return d
+      }
+    }
+  }
+  return null
+}
 export async function startBoss(chat){
+  if(!bossWeekendOpen()) throw new Error('O Boss do Grupo aparece somente sexta e sábado (horário de São Paulo).')
   return tx(async c=>{
     const current=await loadGame(c,chat,'boss')
-    if(current && Number(current.hp)>0) return {already:true,...current}
-    const maxHp=500+Math.floor(Math.random()*501)
-    const state={name:'Golem do Trevo',hp:maxHp,maxHp,participants:{},lastAttack:{}}
-    await saveGame(c,chat,'boss',state)
-    return state
+    if(current&&Number(current.hp)>0) return {already:true,...current}
+    const maxHp=25000+Math.floor(Math.random()*10001)
+    const state={name:'Golem Ancestral do Trevo',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now()}
+    await saveGame(c,chat,'boss',state); return state
   })
 }
-
 export async function attackBoss(chat,jid,name){
   await ensureUser(jid,name||'')
+  if(!bossWeekendOpen()) throw new Error('O Boss do Grupo só pode ser enfrentado sexta e sábado.')
   return tx(async c=>{
     const s=await loadGame(c,chat,'boss')
-    if(!s||Number(s.hp)<=0) throw new Error('Não há boss ativo. Use !boss.')
-
-    const now=Date.now()
-    s.lastAttack=s.lastAttack||{}
-    const last=Number(s.lastAttack[jid]||0)
-    const cooldownMs=10*1000
-    if(now-last<cooldownMs){
-      return {cooldown:true,remaining:Math.ceil((cooldownMs-(now-last))/1000),hp:Number(s.hp),maxHp:Number(s.maxHp)}
+    if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss.')
+    const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
+    const weapon=getEquipmentInfo(st.weapon_id)||{atk:0}, armor=getEquipmentInfo(st.armor_id)||{def:0}
+    const atk=Number(st.atk)+Number(weapon.atk||0), def=Number(st.def)+Number(armor.def||0)
+    const damage=Math.max(5,Math.floor(atk*(.85+Math.random()*.45)))
+    s.hp=Math.max(0,Number(s.hp)-damage); s.participants=s.participants||{}
+    const old=s.participants[jid]||{damage:0,name:name||'Jogador'}
+    s.participants[jid]={damage:Number(old.damage||0)+damage,name:old.name||name||'Jogador'}
+    let php=Number(st.hp),bossDamage=0,autoHeal=null
+    if(s.hp>0){
+      bossDamage=Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)))
+      php=Math.max(0,php-bossDamage)
+      if(php<=0){
+        const ids=['pocao_p','pocao_m','pocao_g','elixir_supremo']
+        const heals={pocao_p:35,pocao_m:80,pocao_g:160,elixir_supremo:999999}
+        const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
+        const inv=(await c.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[jid,ids])).rows
+        const available=inv.map(x=>({...x,heal:heals[x.item_id]})).sort((a,b)=>a.heal-b.heal)
+        const chosen=available.find(x=>x.heal>=Number(st.max_hp))||available[available.length-1]
+        if(chosen){php=Math.min(Number(st.max_hp),chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
+      }
+      await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[php,jid])
     }
-    s.lastAttack[jid]=now
-
-    const st=await c.query('SELECT atk,weapon_id FROM stats WHERE jid=$1',[jid])
-    const base=Number(st.rows[0]?.atk||10)
-    const weapon=st.rows[0]?.weapon_id
-    const bonus=Number(getEquipmentInfo(weapon)?.atk||0)
-    const damage=Math.max(5,Math.floor((base+bonus)*(0.8+Math.random()*0.7)))
-    s.hp=Math.max(0,Number(s.hp)-damage)
-    s.participants=s.participants||{}
-    s.participants[jid]=(Number(s.participants[jid]||0)+damage)
-
     if(s.hp<=0){
-      const entries=Object.entries(s.participants)
-      const rewardEach=Math.max(1,Math.floor(5000/Math.max(1,entries.length)))
-      for(const [pjid] of entries) await credit(c,pjid,rewardEach,'boss')
+      const entries=Object.entries(s.participants).map(([pjid,v])=>({jid:pjid,damage:Number(v.damage||0),name:v.name||'Jogador'})).sort((a,b)=>b.damage-a.damage)
+      const total=entries.reduce((n,x)=>n+x.damage,0)||1,rewards=[]
+      for(let i=0;i<entries.length;i++){const p=entries[i],share=p.damage/total,cash=3000+Math.floor(50000*share),exp=50+Math.floor(300*share);await credit(c,p.jid,cash,'boss_weekend');const drop=await giveBossDrop(c,p.jid,i===0);rewards.push({...p,cash,exp,drop,share})}
       await clearGame(c,chat,'boss')
-      return {dead:true,damage,hp:0,maxHp:s.maxHp,rewardEach,players:entries.length,pot:rewardEach*entries.length}
+      return {dead:true,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal}
     }
-
     await saveGame(c,chat,'boss',s)
-    return {dead:false,damage,hp:s.hp,maxHp:s.maxHp}
+    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal}
   })
 }
+export async function grantBossXp(rewards=[]){for(const r of rewards) await grantExp(r.jid,r.exp)}
+
