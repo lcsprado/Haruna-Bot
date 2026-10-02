@@ -520,6 +520,10 @@ export async function joinRaid(chat,jid,name='Jogador'){
     if(Number(u?.level||1)<Number(s.level)) throw new Error(`Essa Raid exige nível ${s.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
+    const cfg=raidConfig(s.level)
+    if(!cfg) throw new Error('Configuração da Raid não encontrada.')
+    const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])).rows[0]
+    if(Number(key?.quantity||0)<1) throw new Error(`🔑 Para entrar nesta Raid, cada jogador precisa ter 1 Chave de Raid Lv.${cfg.level}. Use !chaveraid ${cfg.level}.`)
     s.players={...(s.players||{}),[jid]:{jid,name:name||'Jogador',damage:0,alive:true}}
     await saveGame(c,chat,'raid',s)
     return s
@@ -566,14 +570,19 @@ export async function startRaid(chat,host){
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
 
-    const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[host,cfg.keyId])).rows[0]
-    if(Number(key?.quantity||0)<1) throw new Error('A chave da Raid não está mais no inventário.')
     const users=(await c.query('SELECT jid,level,push_name FROM users WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const stats=(await c.query('SELECT * FROM stats WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     if(users.some(u=>Number(u.level)<cfg.level)) throw new Error('Um participante não atende mais ao nível mínimo.')
     if(stats.some(st=>Number(st.hp)<=0)) throw new Error('Um participante está sem HP.')
 
-    await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[host,cfg.keyId])
+    const keys=(await c.query('SELECT jid,quantity FROM inventories WHERE jid=ANY($1::text[]) AND item_id=$2 FOR UPDATE',[ids,cfg.keyId])).rows
+    const missing=ids.filter(jid=>Number(keys.find(k=>k.jid===jid)?.quantity||0)<1)
+    if(missing.length){
+      const names=missing.map(jid=>users.find(u=>u.jid===jid)?.push_name||s.players?.[jid]?.name||'Jogador')
+      throw new Error(`🔑 Todos precisam da Chave de Raid Lv.${cfg.level}. Sem chave: ${names.join(', ')}.`)
+    }
+
+    await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=ANY($1::text[]) AND item_id=$2',[ids,cfg.keyId])
     const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id]).filter(Boolean))]
     const ups=eqIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,eqIds])).rows:[]
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
