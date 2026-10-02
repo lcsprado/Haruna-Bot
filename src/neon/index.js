@@ -41,12 +41,12 @@ import {
   startBoss, attackBoss
 } from './games.js'
 import {
-  initProgression, HOUSES, CARS, MOTORCYCLES,
+  initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES,
   getDailyMissions, progressDailyMission, claimDailyMissions,
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
-  getPatrimony, patrimonyLeaderboard
+  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
 import { renderProfileCard } from './profile-card.js'
@@ -985,6 +985,10 @@ Você possui: *${stock}*
 *!uber* — faz uma corrida usando seu melhor carro
 *!ifood* — faz entrega usando sua melhor moto
 *!ifoodbike* — faz entrega usando sua bicicleta
+*!negocios* — catálogo de negócios e renda passiva
+*!comprarnegocio N* — compra um negócio
+*!meusnegocios* — mostra seus negócios
+*!coletar* — coleta o lucro acumulado
 *!motos* — vê e compra motos
 *!minhasmotos* — mostra sua garagem de motos
 *!depositar valor* — deposita no banco
@@ -4361,7 +4365,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
-          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
+          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
           let key=null,label=null
           if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
           else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
@@ -4904,6 +4908,36 @@ ${status}
             await progressDailyMission(sender,'work')
             await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
           }
+
+        } else if(['negocios','negócios'].includes(cmd)){
+          const owned=await getBusinesses(sender)
+          let text='🏪 *NEGÓCIOS — RENDA PASSIVA*\n\n'
+          BUSINESSES.forEach((b,i)=>{
+            const has=owned.some(x=>x.id===b.id)
+            text+=`${i+1}️⃣ *${b.name}* — R$ ${fmt(b.price)}\n   💵 R$ ${fmt(b.profitHour)}/h • acumula ${b.capacityHours}h${has?' ✅':''}\n`
+          })
+          text+=`\n🛒 Compre: *${prefix}comprarnegocio número*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*`
+          await reply(text)
+
+        } else if(['comprarnegocio','comprarnegócio'].includes(cmd)){
+          if(!args.length) return await reply(`🏪 Veja *${prefix}negocios* e use *${prefix}comprarnegocio número*.`)
+          const b=await buyBusiness(sender,args.join(' '))
+          await reply(`🏪 *NEGÓCIO COMPRADO!*\n\n*${b.name}*\n💰 Investimento: R$ ${fmt(b.price)}\n📈 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h.\n\nUse *${prefix}coletar* para receber os lucros.`)
+
+        } else if(['meusnegocios','meusnegócios'].includes(cmd)){
+          const rows=await getBusinesses(sender)
+          if(!rows.length) return await reply(`🏪 Você ainda não possui negócios. Veja *${prefix}negocios*.`)
+          let text='🏢 *MEUS NEGÓCIOS*\n\n'
+          rows.forEach((b,i)=>text+=`${i+1}. *${b.name}* — R$ ${fmt(b.profitHour)}/h • até ${b.capacityHours}h\n`)
+          await reply(text.trim())
+
+        } else if(['coletar'].includes(cmd)){
+          const r=await collectBusinesses(sender)
+          if(!r.total) return await reply('⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
+          let text='💰 *LUCROS COLETADOS!*\n\n'
+          r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(x.earned)}*\n`)
+          text+=`\n💵 Total: *R$ ${fmt(r.total)}*`
+          await reply(text)
 
         } else if(['motos','motocicletas'].includes(cmd)){
           const owned=await getMotorcycleGarage(sender)
