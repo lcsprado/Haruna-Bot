@@ -1148,7 +1148,7 @@ function petStatusBonus(p){
 
 🐾 *Pets*
 *!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adota ou troca seu pet
-*!meupet* — mostra seu pet e evolução
+*!meupet* / *!statuspet* — mostra seu pet e evolução
 🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
 *!alimentar* — alimenta
 *!banho* — dá banho
@@ -4807,9 +4807,10 @@ Se precisar de mais ajuda, use *!suporte*.`
               const rows=await petLeaderboard(10)
               return await reply('🏆 *RANKING DE PETS*\n\n'+rows.map((p,i)=>`${i+1}º ${p.name} — Nv.${p.level} • ⚔️ ${p.power} (${p.push_name||'Jogador'})`).join('\n'))
             }
-            if(cmd==='meupet'){
+            if(cmd==='meupet'||cmd==='statuspet'){
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
-              return await reply(`🐾 *${p.name.toUpperCase()}*\n${p.species} • Nível ${p.level} • XP ${p.xp}\n⚔️ Poder: ${p.power}\n🍖 Fome: ${p.hunger}/100\n🧼 Higiene: ${p.hygiene}/100\n⚡ Energia: ${p.energy}/100\n🏆 ${p.wins}V / ${p.losses}D`)
+              const bonus=petStatusBonus(p)
+              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n🧼 Higiene: *${p.hygiene}/100*\n⚡ Energia: *${p.energy}/100*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 O bônus evolui com o nível do pet, respeitando o limite de equilíbrio do Boss.`)
             }
             const action={alimentar:'alimentar',banho:'banho',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
             const p=await petAction(sender,action)
@@ -5956,9 +5957,12 @@ _Os comandos antigos continuam funcionando normalmente._`
 
         } else if(['boss'].includes(cmd)){
           const r=await startBoss(chat)
-          if(r.already) return await reply(`👹 *BOSS DE GRUPO — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n\n⚔️ Use *${prefix}atacar* para iniciar até 5 min de combate automático.`)
+          const bossPet=await getPet(sender)
+          const bossPetBonus=bossPet?petStatusBonus(bossPet):null
+          const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
+          if(r.already) return await reply(`👹 *BOSS DE GRUPO — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)${petLine}\n\n⚔️ Use *${prefix}atacar* para iniciar até 5 min de combate automático.`)
           await progressDailyMission(sender,'game')
-          await reply(`👹 *BOSS DE GRUPO APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n🎁 Drops: Poção Grande, Elixir Supremo, Lâmina/Armadura Abissal e lendários raros.\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
+          await reply(`👹 *BOSS DE GRUPO APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n🎁 Drops: Poção Grande, Elixir Supremo, Lâmina/Armadura Abissal e lendários raros.${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['atacar'].includes(cmd)){
           const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
@@ -6334,30 +6338,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
           await showCommandsMainMenu(chat,sender,reply)
 
         } else if(['menu','help','ajuda'].includes(cmd)){
-          setQuickFlow(chat,sender,'nav_main',{},90000)
-          await reply(
-`🍀 *ALPHA BOT — MENU PRINCIPAL*
-
-1️⃣ 👤 Meu perfil
-2️⃣ 💰 Economia
-3️⃣ 🛒 Itens e inventário
-4️⃣ ⚔️ RPG
-5️⃣ 🎮 Minigames
-6️⃣ 📋 Progressão
-7️⃣ 🏴 Clãs
-8️⃣ 💚 Grupo / assinatura
-📚 Catálogo completo: *!comandos*
-
-✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
-🖼️ *Seu card:* use *!setfoto* numa foto para personalizar o *!perfil*.
-
-👉 *Responda apenas com o número.*
-Você não precisa usar ! enquanto estiver no menu.
-
-0️⃣ Sair
-
-_Se preferir, os comandos antigos continuam funcionando._`
-          )
+          await mainMenu()
         } else {
           const UNKNOWN_COMMAND_REPLIES=["🤖 *Esse comando veio de onde, Beta?*\\\nUse *!comandos* antes de inventar moda.","🍀 *Tentativa interessante.* Resultado: absolutamente nada.\\\nUse *!comandos*.","🤖 *Beta tentando desbloquear comando secreto... falhou.*\\\nTenta *!comandos*.","💀 Nem eu sei o que você tentou fazer.\\\nUse *!comandos* e volta preparado.","🧠 Esse comando não passou nem da fase de testes.\\\nConsulta *!comandos*, Beta.","📡 Procurei esse comando em todo o sistema. Nada.\\\nUse *!comandos*.","🤨 Você acabou de criar um comando que nem eu conheço.\\\nVai de *!comandos*.","🚫 Comando clandestino detectado.\\\nOs oficiais estão em *!comandos*.","🎲 Quase desbloqueou um segredo. Quase.\\\nUse *!comandos*.","🤖 Alpha não fala esse dialeto de Beta.\\\nDigite *!comandos*.","🫠 Eu poderia fingir que entendi... mas não.\\\nUse *!comandos*.","🏆 Parabéns: você encontrou exatamente zero comandos.\\\nAgora tenta *!comandos*.","📖 Manual do Beta perdido?\\\n* !comandos* resolve. ","⚠️ Comando imaginário detectado.\\\nPara comandos reais: *!comandos*.","🍀 O Alpha julgou sua tentativa. Veredito: tente *!comandos*."]
           const picked=UNKNOWN_COMMAND_REPLIES[Math.floor(Math.random()*UNKNOWN_COMMAND_REPLIES.length)]
