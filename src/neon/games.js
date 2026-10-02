@@ -749,6 +749,38 @@ async function giveBossDrops(c,jid,position,extraChance=0){
   return drops
 }
 
+function bossEventFridayInfo(now=new Date()){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{
+    timeZone:'America/Sao_Paulo',
+    year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',
+    hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+  }).formatToParts(now).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]))
+  const friday=parts.weekday==='Fri'
+  const hour=Number(parts.hour||0),minute=Number(parts.minute||0)
+  const due=friday&&(hour>19||(hour===19&&minute>=0))
+  const fridayKey=friday?`${parts.year}-${parts.month}-${parts.day}`:null
+  return {due,friday,fridayKey,hour,minute}
+}
+
+async function createBossEventState(c,chat,{scheduleKey=null,origin='manual'}={}){
+  const maxHp=42000+Math.floor(Math.random()*8001)
+  const state={
+    mode:'event',
+    eventId:'eclipse',
+    active:true,
+    origin,
+    scheduleKey,
+    name:'Imperador do Eclipse',
+    hp:maxHp,
+    maxHp,
+    atk:22,
+    participants:{},
+    startedAt:Date.now()
+  }
+  await saveGame(c,chat,'boss_event',state)
+  return state
+}
+
 async function maybeGrantEventRelic(c,jid,chance){
   const owned=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'insignia_eclipse'])).rows[0]
   if(Number(owned?.quantity||0)>0 || Math.random()>=Math.max(0,Math.min(.50,Number(chance)||0))) return null
@@ -768,20 +800,34 @@ export async function activateBossEvent(chat){
   return tx(async c=>{
     const current=await loadGame(c,chat,'boss_event')
     if(current&&current.active!==false&&Number(current.hp)>0) return {already:true,...current}
-    const maxHp=42000+Math.floor(Math.random()*8001)
-    const state={
-      mode:'event',
-      eventId:'eclipse',
-      active:true,
-      name:'Imperador do Eclipse',
-      hp:maxHp,
-      maxHp,
-      atk:22,
-      participants:{},
-      startedAt:Date.now()
+    return createBossEventState(c,chat,{origin:'manual'})
+  })
+}
+
+export async function autoStartBossEvent(chat,now=new Date()){
+  const schedule=bossEventFridayInfo(now)
+  if(!schedule.due) return {due:false}
+  return tx(async c=>{
+    const current=await loadGame(c,chat,'boss_event')
+
+    // O evento manual que já estava ativo quando o agendamento foi criado
+    // conta como o evento desta sexta, evitando um segundo spawn no mesmo dia.
+    if(current&&current.active!==false&&Number(current.hp)>0){
+      if(!current.scheduleKey){
+        current.scheduleKey=schedule.fridayKey
+        current.origin=current.origin||'manual'
+        await saveGame(c,chat,'boss_event',current)
+      }
+      return {due:true,already:true,...current}
     }
-    await saveGame(c,chat,'boss_event',state)
-    return state
+
+    // Derrotado ou encerrado: nunca recria o Boss na mesma sexta.
+    if(current?.scheduleKey===schedule.fridayKey){
+      return {due:true,alreadyRun:true,...current}
+    }
+
+    const state=await createBossEventState(c,chat,{scheduleKey:schedule.fridayKey,origin:'scheduled'})
+    return {due:true,spawned:true,...state}
   })
 }
 
@@ -789,7 +835,8 @@ export async function deactivateBossEvent(chat){
   return tx(async c=>{
     const current=await loadGame(c,chat,'boss_event')
     if(!current||current.active===false||Number(current.hp)<=0) return {active:false,already:true}
-    await clearGame(c,chat,'boss_event')
+    const marker={...current,mode:'event_stopped',active:false,stoppedAt:Date.now()}
+    await saveGame(c,chat,'boss_event',marker)
     return {active:false,stopped:true,name:current.name,hp:Number(current.hp),maxHp:Number(current.maxHp)}
   })
 }
@@ -929,7 +976,17 @@ export async function attackBoss(chat,jid,name,usePet=true){
         rewards.push({...p,position,cash,exp,petXp,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
       if(s.mode==='event'){
-        await clearGame(c,chat,'boss_event')
+        const schedule=bossEventFridayInfo()
+        const marker={
+          ...s,
+          mode:'event_completed',
+          active:false,
+          hp:0,
+          participants:{},
+          scheduleKey:s.scheduleKey||(schedule.due?schedule.fridayKey:null),
+          completedAt:Date.now()
+        }
+        await saveGame(c,chat,'boss_event',marker)
       }else{
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
         await saveGame(c,chat,'boss',marker)
