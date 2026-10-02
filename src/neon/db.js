@@ -2904,6 +2904,22 @@ const SLEEP_PLACES={
   aluguel:{label:'Quarto alugado',seconds:15*60,xp:15,fee:1000}
 }
 
+async function recoverPetEnergyFromSleep(client,jid,startedAt,endedAt){
+  const elapsed=Math.max(0,Math.floor((Number(endedAt)-Number(startedAt))/60))
+  if(elapsed<1) return {gained:0,current:null,max:null}
+  const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+  if(!pet) return {gained:0,current:null,max:null}
+  const max=petMaxEnergy(pet.level,pet.species)
+  const before=Number(pet.energy||0)
+  const current=Math.min(max,before+elapsed)
+  const gained=Math.max(0,current-before)
+  if(gained>0){
+    await client.query('UPDATE pets SET energy=$1 WHERE jid=$2',[current,jid])
+    await client.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[current,jid])
+  }
+  return {gained,current,max}
+}
+
 export async function resolvePlayerSleep(jid){
   return transaction(async client=>{
     const row=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -2911,8 +2927,9 @@ export async function resolvePlayerSleep(jid){
     const now=Math.floor(Date.now()/1000)
     if(Number(row.ends_at)>now) return {active:true,...row,remaining:Number(row.ends_at)-now}
     const level=await applyExp(client,jid,Number(row.xp_reward))
+    const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,row.ends_at)
     await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-    return {active:false,woke:true,...row,level}
+    return {active:false,woke:true,...row,level,petEnergy}
   })
 }
 
@@ -2925,8 +2942,9 @@ export async function wakePlayerEarly(jid){
     const remaining=Math.max(0,Number(row.ends_at)-now)
     if(remaining<=0){
       const level=await applyExp(client,jid,Number(row.xp_reward))
+      const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,row.ends_at)
       await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-      return {natural:true,fee:0,xp:Number(row.xp_reward),level,place:row.place}
+      return {natural:true,fee:0,xp:Number(row.xp_reward),level,place:row.place,petEnergy}
     }
     const total=Math.max(1,Number(row.ends_at)-Number(row.started_at))
     const ratio=Math.min(1,remaining/total)
@@ -2942,10 +2960,11 @@ export async function wakePlayerEarly(jid){
     const xp=Math.floor(Number(row.xp_reward)*Math.min(1,elapsed/total))
     let level=null
     if(xp>0) level=await applyExp(client,jid,xp)
+    const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,now)
     await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'wake_early',$3)`,[jid,fee,`Acordou antes: ${remaining}s restantes`])
-    return {natural:false,fee,xp,remaining,place:row.place,level}
+    return {natural:false,fee,xp,remaining,place:row.place,level,petEnergy}
   })
 }
 
@@ -2957,8 +2976,9 @@ export async function startPlayerSleep(jid){
     if(existing&&Number(existing.ends_at)>now) return {active:true,...existing,remaining:Number(existing.ends_at)-now}
     if(existing){
       const level=await applyExp(client,jid,Number(existing.xp_reward))
+      const petEnergy=await recoverPetEnergyFromSleep(client,jid,existing.started_at,existing.ends_at)
       await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-      return {active:false,woke:true,...existing,level}
+      return {active:false,woke:true,...existing,level,petEnergy}
     }
     const home=(await client.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid])).rows[0]?.house_id
     const plan=SLEEP_PLACES[home]||SLEEP_PLACES.aluguel
