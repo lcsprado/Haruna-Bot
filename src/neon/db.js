@@ -2866,7 +2866,9 @@ export async function petAction(jid,action){
       const maxEnergy=petMaxEnergy(pet.level)
       if(Number(pet.energy)>=maxEnergy) throw new Error(`Seu pet já está com a energia cheia (${maxEnergy}/${maxEnergy}).`)
     }
-    if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
+    // !descansar é justamente a ação de recuperação e não deve ser bloqueada
+    // pelo cooldown curto deixado por treino, passeio ou aventura.
+    if(!a.rest && now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
     if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
     const oldLevel=Number(pet.level||1)
     const xp=Number(pet.xp)+a.xp, level=1+Math.floor(xp/100)
