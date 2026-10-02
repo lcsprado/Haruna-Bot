@@ -990,8 +990,9 @@ Você possui: *${stock}*
 *!saldo* — carteira, banco e total
 *!trabalhar* — trabalha para ganhar dinheiro
 *!uber* — faz uma corrida usando seu melhor carro
-*!ifood* — faz entrega usando sua melhor moto
-*!ifoodbike* — faz entrega usando sua bicicleta
+*!ifood* — coloca toda sua frota de bike/motos para entregar
+*!ifoodbike* — alias do !ifood
+*!uber* — coloca todos os seus carros para trabalhar
 *!negocios* — catálogo de negócios e renda passiva
 *!comprarnegocio N* — compra um negócio
 *!meusnegocios* — mostra negócios e permite upgrade
@@ -5175,42 +5176,33 @@ ${status}
           rows.forEach((m,i)=>text+=`${i+1}. *${m.name}* — R$ ${fmt(m.price)}\n`)
           await reply(text.trim())
 
-        } else if(['ifoodbike'].includes(cmd)){
-          const r=await deliverIfood(sender,'bike')
+        } else if(['ifood','ifoodbike'].includes(cmd)){
+          const r=await deliverIfood(sender)
           if(!r.ok){
-            await reply(`🚲 Você já fez uma entrega de bike. Próxima disponível em *${duration(r.remaining)}*.`)
+            await reply(`🍔 Sua frota já trabalhou. Próxima rodada em *${duration(r.remaining)}*.`)
           }else{
             await progressDailyMission(sender,'work')
-          if(isGroup) await progressGroupMission(chat,sender,'work')
-            let text=`🚲🍔 *ENTREGA DE BIKE CONCLUÍDA!*\n\n🚲 Veículo: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
-            if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
-            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega de bike em ${Math.ceil(r.cooldown/60)} minutos.`
-            await reply(text)
-          }
-
-        } else if(['ifood'].includes(cmd)){
-          const r=await deliverIfood(sender,'moto')
-          if(!r.ok){
-            await reply(`🍔 Você já fez uma entrega. Próxima disponível em *${duration(r.remaining)}*.`)
-          }else{
-            await progressDailyMission(sender,'work')
-          if(isGroup) await progressGroupMission(chat,sender,'work')
-            let text=`🍔 *ENTREGA CONCLUÍDA!*\n\n🚲🏍️ Veículo: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
-            if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
-            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega em ${Math.ceil(r.cooldown/60)} minutos.`
+            if(isGroup) await progressGroupMission(chat,sender,'work')
+            let text='🍔 *IFOOD — FROTA EM ROTA*\n\n'
+            r.details.forEach(x=>{
+              text+=`${x.vehicle.id==='bicicleta'?'🚲':'🏍️'} *${x.vehicle.name}* — R$ ${fmt(x.total)}${x.tip?` (gorjeta R$ ${fmt(x.tip)})`:''}\n`
+            })
+            text+=`\n💰 *TOTAL DA FROTA: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
 
         } else if(['uber'].includes(cmd)){
           const r=await driveUber(sender)
           if(!r.ok){
-            await reply(`🚗 Você já fez uma corrida. Próxima disponível em *${duration(r.remaining)}*.`)
+            await reply(`🚗 Sua frota já trabalhou. Próxima rodada em *${duration(r.remaining)}*.`)
           }else{
             await progressDailyMission(sender,'work')
-          if(isGroup) await progressGroupMission(chat,sender,'work')
-            let text=`🚗 *CORRIDA CONCLUÍDA!*\n\n🚘 Carro: *${r.car.name}*\n🏷️ Categoria: *${r.category}*\n🛣️ ${r.ride}\n💵 Corrida: *R$ ${fmt(r.fare)}*`
-            if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
-            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima corrida em ${Math.ceil(r.cooldown/60)} minutos.`
+            if(isGroup) await progressGroupMission(chat,sender,'work')
+            let text='🚗 *UBER — FROTA NA RUA*\n\n'
+            r.details.forEach(x=>{
+              text+=`🚘 *${x.car.name}* (${x.category}) — R$ ${fmt(x.total)}${x.tip?` (gorjeta R$ ${fmt(x.tip)})`:''}\n`
+            })
+            text+=`\n💰 *TOTAL DA FROTA: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
 
