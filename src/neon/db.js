@@ -442,6 +442,63 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
           price_paid=GREATEST(user_homes.price_paid,EXCLUDED.price_paid),
           acquired_at=LEAST(user_homes.acquired_at,EXCLUDED.acquired_at)
       `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO careers(jid,career_xp,total_shifts,updated_at)
+        SELECT $1,career_xp,total_shifts,${nowSql} FROM careers WHERE jid=$2
+        ON CONFLICT(jid) DO UPDATE SET
+          career_xp=careers.career_xp+EXCLUDED.career_xp,
+          total_shifts=careers.total_shifts+EXCLUDED.total_shifts,
+          updated_at=${nowSql}
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO user_motorcycles(jid,motorcycle_id,price_paid,acquired_at)
+        SELECT $1,motorcycle_id,price_paid,acquired_at FROM user_motorcycles WHERE jid=$2
+        ON CONFLICT(jid,motorcycle_id) DO UPDATE SET
+          price_paid=GREATEST(user_motorcycles.price_paid,EXCLUDED.price_paid),
+          acquired_at=LEAST(user_motorcycles.acquired_at,EXCLUDED.acquired_at)
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO user_businesses(jid,business_id,price_paid,acquired_at,last_collected_at,level)
+        SELECT $1,business_id,price_paid,acquired_at,last_collected_at,level FROM user_businesses WHERE jid=$2
+        ON CONFLICT(jid,business_id) DO UPDATE SET
+          price_paid=GREATEST(user_businesses.price_paid,EXCLUDED.price_paid),
+          acquired_at=LEAST(user_businesses.acquired_at,EXCLUDED.acquired_at),
+          last_collected_at=GREATEST(user_businesses.last_collected_at,EXCLUDED.last_collected_at),
+          level=GREATEST(user_businesses.level,EXCLUDED.level)
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO group_mission_members(chat_jid,week_key,jid,contribution,claimed)
+        SELECT chat_jid,week_key,$1,contribution,claimed FROM group_mission_members WHERE jid=$2
+        ON CONFLICT(chat_jid,week_key,jid) DO UPDATE SET
+          contribution=group_mission_members.contribution+EXCLUDED.contribution,
+          claimed=group_mission_members.claimed OR EXCLUDED.claimed
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO group_activity(chat_jid,jid,day,messages,commands)
+        SELECT chat_jid,$1,day,messages,commands FROM group_activity WHERE jid=$2
+        ON CONFLICT(chat_jid,jid,day) DO UPDATE SET
+          messages=group_activity.messages+EXCLUDED.messages,
+          commands=group_activity.commands+EXCLUDED.commands
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO group_warnings(chat_jid,jid,warnings,updated_at)
+        SELECT chat_jid,$1,warnings,updated_at FROM group_warnings WHERE jid=$2
+        ON CONFLICT(chat_jid,jid) DO UPDATE SET
+          warnings=group_warnings.warnings+EXCLUDED.warnings,
+          updated_at=GREATEST(group_warnings.updated_at,EXCLUDED.updated_at)
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,created_at)
+        SELECT $1,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,created_at FROM pets WHERE jid=$2
+        ON CONFLICT(jid) DO UPDATE SET
+          species=CASE WHEN EXCLUDED.xp>pets.xp THEN EXCLUDED.species ELSE pets.species END,
+          name=CASE WHEN EXCLUDED.xp>pets.xp THEN EXCLUDED.name ELSE pets.name END,
+          xp=pets.xp+EXCLUDED.xp,level=1+FLOOR((pets.xp+EXCLUDED.xp)/100),
+          hunger=GREATEST(pets.hunger,EXCLUDED.hunger),hygiene=GREATEST(pets.hygiene,EXCLUDED.hygiene),
+          energy=GREATEST(pets.energy,EXCLUDED.energy),power=GREATEST(pets.power,EXCLUDED.power),
+          wins=pets.wins+EXCLUDED.wins,losses=pets.losses+EXCLUDED.losses,
+          last_action=GREATEST(pets.last_action,EXCLUDED.last_action),created_at=LEAST(pets.created_at,EXCLUDED.created_at)
+      `,[targetJid,sourceJid])
       await client.query(`UPDATE clans SET owner_jid=$1 WHERE owner_jid=$2`,[targetJid,sourceJid])
       await client.query(`
         INSERT INTO clan_members(jid,clan_id,role,joined_at)
@@ -464,9 +521,35 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
       await client.query('UPDATE support_tickets SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
       await client.query('UPDATE snipe_messages SET sender_jid=$1 WHERE sender_jid=$2',[targetJid,sourceJid])
       await client.query('UPDATE clan_invites SET inviter_jid=$1 WHERE inviter_jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE market_listings SET seller_jid=$1 WHERE seller_jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE market_listings SET buyer_jid=$1 WHERE buyer_jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE group_events SET claimed_by=$1 WHERE claimed_by=$2',[targetJid,sourceJid])
+
+      const targetRelationship=await client.query('SELECT 1 FROM relationships WHERE jid=$1 OR partner_jid=$1 LIMIT 1',[targetJid])
+      if(targetRelationship.rowCount){
+        await client.query('DELETE FROM relationships WHERE jid=$1 OR partner_jid=$1',[sourceJid])
+      }else{
+        await client.query('UPDATE relationships SET partner_jid=$1 WHERE partner_jid=$2',[targetJid,sourceJid])
+        await client.query('UPDATE relationships SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
+      }
+      await client.query(`
+        INSERT INTO relationship_proposals(from_jid,to_jid,created_at)
+        SELECT CASE WHEN from_jid=$2 THEN $1 ELSE from_jid END,
+               CASE WHEN to_jid=$2 THEN $1 ELSE to_jid END,created_at
+        FROM relationship_proposals
+        WHERE (from_jid=$2 OR to_jid=$2)
+          AND NOT (from_jid IN ($1,$2) AND to_jid IN ($1,$2))
+        ON CONFLICT(from_jid,to_jid) DO UPDATE SET created_at=GREATEST(relationship_proposals.created_at,EXCLUDED.created_at)
+      `,[targetJid,sourceJid])
 
       await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%${sourceJid}%`])
       await client.query('DELETE FROM daily_missions WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM relationship_proposals WHERE from_jid=$1 OR to_jid=$1',[sourceJid])
+      await client.query('DELETE FROM group_warnings WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM group_activity WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM group_mission_members WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM user_businesses WHERE jid=$1',[sourceJid])
+      await client.query('DELETE FROM user_motorcycles WHERE jid=$1',[sourceJid])
       await client.query('DELETE FROM clan_members WHERE jid=$1',[sourceJid])
       await client.query('DELETE FROM clan_invites WHERE invitee_jid=$1',[sourceJid])
       await client.query('DELETE FROM user_homes WHERE jid=$1',[sourceJid])
@@ -491,20 +574,18 @@ export async function getProfile(jid) {
   return rows[0] ?? null
 }
 
-async function claimCooldown(key, seconds) {
-  return transaction(async client => {
-    const now = Math.floor(Date.now()/1000)
-    const r = await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE', [key])
-    if (r.rows[0] && Number(r.rows[0].expires_at) > now) {
-      return { ok:false, remaining:Number(r.rows[0].expires_at)-now }
-    }
-    const expires = now + seconds
-    await client.query(`
-      INSERT INTO cooldowns (key,expires_at) VALUES ($1,$2)
-      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
-    `, [key,expires])
-    return { ok:true, expires }
-  })
+export async function claimCooldown(queryable, key, seconds) {
+  const now = Math.floor(Date.now()/1000)
+  const expires = now + seconds
+  const claimed = await queryable.query(`
+    INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+    ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
+    WHERE cooldowns.expires_at <= $3
+    RETURNING expires_at
+  `,[key,expires,now])
+  if(claimed.rowCount) return {ok:true,expires}
+  const current=await queryable.query('SELECT expires_at FROM cooldowns WHERE key=$1',[key])
+  return {ok:false,remaining:Math.max(1,Number(current.rows[0]?.expires_at||now)-now)}
 }
 
 function streakRewardFor(streak){
@@ -690,10 +771,10 @@ export async function getCareer(jid){
 
 export async function work(jid) {
   await ensureUser(jid)
-  const cd=await claimCooldown(`work:${jid}`,30*60)
-  if(!cd.ok) return cd
   const jobs=['organizando documentos','atendendo clientes','resolvendo uma demanda','fechando um relatório','ajudando a equipe','entregando um projeto']
   return transaction(async client=>{
+    const cd=await claimCooldown(client,`work:${jid}`,30*60)
+    if(!cd.ok) return cd
     await client.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
     const cr=(await client.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const oldXp=Number(cr.career_xp), oldRank=careerRank(oldXp)
@@ -1385,9 +1466,6 @@ export async function battle(attackerJid, defenderJid) {
   if(attackerJid===defenderJid) throw new Error('Você não pode batalhar contra si mesmo.')
   await ensureUser(defenderJid)
 
-  const cd=await claimCooldown(`battle:${attackerJid}`,10*60)
-  if(!cd.ok) return { ok:false, remaining:cd.remaining }
-
   return transaction(async client=>{
     const ids=[attackerJid,defenderJid].sort()
     const statsR=await client.query(
@@ -1408,6 +1486,8 @@ export async function battle(attackerJid, defenderJid) {
     if(!a || !b) throw new Error('Não foi possível carregar os jogadores.')
     if(Number(a.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes de batalhar.')
     if(Number(b.hp)<=0) throw new Error('O adversário está sem HP.')
+    const cd=await claimCooldown(client,`battle:${attackerJid}`,10*60)
+    if(!cd.ok) return {ok:false,remaining:cd.remaining}
 
     const aeW=EQUIPMENT[a.weapon_id]||{atk:0,def:0}
     const aeA=EQUIPMENT[a.armor_id]||{atk:0,def:0}
@@ -2105,15 +2185,8 @@ export async function dungeon(jid) {
     if(!row) throw new Error('Perfil não encontrado.')
     if(Number(row.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes.')
 
-    const now=Math.floor(Date.now()/1000)
-    const cdKey=`dungeon:${jid}`
-    const cdR=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[cdKey])
-    const activeUntil=Number(cdR.rows[0]?.expires_at||0)
-    if(activeUntil>now) return {ok:false,remaining:activeUntil-now}
-    await client.query(`
-      INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
-    `,[cdKey,now+(20*60)])
+    const cd=await claimCooldown(client,`dungeon:${jid}`,20*60)
+    if(!cd.ok) return cd
 
     const weapon=EQUIPMENT[row.weapon_id]||{atk:0,def:0}
     const armor=EQUIPMENT[row.armor_id]||{atk:0,def:0}
@@ -2185,17 +2258,8 @@ export async function robPlayer(thiefJid,targetJid) {
     const victimCash=Number(vw?.cash||0)
     if(victimCash<100) throw new Error('Essa pessoa está praticamente sem dinheiro na carteira.')
 
-    const now=Math.floor(Date.now()/1000)
-    const cdKey=`rob:${thiefJid}`
-    const cdR=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[cdKey])
-    const activeUntil=Number(cdR.rows[0]?.expires_at||0)
-    if(activeUntil>now) return {ok:false,remaining:activeUntil-now}
-
-    const expires=now+(60*60)
-    await client.query(`
-      INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
-    `,[cdKey,expires])
+    const cd=await claimCooldown(client,`rob:${thiefJid}`,60*60)
+    if(!cd.ok) return cd
 
     const speedDiff=Number(ts?.spd||10)-Number(vs?.spd||10)
     const chance=Math.max(.25,Math.min(.70,.45+(speedDiff*.015)))
@@ -2631,7 +2695,7 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,total-fromCash,jid])
     const petName=String(name||'Alpha').slice(0,24)
     const {rows}=await client.query(`INSERT INTO pets(jid,species,name) VALUES($1,$2,$3)
-      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=5,hunger=100,hygiene=100,energy=100,wins=0,losses=0,last_action=0 RETURNING *`,[jid,species,petName])
+      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=100,wins=0,losses=0,last_action=0 RETURNING *`,[jid,species,petName])
     return {...rows[0],fee:total,petPrice:rule.price,changeFee,replaced:Boolean(old)}
   })
 }
@@ -2639,9 +2703,6 @@ export async function getPet(jid){
   const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid]); return rows[0]||null
 }
 export async function petAction(jid,action){
-  const pet=await getPet(jid); if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
-  const now=Math.floor(Date.now()/1000)
-  if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
   const map={
     alimentar:{hunger:25,hygiene:-2,energy:2,xp:8},
     banho:{hunger:-3,hygiene:30,energy:-2,xp:8},
@@ -2650,12 +2711,18 @@ export async function petAction(jid,action){
     aventura:{hunger:-15,hygiene:-10,energy:-20,xp:40,power:1}
   }
   const a=map[action]; if(!a) throw new Error('Ação de pet inválida.')
-  const xp=Number(pet.xp)+a.xp, level=1+Math.floor(xp/100)
-  const {rows}=await db.query(`UPDATE pets SET
-    hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
-    energy=LEAST(100,GREATEST(0,energy+$3)),xp=$4,level=$5,power=power+$6,last_action=$7
-    WHERE jid=$8 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,a.power||0,now,jid])
-  return rows[0]
+  return transaction(async client=>{
+    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    const now=Math.floor(Date.now()/1000)
+    if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
+    const xp=Number(pet.xp)+a.xp, level=1+Math.floor(xp/100)
+    const {rows}=await client.query(`UPDATE pets SET
+      hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
+      energy=LEAST(100,GREATEST(0,energy+$3)),xp=$4,level=$5,power=power+$6,last_action=$7
+      WHERE jid=$8 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,a.power||0,now,jid])
+    return rows[0]
+  })
 }
 export async function petLeaderboard(limit=10){
   const {rows}=await db.query(`SELECT p.*,u.push_name FROM pets p JOIN users u ON u.jid=p.jid ORDER BY p.level DESC,p.power DESC,p.xp DESC LIMIT $1`,[Math.min(20,Math.max(1,Number(limit)||10))]); return rows
@@ -2695,8 +2762,8 @@ export async function petDuel(challengerJid,targetJid){
   const winner=scoreA===scoreB?(Math.random()<.5?'a':'b'):(scoreA>scoreB?'a':'b')
   const winJid=winner==='a'?challengerJid:targetJid,loseJid=winner==='a'?targetJid:challengerJid
   await transaction(async client=>{
-    await client.query('UPDATE pets SET wins=wins+1,xp=xp+25 WHERE jid=$1',[winJid])
-    await client.query('UPDATE pets SET losses=losses+1,xp=xp+10 WHERE jid=$1',[loseJid])
+    await client.query('UPDATE pets SET wins=wins+1,xp=xp+25,level=1+FLOOR((xp+25)/100) WHERE jid=$1',[winJid])
+    await client.query('UPDATE pets SET losses=losses+1,xp=xp+10,level=1+FLOOR((xp+10)/100) WHERE jid=$1',[loseJid])
   })
   return {winnerJid:winJid,loserJid:loseJid,winner:winner==='a'?a:b,loser:winner==='a'?b:a}
 }

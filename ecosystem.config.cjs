@@ -1,7 +1,7 @@
 module.exports = {
   apps: [{
     name:   'harunabot',
-    script: 'src/index.js',
+    script: 'src/neon/render.js',
     cwd:    __dirname,
 
     exec_mode:          'fork',

@@ -83,10 +83,11 @@ export async function renderProfileCard(d){
   // Journey
   panel(ctx,58,1002,1046,175)
   label(ctx,'JORNADA',86,1044)
-  ctx.fillStyle='#fff';ctx.font='800 22px Arial';ctx.fillText(`🔥 ${d.streak} dias  •  recorde ${d.bestStreak}`,86,1090)
-  ctx.fillText(`🏴 ${safeText(d.clan,24)}`,570,1090)
-  ctx.fillText(`🏠 ${safeText(d.home,24)}  •  🚗 ${d.cars}/5`,86,1133)
-  ctx.fillStyle='#8490ae';ctx.fillText(`🐾 Pet: ${d.pet}`,570,1133)
+  ctx.fillStyle='#fff';ctx.font='800 20px Arial';ctx.fillText(`🔥 ${d.streak} dias • recorde ${d.bestStreak}`,86,1080)
+  ctx.fillText(`💼 ${safeText(d.career,22)}`,570,1080)
+  ctx.fillText(`🏴 ${safeText(d.clan,22)}  •  🏠 ${safeText(d.home,20)}`,86,1118)
+  ctx.fillText(`🚗 ${d.cars}/5  •  🏍️ ${d.motorcycles}/6  •  🏪 ${d.businesses}`,570,1118)
+  ctx.fillStyle='#8490ae';ctx.font=`800 ${fit(ctx,`🐾 ${d.pet}`,940,20,16,800)}px Arial`;ctx.fillText(`🐾 ${safeText(d.pet,72)}`,86,1154)
 
   // Achievements compact
   panel(ctx,58,1204,1046,155)

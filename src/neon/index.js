@@ -73,6 +73,21 @@ const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
   messagesSeen:0
 })
 let connectionWatchdog=null
+let reconnectTimer=null
+let reconnecting=false
+function scheduleReconnect(delayMs=3000){
+  if(reconnectTimer || reconnecting) return
+  reconnectTimer=setTimeout(async()=>{
+    reconnectTimer=null
+    reconnecting=true
+    try{ await start() }
+    catch(err){
+      reconnecting=false
+      console.error('[WhatsApp] falha na reconexão',err)
+      scheduleReconnect(10000)
+    }
+  },delayMs)
+}
 function setWhatsAppHealth(state){
   trevoHealth.whatsapp=state
   trevoHealth.lastChange=Date.now()
@@ -189,13 +204,20 @@ async function rememberDeletedMessage(key,source='unknown'){
 }
 
 const quickGameFlows=new Map()
+const quickFlowWrites=new Map()
 const quickFlowKey=(chat,sender)=>`${chat}|${sender}`
+function queueQuickFlowWrite(key,write){
+  const pending=(quickFlowWrites.get(key)||Promise.resolve()).catch(()=>{}).then(write)
+  quickFlowWrites.set(key,pending)
+  pending.catch(err=>console.error('[flow] falha ao persistir menu',err?.message||err))
+    .finally(()=>{ if(quickFlowWrites.get(key)===pending) quickFlowWrites.delete(key) })
+  return pending
+}
 function setQuickFlow(chat,sender,stage,data={},ttlMs=90000){
   const key=quickFlowKey(chat,sender)
   const flow={stage,data,expiresAt:Date.now()+ttlMs}
   quickGameFlows.set(key,flow)
-  saveQuickFlow(key,chat,sender,stage,data,flow.expiresAt)
-    .catch(err=>console.error('[flow] falha ao persistir menu',err?.message||err))
+  queueQuickFlowWrite(key,()=>saveQuickFlow(key,chat,sender,stage,data,flow.expiresAt))
 }
 function getQuickFlow(chat,sender){
   const key=quickFlowKey(chat,sender)
@@ -203,13 +225,14 @@ function getQuickFlow(chat,sender){
   if(!flow) return null
   if(flow.expiresAt<=Date.now()){
     quickGameFlows.delete(key)
-    deleteQuickFlow(key).catch(()=>{})
+    queueQuickFlowWrite(key,()=>deleteQuickFlow(key))
     return null
   }
   return flow
 }
 async function recoverQuickFlow(chat,sender){
   const key=quickFlowKey(chat,sender)
+  await quickFlowWrites.get(key)?.catch(()=>{})
   const stored=await getStoredQuickFlow(key)
   if(!stored) return null
   quickGameFlows.set(key,stored)
@@ -218,7 +241,7 @@ async function recoverQuickFlow(chat,sender){
 function clearQuickFlow(chat,sender){
   const key=quickFlowKey(chat,sender)
   quickGameFlows.delete(key)
-  deleteQuickFlow(key).catch(err=>console.error('[flow] falha ao limpar menu persistido',err?.message||err))
+  queueQuickFlowWrite(key,()=>deleteQuickFlow(key))
 }
 
 async function showAdminMainMenu(chat,sender,reply){
@@ -464,8 +487,9 @@ function xpBar(exp,level){
 }
 
 async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
-  const [p,clan,home,cars,pat,streak,ranks]=await Promise.all([
+  const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks]=await Promise.all([
     getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
+    getMotorcycleGarage(jid),getBusinesses(jid),getCareer(jid),getPet(jid),
     getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid)
   ])
   if(!p) throw new Error('Perfil não encontrado.')
@@ -536,7 +560,10 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     clan:clan?.name||'Sem clã',
     home:home?.name||'Nenhuma',
     cars:Array.isArray(cars)?cars.length:0,
-    pet:'Em breve',
+    motorcycles:Array.isArray(motorcycles)?motorcycles.length:0,
+    businesses:Array.isArray(businesses)?businesses.length:0,
+    career:career?.rank?.name||'Ajudante',
+    pet:pet?`${pet.name} (${pet.species}, nv. ${pet.level})`:'Nenhum',
     achievements
   })
 
@@ -905,7 +932,7 @@ Você possui: *${stock}*
     text+='\n👉 Um item: mande só o número.\n📦 Vários itens: mande os números separados por vírgula. Ex.: *1,3,5*\n_No lote, o Alpha Bot vende as cópias repetidas e mantém 1 de cada. Lendários ficam de fora._\n\n⚠️ Equipamento ativo mantém 1 cópia protegida.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
   }
-  async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false}){
+  async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
     let flow=getQuickFlow(chat,sender)
     if(!flow){
       flow=await recoverQuickFlow(chat,sender)
@@ -999,7 +1026,6 @@ Você possui: *${stock}*
 *!saldo* — carteira, banco e total
 *!trabalhar* — trabalha, ganha dinheiro e evolui sua carreira
 *!carreira* — mostra cargo e progresso profissional
-*!uber* — faz uma corrida usando seu melhor carro
 *!ifood* — coloca toda sua frota de bike/motos para entregar
 *!ifoodbike* — alias do !ifood
 *!uber* — coloca todos os seus carros para trabalhar
@@ -1069,12 +1095,13 @@ Você possui: *${stock}*
 *!games* / *!minigames* — menu de jogos
 *!roleta valor cor* — roleta
 *!cara valor* / *!coroa valor* — cara ou coroa
+*!cara @pessoa valor* + *!aceitar* — duelo valendo dinheiro
 *!ppt pedra|papel|tesoura* — contra o Alpha
 *!ppt @pessoa 5000 pedra* — desafia jogador valendo dinheiro
 *!aceitarppt pedra* — aceita desafio de PPT
-*!roletagrupo 5000 vermelho* — abre roleta coletiva
-*!entrarroleta 5000 preto* — entra na roleta coletiva
-*!girarroleta* — criador gira a roleta
+*!roletagrupo 5000 vermelho* / *!roleta grupo ...* — abre coletiva
+*!entrarroleta 5000 preto* / *!apostar ...* — entra na coletiva
+*!girarroleta* / *!girar* — criador gira a roleta
 *!torneio 5000* — cria torneio com aposta
 *!entrartorneio* — entra no torneio
 *!iniciartorneio* — criador inicia
@@ -4327,6 +4354,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     if(connection==='connecting') setWhatsAppHealth('connecting')
 
     if(connection==='open'){
+      if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer=null }
+      reconnecting=false
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
     }
@@ -4349,9 +4378,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       }
 
       console.log('[WhatsApp] conexão fechada',code,'reconectando')
-      setTimeout(()=>start().catch(err=>{
-        console.error('[WhatsApp] falha na reconexão',err)
-      }),3000)
+      scheduleReconnect()
     }
   })
 
@@ -4479,22 +4506,20 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           }catch(err){ console.error('[moderacao]',err?.message||err) }
         }
         if(!body.startsWith(prefix)){
-          // Durante um quiz ativo, uma mensagem contendo apenas 1–4 vale como resposta.
-          // Não exige mais "!resposta N".
-          if(/^[1-4]$/.test(body)){
+          let flow=getQuickFlow(chat,sender)
+          if(!flow) flow=await recoverQuickFlow(chat,sender)
+          if(!flow && /^[1-4]$/.test(body)){
             try{
               const r=await answerQuiz(chat,sender,Number(body))
-              if(r.correct) await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
-              else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
+              if(r.correct){
+                if(isGroup) await progressGroupMission(chat,sender,'quiz')
+                await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
+              }else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
               continue
             }catch(err){
-              // Se não houver quiz ativo, segue normalmente para menus/fluxos numéricos.
               if(!String(err?.message||'').includes('Não há quiz ativo')) throw err
             }
           }
-
-          let flow=getQuickFlow(chat,sender)
-          if(!flow) flow=await recoverQuickFlow(chat,sender)
           if(!flow) continue
 
           await ensureUser(sender,msg.pushName || '')
@@ -4508,7 +4533,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             }
           }
 
-          await handleQuickGameFlow({chat,sender,body,reply,msg,isOwner})
+          await handleQuickGameFlow({chat,sender,body,reply,msg,isOwner,isGroup})
           continue
         }
 
@@ -4847,7 +4872,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             `${tag} tem opinião premium com argumento versão grátis. 💀`
           ]
           const text=fixed[cmd] || memes[Math.floor(Math.random()*memes.length)]
-          await reply(text,{mentions:[targetMention]})
+          await reply(text,{mentions:[target]})
 
         } else if(['configgrupo','configuragrupo'].includes(cmd)){
           if(!isGroup) return await reply('⚙️ Use este comando dentro do grupo que deseja configurar.')
@@ -5712,10 +5737,11 @@ Você não precisa usar ! enquanto estiver neste menu.
 _Os comandos antigos continuam funcionando normalmente._`
           )
 
-        } else if(['roleta'].includes(cmd)){
+        } else if(['roleta','roletagrupo'].includes(cmd)){
           const sub=(args[0]||'').toLowerCase()
-          if(['grupo','galera','multi'].includes(sub)){
-            const amount=parseAmount(args[1]); const choice=(args[2]||'').toLowerCase()
+          if(cmd==='roletagrupo' || ['grupo','galera','multi'].includes(sub)){
+            const offset=cmd==='roletagrupo'?0:1
+            const amount=parseAmount(args[offset]); const choice=(args[offset+1]||'').toLowerCase()
             if(!amount||!choice) return await reply(`Uso: *${prefix}roleta grupo 1000 vermelho*`)
             const player=await resolvePlayerJid(sock,chat,sender,msg)
             await createGroupRoulette(chat,player,amount,choice)
@@ -5732,14 +5758,14 @@ _Os comandos antigos continuam funcionando normalmente._`
           await progressDailyMission(player,'game')
           await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\nSua escolha: *${r.choice}*\n\n${result}`)
 
-        } else if(['apostar'].includes(cmd)){
+        } else if(['apostar','entrarroleta'].includes(cmd)){
           const amount=parseAmount(args[0]); const choice=(args[1]||'').toLowerCase()
           if(!amount||!choice) return await reply(`Uso: *${prefix}apostar 500 preto*`)
           const player=await resolvePlayerJid(sock,chat,sender,msg)
           await joinGroupRoulette(chat,player,amount,choice)
           await reply(`✅ Você entrou na roleta coletiva com *R$ ${fmt(amount)}* no *${choice}*.`)
 
-        } else if(['girar'].includes(cmd)){
+        } else if(['girar','girarroleta'].includes(cmd)){
           const player=await resolvePlayerJid(sock,chat,sender,msg)
           const r=await spinGroupRoulette(chat,player)
           let out=`🎰 *ROLETA COLETIVA*\n\n🎯 Número: *${r.number}*\n🎨 Cor: *${r.color.toUpperCase()}*\n\n`
@@ -5844,7 +5870,10 @@ _Os comandos antigos continuam funcionando normalmente._`
         } else if(['resposta'].includes(cmd)){
           const n=parseInt(args[0]||'0',10)
           const r=await answerQuiz(chat,sender,n)
-          if(r.correct) await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
+          if(r.correct){
+            if(isGroup) await progressGroupMission(chat,sender,'quiz')
+            await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
+          }
           else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
 
         } else if(['numero','adivinhar'].includes(cmd)){

@@ -25,4 +25,4 @@ ENV NODE_ENV=production \
 
 VOLUME ["/app/data", "/app/sessions", "/app/logs"]
 
-CMD ["node", "src/index.js"]
+CMD ["node", "src/neon/render.js"]

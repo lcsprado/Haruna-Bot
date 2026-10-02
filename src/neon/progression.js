@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { db, ensureUser } from './db.js'
+import { db, ensureUser, claimCooldown } from './db.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -615,11 +615,9 @@ export async function deliverIfood(jid){
     moto_600:{category:'Premium',min:780,max:1100}, moto_1000:{category:'Elite',min:1350,max:1900},
   }
   return tx(async client=>{
-    const key=`ifood:frota:${jid}`, now=Math.floor(Date.now()/1000), cooldown=6*60
-    const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
-    if(cd.rows[0] && Number(cd.rows[0].expires_at)>now) return {ok:false,remaining:Number(cd.rows[0].expires_at)-now}
-    await client.query(`INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at`,[key,now+cooldown])
+    const cooldown=6*60
+    const cd=await claimCooldown(client,`ifood:frota:${jid}`,cooldown)
+    if(!cd.ok) return cd
     const types=[{name:'curta',factor:.85},{name:'média',factor:1},{name:'longa',factor:1.25},{name:'especial',factor:1.5}]
     const details=garage.map(v=>{
       const tier=tiers[v.id]||tiers.bicicleta
@@ -647,15 +645,9 @@ export async function driveUber(jid){
     hipercarro:{category:'Black Premium',min:4800,max:7200},
   }
   return tx(async client=>{
-    const key=`uber:${jid}`, now=Math.floor(Date.now()/1000), cooldown=9*60
-    const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
-    if(cd.rows[0] && Number(cd.rows[0].expires_at)>now){
-      const remaining=Number(cd.rows[0].expires_at)-now
-      if(remaining>cooldown){await client.query('UPDATE cooldowns SET expires_at=$1 WHERE key=$2',[now+cooldown,key]);return {ok:false,remaining:cooldown}}
-      return {ok:false,remaining}
-    }
-    await client.query(`INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at`,[key,now+cooldown])
+    const cooldown=9*60
+    const cd=await claimCooldown(client,`uber:${jid}`,cooldown)
+    if(!cd.ok) return cd
     const types=[{name:'curta',factor:.85},{name:'média',factor:1},{name:'longa',factor:1.25},{name:'premium',factor:1.6}]
     const details=garage.map(v=>{
       const tier=tiers[v.id]||tiers.popular
@@ -706,7 +698,9 @@ export async function getPatrimony(jid){
   await ensureUser(jid)
   const {rows}=await db.query(`
     WITH inv AS (
-      SELECT i.jid,COALESCE(SUM(i.quantity*it.price),0)::bigint AS value
+      SELECT i.jid,COALESCE(SUM(i.quantity*CASE
+        WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
+        WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END),0)::bigint AS value
       FROM inventories i JOIN items it ON it.id=i.item_id
       WHERE i.jid=$1
       GROUP BY i.jid
@@ -762,7 +756,9 @@ export async function getPatrimony(jid){
 export async function patrimonyLeaderboard(limit=10){
   const {rows}=await db.query(`
     WITH inv AS (
-      SELECT i.jid,COALESCE(SUM(i.quantity*it.price),0)::bigint AS value
+      SELECT i.jid,COALESCE(SUM(i.quantity*CASE
+        WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
+        WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END),0)::bigint AS value
       FROM inventories i JOIN items it ON it.id=i.item_id GROUP BY i.jid
     ),
     cars AS (
@@ -945,23 +941,26 @@ export async function claimGroupMission(chatJid,jid){
 
 export async function maybeSpawnGroupEvent(chatJid){
   if(!String(chatJid).endsWith('@g.us')) return null
-  const now=Math.floor(Date.now()/1000)
-  const {rows}=await db.query('SELECT * FROM group_events WHERE chat_jid=$1',[chatJid])
-  const old=rows[0]
-  if(old && !old.claimed_by && Number(old.expires_at)>now) return null
-  if(old && Number(old.spawned_at)>now-1800) return null
-  if(Math.random()>.035) return null
-  const events=[
-    {type:'maleta',reward:5000,text:'💼 Uma maleta de dinheiro apareceu!'},
-    {type:'pix',reward:8000,text:'💸 Um PIX misterioso caiu no grupo!'},
-    {type:'tesouro',reward:12000,text:'🧰 Um pequeno tesouro apareceu!'}
-  ]
-  const e=events[Math.floor(Math.random()*events.length)]
-  await db.query(`INSERT INTO group_events(chat_jid,event_type,reward_cash,spawned_at,expires_at,claimed_by)
-    VALUES($1,$2,$3,$4,$5,NULL) ON CONFLICT(chat_jid) DO UPDATE SET
-    event_type=EXCLUDED.event_type,reward_cash=EXCLUDED.reward_cash,spawned_at=EXCLUDED.spawned_at,
-    expires_at=EXCLUDED.expires_at,claimed_by=NULL`,[chatJid,e.type,e.reward,now,now+120])
-  return {...e,expiresAt:now+120}
+  return tx(async client=>{
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`group-event:${chatJid}`])
+    const now=Math.floor(Date.now()/1000)
+    const {rows}=await client.query('SELECT * FROM group_events WHERE chat_jid=$1 FOR UPDATE',[chatJid])
+    const old=rows[0]
+    if(old && !old.claimed_by && Number(old.expires_at)>now) return null
+    if(old && Number(old.spawned_at)>now-1800) return null
+    if(Math.random()>.035) return null
+    const events=[
+      {type:'maleta',reward:5000,text:'💼 Uma maleta de dinheiro apareceu!'},
+      {type:'pix',reward:8000,text:'💸 Um PIX misterioso caiu no grupo!'},
+      {type:'tesouro',reward:12000,text:'🧰 Um pequeno tesouro apareceu!'}
+    ]
+    const e=events[Math.floor(Math.random()*events.length)]
+    await client.query(`INSERT INTO group_events(chat_jid,event_type,reward_cash,spawned_at,expires_at,claimed_by)
+      VALUES($1,$2,$3,$4,$5,NULL) ON CONFLICT(chat_jid) DO UPDATE SET
+      event_type=EXCLUDED.event_type,reward_cash=EXCLUDED.reward_cash,spawned_at=EXCLUDED.spawned_at,
+      expires_at=EXCLUDED.expires_at,claimed_by=NULL`,[chatJid,e.type,e.reward,now,now+120])
+    return {...e,expiresAt:now+120}
+  })
 }
 
 export async function claimGroupEvent(chatJid,jid){

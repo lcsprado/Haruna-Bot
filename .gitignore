@@ -10,7 +10,6 @@ logs/
 *.db-shm
 *.db-wal
 
-package-lock.json
 AGENTS.md
 tasks.md
 STYLE.md

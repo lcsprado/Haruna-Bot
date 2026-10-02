@@ -1,4 +1,4 @@
-import { db, ensureUser } from './db.js'
+import { db, ensureUser, getEquipmentInfo } from './db.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -28,6 +28,7 @@ export async function initGames(){
 }
 
 async function loadGame(client,chat,type){
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`trevo-game:${chat}:${type}`])
   const r=await client.query(
     'SELECT state FROM trevo_games WHERE chat_jid=$1 AND game_type=$2 FOR UPDATE',
     [chat,type]
@@ -357,10 +358,9 @@ export async function startQuiz(chat){
     const current=await loadGame(c,chat,'quiz')
     const now=Date.now()
     const ttl=2*60*1000
-    if(current && now-Number(current.started||0)<ttl){
+    if(current && !current.finished && now-Number(current.started||0)<ttl){
       return {already:true,...current,remaining:Math.ceil((ttl-(now-Number(current.started||0)))/1000)}
     }
-    if(current) await clearGame(c,chat,'quiz')
     const recent=Array.isArray(current?.recentQuestions)?current.recentQuestions:[]
     const pool=QUIZZES.filter(x=>!recent.includes(x.q))
     const item=(pool.length?pool:QUIZZES)[Math.floor(Math.random()*(pool.length?pool.length:QUIZZES.length))]
@@ -376,13 +376,13 @@ export async function answerQuiz(chat,jid,answer){
   await ensureUser(jid)
   return tx(async c=>{
     const s=await loadGame(c,chat,'quiz')
-    if(!s) throw new Error('Não há quiz ativo. Use !quiz.')
+    if(!s || s.finished) throw new Error('Não há quiz ativo. Use !quiz.')
     const expired=Date.now()-Number(s.started||0)>=2*60*1000
     if(expired){
-      await clearGame(c,chat,'quiz')
+      await saveGame(c,chat,'quiz',{...s,finished:true,answeredAt:Date.now()})
       throw new Error('Esse quiz expirou. Use !quiz para iniciar outro.')
     }
-    await clearGame(c,chat,'quiz')
+    await saveGame(c,chat,'quiz',{...s,finished:true,answeredAt:Date.now()})
     const correct=answer===Number(s.c)
     const reward=correct?1000:0
     if(reward) await credit(c,jid,reward,'quiz')
@@ -452,7 +452,7 @@ export async function attackBoss(chat,jid,name){
     const st=await c.query('SELECT atk,weapon_id FROM stats WHERE jid=$1',[jid])
     const base=Number(st.rows[0]?.atk||10)
     const weapon=st.rows[0]?.weapon_id
-    const bonus=weapon==='espada_ferro'?12:weapon==='espada_madeira'?5:0
+    const bonus=Number(getEquipmentInfo(weapon)?.atk||0)
     const damage=Math.max(5,Math.floor((base+bonus)*(0.8+Math.random()*0.7)))
     s.hp=Math.max(0,Number(s.hp)-damage)
     s.participants=s.participants||{}
