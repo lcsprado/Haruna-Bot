@@ -524,7 +524,7 @@ export async function deliverIfood(jid){
     const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
     if(cd.rows[0] && Number(cd.rows[0].expires_at)>now) return {ok:false,remaining:Number(cd.rows[0].expires_at)-now}
 
-    const expires=now+(15*60)
+    const expires=now+(10*60)
     await client.query(`
       INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
       ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
@@ -549,7 +549,7 @@ export async function deliverIfood(jid){
       INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'ifood',$3)
     `,[jid,total,`${tier.category} | ${delivery.name} | ${best.name}${tip? ` | gorjeta:${tip}`:''}`])
-    return {ok:true,motorcycle:best,category:tier.category,delivery:delivery.name,fare,tip,total,cooldown:15*60}
+    return {ok:true,motorcycle:best,category:tier.category,delivery:delivery.name,fare,tip,total,cooldown:10*60}
   })
 }
 
