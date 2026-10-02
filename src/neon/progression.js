@@ -545,9 +545,16 @@ export async function deliverIfood(jid,mode='moto'){
     const key=`ifood:${mode==='bike'?'bike':'moto'}:${jid}`
     const now=Math.floor(Date.now()/1000)
     const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
-    if(cd.rows[0] && Number(cd.rows[0].expires_at)>now) return {ok:false,remaining:Number(cd.rows[0].expires_at)-now}
-
     const cooldown=best.id==='bicicleta' ? 3*60 : 6*60
+    if(cd.rows[0] && Number(cd.rows[0].expires_at)>now){
+      const remaining=Number(cd.rows[0].expires_at)-now
+      if(remaining>cooldown){
+        const corrected=now+cooldown
+        await client.query('UPDATE cooldowns SET expires_at=$1 WHERE key=$2',[corrected,key])
+        return {ok:false,remaining:cooldown}
+      }
+      return {ok:false,remaining}
+    }
     const expires=now+cooldown
     await client.query(`
       INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
@@ -598,12 +605,20 @@ export async function driveUber(jid){
     const key=`uber:${jid}`
     const now=Math.floor(Date.now()/1000)
     const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
+    const cooldown=9*60
     if(cd.rows[0] && Number(cd.rows[0].expires_at)>now){
-      return {ok:false,remaining:Number(cd.rows[0].expires_at)-now}
+      // Corridas criadas antes do balanceamento podiam guardar 25 min.
+      // Nunca deixe um cooldown legado ultrapassar a regra atual de 9 min.
+      const remaining=Number(cd.rows[0].expires_at)-now
+      if(remaining>cooldown){
+        const corrected=now+cooldown
+        await client.query('UPDATE cooldowns SET expires_at=$1 WHERE key=$2',[corrected,key])
+        return {ok:false,remaining:cooldown}
+      }
+      return {ok:false,remaining}
     }
 
-    // Uma corrida a cada 25 minutos.
-    const cooldown=9*60
+    // Uma corrida a cada 9 minutos.
     const expires=now+cooldown
     await client.query(`
       INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
