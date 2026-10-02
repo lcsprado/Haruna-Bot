@@ -4905,7 +4905,7 @@ ${status}
             await progressDailyMission(sender,'work')
             let text=`🍔 *ENTREGA CONCLUÍDA!*\n\n🏍️ Moto: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
             if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
-            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega em 15 minutos.`
+            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega em 10 minutos.`
             await reply(text)
           }
 
