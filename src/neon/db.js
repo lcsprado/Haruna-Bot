@@ -3376,8 +3376,8 @@ export async function createMarketListing(jid,itemId,qty,price){
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
     const stats=await client.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1',[jid])
-    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id].includes(itemId)?1:0
-    if(Number(inv.rows[0].quantity)-equipped<qty) throw new Error('Não é possível anunciar sua única cópia equipada.')
+    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id].includes(itemId)
+    if(equipped) throw new Error('Esse item está equipado. Troque ou desequipe antes de anunciar no mercado.')
     await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,jid,itemId])
     const r=await client.query(`INSERT INTO market_listings(seller_jid,item_id,quantity,price) VALUES($1,$2,$3,$4) RETURNING *`,[jid,itemId,qty,price])
     return r.rows[0]
