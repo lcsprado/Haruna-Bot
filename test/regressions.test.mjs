@@ -51,6 +51,11 @@ test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',
   assert.match(gamesSource,/grantExpInTransaction\(c,p\.jid,exp\)/)
   assert.match(gamesSource,/caixa_epica/)
   assert.match(gamesSource,/giveBossDrops\(c,p\.jid,position,pb\.drop\)/)
+  assert.match(gamesSource,/mode:'weekly'/)
+  assert.match(gamesSource,/mode:'common'/)
+  assert.match(gamesSource,/weeklyCompleted:s\.mode==='weekly'/)
+  assert.match(gamesSource,/weekly\?'boss_weekend':'boss_common'/)
+  assert.doesNotMatch(gamesSource,/await clearGame\(c,chat,'boss'\)[\s\S]{0,100}dead:true/)
 })
 
 test('Boss permite preservar o pet e petaventura consome toda a energia',async()=>{
@@ -101,6 +106,22 @@ test('nomepet troca o nome por R$ 1.000 de forma transacional',async()=>{
   assert.match(dbSource,/type,note\)[\s\S]{0,80}'pet_rename'/)
   assert.match(indexSource,/\*!nomepet NovoNome\* — troca o nome por R\$ 1\.000/)
   assert.match(indexSource,/renamePet\(sender,newName\)/)
+})
+
+test('dormir protege de batalha e roubo antes do cooldown e concede XP ao acordar',async()=>{
+  const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
+  const gamesSource=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
+  assert.match(dbSource,/CREATE TABLE IF NOT EXISTS player_sleep/)
+  assert.match(dbSource,/export async function startPlayerSleep\(jid\)/)
+  assert.match(dbSource,/export async function resolvePlayerSleep\(jid\)/)
+  assert.ok(dbSource.indexOf("dormindo e não pode ser atacada")<dbSource.indexOf("claimCooldown(client,`battle:"))
+  assert.ok(dbSource.indexOf("dormindo e não pode ser roubada")<dbSource.indexOf("claimCooldown(client,`rob:"))
+  assert.match(indexSource,/\*!dormir\* — descansa protegido/)
+  assert.match(indexSource,/sleepAllowed=new Set/)
+  assert.match(indexSource,/startPlayerSleep\(sender\)/)
+  assert.match(gamesSource,/dormindo e não pode atacar o Boss agora/)
+  assert.match(dbSource,/dormindo e não pode disputar duelo de pets agora/)
 })
 test('regressões conhecidas de escopo não reaparecem',async()=>{
   const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
