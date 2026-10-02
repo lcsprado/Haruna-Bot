@@ -4853,16 +4853,16 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='meupet'||cmd==='statuspet'){
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
               const bonus=petStatusBonus(p)
-              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 Cada ataque ao Boss consome *2 de energia*. Use *!descansar* para recuperar 30.`)
+              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 Cada ataque ao Boss consome *2 de energia*. Use *!descansar* para recuperar 30.`)
             }
             if(cmd==='petaventura'){
               const p=await petAdventure(sender)
-              return await reply(`🌍 *PET AVENTURA CONCLUÍDA!*\n\n🐾 *${p.name}* explorou até ficar sem energia.\n⚡ Energia gasta: *${p.energySpent}*\n💰 Dinheiro encontrado: *R$ ${fmt(p.cash)}*\n✨ XP do pet: *+${p.xpGain}*${p.powerGain?`\n⚔️ Poder: *+${p.powerGain}*`:''}\n\nEnergia atual: *${p.energy}/${petMaxEnergy(p.level)}*. Use *!descansar*.`)
+              return await reply(`🌍 *PET AVENTURA CONCLUÍDA!*\n\n🐾 *${p.name}* explorou até ficar sem energia.\n⚡ Energia gasta: *${p.energySpent}*\n💰 Dinheiro encontrado: *R$ ${fmt(p.cash)}*\n✨ XP do pet: *+${p.xpGain}*${p.powerGain?`\n⚔️ Poder: *+${p.powerGain}*`:''}\n\nEnergia atual: *${p.energy}/${petMaxEnergy(p.level,p.species)}*. Use *!descansar*.`)
             }
             const action={alimentar:'alimentar',banho:'banho',descansar:'descansar',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
             const p=await petAction(sender,action)
             const actionResult=cmd==='descansar'?'descansou e recuperou energia!':cmd==='banho'?'tomou banho!':'completou a ação!'
-            await reply(`🐾 *${p.name}* ${actionResult}\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n🍖 ${p.hunger}/100 • ⚡ ${p.energy}/100`)
+            await reply(`🐾 *${p.name}* ${actionResult}\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n🍖 ${p.hunger}/100 • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`)
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível cuidar do pet.')) }
 
         } else if(['conquistas','achievements'].includes(cmd)){
