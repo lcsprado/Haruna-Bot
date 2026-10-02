@@ -1044,6 +1044,32 @@ Você possui: *${stock}*
       )
     }
 
+const PET_STATUS_SPECIALTIES = {
+  cachorro:{label:'🐶 Guardião',text:'+5% de defesa no Boss',stat:'defense',base:5},
+  gato:{label:'🐱 Instinto',text:'+4% de chance de crítico no Boss',stat:'crit',base:4},
+  coelho:{label:'🐰 Agilidade',text:'+4% de esquiva no Boss',stat:'dodge',base:4},
+  papagaio:{label:'🦜 Motivação',text:'+5% de XP recebido do Boss',stat:'xp',base:5},
+  hamster:{label:'🐹 Sorte',text:'+2,5% de chance de drop no Boss',stat:'drop',base:2.5},
+  tartaruga:{label:'🐢 Casco',text:'+7% de defesa no Boss',stat:'defense',base:7},
+  coruja:{label:'🦉 Sabedoria',text:'+8% de XP recebido do Boss',stat:'xp',base:8},
+  raposa:{label:'🦊 Astúcia',text:'+6% de chance de crítico no Boss',stat:'crit',base:6},
+  lobo:{label:'🐺 Caçador',text:'+6% de dano no Boss',stat:'damage',base:6},
+  aguia:{label:'🦅 Precisão',text:'+7% de chance de crítico no Boss',stat:'crit',base:7},
+  panda:{label:'🐼 Resistência',text:'+8% de defesa no Boss',stat:'defense',base:8},
+  tigre:{label:'🐯 Fúria',text:'+7% de dano no Boss',stat:'damage',base:7},
+  leao:{label:'🦁 Rei da Caçada',text:'+8% de dano no Boss',stat:'damage',base:8},
+  unicornio:{label:'🦄 Bênção',text:'+4% drop e +4% defesa no Boss',multi:true},
+  dragao:{label:'🐉 Caçador de Boss',text:'+10% de dano contra Boss',stat:'bossDamage',base:10}
+}
+function petStatusBonus(p){
+  const spec=PET_STATUS_SPECIALTIES[String(p?.species||'').toLowerCase()]
+  if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada'}
+  const scale=1+Math.min(.25,Math.max(0,Number(p.level||1)-1)*.01)
+  const pct=n=>Math.min(10,n*scale).toLocaleString('pt-BR',{maximumFractionDigits:1})
+  if(spec.multi) return {label:spec.label,text:`+${pct(4)}% drop e +${pct(4)}% defesa no Boss`}
+  return {label:spec.label,text:`+${pct(spec.base)}% ${spec.stat==='crit'?'chance de crítico':spec.stat==='dodge'?'esquiva':spec.stat==='xp'?'XP recebido':spec.stat==='drop'?'chance de drop':spec.stat==='defense'?'defesa':'dano'} no Boss`}
+}
+
     const commandPages={
       '1':`👤 *PERFIL, CONTA & SOCIAL*
 
@@ -4769,7 +4795,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','meupet','alimentar','banho','passear','treinarpet','aventurapet','rankpet','duelopet'].includes(cmd)){
+        } else if(['pet','pets','adotar','meupet','statuspet','alimentar','banho','passear','treinarpet','aventurapet','rankpet','duelopet'].includes(cmd)){
           try{
             if(cmd==='pet'||cmd==='pets') return await reply(`🐾 *PETS DO ALPHA BOT*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n🔄 Trocar de pet custa mais *R$ 25.000* e o novo pet começa do zero.\n💡 Use *!meupet* para ver seu pet atual.`)
             if(cmd==='adotar'){
