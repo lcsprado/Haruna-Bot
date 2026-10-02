@@ -169,6 +169,7 @@ export async function initProgression(){
       last_collected_at BIGINT NOT NULL DEFAULT ${nowSql},
       UNIQUE(jid,business_id)
     );
+    ALTER TABLE user_businesses ADD COLUMN IF NOT EXISTS level INTEGER NOT NULL DEFAULT 1;
 
     CREATE INDEX IF NOT EXISTS user_businesses_jid_idx
       ON user_businesses(jid);
@@ -817,7 +818,7 @@ export async function patrimonyLeaderboard(limit=10){
 
 export async function getBusinesses(jid){
   await ensureUser(jid)
-  const {rows}=await db.query('SELECT business_id,price_paid,acquired_at,last_collected_at FROM user_businesses WHERE jid=$1 ORDER BY acquired_at',[jid])
+  const {rows}=await db.query('SELECT business_id,price_paid,acquired_at,last_collected_at,level FROM user_businesses WHERE jid=$1 ORDER BY acquired_at',[jid])
   return rows.map(r=>({...BUSINESSES.find(b=>b.id===r.business_id),...r,id:r.business_id}))
 }
 
@@ -850,13 +851,16 @@ export async function collectBusinesses(jid){
       const b=BUSINESSES.find(x=>x.id===row.business_id)
       if(!b) continue
       const elapsed=Math.max(0,now-Number(row.last_collected_at||now))
-      const capped=Math.min(elapsed,b.capacityHours*3600)
-      const earned=Math.floor((capped/3600)*b.profitHour)
+      const level=Math.max(1,Number(row.level||1))
+      const multiplier=1+(level-1)*0.25
+      const capacityHours=b.capacityHours+(level-1)
+      const capped=Math.min(elapsed,capacityHours*3600)
+      const earned=Math.floor((capped/3600)*b.profitHour*multiplier)
       if(earned>0){
         total+=earned
         details.push({name:b.name,earned})
         // Preserve fractional-hour progress while discarding time beyond storage capacity.
-        const remainder=elapsed<=(b.capacityHours*3600) ? elapsed%3600 : 0
+        const remainder=elapsed<=(capacityHours*3600) ? elapsed%3600 : 0
         await client.query('UPDATE user_businesses SET last_collected_at=$1 WHERE id=$2',[now-remainder,row.id])
       }
     }
@@ -864,5 +868,26 @@ export async function collectBusinesses(jid){
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro dos negócios')",[jid,total])
     return {total,details}
+  })
+}
+
+
+export async function upgradeBusiness(jid,input){
+  await ensureUser(jid)
+  const business=resolveCatalog(input,BUSINESSES)
+  if(!business) throw new Error('Negócio inválido. Use !meusnegocios.')
+  return tx(async client=>{
+    const own=await client.query('SELECT * FROM user_businesses WHERE jid=$1 AND business_id=$2 FOR UPDATE',[jid,business.id])
+    if(!own.rows.length) throw new Error('Você não possui esse negócio.')
+    const level=Math.max(1,Number(own.rows[0].level||1))
+    if(level>=5) throw new Error('Esse negócio já está no nível máximo (5).')
+    const cost=Math.floor(business.price*(0.5+level*0.25))
+    const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    if(Number(wallet.rows[0]?.cash||0)<cost) throw new Error('Saldo insuficiente. Upgrade custa R$ '+cost.toLocaleString('pt-BR')+'.')
+    await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[cost,jid])
+    await client.query('UPDATE user_businesses SET level=level+1 WHERE jid=$1 AND business_id=$2',[jid,business.id])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_upgrade',$3)",[jid,cost,business.name])
+    const newLevel=level+1
+    return {...business,level:newLevel,cost,multiplier:1+(newLevel-1)*0.25,capacityHours:business.capacityHours+(newLevel-1)}
   })
 }
