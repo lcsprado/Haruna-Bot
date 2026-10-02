@@ -6006,6 +6006,7 @@ _Os comandos antigos continuam funcionando normalmente._`
 
         } else if(['boss'].includes(cmd)){
           const r=await startBoss(chat)
+          if(r.cooldown) return await reply(`⏳ *BOSS COMUM EM COOLDOWN*\n\nO próximo Golem do Alpha poderá aparecer em aproximadamente *${r.remainingMinutes} min*.\n\n👹 O Superboss semanal continua sendo um evento separado, disponível apenas uma vez por fim de semana.`)
           const bossPet=await getPet(sender)
           const bossPetBonus=bossPet?petStatusBonus(bossPet):null
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
