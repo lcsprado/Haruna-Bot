@@ -435,9 +435,27 @@ const BOSS_DROPS=[
   {id:'excalibur',name:'Excalibur',chance:.018,rarity:'Lendário'},
   {id:'armadura_titan',name:'Armadura do Titã',chance:.018,rarity:'Lendário'},
 ]
-async function giveBossDrop(c,jid,bonus=false){
+const PET_BOSS_SPECIALTIES={
+  cachorro:{label:'🐶 Guardião',defense:.05}, gato:{label:'🐱 Instinto',crit:.04},
+  coelho:{label:'🐰 Agilidade',dodge:.04}, papagaio:{label:'🦜 Motivação',xp:.05},
+  hamster:{label:'🐹 Sorte',drop:.025}, tartaruga:{label:'🐢 Casco',defense:.07},
+  coruja:{label:'🦉 Sabedoria',xp:.08}, raposa:{label:'🦊 Astúcia',crit:.06},
+  lobo:{label:'🐺 Caçador',damage:.06}, aguia:{label:'🦅 Precisão',crit:.07},
+  panda:{label:'🐼 Resistência',defense:.08}, tigre:{label:'🐯 Fúria',damage:.07},
+  leao:{label:'🦁 Rei da Caçada',damage:.08}, unicornio:{label:'🦄 Bênção',drop:.04,defense:.04},
+  dragao:{label:'🐉 Caçador de Boss',bossDamage:.10}
+}
+function petBossBonus(pet){
+  if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0}
+  const base=PET_BOSS_SPECIALTIES[pet.species]||{}
+  // O nível melhora o efeito devagar e para em +25%; pet ajuda, mas não substitui equipamento.
+  const scale=1+Math.min(.25,Math.max(0,Number(pet.level||1)-1)*.01)
+  const scaled=k=>Math.min(.10,Number(base[k]||0)*scale)
+  return {label:base.label||pet.species,damage:scaled('damage')+scaled('bossDamage'),defense:scaled('defense'),crit:scaled('crit'),dodge:scaled('dodge'),xp:scaled('xp'),drop:scaled('drop')}
+}
+async function giveBossDrop(c,jid,bonus=false,extraChance=0){
   for(let rollNo=0;rollNo<(bonus?2:1);rollNo++){
-    const roll=Math.random(); let acc=0
+    const roll=Math.max(0,Math.random()-Math.min(.08,extraChance)); let acc=0
     for(const d of BOSS_DROPS){
       acc+=d.chance
       if(roll<acc){
@@ -466,16 +484,22 @@ export async function attackBoss(chat,jid,name){
     const s=await loadGame(c,chat,'boss')
     if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const pet=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[jid])).rows[0]||null
+    const petBonus=petBossBonus(pet)
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     const weapon=getEquipmentInfo(st.weapon_id)||{atk:0}, armor=getEquipmentInfo(st.armor_id)||{def:0}
     const atk=Number(st.atk)+Number(weapon.atk||0), def=Number(st.def)+Number(armor.def||0)
-    const damage=Math.max(5,Math.floor(atk*(.85+Math.random()*.45)))
+    const crit=petBonus.crit>0&&Math.random()<petBonus.crit
+    const petMultiplier=1+petBonus.damage
+    const damage=Math.max(5,Math.floor(atk*(.85+Math.random()*.45)*petMultiplier*(crit?1.5:1)))
+    const petDamage=Math.max(0,damage-Math.floor(damage/petMultiplier))
     s.hp=Math.max(0,Number(s.hp)-damage); s.participants=s.participants||{}
     const old=s.participants[jid]||{damage:0,name:name||'Jogador'}
     s.participants[jid]={damage:Number(old.damage||0)+damage,name:old.name||name||'Jogador'}
     let php=Number(st.hp),bossDamage=0,autoHeal=null
     if(s.hp>0){
-      bossDamage=Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)))
+      const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
+      bossDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)))
       php=Math.max(0,php-bossDamage)
       if(php<=0){
         const ids=['pocao_p','pocao_m','pocao_g','elixir_supremo']
@@ -491,12 +515,12 @@ export async function attackBoss(chat,jid,name){
     if(s.hp<=0){
       const entries=Object.entries(s.participants).map(([pjid,v])=>({jid:pjid,damage:Number(v.damage||0),name:v.name||'Jogador'})).sort((a,b)=>b.damage-a.damage)
       const total=entries.reduce((n,x)=>n+x.damage,0)||1,rewards=[]
-      for(let i=0;i<entries.length;i++){const p=entries[i],share=p.damage/total,cash=3000+Math.floor(50000*share),exp=50+Math.floor(300*share);await credit(c,p.jid,cash,'boss_weekend');const drop=await giveBossDrop(c,p.jid,i===0);rewards.push({...p,cash,exp,drop,share})}
+      for(let i=0;i<entries.length;i++){const p=entries[i],share=p.damage/total,cash=3000+Math.floor(50000*share);const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null;const pb=petBossBonus(pp);const exp=Math.floor((50+300*share)*(1+pb.xp));await credit(c,p.jid,cash,'boss_weekend');const drop=await giveBossDrop(c,p.jid,i===0,pb.drop);rewards.push({...p,cash,exp,drop,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})}
       await clearGame(c,chat,'boss')
       return {dead:true,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal}
     }
     await saveGame(c,chat,'boss',s)
-    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal}
+    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit}:null}
   })
 }
 export async function grantBossXp(rewards=[]){for(const r of rewards) await grantExp(r.jid,r.exp)}
