@@ -290,6 +290,7 @@ export async function initDatabase() {
     ['pocao_m','Poção Média','Recupera 80 HP.','consumable',1200,'uncommon'],
     ['pocao_g','Poção Grande','Recupera 160 HP.','consumable',3000,'rare'],
     ['elixir_supremo','Elixir Supremo','Recupera uma grande quantidade de HP.','consumable',9000,'epic'],
+    ['energetico_pet','Energético Pet','Restaura instantaneamente 100% da energia do pet ativo.','consumable',12000,'rare'],
 
     // Armas
     ['espada_madeira','Espada de Madeira','Arma inicial do Alpha Bot. +5 ATK.','weapon',1500,'common'],
@@ -1593,6 +1594,29 @@ export async function equipItem(jid, itemId) {
     const field=eq.category==='weapon' ? 'weapon_id' : 'armor_id'
     await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
     return {...eq,itemId}
+  })
+}
+
+export async function usePetEnergyItem(jid,itemId='energetico_pet'){
+  if(itemId!=='energetico_pet') throw new Error('Esse item não recupera energia do pet.')
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const inv=(await client.query(
+      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+      [jid,itemId]
+    )).rows[0]
+    if(!inv || Number(inv.quantity)<1) throw new Error('Você não possui Energético Pet.')
+
+    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    const max=petMaxEnergy(pet.level,pet.species)
+    const before=Number(pet.energy||0)
+    if(before>=max) throw new Error(`A energia de ${pet.name} já está cheia (${max}/${max}).`)
+
+    await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
+    await client.query('UPDATE pets SET energy=$1 WHERE jid=$2',[max,jid])
+    await client.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[max,jid])
+    return {name:'Energético Pet',petName:pet.name,before,energy:max,max,recovered:max-before,remaining:Number(inv.quantity)-1}
   })
 }
 
