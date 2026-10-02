@@ -2622,6 +2622,21 @@ export async function initCommunityPack(){
     );
     ALTER TABLE pets ADD COLUMN IF NOT EXISTS last_rest BIGINT NOT NULL DEFAULT 0;
 
+    CREATE TABLE IF NOT EXISTS pet_collection(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      species TEXT NOT NULL,name TEXT NOT NULL,level INTEGER NOT NULL DEFAULT 1,xp INTEGER NOT NULL DEFAULT 0,
+      hunger INTEGER NOT NULL DEFAULT 100,hygiene INTEGER NOT NULL DEFAULT 100,energy INTEGER NOT NULL DEFAULT 100,
+      power INTEGER NOT NULL DEFAULT 10,wins INTEGER NOT NULL DEFAULT 0,losses INTEGER NOT NULL DEFAULT 0,
+      last_action BIGINT NOT NULL DEFAULT 0,last_rest BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      active BOOLEAN NOT NULL DEFAULT FALSE
+    );
+    CREATE INDEX IF NOT EXISTS pet_collection_owner_idx ON pet_collection(jid,id);
+    CREATE UNIQUE INDEX IF NOT EXISTS pet_collection_one_active_idx ON pet_collection(jid) WHERE active;
+    INSERT INTO pet_collection(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,active)
+      SELECT p.jid,p.species,p.name,p.level,p.xp,p.hunger,p.hygiene,p.energy,p.power,p.wins,p.losses,p.last_action,p.last_rest,p.created_at,TRUE FROM pets p
+      WHERE NOT EXISTS(SELECT 1 FROM pet_collection pc WHERE pc.jid=p.jid);
+
     CREATE TABLE IF NOT EXISTS player_sleep(
       jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
       place TEXT NOT NULL,
@@ -2817,20 +2832,52 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     const ur=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid]); const level=Number(ur.rows[0]?.level||1)
     if(level<rule.level) throw new Error(`${rule.label} exige nível ${rule.level}. Seu nível atual: ${level}.`)
     const old=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const changeFee=old?25000:0
-    const total=rule.price+changeFee
+    const changeFee=0
+    const total=rule.price
     const wr=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0],cash=Number(wr?.cash||0),bank=Number(wr?.bank||0)
-    if(cash+bank<total) throw new Error(`Você precisa de R$ ${total.toLocaleString('pt-BR')} (${rule.label}: R$ ${rule.price.toLocaleString('pt-BR')}${old?' + troca: R$ 25.000':''}).`)
+    if(cash+bank<total) throw new Error(`Você precisa de R$ ${total.toLocaleString('pt-BR')} (${rule.label}: R$ ${rule.price.toLocaleString('pt-BR')}).`)
     const fromCash=Math.min(cash,total)
     await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,total-fromCash,jid])
     const petName=String(name||'Alpha').slice(0,24)
-    const {rows}=await client.query(`INSERT INTO pets(jid,species,name) VALUES($1,$2,$3)
-      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=100,wins=0,losses=0,last_action=0 RETURNING *`,[jid,species,petName])
-    return {...rows[0],fee:total,petPrice:rule.price,changeFee,replaced:Boolean(old)}
+    if(old){
+      const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
+      if(active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13 WHERE id=$14`,
+        [old.species,old.name,old.level,old.xp,old.hunger,old.hygiene,old.energy,old.power,old.wins,old.losses,old.last_action,old.last_rest,old.created_at,active.id])
+    }
+    await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
+    const maxEnergy=petMaxEnergy(1,species)
+    const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,active) VALUES($1,$2,$3,$4,TRUE) RETURNING *`,[jid,species,petName,maxEnergy])).rows[0]
+    const {rows}=await client.query(`INSERT INTO pets(jid,species,name,energy) VALUES($1,$2,$3,$4)
+      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=EXCLUDED.energy,wins=0,losses=0,last_action=0,last_rest=0 RETURNING *`,[jid,species,petName,maxEnergy])
+    return {...rows[0],collectionId:collected.id,fee:total,petPrice:rule.price,changeFee:0,replaced:false,added:true}
   })
 }
 export async function getPet(jid){
   const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid]); return rows[0]||null
+}
+export async function listPets(jid){
+  const active=await getPet(jid)
+  const {rows}=await db.query('SELECT * FROM pet_collection WHERE jid=$1 ORDER BY active DESC,id ASC',[jid])
+  if(!rows.length&&active) return [{...active,id:null,active:true}]
+  return rows
+}
+export async function selectPet(jid,id){
+  id=Number(id); if(!Number.isInteger(id)||id<=0) throw new Error('Use !usarp et ID. Ex.: !usarpet 2')
+  return transaction(async client=>{
+    const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const target=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,id])).rows[0]
+    if(!target) throw new Error('Pet não encontrado. Use !meuspets.')
+    if(target.active) return {...target,already:true}
+    const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
+    if(current&&active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13 WHERE id=$14`,
+      [current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,active.id])
+    await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
+    await client.query('UPDATE pet_collection SET active=TRUE WHERE id=$1',[id])
+    await client.query(`INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at`,
+      [jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at])
+    return target
+  })
 }
 export async function renamePet(jid,name){
   const newName=String(name||'').replace(/[\u0000-\u001F\u007F]/g,'').replace(/\s+/g,' ').trim()
