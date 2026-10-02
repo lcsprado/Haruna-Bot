@@ -55,8 +55,12 @@ import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeam
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
 const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
-const sessionId=process.env.SESSION_ID || 'default'
-const ownerJid=process.env.OWNER_JID || ''
+// WhatsApp identity is environment-driven. Changing the bot phone must never require a code change.
+// IMPORTANT: when changing PAIRING_NUMBER, also change SESSION_ID so Baileys creates a fresh auth session.
+// Game data remains in the same Neon database and is not tied to either value.
+const sessionId=(process.env.SESSION_ID || 'alpha-primary').trim()
+const ownerNumber=(process.env.OWNER_NUMBER || '').replace(/\D/g,'')
+const ownerJid=(process.env.OWNER_JID || (ownerNumber ? ownerNumber+'@s.whatsapp.net' : '')).trim()
 
 const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
   whatsapp:'starting',
@@ -4278,6 +4282,10 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     return false
   }
 
+
+  if(!state.creds.registered && !pairingNumber){
+    console.error('[WhatsApp] sessão sem login e PAIRING_NUMBER não configurado. Defina o novo número no Render e use um SESSION_ID novo.')
+  }
 
   if(pairingNumber && !state.creds.registered){
     setTimeout(async()=>{
