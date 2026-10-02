@@ -2479,6 +2479,13 @@ export async function dungeon(jid) {
     const cash=Math.floor((700+Math.random()*801)*m.mult)
     const exp=Math.floor((35+Math.random()*31)*m.mult)
     await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
+    let updated=rows[0]
+    const newMax=petMaxHp(updated.level,updated.xp,updated.species)
+    const oldMax=Math.max(1,Number(petHp.max_hp||100))
+    const newHp=Math.min(newMax,Math.max(0,Number(petHp.hp)+Math.max(0,newMax-oldMax)))
+    updated=(await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3 RETURNING *',[newHp,newMax,jid])).rows[0]
+    await client.query('UPDATE pet_collection SET level=$1,xp=$2,hunger=$3,hygiene=$4,energy=$5,power=$6,last_action=$7,hp=$8,max_hp=$9 WHERE jid=$10 AND active=TRUE',
+      [updated.level,updated.xp,updated.hunger,updated.hygiene,updated.energy,updated.power,updated.last_action,updated.hp,updated.max_hp,jid])
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
     await client.query(`
       INSERT INTO transactions(from_jid,to_jid,amount,type,note)
@@ -2849,6 +2856,8 @@ export async function initCommunityPack(){
       created_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
     ALTER TABLE pets ADD COLUMN IF NOT EXISTS last_rest BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE pets ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
+    ALTER TABLE pets ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
 
     CREATE TABLE IF NOT EXISTS pet_collection(
       id BIGSERIAL PRIMARY KEY,
@@ -2859,6 +2868,8 @@ export async function initCommunityPack(){
       last_action BIGINT NOT NULL DEFAULT 0,last_rest BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT ${nowSql},
       active BOOLEAN NOT NULL DEFAULT FALSE
     );
+    ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
+    ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
     CREATE INDEX IF NOT EXISTS pet_collection_owner_idx ON pet_collection(jid,id);
     CREATE UNIQUE INDEX IF NOT EXISTS pet_collection_one_active_idx ON pet_collection(jid) WHERE active;
     INSERT INTO pet_collection(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,active)
@@ -3063,6 +3074,62 @@ export function petMaxEnergy(level=1,species='cachorro'){
   return base+Math.max(0,Number(level||1)-1)*2
 }
 
+export const PET_HP_PROFILES={
+  cachorro:{base:105,growth:9,type:'Equilibrado'},
+  gato:{base:90,growth:7,type:'Ágil'},
+  coelho:{base:85,growth:7,type:'Ágil'},
+  papagaio:{base:90,growth:7,type:'Suporte'},
+  hamster:{base:80,growth:6,type:'Ágil'},
+  tartaruga:{base:145,growth:13,type:'Tanque'},
+  coruja:{base:100,growth:8,type:'Suporte'},
+  raposa:{base:110,growth:9,type:'Ágil'},
+  lobo:{base:130,growth:11,type:'Ofensivo'},
+  aguia:{base:115,growth:9,type:'Crítico'},
+  panda:{base:165,growth:14,type:'Tanque'},
+  tigre:{base:150,growth:13,type:'Ofensivo'},
+  leao:{base:170,growth:14,type:'Ofensivo'},
+  unicornio:{base:190,growth:16,type:'Místico'},
+  dragao:{base:230,growth:19,type:'Boss Hunter'},
+  golem_ancestral:{base:240,growth:18,type:'Tanque'},
+  urso_runico:{base:225,growth:17,type:'Tanque'},
+  colosso_cristal:{base:280,growth:21,type:'Tanque'},
+  salamandra_infernal:{base:210,growth:16,type:'Ofensivo'},
+  dragao_vulcanico:{base:250,growth:19,type:'Ofensivo'},
+  fenix_fogo:{base:235,growth:18,type:'Místico'},
+  corvo_abissal:{base:200,growth:15,type:'Crítico'},
+  lobo_abismo:{base:240,growth:18,type:'Ofensivo'},
+  fenix_gelo:{base:240,growth:18,type:'Místico'},
+  rinoceronte_titanico:{base:285,growth:22,type:'Tanque'},
+  guardiao_obsidiana:{base:300,growth:23,type:'Tanque'},
+  leviata_gelo:{base:320,growth:24,type:'Tanque'},
+  cerbero_carmesim:{base:270,growth:21,type:'Ofensivo'},
+  tigre_lunar:{base:260,growth:20,type:'Ofensivo'},
+  imperador_abissal:{base:300,growth:23,type:'Boss Hunter'},
+  leao_solar:{base:290,growth:22,type:'Ofensivo'},
+  grifo_celestial:{base:275,growth:21,type:'Crítico'},
+  fenix_celestial:{base:300,growth:23,type:'Místico'},
+  serpente_cosmica:{base:300,growth:23,type:'Místico'},
+  dragao_corrompido:{base:340,growth:25,type:'Boss Hunter'},
+  fenix_alpha:{base:360,growth:27,type:'Mítico'}
+}
+export function petMaxHp(level=1,xp=0,species='cachorro'){
+  const profile=PET_HP_PROFILES[String(species||'cachorro').toLowerCase()]||PET_HP_PROFILES.cachorro
+  const lv=Math.max(1,Number(level)||1)
+  const experience=Math.max(0,Number(xp)||0)
+  return Math.max(1,Math.floor(profile.base+(lv-1)*profile.growth+Math.floor(experience/100)*2))
+}
+export function petHpType(species='cachorro'){
+  return (PET_HP_PROFILES[String(species||'cachorro').toLowerCase()]||PET_HP_PROFILES.cachorro).type
+}
+function normalizedPetHp(p){
+  if(!p) return p
+  const desired=petMaxHp(p.level,p.xp,p.species)
+  const oldMax=Math.max(1,Number(p.max_hp||100))
+  const oldHp=Math.max(0,Number(p.hp??oldMax))
+  const hp=Math.min(desired,Math.max(0,oldHp+(desired-oldMax)))
+  return {...p,hp,max_hp:desired}
+}
+
 export const LEGENDARY_PET_SUMMONS=[
   {materialId:'nucleo_pedra',materialName:'Núcleo de Pedra',raidLevel:10,pets:[
     {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:60,power:18},
@@ -3121,10 +3188,11 @@ export async function summonLegendaryPet(jid,materialId){
 
     const petName=chosen.name.replace(/^[^\p{L}\p{N}]+/u,'').slice(0,24)
     const energy=petMaxEnergy(1,chosen.species)
+    const maxHp=petMaxHp(1,0,chosen.species)
     const collected=(await client.query(
-      `INSERT INTO pet_collection(jid,species,name,energy,power,active)
-       VALUES($1,$2,$3,$4,$5,FALSE) RETURNING *`,
-      [jid,chosen.species,petName,energy,chosen.power]
+      `INSERT INTO pet_collection(jid,species,name,energy,power,hp,max_hp,active)
+       VALUES($1,$2,$3,$4,$5,$6,$6,FALSE) RETURNING *`,
+      [jid,chosen.species,petName,energy,chosen.power,maxHp]
     )).rows[0]
 
     return {altar,pet:chosen,collectionId:collected.id,remaining:owned-100}
@@ -3166,41 +3234,50 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     const petName=String(name||'Alpha').slice(0,24)
     if(old){
       const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
-      if(active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13 WHERE id=$14`,
-        [old.species,old.name,old.level,old.xp,old.hunger,old.hygiene,old.energy,old.power,old.wins,old.losses,old.last_action,old.last_rest,old.created_at,active.id])
+      if(active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
+        [old.species,old.name,old.level,old.xp,old.hunger,old.hygiene,old.energy,old.power,old.wins,old.losses,old.last_action,old.last_rest,old.created_at,old.hp||old.max_hp||100,old.max_hp||petMaxHp(old.level,old.xp,old.species),active.id])
     }
     await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
     const maxEnergy=petMaxEnergy(1,species)
-    const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,active) VALUES($1,$2,$3,$4,TRUE) RETURNING *`,[jid,species,petName,maxEnergy])).rows[0]
-    const {rows}=await client.query(`INSERT INTO pets(jid,species,name,energy) VALUES($1,$2,$3,$4)
-      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=EXCLUDED.energy,wins=0,losses=0,last_action=0,last_rest=0 RETURNING *`,[jid,species,petName,maxEnergy])
+    const maxHp=petMaxHp(1,0,species)
+    const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,hp,max_hp,active) VALUES($1,$2,$3,$4,$5,$5,TRUE) RETURNING *`,[jid,species,petName,maxEnergy,maxHp])).rows[0]
+    const {rows}=await client.query(`INSERT INTO pets(jid,species,name,energy,hp,max_hp) VALUES($1,$2,$3,$4,$5,$5)
+      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=EXCLUDED.energy,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp,wins=0,losses=0,last_action=0,last_rest=0 RETURNING *`,[jid,species,petName,maxEnergy,maxHp])
     return {...rows[0],collectionId:collected.id,fee:total,petPrice:rule.price,changeFee:0,replaced:false,added:true}
   })
 }
 export async function getPet(jid){
-  const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid]); return rows[0]||null
+  const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid])
+  if(!rows[0]) return null
+  const before=rows[0], pet=normalizedPetHp(before)
+  if(Number(before.hp)!==Number(pet.hp)||Number(before.max_hp)!==Number(pet.max_hp)){
+    await db.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[pet.hp,pet.max_hp,jid])
+    await db.query('UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.max_hp,jid])
+  }
+  return pet
 }
 export async function listPets(jid){
   const active=await getPet(jid)
   const {rows}=await db.query('SELECT * FROM pet_collection WHERE jid=$1 ORDER BY active DESC,id ASC',[jid])
   if(!rows.length&&active) return [{...active,id:null,active:true}]
-  return rows
+  return rows.map(normalizedPetHp)
 }
 export async function selectPet(jid,id){
   id=Number(id); if(!Number.isInteger(id)||id<=0) throw new Error('Use !usarp et ID. Ex.: !usarpet 2')
   return transaction(async client=>{
     const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const target=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,id])).rows[0]
-    if(!target) throw new Error('Pet não encontrado. Use !meuspets.')
+    const rawTarget=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,id])).rows[0]
+    if(!rawTarget) throw new Error('Pet não encontrado. Use !meuspets.')
+    const target=normalizedPetHp(rawTarget)
     if(target.active) return {...target,already:true}
     const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
-    if(current&&active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13 WHERE id=$14`,
-      [current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,active.id])
+    if(current&&active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
+      [current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,current.hp||current.max_hp||100,current.max_hp||petMaxHp(current.level,current.xp,current.species),active.id])
     await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
     await client.query('UPDATE pet_collection SET active=TRUE WHERE id=$1',[id])
-    await client.query(`INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at`,
-      [jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at])
+    await client.query(`INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,hp,max_hp) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp`,
+      [jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at,target.hp,target.max_hp])
     return target
   })
 }
@@ -3237,6 +3314,8 @@ export async function petAction(jid,action){
     const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
     const now=Math.floor(Date.now()/1000)
+    const petHp=normalizedPetHp(pet)
+    if(Number(petHp.hp)<=0 && !a.rest) throw new Error('Seu pet está sem HP. Use !descansar para recuperá-lo.')
     if(a.rest){
       const restCooldown=30*60
       const remaining=restCooldown-(now-Number(pet.last_rest||0))
@@ -3259,13 +3338,24 @@ export async function petAction(jid,action){
       energy=LEAST((CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,$5-1)*2,GREATEST(0,energy+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
       last_rest=CASE WHEN $8 THEN $7 ELSE last_rest END
       WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid,levelEnergyGain])
-    return rows[0]
+    let updated=rows[0]
+    const newMax=petMaxHp(updated.level,updated.xp,updated.species)
+    const oldMax=Math.max(1,Number(petHp.max_hp||100))
+    const levelHpGain=Math.max(0,newMax-oldMax)
+    const restHeal=a.rest?Math.max(1,Math.ceil(newMax*.35)):0
+    const newHp=Math.min(newMax,Math.max(0,Number(petHp.hp)+levelHpGain+restHeal))
+    updated=(await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3 RETURNING *',[newHp,newMax,jid])).rows[0]
+    await client.query(`UPDATE pet_collection SET level=$1,xp=$2,hunger=$3,hygiene=$4,energy=$5,power=$6,last_action=$7,last_rest=$8,hp=$9,max_hp=$10 WHERE jid=$11 AND active=TRUE`,
+      [updated.level,updated.xp,updated.hunger,updated.hygiene,updated.energy,updated.power,updated.last_action,updated.last_rest,updated.hp,updated.max_hp,jid])
+    return {...updated,hpRecovered:restHeal}
   })
 }
 export async function petAdventure(jid){
   return transaction(async client=>{
     const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    const petHp=normalizedPetHp(pet)
+    if(Number(petHp.hp)<=0) throw new Error('Seu pet está sem HP. Use !descansar antes de mandar para aventura.')
     const energy=Number(pet.energy||0)
     if(energy<10) throw new Error(`Seu pet precisa de pelo menos 10 de energia para explorar. Energia atual: ${energy}/${petMaxEnergy(pet.level,pet.species)}. Use !descansar.`)
     const now=Math.floor(Date.now()/1000)
@@ -3284,7 +3374,7 @@ export async function petAdventure(jid){
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'pet_adventure',$3)`,[jid,cash,`${pet.name}: ${energy} energia`])
-    return {...rows[0],cash,xpGain,energySpent:energy,powerGain}
+    return {...updated,cash,xpGain,energySpent:energy,powerGain}
   })
 }
 export async function petLeaderboard(limit=10){
