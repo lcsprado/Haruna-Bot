@@ -509,8 +509,15 @@ export async function startBoss(chat){
       current.mode='weekly'; current.weeklyCompleted=false
       await saveGame(c,chat,'boss',current)
     }
+    // Um Superboss só pode existir uma vez por fim de semana. O marcador de conclusão
+    // permanece salvo mesmo depois que Bosses comuns forem iniciados.
     const weeklyCompleted=Boolean(current?.weeklyCompleted&&current.weekendKey===weekend.weekendKey)
-    if(weekend.open&&!weeklyCompleted){
+    const weeklyAlreadyRan=Boolean(current?.weekendKey===weekend.weekendKey&&(
+      current?.weeklyCompleted||
+      (current?.mode==='weekly'&&Number(current.hp)<=0)||
+      (current?.mode==='completed'&&Number(current.maxHp)>=25000)
+    ))
+    if(weekend.open&&!weeklyAlreadyRan){
       if(current?.mode==='weekly'&&current.weekendKey===weekend.weekendKey&&Number(current.hp)>0&&Number(current.endsAt||0)>Date.now()){
         return {already:true,...current,endsLabel:weekend.endsLabel}
       }
@@ -520,7 +527,7 @@ export async function startBoss(chat){
     }
     if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
     const maxHp=900+Math.floor(Math.random()*1101)
-    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:10,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted}
+    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:10,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:Boolean(weeklyCompleted)}
     await saveGame(c,chat,'boss',state); return state
   })
 }
