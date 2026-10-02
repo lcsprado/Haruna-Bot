@@ -4615,6 +4615,20 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const sleepAllowed=new Set(['dormir','sono','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping'])
         if(sleep?.active&&!sleepAllowed.has(cmd)) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
 
+        // O sono precisa ser despachado antes das licenças e dos módulos do grupo.
+        // Assim ele funciona também no privado e não é engolido por um quick flow/configuração.
+        if(['dormir','sono'].includes(cmd)){
+          if(sleep?.woke) continue
+          const r=await startPlayerSleep(sender)
+          if(!r.started){
+            await reply(`😴 Você já está dormindo em *${r.place}*.\n⏳ Tempo restante: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*`)
+            continue
+          }
+          clearQuickFlow(chat,sender)
+          await reply(`😴 *BOA NOITE!*\n\n🏠 Local: *${r.place}*\n⏳ Duração: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*${r.fee?`\n💰 Aluguel pago: *R$ ${fmt(r.fee)}*`:''}\n\n🛡️ Durante o sono você não pode ser roubado nem atacado, e tentativas contra você não gastam o cooldown do outro jogador.`)
+          continue
+        }
+
         if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pedido','configgrupo','configuragrupo','suporte','support','ajuda','chamado'].includes(cmd)){
           let license=await getGroupLicense(chat)
           if(!license) license=await ensureGroupTrial(chat)
@@ -5195,13 +5209,6 @@ ${status}
           if(isGroup) await progressGroupMission(chat,sender,'work')
             await reply(workResultText(r))
           }
-
-        } else if(['dormir','sono'].includes(cmd)){
-          const r=await startPlayerSleep(sender)
-          if(r.woke) return await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${r.place}*\n✨ XP recebido: *+${r.xp_reward}*\n\nUse *${prefix}dormir* novamente quando quiser iniciar outro descanso.`)
-          if(!r.started) return await reply(`😴 Você já está dormindo em *${r.place}*.\n⏳ Tempo restante: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*`)
-          clearQuickFlow(chat,sender)
-          await reply(`😴 *BOA NOITE!*\n\n🏠 Local: *${r.place}*\n⏳ Duração: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*${r.fee?`\n💰 Aluguel pago: *R$ ${fmt(r.fee)}*`:''}\n\n🛡️ Durante o sono você não pode ser roubado nem atacado, e tentativas contra você não gastam o cooldown do outro jogador.`)
 
         } else if(['carreira','emprego','profissao','profissão'].includes(cmd)){
           const r=await getCareer(sender)
