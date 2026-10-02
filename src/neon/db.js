@@ -3321,7 +3321,7 @@ export async function petAction(jid,action){
       const remaining=restCooldown-(now-Number(pet.last_rest||0))
       if(remaining>0) throw new Error(`Seu pet poderá descansar novamente em ${Math.ceil(remaining/60)} min.`)
       const maxEnergy=petMaxEnergy(pet.level,pet.species)
-      if(Number(pet.energy)>=maxEnergy) throw new Error(`Seu pet já está com a energia cheia (${maxEnergy}/${maxEnergy}).`)
+      if(Number(pet.energy)>=maxEnergy && Number(petHp.hp)>=Number(petHp.max_hp)) throw new Error(`Seu pet já está com energia e HP cheios.`)
     }
     // !descansar é justamente a ação de recuperação e não deve ser bloqueada
     // pelo cooldown curto deixado por treino, passeio ou aventura.
@@ -3371,6 +3371,13 @@ export async function petAdventure(jid){
     const {rows}=await client.query(`UPDATE pets SET energy=LEAST((CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,$2-1)*2,$8),xp=$1,level=$2,power=power+$3,
       hunger=GREATEST(0,hunger-$4),hygiene=GREATEST(0,hygiene-$5),last_action=$6
       WHERE jid=$7 RETURNING *`,[xp,nextLevel,powerGain,Math.ceil(energy*.25),Math.ceil(energy*.15),now,jid,levelEnergyGain])
+    let updated=rows[0]
+    const newMax=petMaxHp(updated.level,updated.xp,updated.species)
+    const oldMax=Math.max(1,Number(petHp.max_hp||100))
+    const newHp=Math.min(newMax,Math.max(0,Number(petHp.hp)+Math.max(0,newMax-oldMax)))
+    updated=(await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3 RETURNING *',[newHp,newMax,jid])).rows[0]
+    await client.query('UPDATE pet_collection SET level=$1,xp=$2,hunger=$3,hygiene=$4,energy=$5,power=$6,last_action=$7,hp=$8,max_hp=$9 WHERE jid=$10 AND active=TRUE',
+      [updated.level,updated.xp,updated.hunger,updated.hygiene,updated.energy,updated.power,updated.last_action,updated.hp,updated.max_hp,jid])
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'pet_adventure',$3)`,[jid,cash,`${pet.name}: ${energy} energia`])
@@ -3410,24 +3417,58 @@ export async function petDuel(challengerJid,targetJid){
   if(challengerJid===targetJid) throw new Error('Escolha outro jogador.')
   const sleeping=await db.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,Math.floor(Date.now()/1000)])
   if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode disputar duelo de pets agora.')
-  const [a,b]=await Promise.all([getPet(challengerJid),getPet(targetJid)])
-  if(!a||!b) throw new Error('Os dois jogadores precisam ter um pet.')
-  const scoreA=Number(a.power)+Number(a.level)*2+Math.floor(Math.random()*11)
-  const scoreB=Number(b.power)+Number(b.level)*2+Math.floor(Math.random()*11)
-  const winner=scoreA===scoreB?(Math.random()<.5?'a':'b'):(scoreA>scoreB?'a':'b')
-  const winJid=winner==='a'?challengerJid:targetJid,loseJid=winner==='a'?targetJid:challengerJid
-  await transaction(async client=>{
-    // Duelo também pode subir nível; ao subir, o Poder acompanha automaticamente (+2 por nível).
-    await client.query(`UPDATE pets SET wins=wins+1,xp=xp+25,
-      energy=LEAST(100+GREATEST(0,(1+FLOOR((xp+25)/100))-1)*2,energy+(GREATEST(0,(1+FLOOR((xp+25)/100))-level)*3)),
-      power=power+(GREATEST(0,(1+FLOOR((xp+25)/100))-level)*2),
-      level=1+FLOOR((xp+25)/100) WHERE jid=$1`,[winJid])
-    await client.query(`UPDATE pets SET losses=losses+1,xp=xp+10,
-      energy=LEAST(100+GREATEST(0,(1+FLOOR((xp+10)/100))-1)*2,energy+(GREATEST(0,(1+FLOOR((xp+10)/100))-level)*3)),
-      power=power+(GREATEST(0,(1+FLOOR((xp+10)/100))-level)*2),
-      level=1+FLOOR((xp+10)/100) WHERE jid=$1`,[loseJid])
+  return transaction(async client=>{
+    const rows=(await client.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',[[challengerJid,targetJid]])).rows
+    const a=normalizedPetHp(rows.find(p=>p.jid===challengerJid))
+    const b=normalizedPetHp(rows.find(p=>p.jid===targetJid))
+    if(!a||!b) throw new Error('Os dois jogadores precisam ter um pet.')
+    if(Number(a.hp)<=0) throw new Error(`${a.name} está sem HP. Use !descansar antes do duelo.`)
+    if(Number(b.hp)<=0) throw new Error(`${b.name} está sem HP e não pode duelar agora.`)
+
+    let hpA=Number(a.hp),hpB=Number(b.hp),rounds=0
+    const hit=p=>Math.max(4,Math.floor((Number(p.power||10)+Number(p.level||1)*2)*(.45+Math.random()*.35)))
+    const aFirst=Math.random()<.5
+    while(hpA>0&&hpB>0&&rounds<20){
+      rounds++
+      if(aFirst){
+        hpB=Math.max(0,hpB-hit(a))
+        if(hpB>0) hpA=Math.max(0,hpA-hit(b))
+      }else{
+        hpA=Math.max(0,hpA-hit(b))
+        if(hpA>0) hpB=Math.max(0,hpB-hit(a))
+      }
+    }
+    let winnerKey
+    if(hpA<=0&&hpB<=0) winnerKey=Math.random()<.5?'a':'b'
+    else if(hpB<=0) winnerKey='a'
+    else if(hpA<=0) winnerKey='b'
+    else {
+      const ratioA=hpA/Math.max(1,Number(a.max_hp)),ratioB=hpB/Math.max(1,Number(b.max_hp))
+      winnerKey=ratioA===ratioB?(Math.random()<.5?'a':'b'):(ratioA>ratioB?'a':'b')
+    }
+
+    const evolve=async(p,hpAfter,xpGain,won)=>{
+      const oldLevel=Number(p.level||1),xp=Number(p.xp||0)+xpGain
+      const level=1+Math.floor(xp/100),levelsGained=Math.max(0,level-oldLevel)
+      const power=Number(p.power||10)+levelsGained*2
+      const maxHp=petMaxHp(level,xp,p.species)
+      const oldMax=Math.max(1,Number(p.max_hp||100))
+      const hp=Math.min(maxHp,Math.max(0,hpAfter+Math.max(0,maxHp-oldMax)))
+      const updated=(await client.query(
+        'UPDATE pets SET xp=$1,level=$2,power=$3,hp=$4,max_hp=$5,wins=wins+$6,losses=losses+$7 WHERE jid=$8 RETURNING *',
+        [xp,level,power,hp,maxHp,won?1:0,won?0:1,p.jid]
+      )).rows[0]
+      await client.query('UPDATE pet_collection SET xp=$1,level=$2,power=$3,hp=$4,max_hp=$5,wins=$6,losses=$7 WHERE jid=$8 AND active=TRUE',
+        [updated.xp,updated.level,updated.power,updated.hp,updated.max_hp,updated.wins,updated.losses,p.jid])
+      return updated
+    }
+
+    const updatedA=await evolve(a,hpA,winnerKey==='a'?25:10,winnerKey==='a')
+    const updatedB=await evolve(b,hpB,winnerKey==='b'?25:10,winnerKey==='b')
+    const winner=winnerKey==='a'?updatedA:updatedB
+    const loser=winnerKey==='a'?updatedB:updatedA
+    return {winnerJid:winner.jid,loserJid:loser.jid,winner,loser,rounds}
   })
-  return {winnerJid:winJid,loserJid:loseJid,winner:winner==='a'?a:b,loser:winner==='a'?b:a}
 }
 
 export async function proposeRelationship(fromJid,toJid){
