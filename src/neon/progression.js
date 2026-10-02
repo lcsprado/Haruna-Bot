@@ -34,6 +34,14 @@ export const CARS=[
   {id:'hipercarro',name:'Hipercarro',price:2000000},
 ]
 
+export const MOTORCYCLES=[
+  {id:'moto_125',name:'Moto 125cc',price:9000},
+  {id:'moto_160',name:'Moto 160cc',price:16000},
+  {id:'moto_300',name:'Moto 300cc',price:35000},
+  {id:'moto_600',name:'Moto 600cc',price:90000},
+  {id:'moto_1000',name:'Superbike 1000cc',price:220000},
+]
+
 const MISSION_POOL=[
   {type:'daily',title:'Resgate o prêmio diário',target:1,rewardCash:1000,rewardBox:0},
   {type:'work',title:'Trabalhe 3 vezes',target:3,rewardCash:2000,rewardBox:0},
@@ -126,6 +134,18 @@ export async function initProgression(){
 
     CREATE INDEX IF NOT EXISTS user_cars_jid_idx
       ON user_cars(jid);
+
+    CREATE TABLE IF NOT EXISTS user_motorcycles(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL,
+      motorcycle_id TEXT NOT NULL,
+      price_paid BIGINT NOT NULL,
+      acquired_at BIGINT NOT NULL DEFAULT ${nowSql},
+      UNIQUE(jid,motorcycle_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS user_motorcycles_jid_idx
+      ON user_motorcycles(jid);
   `)
 }
 
@@ -450,6 +470,89 @@ export async function getGarage(jid){
   })
 }
 
+export async function getMotorcycleGarage(jid){
+  const {rows}=await db.query(
+    'SELECT motorcycle_id,price_paid,acquired_at FROM user_motorcycles WHERE jid=$1 ORDER BY acquired_at',
+    [jid]
+  )
+  return rows.map(r=>{
+    const motorcycle=MOTORCYCLES.find(x=>x.id===r.motorcycle_id)
+    return motorcycle?{...r,...motorcycle}:r
+  })
+}
+
+export async function buyMotorcycle(jid,input){
+  await ensureUser(jid)
+  const motorcycle=resolveCatalog(input,MOTORCYCLES)
+  if(!motorcycle) throw new Error('Moto inválida.')
+
+  return tx(async c=>{
+    const owned=await c.query('SELECT motorcycle_id FROM user_motorcycles WHERE jid=$1 FOR UPDATE',[jid])
+    if(owned.rows.some(r=>r.motorcycle_id===motorcycle.id)) throw new Error('Você já possui essa moto.')
+    if(owned.rows.length>=5) throw new Error('Sua garagem de motos está cheia: limite atual de 5 motos.')
+
+    const w=await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    if(Number(w.rows[0]?.cash||0)<motorcycle.price) throw new Error('Saldo insuficiente na carteira.')
+
+    await c.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[motorcycle.price,jid])
+    await c.query(
+      'INSERT INTO user_motorcycles(jid,motorcycle_id,price_paid) VALUES($1,$2,$3)',
+      [jid,motorcycle.id,motorcycle.price]
+    )
+    return motorcycle
+  })
+}
+
+export async function deliverIfood(jid){
+  await ensureUser(jid)
+  const garage=await getMotorcycleGarage(jid)
+  if(!garage.length) throw new Error('Você precisa ter pelo menos uma moto para fazer entregas. Use !motos para comprar uma.')
+
+  const best=garage.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
+  const tiers={
+    moto_125:{category:'Entrega básica',min:70,max:160},
+    moto_160:{category:'Entrega rápida',min:100,max:220},
+    moto_300:{category:'Entrega turbo',min:140,max:300},
+    moto_600:{category:'Entrega premium',min:190,max:400},
+    moto_1000:{category:'Entrega elite',min:250,max:520},
+  }
+  const tier=tiers[best.id]||tiers.moto_125
+
+  return tx(async client=>{
+    const key=`ifood:${jid}`
+    const now=Math.floor(Date.now()/1000)
+    const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
+    if(cd.rows[0] && Number(cd.rows[0].expires_at)>now) return {ok:false,remaining:Number(cd.rows[0].expires_at)-now}
+
+    const expires=now+(15*60)
+    await client.query(`
+      INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
+    `,[key,expires])
+
+    const types=[
+      {name:'Entrega curta',factor:.85,weight:40},
+      {name:'Entrega média',factor:1,weight:40},
+      {name:'Entrega longa',factor:1.25,weight:17},
+      {name:'Pedido especial',factor:1.5,weight:3},
+    ]
+    let roll=Math.random()*100, delivery=types[0]
+    for(const t of types){ roll-=t.weight; if(roll<=0){delivery=t;break} }
+
+    const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
+    const fare=Math.max(1,Math.round(base*delivery.factor))
+    const tip=Math.random()<.18 ? Math.max(10,Math.round(fare*(.05+Math.random()*.15))) : 0
+    const total=fare+tip
+
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('system',$1,$2,'ifood',$3)
+    `,[jid,total,`${tier.category} | ${delivery.name} | ${best.name}${tip? ` | gorjeta:${tip}`:''}`])
+    return {ok:true,motorcycle:best,category:tier.category,delivery:delivery.name,fare,tip,total,cooldown:15*60}
+  })
+}
+
 export async function driveUber(jid){
   await ensureUser(jid)
 
@@ -537,6 +640,7 @@ function sqlCase(column,catalog){
 }
 const houseCase=sqlCase('h.house_id',HOUSES)
 const carCase=sqlCase('uc.car_id',CARS)
+const motorcycleCase=sqlCase('um.motorcycle_id',MOTORCYCLES)
 
 export async function getPatrimony(jid){
   await ensureUser(jid)
@@ -553,6 +657,12 @@ export async function getPatrimony(jid){
       WHERE uc.jid=$1
       GROUP BY uc.jid
     ),
+    motorcycles AS (
+      SELECT um.jid,COALESCE(SUM(${motorcycleCase}),0)::bigint AS value
+      FROM user_motorcycles um
+      WHERE um.jid=$1
+      GROUP BY um.jid
+    ),
     home AS (
       SELECT h.jid,(${houseCase})::bigint AS value
       FROM user_homes h
@@ -561,16 +671,18 @@ export async function getPatrimony(jid){
     SELECT u.jid,u.push_name,w.cash,w.bank,
            COALESCE(inv.value,0)::bigint AS inventory_value,
            COALESCE(cars.value,0)::bigint AS cars_value,
+           COALESCE(motorcycles.value,0)::bigint AS motorcycles_value,
            COALESCE(home.value,0)::bigint AS home_value
     FROM users u
     JOIN wallets w ON w.jid=u.jid
     LEFT JOIN inv ON inv.jid=u.jid
     LEFT JOIN cars ON cars.jid=u.jid
+    LEFT JOIN motorcycles ON motorcycles.jid=u.jid
     LEFT JOIN home ON home.jid=u.jid
     WHERE u.jid=$1
   `,[jid])
   const r=rows[0]
-  const total=['cash','bank','inventory_value','cars_value','home_value']
+  const total=['cash','bank','inventory_value','cars_value','motorcycles_value','home_value']
     .reduce((a,k)=>a+Number(r?.[k]||0),0)
   return {...r,total}
 }
