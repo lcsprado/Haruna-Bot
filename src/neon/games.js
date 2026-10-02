@@ -1,4 +1,4 @@
-import { db, ensureUser, getEquipmentInfo, grantExpInTransaction } from './db.js'
+import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction } from './db.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -560,8 +560,14 @@ export async function attackBoss(chat,jid,name,usePet=true){
       await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[pet.energy,jid])
     }
     const petBonus=petBossBonus(pet)
-    const weapon=getEquipmentInfo(st.weapon_id)||{atk:0}, armor=getEquipmentInfo(st.armor_id)||{def:0}
-    const atk=Number(st.atk)+Number(weapon.atk||0), def=Number(st.def)+Number(armor.def||0)
+    const upgradeRows=(await c.query(
+      'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
+      [jid,[st.weapon_id,st.armor_id].filter(Boolean)]
+    )).rows
+    const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
+    const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id)):{atk:0}
+    const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id)):{def:0}
+    const atk=Number(st.atk)+Number(weapon?.atk||0), def=Number(st.def)+Number(armor?.def||0)
     const crit=petBonus.crit>0&&Math.random()<petBonus.crit
     const petMultiplier=1+petBonus.damage
     const damage=Math.max(5,Math.floor(atk*(.85+Math.random()*.45)*petMultiplier*(crit?1.5:1)))
