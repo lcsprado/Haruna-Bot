@@ -11,7 +11,7 @@ import pino from 'pino'
 import {
   initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
+  equipItem, getEquipmentInfo, fuseEquipment, getFusedEquipment, equipmentTierStats, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -1134,6 +1134,7 @@ Você possui: *${stock}*
 *!inventario* — abre seu inventário
 *!vender* — vende itens ao sistema
 *!equipar* — equipa arma ou armadura
+*!fundir ITEM TIER* — funde 2 equipamentos iguais do mesmo tier (2×T1→T2, 2×T2→T3)
 *!usar* — usa um consumível
 
 🏪 *Mercado entre jogadores*
@@ -6401,6 +6402,14 @@ Obrigado por apoiar o Alpha Bot 🍀`
         } else if(['comandos','comando','commands','cmds'].includes(cmd)){
           await showCommandsMainMenu(chat,sender,reply)
 
+        } else if(cmd==='fundir'){
+          const itemId=String(args[0]||'').toLowerCase()
+          const tierRaw=String(args[1]||'t1').toLowerCase().replace('t','')
+          if(!itemId) return await reply('🔥 Use *!fundir ITEM TIER*.\nEx.: *!fundir espada_ferro t1*\n\n2× T1 → 1× T2\n2× T2 → 1× T3\n2× T3 → 1× T4')
+          try{
+            const r=await fuseEquipment(sender,itemId,Number(tierRaw)||1)
+            await reply(`🔥 *FUSÃO CONCLUÍDA!*\n\n⚙️ ${r.name}\n⬆️ T${r.fromTier} → *T${r.tier}*\n📦 Equivale a *${r.normalCopies} cópias T1*\n💪 Bônus do tier: *+${Math.round((r.mult-1)*100)}%* nos atributos do equipamento.\n\n💡 Para o próximo tier, junte *2 equipamentos T${r.tier} iguais*.`)
+          }catch(err){ await reply('❌ '+(err?.message||'Não foi possível fundir.')) }
         } else if(['menu','help','ajuda'].includes(cmd)){
           await showMainMenu(chat,sender,reply)
         } else {
