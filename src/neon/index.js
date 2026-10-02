@@ -27,7 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
-  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly,
+  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, petMaxEnergy,
   adoptPet, getPet, renamePet, petAction, petAdventure, petLeaderboard,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
@@ -4853,11 +4853,11 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='meupet'||cmd==='statuspet'){
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
               const bonus=petStatusBonus(p)
-              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/100*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 Cada ataque ao Boss consome *2 de energia*. Use *!descansar* para recuperar 30.`)
+              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 Cada ataque ao Boss consome *2 de energia*. Use *!descansar* para recuperar 30.`)
             }
             if(cmd==='petaventura'){
               const p=await petAdventure(sender)
-              return await reply(`🌍 *PET AVENTURA CONCLUÍDA!*\n\n🐾 *${p.name}* explorou até ficar sem energia.\n⚡ Energia gasta: *${p.energySpent}*\n💰 Dinheiro encontrado: *R$ ${fmt(p.cash)}*\n✨ XP do pet: *+${p.xpGain}*${p.powerGain?`\n⚔️ Poder: *+${p.powerGain}*`:''}\n\nEnergia atual: *0/100*. Use *!descansar*.`)
+              return await reply(`🌍 *PET AVENTURA CONCLUÍDA!*\n\n🐾 *${p.name}* explorou até ficar sem energia.\n⚡ Energia gasta: *${p.energySpent}*\n💰 Dinheiro encontrado: *R$ ${fmt(p.cash)}*\n✨ XP do pet: *+${p.xpGain}*${p.powerGain?`\n⚔️ Poder: *+${p.powerGain}*`:''}\n\nEnergia atual: *${p.energy}/${petMaxEnergy(p.level)}*. Use *!descansar*.`)
             }
             const action={alimentar:'alimentar',banho:'banho',descansar:'descansar',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
             const p=await petAction(sender,action)
