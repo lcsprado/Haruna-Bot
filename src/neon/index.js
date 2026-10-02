@@ -47,7 +47,7 @@ import {
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
-  getGroupMission, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent
+  getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
 import { renderProfileCard } from './profile-card.js'
@@ -5112,15 +5112,23 @@ ${status}
           text+='\n🔧 Responda com o número para fazer upgrade.\n0️⃣ Sair'
           await reply(text.trim())
 
-        } else if(['missaogrupo','missãogrupo','missaocoletiva','missãocoletiva'].includes(cmd)){
+        } else if(['missaogrupo','missãogrupo','missaocoletiva','missãocoletiva','missao','missão','missaostatus','missãostatus','statusmissao','statusmissão'].includes(cmd)){
           if(!isGroup) return await reply('👥 Esse comando funciona somente em grupos.')
-          const m=await getGroupMission(chat)
-          await reply(`🤝 *MISSÃO COLETIVA DA SEMANA*\n\n🎯 ${m.title}\n📊 Progresso: *${m.progress}/${m.target}*\n💰 Prêmio do grupo: *R$ ${fmt(m.reward_cash)}*\n${m.completed?'\n✅ Concluída! Use *'+prefix+'resgatarmissao* para pegar sua parte.':'\nCada participante precisa ajudar para poder resgatar.'}`)
+          const b=await getGroupMissionLeaderboard(chat), m=b.mission
+          const unit=m.mission_type==='quiz'?'acertos':m.mission_type==='battle'?'dano':'ações'
+          let out=`🤝 *MISSÃO COLETIVA DA SEMANA*\n\n🎯 ${m.title}\n📊 Progresso: *${m.progress}/${m.target}*\n💰 Prêmio total: *R$ ${fmt(m.reward_cash)}*\n\n🏆 *CONTRIBUIÇÕES*\n`
+          if(!b.rows.length) out+='Ninguém contribuiu ainda.\n'
+          else b.rows.forEach((x,i)=>out+=`${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} *${x.push_name||'Jogador'}* — ${x.contribution} ${unit}${m.completed?' • R$ '+fmt(x.share):''}\n`)
+          out+=m.completed?`\n✅ Concluída! Use *${prefix}resgatarmissao*.`:`\n💡 Quanto mais você contribuir, maior será sua parte do prêmio.`
+          await reply(out)
 
         } else if(['resgatarmissao','resgatarmissão'].includes(cmd)){
           if(!isGroup) return await reply('👥 Esse comando funciona somente em grupos.')
           const r=await claimGroupMission(chat,sender)
-          await reply(`🎉 *RECOMPENSA COLETIVA!*\nVocê recebeu *R$ ${fmt(r.share)}* pela sua participação.`)
+          const unit=r.mission.mission_type==='quiz'?'acertos':r.mission.mission_type==='battle'?'dano':'ações'
+          let out=`🎉 *RECOMPENSA COLETIVA!*\nSua contribuição: *${r.contribution} ${unit}*\n💰 Você recebeu: *R$ ${fmt(r.share)}*\n\n🏆 *RESULTADO DA MISSÃO*\n`
+          r.leaderboard.forEach((x,i)=>out+=`${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} *${x.push_name||'Jogador'}* — ${x.contribution} ${unit} • *R$ ${fmt(x.share)}*\n`)
+          await reply(out)
 
         } else if(['pegar'].includes(cmd)){
           if(!isGroup) return
