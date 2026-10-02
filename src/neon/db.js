@@ -2719,6 +2719,39 @@ export async function resolvePlayerSleep(jid){
   })
 }
 
+export async function wakePlayerEarly(jid){
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const row=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!row) throw new Error('Você não está dormindo.')
+    const now=Math.floor(Date.now()/1000)
+    const remaining=Math.max(0,Number(row.ends_at)-now)
+    if(remaining<=0){
+      const level=await applyExp(client,jid,Number(row.xp_reward))
+      await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
+      return {natural:true,fee:0,xp:Number(row.xp_reward),level,place:row.place}
+    }
+    const total=Math.max(1,Number(row.ends_at)-Number(row.started_at))
+    const ratio=Math.min(1,remaining/total)
+    // Acordar cedo é propositalmente caro: R$ 1.500 mínimo e até R$ 15.000 no início do sono.
+    const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
+    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+    if(cash+bank<fee) throw new Error(`Acordar agora custa R$ ${fee.toLocaleString('pt-BR')}. Saldo insuficiente.`)
+    const fromCash=Math.min(cash,fee)
+    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
+    // XP proporcional ao tempo efetivamente dormido; não permite pagar para receber o XP integral.
+    const elapsed=Math.max(0,now-Number(row.started_at))
+    const xp=Math.floor(Number(row.xp_reward)*Math.min(1,elapsed/total))
+    let level=null
+    if(xp>0) level=await applyExp(client,jid,xp)
+    await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
+    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'system',$2,'wake_early',$3)`,[jid,fee,`Acordou antes: ${remaining}s restantes`])
+    return {natural:false,fee,xp,remaining,place:row.place,level}
+  })
+}
+
 export async function startPlayerSleep(jid){
   await ensureUser(jid)
   return transaction(async client=>{
