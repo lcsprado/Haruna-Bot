@@ -528,7 +528,7 @@ export async function buyMotorcycle(jid,input){
   return tx(async c=>{
     const owned=await c.query('SELECT motorcycle_id FROM user_motorcycles WHERE jid=$1 FOR UPDATE',[jid])
     if(owned.rows.some(r=>r.motorcycle_id===motorcycle.id)) throw new Error('Você já possui essa moto.')
-    if(owned.rows.length>=5) throw new Error('Sua garagem de motos está cheia: limite atual de 5 motos.')
+    if(owned.rows.length>=6) throw new Error('Sua garagem de delivery está cheia: limite atual de 6 veículos.')
 
     const w=await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     if(Number(w.rows[0]?.cash||0)<motorcycle.price) throw new Error('Saldo insuficiente na carteira.')
@@ -539,6 +539,38 @@ export async function buyMotorcycle(jid,input){
       [jid,motorcycle.id,motorcycle.price]
     )
     return motorcycle
+  })
+}
+
+export async function sellCar(jid,input){
+  await ensureUser(jid)
+  const car=resolveCatalog(input,CARS)
+  if(!car) throw new Error('Carro inválido. Veja !garagem.')
+  return tx(async client=>{
+    const r=await client.query('SELECT price_paid FROM user_cars WHERE jid=$1 AND car_id=$2 FOR UPDATE',[jid,car.id])
+    if(!r.rows.length) throw new Error('Você não possui esse carro.')
+    const paid=Number(r.rows[0].price_paid||car.price)
+    const resale=Math.floor(paid*0.70)
+    await client.query('DELETE FROM user_cars WHERE jid=$1 AND car_id=$2',[jid,car.id])
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[resale,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'vehicle_sale',$3)",[jid,resale,car.name])
+    return {...car,paid,resale,depreciation:paid-resale}
+  })
+}
+
+export async function sellMotorcycle(jid,input){
+  await ensureUser(jid)
+  const vehicle=resolveCatalog(input,MOTORCYCLES)
+  if(!vehicle) throw new Error('Veículo inválido. Veja !minhasmotos.')
+  return tx(async client=>{
+    const r=await client.query('SELECT price_paid FROM user_motorcycles WHERE jid=$1 AND motorcycle_id=$2 FOR UPDATE',[jid,vehicle.id])
+    if(!r.rows.length) throw new Error('Você não possui esse veículo.')
+    const paid=Number(r.rows[0].price_paid||vehicle.price)
+    const resale=Math.floor(paid*0.70)
+    await client.query('DELETE FROM user_motorcycles WHERE jid=$1 AND motorcycle_id=$2',[jid,vehicle.id])
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[resale,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'vehicle_sale',$3)",[jid,resale,vehicle.name])
+    return {...vehicle,paid,resale,depreciation:paid-resale}
   })
 }
 
