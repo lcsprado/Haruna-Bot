@@ -39,7 +39,8 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss
+  startBoss, attackBoss,
+  getRaidCatalog, getRaidStatus, createRaid, joinRaid, cancelRaid, startRaid, raidRound
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES,
@@ -141,6 +142,61 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
       await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 ${petName} (${petBonus}) ajudou com ~*${petDamage.toLocaleString('pt-BR')}* de dano`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{bossSessions.delete(key)}
+  })()
+  return true
+}
+
+const raidRuns=new Map()
+async function runRaidCombat(chat,reply){
+  if(raidRuns.has(chat)) return false
+  raidRuns.set(chat,true)
+  ;(async()=>{
+    try{
+      for(let i=0;i<30;i++){
+        const r=await raidRound(chat)
+        if(r.reason==='inactive') return
+
+        if(r.victory){
+          let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*\n\n❤️ Boss derrotado em *${r.round} rodadas*.\n\n📊 *RECOMPENSAS POR COLABORAÇÃO*\n`
+          r.rewards.forEach((x,n)=>{
+            const pct=(x.share*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
+            text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP`
+            if(x.petXp) text+=` • 🐾 +${x.petXp} XP pet`
+            if(x.material) text+=`\n🧩 ${x.material.name} ×${x.material.qty}`
+            if(x.drop) text+=`\n🎁 DROP: *${x.drop.name}* (${x.drop.rarity})`
+          })
+          await reply(text)
+          return
+        }
+
+        if(r.failed){
+          const why=r.reason==='party_wipe'?'todos os jogadores caíram':r.reason==='timeout'?'o tempo acabou':'o limite de rodadas foi atingido'
+          await reply(`💀 *RAID FRACASSADA — ${r.config.name}*\n\n❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*\n⚠️ Motivo: *${why}*.\n\n🔑 A chave foi consumida. Não há recompensa em caso de derrota.`)
+          return
+        }
+
+        const bossEvents=(r.events||[]).filter(e=>e.type==='boss')
+        const hitEvents=(r.events||[]).filter(e=>e.type==='hit')
+        const heals=bossEvents.filter(e=>e.autoHeal)
+        const deaths=bossEvents.filter(e=>!e.alive)
+        if(r.round===1 || r.round%2===0 || r.special || heals.length || deaths.length){
+          const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
+          const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
+          let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
+          if(r.special) text+=`\n🔥 *${r.specialName}!* O Boss usou um ataque especial.\n`
+          text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*\n👥 Sobreviventes: *${r.survivors}*`
+          for(const e of heals) text+=`\n🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
+          for(const e of deaths) text+=`\n💀 *${e.name}* caiu sem cura e saiu da Raid.`
+          await reply(text)
+        }
+        await new Promise(resolve=>setTimeout(resolve,8000))
+      }
+    }catch(err){
+      console.error('[Raid]',err)
+      await reply('⚠️ A Raid foi interrompida: '+String(err?.message||err))
+    }finally{
+      raidRuns.delete(chat)
+    }
   })()
   return true
 }
@@ -1071,6 +1127,7 @@ Você possui: *${stock}*
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
+8️⃣ ⚔️ Raid cooperativa
 
 0️⃣ Sair`
       )
@@ -1199,6 +1256,15 @@ Você possui: *${stock}*
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
 🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
 🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
+
+⚔️ *Raids cooperativas*
+*!raid* — lista as Raids e mostra a Raid ativa
+*!raid 20* — abre a Raid Lv.20
+*!chaveraid 20* — compra a chave da Raid
+*!entrarraide* — entra na sala aberta
+*!iniciarraide* — host inicia (mínimo 2 jogadores)
+*!cancelarraide* — host cancela antes de começar
+🏆 Recompensas de Raid são proporcionais ao dano e dão dinheiro, XP, XP de pet e drops específicos
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
@@ -2383,8 +2449,8 @@ Digite apenas seu chute.
     }
 
     if(flow.stage==='main'){
-      if(!/^[1-7]$/.test(input)){
-        await reply('🎮 Escolha uma opção de *1 a 7* ou digite *0* para sair.')
+      if(!/^[1-8]$/.test(input)){
+        await reply('🎮 Escolha uma opção de *1 a 8* ou digite *0* para sair.')
         return true
       }
 
@@ -2467,6 +2533,15 @@ Digite *0* para sair do modo rápido.`
 
 _Ao mandar 1, começa uma sessão automática de até 5 minutos._`
         )
+        return true
+      }
+      if(input==='8'){
+        clearQuickFlow(chat,sender)
+        const raids=getRaidCatalog()
+        let text='⚔️ *RAIDS DO ALPHA*\n\n'
+        raids.forEach(r=>{text+=`• *Lv.${r.level} — ${r.name}*\n  ❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK • 🔑 R$ ${fmt(r.keyPrice)}\n`})
+        text+='\nUse *!raid NÍVEL* para abrir. Ex.: *!raid 20*.'
+        await reply(text)
         return true
       }
     }
@@ -4707,7 +4782,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
         if(isGroup && !isOwner){
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
-          const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
+          const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar','raid','raidstatus','chaveraid','entrarraide','iniciarraide','cancelarraide'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
           let key=null,label=null
           if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
@@ -6083,6 +6158,56 @@ _Os comandos antigos continuam funcionando normalmente._`
           if(r.won) return await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\nTentativas: ${r.attempts}\n💰 Prêmio: R$ ${fmt(r.reward)}`)
           if(r.lost) return await reply(`💀 Acabaram as tentativas. O número era *${r.number}*.`)
           await reply(`❌ Não foi dessa vez. O número é *${r.hint}* que ${guess}.\nTentativas restantes: ${r.left}`)
+
+        } else if(['chaveraid'].includes(cmd)){
+          const level=Number(args[0]||0)
+          const cfg=getRaidCatalog().find(r=>r.level===level)
+          if(!cfg) return await reply('🔑 Níveis de chave disponíveis: *10, 15, 20, 25, 30, 40 e 50*.\nEx.: *!chaveraid 20*')
+          const p=await getProfile(sender)
+          if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *nível ${level}* para comprar essa chave.`)
+          const r=await buyItem(sender,cfg.keyId,1)
+          await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
+
+        } else if(['raid','raidstatus'].includes(cmd)){
+          if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
+          const active=await getRaidStatus(chat)
+          if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
+            const players=Object.values(active.players||{})
+            let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*\n`
+            if(active.status==='lobby') text+='\n👉 *!entrarraide* para entrar.\n🚀 Host: *!iniciarraide* quando houver pelo menos 2.'
+            else{
+              text+='\n📊 Dano atual:\n'+players.sort((a,b)=>Number(b.damage||0)-Number(a.damage||0)).map(p=>`• ${p.alive?'🟢':'💀'} *${p.name}* — ${Number(p.damage||0).toLocaleString('pt-BR')}`).join('\n')
+              runRaidCombat(chat,reply)
+            }
+            return await reply(text)
+          }
+          const level=Number(args[0]||0)
+          if(!level){
+            const raids=getRaidCatalog()
+            let text='⚔️ *RAIDS DO ALPHA*\n\n'
+            raids.forEach(r=>{text+=`*Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)} • 🧩 ${r.material.name}\n\n`})
+            text+='Abra com *!raid NÍVEL*. Ex.: *!raid 20*\nCompre a chave com *!chaveraid NÍVEL*.'
+            return await reply(text)
+          }
+          const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
+          await progressDailyMission(sender,'game')
+          await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🔑 A chave só será consumida quando a luta começar.\n👥 Máximo: *5 jogadores* • mínimo: *2*\n⏳ Sala aberta por *5 minutos*.\n\n👉 Seus irmãos podem usar *!entrarraide*.\n🚀 Depois use *!iniciarraide*.`)
+
+        } else if(['entrarraide'].includes(cmd)){
+          if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
+          const r=await joinRaid(chat,sender,msg.pushName||'Jogador')
+          await reply(r.already?`⚔️ Você já está na Raid *${r.name}*.`:`✅ *ENTROU NA RAID!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*\n\nAguarde o host usar *!iniciarraide*.`)
+
+        } else if(['cancelarraide'].includes(cmd)){
+          if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
+          await cancelRaid(chat,sender)
+          await reply('✅ Raid cancelada. Como a luta não começou, a chave foi preservada.')
+
+        } else if(['iniciarraide'].includes(cmd)){
+          if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
+          const r=await startRaid(chat,sender)
+          await reply(`🚨 *RAID INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n\n🔑 Chave consumida.\n⚔️ Combate automático iniciado.\n🧪 Se alguém cair, o Alpha usa uma poção automaticamente; sem cura, o jogador sai da Raid.\n🐾 O pet participa, gasta 1 de energia por rodada e recebe XP se o grupo vencer.\n🏆 Recompensas serão proporcionais à colaboração.`)
+          runRaidCombat(chat,reply)
 
         } else if(['boss'].includes(cmd)){
           const r=await startBoss(chat)
