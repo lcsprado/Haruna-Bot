@@ -604,8 +604,8 @@ async function finishRaidRewards(c,s,cfg){
     if(petXp) await raidPetXp(c,p.jid,petXp)
 
     let material=null,drop=null,gearDrop=null
-    const qty=(i===0?2:1)
-    if(i===0||Math.random()<Math.min(.90,.25+share*.90+Number(pb.drop||0))){
+    const qty=i===0?3:i===1?2:i===2?1:0
+    if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
     }
