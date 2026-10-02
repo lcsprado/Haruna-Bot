@@ -1930,6 +1930,11 @@ export async function ownerGrantItem(jid, itemId, qty=1) {
 }
 
 
+export async function grantExp(jid,gain){
+  await ensureUser(jid)
+  return transaction(async client=>applyExp(client,jid,Number(gain)))
+}
+
 export async function getGroupLicense(chatJid) {
   const { rows } = await db.query(
     'SELECT * FROM group_licenses WHERE chat_jid=$1',
