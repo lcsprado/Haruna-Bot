@@ -708,11 +708,6 @@ export async function raidRound(chat){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,'raid',s)
       return {failed:true,reason:'party_wipe',config:cfg,round:s.round,hp:s.hp,maxHp:s.maxHp,events}
     }
-    if(s.round>=30){
-      s.status='failed';s.failReason='round_limit';await saveGame(c,chat,'raid',s)
-      return {failed:true,reason:'round_limit',config:cfg,round:s.round,hp:s.hp,maxHp:s.maxHp,events}
-    }
-
     await saveGame(c,chat,'raid',s)
     return {config:cfg,round:s.round,hp:s.hp,maxHp:s.maxHp,survivors,special,specialName,events}
   })
