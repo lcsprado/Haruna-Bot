@@ -638,7 +638,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   },{quoted:msg})
 }
 function workResultText(r){
-  let text=`💼 *TRABALHO — ${r.rank.name.toUpperCase()}*\n\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 Taxa de imposto (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.amount)}*\n📈 XP profissional: *+${r.xpGain}* (${r.careerXp})\n🧾 Expedientes: *${r.totalShifts}*`
+  let text=`💼 *TRABALHO — ${r.rank.name.toUpperCase()}*\n\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.amount)}*\n📈 XP profissional: *+${r.xpGain}* (${r.careerXp})\n🧾 Expedientes: *${r.totalShifts}*`
   if(r.event) text+=`\n\n${r.event}`
   if(r.promoted) text+=`\n\n🎉 *PROMOÇÃO!*\n${r.oldRank} → *${r.rank.name}*`
   if(r.next) text+=`\n🎯 Próximo cargo: *${r.next.name}* — faltam ${Math.max(0,r.next.xp-r.careerXp)} XP profissional.`
@@ -5265,7 +5265,7 @@ ${status}
           if(!r.total) return await reply('⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
           let text='💰 *LUCROS COLETADOS!*\n\n'
           r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(x.earned)}*\n`)
-          text+=`\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 Taxa de imposto (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*`
+          text+=`\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*`
           await reply(text)
 
         } else if(['motos','motocicletas'].includes(cmd)){
@@ -5302,7 +5302,7 @@ ${status}
             r.details.forEach(x=>{
               text+=`${x.vehicle.id==='bicicleta'?'🚲':'🏍️'} *${x.vehicle.name}* — R$ ${fmt(x.total)}${x.tip?` (gorjeta R$ ${fmt(x.tip)})`:''}\n`
             })
-            text+=`\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 Taxa de imposto (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
+            text+=`\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
 
@@ -5317,7 +5317,7 @@ ${status}
             r.details.forEach(x=>{
               text+=`🚘 *${x.car.name}* (${x.category}) — R$ ${fmt(x.total)}${x.tip?` (gorjeta R$ ${fmt(x.tip)})`:''}\n`
             })
-            text+=`\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 Taxa de imposto (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
+            text+=`\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
 
