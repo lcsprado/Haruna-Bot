@@ -2118,7 +2118,7 @@ const BOX_CONFIG = {
     cashChance:0.12,
     expChance:0.08,
     cash:[7000,30000],
-    exp:[250,900]
+    exp:[600,1500]
   }
 }
 
