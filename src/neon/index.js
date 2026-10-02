@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, petMaxEnergy,
-  adoptPet, getPet, listPets, selectPet, renamePet, petAction, petAdventure, petLeaderboard,
+  adoptPet, getPet, listPets, selectPet, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
@@ -1227,7 +1227,7 @@ Você possui: *${stock}*
 
 🐾 *Pets*
 *!pet* / *!pets* — catálogo rápido dos pets
-*!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção
+*!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção\n*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
 *!meuspets* — mostra todos os seus pets
 *!usarpet ID* — troca o pet ativo
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
@@ -1590,6 +1590,27 @@ Nenhum chamado aberto agora.
 
 _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
+    }
+
+    if(flow.stage==='legendary_pet_summon_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Invocação cancelada.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('🔮 Escolha *1 para invocar* ou *2 para cancelar*.')
+        return true
+      }
+      try{
+        const r=await summonLegendaryPet(sender,flow.data.materialId)
+        clearQuickFlow(chat,sender)
+        await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\n🧩 100 × ${r.altar.materialName} consumidos\n\n🐾 Você invocou: *${r.pet.name}*\n🎲 Chance: *${r.pet.chance}%*\n⚡ Poder inicial: *${r.pet.power}*\n📦 Materiais restantes: *${r.remaining}*\n\nO pet foi adicionado à coleção. Use *!meuspets* e *!usarpet ID* para ativá-lo.`)
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('❌ '+(err?.message||'Não foi possível concluir a invocação.'))
+      }
+      return true
     }
 
     if(flow.stage==='support_menu'){
@@ -6364,6 +6385,32 @@ _Os comandos antigos continuam funcionando normalmente._`
           if(r.won) return await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\nTentativas: ${r.attempts}\n💰 Prêmio: R$ ${fmt(r.reward)}`)
           if(r.lost) return await reply(`💀 Acabaram as tentativas. O número era *${r.number}*.`)
           await reply(`❌ Não foi dessa vez. O número é *${r.hint}* que ${guess}.\nTentativas restantes: ${r.left}`)
+
+        } else if(['invocarpet','altarpets','altarpets','lojalendaria'].includes(cmd)){
+          const inv=await getInventory(sender)
+          const materialQty=id=>Number(inv.find(i=>i.item_id===id)?.quantity||0)
+          const choice=Number(args[0]||0)
+
+          if(!choice){
+            let text='🔮 *ALTAR DE PETS LENDÁRIOS*\n\n'
+            LEGENDARY_PET_SUMMONS.forEach((a,i)=>{
+              text+=`*${i+1}.* Raid Lv.${a.raidLevel} — *${a.materialName}*\n`
+              text+=`   Você possui: *${materialQty(a.materialId)}/100*\n`
+              a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%*\n` })
+              text+='\n'
+            })
+            text+='💠 Cada invocação custa *100 materiais* e sempre entrega *1 pet lendário*.\n\n👉 Use *!invocarpet N*. Ex.: *!invocarpet 2*.'
+            return await reply(text)
+          }
+
+          const altar=LEGENDARY_PET_SUMMONS[choice-1]
+          if(!altar) return await reply(`🔮 Escolha um altar de *1 a ${LEGENDARY_PET_SUMMONS.length}*.`)
+          const owned=materialQty(altar.materialId)
+          let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/100*\n💠 Custo: *100*\n\n🎲 *CHANCES*\n`
+          altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%*\n` })
+          if(owned<100) return await reply(text+`\n❌ Faltam *${100-owned}* materiais para invocar.`)
+          setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
+          return await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
 
         } else if(['chaveraid'].includes(cmd)){
           const level=Number(args[0]||0)
