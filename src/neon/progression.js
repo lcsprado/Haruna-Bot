@@ -35,6 +35,7 @@ export const CARS=[
 ]
 
 export const MOTORCYCLES=[
+  {id:'bicicleta',name:'Bicicleta',price:1500},
   {id:'moto_125',name:'Moto 125cc',price:9000},
   {id:'moto_160',name:'Moto 160cc',price:16000},
   {id:'moto_300',name:'Moto 300cc',price:35000},
@@ -483,7 +484,20 @@ export async function getMotorcycleGarage(jid){
 
 export async function buyMotorcycle(jid,input){
   await ensureUser(jid)
-  const motorcycle=resolveCatalog(input,MOTORCYCLES)
+  // Aceita número da lista (!comprarmoto 1), id ou nome exibido.
+  const raw=String(input||'').trim()
+  let motorcycle=resolveCatalog(raw,MOTORCYCLES)
+  if(!motorcycle && raw){
+    const normalized=raw.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[^a-z0-9]+/g,' ').trim()
+    motorcycle=MOTORCYCLES.find(m=>{
+      const name=m.name.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+        .replace(/[^a-z0-9]+/g,' ').trim()
+      return name===normalized
+    })||null
+  }
   if(!motorcycle) throw new Error('Moto inválida.')
 
   return tx(async c=>{
@@ -510,13 +524,14 @@ export async function deliverIfood(jid){
 
   const best=garage.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
   const tiers={
+    bicicleta:{category:'Entrega de bicicleta',min:20,max:65},
     moto_125:{category:'Entrega básica',min:70,max:160},
     moto_160:{category:'Entrega rápida',min:100,max:220},
     moto_300:{category:'Entrega turbo',min:140,max:300},
     moto_600:{category:'Entrega premium',min:190,max:400},
     moto_1000:{category:'Entrega elite',min:250,max:520},
   }
-  const tier=tiers[best.id]||tiers.moto_125
+  const tier=tiers[best.id]||tiers.bicicleta
 
   return tx(async client=>{
     const key=`ifood:${jid}`
