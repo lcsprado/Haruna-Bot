@@ -44,15 +44,15 @@ export const MOTORCYCLES=[
 ]
 
 export const BUSINESSES=[
-  {id:'carrinho_lanche',name:'Carrinho de Lanche',price:15000,profitHour:900,capacityHours:8},
-  {id:'barbearia',name:'Barbearia',price:45000,profitHour:2400,capacityHours:8},
-  {id:'loja_roupas',name:'Loja de Roupas',price:120000,profitHour:5800,capacityHours:10},
-  {id:'restaurante',name:'Restaurante',price:300000,profitHour:13500,capacityHours:10},
-  {id:'posto',name:'Posto de Combustível',price:750000,profitHour:30000,capacityHours:12},
-  {id:'mercado',name:'Supermercado',price:1800000,profitHour:65000,capacityHours:12},
-  {id:'hotel',name:'Hotel',price:4500000,profitHour:145000,capacityHours:16},
-  {id:'shopping',name:'Shopping Center',price:12000000,profitHour:350000,capacityHours:18},
-  {id:'tech',name:'Empresa de Tecnologia',price:30000000,profitHour:800000,capacityHours:24},
+  {id:'carrinho_lanche',name:'Carrinho de Lanche',price:15000,profitHour:1800,capacityHours:8},
+  {id:'barbearia',name:'Barbearia',price:45000,profitHour:5000,capacityHours:8},
+  {id:'loja_roupas',name:'Loja de Roupas',price:120000,profitHour:12500,capacityHours:10},
+  {id:'restaurante',name:'Restaurante',price:300000,profitHour:30000,capacityHours:10},
+  {id:'posto',name:'Posto de Combustível',price:750000,profitHour:70000,capacityHours:12},
+  {id:'mercado',name:'Supermercado',price:1800000,profitHour:160000,capacityHours:12},
+  {id:'hotel',name:'Hotel',price:4500000,profitHour:380000,capacityHours:16},
+  {id:'shopping',name:'Shopping Center',price:12000000,profitHour:950000,capacityHours:18},
+  {id:'tech',name:'Empresa de Tecnologia',price:30000000,profitHour:2200000,capacityHours:24},
 ]
 
 const MISSION_POOL=[
