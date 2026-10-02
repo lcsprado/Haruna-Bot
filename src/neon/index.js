@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, petMaxEnergy,
-  adoptPet, getPet, renamePet, petAction, petAdventure, petLeaderboard,
+  adoptPet, getPet, listPets, selectPet, renamePet, petAction, petAdventure, petLeaderboard,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
@@ -4826,19 +4826,30 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','nomepet','meupet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet'].includes(cmd)){
+        } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet'].includes(cmd)){
           try{
-            if(cmd==='pet'||cmd==='pets') return await reply(`🐾 *PETS DO ALPHA BOT*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n🔄 Trocar de pet custa mais *R$ 25.000* e o novo pet começa do zero.\n💡 Use *!meupet* para ver seu pet atual.`)
+            if(cmd==='pet'||cmd==='pets') return await reply(`🐾 *PETS DO ALPHA BOT*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n📚 Você pode ter vários pets. O novo pet entra na coleção e fica ativo.
+🔄 Use *!meuspets* e *!usarpet ID* para trocar o pet ativo.\n💡 Use *!meupet* para ver seu pet atual.`)
             if(cmd==='adotar'){
-              if(!args[0]) return await reply(`🐾 *ADOÇÃO DE PETS*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n🔄 Se já tiver um pet, a troca custa mais *R$ 25.000*. O novo pet começa do zero.\n\nEx.: *!adotar cachorro Rex*`)
+              if(!args[0]) return await reply(`🐾 *ADOÇÃO DE PETS*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📚 Você pode colecionar vários pets. Cada um mantém seu próprio nível, XP, poder e energia.\n\nEx.: *!adotar cachorro Rex*`)
               const pet=await adoptPet(sender,args[0],args.slice(1).join(' ')||msg.pushName||'Alpha')
-              return await reply(`🐾 ${pet.replaced?'PET TROCADO!':'PET ADOTADO!'}\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n💰 Total pago: *R$ ${fmt(pet.fee)}*${pet.changeFee?`\n🔄 Inclui R$ ${fmt(pet.changeFee)} de taxa de troca.`:''}\n\nUse *!meupet* para cuidar dele.`)
+              return await reply(`🐾 PET ADOTADO!\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n💰 Total pago: *R$ ${fmt(pet.fee)}*\n\nUse *!meupet* para cuidar dele.`)
             }
             if(cmd==='duelopet'){
               const targetRaw=mentionsOf(msg)[0]; if(!targetRaw) return await reply('Uso: *!duelopet @pessoa*')
               const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
               const r=await petDuel(sender,target)
               return await reply(`🐾⚔️ *DUELO DE PETS*\n\n🏆 ${r.winner.name} venceu ${r.loser.name}!\n+25 XP para o vencedor • +10 XP para o desafiante derrotado.`,{mentions:[targetRaw]})
+            }
+            if(cmd==='meuspets'){
+              const pets=await listPets(sender)
+              if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
+              return await reply('🐾 *SUA COLEÇÃO DE PETS*\n\n'+pets.map(p=>`${p.active?'🟢':'⚪'} *#${p.id??'-'} ${p.name}* — ${p.species} • Nv.${p.level} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`).join('\n')+'\n\n🟢 = pet ativo\nPara trocar: *!usarpet ID*')
+            }
+            if(cmd==='usarpet'){
+              if(!args[0]) return await reply('🐾 Use *!meuspets* e depois *!usarpet ID*.')
+              const p=await selectPet(sender,args[0])
+              return await reply(p.already?`🐾 *${p.name}* já é seu pet ativo.`:`🐾 *PET ATIVO ALTERADO!*\n\n${p.name} (${p.species}) agora é seu companheiro ativo.\n⭐ Nv.${p.level} • ⚔️ ${p.power} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`)
             }
             if(cmd==='nomepet'){
               const newName=args.join(' ').trim()
