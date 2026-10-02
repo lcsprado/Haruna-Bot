@@ -345,8 +345,8 @@ export async function initDatabase() {
 
     // Caixas
     ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
-    ['caixa_rara','Caixa Rara','Melhores chances de itens raros. Lendário: 0,3%.','special',12000,'rare'],
-    ['caixa_epica','Caixa Épica','Loot de alto nível. Lendário: 1%.','special',35000,'epic'],
+    ['caixa_rara','Caixa Rara','Item garantido no mínimo Incomum. Chance de Lendário: 0,3%.','special',12000,'rare'],
+    ['caixa_epica','Caixa Épica','Item garantido no mínimo Raro. Chance de Lendário: 1%.','special',35000,'epic'],
   ]
 
   for (const item of starterItems) {
@@ -2228,22 +2228,22 @@ const BOX_CONFIG = {
   caixa_rara: {
     legendary:0.003,
     epic:0.05,
-    rare:0.25,
-    uncommon:0.40,
+    rare:0.35,
+    uncommon:1.00,
     cashChance:0.20,
     expChance:0.10,
-    cash:[2500,12000],
-    exp:[120,450]
+    cash:[5000,20000],
+    exp:[200,700]
   },
   caixa_epica: {
     legendary:0.01,
-    epic:0.20,
-    rare:0.50,
-    uncommon:0.70,
+    epic:0.25,
+    rare:1.00,
+    uncommon:1.00,
     cashChance:0.12,
     expChance:0.08,
-    cash:[7000,30000],
-    exp:[600,1500]
+    cash:[20000,60000],
+    exp:[800,1800]
   }
 }
 
