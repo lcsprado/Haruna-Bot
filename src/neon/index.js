@@ -1283,9 +1283,10 @@ Você possui: *${stock}*
 *!resposta 1* — forma alternativa de responder
 *!numero* — adivinhe o número
 *!chute 50* — dá um palpite
-*!boss* — inicia/mostra o Boss de Grupo (sexta 00:00 → sábado 23:59)
+*!boss* — inicia/mostra o Boss de Grupo; quando houver Boss de Evento ativo, ele tem prioridade
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
 🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
+🌘 *Boss de Evento:* muita EXP para jogador e pet + chance de item de raridade Evento Único
 🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
 
 🔁 *Atalhos também aceitos:* !jogos, !minigame, !adivinhar
