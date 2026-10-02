@@ -522,8 +522,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(!s||Number(s.hp)<=0||Number(s.maxHp)<25000||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now()) throw new Error('Não há Boss de Grupo ativo. Use !boss para iniciar o Boss deste fim de semana.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
-    const pet=usePet?(await c.query('SELECT species,name,level,energy FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null:null
-    if(pet && Number(pet.energy)<2) throw new Error(`Seu pet está sem energia para atacar. Use !descansar. Energia atual: ${pet.energy}/100.`)
+    let pet=usePet?(await c.query('SELECT species,name,level,energy FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null:null
+    const petUnavailable=Boolean(usePet&&pet&&Number(pet.energy)<2)
+    if(petUnavailable) pet=null
     if(pet){
       pet.energy=Number(pet.energy)-2
       await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[pet.energy,jid])
@@ -571,9 +572,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
         rewards.push({...p,position,cash,exp,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
       await clearGame(c,chat,'boss')
-      return {dead:true,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal}
+      return {dead:true,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petUnavailable}
     }
     await saveGame(c,chat,'boss',s)
-    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy}:null}
+    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petUnavailable,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy}:null}
   })
 }
