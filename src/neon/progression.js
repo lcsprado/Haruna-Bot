@@ -633,7 +633,7 @@ export async function deliverIfood(jid){
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'ifood',$3)`,[jid,gross,`Frota iFood | ${details.length} veículo(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'income_tax','Taxa de imposto 10% | iFood')`,[jid,tax])
+      VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | iFood')`,[jid,tax])
     return {ok:true,details,gross,tax,taxRate:10,total,cooldown}
   })
 }
@@ -666,7 +666,7 @@ export async function driveUber(jid){
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'uber',$3)`,[jid,gross,`Frota Uber | ${details.length} carro(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'income_tax','Taxa de imposto 10% | Uber')`,[jid,tax])
+      VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | Uber')`,[jid,tax])
     return {ok:true,details,gross,tax,taxRate:10,total,cooldown}
   })
 }
@@ -850,7 +850,7 @@ export async function collectBusinesses(jid){
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[net,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'income_tax','Taxa de imposto 10% | negócios')`,[jid,tax])
+      VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | negócios')`,[jid,tax])
     return {total:net,gross,tax,taxRate:10,details}
   })
 }
