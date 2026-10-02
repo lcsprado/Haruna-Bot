@@ -5799,7 +5799,13 @@ ${results.join('\n')}
           await reply(`🏦 Depósito concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
 
         } else if(['sacar','withdraw','saque'].includes(cmd)){
-          const amount=parseAmount(args[0])
+          const withdrawAll=['tudo','total'].includes(normalizeItemText(args[0]||''))
+          let amount=parseAmount(args[0])
+          if(withdrawAll){
+            const p=await getProfile(sender)
+            amount=Number(p?.bank||0)
+            if(amount<1) return await reply('🏦 Você não tem saldo no banco para sacar.')
+          }
           if(!amount){
             setQuickFlow(chat,sender,'withdraw_amount',{},90000)
             return await reply(
