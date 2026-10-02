@@ -38,7 +38,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss
+  startBoss, attackBoss, grantBossXp
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES,
@@ -105,6 +105,40 @@ if(!connectionWatchdog){
     }
   },10000)
   connectionWatchdog.unref?.()
+}
+
+const bossSessions=new Map()
+async function runBossSession(chat,jid,name,reply){
+  const key=chat+'|'+jid
+  if(bossSessions.has(key)) return false
+  bossSessions.set(key,true)
+  ;(async()=>{
+    let totalDamage=0,attacks=0,heals=[]
+    try{
+      for(let i=0;i<30;i++){
+        const r=await attackBoss(chat,jid,name)
+        if(r.playerDead){
+          await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura disponível.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
+          return
+        }
+        attacks++; totalDamage+=Number(r.damage||0)
+        if(r.autoHeal) heals.push(r.autoHeal.name)
+        if(r.dead){
+          await grantBossXp(r.rewards)
+          let text=`💥 *BOSS DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
+          r.rewards.forEach((x,n)=>{text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${x.drop?` • 🎁 ${x.drop.name} (${x.drop.rarity})`:''}`})
+          await reply(text); return
+        }
+        if(r.playerDead){
+          await reply(`💀 Você foi derrotado após causar *${totalDamage.toLocaleString('pt-BR')}* de dano. Sem cura disponível; use *!curar* para voltar.`); return
+        }
+        if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
+      }
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+    }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
+    finally{bossSessions.delete(key)}
+  })()
+  return true
 }
 
 const floodTracker=new Map()
@@ -5896,10 +5930,9 @@ _Os comandos antigos continuam funcionando normalmente._`
           await reply(`👹 *BOSS APARECEU!*\n\n*${r.name}*\n❤️ HP: ${r.hp}/${r.maxHp}\n\nTodos podem atacar com *${prefix}atacar*.`)
 
         } else if(['atacar'].includes(cmd)){
-          const r=await attackBoss(chat,sender,msg.pushName||'Jogador')
-          if(r.cooldown) return await reply(`⏳ Aguarde *${r.remaining}s* para atacar o boss novamente.`)
-          if(r.dead) return await reply(`💥 *BOSS DERROTADO!*\nDano final: ${r.damage}\n👥 Participantes: ${r.players}\n💰 Cada participante recebeu R$ ${fmt(r.rewardEach)}\n🎁 Premiação total: R$ ${fmt(r.pot)}`)
-          await reply(`⚔️ Você causou *${r.damage}* de dano!\n👹 Boss: ❤️ ${r.hp}/${r.maxHp}`)
+          const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
+          if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
+          await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Duração: até *5 minutos*\n🥊 Ataque automático: a cada *10 segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n💀 Sem cura, seus ataques param; os outros jogadores continuam.\n\nUse *!boss* para acompanhar a vida do Boss.')
 
         } else if(['dungeon','masmorra'].includes(cmd)){
           const r=await dungeon(sender)
