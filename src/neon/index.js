@@ -39,7 +39,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus,
+  startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent,
   getRaidCatalog, getRaidStatus, createRaid, joinRaid, cancelRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -75,6 +75,7 @@ const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
   messagesSeen:0
 })
 let connectionWatchdog=null
+let bossEventScheduler=null
 let reconnectTimer=null
 let reconnecting=false
 function scheduleReconnect(delayMs=3000){
@@ -356,7 +357,7 @@ async function showAdminMainMenu(chat,sender,reply){
 5️⃣ 🩺 Diagnóstico
 6️⃣ 🆘 Chamados de suporte
 
-🌘 Boss de Evento: *!eventoboss ativar* / *desativar* / *status*
+🌘 Boss de Evento: automático toda *sexta às 19:00* • controles: *!eventoboss desativar* / *status*
 
 0️⃣ Sair
 
@@ -949,6 +950,44 @@ async function start() {
 
   sock.ev.on('creds.update',saveCreds)
 
+  async function runBossEventScheduler(){
+    if(trevoHealth.whatsapp!=='open') return
+    try{
+      const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+      for(const lic of groups){
+        const chat=lic.chat_jid
+        if(!chat?.endsWith('@g.us')) continue
+        try{
+          const r=await autoStartBossEvent(chat)
+          if(!r?.spawned) continue
+          await sock.sendMessage(chat,{text:
+`🌘 *BOSS DE EVENTO APARECEU!*
+
+👹 *${r.name}*
+❤️ HP: *${Number(r.maxHp).toLocaleString('pt-BR')}*
+⚔️ ATK: *${r.atk}*
+
+✨ EXP elevada para jogador
+🐾 EXP elevada para o pet
+🎁 Top 3 recebe caixa garantida
+🏅 Chance de *Insígnia do Eclipse — Evento Único*
+
+⚔️ Usem *${prefix}boss* para ver o status e *${prefix}atacar* para lutar.`
+          })
+        }catch(err){
+          console.error('[BossEvento] falha no grupo',chat,err?.message||err)
+        }
+      }
+    }catch(err){
+      console.error('[BossEvento] falha no agendamento',err?.message||err)
+    }
+  }
+
+  if(bossEventScheduler) clearInterval(bossEventScheduler)
+  bossEventScheduler=setInterval(runBossEventScheduler,30*1000)
+  bossEventScheduler.unref?.()
+  setTimeout(runBossEventScheduler,5000).unref?.()
+
   async function senderIsGroupAdmin(chatJid,userJid){
     if(userJid===ownerJid) return true
     if(!chatJid?.endsWith('@g.us')) return false
@@ -1286,7 +1325,7 @@ Você possui: *${stock}*
 *!boss* — inicia/mostra o Boss de Grupo; quando houver Boss de Evento ativo, ele tem prioridade
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
 🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
-🌘 *Boss de Evento:* muita EXP para jogador e pet + chance de item de raridade Evento Único
+🌘 *Boss de Evento:* toda sexta às 19:00 • muita EXP para jogador e pet + chance de item de raridade Evento Único
 🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
 
 🔁 *Atalhos também aceitos:* !jogos, !minigame, !adivinhar
@@ -6514,7 +6553,7 @@ _Os comandos antigos continuam funcionando normalmente._`
             return await reply(`✅ *BOSS DE EVENTO ENCERRADO*\n\n👹 ${r.name}\n❤️ Restavam *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')} HP*.\n\nO Boss normal/semanal volta a funcionar normalmente.`)
           }
           const r=await getBossEventStatus(chat)
-          if(!r) return await reply(`🌘 *BOSS DE EVENTO: INATIVO*\n\nUse *${prefix}eventoboss ativar* quando quiser iniciar um.`)
+          if(!r) return await reply(`🌘 *BOSS DE EVENTO: INATIVO*\n\n⏰ Próximo spawn automático: *sexta às 19:00* (horário de São Paulo).\n\nO comando *${prefix}eventoboss ativar* continua disponível apenas como acionamento manual de emergência.`)
           return await reply(`🌘 *BOSS DE EVENTO: ATIVO*\n\n👹 *${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\nPara encerrar manualmente: *${prefix}eventoboss desativar*.`)
 
         } else if(['boss'].includes(cmd)){
