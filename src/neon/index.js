@@ -164,6 +164,7 @@ async function runRaidCombat(chat,reply){
             if(x.petXp) text+=` • 🐾 +${x.petXp} XP pet`
             if(x.material) text+=`\n🧩 ${x.material.name} ×${x.material.qty}`
             if(x.drop) text+=`\n🎁 DROP: *${x.drop.name}* (${x.drop.rarity})`
+            if(x.gearDrop) text+=`\n⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
           })
           await reply(text)
           return
