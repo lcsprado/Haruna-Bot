@@ -173,6 +173,36 @@ export async function initProgression(){
 
     CREATE INDEX IF NOT EXISTS user_businesses_jid_idx
       ON user_businesses(jid);
+
+    CREATE TABLE IF NOT EXISTS group_missions(
+      chat_jid TEXT NOT NULL,
+      week_key TEXT NOT NULL,
+      mission_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      target INTEGER NOT NULL,
+      progress INTEGER NOT NULL DEFAULT 0,
+      reward_cash BIGINT NOT NULL,
+      completed BOOLEAN NOT NULL DEFAULT FALSE,
+      PRIMARY KEY(chat_jid,week_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS group_mission_members(
+      chat_jid TEXT NOT NULL,
+      week_key TEXT NOT NULL,
+      jid TEXT NOT NULL,
+      contribution INTEGER NOT NULL DEFAULT 0,
+      claimed BOOLEAN NOT NULL DEFAULT FALSE,
+      PRIMARY KEY(chat_jid,week_key,jid)
+    );
+
+    CREATE TABLE IF NOT EXISTS group_events(
+      chat_jid TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      reward_cash BIGINT NOT NULL,
+      spawned_at BIGINT NOT NULL,
+      expires_at BIGINT NOT NULL,
+      claimed_by TEXT
+    );
   `)
 }
 
@@ -889,5 +919,97 @@ export async function upgradeBusiness(jid,input){
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_upgrade',$3)",[jid,cost,business.name])
     const newLevel=level+1
     return {...business,level:newLevel,cost,multiplier:1+(newLevel-1)*0.25,capacityHours:business.capacityHours+(newLevel-1)}
+  })
+}
+
+
+function groupWeekKey(){
+  const d=new Date(), onejan=new Date(Date.UTC(d.getUTCFullYear(),0,1))
+  const week=Math.ceil((((d-onejan)/86400000)+onejan.getUTCDay()+1)/7)
+  return d.getUTCFullYear()+'-W'+String(week).padStart(2,'0')
+}
+
+export async function getGroupMission(chatJid){
+  const week=groupWeekKey()
+  const choices=[
+    {type:'work',title:'Trabalhar juntos',target:40,reward:50000},
+    {type:'battle',title:'Batalhar juntos',target:25,reward:60000},
+    {type:'quiz',title:'Acertar quizzes juntos',target:30,reward:55000}
+  ]
+  const seed=[...chatJid+week].reduce((a,x)=>a+x.charCodeAt(0),0)
+  const m=choices[seed%choices.length]
+  await db.query(`INSERT INTO group_missions(chat_jid,week_key,mission_type,title,target,reward_cash)
+    VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(chat_jid,week_key) DO NOTHING`,
+    [chatJid,week,m.type,m.title,m.target,m.reward])
+  const {rows}=await db.query('SELECT * FROM group_missions WHERE chat_jid=$1 AND week_key=$2',[chatJid,week])
+  return rows[0]
+}
+
+export async function progressGroupMission(chatJid,jid,type,amount=1){
+  if(!String(chatJid).endsWith('@g.us')) return null
+  const m=await getGroupMission(chatJid)
+  if(m.mission_type!==type || m.completed) return m
+  return tx(async client=>{
+    const {rows}=await client.query('SELECT * FROM group_missions WHERE chat_jid=$1 AND week_key=$2 FOR UPDATE',[chatJid,m.week_key])
+    const cur=rows[0]; if(cur.completed) return cur
+    const add=Math.max(1,Number(amount)||1)
+    await client.query(`INSERT INTO group_mission_members(chat_jid,week_key,jid,contribution)
+      VALUES($1,$2,$3,$4) ON CONFLICT(chat_jid,week_key,jid)
+      DO UPDATE SET contribution=group_mission_members.contribution+EXCLUDED.contribution`,[chatJid,m.week_key,jid,add])
+    const next=Math.min(Number(cur.target),Number(cur.progress)+add), done=next>=Number(cur.target)
+    const r=await client.query('UPDATE group_missions SET progress=$1,completed=$2 WHERE chat_jid=$3 AND week_key=$4 RETURNING *',[next,done,chatJid,m.week_key])
+    return r.rows[0]
+  })
+}
+
+export async function claimGroupMission(chatJid,jid){
+  await ensureUser(jid)
+  const m=await getGroupMission(chatJid)
+  if(!m.completed) throw new Error('A missão coletiva ainda não foi concluída.')
+  return tx(async client=>{
+    const mem=await client.query('SELECT * FROM group_mission_members WHERE chat_jid=$1 AND week_key=$2 AND jid=$3 FOR UPDATE',[chatJid,m.week_key,jid])
+    if(!mem.rows.length || Number(mem.rows[0].contribution)<1) throw new Error('Você precisa ter contribuído para essa missão.')
+    if(mem.rows[0].claimed) throw new Error('Você já resgatou sua recompensa.')
+    const participants=await client.query('SELECT COUNT(*)::int n FROM group_mission_members WHERE chat_jid=$1 AND week_key=$2 AND contribution>0',[chatJid,m.week_key])
+    const share=Math.max(1000,Math.floor(Number(m.reward_cash)/Math.max(1,participants.rows[0].n)))
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[share,jid])
+    await client.query('UPDATE group_mission_members SET claimed=TRUE WHERE chat_jid=$1 AND week_key=$2 AND jid=$3',[chatJid,m.week_key,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_mission','missão coletiva')",[jid,share])
+    return {share,mission:m}
+  })
+}
+
+export async function maybeSpawnGroupEvent(chatJid){
+  if(!String(chatJid).endsWith('@g.us')) return null
+  const now=Math.floor(Date.now()/1000)
+  const {rows}=await db.query('SELECT * FROM group_events WHERE chat_jid=$1',[chatJid])
+  const old=rows[0]
+  if(old && !old.claimed_by && Number(old.expires_at)>now) return null
+  if(old && Number(old.spawned_at)>now-1800) return null
+  if(Math.random()>.035) return null
+  const events=[
+    {type:'maleta',reward:5000,text:'💼 Uma maleta de dinheiro apareceu!'},
+    {type:'pix',reward:8000,text:'💸 Um PIX misterioso caiu no grupo!'},
+    {type:'tesouro',reward:12000,text:'🧰 Um pequeno tesouro apareceu!'}
+  ]
+  const e=events[Math.floor(Math.random()*events.length)]
+  await db.query(`INSERT INTO group_events(chat_jid,event_type,reward_cash,spawned_at,expires_at,claimed_by)
+    VALUES($1,$2,$3,$4,$5,NULL) ON CONFLICT(chat_jid) DO UPDATE SET
+    event_type=EXCLUDED.event_type,reward_cash=EXCLUDED.reward_cash,spawned_at=EXCLUDED.spawned_at,
+    expires_at=EXCLUDED.expires_at,claimed_by=NULL`,[chatJid,e.type,e.reward,now,now+120])
+  return {...e,expiresAt:now+120}
+}
+
+export async function claimGroupEvent(chatJid,jid){
+  await ensureUser(jid)
+  const now=Math.floor(Date.now()/1000)
+  return tx(async client=>{
+    const {rows}=await client.query('SELECT * FROM group_events WHERE chat_jid=$1 FOR UPDATE',[chatJid])
+    const e=rows[0]
+    if(!e || e.claimed_by || Number(e.expires_at)<now) throw new Error('Não há evento disponível agora.')
+    await client.query('UPDATE group_events SET claimed_by=$1 WHERE chat_jid=$2',[jid,chatJid])
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[e.reward_cash,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_event',$3)",[jid,e.reward_cash,e.event_type])
+    return e
   })
 }
