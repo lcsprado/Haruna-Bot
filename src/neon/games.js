@@ -1,4 +1,4 @@
-import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction } from './db.js'
+import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp } from './db.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -546,9 +546,12 @@ async function raidPetXp(c,jid,gain){
   const p=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
   if(!p) return null
   const xp=Number(p.xp||0)+gain, level=1+Math.floor(xp/100), gained=Math.max(0,level-Number(p.level||1))
-  const r=(await c.query('UPDATE pets SET xp=$1,level=$2,power=power+$3,energy=energy+$4 WHERE jid=$5 RETURNING *',[xp,level,gained*2,gained*3,jid])).rows[0]
-  if(r) await c.query('UPDATE pet_collection SET level=$1,xp=$2,power=$3,energy=$4 WHERE jid=$5 AND active=TRUE',[r.level,r.xp,r.power,r.energy,jid])
-  return r?{name:r.name,xp:gain,level:Number(r.level),levels:gained}:null
+  const newMax=petMaxHp(level,xp,p.species)
+  const oldMax=Math.max(1,Number(p.max_hp||petMaxHp(p.level,p.xp,p.species)))
+  const hp=Math.min(newMax,Math.max(0,Number(p.hp??oldMax)+Math.max(0,newMax-oldMax)))
+  const r=(await c.query('UPDATE pets SET xp=$1,level=$2,power=power+$3,energy=energy+$4,hp=$5,max_hp=$6 WHERE jid=$7 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,jid])).rows[0]
+  if(r) await c.query('UPDATE pet_collection SET level=$1,xp=$2,power=$3,energy=$4,hp=$5,max_hp=$6 WHERE jid=$7 AND active=TRUE',[r.level,r.xp,r.power,r.energy,r.hp,r.max_hp,jid])
+  return r?{name:r.name,xp:gain,level:Number(r.level),levels:gained,hp:Number(r.hp),maxHp:Number(r.max_hp)}:null
 }
 
 function raidPotion(rows,maxHp){
@@ -591,7 +594,7 @@ export async function startRaid(chat,host){
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id)):{atk:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id)):{def:0}
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk)+Number(w?.atk||0),def:Number(st.def)+Number(a?.def||0),damage:0,alive:true,heals:0,pet:pet?{name:pet.name,energy:Number(pet.energy||0),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk)+Number(w?.atk||0),def:Number(st.def)+Number(a?.def||0),damage:0,alive:true,heals:0,pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null}
     }
     s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.expiresAt=Date.now()+10*60*1000
     await saveGame(c,chat,'raid',s)
@@ -660,7 +663,7 @@ export async function raidRound(chat){
     for(const p of alive){
       let pb={damage:0,crit:0}
       if(p.pet){
-        p.pet.roundActive=Number(p.pet.energy)>0
+        p.pet.roundActive=Number(p.pet.energy)>0&&Number(p.pet.hp)>0
         if(p.pet.roundActive){
           pb=p.pet.bonus||pb
           p.pet.energy=Number(p.pet.energy)-1
@@ -696,6 +699,15 @@ export async function raidRound(chat){
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))))
       const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:1)))
       p.hp=Math.max(0,Number(p.hp)-dmg)
+      let petDamage=0,petFainted=false
+      if(p.pet?.roundActive&&Number(p.pet.hp)>0){
+        const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
+        petDamage=Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense)))
+        p.pet.hp=Math.max(0,Number(p.pet.hp)-petDamage)
+        petFainted=p.pet.hp<=0
+        await c.query('UPDATE pets SET hp=$1 WHERE jid=$2',[p.pet.hp,p.jid])
+        await c.query('UPDATE pet_collection SET hp=$1 WHERE jid=$2 AND active=TRUE',[p.pet.hp,p.jid])
+      }
       let autoHeal=null
       if(p.hp<=0){
         const chosen=raidPotion(potionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),Number(p.maxHp))
@@ -709,7 +721,7 @@ export async function raidRound(chat){
         }else p.alive=false
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
-      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,autoHeal,alive:p.alive})
+      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,autoHeal,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
@@ -902,9 +914,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(gameType==='boss'&&s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
-    let pet=usePet?(await c.query('SELECT species,name,level,energy FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null:null
-    const petUnavailable=Boolean(usePet&&pet&&Number(pet.energy)<2)
-    if(petUnavailable) pet=null
+    const petRow=usePet?(await c.query('SELECT species,name,level,xp,energy,hp,max_hp FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null:null
+    const petNoEnergy=Boolean(usePet&&petRow&&Number(petRow.energy)<2)
+    const petNoHp=Boolean(usePet&&petRow&&Number(petRow.hp)<=0)
+    const petUnavailable=petNoEnergy||petNoHp
+    let pet=petUnavailable?null:petRow
     if(pet){
       pet.energy=Number(pet.energy)-2
       await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[pet.energy,jid])
@@ -930,6 +944,14 @@ export async function attackBoss(chat,jid,name,usePet=true){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)))
       php=Math.max(0,php-bossDamage)
+      if(pet){
+        const petTaken=Math.max(1,Math.round(Number(s.atk||18)*(.30+Math.random()*.22)*(1-Math.min(.75,Number(petBonus.defense||0)))))
+        pet.hp=Math.max(0,Number(pet.hp)-petTaken)
+        pet.petDamageTaken=petTaken
+        pet.petFainted=pet.hp<=0
+        await c.query('UPDATE pets SET hp=$1 WHERE jid=$2',[pet.hp,jid])
+        await c.query('UPDATE pet_collection SET hp=$1 WHERE jid=$2 AND active=TRUE',[pet.hp,jid])
+      }
       if(php<=0){
         const ids=['pocao_p','pocao_m','pocao_g','elixir_supremo']
         const heals={pocao_p:35,pocao_m:80,pocao_g:160,elixir_supremo:999999}
@@ -994,9 +1016,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
         await saveGame(c,chat,'boss',marker)
       }
-      return {dead:true,mode:s.mode,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petUnavailable}
+      return {dead:true,mode:s.mode,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted)}
     }
     await saveGame(c,chat,gameType,s)
-    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petUnavailable,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy}:null}
+    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }
