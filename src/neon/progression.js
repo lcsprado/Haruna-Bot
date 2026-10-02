@@ -791,6 +791,16 @@ export async function getPatrimony(jid){
       WHERE um.jid=$1
       GROUP BY um.jid
     ),
+    businesses AS (
+      SELECT ub.jid,COALESCE(SUM(ub.price_paid + CASE GREATEST(1,COALESCE(ub.level,1))
+        WHEN 1 THEN 0
+        WHEN 2 THEN FLOOR(ub.price_paid*0.75)
+        WHEN 3 THEN FLOOR(ub.price_paid*0.75)+FLOOR(ub.price_paid*1.00)
+        WHEN 4 THEN FLOOR(ub.price_paid*0.75)+FLOOR(ub.price_paid*1.00)+FLOOR(ub.price_paid*1.25)
+        ELSE FLOOR(ub.price_paid*0.75)+FLOOR(ub.price_paid*1.00)+FLOOR(ub.price_paid*1.25)+FLOOR(ub.price_paid*1.50)
+      END),0)::bigint AS value
+      FROM user_businesses ub WHERE ub.jid=$1 GROUP BY ub.jid
+    ),
     home AS (
       SELECT h.jid,(${houseCase})::bigint AS value
       FROM user_homes h
@@ -800,17 +810,19 @@ export async function getPatrimony(jid){
            COALESCE(inv.value,0)::bigint AS inventory_value,
            COALESCE(cars.value,0)::bigint AS cars_value,
            COALESCE(motorcycles.value,0)::bigint AS motorcycles_value,
+           COALESCE(businesses.value,0)::bigint AS businesses_value,
            COALESCE(home.value,0)::bigint AS home_value
     FROM users u
     JOIN wallets w ON w.jid=u.jid
     LEFT JOIN inv ON inv.jid=u.jid
     LEFT JOIN cars ON cars.jid=u.jid
     LEFT JOIN motorcycles ON motorcycles.jid=u.jid
+    LEFT JOIN businesses ON businesses.jid=u.jid
     LEFT JOIN home ON home.jid=u.jid
     WHERE u.jid=$1
   `,[jid])
   const r=rows[0]
-  const total=['cash','bank','inventory_value','cars_value','motorcycles_value','home_value']
+  const total=['cash','bank','inventory_value','cars_value','motorcycles_value','businesses_value','home_value']
     .reduce((a,k)=>a+Number(r?.[k]||0),0)
   return {...r,total}
 }
@@ -819,32 +831,37 @@ export async function patrimonyLeaderboard(limit=10){
   const {rows}=await db.query(`
     WITH inv AS (
       SELECT i.jid,COALESCE(SUM(i.quantity*it.price),0)::bigint AS value
-      FROM inventories i JOIN items it ON it.id=i.item_id
-      GROUP BY i.jid
+      FROM inventories i JOIN items it ON it.id=i.item_id GROUP BY i.jid
     ),
     cars AS (
-      SELECT uc.jid,COALESCE(SUM(${carCase}),0)::bigint AS value
-      FROM user_cars uc
-      GROUP BY uc.jid
+      SELECT uc.jid,COALESCE(SUM(${carCase}),0)::bigint AS value FROM user_cars uc GROUP BY uc.jid
+    ),
+    motorcycles AS (
+      SELECT um.jid,COALESCE(SUM(${motorcycleCase}),0)::bigint AS value FROM user_motorcycles um GROUP BY um.jid
+    ),
+    businesses AS (
+      SELECT ub.jid,COALESCE(SUM(ub.price_paid + CASE GREATEST(1,COALESCE(ub.level,1))
+        WHEN 1 THEN 0
+        WHEN 2 THEN FLOOR(ub.price_paid*0.75)
+        WHEN 3 THEN FLOOR(ub.price_paid*0.75)+FLOOR(ub.price_paid*1.00)
+        WHEN 4 THEN FLOOR(ub.price_paid*0.75)+FLOOR(ub.price_paid*1.00)+FLOOR(ub.price_paid*1.25)
+        ELSE FLOOR(ub.price_paid*0.75)+FLOOR(ub.price_paid*1.00)+FLOOR(ub.price_paid*1.25)+FLOOR(ub.price_paid*1.50)
+      END),0)::bigint AS value FROM user_businesses ub GROUP BY ub.jid
     ),
     home AS (
-      SELECT h.jid,(${houseCase})::bigint AS value
-      FROM user_homes h
+      SELECT h.jid,(${houseCase})::bigint AS value FROM user_homes h
     )
     SELECT u.jid,u.push_name,
-           (COALESCE(w.cash,0)+COALESCE(w.bank,0)+
-            COALESCE(inv.value,0)+COALESCE(cars.value,0)+COALESCE(home.value,0))::bigint AS total
-    FROM users u
-    JOIN wallets w ON w.jid=u.jid
-    LEFT JOIN inv ON inv.jid=u.jid
-    LEFT JOIN cars ON cars.jid=u.jid
+      (COALESCE(w.cash,0)+COALESCE(w.bank,0)+COALESCE(inv.value,0)+COALESCE(cars.value,0)+
+       COALESCE(motorcycles.value,0)+COALESCE(businesses.value,0)+COALESCE(home.value,0))::bigint AS total
+    FROM users u JOIN wallets w ON w.jid=u.jid
+    LEFT JOIN inv ON inv.jid=u.jid LEFT JOIN cars ON cars.jid=u.jid
+    LEFT JOIN motorcycles ON motorcycles.jid=u.jid LEFT JOIN businesses ON businesses.jid=u.jid
     LEFT JOIN home ON home.jid=u.jid
-    ORDER BY total DESC,u.created_at ASC
-    LIMIT $1
+    ORDER BY total DESC,u.created_at ASC LIMIT $1
   `,[limit])
   return rows
 }
-
 
 export async function getBusinesses(jid){
   await ensureUser(jid)
