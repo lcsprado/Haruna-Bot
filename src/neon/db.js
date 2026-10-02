@@ -51,6 +51,13 @@ export async function initDatabase() {
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS careers (
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      career_xp INTEGER NOT NULL DEFAULT 0,
+      total_shifts INTEGER NOT NULL DEFAULT 0,
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+
     CREATE TABLE IF NOT EXISTS wallets (
       jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
       cash BIGINT NOT NULL DEFAULT 0,
@@ -659,29 +666,54 @@ export async function claimDaily(jid) {
   })
 }
 
+const CAREER_RANKS=[
+  {name:'Ajudante',xp:0,mult:1},
+  {name:'Auxiliar',xp:100,mult:1.12},
+  {name:'Assistente',xp:300,mult:1.25},
+  {name:'Analista',xp:700,mult:1.45},
+  {name:'Especialista',xp:1400,mult:1.7},
+  {name:'Coordenador',xp:2500,mult:2},
+  {name:'Gerente',xp:4000,mult:2.4},
+  {name:'Diretor',xp:6500,mult:3},
+  {name:'CEO',xp:10000,mult:4},
+]
+const careerRank=xp=>[...CAREER_RANKS].reverse().find(r=>xp>=r.xp)||CAREER_RANKS[0]
+
+export async function getCareer(jid){
+  await ensureUser(jid)
+  await db.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
+  const {rows}=await db.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1',[jid])
+  const row=rows[0], rank=careerRank(Number(row.career_xp))
+  const idx=CAREER_RANKS.findIndex(r=>r.name===rank.name), next=CAREER_RANKS[idx+1]||null
+  return {...row,rank,next}
+}
+
 export async function work(jid) {
-  const cd = await claimCooldown(`work:${jid}`, 30*60)
-  if (!cd.ok) return cd
-
-  const jobs = [
-    ['entregador',500,1000],
-    ['ajudante de obra',700,1400],
-    ['programador freelancer',1000,2200],
-    ['motorista',650,1500],
-    ['vendedor',600,1700],
-  ]
-  const job = jobs[Math.floor(Math.random()*jobs.length)]
-  const amount = Math.floor(job[1] + Math.random()*(job[2]-job[1]+1))
-
-  await transaction(async client => {
-    await client.query('UPDATE wallets SET cash=cash+$1, updated_at='+nowSql+' WHERE jid=$2',[amount,jid])
-    await client.query(`
-      INSERT INTO transactions (from_jid,to_jid,amount,type,note)
-      VALUES ('system',$1,$2,'work',$3)
-    `,[jid,amount,job[0]])
+  await ensureUser(jid)
+  const cd=await claimCooldown(`work:${jid}`,30*60)
+  if(!cd.ok) return cd
+  const jobs=['organizando documentos','atendendo clientes','resolvendo uma demanda','fechando um relatório','ajudando a equipe','entregando um projeto']
+  return transaction(async client=>{
+    await client.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
+    const cr=(await client.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const oldXp=Number(cr.career_xp), oldRank=careerRank(oldXp)
+    const xpGain=25+Math.floor(Math.random()*16)
+    const newXp=oldXp+xpGain, newRank=careerRank(newXp)
+    let base=700+Math.floor(Math.random()*701)
+    let event=null, factor=1
+    const roll=Math.random()
+    if(roll<.08){event='🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
+    else if(roll<.15){event='⏰ Hora extra! Bônus de 25%.';factor=1.25}
+    else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
+    const amount=Math.max(1,Math.round(base*newRank.mult*factor))
+    await client.query('UPDATE careers SET career_xp=$1,total_shifts=total_shifts+1,updated_at='+nowSql+' WHERE jid=$2',[newXp,jid])
+    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[amount,jid])
+    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'work',$3)`,
+      [jid,amount,`${newRank.name} | ${jobs[Math.floor(Math.random()*jobs.length)]}`])
+    const promoted=newRank.name!==oldRank.name
+    const idx=CAREER_RANKS.findIndex(r=>r.name===newRank.name), next=CAREER_RANKS[idx+1]||null
+    return {ok:true,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next}
   })
-
-  return { ok:true, amount, job:job[0] }
 }
 
 export async function deposit(jid, amount) {
