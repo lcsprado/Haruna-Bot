@@ -4024,24 +4024,44 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
         return true
       }
       if(input==='6'){
-        clearQuickFlow(chat,sender)
         const active=await getRaidStatus(chat)
         if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
+          clearQuickFlow(chat,sender)
           const players=Object.values(active.players||{})
           let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*`
-          if(active.status==='lobby') text+='\n\n👉 *!entrarraide* para entrar.\n🚀 Host: *!iniciarraide*.'
+          if(active.status==='lobby') text+='\n\n👉 Quem quiser entrar usa *!entrarraide*.\n🚀 Quando todos estiverem prontos, o host usa *!iniciarraide*.'
           else text+='\n\nUse *!raid* para acompanhar o combate.'
           await reply(text)
           return true
         }
         const raids=getRaidCatalog()
+        setQuickFlow(chat,sender,'raid_select',{levels:raids.map(r=>r.level)},5*60*1000)
         let text='⚔️ *RAIDS DO RPG*\n\n'
-        raids.forEach(r=>{text+=`*Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)}\n\n`})
-        text+='🔑 Compre em *!loja → Chaves de Raid*\n⚔️ Abra com *!raid NÍVEL*. Ex.: *!raid 20*.'
+        raids.forEach((r,i)=>{text+=`*${i+1}️⃣ Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)}\n\n`})
+        text+='👉 Responda apenas com o *número da Raid*.\n🔑 Chaves: *!loja → Chaves de Raid*\n0️⃣ Sair'
         await reply(text)
         return true
       }
       await reply('⚔️ Escolha de *1 a 6*.')
+      return true
+    }
+
+    if(flow.stage==='raid_select'){
+      const levels=flow.data?.levels||[]
+      const idx=Number(input)-1
+      const level=levels[idx]
+      if(!level){
+        await reply('⚔️ Escolha uma Raid de *1 a '+levels.length+'* ou *0* para sair.')
+        return true
+      }
+      try{
+        const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
+        await progressDailyMission(sender,'game')
+        clearQuickFlow(chat,sender)
+        await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Você já entrou como host.\n\n👉 Agora espere os outros mandarem *!entrarraide*.\n🚀 Quando todo mundo estiver pronto, use *!iniciarraide*.\n⏳ Máximo: 5 jogadores • mínimo: 2.`)
+      }catch(err){
+        await reply('❌ '+(err?.message||'Não foi possível abrir essa Raid.'))
+      }
       return true
     }
 
