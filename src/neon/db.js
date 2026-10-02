@@ -291,6 +291,7 @@ export async function initDatabase() {
     ['armadura_dragao','Armadura de Dragão','Proteção épica. +40 DEF.','armor',70000,'epic'],
     ['armadura_abissal','Armadura Abissal','Proteção épica. +48 DEF.','armor',110000,'epic'],
     ['armadura_celestial','Armadura Celestial','Proteção épica de alto nível. +55 DEF.','armor',155000,'epic'],
+    ['armadura_golem','Armadura do Golem Ancestral','Armadura exclusiva do Boss de Grupo. +70 DEF. Apenas por drop.','armor',0,'legendary'],
     ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF. Apenas por drop.','armor',0,'legendary'],
     ['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF. Apenas por drop.','armor',0,'legendary'],
 
@@ -1321,6 +1322,7 @@ const EQUIPMENT = {
   armadura_dragao: { category:'armor', atk:0, def:40, name:'Armadura de Dragão' },
   armadura_abissal: { category:'armor', atk:0, def:48, name:'Armadura Abissal' },
   armadura_celestial: { category:'armor', atk:0, def:55, name:'Armadura Celestial' },
+  armadura_golem: { category:'armor', atk:0, def:70, name:'Armadura do Golem Ancestral' },
   armadura_titan: { category:'armor', atk:0, def:85, name:'Armadura do Titã' },
   armadura_divina: { category:'armor', atk:0, def:95, name:'Armadura Divina' },
 }
@@ -1933,6 +1935,12 @@ export async function ownerGrantItem(jid, itemId, qty=1) {
 export async function grantExp(jid,gain){
   await ensureUser(jid)
   return transaction(async client=>applyExp(client,jid,Number(gain)))
+}
+
+// Permite que recompensas compostas (dinheiro, item e EXP) sejam confirmadas
+// juntas na mesma transação. O chamador deve fornecer um client transacional.
+export async function grantExpInTransaction(client,jid,gain){
+  return applyExp(client,jid,Number(gain))
 }
 
 export async function getGroupLicense(chatJid) {
