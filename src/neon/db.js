@@ -325,6 +325,24 @@ export async function initDatabase() {
     ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF. Apenas por drop.','armor',0,'legendary'],
     ['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF. Apenas por drop.','armor',0,'legendary'],
 
+    // Chaves de Raid
+    ['chave_raid_10','Chave de Raid Lv.10','Abre uma Raid de nível 10. A chave só é consumida quando a luta começa.','special',10000,'uncommon'],
+    ['chave_raid_15','Chave de Raid Lv.15','Abre uma Raid de nível 15. A chave só é consumida quando a luta começa.','special',16000,'uncommon'],
+    ['chave_raid_20','Chave de Raid Lv.20','Abre uma Raid de nível 20. A chave só é consumida quando a luta começa.','special',25000,'rare'],
+    ['chave_raid_25','Chave de Raid Lv.25','Abre uma Raid de nível 25. A chave só é consumida quando a luta começa.','special',40000,'rare'],
+    ['chave_raid_30','Chave de Raid Lv.30','Abre uma Raid de nível 30. A chave só é consumida quando a luta começa.','special',60000,'epic'],
+    ['chave_raid_40','Chave de Raid Lv.40','Abre uma Raid de nível 40. A chave só é consumida quando a luta começa.','special',100000,'epic'],
+    ['chave_raid_50','Chave de Raid Lv.50','Abre uma Raid de nível 50. A chave só é consumida quando a luta começa.','special',160000,'legendary'],
+
+    // Materiais específicos de Raid
+    ['nucleo_pedra','Núcleo de Pedra','Material conquistado na Raid Lv.10.','special',0,'uncommon'],
+    ['escama_vulcanica','Escama Vulcânica','Material conquistado na Raid Lv.15.','special',0,'rare'],
+    ['olho_abissal','Olho Abissal','Material conquistado na Raid Lv.20.','special',0,'rare'],
+    ['nucleo_titan','Núcleo do Titã','Material conquistado na Raid Lv.25.','special',0,'epic'],
+    ['essencia_rei_abissal','Essência do Rei Abissal','Material conquistado na Raid Lv.30.','special',0,'epic'],
+    ['fragmento_celestial','Fragmento Celestial','Material conquistado na Raid Lv.40.','special',0,'epic'],
+    ['nucleo_alpha_corrompido','Núcleo Alpha Corrompido','Material conquistado na Raid Lv.50.','special',0,'legendary'],
+
     // Caixas
     ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
     ['caixa_rara','Caixa Rara','Melhores chances de itens raros. Lendário: 0,3%.','special',12000,'rare'],
