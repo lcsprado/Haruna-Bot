@@ -517,12 +517,19 @@ export async function buyMotorcycle(jid,input){
   })
 }
 
-export async function deliverIfood(jid){
+export async function deliverIfood(jid,mode='moto'){
   await ensureUser(jid)
   const garage=await getMotorcycleGarage(jid)
-  if(!garage.length) throw new Error('Você precisa ter pelo menos uma moto para fazer entregas. Use !motos para comprar uma.')
+  if(!garage.length) throw new Error('Você precisa ter bicicleta ou moto para fazer entregas. Use !motos para comprar uma.')
 
-  const best=garage.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
+  const candidates=mode==='bike'
+    ? garage.filter(v=>v.id==='bicicleta')
+    : garage.filter(v=>v.id!=='bicicleta')
+  if(!candidates.length){
+    if(mode==='bike') throw new Error('Você precisa ter uma Bicicleta para usar !ifoodbike. Veja !motos.')
+    throw new Error('Você precisa ter uma moto para usar !ifood. Veja !motos.')
+  }
+  const best=candidates.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
   const tiers={
     // Faixas não se sobrepõem: veículo mais caro sempre tem potencial de ganho claramente maior.
     bicicleta:{category:'Entrega de bicicleta',min:20,max:55},
@@ -535,7 +542,7 @@ export async function deliverIfood(jid){
   const tier=tiers[best.id]||tiers.bicicleta
 
   return tx(async client=>{
-    const key=`ifood:${jid}`
+    const key=`ifood:${mode==='bike'?'bike':'moto'}:${jid}`
     const now=Math.floor(Date.now()/1000)
     const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
     if(cd.rows[0] && Number(cd.rows[0].expires_at)>now) return {ok:false,remaining:Number(cd.rows[0].expires_at)-now}
