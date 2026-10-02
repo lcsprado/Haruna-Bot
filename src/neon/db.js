@@ -2479,13 +2479,6 @@ export async function dungeon(jid) {
     const cash=Math.floor((700+Math.random()*801)*m.mult)
     const exp=Math.floor((35+Math.random()*31)*m.mult)
     await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
-    let updated=rows[0]
-    const newMax=petMaxHp(updated.level,updated.xp,updated.species)
-    const oldMax=Math.max(1,Number(petHp.max_hp||100))
-    const newHp=Math.min(newMax,Math.max(0,Number(petHp.hp)+Math.max(0,newMax-oldMax)))
-    updated=(await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3 RETURNING *',[newHp,newMax,jid])).rows[0]
-    await client.query('UPDATE pet_collection SET level=$1,xp=$2,hunger=$3,hygiene=$4,energy=$5,power=$6,last_action=$7,hp=$8,max_hp=$9 WHERE jid=$10 AND active=TRUE',
-      [updated.level,updated.xp,updated.hunger,updated.hygiene,updated.energy,updated.power,updated.last_action,updated.hp,updated.max_hp,jid])
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
     await client.query(`
       INSERT INTO transactions(from_jid,to_jid,amount,type,note)
