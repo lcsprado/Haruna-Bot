@@ -9,7 +9,7 @@ import makeWASocket, {
 } from 'baileys'
 import pino from 'pino'
 import {
-  initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
+  db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
   equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
@@ -4688,6 +4688,34 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       reconnecting=false
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
+      ;(async()=>{
+        try{
+          const now=Date.now()
+          const {rows}=await db.query(
+            `SELECT chat_jid,state FROM trevo_games
+             WHERE game_type='raid' AND state->>'status'='active'`
+          )
+          for(const row of rows){
+            const raid=row.state||{}
+            if(Number(raid.round||0)>=30) continue
+            if(Number(raid.expiresAt||0)<=now){
+              raid.expiresAt=now+5*60*1000
+              await db.query(
+                `UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+                 WHERE chat_jid=$2 AND game_type='raid'`,
+                [JSON.stringify(raid),row.chat_jid]
+              )
+            }
+            const raidReply=(text)=>sock.sendMessage(row.chat_jid,{text})
+            const resumed=await runRaidCombat(row.chat_jid,raidReply)
+            if(resumed){
+              await sock.sendMessage(row.chat_jid,{text:`🔄 *RAID RETOMADA AUTOMATICAMENTE*\n\nO bot reconectou e continuou a luta da rodada *${Number(raid.round||0)}*.`}).catch(()=>{})
+            }
+          }
+        }catch(err){
+          console.error('[RaidResume]',err?.message||err)
+        }
+      })()
     }
 
     if(connection==='close'){
