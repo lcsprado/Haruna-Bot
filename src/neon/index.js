@@ -5972,7 +5972,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           await reply(`👹 *BOSS SEMANAL APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n💰 Prêmio especial semanal: fundo de *R$ 150.000* dividido por dano, mais bônus por colocação.\n🎁 Drops: caixas, equipamentos raros e os exclusivos *Armadura do Golem* e *Martelo do Golem*.${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['atacar'].includes(cmd)){
-          const usePet=!['sempet','sozinho'].includes(normalize(args[0]||''))
+          const usePet=!['sempet','sozinho'].includes(normalizeItemText(args[0]||''))
           const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply,usePet)
           if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
           await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n${usePet?'🐾 Pet participando: bônus ativos e *2 de energia por ataque*.':'🛡️ Você foi sem o pet: energia preservada, mas sem os bônus dele.'}\n⏱️ Duração: até *5 minutos*\n🥊 Ataque automático: a cada *10 segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n\nUse *!boss* para acompanhar a vida do Boss.`)
