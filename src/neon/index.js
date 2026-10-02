@@ -27,7 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
-  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, petMaxEnergy,
+  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, petMaxEnergy, petMaxHp, petHpType,
   adoptPet, getPet, listPets, selectPet, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
@@ -115,13 +115,17 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   if(bossSessions.has(key)) return false
   bossSessions.set(key,true)
   ;(async()=>{
-    let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false
+    let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     try{
       for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name,usePet)
-        if(r.petUnavailable&&!petExitWarned){
+        if(r.petUnavailableReason==='energy'&&!petExitWarned){
           petExitWarned=true
           await reply('⚡ Seu pet ficou sem energia e saiu do combate. Você continuará atacando sozinho, sem o bônus dele.')
+        }
+        if((r.petUnavailableReason==='hp'||r.petFainted)&&!petFaintWarned){
+          petFaintWarned=true
+          await reply('💔 Seu pet ficou sem HP e saiu do combate. Você continuará atacando sozinho. Use *!descansar* depois para recuperar a vida dele.')
         }
         if(r.playerDead){
           await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura disponível.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
@@ -144,7 +148,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         }
         if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
       }
-      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 ${petName} (${petBonus}) ajudou com ~*${petDamage.toLocaleString('pt-BR')}* de dano`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 ${petName} (${petBonus}) ajudou com ~*${petDamage.toLocaleString('pt-BR')}* de dano`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{bossSessions.delete(key)}
   })()
@@ -185,7 +189,8 @@ async function runRaidCombat(chat,reply){
         const hitEvents=(r.events||[]).filter(e=>e.type==='hit')
         const heals=bossEvents.filter(e=>e.autoHeal)
         const deaths=bossEvents.filter(e=>!e.alive)
-        if(r.round===1 || r.round%5===0 || heals.length || deaths.length){
+        const petFalls=bossEvents.filter(e=>e.petFainted)
+        if(r.round===1 || r.round%5===0 || heals.length || deaths.length || petFalls.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
@@ -193,6 +198,7 @@ async function runRaidCombat(chat,reply){
           text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*\n👥 Sobreviventes: *${r.survivors}*`
           for(const e of heals) text+=`\n🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
           for(const e of deaths) text+=`\n💀 *${e.name}* caiu sem cura e saiu da Raid.`
+          for(const e of petFalls) text+=`\n💔 *${e.petName}* ficou sem HP e saiu da Raid.`
           await reply(text)
         }
         await new Promise(resolve=>setTimeout(resolve,8000))
@@ -644,7 +650,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   ].filter(Boolean)
 
   const petLine=pet
-    ? `🐾 Pet: *${pet.name}* (${pet.species}, Nv.${pet.level}) • ⚡ ${pet.energy}/${petMaxEnergy(pet.level,pet.species)}`
+    ? `🐾 Pet: *${pet.name}* (${pet.species}, Nv.${pet.level}) • ❤️ ${pet.hp}/${petMaxHp(pet.level,pet.xp,pet.species)} • ⚡ ${pet.energy}/${petMaxEnergy(pet.level,pet.species)}`
     : '🐾 Pet: *Nenhum*'
 
   const text=
@@ -1263,7 +1269,7 @@ Você possui: *${stock}*
 *!nomepet NovoNome* — troca o nome por R$ 1.000
 🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
 *!alimentar* — alimenta
-*!descansar* — recupera 30 de energia (30 min)
+*!descansar* — recupera 30 de energia + 35% do HP do pet (30 min)
 ⚡ *Energético Pet:* R$ 12.000 na loja; restaura 100% da energia instantaneamente
 *!banho* — cuidado cosmético opcional
 *!passear* — passeia
@@ -5193,7 +5199,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='pet'||cmd==='pets') return await reply(`🐾 *PETS DO ALPHA BOT*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n📚 Você pode ter vários pets. O novo pet entra na coleção e fica ativo.
 🔄 Use *!meuspets* e *!usarpet ID* para trocar o pet ativo.\n💡 Use *!meupet* para ver seu pet atual.`)
             if(cmd==='adotar'){
-              if(!args[0]) return await reply(`🐾 *ADOÇÃO DE PETS*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📚 Você pode colecionar vários pets. Cada um mantém seu próprio nível, XP, poder e energia.\n\nEx.: *!adotar cachorro Rex*`)
+              if(!args[0]) return await reply(`🐾 *ADOÇÃO DE PETS*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📚 Você pode colecionar vários pets. Cada um mantém seu próprio nível, XP, poder, HP e energia.\n\nEx.: *!adotar cachorro Rex*`)
               const pet=await adoptPet(sender,args[0],args.slice(1).join(' ')||msg.pushName||'Alpha')
               return await reply(`🐾 PET ADOTADO!\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n💰 Total pago: *R$ ${fmt(pet.fee)}*\n\nUse *!meupet* para cuidar dele.`)
             }
@@ -5201,17 +5207,17 @@ Se precisar de mais ajuda, use *!suporte*.`
               const targetRaw=mentionsOf(msg)[0]; if(!targetRaw) return await reply('Uso: *!duelopet @pessoa*')
               const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
               const r=await petDuel(sender,target)
-              return await reply(`🐾⚔️ *DUELO DE PETS*\n\n🏆 ${r.winner.name} venceu ${r.loser.name}!\n+25 XP para o vencedor • +10 XP para o desafiante derrotado.`,{mentions:[targetRaw]})
+              return await reply(`🐾⚔️ *DUELO DE PETS*\n\n🏆 ${r.winner.name} venceu ${r.loser.name} em *${r.rounds} rodada(s)*!\n❤️ ${r.winner.name}: *${r.winner.hp}/${r.winner.max_hp}*\n💔 ${r.loser.name}: *${r.loser.hp}/${r.loser.max_hp}*\n\n+25 XP para o vencedor • +10 XP para o derrotado.`,{mentions:[targetRaw]})
             }
             if(cmd==='meuspets'){
               const pets=await listPets(sender)
               if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
-              return await reply('🐾 *SUA COLEÇÃO DE PETS*\n\n'+pets.map(p=>`${p.active?'🟢':'⚪'} *#${p.id??'-'} ${p.name}* — ${p.species} • Nv.${p.level} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`).join('\n')+'\n\n🟢 = pet ativo\nPara trocar: *!usarpet ID*')
+              return await reply('🐾 *SUA COLEÇÃO DE PETS*\n\n'+pets.map(p=>`${p.active?'🟢':'⚪'} *#${p.id??'-'} ${p.name}* — ${p.species} • Nv.${p.level} • ❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`).join('\n')+'\n\n🟢 = pet ativo\nPara trocar: *!usarpet ID*')
             }
             if(cmd==='usarpet'){
               if(!args[0]) return await reply('🐾 Use *!meuspets* e depois *!usarpet ID*.')
               const p=await selectPet(sender,args[0])
-              return await reply(p.already?`🐾 *${p.name}* já é seu pet ativo.`:`🐾 *PET ATIVO ALTERADO!*\n\n${p.name} (${p.species}) agora é seu companheiro ativo.\n⭐ Nv.${p.level} • ⚔️ ${p.power} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`)
+              return await reply(p.already?`🐾 *${p.name}* já é seu pet ativo.`:`🐾 *PET ATIVO ALTERADO!*\n\n${p.name} (${p.species}) agora é seu companheiro ativo.\n⭐ Nv.${p.level} • ⚔️ ${p.power}\n❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`)
             }
             if(cmd==='nomepet'){
               const newName=args.join(' ').trim()
@@ -5226,16 +5232,16 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='meupet'||cmd==='statuspet'){
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
               const bonus=petStatusBonus(p)
-              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 Cada ataque ao Boss consome *2 de energia*. Use *!descansar* para recuperar 30.`)
+              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
             }
             if(cmd==='petaventura'){
               const p=await petAdventure(sender)
-              return await reply(`🌍 *PET AVENTURA CONCLUÍDA!*\n\n🐾 *${p.name}* explorou até ficar sem energia.\n⚡ Energia gasta: *${p.energySpent}*\n💰 Dinheiro encontrado: *R$ ${fmt(p.cash)}*\n✨ XP do pet: *+${p.xpGain}*${p.powerGain?`\n⚔️ Poder: *+${p.powerGain}*`:''}\n\nEnergia atual: *${p.energy}/${petMaxEnergy(p.level,p.species)}*. Use *!descansar*.`)
+              return await reply(`🌍 *PET AVENTURA CONCLUÍDA!*\n\n🐾 *${p.name}* explorou até ficar sem energia.\n⚡ Energia gasta: *${p.energySpent}*\n💰 Dinheiro encontrado: *R$ ${fmt(p.cash)}*\n✨ XP do pet: *+${p.xpGain}*${p.powerGain?`\n⚔️ Poder: *+${p.powerGain}*`:''}\n\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n⚡ Energia atual: *${p.energy}/${petMaxEnergy(p.level,p.species)}*. Use *!descansar*.`)
             }
             const action={alimentar:'alimentar',banho:'banho',descansar:'descansar',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
             const p=await petAction(sender,action)
-            const actionResult=cmd==='descansar'?'descansou e recuperou energia!':cmd==='banho'?'tomou banho!':'completou a ação!'
-            await reply(`🐾 *${p.name}* ${actionResult}\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n🍖 ${p.hunger}/100 • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`)
+            const actionResult=cmd==='descansar'?'descansou e recuperou energia e HP!':cmd==='banho'?'tomou banho!':'completou a ação!'
+            await reply(`🐾 *${p.name}* ${actionResult}\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • 🍖 ${p.hunger}/100 • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`)
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível cuidar do pet.')) }
 
         } else if(['conquistas','achievements'].includes(cmd)){
