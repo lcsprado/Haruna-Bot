@@ -52,7 +52,6 @@ import {
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
-import { renderProfileCard } from './profile-card.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
@@ -629,35 +628,10 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   ])
   if(!p) throw new Error('Perfil não encontrado.')
 
-  let avatar=null
-  const customAvatar=await getProfileAvatar(jid)
-  if(customAvatar?.buffer?.length){
-    avatar=customAvatar.buffer
-  }else{
-    const photoCandidates=[
-      ...identityAliases.filter(value=>value?.endsWith('@lid')),
-      jid,
-      ...identityAliases.filter(value=>!value?.endsWith('@lid'))
-    ].filter((value,index,list)=>value && list.indexOf(value)===index)
-    for(const candidate of photoCandidates){
-      try{
-        const photo=await Promise.race([
-          sock.profilePictureUrl(candidate,'image'),
-          new Promise(resolve=>setTimeout(()=>resolve(null),2500))
-        ])
-        if(!photo) continue
-        const res=await fetch(photo,{signal:AbortSignal.timeout(5000)})
-        if(res.ok){
-          avatar=Buffer.from(await res.arrayBuffer())
-          break
-        }
-      }catch{}
-    }
-  }
-
   const wins=Number(p.win||0),loss=Number(p.loss||0)
   const title=alphaTitle(p,pat.total)
   const badge=founderBadge(p)
+  const xp=xpBar(p.exp,p.level)
   const achievements=[
     badge,
     wins>=5?'⚔️ LUTADOR':null,
@@ -669,44 +643,46 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     Number(streak.bestStreak)>=30?'🌟 30 DIAS':null
   ].filter(Boolean)
 
-  const card=await renderProfileCard({
-    name:p.push_name||'Jogador',
-    title,
-    badge,
-    avatar,
-    level:Number(p.level||1),
-    exp:Number(p.exp||0),
-    hp:Number(p.hp||0),
-    maxHp:Number(p.max_hp||0),
-    atk:Number(p.effective_atk||0),
-    def:Number(p.effective_def||0),
-    spd:Number(p.spd||0),
-    wins,
-    losses:loss,
-    combatRank:Number(ranks.combatRank||0),
-    economyRank:Number(ranks.economyRank||0),
-    players:Number(ranks.players||0),
-    balance:Number(p.cash||0)+Number(p.bank||0),
-    patrimony:Number(pat.total||0),
-    streak:Number(streak.streak||0),
-    bestStreak:Number(streak.bestStreak||0),
-    weapon:p.weapon_name||'Sem arma',
-    armor:p.armor_name||'Sem armadura',
-    clan:clan?.name||'Sem clã',
-    home:home?.name||'Nenhuma',
-    cars:Array.isArray(cars)?cars.length:0,
-    motorcycles:Array.isArray(motorcycles)?motorcycles.length:0,
-    businesses:Array.isArray(businesses)?businesses.length:0,
-    career:career?.rank?.name||'Ajudante',
-    pet:pet?`${pet.name} (${pet.species}, nv. ${pet.level})`:'Nenhum',
-    achievements
-  })
+  const petLine=pet
+    ? `🐾 Pet: *${pet.name}* (${pet.species}, Nv.${pet.level}) • ⚡ ${pet.energy}/${petMaxEnergy(pet.level,pet.species)}`
+    : '🐾 Pet: *Nenhum*'
 
-  await sock.sendMessage(chat,{
-    image:card,
-    caption:`👤 *${p.push_name||'Jogador'}* • ${title}\n🍀 *ALPHA BOT* — digite *!perfil* para gerar o seu.`
-  },{quoted:msg})
+  const text=
+`👤 *PERFIL — ${p.push_name||'Jogador'}*
+${title}${badge?\` • ${badge}\`:''}
+
+⭐ Nível: *${Number(p.level||1)}*
+✨ EXP: *${xp.current}/${xp.needed}*
+[${xp.bar}]
+
+❤️ HP: *${Number(p.hp||0)}/${Number(p.max_hp||0)}*
+⚔️ ATK: *${Number(p.effective_atk||0)}*
+🛡️ DEF: *${Number(p.effective_def||0)}*
+💨 SPD: *${Number(p.spd||0)}*
+
+🏆 Vitórias: *${wins}*
+💀 Derrotas: *${loss}*
+🥊 Ranking RPG: *#${Number(ranks.combatRank||0)||'-'}*
+💰 Ranking Economia: *#${Number(ranks.economyRank||0)||'-'}*
+
+🪙 Saldo total: *R$ ${fmt(Number(p.cash||0)+Number(p.bank||0))}*
+💎 Patrimônio: *R$ ${fmt(Number(pat.total||0))}*
+🔥 Daily: *${Number(streak.streak||0)} dia(s)* • Recorde: *${Number(streak.bestStreak||0)}*
+
+🗡️ Arma: *${p.weapon_name||'Sem arma'} Lv.${Number(p.weapon_level||1)}*
+🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}*
+${petLine}
+
+💼 Carreira: *${career?.rank?.name||'Ajudante'}*
+🏴 Clã: *${clan?.name||'Sem clã'}*
+🏠 Casa: *${home?.name||'Nenhuma'}*
+🚗 Carros: *${Array.isArray(cars)?cars.length:0}*
+🏍️ Motos/Bikes: *${Array.isArray(motorcycles)?motorcycles.length:0}*
+🏢 Negócios: *${Array.isArray(businesses)?businesses.length:0}*${achievements.length?\`\n\n🏅 ${achievements.join(' • ')}\`:''}`
+
+  await sock.sendMessage(chat,{text},{quoted:msg})
 }
+
 function workResultText(r){
   let text=`💼 *TRABALHO — ${r.rank.name.toUpperCase()}*\n\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.amount)}*\n📈 XP profissional: *+${r.xpGain}* (${r.careerXp})\n🧾 Expedientes: *${r.totalShifts}*`
   if(r.event) text+=`\n\n${r.event}`
@@ -1184,10 +1160,8 @@ Você possui: *${stock}*
     const commandPages={
       '1':`👤 *PERFIL, CONTA & SOCIAL*
 
-*!perfil* — gera seu card
-*!perfil @pessoa* — vê o card de outra pessoa
-*!setfoto* — define foto personalizada do card
-*!removerfoto* — volta à foto do WhatsApp
+*!perfil* — mostra seu perfil completo em texto
+*!perfil @pessoa* — vê o perfil de outra pessoa em texto
 *!daily* — coleta a recompensa diária
 *!streak* — mostra sua sequência
 *!dormir* — descansa protegido e recebe XP ao acordar
@@ -5587,40 +5561,12 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
             }
             await sendAlphaProfile(sock,chat,profileTarget,msg,profileIdentity.aliases)
           }catch(err){
-            console.error('[perfil] erro ao gerar perfil',profileTarget,err)
-            await reply('⚠️ Não consegui gerar esse perfil agora. Tente novamente em alguns segundos.')
+            console.error('[perfil] erro ao carregar perfil',profileTarget,err)
+            await reply('⚠️ Não consegui carregar esse perfil agora. Tente novamente em alguns segundos.')
           }
 
-        } else if(['setfoto','fotoperfil','avatar'].includes(cmd)){
-          const media=stickerMediaOf(msg)
-          if(!media || media.type!=='imageMessage'){
-            return await reply(
-`🖼️ *FOTO DO CARD*
-
-Envie uma foto com a legenda *${prefix}setfoto*
-ou responda uma foto com *${prefix}setfoto*.
-
-Essa foto será usada só no seu card do Alpha e não altera seu WhatsApp.`
-            )
-          }
-          try{
-            const image=await downloadMediaMessage(media.raw,'buffer',{},{
-              logger,
-              reuploadRequest:sock.updateMediaMessage
-            })
-            if(!image?.length) throw new Error('Não consegui baixar a foto.')
-            await setProfileAvatar(sender,Buffer.from(image),'image/jpeg')
-            await reply(`✅ Foto personalizada salva!\nUse *${prefix}perfil* para ver o card.`)
-          }catch(err){
-            console.error('[perfil] erro ao salvar foto',err)
-            await reply('❌ Não consegui salvar essa foto. Tente outra imagem menor.')
-          }
-
-        } else if(['removerfoto','resetfoto','fotowpp'].includes(cmd)){
-          const removed=await removeProfileAvatar(sender)
-          await reply(removed
-            ? `✅ Foto personalizada removida. Agora o *${prefix}perfil* volta a usar sua foto do WhatsApp.`
-            : 'ℹ️ Você já está usando a foto do WhatsApp no card.')
+        } else if(['setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp'].includes(cmd)){
+          await reply(`ℹ️ O card de perfil foi desativado. Agora o *${prefix}perfil* é exibido somente em texto.`)
 
         } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
