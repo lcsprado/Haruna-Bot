@@ -27,7 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
-  adoptPet, getPet, petAction, petLeaderboard,
+  adoptPet, getPet, petAction, petAdventure, petLeaderboard,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
@@ -108,7 +108,7 @@ if(!connectionWatchdog){
 }
 
 const bossSessions=new Map()
-async function runBossSession(chat,jid,name,reply){
+async function runBossSession(chat,jid,name,reply,usePet=true){
   const key=chat+'|'+jid
   if(bossSessions.has(key)) return false
   bossSessions.set(key,true)
@@ -116,7 +116,7 @@ async function runBossSession(chat,jid,name,reply){
     let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null
     try{
       for(let i=0;i<30;i++){
-        const r=await attackBoss(chat,jid,name)
+        const r=await attackBoss(chat,jid,name,usePet)
         if(r.playerDead){
           await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura disponível.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
           return
@@ -1156,6 +1156,7 @@ Você possui: *${stock}*
 *!passear* — passeia
 *!treinarpet* — treina
 *!aventurapet* — manda para aventura
+*!petaventura* — gasta toda a energia e retorna com dinheiro e XP
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
 
@@ -4790,7 +4791,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','meupet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','rankpet','duelopet'].includes(cmd)){
+        } else if(['pet','pets','adotar','meupet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet'].includes(cmd)){
           try{
             if(cmd==='pet'||cmd==='pets') return await reply(`🐾 *PETS DO ALPHA BOT*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n🔄 Trocar de pet custa mais *R$ 25.000* e o novo pet começa do zero.\n💡 Use *!meupet* para ver seu pet atual.`)
             if(cmd==='adotar'){
@@ -4812,6 +4813,10 @@ Se precisar de mais ajuda, use *!suporte*.`
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
               const bonus=petStatusBonus(p)
               return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/100*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 Cada ataque ao Boss consome *2 de energia*. Use *!descansar* para recuperar 30.`)
+            }
+            if(cmd==='petaventura'){
+              const p=await petAdventure(sender)
+              return await reply(`🌍 *PET AVENTURA CONCLUÍDA!*\n\n🐾 *${p.name}* explorou até ficar sem energia.\n⚡ Energia gasta: *${p.energySpent}*\n💰 Dinheiro encontrado: *R$ ${fmt(p.cash)}*\n✨ XP do pet: *+${p.xpGain}*${p.powerGain?`\n⚔️ Poder: *+${p.powerGain}*`:''}\n\nEnergia atual: *0/100*. Use *!descansar*.`)
             }
             const action={alimentar:'alimentar',banho:'banho',descansar:'descansar',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
             const p=await petAction(sender,action)
@@ -5962,14 +5967,15 @@ _Os comandos antigos continuam funcionando normalmente._`
           const bossPet=await getPet(sender)
           const bossPetBonus=bossPet?petStatusBonus(bossPet):null
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
-          if(r.already) return await reply(`👹 *BOSS DE GRUPO — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)${petLine}\n\n⚔️ Use *${prefix}atacar* para iniciar até 5 min de combate automático.`)
+          if(r.already) return await reply(`👹 *BOSS DE GRUPO — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
           await progressDailyMission(sender,'game')
           await reply(`👹 *BOSS SEMANAL APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n💰 Prêmio especial semanal: fundo de *R$ 150.000* dividido por dano, mais bônus por colocação.\n🎁 Drops: caixas, equipamentos raros e os exclusivos *Armadura do Golem* e *Martelo do Golem*.${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['atacar'].includes(cmd)){
-          const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
+          const usePet=!['sempet','sozinho'].includes(normalize(args[0]||''))
+          const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply,usePet)
           if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
-          await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Duração: até *5 minutos*\n🥊 Ataque automático: a cada *10 segundos*\n⚡ Cada ataque consome *2 de energia do pet*.\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n💀 Sem cura ou energia, seus ataques param; os outros jogadores continuam.\n\nUse *!boss* para acompanhar a vida do Boss.')
+          await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n${usePet?'🐾 Pet participando: bônus ativos e *2 de energia por ataque*.':'🛡️ Você foi sem o pet: energia preservada, mas sem os bônus dele.'}\n⏱️ Duração: até *5 minutos*\n🥊 Ataque automático: a cada *10 segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n\nUse *!boss* para acompanhar a vida do Boss.`)
 
         } else if(['dungeon','masmorra'].includes(cmd)){
           const r=await dungeon(sender)
