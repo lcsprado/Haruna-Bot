@@ -1152,7 +1152,8 @@ Você possui: *${stock}*
 *!meupet* / *!statuspet* — mostra seu pet e evolução
 🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
 *!alimentar* — alimenta
-*!banho* — dá banho
+*!descansar* — recupera 30 de energia (30 min)
+*!banho* — cuidado cosmético opcional
 *!passear* — passeia
 *!treinarpet* — treina
 *!aventurapet* — manda para aventura
@@ -4790,7 +4791,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','meupet','statuspet','alimentar','banho','passear','treinarpet','aventurapet','rankpet','duelopet'].includes(cmd)){
+        } else if(['pet','pets','adotar','meupet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','rankpet','duelopet'].includes(cmd)){
           try{
             if(cmd==='pet'||cmd==='pets') return await reply(`🐾 *PETS DO ALPHA BOT*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n🔄 Trocar de pet custa mais *R$ 25.000* e o novo pet começa do zero.\n💡 Use *!meupet* para ver seu pet atual.`)
             if(cmd==='adotar'){
@@ -4811,11 +4812,12 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='meupet'||cmd==='statuspet'){
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
               const bonus=petStatusBonus(p)
-              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n🧼 Higiene: *${p.hygiene}/100*\n⚡ Energia: *${p.energy}/100*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 O bônus evolui com o nível do pet, respeitando o limite de equilíbrio do Boss.`)
+              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/100*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 Cada ataque ao Boss consome *2 de energia*. Use *!descansar* para recuperar 30.`)
             }
-            const action={alimentar:'alimentar',banho:'banho',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
+            const action={alimentar:'alimentar',banho:'banho',descansar:'descansar',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
             const p=await petAction(sender,action)
-            await reply(`🐾 *${p.name}* completou a ação! +XP\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n🍖 ${p.hunger}/100 • 🧼 ${p.hygiene}/100 • ⚡ ${p.energy}/100`)
+            const actionResult=cmd==='descansar'?'descansou e recuperou energia!':cmd==='banho'?'tomou banho!':'completou a ação!'
+            await reply(`🐾 *${p.name}* ${actionResult}\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n🍖 ${p.hunger}/100 • ⚡ ${p.energy}/100`)
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível cuidar do pet.')) }
 
         } else if(['conquistas','achievements'].includes(cmd)){
@@ -5968,7 +5970,7 @@ _Os comandos antigos continuam funcionando normalmente._`
         } else if(['atacar'].includes(cmd)){
           const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
           if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
-          await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Duração: até *5 minutos*\n🥊 Ataque automático: a cada *10 segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n💀 Sem cura, seus ataques param; os outros jogadores continuam.\n\nUse *!boss* para acompanhar a vida do Boss.')
+          await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Duração: até *5 minutos*\n🥊 Ataque automático: a cada *10 segundos*\n⚡ Cada ataque consome *2 de energia do pet*.\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n💀 Sem cura ou energia, seus ataques param; os outros jogadores continuam.\n\nUse *!boss* para acompanhar a vida do Boss.')
 
         } else if(['dungeon','masmorra'].includes(cmd)){
           const r=await dungeon(sender)
