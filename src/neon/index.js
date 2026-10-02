@@ -46,7 +46,8 @@ import {
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
-  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle
+  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
+  getGroupMission, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
 import { renderProfileCard } from './profile-card.js'
@@ -2481,6 +2482,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
         return true
       }
       const r=await answerQuiz(chat,sender,n)
+      if(r.correct && String(chat).endsWith('@g.us')) await progressGroupMission(chat,sender,'quiz')
       const resultText=r.correct
         ? `✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`
         : `❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`
@@ -2899,6 +2901,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         if(!r.ok) await reply(`⏳ Você já trabalhou. Tente novamente em ${duration(r.remaining)}.`)
         else{
           await progressDailyMission(sender,'work')
+          if(isGroup) await progressGroupMission(chat,sender,'work')
           await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
         }
         return true
@@ -3767,6 +3770,7 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
         return true
       }
       await progressDailyMission(sender,'battle')
+      if(isGroup) await progressGroupMission(chat,sender,'battle')
       clearQuickFlow(chat,sender)
       await reply(`⚔️ *BATALHA ENCERRADA!*\n🏆 Vencedor: *${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}`,{mentions:[targetMention]})
       return true
@@ -4391,6 +4395,10 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const body=textOf(msg).trim()
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
         const isGroup=chat.endsWith('@g.us')
+        if(isGroup){
+          const spawned=await maybeSpawnGroupEvent(chat)
+          if(spawned) await sock.sendMessage(chat,{text:`${spawned.text}\n\n💰 Valor: *R$ ${fmt(spawned.reward)}*\n⚡ Primeiro a mandar *${prefix}pegar* leva!\n⏳ Some em 2 minutos.`}).catch(()=>{})
+        }
         const ownerCanonical=canonicalPlayerJid(ownerJid)
         const senderCanonical=canonicalPlayerJid(sender)
         const senderDigits=String(senderCanonical||'').split('@')[0].replace(/\D/g,'')
@@ -5054,6 +5062,7 @@ ${status}
           if(!r.ok) await reply(`⏳ Você já trabalhou. Tente novamente em ${duration(r.remaining)}.`)
           else {
             await progressDailyMission(sender,'work')
+          if(isGroup) await progressGroupMission(chat,sender,'work')
             await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
           }
 
@@ -5103,6 +5112,21 @@ ${status}
           text+='\n🔧 Responda com o número para fazer upgrade.\n0️⃣ Sair'
           await reply(text.trim())
 
+        } else if(['missaogrupo','missãogrupo','missaocoletiva','missãocoletiva'].includes(cmd)){
+          if(!isGroup) return await reply('👥 Esse comando funciona somente em grupos.')
+          const m=await getGroupMission(chat)
+          await reply(`🤝 *MISSÃO COLETIVA DA SEMANA*\n\n🎯 ${m.title}\n📊 Progresso: *${m.progress}/${m.target}*\n💰 Prêmio do grupo: *R$ ${fmt(m.reward_cash)}*\n${m.completed?'\n✅ Concluída! Use *'+prefix+'resgatarmissao* para pegar sua parte.':'\nCada participante precisa ajudar para poder resgatar.'}`)
+
+        } else if(['resgatarmissao','resgatarmissão'].includes(cmd)){
+          if(!isGroup) return await reply('👥 Esse comando funciona somente em grupos.')
+          const r=await claimGroupMission(chat,sender)
+          await reply(`🎉 *RECOMPENSA COLETIVA!*\nVocê recebeu *R$ ${fmt(r.share)}* pela sua participação.`)
+
+        } else if(['pegar'].includes(cmd)){
+          if(!isGroup) return
+          const r=await claimGroupEvent(chat,sender)
+          await reply(`⚡ *VOCÊ FOI O MAIS RÁPIDO!*\n💰 Pegou *R$ ${fmt(r.reward_cash)}* do evento!`)
+
         } else if(['coletar'].includes(cmd)){
           const r=await collectBusinesses(sender)
           if(!r.total) return await reply('⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
@@ -5140,6 +5164,7 @@ ${status}
             await reply(`🚲 Você já fez uma entrega de bike. Próxima disponível em *${duration(r.remaining)}*.`)
           }else{
             await progressDailyMission(sender,'work')
+          if(isGroup) await progressGroupMission(chat,sender,'work')
             let text=`🚲🍔 *ENTREGA DE BIKE CONCLUÍDA!*\n\n🚲 Veículo: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
             if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
             text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega de bike em ${Math.ceil(r.cooldown/60)} minutos.`
@@ -5152,6 +5177,7 @@ ${status}
             await reply(`🍔 Você já fez uma entrega. Próxima disponível em *${duration(r.remaining)}*.`)
           }else{
             await progressDailyMission(sender,'work')
+          if(isGroup) await progressGroupMission(chat,sender,'work')
             let text=`🍔 *ENTREGA CONCLUÍDA!*\n\n🚲🏍️ Veículo: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
             if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
             text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega em ${Math.ceil(r.cooldown/60)} minutos.`
@@ -5164,6 +5190,7 @@ ${status}
             await reply(`🚗 Você já fez uma corrida. Próxima disponível em *${duration(r.remaining)}*.`)
           }else{
             await progressDailyMission(sender,'work')
+          if(isGroup) await progressGroupMission(chat,sender,'work')
             let text=`🚗 *CORRIDA CONCLUÍDA!*\n\n🚘 Carro: *${r.car.name}*\n🏷️ Categoria: *${r.category}*\n🛣️ ${r.ride}\n💵 Corrida: *R$ ${fmt(r.fare)}*`
             if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
             text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima corrida em ${Math.ceil(r.cooldown/60)} minutos.`
@@ -5375,6 +5402,7 @@ ${status}
           if(r.winExp.levels>0) text+=`\n⬆️ ${r.winner.name} subiu ${r.winExp.levels} nível(is)!`
           if(r.loseExp.levels>0) text+=`\n⬆️ ${r.loser.name} subiu ${r.loseExp.levels} nível(is)!`
           await progressDailyMission(sender,'battle')
+      if(isGroup) await progressGroupMission(chat,sender,'battle')
           await reply(text,{mentions:[target]})
 
         } else if(['rankingrpg','rankrpg','toprpg'].includes(cmd)){
