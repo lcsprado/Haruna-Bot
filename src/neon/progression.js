@@ -43,6 +43,18 @@ export const MOTORCYCLES=[
   {id:'moto_1000',name:'Superbike 1000cc',price:220000},
 ]
 
+export const BUSINESSES=[
+  {id:'carrinho_lanche',name:'Carrinho de Lanche',price:15000,profitHour:900,capacityHours:8},
+  {id:'barbearia',name:'Barbearia',price:45000,profitHour:2400,capacityHours:8},
+  {id:'loja_roupas',name:'Loja de Roupas',price:120000,profitHour:5800,capacityHours:10},
+  {id:'restaurante',name:'Restaurante',price:300000,profitHour:13500,capacityHours:10},
+  {id:'posto',name:'Posto de Combustível',price:750000,profitHour:30000,capacityHours:12},
+  {id:'mercado',name:'Supermercado',price:1800000,profitHour:65000,capacityHours:12},
+  {id:'hotel',name:'Hotel',price:4500000,profitHour:145000,capacityHours:16},
+  {id:'shopping',name:'Shopping Center',price:12000000,profitHour:350000,capacityHours:18},
+  {id:'tech',name:'Empresa de Tecnologia',price:30000000,profitHour:800000,capacityHours:24},
+]
+
 const MISSION_POOL=[
   {type:'daily',title:'Resgate o prêmio diário',target:1,rewardCash:1000,rewardBox:0},
   {type:'work',title:'Trabalhe 3 vezes',target:3,rewardCash:2000,rewardBox:0},
@@ -147,6 +159,19 @@ export async function initProgression(){
 
     CREATE INDEX IF NOT EXISTS user_motorcycles_jid_idx
       ON user_motorcycles(jid);
+
+    CREATE TABLE IF NOT EXISTS user_businesses(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL,
+      business_id TEXT NOT NULL,
+      price_paid BIGINT NOT NULL,
+      acquired_at BIGINT NOT NULL DEFAULT ${nowSql},
+      last_collected_at BIGINT NOT NULL DEFAULT ${nowSql},
+      UNIQUE(jid,business_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS user_businesses_jid_idx
+      ON user_businesses(jid);
   `)
 }
 
@@ -755,4 +780,57 @@ export async function patrimonyLeaderboard(limit=10){
     LIMIT $1
   `,[limit])
   return rows
+}
+
+
+export async function getBusinesses(jid){
+  await ensureUser(jid)
+  const {rows}=await db.query('SELECT business_id,price_paid,acquired_at,last_collected_at FROM user_businesses WHERE jid=$1 ORDER BY acquired_at',[jid])
+  return rows.map(r=>({...BUSINESSES.find(b=>b.id===r.business_id),...r,id:r.business_id}))
+}
+
+export async function buyBusiness(jid,input){
+  await ensureUser(jid)
+  const business=resolveCatalog(input,BUSINESSES)
+  if(!business) throw new Error('Negócio inválido. Use !negocios para ver as opções.')
+  return tx(async client=>{
+    const own=await client.query('SELECT 1 FROM user_businesses WHERE jid=$1 AND business_id=$2 FOR UPDATE',[jid,business.id])
+    if(own.rows.length) throw new Error('Você já possui esse negócio.')
+    const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    if(Number(wallet.rows[0]?.cash||0)<business.price) throw new Error('Saldo insuficiente para comprar esse negócio.')
+    await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[business.price,jid])
+    const now=Math.floor(Date.now()/1000)
+    await client.query('INSERT INTO user_businesses(jid,business_id,price_paid,acquired_at,last_collected_at) VALUES($1,$2,$3,$4,$4)',[jid,business.id,business.price,now])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_purchase',$3)",[jid,business.price,business.name])
+    return business
+  })
+}
+
+export async function collectBusinesses(jid){
+  await ensureUser(jid)
+  return tx(async client=>{
+    const {rows}=await client.query('SELECT * FROM user_businesses WHERE jid=$1 FOR UPDATE',[jid])
+    if(!rows.length) throw new Error('Você ainda não possui negócios. Use !negocios.')
+    const now=Math.floor(Date.now()/1000)
+    let total=0
+    const details=[]
+    for(const row of rows){
+      const b=BUSINESSES.find(x=>x.id===row.business_id)
+      if(!b) continue
+      const elapsed=Math.max(0,now-Number(row.last_collected_at||now))
+      const capped=Math.min(elapsed,b.capacityHours*3600)
+      const earned=Math.floor((capped/3600)*b.profitHour)
+      if(earned>0){
+        total+=earned
+        details.push({name:b.name,earned})
+        // Preserve fractional-hour progress while discarding time beyond storage capacity.
+        const remainder=elapsed<=(b.capacityHours*3600) ? elapsed%3600 : 0
+        await client.query('UPDATE user_businesses SET last_collected_at=$1 WHERE id=$2',[now-remainder,row.id])
+      }
+    }
+    if(total<=0) return {total:0,details}
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro dos negócios')",[jid,total])
+    return {total,details}
+  })
 }
