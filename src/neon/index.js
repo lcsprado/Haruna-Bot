@@ -11,7 +11,7 @@ import pino from 'pino'
 import {
   initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, sellDuplicateEquipment, usePotion, getCombatProfile, battle, combatLeaderboard,
+  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -993,8 +993,9 @@ Você possui: *${stock}*
   }
 
   async function showEquipmentMenu(chat,sender,reply){
-    const [items,p]=await Promise.all([getInventory(sender),getCombatProfile(sender)])
+    const [items,p,upgradeables]=await Promise.all([getInventory(sender),getCombatProfile(sender),listUpgradeableEquipment(sender)])
     const equipables=items.filter(i=>['weapon','armor'].includes(i.category))
+    const levelMap=new Map(upgradeables.map(i=>[i.item_id,Number(i.level||1)]))
     if(!equipables.length){
       clearQuickFlow(chat,sender)
       await reply('⚙️ Você não possui arma ou armadura para equipar.')
@@ -1002,13 +1003,13 @@ Você possui: *${stock}*
     }
     setQuickFlow(chat,sender,'equip_select',{items:equipables.map(i=>i.item_id)},5*60*1000)
     let text='⚙️ *EQUIPAMENTOS*\n\n'
-    text+='🗡️ Arma atual: *'+p.weapon_name+'*'+(p.weapon_atk?' +'+p.weapon_atk+' ATK':'')+'\n'
-    text+='🛡️ Armadura atual: *'+p.armor_name+'*'+(p.armor_def?' +'+p.armor_def+' DEF':'')+'\n\n'
+    text+='🗡️ Arma atual: *'+p.weapon_name+' Lv.'+Number(p.weapon_level||1)+'*'+(p.weapon_atk?' +'+p.weapon_atk+' ATK':'')+'\n'
+    text+='🛡️ Armadura atual: *'+p.armor_name+' Lv.'+Number(p.armor_level||1)+'*'+(p.armor_def?' +'+p.armor_def+' DEF':'')+'\n\n'
     equipables.forEach((i,idx)=>{
       const info=getEquipmentInfo(i.item_id)
       const stat=i.category==='weapon' ? '+'+Number(info?.atk||0)+' ATK' : '+'+Number(info?.def||0)+' DEF'
       const active=(p.weapon_id===i.item_id || p.armor_id===i.item_id) ? ' ✅ *ATIVO*' : ''
-      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n   '+stat+active+'\n'
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+' Lv.'+Number(levelMap.get(i.item_id)||1)+'* ×'+i.quantity+'\n   '+stat+active+'\n'
     })
     text+='\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
@@ -1135,6 +1136,7 @@ Você possui: *${stock}*
 *!vender* — vende itens ao sistema
 *!venderrepetidos* — vende equipamentos repetidos e mantém 1 de cada
 *!equipar* — equipa arma ou armadura
+*!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
 *!usar* — usa um consumível
 
 🏪 *Mercado entre jogadores*
@@ -2646,6 +2648,45 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
       if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
       await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Até *5 minutos* • 🥊 ataque a cada *10 segundos*\n🧪 Cura automática quando possível.\n📅 O Boss encerra *sábado às 23:59* (São Paulo).\n\nUse *!boss* para acompanhar o HP.')
+      return true
+    }
+
+    if(flow.stage==='upgrade_select'){
+      const n=Number(input), items=flow.data?.items||[]
+      if(!Number.isInteger(n)||n<1||n>items.length){
+        await reply('⚙️ Escolha um número da lista de upgrades disponíveis.')
+        return true
+      }
+      const pick=items[n-1]
+      const current=await listUpgradeableEquipment(sender)
+      const item=current.find(i=>i.item_id===pick.itemId)
+      if(!item || !item.next){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
+        return true
+      }
+      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id},90000)
+      const stat=item.category==='weapon'
+        ? `${item.current.atk} → *${item.next.atk} ATK*`
+        : `${item.current.def} → *${item.next.def} DEF*`
+      await reply(`⬆️ *UPAR EQUIPAMENTO?*\n\n${rarityLabel(item.rarity)} — *${item.name}*\n⭐ Lv.${item.level} → *Lv.${Number(item.level)+1}*\n💪 ${stat}\n💰 Custo: *R$ ${fmt(item.cost)}*\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+      return true
+    }
+
+    if(flow.stage==='upgrade_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Upgrade cancelado.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
+        return true
+      }
+      const r=await upgradeEquipment(sender,flow.data.itemId)
+      clearQuickFlow(chat,sender)
+      const stat=r.stats.category==='weapon'?r.stats.atk+' ATK':r.stats.def+' DEF'
+      await reply(`⬆️ *EQUIPAMENTO APRIMORADO!*\n\n⚙️ *${r.name}*\n⭐ Lv.${r.fromLevel} → *Lv.${r.level}*\n💪 Agora: *${stat}*\n💸 Pago: *R$ ${fmt(r.cost)}*\n🪙 Carteira: *R$ ${fmt(r.cash)}*\n\nUse *!uparitem* para continuar evoluindo.`)
       return true
     }
 
@@ -5492,6 +5533,22 @@ ${status}
           text+='\n\n🛡️ 1 cópia de cada equipamento foi preservada.'
           await reply(text)
 
+        } else if(['uparitem','upgradeitem','melhoraritem'].includes(cmd)){
+          const items=await listUpgradeableEquipment(sender)
+          if(!items.length) return await reply('⬆️ Você ainda não possui arma ou armadura para aprimorar.')
+          const available=items.filter(i=>i.next)
+          if(!available.length) return await reply('🏆 Todos os seus equipamentos já estão no *Lv.10*.')
+          setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id}))},5*60*1000)
+          let text='⬆️ *UPAR EQUIPAMENTO*\n\n'
+          available.forEach((i,n)=>{
+            const stat=i.category==='weapon'
+              ? `${i.current.atk} → ${i.next.atk} ATK`
+              : `${i.current.def} → ${i.next.def} DEF`
+            text+=`*${n+1}.* ${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
+          })
+          text+='\n💡 Cada nível adiciona cerca de *4% do atributo base*. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
+          await reply(text)
+
         } else if(['equipar','equip'].includes(cmd)){
           const items=await getInventory(sender)
           const equipables=items.filter(i=>['weapon','armor'].includes(i.category))
@@ -5560,8 +5617,8 @@ ${status}
 🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
 💨 SPD: ${p.spd}
 
-🗡️ Arma: ${p.weapon_name}
-🥋 Armadura: ${p.armor_name}
+🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
+🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
 
 🏆 Vitórias: ${p.win}
 💀 Derrotas: ${p.loss}`
