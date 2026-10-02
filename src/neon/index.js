@@ -6376,7 +6376,17 @@ _Os comandos antigos continuam funcionando normalmente._`
 
         } else if(['raid','raidstatus'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
-          const active=await getRaidStatus(chat)
+          let active=await getRaidStatus(chat)
+          if(active?.status==='failed' && active.failReason==='round_limit'){
+            active.status='active'
+            delete active.failReason
+            active.expiresAt=Date.now()+10*60*1000
+            await db.query(`UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+              WHERE chat_jid=$2 AND game_type='raid'`,[JSON.stringify(active),chat])
+            await reply(`🔄 *RAID REATIVADA*\n\nA luta foi retomada da rodada *${Number(active.round||0)}* com o Boss em *${Number(active.hp||0).toLocaleString('pt-BR')}/${Number(active.maxHp||0).toLocaleString('pt-BR')} HP*.\n\n🔑 Nenhuma nova chave foi cobrada.`)
+            runRaidCombat(chat,reply)
+            return
+          }
           if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
             const players=Object.values(active.players||{})
             let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*\n`
