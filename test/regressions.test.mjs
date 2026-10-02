@@ -52,6 +52,18 @@ test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',
   assert.match(gamesSource,/caixa_epica/)
   assert.match(gamesSource,/giveBossDrops\(c,p\.jid,position,pb\.drop\)/)
 })
+
+test('Boss permite preservar o pet e petaventura consome toda a energia',async()=>{
+  const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
+  const gamesSource=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
+  assert.match(gamesSource,/attackBoss\(chat,jid,name,usePet=true\)/)
+  assert.match(indexSource,/atacar sempet/)
+  assert.match(indexSource,/petAdventure\(sender\)/)
+  assert.match(dbSource,/export async function petAdventure\(jid\)/)
+  assert.match(dbSource,/UPDATE pets SET energy=0/)
+  assert.match(dbSource,/pet_adventure/)
+})
 test('regressões conhecidas de escopo não reaparecem',async()=>{
   const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(source,/const text=fixed\[cmd\][\s\S]{0,160}mentions:\[target\]/)
