@@ -979,20 +979,35 @@ export async function progressGroupMission(chatJid,jid,type,amount=1){
   })
 }
 
+export async function getGroupMissionLeaderboard(chatJid){
+  const m=await getGroupMission(chatJid)
+  const {rows}=await db.query(`
+    SELECT gm.jid,gm.contribution,u.push_name
+    FROM group_mission_members gm
+    LEFT JOIN users u ON u.jid=gm.jid
+    WHERE gm.chat_jid=$1 AND gm.week_key=$2 AND gm.contribution>0
+    ORDER BY gm.contribution DESC,gm.jid
+  `,[chatJid,m.week_key])
+  const total=rows.reduce((a,r)=>a+Number(r.contribution||0),0)
+  return {mission:m,total,rows:rows.map((r,i)=>({...r,position:i+1,share:total?Math.floor(Number(m.reward_cash)*Number(r.contribution)/total):0}))}
+}
+
 export async function claimGroupMission(chatJid,jid){
   await ensureUser(jid)
-  const m=await getGroupMission(chatJid)
+  const board=await getGroupMissionLeaderboard(chatJid)
+  const m=board.mission
   if(!m.completed) throw new Error('A missão coletiva ainda não foi concluída.')
   return tx(async client=>{
     const mem=await client.query('SELECT * FROM group_mission_members WHERE chat_jid=$1 AND week_key=$2 AND jid=$3 FOR UPDATE',[chatJid,m.week_key,jid])
     if(!mem.rows.length || Number(mem.rows[0].contribution)<1) throw new Error('Você precisa ter contribuído para essa missão.')
     if(mem.rows[0].claimed) throw new Error('Você já resgatou sua recompensa.')
-    const participants=await client.query('SELECT COUNT(*)::int n FROM group_mission_members WHERE chat_jid=$1 AND week_key=$2 AND contribution>0',[chatJid,m.week_key])
-    const share=Math.max(1000,Math.floor(Number(m.reward_cash)/Math.max(1,participants.rows[0].n)))
+    const contribution=Number(mem.rows[0].contribution)
+    const total=Math.max(1,board.total)
+    const share=Math.max(1,Math.floor(Number(m.reward_cash)*contribution/total))
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[share,jid])
     await client.query('UPDATE group_mission_members SET claimed=TRUE WHERE chat_jid=$1 AND week_key=$2 AND jid=$3',[chatJid,m.week_key,jid])
-    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_mission','missão coletiva')",[jid,share])
-    return {share,mission:m}
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_mission','missão coletiva proporcional')",[jid,share])
+    return {share,contribution,total,mission:m,leaderboard:board.rows}
   })
 }
 
