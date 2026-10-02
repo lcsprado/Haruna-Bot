@@ -661,7 +661,7 @@ export async function raidRound(chat){
         }
       }
       const crit=Number(pb.crit||0)>0&&Math.random()<Number(pb.crit||0)
-      const mult=1+Number(pb.damage||0)
+      const mult=(1+Number(pb.damage||0))*3
       const base=Math.max(5,Math.floor(Number(p.atk||1)*(.82+Math.random()*.38)*(crit?1.5:1)))
       const dmg=Math.max(5,Math.floor(base*mult))
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+Math.max(0,dmg-base)
