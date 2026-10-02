@@ -11,7 +11,7 @@ import pino from 'pino'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, getCombatProfile, battle, combatLeaderboard,
+  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetEnergyItem, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -755,7 +755,7 @@ function resolveOwnedItem(items,input,categories=null){
 }
 
 const SHOP_IDS=[
-  'pocao_p','pocao_m','pocao_g','elixir_supremo',
+  'pocao_p','pocao_m','pocao_g','elixir_supremo','energetico_pet',
   'espada_madeira','espada_ferro','espada_aco','machado_guerra','katana_sombria',
   'espada_flamas','tridente_tempestade','lamina_abissal',
   'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
@@ -780,7 +780,7 @@ function rarityLabel(rarity){
 }
 
 function shopCategoryLabel(category){
-  if(category==='consumable') return '🧪 POÇÕES'
+  if(category==='consumable') return '🧪 CONSUMÍVEIS'
   if(category==='weapon') return '⚔️ ARMAS'
   if(category==='armor') return '🛡️ ARMADURAS'
   return '🎁 CAIXAS'
@@ -1036,7 +1036,7 @@ async function start() {
     await reply(
 `🍀 *LOJA DO ALPHA BOT*
 
-1️⃣ 🧪 Poções
+1️⃣ 🧪 Consumíveis
 2️⃣ ⚔️ Armas
 3️⃣ 🛡️ Armaduras
 4️⃣ 🎁 Caixas
@@ -1089,7 +1089,7 @@ Você possui: *${stock}*
     await reply(
       '🎒 *INVENTÁRIO*\n\n'+
       '1️⃣ ⚔️ Equipamentos — '+equip.length+' tipos\n'+
-      '2️⃣ 🧪 Poções — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
+      '2️⃣ 🧪 Consumíveis — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
       '3️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
       '4️⃣ 📦 Outros — '+others.length+' tipos\n'+
       '5️⃣ 💰 Vender itens\n\n'+
@@ -1247,6 +1247,7 @@ Você possui: *${stock}*
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
 *!usar* — usa um consumível
+*!energiapet* — usa Energético Pet e restaura 100% da energia do pet ativo
 
 🏪 *Mercado entre jogadores*
 *!mercado* — lista anúncios
@@ -1288,6 +1289,7 @@ Você possui: *${stock}*
 🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
 *!alimentar* — alimenta
 *!descansar* — recupera 30 de energia (30 min)
+⚡ *Energético Pet:* R$ 12.000 na loja; restaura 100% da energia instantaneamente
 *!banho* — cuidado cosmético opcional
 *!passear* — passeia
 *!treinarpet* — treina
@@ -2915,6 +2917,12 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply('🧪 Escolha um dos números da lista ou digite *0* para cancelar.')
         return true
       }
+      if(itemId==='energetico_pet'){
+        const r=await usePetEnergyItem(sender,itemId)
+        clearQuickFlow(chat,sender)
+        await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
+        return true
+      }
       const r=await usePotion(sender,itemId)
       clearQuickFlow(chat,sender)
       await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
@@ -2980,7 +2988,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
 1️⃣ Loja
 2️⃣ Inventário
 3️⃣ Equipar
-4️⃣ Usar poção
+4️⃣ Usar consumível
 5️⃣ Abrir caixas
 
 0️⃣ Sair`
@@ -3401,7 +3409,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         const usable=items.filter(i=>i.category==='consumable')
         if(!usable.length){
           clearQuickFlow(chat,sender)
-          await reply('🧪 Você não possui poções utilizáveis.')
+          await reply('🧪 Você não possui consumíveis utilizáveis.')
           return true
         }
         setQuickFlow(chat,sender,'use_select',{items:usable.map(i=>i.item_id)},90000)
@@ -3437,7 +3445,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     if(flow.stage==='inventory_category'){
       if(input==='9'){
         setQuickFlow(chat,sender,'nav_items',{},90000)
-        await reply('🛒 *ITENS E INVENTÁRIO*\n\n1️⃣ Loja\n2️⃣ Inventário\n3️⃣ Equipar\n4️⃣ Usar poção\n5️⃣ Abrir caixas\n\n0️⃣ Sair')
+        await reply('🛒 *ITENS E INVENTÁRIO*\n\n1️⃣ Loja\n2️⃣ Inventário\n3️⃣ Equipar\n4️⃣ Usar consumível\n5️⃣ Abrir caixas\n\n0️⃣ Sair')
         return true
       }
       const items=await getInventory(sender)
@@ -3448,11 +3456,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       if(input==='2'){
         const usable=items.filter(i=>i.category==='consumable')
         if(!usable.length){
-          await reply('🧪 Você não possui poções.')
+          await reply('🧪 Você não possui consumíveis.')
           return true
         }
         setQuickFlow(chat,sender,'use_select',{items:usable.map(i=>i.item_id)},90000)
-        let text='🧪 *POÇÕES*\n\n'
+        let text='🧪 *CONSUMÍVEIS*\n\n'
         usable.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
         text+='\n9️⃣ Voltar\n0️⃣ Sair'
         await reply(text)
@@ -5968,8 +5976,17 @@ ${status}
             return await reply(`❌ Não encontrei uma poção com esse nome.\nUse *${prefix}usar* para ver as opções.`)
           }
 
-          const r=await usePotion(sender,item.item_id)
-          await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+          if(item.item_id==='energetico_pet'){
+            const r=await usePetEnergyItem(sender,item.item_id)
+            await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
+          }else{
+            const r=await usePotion(sender,item.item_id)
+            await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+          }
+
+        } else if(['energiapet','energia_pet','petenergia'].includes(cmd)){
+          const r=await usePetEnergyItem(sender,'energetico_pet')
+          await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
 
         } else if(['status'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
