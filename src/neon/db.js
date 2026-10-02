@@ -2830,12 +2830,16 @@ export async function petAction(jid,action){
     }
     if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
     if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
+    const oldLevel=Number(pet.level||1)
     const xp=Number(pet.xp)+a.xp, level=1+Math.floor(xp/100)
+    const levelsGained=Math.max(0,level-oldLevel)
+    // Progressão natural: cada nível do pet concede +2 de Poder, além do bônus de treino/aventura.
+    const powerGain=(a.power||0)+(levelsGained*2)
     const {rows}=await client.query(`UPDATE pets SET
       hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
       energy=LEAST(100,GREATEST(0,energy+$3)),xp=$4,level=$5,power=power+$6,last_action=$7,
       last_rest=CASE WHEN $8 THEN $7 ELSE last_rest END
-      WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,a.power||0,now,Boolean(a.rest),jid])
+      WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid])
     return rows[0]
   })
 }
@@ -2852,7 +2856,8 @@ export async function petAdventure(jid){
     const xpGain=energy*2
     const xp=Number(pet.xp||0)+xpGain
     const nextLevel=1+Math.floor(xp/100)
-    const powerGain=Math.floor(energy/50)
+    const levelsGained=Math.max(0,nextLevel-Number(pet.level||1))
+    const powerGain=Math.floor(energy/50)+(levelsGained*2)
     const {rows}=await client.query(`UPDATE pets SET energy=0,xp=$1,level=$2,power=power+$3,
       hunger=GREATEST(0,hunger-$4),hygiene=GREATEST(0,hygiene-$5),last_action=$6
       WHERE jid=$7 RETURNING *`,[xp,nextLevel,powerGain,Math.ceil(energy*.25),Math.ceil(energy*.15),now,jid])
@@ -2902,8 +2907,13 @@ export async function petDuel(challengerJid,targetJid){
   const winner=scoreA===scoreB?(Math.random()<.5?'a':'b'):(scoreA>scoreB?'a':'b')
   const winJid=winner==='a'?challengerJid:targetJid,loseJid=winner==='a'?targetJid:challengerJid
   await transaction(async client=>{
-    await client.query('UPDATE pets SET wins=wins+1,xp=xp+25,level=1+FLOOR((xp+25)/100) WHERE jid=$1',[winJid])
-    await client.query('UPDATE pets SET losses=losses+1,xp=xp+10,level=1+FLOOR((xp+10)/100) WHERE jid=$1',[loseJid])
+    // Duelo também pode subir nível; ao subir, o Poder acompanha automaticamente (+2 por nível).
+    await client.query(`UPDATE pets SET wins=wins+1,xp=xp+25,
+      power=power+(GREATEST(0,(1+FLOOR((xp+25)/100))-level)*2),
+      level=1+FLOOR((xp+25)/100) WHERE jid=$1`,[winJid])
+    await client.query(`UPDATE pets SET losses=losses+1,xp=xp+10,
+      power=power+(GREATEST(0,(1+FLOOR((xp+10)/100))-level)*2),
+      level=1+FLOOR((xp+10)/100) WHERE jid=$1`,[loseJid])
   })
   return {winnerJid:winJid,loserJid:loseJid,winner:winner==='a'?a:b,loser:winner==='a'?b:a}
 }
