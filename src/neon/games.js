@@ -768,7 +768,7 @@ export async function activateBossEvent(chat){
   return tx(async c=>{
     const current=await loadGame(c,chat,'boss_event')
     if(current&&current.active!==false&&Number(current.hp)>0) return {already:true,...current}
-    const maxHp=55000+Math.floor(Math.random()*12001)
+    const maxHp=42000+Math.floor(Math.random()*8001)
     const state={
       mode:'event',
       eventId:'eclipse',
@@ -776,7 +776,7 @@ export async function activateBossEvent(chat){
       name:'Imperador do Eclipse',
       hp:maxHp,
       maxHp,
-      atk:26,
+      atk:22,
       participants:{},
       startedAt:Date.now()
     }
