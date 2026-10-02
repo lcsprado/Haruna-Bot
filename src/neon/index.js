@@ -1023,7 +1023,7 @@ Você possui: *${stock}*
 *!rankingrpg* — ranking de combate
 
 🐾 *Pets*
-*!adotar cachorro Nome* — adota um pet
+*!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adota ou troca seu pet
 *!meupet* — mostra seu pet
 *!alimentar* — alimenta
 *!banho* — dá banho
@@ -4490,8 +4490,9 @@ Se precisar de mais ajuda, use *!suporte*.`
         } else if(['adotar','meupet','alimentar','banho','passear','treinarpet','aventurapet','rankpet','duelopet'].includes(cmd)){
           try{
             if(cmd==='adotar'){
-              const pet=await adoptPet(sender,args[0]||'cachorro',args.slice(1).join(' ')||msg.pushName||'Alpha')
-              return await reply(`🐾 ${pet.replaced?'Você trocou seu pet por':'Você adotou'} *${pet.name}*, um(a) *${pet.species}*!${pet.fee?`\n💰 Taxa: R$ ${fmt(pet.fee)}`:''}\n\n🐶 Cachorro — Nv.1 • grátis\n🐱 Gato — Nv.3 • R$ 5.000\n🦊 Raposa — Nv.7 • R$ 25.000\n🐉 Dragão — Nv.15 • R$ 100.000\n\nUse *!meupet*.`)
+              if(!args[0]) return await reply(`🐾 *ADOÇÃO DE PETS*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n🔄 Se já tiver um pet, a troca custa mais *R$ 25.000*. O novo pet começa do zero.\n\nEx.: *!adotar cachorro Rex*`)
+              const pet=await adoptPet(sender,args[0],args.slice(1).join(' ')||msg.pushName||'Alpha')
+              return await reply(`🐾 ${pet.replaced?'PET TROCADO!':'PET ADOTADO!'}\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n💰 Total pago: *R$ ${fmt(pet.fee)}*${pet.changeFee?`\n🔄 Inclui R$ ${fmt(pet.changeFee)} de taxa de troca.`:''}\n\nUse *!meupet* para cuidar dele.`)
             }
             if(cmd==='duelopet'){
               const targetRaw=mentionsOf(msg)[0]; if(!targetRaw) return await reply('Uso: *!duelopet @pessoa*')
