@@ -58,6 +58,13 @@ test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',
   assert.doesNotMatch(gamesSource,/await clearGame\(c,chat,'boss'\)[\s\S]{0,100}dead:true/)
 })
 
+test('Boss legado é normalizado antes de permitir outra sessão semanal',async()=>{
+  const games=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  assert.match(games,/!current\.mode&&Number\(current\.maxHp\)>=25000/)
+  assert.match(games,/current\.mode='weekly'; current\.weeklyCompleted=false/)
+  assert.match(games,/!s\.mode&&Number\(s\.maxHp\)>=25000/)
+})
+
 test('Boss permite preservar o pet e petaventura consome toda a energia',async()=>{
   const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
   const gamesSource=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
