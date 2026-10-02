@@ -799,6 +799,8 @@ async function start() {
 3️⃣ 🛡️ Armaduras
 4️⃣ 🎁 Caixas
 5️⃣ 🎭 Diversão
+6️⃣ 🚗 Carros
+7️⃣ 🚲🏍️ Bicicletas e motos
 
 0️⃣ Sair
 
@@ -3342,8 +3344,24 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await funMenu()
         return true
       }
+      if(input==='6'){
+        setQuickFlow(chat,sender,'shop_car_select',{},90000)
+        let text='🚗 *LOJA DE CARROS*\n\n'
+        CARS.forEach((car,i)=>text+=`*${i+1}.* ${car.name} — *R$ ${fmt(car.price)}*\n`)
+        text+='\n👉 Responda só com o número para comprar.\n9️⃣ Voltar\n0️⃣ Sair'
+        await reply(text)
+        return true
+      }
+      if(input==='7'){
+        setQuickFlow(chat,sender,'shop_delivery_select',{},90000)
+        let text='🚲🏍️ *DELIVERY — BICICLETAS E MOTOS*\n\n'
+        MOTORCYCLES.forEach((v,i)=>text+=`*${i+1}.* ${v.name} — *R$ ${fmt(v.price)}*\n`)
+        text+='\n👉 Responda só com o número para comprar.\n9️⃣ Voltar\n0️⃣ Sair'
+        await reply(text)
+        return true
+      }
       if(!['1','2','3','4'].includes(input)){
-        await reply('🍀 Escolha *1, 2, 3, 4 ou 5*.')
+        await reply('🍀 Escolha uma opção de *1 a 7*.')
         return true
       }
       const items=await getShop()
@@ -3362,6 +3380,42 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       })
       text+='9️⃣ Voltar\n0️⃣ Sair'
       await reply(text.trim())
+      return true
+    }
+
+    if(flow.stage==='shop_car_select'){
+      if(input==='9'){ await shopCategoryMenu(); return true }
+      if(!/^[1-5]$/.test(input)){ await reply('🚗 Escolha um carro de *1 a 5*.'); return true }
+      const car=CARS[Number(input)-1]
+      setQuickFlow(chat,sender,'shop_car_confirm',{id:car.id,name:car.name,price:car.price},90000)
+      await reply(`🚗 Comprar *${car.name}* por *R$ ${fmt(car.price)}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+      return true
+    }
+
+    if(flow.stage==='shop_car_confirm'){
+      if(input==='2'){ await shopCategoryMenu(); return true }
+      if(input!=='1'){ await reply('Escolha *1 Confirmar* ou *2 Cancelar*.'); return true }
+      const car=await buyCar(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply(`✅ *CARRO COMPRADO!*\n🚗 ${car.name}\n💰 R$ ${fmt(car.price)}\n\nUse *${prefix}uber* para trabalhar.`)
+      return true
+    }
+
+    if(flow.stage==='shop_delivery_select'){
+      if(input==='9'){ await shopCategoryMenu(); return true }
+      if(!/^[1-6]$/.test(input)){ await reply('🚲🏍️ Escolha um veículo de *1 a 6*.'); return true }
+      const v=MOTORCYCLES[Number(input)-1]
+      setQuickFlow(chat,sender,'shop_delivery_confirm',{id:v.id,name:v.name,price:v.price},90000)
+      await reply(`🚲🏍️ Comprar *${v.name}* por *R$ ${fmt(v.price)}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+      return true
+    }
+
+    if(flow.stage==='shop_delivery_confirm'){
+      if(input==='2'){ await shopCategoryMenu(); return true }
+      if(input!=='1'){ await reply('Escolha *1 Confirmar* ou *2 Cancelar*.'); return true }
+      const v=await buyMotorcycle(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply(`✅ *VEÍCULO COMPRADO!*\n🚲🏍️ ${v.name}\n💰 R$ ${fmt(v.price)}\n\nBike: *${prefix}ifoodbike* • Moto: *${prefix}ifood*`)
       return true
     }
 
