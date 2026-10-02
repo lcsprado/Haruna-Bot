@@ -5964,7 +5964,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
           if(r.already) return await reply(`👹 *BOSS DE GRUPO — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)${petLine}\n\n⚔️ Use *${prefix}atacar* para iniciar até 5 min de combate automático.`)
           await progressDailyMission(sender,'game')
-          await reply(`👹 *BOSS DE GRUPO APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n🏆 Dinheiro, XP e drops aumentam conforme dano e colocação.\n🎁 Drops: caixas, poções, equipamentos raros e a Armadura do Golem exclusiva.${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
+          await reply(`👹 *BOSS SEMANAL APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n💰 Prêmio especial semanal: fundo de *R$ 150.000* dividido por dano, mais bônus por colocação.\n🎁 Drops: caixas, equipamentos raros e os exclusivos *Armadura do Golem* e *Martelo do Golem*.${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['atacar'].includes(cmd)){
           const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
