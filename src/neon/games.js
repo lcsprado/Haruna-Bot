@@ -503,6 +503,12 @@ export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
     const current=await loadGame(c,chat,'boss')
+    // Sessões criadas antes da separação semanal/comum não possuíam `mode`.
+    // Normalize-as sem apagar participantes, para que a conclusão semanal seja persistida.
+    if(current&&!current.mode&&Number(current.maxHp)>=25000&&current.weekendKey===weekend.weekendKey){
+      current.mode='weekly'; current.weeklyCompleted=false
+      await saveGame(c,chat,'boss',current)
+    }
     const weeklyCompleted=Boolean(current?.weeklyCompleted&&current.weekendKey===weekend.weekendKey)
     if(weekend.open&&!weeklyCompleted){
       if(current?.mode==='weekly'&&current.weekendKey===weekend.weekendKey&&Number(current.hp)>0&&Number(current.endsAt||0)>Date.now()){
@@ -526,6 +532,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(sleeping.rows.length) throw new Error('Você está dormindo e não pode atacar o Boss agora.')
     const s=await loadGame(c,chat,'boss')
     if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss para iniciar um.')
+    if(!s.mode&&Number(s.maxHp)>=25000&&s.weekendKey===weekend.weekendKey){
+      s.mode='weekly'; s.weeklyCompleted=false
+    }
     if(s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
