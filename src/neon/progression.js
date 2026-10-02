@@ -637,7 +637,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'ifood',$3)`,[jid,gross,`Frota iFood | ${details.length} veículo(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'income_tax',`TAXADE te pegou ${taxRate}% | iFood`),[jid,tax])
+      VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | iFood`])
     return {ok:true,details,gross,tax,taxRate,total,cooldown}
   })
 }
@@ -676,7 +676,7 @@ export async function driveUber(jid,taxMultiplier=1){
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'uber',$3)`,[jid,gross,`Frota Uber | ${details.length} carro(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'income_tax',`TAXADE te pegou ${taxRate}% | Uber`),[jid,tax])
+      VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | Uber`])
     return {ok:true,details,gross,tax,taxRate,total,cooldown}
   })
 }
