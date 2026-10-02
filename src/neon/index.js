@@ -46,7 +46,7 @@ import {
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
-  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses
+  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, sellCar, sellMotorcycle
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
 import { renderProfileCard } from './profile-card.js'
@@ -2769,6 +2769,24 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
     }
 
+    if(flow.stage==='confirm_sell_car'){
+      if(['nao','não','n'].includes(input)){ clearQuickFlow(chat,sender); await reply('❌ Venda cancelada.'); return true }
+      if(!['sim','s'].includes(input)){ await reply('⚠️ Responda *SIM* para vender ou *NÃO* para cancelar.'); return true }
+      const r=await sellCar(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply(`✅ *CARRO VENDIDO*\n🚗 ${r.name}\n💰 Recebido: *R$ ${fmt(r.resale)}*\n📉 Desvalorização: R$ ${fmt(r.depreciation)} (30%)`)
+      return true
+    }
+
+    if(flow.stage==='confirm_sell_motorcycle'){
+      if(['nao','não','n'].includes(input)){ clearQuickFlow(chat,sender); await reply('❌ Venda cancelada.'); return true }
+      if(!['sim','s'].includes(input)){ await reply('⚠️ Responda *SIM* para vender ou *NÃO* para cancelar.'); return true }
+      const r=await sellMotorcycle(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply(`✅ *VEÍCULO VENDIDO*\n🚲🏍️ ${r.name}\n💰 Recebido: *R$ ${fmt(r.resale)}*\n📉 Desvalorização: R$ ${fmt(r.depreciation)} (30%)`)
+      return true
+    }
+
     if(flow.stage==='delivery_vehicle_buy'){
       if(!/^[1-6]$/.test(input)){
         await reply('🚲🏍️ Escolha um veículo de *1 a 6* ou digite *0* para cancelar.')
@@ -4365,7 +4383,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
-          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
+          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
           let key=null,label=null
           if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
           else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
@@ -4908,6 +4926,24 @@ ${status}
             await progressDailyMission(sender,'work')
             await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
           }
+
+        } else if(['vendercarro'].includes(cmd)){
+          if(!args.length) return await reply(`🚗 Use *${prefix}vendercarro número* conforme sua *${prefix}garagem*.\n⚠️ Revenda: *70% do valor pago* (30% de desvalorização).`)
+          const garage=await getGarage(sender)
+          const idx=Number(args[0])
+          const selected=/^\d+$/.test(args[0]||'') ? garage[idx-1] : garage.find(x=>x.id===args.join(' ').toLowerCase())
+          if(!selected) return await reply(`❌ Carro não encontrado na sua garagem. Use *${prefix}garagem*.`)
+          setQuickFlow(chat,sender,'confirm_sell_car',{id:selected.id,name:selected.name,resale:Math.floor(Number(selected.price_paid||selected.price)*0.70)},90000)
+          await reply(`⚠️ *CONFIRMAR VENDA*\n\n🚗 ${selected.name}\n💰 Você recebe: *R$ ${fmt(Math.floor(Number(selected.price_paid||selected.price)*0.70))}*\n📉 Desvalorização: *30%*\n\nResponda *SIM* para vender ou *NÃO* para cancelar.`)
+
+        } else if(['vendermoto','venderbike','venderbicicleta'].includes(cmd)){
+          if(!args.length) return await reply(`🚲🏍️ Use *${prefix}vendermoto número* conforme *${prefix}minhasmotos*.\n⚠️ Revenda: *70% do valor pago*.`)
+          const garage=await getMotorcycleGarage(sender)
+          const idx=Number(args[0])
+          const selected=/^\d+$/.test(args[0]||'') ? garage[idx-1] : garage.find(x=>x.id===args.join(' ').toLowerCase())
+          if(!selected) return await reply(`❌ Veículo não encontrado. Use *${prefix}minhasmotos*.`)
+          setQuickFlow(chat,sender,'confirm_sell_motorcycle',{id:selected.id,name:selected.name,resale:Math.floor(Number(selected.price_paid||selected.price)*0.70)},90000)
+          await reply(`⚠️ *CONFIRMAR VENDA*\n\n🚲🏍️ ${selected.name}\n💰 Você recebe: *R$ ${fmt(Math.floor(Number(selected.price_paid||selected.price)*0.70))}*\n📉 Desvalorização: *30%*\n\nResponda *SIM* para vender ou *NÃO* para cancelar.`)
 
         } else if(['negocios','negócios'].includes(cmd)){
           const owned=await getBusinesses(sender)
