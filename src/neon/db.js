@@ -849,7 +849,7 @@ export async function getCareer(jid){
   return {...row,rank,next}
 }
 
-export async function work(jid) {
+export async function work(jid, taxMultiplier=1) {
   await ensureUser(jid)
   const jobs=['organizando documentos','atendendo clientes','resolvendo uma demanda','fechando um relatório','ajudando a equipe','entregando um projeto']
   return transaction(async client=>{
@@ -867,16 +867,17 @@ export async function work(jid) {
     else if(roll<.15){event='⏰ Hora extra! Bônus de 25%.';factor=1.25}
     else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
     const gross=Math.max(1,Math.round(base*newRank.mult*factor))
-    const tax=Math.floor(gross*.10)
+    const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
+    const tax=Math.floor(gross*(taxRate/100))
     const amount=gross-tax
     await client.query('UPDATE careers SET career_xp=$1,total_shifts=total_shifts+1,updated_at='+nowSql+' WHERE jid=$2',[newXp,jid])
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[amount,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'work',$3)`,
       [jid,gross,`${newRank.name} | ${jobs[Math.floor(Math.random()*jobs.length)]}`])
-    if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | trabalho')`,[jid,tax])
+    if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'income_tax',`TAXADE te pegou ${taxRate}% | trabalho`),[jid,tax])
     const promoted=newRank.name!==oldRank.name
     const idx=CAREER_RANKS.findIndex(r=>r.name===newRank.name), next=CAREER_RANKS[idx+1]||null
-    return {ok:true,gross,tax,taxRate:10,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next}
+    return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next}
   })
 }
 
