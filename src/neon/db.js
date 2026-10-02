@@ -2958,18 +2958,37 @@ const SLEEP_PLACES={
 
 async function recoverPetEnergyFromSleep(client,jid,startedAt,endedAt){
   const elapsed=Math.max(0,Math.floor((Number(endedAt)-Number(startedAt))/60))
-  if(elapsed<1) return {gained:0,current:null,max:null}
+  if(elapsed<1) return {gained:0,current:null,max:null,petHpGained:0,playerHpGained:0}
+
+  const player=(await client.query('SELECT hp,max_hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+  let playerHpGained=0,playerHp=null,playerMaxHp=null
+  if(player){
+    playerMaxHp=Number(player.max_hp||100)
+    const beforeHp=Number(player.hp||0)
+    playerHp=Math.min(playerMaxHp,beforeHp+elapsed)
+    playerHpGained=Math.max(0,playerHp-beforeHp)
+    if(playerHpGained>0) await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[playerHp,jid])
+  }
+
   const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-  if(!pet) return {gained:0,current:null,max:null}
+  if(!pet) return {gained:0,current:null,max:null,petHpGained:0,playerHpGained,playerHp,playerMaxHp}
+
   const max=petMaxEnergy(pet.level,pet.species)
   const before=Number(pet.energy||0)
   const current=Math.min(max,before+elapsed)
   const gained=Math.max(0,current-before)
-  if(gained>0){
-    await client.query('UPDATE pets SET energy=$1 WHERE jid=$2',[current,jid])
-    await client.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[current,jid])
+
+  const petMax=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)))
+  const petBeforeHp=Number(pet.hp??petMax)
+  const petHp=Math.min(petMax,petBeforeHp+elapsed)
+  const petHpGained=Math.max(0,petHp-petBeforeHp)
+
+  if(gained>0 || petHpGained>0){
+    await client.query('UPDATE pets SET energy=$1,hp=$2,max_hp=$3 WHERE jid=$4',[current,petHp,petMax,jid])
+    await client.query('UPDATE pet_collection SET energy=$1,hp=$2,max_hp=$3 WHERE jid=$4 AND active=TRUE',[current,petHp,petMax,jid])
   }
-  return {gained,current,max}
+
+  return {gained,current,max,petHpGained,petHp,petMaxHp:petMax,playerHpGained,playerHp,playerMaxHp}
 }
 
 export async function resolvePlayerSleep(jid){
