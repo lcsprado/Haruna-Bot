@@ -1,4 +1,4 @@
-import { db, ensureUser, getEquipmentInfo, grantExp } from './db.js'
+import { db, ensureUser, getEquipmentInfo, grantExpInTransaction } from './db.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -440,13 +440,20 @@ function bossWeekendInfo(now=new Date()){
   return {open,weekendKey:fridayKey,endsAt,endsLabel:`${sd}/${sm}/${sy} às 23:59`}
 }
 function bossWeekendOpen(){ return bossWeekendInfo().open }
-const BOSS_DROPS=[
-  {id:'pocao_g',name:'Poção Grande',chance:.45,rarity:'Raro'},
-  {id:'elixir_supremo',name:'Elixir Supremo',chance:.18,rarity:'Épico'},
-  {id:'lamina_abissal',name:'Lâmina Abissal',chance:.07,rarity:'Épico'},
-  {id:'armadura_abissal',name:'Armadura Abissal',chance:.07,rarity:'Épico'},
-  {id:'excalibur',name:'Excalibur',chance:.018,rarity:'Lendário'},
-  {id:'armadura_titan',name:'Armadura do Titã',chance:.018,rarity:'Lendário'},
+const BOSS_BONUS_DROPS=[
+  {id:'pocao_g',name:'Poção Grande',weight:42,rarity:'Raro'},
+  {id:'elixir_supremo',name:'Elixir Supremo',weight:24,rarity:'Épico'},
+  {id:'lamina_abissal',name:'Lâmina Abissal',weight:12,rarity:'Épico'},
+  {id:'armadura_abissal',name:'Armadura Abissal',weight:12,rarity:'Épico'},
+  {id:'excalibur',name:'Excalibur',weight:5,rarity:'Lendário'},
+  {id:'armadura_titan',name:'Armadura do Titã',weight:5,rarity:'Lendário'},
+]
+const BOSS_PLACEMENT=[
+  {cash:15000,xp:220,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.65,armorChance:.18},
+  {cash:10000,xp:150,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.50,armorChance:.10},
+  {cash:6000,xp:100,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.38,armorChance:.06},
+  {cash:3000,xp:60,box:{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'},bonusChance:.28,armorChance:.035},
+  {cash:1500,xp:30,box:{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'},bonusChance:.22,armorChance:.025},
 ]
 const PET_BOSS_SPECIALTIES={
   cachorro:{label:'🐶 Guardião',defense:.05}, gato:{label:'🐱 Instinto',crit:.04},
@@ -466,19 +473,28 @@ function petBossBonus(pet){
   const scaled=k=>Math.min(.10,Number(base[k]||0)*scale)
   return {label:base.label||pet.species,damage:scaled('damage')+scaled('bossDamage'),defense:scaled('defense'),crit:scaled('crit'),dodge:scaled('dodge'),xp:scaled('xp'),drop:scaled('drop')}
 }
-async function giveBossDrop(c,jid,bonus=false,extraChance=0){
-  for(let rollNo=0;rollNo<(bonus?2:1);rollNo++){
-    const roll=Math.max(0,Math.random()-Math.min(.08,extraChance)); let acc=0
-    for(const d of BOSS_DROPS){
-      acc+=d.chance
-      if(roll<acc){
-        await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
-          ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,d.id])
-        return d
-      }
-    }
+async function grantBossItem(c,jid,item){
+  await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+    ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,item.id])
+  return item
+}
+async function giveBossDrops(c,jid,position,extraChance=0){
+  const tier=BOSS_PLACEMENT[position-1]||{cash:0,xp:0,box:null,bonusChance:.15,armorChance:.015}
+  const drops=[]
+  // Top 5 recebe caixa garantida; demais continuam com 40% de chance de Caixa da Sorte.
+  const box=tier.box||(Math.random()<.40?{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}:null)
+  if(box) drops.push(await grantBossItem(c,jid,box))
+  const luck=Math.min(.08,Math.max(0,extraChance))
+  if(Math.random()<tier.armorChance+luck){
+    drops.push(await grantBossItem(c,jid,{id:'armadura_golem',name:'Armadura do Golem Ancestral',rarity:'Lendário'}))
   }
-  return null
+  if(Math.random()<tier.bonusChance+luck){
+    const total=BOSS_BONUS_DROPS.reduce((sum,d)=>sum+d.weight,0)
+    let roll=Math.random()*total,chosen=BOSS_BONUS_DROPS[0]
+    for(const item of BOSS_BONUS_DROPS){roll-=item.weight;if(roll<=0){chosen=item;break}}
+    drops.push(await grantBossItem(c,jid,chosen))
+  }
+  return drops
 }
 export async function startBoss(chat){
   const weekend=bossWeekendInfo()
@@ -538,7 +554,19 @@ export async function attackBoss(chat,jid,name){
     if(s.hp<=0){
       const entries=Object.entries(s.participants).map(([pjid,v])=>({jid:pjid,damage:Number(v.damage||0),name:v.name||'Jogador'})).sort((a,b)=>b.damage-a.damage)
       const total=entries.reduce((n,x)=>n+x.damage,0)||1,rewards=[]
-      for(let i=0;i<entries.length;i++){const p=entries[i],share=p.damage/total,cash=3000+Math.floor(50000*share);const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null;const pb=petBossBonus(pp);const exp=Math.floor((50+300*share)*(1+pb.xp));await credit(c,p.jid,cash,'boss_weekend');const drop=await giveBossDrop(c,p.jid,i===0,pb.drop);rewards.push({...p,cash,exp,drop,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})}
+      for(let i=0;i<entries.length;i++){
+        const p=entries[i],position=i+1,share=p.damage/total
+        const tier=BOSS_PLACEMENT[i]||{cash:0,xp:0}
+        // Todos recebem base; dano divide um fundo fixo e colocação dá um bônus separado.
+        const cash=2500+Math.floor(60000*share)+tier.cash
+        const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null
+        const pb=petBossBonus(pp)
+        const exp=Math.floor((80+500*share+tier.xp)*(1+pb.xp))
+        await credit(c,p.jid,cash,'boss_weekend')
+        await grantExpInTransaction(c,p.jid,exp)
+        const drops=await giveBossDrops(c,p.jid,position,pb.drop)
+        rewards.push({...p,position,cash,exp,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
+      }
       await clearGame(c,chat,'boss')
       return {dead:true,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal}
     }
@@ -546,4 +574,3 @@ export async function attackBoss(chat,jid,name){
     return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy}:null}
   })
 }
-export async function grantBossXp(rewards=[]){for(const r of rewards) await grantExp(r.jid,r.exp)}
