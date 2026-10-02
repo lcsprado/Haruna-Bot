@@ -608,7 +608,7 @@ export async function sellMotorcycle(jid,input){
   })
 }
 
-export async function deliverIfood(jid){
+export async function deliverIfood(jid,taxMultiplier=1){
   await ensureUser(jid)
   const garage=await getMotorcycleGarage(jid)
   if(!garage.length) throw new Error('Você precisa ter bicicleta ou moto para fazer entregas. Use !motos para comprar uma.')
@@ -631,17 +631,18 @@ export async function deliverIfood(jid){
       return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
     })
     const gross=details.reduce((n,x)=>n+x.total,0)
-    const tax=Math.floor(gross*.10),total=gross-tax
+    const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
+    const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'ifood',$3)`,[jid,gross,`Frota iFood | ${details.length} veículo(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | iFood')`,[jid,tax])
-    return {ok:true,details,gross,tax,taxRate:10,total,cooldown}
+      VALUES($1,'system',$2,'income_tax',`TAXADE te pegou ${taxRate}% | iFood`),[jid,tax])
+    return {ok:true,details,gross,tax,taxRate,total,cooldown}
   })
 }
 
-export async function driveUber(jid){
+export async function driveUber(jid,taxMultiplier=1){
   await ensureUser(jid)
   const garage=await getGarage(jid)
   if(!garage.length) throw new Error('Você precisa ter pelo menos um carro para trabalhar de Uber. Use !carros para comprar um.')
@@ -669,13 +670,14 @@ export async function driveUber(jid){
       return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
     })
     const gross=details.reduce((n,x)=>n+x.total,0)
-    const tax=Math.floor(gross*.10),total=gross-tax
+    const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
+    const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'uber',$3)`,[jid,gross,`Frota Uber | ${details.length} carro(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | Uber')`,[jid,tax])
-    return {ok:true,details,gross,tax,taxRate:10,total,cooldown}
+      VALUES($1,'system',$2,'income_tax',`TAXADE te pegou ${taxRate}% | Uber`),[jid,tax])
+    return {ok:true,details,gross,tax,taxRate,total,cooldown}
   })
 }
 
