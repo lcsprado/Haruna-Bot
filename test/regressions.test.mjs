@@ -40,6 +40,17 @@ test('energia do pet possui descanso e custo transacional no Boss',async()=>{
   assert.match(gamesSource,/UPDATE pets SET energy=\$1 WHERE jid=\$2/)
   assert.match(indexSource,/\*!descansar\* — recupera 30 de energia/)
 })
+
+test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',async()=>{
+  const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
+  const gamesSource=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  assert.match(dbSource,/armadura_golem.*Armadura do Golem Ancestral/)
+  assert.match(gamesSource,/const BOSS_PLACEMENT=/)
+  assert.match(gamesSource,/60000\*share/)
+  assert.match(gamesSource,/grantExpInTransaction\(c,p\.jid,exp\)/)
+  assert.match(gamesSource,/caixa_epica/)
+  assert.match(gamesSource,/giveBossDrops\(c,p\.jid,position,pb\.drop\)/)
+})
 test('regressões conhecidas de escopo não reaparecem',async()=>{
   const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(source,/const text=fixed\[cmd\][\s\S]{0,160}mentions:\[target\]/)
