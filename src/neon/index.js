@@ -1099,7 +1099,15 @@ Você possui: *${stock}*
 *!comprarnegocio N* — compra negócio
 *!meusnegocios* — mostra negócios e permite upgrade
 *!coletar* — coleta renda passiva
-*!patrimonio* — patrimônio total
+
+🤝 *Missões coletivas & eventos*
+*!missaogrupo* / *!missao* — status, objetivo e ranking da missão coletiva
+*!missaostatus* / *!statusmissao* — atalhos para o status
+*!resgatarmissao* — resgata sua parte proporcional do prêmio
+*!pegar* — pega um evento aleatório ativo no grupo
+
+💎 *Patrimônio*
+*!patrimonio* — total com dinheiro, itens, imóvel, carros, motos/bike e negócios
 *!rankingpatrimonio* — ranking de patrimônio
 
 9️⃣ Voltar • 0️⃣ Fechar`,
