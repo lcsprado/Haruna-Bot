@@ -180,7 +180,7 @@ async function runRaidCombat(chat,reply){
         const hitEvents=(r.events||[]).filter(e=>e.type==='hit')
         const heals=bossEvents.filter(e=>e.autoHeal)
         const deaths=bossEvents.filter(e=>!e.alive)
-        if(r.round===1 || r.round%2===0 || r.special || heals.length || deaths.length){
+        if(r.round===1 || r.round%5===0 || heals.length || deaths.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
