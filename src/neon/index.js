@@ -38,7 +38,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, grantBossXp
+  startBoss, attackBoss
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES,
@@ -124,9 +124,8 @@ async function runBossSession(chat,jid,name,reply){
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.dead){
-          await grantBossXp(r.rewards)
           let text=`💥 *BOSS DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
-          r.rewards.forEach((x,n)=>{text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${x.drop?` • 🎁 ${x.drop.name} (${x.drop.rarity})`:''}`})
+          r.rewards.forEach((x,n)=>{const items=x.drops?.length?`\n🎁 ${x.drops.map(d=>`${d.name} (${d.rarity})`).join(' + ')}`:'';text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${items}`})
           await reply(text); return
         }
         if(r.playerDead){
@@ -313,7 +312,7 @@ async function showMainMenu(chat,sender,reply){
 
 🔥 *DESTAQUES 2.0*
 🐾 Pets agora dão bônus estratégicos no Boss
-👹 Boss de Grupo: sexta 00:00 → sábado 23:59, com combate automático e drops
+👹 Boss de Grupo: sexta 00:00 → sábado 23:59, com recompensas por colocação
 🏢 Negócios, upgrades e renda passiva
 💼 Carreira no !trabalhar
 🚗 Uber com sua frota • 🏍️ iFood com bikes/motos
@@ -5965,7 +5964,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
           if(r.already) return await reply(`👹 *BOSS DE GRUPO — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)${petLine}\n\n⚔️ Use *${prefix}atacar* para iniciar até 5 min de combate automático.`)
           await progressDailyMission(sender,'game')
-          await reply(`👹 *BOSS DE GRUPO APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n🎁 Drops: Poção Grande, Elixir Supremo, Lâmina/Armadura Abissal e lendários raros.${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
+          await reply(`👹 *BOSS DE GRUPO APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n🏆 Dinheiro, XP e drops aumentam conforme dano e colocação.\n🎁 Drops: caixas, poções, equipamentos raros e a Armadura do Golem exclusiva.${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['atacar'].includes(cmd)){
           const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
