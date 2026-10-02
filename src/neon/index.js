@@ -1199,8 +1199,8 @@ Você possui: *${stock}*
 
 🏪 *Mercado entre jogadores*
 *!mercado* — lista anúncios
-*!anunciar ITEM QTD PREÇO* — cria anúncio
-*!comprarmercado ID* — compra um anúncio
+*!anunciar* — abre seu inventário, escolhe o item e define o preço
+*!compraritem* — abre os anúncios e confirma a compra
 *!cancelarvenda ID* — cancela seu anúncio
 
 9️⃣ Voltar • 0️⃣ Fechar`,
@@ -3831,6 +3831,66 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       return true
     }
 
+    if(flow.stage==='market_sell_select'){
+      const item=flow.data.items?.[Number(input)-1]
+      if(!item){
+        await reply('🏪 Escolha um item pelo número.')
+        return true
+      }
+      setQuickFlow(chat,sender,'market_sell_price',{itemId:item.item_id,name:item.name},5*60*1000)
+      await reply(`🏷️ *${item.name}*\n\nDigite o valor que quer anunciar.\nEx.: *20000*\n\n0️⃣ Cancelar`)
+      return true
+    }
+
+    if(flow.stage==='market_sell_price'){
+      const price=parseAmount(rawInput)
+      if(!Number.isInteger(price)||price<1){
+        await reply('💰 Digite um valor válido maior que zero. Ex.: *20000*')
+        return true
+      }
+      try{
+        const x=await createMarketListing(sender,flow.data.itemId,1,price)
+        clearQuickFlow(chat,sender)
+        await reply(`🏪 *ANÚNCIO CRIADO!*\n\n#${x.id} • *${flow.data.name}* ×1\n💰 Valor: *R$ ${Number(x.price).toLocaleString('pt-BR')}*\n\nQuem quiser comprar usa *!compraritem*.`)
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('❌ '+(err?.message||'Não foi possível criar o anúncio.'))
+      }
+      return true
+    }
+
+    if(flow.stage==='market_buy_select'){
+      const listing=flow.data.items?.[Number(input)-1]
+      if(!listing){
+        await reply('🛒 Escolha um anúncio pelo número.')
+        return true
+      }
+      setQuickFlow(chat,sender,'market_buy_confirm',{id:listing.id,name:listing.name,quantity:listing.quantity,price:listing.price,seller:listing.seller_name},90000)
+      await reply(`🛒 *CONFIRMAR COMPRA?*\n\n📦 *${listing.name}* ×${listing.quantity}\n👤 Vendedor: *${listing.seller_name||'Jogador'}*\n💰 Valor: *R$ ${Number(listing.price).toLocaleString('pt-BR')}*\n\n1️⃣ Sim\n2️⃣ Não`)
+      return true
+    }
+
+    if(flow.stage==='market_buy_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Compra cancelada.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Sim* ou *2 Não*.')
+        return true
+      }
+      try{
+        const x=await buyMarketListing(sender,flow.data.id)
+        clearQuickFlow(chat,sender)
+        await reply(`✅ *COMPRA CONCLUÍDA!*\n\n📦 ${x.name} ×${x.quantity}\n💰 R$ ${Number(flow.data.price||0).toLocaleString('pt-BR')}`)
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('❌ '+(err?.message||'Não foi possível concluir a compra.'))
+      }
+      return true
+    }
+
     if(flow.stage==='inventory_select'){
       const item=flow.data.items?.[Number(input)-1]
       if(!item){
@@ -5105,18 +5165,38 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply('💍 *CASAMENTO CONFIRMADO!* 🎉',{mentions:[targetRaw]})
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível concluir.')) }
 
-        } else if(['mercado','anunciar','comprarmercado','cancelarvenda'].includes(cmd)){
+        } else if(['mercado','anunciar','compraritem','comprarmercado','cancelarvenda'].includes(cmd)){
           try{
             if(cmd==='mercado'){
               const rows=await listMarket(15)
               if(!rows.length) return await reply('🏪 O mercado está vazio.')
-              return await reply('🏪 *MERCADO ENTRE JOGADORES*\n\n'+rows.map(x=>`#${x.id} • ${x.name} ×${x.quantity} — R$ ${Number(x.price).toLocaleString('pt-BR')}\n👤 ${x.seller_name||'Jogador'}`).join('\n\n')+`\n\nComprar: *!comprarmercado ID*`)
+              return await reply('🏪 *MERCADO ENTRE JOGADORES*\n\n'+rows.map((x,i)=>`*${i+1}.* ${x.name} ×${x.quantity} — R$ ${Number(x.price).toLocaleString('pt-BR')}\n👤 ${x.seller_name||'Jogador'}`).join('\n\n')+`\n\nPara comprar use *!compraritem*.`)
             }
             if(cmd==='anunciar'){
-              const [itemId,qtyRaw,priceRaw]=args
-              if(!itemId||!qtyRaw||!priceRaw) return await reply('*Uso:* !anunciar espada_ferro 1 10000')
-              const x=await createMarketListing(sender,itemId,Number(qtyRaw),Number(priceRaw))
-              return await reply(`🏪 Anúncio #${x.id} criado por *R$ ${Number(x.price).toLocaleString('pt-BR')}*.`)
+              const items=(await getInventory(sender)).filter(i=>Number(i.quantity||0)>0)
+              if(!items.length) return await reply('🎒 Seu inventário está vazio.')
+              setQuickFlow(chat,sender,'market_sell_select',{items:items.map(i=>({item_id:i.item_id,name:i.name,quantity:Number(i.quantity||0),rarity:i.rarity}))},5*60*1000)
+              let text='🏪 *ANUNCIAR ITEM*\n\n'
+              items.forEach((i,idx)=>{text+=`*${idx+1}.* ${rarityLabel(i.rarity)} — *${i.name}* ×${i.quantity}\n`})
+              text+='\n👉 Responda apenas com o *número do item*.\n0️⃣ Cancelar'
+              return await reply(text)
+            }
+            if(cmd==='compraritem'){
+              const rows=await listMarket(15)
+              if(!rows.length) return await reply('🏪 Não há anúncios disponíveis agora.')
+              const ownFiltered=rows.filter(x=>x.seller_jid!==sender && x.seller!==sender)
+              const available=ownFiltered.length?ownFiltered:rows
+              const items=available.map(x=>({id:x.id,name:x.name,quantity:Number(x.quantity||1),price:Number(x.price||0),seller_name:x.seller_name||'Jogador'}))
+              if(items.length===1){
+                const x=items[0]
+                setQuickFlow(chat,sender,'market_buy_confirm',x,90000)
+                return await reply(`🛒 *CONFIRMAR COMPRA?*\n\n📦 *${x.name}* ×${x.quantity}\n👤 Vendedor: *${x.seller_name}*\n💰 Valor: *R$ ${x.price.toLocaleString('pt-BR')}*\n\n1️⃣ Sim\n2️⃣ Não`)
+              }
+              setQuickFlow(chat,sender,'market_buy_select',{items},5*60*1000)
+              let text='🛒 *ITENS À VENDA*\n\n'
+              items.forEach((x,i)=>{text+=`*${i+1}.* *${x.name}* ×${x.quantity}\n👤 ${x.seller_name} • 💰 R$ ${x.price.toLocaleString('pt-BR')}\n\n`})
+              text+='👉 Escolha o número do anúncio.\n0️⃣ Cancelar'
+              return await reply(text)
             }
             if(cmd==='comprarmercado'){
               const x=await buyMarketListing(sender,args[0])
