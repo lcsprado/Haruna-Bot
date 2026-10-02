@@ -27,7 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
-  adoptPet, getPet, petAction, petAdventure, petLeaderboard,
+  adoptPet, getPet, renamePet, petAction, petAdventure, petLeaderboard,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
@@ -1153,6 +1153,7 @@ Você possui: *${stock}*
 🐾 *Pets*
 *!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adota ou troca seu pet
 *!meupet* / *!statuspet* — mostra seu pet e evolução
+*!nomepet NovoNome* — troca o nome por R$ 1.000
 🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
 *!alimentar* — alimenta
 *!descansar* — recupera 30 de energia (30 min)
@@ -4793,7 +4794,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','meupet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet'].includes(cmd)){
+        } else if(['pet','pets','adotar','nomepet','meupet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet'].includes(cmd)){
           try{
             if(cmd==='pet'||cmd==='pets') return await reply(`🐾 *PETS DO ALPHA BOT*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n🔄 Trocar de pet custa mais *R$ 25.000* e o novo pet começa do zero.\n💡 Use *!meupet* para ver seu pet atual.`)
             if(cmd==='adotar'){
@@ -4806,6 +4807,12 @@ Se precisar de mais ajuda, use *!suporte*.`
               const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
               const r=await petDuel(sender,target)
               return await reply(`🐾⚔️ *DUELO DE PETS*\n\n🏆 ${r.winner.name} venceu ${r.loser.name}!\n+25 XP para o vencedor • +10 XP para o desafiante derrotado.`,{mentions:[targetRaw]})
+            }
+            if(cmd==='nomepet'){
+              const newName=args.join(' ').trim()
+              if(!newName) return await reply(`🐾 Uso: *${prefix}nomepet NovoNome*\n💰 Custo: *R$ 1.000*`)
+              const p=await renamePet(sender,newName)
+              return await reply(`🐾 *NOME ALTERADO!*\n\n${p.oldName} agora se chama *${p.name}*.\n💰 Custo: *R$ ${fmt(p.fee)}*`)
             }
             if(cmd==='rankpet'){
               const rows=await petLeaderboard(10)
