@@ -584,7 +584,7 @@ export async function startRaid(chat,host){
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id)):{def:0}
       s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk)+Number(w?.atk||0),def:Number(st.def)+Number(a?.def||0),damage:0,alive:true,heals:0,pet:pet?{name:pet.name,energy:Number(pet.energy||0),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null}
     }
-    s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.expiresAt=Date.now()+5*60*1000
+    s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.expiresAt=Date.now()+10*60*1000
     await saveGame(c,chat,'raid',s)
     return s
   })
