@@ -1215,8 +1215,11 @@ Você possui: *${stock}*
 *!rankingrpg* — ranking de combate
 
 🐾 *Pets*
-*!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adota ou troca seu pet
-*!meupet* / *!statuspet* — mostra seu pet e evolução
+*!pet* / *!pets* — catálogo rápido dos pets
+*!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção
+*!meuspets* — mostra todos os seus pets
+*!usarpet ID* — troca o pet ativo
+*!meupet* / *!statuspet* — mostra seu pet ativo e evolução
 *!nomepet NovoNome* — troca o nome por R$ 1.000
 🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
 *!alimentar* — alimenta
@@ -1332,6 +1335,7 @@ Você possui: *${stock}*
 *!abrirgrupo* — libera mensagens (ADM)
 *!fechargrupo* — restringe mensagens (ADM)
 *!banir @pessoa* — remove participante (ADM)
+*!expulsar @pessoa* — alias de !banir (ADM)
 *!promover @pessoa* — promove a ADM
 *!rebaixar @pessoa* — remove ADM
 
@@ -2942,6 +2946,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
+8️⃣ ⚔️ Raid cooperativa
 
 0️⃣ Sair`
         )
@@ -5253,6 +5258,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
+8️⃣ ⚔️ Raid cooperativa
 
 0️⃣ Sair`
           )
@@ -5987,7 +5993,7 @@ ${prefix}clas — ranking de clãs`
           const rows=await brazilStandings(); if(!rows.length)return await reply('📊 Classificação indisponível agora.'); let out='🇧🇷 *BRASILEIRÃO SÉRIE A — TABELA*\n\n'; rows.slice(0,20).forEach(r=>out+=(r.position||r.rank)+'. *'+r.team.name+'* — '+r.points+' pts | '+(r.playedGames??r.all?.played??0)+'J | '+(r.won??r.all?.win??0)+'V '+(r.draw??r.all?.draw??0)+'E '+(r.lost??r.all?.lose??0)+'D\n'); await reply(out.trim())
         } else if(['time','clube'].includes(cmd)){
           const q=args.join(' ').trim(); if(!q)return await reply('Uso: *'+prefix+'time Corinthians*'); const r=await teamSummary(q); await reply('⚽ *'+r.team.name.toUpperCase()+'*\n\n⬅️ *Último jogo*\n'+formatTeamFixture(r.last)+'\n\n➡️ *Próximo jogo*\n'+formatTeamFixture(r.next))
-        } else if(['games','jogos'].includes(cmd)){
+        } else if(['games','jogos','minigames','minigame'].includes(cmd)){
           setQuickFlow(chat,sender,'main',{},90000)
           await reply(
 `🎮 *MINIGAMES DO ALPHA BOT*
