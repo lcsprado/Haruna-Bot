@@ -27,11 +27,11 @@ export const HOUSES=[
 ]
 
 export const CARS=[
-  {id:'popular',name:'Carro Popular',price:18000},
-  {id:'sedan_esportivo',name:'Sedan Esportivo',price:60000},
-  {id:'suv_premium',name:'SUV Premium',price:160000},
-  {id:'superesportivo',name:'Superesportivo',price:500000},
-  {id:'hipercarro',name:'Hipercarro',price:2000000},
+  {id:'popular',name:'Porsche 911 GT3 RS',price:350000},
+  {id:'sedan_esportivo',name:'Ferrari 296 GTB',price:750000},
+  {id:'suv_premium',name:'Lamborghini Revuelto',price:1500000},
+  {id:'superesportivo',name:'McLaren P1',price:3000000},
+  {id:'hipercarro',name:'Bugatti Chiron Super Sport',price:6000000},
 ]
 
 export const MOTORCYCLES=[
@@ -643,9 +643,11 @@ export async function driveUber(jid){
   const garage=await getGarage(jid)
   if(!garage.length) throw new Error('Você precisa ter pelo menos um carro para trabalhar de Uber. Use !carros para comprar um.')
   const tiers={
-    popular:{category:'UberX',min:320,max:620}, sedan_esportivo:{category:'Comfort',min:650,max:1100},
-    suv_premium:{category:'Comfort+',min:1100,max:1750}, superesportivo:{category:'Black',min:2100,max:3300},
-    hipercarro:{category:'Black Premium',min:4800,max:7200},
+    popular:{category:'Uber Black — Porsche',min:900,max:1500},
+    sedan_esportivo:{category:'Uber Elite — Ferrari',min:1700,max:2800},
+    suv_premium:{category:'Uber Elite — Lamborghini',min:3000,max:4600},
+    superesportivo:{category:'Uber Hyper — McLaren',min:5200,max:7600},
+    hipercarro:{category:'Uber Hyper — Bugatti',min:9000,max:13500},
   }
   return tx(async client=>{
     const cooldown=9*60
