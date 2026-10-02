@@ -2781,6 +2781,10 @@ export async function startPlayerSleep(jid){
   })
 }
 
+export function petMaxEnergy(level=1){
+  return 100+Math.max(0,Number(level||1)-1)*2
+}
+
 export async function adoptPet(jid,species='cachorro',name='Alpha'){
   await ensureUser(jid)
   species=String(species||'cachorro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -2859,7 +2863,8 @@ export async function petAction(jid,action){
       const restCooldown=30*60
       const remaining=restCooldown-(now-Number(pet.last_rest||0))
       if(remaining>0) throw new Error(`Seu pet poderá descansar novamente em ${Math.ceil(remaining/60)} min.`)
-      if(Number(pet.energy)>=100) throw new Error('Seu pet já está com a energia cheia.')
+      const maxEnergy=petMaxEnergy(pet.level)
+      if(Number(pet.energy)>=maxEnergy) throw new Error(`Seu pet já está com a energia cheia (${maxEnergy}/${maxEnergy}).`)
     }
     if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
     if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
@@ -2871,7 +2876,7 @@ export async function petAction(jid,action){
     const levelEnergyGain=levelsGained*3
     const {rows}=await client.query(`UPDATE pets SET
       hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
-      energy=LEAST(100,GREATEST(0,energy+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
+      energy=LEAST(100+GREATEST(0,$5-1)*2,GREATEST(0,energy+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
       last_rest=CASE WHEN $8 THEN $7 ELSE last_rest END
       WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid,levelEnergyGain])
     return rows[0]
@@ -2882,7 +2887,7 @@ export async function petAdventure(jid){
     const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
     const energy=Number(pet.energy||0)
-    if(energy<10) throw new Error(`Seu pet precisa de pelo menos 10 de energia para explorar. Energia atual: ${energy}/100. Use !descansar.`)
+    if(energy<10) throw new Error(`Seu pet precisa de pelo menos 10 de energia para explorar. Energia atual: ${energy}/${petMaxEnergy(pet.level)}. Use !descansar.`)
     const now=Math.floor(Date.now()/1000)
     if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco antes de sair.')
     const level=Number(pet.level||1),power=Number(pet.power||10)
@@ -2893,7 +2898,7 @@ export async function petAdventure(jid){
     const levelsGained=Math.max(0,nextLevel-Number(pet.level||1))
     const powerGain=Math.floor(energy/50)+(levelsGained*2)
     const levelEnergyGain=levelsGained*3
-    const {rows}=await client.query(`UPDATE pets SET energy=LEAST(100,$8),xp=$1,level=$2,power=power+$3,
+    const {rows}=await client.query(`UPDATE pets SET energy=LEAST(100+GREATEST(0,$2-1)*2,$8),xp=$1,level=$2,power=power+$3,
       hunger=GREATEST(0,hunger-$4),hygiene=GREATEST(0,hygiene-$5),last_action=$6
       WHERE jid=$7 RETURNING *`,[xp,nextLevel,powerGain,Math.ceil(energy*.25),Math.ceil(energy*.15),now,jid,levelEnergyGain])
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
@@ -2944,11 +2949,11 @@ export async function petDuel(challengerJid,targetJid){
   await transaction(async client=>{
     // Duelo também pode subir nível; ao subir, o Poder acompanha automaticamente (+2 por nível).
     await client.query(`UPDATE pets SET wins=wins+1,xp=xp+25,
-      energy=LEAST(100,energy+(GREATEST(0,(1+FLOOR((xp+25)/100))-level)*3)),
+      energy=LEAST(100+GREATEST(0,(1+FLOOR((xp+25)/100))-1)*2,energy+(GREATEST(0,(1+FLOOR((xp+25)/100))-level)*3)),
       power=power+(GREATEST(0,(1+FLOOR((xp+25)/100))-level)*2),
       level=1+FLOOR((xp+25)/100) WHERE jid=$1`,[winJid])
     await client.query(`UPDATE pets SET losses=losses+1,xp=xp+10,
-      energy=LEAST(100,energy+(GREATEST(0,(1+FLOOR((xp+10)/100))-level)*3)),
+      energy=LEAST(100+GREATEST(0,(1+FLOOR((xp+10)/100))-1)*2,energy+(GREATEST(0,(1+FLOOR((xp+10)/100))-level)*3)),
       power=power+(GREATEST(0,(1+FLOOR((xp+10)/100))-level)*2),
       level=1+FLOOR((xp+10)/100) WHERE jid=$1`,[loseJid])
   })
