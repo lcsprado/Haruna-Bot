@@ -650,12 +650,15 @@ export async function raidRound(chat){
 
     for(const p of alive){
       let pb={damage:0,crit:0}
-      if(p.pet&&Number(p.pet.energy)>0){
-        pb=p.pet.bonus||pb
-        p.pet.energy=Number(p.pet.energy)-1
-        p.pet.turns=Number(p.pet.turns||0)+1
-        await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[p.pet.energy,p.jid])
-        await c.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[p.pet.energy,p.jid])
+      if(p.pet){
+        p.pet.roundActive=Number(p.pet.energy)>0
+        if(p.pet.roundActive){
+          pb=p.pet.bonus||pb
+          p.pet.energy=Number(p.pet.energy)-1
+          p.pet.turns=Number(p.pet.turns||0)+1
+          await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[p.pet.energy,p.jid])
+          await c.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[p.pet.energy,p.jid])
+        }
       }
       const crit=Number(pb.crit||0)>0&&Math.random()<Number(pb.crit||0)
       const mult=1+Number(pb.damage||0)
@@ -679,7 +682,7 @@ export async function raidRound(chat){
     const specialName=special?(cfg.level>=40?'Ruptura do Núcleo':'Golpe Devastador'):null
     const potionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_p','pocao_m','pocao_g','elixir_supremo']])).rows
     for(const p of alive.filter(x=>x.alive)){
-      const pb=p.pet?.bonus||{defense:0,dodge:0}
+      const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))))
       const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:1)))
