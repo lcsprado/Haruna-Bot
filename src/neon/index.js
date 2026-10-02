@@ -27,7 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
-  resolvePlayerSleep, startPlayerSleep,
+  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly,
   adoptPet, getPet, renamePet, petAction, petAdventure, petLeaderboard,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
@@ -1085,6 +1085,7 @@ Você possui: *${stock}*
 *!daily* — coleta a recompensa diária
 *!streak* — mostra sua sequência
 *!dormir* — descansa protegido e recebe XP ao acordar
+*!acordar* — interrompe o sono pagando uma taxa que cai conforme o fim se aproxima
 *!casar @pessoa* — envia pedido de casamento
 *!aceitarcasamento @pessoa* — aceita o pedido
 *!casal* — mostra seu relacionamento
@@ -4612,8 +4613,21 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const ownerTarget=mentionsOf(msg)[0] || sender
         const sleep=await resolvePlayerSleep(sender)
         if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
-        const sleepAllowed=new Set(['dormir','sono','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping'])
+        const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping'])
         if(sleep?.active&&!sleepAllowed.has(cmd)) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
+
+        if(cmd==='acordar'){
+          try{
+            const r=await wakePlayerEarly(sender)
+            clearQuickFlow(chat,sender)
+            if(r.natural){
+              await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${r.place}*\n✨ XP recebido: *+${r.xp}*\n💰 Taxa: *R$ 0*`)
+            }else{
+              await reply(`⏰ *ACORDOU MAIS CEDO!*\n\n🏠 Local: *${r.place}*\n⏳ Você pulou *${duration(r.remaining)}* de sono.\n💸 Taxa de despertar: *R$ ${fmt(r.fee)}*\n✨ XP proporcional recebido: *+${r.xp}*\n\n💡 Quanto mais perto do horário normal, menor fica a taxa.`)
+            }
+          }catch(err){ await reply('❌ '+(err?.message||'Não foi possível acordar agora.')) }
+          continue
+        }
 
         // O sono precisa ser despachado antes das licenças e dos módulos do grupo.
         // Assim ele funciona também no privado e não é engolido por um quick flow/configuração.
