@@ -75,10 +75,15 @@ export async function initDatabase() {
       spd INTEGER NOT NULL DEFAULT 10,
       weapon_id TEXT,
       armor_id TEXT,
+      weapon_tier INTEGER NOT NULL DEFAULT 1,
+      armor_tier INTEGER NOT NULL DEFAULT 1,
       win INTEGER NOT NULL DEFAULT 0,
       loss INTEGER NOT NULL DEFAULT 0,
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
+
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS weapon_tier INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS armor_tier INTEGER NOT NULL DEFAULT 1;
 
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
@@ -100,6 +105,14 @@ export async function initDatabase() {
       data JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at BIGINT NOT NULL DEFAULT ${nowSql},
       UNIQUE(jid, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS equipment_fusions(
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      item_id TEXT NOT NULL REFERENCES items(id),
+      tier INTEGER NOT NULL DEFAULT 1 CHECK(tier>=1 AND tier<=10),
+      quantity INTEGER NOT NULL DEFAULT 0 CHECK(quantity>=0),
+      PRIMARY KEY(jid,item_id,tier)
     );
 
     CREATE TABLE IF NOT EXISTS cooldowns (
@@ -1398,25 +1411,58 @@ export function getEquipmentInfo(itemId) {
   return eq ? {...eq,itemId} : null
 }
 
-export async function equipItem(jid, itemId) {
+export async function fuseEquipment(jid,itemId,tier=1){
+  tier=Number(tier||1)
+  if(!Number.isInteger(tier)||tier<1||tier>=10) throw new Error('Tier inválido.')
+  const eq=EQUIPMENT[itemId]
+  if(!eq) throw new Error('Somente armas e armaduras podem ser fundidas.')
+  return transaction(async client=>{
+    let available=0
+    if(tier===1){
+      const r=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+      available=Number(r.rows[0]?.quantity||0)
+      if(available<2) throw new Error('Você precisa de 2 equipamentos T1 iguais para criar 1 T2.')
+      await client.query('UPDATE inventories SET quantity=quantity-2 WHERE jid=$1 AND item_id=$2',[jid,itemId])
+    }else{
+      const r=await client.query('SELECT quantity FROM equipment_fusions WHERE jid=$1 AND item_id=$2 AND tier=$3 FOR UPDATE',[jid,itemId,tier])
+      available=Number(r.rows[0]?.quantity||0)
+      if(available<2) throw new Error(`Você precisa de 2 equipamentos T${tier} iguais para criar 1 T${tier+1}.`)
+      await client.query('UPDATE equipment_fusions SET quantity=quantity-2 WHERE jid=$1 AND item_id=$2 AND tier=$3',[jid,itemId,tier])
+    }
+    await client.query(`INSERT INTO equipment_fusions(jid,item_id,tier,quantity) VALUES($1,$2,$3,1)
+      ON CONFLICT(jid,item_id,tier) DO UPDATE SET quantity=equipment_fusions.quantity+1`,[jid,itemId,tier+1])
+    return {...eq,itemId,fromTier:tier,tier:tier+1,normalCopies:2**tier}
+  })
+}
+export async function getFusedEquipment(jid){
+  const {rows}=await db.query(`SELECT f.item_id,f.tier,f.quantity,i.name,i.category,i.rarity FROM equipment_fusions f JOIN items i ON i.id=f.item_id WHERE f.jid=$1 AND f.quantity>0 ORDER BY f.tier DESC,i.name`,[jid])
+  return rows
+}
+export function equipmentTierStats(itemId,tier=1){
+  const eq=EQUIPMENT[itemId]; if(!eq) return null
+  tier=Math.max(1,Number(tier||1))
+  const mult=1+Math.min(.45,(tier-1)*.05)
+  return {...eq,itemId,tier,atk:Math.round(Number(eq.atk||0)*mult),def:Math.round(Number(eq.def||0)*mult),mult}
+}
+
+export async function equipItem(jid, itemId, tier=1) {
   const eq=EQUIPMENT[itemId]
   if(!eq) throw new Error('Esse item não pode ser equipado.')
 
   return transaction(async client=>{
-    const inv=await client.query(
-      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-      [jid,itemId]
-    )
-    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) {
-      throw new Error('Você não possui esse item.')
+    tier=Math.max(1,Number(tier||1))
+    if(tier===1){
+      const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+      if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
+    }else{
+      const inv=await client.query('SELECT quantity FROM equipment_fusions WHERE jid=$1 AND item_id=$2 AND tier=$3',[jid,itemId,tier])
+      if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error(`Você não possui esse equipamento T${tier}.`)
     }
 
     const field=eq.category==='weapon' ? 'weapon_id' : 'armor_id'
-    await client.query(
-      `UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,
-      [itemId,jid]
-    )
-    return { ...eq, itemId }
+    const tierField=eq.category==='weapon' ? 'weapon_tier' : 'armor_tier'
+    await client.query(`UPDATE stats SET ${field}=$1,${tierField}=$2,updated_at=${nowSql} WHERE jid=$3`,[itemId,tier,jid])
+    return equipmentTierStats(itemId,tier)
   })
 }
 
