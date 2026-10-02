@@ -996,6 +996,7 @@ async function start() {
 5️⃣ 🎭 Diversão
 6️⃣ 🚗 Carros
 7️⃣ 🚲🏍️ Bicicletas e motos
+8️⃣ 🔑 Chaves de Raid
 
 0️⃣ Sair
 
@@ -1128,7 +1129,6 @@ Você possui: *${stock}*
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
-8️⃣ ⚔️ Raid cooperativa
 
 0️⃣ Sair`
       )
@@ -1214,6 +1214,16 @@ Você possui: *${stock}*
 *!roubar @pessoa* / *!fazoL @pessoa* — tenta roubar
 *!rankingrpg* — ranking de combate
 
+⚔️ *Raids cooperativas*
+*!raid* — lista as Raids e mostra a Raid ativa
+*!raid 20* — abre a Raid Lv.20
+*!chaveraid 20* — compra a chave da Raid
+*!entrarraide* — entra na sala aberta
+*!iniciarraide* — host inicia (mínimo 2 jogadores)
+*!cancelarraide* — host cancela antes de começar
+🔑 As chaves também ficam em *!loja → Chaves de Raid*
+🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
+
 🐾 *Pets*
 *!pet* / *!pets* — catálogo rápido dos pets
 *!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção
@@ -1260,15 +1270,6 @@ Você possui: *${stock}*
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
 🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
 🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
-
-⚔️ *Raids cooperativas*
-*!raid* — lista as Raids e mostra a Raid ativa
-*!raid 20* — abre a Raid Lv.20
-*!chaveraid 20* — compra a chave da Raid
-*!entrarraide* — entra na sala aberta
-*!iniciarraide* — host inicia (mínimo 2 jogadores)
-*!cancelarraide* — host cancela antes de começar
-🏆 Recompensas de Raid são proporcionais ao dano e dão dinheiro, XP, XP de pet e drops específicos
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
@@ -2454,8 +2455,8 @@ Digite apenas seu chute.
     }
 
     if(flow.stage==='main'){
-      if(!/^[1-8]$/.test(input)){
-        await reply('🎮 Escolha uma opção de *1 a 8* ou digite *0* para sair.')
+      if(!/^[1-7]$/.test(input)){
+        await reply('🎮 Escolha uma opção de *1 a 7* ou digite *0* para sair.')
         return true
       }
 
@@ -2538,15 +2539,6 @@ Digite *0* para sair do modo rápido.`
 
 _Ao mandar 1, começa uma sessão automática de até 5 minutos._`
         )
-        return true
-      }
-      if(input==='8'){
-        clearQuickFlow(chat,sender)
-        const raids=getRaidCatalog()
-        let text='⚔️ *RAIDS DO ALPHA*\n\n'
-        raids.forEach(r=>{text+=`• *Lv.${r.level} — ${r.name}*\n  ❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK • 🔑 R$ ${fmt(r.keyPrice)}\n`})
-        text+='\nUse *!raid NÍVEL* para abrir. Ex.: *!raid 20*.'
-        await reply(text)
         return true
       }
     }
@@ -2923,6 +2915,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
 3️⃣ Batalhar com alguém
 4️⃣ Roubar alguém
 5️⃣ Ranking RPG
+6️⃣ ⚔️ Raids cooperativas
 
 0️⃣ Sair`
         )
@@ -2946,7 +2939,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
-8️⃣ ⚔️ Raid cooperativa
 
 0️⃣ Sair`
         )
@@ -3666,6 +3658,19 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(text)
         return true
       }
+      if(input==='8'){
+        const shop=await getShop()
+        const keys=shop.filter(i=>/^chave_raid_(10|15|20|25|30|40|50)$/.test(i.id))
+        setQuickFlow(chat,sender,'shop_raid_key_select',{items:keys.map(i=>i.id)},90000)
+        let text='🔑 *CHAVES DE RAID*\n\n'
+        keys.forEach((i,idx)=>{
+          const level=Number(String(i.id).split('_').pop())
+          text+=`*${idx+1}.* ${rarityLabel(i.rarity)} — *${i.name}*\n💰 R$ ${fmt(i.price)} • 🔒 Nível ${level}+\n_${i.description}_\n\n`
+        })
+        text+='9️⃣ Voltar\n0️⃣ Sair'
+        await reply(text.trim())
+        return true
+      }
       if(input==='7'){
         setQuickFlow(chat,sender,'shop_delivery_select',{},90000)
         let text='🚲🏍️ *DELIVERY — BICICLETAS E MOTOS*\n\n'
@@ -3675,7 +3680,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       if(!['1','2','3','4'].includes(input)){
-        await reply('🍀 Escolha uma opção de *1 a 7*.')
+        await reply('🍀 Escolha uma opção de *1 a 8*.')
         return true
       }
       const items=await getShop()
@@ -3694,6 +3699,39 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       })
       text+='9️⃣ Voltar\n0️⃣ Sair'
       await reply(text.trim())
+      return true
+    }
+
+    if(flow.stage==='shop_raid_key_select'){
+      if(input==='9'){ await shopCategoryMenu(); return true }
+      const itemId=flow.data.items?.[Number(input)-1]
+      if(!itemId){ await reply('🔑 Escolha uma chave pelo número.'); return true }
+      const level=Number(String(itemId).split('_').pop())
+      const p=await getProfile(sender)
+      if(Number(p?.level||1)<level){
+        await reply(`🔒 Essa chave exige *nível ${level}*. Seu nível atual é *${Number(p?.level||1)}*.`)
+        return true
+      }
+      const shop=await getShop()
+      const item=shop.find(i=>i.id===itemId)
+      setQuickFlow(chat,sender,'shop_raid_key_confirm',{itemId,level,name:item?.name||itemId,price:Number(item?.price||0)},90000)
+      await reply(`🔑 *${item?.name||itemId}*\n\n💰 Preço: *R$ ${fmt(item?.price||0)}*\n⚔️ Requisito: *Nível ${level}+*\n\n1️⃣ Comprar\n2️⃣ Cancelar\n9️⃣ Voltar`)
+      return true
+    }
+
+    if(flow.stage==='shop_raid_key_confirm'){
+      if(input==='9'){ await shopCategoryMenu(); return true }
+      if(input==='2'){ await shopCategoryMenu(); return true }
+      if(input!=='1'){ await reply('Escolha *1 Comprar*, *2 Cancelar* ou *9 Voltar*.'); return true }
+      const p=await getProfile(sender)
+      if(Number(p?.level||1)<Number(flow.data.level||0)){
+        await reply(`🔒 Você precisa estar no *nível ${flow.data.level}* para comprar esta chave.`)
+        return true
+      }
+      const r=await buyItem(sender,flow.data.itemId,1)
+      await progressDailyMission(sender,'shop')
+      clearQuickFlow(chat,sender)
+      await reply(`🔑 *CHAVE COMPRADA!*\n\n📦 ${r.item.name}\n💸 R$ ${fmt(r.total)}\n\nAgora use *!raid ${flow.data.level}* dentro do grupo.`)
       return true
     }
 
@@ -3985,7 +4023,25 @@ Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
         await reply(text.trim())
         return true
       }
-      await reply('⚔️ Escolha de *1 a 5*.')
+      if(input==='6'){
+        clearQuickFlow(chat,sender)
+        const active=await getRaidStatus(chat)
+        if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
+          const players=Object.values(active.players||{})
+          let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*`
+          if(active.status==='lobby') text+='\n\n👉 *!entrarraide* para entrar.\n🚀 Host: *!iniciarraide*.'
+          else text+='\n\nUse *!raid* para acompanhar o combate.'
+          await reply(text)
+          return true
+        }
+        const raids=getRaidCatalog()
+        let text='⚔️ *RAIDS DO RPG*\n\n'
+        raids.forEach(r=>{text+=`*Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)}\n\n`})
+        text+='🔑 Compre em *!loja → Chaves de Raid*\n⚔️ Abra com *!raid NÍVEL*. Ex.: *!raid 20*.'
+        await reply(text)
+        return true
+      }
+      await reply('⚔️ Escolha de *1 a 6*.')
       return true
     }
 
@@ -4787,8 +4843,8 @@ Fale com o responsável pelo Alpha Bot para ativação.`
 
         if(isGroup && !isOwner){
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
-          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
-          const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar','raid','raidstatus','chaveraid','entrarraide','iniciarraide','cancelarraide'])
+          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','entrarraide','iniciarraide','cancelarraide'])
+          const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
           let key=null,label=null
           if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
@@ -5186,6 +5242,7 @@ Se precisar de mais ajuda, use *!suporte*.`
 3️⃣ Batalhar com alguém
 4️⃣ Roubar alguém
 5️⃣ Ranking RPG
+6️⃣ ⚔️ Raids cooperativas
 
 0️⃣ Sair`
           )
@@ -5258,7 +5315,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
-8️⃣ ⚔️ Raid cooperativa
 
 0️⃣ Sair`
           )
