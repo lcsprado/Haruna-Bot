@@ -9,7 +9,7 @@ import makeWASocket, {
 } from 'baileys'
 import pino from 'pino'
 import {
-  initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work,
+  initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
   equipItem, getEquipmentInfo, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
@@ -545,6 +545,15 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     caption:`👤 *${p.push_name||'Jogador'}* • ${title}\n🍀 *ALPHA BOT* — digite *!perfil* para gerar o seu.`
   },{quoted:msg})
 }
+function workResultText(r){
+  let text=`💼 *TRABALHO — ${r.rank.name.toUpperCase()}*\n\n💵 Pagamento: *R$ ${fmt(r.amount)}*\n📈 XP profissional: *+${r.xpGain}* (${r.careerXp})\n🧾 Expedientes: *${r.totalShifts}*`
+  if(r.event) text+=`\n\n${r.event}`
+  if(r.promoted) text+=`\n\n🎉 *PROMOÇÃO!*\n${r.oldRank} → *${r.rank.name}*`
+  if(r.next) text+=`\n🎯 Próximo cargo: *${r.next.name}* — faltam ${Math.max(0,r.next.xp-r.careerXp)} XP profissional.`
+  else text+='\n🏆 Você chegou ao topo da carreira!'
+  return text
+}
+
 function dailyResultText(r){
   let text=`🔥 *DAILY ALPHA*\n\n💰 +R$ ${fmt(r.totalCash)}\n🔥 Sequência: *${r.streak} dia${r.streak===1?'':'s'}*\n🏅 Recorde: *${r.bestStreak} dia${r.bestStreak===1?'':'s'}*`
   if(r.reward){
@@ -988,7 +997,8 @@ Você possui: *${stock}*
 
 *!economia* — abre o menu de economia
 *!saldo* — carteira, banco e total
-*!trabalhar* — trabalha para ganhar dinheiro
+*!trabalhar* — trabalha, ganha dinheiro e evolui sua carreira
+*!carreira* — mostra cargo e progresso profissional
 *!uber* — faz uma corrida usando seu melhor carro
 *!ifood* — coloca toda sua frota de bike/motos para entregar
 *!ifoodbike* — alias do !ifood
@@ -2911,7 +2921,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         else{
           await progressDailyMission(sender,'work')
           if(isGroup) await progressGroupMission(chat,sender,'work')
-          await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
+          await reply(workResultText(r))
         }
         return true
       }
@@ -5072,8 +5082,15 @@ ${status}
           else {
             await progressDailyMission(sender,'work')
           if(isGroup) await progressGroupMission(chat,sender,'work')
-            await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
+            await reply(workResultText(r))
           }
+
+        } else if(['carreira','emprego','profissao','profissão'].includes(cmd)){
+          const r=await getCareer(sender)
+          let text=`💼 *MINHA CARREIRA*\n\n🏷️ Cargo: *${r.rank.name}*\n📈 XP profissional: *${r.career_xp}*\n🧾 Expedientes: *${r.total_shifts}*\n💵 Multiplicador salarial: *x${r.rank.mult.toFixed(2)}*`
+          if(r.next) text+=`\n🎯 Próximo: *${r.next.name}* — faltam ${Math.max(0,r.next.xp-Number(r.career_xp))} XP.`
+          else text+='\n🏆 Cargo máximo alcançado!'
+          await reply(text)
 
         } else if(['vendercarro'].includes(cmd)){
           if(!args.length) return await reply(`🚗 Use *${prefix}vendercarro número* conforme sua *${prefix}garagem*.\n⚠️ Revenda: *70% do valor pago* (30% de desvalorização).`)
