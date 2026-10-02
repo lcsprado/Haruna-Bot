@@ -524,12 +524,13 @@ export async function deliverIfood(jid){
 
   const best=garage.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
   const tiers={
-    bicicleta:{category:'Entrega de bicicleta',min:20,max:65},
-    moto_125:{category:'Entrega básica',min:70,max:160},
-    moto_160:{category:'Entrega rápida',min:100,max:220},
-    moto_300:{category:'Entrega turbo',min:140,max:300},
-    moto_600:{category:'Entrega premium',min:190,max:400},
-    moto_1000:{category:'Entrega elite',min:250,max:520},
+    // Faixas não se sobrepõem: veículo mais caro sempre tem potencial de ganho claramente maior.
+    bicicleta:{category:'Entrega de bicicleta',min:20,max:55},
+    moto_125:{category:'Entrega básica',min:70,max:140},
+    moto_160:{category:'Entrega rápida',min:150,max:240},
+    moto_300:{category:'Entrega turbo',min:260,max:390},
+    moto_600:{category:'Entrega premium',min:420,max:620},
+    moto_1000:{category:'Entrega elite',min:700,max:1000},
   }
   const tier=tiers[best.id]||tiers.bicicleta
 
