@@ -11,7 +11,7 @@ import pino from 'pino'
 import {
   initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, fuseEquipment, getFuseCandidates, getFusedEquipment, equipmentTierStats, usePotion, getCombatProfile, battle, combatLeaderboard,
+  equipItem, getEquipmentInfo, sellDuplicateEquipment, usePotion, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -1133,8 +1133,8 @@ Você possui: *${stock}*
 *!comprar item quantidade* — compra da loja
 *!inventario* — abre seu inventário
 *!vender* — vende itens ao sistema
+*!venderrepetidos* — vende equipamentos repetidos e mantém 1 de cada
 *!equipar* — equipa arma ou armadura
-*!fundir* — mostra somente equipamentos que podem ser fundidos e permite escolher pelo número
 *!usar* — usa um consumível
 
 🏪 *Mercado entre jogadores*
@@ -2646,18 +2646,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
       if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
       await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Até *5 minutos* • 🥊 ataque a cada *10 segundos*\n🧪 Cura automática quando possível.\n📅 O Boss encerra *sábado às 23:59* (São Paulo).\n\nUse *!boss* para acompanhar o HP.')
-      return true
-    }
-
-    if(flow.stage==='fuse_select'){
-      const n=Number(input), candidates=flow.data?.candidates||[]
-      if(!Number.isInteger(n)||n<1||n>candidates.length){ await reply('❌ Escolha um número da lista de fusões disponíveis.'); return true }
-      const pick=candidates[n-1]
-      try{
-        const r=await fuseEquipment(sender,pick.itemId,pick.tier)
-        clearQuickFlow(chat,sender)
-        await reply(`🔥 *FUSÃO CONCLUÍDA!*\n\n⚙️ ${r.name}\n⬆️ T${r.fromTier} → *T${r.tier}*\n📦 Equivale a *${r.normalCopies} cópias T1*\n💪 Bônus: *+${Math.round((r.mult-1)*100)}%* nos atributos.\n\nUse *!fundir* novamente para ver as próximas disponíveis.`)
-      }catch(err){ clearQuickFlow(chat,sender); await reply('❌ '+(err?.message||'Não foi possível fundir.')) }
       return true
     }
 
@@ -5493,6 +5481,17 @@ ${status}
         } else if(['vender','sell'].includes(cmd)){
           await showSellMenu(chat,sender,reply)
 
+        } else if(['venderrepetidos','venderduplicados'].includes(cmd)){
+          const r=await sellDuplicateEquipment(sender)
+          if(!r.types) return await reply('💰 Você não tem equipamentos repetidos vendáveis agora.\n\nO Alpha mantém *1 cópia de cada arma/armadura*. Itens lendários não são vendidos automaticamente.')
+          let text='💰 *REPETIDOS VENDIDOS!*\n\n'
+          r.sold.forEach(i=>{ text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(i.total)+'\n' })
+          text+='\n🧮 Unidades vendidas: *'+r.totalUnits+'*'
+          text+='\n💵 Total recebido: *R$ '+fmt(r.total)+'*'
+          text+='\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
+          text+='\n\n🛡️ 1 cópia de cada equipamento foi preservada.'
+          await reply(text)
+
         } else if(['equipar','equip'].includes(cmd)){
           const items=await getInventory(sender)
           const equipables=items.filter(i=>['weapon','armor'].includes(i.category))
@@ -6414,18 +6413,6 @@ Obrigado por apoiar o Alpha Bot 🍀`
         } else if(['comandos','comando','commands','cmds'].includes(cmd)){
           await showCommandsMainMenu(chat,sender,reply)
 
-        } else if(cmd==='fundir'){
-          const candidates=await getFuseCandidates(sender)
-          if(!candidates.length) return await reply('🔥 *FUSÃO DE EQUIPAMENTOS*\n\nVocê não tem nenhuma fusão disponível agora.\n\n💡 É preciso ter *2 equipamentos iguais do mesmo tier*.\n2× T1 → T2 • 2× T2 → T3 • 2× T3 → T4')
-          setQuickFlow(chat,sender,'fuse_select',{candidates:candidates.map(c=>({itemId:c.item_id,tier:Number(c.tier)}))},5*60*1000)
-          let text='🔥 *EQUIPAMENTOS QUE PODEM SER FUNDIDOS*\n\n'
-          candidates.forEach((c,i)=>{
-            const info=equipmentTierStats(c.item_id,c.tier)
-            const stat=c.category==='weapon'?`⚔️ ${info?.atk||0} ATK`:`🛡️ ${info?.def||0} DEF`
-            text+=`*${i+1}.* ${c.name} ×${c.quantity} — *T${c.tier} → T${Number(c.tier)+1}*\n   ${stat}\n`
-          })
-          text+='\n👉 Responda apenas com o *número* para fundir.\n0️⃣ Cancelar'
-          await reply(text)
         } else if(['menu','help','ajuda'].includes(cmd)){
           await showMainMenu(chat,sender,reply)
         } else {
