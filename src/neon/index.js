@@ -549,7 +549,7 @@ function stickerMediaOf(msg){
 function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
 
 function luckyBoxSummary(r){
-  let text=`🎁 *CAIXAS — RESULTADO*\n\n📦 Caixas abertas: *${r.opened}*\n`
+  let text=`🎁 *CAIXAS — RESULTADO*\n\n📦 Caixa: *${r.boxName||r.boxId||'Caixa'}*\n📦 Caixas abertas: *${r.opened}*\n`
   if(r.cash>0) text+=`💰 Dinheiro: *R$ ${fmt(r.cash)}*\n`
   if(r.exp>0) text+=`✨ EXP: *+${fmt(r.exp)}*\n`
 
@@ -4015,7 +4015,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(
 `⚠️ *ABRIR TODAS AS CAIXAS?*
 
-Você vai abrir *${stock} Caixa(s) da Sorte* de uma vez.
+Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
 
 1️⃣ Confirmar
 2️⃣ Cancelar`
