@@ -473,6 +473,274 @@ function petBossBonus(pet){
   const scaled=k=>Math.min(.10,Number(base[k]||0)*scale)
   return {label:base.label||pet.species,damage:scaled('damage')+scaled('bossDamage'),defense:scaled('defense'),crit:scaled('crit'),dodge:scaled('dodge'),xp:scaled('xp'),drop:scaled('drop')}
 }
+
+const RAID_CONFIGS=[
+  {level:10,name:'Guardião de Pedra',hp:10000,atk:14,key:'chave_raid_10',cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Núcleo de Pedra'},box:null},
+  {level:15,name:'Dragão Vulcânico',hp:18000,atk:20,key:'chave_raid_15',cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte'},
+  {level:20,name:'Devorador Abissal',hp:30000,atk:28,key:'chave_raid_20',cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara'},
+  {level:25,name:'Titã de Ferro',hp:48000,atk:36,key:'chave_raid_25',cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara'},
+  {level:30,name:'Rei Abissal',hp:75000,atk:46,key:'chave_raid_30',cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica'},
+  {level:40,name:'Serafim Caído',hp:130000,atk:65,key:'chave_raid_40',cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica'},
+  {level:50,name:'Alpha Corrompido',hp:220000,atk:90,key:'chave_raid_50',cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica'},
+]
+const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
+
+export function getRaidCatalog(){
+  return RAID_CONFIGS.map(r=>({...r}))
+}
+
+export async function getRaidState(chat){
+  return tx(async c=>loadGame(c,chat,'raid'))
+}
+
+export async function createRaidLobby(chat,host,level,name='Jogador'){
+  const cfg=raidConfig(level)
+  if(!cfg) throw new Error('Raid inválida. Níveis disponíveis: 10, 15, 20, 25, 30, 40 e 50.')
+  await ensureUser(host,name)
+  return tx(async c=>{
+    const old=await loadGame(c,chat,'raid')
+    if(old&&['lobby','running'].includes(old.status)) throw new Error('Já existe uma Raid aberta neste grupo.')
+    const user=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[host])).rows[0]
+    if(Number(user?.level||1)<cfg.level) throw new Error(`Essa Raid exige nível ${cfg.level}. Seu nível atual: ${Number(user?.level||1)}.`)
+    const hp=(await c.query('SELECT hp,max_hp FROM stats WHERE jid=$1 FOR UPDATE',[host])).rows[0]
+    if(Number(hp?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de abrir a Raid.')
+    const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[host,cfg.key])).rows[0]
+    if(Number(key?.quantity||0)<1) throw new Error(`Você precisa de 1 ${cfg.key.replaceAll('_',' ')} para abrir esta Raid.`)
+    const state={
+      status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',
+      hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,key:cfg.key,
+      players:{[host]:{name:name||'Jogador',joinedAt:Date.now()}},
+      createdAt:Date.now(),expiresAt:Date.now()+5*60*1000
+    }
+    await saveGame(c,chat,'raid',state)
+    return {...state,config:cfg}
+  })
+}
+
+export async function joinRaid(chat,jid,name='Jogador'){
+  await ensureUser(jid,name)
+  return tx(async c=>{
+    const s=await loadGame(c,chat,'raid')
+    if(!s||s.status!=='lobby'||Number(s.expiresAt||0)<Date.now()) throw new Error('Não existe Raid aguardando jogadores.')
+    if(s.players?.[jid]) return {already:true,...s}
+    const user=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(Number(user?.level||1)<Number(s.level)) throw new Error(`Essa Raid exige nível ${s.level}. Seu nível atual: ${Number(user?.level||1)}.`)
+    const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar na Raid.')
+    s.players={...(s.players||{}),[jid]:{name:name||'Jogador',joinedAt:Date.now()}}
+    await saveGame(c,chat,'raid',s)
+    return s
+  })
+}
+
+export async function leaveRaid(chat,jid){
+  return tx(async c=>{
+    const s=await loadGame(c,chat,'raid')
+    if(!s||s.status!=='lobby') throw new Error('Não existe Raid em preparação.')
+    if(!s.players?.[jid]) throw new Error('Você não está nesta Raid.')
+    if(s.host===jid){
+      await clearGame(c,chat,'raid')
+      return {cancelled:true,host:true}
+    }
+    delete s.players[jid]
+    await saveGame(c,chat,'raid',s)
+    return {cancelled:false,players:Object.keys(s.players||{}).length}
+  })
+}
+
+function raidPetEnergyMaxSql(){
+  return `(CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,(1+FLOOR(($1)/100))-1)*2`
+}
+
+async function grantRaidPetXp(c,jid,gain){
+  gain=Math.max(0,Math.floor(Number(gain)||0))
+  if(!gain) return null
+  const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+  if(!pet) return null
+  const oldLevel=Number(pet.level||1),xp=Number(pet.xp||0)+gain,nextLevel=1+Math.floor(xp/100)
+  const gained=Math.max(0,nextLevel-oldLevel)
+  const {rows}=await c.query(`UPDATE pets SET
+    xp=$1,level=$2,power=power+$3,
+    energy=LEAST((CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,$2-1)*2,energy+$4)
+    WHERE jid=$5 RETURNING *`,[xp,nextLevel,gained*2,gained*3,jid])
+  const updated=rows[0]||null
+  if(updated){
+    await c.query(`UPDATE pet_collection SET
+      species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12
+      WHERE jid=$13 AND active=TRUE`,[
+      updated.species,updated.name,updated.level,updated.xp,updated.hunger,updated.hygiene,
+      updated.energy,updated.power,updated.wins,updated.losses,updated.last_action,updated.last_rest,jid
+    ])
+  }
+  return {name:updated?.name||pet.name,xp:gain,level:nextLevel,levels:gained}
+}
+
+function raidChoosePotion(rows,maxHp){
+  const heals={pocao_p:35,pocao_m:80,pocao_g:160,elixir_supremo:999999}
+  const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
+  const available=(rows||[]).filter(x=>Number(x.quantity)>0).map(x=>({...x,heal:heals[x.item_id]||0})).sort((a,b)=>a.heal-b.heal)
+  const chosen=available.find(x=>x.heal>=maxHp)||available[available.length-1]
+  return chosen?{...chosen,name:names[chosen.item_id]}:null
+}
+
+export async function startRaid(chat,host){
+  return tx(async c=>{
+    const s=await loadGame(c,chat,'raid')
+    if(!s||s.status!=='lobby') throw new Error('Não existe Raid pronta para iniciar.')
+    if(s.host!==host) throw new Error('Somente quem abriu a Raid pode iniciar.')
+    if(Number(s.expiresAt||0)<Date.now()) throw new Error('A sala de Raid expirou. Abra outra.')
+    const ids=Object.keys(s.players||{})
+    if(ids.length<2) throw new Error('A Raid precisa de pelo menos 2 jogadores.')
+
+    const cfg=raidConfig(s.level)
+    if(!cfg) throw new Error('Configuração da Raid não encontrada.')
+
+    const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[host,cfg.key])).rows[0]
+    if(Number(key?.quantity||0)<1) throw new Error('A chave da Raid não está mais no seu inventário.')
+    await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[host,cfg.key])
+
+    const users=(await c.query('SELECT jid,level,push_name FROM users WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
+    const stats=(await c.query('SELECT * FROM stats WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
+    if(users.some(u=>Number(u.level)<cfg.level)) throw new Error('Um participante não atende mais ao nível mínimo da Raid.')
+    if(stats.some(st=>Number(st.hp)<=0)) throw new Error('Um participante está sem HP. Cure o grupo antes de iniciar.')
+
+    const equipIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id]).filter(Boolean))]
+    const ups=equipIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,equipIds])).rows:[]
+    const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
+    const potions=(await c.query(`SELECT jid,item_id,quantity FROM inventories
+      WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE`,[ids,['pocao_p','pocao_m','pocao_g','elixir_supremo']])).rows
+
+    const fighters={}
+    for(const jid of ids){
+      const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
+      const eqLevel=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
+      const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,eqLevel(st.weapon_id)):{atk:0,def:0}
+      const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,eqLevel(st.armor_id)):{atk:0,def:0}
+      fighters[jid]={
+        jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),
+        atk:Number(st.atk)+Number(weapon?.atk||0),def:Number(st.def)+Number(armor?.def||0),
+        damage:0,alive:true,heals:[],pet:pet?{...pet,bonus:petBossBonus(pet),damage:0,turns:0}:null
+      }
+    }
+
+    s.status='running';s.startedAt=Date.now();s.hp=cfg.hp;s.maxHp=cfg.hp
+    await saveGame(c,chat,'raid',s)
+
+    const events=[],maxRounds=45
+    let bossHp=cfg.hp
+    for(let round=1;round<=maxRounds&&bossHp>0;round++){
+      const alive=Object.values(fighters).filter(f=>f.alive)
+      if(!alive.length) break
+      let roundDamage=0
+      for(const f of alive){
+        let pet=f.pet
+        let pb={damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,label:null}
+        if(pet&&Number(pet.energy)>=2){
+          pb=pet.bonus
+          pet.energy=Number(pet.energy)-2
+          pet.turns++
+          await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[pet.energy,f.jid])
+        }else pet=null
+        const crit=pb.crit>0&&Math.random()<pb.crit
+        const multiplier=1+pb.damage
+        const dmg=Math.max(5,Math.floor(f.atk*(.82+Math.random()*.38)*multiplier*(crit?1.5:1)))
+        const extra=Math.max(0,dmg-Math.floor(dmg/multiplier))
+        if(f.pet) f.pet.damage+=extra
+        f.damage+=dmg;roundDamage+=dmg;bossHp=Math.max(0,bossHp-dmg)
+        if(bossHp<=0) break
+      }
+      events.push({type:'round',round,bossHp,damage:roundDamage})
+      if(bossHp<=0) break
+
+      const special=Math.random()<0.22
+      const attackName=special?(cfg.level>=40?'Ruptura do Núcleo':'Golpe Devastador'):'Ataque do Boss'
+      const hits=[]
+      for(const f of Object.values(fighters).filter(x=>x.alive)){
+        const pb=(f.pet&&Number(f.pet.energy)>=0)?f.pet.bonus:{defense:0,dodge:0}
+        const dodged=pb.dodge>0&&Math.random()<pb.dodge
+        const base=Math.max(1,Math.round((cfg.atk-f.def*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))))
+        const dmg=dodged?0:Math.max(1,Math.round(base*(special?1.55:1)))
+        f.hp=Math.max(0,f.hp-dmg)
+        let healed=null
+        if(f.hp<=0){
+          const ownPotions=potions.filter(x=>x.jid===f.jid&&Number(x.quantity)>0)
+          const chosen=raidChoosePotion(ownPotions,f.maxHp)
+          if(chosen){
+            f.hp=Math.min(f.maxHp,chosen.heal)
+            chosen.quantity=Number(chosen.quantity)-1
+            const original=potions.find(x=>x.jid===f.jid&&x.item_id===chosen.item_id)
+            if(original) original.quantity=chosen.quantity
+            await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[f.jid,chosen.item_id])
+            healed=chosen.name;f.heals.push(chosen.name)
+          }else{
+            f.alive=false
+          }
+        }
+        await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[Math.max(0,f.hp),f.jid])
+        hits.push({jid:f.jid,name:f.name,damage:dmg,hp:f.hp,dodged,healed,down:!f.alive})
+      }
+      events.push({type:'boss',round,name:attackName,special,hits})
+    }
+
+    const success=bossHp<=0
+    const totalDamage=Object.values(fighters).reduce((n,f)=>n+f.damage,0)||1
+    const rewards=[]
+    if(success){
+      const ranked=Object.values(fighters).sort((a,b)=>b.damage-a.damage)
+      for(let i=0;i<ranked.length;i++){
+        const f=ranked[i],share=f.damage/totalDamage
+        const petBonus=f.pet?.bonus||{xp:0,drop:0}
+        const cash=Math.max(250,Math.floor(cfg.cashPool*(.10+.90*share)))
+        const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(petBonus.xp||0))))
+        await credit(c,f.jid,cash,`raid_${cfg.level}`)
+        await grantExpInTransaction(c,f.jid,exp)
+        const petXp=f.pet?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
+        const petReward=petXp?await grantRaidPetXp(c,f.jid,petXp):null
+        const drops=[]
+        const materialChance=Math.min(.90,.25+share*.90+Number(petBonus.drop||0))
+        if(i===0||Math.random()<materialChance){
+          await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+            ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[f.jid,cfg.material.id])
+          drops.push(cfg.material)
+        }
+        if(cfg.box){
+          const boxChance=Math.min(.65,.12+share*.65)
+          if((i===0&&cfg.level>=30)||Math.random()<boxChance){
+            await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+              ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[f.jid,cfg.box])
+            drops.push({id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte'})
+          }
+        }
+        rewards.push({jid:f.jid,name:f.name,damage:f.damage,share,position:i+1,cash,exp,petXp,pet:petReward,drops,heals:f.heals,alive:f.alive})
+      }
+    }else{
+      for(const f of Object.values(fighters)){
+        if(f.damage<=0) continue
+        const share=f.damage/totalDamage
+        const exp=Math.max(5,Math.floor(cfg.xpPool*.15*share))
+        await grantExpInTransaction(c,f.jid,exp)
+        const petXp=f.pet?Math.max(2,Math.floor(cfg.petXpPool*.10*share)):0
+        const petReward=petXp?await grantRaidPetXp(c,f.jid,petXp):null
+        rewards.push({jid:f.jid,name:f.name,damage:f.damage,share,cash:0,exp,petXp,pet:petReward,drops:[],heals:f.heals,alive:f.alive})
+      }
+    }
+
+    for(const f of Object.values(fighters)){
+      if(f.pet){
+        await c.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[f.pet.energy,f.jid])
+      }
+    }
+
+    const result={
+      status:'completed',success,level:cfg.level,name:cfg.name,maxHp:cfg.hp,hp:bossHp,atk:cfg.atk,
+      startedAt:s.startedAt,endedAt:Date.now(),events,rewards,
+      players:Object.values(fighters).map(f=>({jid:f.jid,name:f.name,damage:f.damage,alive:f.alive,hp:f.hp,maxHp:f.maxHp,heals:f.heals,pet:f.pet?{name:f.pet.name,damage:f.pet.damage,turns:f.pet.turns,energy:f.pet.energy}:null}))
+    }
+    await saveGame(c,chat,'raid',result)
+    return result
+  })
+}
+
 async function grantBossItem(c,jid,item){
   await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
     ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,item.id])
