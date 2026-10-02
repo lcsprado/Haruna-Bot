@@ -343,6 +343,9 @@ export async function initDatabase() {
     ['fragmento_celestial','Fragmento Celestial','Material conquistado na Raid Lv.40.','special',0,'epic'],
     ['nucleo_alpha_corrompido','Núcleo Alpha Corrompido','Material conquistado na Raid Lv.50.','special',0,'legendary'],
 
+    // Exclusivo de Boss de Evento
+    ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
+
     // Caixas
     ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
     ['caixa_rara','Caixa Rara','Item garantido no mínimo Incomum. Chance de Lendário: 0,3%.','special',12000,'rare'],
@@ -358,6 +361,9 @@ export async function initDatabase() {
           category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
     `, item)
   }
+
+  // Troféu de evento: não é item de loja e não pode ser vendido.
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id='insignia_eclipse'")
 
   // A fusão foi descontinuada. Preserva qualquer equipamento já fundido,
   // devolvendo o equivalente em cópias normais (T2=2, T3=4, T4=8...).
