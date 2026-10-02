@@ -532,12 +532,12 @@ export async function deliverIfood(jid,mode='moto'){
   const best=candidates.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
   const tiers={
     // Faixas não se sobrepõem: veículo mais caro sempre tem potencial de ganho claramente maior.
-    bicicleta:{category:'Entrega de bicicleta',min:20,max:55},
-    moto_125:{category:'Entrega básica',min:70,max:140},
-    moto_160:{category:'Entrega rápida',min:150,max:240},
-    moto_300:{category:'Entrega turbo',min:260,max:390},
-    moto_600:{category:'Entrega premium',min:420,max:620},
-    moto_1000:{category:'Entrega elite',min:700,max:1000},
+    bicicleta:{category:'Entrega de bicicleta',min:30,max:75},
+    moto_125:{category:'Entrega básica',min:100,max:190},
+    moto_160:{category:'Entrega rápida',min:190,max:310},
+    moto_300:{category:'Entrega turbo',min:340,max:520},
+    moto_600:{category:'Entrega premium',min:620,max:900},
+    moto_1000:{category:'Entrega elite',min:1100,max:1550},
   }
   const tier=tiers[best.id]||tiers.bicicleta
 
@@ -593,11 +593,11 @@ export async function driveUber(jid){
   // O melhor carro da garagem define a categoria disponível e o teto da corrida.
   const best=garage.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
   const tiers={
-    popular:{category:'UberX',min:180,max:420},
-    sedan_esportivo:{category:'Comfort',min:300,max:650},
-    suv_premium:{category:'Comfort+',min:450,max:900},
-    superesportivo:{category:'Black',min:700,max:1400},
-    hipercarro:{category:'Black Premium',min:1000,max:2000},
+    popular:{category:'UberX',min:260,max:520},
+    sedan_esportivo:{category:'Comfort',min:520,max:900},
+    suv_premium:{category:'Comfort+',min:900,max:1450},
+    superesportivo:{category:'Black',min:1700,max:2700},
+    hipercarro:{category:'Black Premium',min:4000,max:6000},
   }
   const tier=tiers[best.id]||tiers.popular
 
