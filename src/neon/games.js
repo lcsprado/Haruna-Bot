@@ -502,9 +502,14 @@ export async function attackBoss(chat,jid,name){
     const s=await loadGame(c,chat,'boss')
     if(!s||Number(s.hp)<=0||Number(s.maxHp)<25000||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now()) throw new Error('Não há Boss de Grupo ativo. Use !boss para iniciar o Boss deste fim de semana.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const pet=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[jid])).rows[0]||null
-    const petBonus=petBossBonus(pet)
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
+    const pet=(await c.query('SELECT species,name,level,energy FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
+    if(pet && Number(pet.energy)<2) throw new Error(`Seu pet está sem energia para atacar. Use !descansar. Energia atual: ${pet.energy}/100.`)
+    if(pet){
+      pet.energy=Number(pet.energy)-2
+      await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[pet.energy,jid])
+    }
+    const petBonus=petBossBonus(pet)
     const weapon=getEquipmentInfo(st.weapon_id)||{atk:0}, armor=getEquipmentInfo(st.armor_id)||{def:0}
     const atk=Number(st.atk)+Number(weapon.atk||0), def=Number(st.def)+Number(armor.def||0)
     const crit=petBonus.crit>0&&Math.random()<petBonus.crit
@@ -538,8 +543,7 @@ export async function attackBoss(chat,jid,name){
       return {dead:true,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal}
     }
     await saveGame(c,chat,'boss',s)
-    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit}:null}
+    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:Number(st.max_hp),playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy}:null}
   })
 }
 export async function grantBossXp(rewards=[]){for(const r of rewards) await grantExp(r.jid,r.exp)}
-
