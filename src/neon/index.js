@@ -4905,7 +4905,7 @@ ${status}
             await progressDailyMission(sender,'work')
             let text=`🍔 *ENTREGA CONCLUÍDA!*\n\n🚲🏍️ Veículo: *${r.motorcycle.name}*\n📦 Categoria: *${r.category}*\n🛣️ ${r.delivery}\n💵 Entrega: *R$ ${fmt(r.fare)}*`
             if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
-            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega em 10 minutos.`
+            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima entrega em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
 
@@ -4917,7 +4917,7 @@ ${status}
             await progressDailyMission(sender,'work')
             let text=`🚗 *CORRIDA CONCLUÍDA!*\n\n🚘 Carro: *${r.car.name}*\n🏷️ Categoria: *${r.category}*\n🛣️ ${r.ride}\n💵 Corrida: *R$ ${fmt(r.fare)}*`
             if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
-            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima corrida em 25 minutos.`
+            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima corrida em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
 
