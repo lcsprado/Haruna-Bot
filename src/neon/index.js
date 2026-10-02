@@ -1224,8 +1224,8 @@ Você possui: *${stock}*
 *!energiapet* — usa Energético Pet e restaura 100% da energia do pet ativo
 
 🏪 *Mercado entre jogadores*
-*!mercado* — lista anúncios
-*!anunciar* — abre seu inventário, escolhe o item e define o preço
+*!mercado* — lista anúncios e mostra quanto tempo falta para expirar
+*!anunciar* — anuncia um item por 1 hora; se não vender, volta ao inventário
 *!comprar#3* / *!comprar #3* — abre o anúncio #3 e confirma a compra
 *!compraritem* — abre a lista de anúncios
 *!cancelarvenda ID* — cancela seu anúncio
@@ -5272,7 +5272,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='mercado'){
               const rows=await listMarket(15)
               if(!rows.length) return await reply('🏪 O mercado está vazio.')
-              return await reply('🏪 *MERCADO ENTRE JOGADORES*\n\n'+rows.map(x=>`#${x.id} • ${x.name} ×${x.quantity} — R$ ${Number(x.price).toLocaleString('pt-BR')}\n👤 ${x.seller_name||'Jogador'}`).join('\n\n')+`\n\nComprar direto: *!comprar#ID*\nEx.: *!comprar#3*`)
+              return await reply('🏪 *MERCADO ENTRE JOGADORES*\n\n'+rows.map(x=>{ const sec=Number(x.remaining_seconds||0); const min=Math.max(1,Math.ceil(sec/60)); return `#${x.id} • ${x.name} ×${x.quantity} — R$ ${Number(x.price).toLocaleString('pt-BR')}\n👤 ${x.seller_name||'Jogador'}\n⏳ Expira em: *${min} min*` }).join('\n\n')+`\n\n🕐 Anúncios duram *1 hora*. Ao expirar, o item volta ao inventário.\n↩️ Cancelar: *!cancelarvenda ID*\n🛒 Comprar: *!comprar#ID*`)
             }
             if(cmd==='anunciar'){
               const items=(await getInventory(sender)).filter(i=>Number(i.quantity||0)>0)
