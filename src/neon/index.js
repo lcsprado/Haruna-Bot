@@ -39,7 +39,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss,
+  startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus,
   getRaidCatalog, getRaidStatus, createRaid, joinRaid, cancelRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -130,8 +130,13 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.dead){
-          let text=`💥 *${r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM'} DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
-          r.rewards.forEach((x,n)=>{const items=x.drops?.length?`\n🎁 ${x.drops.map(d=>`${d.name} (${d.rarity})`).join(' + ')}`:'';text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${items}`})
+          const bossTitle=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
+          let text=`💥 *${bossTitle} DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
+          r.rewards.forEach((x,n)=>{
+            const items=x.drops?.length?`\n🎁 ${x.drops.map(d=>`${d.name} (${d.rarity})`).join(' + ')}`:''
+            const petXp=x.petXp?` • 🐾 +${x.petXp} XP pet`:''
+            text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${petXp}${items}`
+          })
           await reply(text); return
         }
         if(r.playerDead){
@@ -350,6 +355,8 @@ async function showAdminMainMenu(chat,sender,reply){
 4️⃣ ⚙️ Configurações comerciais
 5️⃣ 🩺 Diagnóstico
 6️⃣ 🆘 Chamados de suporte
+
+🌘 Boss de Evento: *!eventoboss ativar* / *desativar* / *status*
 
 0️⃣ Sair
 
@@ -762,7 +769,8 @@ const RARITY_META={
   uncommon:['🟢','Incomum'],
   rare:['🔵','Raro'],
   epic:['🟣','Épico'],
-  legendary:['🟠','Lendário']
+  legendary:['🟠','Lendário'],
+  event:['🌘','Evento Único']
 }
 
 function rarityLabel(rarity){
@@ -2478,7 +2486,8 @@ Digite apenas seu chute.
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
-        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:00 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:''
+        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:00 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'
+🌘 *Boss de Evento ativo — ativado manualmente pelo dono.*':'')
         await reply(
 `👹 *${r.name}*
 
@@ -2568,7 +2577,8 @@ Digite *0* para sair do modo rápido.`
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
-        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:00 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:''
+        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:00 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'
+🌘 *Boss de Evento ativo — ativado manualmente pelo dono.*':'')
         await reply(
 `👹 *${r.name}*
 
@@ -6490,17 +6500,39 @@ _Os comandos antigos continuam funcionando normalmente._`
           await reply(`🚨 *RAID INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n\n🔑 Chave consumida.\n⚔️ Combate automático iniciado.\n🧪 Se alguém cair, o Alpha usa uma poção automaticamente; sem cura, o jogador sai da Raid.\n🐾 O pet participa, gasta 1 de energia por rodada e recebe XP se o grupo vencer.\n🏆 Recompensas serão proporcionais à colaboração.`)
           runRaidCombat(chat,reply)
 
+        } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
+          if(!isGroup) return await reply(`🌘 Use *${prefix}eventoboss* dentro do grupo onde quer controlar o evento.`)
+          const action=normalizeItemText(args[0]||'status')
+          if(['ativar','on','iniciar','start'].includes(action)){
+            const r=await activateBossEvent(chat)
+            if(r.already) return await reply(`🌘 *BOSS DE EVENTO JÁ ESTÁ ATIVO*\n\n👹 *${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\nUse *!boss* para ver e *!atacar* para lutar.`)
+            return await reply(`🌘 *BOSS DE EVENTO ATIVADO!*\n\n👹 *${r.name}*\n❤️ HP: *${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\n✨ EXP elevada para jogador\n🐾 EXP elevada para o pet\n🎁 Top 3 recebe caixa garantida\n🏅 Chance de dropar *Insígnia do Eclipse* — raridade *Evento Único*\n\n⚠️ O evento fica ativo até o Boss ser derrotado ou você usar *!eventoboss desativar*.\n⚔️ Todos podem usar *!boss* e *!atacar*.`)
+          }
+          if(['desativar','off','parar','encerrar','stop'].includes(action)){
+            const r=await deactivateBossEvent(chat)
+            if(r.already) return await reply('🌘 Não há Boss de Evento ativo neste grupo.')
+            return await reply(`✅ *BOSS DE EVENTO ENCERRADO*\n\n👹 ${r.name}\n❤️ Restavam *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')} HP*.\n\nO Boss normal/semanal volta a funcionar normalmente.`)
+          }
+          const r=await getBossEventStatus(chat)
+          if(!r) return await reply(`🌘 *BOSS DE EVENTO: INATIVO*\n\nUse *${prefix}eventoboss ativar* quando quiser iniciar um.`)
+          return await reply(`🌘 *BOSS DE EVENTO: ATIVO*\n\n👹 *${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\nPara encerrar manualmente: *${prefix}eventoboss desativar*.`)
+
         } else if(['boss'].includes(cmd)){
           const r=await startBoss(chat)
           if(r.cooldown) return await reply(`⏳ *BOSS COMUM EM COOLDOWN*\n\nO próximo Golem do Alpha poderá aparecer em aproximadamente *${r.remainingMinutes} min*.\n\n👹 O Superboss semanal continua sendo um evento separado, disponível apenas uma vez por fim de semana.`)
           const bossPet=await getPet(sender)
           const bossPetBonus=bossPet?petStatusBonus(bossPet):null
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
-          const schedule=r.mode==='weekly'?`\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:''
-          if(r.already) return await reply(`👹 *${r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM'} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
+          const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
+          const schedule=r.mode==='weekly'?`\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'
+🌘 Evento especial ativado manualmente pelo dono.':'')
+          if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
           await progressDailyMission(sender,'game')
-          const rewardInfo=r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.'
-          await reply(`👹 *${r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM'} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
+          const rewardInfo=r.mode==='event'
+            ?'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.'
+            :(r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
+          await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['atacar'].includes(cmd)){
           const usePet=!['sempet','sozinho'].includes(normalizeItemText(args[0]||''))
