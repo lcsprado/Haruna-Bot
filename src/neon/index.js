@@ -5007,7 +5007,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             continue
           }
           clearQuickFlow(chat,sender)
-          await reply(`😴 *BOA NOITE!*\n\n🏠 Local: *${r.place}*\n⏳ Duração: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*\n🐾 Pet: *+1 energia por minuto dormido*${r.fee?`\n💰 Aluguel pago: *R$ ${fmt(r.fee)}*`:''}\n\n🛡️ Durante o sono você não pode ser roubado nem atacado, e tentativas contra você não gastam o cooldown do outro jogador.`)
+          await reply(`😴 *BOA NOITE!*\n\n🏠 Local: *${r.place}*\n⏳ Duração: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*\n❤️ Você: *+1 HP por minuto dormido*\n🐾 Pet: *+1 HP e +1 energia por minuto dormido*${r.fee?`\n💰 Aluguel pago: *R$ ${fmt(r.fee)}*`:''}\n\n🛡️ Durante o sono você não pode ser roubado nem atacado, e tentativas contra você não gastam o cooldown do outro jogador.`)
           continue
         }
 
