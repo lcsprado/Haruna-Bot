@@ -423,10 +423,23 @@ export async function guessNumber(chat,jid,guess){
   })
 }
 
-function bossWeekendOpen(){
-  const weekday=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',weekday:'short'}).format(new Date())
-  return weekday==='Fri'||weekday==='Sat'
+function bossWeekendInfo(now=new Date()){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{
+    timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short'
+  }).formatToParts(now).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]))
+  const open=parts.weekday==='Fri'||parts.weekday==='Sat'
+  const localDate=`${parts.year}-${parts.month}-${parts.day}`
+  const base=new Date(`${localDate}T12:00:00-03:00`)
+  const friday=new Date(base)
+  friday.setUTCDate(base.getUTCDate()+(parts.weekday==='Sat'?-1:0))
+  const fy=friday.getUTCFullYear(),fm=String(friday.getUTCMonth()+1).padStart(2,'0'),fd=String(friday.getUTCDate()).padStart(2,'0')
+  const fridayKey=`${fy}-${fm}-${fd}`
+  const saturday=new Date(friday); saturday.setUTCDate(friday.getUTCDate()+1)
+  const sy=saturday.getUTCFullYear(),sm=String(saturday.getUTCMonth()+1).padStart(2,'0'),sd=String(saturday.getUTCDate()).padStart(2,'0')
+  const endsAt=Date.parse(`${sy}-${sm}-${sd}T23:59:59.999-03:00`)
+  return {open,weekendKey:fridayKey,endsAt,endsLabel:`${sd}/${sm}/${sy} às 23:59`}
 }
+function bossWeekendOpen(){ return bossWeekendInfo().open }
 const BOSS_DROPS=[
   {id:'pocao_g',name:'Poção Grande',chance:.45,rarity:'Raro'},
   {id:'elixir_supremo',name:'Elixir Supremo',chance:.18,rarity:'Épico'},
@@ -468,21 +481,26 @@ async function giveBossDrop(c,jid,bonus=false,extraChance=0){
   return null
 }
 export async function startBoss(chat){
-  if(!bossWeekendOpen()) throw new Error('O Boss do Grupo aparece somente sexta e sábado (horário de São Paulo).')
+  const weekend=bossWeekendInfo()
+  if(!weekend.open) throw new Error('O Boss do Grupo fica disponível de sexta 00:00 até sábado 23:59 (horário de São Paulo).')
   return tx(async c=>{
     const current=await loadGame(c,chat,'boss')
-    if(current&&Number(current.hp)>0) return {already:true,...current}
+    const currentIsValid=current && Number(current.hp)>0 && Number(current.maxHp)>=25000 &&
+      current.weekendKey===weekend.weekendKey && Number(current.endsAt||0)>Date.now()
+    if(currentIsValid) return {already:true,...current,endsLabel:weekend.endsLabel}
+    if(current) await clearGame(c,chat,'boss')
     const maxHp=25000+Math.floor(Math.random()*10001)
-    const state={name:'Golem Ladrão de novembro dedos',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now()}
+    const state={name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
     await saveGame(c,chat,'boss',state); return state
   })
 }
 export async function attackBoss(chat,jid,name){
   await ensureUser(jid,name||'')
-  if(!bossWeekendOpen()) throw new Error('O Boss do Grupo só pode ser enfrentado sexta e sábado.')
+  const weekend=bossWeekendInfo()
+  if(!weekend.open) throw new Error('O Boss do Grupo encerrou. Ele volta sexta-feira às 00:00 (horário de São Paulo).')
   return tx(async c=>{
     const s=await loadGame(c,chat,'boss')
-    if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss.')
+    if(!s||Number(s.hp)<=0||Number(s.maxHp)<25000||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now()) throw new Error('Não há Boss de Grupo ativo. Use !boss para iniciar o Boss deste fim de semana.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const pet=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[jid])).rows[0]||null
     const petBonus=petBossBonus(pet)
