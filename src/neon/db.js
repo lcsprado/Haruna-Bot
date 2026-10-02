@@ -1479,6 +1479,8 @@ export async function battle(attackerJid, defenderJid) {
   await ensureUser(defenderJid)
 
   return transaction(async client=>{
+    const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[defenderJid,Math.floor(Date.now()/1000)])
+    if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser atacada agora.')
     const ids=[attackerJid,defenderJid].sort()
     const statsR=await client.query(
       'SELECT * FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
@@ -2265,6 +2267,8 @@ export async function robPlayer(thiefJid,targetJid) {
   await ensureUser(targetJid)
 
   return transaction(async client=>{
+    const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,Math.floor(Date.now()/1000)])
+    if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser roubada agora.')
     const ids=[thiefJid,targetJid].sort()
     const wallets=await client.query(
       'SELECT jid,cash FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
@@ -2618,6 +2622,15 @@ export async function initCommunityPack(){
     );
     ALTER TABLE pets ADD COLUMN IF NOT EXISTS last_rest BIGINT NOT NULL DEFAULT 0;
 
+    CREATE TABLE IF NOT EXISTS player_sleep(
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      place TEXT NOT NULL,
+      started_at BIGINT NOT NULL,
+      ends_at BIGINT NOT NULL,
+      xp_reward INTEGER NOT NULL,
+      fee BIGINT NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS relationship_proposals(
       from_jid TEXT NOT NULL,
       to_jid TEXT NOT NULL,
@@ -2683,6 +2696,56 @@ export async function getGroupWarnings(chatJid,jid){
 }
 export async function clearGroupWarnings(chatJid,jid){
   await db.query('DELETE FROM group_warnings WHERE chat_jid=$1 AND jid=$2',[chatJid,jid])
+}
+
+const SLEEP_PLACES={
+  kitnet:{label:'Kitnet',seconds:30*60,xp:30,fee:0},
+  casa:{label:'Casa',seconds:60*60,xp:65,fee:0},
+  sobrado:{label:'Sobrado',seconds:2*60*60,xp:140,fee:0},
+  mansao:{label:'Mansão',seconds:4*60*60,xp:300,fee:0},
+  cobertura:{label:'Cobertura',seconds:8*60*60,xp:650,fee:0},
+  aluguel:{label:'Quarto alugado',seconds:15*60,xp:15,fee:1000}
+}
+
+export async function resolvePlayerSleep(jid){
+  return transaction(async client=>{
+    const row=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!row) return null
+    const now=Math.floor(Date.now()/1000)
+    if(Number(row.ends_at)>now) return {active:true,...row,remaining:Number(row.ends_at)-now}
+    const level=await applyExp(client,jid,Number(row.xp_reward))
+    await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
+    return {active:false,woke:true,...row,level}
+  })
+}
+
+export async function startPlayerSleep(jid){
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const existing=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const now=Math.floor(Date.now()/1000)
+    if(existing&&Number(existing.ends_at)>now) return {active:true,...existing,remaining:Number(existing.ends_at)-now}
+    if(existing){
+      const level=await applyExp(client,jid,Number(existing.xp_reward))
+      await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
+      return {active:false,woke:true,...existing,level}
+    }
+    const home=(await client.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid])).rows[0]?.house_id
+    const plan=SLEEP_PLACES[home]||SLEEP_PLACES.aluguel
+    if(plan.fee>0){
+      const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+      const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+      if(cash+bank<plan.fee) throw new Error('Sem imóvel, dormir custa R$ 1.000 de aluguel. Saldo insuficiente.')
+      const fromCash=Math.min(cash,plan.fee)
+      await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,plan.fee-fromCash,jid])
+      await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+        VALUES($1,'system',$2,'sleep_rent','Aluguel para dormir')`,[jid,plan.fee])
+    }
+    const endsAt=now+plan.seconds
+    await client.query(`INSERT INTO player_sleep(jid,place,started_at,ends_at,xp_reward,fee)
+      VALUES($1,$2,$3,$4,$5,$6)`,[jid,plan.label,now,endsAt,plan.xp,plan.fee])
+    return {active:true,place:plan.label,started_at:now,ends_at:endsAt,xp_reward:plan.xp,fee:plan.fee,remaining:plan.seconds,started:true}
+  })
 }
 
 export async function adoptPet(jid,species='cachorro',name='Alpha'){
@@ -2830,6 +2893,8 @@ export async function getAchievements(jid){
 }
 export async function petDuel(challengerJid,targetJid){
   if(challengerJid===targetJid) throw new Error('Escolha outro jogador.')
+  const sleeping=await db.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,Math.floor(Date.now()/1000)])
+  if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode disputar duelo de pets agora.')
   const [a,b]=await Promise.all([getPet(challengerJid),getPet(targetJid)])
   if(!a||!b) throw new Error('Os dois jogadores precisam ter um pet.')
   const scoreA=Number(a.power)+Number(a.level)*2+Math.floor(Math.random()*11)
