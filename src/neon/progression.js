@@ -627,11 +627,14 @@ export async function deliverIfood(jid){
       const tip=Math.random()<.18?Math.max(10,Math.round(fare*(.05+Math.random()*.15))):0
       return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
     })
-    const total=details.reduce((n,x)=>n+x.total,0)
+    const gross=details.reduce((n,x)=>n+x.total,0)
+    const tax=Math.floor(gross*.10),total=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('system',$1,$2,'ifood',$3)`,[jid,total,`Frota iFood | ${details.length} veículo(s)`])
-    return {ok:true,details,total,cooldown}
+      VALUES('system',$1,$2,'ifood',$3)`,[jid,gross,`Frota iFood | ${details.length} veículo(s)`])
+    if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'system',$2,'income_tax','Taxa de imposto 10% | iFood')`,[jid,tax])
+    return {ok:true,details,gross,tax,taxRate:10,total,cooldown}
   })
 }
 
@@ -657,11 +660,14 @@ export async function driveUber(jid){
       const tip=Math.random()<.22?Math.max(20,Math.round(fare*(.08+Math.random()*.17))):0
       return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
     })
-    const total=details.reduce((n,x)=>n+x.total,0)
+    const gross=details.reduce((n,x)=>n+x.total,0)
+    const tax=Math.floor(gross*.10),total=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('system',$1,$2,'uber',$3)`,[jid,total,`Frota Uber | ${details.length} carro(s)`])
-    return {ok:true,details,total,cooldown}
+      VALUES('system',$1,$2,'uber',$3)`,[jid,gross,`Frota Uber | ${details.length} carro(s)`])
+    if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'system',$2,'income_tax','Taxa de imposto 10% | Uber')`,[jid,tax])
+    return {ok:true,details,gross,tax,taxRate:10,total,cooldown}
   })
 }
 
@@ -839,10 +845,13 @@ export async function collectBusinesses(jid){
         await client.query('UPDATE user_businesses SET last_collected_at=$1 WHERE id=$2',[now-remainder,row.id])
       }
     }
-    if(total<=0) return {total:0,details}
-    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
-    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro dos negócios')",[jid,total])
-    return {total,details}
+    if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
+    const gross=total,tax=Math.floor(gross*.10),net=gross-tax
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[net,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
+    if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'system',$2,'income_tax','Taxa de imposto 10% | negócios')`,[jid,tax])
+    return {total:net,gross,tax,taxRate:10,details}
   })
 }
 
