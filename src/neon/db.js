@@ -3445,7 +3445,7 @@ export async function cancelMarketListing(jid,id){
     await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[jid,x.item_id,x.quantity])
     await client.query(`UPDATE market_listings SET status='cancelled' WHERE id=$1`,[x.id]); return x
   })
-})
+}
 
 db.on('error', err => console.error('[Neon] pool error', err))
 
