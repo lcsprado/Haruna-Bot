@@ -452,6 +452,14 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
       `,[targetJid,sourceJid])
 
       await client.query(`
+        INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
+        SELECT $1,item_id,level,${nowSql} FROM equipment_upgrades WHERE jid=$2
+        ON CONFLICT(jid,item_id) DO UPDATE SET
+          level=GREATEST(equipment_upgrades.level,EXCLUDED.level),
+          updated_at=${nowSql}
+      `,[targetJid,sourceJid])
+
+      await client.query(`
         INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day,updated_at)
         SELECT $1,streak,best_streak,last_claim_day,${nowSql} FROM daily_streaks WHERE jid=$2
         ON CONFLICT(jid) DO UPDATE SET
@@ -1972,6 +1980,7 @@ export async function ownerResetInventory(jid) {
     const r=await client.query('SELECT COALESCE(SUM(quantity),0)::BIGINT AS qty FROM inventories WHERE jid=$1',[jid])
     const removed=Number(r.rows[0]?.qty||0)
     await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
+    await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
     await client.query(
       'UPDATE stats SET weapon_id=NULL,armor_id=NULL,updated_at='+nowSql+' WHERE jid=$1',
       [jid]
@@ -2011,6 +2020,7 @@ export async function ownerResetTotal(jid) {
       WHERE jid=$1
     `,[jid])
     await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
+    await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
     await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%:${jid}`])
     await client.query('DELETE FROM daily_streaks WHERE jid=$1',[jid])
     await client.query('DELETE FROM profile_avatars WHERE jid=$1',[jid])
