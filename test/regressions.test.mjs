@@ -91,6 +91,17 @@ test('depositar total resolve o saldo dentro da transação',async()=>{
   assert.match(indexSource,/depositAll\?\s*'total':parseAmount/)
   assert.match(indexSource,/\*!depositar total\*/)
 })
+
+test('nomepet troca o nome por R$ 1.000 de forma transacional',async()=>{
+  const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
+  const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
+  assert.match(dbSource,/export async function renamePet\(jid,name\)/)
+  assert.match(dbSource,/const fee=1000/)
+  assert.match(dbSource,/SELECT \* FROM pets WHERE jid=\$1 FOR UPDATE/)
+  assert.match(dbSource,/type,note\)[\s\S]{0,80}'pet_rename'/)
+  assert.match(indexSource,/\*!nomepet NovoNome\* — troca o nome por R\$ 1\.000/)
+  assert.match(indexSource,/renamePet\(sender,newName\)/)
+})
 test('regressões conhecidas de escopo não reaparecem',async()=>{
   const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(source,/const text=fixed\[cmd\][\s\S]{0,160}mentions:\[target\]/)
