@@ -449,11 +449,11 @@ const BOSS_BONUS_DROPS=[
   {id:'armadura_titan',name:'Armadura do Titã',weight:5,rarity:'Lendário'},
 ]
 const BOSS_PLACEMENT=[
-  {cash:15000,xp:220,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.65,armorChance:.18},
-  {cash:10000,xp:150,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.50,armorChance:.10},
-  {cash:6000,xp:100,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.38,armorChance:.06},
-  {cash:3000,xp:60,box:{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'},bonusChance:.28,armorChance:.035},
-  {cash:1500,xp:30,box:{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'},bonusChance:.22,armorChance:.025},
+  {cash:40000,xp:400,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.75,exclusiveChance:.30},
+  {cash:25000,xp:280,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.60,exclusiveChance:.18},
+  {cash:15000,xp:180,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.48,exclusiveChance:.12},
+  {cash:8000,xp:100,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.35,exclusiveChance:.07},
+  {cash:4000,xp:50,box:{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'},bonusChance:.28,exclusiveChance:.04},
 ]
 const PET_BOSS_SPECIALTIES={
   cachorro:{label:'🐶 Guardião',defense:.05}, gato:{label:'🐱 Instinto',crit:.04},
@@ -479,14 +479,17 @@ async function grantBossItem(c,jid,item){
   return item
 }
 async function giveBossDrops(c,jid,position,extraChance=0){
-  const tier=BOSS_PLACEMENT[position-1]||{cash:0,xp:0,box:null,bonusChance:.15,armorChance:.015}
+  const tier=BOSS_PLACEMENT[position-1]||{cash:0,xp:0,box:null,bonusChance:.18,exclusiveChance:.02}
   const drops=[]
   // Top 5 recebe caixa garantida; demais continuam com 40% de chance de Caixa da Sorte.
   const box=tier.box||(Math.random()<.40?{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}:null)
   if(box) drops.push(await grantBossItem(c,jid,box))
   const luck=Math.min(.08,Math.max(0,extraChance))
-  if(Math.random()<tier.armorChance+luck){
-    drops.push(await grantBossItem(c,jid,{id:'armadura_golem',name:'Armadura do Golem Ancestral',rarity:'Lendário'}))
+  if(Math.random()<tier.exclusiveChance+luck){
+    const exclusive=Math.random()<.5
+      ? {id:'armadura_golem',name:'Armadura do Golem Ancestral',rarity:'Lendário'}
+      : {id:'martelo_golem',name:'Martelo do Golem Ancestral',rarity:'Lendário'}
+    drops.push(await grantBossItem(c,jid,exclusive))
   }
   if(Math.random()<tier.bonusChance+luck){
     const total=BOSS_BONUS_DROPS.reduce((sum,d)=>sum+d.weight,0)
@@ -558,10 +561,10 @@ export async function attackBoss(chat,jid,name){
         const p=entries[i],position=i+1,share=p.damage/total
         const tier=BOSS_PLACEMENT[i]||{cash:0,xp:0}
         // Todos recebem base; dano divide um fundo fixo e colocação dá um bônus separado.
-        const cash=2500+Math.floor(60000*share)+tier.cash
+        const cash=5000+Math.floor(150000*share)+tier.cash
         const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null
         const pb=petBossBonus(pp)
-        const exp=Math.floor((80+500*share+tier.xp)*(1+pb.xp))
+        const exp=Math.floor((150+1000*share+tier.xp)*(1+pb.xp))
         await credit(c,p.jid,cash,'boss_weekend')
         await grantExpInTransaction(c,p.jid,exp)
         const drops=await giveBossDrops(c,p.jid,position,pb.drop)
