@@ -27,6 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
+  resolvePlayerSleep, startPlayerSleep,
   adoptPet, getPet, renamePet, petAction, petAdventure, petLeaderboard,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
@@ -128,7 +129,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.dead){
-          let text=`💥 *BOSS DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
+          let text=`💥 *${r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM'} DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
           r.rewards.forEach((x,n)=>{const items=x.drops?.length?`\n🎁 ${x.drops.map(d=>`${d.name} (${d.rarity})`).join(' + ')}`:'';text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${items}`})
           await reply(text); return
         }
@@ -1083,6 +1084,7 @@ Você possui: *${stock}*
 *!removerfoto* — volta à foto do WhatsApp
 *!daily* — coleta a recompensa diária
 *!streak* — mostra sua sequência
+*!dormir* — descansa protegido e recebe XP ao acordar
 *!casar @pessoa* — envia pedido de casamento
 *!aceitarcasamento @pessoa* — aceita o pedido
 *!casal* — mostra seu relacionamento
@@ -2360,12 +2362,11 @@ Digite apenas seu chute.
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
+        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:00 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:''
         await reply(
 `👹 *${r.name}*
 
-❤️ ${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}
-📅 Disponível: *sexta 00:00 → sábado 23:59*
-⏰ Encerra: *${r.endsLabel}* (São Paulo)
+❤️ ${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}${schedule}
 
 1️⃣ Iniciar combate automático
 0️⃣ Sair`
@@ -2451,12 +2452,11 @@ Digite *0* para sair do modo rápido.`
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
+        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:00 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:''
         await reply(
 `👹 *${r.name}*
 
-❤️ ${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}
-📅 Disponível: *sexta 00:00 → sábado 23:59*
-⏰ Encerra: *${r.endsLabel}* (São Paulo)
+❤️ ${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}${schedule}
 
 1️⃣ Iniciar combate automático
 0️⃣ Sair do modo rápido
@@ -4610,6 +4610,10 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const [rawCmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
         const cmd=(rawCmd||'').toLowerCase()
         const ownerTarget=mentionsOf(msg)[0] || sender
+        const sleep=await resolvePlayerSleep(sender)
+        if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
+        const sleepAllowed=new Set(['dormir','sono','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping'])
+        if(sleep?.active&&!sleepAllowed.has(cmd)) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
 
         if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pedido','configgrupo','configuragrupo','suporte','support','ajuda','chamado'].includes(cmd)){
           let license=await getGroupLicense(chat)
@@ -5191,6 +5195,13 @@ ${status}
           if(isGroup) await progressGroupMission(chat,sender,'work')
             await reply(workResultText(r))
           }
+
+        } else if(['dormir','sono'].includes(cmd)){
+          const r=await startPlayerSleep(sender)
+          if(r.woke) return await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${r.place}*\n✨ XP recebido: *+${r.xp_reward}*\n\nUse *${prefix}dormir* novamente quando quiser iniciar outro descanso.`)
+          if(!r.started) return await reply(`😴 Você já está dormindo em *${r.place}*.\n⏳ Tempo restante: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*`)
+          clearQuickFlow(chat,sender)
+          await reply(`😴 *BOA NOITE!*\n\n🏠 Local: *${r.place}*\n⏳ Duração: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*${r.fee?`\n💰 Aluguel pago: *R$ ${fmt(r.fee)}*`:''}\n\n🛡️ Durante o sono você não pode ser roubado nem atacado, e tentativas contra você não gastam o cooldown do outro jogador.`)
 
         } else if(['carreira','emprego','profissao','profissão'].includes(cmd)){
           const r=await getCareer(sender)
@@ -5977,9 +5988,11 @@ _Os comandos antigos continuam funcionando normalmente._`
           const bossPet=await getPet(sender)
           const bossPetBonus=bossPet?petStatusBonus(bossPet):null
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
-          if(r.already) return await reply(`👹 *BOSS DE GRUPO — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
+          const schedule=r.mode==='weekly'?`\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:''
+          if(r.already) return await reply(`👹 *${r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM'} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
           await progressDailyMission(sender,'game')
-          await reply(`👹 *BOSS SEMANAL APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)\n💰 Prêmio especial semanal: fundo de *R$ 150.000* dividido por dano, mais bônus por colocação.\n🎁 Drops: caixas, equipamentos raros e os exclusivos *Armadura do Golem* e *Martelo do Golem*.${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
+          const rewardInfo=r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.'
+          await reply(`👹 *${r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM'} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['atacar'].includes(cmd)){
           const usePet=!['sempet','sozinho'].includes(normalizeItemText(args[0]||''))
