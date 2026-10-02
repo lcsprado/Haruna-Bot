@@ -45,7 +45,7 @@ import {
   getDailyMissions, progressDailyMission, claimDailyMissions,
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
-  getHome, buyHouse, getGarage, buyCar,
+  getHome, buyHouse, getGarage, buyCar, driveUber,
   getPatrimony, patrimonyLeaderboard
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
@@ -982,6 +982,7 @@ Você possui: *${stock}*
 *!economia* — abre o menu de economia
 *!saldo* — carteira, banco e total
 *!trabalhar* — trabalha para ganhar dinheiro
+*!uber* — faz uma corrida usando seu melhor carro
 *!depositar valor* — deposita no banco
 *!sacar valor* — saca do banco
 *!pix @pessoa valor* — transfere dinheiro
@@ -4324,7 +4325,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
         }
 
         if(isGroup && !isOwner){
-          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','uber','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
@@ -4869,6 +4870,18 @@ ${status}
           else {
             await progressDailyMission(sender,'work')
             await reply(`💼 Você trabalhou como *${r.job}* e ganhou *R$ ${fmt(r.amount)}*.`)
+          }
+
+        } else if(['uber'].includes(cmd)){
+          const r=await driveUber(sender)
+          if(!r.ok){
+            await reply(`🚗 Você já fez uma corrida. Próxima disponível em *${duration(r.remaining)}*.`)
+          }else{
+            await progressDailyMission(sender,'work')
+            let text=`🚗 *CORRIDA CONCLUÍDA!*\n\n🚘 Carro: *${r.car.name}*\n🏷️ Categoria: *${r.category}*\n🛣️ ${r.ride}\n💵 Corrida: *R$ ${fmt(r.fare)}*`
+            if(r.tip) text+=`\n💚 Gorjeta: *R$ ${fmt(r.tip)}*`
+            text+=`\n💰 Total recebido: *R$ ${fmt(r.total)}*\n\n⏳ Próxima corrida em 25 minutos.`
+            await reply(text)
           }
 
         } else if(['depositar','deposit','dep'].includes(cmd)){
