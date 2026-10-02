@@ -605,139 +605,71 @@ export async function sellMotorcycle(jid,input){
   })
 }
 
-export async function deliverIfood(jid,mode='moto'){
+export async function deliverIfood(jid){
   await ensureUser(jid)
   const garage=await getMotorcycleGarage(jid)
   if(!garage.length) throw new Error('Você precisa ter bicicleta ou moto para fazer entregas. Use !motos para comprar uma.')
-
-  const candidates=mode==='bike'
-    ? garage.filter(v=>v.id==='bicicleta')
-    : garage.filter(v=>v.id!=='bicicleta')
-  if(!candidates.length){
-    if(mode==='bike') throw new Error('Você precisa ter uma Bicicleta para usar !ifoodbike. Veja !motos.')
-    throw new Error('Você precisa ter uma moto para usar !ifood. Veja !motos.')
-  }
-  const best=candidates.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
   const tiers={
-    // Faixas não se sobrepõem: veículo mais caro sempre tem potencial de ganho claramente maior.
-    bicicleta:{category:'Entrega de bicicleta',min:30,max:75},
-    moto_125:{category:'Entrega básica',min:100,max:190},
-    moto_160:{category:'Entrega rápida',min:190,max:310},
-    moto_300:{category:'Entrega turbo',min:340,max:520},
-    moto_600:{category:'Entrega premium',min:620,max:900},
-    moto_1000:{category:'Entrega elite',min:1100,max:1550},
+    bicicleta:{category:'Bike',min:45,max:95}, moto_125:{category:'Básica',min:130,max:230},
+    moto_160:{category:'Rápida',min:240,max:380}, moto_300:{category:'Turbo',min:430,max:650},
+    moto_600:{category:'Premium',min:780,max:1100}, moto_1000:{category:'Elite',min:1350,max:1900},
   }
-  const tier=tiers[best.id]||tiers.bicicleta
-
   return tx(async client=>{
-    const key=`ifood:${mode==='bike'?'bike':'moto'}:${jid}`
-    const now=Math.floor(Date.now()/1000)
+    const key=`ifood:frota:${jid}`, now=Math.floor(Date.now()/1000), cooldown=6*60
     const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
-    const cooldown=best.id==='bicicleta' ? 3*60 : 6*60
-    if(cd.rows[0] && Number(cd.rows[0].expires_at)>now){
-      const remaining=Number(cd.rows[0].expires_at)-now
-      if(remaining>cooldown){
-        const corrected=now+cooldown
-        await client.query('UPDATE cooldowns SET expires_at=$1 WHERE key=$2',[corrected,key])
-        return {ok:false,remaining:cooldown}
-      }
-      return {ok:false,remaining}
-    }
-    const expires=now+cooldown
-    await client.query(`
-      INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
-    `,[key,expires])
-
-    const types=[
-      {name:'Entrega curta',factor:.85,weight:40},
-      {name:'Entrega média',factor:1,weight:40},
-      {name:'Entrega longa',factor:1.25,weight:17},
-      {name:'Pedido especial',factor:1.5,weight:3},
-    ]
-    let roll=Math.random()*100, delivery=types[0]
-    for(const t of types){ roll-=t.weight; if(roll<=0){delivery=t;break} }
-
-    const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
-    const fare=Math.max(1,Math.round(base*delivery.factor))
-    const tip=Math.random()<.18 ? Math.max(10,Math.round(fare*(.05+Math.random()*.15))) : 0
-    const total=fare+tip
-
+    if(cd.rows[0] && Number(cd.rows[0].expires_at)>now) return {ok:false,remaining:Number(cd.rows[0].expires_at)-now}
+    await client.query(`INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at`,[key,now+cooldown])
+    const types=[{name:'curta',factor:.85},{name:'média',factor:1},{name:'longa',factor:1.25},{name:'especial',factor:1.5}]
+    const details=garage.map(v=>{
+      const tier=tiers[v.id]||tiers.bicicleta
+      const delivery=types[Math.floor(Math.random()*types.length)]
+      const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
+      const fare=Math.max(1,Math.round(base*delivery.factor))
+      const tip=Math.random()<.18?Math.max(10,Math.round(fare*(.05+Math.random()*.15))):0
+      return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
+    })
+    const total=details.reduce((n,x)=>n+x.total,0)
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('system',$1,$2,'ifood',$3)
-    `,[jid,total,`${tier.category} | ${delivery.name} | ${best.name}${tip? ` | gorjeta:${tip}`:''}`])
-    return {ok:true,motorcycle:best,category:tier.category,delivery:delivery.name,fare,tip,total,cooldown}
+    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('system',$1,$2,'ifood',$3)`,[jid,total,`Frota iFood | ${details.length} veículo(s)`])
+    return {ok:true,details,total,cooldown}
   })
 }
 
 export async function driveUber(jid){
   await ensureUser(jid)
-
   const garage=await getGarage(jid)
   if(!garage.length) throw new Error('Você precisa ter pelo menos um carro para trabalhar de Uber. Use !carros para comprar um.')
-
-  // O melhor carro da garagem define a categoria disponível e o teto da corrida.
-  const best=garage.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
   const tiers={
-    popular:{category:'UberX',min:260,max:520},
-    sedan_esportivo:{category:'Comfort',min:520,max:900},
-    suv_premium:{category:'Comfort+',min:900,max:1450},
-    superesportivo:{category:'Black',min:1700,max:2700},
-    hipercarro:{category:'Black Premium',min:4000,max:6000},
+    popular:{category:'UberX',min:320,max:620}, sedan_esportivo:{category:'Comfort',min:650,max:1100},
+    suv_premium:{category:'Comfort+',min:1100,max:1750}, superesportivo:{category:'Black',min:2100,max:3300},
+    hipercarro:{category:'Black Premium',min:4800,max:7200},
   }
-  const tier=tiers[best.id]||tiers.popular
-
   return tx(async client=>{
-    const key=`uber:${jid}`
-    const now=Math.floor(Date.now()/1000)
+    const key=`uber:${jid}`, now=Math.floor(Date.now()/1000), cooldown=9*60
     const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
-    const cooldown=9*60
     if(cd.rows[0] && Number(cd.rows[0].expires_at)>now){
-      // Corridas criadas antes do balanceamento podiam guardar 25 min.
-      // Nunca deixe um cooldown legado ultrapassar a regra atual de 9 min.
       const remaining=Number(cd.rows[0].expires_at)-now
-      if(remaining>cooldown){
-        const corrected=now+cooldown
-        await client.query('UPDATE cooldowns SET expires_at=$1 WHERE key=$2',[corrected,key])
-        return {ok:false,remaining:cooldown}
-      }
+      if(remaining>cooldown){await client.query('UPDATE cooldowns SET expires_at=$1 WHERE key=$2',[now+cooldown,key]);return {ok:false,remaining:cooldown}}
       return {ok:false,remaining}
     }
-
-    // Uma corrida a cada 9 minutos.
-    const expires=now+cooldown
-    await client.query(`
-      INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
-    `,[key,expires])
-
-    const types=[
-      {name:'Corrida curta',factor:.85,weight:35},
-      {name:'Corrida média',factor:1,weight:40},
-      {name:'Corrida longa',factor:1.25,weight:20},
-      {name:'Corrida premium',factor:1.6,weight:5},
-    ]
-    let roll=Math.random()*100
-    let ride=types[0]
-    for(const t of types){
-      roll-=t.weight
-      if(roll<=0){ride=t;break}
-    }
-
-    const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
-    const fare=Math.max(1,Math.round(base*ride.factor))
-    const tip=Math.random()<.22 ? Math.max(20,Math.round(fare*(.08+Math.random()*.17))) : 0
-    const total=fare+tip
-
+    await client.query(`INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at`,[key,now+cooldown])
+    const types=[{name:'curta',factor:.85},{name:'média',factor:1},{name:'longa',factor:1.25},{name:'premium',factor:1.6}]
+    const details=garage.map(v=>{
+      const tier=tiers[v.id]||tiers.popular
+      const ride=types[Math.floor(Math.random()*types.length)]
+      const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
+      const fare=Math.max(1,Math.round(base*ride.factor))
+      const tip=Math.random()<.22?Math.max(20,Math.round(fare*(.08+Math.random()*.17))):0
+      return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
+    })
+    const total=details.reduce((n,x)=>n+x.total,0)
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('system',$1,$2,'uber',$3)
-    `,[jid,total,`${tier.category} | ${ride.name} | ${best.name}${tip? ` | gorjeta:${tip}`:''}`])
-
-    return {ok:true,car:best,category:tier.category,ride:ride.name,fare,tip,total,cooldown}
+    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('system',$1,$2,'uber',$3)`,[jid,total,`Frota Uber | ${details.length} carro(s)`])
+    return {ok:true,details,total,cooldown}
   })
 }
 
