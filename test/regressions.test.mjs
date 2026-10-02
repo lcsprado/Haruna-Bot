@@ -24,6 +24,22 @@ test('aliases documentados da roleta coletiva possuem dispatch',async()=>{
   assert.match(source,/\['girar','girarroleta'\]/)
 })
 
+test('statuspet é documentado e usa o mesmo status de meupet',async()=>{
+  const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
+  assert.match(source,/\*!meupet\* \/ \*!statuspet\*/)
+  assert.match(source,/cmd==='meupet'\|\|cmd==='statuspet'/)
+})
+
+test('energia do pet possui descanso e custo transacional no Boss',async()=>{
+  const dbSource=await readFile(new URL('../src/neon/db.js',import.meta.url),'utf8')
+  const gamesSource=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
+  assert.match(dbSource,/descansar:\{hunger:-5,hygiene:0,energy:30,xp:0,rest:true\}/)
+  assert.match(dbSource,/last_rest BIGINT NOT NULL DEFAULT 0/)
+  assert.match(gamesSource,/Number\(pet\.energy\)<2/)
+  assert.match(gamesSource,/UPDATE pets SET energy=\$1 WHERE jid=\$2/)
+  assert.match(indexSource,/\*!descansar\* — recupera 30 de energia/)
+})
 test('regressões conhecidas de escopo não reaparecem',async()=>{
   const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(source,/const text=fixed\[cmd\][\s\S]{0,160}mentions:\[target\]/)
