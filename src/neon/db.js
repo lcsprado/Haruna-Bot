@@ -2749,6 +2749,29 @@ export async function petAction(jid,action){
     return rows[0]
   })
 }
+export async function petAdventure(jid){
+  return transaction(async client=>{
+    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    const energy=Number(pet.energy||0)
+    if(energy<10) throw new Error(`Seu pet precisa de pelo menos 10 de energia para explorar. Energia atual: ${energy}/100. Use !descansar.`)
+    const now=Math.floor(Date.now()/1000)
+    if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco antes de sair.')
+    const level=Number(pet.level||1),power=Number(pet.power||10)
+    const cash=Math.floor(energy*(70+Math.random()*50)+level*150+power*25)
+    const xpGain=energy*2
+    const xp=Number(pet.xp||0)+xpGain
+    const nextLevel=1+Math.floor(xp/100)
+    const powerGain=Math.floor(energy/50)
+    const {rows}=await client.query(`UPDATE pets SET energy=0,xp=$1,level=$2,power=power+$3,
+      hunger=GREATEST(0,hunger-$4),hygiene=GREATEST(0,hygiene-$5),last_action=$6
+      WHERE jid=$7 RETURNING *`,[xp,nextLevel,powerGain,Math.ceil(energy*.25),Math.ceil(energy*.15),now,jid])
+    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('system',$1,$2,'pet_adventure',$3)`,[jid,cash,`${pet.name}: ${energy} energia`])
+    return {...rows[0],cash,xpGain,energySpent:energy,powerGain}
+  })
+}
 export async function petLeaderboard(limit=10){
   const {rows}=await db.query(`SELECT p.*,u.push_name FROM pets p JOIN users u ON u.jid=p.jid ORDER BY p.level DESC,p.power DESC,p.xp DESC LIMIT $1`,[Math.min(20,Math.max(1,Number(limit)||10))]); return rows
 }
