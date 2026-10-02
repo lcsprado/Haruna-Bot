@@ -1411,6 +1411,17 @@ export function getEquipmentInfo(itemId) {
   return eq ? {...eq,itemId} : null
 }
 
+export async function getFuseCandidates(jid){
+  const [base,fused]=await Promise.all([
+    db.query(`SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity FROM inventories inv JOIN items i ON i.id=inv.item_id WHERE inv.jid=$1 AND inv.quantity>=2 AND i.category IN ('weapon','armor') ORDER BY i.name`,[jid]),
+    db.query(`SELECT f.item_id,f.tier,f.quantity,i.name,i.category,i.rarity FROM equipment_fusions f JOIN items i ON i.id=f.item_id WHERE f.jid=$1 AND f.quantity>=2 AND f.tier<10 ORDER BY f.tier DESC,i.name`,[jid])
+  ])
+  return [
+    ...base.rows.map(r=>({...r,tier:1})),
+    ...fused.rows.map(r=>({...r,tier:Number(r.tier)}))
+  ]
+}
+
 export async function fuseEquipment(jid,itemId,tier=1){
   tier=Number(tier||1)
   if(!Number.isInteger(tier)||tier<1||tier>=10) throw new Error('Tier inválido.')
