@@ -2598,6 +2598,7 @@ export async function initCommunityPack(){
       last_action BIGINT NOT NULL DEFAULT 0,
       created_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
+    ALTER TABLE pets ADD COLUMN IF NOT EXISTS last_rest BIGINT NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS relationship_proposals(
       from_jid TEXT NOT NULL,
@@ -2710,7 +2711,8 @@ export async function getPet(jid){
 export async function petAction(jid,action){
   const map={
     alimentar:{hunger:25,hygiene:-2,energy:2,xp:8},
-    banho:{hunger:-3,hygiene:30,energy:-2,xp:8},
+    banho:{hunger:0,hygiene:30,energy:0,xp:0},
+    descansar:{hunger:-5,hygiene:0,energy:30,xp:0,rest:true},
     passear:{hunger:-8,hygiene:-6,energy:-12,xp:15},
     treinar:{hunger:-10,hygiene:-4,energy:-15,xp:25,power:1},
     aventura:{hunger:-15,hygiene:-10,energy:-20,xp:40,power:1}
@@ -2720,12 +2722,20 @@ export async function petAction(jid,action){
     const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
     const now=Math.floor(Date.now()/1000)
+    if(a.rest){
+      const restCooldown=30*60
+      const remaining=restCooldown-(now-Number(pet.last_rest||0))
+      if(remaining>0) throw new Error(`Seu pet poderá descansar novamente em ${Math.ceil(remaining/60)} min.`)
+      if(Number(pet.energy)>=100) throw new Error('Seu pet já está com a energia cheia.')
+    }
     if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
+    if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
     const xp=Number(pet.xp)+a.xp, level=1+Math.floor(xp/100)
     const {rows}=await client.query(`UPDATE pets SET
       hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
-      energy=LEAST(100,GREATEST(0,energy+$3)),xp=$4,level=$5,power=power+$6,last_action=$7
-      WHERE jid=$8 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,a.power||0,now,jid])
+      energy=LEAST(100,GREATEST(0,energy+$3)),xp=$4,level=$5,power=power+$6,last_action=$7,
+      last_rest=CASE WHEN $8 THEN $7 ELSE last_rest END
+      WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,a.power||0,now,Boolean(a.rest),jid])
     return rows[0]
   })
 }
