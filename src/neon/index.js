@@ -649,7 +649,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
 
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
-${title}${badge?\` • ${badge}\`:''}
+${title}${badge?' • '+badge:''}
 
 ⭐ Nível: *${Number(p.level||1)}*
 ✨ EXP: *${xp.current}/${xp.needed}*
@@ -678,7 +678,7 @@ ${petLine}
 🏠 Casa: *${home?.name||'Nenhuma'}*
 🚗 Carros: *${Array.isArray(cars)?cars.length:0}*
 🏍️ Motos/Bikes: *${Array.isArray(motorcycles)?motorcycles.length:0}*
-🏢 Negócios: *${Array.isArray(businesses)?businesses.length:0}*${achievements.length?\`\n\n🏅 ${achievements.join(' • ')}\`:''}`
+🏢 Negócios: *${Array.isArray(businesses)?businesses.length:0}*${achievements.length?'\n\n🏅 '+achievements.join(' • '):''}`
 
   await sock.sendMessage(chat,{text},{quoted:msg})
 }
@@ -1173,7 +1173,7 @@ Você possui: *${stock}*
 *!conquistas* — badges e objetivos desbloqueados
 *!ping* — verifica se o Alpha está online
 
-🔁 *Atalhos também aceitos:* !profile, !avatar, !fotoperfil, !fotowpp, !diario, !sequencia, !sequência, !sono, !achievements, !ajuda, !help
+🔁 *Atalhos também aceitos:* !profile, !diario, !sequencia, !sequência, !sono, !achievements, !ajuda, !help
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '2':`💰 *ECONOMIA & DIVERSÃO*
