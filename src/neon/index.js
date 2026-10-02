@@ -117,7 +117,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   ;(async()=>{
     let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false
     try{
-      for(let i=0;i<30;i++){
+      while(true){
         const r=await attackBoss(chat,jid,name,usePet)
         if(r.petUnavailable&&!petExitWarned){
           petExitWarned=true
@@ -171,7 +171,7 @@ async function runRaidCombat(chat,reply){
         }
 
         if(r.failed){
-          const why=r.reason==='party_wipe'?'todos os jogadores caíram':r.reason==='timeout'?'o tempo acabou':'o limite de rodadas foi atingido'
+          const why=r.reason==='party_wipe'?'todos os jogadores caíram':'o tempo acabou'
           await reply(`💀 *RAID FRACASSADA — ${r.config.name}*\n\n❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*\n⚠️ Motivo: *${why}*.\n\n🔑 A chave foi consumida. Não há recompensa em caso de derrota.`)
           return
         }
@@ -6377,6 +6377,17 @@ _Os comandos antigos continuam funcionando normalmente._`
         } else if(['raid','raidstatus'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
           const active=await getRaidStatus(chat)
+          if(active?.status==='failed' && active.failReason==='round_limit' && !active.roundLimitRefunded){
+            const cfg=getRaidCatalog().find(x=>Number(x.level)===Number(active.level))
+            if(cfg && active.host){
+              await db.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+                ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[active.host,cfg.keyId])
+              active.roundLimitRefunded=true
+              await db.query(`UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+                WHERE chat_jid=$2 AND game_type='raid'`,[JSON.stringify(active),chat])
+              await reply(`🔑 *CHAVE DEVOLVIDA*\n\nA Raid anterior fracassou por causa do antigo limite de 30 rodadas. A chave Lv.${active.level} foi devolvida ao host.`)
+            }
+          }
           if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
             const players=Object.values(active.players||{})
             let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*\n`
