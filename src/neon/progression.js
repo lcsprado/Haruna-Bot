@@ -450,6 +450,66 @@ export async function getGarage(jid){
   })
 }
 
+export async function driveUber(jid){
+  await ensureUser(jid)
+
+  const garage=await getGarage(jid)
+  if(!garage.length) throw new Error('Você precisa ter pelo menos um carro para trabalhar de Uber. Use !carros para comprar um.')
+
+  // O melhor carro da garagem define a categoria disponível e o teto da corrida.
+  const best=garage.reduce((a,b)=>(Number(b.price||0)>Number(a.price||0)?b:a))
+  const tiers={
+    popular:{category:'UberX',min:180,max:420},
+    sedan_esportivo:{category:'Comfort',min:300,max:650},
+    suv_premium:{category:'Comfort+',min:450,max:900},
+    superesportivo:{category:'Black',min:700,max:1400},
+    hipercarro:{category:'Black Premium',min:1000,max:2000},
+  }
+  const tier=tiers[best.id]||tiers.popular
+
+  return tx(async client=>{
+    const key=`uber:${jid}`
+    const now=Math.floor(Date.now()/1000)
+    const cd=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[key])
+    if(cd.rows[0] && Number(cd.rows[0].expires_at)>now){
+      return {ok:false,remaining:Number(cd.rows[0].expires_at)-now}
+    }
+
+    // Uma corrida a cada 25 minutos.
+    const expires=now+(25*60)
+    await client.query(`
+      INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+      ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
+    `,[key,expires])
+
+    const types=[
+      {name:'Corrida curta',factor:.85,weight:35},
+      {name:'Corrida média',factor:1,weight:40},
+      {name:'Corrida longa',factor:1.25,weight:20},
+      {name:'Corrida premium',factor:1.6,weight:5},
+    ]
+    let roll=Math.random()*100
+    let ride=types[0]
+    for(const t of types){
+      roll-=t.weight
+      if(roll<=0){ride=t;break}
+    }
+
+    const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
+    const fare=Math.max(1,Math.round(base*ride.factor))
+    const tip=Math.random()<.22 ? Math.max(20,Math.round(fare*(.08+Math.random()*.17))) : 0
+    const total=fare+tip
+
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES('system',$1,$2,'uber',$3)
+    `,[jid,total,`${tier.category} | ${ride.name} | ${best.name}${tip? ` | gorjeta:${tip}`:''}`])
+
+    return {ok:true,car:best,category:tier.category,ride:ride.name,fare,tip,total,cooldown:25*60}
+  })
+}
+
 export async function buyCar(jid,input){
   await ensureUser(jid)
   const car=resolveCatalog(input,CARS)
