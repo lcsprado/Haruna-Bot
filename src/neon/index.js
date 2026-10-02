@@ -2764,6 +2764,21 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
     }
 
+    if(flow.stage==='delivery_vehicle_buy'){
+      if(!/^[1-6]$/.test(input)){
+        await reply('🚲🏍️ Escolha um veículo de *1 a 6* ou digite *0* para cancelar.')
+        return true
+      }
+      try{
+        const vehicle=await buyMotorcycle(sender,input)
+        clearQuickFlow(chat,sender)
+        await reply(`🚲🏍️ *Veículo comprado!*\n\n${vehicle.name}\n💰 R$ ${fmt(vehicle.price)}\n\n🍔 Agora use *${prefix}ifood* para fazer entregas.`)
+      }catch(err){
+        await reply(`❌ ${err?.message||'Não foi possível comprar esse veículo.'}`)
+      }
+      return true
+    }
+
     if(flow.stage==='nav_economy'){
       if(input==='1'){
         const p=await getProfile(sender)
@@ -4882,7 +4897,8 @@ ${status}
             const has=owned.some(x=>x.id===m.id)
             text+=`${i+1}️⃣ *${m.name}* — R$ ${fmt(m.price)}${has?' ✅':''}\n`
           })
-          text+=`\n🛒 Para comprar: *${prefix}comprarmoto número ou nome*\n🍔 Depois use *${prefix}ifood* para fazer entregas.`
+          text+=`\n🛒 *Responda só com o número* para comprar.\n⌨️ Ou use *${prefix}comprarmoto número ou nome*.\n🍔 Depois use *${prefix}ifood* para fazer entregas.`
+          setQuickFlow(chat,sender,'delivery_vehicle_buy',{},90000)
           await reply(text)
 
         } else if(['comprarmoto'].includes(cmd)){
