@@ -115,6 +115,14 @@ export async function initDatabase() {
       PRIMARY KEY(jid,item_id,tier)
     );
 
+    CREATE TABLE IF NOT EXISTS equipment_upgrades(
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      item_id TEXT NOT NULL REFERENCES items(id),
+      level INTEGER NOT NULL DEFAULT 1 CHECK(level>=1 AND level<=10),
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+      PRIMARY KEY(jid,item_id)
+    );
+
     CREATE TABLE IF NOT EXISTS cooldowns (
       key TEXT PRIMARY KEY,
       expires_at BIGINT NOT NULL
@@ -292,6 +300,10 @@ export async function initDatabase() {
     ['espada_flamas','Espada das Chamas','Arma épica. +40 ATK.','weapon',60000,'epic'],
     ['tridente_tempestade','Tridente da Tempestade','Arma épica. +48 ATK.','weapon',95000,'epic'],
     ['lamina_abissal','Lâmina Abissal','Arma épica de alto nível. +55 ATK.','weapon',140000,'epic'],
+    ['foice_carmesim','Foice Carmesim','Arma épica. +43 ATK.','weapon',72000,'epic'],
+    ['lanca_solar','Lança Solar','Arma épica. +46 ATK.','weapon',85000,'epic'],
+    ['garras_vazio','Garras do Vazio','Arma épica. +51 ATK.','weapon',115000,'epic'],
+    ['espada_eclipse','Espada do Eclipse','Arma épica superior. +54 ATK.','weapon',132000,'epic'],
     ['martelo_golem','Martelo do Golem Ancestral','Arma exclusiva do Boss de Grupo. +70 ATK. Apenas por drop.','weapon',0,'legendary'],
     ['excalibur','Excalibur','Arma lendária. +85 ATK. Apenas por drop.','weapon',0,'legendary'],
     ['katana_divina','Katana Divina','Arma lendária raríssima. +95 ATK. Apenas por drop.','weapon',0,'legendary'],
@@ -305,6 +317,10 @@ export async function initDatabase() {
     ['armadura_dragao','Armadura de Dragão','Proteção épica. +40 DEF.','armor',70000,'epic'],
     ['armadura_abissal','Armadura Abissal','Proteção épica. +48 DEF.','armor',110000,'epic'],
     ['armadura_celestial','Armadura Celestial','Proteção épica de alto nível. +55 DEF.','armor',155000,'epic'],
+    ['manto_fenix','Manto da Fênix','Proteção épica. +43 DEF.','armor',78000,'epic'],
+    ['couraca_vulcanica','Couraça Vulcânica','Proteção épica. +46 DEF.','armor',92000,'epic'],
+    ['armadura_vazio','Armadura do Vazio','Proteção épica. +51 DEF.','armor',125000,'epic'],
+    ['armadura_eclipse','Armadura do Eclipse','Proteção épica superior. +54 DEF.','armor',145000,'epic'],
     ['armadura_golem','Armadura do Golem Ancestral','Armadura exclusiva do Boss de Grupo. +70 DEF. Apenas por drop.','armor',0,'legendary'],
     ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF. Apenas por drop.','armor',0,'legendary'],
     ['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF. Apenas por drop.','armor',0,'legendary'],
@@ -1361,6 +1377,10 @@ const EQUIPMENT = {
   espada_flamas: { category:'weapon', atk:40, def:0, name:'Espada das Chamas' },
   tridente_tempestade: { category:'weapon', atk:48, def:0, name:'Tridente da Tempestade' },
   lamina_abissal: { category:'weapon', atk:55, def:0, name:'Lâmina Abissal' },
+  foice_carmesim: { category:'weapon', atk:43, def:0, name:'Foice Carmesim' },
+  lanca_solar: { category:'weapon', atk:46, def:0, name:'Lança Solar' },
+  garras_vazio: { category:'weapon', atk:51, def:0, name:'Garras do Vazio' },
+  espada_eclipse: { category:'weapon', atk:54, def:0, name:'Espada do Eclipse' },
   martelo_golem: { category:'weapon', atk:70, def:0, name:'Martelo do Golem Ancestral' },
   excalibur: { category:'weapon', atk:85, def:0, name:'Excalibur' },
   katana_divina: { category:'weapon', atk:95, def:0, name:'Katana Divina' },
@@ -1373,6 +1393,10 @@ const EQUIPMENT = {
   armadura_dragao: { category:'armor', atk:0, def:40, name:'Armadura de Dragão' },
   armadura_abissal: { category:'armor', atk:0, def:48, name:'Armadura Abissal' },
   armadura_celestial: { category:'armor', atk:0, def:55, name:'Armadura Celestial' },
+  manto_fenix: { category:'armor', atk:0, def:43, name:'Manto da Fênix' },
+  couraca_vulcanica: { category:'armor', atk:0, def:46, name:'Couraça Vulcânica' },
+  armadura_vazio: { category:'armor', atk:0, def:51, name:'Armadura do Vazio' },
+  armadura_eclipse: { category:'armor', atk:0, def:54, name:'Armadura do Eclipse' },
   armadura_golem: { category:'armor', atk:0, def:70, name:'Armadura do Golem Ancestral' },
   armadura_titan: { category:'armor', atk:0, def:85, name:'Armadura do Titã' },
   armadura_divina: { category:'armor', atk:0, def:95, name:'Armadura Divina' },
@@ -1439,6 +1463,93 @@ export function getEquipmentInfo(itemId) {
   return eq ? {...eq,itemId} : null
 }
 
+const EQUIPMENT_MAX_LEVEL=10
+const UPGRADE_BASE_COST={common:2500,uncommon:5000,rare:12000,epic:30000,legendary:75000}
+
+export function equipmentStatsAtLevel(itemId,level=1){
+  const eq=EQUIPMENT[itemId]
+  if(!eq) return null
+  level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
+  const mult=1+((level-1)*0.04)
+  return {
+    ...eq,itemId,level,mult,
+    atk:Math.round(Number(eq.atk||0)*mult),
+    def:Math.round(Number(eq.def||0)*mult)
+  }
+}
+
+function equipmentUpgradeCost(rarity,currentLevel){
+  const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
+  return base*Math.max(1,Number(currentLevel)||1)
+}
+
+export async function getEquipmentLevels(jid,itemIds=[]){
+  const ids=[...new Set((itemIds||[]).filter(Boolean))]
+  if(!ids.length) return {}
+  const {rows}=await db.query('SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])
+  const out={}
+  for(const id of ids) out[id]=1
+  for(const row of rows) out[row.item_id]=Number(row.level||1)
+  return out
+}
+
+export async function listUpgradeableEquipment(jid){
+  await ensureUser(jid)
+  const {rows}=await db.query(`
+    SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,i.price,
+           COALESCE(u.level,1)::int AS level
+    FROM inventories inv
+    JOIN items i ON i.id=inv.item_id
+    LEFT JOIN equipment_upgrades u ON u.jid=inv.jid AND u.item_id=inv.item_id
+    WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor')
+    ORDER BY CASE i.category WHEN 'weapon' THEN 1 ELSE 2 END,
+             CASE i.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
+             i.name
+  `,[jid])
+  return rows.map(r=>{
+    const current=equipmentStatsAtLevel(r.item_id,r.level)
+    const next=Number(r.level)<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,Number(r.level)+1):null
+    return {...r,current,next,maxLevel:EQUIPMENT_MAX_LEVEL,cost:next?equipmentUpgradeCost(r.rarity,r.level):0}
+  })
+}
+
+export async function upgradeEquipment(jid,itemId){
+  await ensureUser(jid)
+  const eq=EQUIPMENT[itemId]
+  if(!eq) throw new Error('Esse item não pode ser aprimorado.')
+  return transaction(async client=>{
+    const inv=await client.query(`
+      SELECT inv.quantity,i.rarity,i.name
+      FROM inventories inv JOIN items i ON i.id=inv.item_id
+      WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE
+    `,[jid,itemId])
+    if(!inv.rows[0]||Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse equipamento.')
+    const up=await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+    const currentLevel=Number(up.rows[0]?.level||1)
+    if(currentLevel>=EQUIPMENT_MAX_LEVEL) throw new Error('Esse equipamento já está no Lv.10.')
+    const cost=equipmentUpgradeCost(inv.rows[0].rarity,currentLevel)
+    const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    if(Number(wallet.rows[0]?.cash||0)<cost) throw new Error(`Saldo insuficiente. Upgrade custa R$ ${cost.toLocaleString('pt-BR')}.`)
+    const nextLevel=currentLevel+1
+    await client.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
+    await client.query(`
+      INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
+      VALUES($1,$2,$3,${nowSql})
+      ON CONFLICT(jid,item_id) DO UPDATE SET level=EXCLUDED.level,updated_at=EXCLUDED.updated_at
+    `,[jid,itemId,nextLevel])
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'upgrade',$2,'equipment_upgrade',$3)
+    `,[jid,cost,`${itemId} Lv.${currentLevel}->Lv.${nextLevel}`])
+    const cash=(await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]?.cash||0
+    return {
+      itemId,name:inv.rows[0].name,rarity:inv.rows[0].rarity,
+      fromLevel:currentLevel,level:nextLevel,cost,cash:Number(cash),
+      stats:equipmentStatsAtLevel(itemId,nextLevel)
+    }
+  })
+}
+
 export async function equipItem(jid, itemId) {
   const eq=EQUIPMENT[itemId]
   if(!eq) throw new Error('Esse item não pode ser equipado.')
@@ -1492,18 +1603,23 @@ export async function usePotion(jid, itemId) {
 export async function getCombatProfile(jid) {
   const p=await getProfile(jid)
   if(!p) return null
-  const weapon=EQUIPMENT[p.weapon_id] || {atk:0,def:0,name:'Nenhuma'}
-  const armor=EQUIPMENT[p.armor_id] || {atk:0,def:0,name:'Nenhuma'}
+  const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id])
+  const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1):null
+  const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1):null
+  const w=weapon||{atk:0,def:0,name:'Nenhuma',level:1}
+  const a=armor||{atk:0,def:0,name:'Nenhuma',level:1}
   return {
     ...p,
     base_atk:Number(p.atk),
     base_def:Number(p.def),
-    weapon_atk:Number(weapon.atk||0),
-    armor_def:Number(armor.def||0),
-    effective_atk:Number(p.atk)+Number(weapon.atk||0)+Number(armor.atk||0),
-    effective_def:Number(p.def)+Number(weapon.def||0)+Number(armor.def||0),
-    weapon_name:weapon.name,
-    armor_name:armor.name,
+    weapon_atk:Number(w.atk||0),
+    armor_def:Number(a.def||0),
+    effective_atk:Number(p.atk)+Number(w.atk||0)+Number(a.atk||0),
+    effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0),
+    weapon_name:w.name,
+    armor_name:a.name,
+    weapon_level:Number(w.level||1),
+    armor_level:Number(a.level||1),
   }
 }
 
@@ -1536,10 +1652,15 @@ export async function battle(attackerJid, defenderJid) {
     const cd=await claimCooldown(client,`battle:${attackerJid}`,10*60)
     if(!cd.ok) return {ok:false,remaining:cd.remaining}
 
-    const aeW=EQUIPMENT[a.weapon_id]||{atk:0,def:0}
-    const aeA=EQUIPMENT[a.armor_id]||{atk:0,def:0}
-    const beW=EQUIPMENT[b.weapon_id]||{atk:0,def:0}
-    const beA=EQUIPMENT[b.armor_id]||{atk:0,def:0}
+    const levelRows=(await client.query(
+      'SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[])',
+      [[attackerJid,defenderJid]]
+    )).rows
+    const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
+    const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0}
+    const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0}
+    const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id)):{atk:0,def:0}
+    const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0}
 
     const A={
       jid:attackerJid,name:au?.push_name||'Jogador',
@@ -2102,7 +2223,7 @@ const LOOT_POOLS = {
   common:['pocao_p','espada_madeira','armadura_couro'],
   uncommon:['pocao_m','espada_ferro','armadura_ferro'],
   rare:['pocao_g','espada_aco','machado_guerra','katana_sombria','armadura_aco','armadura_samurai','armadura_cavaleiro'],
-  epic:['elixir_supremo','espada_flamas','tridente_tempestade','lamina_abissal','armadura_dragao','armadura_abissal','armadura_celestial'],
+  epic:['elixir_supremo','espada_flamas','tridente_tempestade','lamina_abissal','foice_carmesim','lanca_solar','garras_vazio','espada_eclipse','armadura_dragao','armadura_abissal','armadura_celestial','manto_fenix','couraca_vulcanica','armadura_vazio','armadura_eclipse'],
   legendary:['excalibur','katana_divina','armadura_titan','armadura_divina']
 }
 
