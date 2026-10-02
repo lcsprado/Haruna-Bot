@@ -2981,11 +2981,86 @@ export async function startPlayerSleep(jid){
 const PET_BASE_ENERGY={
   cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
   tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,
-  panda:200,tigre:225,leao:250,unicornio:280,dragao:320
+  panda:200,tigre:225,leao:250,unicornio:280,dragao:320,
+  golem_ancestral:340,urso_runico:345,colosso_cristal:360,
+  salamandra_infernal:350,dragao_vulcanico:365,fenix_fogo:390,
+  corvo_abissal:350,lobo_abismo:370,fenix_gelo:395,
+  rinoceronte_titanico:365,guardiao_obsidiana:380,leviata_gelo:405,
+  cerbero_carmesim:380,tigre_lunar:390,imperador_abissal:420,
+  leao_solar:390,grifo_celestial:410,fenix_celestial:440,
+  serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500
 }
 export function petMaxEnergy(level=1,species='cachorro'){
   const base=PET_BASE_ENERGY[String(species||'cachorro').toLowerCase()]||100
   return base+Math.max(0,Number(level||1)-1)*2
+}
+
+export const LEGENDARY_PET_SUMMONS=[
+  {materialId:'nucleo_pedra',materialName:'Núcleo de Pedra',raidLevel:10,pets:[
+    {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:60,power:18},
+    {species:'urso_runico',name:'🐻 Urso Rúnico',chance:30,power:21},
+    {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:26}
+  ]},
+  {materialId:'escama_vulcanica',materialName:'Escama Vulcânica',raidLevel:15,pets:[
+    {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:55,power:22},
+    {species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:30,power:26},
+    {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:15,power:32}
+  ]},
+  {materialId:'olho_abissal',materialName:'Olho Abissal',raidLevel:20,pets:[
+    {species:'corvo_abissal',name:'👁️ Corvo Abissal',chance:55,power:24},
+    {species:'lobo_abismo',name:'🌑 Lobo do Abismo',chance:30,power:28},
+    {species:'fenix_gelo',name:'❄️ Fênix de Gelo',chance:15,power:34}
+  ]},
+  {materialId:'nucleo_titan',materialName:'Núcleo do Titã',raidLevel:25,pets:[
+    {species:'rinoceronte_titanico',name:'🦏 Rinoceronte Titânico',chance:55,power:27},
+    {species:'guardiao_obsidiana',name:'🗿 Guardião de Obsidiana',chance:30,power:31},
+    {species:'leviata_gelo',name:'🌊 Leviatã de Gelo',chance:15,power:36}
+  ]},
+  {materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal',raidLevel:30,pets:[
+    {species:'cerbero_carmesim',name:'🩸 Cérbero Carmesim',chance:55,power:30},
+    {species:'tigre_lunar',name:'🌙 Tigre Lunar',chance:30,power:34},
+    {species:'imperador_abissal',name:'👑 Imperador Abissal',chance:15,power:40}
+  ]},
+  {materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,pets:[
+    {species:'leao_solar',name:'☀️ Leão Solar',chance:50,power:35},
+    {species:'grifo_celestial',name:'✨ Grifo Celestial',chance:35,power:39},
+    {species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:45}
+  ]},
+  {materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,pets:[
+    {species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:55,power:40},
+    {species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:35,power:46},
+    {species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:55}
+  ]}
+]
+
+export async function summonLegendaryPet(jid,materialId){
+  await ensureUser(jid)
+  const altar=LEGENDARY_PET_SUMMONS.find(x=>x.materialId===String(materialId||''))
+  if(!altar) throw new Error('Material de invocação inválido.')
+  return transaction(async client=>{
+    const inv=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,altar.materialId])).rows[0]
+    const owned=Number(inv?.quantity||0)
+    if(owned<100) throw new Error(`Você precisa de 100 ${altar.materialName}. Você possui ${owned}.`)
+    await client.query('UPDATE inventories SET quantity=quantity-100 WHERE jid=$1 AND item_id=$2',[jid,altar.materialId])
+
+    const roll=Math.random()*100
+    let acc=0
+    let chosen=altar.pets[altar.pets.length-1]
+    for(const pet of altar.pets){
+      acc+=Number(pet.chance||0)
+      if(roll<acc){ chosen=pet; break }
+    }
+
+    const petName=chosen.name.replace(/^[^\p{L}\p{N}]+/u,'').slice(0,24)
+    const energy=petMaxEnergy(1,chosen.species)
+    const collected=(await client.query(
+      `INSERT INTO pet_collection(jid,species,name,energy,power,active)
+       VALUES($1,$2,$3,$4,$5,FALSE) RETURNING *`,
+      [jid,chosen.species,petName,energy,chosen.power]
+    )).rows[0]
+
+    return {altar,pet:chosen,collectionId:collected.id,remaining:owned-100}
+  })
 }
 
 export async function adoptPet(jid,species='cachorro',name='Alpha'){
