@@ -473,7 +473,7 @@ export async function startBoss(chat){
     const current=await loadGame(c,chat,'boss')
     if(current&&Number(current.hp)>0) return {already:true,...current}
     const maxHp=25000+Math.floor(Math.random()*10001)
-    const state={name:'Golem Ancestral do Trevo',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now()}
+    const state={name:'Golem Ladrão de novembro dedos',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now()}
     await saveGame(c,chat,'boss',state); return state
   })
 }
