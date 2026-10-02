@@ -28,4 +28,10 @@ test('regressões conhecidas de escopo não reaparecem',async()=>{
   const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(source,/const text=fixed\[cmd\][\s\S]{0,160}mentions:\[target\]/)
   assert.match(source,/handleQuickGameFlow\(\{chat,sender,body,reply,msg,isOwner,isGroup\}\)/)
+  assert.ok(
+    source.indexOf('function petStatusBonus') < source.indexOf('async function start()'),
+    'petStatusBonus precisa estar no escopo do dispatcher principal'
+  )
+  assert.match(source,/async function showMainMenu\(chat,sender,reply\)/)
+  assert.doesNotMatch(source,/await mainMenu\(\)/)
 })

@@ -296,6 +296,38 @@ _Responda apenas com o número._`
   )
 }
 
+async function showMainMenu(chat,sender,reply){
+  setQuickFlow(chat,sender,'nav_main',{},90000)
+  await reply(
+`🤖 *ALPHA BOT — MENU PRINCIPAL*
+
+1️⃣ 👤 Meu perfil
+2️⃣ 💰 Economia
+3️⃣ 🛒 Itens e inventário
+4️⃣ ⚔️ RPG, Dungeon & Pets
+5️⃣ 🎮 Minigames & Boss
+6️⃣ 📋 Progressão & patrimônio
+7️⃣ 🏴 Clãs
+8️⃣ 💚 Grupo / assinatura
+9️⃣ 🆘 Futebol, utilidades & suporte
+
+🔥 *DESTAQUES 2.0*
+🐾 Pets agora dão bônus estratégicos no Boss
+👹 Boss de Grupo: sexta 00:00 → sábado 23:59, com combate automático e drops
+🏢 Negócios, upgrades e renda passiva
+💼 Carreira no !trabalhar
+🚗 Uber com sua frota • 🏍️ iFood com bikes/motos
+📚 Catálogo completo: *!comandos*
+
+✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
+🖼️ *Seu card:* use *!setfoto* numa foto para personalizar o *!perfil*.
+
+👉 *Responda apenas com o número.*
+
+0️⃣ Sair`
+  )
+}
+
 async function showCommandsMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
   await reply(
@@ -785,6 +817,33 @@ function horoscopeText(signId,signName){
     '\n\n_Leitura criada só por diversão/entretenimento._'
 }
 
+const PET_STATUS_SPECIALTIES = {
+  cachorro:{label:'🐶 Guardião',text:'+5% de defesa no Boss',stat:'defense',base:5},
+  gato:{label:'🐱 Instinto',text:'+4% de chance de crítico no Boss',stat:'crit',base:4},
+  coelho:{label:'🐰 Agilidade',text:'+4% de esquiva no Boss',stat:'dodge',base:4},
+  papagaio:{label:'🦜 Motivação',text:'+5% de XP recebido do Boss',stat:'xp',base:5},
+  hamster:{label:'🐹 Sorte',text:'+2,5% de chance de drop no Boss',stat:'drop',base:2.5},
+  tartaruga:{label:'🐢 Casco',text:'+7% de defesa no Boss',stat:'defense',base:7},
+  coruja:{label:'🦉 Sabedoria',text:'+8% de XP recebido do Boss',stat:'xp',base:8},
+  raposa:{label:'🦊 Astúcia',text:'+6% de chance de crítico no Boss',stat:'crit',base:6},
+  lobo:{label:'🐺 Caçador',text:'+6% de dano no Boss',stat:'damage',base:6},
+  aguia:{label:'🦅 Precisão',text:'+7% de chance de crítico no Boss',stat:'crit',base:7},
+  panda:{label:'🐼 Resistência',text:'+8% de defesa no Boss',stat:'defense',base:8},
+  tigre:{label:'🐯 Fúria',text:'+7% de dano no Boss',stat:'damage',base:7},
+  leao:{label:'🦁 Rei da Caçada',text:'+8% de dano no Boss',stat:'damage',base:8},
+  unicornio:{label:'🦄 Bênção',text:'+4% drop e +4% defesa no Boss',multi:true},
+  dragao:{label:'🐉 Caçador de Boss',text:'+10% de dano contra Boss',stat:'bossDamage',base:10}
+}
+
+function petStatusBonus(p){
+  const spec=PET_STATUS_SPECIALTIES[String(p?.species||'').toLowerCase()]
+  if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada'}
+  const scale=1+Math.min(.25,Math.max(0,Number(p.level||1)-1)*.01)
+  const pct=n=>Math.min(10,n*scale).toLocaleString('pt-BR',{maximumFractionDigits:1})
+  if(spec.multi) return {label:spec.label,text:`+${pct(4)}% drop e +${pct(4)}% defesa no Boss`}
+  return {label:spec.label,text:`+${pct(spec.base)}% ${spec.stat==='crit'?'chance de crítico':spec.stat==='dodge'?'esquiva':spec.stat==='xp'?'XP recebido':spec.stat==='drop'?'chance de drop':spec.stat==='defense'?'defesa':'dano'} no Boss`}
+}
+
 async function start() {
   await initDatabase()
   await initCommunityPack()
@@ -1011,64 +1070,6 @@ Você possui: *${stock}*
 0️⃣ Sair`
       )
     }
-
-    const mainMenu=async()=>{
-      setQuickFlow(chat,sender,'nav_main',{},90000)
-      await reply(
-`🤖 *ALPHA BOT — MENU PRINCIPAL*
-
-1️⃣ 👤 Meu perfil
-2️⃣ 💰 Economia
-3️⃣ 🛒 Itens e inventário
-4️⃣ ⚔️ RPG, Dungeon & Pets
-5️⃣ 🎮 Minigames & Boss
-6️⃣ 📋 Progressão & patrimônio
-7️⃣ 🏴 Clãs
-8️⃣ 💚 Grupo / assinatura
-9️⃣ 🆘 Futebol, utilidades & suporte
-
-🔥 *DESTAQUES 2.0*
-🐾 Pets agora dão bônus estratégicos no Boss
-👹 Boss de Grupo: sexta 00:00 → sábado 23:59, com combate automático e drops
-🏢 Negócios, upgrades e renda passiva
-💼 Carreira no !trabalhar
-🚗 Uber com sua frota • 🏍️ iFood com bikes/motos
-📚 Catálogo completo: *!comandos*
-
-✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
-🖼️ *Seu card:* use *!setfoto* numa foto para personalizar o *!perfil*.
-
-👉 *Responda apenas com o número.*
-
-0️⃣ Sair`
-      )
-    }
-
-const PET_STATUS_SPECIALTIES = {
-  cachorro:{label:'🐶 Guardião',text:'+5% de defesa no Boss',stat:'defense',base:5},
-  gato:{label:'🐱 Instinto',text:'+4% de chance de crítico no Boss',stat:'crit',base:4},
-  coelho:{label:'🐰 Agilidade',text:'+4% de esquiva no Boss',stat:'dodge',base:4},
-  papagaio:{label:'🦜 Motivação',text:'+5% de XP recebido do Boss',stat:'xp',base:5},
-  hamster:{label:'🐹 Sorte',text:'+2,5% de chance de drop no Boss',stat:'drop',base:2.5},
-  tartaruga:{label:'🐢 Casco',text:'+7% de defesa no Boss',stat:'defense',base:7},
-  coruja:{label:'🦉 Sabedoria',text:'+8% de XP recebido do Boss',stat:'xp',base:8},
-  raposa:{label:'🦊 Astúcia',text:'+6% de chance de crítico no Boss',stat:'crit',base:6},
-  lobo:{label:'🐺 Caçador',text:'+6% de dano no Boss',stat:'damage',base:6},
-  aguia:{label:'🦅 Precisão',text:'+7% de chance de crítico no Boss',stat:'crit',base:7},
-  panda:{label:'🐼 Resistência',text:'+8% de defesa no Boss',stat:'defense',base:8},
-  tigre:{label:'🐯 Fúria',text:'+7% de dano no Boss',stat:'damage',base:7},
-  leao:{label:'🦁 Rei da Caçada',text:'+8% de dano no Boss',stat:'damage',base:8},
-  unicornio:{label:'🦄 Bênção',text:'+4% drop e +4% defesa no Boss',multi:true},
-  dragao:{label:'🐉 Caçador de Boss',text:'+10% de dano contra Boss',stat:'bossDamage',base:10}
-}
-function petStatusBonus(p){
-  const spec=PET_STATUS_SPECIALTIES[String(p?.species||'').toLowerCase()]
-  if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada'}
-  const scale=1+Math.min(.25,Math.max(0,Number(p.level||1)-1)*.01)
-  const pct=n=>Math.min(10,n*scale).toLocaleString('pt-BR',{maximumFractionDigits:1})
-  if(spec.multi) return {label:spec.label,text:`+${pct(4)}% drop e +${pct(4)}% defesa no Boss`}
-  return {label:spec.label,text:`+${pct(spec.base)}% ${spec.stat==='crit'?'chance de crítico':spec.stat==='dodge'?'esquiva':spec.stat==='xp'?'XP recebido':spec.stat==='drop'?'chance de drop':spec.stat==='defense'?'defesa':'dano'} no Boss`}
-}
 
     const commandPages={
       '1':`👤 *PERFIL, CONTA & SOCIAL*
@@ -2250,7 +2251,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
       }
 
       if(input==='9'){
-        await mainMenu()
+        await showMainMenu(chat,sender,reply)
         return true
       }
 
@@ -6338,7 +6339,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
           await showCommandsMainMenu(chat,sender,reply)
 
         } else if(['menu','help','ajuda'].includes(cmd)){
-          await mainMenu()
+          await showMainMenu(chat,sender,reply)
         } else {
           const UNKNOWN_COMMAND_REPLIES=["🤖 *Esse comando veio de onde, Beta?*\\\nUse *!comandos* antes de inventar moda.","🍀 *Tentativa interessante.* Resultado: absolutamente nada.\\\nUse *!comandos*.","🤖 *Beta tentando desbloquear comando secreto... falhou.*\\\nTenta *!comandos*.","💀 Nem eu sei o que você tentou fazer.\\\nUse *!comandos* e volta preparado.","🧠 Esse comando não passou nem da fase de testes.\\\nConsulta *!comandos*, Beta.","📡 Procurei esse comando em todo o sistema. Nada.\\\nUse *!comandos*.","🤨 Você acabou de criar um comando que nem eu conheço.\\\nVai de *!comandos*.","🚫 Comando clandestino detectado.\\\nOs oficiais estão em *!comandos*.","🎲 Quase desbloqueou um segredo. Quase.\\\nUse *!comandos*.","🤖 Alpha não fala esse dialeto de Beta.\\\nDigite *!comandos*.","🫠 Eu poderia fingir que entendi... mas não.\\\nUse *!comandos*.","🏆 Parabéns: você encontrou exatamente zero comandos.\\\nAgora tenta *!comandos*.","📖 Manual do Beta perdido?\\\n* !comandos* resolve. ","⚠️ Comando imaginário detectado.\\\nPara comandos reais: *!comandos*.","🍀 O Alpha julgou sua tentativa. Veredito: tente *!comandos*."]
           const picked=UNKNOWN_COMMAND_REPLIES[Math.floor(Math.random()*UNKNOWN_COMMAND_REPLIES.length)]
