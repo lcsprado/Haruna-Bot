@@ -475,13 +475,13 @@ function petBossBonus(pet){
 }
 
 const RAID_CONFIGS=[
-  {level:10,name:'Guardião de Pedra',hp:10000,atk:14,keyId:'chave_raid_10',keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Núcleo de Pedra'},box:null},
-  {level:15,name:'Dragão Vulcânico',hp:18000,atk:20,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte'},
-  {level:20,name:'Devorador Abissal',hp:30000,atk:28,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara'},
-  {level:25,name:'Titã de Ferro',hp:48000,atk:36,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara'},
-  {level:30,name:'Rei Abissal',hp:75000,atk:46,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica'},
-  {level:40,name:'Serafim Caído',hp:130000,atk:65,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica'},
-  {level:50,name:'Alpha Corrompido',hp:220000,atk:90,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica'},
+  {level:10,name:'Guardião de Pedra',hp:10000,atk:14,keyId:'chave_raid_10',keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Núcleo de Pedra'},box:null,gear:null,gearChance:0},
+  {level:15,name:'Dragão Vulcânico',hp:18000,atk:20,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.03},
+  {level:20,name:'Devorador Abissal',hp:30000,atk:28,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.035},
+  {level:25,name:'Titã de Ferro',hp:48000,atk:36,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.04},
+  {level:30,name:'Rei Abissal',hp:75000,atk:46,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.05},
+  {level:40,name:'Serafim Caído',hp:130000,atk:65,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.025},
+  {level:50,name:'Alpha Corrompido',hp:220000,atk:90,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.02},
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
 export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r})) }
@@ -600,10 +600,10 @@ async function finishRaidRewards(c,s,cfg){
     const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     await credit(c,p.jid,cash,\`raid_\${cfg.level}\`)
     await grantExpInTransaction(c,p.jid,exp)
-    const petXp=p.pet?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
+    const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     if(petXp) await raidPetXp(c,p.jid,petXp)
 
-    let material=null,drop=null
+    let material=null,drop=null,gearDrop=null
     const qty=(i===0?2:1)
     if(i===0||Math.random()<Math.min(.90,.25+share*.90+Number(pb.drop||0))){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
@@ -613,7 +613,18 @@ async function finishRaidRewards(c,s,cfg){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
       drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
     }
-    rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),share,cash,exp,petXp,material,drop})
+    if(Array.isArray(cfg.gear)&&cfg.gear.length){
+      const chance=Math.min(.10,Number(cfg.gearChance||0)+(i===0?.015:0)+(share*.02)+Number(pb.drop||0)*.25)
+      if(Math.random()<chance){
+        const gearId=cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
+        const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
+        if(item){
+          await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,gearId])
+          gearDrop={id:item.id,name:item.name,rarity:item.rarity}
+        }
+      }
+    }
+    rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),share,cash,exp,petXp,material,drop,gearDrop})
   }
   return rewards
 }
