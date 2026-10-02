@@ -279,6 +279,7 @@ export async function initDatabase() {
     ['espada_flamas','Espada das Chamas','Arma épica. +40 ATK.','weapon',60000,'epic'],
     ['tridente_tempestade','Tridente da Tempestade','Arma épica. +48 ATK.','weapon',95000,'epic'],
     ['lamina_abissal','Lâmina Abissal','Arma épica de alto nível. +55 ATK.','weapon',140000,'epic'],
+    ['martelo_golem','Martelo do Golem Ancestral','Arma exclusiva do Boss de Grupo. +70 ATK. Apenas por drop.','weapon',0,'legendary'],
     ['excalibur','Excalibur','Arma lendária. +85 ATK. Apenas por drop.','weapon',0,'legendary'],
     ['katana_divina','Katana Divina','Arma lendária raríssima. +95 ATK. Apenas por drop.','weapon',0,'legendary'],
 
@@ -1311,6 +1312,7 @@ const EQUIPMENT = {
   espada_flamas: { category:'weapon', atk:40, def:0, name:'Espada das Chamas' },
   tridente_tempestade: { category:'weapon', atk:48, def:0, name:'Tridente da Tempestade' },
   lamina_abissal: { category:'weapon', atk:55, def:0, name:'Lâmina Abissal' },
+  martelo_golem: { category:'weapon', atk:70, def:0, name:'Martelo do Golem Ancestral' },
   excalibur: { category:'weapon', atk:85, def:0, name:'Excalibur' },
   katana_divina: { category:'weapon', atk:95, def:0, name:'Katana Divina' },
 
