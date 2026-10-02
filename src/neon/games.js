@@ -749,6 +749,8 @@ async function giveBossDrops(c,jid,position,extraChance=0){
   return drops
 }
 
+const BOSS_EVENT_AUTO_NOT_BEFORE=Date.parse('2026-10-09T19:00:00-03:00')
+
 function bossEventFridayInfo(now=new Date()){
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{
     timeZone:'America/Sao_Paulo',
@@ -805,6 +807,7 @@ export async function activateBossEvent(chat){
 }
 
 export async function autoStartBossEvent(chat,now=new Date()){
+  if(now.getTime()<BOSS_EVENT_AUTO_NOT_BEFORE) return {due:false,notBefore:BOSS_EVENT_AUTO_NOT_BEFORE}
   const schedule=bossEventFridayInfo(now)
   if(!schedule.due) return {due:false}
   return tx(async c=>{
