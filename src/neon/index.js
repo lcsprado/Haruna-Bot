@@ -113,10 +113,14 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   if(bossSessions.has(key)) return false
   bossSessions.set(key,true)
   ;(async()=>{
-    let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null
+    let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false
     try{
       for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name,usePet)
+        if(r.petUnavailable&&!petExitWarned){
+          petExitWarned=true
+          await reply('⚡ Seu pet ficou sem energia e saiu do combate. Você continuará atacando sozinho, sem o bônus dele.')
+        }
         if(r.playerDead){
           await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura disponível.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
           return
@@ -133,7 +137,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         }
         if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
       }
-      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 ${petName} (${petBonus}) ajudou com ~*${petDamage.toLocaleString('pt-BR')}* de dano`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 ${petName} (${petBonus}) ajudou com ~*${petDamage.toLocaleString('pt-BR')}* de dano`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{bossSessions.delete(key)}
   })()
