@@ -1152,6 +1152,8 @@ Você possui: *${stock}*
 *!conquistas* — badges e objetivos desbloqueados
 *!ping* — verifica se o Alpha está online
 
+🔁 *Atalhos também aceitos:* !profile, !avatar, !fotoperfil, !fotowpp, !diario, !sequencia, !sequência, !sono, !achievements, !ajuda, !help
+
 9️⃣ Voltar • 0️⃣ Fechar`,
       '2':`💰 *ECONOMIA & DIVERSÃO*
 
@@ -1184,6 +1186,8 @@ Você possui: *${stock}*
 *!verdade* — pergunta de verdade
 *!desafio* — gera um desafio
 
+🔁 *Atalhos também aceitos:* !balance, !bal, !work, !trampo, !emprego, !profissao, !profissão, !deposit, !withdraw, !saque, !transfer, !transferir, !joke, !horóscopo, !negócios, !comprarnegócio, !meusnegócios, !motocicletas
+
 9️⃣ Voltar • 0️⃣ Fechar`,
       '3':`🛒 *LOJA, INVENTÁRIO & MERCADO*
 
@@ -1203,6 +1207,8 @@ Você possui: *${stock}*
 *!comprar#3* / *!comprar #3* — abre o anúncio #3 e confirma a compra
 *!compraritem* — abre a lista de anúncios
 *!cancelarvenda ID* — cancela seu anúncio
+
+🔁 *Atalhos também aceitos:* !item, !shop, !buy, !inv, !inventory, !mochila, !sell, !venderduplicados, !melhoraritem, !upgradeitem, !use, !comprarmercado, !concessionaria, !concessionária, !garagemmotos, !meuscarros, !venderbicicleta
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '4':`⚔️ *RPG, COMBATE & PETS*
@@ -1243,6 +1249,8 @@ Você possui: *${stock}*
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
 
+🔁 *Atalhos também aceitos:* !battle, !batalha, !masmorra, !roubo, !rankrpg, !toprpg, !raidstatus, !lojalendaria, !fazol
+
 9️⃣ Voltar • 0️⃣ Fechar`,
       '5':`🎮 *MINIGAMES*
 
@@ -1271,6 +1279,8 @@ Você possui: *${stock}*
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
 🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
 🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
+
+🔁 *Atalhos também aceitos:* !jogos, !minigame, !adivinhar
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
@@ -1304,6 +1314,8 @@ Você possui: *${stock}*
 *!patrimonio* — total com dinheiro, itens, imóvel, carros, motos/bike e negócios
 *!rankingpatrimonio* — ranking de patrimônio
 
+🔁 *Atalhos também aceitos:* !progressão, !progresso, !missions, !missões, !claimmissions, !missão, !missãogrupo, !missãocoletiva, !missaocoletiva, !missãostatus, !statusmissão, !resgatarmissão, !imoveis, !imóveis, !patrimônio, !rankingpatrimônio, !toppatrimonio
+
 9️⃣ Voltar • 0️⃣ Fechar`,
       '7':`🏴 *CLÃS*
 
@@ -1318,6 +1330,8 @@ Você possui: *${stock}*
 *!cladoar valor* — doa ao cofre
 *!rankingclas* — ranking
 *!saircla* — sai do clã
+
+🔁 *Atalhos também aceitos:* !clã, !clãs, !clas, !clanes, !clãsmenu, !clacofre, !criarclã, !convidarcla, !clãconvidar, !aceitarcla, !clãaceitar, !clãajuda, !doarcla, !clãdoar, !clãpromover, !clãexpulsar, !sairclã, !topclas
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '8':`💚 *GRUPO & MODERAÇÃO*
@@ -1343,6 +1357,8 @@ Você possui: *${stock}*
 
 ⚙️ No *!configgrupo*: Anti-link, Anti-palavrão, Anti-delete, Antiflood, Boas-vindas e módulos do Alpha.
 
+🔁 *Atalhos também aceitos:* !assinatura, !plano, !preco, !pedidos, !configuragrupo, !rules, !atividade, !kick
+
 9️⃣ Voltar • 0️⃣ Fechar`,
       '9':`⚽ *FUTEBOL, UTILIDADES & SUPORTE*
 
@@ -1366,6 +1382,8 @@ Você possui: *${stock}*
 🆘 *Suporte*
 *!suporte* — abre chamado
 *!chamado CODIGO* — consulta chamado
+
+🔁 *Atalhos também aceitos:* !fut, !jogoshoje, !brasileirao, !brasileirão, !clube, !figurinha, !stiker, !apagada, !apagou, !cmds, !commands, !support
 
 9️⃣ Voltar • 0️⃣ Fechar`
     }
