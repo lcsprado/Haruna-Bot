@@ -991,8 +991,11 @@ Você possui: *${stock}*
 *!comprarnegocio N* — compra um negócio
 *!meusnegocios* — mostra seus negócios
 *!coletar* — coleta o lucro acumulado
-*!motos* — vê e compra motos
-*!minhasmotos* — mostra sua garagem de motos
+*!motos* — loja de bicicleta e motos
+*!comprarmoto N* — compra bicicleta ou moto
+*!minhasmotos* — mostra seus veículos de delivery
+*!venderbike N* — vende bicicleta por 70% do valor pago
+*!vendermoto N* — vende moto por 70% do valor pago
 *!depositar valor* — deposita no banco
 *!sacar valor* — saca do banco
 *!pix @pessoa valor* — transfere dinheiro
@@ -1010,7 +1013,7 @@ Você possui: *${stock}*
       '3':`🛒 *LOJA, INVENTÁRIO & MERCADO*
 
 *!itens* — abre o menu de itens
-*!loja* — abre a loja
+*!loja* — loja completa (itens, carros, bike e motos)
 *!comprar item quantidade* — compra da loja
 *!inventario* — abre seu inventário
 *!vender* — vende itens ao sistema
@@ -1063,7 +1066,8 @@ Você possui: *${stock}*
 *!letra a* — tenta uma letra
 *!palavra resposta* — tenta a palavra
 *!quiz* — inicia quiz
-*!resposta 1* — responde o quiz
+*1 / 2 / 3 / 4* — responde diretamente ao quiz ativo
+*!resposta 1* — forma alternativa de responder
 *!numero* — adivinhe o número
 *!chute 50* — dá um palpite
 *!boss* — inicia/mostra o boss
@@ -1081,6 +1085,15 @@ Você possui: *${stock}*
 *!carros* — concessionária
 *!comprarcarro número* — compra carro
 *!garagem* — mostra seus carros
+*!vendercarro N* — vende carro por 70% do valor pago
+*!motos* — bicicletas e motos
+*!comprarmoto N* — compra veículo de delivery
+*!minhasmotos* — garagem de delivery
+*!venderbike N* / *!vendermoto N* — revende com 30% de desvalorização
+*!negocios* — catálogo de negócios
+*!comprarnegocio N* — compra negócio
+*!meusnegocios* — mostra seus negócios
+*!coletar* — coleta renda passiva
 *!patrimonio* — patrimônio total
 *!rankingpatrimonio* — ranking de patrimônio
 
