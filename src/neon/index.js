@@ -46,7 +46,7 @@ import {
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
-  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, sellCar, sellMotorcycle
+  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle
 } from './progression.js'
 import { toStickerBuffer } from './sticker.js'
 import { renderProfileCard } from './profile-card.js'
@@ -989,7 +989,7 @@ Você possui: *${stock}*
 *!ifoodbike* — faz entrega usando sua bicicleta
 *!negocios* — catálogo de negócios e renda passiva
 *!comprarnegocio N* — compra um negócio
-*!meusnegocios* — mostra seus negócios
+*!meusnegocios* — mostra negócios e permite upgrade
 *!coletar* — coleta o lucro acumulado
 *!motos* — loja de bicicleta e motos
 *!comprarmoto N* — compra bicicleta ou moto
@@ -1092,7 +1092,7 @@ Você possui: *${stock}*
 *!venderbike N* / *!vendermoto N* — revende com 30% de desvalorização
 *!negocios* — catálogo de negócios
 *!comprarnegocio N* — compra negócio
-*!meusnegocios* — mostra seus negócios
+*!meusnegocios* — mostra negócios e permite upgrade
 *!coletar* — coleta renda passiva
 *!patrimonio* — patrimônio total
 *!rankingpatrimonio* — ranking de patrimônio
@@ -2782,6 +2782,28 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await supportMenu()
         return true
       }
+    }
+
+    if(flow.stage==='business_manage_select'){
+      const id=flow.data.ids?.[Number(input)-1]
+      if(!id){ await reply('🏢 Escolha um dos seus negócios pelo número.'); return true }
+      const b=(await getBusinesses(sender)).find(x=>x.id===id)
+      if(!b){ clearQuickFlow(chat,sender); await reply('❌ Negócio não encontrado.'); return true }
+      const level=Math.max(1,Number(b.level||1))
+      if(level>=5){ await reply(`🏆 *${b.name}* já está no nível máximo (5).`); return true }
+      const cost=Math.floor(b.price*(0.5+level*0.25))
+      setQuickFlow(chat,sender,'business_upgrade_confirm',{id:b.id},90000)
+      await reply(`🔧 *UPGRADE — ${b.name}*\n\nNível: *${level} → ${level+1}*\n💰 Custo: *R$ ${fmt(cost)}*\n📈 Produção: *R$ ${fmt(Math.floor(b.profitHour*(1+level*0.25)))}/h*\n⏳ Capacidade: *${b.capacityHours+level}h*\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+      return true
+    }
+
+    if(flow.stage==='business_upgrade_confirm'){
+      if(input==='2'){ clearQuickFlow(chat,sender); await reply('❌ Upgrade cancelado.'); return true }
+      if(input!=='1'){ await reply('Escolha *1 Confirmar* ou *2 Cancelar*.'); return true }
+      const r=await upgradeBusiness(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply(`✅ *NEGÓCIO MELHORADO!*\n🏪 ${r.name} — *Nível ${r.level}/5*\n📈 Produção: *R$ ${fmt(Math.floor(r.profitHour*r.multiplier))}/h*\n⏳ Capacidade: *${r.capacityHours}h*`)
+      return true
     }
 
     if(flow.stage==='business_buy_select'){
@@ -5064,8 +5086,13 @@ ${status}
         } else if(['meusnegocios','meusnegócios'].includes(cmd)){
           const rows=await getBusinesses(sender)
           if(!rows.length) return await reply(`🏪 Você ainda não possui negócios. Veja *${prefix}negocios*.`)
+          setQuickFlow(chat,sender,'business_manage_select',{ids:rows.map(b=>b.id)},90000)
           let text='🏢 *MEUS NEGÓCIOS*\n\n'
-          rows.forEach((b,i)=>text+=`${i+1}. *${b.name}* — R$ ${fmt(b.profitHour)}/h • até ${b.capacityHours}h\n`)
+          rows.forEach((b,i)=>{
+            const level=Math.max(1,Number(b.level||1)), mult=1+(level-1)*0.25
+            text+=`*${i+1}.* *${b.name}* — Nv. ${level}/5\n   💵 R$ ${fmt(Math.floor(b.profitHour*mult))}/h • ⏳ ${b.capacityHours+level-1}h\n`
+          })
+          text+='\n🔧 Responda com o número para fazer upgrade.\n0️⃣ Sair'
           await reply(text.trim())
 
         } else if(['coletar'].includes(cmd)){
