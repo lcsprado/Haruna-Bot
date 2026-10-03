@@ -1641,6 +1641,32 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
     }
 
+    if(flow.stage==='wake_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('😴 Tudo bem. Você continua dormindo normalmente.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('⏰ Escolha *1 para acordar agora* ou *2 para continuar dormindo*.')
+        return true
+      }
+      try{
+        const r=await wakePlayerEarly(sender)
+        clearQuickFlow(chat,sender)
+        if(r.natural){
+          await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${r.place}*\n✨ XP recebido: *+${r.xp}*\n💰 Taxa: *R$ 0*`)
+        }else{
+          const petLine=r.petEnergy?.gained ? `\n🐾 Pet recuperou: *+${r.petEnergy.gained} energia*` : ''
+          await reply(`⏰ *ACORDOU MAIS CEDO!*\n\n🏠 Local: *${r.place}*\n💸 Taxa cobrada: *R$ ${fmt(r.fee)}*\n✨ XP proporcional recebido: *+${r.xp}*${petLine}\n\n✅ Despertar confirmado.`)
+        }
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('❌ '+(err?.message||'Não foi possível acordar agora.'))
+      }
+      return true
+    }
+
     if(flow.stage==='legendary_pet_summon_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -4985,15 +5011,16 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         if(sleep?.active&&!sleepAllowed.has(cmd)) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
 
         if(cmd==='acordar'){
-          try{
-            const r=await wakePlayerEarly(sender)
-            clearQuickFlow(chat,sender)
-            if(r.natural){
-              await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${r.place}*\n✨ XP recebido: *+${r.xp}*\n💰 Taxa: *R$ 0*`)
-            }else{
-              await reply(`⏰ *ACORDOU MAIS CEDO!*\n\n🏠 Local: *${r.place}*\n⏳ Você pulou *${duration(r.remaining)}* de sono.\n💸 Taxa de despertar: *R$ ${fmt(r.fee)}*\n✨ XP proporcional recebido: *+${r.xp}*\n\n💡 Quanto mais perto do horário normal, menor fica a taxa.`)
-            }
-          }catch(err){ await reply('❌ '+(err?.message||'Não foi possível acordar agora.')) }
+          if(sleep?.woke) continue
+          if(!sleep?.active){
+            await reply('😴 Você não está dormindo.')
+            continue
+          }
+          const total=Math.max(1,Number(sleep.ends_at)-Number(sleep.started_at))
+          const ratio=Math.min(1,Number(sleep.remaining||0)/total)
+          const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
+          setQuickFlow(chat,sender,'wake_confirm',{quotedFee:fee},90000)
+          await reply(`⏰ *ACORDAR AGORA?*\n\n🏠 Local: *${sleep.place}*\n⏳ Falta: *${duration(sleep.remaining)}*\n💸 Custo para acordar agora: *R$ ${fmt(fee)}*\n\n1️⃣ *Sim, acordar*\n2️⃣ *Não, continuar dormindo*\n\n_O valor cai conforme o horário normal de acordar se aproxima._`)
           continue
         }
 
