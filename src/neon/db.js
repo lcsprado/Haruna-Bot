@@ -3517,7 +3517,11 @@ export async function petAdventure(jid){
       energy*(18+Math.random()*12)*(1+progressionBonus)
     )
     const cash=Math.max(100,baseCash)*moneyMultiplier
-    const xpGain=energy*2*xpMultiplier
+    // Aventura deve dar progresso relevante, mas não vários níveis de uma vez.
+    // Com a progressão atual (100 XP por nível), usar 2 XP por energia fazia
+    // pets de alta capacidade subirem 5-7 níveis numa única aventura.
+    const baseAdventureXp=Math.max(3,Math.floor(energy*0.35))
+    const xpGain=baseAdventureXp*xpMultiplier
     const xp=Number(pet.xp||0)+xpGain
     const nextLevel=1+Math.floor(xp/100)
     const levelsGained=Math.max(0,nextLevel-Number(pet.level||1))
