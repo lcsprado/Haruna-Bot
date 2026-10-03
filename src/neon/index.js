@@ -5620,6 +5620,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 ⏱️ Jornada: *${Number(carp.hours||0)}h*
 ✨ XP recebido: *+${Number(carp.xp||0)}*
 💰 Dinheiro recebido: *R$ ${fmt(Number(carp.cash||0))}*
+${carp.found?(carp.found.type==='cash'?`🍀 Enquanto carpia você encontrou: *R$ ${fmt(carp.found.cash)} extras!*`:`🍀 Enquanto carpia você encontrou: *${carp.found.qty}x ${carp.found.label}!*`):'🌿 Nenhum achado extra desta vez.'}
 ${carp.rareBoxDrop?'🎁 *ACHOU UMA CAIXA RARA ENQUANTO CARPINAVA!* Ela foi para seu inventário.':'🎁 Nenhuma Caixa Rara apareceu desta vez.'}
 ✅ Você voltou e já pode usar os comandos normalmente.`)
         }
