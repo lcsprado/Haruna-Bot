@@ -478,12 +478,12 @@ function petBossBonus(pet){
 
 const RAID_CONFIGS=[
   {level:10,name:'Guardião de Pedra',hp:10000,atk:14,keyId:'chave_raid_10',keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Núcleo de Pedra'},box:null,gear:null,gearChance:0},
-  {level:15,name:'Dragão Vulcânico',hp:18000,atk:21,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.03},
-  {level:20,name:'Devorador Abissal',hp:30000,atk:30,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.035},
-  {level:25,name:'Titã de Ferro',hp:48000,atk:39,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.04},
-  {level:30,name:'Rei Abissal',hp:75000,atk:50,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.05},
-  {level:40,name:'Serafim Caído',hp:130000,atk:70,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.025},
-  {level:50,name:'Alpha Corrompido',hp:220000,atk:98,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.02},
+  {level:15,name:'Dragão Vulcânico',hp:18000,atk:21,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.015},
+  {level:20,name:'Devorador Abissal',hp:30000,atk:30,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.0175},
+  {level:25,name:'Titã de Ferro',hp:48000,atk:39,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.02},
+  {level:30,name:'Rei Abissal',hp:75000,atk:50,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.025},
+  {level:40,name:'Serafim Caído',hp:130000,atk:70,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.008},
+  {level:50,name:'Alpha Corrompido',hp:220000,atk:98,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.005},
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
 export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r})) }
@@ -625,17 +625,36 @@ async function finishRaidRewards(c,s,cfg){
     if(petXp) await raidPetXp(c,p.jid,petXp)
 
     let material=null,drop=null,gearDrop=null
-    const qty=i===0?3:i===1?2:i===2?1:0
+    // Materiais continuam garantidos para o top 3, mas em ritmo menor:
+    // 2/1/1 em vez de 3/2/1. A invocação segue exigindo 100 materiais.
+    const qty=i===0?2:(i===1||i===2?1:0)
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
     }
-    if(cfg.box&&((i===0&&cfg.level>=30)||Math.random()<Math.min(.65,.12+share*.65))){
-      await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
-      drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
+    if(cfg.box){
+      // Lv15-25: aproximadamente metade da chance antiga.
+      // Lv30+: o 1º colocado não recebe mais caixa garantida; base de 55%.
+      let boxChance
+      if(cfg.level>=30 && i===0){
+        boxChance=Math.min(.65,.55+Number(pb.drop||0)*.50)
+      }else if(cfg.level>=30){
+        boxChance=Math.min(.45,.08+share*.45+Number(pb.drop||0)*.25)
+      }else{
+        boxChance=Math.min(.35,.06+share*.325+Number(pb.drop||0)*.20)
+      }
+      if(Math.random()<boxChance){
+        await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
+        drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
+      }
     }
     if(Array.isArray(cfg.gear)&&cfg.gear.length){
-      const chance=Math.min(.10,Number(cfg.gearChance||0)+(i===0?.015:0)+(share*.02)+Number(pb.drop||0)*.25)
+      // Equipamento direto deve ser raro. Colaboração, 1º lugar e pet de drop
+      // ajudam, mas não podem transformar lendário em recompensa frequente.
+      const rankBonus=i===0?(cfg.level>=40?.003:.005):0
+      const collaborationBonus=Math.min(.004,share*.008)
+      const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
+      const chance=Math.min(.05,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus)
       if(Math.random()<chance){
         const gearId=cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
         const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
