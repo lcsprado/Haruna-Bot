@@ -225,6 +225,42 @@ async function runRaidCombat(chat,reply){
 }
 
 const floodTracker=new Map()
+
+// Proteção de pico para eventos: evita várias transações pesadas disparando ao mesmo tempo.
+// Ações repetidas do mesmo jogador dentro de 3s são ignoradas silenciosamente;
+// ações simultâneas do grupo são escalonadas em pequenos intervalos.
+const eventActionLastByUser=new Map()
+const eventGroupNextActionAt=new Map()
+const EVENT_ACTION_COOLDOWN_MS=3000
+const EVENT_GROUP_STAGGER_MS=700
+const EVENT_TRAFFIC_START_AT=1791072000000 // 03/10/2026 21:00 BRT
+const EVENT_TRAFFIC_END_AT=1791074400000   // 03/10/2026 21:40 BRT
+
+function eventTrafficActiveNow(){
+  const now=Date.now()
+  return now>=EVENT_TRAFFIC_START_AT && now<EVENT_TRAFFIC_END_AT
+}
+
+async function staggerEventGroupAction(chat){
+  if(!chat?.endsWith('@g.us') || !eventTrafficActiveNow()) return
+  const now=Date.now()
+  const scheduledAt=Math.max(now,Number(eventGroupNextActionAt.get(chat)||0))
+  eventGroupNextActionAt.set(chat,scheduledAt+EVENT_GROUP_STAGGER_MS)
+  const wait=scheduledAt-now
+  if(wait>0) await new Promise(resolve=>setTimeout(resolve,wait))
+}
+
+async function allowEventPlayerAction(chat,sender,isOwner=false){
+  if(isOwner || !chat?.endsWith('@g.us') || !eventTrafficActiveNow()) return true
+  const key=chat+'|'+sender
+  const now=Date.now()
+  const last=Number(eventActionLastByUser.get(key)||0)
+  if(now-last<EVENT_ACTION_COOLDOWN_MS) return false
+  eventActionLastByUser.set(key,now)
+  await staggerEventGroupAction(chat)
+  return true
+}
+
 const deletedMessageCache=new Map()
 const lastDeletedByChat=new Map()
 const SNIPE_TTL_MS=30*60*1000
@@ -1022,11 +1058,11 @@ async function start() {
 
   // Programação única solicitada para domingo, 04/10/2026, horário de Brasília.
   // O scheduleId impede que reinícios sobrescrevam marcadores de avisos já enviados.
-  const scheduledEventsId='alpha-events-2026-10-04-v1'
-  const rewardStartsAt=1791158400000 // 04/10 21:00 BRT
-  const rewardEndsAt=1791160200000   // 04/10 21:30 BRT
-  const luckyStartsAt=1791160200000  // 04/10 21:30 BRT
-  const luckyEndsAt=1791160800000    // 04/10 21:40 BRT
+  const scheduledEventsId='alpha-events-2026-10-03-v2'
+  const rewardStartsAt=1791072000000 // 03/10 21:00 BRT
+  const rewardEndsAt=1791073800000   // 03/10 21:30 BRT
+  const luckyStartsAt=1791073800000  // 03/10 21:30 BRT
+  const luckyEndsAt=1791074400000    // 03/10 21:40 BRT
   if(Date.now()<luckyEndsAt){
     const existingReward=(await db.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")).rows[0]?.value||{}
     if(String(existingReward.scheduleId||'')!==scheduledEventsId){
@@ -1042,10 +1078,10 @@ async function start() {
           endsAt:rewardEndsAt,
           moneyMultiplier:1.5,
           xpMultiplier:1.5,
-          activatedBy:'scheduled:2026-10-04'
+          activatedBy:'scheduled:2026-10-03'
         })]
       )
-      console.log('[Eventos] 1,5x agendado para 04/10 21:00–21:30 BRT')
+      console.log('[Eventos] 1,5x agendado para 03/10 21:00–21:30 BRT')
     }
 
     const existingLucky=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
@@ -1060,10 +1096,10 @@ async function start() {
           startsAt:luckyStartsAt,
           endsAt:luckyEndsAt,
           multiplier:2,
-          activatedBy:'scheduled:2026-10-04'
+          activatedBy:'scheduled:2026-10-03'
         })]
       )
-      console.log('[Eventos] Double Lucky agendado para 04/10 21:30–21:40 BRT')
+      console.log('[Eventos] Double Lucky agendado para 03/10 21:30–21:40 BRT')
     }
   }
   const { state, saveCreds }=await useNeonAuthState(sessionId)
@@ -1164,7 +1200,7 @@ async function start() {
       if(now<startsAt && String(raw.noticeAnnouncementId||'')!==eventId){
         const luckyRaw=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
         await sendEventToGroups(
-`📢 *EVENTOS AMANHÃ NO ALPHA BOT*
+`📢 *CORREÇÃO — EVENTOS HOJE, 03/10*
 
 🔥 *21:00 → 21:30 — EVENTO 1,5X*
 💰 Ganhos em dinheiro: *1,5x*
@@ -1175,10 +1211,13 @@ async function start() {
 🎁 Ao abrir caixas, as chances de raridade ficam *2x maiores*
 ⏱️ Duração: *10 minutos*
 
-⚠️ Os eventos começam e terminam automaticamente no horário de Brasília.`
+🛡️ *PROTEÇÃO DE PICO ATIVA*
+Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simultâneas do grupo serão escalonadas para evitar travamentos.
+
+⚠️ Início e fim automáticos no horário de Brasília.`
         )
         raw.noticeAnnouncementId=eventId
-        console.log('[Eventos] aviso prévio de 04/10 enviado aos grupos ativos')
+        console.log('[Eventos] aviso corrigido de 03/10 enviado aos grupos ativos')
         await db.query(
           "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
           [JSON.stringify(raw)]
@@ -1195,7 +1234,8 @@ async function start() {
 ✨ XP: *${eventMultLabel(event.xpMultiplier)}x*
 ⏱️ Duração: *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*
 
-🏃 Aproveitem enquanto está ativo!`
+🏃 Aproveitem enquanto está ativo!
+🛡️ Proteção de pico: *3s entre ações por jogador*; ações simultâneas entram em fila.`
         )
         raw.startAnnouncementId=eventId
         console.log('[Eventos] evento de ganhos iniciado e anunciado')
@@ -1244,7 +1284,8 @@ async function start() {
 ✨ chances de raridade: *2X*
 
 📦 Vale para Caixa da Sorte, Caixa Rara e Caixa Épica.
-⏱️ Termina às *21:40*.`
+⏱️ Termina às *21:40*.
+🛡️ Proteção de pico: *3s entre ações por jogador*; aberturas simultâneas são escalonadas.`
         )
         raw.startAnnouncementId=eventId
         console.log('[Eventos] Double Lucky iniciado e anunciado')
@@ -5458,6 +5499,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           }
           if(!flow) continue
 
+          if(isGroup && eventTrafficActiveNow()) await staggerEventGroupAction(chat)
           await ensureUser(sender,msg.pushName || '')
           const supportFlow=String(flow.stage||'').startsWith('support_')
           if(isGroup && !isOwner && !supportFlow){
@@ -5481,6 +5523,20 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
         const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
         const ownerTarget=mentionsOf(msg)[0] || sender
+
+        const EVENT_ACTION_CMDS=new Set([
+          'daily','diario','trabalhar','work','trampo','all','tudo',
+          'uber','ifood','ifoodbike','coletar',
+          'dungeon','batalhar','battle','roubar','atacar','attack',
+          'boss','raid','entrar','go','iniciarraid',
+          'comprar','buy','compraritem','vender','sell',
+          'curar','usar','petaventura','descansar',
+          'depositar','deposit','dep','sacar','withdraw','saque','transferir','transfer'
+        ])
+        if(EVENT_ACTION_CMDS.has(cmd)){
+          const allowed=await allowEventPlayerAction(chat,sender,isOwner)
+          if(!allowed) continue
+        }
         const sleep=await resolvePlayerSleep(sender)
         if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
         const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping','meupet','statuspet'])
