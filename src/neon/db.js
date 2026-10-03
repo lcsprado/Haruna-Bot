@@ -3505,22 +3505,15 @@ export async function petAdventure(jid){
     const level=Number(pet.level||1),power=Number(pet.power||10)
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    // Aventura é progressão de pet, não fonte principal de dinheiro.
-    // A curva antiga (R$70-120 por energia) permitia farm excessivo, sobretudo
-    // em pets de alta capacidade e durante evento 2x. A nova faixa mantém
-    // recompensa crescente por energia/nível/poder, mas torna inviável comprar
-    // energético apenas para gerar lucro infinito.
-    // Dinheiro da aventura deve acompanhar a energia realmente gasta.
-    // Nível/poder só melhoram eficiência, com bônus limitado, para evitar que
-    // um pet forte com pouca energia gere dezenas de milhares.
-    const progressionBonus=Math.min(
-      0.50,
-      Math.max(0,level)*0.003 + Math.sqrt(Math.max(0,power))*0.006
-    )
-    const baseCash=Math.floor(
-      energy*(18+Math.random()*12)*(1+progressionBonus)
-    )
-    const cash=Math.max(100,baseCash)*moneyMultiplier
+    // Com 30 min de cooldown, uma aventura feita com energia cheia/quase cheia
+    // paga entre R$ 13 mil e R$ 18 mil. Se o pet sair com pouca energia, o prêmio
+    // cai proporcionalmente para impedir farm de aventuras curtas.
+    const maxAdventureEnergy=Math.max(1,petMaxEnergy(level,pet.species))
+    const fullAdventureThreshold=maxAdventureEnergy*.85
+    const energyFactor=Math.min(1,energy/fullAdventureThreshold)
+    const fullAdventureCash=13000+Math.floor(Math.random()*5001)
+    const baseCash=Math.max(1000,Math.floor(fullAdventureCash*energyFactor))
+    const cash=baseCash*moneyMultiplier
     // Aventura deve dar progresso relevante, mas não vários níveis de uma vez.
     // Com a progressão atual (100 XP por nível), usar 2 XP por energia fazia
     // pets de alta capacidade subirem 5-7 níveis numa única aventura.
