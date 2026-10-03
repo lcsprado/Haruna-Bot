@@ -3506,7 +3506,16 @@ export async function petAdventure(jid){
     // em pets de alta capacidade e durante evento 2x. A nova faixa mantém
     // recompensa crescente por energia/nível/poder, mas torna inviável comprar
     // energético apenas para gerar lucro infinito.
-    const baseCash=Math.floor(energy*(20+Math.random()*15)+level*60+power*8)
+    // Dinheiro da aventura deve acompanhar a energia realmente gasta.
+    // Nível/poder só melhoram eficiência, com bônus limitado, para evitar que
+    // um pet forte com pouca energia gere dezenas de milhares.
+    const progressionBonus=Math.min(
+      0.50,
+      Math.max(0,level)*0.003 + Math.sqrt(Math.max(0,power))*0.006
+    )
+    const baseCash=Math.floor(
+      energy*(18+Math.random()*12)*(1+progressionBonus)
+    )
     const cash=Math.max(100,baseCash)*moneyMultiplier
     const xpGain=energy*2*xpMultiplier
     const xp=Number(pet.xp||0)+xpGain
