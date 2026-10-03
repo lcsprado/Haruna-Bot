@@ -3130,8 +3130,10 @@ export async function initCommunityPack(){
       hours INTEGER NOT NULL,
       started_at BIGINT NOT NULL,
       ends_at BIGINT NOT NULL,
-      xp_reward INTEGER NOT NULL
+      xp_reward INTEGER NOT NULL,
+      cash_reward BIGINT NOT NULL DEFAULT 0
     );
+    ALTER TABLE player_carpinar ADD COLUMN IF NOT EXISTS cash_reward BIGINT NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS relationship_proposals(
       from_jid TEXT NOT NULL,
@@ -3327,12 +3329,12 @@ export async function startPlayerSleep(jid){
 }
 
 const CARPINAR_PLANS={
-  1:{hours:1,xp:120},
-  2:{hours:2,xp:250},
-  4:{hours:4,xp:520},
-  6:{hours:6,xp:800},
-  8:{hours:8,xp:1100},
-  12:{hours:12,xp:1700}
+  1:{hours:1,xp:140,cash:300,rareBoxChance:0.01},
+  2:{hours:2,xp:300,cash:650,rareBoxChance:0.02},
+  4:{hours:4,xp:650,cash:1400,rareBoxChance:0.04},
+  6:{hours:6,xp:1000,cash:2200,rareBoxChance:0.06},
+  8:{hours:8,xp:1450,cash:3200,rareBoxChance:0.08},
+  12:{hours:12,xp:2200,cash:5000,rareBoxChance:0.12}
 }
 
 export function getCarpinarPlans(){
@@ -3346,9 +3348,31 @@ export async function resolvePlayerCarpinar(jid){
     if(!row) return null
     const now=Math.floor(Date.now()/1000)
     if(Number(row.ends_at)>now) return {active:true,...row,remaining:Number(row.ends_at)-now}
-    const level=await applyExp(client,jid,Number(row.xp_reward||0))
+    const xp=Number(row.xp_reward||0)
+    const cash=Number(row.cash_reward||0)
+    const level=await applyExp(client,jid,xp)
+
+    if(cash>0){
+      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+      await client.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_reward',$3)",
+        [jid,cash,'Carpinar '+Number(row.hours||0)+'h concluído']
+      )
+    }
+
+    const plan=CARPINAR_PLANS[Number(row.hours)]||{rareBoxChance:0}
+    const rareBoxDrop=Math.random()<Number(plan.rareBoxChance||0)
+    if(rareBoxDrop){
+      await client.query(`
+        INSERT INTO inventories(jid,item_id,quantity)
+        VALUES($1,'caixa_rara',1)
+        ON CONFLICT(jid,item_id) DO UPDATE
+        SET quantity=inventories.quantity+1
+      `,[jid])
+    }
+
     await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
-    return {active:false,completed:true,...row,xp:Number(row.xp_reward||0),level}
+    return {active:false,completed:true,...row,xp,cash,rareBoxDrop,rareBoxChance:Number(plan.rareBoxChance||0),level}
   })
 }
 
@@ -3380,10 +3404,20 @@ export async function startPlayerCarpinar(jid,hours){
 
     const endsAt=now+plan.hours*60*60
     await client.query(
-      'INSERT INTO player_carpinar(jid,hours,started_at,ends_at,xp_reward) VALUES($1,$2,$3,$4,$5)',
-      [jid,plan.hours,now,endsAt,plan.xp]
+      'INSERT INTO player_carpinar(jid,hours,started_at,ends_at,xp_reward,cash_reward) VALUES($1,$2,$3,$4,$5,$6)',
+      [jid,plan.hours,now,endsAt,plan.xp,plan.cash]
     )
-    return {active:true,started:true,hours:plan.hours,started_at:now,ends_at:endsAt,xp_reward:plan.xp,remaining:plan.hours*60*60}
+    return {
+      active:true,
+      started:true,
+      hours:plan.hours,
+      started_at:now,
+      ends_at:endsAt,
+      xp_reward:plan.xp,
+      cash_reward:plan.cash,
+      rare_box_chance:plan.rareBoxChance,
+      remaining:plan.hours*60*60
+    }
   })
 }
 
@@ -3416,8 +3450,18 @@ export async function leavePlayerCarpinarEarly(jid){
     )
 
     const elapsed=Math.max(0,now-Number(row.started_at))
-    const xp=Math.floor(Number(row.xp_reward||0)*Math.min(1,elapsed/total))
+    const progress=Math.min(1,elapsed/total)
+    const xp=Math.floor(Number(row.xp_reward||0)*progress)
+    const cashReward=Math.floor(Number(row.cash_reward||0)*progress)
     const level=xp>0?await applyExp(client,jid,xp):null
+
+    if(cashReward>0){
+      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cashReward,jid])
+      await client.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_partial_reward',$3)",
+        [jid,cashReward,'Carpinar interrompido após '+elapsed+'s']
+      )
+    }
 
     await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
     await client.query(
@@ -3429,6 +3473,8 @@ export async function leavePlayerCarpinarEarly(jid){
       natural:false,
       fee,
       xp,
+      cash:cashReward,
+      rareBoxDrop:false,
       remaining,
       hours:Number(row.hours||0),
       elapsed,
