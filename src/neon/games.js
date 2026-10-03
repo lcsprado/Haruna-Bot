@@ -608,7 +608,12 @@ async function finishRaidRewards(c,s,cfg){
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
-    // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.\n    // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.\n    // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.\n    const keyReturn=Math.floor(cfg.keyPrice*1.08)\n    const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))\n    const cash=Math.max(250,keyReturn+collaborationBonus)
+    // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
+    // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.
+    // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.
+    const keyReturn=Math.floor(cfg.keyPrice*1.08)
+    const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
+    const cash=Math.max(250,keyReturn+collaborationBonus)
     const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
