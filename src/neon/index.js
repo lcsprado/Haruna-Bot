@@ -5014,9 +5014,9 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             [groupJids]
           )).rows
 
-          const jp=candidates.find(r=>/\bjp\b/i.test(String(r.push_name||'')))
+          const jp=candidates.find(r=>/^joão pedro$/i.test(String(r.push_name||'').trim()))
           if(!jp){
-            console.error('[GrantJP] jogador JP não localizado no grupo',candidates.map(r=>r.push_name).join(', '))
+            console.error('[GrantJP] jogador João Pedro não localizado no grupo',candidates.map(r=>r.push_name).join(', '))
             return
           }
 
