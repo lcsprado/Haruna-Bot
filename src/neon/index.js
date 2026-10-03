@@ -4986,62 +4986,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
 
-      // Compensação silenciosa e única solicitada pelo owner:
-      // +11 Núcleos de Pedra para cada jogador cadastrado do grupo da Raid mais recente.
-      ;(async()=>{
-        const marker='silent_raid10_nucleo_grant_20261003_v1'
-        try{
-          const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[marker])).rowCount>0
-          if(done) return
-
-          const latest=(await db.query(
-            `SELECT chat_jid
-             FROM trevo_games
-             WHERE game_type='raid'
-             ORDER BY updated_at DESC
-             LIMIT 1`
-          )).rows[0]
-          const chatJid=latest?.chat_jid
-          if(!chatJid?.endsWith('@g.us')) return
-
-          const groupJids=await currentGroupPlayerJids(chatJid)
-          if(!groupJids.length) return
-
-          const registered=(await db.query(
-            'SELECT jid FROM users WHERE jid=ANY($1::text[])',
-            [groupJids]
-          )).rows.map(r=>r.jid)
-
-          if(!registered.length) return
-
-          await db.query('BEGIN')
-          try{
-            for(const jid of registered){
-              await db.query(
-                `INSERT INTO inventories(jid,item_id,quantity)
-                 VALUES($1,'nucleo_pedra',11)
-                 ON CONFLICT(jid,item_id)
-                 DO UPDATE SET quantity=inventories.quantity+11`,
-                [jid]
-              )
-            }
-            await db.query(
-              `INSERT INTO trevo_settings(key,value,updated_at)
-               VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
-               ON CONFLICT(key) DO NOTHING`,
-              [marker,JSON.stringify({done:true,chatJid,count:registered.length,at:Date.now()})]
-            )
-            await db.query('COMMIT')
-            console.log('[GrantSilencioso] Núcleo de Pedra +11 aplicado para',registered.length,'jogadores')
-          }catch(err){
-            await db.query('ROLLBACK').catch(()=>{})
-            throw err
-          }
-        }catch(err){
-          console.error('[GrantSilencioso] falha',err?.message||err)
-        }
-      })()
-
       ;(async()=>{
         try{
           const now=Date.now()
