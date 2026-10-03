@@ -2399,11 +2399,16 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
       }
 
       const roll=Math.random()
+      const luckyMultiplier=await getLuckyBoxMultiplier(client)
+      const legendaryChance=Math.min(1,config.legendary*luckyMultiplier)
+      const epicChance=Math.min(1,config.epic*luckyMultiplier)
+      const rareChance=Math.min(1,config.rare*luckyMultiplier)
+      const uncommonChance=Math.min(1,config.uncommon*luckyMultiplier)
       let rarity='common'
-      if(roll<config.legendary) rarity='legendary'
-      else if(roll<config.epic) rarity='epic'
-      else if(roll<config.rare) rarity='rare'
-      else if(roll<config.uncommon) rarity='uncommon'
+      if(roll<legendaryChance) rarity='legendary'
+      else if(roll<epicChance) rarity='epic'
+      else if(roll<rareChance) rarity='rare'
+      else if(roll<uncommonChance) rarity='uncommon'
 
       const rarityOrder={common:0,uncommon:1,rare:2,epic:3,legendary:4}
       if(rarityOrder[rarity]<rarityOrder[config.minRarity]){
@@ -2475,6 +2480,7 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
       level,
       balance:Number(wallet.rows[0]?.cash||0),
       rarityCounts,
+      luckyMultiplier:await getLuckyBoxMultiplier(client),
       items:[...rewards.entries()].map(([itemId,itemQty])=>({
         itemId,
         name:names.get(itemId)||itemId,
@@ -2617,17 +2623,22 @@ export async function robPlayer(thiefJid,targetJid) {
 async function readDoubleRewardEvent(queryable=db){
   const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")
   const raw=rows[0]?.value || {}
+  const startsAt=Number(raw?.startsAt||raw?.startedAt||0)
   const endsAt=Number(raw?.endsAt||0)
   const moneyMultiplier=Math.max(1,Number(raw?.moneyMultiplier||2))
   const xpMultiplier=Math.max(1,Number(raw?.xpMultiplier||2))
   const now=Date.now()
   return {
-    active:endsAt>now,
+    active:Boolean(startsAt && startsAt<=now && endsAt>now),
+    scheduled:Boolean(startsAt>now && endsAt>startsAt),
+    startsAt,
+    startedAt:startsAt,
     endsAt,
     moneyMultiplier,
     xpMultiplier,
     activatedBy:String(raw?.activatedBy||''),
-    remainingMs:Math.max(0,endsAt-now)
+    remainingMs:Math.max(0,endsAt-now),
+    startsInMs:Math.max(0,startsAt-now)
   }
 }
 
@@ -2641,15 +2652,21 @@ export async function getDoubleEventMultiplier(queryable=db,kind='money'){
   return kind==='xp' ? event.xpMultiplier : event.moneyMultiplier
 }
 
-export async function startDoubleRewardEvent(minutes=20,activatedBy='owner'){
+export async function startDoubleRewardEvent(minutes=20,activatedBy='owner',moneyMultiplier=2,xpMultiplier=2){
   minutes=Number(minutes)
+  moneyMultiplier=Number(moneyMultiplier)
+  xpMultiplier=Number(xpMultiplier)
   if(!Number.isInteger(minutes)||minutes<1||minutes>180) throw new Error('Duração inválida. Use entre 1 e 180 minutos.')
+  if(!Number.isFinite(moneyMultiplier)||moneyMultiplier<1||moneyMultiplier>10) throw new Error('Multiplicador de dinheiro inválido.')
+  if(!Number.isFinite(xpMultiplier)||xpMultiplier<1||xpMultiplier>10) throw new Error('Multiplicador de XP inválido.')
+  const now=Date.now()
   const state={
     active:true,
-    startedAt:Date.now(),
-    endsAt:Date.now()+(minutes*60*1000),
-    moneyMultiplier:2,
-    xpMultiplier:2,
+    startsAt:now,
+    startedAt:now,
+    endsAt:now+(minutes*60*1000),
+    moneyMultiplier,
+    xpMultiplier,
     activatedBy:String(activatedBy||'owner')
   }
   await db.query(`
@@ -2663,6 +2680,7 @@ export async function startDoubleRewardEvent(minutes=20,activatedBy='owner'){
 export async function stopDoubleRewardEvent(activatedBy='owner'){
   const state={
     active:false,
+    startsAt:0,
     startedAt:0,
     endsAt:0,
     moneyMultiplier:2,
@@ -2675,6 +2693,33 @@ export async function stopDoubleRewardEvent(activatedBy='owner'){
     ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
   `,[JSON.stringify(state)])
   return readDoubleRewardEvent(db)
+}
+
+async function readLuckyBoxEvent(queryable=db){
+  const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")
+  const raw=rows[0]?.value || {}
+  const startsAt=Number(raw?.startsAt||0)
+  const endsAt=Number(raw?.endsAt||0)
+  const multiplier=Math.max(1,Number(raw?.multiplier||2))
+  const now=Date.now()
+  return {
+    active:Boolean(startsAt && startsAt<=now && endsAt>now),
+    scheduled:Boolean(startsAt>now && endsAt>startsAt),
+    startsAt,
+    endsAt,
+    multiplier,
+    remainingMs:Math.max(0,endsAt-now),
+    startsInMs:Math.max(0,startsAt-now)
+  }
+}
+
+export async function getLuckyBoxEvent(){
+  return readLuckyBoxEvent(db)
+}
+
+export async function getLuckyBoxMultiplier(queryable=db){
+  const event=await readLuckyBoxEvent(queryable)
+  return event.active ? event.multiplier : 1
 }
 
 
