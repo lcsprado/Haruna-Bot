@@ -290,6 +290,9 @@ export async function initDatabase() {
     ['pocao_m','Poção Média','Recupera 80 HP.','consumable',1200,'uncommon'],
     ['pocao_g','Poção Grande','Recupera 160 HP.','consumable',3000,'rare'],
     ['elixir_supremo','Elixir Supremo','Recupera uma grande quantidade de HP.','consumable',9000,'epic'],
+    ['pocao_pet_comum','Poção de Pet Comum','Recupera 60 HP do pet ativo.','consumable',500,'common'],
+    ['pocao_pet_rara','Poção de Pet Rara','Recupera 160 HP do pet ativo.','consumable',1500,'rare'],
+    ['pocao_pet_epica','Poção de Pet Épica','Recupera 320 HP do pet ativo.','consumable',3500,'epic'],
     ['energetico_pet','Energético Pet','Restaura instantaneamente 100% da energia do pet ativo.','consumable',12000,'rare'],
 
     // Armas
@@ -1443,6 +1446,12 @@ const POTIONS = {
   elixir_supremo: { heal:999999, name:'Elixir Supremo' },
 }
 
+const PET_POTIONS = {
+  pocao_pet_comum: { heal:60, name:'Poção de Pet Comum' },
+  pocao_pet_rara: { heal:160, name:'Poção de Pet Rara' },
+  pocao_pet_epica: { heal:320, name:'Poção de Pet Épica' },
+}
+
 const MAX_LEVEL=999
 const MAX_ADMIN_EXP=50_000_000
 
@@ -1598,6 +1607,53 @@ export async function equipItem(jid, itemId) {
     const field=eq.category==='weapon' ? 'weapon_id' : 'armor_id'
     await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
     return {...eq,itemId}
+  })
+}
+
+export async function usePetPotion(jid,itemId=null){
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+
+    const maxHp=petMaxHp(pet.level,pet.xp,pet.species)
+    const before=Math.max(0,Number(pet.hp??maxHp))
+    if(before>=maxHp) throw new Error(`O HP de ${pet.name} já está cheio (${maxHp}/${maxHp}).`)
+
+    let chosenId=itemId
+    let invRow=null
+    if(chosenId){
+      if(!PET_POTIONS[chosenId]) throw new Error('Esse item não recupera HP do pet.')
+      invRow=(await client.query(
+        'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+        [jid,chosenId]
+      )).rows[0]
+      if(!invRow || Number(invRow.quantity)<1) throw new Error('Você não possui essa poção de pet.')
+    }else{
+      const ids=Object.keys(PET_POTIONS)
+      const rows=(await client.query(
+        'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
+        [jid,ids]
+      )).rows
+      if(!rows.length) throw new Error('Você não possui nenhuma poção de cura de pet.')
+      const missing=maxHp-before
+      const available=rows
+        .map(r=>({...r,...PET_POTIONS[r.item_id]}))
+        .sort((a,b)=>a.heal-b.heal)
+      invRow=available.find(x=>x.heal>=missing) || available[available.length-1]
+      chosenId=invRow.item_id
+    }
+
+    const potion=PET_POTIONS[chosenId]
+    const hp=Math.min(maxHp,before+potion.heal)
+    const healed=hp-before
+    await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosenId])
+    await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[hp,maxHp,jid])
+    await client.query('UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',[hp,maxHp,jid])
+    return {
+      itemId:chosenId,name:potion.name,petName:pet.name,
+      before,hp,maxHp,healed,remaining:Number(invRow.quantity)-1
+    }
   })
 }
 
