@@ -3324,8 +3324,11 @@ export async function summonLegendaryPet(jid,materialId){
   return transaction(async client=>{
     const inv=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,altar.materialId])).rows[0]
     const owned=Number(inv?.quantity||0)
-    if(owned<100) throw new Error(`Você precisa de 100 ${altar.materialName}. Você possui ${owned}.`)
-    await client.query('UPDATE inventories SET quantity=quantity-100 WHERE jid=$1 AND item_id=$2',[jid,altar.materialId])
+    // A Raid Lv10 é a porta de entrada para pets especiais: exige 50 materiais.
+    // Todas as demais invocações continuam exigindo 100.
+    const summonCost=Number(altar.raidLevel)===10?50:100
+    if(owned<summonCost) throw new Error(`Você precisa de ${summonCost} ${altar.materialName}. Você possui ${owned}.`)
+    await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[summonCost,jid,altar.materialId])
 
     const roll=Math.random()*100
     let acc=0
@@ -3348,7 +3351,7 @@ export async function summonLegendaryPet(jid,materialId){
       [jid,chosen.species,petName,startLevel,startXp,energy,chosen.power,maxHp]
     )).rows[0]
 
-    return {altar,pet:chosen,collectionId:collected.id,remaining:owned-100}
+    return {altar:{...altar,summonCost},pet:chosen,collectionId:collected.id,remaining:owned-summonCost}
   })
 }
 
