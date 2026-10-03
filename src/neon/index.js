@@ -6746,21 +6746,23 @@ _Os comandos antigos continuam funcionando normalmente._`
           if(!choice){
             let text='🔮 *ALTAR DE PETS LENDÁRIOS*\n\n'
             LEGENDARY_PET_SUMMONS.forEach((a,i)=>{
+              const cost=Math.max(1,Number(a.summonCost||100))
               text+=`*${i+1}.* Raid Lv.${a.raidLevel} — *${a.materialName}*\n`
-              text+=`   Você possui: *${materialQty(a.materialId)}/100*\n`
+              text+=`   Você possui: *${materialQty(a.materialId)}/${cost}*\n`
               a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%*\n` })
               text+='\n'
             })
-            text+='💠 Cada invocação custa *100 materiais* e sempre entrega *1 pet lendário*.\n\n👉 Use *!invocarpet N*. Ex.: *!invocarpet 2*.'
+            text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n\n👉 Use *!invocarpet N*. Ex.: *!invocarpet 2*.'
             return await reply(text)
           }
 
           const altar=LEGENDARY_PET_SUMMONS[choice-1]
           if(!altar) return await reply(`🔮 Escolha um altar de *1 a ${LEGENDARY_PET_SUMMONS.length}*.`)
           const owned=materialQty(altar.materialId)
-          let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/100*\n💠 Custo: *100*\n\n🎲 *CHANCES*\n`
+          const summonCost=Math.max(1,Number(altar.summonCost||100))
+          let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/${summonCost}*\n💠 Custo: *${summonCost}*\n\n🎲 *CHANCES*\n`
           altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%*\n` })
-          if(owned<100) return await reply(text+`\n❌ Faltam *${100-owned}* materiais para invocar.`)
+          if(owned<summonCost) return await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
           setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
           return await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
 
