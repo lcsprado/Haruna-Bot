@@ -982,6 +982,69 @@ async function start() {
   bossEventScheduler.unref?.()
   setTimeout(runBossEventScheduler,5000).unref?.()
 
+  let doubleRewardEventScheduler=null
+
+  async function updateDoubleRewardAnnouncements(){
+    if(trevoHealth.whatsapp!=='open') return
+    try{
+      const event=await getDoubleRewardEvent()
+      const now=Date.now()
+      const raw=(await db.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")).rows[0]?.value||{}
+      const startedAt=Number(raw.startedAt||0)
+      const endsAt=Number(raw.endsAt||0)
+      if(!startedAt || !endsAt) return
+
+      const eventId=`${startedAt}:${endsAt}`
+      const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+      if(event.active && String(raw.startAnnouncementId||'')!==eventId){
+        const text=`🔥🔥 *EVENTO 2X COMEÇOU!* 🔥🔥
+
+💰 Dinheiro: *2X*
+✨ XP: *2X*
+⏱️ Duração: *${Math.max(1,Math.round((endsAt-startedAt)/60000))} minutos*
+
+🏃 Aproveitem! Use *${prefix}evento* para consultar o tempo restante.`
+        for(const lic of groups){
+          const chat=lic.chat_jid
+          if(!chat?.endsWith('@g.us')) continue
+          await sock.sendMessage(chat,{text}).catch(err=>console.error('[Evento2x] aviso início',chat,err?.message||err))
+        }
+        raw.startAnnouncementId=eventId
+        await db.query(
+          "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
+          [JSON.stringify(raw)]
+        )
+        return
+      }
+
+      if(!event.active && now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
+        const text=`⏱️ *EVENTO 2X ENCERRADO!*
+
+💰 Dinheiro voltou ao normal.
+✨ XP voltou ao normal.
+
+🍀 Até o próximo evento!`
+        for(const lic of groups){
+          const chat=lic.chat_jid
+          if(!chat?.endsWith('@g.us')) continue
+          await sock.sendMessage(chat,{text}).catch(err=>console.error('[Evento2x] aviso fim',chat,err?.message||err))
+        }
+        raw.endAnnouncementId=eventId
+        await db.query(
+          "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
+          [JSON.stringify(raw)]
+        )
+      }
+    }catch(err){
+      console.error('[Evento2x] falha nos avisos automáticos',err?.message||err)
+    }
+  }
+
+  if(doubleRewardEventScheduler) clearInterval(doubleRewardEventScheduler)
+  doubleRewardEventScheduler=setInterval(updateDoubleRewardAnnouncements,5000)
+  doubleRewardEventScheduler.unref?.()
+  setTimeout(updateDoubleRewardAnnouncements,3000).unref?.()
+
   async function senderIsGroupAdmin(chatJid,userJid){
     if(userJid===ownerJid) return true
     if(!chatJid?.endsWith('@g.us')) return false
