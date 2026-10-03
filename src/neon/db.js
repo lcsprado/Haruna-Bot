@@ -3498,6 +3498,10 @@ export async function petAdventure(jid){
     if(energy<10) throw new Error(`Seu pet precisa de pelo menos 10 de energia para explorar. Energia atual: ${energy}/${petMaxEnergy(pet.level,pet.species)}. Use !descansar.`)
     const now=Math.floor(Date.now()/1000)
     if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco antes de sair.')
+    const adventureCooldown=await claimCooldown(client,`pet_adventure:${jid}`,30*60)
+    if(!adventureCooldown.ok){
+      throw new Error(`Seu pet poderá sair em outra aventura em ${Math.ceil(adventureCooldown.remaining/60)} min.`)
+    }
     const level=Number(pet.level||1),power=Number(pet.power||10)
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
