@@ -897,30 +897,71 @@ function horoscopeText(signId,signName){
 }
 
 const PET_STATUS_SPECIALTIES = {
-  cachorro:{label:'🐶 Guardião',text:'+5% de defesa no Boss',stat:'defense',base:5},
-  gato:{label:'🐱 Instinto',text:'+4% de chance de crítico no Boss',stat:'crit',base:4},
-  coelho:{label:'🐰 Agilidade',text:'+4% de esquiva no Boss',stat:'dodge',base:4},
-  papagaio:{label:'🦜 Motivação',text:'+5% de XP recebido do Boss',stat:'xp',base:5},
-  hamster:{label:'🐹 Sorte',text:'+2,5% de chance de drop no Boss',stat:'drop',base:2.5},
-  tartaruga:{label:'🐢 Casco',text:'+7% de defesa no Boss',stat:'defense',base:7},
-  coruja:{label:'🦉 Sabedoria',text:'+8% de XP recebido do Boss',stat:'xp',base:8},
-  raposa:{label:'🦊 Astúcia',text:'+6% de chance de crítico no Boss',stat:'crit',base:6},
-  lobo:{label:'🐺 Caçador',text:'+6% de dano no Boss',stat:'damage',base:6},
-  aguia:{label:'🦅 Precisão',text:'+7% de chance de crítico no Boss',stat:'crit',base:7},
-  panda:{label:'🐼 Resistência',text:'+8% de defesa no Boss',stat:'defense',base:8},
-  tigre:{label:'🐯 Fúria',text:'+7% de dano no Boss',stat:'damage',base:7},
-  leao:{label:'🦁 Rei da Caçada',text:'+8% de dano no Boss',stat:'damage',base:8},
-  unicornio:{label:'🦄 Bênção',text:'+4% drop e +4% defesa no Boss',multi:true},
-  dragao:{label:'🐉 Caçador de Boss',text:'+10% de dano contra Boss',stat:'bossDamage',base:10}
+  cachorro:{label:'🐶 Guardião',stat:'defense',base:5},
+  gato:{label:'🐱 Instinto',stat:'crit',base:4},
+  coelho:{label:'🐰 Agilidade',stat:'dodge',base:4},
+  papagaio:{label:'🦜 Motivação',stat:'xp',base:5},
+  hamster:{label:'🐹 Sorte',stat:'drop',base:2.5},
+  tartaruga:{label:'🐢 Casco',stat:'defense',base:7},
+  coruja:{label:'🦉 Sabedoria',stat:'xp',base:8},
+  raposa:{label:'🦊 Astúcia',stat:'crit',base:6},
+  lobo:{label:'🐺 Caçador',stat:'damage',base:6},
+  aguia:{label:'🦅 Precisão',stat:'crit',base:7},
+  panda:{label:'🐼 Resistência',stat:'defense',base:8},
+  tigre:{label:'🐯 Fúria',stat:'damage',base:7},
+  leao:{label:'🦁 Rei da Caçada',stat:'damage',base:8},
+  unicornio:{label:'🦄 Bênção',stats:{drop:4,defense:4}},
+  dragao:{label:'🐉 Caçador de Boss',stat:'bossDamage',base:10},
+
+  golem_ancestral:{label:'🪨 Muralha Ancestral',stats:{defense:9,drop:2},raid:true},
+  urso_runico:{label:'🐻 Fúria Rúnica',stats:{damage:7,defense:6},raid:true},
+  colosso_cristal:{label:'💎 Prisma Colossal',stats:{defense:10,drop:4,crit:3},raid:true},
+
+  salamandra_infernal:{label:'🔥 Chama Infernal',stats:{damage:8,crit:4},raid:true},
+  dragao_vulcanico:{label:'🐲 Núcleo Vulcânico',stats:{damage:9,defense:5},raid:true},
+  fenix_fogo:{label:'🔥 Renascimento Ígneo',stats:{damage:8,dodge:5,xp:5},raid:true},
+
+  corvo_abissal:{label:'👁️ Olho do Abismo',stats:{crit:8,drop:3},raid:true},
+  lobo_abismo:{label:'🌑 Predador Abissal',stats:{damage:9,crit:5},raid:true},
+  fenix_gelo:{label:'❄️ Alma Glacial',stats:{defense:8,dodge:5,xp:6},raid:true},
+
+  rinoceronte_titanico:{label:'🦏 Investida Titânica',stats:{defense:10,damage:5},raid:true},
+  guardiao_obsidiana:{label:'🗿 Guarda Obsidiana',stats:{defense:10,drop:3.5},raid:true},
+  leviata_gelo:{label:'🌊 Leviatã Congelado',stats:{defense:10,dodge:6,damage:5},raid:true},
+
+  cerbero_carmesim:{label:'🩸 Três Presas',stats:{damage:10,crit:6},raid:true},
+  tigre_lunar:{label:'🌙 Caçador Lunar',stats:{damage:9,dodge:6,drop:3},raid:true},
+  imperador_abissal:{label:'👑 Soberano do Abismo',stats:{bossDamage:10,defense:7,drop:4},raid:true},
+
+  leao_solar:{label:'☀️ Rei Solar',stats:{damage:10,crit:7,xp:5},raid:true},
+  grifo_celestial:{label:'✨ Asas da Fortuna',stats:{crit:10,dodge:7,drop:4},raid:true},
+  fenix_celestial:{label:'🌟 Graça Celestial',stats:{defense:10,dodge:8,xp:8},raid:true},
+
+  serpente_cosmica:{label:'🌌 Oráculo Cósmico',stats:{crit:9,drop:6,xp:8},raid:true},
+  dragao_corrompido:{label:'☠️ Ruína Corrompida',stats:{bossDamage:10,damage:8,defense:8},raid:true},
+  fenix_alpha:{label:'👑 Fênix Alpha',stats:{damage:10,defense:10,crit:8,dodge:6,drop:7,xp:8},raid:true}
 }
 
 function petStatusBonus(p){
   const spec=PET_STATUS_SPECIALTIES[String(p?.species||'').toLowerCase()]
   if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada'}
   const scale=1+Math.min(.25,Math.max(0,Number(p.level||1)-1)*.01)
-  const pct=n=>Math.min(10,n*scale).toLocaleString('pt-BR',{maximumFractionDigits:1})
-  if(spec.multi) return {label:spec.label,text:`+${pct(4)}% drop e +${pct(4)}% defesa no Boss`}
-  return {label:spec.label,text:`+${pct(spec.base)}% ${spec.stat==='crit'?'chance de crítico':spec.stat==='dodge'?'esquiva':spec.stat==='xp'?'XP recebido':spec.stat==='drop'?'chance de drop':spec.stat==='defense'?'defesa':'dano'} no Boss`}
+  const cap=spec.raid?15:10
+  const pct=n=>Math.min(cap,Number(n||0)*scale).toLocaleString('pt-BR',{maximumFractionDigits:1})
+  const labels={
+    damage:'dano',
+    bossDamage:'dano contra Boss',
+    defense:'defesa',
+    crit:'chance de crítico',
+    dodge:'esquiva',
+    xp:'XP recebido',
+    drop:'Lucky/drop'
+  }
+  const stats=spec.stats||{[spec.stat]:spec.base}
+  const parts=Object.entries(stats)
+    .filter(([,value])=>Number(value)>0)
+    .map(([stat,value])=>`+${pct(value)}% ${labels[stat]||stat}`)
+  return {label:spec.label,text:parts.join(' • ')+' no Boss'}
 }
 
 async function start() {
@@ -930,14 +971,6 @@ async function start() {
   await initGames()
   await initProgression()
   await acquireRuntimeLock(sessionId)
-  // One-shot production activation requested from ChatGPT. The marker lives in the
-  // event itself, so a later Render restart cannot accidentally start it again.
-  const immediateDoubleEventToken='scheduled-chatgpt-20261002-fix-v2'
-  const immediateDoubleEvent=await getDoubleRewardEvent()
-  if(immediateDoubleEvent.activatedBy!==immediateDoubleEventToken){
-    await startDoubleRewardEvent(20,immediateDoubleEventToken)
-    console.log('[Evento2x] evento global 2x ativado por 20 minutos')
-  }
   const { state, saveCreds }=await useNeonAuthState(sessionId)
   const { version }=await fetchLatestBaileysVersion()
 
