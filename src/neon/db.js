@@ -2384,6 +2384,7 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
     let exp=0
     const rewards=new Map()
     const rarityCounts={common:0,uncommon:0,rare:0,epic:0,legendary:0}
+    const luckyMultiplier=await getLuckyBoxMultiplier(client)
 
     for(let i=0;i<qty;i++){
       const utilityRoll=Math.random()
@@ -2399,7 +2400,6 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
       }
 
       const roll=Math.random()
-      const luckyMultiplier=await getLuckyBoxMultiplier(client)
       const legendaryChance=Math.min(1,config.legendary*luckyMultiplier)
       const epicChance=Math.min(1,config.epic*luckyMultiplier)
       const rareChance=Math.min(1,config.rare*luckyMultiplier)
@@ -2480,7 +2480,7 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
       level,
       balance:Number(wallet.rows[0]?.cash||0),
       rarityCounts,
-      luckyMultiplier:await getLuckyBoxMultiplier(client),
+      luckyMultiplier,
       items:[...rewards.entries()].map(([itemId,itemQty])=>({
         itemId,
         name:names.get(itemId)||itemId,
