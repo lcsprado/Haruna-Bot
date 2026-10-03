@@ -915,6 +915,14 @@ async function start() {
   await initGames()
   await initProgression()
   await acquireRuntimeLock(sessionId)
+  // One-shot production activation requested from ChatGPT. The marker lives in the
+  // event itself, so a later Render restart cannot accidentally start it again.
+  const immediateDoubleEventToken='scheduled-chatgpt-20261002-now-v1'
+  const immediateDoubleEvent=await getDoubleRewardEvent()
+  if(immediateDoubleEvent.activatedBy!==immediateDoubleEventToken){
+    await startDoubleRewardEvent(20,immediateDoubleEventToken)
+    console.log('[Evento2x] evento global 2x ativado por 20 minutos')
+  }
   const { state, saveCreds }=await useNeonAuthState(sessionId)
   const { version }=await fetchLatestBaileysVersion()
 
