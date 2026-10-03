@@ -1,4 +1,4 @@
-import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp } from './db.js'
+import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier } from './db.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -384,9 +384,10 @@ export async function answerQuiz(chat,jid,answer){
     }
     await saveGame(c,chat,'quiz',{...s,finished:true,answeredAt:Date.now()})
     const correct=answer===Number(s.c)
-    const reward=correct?1000:0
+    const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
+    const reward=correct?1000*moneyMultiplier:0
     if(reward) await credit(c,jid,reward,'quiz')
-    return {correct,reward,correctAnswer:s.c,correctText:s.a[s.c-1]}
+    return {correct,reward,correctAnswer:s.c,correctText:s.a[s.c-1],eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -410,9 +411,10 @@ export async function guessNumber(chat,jid,guess){
     s.attempts++
     if(guess===Number(s.number)){
       await clearGame(c,chat,'numero')
-      const reward=Math.max(300,1500-(s.attempts-1)*100)
+      const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
+      const reward=Math.max(300,1500-(s.attempts-1)*100)*moneyMultiplier
       await credit(c,jid,reward,'adivinhar-numero')
-      return {won:true,reward,attempts:s.attempts,number:s.number}
+      return {won:true,reward,attempts:s.attempts,number:s.number,eventMultiplier:moneyMultiplier}
     }
     if(s.attempts>=s.max){
       await clearGame(c,chat,'numero')
@@ -605,6 +607,8 @@ export async function startRaid(chat,host){
 async function finishRaidRewards(c,s,cfg){
   const ranked=Object.values(s.players||{}).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
+  const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
+  const xpMultiplier=await getDoubleEventMultiplier(c,'xp')
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
@@ -613,8 +617,8 @@ async function finishRaidRewards(c,s,cfg){
     // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
-    const cash=Math.max(250,keyReturn+collaborationBonus)
-    const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
+    const cash=Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier
+    const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
     const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
@@ -970,6 +974,8 @@ export async function attackBoss(chat,jid,name,usePet=true){
     }
     if(s.hp<=0){
       const entries=Object.entries(s.participants).map(([pjid,v])=>({jid:pjid,damage:Number(v.damage||0),name:v.name||'Jogador'})).sort((a,b)=>b.damage-a.damage)
+      const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
+      const xpMultiplier=await getDoubleEventMultiplier(c,'xp')
       const total=entries.reduce((n,x)=>n+x.damage,0)||1,rewards=[]
       for(let i=0;i<entries.length;i++){
         const p=entries[i],position=i+1,share=p.damage/total
@@ -981,8 +987,8 @@ export async function attackBoss(chat,jid,name,usePet=true){
         let cash=0,exp=0,petXp=0,drops=[]
         if(eventMode){
           const positionXp=[900,600,350,200,100][i]||50
-          cash=5000+Math.floor(80000*share)
-          exp=Math.floor((900+6000*share+positionXp)*(1+pb.xp))
+          cash=(5000+Math.floor(80000*share))*moneyMultiplier
+          exp=Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,'boss_event_eclipse')
           await grantExpInTransaction(c,p.jid,exp)
           if(pp){
@@ -997,8 +1003,8 @@ export async function attackBoss(chat,jid,name,usePet=true){
           if(relic) drops.push(relic)
         }else{
           // Boss comum é atividade secundária: recompensa muito abaixo do Superboss semanal.
-          cash=weekly?5000+Math.floor(150000*share)+tier.cash:150+Math.floor(2500*share)
-          exp=Math.floor((weekly?150+1000*share+tier.xp:10+35*share)*(1+pb.xp))
+          cash=(weekly?5000+Math.floor(150000*share)+tier.cash:150+Math.floor(2500*share))*moneyMultiplier
+          exp=Math.floor((weekly?150+1000*share+tier.xp:10+35*share)*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
           await grantExpInTransaction(c,p.jid,exp)
           drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
