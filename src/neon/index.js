@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType,
-  adoptPet, getPet, listPets, selectPet, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet,
+  adoptPet, getPet, listPets, selectPet, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
@@ -1745,7 +1745,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!passear* — passeia
 *!treinarpet* — treina
 *!aventurapet* — manda para aventura
-*!petaventura* — gasta toda a energia e retorna com dinheiro e XP
+*!petaventura* — gasta toda a energia e retorna com dinheiro e XP\n*!expedicaopet ID 2|4|8* — manda um pet reserva em expedição\n*!expedicoespet* — acompanha e recebe pets que retornaram
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
 
@@ -5975,8 +5975,38 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet'].includes(cmd)){
+        } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
           try{
+            if(cmd==='expedicoespet'){
+              const done=await resolvePetExpeditions(sender)
+              const active=await getPetExpeditions(sender)
+              let text='🧭 *EXPEDIÇÕES DE PETS*\n'
+              if(done.length){
+                text+='\n🎉 *Retornos:*\n'
+                for(const x of done) text+=`• *${x.name}* — +${x.xp} XP • R$ ${fmt(x.cash)}${x.item?` • 🎁 ${x.item.name}`:''}\n`
+              }
+              if(active.length){
+                text+='\n⏳ *Em andamento:*\n'
+                for(const x of active) text+=`• ID ${x.pet_id} — *${x.pet_name}* (${x.trait.label}) • ${duration(Math.max(0,Number(x.ends_at)-Math.floor(Date.now()/1000)))} restantes\n`
+              }else text+='\nNenhum pet está fora agora.'
+              text+='\n\n💡 Envie um pet *reserva*: *!expedicaopet ID 2*, *4* ou *8* horas.'
+              return await reply(text)
+            }
+            if(cmd==='expedicaopet'){
+              const done=await resolvePetExpeditions(sender)
+              const petId=Number(args[0]),hours=Number(args[1]||4)
+              if(!petId){
+                const pets=(await listPets(sender)).filter(p=>!p.active)
+                let text='🧭 *MANDAR PET EM EXPEDIÇÃO*\n\n'
+                if(done.length) text+=`🎉 ${done.length} pet(s) retornaram. Use *!expedicoespet* para o relatório.\n\n`
+                if(!pets.length) return await reply(text+'Você não possui pet reserva disponível.')
+                for(const p of pets){const t=petExpeditionTrait(p.species);text+=`• ID *${p.id}* — ${p.name} Nv.${p.level} — ${t.label}\n`}
+                text+='\n⏱️ Durações: *2h, 4h ou 8h*\nEx.: *!expedicaopet 3 8*\n📌 Máximo: 3 pets fora ao mesmo tempo. O pet ativo não pode ir.'
+                return await reply(text)
+              }
+              const r=await startPetExpedition(sender,petId,hours)
+              return await reply(`🧭 *EXPEDIÇÃO INICIADA!*\n\n🐾 *${r.pet_name}* — ${r.trait.label}\n⏱️ Tempo: *${r.hours}h*\n✨ XP garantido do pet: *+${r.pet_xp}*\n💰 Recompensa base: *R$ ${fmt(r.cash_reward)}*\n🎁 A especialidade da espécie pode trazer recompensa extra.\n\nEnquanto estiver fora, esse pet não pode ser equipado. Use *!expedicoespet* para acompanhar.`)
+            }
             if(cmd==='pet') return await reply(
               adoptablePetCatalogText('🐾 *PETS DO ALPHA BOT*')+
               '\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n📚 Você pode ter vários pets. O novo pet entra na coleção e fica ativo.\n🔄 Use *!pets* para escolher e equipar um pet da sua coleção.\n💡 Use *!meupet* para ver seu pet atual.'
@@ -6037,7 +6067,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='meupet'||cmd==='statuspet'){
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
               const bonus=petStatusBonus(p)
-              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
+              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n🧭 Especialidade de expedição: *${petExpeditionTrait(p.species).label}*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
             }
             if(cmd==='petaventura'){
               const p=await petAdventure(sender)
