@@ -816,12 +816,12 @@ const SHOP_IDS=[
 const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica']
 
 const CARPINAR_MENU=[
-  {option:1,hours:1,xp:120},
-  {option:2,hours:2,xp:250},
-  {option:3,hours:4,xp:520},
-  {option:4,hours:6,xp:800},
-  {option:5,hours:8,xp:1100},
-  {option:6,hours:12,xp:1700}
+  {option:1,hours:1,xp:140,cash:300,boxChance:1},
+  {option:2,hours:2,xp:300,cash:650,boxChance:2},
+  {option:3,hours:4,xp:650,cash:1400,boxChance:4},
+  {option:4,hours:6,xp:1000,cash:2200,boxChance:6},
+  {option:5,hours:8,xp:1450,cash:3200,boxChance:8},
+  {option:6,hours:12,xp:2200,cash:5000,boxChance:12}
 ]
 
 const RARITY_META={
@@ -1542,12 +1542,14 @@ Você possui: *${stock}*
 
 ⏳ Jornada: *${r.hours}h*
 ✨ XP ao concluir: *+${r.xp_reward}*
+💰 Dinheiro ao concluir: *R$ ${fmt(r.cash_reward)}*
+🎁 Chance de Caixa Rara: *${Math.round(Number(r.rare_box_chance||0)*100)}%*
 🕒 Tempo restante: *${duration(r.remaining)}*
 
 🔒 Enquanto estiver carpindo você não pode usar outros comandos, entrar em combate, ser roubado ou atacado.
 
 🚪 Para sair antes: *!carpinarsair*
-_A saída antecipada cobra uma taxa e entrega somente o XP proporcional ao tempo trabalhado._`
+_A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concorre à Caixa Rara._`
       )
       return true
     }
@@ -1569,6 +1571,8 @@ _A saída antecipada cobra uma taxa e entrega somente o XP proporcional ao tempo
 
 💸 Taxa: *R$ ${fmt(r.fee)}*
 ✨ XP pelo tempo trabalhado: *+${r.xp}*
+💰 Dinheiro pelo tempo trabalhado: *R$ ${fmt(r.cash||0)}*
+🎁 Caixa Rara: *não concorre ao sair antes*
 
 ✅ Você está livre para usar os comandos novamente.`
       )
@@ -5615,6 +5619,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
 ⏱️ Jornada: *${Number(carp.hours||0)}h*
 ✨ XP recebido: *+${Number(carp.xp||0)}*
+💰 Dinheiro recebido: *R$ ${fmt(Number(carp.cash||0))}*
+${carp.rareBoxDrop?'🎁 *ACHOU UMA CAIXA RARA ENQUANTO CARPINAVA!* Ela foi para seu inventário.':'🎁 Nenhuma Caixa Rara apareceu desta vez.'}
 ✅ Você voltou e já pode usar os comandos normalmente.`)
         }
 
@@ -5624,6 +5630,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
 ⏳ Falta: *${duration(carp.remaining)}*
 ✨ XP ao concluir: *+${Number(carp.xp_reward||0)}*
+💰 Dinheiro ao concluir: *R$ ${fmt(Number(carp.cash_reward||0))}*
+🎁 Chance de Caixa Rara: *${Math.round(Number(CARPINAR_MENU.find(x=>x.hours===Number(carp.hours))?.boxChance||0))}%*
 
 🚪 Para sair antes: *!carpinarsair*`)
           }
@@ -5636,7 +5644,9 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
 ⏳ Ainda faltam: *${duration(carp.remaining)}*
 💸 Taxa para sair agora: *R$ ${fmt(fee)}*
-✨ Você recebe somente o XP proporcional ao tempo já trabalhado.
+✨ Você recebe XP proporcional ao tempo já trabalhado.
+💰 O dinheiro também será proporcional.
+🎁 Saindo antes, você *perde a chance da Caixa Rara*.
 
 1️⃣ *Sair agora*
 2️⃣ *Continuar carpindo*`)
@@ -5645,6 +5655,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
 ⏳ Falta: *${duration(carp.remaining)}*
 ✨ Ao concluir: *+${Number(carp.xp_reward||0)} XP*
+💰 Ao concluir: *R$ ${fmt(Number(carp.cash_reward||0))}*
 
 Use *!carpinar* para ver o status ou *!carpinarsair* para encerrar antes.`)
         }
@@ -5673,6 +5684,8 @@ Use *!carpinar* para ver o status ou *!carpinarsair* para encerrar antes.`)
 
 ⏳ Jornada: *${r.hours}h*
 ✨ XP ao concluir: *+${r.xp_reward}*
+💰 Dinheiro ao concluir: *R$ ${fmt(r.cash_reward)}*
+🎁 Chance de Caixa Rara: *${Math.round(Number(r.rare_box_chance||0)*100)}%*
 🕒 Tempo restante: *${duration(r.remaining)}*
 
 🔒 Até terminar, nenhum outro comando poderá ser usado e você não poderá ser roubado ou atacado.
@@ -5686,15 +5699,16 @@ Use *!carpinar* para ver o status ou *!carpinarsair* para encerrar antes.`)
 
 Escolha quanto tempo vai trabalhar:
 
-1️⃣ *1 hora* — +120 XP
-2️⃣ *2 horas* — +250 XP
-3️⃣ *4 horas* — +520 XP
-4️⃣ *6 horas* — +800 XP
-5️⃣ *8 horas* — +1.100 XP
-6️⃣ *12 horas* — +1.700 XP
+1️⃣ *1 hora* — +140 XP • R$ 300 • 🎁 1%
+2️⃣ *2 horas* — +300 XP • R$ 650 • 🎁 2%
+3️⃣ *4 horas* — +650 XP • R$ 1.400 • 🎁 4%
+4️⃣ *6 horas* — +1.000 XP • R$ 2.200 • 🎁 6%
+5️⃣ *8 horas* — +1.450 XP • R$ 3.200 • 🎁 8%
+6️⃣ *12 horas* — +2.200 XP • R$ 5.000 • 🎁 12%
 
+🎁 A porcentagem é a chance de encontrar *1 Caixa Rara* durante a jornada.
 🔒 Durante o serviço você não poderá usar outros comandos e ficará protegido de roubo/ataque.
-🚪 Se sair antes com *!carpinarsair*, paga uma taxa e recebe só o XP proporcional.
+🚪 Se sair antes com *!carpinarsair*, paga uma taxa, recebe XP/dinheiro proporcional e não concorre à caixa.
 
 0️⃣ Cancelar`
           )
