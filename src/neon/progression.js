@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { db, ensureUser, claimCooldown } from './db.js'
+import { db, ensureUser, claimCooldown, getDoubleEventMultiplier } from './db.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -262,7 +262,8 @@ export async function claimDailyMissions(jid){
 
     if(!r.rows.length) return {claimed:0,cash:0,boxes:0}
 
-    const cash=r.rows.reduce((a,m)=>a+Number(m.reward_cash||0),0)
+    const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
+    const cash=r.rows.reduce((a,m)=>a+Number(m.reward_cash||0),0)*moneyMultiplier
     const boxes=r.rows.reduce((a,m)=>a+Number(m.reward_box||0),0)
 
     if(cash>0){
@@ -289,7 +290,7 @@ export async function claimDailyMissions(jid){
         AND progress>=target AND claimed=FALSE
     `,[jid,key])
 
-    return {claimed:r.rows.length,cash,boxes}
+    return {claimed:r.rows.length,cash,boxes,eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -630,7 +631,8 @@ export async function deliverIfood(jid,taxMultiplier=1){
       const tip=Math.random()<.18?Math.max(10,Math.round(fare*(.05+Math.random()*.15))):0
       return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
     })
-    const gross=details.reduce((n,x)=>n+x.total,0)
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const gross=details.reduce((n,x)=>n+x.total,0)*moneyMultiplier
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
@@ -638,7 +640,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
       VALUES('system',$1,$2,'ifood',$3)`,[jid,gross,`Frota iFood | ${details.length} veículo(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | iFood`])
-    return {ok:true,details,gross,tax,taxRate,total,cooldown}
+    return {ok:true,details,gross,tax,taxRate,total,cooldown,eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -669,7 +671,8 @@ export async function driveUber(jid,taxMultiplier=1){
       const tip=Math.random()<.22?Math.max(20,Math.round(fare*(.08+Math.random()*.17))):0
       return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
     })
-    const gross=details.reduce((n,x)=>n+x.total,0)
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const gross=details.reduce((n,x)=>n+x.total,0)*moneyMultiplier
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
@@ -677,7 +680,7 @@ export async function driveUber(jid,taxMultiplier=1){
       VALUES('system',$1,$2,'uber',$3)`,[jid,gross,`Frota Uber | ${details.length} carro(s)`])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | Uber`])
-    return {ok:true,details,gross,tax,taxRate,total,cooldown}
+    return {ok:true,details,gross,tax,taxRate,total,cooldown,eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -856,12 +859,13 @@ export async function collectBusinesses(jid){
       }
     }
     if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
-    const gross=total,tax=Math.floor(gross*.10),net=gross-tax
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const gross=total*moneyMultiplier,tax=Math.floor(gross*.10),net=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[net,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | negócios')`,[jid,tax])
-    return {total:net,gross,tax,taxRate:10,details}
+    return {total:net,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier}
   })
 }
 
@@ -950,7 +954,8 @@ export async function claimGroupMission(chatJid,jid){
     if(mem.rows[0].claimed) throw new Error('Você já resgatou sua recompensa.')
     const contribution=Number(mem.rows[0].contribution)
     const total=Math.max(1,board.total)
-    const share=Math.max(1,Math.floor(Number(m.reward_cash)*contribution/total))
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const share=Math.max(1,Math.floor(Number(m.reward_cash)*contribution/total))*moneyMultiplier
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[share,jid])
     await client.query('UPDATE group_mission_members SET claimed=TRUE WHERE chat_jid=$1 AND week_key=$2 AND jid=$3',[chatJid,m.week_key,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_mission','missão coletiva proporcional')",[jid,share])
