@@ -339,7 +339,7 @@ export async function initDatabase() {
     ['chave_raid_50','Chave de Raid Lv.50','Abre uma Raid de nível 50. A chave só é consumida quando a luta começa.','special',160000,'legendary'],
 
     // Materiais específicos de Raid
-    ['nucleo_pedra','Núcleo de Pedra','Material conquistado na Raid Lv.10.','special',0,'uncommon'],
+    ['nucleo_pedra','Fragmento do Núcleo de Pedra','Fragmento conquistado na Raid Lv.10 e usado no altar lendário.','special',0,'uncommon'],
     ['escama_vulcanica','Escama Vulcânica','Material conquistado na Raid Lv.15.','special',0,'rare'],
     ['olho_abissal','Olho Abissal','Material conquistado na Raid Lv.20.','special',0,'rare'],
     ['nucleo_titan','Núcleo do Titã','Material conquistado na Raid Lv.25.','special',0,'epic'],
@@ -1025,6 +1025,65 @@ export async function buyItem(jid, itemId, qty=1) {
     `,[jid,total,`${itemId} x${qty}`])
 
     return { item, qty, total }
+  })
+}
+
+export async function buyRaidFragmentBoxes(jid, qty=1) {
+  await ensureUser(jid)
+  qty=Number(qty)
+  if(!Number.isInteger(qty) || qty<1 || qty>10) throw new Error('Quantidade inválida. Compre de 1 a 10 caixas por vez.')
+
+  const unitPrice=30000
+  const totalPrice=unitPrice*qty
+
+  return transaction(async client=>{
+    const walletR=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const wallet=walletR.rows[0]
+    const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+    if(!wallet || cash+bank<totalPrice) throw new Error('Saldo insuficiente para comprar essa quantidade de caixas.')
+
+    const fromCash=Math.min(cash,totalPrice)
+    const fromBank=totalPrice-fromCash
+    await client.query(
+      'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
+      [fromCash,fromBank,jid]
+    )
+
+    let fragments=0
+    const rolls={1:0,2:0,3:0,4:0,5:0}
+    for(let i=0;i<qty;i++){
+      const roll=Math.random()
+      const amount=roll<.45?1:roll<.75?2:roll<.90?3:roll<.98?4:5
+      fragments+=amount
+      rolls[amount]=(rolls[amount]||0)+1
+    }
+
+    await client.query(`
+      INSERT INTO inventories(jid,item_id,quantity)
+      VALUES($1,'nucleo_pedra',$2)
+      ON CONFLICT(jid,item_id) DO UPDATE
+      SET quantity=inventories.quantity+EXCLUDED.quantity
+    `,[jid,fragments])
+
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'raid_shop',$2,'raid_fragment_box',$3)
+    `,[jid,totalPrice,'Raid 1 fragment box x'+qty+' | fragments:'+fragments])
+
+    const inv=await client.query(
+      "SELECT quantity FROM inventories WHERE jid=$1 AND item_id='nucleo_pedra'",
+      [jid]
+    )
+    return {
+      qty,
+      unitPrice,
+      totalPrice,
+      fragments,
+      rolls,
+      owned:Number(inv.rows[0]?.quantity||0),
+      cash:cash-fromCash,
+      bank:bank-fromBank
+    }
   })
 }
 
@@ -3325,7 +3384,7 @@ function normalizedPetHp(p){
 }
 
 export const LEGENDARY_PET_SUMMONS=[
-  {materialId:'nucleo_pedra',materialName:'Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
+  {materialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
     {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:60,power:150},
     {species:'urso_runico',name:'🐻 Urso Rúnico',chance:30,power:175},
     {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205}
