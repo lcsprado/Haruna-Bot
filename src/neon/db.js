@@ -3280,37 +3280,37 @@ function normalizedPetHp(p){
 }
 
 export const LEGENDARY_PET_SUMMONS=[
-  {materialId:'nucleo_pedra',materialName:'Núcleo de Pedra',raidLevel:10,pets:[
+  {materialId:'nucleo_pedra',materialName:'Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
     {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:60,power:150},
     {species:'urso_runico',name:'🐻 Urso Rúnico',chance:30,power:175},
     {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205}
   ]},
-  {materialId:'escama_vulcanica',materialName:'Escama Vulcânica',raidLevel:15,pets:[
+  {materialId:'escama_vulcanica',materialName:'Escama Vulcânica',raidLevel:15,summonCost:100,pets:[
     {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:55,power:165},
     {species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:30,power:190},
     {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:15,power:225}
   ]},
-  {materialId:'olho_abissal',materialName:'Olho Abissal',raidLevel:20,pets:[
+  {materialId:'olho_abissal',materialName:'Olho Abissal',raidLevel:20,summonCost:100,pets:[
     {species:'corvo_abissal',name:'👁️ Corvo Abissal',chance:55,power:180},
     {species:'lobo_abismo',name:'🌑 Lobo do Abismo',chance:30,power:210},
     {species:'fenix_gelo',name:'❄️ Fênix de Gelo',chance:15,power:245}
   ]},
-  {materialId:'nucleo_titan',materialName:'Núcleo do Titã',raidLevel:25,pets:[
+  {materialId:'nucleo_titan',materialName:'Núcleo do Titã',raidLevel:25,summonCost:100,pets:[
     {species:'rinoceronte_titanico',name:'🦏 Rinoceronte Titânico',chance:55,power:195},
     {species:'guardiao_obsidiana',name:'🗿 Guardião de Obsidiana',chance:30,power:230},
     {species:'leviata_gelo',name:'🌊 Leviatã de Gelo',chance:15,power:270}
   ]},
-  {materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal',raidLevel:30,pets:[
+  {materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal',raidLevel:30,summonCost:100,pets:[
     {species:'cerbero_carmesim',name:'🩸 Cérbero Carmesim',chance:55,power:215},
     {species:'tigre_lunar',name:'🌙 Tigre Lunar',chance:30,power:250},
     {species:'imperador_abissal',name:'👑 Imperador Abissal',chance:15,power:295}
   ]},
-  {materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,pets:[
+  {materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,summonCost:100,pets:[
     {species:'leao_solar',name:'☀️ Leão Solar',chance:50,power:245},
     {species:'grifo_celestial',name:'✨ Grifo Celestial',chance:35,power:290},
     {species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:345}
   ]},
-  {materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,pets:[
+  {materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,summonCost:100,pets:[
     {species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:55,power:280},
     {species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:35,power:335},
     {species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400}
@@ -3326,7 +3326,7 @@ export async function summonLegendaryPet(jid,materialId){
     const owned=Number(inv?.quantity||0)
     // A Raid Lv10 é a porta de entrada para pets especiais: exige 50 materiais.
     // Todas as demais invocações continuam exigindo 100.
-    const summonCost=Number(altar.raidLevel)===10?50:100
+    const summonCost=Math.max(1,Number(altar.summonCost||100))
     if(owned<summonCost) throw new Error(`Você precisa de ${summonCost} ${altar.materialName}. Você possui ${owned}.`)
     await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[summonCost,jid,altar.materialId])
 
