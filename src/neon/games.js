@@ -476,12 +476,12 @@ function petBossBonus(pet){
 
 const RAID_CONFIGS=[
   {level:10,name:'Guardião de Pedra',hp:10000,atk:14,keyId:'chave_raid_10',keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Núcleo de Pedra'},box:null,gear:null,gearChance:0},
-  {level:15,name:'Dragão Vulcânico',hp:18000,atk:20,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.03},
-  {level:20,name:'Devorador Abissal',hp:30000,atk:28,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.035},
-  {level:25,name:'Titã de Ferro',hp:48000,atk:36,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.04},
-  {level:30,name:'Rei Abissal',hp:75000,atk:46,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.05},
-  {level:40,name:'Serafim Caído',hp:130000,atk:65,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.025},
-  {level:50,name:'Alpha Corrompido',hp:220000,atk:90,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.02},
+  {level:15,name:'Dragão Vulcânico',hp:18000,atk:21,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.03},
+  {level:20,name:'Devorador Abissal',hp:30000,atk:30,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.035},
+  {level:25,name:'Titã de Ferro',hp:48000,atk:39,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.04},
+  {level:30,name:'Rei Abissal',hp:75000,atk:50,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.05},
+  {level:40,name:'Serafim Caído',hp:130000,atk:70,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.025},
+  {level:50,name:'Alpha Corrompido',hp:220000,atk:98,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.02},
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
 export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r})) }
@@ -608,7 +608,7 @@ async function finishRaidRewards(c,s,cfg){
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
-    const cash=Math.max(250,Math.floor(cfg.cashPool*(.10+.90*share)))
+    // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.\n    // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.\n    // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.\n    const keyReturn=Math.floor(cfg.keyPrice*1.08)\n    const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))\n    const cash=Math.max(250,keyReturn+collaborationBonus)
     const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
