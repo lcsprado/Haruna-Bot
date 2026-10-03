@@ -1822,6 +1822,70 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
     }
 
+    if(flow.stage==='pet_select'){
+      const pets=Array.isArray(flow.data?.pets)?flow.data.pets:[]
+      const choice=Number(input)
+      if(!Number.isInteger(choice)||choice<1||choice>pets.length){
+        await reply(`🐾 Escolha um pet de *1 a ${pets.length}* ou *0 para cancelar*.`)
+        return true
+      }
+      const selected=pets[choice-1]
+      if(selected.active){
+        clearQuickFlow(chat,sender)
+        await reply(`🟢 *${selected.name}* já é seu pet ativo.`)
+        return true
+      }
+      const bonus=petStatusBonus(selected)
+      setQuickFlow(chat,sender,'pet_equip_confirm',{petId:selected.id},90000)
+      await reply(
+`🐾 *EQUIPAR PET?*
+
+🐾 *${selected.name}* — ${selected.species}
+🏷️ Tipo: *${petHpType(selected.species)}*
+⭐ Nv.${selected.level} • ⚔️ Poder ${selected.power}
+❤️ ${selected.hp}/${petMaxHp(selected.level,selected.xp,selected.species)}
+⚡ ${selected.energy}/${petMaxEnergy(selected.level,selected.species)}
+
+✨ *${bonus.label}*
+${bonus.text}
+
+1️⃣ *Equipar*
+2️⃣ Cancelar`
+      )
+      return true
+    }
+
+    if(flow.stage==='pet_equip_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Troca de pet cancelada.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('🐾 Escolha *1 para equipar* ou *2 para cancelar*.')
+        return true
+      }
+      try{
+        const p=await selectPet(sender,flow.data.petId)
+        clearQuickFlow(chat,sender)
+        const bonus=petStatusBonus(p)
+        await reply(p.already
+          ? `🟢 *${p.name}* já é seu pet ativo.`
+          : `🐾 *PET EQUIPADO!*
+
+🟢 *${p.name}* — ${p.species}
+🏷️ Tipo: *${petHpType(p.species)}*
+⭐ Nv.${p.level} • ⚔️ Poder ${p.power}
+❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}
+✨ ${bonus.label}: ${bonus.text}`
+        )
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('❌ '+(err?.message||'Não foi possível equipar esse pet.'))
+      }
+      return true
+    }
+
     if(flow.stage==='loot_disposition'){
       const items=Array.isArray(flow.data?.items)?flow.data.items:[]
       const index=Math.max(0,Number(flow.data?.index||0))
@@ -5500,10 +5564,22 @@ Se precisar de mais ajuda, use *!suporte*.`
 
         } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet'].includes(cmd)){
           try{
-            if(cmd==='pet'||cmd==='pets') return await reply(
+            if(cmd==='pet') return await reply(
               adoptablePetCatalogText('🐾 *PETS DO ALPHA BOT*')+
-              '\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n📚 Você pode ter vários pets. O novo pet entra na coleção e fica ativo.\n🔄 Use *!meuspets* e *!usarpet ID* para trocar o pet ativo.\n💡 Use *!meupet* para ver seu pet atual.'
+              '\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n📚 Você pode ter vários pets. O novo pet entra na coleção e fica ativo.\n🔄 Use *!pets* para escolher e equipar um pet da sua coleção.\n💡 Use *!meupet* para ver seu pet atual.'
             )
+            if(cmd==='pets'){
+              const pets=await listPets(sender)
+              if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
+              setQuickFlow(chat,sender,'pet_select',{pets},5*60*1000)
+              let text='🐾 *ESCOLHA SEU PET*\n\n'
+              pets.forEach((p,i)=>{
+                const bonus=petStatusBonus(p)
+                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} *${p.name}* — ${p.species}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ✨ ${bonus.text}\n`
+              })
+              text+='\n🟢 = pet equipado agora\n\n👉 Mande apenas o *número* do pet que quer escolher.\n0️⃣ Cancelar'
+              return await reply(text)
+            }
             if(cmd==='adotar'){
               if(!args[0]) return await reply(
                 adoptablePetCatalogText()+
@@ -5521,7 +5597,14 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='meuspets'){
               const pets=await listPets(sender)
               if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
-              return await reply('🐾 *SUA COLEÇÃO DE PETS*\n\n'+pets.map(p=>`${p.active?'🟢':'⚪'} *#${p.id??'-'} ${p.name}* — ${p.species} • Nv.${p.level} • ❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`).join('\n')+'\n\n🟢 = pet ativo\nPara trocar: *!usarpet ID*')
+              setQuickFlow(chat,sender,'pet_select',{pets},5*60*1000)
+              let text='🐾 *SUA COLEÇÃO DE PETS*\n\n'
+              pets.forEach((p,i)=>{
+                const bonus=petStatusBonus(p)
+                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} *${p.name}* — ${p.species}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)}\n   ✨ ${bonus.text}\n`
+              })
+              text+='\n🟢 = pet equipado agora\n\n👉 Mande apenas o *número* para escolher.\n0️⃣ Cancelar'
+              return await reply(text)
             }
             if(cmd==='usarpet'){
               if(!args[0]) return await reply('🐾 Use *!meuspets* e depois *!usarpet ID*.')
