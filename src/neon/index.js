@@ -10,7 +10,7 @@ import makeWASocket, {
 import pino from 'pino'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
-  deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
+  deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
   equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetPotion, usePetEnergyItem, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
@@ -1629,6 +1629,7 @@ Você possui: *${stock}*
 *!raid* — lista as Raids e mostra a Raid ativa
 *!raid 20* — abre a Raid Lv.20
 *!chaveraid 20* — compra a chave da Raid
+*!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar* — entra na sala aberta
 *!go* — host inicia (mínimo 2 jogadores)
 *!cancelarraide* — host cancela antes de começar
@@ -5549,7 +5550,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           'daily','diario','trabalhar','work','trampo','all','tudo',
           'uber','ifood','ifoodbike','coletar',
           'dungeon','batalhar','battle','roubar','atacar','attack',
-          'boss','raid','entrar','go','iniciarraid',
+          'boss','raid','lojaraid','entrar','go','iniciarraid',
           'comprar','buy','compraritem','vender','sell',
           'curar','usar','petaventura','descansar',
           'depositar','deposit','dep','sacar','withdraw','saque','transferir','transfer',
@@ -5613,7 +5614,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
 
         if(isGroup && !isOwner){
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
-          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','entrar','go','entrarraide','iniciarraide','cancelarraide'])
+          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
           let key=null,label=null
@@ -7173,6 +7174,43 @@ _Os comandos antigos continuam funcionando normalmente._`
           setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
           return await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
 
+        } else if(cmd==='lojaraid'){
+          const choice=Number(args[0]||0)
+          const qty=Number(args[1]||1)
+
+          if(!choice){
+            return await reply(
+`🏪 *LOJA DE RAID*
+
+*1️⃣ Caixa de Fragmentos — Raid 1*
+💰 Preço: *R$ 30.000*
+🧩 Contém de *1 a 5 Fragmentos do Núcleo de Pedra*
+🎲 A quantidade é aleatória; as chances exatas ficam ocultas.
+🔮 O Altar da Raid 1 exige *50 fragmentos* para uma invocação.
+
+👉 Comprar 1: *!lojaraid 1*
+👉 Comprar várias: *!lojaraid 1 5*
+⚠️ Máximo de *10 caixas* por compra.
+
+_A caixa é aberta automaticamente na compra._`
+            )
+          }
+
+          if(choice!==1) return await reply('🏪 Por enquanto a Loja de Raid possui apenas a opção *1 — Caixa de Fragmentos da Raid 1*.')
+          if(!Number.isInteger(qty)||qty<1||qty>10) return await reply('📦 Escolha de *1 a 10 caixas*. Ex.: *!lojaraid 1 5*.')
+
+          const r=await buyRaidFragmentBoxes(sender,qty)
+          await reply(
+`📦 *CAIXA DE FRAGMENTOS — RAID 1*
+
+🛒 Caixas compradas: *${r.qty}*
+💸 Pago: *R$ ${fmt(r.totalPrice)}*
+🧩 Fragmentos obtidos: *+${r.fragments}*
+💠 Total no inventário: *${r.owned}/50*
+
+${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 1*.':'⚔️ Continue na Raid 1 ou compre mais caixas para completar o altar.'}`
+          )
+
         } else if(['chaveraid'].includes(cmd)){
           const level=Number(args[0]||0)
           const cfg=getRaidCatalog().find(r=>r.level===level)
@@ -7210,7 +7248,7 @@ _Os comandos antigos continuam funcionando normalmente._`
             const raids=getRaidCatalog()
             let text='⚔️ *RAIDS DO ALPHA*\n\n'
             raids.forEach(r=>{text+=`*Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)} • 🧩 ${r.material.name}\n\n`})
-            text+='Abra com *!raid NÍVEL*. Ex.: *!raid 20*\nCompre a chave com *!chaveraid NÍVEL*.'
+            text+='Abra com *!raid NÍVEL*. Ex.: *!raid 20*\nCompre a chave com *!chaveraid NÍVEL*.\n🛒 Fragmentos extras da Raid 1: *!lojaraid*.'
             return await reply(text)
           }
           const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
