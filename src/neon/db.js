@@ -3281,39 +3281,39 @@ function normalizedPetHp(p){
 
 export const LEGENDARY_PET_SUMMONS=[
   {materialId:'nucleo_pedra',materialName:'Núcleo de Pedra',raidLevel:10,pets:[
-    {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:60,power:18},
-    {species:'urso_runico',name:'🐻 Urso Rúnico',chance:30,power:21},
-    {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:26}
+    {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:60,power:150},
+    {species:'urso_runico',name:'🐻 Urso Rúnico',chance:30,power:175},
+    {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205}
   ]},
   {materialId:'escama_vulcanica',materialName:'Escama Vulcânica',raidLevel:15,pets:[
-    {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:55,power:22},
-    {species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:30,power:26},
-    {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:15,power:32}
+    {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:55,power:165},
+    {species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:30,power:190},
+    {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:15,power:225}
   ]},
   {materialId:'olho_abissal',materialName:'Olho Abissal',raidLevel:20,pets:[
-    {species:'corvo_abissal',name:'👁️ Corvo Abissal',chance:55,power:24},
-    {species:'lobo_abismo',name:'🌑 Lobo do Abismo',chance:30,power:28},
-    {species:'fenix_gelo',name:'❄️ Fênix de Gelo',chance:15,power:34}
+    {species:'corvo_abissal',name:'👁️ Corvo Abissal',chance:55,power:180},
+    {species:'lobo_abismo',name:'🌑 Lobo do Abismo',chance:30,power:210},
+    {species:'fenix_gelo',name:'❄️ Fênix de Gelo',chance:15,power:245}
   ]},
   {materialId:'nucleo_titan',materialName:'Núcleo do Titã',raidLevel:25,pets:[
-    {species:'rinoceronte_titanico',name:'🦏 Rinoceronte Titânico',chance:55,power:27},
-    {species:'guardiao_obsidiana',name:'🗿 Guardião de Obsidiana',chance:30,power:31},
-    {species:'leviata_gelo',name:'🌊 Leviatã de Gelo',chance:15,power:36}
+    {species:'rinoceronte_titanico',name:'🦏 Rinoceronte Titânico',chance:55,power:195},
+    {species:'guardiao_obsidiana',name:'🗿 Guardião de Obsidiana',chance:30,power:230},
+    {species:'leviata_gelo',name:'🌊 Leviatã de Gelo',chance:15,power:270}
   ]},
   {materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal',raidLevel:30,pets:[
-    {species:'cerbero_carmesim',name:'🩸 Cérbero Carmesim',chance:55,power:30},
-    {species:'tigre_lunar',name:'🌙 Tigre Lunar',chance:30,power:34},
-    {species:'imperador_abissal',name:'👑 Imperador Abissal',chance:15,power:40}
+    {species:'cerbero_carmesim',name:'🩸 Cérbero Carmesim',chance:55,power:215},
+    {species:'tigre_lunar',name:'🌙 Tigre Lunar',chance:30,power:250},
+    {species:'imperador_abissal',name:'👑 Imperador Abissal',chance:15,power:295}
   ]},
   {materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,pets:[
-    {species:'leao_solar',name:'☀️ Leão Solar',chance:50,power:35},
-    {species:'grifo_celestial',name:'✨ Grifo Celestial',chance:35,power:39},
-    {species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:45}
+    {species:'leao_solar',name:'☀️ Leão Solar',chance:50,power:245},
+    {species:'grifo_celestial',name:'✨ Grifo Celestial',chance:35,power:290},
+    {species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:345}
   ]},
   {materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,pets:[
-    {species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:55,power:40},
-    {species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:35,power:46},
-    {species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:55}
+    {species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:55,power:280},
+    {species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:35,power:335},
+    {species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400}
   ]}
 ]
 
@@ -3336,12 +3336,16 @@ export async function summonLegendaryPet(jid,materialId){
     }
 
     const petName=chosen.name.replace(/^[^\p{L}\p{N}]+/u,'').slice(0,24)
-    const energy=petMaxEnergy(1,chosen.species)
-    const maxHp=petMaxHp(1,0,chosen.species)
+    // Pet invocado nasce no nível da Raid de origem para já ser uma recompensa
+    // endgame utilizável, em vez de um "lendário Lv.1" pior que pets comuns veteranos.
+    const startLevel=Math.max(1,Number(altar.raidLevel||1))
+    const startXp=(startLevel-1)*100
+    const energy=petMaxEnergy(startLevel,chosen.species)
+    const maxHp=petMaxHp(startLevel,startXp,chosen.species)
     const collected=(await client.query(
-      `INSERT INTO pet_collection(jid,species,name,energy,power,hp,max_hp,active)
-       VALUES($1,$2,$3,$4,$5,$6,$6,FALSE) RETURNING *`,
-      [jid,chosen.species,petName,energy,chosen.power,maxHp]
+      `INSERT INTO pet_collection(jid,species,name,level,xp,energy,power,hp,max_hp,active)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE) RETURNING *`,
+      [jid,chosen.species,petName,startLevel,startXp,energy,chosen.power,maxHp]
     )).rows[0]
 
     return {altar,pet:chosen,collectionId:collected.id,remaining:owned-100}
