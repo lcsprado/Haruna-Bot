@@ -2434,12 +2434,22 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
     const rarities=new Map()
     if(itemIds.length){
       const itemRows=await client.query(
-        'SELECT id,name,rarity FROM items WHERE id = ANY($1::text[])',
+        `SELECT id,name,rarity,price,
+           CASE
+             WHEN price > 0 THEN GREATEST(1,FLOOR(price*0.50))
+             WHEN rarity='legendary' THEN 100000
+             WHEN rarity='epic' THEN 25000
+             WHEN rarity='rare' THEN 7500
+             WHEN rarity='uncommon' THEN 2500
+             ELSE 500
+           END::bigint AS sell_unit
+         FROM items
+         WHERE id = ANY($1::text[])`,
         [itemIds]
       )
       for(const row of itemRows.rows){
         names.set(row.id,row.name)
-        rarities.set(row.id,row.rarity)
+        rarities.set(row.id,{rarity:row.rarity,sellUnit:Number(row.sell_unit||0)})
       }
 
       for(const [itemId,itemQty] of rewards){
@@ -2468,8 +2478,9 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
       items:[...rewards.entries()].map(([itemId,itemQty])=>({
         itemId,
         name:names.get(itemId)||itemId,
-        rarity:rarities.get(itemId)||'common',
-        qty:itemQty
+        rarity:rarities.get(itemId)?.rarity||'common',
+        qty:itemQty,
+        sellUnit:Number(rarities.get(itemId)?.sellUnit||0)
       }))
     }
   })
