@@ -1573,10 +1573,10 @@ Você possui: *${stock}*
 *!depositar valor* / *!depositar total* — deposita no banco
 *!sacar valor* — saca do banco
 *!pix @pessoa valor* — transfere dinheiro
-*!emprestimo @pessoa valor* — oferece empréstimo por 12h sem juros
+*!emprestimo @pessoa valor* — oferece empréstimo por 2h sem juros
 *!aceitaremprestimo [ID]* — aceita uma proposta recebida
 *!recusaremprestimo [ID]* — recusa uma proposta recebida
-*!pagaremprestimo valor|total* — quita total ou parcialmente
+*!pagar valor|total* — quita total ou parcialmente
 *!credito* — mostra seu limite de crédito
 *!dividas* — mostra empréstimos recebidos e concedidos
 *!ranking* — ranking dos mais ricos
@@ -5553,7 +5553,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           'comprar','buy','compraritem','vender','sell',
           'curar','usar','petaventura','descansar',
           'depositar','deposit','dep','sacar','withdraw','saque','transferir','transfer',
-          'emprestimo','emprestar','aceitaremprestimo','recusaremprestimo','pagaremprestimo'
+          'emprestimo','emprestar','aceitaremprestimo','recusaremprestimo','pagar','pagaremprestimo'
         ])
         if(EVENT_ACTION_CMDS.has(cmd)){
           const allowed=await allowEventPlayerAction(chat,sender,isOwner)
@@ -5561,7 +5561,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         }
         const sleep=await resolvePlayerSleep(sender)
         if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
-        const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping','meupet','statuspet','credito','dividas','emprestimos','pagaremprestimo','aceitaremprestimo','recusaremprestimo'])
+        const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping','meupet','statuspet','credito','dividas','emprestimos','pagar','pagaremprestimo','aceitaremprestimo','recusaremprestimo'])
         if(sleep?.active&&!sleepAllowed.has(cmd)) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
 
         if(cmd==='acordar'){
@@ -6463,7 +6463,7 @@ ${results.join('\n')}
           await consolidateUserIdentity(target,targetIdentity.aliases)
           const r=await createLoanOffer(sender,target,amount)
           await reply(
-            `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*\n\n💰 Valor: *R$ ${fmt(r.principal)}*\n⏳ Prazo após o aceite: *12 horas sem juros*\n📈 Após 12h: *2% por hora de atraso*\n🛡️ Juros máximos: *100% do valor original*\n💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*\n⌛ Esta proposta expira em *10 minutos*.\n\n👉 Para aceitar: *!aceitaremprestimo ${r.id}*\n👉 Para recusar: *!recusaremprestimo ${r.id}*\n\n_O dinheiro só sai de quem empresta quando a proposta for aceita._`,
+            `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*\n\n💰 Valor: *R$ ${fmt(r.principal)}*\n⏳ Prazo após o aceite: *2 horas sem juros*\n📈 Após 2h: *2% por hora de atraso*\n🛡️ Juros máximos: *100% do valor original*\n💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*\n⌛ Esta proposta expira em *10 minutos*.\n\n👉 Para aceitar: *!aceitaremprestimo ${r.id}*\n👉 Para recusar: *!recusaremprestimo ${r.id}*\n\n_O dinheiro só sai de quem empresta quando a proposta for aceita._`,
             {mentions:[targetMention]}
           )
 
@@ -6477,9 +6477,9 @@ ${results.join('\n')}
           const r=await rejectLoan(sender,id)
           await reply(`❌ Proposta de empréstimo *#${r.id}* recusada.`)
 
-        } else if(cmd==='pagaremprestimo'){
+        } else if(['pagar','pagaremprestimo'].includes(cmd)){
           const input=normalizeItemText(args[0]||'')
-          if(!input) return await reply('💳 Use *!pagaremprestimo total* ou *!pagaremprestimo 5000*.')
+          if(!input) return await reply('💳 Use *!pagar total* ou *!pagar 5000*.')
           const amount=['total','tudo'].includes(input)?'total':parseAmount(args[0])
           if(!amount) return await reply('💳 Informe um valor válido ou *total*.')
           const r=await payLoan(sender,amount)
