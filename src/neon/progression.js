@@ -994,9 +994,11 @@ export async function claimGroupEvent(chatJid,jid){
     const {rows}=await client.query('SELECT * FROM group_events WHERE chat_jid=$1 FOR UPDATE',[chatJid])
     const e=rows[0]
     if(!e || e.claimed_by || Number(e.expires_at)<now) throw new Error('Não há evento disponível agora.')
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const rewardCash=Number(e.reward_cash||0)*moneyMultiplier
     await client.query('UPDATE group_events SET claimed_by=$1 WHERE chat_jid=$2',[jid,chatJid])
-    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[e.reward_cash,jid])
-    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_event',$3)",[jid,e.reward_cash,e.event_type])
-    return e
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[rewardCash,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_event',$3)",[jid,rewardCash,e.event_type])
+    return {...e,reward_cash:rewardCash,eventMultiplier:moneyMultiplier}
   })
 }
