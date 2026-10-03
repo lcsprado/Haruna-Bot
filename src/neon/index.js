@@ -1184,6 +1184,34 @@ async function start() {
   bossEventScheduler.unref?.()
   setTimeout(runBossEventScheduler,5000).unref?.()
 
+  // Evento relâmpago único de 03/10/2026 (horário de Brasília).
+  // Persistido no Neon para continuar correto mesmo se o Render reiniciar.
+  const flash3xStartsAt=Date.parse('2026-10-03T15:00:00-03:00')
+  const flash3xEndsAt=Date.parse('2026-10-03T15:10:00-03:00')
+  if(Date.now()<flash3xEndsAt){
+    const currentFlash=(await db.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")).rows[0]?.value||{}
+    if(String(currentFlash.oneOffId||'')!=='flash-3x-2026-10-03-1500'){
+      const flashState={
+        active:false,
+        startsAt:flash3xStartsAt,
+        startedAt:flash3xStartsAt,
+        endsAt:flash3xEndsAt,
+        moneyMultiplier:3,
+        xpMultiplier:3,
+        activatedBy:'scheduled-flash',
+        oneOffId:'flash-3x-2026-10-03-1500',
+        eventLabel:'EVENTO RELÂMPAGO 3X',
+        silentNotice:true
+      }
+      await db.query(`
+        INSERT INTO trevo_settings(key,value,updated_at)
+        VALUES('double_reward_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+        ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+      `,[JSON.stringify(flashState)])
+      console.log('[Eventos] Evento Relâmpago 3x de 03/10 agendado para 15:00–15:10')
+    }
+  }
+
   let doubleRewardEventScheduler=null
   let luckyBoxEventScheduler=null
   let doubleRewardAnnouncementRunning=false
@@ -1215,7 +1243,7 @@ async function start() {
       const now=Date.now()
       const eventId=`${startsAt}:${endsAt}:${raw.moneyMultiplier||2}:${raw.xpMultiplier||2}`
 
-      if(now<startsAt && String(raw.noticeAnnouncementId||'')!==eventId){
+      if(now<startsAt && !raw.silentNotice && String(raw.noticeAnnouncementId||'')!==eventId){
         const luckyRaw=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
         await sendEventToGroups(
 `📢 *CORREÇÃO — EVENTOS HOJE, 03/10*
@@ -1245,14 +1273,15 @@ Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simu
 
       if(event.active && String(raw.startAnnouncementId||'')!==eventId){
         const mult=eventMultLabel(event.moneyMultiplier)
+        const title=String(raw.eventLabel||`EVENTO ${mult}X`)
         await sendEventToGroups(
-`🔥 *EVENTO ${mult}X COMEÇOU!*
+`⚡🔥 *${title} COMEÇOU!* 🔥⚡
 
+⏱️ Só *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*!
 💰 Dinheiro de recompensas: *${mult}x*
 ✨ XP: *${eventMultLabel(event.xpMultiplier)}x*
-⏱️ Duração: *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*
 
-🏃 Aproveitem enquanto está ativo!
+🏃 CORRE! Às *15:10* tudo volta ao normal.
 🛡️ Proteção de pico: *3s entre ações por jogador*; ações simultâneas entram em fila.`
         )
         raw.startAnnouncementId=eventId
@@ -1265,12 +1294,12 @@ Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simu
       }
 
       if(now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
+        const title=String(raw.eventLabel||`EVENTO ${eventMultLabel(event.moneyMultiplier)}X`)
         await sendEventToGroups(
-`⏱️ *EVENTO 1,5X ENCERRADO!*
+`⏱️ *${title} ENCERRADO!*
 
 💰 Dinheiro e ✨ XP voltaram ao normal.
-
-🍀 *Agora começa o DOUBLE LUCKY das caixas!*`
+⚡ Foram 10 minutos de bônus — até a próxima!`
         )
         raw.endAnnouncementId=eventId
         await db.query(
@@ -7851,8 +7880,15 @@ Obrigado por apoiar o Alpha Bot 🍀`
             const remaining=Math.max(1,Math.ceil(Number(lucky.remainingMs||0)/1000))
             return await reply(`🍀 *DOUBLE LUCKY ATIVO!*\n\n🎁 Chances de raridade nas caixas: *x${eventMultLabel(lucky.multiplier)}*\n⏱️ Tempo restante: *${duration(remaining)}*.`)
           }
-          if(event.scheduled || lucky.scheduled){
-            return await reply('📅 *PRÓXIMOS EVENTOS*\n\n🔥 21:00–21:30 — *1,5x dinheiro + XP*\n🍀 21:30–21:40 — *Double Lucky x2 nas caixas*')
+          if(event.scheduled){
+            const starts=new Date(event.startsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
+            const ends=new Date(event.endsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
+            return await reply(`⚡ *PRÓXIMO EVENTO*\n\n🔥 ${starts}–${ends} — *${eventMultLabel(event.moneyMultiplier)}x dinheiro + XP*\n⏱️ Duração: *${Math.round((event.endsAt-event.startsAt)/60000)} minutos*`)
+          }
+          if(lucky.scheduled){
+            const starts=new Date(lucky.startsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
+            const ends=new Date(lucky.endsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
+            return await reply(`🍀 *PRÓXIMO EVENTO*\n\n${starts}–${ends} — *Double Lucky x${eventMultLabel(lucky.multiplier)} nas caixas*`)
           }
           return await reply('⏱️ *EVENTOS*\n\nNenhum evento de bônus está ativo agora.')
 
