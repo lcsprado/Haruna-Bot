@@ -702,7 +702,8 @@ ${petLine}
 }
 
 function workResultText(r){
-  let text=`💼 *TRABALHO — ${r.rank.name.toUpperCase()}*\n\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.amount)}*\n📈 XP profissional: *+${r.xpGain}* (${r.careerXp})\n🧾 Expedientes: *${r.totalShifts}*`
+  const eventLine=Number(r.eventMultiplier||1)>1?'🔥 *EVENTO 2X APLICADO — dinheiro e XP profissional já estão dobrados*\n\n':''
+  let text=`💼 *TRABALHO — ${r.rank.name.toUpperCase()}*\n\n${eventLine}💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.amount)}*\n📈 XP profissional: *+${r.xpGain}* (${r.careerXp})\n🧾 Expedientes: *${r.totalShifts}*`
   if(r.event) text+=`\n\n${r.event}`
   if(r.promoted) text+=`\n\n🎉 *PROMOÇÃO!*\n${r.oldRank} → *${r.rank.name}*`
   if(r.next) text+=`\n🎯 Próximo cargo: *${r.next.name}* — faltam ${Math.max(0,r.next.xp-r.careerXp)} XP profissional.`
@@ -711,7 +712,8 @@ function workResultText(r){
 }
 
 function dailyResultText(r){
-  let text=`🔥 *DAILY ALPHA*\n\n💰 +R$ ${fmt(r.totalCash)}\n🔥 Sequência: *${r.streak} dia${r.streak===1?'':'s'}*\n🏅 Recorde: *${r.bestStreak} dia${r.bestStreak===1?'':'s'}*`
+  const eventLine=Number(r.eventMultiplier||1)>1?'🔥 *EVENTO 2X APLICADO*\n':''
+  let text=`🔥 *DAILY ALPHA*\n\n${eventLine}💰 +R$ ${fmt(r.totalCash)}\n🔥 Sequência: *${r.streak} dia${r.streak===1?'':'s'}*\n🏅 Recorde: *${r.bestStreak} dia${r.bestStreak===1?'':'s'}*`
   if(r.reward){
     text+=`\n\n🎉 *RECOMPENSA DE SEQUÊNCIA!*\n${r.reward.label}`
   }
@@ -917,7 +919,7 @@ async function start() {
   await acquireRuntimeLock(sessionId)
   // One-shot production activation requested from ChatGPT. The marker lives in the
   // event itself, so a later Render restart cannot accidentally start it again.
-  const immediateDoubleEventToken='scheduled-chatgpt-20261002-now-v1'
+  const immediateDoubleEventToken='scheduled-chatgpt-20261002-fix-v2'
   const immediateDoubleEvent=await getDoubleRewardEvent()
   if(immediateDoubleEvent.activatedBy!==immediateDoubleEventToken){
     await startDoubleRewardEvent(20,immediateDoubleEventToken)
@@ -5774,7 +5776,7 @@ ${status}
                 return
               }
               grossTotal+=Number(r.gross||0); taxTotal+=Number(r.tax||0); netTotal+=Number(r.amount??r.total??0)
-              results.push(`${icon} *${label}:* R$ ${fmt(r.gross)} bruto • TAXADE ${r.taxRate}%: -R$ ${fmt(r.tax)} • *R$ ${fmt(r.amount??r.total??0)} líquido*`)
+              results.push(`${icon} *${label}:* R$ ${fmt(r.gross)} bruto • TAXADE ${r.taxRate}%: -R$ ${fmt(r.tax)} • *R$ ${fmt(r.amount??r.total??0)} líquido*${Number(r.eventMultiplier||1)>1?' 🔥 *2X*':''}`)
               await progressDailyMission(sender,'work')
               if(isGroup) await progressGroupMission(chat,sender,'work')
             }catch(err){
@@ -5886,8 +5888,8 @@ ${results.join('\n')}
           const r=await collectBusinesses(sender)
           if(!r.total) return await reply('⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
           let text='💰 *LUCROS COLETADOS!*\n\n'
-          r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(x.earned)}*\n`)
-          text+=`\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*`
+          r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×2)_`:''}\n`)
+          text+=`${Number(r.eventMultiplier||1)>1?'\n🔥 *EVENTO 2X APLICADO*':''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*`
           await reply(text)
 
         } else if(['motos','motocicletas'].includes(cmd)){
@@ -5922,9 +5924,9 @@ ${results.join('\n')}
             if(isGroup) await progressGroupMission(chat,sender,'work')
             let text='🍔 *IFOOD — FROTA EM ROTA*\n\n'
             r.details.forEach(x=>{
-              text+=`${x.vehicle.id==='bicicleta'?'🚲':'🏍️'} *${x.vehicle.name}* — R$ ${fmt(x.total)}${x.tip?` (gorjeta R$ ${fmt(x.tip)})`:''}\n`
+              text+=`${x.vehicle.id==='bicicleta'?'🚲':'🏍️'} *${x.vehicle.name}* — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×2)_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
             })
-            text+=`\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
+            text+=`${Number(r.eventMultiplier||1)>1?'\n🔥 *EVENTO 2X APLICADO*':''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
 
@@ -5937,7 +5939,7 @@ ${results.join('\n')}
             if(isGroup) await progressGroupMission(chat,sender,'work')
             let text='🚗 *UBER — FROTA NA RUA*\n\n'
             r.details.forEach(x=>{
-              text+=`🚘 *${x.car.name}* (${x.category}) — R$ ${fmt(x.total)}${x.tip?` (gorjeta R$ ${fmt(x.tip)})`:''}\n`
+              text+=`🚘 *${x.car.name}* (${x.category}) — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×2)_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
             })
             text+=`\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
@@ -7139,7 +7141,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
             return await reply('⏱️ *EVENTO 2X*\n\nNenhum evento de bônus está ativo agora.')
           }
           const remaining=Math.max(1,Math.ceil(Number(event.remainingMs||0)/1000))
-          await reply(`🔥 *EVENTO 2X ATIVO!*\n\n💰 Dinheiro de recompensas: *2x*\n✨ XP: *2x*\n⏱️ Tempo restante: *${duration(remaining)}*\n\n🎯 Vale para recompensas do jogo. Apostas, transferências, vendas, compras e compensações não são multiplicadas.`)
+          await reply(`🔥 *EVENTO 2X ATIVO!*\n\n💰 Dinheiro de recompensas: *x${event.moneyMultiplier}*\n✨ XP: *x${event.xpMultiplier}*\n⏱️ Tempo restante: *${duration(remaining)}*\n\n✅ O multiplicador acima é lido diretamente do evento ativo no banco.\n🎯 Apostas, transferências, vendas, compras e compensações não são multiplicadas.`)
 
         } else if(['eventodobro','dobroevento','ativar2x'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
