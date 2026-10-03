@@ -51,6 +51,10 @@ import {
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent
 } from './progression.js'
+import {
+  initLoans, startLoanCollector, createLoanOffer, acceptLoan, rejectLoan, payLoan,
+  getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
+} from './loans.js'
 import { toStickerBuffer } from './sticker.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 
@@ -1054,6 +1058,8 @@ async function start() {
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
   await initProgression()
+  await initLoans()
+  startLoanCollector()
   await acquireRuntimeLock(sessionId)
 
   // Programação única solicitada para domingo, 04/10/2026, horário de Brasília.
@@ -1567,6 +1573,12 @@ Você possui: *${stock}*
 *!depositar valor* / *!depositar total* — deposita no banco
 *!sacar valor* — saca do banco
 *!pix @pessoa valor* — transfere dinheiro
+*!emprestimo @pessoa valor* — oferece empréstimo por 12h sem juros
+*!aceitaremprestimo [ID]* — aceita uma proposta recebida
+*!recusaremprestimo [ID]* — recusa uma proposta recebida
+*!pagaremprestimo valor|total* — quita total ou parcialmente
+*!credito* — mostra seu limite de crédito
+*!dividas* — mostra empréstimos recebidos e concedidos
 *!ranking* — ranking dos mais ricos
 *!piada* — piada do Alpha
 *!horoscopo* — horóscopo do dia
@@ -5531,6 +5543,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
         const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
         const ownerTarget=mentionsOf(msg)[0] || sender
+        await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
 
         const EVENT_ACTION_CMDS=new Set([
           'daily','diario','trabalhar','work','trampo','all','tudo',
@@ -5539,7 +5552,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           'boss','raid','entrar','go','iniciarraid',
           'comprar','buy','compraritem','vender','sell',
           'curar','usar','petaventura','descansar',
-          'depositar','deposit','dep','sacar','withdraw','saque','transferir','transfer'
+          'depositar','deposit','dep','sacar','withdraw','saque','transferir','transfer',
+          'emprestimo','emprestar','aceitaremprestimo','recusaremprestimo','pagaremprestimo'
         ])
         if(EVENT_ACTION_CMDS.has(cmd)){
           const allowed=await allowEventPlayerAction(chat,sender,isOwner)
@@ -5547,7 +5561,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         }
         const sleep=await resolvePlayerSleep(sender)
         if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
-        const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping','meupet','statuspet'])
+        const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping','meupet','statuspet','credito','dividas','emprestimos','pagaremprestimo','aceitaremprestimo','recusaremprestimo'])
         if(sleep?.active&&!sleepAllowed.has(cmd)) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
 
         if(cmd==='acordar'){
@@ -6439,6 +6453,65 @@ ${results.join('\n')}
           const r=await transfer(sender,target,amount)
           await reply(`💸 *PIX realizado!*\n\n➡️ Enviado: R$ ${fmt(r.amount)}\n🧾 Taxa: R$ ${fmt(r.fee)}\n💰 Total debitado: R$ ${fmt(r.total)}`,{mentions:[target]})
 
+        } else if(['emprestimo','emprestar'].includes(cmd)){
+          const targetMention=mentionsOf(msg)[0]
+          const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
+          if(!targetMention||!amount) return await reply('💳 Use: *!emprestimo @pessoa valor*\nExemplo: *!emprestimo @João 10000*')
+          const targetIdentity=await resolvePlayerIdentity(sock,chat,targetMention,msg)
+          const target=targetIdentity.jid
+          if(!target?.endsWith('@s.whatsapp.net')) return await reply('⚠️ Não consegui identificar essa pessoa. Peça para ela enviar qualquer comando e tente novamente.')
+          await consolidateUserIdentity(target,targetIdentity.aliases)
+          const r=await createLoanOffer(sender,target,amount)
+          await reply(
+            `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*\n\n💰 Valor: *R$ ${fmt(r.principal)}*\n⏳ Prazo após o aceite: *12 horas sem juros*\n📈 Após 12h: *2% por hora de atraso*\n🛡️ Juros máximos: *100% do valor original*\n💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*\n⌛ Esta proposta expira em *10 minutos*.\n\n👉 Para aceitar: *!aceitaremprestimo ${r.id}*\n👉 Para recusar: *!recusaremprestimo ${r.id}*\n\n_O dinheiro só sai de quem empresta quando a proposta for aceita._`,
+            {mentions:[targetMention]}
+          )
+
+        } else if(cmd==='aceitaremprestimo'){
+          const id=Number(args[0]||0)||null
+          const r=await acceptLoan(sender,id)
+          await reply(`✅ *EMPRÉSTIMO ACEITO #${r.id}*\n\n💰 Recebido: *R$ ${fmt(r.principal)}*\n🕛 Sem juros até: *${fmtDate(r.due_at)}*\n📈 Depois: *2% por hora de atraso*\n🤖 Após o vencimento o Alpha cobra automaticamente carteira e banco.`)
+
+        } else if(cmd==='recusaremprestimo'){
+          const id=Number(args[0]||0)||null
+          const r=await rejectLoan(sender,id)
+          await reply(`❌ Proposta de empréstimo *#${r.id}* recusada.`)
+
+        } else if(cmd==='pagaremprestimo'){
+          const input=normalizeItemText(args[0]||'')
+          if(!input) return await reply('💳 Use *!pagaremprestimo total* ou *!pagaremprestimo 5000*.')
+          const amount=['total','tudo'].includes(input)?'total':parseAmount(args[0])
+          if(!amount) return await reply('💳 Informe um valor válido ou *total*.')
+          const r=await payLoan(sender,amount)
+          const rest=Number(r.loan?.principal_remaining||0)+Number(r.loan?.interest_due||0)
+          await reply(`💸 *PAGAMENTO DO EMPRÉSTIMO*\n\n✅ Pago agora: *R$ ${fmt(r.paid)}*\n📈 Juros pagos: *R$ ${fmt(r.interestPaid)}*\n💰 Principal pago: *R$ ${fmt(r.principalPaid)}*\n🧾 Restante: *R$ ${fmt(rest)}*\n${r.settled?'🎉 *Empréstimo quitado!*':'⏳ A dívida continua ativa.'}`)
+
+        } else if(cmd==='credito'){
+          const r=await getLoanCredit(sender)
+          await reply(`💳 *SEU CRÉDITO*\n\n💎 Patrimônio considerado: *R$ ${fmt(r.patrimony)}*\n🏦 Limite total: *R$ ${fmt(r.limit)}*\n🧾 Dívida ativa: *R$ ${fmt(r.debt)}*\n✅ Disponível: *R$ ${fmt(r.available)}*\n\n_O limite é 25% do patrimônio, mínimo de R$ 5.000 e máximo de R$ 250.000._`)
+
+        } else if(['dividas','emprestimos'].includes(cmd)){
+          const o=await getLoanOverview(sender)
+          let text=`💳 *EMPRÉSTIMOS*\n\n🏦 Limite: *R$ ${fmt(o.credit.limit)}* • Disponível: *R$ ${fmt(o.credit.available)}*\n`
+          if(o.borrowed.length){
+            text+='\n📥 *VOCÊ DEVE / PROPOSTAS RECEBIDAS*\n'
+            for(const l of o.borrowed){
+              const due=Number(l.principal_remaining||0)+Number(l.interest_due||0)
+              if(l.status==='pending') text+=`• #${l.id} — proposta de *R$ ${fmt(l.principal)}* — expira ${fmtDate(l.offer_expires_at)}\n`
+              else text+=`• #${l.id} — deve *R$ ${fmt(due)}* (juros: R$ ${fmt(l.interest_due)}) — vence ${fmtDate(l.due_at)}\n`
+            }
+          }else text+='\n📥 Você não possui dívida ou proposta recebida.\n'
+          if(o.lent.length){
+            text+='\n📤 *VOCÊ EMPRESTOU / OFERECEU*\n'
+            for(const l of o.lent){
+              const due=Number(l.principal_remaining||0)+Number(l.interest_due||0)
+              const who=l.borrower_name||'Jogador'
+              text+=l.status==='pending'
+                ?`• #${l.id} — ${who}: proposta *R$ ${fmt(l.principal)}*\n`
+                :`• #${l.id} — ${who}: falta *R$ ${fmt(due)}*\n`
+            }
+          }
+          await reply(text.trim())
         } else if(['piada','joke'].includes(cmd)){
           setQuickFlow(chat,sender,'fun_confirm',{service:'joke',price:FUN_PRICES.joke},90000)
           await reply('😂 Comprar uma *Piada do Alpha Bot* por *R$ '+fmt(FUN_PRICES.joke)+'*?\n\n1️⃣ Comprar\n2️⃣ Cancelar')
