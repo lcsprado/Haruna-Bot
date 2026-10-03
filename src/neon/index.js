@@ -4986,66 +4986,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
 
-      // Concessão silenciosa e única: +4 Núcleos de Pedra para o jogador JP.
-      ;(async()=>{
-        const marker='silent_jp_nucleo_grant_20261003_v1'
-        try{
-          const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[marker])).rowCount>0
-          if(done) return
-
-          const latest=(await db.query(
-            `SELECT chat_jid
-             FROM trevo_games
-             WHERE game_type='raid'
-             ORDER BY updated_at DESC
-             LIMIT 1`
-          )).rows[0]
-          const chatJid=latest?.chat_jid
-          if(!chatJid?.endsWith('@g.us')) return
-
-          const groupJids=await currentGroupPlayerJids(chatJid)
-          if(!groupJids.length) return
-
-          const candidates=(await db.query(
-            `SELECT jid,push_name
-             FROM users
-             WHERE jid=ANY($1::text[])
-             ORDER BY updated_at DESC NULLS LAST`,
-            [groupJids]
-          )).rows
-
-          const jp=candidates.find(r=>/^joão pedro$/i.test(String(r.push_name||'').trim()))
-          if(!jp){
-            console.error('[GrantJP] jogador João Pedro não localizado no grupo',candidates.map(r=>r.push_name).join(', '))
-            return
-          }
-
-          await db.query('BEGIN')
-          try{
-            await db.query(
-              `INSERT INTO inventories(jid,item_id,quantity)
-               VALUES($1,'nucleo_pedra',4)
-               ON CONFLICT(jid,item_id)
-               DO UPDATE SET quantity=inventories.quantity+4`,
-              [jp.jid]
-            )
-            await db.query(
-              `INSERT INTO trevo_settings(key,value,updated_at)
-               VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
-               ON CONFLICT(key) DO NOTHING`,
-              [marker,JSON.stringify({done:true,jid:jp.jid,pushName:jp.push_name,qty:4,at:Date.now()})]
-            )
-            await db.query('COMMIT')
-            console.log('[GrantJP] Núcleo de Pedra +4 aplicado para',jp.push_name)
-          }catch(err){
-            await db.query('ROLLBACK').catch(()=>{})
-            throw err
-          }
-        }catch(err){
-          console.error('[GrantJP] falha',err?.message||err)
-        }
-      })()
-
       ;(async()=>{
         try{
           const now=Date.now()
