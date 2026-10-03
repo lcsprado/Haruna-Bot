@@ -867,7 +867,9 @@ export async function work(jid, taxMultiplier=1) {
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
     const xpGain=(25+Math.floor(Math.random()*16))*xpMultiplier
     const newXp=oldXp+xpGain, newRank=careerRank(newXp)
-    let base=700+Math.floor(Math.random()*701)
+    // Faixa salarial maior para manter o !trabalhar relevante ao longo da progressão,
+    // sem ultrapassar o retorno de ativos caros como Uber e negócios.
+    let base=1000+Math.floor(Math.random()*801)
     let event=null, factor=1
     const roll=Math.random()
     if(roll<.08){event='🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
