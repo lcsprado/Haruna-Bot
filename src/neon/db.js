@@ -3501,7 +3501,13 @@ export async function petAdventure(jid){
     const level=Number(pet.level||1),power=Number(pet.power||10)
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const cash=Math.floor(energy*(70+Math.random()*50)+level*150+power*25)*moneyMultiplier
+    // Aventura é progressão de pet, não fonte principal de dinheiro.
+    // A curva antiga (R$70-120 por energia) permitia farm excessivo, sobretudo
+    // em pets de alta capacidade e durante evento 2x. A nova faixa mantém
+    // recompensa crescente por energia/nível/poder, mas torna inviável comprar
+    // energético apenas para gerar lucro infinito.
+    const baseCash=Math.floor(energy*(20+Math.random()*15)+level*60+power*8)
+    const cash=Math.max(100,baseCash)*moneyMultiplier
     const xpGain=energy*2*xpMultiplier
     const xp=Number(pet.xp||0)+xpGain
     const nextLevel=1+Math.floor(xp/100)
