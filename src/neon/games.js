@@ -969,8 +969,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
   await ensureUser(jid,name||'')
   const weekend=bossWeekendInfo()
   return tx(async c=>{
-    const sleeping=await c.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[jid,Math.floor(Date.now()/1000)])
+    const now=Math.floor(Date.now()/1000)
+    const sleeping=await c.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[jid,now])
     if(sleeping.rows.length) throw new Error('Você está dormindo e não pode atacar o Boss agora.')
+    const carpindo=await c.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[jid,now])
+    if(carpindo.rows.length) throw new Error('Você está carpindo e não pode atacar o Boss agora.')
     const event=await loadGame(c,chat,'boss_event')
     const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0)
     const gameType=eventActive?'boss_event':'boss'
