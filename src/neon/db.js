@@ -1613,6 +1613,15 @@ export async function equipItem(jid, itemId) {
 export async function usePetPotion(jid,itemId=null){
   await ensureUser(jid)
   return transaction(async client=>{
+    const ids=Object.keys(PET_POTIONS)
+    const rows=(await client.query(
+      'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
+      [jid,ids]
+    )).rows
+    if(itemId && !PET_POTIONS[itemId]) throw new Error('Esse item não recupera HP do pet.')
+    if(itemId && !rows.some(r=>r.item_id===itemId)) throw new Error('Você não possui essa poção de pet.')
+    if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura de pet.')
+
     const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
 
@@ -1620,39 +1629,23 @@ export async function usePetPotion(jid,itemId=null){
     const before=Math.max(0,Number(pet.hp??maxHp))
     if(before>=maxHp) throw new Error(`O HP de ${pet.name} já está cheio (${maxHp}/${maxHp}).`)
 
-    let chosenId=itemId
-    let invRow=null
-    if(chosenId){
-      if(!PET_POTIONS[chosenId]) throw new Error('Esse item não recupera HP do pet.')
-      invRow=(await client.query(
-        'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-        [jid,chosenId]
-      )).rows[0]
-      if(!invRow || Number(invRow.quantity)<1) throw new Error('Você não possui essa poção de pet.')
-    }else{
-      const ids=Object.keys(PET_POTIONS)
-      const rows=(await client.query(
-        'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
-        [jid,ids]
-      )).rows
-      if(!rows.length) throw new Error('Você não possui nenhuma poção de cura de pet.')
-      const missing=maxHp-before
-      const available=rows
-        .map(r=>({...r,...PET_POTIONS[r.item_id]}))
-        .sort((a,b)=>a.heal-b.heal)
-      invRow=available.find(x=>x.heal>=missing) || available[available.length-1]
-      chosenId=invRow.item_id
-    }
+    const missing=maxHp-before
+    const available=rows
+      .map(r=>({...r,...PET_POTIONS[r.item_id]}))
+      .sort((a,b)=>a.heal-b.heal)
+    const chosen=itemId
+      ? available.find(x=>x.item_id===itemId)
+      : (available.find(x=>x.heal>=missing) || available[available.length-1])
 
-    const potion=PET_POTIONS[chosenId]
+    const potion=PET_POTIONS[chosen.item_id]
     const hp=Math.min(maxHp,before+potion.heal)
     const healed=hp-before
-    await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosenId])
+    await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id])
     await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[hp,maxHp,jid])
     await client.query('UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',[hp,maxHp,jid])
     return {
-      itemId:chosenId,name:potion.name,petName:pet.name,
-      before,hp,maxHp,healed,remaining:Number(invRow.quantity)-1
+      itemId:chosen.item_id,name:potion.name,petName:pet.name,
+      before,hp,maxHp,healed,remaining:Number(chosen.quantity)-1
     }
   })
 }
