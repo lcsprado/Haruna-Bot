@@ -17,7 +17,7 @@ import {
   ownerSetLevel, ownerHeal, ownerGrantItem,
   getGroupLicense, ensureGroupTrial, activateGroupLicense, blockGroupLicense,
   listGroupLicenses, groupLicenseIsActive, getGroupSettings, setGroupSetting,
-  getLaunchPrice, setLaunchPrice,
+  getLaunchPrice, setLaunchPrice, getDoubleRewardEvent, startDoubleRewardEvent, stopDoubleRewardEvent,
   getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
   approveSubscriptionOrder, cancelSubscriptionOrder,
@@ -374,6 +374,7 @@ async function showAdminMainMenu(chat,sender,reply){
 6️⃣ 🆘 Chamados de suporte
 
 🌘 Boss de Evento: automático toda *sexta às 19:00* • controles: *!eventoboss desativar* / *status*
+🔥 Evento 2x: *!eventodobro* (20 min) • *!eventodobro 30* • *!eventodobro off*
 
 0️⃣ Sair
 
@@ -1197,6 +1198,7 @@ Você possui: *${stock}*
 
 *!economia* — abre o menu de economia
 *!saldo* — carteira, banco e total
+*!evento* — mostra se o evento 2x de dinheiro/XP está ativo
 *!trabalhar* — trabalha, ganha dinheiro e evolui sua carreira
 *!all* — faz Trabalho + Uber + iFood disponíveis de uma vez (TAXADE 3×); não coleta negócios
 *!carreira* — mostra cargo e progresso profissional
@@ -1470,6 +1472,8 @@ Todos os comandos de usuário estão organizados abaixo. Comandos administrativo
 4️⃣ ⚙️ Configurações comerciais
 5️⃣ 🩺 Diagnóstico
 6️⃣ 🆘 Chamados de suporte
+
+🔥 Evento 2x: *!eventodobro* (20 min) • *!eventodobro off*
 
 0️⃣ Sair
 
@@ -6132,7 +6136,7 @@ ${results.join('\n')}
           for(const l of last){
             text+=`${l.crit?'💥 CRÍTICO! ':'⚔️ '}${l.from} causou *${l.dmg}* em ${l.to} — ❤️ ${l.hp}\n`
           }
-          text+=`\n🏆 *Vencedor: ${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}\n✨ EXP: +40 vencedor / +15 derrotado`
+          text+=`\n🏆 *Vencedor: ${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}\n✨ EXP: +${r.winXpGain||40} vencedor / +${r.loseXpGain||15} derrotado${Number(r.eventMultiplier||1)>1?'\n🔥 *EVENTO 2X ATIVO*':''}`
           if(r.winExp.levels>0) text+=`\n⬆️ ${r.winner.name} subiu ${r.winExp.levels} nível(is)!`
           if(r.loseExp.levels>0) text+=`\n⬆️ ${r.loser.name} subiu ${r.loseExp.levels} nível(is)!`
           await progressDailyMission(sender,'battle')
@@ -7057,6 +7061,28 @@ Obrigado por apoiar o Alpha Bot 🍀`
           if(!itemArg) return await reply(`Uso: *${prefix}daritem espada_ferro 1* ou *${prefix}daritem @pessoa espada_ferro 1*`)
           const r=await ownerGrantItem(ownerTarget,itemArg.toLowerCase(),qty)
           await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+
+        } else if(['evento','evento2x','bonus2x'].includes(cmd)){
+          const event=await getDoubleRewardEvent()
+          if(!event.active){
+            return await reply('⏱️ *EVENTO 2X*\n\nNenhum evento de bônus está ativo agora.')
+          }
+          const remaining=Math.max(1,Math.ceil(Number(event.remainingMs||0)/1000))
+          await reply(`🔥 *EVENTO 2X ATIVO!*\n\n💰 Dinheiro de recompensas: *2x*\n✨ XP: *2x*\n⏱️ Tempo restante: *${duration(remaining)}*\n\n🎯 Vale para recompensas do jogo. Apostas, transferências, vendas, compras e compensações não são multiplicadas.`)
+
+        } else if(['eventodobro','dobroevento','ativar2x'].includes(cmd)){
+          if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
+          const action=String(args[0]||'').toLowerCase()
+          if(['off','desativar','parar','stop'].includes(action)){
+            await stopDoubleRewardEvent(sender)
+            return await reply('🛑 *EVENTO 2X ENCERRADO*\n\nOs multiplicadores de dinheiro e XP voltaram ao normal.')
+          }
+          const minutes=args[0] ? parseInt(args[0],10) : 20
+          if(!Number.isInteger(minutes)||minutes<1||minutes>180){
+            return await reply(`Uso: *${prefix}eventodobro* para 20 minutos ou *${prefix}eventodobro 30*.\nPara encerrar: *${prefix}eventodobro off*.`)
+          }
+          const event=await startDoubleRewardEvent(minutes,sender)
+          await reply(`🔥🔥 *EVENTO 2X ATIVADO!* 🔥🔥\n\n⏱️ Duração: *${minutes} minutos*\n💰 Recompensas em dinheiro: *2x*\n✨ XP: *2x*\n\n🏃 Aproveitem enquanto está ativo!\nUse *${prefix}evento* para consultar o tempo restante.`)
 
         } else if(['admin','ownermenu','adminmenu','donocomandos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
