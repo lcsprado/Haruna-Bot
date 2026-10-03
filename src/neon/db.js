@@ -3116,6 +3116,14 @@ export async function initCommunityPack(){
       SELECT p.jid,p.species,p.name,p.level,p.xp,p.hunger,p.hygiene,p.energy,p.power,p.wins,p.losses,p.last_action,p.last_rest,p.created_at,TRUE FROM pets p
       WHERE NOT EXISTS(SELECT 1 FROM pet_collection pc WHERE pc.jid=p.jid);
 
+    CREATE TABLE IF NOT EXISTS pet_team(
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      slot INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 3),
+      pet_id BIGINT NOT NULL REFERENCES pet_collection(id) ON DELETE CASCADE,
+      PRIMARY KEY(jid,slot),
+      UNIQUE(jid,pet_id)
+    );
+
     CREATE TABLE IF NOT EXISTS pet_expeditions(
       id BIGSERIAL PRIMARY KEY,
       jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
@@ -3743,6 +3751,38 @@ export async function listPets(jid){
   return rows.map(normalizedPetHp)
 }
 
+
+export async function getPetTeam(jid){
+  await ensureUser(jid)
+  const {rows}=await db.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot`,[jid])
+  return rows.map(normalizedPetHp)
+}
+export async function equipPetTeam(jid,slot,petId){
+  slot=Number(slot); petId=Number(petId)
+  if(![1,2,3].includes(slot)) throw new Error('Posição inválida. Use 1, 2 ou 3.')
+  if(!Number.isInteger(petId)||petId<=0) throw new Error('Informe o ID do pet. Ex.: !equiparpet 2 5')
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const pet=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId])).rows[0]
+    if(!pet) throw new Error('Pet não encontrado. Use !meuspets.')
+    const away=(await client.query('SELECT 1 FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
+    if(away) throw new Error('Esse pet está em expedição e não pode entrar no time agora.')
+    await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=$2 OR pet_id=$3)',[jid,slot,petId])
+    await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,$2,$3)',[jid,slot,petId])
+    return {...normalizedPetHp(pet),slot}
+  })
+}
+export async function removePetTeamSlot(jid,slot){
+  slot=Number(slot); if(![2,3].includes(slot)) throw new Error('Só as posições 2 e 3 podem ser removidas. A posição 1 é o pet principal.')
+  const {rowCount}=await db.query('DELETE FROM pet_team WHERE jid=$1 AND slot=$2',[jid,slot])
+  return rowCount>0
+}
+export async function syncPetTeamPrimary(jid,petId){
+  petId=Number(petId); if(!petId) return
+  await db.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,petId])
+  await db.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,petId])
+}
+
 const PET_EXPEDITION_TRAITS={
   cachorro:{label:'🐶 Rastreador',cash:.10,item:'pocao_pet_comum',itemChance:.10},
   gato:{label:'🐱 Catador',item:'caixa_sorte',itemChance:.14},
@@ -3840,6 +3880,8 @@ export async function selectPet(jid,id){
       [current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,current.hp||current.max_hp||100,current.max_hp||petMaxHp(current.level,current.xp,current.species),active.id])
     await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
     await client.query('UPDATE pet_collection SET active=TRUE WHERE id=$1',[id])
+    await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,id])
+    await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,id])
     await client.query(`INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,hp,max_hp) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp`,
       [jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at,target.hp,target.max_hp])
