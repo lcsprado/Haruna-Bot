@@ -4832,6 +4832,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             const row=rows[raidIndex]
             const raid=row.state||{}
             // Compensação única pela Raid mais recente interrompida por deadlock.
+            // Mantém o marcador legado para não compensar novamente Raids que já receberam a antiga Caixa Épica.
             if(raidIndex===0 && !raid.deadlockEpicCompensated){
               const participantIds=Object.keys(raid.players||{}).sort()
               if(participantIds.length){
@@ -4839,8 +4840,12 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
                 try{
                   for(const jid of participantIds){
                     await db.query(
-                      `INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'caixa_epica',1)
-                       ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,
+                      `UPDATE wallets SET cash=cash+10000,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1`,
+                      [jid]
+                    )
+                    await db.query(
+                      `INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+                       VALUES('system',$1,10000,'raid_interruption_compensation','Compensação por interrupção da Raid')`,
                       [jid]
                     )
                   }
@@ -4852,7 +4857,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
                     [JSON.stringify(raid),row.chat_jid]
                   )
                   await db.query('COMMIT')
-                  await sock.sendMessage(row.chat_jid,{text:`🎁 *COMPENSAÇÃO DA RAID*\n\nO banco interrompeu a luta por deadlock. Cada participante recebeu *1 Caixa Épica*.\n🔄 A Raid será retomada do estado salvo, sem cobrar nova chave.`}).catch(()=>{})
+                  await sock.sendMessage(row.chat_jid,{text:`💰 *COMPENSAÇÃO DA RAID*\n\nO banco interrompeu a luta por deadlock. Cada participante recebeu *R$ 10.000*.\n🔄 A Raid será retomada do estado salvo, sem cobrar nova chave.`}).catch(()=>{})
                 }catch(compErr){
                   await db.query('ROLLBACK').catch(()=>{})
                   console.error('[RaidCompensation]',compErr?.message||compErr)
