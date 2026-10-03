@@ -465,15 +465,55 @@ const PET_BOSS_SPECIALTIES={
   lobo:{label:'🐺 Caçador',damage:.06}, aguia:{label:'🦅 Precisão',crit:.07},
   panda:{label:'🐼 Resistência',defense:.08}, tigre:{label:'🐯 Fúria',damage:.07},
   leao:{label:'🦁 Rei da Caçada',damage:.08}, unicornio:{label:'🦄 Bênção',drop:.04,defense:.04},
-  dragao:{label:'🐉 Caçador de Boss',bossDamage:.10}
+  dragao:{label:'🐉 Caçador de Boss',bossDamage:.10},
+
+  // Pets de Raid: todos têm pelo menos 2 especialidades. Eles exigem 100 materiais
+  // e por isso devem superar pets comuns em utilidade endgame, sem tornar equipamento irrelevante.
+  golem_ancestral:{label:'🪨 Muralha Ancestral',defense:.09,drop:.02,raid:true},
+  urso_runico:{label:'🐻 Fúria Rúnica',damage:.07,defense:.06,raid:true},
+  colosso_cristal:{label:'💎 Prisma Colossal',defense:.10,drop:.04,crit:.03,raid:true},
+
+  salamandra_infernal:{label:'🔥 Chama Infernal',damage:.08,crit:.04,raid:true},
+  dragao_vulcanico:{label:'🐲 Núcleo Vulcânico',damage:.09,defense:.05,raid:true},
+  fenix_fogo:{label:'🔥 Renascimento Ígneo',damage:.08,dodge:.05,xp:.05,raid:true},
+
+  corvo_abissal:{label:'👁️ Olho do Abismo',crit:.08,drop:.03,raid:true},
+  lobo_abismo:{label:'🌑 Predador Abissal',damage:.09,crit:.05,raid:true},
+  fenix_gelo:{label:'❄️ Alma Glacial',defense:.08,dodge:.05,xp:.06,raid:true},
+
+  rinoceronte_titanico:{label:'🦏 Investida Titânica',defense:.10,damage:.05,raid:true},
+  guardiao_obsidiana:{label:'🗿 Guarda Obsidiana',defense:.10,drop:.035,raid:true},
+  leviata_gelo:{label:'🌊 Leviatã Congelado',defense:.10,dodge:.06,damage:.05,raid:true},
+
+  cerbero_carmesim:{label:'🩸 Três Presas',damage:.10,crit:.06,raid:true},
+  tigre_lunar:{label:'🌙 Caçador Lunar',damage:.09,dodge:.06,drop:.03,raid:true},
+  imperador_abissal:{label:'👑 Soberano do Abismo',bossDamage:.10,defense:.07,drop:.04,raid:true},
+
+  leao_solar:{label:'☀️ Rei Solar',damage:.10,crit:.07,xp:.05,raid:true},
+  grifo_celestial:{label:'✨ Asas da Fortuna',crit:.10,dodge:.07,drop:.04,raid:true},
+  fenix_celestial:{label:'🌟 Graça Celestial',defense:.10,dodge:.08,xp:.08,raid:true},
+
+  serpente_cosmica:{label:'🌌 Oráculo Cósmico',crit:.09,drop:.06,xp:.08,raid:true},
+  dragao_corrompido:{label:'☠️ Ruína Corrompida',bossDamage:.10,damage:.08,defense:.08,raid:true},
+  fenix_alpha:{label:'👑 Fênix Alpha',damage:.10,defense:.10,crit:.08,dodge:.06,drop:.07,xp:.08,raid:true}
 }
 function petBossBonus(pet){
   if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0}
   const base=PET_BOSS_SPECIALTIES[pet.species]||{}
-  // O nível melhora o efeito devagar e para em +25%; pet ajuda, mas não substitui equipamento.
+  // O nível melhora o efeito em até 25%. Pets comuns continuam limitados a 10% por status;
+  // pets de Raid podem chegar a 15% para preservar a vantagem conquistada com 100 materiais.
   const scale=1+Math.min(.25,Math.max(0,Number(pet.level||1)-1)*.01)
-  const scaled=k=>Math.min(.10,Number(base[k]||0)*scale)
-  return {label:base.label||pet.species,damage:scaled('damage')+scaled('bossDamage'),defense:scaled('defense'),crit:scaled('crit'),dodge:scaled('dodge'),xp:scaled('xp'),drop:scaled('drop')}
+  const cap=base.raid?.15:.10
+  const scaled=k=>Math.min(cap,Number(base[k]||0)*scale)
+  return {
+    label:base.label||pet.species,
+    damage:scaled('damage')+scaled('bossDamage'),
+    defense:scaled('defense'),
+    crit:scaled('crit'),
+    dodge:scaled('dodge'),
+    xp:scaled('xp'),
+    drop:scaled('drop')
+  }
 }
 
 const RAID_CONFIGS=[
