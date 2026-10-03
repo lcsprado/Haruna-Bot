@@ -573,6 +573,19 @@ function stickerMediaOf(msg){
 
 function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
 
+function lootDispositionPrompt(item,index,total){
+  const sellTotal=Number(item.sellUnit||0)*Number(item.qty||0)
+  return `🎒 *O QUE FAZER COM O DROP?*\n\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n💰 Venda imediata: *R$ ${fmt(sellTotal)}*\n\n1️⃣ Guardar no inventário\n2️⃣ Descartar e vender\n\n📦 Item ${index+1}/${total}`
+}
+
+async function beginLootDisposition(chat,sender,result,reply){
+  const items=Array.isArray(result?.items)?result.items.filter(i=>Number(i.qty||0)>0):[]
+  if(!items.length) return false
+  setQuickFlow(chat,sender,'loot_disposition',{items,index:0,soldTotal:0},5*60*1000)
+  await reply(lootDispositionPrompt(items[0],0,items.length))
+  return true
+}
+
 function luckyBoxSummary(r){
   let text=`🎁 *CAIXAS — RESULTADO*\n\n📦 Caixa: *${r.boxName||r.boxId||'Caixa'}*\n📦 Caixas abertas: *${r.opened}*\n`
   if(r.cash>0) text+=`💰 Dinheiro: *R$ ${fmt(r.cash)}*\n`
@@ -1727,6 +1740,45 @@ Nenhum chamado aberto agora.
 
 _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
+    }
+
+    if(flow.stage==='loot_disposition'){
+      const items=Array.isArray(flow.data?.items)?flow.data.items:[]
+      const index=Math.max(0,Number(flow.data?.index||0))
+      const item=items[index]
+      if(!item){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Drops processados.')
+        return true
+      }
+      if(input!=='1'&&input!=='2'){
+        await reply('🎒 Escolha *1 Guardar* ou *2 Descartar e vender*.')
+        return true
+      }
+
+      let soldTotal=Number(flow.data?.soldTotal||0)
+      if(input==='2'){
+        try{
+          const sold=await sellItem(sender,item.itemId,Number(item.qty||1))
+          soldTotal+=Number(sold.total||0)
+          await reply(`💰 *VENDIDO!*\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n💵 Recebido: *R$ ${fmt(sold.total)}*`)
+        }catch(err){
+          await reply('❌ '+(err?.message||'Não foi possível vender esse drop. Ele foi mantido no inventário.'))
+        }
+      }else{
+        await reply(`✅ *GUARDADO!*\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}`)
+      }
+
+      const nextIndex=index+1
+      if(nextIndex>=items.length){
+        clearQuickFlow(chat,sender)
+        await reply(`✅ *DROPS PROCESSADOS*\n\n💰 Total vendido agora: *R$ ${fmt(soldTotal)}*\n🎒 O restante ficou no inventário.`)
+        return true
+      }
+
+      setQuickFlow(chat,sender,'loot_disposition',{items,index:nextIndex,soldTotal},5*60*1000)
+      await reply(lootDispositionPrompt(items[nextIndex],nextIndex,items.length))
+      return true
     }
 
     if(flow.stage==='wake_confirm'){
@@ -4213,6 +4265,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       const r=await openLootBoxes(sender,boxId,qty)
       clearQuickFlow(chat,sender)
       await reply(luckyBoxSummary(r))
+      await beginLootDisposition(chat,sender,r,reply)
       return true
     }
 
@@ -4230,6 +4283,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       const r=await openLootBoxes(sender,flow.data.boxId||'caixa_sorte',qty)
       clearQuickFlow(chat,sender)
       await reply(luckyBoxSummary(r))
+      await beginLootDisposition(chat,sender,r,reply)
       return true
     }
 
@@ -4246,6 +4300,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       const r=await openLootBoxes(sender,flow.data.boxId||'caixa_sorte',Number(flow.data.qty||0))
       clearQuickFlow(chat,sender)
       await reply(luckyBoxSummary(r))
+      await beginLootDisposition(chat,sender,r,reply)
       return true
     }
 
