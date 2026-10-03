@@ -1019,6 +1019,53 @@ async function start() {
   await initGames()
   await initProgression()
   await acquireRuntimeLock(sessionId)
+
+  // Programação única solicitada para domingo, 04/10/2026, horário de Brasília.
+  // O scheduleId impede que reinícios sobrescrevam marcadores de avisos já enviados.
+  const scheduledEventsId='alpha-events-2026-10-04-v1'
+  const rewardStartsAt=1791158400000 // 04/10 21:00 BRT
+  const rewardEndsAt=1791160200000   // 04/10 21:30 BRT
+  const luckyStartsAt=1791160200000  // 04/10 21:30 BRT
+  const luckyEndsAt=1791160800000    // 04/10 21:40 BRT
+  if(Date.now()<luckyEndsAt){
+    const existingReward=(await db.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")).rows[0]?.value||{}
+    if(String(existingReward.scheduleId||'')!==scheduledEventsId){
+      await db.query(
+        `INSERT INTO trevo_settings(key,value,updated_at)
+         VALUES('double_reward_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+         ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
+        [JSON.stringify({
+          scheduleId:scheduledEventsId,
+          active:false,
+          startsAt:rewardStartsAt,
+          startedAt:rewardStartsAt,
+          endsAt:rewardEndsAt,
+          moneyMultiplier:1.5,
+          xpMultiplier:1.5,
+          activatedBy:'scheduled:2026-10-04'
+        })]
+      )
+      console.log('[Eventos] 1,5x agendado para 04/10 21:00–21:30 BRT')
+    }
+
+    const existingLucky=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
+    if(String(existingLucky.scheduleId||'')!==scheduledEventsId){
+      await db.query(
+        `INSERT INTO trevo_settings(key,value,updated_at)
+         VALUES('lucky_box_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+         ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
+        [JSON.stringify({
+          scheduleId:scheduledEventsId,
+          active:false,
+          startsAt:luckyStartsAt,
+          endsAt:luckyEndsAt,
+          multiplier:2,
+          activatedBy:'scheduled:2026-10-04'
+        })]
+      )
+      console.log('[Eventos] Double Lucky agendado para 04/10 21:30–21:40 BRT')
+    }
+  }
   const { state, saveCreds }=await useNeonAuthState(sessionId)
   const { version }=await fetchLatestBaileysVersion()
 
@@ -1131,6 +1178,7 @@ async function start() {
 ⚠️ Os eventos começam e terminam automaticamente no horário de Brasília.`
         )
         raw.noticeAnnouncementId=eventId
+        console.log('[Eventos] aviso prévio de 04/10 enviado aos grupos ativos')
         await db.query(
           "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
           [JSON.stringify(raw)]
@@ -1150,6 +1198,7 @@ async function start() {
 🏃 Aproveitem enquanto está ativo!`
         )
         raw.startAnnouncementId=eventId
+        console.log('[Eventos] evento de ganhos iniciado e anunciado')
         await db.query(
           "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
           [JSON.stringify(raw)]
@@ -1198,6 +1247,7 @@ async function start() {
 ⏱️ Termina às *21:40*.`
         )
         raw.startAnnouncementId=eventId
+        console.log('[Eventos] Double Lucky iniciado e anunciado')
         await db.query(
           "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='lucky_box_event'",
           [JSON.stringify(raw)]
