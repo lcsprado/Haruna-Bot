@@ -17,7 +17,7 @@ import {
   ownerSetLevel, ownerHeal, ownerGrantItem,
   getGroupLicense, ensureGroupTrial, activateGroupLicense, blockGroupLicense,
   listGroupLicenses, groupLicenseIsActive, getGroupSettings, setGroupSetting,
-  getLaunchPrice, setLaunchPrice, getDoubleRewardEvent, startDoubleRewardEvent, stopDoubleRewardEvent,
+  getLaunchPrice, setLaunchPrice, getDoubleRewardEvent, startDoubleRewardEvent, stopDoubleRewardEvent, getLuckyBoxEvent,
   getPaymentLink, setPaymentLink,
   createSubscriptionOrder, getSubscriptionOrder, listPendingSubscriptionOrders,
   approveSubscriptionOrder, cancelSubscriptionOrder,
@@ -588,6 +588,7 @@ async function beginLootDisposition(chat,sender,result,reply){
 
 function luckyBoxSummary(r){
   let text=`🎁 *CAIXAS — RESULTADO*\n\n📦 Caixa: *${r.boxName||r.boxId||'Caixa'}*\n📦 Caixas abertas: *${r.opened}*\n`
+  if(Number(r.luckyMultiplier||1)>1) text+=`🍀 *DOUBLE LUCKY x${Number(r.luckyMultiplier).toLocaleString('pt-BR')} ATIVO — chances de raridade multiplicadas*\n`
   if(r.cash>0) text+=`💰 Dinheiro: *R$ ${fmt(r.cash)}*\n`
   if(r.exp>0) text+=`✨ EXP: *+${fmt(r.exp)}*\n`
 
@@ -715,7 +716,7 @@ ${petLine}
 }
 
 function workResultText(r){
-  const eventLine=Number(r.eventMultiplier||1)>1?'🔥 *EVENTO 2X APLICADO — dinheiro e XP profissional já estão dobrados*\n\n':''
+  const eventLine=Number(r.eventMultiplier||1)>1?`🔥 *EVENTO x${Number(r.eventMultiplier).toLocaleString('pt-BR',{maximumFractionDigits:2})} APLICADO — dinheiro e XP profissional multiplicados*\n\n`:''
   let text=`💼 *TRABALHO — ${r.rank.name.toUpperCase()}*\n\n${eventLine}💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.amount)}*\n📈 XP profissional: *+${r.xpGain}* (${r.careerXp})\n🧾 Expedientes: *${r.totalShifts}*`
   if(r.event) text+=`\n\n${r.event}`
   if(r.promoted) text+=`\n\n🎉 *PROMOÇÃO!*\n${r.oldRank} → *${r.rank.name}*`
@@ -725,7 +726,7 @@ function workResultText(r){
 }
 
 function dailyResultText(r){
-  const eventLine=Number(r.eventMultiplier||1)>1?'🔥 *EVENTO 2X APLICADO*\n':''
+  const eventLine=Number(r.eventMultiplier||1)>1?`🔥 *EVENTO x${Number(r.eventMultiplier).toLocaleString('pt-BR',{maximumFractionDigits:2})} APLICADO*\n`:''
   let text=`🔥 *DAILY ALPHA*\n\n${eventLine}💰 +R$ ${fmt(r.totalCash)}\n🔥 Sequência: *${r.streak} dia${r.streak===1?'':'s'}*\n🏅 Recorde: *${r.bestStreak} dia${r.bestStreak===1?'':'s'}*`
   if(r.reward){
     text+=`\n\n🎉 *RECOMPENSA DE SEQUÊNCIA!*\n${r.reward.label}`
@@ -1086,32 +1087,68 @@ async function start() {
   setTimeout(runBossEventScheduler,5000).unref?.()
 
   let doubleRewardEventScheduler=null
+  let luckyBoxEventScheduler=null
+
+  const eventMultLabel=n=>Number(n||1).toLocaleString('pt-BR',{maximumFractionDigits:2})
+
+  async function activeEventGroups(){
+    return (await listGroupLicenses(500)).filter(groupLicenseIsActive).filter(x=>x.chat_jid?.endsWith('@g.us'))
+  }
+
+  async function sendEventToGroups(text){
+    const groups=await activeEventGroups()
+    for(const lic of groups){
+      await sock.sendMessage(lic.chat_jid,{text}).catch(err=>console.error('[Eventos] aviso',lic.chat_jid,err?.message||err))
+    }
+  }
 
   async function updateDoubleRewardAnnouncements(){
     if(trevoHealth.whatsapp!=='open') return
     try{
       const event=await getDoubleRewardEvent()
-      const now=Date.now()
       const raw=(await db.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")).rows[0]?.value||{}
-      const startedAt=Number(raw.startedAt||0)
+      const startsAt=Number(raw.startsAt||raw.startedAt||0)
       const endsAt=Number(raw.endsAt||0)
-      if(!startedAt || !endsAt) return
+      if(!startsAt || !endsAt) return
 
-      const eventId=`${startedAt}:${endsAt}`
-      const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+      const now=Date.now()
+      const eventId=`${startsAt}:${endsAt}:${raw.moneyMultiplier||2}:${raw.xpMultiplier||2}`
+
+      if(now<startsAt && String(raw.noticeAnnouncementId||'')!==eventId){
+        const luckyRaw=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
+        await sendEventToGroups(
+`📢 *EVENTOS AMANHÃ NO ALPHA BOT*
+
+🔥 *21:00 → 21:30 — EVENTO 1,5X*
+💰 Ganhos em dinheiro: *1,5x*
+✨ XP: *1,5x*
+⏱️ Duração: *30 minutos*
+
+🍀 *21:30 → 21:40 — DOUBLE LUCKY*
+🎁 Ao abrir caixas, as chances de raridade ficam *2x maiores*
+⏱️ Duração: *10 minutos*
+
+⚠️ Os eventos começam e terminam automaticamente no horário de Brasília.`
+        )
+        raw.noticeAnnouncementId=eventId
+        await db.query(
+          "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
+          [JSON.stringify(raw)]
+        )
+        return
+      }
+
       if(event.active && String(raw.startAnnouncementId||'')!==eventId){
-        const text=`🔥🔥 *EVENTO 2X COMEÇOU!* 🔥🔥
+        const mult=eventMultLabel(event.moneyMultiplier)
+        await sendEventToGroups(
+`🔥 *EVENTO ${mult}X COMEÇOU!*
 
-💰 Dinheiro: *2X*
-✨ XP: *2X*
-⏱️ Duração: *${Math.max(1,Math.round((endsAt-startedAt)/60000))} minutos*
+💰 Dinheiro de recompensas: *${mult}x*
+✨ XP: *${eventMultLabel(event.xpMultiplier)}x*
+⏱️ Duração: *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*
 
-🏃 Aproveitem! Use *${prefix}evento* para consultar o tempo restante.`
-        for(const lic of groups){
-          const chat=lic.chat_jid
-          if(!chat?.endsWith('@g.us')) continue
-          await sock.sendMessage(chat,{text}).catch(err=>console.error('[Evento2x] aviso início',chat,err?.message||err))
-        }
+🏃 Aproveitem enquanto está ativo!`
+        )
         raw.startAnnouncementId=eventId
         await db.query(
           "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
@@ -1120,18 +1157,14 @@ async function start() {
         return
       }
 
-      if(!event.active && now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
-        const text=`⏱️ *EVENTO 2X ENCERRADO!*
+      if(now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
+        await sendEventToGroups(
+`⏱️ *EVENTO 1,5X ENCERRADO!*
 
-💰 Dinheiro voltou ao normal.
-✨ XP voltou ao normal.
+💰 Dinheiro e ✨ XP voltaram ao normal.
 
-🍀 Até o próximo evento!`
-        for(const lic of groups){
-          const chat=lic.chat_jid
-          if(!chat?.endsWith('@g.us')) continue
-          await sock.sendMessage(chat,{text}).catch(err=>console.error('[Evento2x] aviso fim',chat,err?.message||err))
-        }
+🍀 *Agora começa o DOUBLE LUCKY das caixas!*`
+        )
         raw.endAnnouncementId=eventId
         await db.query(
           "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
@@ -1139,7 +1172,54 @@ async function start() {
         )
       }
     }catch(err){
-      console.error('[Evento2x] falha nos avisos automáticos',err?.message||err)
+      console.error('[EventoMultiplicador] falha nos avisos automáticos',err?.message||err)
+    }
+  }
+
+  async function updateLuckyBoxAnnouncements(){
+    if(trevoHealth.whatsapp!=='open') return
+    try{
+      const event=await getLuckyBoxEvent()
+      const raw=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
+      const startsAt=Number(raw.startsAt||0)
+      const endsAt=Number(raw.endsAt||0)
+      if(!startsAt || !endsAt) return
+      const now=Date.now()
+      const eventId=`${startsAt}:${endsAt}:${raw.multiplier||2}`
+
+      if(event.active && String(raw.startAnnouncementId||'')!==eventId){
+        await sendEventToGroups(
+`🍀🍀 *DOUBLE LUCKY COMEÇOU!* 🍀🍀
+
+🎁 Durante *10 minutos*, ao abrir caixas:
+✨ chances de raridade: *2X*
+
+📦 Vale para Caixa da Sorte, Caixa Rara e Caixa Épica.
+⏱️ Termina às *21:40*.`
+        )
+        raw.startAnnouncementId=eventId
+        await db.query(
+          "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='lucky_box_event'",
+          [JSON.stringify(raw)]
+        )
+        return
+      }
+
+      if(now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
+        await sendEventToGroups(
+`🍀 *DOUBLE LUCKY ENCERRADO!*
+
+🎁 As chances das caixas voltaram ao normal.
+🔥 Obrigado a quem participou dos eventos!`
+        )
+        raw.endAnnouncementId=eventId
+        await db.query(
+          "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='lucky_box_event'",
+          [JSON.stringify(raw)]
+        )
+      }
+    }catch(err){
+      console.error('[DoubleLucky] falha nos avisos automáticos',err?.message||err)
     }
   }
 
@@ -1147,6 +1227,11 @@ async function start() {
   doubleRewardEventScheduler=setInterval(updateDoubleRewardAnnouncements,5000)
   doubleRewardEventScheduler.unref?.()
   setTimeout(updateDoubleRewardAnnouncements,3000).unref?.()
+
+  if(luckyBoxEventScheduler) clearInterval(luckyBoxEventScheduler)
+  luckyBoxEventScheduler=setInterval(updateLuckyBoxAnnouncements,5000)
+  luckyBoxEventScheduler.unref?.()
+  setTimeout(updateLuckyBoxAnnouncements,3500).unref?.()
 
   async function senderIsGroupAdmin(chatJid,userJid){
     if(userJid===ownerJid) return true
@@ -7362,12 +7447,19 @@ Obrigado por apoiar o Alpha Bot 🍀`
           await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 
         } else if(['evento','evento2x','bonus2x'].includes(cmd)){
-          const event=await getDoubleRewardEvent()
-          if(!event.active){
-            return await reply('⏱️ *EVENTO 2X*\n\nNenhum evento de bônus está ativo agora.')
+          const [event,lucky]=await Promise.all([getDoubleRewardEvent(),getLuckyBoxEvent()])
+          if(event.active){
+            const remaining=Math.max(1,Math.ceil(Number(event.remainingMs||0)/1000))
+            return await reply(`🔥 *EVENTO x${eventMultLabel(event.moneyMultiplier)} ATIVO!*\n\n💰 Dinheiro de recompensas: *x${eventMultLabel(event.moneyMultiplier)}*\n✨ XP: *x${eventMultLabel(event.xpMultiplier)}*\n⏱️ Tempo restante: *${duration(remaining)}*\n\n🎯 Apostas, transferências, vendas, compras e compensações não são multiplicadas.`)
           }
-          const remaining=Math.max(1,Math.ceil(Number(event.remainingMs||0)/1000))
-          await reply(`🔥 *EVENTO 2X ATIVO!*\n\n💰 Dinheiro de recompensas: *x${event.moneyMultiplier}*\n✨ XP: *x${event.xpMultiplier}*\n⏱️ Tempo restante: *${duration(remaining)}*\n\n✅ O multiplicador acima é lido diretamente do evento ativo no banco.\n🎯 Apostas, transferências, vendas, compras e compensações não são multiplicadas.`)
+          if(lucky.active){
+            const remaining=Math.max(1,Math.ceil(Number(lucky.remainingMs||0)/1000))
+            return await reply(`🍀 *DOUBLE LUCKY ATIVO!*\n\n🎁 Chances de raridade nas caixas: *x${eventMultLabel(lucky.multiplier)}*\n⏱️ Tempo restante: *${duration(remaining)}*.`)
+          }
+          if(event.scheduled || lucky.scheduled){
+            return await reply('📅 *PRÓXIMOS EVENTOS*\n\n🔥 21:00–21:30 — *1,5x dinheiro + XP*\n🍀 21:30–21:40 — *Double Lucky x2 nas caixas*')
+          }
+          return await reply('⏱️ *EVENTOS*\n\nNenhum evento de bônus está ativo agora.')
 
         } else if(['eventodobro','dobroevento','ativar2x'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
