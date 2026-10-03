@@ -621,7 +621,7 @@ async function finishRaidRewards(c,s,cfg){
     const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
-    const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
+    const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share)))*xpMultiplier:0
     if(petXp) await raidPetXp(c,p.jid,petXp)
 
     let material=null,drop=null,gearDrop=null
@@ -992,7 +992,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
           await credit(c,p.jid,cash,'boss_event_eclipse')
           await grantExpInTransaction(c,p.jid,exp)
           if(pp){
-            petXp=Math.floor(200+1200*share+(i===0?300:i===1?150:0))
+            petXp=Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier
             await raidPetXp(c,p.jid,petXp)
           }
           if(i===0) drops.push(await grantBossItem(c,p.jid,{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'}))
