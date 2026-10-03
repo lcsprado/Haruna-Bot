@@ -1171,6 +1171,8 @@ async function start() {
 
   let doubleRewardEventScheduler=null
   let luckyBoxEventScheduler=null
+  let doubleRewardAnnouncementRunning=false
+  let luckyBoxAnnouncementRunning=false
 
   const eventMultLabel=n=>Number(n||1).toLocaleString('pt-BR',{maximumFractionDigits:2})
 
@@ -1186,7 +1188,8 @@ async function start() {
   }
 
   async function updateDoubleRewardAnnouncements(){
-    if(trevoHealth.whatsapp!=='open') return
+    if(trevoHealth.whatsapp!=='open' || doubleRewardAnnouncementRunning) return
+    doubleRewardAnnouncementRunning=true
     try{
       const event=await getDoubleRewardEvent()
       const raw=(await db.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")).rows[0]?.value||{}
@@ -1262,11 +1265,14 @@ Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simu
       }
     }catch(err){
       console.error('[EventoMultiplicador] falha nos avisos automáticos',err?.message||err)
+    }finally{
+      doubleRewardAnnouncementRunning=false
     }
   }
 
   async function updateLuckyBoxAnnouncements(){
-    if(trevoHealth.whatsapp!=='open') return
+    if(trevoHealth.whatsapp!=='open' || luckyBoxAnnouncementRunning) return
+    luckyBoxAnnouncementRunning=true
     try{
       const event=await getLuckyBoxEvent()
       const raw=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
@@ -1311,6 +1317,8 @@ Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simu
       }
     }catch(err){
       console.error('[DoubleLucky] falha nos avisos automáticos',err?.message||err)
+    }finally{
+      luckyBoxAnnouncementRunning=false
     }
   }
 
