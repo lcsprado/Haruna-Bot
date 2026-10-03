@@ -517,7 +517,7 @@ function petBossBonus(pet){
 }
 
 const RAID_CONFIGS=[
-  {level:10,name:'Guardião de Pedra',hp:10000,atk:14,keyId:'chave_raid_10',keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Núcleo de Pedra'},box:null,gear:null,gearChance:0},
+  {level:10,name:'Guardião de Pedra',hp:10000,atk:14,keyId:'chave_raid_10',keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Fragmento do Núcleo de Pedra'},box:null,gear:null,gearChance:0},
   {level:15,name:'Dragão Vulcânico',hp:18000,atk:21,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.015},
   {level:20,name:'Devorador Abissal',hp:30000,atk:30,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.0175},
   {level:25,name:'Titã de Ferro',hp:48000,atk:39,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.02},
@@ -667,7 +667,7 @@ async function finishRaidRewards(c,s,cfg){
     let material=null,drop=null,gearDrop=null
     // Materiais continuam garantidos para o top 3, mas em ritmo menor:
     // 2/1/1 em vez de 3/2/1. A invocação segue exigindo 100 materiais.
-    const qty=i===0?2:(i===1||i===2?1:0)
+    const qty=cfg.level===10 ? (i===0?3:(i===1?2:(i===2?1:0))) : (i===0?2:(i===1||i===2?1:0))
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
