@@ -647,8 +647,11 @@ export async function startRaid(chat,host){
 async function finishRaidRewards(c,s,cfg){
   const ranked=Object.values(s.players||{}).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
-  const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-  const xpMultiplier=await getDoubleEventMultiplier(c,'xp')
+  // Evento relâmpago de Raid — 03/10/2026, 20:00–21:00 America/Sao_Paulo.
+  // Restrito à recompensa em dinheiro e XP do jogador; pet XP e drops não são multiplicados.
+  const raidEventActive=Date.now()>=Date.parse('2026-10-03T20:00:00-03:00') && Date.now()<Date.parse('2026-10-03T21:00:00-03:00')
+  const moneyMultiplier=raidEventActive?2:1
+  const xpMultiplier=raidEventActive?2:1
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
@@ -661,7 +664,7 @@ async function finishRaidRewards(c,s,cfg){
     const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
-    const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share)))*xpMultiplier:0
+    const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     if(petXp) await raidPetXp(c,p.jid,petXp)
 
     let material=null,drop=null,gearDrop=null
