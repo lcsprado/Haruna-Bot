@@ -162,7 +162,18 @@ async function runRaidCombat(chat,reply){
   ;(async()=>{
     try{
       for(let i=0;i<30;i++){
-        const r=await raidRound(chat)
+        let r
+        for(let deadlockAttempt=0;;deadlockAttempt++){
+          try{
+            r=await raidRound(chat)
+            break
+          }catch(err){
+            const isDeadlock=err?.code==='40P01' || /deadlock detected/i.test(String(err?.message||err))
+            if(!isDeadlock || deadlockAttempt>=4) throw err
+            console.warn('[Raid] deadlock detectado; repetindo rodada',deadlockAttempt+1)
+            await new Promise(resolve=>setTimeout(resolve,350*(deadlockAttempt+1)))
+          }
+        }
         if(r.reason==='inactive') return
 
         if(r.victory){
@@ -4794,12 +4805,41 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         try{
           const now=Date.now()
           const {rows}=await db.query(
-            `SELECT chat_jid,state FROM trevo_games
-             WHERE game_type='raid' AND state->>'status'='active'`
+            `SELECT chat_jid,state,updated_at FROM trevo_games
+             WHERE game_type='raid' AND state->>'status'='active'
+             ORDER BY updated_at DESC`
           )
-          for(const row of rows){
+          for(let raidIndex=0;raidIndex<rows.length;raidIndex++){
+            const row=rows[raidIndex]
             const raid=row.state||{}
-            if(Number(raid.round||0)>=30) continue
+            // Compensação única pela Raid mais recente interrompida por deadlock.
+            if(raidIndex===0 && !raid.deadlockEpicCompensated){
+              const participantIds=Object.keys(raid.players||{}).sort()
+              if(participantIds.length){
+                await db.query('BEGIN')
+                try{
+                  for(const jid of participantIds){
+                    await db.query(
+                      `INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'caixa_epica',1)
+                       ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,
+                      [jid]
+                    )
+                  }
+                  raid.deadlockEpicCompensated=Date.now()
+                  raid.expiresAt=Date.now()+10*60*1000
+                  await db.query(
+                    `UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+                     WHERE chat_jid=$2 AND game_type='raid'`,
+                    [JSON.stringify(raid),row.chat_jid]
+                  )
+                  await db.query('COMMIT')
+                  await sock.sendMessage(row.chat_jid,{text:`🎁 *COMPENSAÇÃO DA RAID*\n\nO banco interrompeu a luta por deadlock. Cada participante recebeu *1 Caixa Épica*.\n🔄 A Raid será retomada do estado salvo, sem cobrar nova chave.`}).catch(()=>{})
+                }catch(compErr){
+                  await db.query('ROLLBACK').catch(()=>{})
+                  console.error('[RaidCompensation]',compErr?.message||compErr)
+                }
+              }
+            }
             if(Number(raid.expiresAt||0)<=now){
               raid.expiresAt=now+5*60*1000
               await db.query(
