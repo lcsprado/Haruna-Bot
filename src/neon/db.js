@@ -1802,8 +1802,11 @@ export async function battle(attackerJid, defenderJid) {
   await ensureUser(defenderJid)
 
   return transaction(async client=>{
-    const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[defenderJid,Math.floor(Date.now()/1000)])
+    const now=Math.floor(Date.now()/1000)
+    const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[defenderJid,now])
     if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser atacada agora.')
+    const carpindo=await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[defenderJid,now])
+    if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode ser atacada agora.')
     const ids=[attackerJid,defenderJid].sort()
     const statsR=await client.query(
       'SELECT * FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
@@ -2633,8 +2636,11 @@ export async function robPlayer(thiefJid,targetJid) {
   await ensureUser(targetJid)
 
   return transaction(async client=>{
-    const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,Math.floor(Date.now()/1000)])
+    const now=Math.floor(Date.now()/1000)
+    const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,now])
     if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser roubada agora.')
+    const carpindo=await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[targetJid,now])
+    if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode ser roubada agora.')
     const ids=[thiefJid,targetJid].sort()
     const wallets=await client.query(
       'SELECT jid,cash FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
@@ -3119,6 +3125,14 @@ export async function initCommunityPack(){
       fee BIGINT NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS player_carpinar(
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      hours INTEGER NOT NULL,
+      started_at BIGINT NOT NULL,
+      ends_at BIGINT NOT NULL,
+      xp_reward INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS relationship_proposals(
       from_jid TEXT NOT NULL,
       to_jid TEXT NOT NULL,
@@ -3283,8 +3297,10 @@ export async function wakePlayerEarly(jid){
 export async function startPlayerSleep(jid){
   await ensureUser(jid)
   return transaction(async client=>{
-    const existing=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const now=Math.floor(Date.now()/1000)
+    const carp=(await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(carp&&Number(carp.ends_at)>now) throw new Error('Você está carpindo e não pode dormir agora. Use !carpinarsair se quiser encerrar antes.')
+    const existing=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(existing&&Number(existing.ends_at)>now) return {active:true,...existing,remaining:Number(existing.ends_at)-now}
     if(existing){
       const level=await applyExp(client,jid,Number(existing.xp_reward))
@@ -3307,6 +3323,117 @@ export async function startPlayerSleep(jid){
     await client.query(`INSERT INTO player_sleep(jid,place,started_at,ends_at,xp_reward,fee)
       VALUES($1,$2,$3,$4,$5,$6)`,[jid,plan.label,now,endsAt,plan.xp,plan.fee])
     return {active:true,place:plan.label,started_at:now,ends_at:endsAt,xp_reward:plan.xp,fee:plan.fee,remaining:plan.seconds,started:true}
+  })
+}
+
+const CARPINAR_PLANS={
+  1:{hours:1,xp:120},
+  2:{hours:2,xp:250},
+  4:{hours:4,xp:520},
+  6:{hours:6,xp:800},
+  8:{hours:8,xp:1100},
+  12:{hours:12,xp:1700}
+}
+
+export function getCarpinarPlans(){
+  return Object.values(CARPINAR_PLANS).map(x=>({...x}))
+}
+
+export async function resolvePlayerCarpinar(jid){
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!row) return null
+    const now=Math.floor(Date.now()/1000)
+    if(Number(row.ends_at)>now) return {active:true,...row,remaining:Number(row.ends_at)-now}
+    const level=await applyExp(client,jid,Number(row.xp_reward||0))
+    await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+    return {active:false,completed:true,...row,xp:Number(row.xp_reward||0),level}
+  })
+}
+
+export async function startPlayerCarpinar(jid,hours){
+  await ensureUser(jid)
+  hours=Number(hours)
+  const plan=CARPINAR_PLANS[hours]
+  if(!plan) throw new Error('Tempo inválido. Escolha 1h, 2h, 4h, 6h, 8h ou 12h.')
+
+  return transaction(async client=>{
+    const now=Math.floor(Date.now()/1000)
+    const sleep=(await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(sleep&&Number(sleep.ends_at)>now) throw new Error('Você está dormindo e não pode começar a carpinar agora.')
+
+    const existing=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(existing&&Number(existing.ends_at)>now){
+      return {active:true,...existing,remaining:Number(existing.ends_at)-now,started:false}
+    }
+    if(existing){
+      await applyExp(client,jid,Number(existing.xp_reward||0))
+      await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+    }
+
+    const activeRaid=await client.query(
+      "SELECT 1 FROM trevo_games WHERE game_type='raid' AND state->>'status'='active' AND (state->'players') ? $1 LIMIT 1",
+      [jid]
+    )
+    if(activeRaid.rowCount) throw new Error('Você está participando de uma Raid ativa. Espere ela terminar antes de carpinar.')
+
+    const endsAt=now+plan.hours*60*60
+    await client.query(
+      'INSERT INTO player_carpinar(jid,hours,started_at,ends_at,xp_reward) VALUES($1,$2,$3,$4,$5)',
+      [jid,plan.hours,now,endsAt,plan.xp]
+    )
+    return {active:true,started:true,hours:plan.hours,started_at:now,ends_at:endsAt,xp_reward:plan.xp,remaining:plan.hours*60*60}
+  })
+}
+
+export async function leavePlayerCarpinarEarly(jid){
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!row) throw new Error('Você não está carpindo.')
+    const now=Math.floor(Date.now()/1000)
+    const remaining=Math.max(0,Number(row.ends_at)-now)
+
+    if(remaining<=0){
+      const xp=Number(row.xp_reward||0)
+      const level=xp>0?await applyExp(client,jid,xp):null
+      await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+      return {natural:true,fee:0,xp,remaining:0,hours:Number(row.hours||0),level}
+    }
+
+    const total=Math.max(1,Number(row.ends_at)-Number(row.started_at))
+    const ratio=Math.min(1,remaining/total)
+    const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
+    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+    if(cash+bank<fee) throw new Error('Sair agora custa R$ '+fee.toLocaleString('pt-BR')+'. Saldo insuficiente.')
+
+    const fromCash=Math.min(cash,fee)
+    await client.query(
+      'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
+      [fromCash,fee-fromCash,jid]
+    )
+
+    const elapsed=Math.max(0,now-Number(row.started_at))
+    const xp=Math.floor(Number(row.xp_reward||0)*Math.min(1,elapsed/total))
+    const level=xp>0?await applyExp(client,jid,xp):null
+
+    await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+    await client.query(
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'carpinar_early_exit',$3)",
+      [jid,fee,'Saiu do carpinar antes: '+remaining+'s restantes']
+    )
+
+    return {
+      natural:false,
+      fee,
+      xp,
+      remaining,
+      hours:Number(row.hours||0),
+      elapsed,
+      level
+    }
   })
 }
 
@@ -3695,8 +3822,11 @@ export async function getAchievements(jid){
 }
 export async function petDuel(challengerJid,targetJid){
   if(challengerJid===targetJid) throw new Error('Escolha outro jogador.')
-  const sleeping=await db.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,Math.floor(Date.now()/1000)])
+  const now=Math.floor(Date.now()/1000)
+  const sleeping=await db.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,now])
   if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode disputar duelo de pets agora.')
+  const carpindo=await db.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[targetJid,now])
+  if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode disputar duelo de pets agora.')
   return transaction(async client=>{
     const rows=(await client.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',[[challengerJid,targetJid]])).rows
     const a=normalizedPetHp(rows.find(p=>p.jid===challengerJid))
