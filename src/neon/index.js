@@ -1853,7 +1853,7 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       try{
         const r=await summonLegendaryPet(sender,flow.data.materialId)
         clearQuickFlow(chat,sender)
-        await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\n🧩 100 × ${r.altar.materialName} consumidos\n\n🐾 Você invocou: *${r.pet.name}*\n🎲 Chance: *${r.pet.chance}%*\n⚡ Poder inicial: *${r.pet.power}*\n📦 Materiais restantes: *${r.remaining}*\n\nO pet foi adicionado à coleção. Use *!meuspets* e *!usarpet ID* para ativá-lo.`)
+        await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\n🧩 ${r.altar.summonCost||100} × ${r.altar.materialName} consumidos\n\n🐾 Você invocou: *${r.pet.name}*\n🎲 Chance: *${r.pet.chance}%*\n⚡ Poder inicial: *${r.pet.power}*\n📦 Materiais restantes: *${r.remaining}*\n\nO pet foi adicionado à coleção. Use *!meuspets* e *!usarpet ID* para ativá-lo.`)
       }catch(err){
         clearQuickFlow(chat,sender)
         await reply('❌ '+(err?.message||'Não foi possível concluir a invocação.'))
