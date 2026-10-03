@@ -3371,8 +3371,41 @@ export async function resolvePlayerCarpinar(jid){
       `,[jid])
     }
 
+    // Achados leves do trabalho AFK: dão variedade sem competir com Raid/Boss.
+    // Uma jornada concluída faz no máximo um achado comum, além da Caixa Rara.
+    let found=null
+    const findChance=Math.min(0.45,0.12+Number(row.hours||0)*0.025)
+    if(Math.random()<findChance){
+      const roll=Math.random()
+      if(roll<0.50){
+        await client.query(`
+          INSERT INTO inventories(jid,item_id,quantity)
+          VALUES($1,'pocao_p',1)
+          ON CONFLICT(jid,item_id) DO UPDATE
+          SET quantity=inventories.quantity+1
+        `,[jid])
+        found={type:'item',itemId:'pocao_p',label:'Poção Pequena',qty:1}
+      }else if(roll<0.75){
+        await client.query(`
+          INSERT INTO inventories(jid,item_id,quantity)
+          VALUES($1,'caixa_sorte',1)
+          ON CONFLICT(jid,item_id) DO UPDATE
+          SET quantity=inventories.quantity+1
+        `,[jid])
+        found={type:'item',itemId:'caixa_sorte',label:'Caixa da Sorte',qty:1}
+      }else{
+        const bonusCash=(500+Math.floor(Math.random()*1501))
+        await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[bonusCash,jid])
+        await client.query(
+          "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_find',$3)",
+          [jid,bonusCash,'Dinheiro encontrado enquanto carpava']
+        )
+        found={type:'cash',label:'Dinheiro encontrado',cash:bonusCash}
+      }
+    }
+
     await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
-    return {active:false,completed:true,...row,xp,cash,rareBoxDrop,rareBoxChance:Number(plan.rareBoxChance||0),level}
+    return {active:false,completed:true,...row,xp,cash,rareBoxDrop,rareBoxChance:Number(plan.rareBoxChance||0),found,level}
   })
 }
 
