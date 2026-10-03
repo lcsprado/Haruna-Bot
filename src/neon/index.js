@@ -27,7 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
-  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, petMaxEnergy, petMaxHp, petHpType,
+  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType,
   adoptPet, getPet, listPets, selectPet, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
@@ -815,6 +815,15 @@ const SHOP_IDS=[
 
 const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica']
 
+const CARPINAR_MENU=[
+  {option:1,hours:1,xp:120},
+  {option:2,hours:2,xp:250},
+  {option:3,hours:4,xp:520},
+  {option:4,hours:6,xp:800},
+  {option:5,hours:8,xp:1100},
+  {option:6,hours:12,xp:1700}
+]
+
 const RARITY_META={
   common:['⚪','Comum'],
   uncommon:['🟢','Incomum'],
@@ -1514,6 +1523,58 @@ Você possui: *${stock}*
       return true
     }
 
+    if(flow.stage==='carpinar_select'){
+      const choice=CARPINAR_MENU.find(x=>String(x.option)===input)
+      if(!choice){
+        await reply('🌾 Escolha uma opção de *1 a 6* ou *0* para sair.')
+        return true
+      }
+      const bossBusy=[...bossSessions.keys()].some(key=>key.endsWith('|'+sender))
+      if(bossBusy){
+        clearQuickFlow(chat,sender)
+        await reply('👹 Você está em uma sessão automática de Boss. Espere ela terminar antes de carpinar.')
+        return true
+      }
+      const r=await startPlayerCarpinar(sender,choice.hours)
+      clearQuickFlow(chat,sender)
+      await reply(
+`🌾 *VOCÊ FOI CARPINAR!*
+
+⏳ Jornada: *${r.hours}h*
+✨ XP ao concluir: *+${r.xp_reward}*
+🕒 Tempo restante: *${duration(r.remaining)}*
+
+🔒 Enquanto estiver carpindo você não pode usar outros comandos, entrar em combate, ser roubado ou atacado.
+
+🚪 Para sair antes: *!carpinarsair*
+_A saída antecipada cobra uma taxa e entrega somente o XP proporcional ao tempo trabalhado._`
+      )
+      return true
+    }
+
+    if(flow.stage==='carpinar_exit_confirm'){
+      if(input==='2'){
+        clearQuickFlow(chat,sender)
+        await reply('🌾 Você continuou carpindo.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 para sair agora* ou *2 para continuar carpindo*.')
+        return true
+      }
+      const r=await leavePlayerCarpinarEarly(sender)
+      clearQuickFlow(chat,sender)
+      await reply(
+`🚪 *VOCÊ SAIU DO SERVIÇO*
+
+💸 Taxa: *R$ ${fmt(r.fee)}*
+✨ XP pelo tempo trabalhado: *+${r.xp}*
+
+✅ Você está livre para usar os comandos novamente.`
+      )
+      return true
+    }
+
     const gamesMenu=async()=>{
       setQuickFlow(chat,sender,'main',{},90000)
       await reply(
@@ -1693,6 +1754,8 @@ Você possui: *${stock}*
       '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
 
 *!progressao* — menu de progressão
+*!carpinar* — trabalho AFK de 1h a 12h para ganhar XP
+*!carpinarsair* — encerra antes, paga taxa e recebe XP proporcional
 *!missoes* — missões diárias
 *!resgatarmissoes* — coleta recompensas
 *!casas* — lista imóveis
@@ -5546,6 +5609,98 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const ownerTarget=mentionsOf(msg)[0] || sender
         await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
 
+        const carp=await resolvePlayerCarpinar(sender)
+        if(carp?.completed){
+          await reply(`🌾 *SERVIÇO CONCLUÍDO!*
+
+⏱️ Jornada: *${Number(carp.hours||0)}h*
+✨ XP recebido: *+${Number(carp.xp||0)}*
+✅ Você voltou e já pode usar os comandos normalmente.`)
+        }
+
+        if(carp?.active){
+          if(cmd==='carpinar'){
+            return await reply(`🌾 *VOCÊ ESTÁ CARPINANDO*
+
+⏳ Falta: *${duration(carp.remaining)}*
+✨ XP ao concluir: *+${Number(carp.xp_reward||0)}*
+
+🚪 Para sair antes: *!carpinarsair*`)
+          }
+          if(cmd==='carpinarsair'){
+            const total=Math.max(1,Number(carp.ends_at)-Number(carp.started_at))
+            const ratio=Math.min(1,Number(carp.remaining||0)/total)
+            const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
+            setQuickFlow(chat,sender,'carpinar_exit_confirm',{quotedFee:fee},90000)
+            return await reply(`🚪 *SAIR DO CARPINAR?*
+
+⏳ Ainda faltam: *${duration(carp.remaining)}*
+💸 Taxa para sair agora: *R$ ${fmt(fee)}*
+✨ Você recebe somente o XP proporcional ao tempo já trabalhado.
+
+1️⃣ *Sair agora*
+2️⃣ *Continuar carpindo*`)
+          }
+          return await reply(`🌾 Você está carpindo e não pode usar outros comandos agora.
+
+⏳ Falta: *${duration(carp.remaining)}*
+✨ Ao concluir: *+${Number(carp.xp_reward||0)} XP*
+
+Use *!carpinar* para ver o status ou *!carpinarsair* para encerrar antes.`)
+        }
+
+        if(cmd==='carpinarsair'){
+          await reply('🌾 Você não está carpindo.')
+          continue
+        }
+
+        if(cmd==='carpinar'){
+          const bossBusy=[...bossSessions.keys()].some(key=>key.endsWith('|'+sender))
+          if(bossBusy){
+            await reply('👹 Você está em uma sessão automática de Boss. Espere ela terminar antes de carpinar.')
+            continue
+          }
+          const option=Number(args[0]||0)
+          if(option){
+            const choice=CARPINAR_MENU.find(x=>x.option===option)
+            if(!choice){
+              await reply('🌾 Opções válidas: *1, 2, 3, 4, 5 ou 6*. Use *!carpinar* para ver os tempos.')
+              continue
+            }
+            clearQuickFlow(chat,sender)
+            const r=await startPlayerCarpinar(sender,choice.hours)
+            await reply(`🌾 *VOCÊ FOI CARPINAR!*
+
+⏳ Jornada: *${r.hours}h*
+✨ XP ao concluir: *+${r.xp_reward}*
+🕒 Tempo restante: *${duration(r.remaining)}*
+
+🔒 Até terminar, nenhum outro comando poderá ser usado e você não poderá ser roubado ou atacado.
+🚪 Saída antecipada: *!carpinarsair*`)
+            continue
+          }
+
+          setQuickFlow(chat,sender,'carpinar_select',{},5*60*1000)
+          await reply(
+`🌾 *CARPINAR — TRABALHO AFK*
+
+Escolha quanto tempo vai trabalhar:
+
+1️⃣ *1 hora* — +120 XP
+2️⃣ *2 horas* — +250 XP
+3️⃣ *4 horas* — +520 XP
+4️⃣ *6 horas* — +800 XP
+5️⃣ *8 horas* — +1.100 XP
+6️⃣ *12 horas* — +1.700 XP
+
+🔒 Durante o serviço você não poderá usar outros comandos e ficará protegido de roubo/ataque.
+🚪 Se sair antes com *!carpinarsair*, paga uma taxa e recebe só o XP proporcional.
+
+0️⃣ Cancelar`
+          )
+          continue
+        }
+
         const EVENT_ACTION_CMDS=new Set([
           'daily','diario','trabalhar','work','trampo','all','tudo',
           'uber','ifood','ifoodbike','coletar',
@@ -5616,7 +5771,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
-          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio'])
+          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair'])
           let key=null,label=null
           if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
           else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
