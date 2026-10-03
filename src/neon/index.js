@@ -6247,8 +6247,8 @@ ${results.join('\n')}
           const r=await collectBusinesses(sender)
           if(!r.total) return await reply('⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
           let text='💰 *LUCROS COLETADOS!*\n\n'
-          r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×2)_`:''}\n`)
-          text+=`${Number(r.eventMultiplier||1)>1?'\n🔥 *EVENTO 2X APLICADO*':''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*`
+          r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×${eventMultLabel(r.eventMultiplier)})_`:''}\n`)
+          text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*`
           await reply(text)
 
         } else if(['motos','motocicletas'].includes(cmd)){
@@ -6283,7 +6283,7 @@ ${results.join('\n')}
             if(isGroup) await progressGroupMission(chat,sender,'work')
             let text='🍔 *IFOOD — FROTA EM ROTA*\n\n'
             r.details.forEach(x=>{
-              text+=`${x.vehicle.id==='bicicleta'?'🚲':'🏍️'} *${x.vehicle.name}* — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×2)_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
+              text+=`${x.vehicle.id==='bicicleta'?'🚲':'🏍️'} *${x.vehicle.name}* — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×${eventMultLabel(r.eventMultiplier)})_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
             })
             text+=`${Number(r.eventMultiplier||1)>1?'\n🔥 *EVENTO 2X APLICADO*':''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
@@ -6298,7 +6298,7 @@ ${results.join('\n')}
             if(isGroup) await progressGroupMission(chat,sender,'work')
             let text='🚗 *UBER — FROTA NA RUA*\n\n'
             r.details.forEach(x=>{
-              text+=`🚘 *${x.car.name}* (${x.category}) — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×2)_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
+              text+=`🚘 *${x.car.name}* (${x.category}) — R$ ${fmt(Number(x.total)*Number(r.eventMultiplier||1))}${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.total)} ×${eventMultLabel(r.eventMultiplier)})_`:''}${x.tip?` (gorjeta base R$ ${fmt(x.tip)})`:''}\n`
             })
             text+=`\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
@@ -6568,7 +6568,7 @@ ${results.join('\n')}
           for(const l of last){
             text+=`${l.crit?'💥 CRÍTICO! ':'⚔️ '}${l.from} causou *${l.dmg}* em ${l.to} — ❤️ ${l.hp}\n`
           }
-          text+=`\n🏆 *Vencedor: ${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}\n✨ EXP: +${r.winXpGain||40} vencedor / +${r.loseXpGain||15} derrotado${Number(r.eventMultiplier||1)>1?'\n🔥 *EVENTO 2X ATIVO*':''}`
+          text+=`\n🏆 *Vencedor: ${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}\n✨ EXP: +${r.winXpGain||40} vencedor / +${r.loseXpGain||15} derrotado${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} ATIVO*`:''}`
           if(r.winExp.levels>0) text+=`\n⬆️ ${r.winner.name} subiu ${r.winExp.levels} nível(is)!`
           if(r.loseExp.levels>0) text+=`\n⬆️ ${r.loser.name} subiu ${r.loseExp.levels} nível(is)!`
           await progressDailyMission(sender,'battle')
