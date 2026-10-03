@@ -11,7 +11,7 @@ import pino from 'pino'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetEnergyItem, getCombatProfile, battle, combatLeaderboard,
+  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetPotion, usePetEnergyItem, getCombatProfile, battle, combatLeaderboard,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -748,7 +748,7 @@ function resolveOwnedItem(items,input,categories=null){
 }
 
 const SHOP_IDS=[
-  'pocao_p','pocao_m','pocao_g','elixir_supremo','energetico_pet',
+  'pocao_p','pocao_m','pocao_g','elixir_supremo','pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','energetico_pet',
   'espada_madeira','espada_ferro','espada_aco','machado_guerra','katana_sombria',
   'espada_flamas','tridente_tempestade','lamina_abissal',
   'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
@@ -1239,7 +1239,7 @@ Você possui: *${stock}*
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
 *!usar* — usa um consumível
-*!energiapet* — usa Energético Pet e restaura 100% da energia do pet ativo
+*!curarpet* — usa automaticamente a menor poção suficiente para curar o pet\n*!curarpet comum|rara|epica* — escolhe a poção de cura do pet\n*!energiapet* — usa Energético Pet e restaura 100% da energia do pet ativo
 
 🏪 *Mercado entre jogadores*
 *!mercado* — lista anúncios e mostra quanto tempo falta para expirar
@@ -1281,7 +1281,7 @@ Você possui: *${stock}*
 🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
 *!alimentar* — alimenta
 *!descansar* — recupera 30 de energia + 35% do HP do pet (30 min)
-⚡ *Energético Pet:* R$ 12.000 na loja; restaura 100% da energia instantaneamente
+🧪 *Poções de Pet:* Comum +60 HP • Rara +160 HP • Épica +320 HP\n⚡ *Energético Pet:* R$ 12.000 na loja; restaura 100% da energia instantaneamente
 *!banho* — cuidado cosmético opcional
 *!passear* — passeia
 *!treinarpet* — treina
@@ -2941,6 +2941,12 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
         return true
       }
+      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica'].includes(itemId)){
+        const r=await usePetPotion(sender,itemId)
+        clearQuickFlow(chat,sender)
+        await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
+        return true
+      }
       const r=await usePotion(sender,itemId)
       clearQuickFlow(chat,sender)
       await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
@@ -4056,7 +4062,20 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('Escolha *1 Sim* ou *2 Não*.')
         return true
       }
-      const r=await usePotion(sender,flow.data.itemId)
+      const itemId=flow.data.itemId
+      if(itemId==='energetico_pet'){
+        const r=await usePetEnergyItem(sender,itemId)
+        clearQuickFlow(chat,sender)
+        await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
+        return true
+      }
+      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica'].includes(itemId)){
+        const r=await usePetPotion(sender,itemId)
+        clearQuickFlow(chat,sender)
+        await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
+        return true
+      }
+      const r=await usePotion(sender,itemId)
       clearQuickFlow(chat,sender)
       await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
       return true
@@ -6038,10 +6057,30 @@ ${results.join('\n')}
           if(item.item_id==='energetico_pet'){
             const r=await usePetEnergyItem(sender,item.item_id)
             await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
+          }else if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica'].includes(item.item_id)){
+            const r=await usePetPotion(sender,item.item_id)
+            await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
           }else{
             const r=await usePotion(sender,item.item_id)
             await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
           }
+
+        } else if(['curarpet','curapet','petcura'].includes(cmd)){
+          const aliases={
+            comum:'pocao_pet_comum',common:'pocao_pet_comum',
+            rara:'pocao_pet_rara',raro:'pocao_pet_rara',rare:'pocao_pet_rara',
+            epica:'pocao_pet_epica','épica':'pocao_pet_epica',epico:'pocao_pet_epica','épico':'pocao_pet_epica',epic:'pocao_pet_epica'
+          }
+          const requested=normalizeItemText(args.join(' '))
+          let itemId=aliases[requested]||null
+          if(requested && !itemId){
+            const items=await getInventory(sender)
+            const petPotions=items.filter(i=>['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica'].includes(i.item_id))
+            itemId=resolveOwnedItem(petPotions,requested,['consumable'])?.item_id||null
+            if(!itemId) return await reply(`❌ Não encontrei essa poção de pet.\nUse *${prefix}curarpet comum*, *rara* ou *epica*.`)
+          }
+          const r=await usePetPotion(sender,itemId)
+          await reply(`🐾🧪 *${r.name} usada!*\n\n🐾 ${r.petName}\n❤️ HP: *${r.before} → ${r.hp}/${r.maxHp}*\n💚 Recuperado: *+${r.healed}*\n📦 Restam: *${r.remaining}*\n\n💡 Sem escolher raridade, *!curarpet* usa a menor poção suficiente disponível.`)
 
         } else if(['energiapet','energia_pet','petenergia'].includes(cmd)){
           const r=await usePetEnergyItem(sender,'energetico_pet')
