@@ -3464,7 +3464,9 @@ export async function petAction(jid,action){
     if(!a.rest && now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
     if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
     const oldLevel=Number(pet.level||1)
-    const xp=Number(pet.xp)+a.xp, level=1+Math.floor(xp/100)
+    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+    const actionXp=Math.max(0,Number(a.xp||0))*xpMultiplier
+    const xp=Number(pet.xp)+actionXp, level=1+Math.floor(xp/100)
     const levelsGained=Math.max(0,level-oldLevel)
     // Progressão natural: cada nível do pet concede +2 de Poder, além do bônus de treino/aventura.
     const powerGain=(a.power||0)+(levelsGained*2)
@@ -3497,8 +3499,10 @@ export async function petAdventure(jid){
     const now=Math.floor(Date.now()/1000)
     if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco antes de sair.')
     const level=Number(pet.level||1),power=Number(pet.power||10)
-    const cash=Math.floor(energy*(70+Math.random()*50)+level*150+power*25)
-    const xpGain=energy*2
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+    const cash=Math.floor(energy*(70+Math.random()*50)+level*150+power*25)*moneyMultiplier
+    const xpGain=energy*2*xpMultiplier
     const xp=Number(pet.xp||0)+xpGain
     const nextLevel=1+Math.floor(xp/100)
     const levelsGained=Math.max(0,nextLevel-Number(pet.level||1))
@@ -3517,7 +3521,7 @@ export async function petAdventure(jid){
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('system',$1,$2,'pet_adventure',$3)`,[jid,cash,`${pet.name}: ${energy} energia`])
-    return {...updated,cash,xpGain,energySpent:energy,powerGain}
+    return {...updated,cash,xpGain,energySpent:energy,powerGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
   })
 }
 export async function petLeaderboard(limit=10){
@@ -3599,8 +3603,9 @@ export async function petDuel(challengerJid,targetJid){
       return updated
     }
 
-    const updatedA=await evolve(a,hpA,winnerKey==='a'?25:10,winnerKey==='a')
-    const updatedB=await evolve(b,hpB,winnerKey==='b'?25:10,winnerKey==='b')
+    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+    const updatedA=await evolve(a,hpA,(winnerKey==='a'?25:10)*xpMultiplier,winnerKey==='a')
+    const updatedB=await evolve(b,hpB,(winnerKey==='b'?25:10)*xpMultiplier,winnerKey==='b')
     const winner=winnerKey==='a'?updatedA:updatedB
     const loser=winnerKey==='a'?updatedB:updatedA
     return {winnerJid:winner.jid,loserJid:loser.jid,winner,loser,rounds}
