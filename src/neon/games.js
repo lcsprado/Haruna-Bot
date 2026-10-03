@@ -951,7 +951,7 @@ export async function startBoss(chat){
       if(current?.mode==='weekly'&&current.weekendKey===weekend.weekendKey&&Number(current.hp)>0&&Number(current.endsAt||0)>Date.now()){
         return {already:true,...current,endsLabel:weekend.endsLabel}
       }
-      const maxHp=25000+Math.floor(Math.random()*10001)
+      const maxHp=60000+Math.floor(Math.random()*20001)
       const state={mode:'weekly',name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:false,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
       await saveGame(c,chat,'boss',state); return state
     }
@@ -963,7 +963,7 @@ export async function startBoss(chat){
       const remaining=Math.ceil((commonCooldownMs-(Date.now()-lastCommonEndedAt))/60000)
       return {cooldown:true,mode:'common',remainingMinutes:remaining,weeklyCompleted:Boolean(weeklyCompleted)}
     }
-    const maxHp=900+Math.floor(Math.random()*1101)
+    const maxHp=6500+Math.floor(Math.random()*2501)
     const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:10,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:Boolean(weeklyCompleted),lastCommonEndedAt}
     await saveGame(c,chat,'boss',state); return state
   })
