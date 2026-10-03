@@ -5537,7 +5537,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
         await ensureUser(sender,msg.pushName || '')
         const [rawCmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
-        const rawCmdLower=(rawCmd||'').toLowerCase()
+        const rawCmdLower=(rawCmd||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
         const compactMarketBuy=rawCmdLower.match(/^comprar#(\d+)$/)
         const spacedMarketBuy=rawCmdLower==='comprar' && /^#\d+$/.test(String(args[0]||''))
         if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
