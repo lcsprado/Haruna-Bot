@@ -942,6 +942,53 @@ const PET_STATUS_SPECIALTIES = {
   fenix_alpha:{label:'👑 Fênix Alpha',stats:{damage:10,defense:10,crit:8,dodge:6,drop:7,xp:8},raid:true}
 }
 
+const ADOPTABLE_PETS=[
+  {species:'cachorro',label:'🐶 Cachorro',level:1,price:5000},
+  {species:'gato',label:'🐱 Gato',level:2,price:8000},
+  {species:'coelho',label:'🐰 Coelho',level:3,price:12000},
+  {species:'papagaio',label:'🦜 Papagaio',level:4,price:18000},
+  {species:'hamster',label:'🐹 Hamster',level:5,price:25000},
+  {species:'tartaruga',label:'🐢 Tartaruga',level:6,price:35000},
+  {species:'coruja',label:'🦉 Coruja',level:7,price:50000},
+  {species:'raposa',label:'🦊 Raposa',level:8,price:70000},
+  {species:'lobo',label:'🐺 Lobo',level:10,price:100000},
+  {species:'aguia',label:'🦅 Águia',level:12,price:150000},
+  {species:'panda',label:'🐼 Panda',level:14,price:225000},
+  {species:'tigre',label:'🐯 Tigre',level:17,price:350000},
+  {species:'leao',label:'🦁 Leão',level:20,price:500000},
+  {species:'unicornio',label:'🦄 Unicórnio',level:25,price:750000},
+  {species:'dragao',label:'🐉 Dragão',level:30,price:1000000}
+]
+
+function petAbilityBaseText(species){
+  const spec=PET_STATUS_SPECIALTIES[String(species||'').toLowerCase()]
+  if(!spec) return 'Sem habilidade especial'
+  const labels={
+    damage:'dano',
+    bossDamage:'dano contra Boss',
+    defense:'defesa',
+    crit:'crítico',
+    dodge:'esquiva',
+    xp:'XP',
+    drop:'Lucky/drop'
+  }
+  const stats=spec.stats||{[spec.stat]:spec.base}
+  return Object.entries(stats)
+    .filter(([,value])=>Number(value)>0)
+    .map(([stat,value])=>`+${Number(value).toLocaleString('pt-BR',{maximumFractionDigits:1})}% ${labels[stat]||stat}`)
+    .join(' • ')
+}
+
+function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
+  let text=title+'\n\n'
+  for(const p of ADOPTABLE_PETS){
+    text+=`${p.label} — Nv.${p.level} • R$ ${fmt(p.price)}\n`
+    text+=`   ✨ ${petAbilityBaseText(p.species)}\n`
+  }
+  text+='\n📈 As habilidades aumentam com o nível do pet.\n'
+  return text
+}
+
 function petStatusBonus(p){
   const spec=PET_STATUS_SPECIALTIES[String(p?.species||'').toLowerCase()]
   if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada'}
@@ -5453,12 +5500,17 @@ Se precisar de mais ajuda, use *!suporte*.`
 
         } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet'].includes(cmd)){
           try{
-            if(cmd==='pet'||cmd==='pets') return await reply(`🐾 *PETS DO ALPHA BOT*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n📚 Você pode ter vários pets. O novo pet entra na coleção e fica ativo.
-🔄 Use *!meuspets* e *!usarpet ID* para trocar o pet ativo.\n💡 Use *!meupet* para ver seu pet atual.`)
+            if(cmd==='pet'||cmd==='pets') return await reply(
+              adoptablePetCatalogText('🐾 *PETS DO ALPHA BOT*')+
+              '\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n📚 Você pode ter vários pets. O novo pet entra na coleção e fica ativo.\n🔄 Use *!meuspets* e *!usarpet ID* para trocar o pet ativo.\n💡 Use *!meupet* para ver seu pet atual.'
+            )
             if(cmd==='adotar'){
-              if(!args[0]) return await reply(`🐾 *ADOÇÃO DE PETS*\n\n🐶 Cachorro — Nv.1 • R$ 5.000\n🐱 Gato — Nv.2 • R$ 8.000\n🐰 Coelho — Nv.3 • R$ 12.000\n🦜 Papagaio — Nv.4 • R$ 18.000\n🐹 Hamster — Nv.5 • R$ 25.000\n🐢 Tartaruga — Nv.6 • R$ 35.000\n🦉 Coruja — Nv.7 • R$ 50.000\n🦊 Raposa — Nv.8 • R$ 70.000\n🐺 Lobo — Nv.10 • R$ 100.000\n🦅 Águia — Nv.12 • R$ 150.000\n🐼 Panda — Nv.14 • R$ 225.000\n🐯 Tigre — Nv.17 • R$ 350.000\n🦁 Leão — Nv.20 • R$ 500.000\n🦄 Unicórnio — Nv.25 • R$ 750.000\n🐉 Dragão — Nv.30 • R$ 1.000.000\n\n📚 Você pode colecionar vários pets. Cada um mantém seu próprio nível, XP, poder, HP e energia.\n\nEx.: *!adotar cachorro Rex*`)
+              if(!args[0]) return await reply(
+                adoptablePetCatalogText()+
+                '\n📚 Você pode colecionar vários pets. Cada um mantém seu próprio nível, XP, poder, HP e energia.\n\nEx.: *!adotar cachorro Rex*'
+              )
               const pet=await adoptPet(sender,args[0],args.slice(1).join(' ')||msg.pushName||'Alpha')
-              return await reply(`🐾 PET ADOTADO!\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n💰 Total pago: *R$ ${fmt(pet.fee)}*\n\nUse *!meupet* para cuidar dele.`)
+              return await reply(`🐾 PET ADOTADO!\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n✨ Habilidade: *${petAbilityBaseText(pet.species)}*\n💰 Total pago: *R$ ${fmt(pet.fee)}*\n\nUse *!meupet* para cuidar dele.`)
             }
             if(cmd==='duelopet'){
               const targetRaw=mentionsOf(msg)[0]; if(!targetRaw) return await reply('Uso: *!duelopet @pessoa*')
