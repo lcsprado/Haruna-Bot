@@ -3116,6 +3116,20 @@ export async function initCommunityPack(){
       SELECT p.jid,p.species,p.name,p.level,p.xp,p.hunger,p.hygiene,p.energy,p.power,p.wins,p.losses,p.last_action,p.last_rest,p.created_at,TRUE FROM pets p
       WHERE NOT EXISTS(SELECT 1 FROM pet_collection pc WHERE pc.jid=p.jid);
 
+    CREATE TABLE IF NOT EXISTS pet_expeditions(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      pet_id BIGINT NOT NULL REFERENCES pet_collection(id) ON DELETE CASCADE,
+      hours INTEGER NOT NULL,
+      started_at BIGINT NOT NULL,
+      ends_at BIGINT NOT NULL,
+      pet_xp INTEGER NOT NULL,
+      cash_reward BIGINT NOT NULL,
+      resolved BOOLEAN NOT NULL DEFAULT FALSE
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS pet_expeditions_active_pet_idx ON pet_expeditions(pet_id) WHERE resolved=FALSE;
+    CREATE INDEX IF NOT EXISTS pet_expeditions_owner_idx ON pet_expeditions(jid,resolved,ends_at);
+
     CREATE TABLE IF NOT EXISTS player_sleep(
       jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
       place TEXT NOT NULL,
@@ -3728,12 +3742,97 @@ export async function listPets(jid){
   if(!rows.length&&active) return [{...active,id:null,active:true}]
   return rows.map(normalizedPetHp)
 }
+
+const PET_EXPEDITION_TRAITS={
+  cachorro:{label:'🐶 Rastreador',cash:.10,item:'pocao_pet_comum',itemChance:.10},
+  gato:{label:'🐱 Catador',item:'caixa_sorte',itemChance:.14},
+  coelho:{label:'🐰 Explorador Veloz',xp:.18},
+  papagaio:{label:'🦜 Batedor',xp:.10,item:'pocao_p',itemChance:.12},
+  hamster:{label:'🐹 Sortudo',item:'caixa_sorte',itemChance:.18},
+  tartaruga:{label:'🐢 Resistente',cash:.08,item:'pocao_pet_rara',itemChance:.10},
+  coruja:{label:'🦉 Sábio',xp:.25},
+  raposa:{label:'🦊 Caçadora de Tesouros',cash:.18},
+  lobo:{label:'🐺 Caçador',xp:.12,cash:.10},
+  aguia:{label:'🦅 Olhos de Águia',item:'caixa_sorte',itemChance:.22},
+  panda:{label:'🐼 Coletor',cash:.14,item:'pocao_pet_rara',itemChance:.12},
+  tigre:{label:'🐯 Predador',xp:.15,cash:.12},
+  leao:{label:'🦁 Líder',xp:.12,cash:.16},
+  unicornio:{label:'🦄 Bênção',item:'caixa_rara',itemChance:.08,xp:.10},
+  dragao:{label:'🐉 Guardião de Tesouros',cash:.22,item:'caixa_rara',itemChance:.06}
+}
+const EXPEDITION_ITEM_NAMES={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_p:'Poção Pequena',caixa_sorte:'Caixa da Sorte',caixa_rara:'Caixa Rara'}
+export function petExpeditionTrait(species){
+  return PET_EXPEDITION_TRAITS[String(species||'').toLowerCase()]||{label:'🐾 Explorador'}
+}
+export async function getPetExpeditions(jid){
+  await ensureUser(jid)
+  const {rows}=await db.query(`SELECT e.*,p.name pet_name,p.species,p.level
+    FROM pet_expeditions e JOIN pet_collection p ON p.id=e.pet_id
+    WHERE e.jid=$1 AND e.resolved=FALSE ORDER BY e.ends_at`,[jid])
+  return rows.map(r=>({...r,trait:petExpeditionTrait(r.species)}))
+}
+export async function startPetExpedition(jid,petId,hours=4){
+  await ensureUser(jid); petId=Number(petId); hours=Number(hours)
+  const plans={2:{xp:70,cash:500},4:{xp:150,cash:1100},8:{xp:330,cash:2500}}
+  const plan=plans[hours]
+  if(!plan) throw new Error('Duração inválida. Use 2, 4 ou 8 horas.')
+  return transaction(async client=>{
+    const pet=(await client.query('SELECT * FROM pet_collection WHERE id=$1 AND jid=$2 FOR UPDATE',[petId,jid])).rows[0]
+    if(!pet) throw new Error('Pet não encontrado. Use !meuspets para ver o ID.')
+    if(pet.active) throw new Error('O pet ativo não pode sair em expedição. Escolha um pet reserva.')
+    const busy=(await client.query('SELECT 1 FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
+    if(busy) throw new Error('Esse pet já está em uma expedição.')
+    const activeCount=Number((await client.query('SELECT COUNT(*) n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE',[jid])).rows[0]?.n||0)
+    if(activeCount>=3) throw new Error('Você já tem 3 pets em expedição. Aguarde algum retornar.')
+    const trait=petExpeditionTrait(pet.species)
+    const petXp=Math.round(plan.xp*(1+Number(trait.xp||0)))
+    const cash=Math.round(plan.cash*(1+Number(trait.cash||0)))
+    const now=Math.floor(Date.now()/1000),ends=now+hours*3600
+    const row=(await client.query(`INSERT INTO pet_expeditions(jid,pet_id,hours,started_at,ends_at,pet_xp,cash_reward)
+      VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[jid,petId,hours,now,ends,petXp,cash])).rows[0]
+    return {...row,pet_name:pet.name,species:pet.species,trait}
+  })
+}
+export async function resolvePetExpeditions(jid){
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const now=Math.floor(Date.now()/1000)
+    const rows=(await client.query(`SELECT e.*,p.name pet_name,p.species,p.level,p.xp,p.power
+      FROM pet_expeditions e JOIN pet_collection p ON p.id=e.pet_id
+      WHERE e.jid=$1 AND e.resolved=FALSE AND e.ends_at<=$2 ORDER BY e.ends_at FOR UPDATE OF e,p`,[jid,now])).rows
+    const results=[]
+    for(const row of rows){
+      const trait=petExpeditionTrait(row.species)
+      const oldLevel=Math.min(100,Math.max(1,Number(row.level||1)))
+      const rawXp=Number(row.xp||0)+Number(row.pet_xp||0)
+      const level=Math.min(100,1+Math.floor(rawXp/100))
+      const xp=level>=100?9900:rawXp
+      const gained=Math.max(0,level-oldLevel)
+      const maxHp=petMaxHp(level,xp,row.species)
+      await client.query('UPDATE pet_collection SET xp=$1,level=$2,power=power+$3,max_hp=$4,hp=LEAST($4,hp+$5) WHERE id=$6',
+        [xp,level,gained*2,maxHp,Math.max(0,maxHp-petMaxHp(oldLevel,Number(row.xp||0),row.species)),row.pet_id])
+      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[Number(row.cash_reward||0),jid])
+      let item=null
+      if(trait.item&&Math.random()<Number(trait.itemChance||0)){
+        await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+          ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,trait.item])
+        item={id:trait.item,name:EXPEDITION_ITEM_NAMES[trait.item]||trait.item}
+      }
+      await client.query('UPDATE pet_expeditions SET resolved=TRUE WHERE id=$1',[row.id])
+      results.push({petId:Number(row.pet_id),name:row.pet_name,species:row.species,hours:Number(row.hours),xp:Number(row.pet_xp),cash:Number(row.cash_reward),level,item,trait})
+    }
+    return results
+  })
+}
+
 export async function selectPet(jid,id){
   id=Number(id); if(!Number.isInteger(id)||id<=0) throw new Error('Use !usarp et ID. Ex.: !usarpet 2')
   return transaction(async client=>{
     const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const rawTarget=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,id])).rows[0]
     if(!rawTarget) throw new Error('Pet não encontrado. Use !meuspets.')
+    const away=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[id])).rows[0]
+    if(away) throw new Error('Esse pet está em expedição e não pode ser equipado até retornar.')
     const target=normalizedPetHp(rawTarget)
     if(target.active) return {...target,already:true}
     const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
