@@ -788,7 +788,8 @@ export async function claimDaily(jid) {
     const baseAmount=5000
     const reward=streakRewardFor(streak)
     const bonusCash=Number(reward?.bonusCash||0)
-    const totalCash=baseAmount+bonusCash
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const totalCash=(baseAmount+bonusCash)*moneyMultiplier
 
     await client.query(
       `UPDATE daily_streaks
@@ -825,7 +826,8 @@ export async function claimDaily(jid) {
       bestStreak,
       continued,
       reward:reward ? {label:reward.label,itemId:reward.itemId,qty:reward.qty||0,bonusCash} : null,
-      next:nextStreakMilestone(streak)
+      next:nextStreakMilestone(streak),
+      eventMultiplier:moneyMultiplier
     }
   })
 }
@@ -861,7 +863,9 @@ export async function work(jid, taxMultiplier=1) {
     await client.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
     const cr=(await client.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const oldXp=Number(cr.career_xp), oldRank=careerRank(oldXp)
-    const xpGain=25+Math.floor(Math.random()*16)
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+    const xpGain=(25+Math.floor(Math.random()*16))*xpMultiplier
     const newXp=oldXp+xpGain, newRank=careerRank(newXp)
     let base=700+Math.floor(Math.random()*701)
     let event=null, factor=1
@@ -869,7 +873,7 @@ export async function work(jid, taxMultiplier=1) {
     if(roll<.08){event='🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
     else if(roll<.15){event='⏰ Hora extra! Bônus de 25%.';factor=1.25}
     else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
-    const gross=Math.max(1,Math.round(base*newRank.mult*factor))
+    const gross=Math.max(1,Math.round(base*newRank.mult*factor*moneyMultiplier))
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100))
     const amount=gross-tax
@@ -880,7 +884,7 @@ export async function work(jid, taxMultiplier=1) {
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | trabalho`])
     const promoted=newRank.name!==oldRank.name
     const idx=CAREER_RANKS.findIndex(r=>r.name===newRank.name), next=CAREER_RANKS[idx+1]||null
-    return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next}
+    return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
   })
 }
 
@@ -1811,7 +1815,9 @@ export async function battle(attackerJid, defenderJid) {
       loser.hp=0
     }
 
-    const reward=600+Math.floor(Math.random()*601)
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+    const reward=(600+Math.floor(Math.random()*601))*moneyMultiplier
     await client.query(
       'UPDATE stats SET hp=$1,win=win+1,updated_at='+nowSql+' WHERE jid=$2',
       [Math.max(1,winner.hp),winner.jid]
@@ -1829,12 +1835,14 @@ export async function battle(attackerJid, defenderJid) {
       VALUES('system',$1,$2,'battle_reward','pvp victory')
     `,[winner.jid,reward])
 
-    const winExp=await applyExp(client,winner.jid,40)
-    const loseExp=await applyExp(client,loser.jid,15)
+    const winXpGain=40*xpMultiplier
+    const loseXpGain=15*xpMultiplier
+    const winExp=await applyExp(client,winner.jid,winXpGain)
+    const loseExp=await applyExp(client,loser.jid,loseXpGain)
 
     return {
       ok:true,winner,loser,reward,log,
-      winExp,loseExp,
+      winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
       final:{
         attackerHp: A.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(A.maxHp*0.25)),
         defenderHp: B.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(B.maxHp*0.25))
@@ -2489,6 +2497,8 @@ export async function dungeon(jid) {
 
     const cd=await claimCooldown(client,`dungeon:${jid}`,20*60)
     if(!cd.ok) return cd
+    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
 
     const weapon=EQUIPMENT[row.weapon_id]||{atk:0,def:0}
     const armor=EQUIPMENT[row.armor_id]||{atk:0,def:0}
@@ -2521,12 +2531,13 @@ export async function dungeon(jid) {
     if(php<=0){
       const recover=Math.max(1,Math.floor(Number(row.max_hp)*.30))
       await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[recover,jid])
-      const expRes=await applyExp(client,jid,10)
-      return {ok:true,won:false,monster:m.name,hp:recover,maxHp:Number(row.max_hp),exp:10,level:expRes}
+      const lossExp=10*xpMultiplier
+      const expRes=await applyExp(client,jid,lossExp)
+      return {ok:true,won:false,monster:m.name,hp:recover,maxHp:Number(row.max_hp),exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
     }
 
-    const cash=Math.floor((700+Math.random()*801)*m.mult)
-    const exp=Math.floor((35+Math.random()*31)*m.mult)
+    const cash=Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier
+    const exp=Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier
     await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
     await client.query(`
@@ -2534,7 +2545,7 @@ export async function dungeon(jid) {
       VALUES('system',$1,$2,'dungeon_reward',$3)
     `,[jid,cash,m.name])
     const expRes=await applyExp(client,jid,exp)
-    return {ok:true,won:true,monster:m.name,hp:Math.max(1,php),maxHp:Number(row.max_hp),cash,exp,level:expRes}
+    return {ok:true,won:true,monster:m.name,hp:Math.max(1,php),maxHp:Number(row.max_hp),cash,exp,level:expRes,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
   })
 }
 
@@ -2589,6 +2600,70 @@ export async function robPlayer(thiefJid,targetJid) {
     return {ok:true,success:false,fine,chance}
   })
 }
+
+async function readDoubleRewardEvent(queryable=db){
+  const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")
+  const raw=rows[0]?.value || {}
+  const endsAt=Number(raw?.endsAt||0)
+  const moneyMultiplier=Math.max(1,Number(raw?.moneyMultiplier||2))
+  const xpMultiplier=Math.max(1,Number(raw?.xpMultiplier||2))
+  const now=Date.now()
+  return {
+    active:endsAt>now,
+    endsAt,
+    moneyMultiplier,
+    xpMultiplier,
+    activatedBy:String(raw?.activatedBy||''),
+    remainingMs:Math.max(0,endsAt-now)
+  }
+}
+
+export async function getDoubleRewardEvent(){
+  return readDoubleRewardEvent(db)
+}
+
+export async function getDoubleEventMultiplier(queryable=db,kind='money'){
+  const event=await readDoubleRewardEvent(queryable)
+  if(!event.active) return 1
+  return kind==='xp' ? event.xpMultiplier : event.moneyMultiplier
+}
+
+export async function startDoubleRewardEvent(minutes=20,activatedBy='owner'){
+  minutes=Number(minutes)
+  if(!Number.isInteger(minutes)||minutes<1||minutes>180) throw new Error('Duração inválida. Use entre 1 e 180 minutos.')
+  const state={
+    active:true,
+    startedAt:Date.now(),
+    endsAt:Date.now()+(minutes*60*1000),
+    moneyMultiplier:2,
+    xpMultiplier:2,
+    activatedBy:String(activatedBy||'owner')
+  }
+  await db.query(`
+    INSERT INTO trevo_settings(key,value,updated_at)
+    VALUES('double_reward_event',$1::jsonb,${nowSql})
+    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+  `,[JSON.stringify(state)])
+  return readDoubleRewardEvent(db)
+}
+
+export async function stopDoubleRewardEvent(activatedBy='owner'){
+  const state={
+    active:false,
+    startedAt:0,
+    endsAt:0,
+    moneyMultiplier:2,
+    xpMultiplier:2,
+    activatedBy:String(activatedBy||'owner')
+  }
+  await db.query(`
+    INSERT INTO trevo_settings(key,value,updated_at)
+    VALUES('double_reward_event',$1::jsonb,${nowSql})
+    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+  `,[JSON.stringify(state)])
+  return readDoubleRewardEvent(db)
+}
+
 
 export async function getLaunchPrice() {
   const { rows } = await db.query(
