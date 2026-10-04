@@ -1801,7 +1801,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 💰 Recebido: *R$ ${fmt(r.principal)}*
 🕛 Sem juros até: *${fmtDate(r.due_at)}*
 📈 Depois: *2% por hora de atraso*
-🤖 Após o vencimento o Alpha cobra automaticamente carteira e banco.`)
+🤖 Após o vencimento o Alpha cobra automaticamente. Se faltar saldo, o banco pode ficar *negativo*.`)
         }else{
           const r=await rejectLoan(sender,loanId)
           clearQuickFlow(chat,sender)
@@ -7119,6 +7119,7 @@ ${results.join('\n')}
 ⏳ Prazo após o aceite: *30 minutos sem juros*
 📈 Após 30 min: *2% por hora de atraso*
 🛡️ Juros máximos: *100% do valor original*
+⚠️ Se não pagar no vencimento, a cobrança automática pode deixar a conta *negativa*.
 💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*
 ⌛ Expira em *10 minutos*.
 
@@ -7135,7 +7136,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
         } else if(cmd==='aceitaremprestimo'){
           const id=Number(args[0]||0)||null
           const r=await acceptLoan(sender,id)
-          await reply(`✅ *EMPRÉSTIMO ACEITO #${r.id}*\n\n💰 Recebido: *R$ ${fmt(r.principal)}*\n🕛 Sem juros até: *${fmtDate(r.due_at)}*\n📈 Depois: *2% por hora de atraso*\n🤖 Após o vencimento o Alpha cobra automaticamente carteira e banco.`)
+          await reply(`✅ *EMPRÉSTIMO ACEITO #${r.id}*\n\n💰 Recebido: *R$ ${fmt(r.principal)}*\n🕛 Sem juros até: *${fmtDate(r.due_at)}*\n📈 Depois: *2% por hora de atraso*\n🤖 Após o vencimento o Alpha cobra automaticamente. Se faltar saldo, o banco pode ficar *negativo*.`)
 
         } else if(cmd==='recusaremprestimo'){
           const id=Number(args[0]||0)||null
