@@ -3779,15 +3779,141 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
         return true
       }
-      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id},90000)
-      const extraStats=[
-        Number(item.current.hp||0)||Number(item.next.hp||0)?`❤️ ${Number(item.current.hp||0)} → *${Number(item.next.hp||0)} HP*`:null,
-        Number(item.current.crit||0)||Number(item.next.crit||0)?`🎯 ${(Number(item.current.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% → *${(Number(item.next.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% CRIT*`:null
-      ].filter(Boolean).join('\n')
+
+      const level=Number(item.level)
+      const targets={
+        1:Math.min(10,level+1),
+        2:Math.min(10,level+3),
+        3:Math.min(10,level+5),
+        4:10
+      }
+      setQuickFlow(chat,sender,'upgrade_amount',{itemId:item.item_id},90000)
+
+      const line=(option,label,target)=>{
+        const gain=Math.max(0,target-level)
+        const cost=Number(item.targetCosts?.[target]||0)
+        return option+' '+label+' → *Lv.'+target+'* (+'+gain+') — *R$ '+fmt(cost)+'*'
+      }
+      await reply(
+        '⬆️ *QUANTOS NÍVEIS QUER SUBIR?*\n\n'+
+        rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+        '⭐ Nível atual: *Lv.'+level+'*\n\n'+
+        line('1️⃣','+1 nível',targets[1])+'\n'+
+        line('2️⃣','até +3 níveis',targets[2])+'\n'+
+        line('3️⃣','até +5 níveis',targets[3])+'\n'+
+        line('4️⃣','direto ao Lv.10',targets[4])+'\n'+
+        '5️⃣ 🎯 Escolher nível exato\n\n'+
+        '💡 O custo é a soma normal de cada upgrade, sem desconto nem taxa extra.\n'+
+        '0️⃣ Cancelar'
+      )
+      return true
+    }
+
+    if(flow.stage==='upgrade_amount'){
+      const current=await listUpgradeableEquipment(sender)
+      const item=current.find(i=>i.item_id===flow.data.itemId)
+      if(!item || !item.next){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
+        return true
+      }
+
+      if(input==='5'){
+        setQuickFlow(chat,sender,'upgrade_custom_level',{itemId:item.item_id},90000)
+        await reply('🎯 *ESCOLHER NÍVEL*\n\n'+
+          rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+          '⭐ Atual: *Lv.'+item.level+'*\n\n'+
+          'Digite o nível final desejado entre *'+(Number(item.level)+1)+' e 10*.\n'+
+          'Ex.: *8*\n\n0️⃣ Cancelar')
+        return true
+      }
+
+      if(!['1','2','3','4'].includes(input)){
+        await reply('⬆️ Escolha *1, 2, 3, 4 ou 5*.')
+        return true
+      }
+
+      const level=Number(item.level)
+      const target={
+        1:Math.min(10,level+1),
+        2:Math.min(10,level+3),
+        3:Math.min(10,level+5),
+        4:10
+      }[input]
+      const targetStats=item.targetStats?.[target]
+      const cost=Number(item.targetCosts?.[target]||0)
+      if(!targetStats || target<=level){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Esse equipamento já está no nível máximo.')
+        return true
+      }
+
       const stat=item.category==='weapon'
-        ? `${item.current.atk} → *${item.next.atk} ATK*`
-        : `${item.current.def} → *${item.next.def} DEF*`
-      await reply(`⬆️ *UPAR EQUIPAMENTO?*\n\n${rarityLabel(item.rarity)} — *${item.name}*\n⭐ Lv.${item.level} → *Lv.${Number(item.level)+1}*\n💪 ${stat}${extraStats?'\n'+extraStats:''}\n💰 Custo: *R$ ${fmt(item.cost)}*\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+        ? item.current.atk+' → *'+targetStats.atk+' ATK*'
+        : item.current.def+' → *'+targetStats.def+' DEF*'
+      const extras=[
+        Number(item.current.hp||0)||Number(targetStats.hp||0)
+          ? '❤️ '+Number(item.current.hp||0)+' → *'+Number(targetStats.hp||0)+' HP*'
+          : null,
+        Number(item.current.crit||0)||Number(targetStats.crit||0)
+          ? '🎯 '+(Number(item.current.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% → *'+(Number(targetStats.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT*'
+          : null
+      ].filter(Boolean).join('\n')
+
+      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,targetLevel:target},90000)
+      await reply(
+        '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
+        rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+        '⭐ Lv.'+level+' → *Lv.'+target+'* (+'+(target-level)+' níveis)\n'+
+        '💪 '+stat+(extras?'\n'+extras:'')+'\n'+
+        '💰 Custo total: *R$ '+fmt(cost)+'*\n\n'+
+        '1️⃣ Confirmar\n2️⃣ Cancelar'
+      )
+      return true
+    }
+
+    if(flow.stage==='upgrade_custom_level'){
+      const target=Number(input)
+      const current=await listUpgradeableEquipment(sender)
+      const item=current.find(i=>i.item_id===flow.data.itemId)
+      if(!item || !item.next){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
+        return true
+      }
+      const level=Number(item.level)
+      if(!Number.isInteger(target)||target<=level||target>10){
+        await reply('🎯 Digite um nível entre *'+(level+1)+' e 10*.')
+        return true
+      }
+      const targetStats=item.targetStats?.[target]
+      const cost=Number(item.targetCosts?.[target]||0)
+      if(!targetStats){
+        await reply('❌ Não consegui calcular esse nível. Tente novamente.')
+        return true
+      }
+
+      const stat=item.category==='weapon'
+        ? item.current.atk+' → *'+targetStats.atk+' ATK*'
+        : item.current.def+' → *'+targetStats.def+' DEF*'
+      const extras=[
+        Number(item.current.hp||0)||Number(targetStats.hp||0)
+          ? '❤️ '+Number(item.current.hp||0)+' → *'+Number(targetStats.hp||0)+' HP*'
+          : null,
+        Number(item.current.crit||0)||Number(targetStats.crit||0)
+          ? '🎯 '+(Number(item.current.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% → *'+(Number(targetStats.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT*'
+          : null
+      ].filter(Boolean).join('\n')
+
+      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,targetLevel:target},90000)
+      await reply(
+        '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
+        rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+        '⭐ Lv.'+level+' → *Lv.'+target+'* (+'+(target-level)+' níveis)\n'+
+        '💪 '+stat+(extras?'\n'+extras:'')+'\n'+
+        '💰 Custo total: *R$ '+fmt(cost)+'*\n\n'+
+        '1️⃣ Confirmar\n2️⃣ Cancelar'
+      )
       return true
     }
 
@@ -3801,14 +3927,22 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
         return true
       }
-      const r=await upgradeEquipment(sender,flow.data.itemId)
+      const r=await upgradeEquipment(sender,flow.data.itemId,flow.data.targetLevel)
       clearQuickFlow(chat,sender)
       const stat=r.stats.category==='weapon'?r.stats.atk+' ATK':r.stats.def+' DEF'
       const extras=[
         Number(r.stats.hp||0)?'❤️ '+r.stats.hp+' HP':null,
         Number(r.stats.crit||0)?'🎯 '+(Number(r.stats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
       ].filter(Boolean).join(' • ')
-      await reply(`⬆️ *EQUIPAMENTO APRIMORADO!*\n\n⚙️ *${r.name}*\n⭐ Lv.${r.fromLevel} → *Lv.${r.level}*\n💪 Agora: *${stat}*${extras?' • '+extras:''}\n💸 Pago: *R$ ${fmt(r.cost)}*\n🪙 Carteira: *R$ ${fmt(r.cash)}*\n\nUse *!uparitem* para continuar evoluindo.`)
+      await reply(
+        '⬆️ *EQUIPAMENTO APRIMORADO!*\n\n'+
+        '⚙️ *'+r.name+'*\n'+
+        '⭐ Lv.'+r.fromLevel+' → *Lv.'+r.level+'* (+'+r.levelsGained+' níveis)\n'+
+        '💪 Agora: *'+stat+'*'+(extras?' • '+extras:'')+'\n'+
+        '💸 Pago: *R$ '+fmt(r.cost)+'*\n'+
+        '🪙 Carteira: *R$ '+fmt(r.cash)+'*\n\n'+
+        (r.level>=10?'🏆 Equipamento no nível máximo.':'Use *!uparitem* para continuar evoluindo.')
+      )
       return true
     }
 
