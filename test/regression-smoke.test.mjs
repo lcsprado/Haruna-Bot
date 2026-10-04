@@ -18,7 +18,8 @@ test('boss and raid combat loop limits stay separated',()=>{
   assert.ok(bossStart>=0 && raidStart>bossStart,'combat functions missing or reordered unexpectedly')
   const boss=index.slice(bossStart,raidStart)
   const raid=index.slice(raidStart)
-  assert.ok(boss.includes('for(let i=0;i<30;i++){'),'boss session must stay at 30 attacks')
+  assert.ok(boss.includes("if(!eventSession && i>=29) break"),'common/weekly boss must still stop after 30 attacks')
+  assert.ok(boss.includes("const eventSession=sessionMode==='event'"),'event boss must use continuous auto-combat mode')
   assert.ok(!boss.includes('for(let i=0;i<180;i++){'),'boss session must not inherit raid loop')
   assert.ok(raid.includes('for(let i=0;i<180;i++){'),'raid combat runner must keep extended loop')
 })
@@ -53,7 +54,7 @@ test('purchasable pet specialties keep the intended progression',()=>{
 })
 
 test('boss and event combat auto-heal pets like raids',()=>{
-  assert.ok(games.includes("const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']"),'Boss pet potion inventory lookup missing')
+  assert.ok(games.includes("const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema']"),'Boss pet potion inventory lookup missing')
   assert.ok(games.includes("const chosenPet=raidPetPotion(petPotionRows,missing)"),'Boss must reuse raid pet-potion selection')
   assert.ok(games.includes("autoPetHeal={id:chosenPet.item_id"),'Boss must return pet auto-heal details')
   assert.ok(index.includes("🐾🧪 *AUTOCURA DO PET!*"),'Boss session must announce pet auto-heal')
