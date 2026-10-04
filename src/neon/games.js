@@ -567,17 +567,53 @@ const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
 const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:30,40:40,50:50}[Number(level)]||15)
 export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level)})) }
 
-export async function getRaidStatus(chat){
-  return tx(async c=>loadGame(c,chat,'raid'))
+const raidGameType=level=>`raid:${Number(level)}`
+const raidIsOpen=s=>Boolean(s&&['lobby','active'].includes(s.status)&&(s.status==='active'||Number(s.expiresAt||0)>Date.now()))
+
+async function raidRows(c,chat,forUpdate=false){
+  const lock=forUpdate?' FOR UPDATE':''
+  const {rows}=await c.query(
+    `SELECT game_type,state,updated_at FROM trevo_games
+     WHERE chat_jid=$1 AND (game_type='raid' OR game_type LIKE 'raid:%')
+     ORDER BY updated_at DESC${lock}`,
+    [chat]
+  )
+  return rows.map(r=>({gameType:r.game_type,...(r.state||{})}))
+}
+
+async function resolveRaidRoom(c,chat,level=null,{host=null,jid=null,lobbyOnly=false}={}){
+  const rows=await raidRows(c,chat,true)
+  let rooms=rows.filter(raidIsOpen)
+  if(lobbyOnly) rooms=rooms.filter(r=>r.status==='lobby')
+  if(level) rooms=rooms.filter(r=>Number(r.level)===Number(level))
+  if(host) rooms=rooms.filter(r=>r.host===host)
+  if(jid) rooms=rooms.filter(r=>Boolean(r.players?.[jid]))
+  return rooms
+}
+
+export async function getRaidStatuses(chat){
+  return tx(async c=>(await raidRows(c,chat,false)).filter(raidIsOpen))
+}
+
+export async function getRaidStatus(chat,level=null){
+  return tx(async c=>{
+    const rooms=(await raidRows(c,chat,false)).filter(raidIsOpen)
+    if(level) return rooms.find(r=>Number(r.level)===Number(level))||null
+    return rooms[0]||null
+  })
 }
 
 export async function createRaid(chat,host,name='Jogador',level=10){
   const cfg=raidConfig(level)
   if(!cfg) throw new Error('Raid inválida. Níveis: 10, 15, 20, 25, 30, 40 e 50.')
+  const gameType=raidGameType(cfg.level)
   await ensureUser(host,name)
   return tx(async c=>{
-    const old=await loadGame(c,chat,'raid')
-    if(old&&['lobby','active'].includes(old.status)&&Number(old.expiresAt||0)>Date.now()) throw new Error('Já existe uma Raid aberta neste grupo.')
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${chat}:${host}`])
+    const sameRoom=(await resolveRaidRoom(c,chat,cfg.level))[0]
+    if(sameRoom) throw new Error(`Já existe uma sala da Raid Lv.${cfg.level} neste grupo.`)
+    const otherRoom=(await resolveRaidRoom(c,chat,null,{jid:host}))[0]
+    if(otherRoom) throw new Error(`Você já está na Raid Lv.${otherRoom.level}. Saia/conclua essa Raid antes de abrir outra.`)
     const u=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[host])).rows[0]
     if(Number(u?.level||1)<cfg.level) throw new Error(`Essa Raid exige nível ${cfg.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[host])).rows[0]
@@ -600,17 +636,26 @@ export async function createRaid(chat,host,name='Jogador',level=10){
       autoKeyPurchased=true
     }
     const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+5*60*1000}
-    await saveGame(c,chat,'raid',state)
-    return {...state,autoKeyPurchased,keyPrice:cfg.keyPrice}
+    await saveGame(c,chat,gameType,state)
+    return {...state,gameType,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
 }
 
-export async function joinRaid(chat,jid,name='Jogador'){
+export async function joinRaid(chat,jid,name='Jogador',level=null){
   await ensureUser(jid,name)
   return tx(async c=>{
-    const s=await loadGame(c,chat,'raid')
-    if(!s||!['lobby','active'].includes(s.status)||(s.status==='lobby'&&Number(s.expiresAt||0)<Date.now())) throw new Error('Não existe Raid disponível para entrar.')
-    if(s.players?.[jid]) return {already:true,lateJoin:s.status==='active',...s}
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${chat}:${jid}`])
+    const joined=(await resolveRaidRoom(c,chat,null,{jid}))[0]
+    if(joined){
+      if(!level || Number(joined.level)===Number(level)) return {already:true,lateJoin:joined.status==='active',...joined}
+      throw new Error(`Você já está na Raid Lv.${joined.level}. Não dá para participar de duas Raids ao mesmo tempo.`)
+    }
+    const rooms=await resolveRaidRoom(c,chat,level||null)
+    if(!rooms.length) throw new Error(level?`Não existe sala aberta da Raid Lv.${level}.`:'Não existe Raid disponível para entrar.')
+    if(!level&&rooms.length>1) throw new Error('Há mais de uma Raid aberta. Escolha uma: '+rooms.map(r=>`!entrar ${r.level}`).join(' • '))
+    const s=rooms[0]
+    const gameType=s.gameType
+    if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(u?.level||1)<Number(s.level)) throw new Error(`Essa Raid exige nível ${s.level}. Seu nível atual: ${Number(u?.level||1)}.`)
@@ -638,7 +683,7 @@ export async function joinRaid(chat,jid,name='Jogador'){
 
     if(s.status==='lobby'){
       s.players={...(s.players||{}),[jid]:{jid,name:name||'Jogador',damage:0,alive:true}}
-      await saveGame(c,chat,'raid',s)
+      await saveGame(c,chat,gameType,s)
       return {...s,lateJoin:false,autoKeyPurchased,keyPrice:cfg.keyPrice}
     }
 
@@ -656,18 +701,19 @@ export async function joinRaid(chat,jid,name='Jogador'){
       crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,alive:true,heals:0,
       pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null
     }}
-    await saveGame(c,chat,'raid',s)
+    await saveGame(c,chat,gameType,s)
     return {...s,lateJoin:true,joinedJid:jid,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
 }
 
-export async function cancelRaid(chat,jid){
+export async function cancelRaid(chat,jid,level=null){
   return tx(async c=>{
-    const s=await loadGame(c,chat,'raid')
-    if(!s||s.status!=='lobby') throw new Error('Não existe Raid aguardando início.')
-    if(s.host!==jid) throw new Error('Somente o host pode cancelar a Raid.')
-    await clearGame(c,chat,'raid')
-    return true
+    const rooms=await resolveRaidRoom(c,chat,level||null,{host:jid,lobbyOnly:true})
+    if(!rooms.length) throw new Error(level?`Você não possui sala aberta da Raid Lv.${level}.`:'Você não possui Raid aguardando início.')
+    if(!level&&rooms.length>1) throw new Error('Você abriu mais de uma sala. Informe qual Raid deseja cancelar.')
+    const s=rooms[0]
+    await clearGame(c,chat,s.gameType)
+    return {level:Number(s.level),name:s.name}
   })
 }
 
@@ -701,11 +747,13 @@ function raidPetPotion(rows,missingHp){
   return p?{...p,name:names[p.item_id]}:null
 }
 
-export async function startRaid(chat,host){
+export async function startRaid(chat,host,level=null){
   return tx(async c=>{
-    const s=await loadGame(c,chat,'raid')
-    if(!s||s.status!=='lobby') throw new Error('Não existe Raid pronta para iniciar.')
-    if(s.host!==host) throw new Error('Somente quem abriu a Raid pode iniciar.')
+    const rooms=await resolveRaidRoom(c,chat,level||null,{host,lobbyOnly:true})
+    if(!rooms.length) throw new Error(level?`Você não possui sala pronta da Raid Lv.${level}.`:'Não existe Raid pronta para iniciar.')
+    if(!level&&rooms.length>1) throw new Error('Você possui mais de uma sala. Informe qual Raid deseja iniciar.')
+    const s=rooms[0]
+    const gameType=s.gameType
     if(Number(s.expiresAt||0)<Date.now()) throw new Error('A sala expirou. Abra outra Raid.')
     const ids=Object.keys(s.players||{})
     const cfg=raidConfig(s.level)
@@ -738,7 +786,7 @@ export async function startRaid(chat,host){
       s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,alive:true,heals:0,pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null}
     }
     s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
-    await saveGame(c,chat,'raid',s)
+    await saveGame(c,chat,gameType,s)
     return s
   })
 }
@@ -815,10 +863,12 @@ async function finishRaidRewards(c,s,cfg){
   return rewards
 }
 
-export async function raidRound(chat){
+export async function raidRound(chat,level){
   return tx(async c=>{
-    const s=await loadGame(c,chat,'raid')
-    if(!s||s.status!=='active') return {reason:'inactive'}
+    const rooms=await resolveRaidRoom(c,chat,level||null)
+    const s=rooms.find(r=>r.status==='active'&&(!level||Number(r.level)===Number(level)))
+    if(!s) return {reason:'inactive'}
+    const gameType=s.gameType
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
     const durationMs=Number(s.durationMinutes||raidDurationMinutes(cfg.level))*60*1000
@@ -826,7 +876,7 @@ export async function raidRound(chat){
       ? Number(s.activeElapsedMs)
       : Math.max(0,Number(s.round||0)*8000)
     if(elapsedMs>=durationMs){
-      s.status='failed';s.failReason='timeout';s.activeElapsedMs=elapsedMs;await saveGame(c,chat,'raid',s)
+      s.status='failed';s.failReason='timeout';s.activeElapsedMs=elapsedMs;await saveGame(c,chat,gameType,s)
       return {failed:true,reason:'timeout',config:cfg,hp:s.hp,maxHp:s.maxHp}
     }
 
@@ -836,7 +886,7 @@ export async function raidRound(chat){
     const events=[]
     const alive=Object.values(s.players||{}).filter(p=>p.alive)
     if(!alive.length){
-      s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,'raid',s)
+      s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
       return {failed:true,reason:'party_wipe',config:cfg,hp:s.hp,maxHp:s.maxHp}
     }
 
@@ -875,7 +925,7 @@ export async function raidRound(chat){
     if(Number(s.hp)<=0){
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg)
-      await saveGame(c,chat,'raid',s)
+      await saveGame(c,chat,gameType,s)
       return {victory:true,config:cfg,round:s.round,hp:0,maxHp:s.maxHp,rewards,events}
     }
 
@@ -928,10 +978,10 @@ export async function raidRound(chat){
 
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
     if(!survivors){
-      s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,'raid',s)
+      s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
       return {failed:true,reason:'party_wipe',config:cfg,round:s.round,hp:s.hp,maxHp:s.maxHp,events}
     }
-    await saveGame(c,chat,'raid',s)
+    await saveGame(c,chat,gameType,s)
     return {config:cfg,round:s.round,hp:s.hp,maxHp:s.maxHp,survivors,special,specialName,events}
   })
 }
