@@ -500,12 +500,12 @@ const PET_BOSS_SPECIALTIES={
   coelho:{label:'🐰 Agilidade',dodge:.04}, papagaio:{label:'🦜 Motivação',xp:.05},
   hamster:{label:'🐹 Sorte',drop:.025}, tartaruga:{label:'🐢 Casco',defense:.07},
   coruja:{label:'🦉 Sabedoria',xp:.08}, raposa:{label:'🦊 Astúcia',crit:.06},
-  lobo:{label:'🐺 Caçador',damage:.06}, aguia:{label:'🦅 Precisão',crit:.07},
-  panda:{label:'🐼 Resistência',defense:.08}, tigre:{label:'🐯 Fúria',damage:.07},
-  leao:{label:'🦁 Rei da Caçada',damage:.08},
+  lobo:{label:'🐺 Caçador',damage:.06}, aguia:{label:'🦅 Precisão',crit:.09},
+  panda:{label:'🐼 Resistência',defense:.08}, tigre:{label:'🐯 Fúria',damage:.08},
+  leao:{label:'🦁 Rei da Caçada',damage:.09},
   cervo_mistico:{label:'🦌 Luz Restauradora',defense:.03,healPct:.04,healCooldown:5},
   unicornio:{label:'🦄 Bênção Vital',drop:.04,defense:.04,healPct:.06,healCooldown:4},
-  dragao:{label:'🐉 Caçador de Boss',bossDamage:.10},
+  dragao:{label:'🐉 Caçador de Boss',bossDamage:.10,defense:.04},
 
   // Aquáticos comuns: 2 atributos cada, com combinações diferentes e teto abaixo dos pets de Raid.
   golfinho_celestial:{label:'🐬 Corrente Celestial',dodge:.05,xp:.04},
@@ -513,7 +513,7 @@ const PET_BOSS_SPECIALTIES={
   tubarao_abissal:{label:'🦈 Frenesi Abissal',damage:.07,crit:.03},
   polvo_arcano:{label:'🐙 Tentáculos Arcanos',crit:.04,drop:.03},
   orca_guerra:{label:'🐋 Investida Oceânica',damage:.05,defense:.05},
-  baleia_colossal:{label:'🐋 Canto Colossal',defense:.07,xp:.03},
+  baleia_colossal:{label:'🐋 Canto Colossal',defense:.10,xp:.04},
 
   // Pets de Raid: todos têm pelo menos 2 especialidades. Eles exigem 100 materiais
   // e por isso devem superar pets comuns em utilidade endgame, sem tornar equipamento irrelevante.
