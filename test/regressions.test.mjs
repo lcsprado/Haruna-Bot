@@ -36,7 +36,7 @@ test('energia do pet possui descanso e custo transacional no Boss',async()=>{
   const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(dbSource,/descansar:\{hunger:-5,hygiene:0,energy:30,xp:0,rest:true\}/)
   assert.match(dbSource,/last_rest BIGINT NOT NULL DEFAULT 0/)
-  assert.match(gamesSource,/Number\(pet\.energy\)<2/)
+  assert.match(gamesSource,/Number\(petRow\.energy\)<2/)
   assert.match(gamesSource,/UPDATE pets SET energy=\$1 WHERE jid=\$2/)
   assert.match(indexSource,/\*!descansar\* — recupera 30 de energia/)
   assert.match(dbSource,/export function petMaxHp\(level=1,xp=0,species='cachorro'\)/)
