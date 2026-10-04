@@ -37,7 +37,7 @@ export async function initDatabase() {
   await db.query('SELECT 1')
   console.log('[Neon] banco conectado')
 
-  await db.query(`
+  await db.query(0
     CREATE TABLE IF NOT EXISTS users (
       jid TEXT PRIMARY KEY,
       pn TEXT UNIQUE,
@@ -1191,12 +1191,24 @@ export async function sellItem(jid, itemId, qty=1) {
     else if(item.rarity==='uncommon') unit=2500
     else unit=500
 
-    const total=unit*qty
+    const remaining=owned-qty
+    const upR=['weapon','armor'].includes(item.category)
+      ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+      : {rows:[]}
+    const equipmentLevel=Number(upR.rows[0]?.level||1)
+    const upgradeRefund=(remaining===0 && equipmentLevel>1)
+      ? equipmentUpgradeSellRefund(item.rarity,equipmentLevel)
+      : 0
+    const baseTotal=unit*qty
+    const total=baseTotal+upgradeRefund
 
     await client.query(
       'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
       [qty,jid,itemId]
     )
+    if(remaining===0 && ['weapon','armor'].includes(item.category)){
+      await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
+    }
     await client.query(
       'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
       [total,jid]
@@ -1204,7 +1216,7 @@ export async function sellItem(jid, itemId, qty=1) {
     await client.query(`
       INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES('shop',$1,$2,'sale',$3)
-    `,[jid,total,`${itemId} x${qty}`])
+    `,[jid,total,`${itemId} x${qty}|base:${baseTotal}|upgrade_refund:${upgradeRefund}|lv:${equipmentLevel}`])
 
     const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
 
@@ -1217,9 +1229,12 @@ export async function sellItem(jid, itemId, qty=1) {
       },
       qty,
       unit,
+      baseTotal,
       total,
-      remaining:owned-qty,
+      remaining,
       equipped:Boolean(equipped),
+      equipmentLevel,
+      upgradeRefund,
       cash:Number(walletR.rows[0]?.cash||0)
     }
   })
@@ -1281,21 +1296,36 @@ export async function sellItemsBatch(jid, selections=[]) {
       else if(item.rarity==='uncommon') unit=2500
       else unit=500
 
-      const total=unit*sel.qty
+      const remaining=owned-sel.qty
+      const upR=['weapon','armor'].includes(item.category)
+        ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
+        : {rows:[]}
+      const equipmentLevel=Number(upR.rows[0]?.level||1)
+      const upgradeRefund=(remaining===0 && equipmentLevel>1)
+        ? equipmentUpgradeSellRefund(item.rarity,equipmentLevel)
+        : 0
+      const baseTotal=unit*sel.qty
+      const total=baseTotal+upgradeRefund
       await client.query(
         'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
         [sel.qty,jid,sel.itemId]
       )
+      if(remaining===0 && ['weapon','armor'].includes(item.category)){
+        await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+      }
 
       sold.push({
         itemId:item.id,
         name:item.name,
         rarity:item.rarity,
         qty:sel.qty,
-        remaining:owned-sel.qty,
+        remaining,
         unit,
+        baseTotal,
         total,
-        equipped
+        equipped,
+        equipmentLevel,
+        upgradeRefund
       })
       grandTotal+=total
       totalUnits+=sel.qty
