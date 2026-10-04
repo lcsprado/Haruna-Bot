@@ -718,7 +718,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
       atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),
-      crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,synergyBonusDamage:0,synergyCrits:0,synergyDamageBlocked:0,petSkillHealing:0,alive:true,heals:0,
+      crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
       pet:combatPet,reservePet
     }}
     await saveGame(c,chat,gameType,s)
@@ -867,7 +867,7 @@ export async function startRaid(chat,host,level=null){
         [jid]
       )).rows
       const teamSynergy=petTeamSynergy(teamPets)
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,synergyBonusDamage:0,synergyCrits:0,synergyDamageBlocked:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy}
     }
     // O grupo maior causa muito mais dano por rodada. Escala só o HP (+12% por
     // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
@@ -993,27 +993,20 @@ export async function raidRound(chat,level){
           await persistRaidCombatPet(c,p.jid,p.pet)
         }
       }
-      const petCritOnly=Math.max(0,Number(pb.crit||0))
-      const synergyCritChance=Math.max(0,Number(teamSynergy.crit||0))
+      const petCritChance=Math.max(0,Number(pb.crit||0)+Number(teamSynergy.crit||0))
       const gearCritChance=Math.max(0,Number(p.crit||0))
       const roll=Math.random()
-      const petCrit=petCritOnly>0&&roll<petCritOnly
-      const synergyCrit=!petCrit&&synergyCritChance>0&&roll<Math.min(.50,petCritOnly+synergyCritChance)
-      const gearCrit=!petCrit&&!synergyCrit&&gearCritChance>0&&roll<Math.min(.50,petCritOnly+synergyCritChance+gearCritChance)
-      const crit=petCrit||synergyCrit||gearCrit
+      const petCrit=petCritChance>0&&roll<petCritChance
+      const gearCrit=!petCrit&&gearCritChance>0&&roll<Math.min(.50,petCritChance+gearCritChance)
+      const crit=petCrit||gearCrit
       const variance=.82+Math.random()*.38
       const raw=Math.max(5,Math.floor(Number(p.atk||1)*variance))
       const baseline=Math.max(5,Math.floor(raw*(gearCrit?1.5:1)*3))
-      const petOnlyMult=(1+Number(pb.damage||0))*3
       const mult=(1+Number(pb.damage||0)+Number(teamSynergy.attack||0))*3
-      const dmgWithoutSynergyAtk=Math.max(5,Math.floor(raw*petOnlyMult*((petCrit||gearCrit)?1.5:1)))
       const dmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1)))
-      const synergyExtra=Math.max(0,dmg-dmgWithoutSynergyAtk)
       const petExtra=p.pet?Math.max(0,dmg-baseline):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
-      p.synergyBonusDamage=Number(p.synergyBonusDamage||0)+synergyExtra
-      if(synergyCrit) p.synergyCrits=Number(p.synergyCrits||0)+1
       p.damage=Number(p.damage||0)+dmg
       s.hp=Math.max(0,Number(s.hp)-dmg)
       events.push({type:'hit',jid:p.jid,name:p.name,damage:dmg,crit})
@@ -1035,15 +1028,10 @@ export async function raidRound(chat,level){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
       const teamSynergy=p.teamSynergy||{attack:0,defense:0,crit:0}
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
-      const defenseBase=Math.max(1,(cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0)))
-      const rawWithoutSynergy=Math.max(1,Math.round(defenseBase))
-      const raw=Math.max(1,Math.round(defenseBase*(1-Number(teamSynergy.defense||0))))
+      const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
-      const bossMult=special?1.55:(bossCritical?1.5:1)
-      const dmgWithoutSynergy=dodged?0:Math.max(1,Math.round(rawWithoutSynergy*bossMult))
-      const dmg=dodged?0:Math.max(1,Math.round(raw*bossMult))
-      p.synergyDamageBlocked=Number(p.synergyDamageBlocked||0)+Math.max(0,dmgWithoutSynergy-dmg)
+      const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))))
       p.hp=Math.max(0,Number(p.hp)-dmg)
       let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
