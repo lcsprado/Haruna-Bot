@@ -1177,6 +1177,23 @@ async function start() {
     console.log('[Eventos] compensação de Raid ativada por 10 minutos completos')
   }
 
+  // Evento relâmpago de pets — 04/10/2026, 20:00–20:30 America/Sao_Paulo.
+  const petCareStartsAt=Date.parse('2026-10-04T20:00:00-03:00')
+  const petCareEndsAt=Date.parse('2026-10-04T20:30:00-03:00')
+  if(Date.now()<petCareEndsAt){
+    await db.query(`
+      INSERT INTO trevo_settings(key,value,updated_at)
+      VALUES('pet_care_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+      ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+    `,[JSON.stringify({
+      oneOffId:'pet-care-2026-10-04-2000',
+      eventLabel:'CUIDANDO DOS PETS',
+      startsAt:petCareStartsAt,
+      endsAt:petCareEndsAt,
+      multiplier:2
+    })])
+  }
+
   // Programação única solicitada para domingo, 04/10/2026, horário de Brasília.
   // O scheduleId impede que reinícios sobrescrevam marcadores de avisos já enviados.
   const scheduledEventsId='alpha-events-2026-10-03-v3'
@@ -1276,6 +1293,8 @@ async function start() {
           const raidEnd=Date.parse('2026-10-04T15:30:00-03:00')
           const siegeStart=Date.parse('2026-10-04T18:00:00-03:00')
           const siegeEnd=Date.parse('2026-10-04T20:00:00-03:00')
+          const petCareStart=Date.parse('2026-10-04T20:00:00-03:00')
+          const petCareEnd=Date.parse('2026-10-04T20:30:00-03:00')
 
           if(now<siegeEnd){
             await sendScheduledGroupNotice(chat,'agenda-2026-10-04',
@@ -1366,6 +1385,46 @@ async function start() {
 
 O Colosso recuou às *20:00*.
 Se ele não foi derrotado, o HP restante foi perdido. Até o próximo Cerco.`)
+          }
+
+          if(now<petCareStart){
+            await sendScheduledGroupNotice(chat,'pet-care-announcement-2026-10-04',
+`⚡🐾 *EVENTO RELÂMPAGO HOJE — CUIDANDO DOS PETS*
+
+⏰ *20:00 → 20:30*
+✨ *2X XP SOMENTE PARA PETS*
+
+Durante 30 minutos, XP de pet será dobrado em atividades relacionadas a eles:
+🐾 treino, passeio e aventura
+⚔️ duelo de pets
+🧭 expedições concluídas
+👹 Boss e ⚔️ Raid
+
+💰 Dinheiro e XP do jogador continuam normais.
+🔥 Aproveitem para evoluir o time pet.`)
+          }
+
+          if(now>=petCareStart&&now<petCareEnd){
+            await sendScheduledGroupNotice(chat,'pet-care-start-2026-10-04',
+`🐾⚡ *CUIDANDO DOS PETS COMEÇOU!*
+
+⏱️ Até *20:30*
+✨ *2X XP DE PET* ativo.
+
+🐾 Treine, passeie, aventure, duele e conclua expedições.
+👹 XP de pet em Boss e ⚔️ Raid também recebe o bônus.
+
+💰 Sem bônus de dinheiro.
+⭐ Sem bônus de XP do jogador.
+🔥 É meia hora só para evoluir os pets!`)
+          }else if(now>=petCareEnd){
+            await sendScheduledGroupNotice(chat,'pet-care-end-2026-10-04',
+`🐾 *CUIDANDO DOS PETS ENCERRADO*
+
+⏰ O evento terminou às *20:30*.
+✨ O XP dos pets voltou ao normal.
+
+Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
           }
 
           const night=await autoStartNightBossEvent(chat)
