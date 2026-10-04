@@ -699,12 +699,17 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
     const gearHp=Number(w?.hp||0)+Number(a?.hp||0)
     const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
-    const reservePet=await raidReservePet(c,jid)
+    let reservePet=await raidReservePet(c,jid)
+    let combatPet=raidCombatPetState(pet,1)
+    if(combatPet&&Number(combatPet.hp)<=0&&reservePet){
+      combatPet=reservePet
+      reservePet=null
+    }
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
       atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),
       crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
-      pet:raidCombatPetState(pet,1),reservePet
+      pet:combatPet,reservePet
     }}
     await saveGame(c,chat,gameType,s)
     return {...s,lateJoin:true,joinedJid:jid,autoKeyPurchased,keyPrice:cfg.keyPrice}
@@ -815,8 +820,13 @@ export async function startRaid(chat,host,level=null){
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
       const gearHp=Number(w?.hp||0)+Number(a?.hp||0)
-      const reservePet=await raidReservePet(c,jid)
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:raidCombatPetState(pet,1),reservePet}
+      let reservePet=await raidReservePet(c,jid)
+      let combatPet=raidCombatPetState(pet,1)
+      if(combatPet&&Number(combatPet.hp)<=0&&reservePet){
+        combatPet=reservePet
+        reservePet=null
+      }
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet}
     }
     s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
     await saveGame(c,chat,gameType,s)
