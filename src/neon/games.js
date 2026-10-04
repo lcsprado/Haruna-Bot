@@ -1438,6 +1438,24 @@ export async function attackBoss(chat,jid,name,usePet=true){
         pet.hp=Math.max(0,Number(pet.hp)-petTaken)
         pet.petDamageTaken=petTaken
         pet.petFainted=pet.hp<=0
+        // Boss/eventos seguem a mesma política preventiva da Raid:
+        // abaixo de 35% de HP, usa automaticamente a menor poção de pet
+        // suficiente. Em 0 HP, preserva a prioridade de troca para o Reserva.
+        const maxPetHp=Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))
+        if(!pet.petFainted && maxPetHp>0 && Number(pet.hp)/maxPetHp<.35){
+          const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']
+          const petPotionRows=(await c.query(
+            'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
+            [jid,petPotionIds]
+          )).rows
+          const missing=Math.max(1,maxPetHp-Number(pet.hp||0))
+          const chosenPet=raidPetPotion(petPotionRows,missing)
+          if(chosenPet){
+            pet.hp=Math.min(maxPetHp,Number(pet.hp||0)+Number(chosenPet.heal||0))
+            await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosenPet.item_id])
+            autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:Number(chosenPet.heal||0),hp:Number(pet.hp),maxHp:maxPetHp,petName:pet.name}
+          }
+        }
         await persistBossCombatPet(c,jid,pet)
         if(pet.petFainted){
           let switched=false
