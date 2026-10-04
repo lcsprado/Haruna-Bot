@@ -263,7 +263,7 @@ export async function claimDailyMissions(jid){
     if(!r.rows.length) return {claimed:0,cash:0,boxes:0}
 
     const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-    const cash=r.rows.reduce((a,m)=>a+Number(m.reward_cash||0),0)*moneyMultiplier
+    const cash=Math.round(r.rows.reduce((a,m)=>a+Number(m.reward_cash||0),0)*moneyMultiplier)
     const boxes=r.rows.reduce((a,m)=>a+Number(m.reward_box||0),0)
 
     if(cash>0){
@@ -632,7 +632,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
       return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
     })
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const gross=details.reduce((n,x)=>n+x.total,0)*moneyMultiplier
+    const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
@@ -672,7 +672,7 @@ export async function driveUber(jid,taxMultiplier=1){
       return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
     })
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const gross=details.reduce((n,x)=>n+x.total,0)*moneyMultiplier
+    const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
@@ -860,7 +860,7 @@ export async function collectBusinesses(jid){
     }
     if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const gross=total*moneyMultiplier,tax=Math.floor(gross*.10),net=gross-tax
+    const gross=Math.round(total*moneyMultiplier),tax=Math.floor(gross*.10),net=gross-tax
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[net,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
@@ -955,7 +955,7 @@ export async function claimGroupMission(chatJid,jid){
     const contribution=Number(mem.rows[0].contribution)
     const total=Math.max(1,board.total)
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const share=Math.max(1,Math.floor(Number(m.reward_cash)*contribution/total))*moneyMultiplier
+    const share=Math.round(Math.max(1,Math.floor(Number(m.reward_cash)*contribution/total))*moneyMultiplier)
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[share,jid])
     await client.query('UPDATE group_mission_members SET claimed=TRUE WHERE chat_jid=$1 AND week_key=$2 AND jid=$3',[chatJid,m.week_key,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_mission','missão coletiva proporcional')",[jid,share])
@@ -995,7 +995,7 @@ export async function claimGroupEvent(chatJid,jid){
     const e=rows[0]
     if(!e || e.claimed_by || Number(e.expires_at)<now) throw new Error('Não há evento disponível agora.')
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const rewardCash=Number(e.reward_cash||0)*moneyMultiplier
+    const rewardCash=Math.round(Number(e.reward_cash||0)*moneyMultiplier)
     await client.query('UPDATE group_events SET claimed_by=$1 WHERE chat_jid=$2',[jid,chatJid])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[rewardCash,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_event',$3)",[jid,rewardCash,e.event_type])
