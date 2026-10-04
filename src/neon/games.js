@@ -743,6 +743,33 @@ function raidPotion(rows,maxHp){
   return p?{...p,name:names[p.item_id]}:null
 }
 
+function raidCombatPetState(pet,slot=1){
+  if(!pet) return null
+  return {
+    collectionId:Number(pet.id||0)||null,teamSlot:Number(slot)||1,
+    name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),
+    energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),
+    maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),
+    bonus:petBossBonus(pet),extraDamage:0,turns:0
+  }
+}
+
+async function raidReservePet(c,jid){
+  const r=(await c.query(`SELECT p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
+    WHERE t.jid=$1 AND t.slot=3 FOR UPDATE OF p`,[jid])).rows[0]||null
+  if(!r||Number(r.hp)<=0||Number(r.energy)<=0) return null
+  return raidCombatPetState(r,3)
+}
+
+async function persistRaidCombatPet(c,jid,pet){
+  if(!pet) return
+  if(Number(pet.teamSlot)===3&&pet.collectionId){
+    await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE id=$3 AND jid=$4',[pet.hp,pet.energy,pet.collectionId,jid])
+  }else{
+    await c.query('UPDATE pets SET hp=$1,energy=$2 WHERE jid=$3',[pet.hp,pet.energy,jid])
+    await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.energy,jid])
+  }
+}
 function raidPetPotion(rows,missingHp){
   const heal={pocao_pet_comum:60,pocao_pet_rara:160,pocao_pet_epica:320}
   const names={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_pet_epica:'Poção de Pet Épica'}
