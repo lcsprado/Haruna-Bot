@@ -1427,7 +1427,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
       petHealing:Number(old.petHealing||0),
       activePetSlot
     }
-    let php=Math.min(Number(st.hp),effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,petSkillHeal=null
+    let php=Math.min(Number(st.hp),effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,autoPetHeal=null,petSkillHeal=null
     if(s.hp>0){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossCritical=!dodged&&Math.random()<.05
@@ -1439,11 +1439,34 @@ export async function attackBoss(chat,jid,name,usePet=true){
         pet.petDamageTaken=petTaken
         pet.petFainted=pet.hp<=0
         await persistBossCombatPet(c,jid,pet)
-        if(pet.petFainted&&Number(pet.teamSlot||1)===1){
-          const reserve=await loadBossCombatPet(c,jid,3)
-          if(reserve&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
-            petSwitch={from:pet.name,to:reserve.name}
-            s.participants[jid].activePetSlot=3
+        if(pet.petFainted){
+          let switched=false
+          if(Number(pet.teamSlot||1)===1){
+            const reserve=await loadBossCombatPet(c,jid,3)
+            if(reserve&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
+              petSwitch={from:pet.name,to:reserve.name}
+              s.participants[jid].activePetSlot=3
+              switched=true
+            }
+          }
+          // Mesmo comportamento da Raid: sem Reserva disponível, o pet usa
+          // automaticamente a menor poção suficiente quando chegar a 0 HP.
+          if(!switched){
+            const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']
+            const petPotionRows=(await c.query(
+              'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
+              [jid,petPotionIds]
+            )).rows
+            const missing=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))-Number(pet.hp||0))
+            const chosenPet=raidPetPotion(petPotionRows,missing)
+            if(chosenPet){
+              const maxPetHp=Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))
+              pet.hp=Math.min(maxPetHp,Number(pet.hp||0)+Number(chosenPet.heal||0))
+              pet.petFainted=false
+              await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosenPet.item_id])
+              await persistBossCombatPet(c,jid,pet)
+              autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:Number(chosenPet.heal||0),hp:Number(pet.hp),maxHp:maxPetHp,petName:pet.name}
+            }
           }
         }
       }
@@ -1577,9 +1600,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
         await saveGame(c,chat,'boss',marker)
       }
-      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     await saveGame(c,chat,gameType,s)
-    return {dead:false,damage,bossDamage,bossCritical,playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
+    return {dead:false,damage,bossDamage,bossCritical,playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }
