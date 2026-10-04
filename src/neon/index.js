@@ -7476,7 +7476,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           if(!level){
             const raids=getRaidCatalog()
             let text='⚔️ *RAIDS DO ALPHA*\n\n'
-            raids.forEach(r=>{text+=`*Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)} • 🧩 ${r.material.name}\n\n`})
+            raids.forEach(r=>{text+=`⏱️ *${r.durationMinutes} min* • *Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)} • 🧩 ${r.material.name}\n\n`})
             text+='Abra com *!raid NÍVEL*. Ex.: *!raid 20*\n🔑 Se você não tiver a chave, o Alpha tenta comprar automaticamente.\n🛒 Compra manual continua disponível com *!chaveraid NÍVEL*.\n🛒 Fragmentos extras da Raid 1: *!lojaraid*.'
             return await reply(text)
           }
