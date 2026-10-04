@@ -354,6 +354,39 @@ const QUIZZES=[
   {q:"Qual destes é um planeta anão?",a:["Plutão","Europa","Titã","Lua"],c:1}
 ]
 
+const HARD_QUIZZES=[
+  {q:"Qual tratado encerrou oficialmente a Primeira Guerra Mundial entre a Alemanha e os Aliados?",a:["Tratado de Utrecht","Tratado de Versalhes","Tratado de Tordesilhas","Tratado de Brest-Litovsk"],c:2,d:'hard'},
+  {q:"Qual elemento químico possui número atômico 74?",a:["Tungstênio","Titânio","Tântalo","Tório"],c:1,d:'hard'},
+  {q:"Qual é a capital do Cazaquistão em 2026?",a:["Almaty","Astana","Bishkek","Tashkent"],c:2,d:'hard'},
+  {q:"Quem formulou o princípio da incerteza na mecânica quântica?",a:["Niels Bohr","Werner Heisenberg","Max Planck","Erwin Schrödinger"],c:2,d:'hard'},
+  {q:"Em qual camada da atmosfera ocorre a maior parte dos fenômenos meteorológicos?",a:["Estratosfera","Mesosfera","Troposfera","Termosfera"],c:3,d:'hard'},
+  {q:"Qual filósofo escreveu 'Crítica da Razão Pura'?",a:["Hegel","Kant","Descartes","Nietzsche"],c:2,d:'hard'},
+  {q:"Qual país possui a maior quantidade de fusos horários quando considerados seus territórios ultramarinos?",a:["Rússia","Estados Unidos","França","Canadá"],c:3,d:'hard'},
+  {q:"Qual das seguintes estruturas celulares é responsável principalmente pela produção de ATP?",a:["Lisossomo","Ribossomo","Mitocôndria","Complexo de Golgi"],c:3,d:'hard'},
+  {q:"A Batalha de Hastings, em 1066, resultou na conquista da Inglaterra por qual povo?",a:["Normandos","Vikings dinamarqueses","Saxões","Francos"],c:1,d:'hard'},
+  {q:"Qual matemático demonstrou o último teorema de Fermat na década de 1990?",a:["Terence Tao","Andrew Wiles","John Nash","Grigori Perelman"],c:2,d:'hard'},
+  {q:"Qual é o menor número natural que possui exatamente 12 divisores positivos?",a:["48","60","72","84"],c:2,d:'hard'},
+  {q:"Qual cientista propôs a teoria da deriva continental no início do século XX?",a:["Charles Lyell","Alfred Wegener","James Hutton","Louis Agassiz"],c:2,d:'hard'},
+  {q:"Qual linguagem foi criada originalmente por Guido van Rossum?",a:["Ruby","Python","Perl","Lua"],c:2,d:'hard'},
+  {q:"Em redes de computadores, qual protocolo traduz nomes de domínio em endereços IP?",a:["DHCP","DNS","SMTP","SSH"],c:2,d:'hard'},
+  {q:"Qual império tinha Constantinopla como capital até 1453?",a:["Império Bizantino","Império Carolíngio","Império Sassânida","Império Austro-Húngaro"],c:1,d:'hard'},
+  {q:"Qual dessas luas pertence a Saturno?",a:["Europa","Titã","Fobos","Tritão"],c:2,d:'hard'},
+  {q:"Qual é a unidade SI de capacitância elétrica?",a:["Henry","Tesla","Farad","Weber"],c:3,d:'hard'},
+  {q:"Quem escreveu 'O Nome da Rosa'?",a:["Italo Calvino","Umberto Eco","Primo Levi","Giuseppe Tomasi di Lampedusa"],c:2,d:'hard'},
+  {q:"Qual país africano era anteriormente conhecido como Abissínia?",a:["Eritreia","Etiópia","Somália","Sudão"],c:2,d:'hard'},
+  {q:"Qual é o nome do processo pelo qual uma estrela massiva colapsa e explode ao fim de sua vida?",a:["Nebulização","Supernova","Fissão estelar","Pulsação térmica"],c:2,d:'hard'},
+  {q:"Qual estrutura de dados opera segundo a regra LIFO?",a:["Fila","Pilha","Árvore binária","Tabela hash"],c:2,d:'hard'},
+  {q:"Qual foi o primeiro elemento químico produzido artificialmente?",a:["Tecnécio","Promécio","Frâncio","Polônio"],c:1,d:'hard'},
+  {q:"Qual corrente oceânica contribui fortemente para amenizar o clima da Europa Ocidental?",a:["Corrente de Humboldt","Corrente do Golfo","Corrente de Benguela","Corrente de Oyashio"],c:2,d:'hard'},
+  {q:"Qual obra de George Orwell retrata a fazenda governada por animais após uma revolução?",a:["1984","A Revolução dos Bichos","Na Pior em Paris e Londres","Homenagem à Catalunha"],c:2,d:'hard'},
+  {q:"Qual organela vegetal contém clorofila e realiza fotossíntese?",a:["Peroxissomo","Cloroplasto","Vacúolo","Centríolo"],c:2,d:'hard'},
+  {q:"Na lógica proposicional, qual operador só é verdadeiro quando exatamente uma das proposições é verdadeira?",a:["AND","OR inclusivo","XOR","NAND"],c:3,d:'hard'},
+  {q:"Qual cientista descobriu a penicilina em 1928?",a:["Robert Koch","Alexander Fleming","Joseph Lister","Edward Jenner"],c:2,d:'hard'},
+  {q:"Qual dinastia chinesa construiu grande parte das seções da Grande Muralha que existem hoje?",a:["Han","Tang","Ming","Qing"],c:3,d:'hard'},
+  {q:"Em astronomia, o limite de Chandrasekhar está relacionado principalmente a qual objeto?",a:["Anãs brancas","Estrelas de nêutrons","Buracos negros supermassivos","Gigantes vermelhas"],c:1,d:'hard'},
+  {q:"Qual número irracional é a base dos logaritmos naturais?",a:["π","e","φ","√2"],c:2,d:'hard'}
+]
+
 export async function startQuiz(chat){
   return tx(async c=>{
     const current=await loadGame(c,chat,'quiz')
@@ -363,9 +396,13 @@ export async function startQuiz(chat){
       return {already:true,...current,remaining:Math.ceil((ttl-(now-Number(current.started||0)))/1000)}
     }
     const recent=Array.isArray(current?.recentQuestions)?current.recentQuestions:[]
-    const pool=QUIZZES.filter(x=>!recent.includes(x.q))
-    const item=(pool.length?pool:QUIZZES)[Math.floor(Math.random()*(pool.length?pool.length:QUIZZES.length))]
-    const state={...item,started:now,recentQuestions:[...recent,item.q].slice(-15)}
+    const hardPool=HARD_QUIZZES.filter(x=>!recent.includes(x.q))
+    const normalPool=QUIZZES.filter(x=>!recent.includes(x.q))
+    // Aproximadamente 45% das rodadas vêm do banco difícil.
+    const wantHard=Math.random()<.45
+    const chosenPool=(wantHard&&hardPool.length)?hardPool:(normalPool.length?normalPool:(hardPool.length?hardPool:[...QUIZZES,...HARD_QUIZZES]))
+    const item=chosenPool[Math.floor(Math.random()*chosenPool.length)]
+    const state={...item,difficulty:item.d==='hard'?'difícil':'normal',started:now,recentQuestions:[...recent,item.q].slice(-20)}
     await saveGame(c,chat,'quiz',state)
     return state
   })
