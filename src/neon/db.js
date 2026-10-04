@@ -300,6 +300,7 @@ export async function initDatabase() {
     ['pocao_pet_comum','Poção de Pet Comum','Recupera 60 HP do pet ativo.','consumable',500,'common'],
     ['pocao_pet_rara','Poção de Pet Rara','Recupera 160 HP do pet ativo.','consumable',1500,'rare'],
     ['pocao_pet_epica','Poção de Pet Épica','Recupera 320 HP do pet ativo.','consumable',3500,'epic'],
+    ['pocao_pet_suprema','Poção de Pet Suprema','Recupera 800 HP do pet ativo.','consumable',9000,'legendary'],
     ['energetico_pet','Energético Pet','Restaura instantaneamente 100% da energia do pet ativo.','consumable',12000,'rare'],
 
     // Armas
@@ -1664,6 +1665,7 @@ const PET_POTIONS = {
   pocao_pet_comum: { heal:60, name:'Poção de Pet Comum' },
   pocao_pet_rara: { heal:160, name:'Poção de Pet Rara' },
   pocao_pet_epica: { heal:320, name:'Poção de Pet Épica' },
+  pocao_pet_suprema: { heal:800, name:'Poção de Pet Suprema' },
 }
 
 const MAX_LEVEL=999
