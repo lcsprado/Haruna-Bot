@@ -209,9 +209,10 @@ async function runRaidCombat(chat,level,reply){
         const heals=bossEvents.filter(e=>e.autoHeal)
         const petHeals=bossEvents.filter(e=>e.autoPetHeal)
         const petSkillHeals=bossEvents.filter(e=>e.petSkillHeal)
+        const petSwitches=bossEvents.filter(e=>e.petSwitch)
         const deaths=bossEvents.filter(e=>!e.alive)
         const petFalls=bossEvents.filter(e=>e.petFainted)
-        if(r.round===1 || r.round%5===0 || heals.length || petHeals.length || petSkillHeals.length || deaths.length || petFalls.length){
+        if(r.round===1 || r.round%5===0 || heals.length || petHeals.length || petSkillHeals.length || petSwitches.length || deaths.length || petFalls.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
@@ -220,6 +221,7 @@ async function runRaidCombat(chat,level,reply){
           for(const e of heals) text+=`\n🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
           for(const e of petHeals) text+=`\n🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
           for(const e of petSkillHeals) text+=`\n💚 *${e.petSkillHeal.name}* ativou a skill de cura em ${e.name}: *+${Number(e.petSkillHeal.heal||0).toLocaleString('pt-BR')} HP* (${Number(e.petSkillHeal.hp||0).toLocaleString('pt-BR')}/${Number(e.petSkillHeal.maxHp||0).toLocaleString('pt-BR')}).`
+          for(const e of petSwitches) text+=`\n🔄 *${e.petSwitch.from}* caiu! O Reserva *${e.petSwitch.to}* entrou automaticamente.`
           for(const e of deaths) text+=`\n💀 *${e.name}* caiu sem cura e saiu da Raid.`
           for(const e of petFalls) text+=`\n💔 *${e.petName}* ficou sem HP e saiu da Raid.`
           await reply(text)
