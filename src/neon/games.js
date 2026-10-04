@@ -934,8 +934,7 @@ export async function raidRound(chat,level){
           pb=p.pet.bonus||pb
           p.pet.energy=Number(p.pet.energy)-1
           p.pet.turns=Number(p.pet.turns||0)+1
-          await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[p.pet.energy,p.jid])
-          await c.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[p.pet.energy,p.jid])
+          await persistRaidCombatPet(c,p.jid,p.pet)
         }
       }
       const petCritChance=Math.max(0,Number(pb.crit||0))
@@ -975,26 +974,38 @@ export async function raidRound(chat,level){
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))))
       const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:1)))
       p.hp=Math.max(0,Number(p.hp)-dmg)
-      let petDamage=0,petFainted=false,autoPetHeal=null
+      let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
         petDamage=Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense)))
         p.pet.hp=Math.max(0,Number(p.pet.hp)-petDamage)
         petFainted=p.pet.hp<=0
         if(petFainted){
-          const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
-          const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
-          if(chosenPet){
-            p.pet.hp=Math.min(Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),Number(p.pet.hp||0)+Number(chosenPet.heal||0))
-            const row=petPotionRows.find(x=>x.jid===p.jid&&x.item_id===chosenPet.item_id)
-            if(row) row.quantity=Number(row.quantity)-1
-            await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[p.jid,chosenPet.item_id])
-            autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:Number(chosenPet.heal||0),hp:Number(p.pet.hp)}
+          fallenPetName=p.pet.name
+          await persistRaidCombatPet(c,p.jid,p.pet)
+          const reserve=p.reservePet&&Number(p.reservePet.hp)>0&&Number(p.reservePet.energy)>0?p.reservePet:null
+          if(reserve){
+            petSwitch={from:fallenPetName,to:reserve.name}
+            p.pet=reserve
+            p.reservePet=null
+            p.pet.roundActive=false
             petFainted=false
+          }else{
+            const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
+            const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
+            if(chosenPet){
+              p.pet.hp=Math.min(Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),Number(p.pet.hp||0)+Number(chosenPet.heal||0))
+              const row=petPotionRows.find(x=>x.jid===p.jid&&x.item_id===chosenPet.item_id)
+              if(row) row.quantity=Number(row.quantity)-1
+              await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[p.jid,chosenPet.item_id])
+              autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:Number(chosenPet.heal||0),hp:Number(p.pet.hp)}
+              petFainted=false
+              await persistRaidCombatPet(c,p.jid,p.pet)
+            }
           }
+        }else{
+          await persistRaidCombatPet(c,p.jid,p.pet)
         }
-        await c.query('UPDATE pets SET hp=$1 WHERE jid=$2',[p.pet.hp,p.jid])
-        await c.query('UPDATE pet_collection SET hp=$1 WHERE jid=$2 AND active=TRUE',[p.pet.hp,p.jid])
       }
       let petSkillHeal=null
       const healCooldown=Math.max(0,Number(p.pet?.bonus?.healCooldown||0))
@@ -1034,7 +1045,7 @@ export async function raidRound(chat,level){
         }else p.alive=false
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
-      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,autoHeal,autoPetHeal,petSkillHeal,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
+      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,autoHeal,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
