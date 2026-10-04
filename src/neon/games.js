@@ -507,6 +507,14 @@ const PET_BOSS_SPECIALTIES={
   unicornio:{label:'🦄 Bênção Vital',drop:.04,defense:.04,healPct:.06,healCooldown:4},
   dragao:{label:'🐉 Caçador de Boss',bossDamage:.10},
 
+  // Aquáticos comuns: 2 atributos cada, com combinações diferentes e teto abaixo dos pets de Raid.
+  golfinho_celestial:{label:'🐬 Corrente Celestial',dodge:.05,xp:.04},
+  moreia_sombria:{label:'🐍 Emboscada Sombria',damage:.05,dodge:.04},
+  tubarao_abissal:{label:'🦈 Frenesi Abissal',damage:.07,crit:.03},
+  polvo_arcano:{label:'🐙 Tentáculos Arcanos',crit:.04,drop:.03},
+  orca_guerra:{label:'🐋 Investida Oceânica',damage:.05,defense:.05},
+  baleia_colossal:{label:'🐋 Canto Colossal',defense:.07,xp:.03},
+
   // Pets de Raid: todos têm pelo menos 2 especialidades. Eles exigem 100 materiais
   // e por isso devem superar pets comuns em utilidade endgame, sem tornar equipamento irrelevante.
   golem_ancestral:{label:'🪨 Muralha Ancestral',defense:.09,drop:.02,raid:true},
