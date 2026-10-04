@@ -124,6 +124,9 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
     try{
       for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name,usePet)
+        if(r.petSwitch){
+          await reply(`🔄 *TROCA AUTOMÁTICA DE PET!*\n\n💔 *${r.petSwitch.from}* caiu.\n🐾 O Reserva *${r.petSwitch.to}* entrou no combate automaticamente.`)
+        }
         if(r.petUnavailableReason==='energy'&&!petExitWarned){
           petExitWarned=true
           await reply('⚡ Seu pet ficou sem energia e saiu do combate. Você continuará atacando sozinho, sem o bônus dele.')
