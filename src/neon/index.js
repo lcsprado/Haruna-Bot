@@ -2495,6 +2495,26 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
     }
 
+    if(flow.stage==='pet_team_select'){
+      const pets=Array.isArray(flow.data?.pets)?flow.data.pets:[]
+      const picks=String(input||'').split(/[\s,;]+/).map(Number).filter(Number.isInteger)
+      if(!picks.length||picks.length>3||new Set(picks).size!==picks.length||picks.some(n=>n<1||n>pets.length)){
+        await reply('🐾 Escolha de *1 a 3 pets* pelos números da lista. Ex.: *1,2,5*.')
+        return true
+      }
+      const ids=picks.map(n=>pets[n-1].id)
+      const team=await setPetTeam(sender,ids,picks.length>1)
+      clearQuickFlow(chat,sender)
+      const bySlot=s=>team.find(x=>Number(x.slot)===s)
+      const p1=bySlot(1),p2=bySlot(2),p3=bySlot(3)
+      let text='🐾 *TIME PET EQUIPADO!*\n\n'
+      text+='1️⃣ *PRINCIPAL:* '+(p1?`${p1.name} — ${p1.species} • Nv.${p1.level}`:'Vazio')+'\n'
+      text+='2️⃣ *SUPORTE:* '+(p2?`${p2.name} — ${p2.species} • Nv.${p2.level}`:'Vazio')+'\n'
+      text+='3️⃣ *RESERVA:* '+(p3?`${p3.name} — ${p3.species} • Nv.${p3.level}`:'Vazio')+'\n\n'
+      text+='💡 Se o Principal cair no Boss/Raid, o Reserva entra automaticamente. O Suporte permanece no Slot 2.'
+      await reply(text)
+      return true
+    }
     if(flow.stage==='pet_select'){
       const pets=Array.isArray(flow.data?.pets)?flow.data.pets:[]
       const choice=Number(input)
