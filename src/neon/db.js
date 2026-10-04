@@ -4024,6 +4024,8 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     const maxEnergy=petMaxEnergy(1,species)
     const maxHp=petMaxHp(1,0,species)
     const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,hp,max_hp,active) VALUES($1,$2,$3,$4,$5,$5,TRUE) RETURNING *`,[jid,species,petName,maxEnergy,maxHp])).rows[0]
+    await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,collected.id])
+    await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,collected.id])
     const {rows}=await client.query(`INSERT INTO pets(jid,species,name,energy,hp,max_hp) VALUES($1,$2,$3,$4,$5,$5)
       ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=EXCLUDED.energy,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp,wins=0,losses=0,last_action=0,last_rest=0 RETURNING *`,[jid,species,petName,maxEnergy,maxHp])
     return {...rows[0],collectionId:collected.id,fee:total,petPrice:rule.price,changeFee:0,replaced:false,added:true}
@@ -4185,6 +4187,8 @@ export async function startPetExpedition(jid,petId,hours=4){
   return transaction(async client=>{
     const pet=(await client.query('SELECT * FROM pet_collection WHERE id=$1 AND jid=$2 FOR UPDATE',[petId,jid])).rows[0]
     if(!pet) throw new Error('Pet não encontrado. Use !meuspets para ver o ID.')
+    const teamSlot=(await client.query('SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId])).rows[0]
+    if(teamSlot) throw new Error(`Esse pet está no seu Time Pet (Slot ${teamSlot.slot}). Remova/troque o pet antes de mandar em expedição.`)
     if(pet.active) throw new Error('O pet ativo não pode sair em expedição. Escolha um pet reserva.')
     const busy=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
     if(busy){
