@@ -1333,14 +1333,26 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(gameType==='boss'&&s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
-    const petRow=usePet?(await c.query('SELECT species,name,level,xp,energy,hp,max_hp FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null:null
+    s.participants=s.participants||{}
+    const existingParticipant=s.participants[jid]||{}
+    let activePetSlot=Number(existingParticipant.activePetSlot||1)
+    let petRow=usePet?await loadBossCombatPet(c,jid,activePetSlot):null
+    let petSwitch=null
+    if(usePet&&activePetSlot===1&&petRow&&Number(petRow.hp)<=0){
+      const reserve=await loadBossCombatPet(c,jid,3)
+      if(reserve&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
+        petSwitch={from:petRow.name,to:reserve.name}
+        activePetSlot=3
+        petRow=reserve
+      }
+    }
     const petNoEnergy=Boolean(usePet&&petRow&&Number(petRow.energy)<2)
     const petNoHp=Boolean(usePet&&petRow&&Number(petRow.hp)<=0)
-    const petUnavailable=petNoEnergy||petNoHp
+    const petUnavailable=petNoEnergy||petNoHp||Boolean(usePet&&!petRow)
     let pet=petUnavailable?null:petRow
     if(pet){
       pet.energy=Number(pet.energy)-2
-      await c.query('UPDATE pets SET energy=$1 WHERE jid=$2',[pet.energy,jid])
+      await persistBossCombatPet(c,jid,pet)
     }
     const petBonus=petBossBonus(pet)
     const upgradeRows=(await c.query(
@@ -1366,7 +1378,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const baselineWithGearCrit=Math.max(5,Math.floor(rawBase*(gearCrit?1.5:1)))
     const damage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1)))
     const petDamage=pet?Math.max(0,damage-baselineWithGearCrit):0
-    s.hp=Math.max(0,Number(s.hp)-damage); s.participants=s.participants||{}
+    s.hp=Math.max(0,Number(s.hp)-damage)
     const old=s.participants[jid]||{damage:0,name:name||'Jogador',attacks:0,petHealing:0}
     const attackCount=Number(old.attacks||0)+1
     s.participants[jid]={
@@ -1374,7 +1386,8 @@ export async function attackBoss(chat,jid,name,usePet=true){
       damage:Number(old.damage||0)+damage,
       name:old.name||name||'Jogador',
       attacks:attackCount,
-      petHealing:Number(old.petHealing||0)
+      petHealing:Number(old.petHealing||0),
+      activePetSlot
     }
     let php=Math.min(Number(st.hp),effectiveMaxHp),bossDamage=0,autoHeal=null,petSkillHeal=null
     if(s.hp>0){
@@ -1386,8 +1399,14 @@ export async function attackBoss(chat,jid,name,usePet=true){
         pet.hp=Math.max(0,Number(pet.hp)-petTaken)
         pet.petDamageTaken=petTaken
         pet.petFainted=pet.hp<=0
-        await c.query('UPDATE pets SET hp=$1 WHERE jid=$2',[pet.hp,jid])
-        await c.query('UPDATE pet_collection SET hp=$1 WHERE jid=$2 AND active=TRUE',[pet.hp,jid])
+        await persistBossCombatPet(c,jid,pet)
+        if(pet.petFainted&&Number(pet.teamSlot||1)===1){
+          const reserve=await loadBossCombatPet(c,jid,3)
+          if(reserve&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
+            petSwitch={from:pet.name,to:reserve.name}
+            s.participants[jid].activePetSlot=3
+          }
+        }
       }
       // Skill de cura do pet principal: ativa por ciclos do próprio jogador.
       // Não ressuscita e ocorre antes da poção automática.
@@ -1519,9 +1538,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
         await saveGame(c,chat,'boss',marker)
       }
-      return {dead:true,mode:s.mode,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petSkillHeal,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted)}
+      return {dead:true,mode:s.mode,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     await saveGame(c,chat,gameType,s)
-    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petSkillHeal,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
+    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }
