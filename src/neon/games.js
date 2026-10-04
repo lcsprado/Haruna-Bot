@@ -813,8 +813,8 @@ async function persistRaidCombatPet(c,jid,pet){
   }
 }
 function raidPetPotion(rows,missingHp){
-  const heal={pocao_pet_comum:60,pocao_pet_rara:160,pocao_pet_epica:320}
-  const names={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_pet_epica:'Poção de Pet Épica'}
+  const heal={pocao_pet_comum:60,pocao_pet_rara:160,pocao_pet_epica:320,pocao_pet_suprema:800}
+  const names={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_pet_epica:'Poção de Pet Épica',pocao_pet_suprema:'Poção de Pet Suprema'}
   const a=(rows||[]).filter(x=>Number(x.quantity)>0&&heal[x.item_id]).map(x=>({...x,heal:heal[x.item_id]})).sort((x,y)=>x.heal-y.heal)
   const p=a.find(x=>x.heal>=Math.max(1,Number(missingHp)||1))||a[a.length-1]
   return p?{...p,name:names[p.item_id]}:null
@@ -1023,7 +1023,7 @@ export async function raidRound(chat,level){
     const special=Math.random()<.22
     const specialName=special?(cfg.level>=40?'Ruptura do Núcleo':'Golpe Devastador'):null
     const potionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_p','pocao_m','pocao_g','elixir_supremo']])).rows
-    const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']])).rows
+    const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema']])).rows
     for(const p of alive.filter(x=>x.alive)){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
       const teamSynergy=p.teamSynergy||{attack:0,defense:0,crit:0}
@@ -1469,7 +1469,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
         // suficiente. Em 0 HP, preserva a prioridade de troca para o Reserva.
         const maxPetHp=Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))
         if(!pet.petFainted && maxPetHp>0 && Number(pet.hp)/maxPetHp<.35){
-          const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']
+          const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema']
           const petPotionRows=(await c.query(
             'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
             [jid,petPotionIds]
@@ -1496,7 +1496,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
           // Mesmo comportamento da Raid: sem Reserva disponível, o pet usa
           // automaticamente a menor poção suficiente quando chegar a 0 HP.
           if(!switched){
-            const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']
+            const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema']
             const petPotionRows=(await c.query(
               'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
               [jid,petPotionIds]
