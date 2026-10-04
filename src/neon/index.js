@@ -7176,7 +7176,14 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
         } else if(['status'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
           const statusTarget=await resolvePlayerJid(sock,chat,mentioned || sender,msg)
-          const [p,statusPet]=await Promise.all([getCombatProfile(statusTarget),getPet(statusTarget)])
+          const p=await getCombatProfile(statusTarget)
+          if(!p) return await reply('❌ Perfil RPG não encontrado.')
+          let statusPet=null
+          try{
+            statusPet=await getPet(statusTarget)
+          }catch(err){
+            console.warn('[status] falha ao carregar pet; exibindo status sem bônus de pet',err?.message||err)
+          }
           const statusPetBonus=statusPet?petStatusBonus(statusPet):{critPct:0}
           const gearCritPct=Number(p.equipment_crit||0)*100
           const pvpCritPct=Number(p.effective_crit||0)*100
