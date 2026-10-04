@@ -8517,6 +8517,38 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const r=await buyItem(sender,cfg.keyId,1)
           await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
 
+        } else if(['relatorioraid','raidrelatorio','sinergiaraid'].includes(cmd)){
+          if(!isGroup) return await reply('📊 Use este comando dentro do grupo da Raid.')
+          const rooms=await getRaidStatuses(chat)
+          const room=rooms.find(r=>r.players?.[sender])
+          if(!room) return await reply('📊 Você não está em uma Raid ativa neste grupo.')
+          const p=room.players?.[sender]||{}
+          const syn=p.teamSynergy||null
+          const totalDamage=Number(p.damage||0)
+          const synDamage=Number(p.synergyBonusDamage||0)
+          const blocked=Number(p.synergyDamageBlocked||0)
+          const synCrits=Number(p.synergyCrits||0)
+          const share=totalDamage>0?(synDamage/totalDamage*100):0
+          const synText=syn
+            ? `🧬 Sinergia ativa: *${syn.label||'Time Pet'}*\n🎯 Bônus: *${syn.text||'ativo'}*`
+            : '🧬 Sinergia ativa: *nenhuma*'
+          return await reply(
+`📊 *RELATÓRIO DA RAID — SINERGIA*
+
+👹 *${room.name} — Lv.${room.level}*
+❤️ Boss: *${Number(room.hp||0).toLocaleString('pt-BR')}/${Number(room.maxHp||0).toLocaleString('pt-BR')}*
+
+${synText}
+
+⚔️ Seu dano total: *${totalDamage.toLocaleString('pt-BR')}*
+🧬 Dano gerado pela sinergia: *+${synDamage.toLocaleString('pt-BR')}*
+📈 Participação da sinergia no seu dano: *${share.toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
+💥 Críticos ativados pela sinergia: *${synCrits}*
+🛡️ Dano evitado pela sinergia: *${blocked.toLocaleString('pt-BR')}*
+
+📌 O relatório contabiliza apenas golpes processados depois que a telemetria de sinergia entrou em produção. O bônus continua sendo aplicado normalmente no cálculo da Raid.`
+          )
+
         } else if(['raid','raidstatus'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
           const raidCatalog=getRaidCatalog()
