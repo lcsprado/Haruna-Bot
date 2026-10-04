@@ -1640,6 +1640,39 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       return true
     }
 
+    if(flow.stage==='loan_offer_response'){
+      if(input!=='1'&&input!=='2'){
+        await reply('💳 Responda *1 para aceitar* ou *2 para recusar* a proposta de empréstimo.')
+        return true
+      }
+      const loanId=Number(flow.data?.loanId||0)
+      if(!loanId){
+        clearQuickFlow(chat,sender)
+        await reply('⚠️ Essa proposta não está mais disponível.')
+        return true
+      }
+      try{
+        if(input==='1'){
+          const r=await acceptLoan(sender,loanId)
+          clearQuickFlow(chat,sender)
+          await reply(`✅ *EMPRÉSTIMO ACEITO #${r.id}*
+
+💰 Recebido: *R$ ${fmt(r.principal)}*
+🕛 Sem juros até: *${fmtDate(r.due_at)}*
+📈 Depois: *2% por hora de atraso*
+🤖 Após o vencimento o Alpha cobra automaticamente carteira e banco.`)
+        }else{
+          const r=await rejectLoan(sender,loanId)
+          clearQuickFlow(chat,sender)
+          await reply(`❌ Proposta de empréstimo *#${r.id}* recusada.`)
+        }
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('⚠️ '+String(err?.message||'Essa proposta não está mais disponível.'))
+      }
+      return true
+    }
+
     if(flow.stage==='cltuber_driver_select'){
       const slot=Number(input)
       const status=await getCltUberStatus(sender)
@@ -6813,8 +6846,24 @@ ${results.join('\n')}
           if(!target?.endsWith('@s.whatsapp.net')) return await reply('⚠️ Não consegui identificar essa pessoa. Peça para ela enviar qualquer comando e tente novamente.')
           await consolidateUserIdentity(target,targetIdentity.aliases)
           const r=await createLoanOffer(sender,target,amount)
+          setQuickFlow(chat,target,'loan_offer_response',{loanId:r.id},10*60*1000)
           await reply(
-            `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*\n\n💰 Valor: *R$ ${fmt(r.principal)}*\n⏳ Prazo após o aceite: *2 horas sem juros*\n📈 Após 2h: *2% por hora de atraso*\n🛡️ Juros máximos: *100% do valor original*\n💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*\n⌛ Esta proposta expira em *10 minutos*.\n\n👉 Para aceitar: *!aceitaremprestimo ${r.id}*\n👉 Para recusar: *!recusaremprestimo ${r.id}*\n\n_O dinheiro só sai de quem empresta quando a proposta for aceita._`,
+            `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*
+
+💰 Valor: *R$ ${fmt(r.principal)}*
+⏳ Prazo após o aceite: *2 horas sem juros*
+📈 Após 2h: *2% por hora de atraso*
+🛡️ Juros máximos: *100% do valor original*
+💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*
+⌛ Expira em *10 minutos*.
+
+👤 @${String(target).split('@')[0]}, responda apenas:
+
+1️⃣ *Aceitar*
+2️⃣ *Recusar*
+
+_O dinheiro só sai de quem empresta quando a proposta for aceita._
+_Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             {mentions:[targetMention]}
           )
 
