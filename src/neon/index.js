@@ -4208,7 +4208,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
         return true
       }
-      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica'].includes(itemId)){
+      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(itemId)){
         const r=await usePetPotion(sender,itemId)
         clearQuickFlow(chat,sender)
         await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
@@ -5449,7 +5449,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
         return true
       }
-      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica'].includes(itemId)){
+      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(itemId)){
         const r=await usePetPotion(sender,itemId)
         clearQuickFlow(chat,sender)
         await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
@@ -7763,6 +7763,20 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           const r=await buyItem(sender,cmd,1)
           await progressDailyMission(sender,'shop')
           await reply(`🛒 Compra rápida concluída!\n📦 ${r.item.name} ×1\n💸 R$ ${fmt(r.total)}`)
+
+        } else if(['caixas','boxes','abrircaixas'].includes(cmd)){
+          const items=await getInventory(sender)
+          const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
+          if(!boxes.length) return await reply('🎁 Você não possui nenhuma caixa.')
+          if(boxes.length===1){
+            await showBoxQuantityMenu(chat,sender,reply,boxes[0])
+            return
+          }
+          setQuickFlow(chat,sender,'inventory_boxes_select',{boxes},90000)
+          let text='🎁 *QUAL CAIXA QUER ABRIR?*\n\n'
+          boxes.forEach((b,idx)=>text+=`*${idx+1}.* ${rarityLabel(b.rarity)} — *${b.name}* ×${b.quantity}\n`)
+          text+='\n👉 Responda só com o número.\n0️⃣ Sair'
+          await reply(text)
 
         } else if(['inventario','inventory','inv'].includes(cmd)){
           await showInventoryMenu(chat,sender,reply)
