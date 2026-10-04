@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType,
-  adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
+  adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
@@ -2516,11 +2516,13 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       clearQuickFlow(chat,sender)
       const bySlot=s=>team.find(x=>Number(x.slot)===s)
       const p1=bySlot(1),p2=bySlot(2),p3=bySlot(3)
+      const synergy=petTeamSynergy(team)
       let text='🐾 *TIME PET EQUIPADO!*\n\n'
       text+='1️⃣ *PRINCIPAL:* '+(p1?`${p1.name} — ${p1.species} • Nv.${p1.level}`:'Vazio')+'\n'
       text+='2️⃣ *SUPORTE:* '+(p2?`${p2.name} — ${p2.species} • Nv.${p2.level}`:'Vazio')+'\n'
       text+='3️⃣ *RESERVA:* '+(p3?`${p3.name} — ${p3.species} • Nv.${p3.level}`:'Vazio')+'\n\n'
-      text+='💡 Se o Principal cair no Boss/Raid, o Reserva entra automaticamente. O Suporte permanece no Slot 2.'
+      if(synergy) text+=`✨ *SINERGIA ATIVA — ${synergy.label}*\n${synergy.text}\n\n`
+      text+='💡 Se o Principal cair no Boss/Raid, o Reserva entra automaticamente. O Suporte fortalece a sinergia do time.'
       await reply(text)
       return true
     }
@@ -2666,7 +2668,11 @@ ${bonus.text}
       try{
         const r=await summonLegendaryPet(sender,flow.data.materialId)
         clearQuickFlow(chat,sender)
-        await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\n🧩 ${r.altar.summonCost||100} × ${r.altar.materialName} consumidos\n\n🐾 Você invocou: *${r.pet.name}*\n🎲 Chance: *${r.pet.chance}%*\n⚡ Poder inicial: *${r.pet.power}*\n📦 Materiais restantes: *${r.remaining}*\n\nO pet foi adicionado à coleção. Use *!meuspets* e *!usarpet ID* para ativá-lo.`)
+        if(r.duplicate){
+          await reply(`♻️ *PET DE RAID REPETIDO!*\n\n🐾 Saiu novamente: *${r.pet.name}*\n🚫 Cópias da mesma espécie não acumulam no time.\n\n💰 Conversão automática: *R$ ${fmt(r.cashRefund)}*\n🧩 Fragmentos devolvidos: *+${r.fragmentRefund} ${r.altar.materialName}*\n📦 Materiais restantes: *${r.remaining}*\n\nAssim a repetição ainda devolve valor sem permitir empilhar lendários iguais.`)
+        }else{
+          await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\n🧩 ${r.altar.summonCost||100} × ${r.altar.materialName} consumidos\n\n🐾 Você invocou: *${r.pet.name}*\n🎲 Chance: *${r.pet.chance}%*\n⚡ Poder inicial: *${r.pet.power}*\n📦 Materiais restantes: *${r.remaining}*\n\nO pet foi adicionado à coleção. Use *!meuspets* e *!usarpet ID* para ativá-lo.`)
+        }
       }catch(err){
         clearQuickFlow(chat,sender)
         await reply('❌ '+(err?.message||'Não foi possível concluir a invocação.'))
@@ -6758,7 +6764,10 @@ Se precisar de mais ajuda, use *!suporte*.`
               text+='1️⃣ *PRINCIPAL*\n'+(p1?`🐾 ${p1.name} — ${p1.species}\n⭐ Nv.${p1.level} • ❤️ ${p1.hp}/${petMaxHp(p1.level,p1.xp,p1.species)}`:'— Vazio')+'\n\n'
               text+='2️⃣ *SUPORTE*\n'+(p2?`🐾 ${p2.name} — ${p2.species}\n⭐ Nv.${p2.level} • ❤️ ${p2.hp}/${petMaxHp(p2.level,p2.xp,p2.species)}`:'— Vazio')+'\n\n'
               text+='3️⃣ *RESERVA*\n'+(p3?`🐾 ${p3.name} — ${p3.species}\n⭐ Nv.${p3.level} • ❤️ ${p3.hp}/${petMaxHp(p3.level,p3.xp,p3.species)}`:'— Vazio')+'\n\n'
-              text+='⚔️ Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.\n👉 Use *!equiparpet* para montar o time.'
+              const synergy=petTeamSynergy(team)
+              if(synergy) text+=`✨ *SINERGIA — ${synergy.label}*\n${synergy.text}\n\n`
+              else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa — combine 3 espécies diferentes do mesmo estilo.\n\n'
+              text+='⚔️ Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.\n🛟 O Suporte participa das sinergias passivas.\n👉 Use *!equiparpet* para montar o time.'
               return await reply(text)
             }
             if(cmd==='equiparpet'){
@@ -6770,7 +6779,8 @@ Se precisar de mais ajuda, use *!suporte*.`
                 const ids=picks.map(n=>pets[n-1].id)
                 const team=await setPetTeam(sender,ids,picks.length>1)
                 const bySlot=s=>team.find(x=>Number(x.slot)===s)
-                return await reply('🐾 *TIME PET EQUIPADO!*\n\n1️⃣ Principal: *'+(bySlot(1)?.name||'Vazio')+'*\n2️⃣ Suporte: *'+(bySlot(2)?.name||'Vazio')+'*\n3️⃣ Reserva: *'+(bySlot(3)?.name||'Vazio')+'*\n\n💡 Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.')
+                const synergy=petTeamSynergy(team)
+                return await reply('🐾 *TIME PET EQUIPADO!*\n\n1️⃣ Principal: *'+(bySlot(1)?.name||'Vazio')+'*\n2️⃣ Suporte: *'+(bySlot(2)?.name||'Vazio')+'*\n3️⃣ Reserva: *'+(bySlot(3)?.name||'Vazio')+'*'+(synergy?'\n\n✨ *'+synergy.label+'*\n'+synergy.text:'')+'\n\n💡 O Reserva entra se o Principal cair; o Suporte participa das sinergias.')
               }
               const team=await getPetTeam(sender)
               const slotById=new Map(team.map(x=>[Number(x.id),Number(x.slot)]))
@@ -8264,7 +8274,7 @@ _Os comandos antigos continuam funcionando normalmente._`
               a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%*\n` })
               text+='\n'
             })
-            text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n\n👉 Use *!invocarpet N*. Ex.: *!invocarpet 2*.'
+            text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Use *!invocarpet N*. Ex.: *!invocarpet 2*.'
             return await reply(text)
           }
 
