@@ -738,7 +738,7 @@ async function finishRaidRewards(c,s,cfg){
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
     const cash=Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier
-    const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier
+    const exp=Math.round(Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier)
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
     const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.round(Math.floor(cfg.petXpPool*(.15+.85*share))*petXpMultiplier)):0
