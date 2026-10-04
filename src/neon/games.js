@@ -1161,7 +1161,7 @@ async function giveBossDrops(c,jid,position,extraChance=0){
 }
 
 const SIEGE_EVENT_START=Date.parse('2026-10-04T18:00:00-03:00')
-const SIEGE_EVENT_END=Date.parse('2026-10-04T20:00:00-03:00')
+const SIEGE_EVENT_END=Date.parse('2026-10-04T20:10:00-03:00')
 const SIEGE_EVENT_KEY='cerco-colosso-2026-10-04'
 
 async function createSiegeBossEventState(c,chat){
