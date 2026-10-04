@@ -3922,10 +3922,14 @@ const PET_TEAM_STYLE_BY_SPECIES={
   salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico'
 }
 const PET_TEAM_STYLE_BONUS={
-  voador:{label:'🪽 Esquadrão Aéreo',attack:.03,defense:0,crit:0,text:'+3% ATK no Boss/Raid'},
-  guardiao:{label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
-  predador:{label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
-  mistico:{label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
+  voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.03,defense:0,crit:0,text:'+3% ATK no Boss/Raid'},
+  guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
+  predador:{styleLabel:'🐾 Predador',label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
+  mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
+}
+export function petStyleLabel(species){
+  const style=PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+  return PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
 export function petTeamSynergy(pets=[]){
   const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
