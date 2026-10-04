@@ -453,8 +453,8 @@ async function showMainMenu(chat,sender,reply){
 9️⃣ 🆘 Futebol, utilidades & suporte
 
 🔥 *DESTAQUES 2.0*
-🐾 Pets agora dão bônus estratégicos no Boss
-👹 Boss de Grupo: sexta 00:00 → sábado 23:59, com recompensas por colocação
+🐾 Time Pet com Principal, Suporte, Reserva e sinergias por estilo
+👹 Superboss semanal: sexta 00:00 → sábado 23:59 • Boss comum disponível fora dele
 🏢 Negócios, upgrades e renda passiva
 💼 Carreira no !trabalhar
 🚗 Uber com sua frota • 🏍️ iFood com bikes/motos
