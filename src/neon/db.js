@@ -3835,6 +3835,7 @@ const PET_BASE_ENERGY={
   cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
   tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,
   panda:200,tigre:225,leao:250,cervo_mistico:265,unicornio:280,dragao:320,
+  golfinho_celestial:160,moreia_sombria:175,tubarao_abissal:215,polvo_arcano:240,orca_guerra:270,baleia_colossal:310,
   golem_ancestral:340,urso_runico:345,colosso_cristal:360,
   salamandra_infernal:350,dragao_vulcanico:365,fenix_fogo:390,
   corvo_abissal:350,lobo_abismo:370,fenix_gelo:395,
@@ -3865,6 +3866,12 @@ export const PET_HP_PROFILES={
   cervo_mistico:{base:175,growth:14,type:'Curandeiro'},
   unicornio:{base:190,growth:16,type:'Místico'},
   dragao:{base:230,growth:19,type:'Boss Hunter'},
+  golfinho_celestial:{base:120,growth:10,type:'Suporte Ágil'},
+  moreia_sombria:{base:125,growth:10,type:'Ofensivo Ágil'},
+  tubarao_abissal:{base:175,growth:14,type:'Ofensivo'},
+  polvo_arcano:{base:165,growth:13,type:'Místico'},
+  orca_guerra:{base:205,growth:16,type:'Equilibrado'},
+  baleia_colossal:{base:245,growth:19,type:'Tanque'},
   golem_ancestral:{base:240,growth:18,type:'Tanque'},
   urso_runico:{base:225,growth:17,type:'Tanque'},
   colosso_cristal:{base:280,growth:21,type:'Tanque'},
@@ -3908,7 +3915,7 @@ function normalizedPetHp(p){
 // Estilos do time pet. A sinergia exige 3 ESPÉCIES DIFERENTES do mesmo estilo:
  // cópias da mesma espécie nunca multiplicam o bônus.
 const PET_TEAM_STYLE_BY_SPECIES={
-  cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',
+  cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
   golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
 
   papagaio:'voador',coruja:'voador',aguia:'voador',dragao:'voador',
@@ -3916,9 +3923,11 @@ const PET_TEAM_STYLE_BY_SPECIES={
   grifo_celestial:'voador',fenix_celestial:'voador',dragao_corrompido:'voador',fenix_alpha:'voador',
 
   gato:'predador',raposa:'predador',lobo:'predador',tigre:'predador',leao:'predador',
+  moreia_sombria:'predador',tubarao_abissal:'predador',
   urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
 
   coelho:'mistico',hamster:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
+  golfinho_celestial:'mistico',polvo_arcano:'mistico',
   salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico'
 }
 const PET_TEAM_STYLE_BONUS={
@@ -4071,7 +4080,13 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     leao:{level:20,price:500000,label:'🦁 Leão'},
     cervo_mistico:{level:20,price:500000,label:'🦌 Cervo Místico'},
     unicornio:{level:25,price:750000,label:'🦄 Unicórnio'},
-    dragao:{level:30,price:1000000,label:'🐉 Dragão'}
+    dragao:{level:30,price:1000000,label:'🐉 Dragão'},
+    golfinho_celestial:{level:9,price:85000,label:'🐬 Golfinho Celestial'},
+    moreia_sombria:{level:11,price:125000,label:'🐍 Moreia Sombria'},
+    tubarao_abissal:{level:15,price:275000,label:'🦈 Tubarão Abissal'},
+    polvo_arcano:{level:18,price:400000,label:'🐙 Polvo Arcano'},
+    orca_guerra:{level:22,price:600000,label:'🐋 Orca de Guerra'},
+    baleia_colossal:{level:28,price:900000,label:'🐋 Baleia Colossal'}
   }
   const rule=rules[species]
   if(!rule) throw new Error('Pet inválido. Use !adotar para ver os pets disponíveis.')
