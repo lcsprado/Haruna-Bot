@@ -1081,6 +1081,30 @@ async function start() {
   startLoanCollector()
   await acquireRuntimeLock(sessionId)
 
+  // Compensação real pelas desconexões de 04/10: 10 minutos completos a partir
+  // da primeira inicialização deste patch. O oneOffId impede renovar em redeploys.
+  const raidCompensationOneOffId='raid-disconnect-comp-2026-10-04-v2'
+  const existingRaidComp=(await db.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
+  if(String(existingRaidComp.oneOffId||'')!==raidCompensationOneOffId){
+    const startsAt=Date.now()
+    const endsAt=startsAt+10*60*1000
+    await db.query(`
+      INSERT INTO trevo_settings(key,value,updated_at)
+      VALUES('raid_compensation_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+      ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+    `,[JSON.stringify({
+      oneOffId:raidCompensationOneOffId,
+      startsAt,
+      endsAt,
+      eventLabel:'COMPENSAÇÃO POR DESCONEXÕES',
+      xpMultiplier:1.5,
+      petXpMultiplier:1.5,
+      gearBonus:.015,
+      materialMultiplier:3
+    })])
+    console.log('[Eventos] compensação de Raid ativada por 10 minutos completos')
+  }
+
   // Programação única solicitada para domingo, 04/10/2026, horário de Brasília.
   // O scheduleId impede que reinícios sobrescrevam marcadores de avisos já enviados.
   const scheduledEventsId='alpha-events-2026-10-03-v3'
@@ -1177,7 +1201,7 @@ async function start() {
           const rushStart=Date.parse('2026-10-04T10:30:00-03:00')
           const rushEnd=Date.parse('2026-10-04T11:30:00-03:00')
           const raidStart=Date.parse('2026-10-04T14:00:00-03:00')
-          const raidEnd=Date.parse('2026-10-04T15:40:00-03:00')
+          const raidEnd=Date.parse('2026-10-04T15:30:00-03:00')
           const siegeStart=Date.parse('2026-10-04T18:00:00-03:00')
           const siegeEnd=Date.parse('2026-10-04T20:00:00-03:00')
 
@@ -1189,7 +1213,7 @@ async function start() {
 💰 +50% em *!trabalhar*, *!uber* e *!ifood*
 🚕 CLT Uber não recebe o bônus.
 
-🔥 *14:00–15:40 — INVASÃO DAS RAIDS*
+🔥 *14:00–15:30 — INVASÃO DAS RAIDS*
 ✨ +50% XP de jogador
 🐾 +50% XP de pet
 ⚔️ Chance maior de equipamento
@@ -1215,7 +1239,7 @@ async function start() {
           if(now>=raidStart&&now<raidEnd) await sendScheduledGroupNotice(chat,'raid-start-2026-10-04',
 `🔥 *INVASÃO DAS RAIDS COMEÇOU!*
 
-⏱️ Até *15:40*
+⏱️ Até *15:30*
 ✨ +50% XP de jogador
 🐾 +50% XP de pet
 ⚔️ Chance adicional de equipamento
@@ -1223,17 +1247,23 @@ async function start() {
 
 🔑 Abram as Raids e montem o grupo.`)
 
-          if(now>=Date.parse('2026-10-04T15:30:00-03:00')&&now<raidEnd) await sendScheduledGroupNotice(chat,'raid-extension-2026-10-04',
-`🛠️ *COMPENSAÇÃO POR DESCONEXÕES*
+          const raidComp=(await db.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
+          if(Number(raidComp.startsAt||0)<=now && now<Number(raidComp.endsAt||0)){
+            const compRemaining=Math.max(1,Math.ceil((Number(raidComp.endsAt)-now)/60000))
+            await sendScheduledGroupNotice(chat,'raid-compensation-'+String(raidComp.oneOffId||raidComp.startsAt),
+`🛠️ *COMPENSAÇÃO POR DESCONEXÕES ATIVA!*
 
-🔥 A *Invasão das Raids* foi prorrogada por *+10 minutos*.
-⏱️ Novo encerramento: *15:40*.
+⏱️ *10 minutos completos* de compensação.
+🔥 Restam aproximadamente *${compRemaining} min*.
 
 ✨ +50% XP de jogador
 🐾 +50% XP de pet
 ⚔️ Chance adicional de equipamento
+🧩 Materiais de invocação da Raid continuam *3x*
 
-🔄 A prorrogação compensa as interrupções e reconexões do bot.`)
+💰 Dinheiro da Raid continua normal.`)
+          }
+
 
           if(now>=siegeStart&&now<siegeEnd){
             const siege=await autoStartSiegeBossEvent(chat)
@@ -8322,6 +8352,12 @@ Obrigado por apoiar o Alpha Bot 🍀`
           if(lucky.active){
             const remaining=Math.max(1,Math.ceil(Number(lucky.remainingMs||0)/1000))
             return await reply(`🍀 *DOUBLE LUCKY ATIVO!*\n\n🎁 Chances de raridade nas caixas: *x${eventMultLabel(lucky.multiplier)}*\n⏱️ Tempo restante: *${duration(remaining)}*.`)
+          }
+          const raidComp=(await db.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
+          const raidCompNow=Date.now()
+          if(Number(raidComp.startsAt||0)<=raidCompNow && raidCompNow<Number(raidComp.endsAt||0)){
+            const remaining=Math.max(1,Math.ceil((Number(raidComp.endsAt)-raidCompNow)/1000))
+            return await reply(`🛠️ *COMPENSAÇÃO POR DESCONEXÕES ATIVA!*\n\n🔥 Bônus válidos nas Raids:\n✨ +50% XP de jogador\n🐾 +50% XP de pet\n⚔️ Chance adicional de equipamento\n🧩 Materiais de invocação *3x*\n💰 Dinheiro normal\n\n⏱️ Tempo restante: *${duration(remaining)}*.`)
           }
           if(event.scheduled){
             const starts=new Date(event.startsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
