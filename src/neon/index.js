@@ -1721,8 +1721,8 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 ⚔️ *Raids cooperativas*
 *!raid* — lista as Raids e mostra a Raid ativa
-*!raid 20* — abre a Raid Lv.20
-*!chaveraid 20* — compra a chave da Raid
+*!raid 20* — abre a Raid Lv.20; se faltar chave, compra automaticamente
+*!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar* — entra na Raid antes ou depois do início, enquanto houver vaga
 *!go* — host inicia (mínimo 2 jogadores)
@@ -7477,12 +7477,12 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
             const raids=getRaidCatalog()
             let text='⚔️ *RAIDS DO ALPHA*\n\n'
             raids.forEach(r=>{text+=`*Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)} • 🧩 ${r.material.name}\n\n`})
-            text+='Abra com *!raid NÍVEL*. Ex.: *!raid 20*\nCompre a chave com *!chaveraid NÍVEL*.\n🛒 Fragmentos extras da Raid 1: *!lojaraid*.'
+            text+='Abra com *!raid NÍVEL*. Ex.: *!raid 20*\n🔑 Se você não tiver a chave, o Alpha tenta comprar automaticamente.\n🛒 Compra manual continua disponível com *!chaveraid NÍVEL*.\n🛒 Fragmentos extras da Raid 1: *!lojaraid*.'
             return await reply(text)
           }
           const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
           await progressDailyMission(sender,'game')
-          await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🔑 A chave só será consumida quando a luta começar.\n👥 Máximo: *5 jogadores* • mínimo: *2*\n⏳ Sala aberta por *5 minutos*.\n\n👉 Seus irmãos podem usar *!entrar*.\n🚀 Depois use *!go*.`)
+          await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando a luta começar.\n👥 Máximo: *5 jogadores* • mínimo: *2*\n⏳ Sala aberta por *5 minutos*.\n\n👉 Seus irmãos podem usar *!entrar*.\n🚀 Depois use *!go*.`)
 
         } else if(['entrar','entrarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
