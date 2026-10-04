@@ -10,7 +10,7 @@ import makeWASocket, {
 import pino from 'pino'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
-  deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
+  deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
   equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetPotion, usePetEnergyItem, getCombatProfile, battle, combatLeaderboard, claimLevelRewards,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
@@ -1653,7 +1653,7 @@ Você possui: *${stock}*
       '2️⃣ 🧪 Consumíveis — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
       '3️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
       '4️⃣ 📦 Outros — '+others.length+' tipos\n'+
-      '5️⃣ 💰 Vender itens\n\n'+
+      '5️⃣ 💰 Vender / descartar itens\n\n'+
       '0️⃣ Sair'
     )
   }
@@ -1685,15 +1685,15 @@ Você possui: *${stock}*
     const items=await getInventory(sender)
     if(!items.length){
       clearQuickFlow(chat,sender)
-      await reply('💰 Você não possui itens para vender.')
+      await reply('💰 Você não possui itens para vender ou descartar.')
       return
     }
     setQuickFlow(chat,sender,'inventory_sell_select',{items},5*60*1000)
-    let text='💰 *VENDER ITENS*\n\n'
+    let text='🧹 *GERENCIAR INVENTÁRIO*\n\n'
     items.forEach((i,idx)=>{
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
     })
-    text+='\n👉 Um item: mande só o número.\n📦 Vários itens: mande os números separados por vírgula. Ex.: *1,3,5*\n_No lote, o Alpha Bot vende as cópias repetidas e mantém 1 de cada. Lendários ficam de fora._\n\n⚠️ Equipamento ativo mantém 1 cópia protegida.\n9️⃣ Voltar\n0️⃣ Sair'
+    text+='\n👉 *Um item:* mande só o número.\n📦 *Vários itens:* mande os números separados por vírgula. Ex.: *1,3,5,8*\n\nAo selecionar vários, você poderá:\n1️⃣ vender tudo que for permitido\n2️⃣ vender só as cópias repetidas\n3️⃣ descartar tudo que for permitido\n\n🔒 Equipamento ativo preserva 1 cópia.\n🌟 Lendários não entram em ações em lote.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
   }
   async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
@@ -4362,40 +4362,52 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         const indexes=[...new Set(input.split(',').map(x=>Number(x.trim())-1).filter(Number.isInteger))]
         const selected=indexes.map(i=>flow.data.items?.[i]).filter(Boolean)
         if(selected.length<2){
-          await reply('📦 Para vender vários itens, mande pelo menos dois números. Exemplo: *1,3,5*.')
+          await reply('📦 Para gerenciar vários itens, mande pelo menos dois números. Exemplo: *1,3,5*.')
           return true
         }
 
-        const batch=[]
-        const skipped=[]
+        const p=await getCombatProfile(sender)
+        const prepared=[]
+        const protectedItems=[]
         for(const item of selected){
           if(item.rarity==='legendary'){
-            skipped.push(item.name+' (lendário)')
+            protectedItems.push(item.name+' (lendário)')
             continue
           }
-          const qty=Math.max(0,Number(item.quantity)-1)
-          if(qty<1){
-            skipped.push(item.name+' (sem repetidos)')
+          const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id)
+          const maxAll=Math.max(0,Number(item.quantity)-(equipped?1:0))
+          const duplicates=Math.max(0,Number(item.quantity)-1)
+          if(maxAll<1){
+            protectedItems.push(item.name+' (equipado/protegido)')
             continue
           }
-          batch.push({itemId:item.item_id,name:item.name,rarity:item.rarity,qty,unit:Number(item.sell_unit)})
+          prepared.push({
+            itemId:item.item_id,
+            name:item.name,
+            rarity:item.rarity,
+            category:item.category,
+            quantity:Number(item.quantity),
+            unit:Number(item.sell_unit),
+            equipped,
+            maxAll,
+            duplicates
+          })
         }
 
-        if(!batch.length){
-          await reply('📦 Nenhum dos itens escolhidos possui cópias repetidas vendáveis.')
+        if(!prepared.length){
+          await reply('🔒 Nenhum dos itens escolhidos pode ser alterado em lote. Equipados únicos e lendários ficam protegidos.')
           return true
         }
 
-        const total=batch.reduce((sum,i)=>sum+(i.qty*i.unit),0)
-        let text='⚠️ *CONFIRMAR VENDA EM LOTE*\n\n'
-        for(const i of batch){
-          text+='• '+rarityLabel(i.rarity)+' *'+i.name+'* ×'+i.qty+' — R$ '+fmt(i.qty*i.unit)+'\n'
+        let text='🧹 *AÇÃO EM LOTE*\n\n'
+        for(const i of prepared){
+          text+='• '+rarityLabel(i.rarity)+' *'+i.name+'* ×'+i.quantity
+          if(i.equipped) text+=' 🔒1 equipado'
+          text+='\n'
         }
-        text+='\n📦 Tipos de item: *'+batch.length+'*\n💵 Total estimado: *R$ '+fmt(total)+'*'
-        if(skipped.length) text+='\n\n⏭️ Ignorados: '+skipped.join(', ')
-        text+='\n\n1️⃣ Confirmar venda\n2️⃣ Cancelar'
-
-        setQuickFlow(chat,sender,'inventory_sell_batch_confirm',{batch},90000)
+        if(protectedItems.length) text+='\n⏭️ Protegidos: '+protectedItems.join(', ')+'\n'
+        text+='\nO que deseja fazer?\n\n1️⃣ 💰 Vender *tudo* que for permitido\n2️⃣ ♻️ Vender *somente repetidos* e manter 1 de cada\n3️⃣ 🗑️ Descartar *tudo* que for permitido\n4️⃣ Cancelar'
+        setQuickFlow(chat,sender,'inventory_batch_action',{items:prepared},90000)
         await reply(text)
         return true
       }
@@ -4414,6 +4426,80 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable},90000)
       await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
+      return true
+    }
+
+    if(flow.stage==='inventory_batch_action'){
+      if(input==='4'){
+        await sellMenu()
+        return true
+      }
+      if(!['1','2','3'].includes(input)){
+        await reply('🧹 Escolha *1 Vender tudo*, *2 Vender repetidos*, *3 Descartar tudo* ou *4 Cancelar*.')
+        return true
+      }
+
+      const mode=input==='1'?'sell_all':input==='2'?'sell_duplicates':'discard_all'
+      const batch=[]
+      const skipped=[]
+      for(const item of flow.data.items||[]){
+        const qty=mode==='sell_duplicates'?Number(item.duplicates||0):Number(item.maxAll||0)
+        if(qty<1){
+          skipped.push(item.name)
+          continue
+        }
+        batch.push({...item,qty})
+      }
+
+      if(!batch.length){
+        await reply(mode==='sell_duplicates'
+          ? '♻️ Os itens selecionados não possuem cópias repetidas para vender.'
+          : '🔒 Nenhum item selecionado pode ser alterado.')
+        return true
+      }
+
+      if(mode==='discard_all'){
+        let text='⚠️ *CONFIRMAR DESCARTE EM LOTE*\n\n'
+        batch.forEach(i=>{text+='• *'+i.name+'* ×'+i.qty+'\n'})
+        text+='\n🗑️ Unidades que serão apagadas: *'+batch.reduce((s,i)=>s+i.qty,0)+'*'
+        text+='\n💰 Você receberá: *R$ 0*'
+        text+='\n\n⚠️ Essa ação não pode ser desfeita.\n\n1️⃣ Confirmar descarte\n2️⃣ Cancelar'
+        setQuickFlow(chat,sender,'inventory_discard_batch_confirm',{batch},90000)
+        await reply(text)
+        return true
+      }
+
+      const total=batch.reduce((sum,i)=>sum+(i.qty*i.unit),0)
+      let text='⚠️ *CONFIRMAR VENDA EM LOTE*\n\n'
+      batch.forEach(i=>{text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(i.qty*i.unit)+'\n'})
+      text+='\n🧮 Unidades: *'+batch.reduce((s,i)=>s+i.qty,0)+'*'
+      text+='\n💵 Total estimado: *R$ '+fmt(total)+'*'
+      if(skipped.length) text+='\n⏭️ Sem repetidos: '+skipped.join(', ')
+      text+='\n\n1️⃣ Confirmar venda\n2️⃣ Cancelar'
+      setQuickFlow(chat,sender,'inventory_sell_batch_confirm',{batch},90000)
+      await reply(text)
+      return true
+    }
+
+    if(flow.stage==='inventory_discard_batch_confirm'){
+      if(input==='2'){
+        await reply('✅ Descarte cancelado.')
+        await sellMenu()
+        return true
+      }
+      if(input!=='1'){
+        await reply('Escolha *1 Confirmar descarte* ou *2 Cancelar*.')
+        return true
+      }
+      const selections=(flow.data.batch||[]).map(i=>({itemId:i.itemId,qty:i.qty}))
+      const r=await discardItemsBatch(sender,selections)
+      let text='🗑️ *DESCARTE EM LOTE CONCLUÍDO*\n\n'
+      r.discarded.forEach(i=>{text+='• *'+i.name+'* ×'+i.qty+' descartado(s)\n'})
+      text+='\n📦 Tipos removidos: *'+r.types+'*'
+      text+='\n🧮 Unidades removidas: *'+r.totalUnits+'*'
+      text+='\n💰 Recebido: *R$ 0*'
+      await reply(text)
+      await inventoryMenu()
       return true
     }
 
