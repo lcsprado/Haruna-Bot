@@ -609,7 +609,7 @@ export async function joinRaid(chat,jid,name='Jogador'){
   await ensureUser(jid,name)
   return tx(async c=>{
     const s=await loadGame(c,chat,'raid')
-    if(!s||!['lobby','active'].includes(s.status)||Number(s.expiresAt||0)<Date.now()) throw new Error('Não existe Raid disponível para entrar.')
+    if(!s||!['lobby','active'].includes(s.status)||(s.status==='lobby'&&Number(s.expiresAt||0)<Date.now())) throw new Error('Não existe Raid disponível para entrar.')
     if(s.players?.[jid]) return {already:true,lateJoin:s.status==='active',...s}
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -713,7 +713,7 @@ export async function startRaid(chat,host){
       const gearHp=Number(w?.hp||0)+Number(a?.hp||0)
       s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,alive:true,heals:0,pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null}
     }
-    s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.expiresAt=Date.now()+s.durationMinutes*60*1000
+    s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
     await saveGame(c,chat,'raid',s)
     return s
   })
@@ -797,12 +797,18 @@ export async function raidRound(chat){
     if(!s||s.status!=='active') return {reason:'inactive'}
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
-    if(Number(s.expiresAt||0)<Date.now()){
-      s.status='failed';s.failReason='timeout';await saveGame(c,chat,'raid',s)
+    const durationMs=Number(s.durationMinutes||raidDurationMinutes(cfg.level))*60*1000
+    const elapsedMs=Number.isFinite(Number(s.activeElapsedMs))
+      ? Number(s.activeElapsedMs)
+      : Math.max(0,Number(s.round||0)*8000)
+    if(elapsedMs>=durationMs){
+      s.status='failed';s.failReason='timeout';s.activeElapsedMs=elapsedMs;await saveGame(c,chat,'raid',s)
       return {failed:true,reason:'timeout',config:cfg,hp:s.hp,maxHp:s.maxHp}
     }
 
     s.round=Number(s.round||0)+1
+    s.activeElapsedMs=elapsedMs+8000
+    s.expiresAt=Date.now()+Math.max(0,durationMs-s.activeElapsedMs)
     const events=[]
     const alive=Object.values(s.players||{}).filter(p=>p.alive)
     if(!alive.length){
