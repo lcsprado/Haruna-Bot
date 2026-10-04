@@ -39,7 +39,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent,
+  startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent,
   getRaidCatalog, getRaidStatus, createRaid, joinRaid, cancelRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -121,7 +121,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   ;(async()=>{
     let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     try{
-      for(let i=0;i<180;i++){
+      for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name,usePet)
         if(r.petUnavailableReason==='energy'&&!petExitWarned){
           petExitWarned=true
@@ -165,7 +165,7 @@ async function runRaidCombat(chat,reply){
   raidRuns.set(chat,true)
   ;(async()=>{
     try{
-      for(let i=0;i<30;i++){
+      for(let i=0;i<180;i++){
         let r
         for(let deadlockAttempt=0;;deadlockAttempt++){
           try{
@@ -1154,6 +1154,37 @@ async function start() {
         const chat=lic.chat_jid
         if(!chat?.endsWith('@g.us')) continue
         try{
+          const night=await autoStartNightBossEvent(chat)
+          if(night?.spawned){
+            await sock.sendMessage(chat,{text:
+`🌑 *MADRUGADA MALDITA — 03:03*
+
+👹 *${night.name}*
+❤️ HP: *${Number(night.maxHp).toLocaleString('pt-BR')}*
+⚔️ ATK: *${night.atk}*
+⏱️ Disponível até *03:30*.
+
+🎁 *CAIXA ÉPICA GARANTIDA* com pelo menos 500 de dano
+🌙 Título permanente: *Insone do Alpha*
+🧩 +2 Fragmentos do Núcleo de Pedra
+💰 *2x dinheiro*
+✨ *2x XP*
+🐾 *2x XP de pet*
+👥 Com *3+ participantes* acima de 500 de dano: *25% de chance de Caixa Rara extra* para cada um
+👑 Top 1 leva a *Coroa da Madrugada* — *+20 ATK / +50 DEF*
+
+⚔️ Usem *${prefix}boss* e depois *${prefix}atacar*.
+😈 Quem dormir perde.`
+            })
+          }else if(night?.stopped){
+            await sock.sendMessage(chat,{text:
+`🌘 *03:30 — A MADRUGADA ACABOU*
+
+A *Sentinela das 03:03* desapareceu.
+Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 😈`
+            })
+          }
+
           const r=await autoStartBossEvent(chat)
           if(!r?.spawned) continue
           await sock.sendMessage(chat,{text:
