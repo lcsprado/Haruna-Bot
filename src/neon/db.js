@@ -789,7 +789,7 @@ export async function claimDaily(jid) {
     const reward=streakRewardFor(streak)
     const bonusCash=Number(reward?.bonusCash||0)
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const totalCash=(baseAmount+bonusCash)*moneyMultiplier
+    const totalCash=Math.round((baseAmount+bonusCash)*moneyMultiplier)
 
     await client.query(
       `UPDATE daily_streaks
@@ -865,7 +865,7 @@ export async function work(jid, taxMultiplier=1) {
     const oldXp=Number(cr.career_xp), oldRank=careerRank(oldXp)
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const xpGain=(25+Math.floor(Math.random()*16))*xpMultiplier
+    const xpGain=Math.round((25+Math.floor(Math.random()*16))*xpMultiplier)
     const newXp=oldXp+xpGain, newRank=careerRank(newXp)
     // Faixa salarial maior para manter o !trabalhar relevante ao longo da progressão,
     // sem ultrapassar o retorno de ativos caros como Uber e negócios.
@@ -1881,7 +1881,7 @@ export async function battle(attackerJid, defenderJid) {
 
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const reward=(600+Math.floor(Math.random()*601))*moneyMultiplier
+    const reward=Math.round((600+Math.floor(Math.random()*601))*moneyMultiplier)
     await client.query(
       'UPDATE stats SET hp=$1,win=win+1,updated_at='+nowSql+' WHERE jid=$2',
       [Math.max(1,winner.hp),winner.jid]
@@ -1899,8 +1899,8 @@ export async function battle(attackerJid, defenderJid) {
       VALUES('system',$1,$2,'battle_reward','pvp victory')
     `,[winner.jid,reward])
 
-    const winXpGain=40*xpMultiplier
-    const loseXpGain=15*xpMultiplier
+    const winXpGain=Math.round(40*xpMultiplier)
+    const loseXpGain=Math.round(15*xpMultiplier)
     const winExp=await applyExp(client,winner.jid,winXpGain)
     const loseExp=await applyExp(client,loser.jid,loseXpGain)
 
@@ -2612,13 +2612,13 @@ export async function dungeon(jid) {
     if(php<=0){
       const recover=Math.max(1,Math.floor(Number(row.max_hp)*.30))
       await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[recover,jid])
-      const lossExp=10*xpMultiplier
+      const lossExp=Math.round(10*xpMultiplier)
       const expRes=await applyExp(client,jid,lossExp)
       return {ok:true,won:false,monster:m.name,hp:recover,maxHp:Number(row.max_hp),exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
     }
 
-    const cash=Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier
-    const exp=Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier
+    const cash=Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
+    const exp=Math.round(Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier)
     await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
     await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
     await client.query(`
@@ -3936,7 +3936,7 @@ export async function petAction(jid,action){
     if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
     const oldLevel=Number(pet.level||1)
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const actionXp=Math.max(0,Number(a.xp||0))*xpMultiplier
+    const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier)
     const xp=Number(pet.xp)+actionXp, level=1+Math.floor(xp/100)
     const levelsGained=Math.max(0,level-oldLevel)
     // Progressão natural: cada nível do pet concede +2 de Poder, além do bônus de treino/aventura.
@@ -3984,12 +3984,12 @@ export async function petAdventure(jid){
     const energyFactor=Math.min(1,energy/fullAdventureThreshold)
     const fullAdventureCash=13000+Math.floor(Math.random()*5001)
     const baseCash=Math.max(1000,Math.floor(fullAdventureCash*energyFactor))
-    const cash=baseCash*moneyMultiplier
+    const cash=Math.round(baseCash*moneyMultiplier)
     // Aventura deve dar progresso relevante, mas não vários níveis de uma vez.
     // Com a progressão atual (100 XP por nível), usar 2 XP por energia fazia
     // pets de alta capacidade subirem 5-7 níveis numa única aventura.
     const baseAdventureXp=Math.max(3,Math.floor(energy*0.35))
-    const xpGain=baseAdventureXp*xpMultiplier
+    const xpGain=Math.round(baseAdventureXp*xpMultiplier)
     const xp=Number(pet.xp||0)+xpGain
     const nextLevel=1+Math.floor(xp/100)
     const levelsGained=Math.max(0,nextLevel-Number(pet.level||1))
@@ -4094,8 +4094,8 @@ export async function petDuel(challengerJid,targetJid){
     }
 
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const updatedA=await evolve(a,hpA,(winnerKey==='a'?25:10)*xpMultiplier,winnerKey==='a')
-    const updatedB=await evolve(b,hpB,(winnerKey==='b'?25:10)*xpMultiplier,winnerKey==='b')
+    const updatedA=await evolve(a,hpA,Math.round((winnerKey==='a'?25:10)*xpMultiplier),winnerKey==='a')
+    const updatedB=await evolve(b,hpB,Math.round((winnerKey==='b'?25:10)*xpMultiplier),winnerKey==='b')
     const winner=winnerKey==='a'?updatedA:updatedB
     const loser=winnerKey==='a'?updatedB:updatedA
     return {winnerJid:winner.jid,loserJid:loser.jid,winner,loser,rounds}
