@@ -684,9 +684,10 @@ export async function startRaid(chat,host){
     if(s.host!==host) throw new Error('Somente quem abriu a Raid pode iniciar.')
     if(Number(s.expiresAt||0)<Date.now()) throw new Error('A sala expirou. Abra outra Raid.')
     const ids=Object.keys(s.players||{})
-    if(ids.length<2) throw new Error('A Raid precisa de pelo menos 2 jogadores.')
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
+    const minPlayers=Number(cfg.level)===10?1:2
+    if(ids.length<minPlayers) throw new Error(`A Raid Lv.${cfg.level} precisa de pelo menos ${minPlayers} jogador${minPlayers>1?'es':''}.`)
 
     const users=(await c.query('SELECT jid,level,push_name FROM users WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const stats=(await c.query('SELECT * FROM stats WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
