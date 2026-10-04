@@ -1077,10 +1077,36 @@ function petAbilityBaseText(species){
   return parts.join(' • ')
 }
 
+function petRoleTags(species){
+  const spec=PET_STATUS_SPECIALTIES[String(species||'').toLowerCase()]
+  if(!spec) return '🐾 Geral'
+  const stats=spec.stats||{[spec.stat]:spec.base}
+  const defs={
+    damage:['⚔️','Dano'],
+    bossDamage:['👹','Boss'],
+    defense:['🛡️','Defesa'],
+    crit:['⚡','Crítico'],
+    dodge:['💨','Esquiva'],
+    xp:['✨','XP'],
+    drop:['🍀','Drop']
+  }
+  const ranked=Object.entries(stats)
+    .filter(([stat,value])=>defs[stat]&&Number(value)>0)
+    .sort((a,b)=>Number(b[1])-Number(a[1]))
+    .slice(0,2)
+    .map(([stat])=>defs[stat][0]+' '+defs[stat][1])
+  if(Number(spec.healPct||0)>0) ranked.push('💚 Cura')
+  return ranked.slice(0,2).join(' / ')||'🐾 Geral'
+}
+
+function petIdentityTag(species){
+  return petStyleLabel(species)+' • '+petRoleTags(species)
+}
+
 function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
   let text=title+'\n\n'
   for(const p of ADOPTABLE_PETS){
-    text+=`${p.label} — Nv.${p.level} • R$ ${fmt(p.price)}\n`
+    text+=`${p.label} — ${petIdentityTag(p.species)}\n   ⭐ Nv.${p.level} • 💰 R$ ${fmt(p.price)}\n`
     text+=`   ✨ ${petAbilityBaseText(p.species)}\n`
   }
   text+='\n📈 As habilidades aumentam com o nível do pet.\n'
@@ -6835,7 +6861,7 @@ Se precisar de mais ajuda, use *!suporte*.`
               let text='🐾 *ESCOLHA SEU PET*\n\n'
               pets.forEach((p,i)=>{
                 const bonus=petStatusBonus(p)
-                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} *${p.name}* — ${p.species}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ✨ ${bonus.text}\n`
+                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} *${p.name}* — ${p.species}\n   ${petIdentityTag(p.species)}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ✨ ${bonus.text}\n`
               })
               text+='\n🟢 = pet equipado agora\n\n👉 Mande apenas o *número* do pet que quer escolher.\n0️⃣ Cancelar'
               return await reply(text)
@@ -6927,7 +6953,7 @@ Se precisar de mais ajuda, use *!suporte*.`
                 const tag=slot===1?' 👑':slot===2?' 🛟':slot===3?' 🔄':''
                 const bonus=petStatusBonus(p)
                 text+='*'+(i+1)+'.* *'+p.name+'* — '+p.species+' • '+petStyleLabel(p.species)+' • Nv.'+p.level+tag+'\n'
-                text+='   ✨ '+bonus.text+'\n'
+                text+='   '+petIdentityTag(p.species)+'\n   ✨ '+bonus.text+'\n'
               })
               text+='\n👉 Envie até *3 números de uma vez*, na ordem dos slots. Ex.: *1,2,3*\n1º Principal • 2º Suporte • 3º Reserva\n0️⃣ Cancelar'
               return await reply(text)
@@ -6939,7 +6965,7 @@ Se precisar de mais ajuda, use *!suporte*.`
               let text='🐾 *SUA COLEÇÃO DE PETS*\n\n'
               pets.forEach((p,i)=>{
                 const bonus=petStatusBonus(p)
-                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} *${p.name}* — ${p.species}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)}\n   ✨ ${bonus.text}\n`
+                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} *${p.name}* — ${p.species}\n   ${petIdentityTag(p.species)}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)}\n   ✨ ${bonus.text}\n`
               })
               text+='\n🟢 = pet equipado agora\n\n👉 Mande apenas o *número* para escolher.\n0️⃣ Cancelar'
               return await reply(text)
@@ -6962,7 +6988,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='meupet'||cmd==='statuspet'){
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
               const bonus=petStatusBonus(p)
-              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n🧭 Especialidade de expedição: *${petExpeditionTrait(p.species).label}*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
+              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🎯 Perfil: *${petIdentityTag(p.species)}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n🧭 Especialidade de expedição: *${petExpeditionTrait(p.species).label}*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
             }
             if(cmd==='petaventura'){
               const p=await petAdventure(sender)
