@@ -859,6 +859,10 @@ export async function getCareer(jid){
   return {...row,rank,next}
 }
 
+const SUNDAY_RUSH_START=Date.parse('2026-10-04T10:30:00-03:00')
+const SUNDAY_RUSH_END=Date.parse('2026-10-04T11:30:00-03:00')
+const sundayRushMultiplier=()=>Date.now()>=SUNDAY_RUSH_START&&Date.now()<SUNDAY_RUSH_END?1.5:1
+
 export async function work(jid, taxMultiplier=1) {
   await ensureUser(jid)
   const jobs=['organizando documentos','atendendo clientes','resolvendo uma demanda','fechando um relatório','ajudando a equipe','entregando um projeto']
@@ -868,7 +872,7 @@ export async function work(jid, taxMultiplier=1) {
     await client.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
     const cr=(await client.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const oldXp=Number(cr.career_xp), oldRank=careerRank(oldXp)
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const moneyMultiplier=(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
     const xpGain=Math.round((25+Math.floor(Math.random()*16))*xpMultiplier)
     const newXp=oldXp+xpGain, newRank=careerRank(newXp)
