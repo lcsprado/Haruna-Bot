@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType,
-  adoptPet, getPet, listPets, selectPet, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
+  adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
@@ -6633,7 +6633,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
+        } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','equiparpet','timepet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
           try{
             const expeditionTraitText=t=>{
               const itemNames={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_p:'Poção Pequena',caixa_sorte:'Caixa da Sorte',caixa_rara:'Caixa Rara'}
