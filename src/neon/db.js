@@ -3417,6 +3417,11 @@ export async function initCommunityPack(){
     );
     ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
     ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
+
+    -- Pets têm nível máximo 100. Corrige registros antigos que ultrapassaram o teto.
+    UPDATE pets SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
+    UPDATE pet_collection SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
+
     CREATE INDEX IF NOT EXISTS pet_collection_owner_idx ON pet_collection(jid,id);
     CREATE UNIQUE INDEX IF NOT EXISTS pet_collection_one_active_idx ON pet_collection(jid) WHERE active;
     INSERT INTO pet_collection(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,active)
@@ -4426,8 +4431,10 @@ export async function petAction(jid,action){
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
     const petXpEventMultiplier=await getPetXpEventMultiplier(client)
     const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier)
-    const xp=Number(pet.xp)+actionXp, level=1+Math.floor(xp/100)
-    const levelsGained=Math.max(0,level-oldLevel)
+    const rawXp=Number(pet.xp)+actionXp
+    const level=Math.min(100,1+Math.floor(rawXp/100))
+    const xp=level>=100?9900:rawXp
+    const levelsGained=Math.max(0,level-Math.min(100,oldLevel))
     // Progressão natural: cada nível do pet concede +2 de Poder, além do bônus de treino/aventura.
     const powerGain=(a.power||0)+(levelsGained*2)
     const levelEnergyGain=levelsGained*3
@@ -4480,9 +4487,10 @@ export async function petAdventure(jid){
     // pets de alta capacidade subirem 5-7 níveis numa única aventura.
     const baseAdventureXp=Math.max(3,Math.floor(energy*0.35))
     const xpGain=Math.round(baseAdventureXp*xpMultiplier*petXpEventMultiplier)
-    const xp=Number(pet.xp||0)+xpGain
-    const nextLevel=1+Math.floor(xp/100)
-    const levelsGained=Math.max(0,nextLevel-Number(pet.level||1))
+    const rawXp=Number(pet.xp||0)+xpGain
+    const nextLevel=Math.min(100,1+Math.floor(rawXp/100))
+    const xp=nextLevel>=100?9900:rawXp
+    const levelsGained=Math.max(0,nextLevel-Math.min(100,Number(pet.level||1)))
     const powerGain=Math.floor(energy/50)+(levelsGained*2)
     const levelEnergyGain=levelsGained*3
     const {rows}=await client.query(`UPDATE pets SET energy=LEAST((CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,$2-1)*2,$8),xp=$1,level=$2,power=power+$3,
