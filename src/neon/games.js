@@ -1188,6 +1188,26 @@ export async function autoStartSiegeBossEvent(chat,now=new Date()){
       return {due:false,ended:true}
     }
     if(ts<SIEGE_EVENT_START) return {due:false}
+
+    // Recuperação única do Cerco de 04/10: a versão antiga encerrou às 20:00
+    // antes da extensão entrar em produção. Reabre o mesmo estado, preservando
+    // participantes/dano/recompensas, somente até o novo fim às 20:10.
+    if(
+      current?.eventId==='cerco_colosso' &&
+      current.mode==='event_stopped' &&
+      Number(current.hp)>0 &&
+      current.scheduleKey===SIEGE_EVENT_KEY
+    ){
+      current.active=true
+      current.mode='event'
+      current.endsAt=SIEGE_EVENT_END
+      current.reopenedAfterExtension=true
+      delete current.stoppedAt
+      if(Number(current.hp)>5000) current.hp=5000
+      await saveGame(c,chat,'boss_event',current)
+      return {due:true,reopened:true,...current}
+    }
+
     if(current&&current.active!==false&&Number(current.hp)>0){
       if(current.eventId==='cerco_colosso'){
         if(Number(current.hp)>5000){
