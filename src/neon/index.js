@@ -11,7 +11,7 @@ import pino from 'pino'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetPotion, usePetEnergyItem, getCombatProfile, battle, combatLeaderboard,
+  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetPotion, usePetEnergyItem, getCombatProfile, battle, combatLeaderboard, claimLevelRewards,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -1930,6 +1930,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 *!rpg* — abre o menu de RPG
 *!status* — mostra seus atributos
+*!nível* — progresso e resgata recompensas a cada 5 níveis
 *!batalhar @pessoa* — desafia outro jogador
 *!dungeon* — entra em uma dungeon e ganha dinheiro/XP
 *!curar* — recupera HP usando cura disponível
@@ -6029,7 +6030,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
 
         if(isGroup && !isOwner){
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
-          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide'])
+          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair'])
           let key=null,label=null
@@ -7174,6 +7175,46 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
         } else if(['energiapet','energia_pet','petenergia'].includes(cmd)){
           const r=await usePetEnergyItem(sender,'energetico_pet')
           await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
+
+        } else if(['nivel','nível'].includes(cmd)){
+          const r=await claimLevelRewards(sender)
+          const itemLabels={
+            pocao_m:'Poção Média',
+            pocao_g:'Poção Grande',
+            elixir_supremo:'Elixir Supremo',
+            pocao_pet_rara:'Poção de Pet Rara',
+            pocao_pet_epica:'Poção de Pet Épica',
+            energetico_pet:'Energético Pet',
+            caixa_sorte:'Caixa da Sorte',
+            caixa_rara:'Caixa Rara',
+            caixa_epica:'Caixa Épica',
+            chave_raid_50:'Chave de Raid Lv.50'
+          }
+          let text=`⭐ *NÍVEL — PROGRESSÃO*
+
+🏅 Nível atual: *${r.level}*
+✨ EXP: *${r.exp}/${r.level*100}*`
+
+          if(r.claimed.length){
+            text+='\n\n🎁 *RECOMPENSAS RESGATADAS AGORA*'
+            for(const reward of r.claimed){
+              text+=`\n\n🏆 *Lv.${reward.milestone}*\n💰 R$ ${fmt(reward.cash)}`
+              for(const item of reward.items||[]) text+=`\n📦 ${item.name} ×${item.qty}`
+            }
+          }else{
+            text+='\n\n✅ Você não tem recompensa de nível pendente.'
+          }
+
+          const next=r.nextReward
+          if(next){
+            text+=`\n\n🎯 *PRÓXIMO MARCO — Lv.${r.nextMilestone}*\n💰 R$ ${fmt(next.cash)}`
+            for(const [itemId,qty] of next.items||[]){
+              text+=`\n📦 ${itemLabels[itemId]||itemId} ×${qty}`
+            }
+          }
+
+          text+=`\n\n💡 A cada *5 níveis* há uma nova recompensa. O *!nível* resgata automaticamente tudo que estiver liberado e ainda não tiver sido recebido.`
+          await reply(text)
 
         } else if(['status'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
