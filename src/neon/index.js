@@ -982,20 +982,20 @@ const PET_STATUS_SPECIALTIES = {
   coruja:{label:'🦉 Sabedoria',stat:'xp',base:8},
   raposa:{label:'🦊 Astúcia',stat:'crit',base:6},
   lobo:{label:'🐺 Caçador',stat:'damage',base:6},
-  aguia:{label:'🦅 Precisão',stat:'crit',base:7},
+  aguia:{label:'🦅 Precisão',stat:'crit',base:9},
   panda:{label:'🐼 Resistência',stat:'defense',base:8},
-  tigre:{label:'🐯 Fúria',stat:'damage',base:7},
-  leao:{label:'🦁 Rei da Caçada',stat:'damage',base:8},
+  tigre:{label:'🐯 Fúria',stat:'damage',base:8},
+  leao:{label:'🦁 Rei da Caçada',stat:'damage',base:9},
   cervo_mistico:{label:'🦌 Luz Restauradora',stats:{defense:3},healPct:4,healCooldown:5},
   unicornio:{label:'🦄 Bênção Vital',stats:{drop:4,defense:4},healPct:6,healCooldown:4},
-  dragao:{label:'🐉 Caçador de Boss',stat:'bossDamage',base:10},
+  dragao:{label:'🐉 Caçador de Boss',stats:{bossDamage:10,defense:4}},
 
   golfinho_celestial:{label:'🐬 Corrente Celestial',stats:{dodge:5,xp:4}},
   moreia_sombria:{label:'🐍 Emboscada Sombria',stats:{damage:5,dodge:4}},
   tubarao_abissal:{label:'🦈 Frenesi Abissal',stats:{damage:7,crit:3}},
   polvo_arcano:{label:'🐙 Tentáculos Arcanos',stats:{crit:4,drop:3}},
   orca_guerra:{label:'🐋 Investida Oceânica',stats:{damage:5,defense:5}},
-  baleia_colossal:{label:'🐋 Canto Colossal',stats:{defense:7,xp:3}},
+  baleia_colossal:{label:'🐋 Canto Colossal',stats:{defense:10,xp:4}},
 
   golem_ancestral:{label:'🪨 Muralha Ancestral',stats:{defense:9,drop:2},raid:true},
   urso_runico:{label:'🐻 Fúria Rúnica',stats:{damage:7,defense:6},raid:true},
@@ -6873,7 +6873,8 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='equiparpet'){
               const pets=await listPets(sender)
               if(!pets.length) return await reply('🐾 Você ainda não tem pets.')
-              const picks=String(args.join(' ')||'').split(/[\s,;]+/).map(Number).filter(Number.isInteger)
+              const pickTokens=String(args.join(' ')||'').trim().split(/[\s,;]+/).filter(Boolean)
+              const picks=pickTokens.map(Number).filter(Number.isInteger)
               if(picks.length){
                 if(picks.length>3||new Set(picks).size!==picks.length||picks.some(n=>n<1||n>pets.length)) return await reply('🐾 Escolha de *1 a 3 pets*. Ex.: *!equiparpet 1,2,5*.')
                 const ids=picks.map(n=>pets[n-1].id)
