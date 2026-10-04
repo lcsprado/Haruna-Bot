@@ -350,7 +350,7 @@ export async function initDatabase() {
     // Exclusivo de Boss de Evento
     ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
     ['marca_insone','Marca do Insone','Comprova participação no evento secreto da madrugada. Concede o título Insone do Alpha no perfil.','special',0,'event'],
-    ['coroa_madrugada','Coroa da Madrugada','Troféu exclusivo do campeão da Sentinela das 03:03.','special',0,'event'],
+    ['coroa_madrugada','Coroa da Madrugada','Armadura-troféu exclusiva da Sentinela das 03:03. +20 ATK e +50 DEF.','armor',0,'event'],
 
     // Caixas
     ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
@@ -1504,6 +1504,7 @@ const EQUIPMENT = {
   armadura_golem: { category:'armor', atk:0, def:70, name:'Armadura do Golem Ancestral' },
   armadura_titan: { category:'armor', atk:0, def:85, name:'Armadura do Titã' },
   armadura_divina: { category:'armor', atk:0, def:95, name:'Armadura Divina' },
+  coroa_madrugada: { category:'armor', atk:20, def:50, name:'Coroa da Madrugada' },
 }
 
 const POTIONS = {
@@ -1574,7 +1575,7 @@ export function getEquipmentInfo(itemId) {
 }
 
 const EQUIPMENT_MAX_LEVEL=10
-const UPGRADE_BASE_COST={common:2500,uncommon:5000,rare:12000,epic:30000,legendary:75000}
+const UPGRADE_BASE_COST={common:2500,uncommon:5000,rare:12000,epic:30000,legendary:75000,event:100000}
 
 export function equipmentStatsAtLevel(itemId,level=1){
   const eq=EQUIPMENT[itemId]
