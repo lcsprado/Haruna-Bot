@@ -121,9 +121,14 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   bossSessions.set(key,true)
   ;(async()=>{
     let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
+    let sessionMode=null,sessionEndsAt=0
     try{
-      for(let i=0;i<30;i++){
+      for(let i=0;;i++){
         const r=await attackBoss(chat,jid,name,usePet)
+        if(!sessionMode){
+          sessionMode=r.mode||'common'
+          sessionEndsAt=Number(r.endsAt||0)
+        }
         if(r.petSwitch){
           await reply(`🔄 *TROCA AUTOMÁTICA DE PET!*\n\n💔 *${r.petSwitch.from}* caiu.\n🐾 O Reserva *${r.petSwitch.to}* entrou no combate automaticamente.`)
         }
@@ -156,10 +161,16 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
           })
           await reply(text); return
         }
-        if(r.playerDead){
-          await reply(`💀 Você foi derrotado após causar *${totalDamage.toLocaleString('pt-BR')}* de dano. Sem cura disponível; use *!curar* para voltar.`); return
+
+        const eventSession=sessionMode==='event'
+        if(!eventSession && i>=29) break
+
+        const delayMs=eventSession?8000:10000
+        if(eventSession&&sessionEndsAt&&Date.now()+delayMs>=sessionEndsAt){
+          await reply(`⏰ *BOSS DE EVENTO ENCERRADO!*\n\n🥊 Ataques automáticos: *${attacks}*\n💥 Dano causado nesta sessão: *${totalDamage.toLocaleString('pt-BR')}*\n\nO combate automático parou porque o horário do evento terminou.`)
+          return
         }
-        if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
+        await new Promise(resolve=>setTimeout(resolve,delayMs))
       }
       await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 Curas automáticas do pet: *${petHeals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
