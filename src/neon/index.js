@@ -7842,18 +7842,27 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           }
 
           if(!requested){
+            let text='⚔️ *RAIDS DO ALPHA*\n\n'
             if(rooms.length){
-              let text='⚔️ *SALAS DE RAID ABERTAS*\n\n'
+              text+='🏠 *SALAS ABERTAS*\n'
               for(const room of rooms.sort((a,b)=>Number(a.level)-Number(b.level))){
                 const n=raidCatalog.findIndex(r=>Number(r.level)===Number(room.level))+1
-                text+=`*Raid ${n} — Lv.${room.level}* • ${room.status==='lobby'?'⏳ aguardando':'⚔️ em andamento'} • ${Object.keys(room.players||{}).length}/5 jogadores\n`
+                text+=`• *Raid ${n} — Lv.${room.level}* • ${room.status==='lobby'?'⏳ aguardando':'⚔️ em andamento'} • ${Object.keys(room.players||{}).length}/5 jogadores\n`
               }
-              text+='\n👉 Entre em uma específica com *!entrar NÚMERO/NÍVEL*.\nEx.: *!entrar 1* ou *!entrar 10*.\n\n➕ Você também pode abrir outra Raid que ainda não tenha sala.'
-              return await reply(text)
+              text+='\n'
             }
-            let text='⚔️ *RAIDS DO ALPHA*\n\n'
-            raidCatalog.forEach((r,i)=>{text+=`*${i+1}.* Lv.${r.level} — ${r.name}\n⏱️ ${r.durationMinutes} min • ❤️ ${r.hp.toLocaleString('pt-BR')} • ⚔️ ${r.atk}\n🔑 R$ ${fmt(r.keyPrice)} • 🧩 ${r.material.name}\n\n`})
-            text+='Abra com *!raid NÚMERO* ou *!raid NÍVEL*.\nEx.: *!raid 1* ou *!raid 10*.\n📌 Pode existir *uma sala de cada Raid* ao mesmo tempo no grupo.'
+            text+='➕ *RAIDS DISPONÍVEIS PARA ABRIR*\n'
+            let available=0
+            raidCatalog.forEach((r,i)=>{
+              const alreadyOpen=rooms.some(room=>Number(room.level)===Number(r.level))
+              if(alreadyOpen) return
+              available++
+              text+=`• *${i+1}.* Lv.${r.level} — ${r.name}\n  🔑 R$ ${fmt(r.keyPrice)} • ⏱️ ${r.durationMinutes} min\n`
+            })
+            if(!available) text+='Nenhuma — já existe uma sala de cada Raid neste grupo.\n'
+            text+='\n👉 *Abrir:* !raid NÚMERO ou !raid NÍVEL\nEx.: *!raid 2* ou *!raid 15*\n'
+            if(rooms.length) text+='👉 *Entrar:* !entrar NÚMERO ou !entrar NÍVEL\n'
+            text+='\n🔑 Se faltar chave, o Alpha tenta comprar automaticamente.'
             return await reply(text)
           }
 
