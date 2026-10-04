@@ -1111,7 +1111,7 @@ export async function buyRaidFragmentBoxes(jid, qty=1) {
 
 export async function getInventory(jid) {
   const { rows } = await db.query(`
-    SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,
+    SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
            COALESCE(eu.level,1)::int AS equipment_level,
            CASE
              WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
@@ -1167,6 +1167,7 @@ export async function sellItem(jid, itemId, qty=1) {
     const itemR=await client.query('SELECT * FROM items WHERE id=$1',[itemId])
     const item=itemR.rows[0]
     if(!item) throw new Error('Item não encontrado.')
+    if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
 
     const statsR=await client.query(
       'SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
@@ -1277,6 +1278,7 @@ export async function sellItemsBatch(jid, selections=[]) {
       const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
       const item=itemR.rows[0]
       if(!item) throw new Error('Item não encontrado.')
+      if(item.sellable===false) throw new Error('Um dos itens selecionados não pode ser vendido.')
       if(item.rarity==='legendary') throw new Error('Itens lendários não entram em venda em lote.')
 
       const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId)
@@ -1391,6 +1393,7 @@ export async function discardItemsBatch(jid, selections=[]) {
       const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
       const item=itemR.rows[0]
       if(!item) throw new Error('Item não encontrado.')
+      if(item.sellable===false) throw new Error('Um dos itens selecionados é protegido e não pode ser descartado.')
       if(item.rarity==='legendary') throw new Error('Itens lendários não podem ser descartados em lote.')
 
       const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId)
