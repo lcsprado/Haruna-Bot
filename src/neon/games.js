@@ -742,13 +742,39 @@ async function raidPetXp(c,jid,gain){
   if(!gain) return null
   const p=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
   if(!p) return null
-  const xp=Number(p.xp||0)+gain, level=1+Math.floor(xp/100), gained=Math.max(0,level-Number(p.level||1))
+  const xp=Number(p.xp||0)+gain, level=Math.min(100,1+Math.floor(xp/100)), gained=Math.max(0,level-Number(p.level||1))
   const newMax=petMaxHp(level,xp,p.species)
   const oldMax=Math.max(1,Number(p.max_hp||petMaxHp(p.level,p.xp,p.species)))
   const hp=Math.min(newMax,Math.max(0,Number(p.hp??oldMax)+Math.max(0,newMax-oldMax)))
   const r=(await c.query('UPDATE pets SET xp=$1,level=$2,power=power+$3,energy=energy+$4,hp=$5,max_hp=$6 WHERE jid=$7 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,jid])).rows[0]
   if(r) await c.query('UPDATE pet_collection SET level=$1,xp=$2,power=$3,energy=$4,hp=$5,max_hp=$6 WHERE jid=$7 AND active=TRUE',[r.level,r.xp,r.power,r.energy,r.hp,r.max_hp,jid])
   return r?{name:r.name,xp:gain,level:Number(r.level),levels:gained,hp:Number(r.hp),maxHp:Number(r.max_hp)}:null
+}
+
+async function grantTeamPetXp(c,jid,baseGain){
+  baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
+  if(!baseGain) return []
+  const awards=[]
+  const primary=await raidPetXp(c,jid,baseGain)
+  if(primary) awards.push({slot:1,name:primary.name,xp:baseGain})
+
+  const team=(await c.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
+    WHERE t.jid=$1 AND t.slot IN (2,3) ORDER BY t.slot FOR UPDATE OF p`,[jid])).rows
+  const weights={2:.60,3:.35}
+  for(const pet of team){
+    const slot=Number(pet.slot)
+    const gain=Math.max(1,Math.floor(baseGain*Number(weights[slot]||0)))
+    if(!gain) continue
+    const xp=Number(pet.xp||0)+gain
+    const level=Math.min(100,1+Math.floor(xp/100))
+    const gained=Math.max(0,level-Number(pet.level||1))
+    const newMax=petMaxHp(level,xp,pet.species)
+    const oldMax=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)))
+    const hp=Math.min(newMax,Math.max(0,Number(pet.hp??oldMax)+Math.max(0,newMax-oldMax)))
+    const r=(await c.query('UPDATE pet_collection SET xp=$1,level=$2,power=power+$3,energy=energy+$4,hp=$5,max_hp=$6 WHERE id=$7 AND jid=$8 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,pet.id,jid])).rows[0]
+    if(r) awards.push({slot,name:r.name,xp:gain})
+  }
+  return awards
 }
 
 function raidPotion(rows,maxHp){
@@ -879,7 +905,7 @@ async function finishRaidRewards(c,s,cfg){
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
     const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.round(Math.floor(cfg.petXpPool*(.15+.85*share))*petXpMultiplier)):0
-    if(petXp) await raidPetXp(c,p.jid,petXp)
+    const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp):[]
 
     let material=null,drop=null,gearDrop=null
     // Materiais continuam garantidos para o top 3, mas em ritmo menor:
@@ -923,7 +949,7 @@ async function finishRaidRewards(c,s,cfg){
         }
       }
     }
-    rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),petBonusDamage:Number(p.petBonusDamage||0),petSkillHealing:Number(p.petSkillHealing||0),share,cash,exp,petXp,material,drop,gearDrop})
+    rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),petBonusDamage:Number(p.petBonusDamage||0),petSkillHealing:Number(p.petSkillHealing||0),share,cash,exp,petXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
@@ -1553,9 +1579,10 @@ export async function attackBoss(chat,jid,name,usePet=true){
           exp=siege?Math.round(Math.floor((700+3500*share+positionXp)*(1+pb.xp))):Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
           await credit(c,p.jid,cash,siege?'boss_event_cerco':(night?'boss_event_night_0303':'boss_event_eclipse'))
           await grantExpInTransaction(c,p.jid,exp)
+          let petXpTeam=[]
           if(pp){
             petXp=siege?Math.round(180+700*share+(i===0?180:i===1?90:0)):Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
-            await raidPetXp(c,p.jid,petXp)
+            petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
           if(siege){
             if(p.damage>=1500 && Math.random()<.35){
@@ -1600,7 +1627,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
           await grantExpInTransaction(c,p.jid,exp)
           drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
         }
-        rewards.push({...p,position,cash,exp,petXp,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
+        rewards.push({...p,position,cash,exp,petXp,petXpTeam:typeof petXpTeam==='undefined'?[]:petXpTeam,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
       if(s.mode==='event'){
         const schedule=bossEventFridayInfo()
