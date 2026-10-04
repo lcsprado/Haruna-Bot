@@ -4465,6 +4465,7 @@ export async function petAdventure(jid){
     const level=Number(pet.level||1),power=Number(pet.power||10)
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+    const petXpEventMultiplier=await getPetXpEventMultiplier(client)
     // Com 30 min de cooldown, uma aventura feita com energia cheia/quase cheia
     // paga entre R$ 13 mil e R$ 18 mil. Se o pet sair com pouca energia, o prêmio
     // cai proporcionalmente para impedir farm de aventuras curtas.
