@@ -2150,6 +2150,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!meuspets* — mostra todos os seus pets
 *!equiparpet* — abre o gerenciador do time; monte 1,2,3 de uma vez ou troque um slot
 *!timepet* — mostra os 3 slots, estilos e a sinergia ativa
+*!sinergia* — lista times recomendados, estilos e bônus de sinergia
 *!usarpet ID* — troca apenas o pet Principal
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
 *!nomepet NovoNome* — troca o nome por R$ 1.000
@@ -6859,6 +6860,32 @@ Se precisar de mais ajuda, use *!suporte*.`
               const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
               const r=await petDuel(sender,target)
               return await reply(`🐾⚔️ *DUELO DE PETS*\n\n🏆 ${r.winner.name} venceu ${r.loser.name} em *${r.rounds} rodada(s)*!\n❤️ ${r.winner.name}: *${r.winner.hp}/${r.winner.max_hp}*\n💔 ${r.loser.name}: *${r.loser.hp}/${r.loser.max_hp}*\n\n+25 XP para o vencedor • +10 XP para o derrotado.`,{mentions:[targetRaw]})
+            }
+            if(cmd==='sinergia'||cmd==='sinergias'){
+              const team=await getPetTeam(sender)
+              const active=petTeamSynergy(team)
+              let text='🧬 *SINERGIAS DE TIME PET*\n\n'
+              text+='A sinergia ativa com *3 espécies diferentes do mesmo estilo*.\n\n'
+              text+='🪽 *ESQUADRÃO AÉREO — Voador*\n🎯 *+3% ATK* no Boss/Raid\n'
+              text+='• Águia + Dragão + Coruja\n'
+              text+='• Dragão Vulcânico + Fênix de Fogo + Corvo Abissal\n'
+              text+='• Grifo Celestial + Fênix Celestial + Dragão Corrompido\n\n'
+              text+='🛡️ *MURALHA VIVA — Guardião*\n🎯 *+4% DEF* no Boss/Raid\n'
+              text+='• Cachorro + Panda + Baleia Colossal\n'
+              text+='• Orca de Guerra + Baleia Colossal + Panda\n'
+              text+='• Golem Ancestral + Guardião de Obsidiana + Leviatã de Gelo\n\n'
+              text+='🐾 *CAÇADA COORDENADA — Predador*\n🎯 *+2% ATK +2% CRIT* no Boss/Raid\n'
+              text+='• Lobo + Tigre + Leão\n'
+              text+='• Raposa + Tubarão Abissal + Leão\n'
+              text+='• Lobo do Abismo + Tigre Lunar + Leão Solar\n\n'
+              text+='✨ *ELO ARCANO — Místico*\n🎯 *+2% DEF +2,5% CRIT* no Boss/Raid\n'
+              text+='• Coelho + Cervo Místico + Unicórnio\n'
+              text+='• Golfinho Celestial + Polvo Arcano + Unicórnio\n'
+              text+='• Salamandra Infernal + Imperador Abissal + Serpente Cósmica\n\n'
+              if(active) text+='✅ *SUA SINERGIA ATUAL*\n'+active.label+' — *'+active.text+'*\n\n'
+              else text+='⚪ *Seu time atual não possui sinergia ativa.*\n\n'
+              text+='💡 A ordem pode mudar: *Principal / Suporte / Reserva* não altera a sinergia.\n👉 Use *!equiparpet* para montar e *!timepet* para conferir.'
+              return await reply(text)
             }
             if(cmd==='timepet'){
               const team=await getPetTeam(sender)
