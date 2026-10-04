@@ -7116,8 +7116,8 @@ ${results.join('\n')}
             `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*
 
 💰 Valor: *R$ ${fmt(r.principal)}*
-⏳ Prazo após o aceite: *2 horas sem juros*
-📈 Após 2h: *2% por hora de atraso*
+⏳ Prazo após o aceite: *30 minutos sem juros*
+📈 Após 30 min: *2% por hora de atraso*
 🛡️ Juros máximos: *100% do valor original*
 💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*
 ⌛ Expira em *10 minutos*.
