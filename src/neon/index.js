@@ -812,9 +812,9 @@ function resolveOwnedItem(items,input,categories=null){
 const SHOP_IDS=[
   'pocao_p','pocao_m','pocao_g','elixir_supremo','pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','energetico_pet',
   'espada_madeira','espada_ferro','espada_aco','machado_guerra','katana_sombria',
-  'espada_flamas','tridente_tempestade','lamina_abissal',
+  'sabre_runico','espada_flamas','lamina_cacador','tridente_tempestade','espada_guardiao','lamina_abissal',
   'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
-  'armadura_dragao','armadura_abissal','armadura_celestial',
+  'armadura_bastiao','armadura_dragao','manto_runico','armadura_abissal','couraca_guardiao','armadura_celestial',
   'caixa_sorte','caixa_rara','caixa_epica'
 ]
 
