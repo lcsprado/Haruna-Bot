@@ -693,6 +693,14 @@ function raidPotion(rows,maxHp){
   return p?{...p,name:names[p.item_id]}:null
 }
 
+function raidPetPotion(rows,missingHp){
+  const heal={pocao_pet_comum:60,pocao_pet_rara:160,pocao_pet_epica:320}
+  const names={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_pet_epica:'Poção de Pet Épica'}
+  const a=(rows||[]).filter(x=>Number(x.quantity)>0&&heal[x.item_id]).map(x=>({...x,heal:heal[x.item_id]})).sort((x,y)=>x.heal-y.heal)
+  const p=a.find(x=>x.heal>=Math.max(1,Number(missingHp)||1))||a[a.length-1]
+  return p?{...p,name:names[p.item_id]}:null
+}
+
 export async function startRaid(chat,host){
   return tx(async c=>{
     const s=await loadGame(c,chat,'raid')
@@ -874,18 +882,31 @@ export async function raidRound(chat){
     const special=Math.random()<.22
     const specialName=special?(cfg.level>=40?'Ruptura do Núcleo':'Golpe Devastador'):null
     const potionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_p','pocao_m','pocao_g','elixir_supremo']])).rows
+    const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']])).rows
     for(const p of alive.filter(x=>x.alive)){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))))
       const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:1)))
       p.hp=Math.max(0,Number(p.hp)-dmg)
-      let petDamage=0,petFainted=false
+      let petDamage=0,petFainted=false,autoPetHeal=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
         petDamage=Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense)))
         p.pet.hp=Math.max(0,Number(p.pet.hp)-petDamage)
         petFainted=p.pet.hp<=0
+        if(petFainted){
+          const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
+          const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
+          if(chosenPet){
+            p.pet.hp=Math.min(Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),Number(p.pet.hp||0)+Number(chosenPet.heal||0))
+            const row=petPotionRows.find(x=>x.jid===p.jid&&x.item_id===chosenPet.item_id)
+            if(row) row.quantity=Number(row.quantity)-1
+            await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[p.jid,chosenPet.item_id])
+            autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:Number(chosenPet.heal||0),hp:Number(p.pet.hp)}
+            petFainted=false
+          }
+        }
         await c.query('UPDATE pets SET hp=$1 WHERE jid=$2',[p.pet.hp,p.jid])
         await c.query('UPDATE pet_collection SET hp=$1 WHERE jid=$2 AND active=TRUE',[p.pet.hp,p.jid])
       }
@@ -902,7 +923,7 @@ export async function raidRound(chat){
         }else p.alive=false
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
-      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,autoHeal,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
+      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,autoHeal,autoPetHeal,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
