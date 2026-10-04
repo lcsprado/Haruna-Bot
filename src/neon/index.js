@@ -2127,16 +2127,21 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
 
-🐾 *Pets*
+🐾 *Pets & Time Pet*
 *!pet* / *!pets* — catálogo rápido dos pets
 *!adotar* — lista os 16 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção\n*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
 *!meuspets* — mostra todos os seus pets
 *!equiparpet* — monta Principal, Suporte e Reserva por números
-*!timepet* — mostra seu time atual
+*!timepet* — mostra os 3 slots, estilos e a sinergia ativa
 *!usarpet ID* — troca apenas o pet Principal
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
 *!nomepet NovoNome* — troca o nome por R$ 1.000
-🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
+🐾 *Especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
+🧬 *Sinergia de equipe:* exige 3 espécies diferentes do mesmo estilo
+🪽 Voador: *+3% ATK* • 🛡️ Guardião: *+4% DEF*
+🐾 Predador: *+2% ATK +2% CRIT* • ✨ Místico: *+2% DEF +2,5% CRIT*
+🚫 Duas cópias da mesma espécie não podem ocupar o mesmo time
+♻️ Pet de Raid repetido no altar vira *dinheiro + fragmentos de volta*
 *!alimentar* — alimenta
 *!descansar* — recupera 30 de energia + 35% do HP do pet (30 min)
 🧪 *Poções de Pet:* Comum +60 HP • Rara +160 HP • Épica +320 HP\n⚡ *Energético Pet:* R$ 12.000 na loja; restaura 100% da energia instantaneamente
@@ -2173,11 +2178,15 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!resposta 1* — forma alternativa de responder
 *!numero* — adivinhe o número
 *!chute 50* — dá um palpite
-*!boss* — inicia/mostra o Boss de Grupo; quando houver Boss de Evento ativo, ele tem prioridade
+*!boss* — inicia/mostra o Boss disponível; Boss de Evento tem prioridade
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
+👹 *Boss comum:* 9–12 mil HP
+🏆 *Superboss semanal:* sexta e sábado • 85–110 mil HP • 1 por fim de semana
+💢 Bosses têm *5% de crítico* (1,5× dano); na Raid o crítico não acumula com Golpe Devastador
+⚔️ *Raids:* HP foi reajustado e escala +12% por jogador adicional; o ATK não escala com o grupo
 🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
-🌘 *Boss de Evento:* toda sexta às 19:00 • muita EXP para jogador e pet + chance de item de raridade Evento Único
-🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
+🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único
+🐾 Principal luta, Reserva assume se ele cair e o Suporte entra nas sinergias passivas
 
 
 9️⃣ Voltar • 0️⃣ Fechar`,
