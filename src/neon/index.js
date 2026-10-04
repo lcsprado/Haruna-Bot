@@ -1669,25 +1669,58 @@ Você possui: *${stock}*
   }
 
   async function showEquipmentMenu(chat,sender,reply){
-    const [items,p,upgradeables]=await Promise.all([getInventory(sender),getCombatProfile(sender),listUpgradeableEquipment(sender)])
-    const equipables=items.filter(i=>['weapon','armor'].includes(i.category))
-    const levelMap=new Map(upgradeables.map(i=>[i.item_id,Number(i.level||1)]))
-    if(!equipables.length){
+    const [items,p]=await Promise.all([getInventory(sender),getCombatProfile(sender)])
+    const weapons=items.filter(i=>i.category==='weapon')
+    const armors=items.filter(i=>i.category==='armor')
+    if(!weapons.length&&!armors.length){
       clearQuickFlow(chat,sender)
       await reply('⚙️ Você não possui arma ou armadura para equipar.')
       return
     }
-    setQuickFlow(chat,sender,'equip_select',{items:equipables.map(i=>i.item_id)},5*60*1000)
-    let text='⚙️ *EQUIPAMENTOS*\n\n'
-    text+='🗡️ Arma atual: *'+p.weapon_name+' Lv.'+Number(p.weapon_level||1)+'*'+(p.weapon_atk?' +'+p.weapon_atk+' ATK':'')+'\n'
-    text+='🛡️ Armadura atual: *'+p.armor_name+' Lv.'+Number(p.armor_level||1)+'*'+(p.armor_def?' +'+p.armor_def+' DEF':'')+'\n\n'
-    equipables.forEach((i,idx)=>{
+    setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
+    await reply(
+`⚙️ *EQUIPAR*
+
+🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}*
+🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}*
+
+O que deseja trocar?
+
+1️⃣ ⚔️ *Arma* — ${weapons.length} opção(ões)
+2️⃣ 🛡️ *Armadura* — ${armors.length} opção(ões)
+
+9️⃣ Voltar ao inventário
+0️⃣ Sair`
+    )
+  }
+
+  async function showEquipmentTypeMenu(chat,sender,reply,category){
+    const [items,p,upgradeables]=await Promise.all([getInventory(sender),getCombatProfile(sender),listUpgradeableEquipment(sender)])
+    const filtered=items.filter(i=>i.category===category)
+    const levelMap=new Map(upgradeables.map(i=>[i.item_id,Number(i.level||1)]))
+    const isWeapon=category==='weapon'
+    const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':'🛡️ *ESCOLHA UMA ARMADURA*'
+    if(!filtered.length){
+      setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
+      await reply(title+'\n\nVocê não possui itens desta categoria.\n\n9️⃣ Voltar\n0️⃣ Sair')
+      return
+    }
+
+    setQuickFlow(chat,sender,'equip_select',{items:filtered.map(i=>i.item_id),category},5*60*1000)
+    let text=title+'\n\n'
+    filtered.forEach((i,idx)=>{
       const info=getEquipmentInfo(i.item_id)
-      const stat=i.category==='weapon' ? '+'+Number(info?.atk||0)+' ATK' : '+'+Number(info?.def||0)+' DEF'
-      const active=(p.weapon_id===i.item_id || p.armor_id===i.item_id) ? ' ✅ *ATIVO*' : ''
-      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+' Lv.'+Number(levelMap.get(i.item_id)||1)+'* ×'+i.quantity+'\n   '+stat+active+'\n'
+      const level=Number(levelMap.get(i.item_id)||1)
+      const mainStat=isWeapon?Number(info?.atk||0):Number(info?.def||0)
+      const active=(isWeapon?p.weapon_id:p.armor_id)===i.item_id?' ✅ *ATIVO*':''
+      const extras=[
+        Number(info?.hp||0)?'❤️ +'+Number(info.hp)+' HP':null,
+        Number(info?.crit||0)?'🎯 +'+(Number(info.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
+      ].filter(Boolean).join(' • ')
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+'\n'
+      text+='   '+(isWeapon?'⚔️ +':'🛡️ +')+mainStat+' '+(isWeapon?'ATK':'DEF')+(extras?' • '+extras:'')+active+'\n'
     })
-    text+='\n9️⃣ Voltar\n0️⃣ Sair'
+    text+='\n👉 Responda só com o número.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
   }
 
@@ -2385,6 +2418,7 @@ Nenhum chamado aberto agora.
     const boxQuantityMenu=async(box)=>showBoxQuantityMenu(chat,sender,reply,box)
     const inventoryMenu=async()=>showInventoryMenu(chat,sender,reply)
     const equipmentMenu=async()=>showEquipmentMenu(chat,sender,reply)
+    const equipmentTypeMenu=async(category)=>showEquipmentTypeMenu(chat,sender,reply,category)
     const sellMenu=async()=>showSellMenu(chat,sender,reply)
     const sellItemsMenu=async(category)=>showSellItemsMenu(chat,sender,reply,category)
     const funMenu=async()=>{
@@ -3763,9 +3797,23 @@ ${emoji} *${r.result.toUpperCase()}*`)
       return true
     }
 
-    if(flow.stage==='equip_select'){
+    if(flow.stage==='equip_category'){
       if(input==='9'){
         await inventoryMenu()
+        return true
+      }
+      const category=input==='1'?'weapon':input==='2'?'armor':null
+      if(!category){
+        await reply('⚙️ Escolha *1 Arma* ou *2 Armadura*.')
+        return true
+      }
+      await equipmentTypeMenu(category)
+      return true
+    }
+
+    if(flow.stage==='equip_select'){
+      if(input==='9'){
+        await equipmentMenu()
         return true
       }
       const index=Number(input)-1
@@ -3790,7 +3838,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const stat=isWeapon?'ATK':'DEF'
       const delta=after-before
       const arrow=delta>0?'📈':delta<0?'📉':'➖'
-      setQuickFlow(chat,sender,'equip_compare_confirm',{itemId},90000)
+      setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
       await reply(
         '⚙️ *TROCAR EQUIPAMENTO?*\n\n'+
         (isWeapon?'🗡️':'🛡️')+' Atual: *'+currentName+'*\n'+
@@ -3803,7 +3851,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
 
     if(flow.stage==='equip_compare_confirm'){
       if(input==='9' || input==='2'){
-        await equipmentMenu()
+        await equipmentTypeMenu(flow.data.category||'weapon')
         return true
       }
       if(input!=='1'){
@@ -3813,7 +3861,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const r=await equipItem(sender,flow.data.itemId)
       const p=await getCombatProfile(sender)
       await reply('✅ *EQUIPADO!*\n\n'+r.name+' agora é sua '+(r.category==='weapon'?'arma':'armadura')+' ativa.\n\n⚔️ ATK atual: *'+p.effective_atk+'*\n🛡️ DEF atual: *'+p.effective_def+'*')
-      await equipmentMenu()
+      await equipmentTypeMenu(r.category)
       return true
     }
 
