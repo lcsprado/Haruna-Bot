@@ -153,7 +153,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         }
         if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
       }
-      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 ${petName} (${petBonus}) ajudou com ~*${petDamage.toLocaleString('pt-BR')}* de dano`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{bossSessions.delete(key)}
   })()
@@ -185,7 +185,7 @@ async function runRaidCombat(chat,reply){
           let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*\n\n❤️ Boss derrotado em *${r.round} rodadas*.\n\n📊 *RECOMPENSAS POR COLABORAÇÃO*\n`
           r.rewards.forEach((x,n)=>{
             const pct=(x.share*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
-            text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP`
+            text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Number(x.petBonusDamage||0)>0?` *(+${Number(x.petBonusDamage).toLocaleString('pt-BR')} bônus pet)*`:''}\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP`
             if(x.petXp) text+=` • 🐾 +${x.petXp} XP pet`
             if(x.material) text+=`\n🧩 ${x.material.name} ×${x.material.qty}`
             if(x.drop) text+=`\n🎁 DROP: *${x.drop.name}* (${x.drop.rarity})`
@@ -3521,10 +3521,14 @@ ${emoji} *${r.result.toUpperCase()}*`)
         return true
       }
       setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id},90000)
+      const extraStats=[
+        Number(item.current.hp||0)||Number(item.next.hp||0)?`❤️ ${Number(item.current.hp||0)} → *${Number(item.next.hp||0)} HP*`:null,
+        Number(item.current.crit||0)||Number(item.next.crit||0)?`🎯 ${(Number(item.current.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% → *${(Number(item.next.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% CRIT*`:null
+      ].filter(Boolean).join('\n')
       const stat=item.category==='weapon'
         ? `${item.current.atk} → *${item.next.atk} ATK*`
         : `${item.current.def} → *${item.next.def} DEF*`
-      await reply(`⬆️ *UPAR EQUIPAMENTO?*\n\n${rarityLabel(item.rarity)} — *${item.name}*\n⭐ Lv.${item.level} → *Lv.${Number(item.level)+1}*\n💪 ${stat}\n💰 Custo: *R$ ${fmt(item.cost)}*\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+      await reply(`⬆️ *UPAR EQUIPAMENTO?*\n\n${rarityLabel(item.rarity)} — *${item.name}*\n⭐ Lv.${item.level} → *Lv.${Number(item.level)+1}*\n💪 ${stat}${extraStats?'\n'+extraStats:''}\n💰 Custo: *R$ ${fmt(item.cost)}*\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
       return true
     }
 
@@ -3541,7 +3545,11 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const r=await upgradeEquipment(sender,flow.data.itemId)
       clearQuickFlow(chat,sender)
       const stat=r.stats.category==='weapon'?r.stats.atk+' ATK':r.stats.def+' DEF'
-      await reply(`⬆️ *EQUIPAMENTO APRIMORADO!*\n\n⚙️ *${r.name}*\n⭐ Lv.${r.fromLevel} → *Lv.${r.level}*\n💪 Agora: *${stat}*\n💸 Pago: *R$ ${fmt(r.cost)}*\n🪙 Carteira: *R$ ${fmt(r.cash)}*\n\nUse *!uparitem* para continuar evoluindo.`)
+      const extras=[
+        Number(r.stats.hp||0)?'❤️ '+r.stats.hp+' HP':null,
+        Number(r.stats.crit||0)?'🎯 '+(Number(r.stats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
+      ].filter(Boolean).join(' • ')
+      await reply(`⬆️ *EQUIPAMENTO APRIMORADO!*\n\n⚙️ *${r.name}*\n⭐ Lv.${r.fromLevel} → *Lv.${r.level}*\n💪 Agora: *${stat}*${extras?' • '+extras:''}\n💸 Pago: *R$ ${fmt(r.cost)}*\n🪙 Carteira: *R$ ${fmt(r.cash)}*\n\nUse *!uparitem* para continuar evoluindo.`)
       return true
     }
 
@@ -6973,12 +6981,16 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id}))},5*60*1000)
           let text='⬆️ *UPAR EQUIPAMENTO*\n\n'
           available.forEach((i,n)=>{
+            const extras=(s,n)=>[
+              Number(s.hp||0)||Number(n.hp||0)?`${Number(s.hp||0)} → ${Number(n.hp||0)} HP`:null,
+              Number(s.crit||0)||Number(n.crit||0)?`${(Number(s.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% → ${(Number(n.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% CRIT`:null
+            ].filter(Boolean).join(' • ')
             const stat=i.category==='weapon'
-              ? `${i.current.atk} → ${i.next.atk} ATK`
-              : `${i.current.def} → ${i.next.def} DEF`
+              ? `${i.current.atk} → ${i.next.atk} ATK${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
+              : `${i.current.def} → ${i.next.def} DEF${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
             text+=`*${n+1}.* ${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
           })
-          text+='\n💡 Cada nível adiciona cerca de *4% do atributo base*. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
+          text+='\n💡 Os ganhos crescem progressivamente por nível; no *Lv.10* os atributos escaláveis chegam a *2,5×* a base. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
           await reply(text)
 
         } else if(['equipar','equip'].includes(cmd)){
