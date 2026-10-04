@@ -531,7 +531,7 @@ const PET_BOSS_SPECIALTIES={
 
   leao_solar:{label:'☀️ Rei Solar',damage:.10,crit:.07,xp:.05,raid:true},
   grifo_celestial:{label:'✨ Asas da Fortuna',crit:.10,dodge:.07,drop:.04,raid:true},
-  fenix_celestial:{label:'🌟 Graça Celestial',defense:.10,dodge:.08,xp:.08,raid:true},
+  fenix_celestial:{label:'🌟 Graça Celestial',defense:.10,dodge:.08,xp:.08,healPct:.08,healCooldown:4,raid:true},
 
   serpente_cosmica:{label:'🌌 Oráculo Cósmico',crit:.09,drop:.06,xp:.08,raid:true},
   dragao_corrompido:{label:'☠️ Ruína Corrompida',bossDamage:.10,damage:.08,defense:.08,raid:true},
