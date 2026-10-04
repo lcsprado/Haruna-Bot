@@ -1189,7 +1189,14 @@ export async function autoStartSiegeBossEvent(chat,now=new Date()){
     }
     if(ts<SIEGE_EVENT_START) return {due:false}
     if(current&&current.active!==false&&Number(current.hp)>0){
-      if(current.eventId==='cerco_colosso') return {due:true,already:true,...current}
+      if(current.eventId==='cerco_colosso'){
+        if(Number(current.hp)>5000){
+          current.hp=5000
+          current.manualHpAdjustment='2026-10-04:set-to-5000'
+          await saveGame(c,chat,'boss_event',current)
+        }
+        return {due:true,already:true,...current}
+      }
       return {due:true,blocked:true}
     }
     if(current?.scheduleKey===SIEGE_EVENT_KEY) return {due:true,alreadyRun:true,...current}
