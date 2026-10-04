@@ -6858,26 +6858,18 @@ Se precisar de mais ajuda, use *!suporte*.`
               const team=await getPetTeam(sender)
               const active=petTeamSynergy(team)
               let text='🧬 *SINERGIAS DE TIME PET*\n\n'
-              text+='A sinergia ativa com *3 espécies diferentes do mesmo estilo*.\n\n'
+              text+='Monte o time com *3 espécies diferentes do mesmo estilo*. Qualquer trio válido dentro da categoria ativa o bônus.\n\n'
               text+='🪽 *ESQUADRÃO AÉREO — Voador*\n🎯 *+3% ATK* no Boss/Raid\n'
-              text+='• Águia + Dragão + Coruja\n'
-              text+='• Dragão Vulcânico + Fênix de Fogo + Corvo Abissal\n'
-              text+='• Grifo Celestial + Fênix Celestial + Dragão Corrompido\n\n'
+              text+='Papagaio • Coruja • Águia • Dragão • Corvo Abissal • Dragão Vulcânico • Fênix de Fogo • Fênix de Gelo • Grifo Celestial • Fênix Celestial • Dragão Corrompido • Fênix Alpha\n\n'
               text+='🛡️ *MURALHA VIVA — Guardião*\n🎯 *+4% DEF* no Boss/Raid\n'
-              text+='• Cachorro + Panda + Baleia Colossal\n'
-              text+='• Orca de Guerra + Baleia Colossal + Panda\n'
-              text+='• Golem Ancestral + Guardião de Obsidiana + Leviatã de Gelo\n\n'
+              text+='Cachorro • Tartaruga • Panda • Orca de Guerra • Baleia Colossal • Golem Ancestral • Colosso de Cristal • Rinoceronte Titânico • Guardião de Obsidiana • Leviatã de Gelo\n\n'
               text+='🐾 *CAÇADA COORDENADA — Predador*\n🎯 *+2% ATK +2% CRIT* no Boss/Raid\n'
-              text+='• Lobo + Tigre + Leão\n'
-              text+='• Raposa + Tubarão Abissal + Leão\n'
-              text+='• Lobo do Abismo + Tigre Lunar + Leão Solar\n\n'
+              text+='Gato • Raposa • Lobo • Tigre • Leão • Moreia Sombria • Tubarão Abissal • *Urso Rúnico* • Lobo do Abismo • Cérbero Carmesim • Tigre Lunar • Leão Solar\n\n'
               text+='✨ *ELO ARCANO — Místico*\n🎯 *+2% DEF +2,5% CRIT* no Boss/Raid\n'
-              text+='• Coelho + Cervo Místico + Unicórnio\n'
-              text+='• Golfinho Celestial + Polvo Arcano + Unicórnio\n'
-              text+='• Salamandra Infernal + Imperador Abissal + Serpente Cósmica\n\n'
+              text+='Coelho • Hamster • Cervo Místico • Unicórnio • Golfinho Celestial • Polvo Arcano • Salamandra Infernal • Imperador Abissal • Serpente Cósmica\n\n'
               if(active) text+='✅ *SUA SINERGIA ATUAL*\n'+active.label+' — *'+active.text+'*\n\n'
               else text+='⚪ *Seu time atual não possui sinergia ativa.*\n\n'
-              text+='💡 A ordem pode mudar: *Principal / Suporte / Reserva* não altera a sinergia.\n👉 Use *!equiparpet* para montar e *!timepet* para conferir.'
+              text+='💡 A ordem de Principal / Suporte / Reserva não altera a sinergia.\n👉 Use *!equiparpet* para montar e *!timepet* para conferir.'
               return await reply(text)
             }
             if(cmd==='timepet'){
