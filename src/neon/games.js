@@ -1293,6 +1293,26 @@ export async function startBoss(chat){
     await saveGame(c,chat,'boss',state); return state
   })
 }
+async function loadBossCombatPet(c,jid,slot=1){
+  slot=Number(slot)||1
+  if(slot===1){
+    const p=(await c.query('SELECT species,name,level,xp,energy,hp,max_hp FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
+    return p?{...p,teamSlot:1,collectionId:null}:null
+  }
+  const p=(await c.query(`SELECT p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
+    WHERE t.jid=$1 AND t.slot=$2 FOR UPDATE OF p`,[jid,slot])).rows[0]||null
+  return p?{...p,teamSlot:slot,collectionId:Number(p.id)}:null
+}
+
+async function persistBossCombatPet(c,jid,pet){
+  if(!pet) return
+  if(Number(pet.teamSlot)===1){
+    await c.query('UPDATE pets SET hp=$1,energy=$2 WHERE jid=$3',[pet.hp,pet.energy,jid])
+    await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.energy,jid])
+  }else if(pet.collectionId){
+    await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE id=$3 AND jid=$4',[pet.hp,pet.energy,pet.collectionId,jid])
+  }
+}
 export async function attackBoss(chat,jid,name,usePet=true){
   await ensureUser(jid,name||'')
   const weekend=bossWeekendInfo()
