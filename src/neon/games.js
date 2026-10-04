@@ -1,4 +1,4 @@
-import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier } from './db.js'
+import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier, petTeamSynergy } from './db.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -828,7 +828,12 @@ export async function startRaid(chat,host,level=null){
         combatPet=reservePet
         reservePet=null
       }
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet}
+      const teamPets=(await c.query(
+        'SELECT t.slot,p.species FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
+        [jid]
+      )).rows
+      const teamSynergy=petTeamSynergy(teamPets)
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy}
     }
     // O grupo maior causa muito mais dano por rodada. Escala só o HP (+12% por
     // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
@@ -944,6 +949,7 @@ export async function raidRound(chat,level){
 
     for(const p of alive){
       let pb={damage:0,crit:0}
+      const teamSynergy=p.teamSynergy||{attack:0,defense:0,crit:0}
       if(p.pet){
         p.pet.roundActive=Number(p.pet.energy)>0&&Number(p.pet.hp)>0
         if(p.pet.roundActive){
@@ -953,7 +959,7 @@ export async function raidRound(chat,level){
           await persistRaidCombatPet(c,p.jid,p.pet)
         }
       }
-      const petCritChance=Math.max(0,Number(pb.crit||0))
+      const petCritChance=Math.max(0,Number(pb.crit||0)+Number(teamSynergy.crit||0))
       const gearCritChance=Math.max(0,Number(p.crit||0))
       const roll=Math.random()
       const petCrit=petCritChance>0&&roll<petCritChance
@@ -962,7 +968,7 @@ export async function raidRound(chat,level){
       const variance=.82+Math.random()*.38
       const raw=Math.max(5,Math.floor(Number(p.atk||1)*variance))
       const baseline=Math.max(5,Math.floor(raw*(gearCrit?1.5:1)*3))
-      const mult=(1+Number(pb.damage||0))*3
+      const mult=(1+Number(pb.damage||0)+Number(teamSynergy.attack||0))*3
       const dmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1)))
       const petExtra=p.pet?Math.max(0,dmg-baseline):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
@@ -986,8 +992,9 @@ export async function raidRound(chat,level){
     const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']])).rows
     for(const p of alive.filter(x=>x.alive)){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
+      const teamSynergy=p.teamSynergy||{attack:0,defense:0,crit:0}
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
-      const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))))
+      const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
       const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))))
@@ -1373,6 +1380,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
       await persistBossCombatPet(c,jid,pet)
     }
     const petBonus=petBossBonus(pet)
+    const teamPets=(await c.query(
+      'SELECT t.slot,p.species FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
+      [jid]
+    )).rows
+    const teamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
     const upgradeRows=(await c.query(
       'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
       [jid,[st.weapon_id,st.armor_id].filter(Boolean)]
@@ -1384,13 +1396,13 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const def=Number(st.def)+Number(weapon?.def||0)+Number(armor?.def||0)
     const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)
     const effectiveMaxHp=Number(st.max_hp)+gearHp
-    const petCritChance=Math.max(0,Number(petBonus.crit||0))
+    const petCritChance=Math.max(0,Number(petBonus.crit||0)+Number(teamSynergy.crit||0))
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0))
     const roll=Math.random()
     const petCrit=petCritChance>0&&roll<petCritChance
     const gearCrit=!petCrit&&gearCritChance>0&&roll<Math.min(.50,petCritChance+gearCritChance)
     const crit=petCrit||gearCrit
-    const petMultiplier=1+petBonus.damage
+    const petMultiplier=1+petBonus.damage+Number(teamSynergy.attack||0)
     const variance=.85+Math.random()*.45
     const rawBase=Math.max(5,Math.floor(atk*variance))
     const baselineWithGearCrit=Math.max(5,Math.floor(rawBase*(gearCrit?1.5:1)))
@@ -1411,7 +1423,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(s.hp>0){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossCritical=!dodged&&Math.random()<.05
-      bossDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)*(bossCritical?1.5:1)))
+      bossDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)*(1-Number(teamSynergy.defense||0))*(bossCritical?1.5:1)))
       php=Math.max(0,php-bossDamage)
       if(pet){
         const petTaken=Math.max(1,Math.round(Number(s.atk||18)*(.30+Math.random()*.22)*(1-Math.min(.75,Number(petBonus.defense||0)))))
