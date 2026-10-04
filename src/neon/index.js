@@ -1691,7 +1691,9 @@ Você possui: *${stock}*
     setQuickFlow(chat,sender,'inventory_sell_select',{items},5*60*1000)
     let text='🧹 *GERENCIAR INVENTÁRIO*\n\n'
     items.forEach((i,idx)=>{
-      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
+      const levelLine=['weapon','armor'].includes(i.category)&&Number(i.equipment_level||1)>1 ? ' • ⭐ Lv.'+Number(i.equipment_level) : ''
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+levelLine+'\n   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
+      if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Última cópia: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
     })
     text+='\n👉 *Um item:* mande só o número.\n📦 *Vários itens:* mande os números separados por vírgula. Ex.: *1,3,5,8*\n\nAo selecionar vários, você poderá:\n1️⃣ vender tudo que for permitido\n2️⃣ vender só as cópias repetidas\n3️⃣ descartar tudo que for permitido\n\n🔒 Equipamento ativo preserva 1 cópia.\n🌟 Lendários não entram em ações em lote.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
@@ -4389,6 +4391,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
             quantity:Number(item.quantity),
             unit:Number(item.sell_unit),
             equipped,
+            equipmentLevel:Number(item.equipment_level||1),
+            upgradeRefund:Number(item.upgrade_refund||0),
             maxAll,
             duplicates
           })
@@ -4424,8 +4428,9 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('🔒 Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
         return true
       }
-      setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable},90000)
-      await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
+      setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable,quantity:Number(item.quantity),equipped,equipmentLevel:Number(item.equipment_level||1),upgradeRefund:Number(item.upgrade_refund||0)},90000)
+      const upInfo=Number(item.upgrade_refund||0)>0&&!equipped ? '\n♻️ Vendendo a última cópia: *+R$ '+fmt(item.upgrade_refund)+'* de recuperação dos upgrades.' : ''
+      await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*'+(Number(item.equipment_level||1)>1?'\n⭐ Nível do equipamento: *Lv.'+Number(item.equipment_level)+'*':'')+upInfo+'\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
       return true
     }
 
