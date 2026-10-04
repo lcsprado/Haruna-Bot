@@ -4453,7 +4453,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           skipped.push(item.name)
           continue
         }
-        batch.push({...item,qty})
+        const upgradeRefundApplied=(mode==='sell_all'&&!item.equipped&&qty===Number(item.quantity))?Number(item.upgradeRefund||0):0
+        batch.push({...item,qty,upgradeRefundApplied})
       }
 
       if(!batch.length){
@@ -4474,9 +4475,14 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
 
-      const total=batch.reduce((sum,i)=>sum+(i.qty*i.unit),0)
+      const total=batch.reduce((sum,i)=>sum+(i.qty*i.unit)+Number(i.upgradeRefundApplied||0),0)
       let text='⚠️ *CONFIRMAR VENDA EM LOTE*\n\n'
-      batch.forEach(i=>{text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(i.qty*i.unit)+'\n'})
+      batch.forEach(i=>{
+        const base=i.qty*i.unit
+        text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(base+Number(i.upgradeRefundApplied||0))
+        if(Number(i.upgradeRefundApplied||0)>0) text+=' _(inclui +R$ '+fmt(i.upgradeRefundApplied)+' dos upgrades)_'
+        text+='\n'
+      })
       text+='\n🧮 Unidades: *'+batch.reduce((s,i)=>s+i.qty,0)+'*'
       text+='\n💵 Total estimado: *R$ '+fmt(total)+'*'
       if(skipped.length) text+='\n⏭️ Sem repetidos: '+skipped.join(', ')
@@ -4528,9 +4534,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('💰 Você pode vender no máximo *'+flow.data.sellable+'* unidade(s).')
         return true
       }
-      setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty},90000)
+      const upgradeRefundApplied=(!flow.data.equipped&&qty===Number(flow.data.quantity))?Number(flow.data.upgradeRefund||0):0
+      setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty,upgradeRefundApplied},90000)
       const warn=flow.data.rarity==='legendary'?'\n🌟 *ATENÇÃO: ESTE É UM ITEM LENDÁRIO!*\n':''
-      await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVocê receberá: *R$ '+fmt(Number(flow.data.unit)*qty)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
+      const refundText=upgradeRefundApplied>0?'\n♻️ Recuperação dos upgrades: *+R$ '+fmt(upgradeRefundApplied)+'*':''
+      await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVenda base: *R$ '+fmt(Number(flow.data.unit)*qty)+'*'+refundText+'\n💵 Total: *R$ '+fmt(Number(flow.data.unit)*qty+upgradeRefundApplied)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
       return true
     }
 
@@ -4540,9 +4548,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('💰 Digite uma quantidade de *1 a '+flow.data.sellable+'*.')
         return true
       }
-      setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty},90000)
+      const upgradeRefundApplied=(!flow.data.equipped&&qty===Number(flow.data.quantity))?Number(flow.data.upgradeRefund||0):0
+      setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty,upgradeRefundApplied},90000)
       const warn=flow.data.rarity==='legendary'?'\n🌟 *ATENÇÃO: ESTE É UM ITEM LENDÁRIO!*\n':''
-      await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVocê receberá: *R$ '+fmt(Number(flow.data.unit)*qty)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
+      const refundText=upgradeRefundApplied>0?'\n♻️ Recuperação dos upgrades: *+R$ '+fmt(upgradeRefundApplied)+'*':''
+      await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVenda base: *R$ '+fmt(Number(flow.data.unit)*qty)+'*'+refundText+'\n💵 Total: *R$ '+fmt(Number(flow.data.unit)*qty+upgradeRefundApplied)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
       return true
     }
 
@@ -4559,7 +4569,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       const selections=(flow.data.batch||[]).map(i=>({itemId:i.itemId,qty:i.qty}))
       const r=await sellItemsBatch(sender,selections)
       let text='💰 *VENDA EM LOTE CONCLUÍDA*\n\n'
-      r.sold.forEach(i=>{ text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(i.total)+'\n' })
+      r.sold.forEach(i=>{ text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(i.total)+(Number(i.upgradeRefund||0)>0?' _(+'+fmt(i.upgradeRefund)+' upgrades)_':'')+'\n' })
       text+='\n📦 Tipos vendidos: *'+r.types+'*'
       text+='\n🧮 Unidades vendidas: *'+r.totalUnits+'*'
       text+='\n💵 Total recebido: *R$ '+fmt(r.total)+'*'
@@ -4579,7 +4589,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       const r=await sellItem(sender,flow.data.itemId,flow.data.qty)
-      await reply('💰 *VENDA CONCLUÍDA*\n\n📦 '+r.item.name+' ×'+r.qty+'\n💵 Recebido: *R$ '+fmt(r.total)+'*\n🎒 Restante: *'+r.remaining+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*')
+      await reply('💰 *VENDA CONCLUÍDA*\n\n📦 '+r.item.name+' ×'+r.qty+(Number(r.equipmentLevel||1)>1?' — ⭐ Lv.'+r.equipmentLevel:'')+'\n💵 Venda base: *R$ '+fmt(r.baseTotal)+'*'+(Number(r.upgradeRefund||0)>0?'\n♻️ Recuperação dos upgrades: *+R$ '+fmt(r.upgradeRefund)+'*':'')+'\n💰 Total recebido: *R$ '+fmt(r.total)+'*\n🎒 Restante: *'+r.remaining+'*\n🪙 Carteira: *R$ '+fmt(r.cash)+'*')
       await inventoryMenu()
       return true
     }
