@@ -527,8 +527,8 @@ const RAID_CONFIGS=[
   {level:50,name:'Alpha Corrompido',hp:220000,atk:98,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.005},
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
-const raidDurationMinutes=level=>({10:10,15:12,20:14,25:16,30:20,40:25,50:30}[Number(level)]||15)
-export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r})) }
+const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:30,40:40,50:50}[Number(level)]||15)
+export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level)})) }
 
 export async function getRaidStatus(chat){
   return tx(async c=>loadGame(c,chat,'raid'))
