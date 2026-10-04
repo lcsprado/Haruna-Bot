@@ -43,11 +43,12 @@ import {
   getRaidCatalog, getRaidStatus, createRaid, joinRaid, cancelRaid, startRaid, raidRound
 } from './games.js'
 import {
-  initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES,
+  initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES,
   getDailyMissions, progressDailyMission, claimDailyMissions,
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
+  hireCltUberDriver, getCltUberStatus, startCltUberShift, collectCltUber,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent
 } from './progression.js'
@@ -1639,6 +1640,62 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       return true
     }
 
+    if(flow.stage==='cltuber_driver_select'){
+      const slot=Number(input)
+      const status=await getCltUberStatus(sender)
+      const d=status.drivers[slot-1]
+      if(!d){
+        await reply('🚘 Escolha um motorista válido pelo número.')
+        return true
+      }
+      if(d.active){
+        await reply(`👨‍✈️ *${d.type.name}* ainda está trabalhando com *${d.car?.name||'carro'}*.
+⏳ Falta: *${duration(d.remaining)}*
+💰 Acumulado: *R$ ${fmt(Number(d.accrued||0))}*`)
+        return true
+      }
+      if(!status.garage.length){
+        clearQuickFlow(chat,sender)
+        await reply('🚗 Você ainda não possui carro. Use *!carros* primeiro.')
+        return true
+      }
+      setQuickFlow(chat,sender,'cltuber_car_select',{driverSlot:slot},90000)
+      let out=`🚗 *ESCOLHA O CARRO — MOTORISTA ${slot}*
+
+`
+      status.garage.forEach((car,i)=>{
+        const busy=status.drivers.some(x=>x.active&&x.car?.id===car.id)
+        out+=`${i+1}. *${car.name}*${busy?' — 🔒 em turno':''}
+`
+      })
+      out+='\n👉 Responda somente com o número do carro.\n0️⃣ Cancelar'
+      await reply(out)
+      return true
+    }
+
+    if(flow.stage==='cltuber_car_select'){
+      const carSlot=Number(input)
+      if(!Number.isInteger(carSlot)||carSlot<1){
+        await reply('🚗 Escolha um carro válido pelo número.')
+        return true
+      }
+      const r=await startCltUberShift(sender,flow.data.driverSlot,carSlot)
+      clearQuickFlow(chat,sender)
+      await reply(
+`🚕 *TURNO CLT UBER INICIADO!*
+
+👨‍✈️ ${r.type.name}
+🚗 ${r.car.name}
+⏱️ Turno: *8 horas*
+💰 Retorno estimado em 8h: *R$ ${fmt(r.estimated8h)}*
+
+🛑 Após 8h o motorista *PARA AUTOMATICAMENTE*.
+🚘 Enquanto estiver em turno, esse carro não participa do *!uber* manual.
+💵 Use *!coletauber* para sacar o que já foi produzido.`
+      )
+      return true
+    }
+
     const gamesMenu=async()=>{
       setQuickFlow(chat,sender,'main',{},90000)
       await reply(
@@ -1685,7 +1742,10 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!carreira* — mostra cargo e progresso profissional
 *!ifood* — coloca toda sua frota de bike/motos para entregar
 *!ifoodbike* — alias do !ifood
-*!uber* — coloca todos os seus carros para trabalhar
+*!uber* — coloca seus carros livres para trabalhar
+*!cltuber* — lista motoristas automáticos; *!cltuber 1* contrata
+*!centraluber* — gerencia motoristas, carros e turnos de até 8h
+*!coletauber* — coleta o dinheiro acumulado pelos motoristas
 *!negocios* — catálogo de negócios e renda passiva
 *!comprarnegocio N* — compra um negócio
 *!meusnegocios* — mostra negócios e permite upgrade
@@ -5778,7 +5838,7 @@ Escolha quanto tempo vai trabalhar:
 
         const EVENT_ACTION_CMDS=new Set([
           'daily','diario','trabalhar','work','trampo','all','tudo',
-          'uber','ifood','ifoodbike','coletar',
+          'uber','cltuber','centraluber','coletauber','ifood','ifoodbike','coletar',
           'dungeon','batalhar','battle','roubar','atacar','attack',
           'boss','raid','lojaraid','entrar','go','iniciarraid',
           'comprar','buy','compraritem','vender','sell',
@@ -6627,6 +6687,51 @@ ${results.join('\n')}
             text+=`${Number(r.eventMultiplier||1)>1?'\n🔥 *EVENTO 2X APLICADO*':''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
+
+        } else if(['cltuber'].includes(cmd)){
+          if(args[0]){
+            const r=await hireCltUberDriver(sender,args[0])
+            await reply(
+`✅ *CLT UBER CONTRATADO!*
+
+👨‍✈️ Motorista ${r.slot}: *${r.name}*
+💸 Contratação: *R$ ${fmt(r.price)}*
+⏱️ Corrida automática: a cada *${r.intervalMin} min*
+📉 Comissão do motorista: *${Math.round(r.commission*100)}%*
+⚙️ Eficiência automática: *${Math.round(r.efficiency*100)}%*
+
+🚗 Agora use *!centraluber* para escolher o carro e iniciar um turno de até *8 horas*.`
+            )
+          }else{
+            let text='👨‍✈️ *CLT UBER — MOTORISTAS*\n\n'
+            CLT_UBER_TYPES.forEach((d,i)=>{
+              text+=`${i+1}. *${d.name}* — R$ ${fmt(d.price)}\n   ⏱️ ${d.intervalMin} min/corrida • eficiência ${Math.round(d.efficiency*100)}% • comissão ${Math.round(d.commission*100)}%\n`
+            })
+            text+='\n🛑 Cada turno dura no máximo *8 horas* e depois para sozinho.\n👥 Limite: *3 motoristas*.\n\n👉 Contrate com *!cltuber 1*, *2* ou *3*.'
+            await reply(text)
+          }
+
+        } else if(['centraluber'].includes(cmd)){
+          const s=await getCltUberStatus(sender)
+          if(!s.drivers.length) return await reply('👨‍✈️ Você ainda não contratou motorista. Use *!cltuber*.')
+          setQuickFlow(chat,sender,'cltuber_driver_select',{},90000)
+          let text='🏢 *CENTRAL UBER*\n\n'
+          s.drivers.forEach(d=>{
+            const state=d.active?`🟢 EM TURNO • falta ${duration(d.remaining)}`:d.finished?'🟡 TURNO ENCERRADO':'⚪ DISPONÍVEL'
+            text+=`${d.slot}. *${d.type.name}* — ${state}\n   🚗 ${d.car?.name||'sem carro'} • 💰 R$ ${fmt(Number(d.accrued||0))} acumulado\n`
+          })
+          text+='\n🚗 *Sua garagem:*\n'
+          s.garage.forEach((car,i)=>{
+            const busy=s.drivers.some(d=>d.active&&d.car?.id===car.id)
+            text+=`${i+1}. ${car.name}${busy?' 🔒':''}\n`
+          })
+          text+='\n👉 Responda com o *número do motorista* para iniciar/reiniciar um turno.\n💵 Para sacar tudo: *!coletauber*\n0️⃣ Sair'
+          await reply(text)
+
+        } else if(['coletauber'].includes(cmd)){
+          const r=await collectCltUber(sender)
+          if(!r.total) await reply('💵 A Central Uber ainda não tem valor disponível para coleta.')
+          else await reply(`💰 *CENTRAL UBER — COLETA CONCLUÍDA!*\n\n💵 Líquido recebido: *R$ ${fmt(r.total)}*\n🧾 O valor já considera comissão do motorista e TAXADE.\n\n🛑 Motoristas cujo turno de 8h terminou continuam parados até você iniciar outro em *!centraluber*.`)
 
         } else if(['uber'].includes(cmd)){
           const r=await driveUber(sender)
