@@ -39,7 +39,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent,
+  startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent, autoStartSiegeBossEvent,
   getRaidCatalog, getRaidStatus, createRaid, joinRaid, cancelRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -1147,6 +1147,15 @@ async function start() {
 
   sock.ev.on('creds.update',saveCreds)
 
+  async function sendScheduledGroupNotice(chat,key,text){
+    const settingKey='scheduled_notice:'+key+':'+chat
+    const inserted=await db.query(
+      "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
+      [settingKey,JSON.stringify({sentAt:Date.now()})]
+    )
+    if(inserted.rowCount) await sock.sendMessage(chat,{text}).catch(err=>console.error('[Eventos] aviso',chat,err?.message||err))
+  }
+
   async function runBossEventScheduler(){
     if(trevoHealth.whatsapp!=='open') return
     try{
@@ -1155,6 +1164,87 @@ async function start() {
         const chat=lic.chat_jid
         if(!chat?.endsWith('@g.us')) continue
         try{
+          const now=Date.now()
+          const rushStart=Date.parse('2026-10-04T10:30:00-03:00')
+          const rushEnd=Date.parse('2026-10-04T11:30:00-03:00')
+          const raidStart=Date.parse('2026-10-04T14:00:00-03:00')
+          const raidEnd=Date.parse('2026-10-04T15:30:00-03:00')
+          const siegeStart=Date.parse('2026-10-04T18:00:00-03:00')
+          const siegeEnd=Date.parse('2026-10-04T20:00:00-03:00')
+
+          if(now<siegeEnd){
+            await sendScheduledGroupNotice(chat,'agenda-2026-10-04',
+`📅 *EVENTOS DE HOJE — 04/10*
+
+⚡ *10:30–11:30 — HORA DO CORRE*
+💰 +50% em *!trabalhar*, *!uber* e *!ifood*
+🚕 CLT Uber não recebe o bônus.
+
+🔥 *14:00–15:30 — INVASÃO DAS RAIDS*
+✨ +50% XP de jogador
+🐾 +50% XP de pet
+⚔️ Chance maior de equipamento
+💰 Dinheiro continua normal.
+
+👹 *18:00–20:00 — CERCO DO COLOSSO*
+🤝 Boss coletivo de *170–200 mil HP*
+🏆 Recompensas por colaboração
+🛡️ Novas armaduras híbridas com HP/crítico.
+
+⚔️ Preparem poções, pets e equipamentos.`)
+          }
+
+          if(now>=rushStart&&now<rushEnd) await sendScheduledGroupNotice(chat,'rush-start-2026-10-04',
+`⚡ *HORA DO CORRE COMEÇOU!*
+
+⏱️ Até *11:30*
+💰 *+50%* em !trabalhar, !uber e !ifood
+🚕 CLT Uber fica fora do bônus.
+
+🏃 Quem jogar ativo ganha mais nesta hora.`)
+
+          if(now>=raidStart&&now<raidEnd) await sendScheduledGroupNotice(chat,'raid-start-2026-10-04',
+`🔥 *INVASÃO DAS RAIDS COMEÇOU!*
+
+⏱️ Até *15:30*
+✨ +50% XP de jogador
+🐾 +50% XP de pet
+⚔️ Chance adicional de equipamento
+💰 Recompensa em dinheiro continua normal.
+
+🔑 Abram as Raids e montem o grupo.`)
+
+          if(now>=siegeStart&&now<siegeEnd){
+            const siege=await autoStartSiegeBossEvent(chat)
+            if(siege?.spawned){
+              await sendScheduledGroupNotice(chat,'siege-start-2026-10-04',
+`👹 *CERCO DO COLOSSO COMEÇOU!*
+
+🗿 *${siege.name}*
+❤️ HP: *${Number(siege.maxHp).toLocaleString('pt-BR')}*
+⚔️ ATK: *${siege.atk}*
+⏱️ O Cerco termina às *20:00*.
+
+🏆 *DROPS ESPECIAIS*
+🟢 Colete Vital — +18 DEF / +60 HP
+🟣 Couraça do Predador — +38 DEF / +90 HP / +3% CRIT
+🔴 Armadura do Colosso — +52 DEF / +140 HP / +4% CRIT
+
+🥇 Top 1 garante a Armadura do Colosso.
+🥈/🥉 têm chance da Couraça do Predador.
+🤝 Participantes com dano relevante podem encontrar o Colete Vital.
+
+⚔️ Usem *!boss* e depois *!atacar*.`)
+            }
+          }else if(now>=siegeEnd){
+            const siege=await autoStartSiegeBossEvent(chat)
+            if(siege?.stopped) await sendScheduledGroupNotice(chat,'siege-end-2026-10-04',
+`🌘 *CERCO ENCERRADO*
+
+O Colosso recuou às *20:00*.
+Se ele não foi derrotado, o HP restante foi perdido. Até o próximo Cerco.`)
+          }
+
           const night=await autoStartNightBossEvent(chat)
           if(night?.spawned){
             await sock.sendMessage(chat,{text:
