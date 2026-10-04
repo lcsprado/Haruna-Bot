@@ -2124,7 +2124,9 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!pet* / *!pets* — catálogo rápido dos pets
 *!adotar* — lista os 16 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção\n*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
 *!meuspets* — mostra todos os seus pets
-*!usarpet ID* — troca o pet ativo
+*!equiparpet* — monta Principal, Suporte e Reserva por números
+*!timepet* — mostra seu time atual
+*!usarpet ID* — troca apenas o pet Principal
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
 *!nomepet NovoNome* — troca o nome por R$ 1.000
 🐾 *Pets têm especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
@@ -6740,6 +6742,40 @@ Se precisar de mais ajuda, use *!suporte*.`
               const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
               const r=await petDuel(sender,target)
               return await reply(`🐾⚔️ *DUELO DE PETS*\n\n🏆 ${r.winner.name} venceu ${r.loser.name} em *${r.rounds} rodada(s)*!\n❤️ ${r.winner.name}: *${r.winner.hp}/${r.winner.max_hp}*\n💔 ${r.loser.name}: *${r.loser.hp}/${r.loser.max_hp}*\n\n+25 XP para o vencedor • +10 XP para o derrotado.`,{mentions:[targetRaw]})
+            }
+            if(cmd==='timepet'){
+              const team=await getPetTeam(sender)
+              const bySlot=s=>team.find(x=>Number(x.slot)===s)
+              const p1=bySlot(1),p2=bySlot(2),p3=bySlot(3)
+              let text='🐾 *SEU TIME PET*\n\n'
+              text+='1️⃣ *PRINCIPAL*\n'+(p1?`🐾 ${p1.name} — ${p1.species}\n⭐ Nv.${p1.level} • ❤️ ${p1.hp}/${petMaxHp(p1.level,p1.xp,p1.species)}`:'— Vazio')+'\n\n'
+              text+='2️⃣ *SUPORTE*\n'+(p2?`🐾 ${p2.name} — ${p2.species}\n⭐ Nv.${p2.level} • ❤️ ${p2.hp}/${petMaxHp(p2.level,p2.xp,p2.species)}`:'— Vazio')+'\n\n'
+              text+='3️⃣ *RESERVA*\n'+(p3?`🐾 ${p3.name} — ${p3.species}\n⭐ Nv.${p3.level} • ❤️ ${p3.hp}/${petMaxHp(p3.level,p3.xp,p3.species)}`:'— Vazio')+'\n\n'
+              text+='⚔️ Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.\n👉 Use *!equiparpet* para montar o time.'
+              return await reply(text)
+            }
+            if(cmd==='equiparpet'){
+              const pets=await listPets(sender)
+              if(!pets.length) return await reply('🐾 Você ainda não tem pets.')
+              const picks=String(args.join(' ')||'').split(/[\s,;]+/).map(Number).filter(Number.isInteger)
+              if(picks.length){
+                if(picks.length>3||new Set(picks).size!==picks.length||picks.some(n=>n<1||n>pets.length)) return await reply('🐾 Escolha de *1 a 3 pets*. Ex.: *!equiparpet 1,2,5*.')
+                const ids=picks.map(n=>pets[n-1].id)
+                const team=await setPetTeam(sender,ids,picks.length>1)
+                const bySlot=s=>team.find(x=>Number(x.slot)===s)
+                return await reply('🐾 *TIME PET EQUIPADO!*\n\n1️⃣ Principal: *'+(bySlot(1)?.name||'Vazio')+'*\n2️⃣ Suporte: *'+(bySlot(2)?.name||'Vazio')+'*\n3️⃣ Reserva: *'+(bySlot(3)?.name||'Vazio')+'*\n\n💡 Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.')
+              }
+              const team=await getPetTeam(sender)
+              const slotById=new Map(team.map(x=>[Number(x.id),Number(x.slot)]))
+              setQuickFlow(chat,sender,'pet_team_select',{pets},5*60*1000)
+              let text='🐾 *EQUIPAR TIME PET*\n\n'
+              pets.forEach((p,i)=>{
+                const slot=slotById.get(Number(p.id))
+                const tag=slot===1?' 👑 PRINCIPAL':slot===2?' 🛟 SUPORTE':slot===3?' 🔄 RESERVA':''
+                text+='*'+(i+1)+'.* *'+p.name+'* — '+p.species+' • Nv.'+p.level+tag+'\n'
+              })
+              text+='\n👉 Mande *1 número* para trocar só o Principal.\n👉 Ou mande até *3 números* na ordem dos slots. Ex.: *1,2,5*\n\n1º = Principal • 2º = Suporte • 3º = Reserva\n0️⃣ Cancelar'
+              return await reply(text)
             }
             if(cmd==='meuspets'){
               const pets=await listPets(sender)
