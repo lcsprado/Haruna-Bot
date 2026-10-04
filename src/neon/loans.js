@@ -1,7 +1,7 @@
 import { db, ensureUser } from './db.js'
 import { getPatrimony } from './progression.js'
 
-const TERM_SECONDS=30*60
+const TERM_SECONDS=2*60*60
 const OFFER_TTL_SECONDS=10*60
 const INTEREST_RATE_PER_HOUR=0.02
 const MAX_INTEREST_HOURS=50
@@ -231,7 +231,7 @@ export async function acceptLoan(borrowerJid,id=null){
     loan=accepted.rows[0]
     await client.query(
       'INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,$3,$4,$5)',
-      [loan.lender_jid,loan.borrower_jid,amount,'loan_disbursement','loan#'+loan.id+'|30min-sem-juros|mora-2pct-h']
+      [loan.lender_jid,loan.borrower_jid,amount,'loan_disbursement','loan#'+loan.id+'|2h-sem-juros|mora-2pct-h']
     )
     return loan
   })
@@ -257,6 +257,9 @@ export async function payLoan(borrowerJid,amount='total'){
     if(!loan) throw new Error('Você não possui empréstimo ativo.')
     loan=await accrueInterest(client,loan)
     const due=totalDue(loan)
+    const lateHours=loan?.due_at && nowEpoch()>Number(loan.due_at)
+      ? Math.min(MAX_INTEREST_HOURS,Math.ceil((nowEpoch()-Number(loan.due_at))/3600))
+      : 0
     let wanted=String(amount||'').toLowerCase()
     if(['total','tudo'].includes(wanted)) wanted=due
     else wanted=asMoney(amount)
@@ -265,7 +268,7 @@ export async function payLoan(borrowerJid,amount='total'){
     const available=Number(wallet.rows[0]?.cash||0)+Number(wallet.rows[0]?.bank||0)
     if(available<Number(wanted)) throw new Error('Saldo insuficiente. Disponível: R$ '+available.toLocaleString('pt-BR')+'.')
     const result=await applyPayment(client,loan,Math.min(Number(wanted),due),'manual')
-    return {...result,dueBefore:due}
+    return {...result,dueBefore:due,lateHours,interestRatePerHour:INTEREST_RATE_PER_HOUR}
   })
 }
 
