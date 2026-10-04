@@ -7880,7 +7880,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           await reply(text)
 
         } else if(['uparitem','upgradeitem','melhoraritem'].includes(cmd)){
-          const items=await listUpgradeableEquipment(sender)
+          const [items,profile]=await Promise.all([listUpgradeableEquipment(sender),getCombatProfile(sender)])
           if(!items.length) return await reply('⬆️ Você ainda não possui arma ou armadura para aprimorar.')
           const available=items.filter(i=>i.next)
           if(!available.length) return await reply('🏆 Todos os seus equipamentos já estão no *Lv.10*.')
@@ -7894,7 +7894,8 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             const stat=i.category==='weapon'
               ? `${i.current.atk} → ${i.next.atk} ATK${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
               : `${i.current.def} → ${i.next.def} DEF${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
-            text+=`*${n+1}.* ${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
+            const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)
+            text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
           })
           text+='\n💡 Os ganhos crescem progressivamente por nível; no *Lv.10* os atributos escaláveis chegam a *2,5×* a base. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
           await reply(text)
