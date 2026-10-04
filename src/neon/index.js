@@ -121,7 +121,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   ;(async()=>{
     let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     try{
-      for(let i=0;i<30;i++){
+      for(let i=0;i<180;i++){
         const r=await attackBoss(chat,jid,name,usePet)
         if(r.petUnavailableReason==='energy'&&!petExitWarned){
           petExitWarned=true
@@ -7497,7 +7497,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
         } else if(['go','iniciarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
           const r=await startRaid(chat,sender)
-          await reply(`🚨 *RAID INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n\n🔑 Chave consumida.\n⚔️ Combate automático iniciado.\n🧪 Se alguém cair, o Alpha usa uma poção automaticamente; sem cura, o jogador sai da Raid.\n🐾 O pet participa, gasta 1 de energia por rodada e recebe XP se o grupo vencer.\n🏆 Recompensas serão proporcionais à colaboração.`)
+          await reply(`🚨 *RAID INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chave consumida.\n⚔️ Combate automático iniciado.\n🧪 Se alguém cair, o Alpha usa uma poção automaticamente; sem cura, o jogador sai da Raid.\n🐾 O pet participa, gasta 1 de energia por rodada e recebe XP se o grupo vencer.\n🏆 Recompensas serão proporcionais à colaboração.`)
           runRaidCombat(chat,reply)
 
         } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
