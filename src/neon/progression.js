@@ -74,6 +74,11 @@ export const CLT_UBER_TYPES=[
 ]
 const CLT_UBER_SHIFT_SECONDS=8*60*60
 
+const SUNDAY_RUSH_START=Date.parse('2026-10-04T10:30:00-03:00')
+const SUNDAY_RUSH_END=Date.parse('2026-10-04T11:30:00-03:00')
+const sundayRushMultiplier=()=>Date.now()>=SUNDAY_RUSH_START&&Date.now()<SUNDAY_RUSH_END?1.5:1
+
+
 export const BUSINESSES=[
   {id:'carrinho_lanche',name:'Carrinho de Lanche',price:15000,profitHour:500,capacityHours:8},
   {id:'barbearia',name:'Barbearia',price:45000,profitHour:1200,capacityHours:8},
@@ -677,7 +682,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
       const tip=Math.random()<.18?Math.max(10,Math.round(fare*(.05+Math.random()*.15))):0
       return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
     })
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const moneyMultiplier=(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()
     const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
@@ -713,7 +718,7 @@ export async function driveUber(jid,taxMultiplier=1){
       const tip=Math.random()<.22?Math.max(20,Math.round(fare*(.08+Math.random()*.17))):0
       return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
     })
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+    const moneyMultiplier=(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()
     const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
