@@ -794,9 +794,12 @@ export async function startRaid(chat,host,level=null){
 async function finishRaidRewards(c,s,cfg){
   const ranked=Object.values(s.players||{}).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
-  // Invasão das Raids — 04/10/2026, 14:00–15:40 America/Sao_Paulo.
-  // Dinheiro normal; +50% XP de jogador e pet, além de chance extra de equipamento.
-  const raidEventActive=Date.now()>=Date.parse('2026-10-04T14:00:00-03:00') && Date.now()<Date.parse('2026-10-04T15:40:00-03:00')
+  // Invasão das Raids — 04/10/2026, 14:00–15:30 America/Sao_Paulo.
+  // A compensação por desconexões usa uma janela dinâmica persistida no Neon.
+  const now=Date.now()
+  const raidComp=(await c.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
+  const compensationActive=Number(raidComp.startsAt||0)<=now && now<Number(raidComp.endsAt||0)
+  const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive
   const moneyMultiplier=1
   const xpMultiplier=raidEventActive?1.5:1
   const petXpMultiplier=raidEventActive?1.5:1
