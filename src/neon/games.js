@@ -702,7 +702,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
       atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),
-      crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,alive:true,heals:0,
+      crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
       pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null
     }}
     await saveGame(c,chat,gameType,s)
@@ -970,7 +970,7 @@ export async function raidRound(chat,level){
       let petSkillHeal=null
       const healCooldown=Math.max(0,Number(p.pet?.bonus?.healCooldown||0))
       if(
-        p.pet?.roundActive && p.hp>0 && Number(p.maxHp)>0 &&
+        p.pet?.roundActive && Number(p.pet.hp)>0 && p.hp>0 && Number(p.maxHp)>0 &&
         Number(p.pet?.bonus?.healPct||0)>0 && healCooldown>0 &&
         Number(p.pet.turns||0)%healCooldown===0 &&
         Number(p.hp)/Number(p.maxHp)<.70
@@ -1333,7 +1333,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
       // Não ressuscita e ocorre antes da poção automática.
       const healCooldown=Math.max(0,Number(petBonus.healCooldown||0))
       if(
-        pet && php>0 && effectiveMaxHp>0 &&
+        pet && Number(pet.hp)>0 && php>0 && effectiveMaxHp>0 &&
         Number(petBonus.healPct||0)>0 && healCooldown>0 &&
         attackCount%healCooldown===0 &&
         php/effectiveMaxHp<.70
@@ -1367,7 +1367,13 @@ export async function attackBoss(chat,jid,name,usePet=true){
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[php,jid])
     }
     if(s.hp<=0){
-      const entries=Object.entries(s.participants).map(([pjid,v])=>({jid:pjid,damage:Number(v.damage||0),name:v.name||'Jogador'})).sort((a,b)=>b.damage-a.damage)
+      const entries=Object.entries(s.participants).map(([pjid,v])=>({
+        jid:pjid,
+        damage:Number(v.damage||0),
+        name:v.name||'Jogador',
+        attacks:Number(v.attacks||0),
+        petHealing:Number(v.petHealing||0)
+      })).sort((a,b)=>b.damage-a.damage)
       const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
       const xpMultiplier=await getDoubleEventMultiplier(c,'xp')
       const total=entries.reduce((n,x)=>n+x.damage,0)||1,rewards=[]
