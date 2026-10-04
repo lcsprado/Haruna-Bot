@@ -120,7 +120,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   if(bossSessions.has(key)) return false
   bossSessions.set(key,true)
   ;(async()=>{
-    let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
+    let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     try{
       for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name,usePet)
@@ -139,7 +139,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
           await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura disponível.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
           return
         }
-        attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
+        attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.bossCritical) bossCrits++; if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
         if(r.dead){
@@ -157,7 +157,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         }
         if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
       }
-      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{bossSessions.delete(key)}
   })()
@@ -209,6 +209,7 @@ async function runRaidCombat(chat,level,reply){
 
         const bossEvents=(r.events||[]).filter(e=>e.type==='boss')
         const hitEvents=(r.events||[]).filter(e=>e.type==='hit')
+        const bossCrits=bossEvents.filter(e=>e.critical).length
         const heals=bossEvents.filter(e=>e.autoHeal)
         const petHeals=bossEvents.filter(e=>e.autoPetHeal)
         const petSkillHeals=bossEvents.filter(e=>e.petSkillHeal)
@@ -220,6 +221,7 @@ async function runRaidCombat(chat,level,reply){
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
           if(r.special) text+=`\n🔥 *${r.specialName}!* O Boss usou um ataque especial.\n`
+          if(bossCrits) text+=`\n💢 Crítico do Boss: *${bossCrits} jogador${bossCrits>1?'es':''} atingido${bossCrits>1?'s':''}*.\n`
           text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*\n👥 Sobreviventes: *${r.survivors}*`
           for(const e of heals) text+=`\n🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
           for(const e of petHeals) text+=`\n🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
