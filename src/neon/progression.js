@@ -29,12 +29,17 @@ export const HOUSES=[
 export const CARS=[
   {id:'popular',name:'Chevrolet Corsa',price:35000},
   {id:'sedan_esportivo',name:'Hyundai HB20',price:85000},
+  {id:'nivus',name:'Volkswagen Nivus',price:130000},
+  {id:'jetta_gli',name:'Volkswagen Jetta GLI',price:175000},
   {id:'suv_premium',name:'Honda Civic Type R',price:220000},
-  {id:'superesportivo',name:'Ferrari 296 GTB',price:1500000},
-  {id:'hipercarro',name:'Bugatti Chiron Super Sport',price:6000000},
+  {id:'bmw_320i',name:'BMW 320i',price:350000},
+  {id:'audi_a5',name:'Audi A5',price:500000},
   {id:'porsche_911',name:'Porsche 911 GT3 RS',price:750000},
+  {id:'mercedes_c43',name:'Mercedes-AMG C43',price:1050000},
+  {id:'superesportivo',name:'Ferrari 296 GTB',price:1500000},
   {id:'lamborghini_revuelto',name:'Lamborghini Revuelto',price:3000000},
   {id:'mclaren_p1',name:'McLaren P1',price:4500000},
+  {id:'hipercarro',name:'Bugatti Chiron Super Sport',price:6000000},
 ]
 
 export const MOTORCYCLES=[
@@ -651,8 +656,13 @@ export async function driveUber(jid,taxMultiplier=1){
   const tiers={
     popular:{category:'UberX — Corsa',min:320,max:620},
     sedan_esportivo:{category:'Uber Comfort — HB20',min:650,max:1100},
+    nivus:{category:'Uber Comfort — Nivus',min:850,max:1350},
+    jetta_gli:{category:'Uber Comfort+ — Jetta GLI',min:1050,max:1600},
     suv_premium:{category:'Uber Black — Civic Type R',min:1200,max:1900},
+    bmw_320i:{category:'Uber Black — BMW 320i',min:1500,max:2300},
+    audi_a5:{category:'Uber Black+ — Audi A5',min:1850,max:2800},
     porsche_911:{category:'Uber Black — Porsche',min:2200,max:3400},
+    mercedes_c43:{category:'Uber Executive — Mercedes-AMG C43',min:3000,max:4600},
     superesportivo:{category:'Uber Elite — Ferrari',min:4200,max:6200},
     lamborghini_revuelto:{category:'Uber Hyper — Lamborghini',min:6000,max:8500},
     mclaren_p1:{category:'Uber Hyper — McLaren',min:7200,max:10000},
