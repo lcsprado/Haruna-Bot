@@ -3940,8 +3940,14 @@ export async function startPetExpedition(jid,petId,hours=4){
     const pet=(await client.query('SELECT * FROM pet_collection WHERE id=$1 AND jid=$2 FOR UPDATE',[petId,jid])).rows[0]
     if(!pet) throw new Error('Pet não encontrado. Use !meuspets para ver o ID.')
     if(pet.active) throw new Error('O pet ativo não pode sair em expedição. Escolha um pet reserva.')
-    const busy=(await client.query('SELECT 1 FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
-    if(busy) throw new Error('Esse pet já está em uma expedição.')
+    const busy=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
+    if(busy){
+      const remaining=Math.max(0,Number(busy.ends_at||0)-Math.floor(Date.now()/1000))
+      const hoursLeft=Math.floor(remaining/3600)
+      const minsLeft=Math.ceil((remaining%3600)/60)
+      const leftText=hoursLeft>0?`${hoursLeft}h ${minsLeft}min`:`${minsLeft}min`
+      throw new Error(`Esse pet já está em uma expedição. ⏱️ Retorno em aproximadamente ${leftText}.`)
+    }
     const activeCount=Number((await client.query('SELECT COUNT(*) n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE',[jid])).rows[0]?.n||0)
     if(activeCount>=3) throw new Error('Você já tem 3 pets em expedição. Aguarde algum retornar.')
     const trait=petExpeditionTrait(pet.species)
