@@ -558,14 +558,16 @@ function petBossBonus(pet){
   }
 }
 
+// Rebalance pós-!timepet: mais vida para absorver crítico/bônus de pet sem transformar
+// o combate em puro dano recebido. ATK sobe ~10%; HP base sobe ~25–32%.
 const RAID_CONFIGS=[
-  {level:10,name:'Guardião de Pedra',hp:10000,atk:14,keyId:'chave_raid_10',keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Fragmento do Núcleo de Pedra'},box:null,gear:null,gearChance:0},
-  {level:15,name:'Dragão Vulcânico',hp:18000,atk:21,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.015},
-  {level:20,name:'Devorador Abissal',hp:30000,atk:30,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.0175},
-  {level:25,name:'Titã de Ferro',hp:48000,atk:39,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.02},
-  {level:30,name:'Rei Abissal',hp:75000,atk:50,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.025},
-  {level:40,name:'Serafim Caído',hp:130000,atk:70,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.008},
-  {level:50,name:'Alpha Corrompido',hp:220000,atk:98,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.005},
+  {level:10,name:'Guardião de Pedra',hp:13000,atk:15,keyId:'chave_raid_10',keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,material:{id:'nucleo_pedra',name:'Fragmento do Núcleo de Pedra'},box:null,gear:null,gearChance:0},
+  {level:15,name:'Dragão Vulcânico',hp:24000,atk:23,keyId:'chave_raid_15',keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,material:{id:'escama_vulcanica',name:'Escama Vulcânica'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.015},
+  {level:20,name:'Devorador Abissal',hp:39000,atk:33,keyId:'chave_raid_20',keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,material:{id:'olho_abissal',name:'Olho Abissal'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.0175},
+  {level:25,name:'Titã de Ferro',hp:63000,atk:43,keyId:'chave_raid_25',keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,material:{id:'nucleo_titan',name:'Núcleo do Titã'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.02},
+  {level:30,name:'Rei Abissal',hp:98000,atk:55,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.025},
+  {level:40,name:'Serafim Caído',hp:170000,atk:77,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.008},
+  {level:50,name:'Alpha Corrompido',hp:290000,atk:108,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.005},
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
 const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:30,40:40,50:50}[Number(level)]||15)
@@ -828,7 +830,11 @@ export async function startRaid(chat,host,level=null){
       }
       s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet}
     }
-    s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
+    // O grupo maior causa muito mais dano por rodada. Escala só o HP (+12% por
+    // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
+    const partyHpMultiplier=1+Math.max(0,ids.length-1)*.12
+    const raidMaxHp=Math.round(cfg.hp*partyHpMultiplier)
+    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
     await saveGame(c,chat,gameType,s)
     return s
   })
@@ -982,7 +988,9 @@ export async function raidRound(chat,level){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))))
-      const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:1)))
+      // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
+      const bossCritical=!dodged&&!special&&Math.random()<.05
+      const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))))
       p.hp=Math.max(0,Number(p.hp)-dmg)
       let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
@@ -1055,7 +1063,7 @@ export async function raidRound(chat,level){
         }else p.alive=false
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
-      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,autoHeal,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
+      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
@@ -1183,7 +1191,7 @@ function bossEventFridayInfo(now=new Date()){
 }
 
 async function createBossEventState(c,chat,{scheduleKey=null,origin='manual'}={}){
-  const maxHp=42000+Math.floor(Math.random()*8001)
+  const maxHp=55000+Math.floor(Math.random()*10001)
   const state={
     mode:'event',
     eventId:'eclipse',
@@ -1193,7 +1201,7 @@ async function createBossEventState(c,chat,{scheduleKey=null,origin='manual'}={}
     name:'Imperador do Eclipse',
     hp:maxHp,
     maxHp,
-    atk:22,
+    atk:24,
     participants:{},
     startedAt:Date.now()
   }
@@ -1286,8 +1294,8 @@ export async function startBoss(chat){
       if(current?.mode==='weekly'&&current.weekendKey===weekend.weekendKey&&Number(current.hp)>0&&Number(current.endsAt||0)>Date.now()){
         return {already:true,...current,endsLabel:weekend.endsLabel}
       }
-      const maxHp=60000+Math.floor(Math.random()*20001)
-      const state={mode:'weekly',name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:18,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:false,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
+      const maxHp=85000+Math.floor(Math.random()*25001)
+      const state={mode:'weekly',name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:20,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:false,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
       await saveGame(c,chat,'boss',state); return state
     }
     if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
@@ -1298,8 +1306,8 @@ export async function startBoss(chat){
       const remaining=Math.ceil((commonCooldownMs-(Date.now()-lastCommonEndedAt))/60000)
       return {cooldown:true,mode:'common',remainingMinutes:remaining,weeklyCompleted:Boolean(weeklyCompleted)}
     }
-    const maxHp=6500+Math.floor(Math.random()*2501)
-    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:10,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:Boolean(weeklyCompleted),lastCommonEndedAt}
+    const maxHp=9000+Math.floor(Math.random()*3001)
+    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:11,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:Boolean(weeklyCompleted),lastCommonEndedAt}
     await saveGame(c,chat,'boss',state); return state
   })
 }
@@ -1399,10 +1407,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
       petHealing:Number(old.petHealing||0),
       activePetSlot
     }
-    let php=Math.min(Number(st.hp),effectiveMaxHp),bossDamage=0,autoHeal=null,petSkillHeal=null
+    let php=Math.min(Number(st.hp),effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,petSkillHeal=null
     if(s.hp>0){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
-      bossDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)))
+      bossCritical=!dodged&&Math.random()<.05
+      bossDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)*(bossCritical?1.5:1)))
       php=Math.max(0,php-bossDamage)
       if(pet){
         const petTaken=Math.max(1,Math.round(Number(s.atk||18)*(.30+Math.random()*.22)*(1-Math.min(.75,Number(petBonus.defense||0)))))
@@ -1548,9 +1557,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
         await saveGame(c,chat,'boss',marker)
       }
-      return {dead:true,mode:s.mode,damage,bossDamage,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     await saveGame(c,chat,gameType,s)
-    return {dead:false,damage,bossDamage,playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
+    return {dead:false,damage,bossDamage,bossCritical,playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }
