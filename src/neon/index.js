@@ -2154,16 +2154,9 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!usarpet ID* — troca apenas o pet Principal
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
 *!nomepet NovoNome* — troca o nome por R$ 1.000
-🐾 *Especialidades:* dano, defesa, crítico, esquiva, XP, drop ou bônus contra Boss
-🧬 *Sinergia de equipe:* exige 3 espécies diferentes do mesmo estilo
-🪽 Voador: *+3% ATK* • 🛡️ Guardião: *+4% DEF*
-🐾 Predador: *+2% ATK +2% CRIT* • ✨ Místico: *+2% DEF +2,5% CRIT*
-🚫 Duas cópias da mesma espécie não podem ocupar o mesmo time
-♻️ Pet de Raid repetido no altar vira *dinheiro + fragmentos de volta*
-*!alimentar* — alimenta
-*!descansar* — recupera 30 de energia + 35% do HP do pet (30 min)
-🧪 *Poções de Pet:* Comum +60 HP • Rara +160 HP • Épica +320 HP\n⚡ *Energético Pet:* R$ 12.000 na loja; restaura 100% da energia instantaneamente
-*!banho* — cuidado cosmético opcional
+*!alimentar* — alimenta o pet
+*!descansar* — recupera energia e HP do pet
+*!banho* — cuidado cosmético
 *!passear* — passeia
 *!treinarpet* — treina
 *!aventurapet* — manda para aventura
@@ -6773,7 +6766,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','equiparpet','timepet','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
+        } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','equiparpet','timepet','sinergia','sinergias','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
           try{
             const expeditionTraitText=t=>{
               const itemNames={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_p:'Poção Pequena',caixa_sorte:'Caixa da Sorte',caixa_rara:'Caixa Rara'}
