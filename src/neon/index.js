@@ -462,12 +462,12 @@ async function showCommandsMainMenu(chat,sender,reply){
 
 Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
 
-1️⃣ 👤 Perfil, conta, casamento & social
-2️⃣ 💰 Economia & diversão
+1️⃣ 👤 Perfil, conta & social
+2️⃣ 💰 Economia, trabalho & banco
 3️⃣ 🛒 Loja, inventário & mercado
-4️⃣ 🐾 RPG, combate & PETS
+4️⃣ 🐾 RPG, combate & pets
 5️⃣ 🎮 Minigames
-6️⃣ 📋 Progressão & patrimônio
+6️⃣ 📋 Progressão, missões & patrimônio
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo & moderação
 9️⃣ ⚽ Futebol, utilidades & suporte
@@ -1729,52 +1729,50 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!conquistas* — badges e objetivos desbloqueados
 *!ping* — verifica se o Alpha está online
 
-🔁 *Atalhos também aceitos:* !profile, !diario, !sequencia, !sequência, !sono, !achievements, !ajuda, !help
 
 9️⃣ Voltar • 0️⃣ Fechar`,
-      '2':`💰 *ECONOMIA & DIVERSÃO*
+      '2':`💰 *ECONOMIA, TRABALHO & BANCO*
 
-*!economia* — abre o menu de economia
-*!saldo* — carteira, banco e total
-*!evento* — mostra se o evento 2x de dinheiro/XP está ativo
-*!trabalhar* — trabalha, ganha dinheiro e evolui sua carreira
-*!all* — faz Trabalho + Uber + iFood disponíveis de uma vez (TAXADE 3×); não coleta negócios
-*!carreira* — mostra cargo e progresso profissional
-*!ifood* — coloca toda sua frota de bike/motos para entregar
-*!ifoodbike* — alias do !ifood
+💼 *TRABALHO ATIVO*
+*!trabalhar* — trabalha e evolui a carreira
+*!carreira* — cargo e progresso profissional
+*!all* — Trabalho + Uber + iFood disponíveis de uma vez
+*!ifood* — coloca sua frota de bike/motos para entregar
 *!uber* — coloca seus carros livres para trabalhar
-*!cltuber* — lista motoristas automáticos; *!cltuber 1* contrata
-*!centraluber* — gerencia motoristas, carros e turnos de até 8h
-*!coletauber* — coleta o dinheiro acumulado pelos motoristas
-*!negocios* — catálogo de negócios e renda passiva
-*!comprarnegocio N* — compra um negócio
-*!meusnegocios* — mostra negócios e permite upgrade
-*!coletar* — coleta o lucro acumulado
-*!motos* — loja de bicicleta e motos
-*!comprarmoto N* — compra bicicleta ou moto
-*!minhasmotos* — mostra seus veículos de delivery
-*!venderbike N* — vende bicicleta por 70% do valor pago
-*!vendermoto N* — vende moto por 70% do valor pago
-*!depositar valor* / *!depositar total* — deposita no banco
-*!sacar valor* — saca do banco
-*!pix @pessoa valor* — transfere dinheiro
-*!emprestimo @pessoa valor* — oferece empréstimo por 2h sem juros
-*!aceitaremprestimo [ID]* — aceita uma proposta recebida
-*!recusaremprestimo [ID]* — recusa uma proposta recebida
-*!pagar valor|total* — quita total ou parcialmente
-*!credito* — mostra seu limite de crédito
-*!dividas* — mostra empréstimos recebidos e concedidos
-*!ranking* — ranking dos mais ricos
-*!piada* — piada do Alpha
-*!horoscopo* — horóscopo do dia
-*!dado* — joga um dado
-*!chance* — gera uma porcentagem
-*!escolher A | B* — Alpha escolhe uma opção
-*!ship @pessoa @pessoa* — compatibilidade
-*!verdade* — pergunta de verdade
-*!desafio* — gera um desafio
 
-🔁 *Atalhos também aceitos:* !balance, !bal, !work, !trampo, !emprego, !profissao, !profissão, !deposit, !withdraw, !saque, !transfer, !transferir, !joke, !horóscopo, !negócios, !comprarnegócio, !meusnegócios, !motocicletas
+🚕 *CLT UBER — RENDA AUTOMÁTICA*
+*!cltuber* — mostra os motoristas disponíveis
+*!cltuber 1* — contrata pelo número
+*!centraluber* — motoristas, carros, turnos e saldo acumulado
+*!coletauber* — coleta todo o dinheiro da Central Uber
+🛑 Cada turno automático dura no máximo *8 horas*.
+
+🏪 *NEGÓCIOS*
+*!negocios* — catálogo de negócios
+*!comprarnegocio N* — compra pelo número
+*!meusnegocios* — seus negócios e upgrades
+*!coletar* — coleta a renda acumulada
+
+🏦 *BANCO & DINHEIRO*
+*!saldo* — carteira, banco e total
+*!depositar valor* / *!depositar total* — deposita
+*!sacar valor* — saca
+*!pix @pessoa valor* — transfere
+*!ranking* — ranking dos mais ricos
+
+💳 *EMPRÉSTIMOS*
+*!emprestimo @pessoa valor* — oferece empréstimo
+*!aceitaremprestimo [ID]* — aceita proposta
+*!recusaremprestimo [ID]* — recusa proposta
+*!pagar valor|total* — paga dívida
+*!credito* — limite de crédito
+*!dividas* — empréstimos recebidos e concedidos
+
+🎉 *EXTRAS*
+*!evento* — mostra evento de recompensa ativo
+*!piada* • *!horoscopo* • *!dado* • *!chance*
+*!escolher A | B* • *!ship @pessoa @pessoa*
+*!verdade* • *!desafio*
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '3':`🛒 *LOJA, INVENTÁRIO & MERCADO*
@@ -1797,7 +1795,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!compraritem* — abre a lista de anúncios
 *!cancelarvenda ID* — cancela seu anúncio
 
-🔁 *Atalhos também aceitos:* !item, !shop, !buy, !inv, !inventory, !mochila, !sell, !venderduplicados, !melhoraritem, !upgradeitem, !use, !comprarmercado, !concessionaria, !concessionária, !garagemmotos, !meuscarros, !venderbicicleta
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '4':`⚔️ *RPG, COMBATE & PETS*
@@ -1840,7 +1837,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
 
-🔁 *Atalhos também aceitos:* !battle, !batalha, !masmorra, !roubo, !rankrpg, !toprpg, !raidstatus, !lojalendaria, !fazol
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '5':`🎮 *MINIGAMES*
@@ -1872,43 +1868,35 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 🌘 *Boss de Evento:* toda sexta às 19:00 • muita EXP para jogador e pet + chance de item de raridade Evento Único
 🐾 Seu pet participa com bônus próprio; o bot usa poção automaticamente se você cair
 
-🔁 *Atalhos também aceitos:* !jogos, !minigame, !adivinhar
 
 9️⃣ Voltar • 0️⃣ Fechar`,
-      '6':`📋 *PROGRESSÃO & PATRIMÔNIO*
+      '6':`📋 *PROGRESSÃO, MISSÕES & PATRIMÔNIO*
 
-*!progressao* — menu de progressão
+📈 *PROGRESSÃO*
+*!progressao* — abre o menu de progressão
 *!carpinar* — trabalho AFK de 1h a 12h para ganhar XP
-*!carpinarsair* — encerra antes, paga taxa e recebe XP proporcional
+*!carpinarsair* — encerra o carpinar antes
 *!missoes* — missões diárias
-*!resgatarmissoes* — coleta recompensas
+*!resgatarmissoes* — coleta recompensas concluídas
+*!conquistas* — conquistas e objetivos
+
+🏠 *IMÓVEIS*
 *!casas* — lista imóveis
 *!comprarcasa número* — compra imóvel
 *!minhacasa* — mostra sua casa
-*!carros* — concessionária com Corsa, HB20, Nivus, Jetta GLI, Civic Type R, BMW 320i, Audi A5, Porsche, Mercedes-AMG C43, Ferrari, Lamborghini, McLaren e Bugatti
-*!comprarcarro número* — compra carro
-*!garagem* — mostra seus carros
-*!vendercarro N* — vende carro por 70% do valor pago
-*!motos* — bicicletas e motos
-*!comprarmoto N* — compra veículo de delivery
-*!minhasmotos* — garagem de delivery
-*!venderbike N* / *!vendermoto N* — revende com 30% de desvalorização
-*!negocios* — catálogo de negócios
-*!comprarnegocio N* — compra negócio
-*!meusnegocios* — mostra negócios e permite upgrade
-*!coletar* — coleta renda passiva
 
-🤝 *Missões coletivas & eventos*
-*!missaogrupo* / *!missao* — status, objetivo e ranking da missão coletiva
-*!missaostatus* / *!statusmissao* — atalhos para o status
-*!resgatarmissao* — resgata sua parte proporcional do prêmio
-*!pegar* — pega um evento aleatório ativo no grupo
+🤝 *MISSÕES COLETIVAS & EVENTOS*
+*!missaogrupo* / *!missao* — objetivo, progresso e ranking
+*!missaostatus* — status da missão coletiva
+*!resgatarmissao* — resgata sua parte da recompensa
+*!pegar* — pega evento aleatório ativo no grupo
 
-💎 *Patrimônio*
-*!patrimonio* — total com dinheiro, itens, imóvel, carros, motos/bike e negócios
+💎 *PATRIMÔNIO*
+*!patrimonio* — soma dinheiro, itens, imóveis, veículos e negócios
 *!rankingpatrimonio* — ranking de patrimônio
 
-🔁 *Atalhos também aceitos:* !progressão, !progresso, !missions, !missões, !claimmissions, !missão, !missãogrupo, !missãocoletiva, !missaocoletiva, !missãostatus, !statusmissão, !resgatarmissão, !imoveis, !imóveis, !patrimônio, !rankingpatrimônio, !toppatrimonio
+💡 Carros, motos, Uber e negócios ficam na categoria *2 — Economia*.
+🛒 Itens e mercado ficam na categoria *3 — Loja*.
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '7':`🏴 *CLÃS*
@@ -1925,7 +1913,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!rankingclas* — ranking
 *!saircla* — sai do clã
 
-🔁 *Atalhos também aceitos:* !clã, !clãs, !clas, !clanes, !clãsmenu, !clacofre, !criarclã, !convidarcla, !clãconvidar, !aceitarcla, !clãaceitar, !clãajuda, !doarcla, !clãdoar, !clãpromover, !clãexpulsar, !sairclã, !topclas
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '8':`💚 *GRUPO & MODERAÇÃO*
@@ -1951,7 +1938,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 ⚙️ No *!configgrupo*: Anti-link, Anti-palavrão, Anti-delete, Antiflood, Boas-vindas e módulos do Alpha.
 
-🔁 *Atalhos também aceitos:* !assinatura, !plano, !preco, !pedidos, !configuragrupo, !rules, !atividade, !kick
 
 9️⃣ Voltar • 0️⃣ Fechar`,
       '9':`⚽ *FUTEBOL, UTILIDADES & SUPORTE*
@@ -1977,7 +1963,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!suporte* — abre chamado
 *!chamado CODIGO* — consulta chamado
 
-🔁 *Atalhos também aceitos:* !fut, !jogoshoje, !brasileirao, !brasileirão, !clube, !figurinha, !stiker, !apagada, !apagou, !cmds, !commands, !support
 
 9️⃣ Voltar • 0️⃣ Fechar`
     }
