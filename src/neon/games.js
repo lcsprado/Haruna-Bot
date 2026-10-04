@@ -618,13 +618,28 @@ export async function joinRaid(chat,jid,name='Jogador'){
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
+    let autoKeyPurchased=false
     const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,cfg.keyId])).rows[0]
-    if(Number(key?.quantity||0)<1) throw new Error(`🔑 Para entrar nesta Raid, você precisa ter 1 Chave de Raid Lv.${cfg.level}. Use !chaveraid ${cfg.level}.`)
+    if(Number(key?.quantity||0)<1){
+      const wallet=(await c.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+      const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+      if(cash+bank<cfg.keyPrice){
+        const missing=Math.max(0,cfg.keyPrice-(cash+bank))
+        throw new Error(`🔑 Você não possui a Chave de Raid Lv.${cfg.level}. A compra automática custa R$ ${cfg.keyPrice.toLocaleString('pt-BR')}. Faltam R$ ${missing.toLocaleString('pt-BR')}.`)
+      }
+      const fromCash=Math.min(cash,cfg.keyPrice),fromBank=cfg.keyPrice-fromCash
+      await c.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2 WHERE jid=$3',[fromCash,fromBank,jid])
+      await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+        ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,cfg.keyId])
+      await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+        VALUES($1,'raid_shop',$2,'raid_key_auto',$3)`,[jid,cfg.keyPrice,`Compra automática ao entrar — Raid Lv.${cfg.level}`])
+      autoKeyPurchased=true
+    }
 
     if(s.status==='lobby'){
       s.players={...(s.players||{}),[jid]:{jid,name:name||'Jogador',damage:0,alive:true}}
       await saveGame(c,chat,'raid',s)
-      return {...s,lateJoin:false}
+      return {...s,lateJoin:false,autoKeyPurchased,keyPrice:cfg.keyPrice}
     }
 
     // Entrada tardia: consome a chave agora e cria o participante com os atributos atuais.
@@ -642,7 +657,7 @@ export async function joinRaid(chat,jid,name='Jogador'){
       pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null
     }}
     await saveGame(c,chat,'raid',s)
-    return {...s,lateJoin:true,joinedJid:jid}
+    return {...s,lateJoin:true,joinedJid:jid,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
 }
 
