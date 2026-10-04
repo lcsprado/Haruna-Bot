@@ -3116,7 +3116,7 @@ Digite uma *letra* ou tente a *palavra inteira*.
         if(!q.already) await progressDailyMission(sender,'game')
         const ttl=Math.max(10,Number(q.remaining||120))*1000
         setQuickFlow(chat,sender,'quiz_answer',{},ttl)
-        let text=`🧠 *QUIZ DO ALPHA BOT*\n\n${q.q}\n\n`
+        let text=`🧠 *QUIZ DO ALPHA BOT*${q.difficulty==='difícil'?' • 🔥 DIFÍCIL':''}\n\n${q.q}\n\n`
         q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
         text+='\n_Responda só com 1, 2, 3 ou 4._'
         await reply(text)
@@ -3208,7 +3208,7 @@ Digite *0* para sair do modo rápido.`
         if(!q.already) await progressDailyMission(sender,'game')
         const ttl=Math.max(10,Number(q.remaining||120))*1000
         setQuickFlow(chat,sender,'quiz_answer',{},ttl)
-        let text=`🧠 *QUIZ DO ALPHA BOT*\n\n${q.q}\n\n`
+        let text=`🧠 *QUIZ DO ALPHA BOT*${q.difficulty==='difícil'?' • 🔥 DIFÍCIL':''}\n\n${q.q}\n\n`
         q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
         text+='\n_Responda só com 1, 2, 3 ou 4._'
         await reply(text)
@@ -7379,7 +7379,7 @@ _Os comandos antigos continuam funcionando normalmente._`
             return await reply(text)
           }
           await progressDailyMission(sender,'game')
-          let text=`🧠 *QUIZ DO ALPHA BOT*\n\n${q.q}\n\n`
+          let text=`🧠 *QUIZ DO ALPHA BOT*${q.difficulty==='difícil'?' • 🔥 DIFÍCIL':''}\n\n${q.q}\n\n`
           q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
           text+=`\n⏳ Você tem *2 minutos*.\nResponda apenas com *1, 2, 3 ou 4*.`
           await reply(text)
