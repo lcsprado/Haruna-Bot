@@ -1678,11 +1678,23 @@ Você possui: *${stock}*
       return
     }
     setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
+    const [upgradeables]=await Promise.all([listUpgradeableEquipment(sender)])
+    const currentMap=new Map(upgradeables.map(i=>[i.item_id,i.current]))
+    const weaponStats=currentMap.get(p.weapon_id)||{atk:Number(p.weapon_atk||0),hp:0,crit:0}
+    const armorStats=currentMap.get(p.armor_id)||{def:Number(p.armor_def||0),hp:0,crit:0}
+    const weaponExtra=[
+      Number(weaponStats.hp||0)?'❤️ +'+Number(weaponStats.hp)+' HP':null,
+      Number(weaponStats.crit||0)?'🎯 +'+(Number(weaponStats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
+    ].filter(Boolean).join(' • ')
+    const armorExtra=[
+      Number(armorStats.hp||0)?'❤️ +'+Number(armorStats.hp)+' HP':null,
+      Number(armorStats.crit||0)?'🎯 +'+(Number(armorStats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
+    ].filter(Boolean).join(' • ')
     await reply(
 `⚙️ *EQUIPAR*
 
-🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}*
-🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}*
+🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}* — ⚔️ +${Number(weaponStats.atk||0)} ATK${weaponExtra?' • '+weaponExtra:''}
+🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}* — 🛡️ +${Number(armorStats.def||0)} DEF${armorExtra?' • '+armorExtra:''}
 
 O que deseja trocar?
 
@@ -1698,6 +1710,7 @@ O que deseja trocar?
     const [items,p,upgradeables]=await Promise.all([getInventory(sender),getCombatProfile(sender),listUpgradeableEquipment(sender)])
     const filtered=items.filter(i=>i.category===category)
     const levelMap=new Map(upgradeables.map(i=>[i.item_id,Number(i.level||1)]))
+    const statsMap=new Map(upgradeables.map(i=>[i.item_id,i.current]))
     const isWeapon=category==='weapon'
     const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':'🛡️ *ESCOLHA UMA ARMADURA*'
     if(!filtered.length){
@@ -1709,13 +1722,15 @@ O que deseja trocar?
     setQuickFlow(chat,sender,'equip_select',{items:filtered.map(i=>i.item_id),category},5*60*1000)
     let text=title+'\n\n'
     filtered.forEach((i,idx)=>{
-      const info=getEquipmentInfo(i.item_id)
+      const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
       const level=Number(levelMap.get(i.item_id)||1)
-      const mainStat=isWeapon?Number(info?.atk||0):Number(info?.def||0)
+      const mainStat=isWeapon?Number(stats.atk||0):Number(stats.def||0)
       const active=(isWeapon?p.weapon_id:p.armor_id)===i.item_id?' ✅ *ATIVO*':''
       const extras=[
-        Number(info?.hp||0)?'❤️ +'+Number(info.hp)+' HP':null,
-        Number(info?.crit||0)?'🎯 +'+(Number(info.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
+        Number(stats.hp||0)?'❤️ +'+Number(stats.hp)+' HP':null,
+        Number(stats.crit||0)?'🎯 +'+(Number(stats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null,
+        isWeapon&&Number(stats.def||0)?'🛡️ +'+Number(stats.def)+' DEF':null,
+        !isWeapon&&Number(stats.atk||0)?'⚔️ +'+Number(stats.atk)+' ATK':null
       ].filter(Boolean).join(' • ')
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+'\n'
       text+='   '+(isWeapon?'⚔️ +':'🛡️ +')+mainStat+' '+(isWeapon?'ATK':'DEF')+(extras?' • '+extras:'')+active+'\n'
@@ -3822,28 +3837,34 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply('⚙️ Escolha um dos números da lista, *9* para voltar ou *0* para sair.')
         return true
       }
-      const [p,items]=await Promise.all([getCombatProfile(sender),getInventory(sender)])
+      const [p,items,upgradeables]=await Promise.all([getCombatProfile(sender),getInventory(sender),listUpgradeableEquipment(sender)])
       const item=items.find(i=>i.item_id===itemId)
-      const info=getEquipmentInfo(itemId)
+      const up=upgradeables.find(i=>i.item_id===itemId)
+      const info=up?.current||getEquipmentInfo(itemId)
       if(!item || !info){
         await reply('❌ Não consegui carregar esse equipamento.')
         return true
       }
       const isWeapon=info.category==='weapon'
       const currentName=isWeapon?p.weapon_name:p.armor_name
-      const before=isWeapon?Number(p.effective_atk):Number(p.effective_def)
-      const after=isWeapon
-        ? before-Number(p.weapon_atk||0)+Number(info.atk||0)
-        : before-Number(p.armor_def||0)+Number(info.def||0)
-      const stat=isWeapon?'ATK':'DEF'
-      const delta=after-before
+      const currentUp=upgradeables.find(i=>i.item_id===(isWeapon?p.weapon_id:p.armor_id))
+      const oldStats=currentUp?.current||{}
+      const beforeMain=isWeapon?Number(oldStats.atk||p.weapon_atk||0):Number(oldStats.def||p.armor_def||0)
+      const afterMain=isWeapon?Number(info.atk||0):Number(info.def||0)
+      const mainStat=isWeapon?'ATK':'DEF'
+      const delta=afterMain-beforeMain
       const arrow=delta>0?'📈':delta<0?'📉':'➖'
+      const beforeHp=Number(oldStats.hp||0),afterHp=Number(info.hp||0)
+      const beforeCrit=Number(oldStats.crit||0),afterCrit=Number(info.crit||0)
+      const hpLine=(beforeHp||afterHp)?'\n❤️ *HP bônus: '+beforeHp+' → '+afterHp+'*'+(afterHp-beforeHp>0?' (+'+(afterHp-beforeHp)+')':afterHp-beforeHp<0?' ('+(afterHp-beforeHp)+')':''):''
+      const critLine=(beforeCrit||afterCrit)?'\n🎯 *CRIT: '+(beforeCrit*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% → '+(afterCrit*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%*':''
       setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
       await reply(
         '⚙️ *TROCAR EQUIPAMENTO?*\n\n'+
         (isWeapon?'🗡️':'🛡️')+' Atual: *'+currentName+'*\n'+
-        '➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+'*\n\n'+
-        arrow+' *'+stat+': '+before+' → '+after+'*'+(delta>0?' (+'+delta+')':delta<0?' ('+delta+')':'')+'\n\n'+
+        '➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+' Lv.'+Number(up?.level||1)+'*\n\n'+
+        arrow+' *'+mainStat+': '+beforeMain+' → '+afterMain+'*'+(delta>0?' (+'+delta+')':delta<0?' ('+delta+')':'')+
+        hpLine+critLine+'\n\n'+
         '1️⃣ Equipar\n2️⃣ Cancelar\n9️⃣ Voltar'
       )
       return true
