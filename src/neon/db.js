@@ -1401,10 +1401,14 @@ export async function discardItemsBatch(jid, selections=[]) {
           : `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
       }
 
+      const remaining=owned-sel.qty
       await client.query(
         'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
         [sel.qty,jid,sel.itemId]
       )
+      if(remaining===0 && ['weapon','armor'].includes(item.category)){
+        await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+      }
 
       discarded.push({
         itemId:item.id,
@@ -1412,7 +1416,7 @@ export async function discardItemsBatch(jid, selections=[]) {
         rarity:item.rarity,
         category:item.category,
         qty:sel.qty,
-        remaining:owned-sel.qty,
+        remaining,
         equipped
       })
       totalUnits+=sel.qty
