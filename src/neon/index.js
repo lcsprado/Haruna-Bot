@@ -5004,7 +5004,8 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
           clearQuickFlow(chat,sender)
           const players=Object.values(active.players||{})
-          let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*`
+          const minPlayers=Number(active.level)===10?1:2
+          let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*${active.status==='lobby'?` • mínimo para iniciar: *${minPlayers}*`:''}`
           if(active.status==='lobby') text+='\n\n👉 Quem quiser entrar usa *!entrar*.\n🚀 Quando todos estiverem prontos, o host usa *!go*.'
           else text+='\n\nUse *!raid* para acompanhar o combate.'
           await reply(text)
@@ -5034,7 +5035,8 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
         await progressDailyMission(sender,'game')
         clearQuickFlow(chat,sender)
-        await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Você já entrou como host.\n\n👉 Agora espere os outros mandarem *!entrar*.\n🚀 Quando todo mundo estiver pronto, use *!go*.\n⏳ Máximo: 5 jogadores • mínimo: 2.`)
+        const minPlayers=Number(r.level)===10?1:2
+        await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Participantes: *1/5* • mínimo para iniciar: *${minPlayers}*\n\n${minPlayers===1?'✅ Você já pode iniciar solo com *!go*.':'👉 Agora espere pelo menos mais 1 jogador usar *!entrar*.'}\n🚀 Quando estiver pronto, use *!go*.`)
       }catch(err){
         await reply('❌ '+(err?.message||'Não foi possível abrir essa Raid.'))
       }
@@ -7756,8 +7758,9 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           }
           if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
             const players=Object.values(active.players||{})
-            let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*\n`
-            if(active.status==='lobby') text+='\n👉 *!entrar* para entrar.\n🚀 Host: *!go* quando houver pelo menos 2.'
+            const minPlayers=Number(active.level)===10?1:2
+            let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*${active.status==='lobby'?` • mínimo para iniciar: *${minPlayers}*`:''}\n`
+            if(active.status==='lobby') text+=players.length>=minPlayers?'\n✅ Mínimo atingido. Host já pode usar *!go*.':'\n👉 *!entrar* para entrar.\n⏳ Ainda falta jogador para atingir o mínimo.'
             else{
               text+='\n📊 Dano atual:\n'+players.sort((a,b)=>Number(b.damage||0)-Number(a.damage||0)).map(p=>`• ${p.alive?'🟢':'💀'} *${p.name}* — ${Number(p.damage||0).toLocaleString('pt-BR')}`).join('\n')
               runRaidCombat(chat,reply)
@@ -7774,12 +7777,13 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           }
           const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
           await progressDailyMission(sender,'game')
-          await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando a luta começar.\n👥 Máximo: *5 jogadores* • mínimo: *2*\n⏳ Sala aberta por *5 minutos*.\n\n👉 Seus irmãos podem usar *!entrar*.\n🚀 Depois use *!go*.`)
+          const minPlayers=Number(r.level)===10?1:2
+          await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando a luta começar.\n👥 Participantes: *1/5* • mínimo para iniciar: *${minPlayers}*\n⏳ Sala aberta por *5 minutos*.\n\n${minPlayers===1?'✅ Raid 1 liberada para solo: use *!go* quando quiser.':'👉 Aguarde pelo menos mais 1 jogador usar *!entrar*.'}`)
 
         } else if(['entrar','entrarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
           const r=await joinRaid(chat,sender,msg.pushName||'Jogador')
-          await reply(r.already?`⚔️ Você já está na Raid *${r.name}*.`:(r.lateJoin?`⚔️ *ENTROU COM A RAID EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* e sua recompensa contará somente pela sua participação daqui para frente.`:`✅ *ENTROU NA RAID!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*\n\nAguarde o host usar *!go*.`))
+          await reply(r.already?`⚔️ Você já está na Raid *${r.name}*.`:(r.lateJoin?`⚔️ *ENTROU COM A RAID EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* e sua recompensa contará somente pela sua participação daqui para frente.`:`✅ *ENTROU NA RAID!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5* • mínimo para iniciar: *${Number(r.level)===10?1:2}*\n\n${Object.keys(r.players||{}).length>=(Number(r.level)===10?1:2)?'✅ Mínimo atingido. O host já pode usar *!go*.':'Aguarde mais jogadores entrarem.'}`))
 
         } else if(['cancelarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
