@@ -1724,7 +1724,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!raid 20* — abre a Raid Lv.20
 *!chaveraid 20* — compra a chave da Raid
 *!lojaraid* — loja especial de fragmentos e itens de Raid
-*!entrar* — entra na sala aberta
+*!entrar* — entra na Raid antes ou depois do início, enquanto houver vaga
 *!go* — host inicia (mínimo 2 jogadores)
 *!cancelarraide* — host cancela antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
@@ -7487,7 +7487,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
         } else if(['entrar','entrarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
           const r=await joinRaid(chat,sender,msg.pushName||'Jogador')
-          await reply(r.already?`⚔️ Você já está na Raid *${r.name}*.`:`✅ *ENTROU NA RAID!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*\n\nAguarde o host usar *!go*.`)
+          await reply(r.already?`⚔️ Você já está na Raid *${r.name}*.`:(r.lateJoin?`⚔️ *ENTROU COM A RAID EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* e sua recompensa contará somente pela sua participação daqui para frente.`:`✅ *ENTROU NA RAID!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*\n\nAguarde o host usar *!go*.`))
 
         } else if(['cancelarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
