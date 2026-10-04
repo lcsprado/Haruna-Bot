@@ -746,7 +746,9 @@ async function finishRaidRewards(c,s,cfg){
     let material=null,drop=null,gearDrop=null
     // Materiais continuam garantidos para o top 3, mas em ritmo menor:
     // 2/1/1 em vez de 3/2/1. A invocação segue exigindo 100 materiais.
-    const qty=cfg.level===10 ? (i===0?3:(i===1?2:(i===2?1:0))) : (i===0?2:(i===1||i===2?1:0))
+    const baseQty=cfg.level===10 ? (i===0?3:(i===1?2:(i===2?1:0))) : (i===0?2:(i===1||i===2?1:0))
+    // Durante a Invasão das Raids, os materiais de invocação de pet são triplicados.
+    const qty=raidEventActive ? baseQty*3 : baseQty
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
