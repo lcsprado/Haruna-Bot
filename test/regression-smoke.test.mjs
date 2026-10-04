@@ -36,3 +36,18 @@ test('Coroa da Madrugada keeps dual stats',()=>{
 test('raid timers remain level-scaled',()=>{
   assert.ok(games.includes("10:12,15:15,20:18,25:22,30:30,40:40,50:50"),'raid duration table changed unexpectedly')
 })
+
+test('equiparpet without args opens the interactive team flow',()=>{
+  assert.ok(index.includes("const pickTokens=String(args.join(' ')||'').trim().split(/[\\s,;]+/).filter(Boolean)"),'equiparpet must discard empty tokens before Number conversion')
+  assert.ok(index.includes("setQuickFlow(chat,sender,'pet_team_select'"),'interactive team selection flow missing')
+})
+
+test('purchasable pet specialties keep the intended progression',()=>{
+  assert.ok(games.includes("aguia:{label:'🦅 Precisão',crit:.09}"),'Águia crit should be 9% base')
+  assert.ok(games.includes("tigre:{label:'🐯 Fúria',damage:.08}"),'Tigre damage should be 8% base')
+  assert.ok(games.includes("leao:{label:'🦁 Rei da Caçada',damage:.09}"),'Leão damage should be 9% base')
+  assert.ok(games.includes("dragao:{label:'🐉 Caçador de Boss',bossDamage:.10,defense:.04}"),'Dragão should have 10% boss damage + 4% defense')
+  assert.ok(games.includes("baleia_colossal:{label:'🐋 Canto Colossal',defense:.10,xp:.04}"),'Baleia should have 10% defense + 4% XP')
+  assert.ok(games.includes("tubarao_abissal:{label:'🦈 Frenesi Abissal',damage:.07,crit:.03}"),'Tubarão hybrid should remain unchanged')
+  assert.ok(games.includes("fenix_celestial:{label:'🌟 Graça Celestial',defense:.10,dodge:.08,xp:.08,healPct:.08,healCooldown:4,raid:true}"),'Fênix Celestial should remain unchanged')
+})
