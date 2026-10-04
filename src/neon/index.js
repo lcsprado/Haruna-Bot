@@ -7067,7 +7067,10 @@ Se precisar de mais ajuda, use *!suporte*.`
             const action={alimentar:'alimentar',banho:'banho',descansar:'descansar',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
             const p=await petAction(sender,action)
             const actionResult=cmd==='descansar'?'descansou e recuperou energia e HP!':cmd==='banho'?'tomou banho!':'completou a ação!'
-            await reply(`🐾 *${p.name}* ${actionResult}\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • 🍖 ${p.hunger}/100 • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`)
+            const petVitals=cmd==='descansar'
+              ? `❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`
+              : `❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • 🍖 ${p.hunger}/100 • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`
+            await reply(`🐾 *${p.name}* ${actionResult}\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n${petVitals}`)
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível cuidar do pet.')) }
 
         } else if(['conquistas','achievements'].includes(cmd)){
