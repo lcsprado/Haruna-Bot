@@ -631,11 +631,12 @@ export async function joinRaid(chat,jid,name='Jogador'){
     // Dano começa em zero, portanto não há crédito pelas rodadas anteriores.
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])
     const lev=async itemId=>itemId?Number((await c.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]?.level||1):1
-    const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id)):{atk:0}
-    const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id)):{def:0}
+    const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id)):{atk:0,hp:0}
+    const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id)):{def:0,hp:0}
+    const gearHp=Number(w?.hp||0)+Number(a?.hp||0)
     const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
     s.players={...(s.players||{}),[jid]:{
-      jid,name:name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),
+      jid,name:name||u?.push_name||'Jogador',hp:Number(st.hp)+gearHp,maxHp:Number(st.max_hp)+gearHp,
       atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),
       damage:0,alive:true,heals:0,
       pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null
