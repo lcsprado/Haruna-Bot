@@ -2086,6 +2086,7 @@ export async function battle(attackerJid, defenderJid) {
 
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+    const petXpEventMultiplier=await getPetXpEventMultiplier(client)
     const reward=Math.round((600+Math.floor(Math.random()*601))*moneyMultiplier)
     await client.query(
       'UPDATE stats SET hp=$1,win=win+1,updated_at='+nowSql+' WHERE jid=$2',
@@ -3011,6 +3012,17 @@ export async function getDoubleEventMultiplier(queryable=db,kind='money'){
   if(!event.active) return 1
   return kind==='xp' ? event.xpMultiplier : event.moneyMultiplier
 }
+
+export async function getPetXpEventMultiplier(queryable=db){
+  const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='pet_care_event'")
+  const raw=rows[0]?.value||{}
+  const now=Date.now()
+  const startsAt=Number(raw.startsAt||0)
+  const endsAt=Number(raw.endsAt||0)
+  if(!startsAt||startsAt>now||endsAt<=now) return 1
+  return Math.max(1,Number(raw.multiplier||2))
+}
+
 
 export async function startDoubleRewardEvent(minutes=20,activatedBy='owner',moneyMultiplier=2,xpMultiplier=2){
   minutes=Number(minutes)
@@ -4318,7 +4330,9 @@ export async function resolvePetExpeditions(jid){
     for(const row of rows){
       const trait=petExpeditionTrait(row.species)
       const oldLevel=Math.min(100,Math.max(1,Number(row.level||1)))
-      const rawXp=Number(row.xp||0)+Number(row.pet_xp||0)
+      const petXpEventMultiplier=await getPetXpEventMultiplier(client)
+      const awardedPetXp=Math.round(Number(row.pet_xp||0)*petXpEventMultiplier)
+      const rawXp=Number(row.xp||0)+awardedPetXp
       const level=Math.min(100,1+Math.floor(rawXp/100))
       const xp=level>=100?9900:rawXp
       const gained=Math.max(0,level-oldLevel)
@@ -4333,7 +4347,7 @@ export async function resolvePetExpeditions(jid){
         item={id:trait.item,name:EXPEDITION_ITEM_NAMES[trait.item]||trait.item}
       }
       await client.query('UPDATE pet_expeditions SET resolved=TRUE WHERE id=$1',[row.id])
-      results.push({petId:Number(row.pet_id),name:row.pet_name,species:row.species,hours:Number(row.hours),xp:Number(row.pet_xp),cash:Number(row.cash_reward),level,item,trait})
+      results.push({petId:Number(row.pet_id),name:row.pet_name,species:row.species,hours:Number(row.hours),xp:awardedPetXp,cash:Number(row.cash_reward),level,item,trait,petXpEventMultiplier})
     }
     return results
   })
@@ -4410,7 +4424,8 @@ export async function petAction(jid,action){
     if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
     const oldLevel=Number(pet.level||1)
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier)
+    const petXpEventMultiplier=await getPetXpEventMultiplier(client)
+    const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier)
     const xp=Number(pet.xp)+actionXp, level=1+Math.floor(xp/100)
     const levelsGained=Math.max(0,level-oldLevel)
     // Progressão natural: cada nível do pet concede +2 de Poder, além do bônus de treino/aventura.
@@ -4463,7 +4478,7 @@ export async function petAdventure(jid){
     // Com a progressão atual (100 XP por nível), usar 2 XP por energia fazia
     // pets de alta capacidade subirem 5-7 níveis numa única aventura.
     const baseAdventureXp=Math.max(3,Math.floor(energy*0.35))
-    const xpGain=Math.round(baseAdventureXp*xpMultiplier)
+    const xpGain=Math.round(baseAdventureXp*xpMultiplier*petXpEventMultiplier)
     const xp=Number(pet.xp||0)+xpGain
     const nextLevel=1+Math.floor(xp/100)
     const levelsGained=Math.max(0,nextLevel-Number(pet.level||1))
@@ -4571,8 +4586,9 @@ export async function petDuel(challengerJid,targetJid){
     }
 
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const updatedA=await evolve(a,hpA,Math.round((winnerKey==='a'?25:10)*xpMultiplier),winnerKey==='a')
-    const updatedB=await evolve(b,hpB,Math.round((winnerKey==='b'?25:10)*xpMultiplier),winnerKey==='b')
+    const petXpEventMultiplier=await getPetXpEventMultiplier(client)
+    const updatedA=await evolve(a,hpA,Math.round((winnerKey==='a'?25:10)*xpMultiplier*petXpEventMultiplier),winnerKey==='a')
+    const updatedB=await evolve(b,hpB,Math.round((winnerKey==='b'?25:10)*xpMultiplier*petXpEventMultiplier),winnerKey==='b')
     const winner=winnerKey==='a'?updatedA:updatedB
     const loser=winnerKey==='a'?updatedB:updatedA
     return {winnerJid:winner.jid,loserJid:loser.jid,winner,loser,rounds}
