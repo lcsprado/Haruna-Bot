@@ -51,6 +51,29 @@ export const MOTORCYCLES=[
   {id:'moto_1000',name:'Superbike 1000cc',price:220000},
 ]
 
+export const UBER_TIERS={
+  popular:{category:'UberX — Corsa',min:320,max:620},
+  sedan_esportivo:{category:'Uber Comfort — HB20',min:650,max:1100},
+  nivus:{category:'Uber Comfort — Nivus',min:850,max:1350},
+  jetta_gli:{category:'Uber Comfort+ — Jetta GLI',min:1050,max:1600},
+  suv_premium:{category:'Uber Black — Civic Type R',min:1200,max:1900},
+  bmw_320i:{category:'Uber Black — BMW 320i',min:1500,max:2300},
+  audi_a5:{category:'Uber Black+ — Audi A5',min:1850,max:2800},
+  porsche_911:{category:'Uber Black — Porsche',min:2200,max:3400},
+  mercedes_c43:{category:'Uber Executive — Mercedes-AMG C43',min:3000,max:4600},
+  superesportivo:{category:'Uber Elite — Ferrari',min:4200,max:6200},
+  lamborghini_revuelto:{category:'Uber Hyper — Lamborghini',min:6000,max:8500},
+  mclaren_p1:{category:'Uber Hyper — McLaren',min:7200,max:10000},
+  hipercarro:{category:'Uber Hyper — Bugatti',min:9000,max:13500},
+}
+
+export const CLT_UBER_TYPES=[
+  {id:'comum',name:'Motorista Comum',price:25000,intervalMin:20,efficiency:.55,commission:.35},
+  {id:'experiente',name:'Motorista Experiente',price:75000,intervalMin:15,efficiency:.65,commission:.25},
+  {id:'executivo',name:'Motorista Executivo',price:200000,intervalMin:12,efficiency:.75,commission:.18},
+]
+const CLT_UBER_SHIFT_SECONDS=8*60*60
+
 export const BUSINESSES=[
   {id:'carrinho_lanche',name:'Carrinho de Lanche',price:15000,profitHour:500,capacityHours:8},
   {id:'barbearia',name:'Barbearia',price:45000,profitHour:1200,capacityHours:8},
@@ -211,6 +234,20 @@ export async function initProgression(){
       expires_at BIGINT NOT NULL,
       claimed_by TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS clt_uber_drivers(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL,
+      driver_type TEXT NOT NULL,
+      car_id TEXT,
+      hired_at BIGINT NOT NULL DEFAULT ${nowSql},
+      shift_started_at BIGINT,
+      shift_ends_at BIGINT,
+      last_accrual_at BIGINT,
+      accrued BIGINT NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS clt_uber_drivers_jid_idx ON clt_uber_drivers(jid);
+    CREATE INDEX IF NOT EXISTS clt_uber_drivers_active_car_idx ON clt_uber_drivers(jid,car_id,shift_ends_at);
   `)
 }
 
@@ -589,6 +626,10 @@ export async function sellCar(jid,input){
   return tx(async client=>{
     const r=await client.query('SELECT price_paid FROM user_cars WHERE jid=$1 AND car_id=$2 FOR UPDATE',[jid,car.id])
     if(!r.rows.length) throw new Error('Você não possui esse carro.')
+    const now=Math.floor(Date.now()/1000)
+    const active=await client.query('SELECT 1 FROM clt_uber_drivers WHERE jid=$1 AND car_id=$2 AND shift_ends_at>$3 LIMIT 1',[jid,car.id,now])
+    if(active.rowCount) throw new Error('Esse carro está trabalhando no CLT Uber. Espere o turno terminar.')
+    await client.query('UPDATE clt_uber_drivers SET car_id=NULL WHERE jid=$1 AND car_id=$2',[jid,car.id])
     const paid=Number(r.rows[0].price_paid||car.price)
     const resale=Math.floor(paid*0.70)
     await client.query('DELETE FROM user_cars WHERE jid=$1 AND car_id=$2',[jid,car.id])
@@ -651,23 +692,14 @@ export async function deliverIfood(jid,taxMultiplier=1){
 
 export async function driveUber(jid,taxMultiplier=1){
   await ensureUser(jid)
-  const garage=await getGarage(jid)
-  if(!garage.length) throw new Error('Você precisa ter pelo menos um carro para trabalhar de Uber. Use !carros para comprar um.')
-  const tiers={
-    popular:{category:'UberX — Corsa',min:320,max:620},
-    sedan_esportivo:{category:'Uber Comfort — HB20',min:650,max:1100},
-    nivus:{category:'Uber Comfort — Nivus',min:850,max:1350},
-    jetta_gli:{category:'Uber Comfort+ — Jetta GLI',min:1050,max:1600},
-    suv_premium:{category:'Uber Black — Civic Type R',min:1200,max:1900},
-    bmw_320i:{category:'Uber Black — BMW 320i',min:1500,max:2300},
-    audi_a5:{category:'Uber Black+ — Audi A5',min:1850,max:2800},
-    porsche_911:{category:'Uber Black — Porsche',min:2200,max:3400},
-    mercedes_c43:{category:'Uber Executive — Mercedes-AMG C43',min:3000,max:4600},
-    superesportivo:{category:'Uber Elite — Ferrari',min:4200,max:6200},
-    lamborghini_revuelto:{category:'Uber Hyper — Lamborghini',min:6000,max:8500},
-    mclaren_p1:{category:'Uber Hyper — McLaren',min:7200,max:10000},
-    hipercarro:{category:'Uber Hyper — Bugatti',min:9000,max:13500},
-  }
+  const fullGarage=await getGarage(jid)
+  if(!fullGarage.length) throw new Error('Você precisa ter pelo menos um carro para trabalhar de Uber. Use !carros para comprar um.')
+  const now=Math.floor(Date.now()/1000)
+  const active=(await db.query('SELECT car_id FROM clt_uber_drivers WHERE jid=$1 AND car_id IS NOT NULL AND shift_ends_at>$2',[jid,now])).rows
+  const busy=new Set(active.map(x=>x.car_id))
+  const garage=fullGarage.filter(x=>!busy.has(x.id))
+  if(!garage.length) throw new Error('Todos os seus carros estão em turno no CLT Uber. Use !centraluber para acompanhar.')
+  const tiers=UBER_TIERS
   return tx(async client=>{
     const cooldown=9*60
     const cd=await claimCooldown(client,`uber:${jid}`,cooldown)
@@ -713,6 +745,105 @@ export async function buyCar(jid,input){
       [jid,car.id,car.price]
     )
     return car
+  })
+}
+
+function cltUberTripNet(carId,driverType){
+  const tier=UBER_TIERS[carId]||UBER_TIERS.popular
+  const d=CLT_UBER_TYPES.find(x=>x.id===driverType)||CLT_UBER_TYPES[0]
+  const avgBase=(Number(tier.min)+Number(tier.max))/2
+  const avgRideFactor=(.85+1+1.25+1.6)/4
+  const avgTipFactor=1+(.22*.125)
+  const gross=avgBase*avgRideFactor*avgTipFactor*d.efficiency
+  return Math.max(1,Math.round(gross*(1-d.commission)*.90))
+}
+
+async function accrueCltUber(client,jid){
+  const now=Math.floor(Date.now()/1000)
+  const r=await client.query('SELECT * FROM clt_uber_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])
+  for(const row of r.rows){
+    if(!row.car_id||!row.shift_started_at||!row.shift_ends_at) continue
+    const d=CLT_UBER_TYPES.find(x=>x.id===row.driver_type)
+    if(!d) continue
+    const until=Math.min(now,Number(row.shift_ends_at))
+    const from=Math.max(Number(row.last_accrual_at||row.shift_started_at),Number(row.shift_started_at))
+    const interval=d.intervalMin*60
+    const trips=Math.floor(Math.max(0,until-from)/interval)
+    if(trips<1) continue
+    const earned=trips*cltUberTripNet(row.car_id,row.driver_type)
+    const nextAccrual=from+trips*interval
+    await client.query('UPDATE clt_uber_drivers SET accrued=accrued+$1,last_accrual_at=$2 WHERE id=$3',[earned,nextAccrual,row.id])
+  }
+}
+
+export async function hireCltUberDriver(jid,input){
+  await ensureUser(jid)
+  const idx=Number(input)
+  const type=CLT_UBER_TYPES[idx-1]
+  if(!type) throw new Error('Motorista inválido. Use !cltuber para ver 1, 2 ou 3.')
+  return tx(async client=>{
+    const count=Number((await client.query('SELECT COUNT(*)::int n FROM clt_uber_drivers WHERE jid=$1',[jid])).rows[0]?.n||0)
+    if(count>=3) throw new Error('Você já atingiu o limite de 3 motoristas CLT Uber.')
+    const w=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    if(Number(w.rows[0]?.cash||0)<type.price) throw new Error('Saldo insuficiente. Contratação custa R$ '+type.price.toLocaleString('pt-BR')+'.')
+    await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[type.price,jid])
+    const ins=await client.query('INSERT INTO clt_uber_drivers(jid,driver_type) VALUES($1,$2) RETURNING id',[jid,type.id])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'clt_uber_hire',$3)",[jid,type.price,type.name])
+    return {...type,id:Number(ins.rows[0].id),slot:count+1}
+  })
+}
+
+export async function getCltUberStatus(jid){
+  await ensureUser(jid)
+  await tx(c=>accrueCltUber(c,jid))
+  const now=Math.floor(Date.now()/1000)
+  const drivers=(await db.query('SELECT * FROM clt_uber_drivers WHERE jid=$1 ORDER BY id',[jid])).rows
+  const garage=await getGarage(jid)
+  return {
+    drivers:drivers.map((r,i)=>{
+      const type=CLT_UBER_TYPES.find(x=>x.id===r.driver_type)
+      const car=CARS.find(x=>x.id===r.car_id)||null
+      const active=Boolean(r.car_id&&Number(r.shift_ends_at||0)>now)
+      return {...r,slot:i+1,type,car,active,remaining:active?Number(r.shift_ends_at)-now:0,finished:Boolean(r.car_id&&r.shift_ends_at&&Number(r.shift_ends_at)<=now)}
+    }),
+    garage
+  }
+}
+
+export async function startCltUberShift(jid,driverSlot,carSlot){
+  await ensureUser(jid)
+  return tx(async client=>{
+    await accrueCltUber(client,jid)
+    const now=Math.floor(Date.now()/1000)
+    const drivers=(await client.query('SELECT * FROM clt_uber_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])).rows
+    const driver=drivers[Number(driverSlot)-1]
+    if(!driver) throw new Error('Motorista inválido.')
+    if(Number(driver.shift_ends_at||0)>now) throw new Error('Esse motorista ainda está em turno.')
+    const garage=(await client.query('SELECT car_id,price_paid,acquired_at FROM user_cars WHERE jid=$1 ORDER BY acquired_at',[jid])).rows
+    const rawCar=garage[Number(carSlot)-1]
+    if(!rawCar) throw new Error('Carro inválido.')
+    const busy=await client.query('SELECT 1 FROM clt_uber_drivers WHERE jid=$1 AND car_id=$2 AND id<>$3 AND shift_ends_at>$4 LIMIT 1',[jid,rawCar.car_id,driver.id,now])
+    if(busy.rowCount) throw new Error('Esse carro já está em turno com outro motorista.')
+    await client.query('UPDATE clt_uber_drivers SET car_id=NULL WHERE jid=$1 AND car_id=$2 AND id<>$3 AND COALESCE(shift_ends_at,0)<=$4',[jid,rawCar.car_id,driver.id,now])
+    const ends=now+CLT_UBER_SHIFT_SECONDS
+    await client.query('UPDATE clt_uber_drivers SET car_id=$1,shift_started_at=$2,shift_ends_at=$3,last_accrual_at=$2 WHERE id=$4',[rawCar.car_id,now,ends,driver.id])
+    const type=CLT_UBER_TYPES.find(x=>x.id===driver.driver_type)
+    const car=CARS.find(x=>x.id===rawCar.car_id)
+    return {driverSlot:Number(driverSlot),type,car,startedAt:now,endsAt:ends,hours:8,estimated8h:Math.floor((CLT_UBER_SHIFT_SECONDS/(type.intervalMin*60))*cltUberTripNet(rawCar.car_id,driver.driver_type))}
+  })
+}
+
+export async function collectCltUber(jid){
+  await ensureUser(jid)
+  return tx(async client=>{
+    await accrueCltUber(client,jid)
+    const rows=(await client.query('SELECT id,accrued FROM clt_uber_drivers WHERE jid=$1 FOR UPDATE',[jid])).rows
+    const total=rows.reduce((n,r)=>n+Number(r.accrued||0),0)
+    if(total<=0) return {total:0}
+    await client.query('UPDATE clt_uber_drivers SET accrued=0 WHERE jid=$1',[jid])
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'clt_uber_collect','Central Uber — líquido após comissão e TAXADE')",[jid,total])
+    return {total}
   })
 }
 
