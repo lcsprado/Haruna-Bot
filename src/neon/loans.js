@@ -77,7 +77,8 @@ async function applyPayment(client,loan,amount,mode='manual'){
   const borrower=walletRows.rows.find(r=>r.jid===loan.borrower_jid)
   const available=Math.max(0,Number(borrower?.cash||0))+Math.max(0,Number(borrower?.bank||0))
   const due=totalDue(loan)
-  const paid=Math.min(amount,available,due)
+  const forceDebit=mode==='automatic'
+  const paid=Math.min(amount,due,forceDebit?Number.MAX_SAFE_INTEGER:available)
   if(paid<1) return {paid:0,loan}
 
   const fromCash=Math.min(Math.max(0,Number(borrower.cash||0)),paid)
@@ -277,10 +278,7 @@ export async function collectOverdueLoansForBorrower(borrowerJid){
     let loan=found.rows[0]
     if(!loan) return {paid:0,loan:null}
     loan=await accrueInterest(client,loan)
-    const wallet=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1',[borrowerJid])
-    const available=Number(wallet.rows[0]?.cash||0)+Number(wallet.rows[0]?.bank||0)
-    if(available<1) return {paid:0,loan}
-    return applyPayment(client,loan,Math.min(available,totalDue(loan)),'automatic')
+    return applyPayment(client,loan,totalDue(loan),'automatic')
   })
 }
 
