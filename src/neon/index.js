@@ -1303,7 +1303,7 @@ async function start() {
           const raidStart=Date.parse('2026-10-04T14:00:00-03:00')
           const raidEnd=Date.parse('2026-10-04T15:30:00-03:00')
           const siegeStart=Date.parse('2026-10-04T18:00:00-03:00')
-          const siegeEnd=Date.parse('2026-10-04T20:00:00-03:00')
+          const siegeEnd=Date.parse('2026-10-04T20:10:00-03:00')
           const petCareStart=Date.parse('2026-10-04T20:00:00-03:00')
           const petCareEnd=Date.parse('2026-10-04T20:30:00-03:00')
 
@@ -1376,7 +1376,7 @@ async function start() {
 🗿 *${siege.name}*
 ❤️ HP: *${Number(siege.maxHp).toLocaleString('pt-BR')}*
 ⚔️ ATK: *${siege.atk}*
-⏱️ O Cerco termina às *20:00*.
+⏱️ O Cerco termina às *20:10*.
 
 🏆 *DROPS ESPECIAIS*
 🟢 Colete Vital — +18 DEF / +60 HP
@@ -1394,7 +1394,7 @@ async function start() {
             if(siege?.stopped) await sendScheduledGroupNotice(chat,'siege-end-2026-10-04',
 `🌘 *CERCO ENCERRADO*
 
-O Colosso recuou às *20:00*.
+O Colosso recuou às *20:10*.
 Se ele não foi derrotado, o HP restante foi perdido. Até o próximo Cerco.`)
           }
 
