@@ -3905,6 +3905,39 @@ function normalizedPetHp(p){
   return {...p,hp,max_hp:desired}
 }
 
+// Estilos do time pet. A sinergia exige 3 ESPÉCIES DIFERENTES do mesmo estilo:
+ // cópias da mesma espécie nunca multiplicam o bônus.
+const PET_TEAM_STYLE_BY_SPECIES={
+  cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',
+  golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
+
+  papagaio:'voador',coruja:'voador',aguia:'voador',dragao:'voador',
+  corvo_abissal:'voador',dragao_vulcanico:'voador',fenix_fogo:'voador',fenix_gelo:'voador',
+  grifo_celestial:'voador',fenix_celestial:'voador',dragao_corrompido:'voador',fenix_alpha:'voador',
+
+  gato:'predador',raposa:'predador',lobo:'predador',tigre:'predador',leao:'predador',
+  urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
+
+  coelho:'mistico',hamster:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
+  salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico'
+}
+const PET_TEAM_STYLE_BONUS={
+  voador:{label:'🪽 Esquadrão Aéreo',attack:.03,defense:0,crit:0,text:'+3% ATK no Boss/Raid'},
+  guardiao:{label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
+  predador:{label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
+  mistico:{label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
+}
+export function petTeamSynergy(pets=[]){
+  const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
+  if(team.length!==3) return null
+  const species=team.map(p=>String(p.species||''))
+  if(new Set(species).size!==3) return null
+  const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
+  if(!styles[0]||!styles.every(x=>x===styles[0])) return null
+  const bonus=PET_TEAM_STYLE_BONUS[styles[0]]
+  return bonus?{style:styles[0],...bonus}:null
+}
+
 export const LEGENDARY_PET_SUMMONS=[
   {materialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
     {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:60,power:150},
@@ -3965,6 +3998,40 @@ export async function summonLegendaryPet(jid,materialId){
     }
 
     const petName=chosen.name.replace(/^[^\p{L}\p{N}]+/u,'').slice(0,24)
+
+    // Pet de Raid repetido não cria uma cópia inútil nem permite empilhar 3 iguais.
+    // Converte automaticamente em dinheiro + parte dos materiais gastos.
+    const duplicate=(await client.query(
+      'SELECT id FROM pet_collection WHERE jid=$1 AND species=$2 LIMIT 1 FOR UPDATE',
+      [jid,chosen.species]
+    )).rows[0]
+    if(duplicate){
+      const rare=Number(chosen.chance||100)<=15
+      const fragmentRate=rare?.35:.25
+      const fragmentRefund=Math.max(1,Math.floor(summonCost*fragmentRate))
+      let cashRefund=Math.round((Number(altar.raidLevel||1)*800+Number(chosen.power||0)*60)/1000)*1000
+      if(rare) cashRefund=Math.round(cashRefund*1.25/1000)*1000
+
+      await client.query(
+        'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
+        [jid,altar.materialId,fragmentRefund]
+      )
+      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cashRefund,jid])
+      await client.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'raid_pet_duplicate',$3)",
+        [jid,cashRefund,`Pet de Raid repetido: ${chosen.species} | +${fragmentRefund} ${altar.materialId}`]
+      )
+
+      return {
+        altar:{...altar,summonCost},
+        pet:chosen,
+        duplicate:true,
+        cashRefund,
+        fragmentRefund,
+        remaining:owned-summonCost+fragmentRefund
+      }
+    }
+
     // Pet invocado nasce no nível da Raid de origem para já ser uma recompensa
     // endgame utilizável, em vez de um "lendário Lv.1" pior que pets comuns veteranos.
     const startLevel=Math.max(1,Number(altar.raidLevel||1))
@@ -4106,6 +4173,16 @@ export async function setPetTeam(jid,petIds=[],replaceAll=true){
       for(const slot of [2,3]) if(slots[slot]===ids[0]) slots[slot]=null
     }else{
       slots={1:ids[0]||null,2:ids[1]||null,3:ids[2]||null}
+    }
+
+    const selectedIds=Object.values(slots).filter(Boolean)
+    const selectedPets=(await client.query(
+      'SELECT id,species FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[])',
+      [jid,selectedIds]
+    )).rows
+    const selectedSpecies=selectedPets.map(p=>String(p.species||''))
+    if(new Set(selectedSpecies).size!==selectedSpecies.length){
+      throw new Error('Não é permitido equipar duas cópias da mesma espécie no mesmo time. Use espécies diferentes para formar sinergias.')
     }
 
     const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
