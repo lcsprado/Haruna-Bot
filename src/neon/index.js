@@ -156,8 +156,10 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
           let text=`💥 *${bossTitle} DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
           r.rewards.forEach((x,n)=>{
             const items=x.drops?.length?`\n🎁 ${x.drops.map(d=>`${d.name} (${d.rarity})`).join(' + ')}`:''
-            const petXp=x.petXp?` • 🐾 +${x.petXp} XP pet`:''
-            text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${petXp}${items}`
+            const teamXp=Array.isArray(x.petXpTeam)&&x.petXpTeam.length
+              ? '\n🐾 '+x.petXpTeam.map(p=>`${p.slot===1?'Principal':p.slot===2?'Suporte':'Reserva'}: *${p.name}* +${p.xp} XP`).join(' • ')
+              : (x.petXp?` • 🐾 +${x.petXp} XP pet`:'')
+            text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${teamXp}${items}`
           })
           await reply(text); return
         }
