@@ -1,4 +1,4 @@
-import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier, petTeamSynergy } from './db.js'
+import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 
 async function tx(fn){
   const c=await db.connect()
