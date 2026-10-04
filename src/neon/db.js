@@ -1779,13 +1779,26 @@ export async function listUpgradeableEquipment(jid){
              i.name
   `,[jid])
   return rows.map(r=>{
-    const current=equipmentStatsAtLevel(r.item_id,r.level)
-    const next=Number(r.level)<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,Number(r.level)+1):null
-    return {...r,current,next,maxLevel:EQUIPMENT_MAX_LEVEL,cost:next?equipmentUpgradeCost(r.rarity,r.level):0}
+    const level=Number(r.level||1)
+    const current=equipmentStatsAtLevel(r.item_id,level)
+    const next=level<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,level+1):null
+    const costToLevel=target=>{
+      const t=Math.max(level+1,Math.min(EQUIPMENT_MAX_LEVEL,Number(target)||level+1))
+      let total=0
+      for(let lv=level;lv<t;lv++) total+=equipmentUpgradeCost(r.rarity,lv)
+      return total
+    }
+    const targetCosts={}
+    for(let t=level+1;t<=EQUIPMENT_MAX_LEVEL;t++) targetCosts[t]=costToLevel(t)
+    return {
+      ...r,level,current,next,maxLevel:EQUIPMENT_MAX_LEVEL,
+      cost:next?equipmentUpgradeCost(r.rarity,level):0,
+      targetCosts
+    }
   })
 }
 
-export async function upgradeEquipment(jid,itemId){
+export async function upgradeEquipment(jid,itemId,targetLevel=null){
   await ensureUser(jid)
   const eq=EQUIPMENT[itemId]
   if(!eq) throw new Error('Esse item não pode ser aprimorado.')
@@ -1796,13 +1809,26 @@ export async function upgradeEquipment(jid,itemId){
       WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE
     `,[jid,itemId])
     if(!inv.rows[0]||Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse equipamento.')
+
     const up=await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     const currentLevel=Number(up.rows[0]?.level||1)
     if(currentLevel>=EQUIPMENT_MAX_LEVEL) throw new Error('Esse equipamento já está no Lv.10.')
-    const cost=equipmentUpgradeCost(inv.rows[0].rarity,currentLevel)
+
+    const requested=targetLevel==null ? currentLevel+1 : Number(targetLevel)
+    if(!Number.isInteger(requested)) throw new Error('Nível alvo inválido.')
+    const nextLevel=Math.min(EQUIPMENT_MAX_LEVEL,requested)
+    if(nextLevel<=currentLevel) throw new Error(`Escolha um nível entre ${currentLevel+1} e ${EQUIPMENT_MAX_LEVEL}.`)
+
+    let cost=0
+    for(let lv=currentLevel;lv<nextLevel;lv++){
+      cost+=equipmentUpgradeCost(inv.rows[0].rarity,lv)
+    }
+
     const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    if(Number(wallet.rows[0]?.cash||0)<cost) throw new Error(`Saldo insuficiente. Upgrade custa R$ ${cost.toLocaleString('pt-BR')}.`)
-    const nextLevel=currentLevel+1
+    if(Number(wallet.rows[0]?.cash||0)<cost){
+      throw new Error(`Saldo insuficiente. Upgrade Lv.${currentLevel} → Lv.${nextLevel} custa R$ ${cost.toLocaleString('pt-BR')}.`)
+    }
+
     await client.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
     await client.query(`
       INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
@@ -1813,10 +1839,13 @@ export async function upgradeEquipment(jid,itemId){
       INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'upgrade',$2,'equipment_upgrade',$3)
     `,[jid,cost,`${itemId} Lv.${currentLevel}->Lv.${nextLevel}`])
+
     const cash=(await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]?.cash||0
     return {
       itemId,name:inv.rows[0].name,rarity:inv.rows[0].rarity,
-      fromLevel:currentLevel,level:nextLevel,cost,cash:Number(cash),
+      fromLevel:currentLevel,level:nextLevel,levelsGained:nextLevel-currentLevel,
+      cost,cash:Number(cash),
+      before:equipmentStatsAtLevel(itemId,currentLevel),
       stats:equipmentStatsAtLevel(itemId,nextLevel)
     }
   })
