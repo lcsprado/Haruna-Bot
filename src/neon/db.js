@@ -1789,11 +1789,15 @@ export async function listUpgradeableEquipment(jid){
       return total
     }
     const targetCosts={}
-    for(let t=level+1;t<=EQUIPMENT_MAX_LEVEL;t++) targetCosts[t]=costToLevel(t)
+    const targetStats={}
+    for(let t=level+1;t<=EQUIPMENT_MAX_LEVEL;t++){
+      targetCosts[t]=costToLevel(t)
+      targetStats[t]=equipmentStatsAtLevel(r.item_id,t)
+    }
     return {
       ...r,level,current,next,maxLevel:EQUIPMENT_MAX_LEVEL,
       cost:next?equipmentUpgradeCost(r.rarity,level):0,
-      targetCosts
+      targetCosts,targetStats
     }
   })
 }
