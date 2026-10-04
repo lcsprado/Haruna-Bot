@@ -599,7 +599,7 @@ export async function joinRaid(chat,jid,name='Jogador'){
     const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),
-      atk:Number(st.atk)+Number(w?.atk||0),def:Number(st.def)+Number(a?.def||0),
+      atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),
       damage:0,alive:true,heals:0,
       pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null
     }}
@@ -672,7 +672,7 @@ export async function startRaid(chat,host){
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id)):{atk:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id)):{def:0}
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk)+Number(w?.atk||0),def:Number(st.def)+Number(a?.def||0),damage:0,alive:true,heals:0,pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),damage:0,alive:true,heals:0,pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null}
     }
     s.status='active';s.round=0;s.hp=cfg.hp;s.maxHp=cfg.hp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.expiresAt=Date.now()+s.durationMinutes*60*1000
     await saveGame(c,chat,'raid',s)
@@ -868,6 +868,40 @@ async function giveBossDrops(c,jid,position,extraChance=0){
   return drops
 }
 
+const NIGHT_EVENT_START=Date.parse('2026-10-04T03:00:00-03:00')
+const NIGHT_EVENT_END=Date.parse('2026-10-04T03:30:00-03:00')
+const NIGHT_EVENT_KEY='night-0303-2026-10-04'
+
+async function createNightBossEventState(c,chat){
+  const maxHp=36000+Math.floor(Math.random()*6001)
+  const state={mode:'event',eventId:'night_0303',active:true,origin:'scheduled',scheduleKey:NIGHT_EVENT_KEY,name:'Sentinela das 03:03',hp:maxHp,maxHp,atk:20,participants:{},startedAt:Date.now(),endsAt:NIGHT_EVENT_END}
+  await saveGame(c,chat,'boss_event',state)
+  return state
+}
+
+export async function autoStartNightBossEvent(chat,now=new Date()){
+  const ts=now.getTime()
+  return tx(async c=>{
+    const current=await loadGame(c,chat,'boss_event')
+    if(ts>=NIGHT_EVENT_END){
+      if(current?.eventId==='night_0303'&&current.active!==false&&Number(current.hp)>0){
+        current.active=false;current.mode='event_stopped';current.stoppedAt=Date.now()
+        await saveGame(c,chat,'boss_event',current)
+        return {due:false,ended:true,stopped:true,...current}
+      }
+      return {due:false,ended:true}
+    }
+    if(ts<NIGHT_EVENT_START) return {due:false}
+    if(current&&current.active!==false&&Number(current.hp)>0){
+      if(current.eventId==='night_0303') return {due:true,already:true,...current}
+      return {due:true,blocked:true}
+    }
+    if(current?.scheduleKey===NIGHT_EVENT_KEY) return {due:true,alreadyRun:true,...current}
+    const state=await createNightBossEventState(c,chat)
+    return {due:true,spawned:true,...state}
+  })
+}
+
 const BOSS_EVENT_AUTO_NOT_BEFORE=Date.parse('2026-10-09T19:00:00-03:00')
 
 function bossEventFridayInfo(now=new Date()){
@@ -967,7 +1001,7 @@ export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
     const event=await loadGame(c,chat,'boss_event')
-    if(event&&event.active!==false&&Number(event.hp)>0) return {already:true,...event}
+    if(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
     const current=await loadGame(c,chat,'boss')
     // Sessões criadas antes da separação semanal/comum não possuíam `mode`.
     // Normalize-as sem apagar participantes, para que a conclusão semanal seja persistida.
@@ -1014,7 +1048,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const carpindo=await c.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[jid,now])
     if(carpindo.rows.length) throw new Error('Você está carpindo e não pode atacar o Boss agora.')
     const event=await loadGame(c,chat,'boss_event')
-    const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0)
+    const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
     const gameType=eventActive?'boss_event':'boss'
     const s=eventActive?event:await loadGame(c,chat,'boss')
     if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss para iniciar um.')
@@ -1041,7 +1075,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
     const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id)):{atk:0}
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id)):{def:0}
-    const atk=Number(st.atk)+Number(weapon?.atk||0), def=Number(st.def)+Number(armor?.def||0)
+    const atk=Number(st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0), def=Number(st.def)+Number(weapon?.def||0)+Number(armor?.def||0)
     const crit=petBonus.crit>0&&Math.random()<petBonus.crit
     const petMultiplier=1+petBonus.damage
     const damage=Math.max(5,Math.floor(atk*(.85+Math.random()*.45)*petMultiplier*(crit?1.5:1)))
@@ -1087,21 +1121,40 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const tier=weekly?(BOSS_PLACEMENT[i]||{cash:0,xp:0}):{cash:0,xp:0}
         let cash=0,exp=0,petXp=0,drops=[]
         if(eventMode){
+          const night=s.eventId==='night_0303'
           const positionXp=[900,600,350,200,100][i]||50
-          cash=(5000+Math.floor(80000*share))*moneyMultiplier
-          exp=Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier
-          await credit(c,p.jid,cash,'boss_event_eclipse')
+          const localMult=night?2:1
+          cash=Math.round((5000+Math.floor(80000*share))*moneyMultiplier*localMult)
+          exp=Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
+          await credit(c,p.jid,cash,night?'boss_event_night_0303':'boss_event_eclipse')
           await grantExpInTransaction(c,p.jid,exp)
           if(pp){
-            petXp=Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier
+            petXp=Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
             await raidPetXp(c,p.jid,petXp)
           }
-          if(i===0) drops.push(await grantBossItem(c,p.jid,{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'}))
-          else if(i<3) drops.push(await grantBossItem(c,p.jid,{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'}))
-          else if(Math.random()<.35) drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
-          const uniqueBase=[.25,.18,.12,.08,.06][i]||.05
-          const relic=await maybeGrantEventRelic(c,p.jid,Math.min(.35,uniqueBase+Number(pb.drop||0)))
-          if(relic) drops.push(relic)
+          if(night){
+            const groupBonus=entries.filter(x=>x.damage>=500).length>=3
+            if(p.damage>=500){
+              drops.push(await grantBossItem(c,p.jid,{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'}))
+              const mark=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,'marca_insone'])).rows[0]
+              if(Number(mark?.quantity||0)<1) drops.push(await grantBossItem(c,p.jid,{id:'marca_insone',name:'Marca do Insone',rarity:'Evento Único'}))
+              await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'nucleo_pedra',2)
+                ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+2`,[p.jid])
+              drops.push({id:'nucleo_pedra',name:'Fragmento do Núcleo de Pedra ×2',rarity:'Incomum'})
+              if(groupBonus&&Math.random()<.25) drops.push(await grantBossItem(c,p.jid,{id:'caixa_rara',name:'Caixa Rara — bônus coletivo',rarity:'Raro'}))
+            }
+            if(i===0){
+              const crown=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,'coroa_madrugada'])).rows[0]
+              if(Number(crown?.quantity||0)<1) drops.push(await grantBossItem(c,p.jid,{id:'coroa_madrugada',name:'Coroa da Madrugada (+20 ATK / +50 DEF)',rarity:'Evento Único'}))
+            }
+          }else{
+            if(i===0) drops.push(await grantBossItem(c,p.jid,{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'}))
+            else if(i<3) drops.push(await grantBossItem(c,p.jid,{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'}))
+            else if(Math.random()<.35) drops.push(await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
+            const uniqueBase=[.25,.18,.12,.08,.06][i]||.05
+            const relic=await maybeGrantEventRelic(c,p.jid,Math.min(.35,uniqueBase+Number(pb.drop||0)))
+            if(relic) drops.push(relic)
+          }
         }else{
           // Boss comum é atividade secundária: recompensa muito abaixo do Superboss semanal.
           cash=(weekly?5000+Math.floor(150000*share)+tier.cash:150+Math.floor(2500*share))*moneyMultiplier
