@@ -40,7 +40,7 @@ import {
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
   startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent, autoStartSiegeBossEvent,
-  getRaidCatalog, getRaidStatus, createRaid, joinRaid, cancelRaid, startRaid, raidRound
+  getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, startRaid, raidRound
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES,
@@ -161,16 +161,17 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
 }
 
 const raidRuns=new Map()
-async function runRaidCombat(chat,reply){
-  if(raidRuns.has(chat)) return false
-  raidRuns.set(chat,true)
+async function runRaidCombat(chat,level,reply){
+  const runKey=`${chat}|${Number(level)}`
+  if(raidRuns.has(runKey)) return false
+  raidRuns.set(runKey,true)
   ;(async()=>{
     try{
       for(let i=0;i<180;i++){
         let r
         for(let deadlockAttempt=0;;deadlockAttempt++){
           try{
-            r=await raidRound(chat)
+            r=await raidRound(chat,level)
             break
           }catch(err){
             const isDeadlock=err?.code==='40P01' || /deadlock detected/i.test(String(err?.message||err))
@@ -225,7 +226,7 @@ async function runRaidCombat(chat,reply){
       console.error('[Raid]',err)
       await reply('⚠️ A Raid foi interrompida: '+String(err?.message||err))
     }finally{
-      raidRuns.delete(chat)
+      raidRuns.delete(runKey)
     }
   })()
   return true
@@ -1944,9 +1945,9 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!raid 20* — abre a Raid Lv.20; se faltar chave, compra automaticamente
 *!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
-*!entrar* — entra na Raid e compra a chave automaticamente se faltar
-*!go* — host inicia (Raid Lv.10 pode ser solo; Lv.15+ mínimo 2 jogadores)
-*!cancelarraide* / *!cancelarraid* — host cancela antes de começar
+*!entrar 1* / *!entrar 10* — escolhe a sala e compra a chave automaticamente se faltar
+*!go NÚMERO/NÍVEL* — host inicia sua sala (Lv.10 pode ser solo; Lv.15+ mínimo 2)
+*!cancelarraide NÚMERO/NÍVEL* — host cancela sua sala antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
 
@@ -5613,8 +5614,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         try{
           const now=Date.now()
           const {rows}=await db.query(
-            `SELECT chat_jid,state,updated_at FROM trevo_games
-             WHERE game_type='raid' AND state->>'status'='active'
+            `SELECT chat_jid,game_type,state,updated_at FROM trevo_games
+             WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status'='active'
              ORDER BY updated_at DESC`
           )
           for(let raidIndex=0;raidIndex<rows.length;raidIndex++){
@@ -5642,8 +5643,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
                   raid.expiresAt=Date.now()+10*60*1000
                   await db.query(
                     `UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
-                     WHERE chat_jid=$2 AND game_type='raid'`,
-                    [JSON.stringify(raid),row.chat_jid]
+                     WHERE chat_jid=$2 AND game_type=$3`,
+                    [JSON.stringify(raid),row.chat_jid,row.game_type]
                   )
                   await db.query('COMMIT')
                   await sock.sendMessage(row.chat_jid,{text:`💰 *COMPENSAÇÃO DA RAID*\n\nO banco interrompeu a luta por deadlock. Cada participante recebeu *R$ 10.000*.\n🔄 A Raid será retomada do estado salvo, sem cobrar nova chave.`}).catch(()=>{})
@@ -5657,12 +5658,12 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
               raid.expiresAt=now+5*60*1000
               await db.query(
                 `UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
-                 WHERE chat_jid=$2 AND game_type='raid'`,
-                [JSON.stringify(raid),row.chat_jid]
+                 WHERE chat_jid=$2 AND game_type=$3`,
+                [JSON.stringify(raid),row.chat_jid,row.game_type]
               )
             }
             const raidReply=(text)=>sock.sendMessage(row.chat_jid,{text})
-            const resumed=await runRaidCombat(row.chat_jid,raidReply)
+            const resumed=await runRaidCombat(row.chat_jid,Number(raid.level),raidReply)
             if(resumed){
               await sock.sendMessage(row.chat_jid,{text:`🔄 *RAID RETOMADA AUTOMATICAMENTE*\n\nO bot reconectou e continuou a luta da rodada *${Number(raid.round||0)}*.`}).catch(()=>{})
             }
@@ -7814,63 +7815,82 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
 
         } else if(['raid','raidstatus'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
-          let active=await getRaidStatus(chat)
-          if(active?.status==='failed' && ['round_limit','timeout'].includes(active.failReason)){
-            const recoveredReason=active.failReason
-            active.status='active'
-            delete active.failReason
-            const durationMs=Number(active.durationMinutes||30)*60*1000
-            if(!Number.isFinite(Number(active.activeElapsedMs))) active.activeElapsedMs=Math.max(0,Number(active.round||0)*8000)
-            if(recoveredReason==='timeout'){
-              active.activeElapsedMs=Math.min(Number(active.activeElapsedMs||0),Math.max(0,durationMs-(10*60*1000)))
-            }
-            active.expiresAt=Date.now()+Math.max(10*60*1000,durationMs-Number(active.activeElapsedMs||0))
-            await db.query(`UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
-              WHERE chat_jid=$2 AND game_type='raid'`,[JSON.stringify(active),chat])
-            await reply(`🔄 *RAID REATIVADA*\n\nA luta foi retomada da rodada *${Number(active.round||0)}* com o Boss em *${Number(active.hp||0).toLocaleString('pt-BR')}/${Number(active.maxHp||0).toLocaleString('pt-BR')} HP*.\n⏱️ Tempo útil devolvido: *pelo menos 10 minutos*.\n\n🔑 Nenhuma nova chave foi cobrada.\n📊 Dano e participantes foram preservados.`)
-            runRaidCombat(chat,reply)
-            return
+          const raidCatalog=getRaidCatalog()
+          const resolveRaidLevel=value=>{
+            const n=Number(value||0)
+            if(!n) return 0
+            if(raidCatalog.some(r=>Number(r.level)===n)) return n
+            if(n>=1&&n<=raidCatalog.length) return Number(raidCatalog[n-1].level)
+            return 0
           }
-          if(active && ['lobby','active'].includes(active.status) && (active.status==='active' || Number(active.expiresAt||0)>Date.now())){
-            const players=Object.values(active.players||{})
-            const minPlayers=Number(active.level)===10?1:2
-            let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*${active.status==='lobby'?` • mínimo para iniciar: *${minPlayers}*`:''}\n`
-            if(active.status==='lobby') text+=players.length>=minPlayers?'\n✅ Mínimo atingido. Host já pode usar *!go*.':'\n👉 *!entrar* para entrar.\n⏳ Ainda falta jogador para atingir o mínimo.'
-            else{
+          const requested=resolveRaidLevel(args[0])
+          if(args[0]&&!requested) return await reply('⚔️ Raid inválida. Use *1 a 7* ou os níveis *10, 15, 20, 25, 30, 40, 50*.')
+          const rooms=await getRaidStatuses(chat)
+          const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
+
+          if(requestedRoom){
+            const players=Object.values(requestedRoom.players||{})
+            const minPlayers=Number(requestedRoom.level)===10?1:2
+            let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n👥 Jogadores: *${players.length}/5*${requestedRoom.status==='lobby'?` • mínimo: *${minPlayers}*`:''}\n`
+            if(requestedRoom.status==='lobby'){
+              text+=players.length>=minPlayers?'\n✅ O host já pode usar *!go '+requestedRoom.level+'*.':'\n👉 Entre com *!entrar '+requestedRoom.level+'*.'
+            }else{
               text+='\n📊 Dano atual:\n'+players.sort((a,b)=>Number(b.damage||0)-Number(a.damage||0)).map(p=>`• ${p.alive?'🟢':'💀'} *${p.name}* — ${Number(p.damage||0).toLocaleString('pt-BR')}`).join('\n')
-              runRaidCombat(chat,reply)
+              runRaidCombat(chat,Number(requestedRoom.level),reply)
             }
             return await reply(text)
           }
-          const level=Number(args[0]||0)
-          if(!level){
-            const raids=getRaidCatalog()
+
+          if(!requested){
+            if(rooms.length){
+              let text='⚔️ *SALAS DE RAID ABERTAS*\n\n'
+              for(const room of rooms.sort((a,b)=>Number(a.level)-Number(b.level))){
+                const n=raidCatalog.findIndex(r=>Number(r.level)===Number(room.level))+1
+                text+=`*Raid ${n} — Lv.${room.level}* • ${room.status==='lobby'?'⏳ aguardando':'⚔️ em andamento'} • ${Object.keys(room.players||{}).length}/5 jogadores\n`
+              }
+              text+='\n👉 Entre em uma específica com *!entrar NÚMERO/NÍVEL*.\nEx.: *!entrar 1* ou *!entrar 10*.\n\n➕ Você também pode abrir outra Raid que ainda não tenha sala.'
+              return await reply(text)
+            }
             let text='⚔️ *RAIDS DO ALPHA*\n\n'
-            raids.forEach(r=>{text+=`⏱️ *${r.durationMinutes} min* • *Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)} • 🧩 ${r.material.name}\n\n`})
-            text+='Abra com *!raid NÍVEL*. Ex.: *!raid 20*\n🔑 Se você não tiver a chave, o Alpha tenta comprar automaticamente.\n🛒 Compra manual continua disponível com *!chaveraid NÍVEL*.\n🛒 Fragmentos extras da Raid 1: *!lojaraid*.'
+            raidCatalog.forEach((r,i)=>{text+=`*${i+1}.* Lv.${r.level} — ${r.name}\n⏱️ ${r.durationMinutes} min • ❤️ ${r.hp.toLocaleString('pt-BR')} • ⚔️ ${r.atk}\n🔑 R$ ${fmt(r.keyPrice)} • 🧩 ${r.material.name}\n\n`})
+            text+='Abra com *!raid NÚMERO* ou *!raid NÍVEL*.\nEx.: *!raid 1* ou *!raid 10*.\n📌 Pode existir *uma sala de cada Raid* ao mesmo tempo no grupo.'
             return await reply(text)
           }
-          const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
+
+          const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
           await progressDailyMission(sender,'game')
           const minPlayers=Number(r.level)===10?1:2
-          await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando a luta começar.\n👥 Participantes: *1/5* • mínimo para iniciar: *${minPlayers}*\n⏳ Sala aberta por *5 minutos*.\n\n${minPlayers===1?'✅ Raid 1 liberada para solo: use *!go* quando quiser.':'👉 Aguarde pelo menos mais 1 jogador usar *!entrar*.'}`)
+          const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
+          await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5* • mínimo: *${minPlayers}*\n⏳ Sala aberta por *5 minutos*.\n\n${minPlayers===1?`✅ Pode iniciar solo com *!go ${r.level}*.`:`👉 Outros jogadores entram com *!entrar ${r.level}*.`}\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 
         } else if(['entrar','entrarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
-          const r=await joinRaid(chat,sender,msg.pushName||'Jogador')
+          const catalog=getRaidCatalog()
+          const raw=Number(args[0]||0)
+          const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
+          if(raw&&!level) return await reply('⚔️ Escolha uma Raid válida: *1 a 7* ou nível *10, 15, 20, 25, 30, 40, 50*.')
+          const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null)
           const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
-          await reply(r.already?`⚔️ Você já está na Raid *${r.name}*.`:(r.lateJoin?`⚔️ *ENTROU COM A RAID EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* e sua recompensa contará somente pela sua participação daqui para frente.`:`✅ *ENTROU NA RAID!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5* • mínimo para iniciar: *${Number(r.level)===10?1:2}*${keyLine}\n🔑 A chave só será consumida no *!go*.\n\n${Object.keys(r.players||{}).length>=(Number(r.level)===10?1:2)?'✅ Mínimo atingido. O host já pode usar *!go*.':'Aguarde mais jogadores entrarem.'}`))
+          const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
+          await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5* • mínimo: *${Number(r.level)===10?1:2}*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n${Object.keys(r.players||{}).length>=(Number(r.level)===10?1:2)?`✅ O host já pode usar *!go ${r.level}*.`:'Aguarde mais jogadores.'}`))
 
         } else if(['cancelarraide','cancelarraid','raidcancelar','raidcancel'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
-          await cancelRaid(chat,sender)
-          await reply('✅ Raid cancelada. Como a luta não começou, a chave foi preservada.')
+          const catalog=getRaidCatalog()
+          const raw=Number(args[0]||0)
+          const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
+          const r=await cancelRaid(chat,sender,level||null)
+          await reply(`✅ Raid Lv.${r.level} cancelada. Como a luta não começou, as chaves foram preservadas.`)
 
         } else if(['go','iniciarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
-          const r=await startRaid(chat,sender)
-          await reply(`🚨 *RAID INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chave consumida.\n⚔️ Combate automático iniciado.\n🧪 Se alguém cair, o Alpha usa uma poção automaticamente; sem cura, o jogador sai da Raid.\n🐾 O pet participa, gasta 1 de energia por rodada e recebe XP se o grupo vencer.\n🏆 Recompensas serão proporcionais à colaboração.`)
-          runRaidCombat(chat,reply)
+          const catalog=getRaidCatalog()
+          const raw=Number(args[0]||0)
+          const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
+          const r=await startRaid(chat,sender,level||null)
+          const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
+          await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🐾 Pets e curas automáticas funcionam normalmente.\n🏆 Recompensas serão proporcionais à colaboração.`)
+          runRaidCombat(chat,Number(r.level),reply)
 
         } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
