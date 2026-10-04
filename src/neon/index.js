@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType,
-  adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
+  adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
@@ -6761,9 +6761,9 @@ Se precisar de mais ajuda, use *!suporte*.`
               const bySlot=s=>team.find(x=>Number(x.slot)===s)
               const p1=bySlot(1),p2=bySlot(2),p3=bySlot(3)
               let text='🐾 *SEU TIME PET*\n\n'
-              text+='1️⃣ *PRINCIPAL*\n'+(p1?`🐾 ${p1.name} — ${p1.species}\n⭐ Nv.${p1.level} • ❤️ ${p1.hp}/${petMaxHp(p1.level,p1.xp,p1.species)}`:'— Vazio')+'\n\n'
-              text+='2️⃣ *SUPORTE*\n'+(p2?`🐾 ${p2.name} — ${p2.species}\n⭐ Nv.${p2.level} • ❤️ ${p2.hp}/${petMaxHp(p2.level,p2.xp,p2.species)}`:'— Vazio')+'\n\n'
-              text+='3️⃣ *RESERVA*\n'+(p3?`🐾 ${p3.name} — ${p3.species}\n⭐ Nv.${p3.level} • ❤️ ${p3.hp}/${petMaxHp(p3.level,p3.xp,p3.species)}`:'— Vazio')+'\n\n'
+              text+='1️⃣ *PRINCIPAL*\n'+(p1?`🐾 ${p1.name} — ${p1.species}\n🏷️ ${petStyleLabel(p1.species)}\n⭐ Nv.${p1.level} • ❤️ ${p1.hp}/${petMaxHp(p1.level,p1.xp,p1.species)}`:'— Vazio')+'\n\n'
+              text+='2️⃣ *SUPORTE*\n'+(p2?`🐾 ${p2.name} — ${p2.species}\n🏷️ ${petStyleLabel(p2.species)}\n⭐ Nv.${p2.level} • ❤️ ${p2.hp}/${petMaxHp(p2.level,p2.xp,p2.species)}`:'— Vazio')+'\n\n'
+              text+='3️⃣ *RESERVA*\n'+(p3?`🐾 ${p3.name} — ${p3.species}\n🏷️ ${petStyleLabel(p3.species)}\n⭐ Nv.${p3.level} • ❤️ ${p3.hp}/${petMaxHp(p3.level,p3.xp,p3.species)}`:'— Vazio')+'\n\n'
               const synergy=petTeamSynergy(team)
               if(synergy) text+=`✨ *SINERGIA — ${synergy.label}*\n${synergy.text}\n\n`
               else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa — combine 3 espécies diferentes do mesmo estilo.\n\n'
@@ -6789,7 +6789,7 @@ Se precisar de mais ajuda, use *!suporte*.`
               pets.forEach((p,i)=>{
                 const slot=slotById.get(Number(p.id))
                 const tag=slot===1?' 👑 PRINCIPAL':slot===2?' 🛟 SUPORTE':slot===3?' 🔄 RESERVA':''
-                text+='*'+(i+1)+'.* *'+p.name+'* — '+p.species+' • Nv.'+p.level+tag+'\n'
+                text+='*'+(i+1)+'.* *'+p.name+'* — '+p.species+' • '+petStyleLabel(p.species)+' • Nv.'+p.level+tag+'\n'
               })
               text+='\n👉 Mande *1 número* para trocar só o Principal.\n👉 Ou mande até *3 números* na ordem dos slots. Ex.: *1,2,5*\n\n1º = Principal • 2º = Suporte • 3º = Reserva\n0️⃣ Cancelar'
               return await reply(text)
