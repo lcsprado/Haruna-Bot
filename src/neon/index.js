@@ -1942,7 +1942,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar* — entra na Raid antes ou depois do início, enquanto houver vaga
-*!go* — host inicia (mínimo 2 jogadores)
+*!go* — host inicia (Raid Lv.10 pode ser solo; Lv.15+ mínimo 2 jogadores)
 *!cancelarraide* — host cancela antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
