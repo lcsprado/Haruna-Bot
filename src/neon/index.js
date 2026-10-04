@@ -8612,7 +8612,10 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           if(r.cooldown) return await reply(`⏳ *BOSS COMUM EM COOLDOWN*\n\nO próximo Golem do Alpha poderá aparecer em aproximadamente *${r.remainingMinutes} min*.\n\n👹 O Superboss semanal continua sendo um evento separado, disponível apenas uma vez por fim de semana.`)
           const bossPet=await getPet(sender)
           const bossPetBonus=bossPet?petStatusBonus(bossPet):null
-          const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
+          const bossTeam=await getPetTeam(sender)
+          const bossSynergy=petTeamSynergy(bossTeam)
+          const synergyLine=bossSynergy?`\n🧬 Sinergia do time: *${bossSynergy.label}*\n🎯 ${bossSynergy.text}`:''
+          const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}${synergyLine}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
           const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
           const schedule=r.mode==='weekly'?`\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial ativado manualmente pelo dono.':'')
           if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
