@@ -204,15 +204,17 @@ async function runRaidCombat(chat,reply){
         const bossEvents=(r.events||[]).filter(e=>e.type==='boss')
         const hitEvents=(r.events||[]).filter(e=>e.type==='hit')
         const heals=bossEvents.filter(e=>e.autoHeal)
+        const petHeals=bossEvents.filter(e=>e.autoPetHeal)
         const deaths=bossEvents.filter(e=>!e.alive)
         const petFalls=bossEvents.filter(e=>e.petFainted)
-        if(r.round===1 || r.round%5===0 || heals.length || deaths.length || petFalls.length){
+        if(r.round===1 || r.round%5===0 || heals.length || petHeals.length || deaths.length || petFalls.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
           if(r.special) text+=`\n🔥 *${r.specialName}!* O Boss usou um ataque especial.\n`
           text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*\n👥 Sobreviventes: *${r.survivors}*`
           for(const e of heals) text+=`\n🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
+          for(const e of petHeals) text+=`\n🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
           for(const e of deaths) text+=`\n💀 *${e.name}* caiu sem cura e saiu da Raid.`
           for(const e of petFalls) text+=`\n💔 *${e.petName}* ficou sem HP e saiu da Raid.`
           await reply(text)
