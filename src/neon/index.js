@@ -1043,10 +1043,11 @@ function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
 
 function petStatusBonus(p){
   const spec=PET_STATUS_SPECIALTIES[String(p?.species||'').toLowerCase()]
-  if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada'}
+  if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada',critPct:0}
   const scale=1+Math.min(.25,Math.max(0,Number(p.level||1)-1)*.01)
   const cap=spec.raid?15:10
-  const pct=n=>Math.min(cap,Number(n||0)*scale).toLocaleString('pt-BR',{maximumFractionDigits:1})
+  const rawPct=n=>Math.min(cap,Number(n||0)*scale)
+  const pct=n=>rawPct(n).toLocaleString('pt-BR',{maximumFractionDigits:1})
   const labels={
     damage:'dano',
     bossDamage:'dano contra Boss',
@@ -1060,7 +1061,11 @@ function petStatusBonus(p){
   const parts=Object.entries(stats)
     .filter(([,value])=>Number(value)>0)
     .map(([stat,value])=>`+${pct(value)}% ${labels[stat]||stat}`)
-  return {label:spec.label,text:parts.join(' • ')+' no Boss'}
+  return {
+    label:spec.label,
+    text:parts.join(' • ')+' no Boss',
+    critPct:rawPct(Number(stats.crit||0))
+  }
 }
 
 async function start() {
@@ -7171,7 +7176,11 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
         } else if(['status'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
           const statusTarget=await resolvePlayerJid(sock,chat,mentioned || sender,msg)
-          const p=await getCombatProfile(statusTarget)
+          const [p,statusPet]=await Promise.all([getCombatProfile(statusTarget),getPet(statusTarget)])
+          const statusPetBonus=statusPet?petStatusBonus(statusPet):{critPct:0}
+          const gearCritPct=Number(p.equipment_crit||0)*100
+          const pvpCritPct=Number(p.effective_crit||0)*100
+          const bossCritPct=Math.min(50,gearCritPct+Number(statusPetBonus.critPct||0))
           await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
 
@@ -7181,7 +7190,8 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 ⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)
 🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
 💨 SPD: ${p.spd}
-🎯 CRIT: ${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${(Number(p.equipment_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
+🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
+👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
 
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
