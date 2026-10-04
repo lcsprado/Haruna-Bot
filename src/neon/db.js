@@ -3833,7 +3833,7 @@ export async function leavePlayerCarpinarEarly(jid){
 const PET_BASE_ENERGY={
   cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
   tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,
-  panda:200,tigre:225,leao:250,unicornio:280,dragao:320,
+  panda:200,tigre:225,leao:250,cervo_mistico:265,unicornio:280,dragao:320,
   golem_ancestral:340,urso_runico:345,colosso_cristal:360,
   salamandra_infernal:350,dragao_vulcanico:365,fenix_fogo:390,
   corvo_abissal:350,lobo_abismo:370,fenix_gelo:395,
@@ -3861,6 +3861,7 @@ export const PET_HP_PROFILES={
   panda:{base:165,growth:14,type:'Tanque'},
   tigre:{base:150,growth:13,type:'Ofensivo'},
   leao:{base:170,growth:14,type:'Ofensivo'},
+  cervo_mistico:{base:175,growth:14,type:'Curandeiro'},
   unicornio:{base:190,growth:16,type:'Místico'},
   dragao:{base:230,growth:19,type:'Boss Hunter'},
   golem_ancestral:{base:240,growth:18,type:'Tanque'},
@@ -3996,11 +3997,12 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     panda:{level:14,price:225000,label:'🐼 Panda'},
     tigre:{level:17,price:350000,label:'🐯 Tigre'},
     leao:{level:20,price:500000,label:'🦁 Leão'},
+    cervo_mistico:{level:20,price:500000,label:'🦌 Cervo Místico'},
     unicornio:{level:25,price:750000,label:'🦄 Unicórnio'},
     dragao:{level:30,price:1000000,label:'🐉 Dragão'}
   }
   const rule=rules[species]
-  if(!rule) throw new Error('Pet inválido. Use !adotar para ver os 15 pets disponíveis.')
+  if(!rule) throw new Error('Pet inválido. Use !adotar para ver os pets disponíveis.')
   return transaction(async client=>{
     const ur=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid]); const level=Number(ur.rows[0]?.level||1)
     if(level<rule.level) throw new Error(`${rule.label} exige nível ${rule.level}. Seu nível atual: ${level}.`)
@@ -4089,6 +4091,7 @@ const PET_EXPEDITION_TRAITS={
   panda:{label:'🐼 Coletor',cash:.14,item:'pocao_pet_rara',itemChance:.12},
   tigre:{label:'🐯 Predador',xp:.15,cash:.12},
   leao:{label:'🦁 Líder',xp:.12,cash:.16},
+  cervo_mistico:{label:'🦌 Ervas Restauradoras',xp:.10,item:'pocao_pet_rara',itemChance:.08},
   unicornio:{label:'🦄 Bênção',item:'caixa_rara',itemChance:.08,xp:.10},
   dragao:{label:'🐉 Guardião de Tesouros',cash:.22,item:'caixa_rara',itemChance:.06}
 }
