@@ -917,6 +917,44 @@ async function giveBossDrops(c,jid,position,extraChance=0){
   return drops
 }
 
+const SIEGE_EVENT_START=Date.parse('2026-10-04T18:00:00-03:00')
+const SIEGE_EVENT_END=Date.parse('2026-10-04T20:00:00-03:00')
+const SIEGE_EVENT_KEY='cerco-colosso-2026-10-04'
+
+async function createSiegeBossEventState(c,chat){
+  const maxHp=170000+Math.floor(Math.random()*30001)
+  const state={
+    mode:'event',eventId:'cerco_colosso',active:true,origin:'scheduled',
+    scheduleKey:SIEGE_EVENT_KEY,name:'Colosso do Cerco',
+    hp:maxHp,maxHp,atk:26,participants:{},startedAt:Date.now(),endsAt:SIEGE_EVENT_END
+  }
+  await saveGame(c,chat,'boss_event',state)
+  return state
+}
+
+export async function autoStartSiegeBossEvent(chat,now=new Date()){
+  const ts=now.getTime()
+  return tx(async c=>{
+    const current=await loadGame(c,chat,'boss_event')
+    if(ts>=SIEGE_EVENT_END){
+      if(current?.eventId==='cerco_colosso'&&current.active!==false&&Number(current.hp)>0){
+        current.active=false;current.mode='event_stopped';current.stoppedAt=Date.now()
+        await saveGame(c,chat,'boss_event',current)
+        return {due:false,ended:true,stopped:true,...current}
+      }
+      return {due:false,ended:true}
+    }
+    if(ts<SIEGE_EVENT_START) return {due:false}
+    if(current&&current.active!==false&&Number(current.hp)>0){
+      if(current.eventId==='cerco_colosso') return {due:true,already:true,...current}
+      return {due:true,blocked:true}
+    }
+    if(current?.scheduleKey===SIEGE_EVENT_KEY) return {due:true,alreadyRun:true,...current}
+    const state=await createSiegeBossEventState(c,chat)
+    return {due:true,spawned:true,...state}
+  })
+}
+
 const NIGHT_EVENT_START=Date.parse('2026-10-04T03:00:00-03:00')
 const NIGHT_EVENT_END=Date.parse('2026-10-04T03:30:00-03:00')
 const NIGHT_EVENT_KEY='night-0303-2026-10-04'
@@ -1182,17 +1220,30 @@ export async function attackBoss(chat,jid,name,usePet=true){
         let cash=0,exp=0,petXp=0,drops=[]
         if(eventMode){
           const night=s.eventId==='night_0303'
+          const siege=s.eventId==='cerco_colosso'
           const positionXp=[900,600,350,200,100][i]||50
           const localMult=night?2:1
-          cash=Math.round((5000+Math.floor(80000*share))*moneyMultiplier*localMult)
-          exp=Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
-          await credit(c,p.jid,cash,night?'boss_event_night_0303':'boss_event_eclipse')
+          cash=siege?Math.round(3000+25000*share):Math.round((5000+Math.floor(80000*share))*moneyMultiplier*localMult)
+          exp=siege?Math.round(Math.floor((700+3500*share+positionXp)*(1+pb.xp))):Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
+          await credit(c,p.jid,cash,siege?'boss_event_cerco':(night?'boss_event_night_0303':'boss_event_eclipse'))
           await grantExpInTransaction(c,p.jid,exp)
           if(pp){
-            petXp=Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
+            petXp=siege?Math.round(180+700*share+(i===0?180:i===1?90:0)):Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
             await raidPetXp(c,p.jid,petXp)
           }
-          if(night){
+          if(siege){
+            if(p.damage>=1500 && Math.random()<.35){
+              drops.push(await grantBossItem(c,p.jid,{id:'colete_vital',name:'Colete Vital (+18 DEF / +60 HP)',rarity:'Raro'}))
+            }
+            if(i===0){
+              drops.push(await grantBossItem(c,p.jid,{id:'armadura_colosso',name:'Armadura do Colosso (+52 DEF / +140 HP / +4% CRIT)',rarity:'Evento'}))
+            }else if(i===1 && Math.random()<.65){
+              drops.push(await grantBossItem(c,p.jid,{id:'couraca_predador',name:'Couraça do Predador (+38 DEF / +90 HP / +3% CRIT)',rarity:'Épico'}))
+            }else if(i===2 && Math.random()<.35){
+              drops.push(await grantBossItem(c,p.jid,{id:'couraca_predador',name:'Couraça do Predador (+38 DEF / +90 HP / +3% CRIT)',rarity:'Épico'}))
+            }
+            if(i<3) drops.push(await grantBossItem(c,p.jid,{id:'caixa_rara',name:'Caixa Rara — Cerco',rarity:'Raro'}))
+          }else if(night){
             const groupBonus=entries.filter(x=>x.damage>=500).length>=3
             if(p.damage>=500){
               drops.push(await grantBossItem(c,p.jid,{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'}))
