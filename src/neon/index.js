@@ -990,6 +990,13 @@ const PET_STATUS_SPECIALTIES = {
   unicornio:{label:'🦄 Bênção Vital',stats:{drop:4,defense:4},healPct:6,healCooldown:4},
   dragao:{label:'🐉 Caçador de Boss',stat:'bossDamage',base:10},
 
+  golfinho_celestial:{label:'🐬 Corrente Celestial',stats:{dodge:5,xp:4}},
+  moreia_sombria:{label:'🐍 Emboscada Sombria',stats:{damage:5,dodge:4}},
+  tubarao_abissal:{label:'🦈 Frenesi Abissal',stats:{damage:7,crit:3}},
+  polvo_arcano:{label:'🐙 Tentáculos Arcanos',stats:{crit:4,drop:3}},
+  orca_guerra:{label:'🐋 Investida Oceânica',stats:{damage:5,defense:5}},
+  baleia_colossal:{label:'🐋 Canto Colossal',stats:{defense:7,xp:3}},
+
   golem_ancestral:{label:'🪨 Muralha Ancestral',stats:{defense:9,drop:2},raid:true},
   urso_runico:{label:'🐻 Fúria Rúnica',stats:{damage:7,defense:6},raid:true},
   colosso_cristal:{label:'💎 Prisma Colossal',stats:{defense:10,drop:4,crit:3},raid:true},
@@ -1028,13 +1035,19 @@ const ADOPTABLE_PETS=[
   {species:'tartaruga',label:'🐢 Tartaruga',level:6,price:35000},
   {species:'coruja',label:'🦉 Coruja',level:7,price:50000},
   {species:'raposa',label:'🦊 Raposa',level:8,price:70000},
+  {species:'golfinho_celestial',label:'🐬 Golfinho Celestial',level:9,price:85000},
   {species:'lobo',label:'🐺 Lobo',level:10,price:100000},
+  {species:'moreia_sombria',label:'🐍 Moreia Sombria',level:11,price:125000},
   {species:'aguia',label:'🦅 Águia',level:12,price:150000},
   {species:'panda',label:'🐼 Panda',level:14,price:225000},
+  {species:'tubarao_abissal',label:'🦈 Tubarão Abissal',level:15,price:275000},
   {species:'tigre',label:'🐯 Tigre',level:17,price:350000},
+  {species:'polvo_arcano',label:'🐙 Polvo Arcano',level:18,price:400000},
   {species:'leao',label:'🦁 Leão',level:20,price:500000},
   {species:'cervo_mistico',label:'🦌 Cervo Místico',level:20,price:500000},
+  {species:'orca_guerra',label:'🐋 Orca de Guerra',level:22,price:600000},
   {species:'unicornio',label:'🦄 Unicórnio',level:25,price:750000},
+  {species:'baleia_colossal',label:'🐋 Baleia Colossal',level:28,price:900000},
   {species:'dragao',label:'🐉 Dragão',level:30,price:1000000}
 ]
 
@@ -2129,9 +2142,9 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 🐾 *Pets & Time Pet*
 *!pet* / *!pets* — catálogo rápido dos pets
-*!adotar* — lista os 16 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção\n*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
+*!adotar* — lista os 22 pets, preços, níveis e bônus\n*!adotar cachorro Nome* — adiciona um pet à coleção\n*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
 *!meuspets* — mostra todos os seus pets
-*!equiparpet* — monta Principal, Suporte e Reserva por números
+*!equiparpet* — abre o gerenciador do time; monte 1,2,3 de uma vez ou troque um slot
 *!timepet* — mostra os 3 slots, estilos e a sinergia ativa
 *!usarpet ID* — troca apenas o pet Principal
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
@@ -2514,6 +2527,11 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
     }
 
     if(flow.stage==='pet_team_select'){
+      if(input==='0'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Montagem do time cancelada.')
+        return true
+      }
       const pets=Array.isArray(flow.data?.pets)?flow.data.pets:[]
       const picks=String(input||'').split(/[\s,;]+/).map(Number).filter(Number.isInteger)
       if(!picks.length||picks.length>3||new Set(picks).size!==picks.length||picks.some(n=>n<1||n>pets.length)){
@@ -2521,17 +2539,90 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
         return true
       }
       const ids=picks.map(n=>pets[n-1].id)
-      const team=await setPetTeam(sender,ids,picks.length>1)
+      const team=await setPetTeam(sender,ids,flow.data?.replaceAll!==false)
       clearQuickFlow(chat,sender)
       const bySlot=s=>team.find(x=>Number(x.slot)===s)
       const p1=bySlot(1),p2=bySlot(2),p3=bySlot(3)
       const synergy=petTeamSynergy(team)
       let text='🐾 *TIME PET EQUIPADO!*\n\n'
-      text+='1️⃣ *PRINCIPAL:* '+(p1?`${p1.name} — ${p1.species} • Nv.${p1.level}`:'Vazio')+'\n'
-      text+='2️⃣ *SUPORTE:* '+(p2?`${p2.name} — ${p2.species} • Nv.${p2.level}`:'Vazio')+'\n'
-      text+='3️⃣ *RESERVA:* '+(p3?`${p3.name} — ${p3.species} • Nv.${p3.level}`:'Vazio')+'\n\n'
-      if(synergy) text+=`✨ *SINERGIA ATIVA — ${synergy.label}*\n${synergy.text}\n\n`
-      text+='💡 Se o Principal cair no Boss/Raid, o Reserva entra automaticamente. O Suporte fortalece a sinergia do time.'
+      text+='1️⃣ *PRINCIPAL:* '+(p1?`${p1.name} — ${p1.species} • ${petStyleLabel(p1.species)} • Nv.${p1.level}`:'Vazio')+'\n'
+      text+='2️⃣ *SUPORTE:* '+(p2?`${p2.name} — ${p2.species} • ${petStyleLabel(p2.species)} • Nv.${p2.level}`:'Vazio')+'\n'
+      text+='3️⃣ *RESERVA:* '+(p3?`${p3.name} — ${p3.species} • ${petStyleLabel(p3.species)} • Nv.${p3.level}`:'Vazio')+'\n\n'
+      if(synergy) text+=`✨ *SINERGIA ATIVA — ${synergy.label}*\n🎯 Bônus: *${synergy.text}*\n\n`
+      else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa. Os 3 precisam ser espécies diferentes do mesmo estilo.\n\n'
+      text+='💡 Principal luta; Reserva assume se ele cair; Suporte fortalece a sinergia.'
+      await reply(text)
+      return true
+    }
+
+    if(flow.stage==='pet_team_manage'){
+      if(input==='0'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Gerenciador do time fechado.')
+        return true
+      }
+      const pets=Array.isArray(flow.data?.pets)?flow.data.pets:[]
+      const choice=Number(input)
+      if(choice===4){
+        setQuickFlow(chat,sender,'pet_team_select',{pets,replaceAll:true},5*60*1000)
+        let text='🔁 *REMONTAR TIME PET*\n\n'
+        pets.forEach((p,i)=>{text+=`*${i+1}.* *${p.name}* — ${p.species} • ${petStyleLabel(p.species)} • Nv.${p.level}\n`})
+        text+='\n👉 Envie até *3 números na ordem dos slots*. Ex.: *1,2,3*\n1º Principal • 2º Suporte • 3º Reserva\n0️⃣ Cancelar'
+        await reply(text)
+        return true
+      }
+      if(![1,2,3].includes(choice)){
+        await reply('🐾 Escolha *1 Principal*, *2 Suporte*, *3 Reserva*, *4 Remontar tudo* ou *0 Sair*.')
+        return true
+      }
+      const current=await getPetTeam(sender)
+      const occupiedOtherIds=new Set(current.filter(x=>Number(x.slot)!==choice).map(x=>Number(x.id)))
+      const available=pets.filter(p=>!occupiedOtherIds.has(Number(p.id)))
+      if(!available.length){
+        await reply('🐾 Não há outro pet disponível para esse slot.')
+        return true
+      }
+      setQuickFlow(chat,sender,'pet_team_replace_select',{pets:available,slot:choice},5*60*1000)
+      const slotName=choice===1?'PRINCIPAL':choice===2?'SUPORTE':'RESERVA'
+      let text=`🔄 *TROCAR ${slotName}*\n\nEscolha o pet que vai ocupar o Slot ${choice}:\n\n`
+      available.forEach((p,i)=>{
+        const bonus=petStatusBonus(p)
+        text+=`*${i+1}.* *${p.name}* — ${p.species} • ${petStyleLabel(p.species)} • Nv.${p.level}\n   ✨ ${bonus.text}\n`
+      })
+      text+='\n0️⃣ Cancelar'
+      await reply(text)
+      return true
+    }
+
+    if(flow.stage==='pet_team_replace_select'){
+      if(input==='0'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Troca de slot cancelada.')
+        return true
+      }
+      const pets=Array.isArray(flow.data?.pets)?flow.data.pets:[]
+      const choice=Number(input)
+      if(!Number.isInteger(choice)||choice<1||choice>pets.length){
+        await reply(`🐾 Escolha um pet de *1 a ${pets.length}* ou *0 para cancelar*.`)
+        return true
+      }
+      const selected=pets[choice-1]
+      const slot=Number(flow.data?.slot||0)
+      const current=await getPetTeam(sender)
+      const bySlot=n=>current.find(x=>Number(x.slot)===n)
+      const slots={1:bySlot(1)?.id||null,2:bySlot(2)?.id||null,3:bySlot(3)?.id||null}
+      slots[slot]=selected.id
+      const ids=[slots[1],slots[2],slots[3]].filter(Boolean)
+      const team=await setPetTeam(sender,ids,true)
+      clearQuickFlow(chat,sender)
+      const nowBySlot=n=>team.find(x=>Number(x.slot)===n)
+      const synergy=petTeamSynergy(team)
+      let text='✅ *SLOT ATUALIZADO!*\n\n'
+      text+='1️⃣ Principal: *'+(nowBySlot(1)?.name||'Vazio')+'*\n'
+      text+='2️⃣ Suporte: *'+(nowBySlot(2)?.name||'Vazio')+'*\n'
+      text+='3️⃣ Reserva: *'+(nowBySlot(3)?.name||'Vazio')+'*\n'
+      if(synergy) text+=`\n✨ *SINERGIA ATIVA — ${synergy.label}*\n🎯 Bônus: *${synergy.text}*`
+      else if(team.length===3) text+='\n\n🧩 Sem sinergia ativa.'
       await reply(text)
       return true
     }
@@ -6789,18 +6880,39 @@ Se precisar de mais ajuda, use *!suporte*.`
                 const team=await setPetTeam(sender,ids,picks.length>1)
                 const bySlot=s=>team.find(x=>Number(x.slot)===s)
                 const synergy=petTeamSynergy(team)
-                return await reply('🐾 *TIME PET EQUIPADO!*\n\n1️⃣ Principal: *'+(bySlot(1)?.name||'Vazio')+'*\n2️⃣ Suporte: *'+(bySlot(2)?.name||'Vazio')+'*\n3️⃣ Reserva: *'+(bySlot(3)?.name||'Vazio')+'*'+(synergy?'\n\n✨ *'+synergy.label+'*\n'+synergy.text:'')+'\n\n💡 O Reserva entra se o Principal cair; o Suporte participa das sinergias.')
+                return await reply('🐾 *TIME PET EQUIPADO!*\n\n1️⃣ Principal: *'+(bySlot(1)?.name||'Vazio')+'*\n2️⃣ Suporte: *'+(bySlot(2)?.name||'Vazio')+'*\n3️⃣ Reserva: *'+(bySlot(3)?.name||'Vazio')+'*'+(synergy?'\n\n✨ *'+synergy.label+'*\n🎯 Bônus: *'+synergy.text+'*':'')+'\n\n💡 O Reserva entra se o Principal cair; o Suporte participa das sinergias.')
               }
+
               const team=await getPetTeam(sender)
+              const bySlot=n=>team.find(x=>Number(x.slot)===n)
+              const synergy=petTeamSynergy(team)
+              if(team.length===3){
+                setQuickFlow(chat,sender,'pet_team_manage',{pets},5*60*1000)
+                let text='🐾 *GERENCIAR TIME PET*\n\n'
+                text+='1️⃣ Principal: *'+bySlot(1).name+'* — '+petStyleLabel(bySlot(1).species)+'\n'
+                text+='2️⃣ Suporte: *'+bySlot(2).name+'* — '+petStyleLabel(bySlot(2).species)+'\n'
+                text+='3️⃣ Reserva: *'+bySlot(3).name+'* — '+petStyleLabel(bySlot(3).species)+'\n'
+                if(synergy) text+='\n✨ *'+synergy.label+'*\n🎯 Bônus: *'+synergy.text+'*\n'
+                else text+='\n🧩 Sem sinergia ativa.\n'
+                text+='\n🔄 Qual slot deseja trocar?\n1️⃣ Principal\n2️⃣ Suporte\n3️⃣ Reserva\n4️⃣ Remontar o time inteiro\n0️⃣ Sair'
+                return await reply(text)
+              }
+
               const slotById=new Map(team.map(x=>[Number(x.id),Number(x.slot)]))
-              setQuickFlow(chat,sender,'pet_team_select',{pets},5*60*1000)
-              let text='🐾 *EQUIPAR TIME PET*\n\n'
+              setQuickFlow(chat,sender,'pet_team_select',{pets,replaceAll:true},5*60*1000)
+              let text='🐾 *MONTAR TIME PET*\n\n'
+              text+='1️⃣ Principal: *'+(bySlot(1)?.name||'— Vazio')+'*\n'
+              text+='2️⃣ Suporte: *'+(bySlot(2)?.name||'— Vazio')+'*\n'
+              text+='3️⃣ Reserva: *'+(bySlot(3)?.name||'— Vazio')+'*\n\n'
+              text+='*Seus pets disponíveis:*\n'
               pets.forEach((p,i)=>{
                 const slot=slotById.get(Number(p.id))
-                const tag=slot===1?' 👑 PRINCIPAL':slot===2?' 🛟 SUPORTE':slot===3?' 🔄 RESERVA':''
+                const tag=slot===1?' 👑':slot===2?' 🛟':slot===3?' 🔄':''
+                const bonus=petStatusBonus(p)
                 text+='*'+(i+1)+'.* *'+p.name+'* — '+p.species+' • '+petStyleLabel(p.species)+' • Nv.'+p.level+tag+'\n'
+                text+='   ✨ '+bonus.text+'\n'
               })
-              text+='\n👉 Mande *1 número* para trocar só o Principal.\n👉 Ou mande até *3 números* na ordem dos slots. Ex.: *1,2,5*\n\n1º = Principal • 2º = Suporte • 3º = Reserva\n0️⃣ Cancelar'
+              text+='\n👉 Envie até *3 números de uma vez*, na ordem dos slots. Ex.: *1,2,3*\n1º Principal • 2º Suporte • 3º Reserva\n0️⃣ Cancelar'
               return await reply(text)
             }
             if(cmd==='meuspets'){
