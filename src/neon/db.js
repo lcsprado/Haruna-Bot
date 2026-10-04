@@ -136,6 +136,13 @@ export async function initDatabase() {
       updated_at BIGINT NOT NULL DEFAULT ${nowSql}
     );
 
+    CREATE TABLE IF NOT EXISTS level_reward_claims (
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      milestone INTEGER NOT NULL CHECK (milestone >= 5 AND milestone % 5 = 0),
+      claimed_at BIGINT NOT NULL DEFAULT ${nowSql},
+      PRIMARY KEY(jid,milestone)
+    );
+
     CREATE TABLE IF NOT EXISTS profile_avatars (
       jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
       image_data TEXT NOT NULL,
@@ -2319,6 +2326,90 @@ export async function grantExp(jid,gain){
 // juntas na mesma transação. O chamador deve fornecer um client transacional.
 export async function grantExpInTransaction(client,jid,gain){
   return applyExp(client,jid,Number(gain))
+}
+
+
+const LEVEL_REWARDS = {
+  5:{cash:15000,items:[['pocao_m',3]]},
+  10:{cash:30000,items:[['caixa_sorte',2],['energetico_pet',1]]},
+  15:{cash:50000,items:[['caixa_sorte',2],['pocao_pet_rara',2]]},
+  20:{cash:75000,items:[['caixa_rara',2],['pocao_g',2]]},
+  25:{cash:100000,items:[['caixa_rara',2],['energetico_pet',2]]},
+  30:{cash:140000,items:[['caixa_epica',2],['elixir_supremo',2]]},
+  35:{cash:180000,items:[['caixa_epica',2],['pocao_pet_epica',3]]},
+  40:{cash:240000,items:[['caixa_epica',3],['energetico_pet',3]]},
+  45:{cash:320000,items:[['caixa_epica',4],['elixir_supremo',3]]},
+  50:{cash:450000,items:[['caixa_epica',5],['chave_raid_50',1]]}
+}
+
+function levelRewardFor(milestone){
+  milestone=Number(milestone)
+  if(milestone<5 || milestone%5!==0) return null
+  if(LEVEL_REWARDS[milestone]) return LEVEL_REWARDS[milestone]
+  // Pós-50 continua premiando a cada 5 níveis, com crescimento controlado.
+  return {
+    cash:100000+(milestone*7000),
+    items:[
+      ['caixa_epica',Math.min(5,2+Math.floor((milestone-50)/25))],
+      ['energetico_pet',Math.min(5,1+Math.floor((milestone-50)/20))]
+    ]
+  }
+}
+
+export async function claimLevelRewards(jid){
+  await ensureUser(jid)
+  return transaction(async client=>{
+    const user=(await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const level=Number(user?.level||1)
+    const claimedRows=(await client.query('SELECT milestone FROM level_reward_claims WHERE jid=$1',[jid])).rows
+    const claimedSet=new Set(claimedRows.map(r=>Number(r.milestone)))
+    const unlocked=[]
+    for(let milestone=5;milestone<=level;milestone+=5){
+      if(!claimedSet.has(milestone)) unlocked.push(milestone)
+    }
+
+    const claimed=[]
+    for(const milestone of unlocked){
+      const reward=levelRewardFor(milestone)
+      if(!reward) continue
+      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[reward.cash,jid])
+      const delivered=[]
+      for(const [itemId,qty] of reward.items||[]){
+        const item=(await client.query('SELECT id,name FROM items WHERE id=$1',[itemId])).rows[0]
+        if(!item) continue
+        await client.query(`
+          INSERT INTO inventories(jid,item_id,quantity)
+          VALUES($1,$2,$3)
+          ON CONFLICT(jid,item_id) DO UPDATE
+          SET quantity=inventories.quantity+EXCLUDED.quantity
+        `,[jid,itemId,qty])
+        delivered.push({id:item.id,name:item.name,qty:Number(qty)})
+      }
+      await client.query(
+        'INSERT INTO level_reward_claims(jid,milestone) VALUES($1,$2) ON CONFLICT(jid,milestone) DO NOTHING',
+        [jid,milestone]
+      )
+      claimed.push({milestone,cash:Number(reward.cash),items:delivered})
+    }
+
+    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1',[jid])).rows[0]
+    const nextMilestone=(Math.floor(level/5)+1)*5
+    const nextReward=levelRewardFor(nextMilestone)
+    return {
+      level,
+      exp:Number(user?.exp||0),
+      claimed,
+      nextMilestone,
+      nextReward,
+      cash:Number(wallet?.cash||0),
+      bank:Number(wallet?.bank||0)
+    }
+  })
+}
+
+export function getLevelRewardPreview(milestone){
+  const reward=levelRewardFor(milestone)
+  return reward?{milestone:Number(milestone),cash:Number(reward.cash),items:(reward.items||[]).map(([id,qty])=>({id,qty:Number(qty)}))}:null
 }
 
 export async function getGroupLicense(chatJid) {
