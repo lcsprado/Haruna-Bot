@@ -1795,14 +1795,18 @@ export async function getCombatProfile(jid) {
   const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id])
   const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1):null
   const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1):null
-  const w=weapon||{atk:0,def:0,name:'Nenhuma',level:1}
-  const a=armor||{atk:0,def:0,name:'Nenhuma',level:1}
+  const w=weapon||{atk:0,def:0,hp:0,crit:0,name:'Nenhuma',level:1}
+  const a=armor||{atk:0,def:0,hp:0,crit:0,name:'Nenhuma',level:1}
   return {
     ...p,
     base_atk:Number(p.atk),
     base_def:Number(p.def),
+    base_max_hp:Number(p.max_hp),
     weapon_atk:Number(w.atk||0),
     armor_def:Number(a.def||0),
+    equipment_hp:Number(w.hp||0)+Number(a.hp||0),
+    equipment_crit:Number(w.crit||0)+Number(a.crit||0),
+    effective_max_hp:Number(p.max_hp)+Number(w.hp||0)+Number(a.hp||0),
     effective_atk:Number(p.atk)+Number(w.atk||0)+Number(a.atk||0),
     effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0),
     weapon_name:w.name,
@@ -1849,23 +1853,25 @@ export async function battle(attackerJid, defenderJid) {
       [[attackerJid,defenderJid]]
     )).rows
     const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
-    const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0}
-    const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0}
-    const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id)):{atk:0,def:0}
-    const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0}
+    const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,crit:0}
+    const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,crit:0}
+    const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,crit:0}
+    const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,crit:0}
 
     const A={
       jid:attackerJid,name:au?.push_name||'Jogador',
-      hp:Number(a.hp),maxHp:Number(a.max_hp),
+      hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0),
       atk:Number(a.atk)+aeW.atk+aeA.atk,
       def:Number(a.def)+aeW.def+aeA.def,
+      crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)),
       spd:Number(a.spd)
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
-      hp:Number(b.hp),maxHp:Number(b.max_hp),
+      hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0),
       atk:Number(b.atk)+beW.atk+beA.atk,
       def:Number(b.def)+beW.def+beA.def,
+      crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)),
       spd:Number(b.spd)
     }
 
@@ -1875,7 +1881,7 @@ export async function battle(attackerJid, defenderJid) {
 
     const hit=(from,to)=>{
       const variance=0.85+Math.random()*0.30
-      const crit=Math.random()<0.10
+      const crit=Math.random()<Number(from.crit||.10)
       const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
       const dmg=crit?Math.round(raw*1.6):raw
       to.hp=Math.max(0,to.hp-dmg)
