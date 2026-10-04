@@ -57,6 +57,7 @@ async function debit(client,jid,amount){
 }
 
 async function credit(client,jid,amount,note){
+  amount=Math.round(Number(amount)||0)
   await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[amount,jid])
   await client.query(`
     INSERT INTO transactions(from_jid,to_jid,amount,type,note)
@@ -555,20 +556,39 @@ export async function joinRaid(chat,jid,name='Jogador'){
   await ensureUser(jid,name)
   return tx(async c=>{
     const s=await loadGame(c,chat,'raid')
-    if(!s||s.status!=='lobby'||Number(s.expiresAt||0)<Date.now()) throw new Error('Não existe Raid aguardando jogadores.')
-    if(s.players?.[jid]) return {already:true,...s}
+    if(!s||!['lobby','active'].includes(s.status)||Number(s.expiresAt||0)<Date.now()) throw new Error('Não existe Raid disponível para entrar.')
+    if(s.players?.[jid]) return {already:true,lateJoin:s.status==='active',...s}
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
-    const u=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(u?.level||1)<Number(s.level)) throw new Error(`Essa Raid exige nível ${s.level}. Seu nível atual: ${Number(u?.level||1)}.`)
-    const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const st=(await c.query('SELECT * FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
-    const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])).rows[0]
-    if(Number(key?.quantity||0)<1) throw new Error(`🔑 Para entrar nesta Raid, cada jogador precisa ter 1 Chave de Raid Lv.${cfg.level}. Use !chaveraid ${cfg.level}.`)
-    s.players={...(s.players||{}),[jid]:{jid,name:name||'Jogador',damage:0,alive:true}}
+    const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,cfg.keyId])).rows[0]
+    if(Number(key?.quantity||0)<1) throw new Error(`🔑 Para entrar nesta Raid, você precisa ter 1 Chave de Raid Lv.${cfg.level}. Use !chaveraid ${cfg.level}.`)
+
+    if(s.status==='lobby'){
+      s.players={...(s.players||{}),[jid]:{jid,name:name||'Jogador',damage:0,alive:true}}
+      await saveGame(c,chat,'raid',s)
+      return {...s,lateJoin:false}
+    }
+
+    // Entrada tardia: consome a chave agora e cria o participante com os atributos atuais.
+    // Dano começa em zero, portanto não há crédito pelas rodadas anteriores.
+    await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])
+    const lev=async itemId=>itemId?Number((await c.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]?.level||1):1
+    const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id)):{atk:0}
+    const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id)):{def:0}
+    const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
+    s.players={...(s.players||{}),[jid]:{
+      jid,name:name||u?.push_name||'Jogador',hp:Number(st.hp),maxHp:Number(st.max_hp),
+      atk:Number(st.atk)+Number(w?.atk||0),def:Number(st.def)+Number(a?.def||0),
+      damage:0,alive:true,heals:0,
+      pet:pet?{name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),energy:Number(pet.energy||0),hp:Number(pet.hp??petMaxHp(pet.level,pet.xp,pet.species)),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),bonus:petBossBonus(pet),extraDamage:0,turns:0}:null
+    }}
     await saveGame(c,chat,'raid',s)
-    return s
+    return {...s,lateJoin:true,joinedJid:jid}
   })
 }
 
