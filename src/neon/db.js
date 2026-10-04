@@ -351,6 +351,9 @@ export async function initDatabase() {
     ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
     ['marca_insone','Marca do Insone','Comprova participação no evento secreto da madrugada. Concede o título Insone do Alpha no perfil.','special',0,'event'],
     ['coroa_madrugada','Coroa da Madrugada','Armadura-troféu exclusiva da Sentinela das 03:03. +20 ATK e +50 DEF.','armor',0,'event'],
+    ['colete_vital','Colete Vital','Armadura rara alternativa. +18 DEF e +60 HP. Menos defesa que armaduras raras superiores, mas aumenta a sobrevivência.','armor',0,'rare'],
+    ['couraca_predador','Couraça do Predador','Armadura épica alternativa. +38 DEF, +90 HP e +3% crítico. Troca defesa pura por vida e dano crítico.','armor',0,'epic'],
+    ['armadura_colosso','Armadura do Colosso','Armadura de evento. +52 DEF, +140 HP e +4% crítico. Não supera lendárias em DEF; é uma opção híbrida.','armor',0,'event'],
 
     // Caixas
     ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
@@ -369,7 +372,7 @@ export async function initDatabase() {
   }
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','marca_insone','coroa_madrugada']])
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','marca_insone','coroa_madrugada','armadura_colosso']])
 
   // A fusão foi descontinuada. Preserva qualquer equipamento já fundido,
   // devolvendo o equivalente em cópias normais (T2=2, T3=4, T4=8...).
@@ -1505,6 +1508,9 @@ const EQUIPMENT = {
   armadura_titan: { category:'armor', atk:0, def:85, name:'Armadura do Titã' },
   armadura_divina: { category:'armor', atk:0, def:95, name:'Armadura Divina' },
   coroa_madrugada: { category:'armor', atk:20, def:50, name:'Coroa da Madrugada' },
+  colete_vital: { category:'armor', atk:0, def:18, hp:60, crit:0, name:'Colete Vital' },
+  couraca_predador: { category:'armor', atk:0, def:38, hp:90, crit:.03, name:'Couraça do Predador' },
+  armadura_colosso: { category:'armor', atk:0, def:52, hp:140, crit:.04, name:'Armadura do Colosso' },
 }
 
 const POTIONS = {
@@ -1575,20 +1581,22 @@ export function getEquipmentInfo(itemId) {
 }
 
 const EQUIPMENT_MAX_LEVEL=10
-const UPGRADE_BASE_COST={common:2500,uncommon:5000,rare:12000,epic:30000,legendary:75000,event:100000}
+const UPGRADE_BASE_COST={common:1500,uncommon:3000,rare:7000,epic:16000,legendary:40000,event:50000}
 
 export function equipmentStatsAtLevel(itemId,level=1){
   const eq=EQUIPMENT[itemId]
   if(!eq) return null
   level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
-  // Curva progressiva: upgrades iniciais já são perceptíveis e os níveis altos escalam mais.
-  // Lv.10 chega a ~2,08x o atributo base sem alterar a identidade/raridade do equipamento.
-  const multipliers=[1,1.0833,1.1667,1.2708,1.375,1.5,1.625,1.7708,1.9167,2.0833]
+  // Curva revisada: upgrade precisa ter retorno perceptível sem substituir itens de raridade maior.
+  // Lv.10 chega a 2,5x os atributos escaláveis.
+  const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
   const mult=multipliers[level-1]
   return {
     ...eq,itemId,level,mult,
     atk:Math.round(Number(eq.atk||0)*mult),
-    def:Math.round(Number(eq.def||0)*mult)
+    def:Math.round(Number(eq.def||0)*mult),
+    hp:Math.round(Number(eq.hp||0)*mult),
+    crit:Number((Number(eq.crit||0)*mult).toFixed(4))
   }
 }
 
