@@ -544,11 +544,26 @@ export async function createRaid(chat,host,name='Jogador',level=10){
     if(Number(u?.level||1)<cfg.level) throw new Error(`Essa Raid exige nível ${cfg.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[host])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de abrir a Raid.')
-    const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[host,cfg.keyId])).rows[0]
-    if(Number(key?.quantity||0)<1) throw new Error(`Você precisa da Chave de Raid Lv.${cfg.level}. Use !chaveraid ${cfg.level}.`)
+    let autoKeyPurchased=false
+    const key=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[host,cfg.keyId])).rows[0]
+    if(Number(key?.quantity||0)<1){
+      const wallet=(await c.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[host])).rows[0]
+      const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+      if(cash+bank<cfg.keyPrice){
+        const missing=Math.max(0,cfg.keyPrice-(cash+bank))
+        throw new Error(`🔑 Você não possui a Chave de Raid Lv.${cfg.level}. A compra automática custa R$ ${cfg.keyPrice.toLocaleString('pt-BR')}. Faltam R$ ${missing.toLocaleString('pt-BR')}.`)
+      }
+      const fromCash=Math.min(cash,cfg.keyPrice),fromBank=cfg.keyPrice-fromCash
+      await c.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2 WHERE jid=$3',[fromCash,fromBank,host])
+      await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+        ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[host,cfg.keyId])
+      await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+        VALUES($1,'raid_shop',$2,'raid_key_auto',$3)`,[host,cfg.keyPrice,`Compra automática — Raid Lv.${cfg.level}`])
+      autoKeyPurchased=true
+    }
     const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+5*60*1000}
     await saveGame(c,chat,'raid',state)
-    return state
+    return {...state,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
 }
 
