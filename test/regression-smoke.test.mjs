@@ -51,3 +51,10 @@ test('purchasable pet specialties keep the intended progression',()=>{
   assert.ok(games.includes("tubarao_abissal:{label:'🦈 Frenesi Abissal',damage:.07,crit:.03}"),'Tubarão hybrid should remain unchanged')
   assert.ok(games.includes("fenix_celestial:{label:'🌟 Graça Celestial',defense:.10,dodge:.08,xp:.08,healPct:.08,healCooldown:4,raid:true}"),'Fênix Celestial should remain unchanged')
 })
+
+test('boss and event combat auto-heal pets like raids',()=>{
+  assert.ok(games.includes("const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica']"),'Boss pet potion inventory lookup missing')
+  assert.ok(games.includes("const chosenPet=raidPetPotion(petPotionRows,missing)"),'Boss must reuse raid pet-potion selection')
+  assert.ok(games.includes("autoPetHeal={id:chosenPet.item_id"),'Boss must return pet auto-heal details')
+  assert.ok(index.includes("🐾🧪 *AUTOCURA DO PET!*"),'Boss session must announce pet auto-heal')
+})
