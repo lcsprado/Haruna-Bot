@@ -4072,6 +4072,76 @@ export async function removePetTeamSlot(jid,slot){
   const {rowCount}=await db.query('DELETE FROM pet_team WHERE jid=$1 AND slot=$2',[jid,slot])
   return rowCount>0
 }
+
+export async function setPetTeam(jid,petIds=[],replaceAll=true){
+  await ensureUser(jid)
+  const ids=[...new Set((Array.isArray(petIds)?petIds:[petIds]).map(Number).filter(Number.isInteger))]
+  if(!ids.length||ids.length>3) throw new Error('Escolha de 1 a 3 pets para o time.')
+  return transaction(async client=>{
+    const pets=(await client.query(
+      'SELECT * FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[]) FOR UPDATE',
+      [jid,ids]
+    )).rows
+    if(pets.length!==ids.length) throw new Error('Um dos pets escolhidos não foi encontrado.')
+    const away=(await client.query(
+      'SELECT pet_id FROM pet_expeditions WHERE pet_id=ANY($1::bigint[]) AND resolved=FALSE',
+      [ids]
+    )).rows
+    if(away.length) throw new Error('Um dos pets escolhidos está em expedição e não pode entrar no time.')
+
+    const currentTeam=(await client.query(
+      'SELECT slot,pet_id FROM pet_team WHERE jid=$1 ORDER BY slot FOR UPDATE',
+      [jid]
+    )).rows
+
+    let slots={}
+    if(!replaceAll && ids.length===1){
+      slots={
+        1:ids[0],
+        2:Number(currentTeam.find(x=>Number(x.slot)===2)?.pet_id||0)||null,
+        3:Number(currentTeam.find(x=>Number(x.slot)===3)?.pet_id||0)||null
+      }
+      for(const slot of [2,3]) if(slots[slot]===ids[0]) slots[slot]=null
+    }else{
+      slots={1:ids[0]||null,2:ids[1]||null,3:ids[2]||null}
+    }
+
+    const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
+    const targetRaw=pets.find(p=>Number(p.id)===Number(slots[1]))
+    if(!targetRaw) throw new Error('Pet principal inválido.')
+    const target=normalizedPetHp(targetRaw)
+
+    if(current&&active&&Number(active.id)!==Number(target.id)){
+      await client.query(
+        `UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
+        [current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,current.hp||current.max_hp||100,current.max_hp||petMaxHp(current.level,current.xp,current.species),active.id]
+      )
+    }
+
+    await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
+    await client.query('UPDATE pet_collection SET active=TRUE WHERE id=$1',[target.id])
+    await client.query(
+      `INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,hp,max_hp)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp`,
+      [jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at,target.hp,target.max_hp]
+    )
+
+    await client.query('DELETE FROM pet_team WHERE jid=$1',[jid])
+    for(const slot of [1,2,3]){
+      const petId=slots[slot]
+      if(petId) await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,$2,$3)',[jid,slot,petId])
+    }
+
+    const team=(await client.query(
+      `SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
+       WHERE t.jid=$1 ORDER BY t.slot`,
+      [jid]
+    )).rows
+    return team.map(normalizedPetHp)
+  })
+}
 export async function syncPetTeamPrimary(jid,petId){
   petId=Number(petId); if(!petId) return
   await db.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,petId])
