@@ -7787,17 +7787,23 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
         } else if(['raid','raidstatus'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
           let active=await getRaidStatus(chat)
-          if(active?.status==='failed' && active.failReason==='round_limit'){
+          if(active?.status==='failed' && ['round_limit','timeout'].includes(active.failReason)){
+            const recoveredReason=active.failReason
             active.status='active'
             delete active.failReason
-            active.expiresAt=Date.now()+10*60*1000
+            const durationMs=Number(active.durationMinutes||30)*60*1000
+            if(!Number.isFinite(Number(active.activeElapsedMs))) active.activeElapsedMs=Math.max(0,Number(active.round||0)*8000)
+            if(recoveredReason==='timeout'){
+              active.activeElapsedMs=Math.min(Number(active.activeElapsedMs||0),Math.max(0,durationMs-(10*60*1000)))
+            }
+            active.expiresAt=Date.now()+Math.max(10*60*1000,durationMs-Number(active.activeElapsedMs||0))
             await db.query(`UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
               WHERE chat_jid=$2 AND game_type='raid'`,[JSON.stringify(active),chat])
-            await reply(`🔄 *RAID REATIVADA*\n\nA luta foi retomada da rodada *${Number(active.round||0)}* com o Boss em *${Number(active.hp||0).toLocaleString('pt-BR')}/${Number(active.maxHp||0).toLocaleString('pt-BR')} HP*.\n\n🔑 Nenhuma nova chave foi cobrada.`)
+            await reply(`🔄 *RAID REATIVADA*\n\nA luta foi retomada da rodada *${Number(active.round||0)}* com o Boss em *${Number(active.hp||0).toLocaleString('pt-BR')}/${Number(active.maxHp||0).toLocaleString('pt-BR')} HP*.\n⏱️ Tempo útil devolvido: *pelo menos 10 minutos*.\n\n🔑 Nenhuma nova chave foi cobrada.\n📊 Dano e participantes foram preservados.`)
             runRaidCombat(chat,reply)
             return
           }
-          if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
+          if(active && ['lobby','active'].includes(active.status) && (active.status==='active' || Number(active.expiresAt||0)>Date.now())){
             const players=Object.values(active.players||{})
             const minPlayers=Number(active.level)===10?1:2
             let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*${active.status==='lobby'?` • mínimo para iniciar: *${minPlayers}*`:''}\n`
