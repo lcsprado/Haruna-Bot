@@ -1806,6 +1806,8 @@ export async function getCombatProfile(jid) {
     armor_def:Number(a.def||0),
     equipment_hp:Number(w.hp||0)+Number(a.hp||0),
     equipment_crit:Number(w.crit||0)+Number(a.crit||0),
+    base_crit:0.10,
+    effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)),
     effective_max_hp:Number(p.max_hp)+Number(w.hp||0)+Number(a.hp||0),
     effective_atk:Number(p.atk)+Number(w.atk||0)+Number(a.atk||0),
     effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0),
