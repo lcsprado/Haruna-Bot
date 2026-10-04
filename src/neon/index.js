@@ -1177,7 +1177,7 @@ async function start() {
           const rushStart=Date.parse('2026-10-04T10:30:00-03:00')
           const rushEnd=Date.parse('2026-10-04T11:30:00-03:00')
           const raidStart=Date.parse('2026-10-04T14:00:00-03:00')
-          const raidEnd=Date.parse('2026-10-04T15:30:00-03:00')
+          const raidEnd=Date.parse('2026-10-04T15:40:00-03:00')
           const siegeStart=Date.parse('2026-10-04T18:00:00-03:00')
           const siegeEnd=Date.parse('2026-10-04T20:00:00-03:00')
 
@@ -1189,7 +1189,7 @@ async function start() {
 💰 +50% em *!trabalhar*, *!uber* e *!ifood*
 🚕 CLT Uber não recebe o bônus.
 
-🔥 *14:00–15:30 — INVASÃO DAS RAIDS*
+🔥 *14:00–15:40 — INVASÃO DAS RAIDS*
 ✨ +50% XP de jogador
 🐾 +50% XP de pet
 ⚔️ Chance maior de equipamento
@@ -1215,13 +1215,25 @@ async function start() {
           if(now>=raidStart&&now<raidEnd) await sendScheduledGroupNotice(chat,'raid-start-2026-10-04',
 `🔥 *INVASÃO DAS RAIDS COMEÇOU!*
 
-⏱️ Até *15:30*
+⏱️ Até *15:40*
 ✨ +50% XP de jogador
 🐾 +50% XP de pet
 ⚔️ Chance adicional de equipamento
 💰 Recompensa em dinheiro continua normal.
 
 🔑 Abram as Raids e montem o grupo.`)
+
+          if(now>=Date.parse('2026-10-04T15:30:00-03:00')&&now<raidEnd) await sendScheduledGroupNotice(chat,'raid-extension-2026-10-04',
+`🛠️ *COMPENSAÇÃO POR DESCONEXÕES*
+
+🔥 A *Invasão das Raids* foi prorrogada por *+10 minutos*.
+⏱️ Novo encerramento: *15:40*.
+
+✨ +50% XP de jogador
+🐾 +50% XP de pet
+⚔️ Chance adicional de equipamento
+
+🔄 A prorrogação compensa as interrupções e reconexões do bot.`)
 
           if(now>=siegeStart&&now<siegeEnd){
             const siege=await autoStartSiegeBossEvent(chat)
