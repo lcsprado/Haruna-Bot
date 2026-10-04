@@ -120,18 +120,22 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   if(bossSessions.has(key)) return false
   bossSessions.set(key,true)
   ;(async()=>{
-    let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
+    let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     try{
       for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name,usePet)
         if(r.petSwitch){
           await reply(`🔄 *TROCA AUTOMÁTICA DE PET!*\n\n💔 *${r.petSwitch.from}* caiu.\n🐾 O Reserva *${r.petSwitch.to}* entrou no combate automaticamente.`)
         }
+        if(r.autoPetHeal){
+          petHeals.push(r.autoPetHeal.name)
+          await reply(`🐾🧪 *AUTOCURA DO PET!*\n\n💔 *${r.autoPetHeal.petName||r.pet?.name||'Pet'}* chegou a 0 HP e usou *${r.autoPetHeal.name}* automaticamente.\n❤️ HP: *${Number(r.autoPetHeal.hp||0).toLocaleString('pt-BR')}/${Number(r.autoPetHeal.maxHp||0).toLocaleString('pt-BR')}*`)
+        }
         if(r.petUnavailableReason==='energy'&&!petExitWarned){
           petExitWarned=true
           await reply('⚡ Seu pet ficou sem energia e saiu do combate. Você continuará atacando sozinho, sem o bônus dele.')
         }
-        if((r.petUnavailableReason==='hp'||r.petFainted)&&!petFaintWarned){
+        if((r.petUnavailableReason==='hp'||r.petFainted)&&!r.autoPetHeal&&!petFaintWarned){
           petFaintWarned=true
           await reply('💔 Seu pet ficou sem HP e saiu do combate. Você continuará atacando sozinho. Use *!descansar* depois para recuperar a vida dele.')
         }
@@ -157,7 +161,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         }
         if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
       }
-      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 Curas automáticas do pet: *${petHeals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{bossSessions.delete(key)}
   })()
