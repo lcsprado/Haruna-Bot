@@ -1073,9 +1073,9 @@ async function start() {
 
   // Programação única solicitada para domingo, 04/10/2026, horário de Brasília.
   // O scheduleId impede que reinícios sobrescrevam marcadores de avisos já enviados.
-  const scheduledEventsId='alpha-events-2026-10-03-v2'
+  const scheduledEventsId='alpha-events-2026-10-03-v3'
   const rewardStartsAt=1791072000000 // 03/10 21:00 BRT
-  const rewardEndsAt=1791073800000   // 03/10 21:30 BRT
+  const rewardEndsAt=1791075000000   // 03/10 21:50 BRT (+20 min compensação)
   const luckyStartsAt=1791073800000  // 03/10 21:30 BRT
   const luckyEndsAt=1791074400000    // 03/10 21:40 BRT
   if(Date.now()<luckyEndsAt){
@@ -1091,12 +1091,12 @@ async function start() {
           startsAt:rewardStartsAt,
           startedAt:rewardStartsAt,
           endsAt:rewardEndsAt,
-          moneyMultiplier:1.5,
-          xpMultiplier:1.5,
+          moneyMultiplier:2,
+          xpMultiplier:2,
           activatedBy:'scheduled:2026-10-03'
         })]
       )
-      console.log('[Eventos] 1,5x agendado para 03/10 21:00–21:30 BRT')
+      console.log('[Eventos] 2x agendado para 03/10 21:00–21:50 BRT (compensação +20 min)')
     }
 
     const existingLucky=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
