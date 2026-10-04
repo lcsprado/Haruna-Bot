@@ -1942,9 +1942,9 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!raid 20* — abre a Raid Lv.20; se faltar chave, compra automaticamente
 *!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
-*!entrar* — entra na Raid antes ou depois do início, enquanto houver vaga
+*!entrar* — entra na Raid e compra a chave automaticamente se faltar
 *!go* — host inicia (Raid Lv.10 pode ser solo; Lv.15+ mínimo 2 jogadores)
-*!cancelarraide* — host cancela antes de começar
+*!cancelarraide* / *!cancelarraid* — host cancela antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
 
@@ -6030,7 +6030,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
 
         if(isGroup && !isOwner){
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
-          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide'])
+          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair'])
           let key=null,label=null
@@ -7830,9 +7830,10 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
         } else if(['entrar','entrarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
           const r=await joinRaid(chat,sender,msg.pushName||'Jogador')
-          await reply(r.already?`⚔️ Você já está na Raid *${r.name}*.`:(r.lateJoin?`⚔️ *ENTROU COM A RAID EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* e sua recompensa contará somente pela sua participação daqui para frente.`:`✅ *ENTROU NA RAID!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5* • mínimo para iniciar: *${Number(r.level)===10?1:2}*\n\n${Object.keys(r.players||{}).length>=(Number(r.level)===10?1:2)?'✅ Mínimo atingido. O host já pode usar *!go*.':'Aguarde mais jogadores entrarem.'}`))
+          const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
+          await reply(r.already?`⚔️ Você já está na Raid *${r.name}*.`:(r.lateJoin?`⚔️ *ENTROU COM A RAID EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* e sua recompensa contará somente pela sua participação daqui para frente.`:`✅ *ENTROU NA RAID!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5* • mínimo para iniciar: *${Number(r.level)===10?1:2}*${keyLine}\n🔑 A chave só será consumida no *!go*.\n\n${Object.keys(r.players||{}).length>=(Number(r.level)===10?1:2)?'✅ Mínimo atingido. O host já pode usar *!go*.':'Aguarde mais jogadores entrarem.'}`))
 
-        } else if(['cancelarraide'].includes(cmd)){
+        } else if(['cancelarraide','cancelarraid','raidcancelar','raidcancel'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
           await cancelRaid(chat,sender)
           await reply('✅ Raid cancelada. Como a luta não começou, a chave foi preservada.')
