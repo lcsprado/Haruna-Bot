@@ -820,6 +820,16 @@ const SHOP_IDS=[
 
 const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica']
 
+const POTION_SELL_IDS=[
+  'pocao_p','pocao_m','pocao_g','elixir_supremo',
+  'pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','energetico_pet'
+]
+const RAID_SELL_IDS=[
+  'chave_raid_10','chave_raid_15','chave_raid_20','chave_raid_25','chave_raid_30','chave_raid_40','chave_raid_50',
+  'nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan',
+  'essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido'
+]
+
 const CARPINAR_MENU=[
   {option:1,hours:1,xp:140,cash:300,boxChance:1},
   {option:2,hours:2,xp:300,cash:650,boxChance:2},
@@ -1682,22 +1692,77 @@ Você possui: *${stock}*
   }
 
   async function showSellMenu(chat,sender,reply){
-    const items=await getInventory(sender)
-    if(!items.length){
+    const items=(await getInventory(sender)).filter(i=>i.sellable!==false)
+    const p=await getCombatProfile(sender)
+    const equippedIds=new Set([p.weapon_id,p.armor_id].filter(Boolean))
+    const equipment=items.filter(i=>['weapon','armor'].includes(i.category)&&!equippedIds.has(i.item_id))
+    const potions=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
+    const raid=items.filter(i=>RAID_SELL_IDS.includes(i.item_id))
+
+    if(!equipment.length&&!potions.length&&!raid.length){
       clearQuickFlow(chat,sender)
-      await reply('💰 Você não possui itens para vender ou descartar.')
+      await reply('💰 Você não possui itens vendáveis agora.')
       return
     }
-    setQuickFlow(chat,sender,'inventory_sell_select',{items},5*60*1000)
-    let text='🧹 *GERENCIAR INVENTÁRIO*\n\n'
-    items.forEach((i,idx)=>{
+
+    setQuickFlow(chat,sender,'inventory_sell_category',{},5*60*1000)
+    await reply(
+`💰 *VENDER ITENS*
+
+Escolha o que deseja vender:
+
+1️⃣ ⚔️ *Equipamentos* — armas e armaduras não equipadas
+2️⃣ 🧪 *Poções e cura* — jogador e pet
+3️⃣ 🧩 *Itens de Raid* — materiais e chaves
+
+🔒 Arma e armadura equipadas *não aparecem* na venda.
+🌘 Itens protegidos/de evento não aparecem.
+
+9️⃣ Voltar ao inventário
+0️⃣ Sair`
+    )
+  }
+
+  async function showSellItemsMenu(chat,sender,reply,category){
+    const items=(await getInventory(sender)).filter(i=>i.sellable!==false)
+    const p=await getCombatProfile(sender)
+    const equippedIds=new Set([p.weapon_id,p.armor_id].filter(Boolean))
+
+    let filtered=[]
+    let title=''
+    if(category==='equipment'){
+      title='⚔️ *VENDER EQUIPAMENTOS*'
+      filtered=items.filter(i=>['weapon','armor'].includes(i.category)&&!equippedIds.has(i.item_id))
+    }else if(category==='potions'){
+      title='🧪 *VENDER POÇÕES E CURA*'
+      filtered=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
+    }else if(category==='raid'){
+      title='🧩 *VENDER ITENS DE RAID*'
+      filtered=items.filter(i=>RAID_SELL_IDS.includes(i.item_id))
+    }else{
+      return showSellMenu(chat,sender,reply)
+    }
+
+    if(!filtered.length){
+      setQuickFlow(chat,sender,'inventory_sell_category',{},5*60*1000)
+      await reply(title+'\n\nNenhum item vendável nesta categoria.\n\n9️⃣ Voltar\n0️⃣ Sair')
+      return
+    }
+
+    setQuickFlow(chat,sender,'inventory_sell_select',{items:filtered,category},5*60*1000)
+    let text=title+'\n\n'
+    filtered.forEach((i,idx)=>{
       const levelLine=['weapon','armor'].includes(i.category)&&Number(i.equipment_level||1)>1 ? ' • ⭐ Lv.'+Number(i.equipment_level) : ''
-      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+levelLine+'\n   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+levelLine+'\n'
+      text+='   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
       if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Última cópia: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
     })
-    text+='\n👉 *Um item:* mande só o número.\n📦 *Vários itens:* mande os números separados por vírgula. Ex.: *1,3,5,8*\n\nAo selecionar vários, você poderá:\n1️⃣ vender tudo que for permitido\n2️⃣ vender só as cópias repetidas\n3️⃣ descartar tudo que for permitido\n\n🔒 Equipamento ativo preserva 1 cópia.\n🌟 Lendários não entram em ações em lote.\n9️⃣ Voltar\n0️⃣ Sair'
+    text+='\n👉 Um item: mande só o número.\n📦 Vários: *1,3,5*\n'
+    text+='\nAo selecionar vários:\n1️⃣ vender tudo\n2️⃣ vender só repetidos\n3️⃣ descartar tudo\n'
+    text+='\n9️⃣ Voltar às categorias\n0️⃣ Sair'
     await reply(text)
   }
+
   async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
     let flow=getQuickFlow(chat,sender)
     if(!flow){
@@ -1957,7 +2022,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!loja* — loja completa (itens, carros, bike e motos)
 *!comprar item quantidade* — compra da loja
 *!inventario* — abre seu inventário
-*!vender* — vende itens ao sistema
+*!vender* — abre a venda por categoria\n*!venderequipamentos* — armas/armaduras não equipadas\n*!venderpocoes* — poções e cura\n*!venderraid* — materiais e chaves de Raid
 *!venderrepetidos* — vende equipamentos repetidos e mantém 1 de cada
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
@@ -2321,6 +2386,7 @@ Nenhum chamado aberto agora.
     const inventoryMenu=async()=>showInventoryMenu(chat,sender,reply)
     const equipmentMenu=async()=>showEquipmentMenu(chat,sender,reply)
     const sellMenu=async()=>showSellMenu(chat,sender,reply)
+    const sellItemsMenu=async(category)=>showSellItemsMenu(chat,sender,reply,category)
     const funMenu=async()=>{
       setQuickFlow(chat,sender,'fun_shop',{},90000)
       await reply(
@@ -4354,9 +4420,23 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       return true
     }
 
-    if(flow.stage==='inventory_sell_select'){
+    if(flow.stage==='inventory_sell_category'){
       if(input==='9'){
         await inventoryMenu()
+        return true
+      }
+      const category={1:'equipment',2:'potions',3:'raid'}[input]
+      if(!category){
+        await reply('💰 Escolha *1 Equipamentos*, *2 Poções e cura* ou *3 Itens de Raid*.')
+        return true
+      }
+      await sellItemsMenu(category)
+      return true
+    }
+
+    if(flow.stage==='inventory_sell_select'){
+      if(input==='9'){
+        await sellMenu()
         return true
       }
 
@@ -7234,6 +7314,15 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 
         } else if(['vender','sell'].includes(cmd)){
           await showSellMenu(chat,sender,reply)
+
+        } else if(['venderraid','sellraid'].includes(cmd)){
+          await showSellItemsMenu(chat,sender,reply,'raid')
+
+        } else if(['venderpocoes','venderpocoes','sellpotions'].includes(cmd)){
+          await showSellItemsMenu(chat,sender,reply,'potions')
+
+        } else if(['venderequipamentos','venderequip','sellequipment'].includes(cmd)){
+          await showSellItemsMenu(chat,sender,reply,'equipment')
 
         } else if(['venderrepetidos','venderduplicados'].includes(cmd)){
           const r=await sellDuplicateEquipment(sender)
