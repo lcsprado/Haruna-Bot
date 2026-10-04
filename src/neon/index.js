@@ -6225,14 +6225,26 @@ Se precisar de mais ajuda, use *!suporte*.`
               const done=await resolvePetExpeditions(sender)
               const petId=Number(args[0]),hours=Number(args[1]||4)
               if(!petId){
-                const pets=(await listPets(sender)).filter(p=>!p.active)
+                const activeExpeditions=await getPetExpeditions(sender)
+                const busyIds=new Set(activeExpeditions.map(x=>Number(x.pet_id)))
+                const reservePets=(await listPets(sender)).filter(p=>!p.active)
+                const pets=reservePets.filter(p=>!busyIds.has(Number(p.id)))
                 let text='🧭 *MANDAR PET EM EXPEDIÇÃO*\n\n'
                 if(done.length) text+=`🎉 ${done.length} pet(s) retornaram e as recompensas já foram creditadas.\n\n`
-                if(!pets.length) return await reply(text+'Você não possui pet reserva disponível.')
-                text+='🐾 *PETS DISPONÍVEIS*\n'
-                for(const p of pets){
-                  const t=petExpeditionTrait(p.species)
-                  text+=`• ID *${p.id}* — *${p.name}* Nv.${p.level} — ${t.label}\n  🎁 ${expeditionTraitText(t)}\n`
+                if(pets.length){
+                  text+='🐾 *PETS DISPONÍVEIS*\n'
+                  for(const p of pets){
+                    const t=petExpeditionTrait(p.species)
+                    text+=`• ID *${p.id}* — *${p.name}* Nv.${p.level} — ${t.label}\n  🎁 ${expeditionTraitText(t)}\n`
+                  }
+                }else{
+                  text+='🐾 *PETS DISPONÍVEIS*\nNenhum pet reserva livre no momento.\n'
+                }
+                if(activeExpeditions.length){
+                  text+='\n⏳ *JÁ ESTÃO EM EXPEDIÇÃO*\n'
+                  for(const x of activeExpeditions){
+                    text+=`• ID *${x.pet_id}* — *${x.pet_name}* — volta em *${duration(Math.max(0,Number(x.ends_at)-Math.floor(Date.now()/1000)))}*\n`
+                  }
                 }
                 text+='\n🎯 *RECOMPENSAS BASE GARANTIDAS*\n• *2h* — +70 XP • R$ 500\n• *4h* — +150 XP • R$ 1.100\n• *8h* — +330 XP • R$ 2.500\n\n⭐ O bônus da espécie é aplicado sobre esses valores; chances de item são extras.\n\n👉 Ex.: *!expedicaopet 4 8*\n📌 Máximo: 3 pets fora ao mesmo tempo. O pet ativo não pode ir.'
                 return await reply(text)
