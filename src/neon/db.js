@@ -37,7 +37,7 @@ export async function initDatabase() {
   await db.query('SELECT 1')
   console.log('[Neon] banco conectado')
 
-  await db.query(0
+  await db.query(`
     CREATE TABLE IF NOT EXISTS users (
       jid TEXT PRIMARY KEY,
       pn TEXT UNIQUE,
