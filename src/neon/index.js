@@ -120,7 +120,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
   if(bossSessions.has(key)) return false
   bossSessions.set(key,true)
   ;(async()=>{
-    let totalDamage=0,petDamage=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
+    let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,attacks=0,heals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     try{
       for(let i=0;i<30;i++){
         const r=await attackBoss(chat,jid,name,usePet)
@@ -138,6 +138,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         }
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
         if(r.autoHeal) heals.push(r.autoHeal.name)
+        if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
         if(r.dead){
           const bossTitle=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
           let text=`💥 *${bossTitle} DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
@@ -153,7 +154,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         }
         if(i<29) await new Promise(resolve=>setTimeout(resolve,10000))
       }
-      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{bossSessions.delete(key)}
   })()
@@ -188,6 +189,7 @@ async function runRaidCombat(chat,level,reply){
             const pct=(x.share*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
             text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Number(x.petBonusDamage||0)>0?` *(+${Number(x.petBonusDamage).toLocaleString('pt-BR')} bônus pet)*`:''}\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP`
             if(x.petXp) text+=` • 🐾 +${x.petXp} XP pet`
+            if(Number(x.petSkillHealing||0)>0) text+=`\n💚 Cura do pet: *+${Number(x.petSkillHealing).toLocaleString('pt-BR')} HP*`
             if(x.material) text+=`\n🧩 ${x.material.name} ×${x.material.qty}`
             if(x.drop) text+=`\n🎁 DROP: *${x.drop.name}* (${x.drop.rarity})`
             if(x.gearDrop) text+=`\n⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
@@ -206,9 +208,10 @@ async function runRaidCombat(chat,level,reply){
         const hitEvents=(r.events||[]).filter(e=>e.type==='hit')
         const heals=bossEvents.filter(e=>e.autoHeal)
         const petHeals=bossEvents.filter(e=>e.autoPetHeal)
+        const petSkillHeals=bossEvents.filter(e=>e.petSkillHeal)
         const deaths=bossEvents.filter(e=>!e.alive)
         const petFalls=bossEvents.filter(e=>e.petFainted)
-        if(r.round===1 || r.round%5===0 || heals.length || petHeals.length || deaths.length || petFalls.length){
+        if(r.round===1 || r.round%5===0 || heals.length || petHeals.length || petSkillHeals.length || deaths.length || petFalls.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
@@ -216,6 +219,7 @@ async function runRaidCombat(chat,level,reply){
           text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*\n👥 Sobreviventes: *${r.survivors}*`
           for(const e of heals) text+=`\n🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
           for(const e of petHeals) text+=`\n🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
+          for(const e of petSkillHeals) text+=`\n💚 *${e.petSkillHeal.name}* ativou a skill de cura em ${e.name}: *+${Number(e.petSkillHeal.heal||0).toLocaleString('pt-BR')} HP* (${Number(e.petSkillHeal.hp||0).toLocaleString('pt-BR')}/${Number(e.petSkillHeal.maxHp||0).toLocaleString('pt-BR')}).`
           for(const e of deaths) text+=`\n💀 *${e.name}* caiu sem cura e saiu da Raid.`
           for(const e of petFalls) text+=`\n💔 *${e.petName}* ficou sem HP e saiu da Raid.`
           await reply(text)
@@ -975,7 +979,8 @@ const PET_STATUS_SPECIALTIES = {
   panda:{label:'🐼 Resistência',stat:'defense',base:8},
   tigre:{label:'🐯 Fúria',stat:'damage',base:7},
   leao:{label:'🦁 Rei da Caçada',stat:'damage',base:8},
-  unicornio:{label:'🦄 Bênção',stats:{drop:4,defense:4}},
+  cervo_mistico:{label:'🦌 Luz Restauradora',stats:{defense:3},healPct:4,healCooldown:5},
+  unicornio:{label:'🦄 Bênção Vital',stats:{drop:4,defense:4},healPct:6,healCooldown:4},
   dragao:{label:'🐉 Caçador de Boss',stat:'bossDamage',base:10},
 
   golem_ancestral:{label:'🪨 Muralha Ancestral',stats:{defense:9,drop:2},raid:true},
@@ -1021,6 +1026,7 @@ const ADOPTABLE_PETS=[
   {species:'panda',label:'🐼 Panda',level:14,price:225000},
   {species:'tigre',label:'🐯 Tigre',level:17,price:350000},
   {species:'leao',label:'🦁 Leão',level:20,price:500000},
+  {species:'cervo_mistico',label:'🦌 Cervo Místico',level:20,price:500000},
   {species:'unicornio',label:'🦄 Unicórnio',level:25,price:750000},
   {species:'dragao',label:'🐉 Dragão',level:30,price:1000000}
 ]
@@ -1038,10 +1044,13 @@ function petAbilityBaseText(species){
     drop:'Lucky/drop'
   }
   const stats=spec.stats||{[spec.stat]:spec.base}
-  return Object.entries(stats)
+  const parts=Object.entries(stats)
     .filter(([,value])=>Number(value)>0)
     .map(([stat,value])=>`+${Number(value).toLocaleString('pt-BR',{maximumFractionDigits:1})}% ${labels[stat]||stat}`)
-    .join(' • ')
+  if(Number(spec.healPct||0)>0 && Number(spec.healCooldown||0)>0){
+    parts.push(`💚 cura ${Number(spec.healPct).toLocaleString('pt-BR',{maximumFractionDigits:1})}% do HP do jogador a cada ${Number(spec.healCooldown)} rodadas (abaixo de 70%)`)
+  }
+  return parts.join(' • ')
 }
 
 function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
@@ -1074,9 +1083,12 @@ function petStatusBonus(p){
   const parts=Object.entries(stats)
     .filter(([,value])=>Number(value)>0)
     .map(([stat,value])=>`+${pct(value)}% ${labels[stat]||stat}`)
+  if(Number(spec.healPct||0)>0 && Number(spec.healCooldown||0)>0){
+    parts.push(`💚 cura ${Number(spec.healPct).toLocaleString('pt-BR',{maximumFractionDigits:1})}% HP a cada ${Number(spec.healCooldown)} rodadas se o jogador estiver abaixo de 70%`)
+  }
   return {
     label:spec.label,
-    text:parts.join(' • ')+' no Boss',
+    text:parts.join(' • ')+' no Boss/Raid',
     critPct:rawPct(Number(stats.crit||0))
   }
 }
@@ -2110,7 +2122,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 🐾 *Pets*
 *!pet* / *!pets* — catálogo rápido dos pets
-*!adotar* — lista os 15 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção\n*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
+*!adotar* — lista os 16 pets, preços e níveis\n*!adotar cachorro Nome* — adiciona um pet à coleção\n*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
 *!meuspets* — mostra todos os seus pets
 *!usarpet ID* — troca o pet ativo
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
@@ -5391,7 +5403,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         await reply(
 `⚔️ *STATUS RPG*
 ⭐ Nível: ${p.level}
-❤️ HP: ${p.hp}/${p.max_hp}
+❤️ HP: ${p.effective_hp}/${p.effective_max_hp}
 ⚔️ ATK: ${p.effective_atk}
 🛡️ DEF: ${p.effective_def}
 🎯 CRIT: ${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%
@@ -7701,7 +7713,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 
 ⭐ Nível: ${p.level}
 ✨ EXP: ${p.exp}/${p.level*100}
-❤️ HP: ${p.hp}/${p.max_hp}
+❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)
 ⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)
 🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
 💨 SPD: ${p.spd}
