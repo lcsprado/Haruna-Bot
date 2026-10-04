@@ -742,7 +742,10 @@ async function raidPetXp(c,jid,gain){
   if(!gain) return null
   const p=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
   if(!p) return null
-  const xp=Number(p.xp||0)+gain, level=Math.min(100,1+Math.floor(xp/100)), gained=Math.max(0,level-Number(p.level||1))
+  const rawXp=Number(p.xp||0)+gain
+  const level=Math.min(100,1+Math.floor(rawXp/100))
+  const xp=level>=100?9900:rawXp
+  const gained=Math.max(0,level-Math.min(100,Number(p.level||1)))
   const newMax=petMaxHp(level,xp,p.species)
   const oldMax=Math.max(1,Number(p.max_hp||petMaxHp(p.level,p.xp,p.species)))
   const hp=Math.min(newMax,Math.max(0,Number(p.hp??oldMax)+Math.max(0,newMax-oldMax)))
@@ -767,9 +770,10 @@ async function grantTeamPetXp(c,jid,baseGain){
     const slot=Number(pet.slot)
     const gain=Math.max(1,Math.floor(baseGain*Number(weights[slot]||0)))
     if(!gain) continue
-    const xp=Number(pet.xp||0)+gain
-    const level=Math.min(100,1+Math.floor(xp/100))
-    const gained=Math.max(0,level-Number(pet.level||1))
+    const rawXp=Number(pet.xp||0)+gain
+    const level=Math.min(100,1+Math.floor(rawXp/100))
+    const xp=level>=100?9900:rawXp
+    const gained=Math.max(0,level-Math.min(100,Number(pet.level||1)))
     const newMax=petMaxHp(level,xp,pet.species)
     const oldMax=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)))
     const hp=Math.min(newMax,Math.max(0,Number(pet.hp??oldMax)+Math.max(0,newMax-oldMax)))
@@ -1612,7 +1616,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const weekly=s.mode==='weekly'
         const eventMode=s.mode==='event'
         const tier=weekly?(BOSS_PLACEMENT[i]||{cash:0,xp:0}):{cash:0,xp:0}
-        let cash=0,exp=0,petXp=0,drops=[]
+        let cash=0,exp=0,petXp=0,petXpTeam=[],drops=[]
         if(eventMode){
           const night=s.eventId==='night_0303'
           const siege=s.eventId==='cerco_colosso'
@@ -1622,7 +1626,6 @@ export async function attackBoss(chat,jid,name,usePet=true){
           exp=siege?Math.round(Math.floor((700+3500*share+positionXp)*(1+pb.xp))):Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
           await credit(c,p.jid,cash,siege?'boss_event_cerco':(night?'boss_event_night_0303':'boss_event_eclipse'))
           await grantExpInTransaction(c,p.jid,exp)
-          let petXpTeam=[]
           if(pp){
             petXp=siege?Math.round(180+700*share+(i===0?180:i===1?90:0)):Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
@@ -1668,9 +1671,15 @@ export async function attackBoss(chat,jid,name,usePet=true){
           exp=Math.floor((weekly?150+1000*share+tier.xp:10+35*share)*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
           await grantExpInTransaction(c,p.jid,exp)
+          if(pp){
+            petXp=weekly
+              ? Math.round(80+260*share+(i===0?80:i===1?40:0))
+              : Math.max(5,Math.round(12+35*share))
+            petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
+          }
           drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
         }
-        rewards.push({...p,position,cash,exp,petXp,petXpTeam:typeof petXpTeam==='undefined'?[]:petXpTeam,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
+        rewards.push({...p,position,cash,exp,petXp,petXpTeam,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
       if(s.mode==='event'){
         const schedule=bossEventFridayInfo()
