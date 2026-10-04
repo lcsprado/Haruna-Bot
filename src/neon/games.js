@@ -986,6 +986,20 @@ export async function raidRound(chat,level){
     for(const p of alive){
       let pb={damage:0,crit:0}
       const teamSynergy=p.teamSynergy||{attack:0,defense:0,crit:0}
+
+      // Se o Principal foi curado fora da Raid enquanto o Reserva estava em campo,
+      // a próxima rodada volta a priorizar automaticamente o Slot 1.
+      if(p.pet&&Number(p.pet.teamSlot)===3){
+        const primaryRow=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[p.jid])).rows[0]||null
+        const primary=raidCombatPetState(primaryRow,1)
+        if(primary&&Number(primary.hp)>0&&Number(primary.energy)>0){
+          await persistRaidCombatPet(c,p.jid,p.pet)
+          p.reservePet=p.pet
+          p.pet=primary
+          events.push({type:'pet_return',jid:p.jid,name:p.name,petName:primary.name})
+        }
+      }
+
       if(p.pet){
         p.pet.roundActive=Number(p.pet.energy)>0&&Number(p.pet.hp)>0
         if(p.pet.roundActive){
