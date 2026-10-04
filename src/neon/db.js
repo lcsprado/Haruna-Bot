@@ -349,6 +349,8 @@ export async function initDatabase() {
 
     // Exclusivo de Boss de Evento
     ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
+    ['marca_insone','Marca do Insone','Comprova participação no evento secreto da madrugada. Concede o título Insone do Alpha no perfil.','special',0,'event'],
+    ['coroa_madrugada','Coroa da Madrugada','Troféu exclusivo do campeão da Sentinela das 03:03.','special',0,'event'],
 
     // Caixas
     ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
@@ -367,7 +369,7 @@ export async function initDatabase() {
   }
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id='insignia_eclipse'")
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','marca_insone','coroa_madrugada']])
 
   // A fusão foi descontinuada. Preserva qualquer equipamento já fundido,
   // devolvendo o equivalente em cópias normais (T2=2, T3=4, T4=8...).
@@ -4038,6 +4040,9 @@ export async function getAchievements(jid){
   if(Number(pet?.level||0)>=10) out.push('🦁 Pet nível 10')
   if(rel) out.push('💍 Comprometido')
   if(Number(inv.rows[0]?.qty||0)>=25) out.push('🎒 Colecionador')
+  const night=(await db.query("SELECT item_id FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0",[jid,['marca_insone','coroa_madrugada']])).rows
+  if(night.some(x=>x.item_id==='marca_insone')) out.push('🌙 Insone do Alpha')
+  if(night.some(x=>x.item_id==='coroa_madrugada')) out.push('👑 Campeão das 03:03')
   return out
 }
 export async function petDuel(challengerJid,targetJid){
