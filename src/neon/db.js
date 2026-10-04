@@ -1941,11 +1941,17 @@ export async function battle(attackerJid, defenderJid) {
 export async function combatLeaderboard(limit=10) {
   const {rows}=await db.query(`
     SELECT u.jid,u.push_name,u.level,s.win,s.loss,
-           (s.win*3-s.loss) AS score
+           (s.win*3-s.loss) AS score,
+           (s.win+s.loss) AS battles
     FROM users u
     JOIN stats s ON s.jid=u.jid
     WHERE u.jid NOT LIKE '%@local'
-    ORDER BY score DESC,s.win DESC,u.level DESC
+    ORDER BY
+      CASE WHEN (s.win+s.loss)>0 THEN 0 ELSE 1 END ASC,
+      score DESC,
+      s.win DESC,
+      u.level DESC,
+      s.loss ASC
     LIMIT $1
   `,[limit])
   return rows
