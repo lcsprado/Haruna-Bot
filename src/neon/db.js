@@ -1112,6 +1112,7 @@ export async function buyRaidFragmentBoxes(jid, qty=1) {
 export async function getInventory(jid) {
   const { rows } = await db.query(`
     SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,
+           COALESCE(eu.level,1)::int AS equipment_level,
            CASE
              WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
              WHEN it.rarity='legendary' THEN 100000
@@ -1122,6 +1123,7 @@ export async function getInventory(jid) {
            END::bigint AS sell_unit
     FROM inventories i
     JOIN items it ON it.id=i.item_id
+    LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
     WHERE i.jid=$1 AND i.quantity>0
     ORDER BY
       CASE it.category
@@ -1140,7 +1142,12 @@ export async function getInventory(jid) {
       END DESC,
       it.name
   `,[jid])
-  return rows
+  return rows.map(r=>({
+    ...r,
+    upgrade_refund:['weapon','armor'].includes(r.category)
+      ? equipmentUpgradeSellRefund(r.rarity,r.equipment_level)
+      : 0
+  }))
 }
 
 export async function sellItem(jid, itemId, qty=1) {
@@ -1699,6 +1706,16 @@ export function equipmentStatsAtLevel(itemId,level=1){
 function equipmentUpgradeCost(rarity,currentLevel){
   const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
   return base*Math.max(1,Number(currentLevel)||1)
+}
+
+function equipmentUpgradeInvested(rarity,level=1){
+  const lv=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
+  const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
+  return base*((lv-1)*lv/2)
+}
+
+function equipmentUpgradeSellRefund(rarity,level=1){
+  return Math.floor(equipmentUpgradeInvested(rarity,level)*0.25)
 }
 
 export async function getEquipmentLevels(jid,itemIds=[]){
