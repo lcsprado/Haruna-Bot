@@ -1825,7 +1825,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!casas* — lista imóveis
 *!comprarcasa número* — compra imóvel
 *!minhacasa* — mostra sua casa
-*!carros* — concessionária com carros reais: Corsa, HB20, Civic Type R, Porsche, Ferrari, Lamborghini, McLaren e Bugatti
+*!carros* — concessionária com Corsa, HB20, Nivus, Jetta GLI, Civic Type R, BMW 320i, Audi A5, Porsche, Mercedes-AMG C43, Ferrari, Lamborghini, McLaren e Bugatti
 *!comprarcarro número* — compra carro
 *!garagem* — mostra seus carros
 *!vendercarro N* — vende carro por 70% do valor pago
