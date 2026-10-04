@@ -4007,7 +4007,7 @@ export async function summonLegendaryPet(jid,materialId){
     )).rows[0]
     if(duplicate){
       const rare=Number(chosen.chance||100)<=15
-      const fragmentRate=rare?.35:.25
+      const fragmentRate=rare ? 0.35 : 0.25
       const fragmentRefund=Math.max(1,Math.floor(summonCost*fragmentRate))
       let cashRefund=Math.round((Number(altar.raidLevel||1)*800+Number(chosen.power||0)*60)/1000)*1000
       if(rare) cashRefund=Math.round(cashRefund*1.25/1000)*1000
