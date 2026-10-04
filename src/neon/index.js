@@ -825,7 +825,7 @@ function resolveOwnedItem(items,input,categories=null){
 }
 
 const SHOP_IDS=[
-  'pocao_p','pocao_m','pocao_g','elixir_supremo','pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','energetico_pet',
+  'pocao_p','pocao_m','pocao_g','elixir_supremo','pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','energetico_pet',
   'espada_madeira','espada_ferro','espada_aco','machado_guerra','katana_sombria',
   'sabre_runico','espada_flamas','lamina_cacador','tridente_tempestade','espada_guardiao','lamina_abissal',
   'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
@@ -837,7 +837,7 @@ const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica']
 
 const POTION_SELL_IDS=[
   'pocao_p','pocao_m','pocao_g','elixir_supremo',
-  'pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','energetico_pet'
+  'pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','energetico_pet'
 ]
 const RAID_SELL_IDS=[
   'chave_raid_10','chave_raid_15','chave_raid_20','chave_raid_25','chave_raid_30','chave_raid_40','chave_raid_50',
@@ -7864,7 +7864,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           if(item.item_id==='energetico_pet'){
             const r=await usePetEnergyItem(sender,item.item_id)
             await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
-          }else if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica'].includes(item.item_id)){
+          }else if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(item.item_id)){
             const r=await usePetPotion(sender,item.item_id)
             await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
           }else{
@@ -7876,15 +7876,16 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           const aliases={
             comum:'pocao_pet_comum',common:'pocao_pet_comum',
             rara:'pocao_pet_rara',raro:'pocao_pet_rara',rare:'pocao_pet_rara',
-            epica:'pocao_pet_epica','épica':'pocao_pet_epica',epico:'pocao_pet_epica','épico':'pocao_pet_epica',epic:'pocao_pet_epica'
+            epica:'pocao_pet_epica','épica':'pocao_pet_epica',epico:'pocao_pet_epica','épico':'pocao_pet_epica',epic:'pocao_pet_epica',
+            suprema:'pocao_pet_suprema',supremo:'pocao_pet_suprema',legendaria:'pocao_pet_suprema','lendária':'pocao_pet_suprema'
           }
           const requested=normalizeItemText(args.join(' '))
           let itemId=aliases[requested]||null
           if(requested && !itemId){
             const items=await getInventory(sender)
-            const petPotions=items.filter(i=>['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica'].includes(i.item_id))
+            const petPotions=items.filter(i=>['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(i.item_id))
             itemId=resolveOwnedItem(petPotions,requested,['consumable'])?.item_id||null
-            if(!itemId) return await reply(`❌ Não encontrei essa poção de pet.\nUse *${prefix}curarpet comum*, *rara* ou *epica*.`)
+            if(!itemId) return await reply(`❌ Não encontrei essa poção de pet.\nUse *${prefix}curarpet comum*, *rara*, *epica* ou *suprema*.`)
           }
           const r=await usePetPotion(sender,itemId)
           await reply(`🐾🧪 *${r.name} usada!*\n\n🐾 ${r.petName}\n❤️ HP: *${r.before} → ${r.hp}/${r.maxHp}*\n💚 Recuperado: *+${r.healed}*\n📦 Restam: *${r.remaining}*\n\n💡 Sem escolher raridade, *!curarpet* usa a menor poção suficiente disponível.`)
@@ -7901,6 +7902,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             elixir_supremo:'Elixir Supremo',
             pocao_pet_rara:'Poção de Pet Rara',
             pocao_pet_epica:'Poção de Pet Épica',
+            pocao_pet_suprema:'Poção de Pet Suprema',
             energetico_pet:'Energético Pet',
             caixa_sorte:'Caixa da Sorte',
             caixa_rara:'Caixa Rara',
