@@ -721,11 +721,13 @@ export async function startRaid(chat,host){
 async function finishRaidRewards(c,s,cfg){
   const ranked=Object.values(s.players||{}).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
-  // Evento relâmpago de Raid — 03/10/2026, 20:00–21:00 America/Sao_Paulo.
-  // Restrito à recompensa em dinheiro e XP do jogador; pet XP e drops não são multiplicados.
-  const raidEventActive=Date.now()>=Date.parse('2026-10-03T20:00:00-03:00') && Date.now()<Date.parse('2026-10-03T21:00:00-03:00')
-  const moneyMultiplier=raidEventActive?2:1
-  const xpMultiplier=raidEventActive?2:1
+  // Invasão das Raids — 04/10/2026, 14:00–15:30 America/Sao_Paulo.
+  // Dinheiro normal; +50% XP de jogador e pet, além de chance extra de equipamento.
+  const raidEventActive=Date.now()>=Date.parse('2026-10-04T14:00:00-03:00') && Date.now()<Date.parse('2026-10-04T15:30:00-03:00')
+  const moneyMultiplier=1
+  const xpMultiplier=raidEventActive?1.5:1
+  const petXpMultiplier=raidEventActive?1.5:1
+  const gearEventBonus=raidEventActive?.015:0
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
@@ -738,7 +740,7 @@ async function finishRaidRewards(c,s,cfg){
     const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     await grantExpInTransaction(c,p.jid,exp)
-    const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
+    const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.round(Math.floor(cfg.petXpPool*(.15+.85*share))*petXpMultiplier)):0
     if(petXp) await raidPetXp(c,p.jid,petXp)
 
     let material=null,drop=null,gearDrop=null
@@ -771,7 +773,7 @@ async function finishRaidRewards(c,s,cfg){
       const rankBonus=i===0?(cfg.level>=40?.003:.005):0
       const collaborationBonus=Math.min(.004,share*.008)
       const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
-      const chance=Math.min(.05,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus)
+      const chance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
       if(Math.random()<chance){
         const gearId=cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
         const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
