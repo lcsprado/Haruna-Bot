@@ -732,6 +732,7 @@ ${title}${badge?' • '+badge:''}
 ⚔️ ATK: *${Number(p.effective_atk||0)}*
 🛡️ DEF: *${Number(p.effective_def||0)}*
 💨 SPD: *${Number(p.spd||0)}*
+🎯 CRIT: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
 
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
@@ -4958,6 +4959,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
 ❤️ HP: ${p.hp}/${p.max_hp}
 ⚔️ ATK: ${p.effective_atk}
 🛡️ DEF: ${p.effective_def}
+🎯 CRIT: ${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%
 🗡️ ${p.weapon_name}
 🥋 ${p.armor_name}`
         )
@@ -7179,6 +7181,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 ⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)
 🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
 💨 SPD: ${p.spd}
+🎯 CRIT: ${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${(Number(p.equipment_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
 
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
