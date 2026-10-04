@@ -1258,11 +1258,13 @@ export async function sellItemsBatch(jid, selections=[]) {
       if(item.rarity==='legendary') throw new Error('Itens lendários não entram em venda em lote.')
 
       const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId)
-      const minimumKeep=1
+      const minimumKeep=equipped?1:0
       const maxBatch=Math.max(0,owned-minimumKeep)
 
       if(sel.qty>maxBatch){
-        throw new Error(`A venda em lote de ${item.name} deve manter pelo menos 1 cópia.`)
+        throw new Error(equipped
+          ? `A venda em lote de ${item.name} deve preservar a cópia equipada.`
+          : `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
       }
 
       let unit
@@ -1315,6 +1317,77 @@ export async function sellItemsBatch(jid, selections=[]) {
   })
 }
 
+
+
+export async function discardItemsBatch(jid, selections=[]) {
+  if(!Array.isArray(selections) || selections.length<1 || selections.length>50) {
+    throw new Error('Seleção de descarte inválida.')
+  }
+
+  const normalized=selections.map(s=>({
+    itemId:String(s?.itemId||''),
+    qty:Number(s?.qty||0)
+  }))
+  if(normalized.some(s=>!s.itemId || !Number.isInteger(s.qty) || s.qty<1 || s.qty>9999)) {
+    throw new Error('Quantidade inválida no descarte em lote.')
+  }
+
+  await ensureUser(jid)
+
+  return transaction(async client=>{
+    const statsR=await client.query(
+      'SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
+      [jid]
+    )
+    const stats=statsR.rows[0]||{}
+    const discarded=[]
+    let totalUnits=0
+
+    for(const sel of normalized){
+      const invR=await client.query(
+        'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+        [jid,sel.itemId]
+      )
+      const owned=Number(invR.rows[0]?.quantity||0)
+      if(owned<1) throw new Error('Um dos itens selecionados não está mais no inventário.')
+
+      const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
+      const item=itemR.rows[0]
+      if(!item) throw new Error('Item não encontrado.')
+      if(item.rarity==='legendary') throw new Error('Itens lendários não podem ser descartados em lote.')
+
+      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId)
+      const maxDiscard=Math.max(0,owned-(equipped?1:0))
+      if(sel.qty>maxDiscard){
+        throw new Error(equipped
+          ? `O descarte de ${item.name} deve preservar a cópia equipada.`
+          : `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
+      }
+
+      await client.query(
+        'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
+        [sel.qty,jid,sel.itemId]
+      )
+
+      discarded.push({
+        itemId:item.id,
+        name:item.name,
+        rarity:item.rarity,
+        category:item.category,
+        qty:sel.qty,
+        remaining:owned-sel.qty,
+        equipped
+      })
+      totalUnits+=sel.qty
+    }
+
+    return {
+      discarded,
+      types:discarded.length,
+      totalUnits
+    }
+  })
+}
 
 
 export async function sellDuplicateEquipment(jid) {
