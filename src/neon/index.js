@@ -2196,7 +2196,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!sinergia* — lista times recomendados, estilos e bônus de sinergia
 *!usarpet ID* — troca apenas o pet Principal
 *!meupet* / *!statuspet* — mostra seu pet ativo e evolução
-*!nomepet NovoNome* — troca o nome por R$ 1.000
+*!nomepet NovoNome* / *!petnome NovoNome* — troca o nome por R$ 1.000
 *!alimentar* — alimenta o pet
 *!descansar* — recupera energia e HP do pet
 *!banho* — cuidado cosmético
@@ -6893,7 +6893,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
 
-        } else if(['pet','pets','adotar','nomepet','meupet','meuspets','usarpet','equiparpet','timepet','sinergia','sinergias','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
+        } else if(['pet','pets','adotar','nomepet','petnome','meupet','meuspets','usarpet','equiparpet','timepet','sinergia','sinergias','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
           try{
             const expeditionTraitText=t=>{
               const itemNames={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_p:'Poção Pequena',caixa_sorte:'Caixa da Sorte',caixa_rara:'Caixa Rara'}
@@ -7076,9 +7076,9 @@ Se precisar de mais ajuda, use *!suporte*.`
               const p=await selectPet(sender,args[0])
               return await reply(p.already?`🐾 *${p.name}* já é seu pet ativo.`:`🐾 *PET ATIVO ALTERADO!*\n\n${p.name} (${p.species}) agora é seu companheiro ativo.\n⭐ Nv.${p.level} • ⚔️ ${p.power}\n❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`)
             }
-            if(cmd==='nomepet'){
+            if(cmd==='nomepet'||cmd==='petnome'){
               const newName=args.join(' ').trim()
-              if(!newName) return await reply(`🐾 Uso: *${prefix}nomepet NovoNome*\n💰 Custo: *R$ 1.000*`)
+              if(!newName) return await reply(`🐾 Uso: *${prefix}nomepet NovoNome* ou *${prefix}petnome NovoNome*\n💰 Custo: *R$ 1.000*`)
               const p=await renamePet(sender,newName)
               return await reply(`🐾 *NOME ALTERADO!*\n\n${p.oldName} agora se chama *${p.name}*.\n💰 Custo: *R$ ${fmt(p.fee)}*`)
             }
