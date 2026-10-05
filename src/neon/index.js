@@ -4436,7 +4436,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       if(!b){ clearQuickFlow(chat,sender); await reply('❌ Negócio não encontrado.'); return true }
       const level=Math.max(1,Number(b.level||1))
       if(level>=5){ await reply(`🏆 *${b.name}* já está no nível máximo (5).`); return true }
-      const cost=Math.floor(b.price*(0.5+level*0.25))
+      const upgradeCostRate={1:0.20,2:0.30,3:0.40,4:0.50}[level]||0.50
+      const cost=Math.floor(b.price*upgradeCostRate)
       setQuickFlow(chat,sender,'business_upgrade_confirm',{id:b.id},90000)
       await reply(`🔧 *UPGRADE — ${b.name}*\n\nNível: *${level} → ${level+1}*\n💰 Custo: *R$ ${fmt(cost)}*\n📈 Produção: *R$ ${fmt(Math.floor(b.profitHour*(1+level*0.25)))}/h*\n⏳ Capacidade: *${b.capacityHours+level}h*\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
       return true
@@ -7552,7 +7553,7 @@ ${results.join('\n')}
             const has=owned.some(x=>x.id===b.id)
             text+=`*${i+1}.* *${b.name}* — R$ ${fmt(b.price)}\n   💵 R$ ${fmt(b.profitHour)}/h • acumula ${b.capacityHours}h${has?' ✅':''}\n`
           })
-          text+=`\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
+          text+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
           await reply(text)
 
         } else if(['comprarnegocio','comprarnegócio'].includes(cmd)){
