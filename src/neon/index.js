@@ -27,7 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
-  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType,
+  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
   adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
@@ -1001,6 +1001,7 @@ const PET_STATUS_SPECIALTIES = {
   raposa:{label:'🦊 Astúcia',stat:'crit',base:6},
   lobo:{label:'🐺 Caçador',stat:'damage',base:6},
   aguia:{label:'🦅 Precisão',stat:'crit',base:9},
+  gaviao:{label:'🦅 Rasante',stats:{speed:4,crit:4}},
   panda:{label:'🐼 Resistência',stat:'defense',base:8},
   tigre:{label:'🐯 Fúria',stat:'damage',base:8},
   leao:{label:'🦁 Rei da Caçada',stat:'damage',base:9},
@@ -1011,8 +1012,11 @@ const PET_STATUS_SPECIALTIES = {
   golfinho_celestial:{label:'🐬 Corrente Celestial',stats:{dodge:5,xp:4}},
   moreia_sombria:{label:'🐍 Emboscada Sombria',stats:{damage:5,dodge:4}},
   tubarao_abissal:{label:'🦈 Frenesi Abissal',stats:{damage:7,crit:3}},
+  guepardo:{label:'🐆 Arrancada',stats:{speed:5,damage:4}},
   polvo_arcano:{label:'🐙 Tentáculos Arcanos',stats:{crit:4,drop:3}},
+  gazela_mistica:{label:'🦌 Passo Astral',stats:{speed:4,dodge:4}},
   orca_guerra:{label:'🐋 Investida Oceânica',stats:{damage:5,defense:5}},
+  cavalo_guerra:{label:'🐎 Marcha de Guerra',stats:{speed:3,defense:5}},
   baleia_colossal:{label:'🐋 Canto Colossal',stats:{defense:10,xp:4}},
 
   golem_ancestral:{label:'🪨 Muralha Ancestral',stats:{defense:9,drop:2},raid:true},
@@ -1057,13 +1061,17 @@ const ADOPTABLE_PETS=[
   {species:'lobo',label:'🐺 Lobo',level:10,price:100000},
   {species:'moreia_sombria',label:'🐍 Moreia Sombria',level:11,price:125000},
   {species:'aguia',label:'🦅 Águia',level:12,price:150000},
+  {species:'gaviao',label:'🦅 Gavião',level:13,price:190000},
   {species:'panda',label:'🐼 Panda',level:14,price:225000},
   {species:'tubarao_abissal',label:'🦈 Tubarão Abissal',level:15,price:275000},
+  {species:'guepardo',label:'🐆 Guepardo',level:16,price:320000},
   {species:'tigre',label:'🐯 Tigre',level:17,price:350000},
   {species:'polvo_arcano',label:'🐙 Polvo Arcano',level:18,price:400000},
+  {species:'gazela_mistica',label:'🦌 Gazela Mística',level:19,price:450000},
   {species:'leao',label:'🦁 Leão',level:20,price:500000},
   {species:'cervo_mistico',label:'🦌 Cervo Místico',level:20,price:500000},
   {species:'orca_guerra',label:'🐋 Orca de Guerra',level:22,price:600000},
+  {species:'cavalo_guerra',label:'🐎 Cavalo de Guerra',level:23,price:650000},
   {species:'unicornio',label:'🦄 Unicórnio',level:25,price:750000},
   {species:'baleia_colossal',label:'🐋 Baleia Colossal',level:28,price:900000},
   {species:'dragao',label:'🐉 Dragão',level:30,price:1000000}
@@ -1078,13 +1086,14 @@ function petAbilityBaseText(species){
     defense:'defesa',
     crit:'crítico',
     dodge:'🌀 esquiva',
+    speed:'👢 VEL',
     xp:'XP',
     drop:'Lucky/drop'
   }
   const stats=spec.stats||{[spec.stat]:spec.base}
   const parts=Object.entries(stats)
     .filter(([,value])=>Number(value)>0)
-    .map(([stat,value])=>`+${Number(value).toLocaleString('pt-BR',{maximumFractionDigits:1})}% ${labels[stat]||stat}`)
+    .map(([stat,value])=>stat==='speed'?`+${Number(value).toLocaleString('pt-BR',{maximumFractionDigits:1})} ${labels[stat]||stat}`:`+${Number(value).toLocaleString('pt-BR',{maximumFractionDigits:1})}% ${labels[stat]||stat}`)
   if(Number(spec.healPct||0)>0 && Number(spec.healCooldown||0)>0){
     parts.push(`💚 cura ${Number(spec.healPct).toLocaleString('pt-BR',{maximumFractionDigits:1})}% do HP do jogador a cada ${Number(spec.healCooldown)} rodadas (abaixo de 70%)`)
   }
@@ -1101,6 +1110,7 @@ function petRoleTags(species){
     defense:['🛡️','Defesa'],
     crit:['⚡','Crítico'],
     dodge:['🌀','Esquiva'],
+    speed:['👢','VEL'],
     xp:['✨','XP'],
     drop:['🍀','Drop']
   }
@@ -1140,13 +1150,14 @@ function petStatusBonus(p){
     defense:'defesa',
     crit:'chance de crítico',
     dodge:'🌀 esquiva',
+    speed:'👢 VEL',
     xp:'XP recebido',
     drop:'Lucky/drop'
   }
   const stats=spec.stats||{[spec.stat]:spec.base}
   const parts=Object.entries(stats)
     .filter(([,value])=>Number(value)>0)
-    .map(([stat,value])=>`+${pct(value)}% ${labels[stat]||stat}`)
+    .map(([stat,value])=>stat==='speed'?`+${petSpeedBonus(p.species,p.level)} ${labels[stat]||stat}`:`+${pct(value)}% ${labels[stat]||stat}`)
   if(Number(spec.healPct||0)>0 && Number(spec.healCooldown||0)>0){
     parts.push(`💚 cura ${Number(spec.healPct).toLocaleString('pt-BR',{maximumFractionDigits:1})}% HP a cada ${Number(spec.healCooldown)} rodadas se o jogador estiver abaixo de 70%`)
   }
