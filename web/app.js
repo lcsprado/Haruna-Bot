@@ -502,10 +502,14 @@ function renderBoss(){
   const b=activeBoss();
   if(!b) return '<div class="page-head"><div><h2>Boss do grupo</h2><p>Nenhum Boss ativo neste momento.</p></div></div><div class="card"><button class="btn primary" data-boss-start>Iniciar Boss</button></div>';
   const hp=Number(b.hp||0), max=Number(b.maxHp||1);
+  const participants=Object.values(b.participants||{}).sort((a,z)=>Number(z.damage||0)-Number(a.damage||0));
+  const totalDamage=participants.reduce((s,p)=>s+Number(p.damage||0),0);
+  const ranking=participants.length?'<div class="boss-ranking"><div class="section-title"><h3>Ranking de dano</h3><small>'+participants.length+' participante(s)</small></div><div class="list">'+participants.slice(0,10).map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+num(p.attacks||0)+' ataques'+(p.petHealing?' • 🧪 '+num(p.petHealing)+' cura pet':'')+'</small></div><strong>'+num(p.damage||0)+' dano</strong></div>').join('')+'</div></div>':'<div class="empty section">Ainda não houve ataques neste Boss.</div>';
   return '<div class="page-head"><div><h2>'+esc(b.name||'Boss')+'</h2><p>'+esc(b.mode||'common')+' • mesma sessão do WhatsApp</p></div><span class="tag good">ATIVO</span></div>'+
     '<div class="card"><div class="combat-box"><div class="combat-side"><div class="combat-avatar">🧙</div><strong>'+esc(ui.data.profile.push_name||'Jogador')+'</strong></div><div class="combat-side"><div class="combat-avatar">👹</div><strong>'+esc(b.name||'Boss')+'</strong></div></div>'+
-    '<p>HP do Boss '+num(hp)+'/'+num(max)+'</p><div class="progress"><span style="width:'+pct(hp/max*100)+'%"></span></div>'+
-    '<div class="hero-actions"><button class="btn primary" data-boss-attack>⚔️ Atacar</button><button class="btn good" data-boss-auto>'+(ui.bossTimer?'⏸ AUTO ON':'▶ AUTO OFF')+'</button></div></div>';
+    '<div class="boss-hp-line"><span>HP do Boss</span><strong>'+num(hp)+'/'+num(max)+'</strong></div><div class="progress boss-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div>'+
+    '<div class="grid stats section">'+statCard('DANO TOTAL',num(totalDamage),'grupo')+statCard('PARTICIPANTES',num(participants.length),'jogadores')+'</div>'+
+    '<div class="hero-actions"><button class="btn primary" data-boss-attack>⚔️ Atacar</button><button class="btn good" data-boss-auto>'+(ui.bossTimer?'⏸ AUTO ON':'▶ AUTO OFF')+'</button></div>'+ranking+'</div>';
 }
 
 
