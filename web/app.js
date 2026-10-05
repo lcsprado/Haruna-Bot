@@ -413,7 +413,9 @@ function catalogPetCard(p){
 }
 
 function renderPets(){
-  const tabs=[['owned','Minha coleção ('+collection().length+')'],['adopt','26 adotáveis'],['raid','21 Raid / especiais']];
+  const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
+  const raidCount=catalogPets().filter(x=>x.source==='raid').length;
+  const tabs=[['owned','Minha coleção ('+collection().length+')'],['adopt',adoptCount+' adotáveis'],['raid',raidCount+' Raid / especiais']];
   let rows=[];
   if(ui.petTab==='owned') rows=collection().map(ownedPetCard);
   else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
