@@ -532,7 +532,7 @@ function renderSocial(){
     '</div></div>':'';
   return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo, Duelo Pet, apostas PvP, roubo, PIX e empréstimo usam os mesmos jogadores ativos do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
     pending+
-    '<div class="card"><div class="section-title"><h3>Relacionamento</h3><small>'+esc(rel?JSON.stringify(rel):'Nenhum')+'</small></div><div class="hero-actions"><button class="btn danger" data-relationship-divorce>Divorciar</button></div></div>'+
+    '<div class="card"><div class="section-title"><h3>Relacionamento</h3><small>Mesmo estado do WhatsApp</small></div>'+renderRelationship(rel)+(rel?'<div class="hero-actions section"><button class="btn danger" data-relationship-divorce>Divorciar</button></div>':'')+'</div>'+
     '<div class="section grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div>'+resultPanel();
 }
 
@@ -551,9 +551,9 @@ function renderClan(){
     ? '<button class="btn good" data-clan-donate>Doar</button><button class="btn danger" data-clan-leave>Sair do clã</button>'
     : '<button class="btn primary" data-clan-create>Criar clã</button><button class="btn good" data-clan-accept>Aceitar convite</button>';
   return '<div class="page-head"><div><h2>Clã</h2><p>Mesma estrutura dos comandos !cla / !criarcla / !claconvidar.</p></div></div>'+
-    '<div class="card"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><pre class="result-box">'+esc(clan?JSON.stringify(clan,null,2):'Você ainda não faz parte de um clã.')+'</pre><div class="hero-actions">'+actions+'</div></div>'+
-    (clan?'<div class="section"><div class="section-title"><h3>Convidar / administrar jogadores</h3></div><div class="grid three">'+members.map(m=>'<div class="card"><h3>'+esc(m.push_name)+'</h3><div class="pet-actions"><button class="btn" data-clan-invite="'+esc(m.jid)+'">Convidar</button><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button><button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div></div>').join('')+'</div></div>':'')+
-    '<div class="section"><div class="section-title"><h3>Clãs existentes</h3><small>'+clans.length+'</small></div><div class="list">'+clans.map(x=>'<div class="list-row"><span>'+esc(x.name||'Clã')+'</span><small>'+esc(JSON.stringify(x))+'</small></div>').join('')+'</div></div>'+resultPanel();
+    '<div class="card"><div class="section-title"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+
+    (clan?'<div class="section"><div class="section-title"><h3>Convidar / administrar jogadores</h3><small>Ações respeitam sua função no clã</small></div><div class="grid three">'+members.map(m=>'<div class="card"><h3>'+esc(m.push_name)+'</h3><div class="pet-actions"><button class="btn" data-clan-invite="'+esc(m.jid)+'">Convidar</button><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button><button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div></div>').join('')+'</div></div>':'')+
+    '<div class="section card"><div class="section-title"><h3>Ranking de clãs</h3><small>'+clans.length+' listados</small></div>'+renderClanList(clans)+'</div>'+resultPanel();
 }
 
 function renderGames(){
@@ -664,6 +664,53 @@ function renderRankings(){
     '</div>';
 }
 
+function renderPatrimonySummary(p){
+  p=p||{};
+  const parts=[
+    ['💵 Carteira',p.cash],['🏦 Banco',p.bank],['🎒 Inventário',p.inventory_value],
+    ['🚗 Carros',p.cars_value],['🏍️ Motos/Bikes',p.motorcycles_value],
+    ['🏢 Negócios',p.businesses_value],['🏠 Imóvel',p.home_value]
+  ];
+  return '<div class="grid two patrimony-grid">'+parts.map(x=>'<div class="list-row"><span>'+x[0]+'</span><strong>'+money(x[1])+'</strong></div>').join('')+'</div>'+
+    '<div class="patrimony-total"><span>Patrimônio total</span><strong>'+money(p.total)+'</strong></div>';
+}
+function renderGarageCard(x,kind){
+  const isCar=kind==='car';
+  return '<div class="card catalog-card"><h3>'+(isCar?'🚗 ':'🏍️ ')+esc(x.name||x.car_name||x.motorcycle_name||x.car_id||x.motorcycle_id)+'</h3>'+
+    '<p>Valor de referência: <strong>'+money(x.price||x.price_paid||0)+'</strong></p>'+
+    (x.price_paid?'<small>Pago: '+money(x.price_paid)+'</small>':'')+
+    '<div class="pet-actions"><button class="btn danger" '+(isCar?'data-car-sell="'+esc(x.id||x.car_id)+'"':'data-moto-sell="'+esc(x.id||x.motorcycle_id)+'"')+'>Vender</button></div></div>';
+}
+function renderCltStatus(clt){
+  const drivers=(clt&&clt.drivers)||[];
+  if(!drivers.length) return '<div class="empty">Nenhum motorista CLT contratado.</div>';
+  return '<div class="grid cards">'+drivers.map(d=>{
+    const t=d.type||{}, car=d.car||null;
+    return '<div class="card compact-card"><div class="tag-row"><span class="tag '+(d.active?'good':'')+'">'+(d.active?'EM TURNO':d.finished?'PRONTO PARA COLETAR':'DISPONÍVEL')+'</span><span class="tag">Slot '+num(d.slot||0)+'</span></div>'+
+      '<h3>🚕 '+esc(t.name||d.driver_type||'Motorista')+'</h3>'+
+      '<p>'+(car?'Carro: '+esc(car.name):'Sem carro alocado')+'</p>'+
+      '<p>💰 Acumulado: <strong>'+money(d.accrued||0)+'</strong>'+(d.active?' • ⏳ '+Math.ceil(Number(d.remaining||0)/60)+' min':'')+'</p></div>';
+  }).join('')+'</div>';
+}
+function renderRelationship(rel){
+  if(!rel) return '<div class="empty">Nenhum relacionamento ativo.</div>';
+  return '<div class="relationship-card"><div><small>PARCEIRO(A)</small><strong>💍 '+esc(rel.partner_name||'Jogador')+'</strong></div>'+
+    '<div><small>STATUS</small><strong>Casados</strong></div></div>';
+}
+function renderClanSummary(clan){
+  if(!clan) return '<div class="empty">Você ainda não faz parte de um clã.</div>';
+  return '<div class="grid stats">'+
+    statCard('NÍVEL',num(clan.level||1),'clã')+
+    statCard('MEMBROS',num(clan.members||0),'jogadores')+
+    statCard('XP',num(clan.xp||0),'progressão')+
+    statCard('COFRE',money(clan.treasury||0),'tesouraria')+
+  '</div><p class="muted">Seu cargo: <strong>'+esc(clan.role==='leader'?'Líder':'Membro')+'</strong></p>';
+}
+function renderClanList(clans){
+  if(!clans.length) return '<div class="empty">Nenhum clã cadastrado.</div>';
+  return '<div class="list">'+clans.map((x,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(x.name||'Clã')+'</strong><small>Lv.'+num(x.level||1)+' • '+num(x.members||0)+' membros • '+num(x.xp||0)+' XP</small></div><strong>'+money(x.treasury||0)+'</strong></div>').join('')+'</div>';
+}
+
 function renderEconomy(){
   const d=ui.data, p=d.profile||{}, businesses=d.businesses||[], cars=d.cars||[], bikes=d.motorcycles||[];
   const catalog=ui.catalog||{}, house=d.home, clt=d.cltUber||{};
@@ -671,13 +718,13 @@ function renderEconomy(){
     '<div class="grid stats">'+statCard('CARTEIRA',money(p.cash),'disponível')+statCard('BANCO',money(p.bank),'saldo')+statCard('CARROS',cars.length,'garagem')+statCard('MOTOS / BIKE',bikes.length,'entregas')+'</div>'+
     '<div class="section grid two">'+
       '<div class="card"><div class="section-title"><h3>Ações rápidas</h3><small>Mesmas rotinas do WhatsApp</small></div><div class="hero-actions"><button class="btn good" data-action="all">⚡ ALL</button><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button><button class="btn" data-deposit>🏦 Depositar</button><button class="btn" data-withdraw>💵 Sacar</button><button class="btn" data-withdraw-all>💸 Sacar tudo</button></div></div>'+
-      '<div class="card"><div class="section-title"><h3>Patrimônio</h3></div><pre class="result-box">'+esc(JSON.stringify(d.patrimony||{},null,2))+'</pre></div>'+
+      '<div class="card"><div class="section-title"><h3>Patrimônio</h3><small>Mesmo cálculo do !patrimonio</small></div>'+renderPatrimonySummary(d.patrimony)+'</div>'+
     '</div>'+
     '<div class="section"><div class="section-title"><h3>Casa</h3><small>'+(house?esc(house.house_id||house.id||house.name):'Sem casa')+'</small></div><div class="grid cards">'+(catalog.houses||[]).map(x=>'<div class="card catalog-card"><h3>🏠 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-house-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
-    '<div class="section"><div class="section-title"><h3>Garagem</h3><small>'+cars.length+' veículos</small></div><div class="grid cards">'+(cars.length?cars.map(x=>'<div class="card catalog-card"><h3>🚗 '+esc(x.name||x.car_name||x.car_id)+'</h3><p>'+esc(JSON.stringify(x))+'</p><button class="btn danger" data-car-sell="'+esc(x.id||x.car_id)+'">Vender</button></div>').join(''):'<div class="empty">Garagem vazia.</div>')+'</div><div class="grid cards section">'+(catalog.cars||[]).map(x=>'<div class="card catalog-card"><h3>🚘 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-car-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
-    '<div class="section"><div class="section-title"><h3>Motos e bicicletas</h3><small>'+bikes.length+' na garagem</small></div><div class="grid cards">'+(bikes.length?bikes.map(x=>'<div class="card catalog-card"><h3>🏍️ '+esc(x.name||x.motorcycle_name||x.motorcycle_id)+'</h3><p>'+esc(JSON.stringify(x))+'</p><button class="btn danger" data-moto-sell="'+esc(x.id||x.motorcycle_id)+'">Vender</button></div>').join(''):'<div class="empty">Nenhuma moto/bike.</div>')+'</div><div class="grid cards section">'+(catalog.motorcycles||[]).map(x=>'<div class="card catalog-card"><h3>🛵 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-moto-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
+    '<div class="section"><div class="section-title"><h3>Garagem</h3><small>'+cars.length+' veículos</small></div><div class="grid cards">'+(cars.length?cars.map(x=>renderGarageCard(x,'car')).join(''):'<div class="empty">Garagem vazia.</div>')+'</div><div class="grid cards section">'+(catalog.cars||[]).map(x=>'<div class="card catalog-card"><h3>🚘 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-car-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
+    '<div class="section"><div class="section-title"><h3>Motos e bicicletas</h3><small>'+bikes.length+' na garagem</small></div><div class="grid cards">'+(bikes.length?bikes.map(x=>renderGarageCard(x,'moto')).join(''):'<div class="empty">Nenhuma moto/bike.</div>')+'</div><div class="grid cards section">'+(catalog.motorcycles||[]).map(x=>'<div class="card catalog-card"><h3>🛵 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-moto-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
     '<div class="section"><div class="section-title"><h3>Meus negócios</h3><small>'+businesses.length+'</small></div><div class="grid cards">'+(businesses.length?businesses.map(b=>'<div class="card biz-card"><h3>'+esc(b.name||b.business_id)+'</h3><p>Lv.'+num(b.level||1)+'</p><button class="btn" data-business-upgrade="'+esc(b.business_id||b.id)+'">Upar</button></div>').join(''):'<div class="empty">Você ainda não possui negócios.</div>')+'</div><div class="grid cards section">'+(catalog.businesses||[]).map(x=>'<div class="card catalog-card"><h3>🏢 '+esc(x.name)+'</h3><p>'+money(x.price)+' • '+money(x.profitHour)+'/h</p><button class="btn primary" data-business-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
-    '<div class="section card"><div class="section-title"><h3>Central Uber CLT</h3><small>Mesmo estado do !centraluber</small></div><pre class="result-box">'+esc(JSON.stringify(clt,null,2))+'</pre><div class="hero-actions"><button class="btn" data-clt-hire>Contratar motorista</button><button class="btn primary" data-clt-start>Iniciar turno</button><button class="btn good" data-action="cltUber.collect">Coletar</button></div></div>'+
+    '<div class="section card"><div class="section-title"><h3>Central Uber CLT</h3><small>Mesmo estado do !centraluber</small></div>'+renderCltStatus(clt)+'<div class="hero-actions section"><button class="btn" data-clt-hire>Contratar motorista</button><button class="btn primary" data-clt-start>Iniciar turno</button><button class="btn good" data-action="cltUber.collect">Coletar</button></div></div>'+
     '<div class="section card"><div class="section-title"><h3>Extrato recente</h3><small>Últimas 20 movimentações do mesmo jogador</small></div>'+renderTransactions(20)+'</div>'+resultPanel();
 }
 function renderLoans(){
