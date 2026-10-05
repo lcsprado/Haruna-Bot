@@ -385,6 +385,96 @@ function renderBoss(){
     '<div class="hero-actions"><button class="btn primary" data-boss-attack>⚔️ Atacar</button><button class="btn good" data-boss-auto>'+(ui.bossTimer?'⏸ AUTO ON':'▶ AUTO OFF')+'</button></div></div>';
 }
 
+
+function roster(){
+  return (currentGroup()&&currentGroup().roster)||[];
+}
+function resultPanel(){
+  if(ui.lastResult==null) return '';
+  let value;
+  try{ value=JSON.stringify(ui.lastResult,null,2); }catch{ value=String(ui.lastResult); }
+  return '<div class="section card"><div class="section-title"><h3>Último resultado</h3><button class="text-btn" data-clear-result>Limpar</button></div><pre class="result-box">'+esc(value)+'</pre></div>';
+}
+function memberCard(m){
+  return '<div class="card social-card"><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
+    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button></div></div>';
+}
+function renderSocial(){
+  const members=roster().filter(x=>x.jid!==ui.data.identity.jid);
+  const rel=ui.data.relationship;
+  if(!currentGroup()) return '<div class="notice warn">Conecte usando <b>!web</b> dentro do grupo para liberar interações com outros jogadores.</div>';
+  return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo, Duelo Pet, roubo, PIX e empréstimo usam os mesmos jogadores ativos do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
+    '<div class="card"><div class="section-title"><h3>Relacionamento</h3><small>'+esc(rel?JSON.stringify(rel):'Nenhum')+'</small></div><div class="hero-actions"><button class="btn" data-relationship-accept>Aceitar proposta</button><button class="btn danger" data-relationship-divorce>Divorciar</button></div></div>'+
+    '<div class="section grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div>'+resultPanel();
+}
+
+function renderMarket(){
+  const ex=ui.extras||{}, market=ex.market||[], mine=ui.data.market||[], inv=ui.data.inventory||[];
+  return '<div class="page-head"><div><h2>Mercado</h2><p>Os anúncios são os mesmos do comando !mercado e expiram conforme a regra do bot.</p></div><button class="btn primary" data-market-create>Novo anúncio</button></div>'+
+    '<div class="section-title"><h3>Anúncios ativos</h3><small>'+market.length+'</small></div>'+
+    '<div class="grid cards">'+(market.length?market.map(x=>'<div class="card item-card"><div class="item-icon">📣</div><h3>'+esc(x.name)+'</h3><p>'+esc(x.seller_name||'Jogador')+' • x'+num(x.quantity)+' • expira em '+Math.ceil(Number(x.remaining_seconds||0)/60)+' min</p><strong>'+money(x.price)+'</strong><div class="item-actions">'+(x.seller_jid===ui.data.identity.jid?'<button class="btn danger" data-market-cancel="'+x.id+'">Cancelar</button>':'<button class="btn primary" data-market-buy="'+x.id+'">Comprar</button>')+'</div></div>').join(''):'<div class="empty">Nenhum anúncio ativo.</div>')+'</div>'+
+    '<div class="section"><div class="section-title"><h3>Meus anúncios</h3><small>'+mine.length+'</small></div><div class="list">'+(mine.length?mine.map(x=>'<div class="list-row"><span>'+esc(x.name)+' x'+num(x.quantity)+'</span><span>'+money(x.price)+' <button class="btn danger" data-market-cancel="'+x.id+'">Cancelar</button></span></div>').join(''):'<div class="empty">Você não tem anúncios ativos.</div>')+'</div></div>'+
+    '<div class="section card"><div class="section-title"><h3>Itens anunciáveis</h3><small>'+inv.filter(x=>x.sellable!==false).length+'</small></div><p class="muted">Use “Novo anúncio” e escolha o ID do item do seu inventário. A quantidade sai do inventário real.</p></div>'+resultPanel();
+}
+
+function renderClan(){
+  const ex=ui.extras||{}, clan=ex.clan, clans=ex.clans||[], members=roster().filter(x=>x.jid!==ui.data.identity.jid);
+  let actions=clan
+    ? '<button class="btn good" data-clan-donate>Doar</button><button class="btn danger" data-clan-leave>Sair do clã</button>'
+    : '<button class="btn primary" data-clan-create>Criar clã</button><button class="btn good" data-clan-accept>Aceitar convite</button>';
+  return '<div class="page-head"><div><h2>Clã</h2><p>Mesma estrutura dos comandos !cla / !criarcla / !claconvidar.</p></div></div>'+
+    '<div class="card"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><pre class="result-box">'+esc(clan?JSON.stringify(clan,null,2):'Você ainda não faz parte de um clã.')+'</pre><div class="hero-actions">'+actions+'</div></div>'+
+    (clan?'<div class="section"><div class="section-title"><h3>Convidar / administrar jogadores</h3></div><div class="grid three">'+members.map(m=>'<div class="card"><h3>'+esc(m.push_name)+'</h3><div class="pet-actions"><button class="btn" data-clan-invite="'+esc(m.jid)+'">Convidar</button><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button><button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div></div>').join('')+'</div></div>':'')+
+    '<div class="section"><div class="section-title"><h3>Clãs existentes</h3><small>'+clans.length+'</small></div><div class="list">'+clans.map(x=>'<div class="list-row"><span>'+esc(x.name||'Clã')+'</span><small>'+esc(JSON.stringify(x))+'</small></div>').join('')+'</div></div>'+resultPanel();
+}
+
+function renderGames(){
+  const games=currentGroup()&&currentGroup().games||{};
+  const groupLinked=Boolean(currentGroup());
+  return '<div class="page-head"><div><h2>Minigames</h2><p>Resultados e apostas passam pelo mesmo motor do WhatsApp.</p></div><span class="tag '+(groupLinked?'good':'')+'">'+(groupLinked?'GRUPO VINCULADO':'SOLO')+'</span></div>'+
+    '<div class="grid three">'+
+      '<div class="card"><h3>🪙 Cara ou Coroa</h3><p>Aposta individual.</p><button class="btn primary" data-game-coin>Jogar</button></div>'+
+      '<div class="card"><h3>🎰 Roleta</h3><p>Aposta individual com escolha.</p><button class="btn primary" data-game-roulette>Jogar</button></div>'+
+      '<div class="card"><h3>✊ Pedra Papel Tesoura</h3><p>Partida rápida.</p><button class="btn primary" data-game-rps>Jogar</button></div>'+
+      '<div class="card"><h3>🏰 Dungeon</h3><p>Usa a rotina !dungeon.</p><button class="btn primary" data-game-dungeon>Entrar</button></div>'+
+      '<div class="card"><h3>❓ Quiz do Grupo</h3><p>'+esc(games.quiz?JSON.stringify(games.quiz):'Nenhum quiz ativo')+'</p><div class="pet-actions"><button class="btn" data-quiz-start>Iniciar</button><button class="btn good" data-quiz-answer>Responder</button></div></div>'+
+      '<div class="card"><h3>🔢 Número</h3><p>'+esc(games.number?JSON.stringify(games.number):'Nenhum jogo ativo')+'</p><div class="pet-actions"><button class="btn" data-number-start>Iniciar</button><button class="btn good" data-number-guess>Chutar</button></div></div>'+
+      '<div class="card"><h3>🔤 Forca</h3><p>'+esc(games.hangman?JSON.stringify(games.hangman):'Nenhuma forca ativa')+'</p><div class="pet-actions"><button class="btn" data-hangman-start>Iniciar</button><button class="btn good" data-hangman-letter>Letra</button><button class="btn" data-hangman-word>Palavra</button></div></div>'+
+      '<div class="card"><h3>🎯 Roleta em Grupo</h3><p>Crie, entre e gire a mesma sessão do grupo.</p><div class="pet-actions"><button class="btn" data-group-roulette-create>Criar</button><button class="btn" data-group-roulette-join>Entrar</button><button class="btn good" data-group-roulette-spin>Girar</button></div></div>'+
+      '<div class="card"><h3>🏆 Torneio</h3><p>Crie, entre ou inicie o torneio do grupo.</p><div class="pet-actions"><button class="btn" data-tournament-create>Criar</button><button class="btn" data-tournament-join>Entrar</button><button class="btn good" data-tournament-start>Iniciar</button></div></div>'+
+    '</div>'+resultPanel();
+}
+
+function renderActivities(){
+  const d=ui.data, ex=ui.extras||{}, sleep=d.activities&&d.activities.sleep, carp=d.activities&&d.activities.carpinar;
+  const missions=d.dailyMissions||[], exp=d.petExpeditions||[], plans=ex.carpinarPlans||[];
+  return '<div class="page-head"><div><h2>Atividades</h2><p>Missões, dormir, carpinar, aventura e expedições dos pets.</p></div></div>'+
+    '<div class="grid three">'+
+      '<div class="card"><h3>😴 Dormir</h3><p>'+(sleep?'Ativo até '+new Date(Number(sleep.ends_at)*1000).toLocaleString('pt-BR'):'Você está acordado.')+'</p><button class="btn '+(sleep?'danger':'primary')+'" data-sleep="'+(sleep?'wake':'start')+'">'+(sleep?'Acordar':'Dormir')+'</button></div>'+
+      '<div class="card"><h3>🌱 Carpinar</h3><p>'+(carp?'Ativo • termina em '+Math.ceil((Number(carp.ends_at)-Date.now()/1000)/60)+' min':'Planos: '+plans.map(x=>x.hours+'h').join(', '))+'</p><button class="btn '+(carp?'danger':'primary')+'" data-carpinar="'+(carp?'leave':'start')+'">'+(carp?'Sair':'Começar')+'</button></div>'+
+      '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><button class="btn" data-pet-expedition>Expedição</button><button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
+    '</div>'+
+    '<div class="section card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
+    '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+
+    (currentGroup()?'<div class="section card"><div class="section-title"><h3>Missão do grupo</h3><button class="btn good" data-group-mission-claim>Resgatar</button></div><pre class="result-box">'+esc(JSON.stringify(ex.groupMission||{},null,2))+'</pre><button class="btn good" data-group-event-claim>Resgatar evento coletivo</button></div>':'')+
+    '<div class="section card"><div class="section-title"><h3>Expedições</h3></div><pre class="result-box">'+esc(JSON.stringify(exp,null,2))+'</pre></div>'+resultPanel();
+}
+
+function leaderboardBlock(title,rows,valueFn){
+  return '<div class="card"><div class="section-title"><h3>'+esc(title)+'</h3></div><div class="list">'+((rows||[]).length?(rows||[]).map((x,i)=>'<div class="list-row"><span>#'+(i+1)+' '+esc(x.push_name||x.name||'Jogador')+'</span><strong>'+esc(valueFn(x))+'</strong></div>').join(''):'<div class="empty">Sem dados.</div>')+'</div></div>';
+}
+function renderRankings(){
+  const ex=ui.extras||{}, l=ex.leaderboards||{};
+  return '<div class="page-head"><div><h2>Rankings</h2><p>Economia, RPG, pets, patrimônio e atividade do mesmo Neon.</p></div><span class="tag">Seu rank ECO #'+num(ex.ranks&&ex.ranks.economyRank)+' • RPG #'+num(ex.ranks&&ex.ranks.combatRank)+'</span></div>'+
+    '<div class="grid two">'+
+      leaderboardBlock('💰 Economia',l.economy,x=>money(x.total))+
+      leaderboardBlock('⚔️ Combate',l.combat,x=>num(x.score)+' pts')+
+      leaderboardBlock('🐾 Pets',l.pets,x=>'Lv.'+num(x.level)+' • '+num(x.power)+' poder')+
+      leaderboardBlock('🏛️ Patrimônio',l.patrimony,x=>money(x.total||x.patrimony))+
+      leaderboardBlock('💬 Atividade do grupo',l.activity,x=>num(x.messages)+' msgs')+
+    '</div>';
+}
+
 function renderEconomy(){
   const d=ui.data, p=d.profile||{}, businesses=d.businesses||[], cars=d.cars||[], bikes=d.motorcycles||[];
   return '<div class="page-head"><div><h2>Economia</h2><p>Patrimônio e operações usam as mesmas tabelas do bot.</p></div><span class="tag good">'+money(Number(p.cash||0)+Number(p.bank||0))+'</span></div>'+
@@ -409,7 +499,7 @@ function renderLoans(){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=(renderers[ui.page]||renderHome)();
   bind();
 }
