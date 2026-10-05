@@ -211,14 +211,18 @@ async function logoutSession(session){
 
 function allowedOrigin(req){
   const configured=String(process.env.WEB_ALLOWED_ORIGINS||'*').trim()
-  if(configured==='*') return '*'
   const origin=String(req.headers.origin||'')
+  // Same-origin/browser GETs and server-to-server health checks may legitimately omit Origin.
+  if(!origin) return null
+  if(configured==='*') return '*'
   const allowed=configured.split(',').map(x=>x.trim()).filter(Boolean)
   return allowed.includes(origin) ? origin : (allowed.includes('null')&&origin==='null'?'null':'')
 }
 
 function setCors(req,res){
+  const requestOrigin=String(req.headers.origin||'')
   const origin=allowedOrigin(req)
+  if(requestOrigin && !origin) return false
   if(origin){
     res.setHeader('Access-Control-Allow-Origin',origin)
     res.setHeader('Vary','Origin')
@@ -226,7 +230,7 @@ function setCors(req,res){
   res.setHeader('Access-Control-Allow-Headers','authorization, content-type')
   res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS')
   res.setHeader('Access-Control-Max-Age','600')
-  return Boolean(origin)
+  return true
 }
 
 function json(res,status,payload){
