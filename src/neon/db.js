@@ -4490,11 +4490,12 @@ export async function petAction(jid,action){
     // Progressão natural: cada nível do pet concede +2 de Poder, além do bônus de treino/aventura.
     const powerGain=(a.power||0)+(levelsGained*2)
     const levelEnergyGain=levelsGained*3
+    const maxEnergyAtLevel=petMaxEnergy(level,pet.species)
     const {rows}=await client.query(`UPDATE pets SET
       hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
-      energy=LEAST((CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,$5-1)*2,GREATEST(0,energy+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
+      energy=LEAST($11,GREATEST(0,energy+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
       last_rest=CASE WHEN $8 THEN $7 ELSE last_rest END
-      WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid,levelEnergyGain])
+      WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid,levelEnergyGain,maxEnergyAtLevel])
     let updated=rows[0]
     const newMax=petMaxHp(updated.level,updated.xp,updated.species)
     const oldMax=Math.max(1,Number(petHp.max_hp||100))
@@ -4631,8 +4632,11 @@ export async function petDuel(challengerJid,targetJid){
     }
 
     const evolve=async(p,hpAfter,xpGain,won)=>{
-      const oldLevel=Number(p.level||1),xp=Number(p.xp||0)+xpGain
-      const level=1+Math.floor(xp/100),levelsGained=Math.max(0,level-oldLevel)
+      const oldLevel=Math.min(100,Math.max(1,Number(p.level||1)))
+      const rawXp=Number(p.xp||0)+xpGain
+      const level=Math.min(100,1+Math.floor(rawXp/100))
+      const xp=level>=100?9900:rawXp
+      const levelsGained=Math.max(0,level-oldLevel)
       const power=Number(p.power||10)+levelsGained*2
       const maxHp=petMaxHp(level,xp,p.species)
       const oldMax=Math.max(1,Number(p.max_hp||100))

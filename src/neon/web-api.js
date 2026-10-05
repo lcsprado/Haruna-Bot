@@ -7,7 +7,7 @@ import {
   petStyleLabel, getEquipmentInfo, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
-  setPetTeam, summonLegendaryPet, getCombatProfile, getGroupSettings, resolvePlayerSleep,
+  setPetTeam, summonLegendaryPet, getCombatProfile, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
   transfer, battle, petDuel, dungeon, robPlayer,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   openLootBoxes, openLuckyBoxes, sellDuplicateEquipment,
@@ -342,7 +342,7 @@ async function playerBootstrap(session){
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(petTeam),petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
