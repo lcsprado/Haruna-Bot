@@ -30,7 +30,7 @@ import {
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
   adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
-  createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
+  createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
@@ -5502,6 +5502,28 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       return true
     }
 
+    if(flow.stage==='market_cancel_select'){
+      if(input==='0'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Cancelamento fechado.')
+        return true
+      }
+      const listing=flow.data.items?.[Number(input)-1]
+      if(!listing){
+        await reply('↩️ Escolha um anúncio pelo número.')
+        return true
+      }
+      try{
+        const x=await cancelMarketListing(sender,listing.id)
+        clearQuickFlow(chat,sender)
+        await reply(`↩️ *ANÚNCIO CANCELADO!*\n\n#${x.id} • *${listing.name}* ×${listing.quantity}\n📦 Item devolvido ao inventário.`)
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('❌ '+(err?.message||'Não foi possível cancelar o anúncio.'))
+      }
+      return true
+    }
+
     if(flow.stage==='market_buy_select'){
       const listing=flow.data.items?.[Number(input)-1]
       if(!listing){
@@ -7221,8 +7243,28 @@ Se precisar de mais ajuda, use *!suporte*.`
               const x=await buyMarketListing(sender,args[0])
               return await reply(`✅ Compra concluída: *${x.name} ×${x.quantity}*.`)
             }
-            const x=await cancelMarketListing(sender,args[0])
-            await reply(`↩️ Anúncio #${x.id} cancelado e item devolvido ao inventário.`)
+            const directId=Number(String(args[0]||'').replace(/^#/,''))
+            if(Number.isSafeInteger(directId)&&directId>0){
+              const x=await cancelMarketListing(sender,directId)
+              return await reply(`↩️ Anúncio #${x.id} cancelado e item devolvido ao inventário.`)
+            }
+            const mine=await listMyMarketListings(sender,30)
+            if(!mine.length) return await reply('🏪 Você não possui anúncios ativos para cancelar.')
+            const items=mine.map(x=>({
+              id:Number(x.id),
+              name:x.name,
+              quantity:Number(x.quantity||1),
+              price:Number(x.price||0),
+              remaining_seconds:Number(x.remaining_seconds||0)
+            }))
+            setQuickFlow(chat,sender,'market_cancel_select',{items},5*60*1000)
+            let text='↩️ *CANCELAR ANÚNCIO*\n\n'
+            items.forEach((x,i)=>{
+              const min=Math.max(1,Math.ceil(x.remaining_seconds/60))
+              text+=`*${i+1}.* #${x.id} • *${x.name}* ×${x.quantity}\n💰 R$ ${x.price.toLocaleString('pt-BR')} • ⏳ ${min} min\n\n`
+            })
+            text+='👉 Responda somente com o *número do anúncio* da lista.\n0️⃣ Sair'
+            await reply(text.trim())
           }catch(err){ await reply('❌ '+(err?.message||'Erro no mercado.')) }
 
         } else if(['dado','chance','escolher','ship','verdade','desafio'].includes(cmd)){
