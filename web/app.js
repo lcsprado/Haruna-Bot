@@ -110,12 +110,31 @@ async function sync(silent){
   }finally{ ui.syncing=false; }
 }
 
+async function syncExtras(force){
+  if(!ui.token) return null;
+  if(!force && ui.extras && Date.now()-ui.extrasFetchedAt<30000) return ui.extras;
+  try{
+    const response=await api('/api/v1/me/extras');
+    ui.extras=response.data;
+    ui.extrasFetchedAt=Date.now();
+    return ui.extras;
+  }catch(err){
+    toast(err.message);
+    throw err;
+  }
+}
+
 async function doAction(name,body,options){
   options=options||{};
   try{
     if(!options.quiet) toast('Processando...');
     const response=await api('/api/v1/action/'+encodeURIComponent(name),{method:'POST',body:JSON.stringify(body||{})});
+    ui.lastResult=response.result;
     if(options.afterSync!==false) await sync(true);
+    if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
+      await syncExtras(true).catch(()=>null);
+      render();
+    }
     if(!options.quiet) toast(options.success||'Ação concluída no Alpha Bot.');
     return response.result;
   }catch(err){
@@ -146,7 +165,7 @@ async function logout(remote){
   if(remote!==false && ui.token){
     try{ await api('/api/v1/auth/logout',{method:'POST',body:'{}'}); }catch{}
   }
-  ui.token=''; ui.data=null; ui.catalog=null;
+  ui.token=''; ui.data=null; ui.catalog=null; ui.extras=null; ui.extrasFetchedAt=0;
   localStorage.removeItem(TOKEN_KEY);
   showLogin();
 }
@@ -155,9 +174,12 @@ function renderNav(){
   $('#nav').innerHTML=navItems.map(item=>{
     return '<button class="nav-btn '+(ui.page===item[0]?'active':'')+'" data-page="'+item[0]+'"><span>'+item[1]+'</span>'+item[2]+'</button>';
   }).join('');
-  document.querySelectorAll('[data-page]').forEach(btn=>btn.onclick=()=>{
+  document.querySelectorAll('[data-page]').forEach(btn=>btn.onclick=async()=>{
     ui.page=btn.dataset.page;
     $('#sidebar').classList.remove('open');
+    if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
+      await syncExtras(false).catch(()=>null);
+    }
     render();
   });
 }
