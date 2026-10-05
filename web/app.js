@@ -533,7 +533,7 @@ function renderGroupMissionCard(ex){
 }
 function renderGroupEventCard(ex){
   const e=ex.groupEvent||null, nowSec=Math.floor(Date.now()/1000);
-  if(!e || e.claimed_by || Number(e.expires_at||0)<=nowSec){
+  if(!e || e.claimed || Number(e.expires_at||0)<=nowSec){
     return '<div class="section-title"><h3>Evento relâmpago do grupo</h3><small>Nenhum evento disponível agora</small></div><p>Quando surgir uma maleta, PIX misterioso ou tesouro no grupo, o Web enxergará o mesmo evento.</p>';
   }
   const remain=Math.max(0,Number(e.expires_at||0)-nowSec);
