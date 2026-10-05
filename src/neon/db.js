@@ -1625,9 +1625,9 @@ const EQUIPMENT = {
   espada_eclipse: { category:'weapon', atk:54, def:0, name:'Espada do Eclipse' },
   martelo_golem: { category:'weapon', atk:70, def:0, hp:50, crit:0, name:'Martelo do Golem Ancestral' },
   excalibur: { category:'weapon', atk:85, def:0, hp:0, crit:.02, name:'Excalibur' },
-  katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, name:'Katana Divina' },
-  sabre_runico: { category:'weapon', atk:32, def:0, hp:0, crit:.01, name:'Sabre Rúnico' },
-  lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, name:'Lâmina do Caçador' },
+  katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, spd:10, name:'Katana Divina' },
+  sabre_runico: { category:'weapon', atk:32, def:0, hp:0, crit:.01, spd:4, name:'Sabre Rúnico' },
+  lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, spd:6, name:'Lâmina do Caçador' },
   espada_guardiao: { category:'weapon', atk:50, def:0, hp:25, crit:0, name:'Espada do Guardião' },
 
   armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
@@ -1646,11 +1646,11 @@ const EQUIPMENT = {
   armadura_titan: { category:'armor', atk:0, def:85, hp:110, crit:0, name:'Armadura do Titã' },
   armadura_divina: { category:'armor', atk:0, def:95, hp:140, crit:.01, name:'Armadura Divina' },
   armadura_bastiao: { category:'armor', atk:0, def:30, hp:35, crit:0, name:'Armadura do Bastião' },
-  manto_runico: { category:'armor', atk:0, def:42, hp:55, crit:.01, name:'Manto Rúnico' },
+  manto_runico: { category:'armor', atk:0, def:42, hp:55, crit:.01, spd:5, name:'Manto Rúnico' },
   couraca_guardiao: { category:'armor', atk:0, def:50, hp:70, crit:0, name:'Couraça do Guardião' },
   coroa_madrugada: { category:'armor', atk:20, def:50, name:'Coroa da Madrugada' },
   colete_vital: { category:'armor', atk:0, def:18, hp:60, crit:0, name:'Colete Vital' },
-  couraca_predador: { category:'armor', atk:0, def:38, hp:90, crit:.03, name:'Couraça do Predador' },
+  couraca_predador: { category:'armor', atk:0, def:38, hp:90, crit:.03, spd:7, name:'Couraça do Predador' },
   armadura_colosso: { category:'armor', atk:0, def:52, hp:140, crit:.04, name:'Armadura do Colosso' },
 }
 
@@ -1738,6 +1738,7 @@ export function equipmentStatsAtLevel(itemId,level=1){
     atk:Math.round(Number(eq.atk||0)*mult),
     def:Math.round(Number(eq.def||0)*mult),
     hp:Math.round(Number(eq.hp||0)*mult),
+    spd:Math.round(Number(eq.spd||0)*mult),
     crit:Number((Number(eq.crit||0)*mult).toFixed(4))
   }
 }
@@ -1976,8 +1977,8 @@ export async function getCombatProfile(jid) {
   const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id])
   const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1):null
   const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1):null
-  const w=weapon||{atk:0,def:0,hp:0,crit:0,name:'Nenhuma',level:1}
-  const a=armor||{atk:0,def:0,hp:0,crit:0,name:'Nenhuma',level:1}
+  const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
+  const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   return {
     ...p,
     base_atk:Number(p.atk),
@@ -1986,6 +1987,8 @@ export async function getCombatProfile(jid) {
     weapon_atk:Number(w.atk||0),
     armor_def:Number(a.def||0),
     equipment_hp:Number(w.hp||0)+Number(a.hp||0),
+    equipment_spd:Number(w.spd||0)+Number(a.spd||0),
+    effective_spd:Number(p.spd)+Number(w.spd||0)+Number(a.spd||0),
     equipment_crit:Number(w.crit||0)+Number(a.crit||0),
     base_crit:0.10,
     effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)),
@@ -2037,10 +2040,10 @@ export async function battle(attackerJid, defenderJid) {
       [[attackerJid,defenderJid]]
     )).rows
     const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
-    const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,crit:0}
-    const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,crit:0}
-    const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,crit:0}
-    const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,crit:0}
+    const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 
     const A={
       jid:attackerJid,name:au?.push_name||'Jogador',
@@ -2048,7 +2051,7 @@ export async function battle(attackerJid, defenderJid) {
       atk:Number(a.atk)+aeW.atk+aeA.atk,
       def:Number(a.def)+aeW.def+aeA.def,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)),
-      spd:Number(a.spd)
+      spd:Number(a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
@@ -2056,7 +2059,7 @@ export async function battle(attackerJid, defenderJid) {
       atk:Number(b.atk)+beW.atk+beA.atk,
       def:Number(b.def)+beW.def+beA.def,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)),
-      spd:Number(b.spd)
+      spd:Number(b.spd)+Number(beW.spd||0)+Number(beA.spd||0)
     }
 
     const log=[]
