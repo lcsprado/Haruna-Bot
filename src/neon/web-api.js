@@ -311,7 +311,7 @@ async function playerBootstrap(session){
   const [
     profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
-    doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar
+    doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar,recentTransactions
   ]=await Promise.all([
     getProfile(jid),
     getCombatProfile(jid),
@@ -337,7 +337,12 @@ async function playerBootstrap(session){
     getLuckyBoxEvent(),
     db.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1 AND expires_at>$2 ORDER BY expires_at',[`%${jid}%`,Math.floor(Date.now()/1000)]),
     db.query('SELECT * FROM player_sleep WHERE jid=$1',[jid]),
-    db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid])
+    db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid]),
+    db.query(`SELECT id,from_jid,to_jid,amount,type,note,created_at
+              FROM transactions
+              WHERE from_jid=$1 OR to_jid=$1
+              ORDER BY created_at DESC,id DESC
+              LIMIT 20`,[jid])
   ])
   return {
     syncedAt:now(),
@@ -346,6 +351,7 @@ async function playerBootstrap(session){
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
+    recentTransactions:recentTransactions.rows||[],
     activities:{sleep:sleep.rows?.[0]||null,carpinar:carpinar.rows?.[0]||null}
   }
 }async function playerExtras(session){
