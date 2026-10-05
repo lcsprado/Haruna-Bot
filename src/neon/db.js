@@ -4631,8 +4631,11 @@ export async function petDuel(challengerJid,targetJid){
     }
 
     const evolve=async(p,hpAfter,xpGain,won)=>{
-      const oldLevel=Number(p.level||1),xp=Number(p.xp||0)+xpGain
-      const level=1+Math.floor(xp/100),levelsGained=Math.max(0,level-oldLevel)
+      const oldLevel=Math.min(100,Math.max(1,Number(p.level||1)))
+      const rawXp=Number(p.xp||0)+xpGain
+      const level=Math.min(100,1+Math.floor(rawXp/100))
+      const xp=level>=100?9900:rawXp
+      const levelsGained=Math.max(0,level-oldLevel)
       const power=Number(p.power||10)+levelsGained*2
       const maxHp=petMaxHp(level,xp,p.species)
       const oldMax=Math.max(1,Number(p.max_hp||100))
