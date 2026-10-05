@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
 import {
-  db, ensureUser, getProfile, getInventory, getDailyStreak, getCareer,
+  db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship,
   listMyMarketListings, getGroupLicense, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
   petStyleLabel
