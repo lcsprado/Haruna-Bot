@@ -475,6 +475,8 @@ function inventoryCard(i){
   return '<div class="card item-card '+rarityClass(i.rarity)+'"><div class="item-icon">'+itemIcon(i)+'</div>'+
     '<div class="tag-row"><span class="tag '+esc(i.rarity)+'">'+esc(i.rarity||'common')+'</span><span class="tag">'+esc(i.category)+'</span></div>'+
     '<h3>'+esc(i.name)+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(i.description||'')+'</p>'+
+    (i.sellable!==false?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
+    (eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Upgrade devolve '+money(i.upgrade_refund)+' na venda.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
 }
 function renderInventory(){
