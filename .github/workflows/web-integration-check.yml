@@ -24,5 +24,7 @@ jobs:
           node --check src/neon/db.js
           node --check src/neon/games.js
           node --check src/neon/index.js
+      - name: Smoke-import shared API modules
+        run: node -e "import('./src/neon/web-api.js').then(()=>console.log('web-api import ok'))"
       - name: Check Web client
         run: node --check web/app.js
