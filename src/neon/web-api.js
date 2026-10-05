@@ -309,7 +309,7 @@ async function groupSnapshot(chatJid){
 async function playerBootstrap(session){
   const jid=session.jid
   const [
-    profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(petTeam),petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
     doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar
   ]=await Promise.all([
@@ -342,7 +342,7 @@ async function playerBootstrap(session){
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(petTeam),petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
