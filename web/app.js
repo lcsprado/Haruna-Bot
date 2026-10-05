@@ -481,15 +481,19 @@ function renderRankings(){
 
 function renderEconomy(){
   const d=ui.data, p=d.profile||{}, businesses=d.businesses||[], cars=d.cars||[], bikes=d.motorcycles||[];
-  return '<div class="page-head"><div><h2>Economia</h2><p>Patrimônio e operações usam as mesmas tabelas do bot.</p></div><span class="tag good">'+money(Number(p.cash||0)+Number(p.bank||0))+'</span></div>'+
+  const catalog=ui.catalog||{}, house=d.home, clt=d.cltUber||{};
+  return '<div class="page-head"><div><h2>Economia</h2><p>Patrimônio e operações usam as mesmas tabelas e rotinas do bot.</p></div><span class="tag good">'+money(Number(p.cash||0)+Number(p.bank||0))+'</span></div>'+
     '<div class="grid stats">'+statCard('CARTEIRA',money(p.cash),'disponível')+statCard('BANCO',money(p.bank),'saldo')+statCard('CARROS',cars.length,'garagem')+statCard('MOTOS / BIKE',bikes.length,'entregas')+'</div>'+
     '<div class="section grid two">'+
-      '<div class="card"><div class="section-title"><h3>Ações rápidas</h3></div><div class="hero-actions"><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button></div></div>'+
-      '<div class="card"><div class="section-title"><h3>Patrimônio</h3></div><pre class="muted" style="white-space:pre-wrap;font:inherit;font-size:10px">'+esc(JSON.stringify(d.patrimony||{},null,2))+'</pre></div>'+
+      '<div class="card"><div class="section-title"><h3>Ações rápidas</h3></div><div class="hero-actions"><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button><button class="btn" data-deposit>🏦 Depositar</button><button class="btn" data-withdraw>💵 Sacar</button></div></div>'+
+      '<div class="card"><div class="section-title"><h3>Patrimônio</h3></div><pre class="result-box">'+esc(JSON.stringify(d.patrimony||{},null,2))+'</pre></div>'+
     '</div>'+
-    '<div class="section"><div class="section-title"><h3>Meus negócios</h3><small>'+businesses.length+'</small></div><div class="grid cards">'+(businesses.length?businesses.map(b=>'<div class="card biz-card"><h3>'+esc(b.name||b.business_id)+'</h3><p>Lv.'+num(b.level||1)+'</p><button class="btn" data-business-upgrade="'+esc(b.business_id||b.id)+'">Upar</button></div>').join(''):'<div class="empty">Você ainda não possui negócios.</div>')+'</div></div>';
+    '<div class="section"><div class="section-title"><h3>Casa</h3><small>'+(house?esc(house.house_id||house.id||house.name):'Sem casa')+'</small></div><div class="grid cards">'+(catalog.houses||[]).map(x=>'<div class="card catalog-card"><h3>🏠 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-house-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
+    '<div class="section"><div class="section-title"><h3>Garagem</h3><small>'+cars.length+' veículos</small></div><div class="grid cards">'+(cars.length?cars.map(x=>'<div class="card catalog-card"><h3>🚗 '+esc(x.name||x.car_name||x.car_id)+'</h3><p>'+esc(JSON.stringify(x))+'</p><button class="btn danger" data-car-sell="'+esc(x.id||x.car_id)+'">Vender</button></div>').join(''):'<div class="empty">Garagem vazia.</div>')+'</div><div class="grid cards section">'+(catalog.cars||[]).map(x=>'<div class="card catalog-card"><h3>🚘 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-car-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
+    '<div class="section"><div class="section-title"><h3>Motos e bicicletas</h3><small>'+bikes.length+' na garagem</small></div><div class="grid cards">'+(bikes.length?bikes.map(x=>'<div class="card catalog-card"><h3>🏍️ '+esc(x.name||x.motorcycle_name||x.motorcycle_id)+'</h3><p>'+esc(JSON.stringify(x))+'</p><button class="btn danger" data-moto-sell="'+esc(x.id||x.motorcycle_id)+'">Vender</button></div>').join(''):'<div class="empty">Nenhuma moto/bike.</div>')+'</div><div class="grid cards section">'+(catalog.motorcycles||[]).map(x=>'<div class="card catalog-card"><h3>🛵 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-moto-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
+    '<div class="section"><div class="section-title"><h3>Meus negócios</h3><small>'+businesses.length+'</small></div><div class="grid cards">'+(businesses.length?businesses.map(b=>'<div class="card biz-card"><h3>'+esc(b.name||b.business_id)+'</h3><p>Lv.'+num(b.level||1)+'</p><button class="btn" data-business-upgrade="'+esc(b.business_id||b.id)+'">Upar</button></div>').join(''):'<div class="empty">Você ainda não possui negócios.</div>')+'</div><div class="grid cards section">'+(catalog.businesses||[]).map(x=>'<div class="card catalog-card"><h3>🏢 '+esc(x.name)+'</h3><p>'+money(x.price)+' • '+money(x.profitHour)+'/h</p><button class="btn primary" data-business-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
+    '<div class="section card"><div class="section-title"><h3>Central Uber CLT</h3><small>Mesmo estado do !centraluber</small></div><pre class="result-box">'+esc(JSON.stringify(clt,null,2))+'</pre><div class="hero-actions"><button class="btn" data-clt-hire>Contratar motorista</button><button class="btn primary" data-clt-start>Iniciar turno</button><button class="btn good" data-action="cltUber.collect">Coletar</button></div></div>'+resultPanel();
 }
-
 function renderLoans(){
   const loans=ui.data.loans||{}, borrowed=loans.borrowed||[], lent=loans.lent||[], credit=loans.credit||ui.extras&&ui.extras.loanCredit||{};
   const incoming=borrowed.filter(x=>x.status==='pending');
@@ -555,6 +559,29 @@ function bind(){
   document.querySelectorAll('[data-boss-attack]').forEach(x=>x.onclick=()=>doAction('boss.attack',{name:ui.data.profile.push_name,usePet:true},{}));
   document.querySelectorAll('[data-boss-auto]').forEach(x=>x.onclick=toggleBossAuto);
   document.querySelectorAll('[data-business-upgrade]').forEach(x=>x.onclick=()=>doAction('business.upgrade',{id:x.dataset.businessUpgrade},{}));
+  document.querySelectorAll('[data-deposit]').forEach(x=>x.onclick=()=>{
+    const raw=prompt('Quanto depositar? Use total para tudo:','total');
+    if(raw) doAction('deposit',{amount:raw==='total'?'total':Number(raw)},{});
+  });
+  document.querySelectorAll('[data-withdraw]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Quanto sacar?','1000'));
+    if(amount>0) doAction('withdraw',{amount},{});
+  });
+  document.querySelectorAll('[data-house-buy]').forEach(x=>x.onclick=()=>doAction('house.buy',{id:x.dataset.houseBuy},{}));
+  document.querySelectorAll('[data-car-buy]').forEach(x=>x.onclick=()=>doAction('car.buy',{id:x.dataset.carBuy},{}));
+  document.querySelectorAll('[data-car-sell]').forEach(x=>x.onclick=()=>doAction('car.sell',{id:x.dataset.carSell},{}));
+  document.querySelectorAll('[data-moto-buy]').forEach(x=>x.onclick=()=>doAction('motorcycle.buy',{id:x.dataset.motoBuy},{}));
+  document.querySelectorAll('[data-moto-sell]').forEach(x=>x.onclick=()=>doAction('motorcycle.sell',{id:x.dataset.motoSell},{}));
+  document.querySelectorAll('[data-business-buy]').forEach(x=>x.onclick=()=>doAction('business.buy',{id:x.dataset.businessBuy},{}));
+  document.querySelectorAll('[data-clt-hire]').forEach(x=>x.onclick=()=>{
+    const input=prompt('Tipo/número do motorista CLT:','1');
+    if(input) doAction('cltUber.hire',{input},{});
+  });
+  document.querySelectorAll('[data-clt-start]').forEach(x=>x.onclick=()=>{
+    const driverSlot=Number(prompt('Slot do motorista:','1'));
+    const carSlot=Number(prompt('Slot do carro:','1'));
+    if(driverSlot>0&&carSlot>0) doAction('cltUber.start',{driverSlot,carSlot},{});
+  });
   document.querySelectorAll('[data-loan-pay]').forEach(x=>x.onclick=()=>doAction('loan.pay',{amount:x.dataset.loanPay},{}));
   document.querySelectorAll('[data-loan-accept]').forEach(x=>x.onclick=()=>doAction('loan.accept',{id:Number(x.dataset.loanAccept)},{}));
   document.querySelectorAll('[data-loan-reject]').forEach(x=>x.onclick=()=>doAction('loan.reject',{id:Number(x.dataset.loanReject)},{}));
