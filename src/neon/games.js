@@ -1,4 +1,5 @@
 import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
+import { petCombatSpecialty } from './game-catalog.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -495,61 +496,9 @@ const BOSS_PLACEMENT=[
   {cash:8000,xp:100,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.35,exclusiveChance:.07},
   {cash:4000,xp:50,box:{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'},bonusChance:.28,exclusiveChance:.04},
 ]
-const PET_BOSS_SPECIALTIES={
-  cachorro:{label:'🐶 Guardião',defense:.05}, gato:{label:'🐱 Instinto',crit:.04},
-  coelho:{label:'🐰 Agilidade',dodge:.04}, papagaio:{label:'🦜 Motivação',xp:.05},
-  hamster:{label:'🐹 Sorte',drop:.025}, tartaruga:{label:'🐢 Casco',defense:.07},
-  coruja:{label:'🦉 Sabedoria',xp:.08}, raposa:{label:'🦊 Astúcia',crit:.06},
-  lobo:{label:'🐺 Caçador',damage:.06}, aguia:{label:'🦅 Precisão',crit:.09}, gaviao:{label:'🦅 Rasante',crit:.04},
-  panda:{label:'🐼 Resistência',defense:.08}, guepardo:{label:'🐆 Arrancada',damage:.04}, tigre:{label:'🐯 Fúria',damage:.08},
-  leao:{label:'🦁 Rei da Caçada',damage:.09},
-  gazela_mistica:{label:'🦌 Passo Astral',dodge:.04},
-  cervo_mistico:{label:'🦌 Luz Restauradora',defense:.03,healPct:.04,healCooldown:5},
-  cavalo_guerra:{label:'🐎 Marcha de Guerra',defense:.05},
-  unicornio:{label:'🦄 Bênção Vital',drop:.04,defense:.04,healPct:.06,healCooldown:4},
-  dragao:{label:'🐉 Caçador de Boss',bossDamage:.10,defense:.04},
-
-  // Aquáticos comuns: 2 atributos cada, com combinações diferentes e teto abaixo dos pets de Raid.
-  golfinho_celestial:{label:'🐬 Corrente Celestial',dodge:.05,xp:.04},
-  moreia_sombria:{label:'🐍 Emboscada Sombria',damage:.05,dodge:.04},
-  tubarao_abissal:{label:'🦈 Frenesi Abissal',damage:.07,crit:.03},
-  polvo_arcano:{label:'🐙 Tentáculos Arcanos',crit:.04,drop:.03},
-  orca_guerra:{label:'🐋 Investida Oceânica',damage:.05,defense:.05},
-  baleia_colossal:{label:'🐋 Canto Colossal',defense:.10,xp:.04},
-
-  // Pets de Raid: todos têm pelo menos 2 especialidades. Eles exigem 100 materiais
-  // e por isso devem superar pets comuns em utilidade endgame, sem tornar equipamento irrelevante.
-  golem_ancestral:{label:'🪨 Muralha Ancestral',defense:.09,drop:.02,raid:true},
-  urso_runico:{label:'🐻 Fúria Rúnica',damage:.07,defense:.06,raid:true},
-  colosso_cristal:{label:'💎 Prisma Colossal',defense:.10,drop:.04,crit:.03,raid:true},
-
-  salamandra_infernal:{label:'🔥 Chama Infernal',damage:.08,crit:.04,raid:true},
-  dragao_vulcanico:{label:'🐲 Núcleo Vulcânico',damage:.09,defense:.05,raid:true},
-  fenix_fogo:{label:'🔥 Renascimento Ígneo',damage:.08,dodge:.05,xp:.05,raid:true},
-
-  corvo_abissal:{label:'👁️ Olho do Abismo',crit:.08,drop:.03,raid:true},
-  lobo_abismo:{label:'🌑 Predador Abissal',damage:.09,crit:.05,raid:true},
-  fenix_gelo:{label:'❄️ Alma Glacial',defense:.08,dodge:.05,xp:.06,raid:true},
-
-  rinoceronte_titanico:{label:'🦏 Investida Titânica',defense:.10,damage:.05,raid:true},
-  guardiao_obsidiana:{label:'🗿 Guarda Obsidiana',defense:.10,drop:.035,raid:true},
-  leviata_gelo:{label:'🌊 Leviatã Congelado',defense:.10,dodge:.06,damage:.05,raid:true},
-
-  cerbero_carmesim:{label:'🩸 Três Presas',damage:.10,crit:.06,raid:true},
-  tigre_lunar:{label:'🌙 Caçador Lunar',damage:.09,dodge:.06,drop:.03,raid:true},
-  imperador_abissal:{label:'👑 Soberano do Abismo',bossDamage:.10,defense:.07,drop:.04,raid:true},
-
-  leao_solar:{label:'☀️ Rei Solar',damage:.10,crit:.07,xp:.05,raid:true},
-  grifo_celestial:{label:'✨ Asas da Fortuna',crit:.10,dodge:.07,drop:.04,raid:true},
-  fenix_celestial:{label:'🌟 Graça Celestial',defense:.10,dodge:.08,xp:.08,healPct:.08,healCooldown:4,raid:true},
-
-  serpente_cosmica:{label:'🌌 Oráculo Cósmico',crit:.09,drop:.06,xp:.08,raid:true},
-  dragao_corrompido:{label:'☠️ Ruína Corrompida',bossDamage:.10,damage:.08,defense:.08,raid:true},
-  fenix_alpha:{label:'👑 Fênix Alpha',damage:.10,defense:.10,crit:.08,dodge:.06,drop:.07,xp:.08,raid:true}
-}
 function petBossBonus(pet){
   if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,healPct:0,healCooldown:0}
-  const base=PET_BOSS_SPECIALTIES[pet.species]||{}
+  const base=petCombatSpecialty(pet.species)
   // Progressão revisada:
   // - pets comuns: até +50% sobre a especialidade base no Nv.100;
   // - pets de Raid/lendários: mantêm até +25%, pois já começam com bases maiores.
