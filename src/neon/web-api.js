@@ -7,7 +7,7 @@ import {
   petStyleLabel, getEquipmentInfo, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
-  setPetTeam, summonLegendaryPet
+  setPetTeam, summonLegendaryPet, getCombatProfile
 } from './db.js'
 import {
   getRaidCatalog, getRaidStatuses, createRaid, joinRaid, cancelRaid, startRaid, raidRound,
@@ -238,11 +238,12 @@ async function groupSnapshot(chatJid){
 async function playerBootstrap(session){
   const jid=session.jid
   const [
-    profile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
     doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar
   ]=await Promise.all([
     getProfile(jid),
+    getCombatProfile(jid),
     getInventory(jid),
     listPets(jid),
     getPetTeam(jid),
@@ -270,7 +271,7 @@ async function playerBootstrap(session){
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
