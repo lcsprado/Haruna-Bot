@@ -404,7 +404,7 @@ function renderSocial(){
   const rel=ui.data.relationship;
   if(!currentGroup()) return '<div class="notice warn">Conecte usando <b>!web</b> dentro do grupo para liberar interações com outros jogadores.</div>';
   return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo, Duelo Pet, roubo, PIX e empréstimo usam os mesmos jogadores ativos do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
-    '<div class="card"><div class="section-title"><h3>Relacionamento</h3><small>'+esc(rel?JSON.stringify(rel):'Nenhum')+'</small></div><div class="hero-actions"><button class="btn" data-relationship-accept>Aceitar proposta</button><button class="btn danger" data-relationship-divorce>Divorciar</button></div></div>'+
+    '<div class="card"><div class="section-title"><h3>Relacionamento</h3><small>'+esc(rel?JSON.stringify(rel):'Nenhum')+'</small></div><div class="hero-actions"><button class="btn danger" data-relationship-divorce>Divorciar</button></div></div>'+
     '<div class="section grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div>'+resultPanel();
 }
 
@@ -487,15 +487,21 @@ function renderEconomy(){
 }
 
 function renderLoans(){
-  const loans=ui.data.loans||{};
-  const rows=[];
-  if(Array.isArray(loans.active)) rows.push.apply(rows,loans.active);
-  else if(loans.active) rows.push(loans.active);
-  return '<div class="page-head"><div><h2>Empréstimos</h2><p>Dados vindos de player_loans.</p></div></div>'+
-    '<div class="card"><pre class="muted" style="white-space:pre-wrap;font:inherit;font-size:10px">'+esc(JSON.stringify(loans,null,2))+'</pre>'+
-    '<div class="hero-actions"><button class="btn good" data-loan-pay="total">Pagar empréstimo ativo</button></div></div>';
+  const loans=ui.data.loans||{}, borrowed=loans.borrowed||[], lent=loans.lent||[], credit=loans.credit||ui.extras&&ui.extras.loanCredit||{};
+  const incoming=borrowed.filter(x=>x.status==='pending');
+  const active=borrowed.filter(x=>x.status==='active');
+  return '<div class="page-head"><div><h2>Empréstimos</h2><p>Propostas, dívida ativa e crédito vêm diretamente de player_loans.</p></div><span class="tag">Limite '+money(credit.creditLimit||credit.limit||0)+'</span></div>'+
+    '<div class="grid stats">'+statCard('CRÉDITO',money(credit.creditLimit||credit.limit||0),'limite calculado')+statCard('PENDENTES',incoming.length,'propostas recebidas')+statCard('ATIVOS',active.length,'dívidas')+statCard('EMPRESTADOS',lent.length,'ofertas suas')+'</div>'+
+    '<div class="section"><div class="section-title"><h3>Propostas recebidas</h3><small>'+incoming.length+'</small></div><div class="grid cards">'+
+      (incoming.length?incoming.map(x=>'<div class="card"><h3>'+money(x.amount)+' de '+esc(x.lender_name||'Jogador')+'</h3><p>Oferta #'+x.id+' • expira conforme a regra do bot.</p><div class="pet-actions"><button class="btn good" data-loan-accept="'+x.id+'">Aceitar</button><button class="btn danger" data-loan-reject="'+x.id+'">Recusar</button></div></div>').join(''):'<div class="empty">Nenhuma proposta pendente.</div>')+
+    '</div></div>'+
+    '<div class="section"><div class="section-title"><h3>Dívidas ativas</h3><small>'+active.length+'</small></div><div class="grid cards">'+
+      (active.length?active.map(x=>'<div class="card"><h3>'+money(x.principal||x.amount)+'</h3><p>Credor: '+esc(x.lender_name||'Jogador')+' • saldo/juros calculados pelo backend.</p><button class="btn good" data-loan-pay="total">Pagar total</button></div>').join(''):'<div class="empty">Nenhuma dívida ativa.</div>')+
+    '</div></div>'+
+    '<div class="section"><div class="section-title"><h3>Ofertas / empréstimos concedidos</h3><small>'+lent.length+'</small></div><div class="list">'+
+      (lent.length?lent.map(x=>'<div class="list-row"><span>'+esc(x.borrower_name||'Jogador')+' • '+esc(x.status)+'</span><strong>'+money(x.amount||x.principal)+'</strong></div>').join(''):'<div class="empty">Nenhum empréstimo concedido.</div>')+
+    '</div></div>'+resultPanel();
 }
-
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
@@ -535,6 +541,8 @@ function bind(){
   document.querySelectorAll('[data-boss-auto]').forEach(x=>x.onclick=toggleBossAuto);
   document.querySelectorAll('[data-business-upgrade]').forEach(x=>x.onclick=()=>doAction('business.upgrade',{id:x.dataset.businessUpgrade},{}));
   document.querySelectorAll('[data-loan-pay]').forEach(x=>x.onclick=()=>doAction('loan.pay',{amount:x.dataset.loanPay},{}));
+  document.querySelectorAll('[data-loan-accept]').forEach(x=>x.onclick=()=>doAction('loan.accept',{id:Number(x.dataset.loanAccept)},{}));
+  document.querySelectorAll('[data-loan-reject]').forEach(x=>x.onclick=()=>doAction('loan.reject',{id:Number(x.dataset.loanReject)},{}));
   document.querySelectorAll('[data-battle]').forEach(x=>x.onclick=()=>doAction('battle',{targetJid:x.dataset.battle},{}));
   document.querySelectorAll('[data-petduel]').forEach(x=>x.onclick=()=>doAction('petduel',{targetJid:x.dataset.petduel},{}));
   document.querySelectorAll('[data-rob]').forEach(x=>x.onclick=()=>doAction('rob',{targetJid:x.dataset.rob},{}));
