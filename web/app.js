@@ -332,9 +332,22 @@ function renderPets(){
   if(ui.petTab==='owned') rows=collection().map(ownedPetCard);
   else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
   else rows=catalogPets().filter(x=>x.source==='raid').map(catalogPetCard);
-  const team=ui.data.petTeam||[];
+  const team=ui.data.petTeam||[], synergy=ui.data.petTeamSynergy||null, pets=collection();
+  const labels=['','Principal','Suporte','Reserva'];
+  const selectedId=slot=>Number((team.find(x=>Number(x.slot)===slot)||{}).id||0);
+  const optionsFor=slot=>{
+    const current=selectedId(slot);
+    return '<option value="">'+(slot===1?'Escolha o principal':'Vazio')+'</option>'+
+      pets.map(p=>'<option value="'+p.id+'" '+(Number(p.id)===current?'selected':'')+'>'+esc(p.name)+' • '+esc(titleCase(p.species))+' • Lv.'+num(p.level)+'</option>').join('');
+  };
+  const synergyBox=synergy
+    ? '<div class="notice good"><strong>'+esc(synergy.label)+'</strong><br>'+esc(synergy.text)+'</div>'
+    : '<div class="notice">Monte 3 espécies diferentes do mesmo estilo para ativar uma sinergia de Time Pet.</div>';
   return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo backend do WhatsApp.</p></div><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div>'+
-    '<div class="card"><div class="section-title"><div><h3>Time Pet</h3><small>1 Principal • 2 Suporte • 3 Reserva</small></div><button class="btn primary" data-pet-team-edit>Editar time</button></div><div class="grid three">'+[1,2,3].map(slot=>{const p=team.find(x=>Number(x.slot)===slot);return '<div class="list-row"><span>'+(['','Principal','Suporte','Reserva'][slot])+'</span><strong>'+(p?esc(p.name)+' #'+p.id:'Vazio')+'</strong></div>';}).join('')+'</div></div>'+
+    '<div class="card"><div class="section-title"><div><h3>Time Pet</h3><small>1 Principal • 2 Suporte • 3 Reserva</small></div><button class="btn primary" data-pet-team-save>Salvar time</button></div>'+
+      '<div class="grid three">'+[1,2,3].map(slot=>'<label class="team-slot"><span>'+labels[slot]+'</span><select data-team-slot="'+slot+'">'+optionsFor(slot)+'</select></label>').join('')+'</div>'+
+      '<div class="section">'+synergyBox+'</div>'+
+    '</div>'+
     '<div class="tabs section">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
     '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">Nenhum pet nesta seção.</div>')+'</div>';
 }
@@ -596,13 +609,12 @@ function bind(){
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
-  document.querySelectorAll('[data-pet-team-edit]').forEach(x=>x.onclick=()=>{
-    const pets=collection();
-    const current=(ui.data.petTeam||[]).sort((a,b)=>Number(a.slot)-Number(b.slot)).map(p=>p.id).join(',');
-    const ids=prompt('IDs do Time Pet na ordem Principal, Suporte, Reserva.\nPets: '+pets.map(p=>p.id+'='+p.name).join(', '),current);
-    if(!ids) return;
-    const petIds=ids.split(',').map(v=>Number(v.trim())).filter(Number.isInteger).slice(0,3);
-    if(petIds.length) doAction('pet.team',{petIds,replaceAll:true},{});
+  document.querySelectorAll('[data-pet-team-save]').forEach(x=>x.onclick=()=>{
+    const selects=[...document.querySelectorAll('[data-team-slot]')].sort((a,b)=>Number(a.dataset.teamSlot)-Number(b.dataset.teamSlot));
+    const petIds=selects.map(s=>Number(s.value||0)).filter(v=>Number.isInteger(v)&&v>0);
+    if(!petIds.length) return toast('Escolha pelo menos o pet Principal.');
+    if(new Set(petIds).size!==petIds.length) return toast('Não use o mesmo pet em dois slots.');
+    doAction('pet.team',{petIds,replaceAll:true},{});
   });
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
   document.querySelectorAll('[data-pet-rename]').forEach(x=>x.onclick=()=>{
