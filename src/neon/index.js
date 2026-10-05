@@ -5705,7 +5705,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         const raids=getRaidCatalog()
         setQuickFlow(chat,sender,'raid_select',{levels:raids.map(r=>r.level)},5*60*1000)
         let text='⚔️ *RAIDS DO RPG*\n\n'
-        raids.forEach((r,i)=>{text+=`*${i+1}️⃣ Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🔑 Chave: R$ ${fmt(r.keyPrice)}\n\n`})
+        raids.forEach((r,i)=>{text+=`*${i+1}️⃣ Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🧩 Drop: *${r.material?.name||'Material de Raid'}*\n🔑 Chave: R$ ${fmt(r.keyPrice)}\n\n`})
         text+='👉 Responda apenas com o *número da Raid*.\n🔑 Chaves: *!loja → Chaves de Raid*\n0️⃣ Sair'
         await reply(text)
         return true
@@ -8697,7 +8697,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
               const alreadyOpen=rooms.some(room=>Number(room.level)===Number(r.level))
               if(alreadyOpen) return
               available++
-              text+=`• *${i+1}.* Lv.${r.level} — ${r.name}\n  🔑 R$ ${fmt(r.keyPrice)} • ⏱️ ${r.durationMinutes} min\n`
+              text+=`• *${i+1}.* Lv.${r.level} — ${r.name}\n  🧩 *${r.material?.name||'Material de Raid'}*\n  🔑 R$ ${fmt(r.keyPrice)} • ⏱️ ${r.durationMinutes} min\n`
             })
             if(!available) text+='Nenhuma — já existe uma sala de cada Raid neste grupo.\n'
             text+='\n👉 *Abrir:* !raid NÚMERO ou !raid NÍVEL\nEx.: *!raid 2* ou *!raid 15*\n'
@@ -8709,7 +8709,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
           await progressDailyMission(sender,'game')
           const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-          await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
+          await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 
         } else if(['entrar','entrarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
