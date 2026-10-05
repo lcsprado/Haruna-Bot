@@ -62,14 +62,44 @@ const tabs = [
 ];
 
 const RAIDS = [
-  {level:10,name:'Guardião de Pedra',icon:'🪨',hp:13000,atk:15,keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,duration:12,minPlayers:1},
-  {level:15,name:'Dragão Vulcânico',icon:'🐲',hp:24000,atk:23,keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,duration:15,minPlayers:2},
-  {level:20,name:'Devorador Abissal',icon:'👁️',hp:39000,atk:33,keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,duration:18,minPlayers:2},
-  {level:25,name:'Titã de Ferro',icon:'🦾',hp:63000,atk:43,keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,duration:22,minPlayers:2},
-  {level:30,name:'Rei Abissal',icon:'👹',hp:98000,atk:55,keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,duration:30,minPlayers:2},
-  {level:40,name:'Serafim Caído',icon:'🪽',hp:170000,atk:77,keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,duration:40,minPlayers:2},
-  {level:50,name:'Alpha Corrompido',icon:'☠️',hp:290000,atk:108,keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,duration:50,minPlayers:2}
+  {level:10,name:'Guardião de Pedra',icon:'🪨',hp:13000,atk:15,keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,duration:12,minPlayers:1,material:{id:'nucleo_pedra',name:'Fragmento do Núcleo de Pedra',icon:'🪨'},box:null,gear:null,gearChance:0},
+  {level:15,name:'Dragão Vulcânico',icon:'🐲',hp:24000,atk:23,keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,duration:15,minPlayers:2,material:{id:'escama_vulcanica',name:'Escama Vulcânica',icon:'🔥'},box:'caixa_sorte',gear:['foice_carmesim','manto_fenix'],gearChance:.015},
+  {level:20,name:'Devorador Abissal',icon:'👁️',hp:39000,atk:33,keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,duration:18,minPlayers:2,material:{id:'olho_abissal',name:'Olho Abissal',icon:'👁️'},box:'caixa_rara',gear:['lanca_solar','couraca_vulcanica'],gearChance:.0175},
+  {level:25,name:'Titã de Ferro',icon:'🦾',hp:63000,atk:43,keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,duration:22,minPlayers:2,material:{id:'nucleo_titan',name:'Núcleo do Titã',icon:'⚙️'},box:'caixa_rara',gear:['garras_vazio','armadura_vazio'],gearChance:.02},
+  {level:30,name:'Rei Abissal',icon:'👹',hp:98000,atk:55,keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,duration:30,minPlayers:2,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal',icon:'🌑'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.025},
+  {level:40,name:'Serafim Caído',icon:'🪽',hp:170000,atk:77,keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,duration:40,minPlayers:2,material:{id:'fragmento_celestial',name:'Fragmento Celestial',icon:'✨'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.008},
+  {level:50,name:'Alpha Corrompido',icon:'☠️',hp:290000,atk:108,keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,duration:50,minPlayers:2,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido',icon:'☠️'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.005}
 ];
+
+const REWARD_ITEMS = {
+  caixa_sorte:{id:'caixa_sorte',name:'Caixa da Sorte',icon:'🎁',rarity:'Comum',category:'special',level:1,stat:'Pode conter dinheiro, EXP ou itens.',price:3000},
+  caixa_rara:{id:'caixa_rara',name:'Caixa Rara',icon:'🎁',rarity:'Raro',category:'special',level:1,stat:'Item garantido no mínimo Incomum.',price:12000},
+  caixa_epica:{id:'caixa_epica',name:'Caixa Épica',icon:'🎁',rarity:'Épico',category:'special',level:1,stat:'Item garantido no mínimo Raro.',price:35000},
+  foice_carmesim:{id:'foice_carmesim',name:'Foice Carmesim',icon:'🪓',rarity:'Épico',category:'weapon',level:1,stat:'+43 ATK',price:72000},
+  manto_fenix:{id:'manto_fenix',name:'Manto da Fênix',icon:'🧥',rarity:'Épico',category:'armor',level:1,stat:'+43 DEF',price:78000},
+  lanca_solar:{id:'lanca_solar',name:'Lança Solar',icon:'🔱',rarity:'Épico',category:'weapon',level:1,stat:'+46 ATK',price:85000},
+  couraca_vulcanica:{id:'couraca_vulcanica',name:'Couraça Vulcânica',icon:'🛡️',rarity:'Épico',category:'armor',level:1,stat:'+46 DEF',price:92000},
+  garras_vazio:{id:'garras_vazio',name:'Garras do Vazio',icon:'🗡️',rarity:'Épico',category:'weapon',level:1,stat:'+51 ATK',price:115000},
+  armadura_vazio:{id:'armadura_vazio',name:'Armadura do Vazio',icon:'🥋',rarity:'Épico',category:'armor',level:1,stat:'+51 DEF',price:125000},
+  espada_eclipse:{id:'espada_eclipse',name:'Espada do Eclipse',icon:'🗡️',rarity:'Épico',category:'weapon',level:1,stat:'+54 ATK',price:132000},
+  armadura_eclipse:{id:'armadura_eclipse',name:'Armadura do Eclipse',icon:'🥋',rarity:'Épico',category:'armor',level:1,stat:'+54 DEF',price:145000},
+  excalibur:{id:'excalibur',name:'Excalibur',icon:'⚔️',rarity:'Lendário',category:'weapon',level:1,stat:'+85 ATK / +2% CRIT',price:0},
+  armadura_titan:{id:'armadura_titan',name:'Armadura do Titã',icon:'🛡️',rarity:'Lendário',category:'armor',level:1,stat:'+85 DEF / +110 HP',price:0},
+  katana_divina:{id:'katana_divina',name:'Katana Divina',icon:'🗡️',rarity:'Lendário',category:'weapon',level:1,stat:'+95 ATK / +3% CRIT',price:0},
+  armadura_divina:{id:'armadura_divina',name:'Armadura Divina',icon:'👑',rarity:'Lendário',category:'armor',level:1,stat:'+95 DEF / +140 HP / +1% CRIT',price:0},
+  colete_vital:{id:'colete_vital',name:'Colete Vital',icon:'🦺',rarity:'Raro',category:'armor',level:1,stat:'+18 DEF / +60 HP',price:0},
+  armadura_colosso:{id:'armadura_colosso',name:'Armadura do Colosso',icon:'🛡️',rarity:'Evento',category:'armor',level:1,stat:'+52 DEF / +140 HP / +4% CRIT',price:0}
+};
+
+const PET_REWARD_BASE={
+  papagaio:{xp:.05},hamster:{drop:.025},coruja:{xp:.08},unicornio:{drop:.04},
+  golfinho_celestial:{xp:.04},polvo_arcano:{drop:.03},baleia_colossal:{xp:.04},
+  golem_ancestral:{drop:.02,raid:true},colosso_cristal:{drop:.04,raid:true},
+  fenix_fogo:{xp:.05,raid:true},corvo_abissal:{drop:.03,raid:true},fenix_gelo:{xp:.06,raid:true},
+  guardiao_obsidiana:{drop:.035,raid:true},tigre_lunar:{drop:.03,raid:true},imperador_abissal:{drop:.04,raid:true},
+  leao_solar:{xp:.05,raid:true},grifo_celestial:{drop:.04,raid:true},fenix_celestial:{xp:.08,raid:true},
+  serpente_cosmica:{drop:.06,xp:.08,raid:true},fenix_alpha:{drop:.07,xp:.08,raid:true}
+};
 
 const SHOP_ITEMS = [
   {id:'pocao_p',name:'Poção Pequena',icon:'🧪',rarity:'Comum',category:'consumable',level:1,stat:'+35 HP',price:700,shopGroup:'Cura'},
@@ -111,6 +141,7 @@ export default function Game(){
   const [autoPetDuel,setAutoPetDuel]=useState(false);
   const [mobileMenu,setMobileMenu]=useState(false);
   const [duelBattle,setDuelBattle]=useState({player:null,pet:null});
+  const [rewardReveal,setRewardReveal]=useState(null);
   const [combatFx,setCombatFx]=useState({
     raidHit:false,raidDamage:null,raidCrit:false,
     bossHit:false,bossDamage:null,bossCrit:false,playerHit:false,
@@ -163,11 +194,125 @@ export default function Game(){
     return '';
   }
 
+  function rarityScore(rarity=''){
+    const r=String(rarity).toLowerCase();
+    if(r.includes('lend')) return 5;
+    if(r.includes('evento')) return 4;
+    if(r.includes('ép')||r.includes('ep')) return 3;
+    if(r.includes('raro')) return 2;
+    if(r.includes('incomum')) return 1;
+    return 0;
+  }
+
+  function rewardTone(rewards=[]){
+    const best=rewards.reduce((a,r)=>rarityScore(r.rarity)>rarityScore(a.rarity)?r:a,{rarity:'Comum'});
+    const s=rarityScore(best.rarity);
+    return s>=5?'legendary':String(best.rarity||'').toLowerCase().includes('evento')?'event':s>=3?'epic':s>=2?'rare':'common';
+  }
+
+  function showRewards(source,title,rewards,subtitle='Recompensas recebidas'){
+    const clean=(rewards||[]).filter(Boolean);
+    const tone=rewardTone(clean);
+    setRewardReveal({id:Date.now(),source,title,subtitle,rewards:clean,tone});
+    if(tone==='legendary'&&typeof navigator!=='undefined'&&navigator.vibrate){
+      navigator.vibrate([90,45,130,45,180]);
+    }
+  }
+
+  function addInventory(inv,item,qty=1){
+    if(!item||qty<=0) return inv;
+    const found=inv.find(x=>x.id===item.id);
+    if(found) return inv.map(x=>x.id===item.id?{...x,qty:Number(x.qty||0)+qty}:x);
+    return [...inv,{...item,qty}];
+  }
+
+  function petRewardBonus(pet){
+    const base=PET_REWARD_BASE[pet?.species]||{};
+    const raid=Boolean(base.raid);
+    const maxGrowth=raid?.25:.50;
+    const scale=1+Math.min(maxGrowth,Math.max(0,Number(pet?.level||1)-1)*(maxGrowth/99));
+    const cap=raid?.15:.10;
+    const scaled=k=>Math.min(cap,Number(base[k]||0)*scale);
+    return {xp:scaled('xp'),drop:scaled('drop')};
+  }
+
+  function grantLocalPetTeamXp(pets,team,baseGain){
+    const weights=[1,.60,.35];
+    const ids=team||[];
+    return pets.map(pet=>{
+      const slot=ids.indexOf(pet.id);
+      if(slot<0) return pet;
+      const gain=Math.max(1,Math.floor(baseGain*weights[slot]));
+      const oldXp=Number(pet.xp ?? Math.max(0,(Number(pet.level||1)-1)*100));
+      const rawXp=oldXp+gain;
+      const level=Math.min(100,1+Math.floor(rawXp/100));
+      return {...pet,xp:level>=100?9900:rawXp,level};
+    });
+  }
+
+  function buildRaidRewards(cfg,petUsed){
+    const pb=petRewardBonus(activePet);
+    const share=1;
+    const cash=Math.max(250,Math.floor(cfg.keyPrice*1.08)+Math.floor(cfg.cashPool*(.04+.12*share)));
+    const exp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))));
+    const petXp=petUsed?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0;
+    const rewards=[
+      {type:'cash',name:'Dinheiro',icon:'🪙',value:'R$ '+fmt(cash),amount:cash,rarity:'Comum'},
+      {type:'xp',name:'Experiência',icon:'✨',value:'+'+fmt(exp)+' XP',amount:exp,rarity:'Comum'}
+    ];
+    if(petXp) rewards.push({type:'petxp',name:'XP de Pet',icon:'🐾',value:'+'+fmt(petXp)+' XP',amount:petXp,rarity:'Incomum'});
+
+    const materialQty=cfg.level===10?3:2;
+    rewards.push({type:'item',id:cfg.material.id,name:cfg.material.name,icon:cfg.material.icon,value:'+'+materialQty,qty:materialQty,rarity:'Incomum',inventoryItem:{id:cfg.material.id,name:cfg.material.name,icon:cfg.material.icon,rarity:'Incomum',category:'special',level:1,stat:'Material de invocação de Raid',price:0}});
+
+    if(cfg.box){
+      const boxChance=cfg.level>=30?Math.min(.65,.55+Number(pb.drop||0)*.50):.35;
+      if(Math.random()<boxChance){
+        const box=REWARD_ITEMS[cfg.box];
+        rewards.push({type:'item',id:box.id,name:box.name,icon:box.icon,value:'+1',qty:1,rarity:box.rarity,inventoryItem:box});
+      }
+    }
+
+    if(Array.isArray(cfg.gear)&&cfg.gear.length){
+      const rankBonus=cfg.level>=40?.003:.005;
+      const collaborationBonus=.004;
+      const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10);
+      const chance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus);
+      if(Math.random()<chance){
+        const gearId=cfg.gear[Math.floor(Math.random()*cfg.gear.length)];
+        const gear=REWARD_ITEMS[gearId];
+        if(gear) rewards.push({type:'item',id:gear.id,name:gear.name,icon:gear.icon,value:'+1',qty:1,rarity:gear.rarity,detail:gear.stat,inventoryItem:gear});
+      }
+    }
+    return {cash,exp,petXp,rewards};
+  }
+
+  function buildSiegeRewards(){
+    const pb=petRewardBonus(activePet);
+    const cash=28000;
+    const exp=Math.round(Math.floor((700+3500+900)*(1+Number(pb.xp||0))));
+    const petXp=Math.round(180+700+180);
+    const rewards=[
+      {type:'cash',name:'Dinheiro',icon:'🪙',value:'R$ '+fmt(cash),amount:cash,rarity:'Comum'},
+      {type:'xp',name:'Experiência',icon:'✨',value:'+'+fmt(exp)+' XP',amount:exp,rarity:'Comum'},
+      {type:'petxp',name:'XP de Pet',icon:'🐾',value:'+'+fmt(petXp)+' XP',amount:petXp,rarity:'Incomum'}
+    ];
+    if(game.boss.myDamage>=1500&&Math.random()<.35){
+      const item=REWARD_ITEMS.colete_vital;
+      rewards.push({type:'item',id:item.id,name:item.name,icon:item.icon,value:'+1',qty:1,rarity:item.rarity,detail:item.stat,inventoryItem:item});
+    }
+    const eventItem=REWARD_ITEMS.armadura_colosso;
+    rewards.push({type:'item',id:eventItem.id,name:eventItem.name,icon:eventItem.icon,value:'+1',qty:1,rarity:eventItem.rarity,detail:eventItem.stat,inventoryItem:eventItem});
+    const box=REWARD_ITEMS.caixa_rara;
+    rewards.push({type:'item',id:box.id,name:'Caixa Rara — Cerco',icon:box.icon,value:'+1',qty:1,rarity:box.rarity,inventoryItem:box});
+    return {cash,exp,petXp,rewards};
+  }
+
   function selectRaid(level){
     setAutoRaid(false);
     const raid=RAIDS.find(x=>x.level===level);
     if(!raid) return;
-    setGame(g=>({...g,raid:{level:raid.level,name:raid.name,icon:raid.icon,hp:raid.hp,maxHp:raid.hp,atk:raid.atk,myDamage:0,started:false}}));
+    setGame(g=>({...g,raid:{level:raid.level,name:raid.name,icon:raid.icon,hp:raid.hp,maxHp:raid.hp,atk:raid.atk,myDamage:0,started:false,petTurns:0}}));
     notify('Raid Lv.'+level+' selecionada.');
   }
 
@@ -185,46 +330,45 @@ export default function Game(){
       return;
     }
 
+    const cfg=RAIDS.find(x=>x.level===game.raid.level)||RAIDS[0];
     const petActive=Boolean(usePet&&activePet.energy>=2&&activePet.hp>0);
     const crit=Math.random()<p.crit/100;
     const dmg=Math.round(p.atk*(7.5+Math.random()*3)*(petActive?1.075:1)*(crit?1.85:1));
+    const willWin=game.raid.hp-dmg<=0;
+    const petUsed=Number(game.raid.petTurns||0)+(petActive?1:0)>0;
+    const rewardPack=willWin?buildRaidRewards(cfg,petUsed):null;
 
-    fx(
-      {raidHit:true,raidDamage:dmg,raidCrit:crit},
-      {raidHit:false,raidDamage:null,raidCrit:false},
-      620
-    );
+    fx({raidHit:true,raidDamage:dmg,raidCrit:crit},{raidHit:false,raidDamage:null,raidCrit:false},620);
 
     setGame(g=>{
       const nextHp=Math.max(0,g.raid.hp-dmg);
+      let inventory=g.raid.started ? g.inventory : g.inventory.map(i=>i.id===('raid'+g.raid.level)?{...i,qty:Math.max(0,i.qty-1)}:i);
+      let pets=petActive?g.pets.map(x=>x.id===g.petTeam[0]?{...x,energy:Math.max(0,x.energy-2)}:x):g.pets;
       let out={
         ...g,
-        raid:{...g.raid,hp:nextHp,myDamage:g.raid.myDamage+dmg,started:true},
-        inventory:g.raid.started ? g.inventory : g.inventory.map(i=>i.id===('raid'+g.raid.level)?{...i,qty:Math.max(0,i.qty-1)}:i),
-        pets:petActive
-          ? g.pets.map(x=>x.id===g.petTeam[0]?{...x,energy:Math.max(0,x.energy-2)}:x)
-          : g.pets,
+        raid:{...g.raid,hp:nextHp,myDamage:g.raid.myDamage+dmg,started:true,petTurns:Number(g.raid.petTurns||0)+(petActive?1:0)},
+        inventory,
+        pets,
         missions:g.missions.map(m=>m.id===2?{...m,progress:Math.min(m.target,m.progress+dmg)}:m)
       };
 
-      if(nextHp===0){
-        const reward=RAIDS.find(x=>x.level===g.raid.level)||RAIDS[0];
-        const contributionShare=1;
-        const cash=Math.floor(reward.keyPrice*1.08)+Math.floor(reward.cashPool*(.04+.12*contributionShare));
-        const exp=Math.floor(reward.xpPool*(.10+.90*contributionShare));
-        out.profile={...out.profile,cash:out.profile.cash+cash,xp:out.profile.xp+exp};
+      if(nextHp===0&&rewardPack){
+        for(const r of rewardPack.rewards){
+          if(r.inventoryItem) out.inventory=addInventory(out.inventory,r.inventoryItem,Number(r.qty||1));
+        }
+        out.profile={...out.profile,cash:out.profile.cash+rewardPack.cash,xp:out.profile.xp+rewardPack.exp};
+        if(rewardPack.petXp) out.pets=grantLocalPetTeamXp(out.pets,out.petTeam,rewardPack.petXp);
         out.missions=out.missions.map(m=>m.id===3?{...m,progress:1}:m);
-        window.setTimeout(()=>setAutoRaid(false),0);
-        return withLog(out,'🏆 Raid Lv.'+g.raid.level+' concluída: +R$ '+fmt(cash)+' e +'+fmt(exp)+' XP.');
+        return withLog(out,'🏆 Raid Lv.'+g.raid.level+' concluída — recompensas recebidas.');
       }
-
-      return withLog(
-        out,
-        (crit?'💥 CRÍTICO! ':'⚔️ ')+fmt(dmg)+' de dano na Raid'+(usePet?'':' · sem pet')+'.'
-      );
+      return withLog(out,(crit?'💥 CRÍTICO! ':'⚔️ ')+fmt(dmg)+' de dano na Raid'+(usePet?'':' · sem pet')+'.');
     });
 
-    if(!silent) notify((crit?'CRÍTICO — ':'')+fmt(dmg)+' de dano');
+    if(willWin&&rewardPack){
+      setAutoRaid(false);
+      window.setTimeout(()=>showRewards('raid','RECOMPENSAS DA RAID',rewardPack.rewards,'Raid Lv.'+cfg.level+' · '+cfg.name+' derrotado'),180);
+    }
+    if(!silent&&!willWin) notify((crit?'CRÍTICO — ':'')+fmt(dmg)+' de dano');
   }
 
   function attackBoss(usePet=true,silent=false){
@@ -321,8 +465,17 @@ export default function Game(){
         boss:{...g.boss,hp:nextBossHp,myDamage:g.boss.myDamage+dmg}
       };
       if(nextBossHp===0){
-        out.profile={...out.profile,cash:out.profile.cash+24000,xp:out.profile.xp+600};
-        return withLog(out,'🏆 Boss derrotado: +R$ 24.000 e +600 XP.');
+        const rewardPack=buildSiegeRewards();
+        for(const r of rewardPack.rewards){
+          if(r.inventoryItem) out.inventory=addInventory(out.inventory,r.inventoryItem,Number(r.qty||1));
+        }
+        out.profile={...out.profile,cash:out.profile.cash+rewardPack.cash,xp:out.profile.xp+rewardPack.exp};
+        out.pets=grantLocalPetTeamXp(out.pets,out.petTeam,rewardPack.petXp);
+        window.setTimeout(()=>{
+          setAutoBoss(false);
+          showRewards('boss','RECOMPENSAS DO BOSS',rewardPack.rewards,'Colosso do Cerco derrotado');
+        },180);
+        return withLog(out,'🏆 Colosso do Cerco derrotado — recompensas recebidas.');
       }
       return withLog(out,(crit?'💥 CRÍTICO! ':'🗿 ')+fmt(dmg)+' de dano no Boss'+(usePet?'':' · sem pet')+playerEvent+petEvent+'.');
     });
@@ -377,6 +530,9 @@ export default function Game(){
         pets:pet?g.pets.map(x=>x.id===g.petTeam[0]?{...x,energy:Math.max(0,x.energy-2)}:x):g.pets
       },(pet?'🐾':'⚔️')+' Vitória no '+(pet?'Duelo Pet':'Duelo')+'. +'+xp+' XP.'));
       if(pet) setAutoPetDuel(false); else setAutoDuel(false);
+      window.setTimeout(()=>showRewards(pet?'petduel':'duel',pet?'VITÓRIA NO DUELO PET':'VITÓRIA NO DUELO',[
+        {type:'xp',name:'Experiência',icon:'✨',value:'+'+fmt(xp)+' XP',amount:xp,rarity:'Comum'}
+      ],pet?'Seu pet venceu o confronto':'Você venceu o confronto'),140);
       if(!silent) notify('Vitória! +'+xp+' XP');
       return;
     }
@@ -493,6 +649,9 @@ export default function Game(){
     const tax=Math.round(gross*.10);
     const net=gross-tax;
     setGame(g=>withLog({...g,profile:{...g.profile,cash:g.profile.cash+net},businesses:g.businesses.map(b=>({...b,stored:0}))},'🏢 Negócios: R$ '+fmt(net)+' líquidos. TAXADE te pegou: -R$ '+fmt(tax)+'.'));
+    window.setTimeout(()=>showRewards('business','NEGÓCIOS COLETADOS',[
+      {type:'cash',name:'Dinheiro líquido',icon:'🪙',value:'R$ '+fmt(net),amount:net,rarity:'Comum'}
+    ],'TAXADE te pegou: -R$ '+fmt(tax)),100);
     notify('Coletado R$ '+fmt(net));
   }
 
@@ -507,6 +666,10 @@ export default function Game(){
       missions:g.missions.map(m=>m.id===1?{...m,progress:Math.min(m.target,m.progress+1)}:m),
       businesses:g.businesses.map(b=>({...b,stored:b.stored+Math.round(b.rate*.12)}))
     },'🛵 '+kind+': R$ '+fmt(net)+' líquido. TAXADE: -R$ '+fmt(tax)+'.'));
+    window.setTimeout(()=>showRewards('work',kind.toUpperCase(),[
+      {type:'cash',name:'Dinheiro líquido',icon:'🪙',value:'R$ '+fmt(net),amount:net,rarity:'Comum'},
+      {type:'xp',name:'Experiência',icon:'✨',value:'+25 XP',amount:25,rarity:'Comum'}
+    ],'TAXADE te pegou: -R$ '+fmt(tax)),100);
     notify(kind+': +R$ '+fmt(net));
   }
 
@@ -565,6 +728,12 @@ export default function Game(){
       if(m.id===3) pets=pets.map(x=>x.id===g.petTeam[0]?{...x,level:Math.min(100,x.level+1)}:x);
       return withLog({...g,profile,inventory,pets,missions:g.missions.map(x=>x.id===m.id?{...x,claimed:true}:x)},'📜 Missão resgatada: '+m.title+'.');
     });
+    const missionRewards=m.id===1
+      ? [{type:'cash',name:'Dinheiro',icon:'🪙',value:'R$ 2.500',amount:2500,rarity:'Comum'},{type:'xp',name:'Experiência',icon:'✨',value:'+80 XP',amount:80,rarity:'Comum'}]
+      : m.id===2
+        ? [{type:'item',name:'Caixa Rara',icon:'🎁',value:'+1',qty:1,rarity:'Raro'}]
+        : [{type:'petxp',name:'XP de Pet',icon:'🐾',value:'+150 XP',amount:150,rarity:'Incomum'}];
+    window.setTimeout(()=>showRewards('mission','MISSÃO CONCLUÍDA',missionRewards,m.title),100);
     notify('Recompensa resgatada.');
   }
 
@@ -573,6 +742,36 @@ export default function Game(){
     localStorage.removeItem('alpha-web-rpg-v1');
     setGame(INITIAL);setTab('home');notify('Protótipo resetado.');
   }
+
+  const RewardOverlay=()=>{
+    if(!rewardReveal) return null;
+    const legendary=rewardReveal.tone==='legendary';
+    return <div className={'reward-overlay '+rewardReveal.tone} role="dialog" aria-modal="true">
+      <div className="reward-backdrop"/>
+      <div className={'reward-modal '+rewardReveal.tone}>
+        <div className={'reward-burst '+rewardReveal.tone}/>
+        <button className="reward-close" onClick={()=>setRewardReveal(null)} aria-label="Fechar">✕</button>
+        <div className={'reward-hero '+(legendary?'legendary-art':'raid-art')}>
+          <div className="reward-hero-glow"/>
+          {!legendary&&<div className="reward-chest-fallback">🎁</div>}
+        </div>
+        {legendary&&<div className="legendary-label">👑 LENDÁRIO!</div>}
+        <div className="reward-kicker">{rewardReveal.source==='raid'?'VITÓRIA NA RAID':rewardReveal.source==='boss'?'BOSS DERROTADO':'RECOMPENSA'}</div>
+        <h2>{rewardReveal.title}</h2>
+        <p>{rewardReveal.subtitle}</p>
+        <div className="reward-grid">
+          {rewardReveal.rewards.map((r,i)=><div key={(r.id||r.type||r.name)+'-'+i} className={'reward-card '+rarityClass(r.rarity)}>
+            <div className="reward-icon">{r.icon||'🎁'}</div>
+            <small>{r.name}</small>
+            <strong>{r.value}</strong>
+            {r.detail&&<span>{r.detail}</span>}
+            {r.rarity&&rarityScore(r.rarity)>0&&<em>{r.rarity}</em>}
+          </div>)}
+        </div>
+        <Button onClick={()=>setRewardReveal(null)} kind={legendary?'legendary':'auto'}>{legendary?'✨ CONTINUAR':'📦 CONTINUAR'}</Button>
+      </div>
+    </div>;
+  };
 
   const Home=()=> <div className="stack">
     <Card className="hero">
@@ -807,8 +1006,9 @@ export default function Game(){
 
   const goTab=id=>{setTab(id);setMobileMenu(false)};
 
-  return <main>
+  return <main className={rewardReveal?.tone==='legendary'?'legendary-screen-shake':''}>
     {toast&&<div className="toast">{toast}</div>}
+    <RewardOverlay/>
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark">A</div><div><strong>ALPHA</strong><small>RPG WEB</small></div></div>
       <nav>{tabs.map(([id,icon,label])=><button key={id} className={tab===id?'active':''} onClick={()=>goTab(id)}><span>{icon}</span>{label}</button>)}</nav>
