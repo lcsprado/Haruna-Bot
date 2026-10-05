@@ -84,6 +84,8 @@ export default function Game(){
   const [loaded,setLoaded]=useState(false);
   const [toast,setToast]=useState('');
   const [bankAmount,setBankAmount]=useState(10000);
+  const [autoRaid,setAutoRaid]=useState(false);
+  const [raidUsePet,setRaidUsePet]=useState(true);
   const [autoBoss,setAutoBoss]=useState(false);
   const [bossUsePet,setBossUsePet]=useState(true);
   const [autoDuel,setAutoDuel]=useState(false);
@@ -91,6 +93,7 @@ export default function Game(){
   const [mobileMenu,setMobileMenu]=useState(false);
   const [duelBattle,setDuelBattle]=useState({player:null,pet:null});
   const [combatFx,setCombatFx]=useState({
+    raidHit:false,raidDamage:null,raidCrit:false,
     bossHit:false,bossDamage:null,bossCrit:false,playerHit:false,
     duelEnemyHit:false,duelPlayerHit:false,duelDamage:null,duelReceived:null,
     healText:null,equipSlot:null
@@ -142,30 +145,49 @@ export default function Game(){
   }
 
   function selectRaid(level){
+    setAutoRaid(false);
     const raid=RAIDS.find(x=>x.level===level);
     if(!raid) return;
     setGame(g=>({...g,raid:{level:raid.level,name:raid.name,icon:raid.icon,hp:raid.hp,maxHp:raid.hp,atk:raid.atk,myDamage:0,started:false}}));
     notify('Raid Lv.'+level+' selecionada.');
   }
 
-  function attackRaid(){
-    if(game.raid.hp<=0) return notify('A Raid já foi concluída.');
+  function attackRaid(usePet=true,silent=false){
+    if(game.raid.hp<=0){
+      setAutoRaid(false);
+      if(!silent) notify('A Raid já foi concluída.');
+      return;
+    }
     const keyId='raid'+game.raid.level;
     const key=game.inventory.find(i=>i.id===keyId);
-    if(!game.raid.started && (!key || key.qty<1)) return notify('Você não possui a chave desta Raid.');
+    if(!game.raid.started && (!key || key.qty<1)){
+      setAutoRaid(false);
+      if(!silent) notify('Você não possui a chave desta Raid.');
+      return;
+    }
+
+    const petActive=Boolean(usePet&&activePet.energy>=2&&activePet.hp>0);
     const crit=Math.random()<p.crit/100;
-    const petActive=activePet.energy>0 && activePet.hp>0;
     const dmg=Math.round(p.atk*(7.5+Math.random()*3)*(petActive?1.075:1)*(crit?1.85:1));
-    fx({bossHit:true,bossDamage:dmg,bossCrit:crit},{bossHit:false,bossDamage:null,bossCrit:false},620);
+
+    fx(
+      {raidHit:true,raidDamage:dmg,raidCrit:crit},
+      {raidHit:false,raidDamage:null,raidCrit:false},
+      620
+    );
+
     setGame(g=>{
       const nextHp=Math.max(0,g.raid.hp-dmg);
       let out={
         ...g,
         raid:{...g.raid,hp:nextHp,myDamage:g.raid.myDamage+dmg,started:true},
         inventory:g.raid.started ? g.inventory : g.inventory.map(i=>i.id===('raid'+g.raid.level)?{...i,qty:Math.max(0,i.qty-1)}:i),
-        pets:g.pets.map(x=>x.id===g.petTeam[0]&&x.energy>0?{...x,energy:Math.max(0,x.energy-2)}:x),
+        pets:petActive
+          ? g.pets.map(x=>x.id===g.petTeam[0]?{...x,energy:Math.max(0,x.energy-2)}:x)
+          : g.pets,
         missions:g.missions.map(m=>m.id===2?{...m,progress:Math.min(m.target,m.progress+dmg)}:m)
       };
+
       if(nextHp===0){
         const reward=RAIDS.find(x=>x.level===g.raid.level)||RAIDS[0];
         const contributionShare=1;
@@ -173,11 +195,17 @@ export default function Game(){
         const exp=Math.floor(reward.xpPool*(.10+.90*contributionShare));
         out.profile={...out.profile,cash:out.profile.cash+cash,xp:out.profile.xp+exp};
         out.missions=out.missions.map(m=>m.id===3?{...m,progress:1}:m);
+        window.setTimeout(()=>setAutoRaid(false),0);
         return withLog(out,'🏆 Raid Lv.'+g.raid.level+' concluída: +R$ '+fmt(cash)+' e +'+fmt(exp)+' XP.');
       }
-      return withLog(out,(crit?'💥 CRÍTICO! ':'⚔️ ')+fmt(dmg)+' de dano na Raid.');
+
+      return withLog(
+        out,
+        (crit?'💥 CRÍTICO! ':'⚔️ ')+fmt(dmg)+' de dano na Raid'+(usePet?'':' · sem pet')+'.'
+      );
     });
-    notify((crit?'CRÍTICO — ':'')+fmt(dmg)+' de dano');
+
+    if(!silent) notify((crit?'CRÍTICO — ':'')+fmt(dmg)+' de dano');
   }
 
   function attackBoss(usePet=true,silent=false){
@@ -515,12 +543,37 @@ export default function Game(){
   </div>;
 
   const Raid=()=> <div className="stack">
-    <Card className="battle-card"><div className="combat-visual"><div className={'monster '+(combatFx.bossHit?'hit-shake':'')}>{game.raid.icon}</div>{combatFx.bossDamage&&<div className={'float-number damage '+(combatFx.bossCrit?'crit':'')}>-{fmt(combatFx.bossDamage)}{combatFx.bossCrit?' CRÍTICO!':''}</div>}</div><div className="eyebrow">RAID LV.{game.raid.level}</div><h2>{game.raid.name}</h2>
-      <div className="hp-line"><b>{fmt(game.raid.hp)} / {fmt(game.raid.maxHp)} HP</b><span>{Math.round(pct(game.raid.hp,game.raid.maxHp))}%</span></div><Bar value={game.raid.hp} max={game.raid.maxHp}/>
-      <div className="battle-info"><span>Seu dano: <b>{fmt(game.raid.myDamage)}</b></span><span>Pet: <b>{activePet.icon} {activePet.name}</b></span><span>Energia: <b>{activePet.energy}/{activePet.maxEnergy}</b></span></div>
-      <Button onClick={attackRaid} disabled={game.raid.hp<=0}>⚔️ ATACAR</Button>
+    <Card className="battle-card">
+      <div className="combat-badge">{autoRaid?'AUTO ATIVO':'MANUAL'}</div>
+      <div className="combat-visual">
+        <div className={'monster '+(combatFx.raidHit?'hit-shake':'')}>{game.raid.icon}</div>
+        {combatFx.raidDamage&&<div className={'float-number damage '+(combatFx.raidCrit?'crit':'')}>
+          -{fmt(combatFx.raidDamage)}{combatFx.raidCrit?' CRÍTICO!':''}
+        </div>}
+      </div>
+      <div className="eyebrow">RAID LV.{game.raid.level}</div>
+      <h2>{game.raid.name}</h2>
+      <div className="hp-line"><b>{fmt(game.raid.hp)} / {fmt(game.raid.maxHp)} HP</b><span>{Math.round(pct(game.raid.hp,game.raid.maxHp))}%</span></div>
+      <Bar value={game.raid.hp} max={game.raid.maxHp}/>
+      <div className="battle-info">
+        <span>Seu dano: <b>{fmt(game.raid.myDamage)}</b></span>
+        <span>Pet: <b>{activePet.icon} {activePet.name}</b></span>
+        <span>Energia: <b>{activePet.energy}/{activePet.maxEnergy}</b></span>
+      </div>
+      <div className="button-row combat-actions">
+        <Button onClick={()=>attackRaid(true)} disabled={game.raid.hp<=0||autoRaid}>⚔️ Atacar com pet</Button>
+        <Button onClick={()=>attackRaid(false)} kind="secondary" disabled={game.raid.hp<=0||autoRaid}>🗡️ Atacar sem pet</Button>
+        {!autoRaid&&<Button onClick={()=>{setRaidUsePet(true);setAutoRaid(true)}} kind="auto">▶ Auto com pet</Button>}
+        {!autoRaid&&<Button onClick={()=>{setRaidUsePet(false);setAutoRaid(true)}} kind="auto">▶ Auto sem pet</Button>}
+        {autoRaid&&<Button onClick={()=>setAutoRaid(false)} kind="danger">⏹ Parar Auto</Button>}
+      </div>
+      <p className="hint">O Auto da Raid continua mesmo se você abrir outra tela e para sozinho quando a Raid termina ou a chave não está disponível.</p>
     </Card>
-    <Card><div className="card-head"><h3>Raids disponíveis</h3><span>A chave é consumida no primeiro ataque</span></div><div className="raid-levels">{RAIDS.map(r=><button onClick={()=>selectRaid(r.level)} className={r.level===game.raid.level?'active':''} key={r.level}><b>Lv.{r.level}</b><small>{r.name}</small><small>{fmt(r.hp)} HP · {r.duration} min</small></button>)}</div></Card>
+
+    <Card>
+      <div className="card-head"><h3>Raids disponíveis</h3><span>A chave é consumida no primeiro ataque</span></div>
+      <div className="raid-levels">{RAIDS.map(r=><button onClick={()=>selectRaid(r.level)} className={r.level===game.raid.level?'active':''} key={r.level}><b>Lv.{r.level}</b><small>{r.name}</small><small>{fmt(r.hp)} HP · {r.duration} min</small></button>)}</div>
+    </Card>
   </div>;
 
   const Boss=()=> <div className="combat-page">
@@ -615,6 +668,25 @@ export default function Game(){
   const Market=()=> <div className="stack">{game.market.map(m=><Card key={m.id} className={m.bought?'disabled-card':''}><div className="item-top"><div className="item-icon">{m.icon}</div><div><h3>{m.item}</h3><span>Vendedor: {m.seller}</span></div></div><div className="money-row"><div><small>Preço</small><strong>R$ {fmt(m.price)}</strong></div><div><small>Expira em</small><strong>{m.left}</strong></div></div><Button onClick={()=>buyMarket(m)} disabled={m.bought}>{m.bought?'Comprado':'Comprar'}</Button></Card>)}</div>;
 
   const Missions=()=> <div className="stack">{game.missions.map(m=><Card key={m.id}><div className="card-head"><h3>{m.title}</h3><span>{Math.min(m.progress,m.target)}/{m.target}</span></div><Bar value={m.progress} max={m.target} tone="xp"/><p className="hint">Recompensa: {m.reward}</p><Button onClick={()=>claimMission(m)} disabled={m.claimed||m.progress<m.target}>{m.claimed?'Resgatada':m.progress>=m.target?'Resgatar':'Em progresso'}</Button></Card>)}</div>;
+
+  useEffect(()=>{
+    if(!autoRaid) return;
+    if(game.raid.hp<=0){
+      setAutoRaid(false);
+      return;
+    }
+    const key=game.inventory.find(i=>i.id===('raid'+game.raid.level));
+    if(!game.raid.started&&Number(key?.qty||0)<1){
+      setAutoRaid(false);
+      notify('Auto da Raid parado: sem chave.');
+      return;
+    }
+    const timer=setTimeout(()=>attackRaid(raidUsePet,true),950);
+    return ()=>clearTimeout(timer);
+  },[
+    autoRaid,raidUsePet,game.raid.hp,game.raid.started,game.raid.level,
+    activePet.energy,activePet.hp
+  ]);
 
   useEffect(()=>{
     if(!autoBoss) return;
