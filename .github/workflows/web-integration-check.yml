@@ -1,0 +1,28 @@
+name: Web integration checks
+
+on:
+  pull_request:
+    branches: [neon-migration]
+  push:
+    branches: [web-integration-v1]
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check backend entrypoints
+        run: |
+          node --check src/neon/game-catalog.js
+          node --check src/neon/web-api.js
+          node --check src/neon/render.js
+          node --check src/neon/db.js
+          node --check src/neon/games.js
+          node --check src/neon/index.js
+      - name: Check Web client
+        run: node --check web/app.js
