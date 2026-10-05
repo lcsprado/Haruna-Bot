@@ -71,6 +71,25 @@ const RAIDS = [
   {level:50,name:'Alpha Corrompido',icon:'☠️',hp:290000,atk:108,keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,duration:50,minPlayers:2}
 ];
 
+const SHOP_ITEMS = [
+  {id:'pocao_p',name:'Poção Pequena',icon:'🧪',rarity:'Comum',category:'consumable',level:1,stat:'+35 HP',price:700,shopGroup:'Cura'},
+  {id:'pocao_m',name:'Poção Média',icon:'🧪',rarity:'Incomum',category:'consumable',level:1,stat:'+80 HP',price:1800,shopGroup:'Cura'},
+  {id:'pocao_g',name:'Poção Grande',icon:'🧪',rarity:'Raro',category:'consumable',level:1,stat:'+160 HP',price:4200,shopGroup:'Cura'},
+  {id:'pocao_pet_comum',name:'Poção de Pet Comum',icon:'💙',rarity:'Comum',category:'consumable',level:1,stat:'+60 HP Pet',price:900,shopGroup:'Pet'},
+  {id:'pocao_pet_rara',name:'Poção de Pet Rara',icon:'💙',rarity:'Raro',category:'consumable',level:1,stat:'+160 HP Pet',price:2400,shopGroup:'Pet'},
+  {id:'pocao_pet_epica',name:'Poção de Pet Épica',icon:'💜',rarity:'Épico',category:'consumable',level:1,stat:'+320 HP Pet',price:6000,shopGroup:'Pet'},
+  {id:'raid10',name:'Chave de Raid Lv.10',icon:'🗝️',rarity:'Incomum',category:'special',level:1,stat:'Abre Raid Lv.10',price:10000,shopGroup:'Raid'},
+  {id:'raid15',name:'Chave de Raid Lv.15',icon:'🗝️',rarity:'Incomum',category:'special',level:1,stat:'Abre Raid Lv.15',price:16000,shopGroup:'Raid'},
+  {id:'raid20',name:'Chave de Raid Lv.20',icon:'🗝️',rarity:'Raro',category:'special',level:1,stat:'Abre Raid Lv.20',price:25000,shopGroup:'Raid'},
+  {id:'raid25',name:'Chave de Raid Lv.25',icon:'🗝️',rarity:'Raro',category:'special',level:1,stat:'Abre Raid Lv.25',price:40000,shopGroup:'Raid'},
+  {id:'raid30',name:'Chave de Raid Lv.30',icon:'🗝️',rarity:'Épico',category:'special',level:1,stat:'Abre Raid Lv.30',price:60000,shopGroup:'Raid'},
+  {id:'raid40',name:'Chave de Raid Lv.40',icon:'🗝️',rarity:'Épico',category:'special',level:1,stat:'Abre Raid Lv.40',price:100000,shopGroup:'Raid'},
+  {id:'raid50',name:'Chave de Raid Lv.50',icon:'🗝️',rarity:'Lendário',category:'special',level:1,stat:'Abre Raid Lv.50',price:160000,shopGroup:'Raid'},
+  {id:'espada_ferro_loja',name:'Espada de Ferro',icon:'⚔️',rarity:'Incomum',category:'weapon',level:1,stat:'+24 ATK',price:12000,shopGroup:'Equipamento'},
+  {id:'armadura_aco_loja',name:'Armadura de Aço',icon:'🛡️',rarity:'Raro',category:'armor',level:1,stat:'+30 DEF',price:18000,shopGroup:'Equipamento'},
+  {id:'botas_agilidade_loja',name:'Botas da Agilidade',icon:'🥾',rarity:'Raro',category:'boots',level:1,stat:'+8 SPD',price:15000,shopGroup:'Equipamento'}
+];
+
 function Bar({value,max,tone='hp'}) {
   return <div className={'bar '+tone}><span style={{width:pct(value,max)+'%'}} /></div>;
 }
@@ -389,13 +408,21 @@ export default function Game(){
     if(!silent) notify(last);
   }
 
-  function usePotion(){
-    const item=game.inventory.find(i=>i.id==='pocao_p');
-    if(!item?.qty) return notify('Sem Poção Pequena.');
+  function usePlayerPotion(item){
+    const heals={pocao_p:35,pocao_m:80,pocao_g:160,elixir_supremo:999999};
+    const heal=heals[item?.id]||0;
+    if(!heal) return;
+    const current=game.inventory.find(i=>i.id===item.id);
+    if(!current?.qty) return notify('Você não possui essa poção.');
     if(p.hp>=p.maxHp) return notify('Seu HP já está cheio.');
-    setGame(g=>({...g,profile:{...g.profile,hp:Math.min(g.profile.maxHp,g.profile.hp+35)},inventory:g.inventory.map(i=>i.id==='pocao_p'?{...i,qty:i.qty-1}:i)}));
-    fx({healText:'+35 HP'},{healText:null},720);
-    notify('+35 HP');
+    const amount=Math.min(heal,p.maxHp-p.hp);
+    setGame(g=>({
+      ...g,
+      profile:{...g.profile,hp:Math.min(g.profile.maxHp,g.profile.hp+heal)},
+      inventory:g.inventory.map(i=>i.id===item.id?{...i,qty:Math.max(0,i.qty-1)}:i)
+    }));
+    fx({healText:'+'+amount+' HP'},{healText:null},720);
+    notify('+'+amount+' HP');
   }
 
   function healPet(){
@@ -494,6 +521,32 @@ export default function Game(){
       setGame(g=>({...g,profile:{...g.profile,cash:g.profile.cash+amount,bank:g.profile.bank-amount}}));
       notify('Sacado R$ '+fmt(amount));
     }
+  }
+
+  function buyShop(item){
+    const total=p.cash+p.bank;
+    if(total<item.price) return notify('Saldo total insuficiente.');
+    setGame(g=>{
+      let cash=g.profile.cash;
+      let bank=g.profile.bank;
+      let remaining=item.price;
+      const fromCash=Math.min(cash,remaining);
+      cash-=fromCash;
+      remaining-=fromCash;
+      if(remaining>0) bank-=remaining;
+
+      const exists=g.inventory.find(i=>i.id===item.id);
+      const inventory=exists
+        ? g.inventory.map(i=>i.id===item.id?{...i,qty:Number(i.qty||0)+1}:i)
+        : [...g.inventory,{...item,qty:1}];
+
+      return withLog({
+        ...g,
+        profile:{...g.profile,cash,bank},
+        inventory
+      },'🛒 Loja: '+item.name+' comprado por R$ '+fmt(item.price)+'.');
+    });
+    notify(item.name+' comprado.');
   }
 
   function buyMarket(entry){
@@ -656,7 +709,7 @@ export default function Game(){
         })}
       </div>
     </Card>
-    <div className="cards-grid">{game.inventory.filter(i=>i.qty>0).map(item=><div key={item.id} draggable={['weapon','armor','boots'].includes(item.category)} onDragStart={e=>e.dataTransfer.setData('text/item-id',item.id)} className={['weapon','armor','boots'].includes(item.category)?'draggable-item':''}><Card className={rarityClass(item.rarity)}><div className="item-top"><div className="item-icon">{item.icon}</div><div><h3>{item.name}</h3><span>{item.rarity} · Lv.{item.level} · x{item.qty}</span></div></div><p className="item-stat">{item.stat}</p><div className="button-row">{['weapon','armor','boots'].includes(item.category)&&<><Button onClick={()=>equip(item)}>Equipar</Button><Button onClick={()=>upgrade(item)} kind="secondary">Upar</Button></>}{item.id==='pocao_p'&&<Button onClick={usePotion}>Usar +35 HP</Button>}{item.id.startsWith('pocao_pet_')&&<Button onClick={healPet}>Curar pet</Button>}</div></Card></div>)}</div>
+    <div className="cards-grid">{game.inventory.filter(i=>i.qty>0).map(item=><div key={item.id} draggable={['weapon','armor','boots'].includes(item.category)} onDragStart={e=>e.dataTransfer.setData('text/item-id',item.id)} className={['weapon','armor','boots'].includes(item.category)?'draggable-item':''}><Card className={rarityClass(item.rarity)}><div className="item-top"><div className="item-icon">{item.icon}</div><div><h3>{item.name}</h3><span>{item.rarity} · Lv.{item.level} · x{item.qty}</span></div></div><p className="item-stat">{item.stat}</p><div className="button-row">{['weapon','armor','boots'].includes(item.category)&&<><Button onClick={()=>equip(item)}>Equipar</Button><Button onClick={()=>upgrade(item)} kind="secondary">Upar</Button></>}{['pocao_p','pocao_m','pocao_g','elixir_supremo'].includes(item.id)&&<Button onClick={()=>usePlayerPotion(item)}>Usar {item.stat}</Button>}{item.id.startsWith('pocao_pet_')&&<Button onClick={healPet}>Curar pet</Button>}</div></Card></div>)}</div>
   </div>;
 
   const Business=()=> { const total=game.businesses.reduce((s,b)=>s+b.stored,0); return <div className="stack"><Card><div className="card-head"><h3>Negócios</h3><span>Disponível: R$ {fmt(total)}</span></div><Button onClick={collectBusinesses} disabled={total<=0}>💰 COLETAR TUDO</Button></Card><div className="cards-grid">{game.businesses.map(b=><Card key={b.id}><div className="item-top"><div className="item-icon">{b.icon}</div><div><h3>{b.name}</h3><span>Lv.{b.level}</span></div></div><div className="money-row"><div><small>Acumulado</small><strong>R$ {fmt(b.stored)}</strong></div><div><small>Produção</small><strong>R$ {fmt(b.rate)}/h</strong></div></div></Card>)}</div></div>; };
@@ -665,7 +718,41 @@ export default function Game(){
 
   const Bank=()=> <div className="stack"><div className="two-col"><Card><small>Carteira</small><h2>R$ {fmt(p.cash)}</h2></Card><Card><small>Banco</small><h2>R$ {fmt(p.bank)}</h2></Card></div><Card><label className="field">Valor<input type="number" value={bankAmount} onChange={e=>setBankAmount(e.target.value)} min="1"/></label><div className="button-row"><Button onClick={()=>bank('deposit')}>Depositar</Button><Button onClick={()=>bank('withdraw')} kind="secondary">Sacar</Button><Button onClick={()=>setBankAmount(p.bank)} kind="ghost">Sacar tudo</Button></div></Card></div>;
 
-  const Market=()=> <div className="stack">{game.market.map(m=><Card key={m.id} className={m.bought?'disabled-card':''}><div className="item-top"><div className="item-icon">{m.icon}</div><div><h3>{m.item}</h3><span>Vendedor: {m.seller}</span></div></div><div className="money-row"><div><small>Preço</small><strong>R$ {fmt(m.price)}</strong></div><div><small>Expira em</small><strong>{m.left}</strong></div></div><Button onClick={()=>buyMarket(m)} disabled={m.bought}>{m.bought?'Comprado':'Comprar'}</Button></Card>)}</div>;
+  const Market=()=> <div className="stack">
+    <Card>
+      <div className="card-head"><h3>Loja Alpha</h3><span>Estoque permanente · compre quantas vezes quiser</span></div>
+      <p className="hint">A compra usa primeiro a carteira e completa pelo banco se necessário.</p>
+    </Card>
+
+    <div className="cards-grid">
+      {SHOP_ITEMS.map(item=>{
+        const owned=Number(game.inventory.find(i=>i.id===item.id)?.qty||0);
+        return <Card key={item.id} className={rarityClass(item.rarity)}>
+          <div className="item-top">
+            <div className="item-icon">{item.icon}</div>
+            <div><h3>{item.name}</h3><span>{item.shopGroup} · {item.rarity}</span></div>
+          </div>
+          <p className="item-stat">{item.stat}</p>
+          <div className="shop-meta">
+            <span>Você tem: <b>x{owned}</b></span>
+            <strong>R$ {fmt(item.price)}</strong>
+          </div>
+          <Button onClick={()=>buyShop(item)} disabled={p.cash+p.bank<item.price}>Comprar</Button>
+        </Card>;
+      })}
+    </div>
+
+    <Card>
+      <div className="card-head"><h3>Mercado de Jogadores</h3><span>Anúncios únicos do protótipo</span></div>
+    </Card>
+    <div className="cards-grid">
+      {game.market.map(m=><Card key={m.id} className={m.bought?'disabled-card':''}>
+        <div className="item-top"><div className="item-icon">{m.icon}</div><div><h3>{m.item}</h3><span>Vendedor: {m.seller}</span></div></div>
+        <div className="money-row"><div><small>Preço</small><strong>R$ {fmt(m.price)}</strong></div><div><small>Expira em</small><strong>{m.left}</strong></div></div>
+        <Button onClick={()=>buyMarket(m)} disabled={m.bought}>{m.bought?'Comprado':'Comprar'}</Button>
+      </Card>)}
+    </div>
+  </div>;
 
   const Missions=()=> <div className="stack">{game.missions.map(m=><Card key={m.id}><div className="card-head"><h3>{m.title}</h3><span>{Math.min(m.progress,m.target)}/{m.target}</span></div><Bar value={m.progress} max={m.target} tone="xp"/><p className="hint">Recompensa: {m.reward}</p><Button onClick={()=>claimMission(m)} disabled={m.claimed||m.progress<m.target}>{m.claimed?'Resgatada':m.progress>=m.target?'Resgatar':'Em progresso'}</Button></Card>)}</div>;
 
