@@ -2042,13 +2042,22 @@ export async function battle(attackerJid, defenderJid) {
       'SELECT jid,push_name,level,exp FROM users WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
       [ids]
     )
+    const petsR=await client.query(
+      'SELECT jid,species,level,hp,energy FROM pets WHERE jid=ANY($1::text[])',
+      [ids]
+    )
 
     const statFor=jid=>statsR.rows.find(r=>r.jid===jid)
     const userFor=jid=>usersR.rows.find(r=>r.jid===jid)
+    const petFor=jid=>petsR.rows.find(r=>r.jid===jid)
     const a=statFor(attackerJid)
     const b=statFor(defenderJid)
     const au=userFor(attackerJid)
     const bu=userFor(defenderJid)
+    const ap=petFor(attackerJid)
+    const bp=petFor(defenderJid)
+    const apSpd=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petSpeedBonus(ap.species,ap.level):0
+    const bpSpd=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petSpeedBonus(bp.species,bp.level):0
     if(!a || !b) throw new Error('Não foi possível carregar os jogadores.')
     if(Number(a.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes de batalhar.')
     if(Number(b.hp)<=0) throw new Error('O adversário está sem HP.')
@@ -2073,7 +2082,7 @@ export async function battle(attackerJid, defenderJid) {
       atk:Number(a.atk)+aeW.atk+aeA.atk,
       def:Number(a.def)+aeW.def+aeA.def,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)),
-      spd:Number(a.spd)+Number(aeB.spd||0)
+      spd:Number(a.spd)+Number(aeB.spd||0)+apSpd
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
@@ -2081,7 +2090,7 @@ export async function battle(attackerJid, defenderJid) {
       atk:Number(b.atk)+beW.atk+beA.atk,
       def:Number(b.def)+beW.def+beA.def,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)),
-      spd:Number(b.spd)+Number(beB.spd||0)
+      spd:Number(b.spd)+Number(beB.spd||0)+bpSpd
     }
 
     const log=[]
@@ -3877,8 +3886,8 @@ export async function leavePlayerCarpinarEarly(jid){
 
 const PET_BASE_ENERGY={
   cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
-  tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,
-  panda:200,tigre:225,leao:250,cervo_mistico:265,unicornio:280,dragao:320,
+  tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,gaviao:190,
+  panda:200,guepardo:220,tigre:225,gazela_mistica:235,leao:250,cervo_mistico:265,cavalo_guerra:275,unicornio:280,dragao:320,
   golfinho_celestial:160,moreia_sombria:175,tubarao_abissal:215,polvo_arcano:240,orca_guerra:270,baleia_colossal:310,
   golem_ancestral:340,urso_runico:345,colosso_cristal:360,
   salamandra_infernal:350,dragao_vulcanico:365,fenix_fogo:390,
@@ -3904,10 +3913,14 @@ export const PET_HP_PROFILES={
   raposa:{base:110,growth:9,type:'Ágil'},
   lobo:{base:130,growth:11,type:'Ofensivo'},
   aguia:{base:115,growth:9,type:'Crítico'},
+  gaviao:{base:120,growth:9,type:'Ágil Crítico'},
   panda:{base:165,growth:14,type:'Tanque'},
+  guepardo:{base:125,growth:10,type:'Velocista'},
   tigre:{base:150,growth:13,type:'Ofensivo'},
+  gazela_mistica:{base:135,growth:11,type:'Ágil Místico'},
   leao:{base:170,growth:14,type:'Ofensivo'},
   cervo_mistico:{base:175,growth:14,type:'Curandeiro'},
+  cavalo_guerra:{base:185,growth:15,type:'Guardião Ágil'},
   unicornio:{base:190,growth:16,type:'Místico'},
   dragao:{base:230,growth:19,type:'Boss Hunter'},
   golfinho_celestial:{base:120,growth:10,type:'Suporte Ágil'},
@@ -3956,21 +3969,31 @@ function normalizedPetHp(p){
   return {...p,hp,max_hp:desired}
 }
 
+
+// VEL dos pets rápidos é bônus plano de iniciativa, separado de Esquiva.
+const PET_SPEED_BASE={guepardo:5,gaviao:4,gazela_mistica:4,cavalo_guerra:3}
+export function petSpeedBonus(species,level=1){
+  const base=Number(PET_SPEED_BASE[String(species||'').toLowerCase()]||0)
+  if(!base) return 0
+  const scale=1+Math.min(.50,Math.max(0,Number(level||1)-1)*(.50/99))
+  return Math.round(base*scale)
+}
+
 // Estilos do time pet. A sinergia exige 3 ESPÉCIES DIFERENTES do mesmo estilo:
  // cópias da mesma espécie nunca multiplicam o bônus.
 const PET_TEAM_STYLE_BY_SPECIES={
-  cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
+  cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
   golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
 
-  papagaio:'voador',coruja:'voador',aguia:'voador',dragao:'voador',
+  papagaio:'voador',coruja:'voador',aguia:'voador',gaviao:'voador',dragao:'voador',
   corvo_abissal:'voador',dragao_vulcanico:'voador',fenix_fogo:'voador',fenix_gelo:'voador',
   grifo_celestial:'voador',fenix_celestial:'voador',dragao_corrompido:'voador',fenix_alpha:'voador',
 
-  gato:'predador',raposa:'predador',lobo:'predador',tigre:'predador',leao:'predador',
+  gato:'predador',raposa:'predador',lobo:'predador',guepardo:'predador',tigre:'predador',leao:'predador',
   moreia_sombria:'predador',tubarao_abissal:'predador',
   urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
 
-  coelho:'mistico',hamster:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
+  coelho:'mistico',hamster:'mistico',gazela_mistica:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
   golfinho_celestial:'mistico',polvo_arcano:'mistico',
   salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico'
 }
@@ -4119,6 +4142,7 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     raposa:{level:8,price:70000,label:'🦊 Raposa'},
     lobo:{level:10,price:100000,label:'🐺 Lobo'},
     aguia:{level:12,price:150000,label:'🦅 Águia'},
+    gaviao:{level:13,price:190000,label:'🦅 Gavião'},
     panda:{level:14,price:225000,label:'🐼 Panda'},
     tigre:{level:17,price:350000,label:'🐯 Tigre'},
     leao:{level:20,price:500000,label:'🦁 Leão'},
@@ -4128,8 +4152,11 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     golfinho_celestial:{level:9,price:85000,label:'🐬 Golfinho Celestial'},
     moreia_sombria:{level:11,price:125000,label:'🐍 Moreia Sombria'},
     tubarao_abissal:{level:15,price:275000,label:'🦈 Tubarão Abissal'},
+    guepardo:{level:16,price:320000,label:'🐆 Guepardo'},
     polvo_arcano:{level:18,price:400000,label:'🐙 Polvo Arcano'},
+    gazela_mistica:{level:19,price:450000,label:'🦌 Gazela Mística'},
     orca_guerra:{level:22,price:600000,label:'🐋 Orca de Guerra'},
+    cavalo_guerra:{level:23,price:650000,label:'🐎 Cavalo de Guerra'},
     baleia_colossal:{level:28,price:900000,label:'🐋 Baleia Colossal'}
   }
   const rule=rules[species]
