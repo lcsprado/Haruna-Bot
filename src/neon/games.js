@@ -548,9 +548,12 @@ const PET_BOSS_SPECIALTIES={
 function petBossBonus(pet){
   if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,healPct:0,healCooldown:0}
   const base=PET_BOSS_SPECIALTIES[pet.species]||{}
-  // O nível melhora o efeito em até 25%. Pets comuns continuam limitados a 10% por status;
-  // pets de Raid podem chegar a 15% para preservar a vantagem conquistada com 100 materiais.
-  const scale=1+Math.min(.25,Math.max(0,Number(pet.level||1)-1)*.01)
+  // Progressão revisada:
+  // - pets comuns: até +50% sobre a especialidade base no Nv.100;
+  // - pets de Raid/lendários: mantêm até +25%, pois já começam com bases maiores.
+  // Os tetos continuam em 10% (comuns) e 15% (Raid) por atributo.
+  const maxGrowth=base.raid?.25:.50
+  const scale=1+Math.min(maxGrowth,Math.max(0,Number(pet.level||1)-1)*(maxGrowth/99))
   const cap=base.raid?.15:.10
   const scaled=k=>Math.min(cap,Number(base[k]||0)*scale)
   return {
@@ -561,7 +564,7 @@ function petBossBonus(pet){
     dodge:scaled('dodge'),
     xp:scaled('xp'),
     drop:scaled('drop'),
-    healPct:Math.max(0,Number(base.healPct||0)),
+    healPct:scaled('healPct'),
     healCooldown:Math.max(0,Number(base.healCooldown||0))
   }
 }
