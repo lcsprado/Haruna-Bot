@@ -306,8 +306,10 @@ function renderPets(){
   if(ui.petTab==='owned') rows=collection().map(ownedPetCard);
   else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
   else rows=catalogPets().filter(x=>x.source==='raid').map(catalogPetCard);
-  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo e sua coleção vêm do mesmo backend do WhatsApp.</p></div><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div>'+
-    '<div class="tabs">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
+  const team=ui.data.petTeam||[];
+  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo backend do WhatsApp.</p></div><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div>'+
+    '<div class="card"><div class="section-title"><div><h3>Time Pet</h3><small>1 Principal • 2 Suporte • 3 Reserva</small></div><button class="btn primary" data-pet-team-edit>Editar time</button></div><div class="grid three">'+[1,2,3].map(slot=>{const p=team.find(x=>Number(x.slot)===slot);return '<div class="list-row"><span>'+(['','Principal','Suporte','Reserva'][slot])+'</span><strong>'+(p?esc(p.name)+' #'+p.id:'Vazio')+'</strong></div>';}).join('')+'</div></div>'+
+    '<div class="tabs section">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
     '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">Nenhum pet nesta seção.</div>')+'</div>';
 }
 
@@ -322,11 +324,13 @@ function inventoryCard(i){
   const eq=['weapon','armor','boots'].includes(i.category);
   const petPotion=id.startsWith('pocao_pet_');
   const energy=id==='energetico_pet';
-  const usable=i.category==='consumable' && !String(id).includes('caixa');
+  const box=String(id).includes('caixa_') || id==='lootbox_std';
+  const usable=i.category==='consumable' && !box;
   let actions='';
   if(eq) actions='<button class="btn primary" data-item-equip="'+esc(id)+'">Equipar</button><button class="btn" data-item-upgrade="'+esc(id)+'">Upar</button>';
   else if(petPotion) actions='<button class="btn good" data-pet-heal="'+esc(id)+'">Curar pet</button>';
   else if(energy) actions='<button class="btn good" data-pet-energy>Energia pet</button>';
+  else if(box) actions='<button class="btn good" data-box-open="'+esc(id)+'">Abrir 1</button><button class="btn" data-box-open-all="'+esc(id)+'" data-box-qty="'+Number(i.quantity||1)+'">Abrir todas</button>';
   else if(usable) actions='<button class="btn good" data-item-use="'+esc(id)+'">Usar</button>';
   if(i.sellable!==false && String(i.rarity)!=='legendary') actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
   return '<div class="card item-card '+rarityClass(i.rarity)+'"><div class="item-icon">'+itemIcon(i)+'</div>'+
@@ -336,8 +340,8 @@ function inventoryCard(i){
 }
 function renderInventory(){
   const inv=ui.data.inventory||[];
-  return '<div class="page-head"><div><h2>Inventário real</h2><p>Quantidade, raridade e upgrade são lidos do Neon.</p></div><span class="tag">'+inv.length+' tipos</span></div>'+
-    '<div class="grid cards">'+(inv.length?inv.map(inventoryCard).join(''):'<div class="empty">Inventário vazio.</div>')+'</div>';
+  return '<div class="page-head"><div><h2>Inventário real</h2><p>Quantidade, raridade e upgrade são lidos do Neon.</p></div><div class="hero-actions"><button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
+    '<div class="grid cards">'+(inv.length?inv.map(inventoryCard).join(''):'<div class="empty">Inventário vazio.</div>')+'</div>'+resultPanel();
 }
 
 function renderShop(){
@@ -514,6 +518,14 @@ function bind(){
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
+  document.querySelectorAll('[data-pet-team-edit]').forEach(x=>x.onclick=()=>{
+    const pets=collection();
+    const current=(ui.data.petTeam||[]).sort((a,b)=>Number(a.slot)-Number(b.slot)).map(p=>p.id).join(',');
+    const ids=prompt('IDs do Time Pet na ordem Principal, Suporte, Reserva.\nPets: '+pets.map(p=>p.id+'='+p.name).join(', '),current);
+    if(!ids) return;
+    const petIds=ids.split(',').map(v=>Number(v.trim())).filter(Number.isInteger).slice(0,3);
+    if(petIds.length) doAction('pet.team',{petIds,replaceAll:true},{});
+  });
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
   document.querySelectorAll('[data-pet-adopt]').forEach(x=>x.onclick=()=>{
     const name=prompt('Nome deste pet:','Alpha');
@@ -525,6 +537,9 @@ function bind(){
   document.querySelectorAll('[data-item-equip]').forEach(x=>x.onclick=()=>doAction('item.equip',{itemId:x.dataset.itemEquip},{}));
   document.querySelectorAll('[data-item-upgrade]').forEach(x=>x.onclick=()=>doAction('item.upgrade',{itemId:x.dataset.itemUpgrade},{}));
   document.querySelectorAll('[data-item-use]').forEach(x=>x.onclick=()=>doAction('item.use',{itemId:x.dataset.itemUse},{}));
+  document.querySelectorAll('[data-box-open]').forEach(x=>x.onclick=()=>doAction('item.box.open',{boxId:x.dataset.boxOpen,qty:1},{}));
+  document.querySelectorAll('[data-box-open-all]').forEach(x=>x.onclick=()=>doAction('item.box.open',{boxId:x.dataset.boxOpenAll,qty:Number(x.dataset.boxQty||1)},{}));
+  document.querySelectorAll('[data-sell-duplicates]').forEach(x=>x.onclick=()=>doAction('item.sellDuplicates',{},{}));
   document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>doAction('item.sell',{itemId:x.dataset.itemSell,qty:1},{}));
   document.querySelectorAll('[data-shop-buy]').forEach(x=>x.onclick=()=>doAction('item.buy',{itemId:x.dataset.shopBuy,qty:1},{}));
   document.querySelectorAll('[data-raid-create]').forEach(x=>x.onclick=()=>doAction('raid.create',{level:Number(x.dataset.raidCreate),name:ui.data.profile.push_name},{}));
