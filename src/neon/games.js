@@ -835,7 +835,7 @@ export async function startRaid(chat,host,level=null){
     // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
     const partyHpMultiplier=1+Math.max(0,ids.length-1)*.12
     const raidMaxHp=Math.round(cfg.hp*partyHpMultiplier)
-    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
+    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.lastRoundAt=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
     await saveGame(c,chat,gameType,s)
     return s
   })
@@ -924,6 +924,13 @@ export async function raidRound(chat,level){
     const gameType=s.gameType
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
+    const roundNow=Date.now()
+    const lastRoundAt=Number(s.lastRoundAt||0)
+    const raidCadenceMs=8000
+    if(lastRoundAt && roundNow-lastRoundAt<raidCadenceMs-250){
+      return {reason:'cooldown',remainingMs:Math.max(250,raidCadenceMs-(roundNow-lastRoundAt)),round:Number(s.round||0),hp:Number(s.hp||0),maxHp:Number(s.maxHp||0),config:cfg}
+    }
+    s.lastRoundAt=roundNow
     const durationMs=Number(s.durationMinutes||raidDurationMinutes(cfg.level))*60*1000
     const elapsedMs=Number.isFinite(Number(s.activeElapsedMs))
       ? Number(s.activeElapsedMs)
@@ -1397,6 +1404,12 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
     const existingParticipant=s.participants[jid]||{}
+    const bossCadenceMs=gameType==='boss_event'?8000:10000
+    const bossLastAttackAt=Number(existingParticipant.lastAttackAt||0)
+    const bossNow=Date.now()
+    if(bossLastAttackAt && bossNow-bossLastAttackAt<bossCadenceMs-250){
+      return {cooldown:true,remainingMs:Math.max(250,bossCadenceMs-(bossNow-bossLastAttackAt)),mode:s.mode||'common',hp:Number(s.hp||0),maxHp:Number(s.maxHp||0)}
+    }
     let activePetSlot=Number(existingParticipant.activePetSlot||1)
     let petRow=usePet?await loadBossCombatPet(c,jid,activePetSlot):null
     let petSwitch=null
@@ -1446,7 +1459,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const damage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1)))
     const petDamage=pet?Math.max(0,damage-baselineWithGearCrit):0
     s.hp=Math.max(0,Number(s.hp)-damage)
-    const old=s.participants[jid]||{damage:0,name:name||'Jogador',attacks:0,petHealing:0}
+    const old=existingParticipant
     const attackCount=Number(old.attacks||0)+1
     s.participants[jid]={
       ...old,
@@ -1454,7 +1467,8 @@ export async function attackBoss(chat,jid,name,usePet=true){
       name:old.name||name||'Jogador',
       attacks:attackCount,
       petHealing:Number(old.petHealing||0),
-      activePetSlot
+      activePetSlot,
+      lastAttackAt:bossNow
     }
     let php=Math.min(Number(st.hp),effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,autoPetHeal=null,petSkillHeal=null
     if(s.hp>0){
