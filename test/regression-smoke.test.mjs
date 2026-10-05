@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs'
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+const gameCatalog=readFileSync(new URL('../src/neon/game-catalog.js',import.meta.url),'utf8')
 
 test('critical command handlers remain registered',()=>{
   for(const cmd of ['ping','saldo','all','raid','boss','perfil']){
@@ -44,13 +45,13 @@ test('equiparpet without args opens the interactive team flow',()=>{
 })
 
 test('purchasable pet specialties keep the intended progression',()=>{
-  assert.ok(games.includes("aguia:{label:'🦅 Precisão',crit:.09}"),'Águia crit should be 9% base')
-  assert.ok(games.includes("tigre:{label:'🐯 Fúria',damage:.08}"),'Tigre damage should be 8% base')
-  assert.ok(games.includes("leao:{label:'🦁 Rei da Caçada',damage:.09}"),'Leão damage should be 9% base')
-  assert.ok(games.includes("dragao:{label:'🐉 Caçador de Boss',bossDamage:.10,defense:.04}"),'Dragão should have 10% boss damage + 4% defense')
-  assert.ok(games.includes("baleia_colossal:{label:'🐋 Canto Colossal',defense:.10,xp:.04}"),'Baleia should have 10% defense + 4% XP')
-  assert.ok(games.includes("tubarao_abissal:{label:'🦈 Frenesi Abissal',damage:.07,crit:.03}"),'Tubarão hybrid should remain unchanged')
-  assert.ok(games.includes("fenix_celestial:{label:'🌟 Graça Celestial',defense:.10,dodge:.08,xp:.08,healPct:.08,healCooldown:4,raid:true}"),'Fênix Celestial should remain unchanged')
+  assert.ok(gameCatalog.includes("aguia:{label:'🦅 Precisão',stat:'crit',base:9}"),'Águia crit should be 9% base')
+  assert.ok(gameCatalog.includes("tigre:{label:'🐯 Fúria',stat:'damage',base:8}"),'Tigre damage should be 8% base')
+  assert.ok(gameCatalog.includes("leao:{label:'🦁 Rei da Caçada',stat:'damage',base:9}"),'Leão damage should be 9% base')
+  assert.ok(gameCatalog.includes("dragao:{label:'🐉 Caçador de Boss',stats:{bossDamage:10,defense:4}}"),'Dragão should have 10% boss damage + 4% defense')
+  assert.ok(gameCatalog.includes("baleia_colossal:{label:'🐋 Canto Colossal',stats:{defense:10,xp:4}}"),'Baleia should have 10% defense + 4% XP')
+  assert.ok(gameCatalog.includes("tubarao_abissal:{label:'🦈 Frenesi Abissal',stats:{damage:7,crit:3}}"),'Tubarão hybrid should remain unchanged')
+  assert.ok(gameCatalog.includes("fenix_celestial:{label:'🌟 Graça Celestial',stats:{defense:10,dodge:8,xp:8},healPct:8,healCooldown:4,raid:true}"),'Fênix Celestial should remain unchanged')
 })
 
 test('boss and event combat auto-heal pets like raids',()=>{
