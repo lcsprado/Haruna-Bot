@@ -2257,7 +2257,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar 1* / *!entrar 10* — escolhe a sala e compra a chave automaticamente se faltar
-*!go NÚMERO/NÍVEL* — host inicia sua sala (Lv.10 pode ser solo; Lv.15+ mínimo 2)
+*!go NÚMERO/NÍVEL* — host inicia sua sala; *todas as Raids podem ser feitas solo*
 *!cancelarraide NÚMERO/NÍVEL* — host cancela sua sala antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
@@ -5730,8 +5730,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
         await progressDailyMission(sender,'game')
         clearQuickFlow(chat,sender)
-        const minPlayers=Number(r.level)===10?1:2
-        await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Participantes: *1/5* • mínimo para iniciar: *${minPlayers}*\n\n${minPlayers===1?'✅ Você já pode iniciar solo com *!go*.':'👉 Agora espere pelo menos mais 1 jogador usar *!entrar*.'}\n🚀 Quando estiver pronto, use *!go*.`)
+        await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Participantes: *1/5*\n\n✅ Você já pode iniciar *solo* com *!go*.\n👥 Se quiser, outros jogadores ainda podem entrar antes de começar.\n🚀 Quando estiver pronto, use *!go*.`)
       }catch(err){
         await reply('❌ '+(err?.message||'Não foi possível abrir essa Raid.'))
       }
@@ -8681,9 +8680,8 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
 
           const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
           await progressDailyMission(sender,'game')
-          const minPlayers=Number(r.level)===10?1:2
           const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-          await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5* • mínimo: *${minPlayers}*\n⏳ Sala aberta por *5 minutos*.\n\n${minPlayers===1?`✅ Pode iniciar solo com *!go ${r.level}*.`:`👉 Outros jogadores entram com *!entrar ${r.level}*.`}\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
+          await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 
         } else if(['entrar','entrarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
@@ -8694,7 +8692,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null)
           const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
           const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-          await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5* • mínimo: *${Number(r.level)===10?1:2}*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n${Object.keys(r.players||{}).length>=(Number(r.level)===10?1:2)?`✅ O host já pode usar *!go ${r.level}*.`:'Aguarde mais jogadores.'}`))
+          await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n✅ O host já pode usar *!go ${r.level}*. Todas as Raids aceitam início solo.`))
 
         } else if(['cancelarraide','cancelarraid','raidcancelar','raidcancel'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
