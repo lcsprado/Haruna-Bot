@@ -302,6 +302,18 @@ function renderLiveGroupState(group){
   return html+'</div>';
 }
 
+function renderDoubleRewardEvent(){
+  const event=(ui.data&&ui.data.events&&ui.data.events.doubleReward)||null;
+  if(!event || (!event.active&&!event.scheduled)) return '';
+  const now=Date.now();
+  const ms=event.active?Math.max(0,Number(event.endsAt||0)-now):Math.max(0,Number(event.startsAt||0)-now);
+  const mins=Math.max(1,Math.ceil(ms/60000));
+  return '<div class="section card double-event '+(event.active?'active':'scheduled')+'">'+
+    '<div class="section-title"><div><h3>🔥 Evento de recompensa '+(event.active?'ATIVO':'AGENDADO')+'</h3><small>Dinheiro ×'+num(event.moneyMultiplier||1)+' • XP ×'+num(event.xpMultiplier||1)+'</small></div><span class="tag '+(event.active?'good':'')+'">⏳ '+mins+' min</span></div>'+
+    '<p>'+(event.active?'Trabalho, Uber, iFood, Dungeon e outras recompensas elegíveis já usam esses multiplicadores no backend.':'O multiplicador ainda não começou.')+'</p>'+
+  '</div>';
+}
+
 function renderLuckyBoxEvent(){
   const event=(ui.data&&ui.data.events&&ui.data.events.luckyBox)||null;
   if(!event || (!event.active&&!event.scheduled)) return '';
@@ -322,7 +334,7 @@ function renderHome(){
   const group=currentGroup();
   const activities=(ui.data&&ui.data.activities)||{};
   const missions=(ui.data&&ui.data.dailyMissions)||[];
-  return renderLuckyBoxEvent()+'<div class="hero card">'+
+  return renderDoubleRewardEvent()+renderLuckyBoxEvent()+'<div class="hero card">'+
     '<div><p class="eyebrow">CONTA REAL DO WHATSAPP</p><h2>'+esc(raw.push_name||'Jogador')+'</h2>'+
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
@@ -699,7 +711,7 @@ function renderExpeditions(rows){
 function renderActivities(){
   const d=ui.data, ex=ui.extras||{}, sleep=d.activities&&d.activities.sleep, carp=d.activities&&d.activities.carpinar;
   const missions=d.dailyMissions||[], exp=d.petExpeditions||[], plans=ex.carpinarPlans||[];
-  return '<div class="page-head"><div><h2>Atividades</h2><p>Missões, dormir, carpinar, aventura e expedições dos pets.</p></div></div>'+
+  return renderDoubleRewardEvent()+'<div class="page-head"><div><h2>Atividades</h2><p>Missões, dormir, carpinar, aventura e expedições dos pets.</p></div></div>'+
     '<div class="grid three">'+
       '<div class="card"><h3>😴 Dormir</h3><p>'+(sleep?'Ativo até '+new Date(Number(sleep.ends_at)*1000).toLocaleString('pt-BR'):'Você está acordado.')+'</p><button class="btn '+(sleep?'danger':'primary')+'" data-sleep="'+(sleep?'wake':'start')+'">'+(sleep?'Acordar':'Dormir')+'</button></div>'+
       '<div class="card"><h3>🌱 Carpinar</h3><p>'+(carp?'Ativo • termina em '+Math.ceil((Number(carp.ends_at)-Date.now()/1000)/60)+' min':'Planos: '+plans.map(x=>x.hours+'h').join(', '))+'</p><button class="btn '+(carp?'danger':'primary')+'" data-carpinar="'+(carp?'leave':'start')+'">'+(carp?'Sair':'Começar')+'</button></div>'+
