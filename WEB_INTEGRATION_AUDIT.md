@@ -222,3 +222,19 @@ Not allowed as authoritative state:
 - loans/market.
 
 These must always be loaded from and mutated through the shared backend.
+
+
+## Connected Web client
+
+The branch now includes a first connected client under `web/`.
+
+- Render serves it at `/rpg` from the same Node service as the bot.
+- Vercel preview project `alpha-web-rpg` uses `web/` as its Root Directory for isolated visual testing.
+- The login accepts the one-time `!web` code.
+- The client stores only the bearer token locally.
+- Profile, effective combat stats, inventory, pet collection/team, missions, economy, loans, Raid/Boss state and event/cooldown data are loaded from the API.
+- The pet UI separates the 26 adoptable species from the 21 Raid/invocation pets.
+- Core mutations call the same backend functions used by WhatsApp.
+- Raid/Boss cadence is enforced in `games.js`, so a browser cannot speed up combat by spamming the API.
+
+Production Render remains on `neon-migration` until this draft PR is validated and intentionally merged.
