@@ -141,3 +141,7 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .lucky-event{border-color:#59451f;background:linear-gradient(135deg,rgba(104,77,24,.18),rgba(12,18,27,.92))}
 .lucky-event.active{box-shadow:0 0 0 1px rgba(215,169,70,.08),0 12px 32px rgba(0,0,0,.18)}
 .lucky-event h3{margin:0}
+
+.double-event{border-color:#633328;background:linear-gradient(135deg,rgba(122,50,32,.18),rgba(12,18,27,.92))}
+.double-event.active{box-shadow:0 0 0 1px rgba(255,112,72,.08),0 12px 32px rgba(0,0,0,.18)}
+.double-event h3{margin:0}
