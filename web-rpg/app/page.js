@@ -153,11 +153,11 @@ export default function Game(){
     notify((crit?'CRÍTICO — ':'')+fmt(dmg)+' de dano');
   }
 
-  function attackBoss(){
+  function attackBoss(usePet=true){
     if(game.boss.hp<=0) return notify('Boss já derrotado.');
     if(p.hp<=0) return notify('Você está sem HP. Cure-se antes de atacar.');
 
-    const petActive=bossPet&&bossPet.energy>=2&&bossPet.hp>0;
+    const petActive=Boolean(usePet&&bossPet&&bossPet.energy>=2&&bossPet.hp>0);
     const critChance=p.crit+(petActive&&bossPet.species==='kitsune'?7.5:0);
     const crit=Math.random()<critChance/100;
     const rawBase=Math.max(5,Math.floor(p.atk*(.85+Math.random()*.45)));
@@ -236,7 +236,7 @@ export default function Game(){
         out.profile={...out.profile,cash:out.profile.cash+24000,xp:out.profile.xp+600};
         return withLog(out,'🏆 Boss derrotado: +R$ 24.000 e +600 XP.');
       }
-      return withLog(out,(crit?'💥 CRÍTICO! ':'🗿 ')+fmt(dmg)+' de dano no Boss'+playerEvent+petEvent+'.');
+      return withLog(out,(crit?'💥 CRÍTICO! ':'🗿 ')+fmt(dmg)+' de dano no Boss'+(usePet?'':' · sem pet')+playerEvent+petEvent+'.');
     });
     notify(fmt(dmg)+' de dano no Boss');
   }
@@ -417,7 +417,7 @@ export default function Game(){
     <div className="monster">{game.boss.icon}</div><div className="eyebrow">BOSS DE EVENTO</div><h2>{game.boss.name}</h2>
     <div className="hp-line"><b>{fmt(game.boss.hp)} / {fmt(game.boss.maxHp)} HP</b><span>{Math.round(pct(game.boss.hp,game.boss.maxHp))}%</span></div><Bar value={game.boss.hp} max={game.boss.maxHp}/>
     <div className="pet-inline"><div className="pet-art">{activePet.icon}</div><div><strong>{activePet.name}</strong><small>{activePet.style} · {activePet.bonus}</small></div><div className="pet-bars"><Bar value={activePet.hp} max={activePet.maxHp}/><Bar value={activePet.energy} max={activePet.maxEnergy} tone="energy"/></div></div>
-    <div className="button-row"><Button onClick={attackBoss} disabled={game.boss.hp<=0}>⚔️ ATACAR</Button><Button onClick={healPet} kind="secondary">💙 Curar pet</Button><Button onClick={restPet} kind="ghost">⚡ Descansar</Button></div>
+    <div className="button-row"><Button onClick={()=>attackBoss(true)} disabled={game.boss.hp<=0}>⚔️ Atacar com pet</Button><Button onClick={()=>attackBoss(false)} kind="secondary" disabled={game.boss.hp<=0}>🗡️ Atacar sem pet</Button><Button onClick={healPet} kind="secondary">💙 Curar pet</Button><Button onClick={restPet} kind="ghost">⚡ Descansar</Button></div>
     <p className="hint">Sem energia, o ataque continua; apenas o bônus do pet deixa de entrar.</p>
   </Card>;
 
