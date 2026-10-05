@@ -258,6 +258,26 @@ function statCard(label,value,sub){
   return '<div class="card stat-card"><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><span>'+esc(sub||'')+'</span></div>';
 }
 
+function renderLiveGroupState(group){
+  if(!group) return '<div class="empty">Vincule pelo !web dentro do grupo para acompanhar Boss, Raids e eventos daqui.</div>';
+  const boss=group.bossEvent||group.boss||null;
+  const raids=(group.raids||[]).filter(r=>r&&['lobby','active'].includes(r.status));
+  const games=group.games||{};
+  const activeGames=Object.keys(games).filter(k=>games[k] && !['boss','boss_event'].includes(k));
+  let html='<div class="list">';
+  if(boss){
+    const hp=Number(boss.hp||0),max=Math.max(1,Number(boss.maxHp||1));
+    html+='<div class="list-row"><div><strong>👹 '+esc(boss.name||'Boss')+'</strong><small>'+num(hp)+'/'+num(max)+' HP</small></div><button class="btn" data-go-page="boss">Abrir</button></div>';
+  }else html+='<div class="list-row"><span>👹 Boss</span><small>Nenhum ativo</small></div>';
+  if(raids.length){
+    for(const raid of raids.slice(0,4)){
+      html+='<div class="list-row"><div><strong>⚔️ Raid Lv.'+num(raid.level)+'</strong><small>'+esc(raid.status)+' • '+num(Object.keys(raid.players||{}).length)+'/5</small></div><button class="btn" data-go-page="raids">Abrir</button></div>';
+    }
+  }else html+='<div class="list-row"><span>⚔️ Raids</span><small>Nenhuma aberta</small></div>';
+  html+='<div class="list-row"><span>🎮 Sessões de minigame</span><strong>'+num(activeGames.length)+'</strong></div>';
+  return html+'</div>';
+}
+
 function renderHome(){
   const p=profile(), raw=ui.data.profile||p;
   const hpMax=Number(p.effective_max_hp||p.max_hp||1), hp=Number(p.effective_hp||p.hp||0);
@@ -290,9 +310,10 @@ function renderHome(){
     '</div>'+
   '</div>'+
   '<div class="section grid two">'+
-    '<div class="card"><div class="section-title"><h3>Cooldowns ativos</h3><small>Mesmo estado do WhatsApp</small></div>'+renderCooldowns()+'</div>'+
-    '<div class="card"><div class="section-title"><h3>Últimas movimentações</h3><small>WhatsApp + Web</small></div>'+renderTransactions(6)+'</div>'+
-  '</div>';
+    '<div class="card"><div class="section-title"><h3>Ao vivo no grupo</h3><small>Mesmo estado do WhatsApp</small></div>'+renderLiveGroupState(group)+'</div>'+
+    '<div class="card"><div class="section-title"><h3>Cooldowns ativos</h3><small>Servidor</small></div>'+renderCooldowns()+'</div>'+
+  '</div>'+
+  '<div class="section card"><div class="section-title"><h3>Últimas movimentações</h3><small>WhatsApp + Web</small></div>'+renderTransactions(8)+'</div>';
 }
 
 function renderMissionList(missions){
@@ -661,6 +682,12 @@ function render(){
 
 function bind(){
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
+  document.querySelectorAll('[data-go-page]').forEach(x=>x.onclick=async()=>{
+    ui.page=x.dataset.goPage;
+    $('#sidebar').classList.remove('open');
+    if(['social','market','clan','games','activities','progression','rankings','loans'].includes(ui.page)) await syncExtras(false).catch(()=>null);
+    render();
+  });
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
   document.querySelectorAll('[data-pet-team-save]').forEach(x=>x.onclick=()=>{
