@@ -311,7 +311,7 @@ async function playerBootstrap(session){
   const [
     profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
-    doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar
+    doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar,recentTransactions
   ]=await Promise.all([
     getProfile(jid),
     getCombatProfile(jid),
@@ -337,7 +337,21 @@ async function playerBootstrap(session){
     getLuckyBoxEvent(),
     db.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1 AND expires_at>$2 ORDER BY expires_at',[`%${jid}%`,Math.floor(Date.now()/1000)]),
     db.query('SELECT * FROM player_sleep WHERE jid=$1',[jid]),
-    db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid])
+    db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid]),
+    db.query(`SELECT t.id,t.amount,t.type,t.note,t.created_at,
+                     CASE WHEN t.from_jid=$1 AND t.to_jid<>$1 THEN 'out'
+                          WHEN t.to_jid=$1 AND t.from_jid<>$1 THEN 'in'
+                          ELSE 'self' END AS direction,
+                     CASE WHEN t.from_jid=$1
+                          THEN COALESCE(tu.push_name,CASE WHEN t.to_jid IN ('system','shop','raid_shop','upgrade') THEN 'Sistema' ELSE 'Jogador' END)
+                          ELSE COALESCE(fu.push_name,CASE WHEN t.from_jid IN ('system','shop','raid_shop','upgrade') THEN 'Sistema' ELSE 'Jogador' END)
+                     END AS counterparty
+              FROM transactions t
+              LEFT JOIN users fu ON fu.jid=t.from_jid
+              LEFT JOIN users tu ON tu.jid=t.to_jid
+              WHERE t.from_jid=$1 OR t.to_jid=$1
+              ORDER BY t.created_at DESC,t.id DESC
+              LIMIT 20`,[jid])
   ])
   return {
     syncedAt:now(),
@@ -346,6 +360,7 @@ async function playerBootstrap(session){
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
+    recentTransactions:recentTransactions.rows||[],
     activities:{sleep:sleep.rows?.[0]||null,carpinar:carpinar.rows?.[0]||null}
   }
 }async function playerExtras(session){
@@ -353,7 +368,7 @@ async function playerBootstrap(session){
   const chatJid=session.chatJid||null
   const [
     market,clan,clans,ranks,economyRank,combatRank,petRank,patrimonyRank,
-    loanCredit,carpinarPlans,groupMission,groupMissionLeaderboard
+    loanCredit,carpinarPlans,groupMission,groupMissionLeaderboard,groupEvent
   ]=await Promise.all([
     listMarket(30),
     getClanForUser(jid),
@@ -366,7 +381,13 @@ async function playerBootstrap(session){
     getLoanCredit(jid),
     Promise.resolve(getCarpinarPlans()),
     chatJid?getGroupMission(chatJid):Promise.resolve(null),
-    chatJid?getGroupMissionLeaderboard(chatJid):Promise.resolve([])
+    chatJid?getGroupMissionLeaderboard(chatJid):Promise.resolve([]),
+    chatJid?db.query(`SELECT ge.event_type,ge.reward_cash,ge.spawned_at,ge.expires_at,
+                              (ge.claimed_by IS NOT NULL) AS claimed,
+                              u.push_name AS claimed_by_name
+                       FROM group_events ge
+                       LEFT JOIN users u ON u.jid=ge.claimed_by
+                       WHERE ge.chat_jid=$1`,[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null)
   ])
   return {
     syncedAt:now(),
@@ -380,6 +401,7 @@ async function playerBootstrap(session){
     },
     groupMission,
     groupMissionLeaderboard,
+    groupEvent,
     levelRewards:[5,10,15,20,25,30,35,40,45,50].map(getLevelRewardPreview).filter(Boolean)
   }
 }

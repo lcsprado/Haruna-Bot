@@ -221,6 +221,27 @@ function cooldownLabel(key){
   const first=raw.split(' ')[0];
   return map[first]||titleCase(raw||key);
 }
+function transactionLabel(type){
+  const map={
+    work:'Trabalho',income_tax:'TAXADE',uber:'Uber',ifood:'iFood',transfer:'PIX',
+    shop:'Loja',market:'Mercado',market_sale:'Venda no mercado',raid_reward:'Raid',
+    boss_reward:'Boss',business_collect:'Negócios',daily:'Daily',loan:'Empréstimo',
+    equipment_upgrade:'Upgrade',pet_rename:'Renomear pet',raid_key_auto:'Chave Raid'
+  };
+  return map[String(type||'')]||titleCase(String(type||'movimentação').replace(/_/g,' '));
+}
+function renderTransactions(limit){
+  const rows=((ui.data&&ui.data.recentTransactions)||[]).slice(0,Number(limit||20));
+  if(!rows.length) return '<div class="empty">Nenhuma movimentação recente.</div>';
+  return '<div class="list transactions">'+rows.map(t=>{
+    const outgoing=t.direction==='out',incoming=t.direction==='in';
+    const sign=outgoing?'-':incoming?'+':'';
+    const when=Number(t.created_at||0)>0?new Date(Number(t.created_at)*1000).toLocaleString('pt-BR'):'';
+    const who=t.counterparty?' • '+esc(t.counterparty):'';
+    return '<div class="list-row"><div><strong>'+esc(transactionLabel(t.type))+'</strong><small>'+esc(t.note||'')+who+(when?' • '+esc(when):'')+'</small></div><strong class="'+(incoming?'money-in':outgoing?'money-out':'')+'">'+sign+money(t.amount)+'</strong></div>';
+  }).join('')+'</div>';
+}
+
 function renderCooldowns(){
   const rows=(ui.data&&ui.data.cooldowns)||[];
   const nowSec=Math.floor(Date.now()/1000);
@@ -268,7 +289,10 @@ function renderHome(){
       '</div>'+
     '</div>'+
   '</div>'+
-  '<div class="section card"><div class="section-title"><h3>Cooldowns ativos</h3><small>Mesmo estado do WhatsApp</small></div>'+renderCooldowns()+'</div>';
+  '<div class="section grid two">'+
+    '<div class="card"><div class="section-title"><h3>Cooldowns ativos</h3><small>Mesmo estado do WhatsApp</small></div>'+renderCooldowns()+'</div>'+
+    '<div class="card"><div class="section-title"><h3>Últimas movimentações</h3><small>WhatsApp + Web</small></div>'+renderTransactions(6)+'</div>'+
+  '</div>';
 }
 
 function renderMissionList(missions){
@@ -449,13 +473,20 @@ function resultPanel(){
 }
 function memberCard(m){
   return '<div class="card social-card"><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
-    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
+    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn" data-coin-duel="'+esc(m.jid)+'">🪙 Cara/Coroa</button><button class="btn" data-rps-duel="'+esc(m.jid)+'">✊ PPT</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
 }
 function renderSocial(){
   const members=roster().filter(x=>x.jid!==ui.data.identity.jid);
   const rel=ui.data.relationship;
   if(!currentGroup()) return '<div class="notice warn">Conecte usando <b>!web</b> dentro do grupo para liberar interações com outros jogadores.</div>';
-  return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo, Duelo Pet, roubo, PIX e empréstimo usam os mesmos jogadores ativos do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
+  const games=currentGroup().games||{}, me=ui.data.identity.jid;
+  const coinPending=games['coin_duel:'+me]||null, rpsPending=games['rps_duel:'+me]||null;
+  const pending=(coinPending||rpsPending)?'<div class="section card"><div class="section-title"><h3>Desafios pendentes</h3><small>Mesma sessão do grupo</small></div><div class="hero-actions">'+
+    (coinPending?'<button class="btn good" data-coin-duel-accept>🪙 Aceitar Cara/Coroa • '+money(coinPending.amount)+'</button>':'')+
+    (rpsPending?'<button class="btn good" data-rps-duel-accept>✊ Aceitar PPT • '+money(rpsPending.amount)+'</button>':'')+
+    '</div></div>':'';
+  return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo, Duelo Pet, apostas PvP, roubo, PIX e empréstimo usam os mesmos jogadores ativos do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
+    pending+
     '<div class="card"><div class="section-title"><h3>Relacionamento</h3><small>'+esc(rel?JSON.stringify(rel):'Nenhum')+'</small></div><div class="hero-actions"><button class="btn danger" data-relationship-divorce>Divorciar</button></div></div>'+
     '<div class="section grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div>'+resultPanel();
 }
@@ -497,6 +528,28 @@ function renderGames(){
     '</div>'+resultPanel();
 }
 
+function renderGroupMissionCard(ex){
+  const board=ex.groupMissionLeaderboard||{}, mission=board.mission||ex.groupMission||null, rows=board.rows||[];
+  if(!mission) return '<div class="empty">Nenhuma missão coletiva carregada.</div>';
+  const target=Math.max(1,Number(mission.target||1)), progress=Number(mission.progress||0);
+  return '<div class="section-title"><div><h3>Missão coletiva</h3><small>'+esc(mission.title||mission.mission_type||'Missão')+'</small></div><span class="tag '+(mission.completed?'good':'')+'">'+num(progress)+'/'+num(target)+'</span></div>'+
+    '<div class="progress"><span style="width:'+pct(progress/target*100)+'%"></span></div>'+
+    '<p>Recompensa total: <strong>'+money(mission.reward_cash||0)+'</strong> • distribuição proporcional à contribuição.</p>'+
+    (rows.length?'<div class="list">'+rows.slice(0,10).map(r=>'<div class="list-row"><span>#'+num(r.position)+' '+esc(r.push_name||'Jogador')+'</span><strong>'+num(r.contribution)+' • '+money(r.share||0)+'</strong></div>').join('')+'</div>':'<div class="empty">Ainda sem contribuição registrada.</div>')+
+    '<div class="hero-actions"><button class="btn good" data-group-mission-claim>Resgatar minha parte</button></div>';
+}
+function renderGroupEventCard(ex){
+  const e=ex.groupEvent||null, nowSec=Math.floor(Date.now()/1000);
+  if(!e || e.claimed || Number(e.expires_at||0)<=nowSec){
+    return '<div class="section-title"><h3>Evento relâmpago do grupo</h3><small>Nenhum evento disponível agora</small></div><p>Quando surgir uma maleta, PIX misterioso ou tesouro no grupo, o Web enxergará o mesmo evento.</p>';
+  }
+  const remain=Math.max(0,Number(e.expires_at||0)-nowSec);
+  const labels={maleta:'💼 Maleta de dinheiro',pix:'💸 PIX misterioso',tesouro:'🧰 Pequeno tesouro'};
+  return '<div class="section-title"><div><h3>'+esc(labels[e.event_type]||titleCase(e.event_type))+'</h3><small>Evento compartilhado com o WhatsApp</small></div><span class="tag good">'+remain+'s</span></div>'+
+    '<p>Recompensa base: <strong>'+money(e.reward_cash||0)+'</strong></p>'+
+    '<button class="btn primary" data-group-event-claim>Resgatar agora</button>';
+}
+
 function renderActivities(){
   const d=ui.data, ex=ui.extras||{}, sleep=d.activities&&d.activities.sleep, carp=d.activities&&d.activities.carpinar;
   const missions=d.dailyMissions||[], exp=d.petExpeditions||[], plans=ex.carpinarPlans||[];
@@ -508,7 +561,7 @@ function renderActivities(){
     '</div>'+
     '<div class="section card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
     '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+
-    (currentGroup()?'<div class="section card"><div class="section-title"><h3>Missão do grupo</h3><button class="btn good" data-group-mission-claim>Resgatar</button></div><pre class="result-box">'+esc(JSON.stringify(ex.groupMission||{},null,2))+'</pre><button class="btn good" data-group-event-claim>Resgatar evento coletivo</button></div>':'')+
+    (currentGroup()?'<div class="section grid two"><div class="card">'+renderGroupMissionCard(ex)+'</div><div class="card">'+renderGroupEventCard(ex)+'</div></div>':'')+
     '<div class="section card"><div class="section-title"><h3>Expedições</h3></div><pre class="result-box">'+esc(JSON.stringify(exp,null,2))+'</pre></div>'+resultPanel();
 }
 
@@ -579,7 +632,8 @@ function renderEconomy(){
     '<div class="section"><div class="section-title"><h3>Garagem</h3><small>'+cars.length+' veículos</small></div><div class="grid cards">'+(cars.length?cars.map(x=>'<div class="card catalog-card"><h3>🚗 '+esc(x.name||x.car_name||x.car_id)+'</h3><p>'+esc(JSON.stringify(x))+'</p><button class="btn danger" data-car-sell="'+esc(x.id||x.car_id)+'">Vender</button></div>').join(''):'<div class="empty">Garagem vazia.</div>')+'</div><div class="grid cards section">'+(catalog.cars||[]).map(x=>'<div class="card catalog-card"><h3>🚘 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-car-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
     '<div class="section"><div class="section-title"><h3>Motos e bicicletas</h3><small>'+bikes.length+' na garagem</small></div><div class="grid cards">'+(bikes.length?bikes.map(x=>'<div class="card catalog-card"><h3>🏍️ '+esc(x.name||x.motorcycle_name||x.motorcycle_id)+'</h3><p>'+esc(JSON.stringify(x))+'</p><button class="btn danger" data-moto-sell="'+esc(x.id||x.motorcycle_id)+'">Vender</button></div>').join(''):'<div class="empty">Nenhuma moto/bike.</div>')+'</div><div class="grid cards section">'+(catalog.motorcycles||[]).map(x=>'<div class="card catalog-card"><h3>🛵 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-moto-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
     '<div class="section"><div class="section-title"><h3>Meus negócios</h3><small>'+businesses.length+'</small></div><div class="grid cards">'+(businesses.length?businesses.map(b=>'<div class="card biz-card"><h3>'+esc(b.name||b.business_id)+'</h3><p>Lv.'+num(b.level||1)+'</p><button class="btn" data-business-upgrade="'+esc(b.business_id||b.id)+'">Upar</button></div>').join(''):'<div class="empty">Você ainda não possui negócios.</div>')+'</div><div class="grid cards section">'+(catalog.businesses||[]).map(x=>'<div class="card catalog-card"><h3>🏢 '+esc(x.name)+'</h3><p>'+money(x.price)+' • '+money(x.profitHour)+'/h</p><button class="btn primary" data-business-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
-    '<div class="section card"><div class="section-title"><h3>Central Uber CLT</h3><small>Mesmo estado do !centraluber</small></div><pre class="result-box">'+esc(JSON.stringify(clt,null,2))+'</pre><div class="hero-actions"><button class="btn" data-clt-hire>Contratar motorista</button><button class="btn primary" data-clt-start>Iniciar turno</button><button class="btn good" data-action="cltUber.collect">Coletar</button></div></div>'+resultPanel();
+    '<div class="section card"><div class="section-title"><h3>Central Uber CLT</h3><small>Mesmo estado do !centraluber</small></div><pre class="result-box">'+esc(JSON.stringify(clt,null,2))+'</pre><div class="hero-actions"><button class="btn" data-clt-hire>Contratar motorista</button><button class="btn primary" data-clt-start>Iniciar turno</button><button class="btn good" data-action="cltUber.collect">Coletar</button></div></div>'+
+    '<div class="section card"><div class="section-title"><h3>Extrato recente</h3><small>Últimas 20 movimentações do mesmo jogador</small></div>'+renderTransactions(20)+'</div>'+resultPanel();
 }
 function renderLoans(){
   const loans=ui.data.loans||{}, borrowed=loans.borrowed||[], lent=loans.lent||[], credit=loans.credit||ui.extras&&ui.extras.loanCredit||{};
@@ -680,6 +734,23 @@ function bind(){
   document.querySelectorAll('[data-loan-reject]').forEach(x=>x.onclick=()=>doAction('loan.reject',{id:Number(x.dataset.loanReject)},{}));
   document.querySelectorAll('[data-battle]').forEach(x=>x.onclick=()=>doAction('battle',{targetJid:x.dataset.battle},{}));
   document.querySelectorAll('[data-petduel]').forEach(x=>x.onclick=()=>doAction('petduel',{targetJid:x.dataset.petduel},{}));
+  document.querySelectorAll('[data-coin-duel]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Aposta do Cara ou Coroa:','1000'));
+    if(!(amount>=10)) return;
+    const choice=String(prompt('Escolha: cara ou coroa','cara')||'').trim().toLowerCase();
+    if(['cara','coroa'].includes(choice)) doAction('game.coinDuel.create',{targetJid:x.dataset.coinDuel,amount,choice},{});
+  });
+  document.querySelectorAll('[data-rps-duel]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Aposta do Pedra/Papel/Tesoura:','1000'));
+    if(!(amount>=10)) return;
+    const choice=String(prompt('Escolha: pedra, papel ou tesoura','pedra')||'').trim().toLowerCase();
+    if(['pedra','papel','tesoura'].includes(choice)) doAction('game.rpsDuel.create',{targetJid:x.dataset.rpsDuel,amount,choice},{});
+  });
+  document.querySelectorAll('[data-coin-duel-accept]').forEach(x=>x.onclick=()=>doAction('game.coinDuel.accept',{},{}));
+  document.querySelectorAll('[data-rps-duel-accept]').forEach(x=>x.onclick=()=>{
+    const choice=String(prompt('Escolha: pedra, papel ou tesoura','pedra')||'').trim().toLowerCase();
+    if(['pedra','papel','tesoura'].includes(choice)) doAction('game.rpsDuel.accept',{choice},{});
+  });
   document.querySelectorAll('[data-rob]').forEach(x=>x.onclick=()=>doAction('rob',{targetJid:x.dataset.rob},{}));
   document.querySelectorAll('[data-transfer]').forEach(x=>x.onclick=()=>{
     const amount=Number(prompt('Valor do PIX:','1000'));
