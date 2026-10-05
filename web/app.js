@@ -484,10 +484,32 @@ function renderInventory(){
     '<div class="grid cards">'+(inv.length?inv.map(inventoryCard).join(''):'<div class="empty">Inventário vazio.</div>')+'</div>'+resultPanel();
 }
 
+function shopCategoryLabel(cat){
+  return ({weapon:'🗡️ Armas',armor:'🛡️ Armaduras',boots:'🥾 Botas',potion:'🧪 Poções',pet_potion:'🐾 Cura Pet',pet_energy:'⚡ Energia Pet',box:'📦 Caixas',raid:'🔑 Raid',material:'🧩 Materiais'}[cat]||('📦 '+titleCase(cat||'outros')));
+}
+function shopCard(i){
+  const eq=i.equipment||{};
+  const bonus=[];
+  if(Number(eq.attack||eq.atk)>0) bonus.push('+'+num(eq.attack||eq.atk)+' ATK');
+  if(Number(eq.defense||eq.def)>0) bonus.push('+'+num(eq.defense||eq.def)+' DEF');
+  if(Number(eq.speed||eq.spd)>0) bonus.push('+'+num(eq.speed||eq.spd)+' SPD');
+  if(Number(eq.crit)>0) bonus.push('+'+num(Number(eq.crit)<=1?Number(eq.crit)*100:eq.crit)+'% CRIT');
+  return '<div class="card item-card '+rarityClass(i.rarity)+'"><div class="item-icon">'+itemIcon(i)+'</div><div class="tag-row"><span class="tag">'+esc(i.rarity||'Comum')+'</span><span class="tag">'+esc(i.category||'item')+'</span></div><h3>'+esc(i.name)+'</h3><p>'+esc(i.description||'')+'</p>'+
+    (bonus.length?'<p class="item-bonus">'+bonus.join(' • ')+'</p>':'')+
+    '<strong>'+money(i.price)+'</strong><div class="item-actions"><button class="btn primary" data-shop-buy="'+esc(i.id)+'">Comprar 1</button></div></div>';
+}
+
 function renderShop(){
   const items=(ui.catalog&&ui.catalog.shop)||[];
-  return '<div class="page-head"><div><h2>Loja Alpha</h2><p>Comprar aqui chama a mesma função buyItem usada pelo bot.</p></div><span class="tag good">'+money(ui.data.profile&&ui.data.profile.cash)+'</span></div>'+
-    '<div class="grid cards">'+items.map(i=>'<div class="card item-card '+rarityClass(i.rarity)+'"><div class="item-icon">'+itemIcon(i)+'</div><span class="tag">'+esc(i.category)+'</span><h3>'+esc(i.name)+'</h3><p>'+esc(i.description||'')+'</p><strong>'+money(i.price)+'</strong><div class="item-actions"><button class="btn primary" data-shop-buy="'+esc(i.id)+'">Comprar 1</button></div></div>').join('')+'</div>';
+  const groups=[];
+  for(const i of items){
+    const key=String(i.category||'outros');
+    let g=groups.find(x=>x.key===key);
+    if(!g){g={key,items:[]};groups.push(g)}
+    g.items.push(i);
+  }
+  return '<div class="page-head"><div><h2>Loja Alpha</h2><p>Itens, preços e atributos vêm do mesmo catálogo usado pelo bot.</p></div><span class="tag good">'+money(ui.data.profile&&ui.data.profile.cash)+'</span></div>'+
+    (groups.length?groups.map(g=>'<div class="section shop-section"><div class="section-title"><h3>'+esc(shopCategoryLabel(g.key))+'</h3><small>'+g.items.length+' item(ns)</small></div><div class="grid cards">'+g.items.map(shopCard).join('')+'</div></div>').join(''):'<div class="empty">Loja sem itens disponíveis.</div>');
 }
 
 function raidState(level){
