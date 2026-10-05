@@ -118,3 +118,16 @@ nav button.active{box-shadow:inset 3px 0 0 white}
   .battle-card h2{font-size:24px}
   .monster{font-size:72px}
 }
+.drop-equip-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+.drop-slot{min-height:150px;border:1px dashed #4b5567;border-radius:16px;background:#0d1118;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:14px;gap:5px}
+.drop-slot:hover{border-color:#7d8799;background:#141a23}
+.drop-slot small,.drop-slot span{color:var(--muted);font-size:11px}
+.drop-slot strong{font-size:13px}
+.draggable-item{cursor:grab}
+.draggable-item:active{cursor:grabbing}
+.raid-levels button{padding:9px 12px;border:1px solid var(--line);border-radius:12px;color:#8791a1;background:#0d1118;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:105px}
+.raid-levels button b{color:#d9dee7}
+.raid-levels button small{font-size:10px;color:#7f8999}
+.raid-levels button.active{color:white;border-color:#6d7685;background:#252c38}
+.raid-levels button.active small{color:#c6ccd6}
+@media(max-width:700px){.drop-equip-row{grid-template-columns:1fr}}
