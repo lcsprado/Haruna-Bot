@@ -556,20 +556,40 @@ function renderClan(){
     '<div class="section card"><div class="section-title"><h3>Ranking de clãs</h3><small>'+clans.length+' listados</small></div>'+renderClanList(clans)+'</div>'+resultPanel();
 }
 
+function gameStatePanel(type,state){
+  if(!state) return '<div class="game-state empty">Nenhuma sessão ativa.</div>';
+  if(type==='quiz'){
+    const opts=Array.isArray(state.a)?state.a:[];
+    return '<div class="game-state"><span class="tag '+(state.difficulty==='difícil'?'epic':'')+'">'+esc(state.difficulty||'normal')+'</span><h4>'+esc(state.q||'Quiz ativo')+'</h4>'+
+      (opts.length?'<div class="quiz-options">'+opts.map((o,i)=>'<div><b>'+(i+1)+'.</b> '+esc(o)+'</div>').join('')+'</div>':'')+'</div>';
+  }
+  if(type==='numero') return '<div class="game-state"><strong>🔢 Número entre 1 e 100</strong><small>Tentativas: '+num(state.attempts||0)+'/'+num(state.max||10)+'</small></div>';
+  if(type==='forca') return '<div class="game-state"><strong class="hangman-word">'+esc(state.masked||'_ _ _ _')+'</strong><small>Dica: '+esc(state.hint||'—')+' • ❤️ '+num(state.lives||0)+' • Erradas: '+esc((state.wrong||[]).join(', ')||'nenhuma')+'</small></div>';
+  if(type==='roulette_group'){
+    const players=Object.values(state.players||{});
+    return '<div class="game-state"><strong>🎯 Roleta aberta</strong><small>'+num(players.length)+' participante(s) • expira em '+Math.max(0,Math.ceil((Number(state.expiresAt||0)-Date.now())/1000))+'s</small></div>';
+  }
+  if(type==='tournament'){
+    const players=state.players||[];
+    return '<div class="game-state"><strong>🏆 Torneio aberto</strong><small>'+num(players.length)+' jogador(es) • entrada '+money(state.amount||0)+'</small></div>';
+  }
+  return '<div class="game-state"><span class="tag good">ATIVO</span></div>';
+}
+
 function renderGames(){
   const games=currentGroup()&&currentGroup().games||{};
   const groupLinked=Boolean(currentGroup());
   return '<div class="page-head"><div><h2>Minigames</h2><p>Resultados e apostas passam pelo mesmo motor do WhatsApp.</p></div><span class="tag '+(groupLinked?'good':'')+'">'+(groupLinked?'GRUPO VINCULADO':'SOLO')+'</span></div>'+
     '<div class="grid three">'+
-      '<div class="card"><h3>🪙 Cara ou Coroa</h3><p>Aposta individual.</p><button class="btn primary" data-game-coin>Jogar</button></div>'+
-      '<div class="card"><h3>🎰 Roleta</h3><p>Aposta individual com escolha.</p><button class="btn primary" data-game-roulette>Jogar</button></div>'+
-      '<div class="card"><h3>✊ Pedra Papel Tesoura</h3><p>Partida rápida.</p><button class="btn primary" data-game-rps>Jogar</button></div>'+
-      '<div class="card"><h3>🏰 Dungeon</h3><p>Usa a rotina !dungeon.</p><button class="btn primary" data-game-dungeon>Entrar</button></div>'+
-      '<div class="card"><h3>❓ Quiz do Grupo</h3><p>'+esc(games.quiz?JSON.stringify(games.quiz):'Nenhum quiz ativo')+'</p><div class="pet-actions"><button class="btn" data-quiz-start>Iniciar</button><button class="btn good" data-quiz-answer>Responder</button></div></div>'+
-      '<div class="card"><h3>🔢 Número</h3><p>'+esc(games.numero?JSON.stringify(games.numero):'Nenhum jogo ativo')+'</p><div class="pet-actions"><button class="btn" data-number-start>Iniciar</button><button class="btn good" data-number-guess>Chutar</button></div></div>'+
-      '<div class="card"><h3>🔤 Forca</h3><p>'+esc(games.forca?JSON.stringify(games.forca):'Nenhuma forca ativa')+'</p><div class="pet-actions"><button class="btn" data-hangman-start>Iniciar</button><button class="btn good" data-hangman-letter>Letra</button><button class="btn" data-hangman-word>Palavra</button></div></div>'+
-      '<div class="card"><h3>🎯 Roleta em Grupo</h3><p>Crie, entre e gire a mesma sessão do grupo.</p><div class="pet-actions"><button class="btn" data-group-roulette-create>Criar</button><button class="btn" data-group-roulette-join>Entrar</button><button class="btn good" data-group-roulette-spin>Girar</button></div></div>'+
-      '<div class="card"><h3>🏆 Torneio</h3><p>Crie, entre ou inicie o torneio do grupo.</p><div class="pet-actions"><button class="btn" data-tournament-create>Criar</button><button class="btn" data-tournament-join>Entrar</button><button class="btn good" data-tournament-start>Iniciar</button></div></div>'+
+      '<div class="card game-card"><div class="game-icon">🪙</div><h3>Cara ou Coroa</h3><p>Aposta individual, mesmo saldo real.</p><button class="btn primary" data-game-coin>Jogar</button></div>'+
+      '<div class="card game-card"><div class="game-icon">🎰</div><h3>Roleta</h3><p>Aposta individual com escolha.</p><button class="btn primary" data-game-roulette>Jogar</button></div>'+
+      '<div class="card game-card"><div class="game-icon">✊</div><h3>Pedra Papel Tesoura</h3><p>Partida rápida contra o sistema.</p><button class="btn primary" data-game-rps>Jogar</button></div>'+
+      '<div class="card game-card"><div class="game-icon">🏰</div><h3>Dungeon</h3><p>Usa HP, atributos, equipamentos e cooldown reais.</p><button class="btn primary" data-game-dungeon>Entrar</button></div>'+
+      '<div class="card game-card"><h3>❓ Quiz do Grupo</h3>'+gameStatePanel('quiz',games.quiz)+'<div class="pet-actions"><button class="btn" data-quiz-start>Iniciar</button><button class="btn good" data-quiz-answer>Responder</button></div></div>'+
+      '<div class="card game-card"><h3>🔢 Número</h3>'+gameStatePanel('numero',games.numero)+'<div class="pet-actions"><button class="btn" data-number-start>Iniciar</button><button class="btn good" data-number-guess>Chutar</button></div></div>'+
+      '<div class="card game-card"><h3>🔤 Forca</h3>'+gameStatePanel('forca',games.forca)+'<div class="pet-actions"><button class="btn" data-hangman-start>Iniciar</button><button class="btn good" data-hangman-letter>Letra</button><button class="btn" data-hangman-word>Palavra</button></div></div>'+
+      '<div class="card game-card"><h3>🎯 Roleta em Grupo</h3>'+gameStatePanel('roulette_group',games.roulette_group)+'<div class="pet-actions"><button class="btn" data-group-roulette-create>Criar</button><button class="btn" data-group-roulette-join>Entrar</button><button class="btn good" data-group-roulette-spin>Girar</button></div></div>'+
+      '<div class="card game-card"><h3>🏆 Torneio</h3>'+gameStatePanel('tournament',games.tournament)+'<div class="pet-actions"><button class="btn" data-tournament-create>Criar</button><button class="btn" data-tournament-join>Entrar</button><button class="btn good" data-tournament-start>Iniciar</button></div></div>'+
     '</div>'+resultPanel();
 }
 
