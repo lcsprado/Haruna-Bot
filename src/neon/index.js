@@ -4195,9 +4195,9 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await inventoryMenu()
         return true
       }
-      const category=input==='1'?'weapon':input==='2'?'armor':null
+      const category=input==='1'?'weapon':input==='2'?'armor':input==='3'?'boots':null
       if(!category){
-        await reply('⚙️ Escolha *1 Arma* ou *2 Armadura*.')
+        await reply('⚙️ Escolha *1 Arma*, *2 Armadura* ou *3 Botas*.')
         return true
       }
       await equipmentTypeMenu(category)
