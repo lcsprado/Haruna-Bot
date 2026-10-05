@@ -7642,7 +7642,7 @@ ${results.join('\n')}
           let text='🏢 *CENTRAL UBER*\n\n'
           s.drivers.forEach(d=>{
             const state=d.active?`🟢 EM TURNO • falta ${duration(d.remaining)}`:d.finished?'🟡 TURNO ENCERRADO':'⚪ DISPONÍVEL'
-            text+=`${d.slot}. *${d.type.name}* — ${state}\n   🚗 ${d.car?.name||'sem carro'} • 💰 R$ ${fmt(Number(d.accrued||0))} acumulado\n`
+            text+=`${d.slot}. *${d.type.name}* — ${state}\n   🚗 ${d.car?.name||'sem carro'} • 💰 R$ ${fmt(Number(d.accrued||0))} disponível p/ saque\n`
           })
           text+='\n🚗 *Sua garagem:*\n'
           s.garage.forEach((car,i)=>{
@@ -7655,7 +7655,14 @@ ${results.join('\n')}
         } else if(['coletauber'].includes(cmd)){
           const r=await collectCltUber(sender)
           if(!r.total) await reply('💵 A Central Uber ainda não tem valor disponível para coleta.')
-          else await reply(`💰 *CENTRAL UBER — COLETA CONCLUÍDA!*\n\n💵 Líquido recebido: *R$ ${fmt(r.total)}*\n🧾 O valor já considera comissão do motorista e TAXADE.\n\n🛑 Motoristas cujo turno de 8h terminou continuam parados até você iniciar outro em *!centraluber*.`)
+          else{
+            let text='💰 *CENTRAL UBER — COLETA CONCLUÍDA!*\n\n'
+            for(const d of (r.details||[])){
+              text+=`${d.slot}. *${d.driver?.name||'Motorista'}* — ${d.car?.name||'carro'}\n   💵 Disponível desde a última coleta: *R$ ${fmt(d.amount)}*\n`
+            }
+            text+=`\n💰 *TOTAL SACADO: R$ ${fmt(r.total)}*\n🧾 Valores líquidos, após comissão do motorista e TAXADE.\n\nℹ️ *Importante:* este saque mostra apenas o saldo gerado *desde a última !coletauber*. Valores coletados antes no mesmo turno não aparecem novamente aqui.\n\n🛑 Motoristas cujo turno de 8h terminou continuam parados até você iniciar outro em *!centraluber*.`
+            await reply(text)
+          }
 
         } else if(['uber'].includes(cmd)){
           const r=await driveUber(sender)
