@@ -213,6 +213,15 @@ export default function Game(){
     notify(item.name+' equipado.');
   }
 
+  function dropEquip(slot,event){
+    event.preventDefault();
+    const id=event.dataTransfer.getData('text/item-id');
+    const item=game.inventory.find(i=>i.id===id);
+    if(!item) return notify('Item não encontrado.');
+    if(item.category!==slot) return notify('Esse item não serve neste slot.');
+    equip(item);
+  }
+
   function upgrade(item){
     if(!['weapon','armor','boots'].includes(item.category)) return;
     if(item.level>=10) return notify('Item já está no Lv.10.');
@@ -353,7 +362,21 @@ export default function Game(){
     <div className="cards-grid">{game.pets.map(pet=><Card key={pet.id} className={game.petTeam.includes(pet.id)?'selected':''}><div className="item-top"><div className="item-icon">{pet.icon}</div><div><h3>{pet.name}</h3><span>Lv.{pet.level} · {pet.style}</span></div></div><small>{pet.bonus}</small><div className="line-label"><span>HP</span><b>{pet.hp}/{pet.maxHp}</b></div><Bar value={pet.hp} max={pet.maxHp}/><div className="line-label"><span>Energia</span><b>{pet.energy}/{pet.maxEnergy}</b></div><Bar value={pet.energy} max={pet.maxEnergy} tone="energy"/></Card>)}</div>
   </div>;
 
-  const Items=()=> <div className="cards-grid">{game.inventory.filter(i=>i.qty>0).map(item=><Card key={item.id}><div className="item-top"><div className="item-icon">{item.icon}</div><div><h3>{item.name}</h3><span>{item.rarity} · Lv.{item.level} · x{item.qty}</span></div></div><p className="item-stat">{item.stat}</p><div className="button-row">{['weapon','armor','boots'].includes(item.category)&&<><Button onClick={()=>equip(item)}>Equipar</Button><Button onClick={()=>upgrade(item)} kind="secondary">Upar</Button></>}{item.id==='pocao_p'&&<Button onClick={usePotion}>Usar +35 HP</Button>}{item.id==='pocao_pet'&&<Button onClick={healPet}>Curar pet</Button>}</div></Card>)}</div>;
+  const Items=()=> <div className="stack">
+    <Card>
+      <div className="card-head"><h3>Equipamentos</h3><span>Arraste um item compatível para o slot</span></div>
+      <div className="drop-equip-row">
+        {['weapon','armor','boots'].map(slot=>{
+          const item=game.equipment[slot];
+          const label=slot==='weapon'?'Arma':slot==='armor'?'Armadura':'Botas';
+          return <div key={slot} className="drop-slot" onDragOver={e=>e.preventDefault()} onDrop={e=>dropEquip(slot,e)}>
+            <small>{label}</small><div className="big-icon">{item?.icon||'＋'}</div><strong>{item?.name||'Vazio'}</strong>{item&&<span>Lv.{item.level} · {item.stat}</span>}
+          </div>;
+        })}
+      </div>
+    </Card>
+    <div className="cards-grid">{game.inventory.filter(i=>i.qty>0).map(item=><div key={item.id} draggable={['weapon','armor','boots'].includes(item.category)} onDragStart={e=>e.dataTransfer.setData('text/item-id',item.id)} className={['weapon','armor','boots'].includes(item.category)?'draggable-item':''}><Card><div className="item-top"><div className="item-icon">{item.icon}</div><div><h3>{item.name}</h3><span>{item.rarity} · Lv.{item.level} · x{item.qty}</span></div></div><p className="item-stat">{item.stat}</p><div className="button-row">{['weapon','armor','boots'].includes(item.category)&&<><Button onClick={()=>equip(item)}>Equipar</Button><Button onClick={()=>upgrade(item)} kind="secondary">Upar</Button></>}{item.id==='pocao_p'&&<Button onClick={usePotion}>Usar +35 HP</Button>}{item.id==='pocao_pet'&&<Button onClick={healPet}>Curar pet</Button>}</div></Card></div>)}</div>
+  </div>;
 
   const Business=()=> { const total=game.businesses.reduce((s,b)=>s+b.stored,0); return <div className="stack"><Card><div className="card-head"><h3>Negócios</h3><span>Disponível: R$ {fmt(total)}</span></div><Button onClick={collectBusinesses} disabled={total<=0}>💰 COLETAR TUDO</Button></Card><div className="cards-grid">{game.businesses.map(b=><Card key={b.id}><div className="item-top"><div className="item-icon">{b.icon}</div><div><h3>{b.name}</h3><span>Lv.{b.level}</span></div></div><div className="money-row"><div><small>Acumulado</small><strong>R$ {fmt(b.stored)}</strong></div><div><small>Produção</small><strong>R$ {fmt(b.rate)}/h</strong></div></div></Card>)}</div></div>; };
 
