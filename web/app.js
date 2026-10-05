@@ -668,10 +668,22 @@ function renderActivities(){
     '<div class="section card"><div class="section-title"><h3>Expedições</h3></div><pre class="result-box">'+esc(JSON.stringify(exp,null,2))+'</pre></div>'+resultPanel();
 }
 
+function renderLevelRewards(rows,level,claimed){
+  rows=rows||[];
+  if(!rows.length) return '<div class="empty">Nenhuma recompensa de nível configurada.</div>';
+  return '<div class="level-rewards">'+rows.map(r=>{
+    const unlocked=Number(level)>=Number(r.milestone||0);
+    const done=Number(claimed||0)>=Number(r.milestone||0);
+    const items=(r.items||[]).map(i=>esc(titleCase(String(i.id||'').replaceAll('_',' ')))+' ×'+num(i.qty)).join(' • ');
+    return '<div class="level-reward '+(done?'claimed':unlocked?'unlocked':'locked')+'"><div><span class="tag '+(unlocked?'good':'')+'">LV.'+num(r.milestone)+'</span><strong>'+money(r.cash||0)+'</strong><small>'+esc(items||'Somente dinheiro')+'</small></div><span class="reward-status">'+(done?'✓ Resgatado':unlocked?'🎁 Disponível':'🔒')+'</span></div>';
+  }).join('')+'</div>';
+}
+
 function renderProgression(){
   const d=ui.data||{}, ex=ui.extras||{}, p=profile(), raw=d.profile||{};
   const streak=d.streak||{}, career=d.career||{}, achievements=d.achievements||[], missions=d.dailyMissions||[];
   const level=Number(raw.level||1), exp=Number(raw.exp||0);
+  const claimedLevel=Number(raw.last_level_reward||raw.level_reward_claimed||0);
   const nextExp=Math.max(1,level*100);
   const careerXp=Number(career.career_xp||career.xp||0), shifts=Number(career.total_shifts||career.shifts||0);
   return '<div class="page-head"><div><h2>Progressão</h2><p>Equivale aos dados de !nivel, !streak, !carreira, !conquistas e !missoes.</p></div><span class="tag good">NÍVEL '+num(level)+'</span></div>'+
@@ -702,7 +714,7 @@ function renderProgression(){
       '<div class="card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
     '</div>'+
     '<div class="section grid two">'+
-      '<div class="card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+
+      '<div class="card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,level,claimedLevel)+'</div>'+
       '<div class="card"><div class="section-title"><h3>Cooldowns</h3><small>Servidor</small></div>'+renderCooldowns()+'</div>'+
     '</div>'+resultPanel();
 }
