@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { handleWebApi } from './web-api.js'
 
 const port = Number(process.env.PORT || 10000)
 const health=globalThis.__trevoHealth || (globalThis.__trevoHealth={
@@ -8,7 +9,15 @@ const health=globalThis.__trevoHealth || (globalThis.__trevoHealth={
   everConnected:false
 })
 
-http.createServer((req, res) => {
+http.createServer(async (req, res) => {
+  try{
+    if(await handleWebApi(req,res)) return
+  }catch(err){
+    console.error('[HTTP] web api handler failed',err)
+    if(!res.headersSent) res.writeHead(500,{'content-type':'application/json'})
+    return res.end(JSON.stringify({ok:false,error:'Erro interno.'}))
+  }
+
   if (req.url === '/health') {
     const connected=health.whatsapp==='open'
     res.writeHead(connected ? 200 : 503, { 'content-type': 'application/json' })
