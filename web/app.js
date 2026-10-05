@@ -370,7 +370,9 @@ function ownedPetCard(p){
     '<div class="tag-row"><span class="tag '+(active?'good':'')+'">'+(active?'ATIVO':'COLEÇÃO')+'</span><span class="tag">'+esc(cat&&cat.style||'Pet')+'</span></div>'+
     '<h3>'+esc(p.name||cat&&cat.label||titleCase(p.species))+'</h3>'+
     '<p>'+esc(titleCase(p.species))+' • Lv.'+num(p.level)+' • XP '+num(p.xp)+' • Poder '+num(p.power)+'</p>'+
-    '<p>❤️ '+num(p.hp)+'/'+num(p.max_hp)+' • ⚡ Energia '+num(p.energy)+' • 🍗 '+num(p.hunger)+'/100 • 🧼 '+num(p.hygiene)+'/100</p>'+
+    '<div class="pet-vitals"><div><span>❤️ HP</span><strong>'+num(p.hp)+'/'+num(p.max_hp)+'</strong><div class="progress"><span style="width:'+pct(Number(p.hp||0)/Math.max(1,Number(p.max_hp||1))*100)+'%"></span></div></div>'+
+    '<div><span>⚡ Energia</span><strong>'+num(p.energy)+'/'+num(p.max_energy||100)+'</strong><div class="progress"><span style="width:'+pct(Number(p.energy||0)/Math.max(1,Number(p.max_energy||100))*100)+'%"></span></div></div></div>'+
+    '<div class="pet-needs"><span>🍗 '+num(p.hunger)+'/100</span><span>🧼 '+num(p.hygiene)+'/100</span></div>'+
     '<p>'+esc(specialtyText(cat))+'</p>'+
     '<div class="pet-actions">'+
       (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
