@@ -302,13 +302,27 @@ function renderLiveGroupState(group){
   return html+'</div>';
 }
 
+function renderLuckyBoxEvent(){
+  const event=(ui.data&&ui.data.events&&ui.data.events.luckyBox)||null;
+  if(!event || (!event.active&&!event.scheduled)) return '';
+  const qty=itemCount('caixa_sorte');
+  const now=Date.now();
+  const ms=event.active?Math.max(0,Number(event.endsAt||0)-now):Math.max(0,Number(event.startsAt||0)-now);
+  const mins=Math.max(1,Math.ceil(ms/60000));
+  return '<div class="section card lucky-event '+(event.active?'active':'scheduled')+'">'+
+    '<div class="section-title"><div><h3>🎁 Evento Caixa da Sorte '+(event.active?'ATIVO':'AGENDADO')+'</h3><small>Multiplicador de sorte ×'+num(event.multiplier||2)+'</small></div><span class="tag '+(event.active?'good':'')+'">⏳ '+mins+' min</span></div>'+
+    '<p>'+(event.active?'As Caixas da Sorte abertas agora usam o multiplicador do evento compartilhado do WhatsApp.':'O bônus ainda não começou.')+'</p>'+
+    (event.active&&qty>0?'<div class="hero-actions"><button class="btn primary" data-lucky-open="1">Abrir 1</button><button class="btn good" data-lucky-open="'+Math.min(50,qty)+'">Abrir '+Math.min(50,qty)+'</button><span class="tag">'+qty+' caixa(s)</span></div>':'')+
+  '</div>';
+}
+
 function renderHome(){
   const p=profile(), raw=ui.data.profile||p;
   const hpMax=Number(p.effective_max_hp||p.max_hp||1), hp=Number(p.effective_hp||p.hp||0);
   const group=currentGroup();
   const activities=(ui.data&&ui.data.activities)||{};
   const missions=(ui.data&&ui.data.dailyMissions)||[];
-  return '<div class="hero card">'+
+  return renderLuckyBoxEvent()+'<div class="hero card">'+
     '<div><p class="eyebrow">CONTA REAL DO WHATSAPP</p><h2>'+esc(raw.push_name||'Jogador')+'</h2>'+
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
@@ -452,6 +466,7 @@ function inventoryCard(i){
 function renderInventory(){
   const inv=ui.data.inventory||[];
   return '<div class="page-head"><div><h2>Inventário real</h2><p>Quantidade, raridade e upgrade são lidos do Neon.</p></div><div class="hero-actions"><button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
+    renderLuckyBoxEvent()+
     '<div class="grid cards">'+(inv.length?inv.map(inventoryCard).join(''):'<div class="empty">Inventário vazio.</div>')+'</div>'+resultPanel();
 }
 
@@ -883,6 +898,7 @@ function bind(){
   document.querySelectorAll('[data-item-use]').forEach(x=>x.onclick=()=>doAction('item.use',{itemId:x.dataset.itemUse},{}));
   document.querySelectorAll('[data-box-open]').forEach(x=>x.onclick=()=>doAction('item.box.open',{boxId:x.dataset.boxOpen,qty:1},{}));
   document.querySelectorAll('[data-box-open-all]').forEach(x=>x.onclick=()=>doAction('item.box.open',{boxId:x.dataset.boxOpenAll,qty:Number(x.dataset.boxQty||1)},{}));
+  document.querySelectorAll('[data-lucky-open]').forEach(x=>x.onclick=()=>doAction('item.lucky.open',{qty:Number(x.dataset.luckyOpen||1)},{}));
   document.querySelectorAll('[data-sell-duplicates]').forEach(x=>x.onclick=()=>doAction('item.sellDuplicates',{},{}));
   document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>doAction('item.sell',{itemId:x.dataset.itemSell,qty:1},{}));
   document.querySelectorAll('[data-shop-buy]').forEach(x=>x.onclick=()=>doAction('item.buy',{itemId:x.dataset.shopBuy,qty:1},{}));
