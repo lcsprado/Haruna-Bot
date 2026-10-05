@@ -4002,6 +4002,7 @@ export function petSpeedBonus(species,level=1){
 const PET_TEAM_STYLE_BY_SPECIES={
   cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
   golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
+  kraken_aco:'guardiao',paladino_astral:'guardiao',colosso_alpha:'guardiao',
 
   papagaio:'voador',coruja:'voador',aguia:'voador',gaviao:'voador',dragao:'voador',
   corvo_abissal:'voador',dragao_vulcanico:'voador',fenix_fogo:'voador',fenix_gelo:'voador',
@@ -4010,10 +4011,12 @@ const PET_TEAM_STYLE_BY_SPECIES={
   gato:'predador',raposa:'predador',lobo:'predador',guepardo:'predador',tigre:'predador',leao:'predador',
   moreia_sombria:'predador',tubarao_abissal:'predador',
   urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
+  pantera_vulcanica:'predador',quimera_abissal:'predador',lince_celestial:'predador',
 
   coelho:'mistico',hamster:'mistico',gazela_mistica:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
   golfinho_celestial:'mistico',polvo_arcano:'mistico',
-  salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico'
+  salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico',
+  oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico'
 }
 const PET_TEAM_STYLE_BONUS={
   voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
@@ -4038,39 +4041,50 @@ export function petTeamSynergy(pets=[]){
 
 export const LEGENDARY_PET_SUMMONS=[
   {materialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
-    {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:60,power:150},
-    {species:'urso_runico',name:'🐻 Urso Rúnico',chance:30,power:175},
-    {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205}
+    {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:45,power:150},
+    {species:'urso_runico',name:'🐻 Urso Rúnico',chance:25,power:175},
+    {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205},
+    {species:'oraculo_pedra',name:'🔮 Oráculo de Pedra',chance:20,power:185}
   ]},
   {materialId:'escama_vulcanica',materialName:'Escama Vulcânica',raidLevel:15,summonCost:100,pets:[
-    {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:55,power:165},
+    {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:40,power:165},
     {species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:30,power:190},
-    {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:15,power:225}
+    {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:15,power:225},
+    {species:'pantera_vulcanica',name:'🐈‍⬛ Pantera Vulcânica',chance:15,power:210}
   ]},
   {materialId:'olho_abissal',materialName:'Olho Abissal',raidLevel:20,summonCost:100,pets:[
-    {species:'corvo_abissal',name:'👁️ Corvo Abissal',chance:55,power:180},
+    {species:'corvo_abissal',name:'👁️ Corvo Abissal',chance:40,power:180},
     {species:'lobo_abismo',name:'🌑 Lobo do Abismo',chance:30,power:210},
-    {species:'fenix_gelo',name:'❄️ Fênix de Gelo',chance:15,power:245}
+    {species:'fenix_gelo',name:'❄️ Fênix de Gelo',chance:15,power:245},
+    {species:'espectro_abissal',name:'👻 Espectro Abissal',chance:15,power:235}
   ]},
   {materialId:'nucleo_titan',materialName:'Núcleo do Titã',raidLevel:25,summonCost:100,pets:[
-    {species:'rinoceronte_titanico',name:'🦏 Rinoceronte Titânico',chance:55,power:195},
-    {species:'guardiao_obsidiana',name:'🗿 Guardião de Obsidiana',chance:30,power:230},
-    {species:'leviata_gelo',name:'🌊 Leviatã de Gelo',chance:15,power:270}
+    {species:'rinoceronte_titanico',name:'🦏 Rinoceronte Titânico',chance:35,power:195},
+    {species:'guardiao_obsidiana',name:'🗿 Guardião de Obsidiana',chance:25,power:230},
+    {species:'leviata_gelo',name:'🌊 Leviatã de Gelo',chance:15,power:270},
+    {species:'kraken_aco',name:'🦑 Kraken de Aço',chance:15,power:255},
+    {species:'esfinge_titanica',name:'🗿 Esfinge Titânica',chance:10,power:265}
   ]},
   {materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal',raidLevel:30,summonCost:100,pets:[
-    {species:'cerbero_carmesim',name:'🩸 Cérbero Carmesim',chance:55,power:215},
-    {species:'tigre_lunar',name:'🌙 Tigre Lunar',chance:30,power:250},
-    {species:'imperador_abissal',name:'👑 Imperador Abissal',chance:15,power:295}
+    {species:'cerbero_carmesim',name:'🩸 Cérbero Carmesim',chance:40,power:215},
+    {species:'tigre_lunar',name:'🌙 Tigre Lunar',chance:25,power:250},
+    {species:'imperador_abissal',name:'👑 Imperador Abissal',chance:15,power:295},
+    {species:'quimera_abissal',name:'🐲 Quimera Abissal',chance:10,power:285},
+    {species:'paladino_astral',name:'🛡️ Paladino Astral',chance:10,power:280}
   ]},
   {materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,summonCost:100,pets:[
-    {species:'leao_solar',name:'☀️ Leão Solar',chance:50,power:245},
-    {species:'grifo_celestial',name:'✨ Grifo Celestial',chance:35,power:290},
-    {species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:345}
+    {species:'leao_solar',name:'☀️ Leão Solar',chance:35,power:245},
+    {species:'grifo_celestial',name:'✨ Grifo Celestial',chance:25,power:290},
+    {species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:345},
+    {species:'lince_celestial',name:'🐆 Lince Celestial',chance:15,power:320},
+    {species:'arcanjo_eclipse',name:'🪽 Arcanjo do Eclipse',chance:10,power:335}
   ]},
   {materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,summonCost:100,pets:[
-    {species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:55,power:280},
-    {species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:35,power:335},
-    {species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400}
+    {species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:35,power:280},
+    {species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:25,power:335},
+    {species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400},
+    {species:'colosso_alpha',name:'🗿 Colosso Alpha',chance:15,power:360},
+    {species:'oraculo_alpha',name:'🔮 Oráculo Alpha',chance:15,power:370}
   ]}
 ]
 
