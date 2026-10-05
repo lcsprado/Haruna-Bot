@@ -300,6 +300,67 @@ async function publicCatalog(){
     loanRules:LOAN_RULES
   }
 }
+function requireGroup(session){
+  if(!session?.chatJid) throw new Error('Esta ação exige vínculo com um grupo. Use !web dentro do grupo do Alpha Bot e conecte novamente.')
+  return session.chatJid
+}
+
+function positiveInt(value,label='Valor',max=999999999){
+  const n=Number(value)
+  if(!Number.isInteger(n)||n<1||n>max) throw new Error(label+' inválido.')
+  return n
+}
+
+async function runAction(session,name,body={}){
+  const jid=session.jid
+  switch(name){
+    case 'daily': return claimDaily(jid)
+    case 'work': return work(jid)
+    case 'deposit': return deposit(jid,body.amount)
+    case 'withdraw': return withdraw(jid,positiveInt(body.amount,'Valor'))
+
+    case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
+    case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
+    case 'item.equip': return equipItem(jid,String(body.itemId||''))
+    case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10))
+    case 'item.use': return usePotion(jid,String(body.itemId||''))
+
+    case 'pet.heal': return usePetPotion(jid,body.itemId?String(body.itemId):null)
+    case 'pet.energy': return usePetEnergyItem(jid,String(body.itemId||'energetico_pet'))
+    case 'pet.adopt': return adoptPet(jid,String(body.species||''),String(body.name||'Alpha'))
+    case 'pet.select': return selectPet(jid,positiveInt(body.petId,'Pet'))
+    case 'pet.rename': return renamePet(jid,String(body.name||''))
+    case 'pet.action': return petAction(jid,String(body.action||''))
+    case 'pet.team': return setPetTeam(jid,Array.isArray(body.petIds)?body.petIds:[],body.replaceAll!==false)
+    case 'pet.summon': return summonLegendaryPet(jid,String(body.materialId||''))
+
+    case 'raid.create': return createRaid(requireGroup(session),jid,String(body.name||'Jogador'),positiveInt(body.level,'Nível',50))
+    case 'raid.join': return joinRaid(requireGroup(session),jid,String(body.name||'Jogador'),body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'raid.cancel': return cancelRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'raid.start': return startRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'raid.round': return raidRound(requireGroup(session),body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'boss.start': return startBoss(requireGroup(session))
+    case 'boss.attack': return attackBoss(requireGroup(session),jid,String(body.name||'Jogador'),body.usePet!==false)
+
+    case 'house.buy': return buyHouse(jid,String(body.id||body.input||''))
+    case 'car.buy': return buyCar(jid,String(body.id||body.input||''))
+    case 'car.sell': return sellCar(jid,String(body.id||body.input||''))
+    case 'uber': return driveUber(jid)
+    case 'motorcycle.buy': return buyMotorcycle(jid,String(body.id||body.input||''))
+    case 'motorcycle.sell': return sellMotorcycle(jid,String(body.id||body.input||''))
+    case 'ifood': return deliverIfood(jid)
+    case 'business.buy': return buyBusiness(jid,String(body.id||body.input||''))
+    case 'business.collect': return collectBusinesses(jid)
+    case 'business.upgrade': return upgradeBusiness(jid,String(body.id||body.input||''))
+    case 'cltUber.start': return startCltUberShift(jid,positiveInt(body.driverSlot,'Motorista',100),positiveInt(body.carSlot,'Carro',100))
+    case 'cltUber.collect': return collectCltUber(jid)
+
+    case 'loan.accept': return acceptLoan(jid,body.id==null?null:positiveInt(body.id,'Empréstimo'))
+    case 'loan.reject': return rejectLoan(jid,body.id==null?null:positiveInt(body.id,'Empréstimo'))
+    case 'loan.pay': return payLoan(jid,body.amount==null?'total':body.amount)
+    default: throw new Error('Ação Web não suportada.')
+  }
+}
 export async function handleWebApi(req,res){
   const url=new URL(req.url||'/', 'http://localhost')
   if(!url.pathname.startsWith('/api/v1/')) return false
@@ -346,6 +407,14 @@ export async function handleWebApi(req,res){
 
     if(req.method==='GET' && url.pathname==='/api/v1/me/bootstrap'){
       json(res,200,{ok:true,data:await playerBootstrap(session)})
+      return true
+    }
+
+    if(req.method==='POST' && url.pathname.startsWith('/api/v1/action/')){
+      const actionName=decodeURIComponent(url.pathname.slice('/api/v1/action/'.length))
+      const body=await readJson(req)
+      const result=await runAction(session,actionName,body)
+      json(res,200,{ok:true,result})
       return true
     }
 
