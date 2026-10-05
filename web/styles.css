@@ -130,3 +130,10 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .market-inventory-row strong,.market-inventory-row small{display:block}
 .market-inventory-row small{color:var(--muted);margin-top:4px}
 @media(max-width:560px){.market-inventory-row{align-items:stretch;flex-direction:column}.market-inventory-row .btn{width:100%}}
+
+.expedition-card{display:flex;flex-direction:column;gap:8px}
+.expedition-rewards{gap:8px}
+.expedition-rewards>div{padding:9px 10px;border:1px solid #22344a;border-radius:10px;background:#09111a}
+.expedition-rewards small,.expedition-rewards strong{display:block}
+.expedition-rewards small{font-size:10px;color:var(--muted);margin-bottom:4px}
+.expedition-time{font-size:11px;font-weight:800;padding:8px 10px;border-radius:10px;background:#111c29;border:1px solid #273b55}
