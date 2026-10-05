@@ -3983,7 +3983,8 @@ function normalizedPetHp(p){
   const oldMax=Math.max(1,Number(p.max_hp||100))
   const oldHp=Math.max(0,Number(p.hp??oldMax))
   const hp=Math.min(desired,Math.max(0,oldHp+(desired-oldMax)))
-  return {...p,hp,max_hp:desired}
+  const max_energy=petMaxEnergy(p.level,p.species)
+  return {...p,hp,max_hp:desired,max_energy}
 }
 
 
