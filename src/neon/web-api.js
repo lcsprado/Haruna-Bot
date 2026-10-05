@@ -238,6 +238,54 @@ function petCatalog(){
   }))
 }
 
+function hangmanMask(word,letters=[]){
+  const guessed=new Set((letters||[]).map(x=>String(x).toLowerCase()))
+  return [...String(word||'')].map(ch=>guessed.has(ch.toLowerCase())?ch:'_').join(' ')
+}
+
+function sanitizeGameState(gameType,state){
+  if(!state || typeof state!=='object') return state
+  const safe=structuredClone(state)
+  const type=String(gameType||'')
+
+  if(type==='quiz'){
+    delete safe.c
+    delete safe.correctAnswer
+    delete safe.correctText
+  }
+
+  if(type==='numero'){
+    delete safe.number
+  }
+
+  if(type==='forca'){
+    if(!safe.finished) safe.masked=hangmanMask(safe.word,safe.letters)
+    if(!safe.finished) delete safe.word
+  }
+
+  if(type.startsWith('rps_duel:') || type.startsWith('coin_duel:')){
+    delete safe.choice
+    delete safe.targetChoice
+  }
+
+  return safe
+}
+
+function sanitizeActionResult(actionName,result){
+  if(result==null || typeof result!=='object') return result
+  const name=String(actionName||'')
+  if(name==='game.quiz.start') return sanitizeGameState('quiz',result)
+  if(name==='game.number.start') return sanitizeGameState('numero',result)
+  if(name==='game.hangman.start' || name==='game.hangman.letter' || name==='game.hangman.word'){
+    const copy=structuredClone(result)
+    if(!copy.won && !copy.lost && !copy.finished) delete copy.word
+    return copy
+  }
+  if(name==='game.rpsDuel.create') return sanitizeGameState('rps_duel',result)
+  if(name==='game.coinDuel.create') return sanitizeGameState('coin_duel',result)
+  return result
+}
+
 async function groupSnapshot(chatJid){
   if(!chatJid) return null
   const [raids,license,gameRows,roster]=await Promise.all([
@@ -248,7 +296,7 @@ async function groupSnapshot(chatJid){
   ])
   const games=Object.fromEntries(gameRows.rows.map(r=>[
     r.game_type,
-    {...(r.state||{}),updatedAt:Number(r.updated_at||0)}
+    {...(sanitizeGameState(r.game_type,r.state)||{}),updatedAt:Number(r.updated_at||0)}
   ]))
   return {
     chatJid,license,raids,roster,
@@ -578,7 +626,8 @@ export async function handleWebApi(req,res){
     if(req.method==='POST' && url.pathname.startsWith('/api/v1/action/')){
       const actionName=decodeURIComponent(url.pathname.slice('/api/v1/action/'.length))
       const body=await readJson(req)
-      const result=await runAction(session,actionName,body)
+      const rawResult=await runAction(session,actionName,body)
+      const result=sanitizeActionResult(actionName,rawResult)
       json(res,200,{ok:true,result})
       return true
     }
