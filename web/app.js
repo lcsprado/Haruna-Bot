@@ -1133,7 +1133,7 @@ setInterval(()=>{
     $('#linkCode').value=linked;
     try{
       await exchange(linked);
-      history.replaceState({},document.title,'/rpg');
+      history.replaceState({},document.title,location.pathname||'/');
     }catch(err){
       showLogin(err.message);
       return;
