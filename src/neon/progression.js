@@ -869,7 +869,6 @@ export async function collectCltUber(jid){
     await accrueCltUber(client,jid)
     const rows=(await client.query('SELECT id,driver_type,car_id,accrued FROM clt_uber_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])).rows
     const details=rows
-      .filter(r=>Number(r.accrued||0)>0)
       .map((r,i)=>({
         id:Number(r.id),
         slot:i+1,
@@ -877,6 +876,7 @@ export async function collectCltUber(jid){
         car:CARS.find(x=>x.id===r.car_id)||null,
         amount:Number(r.accrued||0)
       }))
+      .filter(r=>r.amount>0)
     const total=details.reduce((n,r)=>n+r.amount,0)
     if(total<=0) return {total:0,details:[]}
     await client.query('UPDATE clt_uber_drivers SET accrued=0 WHERE jid=$1',[jid])
