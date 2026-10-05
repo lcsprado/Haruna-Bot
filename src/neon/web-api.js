@@ -382,7 +382,12 @@ async function playerBootstrap(session){
     Promise.resolve(getCarpinarPlans()),
     chatJid?getGroupMission(chatJid):Promise.resolve(null),
     chatJid?getGroupMissionLeaderboard(chatJid):Promise.resolve([]),
-    chatJid?db.query('SELECT event_type,reward_cash,spawned_at,expires_at,claimed_by FROM group_events WHERE chat_jid=$1',[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null)
+    chatJid?db.query(`SELECT ge.event_type,ge.reward_cash,ge.spawned_at,ge.expires_at,
+                              (ge.claimed_by IS NOT NULL) AS claimed,
+                              u.push_name AS claimed_by_name
+                       FROM group_events ge
+                       LEFT JOIN users u ON u.jid=ge.claimed_by
+                       WHERE ge.chat_jid=$1`,[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null)
   ])
   return {
     syncedAt:now(),
