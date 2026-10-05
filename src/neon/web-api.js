@@ -240,18 +240,23 @@ function petCatalog(){
 
 async function groupSnapshot(chatJid){
   if(!chatJid) return null
-  const [raids,license,bossRows]=await Promise.all([
+  const [raids,license,gameRows,roster]=await Promise.all([
     getRaidStatuses(chatJid),
     getGroupLicense(chatJid),
-    db.query(
-      "SELECT game_type,state,updated_at FROM trevo_games WHERE chat_jid=$1 AND game_type=ANY($2::text[])",
-      [chatJid,['boss','boss_event']]
-    )
+    db.query('SELECT game_type,state,updated_at FROM trevo_games WHERE chat_jid=$1 ORDER BY game_type',[chatJid]),
+    weeklyActivityLeaderboard(chatJid,20)
   ])
-  const games=Object.fromEntries(bossRows.rows.map(r=>[r.game_type,{...(r.state||{}),updatedAt:Number(r.updated_at||0)}]))
-  return {chatJid,license,raids,boss:games.boss||null,bossEvent:games.boss_event||null}
+  const games=Object.fromEntries(gameRows.rows.map(r=>[
+    r.game_type,
+    {...(r.state||{}),updatedAt:Number(r.updated_at||0)}
+  ]))
+  return {
+    chatJid,license,raids,roster,
+    boss:games.boss||null,
+    bossEvent:games.boss_event||null,
+    games
+  }
 }
-
 async function playerBootstrap(session){
   const jid=session.jid
   const [
@@ -294,7 +299,42 @@ async function playerBootstrap(session){
     cooldowns:cooldowns.rows||[],
     activities:{sleep:sleep.rows?.[0]||null,carpinar:carpinar.rows?.[0]||null}
   }
+}async function playerExtras(session){
+  const jid=session.jid
+  const chatJid=session.chatJid||null
+  const [
+    market,clan,clans,ranks,economyRank,combatRank,petRank,patrimonyRank,
+    loanCredit,carpinarPlans,groupMission,groupMissionLeaderboard
+  ]=await Promise.all([
+    listMarket(30),
+    getClanForUser(jid),
+    listClans(20),
+    getPlayerRanks(jid),
+    leaderboard(10),
+    combatLeaderboard(10),
+    petLeaderboard(10),
+    patrimonyLeaderboard(10),
+    getLoanCredit(jid),
+    Promise.resolve(getCarpinarPlans()),
+    chatJid?getGroupMission(chatJid):Promise.resolve(null),
+    chatJid?getGroupMissionLeaderboard(chatJid):Promise.resolve([])
+  ])
+  return {
+    syncedAt:now(),
+    market,clan,clans,ranks,loanCredit,carpinarPlans,
+    leaderboards:{
+      economy:economyRank,
+      combat:combatRank,
+      pets:petRank,
+      patrimony:patrimonyRank,
+      activity:chatJid?await weeklyActivityLeaderboard(chatJid,10):[]
+    },
+    groupMission,
+    groupMissionLeaderboard,
+    levelRewards:[5,10,15,20,25,30,35,40,45,50].map(getLevelRewardPreview).filter(Boolean)
+  }
 }
+
 async function publicCatalog(){
   const [shop,allItemRows]=await Promise.all([
     getShop(),
@@ -425,6 +465,11 @@ export async function handleWebApi(req,res){
 
     if(req.method==='GET' && url.pathname==='/api/v1/me/bootstrap'){
       json(res,200,{ok:true,data:await playerBootstrap(session)})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/extras'){
+      json(res,200,{ok:true,data:await playerExtras(session)})
       return true
     }
 
