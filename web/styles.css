@@ -104,3 +104,8 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .boss-progress{height:13px}
 .boss-ranking{margin-top:18px;padding-top:15px;border-top:1px solid #24354b}
 .boss-ranking .list-row:first-child{border-color:#6a5730;background:linear-gradient(90deg,rgba(190,145,52,.10),transparent)}
+
+.raid-progress{height:11px}
+.raid-party{margin:14px 0;padding:12px;border:1px solid #24364e;border-radius:12px;background:#09111a}
+.raid-party .section-title{margin-bottom:8px}
+.raid-party h4{margin:0}
