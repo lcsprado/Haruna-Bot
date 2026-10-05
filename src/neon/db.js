@@ -4750,6 +4750,21 @@ export async function listMarket(limit=15){
     ORDER BY m.created_at DESC LIMIT $1`,[Math.min(30,Math.max(1,Number(limit)||15)),now])
   return rows
 }
+
+export async function listMyMarketListings(jid,limit=30){
+  await expireMarketListings()
+  const now=Math.floor(Date.now()/1000)
+  const {rows}=await db.query(`SELECT m.*,i.name,
+    GREATEST(0,COALESCE(m.expires_at,m.created_at+3600)-$3)::bigint AS remaining_seconds
+    FROM market_listings m
+    JOIN items i ON i.id=m.item_id
+    WHERE m.seller_jid=$1
+      AND m.status='active'
+      AND COALESCE(m.expires_at,m.created_at+3600)>$3
+    ORDER BY m.created_at DESC
+    LIMIT $2`,[jid,Math.min(50,Math.max(1,Number(limit)||30)),now])
+  return rows
+}
 export async function buyMarketListing(buyerJid,id){
   await ensureUser(buyerJid)
   await expireMarketListings()
@@ -4770,9 +4785,11 @@ export async function buyMarketListing(buyerJid,id){
   })
 }
 export async function cancelMarketListing(jid,id){
+  const listingId=Number(id)
+  if(!Number.isSafeInteger(listingId)||listingId<1) throw new Error('Escolha um anúncio válido para cancelar.')
   await expireMarketListings()
   return transaction(async client=>{
-    const r=await client.query('SELECT * FROM market_listings WHERE id=$1 AND seller_jid=$2 FOR UPDATE',[Number(id),jid])
+    const r=await client.query('SELECT * FROM market_listings WHERE id=$1 AND seller_jid=$2 FOR UPDATE',[listingId,jid])
     const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio ativo não encontrado.')
     await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[jid,x.item_id,x.quantity])
     await client.query(`UPDATE market_listings SET status='cancelled' WHERE id=$1`,[x.id]); return x
