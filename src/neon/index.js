@@ -1818,6 +1818,7 @@ Você possui: *${stock}*
     const currentMap=new Map(upgradeables.map(i=>[i.item_id,i.current]))
     const weaponStats=currentMap.get(p.weapon_id)||{atk:Number(p.weapon_atk||0),hp:0,crit:0}
     const armorStats=currentMap.get(p.armor_id)||{def:Number(p.armor_def||0),hp:0,crit:0}
+    const bootStats=currentMap.get(p.boot_id)||{spd:Number(p.equipment_spd||0)}
     const weaponExtra=[
       Number(weaponStats.hp||0)?'❤️ +'+Number(weaponStats.hp)+' HP':null,
       Number(weaponStats.crit||0)?'🎯 +'+(Number(weaponStats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
@@ -1831,6 +1832,7 @@ Você possui: *${stock}*
 
 🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}* — ⚔️ +${Number(weaponStats.atk||0)} ATK${weaponExtra?' • '+weaponExtra:''}
 🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}* — 🛡️ +${Number(armorStats.def||0)} DEF${armorExtra?' • '+armorExtra:''}
+👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — 💨 +${Number(bootStats.spd||0)} SPD
 
 O que deseja trocar?
 
