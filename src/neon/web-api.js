@@ -7,7 +7,7 @@ import {
   petStyleLabel, getEquipmentInfo, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
-  setPetTeam, summonLegendaryPet, getCombatProfile, getGroupSettings, resolvePlayerSleep,
+  setPetTeam, summonLegendaryPet, getCombatProfile, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
   transfer, battle, petDuel, dungeon, robPlayer,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   openLootBoxes, openLuckyBoxes, sellDuplicateEquipment,
@@ -309,7 +309,7 @@ async function groupSnapshot(chatJid){
 async function playerBootstrap(session){
   const jid=session.jid
   const [
-    profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(petTeam),petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
     doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar
   ]=await Promise.all([
