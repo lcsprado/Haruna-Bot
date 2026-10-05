@@ -198,3 +198,98 @@ nav button.active{box-shadow:inset 3px 0 0 white}
 .raid-levels button.active{color:white;border-color:#6d7685;background:#252c38}
 .raid-levels button.active small{color:#c6ccd6}
 @media(max-width:700px){.drop-equip-row{grid-template-columns:1fr}}
+
+
+/* Motion system: short, GPU-friendly and safe for mobile */
+.combat-visual{position:relative;display:inline-block}
+.float-number{position:absolute;z-index:8;left:50%;top:8%;transform:translateX(-50%);pointer-events:none;font-weight:1000;letter-spacing:.02em;text-shadow:0 3px 12px #000;animation:floatDamage .62s cubic-bezier(.2,.8,.2,1) forwards}
+.float-number.damage{font-size:18px;color:#ff7883}
+.float-number.damage.crit{font-size:22px;color:#ffe178}
+.float-number.heal{color:#72e8a8;font-size:17px}
+.float-number.floating-center{position:fixed;left:50%;top:42%;z-index:60}
+.float-number.self-hit{top:-6px}
+.hit-shake{animation:hitShake .32s ease both}
+.damage-flash{animation:damageFlash .32s ease both}
+.attack-lunge{animation:attackLunge .28s ease both}
+.pet-idle{animation:petIdle 2.8s ease-in-out infinite;transform-origin:center bottom}
+.equip-snap{animation:equipSnap .62s cubic-bezier(.2,.9,.3,1)}
+.view-enter{animation:viewEnter .22s ease both}
+.drawer-enter{animation:drawerEnter .24s cubic-bezier(.2,.8,.2,1) both}
+.mobile-backdrop{animation:backdropIn .18s ease both}
+.combat-badge{animation:badgePulse 1.7s ease-in-out infinite}
+.btn{transition:transform .12s ease,filter .12s ease,background .18s ease,border-color .18s ease}
+.btn:active:not(:disabled),.shortcut:active,.mobile-nav button:active,.drawer-grid button:active{transform:scale(.97)}
+.card{transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.card:hover{transform:translateY(-1px)}
+.fighter{position:relative;overflow:visible;transition:opacity .32s ease,transform .32s ease,border-color .3s ease,box-shadow .3s ease}
+.fighter.winner{transform:translateY(-4px) scale(1.025);border-color:#526c61;box-shadow:0 0 28px #59d39124}
+.fighter.defeated{opacity:.42;transform:translateY(8px) scale(.97);filter:grayscale(.55)}
+.rarity-rare{box-shadow:inset 0 0 0 1px #5577a333,0 18px 50px #0003}
+.rarity-epic{box-shadow:inset 0 0 0 1px #8f6dd844,0 18px 50px #0003}
+.rarity-legendary{position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px #c49a4a55,0 18px 50px #0003}
+.rarity-event{position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px #ae647d55,0 18px 50px #0003}
+.rarity-legendary:after,.rarity-event:after{content:"";position:absolute;inset:-80% -35%;background:linear-gradient(105deg,transparent 42%,#ffffff12 49%,#ffffff24 50%,#ffffff12 51%,transparent 58%);transform:translateX(-55%);animation:raritySweep 4.8s ease-in-out infinite;pointer-events:none}
+.bar span{transition:width .42s cubic-bezier(.2,.8,.2,1)}
+.drop-slot{transition:border-color .2s ease,background .2s ease,transform .2s ease}
+
+@keyframes floatDamage{
+  0%{opacity:0;transform:translate(-50%,10px) scale(.72)}
+  18%{opacity:1;transform:translate(-50%,-2px) scale(1.12)}
+  100%{opacity:0;transform:translate(-50%,-48px) scale(.95)}
+}
+@keyframes hitShake{
+  0%,100%{transform:translate3d(0,0,0)}
+  22%{transform:translate3d(-7px,1px,0) rotate(-2deg)}
+  44%{transform:translate3d(6px,-1px,0) rotate(2deg)}
+  66%{transform:translate3d(-3px,0,0) rotate(-1deg)}
+  82%{transform:translate3d(2px,0,0)}
+}
+@keyframes damageFlash{
+  0%,100%{filter:none}
+  35%{filter:brightness(1.45) saturate(1.4)}
+}
+@keyframes attackLunge{
+  0%,100%{transform:translateX(0)}
+  45%{transform:translateX(9px) scale(1.015)}
+}
+@keyframes petIdle{
+  0%,100%{transform:translateY(0) rotate(0)}
+  50%{transform:translateY(-3px) rotate(.6deg)}
+}
+@keyframes equipSnap{
+  0%{transform:scale(.96);border-color:#4b5567}
+  38%{transform:scale(1.035);border-color:#d9e1ec}
+  100%{transform:scale(1);border-color:#4b5567}
+}
+@keyframes viewEnter{
+  from{opacity:0;transform:translateY(7px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes drawerEnter{
+  from{transform:translateY(100%)}
+  to{transform:translateY(0)}
+}
+@keyframes backdropIn{
+  from{background:#0000}
+  to{background:#0008}
+}
+@keyframes badgePulse{
+  0%,100%{box-shadow:0 0 0 0 #ffffff00}
+  50%{box-shadow:0 0 0 4px #ffffff08}
+}
+@keyframes raritySweep{
+  0%,62%{transform:translateX(-55%)}
+  82%,100%{transform:translateX(55%)}
+}
+
+@media(max-width:900px){
+  .float-number.damage{font-size:16px}
+  .float-number.damage.crit{font-size:19px}
+  .card:hover{transform:none}
+  .pet-idle{animation-duration:3.2s}
+}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+  .pet-idle,.combat-badge{animation:none!important}
+}
