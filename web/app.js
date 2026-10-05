@@ -471,7 +471,11 @@ function inventoryCard(i){
   else if(energy) actions='<button class="btn good" data-pet-energy>Energia pet</button>';
   else if(box) actions='<button class="btn good" data-box-open="'+esc(id)+'">Abrir 1</button><button class="btn" data-box-open-all="'+esc(id)+'" data-box-qty="'+Number(i.quantity||1)+'">Abrir todas</button>';
   else if(usable) actions='<button class="btn good" data-item-use="'+esc(id)+'">Usar</button>';
-  if(i.sellable!==false && String(i.rarity)!=='legendary') actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
+  if(i.sellable!==false && String(i.rarity)!=='legendary'){
+    const qty=Math.max(1,Number(i.quantity||1));
+    actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
+    if(qty>1) actions+='<button class="btn" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+qty+'">Vender '+qty+'</button>';
+  }
   return '<div class="card item-card '+rarityClass(i.rarity)+'"><div class="item-icon">'+itemIcon(i)+'</div>'+
     '<div class="tag-row"><span class="tag '+esc(i.rarity)+'">'+esc(i.rarity||'common')+'</span><span class="tag">'+esc(i.category)+'</span></div>'+
     '<h3>'+esc(i.name)+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(i.description||'')+'</p>'+
@@ -498,7 +502,7 @@ function shopCard(i){
   if(Number(eq.crit)>0) bonus.push('+'+num(Number(eq.crit)<=1?Number(eq.crit)*100:eq.crit)+'% CRIT');
   return '<div class="card item-card '+rarityClass(i.rarity)+'"><div class="item-icon">'+itemIcon(i)+'</div><div class="tag-row"><span class="tag">'+esc(i.rarity||'Comum')+'</span><span class="tag">'+esc(i.category||'item')+'</span></div><h3>'+esc(i.name)+'</h3><p>'+esc(i.description||'')+'</p>'+
     (bonus.length?'<p class="item-bonus">'+bonus.join(' • ')+'</p>':'')+
-    '<strong>'+money(i.price)+'</strong><div class="item-actions"><button class="btn primary" data-shop-buy="'+esc(i.id)+'">Comprar 1</button></div></div>';
+    '<strong>'+money(i.price)+'</strong><div class="item-actions"><button class="btn primary" data-shop-buy="'+esc(i.id)+'" data-shop-price="'+Number(i.price||0)+'">Comprar 1</button><button class="btn" data-shop-buy-qty="'+esc(i.id)+'" data-shop-price="'+Number(i.price||0)+'">Comprar quantidade</button></div></div>';
 }
 
 function renderShop(){
@@ -942,7 +946,15 @@ function bind(){
   document.querySelectorAll('[data-lucky-open]').forEach(x=>x.onclick=()=>doAction('item.lucky.open',{qty:Number(x.dataset.luckyOpen||1)},{}));
   document.querySelectorAll('[data-sell-duplicates]').forEach(x=>x.onclick=()=>doAction('item.sellDuplicates',{},{}));
   document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>doAction('item.sell',{itemId:x.dataset.itemSell,qty:1},{}));
+  document.querySelectorAll('[data-item-sell-all]').forEach(x=>x.onclick=()=>doAction('item.sell',{itemId:x.dataset.itemSellAll,qty:Number(x.dataset.itemSellQty||1)},{}));
   document.querySelectorAll('[data-shop-buy]').forEach(x=>x.onclick=()=>doAction('item.buy',{itemId:x.dataset.shopBuy,qty:1},{}));
+  document.querySelectorAll('[data-shop-buy-qty]').forEach(x=>x.onclick=()=>{
+    const qty=Math.max(1,Math.min(9999,Number(prompt('Quantidade para comprar:','2'))||0));
+    if(!qty) return;
+    const unit=Number(x.dataset.shopPrice||0);
+    if(unit>0 && Number((ui.data.profile||{}).cash||0)<unit*qty) return toast('Saldo insuficiente para '+qty+' unidade(s).');
+    doAction('item.buy',{itemId:x.dataset.shopBuyQty,qty},{});
+  });
   document.querySelectorAll('[data-raid-create]').forEach(x=>x.onclick=()=>doAction('raid.create',{level:Number(x.dataset.raidCreate),name:ui.data.profile.push_name},{}));
   document.querySelectorAll('[data-raid-join]').forEach(x=>x.onclick=()=>doAction('raid.join',{level:Number(x.dataset.raidJoin),name:ui.data.profile.push_name},{}));
   document.querySelectorAll('[data-raid-start]').forEach(x=>x.onclick=async()=>{
