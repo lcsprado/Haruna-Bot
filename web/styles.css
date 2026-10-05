@@ -87,3 +87,13 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .result-rewards h4{margin:0 0 8px}
 .reward-chip{display:inline-flex;align-items:center;margin:4px 5px 0 0;padding:8px 10px;border-radius:999px;border:1px solid #354c70;background:#101a28;font-size:11px}
 @media(max-width:800px){.result-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.pet-vitals{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:9px 0}
+.pet-vitals>div{padding:9px 10px;border:1px solid #22344b;border-radius:11px;background:#09111a}
+.pet-vitals span,.pet-vitals strong{display:block}
+.pet-vitals span{font-size:10px;color:var(--muted);margin-bottom:3px}
+.pet-vitals strong{font-size:12px;margin-bottom:7px}
+.pet-vitals .progress{height:6px}
+.pet-needs{display:flex;gap:8px;flex-wrap:wrap}
+.pet-needs span{font-size:11px;padding:5px 8px;border-radius:999px;background:#111c29;border:1px solid #253750}
+@media(max-width:520px){.pet-vitals{grid-template-columns:1fr}}
