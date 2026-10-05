@@ -5699,9 +5699,8 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
           clearQuickFlow(chat,sender)
           const players=Object.values(active.players||{})
-          const minPlayers=Number(active.level)===10?1:2
-          let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*${active.status==='lobby'?` • mínimo para iniciar: *${minPlayers}*`:''}`
-          if(active.status==='lobby') text+='\n\n👉 Quem quiser entrar usa *!entrar*.\n🚀 Quando todos estiverem prontos, o host usa *!go*.'
+          let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*`
+          if(active.status==='lobby') text+='\n\n✅ O host pode iniciar solo com *!go*.\n👥 Quem quiser participar usa *!entrar* antes do início.'
           else text+='\n\nUse *!raid* para acompanhar o combate.'
           await reply(text)
           return true
@@ -8642,10 +8641,9 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
 
           if(requestedRoom){
             const players=Object.values(requestedRoom.players||{})
-            const minPlayers=Number(requestedRoom.level)===10?1:2
-            let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n👥 Jogadores: *${players.length}/5*${requestedRoom.status==='lobby'?` • mínimo: *${minPlayers}*`:''}\n`
+            let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n👥 Jogadores: *${players.length}/5*\n`
             if(requestedRoom.status==='lobby'){
-              text+=players.length>=minPlayers?'\n✅ O host já pode usar *!go '+requestedRoom.level+'*.':'\n👉 Entre com *!entrar '+requestedRoom.level+'*.'
+              text+='\n✅ O host pode iniciar solo com *!go '+requestedRoom.level+'*.\n👥 Outros jogadores ainda podem entrar com *!entrar '+requestedRoom.level+'*.'
             }else{
               text+='\n📊 Dano atual:\n'+players.sort((a,b)=>Number(b.damage||0)-Number(a.damage||0)).map(p=>`• ${p.alive?'🟢':'💀'} *${p.name}* — ${Number(p.damage||0).toLocaleString('pt-BR')}`).join('\n')
               runRaidCombat(chat,Number(requestedRoom.level),reply)
