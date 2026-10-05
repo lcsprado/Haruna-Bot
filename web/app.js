@@ -215,6 +215,24 @@ function renderHeader(){
   $('#pageTitle').textContent=title;
 }
 
+function cooldownLabel(key){
+  const raw=String(key||'').replace(/^[^:]+:/,'').replace(/[_:]+/g,' ');
+  const map={battle:'Duelo',rob:'Roubar',work:'Trabalhar',uber:'Uber',ifood:'iFood',daily:'Daily',petduel:'Duelo Pet',dungeon:'Dungeon'};
+  const first=raw.split(' ')[0];
+  return map[first]||titleCase(raw||key);
+}
+function renderCooldowns(){
+  const rows=(ui.data&&ui.data.cooldowns)||[];
+  const nowSec=Math.floor(Date.now()/1000);
+  if(!rows.length) return '<div class="empty">Nenhum cooldown ativo.</div>';
+  return '<div class="list">'+rows.map(row=>{
+    const expires=Number(row.expires_at||0);
+    const remain=Math.max(0,expires-nowSec);
+    const mins=Math.floor(remain/60), secs=remain%60;
+    return '<div class="list-row"><span>'+esc(cooldownLabel(row.key))+'</span><strong>'+mins+'m '+secs+'s</strong></div>';
+  }).join('')+'</div>';
+}
+
 function statCard(label,value,sub){
   return '<div class="card stat-card"><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><span>'+esc(sub||'')+'</span></div>';
 }
@@ -249,7 +267,8 @@ function renderHome(){
         '<div class="list-row"><span>Carpinando</span><strong>'+(activities.carpinar?'SIM':'NÃO')+'</strong></div>'+
       '</div>'+
     '</div>'+
-  '</div>';
+  '</div>'+
+  '<div class="section card"><div class="section-title"><h3>Cooldowns ativos</h3><small>Mesmo estado do WhatsApp</small></div>'+renderCooldowns()+'</div>';
 }
 
 function renderMissionList(missions){
@@ -498,7 +517,10 @@ function renderProgression(){
       '<div class="card"><div class="section-title"><h3>Conquistas</h3><small>'+achievements.length+'</small></div>'+(achievements.length?'<div class="list">'+achievements.map(a=>'<div class="list-row"><span>'+esc(a)+'</span><strong>✓</strong></div>').join('')+'</div>':'<div class="empty">Nenhuma conquista desbloqueada.</div>')+'</div>'+
       '<div class="card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
     '</div>'+
-    '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+resultPanel();
+    '<div class="section grid two">'+
+      '<div class="card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+
+      '<div class="card"><div class="section-title"><h3>Cooldowns</h3><small>Servidor</small></div>'+renderCooldowns()+'</div>'+
+    '</div>'+resultPanel();
 }
 
 function leaderboardBlock(title,rows,valueFn){
