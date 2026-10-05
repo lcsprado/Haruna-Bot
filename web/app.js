@@ -413,7 +413,9 @@ function catalogPetCard(p){
 }
 
 function renderPets(){
-  const tabs=[['owned','Minha coleção ('+collection().length+')'],['adopt','26 adotáveis'],['raid','21 Raid / especiais']];
+  const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
+  const raidCount=catalogPets().filter(x=>x.source==='raid').length;
+  const tabs=[['owned','Minha coleção ('+collection().length+')'],['adopt',adoptCount+' adotáveis'],['raid',raidCount+' Raid / especiais']];
   let rows=[];
   if(ui.petTab==='owned') rows=collection().map(ownedPetCard);
   else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
@@ -874,8 +876,11 @@ function bind(){
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
   document.querySelectorAll('[data-pet-team-save]').forEach(x=>x.onclick=()=>{
     const selects=[...document.querySelectorAll('[data-team-slot]')].sort((a,b)=>Number(a.dataset.teamSlot)-Number(b.dataset.teamSlot));
-    const petIds=selects.map(s=>Number(s.value||0)).filter(v=>Number.isInteger(v)&&v>0);
-    if(!petIds.length) return toast('Escolha pelo menos o pet Principal.');
+    const slots=selects.map(s=>Number(s.value||0));
+    const principal=slots[0]||0,suporte=slots[1]||0,reserva=slots[2]||0;
+    if(!principal) return toast('Escolha o pet Principal.');
+    if(reserva&&!suporte) return toast('Escolha o Suporte antes da Reserva.');
+    const petIds=[principal,suporte,reserva].filter(v=>Number.isInteger(v)&&v>0);
     if(new Set(petIds).size!==petIds.length) return toast('Não use o mesmo pet em dois slots.');
     doAction('pet.team',{petIds,replaceAll:true},{});
   });
