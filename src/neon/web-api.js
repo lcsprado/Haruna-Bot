@@ -4,15 +4,23 @@ import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship,
   listMyMarketListings, getGroupLicense, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
-  petStyleLabel
+  petStyleLabel, getEquipmentInfo, getDoubleRewardEvent, getLuckyBoxEvent,
+  claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment,
+  usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
+  setPetTeam, summonLegendaryPet
 } from './db.js'
-import { getRaidCatalog, getRaidStatuses } from './games.js'
+import {
+  getRaidCatalog, getRaidStatuses, createRaid, joinRaid, cancelRaid, startRaid, raidRound,
+  startBoss, attackBoss
+} from './games.js'
 import {
   HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES,
   getDailyMissions, getHome, getGarage, getMotorcycleGarage,
-  getBusinesses, getPatrimony, getCltUberStatus
+  getBusinesses, getPatrimony, getCltUberStatus,
+  buyHouse, buyCar, sellCar, driveUber, buyMotorcycle, sellMotorcycle, deliverIfood,
+  buyBusiness, collectBusinesses, upgradeBusiness, startCltUberShift, collectCltUber
 } from './progression.js'
-import { getLoanOverview, LOAN_RULES } from './loans.js'
+import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES } from './game-catalog.js'
 
 const CODE_TTL_MS = 10 * 60 * 1000
@@ -177,7 +185,7 @@ function setCors(req,res){
 
 function json(res,status,payload){
   res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'})
-  res.end(JSON.stringify(payload))
+  res.end(JSON.stringify(payload,(_,value)=>typeof value==='bigint'?value.toString():value))
 }
 
 async function readJson(req,maxBytes=16384){
