@@ -104,6 +104,9 @@ export default function Game(){
   },[game,loaded]);
 
   const p=game.profile;
+  const playerPotionQty=game.inventory
+    .filter(i=>['pocao_p','pocao_m','pocao_g','elixir_supremo'].includes(i.id))
+    .reduce((sum,i)=>sum+Number(i.qty||0),0);
   const activePet=game.pets.find(x=>x.id===game.petTeam[0]) || game.pets[0];
   const reservePet=game.pets.find(x=>x.id===game.petTeam[2]) || null;
   const bossPet=(activePet.hp>0&&activePet.energy>=2)?activePet:(reservePet&&reservePet.hp>0&&reservePet.energy>=2?reservePet:activePet);
@@ -221,12 +224,21 @@ export default function Game(){
           }
         }
 
-        if(profile.hp<=0){
-          const pot=inventory.find(i=>i.id==='pocao_p'&&i.qty>0);
-          if(pot){
-            profile.hp=Math.min(profile.maxHp,35);
-            inventory=inventory.map(i=>i.id==='pocao_p'?{...i,qty:i.qty-1}:i);
-            playerEvent+=' · Poção Pequena automática: '+profile.hp+'/'+profile.maxHp+' HP';
+        const playerPotionDefs=[
+          {id:'pocao_p',heal:35,name:'Poção Pequena'},
+          {id:'pocao_m',heal:80,name:'Poção Média'},
+          {id:'pocao_g',heal:160,name:'Poção Grande'},
+          {id:'elixir_supremo',heal:999999,name:'Elixir Supremo'}
+        ];
+        const playerNeedsHeal=profile.hp<=0 || (profile.maxHp>0&&profile.hp/profile.maxHp<.35);
+        if(playerNeedsHeal){
+          const missing=Math.max(1,profile.maxHp-profile.hp);
+          const available=playerPotionDefs.filter(d=>Number(inventory.find(i=>i.id===d.id)?.qty||0)>0);
+          const chosen=available.find(d=>d.heal>=missing)||available[available.length-1];
+          if(chosen){
+            profile.hp=Math.min(profile.maxHp,Math.max(0,profile.hp)+chosen.heal);
+            inventory=inventory.map(i=>i.id===chosen.id?{...i,qty:i.qty-1}:i);
+            playerEvent+=' · auto: '+chosen.name+' → '+profile.hp+'/'+profile.maxHp+' HP';
           }
         }
       }
@@ -498,7 +510,7 @@ export default function Game(){
         {autoBoss&&<Button onClick={()=>setAutoBoss(false)} kind="danger">⏹ Parar Auto</Button>}
         <Button onClick={healPet} kind="secondary">💙 Curar pet</Button><Button onClick={restPet} kind="ghost">⚡ Descansar</Button>
       </div>
-      <p className="hint">Auto ataca a cada 1,1 s e para sozinho se o Boss cair ou você ficar sem HP.</p>
+      <p className="hint">Auto ataca a cada 1,1 s, usa cura preventiva abaixo de 35% e pausa se o HP ficar crítico sem poções.</p>
     </Card>
   </div>;
 
@@ -576,9 +588,14 @@ export default function Game(){
   useEffect(()=>{
     if(!autoBoss) return;
     if(game.boss.hp<=0||p.hp<=0){setAutoBoss(false);return;}
+    if(p.maxHp>0&&p.hp/p.maxHp<.20&&playerPotionQty<=0){
+      setAutoBoss(false);
+      notify('Auto pausado: HP baixo e sem poções.');
+      return;
+    }
     const timer=setTimeout(()=>attackBoss(bossUsePet,true),1100);
     return ()=>clearTimeout(timer);
-  },[autoBoss,bossUsePet,game.boss.hp,p.hp,activePet.energy,activePet.hp,reservePet?.energy,reservePet?.hp]);
+  },[autoBoss,bossUsePet,game.boss.hp,p.hp,playerPotionQty,activePet.energy,activePet.hp,reservePet?.energy,reservePet?.hp]);
 
   useEffect(()=>{
     const battle=duelBattle.player;
