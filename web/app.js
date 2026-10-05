@@ -232,14 +232,13 @@ function transactionLabel(type){
 }
 function renderTransactions(limit){
   const rows=((ui.data&&ui.data.recentTransactions)||[]).slice(0,Number(limit||20));
-  const me=ui.data&&ui.data.identity&&ui.data.identity.jid;
   if(!rows.length) return '<div class="empty">Nenhuma movimentação recente.</div>';
   return '<div class="list transactions">'+rows.map(t=>{
-    const outgoing=t.from_jid===me && t.to_jid!==me;
-    const incoming=t.to_jid===me && t.from_jid!==me;
+    const outgoing=t.direction==='out',incoming=t.direction==='in';
     const sign=outgoing?'-':incoming?'+':'';
     const when=Number(t.created_at||0)>0?new Date(Number(t.created_at)*1000).toLocaleString('pt-BR'):'';
-    return '<div class="list-row"><div><strong>'+esc(transactionLabel(t.type))+'</strong><small>'+esc(t.note||'')+(when?' • '+esc(when):'')+'</small></div><strong class="'+(incoming?'money-in':outgoing?'money-out':'')+'">'+sign+money(t.amount)+'</strong></div>';
+    const who=t.counterparty?' • '+esc(t.counterparty):'';
+    return '<div class="list-row"><div><strong>'+esc(transactionLabel(t.type))+'</strong><small>'+esc(t.note||'')+who+(when?' • '+esc(when):'')+'</small></div><strong class="'+(incoming?'money-in':outgoing?'money-out':'')+'">'+sign+money(t.amount)+'</strong></div>';
   }).join('')+'</div>';
 }
 
