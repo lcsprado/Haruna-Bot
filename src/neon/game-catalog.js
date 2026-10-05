@@ -53,7 +53,20 @@ export const PET_STATUS_SPECIALTIES = {
 
   serpente_cosmica:{label:'🌌 Oráculo Cósmico',stats:{crit:9,drop:6,xp:8},raid:true},
   dragao_corrompido:{label:'☠️ Ruína Corrompida',stats:{bossDamage:10,damage:8,defense:8},raid:true},
-  fenix_alpha:{label:'👑 Fênix Alpha',stats:{damage:10,defense:10,crit:8,dodge:6,drop:7,xp:8},raid:true}
+  fenix_alpha:{label:'👑 Fênix Alpha',stats:{damage:10,defense:10,crit:8,dodge:6,drop:7,xp:8},raid:true},
+
+  // Lendários extras para equilibrar a quantidade entre as quatro sinergias.
+  oraculo_pedra:{label:'🔮 Oráculo de Pedra',stats:{defense:5,crit:4,drop:2},raid:true},
+  pantera_vulcanica:{label:'🐈‍⬛ Pantera Vulcânica',stats:{damage:8,crit:5},raid:true},
+  espectro_abissal:{label:'👻 Espectro Abissal',stats:{crit:7,dodge:4,drop:3},raid:true},
+  kraken_aco:{label:'🦑 Kraken de Aço',stats:{defense:10,damage:4,drop:2},raid:true},
+  esfinge_titanica:{label:'🗿 Esfinge Titânica',stats:{defense:7,crit:6,xp:4},raid:true},
+  quimera_abissal:{label:'🐲 Quimera Abissal',stats:{damage:9,crit:6,dodge:3},raid:true},
+  paladino_astral:{label:'🛡️ Paladino Astral',stats:{defense:10,damage:5,xp:4},raid:true},
+  lince_celestial:{label:'🐆 Lince Celestial',stats:{damage:10,crit:8,xp:4},raid:true},
+  arcanjo_eclipse:{label:'🪽 Arcanjo do Eclipse',stats:{crit:9,defense:6,xp:7},healPct:5,healCooldown:5,raid:true},
+  colosso_alpha:{label:'🗿 Colosso Alpha',stats:{defense:10,damage:7,dodge:4,drop:4},raid:true},
+  oraculo_alpha:{label:'🔮 Oráculo Alpha',stats:{crit:10,defense:8,drop:7,xp:8},raid:true}
 };
 
 export const ADOPTABLE_PETS = [
