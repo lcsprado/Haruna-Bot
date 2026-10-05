@@ -85,10 +85,10 @@ export const BUSINESSES=[
   {id:'loja_roupas',name:'Loja de Roupas',price:120000,profitHour:2800,capacityHours:10},
   {id:'restaurante',name:'Restaurante',price:300000,profitHour:6200,capacityHours:10},
   {id:'posto',name:'Posto de Combustível',price:750000,profitHour:14000,capacityHours:12},
-  {id:'mercado',name:'Supermercado',price:1800000,profitHour:28000,capacityHours:12},
-  {id:'hotel',name:'Hotel',price:4500000,profitHour:60000,capacityHours:16},
-  {id:'shopping',name:'Shopping Center',price:12000000,profitHour:140000,capacityHours:18},
-  {id:'tech',name:'Empresa de Tecnologia',price:30000000,profitHour:280000,capacityHours:24},
+  {id:'mercado',name:'Supermercado',price:1800000,profitHour:33600,capacityHours:12},
+  {id:'hotel',name:'Hotel',price:4500000,profitHour:84000,capacityHours:16},
+  {id:'shopping',name:'Shopping Center',price:12000000,profitHour:224000,capacityHours:18},
+  {id:'tech',name:'Empresa de Tecnologia',price:30000000,profitHour:560000,capacityHours:24},
 ]
 
 const MISSION_POOL=[
@@ -1059,7 +1059,8 @@ export async function upgradeBusiness(jid,input){
     if(!own.rows.length) throw new Error('Você não possui esse negócio.')
     const level=Math.max(1,Number(own.rows[0].level||1))
     if(level>=5) throw new Error('Esse negócio já está no nível máximo (5).')
-    const cost=Math.floor(business.price*(0.5+level*0.25))
+    const upgradeCostRate={1:0.20,2:0.30,3:0.40,4:0.50}[level]||0.50
+    const cost=Math.floor(business.price*upgradeCostRate)
     const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     if(Number(wallet.rows[0]?.cash||0)<cost) throw new Error('Saldo insuficiente. Upgrade custa R$ '+cost.toLocaleString('pt-BR')+'.')
     await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[cost,jid])
