@@ -657,6 +657,28 @@ function renderGroupEventCard(ex){
     '<button class="btn primary" data-group-event-claim>Resgatar agora</button>';
 }
 
+function renderExpeditions(rows){
+  rows=rows||[];
+  if(!rows.length) return '<div class="empty">Nenhum pet em expedição.</div>';
+  const nowSec=Math.floor(Date.now()/1000);
+  return '<div class="grid cards">'+rows.map(e=>{
+    const remain=Math.max(0,Number(e.ends_at||0)-nowSec);
+    const h=Math.floor(remain/3600),m=Math.ceil((remain%3600)/60);
+    const ready=remain<=0;
+    const trait=e.trait||{};
+    const bonuses=[];
+    if(Number(trait.xp)>0) bonuses.push('+'+Math.round(Number(trait.xp)*100)+'% XP');
+    if(Number(trait.cash)>0) bonuses.push('+'+Math.round(Number(trait.cash)*100)+'% dinheiro');
+    if(trait.item) bonuses.push('chance de item');
+    return '<div class="card expedition-card"><div class="tag-row"><span class="tag '+(ready?'good':'')+'">'+(ready?'PRONTO':'EM EXPEDIÇÃO')+'</span><span class="tag">'+num(e.hours)+'h</span></div>'+
+      '<h3>🐾 '+esc(e.pet_name||titleCase(e.species||'pet'))+'</h3>'+
+      '<p>'+esc(titleCase(e.species||''))+' • Lv.'+num(e.level||1)+'</p>'+
+      '<div class="grid two expedition-rewards"><div><small>XP previsto</small><strong>+'+num(e.pet_xp||0)+'</strong></div><div><small>Dinheiro</small><strong>'+money(e.cash_reward||0)+'</strong></div></div>'+
+      '<p class="muted">'+(bonuses.length?bonuses.join(' • '):'Sem bônus especial')+'</p>'+
+      '<div class="expedition-time">'+(ready?'✅ Pode resgatar agora':'⏳ Retorna em '+(h>0?h+'h ':'')+m+'min')+'</div></div>';
+  }).join('')+'</div>';
+}
+
 function renderActivities(){
   const d=ui.data, ex=ui.extras||{}, sleep=d.activities&&d.activities.sleep, carp=d.activities&&d.activities.carpinar;
   const missions=d.dailyMissions||[], exp=d.petExpeditions||[], plans=ex.carpinarPlans||[];
@@ -667,9 +689,9 @@ function renderActivities(){
       '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><button class="btn" data-pet-expedition>Expedição</button><button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
     '</div>'+
     '<div class="section card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
-    '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+
+    '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,Number(d.profile&&d.profile.level||1),Number(d.profile&&d.profile.last_level_reward||0))+'</div>'+
     (currentGroup()?'<div class="section grid two"><div class="card">'+renderGroupMissionCard(ex)+'</div><div class="card">'+renderGroupEventCard(ex)+'</div></div>':'')+
-    '<div class="section card"><div class="section-title"><h3>Expedições</h3></div><pre class="result-box">'+esc(JSON.stringify(exp,null,2))+'</pre></div>'+resultPanel();
+    '<div class="section card"><div class="section-title"><h3>Expedições</h3><button class="btn good" data-pet-expedition-resolve>Verificar retornos</button></div>'+renderExpeditions(exp)+'</div>'+resultPanel();
 }
 
 function renderLevelRewards(rows,level,claimed){
