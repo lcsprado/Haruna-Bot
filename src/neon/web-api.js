@@ -338,10 +338,19 @@ async function playerBootstrap(session){
     db.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1 AND expires_at>$2 ORDER BY expires_at',[`%${jid}%`,Math.floor(Date.now()/1000)]),
     db.query('SELECT * FROM player_sleep WHERE jid=$1',[jid]),
     db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid]),
-    db.query(`SELECT id,from_jid,to_jid,amount,type,note,created_at
-              FROM transactions
-              WHERE from_jid=$1 OR to_jid=$1
-              ORDER BY created_at DESC,id DESC
+    db.query(`SELECT t.id,t.amount,t.type,t.note,t.created_at,
+                     CASE WHEN t.from_jid=$1 AND t.to_jid<>$1 THEN 'out'
+                          WHEN t.to_jid=$1 AND t.from_jid<>$1 THEN 'in'
+                          ELSE 'self' END AS direction,
+                     CASE WHEN t.from_jid=$1
+                          THEN COALESCE(tu.push_name,CASE WHEN t.to_jid IN ('system','shop','raid_shop','upgrade') THEN 'Sistema' ELSE 'Jogador' END)
+                          ELSE COALESCE(fu.push_name,CASE WHEN t.from_jid IN ('system','shop','raid_shop','upgrade') THEN 'Sistema' ELSE 'Jogador' END)
+                     END AS counterparty
+              FROM transactions t
+              LEFT JOIN users fu ON fu.jid=t.from_jid
+              LEFT JOIN users tu ON tu.jid=t.to_jid
+              WHERE t.from_jid=$1 OR t.to_jid=$1
+              ORDER BY t.created_at DESC,t.id DESC
               LIMIT 20`,[jid])
   ])
   return {
