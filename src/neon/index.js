@@ -844,6 +844,7 @@ const SHOP_IDS=[
   'sabre_runico','espada_flamas','lamina_cacador','tridente_tempestade','espada_guardiao','lamina_abissal',
   'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
   'armadura_bastiao','armadura_dragao','manto_runico','armadura_abissal','couraca_guardiao','armadura_celestial',
+  'bota_leve','bota_vento','bota_cacador','bota_relampago',
   'caixa_sorte','caixa_rara','caixa_epica'
 ]
 
@@ -886,11 +887,12 @@ function shopCategoryLabel(category){
   if(category==='consumable') return '🧪 CONSUMÍVEIS'
   if(category==='weapon') return '⚔️ ARMAS'
   if(category==='armor') return '🛡️ ARMADURAS'
+  if(category==='boots') return '👢 BOTAS'
   return '🎁 CAIXAS'
 }
 
 function shopCategoryItems(items,choice){
-  const category={1:'consumable',2:'weapon',3:'armor',4:'special'}[choice]
+  const category={1:'consumable',2:'weapon',3:'armor',4:'boots',5:'special'}[choice]
   if(!category) return []
   return items.filter(i=>i.category===category && SHOP_IDS.includes(i.id))
 }
@@ -1756,11 +1758,12 @@ Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simu
 1️⃣ 🧪 Consumíveis
 2️⃣ ⚔️ Armas
 3️⃣ 🛡️ Armaduras
-4️⃣ 🎁 Caixas
-5️⃣ 🎭 Diversão
-6️⃣ 🚗 Carros
-7️⃣ 🚲🏍️ Bicicletas e motos
-8️⃣ 🔑 Chaves de Raid
+4️⃣ 👢 Botas
+5️⃣ 🎁 Caixas
+6️⃣ 🎭 Diversão
+7️⃣ 🚗 Carros
+8️⃣ 🚲🏍️ Bicicletas e motos
+9️⃣ 🔑 Chaves de Raid
 
 0️⃣ Sair
 
@@ -1801,7 +1804,7 @@ Você possui: *${stock}*
     const equip=items.filter(i=>['weapon','armor','boots'].includes(i.category))
     const potions=items.filter(i=>i.category==='consumable')
     const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
-    const others=items.filter(i=>!['weapon','armor','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
+    const others=items.filter(i=>!['weapon','armor','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
     setQuickFlow(chat,sender,'inventory_category',{},5*60*1000)
     await reply(
       '🎒 *INVENTÁRIO*\n\n'+
@@ -1819,9 +1822,9 @@ Você possui: *${stock}*
     const weapons=items.filter(i=>i.category==='weapon')
     const armors=items.filter(i=>i.category==='armor')
     const boots=items.filter(i=>i.category==='boots')
-    if(!weapons.length&&!armors.length){
+    if(!weapons.length&&!armors.length&&!boots.length){
       clearQuickFlow(chat,sender)
-      await reply('⚙️ Você não possui arma ou armadura para equipar.')
+      await reply('⚙️ Você não possui arma, armadura ou botas para equipar.')
       return
     }
     setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
@@ -5237,11 +5240,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='shop_category'){
-      if(input==='5'){
+      if(input==='6'){
         await funMenu()
         return true
       }
-      if(input==='6'){
+      if(input==='7'){
         setQuickFlow(chat,sender,'shop_car_select',{},90000)
         let text='🚗 *LOJA DE CARROS*\n\n'
         CARS.forEach((car,i)=>text+=`*${i+1}.* ${car.name} — *R$ ${fmt(car.price)}*\n`)
@@ -5249,7 +5252,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(text)
         return true
       }
-      if(input==='8'){
+      if(input==='9'){
         const shop=await getShop()
         const keys=shop.filter(i=>/^chave_raid_(10|15|20|25|30|40|50)$/.test(i.id))
         setQuickFlow(chat,sender,'shop_raid_key_select',{items:keys.map(i=>i.id)},90000)
@@ -5262,7 +5265,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(text.trim())
         return true
       }
-      if(input==='7'){
+      if(input==='8'){
         setQuickFlow(chat,sender,'shop_delivery_select',{},90000)
         let text='🚲🏍️ *DELIVERY — BICICLETAS E MOTOS*\n\n'
         MOTORCYCLES.forEach((v,i)=>text+=`*${i+1}.* ${v.name} — *R$ ${fmt(v.price)}*\n`)
@@ -5270,8 +5273,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(text)
         return true
       }
-      if(!['1','2','3','4'].includes(input)){
-        await reply('🍀 Escolha uma opção de *1 a 8*.')
+      if(!['1','2','3','4','5'].includes(input)){
+        await reply('🍀 Escolha uma opção de *1 a 9*.')
         return true
       }
       const items=await getShop()
@@ -7932,7 +7935,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
         } else if(['equipar','equip'].includes(cmd)){
           const items=await getInventory(sender)
           const equipables=items.filter(i=>['weapon','armor','boots'].includes(i.category))
-          if(!equipables.length) return await reply('⚙️ Você não possui arma ou armadura para equipar.')
+          if(!equipables.length) return await reply('⚙️ Você não possui arma, armadura ou botas para equipar.')
 
           const query=args.join(' ').trim()
           if(!query){
