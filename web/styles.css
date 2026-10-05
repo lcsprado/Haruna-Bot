@@ -43,3 +43,9 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .team-slot>span{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#9fb0c8}
 .team-slot select{width:100%;min-height:46px;background:#070c12;border:1px solid #30425d;border-radius:11px;color:#fff;padding:0 12px;font:inherit}
 .notice.good{border-color:#2f6f4a;background:rgba(28,76,48,.18)}
+
+.transactions .list-row{align-items:flex-start}
+.transactions .list-row>div{min-width:0}
+.transactions .list-row small{display:block;max-width:620px;white-space:normal;overflow-wrap:anywhere}
+.money-in{color:#75e6a5}
+.money-out{color:#ff8585}
