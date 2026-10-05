@@ -20,7 +20,8 @@ const INITIAL = {
     {id:'colosso',name:'Armadura do Colosso',icon:'🛡️',rarity:'Evento',category:'armor',level:1,qty:1,stat:'+52 DEF / +140 HP',price:0},
     {id:'vento',name:'Bota do Vento',icon:'👢',rarity:'Incomum',category:'boots',level:1,qty:1,stat:'+4 SPD',price:22000},
     {id:'pocao_p',name:'Poção Pequena',icon:'🧪',rarity:'Comum',category:'consumable',level:1,qty:15,stat:'+35 HP',price:700},
-    {id:'pocao_pet',name:'Poção de Pet Rara',icon:'💙',rarity:'Raro',category:'consumable',level:1,qty:6,stat:'+160 HP Pet',price:2400},
+    {id:'pocao_pet_comum',name:'Poção de Pet Comum',icon:'💙',rarity:'Comum',category:'consumable',level:1,qty:4,stat:'+60 HP Pet',price:900},
+    {id:'pocao_pet_rara',name:'Poção de Pet Rara',icon:'💙',rarity:'Raro',category:'consumable',level:1,qty:6,stat:'+160 HP Pet',price:2400},
     {id:'raid10',name:'Chave de Raid Lv.10',icon:'🗝️',rarity:'Incomum',category:'special',level:1,qty:1,stat:'Abre Raid Lv.10',price:10000},
     {id:'raid15',name:'Chave de Raid Lv.15',icon:'🗝️',rarity:'Incomum',category:'special',level:1,qty:1,stat:'Abre Raid Lv.15',price:16000},
     {id:'raid20',name:'Chave de Raid Lv.20',icon:'🗝️',rarity:'Raro',category:'special',level:1,qty:1,stat:'Abre Raid Lv.20',price:25000},
@@ -37,7 +38,7 @@ const INITIAL = {
   ],
   petTeam:[1,2,3],
   raid:{level:30,name:'Rei Abissal',icon:'👹',hp:120000,maxHp:120000,myDamage:0,started:false},
-  boss:{name:'Colosso do Cerco',icon:'🗿',hp:193418,maxHp:193418,myDamage:0},
+  boss:{name:'Colosso do Cerco',icon:'🗿',hp:193418,maxHp:193418,atk:26,myDamage:0},
   businesses:[
     {id:1,name:'Loja de Bairro',icon:'🏪',level:3,stored:2840,rate:420},
     {id:2,name:'Oficina Alpha',icon:'🔧',level:2,stored:4950,rate:760}
@@ -98,6 +99,8 @@ export default function Game(){
 
   const p=game.profile;
   const activePet=game.pets.find(x=>x.id===game.petTeam[0]) || game.pets[0];
+  const reservePet=game.pets.find(x=>x.id===game.petTeam[2]) || null;
+  const bossPet=(activePet.hp>0&&activePet.energy>=2)?activePet:(reservePet&&reservePet.hp>0&&reservePet.energy>=2?reservePet:activePet);
 
   const synergy=useMemo(()=>{
     const team=game.petTeam.map(id=>game.pets.find(x=>x.id===id)).filter(Boolean);
@@ -149,26 +152,88 @@ export default function Game(){
 
   function attackBoss(){
     if(game.boss.hp<=0) return notify('Boss já derrotado.');
-    const petActive=activePet.energy>0 && activePet.hp>0;
-    const critChance=p.crit+(petActive&&activePet.species==='kitsune'?7.5:0);
+    if(p.hp<=0) return notify('Você está sem HP. Cure-se antes de atacar.');
+
+    const petActive=bossPet&&bossPet.energy>=2&&bossPet.hp>0;
+    const critChance=p.crit+(petActive&&bossPet.species==='kitsune'?7.5:0);
     const crit=Math.random()<critChance/100;
-    const dmg=Math.round(p.atk*(9+Math.random()*4)*(petActive?1.075:1)*(crit?1.9:1));
+    const rawBase=Math.max(5,Math.floor(p.atk*(.85+Math.random()*.45)));
+    const dmg=Math.max(5,Math.floor(rawBase*(petActive?1.075:1)*(crit?1.5:1)));
+
     setGame(g=>{
-      const nextHp=Math.max(0,g.boss.hp-dmg);
+      const nextBossHp=Math.max(0,g.boss.hp-dmg);
+      let profile={...g.profile};
+      let pets=[...g.pets];
+      let inventory=[...g.inventory];
+      let petEvent='';
+      let playerEvent='';
+
+      if(petActive){
+        pets=pets.map(x=>x.id===bossPet.id?{...x,energy:Math.max(0,x.energy-2)}:x);
+      }
+
+      if(nextBossHp>0){
+        const bossCritical=Math.random()<.05;
+        const bossDamage=Math.max(1,Math.round((Number(g.boss.atk||26)-g.profile.def*.22)*(.8+Math.random()*.4)*(bossCritical?1.5:1)));
+        profile.hp=Math.max(0,profile.hp-bossDamage);
+        playerEvent=' · Boss causou '+fmt(bossDamage)+(bossCritical?' CRÍTICO':'')+' em você';
+
+        if(petActive){
+          const current=pets.find(x=>x.id===bossPet.id);
+          if(current){
+            const petTaken=Math.max(1,Math.round(Number(g.boss.atk||26)*(.30+Math.random()*.22)));
+            let petHp=Math.max(0,current.hp-petTaken);
+            petEvent=' · '+current.name+' sofreu '+fmt(petTaken);
+
+            const maxHp=current.maxHp;
+            const shouldAutoHeal=petHp>0&&maxHp>0&&petHp/maxHp<.35;
+            if(shouldAutoHeal){
+              const defs=[
+                {id:'pocao_pet_comum',heal:60,name:'Poção de Pet Comum'},
+                {id:'pocao_pet_rara',heal:160,name:'Poção de Pet Rara'},
+                {id:'pocao_pet_epica',heal:320,name:'Poção de Pet Épica'},
+                {id:'pocao_pet_suprema',heal:800,name:'Poção de Pet Suprema'}
+              ];
+              const missing=Math.max(1,maxHp-petHp);
+              const available=defs.filter(d=>Number(inventory.find(i=>i.id===d.id)?.qty||0)>0);
+              const chosen=available.find(d=>d.heal>=missing)||available[available.length-1];
+              if(chosen){
+                petHp=Math.min(maxHp,petHp+chosen.heal);
+                inventory=inventory.map(i=>i.id===chosen.id?{...i,qty:i.qty-1}:i);
+                petEvent+=' · auto: '+chosen.name+' → '+petHp+'/'+maxHp+' HP';
+              }
+            }
+
+            pets=pets.map(x=>x.id===current.id?{...x,hp:petHp}:x);
+            if(petHp<=0&&current.id===g.petTeam[0]){
+              const reserve=pets.find(x=>x.id===g.petTeam[2]);
+              if(reserve&&reserve.hp>0&&reserve.energy>=2) petEvent+=' · Reserva '+reserve.name+' entra no próximo ataque';
+            }
+          }
+        }
+
+        if(profile.hp<=0){
+          const pot=inventory.find(i=>i.id==='pocao_p'&&i.qty>0);
+          if(pot){
+            profile.hp=Math.min(profile.maxHp,35);
+            inventory=inventory.map(i=>i.id==='pocao_p'?{...i,qty:i.qty-1}:i);
+            playerEvent+=' · Poção Pequena automática: '+profile.hp+'/'+profile.maxHp+' HP';
+          }
+        }
+      }
+
       let out={
         ...g,
-        boss:{...g.boss,hp:nextHp,myDamage:g.boss.myDamage+dmg},
-        pets:g.pets.map(x=>x.id===g.petTeam[0]&&x.energy>0?{
-          ...x,
-          energy:Math.max(0,x.energy-2),
-          hp:Math.min(x.maxHp,x.hp+Math.max(1,Math.round(x.maxHp*.03)))
-        }:x)
+        profile,
+        pets,
+        inventory,
+        boss:{...g.boss,hp:nextBossHp,myDamage:g.boss.myDamage+dmg}
       };
-      if(nextHp===0){
+      if(nextBossHp===0){
         out.profile={...out.profile,cash:out.profile.cash+24000,xp:out.profile.xp+600};
         return withLog(out,'🏆 Boss derrotado: +R$ 24.000 e +600 XP.');
       }
-      return withLog(out,(crit?'💥 CRÍTICO! ':'🗿 ')+fmt(dmg)+' de dano no Boss.');
+      return withLog(out,(crit?'💥 CRÍTICO! ':'🗿 ')+fmt(dmg)+' de dano no Boss'+playerEvent+petEvent+'.');
     });
     notify(fmt(dmg)+' de dano no Boss');
   }
@@ -195,11 +260,17 @@ export default function Game(){
   }
 
   function healPet(){
-    const item=game.inventory.find(i=>i.id==='pocao_pet');
-    if(!item?.qty) return notify('Sem Poção de Pet.');
+    const defs=[
+      {id:'pocao_pet_comum',heal:60,name:'Poção de Pet Comum'},
+      {id:'pocao_pet_rara',heal:160,name:'Poção de Pet Rara'},
+      {id:'pocao_pet_epica',heal:320,name:'Poção de Pet Épica'},
+      {id:'pocao_pet_suprema',heal:800,name:'Poção de Pet Suprema'}
+    ];
+    const item=defs.find(d=>Number(game.inventory.find(i=>i.id===d.id)?.qty||0)>0);
+    if(!item) return notify('Sem Poção de Pet.');
     if(activePet.hp>=activePet.maxHp) return notify('HP do pet já está cheio.');
-    setGame(g=>({...g,pets:g.pets.map(x=>x.id===g.petTeam[0]?{...x,hp:Math.min(x.maxHp,x.hp+160)}:x),inventory:g.inventory.map(i=>i.id==='pocao_pet'?{...i,qty:i.qty-1}:i)}));
-    notify('+160 HP no pet');
+    setGame(g=>({...g,pets:g.pets.map(x=>x.id===g.petTeam[0]?{...x,hp:Math.min(x.maxHp,x.hp+item.heal)}:x),inventory:g.inventory.map(i=>i.id===item.id?{...i,qty:i.qty-1}:i)}));
+    notify('+'+item.heal+' HP no pet');
   }
 
   function restPet(){
@@ -375,7 +446,7 @@ export default function Game(){
         })}
       </div>
     </Card>
-    <div className="cards-grid">{game.inventory.filter(i=>i.qty>0).map(item=><div key={item.id} draggable={['weapon','armor','boots'].includes(item.category)} onDragStart={e=>e.dataTransfer.setData('text/item-id',item.id)} className={['weapon','armor','boots'].includes(item.category)?'draggable-item':''}><Card><div className="item-top"><div className="item-icon">{item.icon}</div><div><h3>{item.name}</h3><span>{item.rarity} · Lv.{item.level} · x{item.qty}</span></div></div><p className="item-stat">{item.stat}</p><div className="button-row">{['weapon','armor','boots'].includes(item.category)&&<><Button onClick={()=>equip(item)}>Equipar</Button><Button onClick={()=>upgrade(item)} kind="secondary">Upar</Button></>}{item.id==='pocao_p'&&<Button onClick={usePotion}>Usar +35 HP</Button>}{item.id==='pocao_pet'&&<Button onClick={healPet}>Curar pet</Button>}</div></Card></div>)}</div>
+    <div className="cards-grid">{game.inventory.filter(i=>i.qty>0).map(item=><div key={item.id} draggable={['weapon','armor','boots'].includes(item.category)} onDragStart={e=>e.dataTransfer.setData('text/item-id',item.id)} className={['weapon','armor','boots'].includes(item.category)?'draggable-item':''}><Card><div className="item-top"><div className="item-icon">{item.icon}</div><div><h3>{item.name}</h3><span>{item.rarity} · Lv.{item.level} · x{item.qty}</span></div></div><p className="item-stat">{item.stat}</p><div className="button-row">{['weapon','armor','boots'].includes(item.category)&&<><Button onClick={()=>equip(item)}>Equipar</Button><Button onClick={()=>upgrade(item)} kind="secondary">Upar</Button></>}{item.id==='pocao_p'&&<Button onClick={usePotion}>Usar +35 HP</Button>}{item.id.startsWith('pocao_pet_')&&<Button onClick={healPet}>Curar pet</Button>}</div></Card></div>)}</div>
   </div>;
 
   const Business=()=> { const total=game.businesses.reduce((s,b)=>s+b.stored,0); return <div className="stack"><Card><div className="card-head"><h3>Negócios</h3><span>Disponível: R$ {fmt(total)}</span></div><Button onClick={collectBusinesses} disabled={total<=0}>💰 COLETAR TUDO</Button></Card><div className="cards-grid">{game.businesses.map(b=><Card key={b.id}><div className="item-top"><div className="item-icon">{b.icon}</div><div><h3>{b.name}</h3><span>Lv.{b.level}</span></div></div><div className="money-row"><div><small>Acumulado</small><strong>R$ {fmt(b.stored)}</strong></div><div><small>Produção</small><strong>R$ {fmt(b.rate)}/h</strong></div></div></Card>)}</div></div>; };
