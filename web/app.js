@@ -577,11 +577,14 @@ function renderSocial(){
 
 function renderMarket(){
   const ex=ui.extras||{}, market=ex.market||[], mine=ui.data.market||[], inv=ui.data.inventory||[];
-  return '<div class="page-head"><div><h2>Mercado</h2><p>Os anúncios são os mesmos do comando !mercado e expiram conforme a regra do bot.</p></div><button class="btn primary" data-market-create>Novo anúncio</button></div>'+
+  const available=inv.filter(i=>Number(i.quantity)>0 && i.sellable!==false);
+  return '<div class="page-head"><div><h2>Mercado</h2><p>Os anúncios são os mesmos do comando !mercado e expiram conforme a regra do bot.</p></div><span class="tag">'+market.length+' ativos</span></div>'+
     '<div class="section-title"><h3>Anúncios ativos</h3><small>'+market.length+'</small></div>'+
     '<div class="grid cards">'+(market.length?market.map(x=>'<div class="card item-card"><div class="item-icon">📣</div><h3>'+esc(x.name)+'</h3><p>'+esc(x.seller_name||'Jogador')+' • x'+num(x.quantity)+' • expira em '+Math.ceil(Number(x.remaining_seconds||0)/60)+' min</p><strong>'+money(x.price)+'</strong><div class="item-actions">'+(x.seller_jid===ui.data.identity.jid?'<button class="btn danger" data-market-cancel="'+x.id+'">Cancelar</button>':'<button class="btn primary" data-market-buy="'+x.id+'">Comprar</button>')+'</div></div>').join(''):'<div class="empty">Nenhum anúncio ativo.</div>')+'</div>'+
     '<div class="section"><div class="section-title"><h3>Meus anúncios</h3><small>'+mine.length+'</small></div><div class="list">'+(mine.length?mine.map(x=>'<div class="list-row"><span>'+esc(x.name)+' x'+num(x.quantity)+'</span><span>'+money(x.price)+' <button class="btn danger" data-market-cancel="'+x.id+'">Cancelar</button></span></div>').join(''):'<div class="empty">Você não tem anúncios ativos.</div>')+'</div></div>'+
-    '<div class="section card"><div class="section-title"><h3>Itens anunciáveis</h3><small>'+inv.filter(x=>x.sellable!==false).length+'</small></div><p class="muted">Use “Novo anúncio” e escolha o ID do item do seu inventário. A quantidade sai do inventário real.</p></div>'+resultPanel();
+    '<div class="section card"><div class="section-title"><h3>Anunciar do inventário</h3><small>'+available.length+' itens disponíveis</small></div>'+
+      (available.length?'<div class="market-inventory">'+available.map(i=>'<div class="market-inventory-row"><div><strong>'+esc(i.name)+'</strong><small>x'+num(i.quantity)+(Number(i.price)>0?' • referência '+money(i.price)+' cada':'')+'</small></div><button class="btn primary" data-market-announce="'+esc(i.item_id)+'" data-market-max="'+num(i.quantity)+'" data-market-ref="'+num(i.price||0)+'">Anunciar</button></div>').join('')+'</div>':'<div class="empty">Você não possui itens anunciáveis.</div>')+
+    '</div>'+resultPanel();
 }
 
 function renderClan(){
@@ -942,14 +945,14 @@ function bind(){
 
   document.querySelectorAll('[data-market-buy]').forEach(x=>x.onclick=()=>doAction('market.buy',{listingId:Number(x.dataset.marketBuy)},{}));
   document.querySelectorAll('[data-market-cancel]').forEach(x=>x.onclick=()=>doAction('market.cancel',{listingId:Number(x.dataset.marketCancel)},{}));
-  document.querySelectorAll('[data-market-create]').forEach(x=>x.onclick=()=>{
-    const available=(ui.data.inventory||[]).filter(i=>Number(i.quantity)>0 && i.sellable!==false);
-    const hint=available.slice(0,12).map(i=>i.item_id+' x'+i.quantity).join('\n');
-    const itemId=prompt('ID do item para anunciar:\n'+hint,available[0]&&available[0].item_id||'');
-    if(!itemId) return;
-    const qty=Number(prompt('Quantidade:','1'));
-    const price=Number(prompt('Preço total do anúncio:','1000'));
-    if(qty>0&&price>0) doAction('market.create',{itemId,qty,price},{});
+  document.querySelectorAll('[data-market-announce]').forEach(x=>x.onclick=()=>{
+    const itemId=x.dataset.marketAnnounce;
+    const maxQty=Math.max(1,Number(x.dataset.marketMax||1));
+    const ref=Math.max(0,Number(x.dataset.marketRef||0));
+    const qty=Math.min(maxQty,Math.max(1,Number(prompt('Quantidade para anunciar (máx. '+maxQty+'):','1'))||1));
+    const suggested=ref>0?ref*qty:1000;
+    const price=Number(prompt('Preço total do anúncio:\nSugestão pela referência atual: '+money(suggested),String(suggested)));
+    if(price>0) doAction('market.create',{itemId,qty,price},{});
   });
 
   document.querySelectorAll('[data-clan-create]').forEach(x=>x.onclick=()=>{
