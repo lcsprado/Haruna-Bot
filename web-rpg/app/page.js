@@ -90,6 +90,11 @@ export default function Game(){
   const [autoPetDuel,setAutoPetDuel]=useState(false);
   const [mobileMenu,setMobileMenu]=useState(false);
   const [duelBattle,setDuelBattle]=useState({player:null,pet:null});
+  const [combatFx,setCombatFx]=useState({
+    bossHit:false,bossDamage:null,bossCrit:false,playerHit:false,
+    duelEnemyHit:false,duelPlayerHit:false,duelDamage:null,duelReceived:null,
+    healText:null,equipSlot:null
+  });
 
   useEffect(()=>{
     try{
@@ -123,6 +128,18 @@ export default function Game(){
 
   function notify(msg){ setToast(msg); window.setTimeout(()=>setToast(''),2200); }
   function withLog(g,msg){ return {...g,log:[msg,...g.log].slice(0,8)}; }
+  function fx(patch,clearPatch,duration=520){
+    setCombatFx(v=>({...v,...patch}));
+    window.setTimeout(()=>setCombatFx(v=>({...v,...clearPatch})),duration);
+  }
+  function rarityClass(rarity=''){
+    const r=String(rarity).toLowerCase();
+    if(r.includes('lend')) return 'rarity-legendary';
+    if(r.includes('evento')) return 'rarity-event';
+    if(r.includes('ép')||r.includes('ep')) return 'rarity-epic';
+    if(r.includes('raro')) return 'rarity-rare';
+    return '';
+  }
 
   function selectRaid(level){
     const raid=RAIDS.find(x=>x.level===level);
@@ -139,6 +156,7 @@ export default function Game(){
     const crit=Math.random()<p.crit/100;
     const petActive=activePet.energy>0 && activePet.hp>0;
     const dmg=Math.round(p.atk*(7.5+Math.random()*3)*(petActive?1.075:1)*(crit?1.85:1));
+    fx({bossHit:true,bossDamage:dmg,bossCrit:crit},{bossHit:false,bossDamage:null,bossCrit:false},620);
     setGame(g=>{
       const nextHp=Math.max(0,g.raid.hp-dmg);
       let out={
@@ -171,6 +189,11 @@ export default function Game(){
     const crit=Math.random()<critChance/100;
     const rawBase=Math.max(5,Math.floor(p.atk*(.85+Math.random()*.45)));
     const dmg=Math.max(5,Math.floor(rawBase*(petActive?1.075:1)*(crit?1.5:1)));
+
+    fx({bossHit:true,bossDamage:dmg,bossCrit:crit},{bossHit:false,bossDamage:null,bossCrit:false},620);
+    if(game.boss.hp-dmg>0){
+      window.setTimeout(()=>fx({playerHit:true},{playerHit:false},360),230);
+    }
 
     setGame(g=>{
       const nextBossHp=Math.max(0,g.boss.hp-dmg);
@@ -296,6 +319,7 @@ export default function Game(){
     const crit=Math.random()<critChance;
     const damage=Math.max(5,Math.round(attackBase*(.72+Math.random()*.42)*(crit?1.5:1)));
     const enemyAfter=Math.max(0,battle.enemyHp-damage);
+    fx({duelEnemyHit:true,duelDamage:damage},{duelEnemyHit:false,duelDamage:null},560);
 
     if(enemyAfter<=0){
       const xp=pet?45:65;
@@ -313,6 +337,7 @@ export default function Game(){
     const defense=pet?Math.round(activePet.level*1.4):p.def;
     const received=Math.max(3,Math.round((battle.enemyAtk-defense*.18)*(.78+Math.random()*.38)));
     const myAfter=Math.max(0,battle.myHp-received);
+    window.setTimeout(()=>fx({duelPlayerHit:true,duelReceived:received},{duelPlayerHit:false,duelReceived:null},520),220);
     const last=(crit?'💥 CRÍTICO! ':'⚔️ ')+fmt(damage)+' causado · '+fmt(received)+' recebido';
 
     if(myAfter<=0){
@@ -341,6 +366,7 @@ export default function Game(){
     if(!item?.qty) return notify('Sem Poção Pequena.');
     if(p.hp>=p.maxHp) return notify('Seu HP já está cheio.');
     setGame(g=>({...g,profile:{...g.profile,hp:Math.min(g.profile.maxHp,g.profile.hp+35)},inventory:g.inventory.map(i=>i.id==='pocao_p'?{...i,qty:i.qty-1}:i)}));
+    fx({healText:'+35 HP'},{healText:null},720);
     notify('+35 HP');
   }
 
@@ -355,6 +381,7 @@ export default function Game(){
     if(!item) return notify('Sem Poção de Pet.');
     if(activePet.hp>=activePet.maxHp) return notify('HP do pet já está cheio.');
     setGame(g=>({...g,pets:g.pets.map(x=>x.id===g.petTeam[0]?{...x,hp:Math.min(x.maxHp,x.hp+item.heal)}:x),inventory:g.inventory.map(i=>i.id===item.id?{...i,qty:i.qty-1}:i)}));
+    fx({healText:'+'+item.heal+' HP PET'},{healText:null},720);
     notify('+'+item.heal+' HP no pet');
   }
 
@@ -366,6 +393,7 @@ export default function Game(){
   function equip(item){
     if(!['weapon','armor','boots'].includes(item.category)) return;
     setGame(g=>({...g,equipment:{...g.equipment,[item.category]:{...item}}}));
+    fx({equipSlot:item.category},{equipSlot:null},700);
     notify(item.name+' equipado.');
   }
 
@@ -487,7 +515,7 @@ export default function Game(){
   </div>;
 
   const Raid=()=> <div className="stack">
-    <Card className="battle-card"><div className="monster">{game.raid.icon}</div><div className="eyebrow">RAID LV.{game.raid.level}</div><h2>{game.raid.name}</h2>
+    <Card className="battle-card"><div className="combat-visual"><div className={'monster '+(combatFx.bossHit?'hit-shake':'')}>{game.raid.icon}</div>{combatFx.bossDamage&&<div className={'float-number damage '+(combatFx.bossCrit?'crit':'')}>-{fmt(combatFx.bossDamage)}{combatFx.bossCrit?' CRÍTICO!':''}</div>}</div><div className="eyebrow">RAID LV.{game.raid.level}</div><h2>{game.raid.name}</h2>
       <div className="hp-line"><b>{fmt(game.raid.hp)} / {fmt(game.raid.maxHp)} HP</b><span>{Math.round(pct(game.raid.hp,game.raid.maxHp))}%</span></div><Bar value={game.raid.hp} max={game.raid.maxHp}/>
       <div className="battle-info"><span>Seu dano: <b>{fmt(game.raid.myDamage)}</b></span><span>Pet: <b>{activePet.icon} {activePet.name}</b></span><span>Energia: <b>{activePet.energy}/{activePet.maxEnergy}</b></span></div>
       <Button onClick={attackRaid} disabled={game.raid.hp<=0}>⚔️ ATACAR</Button>
@@ -498,10 +526,10 @@ export default function Game(){
   const Boss=()=> <div className="combat-page">
     <Card className="battle-card event">
       <div className="combat-badge">{autoBoss?'AUTO ATIVO':'MANUAL'}</div>
-      <div className="monster">{game.boss.icon}</div><div className="eyebrow">BOSS DE EVENTO</div><h2>{game.boss.name}</h2>
+      <div className="combat-visual"><div className={'monster '+(combatFx.bossHit?'hit-shake':'')}>{game.boss.icon}</div>{combatFx.bossDamage&&<div className={'float-number damage '+(combatFx.bossCrit?'crit':'')}>-{fmt(combatFx.bossDamage)}{combatFx.bossCrit?' CRÍTICO!':''}</div>}</div><div className="eyebrow">BOSS DE EVENTO</div><h2>{game.boss.name}</h2>
       <div className="hp-line"><b>{fmt(game.boss.hp)} / {fmt(game.boss.maxHp)} HP</b><span>{Math.round(pct(game.boss.hp,game.boss.maxHp))}%</span></div><Bar value={game.boss.hp} max={game.boss.maxHp}/>
-      <div className="combat-player-strip"><span>❤️ Você: <b>{p.hp}/{p.maxHp}</b></span><span>⚔️ Dano acumulado: <b>{fmt(game.boss.myDamage)}</b></span></div>
-      <div className="pet-inline"><div className="pet-art">{bossPet.icon}</div><div><strong>{bossPet.name}</strong><small>{bossPet.id===activePet.id?'Principal':'Reserva'} · {bossPet.style}</small></div><div className="pet-bars"><Bar value={bossPet.hp} max={bossPet.maxHp}/><Bar value={bossPet.energy} max={bossPet.maxEnergy} tone="energy"/></div></div>
+      <div className={'combat-player-strip '+(combatFx.playerHit?'damage-flash':'')}><span>❤️ Você: <b>{p.hp}/{p.maxHp}</b></span><span>⚔️ Dano acumulado: <b>{fmt(game.boss.myDamage)}</b></span></div>
+      <div className={'pet-inline '+(combatFx.bossHit?'attack-lunge':'')}><div className="pet-art pet-idle">{bossPet.icon}</div><div><strong>{bossPet.name}</strong><small>{bossPet.id===activePet.id?'Principal':'Reserva'} · {bossPet.style}</small></div><div className="pet-bars"><Bar value={bossPet.hp} max={bossPet.maxHp}/><Bar value={bossPet.energy} max={bossPet.maxEnergy} tone="energy"/></div></div>
       <div className="button-row combat-actions">
         <Button onClick={()=>attackBoss(true)} disabled={game.boss.hp<=0||autoBoss}>⚔️ Atacar com pet</Button>
         <Button onClick={()=>attackBoss(false)} kind="secondary" disabled={game.boss.hp<=0||autoBoss}>🗡️ Atacar sem pet</Button>
@@ -510,6 +538,7 @@ export default function Game(){
         {autoBoss&&<Button onClick={()=>setAutoBoss(false)} kind="danger">⏹ Parar Auto</Button>}
         <Button onClick={healPet} kind="secondary">💙 Curar pet</Button><Button onClick={restPet} kind="ghost">⚡ Descansar</Button>
       </div>
+      {combatFx.healText&&<div className="float-number heal floating-center">{combatFx.healText}</div>}
       <p className="hint">Auto ataca a cada 1,1 s, usa cura preventiva abaixo de 35% e pausa se o HP ficar crítico sem poções.</p>
     </Card>
   </div>;
@@ -523,16 +552,18 @@ export default function Game(){
       <Card className="battle-card duel-card">
         <div className="combat-badge">{auto?'AUTO ATIVO':battle?.active?'EM COMBATE':'ARENA'}</div>
         <div className="duel-stage">
-          <div className="fighter">
-            <div className="fighter-icon">{pet?activePet.icon:'🧑‍🚀'}</div>
+          <div className={'fighter '+(combatFx.duelPlayerHit?'hit-shake damage-flash ':'')+(!battle?.active&&battle?.enemyHp===0?'winner ':'')+(!battle?.active&&battle?.myHp===0?'defeated ':'')+(combatFx.duelEnemyHit?'attack-lunge':'')}>
+            <div className={'fighter-icon '+(pet?'pet-idle':'')}>{pet?activePet.icon:'🧑‍🚀'}</div>
+            {combatFx.duelReceived&&<div className="float-number damage self-hit">-{fmt(combatFx.duelReceived)}</div>}
             <strong>{pet?activePet.name:p.name}</strong>
             <small>{pet?'Lv.'+activePet.level:'Lv.'+p.level}</small>
             <Bar value={battle?.myHp ?? (pet?activePet.hp:p.hp)} max={battle?.myMaxHp ?? (pet?activePet.maxHp:p.maxHp)}/>
             <span>{fmt(battle?.myHp ?? (pet?activePet.hp:p.hp))} HP</span>
           </div>
           <div className="versus">VS</div>
-          <div className="fighter enemy">
+          <div className={'fighter enemy '+(combatFx.duelEnemyHit?'hit-shake damage-flash ':'')+(!battle?.active&&battle?.enemyHp===0?'defeated ':'')+(!battle?.active&&battle?.myHp===0?'winner ':'')}>
             <div className="fighter-icon">{battle?.enemyIcon || (pet?'🐺':'🥷')}</div>
+            {combatFx.duelDamage&&<div className="float-number damage">-{fmt(combatFx.duelDamage)}</div>}
             <strong>{battle?.enemyName || (pet?'Pet Rival':'Rival Alpha')}</strong>
             <small>{battle?'Rodada '+battle.round:'Aguardando desafio'}</small>
             <Bar value={battle?.enemyHp ?? 1} max={battle?.enemyMaxHp ?? 1}/>
@@ -554,9 +585,9 @@ export default function Game(){
   const Pets=()=> <div className="stack">
     <Card><div className="card-head"><h3>Time Pet</h3><span>{synergy}</span></div><div className="pet-team">{['Principal','Suporte','Reserva'].map((label,slot)=>{
       const pet=game.pets.find(x=>x.id===game.petTeam[slot]);
-      return <div className="team-slot" key={label}><small>{slot+1}. {label}</small><div className="pet-art">{pet?.icon||'＋'}</div><strong>{pet?.name||'Vazio'}</strong><select value={pet?.id||''} onChange={e=>setPetSlot(slot,Number(e.target.value))}>{game.pets.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select></div>;
+      return <div className="team-slot" key={label}><small>{slot+1}. {label}</small><div className="pet-art pet-idle">{pet?.icon||'＋'}</div><strong>{pet?.name||'Vazio'}</strong><select value={pet?.id||''} onChange={e=>setPetSlot(slot,Number(e.target.value))}>{game.pets.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select></div>;
     })}</div></Card>
-    <div className="cards-grid">{game.pets.map(pet=><Card key={pet.id} className={game.petTeam.includes(pet.id)?'selected':''}><div className="item-top"><div className="item-icon">{pet.icon}</div><div><h3>{pet.name}</h3><span>Lv.{pet.level} · {pet.style}</span></div></div><small>{pet.bonus}</small><div className="line-label"><span>HP</span><b>{pet.hp}/{pet.maxHp}</b></div><Bar value={pet.hp} max={pet.maxHp}/><div className="line-label"><span>Energia</span><b>{pet.energy}/{pet.maxEnergy}</b></div><Bar value={pet.energy} max={pet.maxEnergy} tone="energy"/></Card>)}</div>
+    <div className="cards-grid">{game.pets.map(pet=><Card key={pet.id} className={game.petTeam.includes(pet.id)?'selected':''}><div className="item-top"><div className="item-icon pet-idle">{pet.icon}</div><div><h3>{pet.name}</h3><span>Lv.{pet.level} · {pet.style}</span></div></div><small>{pet.bonus}</small><div className="line-label"><span>HP</span><b>{pet.hp}/{pet.maxHp}</b></div><Bar value={pet.hp} max={pet.maxHp}/><div className="line-label"><span>Energia</span><b>{pet.energy}/{pet.maxEnergy}</b></div><Bar value={pet.energy} max={pet.maxEnergy} tone="energy"/></Card>)}</div>
   </div>;
 
   const Items=()=> <div className="stack">
@@ -572,7 +603,7 @@ export default function Game(){
         })}
       </div>
     </Card>
-    <div className="cards-grid">{game.inventory.filter(i=>i.qty>0).map(item=><div key={item.id} draggable={['weapon','armor','boots'].includes(item.category)} onDragStart={e=>e.dataTransfer.setData('text/item-id',item.id)} className={['weapon','armor','boots'].includes(item.category)?'draggable-item':''}><Card><div className="item-top"><div className="item-icon">{item.icon}</div><div><h3>{item.name}</h3><span>{item.rarity} · Lv.{item.level} · x{item.qty}</span></div></div><p className="item-stat">{item.stat}</p><div className="button-row">{['weapon','armor','boots'].includes(item.category)&&<><Button onClick={()=>equip(item)}>Equipar</Button><Button onClick={()=>upgrade(item)} kind="secondary">Upar</Button></>}{item.id==='pocao_p'&&<Button onClick={usePotion}>Usar +35 HP</Button>}{item.id.startsWith('pocao_pet_')&&<Button onClick={healPet}>Curar pet</Button>}</div></Card></div>)}</div>
+    <div className="cards-grid">{game.inventory.filter(i=>i.qty>0).map(item=><div key={item.id} draggable={['weapon','armor','boots'].includes(item.category)} onDragStart={e=>e.dataTransfer.setData('text/item-id',item.id)} className={['weapon','armor','boots'].includes(item.category)?'draggable-item':''}><Card className={rarityClass(item.rarity)}><div className="item-top"><div className="item-icon">{item.icon}</div><div><h3>{item.name}</h3><span>{item.rarity} · Lv.{item.level} · x{item.qty}</span></div></div><p className="item-stat">{item.stat}</p><div className="button-row">{['weapon','armor','boots'].includes(item.category)&&<><Button onClick={()=>equip(item)}>Equipar</Button><Button onClick={()=>upgrade(item)} kind="secondary">Upar</Button></>}{item.id==='pocao_p'&&<Button onClick={usePotion}>Usar +35 HP</Button>}{item.id.startsWith('pocao_pet_')&&<Button onClick={healPet}>Curar pet</Button>}</div></Card></div>)}</div>
   </div>;
 
   const Business=()=> { const total=game.businesses.reduce((s,b)=>s+b.stored,0); return <div className="stack"><Card><div className="card-head"><h3>Negócios</h3><span>Disponível: R$ {fmt(total)}</span></div><Button onClick={collectBusinesses} disabled={total<=0}>💰 COLETAR TUDO</Button></Card><div className="cards-grid">{game.businesses.map(b=><Card key={b.id}><div className="item-top"><div className="item-icon">{b.icon}</div><div><h3>{b.name}</h3><span>Lv.{b.level}</span></div></div><div className="money-row"><div><small>Acumulado</small><strong>R$ {fmt(b.stored)}</strong></div><div><small>Produção</small><strong>R$ {fmt(b.rate)}/h</strong></div></div></Card>)}</div></div>; };
@@ -626,7 +657,7 @@ export default function Game(){
     </aside>
 
     {mobileMenu&&<div className="mobile-backdrop" onClick={()=>setMobileMenu(false)}>
-      <div className="mobile-drawer" onClick={e=>e.stopPropagation()}>
+      <div className="mobile-drawer drawer-enter" onClick={e=>e.stopPropagation()}>
         <div className="drawer-head"><strong>Menu</strong><button onClick={()=>setMobileMenu(false)}>✕</button></div>
         <div className="drawer-grid">{tabs.map(([id,icon,label])=><button key={id} className={tab===id?'active':''} onClick={()=>goTab(id)}><span>{icon}</span><b>{label}</b></button>)}</div>
       </div>
@@ -634,7 +665,7 @@ export default function Game(){
 
     <section className="content">
       <header className="topbar"><div><div className="eyebrow">ALPHA RPG WEB</div><strong>{tabs.find(x=>x[0]===tab)?.[2]}</strong></div><div className="top-status"><span>❤️ {p.hp}/{p.maxHp}</span><span>💰 R$ {fmt(p.cash)}</span><span>⭐ Lv.{p.level}</span></div></header>
-      <div className="page">{views[tab]}</div>
+      <div key={tab} className="page view-enter">{views[tab]}</div>
     </section>
 
     <div className="mobile-nav">
