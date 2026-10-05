@@ -603,10 +603,31 @@ function prettyResult(value){
   if(Array.isArray(value.results)&&value.results.length){
     details+='<div class="result-rewards"><h4>📋 Detalhes</h4>'+value.results.map(r=>'<div class="reward-chip">'+esc(r.label||r.name||r.result||'Ação')+(r.amount!=null?' • '+money(r.amount):'')+(r.error?' • '+esc(r.error):'')+'</div>').join('')+'</div>';
   }
+  const combat=renderCombatResult(value);
+  if(combat) return combat+(metrics.length?'<div class="result-metrics section">'+metrics.join('')+'</div>':'')+details;
   if(metrics.length||details) return (metrics.length?'<div class="result-metrics">'+metrics.join('')+'</div>':'')+details;
   let raw; try{raw=JSON.stringify(value,null,2)}catch{raw=String(value)}
   return '<pre class="result-box">'+esc(raw)+'</pre>';
 }
+function renderCombatResult(value){
+  if(!value||typeof value!=='object') return '';
+  if(Array.isArray(value.log)&&value.winner&&value.loser){
+    const crits=value.log.filter(x=>x&&x.crit).length;
+    const total=value.log.reduce((s,x)=>s+Number(x&&x.dmg||0),0);
+    const recent=value.log.slice(-8);
+    return '<div class="combat-result">'+
+      '<div class="combat-result-head"><div><small>VENCEDOR</small><strong>🏆 '+esc(value.winner.name||'Jogador')+'</strong></div><div><small>RECOMPENSA</small><strong>'+money(value.reward||0)+'</strong></div></div>'+
+      '<div class="result-metrics">'+resultMetric('Golpes',value.log.length,'num')+resultMetric('Críticos',crits,'num')+resultMetric('Dano total',total,'num')+'</div>'+
+      '<div class="combat-log">'+recent.map(x=>'<div class="combat-hit '+(x.crit?'critical':'')+'"><span>'+esc(x.from||'Jogador')+' → '+esc(x.to||'Alvo')+'</span><strong>'+(x.crit?'💥 CRÍTICO ':'')+num(x.dmg)+' dano</strong></div>').join('')+'</div>'+
+    '</div>';
+  }
+  if(value.winner&&value.loser&&value.rounds!=null&&value.winner.species){
+    return '<div class="combat-result"><div class="combat-result-head"><div><small>VENCEDOR PET</small><strong>🐾 '+esc(value.winner.name||value.winner.species)+'</strong></div><div><small>RODADAS</small><strong>'+num(value.rounds)+'</strong></div></div>'+
+      '<div class="result-metrics">'+resultMetric('Vencedor','Lv.'+num(value.winner.level))+resultMetric('HP restante',num(value.winner.hp)+'/'+num(value.winner.max_hp))+'</div></div>';
+  }
+  return '';
+}
+
 function resultPanel(){
   if(ui.lastResult==null) return '';
   return '<div class="section card result-card"><div class="section-title"><h3>Resultado</h3><button class="text-btn" data-clear-result>Limpar</button></div>'+prettyResult(ui.lastResult)+'</div>';
