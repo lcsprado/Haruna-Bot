@@ -277,8 +277,8 @@ function sanitizeActionResult(actionName,result){
   if(name==='game.quiz.start') return sanitizeGameState('quiz',result)
   if(name==='game.number.start') return sanitizeGameState('numero',result)
   if(name==='game.hangman.start' || name==='game.hangman.letter' || name==='game.hangman.word'){
-    const copy=structuredClone(result)
-    if(!copy.won && !copy.lost && !copy.finished) delete copy.word
+    const copy=sanitizeGameState('forca',result)
+    if(copy?.won || copy?.lost || copy?.finished) return result
     return copy
   }
   if(name==='game.rpsDuel.create') return sanitizeGameState('rps_duel',result)
