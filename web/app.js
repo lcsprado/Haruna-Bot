@@ -397,7 +397,7 @@ function resultPanel(){
 }
 function memberCard(m){
   return '<div class="card social-card"><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
-    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button></div></div>';
+    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
 }
 function renderSocial(){
   const members=roster().filter(x=>x.jid!==ui.data.identity.jid);
@@ -535,6 +535,116 @@ function bind(){
   document.querySelectorAll('[data-boss-auto]').forEach(x=>x.onclick=toggleBossAuto);
   document.querySelectorAll('[data-business-upgrade]').forEach(x=>x.onclick=()=>doAction('business.upgrade',{id:x.dataset.businessUpgrade},{}));
   document.querySelectorAll('[data-loan-pay]').forEach(x=>x.onclick=()=>doAction('loan.pay',{amount:x.dataset.loanPay},{}));
+  document.querySelectorAll('[data-battle]').forEach(x=>x.onclick=()=>doAction('battle',{targetJid:x.dataset.battle},{}));
+  document.querySelectorAll('[data-petduel]').forEach(x=>x.onclick=()=>doAction('petduel',{targetJid:x.dataset.petduel},{}));
+  document.querySelectorAll('[data-rob]').forEach(x=>x.onclick=()=>doAction('rob',{targetJid:x.dataset.rob},{}));
+  document.querySelectorAll('[data-transfer]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Valor do PIX:','1000'));
+    if(amount>0) doAction('transfer',{targetJid:x.dataset.transfer,amount},{});
+  });
+  document.querySelectorAll('[data-loan-offer]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Valor do empréstimo:','5000'));
+    if(amount>0) doAction('loan.offer',{targetJid:x.dataset.loanOffer,amount},{});
+  });
+  document.querySelectorAll('[data-relationship-propose]').forEach(x=>x.onclick=()=>doAction('relationship.propose',{targetJid:x.dataset.relationshipPropose},{}));
+  document.querySelectorAll('[data-relationship-accept-member]').forEach(x=>x.onclick=()=>doAction('relationship.accept',{targetJid:x.dataset.relationshipAcceptMember},{}));
+  document.querySelectorAll('[data-relationship-divorce]').forEach(x=>x.onclick=()=>doAction('relationship.divorce',{},{}));
+
+  document.querySelectorAll('[data-market-buy]').forEach(x=>x.onclick=()=>doAction('market.buy',{listingId:Number(x.dataset.marketBuy)},{}));
+  document.querySelectorAll('[data-market-cancel]').forEach(x=>x.onclick=()=>doAction('market.cancel',{listingId:Number(x.dataset.marketCancel)},{}));
+  document.querySelectorAll('[data-market-create]').forEach(x=>x.onclick=()=>{
+    const available=(ui.data.inventory||[]).filter(i=>Number(i.quantity)>0 && i.sellable!==false);
+    const hint=available.slice(0,12).map(i=>i.item_id+' x'+i.quantity).join('\n');
+    const itemId=prompt('ID do item para anunciar:\n'+hint,available[0]&&available[0].item_id||'');
+    if(!itemId) return;
+    const qty=Number(prompt('Quantidade:','1'));
+    const price=Number(prompt('Preço total do anúncio:','1000'));
+    if(qty>0&&price>0) doAction('market.create',{itemId,qty,price},{});
+  });
+
+  document.querySelectorAll('[data-clan-create]').forEach(x=>x.onclick=()=>{
+    const name=prompt('Nome do novo clã:','Alpha');
+    if(name) doAction('clan.create',{name},{});
+  });
+  document.querySelectorAll('[data-clan-accept]').forEach(x=>x.onclick=()=>doAction('clan.accept',{},{}));
+  document.querySelectorAll('[data-clan-leave]').forEach(x=>x.onclick=()=>doAction('clan.leave',{},{}));
+  document.querySelectorAll('[data-clan-donate]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Valor da doação ao clã:','1000'));
+    if(amount>0) doAction('clan.donate',{amount},{});
+  });
+  document.querySelectorAll('[data-clan-invite]').forEach(x=>x.onclick=()=>doAction('clan.invite',{targetJid:x.dataset.clanInvite},{}));
+  document.querySelectorAll('[data-clan-kick]').forEach(x=>x.onclick=()=>doAction('clan.kick',{targetJid:x.dataset.clanKick},{}));
+  document.querySelectorAll('[data-clan-transfer]').forEach(x=>x.onclick=()=>doAction('clan.transfer',{targetJid:x.dataset.clanTransfer},{}));
+
+  document.querySelectorAll('[data-game-coin]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Aposta:','1000')), choice=prompt('cara ou coroa:','cara');
+    if(amount>0&&choice) doAction('game.coinflip',{amount,choice},{});
+  });
+  document.querySelectorAll('[data-game-roulette]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Aposta:','1000')), choice=prompt('Escolha da roleta:','vermelho');
+    if(amount>0&&choice) doAction('game.roulette',{amount,choice},{});
+  });
+  document.querySelectorAll('[data-game-rps]').forEach(x=>x.onclick=()=>{
+    const choice=prompt('pedra, papel ou tesoura:','pedra');
+    if(choice) doAction('game.rps',{choice},{});
+  });
+  document.querySelectorAll('[data-game-dungeon]').forEach(x=>x.onclick=()=>doAction('dungeon',{},{}));
+  document.querySelectorAll('[data-quiz-start]').forEach(x=>x.onclick=()=>doAction('game.quiz.start',{},{}));
+  document.querySelectorAll('[data-quiz-answer]').forEach(x=>x.onclick=()=>{
+    const answer=prompt('Sua resposta:','1');
+    if(answer) doAction('game.quiz.answer',{answer},{});
+  });
+  document.querySelectorAll('[data-number-start]').forEach(x=>x.onclick=()=>doAction('game.number.start',{},{}));
+  document.querySelectorAll('[data-number-guess]').forEach(x=>x.onclick=()=>{
+    const guess=Number(prompt('Seu número:','50'));
+    if(guess>0) doAction('game.number.guess',{guess},{});
+  });
+  document.querySelectorAll('[data-hangman-start]').forEach(x=>x.onclick=()=>doAction('game.hangman.start',{},{}));
+  document.querySelectorAll('[data-hangman-letter]').forEach(x=>x.onclick=()=>{
+    const letter=prompt('Letra:','a');
+    if(letter) doAction('game.hangman.letter',{letter},{});
+  });
+  document.querySelectorAll('[data-hangman-word]').forEach(x=>x.onclick=()=>{
+    const word=prompt('Palavra:','');
+    if(word) doAction('game.hangman.word',{word},{});
+  });
+  document.querySelectorAll('[data-group-roulette-create]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Aposta:','1000')), choice=prompt('Escolha:','vermelho');
+    if(amount>0&&choice) doAction('game.groupRoulette.create',{amount,choice},{});
+  });
+  document.querySelectorAll('[data-group-roulette-join]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Aposta:','1000')), choice=prompt('Escolha:','vermelho');
+    if(amount>0&&choice) doAction('game.groupRoulette.join',{amount,choice},{});
+  });
+  document.querySelectorAll('[data-group-roulette-spin]').forEach(x=>x.onclick=()=>doAction('game.groupRoulette.spin',{},{}));
+  document.querySelectorAll('[data-tournament-create]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Entrada do torneio:','1000'));
+    if(amount>0) doAction('game.tournament.create',{amount},{});
+  });
+  document.querySelectorAll('[data-tournament-join]').forEach(x=>x.onclick=()=>doAction('game.tournament.join',{},{}));
+  document.querySelectorAll('[data-tournament-start]').forEach(x=>x.onclick=()=>doAction('game.tournament.start',{},{}));
+
+  document.querySelectorAll('[data-sleep]').forEach(x=>x.onclick=()=>doAction(x.dataset.sleep==='wake'?'sleep.wake':'sleep.start',{},{}));
+  document.querySelectorAll('[data-carpinar]').forEach(x=>x.onclick=()=>{
+    if(x.dataset.carpinar==='leave'){doAction('carpinar.leave',{},{});return;}
+    const plans=(ui.extras&&ui.extras.carpinarPlans)||[];
+    const hours=Number(prompt('Horas para carpinar ('+plans.map(p=>p.hours).join('/')+'):','1'));
+    if(hours>0) doAction('carpinar.start',{hours},{});
+  });
+  document.querySelectorAll('[data-pet-adventure]').forEach(x=>x.onclick=()=>doAction('pet.adventure',{},{}));
+  document.querySelectorAll('[data-pet-expedition]').forEach(x=>x.onclick=()=>{
+    const pets=collection();
+    if(!pets.length){toast('Você não tem pets.');return;}
+    const petId=Number(prompt('ID do pet: '+pets.map(p=>p.id+'='+p.name).join(', '),String(pets[0].id)));
+    const hours=Number(prompt('Horas da expedição:','4'));
+    if(petId>0&&hours>0) doAction('pet.expedition.start',{petId,hours},{});
+  });
+  document.querySelectorAll('[data-pet-expedition-resolve]').forEach(x=>x.onclick=()=>doAction('pet.expedition.resolve',{},{}));
+  document.querySelectorAll('[data-missions-claim]').forEach(x=>x.onclick=()=>doAction('missions.claim',{},{}));
+  document.querySelectorAll('[data-level-claim]').forEach(x=>x.onclick=()=>doAction('level.claim',{},{}));
+  document.querySelectorAll('[data-group-mission-claim]').forEach(x=>x.onclick=()=>doAction('groupMission.claim',{},{}));
+  document.querySelectorAll('[data-group-event-claim]').forEach(x=>x.onclick=()=>doAction('groupEvent.claim',{},{}));
+  document.querySelectorAll('[data-clear-result]').forEach(x=>x.onclick=()=>{ui.lastResult=null;render();});
 }
 
 function stopRaidAuto(){
