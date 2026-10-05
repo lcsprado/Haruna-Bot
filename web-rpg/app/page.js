@@ -84,6 +84,12 @@ export default function Game(){
   const [loaded,setLoaded]=useState(false);
   const [toast,setToast]=useState('');
   const [bankAmount,setBankAmount]=useState(10000);
+  const [autoBoss,setAutoBoss]=useState(false);
+  const [bossUsePet,setBossUsePet]=useState(true);
+  const [autoDuel,setAutoDuel]=useState(false);
+  const [autoPetDuel,setAutoPetDuel]=useState(false);
+  const [mobileMenu,setMobileMenu]=useState(false);
+  const [duelBattle,setDuelBattle]=useState({player:null,pet:null});
 
   useEffect(()=>{
     try{
@@ -153,7 +159,7 @@ export default function Game(){
     notify((crit?'CRÍTICO — ':'')+fmt(dmg)+' de dano');
   }
 
-  function attackBoss(usePet=true){
+  function attackBoss(usePet=true,silent=false){
     if(game.boss.hp<=0) return notify('Boss já derrotado.');
     if(p.hp<=0) return notify('Você está sem HP. Cure-se antes de atacar.');
 
@@ -238,20 +244,84 @@ export default function Game(){
       }
       return withLog(out,(crit?'💥 CRÍTICO! ':'🗿 ')+fmt(dmg)+' de dano no Boss'+(usePet?'':' · sem pet')+playerEvent+petEvent+'.');
     });
-    notify(fmt(dmg)+' de dano no Boss');
+    if(!silent) notify(fmt(dmg)+' de dano no Boss');
   }
 
-  function duel(pet=false){
-    const power=pet ? activePet.level*8+activePet.hp/12+activePet.energy/4 : p.atk+p.def+p.spd+p.crit;
-    const enemy=pet ? 250+Math.random()*180 : 220+Math.random()*120;
-    const win=power*(.82+Math.random()*.4)>enemy;
-    const xp=win?65:20;
-    setGame(g=>withLog({
-      ...g,
-      profile:{...g.profile,wins:g.profile.wins+(win?1:0),losses:g.profile.losses+(win?0:1),xp:g.profile.xp+xp},
-      pets:pet?g.pets.map(x=>x.id===g.petTeam[0]?{...x,energy:Math.max(0,x.energy-5)}:x):g.pets
-    },(pet?'🐾 ':'⚔️ ')+(win?'Vitória':'Derrota')+' no '+(pet?'Duelo Pet':'Duelo')+'.'));
-    notify(win?'Vitória! +'+xp+' XP':'Derrota. +'+xp+' XP');
+  function startDuel(pet=false){
+    const key=pet?'pet':'player';
+    const mineMax=pet?activePet.maxHp:p.maxHp;
+    const mineHp=pet?activePet.hp:p.hp;
+    if(mineHp<=0) return notify(pet?'Seu pet está sem HP.':'Você está sem HP.');
+    if(pet&&activePet.energy<2) return notify('Seu pet está sem energia suficiente.');
+    const enemyMax=Math.max(120,Math.round(mineMax*(.82+Math.random()*.34)));
+    const enemyAtk=pet
+      ? Math.max(12,Math.round((activePet.level*3+18)*(.9+Math.random()*.25)))
+      : Math.max(18,Math.round(p.atk*(.72+Math.random()*.20)));
+    const battle={
+      active:true,round:0,
+      enemyName:pet?'Lobo de Arena':'Rival Alpha',
+      enemyIcon:pet?'🐺':'🥷',
+      myHp:mineHp,myMaxHp:mineMax,
+      enemyHp:enemyMax,enemyMaxHp:enemyMax,
+      enemyAtk,last:'Combate iniciado.'
+    };
+    setDuelBattle(d=>({...d,[key]:battle}));
+    notify((pet?'Duelo Pet':'Duelo')+' iniciado.');
+  }
+
+  function duelTurn(pet=false,silent=false){
+    const key=pet?'pet':'player';
+    const battle=duelBattle[key];
+    if(!battle?.active){
+      startDuel(pet);
+      return;
+    }
+
+    const attackBase=pet
+      ? Math.max(10,Math.round(activePet.level*4+activePet.energy*.12))
+      : Math.max(12,p.atk);
+    const critChance=pet?Math.min(.25,.05+activePet.level/800):Math.min(.40,p.crit/100);
+    const crit=Math.random()<critChance;
+    const damage=Math.max(5,Math.round(attackBase*(.72+Math.random()*.42)*(crit?1.5:1)));
+    const enemyAfter=Math.max(0,battle.enemyHp-damage);
+
+    if(enemyAfter<=0){
+      const xp=pet?45:65;
+      setDuelBattle(d=>({...d,[key]:{...battle,enemyHp:0,round:battle.round+1,active:false,last:(crit?'CRÍTICO! ':'')+fmt(damage)+' de dano. Vitória!'}}));
+      setGame(g=>withLog({
+        ...g,
+        profile:{...g.profile,wins:g.profile.wins+1,xp:g.profile.xp+xp},
+        pets:pet?g.pets.map(x=>x.id===g.petTeam[0]?{...x,energy:Math.max(0,x.energy-2)}:x):g.pets
+      },(pet?'🐾':'⚔️')+' Vitória no '+(pet?'Duelo Pet':'Duelo')+'. +'+xp+' XP.'));
+      if(pet) setAutoPetDuel(false); else setAutoDuel(false);
+      if(!silent) notify('Vitória! +'+xp+' XP');
+      return;
+    }
+
+    const defense=pet?Math.round(activePet.level*1.4):p.def;
+    const received=Math.max(3,Math.round((battle.enemyAtk-defense*.18)*(.78+Math.random()*.38)));
+    const myAfter=Math.max(0,battle.myHp-received);
+    const last=(crit?'💥 CRÍTICO! ':'⚔️ ')+fmt(damage)+' causado · '+fmt(received)+' recebido';
+
+    if(myAfter<=0){
+      setDuelBattle(d=>({...d,[key]:{...battle,myHp:0,enemyHp:enemyAfter,round:battle.round+1,active:false,last:last+' · Derrota'}}));
+      setGame(g=>withLog({
+        ...g,
+        profile:{...g.profile,losses:g.profile.losses+1,xp:g.profile.xp+20},
+        pets:pet?g.pets.map(x=>x.id===g.petTeam[0]?{...x,hp:0,energy:Math.max(0,x.energy-2)}:x):g.pets
+      },(pet?'🐾':'⚔️')+' Derrota no '+(pet?'Duelo Pet':'Duelo')+'.'));
+      if(pet) setAutoPetDuel(false); else setAutoDuel(false);
+      if(!silent) notify('Derrota. +20 XP');
+      return;
+    }
+
+    setDuelBattle(d=>({...d,[key]:{...battle,myHp:myAfter,enemyHp:enemyAfter,round:battle.round+1,last}}));
+    if(pet){
+      setGame(g=>({...g,pets:g.pets.map(x=>x.id===g.petTeam[0]?{...x,hp:myAfter,energy:Math.max(0,x.energy-2)}:x)}));
+    }else{
+      setGame(g=>({...g,profile:{...g.profile,hp:myAfter}}));
+    }
+    if(!silent) notify(last);
   }
 
   function usePotion(){
@@ -413,20 +483,61 @@ export default function Game(){
     <Card><div className="card-head"><h3>Raids disponíveis</h3><span>A chave é consumida no primeiro ataque</span></div><div className="raid-levels">{RAIDS.map(r=><button onClick={()=>selectRaid(r.level)} className={r.level===game.raid.level?'active':''} key={r.level}><b>Lv.{r.level}</b><small>{r.name}</small><small>{fmt(r.hp)} HP · {r.duration} min</small></button>)}</div></Card>
   </div>;
 
-  const Boss=()=> <Card className="battle-card event">
-    <div className="monster">{game.boss.icon}</div><div className="eyebrow">BOSS DE EVENTO</div><h2>{game.boss.name}</h2>
-    <div className="hp-line"><b>{fmt(game.boss.hp)} / {fmt(game.boss.maxHp)} HP</b><span>{Math.round(pct(game.boss.hp,game.boss.maxHp))}%</span></div><Bar value={game.boss.hp} max={game.boss.maxHp}/>
-    <div className="pet-inline"><div className="pet-art">{activePet.icon}</div><div><strong>{activePet.name}</strong><small>{activePet.style} · {activePet.bonus}</small></div><div className="pet-bars"><Bar value={activePet.hp} max={activePet.maxHp}/><Bar value={activePet.energy} max={activePet.maxEnergy} tone="energy"/></div></div>
-    <div className="button-row"><Button onClick={()=>attackBoss(true)} disabled={game.boss.hp<=0}>⚔️ Atacar com pet</Button><Button onClick={()=>attackBoss(false)} kind="secondary" disabled={game.boss.hp<=0}>🗡️ Atacar sem pet</Button><Button onClick={healPet} kind="secondary">💙 Curar pet</Button><Button onClick={restPet} kind="ghost">⚡ Descansar</Button></div>
-    <p className="hint">Sem energia, o ataque continua; apenas o bônus do pet deixa de entrar.</p>
-  </Card>;
+  const Boss=()=> <div className="combat-page">
+    <Card className="battle-card event">
+      <div className="combat-badge">{autoBoss?'AUTO ATIVO':'MANUAL'}</div>
+      <div className="monster">{game.boss.icon}</div><div className="eyebrow">BOSS DE EVENTO</div><h2>{game.boss.name}</h2>
+      <div className="hp-line"><b>{fmt(game.boss.hp)} / {fmt(game.boss.maxHp)} HP</b><span>{Math.round(pct(game.boss.hp,game.boss.maxHp))}%</span></div><Bar value={game.boss.hp} max={game.boss.maxHp}/>
+      <div className="combat-player-strip"><span>❤️ Você: <b>{p.hp}/{p.maxHp}</b></span><span>⚔️ Dano acumulado: <b>{fmt(game.boss.myDamage)}</b></span></div>
+      <div className="pet-inline"><div className="pet-art">{bossPet.icon}</div><div><strong>{bossPet.name}</strong><small>{bossPet.id===activePet.id?'Principal':'Reserva'} · {bossPet.style}</small></div><div className="pet-bars"><Bar value={bossPet.hp} max={bossPet.maxHp}/><Bar value={bossPet.energy} max={bossPet.maxEnergy} tone="energy"/></div></div>
+      <div className="button-row combat-actions">
+        <Button onClick={()=>attackBoss(true)} disabled={game.boss.hp<=0||autoBoss}>⚔️ Atacar com pet</Button>
+        <Button onClick={()=>attackBoss(false)} kind="secondary" disabled={game.boss.hp<=0||autoBoss}>🗡️ Atacar sem pet</Button>
+        {!autoBoss&&<Button onClick={()=>{setBossUsePet(true);setAutoBoss(true)}} kind="auto">▶ Auto com pet</Button>}
+        {!autoBoss&&<Button onClick={()=>{setBossUsePet(false);setAutoBoss(true)}} kind="auto">▶ Auto sem pet</Button>}
+        {autoBoss&&<Button onClick={()=>setAutoBoss(false)} kind="danger">⏹ Parar Auto</Button>}
+        <Button onClick={healPet} kind="secondary">💙 Curar pet</Button><Button onClick={restPet} kind="ghost">⚡ Descansar</Button>
+      </div>
+      <p className="hint">Auto ataca a cada 1,1 s e para sozinho se o Boss cair ou você ficar sem HP.</p>
+    </Card>
+  </div>;
 
-  const Duel=({pet=false})=> <Card className="battle-card">
-    <div className="monster">{pet?'🐾':'⚔️'}</div><div className="eyebrow">{pet?'DUELO PET':'DUELO RPG'}</div><h2>{pet?'Seu pet contra outro jogador':'Desafie outro jogador'}</h2>
-    <p className="subtle">{pet?'HP, nível e energia do pet entram no cálculo.':'ATK, DEF, SPD e crítico entram no confronto.'}</p>
-    {pet&&<div className="pet-inline"><div className="pet-art">{activePet.icon}</div><div><strong>{activePet.name}</strong><small>Lv.{activePet.level} · {activePet.style}</small></div><div className="pet-bars"><Bar value={activePet.hp} max={activePet.maxHp}/><Bar value={activePet.energy} max={activePet.maxEnergy} tone="energy"/></div></div>}
-    <Button onClick={()=>duel(pet)}>{pet?'🐾 LUTAR COM PET':'⚔️ DESAFIAR'}</Button>
-  </Card>;
+  const Duel=({pet=false})=>{
+    const key=pet?'pet':'player';
+    const battle=duelBattle[key];
+    const auto=pet?autoPetDuel:autoDuel;
+    const setAuto=pet?setAutoPetDuel:setAutoDuel;
+    return <div className="combat-page">
+      <Card className="battle-card duel-card">
+        <div className="combat-badge">{auto?'AUTO ATIVO':battle?.active?'EM COMBATE':'ARENA'}</div>
+        <div className="duel-stage">
+          <div className="fighter">
+            <div className="fighter-icon">{pet?activePet.icon:'🧑‍🚀'}</div>
+            <strong>{pet?activePet.name:p.name}</strong>
+            <small>{pet?'Lv.'+activePet.level:'Lv.'+p.level}</small>
+            <Bar value={battle?.myHp ?? (pet?activePet.hp:p.hp)} max={battle?.myMaxHp ?? (pet?activePet.maxHp:p.maxHp)}/>
+            <span>{fmt(battle?.myHp ?? (pet?activePet.hp:p.hp))} HP</span>
+          </div>
+          <div className="versus">VS</div>
+          <div className="fighter enemy">
+            <div className="fighter-icon">{battle?.enemyIcon || (pet?'🐺':'🥷')}</div>
+            <strong>{battle?.enemyName || (pet?'Pet Rival':'Rival Alpha')}</strong>
+            <small>{battle?'Rodada '+battle.round:'Aguardando desafio'}</small>
+            <Bar value={battle?.enemyHp ?? 1} max={battle?.enemyMaxHp ?? 1}/>
+            <span>{battle?fmt(battle.enemyHp)+' HP':'—'}</span>
+          </div>
+        </div>
+        <div className="combat-message">{battle?.last || (pet?'Seu pet luta rodada a rodada.':'O duelo agora acontece por rodadas.')}</div>
+        <div className="button-row combat-actions">
+          {!battle?.active&&<Button onClick={()=>startDuel(pet)}>{pet?'🐾 Novo Duelo Pet':'⚔️ Novo Duelo'}</Button>}
+          {battle?.active&&<Button onClick={()=>duelTurn(pet)} disabled={auto}>⚔️ Atacar</Button>}
+          {battle?.active&&!auto&&<Button onClick={()=>setAuto(true)} kind="auto">▶ Auto</Button>}
+          {battle?.active&&auto&&<Button onClick={()=>setAuto(false)} kind="danger">⏹ Parar Auto</Button>}
+        </div>
+        {pet&&<p className="hint">Cada rodada consome 2 de energia do pet. O auto para ao vencer, perder ou ficar sem condição de continuar.</p>}
+      </Card>
+    </div>;
+  };
 
   const Pets=()=> <div className="stack">
     <Card><div className="card-head"><h3>Time Pet</h3><span>{synergy}</span></div><div className="pet-team">{['Principal','Suporte','Reserva'].map((label,slot)=>{
@@ -462,18 +573,56 @@ export default function Game(){
 
   const Missions=()=> <div className="stack">{game.missions.map(m=><Card key={m.id}><div className="card-head"><h3>{m.title}</h3><span>{Math.min(m.progress,m.target)}/{m.target}</span></div><Bar value={m.progress} max={m.target} tone="xp"/><p className="hint">Recompensa: {m.reward}</p><Button onClick={()=>claimMission(m)} disabled={m.claimed||m.progress<m.target}>{m.claimed?'Resgatada':m.progress>=m.target?'Resgatar':'Em progresso'}</Button></Card>)}</div>;
 
+  useEffect(()=>{
+    if(!autoBoss) return;
+    if(game.boss.hp<=0||p.hp<=0){setAutoBoss(false);return;}
+    const timer=setTimeout(()=>attackBoss(bossUsePet,true),1100);
+    return ()=>clearTimeout(timer);
+  },[autoBoss,bossUsePet,game.boss.hp,p.hp,activePet.energy,activePet.hp,reservePet?.energy,reservePet?.hp]);
+
+  useEffect(()=>{
+    const battle=duelBattle.player;
+    if(!autoDuel) return;
+    if(!battle?.active){setAutoDuel(false);return;}
+    const timer=setTimeout(()=>duelTurn(false,true),850);
+    return ()=>clearTimeout(timer);
+  },[autoDuel,duelBattle.player?.round,duelBattle.player?.active]);
+
+  useEffect(()=>{
+    const battle=duelBattle.pet;
+    if(!autoPetDuel) return;
+    if(!battle?.active||activePet.energy<2||activePet.hp<=0){setAutoPetDuel(false);return;}
+    const timer=setTimeout(()=>duelTurn(true,true),850);
+    return ()=>clearTimeout(timer);
+  },[autoPetDuel,duelBattle.pet?.round,duelBattle.pet?.active,activePet.energy,activePet.hp]);
+
   const views={home:<Home/>,raid:<Raid/>,boss:<Boss/>,duel:<Duel/>,petduel:<Duel pet/>,pets:<Pets/>,items:<Items/>,business:<Business/>,jobs:<Jobs/>,bank:<Bank/>,market:<Market/>,missions:<Missions/>};
+
+  const goTab=id=>{setTab(id);setMobileMenu(false)};
 
   return <main>
     {toast&&<div className="toast">{toast}</div>}
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark">A</div><div><strong>ALPHA</strong><small>RPG WEB</small></div></div>
-      <nav>{tabs.map(([id,icon,label])=><button key={id} className={tab===id?'active':''} onClick={()=>setTab(id)}><span>{icon}</span>{label}</button>)}</nav>
+      <nav>{tabs.map(([id,icon,label])=><button key={id} className={tab===id?'active':''} onClick={()=>goTab(id)}><span>{icon}</span>{label}</button>)}</nav>
       <button className="reset" onClick={reset}>↻ Resetar protótipo</button>
     </aside>
+
+    {mobileMenu&&<div className="mobile-backdrop" onClick={()=>setMobileMenu(false)}>
+      <div className="mobile-drawer" onClick={e=>e.stopPropagation()}>
+        <div className="drawer-head"><strong>Menu</strong><button onClick={()=>setMobileMenu(false)}>✕</button></div>
+        <div className="drawer-grid">{tabs.map(([id,icon,label])=><button key={id} className={tab===id?'active':''} onClick={()=>goTab(id)}><span>{icon}</span><b>{label}</b></button>)}</div>
+      </div>
+    </div>}
+
     <section className="content">
       <header className="topbar"><div><div className="eyebrow">ALPHA RPG WEB</div><strong>{tabs.find(x=>x[0]===tab)?.[2]}</strong></div><div className="top-status"><span>❤️ {p.hp}/{p.maxHp}</span><span>💰 R$ {fmt(p.cash)}</span><span>⭐ Lv.{p.level}</span></div></header>
       <div className="page">{views[tab]}</div>
     </section>
+
+    <div className="mobile-nav">
+      {tabs.filter(x=>['home','raid','boss','pets'].includes(x[0])).map(([id,icon,label])=><button key={id} className={tab===id?'active':''} onClick={()=>goTab(id)}><span>{icon}</span><small>{label}</small></button>)}
+      <button className={mobileMenu?'active':''} onClick={()=>setMobileMenu(true)}><span>☰</span><small>Mais</small></button>
+    </div>
   </main>;
 }
