@@ -7,7 +7,7 @@ import {
   petStyleLabel, getEquipmentInfo, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
-  setPetTeam, summonLegendaryPet, getCombatProfile,
+  setPetTeam, summonLegendaryPet, getCombatProfile, getGroupSettings, resolvePlayerSleep,
   transfer, battle, petDuel, dungeon, robPlayer,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   openLootBoxes, openLuckyBoxes, sellDuplicateEquipment,
@@ -455,8 +455,42 @@ async function runAllActivities(session){
   return {results,grossTotal,taxTotal,netTotal}
 }
 
+const WEB_SLEEP_ALLOWED_ACTIONS=new Set([
+  'sleep.start','sleep.wake','loan.accept','loan.reject','loan.pay'
+])
+
+function webActionModule(name){
+  const action=String(name||'')
+  if(action.startsWith('game.')) return 'games_enabled'
+  if(action.startsWith('clan.')||action.startsWith('groupMission.')||action.startsWith('groupEvent.')||
+     action.startsWith('house.')||action.startsWith('car.')||action.startsWith('motorcycle.')||
+     action.startsWith('business.')||action.startsWith('cltUber.')||action.startsWith('sleep.')||
+     action.startsWith('carpinar.')||action.startsWith('missions.')||action.startsWith('level.')) return 'progression_enabled'
+  if(action==='daily'||action==='work'||action==='all'||action==='deposit'||action==='withdraw'||
+     action==='transfer'||action==='uber'||action==='ifood'||action.startsWith('market.')||
+     action.startsWith('loan.')||action.startsWith('item.buy')||action.startsWith('item.sell')) return 'economy_enabled'
+  return 'rpg_enabled'
+}
+
+async function enforceWebActionPolicy(session,name){
+  const jid=session.jid
+  const sleep=await resolvePlayerSleep(jid)
+  if(sleep?.active && !WEB_SLEEP_ALLOWED_ACTIONS.has(name)){
+    throw new Error('Você está dormindo. Acorde antes de executar esta ação.')
+  }
+  if(session.chatJid){
+    const settings=await getGroupSettings(session.chatJid)
+    const key=webActionModule(name)
+    if(settings?.[key]===false){
+      const labels={economy_enabled:'Economia',rpg_enabled:'RPG',games_enabled:'Minigames',progression_enabled:'Progressão'}
+      throw new Error((labels[key]||'Módulo')+' está desativado neste grupo.')
+    }
+  }
+}
+
 async function runAction(session,name,body={}){
   const jid=session.jid
+  await enforceWebActionPolicy(session,name)
   switch(name){
     case 'daily': return claimDaily(jid)
     case 'missions.claim': return claimDailyMissions(jid)
