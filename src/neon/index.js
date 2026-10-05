@@ -127,6 +127,11 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
     try{
       for(let i=0;;i++){
         const r=await attackBoss(chat,jid,name,usePet)
+        if(r?.cooldown){
+          i--
+          await new Promise(resolve=>setTimeout(resolve,Math.max(250,Number(r.remainingMs||1000))))
+          continue
+        }
         if(!sessionMode){
           sessionMode=r.mode||'common'
           sessionEndsAt=Number(r.endsAt||0)
@@ -204,6 +209,11 @@ async function runRaidCombat(chat,level,reply){
           }
         }
         if(r.reason==='inactive') return
+        if(r.reason==='cooldown'){
+          i--
+          await new Promise(resolve=>setTimeout(resolve,Math.max(250,Number(r.remainingMs||1000))))
+          continue
+        }
 
         if(r.victory){
           let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*\n\n❤️ Boss derrotado em *${r.round} rodadas*.\n\n📊 *RECOMPENSAS POR COLABORAÇÃO*\n`
