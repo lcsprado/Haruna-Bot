@@ -2046,10 +2046,24 @@ export async function battle(attackerJid, defenderJid) {
       'SELECT jid,species,level,hp,energy FROM pets WHERE jid=ANY($1::text[])',
       [ids]
     )
+    const petTeamR=await client.query(
+      `SELECT t.jid,t.slot,p.species,p.level,p.hp,p.energy
+       FROM pet_team t
+       JOIN pet_collection p ON p.id=t.pet_id
+       WHERE t.jid=ANY($1::text[]) AND t.slot IN (1,2,3)
+       ORDER BY t.jid,t.slot`,
+      [ids]
+    )
 
     const statFor=jid=>statsR.rows.find(r=>r.jid===jid)
     const userFor=jid=>usersR.rows.find(r=>r.jid===jid)
     const petFor=jid=>petsR.rows.find(r=>r.jid===jid)
+    const teamFor=jid=>petTeamR.rows.filter(r=>r.jid===jid)
+    const synergySpeedFor=jid=>{
+      const team=teamFor(jid)
+      const synergy=petTeamSynergy(team)
+      return Number(synergy?.speed||0)
+    }
     const a=statFor(attackerJid)
     const b=statFor(defenderJid)
     const au=userFor(attackerJid)
@@ -2058,6 +2072,8 @@ export async function battle(attackerJid, defenderJid) {
     const bp=petFor(defenderJid)
     const apSpd=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petSpeedBonus(ap.species,ap.level):0
     const bpSpd=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petSpeedBonus(bp.species,bp.level):0
+    const aSynergySpd=synergySpeedFor(attackerJid)
+    const bSynergySpd=synergySpeedFor(defenderJid)
     if(!a || !b) throw new Error('Não foi possível carregar os jogadores.')
     if(Number(a.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes de batalhar.')
     if(Number(b.hp)<=0) throw new Error('O adversário está sem HP.')
@@ -2082,7 +2098,7 @@ export async function battle(attackerJid, defenderJid) {
       atk:Number(a.atk)+aeW.atk+aeA.atk,
       def:Number(a.def)+aeW.def+aeA.def,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)),
-      spd:Number(a.spd)+Number(aeB.spd||0)+apSpd
+      spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
@@ -2090,7 +2106,7 @@ export async function battle(attackerJid, defenderJid) {
       atk:Number(b.atk)+beW.atk+beA.atk,
       def:Number(b.def)+beW.def+beA.def,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)),
-      spd:Number(b.spd)+Number(beB.spd||0)+bpSpd
+      spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd
     }
 
     const log=[]
@@ -3998,7 +4014,7 @@ const PET_TEAM_STYLE_BY_SPECIES={
   salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico'
 }
 const PET_TEAM_STYLE_BONUS={
-  voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.03,defense:0,crit:0,text:'+3% ATK no Boss/Raid'},
+  voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
   guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
   predador:{styleLabel:'🐾 Predador',label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
   mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
