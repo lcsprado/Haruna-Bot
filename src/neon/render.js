@@ -4,6 +4,7 @@ import { handleWebApi } from './web-api.js'
 
 const port = Number(process.env.PORT || 10000)
 const webFiles={
+  '/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css',
   '/rpg':'index.html','/rpg/':'index.html','/rpg/index.html':'index.html',
   '/rpg/app.js':'app.js','/rpg/styles.css':'styles.css'
 }
