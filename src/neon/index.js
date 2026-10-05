@@ -1849,7 +1849,8 @@ O que deseja trocar?
     const levelMap=new Map(upgradeables.map(i=>[i.item_id,Number(i.level||1)]))
     const statsMap=new Map(upgradeables.map(i=>[i.item_id,i.current]))
     const isWeapon=category==='weapon'
-    const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':'🛡️ *ESCOLHA UMA ARMADURA*'
+    const isArmor=category==='armor'
+    const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':isArmor?'🛡️ *ESCOLHA UMA ARMADURA*':'👢 *ESCOLHA SUAS BOTAS*'
     if(!filtered.length){
       setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
       await reply(title+'\n\nVocê não possui itens desta categoria.\n\n9️⃣ Voltar\n0️⃣ Sair')
@@ -1861,8 +1862,8 @@ O que deseja trocar?
     filtered.forEach((i,idx)=>{
       const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
       const level=Number(levelMap.get(i.item_id)||1)
-      const mainStat=isWeapon?Number(stats.atk||0):Number(stats.def||0)
-      const active=(isWeapon?p.weapon_id:p.armor_id)===i.item_id?' ✅ *ATIVO*':''
+      const mainStat=isWeapon?Number(stats.atk||0):isArmor?Number(stats.def||0):Number(stats.spd||0)
+      const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
       const extras=[
         Number(stats.hp||0)?'❤️ +'+Number(stats.hp)+' HP':null,
         Number(stats.crit||0)?'🎯 +'+(Number(stats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null,
@@ -1870,7 +1871,7 @@ O que deseja trocar?
         !isWeapon&&Number(stats.atk||0)?'⚔️ +'+Number(stats.atk)+' ATK':null
       ].filter(Boolean).join(' • ')
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+'\n'
-      text+='   '+(isWeapon?'⚔️ +':'🛡️ +')+mainStat+' '+(isWeapon?'ATK':'DEF')+(extras?' • '+extras:'')+active+'\n'
+      text+='   '+(isWeapon?'⚔️ +':isArmor?'🛡️ +':'💨 +')+mainStat+' '+(isWeapon?'ATK':isArmor?'DEF':'SPD')+(extras?' • '+extras:'')+active+'\n'
     })
     text+='\n👉 Responda só com o número.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
