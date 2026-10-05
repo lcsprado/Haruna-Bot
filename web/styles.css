@@ -145,3 +145,7 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .double-event{border-color:#633328;background:linear-gradient(135deg,rgba(122,50,32,.18),rgba(12,18,27,.92))}
 .double-event.active{box-shadow:0 0 0 1px rgba(255,112,72,.08),0 12px 32px rgba(0,0,0,.18)}
 .double-event h3{margin:0}
+
+.shop-section{margin-top:20px}
+.shop-section>.section-title{padding-bottom:8px;border-bottom:1px solid #213147}
+.item-bonus{font-size:11px;font-weight:800;color:#d7c08a;padding:7px 9px;border:1px solid #4b4129;border-radius:9px;background:rgba(112,87,34,.10)}
