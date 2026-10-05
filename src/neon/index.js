@@ -762,7 +762,7 @@ ${title}${badge?' • '+badge:''}
 ❤️ HP: *${Number(p.hp||0)}/${Number(p.max_hp||0)}*
 ⚔️ ATK: *${Number(p.effective_atk||0)}*
 🛡️ DEF: *${Number(p.effective_def||0)}*
-💨 SPD: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
+👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
 🎯 CRIT: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
 
 🏆 Vitórias: *${wins}*
@@ -1077,7 +1077,7 @@ function petAbilityBaseText(species){
     bossDamage:'dano contra Boss',
     defense:'defesa',
     crit:'crítico',
-    dodge:'esquiva',
+    dodge:'🌀 esquiva',
     xp:'XP',
     drop:'Lucky/drop'
   }
@@ -1100,7 +1100,7 @@ function petRoleTags(species){
     bossDamage:['👹','Boss'],
     defense:['🛡️','Defesa'],
     crit:['⚡','Crítico'],
-    dodge:['💨','Esquiva'],
+    dodge:['🌀','Esquiva'],
     xp:['✨','XP'],
     drop:['🍀','Drop']
   }
@@ -1139,7 +1139,7 @@ function petStatusBonus(p){
     bossDamage:'dano contra Boss',
     defense:'defesa',
     crit:'chance de crítico',
-    dodge:'esquiva',
+    dodge:'🌀 esquiva',
     xp:'XP recebido',
     drop:'Lucky/drop'
   }
@@ -1832,7 +1832,7 @@ Você possui: *${stock}*
 
 🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}* — ⚔️ +${Number(weaponStats.atk||0)} ATK${weaponExtra?' • '+weaponExtra:''}
 🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}* — 🛡️ +${Number(armorStats.def||0)} DEF${armorExtra?' • '+armorExtra:''}
-👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — 💨 +${Number(bootStats.spd||0)} SPD
+👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — 👢 +${Number(bootStats.spd||0)} VEL
 
 O que deseja trocar?
 
@@ -1873,7 +1873,7 @@ O que deseja trocar?
         !isWeapon&&Number(stats.atk||0)?'⚔️ +'+Number(stats.atk)+' ATK':null
       ].filter(Boolean).join(' • ')
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+'\n'
-      text+='   '+(isWeapon?'⚔️ +':isArmor?'🛡️ +':'💨 +')+mainStat+' '+(isWeapon?'ATK':isArmor?'DEF':'SPD')+(extras?' • '+extras:'')+active+'\n'
+      text+='   '+(isWeapon?'⚔️ +':isArmor?'🛡️ +':'💨 +')+mainStat+' '+(isWeapon?'ATK':isArmor?'DEF':'VEL')+(extras?' • '+extras:'')+active+'\n'
     })
     text+='\n👉 Responda só com o número.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
@@ -7897,14 +7897,14 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           available.forEach((i,n)=>{
             const extras=(s,n)=>[
               Number(s.hp||0)||Number(n.hp||0)?`${Number(s.hp||0)} → ${Number(n.hp||0)} HP`:null,
-              Number(s.spd||0)||Number(n.spd||0)?`${Number(s.spd||0)} → ${Number(n.spd||0)} SPD`:null,
+              Number(s.spd||0)||Number(n.spd||0)?`${Number(s.spd||0)} → ${Number(n.spd||0)} VEL`:null,
               Number(s.crit||0)||Number(n.crit||0)?`${(Number(s.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% → ${(Number(n.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% CRIT`:null
             ].filter(Boolean).join(' • ')
             const stat=i.category==='weapon'
               ? `${i.current.atk} → ${i.next.atk} ATK${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
               : i.category==='armor'
                 ? `${i.current.def} → ${i.next.def} DEF${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
-                : `${i.current.spd} → ${i.next.spd} SPD`
+                : `${i.current.spd} → ${i.next.spd} VEL`
             const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)
             text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
           })
@@ -8059,7 +8059,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)
 ⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)
 🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
-💨 SPD: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)
+👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)
 🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
 👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
 
