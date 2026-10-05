@@ -249,8 +249,10 @@ export async function initProgression(){
       shift_started_at BIGINT,
       shift_ends_at BIGINT,
       last_accrual_at BIGINT,
+      credited_trips INTEGER NOT NULL DEFAULT 0,
       accrued BIGINT NOT NULL DEFAULT 0
     );
+    ALTER TABLE clt_uber_drivers ADD COLUMN IF NOT EXISTS credited_trips INTEGER;
     CREATE INDEX IF NOT EXISTS clt_uber_drivers_jid_idx ON clt_uber_drivers(jid);
     CREATE INDEX IF NOT EXISTS clt_uber_drivers_active_car_idx ON clt_uber_drivers(jid,car_id,shift_ends_at);
   `)
@@ -770,14 +772,37 @@ async function accrueCltUber(client,jid){
     if(!row.car_id||!row.shift_started_at||!row.shift_ends_at) continue
     const d=CLT_UBER_TYPES.find(x=>x.id===row.driver_type)
     if(!d) continue
+
+    const startedAt=Number(row.shift_started_at)
     const until=Math.min(now,Number(row.shift_ends_at))
-    const from=Math.max(Number(row.last_accrual_at||row.shift_started_at),Number(row.shift_started_at))
     const interval=d.intervalMin*60
-    const trips=Math.floor(Math.max(0,until-from)/interval)
-    if(trips<1) continue
+    const completedTrips=Math.floor(Math.max(0,until-startedAt)/interval)
+
+    // Migração segura dos turnos que já existiam antes do contador de corridas:
+    // infere quantas corridas já foram creditadas pelo último timestamp, sem pagar em dobro.
+    const legacyLast=Math.min(until,Math.max(startedAt,Number(row.last_accrual_at||startedAt)))
+    const legacyCredited=Math.floor(Math.max(0,legacyLast-startedAt)/interval)
+    let creditedTrips=row.credited_trips==null?legacyCredited:Number(row.credited_trips||0)
+    creditedTrips=Math.max(0,Math.min(completedTrips,creditedTrips))
+
+    const trips=completedTrips-creditedTrips
+    if(trips<1){
+      if(row.credited_trips==null){
+        await client.query(
+          'UPDATE clt_uber_drivers SET credited_trips=$1,last_accrual_at=$2 WHERE id=$3',
+          [creditedTrips,startedAt+(creditedTrips*interval),row.id]
+        )
+      }
+      continue
+    }
+
     const earned=trips*cltUberTripNet(row.car_id,row.driver_type)
-    const nextAccrual=from+trips*interval
-    await client.query('UPDATE clt_uber_drivers SET accrued=accrued+$1,last_accrual_at=$2 WHERE id=$3',[earned,nextAccrual,row.id])
+    const newCreditedTrips=creditedTrips+trips
+    const nextAccrual=startedAt+(newCreditedTrips*interval)
+    await client.query(
+      'UPDATE clt_uber_drivers SET accrued=accrued+$1,credited_trips=$2,last_accrual_at=$3 WHERE id=$4',
+      [earned,newCreditedTrips,nextAccrual,row.id]
+    )
   }
 }
 
@@ -831,7 +856,7 @@ export async function startCltUberShift(jid,driverSlot,carSlot){
     if(busy.rowCount) throw new Error('Esse carro já está em turno com outro motorista.')
     await client.query('UPDATE clt_uber_drivers SET car_id=NULL WHERE jid=$1 AND car_id=$2 AND id<>$3 AND COALESCE(shift_ends_at,0)<=$4',[jid,rawCar.car_id,driver.id,now])
     const ends=now+CLT_UBER_SHIFT_SECONDS
-    await client.query('UPDATE clt_uber_drivers SET car_id=$1,shift_started_at=$2,shift_ends_at=$3,last_accrual_at=$2 WHERE id=$4',[rawCar.car_id,now,ends,driver.id])
+    await client.query('UPDATE clt_uber_drivers SET car_id=$1,shift_started_at=$2,shift_ends_at=$3,last_accrual_at=$2,credited_trips=0 WHERE id=$4',[rawCar.car_id,now,ends,driver.id])
     const type=CLT_UBER_TYPES.find(x=>x.id===driver.driver_type)
     const car=CARS.find(x=>x.id===rawCar.car_id)
     return {driverSlot:Number(driverSlot),type,car,startedAt:now,endsAt:ends,hours:8,estimated8h:Math.floor((CLT_UBER_SHIFT_SECONDS/(type.intervalMin*60))*cltUberTripNet(rawCar.car_id,driver.driver_type))}
@@ -842,13 +867,22 @@ export async function collectCltUber(jid){
   await ensureUser(jid)
   return tx(async client=>{
     await accrueCltUber(client,jid)
-    const rows=(await client.query('SELECT id,accrued FROM clt_uber_drivers WHERE jid=$1 FOR UPDATE',[jid])).rows
-    const total=rows.reduce((n,r)=>n+Number(r.accrued||0),0)
-    if(total<=0) return {total:0}
+    const rows=(await client.query('SELECT id,driver_type,car_id,accrued FROM clt_uber_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])).rows
+    const details=rows
+      .filter(r=>Number(r.accrued||0)>0)
+      .map((r,i)=>({
+        id:Number(r.id),
+        slot:i+1,
+        driver:CLT_UBER_TYPES.find(x=>x.id===r.driver_type)||null,
+        car:CARS.find(x=>x.id===r.car_id)||null,
+        amount:Number(r.accrued||0)
+      }))
+    const total=details.reduce((n,r)=>n+r.amount,0)
+    if(total<=0) return {total:0,details:[]}
     await client.query('UPDATE clt_uber_drivers SET accrued=0 WHERE jid=$1',[jid])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'clt_uber_collect','Central Uber — líquido após comissão e TAXADE')",[jid,total])
-    return {total}
+    return {total,details}
   })
 }
 
