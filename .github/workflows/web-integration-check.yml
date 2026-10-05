@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [neon-migration]
   push:
-    branches: [web-integration-v1]
+    branches: ['web-integration-*']
 
 jobs:
   syntax:
