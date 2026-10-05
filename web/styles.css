@@ -153,3 +153,13 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .inventory-value{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 9px;border:1px solid #26384f;border-radius:9px;background:#09111a;font-size:11px}
 .inventory-value span{color:var(--muted)}
 .refund-note{display:block;color:#b7c5d8;margin-top:6px}
+
+.combat-result-head{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.combat-result-head>div{padding:12px;border:1px solid #2a3d56;border-radius:11px;background:#09111a}
+.combat-result-head small{display:block;color:var(--muted);font-size:10px;letter-spacing:.08em}
+.combat-result-head strong{display:block;margin-top:4px;font-size:15px}
+.combat-log{display:grid;gap:6px;margin-top:12px}
+.combat-hit{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid #26384f;border-radius:9px;font-size:11px}
+.combat-hit.critical{border-color:#8a5c22;box-shadow:0 0 18px rgba(217,155,56,.10)}
+.combat-hit.critical strong{color:#f0c36d}
+@media(max-width:620px){.combat-result-head{grid-template-columns:1fr}.combat-hit{align-items:flex-start;flex-direction:column}}
