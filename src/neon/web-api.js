@@ -515,7 +515,7 @@ const WEB_SLEEP_ALLOWED_ACTIONS=new Set([
 
 function webActionModule(name){
   const action=String(name||'')
-  if(action.startsWith('game.')) return 'games_enabled'
+  if(action.startsWith('game.')||action.startsWith('boss.')) return 'games_enabled'
   if(action.startsWith('clan.')||action.startsWith('groupMission.')||action.startsWith('groupEvent.')||
      action.startsWith('house.')||action.startsWith('car.')||action.startsWith('motorcycle.')||
      action.startsWith('business.')||action.startsWith('cltUber.')||action.startsWith('sleep.')||
