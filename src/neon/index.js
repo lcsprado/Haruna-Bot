@@ -762,7 +762,7 @@ ${title}${badge?' • '+badge:''}
 ❤️ HP: *${Number(p.hp||0)}/${Number(p.max_hp||0)}*
 ⚔️ ATK: *${Number(p.effective_atk||0)}*
 🛡️ DEF: *${Number(p.effective_def||0)}*
-💨 SPD: *${Number(p.spd||0)}*
+💨 SPD: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
 🎯 CRIT: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
 
 🏆 Vitórias: *${wins}*
@@ -7889,6 +7889,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           available.forEach((i,n)=>{
             const extras=(s,n)=>[
               Number(s.hp||0)||Number(n.hp||0)?`${Number(s.hp||0)} → ${Number(n.hp||0)} HP`:null,
+              Number(s.spd||0)||Number(n.spd||0)?`${Number(s.spd||0)} → ${Number(n.spd||0)} SPD`:null,
               Number(s.crit||0)||Number(n.crit||0)?`${(Number(s.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% → ${(Number(n.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% CRIT`:null
             ].filter(Boolean).join(' • ')
             const stat=i.category==='weapon'
@@ -8048,7 +8049,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)
 ⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)
 🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
-💨 SPD: ${p.spd}
+💨 SPD: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)
 🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
 👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
 
