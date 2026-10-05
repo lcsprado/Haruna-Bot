@@ -210,6 +210,17 @@ export default function Game(){
     return s>=5?'legendary':String(best.rarity||'').toLowerCase().includes('evento')?'event':s>=3?'epic':s>=2?'rare':'common';
   }
 
+  function rewardArtClass(r){
+    if(r.type==='cash') return 'art-cash';
+    if(r.type==='xp') return 'art-xp';
+    if(r.type==='petxp') return 'art-petxp';
+    const id=String(r.id||'');
+    if(id.includes('chave')) return 'art-key';
+    if(id.includes('pocao')||id.includes('elixir')) return 'art-potion';
+    if(r.inventoryItem?.category==='armor') return 'art-armor';
+    return '';
+  }
+
   function showRewards(source,title,rewards,subtitle='Recompensas recebidas'){
     const clean=(rewards||[]).filter(Boolean);
     const tone=rewardTone(clean);
@@ -762,7 +773,7 @@ export default function Game(){
         <p>{rewardReveal.subtitle}</p>
         <div className="reward-grid">
           {rewardReveal.rewards.map((r,i)=><div key={(r.id||r.type||r.name)+'-'+i} className={'reward-card '+rarityClass(r.rarity)}>
-            <div className="reward-icon">{r.icon||'🎁'}</div>
+            <div className={'reward-icon '+(rewardArtClass(r)?'reward-illustration '+rewardArtClass(r):'')}>{!rewardArtClass(r)&&(r.icon||'🎁')}</div>
             <small>{r.name}</small>
             <strong>{r.value}</strong>
             {r.detail&&<span>{r.detail}</span>}
