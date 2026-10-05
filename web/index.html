@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070b11">
+  <title>Alpha RPG Web</title>
+  <link rel="stylesheet" href="/rpg/styles.css">
+</head>
+<body>
+  <div id="loginOverlay" class="login-overlay">
+    <form id="linkForm" class="login-card">
+      <div class="brand-mark">A</div>
+      <p class="eyebrow">ALPHA BOT // RPG</p>
+      <h1>Conectar ao WhatsApp</h1>
+      <p class="muted">No grupo onde vocês jogam, envie <b>!web</b>. Digite aqui o código de uso único recebido do Alpha Bot.</p>
+      <label for="linkCode">Código</label>
+      <input id="linkCode" autocomplete="one-time-code" maxlength="12" placeholder="ABCD1234" required>
+      <button class="btn primary" type="submit">Conectar</button>
+      <p id="linkError" class="form-error"></p>
+      <small>Use <b>!web</b> dentro do grupo para que Raid e Boss do navegador usem a mesma sessão do WhatsApp.</small>
+    </form>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="brand">
+        <div class="brand-mark small">A</div>
+        <div><strong>ALPHA</strong><span>RPG WEB • SYNC</span></div>
+      </div>
+      <div id="miniProfile" class="mini-profile"></div>
+      <nav id="nav"></nav>
+      <div class="side-footer">
+        <span id="syncBadge" class="status-badge">● CONECTANDO</span>
+        <button id="logoutBtn" class="text-btn">Desconectar</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menuBtn" class="menu-btn" aria-label="Menu">☰</button>
+        <div>
+          <p class="eyebrow">ALPHA BOT // RPG</p>
+          <h1 id="pageTitle">Início</h1>
+        </div>
+        <div id="topStats" class="top-stats"></div>
+      </header>
+      <div id="content" class="content"></div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="/rpg/app.js"></script>
+</body>
+</html>

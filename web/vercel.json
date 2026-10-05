@@ -1,0 +1,7 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/rpg", "destination": "/index.html" },
+    { "source": "/rpg/:path*", "destination": "/:path*" }
+  ]
+}
