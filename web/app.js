@@ -296,12 +296,18 @@ function petPortrait(species){
 }
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
+  const active=Boolean(p.active);
   return '<div class="card pet-card owned">'+petPortrait(p.species)+
-    '<div class="tag-row"><span class="tag good">'+(p.active?'ATIVO':'COLEÇÃO')+'</span><span class="tag">'+esc(cat&&cat.style||'Pet')+'</span></div>'+
+    '<div class="tag-row"><span class="tag '+(active?'good':'')+'">'+(active?'ATIVO':'COLEÇÃO')+'</span><span class="tag">'+esc(cat&&cat.style||'Pet')+'</span></div>'+
     '<h3>'+esc(p.name||cat&&cat.label||titleCase(p.species))+'</h3>'+
-    '<p>'+esc(titleCase(p.species))+' • Lv.'+num(p.level)+' • HP '+num(p.hp)+'/'+num(p.max_hp)+' • Energia '+num(p.energy)+'</p>'+
+    '<p>'+esc(titleCase(p.species))+' • Lv.'+num(p.level)+' • XP '+num(p.xp)+' • Poder '+num(p.power)+'</p>'+
+    '<p>❤️ '+num(p.hp)+'/'+num(p.max_hp)+' • ⚡ Energia '+num(p.energy)+' • 🍗 '+num(p.hunger)+'/100 • 🧼 '+num(p.hygiene)+'/100</p>'+
     '<p>'+esc(specialtyText(cat))+'</p>'+
-    '<div class="pet-actions">'+(!p.active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+'<button class="btn" data-pet-id="'+p.id+'">ID '+p.id+'</button></div>'+
+    '<div class="pet-actions">'+
+      (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
+      (active?'<button class="btn" data-pet-rename>Renomear</button><button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
+      '<button class="btn" data-pet-id="'+p.id+'">ID '+p.id+'</button>'+
+    '</div>'+
   '</div>';
 }
 function catalogPetCard(p){
@@ -590,6 +596,12 @@ function bind(){
     if(petIds.length) doAction('pet.team',{petIds,replaceAll:true},{});
   });
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
+  document.querySelectorAll('[data-pet-rename]').forEach(x=>x.onclick=()=>{
+    const current=(collection().find(p=>p.active)||{}).name||'';
+    const name=prompt('Novo nome do pet ativo (R$ 1.000):',current);
+    if(name && name!==current) doAction('pet.rename',{name},{});
+  });
+  document.querySelectorAll('[data-pet-action]').forEach(x=>x.onclick=()=>doAction('pet.action',{action:x.dataset.petAction},{}));
   document.querySelectorAll('[data-pet-adopt]').forEach(x=>x.onclick=()=>{
     const name=prompt('Nome deste pet:','Alpha');
     if(name) doAction('pet.adopt',{species:x.dataset.petAdopt,name:name},{});
