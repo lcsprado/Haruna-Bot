@@ -369,19 +369,74 @@ function positiveInt(value,label='Valor',max=999999999){
   return n
 }
 
+async function groupTarget(session,targetJid){
+  const chatJid=requireGroup(session)
+  const target=String(targetJid||'')
+  if(!target || target===session.jid) throw new Error('Escolha outro membro do grupo.')
+  const roster=await weeklyActivityLeaderboard(chatJid,20)
+  const member=roster.find(x=>x.jid===target)
+  if(!member) throw new Error('Esse jogador não está entre os membros recentes do grupo vinculado.')
+  return member
+}
+
 async function runAction(session,name,body={}){
   const jid=session.jid
   switch(name){
     case 'daily': return claimDaily(jid)
+    case 'missions.claim': return claimDailyMissions(jid)
+    case 'level.claim': return claimLevelRewards(jid)
     case 'work': return work(jid)
     case 'deposit': return deposit(jid,body.amount)
     case 'withdraw': return withdraw(jid,positiveInt(body.amount,'Valor'))
-
+    case 'transfer': {
+      const member=await groupTarget(session,body.targetJid)
+      return transfer(jid,member.jid,positiveInt(body.amount,'Valor'))
+    }
+    case 'battle': {
+      const member=await groupTarget(session,body.targetJid)
+      return battle(jid,member.jid)
+    }
+    case 'petduel': {
+      const member=await groupTarget(session,body.targetJid)
+      return petDuel(jid,member.jid)
+    }
+    case 'rob': {
+      const member=await groupTarget(session,body.targetJid)
+      return robPlayer(jid,member.jid)
+    }
+    case 'dungeon': return dungeon(jid)
+    case 'relationship.propose': {
+      const member=await groupTarget(session,body.targetJid)
+      return proposeRelationship(jid,member.jid)
+    }
+    case 'relationship.accept': {
+      const member=await groupTarget(session,body.targetJid)
+      return acceptRelationship(jid,member.jid)
+    }
+    case 'relationship.divorce': return divorceRelationship(jid)
+    case 'loan.offer': {
+      const member=await groupTarget(session,body.targetJid)
+      return createLoanOffer(jid,member.jid,positiveInt(body.amount,'Valor'))
+    }
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
     case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10))
     case 'item.use': return usePotion(jid,String(body.itemId||''))
+
+    case 'item.box.open': return openLootBoxes(jid,String(body.boxId||'caixa_sorte'),positiveInt(body.qty||1,'Quantidade',50))
+    case 'item.lucky.open': return openLuckyBoxes(jid,positiveInt(body.qty||1,'Quantidade',50))
+    case 'item.sellDuplicates': return sellDuplicateEquipment(jid)
+    case 'market.create': return createMarketListing(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999),positiveInt(body.price,'Preço'))
+    case 'market.buy': return buyMarketListing(jid,positiveInt(body.listingId,'Anúncio'))
+    case 'market.cancel': return cancelMarketListing(jid,positiveInt(body.listingId,'Anúncio'))
+    case 'sleep.start': return startPlayerSleep(jid)
+    case 'sleep.wake': return wakePlayerEarly(jid)
+    case 'carpinar.start': return startPlayerCarpinar(jid,positiveInt(body.hours,'Horas',24))
+    case 'carpinar.leave': return leavePlayerCarpinarEarly(jid)
+    case 'pet.adventure': return petAdventure(jid)
+    case 'pet.expedition.start': return startPetExpedition(jid,positiveInt(body.petId,'Pet'),positiveInt(body.hours||4,'Horas',24))
+    case 'pet.expedition.resolve': return resolvePetExpeditions(jid)
 
     case 'pet.heal': return usePetPotion(jid,body.itemId?String(body.itemId):null)
     case 'pet.energy': return usePetEnergyItem(jid,String(body.itemId||'energetico_pet'))
@@ -412,6 +467,53 @@ async function runAction(session,name,body={}){
     case 'business.upgrade': return upgradeBusiness(jid,String(body.id||body.input||''))
     case 'cltUber.start': return startCltUberShift(jid,positiveInt(body.driverSlot,'Motorista',100),positiveInt(body.carSlot,'Carro',100))
     case 'cltUber.collect': return collectCltUber(jid)
+
+    case 'cltUber.hire': return hireCltUberDriver(jid,String(body.input||body.id||''))
+    case 'clan.create': return createClan(jid,String(body.name||''))
+    case 'clan.accept': return acceptClanInvite(jid)
+    case 'clan.leave': return leaveClan(jid)
+    case 'clan.donate': return donateClan(jid,positiveInt(body.amount,'Valor'))
+    case 'clan.invite': {
+      const member=await groupTarget(session,body.targetJid)
+      return inviteToClan(jid,member.jid)
+    }
+    case 'clan.kick': {
+      const member=await groupTarget(session,body.targetJid)
+      return kickClanMember(jid,member.jid)
+    }
+    case 'clan.transfer': {
+      const member=await groupTarget(session,body.targetJid)
+      return transferClanLeadership(jid,member.jid)
+    }
+    case 'groupMission.claim': return claimGroupMission(requireGroup(session),jid)
+    case 'groupEvent.claim': return claimGroupEvent(requireGroup(session),jid)
+
+    case 'game.coinflip': return coinFlip(jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
+    case 'game.roulette': return roulette(jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
+    case 'game.rps': return rps(String(body.choice||''))
+    case 'game.quiz.start': return startQuiz(requireGroup(session))
+    case 'game.quiz.answer': return answerQuiz(requireGroup(session),jid,String(body.answer||''))
+    case 'game.number.start': return startNumberGame(requireGroup(session))
+    case 'game.number.guess': return guessNumber(requireGroup(session),jid,positiveInt(body.guess,'Número',999999))
+    case 'game.hangman.start': return startHangman(requireGroup(session))
+    case 'game.hangman.letter': return hangmanLetter(requireGroup(session),String(body.letter||''))
+    case 'game.hangman.word': return hangmanWord(requireGroup(session),String(body.word||''))
+    case 'game.coinDuel.create': {
+      const member=await groupTarget(session,body.targetJid)
+      return createCoinDuel(requireGroup(session),jid,member.jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
+    }
+    case 'game.coinDuel.accept': return acceptCoinDuel(requireGroup(session),jid)
+    case 'game.rpsDuel.create': {
+      const member=await groupTarget(session,body.targetJid)
+      return createRpsDuel(requireGroup(session),jid,member.jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
+    }
+    case 'game.rpsDuel.accept': return acceptRpsDuel(requireGroup(session),jid,String(body.choice||''))
+    case 'game.groupRoulette.create': return createGroupRoulette(requireGroup(session),jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
+    case 'game.groupRoulette.join': return joinGroupRoulette(requireGroup(session),jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
+    case 'game.groupRoulette.spin': return spinGroupRoulette(requireGroup(session),jid)
+    case 'game.tournament.create': return createTournament(requireGroup(session),jid,positiveInt(body.amount,'Entrada'))
+    case 'game.tournament.join': return joinTournament(requireGroup(session),jid)
+    case 'game.tournament.start': return startTournament(requireGroup(session),jid)
 
     case 'loan.accept': return acceptLoan(jid,body.id==null?null:positiveInt(body.id,'Empréstimo'))
     case 'loan.reject': return rejectLoan(jid,body.id==null?null:positiveInt(body.id,'Empréstimo'))
