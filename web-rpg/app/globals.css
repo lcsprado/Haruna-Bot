@@ -293,3 +293,11 @@ nav button.active{box-shadow:inset 3px 0 0 white}
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
   .pet-idle,.combat-badge{animation:none!important}
 }
+
+.shop-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0 12px;padding:10px 12px;border:1px solid var(--line);background:#0d1118;border-radius:11px}
+.shop-meta span{font-size:12px;color:var(--muted)}
+.shop-meta b{color:#e8edf5}
+.shop-meta strong{font-size:14px}
+@media(max-width:520px){
+  .shop-meta{align-items:flex-start}
+}
