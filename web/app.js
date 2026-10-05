@@ -473,13 +473,20 @@ function resultPanel(){
 }
 function memberCard(m){
   return '<div class="card social-card"><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
-    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
+    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn" data-coin-duel="'+esc(m.jid)+'">🪙 Cara/Coroa</button><button class="btn" data-rps-duel="'+esc(m.jid)+'">✊ PPT</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
 }
 function renderSocial(){
   const members=roster().filter(x=>x.jid!==ui.data.identity.jid);
   const rel=ui.data.relationship;
   if(!currentGroup()) return '<div class="notice warn">Conecte usando <b>!web</b> dentro do grupo para liberar interações com outros jogadores.</div>';
-  return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo, Duelo Pet, roubo, PIX e empréstimo usam os mesmos jogadores ativos do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
+  const games=currentGroup().games||{}, me=ui.data.identity.jid;
+  const coinPending=games['coin_duel:'+me]||null, rpsPending=games['rps_duel:'+me]||null;
+  const pending=(coinPending||rpsPending)?'<div class="section card"><div class="section-title"><h3>Desafios pendentes</h3><small>Mesma sessão do grupo</small></div><div class="hero-actions">'+
+    (coinPending?'<button class="btn good" data-coin-duel-accept>🪙 Aceitar Cara/Coroa • '+money(coinPending.amount)+'</button>':'')+
+    (rpsPending?'<button class="btn good" data-rps-duel-accept>✊ Aceitar PPT • '+money(rpsPending.amount)+'</button>':'')+
+    '</div></div>':'';
+  return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo, Duelo Pet, apostas PvP, roubo, PIX e empréstimo usam os mesmos jogadores ativos do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
+    pending+
     '<div class="card"><div class="section-title"><h3>Relacionamento</h3><small>'+esc(rel?JSON.stringify(rel):'Nenhum')+'</small></div><div class="hero-actions"><button class="btn danger" data-relationship-divorce>Divorciar</button></div></div>'+
     '<div class="section grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div>'+resultPanel();
 }
@@ -727,6 +734,23 @@ function bind(){
   document.querySelectorAll('[data-loan-reject]').forEach(x=>x.onclick=()=>doAction('loan.reject',{id:Number(x.dataset.loanReject)},{}));
   document.querySelectorAll('[data-battle]').forEach(x=>x.onclick=()=>doAction('battle',{targetJid:x.dataset.battle},{}));
   document.querySelectorAll('[data-petduel]').forEach(x=>x.onclick=()=>doAction('petduel',{targetJid:x.dataset.petduel},{}));
+  document.querySelectorAll('[data-coin-duel]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Aposta do Cara ou Coroa:','1000'));
+    if(!(amount>=10)) return;
+    const choice=String(prompt('Escolha: cara ou coroa','cara')||'').trim().toLowerCase();
+    if(['cara','coroa'].includes(choice)) doAction('game.coinDuel.create',{targetJid:x.dataset.coinDuel,amount,choice},{});
+  });
+  document.querySelectorAll('[data-rps-duel]').forEach(x=>x.onclick=()=>{
+    const amount=Number(prompt('Aposta do Pedra/Papel/Tesoura:','1000'));
+    if(!(amount>=10)) return;
+    const choice=String(prompt('Escolha: pedra, papel ou tesoura','pedra')||'').trim().toLowerCase();
+    if(['pedra','papel','tesoura'].includes(choice)) doAction('game.rpsDuel.create',{targetJid:x.dataset.rpsDuel,amount,choice},{});
+  });
+  document.querySelectorAll('[data-coin-duel-accept]').forEach(x=>x.onclick=()=>doAction('game.coinDuel.accept',{},{}));
+  document.querySelectorAll('[data-rps-duel-accept]').forEach(x=>x.onclick=()=>{
+    const choice=String(prompt('Escolha: pedra, papel ou tesoura','pedra')||'').trim().toLowerCase();
+    if(['pedra','papel','tesoura'].includes(choice)) doAction('game.rpsDuel.accept',{choice},{});
+  });
   document.querySelectorAll('[data-rob]').forEach(x=>x.onclick=()=>doAction('rob',{targetJid:x.dataset.rob},{}));
   document.querySelectorAll('[data-transfer]').forEach(x=>x.onclick=()=>{
     const amount=Number(prompt('Valor do PIX:','1000'));
