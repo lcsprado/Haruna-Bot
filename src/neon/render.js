@@ -32,6 +32,7 @@ const health=globalThis.__trevoHealth || (globalThis.__trevoHealth={
 })
 
 http.createServer(async (req, res) => {
+  if(await serveWebAsset(req,res)) return
   if(await serveWeb(req,res)) return
 
   try{
