@@ -28,6 +28,7 @@ const navItems = [
   ['clan','🛡️','Clã'],
   ['games','🎮','Minigames'],
   ['activities','⏳','Atividades'],
+  ['progression','📈','Progressão'],
   ['rankings','🏆','Rankings'],
   ['economy','💰','Economia'],
   ['loans','💳','Empréstimos']
@@ -131,7 +132,7 @@ async function doAction(name,body,options){
     const response=await api('/api/v1/action/'+encodeURIComponent(name),{method:'POST',body:JSON.stringify(body||{})});
     ui.lastResult=response.result;
     if(options.afterSync!==false) await sync(true);
-    if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
+    if(['social','market','clan','games','activities','progression','rankings','loans'].includes(ui.page)){
       await syncExtras(true).catch(()=>null);
       render();
     }
@@ -464,6 +465,42 @@ function renderActivities(){
     '<div class="section card"><div class="section-title"><h3>Expedições</h3></div><pre class="result-box">'+esc(JSON.stringify(exp,null,2))+'</pre></div>'+resultPanel();
 }
 
+function renderProgression(){
+  const d=ui.data||{}, ex=ui.extras||{}, p=profile(), raw=d.profile||{};
+  const streak=d.streak||{}, career=d.career||{}, achievements=d.achievements||[], missions=d.dailyMissions||[];
+  const level=Number(raw.level||1), exp=Number(raw.exp||0);
+  const nextExp=Math.max(1,level*100);
+  const careerXp=Number(career.career_xp||career.xp||0), shifts=Number(career.total_shifts||career.shifts||0);
+  return '<div class="page-head"><div><h2>Progressão</h2><p>Equivale aos dados de !nivel, !streak, !carreira, !conquistas e !missoes.</p></div><span class="tag good">NÍVEL '+num(level)+'</span></div>'+
+    '<div class="grid stats">'+
+      statCard('NÍVEL',num(level),'EXP '+num(exp)+' / '+num(nextExp))+
+      statCard('STREAK',num(streak.currentStreak||streak.current_streak||0)+' dias','Recorde '+num(streak.bestStreak||streak.best_streak||0))+
+      statCard('CARREIRA XP',num(careerXp),num(shifts)+' turnos')+
+      statCard('CONQUISTAS',num(achievements.length),'desbloqueadas')+
+    '</div>'+
+    '<div class="section grid two">'+
+      '<div class="card"><div class="section-title"><h3>Perfil RPG</h3><small>Mesmo stats do WhatsApp</small></div><div class="list">'+
+        '<div class="list-row"><span>❤️ HP</span><strong>'+num(p.effective_hp||p.hp)+' / '+num(p.effective_max_hp||p.max_hp)+'</strong></div>'+
+        '<div class="list-row"><span>⚔️ ATK</span><strong>'+num(p.effective_atk||p.atk)+'</strong></div>'+
+        '<div class="list-row"><span>🛡️ DEF</span><strong>'+num(p.effective_def||p.def)+'</strong></div>'+
+        '<div class="list-row"><span>💨 SPD</span><strong>'+num(p.effective_spd||p.spd)+'</strong></div>'+
+        '<div class="list-row"><span>⚡ CRIT</span><strong>'+Math.round(Number(p.effective_crit||0)*100)+'%</strong></div>'+
+        '<div class="list-row"><span>🏆 Vitórias</span><strong>'+num(p.win||p.wins||0)+'</strong></div>'+
+        '<div class="list-row"><span>💀 Derrotas</span><strong>'+num(p.loss||p.losses||0)+'</strong></div>'+
+      '</div></div>'+
+      '<div class="card"><div class="section-title"><h3>Equipamentos</h3><small>Níveis reais</small></div><div class="list">'+
+        '<div class="list-row"><span>🗡️ Arma</span><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div>'+
+        '<div class="list-row"><span>🛡️ Armadura</span><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div>'+
+        '<div class="list-row"><span>👢 Botas</span><strong>'+esc(p.boot_name||'Nenhuma')+' Lv.'+num(p.boot_level||1)+'</strong></div>'+
+      '</div></div>'+
+    '</div>'+
+    '<div class="section grid two">'+
+      '<div class="card"><div class="section-title"><h3>Conquistas</h3><small>'+achievements.length+'</small></div>'+(achievements.length?'<div class="list">'+achievements.map(a=>'<div class="list-row"><span>'+esc(a)+'</span><strong>✓</strong></div>').join('')+'</div>':'<div class="empty">Nenhuma conquista desbloqueada.</div>')+'</div>'+
+      '<div class="card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
+    '</div>'+
+    '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+resultPanel();
+}
+
 function leaderboardBlock(title,rows,valueFn){
   return '<div class="card"><div class="section-title"><h3>'+esc(title)+'</h3></div><div class="list">'+((rows||[]).length?(rows||[]).map((x,i)=>'<div class="list-row"><span>#'+(i+1)+' '+esc(x.push_name||x.name||'Jogador')+'</span><strong>'+esc(valueFn(x))+'</strong></div>').join(''):'<div class="empty">Sem dados.</div>')+'</div></div>';
 }
@@ -513,7 +550,7 @@ function renderLoans(){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=(renderers[ui.page]||renderHome)();
   bind();
 }
