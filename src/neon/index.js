@@ -2236,7 +2236,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!anunciar* — escolhe item, quantidade e preço; mostra preço sugerido e anuncia por 1 hora
 *!comprar#3* / *!comprar #3* — abre o anúncio #3 e confirma a compra
 *!compraritem* — abre a lista de anúncios
-*!cancelarvenda ID* — cancela seu anúncio
+*!cancelarvenda ID* / *!cancelaranuncio ID* — cancela seu anúncio
 
 
 9️⃣ Voltar • 0️⃣ Fechar`,
@@ -7174,7 +7174,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply('💍 *CASAMENTO CONFIRMADO!* 🎉',{mentions:[targetRaw]})
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível concluir.')) }
 
-        } else if(['mercado','anunciar','compraritem','comprarmercado','cancelarvenda'].includes(cmd)){
+        } else if(['mercado','anunciar','compraritem','comprarmercado','cancelarvenda','cancelaranuncio'].includes(cmd)){
           try{
             if(cmd==='mercado'){
               const rows=await listMarket(15)
