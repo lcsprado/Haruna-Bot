@@ -94,7 +94,8 @@ export async function createWebLinkCode(jid,chatJid=null){
         'INSERT INTO web_link_codes(code_hash,jid,chat_jid,expires_at,created_at) VALUES($1,$2,$3,$4,$5)',
         [codeHash,jid,group,expiresAt,now()]
       )
-      const base=String(process.env.WEB_APP_URL||'').trim().replace(/\/$/,'')
+      const renderBase=String(process.env.RENDER_EXTERNAL_URL||'').trim().replace(/\/$/,'')
+      const base=String(process.env.WEB_APP_URL||(renderBase?renderBase+'/rpg':'')).trim().replace(/\/$/,'')
       return {
         code,
         expiresAt,
