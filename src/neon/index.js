@@ -994,12 +994,6 @@ function horoscopeText(signId,signName){
     '\n\n_Leitura criada só por diversão/entretenimento._'
 }
 
-const ADOPTABLE_PETS_REMOVED_BY_SHARED_CATALOG = false
-
-/* ADOPTABLE_PETS imported from game-catalog.js */
-const __ADOPTABLE_PETS_SHARED = ADOPTABLE_PETS
-
-/* shared catalog continues below */
 function petAbilityBaseText(species){
   const spec=PET_STATUS_SPECIALTIES[String(species||'').toLowerCase()]
   if(!spec) return 'Sem habilidade especial'
