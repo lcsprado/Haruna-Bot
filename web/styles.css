@@ -118,3 +118,8 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .level-reward.claimed{opacity:.7}
 .level-reward.unlocked{border-color:#46613b}
 .reward-status{font-size:11px;font-weight:800;white-space:nowrap}
+
+.home-hp,.home-exp{margin:12px 0}
+.home-hp>div:first-child,.home-exp>div:first-child{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px}
+.home-hp span,.home-exp span{color:var(--muted);font-weight:800;letter-spacing:.06em}
+.exp-progress span{filter:brightness(1.15)}
