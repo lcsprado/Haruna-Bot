@@ -2,7 +2,7 @@ import 'dotenv/config'
 import crypto from 'node:crypto'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
-  listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship,
+  listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship, getProfileAvatar,
   listMyMarketListings, getGroupLicense, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
   petStyleLabel, getEquipmentInfo, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment,
@@ -727,6 +727,22 @@ export async function handleWebApi(req,res){
     if(req.method==='POST' && url.pathname==='/api/v1/auth/logout'){
       await logoutSession(session)
       json(res,200,{ok:true})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/avatar'){
+      const avatar=await getProfileAvatar(session.jid)
+      if(!avatar){
+        res.writeHead(404,{'cache-control':'no-store'})
+        res.end()
+        return true
+      }
+      res.writeHead(200,{
+        'content-type':avatar.mimeType||'image/jpeg',
+        'cache-control':'private, no-store',
+        'content-length':String(avatar.buffer.length)
+      })
+      res.end(avatar.buffer)
       return true
     }
 
