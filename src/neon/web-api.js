@@ -239,7 +239,8 @@ async function playerBootstrap(session){
   const jid=session.jid
   const [
     profile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
-    home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group
+    home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
+    doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar
   ]=await Promise.all([
     getProfile(jid),
     getInventory(jid),
@@ -259,23 +260,38 @@ async function playerBootstrap(session){
     listMyMarketListings(jid),
     getAchievements(jid),
     getRelationship(jid),
-    groupSnapshot(session.chatJid)
+    groupSnapshot(session.chatJid),
+    getDoubleRewardEvent(),
+    getLuckyBoxEvent(),
+    db.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1 AND expires_at>$2 ORDER BY expires_at',[`%${jid}%`,Math.floor(Date.now()/1000)]),
+    db.query('SELECT * FROM player_sleep WHERE jid=$1',[jid]),
+    db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid])
   ])
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
     profile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
-    home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group
+    home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
+    events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
+    cooldowns:cooldowns.rows||[],
+    activities:{sleep:sleep.rows?.[0]||null,carpinar:carpinar.rows?.[0]||null}
   }
 }
-
 async function publicCatalog(){
-  const shop=await getShop()
+  const [shop,allItemRows]=await Promise.all([
+    getShop(),
+    db.query('SELECT id,name,description,category,price,sellable,stackable,rarity,data FROM items ORDER BY category,price,name')
+  ])
+  const allItems=(allItemRows.rows||[]).map(item=>({
+    ...item,
+    equipment:['weapon','armor','boots'].includes(item.category)?getEquipmentInfo(item.id):null
+  }))
   return {
     generatedAt:now(),
     pets:petCatalog(),
     raids:getRaidCatalog(),
     shop,
+    allItems,
     houses:HOUSES,
     cars:CARS,
     motorcycles:MOTORCYCLES,
@@ -284,7 +300,6 @@ async function publicCatalog(){
     loanRules:LOAN_RULES
   }
 }
-
 export async function handleWebApi(req,res){
   const url=new URL(req.url||'/', 'http://localhost')
   if(!url.pathname.startsWith('/api/v1/')) return false
