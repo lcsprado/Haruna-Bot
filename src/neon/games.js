@@ -842,8 +842,10 @@ export async function startRaid(chat,host,level=null){
     const ids=Object.keys(s.players||{})
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
-    const minPlayers=Number(cfg.level)===10?1:2
-    if(ids.length<minPlayers) throw new Error(`A Raid Lv.${cfg.level} precisa de pelo menos ${minPlayers} jogador${minPlayers>1?'es':''}.`)
+    // Todas as Raids podem ser iniciadas solo. O tempo, HP e ATK da Raid
+    // continuam sendo o desafio; entrar com mais jogadores segue opcional.
+    const minPlayers=1
+    if(ids.length<minPlayers) throw new Error(`A Raid Lv.${cfg.level} precisa de pelo menos 1 jogador.`)
 
     const users=(await c.query('SELECT jid,level,push_name FROM users WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const stats=(await c.query('SELECT * FROM stats WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
