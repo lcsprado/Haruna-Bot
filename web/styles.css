@@ -66,3 +66,12 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .relationship-card small,.relationship-card strong{display:block}
 .relationship-card small{color:var(--muted);font-size:9px;letter-spacing:.09em;margin-bottom:6px}
 @media(max-width:650px){.relationship-card{grid-template-columns:1fr}.patrimony-grid{grid-template-columns:1fr}}
+
+.game-card{display:flex;flex-direction:column;gap:10px}
+.game-icon{font-size:32px;line-height:1}
+.game-state{padding:12px;border:1px solid #253750;border-radius:12px;background:#09111a;display:flex;flex-direction:column;gap:8px;min-height:72px}
+.game-state small{color:var(--muted);display:block}
+.game-state.empty{justify-content:center;color:var(--muted)}
+.quiz-options{display:grid;gap:6px;font-size:12px;color:#c7d2e4}
+.quiz-options>div{padding:7px 9px;border:1px solid #1f3047;border-radius:9px;background:#0d1621}
+.hangman-word{font-size:20px;letter-spacing:.18em}
