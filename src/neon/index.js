@@ -1807,6 +1807,7 @@ Você possui: *${stock}*
     const [items,p]=await Promise.all([getInventory(sender),getCombatProfile(sender)])
     const weapons=items.filter(i=>i.category==='weapon')
     const armors=items.filter(i=>i.category==='armor')
+    const boots=items.filter(i=>i.category==='boots')
     if(!weapons.length&&!armors.length){
       clearQuickFlow(chat,sender)
       await reply('⚙️ Você não possui arma ou armadura para equipar.')
@@ -1835,6 +1836,7 @@ O que deseja trocar?
 
 1️⃣ ⚔️ *Arma* — ${weapons.length} opção(ões)
 2️⃣ 🛡️ *Armadura* — ${armors.length} opção(ões)
+3️⃣ 👢 *Botas* — ${boots.length} opção(ões)
 
 9️⃣ Voltar ao inventário
 0️⃣ Sair`
