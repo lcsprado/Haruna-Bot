@@ -287,7 +287,7 @@ export default function Game(){
     return {cash,exp,petXp,rewards};
   }
 
-  function buildSiegeRewards(){
+  function buildSiegeRewards(totalDamage=game.boss.myDamage){
     const pb=petRewardBonus(activePet);
     const cash=28000;
     const exp=Math.round(Math.floor((700+3500+900)*(1+Number(pb.xp||0))));
@@ -297,7 +297,7 @@ export default function Game(){
       {type:'xp',name:'Experiência',icon:'✨',value:'+'+fmt(exp)+' XP',amount:exp,rarity:'Comum'},
       {type:'petxp',name:'XP de Pet',icon:'🐾',value:'+'+fmt(petXp)+' XP',amount:petXp,rarity:'Incomum'}
     ];
-    if(game.boss.myDamage>=1500&&Math.random()<.35){
+    if(totalDamage>=1500&&Math.random()<.35){
       const item=REWARD_ITEMS.colete_vital;
       rewards.push({type:'item',id:item.id,name:item.name,icon:item.icon,value:'+1',qty:1,rarity:item.rarity,detail:item.stat,inventoryItem:item});
     }
@@ -380,6 +380,8 @@ export default function Game(){
     const crit=Math.random()<critChance/100;
     const rawBase=Math.max(5,Math.floor(p.atk*(.85+Math.random()*.45)));
     const dmg=Math.max(5,Math.floor(rawBase*(petActive?1.075:1)*(crit?1.5:1)));
+    const bossWillWin=game.boss.hp-dmg<=0;
+    const bossRewardPack=bossWillWin?buildSiegeRewards(game.boss.myDamage+dmg):null;
 
     fx({bossHit:true,bossDamage:dmg,bossCrit:crit},{bossHit:false,bossDamage:null,bossCrit:false},620);
     if(game.boss.hp-dmg>0){
@@ -464,22 +466,21 @@ export default function Game(){
         inventory,
         boss:{...g.boss,hp:nextBossHp,myDamage:g.boss.myDamage+dmg}
       };
-      if(nextBossHp===0){
-        const rewardPack=buildSiegeRewards();
-        for(const r of rewardPack.rewards){
+      if(nextBossHp===0&&bossRewardPack){
+        for(const r of bossRewardPack.rewards){
           if(r.inventoryItem) out.inventory=addInventory(out.inventory,r.inventoryItem,Number(r.qty||1));
         }
-        out.profile={...out.profile,cash:out.profile.cash+rewardPack.cash,xp:out.profile.xp+rewardPack.exp};
-        out.pets=grantLocalPetTeamXp(out.pets,out.petTeam,rewardPack.petXp);
-        window.setTimeout(()=>{
-          setAutoBoss(false);
-          showRewards('boss','RECOMPENSAS DO BOSS',rewardPack.rewards,'Colosso do Cerco derrotado');
-        },180);
+        out.profile={...out.profile,cash:out.profile.cash+bossRewardPack.cash,xp:out.profile.xp+bossRewardPack.exp};
+        out.pets=grantLocalPetTeamXp(out.pets,out.petTeam,bossRewardPack.petXp);
         return withLog(out,'🏆 Colosso do Cerco derrotado — recompensas recebidas.');
       }
       return withLog(out,(crit?'💥 CRÍTICO! ':'🗿 ')+fmt(dmg)+' de dano no Boss'+(usePet?'':' · sem pet')+playerEvent+petEvent+'.');
     });
-    if(!silent) notify(fmt(dmg)+' de dano no Boss');
+    if(bossWillWin&&bossRewardPack){
+      setAutoBoss(false);
+      window.setTimeout(()=>showRewards('boss','RECOMPENSAS DO BOSS',bossRewardPack.rewards,'Colosso do Cerco derrotado'),180);
+    }
+    if(!silent&&!bossWillWin) notify(fmt(dmg)+' de dano no Boss');
   }
 
   function startDuel(pet=false){
