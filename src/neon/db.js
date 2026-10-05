@@ -75,6 +75,7 @@ export async function initDatabase() {
       spd INTEGER NOT NULL DEFAULT 10,
       weapon_id TEXT,
       armor_id TEXT,
+      boot_id TEXT,
       weapon_tier INTEGER NOT NULL DEFAULT 1,
       armor_tier INTEGER NOT NULL DEFAULT 1,
       win INTEGER NOT NULL DEFAULT 0,
@@ -84,6 +85,7 @@ export async function initDatabase() {
 
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS weapon_tier INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS armor_tier INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS boot_id TEXT;
 
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
@@ -343,6 +345,13 @@ export async function initDatabase() {
     ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF e +110 HP. Apenas por drop.','armor',0,'legendary'],
     ['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF, +140 HP e +1% crítico. Apenas por drop.','armor',0,'legendary'],
 
+    // Botas — SPD é exclusivo deste slot
+    ['bota_leve','Bota Leve','Bota básica de mobilidade. +2 SPD.','boots',8000,'common'],
+    ['bota_vento','Bota do Vento','Bota incomum focada em iniciativa. +4 SPD.','boots',22000,'uncommon'],
+    ['bota_cacador','Bota do Caçador','Bota rara para agir primeiro. +6 SPD.','boots',52000,'rare'],
+    ['bota_relampago','Bota do Relâmpago','Bota épica de alta velocidade. +8 SPD.','boots',110000,'epic'],
+    ['bota_celestial','Bota Celestial','Bota lendária de velocidade extrema. +10 SPD.','boots',0,'legendary'],
+
     // Chaves de Raid
     ['chave_raid_10','Chave de Raid Lv.10','Abre uma Raid de nível 10. A chave só é consumida quando a luta começa.','special',10000,'uncommon'],
     ['chave_raid_15','Chave de Raid Lv.15','Abre uma Raid de nível 15. A chave só é consumida quando a luta começa.','special',16000,'uncommon'],
@@ -485,6 +494,7 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
           spd=GREATEST(t.spd,COALESCE(s.spd,0)),
           weapon_id=COALESCE(t.weapon_id,s.weapon_id),
           armor_id=COALESCE(t.armor_id,s.armor_id),
+          boot_id=COALESCE(t.boot_id,s.boot_id),
           win=t.win+COALESCE(s.win,0),
           loss=t.loss+COALESCE(s.loss,0),
           updated_at=${nowSql}
@@ -667,7 +677,7 @@ export async function getProfile(jid) {
   const { rows } = await db.query(`
     SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
            w.cash,w.bank,w.bank_limit,
-           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.win,s.loss
+           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.win,s.loss
     FROM users u
     JOIN wallets w ON w.jid=u.jid
     JOIN stats s ON s.jid=u.jid
@@ -1145,7 +1155,7 @@ export async function getInventory(jid) {
   `,[jid])
   return rows.map(r=>({
     ...r,
-    upgrade_refund:['weapon','armor'].includes(r.category)
+    upgrade_refund:['weapon','armor','boots'].includes(r.category)
       ? equipmentUpgradeSellRefund(r.rarity,r.equipment_level)
       : 0
   }))
@@ -1171,11 +1181,11 @@ export async function sellItem(jid, itemId, qty=1) {
     if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
 
     const statsR=await client.query(
-      'SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
+      'SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
     const stats=statsR.rows[0]||{}
-    const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId) ? 1 : 0
+    const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId) ? 1 : 0
     const sellable=Math.max(0,owned-equipped)
 
     if(sellable<1){
@@ -1194,7 +1204,7 @@ export async function sellItem(jid, itemId, qty=1) {
     else unit=500
 
     const remaining=owned-qty
-    const upR=['weapon','armor'].includes(item.category)
+    const upR=['weapon','armor','boots'].includes(item.category)
       ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
       : {rows:[]}
     const equipmentLevel=Number(upR.rows[0]?.level||1)
@@ -1208,7 +1218,7 @@ export async function sellItem(jid, itemId, qty=1) {
       'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
       [qty,jid,itemId]
     )
-    if(remaining===0 && ['weapon','armor'].includes(item.category)){
+    if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
       await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
     }
     await client.query(
@@ -1300,7 +1310,7 @@ export async function sellItemsBatch(jid, selections=[]) {
       else unit=500
 
       const remaining=owned-sel.qty
-      const upR=['weapon','armor'].includes(item.category)
+      const upR=['weapon','armor','boots'].includes(item.category)
         ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
         : {rows:[]}
       const equipmentLevel=Number(upR.rows[0]?.level||1)
@@ -1313,7 +1323,7 @@ export async function sellItemsBatch(jid, selections=[]) {
         'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
         [sel.qty,jid,sel.itemId]
       )
-      if(remaining===0 && ['weapon','armor'].includes(item.category)){
+      if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
         await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
       }
 
@@ -1410,7 +1420,7 @@ export async function discardItemsBatch(jid, selections=[]) {
         'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
         [sel.qty,jid,sel.itemId]
       )
-      if(remaining===0 && ['weapon','armor'].includes(item.category)){
+      if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
         await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
       }
 
@@ -1625,9 +1635,9 @@ const EQUIPMENT = {
   espada_eclipse: { category:'weapon', atk:54, def:0, name:'Espada do Eclipse' },
   martelo_golem: { category:'weapon', atk:70, def:0, hp:50, crit:0, name:'Martelo do Golem Ancestral' },
   excalibur: { category:'weapon', atk:85, def:0, hp:0, crit:.02, name:'Excalibur' },
-  katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, spd:10, name:'Katana Divina' },
-  sabre_runico: { category:'weapon', atk:32, def:0, hp:0, crit:.01, spd:4, name:'Sabre Rúnico' },
-  lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, spd:6, name:'Lâmina do Caçador' },
+  katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, name:'Katana Divina' },
+  sabre_runico: { category:'weapon', atk:32, def:0, hp:0, crit:.01, name:'Sabre Rúnico' },
+  lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, name:'Lâmina do Caçador' },
   espada_guardiao: { category:'weapon', atk:50, def:0, hp:25, crit:0, name:'Espada do Guardião' },
 
   armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
@@ -1646,12 +1656,18 @@ const EQUIPMENT = {
   armadura_titan: { category:'armor', atk:0, def:85, hp:110, crit:0, name:'Armadura do Titã' },
   armadura_divina: { category:'armor', atk:0, def:95, hp:140, crit:.01, name:'Armadura Divina' },
   armadura_bastiao: { category:'armor', atk:0, def:30, hp:35, crit:0, name:'Armadura do Bastião' },
-  manto_runico: { category:'armor', atk:0, def:42, hp:55, crit:.01, spd:5, name:'Manto Rúnico' },
+  manto_runico: { category:'armor', atk:0, def:42, hp:55, crit:.01, name:'Manto Rúnico' },
   couraca_guardiao: { category:'armor', atk:0, def:50, hp:70, crit:0, name:'Couraça do Guardião' },
   coroa_madrugada: { category:'armor', atk:20, def:50, name:'Coroa da Madrugada' },
   colete_vital: { category:'armor', atk:0, def:18, hp:60, crit:0, name:'Colete Vital' },
-  couraca_predador: { category:'armor', atk:0, def:38, hp:90, crit:.03, spd:7, name:'Couraça do Predador' },
+  couraca_predador: { category:'armor', atk:0, def:38, hp:90, crit:.03, name:'Couraça do Predador' },
   armadura_colosso: { category:'armor', atk:0, def:52, hp:140, crit:.04, name:'Armadura do Colosso' },
+
+  bota_leve: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:2, name:'Bota Leve' },
+  bota_vento: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:4, name:'Bota do Vento' },
+  bota_cacador: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:6, name:'Bota do Caçador' },
+  bota_relampago: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:8, name:'Bota do Relâmpago' },
+  bota_celestial: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:10, name:'Bota Celestial' },
 }
 
 const POTIONS = {
@@ -1776,8 +1792,8 @@ export async function listUpgradeableEquipment(jid){
     FROM inventories inv
     JOIN items i ON i.id=inv.item_id
     LEFT JOIN equipment_upgrades u ON u.jid=inv.jid AND u.item_id=inv.item_id
-    WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor')
-    ORDER BY CASE i.category WHEN 'weapon' THEN 1 ELSE 2 END,
+    WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor','boots')
+    ORDER BY CASE i.category WHEN 'weapon' THEN 1 WHEN 'armor' THEN 2 ELSE 3 END,
              CASE i.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
              i.name
   `,[jid])
@@ -1866,7 +1882,7 @@ export async function equipItem(jid, itemId) {
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
 
-    const field=eq.category==='weapon' ? 'weapon_id' : 'armor_id'
+    const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : 'boot_id'
     await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
     return {...eq,itemId}
   })
@@ -1974,11 +1990,13 @@ export async function usePotion(jid, itemId) {
 export async function getCombatProfile(jid) {
   const p=await getProfile(jid)
   if(!p) return null
-  const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id])
+  const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id])
   const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1):null
   const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1):null
+  const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
   const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
+  const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   return {
     ...p,
     base_atk:Number(p.atk),
@@ -1987,8 +2005,8 @@ export async function getCombatProfile(jid) {
     weapon_atk:Number(w.atk||0),
     armor_def:Number(a.def||0),
     equipment_hp:Number(w.hp||0)+Number(a.hp||0),
-    equipment_spd:Number(w.spd||0)+Number(a.spd||0),
-    effective_spd:Number(p.spd)+Number(w.spd||0)+Number(a.spd||0),
+    equipment_spd:Number(b.spd||0),
+    effective_spd:Number(p.spd)+Number(b.spd||0),
     equipment_crit:Number(w.crit||0)+Number(a.crit||0),
     base_crit:0.10,
     effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)),
@@ -1998,8 +2016,10 @@ export async function getCombatProfile(jid) {
     effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0),
     weapon_name:w.name,
     armor_name:a.name,
+    boot_name:b.name,
     weapon_level:Number(w.level||1),
     armor_level:Number(a.level||1),
+    boot_level:Number(b.level||1),
   }
 }
 
@@ -2042,8 +2062,10 @@ export async function battle(attackerJid, defenderJid) {
     const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
     const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 
     const A={
       jid:attackerJid,name:au?.push_name||'Jogador',
@@ -2051,7 +2073,7 @@ export async function battle(attackerJid, defenderJid) {
       atk:Number(a.atk)+aeW.atk+aeA.atk,
       def:Number(a.def)+aeW.def+aeA.def,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)),
-      spd:Number(a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)
+      spd:Number(a.spd)+Number(aeB.spd||0)
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
@@ -2059,7 +2081,7 @@ export async function battle(attackerJid, defenderJid) {
       atk:Number(b.atk)+beW.atk+beA.atk,
       def:Number(b.def)+beW.def+beA.def,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)),
-      spd:Number(b.spd)+Number(beW.spd||0)+Number(beA.spd||0)
+      spd:Number(b.spd)+Number(beB.spd||0)
     }
 
     const log=[]
