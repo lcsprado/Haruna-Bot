@@ -48,6 +48,34 @@ let webTablesPromise = null
 const sha256 = value => crypto.createHash('sha256').update(String(value)).digest('hex')
 const now = () => Date.now()
 
+function memberRef(scope,jid){
+  const secret=String(process.env.WEB_MEMBER_TOKEN_SECRET||process.env.DATABASE_URL||'alpha-web-dev-only')
+  return 'mref_'+crypto.createHmac('sha256',secret).update(String(scope||'global')+'\0'+String(jid||'')).digest('base64url').slice(0,22)
+}
+function isPrivateJid(value){
+  const s=String(value||'')
+  return s.endsWith('@s.whatsapp.net') || s.endsWith('@lid')
+}
+function sanitizePrivateRefs(value,session,scope=null){
+  const refScope=scope||session?.chatJid||'global'
+  if(Array.isArray(value)) return value.map(v=>sanitizePrivateRefs(v,session,refScope))
+  if(value && typeof value==='object'){
+    const out={}
+    for(const [rawKey,rawValue] of Object.entries(value)){
+      let key=rawKey
+      if(isPrivateJid(rawKey)) key=rawKey===session?.jid?rawKey:memberRef(refScope,rawKey)
+      else {
+        const m=rawKey.match(/^(coin_duel|rps_duel):(.+)$/)
+        if(m && isPrivateJid(m[2]) && m[2]!==session?.jid) key=m[1]+':'+memberRef(refScope,m[2])
+      }
+      out[key]=sanitizePrivateRefs(rawValue,session,refScope)
+    }
+    return out
+  }
+  if(isPrivateJid(value) && String(value)!==String(session?.jid||'')) return memberRef(refScope,value)
+  return value
+}
+
 async function ensureWebTables(){
   if(webTablesReady) return
   if(webTablesPromise) return webTablesPromise
@@ -445,8 +473,8 @@ async function groupTarget(session,targetJid){
   const target=String(targetJid||'')
   if(!target || target===session.jid) throw new Error('Escolha outro membro do grupo.')
   const roster=await weeklyActivityLeaderboard(chatJid,20)
-  const member=roster.find(x=>x.jid===target)
-  if(!member) throw new Error('Esse jogador não está entre os membros recentes do grupo vinculado.')
+  const member=roster.find(x=>x.jid===target || memberRef(chatJid,x.jid)===target)
+  if(!member || member.jid===session.jid) throw new Error('Esse jogador não está entre os membros recentes do grupo vinculado.')
   return member
 }
 
@@ -699,12 +727,14 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='GET' && url.pathname==='/api/v1/me/bootstrap'){
-      json(res,200,{ok:true,data:await playerBootstrap(session)})
+      const data=await playerBootstrap(session)
+      json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})
       return true
     }
 
     if(req.method==='GET' && url.pathname==='/api/v1/me/extras'){
-      json(res,200,{ok:true,data:await playerExtras(session)})
+      const data=await playerExtras(session)
+      json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})
       return true
     }
 
@@ -712,7 +742,7 @@ export async function handleWebApi(req,res){
       const actionName=decodeURIComponent(url.pathname.slice('/api/v1/action/'.length))
       const body=await readJson(req)
       const rawResult=await runAction(session,actionName,body)
-      const result=sanitizeActionResult(actionName,rawResult)
+      const result=sanitizePrivateRefs(sanitizeActionResult(actionName,rawResult),session)
       json(res,200,{ok:true,result})
       return true
     }
