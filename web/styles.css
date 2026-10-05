@@ -109,3 +109,12 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .raid-party{margin:14px 0;padding:12px;border:1px solid #24364e;border-radius:12px;background:#09111a}
 .raid-party .section-title{margin-bottom:8px}
 .raid-party h4{margin:0}
+
+.level-rewards{display:grid;gap:8px}
+.level-reward{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px;border:1px solid #23344b;border-radius:11px;background:#09111a}
+.level-reward>div{display:grid;grid-template-columns:auto auto;align-items:center;gap:6px 10px}
+.level-reward small{grid-column:1/-1;color:var(--muted)}
+.level-reward.locked{opacity:.55}
+.level-reward.claimed{opacity:.7}
+.level-reward.unlocked{border-color:#46613b}
+.reward-status{font-size:11px;font-weight:800;white-space:nowrap}
