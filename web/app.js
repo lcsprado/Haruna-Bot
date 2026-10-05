@@ -5,6 +5,9 @@ const ui = {
   token: localStorage.getItem(TOKEN_KEY) || '',
   catalog: null,
   data: null,
+  extras: null,
+  extrasFetchedAt: 0,
+  lastResult: null,
   page: 'home',
   petTab: 'owned',
   raidTimer: null,
@@ -20,6 +23,12 @@ const navItems = [
   ['shop','🏪','Loja'],
   ['raids','⚔️','Raids'],
   ['boss','👹','Boss'],
+  ['social','🥊','Social'],
+  ['market','📣','Mercado'],
+  ['clan','🛡️','Clã'],
+  ['games','🎮','Minigames'],
+  ['activities','⏳','Atividades'],
+  ['rankings','🏆','Rankings'],
   ['economy','💰','Economia'],
   ['loans','💳','Empréstimos']
 ];
