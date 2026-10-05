@@ -13,7 +13,9 @@ const ui = {
   raidTimer: null,
   raidLevel: null,
   bossTimer: null,
-  syncing: false
+  syncing: false,
+  avatarUrl: '',
+  avatarFetchedAt: 0
 };
 
 const navItems = [
@@ -75,6 +77,25 @@ async function api(path, options){
   return body;
 }
 
+async function syncAvatar(force=false){
+  if(!ui.token) return;
+  if(!force && ui.avatarFetchedAt && Date.now()-ui.avatarFetchedAt<60000) return;
+  ui.avatarFetchedAt=Date.now();
+  try{
+    const res=await fetch(API_BASE+'/api/v1/me/avatar',{headers:{authorization:'Bearer '+ui.token},cache:'no-store'});
+    if(res.status===404){
+      if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
+      ui.avatarUrl='';
+      return;
+    }
+    if(!res.ok) return;
+    const blob=await res.blob();
+    const next=URL.createObjectURL(blob);
+    if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
+    ui.avatarUrl=next;
+  }catch{}
+}
+
 async function exchange(code){
   const clean=String(code||'').trim().toUpperCase();
   if(!clean) throw new Error('Informe o código gerado pelo !web.');
@@ -96,6 +117,7 @@ async function sync(silent){
     const values=await Promise.all(jobs);
     if(values[0]) ui.catalog=values[0].data;
     ui.data=values[1].data;
+    await syncAvatar(false);
     showApp();
     render();
     setSync(true);
@@ -166,6 +188,8 @@ async function logout(remote){
   if(remote!==false && ui.token){
     try{ await api('/api/v1/auth/logout',{method:'POST',body:'{}'}); }catch{}
   }
+  if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
+  ui.avatarUrl=''; ui.avatarFetchedAt=0;
   ui.token=''; ui.data=null; ui.catalog=null; ui.extras=null; ui.extrasFetchedAt=0;
   localStorage.removeItem(TOKEN_KEY);
   showLogin();
@@ -205,7 +229,7 @@ function itemCount(id){
 function renderHeader(){
   const p=profile();
   const raw=(ui.data&&ui.data.profile)||p;
-  $('#miniProfile').innerHTML='<strong>'+esc(raw.push_name||'Jogador')+'</strong><small>Nível '+num(raw.level)+' • '+(ui.data&&ui.data.identity&&ui.data.identity.groupLinked?'grupo vinculado':'sem grupo vinculado')+'</small>';
+  $('#miniProfile').innerHTML='<div class="mini-profile-row">'+(ui.avatarUrl?'<img class="mini-avatar" src="'+esc(ui.avatarUrl)+'" alt="">':'<div class="mini-avatar fallback">A</div>')+'<div><strong>'+esc(raw.push_name||'Jogador')+'</strong><small>Nível '+num(raw.level)+' • '+(ui.data&&ui.data.identity&&ui.data.identity.groupLinked?'grupo vinculado':'sem grupo vinculado')+'</small></div></div>';
   $('#topStats').innerHTML=[
     '<span class="top-pill">❤️ '+num(p.effective_hp||p.hp)+'/'+num(p.effective_max_hp||p.max_hp)+'</span>',
     '<span class="top-pill">💵 '+money(raw.cash)+'</span>',
