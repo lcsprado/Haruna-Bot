@@ -368,7 +368,7 @@ async function playerBootstrap(session){
   const chatJid=session.chatJid||null
   const [
     market,clan,clans,ranks,economyRank,combatRank,petRank,patrimonyRank,
-    loanCredit,carpinarPlans,groupMission,groupMissionLeaderboard
+    loanCredit,carpinarPlans,groupMission,groupMissionLeaderboard,groupEvent
   ]=await Promise.all([
     listMarket(30),
     getClanForUser(jid),
@@ -381,7 +381,8 @@ async function playerBootstrap(session){
     getLoanCredit(jid),
     Promise.resolve(getCarpinarPlans()),
     chatJid?getGroupMission(chatJid):Promise.resolve(null),
-    chatJid?getGroupMissionLeaderboard(chatJid):Promise.resolve([])
+    chatJid?getGroupMissionLeaderboard(chatJid):Promise.resolve([]),
+    chatJid?db.query('SELECT event_type,reward_cash,spawned_at,expires_at,claimed_by FROM group_events WHERE chat_jid=$1',[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null)
   ])
   return {
     syncedAt:now(),
@@ -395,6 +396,7 @@ async function playerBootstrap(session){
     },
     groupMission,
     groupMissionLeaderboard,
+    groupEvent,
     levelRewards:[5,10,15,20,25,30,35,40,45,50].map(getLevelRewardPreview).filter(Boolean)
   }
 }
