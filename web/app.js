@@ -28,6 +28,7 @@ const navItems = [
   ['clan','🛡️','Clã'],
   ['games','🎮','Minigames'],
   ['activities','⏳','Atividades'],
+  ['progression','📈','Progressão'],
   ['rankings','🏆','Rankings'],
   ['economy','💰','Economia'],
   ['loans','💳','Empréstimos']
@@ -131,7 +132,7 @@ async function doAction(name,body,options){
     const response=await api('/api/v1/action/'+encodeURIComponent(name),{method:'POST',body:JSON.stringify(body||{})});
     ui.lastResult=response.result;
     if(options.afterSync!==false) await sync(true);
-    if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
+    if(['social','market','clan','games','activities','progression','rankings','loans'].includes(ui.page)){
       await syncExtras(true).catch(()=>null);
       render();
     }
@@ -214,6 +215,24 @@ function renderHeader(){
   $('#pageTitle').textContent=title;
 }
 
+function cooldownLabel(key){
+  const raw=String(key||'').replace(/^[^:]+:/,'').replace(/[_:]+/g,' ');
+  const map={battle:'Duelo',rob:'Roubar',work:'Trabalhar',uber:'Uber',ifood:'iFood',daily:'Daily',petduel:'Duelo Pet',dungeon:'Dungeon'};
+  const first=raw.split(' ')[0];
+  return map[first]||titleCase(raw||key);
+}
+function renderCooldowns(){
+  const rows=(ui.data&&ui.data.cooldowns)||[];
+  const nowSec=Math.floor(Date.now()/1000);
+  if(!rows.length) return '<div class="empty">Nenhum cooldown ativo.</div>';
+  return '<div class="list">'+rows.map(row=>{
+    const expires=Number(row.expires_at||0);
+    const remain=Math.max(0,expires-nowSec);
+    const mins=Math.floor(remain/60), secs=remain%60;
+    return '<div class="list-row"><span>'+esc(cooldownLabel(row.key))+'</span><strong>'+mins+'m '+secs+'s</strong></div>';
+  }).join('')+'</div>';
+}
+
 function statCard(label,value,sub){
   return '<div class="card stat-card"><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong><span>'+esc(sub||'')+'</span></div>';
 }
@@ -228,7 +247,7 @@ function renderHome(){
     '<div><p class="eyebrow">CONTA REAL DO WHATSAPP</p><h2>'+esc(raw.push_name||'Jogador')+'</h2>'+
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div>'+
-    '<div class="hero-actions"><button class="btn primary" data-action="daily">🎁 Daily</button><button class="btn" data-action="work">💼 Trabalhar</button><button class="btn" data-resync>↻ Sincronizar</button></div></div>'+
+    '<div class="hero-actions"><button class="btn primary" data-action="daily">🎁 Daily</button><button class="btn good" data-action="all">⚡ ALL</button><button class="btn" data-action="work">💼 Trabalhar</button><button class="btn" data-resync>↻ Sincronizar</button></div></div>'+
     '<div class="hero-side"><div><small>CARTEIRA</small><strong>'+money(raw.cash)+'</strong></div><div><small>BANCO</small><strong>'+money(raw.bank)+'</strong></div><div><small>ARMA</small><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div><div><small>ARMADURA</small><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div></div>'+
   '</div>'+
   '<div class="grid stats">'+
@@ -248,7 +267,8 @@ function renderHome(){
         '<div class="list-row"><span>Carpinando</span><strong>'+(activities.carpinar?'SIM':'NÃO')+'</strong></div>'+
       '</div>'+
     '</div>'+
-  '</div>';
+  '</div>'+
+  '<div class="section card"><div class="section-title"><h3>Cooldowns ativos</h3><small>Mesmo estado do WhatsApp</small></div>'+renderCooldowns()+'</div>';
 }
 
 function renderMissionList(missions){
@@ -276,12 +296,18 @@ function petPortrait(species){
 }
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
+  const active=Boolean(p.active);
   return '<div class="card pet-card owned">'+petPortrait(p.species)+
-    '<div class="tag-row"><span class="tag good">'+(p.active?'ATIVO':'COLEÇÃO')+'</span><span class="tag">'+esc(cat&&cat.style||'Pet')+'</span></div>'+
+    '<div class="tag-row"><span class="tag '+(active?'good':'')+'">'+(active?'ATIVO':'COLEÇÃO')+'</span><span class="tag">'+esc(cat&&cat.style||'Pet')+'</span></div>'+
     '<h3>'+esc(p.name||cat&&cat.label||titleCase(p.species))+'</h3>'+
-    '<p>'+esc(titleCase(p.species))+' • Lv.'+num(p.level)+' • HP '+num(p.hp)+'/'+num(p.max_hp)+' • Energia '+num(p.energy)+'</p>'+
+    '<p>'+esc(titleCase(p.species))+' • Lv.'+num(p.level)+' • XP '+num(p.xp)+' • Poder '+num(p.power)+'</p>'+
+    '<p>❤️ '+num(p.hp)+'/'+num(p.max_hp)+' • ⚡ Energia '+num(p.energy)+' • 🍗 '+num(p.hunger)+'/100 • 🧼 '+num(p.hygiene)+'/100</p>'+
     '<p>'+esc(specialtyText(cat))+'</p>'+
-    '<div class="pet-actions">'+(!p.active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+'<button class="btn" data-pet-id="'+p.id+'">ID '+p.id+'</button></div>'+
+    '<div class="pet-actions">'+
+      (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
+      (active?'<button class="btn" data-pet-rename>Renomear</button><button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
+      '<button class="btn" data-pet-id="'+p.id+'">ID '+p.id+'</button>'+
+    '</div>'+
   '</div>';
 }
 function catalogPetCard(p){
@@ -363,10 +389,19 @@ function renderRaids(){
       const s=raidState(r.level);
       const hp=s?Number(s.hp||0):Number(r.hp||0), max=s?Number(s.maxHp||s.max_hp||r.hp):Number(r.hp||1);
       let buttons='';
+      const players=Object.values((s&&s.players)||{});
+      const meJoined=players.some(p=>p&&p.jid===ui.data.identity.jid);
+      const isHost=Boolean(s&&s.host===ui.data.identity.jid);
       if(!s) buttons='<button class="btn primary" data-raid-create="'+r.level+'">Abrir Raid</button>';
-      else if(s.status==='lobby') buttons='<button class="btn good" data-raid-start="'+r.level+'">Iniciar</button><button class="btn danger" data-raid-cancel="'+r.level+'">Cancelar</button>';
-      else if(s.status==='active') buttons='<button class="btn good" data-raid-auto="'+r.level+'">'+(ui.raidLevel===r.level?'⏸ AUTO ON':'▶ AUTO')+'</button><button class="btn" data-raid-round="'+r.level+'">Rodada</button>';
-      return '<div class="card raid-card"><div class="tag-row"><span class="tag">LV.'+r.level+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(s.status).toUpperCase():'DISPONÍVEL')+'</span></div><h3>'+esc(r.name)+'</h3><p>❤️ '+num(hp)+'/'+num(max)+' • ATK '+num(r.atk)+' • '+num(r.durationMinutes)+' min</p><div class="progress"><span style="width:'+pct(hp/max*100)+'%"></span></div><p>🔑 '+money(r.keyPrice)+'</p><div class="raid-actions">'+buttons+'</div></div>';
+      else if(s.status==='lobby'){
+        buttons=(meJoined?'':'<button class="btn primary" data-raid-join="'+r.level+'">Entrar</button>')+
+          (isHost?'<button class="btn good" data-raid-start="'+r.level+'">Iniciar</button><button class="btn danger" data-raid-cancel="'+r.level+'">Cancelar</button>':'');
+      }else if(s.status==='active'){
+        buttons=(meJoined?'':'<button class="btn primary" data-raid-join="'+r.level+'">Entrar agora</button>')+
+          '<button class="btn good" data-raid-auto="'+r.level+'">'+(ui.raidLevel===r.level?'⏸ AUTO ON':'▶ AUTO')+'</button><button class="btn" data-raid-round="'+r.level+'">Rodada</button>';
+      }
+      const party=players.length?'<div class="list compact">'+players.map(p=>'<div class="list-row"><span>'+esc(p.name||'Jogador')+'</span><small>'+(p.alive===false?'💀 CAÍDO':'❤️ ATIVO')+' • '+num(p.damage||0)+' dano</small></div>').join('')+'</div>':'<div class="empty">Sem participantes.</div>';
+      return '<div class="card raid-card"><div class="tag-row"><span class="tag">LV.'+r.level+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(s.status).toUpperCase():'DISPONÍVEL')+'</span><span class="tag">'+players.length+'/5</span></div><h3>'+esc(r.name)+'</h3><p>❤️ '+num(hp)+'/'+num(max)+' • ATK '+num(r.atk)+' • '+num(r.durationMinutes)+' min</p><div class="progress"><span style="width:'+pct(hp/max*100)+'%"></span></div><p>🔑 '+money(r.keyPrice)+'</p>'+party+'<div class="raid-actions">'+buttons+'</div></div>';
     }).join('')+'</div>';
 }
 
@@ -464,6 +499,45 @@ function renderActivities(){
     '<div class="section card"><div class="section-title"><h3>Expedições</h3></div><pre class="result-box">'+esc(JSON.stringify(exp,null,2))+'</pre></div>'+resultPanel();
 }
 
+function renderProgression(){
+  const d=ui.data||{}, ex=ui.extras||{}, p=profile(), raw=d.profile||{};
+  const streak=d.streak||{}, career=d.career||{}, achievements=d.achievements||[], missions=d.dailyMissions||[];
+  const level=Number(raw.level||1), exp=Number(raw.exp||0);
+  const nextExp=Math.max(1,level*100);
+  const careerXp=Number(career.career_xp||career.xp||0), shifts=Number(career.total_shifts||career.shifts||0);
+  return '<div class="page-head"><div><h2>Progressão</h2><p>Equivale aos dados de !nivel, !streak, !carreira, !conquistas e !missoes.</p></div><span class="tag good">NÍVEL '+num(level)+'</span></div>'+
+    '<div class="grid stats">'+
+      statCard('NÍVEL',num(level),'EXP '+num(exp)+' / '+num(nextExp))+
+      statCard('STREAK',num(streak.currentStreak||streak.current_streak||0)+' dias','Recorde '+num(streak.bestStreak||streak.best_streak||0))+
+      statCard('CARREIRA XP',num(careerXp),num(shifts)+' turnos')+
+      statCard('CONQUISTAS',num(achievements.length),'desbloqueadas')+
+    '</div>'+
+    '<div class="section grid two">'+
+      '<div class="card"><div class="section-title"><h3>Perfil RPG</h3><small>Mesmo stats do WhatsApp</small></div><div class="list">'+
+        '<div class="list-row"><span>❤️ HP</span><strong>'+num(p.effective_hp||p.hp)+' / '+num(p.effective_max_hp||p.max_hp)+'</strong></div>'+
+        '<div class="list-row"><span>⚔️ ATK</span><strong>'+num(p.effective_atk||p.atk)+'</strong></div>'+
+        '<div class="list-row"><span>🛡️ DEF</span><strong>'+num(p.effective_def||p.def)+'</strong></div>'+
+        '<div class="list-row"><span>💨 SPD</span><strong>'+num(p.effective_spd||p.spd)+'</strong></div>'+
+        '<div class="list-row"><span>⚡ CRIT</span><strong>'+Math.round(Number(p.effective_crit||0)*100)+'%</strong></div>'+
+        '<div class="list-row"><span>🏆 Vitórias</span><strong>'+num(p.win||p.wins||0)+'</strong></div>'+
+        '<div class="list-row"><span>💀 Derrotas</span><strong>'+num(p.loss||p.losses||0)+'</strong></div>'+
+      '</div></div>'+
+      '<div class="card"><div class="section-title"><h3>Equipamentos</h3><small>Níveis reais</small></div><div class="list">'+
+        '<div class="list-row"><span>🗡️ Arma</span><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div>'+
+        '<div class="list-row"><span>🛡️ Armadura</span><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div>'+
+        '<div class="list-row"><span>👢 Botas</span><strong>'+esc(p.boot_name||'Nenhuma')+' Lv.'+num(p.boot_level||1)+'</strong></div>'+
+      '</div></div>'+
+    '</div>'+
+    '<div class="section grid two">'+
+      '<div class="card"><div class="section-title"><h3>Conquistas</h3><small>'+achievements.length+'</small></div>'+(achievements.length?'<div class="list">'+achievements.map(a=>'<div class="list-row"><span>'+esc(a)+'</span><strong>✓</strong></div>').join('')+'</div>':'<div class="empty">Nenhuma conquista desbloqueada.</div>')+'</div>'+
+      '<div class="card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
+    '</div>'+
+    '<div class="section grid two">'+
+      '<div class="card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+
+      '<div class="card"><div class="section-title"><h3>Cooldowns</h3><small>Servidor</small></div>'+renderCooldowns()+'</div>'+
+    '</div>'+resultPanel();
+}
+
 function leaderboardBlock(title,rows,valueFn){
   return '<div class="card"><div class="section-title"><h3>'+esc(title)+'</h3></div><div class="list">'+((rows||[]).length?(rows||[]).map((x,i)=>'<div class="list-row"><span>#'+(i+1)+' '+esc(x.push_name||x.name||'Jogador')+'</span><strong>'+esc(valueFn(x))+'</strong></div>').join(''):'<div class="empty">Sem dados.</div>')+'</div></div>';
 }
@@ -485,7 +559,7 @@ function renderEconomy(){
   return '<div class="page-head"><div><h2>Economia</h2><p>Patrimônio e operações usam as mesmas tabelas e rotinas do bot.</p></div><span class="tag good">'+money(Number(p.cash||0)+Number(p.bank||0))+'</span></div>'+
     '<div class="grid stats">'+statCard('CARTEIRA',money(p.cash),'disponível')+statCard('BANCO',money(p.bank),'saldo')+statCard('CARROS',cars.length,'garagem')+statCard('MOTOS / BIKE',bikes.length,'entregas')+'</div>'+
     '<div class="section grid two">'+
-      '<div class="card"><div class="section-title"><h3>Ações rápidas</h3></div><div class="hero-actions"><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button><button class="btn" data-deposit>🏦 Depositar</button><button class="btn" data-withdraw>💵 Sacar</button></div></div>'+
+      '<div class="card"><div class="section-title"><h3>Ações rápidas</h3><small>Mesmas rotinas do WhatsApp</small></div><div class="hero-actions"><button class="btn good" data-action="all">⚡ ALL</button><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button><button class="btn" data-deposit>🏦 Depositar</button><button class="btn" data-withdraw>💵 Sacar</button></div></div>'+
       '<div class="card"><div class="section-title"><h3>Patrimônio</h3></div><pre class="result-box">'+esc(JSON.stringify(d.patrimony||{},null,2))+'</pre></div>'+
     '</div>'+
     '<div class="section"><div class="section-title"><h3>Casa</h3><small>'+(house?esc(house.house_id||house.id||house.name):'Sem casa')+'</small></div><div class="grid cards">'+(catalog.houses||[]).map(x=>'<div class="card catalog-card"><h3>🏠 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-house-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
@@ -513,7 +587,7 @@ function renderLoans(){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=(renderers[ui.page]||renderHome)();
   bind();
 }
@@ -531,6 +605,12 @@ function bind(){
     if(petIds.length) doAction('pet.team',{petIds,replaceAll:true},{});
   });
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
+  document.querySelectorAll('[data-pet-rename]').forEach(x=>x.onclick=()=>{
+    const current=(collection().find(p=>p.active)||{}).name||'';
+    const name=prompt('Novo nome do pet ativo (R$ 1.000):',current);
+    if(name && name!==current) doAction('pet.rename',{name},{});
+  });
+  document.querySelectorAll('[data-pet-action]').forEach(x=>x.onclick=()=>doAction('pet.action',{action:x.dataset.petAction},{}));
   document.querySelectorAll('[data-pet-adopt]').forEach(x=>x.onclick=()=>{
     const name=prompt('Nome deste pet:','Alpha');
     if(name) doAction('pet.adopt',{species:x.dataset.petAdopt,name:name},{});
@@ -547,6 +627,7 @@ function bind(){
   document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>doAction('item.sell',{itemId:x.dataset.itemSell,qty:1},{}));
   document.querySelectorAll('[data-shop-buy]').forEach(x=>x.onclick=()=>doAction('item.buy',{itemId:x.dataset.shopBuy,qty:1},{}));
   document.querySelectorAll('[data-raid-create]').forEach(x=>x.onclick=()=>doAction('raid.create',{level:Number(x.dataset.raidCreate),name:ui.data.profile.push_name},{}));
+  document.querySelectorAll('[data-raid-join]').forEach(x=>x.onclick=()=>doAction('raid.join',{level:Number(x.dataset.raidJoin),name:ui.data.profile.push_name},{}));
   document.querySelectorAll('[data-raid-start]').forEach(x=>x.onclick=async()=>{
     const level=Number(x.dataset.raidStart);
     await doAction('raid.start',{level:level},{});
