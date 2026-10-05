@@ -350,7 +350,7 @@ export async function initDatabase() {
     ['bota_vento','Bota do Vento','Bota incomum focada em iniciativa. +4 SPD.','boots',22000,'uncommon'],
     ['bota_cacador','Bota do Caçador','Bota rara para agir primeiro. +6 SPD.','boots',52000,'rare'],
     ['bota_relampago','Bota do Relâmpago','Bota épica de alta velocidade. +8 SPD.','boots',110000,'epic'],
-    ['bota_celestial','Bota Celestial','Bota lendária de velocidade extrema. +10 SPD.','boots',0,'legendary'],
+    ['bota_celestial','Bota Celestial','Bota lendária de velocidade extrema. +10 SPD. Apenas por drop.','boots',0,'legendary'],
 
     // Chaves de Raid
     ['chave_raid_10','Chave de Raid Lv.10','Abre uma Raid de nível 10. A chave só é consumida quando a luta começa.','special',10000,'uncommon'],
@@ -2755,11 +2755,11 @@ const BOX_CONFIG = {
 }
 
 const LOOT_POOLS = {
-  common:['pocao_p','espada_madeira','armadura_couro'],
-  uncommon:['pocao_m','espada_ferro','armadura_ferro'],
-  rare:['pocao_g','espada_aco','machado_guerra','katana_sombria','armadura_aco','armadura_samurai','armadura_cavaleiro'],
-  epic:['elixir_supremo','espada_flamas','tridente_tempestade','lamina_abissal','foice_carmesim','lanca_solar','garras_vazio','espada_eclipse','armadura_dragao','armadura_abissal','armadura_celestial','manto_fenix','couraca_vulcanica','armadura_vazio','armadura_eclipse'],
-  legendary:['excalibur','katana_divina','armadura_titan','armadura_divina']
+  common:['pocao_p','espada_madeira','armadura_couro','bota_leve'],
+  uncommon:['pocao_m','espada_ferro','armadura_ferro','bota_vento'],
+  rare:['pocao_g','espada_aco','machado_guerra','katana_sombria','armadura_aco','armadura_samurai','armadura_cavaleiro','bota_cacador'],
+  epic:['elixir_supremo','espada_flamas','tridente_tempestade','lamina_abissal','foice_carmesim','lanca_solar','garras_vazio','espada_eclipse','armadura_dragao','armadura_abissal','armadura_celestial','manto_fenix','couraca_vulcanica','armadura_vazio','armadura_eclipse','bota_relampago'],
+  legendary:['excalibur','katana_divina','armadura_titan','armadura_divina','bota_celestial']
 }
 
 function pick(arr){
