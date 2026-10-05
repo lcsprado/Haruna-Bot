@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
+import { getAdoptablePetRule } from './game-catalog.js'
 
 const { Pool, Client } = pg
 
@@ -4147,35 +4148,7 @@ export async function summonLegendaryPet(jid,materialId){
 export async function adoptPet(jid,species='cachorro',name='Alpha'){
   await ensureUser(jid)
   species=String(species||'cachorro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-  const rules={
-    cachorro:{level:1,price:5000,label:'🐶 Cachorro'},
-    gato:{level:2,price:8000,label:'🐱 Gato'},
-    coelho:{level:3,price:12000,label:'🐰 Coelho'},
-    papagaio:{level:4,price:18000,label:'🦜 Papagaio'},
-    hamster:{level:5,price:25000,label:'🐹 Hamster'},
-    tartaruga:{level:6,price:35000,label:'🐢 Tartaruga'},
-    coruja:{level:7,price:50000,label:'🦉 Coruja'},
-    raposa:{level:8,price:70000,label:'🦊 Raposa'},
-    lobo:{level:10,price:100000,label:'🐺 Lobo'},
-    aguia:{level:12,price:150000,label:'🦅 Águia'},
-    gaviao:{level:13,price:190000,label:'🦅 Gavião'},
-    panda:{level:14,price:225000,label:'🐼 Panda'},
-    tigre:{level:17,price:350000,label:'🐯 Tigre'},
-    leao:{level:20,price:500000,label:'🦁 Leão'},
-    cervo_mistico:{level:20,price:500000,label:'🦌 Cervo Místico'},
-    unicornio:{level:25,price:750000,label:'🦄 Unicórnio'},
-    dragao:{level:30,price:1000000,label:'🐉 Dragão'},
-    golfinho_celestial:{level:9,price:85000,label:'🐬 Golfinho Celestial'},
-    moreia_sombria:{level:11,price:125000,label:'🐍 Moreia Sombria'},
-    tubarao_abissal:{level:15,price:275000,label:'🦈 Tubarão Abissal'},
-    guepardo:{level:16,price:320000,label:'🐆 Guepardo'},
-    polvo_arcano:{level:18,price:400000,label:'🐙 Polvo Arcano'},
-    gazela_mistica:{level:19,price:450000,label:'🦌 Gazela Mística'},
-    orca_guerra:{level:22,price:600000,label:'🐋 Orca de Guerra'},
-    cavalo_guerra:{level:23,price:650000,label:'🐎 Cavalo de Guerra'},
-    baleia_colossal:{level:28,price:900000,label:'🐋 Baleia Colossal'}
-  }
-  const rule=rules[species]
+  const rule=getAdoptablePetRule(species)
   if(!rule) throw new Error('Pet inválido. Use !adotar para ver os pets disponíveis.')
   return transaction(async client=>{
     const ur=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid]); const level=Number(ur.rows[0]?.level||1)
