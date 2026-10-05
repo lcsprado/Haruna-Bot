@@ -2233,7 +2233,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 🏪 *Mercado entre jogadores*
 *!mercado* — lista anúncios e mostra quanto tempo falta para expirar
-*!anunciar* — anuncia um item por 1 hora; se não vender, volta ao inventário
+*!anunciar* — escolhe item, quantidade e preço; mostra preço sugerido e anuncia por 1 hora
 *!comprar#3* / *!comprar #3* — abre o anúncio #3 e confirma a compra
 *!compraritem* — abre a lista de anúncios
 *!cancelarvenda ID* — cancela seu anúncio
@@ -5426,26 +5426,75 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='market_sell_select'){
+      if(input==='0'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Anúncio cancelado.')
+        return true
+      }
       const item=flow.data.items?.[Number(input)-1]
       if(!item){
         await reply('🏪 Escolha um item pelo número.')
         return true
       }
-      setQuickFlow(chat,sender,'market_sell_price',{itemId:item.item_id,name:item.name},5*60*1000)
-      await reply(`🏷️ *${item.name}*\n\nDigite o valor que quer anunciar.\nEx.: *20000*\n\n0️⃣ Cancelar`)
+      const shopPrice=Number(item.price||0)
+      const sellUnit=Math.max(1,Number(item.sellUnit||0))
+      const suggestedUnit=shopPrice>0
+        ? Math.max(sellUnit+1,Math.round(shopPrice*0.75))
+        : Math.max(1,Math.round(sellUnit*1.5))
+      const commonData={
+        itemId:item.item_id,
+        name:item.name,
+        maxQty:Number(item.quantity||1),
+        suggestedUnit
+      }
+      if(Number(item.quantity||1)>1){
+        setQuickFlow(chat,sender,'market_sell_quantity',commonData,5*60*1000)
+        await reply(`🏷️ *${item.name}*\n\n📦 Você possui: *${Number(item.quantity||0)}*\n\nDigite quantas unidades quer anunciar.\nEx.: *3*\n\n0️⃣ Cancelar`)
+        return true
+      }
+      const suggestedTotal=suggestedUnit
+      setQuickFlow(chat,sender,'market_sell_price',{...commonData,qty:1,suggestedTotal},5*60*1000)
+      await reply(`🏷️ *${item.name}* ×1\n\n💡 Preço sugerido: *R$ ${suggestedTotal.toLocaleString('pt-BR')}*\n\n1️⃣ Usar preço sugerido\n✍️ Ou digite outro valor total.\nEx.: *20000*\n\n0️⃣ Cancelar`)
+      return true
+    }
+
+    if(flow.stage==='market_sell_quantity'){
+      if(input==='0'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Anúncio cancelado.')
+        return true
+      }
+      const qty=parseInt(input,10)
+      const maxQty=Number(flow.data.maxQty||1)
+      if(!Number.isInteger(qty)||qty<1||qty>maxQty){
+        await reply(`📦 Digite uma quantidade de *1 a ${maxQty}*.`)
+        return true
+      }
+      const suggestedUnit=Math.max(1,Number(flow.data.suggestedUnit||1))
+      const suggestedTotal=suggestedUnit*qty
+      setQuickFlow(chat,sender,'market_sell_price',{...flow.data,qty,suggestedTotal},5*60*1000)
+      await reply(`🏷️ *${flow.data.name}* ×${qty}\n\n💡 Preço sugerido por unidade: *R$ ${suggestedUnit.toLocaleString('pt-BR')}*\n💰 Sugerido pelo lote: *R$ ${suggestedTotal.toLocaleString('pt-BR')}*\n\n1️⃣ Usar preço sugerido\n✍️ Ou digite outro valor *TOTAL* do anúncio.\nEx.: *20000*\n\n0️⃣ Cancelar`)
       return true
     }
 
     if(flow.stage==='market_sell_price'){
-      const price=parseAmount(rawInput)
+      if(input==='0'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Anúncio cancelado.')
+        return true
+      }
+      const qty=Math.max(1,Number(flow.data.qty||1))
+      const suggestedTotal=Math.max(1,Number(flow.data.suggestedTotal||1))
+      const price=input==='1'?suggestedTotal:parseAmount(rawInput)
       if(!Number.isInteger(price)||price<1){
-        await reply('💰 Digite um valor válido maior que zero. Ex.: *20000*')
+        await reply('💰 Digite um valor válido maior que zero ou responda *1* para usar o sugerido.')
         return true
       }
       try{
-        const x=await createMarketListing(sender,flow.data.itemId,1,price)
+        const x=await createMarketListing(sender,flow.data.itemId,qty,price)
         clearQuickFlow(chat,sender)
-        await reply(`🏪 *ANÚNCIO CRIADO!*\n\n#${x.id} • *${flow.data.name}* ×1\n💰 Valor: *R$ ${Number(x.price).toLocaleString('pt-BR')}*\n\nQuem quiser comprar usa *!compraritem*.`)
+        const unitPrice=Math.round(Number(x.price)/qty)
+        await reply(`🏪 *ANÚNCIO CRIADO!*\n\n#${x.id} • *${flow.data.name}* ×${qty}\n💰 Valor total: *R$ ${Number(x.price).toLocaleString('pt-BR')}*${qty>1?`\n📦 Aproximadamente: *R$ ${unitPrice.toLocaleString('pt-BR')} por unidade*`:''}\n⏳ Expira em: *1 hora*\n\nQuem quiser comprar usa *!compraritem*.`)
       }catch(err){
         clearQuickFlow(chat,sender)
         await reply('❌ '+(err?.message||'Não foi possível criar o anúncio.'))
@@ -7135,7 +7184,7 @@ Se precisar de mais ajuda, use *!suporte*.`
             if(cmd==='anunciar'){
               const items=(await getInventory(sender)).filter(i=>Number(i.quantity||0)>0)
               if(!items.length) return await reply('🎒 Seu inventário está vazio.')
-              setQuickFlow(chat,sender,'market_sell_select',{items:items.map(i=>({item_id:i.item_id,name:i.name,quantity:Number(i.quantity||0),rarity:i.rarity}))},5*60*1000)
+              setQuickFlow(chat,sender,'market_sell_select',{items:items.map(i=>({item_id:i.item_id,name:i.name,quantity:Number(i.quantity||0),rarity:i.rarity,price:Number(i.price||0),sellUnit:Number(i.sell_unit||0)}))},5*60*1000)
               let text='🏪 *ANUNCIAR ITEM*\n\n'
               items.forEach((i,idx)=>{text+=`*${idx+1}.* ${rarityLabel(i.rarity)} — *${i.name}* ×${i.quantity}\n`})
               text+='\n👉 Responda apenas com o *número do item*.\n0️⃣ Cancelar'
