@@ -891,7 +891,7 @@ function renderEconomy(){
   return '<div class="page-head"><div><h2>Economia</h2><p>Patrimônio e operações usam as mesmas tabelas e rotinas do bot.</p></div><span class="tag good">'+money(Number(p.cash||0)+Number(p.bank||0))+'</span></div>'+
     '<div class="grid stats">'+statCard('CARTEIRA',money(p.cash),'disponível')+statCard('BANCO',money(p.bank),'saldo')+statCard('CARROS',cars.length,'garagem')+statCard('MOTOS / BIKE',bikes.length,'entregas')+'</div>'+
     '<div class="section grid two">'+
-      '<div class="card"><div class="section-title"><h3>Ações rápidas</h3><small>Mesmas rotinas do WhatsApp</small></div><div class="hero-actions"><button class="btn good" data-action="all">⚡ ALL</button><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button><button class="btn" data-deposit>🏦 Depositar</button><button class="btn" data-withdraw>💵 Sacar</button><button class="btn" data-withdraw-all>💸 Sacar tudo</button></div></div>'+
+      '<div class="card"><div class="section-title"><h3>Ações rápidas</h3><small>Mesmas rotinas do WhatsApp</small></div><div class="hero-actions"><button class="btn good" data-action="all">⚡ ALL</button><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button></div><div class="bank-quick"><div><label>Movimentar dinheiro</label><input class="bank-input" data-bank-amount inputmode="numeric" type="number" min="1" placeholder="Digite o valor"></div><div class="hero-actions"><button class="btn" data-deposit>🏦 Depositar</button><button class="btn" data-deposit-all>Depositar tudo</button><button class="btn" data-withdraw>💵 Sacar</button><button class="btn" data-withdraw-all>💸 Sacar tudo</button></div></div></div>'+
       '<div class="card"><div class="section-title"><h3>Patrimônio</h3><small>Mesmo cálculo do !patrimonio</small></div>'+renderPatrimonySummary(d.patrimony)+'</div>'+
     '</div>'+
     '<div class="section"><div class="section-title"><h3>Casa</h3><small>'+(house?esc(house.house_id||house.id||house.name):'Sem casa')+'</small></div><div class="grid cards">'+(catalog.houses||[]).map(x=>'<div class="card catalog-card"><h3>🏠 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-house-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
@@ -991,14 +991,21 @@ function bind(){
   document.querySelectorAll('[data-boss-auto]').forEach(x=>x.onclick=toggleBossAuto);
   document.querySelectorAll('[data-business-upgrade]').forEach(x=>x.onclick=()=>doAction('business.upgrade',{id:x.dataset.businessUpgrade},{}));
   document.querySelectorAll('[data-deposit]').forEach(x=>x.onclick=()=>{
-    const raw=prompt('Quanto depositar? Use total para tudo:','total');
-    if(raw) doAction('deposit',{amount:raw==='total'?'total':Number(raw)},{});
+    const input=document.querySelector('[data-bank-amount]');
+    const amount=Math.floor(Number(input&&input.value||0));
+    if(amount>0) doAction('deposit',{amount},{});
+    else toast('Digite um valor válido para depositar.');
+  });
+  document.querySelectorAll('[data-deposit-all]').forEach(x=>x.onclick=()=>{
+    const amount=Number((ui.data.profile||{}).cash||0);
+    if(amount>0) doAction('deposit',{amount:'total'},{});
+    else toast('Você não tem dinheiro na carteira para depositar.');
   });
   document.querySelectorAll('[data-withdraw]').forEach(x=>x.onclick=()=>{
-    const raw=String(prompt('Quanto sacar? Digite total para sacar todo o banco:','1000')||'').trim().toLowerCase();
-    if(!raw) return;
-    const amount=['total','tudo'].includes(raw)?Number((ui.data.profile||{}).bank||0):Number(raw);
+    const input=document.querySelector('[data-bank-amount]');
+    const amount=Math.floor(Number(input&&input.value||0));
     if(amount>0) doAction('withdraw',{amount},{});
+    else toast('Digite um valor válido para sacar.');
   });
   document.querySelectorAll('[data-withdraw-all]').forEach(x=>x.onclick=()=>{
     const amount=Number((ui.data.profile||{}).bank||0);
