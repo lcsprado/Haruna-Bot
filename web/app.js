@@ -521,6 +521,28 @@ function renderGames(){
     '</div>'+resultPanel();
 }
 
+function renderGroupMissionCard(ex){
+  const board=ex.groupMissionLeaderboard||{}, mission=board.mission||ex.groupMission||null, rows=board.rows||[];
+  if(!mission) return '<div class="empty">Nenhuma missão coletiva carregada.</div>';
+  const target=Math.max(1,Number(mission.target||1)), progress=Number(mission.progress||0);
+  return '<div class="section-title"><div><h3>Missão coletiva</h3><small>'+esc(mission.title||mission.mission_type||'Missão')+'</small></div><span class="tag '+(mission.completed?'good':'')+'">'+num(progress)+'/'+num(target)+'</span></div>'+
+    '<div class="progress"><span style="width:'+pct(progress/target*100)+'%"></span></div>'+
+    '<p>Recompensa total: <strong>'+money(mission.reward_cash||0)+'</strong> • distribuição proporcional à contribuição.</p>'+
+    (rows.length?'<div class="list">'+rows.slice(0,10).map(r=>'<div class="list-row"><span>#'+num(r.position)+' '+esc(r.push_name||'Jogador')+'</span><strong>'+num(r.contribution)+' • '+money(r.share||0)+'</strong></div>').join('')+'</div>':'<div class="empty">Ainda sem contribuição registrada.</div>')+
+    '<div class="hero-actions"><button class="btn good" data-group-mission-claim>Resgatar minha parte</button></div>';
+}
+function renderGroupEventCard(ex){
+  const e=ex.groupEvent||null, nowSec=Math.floor(Date.now()/1000);
+  if(!e || e.claimed_by || Number(e.expires_at||0)<=nowSec){
+    return '<div class="section-title"><h3>Evento relâmpago do grupo</h3><small>Nenhum evento disponível agora</small></div><p>Quando surgir uma maleta, PIX misterioso ou tesouro no grupo, o Web enxergará o mesmo evento.</p>';
+  }
+  const remain=Math.max(0,Number(e.expires_at||0)-nowSec);
+  const labels={maleta:'💼 Maleta de dinheiro',pix:'💸 PIX misterioso',tesouro:'🧰 Pequeno tesouro'};
+  return '<div class="section-title"><div><h3>'+esc(labels[e.event_type]||titleCase(e.event_type))+'</h3><small>Evento compartilhado com o WhatsApp</small></div><span class="tag good">'+remain+'s</span></div>'+
+    '<p>Recompensa base: <strong>'+money(e.reward_cash||0)+'</strong></p>'+
+    '<button class="btn primary" data-group-event-claim>Resgatar agora</button>';
+}
+
 function renderActivities(){
   const d=ui.data, ex=ui.extras||{}, sleep=d.activities&&d.activities.sleep, carp=d.activities&&d.activities.carpinar;
   const missions=d.dailyMissions||[], exp=d.petExpeditions||[], plans=ex.carpinarPlans||[];
@@ -532,7 +554,7 @@ function renderActivities(){
     '</div>'+
     '<div class="section card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
     '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div><pre class="result-box">'+esc(JSON.stringify(ex.levelRewards||[],null,2))+'</pre></div>'+
-    (currentGroup()?'<div class="section card"><div class="section-title"><h3>Missão do grupo</h3><button class="btn good" data-group-mission-claim>Resgatar</button></div><pre class="result-box">'+esc(JSON.stringify(ex.groupMission||{},null,2))+'</pre><button class="btn good" data-group-event-claim>Resgatar evento coletivo</button></div>':'')+
+    (currentGroup()?'<div class="section grid two"><div class="card">'+renderGroupMissionCard(ex)+'</div><div class="card">'+renderGroupEventCard(ex)+'</div></div>':'')+
     '<div class="section card"><div class="section-title"><h3>Expedições</h3></div><pre class="result-box">'+esc(JSON.stringify(exp,null,2))+'</pre></div>'+resultPanel();
 }
 
