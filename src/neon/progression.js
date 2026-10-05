@@ -80,15 +80,17 @@ const sundayRushMultiplier=()=>Date.now()>=SUNDAY_RUSH_START&&Date.now()<SUNDAY_
 
 
 export const BUSINESSES=[
-  {id:'carrinho_lanche',name:'Carrinho de Lanche',price:15000,profitHour:500,capacityHours:8},
-  {id:'barbearia',name:'Barbearia',price:45000,profitHour:1200,capacityHours:8},
-  {id:'loja_roupas',name:'Loja de Roupas',price:120000,profitHour:2800,capacityHours:10},
-  {id:'restaurante',name:'Restaurante',price:300000,profitHour:6200,capacityHours:10},
-  {id:'posto',name:'Posto de Combustível',price:750000,profitHour:14000,capacityHours:12},
-  {id:'mercado',name:'Supermercado',price:1800000,profitHour:33600,capacityHours:12},
-  {id:'hotel',name:'Hotel',price:4500000,profitHour:84000,capacityHours:16},
-  {id:'shopping',name:'Shopping Center',price:12000000,profitHour:224000,capacityHours:18},
-  {id:'tech',name:'Empresa de Tecnologia',price:30000000,profitHour:560000,capacityHours:24},
+  // Curva de renda passiva balanceada para um payback líquido crescente (~56h a ~101h),
+  // já considerando os 10% de TAXADE cobrados no !coletar.
+  {id:'carrinho_lanche',name:'Carrinho de Lanche',price:15000,profitHour:300,capacityHours:8},
+  {id:'barbearia',name:'Barbearia',price:45000,profitHour:800,capacityHours:8},
+  {id:'loja_roupas',name:'Loja de Roupas',price:120000,profitHour:2000,capacityHours:10},
+  {id:'restaurante',name:'Restaurante',price:300000,profitHour:4500,capacityHours:10},
+  {id:'posto',name:'Posto de Combustível',price:750000,profitHour:10500,capacityHours:12},
+  {id:'mercado',name:'Supermercado',price:1800000,profitHour:23500,capacityHours:12},
+  {id:'hotel',name:'Hotel',price:4500000,profitHour:55000,capacityHours:16},
+  {id:'shopping',name:'Shopping Center',price:12000000,profitHour:140000,capacityHours:18},
+  {id:'tech',name:'Empresa de Tecnologia',price:30000000,profitHour:330000,capacityHours:24},
 ]
 
 const MISSION_POOL=[
