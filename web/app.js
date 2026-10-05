@@ -221,6 +221,28 @@ function cooldownLabel(key){
   const first=raw.split(' ')[0];
   return map[first]||titleCase(raw||key);
 }
+function transactionLabel(type){
+  const map={
+    work:'Trabalho',income_tax:'TAXADE',uber:'Uber',ifood:'iFood',transfer:'PIX',
+    shop:'Loja',market:'Mercado',market_sale:'Venda no mercado',raid_reward:'Raid',
+    boss_reward:'Boss',business_collect:'Negócios',daily:'Daily',loan:'Empréstimo',
+    equipment_upgrade:'Upgrade',pet_rename:'Renomear pet',raid_key_auto:'Chave Raid'
+  };
+  return map[String(type||'')]||titleCase(String(type||'movimentação').replace(/_/g,' '));
+}
+function renderTransactions(limit){
+  const rows=((ui.data&&ui.data.recentTransactions)||[]).slice(0,Number(limit||20));
+  const me=ui.data&&ui.data.identity&&ui.data.identity.jid;
+  if(!rows.length) return '<div class="empty">Nenhuma movimentação recente.</div>';
+  return '<div class="list transactions">'+rows.map(t=>{
+    const outgoing=t.from_jid===me && t.to_jid!==me;
+    const incoming=t.to_jid===me && t.from_jid!==me;
+    const sign=outgoing?'-':incoming?'+':'';
+    const when=Number(t.created_at||0)>0?new Date(Number(t.created_at)*1000).toLocaleString('pt-BR'):'';
+    return '<div class="list-row"><div><strong>'+esc(transactionLabel(t.type))+'</strong><small>'+esc(t.note||'')+(when?' • '+esc(when):'')+'</small></div><strong class="'+(incoming?'money-in':outgoing?'money-out':'')+'">'+sign+money(t.amount)+'</strong></div>';
+  }).join('')+'</div>';
+}
+
 function renderCooldowns(){
   const rows=(ui.data&&ui.data.cooldowns)||[];
   const nowSec=Math.floor(Date.now()/1000);
@@ -268,7 +290,10 @@ function renderHome(){
       '</div>'+
     '</div>'+
   '</div>'+
-  '<div class="section card"><div class="section-title"><h3>Cooldowns ativos</h3><small>Mesmo estado do WhatsApp</small></div>'+renderCooldowns()+'</div>';
+  '<div class="section grid two">'+
+    '<div class="card"><div class="section-title"><h3>Cooldowns ativos</h3><small>Mesmo estado do WhatsApp</small></div>'+renderCooldowns()+'</div>'+
+    '<div class="card"><div class="section-title"><h3>Últimas movimentações</h3><small>WhatsApp + Web</small></div>'+renderTransactions(6)+'</div>'+
+  '</div>';
 }
 
 function renderMissionList(missions){
@@ -579,7 +604,8 @@ function renderEconomy(){
     '<div class="section"><div class="section-title"><h3>Garagem</h3><small>'+cars.length+' veículos</small></div><div class="grid cards">'+(cars.length?cars.map(x=>'<div class="card catalog-card"><h3>🚗 '+esc(x.name||x.car_name||x.car_id)+'</h3><p>'+esc(JSON.stringify(x))+'</p><button class="btn danger" data-car-sell="'+esc(x.id||x.car_id)+'">Vender</button></div>').join(''):'<div class="empty">Garagem vazia.</div>')+'</div><div class="grid cards section">'+(catalog.cars||[]).map(x=>'<div class="card catalog-card"><h3>🚘 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-car-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
     '<div class="section"><div class="section-title"><h3>Motos e bicicletas</h3><small>'+bikes.length+' na garagem</small></div><div class="grid cards">'+(bikes.length?bikes.map(x=>'<div class="card catalog-card"><h3>🏍️ '+esc(x.name||x.motorcycle_name||x.motorcycle_id)+'</h3><p>'+esc(JSON.stringify(x))+'</p><button class="btn danger" data-moto-sell="'+esc(x.id||x.motorcycle_id)+'">Vender</button></div>').join(''):'<div class="empty">Nenhuma moto/bike.</div>')+'</div><div class="grid cards section">'+(catalog.motorcycles||[]).map(x=>'<div class="card catalog-card"><h3>🛵 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-moto-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
     '<div class="section"><div class="section-title"><h3>Meus negócios</h3><small>'+businesses.length+'</small></div><div class="grid cards">'+(businesses.length?businesses.map(b=>'<div class="card biz-card"><h3>'+esc(b.name||b.business_id)+'</h3><p>Lv.'+num(b.level||1)+'</p><button class="btn" data-business-upgrade="'+esc(b.business_id||b.id)+'">Upar</button></div>').join(''):'<div class="empty">Você ainda não possui negócios.</div>')+'</div><div class="grid cards section">'+(catalog.businesses||[]).map(x=>'<div class="card catalog-card"><h3>🏢 '+esc(x.name)+'</h3><p>'+money(x.price)+' • '+money(x.profitHour)+'/h</p><button class="btn primary" data-business-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
-    '<div class="section card"><div class="section-title"><h3>Central Uber CLT</h3><small>Mesmo estado do !centraluber</small></div><pre class="result-box">'+esc(JSON.stringify(clt,null,2))+'</pre><div class="hero-actions"><button class="btn" data-clt-hire>Contratar motorista</button><button class="btn primary" data-clt-start>Iniciar turno</button><button class="btn good" data-action="cltUber.collect">Coletar</button></div></div>'+resultPanel();
+    '<div class="section card"><div class="section-title"><h3>Central Uber CLT</h3><small>Mesmo estado do !centraluber</small></div><pre class="result-box">'+esc(JSON.stringify(clt,null,2))+'</pre><div class="hero-actions"><button class="btn" data-clt-hire>Contratar motorista</button><button class="btn primary" data-clt-start>Iniciar turno</button><button class="btn good" data-action="cltUber.collect">Coletar</button></div></div>'+
+    '<div class="section card"><div class="section-title"><h3>Extrato recente</h3><small>Últimas 20 movimentações do mesmo jogador</small></div>'+renderTransactions(20)+'</div>'+resultPanel();
 }
 function renderLoans(){
   const loans=ui.data.loans||{}, borrowed=loans.borrowed||[], lent=loans.lent||[], credit=loans.credit||ui.extras&&ui.extras.loanCredit||{};
