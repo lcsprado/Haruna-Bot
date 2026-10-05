@@ -510,12 +510,41 @@ function renderBoss(){
 function roster(){
   return (currentGroup()&&currentGroup().roster)||[];
 }
+function resultMetric(label,value,kind='text'){
+  const shown=kind==='money'?money(value):kind==='num'?num(value):esc(value);
+  return '<div class="result-metric"><small>'+esc(label)+'</small><strong>'+shown+'</strong></div>';
+}
+function prettyResult(value){
+  if(value==null) return '<div class="empty">Sem detalhes adicionais.</div>';
+  if(typeof value!=='object') return '<div class="result-message">'+esc(value)+'</div>';
+  const metrics=[];
+  const moneyKeys=[['amount','Valor'],['cash','Dinheiro'],['reward','Recompensa'],['payout','Pagamento'],['profit','Lucro'],['fee','Taxa'],['tax','TAXADE'],['gross','Bruto'],['netTotal','Líquido'],['grossTotal','Bruto total'],['taxTotal','TAXADE total'],['pot','Prêmio']];
+  for(const [key,label] of moneyKeys) if(value[key]!=null && Number.isFinite(Number(value[key]))) metrics.push(resultMetric(label,value[key],'money'));
+  const numKeys=[['exp','EXP'],['xp','XP'],['damage','Dano'],['attempts','Tentativas'],['level','Nível'],['totalShifts','Turnos']];
+  for(const [key,label] of numKeys) if(value[key]!=null && (typeof value[key]==='number'||typeof value[key]==='string')) metrics.push(resultMetric(label,value[key],'num'));
+  if(value.won===true) metrics.push(resultMetric('Resultado','🏆 Vitória'));
+  else if(value.won===false && value.lost===true) metrics.push(resultMetric('Resultado','💀 Derrota'));
+  else if(value.correct===true) metrics.push(resultMetric('Resultado','✅ Correto'));
+  else if(value.correct===false) metrics.push(resultMetric('Resultado','❌ Incorreto'));
+  if(value.result && typeof value.result!=='object') metrics.push(resultMetric('Resultado',titleCase(value.result)));
+  if(value.monster) metrics.push(resultMetric('Inimigo',value.monster));
+  if(value.rank) metrics.push(resultMetric('Cargo',typeof value.rank==='object'?(value.rank.name||'Novo cargo'):value.rank));
+  let details='';
+  if(Array.isArray(value.rewards)&&value.rewards.length){
+    details+='<div class="result-rewards"><h4>🎁 Recompensas</h4>'+value.rewards.map(r=>'<div class="reward-chip">'+esc(r.name||r.itemId||r.id||'Item')+(r.qty?' ×'+num(r.qty):'')+'</div>').join('')+'</div>';
+  }
+  if(Array.isArray(value.results)&&value.results.length){
+    details+='<div class="result-rewards"><h4>📋 Detalhes</h4>'+value.results.map(r=>'<div class="reward-chip">'+esc(r.label||r.name||r.result||'Ação')+(r.amount!=null?' • '+money(r.amount):'')+(r.error?' • '+esc(r.error):'')+'</div>').join('')+'</div>';
+  }
+  if(metrics.length||details) return (metrics.length?'<div class="result-metrics">'+metrics.join('')+'</div>':'')+details;
+  let raw; try{raw=JSON.stringify(value,null,2)}catch{raw=String(value)}
+  return '<pre class="result-box">'+esc(raw)+'</pre>';
+}
 function resultPanel(){
   if(ui.lastResult==null) return '';
-  let value;
-  try{ value=JSON.stringify(ui.lastResult,null,2); }catch{ value=String(ui.lastResult); }
-  return '<div class="section card"><div class="section-title"><h3>Último resultado</h3><button class="text-btn" data-clear-result>Limpar</button></div><pre class="result-box">'+esc(value)+'</pre></div>';
+  return '<div class="section card result-card"><div class="section-title"><h3>Resultado</h3><button class="text-btn" data-clear-result>Limpar</button></div>'+prettyResult(ui.lastResult)+'</div>';
 }
+
 function memberCard(m){
   return '<div class="card social-card"><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
     '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn" data-coin-duel="'+esc(m.jid)+'">🪙 Cara/Coroa</button><button class="btn" data-rps-duel="'+esc(m.jid)+'">✊ PPT</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
