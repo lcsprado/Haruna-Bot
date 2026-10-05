@@ -37,7 +37,7 @@ const INITIAL = {
     {id:4,name:'Tartaruga',species:'tartaruga',icon:'🐢',level:12,hp:390,maxHp:390,energy:100,maxEnergy:100,style:'Guardião',bonus:'+DEF'}
   ],
   petTeam:[1,2,3],
-  raid:{level:30,name:'Rei Abissal',icon:'👹',hp:120000,maxHp:120000,myDamage:0,started:false},
+  raid:{level:30,name:'Rei Abissal',icon:'👹',hp:98000,maxHp:98000,atk:55,myDamage:0,started:false},
   boss:{name:'Colosso do Cerco',icon:'🗿',hp:193418,maxHp:193418,atk:26,myDamage:0},
   businesses:[
     {id:1,name:'Loja de Bairro',icon:'🏪',level:3,stored:2840,rate:420},
@@ -62,13 +62,13 @@ const tabs = [
 ];
 
 const RAIDS = [
-  {level:10,name:'Golem de Pedra',icon:'🪨',hp:28000,reward:6500,xp:140},
-  {level:15,name:'Serpe Vulcânica',icon:'🐲',hp:42000,reward:9000,xp:190},
-  {level:20,name:'Olho Abissal',icon:'👁️',hp:62000,reward:12000,xp:250},
-  {level:25,name:'Titã de Ferro',icon:'🦾',hp:85000,reward:15000,xp:330},
-  {level:30,name:'Rei Abissal',icon:'👹',hp:120000,reward:18000,xp:450},
-  {level:40,name:'Guardião Celestial',icon:'🪽',hp:175000,reward:26000,xp:650},
-  {level:50,name:'Alpha Corrompido',icon:'☠️',hp:260000,reward:40000,xp:900}
+  {level:10,name:'Guardião de Pedra',icon:'🪨',hp:13000,atk:15,keyPrice:10000,cashPool:20000,xpPool:1200,petXpPool:120,duration:12,minPlayers:1},
+  {level:15,name:'Dragão Vulcânico',icon:'🐲',hp:24000,atk:23,keyPrice:16000,cashPool:35000,xpPool:1800,petXpPool:180,duration:15,minPlayers:2},
+  {level:20,name:'Devorador Abissal',icon:'👁️',hp:39000,atk:33,keyPrice:25000,cashPool:55000,xpPool:2600,petXpPool:260,duration:18,minPlayers:2},
+  {level:25,name:'Titã de Ferro',icon:'🦾',hp:63000,atk:43,keyPrice:40000,cashPool:80000,xpPool:3600,petXpPool:360,duration:22,minPlayers:2},
+  {level:30,name:'Rei Abissal',icon:'👹',hp:98000,atk:55,keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,duration:30,minPlayers:2},
+  {level:40,name:'Serafim Caído',icon:'🪽',hp:170000,atk:77,keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,duration:40,minPlayers:2},
+  {level:50,name:'Alpha Corrompido',icon:'☠️',hp:290000,atk:108,keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,duration:50,minPlayers:2}
 ];
 
 function Bar({value,max,tone='hp'}) {
@@ -118,7 +118,7 @@ export default function Game(){
   function selectRaid(level){
     const raid=RAIDS.find(x=>x.level===level);
     if(!raid) return;
-    setGame(g=>({...g,raid:{level:raid.level,name:raid.name,icon:raid.icon,hp:raid.hp,maxHp:raid.hp,myDamage:0,started:false}}));
+    setGame(g=>({...g,raid:{level:raid.level,name:raid.name,icon:raid.icon,hp:raid.hp,maxHp:raid.hp,atk:raid.atk,myDamage:0,started:false}}));
     notify('Raid Lv.'+level+' selecionada.');
   }
 
@@ -141,9 +141,12 @@ export default function Game(){
       };
       if(nextHp===0){
         const reward=RAIDS.find(x=>x.level===g.raid.level)||RAIDS[0];
-        out.profile={...out.profile,cash:out.profile.cash+reward.reward,xp:out.profile.xp+reward.xp};
+        const contributionShare=1;
+        const cash=Math.floor(reward.keyPrice*1.08)+Math.floor(reward.cashPool*(.04+.12*contributionShare));
+        const exp=Math.floor(reward.xpPool*(.10+.90*contributionShare));
+        out.profile={...out.profile,cash:out.profile.cash+cash,xp:out.profile.xp+exp};
         out.missions=out.missions.map(m=>m.id===3?{...m,progress:1}:m);
-        return withLog(out,'🏆 Raid Lv.'+g.raid.level+' concluída: +R$ '+fmt(reward.reward)+' e +'+reward.xp+' XP.');
+        return withLog(out,'🏆 Raid Lv.'+g.raid.level+' concluída: +R$ '+fmt(cash)+' e +'+fmt(exp)+' XP.');
       }
       return withLog(out,(crit?'💥 CRÍTICO! ':'⚔️ ')+fmt(dmg)+' de dano na Raid.');
     });
@@ -407,7 +410,7 @@ export default function Game(){
       <div className="battle-info"><span>Seu dano: <b>{fmt(game.raid.myDamage)}</b></span><span>Pet: <b>{activePet.icon} {activePet.name}</b></span><span>Energia: <b>{activePet.energy}/{activePet.maxEnergy}</b></span></div>
       <Button onClick={attackRaid} disabled={game.raid.hp<=0}>⚔️ ATACAR</Button>
     </Card>
-    <Card><div className="card-head"><h3>Raids disponíveis</h3><span>A chave é consumida no primeiro ataque</span></div><div className="raid-levels">{RAIDS.map(r=><button onClick={()=>selectRaid(r.level)} className={r.level===game.raid.level?'active':''} key={r.level}><b>Lv.{r.level}</b><small>{r.name}</small></button>)}</div></Card>
+    <Card><div className="card-head"><h3>Raids disponíveis</h3><span>A chave é consumida no primeiro ataque</span></div><div className="raid-levels">{RAIDS.map(r=><button onClick={()=>selectRaid(r.level)} className={r.level===game.raid.level?'active':''} key={r.level}><b>Lv.{r.level}</b><small>{r.name}</small><small>{fmt(r.hp)} HP · {r.duration} min</small></button>)}</div></Card>
   </div>;
 
   const Boss=()=> <Card className="battle-card event">
