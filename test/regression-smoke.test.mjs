@@ -327,14 +327,14 @@ test('important web activity logs never expose raw action codes and include outc
 })
 
 
-test('endgame special pets use the approved premium artwork with fallback',()=>{
+test('endgame special pets use the approved premium artwork without stacked fallback',()=>{
   assert.ok(app.includes("PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp"),'approved premium pet spritesheet missing')
   assert.ok(app.includes("SPECIAL_PET_ART_SHEETS=["),'Raid pet spritesheets missing')
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
     assert.ok(app.includes("'pet-special-"+species+"'"),'exclusive special-pet art missing for '+species)
   }
   assert.ok(app.includes('const premium=PREMIUM_PET_SPRITES[key]'),'premium art must take priority inside the pet crop resolver')
-  assert.ok(app.includes("const fallback=petCroppedSprite(petSpriteKey(s),className+' pet-fallback-underlay',label)"),'every pet needs a renderable fallback')
+  assert.ok(app.includes("return petCroppedSprite(exclusive,className+' pet-primary-art',label)"),'special pet card must render only its own art layer')
 })
 
 
