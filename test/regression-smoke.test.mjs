@@ -219,6 +219,22 @@ test('reclassification scroll is endgame Boss-only loot',()=>{
 })
 
 
+test('all purchasable and special pet species resolve to artwork',()=>{
+  const adoptable=[
+    'cachorro','gato','coelho','papagaio','hamster','tartaruga','coruja','raposa','golfinho_celestial','lobo',
+    'moreia_sombria','aguia','gaviao','panda','tubarao_abissal','guepardo','tigre','polvo_arcano',
+    'gazela_mistica','leao','cervo_mistico','orca_guerra','cavalo_guerra','unicornio','baleia_colossal','dragao'
+  ]
+  const aliasStart=app.indexOf('const PET_SPRITE_ALIASES={')
+  const aliasEnd=app.indexOf('\n};',aliasStart)
+  const aliases=app.slice(aliasStart,aliasEnd)
+  for(const species of adoptable){
+    assert.ok(aliases.includes(species+':'),'missing fallback artwork mapping for adoptable pet '+species)
+  }
+  assert.ok(app.includes("return fallback;"),'pet renderer must always return an artwork fallback')
+  assert.ok(app.includes("const fallback=petCroppedSprite(petSpriteKey(s)"),'all pet render paths must start with a fallback image')
+})
+
 test('web pet gallery covers every catalog species with framed art',()=>{
   assert.ok(app.includes("return exact[s]||PET_SPRITE_ALIASES[s]||'pet-panther'"),'pet art must never fall through to a missing image')
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
@@ -351,6 +367,13 @@ test('PWA precaches every pet-art source and never ships visible English status 
   assert.ok(!gameCatalog.includes("role:'Bruiser'"),'Bruiser class role must be translated')
   assert.ok(!gameCatalog.includes("role:'DPS "),'DPS role labels must be translated')
   assert.ok(!webIndex.includes('RPG • INSTALÁVEL • SYNC'),'visible SYNC label must be translated')
+  assert.ok(!app.includes("label='Cooldown ativo'"),'class screen must not expose Cooldown in English')
+  assert.ok(!app.includes('<h3>Dungeon</h3>'),'Masmorra must not be shown as Dungeon')
+  assert.ok(!app.includes('<span>🎁 Daily:'),'daily status must be Portuguese')
+  assert.ok(!app.includes('mesmo backend do WhatsApp'),'backend jargon must not be visible')
+  assert.ok(!app.includes("esc(raid.status)"),'raw Raid status must be translated')
+  assert.ok(!app.includes("esc(b.mode||'common')"),'raw Boss mode must be translated')
+  assert.ok(!app.includes("esc(x.status)"),'raw loan status must be translated')
 })
 
 
