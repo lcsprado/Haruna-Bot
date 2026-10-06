@@ -212,7 +212,7 @@ test('web pet gallery covers every catalog species with framed art',()=>{
   }
   assert.ok(app.includes('data-pet-adopt-direct'),'adoption cards must have a direct adoption action')
   assert.ok(app.includes('data-pet-adopt-name'),'adoption cards must allow naming before adoption')
-  assert.ok(app.includes('data-pet-rename="'+p.id+'"'),'every owned pet card must expose rename by collection id')
+  assert.ok(app.includes("data-pet-rename=\"'+p.id+'\""),'every owned pet card must expose rename by collection id')
   assert.ok(webApi.includes("renamePet(jid,String(body.name||''),body.petId==null?null:positiveInt(body.petId,'Pet'))"),'web rename must target the selected pet id')
   assert.ok(db.includes('export async function renamePet(jid,name,petId=null)'),'backend must support renaming any collection pet')
 })
