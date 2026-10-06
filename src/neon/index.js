@@ -594,39 +594,43 @@ _Responda apenas com o número._`
 async function showMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'nav_main',{},90000)
   await reply(
-`🔥🚀 *ALPHA BOT — INAUGURAÇÃO* 🚀🔥
+`🤖 *ALPHA BOT — CENTRAL DO GRUPO*
 
-🎁 *TESTE GRÁTIS POR 3 DIAS*
-Chame a galera, teste o RPG completo e veja quem vira o verdadeiro Alpha do grupo.
-💚 *Promoção de inauguração por tempo limitado.*
+Um bot completo para o grupo — não só RPG.
 
-⚔️ Evolua seu personagem • 🐾 monte seu time pet
-👹 Faça Boss e Raids com os amigos
-💰 Crie patrimônio, trabalhe, faça Uber/iFood e abra negócios
-🎮 Minigames, duelos, eventos e ranking
+💰 *Economia & patrimônio*
+Trabalho, banco, PIX, Uber, iFood, negócios, veículos e ranking.
+
+⚔️ *RPG & progressão*
+Personagem, itens, pets, Dungeon, Raids, Boss, clãs e missões.
+
+🎮 *Diversão & competição*
+Minigames, duelos, eventos e rankings.
+
+🛡️ *Grupo & utilidades*
+Moderação, futebol, ferramentas, assinatura e suporte.
 
 ━━━━━━━━━━━━━━
-🤖 *MENU PRINCIPAL*
+📍 *MENU PRINCIPAL*
 
-1️⃣ 👤 Meu perfil
-2️⃣ 💰 Economia
-3️⃣ 🛒 Itens e inventário
-4️⃣ ⚔️ RPG, Dungeon & Pets
+1️⃣ 👤 Perfil & conta
+2️⃣ 💰 Economia & banco
+3️⃣ 🛒 Loja, itens & inventário
+4️⃣ ⚔️ RPG, Raids & Pets
 5️⃣ 🎮 Minigames & Boss
-6️⃣ 📋 Progressão & patrimônio
+6️⃣ 📈 Progressão & patrimônio
 7️⃣ 🏴 Clãs
-8️⃣ 💚 Grupo / assinatura
-9️⃣ 🆘 Futebol, utilidades & suporte
+8️⃣ 💚 Grupo & assinatura
+9️⃣ 🧰 Futebol, utilidades & suporte
 
-🚀 *COMECE AGORA*
-*!perfil* • *!rpg* • *!pet* • *!raid* • *!minigames*
-📚 Lista completa: *!comandos*
-🌐 RPG Web: *!web*
+💡 *ATALHOS*
+*!perfil* • *!saldo* • *!trabalhar* • *!uber* • *!ifood*
+*!rpg* • *!pet* • *!raid* • *!minigames*
+📚 Todos os recursos: *!comandos*
+🌐 Área Web: *!web*
 
-💥 *3 dias grátis para testar no grupo.*
-Depois, se curtirem, é só usar *!assinar*.
-
-👉 *Responda apenas com o número.*
+🎁 Grupos novos podem testar o Alpha Bot por *3 dias grátis*.
+👉 Responda apenas com o número.
 0️⃣ Sair`
   )
 }
@@ -634,25 +638,24 @@ Depois, se curtirem, é só usar *!assinar*.
 async function showCommandsMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
   await reply(
-`🔥📚 *ALPHA BOT — COMANDOS* 📚🔥
+`📚 *ALPHA BOT — CENTRAL DE COMANDOS*
 
-🎉 *PROMOÇÃO DE INAUGURAÇÃO*
-🎁 Seu grupo pode testar o Alpha Bot por *3 DIAS GRÁTIS*.
-⚔️ RPG • 🐾 Pets • 👹 Raids/Boss • 💰 Economia • 🎮 Minigames
-
-💡 Jogue com os amigos, monte seu personagem e descubra quem manda no ranking antes do teste acabar.
+O Alpha reúne *economia, entretenimento, RPG, recursos de grupo e utilidades* no mesmo bot.
+Escolha a área e eu mostro só os comandos que interessam.
 
 1️⃣ 👤 Perfil, conta & social
-2️⃣ 💰 Economia, trabalho & banco
+2️⃣ 💰 Economia, trabalho, banco & PIX
 3️⃣ 🛒 Loja, inventário & mercado
-4️⃣ 🐾 RPG, combate & pets
-5️⃣ 🎮 Minigames
-6️⃣ 📋 Progressão, missões & patrimônio
+4️⃣ ⚔️ RPG, combate, Raids & pets
+5️⃣ 🎮 Minigames, Boss & eventos
+6️⃣ 📈 Progressão, missões & patrimônio
 7️⃣ 🏴 Clãs
-8️⃣ 🛡️ Grupo & moderação
-9️⃣ ⚽ Futebol, utilidades & suporte
+8️⃣ 🛡️ Grupo, moderação & assinatura
+9️⃣ 🧰 Futebol, utilidades & suporte
 
-💚 Curtiu? Use *!assinar* para continuar depois do teste.
+💡 Dica: use *!menu* para navegar sem decorar comandos.
+🎁 Teste do grupo: *3 dias grátis*.
+
 👉 Responda só com o número.
 0️⃣ Fechar`
   )
