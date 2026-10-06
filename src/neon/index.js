@@ -31,7 +31,7 @@ import {
   adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
-  listTradeableItems, createItemTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
+  listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
@@ -5485,7 +5485,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     if(flow.stage==='trade_request_item'){
       const wanted=flow.data.targetItems?.[Number(input)-1]
       if(!wanted){
-        await reply('🤝 Escolha o item que você quer receber pelo número.')
+        let out='🤝 *ESCOLHA O ITEM QUE VOCÊ QUER RECEBER*\n\n'
+        const items=flow.data.targetItems||[]
+        items.forEach((x,i)=>{out+=`*${i+1}.* ${x.name} ×${x.quantity}\n`})
+        out+='\n👉 Responda com um número válido da lista.\n0️⃣ Cancelar'
+        await reply(out)
         return true
       }
       try{
@@ -7300,8 +7304,12 @@ Se precisar de mais ajuda, use *!suporte*.`
               out+='\n🔒 Só será possível pedir outro item da *mesma raridade* e na *mesma quantidade*.\n0️⃣ Cancelar'
               return await reply(out,{mentions:[targetRaw]})
             }
-            const id=Number(args[0])
-            if(!Number.isSafeInteger(id)||id<1) return await reply(`Uso: *${prefix}${cmd} ID*`)
+            let id=Number(args[0])
+            if(!Number.isSafeInteger(id)||id<1){
+              const pending=await getLatestPendingTradeOffer(sender)
+              if(!pending) return await reply('🤝 Você não possui proposta de troca pendente.')
+              id=Number(pending.id)
+            }
             if(cmd==='aceitartroca'){
               const t=await acceptItemTradeOffer(sender,id)
               return await reply(`✅ *TROCA #${t.id} CONCLUÍDA!*\n\n📥 Você recebeu: *${t.offer.name} ×${t.quantity}*\n📤 Você entregou: *${t.request.name} ×${t.quantity}*\n🎨 Raridade: ${rarityLabel(t.rarity)}`,{mentions:[t.fromJid]})
