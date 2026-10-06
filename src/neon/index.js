@@ -285,7 +285,8 @@ async function runRaidCombat(chat,level,reply){
           let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
           if(r.special) text+=`\n🔥 *${r.specialName}!* O Boss usou um ataque especial.\n`
           if(bossCrits) text+=`\n💢 Crítico do Boss: *${bossCrits} jogador${bossCrits>1?'es':''} atingido${bossCrits>1?'s':''}*.\n`
-          const survivorNames=bossEvents.filter(e=>e.alive).map(e=>String(e.name||'Jogador')).filter(Boolean)\n          text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*\n👥 Sobreviventes (${r.survivors}): *${survivorNames.join(' • ')||'nenhum'}*`
+          const survivorNames=bossEvents.filter(e=>e.alive).map(e=>String(e.name||'Jogador')).filter(Boolean)
+          text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*\n👥 Sobreviventes (${r.survivors}): *${survivorNames.join(' • ')||'nenhum'}*`
           for(const e of heals) text+=`\n🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
           for(const e of petHeals) text+=`\n🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
           for(const e of petSkillHeals) text+=`\n💚 *${e.petSkillHeal.name}* ativou a skill de cura em ${e.name}: *+${Number(e.petSkillHeal.heal||0).toLocaleString('pt-BR')} HP* (${Number(e.petSkillHeal.hp||0).toLocaleString('pt-BR')}/${Number(e.petSkillHeal.maxHp||0).toLocaleString('pt-BR')}).`
