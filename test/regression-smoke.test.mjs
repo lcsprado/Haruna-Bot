@@ -210,8 +210,11 @@ test('web pet gallery covers every catalog species with framed art',()=>{
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
     assert.ok(app.includes(species+":"),'missing pet art alias for '+species)
   }
-  assert.ok(app.includes('data-pet-adopt-open'),'adoption cards must open the adoption flow')
-  assert.ok(app.includes('data-pet-adopt-confirm'),'adoption flow needs an explicit confirmation button')
+  assert.ok(app.includes('data-pet-adopt-direct'),'adoption cards must have a direct adoption action')
+  assert.ok(app.includes('data-pet-adopt-name'),'adoption cards must allow naming before adoption')
+  assert.ok(app.includes('data-pet-rename="'+p.id+'"'),'every owned pet card must expose rename by collection id')
+  assert.ok(webApi.includes("renamePet(jid,String(body.name||''),body.petId==null?null:positiveInt(body.petId,'Pet'))"),'web rename must target the selected pet id')
+  assert.ok(db.includes('export async function renamePet(jid,name,petId=null)'),'backend must support renaming any collection pet')
 })
 
 test('PWA rivalry actions are echoed back to the linked WhatsApp group',()=>{
