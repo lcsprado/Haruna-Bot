@@ -7,7 +7,7 @@ import {
   petStyleLabel, getEquipmentInfo, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
-  setPetTeam, summonLegendaryPet, getCombatProfile, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
+  setPetTeam, summonLegendaryPet, getCombatProfile, setPlayerClass, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
   transfer, battle, petDuel, dungeon, robPlayer,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   openLootBoxes, openLuckyBoxes, sellDuplicateEquipment,
@@ -38,7 +38,7 @@ import {
   patrimonyLeaderboard, hireCltUberDriver
 } from './progression.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES } from './game-catalog.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 
 const CODE_TTL_MS = 30 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -196,6 +196,30 @@ async function exchangeWebLinkCode(code){
     throw err
   }finally{
     client.release()
+  }
+}
+
+
+async function webAuthSelfTest(){
+  await ensureWebTables()
+  const code=makeLinkCode()
+  const codeHash=sha256(code)
+  const jid='__alpha_web_health__'
+  const created=now()
+  await db.query(
+    'INSERT INTO web_link_codes(code_hash,jid,chat_jid,expires_at,created_at) VALUES($1,$2,NULL,$3,$4)',
+    [codeHash,jid,created+60000,created]
+  )
+  let tokenHash=''
+  try{
+    const session=await exchangeWebLinkCode(code)
+    tokenHash=sha256(session.token)
+    const row=(await db.query('SELECT jid,expires_at FROM web_sessions WHERE token_hash=$1',[tokenHash])).rows[0]
+    if(!row||row.jid!==jid||Number(row.expires_at)<=created) throw new Error('Sessão de teste não foi persistida.')
+    return {ok:true,codeExchange:true,sessionPersisted:true}
+  }finally{
+    if(tokenHash) await db.query('DELETE FROM web_sessions WHERE token_hash=$1',[tokenHash]).catch(()=>{})
+    await db.query('DELETE FROM web_link_codes WHERE code_hash=$1',[codeHash]).catch(()=>{})
   }
 }
 
@@ -470,6 +494,7 @@ async function publicCatalog(){
     cars:CARS,
     motorcycles:MOTORCYCLES,
     businesses:BUSINESSES,
+    classes:Object.values(PLAYER_CLASSES),
     cltUberTypes:CLT_UBER_TYPES,
     loanRules:LOAN_RULES
   }
@@ -596,6 +621,7 @@ async function runAction(session,name,body={}){
       const member=await groupTarget(session,body.targetJid)
       return createLoanOffer(jid,member.jid,positiveInt(body.amount,'Valor'))
     }
+    case 'character.select': return setPlayerClass(jid,String(body.classId||''))
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
@@ -715,7 +741,18 @@ export async function handleWebApi(req,res){
 
   try{
     if(req.method==='GET' && url.pathname==='/api/v1/health'){
-      json(res,200,{ok:true,service:'alpha-web-api',version:1})
+      json(res,200,{ok:true,service:'alpha-web-api',version:2})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/health/auth'){
+      try{
+        const check=await webAuthSelfTest()
+        json(res,200,{ok:true,...check})
+      }catch(err){
+        console.error('[Web Auth] self-test failed',err)
+        json(res,503,{ok:false,error:'Falha no fluxo de autenticação Web.'})
+      }
       return true
     }
 
