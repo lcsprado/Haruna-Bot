@@ -410,10 +410,38 @@ function formatRemaining(seconds){
   if(m>0) return m+'m '+s+'s';
   return s+'s';
 }
+function cooldownExpiry(action){
+  const row=((ui.data&&ui.data.cooldowns)||[]).find(x=>cooldownKey(x.key)===String(action||'').toLowerCase());
+  return row?Number(row.expires_at||0):0;
+}
 function cooldownRemaining(action){
   const nowSec=Math.floor(Date.now()/1000);
-  const row=((ui.data&&ui.data.cooldowns)||[]).find(x=>cooldownKey(x.key)===String(action||'').toLowerCase());
-  return row?Math.max(0,Number(row.expires_at||0)-nowSec):0;
+  const expires=cooldownExpiry(action);
+  return expires?Math.max(0,expires-nowSec):0;
+}
+function refreshLiveCountdowns(){
+  const nowSec=Math.floor(Date.now()/1000);
+  document.querySelectorAll('[data-cooldown-expires]').forEach(el=>{
+    const expires=Number(el.dataset.cooldownExpires||0);
+    const remain=Math.max(0,expires-nowSec);
+    el.textContent=formatRemaining(remain);
+    if(remain<=0){
+      const row=el.closest('.list-row');
+      if(row) row.remove();
+    }
+  });
+  document.querySelectorAll('[data-work-cooldown]').forEach(btn=>{
+    const expires=Number(btn.dataset.workCooldown||0);
+    const remain=Math.max(0,expires-nowSec);
+    if(remain>0){
+      btn.disabled=true;
+      btn.textContent='⏳ Trabalhar • '+formatRemaining(remain);
+    }else{
+      btn.disabled=false;
+      btn.textContent='💼 Trabalhar';
+      delete btn.dataset.workCooldown;
+    }
+  });
 }
 function transactionLabel(type){
   const map={
@@ -439,12 +467,12 @@ function renderTransactions(limit){
 function renderCooldowns(){
   const rows=(ui.data&&ui.data.cooldowns)||[];
   const nowSec=Math.floor(Date.now()/1000);
-  if(!rows.length) return '<div class="empty">Nenhum cooldown ativo.</div>';
-  return '<div class="list">'+rows.map(row=>{
+  const active=rows.filter(row=>Number(row.expires_at||0)>nowSec);
+  if(!active.length) return '<div class="empty">Nenhum cooldown ativo.</div>';
+  return '<div class="list">'+active.map(row=>{
     const expires=Number(row.expires_at||0);
     const remain=Math.max(0,expires-nowSec);
-    const mins=Math.floor(remain/60), secs=remain%60;
-    return '<div class="list-row"><span>'+esc(cooldownLabel(row.key))+'</span><strong>'+mins+'m '+secs+'s</strong></div>';
+    return '<div class="list-row"><span>'+esc(cooldownLabel(row.key))+'</span><strong data-cooldown-expires="'+expires+'">'+esc(formatRemaining(remain))+'</strong></div>';
   }).join('')+'</div>';
 }
 
@@ -505,6 +533,8 @@ function renderHome(){
   const activities=(ui.data&&ui.data.activities)||{};
   const missions=(ui.data&&ui.data.dailyMissions)||[];
   const dailyDone=Boolean(ui.data&&ui.data.streak&&ui.data.streak.claimedToday);
+  const dailyStreak=Number(ui.data&&ui.data.streak&&ui.data.streak.streak||0);
+  const workExpires=cooldownExpiry('work');
   const workRemain=cooldownRemaining('work');
   const dailyText=dailyDone?'✅ Daily feito':'🎁 Daily';
   const workText=workRemain>0?'⏳ Trabalhar • '+formatRemaining(workRemain):'💼 Trabalhar';
@@ -513,7 +543,8 @@ function renderHome(){
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
     '<div class="home-exp"><div><span>⭐ EXP</span><strong>'+num(raw.exp||0)+'/'+num(Math.max(1,Number(raw.level||1)*100))+'</strong></div><div class="progress exp-progress"><span style="width:'+pct(Number(raw.exp||0)/Math.max(1,Number(raw.level||1)*100)*100)+'%"></span></div></div>'+
-    '<div class="hero-actions"><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ ALL</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div></div>'+
+    '<div class="hero-actions"><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ ALL</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+' '+(workExpires?'data-work-cooldown="'+workExpires+'"':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div>'+
+    '<div class="home-action-status"><span>🎁 Daily: <strong>'+(dailyDone?'feito hoje':'disponível')+'</strong> • sequência '+num(dailyStreak)+'</span><span>💼 Trabalho: <strong>'+(workRemain>0?'cooldown '+esc(formatRemaining(workRemain)):'disponível')+'</strong></span></div></div>'+
     '<div class="hero-side"><div><small>CARTEIRA</small><strong>'+money(raw.cash)+'</strong></div><div><small>BANCO</small><strong>'+money(raw.bank)+'</strong></div><div><small>ARMA</small><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div><div><small>ARMADURA</small><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div></div>'+
   '</div>'+
   resultPanel()+
@@ -797,7 +828,7 @@ function prettyResult(value){
     details+='<div class="result-rewards"><h4>🎁 Recompensas</h4>'+value.rewards.map(r=>'<div class="reward-chip">'+esc(r.name||r.itemId||r.id||'Item')+(r.qty?' ×'+num(r.qty):'')+'</div>').join('')+'</div>';
   }
   if(Array.isArray(value.results)&&value.results.length){
-    details+='<div class="result-rewards"><h4>📋 Detalhes</h4>'+value.results.map(r=>'<div class="reward-chip">'+esc(r.label||r.name||r.result||'Ação')+(r.amount!=null?' • '+money(r.amount):'')+(r.error?' • '+esc(r.error):'')+'</div>').join('')+'</div>';
+    details+='<div class="result-rewards"><h4>📋 Detalhes</h4>'+value.results.map(r=>'<div class="reward-chip">'+esc(r.label||r.name||r.result||'Ação')+(r.amount!=null?' • '+money(r.amount):'')+(r.cooldown&&Number(r.remaining)>0?' • ⏳ '+esc(formatRemaining(r.remaining)):'')+(r.error?' • '+esc(r.error):'')+'</div>').join('')+'</div>';
   }
   const combat=renderCombatResult(value);
   if(combat) return combat+(metrics.length?'<div class="result-metrics section">'+metrics.join('')+'</div>':'')+details;
@@ -1432,6 +1463,9 @@ document.addEventListener('visibilitychange',()=>{
 setInterval(()=>{
   if(!document.hidden && ui.token && !ui.syncing) sync(true);
 },15000);
+setInterval(()=>{
+  if(!document.hidden && ui.token) refreshLiveCountdowns();
+},1000);
 
 (async function boot(){
   renderNav();

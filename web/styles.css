@@ -267,3 +267,7 @@ body.menu-open .sidebar{touch-action:pan-y}
 @keyframes arenaImpact{0%,100%{filter:none}38%{filter:brightness(1.18)}}
 @keyframes slashFlash{0%{opacity:0;transform:translateX(-40%) rotate(-18deg) scaleX(.2)}30%{opacity:1}100%{opacity:0;transform:translateX(35%) rotate(-18deg) scaleX(1.2)}}
 @keyframes alphaCounter{0%,100%{transform:translateX(0) scale(1)}45%{transform:translateX(-28%) translateY(-5px) scale(1.06)}}
+
+.home-action-status{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:12px;color:var(--muted);font-size:10px}
+.home-action-status span{padding:6px 9px;border:1px solid #25364b;border-radius:999px;background:#09111a}
+.home-action-status strong{color:var(--text)}
