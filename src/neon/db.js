@@ -1211,6 +1211,22 @@ export async function createItemTradeOffer(fromJid,toJid,offerItemId,requestItem
   })
 }
 
+export async function getLatestPendingTradeOffer(jid) {
+  const now=Math.floor(Date.now()/1000)
+  await db.query("UPDATE item_trade_offers SET status='expired' WHERE status='pending' AND expires_at<=$1",[now])
+  const {rows}=await db.query(`
+    SELECT t.id,t.from_jid,t.to_jid,t.offer_item_id,t.request_item_id,t.quantity,t.rarity,t.expires_at,
+           a.name AS offer_name,b.name AS request_name,u.push_name AS from_name
+    FROM item_trade_offers t
+    JOIN items a ON a.id=t.offer_item_id
+    JOIN items b ON b.id=t.request_item_id
+    LEFT JOIN users u ON u.jid=t.from_jid
+    WHERE t.to_jid=$1 AND t.status='pending' AND t.expires_at>$2
+    ORDER BY t.created_at DESC,t.id DESC
+    LIMIT 1
+  `,[jid,now])
+  return rows[0]||null
+}
 export async function acceptItemTradeOffer(jid,offerId) {
   offerId=Number(offerId)
   if(!Number.isSafeInteger(offerId)||offerId<1) throw new Error('ID de troca inválido.')
