@@ -676,10 +676,20 @@ async function sendWebGroupActivity(session,actionName,body,result){
     text='⚡ *ROTINA COMPLETA*\n'+meName+' executou as atividades disponíveis pelo *!all* no Alpha RPG.'
     mentions=[me]
   }else if(actionName==='deposit'){
-    text='🏦 *BANCO*\n'+meName+' depositou *'+brl(body.amount||0)+'*.'
+    const amount=Number(result?.amount||0)
+    const cash=Number(result?.cash||0)
+    const bank=Number(result?.bank||0)
+    text='🏦 *BANCO*\n'+meName+' depositou *'+brl(amount)+'*.'+
+      '\n💵 Carteira: *'+brl(cash)+'*'+
+      '\n🏦 Saldo no banco: *'+brl(bank)+'*'
     mentions=[me]
   }else if(actionName==='withdraw'){
-    text='💵 *BANCO*\n'+meName+' sacou *'+brl(body.amount||0)+'*.'
+    const amount=Number(body.amount||0)
+    const cash=Number(result?.cash||0)
+    const bank=Number(result?.bank||0)
+    text='💵 *BANCO*\n'+meName+' sacou *'+brl(amount)+'*.'+
+      '\n💵 Carteira: *'+brl(cash)+'*'+
+      '\n🏦 Saldo no banco: *'+brl(bank)+'*'
     mentions=[me]
   }else if(actionName==='transfer'){
     text='💸 *TRANSFERÊNCIA*\n'+meName+' transferiu *'+brl(body.amount||0)+'* para outro jogador.'
@@ -773,7 +783,28 @@ async function sendWebGroupActivity(session,actionName,body,result){
     text=(actionName==='uber'?'🚕 *UBER*':'🍔 *IFOOD*')+'\n'+meName+' fez uma corrida/entrega'+(amount>0?' e recebeu *'+brl(amount)+'*':'')+'.'
     mentions=[me]
   }else if(actionName.startsWith('business.')){
-    text='🏢 *NEGÓCIOS*\n'+meName+' '+(actionName==='business.buy'?'comprou um negócio':actionName==='business.collect'?'coletou os ganhos dos negócios':'melhorou um negócio')+'.'
+    if(actionName==='business.collect'){
+      const gross=Number(result?.gross||0)
+      const tax=Number(result?.tax||0)
+      const net=Number(result?.total||result?.net||0)
+      const taxRate=Number(result?.taxRate||0)
+      const details=Array.isArray(result?.details)?result.details.filter(x=>Number(x?.earned||0)>0):[]
+      text='🏢 *NEGÓCIOS*\n'+meName+' coletou os ganhos dos negócios.'+
+        '\n💰 Bruto: *'+brl(gross)+'*'+
+        (tax>0?'\n🧾 TAXADE ('+taxRate+'%): *-'+brl(tax)+'*':'')+
+        '\n💵 Líquido recebido: *'+brl(net)+'*'
+      if(details.length){
+        text+='\n\n📊 *Produção*'
+        for(const item of details.slice(0,8)) text+='\n• '+String(item.name||'Negócio')+': *'+brl(item.earned)+'*'
+      }
+    }else if(actionName==='business.buy'){
+      text='🏢 *NEGÓCIOS*\n'+meName+' comprou *'+String(result?.name||body.id||'um negócio')+'*'+
+        (Number(result?.price||0)>0?' por *'+brl(result.price)+'*':'')+'.'
+    }else{
+      text='🏢 *NEGÓCIOS*\n'+meName+' melhorou *'+String(result?.name||body.id||'um negócio')+'*'+
+        (Number(result?.cost||0)>0?' por *'+brl(result.cost)+'*':'')+
+        (Number(result?.level||0)>0?' para o nível *'+Number(result.level)+'*':'')+'.'
+    }
     mentions=[me]
   }else if(actionName.startsWith('car.')||actionName.startsWith('motorcycle.')||actionName==='house.buy'){
     const labels={'car.buy':'comprou um carro','car.sell':'vendeu um carro','motorcycle.buy':'comprou uma moto/bike','motorcycle.sell':'vendeu uma moto/bike','house.buy':'comprou uma casa'}
