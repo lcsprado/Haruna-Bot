@@ -6878,7 +6878,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
         }
 
         if(isGroup && !isOwner){
-          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','piada','joke','horoscopo','horóscopo'])
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair'])
@@ -7282,6 +7282,33 @@ Se precisar de mais ajuda, use *!suporte*.`
             await reply('💍 *CASAMENTO CONFIRMADO!* 🎉',{mentions:[targetRaw]})
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível concluir.')) }
 
+        } else if(['troca','aceitartroca','recusartroca'].includes(cmd)){
+          try{
+            if(cmd==='troca'){
+              const targetRaw=mentionsOf(msg)[0]
+              if(!targetRaw) return await reply(`Uso: *${prefix}troca @pessoa*`)
+              const target=await resolvePlayerJid(sock,chat,targetRaw,msg)
+              if(target===sender) return await reply('❌ Você não pode trocar item consigo mesmo.')
+              const items=await listTradeableItems(sender)
+              if(!items.length) return await reply('🎒 Você não possui itens negociáveis para troca.')
+              setQuickFlow(chat,sender,'trade_offer_item',{
+                targetJid:target,
+                items:items.map(x=>({item_id:x.item_id,name:x.name,quantity:Number(x.quantity||0),rarity:x.rarity}))
+              },5*60*1000)
+              let out=`🤝 *TROCA COM @${String(targetRaw).split('@')[0]}*\n\nEscolha o item que você quer oferecer:\n\n`
+              items.forEach((x,i)=>{out+=`*${i+1}.* ${rarityLabel(x.rarity)} — *${x.name}* ×${x.quantity}\n`})
+              out+='\n🔒 Só será possível pedir outro item da *mesma raridade* e na *mesma quantidade*.\n0️⃣ Cancelar'
+              return await reply(out,{mentions:[targetRaw]})
+            }
+            const id=Number(args[0])
+            if(!Number.isSafeInteger(id)||id<1) return await reply(`Uso: *${prefix}${cmd} ID*`)
+            if(cmd==='aceitartroca'){
+              const t=await acceptItemTradeOffer(sender,id)
+              return await reply(`✅ *TROCA #${t.id} CONCLUÍDA!*\n\n📥 Você recebeu: *${t.offer.name} ×${t.quantity}*\n📤 Você entregou: *${t.request.name} ×${t.quantity}*\n🎨 Raridade: ${rarityLabel(t.rarity)}`,{mentions:[t.fromJid]})
+            }
+            const t=await rejectItemTradeOffer(sender,id)
+            return await reply(`❌ Proposta de troca *#${t.id}* recusada.`)
+          }catch(err){ await reply('❌ '+(err?.message||'Não foi possível concluir a troca.')) }
         } else if(['mercado','anunciar','compraritem','comprarmercado','cancelarvenda','cancelaranuncio'].includes(cmd)){
           try{
             if(cmd==='mercado'){
