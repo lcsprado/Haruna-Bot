@@ -323,7 +323,7 @@ function petVisualMarkup(species,className='pet-official-art'){
   return '<div class="pet-species-fallback '+esc(className)+'"><span>'+emoji+'</span><small>'+esc(label)+'</small></div>';
 }
 
-function raidSpriteKey(level,name){function raidSpriteKey(level,name){
+function raidSpriteKey(level,name){
   const lv=Number(level||0);
   if([10,15,20,25,30,40,50].includes(lv)) return 'raid-'+lv;
   const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -865,7 +865,7 @@ function specialtyText(p){
 function petPortrait(species){
   return '<div class="pet-portrait">'+petVisualMarkup(species,'pet-official-art')+'</div>';
 }
-function ownedPetCard(p){function ownedPetCard(p){
+function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
   const active=Boolean(p.active);
   return '<div class="card pet-card owned">'+petPortrait(p.species)+
@@ -1021,11 +1021,6 @@ function itemArtMarkup(item){
   else if(category==='consumable'||category==='potion'){icon='🧪';label='Consumível'}
   return '<div class="item-art item-art-fallback"><span>'+icon+'</span><small>'+esc(label)+'</small></div>';
 }
-function itemArtMarkup(item){
-  const key=itemSpriteKey(item);
-  return '<div class="item-art">'+artSprite(key,'item-official-art',item&&item.name||'Item')+'</div>';
-}
-
 function inventoryCard(i){
   const id=i.item_id;
   const eq=['weapon','armor','boots'].includes(i.category);
