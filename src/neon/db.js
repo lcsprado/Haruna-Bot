@@ -5185,8 +5185,8 @@ export async function acceptRelationship(toJid,fromJid){
     if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
     await client.query('INSERT INTO relationships(jid,partner_jid) VALUES($1,$2),($2,$1)',[fromJid,toJid])
     await client.query(
-      'DELETE FROM relationship_proposals WHERE (from_jid=$1 AND to_jid=$2) OR (from_jid=$2 AND to_jid=$1)',
-      [fromJid,toJid]
+      'DELETE FROM relationship_proposals WHERE from_jid=ANY($1::text[]) OR to_jid=ANY($1::text[])',
+      [[fromJid,toJid]]
     )
     return {ok:true,fromJid,toJid}
   })
@@ -5236,8 +5236,13 @@ export async function createMarketListing(jid,itemId,qty,price){
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
     const stats=await client.query('SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1',[jid])
-    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id].includes(itemId)
-    if(equipped) throw new Error('Esse item está equipado. Troque ou desequipe antes de anunciar no mercado.')
+    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id].includes(itemId)?1:0
+    const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-equipped)
+    if(qty>available){
+      throw new Error(equipped
+        ? 'A cópia equipada está protegida. Você pode anunciar no máximo '+available+' unidade(s) livre(s).'
+        : 'Você não possui essa quantidade.')
+    }
     await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,jid,itemId])
     const expiresAt=Math.floor(Date.now()/1000)+3600
     const r=await client.query(
