@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261006-v6';
+const CACHE='alpha-rpg-pwa-20261006-petfix-real-v1';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
