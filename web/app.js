@@ -406,8 +406,13 @@ function petVisualMarkup(species,className='pet-official-art'){
   if(s==='lobo') return artSprite('fixed-wolvenaro',className,label);
   if(s==='urso_runico') return artSprite('fixed-urso-runico',className,label);
   const img=petExactImage(s);
-  if(img) return '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006" alt="'+esc(label)+'" loading="lazy">';
   const sprite=petSpriteKey(s);
+  if(img){
+    const fallback=artSprite(sprite,className+' pet-fallback-underlay',label);
+    return '<div class="pet-art-stack">'+fallback+
+      '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006-2" alt="'+esc(label)+'" loading="lazy" '+
+      'onerror="if(this.previousElementSibling){this.previousElementSibling.style.opacity=1}this.remove()"></div>';
+  }
   return artSprite(sprite,className,label);
 }
 
@@ -1141,7 +1146,17 @@ function itemSpriteKey(item){
     nucleo_alpha_corrompido:'special-essence',
     fragmento_alpha:'material-alpha',essencia_abissal:'material-abyss',
     cristal_ancestral:'material-ancestral',nucleo_celestial:'material-celestial',
-    fragmento_celestial:'material-celestial'
+    fragmento_celestial:'material-celestial',
+
+    // Cobertura visual completa para itens que antes dependiam de fallback.
+    energetico_pet:'pet-potion-medium',
+    espada_madeira:'weapon-eclipse',espada_ferro:'weapon-eclipse',espada_aco:'weapon-eclipse',
+    lanca_solar:'weapon-trident',excalibur:'weapon-eclipse',
+    armadura_aco:'armor-titan',
+    bota_cacador:'fixed-bota-vento',bota_relampago:'fixed-bota-vento',bota_celestial:'fixed-bota-vento',
+    escama_vulcanica:'special-essence',
+    insignia_eclipse:'special-soul',marca_insone:'special-scroll',
+    coroa_madrugada:'armor-celestial'
   };
   if(exact[id]) return exact[id];
 
@@ -1155,9 +1170,11 @@ function itemSpriteKey(item){
   if(raw.includes('nucleo celestial')) return 'material-celestial';
   if(raw.includes('nucleo alpha')||raw.includes('corrompido')) return 'special-essence';
   if(raw.includes('fragmento celestial')) return 'material-celestial';
-  if(raw.includes('nucleo titan')||raw.includes('nucleo do tita')) return '';
-  if(raw.includes('nucleo pedra')||raw.includes('nucleo de pedra')) return '';
-  if(raw.includes('escama vulcanica')||raw.includes('olho abissal')||raw.includes('essencia rei abissal')) return '';
+  if(raw.includes('nucleo titan')||raw.includes('nucleo do tita')) return 'fixed-nucleo-tita';
+  if(raw.includes('nucleo pedra')||raw.includes('nucleo de pedra')) return 'fixed-nucleo-pedra';
+  if(raw.includes('escama vulcanica')) return 'special-essence';
+  if(raw.includes('olho abissal')) return 'fixed-olho-abissal';
+  if(raw.includes('essencia rei abissal')) return 'fixed-essencia-abissal';
 
   if(category==='weapon'){
     if(raw.includes('espada')&&raw.includes('eclipse')) return 'weapon-eclipse';
