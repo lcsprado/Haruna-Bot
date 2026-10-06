@@ -1773,10 +1773,10 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
   // Evento único de 06/10/2026, 19:00–20:00 (Brasília): Treino Alpha.
   // Bônus apenas de XP para preservar a economia: sem dinheiro extra.
   const treinoAlphaStartsAt=Date.parse('2026-10-06T19:00:00-03:00')
-  const treinoAlphaEndsAt=Date.parse('2026-10-06T20:00:00-03:00')
+  const treinoAlphaEndsAt=Date.parse('2026-10-06T20:30:00-03:00')
   if(Date.now()<treinoAlphaEndsAt){
     const currentEvent=(await db.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")).rows[0]?.value||{}
-    if(String(currentEvent.oneOffId||'')!=='treino-alpha-2026-10-06-1900'){
+    if(String(currentEvent.oneOffId||'')!=='treino-alpha-2026-10-06-1900' || Number(currentEvent.endsAt||0)<treinoAlphaEndsAt){
       const treinoState={
         active:false,
         startsAt:treinoAlphaStartsAt,
@@ -1793,7 +1793,7 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
         VALUES('double_reward_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
         ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
       `,[JSON.stringify(treinoState)])
-      console.log('[Eventos] Treino Alpha agendado para 06/10 19:00–20:00 BRT')
+      console.log('[Eventos] Caçada Alpha estendida até 20:30 BRT como compensação')
     }
   }
 
@@ -1816,6 +1816,46 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
   }
 
   // Evento único: Hora do Corre — 06/10/2026 19:30–20:00 BRT.
+  let cacadaCompAnnouncementRunning=false
+  async function updateCacadaCompAnnouncement(){
+    if(trevoHealth.whatsapp!=='open' || cacadaCompAnnouncementRunning) return
+    cacadaCompAnnouncementRunning=true
+    try{
+      const now=Date.now()
+      const endsAt=Date.parse('2026-10-06T20:30:00-03:00')
+      if(now>=endsAt) return
+      const key='cacada_alpha_comp_2026_10_06_30min'
+      const sent=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value
+      if(sent?.sent) return
+      await sendEventToGroups(
+`🛠️⚔️ *COMPENSAÇÃO — CAÇADA ALPHA*
+
+⏱️ O evento foi estendido em *30 minutos*.
+🔥 Novo término: *20:30*.
+
+💰 Raid: *+25% dinheiro*
+✨ XP do jogador: *+50%*
+🐾 XP de pet: *+25%*
+🎁 Caixas/equipamentos: *+20% sobre a chance normal*
+🧩 Fragmentos continuam *1x*.
+
+A compensação cobre o período prejudicado sem adicionar bônus além do evento original.`
+      )
+      await db.query(
+        `INSERT INTO trevo_settings(key,value,updated_at)
+         VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+         ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
+        [key,JSON.stringify({sent:true,sentAt:Date.now()})]
+      )
+    }catch(err){
+      console.error('[CaçadaAlpha] falha no aviso de compensação',err?.message||err)
+    }finally{
+      cacadaCompAnnouncementRunning=false
+    }
+  }
+  setInterval(updateCacadaCompAnnouncement,5000).unref?.()
+  setTimeout(updateCacadaCompAnnouncement,2500).unref?.()
+
   let horaCorreAnnouncementRunning=false
   async function updateHoraCorreAnnouncement(){
     if(trevoHealth.whatsapp!=='open' || horaCorreAnnouncementRunning) return
@@ -1898,7 +1938,7 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
           await sendEventToGroups(
 `⚔️🔥 *CAÇADA ALPHA COMEÇOU!* 🔥⚔️
 
-⏱️ *19:00 → 20:00*
+⏱️ *19:00 → 20:30*
 🎯 Bônus válidos *somente nas RAIDS*:
 
 💰 Recompensa em dinheiro: *+25%*
