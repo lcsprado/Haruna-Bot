@@ -6885,7 +6885,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const isGroup=chat.endsWith('@g.us')
         if(isGroup){
           const spawned=await maybeSpawnGroupEvent(chat)
-          if(spawned) await sock.sendMessage(chat,{text:`${spawned.text}\n\n💰 Valor: *R$ ${fmt(spawned.reward)}*\n⚡ Primeiro a mandar *${prefix}pegar* leva!\n⏳ Some em 2 minutos.`}).catch(()=>{})
+          if(spawned) await sock.sendMessage(chat,{text:`${spawned.text}\n\n💰 Dinheiro possível: *R$ ${fmt(spawned.reward)}*\n🎁 ${spawned.hint||'Pode haver recompensa extra.'}\n⚡ Primeiro a mandar *${prefix}pegar* leva!\n⏳ Some em 2 minutos.`}).catch(()=>{})
         }
         const ownerCanonical=canonicalPlayerJid(ownerJid)
         const senderCanonical=canonicalPlayerJid(sender)
@@ -8086,7 +8086,7 @@ ${results.join('\n')}
         } else if(['pegar'].includes(cmd)){
           if(!isGroup) return
           const r=await claimGroupEvent(chat,sender)
-          await reply(`⚡ *VOCÊ FOI O MAIS RÁPIDO!*\n💰 Pegou *R$ ${fmt(r.reward_cash)}* do evento!`)
+          await reply(`⚡ *VOCÊ FOI O MAIS RÁPIDO!*\n\n💰 Dinheiro: *R$ ${fmt(r.reward_cash)}*${r.bonusItem?`\n🎁 Item bônus: *${r.bonusItem.name}* (${r.bonusItem.rarity})`:''}\n\n🏃 A próxima pode aparecer a qualquer momento.`)
 
         } else if(['coletar'].includes(cmd)){
           const r=await collectBusinesses(sender)
