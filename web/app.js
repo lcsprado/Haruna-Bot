@@ -53,70 +53,249 @@ const speciesEmoji = {
 };
 
 
-const CHARACTER_ART = [
-  {id:'rei-alpha',name:'Rei Alpha',role:'Guerreiro',img:'/assets/characters/rei-alpha.webp',desc:'Ofensivo e imponente. Visual clássico do Alpha.'},
-  {id:'guardiao-onix',name:'Guardião Ônix',role:'Guardião',img:'/assets/characters/guardiao-onix.webp',desc:'Armadura pesada e presença de linha de frente.'},
-  {id:'sentinela-azul',name:'Sentinela Azul',role:'Sentinela',img:'/assets/characters/sentinela-azul.webp',desc:'Visual ágil e tecnológico para combate.'}
-];
 
-const PET_ART_ALIASES = {
-  cachorro:'lobo',gato:'gato',coelho:'gato',papagaio:'aguia',hamster:'gato',
-  tartaruga:'polvo-arcano',coruja:'corvo-abissal',raposa:'raposa',
-  golfinho_celestial:'baleia-colossal',lobo:'lobo',moreia_sombria:'serpente-cosmica',
-  aguia:'aguia',gaviao:'aguia',panda:'leao',tubarao_abissal:'tubarao-abissal',
-  guepardo:'tigre',tigre:'tigre',polvo_arcano:'polvo-arcano',
-  gazela_mistica:'raposa',leao:'leao',cervo_mistico:'raposa',
-  orca_guerra:'baleia-colossal',cavalo_guerra:'leao',unicornio:'fenix-celestial',
-  baleia_colossal:'baleia-colossal',dragao:'dragao',golem_ancestral:'dragao',
-  urso_runico:'leao',colosso_cristal:'dragao',salamandra_infernal:'dragao',
-  dragao_vulcanico:'dragao',fenix_fogo:'fenix-celestial',corvo_abissal:'corvo-abissal',
-  lobo_abismo:'lobo',fenix_gelo:'fenix-de-gelo',rinoceronte_titanico:'leao',
-  guardiao_obsidiana:'dragao',leviata_gelo:'serpente-cosmica',cerbero_carmesim:'lobo',
-  tigre_lunar:'tigre',imperador_abissal:'tubarao-abissal',leao_solar:'leao',
-  grifo_celestial:'grifo-celestial',fenix_celestial:'fenix-celestial',
-  serpente_cosmica:'serpente-cosmica',dragao_corrompido:'dragao',
-  fenix_alpha:'fenix-celestial',kitsune:'kitsune'
+const OFFICIAL_ART_SHEET='/assets/official-art-sheet.jpg';
+const OFFICIAL_ART_W=1536;
+const OFFICIAL_ART_H=1024;
+
+// Recortes da arte final aprovada. Cada viewBox mostra a peça inteira dentro
+// do card, sem esticar e sem usar object-fit: cover.
+const OFFICIAL_SPRITES={
+  // 10 classes finais
+  'char-warrior':[10,28,140,158],
+  'char-assassin':[153,28,126,158],
+  'char-mage':[282,28,129,158],
+  'char-archer':[414,28,134,158],
+  'char-paladin':[551,28,139,158],
+  'char-berserker':[693,28,137,158],
+  'char-monk':[833,28,145,158],
+  'char-necromancer':[981,28,149,158],
+  'char-druid':[1133,28,133,158],
+  'char-samurai':[1393,28,135,158],
+
+  // 15 pets finais
+  'pet-dog':[10,250,90,121],
+  'pet-panda':[103,250,94,121],
+  'pet-turtle':[200,250,91,121],
+  'pet-eagle':[294,250,93,121],
+  'pet-phoenix':[390,250,92,121],
+  'pet-crow':[485,250,91,121],
+  'pet-dragon':[579,250,101,121],
+  'pet-fox':[683,250,96,121],
+  'pet-tiger':[782,250,95,121],
+  'pet-panther':[880,250,98,121],
+  'pet-orca':[981,250,105,121],
+  'pet-leviathan':[1089,250,98,121],
+  'pet-shark':[1190,250,108,121],
+  'pet-golem':[1301,250,105,121],
+  'pet-infernal-wolf':[1409,250,119,121],
+
+  // 7 Raids + Boss comum + Superboss
+  'raid-10':[10,425,174,135],
+  'raid-15':[187,425,152,135],
+  'raid-20':[342,425,163,135],
+  'raid-25':[508,425,152,135],
+  'raid-30':[663,425,152,135],
+  'raid-40':[818,425,169,135],
+  'raid-50':[990,425,169,135],
+  'boss-common':[1167,434,136,126],
+  'boss-super':[1311,434,215,126],
+
+  // Poções do jogador
+  'potion-small':[10,617,74,67],
+  'potion-medium':[87,617,67,67],
+  'potion-large':[155,617,68,67],
+  'potion-elixir':[226,617,67,67],
+
+  // Poções de pet
+  'pet-potion-small':[306,617,68,67],
+  'pet-potion-medium':[377,617,68,67],
+  'pet-potion-large':[447,617,68,67],
+  'pet-potion-elixir':[518,617,69,67],
+
+  // Caixas
+  'box-luck':[594,617,85,67],
+  'box-rare':[681,617,87,67],
+  'box-epic':[770,617,88,67],
+  'box-legendary':[860,617,87,67],
+
+  // Chaves de Raid
+  'key-10':[947,617,47,67],
+  'key-15':[995,617,47,67],
+  'key-20':[1043,617,47,67],
+  'key-25':[1091,617,47,67],
+  'key-30':[1139,617,47,67],
+  'key-40':[1187,617,47,67],
+  'key-50':[1235,617,47,67],
+
+  // Materiais
+  'material-alpha':[1296,617,57,67],
+  'material-abyss':[1355,617,57,67],
+  'material-ancestral':[1413,617,57,67],
+  'material-celestial':[1472,617,61,67],
+
+  // Armas
+  'weapon-eclipse':[11,744,75,90],
+  'weapon-abyss':[89,744,75,90],
+  'weapon-trident':[167,744,75,90],
+  'weapon-scythe':[245,744,75,90],
+  'weapon-hammer':[323,744,75,90],
+  'weapon-bow':[401,744,75,90],
+
+  // Armaduras
+  'armor-abyss':[490,744,76,90],
+  'armor-titan':[568,744,76,90],
+  'armor-celestial':[646,744,76,90],
+  'armor-leviathan':[724,744,76,90],
+  'armor-obsidian':[802,744,76,90],
+  'armor-chaos':[880,744,80,90],
+
+  // Itens especiais
+  'special-summon':[983,744,86,90],
+  'special-soul':[1072,744,86,90],
+  'special-up':[1161,744,86,90],
+  'special-scroll':[1250,744,86,90],
+  'special-ticket':[1339,744,86,90],
+  'special-essence':[1428,744,97,90],
+
+  // Cenários - somente a cena, sem cortar personagens/objetos
+  'bg-shop':[10,902,129,86],
+  'bg-inventory':[142,902,127,86],
+  'bg-arena':[272,902,130,86],
+  'bg-raid':[405,902,130,86],
+  'bg-boss':[538,902,132,86],
+  'bg-result':[673,902,132,86],
+  'bg-abilities':[807,902,163,86],
+
+  // Efeitos - ícone isolado; fundo preto desaparece por screen blend
+  'fx-normal':[985,902,68,82],
+  'fx-critical':[1058,902,69,82],
+  'fx-heal':[1133,902,71,82],
+  'fx-boss':[1210,902,71,82],
+  'fx-skill':[1287,902,73,82],
+  'fx-buff':[1365,902,72,82],
+  'fx-debuff':[1443,902,83,82]
 };
 
+function artSprite(key,className,alt){
+  const b=OFFICIAL_SPRITES[key];
+  if(!b) return '';
+  return '<svg class="official-art '+esc(className||'')+'" viewBox="'+b.join(' ')+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(alt||key)+'">'+
+    '<image href="'+OFFICIAL_ART_SHEET+'" x="0" y="0" width="'+OFFICIAL_ART_W+'" height="'+OFFICIAL_ART_H+'" preserveAspectRatio="none"></image>'+
+  '</svg>';
+}
+
+const CHARACTER_ART=[
+  {id:'warrior',name:'Guerreiro',role:'Guerreiro',sprite:'char-warrior',desc:'Linha de frente equilibrada e agressiva.'},
+  {id:'assassin',name:'Assassino',role:'Assassino',sprite:'char-assassin',desc:'Visual sombrio, veloz e preciso.'},
+  {id:'mage',name:'Mago',role:'Mago',sprite:'char-mage',desc:'Energia arcana e presença de alto impacto.'},
+  {id:'archer',name:'Arqueiro',role:'Arqueiro',sprite:'char-archer',desc:'Agilidade e combate à distância.'},
+  {id:'paladin',name:'Paladino',role:'Paladino',sprite:'char-paladin',desc:'Armadura nobre e estilo defensivo.'},
+  {id:'berserker',name:'Berserker',role:'Berserker',sprite:'char-berserker',desc:'Força bruta e visual de ataque pesado.'},
+  {id:'monk',name:'Monge',role:'Monge',sprite:'char-monk',desc:'Combate disciplinado e corpo a corpo.'},
+  {id:'necromancer',name:'Necromante',role:'Necromante',sprite:'char-necromancer',desc:'Magia sombria e aura abissal.'},
+  {id:'druid',name:'Druida',role:'Druida',sprite:'char-druid',desc:'Natureza ancestral e magia verde.'},
+  {id:'samurai',name:'Samurai',role:'Samurai',sprite:'char-samurai',desc:'Precisão, disciplina e lâmina oriental.'}
+];
+
+const PET_SPRITE_ALIASES={
+  cachorro:'pet-dog',
+  gato:'pet-panther',
+  coelho:'pet-fox',
+  papagaio:'pet-eagle',
+  hamster:'pet-panda',
+  tartaruga:'pet-turtle',
+  coruja:'pet-crow',
+  raposa:'pet-fox',
+  golfinho_celestial:'pet-orca',
+  lobo:'pet-infernal-wolf',
+  moreia_sombria:'pet-leviathan',
+  aguia:'pet-eagle',
+  gaviao:'pet-eagle',
+  panda:'pet-panda',
+  tubarao_abissal:'pet-shark',
+  guepardo:'pet-panther',
+  tigre:'pet-tiger',
+  polvo_arcano:'pet-leviathan',
+  gazela_mistica:'pet-fox',
+  leao:'pet-panther',
+  cervo_mistico:'pet-fox',
+  orca_guerra:'pet-orca',
+  cavalo_guerra:'pet-infernal-wolf',
+  unicornio:'pet-phoenix',
+  baleia_colossal:'pet-orca',
+  dragao:'pet-dragon',
+  golem_ancestral:'pet-golem',
+  urso_runico:'pet-panda',
+  colosso_cristal:'pet-golem',
+  salamandra_infernal:'pet-phoenix',
+  dragao_vulcanico:'pet-dragon',
+  fenix_fogo:'pet-phoenix',
+  corvo_abissal:'pet-crow',
+  lobo_abismo:'pet-infernal-wolf',
+  fenix_gelo:'pet-phoenix',
+  rinoceronte_titanico:'pet-golem',
+  guardiao_obsidiana:'pet-golem',
+  leviata_gelo:'pet-leviathan',
+  cerbero_carmesim:'pet-infernal-wolf',
+  tigre_lunar:'pet-tiger',
+  imperador_abissal:'pet-shark',
+  leao_solar:'pet-panther',
+  grifo_celestial:'pet-eagle',
+  fenix_celestial:'pet-phoenix',
+  serpente_cosmica:'pet-leviathan',
+  dragao_corrompido:'pet-dragon',
+  fenix_alpha:'pet-phoenix',
+  kitsune:'pet-fox'
+};
+
+
 function selectedCharacter(){
-  return CHARACTER_ART.find(x=>x.id===ui.characterId) || CHARACTER_ART[0];
+  const legacy={ 'rei-alpha':'warrior','guardiao-onix':'paladin','sentinela-azul':'mage' };
+  const id=legacy[ui.characterId]||ui.characterId;
+  return CHARACTER_ART.find(x=>x.id===id)||CHARACTER_ART[0];
 }
-function petArtUrl(species){
-  const raw=String(species||'').toLowerCase();
-  const id=PET_ART_ALIASES[raw] || raw.replace(/_/g,'-') || 'lobo';
-  return '/assets/pets/'+id+'.webp';
+function petSpriteKey(species){
+  return PET_SPRITE_ALIASES[String(species||'').toLowerCase()]||'pet-dog';
 }
-function bossArtUrl(name){
-  const n=String(name||'').toLowerCase();
-  if(n.includes('vulc')||n.includes('drag')) return '/assets/pets/dragao.webp';
-  if(n.includes('abiss')||n.includes('ancestral')) return '/assets/pets/serpente-cosmica.webp';
-  if(n.includes('gelo')) return '/assets/pets/fenix-de-gelo.webp';
-  if(n.includes('fênix')||n.includes('fenix')) return '/assets/pets/fenix-celestial.webp';
-  return '/assets/characters/guardiao-onix.webp';
-}
-function raidArtUrl(level){
+function raidSpriteKey(level,name){
   const lv=Number(level||0);
-  if(lv>=50) return '/assets/pets/fenix-celestial.webp';
-  if(lv>=40) return '/assets/pets/serpente-cosmica.webp';
-  if(lv>=30) return '/assets/pets/tubarao-abissal.webp';
-  if(lv>=25) return '/assets/pets/grifo-celestial.webp';
-  if(lv>=20) return '/assets/pets/corvo-abissal.webp';
-  if(lv>=15) return '/assets/pets/dragao.webp';
-  return '/assets/pets/lobo.webp';
+  if([10,15,20,25,30,40,50].includes(lv)) return 'raid-'+lv;
+  const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(n.includes('pedra')) return 'raid-10';
+  if(n.includes('vulcan')||n.includes('dragao')) return 'raid-15';
+  if(n.includes('abiss')) return 'raid-20';
+  if(n.includes('tita')||n.includes('ferro')) return 'raid-25';
+  if(n.includes('cristal')) return 'raid-30';
+  if(n.includes('seraf')) return 'raid-40';
+  if(n.includes('corromp')) return 'raid-50';
+  return 'raid-10';
 }
-function combatArenaMarkup(enemyName,kind,level){
+function bossSpriteKey(name,mode){
+  const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const m=String(mode||'').toLowerCase();
+  if(n.includes('ladrao')||n.includes('novembro')||m==='weekly'||n.includes('superboss')) return 'boss-super';
+  if(n.includes('seraf')) return 'raid-40';
+  if(n.includes('corromp')) return 'raid-50';
+  if(n.includes('vulcan')||n.includes('dragao')) return 'raid-15';
+  if(n.includes('abiss')) return 'raid-20';
+  if(n.includes('cristal')) return 'raid-30';
+  return 'boss-common';
+}
+function combatArenaMarkup(enemyName,kind,level,mode){
   const ch=selectedCharacter();
-  const enemySrc=kind==='raid'?raidArtUrl(level):bossArtUrl(enemyName);
+  const enemyKey=kind==='raid'?raidSpriteKey(level,enemyName):bossSpriteKey(enemyName,mode);
   const key=kind==='raid'?'raid-'+Number(level):'boss';
   return '<div class="combat-arena" data-combat-arena="'+key+'">'+
-    '<div class="combat-fighter player" data-combat-player><img src="'+esc(ch.img)+'" alt="'+esc(ch.name)+'"><span>'+esc(ch.name)+'</span></div>'+
+    '<div class="combat-fighter player" data-combat-player>'+artSprite(ch.sprite,'combat-character-art',ch.name)+'<span>'+esc(ch.name)+'</span></div>'+
     '<div class="combat-vs">VS</div>'+
-    '<div class="combat-fighter enemy" data-combat-enemy><img src="'+esc(enemySrc)+'" alt="'+esc(enemyName||'Inimigo')+'"><span>'+esc(enemyName||'Inimigo')+'</span></div>'+
+    '<div class="combat-fighter enemy" data-combat-enemy>'+artSprite(enemyKey,'combat-enemy-art',enemyName||'Inimigo')+'<span>'+esc(enemyName||'Inimigo')+'</span></div>'+
     '<div class="combat-fx" data-combat-fx></div>'+
   '</div>';
 }
 function raidArenaMarkup(raid,state){
-  return state&&state.status==='active'?combatArenaMarkup(raid.name,'raid',raid.level):'';
+  if(state&&state.status==='active') return combatArenaMarkup(raid.name,'raid',raid.level);
+  return '<div class="raid-art-showcase">'+artSprite(raidSpriteKey(raid.level,raid.name),'raid-showcase-art',raid.name)+'</div>';
 }
 function combatDamage(result){
   if(!result||typeof result!=='object') return 0;
@@ -150,6 +329,7 @@ function combatWasCritical(result){
   if(result.crit===true) return true;
   return Array.isArray(result.events)&&result.events.some(x=>x&&x.type==='hit'&&x.crit);
 }
+
 function animateCombatImpact(kind,result,level){
   const key=kind==='raid'?'raid-'+Number(level):'boss';
   const arena=document.querySelector('[data-combat-arena="'+key+'"]');
@@ -161,27 +341,50 @@ function animateCombatImpact(kind,result,level){
   const dealt=combatDamage(result);
   const incoming=combatIncomingDamage(result);
   const critical=combatWasCritical(result);
+  const healed=Number(result&&result.petSkillHeal&&result.petSkillHeal.heal||result&&result.autoHeal&&result.autoHeal.heal||0);
+
   for(const el of [player,enemy,arena]) el.classList.remove('attack','hit','counter','impact','critical-impact');
   if(fx) fx.innerHTML='';
   void arena.offsetWidth;
   arena.classList.add('impact');
   if(critical) arena.classList.add('critical-impact');
   player.classList.add('attack');
+
   window.setTimeout(()=>{
     enemy.classList.add('hit');
-    if(fx) fx.innerHTML='<span class="damage-float '+(critical?'critical':'')+'">'+(critical?'💥 ':'')+(dealt>0?'-'+num(dealt):'💥')+'</span>';
-  },170);
+    if(fx){
+      fx.innerHTML=
+        '<div class="combat-effect outgoing">'+artSprite(critical?'fx-critical':'fx-normal','fx-art',critical?'Dano crítico':'Dano normal')+
+        '<span class="damage-float '+(critical?'critical':'')+'">'+(critical?'CRÍTICO ':'')+(dealt>0?'-'+num(dealt):'💥')+'</span></div>';
+    }
+  },150);
+
   if(incoming>0){
     window.setTimeout(()=>{
       enemy.classList.add('counter');
       player.classList.add('hit');
-      if(fx) fx.innerHTML+='<span class="damage-float incoming">-'+num(incoming)+'</span>';
+      if(fx){
+        fx.innerHTML+=
+          '<div class="combat-effect incoming-fx">'+artSprite('fx-boss','fx-art','Ataque do Boss')+
+          '<span class="damage-float incoming">-'+num(incoming)+'</span></div>';
+      }
     },560);
   }
+
+  if(healed>0){
+    window.setTimeout(()=>{
+      if(fx){
+        fx.innerHTML+=
+          '<div class="combat-effect heal-fx">'+artSprite('fx-heal','fx-art','Cura')+
+          '<span class="heal-float">+'+num(healed)+'</span></div>';
+      }
+    },830);
+  }
+
   window.setTimeout(()=>{
     for(const el of [player,enemy,arena]) el.classList.remove('attack','hit','counter','impact','critical-impact');
     if(fx) fx.innerHTML='';
-  },1250);
+  },1450);
 }
 
 const $ = s => document.querySelector(s);
@@ -594,9 +797,8 @@ function specialtyText(p){
 }
 
 function petPortrait(species){
-  const src=petArtUrl(species);
-  const fallback=speciesEmoji[String(species||'').toLowerCase()]||'🐾';
-  return '<div class="pet-portrait"><img src="'+esc(src)+'" alt="'+esc(titleCase(species))+'" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><span class="pet-art-fallback">'+fallback+'</span></div>';
+  const key=petSpriteKey(species);
+  return '<div class="pet-portrait">'+artSprite(key,'pet-official-art',titleCase(species))+'</div>';
 }
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
@@ -634,10 +836,10 @@ function catalogPetCard(p){
 
 function renderCharacter(){
   const selected=selectedCharacter();
-  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Escolha o visual usado nas cenas de Boss, Raid e combate. É cosmético e não altera seus atributos do bot.</p></div><span class="tag good">'+esc(selected.name)+' ativo</span></div>'+
+  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Escolha entre as 10 classes da arte final. O visual aparece em Boss, Raid e combate e não altera seus atributos.</p></div><span class="tag good">'+esc(selected.name)+' ativo</span></div>'+
     '<div class="character-grid">'+CHARACTER_ART.map(ch=>
       '<div class="card character-card '+(ch.id===selected.id?'selected':'')+'">'+
-        '<div class="character-art"><img src="'+esc(ch.img)+'" alt="'+esc(ch.name)+'"></div>'+
+        '<div class="character-art">'+artSprite(ch.sprite,'character-official-art',ch.name)+'</div>'+
         '<div class="tag-row"><span class="tag">'+esc(ch.role)+'</span>'+(ch.id===selected.id?'<span class="tag good">ATIVO</span>':'')+'</div>'+
         '<h3>'+esc(ch.name)+'</h3><p>'+esc(ch.desc)+'</p>'+
         '<button class="btn '+(ch.id===selected.id?'good':'primary')+'" data-character-select="'+esc(ch.id)+'">'+(ch.id===selected.id?'Selecionado':'Usar personagem')+'</button>'+
@@ -679,6 +881,76 @@ function itemIcon(item){
   if(String(item.item_id||item.id||'').includes('caixa')) return '🎁';
   return map[item.category]||'📦';
 }
+
+function itemSpriteKey(item){
+  const id=String(item&&((item.item_id||item.id)||'')||'');
+  const name=String(item&&item.name||'');
+  const category=String(item&&item.category||'');
+  const raw=(id+' '+name+' '+category).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[_-]+/g,' ');
+
+  if(raw.includes('pocao pet')){
+    if(raw.includes('suprem')||raw.includes('elixir')) return 'pet-potion-elixir';
+    if(raw.includes('epic')||raw.includes('grande')) return 'pet-potion-large';
+    if(raw.includes('rara')||raw.includes('media')) return 'pet-potion-medium';
+    return 'pet-potion-small';
+  }
+  if(raw.includes('elixir supremo')||raw.includes('cura total')) return 'potion-elixir';
+  if(id==='pocao_g'||raw.includes('pocao grande')) return 'potion-large';
+  if(id==='pocao_m'||raw.includes('pocao media')) return 'potion-medium';
+  if(id==='pocao_p'||raw.includes('pocao pequena')) return 'potion-small';
+
+  if(raw.includes('caixa')){
+    if(raw.includes('lend')) return 'box-legendary';
+    if(raw.includes('epic')) return 'box-epic';
+    if(raw.includes('rara')) return 'box-rare';
+    return 'box-luck';
+  }
+
+  if(raw.includes('chave')&&raw.includes('raid')){
+    const lv=Number((raw.match(/\b(10|15|20|25|30|40|50)\b/)||[])[1]||10);
+    return 'key-'+lv;
+  }
+
+  if(raw.includes('fragmento alpha')) return 'material-alpha';
+  if(raw.includes('essencia abiss')) return 'material-abyss';
+  if(raw.includes('cristal ancestral')) return 'material-ancestral';
+  if(raw.includes('nucleo celestial')) return 'material-celestial';
+
+  if(raw.includes('espada')&&raw.includes('eclipse')) return 'weapon-eclipse';
+  if(raw.includes('lamina')&&raw.includes('abiss')) return 'weapon-abyss';
+  if(raw.includes('tridente')) return 'weapon-trident';
+  if(raw.includes('foice')) return 'weapon-scythe';
+  if(raw.includes('martelo')) return 'weapon-hammer';
+  if(raw.includes('arco')) return 'weapon-bow';
+
+  if(raw.includes('armadura')&&raw.includes('abiss')) return 'armor-abyss';
+  if(raw.includes('couraca')&&raw.includes('tita')) return 'armor-titan';
+  if(raw.includes('manto')&&raw.includes('celestial')) return 'armor-celestial';
+  if(raw.includes('leviata')) return 'armor-leviathan';
+  if(raw.includes('obsidiana')) return 'armor-obsidian';
+  if(raw.includes('caos')) return 'armor-chaos';
+
+  if(raw.includes('invocar pet')||raw.includes('invocacao')||raw.includes('summon')) return 'special-summon';
+  if(raw.includes('alma ancestral')) return 'special-soul';
+  if(raw.includes('pedra')&&raw.includes('up')) return 'special-up';
+  if(raw.includes('pergaminho')) return 'special-scroll';
+  if(raw.includes('ticket')&&raw.includes('raid')) return 'special-ticket';
+  if(raw.includes('essencia epic')) return 'special-essence';
+
+  if(category==='weapon') return 'weapon-eclipse';
+  if(category==='armor'||category==='boots') return 'armor-obsidian';
+  if(category==='material') return 'material-alpha';
+  if(category==='raid') return 'key-10';
+  if(category==='box') return 'box-luck';
+  if(category==='pet_potion') return 'pet-potion-small';
+  if(category==='potion'||category==='consumable') return 'potion-small';
+  return 'special-soul';
+}
+function itemArtMarkup(item){
+  const key=itemSpriteKey(item);
+  return '<div class="item-art">'+artSprite(key,'item-official-art',item&&item.name||'Item')+'</div>';
+}
+
 function inventoryCard(i){
   const id=i.item_id;
   const eq=['weapon','armor','boots'].includes(i.category);
@@ -697,7 +969,7 @@ function inventoryCard(i){
     actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
     if(qty>1) actions+='<button class="btn" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+qty+'">Vender '+qty+'</button>';
   }
-  return '<div class="card item-card '+rarityClass(i.rarity)+'"><div class="item-icon">'+itemIcon(i)+'</div>'+
+  return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+
     '<div class="tag-row"><span class="tag '+esc(i.rarity)+'">'+esc(i.rarity||'common')+'</span><span class="tag">'+esc(i.category)+'</span></div>'+
     '<h3>'+esc(i.name)+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(i.description||'')+'</p>'+
     (i.sellable!==false?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
@@ -721,7 +993,7 @@ function shopCard(i){
   if(Number(eq.defense||eq.def)>0) bonus.push('+'+num(eq.defense||eq.def)+' DEF');
   if(Number(eq.speed||eq.spd)>0) bonus.push('+'+num(eq.speed||eq.spd)+' SPD');
   if(Number(eq.crit)>0) bonus.push('+'+num(Number(eq.crit)<=1?Number(eq.crit)*100:eq.crit)+'% CRIT');
-  return '<div class="card item-card '+rarityClass(i.rarity)+'"><div class="item-icon">'+itemIcon(i)+'</div><div class="tag-row"><span class="tag">'+esc(i.rarity||'Comum')+'</span><span class="tag">'+esc(i.category||'item')+'</span></div><h3>'+esc(i.name)+'</h3><p>'+esc(i.description||'')+'</p>'+
+  return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+'<div class="tag-row"><span class="tag">'+esc(i.rarity||'Comum')+'</span><span class="tag">'+esc(i.category||'item')+'</span></div><h3>'+esc(i.name)+'</h3><p>'+esc(i.description||'')+'</p>'+
     (bonus.length?'<p class="item-bonus">'+bonus.join(' • ')+'</p>':'')+
     '<strong>'+money(i.price)+'</strong><div class="item-actions"><button class="btn primary" data-shop-buy="'+esc(i.id)+'" data-shop-price="'+Number(i.price||0)+'">Comprar 1</button><button class="btn" data-shop-buy-qty="'+esc(i.id)+'" data-shop-price="'+Number(i.price||0)+'">Comprar quantidade</button></div></div>';
 }
@@ -782,13 +1054,13 @@ function renderBoss(){
   const g=currentGroup();
   if(!g) return '<div class="notice warn">Vincule pelo <b>!web</b> dentro do grupo para usar o Boss compartilhado.</div>';
   const b=activeBoss();
-  if(!b) return '<div class="page-head"><div><h2>Boss do grupo</h2><p>Nenhum Boss ativo neste momento.</p></div></div><div class="card"><button class="btn primary" data-boss-start>Iniciar Boss</button></div>';
+  if(!b) return '<div class="page-head"><div><h2>Boss do grupo</h2><p>Nenhum Boss ativo neste momento.</p></div></div><div class="card boss-idle-card"><div class="boss-idle-art">'+artSprite('boss-common','boss-showcase-art','Boss comum')+'</div><button class="btn primary" data-boss-start>Iniciar Boss</button></div>';
   const hp=Number(b.hp||0), max=Number(b.maxHp||1);
   const participants=Object.values(b.participants||{}).sort((a,z)=>Number(z.damage||0)-Number(a.damage||0));
   const totalDamage=participants.reduce((s,p)=>s+Number(p.damage||0),0);
   const ranking=participants.length?'<div class="boss-ranking"><div class="section-title"><h3>Ranking de dano</h3><small>'+participants.length+' participante(s)</small></div><div class="list">'+participants.slice(0,10).map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+num(p.attacks||0)+' ataques'+(p.petHealing?' • 🧪 '+num(p.petHealing)+' cura pet':'')+'</small></div><strong>'+num(p.damage||0)+' dano</strong></div>').join('')+'</div></div>':'<div class="empty section">Ainda não houve ataques neste Boss.</div>';
   return '<div class="page-head"><div><h2>'+esc(b.name||'Boss')+'</h2><p>'+esc(b.mode||'common')+' • mesma sessão do WhatsApp</p></div><span class="tag good">ATIVO</span></div>'+
-    '<div class="card">'+combatArenaMarkup(b.name||'Boss','boss')+
+    '<div class="card">'+combatArenaMarkup(b.name||'Boss','boss',null,b.mode)+
     '<div class="boss-hp-line"><span>HP do Boss</span><strong>'+num(hp)+'/'+num(max)+'</strong></div><div class="progress boss-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div>'+
     '<div class="grid stats section">'+statCard('DANO TOTAL',num(totalDamage),'grupo')+statCard('PARTICIPANTES',num(participants.length),'jogadores')+'</div>'+
     '<div class="hero-actions"><button class="btn primary" data-boss-attack>⚔️ Atacar</button><button class="btn good" data-boss-auto>'+(ui.bossTimer?'⏸ AUTO ON':'▶ AUTO OFF')+'</button></div>'+ranking+'</div>';
@@ -857,7 +1129,7 @@ function renderCombatResult(value){
 
 function resultPanel(){
   if(ui.lastResult==null) return '';
-  return '<div class="section card result-card"><div class="section-title"><h3>Resultado</h3><button class="text-btn" data-clear-result>Limpar</button></div>'+prettyResult(ui.lastResult)+'</div>';
+  return '<div class="section card result-card"><div class="result-scene">'+artSprite('bg-result','result-scene-art','Tela de resultado')+'</div><div class="section-title"><h3>Resultado</h3><button class="text-btn" data-clear-result>Limpar</button></div>'+prettyResult(ui.lastResult)+'</div>';
 }
 
 function memberCard(m){
@@ -1144,11 +1416,30 @@ function renderLoans(){
       (lent.length?lent.map(x=>'<div class="list-row"><span>'+esc(x.borrower_name||'Jogador')+' • '+esc(x.status)+'</span><strong>'+money(x.amount||x.principal)+'</strong></div>').join(''):'<div class="empty">Nenhum empréstimo concedido.</div>')+
     '</div></div>'+resultPanel();
 }
+
+function pageSceneKey(page){
+  return ({
+    character:'bg-arena',
+    pets:'bg-abilities',
+    inventory:'bg-inventory',
+    shop:'bg-shop',
+    raids:'bg-raid',
+    boss:'bg-boss',
+    social:'bg-arena',
+    games:'bg-abilities',
+    progression:'bg-abilities'
+  })[page]||null;
+}
+function pageScene(page){
+  const key=pageSceneKey(page);
+  return key?'<div class="page-visual-scene">'+artSprite(key,'page-scene-art','Cenário '+page)+'</div>':'';
+}
+
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
   const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
-  $('#content').innerHTML=(renderers[ui.page]||renderHome)();
+  $('#content').innerHTML=pageScene(ui.page)+(renderers[ui.page]||renderHome)();
   bind();
 }
 
