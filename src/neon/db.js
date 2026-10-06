@@ -529,6 +529,12 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
           weapon_id=COALESCE(t.weapon_id,s.weapon_id),
           armor_id=COALESCE(t.armor_id,s.armor_id),
           boot_id=COALESCE(t.boot_id,s.boot_id),
+          class_id=CASE
+            WHEN COALESCE(t.class_applied,FALSE) THEN t.class_id
+            WHEN COALESCE(s.class_applied,FALSE) THEN s.class_id
+            ELSE COALESCE(t.class_id,s.class_id,'warrior')
+          END,
+          class_applied=COALESCE(t.class_applied,FALSE) OR COALESCE(s.class_applied,FALSE),
           win=t.win+COALESCE(s.win,0),
           loss=t.loss+COALESCE(s.loss,0),
           updated_at=${nowSql}
