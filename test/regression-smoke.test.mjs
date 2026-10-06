@@ -204,3 +204,22 @@ test('reclassification scroll is endgame Boss-only loot',()=>{
   assert.ok(games.includes("const chance=mode==='weekly'?.03:.01"),'Boss drop chances must be 3% weekly and 1% common/event')
   assert.ok(games.includes("const reclassDrop=await maybeGrantReclassScroll"),'Boss reward flow must roll the reclass scroll')
 })
+
+
+test('web pet gallery covers every catalog species with framed art',()=>{
+  assert.ok(app.includes("return exact[s]||PET_SPRITE_ALIASES[s]||'pet-panther'"),'pet art must never fall through to a missing image')
+  for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
+    assert.ok(app.includes(species+":"),'missing pet art alias for '+species)
+  }
+  assert.ok(app.includes('data-pet-adopt-open'),'adoption cards must open the adoption flow')
+  assert.ok(app.includes('data-pet-adopt-confirm'),'adoption flow needs an explicit confirmation button')
+})
+
+test('PWA rivalry actions are echoed back to the linked WhatsApp group',()=>{
+  assert.ok(index.includes('globalThis.__alphaWebGroupLog'),'WhatsApp bridge for web actions missing')
+  assert.ok(webApi.includes('async function sendWebGroupActivity'),'web activity formatter missing')
+  for(const action of ["actionName==='battle'","actionName==='petduel'","actionName==='game.roulette'","actionName==='game.coinflip'"]){
+    assert.ok(webApi.includes(action),'missing rivalry log for '+action)
+  }
+  assert.ok(webApi.includes('await sendWebGroupActivity(session,actionName,body,rawResult)'),'successful web actions must publish activity')
+})
