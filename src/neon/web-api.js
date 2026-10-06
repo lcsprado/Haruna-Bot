@@ -649,17 +649,36 @@ async function sendWebGroupActivity(session,actionName,body,result){
   const meName=await playerDisplayName(me)
   let text='',mentions=[]
 
-  if(actionName==='battle' && result.ok!==false && result.winner && result.loser){
-    const won=String(result.winner.jid)===String(me)
-    const opponent=won?result.loser:result.winner
-    text='⚔️ *RIVALIDADE ALPHA*\n'+meName+' duelou com '+String(opponent.name||'Jogador')+' e *'+(won?'VENCEU':'PERDEU')+'*.'+
-      (won?'\n💰 Prêmio: *'+brl(result.reward)+'*':'')
-    mentions=[me,opponent.jid].filter(Boolean)
+  if(actionName==='battle'){
+    if(result.ok===false){
+      // Cooldown não é uma nova batalha e não deve poluir o grupo com "executou battle".
+      text=null
+    }else if(result.winner && result.loser){
+      const winnerName=String(result.winner.name||'Jogador')
+      const loserName=String(result.loser.name||'Jogador')
+      const targetName=String(result.targetName||((String(result.winner.jid)===String(me))?loserName:winnerName)||'Jogador')
+      const hits=Array.isArray(result.log)?result.log.length:0
+      const crits=Array.isArray(result.log)?result.log.filter(x=>x&&x.crit).length:0
+      text='⚔️ *DUELO RPG*\n*'+meName+'* enfrentou *'+targetName+'*.'+
+        '\n🏆 Vencedor: *'+winnerName+'*'+
+        '\n💀 Derrotado: *'+loserName+'*'+
+        (hits?'\n💥 Combate: *'+hits+' golpes* • *'+crits+' crítico'+(crits===1?'':'s')+'*':'')+
+        (Number(result.reward||0)>0?'\n💰 Prêmio: *'+brl(result.reward)+'*':'')+
+        (Number(result.winXpGain||0)>0?'\n✨ XP: *+'+Number(result.winXpGain)+'* vencedor • *+'+Number(result.loseXpGain||0)+'* derrotado':'')
+      mentions=[me,result.targetJid,result.winner.jid,result.loser.jid].filter(Boolean)
+    }else{
+      text='⚔️ *DUELO RPG*\n*'+meName+'* enfrentou *'+String(result.targetName||'outro jogador')+'*.'
+      mentions=[me,result.targetJid].filter(Boolean)
+    }
   }else if(actionName==='petduel' && result.winner && result.loser){
+    const targetName=String(result.targetName||'outro jogador')
     const won=String(result.winnerJid||result.winner.jid)===String(me)
-    const opponent=won?result.loser:result.winner
-    text='🐾⚔️ *DUELO DE PETS*\n'+meName+' entrou em duelo e *'+(won?'VENCEU':'PERDEU')+'* para '+String(opponent.name||'outro pet')+'.\n⏱️ '+Number(result.rounds||0)+' rodada(s).'
-    mentions=[me,result.winnerJid,result.loserJid].filter(Boolean)
+    text='🐾⚔️ *DUELO DE PETS*\n*'+meName+'* enfrentou *'+targetName+'*.'+
+      '\n🐾 '+String(result.winner.name||result.winner.species||'Pet')+' vs '+String(result.loser.name||result.loser.species||'Pet')+
+      '\n🏆 Pet vencedor: *'+String(result.winner.name||result.winner.species||'Pet')+'*'+
+      '\n📌 Resultado de '+meName+': *'+(won?'VITÓRIA':'DERROTA')+'*'+
+      '\n⏱️ *'+Number(result.rounds||0)+' rodada(s)*.'
+    mentions=[me,result.targetJid,result.winnerJid,result.loserJid].filter(Boolean)
   }else if(actionName==='game.roulette'){
     const amount=Number(result.amount||body.amount||0),profit=Number(result.profit||0)
     text='🎰 *ROULETA — '+meName+'*\nApostou *'+brl(amount)+'* em *'+String(result.choice||body.choice||'')+'* e '+
@@ -688,6 +707,12 @@ async function sendWebGroupActivity(session,actionName,body,result){
       text='✊✋✌️ *DUELO PPT*\n'+meName+' terminou um duelo em *EMPATE*. O valor foi devolvido.'
       mentions=[me,result.challenger].filter(Boolean)
     }
+  }else if(actionName==='game.coinDuel.create'){
+    text='🪙⚔️ *DESAFIO CARA OU COROA*\n*'+meName+'* desafiou *'+String(result.targetName||'outro jogador')+'* por *'+brl(body.amount||0)+'*.'
+    mentions=[me,result.targetJid].filter(Boolean)
+  }else if(actionName==='game.rpsDuel.create'){
+    text='✊✋✌️ *DESAFIO PPT*\n*'+meName+'* desafiou *'+String(result.targetName||'outro jogador')+'* por *'+brl(body.amount||0)+'*.'
+    mentions=[me,result.targetJid].filter(Boolean)
   }else if(actionName==='pet.adopt'){
     text='🐾 *NOVA ADOÇÃO*\n'+meName+' adotou *'+String(result.name||body.name||'um novo pet')+'* — '+String(result.species||body.species||'pet')+'.'
     mentions=[me]
@@ -719,14 +744,14 @@ async function sendWebGroupActivity(session,actionName,body,result){
       '\n🏦 Saldo no banco: *'+brl(bank)+'*'
     mentions=[me]
   }else if(actionName==='transfer'){
-    text='💸 *TRANSFERÊNCIA*\n'+meName+' transferiu *'+brl(body.amount||0)+'* para outro jogador.'
-    mentions=[me]
+    text='💸 *TRANSFERÊNCIA*\n*'+meName+'* transferiu *'+brl(body.amount||0)+'* para *'+String(result.targetName||'outro jogador')+'*.'
+    mentions=[me,result.targetJid].filter(Boolean)
   }else if(actionName==='rob'){
     const success=Boolean(result.success||result.ok)
     const amount=Number(result.amount||result.stolen||0)
     const fine=Number(result.fine||0)
-    const targetJid=String(body.targetJid||result.targetJid||result.target||'')
-    const targetName=await playerDisplayName(targetJid)
+    const targetJid=String(result.targetJid||result.target||'')
+    const targetName=String(result.targetName||'Jogador')
     text='🥷 *ROUBO*\n🥷 *'+meName+'* tentou roubar *'+targetName+'* e '+(success
       ?'*CONSEGUIU*'+(amount>0?'\n💰 Valor roubado: *'+brl(amount)+'*':'')
       :'*FALHOU*'+(fine>0?'\n💸 Multa: *'+brl(fine)+'*':''))
@@ -843,14 +868,26 @@ async function sendWebGroupActivity(session,actionName,body,result){
     text='🏠🚗 *PATRIMÔNIO*\n'+meName+' '+(labels[actionName]||'alterou seu patrimônio')+'.'
     mentions=[me]
   }else if(actionName.startsWith('clan.')){
-    text='🛡️ *CLÃ*\n'+meName+' realizou uma ação no clã: *'+actionName.replace('clan.','')+'*.'
-    mentions=[me]
+    const labels={
+      'clan.create':'criou um clã','clan.accept':'entrou em um clã','clan.leave':'saiu do clã',
+      'clan.donate':'fez uma doação ao clã','clan.invite':'convidou um jogador para o clã',
+      'clan.kick':'expulsou um jogador do clã','clan.transfer':'transferiu a liderança do clã'
+    }
+    text='🛡️ *CLÃ*\n*'+meName+'* '+String(labels[actionName]||'realizou uma ação no clã')+
+      (result.targetName?' *'+String(result.targetName)+'*':'')+
+      (Number(body.amount||0)>0?'\n💰 Valor: *'+brl(body.amount)+'*':'')+'.'
+    mentions=[me,result.targetJid].filter(Boolean)
   }else if(actionName.startsWith('loan.')){
-    text='💳 *EMPRÉSTIMO*\n'+meName+' realizou uma ação de empréstimo: *'+actionName.replace('loan.','')+'*.'
-    mentions=[me]
+    const labels={'loan.offer':'ofereceu um empréstimo para','loan.accept':'aceitou um empréstimo','loan.reject':'recusou um empréstimo','loan.pay':'pagou um empréstimo'}
+    text='💳 *EMPRÉSTIMO*\n*'+meName+'* '+String(labels[actionName]||'realizou uma ação de empréstimo')+
+      (result.targetName?' *'+String(result.targetName)+'*':'')+
+      (Number(body.amount||result.amount||0)>0?'\n💰 Valor: *'+brl(body.amount||result.amount)+'*':'')+'.'
+    mentions=[me,result.targetJid].filter(Boolean)
   }else if(actionName.startsWith('relationship.')){
-    text='💞 *RELACIONAMENTO*\n'+meName+' realizou uma ação social: *'+actionName.replace('relationship.','')+'*.'
-    mentions=[me]
+    const labels={'relationship.propose':'fez um pedido de relacionamento para','relationship.accept':'aceitou o pedido de relacionamento de','relationship.divorce':'encerrou o relacionamento'}
+    text='💞 *RELACIONAMENTO*\n*'+meName+'* '+String(labels[actionName]||'realizou uma ação social')+
+      (result.targetName?' *'+String(result.targetName)+'*':'')+'.'
+    mentions=[me,result.targetJid].filter(Boolean)
   }else{
     const actionLabels={
       'game.rps':'Pedra, Papel e Tesoura','game.quiz.start':'Quiz','game.quiz.answer':'Resposta do Quiz',
@@ -866,8 +903,11 @@ async function sendWebGroupActivity(session,actionName,body,result){
       'groupEvent.claim':'Evento coletivo','cltUber.start':'Turno CLT Uber','cltUber.collect':'Coleta CLT Uber',
       'cltUber.hire':'Contratação CLT Uber'
     }
-    text='🎮 *ATIVIDADE ALPHA*\n'+meName+' executou *'+String(actionLabels[actionName]||actionName)+'* pelo RPG.'
-    mentions=[me]
+    const label=String(actionLabels[actionName]||'Ação no Alpha RPG')
+    text='🎮 *ATIVIDADE ALPHA*\n*'+meName+'* realizou *'+label+'*'+
+      (result.targetName?' com *'+String(result.targetName)+'*':'')+
+      (Number(body.amount||0)>0?' valendo *'+brl(body.amount)+'*':'')+'.'
+    mentions=[me,result.targetJid].filter(Boolean)
   }
 
   if(text) await send(session.chatJid,text,[...new Set(mentions)])
