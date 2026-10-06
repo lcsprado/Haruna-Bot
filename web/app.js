@@ -992,7 +992,7 @@ function catalogPetCard(p){
     '<div class="pet-actions">'+(special
       ? '<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button>'
       : (can
-        ? '<div class="pet-adopt-inline"><input data-pet-adopt-name="'+esc(p.species)+'" maxlength="24" value="'+esc(String(p.label||titleCase(p.species)).replace(/^[^\\p{L}\\p{N}]+/u,'').trim()||'Alpha')+'" placeholder="Nome do pet"><button class="btn primary" type="button" data-pet-adopt-direct="'+esc(p.species)+'">🐾 Adotar • '+money(p.price)+'</button></div>'
+        ? '<div class="pet-adopt-inline"><input data-pet-adopt-name="'+esc(p.species)+'" maxlength="24" value="'+esc(String(p.label||titleCase(p.species)).replace(/^[^\p{L}\p{N}]+/u,'').trim()||'Alpha')+'" placeholder="Nome do pet"><button class="btn primary" type="button" data-pet-adopt-direct="'+esc(p.species)+'">🐾 Adotar • '+money(p.price)+'</button></div>'
         : '<button class="btn" disabled>Nível '+num(p.level)+' necessário</button>'))+
     '</div>'+
   '</div>';
