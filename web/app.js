@@ -285,68 +285,33 @@ const CHARACTER_ART=[
   {id:'samurai',name:'Samurai',role:'Samurai',sprite:'char-samurai',desc:'Precisão, disciplina e lâmina oriental.'}
 ];
 
-const PET_SPRITE_ALIASES={
+const PET_NATIVE_SPRITES={
   cachorro:'pet-dog',
-  gato:'pet-panther',
-  coelho:'pet-fox',
-  papagaio:'pet-eagle',
-  hamster:'pet-panda',
   tartaruga:'pet-turtle',
-  coruja:'pet-crow',
-  raposa:'pet-fox',
-  golfinho_celestial:'pet-orca',
-  lobo:'pet-infernal-wolf',
-  moreia_sombria:'pet-leviathan',
   aguia:'pet-eagle',
-  gaviao:'pet-eagle',
   panda:'pet-panda',
   tubarao_abissal:'pet-shark',
-  guepardo:'pet-panther',
   tigre:'pet-tiger',
-  polvo_arcano:'pet-leviathan',
-  gazela_mistica:'pet-fox',
-  leao:'pet-panther',
-  cervo_mistico:'pet-fox',
   orca_guerra:'pet-orca',
-  cavalo_guerra:'pet-infernal-wolf',
-  unicornio:'pet-phoenix',
-  baleia_colossal:'pet-orca',
   dragao:'pet-dragon',
-  golem_ancestral:'pet-golem',
-  urso_runico:'pet-panda',
-  colosso_cristal:'pet-golem',
-  salamandra_infernal:'pet-phoenix',
-  dragao_vulcanico:'pet-dragon',
-  fenix_fogo:'pet-phoenix',
-  corvo_abissal:'pet-crow',
-  lobo_abismo:'pet-infernal-wolf',
-  fenix_gelo:'pet-phoenix',
-  rinoceronte_titanico:'pet-golem',
-  guardiao_obsidiana:'pet-golem',
-  leviata_gelo:'pet-leviathan',
-  cerbero_carmesim:'pet-infernal-wolf',
-  tigre_lunar:'pet-tiger',
-  imperador_abissal:'pet-shark',
-  leao_solar:'pet-panther',
-  grifo_celestial:'pet-eagle',
-  fenix_celestial:'pet-phoenix',
-  serpente_cosmica:'pet-leviathan',
-  dragao_corrompido:'pet-dragon',
-  fenix_alpha:'pet-phoenix',
-  kitsune:'pet-fox',
-  oraculo_pedra:'pet-golem',
-  pantera_vulcanica:'pet-panther',
-  espectro_abissal:'pet-crow',
-  kraken_aco:'pet-leviathan',
-  esfinge_titanica:'pet-golem',
-  quimera_abissal:'pet-dragon',
-  paladino_astral:'pet-golem',
-  lince_celestial:'pet-panther',
-  arcanjo_eclipse:'pet-phoenix',
-  colosso_alpha:'pet-golem',
-  oraculo_alpha:'pet-golem'
+  golem_ancestral:'pet-golem'
 };
 
+const PET_SPECIES_EMOJI={
+  cachorro:'🐕',gato:'🐈',coelho:'🐇',papagaio:'🦜',hamster:'🐹',tartaruga:'🐢',coruja:'🦉',
+  raposa:'🦊',golfinho_celestial:'🐬',lobo:'🐺',moreia_sombria:'🐍',aguia:'🦅',gaviao:'🦅',
+  panda:'🐼',tubarao_abissal:'🦈',guepardo:'🐆',tigre:'🐯',polvo_arcano:'🐙',
+  gazela_mistica:'🦌',leao:'🦁',cervo_mistico:'🦌',orca_guerra:'🐋',cavalo_guerra:'🐎',
+  unicornio:'🦄',baleia_colossal:'🐋',dragao:'🐉',
+  golem_ancestral:'🗿',urso_runico:'🐻',colosso_cristal:'💎',oraculo_pedra:'🗿',
+  salamandra_infernal:'🔥',dragao_vulcanico:'🐉',fenix_fogo:'🔥',pantera_vulcanica:'🐆',
+  corvo_abissal:'🐦‍⬛',lobo_abismo:'🐺',fenix_gelo:'❄️',espectro_abissal:'👻',
+  rinoceronte_titanico:'🦏',guardiao_obsidiana:'🗿',leviata_gelo:'🐉',kraken_aco:'🐙',
+  esfinge_titanica:'🦁',cerbero_carmesim:'🐺',tigre_lunar:'🐯',imperador_abissal:'🦈',
+  quimera_abissal:'🐉',paladino_astral:'🛡️',leao_solar:'🦁',grifo_celestial:'🦅',
+  fenix_celestial:'🔥',lince_celestial:'🐈',arcanjo_eclipse:'🪽',serpente_cosmica:'🐍',
+  dragao_corrompido:'🐉',fenix_alpha:'🔥',colosso_alpha:'🗿',oraculo_alpha:'🔮',kitsune:'🦊'
+};
 
 function selectedCharacter(){
   const legacy={ 'rei-alpha':'warrior','guardiao-onix':'paladin','sentinela-azul':'mage' };
@@ -392,30 +357,13 @@ function petExactImage(species){
 }
 function petSpriteKey(species){
   const s=String(species||'').toLowerCase();
-  const exact={
-    cachorro:'pet-dog',
-    panda:'pet-panda',
-    tartaruga:'pet-turtle',
-    fenix_fogo:'pet-phoenix',
-    salamandra_infernal:'pet-phoenix',
-    pantera_vulcanica:'pet-panther',
-    guepardo:'pet-panther',
-    lince_celestial:'pet-panther',
-    orca_guerra:'pet-orca',
-    golfinho_celestial:'pet-orca',
-    moreia_sombria:'pet-leviathan',
-    leviata_gelo:'pet-leviathan',
-    imperador_abissal:'pet-shark',
-    golem_ancestral:'pet-golem',
-    colosso_cristal:'pet-golem',
-    guardiao_obsidiana:'pet-golem',
-    rinoceronte_titanico:'pet-golem',
-    colosso_alpha:'pet-golem',
-    oraculo_pedra:'pet-golem',
-    cerbero_carmesim:'pet-infernal-wolf',
-    quimera_abissal:'pet-dragon'
-  };
-  return exact[s]||PET_SPRITE_ALIASES[s]||'pet-panther';
+  return PET_NATIVE_SPRITES[s]||'';
+}
+function petSpeciesFallback(species,className,label){
+  const s=String(species||'').toLowerCase();
+  const emoji=PET_SPECIES_EMOJI[s]||'🐾';
+  return '<div class="pet-species-fallback '+esc(className||'')+'" role="img" aria-label="'+esc(label||petSpeciesName(s))+'">'+
+    '<span aria-hidden="true">'+emoji+'</span><small>'+esc(label||petSpeciesName(s))+'</small></div>';
 }
 function petCroppedSprite(key,className,label){
   const premium=PREMIUM_PET_SPRITES[key];
@@ -444,30 +392,26 @@ function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
   const label=petSpeciesName(s);
   const exclusive='pet-special-'+s;
-  const fallback=petCroppedSprite(petSpriteKey(s),className+' pet-fallback-underlay',label);
 
-  // Pets de Raid/endgame: a arte premium aprovada tem prioridade; os demais
-  // continuam com slot exclusivo nas duas folhas de Raid. Em todos os casos
-  // existe um sprite oficial por baixo para nunca deixar o card vazio.
+  // Pets de Raid/endgame: uma única arte por card. Nunca empilha sprite de outra espécie.
   if(PREMIUM_PET_SPRITES[exclusive]||SPECIAL_PET_SPRITES[exclusive]){
-    const primary=petCroppedSprite(exclusive,className+' pet-primary-art',label);
-    return '<div class="pet-art-stack">'+fallback+primary+'</div>';
-  }
-
-  if(s==='lobo'){
-    return '<div class="pet-art-stack">'+fallback+petCroppedSprite('fixed-wolvenaro',className+' pet-primary-art',label)+'</div>';
-  }
-  if(s==='urso_runico'){
-    return '<div class="pet-art-stack">'+fallback+petCroppedSprite('fixed-urso-runico',className+' pet-primary-art',label)+'</div>';
+    return petCroppedSprite(exclusive,className+' pet-primary-art',label);
   }
 
   const img=petExactImage(s);
   if(img){
-    return '<div class="pet-art-stack">'+fallback+
-      '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006-4" alt="'+esc(label)+'" loading="lazy" '+
-      'onerror="this.remove()"></div>';
+    return '<div class="pet-art-stack">'+
+      petSpeciesFallback(s,className+' pet-image-fallback',label)+
+      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=alpha-pets-20261006-5" alt="'+esc(label)+'" loading="lazy" '+
+      'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
-  return fallback;
+
+  // Só usa sprite oficial quando ele representa a MESMA espécie.
+  const nativeKey=petSpriteKey(s);
+  if(nativeKey) return petCroppedSprite(nativeKey,className+' pet-primary-art',label);
+
+  // Espécies que ainda não têm arquivo individual nunca recebem imagem de outro animal.
+  return petSpeciesFallback(s,className,label);
 }
 
 function raidSpriteKey(level,name){
