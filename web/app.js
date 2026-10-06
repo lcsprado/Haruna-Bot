@@ -1580,11 +1580,10 @@ function render(){
 
 function bind(){
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
-  document.querySelectorAll('[data-character-select]').forEach(x=>x.onclick=()=>{
+  document.querySelectorAll('[data-character-select]').forEach(x=>x.onclick=async()=>{
     ui.characterId=x.dataset.characterSelect;
     localStorage.setItem(CHARACTER_KEY,ui.characterId);
-    render();
-    toast('Personagem visual alterado.');
+    await doAction('character.select',{classId:ui.characterId},{success:'🧙 Classe aplicada aos seus atributos.'});
   });
   document.querySelectorAll('[data-go-page]').forEach(x=>x.onclick=async()=>{
     ui.page=x.dataset.goPage;
