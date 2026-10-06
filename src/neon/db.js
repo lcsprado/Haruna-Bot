@@ -6,8 +6,20 @@ const { Pool, Client } = pg
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
 
+const databaseUrl=(()=>{
+  const raw=process.env.DATABASE_URL
+  try{
+    const url=new URL(raw)
+    const mode=String(url.searchParams.get('sslmode')||'').toLowerCase()
+    if(['require','prefer','verify-ca'].includes(mode)) url.searchParams.set('sslmode','verify-full')
+    return url.toString()
+  }catch{
+    return raw
+  }
+})()
+
 export const db = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 15000,
