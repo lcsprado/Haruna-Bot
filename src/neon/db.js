@@ -4116,12 +4116,12 @@ export async function startPlayerSleep(jid){
 }
 
 const CARPINAR_PLANS={
-  1:{hours:1,xp:140,cash:300,rareBoxChance:0.01},
-  2:{hours:2,xp:300,cash:650,rareBoxChance:0.02},
-  4:{hours:4,xp:650,cash:1400,rareBoxChance:0.04},
-  6:{hours:6,xp:1000,cash:2200,rareBoxChance:0.06},
-  8:{hours:8,xp:1450,cash:3200,rareBoxChance:0.08},
-  12:{hours:12,xp:2200,cash:5000,rareBoxChance:0.12}
+  1:{hours:1,xp:220,cash:700,rareBoxChance:0.02},
+  2:{hours:2,xp:470,cash:1500,rareBoxChance:0.04},
+  4:{hours:4,xp:1000,cash:3200,rareBoxChance:0.07},
+  6:{hours:6,xp:1600,cash:5000,rareBoxChance:0.10},
+  8:{hours:8,xp:2300,cash:7200,rareBoxChance:0.14},
+  12:{hours:12,xp:3600,cash:11500,rareBoxChance:0.20}
 }
 
 export function getCarpinarPlans(){
@@ -4134,9 +4134,12 @@ export async function resolvePlayerCarpinar(jid){
     const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!row) return null
     const now=Math.floor(Date.now()/1000)
-    if(Number(row.ends_at)>now) return {active:true,...row,remaining:Number(row.ends_at)-now}
-    const xp=Number(row.xp_reward||0)
-    const cash=Number(row.cash_reward||0)
+    const currentPlan=CARPINAR_PLANS[Number(row.hours)]||null
+    const upgradedXp=Math.max(Number(row.xp_reward||0),Number(currentPlan?.xp||0))
+    const upgradedCash=Math.max(Number(row.cash_reward||0),Number(currentPlan?.cash||0))
+    if(Number(row.ends_at)>now) return {active:true,...row,xp_reward:upgradedXp,cash_reward:upgradedCash,rare_box_chance:Number(currentPlan?.rareBoxChance||0),remaining:Number(row.ends_at)-now}
+    const xp=upgradedXp
+    const cash=upgradedCash
     const level=await applyExp(client,jid,xp)
 
     if(cash>0){
