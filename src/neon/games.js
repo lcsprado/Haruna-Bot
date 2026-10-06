@@ -64,7 +64,7 @@ const lucky3xMultiplier=()=>lucky3xActive()?3:1
 const lucky3xPlayerWins=()=>!lucky3xActive()||Math.random()<0.20
 
 const CACADA_ALPHA_START=Date.parse('2026-10-06T19:00:00-03:00')
-const CACADA_ALPHA_END=Date.parse('2026-10-06T20:00:00-03:00')
+const CACADA_ALPHA_END=Date.parse('2026-10-06T20:30:00-03:00')
 const cacadaAlphaActive=()=>Date.now()>=CACADA_ALPHA_START&&Date.now()<CACADA_ALPHA_END
 
 
