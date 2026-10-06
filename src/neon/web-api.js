@@ -15,7 +15,7 @@ import {
   petAdventure, startPetExpedition, resolvePetExpeditions,
   claimLevelRewards, getLevelRewardPreview, getClaimedLevelRewards, leaderboard, combatLeaderboard, petLeaderboard,
   weeklyActivityLeaderboard, getPlayerRanks,
-  proposeRelationship, acceptRelationship, divorceRelationship
+  proposeRelationship, getRelationshipProposals, acceptRelationship, rejectRelationship, divorceRelationship
 } from './db.js'
 import {
   getRaidCatalog, getRaidStatuses, createRaid, joinRaid, cancelRaid, startRaid, raidRound,
@@ -447,7 +447,7 @@ async function playerBootstrap(session){
   const jid=session.jid
   const [
     profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
-    home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
+    home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar,recentTransactions
   ]=await Promise.all([
     getProfile(jid),
@@ -469,6 +469,7 @@ async function playerBootstrap(session){
     listMyMarketListings(jid),
     getAchievements(jid),
     getRelationship(jid),
+    getRelationshipProposals(jid),
     groupSnapshot(session.chatJid),
     getDoubleRewardEvent(),
     getLuckyBoxEvent(),
@@ -494,7 +495,7 @@ async function playerBootstrap(session){
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
     profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(petTeam),petExpeditions,dailyMissions,streak,career,
-    home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,group,
+    home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
     recentTransactions:recentTransactions.rows||[],
@@ -594,6 +595,22 @@ async function groupTarget(session,targetJid){
   const member=roster.find(x=>x.jid===target || memberRef(chatJid,x.jid)===target)
   if(!member || member.jid===session.jid) throw new Error('Esse jogador não está entre os membros recentes do grupo vinculado.')
   return member
+}
+
+async function relationshipProposalTarget(session,targetRef){
+  const ref=String(targetRef||'')
+  if(!ref) throw new Error('Pedido de casamento inválido.')
+  const proposals=await getRelationshipProposals(session.jid)
+  const scope=session.chatJid||'global'
+  const row=(proposals.incoming||[]).find(p=>
+    p.from_jid===ref || memberRef(scope,p.from_jid)===ref
+  )
+  if(!row) throw new Error('Esse pedido de casamento não está mais pendente.')
+  return {
+    jid:row.from_jid,
+    push_name:String(row.from_name||'Jogador'),
+    created_at:Number(row.created_at||0)
+  }
 }
 
 function withTargetMeta(result,member){
@@ -1034,7 +1051,7 @@ async function sendWebGroupActivity(session,actionName,body,result){
       (Number(body.amount||result.amount||0)>0?'\n💰 Valor: *'+brl(body.amount||result.amount)+'*':'')+'.'
     mentions=[me,result.targetJid].filter(Boolean)
   }else if(actionName.startsWith('relationship.')){
-    const labels={'relationship.propose':'fez um pedido de relacionamento para','relationship.accept':'aceitou o pedido de relacionamento de','relationship.divorce':'encerrou o relacionamento'}
+    const labels={'relationship.propose':'fez um pedido de casamento para','relationship.accept':'aceitou o pedido de casamento de','relationship.reject':'recusou o pedido de casamento de','relationship.divorce':'encerrou o relacionamento'}
     text='💞 *RELACIONAMENTO*\n*'+meName+'* '+String(labels[actionName]||'realizou uma ação social')+
       (result.targetName?' *'+String(result.targetName)+'*':'')+'.'
     mentions=[me,result.targetJid].filter(Boolean)
@@ -1103,8 +1120,12 @@ async function runAction(session,name,body={}){
       return withTargetMeta(await proposeRelationship(jid,member.jid),member)
     }
     case 'relationship.accept': {
-      const member=await groupTarget(session,body.targetJid)
+      const member=await relationshipProposalTarget(session,body.targetJid)
       return withTargetMeta(await acceptRelationship(jid,member.jid),member)
+    }
+    case 'relationship.reject': {
+      const member=await relationshipProposalTarget(session,body.targetJid)
+      return withTargetMeta(await rejectRelationship(jid,member.jid),member)
     }
     case 'relationship.divorce': return divorceRelationship(jid)
     case 'loan.offer': {
