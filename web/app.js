@@ -1185,7 +1185,18 @@ function itemSpriteKey(item){
   if(raw.includes('pergaminho')) return 'special-scroll';
   if(raw.includes('ticket')&&raw.includes('raid')) return 'special-ticket';
   if(raw.includes('essencia epic')) return 'special-essence';
-  return '';
+
+  // Fallback visual real: nenhum item conhecido deve cair em emoji/texto puro.
+  // Quando não houver arte exclusiva, usamos o sprite oficial mais próximo da categoria.
+  if(category==='weapon') return raw.includes('arco')?'weapon-bow':raw.includes('martelo')||raw.includes('machado')?'weapon-hammer':'weapon-eclipse';
+  if(category==='armor') return 'armor-titan';
+  if(category==='boots') return raw.includes('vento')||raw.includes('relamp')||raw.includes('celestial')?'fixed-bota-vento':'fixed-bota-leve';
+  if(category==='box') return 'box-luck';
+  if(category==='consumable'||category==='potion') return 'potion-small';
+  if(category==='pet_potion') return 'pet-potion-small';
+  if(category==='material') return raw.includes('abiss')?'material-abyss':raw.includes('celest')?'material-celestial':raw.includes('ancestr')?'material-ancestral':'material-alpha';
+  if(category==='special'||category==='raid') return 'special-essence';
+  return 'special-essence';
 }
 function itemFallbackVisual(item){
   const id=String(item&&((item.item_id||item.itemId||item.id)||'')||'').toLowerCase();
