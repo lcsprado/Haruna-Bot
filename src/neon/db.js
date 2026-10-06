@@ -2223,48 +2223,68 @@ export async function usePetEnergyItem(jid,itemId='energetico_pet'){
   })
 }
 
-export async function usePotion(jid, itemId) {
-  const potion=POTIONS[itemId]
-  if(!potion) throw new Error('Esse item não é uma poção utilizável.')
-
+export async function usePotion(jid,itemId=null){
+  await ensureUser(jid)
   return transaction(async client=>{
-    const inv=await client.query(
-      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-      [jid,itemId]
-    )
-    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) {
-      throw new Error('Você não possui essa poção.')
-    }
+    const ids=Object.keys(POTIONS)
+    const rows=(await client.query(
+      'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
+      [jid,ids]
+    )).rows
+
+    if(itemId && !POTIONS[itemId]) throw new Error('Esse item não é uma poção utilizável.')
+    if(itemId && !rows.some(r=>r.item_id===itemId)) throw new Error('Você não possui essa poção.')
+    if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura.')
 
     const st=await client.query(
       'SELECT hp,max_hp,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
     const row=st.rows[0]||{}
-    const ids=[row.weapon_id,row.armor_id].filter(Boolean)
-    const levels=ids.length?(await client.query(
+    const idsEq=[row.weapon_id,row.armor_id].filter(Boolean)
+    const levels=idsEq.length?(await client.query(
       'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
-      [jid,ids]
+      [jid,idsEq]
     )).rows:[]
     const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
     const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id)):{hp:0}
     const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{hp:0}
+
     const hp=Number(row.hp||0)
     const maxHp=Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)
     if(hp>=maxHp) throw new Error('Seu HP já está cheio.')
 
+    const missing=maxHp-hp
+    const available=rows
+      .map(r=>({...r,...POTIONS[r.item_id]}))
+      .sort((a,b)=>a.heal-b.heal)
+
+    const chosen=itemId
+      ? available.find(x=>x.item_id===itemId)
+      : (available.find(x=>x.heal>=missing) || available[available.length-1])
+
+    const potion=POTIONS[chosen.item_id]
     const newHp=Math.min(maxHp,hp+potion.heal)
     const healed=newHp-hp
 
     await client.query(
       'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
-      [jid,itemId]
+      [jid,chosen.item_id]
     )
     await client.query(
       'UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',
       [newHp,jid]
     )
-    return { ...potion, healed, hp:newHp, maxHp }
+
+    return {
+      itemId:chosen.item_id,
+      name:potion.name,
+      before:hp,
+      healed,
+      hp:newHp,
+      maxHp,
+      remaining:Number(chosen.quantity)-1
+    }
   })
 }
 
