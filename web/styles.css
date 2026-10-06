@@ -769,6 +769,21 @@ body.loot-open{overflow:hidden!important}
   object-position:center!important;
   overflow:visible!important;
 }
+.pet-art-stack{
+  width:100%;
+  height:100%;
+  display:grid;
+  place-items:center;
+}
+.pet-art-stack>*{
+  grid-area:1/1;
+}
+.pet-art-stack .pet-fallback-underlay{
+  opacity:0;
+}
+.pet-art-stack .pet-exact-art{
+  z-index:1;
+}
 .catalog-card .pet-portrait,
 .pet-card .pet-portrait{margin-bottom:14px!important}
 .pet-species-fallback{display:none!important}
