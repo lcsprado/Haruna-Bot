@@ -2154,11 +2154,20 @@ export async function usePotion(jid, itemId) {
     }
 
     const st=await client.query(
-      'SELECT hp,max_hp FROM stats WHERE jid=$1 FOR UPDATE',
+      'SELECT hp,max_hp,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
-    const hp=Number(st.rows[0].hp)
-    const maxHp=Number(st.rows[0].max_hp)
+    const row=st.rows[0]||{}
+    const ids=[row.weapon_id,row.armor_id].filter(Boolean)
+    const levels=ids.length?(await client.query(
+      'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
+      [jid,ids]
+    )).rows:[]
+    const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
+    const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id)):{hp:0}
+    const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{hp:0}
+    const hp=Number(row.hp||0)
+    const maxHp=Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)
     if(hp>=maxHp) throw new Error('Seu HP já está cheio.')
 
     const newHp=Math.min(maxHp,hp+potion.heal)
@@ -3119,10 +3128,17 @@ export async function dungeon(jid) {
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
 
-    const weapon=EQUIPMENT[row.weapon_id]||{atk:0,def:0}
-    const armor=EQUIPMENT[row.armor_id]||{atk:0,def:0}
-    const atk=Number(row.atk)+weapon.atk+armor.atk
-    const def=Number(row.def)+weapon.def+armor.def
+    const eqIds=[row.weapon_id,row.armor_id].filter(Boolean)
+    const ups=eqIds.length?(await client.query(
+      'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
+      [jid,eqIds]
+    )).rows:[]
+    const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
+    const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id)):{atk:0,def:0,hp:0}
+    const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{atk:0,def:0,hp:0}
+    const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)
+    const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)
+    const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)
     const level=Number(row.level)
 
     const monsters=[
@@ -3137,7 +3153,7 @@ export async function dungeon(jid) {
     m.atk+=Math.floor(level*1.3)
     m.def+=Math.floor(level*.7)
 
-    let php=Number(row.hp),mhp=m.hp,rounds=0
+    let php=Math.min(Number(row.hp),effectiveMaxHp),mhp=m.hp,rounds=0
     while(php>0&&mhp>0&&rounds<25){
       rounds++
       const pdmg=Math.max(1,Math.round((atk-m.def*.4)*(0.85+Math.random()*.3)))
@@ -3148,11 +3164,11 @@ export async function dungeon(jid) {
     }
 
     if(php<=0){
-      const recover=Math.max(1,Math.floor(Number(row.max_hp)*.30))
+      const recover=Math.max(1,Math.floor(effectiveMaxHp*.30))
       await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[recover,jid])
       const lossExp=Math.round(10*xpMultiplier)
       const expRes=await applyExp(client,jid,lossExp)
-      return {ok:true,won:false,monster:m.name,hp:recover,maxHp:Number(row.max_hp),exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
+      return {ok:true,won:false,monster:m.name,hp:recover,maxHp:effectiveMaxHp,exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
     }
 
     const cash=Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
@@ -3164,7 +3180,7 @@ export async function dungeon(jid) {
       VALUES('system',$1,$2,'dungeon_reward',$3)
     `,[jid,cash,m.name])
     const expRes=await applyExp(client,jid,exp)
-    return {ok:true,won:true,monster:m.name,hp:Math.max(1,php),maxHp:Number(row.max_hp),cash,exp,level:expRes,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
+    return {ok:true,won:true,monster:m.name,hp:Math.max(1,php),maxHp:effectiveMaxHp,cash,exp,level:expRes,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
   })
 }
 
