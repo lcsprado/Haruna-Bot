@@ -1,5 +1,6 @@
 const API_BASE = window.location.origin;
 const TOKEN_KEY = 'alphaWebTokenV1';
+const CHARACTER_KEY = 'alphaWebCharacterV1';
 
 const ui = {
   token: localStorage.getItem(TOKEN_KEY) || '',
@@ -10,6 +11,7 @@ const ui = {
   lastResult: null,
   page: 'home',
   petTab: 'owned',
+  characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
   raidTimer: null,
   raidLevel: null,
   bossTimer: null,
@@ -20,6 +22,7 @@ const ui = {
 
 const navItems = [
   ['home','⌂','Início'],
+  ['character','🧙','Personagem'],
   ['pets','🐾','Pets'],
   ['inventory','🎒','Inventário'],
   ['shop','🏪','Loja'],
@@ -48,6 +51,114 @@ const speciesEmoji = {
   imperador_abissal:'👑',leao_solar:'☀️',grifo_celestial:'✨',fenix_celestial:'🌟',
   serpente_cosmica:'🌌',dragao_corrompido:'☠️',fenix_alpha:'👑'
 };
+
+
+const CHARACTER_ART = [
+  {id:'rei-alpha',name:'Rei Alpha',role:'Guerreiro',img:'/assets/characters/rei-alpha.webp',desc:'Ofensivo e imponente. Visual clássico do Alpha.'},
+  {id:'guardiao-onix',name:'Guardião Ônix',role:'Guardião',img:'/assets/characters/guardiao-onix.webp',desc:'Armadura pesada e presença de linha de frente.'},
+  {id:'sentinela-azul',name:'Sentinela Azul',role:'Sentinela',img:'/assets/characters/sentinela-azul.webp',desc:'Visual ágil e tecnológico para combate.'}
+];
+
+const PET_ART_ALIASES = {
+  cachorro:'lobo',gato:'gato',coelho:'gato',papagaio:'aguia',hamster:'gato',
+  tartaruga:'polvo-arcano',coruja:'corvo-abissal',raposa:'raposa',
+  golfinho_celestial:'baleia-colossal',lobo:'lobo',moreia_sombria:'serpente-cosmica',
+  aguia:'aguia',gaviao:'aguia',panda:'leao',tubarao_abissal:'tubarao-abissal',
+  guepardo:'tigre',tigre:'tigre',polvo_arcano:'polvo-arcano',
+  gazela_mistica:'raposa',leao:'leao',cervo_mistico:'raposa',
+  orca_guerra:'baleia-colossal',cavalo_guerra:'leao',unicornio:'fenix-celestial',
+  baleia_colossal:'baleia-colossal',dragao:'dragao',golem_ancestral:'dragao',
+  urso_runico:'leao',colosso_cristal:'dragao',salamandra_infernal:'dragao',
+  dragao_vulcanico:'dragao',fenix_fogo:'fenix-celestial',corvo_abissal:'corvo-abissal',
+  lobo_abismo:'lobo',fenix_gelo:'fenix-de-gelo',rinoceronte_titanico:'leao',
+  guardiao_obsidiana:'dragao',leviata_gelo:'serpente-cosmica',cerbero_carmesim:'lobo',
+  tigre_lunar:'tigre',imperador_abissal:'tubarao-abissal',leao_solar:'leao',
+  grifo_celestial:'grifo-celestial',fenix_celestial:'fenix-celestial',
+  serpente_cosmica:'serpente-cosmica',dragao_corrompido:'dragao',
+  fenix_alpha:'fenix-celestial',kitsune:'kitsune'
+};
+
+function selectedCharacter(){
+  return CHARACTER_ART.find(x=>x.id===ui.characterId) || CHARACTER_ART[0];
+}
+function petArtUrl(species){
+  const id=PET_ART_ALIASES[String(species||'').toLowerCase()] || 'lobo';
+  return '/assets/pets/'+id+'.webp';
+}
+function bossArtUrl(name){
+  const n=String(name||'').toLowerCase();
+  if(n.includes('vulc')||n.includes('drag')) return '/assets/pets/dragao.webp';
+  if(n.includes('abiss')||n.includes('ancestral')) return '/assets/pets/serpente-cosmica.webp';
+  if(n.includes('gelo')) return '/assets/pets/fenix-de-gelo.webp';
+  if(n.includes('fênix')||n.includes('fenix')) return '/assets/pets/fenix-celestial.webp';
+  return '/assets/characters/guardiao-onix.webp';
+}
+function raidArtUrl(level){
+  const lv=Number(level||0);
+  if(lv>=50) return '/assets/pets/fenix-celestial.webp';
+  if(lv>=40) return '/assets/pets/serpente-cosmica.webp';
+  if(lv>=30) return '/assets/pets/tubarao-abissal.webp';
+  if(lv>=25) return '/assets/pets/grifo-celestial.webp';
+  if(lv>=20) return '/assets/pets/corvo-abissal.webp';
+  if(lv>=15) return '/assets/pets/dragao.webp';
+  return '/assets/pets/lobo.webp';
+}
+function combatArenaMarkup(enemyName,kind,level){
+  const ch=selectedCharacter();
+  const enemySrc=kind==='raid'?raidArtUrl(level):bossArtUrl(enemyName);
+  const key=kind==='raid'?'raid-'+Number(level):'boss';
+  return '<div class="combat-arena" data-combat-arena="'+key+'">'+
+    '<div class="combat-fighter player" data-combat-player><img src="'+esc(ch.img)+'" alt="'+esc(ch.name)+'"><span>'+esc(ch.name)+'</span></div>'+
+    '<div class="combat-vs">VS</div>'+
+    '<div class="combat-fighter enemy" data-combat-enemy><img src="'+esc(enemySrc)+'" alt="'+esc(enemyName||'Inimigo')+'"><span>'+esc(enemyName||'Inimigo')+'</span></div>'+
+    '<div class="combat-fx" data-combat-fx></div>'+
+  '</div>';
+}
+function raidArenaMarkup(raid,state){
+  return state&&state.status==='active'?combatArenaMarkup(raid.name,'raid',raid.level):'';
+}
+function combatDamage(result){
+  if(!result||typeof result!=='object') return 0;
+  const keys=['damage','totalDamage','dealtDamage','playerDamage','roundDamage','damageDealt'];
+  for(const k of keys){
+    const v=Number(result[k]);
+    if(Number.isFinite(v)&&v>0) return v;
+  }
+  for(const arrKey of ['attacks','log','hits']){
+    const arr=result[arrKey];
+    if(Array.isArray(arr)){
+      const v=arr.reduce((s,x)=>s+Number((x&&((x.damage??x.dmg)??0))||0),0);
+      if(v>0) return v;
+    }
+  }
+  if(result.result&&typeof result.result==='object') return combatDamage(result.result);
+  return 0;
+}
+function animateCombatImpact(kind,result,level){
+  const key=kind==='raid'?'raid-'+Number(level):'boss';
+  const arena=document.querySelector('[data-combat-arena="'+key+'"]');
+  if(!arena) return;
+  const player=arena.querySelector('[data-combat-player]');
+  const enemy=arena.querySelector('[data-combat-enemy]');
+  const fx=arena.querySelector('[data-combat-fx]');
+  if(!player||!enemy) return;
+  player.classList.remove('attack');
+  enemy.classList.remove('hit');
+  void player.offsetWidth;
+  player.classList.add('attack');
+  window.setTimeout(()=>{
+    enemy.classList.add('hit');
+    if(fx){
+      const dmg=combatDamage(result);
+      fx.innerHTML='<span class="damage-float">'+(dmg>0?'-'+num(dmg):'💥')+'</span>';
+    }
+  },180);
+  window.setTimeout(()=>{
+    player.classList.remove('attack');
+    enemy.classList.remove('hit');
+    if(fx) fx.innerHTML='';
+  },850);
+}
 
 const $ = s => document.querySelector(s);
 const esc = value => String(value == null ? '' : value)
@@ -195,13 +306,25 @@ async function logout(remote){
   showLogin();
 }
 
+function setMenu(open){
+  const side=$('#sidebar');
+  const back=$('#menuBackdrop');
+  const isOpen=Boolean(open);
+  if(side) side.classList.toggle('open',isOpen);
+  if(back){
+    back.classList.toggle('open',isOpen);
+    back.setAttribute('aria-hidden',isOpen?'false':'true');
+  }
+  document.body.classList.toggle('menu-open',isOpen);
+}
+
 function renderNav(){
   $('#nav').innerHTML=navItems.map(item=>{
     return '<button class="nav-btn '+(ui.page===item[0]?'active':'')+'" data-page="'+item[0]+'"><span>'+item[1]+'</span>'+item[2]+'</button>';
   }).join('');
   document.querySelectorAll('[data-page]').forEach(btn=>btn.onclick=async()=>{
     ui.page=btn.dataset.page;
-    $('#sidebar').classList.remove('open');
+    setMenu(false);
     if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
       await syncExtras(false).catch(()=>null);
     }
@@ -388,7 +511,8 @@ function specialtyText(p){
 }
 
 function petPortrait(species){
-  return '<div class="pet-portrait">'+(speciesEmoji[species]||'🐾')+'</div>';
+  const src=petArtUrl(species);
+  return '<div class="pet-portrait"><img src="'+esc(src)+'" alt="'+esc(titleCase(species))+'" loading="lazy"></div>';
 }
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
@@ -424,10 +548,23 @@ function catalogPetCard(p){
   '</div>';
 }
 
+function renderCharacter(){
+  const selected=selectedCharacter();
+  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Escolha o visual usado nas cenas de Boss, Raid e combate. É cosmético e não altera seus atributos do bot.</p></div><span class="tag good">'+esc(selected.name)+' ativo</span></div>'+
+    '<div class="character-grid">'+CHARACTER_ART.map(ch=>
+      '<div class="card character-card '+(ch.id===selected.id?'selected':'')+'">'+
+        '<div class="character-art"><img src="'+esc(ch.img)+'" alt="'+esc(ch.name)+'"></div>'+
+        '<div class="tag-row"><span class="tag">'+esc(ch.role)+'</span>'+(ch.id===selected.id?'<span class="tag good">ATIVO</span>':'')+'</div>'+
+        '<h3>'+esc(ch.name)+'</h3><p>'+esc(ch.desc)+'</p>'+
+        '<button class="btn '+(ch.id===selected.id?'good':'primary')+'" data-character-select="'+esc(ch.id)+'">'+(ch.id===selected.id?'Selecionado':'Usar personagem')+'</button>'+
+      '</div>'
+    ).join('')+'</div>';
+}
+
 function renderPets(){
   const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
   const raidCount=catalogPets().filter(x=>x.source==='raid').length;
-  const tabs=[['owned','Minha coleção ('+collection().length+')'],['adopt',adoptCount+' adotáveis'],['raid',raidCount+' Raid / especiais']];
+  const tabs=[['owned','Minha coleção ('+collection().length+')'],['adopt','🐾 Adotar pet ('+adoptCount+')'],['raid','✨ Raid / especiais ('+raidCount+')']];
   let rows=[];
   if(ui.petTab==='owned') rows=collection().map(ownedPetCard);
   else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
@@ -443,7 +580,7 @@ function renderPets(){
   const synergyBox=synergy
     ? '<div class="notice good"><strong>'+esc(synergy.label)+'</strong><br>'+esc(synergy.text)+'</div>'
     : '<div class="notice">Monte 3 espécies diferentes do mesmo estilo para ativar uma sinergia de Time Pet.</div>';
-  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo backend do WhatsApp.</p></div><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div>'+
+  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo backend do WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" data-pet-tab="adopt">🐾 Adotar novo pet</button><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div></div>'+
     '<div class="card"><div class="section-title"><div><h3>Time Pet</h3><small>1 Principal • 2 Suporte • 3 Reserva</small></div><button class="btn primary" data-pet-team-save>Salvar time</button></div>'+
       '<div class="grid three">'+[1,2,3].map(slot=>'<label class="team-slot"><span>'+labels[slot]+'</span><select data-team-slot="'+slot+'">'+optionsFor(slot)+'</select></label>').join('')+'</div>'+
       '<div class="section">'+synergyBox+'</div>'+
@@ -546,7 +683,7 @@ function renderRaids(){
       const totalDamage=ranked.reduce((sum,p)=>sum+Number(p.damage||0),0);
       const party=ranked.length?'<div class="raid-party"><div class="section-title"><h4>Equipe / dano</h4><small>'+num(totalDamage)+' total</small></div><div class="list compact">'+ranked.map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+(p.alive===false?'💀 CAÍDO':'❤️ '+num(p.hp||0)+' HP')+(p.pet&&p.pet.name?' • 🐾 '+esc(p.pet.name):'')+'</small></div><strong>'+num(p.damage||0)+'</strong></div>').join('')+'</div></div>':'<div class="empty">Sem participantes.</div>';
       const timeLeft=s&&Number(s.expiresAt||0)>Date.now()?Math.ceil((Number(s.expiresAt)-Date.now())/60000):null;
-      return '<div class="card raid-card"><div class="tag-row"><span class="tag">LV.'+r.level+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(s.status).toUpperCase():'DISPONÍVEL')+'</span><span class="tag">'+players.length+'/5</span>'+(timeLeft!=null?'<span class="tag">⏳ '+timeLeft+' min</span>':'')+'</div><h3>'+esc(r.name)+'</h3><p>❤️ '+num(hp)+'/'+num(max)+' • ATK '+num(r.atk)+' • '+num(r.durationMinutes)+' min</p><div class="progress raid-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div><p>🔑 '+money(r.keyPrice)+'</p>'+party+'<div class="raid-actions">'+buttons+'</div></div>';
+      return '<div class="card raid-card"><div class="tag-row"><span class="tag">LV.'+r.level+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(s.status).toUpperCase():'DISPONÍVEL')+'</span><span class="tag">'+players.length+'/5</span>'+(timeLeft!=null?'<span class="tag">⏳ '+timeLeft+' min</span>':'')+'</div><h3>'+esc(r.name)+'</h3>'+raidArenaMarkup(r,s)+'<p>❤️ '+num(hp)+'/'+num(max)+' • ATK '+num(r.atk)+' • '+num(r.durationMinutes)+' min</p><div class="progress raid-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div><p>🔑 '+money(r.keyPrice)+'</p>'+party+'<div class="raid-actions">'+buttons+'</div></div>';
     }).join('')+'</div>';
 }
 
@@ -567,7 +704,7 @@ function renderBoss(){
   const totalDamage=participants.reduce((s,p)=>s+Number(p.damage||0),0);
   const ranking=participants.length?'<div class="boss-ranking"><div class="section-title"><h3>Ranking de dano</h3><small>'+participants.length+' participante(s)</small></div><div class="list">'+participants.slice(0,10).map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+num(p.attacks||0)+' ataques'+(p.petHealing?' • 🧪 '+num(p.petHealing)+' cura pet':'')+'</small></div><strong>'+num(p.damage||0)+' dano</strong></div>').join('')+'</div></div>':'<div class="empty section">Ainda não houve ataques neste Boss.</div>';
   return '<div class="page-head"><div><h2>'+esc(b.name||'Boss')+'</h2><p>'+esc(b.mode||'common')+' • mesma sessão do WhatsApp</p></div><span class="tag good">ATIVO</span></div>'+
-    '<div class="card"><div class="combat-box"><div class="combat-side"><div class="combat-avatar">🧙</div><strong>'+esc(ui.data.profile.push_name||'Jogador')+'</strong></div><div class="combat-side"><div class="combat-avatar">👹</div><strong>'+esc(b.name||'Boss')+'</strong></div></div>'+
+    '<div class="card">'+combatArenaMarkup(b.name||'Boss','boss')+
     '<div class="boss-hp-line"><span>HP do Boss</span><strong>'+num(hp)+'/'+num(max)+'</strong></div><div class="progress boss-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div>'+
     '<div class="grid stats section">'+statCard('DANO TOTAL',num(totalDamage),'grupo')+statCard('PARTICIPANTES',num(participants.length),'jogadores')+'</div>'+
     '<div class="hero-actions"><button class="btn primary" data-boss-attack>⚔️ Atacar</button><button class="btn good" data-boss-auto>'+(ui.bossTimer?'⏸ AUTO ON':'▶ AUTO OFF')+'</button></div>'+ranking+'</div>';
@@ -920,16 +1057,22 @@ function renderLoans(){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=(renderers[ui.page]||renderHome)();
   bind();
 }
 
 function bind(){
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
+  document.querySelectorAll('[data-character-select]').forEach(x=>x.onclick=()=>{
+    ui.characterId=x.dataset.characterSelect;
+    localStorage.setItem(CHARACTER_KEY,ui.characterId);
+    render();
+    toast('Personagem visual alterado.');
+  });
   document.querySelectorAll('[data-go-page]').forEach(x=>x.onclick=async()=>{
     ui.page=x.dataset.goPage;
-    $('#sidebar').classList.remove('open');
+    setMenu(false);
     if(['social','market','clan','games','activities','progression','rankings','loans'].includes(ui.page)) await syncExtras(false).catch(()=>null);
     render();
   });
@@ -989,10 +1132,17 @@ function bind(){
     startRaidAuto(level);
   });
   document.querySelectorAll('[data-raid-cancel]').forEach(x=>x.onclick=()=>doAction('raid.cancel',{level:Number(x.dataset.raidCancel)},{}));
-  document.querySelectorAll('[data-raid-round]').forEach(x=>x.onclick=()=>doAction('raid.round',{level:Number(x.dataset.raidRound)},{}));
+  document.querySelectorAll('[data-raid-round]').forEach(x=>x.onclick=async()=>{
+    const level=Number(x.dataset.raidRound);
+    const result=await doAction('raid.round',{level},{});
+    animateCombatImpact('raid',result,level);
+  });
   document.querySelectorAll('[data-raid-auto]').forEach(x=>x.onclick=()=>toggleRaidAuto(Number(x.dataset.raidAuto)));
   document.querySelectorAll('[data-boss-start]').forEach(x=>x.onclick=()=>doAction('boss.start',{},{}));
-  document.querySelectorAll('[data-boss-attack]').forEach(x=>x.onclick=()=>doAction('boss.attack',{name:ui.data.profile.push_name,usePet:true},{}));
+  document.querySelectorAll('[data-boss-attack]').forEach(x=>x.onclick=async()=>{
+    const result=await doAction('boss.attack',{name:ui.data.profile.push_name,usePet:true},{});
+    animateCombatImpact('boss',result);
+  });
   document.querySelectorAll('[data-boss-auto]').forEach(x=>x.onclick=toggleBossAuto);
   document.querySelectorAll('[data-business-upgrade]').forEach(x=>x.onclick=()=>doAction('business.upgrade',{id:x.dataset.businessUpgrade},{}));
   document.querySelectorAll('[data-deposit]').forEach(x=>x.onclick=()=>{
@@ -1165,6 +1315,7 @@ function startRaidAuto(level){
     try{
       const result=await doAction('raid.round',{level:ui.raidLevel},{quiet:true,afterSync:false});
       await sync(true);
+      animateCombatImpact('raid',result,ui.raidLevel);
       if(result&&((result.victory)||(result.failed)||(result.reason==='inactive'))){
         stopRaidAuto(); render();
       }
@@ -1186,8 +1337,9 @@ function toggleBossAuto(){
   if(ui.bossTimer){stopBossAuto();render();return;}
   const tick=async()=>{
     try{
-      await doAction('boss.attack',{name:ui.data.profile.push_name,usePet:true},{quiet:true,afterSync:false});
+      const result=await doAction('boss.attack',{name:ui.data.profile.push_name,usePet:true},{quiet:true,afterSync:false});
       await sync(true);
+      animateCombatImpact('boss',result);
       if(!activeBoss()) stopBossAuto();
     }catch{stopBossAuto();render();}
   };
@@ -1208,7 +1360,10 @@ $('#linkForm').addEventListener('submit',async e=>{
   }catch(err){ $('#linkError').textContent=err.message; }
 });
 $('#logoutBtn').onclick=()=>logout(true);
-$('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');
+$('#menuBtn').onclick=()=>setMenu(!$('#sidebar').classList.contains('open'));
+$('#menuBackdrop').onclick=()=>setMenu(false);
+$('#menuBackdrop').addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+document.addEventListener('keydown',e=>{if(e.key==='Escape') setMenu(false);});
 
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden && ui.token) sync(true);
