@@ -246,7 +246,7 @@ async function runRaidCombat(chat,level,reply){
         const petSwitches=bossEvents.filter(e=>e.petSwitch)
         const deaths=bossEvents.filter(e=>!e.alive)
         const petFalls=bossEvents.filter(e=>e.petFainted)
-        if(r.round===1 || r.round%5===0 || heals.length || petHeals.length || petSkillHeals.length || petSwitches.length || deaths.length || petFalls.length){
+        if(r.round===1 || r.round%10===0 || deaths.length || petSwitches.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
