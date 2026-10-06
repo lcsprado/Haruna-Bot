@@ -718,3 +718,21 @@ body.loot-open{overflow:hidden!important}
 .stat-strip span,.class-bonuses span{display:grid;place-items:center;min-height:34px;padding:7px;border:1px solid #2a3d54;border-radius:10px;background:#09111a;font-size:10px;font-weight:800}
 .class-bonuses{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:12px 0}
 @media(max-width:520px){.stat-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.team-pet-status{display:grid;gap:8px;margin-top:10px;padding:10px;border:1px solid #253750;border-radius:12px;background:#08111a}
+.team-pet-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.team-pet-head strong,.team-pet-head small{display:block}
+.team-pet-head small{color:var(--muted);font-size:9px;text-align:right}
+.team-pet-hp{display:grid;gap:6px}
+.team-pet-hp>span{font-size:10px;color:#d8e4f5;font-weight:800}
+.team-pet-hp .progress{height:6px}
+.team-empty{display:block;color:var(--muted);padding:8px 2px 2px}
+.btn.heal{border-color:#8b3947;background:linear-gradient(180deg,#4c1822,#321018);color:#ffd9df}
+.btn.heal:hover{filter:brightness(1.12)}
+.btn[disabled]{opacity:.48;cursor:not-allowed}
+.heal-result{border-color:#6f3340;background:linear-gradient(135deg,rgba(100,28,43,.22),rgba(16,24,36,.72))}
+@media(max-width:520px){
+  .team-pet-head{flex-direction:column;gap:2px}
+  .team-pet-head small{text-align:left}
+  .team-pet-status .btn{width:100%}
+}
