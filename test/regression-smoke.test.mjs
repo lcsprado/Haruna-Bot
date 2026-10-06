@@ -128,7 +128,8 @@ test('web inventory separates equipped gear and protects it from every sale path
   const batchStats=(db.match(/SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=\$1 FOR UPDATE/g)||[]).length
   assert.ok(batchStats>=2,'batch sell/discard must protect equipped boots as well as weapon/armor')
   assert.ok(db.includes("['weapon','armor','boots'].includes(i.category)"),'duplicate equipment sale must include boots safely')
-  assert.ok(db.includes("qty:Number(i.sellable_quantity)"),'duplicate sale must sell only free copies')
+  assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
+  assert.ok(db.includes("qty:Number(i.quantity)-1"),'duplicate sale must always preserve one copy')
   assert.ok(app.includes("market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0"),'market UI must exclude equipped copies')
   assert.ok(db.includes("const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-equipped)"),'market backend must preserve equipped copy')
 })
