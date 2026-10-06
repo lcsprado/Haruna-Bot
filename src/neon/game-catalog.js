@@ -1,12 +1,12 @@
 export const PLAYER_CLASSES = Object.freeze({
   warrior:Object.freeze({id:'warrior',name:'Guerreiro',role:'Equilibrado',hp:70,atk:12,def:11,spd:6,description:'Equilibrado para qualquer conteúdo: boa vida, ataque, defesa e mobilidade.'}),
-  assassin:Object.freeze({id:'assassin',name:'Assassino',role:'DPS veloz',hp:35,atk:18,def:6,spd:16,description:'Especialista em velocidade e dano rápido, com resistência menor que as classes defensivas.'}),
-  mage:Object.freeze({id:'mage',name:'Mago',role:'DPS arcano',hp:45,atk:20,def:7,spd:9,description:'Maior poder ofensivo arcano, com vida e defesa moderadas.'}),
+  assassin:Object.freeze({id:'assassin',name:'Assassino',role:'Dano veloz',hp:35,atk:18,def:6,spd:16,description:'Especialista em velocidade e dano rápido, com resistência menor que as classes defensivas.'}),
+  mage:Object.freeze({id:'mage',name:'Mago',role:'Dano arcano',hp:45,atk:20,def:7,spd:9,description:'Maior poder ofensivo arcano, com vida e defesa moderadas.'}),
   archer:Object.freeze({id:'archer',name:'Arqueiro',role:'Precisão',hp:50,atk:15,def:8,spd:14,description:'Ataque consistente e muita iniciativa, sem abrir mão de sobrevivência.'}),
-  paladin:Object.freeze({id:'paladin',name:'Paladino',role:'Tank',hp:130,atk:7,def:22,spd:5,description:'Tank clássico: muita vida e defesa, com ataque menor que as classes ofensivas.'}),
-  berserker:Object.freeze({id:'berserker',name:'Berserker',role:'DPS bruto',hp:65,atk:22,def:6,spd:9,description:'Maior dano físico bruto, mantendo vida suficiente para combate prolongado.'}),
-  monk:Object.freeze({id:'monk',name:'Monge',role:'Bruiser',hp:75,atk:13,def:13,spd:13,description:'Muito equilibrado no corpo a corpo, com boa resistência e velocidade.'}),
-  necromancer:Object.freeze({id:'necromancer',name:'Necromante',role:'DPS sombrio',hp:50,atk:19,def:8,spd:10,description:'Ataque sombrio elevado com atributos secundários equilibrados.'}),
+  paladin:Object.freeze({id:'paladin',name:'Paladino',role:'Defensor',hp:130,atk:7,def:22,spd:5,description:'Defensor clássico: muita vida e defesa, com ataque menor que as classes ofensivas.'}),
+  berserker:Object.freeze({id:'berserker',name:'Berserker',role:'Dano bruto',hp:65,atk:22,def:6,spd:9,description:'Maior dano físico bruto, mantendo vida suficiente para combate prolongado.'}),
+  monk:Object.freeze({id:'monk',name:'Monge',role:'Combatente',hp:75,atk:13,def:13,spd:13,description:'Muito equilibrado no corpo a corpo, com boa resistência e velocidade.'}),
+  necromancer:Object.freeze({id:'necromancer',name:'Necromante',role:'Dano sombrio',hp:50,atk:19,def:8,spd:10,description:'Ataque sombrio elevado com atributos secundários equilibrados.'}),
   druid:Object.freeze({id:'druid',name:'Druida',role:'Sustentação',hp:110,atk:9,def:18,spd:8,description:'Alta sobrevivência e defesa, ideal para lutas longas e suporte.'}),
   samurai:Object.freeze({id:'samurai',name:'Samurai',role:'Duelista',hp:60,atk:18,def:10,spd:14,description:'Duelista ofensivo: ataque e velocidade altos com defesa sólida.'})
 });
