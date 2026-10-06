@@ -664,6 +664,136 @@ async function sendWebGroupActivity(session,actionName,body,result){
   }else if(actionName==='pet.adopt'){
     text='🐾 *NOVA ADOÇÃO*\n'+meName+' adotou *'+String(result.name||body.name||'um novo pet')+'* — '+String(result.species||body.species||'pet')+'.'
     mentions=[me]
+  }else if(actionName==='daily'){
+    const gained=Number(result.totalCash||result.amount||result.cash||0)
+    text='🔥 *DAILY ALPHA*\n'+meName+' resgatou o Daily'+(gained>0?' e recebeu *'+brl(gained)+'*':'')+'.'
+    mentions=[me]
+  }else if(actionName==='work'){
+    const gained=Number(result.amount||result.net||result.cash||0)
+    text='💼 *TRABALHO*\n'+meName+' trabalhou'+(gained>0?' e lucrou *'+brl(gained)+'*':'')+'.'
+    mentions=[me]
+  }else if(actionName==='all'){
+    text='⚡ *ROTINA COMPLETA*\n'+meName+' executou as atividades disponíveis pelo *!all* no Alpha RPG.'
+    mentions=[me]
+  }else if(actionName==='deposit'){
+    text='🏦 *BANCO*\n'+meName+' depositou *'+brl(body.amount||0)+'*.'
+    mentions=[me]
+  }else if(actionName==='withdraw'){
+    text='💵 *BANCO*\n'+meName+' sacou *'+brl(body.amount||0)+'*.'
+    mentions=[me]
+  }else if(actionName==='transfer'){
+    text='💸 *TRANSFERÊNCIA*\n'+meName+' transferiu *'+brl(body.amount||0)+'* para outro jogador.'
+    mentions=[me]
+  }else if(actionName==='rob'){
+    const success=Boolean(result.success||result.ok)
+    const amount=Number(result.amount||result.stolen||0)
+    text='🥷 *ROUBO*\n'+meName+' tentou roubar outro jogador e '+(success?'*CONSEGUIU*'+(amount>0?' levar *'+brl(amount)+'*':''):'*FALHOU*')+'.'
+    mentions=[me]
+  }else if(actionName==='dungeon'){
+    text='🏰 *DUNGEON*\n'+meName+' enfrentou uma Dungeon pelo Alpha RPG.'
+    mentions=[me]
+  }else if(actionName==='missions.claim'){
+    text='📋 *MISSÕES DIÁRIAS*\n'+meName+' resgatou recompensas de missão.'
+    mentions=[me]
+  }else if(actionName==='level.claim'){
+    text='⭐ *RECOMPENSA DE NÍVEL*\n'+meName+' resgatou uma recompensa de progressão.'
+    mentions=[me]
+  }else if(actionName==='character.select'){
+    text='🧙 *CLASSE*\n'+meName+' escolheu/trocou sua classe para *'+String(result.name||result.className||body.classId||'nova classe')+'*.'
+    mentions=[me]
+  }else if(actionName==='item.buy'){
+    text='🏪 *LOJA*\n'+meName+' comprou *'+Number(body.qty||1)+'x* '+String(body.itemId||'item')+'.'
+    mentions=[me]
+  }else if(actionName==='item.sell'){
+    text='💰 *VENDA*\n'+meName+' vendeu *'+Number(body.qty||1)+'x* '+String(body.itemId||'item')+'.'
+    mentions=[me]
+  }else if(actionName==='item.equip'){
+    text='🗡️ *EQUIPAMENTO*\n'+meName+' equipou *'+String(body.itemId||'um item')+'*.'
+    mentions=[me]
+  }else if(actionName==='item.upgrade'){
+    text='⬆️ *UPGRADE*\n'+meName+' melhorou *'+String(body.itemId||'um equipamento')+'*.'
+    mentions=[me]
+  }else if(actionName==='item.box.open'||actionName==='item.lucky.open'){
+    text='🎁 *CAIXA ABERTA*\n'+meName+' abriu '+Number(body.qty||1)+' caixa(s) no Alpha RPG.'
+    mentions=[me]
+  }else if(actionName.startsWith('market.')){
+    const label=actionName==='market.create'?'anunciou um item':actionName==='market.buy'?'comprou no mercado':'cancelou um anúncio'
+    text='📣 *MERCADO*\n'+meName+' '+label+'.'
+    mentions=[me]
+  }else if(actionName==='sleep.start'){
+    text='😴 *DESCANSO*\n'+meName+' foi dormir e está protegido durante o descanso.'
+    mentions=[me]
+  }else if(actionName==='sleep.wake'){
+    text='🌅 *ACORDOU*\n'+meName+' encerrou o descanso e voltou para o jogo.'
+    mentions=[me]
+  }else if(actionName==='carpinar.start'){
+    text='🌿 *CARPINAR*\n'+meName+' começou a carpinar por *'+Number(body.hours||0)+'h*.'
+    mentions=[me]
+  }else if(actionName==='carpinar.leave'){
+    text='🌿 *CARPINAR*\n'+meName+' encerrou o Carpinar antes do fim.'
+    mentions=[me]
+  }else if(actionName==='pet.select'){
+    text='🐾 *PET ATIVO*\n'+meName+' trocou o pet principal.'
+    mentions=[me]
+  }else if(actionName==='pet.rename'){
+    text='✏️🐾 *PET RENOMEADO*\n'+meName+' renomeou seu pet para *'+String(body.name||'novo nome')+'*.'
+    mentions=[me]
+  }else if(actionName==='pet.heal'){
+    text='🧪🐾 *CURA DE PET*\n'+meName+' curou um pet.'
+    mentions=[me]
+  }else if(actionName==='pet.action'){
+    text='🐾 *AÇÃO DE PET*\n'+meName+' usou *'+String(body.action||'uma ação')+'* com seu pet.'
+    mentions=[me]
+  }else if(actionName==='pet.team'){
+    text='🧬 *TIME PET*\n'+meName+' atualizou a formação do Time Pet.'
+    mentions=[me]
+  }else if(actionName==='pet.summon'){
+    text='✨🐾 *INVOCAÇÃO*\n'+meName+' realizou uma invocação de pet de Raid.'
+    mentions=[me]
+  }else if(actionName.startsWith('raid.')){
+    const labels={'raid.create':'abriu uma Raid','raid.join':'entrou em uma Raid','raid.start':'iniciou uma Raid','raid.round':'atacou na Raid','raid.cancel':'cancelou uma Raid'}
+    text='⚔️ *RAID*\n'+meName+' '+(labels[actionName]||'agiu em uma Raid')+(body.level?' Lv.*'+Number(body.level)+'*':'')+'.'
+    mentions=[me]
+  }else if(actionName.startsWith('boss.')){
+    text='👹 *BOSS*\n'+meName+' '+(actionName==='boss.start'?'iniciou um Boss':'atacou o Boss')+'.'
+    mentions=[me]
+  }else if(['uber','ifood'].includes(actionName)){
+    const amount=Number(result.amount||result.net||result.cash||0)
+    text=(actionName==='uber'?'🚕 *UBER*':'🍔 *IFOOD*')+'\n'+meName+' fez uma corrida/entrega'+(amount>0?' e recebeu *'+brl(amount)+'*':'')+'.'
+    mentions=[me]
+  }else if(actionName.startsWith('business.')){
+    text='🏢 *NEGÓCIOS*\n'+meName+' '+(actionName==='business.buy'?'comprou um negócio':actionName==='business.collect'?'coletou os ganhos dos negócios':'melhorou um negócio')+'.'
+    mentions=[me]
+  }else if(actionName.startsWith('car.')||actionName.startsWith('motorcycle.')||actionName==='house.buy'){
+    const labels={'car.buy':'comprou um carro','car.sell':'vendeu um carro','motorcycle.buy':'comprou uma moto/bike','motorcycle.sell':'vendeu uma moto/bike','house.buy':'comprou uma casa'}
+    text='🏠🚗 *PATRIMÔNIO*\n'+meName+' '+(labels[actionName]||'alterou seu patrimônio')+'.'
+    mentions=[me]
+  }else if(actionName.startsWith('clan.')){
+    text='🛡️ *CLÃ*\n'+meName+' realizou uma ação no clã: *'+actionName.replace('clan.','')+'*.'
+    mentions=[me]
+  }else if(actionName.startsWith('loan.')){
+    text='💳 *EMPRÉSTIMO*\n'+meName+' realizou uma ação de empréstimo: *'+actionName.replace('loan.','')+'*.'
+    mentions=[me]
+  }else if(actionName.startsWith('relationship.')){
+    text='💞 *RELACIONAMENTO*\n'+meName+' realizou uma ação social: *'+actionName.replace('relationship.','')+'*.'
+    mentions=[me]
+  }else{
+    const actionLabels={
+      'game.rps':'Pedra, Papel e Tesoura','game.quiz.start':'Quiz','game.quiz.answer':'Resposta do Quiz',
+      'game.number.start':'Jogo do Número','game.number.guess':'Palpite do Número',
+      'game.hangman.start':'Forca','game.hangman.letter':'Letra na Forca','game.hangman.word':'Palpite na Forca',
+      'game.coinDuel.create':'Desafio Cara ou Coroa','game.rpsDuel.create':'Desafio PPT',
+      'game.groupRoulette.create':'Roleta coletiva','game.groupRoulette.join':'Entrada na roleta coletiva',
+      'game.groupRoulette.spin':'Giro da roleta coletiva','game.tournament.create':'Torneio criado',
+      'game.tournament.join':'Entrada no torneio','game.tournament.start':'Torneio iniciado',
+      'pet.adventure':'Aventura de Pet','pet.expedition.start':'Expedição de Pet','pet.expedition.resolve':'Retorno de Expedição',
+      'pet.energy':'Energia de Pet','player.heal':'Cura do personagem','item.use':'Uso de item',
+      'item.sellDuplicates':'Venda de repetidos','groupMission.claim':'Missão coletiva',
+      'groupEvent.claim':'Evento coletivo','cltUber.start':'Turno CLT Uber','cltUber.collect':'Coleta CLT Uber',
+      'cltUber.hire':'Contratação CLT Uber'
+    }
+    text='🎮 *ATIVIDADE ALPHA*\n'+meName+' executou *'+String(actionLabels[actionName]||actionName)+'* pelo RPG.'
+    mentions=[me]
   }
 
   if(text) await send(session.chatJid,text,[...new Set(mentions)])
