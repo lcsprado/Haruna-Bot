@@ -8,10 +8,25 @@ const webFiles={
   '/rpg':'index.html','/rpg/':'index.html','/rpg/index.html':'index.html',
   '/rpg/app.js':'app.js','/rpg/styles.css':'styles.css'
 }
-const webTypes={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8'}
+const webTypes={
+  html:'text/html; charset=utf-8',
+  js:'text/javascript; charset=utf-8',
+  css:'text/css; charset=utf-8',
+  webp:'image/webp',
+  png:'image/png',
+  jpg:'image/jpeg',
+  jpeg:'image/jpeg',
+  svg:'image/svg+xml'
+}
+function resolveWebFile(pathname){
+  if(webFiles[pathname]) return webFiles[pathname]
+  const asset=String(pathname||'').match(/^\/(?:rpg\/)?assets\/([A-Za-z0-9._\/-]+)$/)
+  if(!asset || asset[1].includes('..')) return null
+  return 'assets/'+asset[1]
+}
 async function serveWeb(req,res){
   const pathname=new URL(req.url||'/', 'http://localhost').pathname
-  const file=webFiles[pathname]
+  const file=resolveWebFile(pathname)
   if(!file) return false
   try{
     const data=await readFile(new URL('../../web/'+file,import.meta.url))

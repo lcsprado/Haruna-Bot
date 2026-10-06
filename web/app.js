@@ -135,6 +135,21 @@ function combatDamage(result){
   if(result.result&&typeof result.result==='object') return combatDamage(result.result);
   return 0;
 }
+function combatIncomingDamage(result){
+  if(!result||typeof result!=='object') return 0;
+  const direct=Number(result.bossDamage||0);
+  if(direct>0) return direct;
+  if(Array.isArray(result.events)){
+    return result.events.filter(x=>x&&x.type==='boss').reduce((sum,x)=>sum+Number(x.damage||0),0);
+  }
+  return 0;
+}
+function combatWasCritical(result){
+  if(!result||typeof result!=='object') return false;
+  if(result.pet&&result.pet.crit) return true;
+  if(result.crit===true) return true;
+  return Array.isArray(result.events)&&result.events.some(x=>x&&x.type==='hit'&&x.crit);
+}
 function animateCombatImpact(kind,result,level){
   const key=kind==='raid'?'raid-'+Number(level):'boss';
   const arena=document.querySelector('[data-combat-arena="'+key+'"]');
@@ -143,22 +158,30 @@ function animateCombatImpact(kind,result,level){
   const enemy=arena.querySelector('[data-combat-enemy]');
   const fx=arena.querySelector('[data-combat-fx]');
   if(!player||!enemy) return;
-  player.classList.remove('attack');
-  enemy.classList.remove('hit');
-  void player.offsetWidth;
+  const dealt=combatDamage(result);
+  const incoming=combatIncomingDamage(result);
+  const critical=combatWasCritical(result);
+  for(const el of [player,enemy,arena]) el.classList.remove('attack','hit','counter','impact','critical-impact');
+  if(fx) fx.innerHTML='';
+  void arena.offsetWidth;
+  arena.classList.add('impact');
+  if(critical) arena.classList.add('critical-impact');
   player.classList.add('attack');
   window.setTimeout(()=>{
     enemy.classList.add('hit');
-    if(fx){
-      const dmg=combatDamage(result);
-      fx.innerHTML='<span class="damage-float">'+(dmg>0?'-'+num(dmg):'💥')+'</span>';
-    }
-  },180);
+    if(fx) fx.innerHTML='<span class="damage-float '+(critical?'critical':'')+'">'+(critical?'💥 ':'')+(dealt>0?'-'+num(dealt):'💥')+'</span>';
+  },170);
+  if(incoming>0){
+    window.setTimeout(()=>{
+      enemy.classList.add('counter');
+      player.classList.add('hit');
+      if(fx) fx.innerHTML+='<span class="damage-float incoming">-'+num(incoming)+'</span>';
+    },560);
+  }
   window.setTimeout(()=>{
-    player.classList.remove('attack');
-    enemy.classList.remove('hit');
+    for(const el of [player,enemy,arena]) el.classList.remove('attack','hit','counter','impact','critical-impact');
     if(fx) fx.innerHTML='';
-  },850);
+  },1250);
 }
 
 const $ = s => document.querySelector(s);
@@ -259,6 +282,14 @@ async function syncExtras(force){
   }
 }
 
+function actionFeedback(name,result){
+  if(result&&result.ok===false&&Number(result.remaining)>0) return '⏳ Cooldown: '+formatRemaining(result.remaining);
+  if(result&&result.cooldown&&Number(result.remainingMs)>0) return '⏳ Aguarde '+formatRemaining(Number(result.remainingMs)/1000);
+  if(name==='daily'&&result&&result.ok) return '🎁 Daily recebido • '+money(result.totalCash||result.amount||0)+' • sequência '+num(result.streak||1);
+  if(name==='work'&&result&&result.ok) return '💼 Trabalho concluído • +'+money(result.amount||0)+' • cooldown 30 min';
+  if(name==='all'&&result) return '⚡ ALL processado. Veja o resultado abaixo.';
+  return 'Ação concluída no Alpha Bot.';
+}
 async function doAction(name,body,options){
   options=options||{};
   try{
@@ -270,7 +301,7 @@ async function doAction(name,body,options){
       await syncExtras(true).catch(()=>null);
       render();
     }
-    if(!options.quiet) toast(options.success||'Ação concluída no Alpha Bot.');
+    if(!options.quiet) toast(options.success||actionFeedback(name,response.result));
     return response.result;
   }catch(err){
     if(!options.quiet) toast(err.message);
@@ -330,6 +361,7 @@ function renderNav(){
       await syncExtras(false).catch(()=>null);
     }
     render();
+    window.scrollTo({top:0,left:0,behavior:'auto'});
   });
 }
 
@@ -363,11 +395,25 @@ function renderHeader(){
   $('#pageTitle').textContent=title;
 }
 
+function cooldownKey(key){
+  return String(key||'').split(':')[0].trim().toLowerCase();
+}
 function cooldownLabel(key){
-  const raw=String(key||'').replace(/^[^:]+:/,'').replace(/[_:]+/g,' ');
+  const action=cooldownKey(key);
   const map={battle:'Duelo',rob:'Roubar',work:'Trabalhar',uber:'Uber',ifood:'iFood',daily:'Daily',petduel:'Duelo Pet',dungeon:'Dungeon'};
-  const first=raw.split(' ')[0];
-  return map[first]||titleCase(raw||key);
+  return map[action]||titleCase(action||'Cooldown');
+}
+function formatRemaining(seconds){
+  const total=Math.max(0,Math.ceil(Number(seconds||0)));
+  const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),s=total%60;
+  if(h>0) return h+'h '+m+'m';
+  if(m>0) return m+'m '+s+'s';
+  return s+'s';
+}
+function cooldownRemaining(action){
+  const nowSec=Math.floor(Date.now()/1000);
+  const row=((ui.data&&ui.data.cooldowns)||[]).find(x=>cooldownKey(x.key)===String(action||'').toLowerCase());
+  return row?Math.max(0,Number(row.expires_at||0)-nowSec):0;
 }
 function transactionLabel(type){
   const map={
@@ -458,14 +504,19 @@ function renderHome(){
   const group=currentGroup();
   const activities=(ui.data&&ui.data.activities)||{};
   const missions=(ui.data&&ui.data.dailyMissions)||[];
+  const dailyDone=Boolean(ui.data&&ui.data.streak&&ui.data.streak.claimedToday);
+  const workRemain=cooldownRemaining('work');
+  const dailyText=dailyDone?'✅ Daily feito':'🎁 Daily';
+  const workText=workRemain>0?'⏳ Trabalhar • '+formatRemaining(workRemain):'💼 Trabalhar';
   return renderDoubleRewardEvent()+renderLuckyBoxEvent()+'<div class="hero card">'+
     '<div><p class="eyebrow">CONTA REAL DO WHATSAPP</p><h2>'+esc(raw.push_name||'Jogador')+'</h2>'+
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
     '<div class="home-exp"><div><span>⭐ EXP</span><strong>'+num(raw.exp||0)+'/'+num(Math.max(1,Number(raw.level||1)*100))+'</strong></div><div class="progress exp-progress"><span style="width:'+pct(Number(raw.exp||0)/Math.max(1,Number(raw.level||1)*100)*100)+'%"></span></div></div>'+
-    '<div class="hero-actions"><button class="btn primary" data-action="daily">🎁 Daily</button><button class="btn good" data-action="all">⚡ ALL</button><button class="btn" data-action="work">💼 Trabalhar</button><button class="btn" data-resync>↻ Sincronizar</button></div></div>'+
+    '<div class="hero-actions"><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ ALL</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div></div>'+
     '<div class="hero-side"><div><small>CARTEIRA</small><strong>'+money(raw.cash)+'</strong></div><div><small>BANCO</small><strong>'+money(raw.bank)+'</strong></div><div><small>ARMA</small><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div><div><small>ARMADURA</small><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div></div>'+
   '</div>'+
+  resultPanel()+
   '<div class="grid stats">'+
     statCard('NÍVEL',num(raw.level),'EXP '+num(raw.exp))+
     statCard('ATK',num(p.effective_atk||p.atk),'Base '+num(p.base_atk||p.atk))+
@@ -723,10 +774,16 @@ function resultMetric(label,value,kind='text'){
 function prettyResult(value){
   if(value==null) return '<div class="empty">Sem detalhes adicionais.</div>';
   if(typeof value!=='object') return '<div class="result-message">'+esc(value)+'</div>';
+  if(value.ok===false&&Number(value.remaining)>0){
+    return '<div class="result-message cooldown-result">⏳ Ação em cooldown. Tente novamente em <strong>'+esc(formatRemaining(value.remaining))+'</strong>.</div>';
+  }
+  if(value.cooldown&&Number(value.remainingMs)>0){
+    return '<div class="result-message cooldown-result">⏳ Combate em cooldown. Aguarde <strong>'+esc(formatRemaining(Number(value.remainingMs)/1000))+'</strong>.</div>';
+  }
   const metrics=[];
-  const moneyKeys=[['amount','Valor'],['cash','Dinheiro'],['reward','Recompensa'],['payout','Pagamento'],['profit','Lucro'],['fee','Taxa'],['tax','TAXADE'],['gross','Bruto'],['netTotal','Líquido'],['grossTotal','Bruto total'],['taxTotal','TAXADE total'],['pot','Prêmio']];
+  const moneyKeys=[['totalCash','Recebido'],['bonusCash','Bônus'],['amount','Valor'],['cash','Dinheiro'],['reward','Recompensa'],['payout','Pagamento'],['profit','Lucro'],['fee','Taxa'],['tax','TAXADE'],['gross','Bruto'],['netTotal','Líquido'],['grossTotal','Bruto total'],['taxTotal','TAXADE total'],['pot','Prêmio']];
   for(const [key,label] of moneyKeys) if(value[key]!=null && Number.isFinite(Number(value[key]))) metrics.push(resultMetric(label,value[key],'money'));
-  const numKeys=[['exp','EXP'],['xp','XP'],['damage','Dano'],['attempts','Tentativas'],['level','Nível'],['totalShifts','Turnos']];
+  const numKeys=[['streak','Sequência'],['exp','EXP'],['xp','XP'],['xpGain','XP carreira'],['damage','Dano'],['bossDamage','Dano recebido'],['attempts','Tentativas'],['level','Nível'],['totalShifts','Turnos']];
   for(const [key,label] of numKeys) if(value[key]!=null && (typeof value[key]==='number'||typeof value[key]==='string')) metrics.push(resultMetric(label,value[key],'num'));
   if(value.won===true) metrics.push(resultMetric('Resultado','🏆 Vitória'));
   else if(value.won===false && value.lost===true) metrics.push(resultMetric('Resultado','💀 Derrota'));
@@ -1077,6 +1134,7 @@ function bind(){
     setMenu(false);
     if(['social','market','clan','games','activities','progression','rankings','loans'].includes(ui.page)) await syncExtras(false).catch(()=>null);
     render();
+    window.scrollTo({top:0,left:0,behavior:'auto'});
   });
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});

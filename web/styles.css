@@ -253,3 +253,17 @@ body.menu-open .sidebar{touch-action:pan-y}
   body.menu-open .sidebar{touch-action:pan-y;overscroll-behavior:contain}
   .menu-backdrop.open{display:block!important;touch-action:none}
 }
+
+
+/* Action state + combat feedback */
+.btn:disabled{opacity:.58;cursor:not-allowed;filter:saturate(.65)}
+.cooldown-result{border:1px solid #6b5129;background:#21190e;color:#ffd48b}
+.combat-arena.impact{animation:arenaImpact .5s ease}
+.combat-arena.critical-impact{box-shadow:inset 0 0 45px rgba(255,189,62,.15),0 0 28px rgba(255,164,48,.08)}
+.combat-arena.impact:after{content:"";position:absolute;z-index:4;width:34%;height:4px;right:14%;top:41%;border-radius:999px;background:linear-gradient(90deg,transparent,#dff4ff,#77baff,transparent);transform:rotate(-18deg);filter:drop-shadow(0 0 8px #7ebcff);animation:slashFlash .42s ease forwards;pointer-events:none}
+.combat-fighter.enemy.counter{animation:alphaCounter .52s cubic-bezier(.2,.85,.3,1)}
+.damage-float.critical{font-size:34px;color:#ffd36f;text-shadow:0 3px 16px #000,0 0 22px #ffae36}
+.damage-float.incoming{left:15%;right:auto;top:34%;color:#ff9e9e;animation-delay:.02s}
+@keyframes arenaImpact{0%,100%{filter:none}38%{filter:brightness(1.18)}}
+@keyframes slashFlash{0%{opacity:0;transform:translateX(-40%) rotate(-18deg) scaleX(.2)}30%{opacity:1}100%{opacity:0;transform:translateX(35%) rotate(-18deg) scaleX(1.2)}}
+@keyframes alphaCounter{0%,100%{transform:translateX(0) scale(1)}45%{transform:translateX(-28%) translateY(-5px) scale(1.06)}}
