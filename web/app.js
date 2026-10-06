@@ -1539,7 +1539,7 @@ function renderDuelArena(members){
   const mine=selectedCharacter();
   const enemy=characterForClass(target.class_id);
   const myHp=Number(myCombat.effective_hp||myCombat.hp||0),myMax=Math.max(1,Number(myCombat.effective_max_hp||myCombat.max_hp||1));
-  const enemyHp=Number(target.hp||0),enemyMax=Math.max(1,Number(target.max_hp||1));
+  const enemyHp=Number(target.effective_hp??target.hp??0),enemyMax=Math.max(1,Number(target.effective_max_hp??target.max_hp??1));
   const last=ui.lastResult&&ui.lastResult.targetJid===target.jid?ui.lastResult:null;
   const duelSummary=last&&last.winner&&last.loser
     ? '<div class="duel-last-result '+(String(last.winner.jid)===String((ui.data.identity||{}).jid)?'win':'loss')+'"><strong>'+(String(last.winner.jid)===String((ui.data.identity||{}).jid)?'🏆 VITÓRIA':'💀 DERROTA')+'</strong><span>Vencedor: '+esc(last.winner.name||'Jogador')+(Number(last.reward||0)>0?' • '+money(last.reward):'')+'</span></div>'
@@ -1560,7 +1560,7 @@ function renderDuelArena(members){
         '<div class="duel-character-art">'+artSprite(enemy.sprite,'duel-character-svg',enemy.name)+'</div>'+
         '<strong>'+esc(target.push_name||'Jogador')+'</strong><small>'+esc(enemy.name)+' • Lv.'+num(target.level||1)+'</small>'+
         '<div class="duel-hp"><span>❤️ '+num(enemyHp)+'/'+num(enemyMax)+'</span><div class="progress"><span style="width:'+pct(enemyHp/enemyMax*100)+'%"></span></div></div>'+
-        '<div class="duel-stats"><span>⚔️ '+num(target.atk||0)+'</span><span>🛡️ '+num(target.def||0)+'</span><span>💨 '+num(target.spd||0)+'</span></div>'+
+        '<div class="duel-stats"><span>⚔️ '+num(target.effective_atk??target.atk??0)+'</span><span>🛡️ '+num(target.effective_def??target.def??0)+'</span><span>💨 '+num(target.effective_spd??target.spd??0)+'</span></div>'+
       '</div>'+
     '</div>'+
     duelSummary+
@@ -1575,7 +1575,7 @@ function renderDuels(){
     renderDuelArena(members)+
     (ui.lastResult?resultPanel():'')+
     '<div class="section"><div class="section-title"><h3>Adversários disponíveis</h3><small>'+members.length+' jogador(es)</small></div><div class="grid three">'+
-      (members.length?members.map(m=>'<div class="card social-card"><div class="tag-row"><span class="tag">'+esc(characterForClass(m.class_id).name)+'</span><span class="tag">Lv.'+num(m.level||1)+'</span></div><h3>'+esc(m.push_name||'Jogador')+'</h3><p>❤️ '+num(m.hp||0)+'/'+num(m.max_hp||0)+' • ⚔️ '+num(m.atk||0)+' • 🛡️ '+num(m.def||0)+'</p><button class="btn primary" data-duel-select-only="'+esc(m.jid)+'">Selecionar adversário</button></div>').join(''):'<div class="empty">Nenhum adversário recente disponível.</div>')+
+      (members.length?members.map(m=>'<div class="card social-card"><div class="tag-row"><span class="tag">'+esc(characterForClass(m.class_id).name)+'</span><span class="tag">Lv.'+num(m.level||1)+'</span></div><h3>'+esc(m.push_name||'Jogador')+'</h3><p>❤️ '+num(m.effective_hp??m.hp??0)+'/'+num(m.effective_max_hp??m.max_hp??0)+' • ⚔️ '+num(m.effective_atk??m.atk??0)+' • 🛡️ '+num(m.effective_def??m.def??0)+'</p><button class="btn primary" data-duel-select-only="'+esc(m.jid)+'">Selecionar adversário</button></div>').join(''):'<div class="empty">Nenhum adversário recente disponível.</div>')+
     '</div></div>';
 }
 
