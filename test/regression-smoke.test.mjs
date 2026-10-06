@@ -239,9 +239,11 @@ test('web item and pet galleries never render without real artwork',()=>{
     assert.ok(itemBlock.includes(id+':'), 'missing explicit artwork mapping for '+id)
   }
   assert.ok(!itemBlock.includes("return '';"),'item artwork resolver must never return blank')
-  assert.ok(app.includes('pet-art-stack'),'exact pet images need a generated-sprite fallback layer')
-  assert.ok(app.includes('pet-fallback-underlay'),'pet fallback sprite must exist behind exact images')
-  assert.ok(app.includes('this.previousElementSibling.style.opacity=1'),'broken pet files must reveal fallback art')
+  assert.ok(app.includes('pet-art-stack'),'pet images need a permanent sprite fallback layer')
+  assert.ok(app.includes('pet-fallback-underlay'),'pet fallback sprite must exist behind primary images')
+  assert.ok(app.includes("if(PREMIUM_PET_SPRITES[exclusive]||SPECIAL_PET_SPRITES[exclusive])"),'special pets must render over a fallback instead of alone')
+  assert.ok(app.includes("'pet-primary-art'"),'special pet art must have a primary layer above fallback')
+  assert.ok(app.includes('onerror="this.remove()"'),'broken exact pet images must reveal the already-rendered fallback')
 })
 
 test('PWA rivalry actions are echoed with real opponents and dedicated duel UI',()=>{
@@ -299,16 +301,14 @@ test('important web activity logs never expose raw action codes and include outc
 })
 
 
-test('endgame special pets use exclusive artwork',()=>{
-  assert.ok(app.includes("SPECIAL_PET_ART_SHEETS=["),'special-pet spritesheets missing')
+test('endgame special pets use the approved premium artwork with fallback',()=>{
+  assert.ok(app.includes("PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp"),'approved premium pet spritesheet missing')
+  assert.ok(app.includes("SPECIAL_PET_ART_SHEETS=["),'Raid pet spritesheets missing')
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
     assert.ok(app.includes("'pet-special-"+species+"'"),'exclusive special-pet art missing for '+species)
   }
-  assert.ok(
-    app.includes("if(SPECIAL_PET_SPRITES[exclusive]) return artSprite(exclusive,className,label)") ||
-    app.includes("if(SPECIAL_PET_SPRITES[exclusive]) return petCroppedSprite(exclusive,className,label)"),
-    'exclusive pet art must take priority over aliases'
-  )
+  assert.ok(app.includes('const premium=PREMIUM_PET_SPRITES[key]'),'premium art must take priority inside the pet crop resolver')
+  assert.ok(app.includes("const fallback=petCroppedSprite(petSpriteKey(s),className+' pet-fallback-underlay',label)"),'every pet needs a renderable fallback')
 })
 
 
@@ -326,6 +326,31 @@ test('all Raid/endgame pets have unique exclusive art slots',()=>{
     seen.add(slot)
   }
   assert.equal(seen.size,raidSpecies.length,'every Raid/endgame pet must have its own art slot')
+})
+
+test('PWA precaches every pet-art source and never ships visible English status jargon',()=>{
+  for(const asset of [
+    '/assets/official-art-sheet.jpg','/assets/alpha-fixed-art.webp','/assets/alpha-special-pets.webp',
+    '/assets/alpha-raid-pets-1.webp','/assets/alpha-raid-pets-2.webp',
+    '/assets/pets/aguia.webp','/assets/pets/baleia-colossal.webp','/assets/pets/corvo-abissal.webp',
+    '/assets/pets/dragao.webp','/assets/pets/fenix-celestial.webp','/assets/pets/fenix-de-gelo.webp',
+    '/assets/pets/gato.webp','/assets/pets/grifo-celestial.webp','/assets/pets/kitsune.webp',
+    '/assets/pets/leao.webp','/assets/pets/lobo.webp','/assets/pets/polvo-arcano.webp',
+    '/assets/pets/raposa.webp','/assets/pets/serpente-cosmica.webp','/assets/pets/tigre.webp','/assets/pets/tubarao-abissal.webp'
+  ]){
+    assert.ok(serviceWorker.includes(asset),'pet art must be precached: '+asset)
+  }
+  assert.ok(app.includes("function raidStatusLabel(value)"),'Raid status translation helper missing')
+  assert.ok(app.includes("function bossModeLabel(value)"),'Boss mode translation helper missing')
+  assert.ok(app.includes("function petSpeciesName(species)"),'pet species must use catalog Portuguese names')
+  assert.ok(!app.includes("return '⏳ Cooldown:"),'visible Cooldown text must be translated')
+  assert.ok(!app.includes('Nenhum cooldown ativo.'),'visible cooldown empty-state must be translated')
+  assert.ok(!app.includes("daily:'Daily'"),'Daily label must be translated')
+  assert.ok(!app.includes("dungeon:'Dungeon'"),'Dungeon label must be translated')
+  assert.ok(!gameCatalog.includes("role:'Tank'"),'Tank class role must be translated')
+  assert.ok(!gameCatalog.includes("role:'Bruiser'"),'Bruiser class role must be translated')
+  assert.ok(!gameCatalog.includes("role:'DPS "),'DPS role labels must be translated')
+  assert.ok(!webIndex.includes('RPG • INSTALÁVEL • SYNC'),'visible SYNC label must be translated')
 })
 
 
