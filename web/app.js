@@ -59,6 +59,23 @@ const OFFICIAL_ART_SHEET='/assets/official-art-sheet.jpg?v=alpha-final-20261006'
 const OFFICIAL_ART_W=1536;
 const OFFICIAL_ART_H=1024;
 
+// Folha corrigida gerada especificamente para os assets que estavam errados no jogo.
+const FIXED_ART_SHEET='/assets/alpha-fixed-art.webp?v=alpha-fixed-20261006-1';
+const FIXED_ART_W=960;
+const FIXED_ART_H=384;
+const FIXED_SPRITES={
+  'fixed-wolvenaro':[0,0,192,192],
+  'fixed-urso-runico':[192,0,192,192],
+  'fixed-bota-leve':[384,0,192,192],
+  'fixed-bota-vento':[576,0,192,192],
+  'fixed-armadura-couro':[768,0,192,192],
+  'fixed-armadura-ferro':[0,192,192,192],
+  'fixed-olho-abissal':[192,192,192,192],
+  'fixed-nucleo-pedra':[384,192,192,192],
+  'fixed-essencia-abissal':[576,192,192,192],
+  'fixed-nucleo-tita':[768,192,192,192]
+};
+
 // Recortes da arte final aprovada. Cada viewBox mostra a peça inteira dentro
 // do card, sem esticar e sem usar object-fit: cover.
 const OFFICIAL_SPRITES={
@@ -179,10 +196,14 @@ const OFFICIAL_SPRITES={
 };
 
 function artSprite(key,className,alt){
-  const b=OFFICIAL_SPRITES[key];
+  const fixed=FIXED_SPRITES[key];
+  const b=fixed||OFFICIAL_SPRITES[key];
   if(!b) return '';
+  const sheet=fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET;
+  const width=fixed?FIXED_ART_W:OFFICIAL_ART_W;
+  const height=fixed?FIXED_ART_H:OFFICIAL_ART_H;
   return '<svg class="official-art '+esc(className||'')+'" viewBox="'+b.join(' ')+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(alt||key)+'">'+
-    '<image href="'+OFFICIAL_ART_SHEET+'" x="0" y="0" width="'+OFFICIAL_ART_W+'" height="'+OFFICIAL_ART_H+'" preserveAspectRatio="none"></image>'+
+    '<image href="'+sheet+'" x="0" y="0" width="'+width+'" height="'+height+'" preserveAspectRatio="none"></image>'+
   '</svg>';
 }
 
@@ -323,6 +344,8 @@ function petSpriteKey(species){
 function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
   const label=titleCase(s);
+  if(s==='lobo') return artSprite('fixed-wolvenaro',className,label);
+  if(s==='urso_runico') return artSprite('fixed-urso-runico',className,label);
   const img=petExactImage(s);
   if(img) return '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006" alt="'+esc(label)+'" loading="lazy">';
   const sprite=petSpriteKey(s);
@@ -1011,6 +1034,10 @@ function itemSpriteKey(item){
   const raw=(id+' '+name+' '+category).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[_-]+/g,' ');
 
   const exact={
+    bota_leve:'fixed-bota-leve',bota_vento:'fixed-bota-vento',
+    armadura_couro:'fixed-armadura-couro',armadura_ferro:'fixed-armadura-ferro',
+    olho_abissal:'fixed-olho-abissal',nucleo_pedra:'fixed-nucleo-pedra',
+    essencia_rei_abissal:'fixed-essencia-abissal',nucleo_titan:'fixed-nucleo-tita',
     pocao_p:'potion-small',pocao_m:'potion-medium',pocao_g:'potion-large',elixir_supremo:'potion-elixir',
     pocao_pet_comum:'pet-potion-small',pocao_pet_rara:'pet-potion-medium',pocao_pet_epica:'pet-potion-large',pocao_pet_suprema:'pet-potion-elixir',
     caixa_sorte:'box-luck',caixa_rara:'box-rare',caixa_epica:'box-epic',
@@ -1047,21 +1074,25 @@ function itemSpriteKey(item){
   if(raw.includes('nucleo pedra')||raw.includes('nucleo de pedra')) return '';
   if(raw.includes('escama vulcanica')||raw.includes('olho abissal')||raw.includes('essencia rei abissal')) return '';
 
-  if(raw.includes('espada')&&raw.includes('eclipse')) return 'weapon-eclipse';
-  if(raw.includes('lamina')&&raw.includes('abiss')) return 'weapon-abyss';
-  if(raw.includes('tridente')) return 'weapon-trident';
-  if(raw.includes('foice')) return 'weapon-scythe';
-  if(raw.includes('martelo')||raw.includes('machado')) return 'weapon-hammer';
-  if(raw.includes('arco')) return 'weapon-bow';
+  if(category==='weapon'){
+    if(raw.includes('espada')&&raw.includes('eclipse')) return 'weapon-eclipse';
+    if(raw.includes('lamina')&&raw.includes('abiss')) return 'weapon-abyss';
+    if(raw.includes('tridente')) return 'weapon-trident';
+    if(raw.includes('foice')) return 'weapon-scythe';
+    if(raw.includes('martelo')||raw.includes('machado')) return 'weapon-hammer';
+    if(raw.includes('arco')) return 'weapon-bow';
+  }
 
-  if(raw.includes('samurai')) return 'char-samurai';
-  if(raw.includes('cavaleiro')) return 'char-paladin';
-  if(raw.includes('dragao')||raw.includes('fenix')||raw.includes('vulcan')) return 'armor-chaos';
-  if(raw.includes('abiss')||raw.includes('vazio')) return 'armor-abyss';
-  if(raw.includes('celestial')||raw.includes('divina')) return 'armor-celestial';
-  if(raw.includes('leviata')||raw.includes('runico')) return 'armor-leviathan';
-  if(raw.includes('obsidiana')||raw.includes('eclipse')||raw.includes('predador')) return 'armor-obsidian';
-  if(raw.includes('tita')||raw.includes('golem')||raw.includes('colosso')||raw.includes('guardiao')||raw.includes('bastiao')) return 'armor-titan';
+  if(category==='armor'){
+    if(raw.includes('samurai')) return 'char-samurai';
+    if(raw.includes('cavaleiro')) return 'char-paladin';
+    if(raw.includes('dragao')||raw.includes('fenix')||raw.includes('vulcan')) return 'armor-chaos';
+    if(raw.includes('abiss')||raw.includes('vazio')) return 'armor-abyss';
+    if(raw.includes('celestial')||raw.includes('divina')) return 'armor-celestial';
+    if(raw.includes('leviata')||raw.includes('runico')) return 'armor-leviathan';
+    if(raw.includes('obsidiana')||raw.includes('eclipse')||raw.includes('predador')) return 'armor-obsidian';
+    if(raw.includes('tita')||raw.includes('golem')||raw.includes('colosso')||raw.includes('guardiao')||raw.includes('bastiao')) return 'armor-titan';
+  }
 
   if(raw.includes('invocar pet')||raw.includes('invocacao')||raw.includes('summon')) return 'special-summon';
   if(raw.includes('alma ancestral')) return 'special-soul';
