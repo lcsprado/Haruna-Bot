@@ -820,7 +820,7 @@ function renderHome(){
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
     '<div class="home-exp"><div><span>⭐ EXP</span><strong>'+num(raw.exp||0)+'/'+num(Math.max(1,Number(raw.level||1)*100))+'</strong></div><div class="progress exp-progress"><span style="width:'+pct(Number(raw.exp||0)/Math.max(1,Number(raw.level||1)*100)*100)+'%"></span></div></div>'+
-    '<div class="hero-actions"><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ ALL</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+' '+(workExpires?'data-work-cooldown="'+workExpires+'"':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div>'+
+    '<div class="hero-actions"><button class="btn heal" data-player-heal '+(hp>=hpMax?'disabled':'')+'>'+(hp>=hpMax?'❤️ HP cheio':'❤️ Curar')+'</button><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ ALL</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+' '+(workExpires?'data-work-cooldown="'+workExpires+'"':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div>'+
     '<div class="home-action-status"><span>🎁 Daily: <strong>'+(dailyDone?'feito hoje':'disponível')+'</strong> • sequência '+num(dailyStreak)+'</span><span>💼 Trabalho: <strong>'+(workRemain>0?'cooldown '+esc(formatRemaining(workRemain)):'disponível')+'</strong></span></div></div>'+
     '<div class="hero-side"><div><small>CARTEIRA</small><strong>'+money(raw.cash)+'</strong></div><div><small>BANCO</small><strong>'+money(raw.bank)+'</strong></div><div><small>ARMA</small><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div><div><small>ARMADURA</small><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div></div>'+
   '</div>'+
@@ -918,8 +918,8 @@ function renderCharacter(){
   const applied=Boolean(cp.class_applied);
   const currentRule=classRule(selected.id);
   return '<div class="page-head"><div><h2>Seu personagem</h2><p>Agora a classe altera seus atributos de verdade no WhatsApp, Boss, Raid, Dungeon e PvP.</p></div><span class="tag '+(applied?'good':'')+'">'+esc(applied?selected.name+' ativo':'Escolha sua classe')+'</span></div>'+
-    '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):'Sem classe aplicada')+'</small></div></div>'+
-      '<div class="stat-strip"><span>❤️ '+num(cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
+    '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):'Sem classe aplicada')+'</small></div><button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+
+      '<div class="stat-strip"><span>❤️ '+num(cp.effective_hp||cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
     '</div>'+
     '<div class="character-grid">'+CHARACTER_ART.map(ch=>{
       const rule=classRule(ch.id)||{};
@@ -994,18 +994,21 @@ function itemSpriteKey(item){
     pocao_p:'potion-small',pocao_m:'potion-medium',pocao_g:'potion-large',elixir_supremo:'potion-elixir',
     pocao_pet_comum:'pet-potion-small',pocao_pet_rara:'pet-potion-medium',pocao_pet_epica:'pet-potion-large',pocao_pet_suprema:'pet-potion-elixir',
     caixa_sorte:'box-luck',caixa_rara:'box-rare',caixa_epica:'box-epic',
-    espada_eclipse:'weapon-eclipse',lamina_abissal:'weapon-abyss',tridente_tempestade:'weapon-trident',foice_carmesim:'weapon-scythe',martelo_golem:'weapon-hammer',
-    espada_flamas:'weapon-eclipse',katana_sombria:'weapon-abyss',katana_divina:'weapon-abyss',sabre_runico:'weapon-trident',
-    espada_aco:'weapon-trident',machado_guerra:'weapon-hammer',garras_vazio:'weapon-abyss',lamina_cacador:'weapon-abyss',espada_guardiao:'weapon-eclipse',
-    armadura_couro:'char-archer',armadura_ferro:'char-warrior',armadura_aco:'char-paladin',
-    armadura_samurai:'char-samurai',armadura_cavaleiro:'char-paladin',
+    espada_eclipse:'weapon-eclipse',lamina_abissal:'weapon-abyss',tridente_tempestade:'weapon-trident',
+    foice_carmesim:'weapon-scythe',martelo_golem:'weapon-hammer',
+    espada_flamas:'weapon-eclipse',katana_sombria:'weapon-abyss',katana_divina:'weapon-abyss',
+    sabre_runico:'weapon-trident',machado_guerra:'weapon-hammer',garras_vazio:'weapon-abyss',
+    lamina_cacador:'weapon-abyss',espada_guardiao:'weapon-eclipse',
     armadura_dragao:'armor-chaos',armadura_abissal:'armor-abyss',armadura_celestial:'armor-celestial',
-    manto_fenix:'armor-chaos',couraca_vulcanica:'armor-chaos',armadura_vazio:'armor-abyss',armadura_eclipse:'armor-obsidian',
-    armadura_golem:'armor-titan',armadura_titan:'armor-titan',armadura_divina:'armor-celestial',
-    armadura_bastiao:'armor-titan',manto_runico:'armor-leviathan',couraca_guardiao:'armor-titan',
-    colete_vital:'armor-leviathan',couraca_predador:'armor-obsidian',armadura_colosso:'armor-titan',
+    manto_fenix:'armor-chaos',couraca_vulcanica:'armor-chaos',armadura_vazio:'armor-abyss',
+    armadura_eclipse:'armor-obsidian',armadura_golem:'armor-titan',armadura_titan:'armor-titan',
+    armadura_divina:'armor-celestial',armadura_bastiao:'armor-titan',manto_runico:'armor-leviathan',
+    couraca_guardiao:'armor-titan',colete_vital:'armor-leviathan',couraca_predador:'armor-obsidian',
+    armadura_colosso:'armor-titan',
     nucleo_alpha_corrompido:'special-essence',
-    fragmento_alpha:'material-alpha',essencia_abissal:'material-abyss',cristal_ancestral:'material-ancestral',nucleo_celestial:'material-celestial'
+    fragmento_alpha:'material-alpha',essencia_abissal:'material-abyss',
+    cristal_ancestral:'material-ancestral',nucleo_celestial:'material-celestial',
+    fragmento_celestial:'material-celestial'
   };
   if(exact[id]) return exact[id];
 
@@ -1018,6 +1021,10 @@ function itemSpriteKey(item){
   if(raw.includes('cristal ancestral')) return 'material-ancestral';
   if(raw.includes('nucleo celestial')) return 'material-celestial';
   if(raw.includes('nucleo alpha')||raw.includes('corrompido')) return 'special-essence';
+  if(raw.includes('fragmento celestial')) return 'material-celestial';
+  if(raw.includes('nucleo titan')||raw.includes('nucleo do tita')) return '';
+  if(raw.includes('nucleo pedra')||raw.includes('nucleo de pedra')) return '';
+  if(raw.includes('escama vulcanica')||raw.includes('olho abissal')||raw.includes('essencia rei abissal')) return '';
 
   if(raw.includes('espada')&&raw.includes('eclipse')) return 'weapon-eclipse';
   if(raw.includes('lamina')&&raw.includes('abiss')) return 'weapon-abyss';
@@ -1026,7 +1033,6 @@ function itemSpriteKey(item){
   if(raw.includes('martelo')||raw.includes('machado')) return 'weapon-hammer';
   if(raw.includes('arco')) return 'weapon-bow';
 
-  if(raw.includes('steel armor')) return 'armor-titan';
   if(raw.includes('samurai')) return 'char-samurai';
   if(raw.includes('cavaleiro')) return 'char-paladin';
   if(raw.includes('dragao')||raw.includes('fenix')||raw.includes('vulcan')) return 'armor-chaos';
@@ -1044,21 +1050,52 @@ function itemSpriteKey(item){
   if(raw.includes('essencia epic')) return 'special-essence';
   return '';
 }
+function itemFallbackVisual(item){
+  const id=String(item&&((item.item_id||item.itemId||item.id)||'')||'').toLowerCase();
+  const raw=(id+' '+String(item&&item.name||'')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const category=String(item&&item.category||'').toLowerCase();
+  const exact={
+    espada_madeira:['🪵🗡️','Espada de Madeira'],
+    espada_ferro:['⚙️🗡️','Espada de Ferro'],
+    espada_aco:['⚔️','Espada de Aço'],
+    sword_wood:['🪵🗡️','Espada de Madeira'],
+    sword_iron:['⚙️🗡️','Espada de Ferro'],
+    sword_steel:['⚔️','Espada de Aço'],
+    sword_mythril:['✨⚔️','Espada de Mithril'],
+    armadura_couro:['🟤🛡️','Armadura de Couro'],
+    armadura_ferro:['⚙️🛡️','Armadura de Ferro'],
+    armadura_aco:['🔷🛡️','Armadura de Aço'],
+    bota_leve:['🥾','Bota Leve'],
+    bota_vento:['💨🥾','Bota do Vento'],
+    bota_cacador:['🏹🥾','Bota do Caçador'],
+    bota_relampago:['⚡🥾','Bota do Relâmpago'],
+    bota_celestial:['✨🥾','Bota Celestial'],
+    nucleo_pedra:['🪨💎','Núcleo de Pedra'],
+    escama_vulcanica:['🔥🧩','Escama Vulcânica'],
+    olho_abissal:['👁️🟣','Olho Abissal'],
+    nucleo_titan:['🟠💎','Núcleo do Titã'],
+    essencia_rei_abissal:['🟣🔥','Essência Abissal'],
+    fragmento_celestial:['🔷💎','Fragmento Celestial']
+  };
+  if(exact[id]) return exact[id];
+  if(raw.includes('fragmento')) return ['💎','Fragmento'];
+  if(raw.includes('nucleo')) return ['🔶','Núcleo'];
+  if(raw.includes('essencia')) return ['🔮','Essência'];
+  if(raw.includes('escama')) return ['🔥','Escama'];
+  if(category==='weapon') return ['🗡️','Arma'];
+  if(category==='armor') return ['🛡️','Armadura'];
+  if(category==='boots') return ['🥾','Botas'];
+  if(category==='material'||category==='special') return ['💎','Material'];
+  if(category==='consumable'||category==='potion') return ['🧪','Consumível'];
+  return ['💠','Item'];
+}
 function itemArtMarkup(item){
   const key=itemSpriteKey(item);
   if(key) return '<div class="item-art">'+artSprite(key,'item-official-art',item&&item.name||'Item')+'</div>';
-  const id=String(item&&((item.item_id||item.itemId||item.id)||'')||'');
-  const category=String(item&&item.category||'');
-  let icon='💠',label='Item';
-  if(id.startsWith('bota_')||category==='boots'){
-    icon=id.includes('relampago')?'⚡🥾':id.includes('vento')?'💨🥾':id.includes('celestial')?'✨🥾':id.includes('cacador')?'🏹🥾':'🥾';
-    label='Botas';
-  }else if(category==='weapon'){icon='🗡️';label='Arma'}
-  else if(category==='armor'){icon='🛡️';label='Armadura'}
-  else if(category==='material'){icon='💎';label='Material'}
-  else if(category==='consumable'||category==='potion'){icon='🧪';label='Consumível'}
-  return '<div class="item-art item-art-fallback"><span>'+icon+'</span><small>'+esc(label)+'</small></div>';
+  const visual=itemFallbackVisual(item);
+  return '<div class="item-art item-art-fallback"><span>'+visual[0]+'</span><small>'+esc(visual[1])+'</small></div>';
 }
+
 function rarityLabel(value){
   const key=String(value||'common').toLowerCase();
   return ({common:'Comum',uncommon:'Incomum',rare:'Raro',epic:'Épico',legendary:'Lendário',event:'Evento'}[key]||titleCase(key));
@@ -1069,8 +1106,30 @@ function categoryLabel(value){
 }
 function itemDisplayName(item){
   const name=String(item&&item.name||'Item');
-  if(name.toLowerCase()==='steel armor') return 'Armadura de Aço';
-  return name;
+  const key=name.trim().toLowerCase();
+  const map={
+    'wooden sword':'Espada de Madeira',
+    'iron sword':'Espada de Ferro',
+    'steel sword':'Espada de Aço',
+    'mythril sword':'Espada de Mithril',
+    'steel armor':'Armadura de Aço',
+    'bank upgrade':'Melhoria Bancária',
+    'premium 7 hari':'Premium 7 dias'
+  };
+  return map[key]||name;
+}
+function itemDisplayDescription(item){
+  const name=String(item&&item.name||'').trim().toLowerCase();
+  const map={
+    'wooden sword':'Arma básica. +5 ATK.',
+    'iron sword':'Arma reforçada. +15 ATK.',
+    'steel sword':'Arma rara. +30 ATK.',
+    'mythril sword':'Arma épica de Mithril. +70 ATK.',
+    'steel armor':'Armadura de aço.',
+    'bank upgrade':'Aumenta o limite do banco em R$ 50.000.',
+    'premium 7 hari':'Acesso Premium por 7 dias.'
+  };
+  return map[name]||String(item&&item.description||'');
 }
 function inventoryCard(i){
   const id=i.item_id;
@@ -1092,7 +1151,7 @@ function inventoryCard(i){
   }
   return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+
     '<div class="tag-row"><span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
-    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(i.description||'')+'</p>'+
+    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(itemDisplayDescription(i))+'</p>'+
     (i.sellable!==false?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
     (eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Upgrade devolve '+money(i.upgrade_refund)+' na venda.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
@@ -1114,7 +1173,7 @@ function shopCard(i){
   if(Number(eq.defense||eq.def)>0) bonus.push('+'+num(eq.defense||eq.def)+' DEF');
   if(Number(eq.speed||eq.spd)>0) bonus.push('+'+num(eq.speed||eq.spd)+' SPD');
   if(Number(eq.crit)>0) bonus.push('+'+num(Number(eq.crit)<=1?Number(eq.crit)*100:eq.crit)+'% CRIT');
-  return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+'<div class="tag-row"><span class="tag">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div><h3>'+esc(itemDisplayName(i))+'</h3><p>'+esc(i.description||'')+'</p>'+
+  return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+'<div class="tag-row"><span class="tag">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div><h3>'+esc(itemDisplayName(i))+'</h3><p>'+esc(itemDisplayDescription(i))+'</p>'+
     (bonus.length?'<p class="item-bonus">'+bonus.join(' • ')+'</p>':'')+
     '<strong>'+money(i.price)+'</strong><div class="item-actions"><button class="btn primary" data-shop-buy="'+esc(i.id)+'" data-shop-price="'+Number(i.price||0)+'">Comprar 1</button><button class="btn" data-shop-buy-qty="'+esc(i.id)+'" data-shop-price="'+Number(i.price||0)+'">Comprar quantidade</button></div></div>';
 }
@@ -1209,6 +1268,14 @@ function prettyResult(value){
       '<div class="result-metrics section">'+
         resultMetric('HP atual',num(value.hp)+'/'+num(value.maxHp))+
         resultMetric('Poção',value.name||'Poção de pet')+
+        resultMetric('Restantes',num(value.remaining||0),'num')+
+      '</div>';
+  }
+  if(value.healed!=null&&value.hp!=null&&value.maxHp!=null&&value.name&&!value.petName){
+    return '<div class="result-message heal-result">❤️ Você recuperou <strong>'+num(value.healed)+' HP</strong>.</div>'+
+      '<div class="result-metrics section">'+
+        resultMetric('HP atual',num(value.hp)+'/'+num(value.maxHp))+
+        resultMetric('Poção',value.name||'Poção')+
         resultMetric('Restantes',num(value.remaining||0),'num')+
       '</div>';
   }
@@ -1663,6 +1730,7 @@ function bind(){
     doAction('pet.adopt',{species:x.dataset.petAdopt,name},{});
   });
   document.querySelectorAll('[data-pet-summon]').forEach(x=>x.onclick=()=>doAction('pet.summon',{materialId:x.dataset.petSummon},{}));
+  document.querySelectorAll('[data-player-heal]').forEach(x=>x.onclick=()=>doAction('player.heal',{}, {success:'❤️ Personagem curado.'}));
   document.querySelectorAll('[data-team-pet-heal],[data-pet-card-heal]').forEach(x=>x.onclick=()=>{
     const petId=Number(x.dataset.teamPetHeal||x.dataset.petCardHeal||0);
     if(petId>0) doAction('pet.heal',{petId},{success:'❤️ Cura aplicada ao pet.'});
