@@ -701,14 +701,14 @@ function renderGames(){
   const groupLinked=Boolean(currentGroup());
   return '<div class="page-head"><div><h2>Minigames</h2><p>Resultados e apostas passam pelo mesmo motor do WhatsApp.</p></div><span class="tag '+(groupLinked?'good':'')+'">'+(groupLinked?'GRUPO VINCULADO':'SOLO')+'</span></div>'+
     '<div class="grid three">'+
-      '<div class="card game-card"><div class="game-icon">🪙</div><h3>Cara ou Coroa</h3><p>Aposta individual, mesmo saldo real.</p><button class="btn primary" data-game-coin>Jogar</button></div>'+
-      '<div class="card game-card"><div class="game-icon">🎰</div><h3>Roleta</h3><p>Aposta individual com escolha.</p><button class="btn primary" data-game-roulette>Jogar</button></div>'+
-      '<div class="card game-card"><div class="game-icon">✊</div><h3>Pedra Papel Tesoura</h3><p>Partida rápida contra o sistema.</p><button class="btn primary" data-game-rps>Jogar</button></div>'+
+      '<div class="card game-card"><div class="game-icon">🪙</div><h3>Cara ou Coroa</h3><p>Aposta individual, mesmo saldo real.</p><input class="game-input" data-coin-amount type="number" inputmode="numeric" min="1" value="1000"><div class="choice-row"><button class="btn" data-game-coin-choice="cara">Cara</button><button class="btn" data-game-coin-choice="coroa">Coroa</button></div></div>'+
+      '<div class="card game-card"><div class="game-icon">🎰</div><h3>Roleta</h3><p>Aposta individual com escolha.</p><input class="game-input" data-roulette-amount type="number" inputmode="numeric" min="1" value="1000"><div class="choice-row"><button class="btn" data-game-roulette-choice="vermelho">🔴 Vermelho</button><button class="btn" data-game-roulette-choice="preto">⚫ Preto</button></div></div>'+
+      '<div class="card game-card"><div class="game-icon">✊</div><h3>Pedra Papel Tesoura</h3><p>Partida rápida contra o sistema.</p><div class="choice-row"><button class="btn" data-game-rps-choice="pedra">✊ Pedra</button><button class="btn" data-game-rps-choice="papel">✋ Papel</button><button class="btn" data-game-rps-choice="tesoura">✌️ Tesoura</button></div></div>'+
       '<div class="card game-card"><div class="game-icon">🏰</div><h3>Dungeon</h3><p>Usa HP, atributos, equipamentos e cooldown reais.</p><button class="btn primary" data-game-dungeon>Entrar</button></div>'+
-      '<div class="card game-card"><h3>❓ Quiz do Grupo</h3>'+gameStatePanel('quiz',games.quiz)+'<div class="pet-actions"><button class="btn" data-quiz-start>Iniciar</button><button class="btn good" data-quiz-answer>Responder</button></div></div>'+
-      '<div class="card game-card"><h3>🔢 Número</h3>'+gameStatePanel('numero',games.numero)+'<div class="pet-actions"><button class="btn" data-number-start>Iniciar</button><button class="btn good" data-number-guess>Chutar</button></div></div>'+
-      '<div class="card game-card"><h3>🔤 Forca</h3>'+gameStatePanel('forca',games.forca)+'<div class="pet-actions"><button class="btn" data-hangman-start>Iniciar</button><button class="btn good" data-hangman-letter>Letra</button><button class="btn" data-hangman-word>Palavra</button></div></div>'+
-      '<div class="card game-card"><h3>🎯 Roleta em Grupo</h3>'+gameStatePanel('roulette_group',games.roulette_group)+'<div class="pet-actions"><button class="btn" data-group-roulette-create>Criar</button><button class="btn" data-group-roulette-join>Entrar</button><button class="btn good" data-group-roulette-spin>Girar</button></div></div>'+
+      '<div class="card game-card"><h3>❓ Quiz do Grupo</h3>'+gameStatePanel('quiz',games.quiz)+'<div class="game-answer"><input class="game-input" data-quiz-input placeholder="Resposta ou número"><button class="btn good" data-quiz-answer>Responder</button></div><button class="btn" data-quiz-start>Iniciar</button></div>'+
+      '<div class="card game-card"><h3>🔢 Número</h3>'+gameStatePanel('numero',games.numero)+'<div class="game-answer"><input class="game-input" data-number-input type="number" inputmode="numeric" min="1" placeholder="Seu número"><button class="btn good" data-number-guess>Chutar</button></div><button class="btn" data-number-start>Iniciar</button></div>'+
+      '<div class="card game-card"><h3>🔤 Forca</h3>'+gameStatePanel('forca',games.forca)+'<div class="game-answer"><input class="game-input" data-hangman-input placeholder="Letra ou palavra"><button class="btn good" data-hangman-send>Enviar</button></div><button class="btn" data-hangman-start>Iniciar</button></div>'+
+      '<div class="card game-card"><h3>🎯 Roleta em Grupo</h3>'+gameStatePanel('roulette_group',games.roulette_group)+'<p class="muted">Criação e entrada continuam disponíveis; formulário avançado será refinado na próxima etapa.</p><div class="pet-actions"><button class="btn" data-group-roulette-create>Criar</button><button class="btn" data-group-roulette-join>Entrar</button><button class="btn good" data-group-roulette-spin>Girar</button></div></div>'+
       '<div class="card game-card"><h3>🏆 Torneio</h3>'+gameStatePanel('tournament',games.tournament)+'<div class="pet-actions"><button class="btn" data-tournament-create>Criar</button><button class="btn" data-tournament-join>Entrar</button><button class="btn good" data-tournament-start>Iniciar</button></div></div>'+
     '</div>'+resultPanel();
 }
@@ -1093,37 +1093,32 @@ function bind(){
   document.querySelectorAll('[data-clan-kick]').forEach(x=>x.onclick=()=>doAction('clan.kick',{targetJid:x.dataset.clanKick},{}));
   document.querySelectorAll('[data-clan-transfer]').forEach(x=>x.onclick=()=>doAction('clan.transfer',{targetJid:x.dataset.clanTransfer},{}));
 
-  document.querySelectorAll('[data-game-coin]').forEach(x=>x.onclick=()=>{
-    const amount=Number(prompt('Aposta:','1000')), choice=prompt('cara ou coroa:','cara');
-    if(amount>0&&choice) doAction('game.coinflip',{amount,choice},{});
+  document.querySelectorAll('[data-game-coin-choice]').forEach(x=>x.onclick=()=>{
+    const amount=Math.floor(Number((document.querySelector('[data-coin-amount]')||{}).value||0));
+    if(amount>0) doAction('game.coinflip',{amount,choice:x.dataset.gameCoinChoice},{}); else toast('Digite uma aposta válida.');
   });
-  document.querySelectorAll('[data-game-roulette]').forEach(x=>x.onclick=()=>{
-    const amount=Number(prompt('Aposta:','1000')), choice=prompt('Escolha da roleta:','vermelho');
-    if(amount>0&&choice) doAction('game.roulette',{amount,choice},{});
+  document.querySelectorAll('[data-game-roulette-choice]').forEach(x=>x.onclick=()=>{
+    const amount=Math.floor(Number((document.querySelector('[data-roulette-amount]')||{}).value||0));
+    if(amount>0) doAction('game.roulette',{amount,choice:x.dataset.gameRouletteChoice},{}); else toast('Digite uma aposta válida.');
   });
-  document.querySelectorAll('[data-game-rps]').forEach(x=>x.onclick=()=>{
-    const choice=prompt('pedra, papel ou tesoura:','pedra');
-    if(choice) doAction('game.rps',{choice},{});
-  });
+  document.querySelectorAll('[data-game-rps-choice]').forEach(x=>x.onclick=()=>doAction('game.rps',{choice:x.dataset.gameRpsChoice},{}));
   document.querySelectorAll('[data-game-dungeon]').forEach(x=>x.onclick=()=>doAction('dungeon',{},{}));
   document.querySelectorAll('[data-quiz-start]').forEach(x=>x.onclick=()=>doAction('game.quiz.start',{},{}));
   document.querySelectorAll('[data-quiz-answer]').forEach(x=>x.onclick=()=>{
-    const answer=prompt('Sua resposta:','1');
-    if(answer) doAction('game.quiz.answer',{answer},{});
+    const answer=String((document.querySelector('[data-quiz-input]')||{}).value||'').trim();
+    if(answer) doAction('game.quiz.answer',{answer},{}); else toast('Digite sua resposta.');
   });
   document.querySelectorAll('[data-number-start]').forEach(x=>x.onclick=()=>doAction('game.number.start',{},{}));
   document.querySelectorAll('[data-number-guess]').forEach(x=>x.onclick=()=>{
-    const guess=Number(prompt('Seu número:','50'));
-    if(guess>0) doAction('game.number.guess',{guess},{});
+    const guess=Math.floor(Number((document.querySelector('[data-number-input]')||{}).value||0));
+    if(guess>0) doAction('game.number.guess',{guess},{}); else toast('Digite um número válido.');
   });
   document.querySelectorAll('[data-hangman-start]').forEach(x=>x.onclick=()=>doAction('game.hangman.start',{},{}));
-  document.querySelectorAll('[data-hangman-letter]').forEach(x=>x.onclick=()=>{
-    const letter=prompt('Letra:','a');
-    if(letter) doAction('game.hangman.letter',{letter},{});
-  });
-  document.querySelectorAll('[data-hangman-word]').forEach(x=>x.onclick=()=>{
-    const word=prompt('Palavra:','');
-    if(word) doAction('game.hangman.word',{word},{});
+  document.querySelectorAll('[data-hangman-send]').forEach(x=>x.onclick=()=>{
+    const value=String((document.querySelector('[data-hangman-input]')||{}).value||'').trim();
+    if(!value) return toast('Digite uma letra ou palavra.');
+    if(value.length===1) doAction('game.hangman.letter',{letter:value},{});
+    else doAction('game.hangman.word',{word:value},{});
   });
   document.querySelectorAll('[data-group-roulette-create]').forEach(x=>x.onclick=()=>{
     const amount=Number(prompt('Aposta:','1000')), choice=prompt('Escolha:','vermelho');
