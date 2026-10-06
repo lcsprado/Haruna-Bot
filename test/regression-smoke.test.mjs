@@ -145,3 +145,24 @@ test('class reclassification requires scroll and seven-day cooldown',()=>{
   assert.ok(app.includes('Precisa de Pergaminho'),'web class lock state missing')
   assert.ok(app.includes('Primeira classe grátis'),'first-choice UX missing')
 })
+
+
+test('group web linking upgrades existing sessions',()=>{
+  assert.ok(webApi.includes("UPDATE web_sessions SET chat_jid=$1,last_seen_at=$2 WHERE jid=$3 AND expires_at>$2"),'!web in a group must upgrade existing sessions')
+  assert.ok(webApi.includes("groupLinked:true"),'auth health self-test must verify group binding')
+})
+
+test('corrected art sheet protects known broken assets',()=>{
+  assert.ok(app.includes("FIXED_ART_SHEET='/assets/alpha-fixed-art.webp"),'corrected art sheet missing')
+  assert.ok(app.includes("'fixed-wolvenaro'"),'Wolvenaro corrected art missing')
+  assert.ok(app.includes("'fixed-urso-runico'"),'Urso Runico corrected art missing')
+  assert.ok(app.includes("bota_leve:'fixed-bota-leve'"),'Bota Leve corrected art missing')
+  assert.ok(app.includes("armadura_couro:'fixed-armadura-couro'"),'Armadura de Couro corrected art missing')
+  assert.ok(app.includes("olho_abissal:'fixed-olho-abissal'"),'Olho Abissal corrected art missing')
+  assert.ok(app.includes("nucleo_titan:'fixed-nucleo-tita'"),'Nucleo do Tita corrected art missing')
+})
+
+test('fuzzy equipment art matching is category gated',()=>{
+  assert.ok(app.includes("if(category==='weapon')"),'weapon fuzzy art must be category gated')
+  assert.ok(app.includes("if(category==='armor')"),'armor fuzzy art must be category gated')
+})
