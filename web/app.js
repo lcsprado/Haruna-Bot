@@ -64,6 +64,26 @@ const OFFICIAL_ART_H=1024;
 const FIXED_ART_SHEET='/assets/alpha-fixed-art.webp?v=alpha-fixed-20261006-1';
 const FIXED_ART_W=960;
 const FIXED_ART_H=384;
+
+// Artes exclusivas dos pets especiais/endgame. Uma única spritesheet evita
+// dezenas de downloads sem reaproveitar a identidade visual entre espécies.
+const SPECIAL_PET_ART_SHEET='/assets/alpha-special-pets.webp?v=alpha-special-pets-20261006-1';
+const SPECIAL_PET_ART_W=384;
+const SPECIAL_PET_ART_H=288;
+const SPECIAL_PET_SPRITES={
+  'pet-special-oraculo_pedra':[0,0,96,96],
+  'pet-special-pantera_vulcanica':[96,0,96,96],
+  'pet-special-espectro_abissal':[192,0,96,96],
+  'pet-special-kraken_aco':[288,0,96,96],
+  'pet-special-esfinge_titanica':[0,96,96,96],
+  'pet-special-quimera_abissal':[96,96,96,96],
+  'pet-special-paladino_astral':[192,96,96,96],
+  'pet-special-lince_celestial':[288,96,96,96],
+  'pet-special-arcanjo_eclipse':[0,192,96,96],
+  'pet-special-colosso_alpha':[96,192,96,96],
+  'pet-special-oraculo_alpha':[192,192,96,96]
+};
+
 const FIXED_SPRITES={
   'fixed-wolvenaro':[0,0,192,192],
   'fixed-urso-runico':[192,0,192,192],
@@ -197,12 +217,13 @@ const OFFICIAL_SPRITES={
 };
 
 function artSprite(key,className,alt){
+  const special=SPECIAL_PET_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=fixed||OFFICIAL_SPRITES[key];
+  const b=special||fixed||OFFICIAL_SPRITES[key];
   if(!b) return '';
-  const sheet=fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET;
-  const width=fixed?FIXED_ART_W:OFFICIAL_ART_W;
-  const height=fixed?FIXED_ART_H:OFFICIAL_ART_H;
+  const sheet=special?SPECIAL_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
+  const width=special?SPECIAL_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
+  const height=special?SPECIAL_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
   return '<svg class="official-art '+esc(className||'')+'" viewBox="'+b.join(' ')+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(alt||key)+'">'+
     '<image href="'+sheet+'" x="0" y="0" width="'+width+'" height="'+height+'" preserveAspectRatio="none"></image>'+
   '</svg>';
@@ -356,6 +377,8 @@ function petSpriteKey(species){
 function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
   const label=titleCase(s);
+  const exclusive='pet-special-'+s;
+  if(SPECIAL_PET_SPRITES[exclusive]) return artSprite(exclusive,className,label);
   if(s==='lobo') return artSprite('fixed-wolvenaro',className,label);
   if(s==='urso_runico') return artSprite('fixed-urso-runico',className,label);
   const img=petExactImage(s);

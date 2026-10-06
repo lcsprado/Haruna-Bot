@@ -233,3 +233,12 @@ test('every successful PWA action has a WhatsApp activity fallback',()=>{
   assert.ok(webApi.includes("}else if(actionName.startsWith('boss.')){"),'boss activity log missing')
   assert.ok(webApi.includes("text='🎮 *ATIVIDADE ALPHA*"),'generic fallback activity log missing')
 })
+
+
+test('endgame special pets use exclusive artwork',()=>{
+  assert.ok(app.includes("SPECIAL_PET_ART_SHEET='/assets/alpha-special-pets.webp"),'special-pet spritesheet missing')
+  for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
+    assert.ok(app.includes("'pet-special-"+species+"'"),'exclusive special-pet art missing for '+species)
+  }
+  assert.ok(app.includes("if(SPECIAL_PET_SPRITES[exclusive]) return artSprite(exclusive,className,label)"),'exclusive pet art must take priority over aliases')
+})
