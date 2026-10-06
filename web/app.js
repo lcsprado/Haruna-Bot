@@ -1645,20 +1645,22 @@ function renderSocial(){
     '</div></div>':'';
   return '<div class="page-head"><div><h2>Social</h2><p>Roubo, PIX, empréstimo, relacionamento, apostas PvP e atalhos para duelo usam os jogadores reais do grupo.</p></div><div class="hero-actions"><button class="btn primary" data-go-page="duels">⚔️ Abrir Arena de Duelos</button><span class="tag">'+members.length+' jogadores recentes</span></div></div>'+
     pending+
-    relationshipProposalPanel()+
     '<div class="section card"><div class="section-title"><h3>Relacionamento</h3><small>Mesmo estado do WhatsApp</small></div>'+renderRelationship(rel)+(rel?'<div class="hero-actions section"><button class="btn danger" data-relationship-divorce>Divorciar</button></div>':'')+'</div>'+
     '<div class="section"><div class="section-title"><h3>Jogadores do grupo</h3><small>Ações sociais e PvP</small></div><div class="grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div></div>'+resultPanel();
 }
 
 function renderMarket(){
   const ex=ui.extras||{}, market=ex.market||[], mine=ui.data.market||[], inv=ui.data.inventory||[];
-  const available=inv.filter(i=>Number(i.quantity)>0 && i.sellable!==false);
+  const available=inv.map(i=>({
+    ...i,
+    market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0
+  })).filter(i=>i.market_quantity>0 && i.sellable!==false);
   return '<div class="page-head"><div><h2>Mercado</h2><p>Os anúncios são os mesmos do comando !mercado e expiram conforme a regra do bot.</p></div><span class="tag">'+market.length+' ativos</span></div>'+
     '<div class="section-title"><h3>Anúncios ativos</h3><small>'+market.length+'</small></div>'+
     '<div class="grid cards">'+(market.length?market.map(x=>'<div class="card item-card"><div class="item-icon">📣</div><h3>'+esc(x.name)+'</h3><p>'+esc(x.seller_name||'Jogador')+' • x'+num(x.quantity)+' • expira em '+Math.ceil(Number(x.remaining_seconds||0)/60)+' min</p><strong>'+money(x.price)+'</strong><div class="item-actions">'+(x.seller_jid===ui.data.identity.jid?'<button class="btn danger" data-market-cancel="'+x.id+'">Cancelar</button>':'<button class="btn primary" data-market-buy="'+x.id+'">Comprar</button>')+'</div></div>').join(''):'<div class="empty">Nenhum anúncio ativo.</div>')+'</div>'+
     '<div class="section"><div class="section-title"><h3>Meus anúncios</h3><small>'+mine.length+'</small></div><div class="list">'+(mine.length?mine.map(x=>'<div class="list-row"><span>'+esc(x.name)+' x'+num(x.quantity)+'</span><span>'+money(x.price)+' <button class="btn danger" data-market-cancel="'+x.id+'">Cancelar</button></span></div>').join(''):'<div class="empty">Você não tem anúncios ativos.</div>')+'</div></div>'+
     '<div class="section card"><div class="section-title"><h3>Anunciar do inventário</h3><small>'+available.length+' itens disponíveis</small></div>'+
-      (available.length?'<div class="market-inventory">'+available.map(i=>'<div class="market-inventory-row"><div><strong>'+esc(i.name)+'</strong><small>x'+num(i.quantity)+(Number(i.price)>0?' • referência '+money(i.price)+' cada':'')+'</small></div><button class="btn primary" data-market-announce="'+esc(i.item_id)+'" data-market-max="'+num(i.quantity)+'" data-market-ref="'+num(i.price||0)+'">Anunciar</button></div>').join('')+'</div>':'<div class="empty">Você não possui itens anunciáveis.</div>')+
+      (available.length?'<div class="market-inventory">'+available.map(i=>'<div class="market-inventory-row"><div><strong>'+esc(i.name)+'</strong><small>x'+num(i.market_quantity)+' livre(s)'+(i.equipped?' • 1 equipada protegida':'')+(Number(i.price)>0?' • referência '+money(i.price)+' cada':'')+'</small></div><button class="btn primary" data-market-announce="'+esc(i.item_id)+'" data-market-max="'+num(i.market_quantity)+'" data-market-ref="'+num(i.price||0)+'">Anunciar</button></div>').join('')+'</div>':'<div class="empty">Você não possui itens anunciáveis.</div>')+
     '</div>'+resultPanel();
 }
 
