@@ -1645,7 +1645,7 @@ O evento não aumenta a chance de ganhar — somente *triplica a recompensa quan
 
 ⚔️ Usem *!boss* e depois *!atacar*.`)
             }
-          }else if(now>=siegeEnd){
+          }else if(now>=siegeEnd && now<siegeEnd+10*60*1000){
             const siege=await autoStartSiegeBossEvent(chat)
             if(siege?.stopped) await sendScheduledGroupNotice(chat,'siege-end-2026-10-04',
 `🌘 *CERCO ENCERRADO*
@@ -1684,7 +1684,7 @@ Durante 30 minutos, XP de pet será dobrado em atividades relacionadas a eles:
 💰 Sem bônus de dinheiro.
 ⭐ Sem bônus de XP do jogador.
 🔥 É meia hora só para evoluir os pets!`)
-          }else if(now>=petCareEnd){
+          }else if(now>=petCareEnd && now<petCareEnd+10*60*1000){
             await sendScheduledGroupNotice(chat,'pet-care-end-2026-10-04',
 `🐾 *CUIDANDO DOS PETS ENCERRADO*
 
@@ -1997,6 +1997,16 @@ ${moneyLine}✨ XP: *${xpMult}x*
       }
 
       if(now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
+        // Nunca publique "evento encerrado" horas/dias depois por causa de restart ou grupo novo.
+        // Após 10 min de tolerância, marca como tratado silenciosamente.
+        if(now>=endsAt+10*60*1000){
+          raw.endAnnouncementId=eventId
+          await db.query(
+            "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
+            [JSON.stringify(raw)]
+          )
+          return
+        }
         if(String(raw.oneOffId||'')==='treino-alpha-2026-10-06-1900'){
           await sendEventToGroups(
 `⏱️ *CAÇADA ALPHA ENCERRADA!*
@@ -2064,6 +2074,15 @@ ${moneyLine}✨ XP: *${xpMult}x*
       }
 
       if(now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
+        // Evita avisos históricos em grupos adicionados/reconectados depois do evento.
+        if(now>=endsAt+10*60*1000){
+          raw.endAnnouncementId=eventId
+          await db.query(
+            "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='lucky_box_event'",
+            [JSON.stringify(raw)]
+          )
+          return
+        }
         await sendEventToGroups(
 `🍀 *DOUBLE LUCKY ENCERRADO!*
 
