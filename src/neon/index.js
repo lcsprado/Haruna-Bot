@@ -193,6 +193,36 @@ const raidRuns=new Map()
 let raidAutoWatchdog=null
 let raidAutoReply=null
 const raidAutoRetryAt=new Map()
+const RAID_RUN_STALE_MS=25000
+const RAID_NOTIFY_TIMEOUT_MS=2500
+
+function raidRunCurrent(runKey,token){
+  return raidRuns.get(runKey)?.token===token
+}
+
+function touchRaidRun(runKey,token){
+  const run=raidRuns.get(runKey)
+  if(run?.token===token) run.lastProgressAt=Date.now()
+}
+
+async function safeRaidNotify(reply,text){
+  if(!text || typeof reply!=='function') return false
+  try{
+    return await Promise.race([
+      Promise.resolve().then(()=>reply(text)).then(()=>true).catch(err=>{
+        console.error('[Raid Auto] aviso falhou; combate continua',err?.message||err)
+        return false
+      }),
+      new Promise(resolve=>setTimeout(()=>{
+        console.warn('[Raid Auto] aviso excedeu '+RAID_NOTIFY_TIMEOUT_MS+'ms; combate continua')
+        resolve(false)
+      },RAID_NOTIFY_TIMEOUT_MS))
+    ])
+  }catch(err){
+    console.error('[Raid Auto] aviso falhou; combate continua',err?.message||err)
+    return false
+  }
+}
 
 async function ensureActiveRaidRuns(){
   try{
@@ -209,7 +239,18 @@ async function ensureActiveRaidRuns(){
       if(!chat.endsWith('@g.us')||!level) continue
       const runKey=`${chat}|${level}`
       activeKeys.add(runKey)
-      if(raidRuns.has(runKey)) continue
+
+      const existing=raidRuns.get(runKey)
+      if(existing){
+        const heartbeatAge=Date.now()-Number(existing.lastProgressAt||existing.startedAt||0)
+        const persistedRoundAge=Date.now()-Number(row.state?.lastRoundAt||0)
+        if(heartbeatAge<=RAID_RUN_STALE_MS || (Number(row.state?.lastRoundAt||0)>0 && persistedRoundAge<=RAID_RUN_STALE_MS)) continue
+
+        console.warn('[Raid Auto] runner travado detectado; substituindo',chat,'Lv.'+level,'heartbeat '+heartbeatAge+'ms')
+        // Invalidar o token faz o runner antigo encerrar assim que qualquer await pendente liberar.
+        raidRuns.delete(runKey)
+      }
+
       const retryAt=Number(raidAutoRetryAt.get(runKey)||0)
       if(retryAt>Date.now()) continue
       const started=await runRaidCombat(chat,level,text=>raidAutoReply?raidAutoReply(chat,text):false)
@@ -226,14 +267,23 @@ async function ensureActiveRaidRuns(){
 async function runRaidCombat(chat,level,reply){
   const runKey=`${chat}|${Number(level)}`
   if(raidRuns.has(runKey)) return false
-  raidRuns.set(runKey,true)
+  const token=crypto.randomUUID()
+  raidRuns.set(runKey,{token,startedAt:Date.now(),lastProgressAt:Date.now()})
+
   ;(async()=>{
     try{
-      for(let i=0;i<180;i++){
+      // A própria Raid controla o tempo máximo em raidRound via activeElapsedMs.
+      // Não usamos limite fixo de rodadas: Lv.30/40/50 podem passar de 180 rodadas.
+      for(let i=0;;i++){
+        if(!raidRunCurrent(runKey,token)) return
+        touchRaidRun(runKey,token)
+
         let r
         for(let deadlockAttempt=0;;deadlockAttempt++){
+          if(!raidRunCurrent(runKey,token)) return
           try{
             r=await raidRound(chat,level)
+            touchRaidRun(runKey,token)
             break
           }catch(err){
             const isDeadlock=err?.code==='40P01' || /deadlock detected/i.test(String(err?.message||err))
@@ -242,6 +292,8 @@ async function runRaidCombat(chat,level,reply){
             await new Promise(resolve=>setTimeout(resolve,350*(deadlockAttempt+1)))
           }
         }
+
+        if(!raidRunCurrent(runKey,token)) return
         if(r.reason==='inactive') return
         if(r.reason==='cooldown'){
           i--
@@ -250,23 +302,39 @@ async function runRaidCombat(chat,level,reply){
         }
 
         if(r.victory){
-          let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*\n\n❤️ Boss derrotado em *${r.round} rodadas*.\n\n📊 *RECOMPENSAS POR COLABORAÇÃO*\n`
+          let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*
+
+❤️ Boss derrotado em *${r.round} rodadas*.
+
+📊 *RECOMPENSAS POR COLABORAÇÃO*
+`
           r.rewards.forEach((x,n)=>{
             const pct=(x.share*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
-            text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Number(x.petBonusDamage||0)>0?` *(+${Number(x.petBonusDamage).toLocaleString('pt-BR')} bônus pet)*`:''}\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP`
+            text+=`
+${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Number(x.petBonusDamage||0)>0?` *(+${Number(x.petBonusDamage).toLocaleString('pt-BR')} bônus pet)*`:''}
+💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP`
             if(x.petXp) text+=` • 🐾 +${x.petXp} XP pet`
-            if(Number(x.petSkillHealing||0)>0) text+=`\n💚 Cura do pet: *+${Number(x.petSkillHealing).toLocaleString('pt-BR')} HP*`
-            if(x.material) text+=`\n🧩 ${x.material.name} ×${x.material.qty}`
-            if(x.drop) text+=`\n🎁 DROP: *${x.drop.name}* (${x.drop.rarity})`
-            if(x.gearDrop) text+=`\n⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
+            if(Number(x.petSkillHealing||0)>0) text+=`
+💚 Cura do pet: *+${Number(x.petSkillHealing).toLocaleString('pt-BR')} HP*`
+            if(x.material) text+=`
+🧩 ${x.material.name} ×${x.material.qty}`
+            if(x.drop) text+=`
+🎁 DROP: *${x.drop.name}* (${x.drop.rarity})`
+            if(x.gearDrop) text+=`
+⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
           })
-          await reply(text)
+          void safeRaidNotify(reply,text)
           return
         }
 
         if(r.failed){
           const why=r.reason==='party_wipe'?'todos os jogadores caíram':'o tempo acabou'
-          await reply(`💀 *RAID FRACASSADA — ${r.config.name}*\n\n❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*\n⚠️ Motivo: *${why}*.\n\n🔑 A chave foi consumida. Não há recompensa em caso de derrota.`)
+          void safeRaidNotify(reply,`💀 *RAID FRACASSADA — ${r.config.name}*
+
+❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*
+⚠️ Motivo: *${why}*.
+
+🔑 A chave foi consumida. Não há recompensa em caso de derrota.`)
           return
         }
 
@@ -279,34 +347,51 @@ async function runRaidCombat(chat,level,reply){
         const petSwitches=bossEvents.filter(e=>e.petSwitch)
         const deaths=bossEvents.filter(e=>!e.alive)
         const petFalls=bossEvents.filter(e=>e.petFainted)
+
         if(r.round===1 || r.round%10===0 || deaths.length || petSwitches.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
-          let text=`⚔️ *RAID — RODADA ${r.round}*\n\n👹 *${r.config.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*\n`
-          if(r.special) text+=`\n🔥 *${r.specialName}!* O Boss usou um ataque especial.\n`
-          if(bossCrits) text+=`\n💢 Crítico do Boss: *${bossCrits} jogador${bossCrits>1?'es':''} atingido${bossCrits>1?'s':''}*.\n`
+          let text=`⚔️ *RAID — RODADA ${r.round}*
+
+👹 *${r.config.name}*
+❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*
+💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*
+`
+          if(r.special) text+=`
+🔥 *${r.specialName}!* O Boss usou um ataque especial.
+`
+          if(bossCrits) text+=`
+💢 Crítico do Boss: *${bossCrits} jogador${bossCrits>1?'es':''} atingido${bossCrits>1?'s':''}*.
+`
           const survivorNames=bossEvents.filter(e=>e.alive).map(e=>String(e.name||'Jogador')).filter(Boolean)
-          text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*\n👥 Sobreviventes (${r.survivors}): *${survivorNames.join(' • ')||'nenhum'}*`
-          for(const e of heals) text+=`\n🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
-          for(const e of petHeals) text+=`\n🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
-          for(const e of petSkillHeals) text+=`\n💚 *${e.petSkillHeal.name}* ativou a skill de cura em ${e.name}: *+${Number(e.petSkillHeal.heal||0).toLocaleString('pt-BR')} HP* (${Number(e.petSkillHeal.hp||0).toLocaleString('pt-BR')}/${Number(e.petSkillHeal.maxHp||0).toLocaleString('pt-BR')}).`
-          for(const e of petSwitches) text+=`\n🔄 *${e.petSwitch.from}* caiu! O Reserva *${e.petSwitch.to}* entrou automaticamente.`
-          for(const e of deaths) text+=`\n💀 *${e.name}* caiu sem cura e saiu da Raid.`
-          for(const e of petFalls) text+=`\n💔 *${e.petName}* ficou sem HP e saiu da Raid.`
-          await reply(text)
+          text+=`👹 Dano total do Boss na rodada: *${bossDamage.toLocaleString('pt-BR')}*
+👥 Sobreviventes (${r.survivors}): *${survivorNames.join(' • ')||'nenhum'}*`
+          for(const e of heals) text+=`
+🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
+          for(const e of petHeals) text+=`
+🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
+          for(const e of petSkillHeals) text+=`
+💚 *${e.petSkillHeal.name}* ativou a skill de cura em ${e.name}: *+${Number(e.petSkillHeal.heal||0).toLocaleString('pt-BR')} HP* (${Number(e.petSkillHeal.hp||0).toLocaleString('pt-BR')}/${Number(e.petSkillHeal.maxHp||0).toLocaleString('pt-BR')}).`
+          for(const e of petSwitches) text+=`
+🔄 *${e.petSwitch.from}* caiu! O Reserva *${e.petSwitch.to}* entrou automaticamente.`
+          for(const e of deaths) text+=`
+💀 *${e.name}* caiu sem cura e saiu da Raid.`
+          for(const e of petFalls) text+=`
+💔 *${e.petName}* ficou sem HP e saiu da Raid.`
+
+          // Notificação jamais bloqueia a progressão da Raid.
+          void safeRaidNotify(reply,text)
         }
+
         await new Promise(resolve=>setTimeout(resolve,8000))
       }
     }catch(err){
       console.error('[Raid]',err)
       raidAutoRetryAt.set(runKey,Date.now()+5000)
-      try{
-        await reply('⚠️ A Raid teve uma falha temporária. O servidor vai tentar retomar automaticamente.')
-      }catch(notifyErr){
-        console.error('[Raid Auto] falha ao avisar interrupção temporária',notifyErr?.message||notifyErr)
-      }
+      void safeRaidNotify(reply,'⚠️ A Raid teve uma falha temporária. O servidor vai tentar retomar automaticamente.')
     }finally{
-      raidRuns.delete(runKey)
+      // Um runner antigo/stale nunca pode apagar o runner novo que o substituiu.
+      if(raidRunCurrent(runKey,token)) raidRuns.delete(runKey)
     }
   })()
   return true
