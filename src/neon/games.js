@@ -872,7 +872,11 @@ async function finishRaidRewards(c,s,cfg){
   const now=Date.now()
   const raidComp=(await c.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
   const compensationActive=Number(raidComp.startsAt||0)<=now && now<Number(raidComp.endsAt||0)
-  const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive
+  // Eventos de Raid podem ser ativados pelo Neon; não dependa só de data hardcoded.
+  // Formatos aceitos: raid_compensation_event e raid_reward_event.
+  const raidRewardEvent=(await c.query("SELECT value FROM trevo_settings WHERE key='raid_reward_event'")).rows[0]?.value||{}
+  const rewardEventActive=Number(raidRewardEvent.startsAt||0)<=now && now<Number(raidRewardEvent.endsAt||0)
+  const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive || rewardEventActive
   const cacadaActive=cacadaAlphaActive()
   const moneyMultiplier=cacadaActive?1.25:1
   const xpMultiplier=raidEventActive?1.5:(cacadaActive?1.5:1)
