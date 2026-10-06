@@ -68,7 +68,7 @@ test('boss and event combat auto-heal pets like raids',()=>{
 
 
 test('player classes are persisted RPG stats, not cosmetic-only',()=>{
-  assert.ok(gameCatalog.includes("paladin:Object.freeze({id:'paladin',name:'Paladino',role:'Tank',hp:130,atk:7,def:22,spd:5"),'Paladin tank baseline changed or missing')
+  assert.ok(gameCatalog.includes("paladin:Object.freeze({id:'paladin',name:'Paladino',role:'Defensor',hp:130,atk:7,def:22,spd:5"),'Paladin defender baseline changed or missing')
   assert.ok(db.includes('export async function setPlayerClass'),'class persistence function missing')
   assert.ok(db.includes("class_applied BOOLEAN NOT NULL DEFAULT FALSE"),'stats class migration missing')
 })
@@ -258,7 +258,7 @@ test('web item and pet galleries never render without real artwork',()=>{
   assert.ok(app.includes('pet-art-stack'),'pet images need a permanent sprite fallback layer')
   assert.ok(app.includes('pet-fallback-underlay'),'pet fallback sprite must exist behind primary images')
   assert.ok(app.includes("if(PREMIUM_PET_SPRITES[exclusive]||SPECIAL_PET_SPRITES[exclusive])"),'special pets must render over a fallback instead of alone')
-  assert.ok(app.includes("'pet-primary-art'"),'special pet art must have a primary layer above fallback')
+  assert.ok(app.includes('pet-primary-art'),'special pet art must have a primary layer above fallback')
   assert.ok(app.includes('onerror="this.remove()"'),'broken exact pet images must reveal the already-rendered fallback')
 })
 
