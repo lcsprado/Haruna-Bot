@@ -1350,6 +1350,19 @@ async function start() {
     }
   }
 
+  // A Raid iniciada pelo PWA roda no processo do servidor, igual ao comando !go.
+  // Assim continua mesmo se o celular bloquear a tela, o navegador for para segundo
+  // plano ou os timers do PWA forem suspensos pelo Android/iOS.
+  globalThis.__alphaStartRaidRun=async(chat,level)=>{
+    if(!chat?.endsWith('@g.us')) return false
+    const reply=async text=>{
+      if(!text || trevoHealth.whatsapp!=='open') return false
+      await sock.sendMessage(chat,{text})
+      return true
+    }
+    return runRaidCombat(chat,Number(level),reply)
+  }
+
   async function sendScheduledGroupNotice(chat,key,text){
     const settingKey='scheduled_notice:'+key+':'+chat
     const inserted=await db.query(
