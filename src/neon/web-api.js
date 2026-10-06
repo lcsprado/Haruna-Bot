@@ -915,7 +915,7 @@ async function runAction(session,name,body={}){
     case 'pet.energy': return usePetEnergyItem(jid,String(body.itemId||'energetico_pet'))
     case 'pet.adopt': return adoptPet(jid,String(body.species||''),String(body.name||'Alpha'))
     case 'pet.select': return selectPet(jid,positiveInt(body.petId,'Pet'))
-    case 'pet.rename': return renamePet(jid,String(body.name||''))
+    case 'pet.rename': return renamePet(jid,String(body.name||''),body.petId==null?null:positiveInt(body.petId,'Pet'))
     case 'pet.action': return petAction(jid,String(body.action||''))
     case 'pet.team': return setPetTeam(jid,Array.isArray(body.petIds)?body.petIds:[],body.replaceAll!==false)
     case 'pet.summon': return summonLegendaryPet(jid,String(body.materialId||''))
