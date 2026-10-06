@@ -13,7 +13,7 @@ import {
   openLootBoxes, openLuckyBoxes, sellDuplicateEquipment,
   startPlayerSleep, wakePlayerEarly, getCarpinarPlans, startPlayerCarpinar, leavePlayerCarpinarEarly,
   petAdventure, startPetExpedition, resolvePetExpeditions,
-  claimLevelRewards, getLevelRewardPreview, leaderboard, combatLeaderboard, petLeaderboard,
+  claimLevelRewards, getLevelRewardPreview, getClaimedLevelRewards, leaderboard, combatLeaderboard, petLeaderboard,
   weeklyActivityLeaderboard, getPlayerRanks,
   proposeRelationship, acceptRelationship, divorceRelationship
 } from './db.js'
@@ -457,7 +457,7 @@ async function playerBootstrap(session){
   const chatJid=session.chatJid||null
   const [
     market,clan,clans,ranks,economyRank,combatRank,petRank,patrimonyRank,
-    loanCredit,carpinarPlans,groupMission,groupMissionLeaderboard,groupEvent
+    loanCredit,carpinarPlans,groupMission,groupMissionLeaderboard,groupEvent,claimedLevelRewards
   ]=await Promise.all([
     listMarket(30),
     getClanForUser(jid),
@@ -476,7 +476,8 @@ async function playerBootstrap(session){
                               u.push_name AS claimed_by_name
                        FROM group_events ge
                        LEFT JOIN users u ON u.jid=ge.claimed_by
-                       WHERE ge.chat_jid=$1`,[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null)
+                       WHERE ge.chat_jid=$1`,[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null),
+    getClaimedLevelRewards(jid)
   ])
   return {
     syncedAt:now(),
@@ -491,7 +492,8 @@ async function playerBootstrap(session){
     groupMission,
     groupMissionLeaderboard,
     groupEvent,
-    levelRewards:[5,10,15,20,25,30,35,40,45,50].map(getLevelRewardPreview).filter(Boolean)
+    claimedLevelRewards,
+    levelRewards:Array.from({length:20},(_,i)=>(i+1)*5).map(getLevelRewardPreview).filter(Boolean)
   }
 }
 
