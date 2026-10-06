@@ -81,3 +81,14 @@ test('web app has no duplicate critical render functions',()=>{
   assert.equal(count('ownedPetCard'),1,'ownedPetCard duplicated')
   assert.equal(count('itemArtMarkup'),1,'itemArtMarkup duplicated')
 })
+
+
+test('WhatsApp preview cannot consume a web login code',()=>{
+  assert.ok(webApi.includes("/rpg#code="),'!web must put the one-time code in a URL fragment')
+  const start=webApi.indexOf("url.pathname==='/api/v1/auth/link'")
+  const end=webApi.indexOf("url.pathname==='/api/v1/auth/exchange'",start)
+  assert.ok(start>=0&&end>start,'auth routes missing')
+  const getRoute=webApi.slice(start,end)
+  assert.ok(!getRoute.includes('exchangeWebLinkCode('),'GET auth link must never consume a one-time code')
+  assert.ok(app.includes("hashParams.get('code')"),'browser must read the login code from the fragment')
+})
