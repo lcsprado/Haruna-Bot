@@ -5,13 +5,17 @@ import { handleWebApi } from './web-api.js'
 const port = Number(process.env.PORT || 10000)
 const webFiles={
   '/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css',
+  '/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js',
   '/rpg':'index.html','/rpg/':'index.html','/rpg/index.html':'index.html',
-  '/rpg/app.js':'app.js','/rpg/styles.css':'styles.css'
+  '/rpg/app.js':'app.js','/rpg/styles.css':'styles.css',
+  '/rpg/manifest.webmanifest':'manifest.webmanifest','/rpg/sw.js':'sw.js'
 }
 const webTypes={
   html:'text/html; charset=utf-8',
   js:'text/javascript; charset=utf-8',
   css:'text/css; charset=utf-8',
+  json:'application/json; charset=utf-8',
+  webmanifest:'application/manifest+json; charset=utf-8',
   webp:'image/webp',
   png:'image/png',
   jpg:'image/jpeg',
@@ -31,8 +35,11 @@ async function serveWeb(req,res){
   try{
     const data=await readFile(new URL('../../web/'+file,import.meta.url))
     const ext=file.split('.').pop()
-    const cacheControl=['html','js','css'].includes(ext)?'no-store':'public, max-age=86400'
-    res.writeHead(200,{'content-type':webTypes[ext]||'application/octet-stream','cache-control':cacheControl})
+    const cacheControl=file==='sw.js'?'no-store, no-cache, must-revalidate':
+      ['html','js','css','webmanifest'].includes(ext)?'no-store':'public, max-age=86400'
+    const headers={'content-type':webTypes[ext]||'application/octet-stream','cache-control':cacheControl}
+    if(file==='sw.js') headers['service-worker-allowed']='/'
+    res.writeHead(200,headers)
     res.end(data)
   }catch(err){
     console.error('[HTTP] falha ao servir RPG Web',err)

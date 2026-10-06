@@ -8,6 +8,10 @@ const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const gameCatalog=readFileSync(new URL('../src/neon/game-catalog.js',import.meta.url),'utf8')
 const webApi=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8')
 const app=readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
+const webIndex=readFileSync(new URL('../web/index.html',import.meta.url),'utf8')
+const webManifest=readFileSync(new URL('../web/manifest.webmanifest',import.meta.url),'utf8')
+const serviceWorker=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8')
+const renderServer=readFileSync(new URL('../src/neon/render.js',import.meta.url),'utf8')
 
 test('critical command handlers remain registered',()=>{
   for(const cmd of ['ping','saldo','all','raid','boss','perfil']){
@@ -173,4 +177,20 @@ test('Lucky 3x multiplies roulette profit, not returned stake',()=>{
   assert.ok(games.includes("payout=amount+(baseProfit*lucky3xMultiplier())"),'single roulette Lucky 3x payout formula is wrong')
   assert.ok(games.includes("const baseProfit=basePayout-stake"),'group roulette must separate stake from profit')
   assert.ok(games.includes("payout=stake+(baseProfit*lucky3xMultiplier())"),'group roulette Lucky 3x payout formula is wrong')
+})
+
+
+test('Alpha RPG is installable as a PWA',()=>{
+  const manifest=JSON.parse(webManifest)
+  assert.equal(manifest.name,'Alpha RPG')
+  assert.equal(manifest.start_url,'/rpg')
+  assert.equal(manifest.display,'standalone')
+  assert.ok(Array.isArray(manifest.icons)&&manifest.icons.some(x=>x.sizes==='192x192'),'192px PWA icon missing')
+  assert.ok(manifest.icons.some(x=>x.sizes==='512x512'),'512px PWA icon missing')
+  assert.ok(webIndex.includes('rel="manifest"'),'manifest link missing from web shell')
+  assert.ok(webIndex.includes("navigator.serviceWorker.register('/sw.js'"),'service worker registration missing')
+  assert.ok(webIndex.includes('beforeinstallprompt'),'install prompt handling missing')
+  assert.ok(serviceWorker.includes("url.pathname.startsWith('/api/')"),'service worker must never cache authenticated API calls')
+  assert.ok(renderServer.includes("'/manifest.webmanifest':'manifest.webmanifest'"),'Render must serve the manifest')
+  assert.ok(renderServer.includes("'/sw.js':'sw.js'"),'Render must serve the service worker')
 })

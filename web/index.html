@@ -4,7 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#070b11">
-  <title>Alpha RPG Web</title>
+  <meta name="application-name" content="Alpha RPG">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Alpha RPG">
+  <title>Alpha RPG</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/icons/alpha-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/alpha-192.png">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -17,6 +24,7 @@
       <label for="linkCode">Código</label>
       <input id="linkCode" autocomplete="one-time-code" maxlength="12" placeholder="ABCD1234" required>
       <button class="btn primary" type="submit">Conectar</button>
+      <button class="btn" type="button" data-pwa-install hidden>📲 Instalar Alpha RPG</button>
       <p id="linkError" class="form-error"></p>
       <small>Use <b>!web</b> dentro do grupo para que Raid e Boss do navegador usem a mesma sessão do WhatsApp.</small>
     </form>
@@ -26,11 +34,12 @@
     <aside id="sidebar" class="sidebar">
       <div class="brand">
         <div class="brand-mark small">A</div>
-        <div><strong>ALPHA</strong><span>RPG WEB • SYNC</span></div>
+        <div><strong>ALPHA</strong><span>RPG • INSTALÁVEL • SYNC</span></div>
       </div>
       <div id="miniProfile" class="mini-profile"></div>
       <nav id="nav"></nav>
       <div class="side-footer">
+        <button class="btn" type="button" data-pwa-install hidden>📲 Instalar aplicativo</button>
         <span id="syncBadge" class="status-badge">● CONECTANDO</span>
         <button id="logoutBtn" class="text-btn">Desconectar</button>
       </div>
@@ -51,6 +60,59 @@
 
   <div id="menuBackdrop" class="menu-backdrop" aria-hidden="true"></div>
   <div id="toast" class="toast"></div>
+  <script>
+    (() => {
+      let installPrompt = null;
+      const buttons = () => [...document.querySelectorAll('[data-pwa-install]')];
+      const standalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+      function refreshInstallButtons() {
+        const show = !standalone() && (Boolean(installPrompt) || isIOS);
+        buttons().forEach(btn => { btn.hidden = !show; });
+      }
+
+      window.addEventListener('beforeinstallprompt', event => {
+        event.preventDefault();
+        installPrompt = event;
+        refreshInstallButtons();
+      });
+
+      window.addEventListener('appinstalled', () => {
+        installPrompt = null;
+        refreshInstallButtons();
+      });
+
+      document.addEventListener('click', async event => {
+        const button = event.target.closest('[data-pwa-install]');
+        if (!button) return;
+        if (installPrompt) {
+          installPrompt.prompt();
+          await installPrompt.userChoice.catch(() => null);
+          installPrompt = null;
+          refreshInstallButtons();
+          return;
+        }
+        if (isIOS) alert('No iPhone/iPad: toque em Compartilhar e depois em “Adicionar à Tela de Início”.');
+      });
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', async () => {
+          try {
+            const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            registration.update().catch(() => {});
+            setInterval(() => registration.update().catch(() => {}), 10 * 60 * 1000);
+            document.addEventListener('visibilitychange', () => {
+              if (!document.hidden) registration.update().catch(() => {});
+            });
+          } catch (error) {
+            console.warn('[PWA] Service worker indisponível', error);
+          }
+        });
+      }
+      refreshInstallButtons();
+    })();
+  </script>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
