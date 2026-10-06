@@ -624,7 +624,6 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const s=rooms[0]
     const gameType=s.gameType
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
-    if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(u?.level||1)<Number(s.level)) throw new Error(`Essa Raid exige nível ${s.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT * FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -672,7 +671,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
       atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),
-      crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
+      crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
       pet:combatPet,reservePet
     }}
     await saveGame(c,chat,gameType,s)
@@ -829,7 +828,7 @@ export async function startRaid(chat,host,level=null){
         [jid]
       )).rows
       const teamSynergy=petTeamSynergy(teamPets)
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Number(w?.crit||0)+Number(a?.crit||0),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy}
     }
     // O grupo maior causa muito mais dano por rodada. Escala só o HP (+12% por
     // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
@@ -1465,10 +1464,12 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const effectiveMaxHp=Number(st.max_hp)+gearHp
     const petCritChance=Math.max(0,Number(petBonus.crit||0)+Number(teamSynergy.crit||0))
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0))
+    const baseCritChance=.10
     const roll=Math.random()
-    const petCrit=petCritChance>0&&roll<petCritChance
-    const gearCrit=!petCrit&&gearCritChance>0&&roll<Math.min(.50,petCritChance+gearCritChance)
-    const crit=petCrit||gearCrit
+    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance)
+    const crit=roll<totalCritChance
+    const petCrit=crit&&roll>=Math.min(totalCritChance,baseCritChance+gearCritChance)
+    const gearCrit=crit&&!petCrit
     const petMultiplier=1+petBonus.damage+Number(teamSynergy.attack||0)
     const variance=.85+Math.random()*.45
     const rawBase=Math.max(5,Math.floor(atk*variance))
