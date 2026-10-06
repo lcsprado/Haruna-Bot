@@ -622,12 +622,16 @@ async function sync(silent){
     jobs.push(api('/api/v1/me/bootstrap'));
     const values=await Promise.all(jobs);
     if(values[0]) ui.catalog=values[0].data;
-    ui.data=values[1].data;
+    const previousIncoming=new Set(incomingRelationshipProposals(ui.data).map(p=>String(p.from_jid||'')));
+    const nextData=values[1].data;
+    const freshProposal=incomingRelationshipProposals(nextData).find(p=>!previousIncoming.has(String(p.from_jid||'')));
+    ui.data=nextData;
     await syncAvatar(false);
     showApp();
     render();
     setSync(true);
-    if(!silent) toast('Dados sincronizados com o Alpha Bot.');
+    if(freshProposal) toast('💍 '+String(freshProposal.from_name||'Alguém')+' te pediu em casamento.');
+    else if(!silent) toast('Dados sincronizados com o Alpha Bot.');
   }catch(err){
     if(/sessão web inválida|expirada/i.test(err.message)){
       logout(false);
@@ -1321,36 +1325,90 @@ function itemDisplayDescription(item){
   };
   return map[name]||String(item&&item.description||'');
 }
-function inventoryCard(i){
+function inventoryBucket(item){
+  const id=String(item?.item_id||'').toLowerCase();
+  const cat=String(item?.category||'').toLowerCase();
+  if(cat==='weapon') return 'weapons';
+  if(cat==='armor') return 'armors';
+  if(cat==='boots') return 'boots';
+  if(cat==='box' || id.includes('caixa_') || id==='lootbox_std') return 'boxes';
+  if(cat==='raid' || id.includes('fragmento_raid') || id.includes('chave_raid') || id.startsWith('raid_')) return 'raid';
+  if(cat==='material') return 'materials';
+  if(['consumable','potion','pet_potion','pet_energy'].includes(cat) || id.startsWith('pocao_') || id==='energetico_pet') return 'consumables';
+  if(cat==='special') return 'special';
+  return 'other';
+}
+const INVENTORY_GROUPS=[
+  ['weapons','🗡️ Armas'],
+  ['armors','🛡️ Armaduras'],
+  ['boots','🥾 Botas'],
+  ['consumables','🧪 Consumíveis'],
+  ['boxes','📦 Caixas'],
+  ['raid','⚔️ Itens de Raid'],
+  ['materials','🧩 Materiais'],
+  ['special','✨ Itens especiais'],
+  ['other','🎒 Outros itens']
+];
+function inventoryCard(i,options={}){
   const id=i.item_id;
   const eq=['weapon','armor','boots'].includes(i.category);
+  const equippedCopy=Boolean(options.equippedCopy);
+  const qty=Math.max(0,Number(options.quantity??i.quantity??0));
   const petPotion=id.startsWith('pocao_pet_');
   const energy=id==='energetico_pet';
-  const box=String(id).includes('caixa_') || id==='lootbox_std';
-  const usable=i.category==='consumable' && !box;
+  const box=String(id).includes('caixa_') || id==='lootbox_std' || i.category==='box';
+  const usable=['consumable','potion'].includes(i.category) && !box;
   let actions='';
-  if(eq) actions='<button class="btn primary" data-item-equip="'+esc(id)+'">Equipar</button><button class="btn" data-item-upgrade="'+esc(id)+'">Upar</button>';
-  else if(petPotion) actions='<button class="btn good" data-pet-heal="'+esc(id)+'">Curar pet</button>';
-  else if(energy) actions='<button class="btn good" data-pet-energy>Energia pet</button>';
-  else if(box) actions='<button class="btn good" data-box-open="'+esc(id)+'">Abrir 1</button><button class="btn" data-box-open-all="'+esc(id)+'" data-box-qty="'+Number(i.quantity||1)+'">Abrir todas</button>';
-  else if(usable) actions='<button class="btn good" data-item-use="'+esc(id)+'">Usar</button>';
-  if(i.sellable!==false && String(i.rarity)!=='legendary'){
-    const qty=Math.max(1,Number(i.quantity||1));
-    actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
-    if(qty>1) actions+='<button class="btn" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+qty+'">Vender '+qty+'</button>';
+
+  if(equippedCopy){
+    if(eq) actions='<button class="btn" data-item-upgrade="'+esc(id)+'">⬆️ Melhorar</button>';
+  }else{
+    if(eq){
+      if(!i.equipped) actions+='<button class="btn primary" data-item-equip="'+esc(id)+'">Equipar</button>';
+      actions+='<button class="btn" data-item-upgrade="'+esc(id)+'">Melhorar</button>';
+    }else if(petPotion) actions='<button class="btn good" data-pet-heal="'+esc(id)+'">Curar pet</button>';
+    else if(energy) actions='<button class="btn good" data-pet-energy>Energia pet</button>';
+    else if(box) actions='<button class="btn good" data-box-open="'+esc(id)+'">Abrir 1</button>'+(qty>1?'<button class="btn" data-box-open-all="'+esc(id)+'" data-box-qty="'+qty+'">Abrir '+qty+'</button>':'');
+    else if(usable) actions='<button class="btn good" data-item-use="'+esc(id)+'">Usar</button>';
+
+    if(i.sellable!==false && String(i.rarity)!=='legendary' && qty>0){
+      actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
+      if(qty>1) actions+='<button class="btn danger-soft" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+qty+'">Vender '+qty+'</button>';
+    }
   }
-  return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+
-    '<div class="tag-row"><span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
-    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(itemDisplayDescription(i))+'</p>'+
-    (i.sellable!==false?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
-    (eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' na venda.</small>':'')+
+
+  const equippedTag=equippedCopy
+    ? '<span class="tag good">🔒 EQUIPADO</span><span class="tag">PROTEGIDO DE VENDA</span>'
+    : '';
+  return '<div class="card item-card '+rarityClass(i.rarity)+(equippedCopy?' equipped-item-card':'')+'">'+itemArtMarkup(i)+
+    '<div class="tag-row">'+equippedTag+'<span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
+    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(itemDisplayDescription(i))+'</p>'+
+    (!equippedCopy&&i.sellable!==false?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
+    (equippedCopy?'<div class="notice good inventory-lock-note">🔒 Esta cópia está equipada e não pode ser vendida pelo inventário.</div>':'')+
+    (!equippedCopy&&eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' somente quando a última cópia não equipada for vendida.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
 }
 function renderInventory(){
   const inv=ui.data.inventory||[];
-  return '<div class="page-head"><div><h2>Inventário real</h2><p>Quantidade, raridade e melhorias são lidas do servidor.</p></div><div class="hero-actions"><button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
+  const equipped=inv.filter(i=>i.equipped).map(i=>({...i,quantity:1}));
+  const available=inv.map(i=>({
+    ...i,
+    quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)
+  })).filter(i=>Number(i.quantity)>0);
+  const sections=INVENTORY_GROUPS.map(([key,label])=>{
+    const rows=available.filter(i=>inventoryBucket(i)===key);
+    if(!rows.length) return '';
+    return '<div class="section inventory-group"><div class="section-title"><h3>'+label+'</h3><small>'+rows.length+' tipo(s)</small></div><div class="grid cards">'+rows.map(i=>inventoryCard(i,{quantity:i.quantity})).join('')+'</div></div>';
+  }).join('');
+
+  return '<div class="page-head"><div><h2>Inventário</h2><p>Equipamentos em uso ficam isolados e protegidos. Os demais itens são separados por categoria, como no bot.</p></div><div class="hero-actions">'+
+      '<button class="btn" data-sell-duplicates>💰 Vender equipamentos repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
     renderLuckyBoxEvent()+
-    '<div class="grid cards">'+(inv.length?inv.map(inventoryCard).join(''):'<div class="empty">Inventário vazio.</div>')+'</div>'+resultPanel();
+    '<div class="section inventory-equipped-section"><div class="section-title"><h3>🔒 Equipados</h3><small>Não entram em venda</small></div>'+
+      (equipped.length?'<div class="grid cards">'+equipped.map(i=>inventoryCard(i,{equippedCopy:true,quantity:1})).join('')+'</div>':'<div class="empty">Nenhum equipamento em uso.</div>')+
+    '</div>'+
+    (sections||'<div class="empty">Inventário vazio.</div>')+
+    resultPanel();
 }
 
 function shopCategoryLabel(cat){
@@ -1573,7 +1631,7 @@ function renderDuels(){
 
 function memberCard(m){
   return '<div class="card social-card"><div class="tag-row"><span class="tag">'+esc(characterForClass(m.class_id).name)+'</span><span class="tag">Lv.'+num(m.level||1)+'</span></div><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
-    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn" data-coin-duel="'+esc(m.jid)+'">🪙 Cara/Coroa</button><button class="btn" data-rps-duel="'+esc(m.jid)+'">✊ PPT</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
+    '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn" data-coin-duel="'+esc(m.jid)+'">🪙 Cara/Coroa</button><button class="btn" data-rps-duel="'+esc(m.jid)+'">✊ PPT</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Pedir em casamento</button></div></div>';
 }
 function renderSocial(){
   const members=roster().filter(x=>x.jid!==ui.data.identity.jid);
@@ -1587,6 +1645,7 @@ function renderSocial(){
     '</div></div>':'';
   return '<div class="page-head"><div><h2>Social</h2><p>Roubo, PIX, empréstimo, relacionamento, apostas PvP e atalhos para duelo usam os jogadores reais do grupo.</p></div><div class="hero-actions"><button class="btn primary" data-go-page="duels">⚔️ Abrir Arena de Duelos</button><span class="tag">'+members.length+' jogadores recentes</span></div></div>'+
     pending+
+    relationshipProposalPanel()+
     '<div class="section card"><div class="section-title"><h3>Relacionamento</h3><small>Mesmo estado do WhatsApp</small></div>'+renderRelationship(rel)+(rel?'<div class="hero-actions section"><button class="btn danger" data-relationship-divorce>Divorciar</button></div>':'')+'</div>'+
     '<div class="section"><div class="section-title"><h3>Jogadores do grupo</h3><small>Ações sociais e PvP</small></div><div class="grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div></div>'+resultPanel();
 }
@@ -1817,8 +1876,26 @@ function renderCltStatus(clt){
       '<p>💰 Acumulado: <strong>'+money(d.accrued||0)+'</strong>'+(d.active?' • ⏳ '+Math.ceil(Number(d.remaining||0)/60)+' min':'')+'</p></div>';
   }).join('')+'</div>';
 }
+function incomingRelationshipProposals(data=ui.data){
+  return Array.isArray(data?.relationshipProposals?.incoming)?data.relationshipProposals.incoming:[];
+}
+function outgoingRelationshipProposals(data=ui.data){
+  return Array.isArray(data?.relationshipProposals?.outgoing)?data.relationshipProposals.outgoing:[];
+}
+function relationshipProposalPanel(){
+  const incoming=incomingRelationshipProposals();
+  if(!incoming.length) return '';
+  return '<div class="section card relationship-alert"><div class="section-title"><h3>💍 Pedido de casamento</h3><small>'+incoming.length+' pendente(s)</small></div>'+
+    incoming.map(p=>'<div class="relationship-request"><div><strong>'+esc(p.from_name||'Jogador')+' te pediu em casamento.</strong><small>Você pode aceitar ou recusar diretamente pelo web.</small></div>'+
+      '<div class="hero-actions"><button class="btn good" data-relationship-accept-pending="'+esc(p.from_jid)+'">💍 Aceitar</button><button class="btn danger" data-relationship-reject-pending="'+esc(p.from_jid)+'">Recusar</button></div></div>').join('')+
+    '</div>';
+}
 function renderRelationship(rel){
-  if(!rel) return '<div class="empty">Nenhum relacionamento ativo.</div>';
+  if(!rel){
+    const outgoing=outgoingRelationshipProposals();
+    return '<div class="empty">Nenhum relacionamento ativo.</div>'+
+      (outgoing.length?'<div class="notice">💌 Pedido enviado para <strong>'+esc(outgoing[0].to_name||'Jogador')+'</strong>. Aguardando resposta.</div>':'');
+  }
   return '<div class="relationship-card"><div><small>PARCEIRO(A)</small><strong>💍 '+esc(rel.partner_name||'Jogador')+'</strong></div>'+
     '<div><small>STATUS</small><strong>Casados</strong></div></div>';
 }
@@ -1940,7 +2017,7 @@ function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
   const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
-  $('#content').innerHTML=pageScene(ui.page)+(renderers[ui.page]||renderHome)()+lootRevealModal();
+  $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
 }
 
@@ -2044,9 +2121,16 @@ function bind(){
     await doAction('item.sell',{itemId,qty},{success:'💰 Recompensa vendida.'});
   });
   document.querySelectorAll('[data-lucky-open]').forEach(x=>x.onclick=()=>doAction('item.lucky.open',{qty:Number(x.dataset.luckyOpen||1)},{}));
-  document.querySelectorAll('[data-sell-duplicates]').forEach(x=>x.onclick=()=>doAction('item.sellDuplicates',{},{}));
-  document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>doAction('item.sell',{itemId:x.dataset.itemSell,qty:1},{}));
-  document.querySelectorAll('[data-item-sell-all]').forEach(x=>x.onclick=()=>doAction('item.sell',{itemId:x.dataset.itemSellAll,qty:Number(x.dataset.itemSellQty||1)},{}));
+  document.querySelectorAll('[data-sell-duplicates]').forEach(x=>x.onclick=()=>{
+    if(confirm('Vender somente as cópias repetidas de equipamentos? Itens atualmente equipados serão preservados.')) doAction('item.sellDuplicates',{},{}); 
+  });
+  document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>{
+    if(confirm('Vender 1 unidade deste item?')) doAction('item.sell',{itemId:x.dataset.itemSell,qty:1},{});
+  });
+  document.querySelectorAll('[data-item-sell-all]').forEach(x=>x.onclick=()=>{
+    const qty=Number(x.dataset.itemSellQty||1);
+    if(confirm('Vender '+qty+' unidade(s) deste item? Equipamentos em uso não entram nesta quantidade.')) doAction('item.sell',{itemId:x.dataset.itemSellAll,qty},{});
+  });
   document.querySelectorAll('[data-shop-buy]').forEach(x=>x.onclick=()=>doAction('item.buy',{itemId:x.dataset.shopBuy,qty:1},{}));
   document.querySelectorAll('[data-shop-buy-qty]').forEach(x=>x.onclick=()=>{
     const qty=Math.max(1,Math.min(9999,Number(prompt('Quantidade para comprar:','2'))||0));
@@ -2170,7 +2254,8 @@ function bind(){
     if(amount>0) doAction('loan.offer',{targetJid:x.dataset.loanOffer,amount},{});
   });
   document.querySelectorAll('[data-relationship-propose]').forEach(x=>x.onclick=()=>doAction('relationship.propose',{targetJid:x.dataset.relationshipPropose},{}));
-  document.querySelectorAll('[data-relationship-accept-member]').forEach(x=>x.onclick=()=>doAction('relationship.accept',{targetJid:x.dataset.relationshipAcceptMember},{}));
+  document.querySelectorAll('[data-relationship-accept-pending]').forEach(x=>x.onclick=()=>doAction('relationship.accept',{targetJid:x.dataset.relationshipAcceptPending},{success:'💍 Pedido aceito. Vocês agora estão casados.'}));
+  document.querySelectorAll('[data-relationship-reject-pending]').forEach(x=>x.onclick=()=>doAction('relationship.reject',{targetJid:x.dataset.relationshipRejectPending},{success:'Pedido de casamento recusado.'}));
   document.querySelectorAll('[data-relationship-divorce]').forEach(x=>x.onclick=()=>doAction('relationship.divorce',{},{}));
 
   document.querySelectorAll('[data-market-buy]').forEach(x=>x.onclick=()=>doAction('market.buy',{listingId:Number(x.dataset.marketBuy)},{}));
