@@ -639,6 +639,12 @@ async function playerDisplayName(jid){
   return String(row?.push_name||'Jogador').trim()||'Jogador'
 }
 const brl=n=>'R$ '+Math.abs(Math.round(Number(n)||0)).toLocaleString('pt-BR')
+async function webItemName(id,fallback='item'){
+  const itemId=String(id||'')
+  if(!itemId) return fallback
+  const row=(await db.query('SELECT name FROM items WHERE id=$1',[itemId])).rows[0]
+  return String(row?.name||itemId.replaceAll('_',' '))
+}
 
 async function sendWebGroupActivity(session,actionName,body,result){
   if(!session?.chatJid || !result) return
@@ -725,7 +731,15 @@ async function sendWebGroupActivity(session,actionName,body,result){
     text='💼 *TRABALHO*\n'+meName+' trabalhou'+(gained>0?' e lucrou *'+brl(gained)+'*':'')+'.'
     mentions=[me]
   }else if(actionName==='all'){
-    text='⚡ *ROTINA COMPLETA*\n'+meName+' executou as atividades disponíveis pelo *!all* no Alpha RPG.'
+    const rows=Array.isArray(result.results)?result.results:[]
+    const done=rows.filter(x=>x?.ok)
+    const skipped=rows.filter(x=>!x?.ok)
+    text='⚡ *ROTINA COMPLETA — '+meName+'*'+
+      (done.length?'\n✅ Concluídas: *'+done.map(x=>String(x.label||'Ação')).join(' • ')+'*':'')+
+      (skipped.length?'\n⏳ Indisponíveis/cooldown: *'+skipped.map(x=>String(x.label||'Ação')).join(' • ')+'*':'')+
+      '\n💰 Bruto: *'+brl(result.grossTotal||0)+'*'+
+      (Number(result.taxTotal||0)>0?'\n🧾 TAXADE: *-'+brl(result.taxTotal)+'*':'')+
+      '\n💵 Líquido recebido: *'+brl(result.netTotal||0)+'*'
     mentions=[me]
   }else if(actionName==='deposit'){
     const amount=Number(result?.amount||0)
@@ -757,35 +771,95 @@ async function sendWebGroupActivity(session,actionName,body,result){
       :'*FALHOU*'+(fine>0?'\n💸 Multa: *'+brl(fine)+'*':''))
     mentions=[me,targetJid].filter(Boolean)
   }else if(actionName==='dungeon'){
-    text='🏰 *DUNGEON*\n'+meName+' enfrentou uma Dungeon pelo Alpha RPG.'
+    if(result.ok===false){
+      text=null
+    }else{
+      text='🏰 *DUNGEON — '+meName+'*'+
+        '\n👹 Inimigo: *'+String(result.monster||'Desconhecido')+'*'+
+        '\n📌 Resultado: *'+(result.won?'VITÓRIA':'DERROTA')+'*'+
+        '\n❤️ HP final: *'+Number(result.hp||0).toLocaleString('pt-BR')+'/'+Number(result.maxHp||0).toLocaleString('pt-BR')+'*'+
+        (Number(result.cash||0)>0?'\n💰 Dinheiro: *+'+brl(result.cash)+'*':'')+
+        (Number(result.exp||0)>0?'\n✨ EXP: *+'+Number(result.exp).toLocaleString('pt-BR')+'*':'')
+    }
     mentions=[me]
   }else if(actionName==='missions.claim'){
-    text='📋 *MISSÕES DIÁRIAS*\n'+meName+' resgatou recompensas de missão.'
+    if(Number(result.claimed||0)<1){
+      text=null
+    }else{
+      text='📋 *MISSÕES DIÁRIAS — '+meName+'*'+
+        '\n✅ Recompensas resgatadas: *'+Number(result.claimed)+'*'+
+        (Number(result.cash||0)>0?'\n💰 Dinheiro: *+'+brl(result.cash)+'*':'')+
+        (Number(result.boxes||0)>0?'\n🎁 Caixa da Sorte: *×'+Number(result.boxes)+'*':'')
+    }
     mentions=[me]
   }else if(actionName==='level.claim'){
-    text='⭐ *RECOMPENSA DE NÍVEL*\n'+meName+' resgatou uma recompensa de progressão.'
+    const claimed=Array.isArray(result.claimed)?result.claimed:[]
+    if(!claimed.length){
+      text=null
+    }else{
+      text='⭐ *RECOMPENSAS DE NÍVEL — '+meName+'*'
+      for(const reward of claimed){
+        const items=Array.isArray(reward.items)?reward.items:[]
+        text+='\n\n🎖️ *Lv.'+Number(reward.milestone||0)+'*'+
+          (Number(reward.cash||0)>0?' • *+'+brl(reward.cash)+'*':'')
+        if(items.length) text+='\n🎁 '+items.map(i=>String(i.name||i.id||'Item')+' ×'+Number(i.qty||1)).join(' • ')
+      }
+    }
     mentions=[me]
   }else if(actionName==='character.select'){
     text='🧙 *CLASSE*\n'+meName+' escolheu/trocou sua classe para *'+String(result.name||result.className||body.classId||'nova classe')+'*.'
     mentions=[me]
   }else if(actionName==='item.buy'){
-    text='🏪 *LOJA*\n'+meName+' comprou *'+Number(body.qty||1)+'x* '+String(body.itemId||'item')+'.'
+    const itemName=String(result?.item?.name||await webItemName(body.itemId,'item'))
+    text='🏪 *LOJA — '+meName+'*\nComprou *'+Number(result.qty||body.qty||1)+'× '+itemName+'*'+
+      (Number(result.total||0)>0?'\n💸 Total pago: *'+brl(result.total)+'*':'')
     mentions=[me]
   }else if(actionName==='item.sell'){
-    text='💰 *VENDA*\n'+meName+' vendeu *'+Number(body.qty||1)+'x* '+String(body.itemId||'item')+'.'
+    const itemName=String(result?.item?.name||await webItemName(body.itemId,'item'))
+    text='💰 *VENDA — '+meName+'*\nVendeu *'+Number(result.qty||body.qty||1)+'× '+itemName+'*'+
+      (Number(result.total||0)>0?'\n💵 Recebeu: *'+brl(result.total)+'*':'')+
+      (Number(result.upgradeRefund||0)>0?'\n⬆️ Reembolso de upgrades: *'+brl(result.upgradeRefund)+'*':'')
     mentions=[me]
   }else if(actionName==='item.equip'){
-    text='🗡️ *EQUIPAMENTO*\n'+meName+' equipou *'+String(body.itemId||'um item')+'*.'
+    const itemName=String(result?.name||await webItemName(result?.itemId||body.itemId,'equipamento'))
+    const kind={weapon:'Arma',armor:'Armadura',boots:'Botas'}[String(result?.category||'')]||'Equipamento'
+    text='🗡️ *EQUIPAMENTO — '+meName+'*\n'+kind+' equipado: *'+itemName+'*.'
     mentions=[me]
   }else if(actionName==='item.upgrade'){
-    text='⬆️ *UPGRADE*\n'+meName+' melhorou *'+String(body.itemId||'um equipamento')+'*.'
+    text='⬆️ *UPGRADE — '+meName+'*\n*'+String(result.name||await webItemName(result.itemId||body.itemId,'Equipamento'))+'*'+
+      '\n📈 Lv.'+Number(result.fromLevel||0)+' → *Lv.'+Number(result.level||0)+'*'+
+      (Number(result.cost||0)>0?'\n💸 Custo: *'+brl(result.cost)+'*':'')
     mentions=[me]
   }else if(actionName==='item.box.open'||actionName==='item.lucky.open'){
-    text='🎁 *CAIXA ABERTA*\n'+meName+' abriu '+Number(body.qty||1)+' caixa(s) no Alpha RPG.'
+    const items=Array.isArray(result.items)?result.items:[]
+    text='🎁 *'+String(result.boxName||'CAIXA ABERTA').toUpperCase()+' — '+meName+'*'+
+      '\n📦 Abertas: *'+Number(result.opened||body.qty||1)+'*'+
+      (Number(result.cash||0)>0?'\n💰 Dinheiro: *+'+brl(result.cash)+'*':'')+
+      (Number(result.exp||0)>0?'\n✨ EXP: *+'+Number(result.exp).toLocaleString('pt-BR')+'*':'')
+    if(items.length) text+='\n🎁 Itens: '+items.slice(0,8).map(i=>' *'+String(i.name||i.itemId)+' ×'+Number(i.qty||1)+'*').join(' •')
     mentions=[me]
   }else if(actionName.startsWith('market.')){
-    const label=actionName==='market.create'?'anunciou um item':actionName==='market.buy'?'comprou no mercado':'cancelou um anúncio'
-    text='📣 *MERCADO*\n'+meName+' '+label+'.'
+    const itemId=String(result?.item_id||body.itemId||'')
+    const itemName=String(result?.name||await webItemName(itemId,'item'))
+    if(actionName==='market.create'){
+      text='📣 *MERCADO — NOVO ANÚNCIO*\n*'+meName+'* anunciou *'+Number(result.quantity||body.qty||1)+'× '+itemName+'* por *'+brl(result.price||body.price||0)+'*.'
+    }else if(actionName==='market.buy'){
+      text='🛒 *MERCADO — COMPRA*\n*'+meName+'* comprou *'+Number(result.quantity||1)+'× '+itemName+'* por *'+brl(result.price||0)+'*.'
+    }else{
+      text='❌ *MERCADO — ANÚNCIO CANCELADO*\n*'+meName+'* retirou *'+Number(result.quantity||1)+'× '+itemName+'* do mercado.'
+    }
+    mentions=[me]
+  }else if(actionName==='player.heal'||actionName==='item.use'){
+    text='❤️ *CURA — '+meName+'*\nUsou *'+String(result.name||await webItemName(result.itemId||body.itemId,'poção'))+'*'+
+      '\n💚 Recuperou: *+'+Number(result.healed||0).toLocaleString('pt-BR')+' HP*'+
+      '\n❤️ HP: *'+Number(result.hp||0).toLocaleString('pt-BR')+'/'+Number(result.maxHp||0).toLocaleString('pt-BR')+'*'
+    mentions=[me]
+  }else if(actionName==='groupMission.claim'){
+    text='🤝 *MISSÃO COLETIVA — '+meName+'*\nContribuição: *'+Number(result.contribution||0).toLocaleString('pt-BR')+'/'+Number(result.total||0).toLocaleString('pt-BR')+'*'+
+      '\n💰 Recompensa proporcional: *+'+brl(result.share||0)+'*'
+    mentions=[me]
+  }else if(actionName==='groupEvent.claim'){
+    text='🎯 *EVENTO DO GRUPO — '+meName+'*\nResgatou *'+String(result.event_type||'evento')+'* por *+'+brl(result.reward_cash||0)+'*.'
     mentions=[me]
   }else if(actionName==='sleep.start'){
     text='😴 *DESCANSO*\n'+meName+' foi dormir e está protegido durante o descanso.'
@@ -800,22 +874,40 @@ async function sendWebGroupActivity(session,actionName,body,result){
     text='🌿 *CARPINAR*\n'+meName+' encerrou o Carpinar antes do fim.'
     mentions=[me]
   }else if(actionName==='pet.select'){
-    text='🐾 *PET ATIVO*\n'+meName+' trocou o pet principal.'
+    text='🐾 *PET ATIVO — '+meName+'*\nPrincipal agora: *'+String(result.name||result.species||'Pet')+'* • Lv.'+Number(result.level||1)+'.'
     mentions=[me]
   }else if(actionName==='pet.rename'){
-    text='✏️🐾 *PET RENOMEADO*\n'+meName+' renomeou seu pet para *'+String(body.name||'novo nome')+'*.'
+    text='✏️🐾 *PET RENOMEADO — '+meName+'*\n*'+String(result.oldName||'Pet')+'* → *'+String(result.name||body.name||'novo nome')+'*'+
+      (Number(result.fee||0)>0?'\n💸 Custo: *'+brl(result.fee)+'*':'')
     mentions=[me]
   }else if(actionName==='pet.heal'){
-    text='🧪🐾 *CURA DE PET*\n'+meName+' curou um pet.'
+    text='🧪🐾 *CURA DE PET — '+meName+'*\n*'+String(result.petName||'Pet')+'* recuperou *'+Number(result.healed||0).toLocaleString('pt-BR')+' HP*.'+
+      '\n❤️ HP: *'+Number(result.hp||0).toLocaleString('pt-BR')+'/'+Number(result.maxHp||0).toLocaleString('pt-BR')+'*'+
+      (result.name?'\n🧪 Item: *'+String(result.name)+'*':'')
     mentions=[me]
   }else if(actionName==='pet.action'){
-    text='🐾 *AÇÃO DE PET*\n'+meName+' usou *'+String(body.action||'uma ação')+'* com seu pet.'
+    const labels={descansar:'descansou',alimentar:'foi alimentado',banho:'tomou banho',passear:'foi passear',treinar:'treinou',aventura:'foi para uma aventura'}
+    text='🐾 *PET — '+meName+'*\n*'+String(result.name||'Pet')+'* '+String(labels[body.action]||body.action||'realizou uma ação')+'.'+
+      '\n❤️ HP: *'+Number(result.hp||0).toLocaleString('pt-BR')+'/'+Number(result.max_hp||0).toLocaleString('pt-BR')+'*'+
+      '\n⚡ Energia: *'+Number(result.energy||0).toLocaleString('pt-BR')+'* • ⭐ Lv.'+Number(result.level||1)+
+      (Number(result.hpRecovered||0)>0?'\n💚 Recuperou: *+'+Number(result.hpRecovered).toLocaleString('pt-BR')+' HP*':'')
     mentions=[me]
   }else if(actionName==='pet.team'){
-    text='🧬 *TIME PET*\n'+meName+' atualizou a formação do Time Pet.'
+    const team=Array.isArray(result)?result:[]
+    const slots=['Principal','Suporte','Reserva']
+    text='🧬 *TIME PET — '+meName+'*'
+    if(team.length) for(const pet of team) text+='\n'+String(slots[Number(pet.slot||1)-1]||('Slot '+pet.slot))+': *'+String(pet.name||pet.species||'Pet')+'* • Lv.'+Number(pet.level||1)
     mentions=[me]
   }else if(actionName==='pet.summon'){
-    text='✨🐾 *INVOCAÇÃO*\n'+meName+' realizou uma invocação de pet de Raid.'
+    const pet=result?.pet||{}
+    if(result.duplicate){
+      text='✨🐾 *INVOCAÇÃO — '+meName+'*\nSaiu pet repetido: *'+String(pet.name||pet.species||'Pet')+'*.'+
+        (Number(result.cashRefund||0)>0?'\n💰 Conversão: *+'+brl(result.cashRefund)+'*':'')+
+        (Number(result.fragmentRefund||0)>0?'\n🧩 Fragmentos devolvidos: *+'+Number(result.fragmentRefund)+'*':'')
+    }else{
+      text='✨🐾 *NOVA INVOCAÇÃO — '+meName+'*\nInvocou *'+String(pet.name||pet.species||'Pet')+'*'+
+        (Number(pet.power||0)>0?' • Poder *'+Number(pet.power)+'*':'')+'.'
+    }
     mentions=[me]
   }else if(actionName.startsWith('raid.')){
     if(actionName==='raid.round'){
@@ -833,7 +925,24 @@ async function sendWebGroupActivity(session,actionName,body,result){
       mentions=[me]
     }
   }else if(actionName.startsWith('boss.')){
-    text='👹 *BOSS*\n'+meName+' '+(actionName==='boss.start'?'iniciou um Boss':'atacou o Boss')+'.'
+    if(actionName==='boss.start'){
+      if(result.cooldown){
+        text=null
+      }else{
+        text='👹 *BOSS INICIADO*\n*'+meName+'* '+(result.already?'entrou no Boss ativo':'iniciou *'+String(result.name||'Boss')+'*')+
+          (Number(result.maxHp||0)>0?'\n❤️ HP: *'+Number(result.hp||result.maxHp).toLocaleString('pt-BR')+'/'+Number(result.maxHp).toLocaleString('pt-BR')+'*':'')
+      }
+    }else if(result.cooldown){
+      text=null
+    }else{
+      text='👹 *ATAQUE AO BOSS — '+meName+'*'+
+        (Number(result.damage||0)>0?'\n💥 Dano causado: *'+Number(result.damage).toLocaleString('pt-BR')+'*'+(result.pet?.crit?' • *CRÍTICO*':''):'')+
+        (Number(result.bossDamage||0)>0?'\n🩸 Dano recebido: *'+Number(result.bossDamage).toLocaleString('pt-BR')+'*':'')+
+        (Number(result.hp||0)>=0&&Number(result.maxHp||0)>0?'\n❤️ Boss: *'+Number(result.hp||0).toLocaleString('pt-BR')+'/'+Number(result.maxHp).toLocaleString('pt-BR')+'*':'')+
+        (Number(result.playerHp||0)>0?'\n🧍 HP jogador: *'+Number(result.playerHp).toLocaleString('pt-BR')+'/'+Number(result.playerMaxHp||0).toLocaleString('pt-BR')+'*':'')+
+        (result.pet?.name?'\n🐾 Pet: *'+String(result.pet.name)+'* • ⚡ '+Number(result.pet.energy||0):'')+
+        (result.dead?'\n🏆 *BOSS DERROTADO!*':'')
+    }
     mentions=[me]
   }else if(['uber','ifood'].includes(actionName)){
     const amount=Number(result.amount||result.net||result.cash||0)
@@ -864,8 +973,17 @@ async function sendWebGroupActivity(session,actionName,body,result){
     }
     mentions=[me]
   }else if(actionName.startsWith('car.')||actionName.startsWith('motorcycle.')||actionName==='house.buy'){
-    const labels={'car.buy':'comprou um carro','car.sell':'vendeu um carro','motorcycle.buy':'comprou uma moto/bike','motorcycle.sell':'vendeu uma moto/bike','house.buy':'comprou uma casa'}
-    text='🏠🚗 *PATRIMÔNIO*\n'+meName+' '+(labels[actionName]||'alterou seu patrimônio')+'.'
+    if(actionName==='house.buy'){
+      const house=result.house||{}
+      text='🏠 *IMÓVEL — '+meName+'*\nComprou *'+String(house.name||house.id||'uma casa')+'* por *'+brl(result.cost||house.price||0)+'*'+
+        (Number(result.tradeIn||0)>0?'\n♻️ Casa anterior entrou por *'+brl(result.tradeIn)+'*':'')
+    }else{
+      const sold=actionName.endsWith('.sell')
+      const vehicleName=String(result.name||result.id||'Veículo')
+      text=(actionName.startsWith('car.')?'🚗':'🏍️')+' *'+(sold?'VENDA':'COMPRA')+' — '+meName+'*\n*'+vehicleName+'*'+
+        (sold?' vendido por *'+brl(result.resale||0)+'*':' comprado por *'+brl(result.price||0)+'*')+
+        (sold&&Number(result.depreciation||0)>0?'\n📉 Desvalorização: *'+brl(result.depreciation)+'*':'')
+    }
     mentions=[me]
   }else if(actionName.startsWith('clan.')){
     const labels={
