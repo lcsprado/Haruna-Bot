@@ -281,6 +281,19 @@ test('bank and business WhatsApp activity logs include real monetary values',()=
   assert.ok(webApi.includes("📊 *Produção*"),'business collection should show per-business production when available')
 })
 
+test('important web activity logs never expose raw action codes and include outcomes',()=>{
+  assert.ok(!webApi.includes("executou *'+String(actionName"),'raw internal action names must never be sent to WhatsApp')
+  assert.ok(webApi.includes("Dano causado:"),'Boss attack log must include damage')
+  assert.ok(webApi.includes("Inimigo:"),'Dungeon log must identify the enemy')
+  assert.ok(webApi.includes("Recompensas resgatadas:"),'mission claim log must include claimed count')
+  assert.ok(webApi.includes("RECOMPENSAS DE NÍVEL"),'level claim log must list milestone rewards')
+  assert.ok(webApi.includes("Reembolso de upgrades:"),'item sale log must include upgrade refund when present')
+  assert.ok(webApi.includes("HP: *'+Number(result.hp"),'pet/heal activity must include resulting HP')
+  assert.ok(webApi.includes("MERCADO — NOVO ANÚNCIO"),'market log must identify listing details')
+  assert.ok(webApi.includes("TIME PET —"),'pet team log must list the actual team')
+  assert.ok(webApi.includes("ROTINA COMPLETA —"),'!all log must include totals instead of a generic action message')
+})
+
 
 test('endgame special pets use exclusive artwork',()=>{
   assert.ok(app.includes("SPECIAL_PET_ART_SHEETS=["),'special-pet spritesheets missing')
