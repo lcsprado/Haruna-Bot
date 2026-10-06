@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261006-v3';
+const CACHE='alpha-rpg-pwa-20261006-v4';
 const SHELL=['/rpg','/styles.css','/app.js','/manifest.webmanifest','/assets/icons/alpha-192.png','/assets/icons/alpha-512.png'];
 
 self.addEventListener('install',event=>{
