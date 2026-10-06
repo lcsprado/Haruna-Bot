@@ -1770,6 +1770,33 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
     }
   }
 
+  // Evento único de 06/10/2026, 19:00–20:00 (Brasília): Treino Alpha.
+  // Bônus apenas de XP para preservar a economia: sem dinheiro extra.
+  const treinoAlphaStartsAt=Date.parse('2026-10-06T19:00:00-03:00')
+  const treinoAlphaEndsAt=Date.parse('2026-10-06T20:00:00-03:00')
+  if(Date.now()<treinoAlphaEndsAt){
+    const currentEvent=(await db.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")).rows[0]?.value||{}
+    if(String(currentEvent.oneOffId||'')!=='treino-alpha-2026-10-06-1900'){
+      const treinoState={
+        active:false,
+        startsAt:treinoAlphaStartsAt,
+        startedAt:treinoAlphaStartsAt,
+        endsAt:treinoAlphaEndsAt,
+        moneyMultiplier:1,
+        xpMultiplier:1.5,
+        activatedBy:'scheduled-treino-alpha',
+        oneOffId:'treino-alpha-2026-10-06-1900',
+        eventLabel:'TREINO ALPHA'
+      }
+      await db.query(`
+        INSERT INTO trevo_settings(key,value,updated_at)
+        VALUES('double_reward_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+        ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+      `,[JSON.stringify(treinoState)])
+      console.log('[Eventos] Treino Alpha agendado para 06/10 19:00–20:00 BRT')
+    }
+  }
+
   let doubleRewardEventScheduler=null
   let luckyBoxEventScheduler=null
   let doubleRewardAnnouncementRunning=false
@@ -1831,16 +1858,20 @@ Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simu
 
       if(event.active && String(raw.startAnnouncementId||'')!==eventId){
         const mult=eventMultLabel(event.moneyMultiplier)
-        const title=String(raw.eventLabel||`EVENTO ${mult}X`)
+        const xpMult=eventMultLabel(event.xpMultiplier)
+        const title=String(raw.eventLabel||`EVENTO ${xpMult}X XP`)
+        const endClock=new Date(endsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
+        const moneyLine=Number(event.moneyMultiplier||1)>1
+          ? `💰 Dinheiro de recompensas: *${mult}x*\n`
+          : '💰 Dinheiro: *normal* — sem inflação de moeda\n'
         await sendEventToGroups(
 `⚡🔥 *${title} COMEÇOU!* 🔥⚡
 
-⏱️ Só *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*!
-💰 Dinheiro de recompensas: *${mult}x*
-✨ XP: *${eventMultLabel(event.xpMultiplier)}x*
+⏱️ Duração: *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*
+${moneyLine}✨ XP: *${xpMult}x*
 
-🏃 CORRE! Às *15:10* tudo volta ao normal.
-🛡️ Proteção de pico: *3s entre ações por jogador*; ações simultâneas entram em fila.`
+🎯 Evento focado em progressão, sem bônus de dinheiro, drops ou caixas.
+⏰ Termina às *${endClock}*.`
         )
         raw.startAnnouncementId=eventId
         console.log('[Eventos] evento de ganhos iniciado e anunciado')
@@ -1856,8 +1887,8 @@ Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simu
         await sendEventToGroups(
 `⏱️ *${title} ENCERRADO!*
 
-💰 Dinheiro e ✨ XP voltaram ao normal.
-⚡ Foram 10 minutos de bônus — até a próxima!`
+✨ O bônus de XP acabou.
+💰 A economia permaneceu sem multiplicador de dinheiro durante todo o evento.`
         )
         raw.endAnnouncementId=eventId
         await db.query(
