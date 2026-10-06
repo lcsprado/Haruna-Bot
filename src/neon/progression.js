@@ -865,6 +865,52 @@ export async function startCltUberShift(jid,driverSlot,carSlot){
   })
 }
 
+export async function startCltUberShiftsAuto(jid,selection='todos'){
+  await ensureUser(jid)
+  return tx(async client=>{
+    await accrueCltUber(client,jid)
+    const now=Math.floor(Date.now()/1000)
+    const rows=(await client.query('SELECT * FROM clt_uber_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])).rows
+    const drivers=rows.map((row,i)=>({row,slot:i+1,type:CLT_UBER_TYPES.find(x=>x.id===row.driver_type)}))
+    const requested=String(selection||'todos').trim().toLowerCase()
+    let selected
+    if(['todos','tudo','all'].includes(requested)){
+      selected=drivers.filter(x=>Number(x.row.shift_ends_at||0)<=now)
+    }else{
+      const slots=[...new Set(requested.split(/[\\s,;]+/).map(Number).filter(Number.isInteger))]
+      if(!slots.length) throw new Error('Informe todos ou os números dos motoristas. Ex.: 1 3')
+      const invalid=slots.filter(slot=>!drivers.some(x=>x.slot===slot))
+      if(invalid.length) throw new Error('Motorista inválido: '+invalid.join(', '))
+      selected=drivers.filter(x=>slots.includes(x.slot)&&Number(x.row.shift_ends_at||0)<=now)
+    }
+    if(!selected.length) throw new Error('Nenhum dos motoristas escolhidos está disponível para iniciar turno.')
+
+    const garage=(await client.query('SELECT car_id,price_paid,acquired_at FROM user_cars WHERE jid=$1 ORDER BY acquired_at',[jid])).rows
+    const busyIds=new Set(rows.filter(x=>Number(x.shift_ends_at||0)>now&&x.car_id).map(x=>x.car_id))
+    const freeCars=garage
+      .map(raw=>({raw,car:CARS.find(x=>x.id===raw.car_id)}))
+      .filter(x=>x.car&&!busyIds.has(x.raw.car_id))
+      .sort((a,b)=>Number(b.car.price)-Number(a.car.price))
+    if(!freeCars.length) throw new Error('Nenhum carro livre disponível na garagem.')
+
+    selected=selected
+      .filter(x=>x.type)
+      .sort((a,b)=>Number(b.type.price)-Number(a.type.price))
+
+    const count=Math.min(selected.length,freeCars.length)
+    const ends=now+CLT_UBER_SHIFT_SECONDS
+    const started=[]
+    for(let i=0;i<count;i++){
+      const d=selected[i]
+      const {raw,car}=freeCars[i]
+      await client.query('UPDATE clt_uber_drivers SET car_id=NULL WHERE jid=$1 AND car_id=$2 AND id<>$3 AND COALESCE(shift_ends_at,0)<=$4',[jid,raw.car_id,d.row.id,now])
+      await client.query('UPDATE clt_uber_drivers SET car_id=$1,shift_started_at=$2,shift_ends_at=$3,last_accrual_at=$2,credited_trips=0 WHERE id=$4',[raw.car_id,now,ends,d.row.id])
+      started.push({driverSlot:d.slot,type:d.type,car,hours:8,estimated8h:Math.floor((CLT_UBER_SHIFT_SECONDS/(d.type.intervalMin*60))*cltUberTripNet(raw.car_id,d.row.driver_type))})
+    }
+    return {started,requested:selected.length,withoutCar:Math.max(0,selected.length-count)}
+  })
+}
+
 export async function collectCltUber(jid){
   await ensureUser(jid)
   return tx(async client=>{
