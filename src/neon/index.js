@@ -1474,6 +1474,59 @@ async function start() {
 
   sock.ev.on('creds.update',saveCreds)
 
+  const botGroupIntroKey=chat=>'bot_group_intro:'+chat
+  const botGroupIntroText=groupName=>`😈🤖 *OLÁ, BETAS!*
+
+Eu sou o *Alpha Bot* — cheguei no *${groupName||'grupo'}* para transformar conversa em jogo.
+
+⚔️ Monte seu personagem, evolua atributos e equipamentos
+🐾 Adote pets e forme seu time
+👹 Enfrente Bosses e Raids com a galera
+💰 Trabalhe, faça Uber/iFood, abra negócios e aumente seu patrimônio
+🎮 Jogue minigames, duelos e eventos com seus amigos
+
+🚀 *Pra começar agora:*
+*!perfil* — cria/mostra seu perfil
+*!rpg* — abre o RPG
+*!pet* — conhece os pets
+*!raid* — vê as Raids
+*!minigames* — jogos rápidos
+*!comandos* — lista completa
+
+🧪 Testem o RPG, chamem os amigos e tentem descobrir quem realmente é Alpha aqui.
+
+_Boa sorte, Betas. Vocês vão precisar._ 😎`
+
+  async function getBotGroupIntroState(chat){
+    const row=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[botGroupIntroKey(chat)])).rows[0]
+    return row?.value||{}
+  }
+
+  async function setBotGroupIntroState(chat,value){
+    await db.query(
+      `INSERT INTO trevo_settings(key,value,updated_at)
+       VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+       ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
+      [botGroupIntroKey(chat),JSON.stringify(value)]
+    )
+  }
+
+  async function sendBotGroupIntro(chat,{force=false,reason='participant-add'}={}){
+    if(!chat?.endsWith('@g.us')) return false
+    const current=await getBotGroupIntroState(chat)
+    if(!force && current?.sent) return false
+    const meta=await sock.groupMetadata(chat).catch(()=>null)
+    if(!meta) return false
+    try{
+      await sock.sendMessage(chat,{text:botGroupIntroText(meta.subject||'grupo')})
+      await setBotGroupIntroState(chat,{sent:true,sentAt:Date.now(),reason})
+      return true
+    }catch(err){
+      console.error('[boas-vindas-bot]',reason,chat,err?.message||err)
+      return false
+    }
+  }
+
   // Ponte usada pelo RPG Web para publicar resultados competitivos no mesmo grupo
   // do WhatsApp. Mantém rivalidade/atividade visível mesmo quando a ação veio do PWA.
   globalThis.__alphaWebGroupLog=async(chat,text,mentions=[])=>{
@@ -6949,40 +7002,35 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       }
       const people=rawPeople.map(participant=>participantJids(participant)[0]).filter(Boolean)
 
-      if(event.action==='add'){
-        const meIds=[sock.user?.id,sock.user?.lid,state.creds?.me?.id,state.creds?.me?.lid].filter(Boolean)
-        const botWasAdded=rawPeople.some(participant=>
-          participantJids(participant).some(jid=>
-            meIds.some(me=>normalizedAddressJid(jid)===normalizedAddressJid(me))
-          )
-        )
-        if(botWasAdded){
-          const meta=await sock.groupMetadata(chat).catch(()=>null)
-          await sock.sendMessage(chat,{text:
-`😈🤖 *OLÁ, BETAS!*
+      const meIds=[sock.user?.id,sock.user?.lid,state.creds?.me?.id,state.creds?.me?.lid].filter(Boolean)
+      const normalizedSet=list=>new Set((list||[]).map(normalizedAddressJid).filter(Boolean))
+      const meSet=normalizedSet(meIds)
+      const meta=await sock.groupMetadata(chat).catch(()=>null)
+      const metaParticipants=meta?.participants||[]
+      const eventTouchesBot=rawPeople.some(participant=>{
+        const eventIds=participantJids(participant)
+        const eventSet=normalizedSet(eventIds)
+        if([...eventSet].some(jid=>meSet.has(jid))) return true
 
-Eu sou o *Alpha Bot* — cheguei no *${meta?.subject||'grupo'}* para transformar conversa em jogo.
+        // Baileys v7 pode entregar o evento em LID enquanto sock.user está em PN (ou vice-versa).
+        // Faz a ponte usando os aliases phoneNumber/pn/id/jid/lid presentes no metadata do grupo.
+        return metaParticipants.some(groupParticipant=>{
+          const groupIds=participantJids(groupParticipant)
+          const groupSet=normalizedSet(groupIds)
+          const matchesEvent=[...eventSet].some(jid=>groupSet.has(jid))
+          const matchesBot=[...meSet].some(jid=>groupSet.has(jid))
+          return matchesEvent&&matchesBot
+        })
+      })
 
-⚔️ Monte seu personagem, evolua atributos e equipamentos
-🐾 Adote pets e forme seu time
-👹 Enfrente Bosses e Raids com a galera
-💰 Trabalhe, faça Uber/iFood, abra negócios e aumente seu patrimônio
-🎮 Jogue minigames, duelos e eventos com seus amigos
+      if(event.action==='add' && eventTouchesBot){
+        await sendBotGroupIntro(chat,{force:true,reason:'participant-add'})
+        return
+      }
 
-🚀 *Pra começar agora:*
-*!perfil* — cria/mostra seu perfil
-*!rpg* — abre o RPG
-*!pet* — conhece os pets
-*!raid* — vê as Raids
-*!minigames* — jogos rápidos
-*!comandos* — lista completa
-
-🧪 Testem o RPG, chamem os amigos e tentem descobrir quem realmente é Alpha aqui.
-
-_Boa sorte, Betas. Vocês vão precisar._ 😎`
-          }).catch(err=>console.error('[boas-vindas-bot]',err?.message||err))
-          return
-        }
+      if(event.action==='remove' && eventTouchesBot){
+        await setBotGroupIntroState(chat,{sent:false,removedAt:Date.now(),reason:'participant-remove'}).catch(()=>{})
+        return
       }
 
       const st=await getCommunitySettings(chat)
@@ -7041,6 +7089,19 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
         const isGroup=chat.endsWith('@g.us')
         if(isGroup){
+          // Recuperação da apresentação: se o bot foi adicionado enquanto o Render
+          // reiniciava/deployava, o evento group-participants.update pode ser perdido.
+          // No primeiro tráfego do grupo, grupos novos/recentes recebem a introdução
+          // uma única vez antes de qualquer evento aleatório ou resposta de comando.
+          const introState=await getBotGroupIntroState(chat)
+          if(!introState?.sent){
+            const license=await getGroupLicense(chat)
+            const nowSec=Math.floor(Date.now()/1000)
+            const trialStartedAt=Number(license?.trial_started_at||0)
+            const recentGroup=!license || (trialStartedAt>0 && nowSec-trialStartedAt<=6*60*60)
+            if(recentGroup) await sendBotGroupIntro(chat,{reason:'first-message-recovery'})
+          }
+
           const spawned=await maybeSpawnGroupEvent(chat)
           if(spawned) await sock.sendMessage(chat,{text:`${spawned.text}\n\n💰 Dinheiro possível: *R$ ${fmt(spawned.reward)}*\n🎁 ${spawned.hint||'Pode haver recompensa extra.'}\n⚡ Primeiro a mandar *${prefix}pegar* leva!\n⏳ Some em 2 minutos.`}).catch(()=>{})
         }
