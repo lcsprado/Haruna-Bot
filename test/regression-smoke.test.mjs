@@ -278,7 +278,11 @@ test('endgame special pets use exclusive artwork',()=>{
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
     assert.ok(app.includes("'pet-special-"+species+"'"),'exclusive special-pet art missing for '+species)
   }
-  assert.ok(app.includes("if(SPECIAL_PET_SPRITES[exclusive]) return artSprite(exclusive,className,label)"),'exclusive pet art must take priority over aliases')
+  assert.ok(
+    app.includes("if(SPECIAL_PET_SPRITES[exclusive]) return artSprite(exclusive,className,label)") ||
+    app.includes("if(SPECIAL_PET_SPRITES[exclusive]) return petCroppedSprite(exclusive,className,label)"),
+    'exclusive pet art must take priority over aliases'
+  )
 })
 
 
