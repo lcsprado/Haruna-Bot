@@ -1824,7 +1824,33 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
       const startsAt=Date.parse('2026-10-06T19:30:00-03:00')
       const endsAt=Date.parse('2026-10-06T20:00:00-03:00')
       const now=Date.now()
-      if(now<startsAt || now>=endsAt) return
+      if(now>=endsAt) return
+
+      if(now<startsAt){
+        const preKey='hora_corre_2026_10_06_1930_preannounced'
+        const preRaw=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[preKey])).rows[0]?.value
+        if(preRaw?.sent) return
+        await sendEventToGroups(
+`📢🔥 *ATENÇÃO — HORA DO CORRE ÀS 19:30!* 🔥📢
+
+🚗🍔 Das *19:30 às 20:00* vai ter:
+
+💰 *2X DINHEIRO NO UBER*
+💰 *2X DINHEIRO NO IFOOD*
+
+⚠️ O bônus vale *somente* para Uber e iFood.
+🏢 Negócios, 💼 trabalho, ⚔️ Raid/Boss e 🎰 minigames seguem normais.
+
+⏰ Se prepara: às *19:30* começa o corre!`
+        )
+        await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+          ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+        `,[preKey,JSON.stringify({sent:true,sentAt:Date.now()})])
+        return
+      }
+
       const key='hora_corre_2026_10_06_1930_announced'
       const raw=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value
       if(raw?.sent) return
