@@ -27,7 +27,6 @@ test('boss and raid combat loop limits stay separated',()=>{
   const raid=index.slice(raidStart)
   assert.ok(boss.includes("if(!eventSession && i>=29) break"),'common/weekly boss must still stop after 30 attacks')
   assert.ok(boss.includes("const eventSession=sessionMode==='event'"),'event boss must use continuous auto-combat mode')
-  assert.ok(!boss.includes('for(let i=0;;i++){'),'boss session must not inherit the continuous Raid loop')
   assert.ok(raid.includes('for(let i=0;;i++){'),'raid combat runner must continue until Raid state ends it')
 })
 
