@@ -1627,19 +1627,32 @@ function renderActivities(){
       '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><div class="expedition-form"><select data-expedition-pet><option value="">Escolha o pet</option>'+collection().map(p=>'<option value="'+p.id+'">'+esc(p.name)+' • '+esc(titleCase(p.species))+' • Lv.'+num(p.level)+'</option>').join('')+'</select><select data-expedition-hours><option value="2">2h</option><option value="4" selected>4h</option><option value="8">8h</option></select><button class="btn" data-pet-expedition>Enviar</button></div><button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
     '</div>'+
     '<div class="section card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
-    '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,Number(d.profile&&d.profile.level||1),Number(d.profile&&d.profile.last_level_reward||0))+'</div>'+
+    '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,Number(d.profile&&d.profile.level||1),ex.claimedLevelRewards||[])+'</div>'+
     (currentGroup()?'<div class="section grid two"><div class="card">'+renderGroupMissionCard(ex)+'</div><div class="card">'+renderGroupEventCard(ex)+'</div></div>':'')+
     '<div class="section card"><div class="section-title"><h3>Expedições</h3><button class="btn good" data-pet-expedition-resolve>Verificar retornos</button></div>'+renderExpeditions(exp)+'</div>'+resultPanel();
 }
 
-function renderLevelRewards(rows,level,claimed){
+function levelRewardItemLabel(id){
+  const labels={
+    pocao_m:'Poção Média',caixa_sorte:'Caixa da Sorte',energetico_pet:'Energético Pet',
+    pocao_pet_rara:'Poção Pet Rara',caixa_rara:'Caixa Rara',pocao_g:'Poção Grande',
+    caixa_epica:'Caixa Épica',elixir_supremo:'Elixir Supremo',pocao_pet_epica:'Poção Pet Épica',
+    pocao_pet_suprema:'Poção Pet Suprema',chave_raid_40:'Chave Raid Lv.40',
+    chave_raid_50:'Chave Raid Lv.50',pergaminho_reclassificacao:'Pergaminho de Reclassificação'
+  };
+  return labels[String(id||'')]||titleCase(String(id||'').replaceAll('_',' '));
+}
+
+function renderLevelRewards(rows,level,claimedMilestones){
   rows=rows||[];
   if(!rows.length) return '<div class="empty">Nenhuma recompensa de nível configurada.</div>';
+  const claimedSet=new Set((Array.isArray(claimedMilestones)?claimedMilestones:[]).map(Number));
   return '<div class="level-rewards">'+rows.map(r=>{
-    const unlocked=Number(level)>=Number(r.milestone||0);
-    const done=Number(claimed||0)>=Number(r.milestone||0);
-    const items=(r.items||[]).map(i=>esc(titleCase(String(i.id||'').replaceAll('_',' ')))+' ×'+num(i.qty)).join(' • ');
-    return '<div class="level-reward '+(done?'claimed':unlocked?'unlocked':'locked')+'"><div><span class="tag '+(unlocked?'good':'')+'">LV.'+num(r.milestone)+'</span><strong>'+money(r.cash||0)+'</strong><small>'+esc(items||'Somente dinheiro')+'</small></div><span class="reward-status">'+(done?'✓ Resgatado':unlocked?'🎁 Disponível':'🔒')+'</span></div>';
+    const milestone=Number(r.milestone||0);
+    const unlocked=Number(level)>=milestone;
+    const done=claimedSet.has(milestone);
+    const items=(r.items||[]).map(i=>esc(levelRewardItemLabel(i.id))+' ×'+num(i.qty)).join(' • ');
+    return '<div class="level-reward '+(done?'claimed':unlocked?'unlocked':'locked')+'"><div><span class="tag '+(done?'':unlocked?'good':'')+'">LV.'+num(milestone)+'</span><strong>'+money(r.cash||0)+'</strong><small>'+esc(items||'Somente dinheiro')+'</small></div><span class="reward-status">'+(done?'✓ Resgatado':unlocked?'🎁 Disponível':'🔒')+'</span></div>';
   }).join('')+'</div>';
 }
 
@@ -1647,7 +1660,7 @@ function renderProgression(){
   const d=ui.data||{}, ex=ui.extras||{}, p=profile(), raw=d.profile||{};
   const streak=d.streak||{}, career=d.career||{}, achievements=d.achievements||[], missions=d.dailyMissions||[];
   const level=Number(raw.level||1), exp=Number(raw.exp||0);
-  const claimedLevel=Number(raw.last_level_reward||raw.level_reward_claimed||0);
+  const claimedLevelRewards=ex.claimedLevelRewards||[];
   const nextExp=Math.max(1,level*100);
   const careerXp=Number(career.career_xp||career.xp||0), shifts=Number(career.total_shifts||career.shifts||0);
   return '<div class="page-head"><div><h2>Progressão</h2><p>Equivale aos dados de !nivel, !streak, !carreira, !conquistas e !missoes.</p></div><span class="tag good">NÍVEL '+num(level)+'</span></div>'+
@@ -1678,7 +1691,7 @@ function renderProgression(){
       '<div class="card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
     '</div>'+
     '<div class="section grid two">'+
-      '<div class="card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,level,claimedLevel)+'</div>'+
+      '<div class="card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,level,claimedLevelRewards)+'</div>'+
       '<div class="card"><div class="section-title"><h3>Cooldowns</h3><small>Servidor</small></div>'+renderCooldowns()+'</div>'+
     '</div>'+resultPanel();
 }
