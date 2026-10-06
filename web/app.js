@@ -1270,9 +1270,24 @@ function itemFallbackVisual(item){
   if(category==='consumable'||category==='potion') return ['🧪','Consumível'];
   return ['💠','Item'];
 }
+function itemCroppedSprite(key,className,label){
+  const fixed=FIXED_SPRITES[key];
+  const b=fixed||OFFICIAL_SPRITES[key];
+  if(!b) return '';
+  const sheet=fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET;
+  const sw=fixed?FIXED_ART_W:OFFICIAL_ART_W;
+  const sh=fixed?FIXED_ART_H:OFFICIAL_ART_H;
+  const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
+  const sizeX=(sw/w)*100;
+  const sizeY=(sh/h)*100;
+  const posX=sw===w?0:(x/(sw-w))*100;
+  const posY=sh===h?0:(y/(sh-h))*100;
+  return '<div class="item-cropped-art '+esc(className||'')+'" role="img" aria-label="'+esc(label||key)+'" '+
+    'style="aspect-ratio:'+w+'/'+h+';background-image:url(\''+esc(sheet)+'\');background-size:'+sizeX+'% '+sizeY+'%;background-position:'+posX+'% '+posY+'%"></div>';
+}
 function itemArtMarkup(item){
   const key=itemSpriteKey(item);
-  if(key) return '<div class="item-art">'+artSprite(key,'item-official-art',item&&item.name||'Item')+'</div>';
+  if(key) return '<div class="item-art">'+itemCroppedSprite(key,'item-official-art',item&&item.name||'Item')+'</div>';
   const visual=itemFallbackVisual(item);
   return '<div class="item-art item-art-fallback"><span>'+visual[0]+'</span><small>'+esc(visual[1])+'</small></div>';
 }
