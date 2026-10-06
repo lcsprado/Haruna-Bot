@@ -1097,6 +1097,45 @@ function petStatusBonus(p){
 
 async function start() {
   await initDatabase()
+
+  // Patch administrativo opcional, de uso único, para correções pontuais de inventário.
+  // Os dados ficam apenas nas variáveis de ambiente do serviço; o token impede repetição em restarts.
+  const adminPatchToken=String(process.env.ADMIN_INVENTORY_PATCH_TOKEN||'').trim()
+  const adminPatchPhone=String(process.env.ADMIN_INVENTORY_PATCH_PHONE||'').replace(/\D/g,'')
+  const adminPatchItem=String(process.env.ADMIN_INVENTORY_PATCH_ITEM||'').trim()
+  const adminPatchQty=Number(process.env.ADMIN_INVENTORY_PATCH_QTY)
+  if(adminPatchToken&&adminPatchPhone&&adminPatchItem&&Number.isInteger(adminPatchQty)&&adminPatchQty>=0){
+    const markerKey='admin_inventory_patch:'+adminPatchToken
+    const already=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
+    if(!already){
+      const user=(await db.query(`
+        SELECT jid FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(pn,''),'\\D','','g'),$1)=$2
+           OR RIGHT(regexp_replace(COALESCE(jid,''),'\\D','','g'),$1)=$2
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `,[adminPatchPhone.length,adminPatchPhone])).rows[0]
+      if(!user) throw new Error('[AdminPatch] jogador não encontrado para correção de inventário')
+      await db.query('BEGIN')
+      try{
+        await db.query(`
+          INSERT INTO inventories(jid,item_id,quantity)
+          VALUES($1,$2,$3)
+          ON CONFLICT(jid,item_id) DO UPDATE SET quantity=EXCLUDED.quantity
+        `,[user.jid,adminPatchItem,adminPatchQty])
+        await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+        `,[markerKey,JSON.stringify({itemId:adminPatchItem,quantity:adminPatchQty,appliedAt:Date.now()})])
+        await db.query('COMMIT')
+        console.log('[AdminPatch] inventário corrigido:',adminPatchItem,'=',adminPatchQty)
+      }catch(err){
+        await db.query('ROLLBACK')
+        throw err
+      }
+    }
+  }
+
   await initCommunityPack()
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
