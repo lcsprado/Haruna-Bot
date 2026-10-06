@@ -1726,21 +1726,25 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
           }
 
           const r=await autoStartBossEvent(chat)
-          if(!r?.spawned) continue
-          await sock.sendMessage(chat,{text:
-`🌘 *BOSS DE EVENTO APARECEU!*
+          if(!r?.spawned && !r?.already) continue
+          const universalBossNoticeKey='universal-boss-event-'+String(r.scheduleKey||r.eventId||r.startedAt||'active')
+          await sendScheduledGroupNotice(chat,universalBossNoticeKey,
+`🌘 *BOSS UNIVERSAL DE EVENTO APARECEU!*
 
 👹 *${r.name}*
-❤️ HP: *${Number(r.maxHp).toLocaleString('pt-BR')}*
+❤️ HP GLOBAL: *${Number(r.maxHp).toLocaleString('pt-BR')}*
 ⚔️ ATK: *${r.atk}*
+
+🌐 É *o mesmo Boss para todos os grupos* com Alpha Bot.
+💥 Todo dano reduz o mesmo HP e entra no mesmo ranking.
+🔒 O cooldown do jogador também é global: trocar de grupo não libera ataque extra.
 
 ✨ EXP elevada para jogador
 🐾 EXP elevada para o pet
 🎁 Top 3 recebe caixa garantida
 🏅 Chance de *Insígnia do Eclipse — Evento Único*
 
-⚔️ Usem *${prefix}boss* para ver o status e *${prefix}atacar* para lutar.`
-          })
+⚔️ Usem *${prefix}boss* para ver o status e *${prefix}atacar* para lutar.`)
         }catch(err){
           console.error('[BossEvento] falha no grupo',chat,err?.message||err)
         }
@@ -9402,17 +9406,19 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const action=normalizeItemText(args[0]||'status')
           if(['ativar','on','iniciar','start'].includes(action)){
             const r=await activateBossEvent(chat)
-            if(r.already) return await reply(`🌘 *BOSS DE EVENTO JÁ ESTÁ ATIVO*\n\n👹 *${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\nUse *!boss* para ver e *!atacar* para lutar.`)
-            return await reply(`🌘 *BOSS DE EVENTO ATIVADO!*\n\n👹 *${r.name}*\n❤️ HP: *${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\n✨ EXP elevada para jogador\n🐾 EXP elevada para o pet\n🎁 Top 3 recebe caixa garantida\n🏅 Chance de dropar *Insígnia do Eclipse* — raridade *Evento Único*\n\n⚠️ O evento fica ativo até o Boss ser derrotado ou você usar *!eventoboss desativar*.\n⚔️ Todos podem usar *!boss* e *!atacar*.`)
+            if(r.already) return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO JÁ ESTÁ ATIVO*\n\n👹 *${r.name}*\n❤️ HP global: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\n🌐 É o mesmo Boss em todos os grupos. Trocar de grupo não libera ataque extra.\nUse *!boss* para ver e *!atacar* para lutar.`)
+            await sendEventToGroups(`🌘 *BOSS UNIVERSAL DE EVENTO ATIVADO!*\n\n👹 *${r.name}*\n❤️ HP GLOBAL: *${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\n🌐 O mesmo Boss está disponível em todos os grupos com Alpha Bot.\n💥 Todo dano entra no mesmo HP e ranking.\n🔒 Cada jogador mantém o mesmo cooldown em qualquer grupo — trocar de grupo não dá ataque extra.\n\n✨ EXP elevada para jogador\n🐾 EXP elevada para o pet\n🎁 Top 3 recebe caixa garantida\n🏅 Chance de dropar *Insígnia do Eclipse* — raridade *Evento Único*\n\n⚔️ Usem *!boss* e *!atacar*.`)
+            return
           }
           if(['desativar','off','parar','encerrar','stop'].includes(action)){
             const r=await deactivateBossEvent(chat)
-            if(r.already) return await reply('🌘 Não há Boss de Evento ativo neste grupo.')
-            return await reply(`✅ *BOSS DE EVENTO ENCERRADO*\n\n👹 ${r.name}\n❤️ Restavam *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')} HP*.\n\nO Boss normal/semanal volta a funcionar normalmente.`)
+            if(r.already) return await reply('🌘 Não há Boss Universal de Evento ativo.')
+            await sendEventToGroups(`✅ *BOSS UNIVERSAL DE EVENTO ENCERRADO*\n\n👹 ${r.name}\n❤️ Restavam *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')} HP*.\n\n🌐 O encerramento vale para todos os grupos.\nO Boss normal/semanal de cada grupo volta a funcionar normalmente.`)
+            return
           }
           const r=await getBossEventStatus(chat)
-          if(!r) return await reply(`🌘 *BOSS DE EVENTO: INATIVO*\n\n⏰ Próximo spawn automático: *sexta às 19:00* (horário de São Paulo).\n\nO comando *${prefix}eventoboss ativar* continua disponível apenas como acionamento manual de emergência.`)
-          return await reply(`🌘 *BOSS DE EVENTO: ATIVO*\n\n👹 *${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\nPara encerrar manualmente: *${prefix}eventoboss desativar*.`)
+          if(!r) return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO: INATIVO*\n\n⏰ Próximo spawn automático: *sexta às 19:00* (horário de São Paulo).\n\nQuando ativado, o mesmo HP/ranking/cooldown vale para todos os grupos.\nO comando *${prefix}eventoboss ativar* continua disponível apenas como acionamento manual de emergência.`)
+          return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO: ATIVO*\n\n👹 *${r.name}*\n❤️ HP global: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\n🌐 Mesmo Boss e ranking em todos os grupos.\n🔒 Trocar de grupo não libera ataque extra.\n\nPara encerrar manualmente: *${prefix}eventoboss desativar*.`)
 
         } else if(['boss'].includes(cmd)){
           const r=await startBoss(chat)
