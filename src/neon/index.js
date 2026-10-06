@@ -1363,6 +1363,23 @@ async function start() {
           const siegeEnd=Date.parse('2026-10-04T20:10:00-03:00')
           const petCareStart=Date.parse('2026-10-04T20:00:00-03:00')
           const petCareEnd=Date.parse('2026-10-04T20:30:00-03:00')
+          const luckyGamesStart=Date.parse('2026-10-06T07:30:00-03:00')
+          const luckyGamesEnd=Date.parse('2026-10-06T08:30:00-03:00')
+
+          if(now>=luckyGamesStart&&now<luckyGamesEnd){
+            await sendScheduledGroupNotice(chat,'lucky-games-3x-2026-10-06',
+`🍀🎰 *LUCKY 3X ATIVO!*
+
+⏰ *Até 08:30 de hoje*
+🎰 Roleta/Cassino: *prêmios 3x*
+🪙 Cara ou Coroa: *prêmios 3x*
+
+⚖️ *As chances continuam exatamente as mesmas.*
+O evento não aumenta a chance de ganhar — somente *triplica a recompensa quando você vence*.
+
+👥 Apostas PvP ficam fora do bônus.
+🔥 Aproveitem enquanto está valendo!`)
+          }
 
           if(now<siegeEnd){
             await sendScheduledGroupNotice(chat,'agenda-2026-10-04',
