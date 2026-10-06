@@ -6,6 +6,8 @@ const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const gameCatalog=readFileSync(new URL('../src/neon/game-catalog.js',import.meta.url),'utf8')
+const webApi=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8')
+const app=readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
 
 test('critical command handlers remain registered',()=>{
   for(const cmd of ['ping','saldo','all','raid','boss','perfil']){
@@ -59,4 +61,23 @@ test('boss and event combat auto-heal pets like raids',()=>{
   assert.ok(games.includes("const chosenPet=raidPetPotion(petPotionRows,missing)"),'Boss must reuse raid pet-potion selection')
   assert.ok(games.includes("autoPetHeal={id:chosenPet.item_id"),'Boss must return pet auto-heal details')
   assert.ok(index.includes("🐾🧪 *AUTOCURA DO PET!*"),'Boss session must announce pet auto-heal')
+})
+
+
+test('player classes are persisted RPG stats, not cosmetic-only',()=>{
+  assert.ok(gameCatalog.includes("paladin:Object.freeze({id:'paladin',name:'Paladino',role:'Tank',hp:80,atk:-4,def:12,spd:-3"),'Paladin tank baseline changed or missing')
+  assert.ok(db.includes('export async function setPlayerClass'),'class persistence function missing')
+  assert.ok(db.includes("class_applied BOOLEAN NOT NULL DEFAULT FALSE"),'stats class migration missing')
+})
+
+test('web login has server-side self-test and direct exchange',()=>{
+  assert.ok(webApi.includes("url.pathname==='/api/v1/health/auth'"),'web auth self-test endpoint missing')
+  assert.ok(webApi.includes("url.pathname==='/api/v1/auth/link'"),'one-tap web auth endpoint missing')
+})
+
+test('web app has no duplicate critical render functions',()=>{
+  const count=name=>(app.match(new RegExp('function\\s+'+name+'\\s*\\(','g'))||[]).length
+  assert.equal(count('raidSpriteKey'),1,'raidSpriteKey duplicated')
+  assert.equal(count('ownedPetCard'),1,'ownedPetCard duplicated')
+  assert.equal(count('itemArtMarkup'),1,'itemArtMarkup duplicated')
 })
