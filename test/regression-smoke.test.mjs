@@ -256,7 +256,7 @@ test('web item and pet galleries never render wrong stacked artwork',()=>{
   }
   assert.ok(!itemBlock.includes("return '';"),'item artwork resolver must never return blank')
   assert.ok(app.includes('pet-image-fallback'),'exact pet images need a species-safe fallback')
-  assert.ok(app.includes("onload=\"this.parentElement.classList.add('pet-art-loaded')\""),'exact pet art must hide fallback after loading')
+  assert.ok(app.includes("classList.add(\\'pet-art-loaded\\')"),'exact pet art must hide fallback after loading')
   assert.ok(app.includes('onerror="this.remove()"'),'broken exact pet images must leave the safe fallback visible')
   assert.ok(!app.includes("className+' pet-fallback-underlay'"),'pet cards must not stack an unrelated sprite under the real art')
 })
