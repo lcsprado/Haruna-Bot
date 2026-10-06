@@ -244,12 +244,21 @@ test('web item and pet galleries never render without real artwork',()=>{
   assert.ok(app.includes('this.previousElementSibling.style.opacity=1'),'broken pet files must reveal fallback art')
 })
 
-test('PWA rivalry actions are echoed back to the linked WhatsApp group',()=>{
+test('PWA rivalry actions are echoed with real opponents and dedicated duel UI',()=>{
   assert.ok(index.includes('globalThis.__alphaWebGroupLog'),'WhatsApp bridge for web actions missing')
   assert.ok(webApi.includes('async function sendWebGroupActivity'),'web activity formatter missing')
   for(const action of ["actionName==='battle'","actionName==='petduel'","actionName==='game.roulette'","actionName==='game.coinflip'"]){
     assert.ok(webApi.includes(action),'missing rivalry log for '+action)
   }
+  assert.ok(webApi.includes('withTargetMeta(await battle'),'battle result must retain the selected opponent')
+  assert.ok(webApi.includes("text='⚔️ *DUELO RPG*"),'battle activity must use a real duel message instead of raw action code')
+  assert.ok(webApi.includes("if(result.ok===false)"),'battle cooldown must not create fake group activity')
+  assert.ok(webApi.includes('targetName'),'social activity logs must preserve target names')
+  assert.ok(app.includes("['duels','⚔️','Duelos']"),'dedicated Duelos navigation item missing')
+  assert.ok(app.includes('function renderDuelArena(members)'),'two-character duel arena missing')
+  assert.ok(app.includes('data-duel-launch'),'duel arena needs a real battle action')
+  assert.ok(app.includes('data-duel-pet-launch'),'duel arena needs a pet duel action')
+  assert.ok(webApi.includes('s.class_id,s.class_applied,s.hp,s.max_hp,s.atk,s.def,s.spd'),'social roster must expose real combat/class data')
   assert.ok(webApi.includes('await sendWebGroupActivity(session,actionName,body,rawResult)'),'successful web actions must publish activity')
 })
 
