@@ -27,8 +27,8 @@ test('boss and raid combat loop limits stay separated',()=>{
   const raid=index.slice(raidStart)
   assert.ok(boss.includes("if(!eventSession && i>=29) break"),'common/weekly boss must still stop after 30 attacks')
   assert.ok(boss.includes("const eventSession=sessionMode==='event'"),'event boss must use continuous auto-combat mode')
-  assert.ok(!boss.includes('for(let i=0;i<180;i++){'),'boss session must not inherit raid loop')
-  assert.ok(raid.includes('for(let i=0;i<180;i++){'),'raid combat runner must keep extended loop')
+  assert.ok(!boss.includes('for(let i=0;;i++){'),'boss session must not inherit the continuous Raid loop')
+  assert.ok(raid.includes('for(let i=0;;i++){'),'raid combat runner must continue until Raid state ends it')
 })
 
 test('03:03 event wiring remains intact',()=>{
@@ -279,6 +279,9 @@ test('web raids run server-side and survive browser timer suspension',()=>{
   assert.ok(index.includes('async function ensureActiveRaidRuns()'),'active Raid recovery watchdog missing')
   assert.ok(index.includes("state->>'status'='active'"),'watchdog must discover persisted active Raids')
   assert.ok(index.includes('raidAutoWatchdog=setInterval'),'Raid auto must be monitored server-side')
-  assert.ok(index.includes("console.error('[Raid Auto] falha ao publicar aviso; combate continua"),'WhatsApp notification failure must not stop Raid combat')
+  assert.ok(index.includes('void safeRaidNotify(reply,text)'),'Raid notices must never block combat progress')
+  assert.ok(index.includes('const RAID_RUN_STALE_MS=25000'),'stalled Raid runners need a watchdog timeout')
+  assert.ok(index.includes("runner travado detectado; substituindo"),'watchdog must replace stalled Raid runners')
+  assert.ok(index.includes('if(raidRunCurrent(runKey,token)) raidRuns.delete(runKey)'),'stale runner must not delete its replacement')
   assert.ok(index.includes('raidAutoRetryAt.set(runKey,Date.now()+5000)'),'temporary Raid errors must schedule automatic recovery')
 })
