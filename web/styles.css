@@ -793,9 +793,12 @@ body.loot-open{overflow:hidden!important}
   grid-area:1/1;
 }
 .pet-art-stack .pet-fallback-underlay{
-  opacity:0;
+  opacity:1;
+  z-index:0;
 }
+.pet-art-stack .pet-primary-art,
 .pet-art-stack .pet-exact-art{
+  position:relative;
   z-index:1;
 }
 .catalog-card .pet-portrait,
