@@ -1326,6 +1326,7 @@ async function start() {
     retryRequestDelayMs:500,
     fireInitQueries:true,
     emitOwnEvents:true,
+    generateHighQualityLinkPreview:false,
     enableAutoSessionRecreation:true,
     transactionOpts:{
       maxCommitRetries:3,
@@ -6740,9 +6741,9 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             ? '🔗 Este código já está vinculado a *este grupo*, então Raids e Bosses do Web usarão a mesma sessão do WhatsApp.'
             : 'ℹ️ Código gerado no privado. Para vincular também Raids/Bosses do grupo, use *!web* dentro do grupo onde vocês jogam.'
           const urlLine=link.url
-            ? `\n🌐 Abra: ${link.url}`
+            ? `\n🌐 *TOQUE AQUI PARA ENTRAR DIRETO:*\n${link.url}`
             : '\n🌐 Abra o RPG Web e informe este código na tela de conexão.'
-          await reply(`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n⚠️ O código é de uso único. Não envie para outras pessoas.`)
+          await reply(`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ O link acima faz a conexão automaticamente.\n⚠️ O código é de uso único. Não envie para outras pessoas.`)
           continue
         }
 

@@ -151,12 +151,14 @@ export async function createWebLinkCode(jid,chatJid=null){
         )
       `,[jid]).catch(()=>{})
       const renderBase=String(process.env.RENDER_EXTERNAL_URL||'').trim().replace(/\/$/,'')
-      const base=String(process.env.WEB_APP_URL||(renderBase?renderBase+'/rpg':'')).trim().replace(/\/$/,'')
+      const configured=String(process.env.WEB_APP_URL||(renderBase?renderBase+'/rpg':'')).trim()
+      let origin=''
+      try{ origin=configured?new URL(configured).origin:renderBase }catch{ origin=renderBase }
       return {
         code,
         expiresAt,
         chatJid:group,
-        url:base ? `${base}?link=${encodeURIComponent(code)}` : null
+        url:origin ? `${origin}/api/v1/auth/link?code=${encodeURIComponent(code)}` : null
       }
     }catch(err){
       if(err?.code!=='23505') throw err
@@ -722,9 +724,35 @@ export async function handleWebApi(req,res){
       return true
     }
 
+    if(req.method==='GET' && url.pathname==='/api/v1/auth/link'){
+      try{
+        const session=await exchangeWebLinkCode(url.searchParams.get('code')||'')
+        const tokenJson=JSON.stringify(session.token)
+        res.writeHead(200,{
+          'content-type':'text/html; charset=utf-8',
+          'cache-control':'no-store, no-cache, must-revalidate',
+          'pragma':'no-cache',
+          'referrer-policy':'no-referrer',
+          'x-frame-options':'DENY'
+        })
+        res.end(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conectando ao Alpha RPG</title></head><body style="margin:0;background:#070b11;color:#fff;font-family:system-ui;display:grid;place-items:center;min-height:100vh;text-align:center"><main><h2>Conectando ao Alpha RPG...</h2><p>Validando seu acesso.</p></main><script>try{localStorage.setItem('alphaWebTokenV1',${tokenJson});location.replace('/rpg');}catch(e){location.href='/rpg?token='+encodeURIComponent(${tokenJson});}</script></body></html>`)
+        console.info('[Web Auth] link exchange success',session.groupLinked?'group':'private')
+      }catch(err){
+        console.warn('[Web Auth] link exchange failed',String(err?.message||err))
+        res.writeHead(400,{
+          'content-type':'text/html; charset=utf-8',
+          'cache-control':'no-store',
+          'referrer-policy':'no-referrer'
+        })
+        res.end('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:#070b11;color:#fff;font-family:system-ui;display:grid;place-items:center;min-height:100vh;text-align:center"><main><h2>Código inválido ou expirado</h2><p>Volte ao WhatsApp, envie <b>!web</b> e toque no novo link.</p><p><a style="color:#7ebcff" href="/rpg">Abrir tela de conexão</a></p></main></body></html>')
+      }
+      return true
+    }
+
     if(req.method==='POST' && url.pathname==='/api/v1/auth/exchange'){
       const body=await readJson(req)
       const session=await exchangeWebLinkCode(body.code)
+      console.info('[Web Auth] code exchange success',session.groupLinked?'group':'private')
       json(res,200,{ok:true,...session})
       return true
     }

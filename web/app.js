@@ -1890,7 +1890,15 @@ setInterval(()=>{
 
 (async function boot(){
   renderNav();
-  const linked=new URLSearchParams(location.search).get('link');
+  const params=new URLSearchParams(location.search);
+  const linked=params.get('link');
+  const tokenFromLink=params.get('token');
+
+  if(tokenFromLink){
+    ui.token=tokenFromLink;
+    localStorage.setItem(TOKEN_KEY,ui.token);
+    history.replaceState({},document.title,'/rpg');
+  }
 
   // Se já existe uma sessão válida neste aparelho, não tente consumir novamente
   // o código de uso único do link. Reabrir o mesmo link passa a funcionar.
