@@ -13,6 +13,7 @@ const ui = {
   page: 'home',
   petTab: 'owned',
   petAdoptSpecies: '',
+  duelTarget: '',
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
   raidTimer: null,
   raidLevel: null,
@@ -1524,8 +1525,50 @@ function resultPanel(){
   return '<div class="section card result-card"><div class="result-scene">'+artSprite('bg-result','result-scene-art','Tela de resultado')+'</div><div class="section-title"><h3>Resultado</h3><button class="text-btn" data-clear-result>Limpar</button></div>'+prettyResult(ui.lastResult)+'</div>';
 }
 
+function characterForClass(id){
+  return CHARACTER_ART.find(x=>x.id===String(id||''))||CHARACTER_ART[0];
+}
+
+function renderDuelArena(members){
+  if(!members.length) return '<div class="card duel-arena-card"><div class="empty">Nenhum adversário recente disponível para duelo.</div></div>';
+  const target=members.find(x=>x.jid===ui.duelTarget)||members[0];
+  ui.duelTarget=target.jid;
+  const me=(ui.data&&ui.data.profile)||{};
+  const myCombat=profile();
+  const mine=selectedCharacter();
+  const enemy=characterForClass(target.class_id);
+  const myHp=Number(myCombat.effective_hp||myCombat.hp||0),myMax=Math.max(1,Number(myCombat.effective_max_hp||myCombat.max_hp||1));
+  const enemyHp=Number(target.hp||0),enemyMax=Math.max(1,Number(target.max_hp||1));
+  const last=ui.lastResult&&ui.lastResult.targetJid===target.jid?ui.lastResult:null;
+  const duelSummary=last&&last.winner&&last.loser
+    ? '<div class="duel-last-result '+(String(last.winner.jid)===String((ui.data.identity||{}).jid)?'win':'loss')+'"><strong>'+(String(last.winner.jid)===String((ui.data.identity||{}).jid)?'🏆 VITÓRIA':'💀 DERROTA')+'</strong><span>Vencedor: '+esc(last.winner.name||'Jogador')+(Number(last.reward||0)>0?' • '+money(last.reward):'')+'</span></div>'
+    : '<div class="duel-last-result"><span>Escolha o adversário e inicie o confronto.</span></div>';
+
+  return '<div class="card duel-arena-card">'+
+    '<div class="section-title"><div><h3>⚔️ Arena de Duelo</h3><small>Confronto real usando ATK, DEF, SPD, crítico, equipamentos e bônus atuais.</small></div><span class="tag good">PVP</span></div>'+
+    '<div class="duel-picker"><label>Adversário</label><select data-duel-target>'+members.map(m=>'<option value="'+esc(m.jid)+'" '+(m.jid===target.jid?'selected':'')+'>'+esc(m.push_name||'Jogador')+' • Lv.'+num(m.level||1)+'</option>').join('')+'</select></div>'+
+    '<div class="duel-stage-live">'+
+      '<div class="duel-fighter me">'+
+        '<div class="duel-character-art">'+artSprite(mine.sprite,'duel-character-svg',mine.name)+'</div>'+
+        '<strong>'+esc(me.push_name||'Você')+'</strong><small>'+esc(mine.name)+' • Lv.'+num(me.level||1)+'</small>'+
+        '<div class="duel-hp"><span>❤️ '+num(myHp)+'/'+num(myMax)+'</span><div class="progress"><span style="width:'+pct(myHp/myMax*100)+'%"></span></div></div>'+
+        '<div class="duel-stats"><span>⚔️ '+num(myCombat.effective_atk||myCombat.atk)+'</span><span>🛡️ '+num(myCombat.effective_def||myCombat.def)+'</span><span>💨 '+num(myCombat.effective_spd||myCombat.spd)+'</span></div>'+
+      '</div>'+
+      '<div class="duel-versus">VS</div>'+
+      '<div class="duel-fighter enemy">'+
+        '<div class="duel-character-art">'+artSprite(enemy.sprite,'duel-character-svg',enemy.name)+'</div>'+
+        '<strong>'+esc(target.push_name||'Jogador')+'</strong><small>'+esc(enemy.name)+' • Lv.'+num(target.level||1)+'</small>'+
+        '<div class="duel-hp"><span>❤️ '+num(enemyHp)+'/'+num(enemyMax)+'</span><div class="progress"><span style="width:'+pct(enemyHp/enemyMax*100)+'%"></span></div></div>'+
+        '<div class="duel-stats"><span>⚔️ '+num(target.atk||0)+'</span><span>🛡️ '+num(target.def||0)+'</span><span>💨 '+num(target.spd||0)+'</span></div>'+
+      '</div>'+
+    '</div>'+
+    duelSummary+
+    '<div class="hero-actions duel-actions"><button class="btn primary" data-duel-launch="'+esc(target.jid)+'">⚔️ DUELAR AGORA</button><button class="btn" data-duel-pet-launch="'+esc(target.jid)+'">🐾 DUELO DE PETS</button></div>'+
+  '</div>';
+}
+
 function memberCard(m){
-  return '<div class="card social-card"><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
+  return '<div class="card social-card"><div class="tag-row"><span class="tag">'+esc(characterForClass(m.class_id).name)+'</span><span class="tag">Lv.'+num(m.level||1)+'</span></div><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
     '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn" data-coin-duel="'+esc(m.jid)+'">🪙 Cara/Coroa</button><button class="btn" data-rps-duel="'+esc(m.jid)+'">✊ PPT</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
 }
 function renderSocial(){
@@ -1538,10 +1581,11 @@ function renderSocial(){
     (coinPending?'<button class="btn good" data-coin-duel-accept>🪙 Aceitar Cara/Coroa • '+money(coinPending.amount)+'</button>':'')+
     (rpsPending?'<button class="btn good" data-rps-duel-accept>✊ Aceitar PPT • '+money(rpsPending.amount)+'</button>':'')+
     '</div></div>':'';
-  return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo, Duelo Pet, apostas PvP, roubo, PIX e empréstimo usam os mesmos jogadores ativos do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
+  return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo visual, Duelo Pet, apostas PvP, roubo, PIX e empréstimo usam os jogadores reais do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
+    renderDuelArena(members)+
     pending+
-    '<div class="card"><div class="section-title"><h3>Relacionamento</h3><small>Mesmo estado do WhatsApp</small></div>'+renderRelationship(rel)+(rel?'<div class="hero-actions section"><button class="btn danger" data-relationship-divorce>Divorciar</button></div>':'')+'</div>'+
-    '<div class="section grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div>'+resultPanel();
+    '<div class="section card"><div class="section-title"><h3>Relacionamento</h3><small>Mesmo estado do WhatsApp</small></div>'+renderRelationship(rel)+(rel?'<div class="hero-actions section"><button class="btn danger" data-relationship-divorce>Divorciar</button></div>':'')+'</div>'+
+    '<div class="section"><div class="section-title"><h3>Jogadores do grupo</h3><small>Ações sociais e PvP</small></div><div class="grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div></div>'+resultPanel();
 }
 
 function renderMarket(){
@@ -2070,8 +2114,26 @@ function bind(){
   document.querySelectorAll('[data-loan-pay]').forEach(x=>x.onclick=()=>doAction('loan.pay',{amount:x.dataset.loanPay},{}));
   document.querySelectorAll('[data-loan-accept]').forEach(x=>x.onclick=()=>doAction('loan.accept',{id:Number(x.dataset.loanAccept)},{}));
   document.querySelectorAll('[data-loan-reject]').forEach(x=>x.onclick=()=>doAction('loan.reject',{id:Number(x.dataset.loanReject)},{}));
-  document.querySelectorAll('[data-battle]').forEach(x=>x.onclick=()=>doAction('battle',{targetJid:x.dataset.battle},{}));
-  document.querySelectorAll('[data-petduel]').forEach(x=>x.onclick=()=>doAction('petduel',{targetJid:x.dataset.petduel},{}));
+  document.querySelectorAll('[data-duel-target]').forEach(x=>x.onchange=()=>{
+    ui.duelTarget=x.value;
+    render();
+  });
+  document.querySelectorAll('[data-duel-launch]').forEach(x=>x.onclick=async()=>{
+    ui.duelTarget=x.dataset.duelLaunch;
+    await doAction('battle',{targetJid:ui.duelTarget},{});
+  });
+  document.querySelectorAll('[data-duel-pet-launch]').forEach(x=>x.onclick=async()=>{
+    ui.duelTarget=x.dataset.duelPetLaunch;
+    await doAction('petduel',{targetJid:ui.duelTarget},{});
+  });
+  document.querySelectorAll('[data-battle]').forEach(x=>x.onclick=async()=>{
+    ui.duelTarget=x.dataset.battle;
+    await doAction('battle',{targetJid:ui.duelTarget},{});
+  });
+  document.querySelectorAll('[data-petduel]').forEach(x=>x.onclick=async()=>{
+    ui.duelTarget=x.dataset.petduel;
+    await doAction('petduel',{targetJid:ui.duelTarget},{});
+  });
   document.querySelectorAll('[data-coin-duel]').forEach(x=>x.onclick=()=>{
     const amount=Number(prompt('Aposta do Cara ou Coroa:','1000'));
     if(!(amount>=10)) return;
