@@ -1120,7 +1120,7 @@ function renderCharacter(){
       ];
       let label='Escolher classe';
       if(active) label='Selecionado';
-      else if(applied&&remaining>0) label='Cooldown ativo';
+      else if(applied&&remaining>0) label='Recarga ativa';
       else if(applied&&scrolls<1) label='Precisa de Pergaminho';
       else if(applied) label='Trocar classe';
       return '<div class="card character-card '+(active?'selected':'')+'">'+
@@ -1166,7 +1166,7 @@ function renderPets(){
     ? '<div class="notice good"><strong>'+esc(synergy.label)+'</strong><br>'+esc(synergy.text)+'</div>'
     : '<div class="notice">Monte 3 espécies diferentes do mesmo estilo para ativar uma sinergia de Time Pet.</div>';
 
-  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo backend do WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" data-pet-tab="adopt">🐾 Adotar novo pet</button><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div></div>'+
+  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo servidor do WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" data-pet-tab="adopt">🐾 Adotar novo pet</button><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div></div>'+
     '<div class="card"><div class="section-title"><div><h3>Time Pet</h3><small>1 Principal • 2 Suporte • 3 Reserva</small></div><button class="btn primary" data-pet-team-save>Salvar time</button></div>'+
       '<div class="grid three">'+[1,2,3].map(teamSlot).join('')+'</div>'+
       '<div class="section">'+synergyBox+'</div>'+
@@ -1399,12 +1399,12 @@ function inventoryCard(i){
     '<div class="tag-row"><span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
     '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(itemDisplayDescription(i))+'</p>'+
     (i.sellable!==false?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
-    (eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Upgrade devolve '+money(i.upgrade_refund)+' na venda.</small>':'')+
+    (eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' na venda.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
 }
 function renderInventory(){
   const inv=ui.data.inventory||[];
-  return '<div class="page-head"><div><h2>Inventário real</h2><p>Quantidade, raridade e upgrade são lidos do Neon.</p></div><div class="hero-actions"><button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
+  return '<div class="page-head"><div><h2>Inventário real</h2><p>Quantidade, raridade e melhorias são lidas do servidor.</p></div><div class="hero-actions"><button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
     renderLuckyBoxEvent()+
     '<div class="grid cards">'+(inv.length?inv.map(inventoryCard).join(''):'<div class="empty">Inventário vazio.</div>')+'</div>'+resultPanel();
 }
