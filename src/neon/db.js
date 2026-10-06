@@ -2112,7 +2112,7 @@ export async function equipItem(jid, itemId) {
   })
 }
 
-export async function usePetPotion(jid,itemId=null){
+export async function usePetPotion(jid,itemId=null,petId=null){
   await ensureUser(jid)
   return transaction(async client=>{
     const ids=Object.keys(PET_POTIONS)
@@ -2124,7 +2124,36 @@ export async function usePetPotion(jid,itemId=null){
     if(itemId && !rows.some(r=>r.item_id===itemId)) throw new Error('Você não possui essa poção de pet.')
     if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura de pet.')
 
-    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    let pet=null
+    let collectionId=null
+    let isActive=true
+
+    if(petId!=null){
+      const id=Number(petId)
+      if(!Number.isInteger(id)||id<=0) throw new Error('Pet inválido.')
+      const collection=(await client.query(
+        'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',
+        [jid,id]
+      )).rows[0]
+      if(!collection) throw new Error('Pet não encontrado na sua coleção.')
+      collectionId=Number(collection.id)
+      isActive=Boolean(collection.active)
+      if(isActive){
+        pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||collection
+      }else{
+        pet=collection
+      }
+    }else{
+      pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+      if(pet){
+        const active=(await client.query(
+          'SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',
+          [jid]
+        )).rows[0]
+        collectionId=active?Number(active.id):null
+      }
+    }
+
     if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
 
     const maxHp=petMaxHp(pet.level,pet.xp,pet.species)
@@ -2142,11 +2171,30 @@ export async function usePetPotion(jid,itemId=null){
     const potion=PET_POTIONS[chosen.item_id]
     const hp=Math.min(maxHp,before+potion.heal)
     const healed=hp-before
-    await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id])
-    await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[hp,maxHp,jid])
-    await client.query('UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',[hp,maxHp,jid])
+
+    await client.query(
+      'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
+      [jid,chosen.item_id]
+    )
+
+    if(collectionId){
+      await client.query(
+        'UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND id=$4',
+        [hp,maxHp,jid,collectionId]
+      )
+    }else if(isActive){
+      await client.query(
+        'UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',
+        [hp,maxHp,jid]
+      )
+    }
+
+    if(isActive){
+      await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[hp,maxHp,jid])
+    }
+
     return {
-      itemId:chosen.item_id,name:potion.name,petName:pet.name,
+      petId:collectionId,itemId:chosen.item_id,name:potion.name,petName:pet.name,
       before,hp,maxHp,healed,remaining:Number(chosen.quantity)-1
     }
   })
