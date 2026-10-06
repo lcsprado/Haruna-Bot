@@ -149,6 +149,20 @@ test('class reclassification requires scroll and seven-day cooldown',()=>{
   assert.ok(app.includes('Primeira classe grátis'),'first-choice UX missing')
 })
 
+test('level rewards are explicit, balanced through level 100 and use real claim history',()=>{
+  for(const milestone of [55,60,65,70,75,80,85,90,95,100]){
+    assert.ok(db.includes(milestone+':{cash:'),'missing explicit reward for Lv.'+milestone)
+  }
+  assert.ok(db.includes("100:{cash:750000,items:[['pergaminho_reclassificacao',1]"),'Lv.100 must grant the reclassification scroll')
+  assert.ok(db.includes('if(milestone<5 || milestone>100 || milestone%5!==0) return null'),'level rewards must stop at 100')
+  assert.ok(db.includes('export async function getClaimedLevelRewards(jid)'),'claimed milestones query missing')
+  assert.ok(webApi.includes('claimedLevelRewards'),'PWA extras must expose actual claimed milestones')
+  assert.ok(webApi.includes('Array.from({length:20}'),'PWA must list milestones through level 100')
+  assert.ok(app.includes('const claimedSet=new Set'),'PWA must render claimed state from actual milestone history')
+  assert.ok(app.includes("done=claimedSet.has(milestone)"),'claimed rewards must not be shown as available again')
+  assert.ok(app.includes("pergaminho_reclassificacao:'Pergaminho de Reclassificação'"),'Lv.100 reward label must be readable')
+})
+
 
 test('group web linking upgrades existing sessions',()=>{
   assert.ok(webApi.includes("UPDATE web_sessions SET chat_jid=$1,last_seen_at=$2 WHERE jid=$3 AND expires_at>$2"),'!web in a group must upgrade existing sessions')
