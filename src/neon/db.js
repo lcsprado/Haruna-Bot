@@ -4047,9 +4047,9 @@ export const LEGENDARY_PET_SUMMONS=[
     {species:'oraculo_pedra',name:'🔮 Oráculo de Pedra',chance:20,power:185}
   ]},
   {materialId:'escama_vulcanica',materialName:'Escama Vulcânica',raidLevel:15,summonCost:100,pets:[
-    {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:30,power:165},
-    {species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:25,power:190},
-    {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:15,power:225},
+    {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:50,power:165},
+    {species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:10,power:190},
+    {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:10,power:225},
     {species:'pantera_vulcanica',name:'🐈‍⬛ Pantera Vulcânica',chance:30,power:210}
   ]},
   {materialId:'olho_abissal',materialName:'Olho Abissal',raidLevel:20,summonCost:100,pets:[
