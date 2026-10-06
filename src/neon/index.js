@@ -1137,6 +1137,42 @@ async function start() {
     }
   }
 
+  // Crédito administrativo único de materiais de Raid (sem mensagem ao jogador).
+  {
+    const markerKey='admin_material_grant:11987308687:2026-10-05'
+    const already=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
+    if(!already){
+      const grantPhone='5511987308687'
+      const user=(await db.query(`
+        SELECT jid FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(pn,''),'\\D','','g'),11)=RIGHT($1,11)
+           OR RIGHT(regexp_replace(COALESCE(jid,''),'\\D','','g'),11)=RIGHT($1,11)
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `,[grantPhone])).rows[0]
+      if(!user) throw new Error('[AdminGrant] jogador 11987308687 não encontrado')
+      await db.query('BEGIN')
+      try{
+        await db.query(`
+          INSERT INTO inventories(jid,item_id,quantity) VALUES
+            ($1,'olho_abissal',45),
+            ($1,'nucleo_pedra',20)
+          ON CONFLICT(jid,item_id) DO UPDATE
+          SET quantity=inventories.quantity+EXCLUDED.quantity
+        `,[user.jid])
+        await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+        `,[markerKey,JSON.stringify({olho_abissal:45,nucleo_pedra:20,appliedAt:Date.now()})])
+        await db.query('COMMIT')
+        console.log('[AdminGrant] materiais creditados: olho_abissal +45; nucleo_pedra +20')
+      }catch(err){
+        await db.query('ROLLBACK')
+        throw err
+      }
+    }
+  }
+
   // Garantia opcional de uma única invocação, persistente até ser consumida.
   const summonPatchToken=String(process.env.ADMIN_SUMMON_PATCH_TOKEN||'').trim()
   const summonPatchPhone=String(process.env.ADMIN_SUMMON_PATCH_PHONE||'').replace(/\D/g,'')
