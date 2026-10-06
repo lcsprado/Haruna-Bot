@@ -761,7 +761,7 @@ async function sendWebGroupActivity(session,actionName,body,result){
         text=null
       }
     }else{
-      const labels={'raid.create':'abriu uma Raid','raid.join':'entrou em uma Raid','raid.start':'iniciou uma Raid','raid.cancel':'cancelou uma Raid'}
+      const labels={'raid.create':'abriu uma Raid','raid.join':'entrou em uma Raid','raid.start':'iniciou uma Raid com combate automático no servidor','raid.auto':'reativou o combate automático da Raid','raid.cancel':'cancelou uma Raid'}
       text='⚔️ *RAID*\n'+meName+' '+(labels[actionName]||'agiu em uma Raid')+(body.level?' Lv.*'+Number(body.level)+'*':'')+'.'
       mentions=[me]
     }
@@ -808,6 +808,13 @@ async function sendWebGroupActivity(session,actionName,body,result){
   }
 
   if(text) await send(session.chatJid,text,[...new Set(mentions)])
+}
+
+async function startRaidServerRun(session,level){
+  const starter=globalThis.__alphaStartRaidRun
+  if(typeof starter!=='function') throw new Error('Automação de Raid indisponível no servidor.')
+  const started=await starter(requireGroup(session),Number(level))
+  return {ok:true,serverAuto:true,started:Boolean(started),level:Number(level)}
 }
 
 async function runAction(session,name,body={}){
@@ -885,7 +892,13 @@ async function runAction(session,name,body={}){
     case 'raid.create': return createRaid(requireGroup(session),jid,String(body.name||'Jogador'),positiveInt(body.level,'Nível',50))
     case 'raid.join': return joinRaid(requireGroup(session),jid,String(body.name||'Jogador'),body.level==null?null:positiveInt(body.level,'Nível',50))
     case 'raid.cancel': return cancelRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',50))
-    case 'raid.start': return startRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'raid.start': {
+      const level=body.level==null?null:positiveInt(body.level,'Nível',50)
+      const started=await startRaid(requireGroup(session),jid,level)
+      await startRaidServerRun(session,started.level)
+      return {...started,serverAuto:true}
+    }
+    case 'raid.auto': return startRaidServerRun(session,body.level==null?null:positiveInt(body.level,'Nível',50))
     case 'raid.round': return raidRound(requireGroup(session),body.level==null?null:positiveInt(body.level,'Nível',50))
     case 'boss.start': return startBoss(requireGroup(session))
     case 'boss.attack': return attackBoss(requireGroup(session),jid,String(body.name||'Jogador'),body.usePet!==false)
