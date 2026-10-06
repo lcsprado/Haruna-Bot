@@ -12,6 +12,7 @@ const ui = {
   lootReveal: null,
   page: 'home',
   petTab: 'owned',
+  petAdoptSpecies: '',
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
   raidTimer: null,
   raidLevel: null,
@@ -268,7 +269,18 @@ const PET_SPRITE_ALIASES={
   serpente_cosmica:'pet-leviathan',
   dragao_corrompido:'pet-dragon',
   fenix_alpha:'pet-phoenix',
-  kitsune:'pet-fox'
+  kitsune:'pet-fox',
+  oraculo_pedra:'pet-golem',
+  pantera_vulcanica:'pet-panther',
+  espectro_abissal:'pet-crow',
+  kraken_aco:'pet-leviathan',
+  esfinge_titanica:'pet-golem',
+  quimera_abissal:'pet-dragon',
+  paladino_astral:'pet-golem',
+  lince_celestial:'pet-panther',
+  arcanjo_eclipse:'pet-phoenix',
+  colosso_alpha:'pet-golem',
+  oraculo_alpha:'pet-golem'
 };
 
 
@@ -339,7 +351,7 @@ function petSpriteKey(species){
     cerbero_carmesim:'pet-infernal-wolf',
     quimera_abissal:'pet-dragon'
   };
-  return exact[s]||'';
+  return exact[s]||PET_SPRITE_ALIASES[s]||'pet-panther';
 }
 function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
@@ -349,9 +361,7 @@ function petVisualMarkup(species,className='pet-official-art'){
   const img=petExactImage(s);
   if(img) return '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006" alt="'+esc(label)+'" loading="lazy">';
   const sprite=petSpriteKey(s);
-  if(sprite) return artSprite(sprite,className,label);
-  const emoji=speciesEmoji[s]||'🐾';
-  return '<div class="pet-species-fallback '+esc(className)+'"><span>'+emoji+'</span><small>'+esc(label)+'</small></div>';
+  return artSprite(sprite,className,label);
 }
 
 function raidSpriteKey(level,name){
@@ -925,13 +935,37 @@ function catalogPetCard(p){
   const special=p.source==='raid';
   const cost=special?Number(p.summonCost||100):Number(p.price||0);
   const materialQty=special?itemCount(p.materialId):0;
-  const can= special ? materialQty>=cost : level>=Number(p.level||1);
+  const can=special ? materialQty>=cost : level>=Number(p.level||1);
   return '<div class="card catalog-card">'+petPortrait(p.species)+
     '<div class="tag-row"><span class="tag '+(special?'legendary':'')+'">'+(special?'RAID / INVOCAÇÃO':'ADOTÁVEL')+'</span><span class="tag">'+esc(p.style||'')+'</span>'+(owned?'<span class="tag good">NA COLEÇÃO</span>':'')+'</div>'+
     '<h3>'+esc(p.label||p.name||titleCase(p.species))+'</h3>'+
     '<p>'+esc(specialtyText(p))+'</p>'+
     (special?'<p>Raid Lv.'+num(p.raidLevel)+' • Chance '+num(p.chance)+'% • '+esc(p.materialName)+' '+materialQty+'/'+cost+'</p>':'<p>Nível mínimo '+num(p.level)+' • '+money(p.price)+'</p>')+
-    '<div class="pet-actions">'+(special?'<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button>':'<div class="pet-adopt-inline"><input data-pet-adopt-name="'+esc(p.species)+'" maxlength="24" placeholder="Nome do novo pet" value="'+esc(p.label||titleCase(p.species))+'"><button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-adopt="'+esc(p.species)+'">Adotar</button></div>')+'</div>'+
+    '<div class="pet-actions">'+(special
+      ? '<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button>'
+      : '<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-adopt-open="'+esc(p.species)+'">'+(can?'Adotar / escolher nome':'Nível '+num(p.level)+' necessário')+'</button>')+
+    '</div>'+
+  '</div>';
+}
+
+function petAdoptModal(){
+  const species=String(ui.petAdoptSpecies||'');
+  if(!species) return '';
+  const p=catalogPets().find(x=>x.species===species&&x.source==='adoption');
+  if(!p) return '';
+  const suggested=String(p.label||titleCase(p.species)).replace(/^[^\p{L}\p{N}]+/u,'').trim();
+  return '<div class="pet-adopt-overlay" data-pet-adopt-close>'+
+    '<div class="pet-adopt-modal" role="dialog" aria-modal="true" aria-label="Adotar pet" onclick="event.stopPropagation()">'+
+      '<button class="pet-adopt-x" data-pet-adopt-close type="button">×</button>'+
+      '<div class="pet-adopt-preview">'+petPortrait(p.species)+'</div>'+
+      '<div class="tag-row"><span class="tag good">ADOÇÃO</span><span class="tag">'+esc(p.style||'Pet')+'</span></div>'+
+      '<h2>'+esc(p.label||titleCase(p.species))+'</h2>'+
+      '<p>'+esc(specialtyText(p))+'</p>'+
+      '<div class="pet-adopt-cost"><span>Nível mínimo <strong>'+num(p.level)+'</strong></span><span>Custo <strong>'+money(p.price)+'</strong></span></div>'+
+      '<label>Nome do pet</label>'+
+      '<input data-pet-adopt-modal-name maxlength="24" value="'+esc(suggested||'Alpha')+'" placeholder="Digite o nome do pet">'+
+      '<div class="pet-adopt-actions"><button class="btn" data-pet-adopt-close type="button">Cancelar</button><button class="btn primary" data-pet-adopt-confirm="'+esc(p.species)+'" type="button">🐾 Confirmar adoção</button></div>'+
+    '</div>'+
   '</div>';
 }
 
@@ -1017,7 +1051,8 @@ function renderPets(){
       '<div class="section">'+synergyBox+'</div>'+
     '</div>'+
     '<div class="tabs section">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
-    '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">Nenhum pet nesta seção.</div>')+'</div>';
+    '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">Nenhum pet nesta seção.</div>')+'</div>'+
+    petAdoptModal();
 }
 
 function itemIcon(item){
@@ -1775,11 +1810,26 @@ function bind(){
     doAction('pet.rename',{name},{});
   });
   document.querySelectorAll('[data-pet-action]').forEach(x=>x.onclick=()=>doAction('pet.action',{action:x.dataset.petAction},{}));
-  document.querySelectorAll('[data-pet-adopt]').forEach(x=>x.onclick=()=>{
-    const input=x.parentElement&&x.parentElement.querySelector('[data-pet-adopt-name]');
+  document.querySelectorAll('[data-pet-adopt-open]').forEach(x=>x.onclick=()=>{
+    ui.petAdoptSpecies=x.dataset.petAdoptOpen;
+    render();
+    window.setTimeout(()=>document.querySelector('[data-pet-adopt-modal-name]')?.focus(),0);
+  });
+  document.querySelectorAll('[data-pet-adopt-close]').forEach(x=>x.onclick=()=>{
+    ui.petAdoptSpecies='';
+    render();
+  });
+  document.querySelectorAll('[data-pet-adopt-confirm]').forEach(x=>x.onclick=async()=>{
+    const input=document.querySelector('[data-pet-adopt-modal-name]');
     const name=String(input&&input.value||'').trim();
     if(!name) return toast('Digite o nome do novo pet.');
-    doAction('pet.adopt',{species:x.dataset.petAdopt,name},{});
+    const species=x.dataset.petAdoptConfirm;
+    try{
+      await doAction('pet.adopt',{species,name},{success:'🐾 Pet adotado e equipado.'});
+      ui.petAdoptSpecies='';
+      ui.petTab='owned';
+      render();
+    }catch{}
   });
   document.querySelectorAll('[data-pet-summon]').forEach(x=>x.onclick=()=>doAction('pet.summon',{materialId:x.dataset.petSummon},{}));
   document.querySelectorAll('[data-player-heal]').forEach(x=>x.onclick=()=>doAction('player.heal',{}, {success:'❤️ Personagem curado.'}));
