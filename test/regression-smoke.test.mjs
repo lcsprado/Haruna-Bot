@@ -166,3 +166,11 @@ test('fuzzy equipment art matching is category gated',()=>{
   assert.ok(app.includes("if(category==='weapon')"),'weapon fuzzy art must be category gated')
   assert.ok(app.includes("if(category==='armor')"),'armor fuzzy art must be category gated')
 })
+
+
+test('Lucky 3x multiplies roulette profit, not returned stake',()=>{
+  assert.ok(games.includes("const baseProfit=basePayout-amount"),'single roulette must separate stake from profit')
+  assert.ok(games.includes("payout=amount+(baseProfit*lucky3xMultiplier())"),'single roulette Lucky 3x payout formula is wrong')
+  assert.ok(games.includes("const baseProfit=basePayout-stake"),'group roulette must separate stake from profit')
+  assert.ok(games.includes("payout=stake+(baseProfit*lucky3xMultiplier())"),'group roulette Lucky 3x payout formula is wrong')
+})
