@@ -82,7 +82,8 @@ function selectedCharacter(){
   return CHARACTER_ART.find(x=>x.id===ui.characterId) || CHARACTER_ART[0];
 }
 function petArtUrl(species){
-  const id=PET_ART_ALIASES[String(species||'').toLowerCase()] || 'lobo';
+  const raw=String(species||'').toLowerCase();
+  const id=PET_ART_ALIASES[raw] || raw.replace(/_/g,'-') || 'lobo';
   return '/assets/pets/'+id+'.webp';
 }
 function bossArtUrl(name){
@@ -512,7 +513,8 @@ function specialtyText(p){
 
 function petPortrait(species){
   const src=petArtUrl(species);
-  return '<div class="pet-portrait"><img src="'+esc(src)+'" alt="'+esc(titleCase(species))+'" loading="lazy"></div>';
+  const fallback=speciesEmoji[String(species||'').toLowerCase()]||'🐾';
+  return '<div class="pet-portrait"><img src="'+esc(src)+'" alt="'+esc(titleCase(species))+'" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><span class="pet-art-fallback">'+fallback+'</span></div>';
 }
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
