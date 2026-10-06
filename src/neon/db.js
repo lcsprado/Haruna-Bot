@@ -1414,6 +1414,17 @@ export async function getInventory(jid) {
   const { rows } = await db.query(`
     SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
            COALESCE(eu.level,1)::int AS equipment_level,
+           (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id) AS equipped,
+           CASE
+             WHEN s.weapon_id=i.item_id THEN 'weapon'
+             WHEN s.armor_id=i.item_id THEN 'armor'
+             WHEN s.boot_id=i.item_id THEN 'boots'
+             ELSE NULL
+           END AS equipped_slot,
+           GREATEST(
+             0,
+             i.quantity-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id) THEN 1 ELSE 0 END
+           )::int AS sellable_quantity,
            CASE
              WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
              WHEN it.rarity='legendary' THEN 100000
@@ -1424,15 +1435,20 @@ export async function getInventory(jid) {
            END::bigint AS sell_unit
     FROM inventories i
     JOIN items it ON it.id=i.item_id
+    LEFT JOIN stats s ON s.jid=i.jid
     LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
     WHERE i.jid=$1 AND i.quantity>0
     ORDER BY
+      CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id) THEN 0 ELSE 1 END,
       CASE it.category
         WHEN 'weapon' THEN 1
         WHEN 'armor' THEN 2
-        WHEN 'consumable' THEN 3
-        WHEN 'special' THEN 4
-        ELSE 5
+        WHEN 'boots' THEN 3
+        WHEN 'consumable' THEN 4
+        WHEN 'raid' THEN 5
+        WHEN 'material' THEN 6
+        WHEN 'special' THEN 7
+        ELSE 8
       END,
       CASE it.rarity
         WHEN 'legendary' THEN 5
@@ -1445,6 +1461,8 @@ export async function getInventory(jid) {
   `,[jid])
   return rows.map(r=>({
     ...r,
+    equipped:Boolean(r.equipped),
+    sellable_quantity:Number(r.sellable_quantity||0),
     upgrade_refund:['weapon','armor','boots'].includes(r.category)
       ? equipmentUpgradeSellRefund(r.rarity,r.equipment_level)
       : 0
@@ -1560,7 +1578,7 @@ export async function sellItemsBatch(jid, selections=[]) {
 
   return transaction(async client=>{
     const statsR=await client.query(
-      'SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
+      'SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
     const stats=statsR.rows[0]||{}
@@ -1582,7 +1600,7 @@ export async function sellItemsBatch(jid, selections=[]) {
       if(item.sellable===false) throw new Error('Um dos itens selecionados não pode ser vendido.')
       if(item.rarity==='legendary') throw new Error('Itens lendários não entram em venda em lote.')
 
-      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId)
+      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId)
       const minimumKeep=equipped?1:0
       const maxBatch=Math.max(0,owned-minimumKeep)
 
@@ -1676,7 +1694,7 @@ export async function discardItemsBatch(jid, selections=[]) {
 
   return transaction(async client=>{
     const statsR=await client.query(
-      'SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
+      'SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
     const stats=statsR.rows[0]||{}
@@ -1697,7 +1715,7 @@ export async function discardItemsBatch(jid, selections=[]) {
       if(item.sellable===false) throw new Error('Um dos itens selecionados é protegido e não pode ser descartado.')
       if(item.rarity==='legendary') throw new Error('Itens lendários não podem ser descartados em lote.')
 
-      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId)
+      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId)
       const maxDiscard=Math.max(0,owned-(equipped?1:0))
       if(sel.qty>maxDiscard){
         throw new Error(equipped
@@ -1739,8 +1757,8 @@ export async function sellDuplicateEquipment(jid) {
   await ensureUser(jid)
   const items=await getInventory(jid)
   const selections=items
-    .filter(i=>['weapon','armor'].includes(i.category) && i.rarity!=='legendary' && Number(i.quantity)>1)
-    .map(i=>({itemId:i.item_id,qty:Number(i.quantity)-1}))
+    .filter(i=>['weapon','armor','boots'].includes(i.category) && i.rarity!=='legendary' && Number(i.sellable_quantity)>0)
+    .map(i=>({itemId:i.item_id,qty:Number(i.sellable_quantity)}))
 
   if(!selections.length) return {sold:[],types:0,totalUnits:0,total:0,cash:null}
   return sellItemsBatch(jid,selections)
@@ -5140,6 +5158,23 @@ export async function proposeRelationship(fromJid,toJid){
   if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
   await db.query(`INSERT INTO relationship_proposals(from_jid,to_jid) VALUES($1,$2)
     ON CONFLICT(from_jid,to_jid) DO UPDATE SET created_at=${nowSql}`,[fromJid,toJid])
+  return {ok:true,fromJid,toJid}
+}
+export async function getRelationshipProposals(jid){
+  const {rows}=await db.query(`
+    SELECT p.from_jid,p.to_jid,p.created_at,
+           fu.push_name AS from_name,
+           tu.push_name AS to_name
+    FROM relationship_proposals p
+    LEFT JOIN users fu ON fu.jid=p.from_jid
+    LEFT JOIN users tu ON tu.jid=p.to_jid
+    WHERE p.from_jid=$1 OR p.to_jid=$1
+    ORDER BY p.created_at DESC
+  `,[jid])
+  return {
+    incoming:rows.filter(r=>r.to_jid===jid),
+    outgoing:rows.filter(r=>r.from_jid===jid)
+  }
 }
 export async function acceptRelationship(toJid,fromJid){
   await ensureUser(fromJid); await ensureUser(toJid)
@@ -5149,9 +5184,20 @@ export async function acceptRelationship(toJid,fromJid){
     const taken=await client.query('SELECT jid FROM relationships WHERE jid=ANY($1::text[])',[[fromJid,toJid]])
     if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
     await client.query('INSERT INTO relationships(jid,partner_jid) VALUES($1,$2),($2,$1)',[fromJid,toJid])
-    await client.query('DELETE FROM relationship_proposals WHERE from_jid=$1 AND to_jid=$2',[fromJid,toJid])
-    return true
+    await client.query(
+      'DELETE FROM relationship_proposals WHERE (from_jid=$1 AND to_jid=$2) OR (from_jid=$2 AND to_jid=$1)',
+      [fromJid,toJid]
+    )
+    return {ok:true,fromJid,toJid}
   })
+}
+export async function rejectRelationship(toJid,fromJid){
+  const r=await db.query(
+    'DELETE FROM relationship_proposals WHERE from_jid=$1 AND to_jid=$2',
+    [fromJid,toJid]
+  )
+  if(!r.rowCount) throw new Error('Pedido de casamento não encontrado.')
+  return {ok:true,fromJid,toJid}
 }
 export async function divorceRelationship(jid){
   return transaction(async client=>{
