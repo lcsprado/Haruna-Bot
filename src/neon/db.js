@@ -1757,8 +1757,8 @@ export async function sellDuplicateEquipment(jid) {
   await ensureUser(jid)
   const items=await getInventory(jid)
   const selections=items
-    .filter(i=>['weapon','armor','boots'].includes(i.category) && i.rarity!=='legendary' && Number(i.sellable_quantity)>0)
-    .map(i=>({itemId:i.item_id,qty:Number(i.sellable_quantity)}))
+    .filter(i=>['weapon','armor','boots'].includes(i.category) && i.rarity!=='legendary' && Number(i.quantity)>1)
+    .map(i=>({itemId:i.item_id,qty:Number(i.quantity)-1}))
 
   if(!selections.length) return {sold:[],types:0,totalUnits:0,total:0,cash:null}
   return sellItemsBatch(jid,selections)
