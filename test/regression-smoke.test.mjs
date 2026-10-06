@@ -194,3 +194,13 @@ test('Alpha RPG is installable as a PWA',()=>{
   assert.ok(renderServer.includes("'/manifest.webmanifest':'manifest.webmanifest'"),'Render must serve the manifest')
   assert.ok(renderServer.includes("'/sw.js':'sw.js'"),'Render must serve the service worker')
 })
+
+
+test('reclassification scroll is endgame Boss-only loot',()=>{
+  assert.ok(db.includes("['pergaminho_reclassificacao','Pergaminho de Reclassificação'"),'reclass scroll item missing')
+  assert.ok(db.includes("'special',0,'epic'"),'reclass scroll must not be sold in shop')
+  assert.ok(db.includes("if(item.id==='pergaminho_reclassificacao' || Number(item.price)<=0)"),'direct purchase of drop-only items must be blocked')
+  assert.ok(games.includes("if(Number(user?.level||1)<100) return null"),'reclass scroll must require level 100')
+  assert.ok(games.includes("const chance=mode==='weekly'?.03:.01"),'Boss drop chances must be 3% weekly and 1% common/event')
+  assert.ok(games.includes("const reclassDrop=await maybeGrantReclassScroll"),'Boss reward flow must roll the reclass scroll')
+})
