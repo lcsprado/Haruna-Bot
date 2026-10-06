@@ -31,7 +31,8 @@ async function serveWeb(req,res){
   try{
     const data=await readFile(new URL('../../web/'+file,import.meta.url))
     const ext=file.split('.').pop()
-    res.writeHead(200,{'content-type':webTypes[ext]||'application/octet-stream','cache-control':file==='index.html'?'no-store':'public, max-age=300'})
+    const cacheControl=['html','js','css'].includes(ext)?'no-store':'public, max-age=86400'
+    res.writeHead(200,{'content-type':webTypes[ext]||'application/octet-stream','cache-control':cacheControl})
     res.end(data)
   }catch(err){
     console.error('[HTTP] falha ao servir RPG Web',err)
