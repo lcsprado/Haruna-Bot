@@ -1,3 +1,20 @@
+export const PLAYER_CLASSES = Object.freeze({
+  warrior:Object.freeze({id:'warrior',name:'Guerreiro',role:'Equilibrado',hp:30,atk:6,def:4,spd:0,description:'Linha de frente equilibrada: mais vida, ataque e defesa sem penalidades.'}),
+  assassin:Object.freeze({id:'assassin',name:'Assassino',role:'DPS veloz',hp:-10,atk:8,def:-2,spd:8,description:'Muito rápido e agressivo, mas sacrifica vida e defesa.'}),
+  mage:Object.freeze({id:'mage',name:'Mago',role:'DPS arcano',hp:0,atk:10,def:-2,spd:3,description:'Maior ataque base, com defesa mais baixa.'}),
+  archer:Object.freeze({id:'archer',name:'Arqueiro',role:'Precisão',hp:0,atk:6,def:0,spd:7,description:'Ataque consistente e alta velocidade.'}),
+  paladin:Object.freeze({id:'paladin',name:'Paladino',role:'Tank',hp:80,atk:-4,def:12,spd:-3,description:'Tank clássico: muita vida e defesa, com menos ataque e velocidade.'}),
+  berserker:Object.freeze({id:'berserker',name:'Berserker',role:'DPS bruto',hp:25,atk:12,def:-5,spd:2,description:'Dano muito alto em troca de defesa.'}),
+  monk:Object.freeze({id:'monk',name:'Monge',role:'Bruiser',hp:20,atk:5,def:5,spd:6,description:'Resistente, rápido e equilibrado no corpo a corpo.'}),
+  necromancer:Object.freeze({id:'necromancer',name:'Necromante',role:'DPS sombrio',hp:-5,atk:9,def:-1,spd:2,description:'Ataque elevado e pouca resistência física.'}),
+  druid:Object.freeze({id:'druid',name:'Druida',role:'Sustentação',hp:45,atk:3,def:8,spd:1,description:'Muita vida e defesa, com dano moderado.'}),
+  samurai:Object.freeze({id:'samurai',name:'Samurai',role:'Duelista',hp:10,atk:8,def:3,spd:5,description:'Ataque e velocidade altos sem ficar frágil demais.'})
+});
+export function getPlayerClass(id){
+  const key=String(id||'warrior').toLowerCase();
+  return PLAYER_CLASSES[key] || PLAYER_CLASSES.warrior;
+}
+
 export const PET_STATUS_SPECIALTIES = {
   cachorro:{label:'🐶 Guardião',stat:'defense',base:5},
   gato:{label:'🐱 Instinto',stat:'crit',base:4},
