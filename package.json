@@ -24,8 +24,7 @@
     "pino": "^9.3.0",
     "pino-pretty": "^11.2.0",
     "ffmpeg-static": "^5.2.0",
-    "@napi-rs/canvas": "^0.1.80",
-    "link-preview-js": "^3.2.0"
+    "@napi-rs/canvas": "^0.1.80"
   },
   "engines": {
     "node": "22.x"
