@@ -5437,69 +5437,46 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
     if(flow.stage==='trade_offer_item'){
       const item=flow.data.items?.[Number(input)-1]
-      if(!item){
-        await reply('🤝 Escolha o item que você quer oferecer pelo número.')
-        return true
-      }
+      if(!item){ await reply('🤝 Escolha o item que você quer oferecer pelo número.'); return true }
       const data={...flow.data,offerItemId:item.item_id,offerName:item.name,rarity:item.rarity,maxQty:Number(item.quantity||1)}
       if(data.maxQty>1){
         setQuickFlow(chat,sender,'trade_offer_qty',data,5*60*1000)
-        await reply(`🤝 *${item.name}*\n\n📦 Você possui: *${data.maxQty}*\nDigite a quantidade que quer trocar.\n\n⚖️ A outra pessoa terá que entregar a *mesma quantidade* de um item da mesma raridade.\n0️⃣ Cancelar`)
+        await reply(`🤝 *${item.name}*\n\n📦 Você possui: *${data.maxQty}*\nDigite a quantidade que quer oferecer.\n\n⚖️ Quem receber a proposta vai escolher qual item da mesma raridade dará em troca, na mesma quantidade.\n0️⃣ Cancelar`)
         return true
       }
-      const targetItems=(await listTradeableItems(data.targetJid,data.rarity,1)).filter(x=>x.item_id!==data.offerItemId)
-      if(!targetItems.length){
+      try{
+        const t=await createItemTradeOffer(sender,data.targetJid,data.offerItemId,1)
         clearQuickFlow(chat,sender)
-        await reply('❌ A outra pessoa não possui outro item negociável dessa mesma raridade.')
-        return true
-      }
-      setQuickFlow(chat,sender,'trade_request_item',{...data,qty:1,targetItems},5*60*1000)
-      let out=`🤝 *O QUE VOCÊ QUER RECEBER?*\n\nVocê oferece: *${data.offerName} ×1*\nRaridade: ${rarityLabel(data.rarity)}\n\n`
-      targetItems.forEach((x,i)=>{out+=`*${i+1}.* ${x.name} ×${x.quantity}\n`})
-      out+='\n👉 Responda com o número do item.\n0️⃣ Cancelar'
-      await reply(out)
+        await reply(`🤝 *PROPOSTA DE TROCA #${t.id}*\n\n📤 Você oferece: *${t.offer.name} ×1*\n🎨 Raridade: ${rarityLabel(t.rarity)}\n⏳ Expira em: *10 minutos*\n\nAgora a outra pessoa usa *!aceitartroca* e escolhe o que vai dar em troca.`,{mentions:[data.targetJid]})
+      }catch(err){ clearQuickFlow(chat,sender); await reply('❌ '+(err?.message||'Não foi possível criar a troca.')) }
       return true
     }
 
     if(flow.stage==='trade_offer_qty'){
       const qty=Number(input)
       const maxQty=Number(flow.data.maxQty||1)
-      if(!Number.isInteger(qty)||qty<1||qty>maxQty){
-        await reply(`📦 Digite uma quantidade entre *1 e ${maxQty}*.`)
-        return true
-      }
-      const targetItems=(await listTradeableItems(flow.data.targetJid,flow.data.rarity,qty)).filter(x=>x.item_id!==flow.data.offerItemId)
-      if(!targetItems.length){
+      if(!Number.isInteger(qty)||qty<1||qty>maxQty){ await reply(`📦 Digite uma quantidade entre *1 e ${maxQty}*.`); return true }
+      try{
+        const t=await createItemTradeOffer(sender,flow.data.targetJid,flow.data.offerItemId,qty)
         clearQuickFlow(chat,sender)
-        await reply(`❌ A outra pessoa não possui ${qty} unidade(s) de outro item negociável dessa mesma raridade.`)
-        return true
-      }
-      setQuickFlow(chat,sender,'trade_request_item',{...flow.data,qty,targetItems},5*60*1000)
-      let out=`🤝 *O QUE VOCÊ QUER RECEBER?*\n\nVocê oferece: *${flow.data.offerName} ×${qty}*\nRaridade: ${rarityLabel(flow.data.rarity)}\n\n`
-      targetItems.forEach((x,i)=>{out+=`*${i+1}.* ${x.name} ×${x.quantity}\n`})
-      out+='\n⚖️ A quantidade recebida será a mesma da oferecida.\n👉 Responda com o número do item.\n0️⃣ Cancelar'
-      await reply(out)
+        await reply(`🤝 *PROPOSTA DE TROCA #${t.id}*\n\n📤 Você oferece: *${t.offer.name} ×${t.quantity}*\n🎨 Raridade: ${rarityLabel(t.rarity)}\n⏳ Expira em: *10 minutos*\n\nAgora a outra pessoa usa *!aceitartroca* e escolhe o que vai dar em troca.`,{mentions:[flow.data.targetJid]})
+      }catch(err){ clearQuickFlow(chat,sender); await reply('❌ '+(err?.message||'Não foi possível criar a troca.')) }
       return true
     }
 
-    if(flow.stage==='trade_request_item'){
-      const wanted=flow.data.targetItems?.[Number(input)-1]
-      if(!wanted){
-        let out='🤝 *ESCOLHA O ITEM QUE VOCÊ QUER RECEBER*\n\n'
-        const items=flow.data.targetItems||[]
-        items.forEach((x,i)=>{out+=`*${i+1}.* ${x.name} ×${x.quantity}\n`})
-        out+='\n👉 Responda com um número válido da lista.\n0️⃣ Cancelar'
-        await reply(out)
-        return true
+    if(flow.stage==='trade_recipient_choose'){
+      const item=flow.data.items?.[Number(input)-1]
+      if(!item){
+        let out='🤝 *ESCOLHA O ITEM QUE VOCÊ VAI DAR*\n\n'
+        ;(flow.data.items||[]).forEach((x,i)=>{out+=`*${i+1}.* ${rarityLabel(x.rarity)} — *${x.name}* ×${x.quantity}\n`})
+        out+='\n👉 Responda com um número válido.\n0️⃣ Cancelar'
+        await reply(out); return true
       }
       try{
-        const t=await createItemTradeOffer(sender,flow.data.targetJid,flow.data.offerItemId,wanted.item_id,flow.data.qty)
+        const t=await acceptItemTradeOffer(sender,flow.data.tradeId,item.item_id)
         clearQuickFlow(chat,sender)
-        await reply(`🤝 *PROPOSTA DE TROCA #${t.id}*\n\n👤 Para: @${String(flow.data.targetJid||'').split('@')[0]}\n📤 Você entrega: *${t.offer.name} ×${t.quantity}*\n📥 Você recebe: *${t.request.name} ×${t.quantity}*\n🎨 Raridade: ${rarityLabel(t.rarity)}\n⏳ Expira em: *10 minutos*\n\nA outra pessoa usa:\n✅ *!aceitartroca ${t.id}*\n❌ *!recusartroca ${t.id}*`,{mentions:[flow.data.targetJid]})
-      }catch(err){
-        clearQuickFlow(chat,sender)
-        await reply('❌ '+(err?.message||'Não foi possível criar a troca.'))
-      }
+        await reply(`✅ *TROCA #${t.id} CONCLUÍDA!*\n\n📥 Você recebeu: *${t.offer.name} ×${t.quantity}*\n📤 Você entregou: *${t.request.name} ×${t.quantity}*\n🎨 Raridade: ${rarityLabel(t.rarity)}`,{mentions:[t.fromJid]})
+      }catch(err){ clearQuickFlow(chat,sender); await reply('❌ '+(err?.message||'Não foi possível concluir a troca.')) }
       return true
     }
     if(flow.stage==='market_sell_select'){
@@ -7295,13 +7272,10 @@ Se precisar de mais ajuda, use *!suporte*.`
               if(target===sender) return await reply('❌ Você não pode trocar item consigo mesmo.')
               const items=await listTradeableItems(sender)
               if(!items.length) return await reply('🎒 Você não possui itens negociáveis para troca.')
-              setQuickFlow(chat,sender,'trade_offer_item',{
-                targetJid:target,
-                items:items.map(x=>({item_id:x.item_id,name:x.name,quantity:Number(x.quantity||0),rarity:x.rarity}))
-              },5*60*1000)
+              setQuickFlow(chat,sender,'trade_offer_item',{targetJid:target,items:items.map(x=>({item_id:x.item_id,name:x.name,quantity:Number(x.quantity||0),rarity:x.rarity}))},5*60*1000)
               let out=`🤝 *TROCA COM @${String(targetRaw).split('@')[0]}*\n\nEscolha o item que você quer oferecer:\n\n`
               items.forEach((x,i)=>{out+=`*${i+1}.* ${rarityLabel(x.rarity)} — *${x.name}* ×${x.quantity}\n`})
-              out+='\n🔒 Só será possível pedir outro item da *mesma raridade* e na *mesma quantidade*.\n0️⃣ Cancelar'
+              out+='\n🔒 A outra pessoa vai escolher o item dela. Só vale *mesma raridade* e *mesma quantidade*.\n0️⃣ Cancelar'
               return await reply(out,{mentions:[targetRaw]})
             }
             let id=Number(args[0])
@@ -7311,8 +7285,15 @@ Se precisar de mais ajuda, use *!suporte*.`
               id=Number(pending.id)
             }
             if(cmd==='aceitartroca'){
-              const t=await acceptItemTradeOffer(sender,id)
-              return await reply(`✅ *TROCA #${t.id} CONCLUÍDA!*\n\n📥 Você recebeu: *${t.offer.name} ×${t.quantity}*\n📤 Você entregou: *${t.request.name} ×${t.quantity}*\n🎨 Raridade: ${rarityLabel(t.rarity)}`,{mentions:[t.fromJid]})
+              const pending=await getLatestPendingTradeOffer(sender)
+              if(!pending || Number(pending.id)!==id) return await reply('🤝 Essa proposta não está mais pendente.')
+              const items=(await listTradeableItems(sender,pending.rarity,Number(pending.quantity||1))).filter(x=>x.item_id!==pending.offer_item_id)
+              if(!items.length) return await reply(`❌ Você não possui item ${rarityLabel(pending.rarity)} compatível na quantidade *${pending.quantity}* para essa troca.`)
+              setQuickFlow(chat,sender,'trade_recipient_choose',{tradeId:id,items:items.map(x=>({item_id:x.item_id,name:x.name,quantity:Number(x.quantity||0),rarity:x.rarity}))},5*60*1000)
+              let out=`🤝 *ACEITAR TROCA #${id}*\n\n📥 Você vai receber: *${pending.offer_name} ×${pending.quantity}*\n🎨 Raridade: ${rarityLabel(pending.rarity)}\n\nEscolha o item que você quer dar em troca:\n\n`
+              items.forEach((x,i)=>{out+=`*${i+1}.* ${rarityLabel(x.rarity)} — *${x.name}* ×${x.quantity}\n`})
+              out+='\n⚖️ A quantidade entregue será a mesma da proposta.\n0️⃣ Cancelar'
+              return await reply(out)
             }
             const t=await rejectItemTradeOffer(sender,id)
             return await reply(`❌ Proposta de troca *#${t.id}* recusada.`)
