@@ -1,5 +1,29 @@
-const CACHE='alpha-rpg-pwa-20261006-v5';
-const SHELL=['/rpg','/styles.css','/app.js','/manifest.webmanifest','/assets/icons/alpha-192.png','/assets/icons/alpha-512.png'];
+const CACHE='alpha-rpg-pwa-20261006-v6';
+const SHELL=[
+  '/rpg','/styles.css','/app.js','/manifest.webmanifest',
+  '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
+  '/assets/official-art-sheet.jpg',
+  '/assets/alpha-fixed-art.webp',
+  '/assets/alpha-special-pets.webp',
+  '/assets/alpha-raid-pets-1.webp',
+  '/assets/alpha-raid-pets-2.webp',
+  '/assets/pets/aguia.webp',
+  '/assets/pets/baleia-colossal.webp',
+  '/assets/pets/corvo-abissal.webp',
+  '/assets/pets/dragao.webp',
+  '/assets/pets/fenix-celestial.webp',
+  '/assets/pets/fenix-de-gelo.webp',
+  '/assets/pets/gato.webp',
+  '/assets/pets/grifo-celestial.webp',
+  '/assets/pets/kitsune.webp',
+  '/assets/pets/leao.webp',
+  '/assets/pets/lobo.webp',
+  '/assets/pets/polvo-arcano.webp',
+  '/assets/pets/raposa.webp',
+  '/assets/pets/serpente-cosmica.webp',
+  '/assets/pets/tigre.webp',
+  '/assets/pets/tubarao-abissal.webp'
+];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));
