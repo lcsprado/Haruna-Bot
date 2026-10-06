@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
-import { getAdoptablePetRule } from './game-catalog.js'
+import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass } from './game-catalog.js'
 
 const { Pool, Client } = pg
 
@@ -77,6 +77,8 @@ export async function initDatabase() {
       weapon_id TEXT,
       armor_id TEXT,
       boot_id TEXT,
+      class_id TEXT NOT NULL DEFAULT 'warrior',
+      class_applied BOOLEAN NOT NULL DEFAULT FALSE,
       weapon_tier INTEGER NOT NULL DEFAULT 1,
       armor_tier INTEGER NOT NULL DEFAULT 1,
       win INTEGER NOT NULL DEFAULT 0,
@@ -87,6 +89,8 @@ export async function initDatabase() {
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS weapon_tier INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS armor_tier INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS boot_id TEXT;
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_id TEXT NOT NULL DEFAULT 'warrior';
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_applied BOOLEAN NOT NULL DEFAULT FALSE;
 
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
@@ -695,13 +699,42 @@ export async function getProfile(jid) {
   const { rows } = await db.query(`
     SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
            w.cash,w.bank,w.bank_limit,
-           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.win,s.loss
+           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.class_id,s.class_applied,s.win,s.loss
     FROM users u
     JOIN wallets w ON w.jid=u.jid
     JOIN stats s ON s.jid=u.jid
     WHERE u.jid=$1
   `, [jid])
   return rows[0] ?? null
+}
+
+
+export async function setPlayerClass(jid,classId){
+  await ensureUser(jid)
+  const key=String(classId||'').toLowerCase()
+  if(!PLAYER_CLASSES[key]) throw new Error('Classe inválida.')
+  const next=getPlayerClass(key)
+  return transaction(async client=>{
+    const st=(await client.query('SELECT hp,max_hp,atk,def,spd,class_id,class_applied FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!st) throw new Error('Status do jogador não encontrado.')
+    if(Boolean(st.class_applied)&&String(st.class_id)===next.id){
+      return {ok:true,unchanged:true,classId:next.id,classInfo:next,stats:{hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)}}
+    }
+    const prev=Boolean(st.class_applied)?getPlayerClass(st.class_id):{hp:0,atk:0,def:0,spd:0}
+    const oldMax=Math.max(1,Number(st.max_hp||100))
+    const hpRatio=Math.max(0,Math.min(1,Number(st.hp||0)/oldMax))
+    const neutralMax=Math.max(1,oldMax-Number(prev.hp||0))
+    const neutralAtk=Math.max(1,Number(st.atk||10)-Number(prev.atk||0))
+    const neutralDef=Math.max(1,Number(st.def||5)-Number(prev.def||0))
+    const neutralSpd=Math.max(1,Number(st.spd||10)-Number(prev.spd||0))
+    const maxHp=Math.max(1,neutralMax+Number(next.hp||0))
+    const atk=Math.max(1,neutralAtk+Number(next.atk||0))
+    const def=Math.max(1,neutralDef+Number(next.def||0))
+    const spd=Math.max(1,neutralSpd+Number(next.spd||0))
+    const hp=Math.max(0,Math.min(maxHp,Math.round(maxHp*hpRatio)))
+    await client.query('UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,updated_at='+nowSql+' WHERE jid=$7',[hp,maxHp,atk,def,spd,next.id,jid])
+    return {ok:true,classId:next.id,classInfo:next,stats:{hp,maxHp,atk,def,spd}}
+  })
 }
 
 export async function claimCooldown(queryable, key, seconds) {
@@ -2173,6 +2206,9 @@ export async function getCombatProfile(jid) {
     weapon_name:w.name,
     armor_name:a.name,
     boot_name:b.name,
+    class_id:String(p.class_id||'warrior'),
+    class_applied:Boolean(p.class_applied),
+    class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
     weapon_level:Number(w.level||1),
     armor_level:Number(a.level||1),
     boot_level:Number(b.level||1),
@@ -4896,8 +4932,8 @@ export async function createMarketListing(jid,itemId,qty,price){
   return transaction(async client=>{
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
-    const stats=await client.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1',[jid])
-    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id].includes(itemId)
+    const stats=await client.query('SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1',[jid])
+    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id].includes(itemId)
     if(equipped) throw new Error('Esse item está equipado. Troque ou desequipe antes de anunciar no mercado.')
     await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,jid,itemId])
     const expiresAt=Math.floor(Date.now()/1000)+3600
