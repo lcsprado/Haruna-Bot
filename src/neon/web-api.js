@@ -40,7 +40,7 @@ import {
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES } from './game-catalog.js'
 
-const CODE_TTL_MS = 10 * 60 * 1000
+const CODE_TTL_MS = 30 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 let webTablesReady = false
 let webTablesPromise = null
@@ -128,7 +128,9 @@ export async function createWebLinkCode(jid,chatJid=null){
   await ensureUser(jid)
   await ensureWebTables()
   const group=cleanChatJid(chatJid)
-  await db.query('DELETE FROM web_link_codes WHERE expires_at<$1 OR (jid=$2 AND used_at IS NULL)',[now(),jid])
+  // Mantém até 3 códigos recentes por jogador para não invalidar o link anterior
+  // quando !web é enviado novamente no grupo. Todos continuam sendo uso único.
+  await db.query('DELETE FROM web_link_codes WHERE expires_at<$1',[now()])
 
   for(let attempt=0;attempt<5;attempt++){
     const code=makeLinkCode()
@@ -139,6 +141,15 @@ export async function createWebLinkCode(jid,chatJid=null){
         'INSERT INTO web_link_codes(code_hash,jid,chat_jid,expires_at,created_at) VALUES($1,$2,$3,$4,$5)',
         [codeHash,jid,group,expiresAt,now()]
       )
+      await db.query(`
+        DELETE FROM web_link_codes
+        WHERE code_hash IN (
+          SELECT code_hash FROM web_link_codes
+          WHERE jid=$1 AND used_at IS NULL
+          ORDER BY created_at DESC
+          OFFSET 3
+        )
+      `,[jid]).catch(()=>{})
       const renderBase=String(process.env.RENDER_EXTERNAL_URL||'').trim().replace(/\/$/,'')
       const base=String(process.env.WEB_APP_URL||(renderBase?renderBase+'/rpg':'')).trim().replace(/\/$/,'')
       return {

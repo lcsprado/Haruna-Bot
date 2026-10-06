@@ -500,7 +500,7 @@ async function syncAvatar(force=false){
 }
 
 async function exchange(code){
-  const clean=String(code||'').trim().toUpperCase();
+  const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(!clean) throw new Error('Informe o código gerado pelo !web.');
   const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
   ui.token=body.token;
@@ -1891,18 +1891,30 @@ setInterval(()=>{
 (async function boot(){
   renderNav();
   const linked=new URLSearchParams(location.search).get('link');
+
+  // Se já existe uma sessão válida neste aparelho, não tente consumir novamente
+  // o código de uso único do link. Reabrir o mesmo link passa a funcionar.
+  if(ui.token){
+    showApp();
+    await sync(true);
+    if(ui.token){
+      if(linked) history.replaceState({},document.title,'/rpg');
+      return;
+    }
+  }
+
   if(linked){
     $('#linkCode').value=linked;
     try{
       await exchange(linked);
-      history.replaceState({},document.title,location.pathname||'/');
+      history.replaceState({},document.title,'/rpg');
+      await sync(false);
+      return;
     }catch(err){
-      showLogin(err.message);
+      showLogin(err.message+' Gere um novo !web e use qualquer um dos 3 últimos códigos, válidos por 30 minutos.');
       return;
     }
   }
-  if(ui.token){
-    showApp();
-    await sync(true);
-  }else showLogin();
+
+  showLogin();
 })();
