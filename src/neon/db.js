@@ -403,7 +403,7 @@ export async function initDatabase() {
     ['bota_celestial','Bota Celestial','Bota lendária de velocidade extrema. +10 SPD. Apenas por drop.','boots',0,'legendary'],
 
     // Reclassificação
-    ['pergaminho_reclassificacao','Pergaminho de Reclassificação','Permite trocar sua classe. Após usar, a próxima troca só poderá ocorrer depois de 7 dias.','special',250000,'epic'],
+    ['pergaminho_reclassificacao','Pergaminho de Reclassificação','Relíquia de endgame. Só pode cair em Boss para jogadores Nv.100+ e permite trocar de classe; após a troca, há 7 dias de cooldown.','special',0,'epic'],
 
     // Chaves de Raid
     ['chave_raid_10','Chave de Raid Lv.10','Abre uma Raid de nível 10. A chave só é consumida quando a luta começa.','special',10000,'uncommon'],
@@ -1187,6 +1187,7 @@ export async function buyItem(jid, itemId, qty=1) {
     const itemR = await client.query('SELECT * FROM items WHERE id=$1',[itemId])
     const item=itemR.rows[0]
     if (!item) throw new Error('Item não encontrado.')
+    if(item.id==='pergaminho_reclassificacao' || Number(item.price)<=0) throw new Error('Esse item não está à venda.')
 
     const total = Number(item.price)*qty
     const walletR = await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
