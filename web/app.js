@@ -54,7 +54,7 @@ const speciesEmoji = {
 
 
 
-const OFFICIAL_ART_SHEET='/assets/official-art-sheet.jpg';
+const OFFICIAL_ART_SHEET='/assets/official-art-sheet.jpg?v=alpha-final-20261006';
 const OFFICIAL_ART_W=1536;
 const OFFICIAL_ART_H=1024;
 
