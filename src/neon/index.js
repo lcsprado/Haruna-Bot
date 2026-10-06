@@ -6905,9 +6905,43 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     try{
       const chat=event?.id
       if(!chat?.endsWith('@g.us')) return
+      const people=event?.participants||[]
+
+      if(event.action==='add'){
+        const meIds=[sock.user?.id,sock.user?.lid].filter(Boolean)
+        const botWasAdded=people.some(jid=>meIds.some(me=>canonicalPlayerJid(jid)===canonicalPlayerJid(me) || String(jid)===String(me)))
+        if(botWasAdded){
+          const meta=await sock.groupMetadata(chat).catch(()=>null)
+          await sock.sendMessage(chat,{text:
+`😈🤖 *OLÁ, BETAS!*
+
+Eu sou o *Alpha Bot* — cheguei no *${meta?.subject||'grupo'}* para transformar conversa em jogo.
+
+⚔️ Monte seu personagem, evolua atributos e equipamentos
+🐾 Adote pets e forme seu time
+👹 Enfrente Bosses e Raids com a galera
+💰 Trabalhe, faça Uber/iFood, abra negócios e aumente seu patrimônio
+🎮 Jogue minigames, duelos e eventos com seus amigos
+
+🚀 *Pra começar agora:*
+*!perfil* — cria/mostra seu perfil
+*!rpg* — abre o RPG
+*!pet* — conhece os pets
+*!raid* — vê as Raids
+*!minigames* — jogos rápidos
+*!comandos* — lista completa
+
+🧪 Testem o RPG, chamem os amigos e tentem descobrir quem realmente é Alpha aqui.
+
+_Boa sorte, Betas. Vocês vão precisar._ 😎`
+          }).catch(err=>console.error('[boas-vindas-bot]',err?.message||err))
+          return
+        }
+      }
+
       const st=await getCommunitySettings(chat)
       if(!st?.welcome_enabled) return
-      const people=event?.participants||[]
+
       if(event.action==='add'){
         const meta=await sock.groupMetadata(chat).catch(()=>null)
         for(const jid of people){
