@@ -31,6 +31,7 @@ import {
   adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
+  listTradeableItems, createItemTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
   recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
@@ -2239,6 +2240,12 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!comprar#3* / *!comprar #3* — abre o anúncio #3 e confirma a compra
 *!compraritem* — abre a lista de anúncios
 *!cancelarvenda ID* / *!cancelaranuncio ID* — cancela seu anúncio
+
+🤝 *Troca direta*
+*!troca @pessoa* — troca itens da mesma raridade e na mesma quantidade
+*!aceitartroca ID* — aceita uma proposta recebida
+*!recusartroca ID* — recusa uma proposta
+🔒 Equipamentos e itens de Evento Único não entram em trocas.
 
 
 9️⃣ Voltar • 0️⃣ Fechar`,
