@@ -378,12 +378,28 @@ function sanitizeActionResult(actionName,result){
 
 async function groupSnapshot(chatJid){
   if(!chatJid) return null
-  const [raids,license,gameRows,roster]=await Promise.all([
+  const [raids,license,gameRows,baseRoster]=await Promise.all([
     getRaidStatuses(chatJid),
     getGroupLicense(chatJid),
     db.query('SELECT game_type,state,updated_at FROM trevo_games WHERE chat_jid=$1 ORDER BY game_type',[chatJid]),
     weeklyActivityLeaderboard(chatJid,20)
   ])
+  const rosterJids=(baseRoster||[]).map(x=>x.jid).filter(Boolean)
+  let roster=baseRoster||[]
+  if(rosterJids.length){
+    const detailRows=(await db.query(`
+      SELECT u.jid,u.level,
+             s.class_id,s.class_applied,s.hp,s.max_hp,s.atk,s.def,s.spd,
+             p.name AS pet_name,p.species AS pet_species,p.level AS pet_level,
+             p.hp AS pet_hp,p.max_hp AS pet_max_hp
+      FROM users u
+      LEFT JOIN stats s ON s.jid=u.jid
+      LEFT JOIN pets p ON p.jid=u.jid
+      WHERE u.jid=ANY($1::text[])
+    `,[rosterJids])).rows
+    const byJid=new Map(detailRows.map(x=>[x.jid,x]))
+    roster=roster.map(x=>({...x,...(byJid.get(x.jid)||{})}))
+  }
   const games=Object.fromEntries(gameRows.rows.map(r=>[
     r.game_type,
     {...(sanitizeGameState(r.game_type,r.state)||{}),updatedAt:Number(r.updated_at||0)}
