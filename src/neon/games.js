@@ -1204,6 +1204,9 @@ async function giveBossDrops(c,jid,position,extraChance=0){
   return drops
 }
 
+// Todo Boss de evento é universal: um único HP/ranking/cooldown compartilhado entre todos os grupos.
+// Isso impede o mesmo jogador de ganhar ataques extras só por estar em vários grupos.
+const GLOBAL_BOSS_EVENT_CHAT='__alpha_global_boss_event__'
 const SIEGE_EVENT_START=Date.parse('2026-10-04T18:00:00-03:00')
 const SIEGE_EVENT_END=Date.parse('2026-10-04T20:10:00-03:00')
 const SIEGE_EVENT_KEY='cerco-colosso-2026-10-04'
@@ -1215,18 +1218,18 @@ async function createSiegeBossEventState(c,chat){
     scheduleKey:SIEGE_EVENT_KEY,name:'Colosso do Cerco',
     hp:maxHp,maxHp,atk:26,participants:{},startedAt:Date.now(),endsAt:SIEGE_EVENT_END
   }
-  await saveGame(c,chat,'boss_event',state)
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
   return state
 }
 
 export async function autoStartSiegeBossEvent(chat,now=new Date()){
   const ts=now.getTime()
   return tx(async c=>{
-    const current=await loadGame(c,chat,'boss_event')
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(ts>=SIEGE_EVENT_END){
       if(current?.eventId==='cerco_colosso'&&current.active!==false&&Number(current.hp)>0){
         current.active=false;current.mode='event_stopped';current.stoppedAt=Date.now()
-        await saveGame(c,chat,'boss_event',current)
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',current)
         return {due:false,ended:true,stopped:true,...current}
       }
       return {due:false,ended:true}
@@ -1248,7 +1251,7 @@ export async function autoStartSiegeBossEvent(chat,now=new Date()){
       current.reopenedAfterExtension=true
       delete current.stoppedAt
       if(Number(current.hp)>5000) current.hp=5000
-      await saveGame(c,chat,'boss_event',current)
+      await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',current)
       return {due:true,reopened:true,...current}
     }
 
@@ -1257,7 +1260,7 @@ export async function autoStartSiegeBossEvent(chat,now=new Date()){
         if(Number(current.hp)>5000){
           current.hp=5000
           current.manualHpAdjustment='2026-10-04:set-to-5000'
-          await saveGame(c,chat,'boss_event',current)
+          await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',current)
         }
         return {due:true,already:true,...current}
       }
@@ -1276,18 +1279,18 @@ const NIGHT_EVENT_KEY='night-0303-2026-10-04'
 async function createNightBossEventState(c,chat){
   const maxHp=36000+Math.floor(Math.random()*6001)
   const state={mode:'event',eventId:'night_0303',active:true,origin:'scheduled',scheduleKey:NIGHT_EVENT_KEY,name:'Sentinela das 03:03',hp:maxHp,maxHp,atk:20,participants:{},startedAt:Date.now(),endsAt:NIGHT_EVENT_END}
-  await saveGame(c,chat,'boss_event',state)
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
   return state
 }
 
 export async function autoStartNightBossEvent(chat,now=new Date()){
   const ts=now.getTime()
   return tx(async c=>{
-    const current=await loadGame(c,chat,'boss_event')
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(ts>=NIGHT_EVENT_END){
       if(current?.eventId==='night_0303'&&current.active!==false&&Number(current.hp)>0){
         current.active=false;current.mode='event_stopped';current.stoppedAt=Date.now()
-        await saveGame(c,chat,'boss_event',current)
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',current)
         return {due:false,ended:true,stopped:true,...current}
       }
       return {due:false,ended:true}
@@ -1333,7 +1336,7 @@ async function createBossEventState(c,chat,{scheduleKey=null,origin='manual'}={}
     participants:{},
     startedAt:Date.now()
   }
-  await saveGame(c,chat,'boss_event',state)
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
   return state
 }
 
@@ -1347,14 +1350,14 @@ async function maybeGrantEventRelic(c,jid,chance){
 
 export async function getBossEventStatus(chat){
   return tx(async c=>{
-    const s=await loadGame(c,chat,'boss_event')
+    const s=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     return s&&s.active!==false&&Number(s.hp)>0?s:null
   })
 }
 
 export async function activateBossEvent(chat){
   return tx(async c=>{
-    const current=await loadGame(c,chat,'boss_event')
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(current&&current.active!==false&&Number(current.hp)>0) return {already:true,...current}
     return createBossEventState(c,chat,{origin:'manual'})
   })
@@ -1365,7 +1368,7 @@ export async function autoStartBossEvent(chat,now=new Date()){
   const schedule=bossEventFridayInfo(now)
   if(!schedule.due) return {due:false}
   return tx(async c=>{
-    const current=await loadGame(c,chat,'boss_event')
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
 
     // O evento manual que já estava ativo quando o agendamento foi criado
     // conta como o evento desta sexta, evitando um segundo spawn no mesmo dia.
@@ -1373,7 +1376,7 @@ export async function autoStartBossEvent(chat,now=new Date()){
       if(!current.scheduleKey){
         current.scheduleKey=schedule.fridayKey
         current.origin=current.origin||'manual'
-        await saveGame(c,chat,'boss_event',current)
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',current)
       }
       return {due:true,already:true,...current}
     }
@@ -1390,10 +1393,10 @@ export async function autoStartBossEvent(chat,now=new Date()){
 
 export async function deactivateBossEvent(chat){
   return tx(async c=>{
-    const current=await loadGame(c,chat,'boss_event')
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(!current||current.active===false||Number(current.hp)<=0) return {active:false,already:true}
     const marker={...current,mode:'event_stopped',active:false,stoppedAt:Date.now()}
-    await saveGame(c,chat,'boss_event',marker)
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
     return {active:false,stopped:true,name:current.name,hp:Number(current.hp),maxHp:Number(current.maxHp)}
   })
 }
@@ -1401,7 +1404,7 @@ export async function deactivateBossEvent(chat){
 export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
-    const event=await loadGame(c,chat,'boss_event')
+    const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
     const current=await loadGame(c,chat,'boss')
     // Sessões criadas antes da separação semanal/comum não possuíam `mode`.
@@ -1468,7 +1471,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(sleeping.rows.length) throw new Error('Você está dormindo e não pode atacar o Boss agora.')
     const carpindo=await c.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[jid,now])
     if(carpindo.rows.length) throw new Error('Você está carpindo e não pode atacar o Boss agora.')
-    const event=await loadGame(c,chat,'boss_event')
+    const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
     const gameType=eventActive?'boss_event':'boss'
     const s=eventActive?event:await loadGame(c,chat,'boss')
@@ -1745,14 +1748,14 @@ export async function attackBoss(chat,jid,name,usePet=true){
           scheduleKey:s.scheduleKey||(schedule.due?schedule.fridayKey:null),
           completedAt:Date.now()
         }
-        await saveGame(c,chat,'boss_event',marker)
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
       }else{
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
         await saveGame(c,chat,'boss',marker)
       }
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
-    await saveGame(c,chat,gameType,s)
+    await saveGame(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:chat,gameType,s)
     return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),damage,bossDamage,bossCritical,playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }
