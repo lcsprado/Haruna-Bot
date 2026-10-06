@@ -909,17 +909,26 @@ function catalogPetCard(p){
 
 function renderCharacter(){
   const selected=selectedCharacter();
-  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Escolha entre as 10 classes da arte final. O visual aparece em Boss, Raid e combate e não altera seus atributos.</p></div><span class="tag good">'+esc(selected.name)+' ativo</span></div>'+
-    '<div class="character-grid">'+CHARACTER_ART.map(ch=>
-      '<div class="card character-card '+(ch.id===selected.id?'selected':'')+'">'+
+  const cp=profile();
+  const applied=Boolean(cp.class_applied);
+  const currentRule=classRule(selected.id);
+  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Agora a classe altera seus atributos de verdade no WhatsApp, Boss, Raid, Dungeon e PvP.</p></div><span class="tag '+(applied?'good':'')+'">'+esc(applied?selected.name+' ativo':'Escolha sua classe')+'</span></div>'+
+    '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):'Sem classe aplicada')+'</small></div></div>'+
+      '<div class="stat-strip"><span>❤️ '+num(cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
+    '</div>'+
+    '<div class="character-grid">'+CHARACTER_ART.map(ch=>{
+      const rule=classRule(ch.id)||{};
+      const active=applied&&ch.id===selected.id;
+      const stats=[signedStat(rule.hp,'HP'),signedStat(rule.atk,'ATK'),signedStat(rule.def,'DEF'),signedStat(rule.spd,'SPD')];
+      return '<div class="card character-card '+(active?'selected':'')+'">'+
         '<div class="character-art">'+artSprite(ch.sprite,'character-official-art',ch.name)+'</div>'+
-        '<div class="tag-row"><span class="tag">'+esc(ch.role)+'</span>'+(ch.id===selected.id?'<span class="tag good">ATIVO</span>':'')+'</div>'+
-        '<h3>'+esc(ch.name)+'</h3><p>'+esc(ch.desc)+'</p>'+
-        '<button class="btn '+(ch.id===selected.id?'good':'primary')+'" data-character-select="'+esc(ch.id)+'">'+(ch.id===selected.id?'Selecionado':'Usar personagem')+'</button>'+
-      '</div>'
-    ).join('')+'</div>';
+        '<div class="tag-row"><span class="tag">'+esc(rule.role||ch.role)+'</span>'+(active?'<span class="tag good">ATIVO</span>':'')+'</div>'+
+        '<h3>'+esc(ch.name)+'</h3><p>'+esc(rule.description||ch.desc)+'</p>'+
+        '<div class="class-bonuses">'+stats.map(x=>'<span>'+esc(x)+'</span>').join('')+'</div>'+
+        '<button class="btn '+(active?'good':'primary')+'" data-character-select="'+esc(ch.id)+'">'+(active?'Selecionado':'Usar classe')+'</button>'+
+      '</div>';
+    }).join('')+'</div>';
 }
-
 function renderPets(){
   const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
   const raidCount=catalogPets().filter(x=>x.source==='raid').length;
