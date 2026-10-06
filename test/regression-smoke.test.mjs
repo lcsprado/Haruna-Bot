@@ -92,3 +92,20 @@ test('WhatsApp preview cannot consume a web login code',()=>{
   assert.ok(!getRoute.includes('exchangeWebLinkCode('),'GET auth link must never consume a one-time code')
   assert.ok(app.includes("hashParams.get('code')"),'browser must read the login code from the fragment')
 })
+
+
+test('team pet healing targets the selected collection pet',()=>{
+  assert.ok(db.includes('export async function usePetPotion(jid,itemId=null,petId=null)'),'pet healing must accept an optional collection pet id')
+  assert.ok(webApi.includes("body.petId==null?null:positiveInt(body.petId,'Pet')"),'web pet.heal must forward the selected pet id')
+  assert.ok(app.includes('data-team-pet-heal'),'team pet cards need a direct heal button')
+  assert.ok(app.includes('data-pet-card-heal'),'collection pet cards need a direct heal button')
+})
+
+test('pet healing result is rendered as UI instead of raw JSON',()=>{
+  assert.ok(app.includes("value.petName&&value.healed!=null&&value.hp!=null&&value.maxHp!=null"),'pet heal result renderer missing')
+})
+
+test('inventory and shop labels are localized',()=>{
+  assert.ok(app.includes("common:'Comum',uncommon:'Incomum',rare:'Raro',epic:'Épico'"),'rarity localization missing')
+  assert.ok(app.includes("weapon:'Arma',armor:'Armadura',boots:'Botas'"),'category localization missing')
+})
