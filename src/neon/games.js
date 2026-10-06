@@ -1140,6 +1140,18 @@ async function grantBossItem(c,jid,item){
     ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,item.id])
   return item
 }
+const RECLASS_SCROLL_DROP=Object.freeze({
+  id:'pergaminho_reclassificacao',
+  name:'Pergaminho de Reclassificação',
+  rarity:'Épico'
+})
+async function maybeGrantReclassScroll(c,jid,mode){
+  const user=(await c.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
+  if(Number(user?.level||1)<100) return null
+  const chance=mode==='weekly'?.03:.01
+  if(Math.random()>=chance) return null
+  return grantBossItem(c,jid,RECLASS_SCROLL_DROP)
+}
 async function giveBossDrops(c,jid,position,extraChance=0){
   const tier=BOSS_PLACEMENT[position-1]||{cash:0,xp:0,box:null,bonusChance:.18,exclusiveChance:.02}
   const drops=[]
@@ -1686,6 +1698,10 @@ export async function attackBoss(chat,jid,name,usePet=true){
           }
           drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
         }
+        // Reclassificação é recompensa de endgame: só entra no sorteio a partir do Nv.100.
+        // Boss comum e Boss de evento: 1%. Superboss semanal: 3%.
+        const reclassDrop=await maybeGrantReclassScroll(c,p.jid,weekly?'weekly':(eventMode?'event':'common'))
+        if(reclassDrop) drops.push(reclassDrop)
         rewards.push({...p,position,cash,exp,petXp,petXpTeam,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
       if(s.mode==='event'){
