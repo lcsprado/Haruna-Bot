@@ -620,3 +620,95 @@ body.menu-open .sidebar{touch-action:pan-y}
   .combat-effect.incoming-fx{left:3%;top:29%;width:82px;height:82px}
   .combat-effect.heal-fx{left:5%;top:9%;width:76px;height:76px}
 }
+
+
+/* Urgent visual correction: exact pet/item identity + loot reveal */
+.pet-exact-art{
+  display:block;
+  width:auto!important;
+  height:100%!important;
+  max-width:100%!important;
+  max-height:100%!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  border-radius:12px;
+}
+.pet-species-fallback{
+  width:min(100%,220px)!important;
+  height:190px!important;
+  display:grid!important;
+  place-items:center!important;
+  align-content:center;
+  gap:8px;
+  border:1px solid #2b4057;
+  border-radius:18px;
+  background:radial-gradient(circle at 50% 38%,rgba(74,107,145,.22),#070b11 72%);
+}
+.pet-species-fallback span{font-size:84px;filter:drop-shadow(0 12px 22px #000)}
+.pet-species-fallback small{font-size:11px;color:#aab8cb;letter-spacing:.08em;text-transform:uppercase}
+
+.item-art-fallback{align-content:center;gap:8px}
+.item-art-fallback span{font-size:58px;filter:drop-shadow(0 8px 18px #000)}
+.item-art-fallback small{font-size:9px;color:#92a0b3;letter-spacing:.12em;text-transform:uppercase}
+
+body.loot-open{overflow:hidden!important}
+.loot-overlay{
+  position:fixed;
+  inset:0;
+  z-index:120;
+  display:grid;
+  place-items:center;
+  padding:18px;
+  background:rgba(0,3,8,.84);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+}
+.loot-modal{
+  width:min(640px,100%);
+  max-height:min(88vh,820px);
+  overflow:auto;
+  padding:24px;
+  border:1px solid #4d6180;
+  border-radius:24px;
+  background:
+    radial-gradient(circle at 50% 0,rgba(85,126,184,.20),transparent 42%),
+    linear-gradient(180deg,#0d1622,#070b11 72%);
+  box-shadow:0 30px 90px #000,0 0 42px rgba(98,151,221,.14);
+  text-align:center;
+  animation:lootModalIn .28s cubic-bezier(.2,.9,.2,1);
+}
+.loot-burst{font-size:44px;animation:lootBurst 1.15s ease infinite alternate}
+.loot-modal h2{font-size:32px;margin:4px 0 6px}
+.loot-utility{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
+.loot-auto{display:grid;gap:4px;padding:14px;border:1px solid #29405b;border-radius:16px;background:#09111b}
+.loot-auto span{font-size:11px;color:#a5b3c7}
+.loot-auto strong{font-size:22px}
+.loot-auto small{font-size:8px;color:#718096}
+.loot-rewards{display:grid;gap:12px;margin-top:16px;text-align:left}
+.loot-reward{
+  display:grid;
+  grid-template-columns:132px minmax(0,1fr);
+  gap:16px;
+  align-items:center;
+  padding:14px;
+  border:1px solid #2c3d54;
+  border-radius:18px;
+  background:#09111a;
+}
+.loot-reward .item-art{height:118px;margin:0}
+.loot-reward-copy h3{margin:8px 0 5px;font-size:18px}
+.loot-reward-copy p{margin:0;color:#8d9aad;font-size:10px;line-height:1.45}
+.loot-actions{grid-column:1/-1;display:flex;gap:10px;justify-content:flex-end}
+.loot-close-main{width:100%;margin-top:18px}
+@keyframes lootModalIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes lootBurst{from{transform:scale(.92) rotate(-4deg);filter:drop-shadow(0 0 8px #6ca9ff)}to{transform:scale(1.1) rotate(4deg);filter:drop-shadow(0 0 24px #c28bff)}}
+@media(max-width:520px){
+  .loot-overlay{padding:10px}
+  .loot-modal{padding:18px 14px;border-radius:20px;max-height:90vh}
+  .loot-modal h2{font-size:28px}
+  .loot-reward{grid-template-columns:96px minmax(0,1fr);gap:11px;padding:11px}
+  .loot-reward .item-art{height:92px}
+  .loot-reward .item-official-art{height:82px!important;max-height:82px!important}
+  .loot-actions{display:grid;grid-template-columns:1fr 1fr}
+  .loot-actions .btn{width:100%}
+}

@@ -9,6 +9,7 @@ const ui = {
   extras: null,
   extrasFetchedAt: 0,
   lastResult: null,
+  lootReveal: null,
   page: 'home',
   petTab: 'owned',
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
@@ -255,10 +256,74 @@ function selectedCharacter(){
   const id=legacy[ui.characterId]||ui.characterId;
   return CHARACTER_ART.find(x=>x.id===id)||CHARACTER_ART[0];
 }
-function petSpriteKey(species){
-  return PET_SPRITE_ALIASES[String(species||'').toLowerCase()]||'pet-dog';
+const PET_IMAGE_ASSETS={
+  gato:'/assets/pets/gato.webp',
+  raposa:'/assets/pets/raposa.webp',
+  kitsune:'/assets/pets/kitsune.webp',
+  lobo:'/assets/pets/lobo.webp',
+  aguia:'/assets/pets/aguia.webp',
+  tigre:'/assets/pets/tigre.webp',
+  leao:'/assets/pets/leao.webp',
+  dragao:'/assets/pets/dragao.webp',
+  tubarao_abissal:'/assets/pets/tubarao-abissal.webp',
+  polvo_arcano:'/assets/pets/polvo-arcano.webp',
+  baleia_colossal:'/assets/pets/baleia-colossal.webp',
+  corvo_abissal:'/assets/pets/corvo-abissal.webp',
+  grifo_celestial:'/assets/pets/grifo-celestial.webp',
+  fenix_gelo:'/assets/pets/fenix-de-gelo.webp',
+  fenix_celestial:'/assets/pets/fenix-celestial.webp',
+  serpente_cosmica:'/assets/pets/serpente-cosmica.webp'
+};
+
+function petExactImage(species){
+  const s=String(species||'').toLowerCase();
+  if(PET_IMAGE_ASSETS[s]) return PET_IMAGE_ASSETS[s];
+  if(s==='leao_solar') return PET_IMAGE_ASSETS.leao;
+  if(s==='tigre_lunar') return PET_IMAGE_ASSETS.tigre;
+  if(s==='lobo_abismo') return PET_IMAGE_ASSETS.lobo;
+  if(s==='dragao_vulcanico'||s==='dragao_corrompido') return PET_IMAGE_ASSETS.dragao;
+  if(s==='kraken_aco') return PET_IMAGE_ASSETS.polvo_arcano;
+  return '';
 }
-function raidSpriteKey(level,name){
+function petSpriteKey(species){
+  const s=String(species||'').toLowerCase();
+  const exact={
+    cachorro:'pet-dog',
+    panda:'pet-panda',
+    tartaruga:'pet-turtle',
+    fenix_fogo:'pet-phoenix',
+    salamandra_infernal:'pet-phoenix',
+    pantera_vulcanica:'pet-panther',
+    guepardo:'pet-panther',
+    lince_celestial:'pet-panther',
+    orca_guerra:'pet-orca',
+    golfinho_celestial:'pet-orca',
+    moreia_sombria:'pet-leviathan',
+    leviata_gelo:'pet-leviathan',
+    imperador_abissal:'pet-shark',
+    golem_ancestral:'pet-golem',
+    colosso_cristal:'pet-golem',
+    guardiao_obsidiana:'pet-golem',
+    rinoceronte_titanico:'pet-golem',
+    colosso_alpha:'pet-golem',
+    oraculo_pedra:'pet-golem',
+    cerbero_carmesim:'pet-infernal-wolf',
+    quimera_abissal:'pet-dragon'
+  };
+  return exact[s]||'';
+}
+function petVisualMarkup(species,className='pet-official-art'){
+  const s=String(species||'').toLowerCase();
+  const label=titleCase(s);
+  const img=petExactImage(s);
+  if(img) return '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006" alt="'+esc(label)+'" loading="lazy">';
+  const sprite=petSpriteKey(s);
+  if(sprite) return artSprite(sprite,className,label);
+  const emoji=speciesEmoji[s]||'🐾';
+  return '<div class="pet-species-fallback '+esc(className)+'"><span>'+emoji+'</span><small>'+esc(label)+'</small></div>';
+}
+
+function raidSpriteKey(level,name){function raidSpriteKey(level,name){
   const lv=Number(level||0);
   if([10,15,20,25,30,40,50].includes(lv)) return 'raid-'+lv;
   const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -670,7 +735,8 @@ function renderTransactions(limit){
 function renderCooldowns(){
   const rows=(ui.data&&ui.data.cooldowns)||[];
   const nowSec=Math.floor(Date.now()/1000);
-  const active=rows.filter(row=>Number(row.expires_at||0)>nowSec);
+  const known=new Set(['battle','rob','work','uber','ifood','daily','petduel','dungeon']);
+  const active=rows.filter(row=>Number(row.expires_at||0)>nowSec && known.has(cooldownKey(row.key)));
   if(!active.length) return '<div class="empty">Nenhum cooldown ativo.</div>';
   return '<div class="list">'+active.map(row=>{
     const expires=Number(row.expires_at||0);
@@ -797,10 +863,9 @@ function specialtyText(p){
 }
 
 function petPortrait(species){
-  const key=petSpriteKey(species);
-  return '<div class="pet-portrait">'+artSprite(key,'pet-official-art',titleCase(species))+'</div>';
+  return '<div class="pet-portrait">'+petVisualMarkup(species,'pet-official-art')+'</div>';
 }
-function ownedPetCard(p){
+function ownedPetCard(p){function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
   const active=Boolean(p.active);
   return '<div class="card pet-card owned">'+petPortrait(p.species)+
@@ -883,52 +948,55 @@ function itemIcon(item){
 }
 
 function itemSpriteKey(item){
-  const id=String(item&&((item.item_id||item.id)||'')||'');
+  const id=String(item&&((item.item_id||item.itemId||item.id)||'')||'');
   const name=String(item&&item.name||'');
   const category=String(item&&item.category||'');
   const raw=(id+' '+name+' '+category).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[_-]+/g,' ');
 
-  if(raw.includes('pocao pet')){
-    if(raw.includes('suprem')||raw.includes('elixir')) return 'pet-potion-elixir';
-    if(raw.includes('epic')||raw.includes('grande')) return 'pet-potion-large';
-    if(raw.includes('rara')||raw.includes('media')) return 'pet-potion-medium';
-    return 'pet-potion-small';
-  }
-  if(raw.includes('elixir supremo')||raw.includes('cura total')) return 'potion-elixir';
-  if(id==='pocao_g'||raw.includes('pocao grande')) return 'potion-large';
-  if(id==='pocao_m'||raw.includes('pocao media')) return 'potion-medium';
-  if(id==='pocao_p'||raw.includes('pocao pequena')) return 'potion-small';
-
-  if(raw.includes('caixa')){
-    if(raw.includes('lend')) return 'box-legendary';
-    if(raw.includes('epic')) return 'box-epic';
-    if(raw.includes('rara')) return 'box-rare';
-    return 'box-luck';
-  }
+  const exact={
+    pocao_p:'potion-small',pocao_m:'potion-medium',pocao_g:'potion-large',elixir_supremo:'potion-elixir',
+    pocao_pet_comum:'pet-potion-small',pocao_pet_rara:'pet-potion-medium',pocao_pet_epica:'pet-potion-large',pocao_pet_suprema:'pet-potion-elixir',
+    caixa_sorte:'box-luck',caixa_rara:'box-rare',caixa_epica:'box-epic',
+    espada_eclipse:'weapon-eclipse',lamina_abissal:'weapon-abyss',tridente_tempestade:'weapon-trident',foice_carmesim:'weapon-scythe',martelo_golem:'weapon-hammer',
+    espada_flamas:'weapon-eclipse',katana_sombria:'weapon-abyss',katana_divina:'weapon-abyss',sabre_runico:'weapon-trident',
+    espada_aco:'weapon-trident',machado_guerra:'weapon-hammer',garras_vazio:'weapon-abyss',lamina_cacador:'weapon-abyss',espada_guardiao:'weapon-eclipse',
+    armadura_couro:'char-archer',armadura_ferro:'char-warrior',armadura_aco:'char-paladin',
+    armadura_samurai:'char-samurai',armadura_cavaleiro:'char-paladin',
+    armadura_dragao:'armor-chaos',armadura_abissal:'armor-abyss',armadura_celestial:'armor-celestial',
+    manto_fenix:'armor-chaos',couraca_vulcanica:'armor-chaos',armadura_vazio:'armor-abyss',armadura_eclipse:'armor-obsidian',
+    armadura_golem:'armor-titan',armadura_titan:'armor-titan',armadura_divina:'armor-celestial',
+    armadura_bastiao:'armor-titan',manto_runico:'armor-leviathan',couraca_guardiao:'armor-titan',
+    colete_vital:'armor-leviathan',couraca_predador:'armor-obsidian',armadura_colosso:'armor-titan',
+    nucleo_alpha_corrompido:'special-essence',
+    fragmento_alpha:'material-alpha',essencia_abissal:'material-abyss',cristal_ancestral:'material-ancestral',nucleo_celestial:'material-celestial'
+  };
+  if(exact[id]) return exact[id];
 
   if(raw.includes('chave')&&raw.includes('raid')){
     const lv=Number((raw.match(/\b(10|15|20|25|30|40|50)\b/)||[])[1]||10);
     return 'key-'+lv;
   }
-
   if(raw.includes('fragmento alpha')) return 'material-alpha';
   if(raw.includes('essencia abiss')) return 'material-abyss';
   if(raw.includes('cristal ancestral')) return 'material-ancestral';
   if(raw.includes('nucleo celestial')) return 'material-celestial';
+  if(raw.includes('nucleo alpha')||raw.includes('corrompido')) return 'special-essence';
 
   if(raw.includes('espada')&&raw.includes('eclipse')) return 'weapon-eclipse';
   if(raw.includes('lamina')&&raw.includes('abiss')) return 'weapon-abyss';
   if(raw.includes('tridente')) return 'weapon-trident';
   if(raw.includes('foice')) return 'weapon-scythe';
-  if(raw.includes('martelo')) return 'weapon-hammer';
+  if(raw.includes('martelo')||raw.includes('machado')) return 'weapon-hammer';
   if(raw.includes('arco')) return 'weapon-bow';
 
-  if(raw.includes('armadura')&&raw.includes('abiss')) return 'armor-abyss';
-  if(raw.includes('couraca')&&raw.includes('tita')) return 'armor-titan';
-  if(raw.includes('manto')&&raw.includes('celestial')) return 'armor-celestial';
-  if(raw.includes('leviata')) return 'armor-leviathan';
-  if(raw.includes('obsidiana')) return 'armor-obsidian';
-  if(raw.includes('caos')) return 'armor-chaos';
+  if(raw.includes('samurai')) return 'char-samurai';
+  if(raw.includes('cavaleiro')) return 'char-paladin';
+  if(raw.includes('dragao')||raw.includes('fenix')||raw.includes('vulcan')) return 'armor-chaos';
+  if(raw.includes('abiss')||raw.includes('vazio')) return 'armor-abyss';
+  if(raw.includes('celestial')||raw.includes('divina')) return 'armor-celestial';
+  if(raw.includes('leviata')||raw.includes('runico')) return 'armor-leviathan';
+  if(raw.includes('obsidiana')||raw.includes('eclipse')||raw.includes('predador')) return 'armor-obsidian';
+  if(raw.includes('tita')||raw.includes('golem')||raw.includes('colosso')||raw.includes('guardiao')||raw.includes('bastiao')) return 'armor-titan';
 
   if(raw.includes('invocar pet')||raw.includes('invocacao')||raw.includes('summon')) return 'special-summon';
   if(raw.includes('alma ancestral')) return 'special-soul';
@@ -936,15 +1004,22 @@ function itemSpriteKey(item){
   if(raw.includes('pergaminho')) return 'special-scroll';
   if(raw.includes('ticket')&&raw.includes('raid')) return 'special-ticket';
   if(raw.includes('essencia epic')) return 'special-essence';
-
-  if(category==='weapon') return 'weapon-eclipse';
-  if(category==='armor'||category==='boots') return 'armor-obsidian';
-  if(category==='material') return 'material-alpha';
-  if(category==='raid') return 'key-10';
-  if(category==='box') return 'box-luck';
-  if(category==='pet_potion') return 'pet-potion-small';
-  if(category==='potion'||category==='consumable') return 'potion-small';
-  return 'special-soul';
+  return '';
+}
+function itemArtMarkup(item){
+  const key=itemSpriteKey(item);
+  if(key) return '<div class="item-art">'+artSprite(key,'item-official-art',item&&item.name||'Item')+'</div>';
+  const id=String(item&&((item.item_id||item.itemId||item.id)||'')||'');
+  const category=String(item&&item.category||'');
+  let icon='💠',label='Item';
+  if(id.startsWith('bota_')||category==='boots'){
+    icon=id.includes('relampago')?'⚡🥾':id.includes('vento')?'💨🥾':id.includes('celestial')?'✨🥾':id.includes('cacador')?'🏹🥾':'🥾';
+    label='Botas';
+  }else if(category==='weapon'){icon='🗡️';label='Arma'}
+  else if(category==='armor'){icon='🛡️';label='Armadura'}
+  else if(category==='material'){icon='💎';label='Material'}
+  else if(category==='consumable'||category==='potion'){icon='🧪';label='Consumível'}
+  return '<div class="item-art item-art-fallback"><span>'+icon+'</span><small>'+esc(label)+'</small></div>';
 }
 function itemArtMarkup(item){
   const key=itemSpriteKey(item);
@@ -1417,6 +1492,54 @@ function renderLoans(){
     '</div></div>'+resultPanel();
 }
 
+
+function lootRewardIsPotion(item){
+  const id=String(item&&item.itemId||'').toLowerCase();
+  return id==='pocao_p'||id==='pocao_m'||id==='pocao_g'||id==='elixir_supremo'||id.startsWith('pocao_pet_')||id==='energetico_pet';
+}
+function setLootReveal(value){
+  ui.lootReveal=value||null;
+  document.body.classList.toggle('loot-open',Boolean(ui.lootReveal));
+}
+async function openLootBoxUI(boxId,qty){
+  toast('✨ Abrindo caixa...');
+  const result=await doAction('item.box.open',{boxId,qty},{quiet:true});
+  setLootReveal(result);
+  render();
+}
+function lootRevealModal(){
+  const r=ui.lootReveal;
+  if(!r) return '';
+  const items=Array.isArray(r.items)?r.items:[];
+  const utility=[];
+  if(Number(r.cash||0)>0) utility.push('<div class="loot-auto"><span>💰 Dinheiro</span><strong>+'+money(r.cash)+'</strong><small>creditado automaticamente</small></div>');
+  if(Number(r.exp||0)>0) utility.push('<div class="loot-auto"><span>⭐ EXP</span><strong>+'+num(r.exp)+'</strong><small>aplicado automaticamente</small></div>');
+  const rewards=items.map(it=>{
+    const potion=lootRewardIsPotion(it);
+    const art=itemArtMarkup({itemId:it.itemId,name:it.name,rarity:it.rarity,category:potion?'consumable':''});
+    return '<div class="loot-reward '+rarityClass(it.rarity)+'">'+art+
+      '<div class="loot-reward-copy"><div class="tag-row"><span class="tag '+esc(it.rarity)+'">'+esc(it.rarity||'item')+'</span><span class="tag">x'+num(it.qty||1)+'</span></div>'+
+      '<h3>'+esc(it.name||it.itemId)+'</h3>'+
+      (potion?'<p>🧪 Guardada automaticamente no inventário.</p>':'<p>O item já está no seu inventário. Você pode guardar ou vender agora.</p>')+
+      '</div>'+
+      '<div class="loot-actions">'+
+        (potion?'':'<button class="btn danger" data-loot-sell="'+esc(it.itemId)+'" data-loot-sell-qty="'+Number(it.qty||1)+'">Vender • '+money(Number(it.sellUnit||0)*Number(it.qty||1))+'</button>')+
+        '<button class="btn good" data-loot-keep>Guardar</button>'+
+      '</div></div>';
+  }).join('');
+  const empty=!items.length&&!utility.length?'<div class="empty">A caixa foi aberta, mas não houve recompensa retornada pelo servidor.</div>':'';
+  return '<div class="loot-overlay" data-loot-close>'+
+    '<section class="loot-modal" role="dialog" aria-modal="true" aria-label="Recompensa da caixa" onclick="event.stopPropagation()">'+
+      '<div class="loot-burst">✨</div>'+
+      '<p class="eyebrow">RECOMPENSA DA CAIXA</p>'+
+      '<h2>Você ganhou!</h2>'+
+      '<p class="muted">'+esc(r.boxName||'Caixa')+' • '+num(r.opened||1)+' aberta(s)</p>'+
+      (utility.length?'<div class="loot-utility">'+utility.join('')+'</div>':'')+
+      '<div class="loot-rewards">'+rewards+'</div>'+empty+
+      '<button class="btn primary loot-close-main" data-loot-keep>Continuar</button>'+
+    '</section></div>';
+}
+
 function pageSceneKey(page){
   return ({
     character:'bg-arena',
@@ -1439,7 +1562,7 @@ function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
   const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
-  $('#content').innerHTML=pageScene(ui.page)+(renderers[ui.page]||renderHome)();
+  $('#content').innerHTML=pageScene(ui.page)+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
 }
 
@@ -1492,8 +1615,15 @@ function bind(){
   document.querySelectorAll('[data-item-equip]').forEach(x=>x.onclick=()=>doAction('item.equip',{itemId:x.dataset.itemEquip},{}));
   document.querySelectorAll('[data-item-upgrade]').forEach(x=>x.onclick=()=>doAction('item.upgrade',{itemId:x.dataset.itemUpgrade},{}));
   document.querySelectorAll('[data-item-use]').forEach(x=>x.onclick=()=>doAction('item.use',{itemId:x.dataset.itemUse},{}));
-  document.querySelectorAll('[data-box-open]').forEach(x=>x.onclick=()=>doAction('item.box.open',{boxId:x.dataset.boxOpen,qty:1},{}));
-  document.querySelectorAll('[data-box-open-all]').forEach(x=>x.onclick=()=>doAction('item.box.open',{boxId:x.dataset.boxOpenAll,qty:Number(x.dataset.boxQty||1)},{}));
+  document.querySelectorAll('[data-box-open]').forEach(x=>x.onclick=()=>openLootBoxUI(x.dataset.boxOpen,1));
+  document.querySelectorAll('[data-box-open-all]').forEach(x=>x.onclick=()=>openLootBoxUI(x.dataset.boxOpenAll,Number(x.dataset.boxQty||1)));
+  document.querySelectorAll('[data-loot-keep]').forEach(x=>x.onclick=()=>{setLootReveal(null);render();});
+  document.querySelectorAll('[data-loot-close]').forEach(x=>x.onclick=()=>{setLootReveal(null);render();});
+  document.querySelectorAll('[data-loot-sell]').forEach(x=>x.onclick=async()=>{
+    const itemId=x.dataset.lootSell,qty=Number(x.dataset.lootSellQty||1);
+    setLootReveal(null);
+    await doAction('item.sell',{itemId,qty},{success:'💰 Recompensa vendida.'});
+  });
   document.querySelectorAll('[data-lucky-open]').forEach(x=>x.onclick=()=>doAction('item.lucky.open',{qty:Number(x.dataset.luckyOpen||1)},{}));
   document.querySelectorAll('[data-sell-duplicates]').forEach(x=>x.onclick=()=>doAction('item.sellDuplicates',{},{}));
   document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>doAction('item.sell',{itemId:x.dataset.itemSell,qty:1},{}));
