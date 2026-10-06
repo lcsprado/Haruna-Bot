@@ -31,6 +31,7 @@ const navItems = [
   ['shop','🏪','Loja'],
   ['raids','⚔️','Raids'],
   ['boss','👹','Boss'],
+  ['duels','⚔️','Duelos'],
   ['social','🥊','Social'],
   ['market','📣','Mercado'],
   ['clan','🛡️','Clã'],
@@ -1567,6 +1568,17 @@ function renderDuelArena(members){
   '</div>';
 }
 
+function renderDuels(){
+  if(!currentGroup()) return '<div class="notice warn">Conecte usando <b>!web</b> dentro do grupo para liberar os duelos reais.</div>';
+  const members=roster().filter(x=>x.jid!==ui.data.identity.jid);
+  return '<div class="page-head"><div><h2>Arena de Duelos</h2><p>Escolha um jogador do grupo e veja os dois personagens antes do confronto. O resultado usa os atributos reais do Alpha Bot.</p></div><span class="tag good">PVP REAL</span></div>'+
+    renderDuelArena(members)+
+    (ui.lastResult?resultPanel():'')+
+    '<div class="section"><div class="section-title"><h3>Adversários disponíveis</h3><small>'+members.length+' jogador(es)</small></div><div class="grid three">'+
+      (members.length?members.map(m=>'<div class="card social-card"><div class="tag-row"><span class="tag">'+esc(characterForClass(m.class_id).name)+'</span><span class="tag">Lv.'+num(m.level||1)+'</span></div><h3>'+esc(m.push_name||'Jogador')+'</h3><p>❤️ '+num(m.hp||0)+'/'+num(m.max_hp||0)+' • ⚔️ '+num(m.atk||0)+' • 🛡️ '+num(m.def||0)+'</p><button class="btn primary" data-duel-select-only="'+esc(m.jid)+'">Selecionar adversário</button></div>').join(''):'<div class="empty">Nenhum adversário recente disponível.</div>')+
+    '</div></div>';
+}
+
 function memberCard(m){
   return '<div class="card social-card"><div class="tag-row"><span class="tag">'+esc(characterForClass(m.class_id).name)+'</span><span class="tag">Lv.'+num(m.level||1)+'</span></div><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+num(m.messages||0)+' msgs • '+num(m.commands||0)+' comandos/7d</p>'+
     '<div class="pet-actions"><button class="btn primary" data-battle="'+esc(m.jid)+'">⚔️ Duelo</button><button class="btn" data-petduel="'+esc(m.jid)+'">🐾 Duelo Pet</button><button class="btn" data-coin-duel="'+esc(m.jid)+'">🪙 Cara/Coroa</button><button class="btn" data-rps-duel="'+esc(m.jid)+'">✊ PPT</button><button class="btn danger" data-rob="'+esc(m.jid)+'">🥷 Roubar</button><button class="btn good" data-transfer="'+esc(m.jid)+'">💸 PIX</button><button class="btn" data-loan-offer="'+esc(m.jid)+'">💳 Emprestar</button><button class="btn" data-relationship-propose="'+esc(m.jid)+'">💍 Casar</button><button class="btn good" data-relationship-accept-member="'+esc(m.jid)+'">✓ Aceitar pedido</button></div></div>';
@@ -1581,8 +1593,7 @@ function renderSocial(){
     (coinPending?'<button class="btn good" data-coin-duel-accept>🪙 Aceitar Cara/Coroa • '+money(coinPending.amount)+'</button>':'')+
     (rpsPending?'<button class="btn good" data-rps-duel-accept>✊ Aceitar PPT • '+money(rpsPending.amount)+'</button>':'')+
     '</div></div>':'';
-  return '<div class="page-head"><div><h2>Social e PvP</h2><p>Duelo visual, Duelo Pet, apostas PvP, roubo, PIX e empréstimo usam os jogadores reais do grupo.</p></div><span class="tag">'+members.length+' jogadores recentes</span></div>'+
-    renderDuelArena(members)+
+  return '<div class="page-head"><div><h2>Social</h2><p>Roubo, PIX, empréstimo, relacionamento, apostas PvP e atalhos para duelo usam os jogadores reais do grupo.</p></div><div class="hero-actions"><button class="btn primary" data-go-page="duels">⚔️ Abrir Arena de Duelos</button><span class="tag">'+members.length+' jogadores recentes</span></div></div>'+
     pending+
     '<div class="section card"><div class="section-title"><h3>Relacionamento</h3><small>Mesmo estado do WhatsApp</small></div>'+renderRelationship(rel)+(rel?'<div class="hero-actions section"><button class="btn danger" data-relationship-divorce>Divorciar</button></div>':'')+'</div>'+
     '<div class="section"><div class="section-title"><h3>Jogadores do grupo</h3><small>Ações sociais e PvP</small></div><div class="grid three">'+(members.length?members.map(memberCard).join(''):'<div class="empty">Nenhum outro jogador ativo nos últimos 7 dias.</div>')+'</div></div>'+resultPanel();
@@ -1922,6 +1933,7 @@ function pageSceneKey(page){
     shop:'bg-shop',
     raids:'bg-raid',
     boss:'bg-boss',
+    duels:'bg-arena',
     social:'bg-arena',
     games:'bg-abilities',
     progression:'bg-abilities'
@@ -1935,7 +1947,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
 }
@@ -2117,6 +2129,11 @@ function bind(){
   document.querySelectorAll('[data-duel-target]').forEach(x=>x.onchange=()=>{
     ui.duelTarget=x.value;
     render();
+  });
+  document.querySelectorAll('[data-duel-select-only]').forEach(x=>x.onclick=()=>{
+    ui.duelTarget=x.dataset.duelSelectOnly;
+    render();
+    window.scrollTo({top:0,left:0,behavior:'smooth'});
   });
   document.querySelectorAll('[data-duel-launch]').forEach(x=>x.onclick=async()=>{
     ui.duelTarget=x.dataset.duelLaunch;
