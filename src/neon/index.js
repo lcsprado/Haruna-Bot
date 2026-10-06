@@ -190,6 +190,39 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
 }
 
 const raidRuns=new Map()
+let raidAutoWatchdog=null
+let raidAutoReply=null
+const raidAutoRetryAt=new Map()
+
+async function ensureActiveRaidRuns(){
+  try{
+    const {rows}=await db.query(`
+      SELECT chat_jid,game_type,state
+      FROM trevo_games
+      WHERE (game_type='raid' OR game_type LIKE 'raid:%')
+        AND state->>'status'='active'
+    `)
+    const activeKeys=new Set()
+    for(const row of rows){
+      const chat=String(row.chat_jid||'')
+      const level=Number(row.state?.level||String(row.game_type||'').split(':')[1]||0)
+      if(!chat.endsWith('@g.us')||!level) continue
+      const runKey=`${chat}|${level}`
+      activeKeys.add(runKey)
+      if(raidRuns.has(runKey)) continue
+      const retryAt=Number(raidAutoRetryAt.get(runKey)||0)
+      if(retryAt>Date.now()) continue
+      const started=await runRaidCombat(chat,level,text=>raidAutoReply?raidAutoReply(chat,text):false)
+      if(started) console.log('[Raid Auto] runner iniciado/recuperado',chat,'Lv.'+level)
+    }
+    for(const key of raidAutoRetryAt.keys()){
+      if(!activeKeys.has(key)) raidAutoRetryAt.delete(key)
+    }
+  }catch(err){
+    console.error('[Raid Auto] falha no watchdog',err?.message||err)
+  }
+}
+
 async function runRaidCombat(chat,level,reply){
   const runKey=`${chat}|${Number(level)}`
   if(raidRuns.has(runKey)) return false
@@ -265,7 +298,12 @@ async function runRaidCombat(chat,level,reply){
       }
     }catch(err){
       console.error('[Raid]',err)
-      await reply('⚠️ A Raid foi interrompida: '+String(err?.message||err))
+      raidAutoRetryAt.set(runKey,Date.now()+5000)
+      try{
+        await reply('⚠️ A Raid teve uma falha temporária. O servidor vai tentar retomar automaticamente.')
+      }catch(notifyErr){
+        console.error('[Raid Auto] falha ao avisar interrupção temporária',notifyErr?.message||notifyErr)
+      }
     }finally{
       raidRuns.delete(runKey)
     }
@@ -1353,14 +1391,33 @@ async function start() {
   // A Raid iniciada pelo PWA roda no processo do servidor, igual ao comando !go.
   // Assim continua mesmo se o celular bloquear a tela, o navegador for para segundo
   // plano ou os timers do PWA forem suspensos pelo Android/iOS.
-  globalThis.__alphaStartRaidRun=async(chat,level)=>{
-    if(!chat?.endsWith('@g.us')) return false
-    const reply=async text=>{
-      if(!text || trevoHealth.whatsapp!=='open') return false
+  //
+  // IMPORTANTE: o combate não pode depender do envio de mensagens do WhatsApp.
+  // Se uma notificação falhar, as rodadas continuam; o watchdog abaixo também
+  // recupera Raids ativas após erro transitório, reconexão ou restart do processo.
+  raidAutoReply=async(chat,text)=>{
+    if(!text || trevoHealth.whatsapp!=='open') return false
+    try{
       await sock.sendMessage(chat,{text})
       return true
+    }catch(err){
+      console.error('[Raid Auto] falha ao publicar aviso; combate continua',chat,err?.message||err)
+      return false
     }
-    return runRaidCombat(chat,Number(level),reply)
+  }
+
+  globalThis.__alphaStartRaidRun=async(chat,level)=>{
+    if(!chat?.endsWith('@g.us')) return false
+    return runRaidCombat(chat,Number(level),text=>raidAutoReply?raidAutoReply(chat,text):false)
+  }
+
+  // Recuperação persistente: se o loop em memória morrer, o processo reiniciar ou
+  // uma Raid ativa já existir quando o bot subir, o servidor relança o runner.
+  // raidRuns impede dois loops simultâneos para o mesmo grupo/nível.
+  void ensureActiveRaidRuns()
+  if(!raidAutoWatchdog){
+    raidAutoWatchdog=setInterval(()=>{ void ensureActiveRaidRuns() },4000)
+    raidAutoWatchdog.unref?.()
   }
 
   async function sendScheduledGroupNotice(chat,key,text){
