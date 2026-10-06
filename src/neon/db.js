@@ -4853,21 +4853,34 @@ export async function selectPet(jid,id){
     return target
   })
 }
-export async function renamePet(jid,name){
+export async function renamePet(jid,name,petId=null){
   const newName=String(name||'').replace(/[\u0000-\u001F\u007F]/g,'').replace(/\s+/g,' ').trim()
   if(newName.length<2||newName.length>24) throw new Error('O nome do pet deve ter entre 2 e 24 caracteres.')
   const fee=1000
+  const requestedId=petId==null?null:Number(petId)
+  if(requestedId!=null && (!Number.isInteger(requestedId)||requestedId<=0)) throw new Error('Pet inválido.')
+
   return transaction(async client=>{
-    // pet_collection é a fonte usada pelo time/raids/listas; pets é o espelho legado do pet ativo.
-    // Mantemos os dois sincronizados para o nome não "voltar" ou aparecer diferente entre comandos.
-    const active=(await client.query(
-      'SELECT * FROM pet_collection WHERE jid=$1 AND active=TRUE ORDER BY id DESC LIMIT 1 FOR UPDATE',
-      [jid]
-    )).rows[0]
+    // Com petId, renomeia exatamente o pet escolhido na coleção.
+    // Sem petId, mantém compatibilidade com !nomepet e renomeia o pet ativo.
+    let collectionPet=null
+    if(requestedId!=null){
+      collectionPet=(await client.query(
+        'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',
+        [jid,requestedId]
+      )).rows[0]
+      if(!collectionPet) throw new Error('Esse pet não foi encontrado na sua coleção.')
+    }else{
+      collectionPet=(await client.query(
+        'SELECT * FROM pet_collection WHERE jid=$1 AND active=TRUE ORDER BY id DESC LIMIT 1 FOR UPDATE',
+        [jid]
+      )).rows[0]
+    }
+
     const legacy=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const pet=active||legacy
+    const pet=collectionPet||legacy
     if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
-    if(String(pet.name||'').toLocaleLowerCase('pt-BR')===newName.toLocaleLowerCase('pt-BR')) throw new Error('Esse já é o nome do seu pet.')
+    if(String(pet.name||'').toLocaleLowerCase('pt-BR')===newName.toLocaleLowerCase('pt-BR')) throw new Error('Esse já é o nome desse pet.')
 
     const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
@@ -4875,14 +4888,18 @@ export async function renamePet(jid,name){
     const fromCash=Math.min(cash,fee)
     await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
 
-    if(active) await client.query('UPDATE pet_collection SET name=$1 WHERE id=$2',[newName,active.id])
-    if(legacy) await client.query('UPDATE pets SET name=$1 WHERE jid=$2',[newName,jid])
+    if(collectionPet) await client.query('UPDATE pet_collection SET name=$1 WHERE id=$2 AND jid=$3',[newName,collectionPet.id,jid])
+
+    // O espelho legado representa somente o pet ativo.
+    const shouldSyncLegacy=!collectionPet || Boolean(collectionPet.active)
+    if(legacy&&shouldSyncLegacy) await client.query('UPDATE pets SET name=$1 WHERE jid=$2',[newName,jid])
 
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'pet_rename',$3)`,[jid,fee,`${pet.name} -> ${newName}`])
-    return {...pet,name:newName,oldName:pet.name,fee}
+    return {...pet,id:collectionPet?.id||pet.id||null,name:newName,oldName:pet.name,fee}
   })
 }
+
 export async function petAction(jid,action){
   const map={
     alimentar:{hunger:25,hygiene:-2,energy:2,xp:8},
