@@ -1337,6 +1337,19 @@ async function start() {
 
   sock.ev.on('creds.update',saveCreds)
 
+  // Ponte usada pelo RPG Web para publicar resultados competitivos no mesmo grupo
+  // do WhatsApp. Mantém rivalidade/atividade visível mesmo quando a ação veio do PWA.
+  globalThis.__alphaWebGroupLog=async(chat,text,mentions=[])=>{
+    if(!chat?.endsWith('@g.us') || !text || trevoHealth.whatsapp!=='open') return false
+    try{
+      await sock.sendMessage(chat,{text,mentions:Array.isArray(mentions)?mentions:[]})
+      return true
+    }catch(err){
+      console.error('[Web Activity] falha ao publicar no grupo',chat,err?.message||err)
+      return false
+    }
+  }
+
   async function sendScheduledGroupNotice(chat,key,text){
     const settingKey='scheduled_notice:'+key+':'+chat
     const inserted=await db.query(
