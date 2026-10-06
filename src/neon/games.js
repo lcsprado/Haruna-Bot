@@ -582,6 +582,20 @@ async function resolveRaidRoom(c,chat,level=null,{host=null,jid=null,lobbyOnly=f
   if(jid) rooms=rooms.filter(r=>Boolean(r.players?.[jid]))
   return rooms
 }
+async function resolveGlobalPlayerRaid(c,jid){
+  const {rows}=await c.query(
+    `SELECT chat_jid,game_type,state,updated_at
+     FROM trevo_games
+     WHERE game_type='raid' OR game_type LIKE 'raid:%'
+     ORDER BY updated_at DESC
+     FOR UPDATE`
+  )
+  return rows
+    .map(r=>({chatJid:r.chat_jid,gameType:r.game_type,...(r.state||{})}))
+    .filter(raidIsOpen)
+    .find(r=>Boolean(r.players?.[jid])) || null
+}
+
 
 export async function getRaidStatuses(chat){
   return tx(async c=>(await raidRows(c,chat,false)).filter(raidIsOpen))
@@ -601,11 +615,11 @@ export async function createRaid(chat,host,name='Jogador',level=10){
   const gameType=raidGameType(cfg.level)
   await ensureUser(host,name)
   return tx(async c=>{
-    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${chat}:${host}`])
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${host}`])
     const sameRoom=(await resolveRaidRoom(c,chat,cfg.level))[0]
     if(sameRoom) throw new Error(`Já existe uma sala da Raid Lv.${cfg.level} neste grupo.`)
-    const otherRoom=(await resolveRaidRoom(c,chat,null,{jid:host}))[0]
-    if(otherRoom) throw new Error(`Você já está na Raid Lv.${otherRoom.level}. Saia/conclua essa Raid antes de abrir outra.`)
+    const otherRoom=await resolveGlobalPlayerRaid(c,host)
+    if(otherRoom) throw new Error(`🔒 RAID GLOBAL ATIVA\n\nVocê já está na *Raid Lv.${otherRoom.level}*. Cada personagem pode participar de apenas *1 Raid por vez*, mesmo em outro grupo ou pelo RPG Web.\nConclua ou encerre a Raid atual antes de entrar em outra.`)
     const u=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[host])).rows[0]
     if(Number(u?.level||1)<cfg.level) throw new Error(`Essa Raid exige nível ${cfg.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[host])).rows[0]
@@ -636,11 +650,15 @@ export async function createRaid(chat,host,name='Jogador',level=10){
 export async function joinRaid(chat,jid,name='Jogador',level=null){
   await ensureUser(jid,name)
   return tx(async c=>{
-    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${chat}:${jid}`])
-    const joined=(await resolveRaidRoom(c,chat,null,{jid}))[0]
-    if(joined){
-      if(!level || Number(joined.level)===Number(level)) return {already:true,lateJoin:joined.status==='active',...joined}
-      throw new Error(`Você já está na Raid Lv.${joined.level}. Não dá para participar de duas Raids ao mesmo tempo.`)
+    await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${jid}`])
+    const joinedHere=(await resolveRaidRoom(c,chat,null,{jid}))[0]
+    if(joinedHere){
+      if(!level || Number(joinedHere.level)===Number(level)) return {already:true,lateJoin:joinedHere.status==='active',...joinedHere}
+      throw new Error(`Você já está na Raid Lv.${joinedHere.level}. Não dá para participar de duas Raids ao mesmo tempo.`)
+    }
+    const globalRaid=await resolveGlobalPlayerRaid(c,jid)
+    if(globalRaid){
+      throw new Error(`🔒 RAID GLOBAL ATIVA\n\nVocê já está na *Raid Lv.${globalRaid.level}* em outro grupo.\n⚔️ Um personagem só pode participar de *1 Raid por vez* em todo o Alpha Bot, incluindo o RPG Web.\nConclua a Raid atual antes de entrar nesta.`)
     }
     const rooms=await resolveRaidRoom(c,chat,level||null)
     if(!rooms.length) throw new Error(level?`Não existe sala aberta da Raid Lv.${level}.`:'Não existe Raid disponível para entrar.')
