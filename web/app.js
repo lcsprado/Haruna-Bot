@@ -876,15 +876,20 @@ function petPortrait(species){
 function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
   const active=Boolean(p.active);
+  const hp=Number(p.hp||0), maxHp=Math.max(1,Number(p.max_hp||1));
+  const healButton=hp<maxHp
+    ? '<button class="btn heal" data-pet-card-heal="'+p.id+'">❤️ Curar</button>'
+    : '<button class="btn" disabled>❤️ HP cheio</button>';
   return '<div class="card pet-card owned">'+petPortrait(p.species)+
     '<div class="tag-row"><span class="tag '+(active?'good':'')+'">'+(active?'ATIVO':'COLEÇÃO')+'</span><span class="tag">'+esc(cat&&cat.style||'Pet')+'</span></div>'+
     '<h3>'+esc(p.name||cat&&cat.label||titleCase(p.species))+'</h3>'+
     '<p>'+esc(titleCase(p.species))+' • Lv.'+num(p.level)+' • XP '+num(p.xp)+' • Poder '+num(p.power)+'</p>'+
-    '<div class="pet-vitals"><div><span>❤️ HP</span><strong>'+num(p.hp)+'/'+num(p.max_hp)+'</strong><div class="progress"><span style="width:'+pct(Number(p.hp||0)/Math.max(1,Number(p.max_hp||1))*100)+'%"></span></div></div>'+
+    '<div class="pet-vitals"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(maxHp)+'</strong><div class="progress"><span style="width:'+pct(hp/maxHp*100)+'%"></span></div></div>'+
     '<div><span>⚡ Energia</span><strong>'+num(p.energy)+'/'+num(p.max_energy||100)+'</strong><div class="progress"><span style="width:'+pct(Number(p.energy||0)/Math.max(1,Number(p.max_energy||100))*100)+'%"></span></div></div></div>'+
     '<div class="pet-needs"><span>🍗 '+num(p.hunger)+'/100</span><span>🧼 '+num(p.hygiene)+'/100</span></div>'+
     '<p>'+esc(specialtyText(cat))+'</p>'+
     '<div class="pet-actions">'+
+      healButton+
       (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
       (active?'<div class="pet-rename-inline"><input data-pet-name maxlength="24" value="'+esc(p.name||'')+'" placeholder="Nome do pet"><button class="btn" data-pet-rename>Renomear • R$ 1.000</button></div><button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
       '<button class="btn" data-pet-id="'+p.id+'">ID '+p.id+'</button>'+
@@ -937,20 +942,35 @@ function renderPets(){
   if(ui.petTab==='owned') rows=collection().map(ownedPetCard);
   else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
   else rows=catalogPets().filter(x=>x.source==='raid').map(catalogPetCard);
+
   const team=ui.data.petTeam||[], synergy=ui.data.petTeamSynergy||null, pets=collection();
   const labels=['','Principal','Suporte','Reserva'];
-  const selectedId=slot=>Number((team.find(x=>Number(x.slot)===slot)||{}).id||0);
+  const teamPet=slot=>team.find(x=>Number(x.slot)===slot)||null;
+  const selectedId=slot=>Number((teamPet(slot)||{}).id||0);
   const optionsFor=slot=>{
     const current=selectedId(slot);
     return '<option value="">'+(slot===1?'Escolha o principal':'Vazio')+'</option>'+
       pets.map(p=>'<option value="'+p.id+'" '+(Number(p.id)===current?'selected':'')+'>'+esc(p.name)+' • '+esc(titleCase(p.species))+' • Lv.'+num(p.level)+'</option>').join('');
   };
+  const teamSlot=slot=>{
+    const p=teamPet(slot);
+    const hp=p?Number(p.hp||0):0;
+    const maxHp=p?Math.max(1,Number(p.max_hp||1)):1;
+    const status=p
+      ? '<div class="team-pet-status"><div class="team-pet-head"><strong>'+esc(p.name||titleCase(p.species))+'</strong><small>Lv.'+num(p.level)+' • '+esc(titleCase(p.species))+'</small></div>'+
+        '<div class="team-pet-hp"><span>❤️ '+num(hp)+'/'+num(maxHp)+'</span><div class="progress"><span style="width:'+pct(hp/maxHp*100)+'%"></span></div></div>'+
+        (hp<maxHp?'<button class="btn heal" data-team-pet-heal="'+p.id+'">❤️ Curar agora</button>':'<button class="btn" disabled>❤️ HP cheio</button>')+
+        '</div>'
+      : '<small class="team-empty">Nenhum pet neste slot.</small>';
+    return '<div class="team-slot"><span>'+labels[slot]+'</span><select data-team-slot="'+slot+'">'+optionsFor(slot)+'</select>'+status+'</div>';
+  };
   const synergyBox=synergy
     ? '<div class="notice good"><strong>'+esc(synergy.label)+'</strong><br>'+esc(synergy.text)+'</div>'
     : '<div class="notice">Monte 3 espécies diferentes do mesmo estilo para ativar uma sinergia de Time Pet.</div>';
+
   return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo backend do WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" data-pet-tab="adopt">🐾 Adotar novo pet</button><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div></div>'+
     '<div class="card"><div class="section-title"><div><h3>Time Pet</h3><small>1 Principal • 2 Suporte • 3 Reserva</small></div><button class="btn primary" data-pet-team-save>Salvar time</button></div>'+
-      '<div class="grid three">'+[1,2,3].map(slot=>'<label class="team-slot"><span>'+labels[slot]+'</span><select data-team-slot="'+slot+'">'+optionsFor(slot)+'</select></label>').join('')+'</div>'+
+      '<div class="grid three">'+[1,2,3].map(teamSlot).join('')+'</div>'+
       '<div class="section">'+synergyBox+'</div>'+
     '</div>'+
     '<div class="tabs section">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
@@ -1006,6 +1026,7 @@ function itemSpriteKey(item){
   if(raw.includes('martelo')||raw.includes('machado')) return 'weapon-hammer';
   if(raw.includes('arco')) return 'weapon-bow';
 
+  if(raw.includes('steel armor')) return 'armor-titan';
   if(raw.includes('samurai')) return 'char-samurai';
   if(raw.includes('cavaleiro')) return 'char-paladin';
   if(raw.includes('dragao')||raw.includes('fenix')||raw.includes('vulcan')) return 'armor-chaos';
@@ -1038,6 +1059,19 @@ function itemArtMarkup(item){
   else if(category==='consumable'||category==='potion'){icon='🧪';label='Consumível'}
   return '<div class="item-art item-art-fallback"><span>'+icon+'</span><small>'+esc(label)+'</small></div>';
 }
+function rarityLabel(value){
+  const key=String(value||'common').toLowerCase();
+  return ({common:'Comum',uncommon:'Incomum',rare:'Raro',epic:'Épico',legendary:'Lendário',event:'Evento'}[key]||titleCase(key));
+}
+function categoryLabel(value){
+  const key=String(value||'item').toLowerCase();
+  return ({weapon:'Arma',armor:'Armadura',boots:'Botas',consumable:'Consumível',special:'Especial',material:'Material',potion:'Poção',pet_potion:'Cura Pet',pet_energy:'Energia Pet',box:'Caixa',raid:'Raid'}[key]||titleCase(key));
+}
+function itemDisplayName(item){
+  const name=String(item&&item.name||'Item');
+  if(name.toLowerCase()==='steel armor') return 'Armadura de Aço';
+  return name;
+}
 function inventoryCard(i){
   const id=i.item_id;
   const eq=['weapon','armor','boots'].includes(i.category);
@@ -1057,8 +1091,8 @@ function inventoryCard(i){
     if(qty>1) actions+='<button class="btn" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+qty+'">Vender '+qty+'</button>';
   }
   return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+
-    '<div class="tag-row"><span class="tag '+esc(i.rarity)+'">'+esc(i.rarity||'common')+'</span><span class="tag">'+esc(i.category)+'</span></div>'+
-    '<h3>'+esc(i.name)+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(i.description||'')+'</p>'+
+    '<div class="tag-row"><span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
+    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(i.quantity)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(i.description||'')+'</p>'+
     (i.sellable!==false?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
     (eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Upgrade devolve '+money(i.upgrade_refund)+' na venda.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
@@ -1080,7 +1114,7 @@ function shopCard(i){
   if(Number(eq.defense||eq.def)>0) bonus.push('+'+num(eq.defense||eq.def)+' DEF');
   if(Number(eq.speed||eq.spd)>0) bonus.push('+'+num(eq.speed||eq.spd)+' SPD');
   if(Number(eq.crit)>0) bonus.push('+'+num(Number(eq.crit)<=1?Number(eq.crit)*100:eq.crit)+'% CRIT');
-  return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+'<div class="tag-row"><span class="tag">'+esc(i.rarity||'Comum')+'</span><span class="tag">'+esc(i.category||'item')+'</span></div><h3>'+esc(i.name)+'</h3><p>'+esc(i.description||'')+'</p>'+
+  return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+'<div class="tag-row"><span class="tag">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div><h3>'+esc(itemDisplayName(i))+'</h3><p>'+esc(i.description||'')+'</p>'+
     (bonus.length?'<p class="item-bonus">'+bonus.join(' • ')+'</p>':'')+
     '<strong>'+money(i.price)+'</strong><div class="item-actions"><button class="btn primary" data-shop-buy="'+esc(i.id)+'" data-shop-price="'+Number(i.price||0)+'">Comprar 1</button><button class="btn" data-shop-buy-qty="'+esc(i.id)+'" data-shop-price="'+Number(i.price||0)+'">Comprar quantidade</button></div></div>';
 }
@@ -1169,6 +1203,14 @@ function prettyResult(value){
   }
   if(value.cooldown&&Number(value.remainingMs)>0){
     return '<div class="result-message cooldown-result">⏳ Combate em cooldown. Aguarde <strong>'+esc(formatRemaining(Number(value.remainingMs)/1000))+'</strong>.</div>';
+  }
+  if(value.petName&&value.healed!=null&&value.hp!=null&&value.maxHp!=null){
+    return '<div class="result-message heal-result">❤️ <strong>'+esc(value.petName)+'</strong> recuperou <strong>'+num(value.healed)+' HP</strong>.</div>'+
+      '<div class="result-metrics section">'+
+        resultMetric('HP atual',num(value.hp)+'/'+num(value.maxHp))+
+        resultMetric('Poção',value.name||'Poção de pet')+
+        resultMetric('Restantes',num(value.remaining||0),'num')+
+      '</div>';
   }
   const metrics=[];
   const moneyKeys=[['totalCash','Recebido'],['bonusCash','Bônus'],['amount','Valor'],['cash','Dinheiro'],['reward','Recompensa'],['payout','Pagamento'],['profit','Lucro'],['fee','Taxa'],['tax','TAXADE'],['gross','Bruto'],['netTotal','Líquido'],['grossTotal','Bruto total'],['taxTotal','TAXADE total'],['pot','Prêmio']];
@@ -1621,7 +1663,11 @@ function bind(){
     doAction('pet.adopt',{species:x.dataset.petAdopt,name},{});
   });
   document.querySelectorAll('[data-pet-summon]').forEach(x=>x.onclick=()=>doAction('pet.summon',{materialId:x.dataset.petSummon},{}));
-  document.querySelectorAll('[data-pet-heal]').forEach(x=>x.onclick=()=>doAction('pet.heal',{itemId:x.dataset.petHeal},{}));
+  document.querySelectorAll('[data-team-pet-heal],[data-pet-card-heal]').forEach(x=>x.onclick=()=>{
+    const petId=Number(x.dataset.teamPetHeal||x.dataset.petCardHeal||0);
+    if(petId>0) doAction('pet.heal',{petId},{success:'❤️ Cura aplicada ao pet.'});
+  });
+  document.querySelectorAll('[data-pet-heal]').forEach(x=>x.onclick=()=>doAction('pet.heal',{itemId:x.dataset.petHeal},{success:'❤️ Pet ativo curado.'}));
   document.querySelectorAll('[data-pet-energy]').forEach(x=>x.onclick=()=>doAction('pet.energy',{},{}));
   document.querySelectorAll('[data-item-equip]').forEach(x=>x.onclick=()=>doAction('item.equip',{itemId:x.dataset.itemEquip},{}));
   document.querySelectorAll('[data-item-upgrade]').forEach(x=>x.onclick=()=>doAction('item.upgrade',{itemId:x.dataset.itemUpgrade},{}));
