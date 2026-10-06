@@ -223,3 +223,13 @@ test('PWA rivalry actions are echoed back to the linked WhatsApp group',()=>{
   }
   assert.ok(webApi.includes('await sendWebGroupActivity(session,actionName,body,rawResult)'),'successful web actions must publish activity')
 })
+
+
+test('every successful PWA action has a WhatsApp activity fallback',()=>{
+  assert.ok(webApi.includes("}else if(actionName==='daily'){"),'daily activity log missing')
+  assert.ok(webApi.includes("}else if(actionName==='work'){"),'work activity log missing')
+  assert.ok(webApi.includes("}else if(actionName==='all'){"),'all activity log missing')
+  assert.ok(webApi.includes("}else if(actionName.startsWith('raid.')){"),'raid activity log missing')
+  assert.ok(webApi.includes("}else if(actionName.startsWith('boss.')){"),'boss activity log missing')
+  assert.ok(webApi.includes("text='🎮 *ATIVIDADE ALPHA*"),'generic fallback activity log missing')
+})
