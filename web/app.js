@@ -763,8 +763,8 @@ function renderActivities(){
   return renderDoubleRewardEvent()+'<div class="page-head"><div><h2>Atividades</h2><p>Missões, dormir, carpinar, aventura e expedições dos pets.</p></div></div>'+
     '<div class="grid three">'+
       '<div class="card"><h3>😴 Dormir</h3><p>'+(sleep?'Ativo até '+new Date(Number(sleep.ends_at)*1000).toLocaleString('pt-BR'):'Você está acordado.')+'</p><button class="btn '+(sleep?'danger':'primary')+'" data-sleep="'+(sleep?'wake':'start')+'">'+(sleep?'Acordar':'Dormir')+'</button></div>'+
-      '<div class="card"><h3>🌱 Carpinar</h3><p>'+(carp?'Ativo • termina em '+Math.ceil((Number(carp.ends_at)-Date.now()/1000)/60)+' min':'Planos: '+plans.map(x=>x.hours+'h').join(', '))+'</p><button class="btn '+(carp?'danger':'primary')+'" data-carpinar="'+(carp?'leave':'start')+'">'+(carp?'Sair':'Começar')+'</button></div>'+
-      '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><button class="btn" data-pet-expedition>Expedição</button><button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
+      '<div class="card"><h3>🌱 Carpinar</h3><p>'+(carp?'Ativo • termina em '+Math.ceil((Number(carp.ends_at)-Date.now()/1000)/60)+' min':'Escolha um dos planos reais abaixo.')+'</p>'+(carp?'<button class="btn danger" data-carpinar="leave">Sair</button>':'<div class="choice-row">'+plans.map(p=>'<button class="btn" data-carpinar-hours="'+Number(p.hours)+'">'+num(p.hours)+'h</button>').join('')+'</div>')+'</div>'+
+      '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><div class="expedition-form"><select data-expedition-pet><option value="">Escolha o pet</option>'+collection().map(p=>'<option value="'+p.id+'">'+esc(p.name)+' • '+esc(titleCase(p.species))+' • Lv.'+num(p.level)+'</option>').join('')+'</select><select data-expedition-hours><option value="2">2h</option><option value="4" selected>4h</option><option value="8">8h</option></select><button class="btn" data-pet-expedition>Enviar</button></div><button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
     '</div>'+
     '<div class="section card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
     '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,Number(d.profile&&d.profile.level||1),Number(d.profile&&d.profile.last_level_reward||0))+'</div>'+
@@ -1137,19 +1137,14 @@ function bind(){
   document.querySelectorAll('[data-tournament-start]').forEach(x=>x.onclick=()=>doAction('game.tournament.start',{},{}));
 
   document.querySelectorAll('[data-sleep]').forEach(x=>x.onclick=()=>doAction(x.dataset.sleep==='wake'?'sleep.wake':'sleep.start',{},{}));
-  document.querySelectorAll('[data-carpinar]').forEach(x=>x.onclick=()=>{
-    if(x.dataset.carpinar==='leave'){doAction('carpinar.leave',{},{});return;}
-    const plans=(ui.extras&&ui.extras.carpinarPlans)||[];
-    const hours=Number(prompt('Horas para carpinar ('+plans.map(p=>p.hours).join('/')+'):','1'));
-    if(hours>0) doAction('carpinar.start',{hours},{});
-  });
+  document.querySelectorAll('[data-carpinar]').forEach(x=>x.onclick=()=>{if(x.dataset.carpinar==='leave') doAction('carpinar.leave',{},{});});
+  document.querySelectorAll('[data-carpinar-hours]').forEach(x=>x.onclick=()=>doAction('carpinar.start',{hours:Number(x.dataset.carpinarHours)},{}));
   document.querySelectorAll('[data-pet-adventure]').forEach(x=>x.onclick=()=>doAction('pet.adventure',{},{}));
   document.querySelectorAll('[data-pet-expedition]').forEach(x=>x.onclick=()=>{
-    const pets=collection();
-    if(!pets.length){toast('Você não tem pets.');return;}
-    const petId=Number(prompt('ID do pet: '+pets.map(p=>p.id+'='+p.name).join(', '),String(pets[0].id)));
-    const hours=Number(prompt('Horas da expedição:','4'));
-    if(petId>0&&hours>0) doAction('pet.expedition.start',{petId,hours},{});
+    const petId=Number((document.querySelector('[data-expedition-pet]')||{}).value||0);
+    const hours=Number((document.querySelector('[data-expedition-hours]')||{}).value||0);
+    if(!petId) return toast('Escolha o pet da expedição.');
+    if(hours>0) doAction('pet.expedition.start',{petId,hours},{});
   });
   document.querySelectorAll('[data-pet-expedition-resolve]').forEach(x=>x.onclick=()=>doAction('pet.expedition.resolve',{},{}));
   document.querySelectorAll('[data-missions-claim]').forEach(x=>x.onclick=()=>doAction('missions.claim',{},{}));
