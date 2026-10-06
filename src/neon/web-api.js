@@ -606,6 +606,69 @@ async function enforceWebActionPolicy(session,name){
   }
 }
 
+async function playerDisplayName(jid){
+  if(!jid) return 'Jogador'
+  const row=(await db.query('SELECT push_name FROM users WHERE jid=$1',[jid])).rows[0]
+  return String(row?.push_name||'Jogador').trim()||'Jogador'
+}
+const brl=n=>'R$ '+Math.abs(Math.round(Number(n)||0)).toLocaleString('pt-BR')
+
+async function sendWebGroupActivity(session,actionName,body,result){
+  if(!session?.chatJid || !result) return
+  const send=globalThis.__alphaWebGroupLog
+  if(typeof send!=='function') return
+
+  const me=session.jid
+  const meName=await playerDisplayName(me)
+  let text='',mentions=[]
+
+  if(actionName==='battle' && result.ok!==false && result.winner && result.loser){
+    const won=String(result.winner.jid)===String(me)
+    const opponent=won?result.loser:result.winner
+    text='⚔️ *RIVALIDADE ALPHA*\n'+meName+' duelou com '+String(opponent.name||'Jogador')+' e *'+(won?'VENCEU':'PERDEU')+'*.'+
+      (won?'\n💰 Prêmio: *'+brl(result.reward)+'*':'')
+    mentions=[me,opponent.jid].filter(Boolean)
+  }else if(actionName==='petduel' && result.winner && result.loser){
+    const won=String(result.winnerJid||result.winner.jid)===String(me)
+    const opponent=won?result.loser:result.winner
+    text='🐾⚔️ *DUELO DE PETS*\n'+meName+' entrou em duelo e *'+(won?'VENCEU':'PERDEU')+'* para '+String(opponent.name||'outro pet')+'.\n⏱️ '+Number(result.rounds||0)+' rodada(s).'
+    mentions=[me,result.winnerJid,result.loserJid].filter(Boolean)
+  }else if(actionName==='game.roulette'){
+    const amount=Number(result.amount||body.amount||0),profit=Number(result.profit||0)
+    text='🎰 *ROULETA — '+meName+'*\nApostou *'+brl(amount)+'* em *'+String(result.choice||body.choice||'')+'* e '+
+      (profit>0?'ganhou *'+brl(profit)+' de lucro* 🎉':'perdeu *'+brl(amount)+'* 💸')+
+      '.\n🎯 Saiu '+String(result.number??'?')+' • '+String(result.color||'')
+    mentions=[me]
+  }else if(actionName==='game.coinflip'){
+    const amount=Number(result.amount||body.amount||0),profit=Number(result.profit||0)
+    text='🪙 *CARA OU COROA — '+meName+'*\nApostou *'+brl(amount)+'* em *'+String(result.choice||body.choice||'')+'* e '+
+      (profit>0?'ganhou *'+brl(profit)+' de lucro* 🎉':'perdeu *'+brl(amount)+'* 💸')+'.'
+    mentions=[me]
+  }else if(actionName==='game.coinDuel.accept' && result.winner){
+    const winnerName=await playerDisplayName(result.winner)
+    const loserJid=String(result.winner)===String(result.challenger)?result.target:result.challenger
+    const loserName=await playerDisplayName(loserJid)
+    text='🪙⚔️ *DUELO CARA OU COROA*\n*'+winnerName+'* venceu *'+loserName+'* e levou o pote de *'+brl(result.pot)+'*.'
+    mentions=[result.winner,loserJid].filter(Boolean)
+  }else if(actionName==='game.rpsDuel.accept'){
+    if(result.winner){
+      const winnerName=await playerDisplayName(result.winner)
+      const loserJid=String(result.winner)===String(result.challenger)?result.target:result.challenger
+      const loserName=await playerDisplayName(loserJid)
+      text='✊✋✌️ *DUELO PPT*\n*'+winnerName+'* venceu *'+loserName+'* valendo *'+brl(result.pot)+'*.'
+      mentions=[result.winner,loserJid].filter(Boolean)
+    }else{
+      text='✊✋✌️ *DUELO PPT*\n'+meName+' terminou um duelo em *EMPATE*. O valor foi devolvido.'
+      mentions=[me,result.challenger].filter(Boolean)
+    }
+  }else if(actionName==='pet.adopt'){
+    text='🐾 *NOVA ADOÇÃO*\n'+meName+' adotou *'+String(result.name||body.name||'um novo pet')+'* — '+String(result.species||body.species||'pet')+'.'
+    mentions=[me]
+  }
+
+  if(text) await send(session.chatJid,text,[...new Set(mentions)])
+}
+
 async function runAction(session,name,body={}){
   const jid=session.jid
   await enforceWebActionPolicy(session,name)
@@ -853,6 +916,7 @@ export async function handleWebApi(req,res){
       const actionName=decodeURIComponent(url.pathname.slice('/api/v1/action/'.length))
       const body=await readJson(req)
       const rawResult=await runAction(session,actionName,body)
+      await sendWebGroupActivity(session,actionName,body,rawResult).catch(err=>console.error('[Web Activity]',err?.message||err))
       const result=sanitizePrivateRefs(sanitizeActionResult(actionName,rawResult),session)
       json(res,200,{ok:true,result})
       return true
