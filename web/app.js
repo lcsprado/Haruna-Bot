@@ -398,22 +398,38 @@ function petSpriteKey(species){
   };
   return exact[s]||PET_SPRITE_ALIASES[s]||'pet-panther';
 }
+function petCroppedSprite(key,className,label){
+  const special=SPECIAL_PET_SPRITES[key];
+  const fixed=FIXED_SPRITES[key];
+  const b=special?special.slice(1):(fixed||OFFICIAL_SPRITES[key]);
+  if(!b) return '';
+  const sheet=special?SPECIAL_PET_ART_SHEETS[special[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
+  const sw=special?SPECIAL_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
+  const sh=special?SPECIAL_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
+  const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
+  const sizeX=(sw/w)*100;
+  const sizeY=(sh/h)*100;
+  const posX=sw===w?0:(x/(sw-w))*100;
+  const posY=sh===h?0:(y/(sh-h))*100;
+  return '<div class="pet-cropped-art '+esc(className||'')+'" role="img" aria-label="'+esc(label||key)+'" '+
+    'style="aspect-ratio:'+w+'/'+h+';background-image:url(\''+esc(sheet)+'\');background-size:'+sizeX+'% '+sizeY+'%;background-position:'+posX+'% '+posY+'%"></div>';
+}
 function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
   const label=titleCase(s);
   const exclusive='pet-special-'+s;
-  if(SPECIAL_PET_SPRITES[exclusive]) return artSprite(exclusive,className,label);
-  if(s==='lobo') return artSprite('fixed-wolvenaro',className,label);
-  if(s==='urso_runico') return artSprite('fixed-urso-runico',className,label);
+  if(SPECIAL_PET_SPRITES[exclusive]) return petCroppedSprite(exclusive,className,label);
+  if(s==='lobo') return petCroppedSprite('fixed-wolvenaro',className,label);
+  if(s==='urso_runico') return petCroppedSprite('fixed-urso-runico',className,label);
   const img=petExactImage(s);
   const sprite=petSpriteKey(s);
   if(img){
-    const fallback=artSprite(sprite,className+' pet-fallback-underlay',label);
+    const fallback=petCroppedSprite(sprite,className+' pet-fallback-underlay',label);
     return '<div class="pet-art-stack">'+fallback+
-      '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006-2" alt="'+esc(label)+'" loading="lazy" '+
+      '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006-3" alt="'+esc(label)+'" loading="lazy" '+
       'onerror="if(this.previousElementSibling){this.previousElementSibling.style.opacity=1}this.remove()"></div>';
   }
-  return artSprite(sprite,className,label);
+  return petCroppedSprite(sprite,className,label);
 }
 
 function raidSpriteKey(level,name){
