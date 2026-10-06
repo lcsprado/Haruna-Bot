@@ -1347,7 +1347,7 @@ function renderRaids(){
           (isHost?'<button class="btn good" data-raid-start="'+r.level+'">Iniciar</button><button class="btn danger" data-raid-cancel="'+r.level+'">Cancelar</button>':'');
       }else if(s.status==='active'){
         buttons=(meJoined?'':'<button class="btn primary" data-raid-join="'+r.level+'">Entrar agora</button>')+
-          '<button class="btn good" data-raid-auto="'+r.level+'">'+(ui.raidLevel===r.level?'⏸ AUTO ON':'▶ AUTO')+'</button><button class="btn" data-raid-round="'+r.level+'">Rodada</button>';
+          '<button class="btn good" data-raid-auto="'+r.level+'">⚡ AUTO SERVIDOR</button><button class="btn" data-raid-round="'+r.level+'">Rodada manual</button>';
       }
       const ranked=players.slice().sort((a,z)=>Number(z.damage||0)-Number(a.damage||0));
       const totalDamage=ranked.reduce((sum,p)=>sum+Number(p.damage||0),0);
@@ -1914,8 +1914,7 @@ function bind(){
   document.querySelectorAll('[data-raid-join]').forEach(x=>x.onclick=()=>doAction('raid.join',{level:Number(x.dataset.raidJoin),name:ui.data.profile.push_name},{}));
   document.querySelectorAll('[data-raid-start]').forEach(x=>x.onclick=async()=>{
     const level=Number(x.dataset.raidStart);
-    await doAction('raid.start',{level:level},{});
-    startRaidAuto(level);
+    await doAction('raid.start',{level:level},{success:'⚔️ Raid iniciada. AUTO no servidor: continua mesmo com o app em segundo plano.'});
   });
   document.querySelectorAll('[data-raid-cancel]').forEach(x=>x.onclick=()=>doAction('raid.cancel',{level:Number(x.dataset.raidCancel)},{}));
   document.querySelectorAll('[data-raid-round]').forEach(x=>x.onclick=async()=>{
@@ -1923,7 +1922,10 @@ function bind(){
     const result=await doAction('raid.round',{level},{});
     animateCombatImpact('raid',result,level);
   });
-  document.querySelectorAll('[data-raid-auto]').forEach(x=>x.onclick=()=>toggleRaidAuto(Number(x.dataset.raidAuto)));
+  document.querySelectorAll('[data-raid-auto]').forEach(x=>x.onclick=()=>{
+    const level=Number(x.dataset.raidAuto);
+    doAction('raid.auto',{level},{success:'⚡ Automação da Raid confirmada no servidor.'});
+  });
   document.querySelectorAll('[data-boss-start]').forEach(x=>x.onclick=()=>doAction('boss.start',{},{}));
   document.querySelectorAll('[data-boss-attack]').forEach(x=>x.onclick=async()=>{
     const result=await doAction('boss.attack',{name:ui.data.profile.push_name,usePet:true},{});
@@ -2090,30 +2092,11 @@ function bind(){
   document.querySelectorAll('[data-clear-result]').forEach(x=>x.onclick=()=>{ui.lastResult=null;render();});
 }
 
+// Raid automática agora roda no servidor. Mantemos estes helpers apenas para
+// limpar timers antigos de sessões abertas antes desta versão.
 function stopRaidAuto(){
   if(ui.raidTimer) clearInterval(ui.raidTimer);
   ui.raidTimer=null; ui.raidLevel=null;
-}
-function startRaidAuto(level){
-  stopRaidAuto();
-  ui.raidLevel=Number(level);
-  const tick=async()=>{
-    try{
-      const result=await doAction('raid.round',{level:ui.raidLevel},{quiet:true,afterSync:false});
-      await sync(true);
-      animateCombatImpact('raid',result,ui.raidLevel);
-      if(result&&((result.victory)||(result.failed)||(result.reason==='inactive'))){
-        stopRaidAuto(); render();
-      }
-    }catch{ stopRaidAuto(); render(); }
-  };
-  tick();
-  ui.raidTimer=setInterval(tick,8000);
-  render();
-}
-function toggleRaidAuto(level){
-  if(ui.raidTimer && ui.raidLevel===level){stopRaidAuto();render();}
-  else startRaidAuto(level);
 }
 function stopBossAuto(){
   if(ui.bossTimer) clearInterval(ui.bossTimer);
