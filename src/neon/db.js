@@ -2413,7 +2413,7 @@ export async function combatLeaderboard(limit=10) {
 let runtimeLockClient = null
 
 function directDatabaseUrl() {
-  const url = new URL(process.env.DATABASE_URL)
+  const url = new URL(databaseUrl)
   url.hostname = url.hostname.replace('-pooler.', '.')
   return url.toString()
 }
