@@ -2880,6 +2880,27 @@ ${bonus.text}
       return true
     }
 
+    if(flow.stage==='legendary_pet_altar_select'){
+      const choice=Number(input)
+      if(!Number.isInteger(choice)||choice<1||choice>LEGENDARY_PET_SUMMONS.length){
+        await reply(`🔮 Escolha um altar de *1 a ${LEGENDARY_PET_SUMMONS.length}*.`)
+        return true
+      }
+      const altar=LEGENDARY_PET_SUMMONS[choice-1]
+      const inv=await getInventory(sender)
+      const owned=Number(inv.find(i=>i.item_id===altar.materialId)?.quantity||0)
+      const summonCost=Math.max(1,Number(altar.summonCost||100))
+      let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/${summonCost}*\n💠 Custo: *${summonCost}*\n\n🎲 *CHANCES*\n`
+      altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%*\n` })
+      if(owned<summonCost){
+        clearQuickFlow(chat,sender)
+        await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
+        return true
+      }
+      setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
+      await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
+      return true
+    }
     if(flow.stage==='legendary_pet_summon_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -8757,7 +8778,8 @@ _Os comandos antigos continuam funcionando normalmente._`
               a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%*\n` })
               text+='\n'
             })
-            text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Use *!invocarpet N*. Ex.: *!invocarpet 2*.'
+            text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Responda só com o *número do altar* ou use *!invocarpet N*. Ex.: *2* ou *!invocarpet 2*.'
+            setQuickFlow(chat,sender,'legendary_pet_altar_select',{},5*60*1000)
             return await reply(text)
           }
 
