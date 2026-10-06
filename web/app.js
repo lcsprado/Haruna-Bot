@@ -1902,7 +1902,8 @@ setInterval(()=>{
 (async function boot(){
   renderNav();
   const params=new URLSearchParams(location.search);
-  const linked=params.get('link');
+  const hashParams=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+  const linked=hashParams.get('code') || params.get('link');
   const tokenFromLink=params.get('token');
 
   if(tokenFromLink){
@@ -1911,17 +1912,8 @@ setInterval(()=>{
     history.replaceState({},document.title,'/rpg');
   }
 
-  // Se já existe uma sessão válida neste aparelho, não tente consumir novamente
-  // o código de uso único do link. Reabrir o mesmo link passa a funcionar.
-  if(ui.token){
-    showApp();
-    await sync(true);
-    if(ui.token){
-      if(linked) history.replaceState({},document.title,'/rpg');
-      return;
-    }
-  }
-
+  // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
+  // Só o navegador executa o POST que consome o código.
   if(linked){
     $('#linkCode').value=linked;
     try{
@@ -1930,9 +1922,22 @@ setInterval(()=>{
       await sync(false);
       return;
     }catch(err){
-      showLogin(err.message+' Gere um novo !web e use qualquer um dos 3 últimos códigos, válidos por 30 minutos.');
+      // Se o aparelho já tem sessão válida, um código antigo/consumido não deve derrubá-la.
+      if(ui.token){
+        history.replaceState({},document.title,'/rpg');
+        showApp();
+        await sync(true);
+        if(ui.token) return;
+      }
+      showLogin(err.message+' Gere um novo !web e toque no novo link. O código vale por 30 minutos.');
       return;
     }
+  }
+
+  if(ui.token){
+    showApp();
+    await sync(true);
+    if(ui.token) return;
   }
 
   showLogin();
