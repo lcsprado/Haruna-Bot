@@ -472,6 +472,13 @@ body.menu-open .sidebar{touch-action:pan-y}
   max-width:100%;
   max-height:104px;
 }
+.item-cropped-art{
+  display:block!important;
+  background-repeat:no-repeat!important;
+  background-color:transparent!important;
+  background-origin:border-box!important;
+  background-clip:border-box!important;
+}
 .item-card>.item-icon{display:none!important}
 
 .result-scene{
