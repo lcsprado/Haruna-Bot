@@ -1815,6 +1815,45 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
     }
   }
 
+  // Evento único: Hora do Corre — 06/10/2026 19:30–20:00 BRT.
+  let horaCorreAnnouncementRunning=false
+  async function updateHoraCorreAnnouncement(){
+    if(trevoHealth.whatsapp!=='open' || horaCorreAnnouncementRunning) return
+    horaCorreAnnouncementRunning=true
+    try{
+      const startsAt=Date.parse('2026-10-06T19:30:00-03:00')
+      const endsAt=Date.parse('2026-10-06T20:00:00-03:00')
+      const now=Date.now()
+      if(now<startsAt || now>=endsAt) return
+      const key='hora_corre_2026_10_06_1930_announced'
+      const raw=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value
+      if(raw?.sent) return
+      await sendEventToGroups(
+`🚗🍔 *HORA DO CORRE COMEÇOU!* 🍔🚗
+
+⏱️ *19:30 → 20:00*
+💰 *2X DINHEIRO* somente em:
+🚗 *Uber*
+🍔 *iFood*
+
+⚠️ Trabalho, negócios, Raid, Boss e minigames continuam com ganhos normais.
+
+🔥 É meia hora pra fazer caixa. *Corre!*`
+      )
+      await db.query(`
+        INSERT INTO trevo_settings(key,value,updated_at)
+        VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+        ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+      `,[key,JSON.stringify({sent:true,sentAt:Date.now()})])
+    }catch(err){
+      console.error('[HoraDoCorre] falha no anúncio',err?.message||err)
+    }finally{
+      horaCorreAnnouncementRunning=false
+    }
+  }
+  setInterval(updateHoraCorreAnnouncement,5000).unref?.()
+  setTimeout(updateHoraCorreAnnouncement,2500).unref?.()
+
   async function updateDoubleRewardAnnouncements(){
     if(trevoHealth.whatsapp!=='open' || doubleRewardAnnouncementRunning) return
     doubleRewardAnnouncementRunning=true
