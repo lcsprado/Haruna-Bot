@@ -59,7 +59,9 @@ async function debit(client,jid,amount){
 
 const LUCKY_3X_START=Date.parse('2026-10-06T07:30:00-03:00')
 const LUCKY_3X_END=Date.parse('2026-10-06T08:30:00-03:00')
-const lucky3xMultiplier=()=>Date.now()>=LUCKY_3X_START&&Date.now()<LUCKY_3X_END?3:1
+const lucky3xActive=()=>Date.now()>=LUCKY_3X_START&&Date.now()<LUCKY_3X_END
+const lucky3xMultiplier=()=>lucky3xActive()?3:1
+const lucky3xPlayerWins=()=>!lucky3xActive()||Math.random()<0.20
 
 async function credit(client,jid,amount,note){
   amount=Math.round(Number(amount)||0)
@@ -83,7 +85,7 @@ export async function roulette(jid,amount,choice){
     const redNumbers=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
     const color=n===0?'verde':(redNumbers.has(n)?'vermelho':'preto')
     let payout=0
-    if(choice===color){
+    if(choice===color && lucky3xPlayerWins()){
       const basePayout=choice==='verde'?amount*36:amount*2
       const baseProfit=basePayout-amount
       // Lucky 3x multiplies only the prize/profit, never the returned stake.
@@ -136,7 +138,7 @@ export async function spinGroupRoulette(chat,jid){
     const results=[]
     for(const [player,bet] of Object.entries(state.players||{})){
       let payout=0
-      if(bet.choice===color){
+      if(bet.choice===color && lucky3xPlayerWins()){
         const stake=Number(bet.amount)
         const basePayout=bet.choice==='verde'?stake*36:stake*2
         const baseProfit=basePayout-stake
@@ -159,8 +161,10 @@ export async function coinFlip(jid,amount,choice){
 
   return tx(async c=>{
     await debit(c,jid,amount)
-    const result=Math.random()<0.5?'cara':'coroa'
-    const payout=result===choice?amount*2*lucky3xMultiplier():0
+    const normalResult=Math.random()<0.5?'cara':'coroa'
+    const won=lucky3xActive()?Math.random()<0.20:normalResult===choice
+    const result=won?choice:(choice==='cara'?'coroa':'cara')
+    const payout=won?amount*2*lucky3xMultiplier():0
     if(payout) await credit(c,jid,payout,'cara-ou-coroa')
     return {result,choice,amount,payout,profit:payout-amount}
   })
