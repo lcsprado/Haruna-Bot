@@ -4101,12 +4101,22 @@ export async function summonLegendaryPet(jid,materialId){
     if(owned<summonCost) throw new Error(`Você precisa de ${summonCost} ${altar.materialName}. Você possui ${owned}.`)
     await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[summonCost,jid,altar.materialId])
 
-    const roll=Math.random()*100
-    let acc=0
-    let chosen=altar.pets[altar.pets.length-1]
-    for(const pet of altar.pets){
-      acc+=Number(pet.chance||0)
-      if(roll<acc){ chosen=pet; break }
+    // Garantia administrativa opcional de uma única invocação.
+    // A chave fica persistida até o jogador realmente ter materiais e concluir a invocação.
+    const forcedKey='forced_summon:'+jid+':'+altar.materialId
+    const forcedRow=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[forcedKey])).rows[0]
+    const forcedSpecies=String(forcedRow?.value?.species||'')
+    let chosen=altar.pets.find(p=>p.species===forcedSpecies)||null
+    if(chosen){
+      await client.query('DELETE FROM trevo_settings WHERE key=$1',[forcedKey])
+    }else{
+      const roll=Math.random()*100
+      let acc=0
+      chosen=altar.pets[altar.pets.length-1]
+      for(const pet of altar.pets){
+        acc+=Number(pet.chance||0)
+        if(roll<acc){ chosen=pet; break }
+      }
     }
 
     const petName=chosen.name.replace(/^[^\p{L}\p{N}]+/u,'').slice(0,24)
