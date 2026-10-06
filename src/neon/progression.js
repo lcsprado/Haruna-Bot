@@ -1192,6 +1192,20 @@ export async function claimGroupMission(chatJid,jid){
   })
 }
 
+function randomGroupEventCash(min,max){
+  return Math.floor(min+Math.random()*(max-min+1))
+}
+
+function pickWeightedGroupEventItem(pool){
+  const total=pool.reduce((sum,x)=>sum+Number(x.weight||0),0)
+  let roll=Math.random()*total
+  for(const item of pool){
+    roll-=Number(item.weight||0)
+    if(roll<=0) return item
+  }
+  return pool[pool.length-1]||null
+}
+
 export async function maybeSpawnGroupEvent(chatJid){
   if(!String(chatJid).endsWith('@g.us')) return null
   return tx(async client=>{
@@ -1203,9 +1217,9 @@ export async function maybeSpawnGroupEvent(chatJid){
     if(old && Number(old.spawned_at)>now-1800) return null
     if(Math.random()>.035) return null
     const events=[
-      {type:'maleta',reward:5000,text:'💼 Uma maleta de dinheiro apareceu!'},
-      {type:'pix',reward:8000,text:'💸 Um PIX misterioso caiu no grupo!'},
-      {type:'tesouro',reward:12000,text:'🧰 Um pequeno tesouro apareceu!'}
+      {type:'maleta',reward:randomGroupEventCash(8000,16000),text:'💼 Uma *Maleta Misteriosa* apareceu no grupo!',hint:'Pode ter dinheiro e até item bônus.'},
+      {type:'pix',reward:randomGroupEventCash(12000,20000),text:'💸 Um *PIX Misterioso* caiu no grupo!',hint:'Essa é focada em dinheiro.'},
+      {type:'tesouro',reward:randomGroupEventCash(6000,12000),text:'🧰 Um *Tesouro Alpha* apareceu!',hint:'Menos dinheiro, mas chance alta de item.'}
     ]
     const e=events[Math.floor(Math.random()*events.length)]
     await client.query(`INSERT INTO group_events(chat_jid,event_type,reward_cash,spawned_at,expires_at,claimed_by)
@@ -1223,11 +1237,41 @@ export async function claimGroupEvent(chatJid,jid){
     const {rows}=await client.query('SELECT * FROM group_events WHERE chat_jid=$1 FOR UPDATE',[chatJid])
     const e=rows[0]
     if(!e || e.claimed_by || Number(e.expires_at)<now) throw new Error('Não há evento disponível agora.')
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const rewardCash=Math.round(Number(e.reward_cash||0)*moneyMultiplier)
+
+    // Eventos-relâmpago do grupo têm economia própria e não recebem multiplicador global.
+    const rewardCash=Math.round(Number(e.reward_cash||0))
     await client.query('UPDATE group_events SET claimed_by=$1 WHERE chat_jid=$2',[jid,chatJid])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[rewardCash,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'group_event',$3)",[jid,rewardCash,e.event_type])
-    return {...e,reward_cash:rewardCash,eventMultiplier:moneyMultiplier}
+
+    let bonusItem=null
+    const maletaPool=[
+      {id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum',weight:30},
+      {id:'pocao_g',name:'Poção Grande',rarity:'Raro',weight:25},
+      {id:'energetico_pet',name:'Energético de Pet',rarity:'Raro',weight:20},
+      {id:'pocao_pet_rara',name:'Poção Rara de Pet',rarity:'Raro',weight:15},
+      {id:'caixa_rara',name:'Caixa Rara',rarity:'Raro',weight:8},
+      {id:'elixir_supremo',name:'Elixir Supremo',rarity:'Épico',weight:2}
+    ]
+    const tesouroPool=[
+      {id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum',weight:22},
+      {id:'pocao_g',name:'Poção Grande',rarity:'Raro',weight:20},
+      {id:'energetico_pet',name:'Energético de Pet',rarity:'Raro',weight:18},
+      {id:'pocao_pet_rara',name:'Poção Rara de Pet',rarity:'Raro',weight:15},
+      {id:'caixa_rara',name:'Caixa Rara',rarity:'Raro',weight:18},
+      {id:'elixir_supremo',name:'Elixir Supremo',rarity:'Épico',weight:7}
+    ]
+    const itemChance=e.event_type==='tesouro'?.80:e.event_type==='maleta'?.45:0
+    if(itemChance>0 && Math.random()<itemChance){
+      bonusItem=pickWeightedGroupEventItem(e.event_type==='tesouro'?tesouroPool:maletaPool)
+      if(bonusItem){
+        await client.query(
+          'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',
+          [jid,bonusItem.id]
+        )
+      }
+    }
+
+    return {...e,reward_cash:rewardCash,eventMultiplier:1,bonusItem}
   })
 }
