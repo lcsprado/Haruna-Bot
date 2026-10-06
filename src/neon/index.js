@@ -1867,34 +1867,6 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
       const now=Date.now()
       const eventId=`${startsAt}:${endsAt}:${raw.moneyMultiplier||2}:${raw.xpMultiplier||2}`
 
-      if(now<startsAt && !raw.silentNotice && String(raw.noticeAnnouncementId||'')!==eventId){
-        const luckyRaw=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
-        await sendEventToGroups(
-`📢 *CORREÇÃO — EVENTOS HOJE, 03/10*
-
-🔥 *21:00 → 21:30 — EVENTO 1,5X*
-💰 Ganhos em dinheiro: *1,5x*
-✨ XP: *1,5x*
-⏱️ Duração: *30 minutos*
-
-🍀 *21:30 → 21:40 — DOUBLE LUCKY*
-🎁 Ao abrir caixas, as chances de raridade ficam *2x maiores*
-⏱️ Duração: *10 minutos*
-
-🛡️ *PROTEÇÃO DE PICO ATIVA*
-Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simultâneas do grupo serão escalonadas para evitar travamentos.
-
-⚠️ Início e fim automáticos no horário de Brasília.`
-        )
-        raw.noticeAnnouncementId=eventId
-        console.log('[Eventos] aviso corrigido de 03/10 enviado aos grupos ativos')
-        await db.query(
-          "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
-          [JSON.stringify(raw)]
-        )
-        return
-      }
-
       if(event.active && String(raw.startAnnouncementId||'')!==eventId){
         if(String(raw.oneOffId||'')==='treino-alpha-2026-10-06-1900'){
           await sendEventToGroups(
