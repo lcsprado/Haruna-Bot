@@ -594,7 +594,19 @@ _Responda apenas com o número._`
 async function showMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'nav_main',{},90000)
   await reply(
-`🤖 *ALPHA BOT — MENU PRINCIPAL*
+`🔥🚀 *ALPHA BOT — INAUGURAÇÃO* 🚀🔥
+
+🎁 *TESTE GRÁTIS POR 3 DIAS*
+Chame a galera, teste o RPG completo e veja quem vira o verdadeiro Alpha do grupo.
+💚 *Promoção de inauguração por tempo limitado.*
+
+⚔️ Evolua seu personagem • 🐾 monte seu time pet
+👹 Faça Boss e Raids com os amigos
+💰 Crie patrimônio, trabalhe, faça Uber/iFood e abra negócios
+🎮 Minigames, duelos, eventos e ranking
+
+━━━━━━━━━━━━━━
+🤖 *MENU PRINCIPAL*
 
 1️⃣ 👤 Meu perfil
 2️⃣ 💰 Economia
@@ -606,19 +618,15 @@ async function showMainMenu(chat,sender,reply){
 8️⃣ 💚 Grupo / assinatura
 9️⃣ 🆘 Futebol, utilidades & suporte
 
-🔥 *DESTAQUES 2.0*
-🐾 Time Pet com Principal, Suporte, Reserva e sinergias por estilo
-👹 Superboss semanal: sexta 00:00 → sábado 23:59 • Boss comum disponível fora dele
-🏢 Negócios, upgrades e renda passiva
-💼 Carreira no !trabalhar
-🚗 Uber com sua frota • 🏍️ iFood com bikes/motos
-📚 Catálogo completo: *!comandos*
+🚀 *COMECE AGORA*
+*!perfil* • *!rpg* • *!pet* • *!raid* • *!minigames*
+📚 Lista completa: *!comandos*
+🌐 RPG Web: *!web*
 
-✨ *Extra rápido:* responda uma foto ou vídeo com *!sticker*.
-🖼️ *Seu card:* use *!setfoto* numa foto para personalizar o *!perfil*\n*!web* — conecta sua conta ao RPG Web com código de uso único.
+💥 *3 dias grátis para testar no grupo.*
+Depois, se curtirem, é só usar *!assinar*.
 
 👉 *Responda apenas com o número.*
-
 0️⃣ Sair`
   )
 }
@@ -626,9 +634,13 @@ async function showMainMenu(chat,sender,reply){
 async function showCommandsMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
   await reply(
-`📚 *COMANDOS DO ALPHA*
+`🔥📚 *ALPHA BOT — COMANDOS* 📚🔥
 
-Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
+🎉 *PROMOÇÃO DE INAUGURAÇÃO*
+🎁 Seu grupo pode testar o Alpha Bot por *3 DIAS GRÁTIS*.
+⚔️ RPG • 🐾 Pets • 👹 Raids/Boss • 💰 Economia • 🎮 Minigames
+
+💡 Jogue com os amigos, monte seu personagem e descubra quem manda no ranking antes do teste acabar.
 
 1️⃣ 👤 Perfil, conta & social
 2️⃣ 💰 Economia, trabalho & banco
@@ -640,6 +652,7 @@ Todos os comandos de usuário estão organizados abaixo. Comandos administrativo
 8️⃣ 🛡️ Grupo & moderação
 9️⃣ ⚽ Futebol, utilidades & suporte
 
+💚 Curtiu? Use *!assinar* para continuar depois do teste.
 👉 Responda só com o número.
 0️⃣ Fechar`
   )
