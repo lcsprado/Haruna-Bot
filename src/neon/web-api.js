@@ -751,9 +751,20 @@ async function sendWebGroupActivity(session,actionName,body,result){
     text='✨🐾 *INVOCAÇÃO*\n'+meName+' realizou uma invocação de pet de Raid.'
     mentions=[me]
   }else if(actionName.startsWith('raid.')){
-    const labels={'raid.create':'abriu uma Raid','raid.join':'entrou em uma Raid','raid.start':'iniciou uma Raid','raid.round':'atacou na Raid','raid.cancel':'cancelou uma Raid'}
-    text='⚔️ *RAID*\n'+meName+' '+(labels[actionName]||'agiu em uma Raid')+(body.level?' Lv.*'+Number(body.level)+'*':'')+'.'
-    mentions=[me]
+    if(actionName==='raid.round'){
+      const round=Number(result?.round||0)
+      if(round>0 && round%10===0){
+        const hp=Number(result?.hp||0), maxHp=Number(result?.maxHp||0)
+        text='⚔️ *RAID — RODADA '+round+'*\n👤 '+meName+' avançou a Raid Lv.*'+Number(body.level||result?.level||0)+'*.'+(maxHp>0?'\n❤️ Boss: *'+hp.toLocaleString('pt-BR')+'/'+maxHp.toLocaleString('pt-BR')+'*':'')
+        mentions=[me]
+      }else{
+        text=null
+      }
+    }else{
+      const labels={'raid.create':'abriu uma Raid','raid.join':'entrou em uma Raid','raid.start':'iniciou uma Raid','raid.cancel':'cancelou uma Raid'}
+      text='⚔️ *RAID*\n'+meName+' '+(labels[actionName]||'agiu em uma Raid')+(body.level?' Lv.*'+Number(body.level)+'*':'')+'.'
+      mentions=[me]
+    }
   }else if(actionName.startsWith('boss.')){
     text='👹 *BOSS*\n'+meName+' '+(actionName==='boss.start'?'iniciou um Boss':'atacou o Boss')+'.'
     mentions=[me]
