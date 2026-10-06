@@ -712,3 +712,9 @@ body.loot-open{overflow:hidden!important}
   .loot-actions{display:grid;grid-template-columns:1fr 1fr}
   .loot-actions .btn{width:100%}
 }
+
+.class-current{margin-bottom:18px}
+.stat-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.stat-strip span,.class-bonuses span{display:grid;place-items:center;min-height:34px;padding:7px;border:1px solid #2a3d54;border-radius:10px;background:#09111a;font-size:10px;font-weight:800}
+.class-bonuses{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:12px 0}
+@media(max-width:520px){.stat-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
