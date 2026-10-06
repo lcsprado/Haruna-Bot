@@ -128,6 +128,16 @@ export async function createWebLinkCode(jid,chatJid=null){
   await ensureUser(jid)
   await ensureWebTables()
   const group=cleanChatJid(chatJid)
+  // Se !web foi gerado dentro de um grupo, promova imediatamente TODAS as sessões
+  // Web válidas do jogador para esse grupo. Assim uma sessão antiga criada no privado
+  // deixa de bloquear Boss/Raid mesmo antes de o usuário reabrir o link.
+  if(group){
+    const t=now()
+    await db.query(
+      'UPDATE web_sessions SET chat_jid=$1,last_seen_at=$2 WHERE jid=$3 AND expires_at>$2',
+      [group,t,jid]
+    ).catch(()=>{})
+  }
   // Mantém até 3 códigos recentes por jogador para não invalidar o link anterior
   // quando !web é enviado novamente no grupo. Todos continuam sendo uso único.
   await db.query('DELETE FROM web_link_codes WHERE expires_at<$1',[now()])
@@ -189,6 +199,14 @@ async function exchangeWebLinkCode(code){
       'INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at) VALUES($1,$2,$3,$4,$5,$5)',
       [tokenHash,row.jid,row.chat_jid||null,expiresAt,now()]
     )
+    if(row.chat_jid){
+      // Vincular pelo grupo atualiza também tokens antigos do mesmo jogador/aparelho.
+      // Isso elimina o estado "entrei pelo link do grupo, mas Boss/Raid continuam privados".
+      await client.query(
+        'UPDATE web_sessions SET chat_jid=$1,last_seen_at=$2 WHERE jid=$3 AND expires_at>$2',
+        [row.chat_jid,now(),row.jid]
+      )
+    }
     await client.query('COMMIT')
     return {token,expiresAt,groupLinked:Boolean(row.chat_jid)}
   }catch(err){
