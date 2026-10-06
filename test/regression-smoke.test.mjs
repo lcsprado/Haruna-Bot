@@ -242,3 +242,20 @@ test('endgame special pets use exclusive artwork',()=>{
   }
   assert.ok(app.includes("if(SPECIAL_PET_SPRITES[exclusive]) return artSprite(exclusive,className,label)"),'exclusive pet art must take priority over aliases')
 })
+
+
+test('all Raid/endgame pets have unique exclusive art slots',()=>{
+  assert.ok(app.includes("SPECIAL_PET_ART_SHEETS=["),'two-sheet Raid pet art bundle missing')
+  const raidSpecies=["golem_ancestral","urso_runico","colosso_cristal","oraculo_pedra","salamandra_infernal","dragao_vulcanico","fenix_fogo","pantera_vulcanica","corvo_abissal","lobo_abismo","fenix_gelo","espectro_abissal","rinoceronte_titanico","guardiao_obsidiana","leviata_gelo","kraken_aco","esfinge_titanica","cerbero_carmesim","tigre_lunar","imperador_abissal","quimera_abissal","paladino_astral","leao_solar","grifo_celestial","fenix_celestial","lince_celestial","arcanjo_eclipse","serpente_cosmica","dragao_corrompido","fenix_alpha","colosso_alpha","oraculo_alpha"]
+  const seen=new Set()
+  for(const species of raidSpecies){
+    const token="'pet-special-"+species+"':["
+    const at=app.indexOf(token)
+    assert.ok(at>=0,'missing exclusive art for '+species)
+    const close=app.indexOf(']',at)
+    const slot=app.slice(at+token.length,close)
+    assert.ok(!seen.has(slot),'duplicate visual slot for '+species)
+    seen.add(slot)
+  }
+  assert.equal(seen.size,raidSpecies.length,'every Raid/endgame pet must have its own art slot')
+})

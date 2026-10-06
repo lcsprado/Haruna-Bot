@@ -67,21 +67,45 @@ const FIXED_ART_H=384;
 
 // Artes exclusivas dos pets especiais/endgame. Uma única spritesheet evita
 // dezenas de downloads sem reaproveitar a identidade visual entre espécies.
-const SPECIAL_PET_ART_SHEET='/assets/alpha-special-pets.webp?v=alpha-special-pets-20261006-1';
-const SPECIAL_PET_ART_W=384;
+const SPECIAL_PET_ART_SHEETS=[
+  '/assets/alpha-raid-pets-1.webp?v=alpha-raid-pets-20261006-1',
+  '/assets/alpha-raid-pets-2.webp?v=alpha-raid-pets-20261006-1'
+];
+const SPECIAL_PET_ART_W=288;
 const SPECIAL_PET_ART_H=288;
 const SPECIAL_PET_SPRITES={
-  'pet-special-oraculo_pedra':[0,0,96,96],
-  'pet-special-pantera_vulcanica':[96,0,96,96],
-  'pet-special-espectro_abissal':[192,0,96,96],
-  'pet-special-kraken_aco':[288,0,96,96],
-  'pet-special-esfinge_titanica':[0,96,96,96],
-  'pet-special-quimera_abissal':[96,96,96,96],
-  'pet-special-paladino_astral':[192,96,96,96],
-  'pet-special-lince_celestial':[288,96,96,96],
-  'pet-special-arcanjo_eclipse':[0,192,96,96],
-  'pet-special-colosso_alpha':[96,192,96,96],
-  'pet-special-oraculo_alpha':[192,192,96,96]
+  'pet-special-golem_ancestral':[0,0,0,72,72],
+  'pet-special-urso_runico':[0,72,0,72,72],
+  'pet-special-colosso_cristal':[0,144,0,72,72],
+  'pet-special-oraculo_pedra':[0,216,0,72,72],
+  'pet-special-salamandra_infernal':[0,0,72,72,72],
+  'pet-special-dragao_vulcanico':[0,72,72,72,72],
+  'pet-special-fenix_fogo':[0,144,72,72,72],
+  'pet-special-pantera_vulcanica':[0,216,72,72,72],
+  'pet-special-corvo_abissal':[0,0,144,72,72],
+  'pet-special-lobo_abismo':[0,72,144,72,72],
+  'pet-special-fenix_gelo':[0,144,144,72,72],
+  'pet-special-espectro_abissal':[0,216,144,72,72],
+  'pet-special-rinoceronte_titanico':[0,0,216,72,72],
+  'pet-special-guardiao_obsidiana':[0,72,216,72,72],
+  'pet-special-leviata_gelo':[0,144,216,72,72],
+  'pet-special-kraken_aco':[0,216,216,72,72],
+  'pet-special-esfinge_titanica':[1,0,0,72,72],
+  'pet-special-cerbero_carmesim':[1,72,0,72,72],
+  'pet-special-tigre_lunar':[1,144,0,72,72],
+  'pet-special-imperador_abissal':[1,216,0,72,72],
+  'pet-special-quimera_abissal':[1,0,72,72,72],
+  'pet-special-paladino_astral':[1,72,72,72,72],
+  'pet-special-leao_solar':[1,144,72,72,72],
+  'pet-special-grifo_celestial':[1,216,72,72,72],
+  'pet-special-fenix_celestial':[1,0,144,72,72],
+  'pet-special-lince_celestial':[1,72,144,72,72],
+  'pet-special-arcanjo_eclipse':[1,144,144,72,72],
+  'pet-special-serpente_cosmica':[1,216,144,72,72],
+  'pet-special-dragao_corrompido':[1,0,216,72,72],
+  'pet-special-fenix_alpha':[1,72,216,72,72],
+  'pet-special-colosso_alpha':[1,144,216,72,72],
+  'pet-special-oraculo_alpha':[1,216,216,72,72]
 };
 
 const FIXED_SPRITES={
@@ -219,9 +243,9 @@ const OFFICIAL_SPRITES={
 function artSprite(key,className,alt){
   const special=SPECIAL_PET_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=special||fixed||OFFICIAL_SPRITES[key];
+  const b=special?special.slice(1):(fixed||OFFICIAL_SPRITES[key]);
   if(!b) return '';
-  const sheet=special?SPECIAL_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
+  const sheet=special?SPECIAL_PET_ART_SHEETS[special[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
   const width=special?SPECIAL_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
   const height=special?SPECIAL_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
   return '<svg class="official-art '+esc(className||'')+'" viewBox="'+b.join(' ')+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(alt||key)+'">'+
