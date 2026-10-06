@@ -476,10 +476,16 @@ async function playerBootstrap(session){
 }
 
 async function publicCatalog(){
-  const [shop,allItemRows]=await Promise.all([
+  const [shopRows,allItemRows]=await Promise.all([
     getShop(),
     db.query('SELECT id,name,description,category,price,sellable,stackable,rarity,data FROM items ORDER BY category,price,name')
   ])
+  // Catálogo antigo deixou armas/armaduras duplicadas em inglês sem suporte ao sistema atual de equipamento.
+  // Mantemos somente os itens canônicos quando existe versão real equipada no Alpha RPG.
+  const shop=(shopRows||[]).filter(item=>{
+    if(!['weapon','armor','boots'].includes(item.category)) return true
+    return Boolean(getEquipmentInfo(item.id))
+  })
   const allItems=(allItemRows.rows||[]).map(item=>({
     ...item,
     equipment:['weapon','armor','boots'].includes(item.category)?getEquipmentInfo(item.id):null
@@ -626,6 +632,7 @@ async function runAction(session,name,body={}){
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
     case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10))
+    case 'player.heal': return usePotion(jid,body.itemId?String(body.itemId):null)
     case 'item.use': return usePotion(jid,String(body.itemId||''))
 
     case 'item.box.open': return openLootBoxes(jid,String(body.boxId||'caixa_sorte'),positiveInt(body.qty||1,'Quantidade',50))
