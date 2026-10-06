@@ -223,18 +223,20 @@ async function webAuthSelfTest(){
   const code=makeLinkCode()
   const codeHash=sha256(code)
   const jid='__alpha_web_health__'
+  const group='120363000000000000@g.us'
   const created=now()
   await db.query(
-    'INSERT INTO web_link_codes(code_hash,jid,chat_jid,expires_at,created_at) VALUES($1,$2,NULL,$3,$4)',
-    [codeHash,jid,created+60000,created]
+    'INSERT INTO web_link_codes(code_hash,jid,chat_jid,expires_at,created_at) VALUES($1,$2,$3,$4,$5)',
+    [codeHash,jid,group,created+60000,created]
   )
   let tokenHash=''
   try{
     const session=await exchangeWebLinkCode(code)
     tokenHash=sha256(session.token)
-    const row=(await db.query('SELECT jid,expires_at FROM web_sessions WHERE token_hash=$1',[tokenHash])).rows[0]
+    const row=(await db.query('SELECT jid,chat_jid,expires_at FROM web_sessions WHERE token_hash=$1',[tokenHash])).rows[0]
     if(!row||row.jid!==jid||Number(row.expires_at)<=created) throw new Error('Sessão de teste não foi persistida.')
-    return {ok:true,codeExchange:true,sessionPersisted:true}
+    if(row.chat_jid!==group||!session.groupLinked) throw new Error('Vínculo de grupo do Web não foi persistido.')
+    return {ok:true,codeExchange:true,sessionPersisted:true,groupLinked:true}
   }finally{
     if(tokenHash) await db.query('DELETE FROM web_sessions WHERE token_hash=$1',[tokenHash]).catch(()=>{})
     await db.query('DELETE FROM web_link_codes WHERE code_hash=$1',[codeHash]).catch(()=>{})
