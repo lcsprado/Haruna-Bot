@@ -2962,21 +2962,35 @@ const LEVEL_REWARDS = {
   35:{cash:180000,items:[['caixa_epica',2],['pocao_pet_epica',3]]},
   40:{cash:240000,items:[['caixa_epica',3],['energetico_pet',3]]},
   45:{cash:320000,items:[['caixa_epica',4],['elixir_supremo',3]]},
-  50:{cash:450000,items:[['caixa_epica',5],['chave_raid_50',1]]}
+  50:{cash:450000,items:[['caixa_epica',5],['chave_raid_50',1]]},
+
+  // Endgame 55–100: crescimento controlado. O valor principal vem de utilidade,
+  // caixas e chaves; dinheiro cresce devagar para não inflar a economia.
+  55:{cash:325000,items:[['caixa_epica',3],['pocao_pet_suprema',2],['energetico_pet',2]]},
+  60:{cash:350000,items:[['caixa_epica',4],['chave_raid_40',1],['elixir_supremo',3]]},
+  65:{cash:375000,items:[['caixa_epica',4],['pocao_pet_suprema',3],['energetico_pet',3]]},
+  70:{cash:400000,items:[['caixa_epica',5],['chave_raid_50',1],['elixir_supremo',4]]},
+  75:{cash:425000,items:[['caixa_epica',5],['pocao_pet_suprema',4],['energetico_pet',3]]},
+  80:{cash:450000,items:[['caixa_epica',6],['chave_raid_50',1],['pocao_pet_suprema',4]]},
+  85:{cash:500000,items:[['caixa_epica',6],['chave_raid_50',1],['energetico_pet',4]]},
+  90:{cash:550000,items:[['caixa_epica',7],['chave_raid_50',2],['pocao_pet_suprema',5]]},
+  95:{cash:625000,items:[['caixa_epica',8],['chave_raid_50',2],['elixir_supremo',5]]},
+  100:{cash:750000,items:[['pergaminho_reclassificacao',1],['caixa_epica',10],['chave_raid_50',2],['pocao_pet_suprema',5]]}
 }
 
 function levelRewardFor(milestone){
   milestone=Number(milestone)
-  if(milestone<5 || milestone%5!==0) return null
-  if(LEVEL_REWARDS[milestone]) return LEVEL_REWARDS[milestone]
-  // Pós-50 continua premiando a cada 5 níveis, com crescimento controlado.
-  return {
-    cash:100000+(milestone*7000),
-    items:[
-      ['caixa_epica',Math.min(5,2+Math.floor((milestone-50)/25))],
-      ['energetico_pet',Math.min(5,1+Math.floor((milestone-50)/20))]
-    ]
-  }
+  if(milestone<5 || milestone>100 || milestone%5!==0) return null
+  return LEVEL_REWARDS[milestone]||null
+}
+
+export async function getClaimedLevelRewards(jid){
+  await ensureUser(jid)
+  const {rows}=await db.query(
+    'SELECT milestone FROM level_reward_claims WHERE jid=$1 ORDER BY milestone',
+    [jid]
+  )
+  return rows.map(r=>Number(r.milestone)).filter(n=>Number.isInteger(n))
 }
 
 export async function claimLevelRewards(jid){
