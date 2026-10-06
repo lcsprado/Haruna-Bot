@@ -234,6 +234,15 @@ test('every successful PWA action has a WhatsApp activity fallback',()=>{
   assert.ok(webApi.includes("text='🎮 *ATIVIDADE ALPHA*"),'generic fallback activity log missing')
 })
 
+test('bank and business WhatsApp activity logs include real monetary values',()=>{
+  assert.ok(webApi.includes("const amount=Number(result?.amount||0)"),'deposit must use the actual deposited amount returned by the server')
+  assert.ok(webApi.includes("Saldo no banco:"),'bank activity must show resulting bank balance')
+  assert.ok(webApi.includes("const gross=Number(result?.gross||0)"),'business collection must show gross revenue')
+  assert.ok(webApi.includes("const tax=Number(result?.tax||0)"),'business collection must show tax')
+  assert.ok(webApi.includes("Líquido recebido:"),'business collection must show net amount received')
+  assert.ok(webApi.includes("📊 *Produção*"),'business collection should show per-business production when available')
+})
+
 
 test('endgame special pets use exclusive artwork',()=>{
   assert.ok(app.includes("SPECIAL_PET_ART_SHEETS=["),'special-pet spritesheets missing')
