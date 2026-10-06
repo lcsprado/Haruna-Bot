@@ -615,6 +615,10 @@ function bossModeLabel(value){
   const key=String(value||'').toLowerCase();
   return ({common:'Comum',weekly:'Semanal',event:'Evento',event_completed:'Evento concluído',completed:'Concluído'}[key]||titleCase(key));
 }
+function loanStatusLabel(value){
+  const key=String(value||'').toLowerCase();
+  return ({pending:'Pendente',active:'Ativo',paid:'Pago',rejected:'Recusado',cancelled:'Cancelado',expired:'Expirado',overdue:'Atrasado'}[key]||titleCase(key));
+}
 
 function toast(message){
   const el=$('#toast');
@@ -870,8 +874,8 @@ function transactionLabel(type){
   const map={
     work:'Trabalho',income_tax:'TAXADE',uber:'Uber',ifood:'iFood',transfer:'PIX',
     shop:'Loja',market:'Mercado',market_sale:'Venda no mercado',raid_reward:'Raid',
-    boss_reward:'Boss',business_collect:'Negócios',daily:'Daily',loan:'Empréstimo',
-    equipment_upgrade:'Upgrade',pet_rename:'Renomear pet',raid_key_auto:'Chave Raid'
+    boss_reward:'Boss',business_collect:'Negócios',daily:'Bônus diário',loan:'Empréstimo',
+    equipment_upgrade:'Melhoria de equipamento',pet_rename:'Renomear pet',raid_key_auto:'Chave Raid'
   };
   return map[String(type||'')]||titleCase(String(type||'movimentação').replace(/_/g,' '));
 }
@@ -917,7 +921,7 @@ function renderLiveGroupState(group){
   }else html+='<div class="list-row"><span>👹 Boss</span><small>Nenhum ativo</small></div>';
   if(raids.length){
     for(const raid of raids.slice(0,4)){
-      html+='<div class="list-row"><div><strong>⚔️ Raid Lv.'+num(raid.level)+'</strong><small>'+esc(raid.status)+' • '+num(Object.keys(raid.players||{}).length)+'/5</small></div><button class="btn" data-go-page="raids">Abrir</button></div>';
+      html+='<div class="list-row"><div><strong>⚔️ Raid Lv.'+num(raid.level)+'</strong><small>'+esc(raidStatusLabel(raid.status))+' • '+num(Object.keys(raid.players||{}).length)+'/5</small></div><button class="btn" data-go-page="raids">Abrir</button></div>';
     }
   }else html+='<div class="list-row"><span>⚔️ Raids</span><small>Nenhuma aberta</small></div>';
   html+='<div class="list-row"><span>🎮 Sessões de minigame</span><strong>'+num(activeGames.length)+'</strong></div>';
@@ -932,7 +936,7 @@ function renderDoubleRewardEvent(){
   const mins=Math.max(1,Math.ceil(ms/60000));
   return '<div class="section card double-event '+(event.active?'active':'scheduled')+'">'+
     '<div class="section-title"><div><h3>🔥 Evento de recompensa '+(event.active?'ATIVO':'AGENDADO')+'</h3><small>Dinheiro ×'+num(event.moneyMultiplier||1)+' • XP ×'+num(event.xpMultiplier||1)+'</small></div><span class="tag '+(event.active?'good':'')+'">⏳ '+mins+' min</span></div>'+
-    '<p>'+(event.active?'Trabalho, Uber, iFood, Dungeon e outras recompensas elegíveis já usam esses multiplicadores no backend.':'O multiplicador ainda não começou.')+'</p>'+
+    '<p>'+(event.active?'Trabalho, Uber, iFood, Masmorra e outras recompensas elegíveis já usam esses multiplicadores no servidor.':'O multiplicador ainda não começou.')+'</p>'+
   '</div>';
 }
 
@@ -960,15 +964,15 @@ function renderHome(){
   const dailyStreak=Number(ui.data&&ui.data.streak&&ui.data.streak.streak||0);
   const workExpires=cooldownExpiry('work');
   const workRemain=cooldownRemaining('work');
-  const dailyText=dailyDone?'✅ Daily feito':'🎁 Daily';
+  const dailyText=dailyDone?'✅ Bônus diário feito':'🎁 Bônus diário';
   const workText=workRemain>0?'⏳ Trabalhar • '+formatRemaining(workRemain):'💼 Trabalhar';
   return renderDoubleRewardEvent()+renderLuckyBoxEvent()+'<div class="hero card">'+
     '<div><p class="eyebrow">CONTA REAL DO WHATSAPP</p><h2>'+esc(raw.push_name||'Jogador')+'</h2>'+
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
     '<div class="home-exp"><div><span>⭐ EXP</span><strong>'+num(raw.exp||0)+'/'+num(Math.max(1,Number(raw.level||1)*100))+'</strong></div><div class="progress exp-progress"><span style="width:'+pct(Number(raw.exp||0)/Math.max(1,Number(raw.level||1)*100)*100)+'%"></span></div></div>'+
-    '<div class="hero-actions"><button class="btn heal" data-player-heal '+(hp>=hpMax?'disabled':'')+'>'+(hp>=hpMax?'❤️ HP cheio':'❤️ Curar')+'</button><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ ALL</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+' '+(workExpires?'data-work-cooldown="'+workExpires+'"':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div>'+
-    '<div class="home-action-status"><span>🎁 Daily: <strong>'+(dailyDone?'feito hoje':'disponível')+'</strong> • sequência '+num(dailyStreak)+'</span><span>💼 Trabalho: <strong>'+(workRemain>0?'cooldown '+esc(formatRemaining(workRemain)):'disponível')+'</strong></span></div></div>'+
+    '<div class="hero-actions"><button class="btn heal" data-player-heal '+(hp>=hpMax?'disabled':'')+'>'+(hp>=hpMax?'❤️ HP cheio':'❤️ Curar')+'</button><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ Rotina completa</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+' '+(workExpires?'data-work-cooldown="'+workExpires+'"':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div>'+
+    '<div class="home-action-status"><span>🎁 Bônus diário: <strong>'+(dailyDone?'feito hoje':'disponível')+'</strong> • sequência '+num(dailyStreak)+'</span><span>💼 Trabalho: <strong>'+(workRemain>0?'recarga '+esc(formatRemaining(workRemain)):'disponível')+'</strong></span></div></div>'+
     '<div class="hero-side"><div><small>CARTEIRA</small><strong>'+money(raw.cash)+'</strong></div><div><small>BANCO</small><strong>'+money(raw.bank)+'</strong></div><div><small>ARMA</small><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div><div><small>ARMADURA</small><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div></div>'+
   '</div>'+
   resultPanel()+
@@ -1094,10 +1098,10 @@ function renderCharacter(){
   const scrolls=Number(cp.class_scrolls||0);
   const remaining=Number(cp.class_change_remaining||0);
   const reclassNotice=!applied
-    ? '<div class="notice good"><strong>Primeira classe grátis.</strong><br>Depois de confirmar, trocar de classe exige 1 Pergaminho de Reclassificação e respeita cooldown de 7 dias.</div>'
+    ? '<div class="notice good"><strong>Primeira classe grátis.</strong><br>Depois de confirmar, trocar de classe exige 1 Pergaminho de Reclassificação e respeita recarga de 7 dias.</div>'
     : remaining>0
       ? '<div class="notice"><strong>Classe bloqueada temporariamente.</strong><br>Próxima troca em '+esc(formatRemaining(remaining))+' • Pergaminhos: '+num(scrolls)+'</div>'
-      : '<div class="notice"><strong>Troca de classe controlada.</strong><br>Custa 1 Pergaminho de Reclassificação • cooldown de 7 dias após a troca • Pergaminhos: '+num(scrolls)+'</div>';
+      : '<div class="notice"><strong>Troca de classe controlada.</strong><br>Custa 1 Pergaminho de Reclassificação • recarga de 7 dias após a troca • Pergaminhos: '+num(scrolls)+'</div>';
 
   return '<div class="page-head"><div><h2>Seu personagem</h2><p>Cada classe tem uma distribuição própria de HP, ATK, DEF e SPD. Não existem mais bônus negativos nem atributo zerado.</p></div><span class="tag '+(applied?'good':'')+'">'+esc(applied?selected.name+' ativo':'Escolha sua classe')+'</span></div>'+
     reclassNotice+
@@ -1461,7 +1465,7 @@ function renderRaids(){
       const totalDamage=ranked.reduce((sum,p)=>sum+Number(p.damage||0),0);
       const party=ranked.length?'<div class="raid-party"><div class="section-title"><h4>Equipe / dano</h4><small>'+num(totalDamage)+' total</small></div><div class="list compact">'+ranked.map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+(p.alive===false?'💀 CAÍDO':'❤️ '+num(p.hp||0)+' HP')+(p.pet&&p.pet.name?' • 🐾 '+esc(p.pet.name):'')+'</small></div><strong>'+num(p.damage||0)+'</strong></div>').join('')+'</div></div>':'<div class="empty">Sem participantes.</div>';
       const timeLeft=s&&Number(s.expiresAt||0)>Date.now()?Math.ceil((Number(s.expiresAt)-Date.now())/60000):null;
-      return '<div class="card raid-card"><div class="tag-row"><span class="tag">LV.'+r.level+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(s.status).toUpperCase():'DISPONÍVEL')+'</span><span class="tag">'+players.length+'/5</span>'+(timeLeft!=null?'<span class="tag">⏳ '+timeLeft+' min</span>':'')+'</div><h3>'+esc(r.name)+'</h3>'+raidArenaMarkup(r,s)+'<p>❤️ '+num(hp)+'/'+num(max)+' • ATK '+num(r.atk)+' • '+num(r.durationMinutes)+' min</p><div class="progress raid-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div><p>🔑 '+money(r.keyPrice)+'</p>'+party+'<div class="raid-actions">'+buttons+'</div></div>';
+      return '<div class="card raid-card"><div class="tag-row"><span class="tag">LV.'+r.level+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(raidStatusLabel(s.status)).toUpperCase():'DISPONÍVEL')+'</span><span class="tag">'+players.length+'/5</span>'+(timeLeft!=null?'<span class="tag">⏳ '+timeLeft+' min</span>':'')+'</div><h3>'+esc(r.name)+'</h3>'+raidArenaMarkup(r,s)+'<p>❤️ '+num(hp)+'/'+num(max)+' • ATK '+num(r.atk)+' • '+num(r.durationMinutes)+' min</p><div class="progress raid-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div><p>🔑 '+money(r.keyPrice)+'</p>'+party+'<div class="raid-actions">'+buttons+'</div></div>';
     }).join('')+'</div>';
 }
 
@@ -1481,7 +1485,7 @@ function renderBoss(){
   const participants=Object.values(b.participants||{}).sort((a,z)=>Number(z.damage||0)-Number(a.damage||0));
   const totalDamage=participants.reduce((s,p)=>s+Number(p.damage||0),0);
   const ranking=participants.length?'<div class="boss-ranking"><div class="section-title"><h3>Ranking de dano</h3><small>'+participants.length+' participante(s)</small></div><div class="list">'+participants.slice(0,10).map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+num(p.attacks||0)+' ataques'+(p.petHealing?' • 🧪 '+num(p.petHealing)+' cura pet':'')+'</small></div><strong>'+num(p.damage||0)+' dano</strong></div>').join('')+'</div></div>':'<div class="empty section">Ainda não houve ataques neste Boss.</div>';
-  return '<div class="page-head"><div><h2>'+esc(b.name||'Boss')+'</h2><p>'+esc(b.mode||'common')+' • mesma sessão do WhatsApp</p></div><span class="tag good">ATIVO</span></div>'+
+  return '<div class="page-head"><div><h2>'+esc(b.name||'Boss')+'</h2><p>'+esc(bossModeLabel(b.mode||'common'))+' • mesma sessão do WhatsApp</p></div><span class="tag good">ATIVO</span></div>'+
     '<div class="card">'+combatArenaMarkup(b.name||'Boss','boss',null,b.mode)+
     '<div class="boss-hp-line"><span>HP do Boss</span><strong>'+num(hp)+'/'+num(max)+'</strong></div><div class="progress boss-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div>'+
     '<div class="grid stats section">'+statCard('DANO TOTAL',num(totalDamage),'grupo')+statCard('PARTICIPANTES',num(participants.length),'jogadores')+'</div>'+
@@ -1500,10 +1504,10 @@ function prettyResult(value){
   if(value==null) return '<div class="empty">Sem detalhes adicionais.</div>';
   if(typeof value!=='object') return '<div class="result-message">'+esc(value)+'</div>';
   if(value.ok===false&&Number(value.remaining)>0){
-    return '<div class="result-message cooldown-result">⏳ Ação em cooldown. Tente novamente em <strong>'+esc(formatRemaining(value.remaining))+'</strong>.</div>';
+    return '<div class="result-message cooldown-result">⏳ Ação em recarga. Tente novamente em <strong>'+esc(formatRemaining(value.remaining))+'</strong>.</div>';
   }
   if(value.cooldown&&Number(value.remainingMs)>0){
-    return '<div class="result-message cooldown-result">⏳ Combate em cooldown. Aguarde <strong>'+esc(formatRemaining(Number(value.remainingMs)/1000))+'</strong>.</div>';
+    return '<div class="result-message cooldown-result">⏳ Combate em recarga. Aguarde <strong>'+esc(formatRemaining(Number(value.remainingMs)/1000))+'</strong>.</div>';
   }
   if(value.petName&&value.healed!=null&&value.hp!=null&&value.maxHp!=null){
     return '<div class="result-message heal-result">❤️ <strong>'+esc(value.petName)+'</strong> recuperou <strong>'+num(value.healed)+' HP</strong>.</div>'+
@@ -1694,7 +1698,7 @@ function renderGames(){
       '<div class="card game-card"><div class="game-icon">🪙</div><h3>Cara ou Coroa</h3><p>Aposta individual, mesmo saldo real.</p><input class="game-input" data-coin-amount type="number" inputmode="numeric" min="1" value="1000"><div class="choice-row"><button class="btn" data-game-coin-choice="cara">Cara</button><button class="btn" data-game-coin-choice="coroa">Coroa</button></div></div>'+
       '<div class="card game-card"><div class="game-icon">🎰</div><h3>Roleta</h3><p>Aposta individual com escolha.</p><input class="game-input" data-roulette-amount type="number" inputmode="numeric" min="1" value="1000"><div class="choice-row"><button class="btn" data-game-roulette-choice="vermelho">🔴 Vermelho</button><button class="btn" data-game-roulette-choice="preto">⚫ Preto</button></div></div>'+
       '<div class="card game-card"><div class="game-icon">✊</div><h3>Pedra Papel Tesoura</h3><p>Partida rápida contra o sistema.</p><div class="choice-row"><button class="btn" data-game-rps-choice="pedra">✊ Pedra</button><button class="btn" data-game-rps-choice="papel">✋ Papel</button><button class="btn" data-game-rps-choice="tesoura">✌️ Tesoura</button></div></div>'+
-      '<div class="card game-card"><div class="game-icon">🏰</div><h3>Dungeon</h3><p>Usa HP, atributos, equipamentos e cooldown reais.</p><button class="btn primary" data-game-dungeon>Entrar</button></div>'+
+      '<div class="card game-card"><div class="game-icon">🏰</div><h3>Masmorra</h3><p>Usa HP, atributos, equipamentos e tempos de recarga reais.</p><button class="btn primary" data-game-dungeon>Entrar</button></div>'+
       '<div class="card game-card"><h3>❓ Quiz do Grupo</h3>'+gameStatePanel('quiz',games.quiz)+'<div class="game-answer"><input class="game-input" data-quiz-input placeholder="Resposta ou número"><button class="btn good" data-quiz-answer>Responder</button></div><button class="btn" data-quiz-start>Iniciar</button></div>'+
       '<div class="card game-card"><h3>🔢 Número</h3>'+gameStatePanel('numero',games.numero)+'<div class="game-answer"><input class="game-input" data-number-input type="number" inputmode="numeric" min="1" placeholder="Seu número"><button class="btn good" data-number-guess>Chutar</button></div><button class="btn" data-number-start>Iniciar</button></div>'+
       '<div class="card game-card"><h3>🔤 Forca</h3>'+gameStatePanel('forca',games.forca)+'<div class="game-answer"><input class="game-input" data-hangman-input placeholder="Letra ou palavra"><button class="btn good" data-hangman-send>Enviar</button></div><button class="btn" data-hangman-start>Iniciar</button></div>'+
@@ -1894,7 +1898,7 @@ function renderEconomy(){
   return '<div class="page-head"><div><h2>Economia</h2><p>Patrimônio e operações usam as mesmas tabelas e rotinas do bot.</p></div><span class="tag good">'+money(Number(p.cash||0)+Number(p.bank||0))+'</span></div>'+
     '<div class="grid stats">'+statCard('CARTEIRA',money(p.cash),'disponível')+statCard('BANCO',money(p.bank),'saldo')+statCard('CARROS',cars.length,'garagem')+statCard('MOTOS / BIKE',bikes.length,'entregas')+'</div>'+
     '<div class="section grid two">'+
-      '<div class="card"><div class="section-title"><h3>Ações rápidas</h3><small>Mesmas rotinas do WhatsApp</small></div><div class="hero-actions"><button class="btn good" data-action="all">⚡ ALL</button><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button></div><div class="bank-quick"><div><label>Movimentar dinheiro</label><input class="bank-input" data-bank-amount inputmode="numeric" type="number" min="1" placeholder="Digite o valor"></div><div class="hero-actions"><button class="btn" data-deposit>🏦 Depositar</button><button class="btn" data-deposit-all>Depositar tudo</button><button class="btn" data-withdraw>💵 Sacar</button><button class="btn" data-withdraw-all>💸 Sacar tudo</button></div></div></div>'+
+      '<div class="card"><div class="section-title"><h3>Ações rápidas</h3><small>Mesmas rotinas do WhatsApp</small></div><div class="hero-actions"><button class="btn good" data-action="all">⚡ Rotina completa</button><button class="btn primary" data-action="work">💼 Trabalhar</button><button class="btn" data-action="uber">🚗 Uber</button><button class="btn" data-action="ifood">🛵 iFood</button><button class="btn good" data-action="business.collect">🏢 Coletar negócios</button></div><div class="bank-quick"><div><label>Movimentar dinheiro</label><input class="bank-input" data-bank-amount inputmode="numeric" type="number" min="1" placeholder="Digite o valor"></div><div class="hero-actions"><button class="btn" data-deposit>🏦 Depositar</button><button class="btn" data-deposit-all>Depositar tudo</button><button class="btn" data-withdraw>💵 Sacar</button><button class="btn" data-withdraw-all>💸 Sacar tudo</button></div></div></div>'+
       '<div class="card"><div class="section-title"><h3>Patrimônio</h3><small>Mesmo cálculo do !patrimonio</small></div>'+renderPatrimonySummary(d.patrimony)+'</div>'+
     '</div>'+
     '<div class="section"><div class="section-title"><h3>Casa</h3><small>'+(house?esc(house.house_id||house.id||house.name):'Sem casa')+'</small></div><div class="grid cards">'+(catalog.houses||[]).map(x=>'<div class="card catalog-card"><h3>🏠 '+esc(x.name)+'</h3><p>'+money(x.price)+'</p><button class="btn primary" data-house-buy="'+esc(x.id)+'">Comprar</button></div>').join('')+'</div></div>'+
@@ -1914,10 +1918,10 @@ function renderLoans(){
       (incoming.length?incoming.map(x=>'<div class="card"><h3>'+money(x.amount)+' de '+esc(x.lender_name||'Jogador')+'</h3><p>Oferta #'+x.id+' • expira conforme a regra do bot.</p><div class="pet-actions"><button class="btn good" data-loan-accept="'+x.id+'">Aceitar</button><button class="btn danger" data-loan-reject="'+x.id+'">Recusar</button></div></div>').join(''):'<div class="empty">Nenhuma proposta pendente.</div>')+
     '</div></div>'+
     '<div class="section"><div class="section-title"><h3>Dívidas ativas</h3><small>'+active.length+'</small></div><div class="grid cards">'+
-      (active.length?active.map(x=>'<div class="card"><h3>'+money(x.principal||x.amount)+'</h3><p>Credor: '+esc(x.lender_name||'Jogador')+' • saldo/juros calculados pelo backend.</p><button class="btn good" data-loan-pay="total">Pagar total</button></div>').join(''):'<div class="empty">Nenhuma dívida ativa.</div>')+
+      (active.length?active.map(x=>'<div class="card"><h3>'+money(x.principal||x.amount)+'</h3><p>Credor: '+esc(x.lender_name||'Jogador')+' • saldo/juros calculados pelo servidor.</p><button class="btn good" data-loan-pay="total">Pagar total</button></div>').join(''):'<div class="empty">Nenhuma dívida ativa.</div>')+
     '</div></div>'+
     '<div class="section"><div class="section-title"><h3>Ofertas / empréstimos concedidos</h3><small>'+lent.length+'</small></div><div class="list">'+
-      (lent.length?lent.map(x=>'<div class="list-row"><span>'+esc(x.borrower_name||'Jogador')+' • '+esc(x.status)+'</span><strong>'+money(x.amount||x.principal)+'</strong></div>').join(''):'<div class="empty">Nenhum empréstimo concedido.</div>')+
+      (lent.length?lent.map(x=>'<div class="list-row"><span>'+esc(x.borrower_name||'Jogador')+' • '+esc(loanStatusLabel(x.status))+'</span><strong>'+money(x.amount||x.principal)+'</strong></div>').join(''):'<div class="empty">Nenhum empréstimo concedido.</div>')+
     '</div></div>'+resultPanel();
 }
 
