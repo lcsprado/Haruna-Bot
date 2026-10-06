@@ -63,6 +63,11 @@ const lucky3xActive=()=>Date.now()>=LUCKY_3X_START&&Date.now()<LUCKY_3X_END
 const lucky3xMultiplier=()=>lucky3xActive()?3:1
 const lucky3xPlayerWins=()=>!lucky3xActive()||Math.random()<0.20
 
+const CACADA_ALPHA_START=Date.parse('2026-10-06T19:00:00-03:00')
+const CACADA_ALPHA_END=Date.parse('2026-10-06T20:00:00-03:00')
+const cacadaAlphaActive=()=>Date.now()>=CACADA_ALPHA_START&&Date.now()<CACADA_ALPHA_END
+
+
 async function credit(client,jid,amount,note){
   amount=Math.round(Number(amount)||0)
   await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[amount,jid])
@@ -868,9 +873,10 @@ async function finishRaidRewards(c,s,cfg){
   const raidComp=(await c.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
   const compensationActive=Number(raidComp.startsAt||0)<=now && now<Number(raidComp.endsAt||0)
   const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive
-  const moneyMultiplier=1
-  const xpMultiplier=raidEventActive?1.5:1
-  const petXpMultiplier=raidEventActive?1.5:1
+  const cacadaActive=cacadaAlphaActive()
+  const moneyMultiplier=cacadaActive?1.25:1
+  const xpMultiplier=raidEventActive?1.5:(cacadaActive?1.5:1)
+  const petXpMultiplier=raidEventActive?1.5:(cacadaActive?1.25:1)
   const gearEventBonus=raidEventActive?.015:0
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
@@ -925,6 +931,7 @@ async function finishRaidRewards(c,s,cfg){
       }else{
         boxChance=Math.min(.35,.06+share*.325+Number(pb.drop||0)*.20)
       }
+      if(cacadaActive) boxChance=Math.min(.70,boxChance*1.20)
       if(Math.random()<boxChance){
         await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
         drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
@@ -936,7 +943,8 @@ async function finishRaidRewards(c,s,cfg){
       const rankBonus=i===0?(cfg.level>=40?.003:.005):0
       const collaborationBonus=Math.min(.004,share*.008)
       const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
-      const chance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
+      const baseGearChance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
+      const chance=cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance
       if(Math.random()<chance){
         const gearId=cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
         const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
