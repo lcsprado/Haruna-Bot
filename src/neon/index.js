@@ -6735,6 +6735,20 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const ownerTarget=mentionsOf(msg)[0] || sender
         await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
 
+        if(cmd==='classe'||cmd==='class'){
+          const classes=Object.values(PLAYER_CLASSES)
+          const raw=String(args[0]||'').trim().toLowerCase()
+          if(!raw){
+            const lines=classes.map((c,n)=>`${n+1}. ${c.name} — ${c.role} | HP ${c.hp>=0?'+':''}${c.hp} | ATK ${c.atk>=0?'+':''}${c.atk} | DEF ${c.def>=0?'+':''}${c.def} | SPD ${c.spd>=0?'+':''}${c.spd}`)
+            await reply('🧙 *CLASSES DO ALPHA*\n\n'+lines.join('\n')+'\n\nUse *!classe número* ou *!classe id*.')
+            continue
+          }
+          let chosen=/^\d+$/.test(raw)?classes[Number(raw)-1]:classes.find(c=>c.id===raw||c.name.toLowerCase()===raw)
+          if(!chosen){await reply('❌ Classe inválida. Use *!classe*.');continue}
+          const result=await setPlayerClass(sender,chosen.id)
+          await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP • ⚔️ ${result.stats.atk} ATK • 🛡️ ${result.stats.def} DEF • 💨 ${result.stats.spd} SPD`)
+          continue
+        }
         if(cmd==='web'){
           const link=await createWebLinkCode(sender,isGroup?chat:null)
           const expiresMin=Math.max(1,Math.ceil((Number(link.expiresAt)-Date.now())/60000))
