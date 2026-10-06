@@ -91,6 +91,10 @@ export async function initDatabase() {
       boot_id TEXT,
       class_id TEXT NOT NULL DEFAULT 'warrior',
       class_applied BOOLEAN NOT NULL DEFAULT FALSE,
+      class_hp_bonus INTEGER NOT NULL DEFAULT 0,
+      class_atk_bonus INTEGER NOT NULL DEFAULT 0,
+      class_def_bonus INTEGER NOT NULL DEFAULT 0,
+      class_spd_bonus INTEGER NOT NULL DEFAULT 0,
       weapon_tier INTEGER NOT NULL DEFAULT 1,
       armor_tier INTEGER NOT NULL DEFAULT 1,
       win INTEGER NOT NULL DEFAULT 0,
@@ -103,6 +107,18 @@ export async function initDatabase() {
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS boot_id TEXT;
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_id TEXT NOT NULL DEFAULT 'warrior';
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_applied BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_hp_bonus INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_atk_bonus INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_def_bonus INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_spd_bonus INTEGER NOT NULL DEFAULT 0;
+
+    UPDATE stats SET
+      class_hp_bonus=CASE class_id WHEN 'warrior' THEN 30 WHEN 'assassin' THEN -10 WHEN 'mage' THEN 0 WHEN 'archer' THEN 0 WHEN 'paladin' THEN 80 WHEN 'berserker' THEN 25 WHEN 'monk' THEN 20 WHEN 'necromancer' THEN -5 WHEN 'druid' THEN 45 WHEN 'samurai' THEN 10 ELSE 0 END,
+      class_atk_bonus=CASE class_id WHEN 'warrior' THEN 6 WHEN 'assassin' THEN 8 WHEN 'mage' THEN 10 WHEN 'archer' THEN 6 WHEN 'paladin' THEN -4 WHEN 'berserker' THEN 12 WHEN 'monk' THEN 5 WHEN 'necromancer' THEN 9 WHEN 'druid' THEN 3 WHEN 'samurai' THEN 8 ELSE 0 END,
+      class_def_bonus=CASE class_id WHEN 'warrior' THEN 4 WHEN 'assassin' THEN -2 WHEN 'mage' THEN -2 WHEN 'archer' THEN 0 WHEN 'paladin' THEN 12 WHEN 'berserker' THEN -5 WHEN 'monk' THEN 5 WHEN 'necromancer' THEN -1 WHEN 'druid' THEN 8 WHEN 'samurai' THEN 3 ELSE 0 END,
+      class_spd_bonus=CASE class_id WHEN 'warrior' THEN 0 WHEN 'assassin' THEN 8 WHEN 'mage' THEN 3 WHEN 'archer' THEN 7 WHEN 'paladin' THEN -3 WHEN 'berserker' THEN 2 WHEN 'monk' THEN 6 WHEN 'necromancer' THEN 2 WHEN 'druid' THEN 1 WHEN 'samurai' THEN 5 ELSE 0 END
+    WHERE class_applied=TRUE
+      AND class_hp_bonus=0 AND class_atk_bonus=0 AND class_def_bonus=0 AND class_spd_bonus=0;
 
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
@@ -386,6 +402,9 @@ export async function initDatabase() {
     ['bota_relampago','Bota do Relâmpago','Bota épica de alta velocidade. +8 SPD.','boots',110000,'epic'],
     ['bota_celestial','Bota Celestial','Bota lendária de velocidade extrema. +10 SPD. Apenas por drop.','boots',0,'legendary'],
 
+    // Reclassificação
+    ['pergaminho_reclassificacao','Pergaminho de Reclassificação','Permite trocar sua classe. Após usar, a próxima troca só poderá ocorrer depois de 7 dias.','special',250000,'epic'],
+
     // Chaves de Raid
     ['chave_raid_10','Chave de Raid Lv.10','Abre uma Raid de nível 10. A chave só é consumida quando a luta começa.','special',10000,'uncommon'],
     ['chave_raid_15','Chave de Raid Lv.15','Abre uma Raid de nível 15. A chave só é consumida quando a luta começa.','special',16000,'uncommon'],
@@ -535,6 +554,10 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
             ELSE COALESCE(t.class_id,s.class_id,'warrior')
           END,
           class_applied=COALESCE(t.class_applied,FALSE) OR COALESCE(s.class_applied,FALSE),
+          class_hp_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_hp_bonus ELSE COALESCE(s.class_hp_bonus,t.class_hp_bonus,0) END,
+          class_atk_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_atk_bonus ELSE COALESCE(s.class_atk_bonus,t.class_atk_bonus,0) END,
+          class_def_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_def_bonus ELSE COALESCE(s.class_def_bonus,t.class_def_bonus,0) END,
+          class_spd_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_spd_bonus ELSE COALESCE(s.class_spd_bonus,t.class_spd_bonus,0) END,
           win=t.win+COALESCE(s.win,0),
           loss=t.loss+COALESCE(s.loss,0),
           updated_at=${nowSql}
@@ -717,7 +740,8 @@ export async function getProfile(jid) {
   const { rows } = await db.query(`
     SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
            w.cash,w.bank,w.bank_limit,
-           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.class_id,s.class_applied,s.win,s.loss
+           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.class_id,s.class_applied,
+           s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss
     FROM users u
     JOIN wallets w ON w.jid=u.jid
     JOIN stats s ON s.jid=u.jid
@@ -732,26 +756,84 @@ export async function setPlayerClass(jid,classId){
   const key=String(classId||'').toLowerCase()
   if(!PLAYER_CLASSES[key]) throw new Error('Classe inválida.')
   const next=getPlayerClass(key)
+  const RECLASS_ITEM='pergaminho_reclassificacao'
+  const RECLASS_SECONDS=7*24*60*60
+
   return transaction(async client=>{
-    const st=(await client.query('SELECT hp,max_hp,atk,def,spd,class_id,class_applied FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const st=(await client.query(
+      'SELECT hp,max_hp,atk,def,spd,class_id,class_applied,class_hp_bonus,class_atk_bonus,class_def_bonus,class_spd_bonus FROM stats WHERE jid=$1 FOR UPDATE',
+      [jid]
+    )).rows[0]
     if(!st) throw new Error('Status do jogador não encontrado.')
-    if(Boolean(st.class_applied)&&String(st.class_id)===next.id){
-      return {ok:true,unchanged:true,classId:next.id,classInfo:next,stats:{hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)}}
+
+    const applied=Boolean(st.class_applied)
+    if(applied&&String(st.class_id)===next.id){
+      return {ok:true,unchanged:true,firstChoice:false,classId:next.id,classInfo:next,stats:{
+        hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
+      }}
     }
-    const prev=Boolean(st.class_applied)?getPlayerClass(st.class_id):{hp:0,atk:0,def:0,spd:0}
+
+    let consumedScroll=false
+    let nextChangeAt=null
+    if(applied){
+      const now=Math.floor(Date.now()/1000)
+      const cooldownKey='classchange:'+jid
+      const cd=(await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[cooldownKey])).rows[0]
+      const remaining=Math.max(0,Number(cd?.expires_at||0)-now)
+      if(remaining>0){
+        const days=Math.ceil(remaining/86400)
+        throw new Error('Você já trocou de classe recentemente. Aguarde '+days+' dia(s) para trocar novamente.')
+      }
+
+      const inv=(await client.query(
+        'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+        [jid,RECLASS_ITEM]
+      )).rows[0]
+      if(Number(inv?.quantity||0)<1){
+        throw new Error('Para trocar de classe você precisa de 1 Pergaminho de Reclassificação. A primeira escolha é grátis.')
+      }
+
+      await client.query(
+        'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
+        [jid,RECLASS_ITEM]
+      )
+      nextChangeAt=now+RECLASS_SECONDS
+      await client.query(
+        'INSERT INTO cooldowns(key,expires_at) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at',
+        [cooldownKey,nextChangeAt]
+      )
+      consumedScroll=true
+    }
+
+    const prev={
+      hp:Number(st.class_hp_bonus||0),
+      atk:Number(st.class_atk_bonus||0),
+      def:Number(st.class_def_bonus||0),
+      spd:Number(st.class_spd_bonus||0)
+    }
+
     const oldMax=Math.max(1,Number(st.max_hp||100))
     const hpRatio=Math.max(0,Math.min(1,Number(st.hp||0)/oldMax))
-    const neutralMax=Math.max(1,oldMax-Number(prev.hp||0))
-    const neutralAtk=Math.max(1,Number(st.atk||10)-Number(prev.atk||0))
-    const neutralDef=Math.max(1,Number(st.def||5)-Number(prev.def||0))
-    const neutralSpd=Math.max(1,Number(st.spd||10)-Number(prev.spd||0))
+    const neutralMax=Math.max(1,oldMax-prev.hp)
+    const neutralAtk=Math.max(1,Number(st.atk||10)-prev.atk)
+    const neutralDef=Math.max(1,Number(st.def||5)-prev.def)
+    const neutralSpd=Math.max(1,Number(st.spd||10)-prev.spd)
+
     const maxHp=Math.max(1,neutralMax+Number(next.hp||0))
     const atk=Math.max(1,neutralAtk+Number(next.atk||0))
     const def=Math.max(1,neutralDef+Number(next.def||0))
     const spd=Math.max(1,neutralSpd+Number(next.spd||0))
-    const hp=Math.max(0,Math.min(maxHp,Math.round(maxHp*hpRatio)))
-    await client.query('UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,updated_at='+nowSql+' WHERE jid=$7',[hp,maxHp,atk,def,spd,next.id,jid])
-    return {ok:true,classId:next.id,classInfo:next,stats:{hp,maxHp,atk,def,spd}}
+    const hp=Math.max(1,Math.min(maxHp,Math.round(maxHp*hpRatio)))
+
+    await client.query(
+      'UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,class_hp_bonus=$7,class_atk_bonus=$8,class_def_bonus=$9,class_spd_bonus=$10,updated_at='+nowSql+' WHERE jid=$11',
+      [hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
+    )
+
+    return {
+      ok:true,firstChoice:!applied,consumedScroll,nextChangeAt,
+      classId:next.id,classInfo:next,stats:{hp,maxHp,atk,def,spd}
+    }
   })
 }
 
@@ -2298,6 +2380,13 @@ export async function getCombatProfile(jid) {
   const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
+  const now=Math.floor(Date.now()/1000)
+  const [scrollR,classCdR]=await Promise.all([
+    db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao']),
+    db.query('SELECT expires_at FROM cooldowns WHERE key=$1',['classchange:'+jid])
+  ])
+  const classScrolls=Number(scrollR.rows[0]?.quantity||0)
+  const classChangeRemaining=Math.max(0,Number(classCdR.rows[0]?.expires_at||0)-now)
   return {
     ...p,
     base_atk:Number(p.atk),
@@ -2321,6 +2410,9 @@ export async function getCombatProfile(jid) {
     class_id:String(p.class_id||'warrior'),
     class_applied:Boolean(p.class_applied),
     class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
+    class_scrolls:classScrolls,
+    class_change_remaining:classChangeRemaining,
+    class_change_days:classChangeRemaining>0?Math.ceil(classChangeRemaining/86400):0,
     weapon_level:Number(w.level||1),
     armor_level:Number(a.level||1),
     boot_level:Number(b.level||1),
