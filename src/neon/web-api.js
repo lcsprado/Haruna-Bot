@@ -564,6 +564,15 @@ async function groupTarget(session,targetJid){
   return member
 }
 
+function withTargetMeta(result,member){
+  const targetJid=member?.jid||null
+  const targetName=String(member?.push_name||member?.name||'Jogador')
+  if(result && typeof result==='object' && !Array.isArray(result)){
+    return {...result,targetJid,targetName}
+  }
+  return {ok:result!==false,value:result,targetJid,targetName}
+}
+
 async function runAllActivities(session){
   const jid=session.jid
   const results=[]
@@ -884,33 +893,33 @@ async function runAction(session,name,body={}){
     case 'withdraw': return withdraw(jid,positiveInt(body.amount,'Valor'))
     case 'transfer': {
       const member=await groupTarget(session,body.targetJid)
-      return transfer(jid,member.jid,positiveInt(body.amount,'Valor'))
+      return withTargetMeta(await transfer(jid,member.jid,positiveInt(body.amount,'Valor')),member)
     }
     case 'battle': {
       const member=await groupTarget(session,body.targetJid)
-      return battle(jid,member.jid)
+      return withTargetMeta(await battle(jid,member.jid),member)
     }
     case 'petduel': {
       const member=await groupTarget(session,body.targetJid)
-      return petDuel(jid,member.jid)
+      return withTargetMeta(await petDuel(jid,member.jid),member)
     }
     case 'rob': {
       const member=await groupTarget(session,body.targetJid)
-      return robPlayer(jid,member.jid)
+      return withTargetMeta(await robPlayer(jid,member.jid),member)
     }
     case 'dungeon': return dungeon(jid)
     case 'relationship.propose': {
       const member=await groupTarget(session,body.targetJid)
-      return proposeRelationship(jid,member.jid)
+      return withTargetMeta(await proposeRelationship(jid,member.jid),member)
     }
     case 'relationship.accept': {
       const member=await groupTarget(session,body.targetJid)
-      return acceptRelationship(jid,member.jid)
+      return withTargetMeta(await acceptRelationship(jid,member.jid),member)
     }
     case 'relationship.divorce': return divorceRelationship(jid)
     case 'loan.offer': {
       const member=await groupTarget(session,body.targetJid)
-      return createLoanOffer(jid,member.jid,positiveInt(body.amount,'Valor'))
+      return withTargetMeta(await createLoanOffer(jid,member.jid,positiveInt(body.amount,'Valor')),member)
     }
     case 'character.select': return setPlayerClass(jid,String(body.classId||''))
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
@@ -977,15 +986,15 @@ async function runAction(session,name,body={}){
     case 'clan.donate': return donateClan(jid,positiveInt(body.amount,'Valor'))
     case 'clan.invite': {
       const member=await groupTarget(session,body.targetJid)
-      return inviteToClan(jid,member.jid)
+      return withTargetMeta(await inviteToClan(jid,member.jid),member)
     }
     case 'clan.kick': {
       const member=await groupTarget(session,body.targetJid)
-      return kickClanMember(jid,member.jid)
+      return withTargetMeta(await kickClanMember(jid,member.jid),member)
     }
     case 'clan.transfer': {
       const member=await groupTarget(session,body.targetJid)
-      return transferClanLeadership(jid,member.jid)
+      return withTargetMeta(await transferClanLeadership(jid,member.jid),member)
     }
     case 'groupMission.claim': return claimGroupMission(requireGroup(session),jid)
     case 'groupEvent.claim': return claimGroupEvent(requireGroup(session),jid)
@@ -1002,12 +1011,12 @@ async function runAction(session,name,body={}){
     case 'game.hangman.word': return hangmanWord(requireGroup(session),String(body.word||''))
     case 'game.coinDuel.create': {
       const member=await groupTarget(session,body.targetJid)
-      return createCoinDuel(requireGroup(session),jid,member.jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
+      return withTargetMeta(await createCoinDuel(requireGroup(session),jid,member.jid,positiveInt(body.amount,'Aposta'),String(body.choice||'')),member)
     }
     case 'game.coinDuel.accept': return acceptCoinDuel(requireGroup(session),jid)
     case 'game.rpsDuel.create': {
       const member=await groupTarget(session,body.targetJid)
-      return createRpsDuel(requireGroup(session),jid,member.jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
+      return withTargetMeta(await createRpsDuel(requireGroup(session),jid,member.jid,positiveInt(body.amount,'Aposta'),String(body.choice||'')),member)
     }
     case 'game.rpsDuel.accept': return acceptRpsDuel(requireGroup(session),jid,String(body.choice||''))
     case 'game.groupRoulette.create': return createGroupRoulette(requireGroup(session),jid,positiveInt(body.amount,'Aposta'),String(body.choice||''))
