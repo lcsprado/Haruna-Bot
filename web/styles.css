@@ -911,3 +911,46 @@ body.loot-open{overflow:hidden!important}
   .duel-stats span{font-size:8px;padding:4px 5px}
   .duel-actions .btn{flex:1 1 100%}
 }
+
+
+/* Inventário seguro: equipamento em uso fica visualmente isolado e sem ações de venda. */
+.inventory-equipped-section{
+  border:1px solid rgba(84,190,122,.32);
+  border-radius:20px;
+  padding:16px;
+  background:linear-gradient(180deg,rgba(24,69,45,.13),rgba(7,12,18,.35));
+}
+.inventory-group{margin-top:24px}
+.equipped-item-card{
+  border-color:rgba(84,190,122,.42)!important;
+  box-shadow:inset 0 0 0 1px rgba(84,190,122,.08);
+}
+.inventory-lock-note{margin:10px 0 0;font-size:10px}
+.danger-soft{
+  border-color:rgba(225,92,92,.35)!important;
+  color:#ffc1c1!important;
+}
+
+/* Solicitações sociais pendentes aparecem em qualquer página. */
+.relationship-alert{
+  border-color:rgba(227,176,83,.48)!important;
+  background:
+    radial-gradient(circle at 12% 0,rgba(227,176,83,.14),transparent 38%),
+    linear-gradient(180deg,#0d1620,#080d13)!important;
+}
+.relationship-request{
+  display:flex;
+  gap:14px;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 0;
+  border-top:1px solid rgba(255,255,255,.07);
+}
+.relationship-request:first-of-type{border-top:0}
+.relationship-request strong{display:block;font-size:14px}
+.relationship-request small{display:block;margin-top:5px;color:var(--muted);font-size:10px;line-height:1.45}
+@media(max-width:620px){
+  .relationship-request{align-items:stretch;flex-direction:column}
+  .relationship-request .hero-actions{width:100%}
+  .relationship-request .btn{flex:1}
+}
