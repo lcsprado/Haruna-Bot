@@ -253,8 +253,16 @@ const PET_SPRITE_ALIASES={
 
 function selectedCharacter(){
   const legacy={ 'rei-alpha':'warrior','guardiao-onix':'paladin','sentinela-azul':'mage' };
-  const id=legacy[ui.characterId]||ui.characterId;
+  const server=(ui.data&&ui.data.combatProfile&&ui.data.combatProfile.class_applied)?ui.data.combatProfile.class_id:'';
+  const id=server || legacy[ui.characterId] || ui.characterId;
   return CHARACTER_ART.find(x=>x.id===id)||CHARACTER_ART[0];
+}
+function classRule(id){
+  return ((ui.catalog&&ui.catalog.classes)||[]).find(x=>x.id===id)||null;
+}
+function signedStat(value,label){
+  const n=Number(value||0);
+  return (n>=0?'+':'')+num(n)+' '+label;
 }
 const PET_IMAGE_ASSETS={
   gato:'/assets/pets/gato.webp',
