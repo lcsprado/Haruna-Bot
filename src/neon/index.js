@@ -6921,8 +6921,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       const people=event?.participants||[]
 
       if(event.action==='add'){
-        const meIds=[sock.user?.id,sock.user?.lid].filter(Boolean)
-        const botWasAdded=people.some(jid=>meIds.some(me=>canonicalPlayerJid(jid)===canonicalPlayerJid(me) || String(jid)===String(me)))
+        const meIds=[sock.user?.id,sock.user?.lid,state.creds?.me?.id,state.creds?.me?.lid].filter(Boolean)
+        const botWasAdded=people.some(jid=>meIds.some(me=>normalizedAddressJid(jid)===normalizedAddressJid(me)))
         if(botWasAdded){
           const meta=await sock.groupMetadata(chat).catch(()=>null)
           await sock.sendMessage(chat,{text:
