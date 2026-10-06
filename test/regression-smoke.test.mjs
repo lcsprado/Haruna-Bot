@@ -109,3 +109,20 @@ test('inventory and shop labels are localized',()=>{
   assert.ok(app.includes("common:'Comum',uncommon:'Incomum',rare:'Raro',epic:'Épico'"),'rarity localization missing')
   assert.ok(app.includes("weapon:'Arma',armor:'Armadura',boots:'Botas'"),'category localization missing')
 })
+
+
+test('player healing uses the best available potion',()=>{
+  assert.ok(db.includes('export async function usePotion(jid,itemId=null)'),'player heal should allow automatic potion choice')
+  assert.ok(webApi.includes("case 'player.heal': return usePotion(jid,body.itemId?String(body.itemId):null)"),'player.heal web action missing')
+  assert.ok(app.includes("data-player-heal"),'player heal button missing')
+})
+
+test('legacy duplicate equipment is removed from the web shop',()=>{
+  assert.ok(webApi.includes("return Boolean(getEquipmentInfo(item.id))"),'legacy unsupported equipment should be filtered from shop')
+})
+
+test('raid materials do not fall through into armor artwork',()=>{
+  assert.ok(app.includes("nucleo_titan:['🟠💎','Núcleo do Titã']"),'Núcleo do Titã fallback missing')
+  assert.ok(app.includes("fragmento_celestial:['🔷💎','Fragmento Celestial']"),'Fragmento Celestial mapping missing')
+  assert.ok(app.includes("raw.includes('nucleo titan')"),'material guard must run before armor matching')
+})
