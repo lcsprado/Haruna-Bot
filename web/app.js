@@ -971,7 +971,8 @@ function ownedPetCard(p){
     '<div class="pet-actions">'+
       healButton+
       (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
-      (active?'<div class="pet-rename-inline"><input data-pet-name maxlength="24" value="'+esc(p.name||'')+'" placeholder="Nome do pet"><button class="btn" data-pet-rename>Renomear • R$ 1.000</button></div><button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
+      '<div class="pet-rename-inline"><input data-pet-name="'+p.id+'" maxlength="24" value="'+esc(p.name||'')+'" placeholder="Nome do pet"><button class="btn" type="button" data-pet-rename="'+p.id+'">✏️ Renomear • R$ 1.000</button></div>'+
+      (active?'<button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
       '<button class="btn" data-pet-id="'+p.id+'">ID '+p.id+'</button>'+
     '</div>'+
   '</div>';
@@ -990,7 +991,9 @@ function catalogPetCard(p){
     (special?'<p>Raid Lv.'+num(p.raidLevel)+' • Chance '+num(p.chance)+'% • '+esc(p.materialName)+' '+materialQty+'/'+cost+'</p>':'<p>Nível mínimo '+num(p.level)+' • '+money(p.price)+'</p>')+
     '<div class="pet-actions">'+(special
       ? '<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button>'
-      : '<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-adopt-open="'+esc(p.species)+'">'+(can?'Adotar / escolher nome':'Nível '+num(p.level)+' necessário')+'</button>')+
+      : (can
+        ? '<div class="pet-adopt-inline"><input data-pet-adopt-name="'+esc(p.species)+'" maxlength="24" value="'+esc(String(p.label||titleCase(p.species)).replace(/^[^\\p{L}\\p{N}]+/u,'').trim()||'Alpha')+'" placeholder="Nome do pet"><button class="btn primary" type="button" data-pet-adopt-direct="'+esc(p.species)+'">🐾 Adotar • '+money(p.price)+'</button></div>'
+        : '<button class="btn" disabled>Nível '+num(p.level)+' necessário</button>'))+
     '</div>'+
   '</div>';
 }
@@ -1849,34 +1852,56 @@ function bind(){
   });
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
   document.querySelectorAll('[data-pet-rename]').forEach(x=>x.onclick=()=>{
-    const current=(collection().find(p=>p.active)||{}).name||'';
+    const petId=Number(x.dataset.petRename||0);
+    const pet=collection().find(p=>Number(p.id)===petId)||{};
     const input=x.parentElement&&x.parentElement.querySelector('[data-pet-name]');
     const name=String(input&&input.value||'').trim();
-    if(!name) return toast('Digite um nome para o pet.');
-    if(name===current) return toast('Esse já é o nome do pet.');
-    doAction('pet.rename',{name},{});
+    if(!petId) return toast('Pet inválido.');
+    if(name.length<2) return toast('Digite um nome com pelo menos 2 caracteres.');
+    if(name===String(pet.name||'')) return toast('Esse já é o nome desse pet.');
+    doAction('pet.rename',{petId,name},{success:'✏️ Nome do pet alterado.'});
   });
   document.querySelectorAll('[data-pet-action]').forEach(x=>x.onclick=()=>doAction('pet.action',{action:x.dataset.petAction},{}));
+  document.querySelectorAll('[data-pet-adopt-direct]').forEach(x=>x.onclick=async()=>{
+    const species=String(x.dataset.petAdoptDirect||'');
+    const input=x.parentElement&&x.parentElement.querySelector('[data-pet-adopt-name]');
+    const name=String(input&&input.value||'').trim();
+    if(!species) return toast('Pet inválido.');
+    if(name.length<2) return toast('Digite um nome com pelo menos 2 caracteres.');
+    x.disabled=true;
+    try{
+      await doAction('pet.adopt',{species,name},{success:'🐾 Pet adotado e equipado.'});
+      ui.petTab='owned';
+      render();
+    }catch{
+      x.disabled=false;
+    }
+  });
   document.querySelectorAll('[data-pet-adopt-open]').forEach(x=>x.onclick=()=>{
     ui.petAdoptSpecies=x.dataset.petAdoptOpen;
     render();
     window.setTimeout(()=>document.querySelector('[data-pet-adopt-modal-name]')?.focus(),0);
   });
-  document.querySelectorAll('[data-pet-adopt-close]').forEach(x=>x.onclick=()=>{
+  document.querySelectorAll('[data-pet-adopt-close]').forEach(x=>x.onclick=event=>{
+    const overlay=event.currentTarget;
+    if(overlay.classList.contains('pet-adopt-overlay') && event.target!==overlay) return;
     ui.petAdoptSpecies='';
     render();
   });
   document.querySelectorAll('[data-pet-adopt-confirm]').forEach(x=>x.onclick=async()=>{
     const input=document.querySelector('[data-pet-adopt-modal-name]');
     const name=String(input&&input.value||'').trim();
-    if(!name) return toast('Digite o nome do novo pet.');
+    if(name.length<2) return toast('Digite um nome com pelo menos 2 caracteres.');
     const species=x.dataset.petAdoptConfirm;
+    x.disabled=true;
     try{
       await doAction('pet.adopt',{species,name},{success:'🐾 Pet adotado e equipado.'});
       ui.petAdoptSpecies='';
       ui.petTab='owned';
       render();
-    }catch{}
+    }catch{
+      x.disabled=false;
+    }
   });
   document.querySelectorAll('[data-pet-summon]').forEach(x=>x.onclick=()=>doAction('pet.summon',{materialId:x.dataset.petSummon},{}));
   document.querySelectorAll('[data-player-heal]').forEach(x=>x.onclick=()=>doAction('player.heal',{}, {success:'❤️ Personagem curado.'}));
