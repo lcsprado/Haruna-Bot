@@ -642,7 +642,7 @@ async function runAction(session,name,body={}){
     case 'pet.expedition.start': return startPetExpedition(jid,positiveInt(body.petId,'Pet'),positiveInt(body.hours||4,'Horas',24))
     case 'pet.expedition.resolve': return resolvePetExpeditions(jid)
 
-    case 'pet.heal': return usePetPotion(jid,body.itemId?String(body.itemId):null)
+    case 'pet.heal': return usePetPotion(jid,body.itemId?String(body.itemId):null,body.petId==null?null:positiveInt(body.petId,'Pet'))
     case 'pet.energy': return usePetEnergyItem(jid,String(body.itemId||'energetico_pet'))
     case 'pet.adopt': return adoptPet(jid,String(body.species||''),String(body.name||'Alpha'))
     case 'pet.select': return selectPet(jid,positiveInt(body.petId,'Pet'))
