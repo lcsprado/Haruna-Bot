@@ -1136,6 +1136,44 @@ async function start() {
     }
   }
 
+  // Garantia opcional de uma única invocação, persistente até ser consumida.
+  const summonPatchToken=String(process.env.ADMIN_SUMMON_PATCH_TOKEN||'').trim()
+  const summonPatchPhone=String(process.env.ADMIN_SUMMON_PATCH_PHONE||'').replace(/\D/g,'')
+  const summonPatchMaterial=String(process.env.ADMIN_SUMMON_PATCH_MATERIAL||'').trim()
+  const summonPatchSpecies=String(process.env.ADMIN_SUMMON_PATCH_SPECIES||'').trim()
+  if(summonPatchToken&&summonPatchPhone&&summonPatchMaterial&&summonPatchSpecies){
+    const appliedKey='admin_summon_patch:'+summonPatchToken
+    const applied=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[appliedKey])).rowCount>0
+    if(!applied){
+      const user=(await db.query(`
+        SELECT jid FROM users
+        WHERE RIGHT(regexp_replace(COALESCE(pn,''),'\\D','','g'),$1)=$2
+           OR RIGHT(regexp_replace(COALESCE(jid,''),'\\D','','g'),$1)=$2
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `,[summonPatchPhone.length,summonPatchPhone])).rows[0]
+      if(!user) throw new Error('[AdminSummonPatch] jogador não encontrado')
+      const forcedKey='forced_summon:'+user.jid+':'+summonPatchMaterial
+      await db.query('BEGIN')
+      try{
+        await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+          ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+        `,[forcedKey,JSON.stringify({species:summonPatchSpecies,token:summonPatchToken,createdAt:Date.now()})])
+        await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+        `,[appliedKey,JSON.stringify({materialId:summonPatchMaterial,species:summonPatchSpecies,appliedAt:Date.now()})])
+        await db.query('COMMIT')
+        console.log('[AdminSummonPatch] garantia configurada:',summonPatchMaterial,'=>',summonPatchSpecies)
+      }catch(err){
+        await db.query('ROLLBACK')
+        throw err
+      }
+    }
+  }
+
   await initCommunityPack()
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
