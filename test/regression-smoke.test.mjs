@@ -259,6 +259,10 @@ test('PWA rivalry actions are echoed with real opponents and dedicated duel UI',
   assert.ok(app.includes('data-duel-launch'),'duel arena needs a real battle action')
   assert.ok(app.includes('data-duel-pet-launch'),'duel arena needs a pet duel action')
   assert.ok(webApi.includes('s.class_id,s.class_applied,s.hp,s.max_hp,s.atk,s.def,s.spd'),'social roster must expose real combat/class data')
+  assert.ok(webApi.includes('effective_atk:Number(row.atk||0)+Number(weapon?.atk||0)+Number(armor?.atk||0)'),'duel roster must calculate opponent effective ATK')
+  assert.ok(webApi.includes('effective_max_hp:effectiveMaxHp'),'duel roster must calculate opponent effective max HP')
+  assert.ok(app.includes('target.effective_atk??target.atk'),'duel arena must render effective opponent ATK')
+  assert.ok(app.includes('target.effective_max_hp??target.max_hp'),'duel arena must render effective opponent HP')
   assert.ok(webApi.includes('await sendWebGroupActivity(session,actionName,body,rawResult)'),'successful web actions must publish activity')
 })
 
