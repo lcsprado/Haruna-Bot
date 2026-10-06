@@ -870,10 +870,27 @@ async function finishRaidRewards(c,s,cfg){
     const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp):[]
 
     let material=null,drop=null,gearDrop=null
-    // Materiais continuam garantidos para o top 3, mas em ritmo menor:
-    // 2/1/1 em vez de 3/2/1. A invocação segue exigindo 100 materiais.
-    const baseQty=cfg.level===10 ? (i===0?3:(i===1?2:(i===2?1:0))) : (i===0?2:(i===1||i===2?1:0))
-    // Durante a Invasão das Raids, os materiais de invocação de pet são triplicados.
+    // Fragmentos variam por colocação e escalam com a dificuldade/tempo da Raid.
+    // Top 3 precisa ter participação real (>= 2% do dano total); evita carona de 1 ataque.
+    // O teto da faixa é propositalmente raro via pesos decrescentes.
+    const materialRanges={
+      10:[[2,4],[1,3],[1,2]],
+      15:[[3,5],[2,4],[1,2]],
+      20:[[4,6],[2,4],[1,3]],
+      25:[[5,7],[3,5],[1,3]],
+      30:[[6,9],[4,6],[2,3]],
+      40:[[8,11],[5,7],[2,4]],
+      50:[[9,12],[6,8],[3,5]]
+    }
+    const weightedRange=(min,max)=>{
+      const values=[]
+      for(let n=min;n<=max;n++) for(let w=Math.max(1,max-n+1);w>0;w--) values.push(n)
+      return values[Math.floor(Math.random()*values.length)]
+    }
+    const range=(materialRanges[cfg.level]||materialRanges[50])?.[i]
+    const eligibleMaterial=Boolean(range)&&share>=.02
+    const baseQty=eligibleMaterial?weightedRange(range[0],range[1]):0
+    // Durante a Invasão das Raids, os materiais de invocação de pet continuam triplicados.
     const qty=raidEventActive ? baseQty*3 : baseQty
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
