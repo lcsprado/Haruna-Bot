@@ -1328,11 +1328,12 @@ function itemDisplayDescription(item){
 function inventoryBucket(item){
   const id=String(item?.item_id||'').toLowerCase();
   const cat=String(item?.category||'').toLowerCase();
+  const description=String(item?.description||'').toLowerCase();
   if(cat==='weapon') return 'weapons';
   if(cat==='armor') return 'armors';
   if(cat==='boots') return 'boots';
   if(cat==='box' || id.includes('caixa_') || id==='lootbox_std') return 'boxes';
-  if(cat==='raid' || id.includes('fragmento_raid') || id.includes('chave_raid') || id.startsWith('raid_')) return 'raid';
+  if(cat==='raid' || id.includes('fragmento_raid') || id.includes('chave_raid') || id.startsWith('raid_') || description.includes('raid lv.')) return 'raid';
   if(cat==='material') return 'materials';
   if(['consumable','potion','pet_potion','pet_energy'].includes(cat) || id.startsWith('pocao_') || id==='energetico_pet') return 'consumables';
   if(cat==='special') return 'special';
