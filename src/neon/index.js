@@ -1783,10 +1783,10 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
         startedAt:treinoAlphaStartsAt,
         endsAt:treinoAlphaEndsAt,
         moneyMultiplier:1,
-        xpMultiplier:1.5,
+        xpMultiplier:1,
         activatedBy:'scheduled-treino-alpha',
         oneOffId:'treino-alpha-2026-10-06-1900',
-        eventLabel:'TREINO ALPHA'
+        eventLabel:'CAÇADA ALPHA'
       }
       await db.query(`
         INSERT INTO trevo_settings(key,value,updated_at)
@@ -1857,6 +1857,30 @@ Durante os eventos haverá *3s entre ações do mesmo jogador* e as ações simu
       }
 
       if(event.active && String(raw.startAnnouncementId||'')!==eventId){
+        if(String(raw.oneOffId||'')==='treino-alpha-2026-10-06-1900'){
+          await sendEventToGroups(
+`⚔️🔥 *CAÇADA ALPHA COMEÇOU!* 🔥⚔️
+
+⏱️ *19:00 → 20:00*
+🎯 Bônus válidos *somente nas RAIDS*:
+
+💰 Recompensa em dinheiro: *+25%*
+✨ XP do jogador: *+50%*
+🐾 XP de pet: *+25%*
+🎁 Chance de caixas/equipamentos: *+20% sobre a chance normal*
+
+🧩 Fragmentos continuam *1x*.
+🏢 Negócios, 💼 trabalho, 🚗 Uber, 🍔 iFood e 🎰 minigames continuam *sem bônus*.
+
+🔥 Hora de farmar sem destruir a economia.`
+          )
+          raw.startAnnouncementId=eventId
+          await db.query(
+            "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
+            [JSON.stringify(raw)]
+          )
+          return
+        }
         const mult=eventMultLabel(event.moneyMultiplier)
         const xpMult=eventMultLabel(event.xpMultiplier)
         const title=String(raw.eventLabel||`EVENTO ${xpMult}X XP`)
@@ -1883,6 +1907,20 @@ ${moneyLine}✨ XP: *${xpMult}x*
       }
 
       if(now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
+        if(String(raw.oneOffId||'')==='treino-alpha-2026-10-06-1900'){
+          await sendEventToGroups(
+`⏱️ *CAÇADA ALPHA ENCERRADA!*
+
+⚔️ Os bônus das Raids voltaram ao normal.
+💰 Nenhuma fonte passiva de renda recebeu multiplicador durante o evento.`
+          )
+          raw.endAnnouncementId=eventId
+          await db.query(
+            "UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key='double_reward_event'",
+            [JSON.stringify(raw)]
+          )
+          return
+        }
         const title=String(raw.eventLabel||`EVENTO ${eventMultLabel(event.moneyMultiplier)}X`)
         await sendEventToGroups(
 `⏱️ *${title} ENCERRADO!*
