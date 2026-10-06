@@ -83,7 +83,12 @@ export async function roulette(jid,amount,choice){
     const redNumbers=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
     const color=n===0?'verde':(redNumbers.has(n)?'vermelho':'preto')
     let payout=0
-    if(choice===color) payout=(choice==='verde'?amount*36:amount*2)*lucky3xMultiplier()
+    if(choice===color){
+      const basePayout=choice==='verde'?amount*36:amount*2
+      const baseProfit=basePayout-amount
+      // Lucky 3x multiplies only the prize/profit, never the returned stake.
+      payout=amount+(baseProfit*lucky3xMultiplier())
+    }
     if(payout) await credit(c,jid,payout,'roleta')
     return {number:n,color,choice,amount,payout,profit:payout-amount}
   })
@@ -130,7 +135,13 @@ export async function spinGroupRoulette(chat,jid){
     const color=n===0?'verde':(reds.has(n)?'vermelho':'preto')
     const results=[]
     for(const [player,bet] of Object.entries(state.players||{})){
-      const payout=bet.choice===color?(bet.choice==='verde'?Number(bet.amount)*36:Number(bet.amount)*2)*lucky3xMultiplier():0
+      let payout=0
+      if(bet.choice===color){
+        const stake=Number(bet.amount)
+        const basePayout=bet.choice==='verde'?stake*36:stake*2
+        const baseProfit=basePayout-stake
+        payout=stake+(baseProfit*lucky3xMultiplier())
+      }
       if(payout) await credit(c,player,payout,'roleta-coletiva')
       results.push({jid:player,amount:Number(bet.amount),choice:bet.choice,payout})
     }
