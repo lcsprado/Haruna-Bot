@@ -219,26 +219,26 @@ test('reclassification scroll is endgame Boss-only loot',()=>{
 })
 
 
-test('all purchasable and special pet species resolve to artwork',()=>{
+test('all purchasable pets resolve without borrowing art from another species',()=>{
   const adoptable=[
     'cachorro','gato','coelho','papagaio','hamster','tartaruga','coruja','raposa','golfinho_celestial','lobo',
     'moreia_sombria','aguia','gaviao','panda','tubarao_abissal','guepardo','tigre','polvo_arcano',
     'gazela_mistica','leao','cervo_mistico','orca_guerra','cavalo_guerra','unicornio','baleia_colossal','dragao'
   ]
-  const aliasStart=app.indexOf('const PET_SPRITE_ALIASES={')
-  const aliasEnd=app.indexOf('\n};',aliasStart)
-  const aliases=app.slice(aliasStart,aliasEnd)
+  const emojiStart=app.indexOf('const PET_SPECIES_EMOJI={')
+  const emojiEnd=app.indexOf('\n};',emojiStart)
+  const emojiMap=app.slice(emojiStart,emojiEnd)
   for(const species of adoptable){
-    assert.ok(aliases.includes(species+':'),'missing fallback artwork mapping for adoptable pet '+species)
+    assert.ok(emojiMap.includes(species+':'),'missing species-safe fallback for adoptable pet '+species)
   }
-  assert.ok(app.includes("return fallback;"),'pet renderer must always return an artwork fallback')
-  assert.ok(app.includes("const fallback=petCroppedSprite(petSpriteKey(s)"),'all pet render paths must start with a fallback image')
+  assert.ok(app.includes("return PET_NATIVE_SPRITES[s]||''"),'pet sprite resolver must not default to another animal')
+  assert.ok(app.includes("return petSpeciesFallback(s,className,label)"),'pets without exact art must use a species-safe visual')
 })
 
 test('web pet gallery covers every catalog species with framed art',()=>{
-  assert.ok(app.includes("return exact[s]||PET_SPRITE_ALIASES[s]||'pet-panther'"),'pet art must never fall through to a missing image')
+  assert.ok(app.includes("return PET_NATIVE_SPRITES[s]||''"),'pet art must never silently fall through to a wrong animal')
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
-    assert.ok(app.includes(species+":"),'missing pet art alias for '+species)
+    assert.ok(app.includes("'pet-special-"+species+"'"),'missing exclusive special art for '+species)
   }
   assert.ok(app.includes('data-pet-adopt-direct'),'adoption cards must have a direct adoption action')
   assert.ok(app.includes('data-pet-adopt-name'),'adoption cards must allow naming before adoption')
@@ -247,7 +247,7 @@ test('web pet gallery covers every catalog species with framed art',()=>{
   assert.ok(db.includes('export async function renamePet(jid,name,petId=null)'),'backend must support renaming any collection pet')
 })
 
-test('web item and pet galleries never render without real artwork',()=>{
+test('web item and pet galleries never render wrong stacked artwork',()=>{
   const itemStart=app.indexOf('function itemSpriteKey')
   const itemEnd=app.indexOf('\nfunction ',itemStart+30)
   const itemBlock=app.slice(itemStart,itemEnd)
@@ -255,11 +255,21 @@ test('web item and pet galleries never render without real artwork',()=>{
     assert.ok(itemBlock.includes(id+':'), 'missing explicit artwork mapping for '+id)
   }
   assert.ok(!itemBlock.includes("return '';"),'item artwork resolver must never return blank')
-  assert.ok(app.includes('pet-art-stack'),'pet images need a permanent sprite fallback layer')
-  assert.ok(app.includes('pet-fallback-underlay'),'pet fallback sprite must exist behind primary images')
-  assert.ok(app.includes("if(PREMIUM_PET_SPRITES[exclusive]||SPECIAL_PET_SPRITES[exclusive])"),'special pets must render over a fallback instead of alone')
-  assert.ok(app.includes('pet-primary-art'),'special pet art must have a primary layer above fallback')
-  assert.ok(app.includes('onerror="this.remove()"'),'broken exact pet images must reveal the already-rendered fallback')
+  assert.ok(app.includes('pet-image-fallback'),'exact pet images need a species-safe fallback')
+  assert.ok(app.includes("onload=\"this.parentElement.classList.add('pet-art-loaded')\""),'exact pet art must hide fallback after loading')
+  assert.ok(app.includes('onerror="this.remove()"'),'broken exact pet images must leave the safe fallback visible')
+  assert.ok(!app.includes("className+' pet-fallback-underlay'"),'pet cards must not stack an unrelated sprite under the real art')
+})
+
+test('reported pet cards cannot resolve to the wrong animal',()=>{
+  const spriteStart=app.indexOf('const PET_NATIVE_SPRITES={')
+  const spriteEnd=app.indexOf('\n};',spriteStart)
+  const native=app.slice(spriteStart,spriteEnd)
+  assert.ok(!native.includes("coruja:'pet-crow'"),'Coruja must never render as Corvo')
+  assert.ok(!native.includes("hamster:'pet-panda'"),'Hamster must never render as Panda')
+  assert.ok(!native.includes("papagaio:'pet-eagle'"),'Papagaio must never render as Águia')
+  assert.ok(app.includes("leao:'/assets/pets/leao.webp'"),'Leão must use its exact image asset')
+  assert.ok(app.includes("gato:'/assets/pets/gato.webp'"),'Gato must use its exact image asset')
 })
 
 test('PWA rivalry actions are echoed with real opponents and dedicated duel UI',()=>{
