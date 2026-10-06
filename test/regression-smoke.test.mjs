@@ -259,3 +259,12 @@ test('all Raid/endgame pets have unique exclusive art slots',()=>{
   }
   assert.equal(seen.size,raidSpecies.length,'every Raid/endgame pet must have its own art slot')
 })
+
+
+test('web raids run server-side and survive browser timer suspension',()=>{
+  assert.ok(index.includes('globalThis.__alphaStartRaidRun'),'server raid runner bridge missing')
+  assert.ok(webApi.includes("case 'raid.auto': return startRaidServerRun"),'raid auto resume endpoint missing')
+  assert.ok(webApi.includes('await startRaidServerRun(session,started.level)'),'raid.start must launch the server runner')
+  assert.ok(app.includes('⚡ AUTO SERVIDOR'),'web raid control must show server-side automation')
+  assert.ok(!app.includes('ui.raidTimer=setInterval(tick,8000)'),'web raid must not depend on a client interval')
+})
