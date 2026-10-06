@@ -65,7 +65,7 @@ test('boss and event combat auto-heal pets like raids',()=>{
 
 
 test('player classes are persisted RPG stats, not cosmetic-only',()=>{
-  assert.ok(gameCatalog.includes("paladin:Object.freeze({id:'paladin',name:'Paladino',role:'Tank',hp:80,atk:-4,def:12,spd:-3"),'Paladin tank baseline changed or missing')
+  assert.ok(gameCatalog.includes("paladin:Object.freeze({id:'paladin',name:'Paladino',role:'Tank',hp:130,atk:7,def:22,spd:5"),'Paladin tank baseline changed or missing')
   assert.ok(db.includes('export async function setPlayerClass'),'class persistence function missing')
   assert.ok(db.includes("class_applied BOOLEAN NOT NULL DEFAULT FALSE"),'stats class migration missing')
 })
@@ -125,4 +125,23 @@ test('raid materials do not fall through into armor artwork',()=>{
   assert.ok(app.includes("nucleo_titan:['🟠💎','Núcleo do Titã']"),'Núcleo do Titã fallback missing')
   assert.ok(app.includes("fragmento_celestial:['🔷💎','Fragmento Celestial']"),'Fragmento Celestial mapping missing')
   assert.ok(app.includes("raw.includes('nucleo titan')"),'material guard must run before armor matching')
+})
+
+
+test('all player classes now have positive non-zero role bonuses',()=>{
+  for(const id of ['warrior','assassin','mage','archer','paladin','berserker','monk','necromancer','druid','samurai']){
+    const rx=new RegExp(id+":Object\\.freeze\\(\\{id:'"+id+"'[^}]*hp:(-?\\d+),atk:(-?\\d+),def:(-?\\d+),spd:(-?\\d+)")
+    const m=gameCatalog.match(rx)
+    assert.ok(m,'class missing: '+id)
+    for(const n of m.slice(1).map(Number)) assert.ok(n>0,id+' must not have zero/negative class bonus')
+  }
+})
+
+test('class reclassification requires scroll and seven-day cooldown',()=>{
+  assert.ok(db.includes("const RECLASS_ITEM='pergaminho_reclassificacao'"),'reclass scroll id missing')
+  assert.ok(db.includes('const RECLASS_SECONDS=7*24*60*60'),'7-day cooldown missing')
+  assert.ok(db.includes("UPDATE inventories SET quantity=quantity-1"),'reclass scroll must be consumed')
+  assert.ok(db.includes("class_hp_bonus INTEGER NOT NULL DEFAULT 0"),'class bonus snapshot migration missing')
+  assert.ok(app.includes('Precisa de Pergaminho'),'web class lock state missing')
+  assert.ok(app.includes('Primeira classe grátis'),'first-choice UX missing')
 })
