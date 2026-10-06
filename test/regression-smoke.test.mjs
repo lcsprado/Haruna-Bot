@@ -217,6 +217,19 @@ test('web pet gallery covers every catalog species with framed art',()=>{
   assert.ok(db.includes('export async function renamePet(jid,name,petId=null)'),'backend must support renaming any collection pet')
 })
 
+test('web item and pet galleries never render without real artwork',()=>{
+  const itemStart=app.indexOf('function itemSpriteKey')
+  const itemEnd=app.indexOf('\nfunction ',itemStart+30)
+  const itemBlock=app.slice(itemStart,itemEnd)
+  for(const id of ['energetico_pet','espada_madeira','espada_ferro','espada_aco','lanca_solar','excalibur','armadura_aco','bota_cacador','bota_relampago','bota_celestial','escama_vulcanica','insignia_eclipse','marca_insone','coroa_madrugada']){
+    assert.ok(itemBlock.includes(id+':'), 'missing explicit artwork mapping for '+id)
+  }
+  assert.ok(!itemBlock.includes("return '';"),'item artwork resolver must never return blank')
+  assert.ok(app.includes('pet-art-stack'),'exact pet images need a generated-sprite fallback layer')
+  assert.ok(app.includes('pet-fallback-underlay'),'pet fallback sprite must exist behind exact images')
+  assert.ok(app.includes('this.previousElementSibling.style.opacity=1'),'broken pet files must reveal fallback art')
+})
+
 test('PWA rivalry actions are echoed back to the linked WhatsApp group',()=>{
   assert.ok(index.includes('globalThis.__alphaWebGroupLog'),'WhatsApp bridge for web actions missing')
   assert.ok(webApi.includes('async function sendWebGroupActivity'),'web activity formatter missing')
