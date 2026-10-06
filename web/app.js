@@ -69,6 +69,23 @@ const FIXED_ART_H=384;
 
 // Artes exclusivas dos pets especiais/endgame. Uma única spritesheet evita
 // dezenas de downloads sem reaproveitar a identidade visual entre espécies.
+const PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp?v=alpha-special-pets-20261006-2';
+const PREMIUM_PET_ART_W=384;
+const PREMIUM_PET_ART_H=288;
+const PREMIUM_PET_SPRITES={
+  'pet-special-oraculo_pedra':[0,0,96,96],
+  'pet-special-pantera_vulcanica':[96,0,96,96],
+  'pet-special-espectro_abissal':[192,0,96,96],
+  'pet-special-kraken_aco':[288,0,96,96],
+  'pet-special-esfinge_titanica':[0,96,96,96],
+  'pet-special-quimera_abissal':[96,96,96,96],
+  'pet-special-paladino_astral':[192,96,96,96],
+  'pet-special-lince_celestial':[288,96,96,96],
+  'pet-special-arcanjo_eclipse':[0,192,96,96],
+  'pet-special-colosso_alpha':[96,192,96,96],
+  'pet-special-oraculo_alpha':[192,192,96,96]
+};
+
 const SPECIAL_PET_ART_SHEETS=[
   '/assets/alpha-raid-pets-1.webp?v=alpha-raid-pets-20261006-1',
   '/assets/alpha-raid-pets-2.webp?v=alpha-raid-pets-20261006-1'
@@ -401,13 +418,14 @@ function petSpriteKey(species){
   return exact[s]||PET_SPRITE_ALIASES[s]||'pet-panther';
 }
 function petCroppedSprite(key,className,label){
+  const premium=PREMIUM_PET_SPRITES[key];
   const special=SPECIAL_PET_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=special?special.slice(1):(fixed||OFFICIAL_SPRITES[key]);
+  const b=premium?premium:(special?special.slice(1):(fixed||OFFICIAL_SPRITES[key]));
   if(!b) return '';
-  const sheet=special?SPECIAL_PET_ART_SHEETS[special[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
-  const sw=special?SPECIAL_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
-  const sh=special?SPECIAL_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
+  const sheet=premium?PREMIUM_PET_ART_SHEET:(special?SPECIAL_PET_ART_SHEETS[special[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET));
+  const sw=premium?PREMIUM_PET_ART_W:(special?SPECIAL_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W));
+  const sh=premium?PREMIUM_PET_ART_H:(special?SPECIAL_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H));
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
@@ -416,22 +434,40 @@ function petCroppedSprite(key,className,label){
   return '<div class="pet-cropped-art '+esc(className||'')+'" role="img" aria-label="'+esc(label||key)+'" '+
     'style="aspect-ratio:'+w+'/'+h+';background-image:url(\''+esc(sheet)+'\');background-size:'+sizeX+'% '+sizeY+'%;background-position:'+posX+'% '+posY+'%"></div>';
 }
+function petSpeciesName(species){
+  const s=String(species||'').toLowerCase();
+  const row=catalogPets().find(x=>String(x.species||'').toLowerCase()===s);
+  const raw=String(row?.label||row?.name||titleCase(s));
+  return raw.replace(/^[^\p{L}\p{N}]+/u,'').trim()||titleCase(s);
+}
 function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
-  const label=titleCase(s);
+  const label=petSpeciesName(s);
   const exclusive='pet-special-'+s;
-  if(SPECIAL_PET_SPRITES[exclusive]) return petCroppedSprite(exclusive,className,label);
-  if(s==='lobo') return petCroppedSprite('fixed-wolvenaro',className,label);
-  if(s==='urso_runico') return petCroppedSprite('fixed-urso-runico',className,label);
-  const img=petExactImage(s);
-  const sprite=petSpriteKey(s);
-  if(img){
-    const fallback=petCroppedSprite(sprite,className+' pet-fallback-underlay',label);
-    return '<div class="pet-art-stack">'+fallback+
-      '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006-3" alt="'+esc(label)+'" loading="lazy" '+
-      'onerror="if(this.previousElementSibling){this.previousElementSibling.style.opacity=1}this.remove()"></div>';
+  const fallback=petCroppedSprite(petSpriteKey(s),className+' pet-fallback-underlay',label);
+
+  // Pets de Raid/endgame: a arte premium aprovada tem prioridade; os demais
+  // continuam com slot exclusivo nas duas folhas de Raid. Em todos os casos
+  // existe um sprite oficial por baixo para nunca deixar o card vazio.
+  if(PREMIUM_PET_SPRITES[exclusive]||SPECIAL_PET_SPRITES[exclusive]){
+    const primary=petCroppedSprite(exclusive,className+' pet-primary-art',label);
+    return '<div class="pet-art-stack">'+fallback+primary+'</div>';
   }
-  return petCroppedSprite(sprite,className,label);
+
+  if(s==='lobo'){
+    return '<div class="pet-art-stack">'+fallback+petCroppedSprite('fixed-wolvenaro',className+' pet-primary-art',label)+'</div>';
+  }
+  if(s==='urso_runico'){
+    return '<div class="pet-art-stack">'+fallback+petCroppedSprite('fixed-urso-runico',className+' pet-primary-art',label)+'</div>';
+  }
+
+  const img=petExactImage(s);
+  if(img){
+    return '<div class="pet-art-stack">'+fallback+
+      '<img class="pet-exact-art '+esc(className)+'" src="'+esc(img)+'?v=alpha-pets-20261006-4" alt="'+esc(label)+'" loading="lazy" '+
+      'onerror="this.remove()"></div>';
+  }
+  return fallback;
 }
 
 function raidSpriteKey(level,name){
@@ -571,6 +607,14 @@ const num = value => Number(value||0).toLocaleString('pt-BR');
 const pct = value => Math.max(0,Math.min(100,Number(value||0)));
 const rarityClass = r => 'rarity-' + String(r||'common').toLowerCase();
 const titleCase = s => String(s||'').replace(/_/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
+function raidStatusLabel(value){
+  const key=String(value||'').toLowerCase();
+  return ({lobby:'Sala aberta',active:'Em andamento',completed:'Concluída',failed:'Fracassada',cancelled:'Cancelada',inactive:'Inativa'}[key]||titleCase(key));
+}
+function bossModeLabel(value){
+  const key=String(value||'').toLowerCase();
+  return ({common:'Comum',weekly:'Semanal',event:'Evento',event_completed:'Evento concluído',completed:'Concluído'}[key]||titleCase(key));
+}
 
 function toast(message){
   const el=$('#toast');
@@ -662,11 +706,11 @@ async function syncExtras(force){
 }
 
 function actionFeedback(name,result){
-  if(result&&result.ok===false&&Number(result.remaining)>0) return '⏳ Cooldown: '+formatRemaining(result.remaining);
+  if(result&&result.ok===false&&Number(result.remaining)>0) return '⏳ Recarga: '+formatRemaining(result.remaining);
   if(result&&result.cooldown&&Number(result.remainingMs)>0) return '⏳ Aguarde '+formatRemaining(Number(result.remainingMs)/1000);
-  if(name==='daily'&&result&&result.ok) return '🎁 Daily recebido • '+money(result.totalCash||result.amount||0)+' • sequência '+num(result.streak||1);
-  if(name==='work'&&result&&result.ok) return '💼 Trabalho concluído • +'+money(result.amount||0)+' • cooldown 30 min';
-  if(name==='all'&&result) return '⚡ ALL processado. Veja o resultado abaixo.';
+  if(name==='daily'&&result&&result.ok) return '🎁 Bônus diário recebido • '+money(result.totalCash||result.amount||0)+' • sequência '+num(result.streak||1);
+  if(name==='work'&&result&&result.ok) return '💼 Trabalho concluído • +'+money(result.amount||0)+' • recarga de 30 min';
+  if(name==='all'&&result) return '⚡ Rotina completa processada. Veja o resultado abaixo.';
   return 'Ação concluída no Alpha Bot.';
 }
 async function doAction(name,body,options){
@@ -779,8 +823,8 @@ function cooldownKey(key){
 }
 function cooldownLabel(key){
   const action=cooldownKey(key);
-  const map={battle:'Duelo',rob:'Roubar',work:'Trabalhar',uber:'Uber',ifood:'iFood',daily:'Daily',petduel:'Duelo Pet',dungeon:'Dungeon'};
-  return map[action]||titleCase(action||'Cooldown');
+  const map={battle:'Duelo',rob:'Roubar',work:'Trabalhar',uber:'Uber',ifood:'iFood',daily:'Bônus diário',petduel:'Duelo Pet',dungeon:'Masmorra'};
+  return map[action]||titleCase(action||'Recarga');
 }
 function formatRemaining(seconds){
   const total=Math.max(0,Math.ceil(Number(seconds||0)));
@@ -848,7 +892,7 @@ function renderCooldowns(){
   const nowSec=Math.floor(Date.now()/1000);
   const known=new Set(['battle','rob','work','uber','ifood','daily','petduel','dungeon']);
   const active=rows.filter(row=>Number(row.expires_at||0)>nowSec && known.has(cooldownKey(row.key)));
-  if(!active.length) return '<div class="empty">Nenhum cooldown ativo.</div>';
+  if(!active.length) return '<div class="empty">Nenhuma recarga ativa.</div>';
   return '<div class="list">'+active.map(row=>{
     const expires=Number(row.expires_at||0);
     const remain=Math.max(0,expires-nowSec);
@@ -965,7 +1009,7 @@ function specialtyText(p){
   const s=p&&p.specialty;
   if(!s) return '';
   const stats=s.stats || (s.stat?{[s.stat]:s.base}:{});
-  const labels={damage:'dano',bossDamage:'Boss',defense:'defesa',crit:'crítico',dodge:'esquiva',speed:'VEL',xp:'XP',drop:'drop'};
+  const labels={damage:'dano',bossDamage:'Boss',defense:'defesa',crit:'crítico',dodge:'esquiva',speed:'VEL',xp:'XP',drop:'itens raros'};
   const parts=Object.entries(stats).filter(x=>Number(x[1])>0).map(x=>{
     return '+'+x[1]+(x[0]==='speed'?' ':'% ')+(labels[x[0]]||x[0]);
   });
@@ -986,7 +1030,7 @@ function ownedPetCard(p){
   return '<div class="card pet-card owned">'+petPortrait(p.species)+
     '<div class="tag-row"><span class="tag '+(active?'good':'')+'">'+(active?'ATIVO':'COLEÇÃO')+'</span><span class="tag">'+esc(cat&&cat.style||'Pet')+'</span></div>'+
     '<h3>'+esc(p.name||cat&&cat.label||titleCase(p.species))+'</h3>'+
-    '<p>'+esc(titleCase(p.species))+' • Lv.'+num(p.level)+' • XP '+num(p.xp)+' • Poder '+num(p.power)+'</p>'+
+    '<p>'+esc(petSpeciesName(p.species))+' • Lv.'+num(p.level)+' • XP '+num(p.xp)+' • Poder '+num(p.power)+'</p>'+
     '<div class="pet-vitals"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(maxHp)+'</strong><div class="progress"><span style="width:'+pct(hp/maxHp*100)+'%"></span></div></div>'+
     '<div><span>⚡ Energia</span><strong>'+num(p.energy)+'/'+num(p.max_energy||100)+'</strong><div class="progress"><span style="width:'+pct(Number(p.energy||0)/Math.max(1,Number(p.max_energy||100))*100)+'%"></span></div></div></div>'+
     '<div class="pet-needs"><span>🍗 '+num(p.hunger)+'/100</span><span>🧼 '+num(p.hygiene)+'/100</span></div>'+
@@ -1100,14 +1144,14 @@ function renderPets(){
   const optionsFor=slot=>{
     const current=selectedId(slot);
     return '<option value="">'+(slot===1?'Escolha o principal':'Vazio')+'</option>'+
-      pets.map(p=>'<option value="'+p.id+'" '+(Number(p.id)===current?'selected':'')+'>'+esc(p.name)+' • '+esc(titleCase(p.species))+' • Lv.'+num(p.level)+'</option>').join('');
+      pets.map(p=>'<option value="'+p.id+'" '+(Number(p.id)===current?'selected':'')+'>'+esc(p.name)+' • '+esc(petSpeciesName(p.species))+' • Lv.'+num(p.level)+'</option>').join('');
   };
   const teamSlot=slot=>{
     const p=teamPet(slot);
     const hp=p?Number(p.hp||0):0;
     const maxHp=p?Math.max(1,Number(p.max_hp||1)):1;
     const status=p
-      ? '<div class="team-pet-status"><div class="team-pet-head"><strong>'+esc(p.name||titleCase(p.species))+'</strong><small>Lv.'+num(p.level)+' • '+esc(titleCase(p.species))+'</small></div>'+
+      ? '<div class="team-pet-status"><div class="team-pet-head"><strong>'+esc(p.name||titleCase(p.species))+'</strong><small>Lv.'+num(p.level)+' • '+esc(petSpeciesName(p.species))+'</small></div>'+
         '<div class="team-pet-hp"><span>❤️ '+num(hp)+'/'+num(maxHp)+'</span><div class="progress"><span style="width:'+pct(hp/maxHp*100)+'%"></span></div></div>'+
         (hp<maxHp?'<button class="btn heal" data-team-pet-heal="'+p.id+'">❤️ Curar agora</button>':'<button class="btn" disabled>❤️ HP cheio</button>')+
         '</div>'
@@ -1710,7 +1754,7 @@ function renderActivities(){
     '<div class="grid three">'+
       '<div class="card"><h3>😴 Dormir</h3><p>'+(sleep?'Ativo até '+new Date(Number(sleep.ends_at)*1000).toLocaleString('pt-BR'):'Você está acordado.')+'</p><button class="btn '+(sleep?'danger':'primary')+'" data-sleep="'+(sleep?'wake':'start')+'">'+(sleep?'Acordar':'Dormir')+'</button></div>'+
       '<div class="card"><h3>🌱 Carpinar</h3><p>'+(carp?'Ativo • termina em '+Math.ceil((Number(carp.ends_at)-Date.now()/1000)/60)+' min':'Escolha um dos planos reais abaixo.')+'</p>'+(carp?'<button class="btn danger" data-carpinar="leave">Sair</button>':'<div class="choice-row">'+plans.map(p=>'<button class="btn" data-carpinar-hours="'+Number(p.hours)+'">'+num(p.hours)+'h</button>').join('')+'</div>')+'</div>'+
-      '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><div class="expedition-form"><select data-expedition-pet><option value="">Escolha o pet</option>'+collection().map(p=>'<option value="'+p.id+'">'+esc(p.name)+' • '+esc(titleCase(p.species))+' • Lv.'+num(p.level)+'</option>').join('')+'</select><select data-expedition-hours><option value="2">2h</option><option value="4" selected>4h</option><option value="8">8h</option></select><button class="btn" data-pet-expedition>Enviar</button></div><button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
+      '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><div class="expedition-form"><select data-expedition-pet><option value="">Escolha o pet</option>'+collection().map(p=>'<option value="'+p.id+'">'+esc(p.name)+' • '+esc(petSpeciesName(p.species))+' • Lv.'+num(p.level)+'</option>').join('')+'</select><select data-expedition-hours><option value="2">2h</option><option value="4" selected>4h</option><option value="8">8h</option></select><button class="btn" data-pet-expedition>Enviar</button></div><button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
     '</div>'+
     '<div class="section card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
     '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,Number(d.profile&&d.profile.level||1),ex.claimedLevelRewards||[])+'</div>'+
