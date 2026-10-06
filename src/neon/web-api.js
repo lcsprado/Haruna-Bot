@@ -699,8 +699,13 @@ async function sendWebGroupActivity(session,actionName,body,result){
   }else if(actionName==='rob'){
     const success=Boolean(result.success||result.ok)
     const amount=Number(result.amount||result.stolen||0)
-    text='🥷 *ROUBO*\n'+meName+' tentou roubar outro jogador e '+(success?'*CONSEGUIU*'+(amount>0?' levar *'+brl(amount)+'*':''):'*FALHOU*')+'.'
-    mentions=[me]
+    const fine=Number(result.fine||0)
+    const targetJid=String(body.targetJid||result.targetJid||result.target||'')
+    const targetName=await playerDisplayName(targetJid)
+    text='🥷 *ROUBO*\n🥷 *'+meName+'* tentou roubar *'+targetName+'* e '+(success
+      ?'*CONSEGUIU*'+(amount>0?'\n💰 Valor roubado: *'+brl(amount)+'*':'')
+      :'*FALHOU*'+(fine>0?'\n💸 Multa: *'+brl(fine)+'*':''))
+    mentions=[me,targetJid].filter(Boolean)
   }else if(actionName==='dungeon'){
     text='🏰 *DUNGEON*\n'+meName+' enfrentou uma Dungeon pelo Alpha RPG.'
     mentions=[me]
