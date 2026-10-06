@@ -125,6 +125,7 @@ export async function initDatabase() {
     );
     CREATE INDEX IF NOT EXISTS item_trade_offers_to_idx
       ON item_trade_offers(to_jid,status,expires_at);
+    ALTER TABLE item_trade_offers ALTER COLUMN request_item_id DROP NOT NULL;
 
     CREATE TABLE IF NOT EXISTS equipment_fusions(
       jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
@@ -1165,61 +1166,49 @@ export async function listTradeableItems(jid,rarity=null,minQuantity=1) {
   return rows
 }
 
-export async function createItemTradeOffer(fromJid,toJid,offerItemId,requestItemId,quantity=1) {
+export async function createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1) {
   quantity=Number(quantity)
   if(fromJid===toJid) throw new Error('Você não pode trocar item consigo mesmo.')
   if(!Number.isInteger(quantity)||quantity<1||quantity>9999) throw new Error('Quantidade inválida para troca.')
-  if(String(offerItemId)===String(requestItemId)) throw new Error('Escolha dois itens diferentes para a troca.')
   await ensureUser(fromJid)
   await ensureUser(toJid)
   return transaction(async client=>{
-    const ids=[String(offerItemId),String(requestItemId)]
-    const itemRows=(await client.query(
-      `SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=ANY($1::text[])`,
-      [ids]
-    )).rows
-    const offer=itemRows.find(x=>x.id===String(offerItemId))
-    const request=itemRows.find(x=>x.id===String(requestItemId))
-    if(!offer||!request) throw new Error('Item da troca não encontrado.')
+    const itemR=await client.query('SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=$1',[String(offerItemId)])
+    const offer=itemR.rows[0]
+    if(!offer) throw new Error('Item da troca não encontrado.')
     const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !['weapon','armor','boots'].includes(item.category)
-    if(!allowed(offer)||!allowed(request)) throw new Error('Esse tipo de item não pode ser trocado.')
-    if(offer.rarity!==request.rarity) throw new Error('A troca só pode envolver itens da mesma raridade.')
-
-    const [a,b]=await Promise.all([
-      client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[fromJid,offer.id]),
-      client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[toJid,request.id])
-    ])
-    if(Number(a.rows[0]?.quantity||0)<quantity) throw new Error('Você não possui essa quantidade do item oferecido.')
-    if(Number(b.rows[0]?.quantity||0)<quantity) throw new Error('A outra pessoa não possui essa quantidade do item solicitado.')
-
-    await client.query(
-      "UPDATE item_trade_offers SET status='expired' WHERE status='pending' AND expires_at<=$1",
-      [Math.floor(Date.now()/1000)]
-    )
+    if(!allowed(offer)) throw new Error('Esse tipo de item não pode ser trocado.')
+    const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[fromJid,offer.id])
+    if(Number(inv.rows[0]?.quantity||0)<quantity) throw new Error('Você não possui essa quantidade do item oferecido.')
+    const compatible=await client.query(`
+      SELECT 1
+      FROM inventories i
+      JOIN items it ON it.id=i.item_id
+      WHERE i.jid=$1 AND i.quantity>=$2 AND it.rarity=$3
+        AND it.sellable=TRUE AND it.stackable=TRUE AND it.rarity<>'event'
+        AND it.category NOT IN ('weapon','armor','boots')
+        AND it.id<>$4
+      LIMIT 1
+    `,[toJid,quantity,offer.rarity,offer.id])
+    if(!compatible.rowCount) throw new Error('A outra pessoa não possui item compatível dessa raridade e quantidade.')
+    await client.query("UPDATE item_trade_offers SET status='expired' WHERE status='pending' AND expires_at<=$1",[Math.floor(Date.now()/1000)])
     const expiresAt=Math.floor(Date.now()/1000)+10*60
     const r=await client.query(`
       INSERT INTO item_trade_offers(from_jid,to_jid,offer_item_id,request_item_id,quantity,rarity,expires_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7)
+      VALUES($1,$2,$3,NULL,$4,$5,$6)
       RETURNING id,expires_at
-    `,[fromJid,toJid,offer.id,request.id,quantity,offer.rarity,expiresAt])
-    return {
-      id:Number(r.rows[0].id),expiresAt,
-      quantity,rarity:offer.rarity,
-      offer:{id:offer.id,name:offer.name},
-      request:{id:request.id,name:request.name}
-    }
+    `,[fromJid,toJid,offer.id,quantity,offer.rarity,expiresAt])
+    return {id:Number(r.rows[0].id),expiresAt,quantity,rarity:offer.rarity,offer:{id:offer.id,name:offer.name}}
   })
 }
-
 export async function getLatestPendingTradeOffer(jid) {
   const now=Math.floor(Date.now()/1000)
   await db.query("UPDATE item_trade_offers SET status='expired' WHERE status='pending' AND expires_at<=$1",[now])
   const {rows}=await db.query(`
     SELECT t.id,t.from_jid,t.to_jid,t.offer_item_id,t.request_item_id,t.quantity,t.rarity,t.expires_at,
-           a.name AS offer_name,b.name AS request_name,u.push_name AS from_name
+           a.name AS offer_name,u.push_name AS from_name
     FROM item_trade_offers t
     JOIN items a ON a.id=t.offer_item_id
-    JOIN items b ON b.id=t.request_item_id
     LEFT JOIN users u ON u.jid=t.from_jid
     WHERE t.to_jid=$1 AND t.status='pending' AND t.expires_at>$2
     ORDER BY t.created_at DESC,t.id DESC
@@ -1227,9 +1216,10 @@ export async function getLatestPendingTradeOffer(jid) {
   `,[jid,now])
   return rows[0]||null
 }
-export async function acceptItemTradeOffer(jid,offerId) {
+export async function acceptItemTradeOffer(jid,offerId,requestItemId) {
   offerId=Number(offerId)
   if(!Number.isSafeInteger(offerId)||offerId<1) throw new Error('ID de troca inválido.')
+  if(!requestItemId) throw new Error('Escolha qual item você quer oferecer na troca.')
   return transaction(async client=>{
     const now=Math.floor(Date.now()/1000)
     const r=await client.query('SELECT * FROM item_trade_offers WHERE id=$1 FOR UPDATE',[offerId])
@@ -1241,48 +1231,37 @@ export async function acceptItemTradeOffer(jid,offerId) {
       await client.query("UPDATE item_trade_offers SET status='expired' WHERE id=$1",[offerId])
       throw new Error('Essa proposta de troca expirou.')
     }
-
     const itemRows=(await client.query(
       'SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=ANY($1::text[])',
-      [[t.offer_item_id,t.request_item_id]]
+      [[t.offer_item_id,String(requestItemId)]]
     )).rows
     const offer=itemRows.find(x=>x.id===t.offer_item_id)
-    const request=itemRows.find(x=>x.id===t.request_item_id)
-    if(!offer||!request||offer.rarity!==request.rarity||offer.rarity!==t.rarity) throw new Error('A raridade da troca não é mais válida.')
+    const request=itemRows.find(x=>x.id===String(requestItemId))
+    if(!offer||!request) throw new Error('Item da troca não encontrado.')
     const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !['weapon','armor','boots'].includes(item.category)
-    if(!allowed(offer)||!allowed(request)) throw new Error('Um dos itens não pode mais ser trocado.')
-
+    if(!allowed(offer)||!allowed(request)) throw new Error('Um dos itens não pode ser trocado.')
+    if(request.id===offer.id) throw new Error('Escolha um item diferente do item oferecido.')
+    if(request.rarity!==t.rarity) throw new Error('O item escolhido precisa ter a mesma raridade.')
     const qty=Number(t.quantity)
-    const first=[t.from_jid,t.offer_item_id].join('|')<[t.to_jid,t.request_item_id].join('|')
-      ? [[t.from_jid,t.offer_item_id],[t.to_jid,t.request_item_id]]
-      : [[t.to_jid,t.request_item_id],[t.from_jid,t.offer_item_id]]
+    const first=[t.from_jid,t.offer_item_id].join('|')<[t.to_jid,request.id].join('|')
+      ? [[t.from_jid,t.offer_item_id],[t.to_jid,request.id]]
+      : [[t.to_jid,request.id],[t.from_jid,t.offer_item_id]]
     const locked={}
     for(const [owner,itemId] of first){
       const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[owner,itemId])
       locked[owner+'|'+itemId]=Number(inv.rows[0]?.quantity||0)
     }
     if((locked[t.from_jid+'|'+t.offer_item_id]||0)<qty) throw new Error('Quem ofereceu não possui mais a quantidade combinada.')
-    if((locked[t.to_jid+'|'+t.request_item_id]||0)<qty) throw new Error('Você não possui mais a quantidade combinada.')
-
+    if((locked[t.to_jid+'|'+request.id]||0)<qty) throw new Error('Você não possui mais a quantidade combinada.')
     await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,t.from_jid,t.offer_item_id])
-    await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,t.to_jid,t.request_item_id])
-    await client.query(`
-      INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3)
-      ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
-    `,[t.from_jid,t.request_item_id,qty])
-    await client.query(`
-      INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3)
-      ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
-    `,[t.to_jid,t.offer_item_id,qty])
-    await client.query("UPDATE item_trade_offers SET status='accepted',completed_at=$1 WHERE id=$2",[now,offerId])
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,$2,0,'item_trade',$3)
-    `,[t.from_jid,t.to_jid,`${t.offer_item_id} x${qty} <-> ${t.request_item_id} x${qty}`])
+    await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,t.to_jid,request.id])
+    await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[t.from_jid,request.id,qty])
+    await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[t.to_jid,t.offer_item_id,qty])
+    await client.query("UPDATE item_trade_offers SET request_item_id=$1,status='accepted',completed_at=$2 WHERE id=$3",[request.id,now,offerId])
+    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,0,'item_trade',$3)`,[t.from_jid,t.to_jid,`${t.offer_item_id} x${qty} <-> ${request.id} x${qty}`])
     return {id:offerId,fromJid:t.from_jid,toJid:t.to_jid,quantity:qty,rarity:t.rarity,offer:{id:offer.id,name:offer.name},request:{id:request.id,name:request.name}}
   })
 }
-
 export async function rejectItemTradeOffer(jid,offerId) {
   offerId=Number(offerId)
   if(!Number.isSafeInteger(offerId)||offerId<1) throw new Error('ID de troca inválido.')
