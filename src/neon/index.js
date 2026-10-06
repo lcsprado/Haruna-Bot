@@ -6918,11 +6918,21 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     try{
       const chat=event?.id
       if(!chat?.endsWith('@g.us')) return
-      const people=event?.participants||[]
+      const rawPeople=event?.participants||[]
+      const participantJids=(participant)=>{
+        if(typeof participant==='string') return [participant]
+        if(!participant || typeof participant!=='object') return []
+        return [participant.phoneNumber,participant.pn,participant.id,participant.jid,participant.lid].filter(Boolean)
+      }
+      const people=rawPeople.map(participant=>participantJids(participant)[0]).filter(Boolean)
 
       if(event.action==='add'){
         const meIds=[sock.user?.id,sock.user?.lid,state.creds?.me?.id,state.creds?.me?.lid].filter(Boolean)
-        const botWasAdded=people.some(jid=>meIds.some(me=>normalizedAddressJid(jid)===normalizedAddressJid(me)))
+        const botWasAdded=rawPeople.some(participant=>
+          participantJids(participant).some(jid=>
+            meIds.some(me=>normalizedAddressJid(jid)===normalizedAddressJid(me))
+          )
+        )
         if(botWasAdded){
           const meta=await sock.groupMetadata(chat).catch(()=>null)
           await sock.sendMessage(chat,{text:
