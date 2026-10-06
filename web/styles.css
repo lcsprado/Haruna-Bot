@@ -169,3 +169,8 @@ button,input{font:inherit}button{color:inherit}.hidden{display:none!important}.m
 .bank-quick label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .bank-input{width:100%;box-sizing:border-box;border:1px solid #31445d;border-radius:10px;background:#08111b;color:var(--text);padding:11px 12px;font:inherit;outline:none}
 .bank-input:focus{border-color:#8b6a32;box-shadow:0 0 0 2px rgba(190,145,65,.10)}
+
+.pet-rename-inline,.pet-adopt-inline{display:flex;gap:7px;flex:1 1 100%;width:100%}
+.pet-rename-inline input,.pet-adopt-inline input{min-width:0;flex:1;border:1px solid #31445d;border-radius:9px;background:#08111b;color:var(--text);padding:9px 10px;font:inherit;outline:none}
+.pet-rename-inline input:focus,.pet-adopt-inline input:focus{border-color:#8b6a32;box-shadow:0 0 0 2px rgba(190,145,65,.10)}
+@media(max-width:520px){.pet-rename-inline,.pet-adopt-inline{flex-direction:column}}

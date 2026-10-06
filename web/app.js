@@ -403,7 +403,7 @@ function ownedPetCard(p){
     '<p>'+esc(specialtyText(cat))+'</p>'+
     '<div class="pet-actions">'+
       (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
-      (active?'<button class="btn" data-pet-rename>Renomear</button><button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
+      (active?'<div class="pet-rename-inline"><input data-pet-name maxlength="24" value="'+esc(p.name||'')+'" placeholder="Nome do pet"><button class="btn" data-pet-rename>Renomear • R$ 1.000</button></div><button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
       '<button class="btn" data-pet-id="'+p.id+'">ID '+p.id+'</button>'+
     '</div>'+
   '</div>';
@@ -420,7 +420,7 @@ function catalogPetCard(p){
     '<h3>'+esc(p.label||p.name||titleCase(p.species))+'</h3>'+
     '<p>'+esc(specialtyText(p))+'</p>'+
     (special?'<p>Raid Lv.'+num(p.raidLevel)+' • Chance '+num(p.chance)+'% • '+esc(p.materialName)+' '+materialQty+'/'+cost+'</p>':'<p>Nível mínimo '+num(p.level)+' • '+money(p.price)+'</p>')+
-    '<div class="pet-actions">'+(special?'<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button>':'<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-adopt="'+esc(p.species)+'">Adotar</button>')+'</div>'+
+    '<div class="pet-actions">'+(special?'<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button>':'<div class="pet-adopt-inline"><input data-pet-adopt-name="'+esc(p.species)+'" maxlength="24" placeholder="Nome do novo pet" value="'+esc(p.label||titleCase(p.species))+'"><button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-adopt="'+esc(p.species)+'">Adotar</button></div>')+'</div>'+
   '</div>';
 }
 
@@ -948,13 +948,18 @@ function bind(){
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
   document.querySelectorAll('[data-pet-rename]').forEach(x=>x.onclick=()=>{
     const current=(collection().find(p=>p.active)||{}).name||'';
-    const name=prompt('Novo nome do pet ativo (R$ 1.000):',current);
-    if(name && name!==current) doAction('pet.rename',{name},{});
+    const input=x.parentElement&&x.parentElement.querySelector('[data-pet-name]');
+    const name=String(input&&input.value||'').trim();
+    if(!name) return toast('Digite um nome para o pet.');
+    if(name===current) return toast('Esse já é o nome do pet.');
+    doAction('pet.rename',{name},{});
   });
   document.querySelectorAll('[data-pet-action]').forEach(x=>x.onclick=()=>doAction('pet.action',{action:x.dataset.petAction},{}));
   document.querySelectorAll('[data-pet-adopt]').forEach(x=>x.onclick=()=>{
-    const name=prompt('Nome deste pet:','Alpha');
-    if(name) doAction('pet.adopt',{species:x.dataset.petAdopt,name:name},{});
+    const input=x.parentElement&&x.parentElement.querySelector('[data-pet-adopt-name]');
+    const name=String(input&&input.value||'').trim();
+    if(!name) return toast('Digite o nome do novo pet.');
+    doAction('pet.adopt',{species:x.dataset.petAdopt,name},{});
   });
   document.querySelectorAll('[data-pet-summon]').forEach(x=>x.onclick=()=>doAction('pet.summon',{materialId:x.dataset.petSummon},{}));
   document.querySelectorAll('[data-pet-heal]').forEach(x=>x.onclick=()=>doAction('pet.heal',{itemId:x.dataset.petHeal},{}));
