@@ -2465,6 +2465,9 @@ export async function battle(attackerJid, defenderJid) {
     const b=statFor(defenderJid)
     const au=userFor(attackerJid)
     const bu=userFor(defenderJid)
+    if(Number(bu?.level||1)<=20){
+      throw new Error(`🛡️ PROTEÇÃO DE INICIANTE\n\n${bu?.push_name||'Esse jogador'} está no *Lv.${Number(bu?.level||1)}* e não pode ser atacado até completar o *Lv.20*.\n⚔️ O PvP contra ele é liberado a partir do *Lv.21*.`)
+    }
     const ap=petFor(attackerJid)
     const bp=petFor(defenderJid)
     const apSpd=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petSpeedBonus(ap.species,ap.level):0
@@ -3414,6 +3417,14 @@ export async function robPlayer(thiefJid,targetJid) {
       'SELECT jid,spd FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
       [ids]
     )
+    const users=await client.query(
+      'SELECT jid,push_name,level FROM users WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+      [ids]
+    )
+    const victim=users.rows.find(r=>r.jid===targetJid)
+    if(Number(victim?.level||1)<=20){
+      throw new Error(`🛡️ PROTEÇÃO DE INICIANTE\n\n${victim?.push_name||'Esse jogador'} está no *Lv.${Number(victim?.level||1)}* e não pode ser roubado até completar o *Lv.20*.\n🥷 Roubo contra ele é liberado a partir do *Lv.21*.`)
+    }
     const tw=wallets.rows.find(r=>r.jid===thiefJid)
     const vw=wallets.rows.find(r=>r.jid===targetJid)
     const ts=stats.rows.find(r=>r.jid===thiefJid)
