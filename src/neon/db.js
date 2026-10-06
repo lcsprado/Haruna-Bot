@@ -2091,6 +2091,23 @@ export async function equipItem(jid, itemId) {
 
     const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : 'boot_id'
     await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
+
+    // Trocar equipamento com bônus de HP nunca pode deixar HP bruto acima do novo máximo efetivo.
+    if(field==='weapon_id'||field==='armor_id'){
+      const st=(await client.query('SELECT hp,max_hp,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+      const ids=[st?.weapon_id,st?.armor_id].filter(Boolean)
+      const ups=ids.length?(await client.query(
+        'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
+        [jid,ids]
+      )).rows:[]
+      const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
+      const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id)):{hp:0}
+      const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id)):{hp:0}
+      const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0))
+      if(Number(st?.hp||0)>effectiveMax){
+        await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[effectiveMax,jid])
+      }
+    }
     return {...eq,itemId}
   })
 }
