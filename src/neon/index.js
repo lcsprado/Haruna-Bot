@@ -49,7 +49,7 @@ import {
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
-  hireCltUberDriver, getCltUberStatus, startCltUberShift, collectCltUber,
+  hireCltUberDriver, getCltUberStatus, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent
 } from './progression.js'
@@ -2244,7 +2244,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 🚕 *CLT UBER — RENDA AUTOMÁTICA*
 *!cltuber* — mostra os motoristas disponíveis
 *!cltuber 1* — contrata pelo número
-*!centraluber* — motoristas, carros, turnos e saldo acumulado
+*!centraluber* — motoristas, carros, turnos e saldo acumulado\n*!centraluber todos* — envia todos os disponíveis, pareando melhor motorista com melhor carro\n*!centraluber 1 3* — envia somente os motoristas escolhidos
 *!coletauber* — coleta todo o dinheiro da Central Uber
 🛑 Cada turno automático dura no máximo *8 horas*.
 
@@ -7922,6 +7922,17 @@ ${results.join('\n')}
         } else if(['centraluber'].includes(cmd)){
           const s=await getCltUberStatus(sender)
           if(!s.drivers.length) return await reply('👨‍✈️ Você ainda não contratou motorista. Use *!cltuber*.')
+          if(args.length){
+            const selection=args.join(' ')
+            const r=await startCltUberShiftsAuto(sender,selection)
+            let text='🚕 *CENTRAL UBER — DESPACHO AUTOMÁTICO*\n\n'
+            r.started.forEach((x,i)=>{
+              text+=`${i+1}. 👨‍✈️ *${x.type.name}* → 🚗 *${x.car.name}*\n   💰 Estimativa 8h: *R$ ${fmt(x.estimated8h)}*\n`
+            })
+            if(r.withoutCar) text+=`\n⚠️ ${r.withoutCar} motorista(s) ficaram parados por falta de carro livre.\n`
+            text+='\n🏆 Pareamento automático: *motorista mais caro → carro mais caro*.\n⏱️ Turnos de *8 horas*.'
+            return await reply(text)
+          }
           setQuickFlow(chat,sender,'cltuber_driver_select',{},90000)
           let text='🏢 *CENTRAL UBER*\n\n'
           s.drivers.forEach(d=>{
@@ -7933,7 +7944,7 @@ ${results.join('\n')}
             const busy=s.drivers.some(d=>d.active&&d.car?.id===car.id)
             text+=`${i+1}. ${car.name}${busy?' 🔒':''}\n`
           })
-          text+='\n👉 Responda com o *número do motorista* para iniciar/reiniciar um turno.\n💵 Para sacar tudo: *!coletauber*\n0️⃣ Sair'
+          text+='\n⚡ *DESPACHO RÁPIDO*\n*!centraluber todos* — envia todos os disponíveis\n*!centraluber 1 3* — envia somente os motoristas escolhidos\n🏆 Automático: motorista mais caro → carro mais caro.\n\n👉 Ou responda com *1, 2 ou 3* para escolher motorista e carro manualmente.\n💵 Para sacar tudo: *!coletauber*\n0️⃣ Sair'
           await reply(text)
 
         } else if(['coletauber'].includes(cmd)){
