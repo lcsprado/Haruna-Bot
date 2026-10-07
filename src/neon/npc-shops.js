@@ -139,7 +139,7 @@ export async function getNpcShop(jid,npcRef){
   const ids=npc.goods.map(x=>x.id)
   const [reputation,items,stats,highestRaid,fragmentsToday]=await Promise.all([
     db.query('SELECT karma FROM alpha_reputation WHERE jid=$1',[jid]),
-    db.query('SELECT id,name,category,rarity,price FROM items WHERE id=ANY($1::text[])',[ids]),
+    db.query('SELECT id,name,description,category,rarity,price FROM items WHERE id=ANY($1::text[])',[ids]),
     purchaseStats(db,jid,periodNow()),
     npcHighestClearedRaid(db,jid),
     npcDailyFragmentPurchases(db,jid)
@@ -153,7 +153,7 @@ export async function getNpcShop(jid,npcRef){
     const basePrice=Number(g.npcPrice||item.price)
     if(basePrice<=0) return null
     const permitted=accessOffer(npc,g,karma) && (!g.raidLevel || highestRaid>=g.raidLevel) && (!g.raidLevel || fragmentsToday<NPC_DAILY_FRAGMENT_LIMIT)
-    return {number:i+1,id:item.id,name:item.name,category:item.category,rarity:item.rarity,
+    return {number:i+1,id:item.id,name:item.name,description:item.description,category:item.category,rarity:item.rarity,
       basePrice,price:quotePrice(basePrice,factor),permitted,
       requiredKarma:g.gate||null,requiredRaid:g.raidLevel||null,
       soldOut:!!g.raidLevel&&fragmentsToday>=NPC_DAILY_FRAGMENT_LIMIT}
