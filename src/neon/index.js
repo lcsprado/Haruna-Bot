@@ -2258,8 +2258,7 @@ ${moneyLine}✨ XP: *${xpMult}x*
       const changed=item.price!==item.basePrice?` _(normal R$ ${fmt(item.basePrice)})_`:''
       out+=`*${item.number}.* ${item.name} — *R$ ${fmt(item.price)}*${changed}${blocked}\n`
     }
-    out+='
-👉 *Responda com o número do item* para comprar 1 unidade.\n⌨️ Ou *!comprarnpc '+(r.npc.id==='helena'?'1':r.npc.id==='mordek'?'2':'3')+' 1*\n9️⃣ Voltar aos NPCs • 0️⃣ Sair'
+    out+='\n👉 *Responda com o número do item* para comprar 1 unidade.\n⌨️ Ou *!comprarnpc '+(r.npc.id==='helena'?'1':r.npc.id==='mordek'?'2':'3')+' 1*\n9️⃣ Voltar aos NPCs • 0️⃣ Sair'
     setQuickFlow(chat,sender,'npc_goods',{npcId:r.npc.id},120000)
     await reply(out)
   }
@@ -2510,7 +2509,7 @@ Escolha o que deseja vender:
     }
 
     if(flow.stage==='npc_select'){
-      if(input==='9') return await showNpcMerchantsMenu(chat,sender,reply),true
+      if(input==='9'){ await showNpcMerchantsMenu(chat,sender,reply); return true }
       if(!['1','2','3'].includes(input)){ await reply('🏘️ Escolha o NPC *1, 2 ou 3* ou 0 para sair.'); return true }
       await showNpcGoodsMenu(chat,sender,reply,input)
       return true
