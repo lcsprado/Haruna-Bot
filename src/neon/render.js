@@ -7,6 +7,7 @@ const webFiles={
   '/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css',
   '/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js',
   '/rpg':'index.html','/rpg/':'index.html','/rpg/index.html':'index.html',
+  '/pet-art-audit.html':'pet-art-audit.html','/rpg/pet-art-audit.html':'pet-art-audit.html',
   '/rpg/app.js':'app.js','/rpg/styles.css':'styles.css',
   '/rpg/manifest.webmanifest':'manifest.webmanifest','/rpg/sw.js':'sw.js'
 }
