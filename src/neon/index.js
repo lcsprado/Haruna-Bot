@@ -3536,7 +3536,7 @@ ${bonus.text}
         return true
       }
       if(input!=='1'&&input!=='2'){
-        await reply('🎒 Escolha *1 Guardar* ou *2 Descartar e vender*.')
+        await reply('🎒 Escolha *1 Guardar* ou *2 Vender agora*.')
         return true
       }
 
