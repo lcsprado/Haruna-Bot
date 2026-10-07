@@ -390,6 +390,9 @@ function petSpeciesName(species){
   const raw=String(row?.label||row?.name||titleCase(s));
   return raw.replace(/^[^\p{L}\p{N}]+/u,'').trim()||titleCase(s);
 }
+// Essas ilustrações representam exatamente a espécie nominal; não são
+// posições aleatórias das antigas folhas de monstros genéricos.
+const PET_VERIFIED_VECTOR_ASSETS=new Set(["coelho","papagaio","hamster","coruja","golfinho_celestial","moreia_sombria","gaviao","guepardo","gazela_mistica","cervo_mistico","cavalo_guerra","unicornio","colosso_cristal","salamandra_infernal","rinoceronte_titanico","guardiao_obsidiana","cerbero_carmesim","fenix_gelo","fenix_alpha","dragao_corrompido","imperador_abissal","leviata_gelo","lobo_abismo","urso_runico","golem_ancestral","corvo_abissal","tubarao_abissal","tigre_lunar","leao_solar","fenix_fogo","dragao_vulcanico","rinoceronte","colosso_alpha","serpente_cosmica"]);
 const VERIFIED_RAID_PET_SPRITES={
   corvo_abissal:'pet-crow',tubarao_abissal:'pet-shark',
   fenix_gelo:'pet-phoenix',fenix_fogo:'pet-phoenix',fenix_alpha:'pet-phoenix',
@@ -401,32 +404,37 @@ function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
   const label=petSpeciesName(s);
   const exclusive='pet-special-'+s;
-
-  // Somente os 11 pets cuja arte foi conferida no atlas premium.
+  // Onze retratos do atlas premium foram verificados visualmente, célula por célula.
   if(PREMIUM_PET_SPRITES[exclusive]){
     return petCroppedSprite(exclusive,className+' pet-primary-art',label);
   }
-  // Artes individuais verificadas têm prioridade; nenhum animal emprestado de outra espécie.
+
+  // Artes individuais verificadas têm preferência sobre desenhos substitutos.
+  // Os dois webps rotulados como Corvo e Tubarão foram removidos após auditoria.
   const img=petExactImage(s);
   if(img){
     return '<div class="pet-art-stack">'+
       petSpeciesFallback(s,className+' pet-image-fallback',label)+
-      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=alpha-pets-audit-20261006-1" alt="'+esc(label)+'" loading="lazy" '+
+      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=alpha-pets-audit-20261006-2" alt="'+esc(label)+'" loading="lazy" '+
       'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
 
-  // Atlas original: apenas para animais que foram identificados visualmente.
-  const verified=VERIFIED_RAID_PET_SPRITES[s]||petSpriteKey(s);
-  if(verified){
-    const effects=(s==='fenix_gelo'||s==='leviata_gelo')?' pet-ice-palette':'';
-    return petCroppedSprite(verified,className+' pet-primary-art'+effects,label);
+  // Para espécies sem retrato verificado, usa o SVG próprio e correto.
+  if(PET_VERIFIED_VECTOR_ASSETS.has(s)){
+    const svg='/assets/pet-portraits/'+s+'.svg';
+    return '<div class="pet-art-stack pet-vector-stack">'+
+      petSpeciesFallback(s,className+' pet-image-fallback',label)+
+      '<img class="pet-vector-art '+esc(className)+' pet-primary-art" src="'+esc(svg)+'?v=pet-portraits-20261006-1" alt="'+esc(label)+'" loading="lazy" '+
+      'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
 
-  // Os 21 outros slots em alpha-raid-pets-1/2 são monstros genéricos e
-  // NÃO representam as espécies dos cards. Nunca voltar a usá-los.
+  // Só usa o atlas original em espécies que conferimos visualmente.
+  const key=VERIFIED_RAID_PET_SPRITES[s]||petSpriteKey(s);
+  if(key) return petCroppedSprite(key,className+' pet-primary-art',label);
+
+  // Último recurso para espécies futuras que ainda não possuem assets.
   return petSpeciesFallback(s,className,label);
 }
-
 function raidSpriteKey(level,name){
   const lv=Number(level||0);
   if([10,15,20,25,30,40,50].includes(lv)) return 'raid-'+lv;
