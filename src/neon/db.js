@@ -175,6 +175,17 @@ export async function initDatabase() {
       PRIMARY KEY(jid,item_id)
     );
 
+    CREATE TABLE IF NOT EXISTS alpha_xp_boosts (
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      bonus_percent INTEGER NOT NULL CHECK (bonus_percent BETWEEN 1 AND 30),
+      expires_at BIGINT NOT NULL,
+      bonus_remaining INTEGER NOT NULL DEFAULT 0 CHECK (bonus_remaining>=0)
+    );
+    CREATE TABLE IF NOT EXISTS alpha_xp_scroll_uses (
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      day_number BIGINT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS cooldowns (
       key TEXT PRIMARY KEY,
       expires_at BIGINT NOT NULL
@@ -358,6 +369,12 @@ export async function initDatabase() {
     ['pocao_ressurreicao','Poção da Ressurreição','Na Raid, se o HP zerar e não restar cura comum, revive com 30% do HP. Máximo de uma vez por Raid.','consumable',0,'epic'],
     ['selo_guardiao','Selo do Guardião','Consumido automaticamente no início da Raid; reduz 12% do dano recebido nessa Raid.','consumable',0,'rare'],
     ['oleo_sombras','Óleo das Sombras','Consumido automaticamente no primeiro ataque da Raid ou Boss; aumenta em 6% o dano do jogador naquela batalha.','consumable',0,'epic'],
+    // XP restrito a comerciantes NPC; valores de loja = 0, sem revenda.
+    ['elixir_disciplina','Elixir da Disciplina','Honra +30: +20% de XP por 20 min (máximo 1200 XP extra). Não acumula.','consumable',0,'epic'],
+    ['elixir_sombras','Elixir das Sombras','Karma -30: +20% de XP por 20 min (máximo 1200 XP extra). Não acumula.','consumable',0,'epic'],
+    ['pergaminho_experiencia','Pergaminho de Experiência','Concede imediatamente 500 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'rare'],
+    ['pergaminho_virtude','Tomo da Virtude','Honra +70: concede imediatamente 1200 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'epic'],
+    ['tomo_proibido','Tomo Proibido','Karma -70: concede imediatamente 1200 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'epic'],
 
     // Armas
     ['espada_madeira','Espada de Madeira','Arma inicial do Alpha Bot. +5 ATK.','weapon',1500,'common'],
@@ -452,7 +469,7 @@ export async function initDatabase() {
   }
 
   // Os consumíveis especiais são exclusivos dos NPCs e não entram na revenda geral.
-  await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras']])
+  await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
   await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','marca_insone','coroa_madrugada','armadura_colosso']])
@@ -2006,15 +2023,27 @@ function expNeeded(level) {
   return Math.max(100, Number(level) * 100)
 }
 
-async function applyExp(client, jid, gain) {
+async function applyExp(client, jid, gain, options={}) {
   const numericGain=Number(gain)
   if(!Number.isSafeInteger(numericGain) || numericGain<0) throw new Error('EXP inválida.')
 
   const r = await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
   if (!r.rows[0]) return { level:1, exp:0, levels:0 }
+  let bonusXp=0
+  if(numericGain>0 && !options.ignoreXpBoost && Number(r.rows[0].level)<MAX_LEVEL){
+    const boost=(await client.query(`
+      SELECT bonus_percent,bonus_remaining FROM alpha_xp_boosts
+      WHERE jid=$1 AND expires_at>EXTRACT(EPOCH FROM NOW())::BIGINT AND bonus_remaining>0
+      FOR UPDATE
+    `,[jid])).rows[0]
+    if(boost){
+      bonusXp=Math.min(Number(boost.bonus_remaining),Math.floor(numericGain*Number(boost.bonus_percent)/100))
+      if(bonusXp>0) await client.query('UPDATE alpha_xp_boosts SET bonus_remaining=bonus_remaining-$1 WHERE jid=$2',[bonusXp,jid])
+    }
+  }
 
   let level=Math.min(MAX_LEVEL,Math.max(1,Number(r.rows[0].level)||1))
-  let exp=Math.max(0,Number(r.rows[0].exp)||0)+numericGain
+  let exp=Math.max(0,Number(r.rows[0].exp)||0)+numericGain+bonusXp
   let levels=0
 
   // Nunca passa de 998 iterações, mesmo com EXP enorme.
@@ -2967,6 +2996,66 @@ export async function ownerGrantItem(jid, itemId, qty=1) {
   })
 }
 
+
+// Consumíveis de XP comprados nos NPCs: uso atômico para impedir duplicação.
+const XP_ITEM_EFFECTS=Object.freeze({
+  elixir_disciplina:{type:'boost',name:'Elixir da Disciplina',percent:20,seconds:20*60,cap:1200},
+  elixir_sombras:{type:'boost',name:'Elixir das Sombras',percent:20,seconds:20*60,cap:1200},
+  pergaminho_experiencia:{type:'scroll',name:'Pergaminho de Experiência',xp:500},
+  pergaminho_virtude:{type:'scroll',name:'Tomo da Virtude',xp:1200},
+  tomo_proibido:{type:'scroll',name:'Tomo Proibido',xp:1200}
+})
+export async function getXpBuffStatus(jid){
+  await ensureUser(jid)
+  const [boost,inventory]=await Promise.all([
+    db.query('SELECT bonus_percent,expires_at,bonus_remaining FROM alpha_xp_boosts WHERE jid=$1',[jid]),
+    db.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[])',[jid,Object.keys(XP_ITEM_EFFECTS)])
+  ])
+  const now=Math.floor(Date.now()/1000)
+  const active=boost.rows[0]&&Number(boost.rows[0].expires_at)>now&&Number(boost.rows[0].bonus_remaining)>0
+  return {active:Boolean(active),remainingSeconds:active?Number(boost.rows[0].expires_at)-now:0,
+    percent:active?Number(boost.rows[0].bonus_percent):0,bonusRemaining:active?Number(boost.rows[0].bonus_remaining):0,
+    items:inventory.rows.map(r=>({id:r.item_id,name:XP_ITEM_EFFECTS[r.item_id].name,quantity:Number(r.quantity)}))}
+}
+export async function useXpConsumable(jid,itemId){
+  await ensureUser(jid)
+  const effect=XP_ITEM_EFFECTS[itemId]
+  if(!effect) throw new Error('Item de XP inválido. Use !buffxp para ver os disponíveis.')
+  return transaction(async client=>{
+    const user=(await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!user) throw new Error('Jogador não encontrado.')
+    if(Number(user.level)>=MAX_LEVEL) throw new Error('Você já atingiu o nível máximo. Guarde esse item.')
+    const row=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 AND quantity>0 FOR UPDATE',[jid,itemId])).rows[0]
+    if(!row) throw new Error('Você não possui '+effect.name+'.')
+    const now=Math.floor(Date.now()/1000)
+    let result
+    if(effect.type==='boost'){
+      const already=(await client.query('SELECT expires_at,bonus_remaining FROM alpha_xp_boosts WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+      if(already&&Number(already.expires_at)>now&&Number(already.bonus_remaining)>0)
+        throw new Error('Já existe um bônus de XP ativo. Aguarde acabar antes de usar outro.')
+      await client.query(`
+        INSERT INTO alpha_xp_boosts(jid,bonus_percent,expires_at,bonus_remaining)
+        VALUES($1,$2,$3,$4)
+        ON CONFLICT(jid) DO UPDATE SET bonus_percent=EXCLUDED.bonus_percent,
+          expires_at=EXCLUDED.expires_at,bonus_remaining=EXCLUDED.bonus_remaining
+      `,[jid,effect.percent,now+effect.seconds,effect.cap])
+      result={type:'boost',name:effect.name,percent:effect.percent,durationMinutes:Math.floor(effect.seconds/60),cap:effect.cap}
+    }else{
+      // Mesma regra para todos os tomos: no máximo 1 por dia por jogador (Brasília).
+      const dayNumber=Math.floor((now-3*3600)/86400)
+      const used=(await client.query('SELECT day_number FROM alpha_xp_scroll_uses WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+      if(used&&Number(used.day_number)===dayNumber) throw new Error('Você já usou um pergaminho de XP hoje. Volte amanhã.')
+      await client.query(`
+        INSERT INTO alpha_xp_scroll_uses(jid,day_number) VALUES($1,$2)
+        ON CONFLICT(jid) DO UPDATE SET day_number=EXCLUDED.day_number
+      `,[jid,dayNumber])
+      const gain=await applyExp(client,jid,effect.xp,{ignoreXpBoost:true})
+      result={type:'scroll',name:effect.name,xp:effect.xp,level:gain.level,levelUps:gain.levels}
+    }
+    await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
+    return result
+  })
+}
 
 export async function grantExp(jid,gain){
   await ensureUser(jid)
