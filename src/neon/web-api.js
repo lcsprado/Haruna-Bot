@@ -1365,7 +1365,9 @@ export async function handleWebApi(req,res){
     const message=String(err?.message||'Erro interno.')
     const status=/inválid|expirad|não autorizad/i.test(message)?400:500
     console.error('[Web API]',req.method,url.pathname,err)
-    json(res,status,{ok:false,error:message})
+    // Mensagens SQL, exceções de runtime e nomes internos nunca chegam à interface.
+    const technical=/invalid input syntax|syntax error|stack trace|TypeError|ReferenceError|Cannot read properties|column .* does not exist|relation .* does not exist|constraint|ECONN|ETIMEDOUT|SELECT |INSERT INTO |UPDATE |DELETE FROM |\\bNaN\\b|undefined is not/i.test(message)
+    json(res,status,{ok:false,error:technical?'Não foi possível concluir a ação. Tente novamente.':message})
     return true
   }
 }
