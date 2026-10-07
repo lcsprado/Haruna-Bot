@@ -318,6 +318,17 @@ export async function maybeCreateCityEncounter(jid,{force=false}={}){
   return rows[0]
 }
 
+export async function getPendingCityEncounter(jid){
+  await ensureUser(jid)
+  const {rows}=await db.query(`
+    SELECT * FROM alpha_city_encounters
+    WHERE jid=$1 AND status='pending' AND expires_at>${NOW_SQL}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `,[jid])
+  return rows[0]||null
+}
+
 export async function resolveCityEncounter(jid,id,choice){
   await ensureUser(jid)
   choice=Number(choice)
