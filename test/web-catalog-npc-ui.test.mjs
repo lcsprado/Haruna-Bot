@@ -10,7 +10,9 @@ const npc=readFileSync(new URL('../src/neon/npc-shops.js',import.meta.url),'utf8
 test('inventário usa abas selecionadas, sem renderizar todos os grupos',()=>{
   assert.match(app,/data-inventory-tab/)
   assert.match(app,/ui\.inventoryTab/)
-  assert.match(app,/selected\.items\.map\(i=>inventoryCard/)
+  assert.match(app,/selected\.equipped\.map\(i=>inventoryCard/)
+  assert.match(app,/selected\.available\.map\(i=>inventoryCard/)
+  assert.match(app,/g\.all\.length/)
   assert.doesNotMatch(app,/groups\.map\(\(\[key,label\]\)=>\{[\s\S]*?const sections=/)
   assert.match(app,/sellable_quantity/)
   assert.match(app,/PROTEGIDO DE VENDA/)
