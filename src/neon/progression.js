@@ -126,6 +126,24 @@ function dailySelection(jid,key){
 
 export async function initProgression(){
   await db.query(`
+    CREATE TABLE IF NOT EXISTS alpha_contracts (
+      jid TEXT NOT NULL,
+      period BIGINT NOT NULL,
+      contract_id TEXT NOT NULL,
+      task TEXT NOT NULL,
+      target INTEGER NOT NULL,
+      progress INTEGER NOT NULL DEFAULT 0,
+      reward_cash BIGINT NOT NULL,
+      reward_xp INTEGER NOT NULL,
+      reward_item TEXT,
+      accepted_at BIGINT NOT NULL,
+      expires_at BIGINT NOT NULL,
+      claimed BOOLEAN NOT NULL DEFAULT FALSE,
+      PRIMARY KEY(jid,period)
+    );
+    CREATE INDEX IF NOT EXISTS alpha_contracts_active_idx ON alpha_contracts(jid,expires_at);
+  `)
+  await db.query(`
     CREATE TABLE IF NOT EXISTS daily_missions(
       jid TEXT NOT NULL,
       day_key TEXT NOT NULL,
@@ -1277,5 +1295,128 @@ export async function claimGroupEvent(chatJid,jid){
     }
 
     return {...e,reward_cash:rewardCash,eventMultiplier:1,bonusItem}
+  })
+}
+
+/**
+ * Contratos Alpha: quadro global determinístico, renovação 00h/04h/08h/12h/16h/20h (Brasília).
+ * Persistência por janela e jogador impede resgates duplicados e troca de missão para farm.
+ * Prêmios não herdam multiplicadores de eventos.
+ */
+const ALPHA_CONTRACT_SECONDS=4*3600
+const ALPHA_CONTRACT_TEMPLATES=[
+  [
+    {id:'ladrao',level:10,title:'Mãos Leves',task:'robbery',target:1,description:'Realize 1 roubo bem-sucedido',cash:500,xp:400},
+    {id:'entrega',level:10,title:'Entregador Iniciante',task:'ifood',target:2,description:'Conclua 2 rodadas de iFood',cash:600,xp:350}
+  ],
+  [
+    {id:'carpinar',level:20,title:'Trabalho Duro',task:'carpinar',target:1,description:'Conclua pelo menos 1 hora de carpinar',cash:1000,xp:500},
+    {id:'uber',level:20,title:'Correria Urbana',task:'uber',target:2,description:'Conclua 2 rodadas de Uber',cash:1000,xp:500}
+  ],
+  [
+    {id:'boss',level:35,title:'Caçador de Boss',task:'boss',target:2,description:'Participe de 2 vitórias contra Boss',cash:2500,xp:1200},
+    {id:'dungeon35',level:35,title:'Explorador',task:'dungeon',target:3,description:'Vença 3 dungeons',cash:2000,xp:1100}
+  ],
+  [
+    {id:'dungeon50',level:50,title:'Explorador Veterano',task:'dungeon',target:5,description:'Vença 5 dungeons',cash:5000,xp:2500},
+    {id:'raid20',level:50,title:'Veterano da Raid',task:'raid20',target:2,description:'Vença 2 Raids nível 20 ou superior',cash:4500,xp:2400}
+  ],
+  [
+    {id:'raid30',level:80,title:'Lenda das Raids',task:'raid30',target:1,description:'Vença 1 Raid nível 30 ou superior',cash:8000,xp:4000,item:'caixa_epica'},
+    {id:'raid40',level:80,title:'Caçador de Titãs',task:'raid40',target:1,description:'Vença 1 Raid nível 40 ou superior',cash:8000,xp:4200,item:'caixa_epica'}
+  ]
+]
+function alphaContractPeriod(now=Date.now()){
+  // UTC+0 interval boundaries align with Brasília 00h/04h/08h etc. (-3h).
+  return Math.floor(now/1000/ALPHA_CONTRACT_SECONDS)
+}
+function alphaContractBoardFor(period){
+  return ALPHA_CONTRACT_TEMPLATES.map((variants,i)=>{
+    const variant=variants[(period+i)%variants.length]
+    return {...variant,number:i+1}
+  })
+}
+export async function getAlphaContractBoard(jid){
+  await ensureUser(jid)
+  const period=alphaContractPeriod()
+  const [levelRow,activeRow]=await Promise.all([
+    db.query('SELECT level FROM stats WHERE jid=$1',[jid]),
+    db.query('SELECT * FROM alpha_contracts WHERE jid=$1 AND period=$2',[jid,period])
+  ])
+  return {
+    period,
+    level:Number(levelRow.rows[0]?.level||1),
+    nextAt:(period+1)*ALPHA_CONTRACT_SECONDS*1000,
+    contracts:alphaContractBoardFor(period),
+    active:activeRow.rows[0]||null
+  }
+}
+export async function acceptAlphaContract(jid,number){
+  await ensureUser(jid)
+  return tx(async client=>{
+    const period=alphaContractPeriod()
+    const contract=alphaContractBoardFor(period).find(x=>x.number===Number(number))
+    if(!contract) throw new Error('Contrato inválido. Abra !contratos e escolha um número de 1 a 5.')
+    const level=Number((await client.query('SELECT level FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.level||1)
+    if(level<contract.level) throw new Error(`Você precisa estar no nível ${contract.level} para aceitar este contrato. Seu nível: ${level}.`)
+    const acceptedAt=Math.floor(Date.now()/1000)
+    const expiresAt=(period+1)*ALPHA_CONTRACT_SECONDS
+    const row=await client.query(`
+      INSERT INTO alpha_contracts(
+        jid,period,contract_id,task,target,progress,reward_cash,reward_xp,
+        reward_item,accepted_at,expires_at,claimed
+      ) VALUES($1,$2,$3,$4,$5,0,$6,$7,$8,$9,$10,FALSE)
+      ON CONFLICT(jid,period) DO NOTHING RETURNING *
+    `,[jid,period,contract.id,contract.task,contract.target,contract.cash,contract.xp,
+       contract.item||null,acceptedAt,expiresAt])
+    if(!row.rows.length) throw new Error('Você já aceitou um contrato neste quadro. Aguarde a próxima renovação de 4 horas.')
+    return {contract,...row.rows[0]}
+  })
+}
+export async function progressAlphaContract(jid,task,metadata={}){
+  const period=alphaContractPeriod()
+  const now=Math.floor(Date.now()/1000)
+  const r=await db.query(`
+    UPDATE alpha_contracts SET progress=LEAST(target,progress+1)
+    WHERE jid=$1 AND period=$2 AND expires_at>$3
+      AND claimed=FALSE AND progress<target AND (
+        task=$4
+        OR (task='raid20' AND $4='raid' AND $5>=20)
+        OR (task='raid30' AND $4='raid' AND $5>=30)
+        OR (task='raid40' AND $4='raid' AND $5>=40)
+      )
+    RETURNING progress,target,contract_id
+  `,[jid,period,now,String(task),Number(metadata.raidLevel||0)])
+  return r.rows[0]||null
+}
+export async function claimAlphaContract(jid){
+  await ensureUser(jid)
+  return tx(async client=>{
+    const period=alphaContractPeriod()
+    const now=Math.floor(Date.now()/1000)
+    const rows=(await client.query(
+      'SELECT * FROM alpha_contracts WHERE jid=$1 AND period=$2 FOR UPDATE',[jid,period]
+    )).rows
+    if(!rows.length) throw new Error('Você não aceitou nenhum contrato neste quadro. Use !contratos.')
+    const contract=rows[0]
+    if(contract.claimed) throw new Error('Este contrato já foi resgatado.')
+    if(Number(contract.expires_at)<=now) throw new Error('Este contrato expirou.')
+    if(Number(contract.progress)<Number(contract.target)) throw new Error(
+      `Contrato ainda em andamento: ${contract.progress}/${contract.target}.`
+    )
+    await client.query('UPDATE alpha_contracts SET claimed=TRUE WHERE jid=$1 AND period=$2',[jid,period])
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[contract.reward_cash,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'alpha_contract',$3)",
+      [jid,contract.reward_cash,contract.contract_id])
+    // EXP e inventário são creditados no mesmo commit para evitar duplicações.
+    const { grantExpInTransaction }=await import('./db.js')
+    await grantExpInTransaction(client,jid,Number(contract.reward_xp||0))
+    if(contract.reward_item){
+      await client.query(`
+        INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+        ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1
+      `,[jid,contract.reward_item])
+    }
+    return contract
   })
 }
