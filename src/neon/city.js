@@ -23,10 +23,10 @@ export const CITY_LOCATIONS=Object.freeze([
 ])
 
 const DARK_MISSIONS=Object.freeze([
-  {id:'ataque_cidade',task:'attack_city',title:'🔥 Ataque à Cidade',description:'Participe de um ataque clandestino contra a cidade.',target:1,cash:18000,karma:-6},
+  {id:'ataque_cidade',task:'attack_city',title:'🔥 Ataque à Cidade',description:'Participe de um ataque clandestino contra a cidade.',target:1,cash:18000,karma:-5},
   {id:'roubo_npc',task:'rob_npc',title:'🥷 Mãos no Caixa',description:'Roube um comerciante da cidade com sucesso.',target:1,cash:22000,karma:0},
   {id:'sabotagem',task:'sabotage_city',title:'💣 Sabotagem',description:'Sabote a infraestrutura da cidade sem ser identificado.',target:1,cash:15000,karma:-4},
-  {id:'ataque_cidade_2',task:'attack_city',title:'🗡️ Recado das Sombras',description:'Ataque um posto da guarda e deixe o aviso do Mercado Sombrio.',target:1,cash:20000,karma:-6},
+  {id:'ataque_cidade_2',task:'attack_city',title:'🗡️ Recado das Sombras',description:'Ataque um posto da guarda e deixe o aviso do Mercado Sombrio.',target:1,cash:20000,karma:-5},
   {id:'roubo_npc_2',task:'rob_npc',title:'💰 Cobrança Indevida',description:'Arranque dinheiro de um comerciante da cidade.',target:1,cash:24000,karma:0}
 ])
 
@@ -195,7 +195,7 @@ export async function resolveNpcConversation(jid,npcRef,questionId,answer){
     `,[jid,loc.npcId,p,q.id,yes?'sim':'nao',truthful])
     return changeNpcRep(jid,loc.npcId,repDelta,c)
   })
-  if(karmaDelta) await changeAlphaReputation(jid,'npc_conversation_'+q.id+(truthful?'_truth':'_lie'),karmaDelta).catch(()=>{})
+  if(karmaDelta) await changeAlphaReputation(jid,karmaDelta>0?'hero_contract':'villain_contract',karmaDelta).catch(()=>{})
   if(isDark&&truthful&&yes&&q.id==='roubo') await unlockDark(jid)
   const karma=(await getAlphaReputation(jid)).karma
   return {
@@ -259,7 +259,7 @@ export async function robCityNpc(jid,npcRef){
     }
     return {success,amount:actual,npcName:loc.npcName,chance}
   })
-  await changeAlphaReputation(jid,result.success?'npc_robbery_success':'npc_robbery_failure',result.success?-5:-2).catch(()=>{})
+  await changeAlphaReputation(jid,result.success?'robbery_success':'robbery_failure',result.success?-5:-2).catch(()=>{})
   return {...result,karma:(await getAlphaReputation(jid)).karma}
 }
 
@@ -304,11 +304,11 @@ export async function performDarkCityAction(jid,task){
   let fine=0
   if(success){
     await progressDark(jid,task)
-    await changeAlphaReputation(jid,task,active.mission.karma).catch(()=>{})
+    await changeAlphaReputation(jid,'villain_contract',active.mission.karma).catch(()=>{})
   }else{
     fine=Math.min(12000,2000+level*90)
     await db.query('UPDATE wallets SET cash=GREATEST(0,cash-$1) WHERE jid=$2',[fine,jid])
-    await changeAlphaReputation(jid,task+'_failed',-2).catch(()=>{})
+    await changeAlphaReputation(jid,'villain_contract',-2).catch(()=>{})
   }
   return {success,fine,mission:active.mission,karma:(await getAlphaReputation(jid)).karma}
 }

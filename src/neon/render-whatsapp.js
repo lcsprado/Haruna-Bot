@@ -64,7 +64,7 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
     if(x.shopType==='contracts'){ clearQuickFlow(chat,sender); return reply(await alphaContractBoardMessage(sender)) }
     if(x.shopType==='npcs') return showNpcMerchantsMenu(chat,sender,reply)
     if(x.shopType==='dark') return showShadowMenu(chat,sender,reply)
-    if(x.shopType==='gear'||x.shopType==='consumables') return shopCategoryMenu()
+    if(x.shopType==='gear'||x.shopType==='consumables') return showShopCategoryMenu(chat,sender,reply)
     if(x.shopType==='cars'){
       clearQuickFlow(chat,sender)
       let t='🚗 *CONCESSIONÁRIA DO DANTE*\n\n'
