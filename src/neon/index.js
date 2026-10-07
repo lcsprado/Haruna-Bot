@@ -59,7 +59,8 @@ import { initNpcShops, listNpcShops, getNpcShop, buyNpcShopItem } from './npc-sh
 import {
   initCitySystem, cityNpcCatalog, getCityStanding, getNpcMemory, respondToNpcIncident,
   spreadRumor, getRumorFeed, maybeCreateCityEncounter, getPendingCityEncounter,
-  resolveCityEncounter, recordCityRobbery, getBlackMarketMission, progressBlackMarketMission
+  resolveCityEncounter, recordCityRobbery, getBlackMarketMission, progressBlackMarketMission,
+  getBlackMarketShop, buyBlackMarketItem
 } from './city.js'
 import {
   initLoans, startLoanCollector, createLoanOffer, acceptLoan, rejectLoan, payLoan,
@@ -2436,24 +2437,24 @@ _${memory.text}_
     await reply(out.trim())
   }
 
-  async function showBlackMarket(chat,sender,reply){
+  async function showBlackMarketMission(chat,sender,reply){
     const candidates=String(chat||'').endsWith('@g.us') ? await currentGroupPlayerJids(chat) : []
     const r=await getBlackMarketMission(sender,candidates)
     if(r.locked){
-      return reply(
-`🌑 *MERCADO NEGRO*
+      await reply(
+`🌑 *MERCADO NEGRO — CONTRATOS*
 
-🚫 A porta não abre para você.
+🚫 Você ainda não tem acesso aos contratos.
 
 ${r.reason}
-⚖️ Seu Karma: *${r.standing.karma>0?'+':''}${r.standing.karma}*
-👁️ Notoriedade: *${r.standing.notoriety}*
-
-_Quanto pior sua fama, mais o submundo passa a reconhecer seu nome._`
+⚖️ Karma: *${r.standing.karma>0?'+':''}${r.standing.karma}*
+👁️ Notoriedade: *${r.standing.notoriety}*`
       )
+      return r
     }
     if(!r.mission){
-      return reply('🌑 *MERCADO NEGRO*\n\nNenhum contrato disponível agora.')
+      await reply('🌑 *MERCADO NEGRO — CONTRATOS*\n\nNenhum alvo disponível agora.')
+      return r
     }
     const m=r.mission
     const status=m.status==='completed'?'✅ CONCLUÍDA':'🩸 ATIVA'
@@ -2468,8 +2469,69 @@ ${status}
 ✨ EXP: *+${fmt(m.reward_xp)}*
 
 ⏳ O quadro muda a cada 4 horas.
-🗡️ Itens clandestinos continuam com *Mordek* em *!npc mordek*.
-⚠️ Concluir serviço do Mercado Negro piora seu Karma e sua fama na cidade.`
+⚠️ Concluir o serviço piora Karma, confiança e aumenta notoriedade.`
+    )
+    return r
+  }
+
+  async function showBlackMarketShop(chat,sender,reply){
+    const r=await getBlackMarketShop(sender)
+    if(r.locked){
+      setQuickFlow(chat,sender,'black_market_main',{},120000)
+      await reply(
+`🌑 *LOJA CLANDESTINA*
+
+🚫 ${r.reason}
+⚖️ Seu Karma: *${r.standing.karma>0?'+':''}${r.standing.karma}*
+
+9️⃣ Voltar ao Mercado Negro
+0️⃣ Sair`
+      )
+      return
+    }
+    let text=`🌑 *LOJA CLANDESTINA*
+
+⚖️ Karma: *${r.standing.karma}*
+🛒 Compras restantes: *${r.remaining}/2* nesta janela de 4h
+
+`
+    for(const item of r.stock){
+      const lock=item.permitted?'':` 🔒 Karma ${item.requiredKarma} ou inferior`
+      text+=`*${item.number}.* ${rarityLabel(item.rarity)} — *${item.name}* — *R$ ${fmt(item.price)}*${lock}\n`
+    }
+    text+='\n👉 Responda com o número para comprar 1 unidade.\n9️⃣ Voltar ao Mercado Negro\n0️⃣ Sair'
+    setQuickFlow(chat,sender,'black_market_shop',{stockCount:r.stock.length},120000)
+    await reply(text)
+  }
+
+  async function showBlackMarket(chat,sender,reply){
+    const candidates=String(chat||'').endsWith('@g.us') ? await currentGroupPlayerJids(chat) : []
+    const [mission,shop]=await Promise.all([
+      getBlackMarketMission(sender,candidates),
+      getBlackMarketShop(sender)
+    ])
+    const missionStatus=mission.locked
+      ?'🔒 Contratos bloqueados'
+      :mission.mission
+        ?(mission.mission.status==='completed'?'✅ Contrato concluído':'🩸 Contrato ativo: roubar '+mission.mission.target_name)
+        :'📜 Nenhum contrato disponível'
+    const shopStatus=shop.locked
+      ?'🔒 Loja exige Karma negativo'
+      :`🛒 Loja aberta • ${shop.remaining}/2 compras restantes`
+    setQuickFlow(chat,sender,'black_market_main',{},120000)
+    await reply(
+`🌑 *MERCADO NEGRO*
+
+${missionStatus}
+${shopStatus}
+
+1️⃣ 📜 Ver missão da hora
+2️⃣ 🛒 Loja clandestina
+
+9️⃣ Voltar à cidade
+0️⃣ Sair
+
+_Quanto mais fundo no caminho de vilão, mais ofertas clandestinas aparecem._`
     )
   }
 
@@ -2823,6 +2885,40 @@ Escolha o que deseja vender:
       return true
     }
 
+    if(flow.stage==='black_market_main'){
+      if(input==='9'){ await showCityMenu(chat,sender,reply); return true }
+      if(input==='1'){
+        await showBlackMarketMission(chat,sender,reply)
+        setQuickFlow(chat,sender,'black_market_main',{},120000)
+        return true
+      }
+      if(input==='2'){
+        await showBlackMarketShop(chat,sender,reply)
+        return true
+      }
+      await reply('🌑 Escolha *1 Missão*, *2 Loja*, *9 Voltar* ou *0 Sair*.')
+      return true
+    }
+
+    if(flow.stage==='black_market_shop'){
+      if(input==='9'){ await showBlackMarket(chat,sender,reply); return true }
+      const slot=Number(input)
+      const max=Number(flow.data?.stockCount||0)
+      if(!Number.isInteger(slot)||slot<1||slot>max){
+        await reply('🌑 Escolha um item válido pelo número, 9 para voltar ou 0 para sair.')
+        return true
+      }
+      const bought=await buyBlackMarketItem(sender,slot)
+      await reply(`🌑 *NEGÓCIO FECHADO*
+
+📦 ${bought.item.name} ×1
+💸 Pago: *R$ ${fmt(bought.price)}*
+🛒 Compras restantes: *${bought.remaining}/2*
+👁️ Negociar no submundo aumenta sua notoriedade.`)
+      await showBlackMarketShop(chat,sender,reply)
+      return true
+    }
+
     if(flow.stage==='city_main'){
       if(['1','2','3','4','5'].includes(input)){
         await showCityResidentMenu(chat,sender,reply,input)
@@ -2835,7 +2931,6 @@ Escolha o que deseja vender:
       }
       if(input==='7'){
         await showBlackMarket(chat,sender,reply)
-        setQuickFlow(chat,sender,'city_main',{},120000)
         return true
       }
       if(input==='8'){
