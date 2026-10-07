@@ -2315,32 +2315,171 @@ ${moneyLine}✨ XP: *${xpMult}x*
     setQuickFlow(chat,sender,'npc_select',{},120000)
     let out=`🏘️ *MERCADORES DO ALPHA*\n\n⚖️ Seu Karma: *${r.karma>0?'+':''}${r.karma}* — ${r.title}\n🛍️ Compras restantes: *${r.remaining}/3* (somando os NPCs)\n\n`
     for(const n of r.merchants){
-      const relation=n.modifier<1?`✅ desconto de ${Math.round((1-n.modifier)*100)}%`:n.modifier>1?`⚠️ acréscimo de ${Math.round((n.modifier-1)*100)}%`:'preços normais'
-      out+=`*${n.number}.* ${n.emoji} ${n.name} — ${n.title}\n_${n.description}_\n💰 ${relation}\n\n`
+      const relation=n.blocked
+        ?'🚫 se recusa a negociar com você'
+        :n.modifier<1?`✅ desconto de ${Math.round((1-n.modifier)*100)}%`
+        :n.modifier>1?`⚠️ acréscimo de ${Math.round((n.modifier-1)*100)}%`
+        :'preços normais'
+      out+=`*${n.number}.* ${n.emoji} ${n.name} — ${n.title}\n_${n.description}_\n💰 ${relation}\n🗣️ Confiança: *${n.trust>=0?'+':''}${n.trust}* • Notoriedade: *${n.notoriety}*\n\n`
     }
-    out+='👉 *Responda 1, 2 ou 3* para conversar com um NPC.\n⌨️ Ou use *!npc 1* para abrir diretamente.\n⏳ O limite de compras reinicia a cada 4 horas.'
+    out+='👉 *Responda 1, 2 ou 3* para entrar no estabelecimento.\n⌨️ Ou use *!npc Helena*, *!npc Mordek* ou *!npc Baltazar*.\n🧠 Eles agora lembram do que acontece na cidade.'
     await reply(out)
+  }
+
+  async function showNpcInteractionMenu(chat,sender,reply,npcRef){
+    const r=await getNpcShop(sender,npcRef)
+    const greeting=r.npc.id==='helena'
+      ?(r.karma>=30?'“A Ordem reconhece seus feitos. O que procura?”':r.karma<=-30?'“Seu nome chegou antes de você. Fale logo.”':'“Honre sua palavra e encontrará aliados.”')
+      :r.npc.id==='mordek'
+        ?(r.karma<=-30?'“Vejo que conhece as regras das sombras... ou a falta delas.”':r.karma>=30?'“Um santo perdido no meu mercado? Interessante.”':'“Aqui ninguém pergunta de onde veio o ouro.”')
+        :'“Todo mundo tem uma história. Qual é a sua?”'
+    const social=r.social||{}
+    setQuickFlow(chat,sender,'npc_interaction',{npcId:r.npc.id},120000)
+    await reply(
+`${r.npc.emoji} *${r.npc.name.toUpperCase()} — ${r.npc.title.toUpperCase()}*
+
+_${greeting}_
+
+⚖️ Karma: *${r.karma>0?'+':''}${r.karma}*
+🗣️ Confiança na cidade: *${Number(social.trust||0)>=0?'+':''}${Number(social.trust||0)}*
+👁️ Notoriedade: *${Number(social.notoriety||0)}*
+
+1️⃣ 🛒 Comprar
+2️⃣ 💬 Conversar
+3️⃣ 🚪 Sair
+
+9️⃣ Voltar aos NPCs`
+    )
+  }
+
+  async function showNpcConversation(chat,sender,reply,npcRef){
+    const memory=await getNpcMemory(sender,npcRef)
+    setQuickFlow(chat,sender,'npc_interaction',{npcId:memory.npc.id},120000)
+    await reply(
+`${memory.npc.emoji} *${memory.npc.name.toUpperCase()}*
+
+_${memory.text}_
+
+1️⃣ 🛒 Ver mercadorias
+2️⃣ 💬 Continuar conversando
+3️⃣ 🚪 Sair
+9️⃣ Voltar aos NPCs`
+    )
+  }
+
+  async function showCityResidentMenu(chat,sender,reply,npcRef){
+    const npc=cityNpcCatalog().find((n,i)=>n.id===String(npcRef||'').toLowerCase()||n.name.toLowerCase()===String(npcRef||'').toLowerCase()||String(i+1)===String(npcRef))
+    if(!npc) throw new Error('Morador não encontrado.')
+    if(npc.merchant) return showNpcInteractionMenu(chat,sender,reply,npc.id)
+    setQuickFlow(chat,sender,'city_resident',{npcId:npc.id},120000)
+    await reply(
+`${npc.emoji} *${npc.name.toUpperCase()}*
+
+“E aí... veio conversar ou quer saber o que estão falando pela cidade?”
+
+1️⃣ 💬 Conversar
+2️⃣ 🗣️ Perguntar pelos rumores
+3️⃣ 🚪 Sair
+
+9️⃣ Voltar à cidade`
+    )
   }
 
   async function showNpcGoodsMenu(chat,sender,reply,npcRef){
     const r=await getNpcShop(sender,npcRef)
-    const flavor=r.npc.id==='helena'
-      ?(r.karma>=30?'“A Ordem reconhece seus feitos. Meu estoque está à sua disposição.”':r.karma<=-30?'“Sei o que fez. Não espere favores por aqui.”':'“Honre sua palavra e encontrará aliados.”')
-      :r.npc.id==='mordek'
-        ?(r.karma<=-30?'“Vejo que conhece as regras das sombras... ou a falta delas.”':r.karma>=30?'“Um santo perdido no meu mercado? Isso vai custar caro.”':'“Aqui ninguém pergunta de onde veio o ouro.”')
-        :'“Todo mundo tem uma história. O preço é o mesmo para todos.”'
-    const relation=r.factor<1?`✅ Desconto de *${Math.round((1-r.factor)*100)}%*`:r.factor>1?`⚠️ Acréscimo de *${Math.round((r.factor-1)*100)}%*`:'⚖️ Preço normal'
-    let out=`${r.npc.emoji} *${r.npc.name.toUpperCase()} — ${r.npc.title.toUpperCase()}*\n\n_${flavor}_\n\n⚖️ Karma: *${r.karma>0?'+':''}${r.karma}* • ${relation}\n🛍️ Compras: *${r.remaining}/3* nesta janela de 4h • Equipamentos: *${r.gearRemaining}/1*\n💎 Fragmentos restantes hoje: *${r.fragmentsRemaining}/2* • Maior Raid vencida: *Lv.${r.highestRaid}*\n\n`
+    const relation=r.social?.blocked
+      ?'🚫 *RECUSA DE ATENDIMENTO — sua notoriedade está alta demais*'
+      :r.factor<1?`✅ Desconto de *${Math.round((1-r.factor)*100)}%*`
+      :r.factor>1?`⚠️ Acréscimo de *${Math.round((r.factor-1)*100)}%*`
+      :'⚖️ Preço normal'
+    let out=`${r.npc.emoji} *${r.npc.name.toUpperCase()} — MERCADORIAS*\n\n⚖️ Karma: *${r.karma>0?'+':''}${r.karma}* • ${relation}\n🗣️ Confiança: *${Number(r.social?.trust||0)>=0?'+':''}${Number(r.social?.trust||0)}* • 👁️ Notoriedade: *${Number(r.social?.notoriety||0)}*\n🛍️ Compras: *${r.remaining}/3* nesta janela de 4h • Equipamentos: *${r.gearRemaining}/1*\n💎 Fragmentos restantes hoje: *${r.fragmentsRemaining}/2* • Maior Raid vencida: *Lv.${r.highestRaid}*\n\n`
     for(const item of r.stock){
-      const blocked=item.permitted?'':item.soldOut?' 🔒 Limite diário esgotado'
+      const blocked=r.social?.blocked?' 🚫 Recusado por reputação'
+        :item.permitted?''
+        :item.soldOut?' 🔒 Limite diário esgotado'
         :item.requiredRaid&&r.highestRaid<item.requiredRaid?` 🔒 Requer vitória na Raid Lv.${item.requiredRaid}+`
         :` 🔒 ${r.npc.id==='helena'?'Honra +'+item.requiredKarma:'Karma '+item.requiredKarma+' ou menos'}`
       const changed=item.price!==item.basePrice?` _(base R$ ${fmt(item.basePrice)})_`:''
       out+=`*${item.number}.* ${item.name} — *R$ ${fmt(item.price)}*${changed}${blocked}\n`
     }
-    out+='\n👉 *Responda com o número do item* para comprar 1 unidade.\n⌨️ Ou *!comprarnpc '+(r.npc.id==='helena'?'1':r.npc.id==='mordek'?'2':'3')+' 1*\n9️⃣ Voltar aos NPCs • 0️⃣ Sair'
+    out+='\n👉 *Responda com o número do item* para comprar 1 unidade.\n9️⃣ Voltar ao NPC • 0️⃣ Sair'
     setQuickFlow(chat,sender,'npc_goods',{npcId:r.npc.id,stockCount:r.stock.length},120000)
     await reply(out)
+  }
+
+  async function showRumorBoard(chat,sender,reply){
+    const rumors=await getRumorFeed(6)
+    let out='🗣️ *RUMORES DA CIDADE*\n\n'
+    if(!rumors.length){
+      out+='A cidade está estranhamente quieta. Nenhum rumor forte circulando agora.'
+    }else{
+      rumors.forEach((r,i)=>{
+        out+=`*${i+1}.* Dizem que *${r.accused_name||'alguém'}* anda envolvido em ${r.claim||'coisa errada'}.\n📣 Força do rumor: *${Number(r.credibility||0)}%*\n\n`
+      })
+    }
+    out+='\n💬 Para espalhar algo: *!rumor @pessoa texto*\n⚠️ Mentira pode ser descoberta. Quando isso acontece, quem inventou perde Karma e confiança.'
+    await reply(out.trim())
+  }
+
+  async function showBlackMarket(chat,sender,reply){
+    const r=await getBlackMarketMission(sender)
+    if(r.locked){
+      return reply(
+`🌑 *MERCADO NEGRO*
+
+🚫 A porta não abre para você.
+
+${r.reason}
+⚖️ Seu Karma: *${r.standing.karma>0?'+':''}${r.standing.karma}*
+👁️ Notoriedade: *${r.standing.notoriety}*
+
+_Quanto pior sua fama, mais o submundo passa a reconhecer seu nome._`
+      )
+    }
+    if(!r.mission){
+      return reply('🌑 *MERCADO NEGRO*\n\nNenhum contrato disponível agora.')
+    }
+    const m=r.mission
+    const status=m.status==='completed'?'✅ CONCLUÍDA':'🩸 ATIVA'
+    await reply(
+`🌑 *MERCADO NEGRO — MISSÃO DA HORA*
+
+${status}
+🎯 Roube *${m.target_name}*
+📈 Progresso: *${m.progress}/${m.target}*
+
+💰 Recompensa: *R$ ${fmt(m.reward_cash)}*
+✨ EXP: *+${fmt(m.reward_xp)}*
+
+⏳ O quadro muda a cada 4 horas.
+🗡️ Itens clandestinos continuam com *Mordek* em *!npc mordek*.
+⚠️ Concluir serviço do Mercado Negro piora seu Karma e sua fama na cidade.`
+    )
+  }
+
+  async function showCityMenu(chat,sender,reply){
+    const standing=await getCityStanding(sender)
+    const residents=cityNpcCatalog()
+    setQuickFlow(chat,sender,'city_main',{},120000)
+    let out=`🏙️ *CIDADE ALPHA*\n\n⚖️ Karma: *${standing.karma>0?'+':''}${standing.karma}* • 🗣️ Confiança: *${standing.trust>=0?'+':''}${standing.trust}* • 👁️ Notoriedade: *${standing.notoriety}*\n\n`
+    residents.forEach(n=>{ out+=`${n.number}️⃣ ${n.emoji} *${n.name}*${n.merchant?' — comerciante':' — morador'}\n` })
+    out+='\n6️⃣ 🗣️ Rumores\n7️⃣ 🌑 Mercado Negro\n8️⃣ 🚶 Explorar a cidade\n9️⃣ 📊 Minha reputação\n\n0️⃣ Sair'
+    await reply(out)
+  }
+
+  async function showCityEncounter(chat,sender,reply,encounter){
+    if(!encounter) return reply('🌆 Você caminhou pela cidade, mas nada fora do comum aconteceu agora.')
+    const p=encounter.payload||{}
+    setQuickFlow(chat,sender,'city_encounter',{encounterId:encounter.id},10*60*1000)
+    await reply(
+`${p.title||'🏙️ EVENTO NA CIDADE'}
+
+${p.text||''}
+
+${(p.options||[]).join('\n')}
+
+⏳ Você tem 10 minutos para decidir.`
+    )
   }
 
   async function showShopCategoryMenu(chat,sender,reply){
