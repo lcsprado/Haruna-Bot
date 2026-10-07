@@ -95,10 +95,54 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
     await reply('💬 *'+m.location.npcName+'*\n\n'+m.text+'\n\n1️⃣ Continuar conversando\n2️⃣ Voltar')
   }
 
+  function formatCityEncounterMessage(e,mention=''){
+    const p=e?.payload||{}
+    const who=mention?('\n👤 *'+mention+'*, essa decisão caiu nas suas mãos.\n'):'\n'
+    if(e?.event_key==='monster'){
+      return '👹 *EVENTO DA CIDADE — INVASÃO*\n\n'+
+        '🚨 *Um monstro invadiu a cidade!*'+who+
+        '\n'+(p.text||'Gritos vêm da praça. Você está perto o bastante para agir.')+
+        '\n\n⚖️ *Sua decisão terá consequências:*\n'+
+        '⚔️ Defender pode render *Karma, EXP e dinheiro*, mas você também pode sair ferido e ter prejuízo.\n'+
+        '🚶 Ignorar evita o confronto, mas se alguém perceber que você fugiu, sua *reputação e Karma podem cair*.\n'+
+        '\n🎯 *O que você faz?*\n'+
+        '1️⃣ ⚔️ Defender a cidade\n'+
+        '2️⃣ 🚶 Ignorar e seguir caminho\n'+
+        '\n⏳ *10 minutos para decidir*\n'+
+        '👉 *!cidadeevento 1* ou *!cidadeevento 2*'
+    }
+    if(e?.event_key==='help'){
+      return '🧓 *EVENTO DA CIDADE — PEDIDO DE AJUDA*\n\n'+
+        'Um morador precisa de ajuda.'+who+
+        '\n'+(p.text||'Você encontra alguém machucado tentando carregar suas coisas.')+
+        '\n\n⚖️ *Sua escolha pode ser lembrada:*\n'+
+        '🤝 Ajudar pode melhorar *Karma e confiança* e render EXP.\n'+
+        '🚶 Ignorar pode não dar em nada... ou algum NPC pode ver e comentar depois.\n'+
+        '\n🎯 *O que você faz?*\n'+
+        '1️⃣ 🤝 Ajudar\n'+
+        '2️⃣ 🚶 Ignorar\n'+
+        '\n⏳ *10 minutos para decidir*\n'+
+        '👉 *!cidadeevento 1* ou *!cidadeevento 2*'
+    }
+    if(e?.event_key==='rob_npc'){
+      return '🌒 *EVENTO DA CIDADE — OPORTUNIDADE*\n\n'+
+        (p.text||'Um comerciante está andando sozinho pela noite.')+who+
+        '\n👁️ Parece que ninguém está olhando... mas a cidade sempre acaba sabendo de alguma coisa.\n'+
+        '\n⚖️ *Sua escolha pode mudar como os NPCs tratam você:*\n'+
+        '🥷 Assaltar pode render dinheiro, mas reduz *Karma e confiança*. Se der errado, tem multa — e o NPC vai lembrar.\n'+
+        '🌙 Ignorar mantém você fora do crime; alguém pode até notar que você deixou a oportunidade passar.\n'+
+        '\n🎯 *O que você faz?*\n'+
+        '1️⃣ 🥷 Assaltar\n'+
+        '2️⃣ 🌙 Ignorar\n'+
+        '\n⏳ *10 minutos para decidir*\n'+
+        '👉 *!cidadeevento 1* ou *!cidadeevento 2*'
+    }
+    return (p.title||'🏙️ *EVENTO NA CIDADE*')+'\n\n'+(p.text||'')+'\n\n'+(p.options||[]).join('\n')+'\n\n⏳ *10 minutos para decidir*\n👉 *!cidadeevento 1* ou *!cidadeevento 2*'
+  }
+
   async function showCityEncounter(chat,sender,reply,e){
     if(!e) return reply('🌆 Você caminhou pela cidade, mas nada fora do comum aconteceu agora.')
-    const p=e.payload||{}
-    await reply((p.title||'🏙️ EVENTO NA CIDADE')+'\n\n'+(p.text||'')+'\n\n'+(p.options||[]).join('\n')+'\n\n👉 Use *!cidadeevento 1* ou *!cidadeevento 2*.\n⏳ Você tem 10 minutos.')
+    await reply(formatCityEncounterMessage(e))
   }
 
   async function openCityService(chat,sender,reply,ref){
@@ -285,10 +329,9 @@ put("          if(!flow) continue",String.raw`
               if(license && groupLicenseIsActive(license)){
                 const cityEvent=await maybeCreateCityEncounter(sender)
                 if(cityEvent){
-                  const p=cityEvent.payload||{}
                   const mention='@'+String(sender||'').split('@')[0]
                   await sock.sendMessage(chat,{
-                    text:(p.title||'🏙️ EVENTO NA CIDADE')+'\n\n👤 '+mention+'\n'+(p.text||'')+'\n\n'+(p.options||[]).join('\n')+'\n\n👉 Responda *!cidadeevento 1* ou *!cidadeevento 2*\n⏳ Você tem 10 minutos.',
+                    text:formatCityEncounterMessage(cityEvent,mention),
                     mentions:[sender]
                   }).catch(()=>{})
                 }
