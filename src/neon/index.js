@@ -7746,6 +7746,24 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
               if(!String(err?.message||'').includes('Não há quiz ativo')) throw err
             }
           }
+          if(!flow && isGroup){
+            try{
+              const license=await getGroupLicense(chat)
+              if(license && groupLicenseIsActive(license)){
+                const cityEncounter=await maybeCreateCityEncounter(sender)
+                if(cityEncounter){
+                  const p=cityEncounter.payload||{}
+                  const mention='@'+String(sender||'').split('@')[0]
+                  await sock.sendMessage(chat,{
+                    text:`${p.title||'🏙️ EVENTO NA CIDADE'}\n\n👤 ${mention}\n${p.text||''}\n\n${(p.options||[]).join('\n')}\n\n👉 Responda *!cidadeevento 1* ou *!cidadeevento 2*\n⏳ Você tem 10 minutos.`,
+                    mentions:[sender]
+                  }).catch(()=>{})
+                }
+              }
+            }catch(err){
+              console.error('[Cidade] encontro aleatório',err?.message||err)
+            }
+          }
           if(!flow) continue
 
           if(isGroup && eventTrafficActiveNow()) await staggerEventGroupAction(chat)
