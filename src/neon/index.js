@@ -51,7 +51,8 @@ import {
   getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
   hireCltUberDriver, getCltUberStatus, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
-  getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent
+  getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent,
+  getAlphaContractBoard, acceptAlphaContract, progressAlphaContract, claimAlphaContract
 } from './progression.js'
 import {
   initLoans, startLoanCollector, createLoanOffer, acceptLoan, rejectLoan, payLoan,
@@ -302,6 +303,9 @@ async function runRaidCombat(chat,level,reply){
         }
 
         if(r.victory){
+          for(const player of r.rewards||[]){
+            if(Number(player.share||0)>=0.02) await progressAlphaContract(player.jid,'raid',{raidLevel:Number(r.config.level||level)}).catch(err=>console.error('[Contratos] raid',err?.message||err))
+          }
           let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*
 
 ❤️ Boss derrotado em *${r.round} rodadas*.
@@ -2809,6 +2813,9 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!missaogrupo* / *!missao* — objetivo, progresso e ranking
 *!missaostatus* — status da missão coletiva
 *!resgatarmissao* — resgata sua parte da recompensa
+*!contratos* — quadro de contratos a cada 4 horas
+*!aceitarcontrato número* — aceita uma missão
+*!resgatarcontrato* — resgata recompensa concluída
 *!pegar* — pega evento aleatório ativo no grupo
 
 💎 *PATRIMÔNIO*
@@ -6279,6 +6286,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         if(!r.ok) await reply(`⏳ Nova dungeon em ${duration(r.remaining)}.`)
         else{
           await progressDailyMission(sender,'dungeon')
+          if(r.won) await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
           if(r.won) await reply(`🏆 Você venceu *${r.monster}*!\n💰 +R$ ${fmt(r.cash)}\n✨ +${r.exp} EXP\n❤️ HP: ${r.hp}/${r.maxHp}`)
           else await reply(`💀 Você perdeu para *${r.monster}*.\n❤️ Recuperou para ${r.hp}/${r.maxHp} HP.`)
         }
@@ -6386,7 +6394,10 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       const r=await robPlayer(sender,target)
       clearQuickFlow(chat,sender)
       if(!r.ok) await reply(`⏳ Tente roubar novamente em ${duration(r.remaining)}.`)
-      else if(r.success) await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.`,{mentions:[targetMention]})
+      else if(r.success){
+        await progressAlphaContract(sender,'robbery').catch(err=>console.error('[Contratos] roubo',err?.message||err))
+        await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.`,{mentions:[targetMention]})
+      }
       else await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:[targetMention]})
       return true
     }
@@ -7240,6 +7251,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
         const carp=await resolvePlayerCarpinar(sender)
         if(carp?.completed){
+          if(Number(carp.hours||0)>=1) await progressAlphaContract(sender,'carpinar').catch(err=>console.error('[Contratos] carpinar',err?.message||err))
           await reply(`🌾 *SERVIÇO CONCLUÍDO!*
 
 ⏱️ Jornada: *${Number(carp.hours||0)}h*
@@ -8304,6 +8316,28 @@ ${results.join('\n')}
           r.leaderboard.forEach((x,i)=>out+=`${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} *${x.push_name||'Jogador'}* — ${x.contribution} ${unit} • *R$ ${fmt(x.share)}*\n`)
           await reply(out)
 
+        } else if(['contratos','quadro','quadrocontratos','missoeshora','missoesdahora'].includes(cmd)){
+          const board=await getAlphaContractBoard(sender)
+          const remaining=Math.max(1,Math.ceil((board.nextAt-Date.now())/60000))
+          let text='📜 *QUADRO DE CONTRATOS ALPHA*\n\n'
+          text+=`⭐ Seu nível: *${board.level}* • 🔄 Renova em *${remaining} min*\n🕒 Um contrato por ciclo de 4 horas.\n\n`
+          for(const c of board.contracts){
+            const eligible=board.level>=c.level
+            const selected=board.active?.contract_id===c.id
+            const status=selected?(board.active.claimed?'✅ RESGATADO':`📌 ACEITO • ${board.active.progress}/${board.active.target}`):(eligible?'🟢 Disponível':'🔒 Bloqueado')
+            text+=`${c.number}️⃣ *${c.title}* — Nv. ${c.level}+\n🎯 ${c.description}\n💰 R$ ${fmt(c.cash)} • ✨ ${fmt(c.xp)} XP${c.item?' • 🎁 Caixa Épica':''}\n${status}\n\n`
+          }
+          text+=board.active?(`📌 *Sua missão:* ${board.active.progress}/${board.active.target}\n${Number(board.active.progress)>=Number(board.active.target)&&!board.active.claimed?'🎁 Use *!resgatarcontrato* para receber.':'📊 Use !contratos para acompanhar.'}`):'👉 Aceite usando *!aceitarcontrato 1* (1 a 5).'
+          await reply(text.trim())
+
+        } else if(['aceitarcontrato','contratoaceitar'].includes(cmd)){
+          const r=await acceptAlphaContract(sender,args[0])
+          await reply(`📜 *CONTRATO ACEITO!*\n\n🎯 *${r.contract.title}*\n${r.contract.description}\n📈 Progresso: 0/${r.target}\n🎁 R$ ${fmt(r.reward_cash)} + ${fmt(r.reward_xp)} XP${r.reward_item?' + Caixa Épica':''}\n⏳ Conclua antes da renovação do quadro.\n\nUse *!contratos* para acompanhar.`)
+
+        } else if(['resgatarcontrato','contratoresgatar'].includes(cmd)){
+          const r=await claimAlphaContract(sender)
+          await reply(`🎉 *CONTRATO ALPHA CONCLUÍDO!*\n\n💰 +R$ ${fmt(r.reward_cash)}\n✨ +${fmt(r.reward_xp)} XP${r.reward_item?'\n🎁 +1 Caixa Épica':''}\n✅ Prêmios creditados na sua conta!`)
+
         } else if(['pegar'].includes(cmd)){
           if(!isGroup) return
           const r=await claimGroupEvent(chat,sender)
@@ -8346,6 +8380,7 @@ ${results.join('\n')}
             await reply(`🍔 Sua frota já trabalhou. Próxima rodada em *${duration(r.remaining)}*.`)
           }else{
             await progressDailyMission(sender,'work')
+            await progressAlphaContract(sender,'ifood').catch(err=>console.error('[Contratos] ifood',err?.message||err))
             if(isGroup) await progressGroupMission(chat,sender,'work')
             let text='🍔 *IFOOD — FROTA EM ROTA*\n\n'
             r.details.forEach(x=>{
@@ -8424,6 +8459,7 @@ ${results.join('\n')}
             await reply(`🚗 Sua frota já trabalhou. Próxima rodada em *${duration(r.remaining)}*.`)
           }else{
             await progressDailyMission(sender,'work')
+            await progressAlphaContract(sender,'uber').catch(err=>console.error('[Contratos] uber',err?.message||err))
             if(isGroup) await progressGroupMission(chat,sender,'work')
             let text='🚗 *UBER — FROTA NA RUA*\n\n'
             r.details.forEach(x=>{
@@ -9512,6 +9548,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const r=await dungeon(sender)
           if(!r.ok) return await reply(`⏳ Você poderá entrar novamente na dungeon em ${duration(r.remaining)}.`)
           await progressDailyMission(sender,'dungeon')
+          if(r.won) await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
           if(r.won){
             let text=`🏰 *DUNGEON CONCLUÍDA!*\n\n👹 Inimigo: *${r.monster}*\n❤️ HP restante: ${r.hp}/${r.maxHp}\n💰 Recompensa: R$ ${fmt(r.cash)}\n✨ EXP: +${r.exp}`
             if(r.level.levels>0) text+=`\n⬆️ Você subiu ${r.level.levels} nível(is)!`
@@ -9540,6 +9577,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const victimProfile=await getProfile(target).catch(()=>null)
           const victimName=victimProfile?.push_name||targetIdentity?.pushName||'Jogador'
           if(r.success){
+            await progressAlphaContract(sender,'robbery').catch(err=>console.error('[Contratos] roubo',err?.message||err))
             const successText=cmd==='fazol'
               ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!* 😂\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor levado: *R$ ${fmt(r.amount)}*\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
               : `🕵️ *ROUBO BEM-SUCEDIDO!*\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor roubado: *R$ ${fmt(r.amount)}*`
