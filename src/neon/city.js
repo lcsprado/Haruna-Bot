@@ -233,17 +233,89 @@ export async function getCityLocation(jid,ref){
 }
 
 const QUESTIONS=Object.freeze([
-  {id:'raid',action:'raid_victory',window:7*86400,text:'Ouvi dizer que derrubaram uma criatura numa Raid esses dias. Você ajudou?'},
-  {id:'boss',action:'boss_victory',window:7*86400,text:'Falaram que você estava na linha de frente contra um Boss. É verdade?'},
-  {id:'roubo',action:'robbery_success',window:7*86400,text:'Tem boato de que você participou de um roubo recentemente. Foi você?'}
+  {id:'raid',action:'raid_victory',window:7*86400},
+  {id:'boss',action:'boss_victory',window:7*86400},
+  {id:'roubo',action:'robbery_success',window:7*86400}
 ])
 
-function questionFor(loc,p){
+const TALK_LINES=Object.freeze({
+  raid:[
+    'Ouvi dizer que teve uma Raid pesada esses dias. Você estava no meio daquela confusão?',
+    'O pessoal está comentando de uma criatura que caiu numa Raid. Você teve participação nisso?',
+    'Chegou história de uma Raid que quase deu ruim. Dizem que você estava lá. Procede?',
+    'Tem gente contando vantagem por causa da última Raid. Você realmente ajudou ou só ouviu falar?',
+    'Ouvi seu nome no meio de uma conversa sobre Raid. Foi mérito seu mesmo?'
+  ],
+  boss:[
+    'Ouvi seu nome ligado a uma luta contra um Boss. Você participou mesmo?',
+    'Disseram que você encarou um Boss recentemente. Quero saber se essa história é verdadeira.',
+    'Andam contando que você ajudou a derrubar um Boss. Foi você mesmo?',
+    'Te colocaram no meio da história daquele Boss que caiu. Você estava lá?',
+    'Falaram de uma batalha feia contra um Boss e citaram seu nome. Confere isso?'
+  ],
+  roubo:[
+    'Seu nome apareceu numa conversa sobre um roubo recente. Tem algo que queira contar?',
+    'Ouvi umas histórias estranhas envolvendo você e dinheiro que sumiu. Foi você?',
+    'Tem gente dizendo que você se meteu num roubo. É verdade ou estão tentando te sujar?',
+    'Um roubo virou assunto pela cidade e seu nome entrou na conversa. Você teve participação?',
+    'Estão cochichando que você anda com as mãos leves demais. Teve roubo seu nisso?'
+  ]
+})
+
+const NPC_TALK_LINES=Object.freeze({
+  mark:{
+    raid:['Aço bom aguenta pancada. E você? Dizem que saiu inteiro de uma Raid. Tava lá mesmo?'],
+    boss:['Chegou cliente aqui jurando que você bateu de frente com um Boss. Verdade ou conversa de taverna?']
+  },
+  lyra:{
+    raid:['Passei a manhã tratando feridos de Raid. Um deles jurou que você ajudou. Ele falou a verdade?'],
+    boss:['Vieram buscar poção depois de uma luta contra Boss e citaram você. Participou mesmo?']
+  },
+  dante:{
+    raid:['Tem gente apostando carro em história de Raid. Seu nome apareceu numa delas. Você estava lá?'],
+    boss:['Ouvi que você enfrentou um Boss e voltou andando. Isso aconteceu mesmo?'],
+    roubo:['Sumiu dinheiro por aí e alguém jurou ter visto você perto. Quer esclarecer isso?']
+  },
+  riko:{
+    raid:['Um entregador passou aqui falando de uma Raid insana e citou você. Tava nessa?'],
+    boss:['Dizem que você tomou pancada de Boss e continuou de pé. Verdade?'],
+    roubo:['Ouvi que teve roubo na cidade e seu nome rodou nas oficinas. Tem fundamento?']
+  },
+  iris:{
+    raid:['Na minha taverna cada um conta uma versão daquela Raid. Em uma delas você foi destaque. É verdade?'],
+    boss:['Ontem quase fecharam aposta aqui sobre quem derrubou um Boss. Seu nome saiu forte. Você participou?'],
+    roubo:['Depois de umas canecas o povo fala demais. Ontem disseram que você participou de um roubo. Foi mesmo?']
+  },
+  baltazar:{
+    raid:['Mercador escuta tudo. Inclusive que você saiu de uma Raid com fama nova. Confere?'],
+    boss:['Ouvi compradores comentando que você ajudou a derrubar um Boss. Posso acreditar nisso?'],
+    roubo:['Quando alguém rouba, os preços mudam antes mesmo da guarda saber. Seu nome apareceu. Foi você?']
+  },
+  nyx:{
+    roubo:[
+      'Nas sombras, nomes valem mais que moedas. O seu apareceu ligado a um roubo. Foi trabalho seu?',
+      'Alguém pagou por uma informação sobre um roubo e seu nome veio junto. Você confirma?',
+      'Ouvi passos, moedas e seu nome na mesma história. Você participou daquele roubo?',
+      'Há quem diga que você sabe abrir bolsos sem tocar neles. Teve roubo seu recentemente?',
+      'Uma história interessante chegou até mim: dinheiro desapareceu e apontaram para você. Verdade?'
+    ]
+  }
+})
+
+function hashText(value){
+  return [...String(value||'')].reduce((a,ch)=>((a*31)+ch.charCodeAt(0))>>>0,2166136261)
+}
+
+function questionFor(loc,p,jid=''){
   const allowed=loc.id==='sombrio'?QUESTIONS.filter(q=>q.id==='roubo')
     :loc.id==='ferreiro'||loc.id==='alquimista'?QUESTIONS.filter(q=>q.id!=='roubo')
     :QUESTIONS
-  const seed=[...loc.npcId].reduce((a,c)=>a+c.charCodeAt(0),0)+p
-  return allowed[Math.abs(seed)%allowed.length]
+  const q=allowed[hashText(loc.npcId+'|'+jid+'|'+p)%allowed.length]
+  const custom=NPC_TALK_LINES[loc.npcId]?.[q.id]||[]
+  const generic=TALK_LINES[q.id]||[]
+  const lines=[...custom,...generic]
+  const text=lines[hashText(jid+'|'+loc.npcId+'|'+q.id+'|'+p)%lines.length]
+  return {...q,text}
 }
 
 export async function startNpcConversation(jid,npcRef){
@@ -251,7 +323,7 @@ export async function startNpcConversation(jid,npcRef){
   const p=period(TALK_PERIOD_SECONDS)
   const used=await db.query('SELECT 1 FROM alpha_city_talks WHERE jid=$1 AND npc_id=$2 AND period=$3',[jid,loc.npcId,p])
   if(used.rowCount) throw new Error('💬 Esse NPC já conversou bastante com você agora. Volte em algumas horas.')
-  const q=questionFor(loc,p)
+  const q=questionFor(loc,p,jid)
   return {npcId:loc.npcId,npcName:loc.npcName,locationId:loc.id,questionId:q.id,text:q.text}
 }
 
@@ -432,7 +504,18 @@ function sanitizeRumorClaim(value){
     .trim()
   text=text.replace(/^(?:ele|ela)\s+/i,'').trim()
   text=text.replace(/\s+([,.!?])/g,'$1')
-  return text.slice(0,140)||'envolvimento em roubo'
+  text=text.replace(/\.{2,}$/g,'.')
+  return text.slice(0,140)||'roubo'
+}
+
+function rumorSentence(name,claim){
+  const who=String(name||'alguém').trim()||'alguém'
+  const raw=sanitizeRumorClaim(claim).replace(/[.!?]+$/,'').trim()
+  if(/^(?:anda|está|esta|tá|ta|foi|vive|costuma|roubou|rouba|vende|compra|desvia|ameaça|ameaca)\b/i.test(raw))
+    return who+' '+raw
+  if(/^(?:roubando|furtando|enganando|golpeando|assaltando|vendendo|comprando|desviando|ameaçando|ameacando)\b/i.test(raw))
+    return who+' anda '+raw
+  return who+' está envolvido em '+raw
 }
 
 async function recentSuccessfulRobberyBy(jid){
@@ -545,7 +628,41 @@ export async function getNpcMemory(jid,npcRef){
       const accused=(await db.query('SELECT push_name FROM users WHERE jid=$1',[exposed.accused_jid])).rows[0]?.push_name||'a pessoa acusada'
       return {location:loc,kind:'rumor_exposed',text:'“Descobrimos que aquele rumor sobre '+accused+' era mentira. '+liar+' inventou a história. Isso não vai ser esquecido.”'}
     }
-    return {location:loc,kind:'rumor',rumor,text:'“Tem um rumor correndo pela cidade: dizem que '+(rumor.accused_name||'alguém')+' anda envolvido em '+rumor.claim+'. Não sei se acredito ainda.”'}
+    const statement=rumorSentence(rumor.accused_name||'alguém',rumor.claim)
+    const rumorLines={
+      mark:[
+        '“Tão falando por aí que '+statement+'. Cidade pequena não guarda segredo por muito tempo.”',
+        '“Ouvi no balcão que '+statement+'. Não sei se compro essa história.”'
+      ],
+      lyra:[
+        '“Chegou um boato estranho até aqui: dizem que '+statement+'. Ainda não sei o que pensar.”',
+        '“Enquanto preparo poções eu escuto muita coisa. Hoje disseram que '+statement+'. Verdade ou veneno, ainda não sei.”'
+      ],
+      dante:[
+        '“Cliente fala demais enquanto olha carro. Um deles jurou que '+statement+'. Você acredita?”',
+        '“Tem história rodando pela cidade de que '+statement+'. Pode ser verdade, pode ser alguém tentando baixar o valor do nome dele.”'
+      ],
+      riko:[
+        '“Oficina espalha notícia mais rápido que moto. Hoje chegou papo de que '+statement+'. Estranho, né?”',
+        '“Um entregador contou que '+statement+'. Não boto minha mão no fogo por esse boato.”'
+      ],
+      iris:[
+        '“Na taverna estão dizendo que '+statement+'. Depois da terceira caneca todo mundo vira testemunha.”',
+        '“Ouvi uma mesa inteira jurando que '+statement+'. Aqui rumor corre mais rápido que bebida.”'
+      ],
+      baltazar:[
+        '“Os mercadores estão comentando que '+statement+'. Boato assim mexe com preço e confiança.”',
+        '“Corre entre as bancas a história de que '+statement+'. Se for mentira, alguém está jogando sujo.”'
+      ],
+      nyx:[
+        '“Nas sombras circula uma versão interessante: '+statement+'. Eu ainda não decidi se acredito.”',
+        '“Informação chegou até mim dizendo que '+statement+'. Quem espalhou parece querer que todos saibam.”',
+        '“Seu ouvido vale ouro aqui. Hoje o sussurro é que '+statement+'. Verdade? Talvez.”'
+      ]
+    }
+    const lines=rumorLines[loc.npcId]||['“Tem um rumor correndo pela cidade: '+statement+'. Não sei se acredito ainda.”']
+    const text=lines[hashText(loc.npcId+'|'+rumor.id+'|'+jid)%lines.length]
+    return {location:loc,kind:'rumor',rumor,text}
   }
 
   const s=await getCityStanding(jid)
