@@ -1454,7 +1454,7 @@ export async function getAlphaReputation(jid){
 }
 export async function changeAlphaReputation(jid,action,delta){
   await ensureUser(jid)
-  if(!['robbery_success','robbery_failure','raid_victory','boss_victory','hero_contract','villain_contract'].includes(action))
+  if(!['robbery_success','robbery_failure','raid_victory','boss_victory','hero_contract','villain_contract','rumor_lie','city_help','city_ignore','npc_robbery','black_market'].includes(action))
     throw new Error('Ação de reputação inválida.')
   const change=Math.trunc(Number(delta))
   if(!Number.isFinite(change)||Math.abs(change)>5||change===0) return null
