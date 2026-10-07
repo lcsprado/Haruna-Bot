@@ -5,6 +5,7 @@ import {existsSync,readFileSync,statSync} from 'node:fs'
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const npcShops=readFileSync(new URL('../src/neon/npc-shops.js',import.meta.url),'utf8')
+const city=readFileSync(new URL('../src/neon/city.js',import.meta.url),'utf8')
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const progression=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
 const loans=readFileSync(new URL('../src/neon/loans.js',import.meta.url),'utf8')
@@ -27,14 +28,14 @@ test('Alpha 3.0 commands and new progression menu entries remain discoverable',(
   const menuEnd=index.indexOf('function textOf(',menuStart)
   assert.ok(menuStart>=0&&menuEnd>menuStart,'the !comandos main menu is missing')
   const mainMenu=index.slice(menuStart,menuEnd)
-  for(const command of ['!web','!contratos','!karma','!npcs']){
+  for(const command of ['!web','!contratos','!karma','!cidade','!npcs']){
     assert.ok(mainMenu.includes(command),'!comandos must advertise '+command)
   }
   const pagesStart=index.indexOf('const commandPages={')
   const pagesEnd=index.indexOf('const commandsMenu=async',pagesStart)
   assert.ok(pagesStart>=0&&pagesEnd>pagesStart,'command category pages missing')
   const pages=index.slice(pagesStart,pagesEnd)
-  for(const command of ['!web','!contratos','!aceitarcontrato 1','!resgatarcontrato','!karma','!npcs','!npc 1','!comprarnpc 1 2']){
+  for(const command of ['!web','!contratos','!aceitarcontrato 1','!resgatarcontrato','!karma','!cidade','!npcs','!npc Helena','!rumor @pessoa texto','!mercadonegro','!comprarnpc 1 2']){
     assert.ok(pages.includes(command),'command categories must explain '+command)
   }
   const progressStart=index.indexOf("if(flow.stage==='nav_progress')")
@@ -600,4 +601,28 @@ test('roubo pego sempre reduz karma',()=>{
   assert.ok(index.includes("changeAlphaReputation(sender,'robbery_success',-3)"),'successful robbery must reduce karma by 3')
   assert.ok(index.includes("Karma: *-1*"),'failed robbery result must display karma loss')
   assert.ok(index.includes("Karma: *-3*"),'successful robbery result must display karma loss')
+})
+
+
+test('cidade persistente liga memoria rumores mercado negro e eventos',()=>{
+  assert.ok(index.includes('await initCitySystem()'),'city schema must initialize before NPC use')
+  for(const table of ['alpha_city_incidents','alpha_city_reputation','alpha_rumors','alpha_city_encounters','alpha_city_responses','alpha_black_market_missions']){
+    assert.ok(city.includes('CREATE TABLE IF NOT EXISTS '+table),'missing city table '+table)
+  }
+  assert.ok(city.includes('export async function recordCityRobbery'),'robbery memory recorder missing')
+  assert.ok(index.includes('recordCityRobbery(sender,target,r)'),'real robberies must feed city memory')
+  assert.ok(city.includes('export async function spreadRumor'),'rumor creation missing')
+  assert.ok(city.includes('discovered_false=TRUE'),'false rumors must be discoverable')
+  assert.ok(city.includes("changeAlphaReputation(exposed.author_jid,'rumor_lie',-3)"),'exposed liar must lose karma')
+  assert.ok(npcShops.includes("import { getCityPriceModifier } from './city.js'"),'NPC pricing must use city reputation')
+  assert.ok(npcShops.includes('social.blocked'),'high notoriety must be able to block merchants')
+  assert.ok(city.includes('standing.karma>=0 && standing.notoriety<20'),'black market must open to negative karma or high notoriety')
+  assert.ok(city.includes('jid=ANY($2::text[])'),'black market target must be scoped to supplied group candidates')
+  assert.ok(city.includes("SET progress=1,status='completed'"),'black market mission must become completed atomically')
+  assert.ok(index.includes("['cidade','city']"),'!cidade command missing')
+  assert.ok(index.includes("['rumor','rumores']"),'!rumor command missing')
+  assert.ok(index.includes("['mercadonegro','mercadonegro','blackmarket']"),'black market command missing')
+  assert.ok(index.includes('maybeCreateCityEncounter(sender)'),'random city encounter hook missing')
+  assert.ok(index.includes("flow.stage==='npc_memory_response'"),'NPC remembered-event choices missing')
+  assert.ok(city.includes('respondToNpcIncident'),'NPC incident response persistence missing')
 })
