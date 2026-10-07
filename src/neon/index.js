@@ -853,14 +853,43 @@ function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
 
 function lootDispositionPrompt(item,index,total){
   const sellTotal=Number(item.sellUnit||0)*Number(item.qty||0)
-  return `🎒 *O QUE FAZER COM O DROP?*\n\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n💰 Venda imediata: *R$ ${fmt(sellTotal)}*\n\n1️⃣ Guardar no inventário\n2️⃣ Descartar e vender\n\n📦 Item ${index+1}/${total}`
+  return `🎒 *O QUE FAZER COM O DROP?*\n\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n💰 Venda imediata: *R$ ${fmt(sellTotal)}*\n\n1️⃣ Guardar no inventário\n2️⃣ Vender agora\n\n📦 Item ${index+1}/${total}`
+}
+
+function lootDispositionBulkPrompt(items){
+  const counts={common:0,uncommon:0,rare:0,epic:0,legendary:0}
+  for(const item of items){
+    const rarity=String(item?.rarity||'common')
+    counts[rarity]=(counts[rarity]||0)+Number(item?.qty||0)
+  }
+  return `🎒 *O QUE QUER FAZER COM OS ITENS?*\n\n⚪ Comuns: *${fmt(counts.common)}*\n🟢 Incomuns: *${fmt(counts.uncommon)}*\n🔵 Raros: *${fmt(counts.rare)}*\n🟣 Épicos: *${fmt(counts.epic)}*\n🟠 Lendários: *${fmt(counts.legendary)}*\n\n1️⃣ Guardar tudo\n2️⃣ Vender tudo, menos Lendário\n3️⃣ Vender todos os Comuns\n4️⃣ Vender todos os Incomuns\n5️⃣ Vender todos os Raros\n6️⃣ Vender todos os Épicos\n7️⃣ Vender Raros + Épicos\n8️⃣ Escolher item por item\n\n🛡️ *Lendário nunca entra na venda em massa.*`
+}
+
+async function sellLootBatch(sender,items,predicate){
+  let soldTotal=0
+  let soldQty=0
+  const failures=[]
+  for(const item of items){
+    if(String(item?.rarity||'common')==='legendary') continue
+    if(!predicate(item)) continue
+    const qty=Math.max(0,Number(item?.qty||0))
+    if(!qty) continue
+    try{
+      const sold=await sellItem(sender,item.itemId,qty)
+      soldTotal+=Number(sold.total||0)
+      soldQty+=qty
+    }catch(err){
+      failures.push(item.name||item.itemId)
+    }
+  }
+  return {soldTotal,soldQty,failures}
 }
 
 async function beginLootDisposition(chat,sender,result,reply){
   const items=Array.isArray(result?.items)?result.items.filter(i=>Number(i.qty||0)>0):[]
   if(!items.length) return false
-  setQuickFlow(chat,sender,'loot_disposition',{items,index:0,soldTotal:0},5*60*1000)
-  await reply(lootDispositionPrompt(items[0],0,items.length))
+  setQuickFlow(chat,sender,'loot_disposition_bulk',{items},5*60*1000)
+  await reply(lootDispositionBulkPrompt(items))
   return true
 }
 
@@ -877,7 +906,7 @@ function luckyBoxSummary(r){
     const order={legendary:5,epic:4,rare:3,uncommon:2,common:1}
     const sorted=[...r.items].sort((a,b)=>(order[b.rarity]||0)-(order[a.rarity]||0))
     for(const item of sorted){
-      text+=`   • ${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n`
+      text+=`• ${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n`
     }
   }
 
@@ -3422,6 +3451,57 @@ ${bonus.text}
         clearQuickFlow(chat,sender)
         await reply('❌ '+(err?.message||'Não foi possível equipar esse pet.'))
       }
+      return true
+    }
+
+    if(flow.stage==='loot_disposition_bulk'){
+      const items=Array.isArray(flow.data?.items)?flow.data.items:[]
+      if(!items.length){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Nenhum item para processar.')
+        return true
+      }
+      if(input==='0'||input==='1'){
+        clearQuickFlow(chat,sender)
+        const legendaryQty=items.filter(i=>String(i.rarity)==='legendary').reduce((s,i)=>s+Number(i.qty||0),0)
+        await reply(`✅ *ITENS GUARDADOS*\n\n🎒 Tudo ficou no inventário.${legendaryQty?\`\n🛡️ Lendários protegidos: *${fmt(legendaryQty)}*\`:''}`)
+        return true
+      }
+      if(input==='8'){
+        const manualItems=items.filter(i=>String(i.rarity)!=='legendary')
+        if(!manualItems.length){
+          clearQuickFlow(chat,sender)
+          await reply('🛡️ Só vieram itens Lendários. Eles foram mantidos no inventário e não podem ser vendidos por este atalho.')
+          return true
+        }
+        setQuickFlow(chat,sender,'loot_disposition',{items:manualItems,index:0,soldTotal:0},5*60*1000)
+        await reply((items.length!==manualItems.length?'🛡️ Lendários já foram protegidos e ficarão no inventário.\n\n':'')+lootDispositionPrompt(manualItems[0],0,manualItems.length))
+        return true
+      }
+
+      const filters={
+        '2':()=>true,
+        '3':item=>String(item.rarity)==='common',
+        '4':item=>String(item.rarity)==='uncommon',
+        '5':item=>String(item.rarity)==='rare',
+        '6':item=>String(item.rarity)==='epic',
+        '7':item=>['rare','epic'].includes(String(item.rarity))
+      }
+      const predicate=filters[input]
+      if(!predicate){
+        await reply('🎒 Escolha uma opção de *1 a 8*.')
+        return true
+      }
+
+      const result=await sellLootBatch(sender,items,predicate)
+      clearQuickFlow(chat,sender)
+      const legendaryQty=items.filter(i=>String(i.rarity)==='legendary').reduce((s,i)=>s+Number(i.qty||0),0)
+      const failedLine=result.failures.length?\`\n⚠️ Não foi possível vender: *${result.failures.join(', ')}*. Esses itens ficaram no inventário.\`:''
+      if(result.soldQty<1){
+        await reply(`ℹ️ Nenhum item dessa seleção foi vendido.\n🎒 Os itens continuam no inventário.${legendaryQty?\`\n🛡️ Lendários protegidos: *${fmt(legendaryQty)}*\`:''}${failedLine}`)
+        return true
+      }
+      await reply(`💰 *VENDA EM MASSA CONCLUÍDA*\n\n📦 Itens vendidos: *${fmt(result.soldQty)}*\n💵 Recebido: *R$ ${fmt(result.soldTotal)}*${legendaryQty?\`\n🛡️ Lendários protegidos: *${fmt(legendaryQty)}*\`:''}\n🎒 O restante ficou no inventário.${failedLine}`)
       return true
     }
 
@@ -8727,8 +8807,8 @@ ${results.join('\n')}
             `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*
 
 💰 Valor: *R$ ${fmt(r.principal)}*
-⏳ Prazo após o aceite: *2 horas sem juros*
-📈 Após 2h: *2% por hora de atraso*
+⏳ Prazo após o aceite: *30 minutos sem juros*
+📈 Após 30 min: *2% por hora de atraso*
 🛡️ Juros máximos: *100% do valor original*
 ⚠️ Se não pagar no vencimento, a cobrança automática pode deixar a conta *negativa*.
 💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*
@@ -8763,12 +8843,12 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           const rest=Number(r.loan?.principal_remaining||0)+Number(r.loan?.interest_due||0)
           const lateLine=Number(r.lateHours||0)>0
             ? `\n⏰ Atraso computado: *${r.lateHours}h* • taxa *${Math.round(Number(r.interestRatePerHour||0)*100)}%/h*`
-            : '\n🕛 Pagamento dentro das 2h sem juros.'
+            : '\n🕛 Pagamento dentro dos 30 min sem juros.'
           await reply(`💸 *PAGAMENTO DO EMPRÉSTIMO*\n\n✅ Pago agora: *R$ ${fmt(r.paid)}*\n📈 Juros pagos: *R$ ${fmt(r.interestPaid)}*${lateLine}\n💰 Principal pago: *R$ ${fmt(r.principalPaid)}*\n🧾 Restante: *R$ ${fmt(rest)}*\n${r.settled?'🎉 *Empréstimo quitado!*':'⏳ A dívida continua ativa.'}`)
 
         } else if(cmd==='credito'){
           const r=await getLoanCredit(sender)
-          await reply(`💳 *SEU CRÉDITO*\n\n💎 Patrimônio considerado: *R$ ${fmt(r.patrimony)}*\n🏦 Limite total: *R$ ${fmt(r.limit)}*\n🧾 Dívida ativa: *R$ ${fmt(r.debt)}*\n✅ Disponível: *R$ ${fmt(r.available)}*\n\n_O limite é 25% do patrimônio, mínimo de R$ 5.000 e máximo de R$ 250.000._`)
+          await reply(`💳 *SEU CRÉDITO*\n\n💎 Patrimônio considerado: *R$ ${fmt(r.patrimony)}*\n📊 Faixa atual: *${Math.round(Number(r.rate||0)*100)}% do patrimônio*\n🏦 Limite total: *R$ ${fmt(r.limit)}*\n🧾 Dívida ativa: *R$ ${fmt(r.debt)}*\n✅ Disponível: *R$ ${fmt(r.available)}*\n\n✅ Quitados sem juros: *${fmt(r.paidOnTime)}*\n⏰ Quitados com atraso: *${fmt(r.paidLate)}*\n\n_O crédito começa em 10% do patrimônio e sobe 5 pontos percentuais por bom pagamento, até 25%. Atrasos reduzem essa progressão. Mínimo de R$ 5.000 e sem teto fixo de R$ 250.000._`)
 
         } else if(['dividas','emprestimos'].includes(cmd)){
           const o=await getLoanOverview(sender)
