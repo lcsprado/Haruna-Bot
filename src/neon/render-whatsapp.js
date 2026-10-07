@@ -22,7 +22,7 @@ const put=(mark,chunk)=>{
   if(!src.includes(chunk.trim().slice(0,32))) src=src.replace(mark,chunk+mark)
 }
 const npcImport="import { initNpcShops, listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'"
-if(!src.includes("from './city.js'")) src=src.replace(npcImport,npcImport+"\nimport { initCity, listCityLocations, getCityLocation, startNpcConversation, resolveNpcConversation, robCityNpc, getDarkContractBoard, acceptDarkContract, performDarkCityAction, claimDarkContract, getCityStanding, getNpcMemory, respondNpcMemory, spreadCityRumor, listCityRumors, maybeCreateCityEncounter, getPendingCityEncounter, resolveCityEncounter, recordPlayerRobberyIncident } from './city.js'")
+if(!src.includes("from './city.js'")) src=src.replace(npcImport,npcImport+"\nimport { initCity, listCityLocations, getCityLocation, startNpcConversation, resolveNpcConversation, robCityNpc, getDarkContractBoard, acceptDarkContract, performDarkCityAction, claimDarkContract, getDarkShop, buyDarkShopItem, getCityStanding, getNpcMemory, respondNpcMemory, spreadCityRumor, listCityRumors, maybeCreateCityEncounter, getPendingCityEncounter, resolveCityEncounter, recordPlayerRobberyIncident } from './city.js'")
 if(!src.includes('await initCity()')) src=src.replace('await initNpcShops()\n  await initLoans()','await initNpcShops()\n  await initCity()\n  await initLoans()')
 
 put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
@@ -57,6 +57,18 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
       setQuickFlow(chat,sender,'city_dark',{},120000)
       t+='👉 Responda 1, 2 ou 3 para aceitar.'
     }
+    t+='\\n\\n🛒 Loja clandestina: *!lojaclandestina*'
+    await reply(t)
+  }
+
+  async function showDarkShop(sender,reply){
+    const s=await getDarkShop(sender)
+    let t='🌑 *LOJA CLANDESTINA*\\n\\n⚖️ Karma: *'+s.karma+'*\\n🛒 Compras restantes: *'+s.remaining+'/2* neste ciclo\\n\\n'
+    for(const g of s.goods){
+      const lock=g.permitted?'':' 🔒 Karma '+g.requiredKarma+' ou inferior'
+      t+=g.number+'. *'+g.name+'* — R$ '+fmt(g.price)+lock+'\\n'
+    }
+    t+='\\n👉 Comprar: *!comprarsombras número*'
     await reply(t)
   }
 
@@ -234,6 +246,17 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
           const r=await claimDarkContract(sender)
           await reply('🌑 *CONTRATO SOMBRIO CONCLUÍDO!*\\n💰 +R$ '+fmt(r.cash)+'\\n✨ +'+fmt(r.xp||0)+' XP')
 
+        } else if(['lojaclandestina','lojasombria'].includes(cmd)){
+          try{ await showDarkShop(sender,reply) }
+          catch(e){ await reply('❌ '+e.message) }
+
+        } else if(['comprarsombras','comprarsombrio'].includes(cmd)){
+          if(!args[0]) return await showDarkShop(sender,reply)
+          try{
+            const r=await buyDarkShopItem(sender,args[0])
+            await reply('🌑 *NEGÓCIO FECHADO!*\\n📦 '+r.item.name+' ×1\\n💸 Pago: *R$ '+fmt(r.price)+'*\\n🛒 Compras restantes: *'+r.remaining+'/2*\\n👁️ Sua notoriedade aumentou.')
+          }catch(e){ await reply('❌ '+e.message) }
+
         } else if(['explorar','explorarcidade'].includes(cmd)){
           await showCityEncounter(chat,sender,reply,await maybeCreateCityEncounter(sender,{force:true}))
 
@@ -251,9 +274,31 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
 `)
 
 if(!src.includes("'reputacao','reputação','cidade','city'")){
-  src=src.replace("'reputacao','reputação','buffxp'","'reputacao','reputação','cidade','city','rumor','rumores','explorar','explorarcidade','cidadeevento','eventocidade','roubarnpc','mercadonegro','mercadosombrio','missoessombras','contratossombrios','aceitarsombras','atacarcidade','sabotarcidade','resgatarsombras','buffxp'")
+  src=src.replace("'reputacao','reputação','buffxp'","'reputacao','reputação','cidade','city','rumor','rumores','explorar','explorarcidade','cidadeevento','eventocidade','roubarnpc','mercadonegro','mercadosombrio','missoessombras','contratossombrios','aceitarsombras','atacarcidade','sabotarcidade','resgatarsombras','lojaclandestina','lojasombria','comprarsombras','comprarsombrio','buffxp'")
 }
 if(!src.includes('🏙️ *!cidade*')) src=src.replace('🏘️ *!npcs* — Helena, Mordek e Baltazar','🏙️ *!cidade* — lojas, NPCs, memória, rumores e caminhos de Karma\n🗣️ *!rumor @pessoa texto* — espalha boato; mentira pode ser descoberta\n🌑 *!mercadonegro* — missões criminosas por nível\n🚶 *!explorar* — encontros aleatórios da cidade\n🏘️ *!npcs* — Helena, Mordek e Baltazar')
+
+put("          if(!flow) continue",String.raw`
+          if(!flow && isGroup){
+            try{
+              const license=await getGroupLicense(chat)
+              if(license && groupLicenseIsActive(license)){
+                const cityEvent=await maybeCreateCityEncounter(sender)
+                if(cityEvent){
+                  const p=cityEvent.payload||{}
+                  const mention='@'+String(sender||'').split('@')[0]
+                  await sock.sendMessage(chat,{
+                    text:(p.title||'🏙️ EVENTO NA CIDADE')+'\\n\\n👤 '+mention+'\\n'+(p.text||'')+'\\n\\n'+(p.options||[]).join('\\n')+'\\n\\n👉 Responda *!cidadeevento 1* ou *!cidadeevento 2*\\n⏳ Você tem 10 minutos.',
+                    mentions:[sender]
+                  }).catch(()=>{})
+                }
+              }
+            }catch(err){
+              console.error('[Cidade] encontro aleatório',err?.message||err)
+            }
+          }
+
+`)
 
 await writeFile(runtimeUrl,src,'utf8')
 console.log('[Cidade] runtime WhatsApp preparado')
