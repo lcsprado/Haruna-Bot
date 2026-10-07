@@ -2547,13 +2547,14 @@ Escolha o que deseja vender:
       text+='   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
       if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Última cópia: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
     })
-    text+='\n👉 Um item: mande só o número.\n📦 Vários: *1,3,5*\n'
+    text+='\n👉 *Um item:* mande só o número. Ex.: *1*\n📦 *Vários itens:* *1,3,5*\n'
     if(category==='equipment'){
-      text+='\n🏷️ *ATALHOS POR RARIDADE*\n'
-      text+='Digite *comum*, *incomum*, *raro*, *epico*, *raro+epico* ou *tudo*.\n'
-      text+='🛡️ *Lendários e equipamentos em uso nunca entram em ações em massa.*\n'
+      text+='\n🏷️ *SELEÇÃO EM LOTE*\n'
+      text+='Digite *tudo*, *comum*, *incomum*, *raro*, *epico* ou *raro+epico*.\n'
+      text+='Depois de selecionar o lote, aí sim aparecerão as opções *1 Vender tudo*, *2 Repetidos* e *3 Descartar*.\n'
+      text+='⚠️ *Nesta tela, 1 significa o ITEM 1 — não vender tudo.*\n'
+      text+='🛡️ Lendários e equipamentos em uso nunca entram em ações em massa.\n'
     }
-    text+='\nAo selecionar vários/raridade:\n1️⃣ vender tudo selecionado\n2️⃣ vender só repetidos\n3️⃣ descartar tudo selecionado\n'
     text+='\n9️⃣ Voltar às categorias\n0️⃣ Sair'
     await reply(text)
   }
@@ -5765,16 +5766,25 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='inventory_batch_action'){
-      if(input==='4'){
+      const batchInput=input
+        .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+        .replace(/\s+/g,' ')
+        .trim()
+      if(['4','cancelar','voltar'].includes(batchInput)){
         await sellMenu()
         return true
       }
-      if(!['1','2','3'].includes(input)){
+
+      const mode=
+        ['1','vender tudo','vender todos','tudo'].includes(batchInput)?'sell_all':
+        ['2','repetidos','vender repetidos','vender so repetidos'].includes(batchInput)?'sell_duplicates':
+        ['3','descartar','descartar tudo'].includes(batchInput)?'discard_all':
+        null
+
+      if(!mode){
         await reply('🧹 Escolha *1 Vender tudo*, *2 Vender repetidos*, *3 Descartar tudo* ou *4 Cancelar*.')
         return true
       }
-
-      const mode=input==='1'?'sell_all':input==='2'?'sell_duplicates':'discard_all'
       const batch=[]
       const skipped=[]
       for(const item of flow.data.items||[]){
