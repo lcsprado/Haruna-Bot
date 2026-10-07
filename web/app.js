@@ -13,6 +13,7 @@ const ui = {
   page: 'home',
   petTab: 'owned',
   inventoryTab: 'weapons',
+  inventoryTabsScrollLeft: 0,
   npcData: null,
   npcLoading: false,
   contractData: null,
@@ -1384,15 +1385,23 @@ function itemDisplayDescription(item){
   return map[name]||description.replace(/item random gacha|random gacha|gacha/gi,'recompensa aleatória');
 }
 function inventoryBucket(item){
-  const id=String(item?.item_id||'').toLowerCase();
+  const id=String(item?.item_id||item?.id||'').toLowerCase();
+  const name=String(item?.name||'').toLowerCase();
   const cat=String(item?.category||'').toLowerCase();
   const description=String(item?.description||'').toLowerCase();
+  const text=(id+' '+name+' '+description).normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   if(cat==='weapon') return 'weapons';
   if(cat==='armor') return 'armors';
   if(cat==='boots') return 'boots';
   if(cat==='box' || id.includes('caixa_') || id==='lootbox_std') return 'boxes';
   if(cat==='pet_potion'||cat==='pet_energy'||id.includes('pet_')||id==='energetico_pet') return 'pets';
-  if(cat==='raid' || id.includes('fragmento_raid') || id.includes('chave_raid') || id.startsWith('raid_') || ['nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido'].includes(id) || description.includes('raid lv.')) return 'raid';
+  if(
+    cat==='raid' ||
+    id.includes('fragmento_raid') || id.includes('chave_raid') || id.startsWith('raid_') ||
+    text.includes('fragmento') && (text.includes('raid') || text.includes('nucleo') || text.includes('celestial')) ||
+    ['nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido'].includes(id) ||
+    text.includes('raid lv.') || text.includes('conquistado na raid') || text.includes('conquistada na raid')
+  ) return 'raid';
   if(cat==='material') return 'materials';
   if(['consumable','potion','pet_potion','pet_energy'].includes(cat) || id.startsWith('pocao_') || id==='energetico_pet') return 'consumables';
   if(cat==='special') return 'special';
@@ -2171,6 +2180,12 @@ function render(){
   const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,npcs:renderNpcs,contracts:renderContracts,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
+  if(ui.page==='inventory' && Number(ui.inventoryTabsScrollLeft)>0){
+    requestAnimationFrame(()=>{
+      const tabs=document.querySelector('.inventory-tabs');
+      if(tabs) tabs.scrollLeft=Number(ui.inventoryTabsScrollLeft||0);
+    });
+  }
 }
 
 function bind(){
@@ -2189,7 +2204,20 @@ function bind(){
     window.scrollTo({top:0,left:0,behavior:'auto'});
   });
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
-  document.querySelectorAll('[data-inventory-tab]').forEach(x=>x.onclick=()=>{ui.inventoryTab=x.dataset.inventoryTab;render();});
+  document.querySelectorAll('[data-inventory-tab]').forEach(x=>x.onclick=()=>{
+    const tabs=x.closest('.inventory-tabs');
+    const keepX=tabs?tabs.scrollLeft:Number(ui.inventoryTabsScrollLeft||0);
+    const keepY=window.scrollY;
+    ui.inventoryTabsScrollLeft=keepX;
+    ui.inventoryTab=x.dataset.inventoryTab;
+    render();
+    requestAnimationFrame(()=>{
+      const next=document.querySelector('.inventory-tabs');
+      if(next) next.scrollLeft=keepX;
+      window.scrollTo({top:keepY,left:0,behavior:'auto'});
+    });
+  });
+  document.querySelectorAll('.inventory-tabs').forEach(tabs=>tabs.addEventListener('scroll',()=>{ui.inventoryTabsScrollLeft=tabs.scrollLeft;},{passive:true}));
   document.querySelectorAll('[data-contract-accept]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.accept',{number:Number(x.dataset.contractAccept)},{success:'📜 Contrato aceito.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-contract-claim]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.claim',{}, {success:'🎁 Contrato resgatado.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-npc-buy]').forEach(x=>x.onclick=async()=>{if(!confirm('Confirmar compra com '+x.dataset.npcBuy+'?'))return;x.disabled=true;try{await doAction('npc.buy',{npcId:x.dataset.npcBuy,number:Number(x.dataset.npcNumber)},{success:'🛍️ Compra realizada.'});await loadNpcShops();render();}catch{render();}});
