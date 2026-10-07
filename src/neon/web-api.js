@@ -39,6 +39,7 @@ import {
 } from './progression.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
+import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 const CODE_TTL_MS = 30 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -1133,6 +1134,7 @@ async function runAction(session,name,body={}){
       return withTargetMeta(await createLoanOffer(jid,member.jid,positiveInt(body.amount,'Valor')),member)
     }
     case 'character.select': return setPlayerClass(jid,String(body.classId||''))
+    case 'npc.buy': return buyNpcShopItem(jid,String(body.npcId||''),positiveInt(body.number,'Oferta',99))
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
@@ -1331,6 +1333,13 @@ export async function handleWebApi(req,res){
     if(req.method==='GET' && url.pathname==='/api/v1/me/bootstrap'){
       const data=await playerBootstrap(session)
       json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/npcs'){
+      const listing=await listNpcShops(session.jid)
+      const shops=await Promise.all(listing.merchants.map(n=>getNpcShop(session.jid,n.id)))
+      json(res,200,{ok:true,data:{karma:listing.karma,title:listing.title,shops}})
       return true
     }
 
