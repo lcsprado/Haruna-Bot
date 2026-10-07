@@ -47,3 +47,23 @@ test('linguagem da loja não mostra gacha ao jogador',()=>{
   assert.match(app,/description\.replace\(\/item random gacha/)
   assert.match(app,/Abra para receber uma recompensa aleatória/)
 })
+
+
+test('contratos do WhatsApp estão expostos no Web sem sistema paralelo',()=>{
+  assert.match(app,/\['contracts','📜','Contratos'\]/)
+  assert.match(api,/getAlphaContractBoard/)
+  assert.match(api,/acceptAlphaContract/)
+  assert.match(api,/claimAlphaContract/)
+  assert.match(api,/\/api\/v1\/me\/contracts/)
+  assert.match(app,/data-contract-accept/)
+  assert.match(app,/data-contract-claim/)
+})
+
+test('auditoria visual impede sprite de item colapsado e ID técnico de pet',()=>{
+  const css=readFileSync(new URL('../web/styles.css',import.meta.url),'utf8')
+  assert.match(css,/\.item-art \.item-cropped-art\{[\s\S]*?width:min\(100%,260px\)!important/)
+  assert.doesNotMatch(app,/>ID '\+p\.id/)
+  const specialPos=app.indexOf("if(SPECIAL_PET_SPRITES[exclusive])")
+  const vectorPos=app.indexOf("if(PET_VERIFIED_VECTOR_ASSETS.has(s))")
+  assert.ok(specialPos>0 && vectorPos>specialPos,'pet de Raid deve priorizar arte exclusiva antes do vetor genérico')
+})
