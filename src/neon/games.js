@@ -850,6 +850,13 @@ export async function startRaid(chat,host,level=null){
     }
 
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=ANY($1::text[]) AND item_id=$2',[ids,cfg.keyId])
+    // Selo e óleo ativam e são consumidos UMA vez ao iniciar a Raid.
+    // A ressurreição não é consumida até ocorrer morte sem nenhuma cura comum.
+    const raidBuffs=(await c.query(`
+      SELECT jid,item_id,quantity FROM inventories
+      WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[]) AND quantity>0
+      FOR UPDATE
+    `,[ids,['selo_guardiao','oleo_sombras']])).rows
     const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id]).filter(Boolean))]
     const ups=eqIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,eqIds])).rows:[]
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
@@ -870,7 +877,11 @@ export async function startRaid(chat,host,level=null){
         [jid]
       )).rows
       const teamSynergy=petTeamSynergy(teamPets)
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy}
+      const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
+      const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0}
+      if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
+      if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
     // O grupo maior causa muito mais dano por rodada. Escala só o HP (+12% por
     // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
@@ -1051,8 +1062,9 @@ export async function raidRound(chat,level){
       const raw=Math.max(5,Math.floor(Number(p.atk||1)*variance))
       const baseline=Math.max(5,Math.floor(raw*(gearCrit?1.5:1)*3))
       const mult=(1+Number(pb.damage||0)+Number(teamSynergy.attack||0))*3
-      const dmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1)))
-      const petExtra=p.pet?Math.max(0,dmg-baseline):0
+      const oilBonus=p.raidOilActive?Math.max(1,Math.floor(baseline*.06)):0
+      const dmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1))+oilBonus)
+      const petExtra=p.pet?Math.max(0,dmg-baseline-oilBonus):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
       p.damage=Number(p.damage||0)+dmg
@@ -1079,7 +1091,7 @@ export async function raidRound(chat,level){
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
-      const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))))
+      const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)))
       p.hp=Math.max(0,Number(p.hp)-dmg)
       let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
@@ -1139,7 +1151,7 @@ export async function raidRound(chat,level){
         }
       }
 
-      let autoHeal=null
+      let autoHeal=null,autoRevive=null
       if(p.hp<=0){
         const chosen=raidPotion(potionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),Number(p.maxHp))
         if(chosen){
@@ -1149,10 +1161,25 @@ export async function raidRound(chat,level){
           if(row) row.quantity=Number(row.quantity)-1
           await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[p.jid,chosen.item_id])
           autoHeal={id:chosen.item_id,name:chosen.name}
-        }else p.alive=false
+        }else{
+          // Segunda chance, sem substituir cura tradicional. Apenas 1 uso por Raid.
+          const revivesUsed=Number(p.raidRevivesUsed||0)
+          if(revivesUsed<1){
+            const revive=(await c.query(`
+              SELECT quantity FROM inventories
+              WHERE jid=$1 AND item_id='pocao_ressurreicao' AND quantity>0 FOR UPDATE
+            `,[p.jid])).rows[0]
+            if(revive){
+              await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='pocao_ressurreicao'",[p.jid])
+              p.raidRevivesUsed=revivesUsed+1
+              p.hp=Math.max(1,Math.floor(Number(p.maxHp)*.30))
+              autoRevive={id:'pocao_ressurreicao',name:'Poção da Ressurreição',hp:p.hp,maxHp:p.maxHp}
+            }else p.alive=false
+          }else p.alive=false
+        }
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
-      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
+      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoRevive,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
