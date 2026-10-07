@@ -71,81 +71,98 @@ const OFFICIAL_ART_W=1536;
 const OFFICIAL_ART_H=1024;
 
 // Folha corrigida gerada especificamente para os assets que estavam errados no jogo.
-const FIXED_ART_SHEET='/assets/alpha-fixed-art.webp?v=alpha-fixed-20261006-1';
-const FIXED_ART_W=960;
-const FIXED_ART_H=384;
+const FIXED_ART_SHEET='/assets/alpha-fixed-art.webp?v=alpha-fixed-20261007-2';
+const FIXED_ART_W=1200;
+const FIXED_ART_H=1200;
+
+// Itens sem equivalente correto no atlas oficial usam células exclusivas.
+// As três folhas foram auditadas na ordem abaixo e não contêm texto ou UI.
+const ITEM_ART_SHEETS=[
+  '/assets/alpha-item-weapons.webp?v=alpha-items-20261007-1',
+  '/assets/alpha-item-armors.webp?v=alpha-items-20261007-1',
+  '/assets/alpha-item-specials.webp?v=alpha-items-20261007-1'
+];
+const ITEM_ART_W=1024;
+const ITEM_ART_H=1024;
+const ITEM_DEDICATED_SPRITES={
+  'item-espada-madeira':[0,0,0,256,256],
+  'item-espada-ferro':[0,256,0,256,256],
+  'item-espada-aco':[0,512,0,256,256],
+  'item-machado-guerra':[0,768,0,256,256],
+  'item-katana-sombria':[0,0,256,256,256],
+  'item-espada-flamas':[0,256,256,256,256],
+  'item-sabre-runico':[0,512,256,256,256],
+  'item-lamina-cacador':[0,768,256,256,256],
+  'item-espada-guardiao':[0,0,512,256,256],
+  'item-lanca-solar':[0,256,512,256,256],
+  'item-garras-vazio':[0,512,512,256,256],
+  'item-excalibur':[0,768,512,256,256],
+  'item-katana-divina':[0,0,768,256,256],
+
+  'item-armadura-aco':[1,0,0,256,256],
+  'item-armadura-samurai':[1,256,0,256,256],
+  'item-armadura-cavaleiro':[1,512,0,256,256],
+  'item-armadura-dragao':[1,768,0,256,256],
+  'item-armadura-bastiao':[1,0,256,256,256],
+  'item-manto-runico':[1,256,256,256,256],
+  'item-couraca-guardiao':[1,512,256,256,256],
+  'item-manto-fenix':[1,768,256,256,256],
+  'item-couraca-vulcanica':[1,0,512,256,256],
+  'item-armadura-vazio':[1,256,512,256,256],
+  'item-armadura-golem':[1,512,512,256,256],
+  'item-armadura-divina':[1,768,512,256,256],
+  'item-coroa-madrugada':[1,0,768,256,256],
+  'item-colete-vital':[1,256,768,256,256],
+  'item-couraca-predador':[1,512,768,256,256],
+  'item-armadura-colosso':[1,768,768,256,256],
+
+  'item-bota-cacador':[2,0,0,256,256],
+  'item-bota-relampago':[2,256,0,256,256],
+  'item-bota-celestial':[2,512,0,256,256],
+  'item-energetico-pet':[2,768,0,256,256],
+  'item-pocao-ressurreicao':[2,0,256,256,256],
+  'item-selo-guardiao':[2,256,256,256,256],
+  'item-oleo-sombras':[2,512,256,256,256],
+  'item-elixir-disciplina':[2,768,256,256,256],
+  'item-elixir-sombras':[2,0,512,256,256],
+  'item-pergaminho-experiencia':[2,256,512,256,256],
+  'item-pergaminho-virtude':[2,512,512,256,256],
+  'item-tomo-proibido':[2,768,512,256,256],
+  'item-escama-vulcanica':[2,0,768,256,256],
+  'item-nucleo-alpha-corrompido':[2,256,768,256,256],
+  'item-insignia-eclipse':[2,512,768,256,256],
+  'item-marca-insone':[2,768,768,256,256]
+};
 
 // Artes exclusivas dos pets especiais/endgame. Uma única spritesheet evita
 // dezenas de downloads sem reaproveitar a identidade visual entre espécies.
-const PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp?v=alpha-special-pets-20261006-2';
-const PREMIUM_PET_ART_W=384;
-const PREMIUM_PET_ART_H=288;
+const PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp?v=alpha-special-pets-20261007-3';
+const PREMIUM_PET_ART_W=1200;
+const PREMIUM_PET_ART_H=900;
 const PREMIUM_PET_SPRITES={
-  'pet-special-oraculo_pedra':[0,0,96,96],
-  'pet-special-pantera_vulcanica':[96,0,96,96],
-  'pet-special-espectro_abissal':[192,0,96,96],
-  'pet-special-kraken_aco':[288,0,96,96],
-  'pet-special-esfinge_titanica':[0,96,96,96],
-  'pet-special-quimera_abissal':[96,96,96,96],
-  'pet-special-paladino_astral':[192,96,96,96],
-  'pet-special-lince_celestial':[288,96,96,96],
-  'pet-special-arcanjo_eclipse':[0,192,96,96],
-  'pet-special-colosso_alpha':[96,192,96,96],
-  'pet-special-oraculo_alpha':[192,192,96,96]
-};
-
-const SPECIAL_PET_ART_SHEETS=[
-  '/assets/alpha-raid-pets-1.webp?v=alpha-raid-pets-20261006-1',
-  '/assets/alpha-raid-pets-2.webp?v=alpha-raid-pets-20261006-1'
-];
-const SPECIAL_PET_ART_W=288;
-const SPECIAL_PET_ART_H=288;
-const SPECIAL_PET_SPRITES={
-  'pet-special-golem_ancestral':[0,0,0,72,72],
-  'pet-special-urso_runico':[0,72,0,72,72],
-  'pet-special-colosso_cristal':[0,144,0,72,72],
-  'pet-special-oraculo_pedra':[0,216,0,72,72],
-  'pet-special-salamandra_infernal':[0,0,72,72,72],
-  'pet-special-dragao_vulcanico':[0,72,72,72,72],
-  'pet-special-fenix_fogo':[0,144,72,72,72],
-  'pet-special-pantera_vulcanica':[0,216,72,72,72],
-  'pet-special-corvo_abissal':[0,0,144,72,72],
-  'pet-special-lobo_abismo':[0,72,144,72,72],
-  'pet-special-fenix_gelo':[0,144,144,72,72],
-  'pet-special-espectro_abissal':[0,216,144,72,72],
-  'pet-special-rinoceronte_titanico':[0,0,216,72,72],
-  'pet-special-guardiao_obsidiana':[0,72,216,72,72],
-  'pet-special-leviata_gelo':[0,144,216,72,72],
-  'pet-special-kraken_aco':[0,216,216,72,72],
-  'pet-special-esfinge_titanica':[1,0,0,72,72],
-  'pet-special-cerbero_carmesim':[1,72,0,72,72],
-  'pet-special-tigre_lunar':[1,144,0,72,72],
-  'pet-special-imperador_abissal':[1,216,0,72,72],
-  'pet-special-quimera_abissal':[1,0,72,72,72],
-  'pet-special-paladino_astral':[1,72,72,72,72],
-  'pet-special-leao_solar':[1,144,72,72,72],
-  'pet-special-grifo_celestial':[1,216,72,72,72],
-  'pet-special-fenix_celestial':[1,0,144,72,72],
-  'pet-special-lince_celestial':[1,72,144,72,72],
-  'pet-special-arcanjo_eclipse':[1,144,144,72,72],
-  'pet-special-serpente_cosmica':[1,216,144,72,72],
-  'pet-special-dragao_corrompido':[1,0,216,72,72],
-  'pet-special-fenix_alpha':[1,72,216,72,72],
-  'pet-special-colosso_alpha':[1,144,216,72,72],
-  'pet-special-oraculo_alpha':[1,216,216,72,72]
+  'pet-special-oraculo_pedra':[0,0,300,300],
+  'pet-special-pantera_vulcanica':[300,0,300,300],
+  'pet-special-espectro_abissal':[600,0,300,300],
+  'pet-special-kraken_aco':[900,0,300,300],
+  'pet-special-esfinge_titanica':[0,300,300,300],
+  'pet-special-quimera_abissal':[300,300,300,300],
+  'pet-special-paladino_astral':[600,300,300,300],
+  'pet-special-lince_celestial':[900,300,300,300],
+  'pet-special-arcanjo_eclipse':[0,600,300,300],
+  'pet-special-colosso_alpha':[300,600,300,300],
+  'pet-special-oraculo_alpha':[600,600,300,300]
 };
 
 const FIXED_SPRITES={
-  'fixed-wolvenaro':[0,0,192,192],
-  'fixed-urso-runico':[192,0,192,192],
-  'fixed-bota-leve':[384,0,192,192],
-  'fixed-bota-vento':[576,0,192,192],
-  'fixed-armadura-couro':[768,0,192,192],
-  'fixed-armadura-ferro':[0,192,192,192],
-  'fixed-olho-abissal':[192,192,192,192],
-  'fixed-nucleo-pedra':[384,192,192,192],
-  'fixed-essencia-abissal':[576,192,192,192],
-  'fixed-nucleo-tita':[768,192,192,192]
+  'fixed-urso-runico':[0,0,400,400],
+  'fixed-bota-leve':[400,0,400,400],
+  'fixed-bota-vento':[800,0,400,400],
+  'fixed-armadura-couro':[0,400,400,400],
+  'fixed-armadura-ferro':[400,400,400,400],
+  'fixed-olho-abissal':[800,400,400,400],
+  'fixed-nucleo-pedra':[0,800,400,400],
+  'fixed-essencia-abissal':[400,800,400,400],
+  'fixed-nucleo-tita':[800,800,400,400]
 };
 
 // Recortes da arte final aprovada. Cada viewBox mostra a peça inteira dentro
@@ -268,13 +285,12 @@ const OFFICIAL_SPRITES={
 };
 
 function artSprite(key,className,alt){
-  const special=SPECIAL_PET_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=special?special.slice(1):(fixed||OFFICIAL_SPRITES[key]);
+  const b=fixed||OFFICIAL_SPRITES[key];
   if(!b) return '';
-  const sheet=special?SPECIAL_PET_ART_SHEETS[special[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
-  const width=special?SPECIAL_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
-  const height=special?SPECIAL_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
+  const sheet=fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET;
+  const width=fixed?FIXED_ART_W:OFFICIAL_ART_W;
+  const height=fixed?FIXED_ART_H:OFFICIAL_ART_H;
   return '<svg class="official-art '+esc(className||'')+'" viewBox="'+b.join(' ')+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(alt||key)+'">'+
     '<image href="'+sheet+'" x="0" y="0" width="'+width+'" height="'+height+'" preserveAspectRatio="none"></image>'+
   '</svg>';
@@ -371,13 +387,12 @@ function petSpeciesFallback(species,className,label){
 }
 function petCroppedSprite(key,className,label){
   const premium=PREMIUM_PET_SPRITES[key];
-  const special=SPECIAL_PET_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=premium?premium:(special?special.slice(1):(fixed||OFFICIAL_SPRITES[key]));
+  const b=premium?premium:(fixed||OFFICIAL_SPRITES[key]);
   if(!b) return '';
-  const sheet=premium?PREMIUM_PET_ART_SHEET:(special?SPECIAL_PET_ART_SHEETS[special[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET));
-  const sw=premium?PREMIUM_PET_ART_W:(special?SPECIAL_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W));
-  const sh=premium?PREMIUM_PET_ART_H:(special?SPECIAL_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H));
+  const sheet=premium?PREMIUM_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
+  const sw=premium?PREMIUM_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
+  const sh=premium?PREMIUM_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
@@ -394,13 +409,9 @@ function petSpeciesName(species){
 }
 // Essas ilustrações representam exatamente a espécie nominal; não são
 // posições aleatórias das antigas folhas de monstros genéricos.
-const PET_VERIFIED_VECTOR_ASSETS=new Set(["coelho","papagaio","hamster","coruja","golfinho_celestial","moreia_sombria","gaviao","guepardo","gazela_mistica","cervo_mistico","cavalo_guerra","unicornio","colosso_cristal","salamandra_infernal","rinoceronte_titanico","guardiao_obsidiana","cerbero_carmesim","fenix_gelo","fenix_alpha","dragao_corrompido","imperador_abissal","leviata_gelo","lobo_abismo","urso_runico","golem_ancestral","corvo_abissal","tubarao_abissal","tigre_lunar","leao_solar","fenix_fogo","dragao_vulcanico","rinoceronte","colosso_alpha","serpente_cosmica"]);
+const PET_VERIFIED_VECTOR_ASSETS=new Set(["coelho","papagaio","hamster","coruja","golfinho_celestial","moreia_sombria","gaviao","guepardo","gazela_mistica","cervo_mistico","cavalo_guerra","unicornio","colosso_cristal","salamandra_infernal","rinoceronte_titanico","guardiao_obsidiana","cerbero_carmesim","fenix_gelo","fenix_alpha","dragao_corrompido","imperador_abissal","leviata_gelo","lobo_abismo","golem_ancestral","corvo_abissal","tubarao_abissal","tigre_lunar","leao_solar","fenix_fogo","dragao_vulcanico","rinoceronte","colosso_alpha","serpente_cosmica"]);
 const VERIFIED_RAID_PET_SPRITES={
-  corvo_abissal:'pet-crow',tubarao_abissal:'pet-shark',
-  fenix_gelo:'pet-phoenix',fenix_fogo:'pet-phoenix',fenix_alpha:'pet-phoenix',
-  golem_ancestral:'pet-golem',urso_runico:'fixed-urso-runico',
-  leviata_gelo:'pet-leviathan',imperador_abissal:'pet-shark',
-  cerbero_carmesim:'pet-infernal-wolf'
+  urso_runico:'fixed-urso-runico'
 };
 function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
@@ -419,12 +430,6 @@ function petVisualMarkup(species,className='pet-official-art'){
       petSpeciesFallback(s,className+' pet-image-fallback',label)+
       '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=alpha-pets-audit-20261006-2" alt="'+esc(label)+'" loading="lazy" '+
       'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
-  }
-
-  // Pets de Raid/especiais usam primeiro a célula exclusiva do atlas próprio.
-  // Isso evita retratos genéricos (ex.: Urso Rúnico virando apenas uma cabeça de urso).
-  if(SPECIAL_PET_SPRITES[exclusive]){
-    return petCroppedSprite(exclusive,className+' pet-primary-art',label);
   }
 
   // Para espécies comuns sem retrato fotográfico verificado, usa o SVG próprio.
@@ -1167,6 +1172,22 @@ function itemSpriteKey(item){
   const raw=(id+' '+name+' '+category).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[_-]+/g,' ');
 
   const exact={
+    espada_madeira:'item-espada-madeira',espada_ferro:'item-espada-ferro',espada_aco:'item-espada-aco',
+    machado_guerra:'item-machado-guerra',katana_sombria:'item-katana-sombria',espada_flamas:'item-espada-flamas',
+    sabre_runico:'item-sabre-runico',lamina_cacador:'item-lamina-cacador',espada_guardiao:'item-espada-guardiao',
+    lanca_solar:'item-lanca-solar',garras_vazio:'item-garras-vazio',excalibur:'item-excalibur',katana_divina:'item-katana-divina',
+    armadura_aco:'item-armadura-aco',armadura_samurai:'item-armadura-samurai',armadura_cavaleiro:'item-armadura-cavaleiro',
+    armadura_dragao:'item-armadura-dragao',armadura_bastiao:'item-armadura-bastiao',manto_runico:'item-manto-runico',
+    couraca_guardiao:'item-couraca-guardiao',manto_fenix:'item-manto-fenix',couraca_vulcanica:'item-couraca-vulcanica',
+    armadura_vazio:'item-armadura-vazio',armadura_golem:'item-armadura-golem',armadura_divina:'item-armadura-divina',
+    coroa_madrugada:'item-coroa-madrugada',colete_vital:'item-colete-vital',couraca_predador:'item-couraca-predador',
+    armadura_colosso:'item-armadura-colosso',
+    bota_cacador:'item-bota-cacador',bota_relampago:'item-bota-relampago',bota_celestial:'item-bota-celestial',
+    energetico_pet:'item-energetico-pet',pocao_ressurreicao:'item-pocao-ressurreicao',selo_guardiao:'item-selo-guardiao',
+    oleo_sombras:'item-oleo-sombras',elixir_disciplina:'item-elixir-disciplina',elixir_sombras:'item-elixir-sombras',
+    pergaminho_experiencia:'item-pergaminho-experiencia',pergaminho_virtude:'item-pergaminho-virtude',
+    tomo_proibido:'item-tomo-proibido',escama_vulcanica:'item-escama-vulcanica',
+    nucleo_alpha_corrompido:'item-nucleo-alpha-corrompido',insignia_eclipse:'item-insignia-eclipse',marca_insone:'item-marca-insone',
     bota_leve:'fixed-bota-leve',bota_vento:'fixed-bota-vento',
     armadura_couro:'fixed-armadura-couro',armadura_ferro:'fixed-armadura-ferro',
     olho_abissal:'fixed-olho-abissal',nucleo_pedra:'fixed-nucleo-pedra',
@@ -1176,35 +1197,14 @@ function itemSpriteKey(item){
     caixa_sorte:'box-luck',caixa_rara:'box-rare',caixa_epica:'box-epic',
     espada_eclipse:'weapon-eclipse',lamina_abissal:'weapon-abyss',tridente_tempestade:'weapon-trident',
     foice_carmesim:'weapon-scythe',martelo_golem:'weapon-hammer',
-    espada_flamas:'weapon-eclipse',katana_sombria:'weapon-abyss',katana_divina:'weapon-abyss',
-    sabre_runico:'weapon-trident',machado_guerra:'weapon-hammer',garras_vazio:'weapon-abyss',
-    lamina_cacador:'weapon-abyss',espada_guardiao:'weapon-eclipse',
-    armadura_dragao:'armor-chaos',armadura_abissal:'armor-abyss',armadura_celestial:'armor-celestial',
-    manto_fenix:'armor-chaos',couraca_vulcanica:'armor-chaos',armadura_vazio:'armor-abyss',
-    armadura_eclipse:'armor-obsidian',armadura_golem:'armor-titan',armadura_titan:'armor-titan',
-    armadura_divina:'armor-celestial',armadura_bastiao:'armor-titan',manto_runico:'armor-leviathan',
-    couraca_guardiao:'armor-titan',colete_vital:'armor-leviathan',couraca_predador:'armor-obsidian',
-    armadura_colosso:'armor-titan',
+    armadura_abissal:'armor-abyss',armadura_celestial:'armor-celestial',
+    armadura_eclipse:'armor-obsidian',armadura_titan:'armor-titan',
     pergaminho_reclassificacao:'special-scroll',
-    // Itens exclusivos de NPC exibem sua categoria real, não o fallback de chama roxa.
-    pocao_ressurreicao:'potion-elixir',selo_guardiao:'special-soul',
-    oleo_sombras:'potion-medium',elixir_disciplina:'potion-elixir',
-    elixir_sombras:'potion-elixir',pergaminho_experiencia:'special-scroll',
-    pergaminho_virtude:'special-scroll',tomo_proibido:'special-scroll',
-    nucleo_alpha_corrompido:'special-essence',
+    chave_raid_10:'key-10',chave_raid_15:'key-15',chave_raid_20:'key-20',chave_raid_25:'key-25',
+    chave_raid_30:'key-30',chave_raid_40:'key-40',chave_raid_50:'key-50',
     fragmento_alpha:'material-alpha',essencia_abissal:'material-abyss',
     cristal_ancestral:'material-ancestral',nucleo_celestial:'material-celestial',
-    fragmento_celestial:'material-celestial',
-
-    // Cobertura visual completa para itens que antes dependiam de fallback.
-    energetico_pet:'pet-potion-medium',
-    espada_madeira:'weapon-eclipse',espada_ferro:'weapon-eclipse',espada_aco:'weapon-eclipse',
-    lanca_solar:'weapon-trident',excalibur:'weapon-eclipse',
-    armadura_aco:'armor-titan',
-    bota_cacador:'fixed-bota-vento',bota_relampago:'fixed-bota-vento',bota_celestial:'fixed-bota-vento',
-    escama_vulcanica:'special-essence',
-    insignia_eclipse:'special-soul',marca_insone:'special-scroll',
-    coroa_madrugada:'armor-celestial'
+    fragmento_celestial:'material-celestial'
   };
   if(exact[id]) return exact[id];
 
@@ -1303,12 +1303,13 @@ function itemFallbackVisual(item){
   return ['💠','Item'];
 }
 function itemCroppedSprite(key,className,label){
+  const dedicated=ITEM_DEDICATED_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=fixed||OFFICIAL_SPRITES[key];
+  const b=dedicated?dedicated.slice(1):(fixed||OFFICIAL_SPRITES[key]);
   if(!b) return '';
-  const sheet=fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET;
-  const sw=fixed?FIXED_ART_W:OFFICIAL_ART_W;
-  const sh=fixed?FIXED_ART_H:OFFICIAL_ART_H;
+  const sheet=dedicated?ITEM_ART_SHEETS[dedicated[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
+  const sw=dedicated?ITEM_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
+  const sh=dedicated?ITEM_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
@@ -1317,30 +1318,11 @@ function itemCroppedSprite(key,className,label){
   return '<div class="item-cropped-art '+esc(className||'')+'" role="img" aria-label="'+esc(label||key)+'" '+
     'style="aspect-ratio:'+w+'/'+h+';background-image:url(\''+esc(sheet)+'\');background-size:'+sizeX+'% '+sizeY+'%;background-position:'+posX+'% '+posY+'%"></div>';
 }
-const ITEM_DEDICATED_GENERATED_ART=new Set(["espada_madeira","espada_ferro","espada_aco","espada_flamas","espada_guardiao","espada_eclipse","katana_sombria","lamina_abissal","lamina_cacador","garras_vazio","tridente_tempestade","sabre_runico","lanca_solar","armadura_aco","armadura_bastiao","couraca_guardiao","armadura_dragao","manto_fenix","couraca_vulcanica","armadura_abissal","armadura_vazio","bota_vento","bota_cacador","bota_relampago","energetico_pet","pocao_ressurreicao","selo_guardiao","oleo_sombras","elixir_disciplina","elixir_sombras","pergaminho_experiencia","pergaminho_virtude","tomo_proibido","armadura_celestial","armadura_divina","coroa_madrugada","armadura_golem","armadura_titan","armadura_colosso","machado_guerra","martelo_golem","armadura_samurai","armadura_cavaleiro","manto_runico","colete_vital","armadura_eclipse","couraca_predador","pergaminho_reclassificacao","marca_insone","escama_vulcanica","nucleo_alpha_corrompido","melhoria_bancaria","premium_7"]);
 const LEGACY_ITEM_ART={lootbox_std:'/assets/items/lootbox_std.svg'};
-function itemGeneratedArtMarkup(item){
-  const id=String(item?.item_id||item?.id||'item');
-  const name=itemDisplayName(item);
-  let h=0; for(const ch of id) h=(h*31+ch.charCodeAt(0))>>>0;
-  const hue=h%360;
-  const runes=['✦','◆','✧','✺','✶','◈','✹','❖','✷','✵','◇','✸'];
-  const rune=runes[h%runes.length];
-  const baseKey=itemSpriteKey(item);
-  const base=baseKey?itemCroppedSprite(baseKey,'item-generated-base',name):'';
-  const fallback=itemFallbackVisual(item);
-  return '<div class="item-art item-generated-art" role="img" aria-label="'+esc(name)+'" style="--item-hue:'+hue+'">'+
-    '<div class="item-generated-glow"></div>'+
-    (base||'<span class="item-generated-fallback">'+fallback[0]+'</span>')+
-    '<span class="item-generated-rune" aria-hidden="true">'+rune+'</span>'+
-    '<small class="item-generated-name">'+esc(name)+'</small>'+
-  '</div>';
-}
 
 function itemArtMarkup(item){
   const id=String(item?.item_id||item?.id||'').toLowerCase();
   if(LEGACY_ITEM_ART[id]) return '<div class="item-art"><img class="item-dedicated-art" src="'+LEGACY_ITEM_ART[id]+'" alt="'+esc(itemDisplayName(item))+'" loading="lazy"></div>';
-  if(ITEM_DEDICATED_GENERATED_ART.has(id)) return itemGeneratedArtMarkup(item);
   const key=itemSpriteKey(item);
   if(key) return '<div class="item-art">'+itemCroppedSprite(key,'item-official-art',item&&item.name||'Item')+'</div>';
   const visual=itemFallbackVisual(item);

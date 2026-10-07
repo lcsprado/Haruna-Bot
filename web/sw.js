@@ -1,9 +1,12 @@
-const CACHE='alpha-rpg-pwa-20261006-pets-qa-verified-v1';
+const CACHE='alpha-rpg-pwa-20261007-complete-item-art-v1';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
   '/assets/official-art-sheet.jpg',
   '/assets/alpha-fixed-art.webp',
+  '/assets/alpha-item-weapons.webp',
+  '/assets/alpha-item-armors.webp',
+  '/assets/alpha-item-specials.webp',
   '/assets/alpha-special-pets.webp',
   '/assets/pets/aguia.webp',
   '/assets/pets/baleia-colossal.webp',
@@ -41,7 +44,6 @@ const SHELL=[
   '/assets/pet-portraits/imperador_abissal.svg',
   '/assets/pet-portraits/leviata_gelo.svg',
   '/assets/pet-portraits/lobo_abismo.svg',
-  '/assets/pet-portraits/urso_runico.svg',
   '/assets/pet-portraits/golem_ancestral.svg',
   '/assets/pet-portraits/corvo_abissal.svg',
   '/assets/pet-portraits/tubarao_abissal.svg',

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {readFileSync} from 'node:fs'
+import {existsSync,readFileSync,statSync} from 'node:fs'
 
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
@@ -260,12 +260,13 @@ test('group web linking upgrades existing sessions',()=>{
 
 test('corrected art sheet protects known broken assets',()=>{
   assert.ok(app.includes("FIXED_ART_SHEET='/assets/alpha-fixed-art.webp"),'corrected art sheet missing')
-  assert.ok(app.includes("'fixed-wolvenaro'"),'Wolvenaro corrected art missing')
   assert.ok(app.includes("'fixed-urso-runico'"),'Urso Runico corrected art missing')
   assert.ok(app.includes("bota_leve:'fixed-bota-leve'"),'Bota Leve corrected art missing')
   assert.ok(app.includes("armadura_couro:'fixed-armadura-couro'"),'Armadura de Couro corrected art missing')
   assert.ok(app.includes("olho_abissal:'fixed-olho-abissal'"),'Olho Abissal corrected art missing')
   assert.ok(app.includes("nucleo_titan:'fixed-nucleo-tita'"),'Nucleo do Tita corrected art missing')
+  assert.ok(statSync(new URL('../web/assets/alpha-fixed-art.webp',import.meta.url)).size>100000,
+    'corrected art sheet must be complete, not a truncated placeholder')
 })
 
 test('fuzzy equipment art matching is category gated',()=>{
@@ -418,29 +419,34 @@ test('important web activity logs never expose raw action codes and include outc
 
 test('endgame special pets use the approved premium artwork without stacked fallback',()=>{
   assert.ok(app.includes("PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp"),'approved premium pet spritesheet missing')
-  assert.ok(app.includes("SPECIAL_PET_ART_SHEETS=["),'Raid pet spritesheets missing')
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
     assert.ok(app.includes("'pet-special-"+species+"'"),'exclusive special-pet art missing for '+species)
   }
   assert.ok(app.includes('const premium=PREMIUM_PET_SPRITES[key]'),'premium art must take priority inside the pet crop resolver')
   assert.ok(app.includes("return petCroppedSprite(exclusive,className+' pet-primary-art',label)"),'special pet card must render only its own art layer')
+  const sheet=new URL('../web/assets/alpha-special-pets.webp',import.meta.url)
+  assert.ok(statSync(sheet).size>100000,'premium pet sheet must be a complete decodable asset, not a truncated placeholder')
 })
 
 
-test('all Raid/endgame pets have unique exclusive art slots',()=>{
-  assert.ok(app.includes("SPECIAL_PET_ART_SHEETS=["),'two-sheet Raid pet art bundle missing')
+test('all Raid/endgame pets resolve to unique species-safe art',()=>{
   const raidSpecies=["golem_ancestral","urso_runico","colosso_cristal","oraculo_pedra","salamandra_infernal","dragao_vulcanico","fenix_fogo","pantera_vulcanica","corvo_abissal","lobo_abismo","fenix_gelo","espectro_abissal","rinoceronte_titanico","guardiao_obsidiana","leviata_gelo","kraken_aco","esfinge_titanica","cerbero_carmesim","tigre_lunar","imperador_abissal","quimera_abissal","paladino_astral","leao_solar","grifo_celestial","fenix_celestial","lince_celestial","arcanjo_eclipse","serpente_cosmica","dragao_corrompido","fenix_alpha","colosso_alpha","oraculo_alpha"]
+  const premium=Function('return ({'+app.match(/const PREMIUM_PET_SPRITES=\{([\s\S]*?)\n\};/)[1]+'})')()
+  const images=Function('return ({'+app.match(/const PET_IMAGE_ASSETS=\{([\s\S]*?)\n\};/)[1]+'})')()
+  const vectors=new Set(JSON.parse(app.match(/const PET_VERIFIED_VECTOR_ASSETS=new Set\((\[[^;]+\])\)/)[1]))
+  const verified=Function('return ({'+app.match(/const VERIFIED_RAID_PET_SPRITES=\{([\s\S]*?)\n\};/)[1]+'})')()
   const seen=new Set()
   for(const species of raidSpecies){
-    const token="'pet-special-"+species+"':["
-    const at=app.indexOf(token)
-    assert.ok(at>=0,'missing exclusive art for '+species)
-    const close=app.indexOf(']',at)
-    const slot=app.slice(at+token.length,close)
-    assert.ok(!seen.has(slot),'duplicate visual slot for '+species)
-    seen.add(slot)
+    const premiumSlot=premium['pet-special-'+species]
+    const visual=premiumSlot?'premium:'+premiumSlot.join(','):
+      images[species]?'image:'+images[species]:vectors.has(species)?'vector:'+species:
+      verified[species]?'sprite:'+verified[species]:''
+    assert.ok(visual,'missing species-safe art for '+species)
+    assert.ok(!seen.has(visual),'duplicate visual source for '+species)
+    seen.add(visual)
   }
-  assert.equal(seen.size,raidSpecies.length,'every Raid/endgame pet must have its own art slot')
+  assert.equal(seen.size,raidSpecies.length,'every Raid/endgame pet must have its own art source')
+  assert.equal(verified.urso_runico,'fixed-urso-runico','Urso Rúnico must use the dedicated full-body art')
 })
 
 test('PWA precaches only audited art sources and all species-specific portraits',()=>{
@@ -448,7 +454,7 @@ test('PWA precaches only audited art sources and all species-specific portraits'
     'coelho','papagaio','hamster','coruja','golfinho_celestial','moreia_sombria','gaviao','guepardo',
     'gazela_mistica','cervo_mistico','cavalo_guerra','unicornio','colosso_cristal','salamandra_infernal',
     'rinoceronte_titanico','guardiao_obsidiana','cerbero_carmesim','fenix_gelo','fenix_alpha',
-    'dragao_corrompido','imperador_abissal','leviata_gelo','lobo_abismo','urso_runico','golem_ancestral',
+    'dragao_corrompido','imperador_abissal','leviata_gelo','lobo_abismo','golem_ancestral',
     'corvo_abissal','tubarao_abissal','tigre_lunar','leao_solar','fenix_fogo','dragao_vulcanico',
     'rinoceronte','colosso_alpha','serpente_cosmica'
   ]
@@ -468,6 +474,62 @@ test('PWA precaches only audited art sources and all species-specific portraits'
   assert.ok(app.includes('if(PREMIUM_PET_SPRITES[exclusive])'),'approved premium pet atlas must be preferred')
   assert.ok(!app.includes('if(PREMIUM_PET_SPRITES[exclusive]||SPECIAL_PET_SPRITES[exclusive])'),
     'unverified Raid sprites must never return')
+})
+
+test('all catalog items use existing, distinct visual slots',()=>{
+  const starterMatch=db.match(/const starterItems = (\[[\s\S]*?\n  \])/)
+  assert.ok(starterMatch,'starter item catalog missing')
+  const starterItems=Function('return '+starterMatch[1])()
+  assert.equal(starterItems.length,82,'visual audit must cover the complete game item catalog')
+
+  const itemMapStart=app.indexOf('function itemSpriteKey')
+  const exactStart=app.indexOf('const exact={',itemMapStart)
+  const exactEnd=app.indexOf('\n  };',exactStart)
+  assert.ok(itemMapStart>=0&&exactStart>itemMapStart&&exactEnd>exactStart,'exact item art map missing')
+  const exact=Function('return ({'+app.slice(exactStart+'const exact={'.length,exactEnd)+'})')()
+  const resolved=starterItems.map(([id])=>[id,exact[id]])
+  assert.deepEqual(resolved.filter(([,sprite])=>!sprite),[],'every catalog item must have an explicit visual')
+  assert.equal(new Set(resolved.map(([,sprite])=>sprite)).size,starterItems.length,
+    'catalog items must not reuse another item visual slot')
+
+  const dedicatedMatch=app.match(/const ITEM_DEDICATED_SPRITES=\{([\s\S]*?)\n\};/)
+  assert.ok(dedicatedMatch,'dedicated item sprite map missing')
+  const dedicated=Function('return ({'+dedicatedMatch[1]+'})')()
+  const slots=new Set()
+  for(const [key,slot] of Object.entries(dedicated)){
+    assert.equal(slot.length,5,'invalid dedicated sprite tuple for '+key)
+    assert.ok(!slots.has(slot.join(',')),'duplicate dedicated sprite slot for '+key)
+    slots.add(slot.join(','))
+  }
+
+  for(const asset of ['alpha-item-weapons.webp','alpha-item-armors.webp','alpha-item-specials.webp']){
+    const file=new URL('../web/assets/'+asset,import.meta.url)
+    assert.ok(existsSync(file),'missing generated item sheet: '+asset)
+    assert.ok(statSync(file).size>100000,'generated item sheet is unexpectedly small: '+asset)
+    assert.ok(serviceWorker.includes('/assets/'+asset),'PWA must cache '+asset)
+  }
+  assert.ok(!app.includes('ITEM_DEDICATED_GENERATED_ART'),'text-overlaid generic item art must not return')
+  assert.ok(!app.includes('itemGeneratedArtMarkup'),'item identity must come from its image, not a label overlay')
+})
+
+test('all statically referenced web assets exist and WebP files are complete',()=>{
+  const sources=[app,serviceWorker,webIndex]
+  const paths=new Set()
+  for(const source of sources){
+    for(const match of source.matchAll(/["'](\/assets\/[^?"'<>]+)(?:\?[^"']*)?["']/g)) paths.add(match[1])
+  }
+  assert.ok(paths.size>50,'asset reference audit did not discover the expected catalog')
+  for(const assetPath of paths){
+    const file=new URL('../web'+assetPath,import.meta.url)
+    assert.ok(existsSync(file),'missing referenced asset: '+assetPath)
+    if(assetPath.endsWith('.webp')){
+      const bytes=readFileSync(file)
+      assert.ok(bytes.length>20,'empty WebP asset: '+assetPath)
+      assert.equal(bytes.toString('ascii',0,4),'RIFF','invalid WebP RIFF header: '+assetPath)
+      assert.equal(bytes.toString('ascii',8,12),'WEBP','invalid WebP signature: '+assetPath)
+      assert.equal(bytes.readUInt32LE(4)+8,bytes.length,'truncated WebP asset: '+assetPath)
+    }
+  }
 })
 
 test('visible pet labels and statuses remain Portuguese',()=>{

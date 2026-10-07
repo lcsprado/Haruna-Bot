@@ -63,11 +63,14 @@ test('contratos do WhatsApp estão expostos no Web sem sistema paralelo',()=>{
 
 test('auditoria visual impede sprite de item colapsado e ID técnico de pet',()=>{
   const css=readFileSync(new URL('../web/styles.css',import.meta.url),'utf8')
-  assert.match(css,/\.item-art \.item-cropped-art\{[\s\S]*?width:min\(100%,260px\)!important/)
+  assert.match(css,/\.item-art \.item-cropped-art\{[\s\S]*?width:auto!important;[\s\S]*?max-width:100%!important;[\s\S]*?height:140px!important/)
+  assert.doesNotMatch(css,/\.item-art \.item-cropped-art\{[\s\S]*?background-position:center!important/)
   assert.doesNotMatch(app,/>ID '\+p\.id/)
-  const specialPos=app.indexOf("if(SPECIAL_PET_SPRITES[exclusive])")
+  const specialPos=app.indexOf("if(PREMIUM_PET_SPRITES[exclusive])")
   const vectorPos=app.indexOf("if(PET_VERIFIED_VECTOR_ASSETS.has(s))")
   assert.ok(specialPos>0 && vectorPos>specialPos,'pet de Raid deve priorizar arte exclusiva antes do vetor genérico')
+  assert.match(app,/urso_runico:'fixed-urso-runico'/)
+  assert.doesNotMatch(app,/PET_VERIFIED_VECTOR_ASSETS=new Set\([^;]*"urso_runico"/)
 })
 
 
