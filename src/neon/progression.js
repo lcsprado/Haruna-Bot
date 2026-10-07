@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { db, ensureUser, claimCooldown, getDoubleEventMultiplier } from './db.js'
+import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction } from './db.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -1327,8 +1327,8 @@ const ALPHA_CONTRACT_TEMPLATES=[
   ]
 ]
 function alphaContractPeriod(now=Date.now()){
-  // UTC+0 interval boundaries align with Brasília 00h/04h/08h etc. (-3h).
-  return Math.floor(now/1000/ALPHA_CONTRACT_SECONDS)
+  // UTC-3: janelas locais às 00h/04h/08h/12h/16h/20h.
+  return Math.floor((now/1000-3*3600)/ALPHA_CONTRACT_SECONDS)
 }
 function alphaContractBoardFor(period){
   return ALPHA_CONTRACT_TEMPLATES.map((variants,i)=>{
@@ -1346,7 +1346,7 @@ export async function getAlphaContractBoard(jid){
   return {
     period,
     level:Number(levelRow.rows[0]?.level||1),
-    nextAt:(period+1)*ALPHA_CONTRACT_SECONDS*1000,
+    nextAt:((period+1)*ALPHA_CONTRACT_SECONDS+3*3600)*1000,
     contracts:alphaContractBoardFor(period),
     active:activeRow.rows[0]||null
   }
@@ -1360,7 +1360,7 @@ export async function acceptAlphaContract(jid,number){
     const level=Number((await client.query('SELECT level FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.level||1)
     if(level<contract.level) throw new Error(`Você precisa estar no nível ${contract.level} para aceitar este contrato. Seu nível: ${level}.`)
     const acceptedAt=Math.floor(Date.now()/1000)
-    const expiresAt=(period+1)*ALPHA_CONTRACT_SECONDS
+    const expiresAt=(period+1)*ALPHA_CONTRACT_SECONDS+3*3600
     const row=await client.query(`
       INSERT INTO alpha_contracts(
         jid,period,contract_id,task,target,progress,reward_cash,reward_xp,
@@ -1409,7 +1409,6 @@ export async function claimAlphaContract(jid){
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'alpha_contract',$3)",
       [jid,contract.reward_cash,contract.contract_id])
     // EXP e inventário são creditados no mesmo commit para evitar duplicações.
-    const { grantExpInTransaction }=await import('./db.js')
     await grantExpInTransaction(client,jid,Number(contract.reward_xp||0))
     if(contract.reward_item){
       await client.query(`
