@@ -606,6 +606,27 @@ _Responda apenas com o número._`
   )
 }
 
+async function alphaKarmaMessage(jid){
+          const r=await getAlphaReputation(jid)
+          const path=r.karma>=10?'Caminho do Herói':r.karma<=-10?'Caminho do Vilão':'Neutro'
+          return (`⚖️ *HONRA & KARMA ALPHA*\n\n🎭 Título: *${r.title}*\n📊 Karma: *${r.karma>0?'+':''}${r.karma}/100*\n🧭 Caminho: *${path}*\n\n🛡️ Raids e Bosses (+2 por vitória com participação real)\n😈 Roubo bem-sucedido (-3); tentativa fracassada (-1)\n⏳ Limite de 12 mudanças por ação a cada 24 horas.\n\n🏪 Visite *!npcs*: Helena, Mordek e Baltazar oferecem preços e itens conforme o Karma.`)
+}
+
+async function alphaContractBoardMessage(jid){
+          const board=await getAlphaContractBoard(jid)
+          const remaining=Math.max(1,Math.ceil((board.nextAt-Date.now())/60000))
+          let text='📜 *QUADRO DE CONTRATOS ALPHA*\n\n'
+          text+=`⭐ Seu nível: *${board.level}* • 🔄 Renova em *${remaining} min*\n🕒 Um contrato por ciclo de 4 horas.\n\n`
+          for(const c of board.contracts){
+            const eligible=board.level>=c.level
+            const selected=board.active?.contract_id===c.id
+            const status=selected?(board.active.claimed?'✅ RESGATADO':`📌 ACEITO • ${board.active.progress}/${board.active.target}`):(eligible?'🟢 Disponível':'🔒 Bloqueado')
+            text+=`${c.number}️⃣ *${c.title}* — Nv. ${c.level}+\n🎯 ${c.description}\n💰 R$ ${fmt(c.cash)} • ✨ ${fmt(c.xp)} XP${c.item?' • 🎁 Caixa Épica':''}\n${status}\n\n`
+          }
+          text+=board.active?(`📌 *Sua missão:* ${board.active.progress}/${board.active.target}\n${Number(board.active.progress)>=Number(board.active.target)&&!board.active.claimed?'🎁 Use *!resgatarcontrato* para receber.':'📊 Use !contratos para acompanhar.'}`):'👉 Aceite usando *!aceitarcontrato 1* (1 a 5).'
+          return text.trim()
+}
+
 async function showMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'nav_main',{},90000)
   await reply(
@@ -6557,7 +6578,21 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         await reply(text.trim())
         return true
       }
-      await reply('📋 Escolha de *1 a 6*.')
+      if(input==='7'){
+        clearQuickFlow(chat,sender)
+        await reply(await alphaContractBoardMessage(sender))
+        return true
+      }
+      if(input==='8'){
+        clearQuickFlow(chat,sender)
+        await reply(await alphaKarmaMessage(sender))
+        return true
+      }
+      if(input==='9'){
+        await showNpcMerchantsMenu(chat,sender,reply)
+        return true
+      }
+      await reply('📋 Escolha uma opção de *1 a 9*.')
       return true
     }
 
@@ -7529,10 +7564,10 @@ Fale com o responsável pelo Alpha Bot para ativação.`
         }
 
         if(isGroup && !isOwner){
-          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo'])
+          const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo','npcs','mercadores','comerciantes','mercadoalpha','lojanpc','npc','falarnpc','comprarnpc','npccomprar'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
-          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair'])
+          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação'])
           let key=null,label=null
           if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
           else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
@@ -8429,23 +8464,10 @@ ${results.join('\n')}
           await reply(out)
 
         } else if(['karma','honra','reputacao','reputação'].includes(cmd)){
-          const r=await getAlphaReputation(sender)
-          const path=r.karma>=10?'Caminho do Herói':r.karma<=-10?'Caminho do Vilão':'Neutro'
-          await reply(`⚖️ *HONRA & KARMA ALPHA*\n\n🎭 Título: *${r.title}*\n📊 Karma: *${r.karma>0?'+':''}${r.karma}/100*\n🧭 Caminho: *${path}*\n\n🛡️ Raids e Bosses (+2 por vitória com participação real)\n😈 Roubo bem-sucedido (-3); tentativa fracassada (-1)\n⏳ Limite de 12 mudanças por ação a cada 24 horas.\n\n🏪 Visite *!npcs*: Helena, Mordek e Baltazar oferecem preços e itens conforme o Karma.`)
+          await reply(await alphaKarmaMessage(sender))
 
         } else if(['contratos','quadro','quadrocontratos','missoeshora','missoesdahora'].includes(cmd)){
-          const board=await getAlphaContractBoard(sender)
-          const remaining=Math.max(1,Math.ceil((board.nextAt-Date.now())/60000))
-          let text='📜 *QUADRO DE CONTRATOS ALPHA*\n\n'
-          text+=`⭐ Seu nível: *${board.level}* • 🔄 Renova em *${remaining} min*\n🕒 Um contrato por ciclo de 4 horas.\n\n`
-          for(const c of board.contracts){
-            const eligible=board.level>=c.level
-            const selected=board.active?.contract_id===c.id
-            const status=selected?(board.active.claimed?'✅ RESGATADO':`📌 ACEITO • ${board.active.progress}/${board.active.target}`):(eligible?'🟢 Disponível':'🔒 Bloqueado')
-            text+=`${c.number}️⃣ *${c.title}* — Nv. ${c.level}+\n🎯 ${c.description}\n💰 R$ ${fmt(c.cash)} • ✨ ${fmt(c.xp)} XP${c.item?' • 🎁 Caixa Épica':''}\n${status}\n\n`
-          }
-          text+=board.active?(`📌 *Sua missão:* ${board.active.progress}/${board.active.target}\n${Number(board.active.progress)>=Number(board.active.target)&&!board.active.claimed?'🎁 Use *!resgatarcontrato* para receber.':'📊 Use !contratos para acompanhar.'}`):'👉 Aceite usando *!aceitarcontrato 1* (1 a 5).'
-          await reply(text.trim())
+          await reply(await alphaContractBoardMessage(sender))
 
         } else if(['aceitarcontrato','contratoaceitar'].includes(cmd)){
           const r=await acceptAlphaContract(sender,args[0])
