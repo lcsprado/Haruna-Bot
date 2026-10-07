@@ -6,6 +6,7 @@ const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const npcShops=readFileSync(new URL('../src/neon/npc-shops.js',import.meta.url),'utf8')
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+const progression=readFileSync(new URL('../src/neon/progression.js',import.meta.url),'utf8')
 const loans=readFileSync(new URL('../src/neon/loans.js',import.meta.url),'utf8')
 const gameCatalog=readFileSync(new URL('../src/neon/game-catalog.js',import.meta.url),'utf8')
 const webApi=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8')
@@ -590,4 +591,13 @@ test('emprestimos usam 30 minutos e credito progressivo sem teto fixo de 250 mil
   assert.ok(loans.includes("30min-sem-juros"),'loan transaction note must reflect 30 minute grace period')
   assert.ok(index.includes('30 minutos sem juros'),'WhatsApp loan offer must show the 30 minute rule')
   assert.ok(index.includes('sem teto fixo de R$ 250.000'),'credit command must explain that the old fixed cap was removed')
+})
+
+
+test('roubo pego sempre reduz karma',()=>{
+  assert.ok(progression.includes("const rateLimitedActions=new Set(['raid_victory','boss_victory'])"),'robbery must not be rate-limited')
+  assert.ok(index.includes("changeAlphaReputation(sender,'robbery_failure',-1)"),'failed robbery must reduce karma by 1')
+  assert.ok(index.includes("changeAlphaReputation(sender,'robbery_success',-3)"),'successful robbery must reduce karma by 3')
+  assert.ok(index.includes("Karma: *-1*"),'failed robbery result must display karma loss')
+  assert.ok(index.includes("Karma: *-3*"),'successful robbery result must display karma loss')
 })
