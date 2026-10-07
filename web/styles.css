@@ -1020,3 +1020,24 @@ body.loot-open{overflow:hidden!important}
   .item-card .item-art{height:158px!important;min-height:158px!important}
   .pet-portrait .pet-cropped-art{width:92%!important;height:92%!important}
 }
+
+/* Arte dedicada combina a peça real do atlas com aura/runa exclusiva do item. */
+.item-generated-art{position:relative;isolation:isolate;background:
+  radial-gradient(circle at 50% 42%,hsl(var(--item-hue) 56% 24% / .55),transparent 58%),
+  linear-gradient(180deg,#09111b,#03060a)!important}
+.item-generated-art .item-generated-base{
+  position:relative;z-index:2;width:min(78%,245px)!important;height:128px!important;
+  filter:drop-shadow(0 12px 18px #000) drop-shadow(0 0 10px hsl(var(--item-hue) 75% 56% / .34));
+}
+.item-generated-glow{position:absolute;inset:15% 18% 23%;border-radius:50%;z-index:1;
+  border:2px solid hsl(var(--item-hue) 72% 62% / .72);
+  box-shadow:0 0 28px hsl(var(--item-hue) 75% 52% / .28),inset 0 0 24px hsl(var(--item-hue) 75% 52% / .14)}
+.item-generated-rune{position:absolute;right:18px;top:15px;z-index:3;font-size:24px;
+  color:hsl(var(--item-hue) 82% 78%);text-shadow:0 0 16px currentColor}
+.item-generated-name{position:absolute;z-index:3;left:12px;right:12px;bottom:9px;text-align:center;
+  font-weight:800;color:#eef4fb;text-shadow:0 2px 8px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-generated-fallback{position:relative;z-index:2;font-size:58px}
+@media(max-width:600px){
+  .item-generated-art .item-generated-base{width:min(76%,220px)!important;height:120px!important}
+  .item-generated-rune{font-size:21px;right:14px;top:12px}
+}
