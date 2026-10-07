@@ -2734,13 +2734,33 @@ Escolha o que deseja vender:
     }
 
     if(flow.stage==='npc_select'){
-      if(input==='9'){ await showNpcMerchantsMenu(chat,sender,reply); return true }
-      if(!['1','2','3'].includes(input)){ await reply('🏘️ Escolha o NPC *1, 2 ou 3* ou 0 para sair.'); return true }
-      await showNpcGoodsMenu(chat,sender,reply,input)
+      if(input==='9'){ await showCityMenu(chat,sender,reply); return true }
+      if(!['1','2','3'].includes(input)){ await reply('🏘️ Escolha o NPC *1, 2 ou 3*, 9 para voltar ou 0 para sair.'); return true }
+      await showNpcInteractionMenu(chat,sender,reply,input)
       return true
     }
-    if(flow.stage==='npc_goods'){
+
+    if(flow.stage==='npc_interaction'){
       if(input==='9'){ await showNpcMerchantsMenu(chat,sender,reply); return true }
+      if(input==='3'){
+        clearQuickFlow(chat,sender)
+        await reply('🚪 Você saiu do estabelecimento.')
+        return true
+      }
+      if(input==='1'){
+        await showNpcGoodsMenu(chat,sender,reply,flow.data.npcId)
+        return true
+      }
+      if(input==='2'){
+        await showNpcConversation(chat,sender,reply,flow.data.npcId)
+        return true
+      }
+      await reply('🏘️ Escolha *1 Comprar*, *2 Conversar*, *3 Sair* ou *9 Voltar*.')
+      return true
+    }
+
+    if(flow.stage==='npc_goods'){
+      if(input==='9'){ await showNpcInteractionMenu(chat,sender,reply,flow.data.npcId); return true }
       const stockCount=Number(flow.data?.stockCount||0)
       if(!/^\d+$/.test(input)||Number(input)<1||Number(input)>stockCount){
         await reply('🛒 Escolha um item de *1 a '+stockCount+'*, 9 para voltar ou 0 para sair.')
@@ -2749,6 +2769,73 @@ Escolha o que deseja vender:
       const bought=await buyNpcShopItem(sender,flow.data.npcId,Number(input))
       await reply(`${bought.npc.emoji} *COMPRA COM ${bought.npc.name.toUpperCase()} CONCLUÍDA!*\n\n📦 ${bought.item.name} ×1\n💵 Valor pago: *R$ ${fmt(bought.price)}*${bought.saved>0?`\n✅ Desconto: R$ ${fmt(bought.saved)}`:bought.saved<0?`\n⚠️ Acréscimo por reputação: R$ ${fmt(-bought.saved)}`:''}\n🛍️ Compras restantes: ${bought.remaining}/3`)
       await showNpcGoodsMenu(chat,sender,reply,flow.data.npcId)
+      return true
+    }
+
+    if(flow.stage==='city_resident'){
+      if(input==='9'){ await showCityMenu(chat,sender,reply); return true }
+      if(input==='3'){
+        clearQuickFlow(chat,sender)
+        await reply('🚶 Você seguiu seu caminho pela cidade.')
+        return true
+      }
+      if(input==='1'){
+        const memory=await getNpcMemory(sender,flow.data.npcId)
+        const npc=memory.npc
+        setQuickFlow(chat,sender,'city_resident',{npcId:npc.id},120000)
+        await reply(`${npc.emoji} *${npc.name.toUpperCase()}*\n\n_${memory.text}_\n\n1️⃣ 💬 Conversar novamente\n2️⃣ 🗣️ Perguntar pelos rumores\n3️⃣ 🚪 Sair\n9️⃣ Voltar à cidade`)
+        return true
+      }
+      if(input==='2'){
+        await showRumorBoard(chat,sender,reply)
+        setQuickFlow(chat,sender,'city_resident',{npcId:flow.data.npcId},120000)
+        return true
+      }
+      await reply('🏙️ Escolha *1 Conversar*, *2 Rumores*, *3 Sair* ou *9 Voltar*.')
+      return true
+    }
+
+    if(flow.stage==='city_main'){
+      if(['1','2','3','4','5'].includes(input)){
+        await showCityResidentMenu(chat,sender,reply,input)
+        return true
+      }
+      if(input==='6'){
+        await showRumorBoard(chat,sender,reply)
+        setQuickFlow(chat,sender,'city_main',{},120000)
+        return true
+      }
+      if(input==='7'){
+        await showBlackMarket(chat,sender,reply)
+        setQuickFlow(chat,sender,'city_main',{},120000)
+        return true
+      }
+      if(input==='8'){
+        const encounter=await maybeCreateCityEncounter(sender,{force:true})
+        await showCityEncounter(chat,sender,reply,encounter)
+        return true
+      }
+      if(input==='9'){
+        const s=await getCityStanding(sender)
+        await reply(`📊 *SUA REPUTAÇÃO NA CIDADE*\n\n⚖️ Karma: *${s.karma>0?'+':''}${s.karma}* — ${s.title}\n🗣️ Confiança: *${s.trust>=0?'+':''}${s.trust}*\n👁️ Notoriedade: *${s.notoriety}/100*\n\nRumores, crimes, ajuda aos moradores e eventos mudam como os NPCs tratam você.`)
+        setQuickFlow(chat,sender,'city_main',{},120000)
+        return true
+      }
+      await reply('🏙️ Escolha uma opção de *1 a 9* ou 0 para sair.')
+      return true
+    }
+
+    if(flow.stage==='city_encounter'){
+      if(!['1','2'].includes(input)){
+        await reply('🏙️ Escolha *1* ou *2* para decidir o evento.')
+        return true
+      }
+      const result=await resolveCityEncounter(sender,flow.data.encounterId,Number(input))
+      clearQuickFlow(chat,sender)
+      const cashLine=Number(result.cash||0)>0?`\n💰 Dinheiro: *+R$ ${fmt(result.cash)}*`:Number(result.cash||0)<0?`\n💸 Prejuízo: *-R$ ${fmt(Math.abs(result.cash))}*`:''
+      const xpLine=Number(result.xp||0)>0?`\n✨ EXP: *+${fmt(result.xp)}*`:''
+      const karmaLine=Number(result.karma||0)?`\n⚖️ Karma: *${result.karma>0?'+':''}${result.karma}*`:''
+      await reply(`🏙️ *CONSEQUÊNCIA*\n\n${result.text}${cashLine}${xpLine}${karmaLine}`)
       return true
     }
 
