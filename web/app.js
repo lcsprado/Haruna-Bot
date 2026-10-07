@@ -1451,20 +1451,29 @@ function inventoryCard(i,options={}){
 }
 function renderInventory(){
   const inv=ui.data.inventory||[];
-  const equipped=inv.filter(i=>i.equipped).map(i=>({...i,quantity:1}));
-  const available=inv.map(i=>({...i,quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)})).filter(i=>Number(i.quantity)>0);
-  const groups=INVENTORY_GROUPS.map(([key,label])=>({key,label,items:available.filter(i=>inventoryBucket(i)===key)}));
-  if(!groups.some(g=>g.key===ui.inventoryTab)) ui.inventoryTab='weapons';
-  const selected=groups.find(g=>g.key===ui.inventoryTab);
-  return '<div class="page-head"><div><h2>Inventário</h2><p>Itens equipados são protegidos e separados do estoque disponível.</p></div><div class="hero-actions">'+
-    '<button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
+  const groups=INVENTORY_GROUPS.map(([key,label])=>{
+    const all=inv.filter(i=>inventoryBucket(i)===key);
+    const equipped=all.filter(i=>i.equipped).map(i=>({...i,quantity:1}));
+    const available=all.map(i=>({...i,quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)}))
+      .filter(i=>Number(i.quantity)>0);
+    return {key,label,all,equipped,available};
+  });
+  if(!groups.some(g=>g.key===ui.inventoryTab)) ui.inventoryTab=groups.find(g=>g.all.length)?.key||'weapons';
+  const selected=groups.find(g=>g.key===ui.inventoryTab)||groups[0];
+  const totalTypes=inv.length;
+  return '<div class="page-head"><div><h2>Inventário</h2><p>Escolha uma categoria. Equipados ficam visíveis, separados e protegidos contra venda.</p></div><div class="hero-actions">'+
+    '<button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+totalTypes+' tipos</span></div></div>'+
     renderLuckyBoxEvent()+
-    '<div class="section inventory-equipped-section"><div class="section-title"><h3>🔒 Equipados</h3><small>Protegidos contra venda</small></div>'+
-      (equipped.length?'<div class="grid cards">'+equipped.map(i=>inventoryCard(i,{equippedCopy:true,quantity:1})).join('')+'</div>':'<div class="empty">Nenhum equipamento em uso.</div>')+'</div>'+
     '<div class="tabs inventory-tabs section" role="tablist" aria-label="Categorias do inventário">'+
-      groups.map(g=>'<button type="button" role="tab" aria-selected="'+(g.key===ui.inventoryTab)+'" class="tab '+(g.key===ui.inventoryTab?'active':'')+'" data-inventory-tab="'+g.key+'">'+g.label+' ('+g.items.length+')</button>').join('')+'</div>'+
-    '<div class="section inventory-group"><div class="section-title"><h3>'+selected.label+'</h3><small>'+selected.items.length+' tipo(s)</small></div>'+
-      (selected.items.length?'<div class="grid cards">'+selected.items.map(i=>inventoryCard(i,{quantity:i.quantity})).join('')+'</div>':'<div class="empty">Nenhum item nesta categoria.</div>')+'</div>'+
+      groups.map(g=>'<button type="button" role="tab" aria-selected="'+(g.key===ui.inventoryTab)+'" class="tab '+(g.key===ui.inventoryTab?'active':'')+'" data-inventory-tab="'+g.key+'">'+g.label+' ('+g.all.length+')</button>').join('')+'</div>'+
+    '<div class="section inventory-group">'+
+      '<div class="section-title"><h3>'+selected.label+'</h3><small>'+selected.all.length+' tipo(s)</small></div>'+
+      (selected.equipped.length?
+        '<div class="inventory-subsection inventory-equipped-section"><div class="section-title"><h4>🔒 Equipados nesta categoria</h4><small>Protegidos contra venda</small></div><div class="grid cards">'+
+        selected.equipped.map(i=>inventoryCard(i,{equippedCopy:true,quantity:1})).join('')+'</div></div>':'')+
+      '<div class="inventory-subsection"><div class="section-title"><h4>📦 Disponíveis</h4><small>'+selected.available.length+' tipo(s)</small></div>'+
+      (selected.available.length?'<div class="grid cards">'+selected.available.map(i=>inventoryCard(i,{quantity:i.quantity})).join('')+'</div>':'<div class="empty">Nenhuma cópia disponível para venda/uso nesta categoria.</div>')+
+      '</div></div>'+
     resultPanel();
 }
 
