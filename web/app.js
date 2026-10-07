@@ -1021,7 +1021,6 @@ function ownedPetCard(p){
       (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
       '<div class="pet-rename-inline"><input data-pet-name="'+p.id+'" maxlength="24" value="'+esc(p.name||'')+'" placeholder="Nome do pet"><button class="btn" type="button" data-pet-rename="'+p.id+'">✏️ Renomear • R$ 1.000</button></div>'+
       (active?'<button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
-      '<button class="btn" data-pet-id="'+p.id+'">ID '+p.id+'</button>'+
     '</div>'+
   '</div>';
 }
