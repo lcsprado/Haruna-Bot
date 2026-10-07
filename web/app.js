@@ -1308,12 +1308,8 @@ function itemCroppedSprite(key,className,label){
   return '<div class="item-cropped-art '+esc(className||'')+'" role="img" aria-label="'+esc(label||key)+'" '+
     'style="aspect-ratio:'+w+'/'+h+';background-image:url(\''+esc(sheet)+'\');background-size:'+sizeX+'% '+sizeY+'%;background-position:'+posX+'% '+posY+'%"></div>';
 }
-const ITEM_DEDICATED_GENERATED_ART=new Set(["espada_madeira","espada_ferro","espada_aco","espada_flamas","espada_guardiao","espada_eclipse","katana_sombria","lamina_abissal","lamina_cacador","garras_vazio","tridente_tempestade","sabre_runico","lanca_solar","armadura_aco","armadura_bastiao","couraca_guardiao","armadura_dragao","manto_fenix","couraca_vulcanica","armadura_abissal","armadura_vazio","bota_vento","bota_cacador","bota_relampago","energetico_pet","pocao_ressurreicao","selo_guardiao","oleo_sombras","elixir_disciplina","elixir_sombras","pergaminho_experiencia","pergaminho_virtude","tomo_proibido","armadura_celestial","armadura_divina","coroa_madrugada","armadura_golem","armadura_titan","armadura_colosso","machado_guerra","martelo_golem","armadura_samurai","armadura_cavaleiro","manto_runico","colete_vital","armadura_eclipse","couraca_predador","pergaminho_reclassificacao","marca_insone","escama_vulcanica","nucleo_alpha_corrompido"]);
-const LEGACY_ITEM_ART={
-  lootbox_std:'/assets/items/lootbox_std.svg',
-  melhoria_bancaria:'/assets/items/melhoria_bancaria.svg',
-  premium_7:'/assets/items/premium_7.svg'
-};
+const ITEM_DEDICATED_GENERATED_ART=new Set(["espada_madeira","espada_ferro","espada_aco","espada_flamas","espada_guardiao","espada_eclipse","katana_sombria","lamina_abissal","lamina_cacador","garras_vazio","tridente_tempestade","sabre_runico","lanca_solar","armadura_aco","armadura_bastiao","couraca_guardiao","armadura_dragao","manto_fenix","couraca_vulcanica","armadura_abissal","armadura_vazio","bota_vento","bota_cacador","bota_relampago","energetico_pet","pocao_ressurreicao","selo_guardiao","oleo_sombras","elixir_disciplina","elixir_sombras","pergaminho_experiencia","pergaminho_virtude","tomo_proibido","armadura_celestial","armadura_divina","coroa_madrugada","armadura_golem","armadura_titan","armadura_colosso","machado_guerra","martelo_golem","armadura_samurai","armadura_cavaleiro","manto_runico","colete_vital","armadura_eclipse","couraca_predador","pergaminho_reclassificacao","marca_insone","escama_vulcanica","nucleo_alpha_corrompido","melhoria_bancaria","premium_7"]);
+const LEGACY_ITEM_ART={lootbox_std:'/assets/items/lootbox_std.svg'};
 function itemGeneratedArtMarkup(item){
   const id=String(item?.item_id||item?.id||'item');
   const name=itemDisplayName(item);
