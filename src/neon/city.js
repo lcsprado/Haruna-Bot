@@ -283,6 +283,24 @@ export async function getNpcMemory(visitorJid,npcRef){
     return {npc,text:`“Eu lembro de você. Depois do que tentou fazer comigo, confiança não volta tão rápido.”`,memory:'personal'}
   }
 
+  const {rows:npcIncidentRows}=await db.query(`
+    SELECT i.*,actor.push_name AS actor_name
+    FROM alpha_city_incidents i
+    LEFT JOIN users actor ON actor.jid=i.actor_jid
+    WHERE i.kind='npc_robbery' AND i.npc_id=$1
+      AND i.created_at>${NOW_SQL}-$2
+    ORDER BY i.created_at DESC
+    LIMIT 1
+  `,[npc.id,2*DAY])
+  const npcIncident=npcIncidentRows[0]
+  if(npcIncident){
+    const amount=Number(npcIncident.amount||0).toLocaleString('pt-BR')
+    const text=npcIncident.outcome==='success'
+      ? `“Meu dia começou mal. Me assaltaram e levaram R$ ${amount}. Você viu alguma coisa?”`
+      : '“Tentaram me assaltar recentemente. Eu consegui escapar, mas quero descobrir quem foi. Você viu algo?”'
+    return {npc,text,memory:'incident',incident:npcIncident}
+  }
+
   const {rows:incidentRows}=await db.query(`
     SELECT i.*,actor.push_name AS actor_name,target.push_name AS target_name
     FROM alpha_city_incidents i
@@ -677,16 +695,17 @@ export async function buyBlackMarketItem(jid,number){
       [jid,good.price,'Mercado Negro — '+item.name]
     )
     await client.query('COMMIT')
-    await changeCityReputation(jid,{trust:-1,notoriety:2})
-    return {
+    const result={
       item:{id:item.id,name:item.name,rarity:item.rarity},
       price:good.price,remaining:Math.max(0,BLACK_MARKET_LIMIT-used-1)
     }
-  }catch(err){
-    await client.query('ROLLBACK')
-    throw err
-  }finally{
     client.release()
+    await changeCityReputation(jid,{trust:-1,notoriety:2}).catch(()=>null)
+    return result
+  }catch(err){
+    await client.query('ROLLBACK').catch(()=>null)
+    client.release()
+    throw err
   }
 }
 
