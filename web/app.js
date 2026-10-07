@@ -15,6 +15,8 @@ const ui = {
   inventoryTab: 'weapons',
   npcData: null,
   npcLoading: false,
+  contractData: null,
+  contractLoading: false,
   petAdoptSpecies: '',
   duelTarget: '',
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
@@ -33,6 +35,7 @@ const navItems = [
   ['inventory','🎒','Inventário'],
   ['shop','🏪','Loja'],
   ['npcs','🏘️','NPCs / Comerciantes'],
+  ['contracts','📜','Contratos'],
   ['raids','⚔️','Raids'],
   ['boss','👹','Boss'],
   ['duels','⚔️','Duelos'],
@@ -691,7 +694,7 @@ async function doAction(name,body,options){
     const response=await api('/api/v1/action/'+encodeURIComponent(name),{method:'POST',body:JSON.stringify(body||{})});
     ui.lastResult=response.result;
     if(options.afterSync!==false) await sync(true);
-    if(['social','market','clan','games','activities','progression','rankings','loans'].includes(ui.page)){
+    if(['social','market','clan','games','activities','progression','rankings','loans','contracts'].includes(ui.page)){
       await syncExtras(true).catch(()=>null);
       render();
     }
@@ -752,6 +755,7 @@ function renderNav(){
     ui.page=btn.dataset.page;
     setMenu(false);
     if(ui.page==='npcs') await loadNpcShops();
+    if(ui.page==='contracts') await loadContracts();
     if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
       await syncExtras(false).catch(()=>null);
     }
@@ -1498,6 +1502,42 @@ async function loadNpcShops(){
   }catch(err){ui.npcData={error:err.message}}
   finally{ui.npcLoading=false}
 }
+async function loadContracts(){
+  if(ui.contractLoading) return;
+  ui.contractLoading=true;
+  try{
+    const result=await api('/api/v1/me/contracts');
+    ui.contractData=result.data;
+  }catch(err){ui.contractData={error:err.message}}
+  finally{ui.contractLoading=false}
+}
+function renderContracts(){
+  const d=ui.contractData;
+  if(!d) return '<div class="notice">Carregando contratos…</div>';
+  if(d.error) return '<div class="notice warn">'+esc(d.error)+'</div>';
+  const active=d.active||null;
+  const left=Math.max(0,Math.ceil((Number(d.nextAt||Date.now())-Date.now())/1000));
+  const mins=Math.ceil(left/60);
+  return '<div class="page-head"><div><h2>📜 Contratos Alpha</h2><p>Mesmo quadro do WhatsApp. Renova a cada 4 horas e permite apenas um contrato por ciclo.</p></div><span class="tag">⏳ Renova em '+num(mins)+' min</span></div>'+
+    (active?'<div class="section card"><div class="section-title"><h3>📌 Contrato ativo</h3><span class="tag '+(active.claimed?'':'good')+'">'+(active.claimed?'RESGATADO':'EM ANDAMENTO')+'</span></div>'+
+      '<h3>'+esc((d.contracts||[]).find(c=>c.id===active.contract_id)?.title||titleCase(active.contract_id||'Contrato'))+'</h3>'+
+      '<p>Progresso: <strong>'+num(active.progress)+'/'+num(active.target)+'</strong></p>'+
+      '<p>Recompensa: '+money(active.reward_cash||0)+' • +'+num(active.reward_xp||0)+' XP'+(active.reward_item?' • 🎁 '+esc(levelRewardItemLabel(active.reward_item)):'')+'</p>'+
+      (!active.claimed&&Number(active.progress)>=Number(active.target)?'<button class="btn good" data-contract-claim>🎁 Resgatar contrato</button>':'')+
+    '</div>':'')+
+    '<div class="section grid cards">'+(d.contracts||[]).map(c=>{
+      const locked=Number(d.level||1)<Number(c.level||1);
+      const selected=active&&active.contract_id===c.id;
+      const unavailable=Boolean(active&&!selected);
+      return '<div class="card contract-card '+(selected?'selected':'')+'"><div class="tag-row"><span class="tag">#'+num(c.number)+'</span><span class="tag">Nível '+num(c.level)+'</span>'+(selected?'<span class="tag good">ACEITO</span>':'')+'</div>'+
+        '<h3>📜 '+esc(c.title)+'</h3><p>'+esc(c.description)+'</p>'+
+        '<p>🎯 Meta: '+num(c.target)+'</p>'+
+        '<p>🎁 '+money(c.cash)+' • +'+num(c.xp)+' XP'+(c.item?' • '+esc(levelRewardItemLabel(c.item)):'')+'</p>'+
+        (locked?'<p>🔒 Requer nível '+num(c.level)+'</p>':unavailable?'<p>🔒 Você já escolheu outro contrato neste ciclo.</p>':'')+
+        (!locked&&!unavailable&&!selected?'<button class="btn primary" data-contract-accept="'+num(c.number)+'">Aceitar contrato</button>':'')+
+      '</div>';
+    }).join('')+'</div>';
+}
 function renderNpcs(){
   const d=ui.npcData;
   if(!d) return '<div class="notice">Carregando comerciantes…</div>';
@@ -2116,7 +2156,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,npcs:renderNpcs,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,npcs:renderNpcs,contracts:renderContracts,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
 }
@@ -2131,12 +2171,15 @@ function bind(){
   document.querySelectorAll('[data-go-page]').forEach(x=>x.onclick=async()=>{
     ui.page=x.dataset.goPage;
     setMenu(false);
-    if(['social','market','clan','games','activities','progression','rankings','loans'].includes(ui.page)) await syncExtras(false).catch(()=>null);
+    if(ui.page==='contracts') await loadContracts();
+    if(['social','market','clan','games','activities','progression','rankings','loans','contracts'].includes(ui.page)) await syncExtras(false).catch(()=>null);
     render();
     window.scrollTo({top:0,left:0,behavior:'auto'});
   });
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
   document.querySelectorAll('[data-inventory-tab]').forEach(x=>x.onclick=()=>{ui.inventoryTab=x.dataset.inventoryTab;render();});
+  document.querySelectorAll('[data-contract-accept]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.accept',{number:Number(x.dataset.contractAccept)},{success:'📜 Contrato aceito.'});await loadContracts();render();}catch{render();}});
+  document.querySelectorAll('[data-contract-claim]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.claim',{}, {success:'🎁 Contrato resgatado.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-npc-buy]').forEach(x=>x.onclick=async()=>{if(!confirm('Confirmar compra com '+x.dataset.npcBuy+'?'))return;x.disabled=true;try{await doAction('npc.buy',{npcId:x.dataset.npcBuy,number:Number(x.dataset.npcNumber)},{success:'🛍️ Compra realizada.'});await loadNpcShops();render();}catch{render();}});
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
   document.querySelectorAll('[data-pet-team-save]').forEach(x=>x.onclick=()=>{
