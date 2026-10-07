@@ -7966,12 +7966,16 @@ Se precisar de mais ajuda, use *!suporte*.`
               const pets=await listPets(sender)
               if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
               setQuickFlow(chat,sender,'pet_select',{pets},5*60*1000)
+              const legendarySpecies=new Set(
+                LEGENDARY_PET_SUMMONS.flatMap(a=>a.pets.map(p=>String(p.species||'')))
+              )
               let text='🐾 *SUA COLEÇÃO DE PETS*\n\n'
               pets.forEach((p,i)=>{
                 const bonus=petStatusBonus(p)
-                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} *${p.name}* — ${p.species}\n   ${petIdentityTag(p.species)}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)}\n   ✨ ${bonus.text}\n`
+                const legendary=legendarySpecies.has(String(p.species||''))
+                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} ${legendary?'🌟 *LENDÁRIO* — ':''}*${p.name}* — ${p.species}\n   ${petIdentityTag(p.species)}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)}\n   ✨ ${bonus.text}\n`
               })
-              text+='\n🟢 = pet equipado agora\n\n👉 Mande apenas o *número* para escolher.\n0️⃣ Cancelar'
+              text+='\n🟢 = pet equipado agora • 🌟 = pet lendário de Raid\n\n👉 Mande apenas o *número* para escolher.\n0️⃣ Cancelar'
               return await reply(text)
             }
             if(cmd==='usarpet'){
