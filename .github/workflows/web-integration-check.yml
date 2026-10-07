@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [neon-migration]
   push:
-    branches: ['web-integration-*']
+    branches: [neon-migration, 'web-integration-*']
 
 jobs:
   syntax:
@@ -30,3 +30,5 @@ jobs:
         run: node -e "import('./src/neon/web-api.js').then(()=>console.log('web-api import ok'))"
       - name: Check Web client
         run: node --check web/app.js
+      - name: Run regression tests
+        run: npm test
