@@ -853,14 +853,43 @@ function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
 
 function lootDispositionPrompt(item,index,total){
   const sellTotal=Number(item.sellUnit||0)*Number(item.qty||0)
-  return `🎒 *O QUE FAZER COM O DROP?*\n\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n💰 Venda imediata: *R$ ${fmt(sellTotal)}*\n\n1️⃣ Guardar no inventário\n2️⃣ Descartar e vender\n\n📦 Item ${index+1}/${total}`
+  return `🎒 *O QUE FAZER COM O DROP?*\n\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n💰 Venda imediata: *R$ ${fmt(sellTotal)}*\n\n1️⃣ Guardar no inventário\n2️⃣ Vender agora\n\n📦 Item ${index+1}/${total}`
+}
+
+function lootDispositionBulkPrompt(items){
+  const counts={common:0,uncommon:0,rare:0,epic:0,legendary:0}
+  for(const item of items){
+    const rarity=String(item?.rarity||'common')
+    counts[rarity]=(counts[rarity]||0)+Number(item?.qty||0)
+  }
+  return `🎒 *O QUE QUER FAZER COM OS ITENS?*\n\n⚪ Comuns: *${fmt(counts.common)}*\n🟢 Incomuns: *${fmt(counts.uncommon)}*\n🔵 Raros: *${fmt(counts.rare)}*\n🟣 Épicos: *${fmt(counts.epic)}*\n🟠 Lendários: *${fmt(counts.legendary)}*\n\n1️⃣ Guardar tudo\n2️⃣ Vender tudo, menos Lendário\n3️⃣ Vender todos os Comuns\n4️⃣ Vender todos os Incomuns\n5️⃣ Vender todos os Raros\n6️⃣ Vender todos os Épicos\n7️⃣ Vender Raros + Épicos\n8️⃣ Escolher item por item\n\n🛡️ *Lendário nunca entra na venda em massa.*`
+}
+
+async function sellLootBatch(sender,items,predicate){
+  let soldTotal=0
+  let soldQty=0
+  const failures=[]
+  for(const item of items){
+    if(String(item?.rarity||'common')==='legendary') continue
+    if(!predicate(item)) continue
+    const qty=Math.max(0,Number(item?.qty||0))
+    if(!qty) continue
+    try{
+      const sold=await sellItem(sender,item.itemId,qty)
+      soldTotal+=Number(sold.total||0)
+      soldQty+=qty
+    }catch(err){
+      failures.push(item.name||item.itemId)
+    }
+  }
+  return {soldTotal,soldQty,failures}
 }
 
 async function beginLootDisposition(chat,sender,result,reply){
   const items=Array.isArray(result?.items)?result.items.filter(i=>Number(i.qty||0)>0):[]
   if(!items.length) return false
-  setQuickFlow(chat,sender,'loot_disposition',{items,index:0,soldTotal:0},5*60*1000)
-  await reply(lootDispositionPrompt(items[0],0,items.length))
+  setQuickFlow(chat,sender,'loot_disposition_bulk',{items},5*60*1000)
+  await reply(lootDispositionBulkPrompt(items))
   return true
 }
 
@@ -3466,6 +3495,78 @@ ${bonus.text}
       return true
     }
 
+    if(flow.stage==='loot_disposition_bulk'){
+      const items=Array.isArray(flow.data?.items)?flow.data.items:[]
+      if(!items.length){
+        clearQuickFlow(chat,sender)
+        await reply('✅ Nenhum item para processar.')
+        return true
+      }
+
+      const legendaryQty=items
+        .filter(i=>String(i.rarity)==='legendary')
+        .reduce((sum,item)=>sum+Number(item.qty||0),0)
+      const legendaryLine=legendaryQty
+        ? '\n🛡️ Lendários protegidos: *'+fmt(legendaryQty)+'*'
+        : ''
+
+      if(input==='0'||input==='1'){
+        clearQuickFlow(chat,sender)
+        await reply('✅ *ITENS GUARDADOS*\n\n🎒 Tudo ficou no inventário.'+legendaryLine)
+        return true
+      }
+
+      if(input==='8'){
+        const manualItems=items.filter(i=>String(i.rarity)!=='legendary')
+        if(!manualItems.length){
+          clearQuickFlow(chat,sender)
+          await reply('🛡️ Só vieram itens Lendários. Eles foram mantidos no inventário e não podem ser vendidos por este atalho.')
+          return true
+        }
+        setQuickFlow(chat,sender,'loot_disposition',{items:manualItems,index:0,soldTotal:0},5*60*1000)
+        const protectedNotice=items.length!==manualItems.length
+          ? '🛡️ Lendários já foram protegidos e ficarão no inventário.\n\n'
+          : ''
+        await reply(protectedNotice+lootDispositionPrompt(manualItems[0],0,manualItems.length))
+        return true
+      }
+
+      const filters={
+        '2':()=>true,
+        '3':item=>String(item.rarity)==='common',
+        '4':item=>String(item.rarity)==='uncommon',
+        '5':item=>String(item.rarity)==='rare',
+        '6':item=>String(item.rarity)==='epic',
+        '7':item=>['rare','epic'].includes(String(item.rarity))
+      }
+      const predicate=filters[input]
+      if(!predicate){
+        await reply('🎒 Escolha uma opção de *1 a 8*.')
+        return true
+      }
+
+      const result=await sellLootBatch(sender,items,predicate)
+      clearQuickFlow(chat,sender)
+      const failedLine=result.failures.length
+        ? '\n⚠️ Não foi possível vender: *'+result.failures.join(', ')+'*. Esses itens ficaram no inventário.'
+        : ''
+
+      if(result.soldQty<1){
+        await reply('ℹ️ Nenhum item dessa seleção foi vendido.\n🎒 Os itens continuam no inventário.'+legendaryLine+failedLine)
+        return true
+      }
+
+      await reply(
+        '💰 *VENDA EM MASSA CONCLUÍDA*\n\n'+
+        '📦 Itens vendidos: *'+fmt(result.soldQty)+'*\n'+
+        '💵 Recebido: *R$ '+fmt(result.soldTotal)+'*'+
+        legendaryLine+
+        '\n🎒 O restante ficou no inventário.'+
+        failedLine
+      )
+      return true
+    }
+
     if(flow.stage==='loot_disposition'){
       const items=Array.isArray(flow.data?.items)?flow.data.items:[]
       const index=Math.max(0,Number(flow.data?.index||0))
@@ -3476,7 +3577,7 @@ ${bonus.text}
         return true
       }
       if(input!=='1'&&input!=='2'){
-        await reply('🎒 Escolha *1 Guardar* ou *2 Descartar e vender*.')
+        await reply('🎒 Escolha *1 Guardar* ou *2 Vender agora*.')
         return true
       }
 
