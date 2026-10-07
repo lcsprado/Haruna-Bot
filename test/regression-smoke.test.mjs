@@ -391,7 +391,7 @@ test('all Raid/endgame pets have unique exclusive art slots',()=>{
 })
 
 test('PWA precaches only audited art sources and all species-specific portraits',()=>{
-  const species=[
+  const expectedSpecies=[
     'coelho','papagaio','hamster','coruja','golfinho_celestial','moreia_sombria','gaviao','guepardo',
     'gazela_mistica','cervo_mistico','cavalo_guerra','unicornio','colosso_cristal','salamandra_infernal',
     'rinoceronte_titanico','guardiao_obsidiana','cerbero_carmesim','fenix_gelo','fenix_alpha',
@@ -399,7 +399,7 @@ test('PWA precaches only audited art sources and all species-specific portraits'
     'corvo_abissal','tubarao_abissal','tigre_lunar','leao_solar','fenix_fogo','dragao_vulcanico',
     'rinoceronte','colosso_alpha','serpente_cosmica'
   ]
-  for(const species of species){
+  for(const species of expectedSpecies){
     const asset='/assets/pet-portraits/'+species+'.svg'
     assert.ok(serviceWorker.includes(asset),'missing PWA-cached species art: '+species)
     assert.ok(app.includes('"' + species + '"') || app.includes("'"+species+"'"),'missing species art entry: '+species)
