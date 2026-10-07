@@ -1177,6 +1177,11 @@ function itemSpriteKey(item){
     couraca_guardiao:'armor-titan',colete_vital:'armor-leviathan',couraca_predador:'armor-obsidian',
     armadura_colosso:'armor-titan',
     pergaminho_reclassificacao:'special-scroll',
+    // Itens exclusivos de NPC exibem sua categoria real, não o fallback de chama roxa.
+    pocao_ressurreicao:'potion-elixir',selo_guardiao:'special-soul',
+    oleo_sombras:'potion-medium',elixir_disciplina:'potion-elixir',
+    elixir_sombras:'potion-elixir',pergaminho_experiencia:'special-scroll',
+    pergaminho_virtude:'special-scroll',tomo_proibido:'special-scroll',
     nucleo_alpha_corrompido:'special-essence',
     fragmento_alpha:'material-alpha',essencia_abissal:'material-abyss',
     cristal_ancestral:'material-ancestral',nucleo_celestial:'material-celestial',
@@ -1479,7 +1484,7 @@ function renderNpcs(){
       const n=shop.npc||{};
       return '<div class="section shop-section"><div class="section-title"><h3>'+esc(n.emoji||'🏘️')+' '+esc(n.name||'Comerciante')+'</h3><small>'+esc(n.title||'')+'</small></div>'+
       '<p>'+esc(n.description||'')+'</p><div class="tag-row"><span class="tag">⚖️ Reputação: '+(karma>=0?'+':'')+karma+'</span>'+
-      '<span class="tag">Compras restantes: '+num(shop.remaining||0)+'</span><span class="tag">Fragmentos restantes: '+num(shop.fragmentsRemaining||0)+'</span><span class="tag">Equipamentos restantes: '+num(shop.gearRemaining||0)+'</span></div>'+
+      '<span class="tag">Relação: '+(Number(shop.factor)<1?'Desconto de '+num(Math.round((1-Number(shop.factor))*100))+'%':Number(shop.factor)>1?'Acréscimo de '+num(Math.round((Number(shop.factor)-1)*100))+'%':'Preço normal')+'</span><span class="tag">Compras restantes: '+num(shop.remaining||0)+'</span><span class="tag">Fragmentos restantes: '+num(shop.fragmentsRemaining||0)+'</span><span class="tag">Equipamentos restantes: '+num(shop.gearRemaining||0)+'</span></div>'+
       '<div class="grid cards section">'+(shop.stock||[]).map(i=>{
         let reason='';
         if(i.requiredKarma!=null&&(n.id==='helena'?karma<Number(i.requiredKarma):karma>Number(i.requiredKarma)))
@@ -1493,6 +1498,7 @@ function renderNpcs(){
         return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+
         '<div class="tag-row"><span class="tag">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
         '<h3>'+esc(itemDisplayName(i))+'</h3>'+
+        '<p>'+esc(itemDisplayDescription(i))+'</p>'+ 
         (Number(i.price)!==Number(i.basePrice)?'<p>Preço original: <s>'+money(i.basePrice)+'</s></p>':'')+
         '<strong>'+money(i.price)+'</strong><p>'+(reason||'✅ Disponível')+'</p>'+
         '<button class="btn primary" data-npc-buy="'+esc(n.id)+'" data-npc-number="'+Number(i.number)+'" '+(blocked?'disabled':'')+'>Comprar 1</button></div>';
