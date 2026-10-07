@@ -19,6 +19,33 @@ test('critical command handlers remain registered',()=>{
   }
 })
 
+test('Alpha 3.0 commands and new progression menu entries remain discoverable',()=>{
+  const menuStart=index.indexOf('async function showCommandsMainMenu(')
+  const menuEnd=index.indexOf('function textOf(',menuStart)
+  assert.ok(menuStart>=0&&menuEnd>menuStart,'the !comandos main menu is missing')
+  const mainMenu=index.slice(menuStart,menuEnd)
+  for(const command of ['!web','!contratos','!karma','!npcs']){
+    assert.ok(mainMenu.includes(command),'!comandos must advertise '+command)
+  }
+  const pagesStart=index.indexOf('const commandPages={')
+  const pagesEnd=index.indexOf('const commandsMenu=async',pagesStart)
+  assert.ok(pagesStart>=0&&pagesEnd>pagesStart,'command category pages missing')
+  const pages=index.slice(pagesStart,pagesEnd)
+  for(const command of ['!web','!contratos','!aceitarcontrato 1','!resgatarcontrato','!karma','!npcs','!npc 1','!comprarnpc 1 2']){
+    assert.ok(pages.includes(command),'command categories must explain '+command)
+  }
+  const progressStart=index.indexOf("if(flow.stage==='nav_progress')")
+  const progressEnd=index.indexOf("if(flow.stage==='house_select')",progressStart)
+  assert.ok(progressStart>=0&&progressEnd>progressStart,'progression menu flow missing')
+  const progress=index.slice(progressStart,progressEnd)
+  for(const entry of ["if(input==='7')","if(input==='8')","if(input==='9')"]){
+    assert.ok(progress.includes(entry),'progression menu choice missing '+entry)
+  }
+  assert.ok(progress.includes('alphaContractBoardMessage(sender)'),'contract option must open live board')
+  assert.ok(progress.includes('alphaKarmaMessage(sender)'),'karma option must show actual score')
+  assert.ok(progress.includes('showNpcMerchantsMenu(chat,sender,reply)'),'NPC option must open merchant menu')
+})
+
 test('boss and raid combat loop limits stay separated',()=>{
   const bossStart=index.indexOf('async function runBossSession')
   const raidStart=index.indexOf('async function runRaidCombat')
