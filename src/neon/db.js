@@ -5329,6 +5329,10 @@ export async function createMarketListing(jid,itemId,qty,price){
   if(!Number.isInteger(qty)||qty<1||!Number.isSafeInteger(price)||price<1) throw new Error('Quantidade ou preço inválido.')
   await expireMarketListings()
   return transaction(async client=>{
+    // Apenas itens revendáveis podem ser anunciados no mercado entre jogadores.
+    // Impede contornar os requisitos de Honra/Karma e o limite de compras dos NPCs.
+    const itemRow=(await client.query('SELECT sellable FROM items WHERE id=$1',[itemId])).rows[0]
+    if(!itemRow || itemRow.sellable!==true) throw new Error('Este item é exclusivo de NPC e não pode ser anunciado no mercado.')
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
     const stats=await client.query('SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1',[jid])
