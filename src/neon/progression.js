@@ -1459,12 +1459,17 @@ export async function changeAlphaReputation(jid,action,delta){
   const change=Math.trunc(Number(delta))
   if(!Number.isFinite(change)||Math.abs(change)>5||change===0) return null
   return tx(async client=>{
-    // Máximo de 12 alterações do mesmo tipo nas últimas 24h; limita farm de karma.
-    const count=Number((await client.query(
-      "SELECT COUNT(*)::INT AS n FROM alpha_reputation_events WHERE jid=$1 AND action=$2 AND created_at>EXTRACT(EPOCH FROM NOW())::BIGINT-86400",
-      [jid,action]
-    )).rows[0]?.n||0)
-    if(count>=12) return null
+    // Limite diário existe para ganhos farmáveis de Honra.
+    // Ações criminosas são sempre punidas: roubo bem-sucedido (-3) e falha (-1)
+    // nunca deixam de alterar o karma por atingir limite diário.
+    const rateLimitedActions=new Set(['raid_victory','boss_victory'])
+    if(rateLimitedActions.has(action)){
+      const count=Number((await client.query(
+        "SELECT COUNT(*)::INT AS n FROM alpha_reputation_events WHERE jid=$1 AND action=$2 AND created_at>EXTRACT(EPOCH FROM NOW())::BIGINT-86400",
+        [jid,action]
+      )).rows[0]?.n||0)
+      if(count>=12) return null
+    }
     const row=(await client.query(`
       INSERT INTO alpha_reputation(jid,karma) VALUES($1,$2)
       ON CONFLICT(jid) DO UPDATE SET
