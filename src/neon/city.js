@@ -424,6 +424,17 @@ export async function recordPlayerRobberyIncident(thiefJid,targetJid,result){
   return row
 }
 
+function sanitizeRumorClaim(value){
+  let text=String(value||'')
+    .replace(/@\d+/g,' ')
+    .replace(/\b(?:\d{8,})@(?:s\.whatsapp\.net|lid)\b/gi,' ')
+    .replace(/\s+/g,' ')
+    .trim()
+  text=text.replace(/^(?:ele|ela)\s+/i,'').trim()
+  text=text.replace(/\s+([,.!?])/g,'$1')
+  return text.slice(0,140)||'envolvimento em roubo'
+}
+
 async function recentSuccessfulRobberyBy(jid){
   return (await db.query(`
     SELECT * FROM alpha_city_incidents
@@ -445,11 +456,12 @@ export async function spreadCityRumor(authorJid,accusedJid,claim='roubo'){
   const truth=Boolean(evidence)
   const credibility=clamp(45+Math.floor(standing.trust/4)-(standing.notoriety>50?10:0),15,85)
   const now=Math.floor(Date.now()/1000)
+  const cleanClaim=sanitizeRumorClaim(claim)
   const row=(await db.query(`
     INSERT INTO alpha_city_rumors(author_jid,accused_jid,claim,truth,credibility,expires_at)
     VALUES($1,$2,$3,$4,$5,$6)
     RETURNING *
-  `,[authorJid,accusedJid,String(claim||'roubo').slice(0,140),truth,credibility,now+RUMOR_TTL_SECONDS])).rows[0]
+  `,[authorJid,accusedJid,cleanClaim,truth,credibility,now+RUMOR_TTL_SECONDS])).rows[0]
   await changeCityStanding(accusedJid,{trust:truth?-2:-1,notoriety:truth?10:5})
   return row
 }
@@ -471,13 +483,14 @@ async function maybeExposeFalseRumor(rumor){
 
 export async function listCityRumors(limit=6){
   await db.query('UPDATE alpha_city_rumors SET active=FALSE WHERE active=TRUE AND expires_at<=EXTRACT(EPOCH FROM NOW())::BIGINT')
-  return (await db.query(`
+  const rows=(await db.query(`
     SELECT r.*,a.push_name AS author_name,u.push_name AS accused_name
     FROM alpha_city_rumors r
     LEFT JOIN users a ON a.jid=r.author_jid
     LEFT JOIN users u ON u.jid=r.accused_jid
     WHERE r.active=TRUE ORDER BY r.created_at DESC LIMIT $1
   `,[Math.max(1,Math.min(10,Number(limit)||6))])).rows
+  return rows.map(r=>({...r,claim:sanitizeRumorClaim(r.claim)}))
 }
 
 export async function getNpcMemory(jid,npcRef){
