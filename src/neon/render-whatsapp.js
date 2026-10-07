@@ -57,18 +57,18 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
       setQuickFlow(chat,sender,'city_dark',{},120000)
       t+='👉 Responda 1, 2 ou 3 para aceitar.'
     }
-    t+='\\n\\n🛒 Loja clandestina: *!lojaclandestina*'
+    t+='\n\n🛒 Loja clandestina: *!lojaclandestina*'
     await reply(t)
   }
 
   async function showDarkShop(sender,reply){
     const s=await getDarkShop(sender)
-    let t='🌑 *LOJA CLANDESTINA*\\n\\n⚖️ Karma: *'+s.karma+'*\\n🛒 Compras restantes: *'+s.remaining+'/2* neste ciclo\\n\\n'
+    let t='🌑 *LOJA CLANDESTINA*\n\n⚖️ Karma: *'+s.karma+'*\n🛒 Compras restantes: *'+s.remaining+'/2* neste ciclo\n\n'
     for(const g of s.goods){
       const lock=g.permitted?'':' 🔒 Karma '+g.requiredKarma+' ou inferior'
-      t+=g.number+'. *'+g.name+'* — R$ '+fmt(g.price)+lock+'\\n'
+      t+=g.number+'. *'+g.name+'* — R$ '+fmt(g.price)+lock+'\n'
     }
-    t+='\\n👉 Comprar: *!comprarsombras número*'
+    t+='\n👉 Comprar: *!comprarsombras número*'
     await reply(t)
   }
 
@@ -210,8 +210,8 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
           if(!args[0]) return await reply('🥷 Use *!roubarnpc 1* ou entre pelo *!cidade*.')
           const r=await robCityNpc(sender,args[0])
           await reply(r.success
-            ?'🥷 *ROUBO AO NPC BEM-SUCEDIDO!*\\n💰 +R$ '+fmt(r.amount)+'\\n⚖️ Karma: '+r.karma
-            :'🚓 *ROUBO FRACASSOU!*\\n💸 Multa: R$ '+fmt(r.amount)+'\\n⚖️ Karma: '+r.karma)
+            ?'🥷 *ROUBO AO NPC BEM-SUCEDIDO!*\n💰 +R$ '+fmt(r.amount)+'\n⚖️ Karma: '+r.karma
+            :'🚓 *ROUBO FRACASSOU!*\n💸 Multa: R$ '+fmt(r.amount)+'\n⚖️ Karma: '+r.karma)
 
         } else if(['rumor','rumores'].includes(cmd)){
           const targetMention=mentionsOf(msg)[0]
@@ -225,7 +225,7 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
             const claim=String(args.join(' ')||'').replace(/@\\d+/g,'').replace(/\\s+/g,' ').trim()||'roubo'
             const r=await spreadCityRumor(sender,target,claim)
             const accused=(await getProfile(target).catch(()=>null))?.push_name||'essa pessoa'
-            await reply('🗣️ *RUMOR LANÇADO*\\n\\n📣 Você começou a espalhar que *'+accused+'* está envolvido em *'+claim+'*.\\n🎲 Credibilidade inicial: *'+r.credibility+'%*\\n⏳ Circula por até *24h*.\\n\\n⚠️ Pode afetar preços e confiança. Se a mentira for descoberta, a consequência volta para você.')
+            await reply('🗣️ *RUMOR LANÇADO*\n\n📣 Você começou a espalhar que *'+accused+'* está envolvido em *'+claim+'*.\n🎲 Credibilidade inicial: *'+r.credibility+'%*\n⏳ Circula por até *24h*.\n\n⚠️ Pode afetar preços e confiança. Se a mentira for descoberta, a consequência volta para você.')
           }
 
         } else if(['mercadonegro','mercadosombrio','missoessombras','contratossombrios'].includes(cmd)){
@@ -234,17 +234,17 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
         } else if(['aceitarsombras'].includes(cmd)){
           if(!args[0]) return await showShadowMenu(chat,sender,reply)
           const r=await acceptDarkContract(sender,args[0])
-          await reply('🌑 *MISSÃO ACEITA!*\\n'+r.mission.title+'\\n🎯 '+r.mission.description+'\\n💰 R$ '+fmt(r.mission.reward?.cash||r.mission.cash)+' • ✨ '+fmt(r.mission.reward?.xp||0)+' XP')
+          await reply('🌑 *MISSÃO ACEITA!*\n'+r.mission.title+'\n🎯 '+r.mission.description+'\n💰 R$ '+fmt(r.mission.reward?.cash||r.mission.cash)+' • ✨ '+fmt(r.mission.reward?.xp||0)+' XP')
 
         } else if(['atacarcidade','sabotarcidade'].includes(cmd)){
           const r=await performDarkCityAction(sender,cmd==='atacarcidade'?'attack_city':'sabotage_city')
           await reply(r.success
-            ?'🌑 *AÇÃO SOMBRIA CONCLUÍDA!*\\n⚖️ Karma: '+r.karma+'\\n🎁 Use *!resgatarsombras*.'
-            :'🚨 *VOCÊ FOI PEGO!*\\n💸 Multa: R$ '+fmt(r.fine)+'\\n⚖️ Karma: '+r.karma)
+            ?'🌑 *AÇÃO SOMBRIA CONCLUÍDA!*\n⚖️ Karma: '+r.karma+'\n🎁 Use *!resgatarsombras*.'
+            :'🚨 *VOCÊ FOI PEGO!*\n💸 Multa: R$ '+fmt(r.fine)+'\n⚖️ Karma: '+r.karma)
 
         } else if(['resgatarsombras'].includes(cmd)){
           const r=await claimDarkContract(sender)
-          await reply('🌑 *CONTRATO SOMBRIO CONCLUÍDO!*\\n💰 +R$ '+fmt(r.cash)+'\\n✨ +'+fmt(r.xp||0)+' XP')
+          await reply('🌑 *CONTRATO SOMBRIO CONCLUÍDO!*\n💰 +R$ '+fmt(r.cash)+'\n✨ +'+fmt(r.xp||0)+' XP')
 
         } else if(['lojaclandestina','lojasombria'].includes(cmd)){
           try{ await showDarkShop(sender,reply) }
@@ -254,7 +254,7 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
           if(!args[0]) return await showDarkShop(sender,reply)
           try{
             const r=await buyDarkShopItem(sender,args[0])
-            await reply('🌑 *NEGÓCIO FECHADO!*\\n📦 '+r.item.name+' ×1\\n💸 Pago: *R$ '+fmt(r.price)+'*\\n🛒 Compras restantes: *'+r.remaining+'/2*\\n👁️ Sua notoriedade aumentou.')
+            await reply('🌑 *NEGÓCIO FECHADO!*\n📦 '+r.item.name+' ×1\n💸 Pago: *R$ '+fmt(r.price)+'*\n🛒 Compras restantes: *'+r.remaining+'/2*\n👁️ Sua notoriedade aumentou.')
           }catch(e){ await reply('❌ '+e.message) }
 
         } else if(['explorar','explorarcidade'].includes(cmd)){
@@ -266,10 +266,10 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
           const choice=Number(args[0])
           if(![1,2].includes(choice)) return await reply('🏙️ Use *!cidadeevento 1* ou *!cidadeevento 2*.')
           const r=await resolveCityEncounter(sender,e.id,choice)
-          const cash=Number(r.cash||0)>0?'\\n💰 Dinheiro: *+R$ '+fmt(r.cash)+'*':Number(r.cash||0)<0?'\\n💸 Prejuízo: *-R$ '+fmt(Math.abs(r.cash))+'*':''
-          const xp=Number(r.xp||0)>0?'\\n✨ EXP: *+'+fmt(r.xp)+'*':''
-          const karma=Number(r.karma||0)?'\\n⚖️ Karma: *'+(r.karma>0?'+':'')+r.karma+'*':''
-          await reply('🏙️ *CONSEQUÊNCIA*\\n\\n'+r.text+cash+xp+karma)
+          const cash=Number(r.cash||0)>0?'\n💰 Dinheiro: *+R$ '+fmt(r.cash)+'*':Number(r.cash||0)<0?'\n💸 Prejuízo: *-R$ '+fmt(Math.abs(r.cash))+'*':''
+          const xp=Number(r.xp||0)>0?'\n✨ EXP: *+'+fmt(r.xp)+'*':''
+          const karma=Number(r.karma||0)?'\n⚖️ Karma: *'+(r.karma>0?'+':'')+r.karma+'*':''
+          await reply('🏙️ *CONSEQUÊNCIA*\n\n'+r.text+cash+xp+karma)
 
 `)
 
@@ -288,7 +288,7 @@ put("          if(!flow) continue",String.raw`
                   const p=cityEvent.payload||{}
                   const mention='@'+String(sender||'').split('@')[0]
                   await sock.sendMessage(chat,{
-                    text:(p.title||'🏙️ EVENTO NA CIDADE')+'\\n\\n👤 '+mention+'\\n'+(p.text||'')+'\\n\\n'+(p.options||[]).join('\\n')+'\\n\\n👉 Responda *!cidadeevento 1* ou *!cidadeevento 2*\\n⏳ Você tem 10 minutos.',
+                    text:(p.title||'🏙️ EVENTO NA CIDADE')+'\n\n👤 '+mention+'\n'+(p.text||'')+'\n\n'+(p.options||[]).join('\n')+'\n\n👉 Responda *!cidadeevento 1* ou *!cidadeevento 2*\n⏳ Você tem 10 minutos.',
                     mentions:[sender]
                   }).catch(()=>{})
                 }
