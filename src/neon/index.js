@@ -3461,12 +3461,20 @@ ${bonus.text}
         await reply('✅ Nenhum item para processar.')
         return true
       }
+
+      const legendaryQty=items
+        .filter(i=>String(i.rarity)==='legendary')
+        .reduce((sum,item)=>sum+Number(item.qty||0),0)
+      const legendaryLine=legendaryQty
+        ? '\n🛡️ Lendários protegidos: *'+fmt(legendaryQty)+'*'
+        : ''
+
       if(input==='0'||input==='1'){
         clearQuickFlow(chat,sender)
-        const legendaryQty=items.filter(i=>String(i.rarity)==='legendary').reduce((s,i)=>s+Number(i.qty||0),0)
-        await reply(`✅ *ITENS GUARDADOS*\n\n🎒 Tudo ficou no inventário.${legendaryQty?\`\n🛡️ Lendários protegidos: *${fmt(legendaryQty)}*\`:''}`)
+        await reply('✅ *ITENS GUARDADOS*\n\n🎒 Tudo ficou no inventário.'+legendaryLine)
         return true
       }
+
       if(input==='8'){
         const manualItems=items.filter(i=>String(i.rarity)!=='legendary')
         if(!manualItems.length){
@@ -3475,7 +3483,10 @@ ${bonus.text}
           return true
         }
         setQuickFlow(chat,sender,'loot_disposition',{items:manualItems,index:0,soldTotal:0},5*60*1000)
-        await reply((items.length!==manualItems.length?'🛡️ Lendários já foram protegidos e ficarão no inventário.\n\n':'')+lootDispositionPrompt(manualItems[0],0,manualItems.length))
+        const protectedNotice=items.length!==manualItems.length
+          ? '🛡️ Lendários já foram protegidos e ficarão no inventário.\n\n'
+          : ''
+        await reply(protectedNotice+lootDispositionPrompt(manualItems[0],0,manualItems.length))
         return true
       }
 
@@ -3495,13 +3506,23 @@ ${bonus.text}
 
       const result=await sellLootBatch(sender,items,predicate)
       clearQuickFlow(chat,sender)
-      const legendaryQty=items.filter(i=>String(i.rarity)==='legendary').reduce((s,i)=>s+Number(i.qty||0),0)
-      const failedLine=result.failures.length?\`\n⚠️ Não foi possível vender: *${result.failures.join(', ')}*. Esses itens ficaram no inventário.\`:''
+      const failedLine=result.failures.length
+        ? '\n⚠️ Não foi possível vender: *'+result.failures.join(', ')+'*. Esses itens ficaram no inventário.'
+        : ''
+
       if(result.soldQty<1){
-        await reply(`ℹ️ Nenhum item dessa seleção foi vendido.\n🎒 Os itens continuam no inventário.${legendaryQty?\`\n🛡️ Lendários protegidos: *${fmt(legendaryQty)}*\`:''}${failedLine}`)
+        await reply('ℹ️ Nenhum item dessa seleção foi vendido.\n🎒 Os itens continuam no inventário.'+legendaryLine+failedLine)
         return true
       }
-      await reply(`💰 *VENDA EM MASSA CONCLUÍDA*\n\n📦 Itens vendidos: *${fmt(result.soldQty)}*\n💵 Recebido: *R$ ${fmt(result.soldTotal)}*${legendaryQty?\`\n🛡️ Lendários protegidos: *${fmt(legendaryQty)}*\`:''}\n🎒 O restante ficou no inventário.${failedLine}`)
+
+      await reply(
+        '💰 *VENDA EM MASSA CONCLUÍDA*\n\n'+
+        '📦 Itens vendidos: *'+fmt(result.soldQty)+'*\n'+
+        '💵 Recebido: *R$ '+fmt(result.soldTotal)+'*'+
+        legendaryLine+
+        '\n🎒 O restante ficou no inventário.'+
+        failedLine
+      )
       return true
     }
 
