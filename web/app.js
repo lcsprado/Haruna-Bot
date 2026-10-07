@@ -1308,7 +1308,35 @@ function itemCroppedSprite(key,className,label){
   return '<div class="item-cropped-art '+esc(className||'')+'" role="img" aria-label="'+esc(label||key)+'" '+
     'style="aspect-ratio:'+w+'/'+h+';background-image:url(\''+esc(sheet)+'\');background-size:'+sizeX+'% '+sizeY+'%;background-position:'+posX+'% '+posY+'%"></div>';
 }
+const ITEM_DEDICATED_GENERATED_ART=new Set(["espada_madeira","espada_ferro","espada_aco","espada_flamas","espada_guardiao","espada_eclipse","katana_sombria","lamina_abissal","lamina_cacador","garras_vazio","tridente_tempestade","sabre_runico","lanca_solar","armadura_aco","armadura_bastiao","couraca_guardiao","armadura_dragao","manto_fenix","couraca_vulcanica","armadura_abissal","armadura_vazio","bota_vento","bota_cacador","bota_relampago","energetico_pet","pocao_ressurreicao","selo_guardiao","oleo_sombras","elixir_disciplina","elixir_sombras","pergaminho_experiencia","pergaminho_virtude","tomo_proibido"]);
+const LEGACY_ITEM_ART={
+  lootbox_std:'/assets/items/lootbox_std.svg',
+  melhoria_bancaria:'/assets/items/melhoria_bancaria.svg',
+  premium_7:'/assets/items/premium_7.svg'
+};
+function itemGeneratedArtMarkup(item){
+  const id=String(item?.item_id||item?.id||'item');
+  const name=itemDisplayName(item);
+  const cat=String(item?.category||'special');
+  let h=0; for(const ch of id) h=(h*31+ch.charCodeAt(0))>>>0;
+  const hue=h%360, hue2=(hue+55+(h%70))%360;
+  const icon=cat==='weapon'?'⚔':cat==='armor'?'🛡':cat==='boots'?'🥾':id.includes('pergaminho')||id.includes('tomo')?'📜':id.includes('pet')?'🐾':'✦';
+  const safeId=('g'+h).replace(/[^a-z0-9]/gi,'');
+  return '<div class="item-art item-generated-art" role="img" aria-label="'+esc(name)+'">'+
+    '<svg viewBox="0 0 400 260" aria-hidden="true" focusable="false">'+
+      '<defs><radialGradient id="'+safeId+'a"><stop stop-color="hsl('+hue+' 70% 35%)"/><stop offset="1" stop-color="#03060c"/></radialGradient><linearGradient id="'+safeId+'b" x2="1" y2="1"><stop stop-color="hsl('+hue2+' 85% 72%)"/><stop offset=".55" stop-color="hsl('+hue+' 70% 45%)"/><stop offset="1" stop-color="#111827"/></linearGradient></defs>'+
+      '<rect width="400" height="260" rx="24" fill="url(#'+safeId+'a)"/>'+
+      '<circle cx="200" cy="124" r="'+(72+(h%18))+'" fill="none" stroke="url(#'+safeId+'b)" stroke-width="6" opacity=".8"/>'+
+      '<circle cx="200" cy="124" r="'+(50+(h%13))+'" fill="#060b13" stroke="hsl('+hue2+' 70% 68%)" stroke-width="3"/>'+
+      '<text x="200" y="151" text-anchor="middle" font-size="66" font-family="system-ui,sans-serif">'+icon+'</text>'+
+      '<path d="M65 '+(205+(h%10))+' Q200 '+(170-(h%16))+' 335 '+(205+(h%10))+'" fill="none" stroke="hsl('+hue2+' 75% 72%)" stroke-width="4" opacity=".7"/>'+
+      '<text x="200" y="236" text-anchor="middle" fill="#e7edf7" font-size="18" font-weight="700" font-family="system-ui,sans-serif">'+esc(name)+'</text>'+
+    '</svg></div>';
+}
 function itemArtMarkup(item){
+  const id=String(item?.item_id||item?.id||'').toLowerCase();
+  if(LEGACY_ITEM_ART[id]) return '<div class="item-art"><img class="item-dedicated-art" src="'+LEGACY_ITEM_ART[id]+'" alt="'+esc(itemDisplayName(item))+'" loading="lazy"></div>';
+  if(ITEM_DEDICATED_GENERATED_ART.has(id)) return itemGeneratedArtMarkup(item);
   const key=itemSpriteKey(item);
   if(key) return '<div class="item-art">'+itemCroppedSprite(key,'item-official-art',item&&item.name||'Item')+'</div>';
   const visual=itemFallbackVisual(item);
