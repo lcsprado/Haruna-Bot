@@ -78,7 +78,9 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
     let t='🗣️ *RUMORES DA CIDADE*\n\n'
     if(!rows.length) t+='Nenhum rumor forte circulando agora.'
     else rows.forEach((r,i)=>{
-      t+=(i+1)+'. Dizem que *'+(r.accused_name||'alguém')+'* está envolvido em *'+r.claim+'*.\n'
+      const claim=String(r.claim||'').trim().replace(/[.]+$/,'')
+      const sentence=claim ? claim.charAt(0).toLowerCase()+claim.slice(1) : 'está envolvido em algo suspeito'
+      t+=(i+1)+'. Dizem que *'+(r.accused_name||'alguém')+'* '+sentence+'.\n'
       t+='📣 Credibilidade: *'+Number(r.credibility||0)+'%*\n\n'
     })
     t+='\n⚠️ Rumores falsos podem ser descobertos. O autor perde Karma e confiança quando a mentira cai.'
@@ -266,10 +268,12 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
             const target=targetIdentity.jid
             if(!target?.endsWith('@s.whatsapp.net')) return await reply('⚠️ Não consegui identificar essa pessoa.')
             await consolidateUserIdentity(target,targetIdentity.aliases)
-            const claim=String(args.join(' ')||'').replace(/@\\d+/g,'').replace(/\\s+/g,' ').trim()||'roubo'
+            const claim=String(args.join(' ')||'').replace(/@\d+/g,' ').replace(/\s+/g,' ').trim()||'roubo'
             const r=await spreadCityRumor(sender,target,claim)
             const accused=(await getProfile(target).catch(()=>null))?.push_name||'essa pessoa'
-            await reply('🗣️ *RUMOR LANÇADO*\n\n📣 Você começou a espalhar que *'+accused+'* está envolvido em *'+claim+'*.\n🎲 Credibilidade inicial: *'+r.credibility+'%*\n⏳ Circula por até *24h*.\n\n⚠️ Pode afetar preços e confiança. Se a mentira for descoberta, a consequência volta para você.')
+            const cleanClaim=String(r.claim||claim||'').trim().replace(/[.]+$/,'')
+            const sentence=cleanClaim ? cleanClaim.charAt(0).toLowerCase()+cleanClaim.slice(1) : 'está envolvido em algo suspeito'
+            await reply('🗣️ *RUMOR LANÇADO*\n\n📣 Agora circula pela cidade que *'+accused+'* '+sentence+'.\n🎲 Credibilidade inicial: *'+r.credibility+'%*\n⏳ Circula por até *24h*.\n\n⚠️ Pode afetar preços e confiança. Se a mentira for descoberta, a consequência volta para você.')
           }
 
         } else if(['mercadonegro','mercadosombrio','missoessombras','contratossombrios'].includes(cmd)){
