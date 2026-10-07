@@ -677,7 +677,7 @@ Moderação, futebol, ferramentas, assinatura e suporte.
 💡 *ATALHOS*
 *!perfil* • *!saldo* • *!trabalhar* • *!uber* • *!ifood*
 *!rpg* • *!pet* • *!raid* • *!minigames*
-📜 *!contratos* • ⚖️ *!karma* • 🏘️ *!npcs*
+📜 *!contratos* • ⚖️ *!karma* • 🏙️ *!cidade* • 🏘️ *!npcs*
 📚 Todos os recursos: *!comandos*
 🌐 RPG Web lançado: *!web*
 
@@ -3235,12 +3235,17 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!resgatarcontrato* — recebe dinheiro, XP e itens após concluir
 📊 O progresso é automático em roubo, Uber, iFood, carpinar, Dungeon, Boss e Raid.
 
-⚖️ *HONRA & KARMA*
+⚖️ *HONRA, KARMA & CIDADE*
 *!karma* / *!honra* — mostra pontuação entre -100 e +100 e seu alinhamento
-🛡️ Vitórias e contratos heroicos dão Honra; roubos e contratos criminosos geram infâmia.
-🏘️ *!npcs* — comerciantes com preços e itens por reputação
-*!npc 1* — conversa com Helena (2 Mordek, 3 Baltazar)
-*!comprarnpc 1 2* — compra o segundo item do NPC 1
+🏙️ *!cidade* — moradores, comerciantes, rumores, Mercado Negro e exploração
+🏘️ *!npcs* — Helena, Mordek e Baltazar; agora lembram acontecimentos passados
+*!npc Helena* — entra no NPC e escolhe comprar ou conversar
+*!rumor @pessoa texto* — espalha uma história; mentira pode ser descoberta
+*!mercadonegro* — missão criminosa por nível; exige Karma negativo ou notoriedade
+*!explorar* — força um encontro aleatório da cidade
+*!cidadeevento 1|2* — responde evento que surgiu do nada no grupo
+🛡️ Ajudar moradores pode dar Honra; roubo, mentira descoberta e submundo geram infâmia.
+👁️ Rumores e crimes aumentam notoriedade: preços sobem e alguns NPCs podem se recusar a vender.
 
 🤝 *MISSÕES COLETIVAS & EVENTOS*
 *!missaogrupo* / *!missao* — objetivo, progresso e ranking
@@ -3335,7 +3340,8 @@ Todos os comandos de usuário estão organizados abaixo. Comandos administrativo
 🌐 *!web* — RPG no navegador
 📜 *!contratos* — missões por nível, renovadas a cada 4h
 ⚖️ *!karma* — Herói/Vilão
-🏘️ *!npcs* — lojas de comerciantes
+🏙️ *!cidade* — NPCs, rumores e Mercado Negro
+🏘️ *!npcs* — comerciantes com memória e reputação
 
 1️⃣ 👤 Perfil, conta, casamento & social
 2️⃣ 💰 Economia & diversão
