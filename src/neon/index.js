@@ -2548,7 +2548,12 @@ Escolha o que deseja vender:
       if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Última cópia: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
     })
     text+='\n👉 Um item: mande só o número.\n📦 Vários: *1,3,5*\n'
-    text+='\nAo selecionar vários:\n1️⃣ vender tudo\n2️⃣ vender só repetidos\n3️⃣ descartar tudo\n'
+    if(category==='equipment'){
+      text+='\n🏷️ *ATALHOS POR RARIDADE*\n'
+      text+='Digite *comum*, *incomum*, *raro*, *epico*, *raro+epico* ou *tudo*.\n'
+      text+='🛡️ *Lendários e equipamentos em uso nunca entram em ações em massa.*\n'
+    }
+    text+='\nAo selecionar vários/raridade:\n1️⃣ vender tudo selecionado\n2️⃣ vender só repetidos\n3️⃣ descartar tudo selecionado\n'
     text+='\n9️⃣ Voltar às categorias\n0️⃣ Sair'
     await reply(text)
   }
@@ -5659,12 +5664,38 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
 
-      if(input.includes(',')){
-        const indexes=[...new Set(input.split(',').map(x=>Number(x.trim())-1).filter(Number.isInteger))]
-        const selected=indexes.map(i=>flow.data.items?.[i]).filter(Boolean)
-        if(selected.length<2){
-          await reply('📦 Para gerenciar vários itens, mande pelo menos dois números. Exemplo: *1,3,5*.')
-          return true
+      const rarityShortcut=(()=>{
+        const normalized=input
+          .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+          .replace(/\s+/g,'')
+        if(['comum','comuns'].includes(normalized)) return ['common']
+        if(['incomum','incomuns'].includes(normalized)) return ['uncommon']
+        if(['raro','raros'].includes(normalized)) return ['rare']
+        if(['epico','epicos'].includes(normalized)) return ['epic']
+        if(['raro+epico','raros+epicos','raroepico','rarosepicos'].includes(normalized)) return ['rare','epic']
+        if(['tudo','todos','all'].includes(normalized)) return ['common','uncommon','rare','epic','legendary']
+        return null
+      })()
+
+      if(input.includes(',')||rarityShortcut){
+        let selected=[]
+        if(rarityShortcut){
+          if(flow.data.category!=='equipment'){
+            await reply('🏷️ Os atalhos por raridade estão disponíveis em *Equipamentos*.')
+            return true
+          }
+          selected=(flow.data.items||[]).filter(item=>rarityShortcut.includes(String(item.rarity||'common')))
+          if(!selected.length){
+            await reply('🏷️ Você não possui equipamentos dessa raridade disponíveis para ação.')
+            return true
+          }
+        }else{
+          const indexes=[...new Set(input.split(',').map(x=>Number(x.trim())-1).filter(Number.isInteger))]
+          selected=indexes.map(i=>flow.data.items?.[i]).filter(Boolean)
+          if(selected.length<2){
+            await reply('📦 Para gerenciar vários itens, mande pelo menos dois números. Exemplo: *1,3,5*.')
+            return true
+          }
         }
 
         const p=await getCombatProfile(sender)
@@ -5709,7 +5740,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           text+='\n'
         }
         if(protectedItems.length) text+='\n⏭️ Protegidos: '+protectedItems.join(', ')+'\n'
-        text+='\nO que deseja fazer?\n\n1️⃣ 💰 Vender *tudo* que for permitido\n2️⃣ ♻️ Vender *somente repetidos* e manter 1 de cada\n3️⃣ 🗑️ Descartar *tudo* que for permitido\n4️⃣ Cancelar'
+        text+='\nO que deseja fazer?\n\n1️⃣ 💰 Vender *tudo selecionado* que for permitido\n2️⃣ ♻️ Vender *somente repetidos* e manter 1 de cada\n3️⃣ 🗑️ Descartar *tudo selecionado* que for permitido\n4️⃣ Cancelar\n\n🛡️ Lendários e equipados permanecem protegidos.'
         setQuickFlow(chat,sender,'inventory_batch_action',{items:prepared},90000)
         await reply(text)
         return true
