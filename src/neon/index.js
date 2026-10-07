@@ -57,7 +57,7 @@ import {
 } from './progression.js'
 import { initNpcShops, listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {
-  initCitySystem, cityNpcCatalog, getCityStanding, getNpcMemory,
+  initCitySystem, cityNpcCatalog, getCityStanding, getNpcMemory, respondToNpcIncident,
   spreadRumor, getRumorFeed, maybeCreateCityEncounter, getPendingCityEncounter,
   resolveCityEncounter, recordCityRobbery, getBlackMarketMission, progressBlackMarketMission
 } from './city.js'
@@ -2354,6 +2354,21 @@ _${greeting}_
 
   async function showNpcConversation(chat,sender,reply,npcRef){
     const memory=await getNpcMemory(sender,npcRef)
+    if(memory.memory==='incident' && memory.incident?.id){
+      setQuickFlow(chat,sender,'npc_memory_response',{npcId:memory.npc.id,incidentId:memory.incident.id},120000)
+      await reply(
+`${memory.npc.emoji} *${memory.npc.name.toUpperCase()}*
+
+_${memory.text}_
+
+1️⃣ “Eu vi.”
+2️⃣ “Não vi nada.”
+3️⃣ “Posso tentar ajudar.”
+
+9️⃣ Voltar ao NPC • 0️⃣ Sair`
+      )
+      return
+    }
     setQuickFlow(chat,sender,'npc_interaction',{npcId:memory.npc.id},120000)
     await reply(
 `${memory.npc.emoji} *${memory.npc.name.toUpperCase()}*
@@ -2759,6 +2774,18 @@ Escolha o que deseja vender:
       return true
     }
 
+    if(flow.stage==='npc_memory_response'){
+      if(input==='9'){ await showNpcInteractionMenu(chat,sender,reply,flow.data.npcId); return true }
+      if(!['1','2','3'].includes(input)){
+        await reply('💬 Escolha *1 Eu vi*, *2 Não vi* ou *3 Posso ajudar*.')
+        return true
+      }
+      const r=await respondToNpcIncident(sender,flow.data.npcId,flow.data.incidentId,Number(input))
+      const karmaLine=r.karma?'\n\n⚖️ Karma: *+'+r.karma+'*':''
+      await reply('💬 *SUA RESPOSTA*\n\n_'+r.text+'_'+karmaLine)
+      await showNpcInteractionMenu(chat,sender,reply,flow.data.npcId)
+      return true
+    }
     if(flow.stage==='npc_goods'){
       if(input==='9'){ await showNpcInteractionMenu(chat,sender,reply,flow.data.npcId); return true }
       const stockCount=Number(flow.data?.stockCount||0)
