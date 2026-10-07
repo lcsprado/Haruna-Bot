@@ -69,3 +69,12 @@ test('auditoria visual impede sprite de item colapsado e ID técnico de pet',()=
   const vectorPos=app.indexOf("if(PET_VERIFIED_VECTOR_ASSETS.has(s))")
   assert.ok(specialPos>0 && vectorPos>specialPos,'pet de Raid deve priorizar arte exclusiva antes do vetor genérico')
 })
+
+
+test('abas do inventário preservam posição horizontal e fragmentos caem em Raid',()=>{
+  assert.match(app,/inventoryTabsScrollLeft/)
+  assert.match(app,/window\.scrollTo\(\{top:keepY/)
+  assert.match(app,/next\.scrollLeft=keepX/)
+  assert.match(app,/text\.includes\('fragmento'\)/)
+  assert.match(app,/text\.includes\('conquistado na raid'\)/)
+})
