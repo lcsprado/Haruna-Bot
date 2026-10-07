@@ -33,6 +33,14 @@ const DARK_MISSIONS=Object.freeze([
   {id:'roubo_npc_2',task:'rob_npc',title:'💰 Cobrança Indevida',description:'Arranque dinheiro de um comerciante da cidade.',target:1,cash:24000,karma:0}
 ])
 
+const DARK_SHOP_LIMIT=2
+const DARK_SHOP_GOODS=Object.freeze([
+  {id:'oleo_sombras',price:42000,karma:-10},
+  {id:'elixir_sombras',price:78000,karma:-30},
+  {id:'tomo_proibido',price:150000,karma:-70},
+  {id:'pocao_pet_epica',price:65000,karma:-1}
+])
+
 const period=(seconds)=>Math.floor(Math.floor(Date.now()/1000)/seconds)
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,Number(n)||0))
 
@@ -159,6 +167,17 @@ export async function initCity(){
       resolved_at BIGINT
     );
     CREATE INDEX IF NOT EXISTS alpha_city_encounters_jid_idx ON alpha_city_encounters(jid,status,created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS alpha_dark_purchases(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1 CHECK(quantity=1),
+      spent BIGINT NOT NULL CHECK(spent>0),
+      cycle BIGINT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+    );
+    CREATE INDEX IF NOT EXISTS alpha_dark_purchases_idx ON alpha_dark_purchases(jid,cycle,created_at DESC);
   `)
 }
 
@@ -473,6 +492,22 @@ export async function getNpcMemory(jid,npcRef){
     return {location:loc,kind:'personal',text:'“Eu lembro de você. Depois do que tentou fazer comigo, confiança não volta tão rápido.”'}
   }
 
+  const directIncident=(await db.query(`
+    SELECT i.*,a.push_name AS actor_name
+    FROM alpha_city_incidents i
+    LEFT JOIN users a ON a.jid=i.actor_jid
+    WHERE i.kind='npc_robbery' AND i.npc_id=$1
+      AND i.created_at>EXTRACT(EPOCH FROM NOW())::BIGINT-$2
+    ORDER BY i.created_at DESC LIMIT 1
+  `,[loc.npcId,2*86400])).rows[0]
+  if(directIncident){
+    const value=Number(directIncident.amount||0).toLocaleString('pt-BR')
+    const text=directIncident.outcome==='success'
+      ?'“Meu dia começou mal. Me assaltaram e levaram R$ '+value+'. Você viu alguma coisa?”'
+      :'“Tentaram me assaltar recentemente. Eu consegui escapar, mas quero descobrir quem foi. Você viu algo?”'
+    return {location:loc,kind:'incident',incident:directIncident,text}
+  }
+
   const incident=(await db.query(`
     SELECT i.*,a.push_name AS actor_name,t.push_name AS target_name
     FROM alpha_city_incidents i
@@ -568,12 +603,13 @@ export async function resolveCityEncounter(jid,id,choice){
   choice=Number(choice)
   if(![1,2].includes(choice)) throw new Error('Escolha 1 ou 2.')
   const event=(await db.query(`
-    SELECT * FROM alpha_city_encounters
+    UPDATE alpha_city_encounters
+    SET status='resolved',resolved_at=EXTRACT(EPOCH FROM NOW())::BIGINT
     WHERE id=$1 AND jid=$2 AND status='pending'
       AND expires_at>EXTRACT(EPOCH FROM NOW())::BIGINT
-    FOR UPDATE
+    RETURNING *
   `,[Number(id),jid])).rows[0]
-  if(!event) throw new Error('Esse evento já terminou.')
+  if(!event) throw new Error('Esse evento já terminou ou já foi respondido.')
   const level=Number((await db.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]?.level||1)
   let out={cash:0,xp:0,karma:0,text:''}
 
@@ -636,7 +672,6 @@ export async function resolveCityEncounter(jid,id,choice){
   }
 
   if(out.xp>0) await tx(async client=>grantExpInTransaction(client,jid,out.xp))
-  await db.query("UPDATE alpha_city_encounters SET status='resolved',resolved_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE id=$1 AND jid=$2",[event.id,jid])
   return out
 }
 
@@ -650,6 +685,73 @@ function darkBoardForCycle(cyc){
   const start=Math.abs(cyc)%DARK_MISSIONS.length
   return [0,1,2].map(i=>DARK_MISSIONS[(start+i)%DARK_MISSIONS.length])
 }
+export async function getDarkShop(jid){
+  const rep=await getAlphaReputation(jid)
+  if(!(await darkUnlocked(jid,rep.karma))) throw new Error('🌑 Você ainda não encontrou o Mercado Sombrio.')
+  if(rep.karma>=0) throw new Error('🌑 A loja clandestina só negocia com Karma negativo.')
+  const cyc=period(DARK_PERIOD_SECONDS)
+  const used=Number((await db.query(
+    'SELECT COUNT(*)::int AS n FROM alpha_dark_purchases WHERE jid=$1 AND cycle=$2',
+    [jid,cyc]
+  )).rows[0]?.n||0)
+  const ids=DARK_SHOP_GOODS.map(x=>x.id)
+  const rows=(await db.query(
+    'SELECT id,name,description,rarity FROM items WHERE id=ANY($1::text[])',
+    [ids]
+  )).rows
+  const byId=new Map(rows.map(x=>[x.id,x]))
+  const goods=DARK_SHOP_GOODS.map((g,i)=>{
+    const item=byId.get(g.id)
+    if(!item) return null
+    return {
+      number:i+1,id:g.id,name:item.name,description:item.description,rarity:item.rarity,
+      price:g.price,requiredKarma:g.karma,
+      permitted:rep.karma<=g.karma && used<DARK_SHOP_LIMIT
+    }
+  }).filter(Boolean)
+  return {karma:rep.karma,goods,remaining:Math.max(0,DARK_SHOP_LIMIT-used),expiresAt:(cyc+1)*DARK_PERIOD_SECONDS}
+}
+
+export async function buyDarkShopItem(jid,index){
+  const rep=await getAlphaReputation(jid)
+  if(!(await darkUnlocked(jid,rep.karma))) throw new Error('🌑 Você ainda não encontrou o Mercado Sombrio.')
+  if(rep.karma>=0) throw new Error('🌑 A loja clandestina só negocia com Karma negativo.')
+  const good=DARK_SHOP_GOODS[Number(index)-1]
+  if(!good) throw new Error('Item clandestino inválido.')
+  if(rep.karma>good.karma) throw new Error('🔒 Esta oferta exige Karma '+good.karma+' ou inferior.')
+  const cyc=period(DARK_PERIOD_SECONDS)
+  const result=await tx(async client=>{
+    const used=Number((await client.query(
+      'SELECT COUNT(*)::int AS n FROM alpha_dark_purchases WHERE jid=$1 AND cycle=$2',
+      [jid,cyc]
+    )).rows[0]?.n||0)
+    if(used>=DARK_SHOP_LIMIT) throw new Error('🌑 Você já fez 2 compras no Mercado Sombrio neste ciclo.')
+    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!wallet) throw new Error('Carteira não localizada.')
+    const item=(await client.query('SELECT id,name,rarity FROM items WHERE id=$1',[good.id])).rows[0]
+    if(!item) throw new Error('Item clandestino indisponível.')
+    const cash=Number(wallet.cash||0),bank=Number(wallet.bank||0)
+    if(cash+bank<good.price) throw new Error('Saldo insuficiente. Preço: R$ '+good.price.toLocaleString('pt-BR')+'.')
+    const fromCash=Math.min(cash,good.price),fromBank=good.price-fromCash
+    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2 WHERE jid=$3',[fromCash,fromBank,jid])
+    await client.query(`
+      INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+      ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1
+    `,[jid,item.id])
+    await client.query(
+      'INSERT INTO alpha_dark_purchases(jid,item_id,quantity,spent,cycle) VALUES($1,$2,1,$3,$4)',
+      [jid,item.id,good.price,cyc]
+    )
+    await client.query(
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'dark_market',$2,'purchase',$3)",
+      [jid,good.price,'Mercado Sombrio — '+item.name]
+    )
+    return {item,price:good.price,remaining:Math.max(0,DARK_SHOP_LIMIT-used-1)}
+  })
+  await changeCityStanding(jid,{trust:-1,notoriety:2}).catch(()=>null)
+  return result
+}
+
 export async function getDarkContractBoard(jid){
   const rep=await getAlphaReputation(jid)
   if(!(await darkUnlocked(jid,rep.karma))) throw new Error('🌑 Você ainda não encontrou o Mercado Sombrio.')
