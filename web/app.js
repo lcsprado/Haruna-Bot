@@ -352,13 +352,7 @@ const PET_IMAGE_ASSETS={
 function petExactImage(species){
   const s=String(species||'').toLowerCase();
   if(PET_IMAGE_ASSETS[s]) return PET_IMAGE_ASSETS[s];
-  // Só reutilizar um animal da mesma espécie. Nunca substituir corvo por lobo,
-  // tubarão por baleia ou criatura de Raid por figura não correspondente.
-  if(s==='leao_solar') return PET_IMAGE_ASSETS.leao;
-  if(s==='tigre_lunar') return PET_IMAGE_ASSETS.tigre;
-  if(s==='lobo_abismo') return PET_IMAGE_ASSETS.lobo;
-  if(s==='dragao_vulcanico'||s==='dragao_corrompido') return PET_IMAGE_ASSETS.dragao;
-  if(s==='kraken_aco') return PET_IMAGE_ASSETS.polvo_arcano;
+  // Variantes possuem sua própria arte vetorial ou sprite, jamais a arte base de outra espécie.
   return '';
 }
 function petSpriteKey(species){
