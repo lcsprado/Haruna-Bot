@@ -160,6 +160,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
           return
         }
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.bossCritical) bossCrits++; if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
+        if(r.oilConsumedNow) await reply('🗡️ *ÓLEO DAS SOMBRAS ATIVADO!* +6% de dano do jogador neste Boss (consumido 1 Óleo; pet não recebe bônus).')
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
         if(r.dead){
@@ -357,13 +358,14 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
         const hitEvents=(r.events||[]).filter(e=>e.type==='hit')
         const bossCrits=bossEvents.filter(e=>e.critical).length
         const heals=bossEvents.filter(e=>e.autoHeal)
+        const revives=bossEvents.filter(e=>e.autoRevive)
         const petHeals=bossEvents.filter(e=>e.autoPetHeal)
         const petSkillHeals=bossEvents.filter(e=>e.petSkillHeal)
         const petSwitches=bossEvents.filter(e=>e.petSwitch)
         const deaths=bossEvents.filter(e=>!e.alive)
         const petFalls=bossEvents.filter(e=>e.petFainted)
 
-        if(r.round===1 || r.round%10===0 || deaths.length || petSwitches.length){
+        if(r.round===1 || r.round%10===0 || deaths.length || revives.length || petSwitches.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*
@@ -383,6 +385,8 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
 👥 Sobreviventes (${r.survivors}): *${survivorNames.join(' • ')||'nenhum'}*`
           for(const e of heals) text+=`
 🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
+          for(const e of revives) text+=`
+✨ ${e.name} foi *RESSUSCITADO* pela Poção da Ressurreição com *${e.autoRevive.hp}/${e.autoRevive.maxHp} HP*! (1 uso por Raid)`
           for(const e of petHeals) text+=`
 🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
           for(const e of petSkillHeals) text+=`
@@ -2286,14 +2290,16 @@ ${moneyLine}✨ XP: *${xpMult}x*
         ?(r.karma<=-30?'“Vejo que conhece as regras das sombras... ou a falta delas.”':r.karma>=30?'“Um santo perdido no meu mercado? Isso vai custar caro.”':'“Aqui ninguém pergunta de onde veio o ouro.”')
         :'“Todo mundo tem uma história. O preço é o mesmo para todos.”'
     const relation=r.factor<1?`✅ Desconto de *${Math.round((1-r.factor)*100)}%*`:r.factor>1?`⚠️ Acréscimo de *${Math.round((r.factor-1)*100)}%*`:'⚖️ Preço normal'
-    let out=`${r.npc.emoji} *${r.npc.name.toUpperCase()} — ${r.npc.title.toUpperCase()}*\n\n_${flavor}_\n\n⚖️ Karma: *${r.karma>0?'+':''}${r.karma}* • ${relation}\n🛍️ Compras restantes: *${r.remaining}/3* • Equipamentos: *${r.gearRemaining}/1*\n\n`
+    let out=`${r.npc.emoji} *${r.npc.name.toUpperCase()} — ${r.npc.title.toUpperCase()}*\n\n_${flavor}_\n\n⚖️ Karma: *${r.karma>0?'+':''}${r.karma}* • ${relation}\n🛍️ Compras: *${r.remaining}/3* nesta janela de 4h • Equipamentos: *${r.gearRemaining}/1*\n💎 Fragmentos restantes hoje: *${r.fragmentsRemaining}/2* • Maior Raid vencida: *Lv.${r.highestRaid}*\n\n`
     for(const item of r.stock){
-      const blocked=item.permitted?'':` 🔒 ${r.npc.id==='helena'?'Honra +'+item.requiredKarma:'Karma '+item.requiredKarma+' ou menos'}`
-      const changed=item.price!==item.basePrice?` _(normal R$ ${fmt(item.basePrice)})_`:''
+      const blocked=item.permitted?'':item.soldOut?' 🔒 Limite diário esgotado'
+        :item.requiredRaid&&r.highestRaid<item.requiredRaid?` 🔒 Requer vitória na Raid Lv.${item.requiredRaid}+`
+        :` 🔒 ${r.npc.id==='helena'?'Honra +'+item.requiredKarma:'Karma '+item.requiredKarma+' ou menos'}`
+      const changed=item.price!==item.basePrice?` _(base R$ ${fmt(item.basePrice)})_`:''
       out+=`*${item.number}.* ${item.name} — *R$ ${fmt(item.price)}*${changed}${blocked}\n`
     }
     out+='\n👉 *Responda com o número do item* para comprar 1 unidade.\n⌨️ Ou *!comprarnpc '+(r.npc.id==='helena'?'1':r.npc.id==='mordek'?'2':'3')+' 1*\n9️⃣ Voltar aos NPCs • 0️⃣ Sair'
-    setQuickFlow(chat,sender,'npc_goods',{npcId:r.npc.id},120000)
+    setQuickFlow(chat,sender,'npc_goods',{npcId:r.npc.id,stockCount:r.stock.length},120000)
     await reply(out)
   }
 
@@ -2550,7 +2556,11 @@ Escolha o que deseja vender:
     }
     if(flow.stage==='npc_goods'){
       if(input==='9'){ await showNpcMerchantsMenu(chat,sender,reply); return true }
-      if(!/^[1-5]$/.test(input)){ await reply('🛒 Responda com um item de *1 a 5*, 9 para voltar ou 0 para sair.'); return true }
+      const stockCount=Number(flow.data?.stockCount||0)
+      if(!/^\d+$/.test(input)||Number(input)<1||Number(input)>stockCount){
+        await reply('🛒 Escolha um item de *1 a '+stockCount+'*, 9 para voltar ou 0 para sair.')
+        return true
+      }
       const bought=await buyNpcShopItem(sender,flow.data.npcId,Number(input))
       await reply(`${bought.npc.emoji} *COMPRA COM ${bought.npc.name.toUpperCase()} CONCLUÍDA!*\n\n📦 ${bought.item.name} ×1\n💵 Valor pago: *R$ ${fmt(bought.price)}*${bought.saved>0?`\n✅ Desconto: R$ ${fmt(bought.saved)}`:bought.saved<0?`\n⚠️ Acréscimo por reputação: R$ ${fmt(-bought.saved)}`:''}\n🛍️ Compras restantes: ${bought.remaining}/3`)
       await showNpcGoodsMenu(chat,sender,reply,flow.data.npcId)
@@ -2788,6 +2798,10 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!loja* — loja completa (itens, carros, bike e motos)
 🏘️ *NPCs — LOJAS DA REPUTAÇÃO*
 *!npcs* — lista Helena, Mordek e Baltazar
+🧪 *Poção da Ressurreição* — reanima 1x após acabar a cura
+🛡️ *Selo do Guardião* — -12% dano recebido na Raid
+🗡️ *Óleo das Sombras* — +6% dano do jogador em Boss/Raid
+💎 Fragmentos Raid 10–30: 2 por dia, exigem vitória prévia
 *!npc 1* / *!npc helena* — conversa e vê ofertas
 *!comprarnpc 1 2* — compra 1 unidade do item 2 com Helena
 ⚖️ Honra/Karma alteram descontos, sobretaxas e acesso a itens.
@@ -9654,7 +9668,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
           const r=await startRaid(chat,sender,level||null)
           const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-          await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🐾 Pets e curas automáticas funcionam normalmente.\n🏆 Recompensas serão proporcionais à colaboração.`)
+          await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas continuam funcionando.\n🏆 Recompensas serão proporcionais à colaboração.`)
           runRaidCombat(chat,Number(r.level),reply)
 
         } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
