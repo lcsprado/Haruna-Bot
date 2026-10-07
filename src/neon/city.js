@@ -76,6 +76,15 @@ export async function initCitySystem(){
     CREATE INDEX IF NOT EXISTS alpha_city_encounters_jid_idx
       ON alpha_city_encounters(jid,status,created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS alpha_city_responses(
+      incident_id BIGINT NOT NULL REFERENCES alpha_city_incidents(id) ON DELETE CASCADE,
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      npc_id TEXT NOT NULL,
+      choice TEXT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT ${NOW_SQL},
+      PRIMARY KEY(incident_id,jid,npc_id)
+    );
+
     CREATE TABLE IF NOT EXISTS alpha_black_market_missions(
       jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
       period BIGINT NOT NULL,
@@ -287,6 +296,56 @@ export async function getNpcMemory(visitorJid,npcRef){
   if(standing.notoriety>=60) return {npc,text:'“Seu nome está circulando demais. Gente demais anda desconfiada de você.”',memory:'standing'}
   if(standing.trust>=30) return {npc,text:'“Seu nome tem sido citado de um jeito bom. Continue assim.”',memory:'standing'}
   return {npc,text:'“A cidade parece calma hoje. Mas calma demais nunca dura muito por aqui.”',memory:'ambient'}
+}
+
+export async function respondToNpcIncident(jid,npcRef,incidentId,choice){
+  await ensureUser(jid)
+  const npc=cityNpc(npcRef)
+  if(!npc) throw new Error('NPC desconhecido.')
+  const choiceMap={1:'saw',2:'did_not_see',3:'help'}
+  const action=choiceMap[Number(choice)]
+  if(!action) throw new Error('Escolha 1, 2 ou 3.')
+
+  const {rows:incidentRows}=await db.query(
+    'SELECT * FROM alpha_city_incidents WHERE id=$1',
+    [Number(incidentId)]
+  )
+  const incident=incidentRows[0]
+  if(!incident) throw new Error('Esse assunto já esfriou na cidade.')
+
+  const existing=(await db.query(
+    'SELECT choice FROM alpha_city_responses WHERE incident_id=$1 AND jid=$2 AND npc_id=$3',
+    [incident.id,jid,npc.id]
+  )).rows[0]
+  if(existing){
+    return {already:true,choice:existing.choice,text:'“Você já me respondeu sobre isso. Eu lembro.”'}
+  }
+
+  await db.query(
+    'INSERT INTO alpha_city_responses(incident_id,jid,npc_id,choice) VALUES($1,$2,$3,$4)',
+    [incident.id,jid,npc.id,action]
+  )
+
+  if(action==='saw'){
+    if(incident.actor_jid===jid){
+      await changeCityReputation(jid,{trust:-1,notoriety:1})
+      return {choice:action,text:'“Você diz que viu... mas está estranho demais contando essa história. Vou ficar de olho.”'}
+    }
+    await changeCityReputation(jid,{trust:1})
+    return {choice:action,text:'“Entendi. Se lembrar de mais alguma coisa, me procure. Informação também constrói reputação.”'}
+  }
+
+  if(action==='did_not_see'){
+    return {choice:action,text:'“Certo. Melhor dizer que não sabe do que inventar uma história.”'}
+  }
+
+  await changeCityReputation(jid,{trust:3,notoriety:-1})
+  await changeAlphaReputation(jid,'city_help',1).catch(()=>null)
+  return {
+    choice:action,
+    karma:1,
+    text:'“Se quer ajudar de verdade, isso conta. A cidade lembra de quem aparece quando alguém precisa.”'
+  }
 }
 
 const encounterTemplates=[
