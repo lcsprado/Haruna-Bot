@@ -1,5 +1,6 @@
 import { db, ensureUser } from './db.js'
 import { alphaReputationTitle } from './progression.js'
+import { getCityPriceModifier } from './city.js'
 
 // NPCs vendem consumíveis exclusivos e fragmentos das Raids 10–30.
 // Equipamentos apenas de drop e materiais de nível 40/50 permanecem exclusivos das Raids.
@@ -122,14 +123,22 @@ export async function listNpcShops(jid){
   const karma=Number((await db.query('SELECT karma FROM alpha_reputation WHERE jid=$1',[jid])).rows[0]?.karma||0)
   const period=periodNow()
   const stats=await purchaseStats(db,jid,period)
+  const merchants=await Promise.all(NPC_CATALOG.map(async(n,i)=>{
+    const social=await getCityPriceModifier(jid,n.id)
+    return {
+      id:n.id,number:i+1,name:n.name,title:n.title,emoji:n.emoji,
+      description:n.description,
+      modifier:npcPriceFactor(n.id,karma)*Number(social.factor||1),
+      blocked:Boolean(social.blocked),
+      notoriety:Number(social.notoriety||0),
+      trust:Number(social.trust||0)
+    }
+  }))
   return {
     karma,title:alphaReputationTitle(karma),
     remaining:stats.remaining,
     nextAt:nextRefresh(),
-    merchants:NPC_CATALOG.map((n,i)=>({
-      id:n.id,number:i+1,name:n.name,title:n.title,emoji:n.emoji,
-      description:n.description,modifier:npcPriceFactor(n.id,karma)
-    }))
+    merchants
   }
 }
 export async function getNpcShop(jid,npcRef){
@@ -145,14 +154,15 @@ export async function getNpcShop(jid,npcRef){
     npcDailyFragmentPurchases(db,jid)
   ])
   const karma=Number(reputation.rows[0]?.karma||0)
-  const factor=npcPriceFactor(npc.id,karma)
+  const social=await getCityPriceModifier(jid,npc.id)
+  const factor=npcPriceFactor(npc.id,karma)*Number(social.factor||1)
   const byId=new Map(items.rows.map(x=>[x.id,x]))
   const stock=npc.goods.map((g,i)=>{
     const item=byId.get(g.id)
     if(!item) return null
     const basePrice=Number(g.npcPrice||item.price)
     if(basePrice<=0) return null
-    const permitted=accessOffer(npc,g,karma) && (!g.raidLevel || highestRaid>=g.raidLevel) && (!g.raidLevel || fragmentsToday<NPC_DAILY_FRAGMENT_LIMIT)
+    const permitted=!social.blocked && accessOffer(npc,g,karma) && (!g.raidLevel || highestRaid>=g.raidLevel) && (!g.raidLevel || fragmentsToday<NPC_DAILY_FRAGMENT_LIMIT)
     return {number:i+1,id:item.id,name:item.name,description:item.description,category:item.category,rarity:item.rarity,
       basePrice,price:quotePrice(basePrice,factor),permitted,
       requiredKarma:g.gate||null,requiredRaid:g.raidLevel||null,
@@ -160,6 +170,7 @@ export async function getNpcShop(jid,npcRef){
   }).filter(Boolean)
   return {npc:{id:npc.id,name:npc.name,title:npc.title,emoji:npc.emoji,description:npc.description},
     karma,title:alphaReputationTitle(karma),factor,stock,remaining:stats.remaining,
+    social:{trust:Number(social.trust||0),notoriety:Number(social.notoriety||0),blocked:Boolean(social.blocked)},
     highestRaid,fragmentsRemaining:Math.max(0,NPC_DAILY_FRAGMENT_LIMIT-fragmentsToday),
     gearRemaining:Math.max(0,NPC_GEAR_LIMIT-stats.equipment),nextAt:nextRefresh()}
 }
@@ -178,6 +189,10 @@ export async function buyNpcShopItem(jid,npcRef,number){
     const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!wallet) throw new Error('Carteira não localizada.')
     const karma=Number((await client.query('SELECT karma FROM alpha_reputation WHERE jid=$1',[jid])).rows[0]?.karma||0)
+    const social=await getCityPriceModifier(jid,npc.id)
+    if(social.blocked){
+      throw new Error('🚫 '+npc.name+' se recusa a negociar com você agora. Sua reputação na cidade está ruim demais.')
+    }
     if(!accessOffer(npc,selected,karma)){
       throw new Error(npc.id==='helena'
         ?'🛡️ Helena recusou: esta oferta exige pelo menos +'+selected.gate+' de Honra.'
@@ -198,7 +213,7 @@ export async function buyNpcShopItem(jid,npcRef,number){
     if(stats.remaining<1) throw new Error('Você já comprou 3 itens de NPCs nesta janela de 4h. Aguarde o próximo quadro.')
     if(GEAR_CATEGORIES.has(item.category)&&stats.equipment>=NPC_GEAR_LIMIT)
       throw new Error('Você já comprou 1 equipamento em NPCs nesta janela de 4h.')
-    const price=quotePrice(basePrice,npcPriceFactor(npc.id,karma))
+    const price=quotePrice(basePrice,npcPriceFactor(npc.id,karma)*Number(social.factor||1))
     const cash=Number(wallet.cash||0),bank=Number(wallet.bank||0)
     if(cash+bank<price) throw new Error('Saldo insuficiente. Preço desta oferta: R$ '+price.toLocaleString('pt-BR')+'.')
     const paidCash=Math.min(price,cash),paidBank=price-paidCash
@@ -218,6 +233,7 @@ export async function buyNpcShopItem(jid,npcRef,number){
     return {npc:{id:npc.id,name:npc.name,title:npc.title,emoji:npc.emoji},
       item:{id:item.id,name:item.name,rarity:item.rarity,category:item.category},
       karma,basePrice,price,
+      social:{trust:Number(social.trust||0),notoriety:Number(social.notoriety||0)},
       saved:basePrice-price,remaining:stats.remaining-1}
   }catch(error){
     await client.query('ROLLBACK')
