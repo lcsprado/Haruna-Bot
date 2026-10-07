@@ -613,6 +613,12 @@ async function showMainMenu(chat,sender,reply){
 
 Um bot completo para o grupo — não só RPG.
 
+🚀 *NOVIDADES 3.0*
+🌐 *!web* — RPG visual no navegador, conectado ao mesmo personagem
+📜 *!contratos* — missões rotativas de 4 em 4 horas
+⚖️ *!karma* — reputação de Herói ou Vilão
+🏘️ *!npcs* — Helena, Mordek e Baltazar
+
 💰 *Economia & patrimônio*
 Trabalho, banco, PIX, Uber, iFood, negócios, veículos e ranking.
 
@@ -633,7 +639,7 @@ Moderação, futebol, ferramentas, assinatura e suporte.
 3️⃣ 🛒 Loja, itens & inventário
 4️⃣ ⚔️ RPG, Raids & Pets
 5️⃣ 🎮 Minigames & Boss
-6️⃣ 📈 Progressão & patrimônio
+6️⃣ 📜 Contratos, Honra & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo & assinatura
 9️⃣ 🧰 Futebol, utilidades & suporte
@@ -641,8 +647,9 @@ Moderação, futebol, ferramentas, assinatura e suporte.
 💡 *ATALHOS*
 *!perfil* • *!saldo* • *!trabalhar* • *!uber* • *!ifood*
 *!rpg* • *!pet* • *!raid* • *!minigames*
+📜 *!contratos* • ⚖️ *!karma* • 🏘️ *!npcs*
 📚 Todos os recursos: *!comandos*
-🌐 Área Web: *!web*
+🌐 RPG Web lançado: *!web*
 
 🎁 Grupos novos podem testar o Alpha Bot por *3 dias grátis*.
 👉 Responda apenas com o número.
@@ -658,12 +665,18 @@ async function showCommandsMainMenu(chat,sender,reply){
 O Alpha reúne *economia, entretenimento, RPG, recursos de grupo e utilidades* no mesmo bot.
 Escolha a área e eu mostro só os comandos que interessam.
 
+🚀 *NOVIDADES 3.0*
+🌐 *!web* — acesso ao novo RPG visual no navegador
+📜 *!contratos* — missões de 4 em 4 horas
+⚖️ *!karma* / *!honra* — Herói ou Vilão
+🏘️ *!npcs* — mercadores e ofertas por reputação
+
 1️⃣ 👤 Perfil, conta & social
 2️⃣ 💰 Economia, trabalho, banco & PIX
 3️⃣ 🛒 Loja, inventário & mercado
 4️⃣ ⚔️ RPG, combate, Raids & pets
 5️⃣ 🎮 Minigames, Boss & eventos
-6️⃣ 📈 Progressão, missões & patrimônio
+6️⃣ 📜 Contratos Alpha, Honra & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo, moderação & assinatura
 9️⃣ 🧰 Futebol, utilidades & suporte
@@ -2689,6 +2702,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       '1':`👤 *PERFIL, CONTA & SOCIAL*
 
 *!perfil* — mostra seu perfil completo em texto
+*!web* — gera link de acesso ao RPG Web com seu personagem e inventário
 *!perfil @pessoa* — vê o perfil de outra pessoa em texto
 *!daily* — coleta a recompensa diária
 *!streak* — mostra sua sequência
@@ -2751,6 +2765,13 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 *!itens* — abre o menu de itens
 *!loja* — loja completa (itens, carros, bike e motos)
+🏘️ *NPCs — LOJAS DA REPUTAÇÃO*
+*!npcs* — lista Helena, Mordek e Baltazar
+*!npc 1* / *!npc helena* — conversa e vê ofertas
+*!comprarnpc 1 2* — compra 1 unidade do item 2 com Helena
+⚖️ Honra/Karma alteram descontos, sobretaxas e acesso a itens.
+🔒 Máximo de 3 compras e 1 equipamento por jogador a cada 4h.
+
 *!comprar item quantidade* — compra da loja
 *!inventario* — abre seu inventário
 *!vender* — abre a venda por categoria\n*!venderequipamentos* — armas/armaduras não equipadas\n*!venderpocoes* — poções e cura\n*!venderraid* — materiais e chaves de Raid
@@ -2778,6 +2799,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       '4':`⚔️ *RPG, COMBATE & PETS*
 
 *!rpg* — abre o menu de RPG
+*!web* — conecta o mesmo personagem ao RPG visual no navegador
 *!status* — mostra seus atributos
 *!nível* — progresso e resgata recompensas a cada 5 níveis
 *!batalhar @pessoa* — desafia outro jogador
@@ -2869,17 +2891,23 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!comprarcasa número* — compra imóvel
 *!minhacasa* — mostra sua casa
 
+📜 *CONTRATOS ALPHA — MISSÕES DA HORA*
+*!contratos* — consulta 5 missões rotativas, por nível, a cada 4 horas
+*!aceitarcontrato 1* — aceita o contrato número 1 (escolha de 1 a 5)
+*!resgatarcontrato* — recebe dinheiro, XP e itens após concluir
+📊 O progresso é automático em roubo, Uber, iFood, carpinar, Dungeon, Boss e Raid.
+
+⚖️ *HONRA & KARMA*
+*!karma* / *!honra* — mostra pontuação entre -100 e +100 e seu alinhamento
+🛡️ Vitórias e contratos heroicos dão Honra; roubos e contratos criminosos geram infâmia.
+🏘️ *!npcs* — comerciantes com preços e itens por reputação
+*!npc 1* — conversa com Helena (2 Mordek, 3 Baltazar)
+*!comprarnpc 1 2* — compra o segundo item do NPC 1
+
 🤝 *MISSÕES COLETIVAS & EVENTOS*
 *!missaogrupo* / *!missao* — objetivo, progresso e ranking
 *!missaostatus* — status da missão coletiva
 *!resgatarmissao* — resgata sua parte da recompensa
-*!karma* / *!honra* — sua reputação de herói ou vilão
-*!npcs* — mercadores com preços influenciados pelo Karma
-*!npc 1* — conversa e abre a loja do NPC
-*!comprarnpc 1 2* — compra o item 2 do NPC 1
-*!contratos* — quadro de contratos a cada 4 horas
-*!aceitarcontrato número* — aceita uma missão
-*!resgatarcontrato* — resgata recompensa concluída
 *!pegar* — pega evento aleatório ativo no grupo
 
 💎 *PATRIMÔNIO*
@@ -2965,12 +2993,18 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
 
+🚀 *ALPHA BOT 3.0*
+🌐 *!web* — RPG no navegador
+📜 *!contratos* — missões por nível, renovadas a cada 4h
+⚖️ *!karma* — Herói/Vilão
+🏘️ *!npcs* — lojas de comerciantes
+
 1️⃣ 👤 Perfil, conta, casamento & social
 2️⃣ 💰 Economia & diversão
 3️⃣ 🛒 Loja, inventário & mercado
 4️⃣ 🐾 RPG, combate & PETS
 5️⃣ 🎮 Minigames
-6️⃣ 📋 Progressão & patrimônio
+6️⃣ 📜 Contratos, Honra & Progressão
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo & moderação
 9️⃣ ⚽ Futebol, utilidades & suporte
@@ -5005,6 +5039,9 @@ ${emoji} *${r.result.toUpperCase()}*`)
 4️⃣ Carros
 5️⃣ Patrimônio
 6️⃣ Ranking de patrimônio
+7️⃣ 📜 Quadro de Contratos Alpha
+8️⃣ ⚖️ Honra / Karma
+9️⃣ 🏘️ NPCs e comerciantes
 
 0️⃣ Sair`
         )
@@ -8154,6 +8191,9 @@ Se precisar de mais ajuda, use *!suporte*.`
 4️⃣ Carros
 5️⃣ Patrimônio
 6️⃣ Ranking de patrimônio
+7️⃣ 📜 Quadro de Contratos Alpha
+8️⃣ ⚖️ Honra / Karma
+9️⃣ 🏘️ NPCs e comerciantes
 
 0️⃣ Sair`
           )
