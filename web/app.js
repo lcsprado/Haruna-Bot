@@ -2444,7 +2444,6 @@ function bind(){
   document.querySelectorAll('[data-level-claim]').forEach(x=>x.onclick=()=>doAction('level.claim',{},{}));
   document.querySelectorAll('[data-group-mission-claim]').forEach(x=>x.onclick=()=>doAction('groupMission.claim',{},{}));
   document.querySelectorAll('[data-group-event-claim]').forEach(x=>x.onclick=()=>doAction('groupEvent.claim',{},{}));
-  document.querySelectorAll('[data-clear-result]').forEach(x=>x.onclick=()=>{ui.lastResult=null;render();});
 }
 
 // Raid automática agora roda no servidor. Mantemos estes helpers apenas para
