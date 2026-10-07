@@ -446,8 +446,8 @@ function missionRewards(level){
 export async function getBlackMarketMission(jid){
   await ensureUser(jid)
   const standing=await getCityStanding(jid)
-  if(standing.karma>-10 && standing.notoriety<20){
-    return {locked:true,standing,reason:'O Mercado Negro exige Karma -10 ou notoriedade 20+.'}
+  if(standing.karma>=0 && standing.notoriety<20){
+    return {locked:true,standing,reason:'O Mercado Negro exige Karma negativo ou notoriedade 20+.'}
   }
   const period=periodNow()
   const existing=(await db.query(
