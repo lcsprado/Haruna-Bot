@@ -9198,12 +9198,51 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           const result=await useXpConsumable(sender,item.item_id)
           await reply(xpItemReceipt(result))
 
+        } else if(['cidade','city'].includes(cmd)){
+          await showCityMenu(chat,sender,reply)
+
+        } else if(['rumor','rumores'].includes(cmd)){
+          const targetMention=mentionsOf(msg)[0]
+          if(!targetMention){
+            await showRumorBoard(chat,sender,reply)
+          }else{
+            const targetIdentity=await resolvePlayerIdentity(sock,chat,targetMention,msg)
+            const target=targetIdentity.jid
+            if(!target?.endsWith('@s.whatsapp.net')) return await reply('⚠️ Não consegui identificar essa pessoa.')
+            await consolidateUserIdentity(target,targetIdentity.aliases)
+            const claim=String(args.join(' ')||'')
+              .replace(/@\d+/g,'')
+              .replace(/\s+/g,' ')
+              .trim() || 'roubo'
+            const rumor=await spreadRumor(sender,target,claim)
+            const accused=(await getProfile(target).catch(()=>null))?.push_name||'essa pessoa'
+            await reply(`🗣️ *RUMOR LANÇADO*\n\n📣 Você começou a espalhar pela cidade que *${accused}* está envolvido em *${claim}*.\n🎲 Credibilidade inicial: *${rumor.credibility}%*\n⏳ O rumor circula por até *24 horas*.\n\n⚠️ NPCs podem acreditar, cobrar mais, recusar negócio ou investigar a história. Se descobrirem que você mentiu, a consequência volta para você.`)
+          }
+
+        } else if(['mercadonegro','mercadonegro','blackmarket'].includes(cmd)){
+          await showBlackMarket(chat,sender,reply)
+
+        } else if(['explorar','explorarcidade'].includes(cmd)){
+          const encounter=await maybeCreateCityEncounter(sender,{force:true})
+          await showCityEncounter(chat,sender,reply,encounter)
+
+        } else if(['cidadeevento','eventocidade'].includes(cmd)){
+          const encounter=await getPendingCityEncounter(sender)
+          if(!encounter) return await reply('🏙️ Você não possui nenhum evento da cidade pendente.')
+          const choice=Number(args[0])
+          if(![1,2].includes(choice)) return await reply('🏙️ Responda *!cidadeevento 1* ou *!cidadeevento 2*.')
+          const result=await resolveCityEncounter(sender,encounter.id,choice)
+          const cashLine=Number(result.cash||0)>0?`\n💰 Dinheiro: *+R$ ${fmt(result.cash)}*`:Number(result.cash||0)<0?`\n💸 Prejuízo: *-R$ ${fmt(Math.abs(result.cash))}*`:''
+          const xpLine=Number(result.xp||0)>0?`\n✨ EXP: *+${fmt(result.xp)}*`:''
+          const karmaLine=Number(result.karma||0)?`\n⚖️ Karma: *${result.karma>0?'+':''}${result.karma}*`:''
+          await reply(`🏙️ *CONSEQUÊNCIA*\n\n${result.text}${cashLine}${xpLine}${karmaLine}`)
+
         } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojanpc'].includes(cmd)){
           await showNpcMerchantsMenu(chat,sender,reply)
 
         } else if(['npc','falarnpc'].includes(cmd)){
           if(!args[0]) await showNpcMerchantsMenu(chat,sender,reply)
-          else await showNpcGoodsMenu(chat,sender,reply,args[0])
+          else await showCityResidentMenu(chat,sender,reply,args[0])
 
         } else if(['comprarnpc','npccomprar'].includes(cmd)){
           if(!args[0]||!args[1]) return await reply('🛒 Use *!npc 1* para ver a loja e *!comprarnpc 1 2* para comprar o item 2 do NPC 1.')
