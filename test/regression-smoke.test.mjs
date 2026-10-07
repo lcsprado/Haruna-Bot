@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
+const npcShops=readFileSync(new URL('../src/neon/npc-shops.js',import.meta.url),'utf8')
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const gameCatalog=readFileSync(new URL('../src/neon/game-catalog.js',import.meta.url),'utf8')
 const webApi=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8')
@@ -44,6 +45,31 @@ test('Alpha 3.0 commands and new progression menu entries remain discoverable',(
   assert.ok(progress.includes('alphaContractBoardMessage(sender)'),'contract option must open live board')
   assert.ok(progress.includes('alphaKarmaMessage(sender)'),'karma option must show actual score')
   assert.ok(progress.includes('showNpcMerchantsMenu(chat,sender,reply)'),'NPC option must open merchant menu')
+})
+
+test('NPC upgrades preserve scarcity, meaningful reputation thresholds, and XP caps',()=>{
+  for(const id of ['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']){
+    assert.ok(db.includes("['"+id+"'"),'NPC-only catalog item missing: '+id)
+  }
+  assert.ok(npcShops.includes("id:'selo_guardiao',npcPrice:28000,gate:10"),'Helena must require Honra +10 for guardian seal')
+  assert.ok(npcShops.includes("id:'oleo_sombras',npcPrice:35000,gate:-10"),'Mordek must require Karma -10 for shadow oil')
+  assert.ok(npcShops.includes("id:'elixir_disciplina',npcPrice:65000,gate:30"),'Honra +30 XP elixir missing')
+  assert.ok(npcShops.includes("id:'elixir_sombras',npcPrice:65000,gate:-30"),'Karma -30 XP elixir missing')
+  assert.ok(npcShops.includes("id:'pergaminho_virtude',npcPrice:125000,gate:70"),'Honra +70 XP tome missing')
+  assert.ok(npcShops.includes("id:'tomo_proibido',npcPrice:125000,gate:-70"),'Karma -70 XP tome missing')
+  assert.ok(npcShops.includes('NPC_DAILY_FRAGMENT_LIMIT=2'),'fragment daily cap missing')
+  assert.ok(npcShops.includes('npcHighestClearedRaid(client,jid)'),'fragment purchase must verify a completed Raid')
+  assert.ok(games.includes('raidRevivesUsed:0'),'revival counter must start at zero per Raid')
+  assert.ok(games.includes('if(revivesUsed<1)'),'Raid revival must be limited to once')
+  assert.ok(games.includes('p.raidShieldActive?.88:1'),'guardian seal must mitigate only 12 percent of damage')
+  assert.ok(games.includes('existingParticipant.oilChecked'),'Boss oil cannot be consumed more than once')
+  assert.ok(db.includes("elixir_disciplina:{type:'boost',name:'Elixir da Disciplina',percent:20,seconds:20*60,cap:1200}"),
+    'temporary XP buff must be capped and time-limited')
+  assert.ok(db.includes("if(used&&Number(used.day_number)===dayNumber)"),'instant XP tome must be limited daily')
+  assert.ok(db.includes('ignoreXpBoost:true'),'instant XP tomes must not generate extra boosted XP')
+  assert.ok(db.includes("itemRow.sellable!==true"),'exclusive NPC items must not bypass restrictions via player market')
+  assert.ok(index.includes("['buffxp','bonusxp','expbuff','experiencia']"),'XP status commands must exist')
+  assert.ok(index.includes("XP_SPECIAL_ITEM_IDS.has(item.item_id)"),'!usar must support XP items')
 })
 
 test('boss and raid combat loop limits stay separated',()=>{
