@@ -630,6 +630,8 @@ test('cidade persistente liga memoria rumores mercado negro e eventos',()=>{
   assert.ok(city.includes('export async function getBlackMarketShop'),'black market shop missing')
   assert.ok(city.includes('export async function buyBlackMarketItem'),'black market purchase flow missing')
   assert.ok(city.includes('BLACK_MARKET_LIMIT=2'),'black market purchase cap missing')
+  assert.ok(city.includes("WHERE i.kind='npc_robbery' AND i.npc_id=$1"),'NPC victim must prioritize its own robbery memory')
+  assert.ok(city.includes("await changeCityReputation(jid,{trust:-1,notoriety:2}).catch(()=>null)"),'black market social side effect must not invalidate a completed purchase')
   assert.ok(index.includes("flow.stage==='black_market_main'"),'black market main flow missing')
   assert.ok(index.includes("flow.stage==='black_market_shop'"),'black market shop flow missing')
 })
