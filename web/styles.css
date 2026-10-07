@@ -954,3 +954,32 @@ body.loot-open{overflow:hidden!important}
   .relationship-request .hero-actions{width:100%}
   .relationship-request .btn{flex:1}
 }
+
+/* QA 2026-10-06: cards usam uma imagem da própria espécie, sem recortes vizinhos. */
+.pet-portrait{isolation:isolate}
+.pet-vector-stack{
+  width:min(100%,230px)!important;
+  height:100%!important;
+  margin:auto;
+  position:relative;
+  display:grid;
+  place-items:center;
+  isolation:isolate;
+}
+.pet-vector-stack .pet-vector-art{
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  max-width:100%!important;
+  max-height:100%!important;
+  object-fit:contain!important;
+  opacity:0;
+  position:relative;
+  z-index:2;
+  padding:0!important;
+  border-radius:16px;
+}
+.pet-vector-stack.pet-art-loaded .pet-vector-art{opacity:1!important}
+.pet-vector-stack.pet-art-loaded .pet-image-fallback{display:none!important}
+.pet-vector-stack .pet-image-fallback{position:relative;z-index:1}
+.pet-cropped-art.pet-primary-art{background-repeat:no-repeat!important;image-rendering:auto}
