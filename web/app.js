@@ -12,6 +12,9 @@ const ui = {
   lootReveal: null,
   page: 'home',
   petTab: 'owned',
+  inventoryTab: 'weapons',
+  npcData: null,
+  npcLoading: false,
   petAdoptSpecies: '',
   duelTarget: '',
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
@@ -29,6 +32,7 @@ const navItems = [
   ['pets','🐾','Pets'],
   ['inventory','🎒','Inventário'],
   ['shop','🏪','Loja'],
+  ['npcs','🏘️','NPCs / Comerciantes'],
   ['raids','⚔️','Raids'],
   ['boss','👹','Boss'],
   ['duels','⚔️','Duelos'],
@@ -753,6 +757,7 @@ function renderNav(){
   document.querySelectorAll('[data-page]').forEach(btn=>btn.onclick=async()=>{
     ui.page=btn.dataset.page;
     setMenu(false);
+    if(ui.page==='npcs') await loadNpcShops();
     if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
       await syncExtras(false).catch(()=>null);
     }
@@ -1335,6 +1340,7 @@ function itemDisplayName(item){
 }
 function itemDisplayDescription(item){
   const name=String(item&&item.name||'').trim().toLowerCase();
+  if(String(item&&item.id||'')==='lootbox_std') return 'Abra para receber uma recompensa aleatória.';
   const map={
     'wooden sword':'Arma básica. +5 ATK.',
     'iron sword':'Arma reforçada. +15 ATK.',
@@ -1344,7 +1350,8 @@ function itemDisplayDescription(item){
     'bank upgrade':'Aumenta o limite do banco em R$ 50.000.',
     'premium 7 hari':'Acesso Premium por 7 dias.'
   };
-  return map[name]||String(item&&item.description||'');
+  const description=String(item&&item.description||'');
+  return map[name]||description.replace(/item random gacha|random gacha|gacha/gi,'recompensa aleatória');
 }
 function inventoryBucket(item){
   const id=String(item?.item_id||'').toLowerCase();
@@ -1354,6 +1361,7 @@ function inventoryBucket(item){
   if(cat==='armor') return 'armors';
   if(cat==='boots') return 'boots';
   if(cat==='box' || id.includes('caixa_') || id==='lootbox_std') return 'boxes';
+  if(cat==='pet_potion'||cat==='pet_energy'||id.includes('pet_')||id==='energetico_pet') return 'pets';
   if(cat==='raid' || id.includes('fragmento_raid') || id.includes('chave_raid') || id.startsWith('raid_') || description.includes('raid lv.')) return 'raid';
   if(cat==='material') return 'materials';
   if(['consumable','potion','pet_potion','pet_energy'].includes(cat) || id.startsWith('pocao_') || id==='energetico_pet') return 'consumables';
@@ -1365,6 +1373,7 @@ const INVENTORY_GROUPS=[
   ['armors','🛡️ Armaduras'],
   ['boots','🥾 Botas'],
   ['consumables','🧪 Consumíveis'],
+  ['pets','🐾 Pets / Itens de Pet'],
   ['boxes','📦 Caixas'],
   ['raid','⚔️ Itens de Raid'],
   ['materials','🧩 Materiais'],
@@ -1413,23 +1422,19 @@ function inventoryCard(i,options={}){
 function renderInventory(){
   const inv=ui.data.inventory||[];
   const equipped=inv.filter(i=>i.equipped).map(i=>({...i,quantity:1}));
-  const available=inv.map(i=>({
-    ...i,
-    quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)
-  })).filter(i=>Number(i.quantity)>0);
-  const sections=INVENTORY_GROUPS.map(([key,label])=>{
-    const rows=available.filter(i=>inventoryBucket(i)===key);
-    if(!rows.length) return '';
-    return '<div class="section inventory-group"><div class="section-title"><h3>'+label+'</h3><small>'+rows.length+' tipo(s)</small></div><div class="grid cards">'+rows.map(i=>inventoryCard(i,{quantity:i.quantity})).join('')+'</div></div>';
-  }).join('');
-
-  return '<div class="page-head"><div><h2>Inventário</h2><p>Equipamentos em uso ficam isolados e protegidos. Os demais itens são separados por categoria, como no bot.</p></div><div class="hero-actions">'+
-      '<button class="btn" data-sell-duplicates>💰 Vender equipamentos repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
+  const available=inv.map(i=>({...i,quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)})).filter(i=>Number(i.quantity)>0);
+  const groups=INVENTORY_GROUPS.map(([key,label])=>({key,label,items:available.filter(i=>inventoryBucket(i)===key)}));
+  if(!groups.some(g=>g.key===ui.inventoryTab)) ui.inventoryTab='weapons';
+  const selected=groups.find(g=>g.key===ui.inventoryTab);
+  return '<div class="page-head"><div><h2>Inventário</h2><p>Itens equipados são protegidos e separados do estoque disponível.</p></div><div class="hero-actions">'+
+    '<button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+inv.length+' tipos</span></div></div>'+
     renderLuckyBoxEvent()+
-    '<div class="section inventory-equipped-section"><div class="section-title"><h3>🔒 Equipados</h3><small>Não entram em venda</small></div>'+
-      (equipped.length?'<div class="grid cards">'+equipped.map(i=>inventoryCard(i,{equippedCopy:true,quantity:1})).join('')+'</div>':'<div class="empty">Nenhum equipamento em uso.</div>')+
-    '</div>'+
-    (sections||'<div class="empty">Inventário vazio.</div>')+
+    '<div class="section inventory-equipped-section"><div class="section-title"><h3>🔒 Equipados</h3><small>Protegidos contra venda</small></div>'+
+      (equipped.length?'<div class="grid cards">'+equipped.map(i=>inventoryCard(i,{equippedCopy:true,quantity:1})).join('')+'</div>':'<div class="empty">Nenhum equipamento em uso.</div>')+'</div>'+
+    '<div class="tabs inventory-tabs section" role="tablist" aria-label="Categorias do inventário">'+
+      groups.map(g=>'<button type="button" role="tab" aria-selected="'+(g.key===ui.inventoryTab)+'" class="tab '+(g.key===ui.inventoryTab?'active':'')+'" data-inventory-tab="'+g.key+'">'+g.label+' ('+g.items.length+')</button>').join('')+'</div>'+
+    '<div class="section inventory-group"><div class="section-title"><h3>'+selected.label+'</h3><small>'+selected.items.length+' tipo(s)</small></div>'+
+      (selected.items.length?'<div class="grid cards">'+selected.items.map(i=>inventoryCard(i,{quantity:i.quantity})).join('')+'</div>':'<div class="empty">Nenhum item nesta categoria.</div>')+'</div>'+
     resultPanel();
 }
 
@@ -1459,6 +1464,46 @@ function renderShop(){
   }
   return '<div class="page-head"><div><h2>Loja Alpha</h2><p>Itens, preços e atributos vêm do mesmo catálogo usado pelo bot.</p></div><span class="tag good">'+money(ui.data.profile&&ui.data.profile.cash)+'</span></div>'+
     (groups.length?groups.map(g=>'<div class="section shop-section"><div class="section-title"><h3>'+esc(shopCategoryLabel(g.key))+'</h3><small>'+g.items.length+' item(ns)</small></div><div class="grid cards">'+g.items.map(shopCard).join('')+'</div></div>').join(''):'<div class="empty">Loja sem itens disponíveis.</div>');
+}
+
+async function loadNpcShops(){
+  if(ui.npcLoading) return;
+  ui.npcLoading=true;
+  try{
+    const result=await api('/api/v1/me/npcs');
+    ui.npcData=result.data;
+  }catch(err){ui.npcData={error:err.message}}
+  finally{ui.npcLoading=false}
+}
+function renderNpcs(){
+  const d=ui.npcData;
+  if(!d) return '<div class="notice">Carregando comerciantes…</div>';
+  if(d.error) return '<div class="notice warn">'+esc(d.error)+'</div>';
+  const karma=Number(d.karma||0);
+  return '<div class="page-head"><div><h2>🏘️ NPCs / Comerciantes</h2><p>As mesmas ofertas, preços e limites disponíveis no WhatsApp.</p></div><span class="tag">⚖️ '+(karma>=0?'+':'')+karma+' • '+esc(d.title||'Neutro')+'</span></div>'+
+    (d.shops||[]).map(shop=>{
+      const n=shop.npc||{};
+      return '<div class="section shop-section"><div class="section-title"><h3>'+esc(n.emoji||'🏘️')+' '+esc(n.name||'Comerciante')+'</h3><small>'+esc(n.title||'')+'</small></div>'+
+      '<p>'+esc(n.description||'')+'</p><div class="tag-row"><span class="tag">⚖️ Reputação: '+(karma>=0?'+':'')+karma+'</span>'+
+      '<span class="tag">Compras restantes: '+num(shop.remaining||0)+'</span><span class="tag">Fragmentos restantes: '+num(shop.fragmentsRemaining||0)+'</span><span class="tag">Equipamentos restantes: '+num(shop.gearRemaining||0)+'</span></div>'+
+      '<div class="grid cards section">'+(shop.stock||[]).map(i=>{
+        let reason='';
+        if(i.requiredKarma!=null&&(n.id==='helena'?karma<Number(i.requiredKarma):karma>Number(i.requiredKarma)))
+          reason='🔒 Requer '+(n.id==='helena'?'Honra +':'Karma ')+i.requiredKarma;
+        else if(i.requiredRaid&&Number(shop.highestRaid||0)<Number(i.requiredRaid)) reason='🔒 Requer vitória na Raid Lv.'+i.requiredRaid;
+        else if(i.soldOut) reason='🔒 Limite diário de fragmentos atingido';
+        else if(!i.permitted) reason='🔒 Requisito não atendido';
+        else if(Number(shop.remaining)<=0) reason='🔒 Limite de compras atingido';
+        else if(['weapon','armor','boots'].includes(i.category)&&Number(shop.gearRemaining)<=0) reason='🔒 Limite de equipamentos atingido';
+        const blocked=Boolean(reason);
+        return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+
+        '<div class="tag-row"><span class="tag">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
+        '<h3>'+esc(itemDisplayName(i))+'</h3>'+
+        (Number(i.price)!==Number(i.basePrice)?'<p>Preço original: <s>'+money(i.basePrice)+'</s></p>':'')+
+        '<strong>'+money(i.price)+'</strong><p>'+(reason||'✅ Disponível')+'</p>'+
+        '<button class="btn primary" data-npc-buy="'+esc(n.id)+'" data-npc-number="'+Number(i.number)+'" '+(blocked?'disabled':'')+'>Comprar 1</button></div>';
+      }).join('')+'</div></div>';
+    }).join('');
 }
 
 function raidState(level){
@@ -1571,8 +1616,15 @@ function prettyResult(value){
   const combat=renderCombatResult(value);
   if(combat) return combat+(metrics.length?'<div class="result-metrics section">'+metrics.join('')+'</div>':'')+details;
   if(metrics.length||details) return (metrics.length?'<div class="result-metrics">'+metrics.join('')+'</div>':'')+details;
-  let raw; try{raw=JSON.stringify(value,null,2)}catch{raw=String(value)}
-  return '<pre class="result-box">'+esc(raw)+'</pre>';
+  if(Array.isArray(value.details)&&value.details.length){
+    return '<div class="result-rewards"><h4>📋 Resumo das operações</h4>'+value.details.map(entry=>{
+      const car=entry.car&&entry.car.name||entry.vehicle&&entry.vehicle.name||'';
+      const driver=entry.driver&&entry.driver.name||'';
+      const title=entry.name||car||entry.label||'Operação concluída';
+      return '<div class="reward-chip"><strong>'+esc(title)+'</strong>'+(driver?' • 👨‍✈️ '+esc(driver):'')+(Number.isFinite(Number(entry.amount))?' • 💰 '+money(entry.amount):'')+'</div>';
+    }).join('')+'</div>';
+  }
+  return '<div class="result-message">✅ Operação processada. Os dados da sua conta foram atualizados.</div>';
 }
 function renderCombatResult(value){
   if(!value||typeof value!=='object') return '';
@@ -1595,7 +1647,7 @@ function renderCombatResult(value){
 
 function resultPanel(){
   if(ui.lastResult==null) return '';
-  return '<div class="section card result-card"><div class="result-scene">'+artSprite('bg-result','result-scene-art','Tela de resultado')+'</div><div class="section-title"><h3>Resultado</h3><button class="text-btn" data-clear-result>Limpar</button></div>'+prettyResult(ui.lastResult)+'</div>';
+  return '<div class="section card result-card"><div class="section-title"><h3>✅ Última ação</h3></div>'+prettyResult(ui.lastResult)+'</div>';
 }
 
 function characterForClass(id){
@@ -2040,7 +2092,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,npcs:renderNpcs,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
 }
@@ -2060,6 +2112,8 @@ function bind(){
     window.scrollTo({top:0,left:0,behavior:'auto'});
   });
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
+  document.querySelectorAll('[data-inventory-tab]').forEach(x=>x.onclick=()=>{ui.inventoryTab=x.dataset.inventoryTab;render();});
+  document.querySelectorAll('[data-npc-buy]').forEach(x=>x.onclick=async()=>{if(!confirm('Confirmar compra com '+x.dataset.npcBuy+'?'))return;x.disabled=true;try{await doAction('npc.buy',{npcId:x.dataset.npcBuy,number:Number(x.dataset.npcNumber)},{success:'🛍️ Compra realizada.'});await loadNpcShops();render();}catch{render();}});
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
   document.querySelectorAll('[data-pet-team-save]').forEach(x=>x.onclick=()=>{
     const selects=[...document.querySelectorAll('[data-team-slot]')].sort((a,b)=>Number(a.dataset.teamSlot)-Number(b.dataset.teamSlot));
