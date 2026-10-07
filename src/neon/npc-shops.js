@@ -6,36 +6,39 @@ import { alphaReputationTitle } from './progression.js'
 const NPC_CATALOG=Object.freeze([
   {
     id:'helena',name:'Helena',title:'Guardiã da Ordem',emoji:'🛡️',
-    description:'Proteção, curas e equipamentos defensivos.',
+    description:'Proteção, ressurreição e relíquias de Honra.',
     goods:[
-      {id:'pocao_g'}, {id:'elixir_supremo'}, {id:'pocao_pet_rara'},
-      {id:'armadura_bastiao'},
-      {id:'couraca_guardiao',gate:30},
+      {id:'pocao_g'}, {id:'elixir_supremo'},
+      {id:'armadura_bastiao'}, {id:'couraca_guardiao',gate:30},
       {id:'pocao_ressurreicao',npcPrice:45000},
-      {id:'selo_guardiao',npcPrice:28000}
+      {id:'selo_guardiao',npcPrice:28000,gate:10},
+      {id:'elixir_disciplina',npcPrice:65000,gate:30},
+      {id:'pergaminho_virtude',npcPrice:125000,gate:70}
     ]
   },
   {
     id:'mordek',name:'Mordek',title:'Mercador das Sombras',emoji:'🗡️',
-    description:'Equipamento ofensivo, curas de pet e mercadorias do submundo.',
+    description:'Óleos, técnicas proibidas e tesouros do submundo.',
     goods:[
-      {id:'pocao_pet_epica'}, {id:'energetico_pet'}, {id:'sabre_runico'},
-      {id:'katana_sombria'},
+      {id:'pocao_pet_epica'}, {id:'energetico_pet'},
       {id:'foice_carmesim',gate:-30},
-      {id:'oleo_sombras',npcPrice:35000},
+      {id:'oleo_sombras',npcPrice:35000,gate:-10},
       {id:'olho_abissal',npcPrice:55000,raidLevel:20},
-      {id:'nucleo_titan',npcPrice:95000,raidLevel:25}
+      {id:'nucleo_titan',npcPrice:95000,raidLevel:25},
+      {id:'elixir_sombras',npcPrice:65000,gate:-30},
+      {id:'tomo_proibido',npcPrice:125000,gate:-70}
     ]
   },
   {
     id:'baltazar',name:'Baltazar',title:'Mercador Errante',emoji:'🎒',
-    description:'Atende heróis, vilões e neutros sem julgamento.',
+    description:'Compra neutra de materiais e experiência para todos.',
     goods:[
-      {id:'pocao_m'}, {id:'pocao_pet_rara'}, {id:'bota_vento'},
+      {id:'pocao_m'}, {id:'bota_vento'},
       {id:'caixa_sorte'}, {id:'chave_raid_10'},
       {id:'nucleo_pedra',npcPrice:18000,raidLevel:10},
       {id:'escama_vulcanica',npcPrice:30000,raidLevel:15},
-      {id:'essencia_rei_abissal',npcPrice:160000,raidLevel:30}
+      {id:'essencia_rei_abissal',npcPrice:160000,raidLevel:30},
+      {id:'pergaminho_experiencia',npcPrice:48000}
     ]
   }
 ])
