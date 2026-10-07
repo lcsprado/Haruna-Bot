@@ -52,7 +52,8 @@ import {
   hireCltUberDriver, getCltUberStatus, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent,
-  getAlphaContractBoard, acceptAlphaContract, progressAlphaContract, claimAlphaContract
+  getAlphaContractBoard, acceptAlphaContract, progressAlphaContract, claimAlphaContract,
+  getAlphaReputation, changeAlphaReputation
 } from './progression.js'
 import {
   initLoans, startLoanCollector, createLoanOffer, acceptLoan, rejectLoan, payLoan,
@@ -164,6 +165,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
           for(const player of r.rewards||[]){
             if(Number(player.share||0)>=0.02){
               await progressAlphaContract(player.jid,'boss').catch(err=>console.error('[Contratos] boss',err?.message||err))
+              await changeAlphaReputation(player.jid,'boss_victory',2).catch(err=>console.error('[Karma] boss',err?.message||err))
             }
           }
           const bossTitle=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
@@ -309,7 +311,10 @@ async function runRaidCombat(chat,level,reply){
 
         if(r.victory){
           for(const player of r.rewards||[]){
-            if(Number(player.share||0)>=0.02) await progressAlphaContract(player.jid,'raid',{raidLevel:Number(r.config.level||level)}).catch(err=>console.error('[Contratos] raid',err?.message||err))
+            if(Number(player.share||0)>=0.02){
+              await progressAlphaContract(player.jid,'raid',{raidLevel:Number(r.config.level||level)}).catch(err=>console.error('[Contratos] raid',err?.message||err))
+              await changeAlphaReputation(player.jid,'raid_victory',2).catch(err=>console.error('[Karma] raid',err?.message||err))
+            }
           }
           let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*
 
@@ -887,10 +892,10 @@ function xpBar(exp,level){
 }
 
 async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
-  const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks]=await Promise.all([
+  const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,reputation]=await Promise.all([
     getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
     getMotorcycleGarage(jid),getBusinesses(jid),getCareer(jid),getPet(jid),
-    getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid)
+    getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid),getAlphaReputation(jid)
   ])
   if(!p) throw new Error('Perfil não encontrado.')
 
@@ -918,6 +923,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
 ${title}${badge?' • '+badge:''}
 
 ⭐ Nível: *${Number(p.level||1)}*
+⚖️ Reputação: *${reputation.title}* (${reputation.karma>0?'+':''}${reputation.karma}/100)
 🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ✨ EXP: *${xp.current}/${xp.needed}*
 [${xp.bar}]
@@ -2818,6 +2824,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!missaogrupo* / *!missao* — objetivo, progresso e ranking
 *!missaostatus* — status da missão coletiva
 *!resgatarmissao* — resgata sua parte da recompensa
+*!karma* / *!honra* — sua reputação de herói ou vilão
 *!contratos* — quadro de contratos a cada 4 horas
 *!aceitarcontrato número* — aceita uma missão
 *!resgatarcontrato* — resgata recompensa concluída
@@ -6401,9 +6408,13 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       if(!r.ok) await reply(`⏳ Tente roubar novamente em ${duration(r.remaining)}.`)
       else if(r.success){
         await progressAlphaContract(sender,'robbery').catch(err=>console.error('[Contratos] roubo',err?.message||err))
+        await changeAlphaReputation(sender,'robbery_success',-3).catch(err=>console.error('[Karma] roubo',err?.message||err))
         await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.`,{mentions:[targetMention]})
       }
-      else await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:[targetMention]})
+      else {
+        await changeAlphaReputation(sender,'robbery_failure',-1).catch(err=>console.error('[Karma] roubo',err?.message||err))
+        await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:[targetMention]})
+      }
       return true
     }
 
@@ -8321,6 +8332,11 @@ ${results.join('\n')}
           r.leaderboard.forEach((x,i)=>out+=`${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} *${x.push_name||'Jogador'}* — ${x.contribution} ${unit} • *R$ ${fmt(x.share)}*\n`)
           await reply(out)
 
+        } else if(['karma','honra','reputacao','reputação'].includes(cmd)){
+          const r=await getAlphaReputation(sender)
+          const path=r.karma>=10?'Caminho do Herói':r.karma<=-10?'Caminho do Vilão':'Neutro'
+          await reply(`⚖️ *HONRA & KARMA ALPHA*\n\n🎭 Título: *${r.title}*\n📊 Karma: *${r.karma>0?'+':''}${r.karma}/100*\n🧭 Caminho: *${path}*\n\n🛡️ Raids e Bosses (+2 por vitória com participação real)\n😈 Roubo bem-sucedido (-3); tentativa fracassada (-1)\n⏳ Limite de 12 mudanças por ação a cada 24 horas.\n\n🏪 Lojas e NPCs especiais serão lançados na próxima etapa.`)
+
         } else if(['contratos','quadro','quadrocontratos','missoeshora','missoesdahora'].includes(cmd)){
           const board=await getAlphaContractBoard(sender)
           const remaining=Math.max(1,Math.ceil((board.nextAt-Date.now())/60000))
@@ -9583,11 +9599,13 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const victimName=victimProfile?.push_name||targetIdentity?.pushName||'Jogador'
           if(r.success){
             await progressAlphaContract(sender,'robbery').catch(err=>console.error('[Contratos] roubo',err?.message||err))
+            await changeAlphaReputation(sender,'robbery_success',-3).catch(err=>console.error('[Karma] roubo',err?.message||err))
             const successText=cmd==='fazol'
               ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!* 😂\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor levado: *R$ ${fmt(r.amount)}*\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
               : `🕵️ *ROUBO BEM-SUCEDIDO!*\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor roubado: *R$ ${fmt(r.amount)}*`
             await reply(successText,{mentions:[targetMention]})
           } else {
+            await changeAlphaReputation(sender,'robbery_failure',-1).catch(err=>console.error('[Karma] roubo',err?.message||err))
             const failText=cmd==='fazol'
               ? `🚓 *A CERVEJINHA DEU RUIM!* 😂\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*\nDessa vez não deu pra tomar a gelada.`
               : `🚓 *ROUBO FRACASSOU!*\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*`
