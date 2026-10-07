@@ -55,6 +55,7 @@ import {
   getAlphaContractBoard, acceptAlphaContract, progressAlphaContract, claimAlphaContract,
   getAlphaReputation, changeAlphaReputation
 } from './progression.js'
+import { initNpcShops, listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {
   initLoans, startLoanCollector, createLoanOffer, acceptLoan, rejectLoan, payLoan,
   getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
@@ -1371,6 +1372,7 @@ async function start() {
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
   await initProgression()
+  await initNpcShops()
   await initLoans()
   startLoanCollector()
   await acquireRuntimeLock(sessionId)
@@ -2230,6 +2232,38 @@ ${moneyLine}✨ XP: *${xpMult}x*
     }
   }
 
+  async function showNpcMerchantsMenu(chat,sender,reply){
+    const r=await listNpcShops(sender)
+    setQuickFlow(chat,sender,'npc_select',{},120000)
+    let out=`🏘️ *MERCADORES DO ALPHA*\n\n⚖️ Seu Karma: *${r.karma>0?'+':''}${r.karma}* — ${r.title}\n🛍️ Compras restantes: *${r.remaining}/3* (somando os NPCs)\n\n`
+    for(const n of r.merchants){
+      const relation=n.modifier<1?`✅ desconto de ${Math.round((1-n.modifier)*100)}%`:n.modifier>1?`⚠️ acréscimo de ${Math.round((n.modifier-1)*100)}%`:'preços normais'
+      out+=`*${n.number}.* ${n.emoji} ${n.name} — ${n.title}\n_${n.description}_\n💰 ${relation}\n\n`
+    }
+    out+='👉 *Responda 1, 2 ou 3* para conversar com um NPC.\n⌨️ Ou use *!npc 1* para abrir diretamente.\n⏳ O limite de compras reinicia a cada 4 horas.'
+    await reply(out)
+  }
+
+  async function showNpcGoodsMenu(chat,sender,reply,npcRef){
+    const r=await getNpcShop(sender,npcRef)
+    const flavor=r.npc.id==='helena'
+      ?(r.karma>=30?'“A Ordem reconhece seus feitos. Meu estoque está à sua disposição.”':r.karma<=-30?'“Sei o que fez. Não espere favores por aqui.”':'“Honre sua palavra e encontrará aliados.”')
+      :r.npc.id==='mordek'
+        ?(r.karma<=-30?'“Vejo que conhece as regras das sombras... ou a falta delas.”':r.karma>=30?'“Um santo perdido no meu mercado? Isso vai custar caro.”':'“Aqui ninguém pergunta de onde veio o ouro.”')
+        :'“Todo mundo tem uma história. O preço é o mesmo para todos.”'
+    const relation=r.factor<1?`✅ Desconto de *${Math.round((1-r.factor)*100)}%*`:r.factor>1?`⚠️ Acréscimo de *${Math.round((r.factor-1)*100)}%*`:'⚖️ Preço normal'
+    let out=`${r.npc.emoji} *${r.npc.name.toUpperCase()} — ${r.npc.title.toUpperCase()}*\n\n_${flavor}_\n\n⚖️ Karma: *${r.karma>0?'+':''}${r.karma}* • ${relation}\n🛍️ Compras restantes: *${r.remaining}/3* • Equipamentos: *${r.gearRemaining}/1*\n\n`
+    for(const item of r.stock){
+      const blocked=item.permitted?'':` 🔒 ${r.npc.id==='helena'?'Honra +'+item.requiredKarma:'Karma '+item.requiredKarma+' ou menos'}`
+      const changed=item.price!==item.basePrice?` _(normal R$ ${fmt(item.basePrice)})_`:''
+      out+=`*${item.number}.* ${item.name} — *R$ ${fmt(item.price)}*${changed}${blocked}\n`
+    }
+    out+='
+👉 *Responda com o número do item* para comprar 1 unidade.\n⌨️ Ou *!comprarnpc '+(r.npc.id==='helena'?'1':r.npc.id==='mordek'?'2':'3')+' 1*\n9️⃣ Voltar aos NPCs • 0️⃣ Sair'
+    setQuickFlow(chat,sender,'npc_goods',{npcId:r.npc.id},120000)
+    await reply(out)
+  }
+
   async function showShopCategoryMenu(chat,sender,reply){
     setQuickFlow(chat,sender,'shop_category',{},90000)
     await reply(
@@ -2244,6 +2278,7 @@ ${moneyLine}✨ XP: *${xpMult}x*
 7️⃣ 🚗 Carros
 8️⃣ 🚲🏍️ Bicicletas e motos
 9️⃣ 🔑 Chaves de Raid
+🔟 🏘️ Mercadores NPCs
 
 0️⃣ Sair
 
@@ -2471,6 +2506,21 @@ Escolha o que deseja vender:
     if(['0','sair','cancelar','cancel'].includes(input)){
       clearQuickFlow(chat,sender)
       await reply('✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
+      return true
+    }
+
+    if(flow.stage==='npc_select'){
+      if(input==='9') return await showNpcMerchantsMenu(chat,sender,reply),true
+      if(!['1','2','3'].includes(input)){ await reply('🏘️ Escolha o NPC *1, 2 ou 3* ou 0 para sair.'); return true }
+      await showNpcGoodsMenu(chat,sender,reply,input)
+      return true
+    }
+    if(flow.stage==='npc_goods'){
+      if(input==='9'){ await showNpcMerchantsMenu(chat,sender,reply); return true }
+      if(!/^[1-5]$/.test(input)){ await reply('🛒 Responda com um item de *1 a 5*, 9 para voltar ou 0 para sair.'); return true }
+      const bought=await buyNpcShopItem(sender,flow.data.npcId,Number(input))
+      await reply(`${bought.npc.emoji} *COMPRA COM ${bought.npc.name.toUpperCase()} CONCLUÍDA!*\n\n📦 ${bought.item.name} ×1\n💵 Valor pago: *R$ ${fmt(bought.price)}*${bought.saved>0?`\n✅ Desconto: R$ ${fmt(bought.saved)}`:bought.saved<0?`\n⚠️ Acréscimo por reputação: R$ ${fmt(-bought.saved)}`:''}\n🛍️ Compras restantes: ${bought.remaining}/3`)
+      await showNpcGoodsMenu(chat,sender,reply,flow.data.npcId)
       return true
     }
 
@@ -2825,6 +2875,9 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!missaostatus* — status da missão coletiva
 *!resgatarmissao* — resgata sua parte da recompensa
 *!karma* / *!honra* — sua reputação de herói ou vilão
+*!npcs* — mercadores com preços influenciados pelo Karma
+*!npc 1* — conversa e abre a loja do NPC
+*!comprarnpc 1 2* — compra o item 2 do NPC 1
 *!contratos* — quadro de contratos a cada 4 horas
 *!aceitarcontrato número* — aceita uma missão
 *!resgatarcontrato* — resgata recompensa concluída
@@ -5752,6 +5805,10 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='shop_category'){
+      if(input==='10'){
+        await showNpcMerchantsMenu(chat,sender,reply)
+        return true
+      }
       if(input==='6'){
         await funMenu()
         return true
@@ -8335,7 +8392,7 @@ ${results.join('\n')}
         } else if(['karma','honra','reputacao','reputação'].includes(cmd)){
           const r=await getAlphaReputation(sender)
           const path=r.karma>=10?'Caminho do Herói':r.karma<=-10?'Caminho do Vilão':'Neutro'
-          await reply(`⚖️ *HONRA & KARMA ALPHA*\n\n🎭 Título: *${r.title}*\n📊 Karma: *${r.karma>0?'+':''}${r.karma}/100*\n🧭 Caminho: *${path}*\n\n🛡️ Raids e Bosses (+2 por vitória com participação real)\n😈 Roubo bem-sucedido (-3); tentativa fracassada (-1)\n⏳ Limite de 12 mudanças por ação a cada 24 horas.\n\n🏪 Lojas e NPCs especiais serão lançados na próxima etapa.`)
+          await reply(`⚖️ *HONRA & KARMA ALPHA*\n\n🎭 Título: *${r.title}*\n📊 Karma: *${r.karma>0?'+':''}${r.karma}/100*\n🧭 Caminho: *${path}*\n\n🛡️ Raids e Bosses (+2 por vitória com participação real)\n😈 Roubo bem-sucedido (-3); tentativa fracassada (-1)\n⏳ Limite de 12 mudanças por ação a cada 24 horas.\n\n🏪 Visite *!npcs*: Helena, Mordek e Baltazar oferecem preços e itens conforme o Karma.`)
 
         } else if(['contratos','quadro','quadrocontratos','missoeshora','missoesdahora'].includes(cmd)){
           const board=await getAlphaContractBoard(sender)
@@ -8656,6 +8713,18 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           SIGNS.forEach((sg,i)=>text+='*'+(i+1)+'.* '+sg[1]+'\n')
           text+='\n0️⃣ Sair'
           await reply(text)
+
+        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojanpc'].includes(cmd)){
+          await showNpcMerchantsMenu(chat,sender,reply)
+
+        } else if(['npc','falarnpc'].includes(cmd)){
+          if(!args[0]) await showNpcMerchantsMenu(chat,sender,reply)
+          else await showNpcGoodsMenu(chat,sender,reply,args[0])
+
+        } else if(['comprarnpc','npccomprar'].includes(cmd)){
+          if(!args[0]||!args[1]) return await reply('🛒 Use *!npc 1* para ver a loja e *!comprarnpc 1 2* para comprar o item 2 do NPC 1.')
+          const bought=await buyNpcShopItem(sender,args[0],args[1])
+          await reply(`${bought.npc.emoji} *COMPRA CONCLUÍDA COM ${bought.npc.name.toUpperCase()}!*\n📦 ${bought.item.name} ×1\n💰 Pago: *R$ ${fmt(bought.price)}*${bought.saved>0?` • desconto R$ ${fmt(bought.saved)}`:bought.saved<0?` • acréscimo R$ ${fmt(-bought.saved)}`:''}\n🛍️ Compras restantes: ${bought.remaining}/3`)
 
         } else if(['loja','shop'].includes(cmd)){
           await showShopCategoryMenu(chat,sender,reply)
