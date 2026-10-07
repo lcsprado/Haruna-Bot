@@ -983,3 +983,12 @@ body.loot-open{overflow:hidden!important}
 .pet-vector-stack.pet-art-loaded .pet-image-fallback{display:none!important}
 .pet-vector-stack .pet-image-fallback{position:relative;z-index:1}
 .pet-cropped-art.pet-primary-art{background-repeat:no-repeat!important;image-rendering:auto}
+
+/* Inventário por abas — apenas a categoria selecionada é renderizada. */
+.inventory-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;gap:8px;padding:6px 2px 12px;max-width:100%;-webkit-overflow-scrolling:touch}
+.inventory-tabs .tab{flex:0 0 auto;white-space:nowrap;min-height:42px}
+.inventory-equipped-section{border:1px solid #5277ad;border-radius:15px;padding:14px;background:rgba(51,82,119,.10)}
+.inventory-equipped-section .item-actions [data-item-sell],.inventory-equipped-section .item-actions [data-item-sell-all]{display:none!important}
+.item-card .item-art{display:grid;place-items:center;overflow:hidden;min-height:160px}
+.item-card .item-art img{object-fit:contain;object-position:center;max-height:100%;max-width:100%}
+@media(max-width:600px){.inventory-tabs{margin-inline:-4px}.inventory-tabs .tab{font-size:13px;padding-inline:13px}.inventory-equipped-section{padding:10px}}
