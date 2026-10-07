@@ -1193,6 +1193,11 @@ export async function purchaseService(jid, serviceId, price) {
   })
 }
 
+// Fonte única da loja comum: catálogo canônico ativo, não todo registro legado do banco.
+// O mesmo filtro é aplicado à listagem e à compra (WhatsApp/Web).
+const REGULAR_SHOP_IDS = new Set(["pocao_p","pocao_m","pocao_g","elixir_supremo","pocao_pet_comum","pocao_pet_rara","pocao_pet_epica","pocao_pet_suprema","energetico_pet","espada_madeira","espada_ferro","espada_aco","machado_guerra","katana_sombria","espada_flamas","tridente_tempestade","lamina_abissal","sabre_runico","lamina_cacador","espada_guardiao","foice_carmesim","lanca_solar","garras_vazio","espada_eclipse","armadura_couro","armadura_ferro","armadura_aco","armadura_samurai","armadura_cavaleiro","armadura_dragao","armadura_abissal","armadura_celestial","armadura_bastiao","manto_runico","couraca_guardiao","manto_fenix","couraca_vulcanica","armadura_vazio","armadura_eclipse","bota_leve","bota_vento","bota_cacador","bota_relampago","chave_raid_10","chave_raid_15","chave_raid_20","chave_raid_25","chave_raid_30","chave_raid_40","chave_raid_50","caixa_sorte","caixa_rara","caixa_epica"]);
+export const isRegularShopItem = item => Boolean(item && Number(item.price)>0 && REGULAR_SHOP_IDS.has(String(item.id)));
+
 export async function getShop() {
   const { rows } = await db.query(`
     SELECT id,name,description,category,price,rarity
@@ -1200,7 +1205,7 @@ export async function getShop() {
     WHERE price > 0
     ORDER BY category,price
   `)
-  return rows
+  return rows.filter(isRegularShopItem)
 }
 
 export async function buyItem(jid, itemId, qty=1) {
@@ -1211,7 +1216,7 @@ export async function buyItem(jid, itemId, qty=1) {
     const itemR = await client.query('SELECT * FROM items WHERE id=$1',[itemId])
     const item=itemR.rows[0]
     if (!item) throw new Error('Item não encontrado.')
-    if(item.id==='pergaminho_reclassificacao' || Number(item.price)<=0) throw new Error('Esse item não está à venda.')
+    if(!isRegularShopItem(item)) throw new Error('Esse item não está à venda na loja comum.')
 
     const total = Number(item.price)*qty
     const walletR = await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
