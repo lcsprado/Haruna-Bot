@@ -1361,7 +1361,7 @@ function inventoryBucket(item){
   if(cat==='boots') return 'boots';
   if(cat==='box' || id.includes('caixa_') || id==='lootbox_std') return 'boxes';
   if(cat==='pet_potion'||cat==='pet_energy'||id.includes('pet_')||id==='energetico_pet') return 'pets';
-  if(cat==='raid' || id.includes('fragmento_raid') || id.includes('chave_raid') || id.startsWith('raid_') || description.includes('raid lv.')) return 'raid';
+  if(cat==='raid' || id.includes('fragmento_raid') || id.includes('chave_raid') || id.startsWith('raid_') || ['nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido'].includes(id) || description.includes('raid lv.')) return 'raid';
   if(cat==='material') return 'materials';
   if(['consumable','potion','pet_potion','pet_energy'].includes(cat) || id.startsWith('pocao_') || id==='energetico_pet') return 'consumables';
   if(cat==='special') return 'special';
@@ -1438,7 +1438,7 @@ function renderInventory(){
 }
 
 function shopCategoryLabel(cat){
-  return ({weapon:'🗡️ Armas',armor:'🛡️ Armaduras',boots:'🥾 Botas',potion:'🧪 Poções',pet_potion:'🐾 Cura Pet',pet_energy:'⚡ Energia Pet',box:'📦 Caixas',raid:'🔑 Raid',material:'🧩 Materiais'}[cat]||('📦 '+titleCase(cat||'outros')));
+  return ({weapons:'⚔️ Armas',armors:'🛡️ Armaduras',boots:'🥾 Botas / Equipamentos',consumables:'🧪 Consumíveis',pets:'🐾 Itens de Pet',boxes:'🎁 Caixas',raid:'🔑 Chaves e Raid',materials:'🧩 Materiais',special:'✨ Especiais',other:'📦 Outros'}[cat]||'📦 Outros');
 }
 function shopCard(i){
   const eq=i.equipment||{};
@@ -1456,7 +1456,7 @@ function renderShop(){
   const items=(ui.catalog&&ui.catalog.shop)||[];
   const groups=[];
   for(const i of items){
-    const key=String(i.category||'outros');
+    const key=inventoryBucket({...i,item_id:i.id});
     let g=groups.find(x=>x.key===key);
     if(!g){g={key,items:[]};groups.push(g)}
     g.items.push(i);
