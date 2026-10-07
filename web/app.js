@@ -335,12 +335,12 @@ const PET_IMAGE_ASSETS={
   tigre:'/assets/pets/tigre.webp',
   leao:'/assets/pets/leao.webp',
   dragao:'/assets/pets/dragao.webp',
-  tubarao_abissal:'/assets/pets/tubarao-abissal.webp',
+  // A versão anterior continha uma baleia em vez de um tubarão. Usa a arte verificada do atlas.
   polvo_arcano:'/assets/pets/polvo-arcano.webp',
   baleia_colossal:'/assets/pets/baleia-colossal.webp',
-  corvo_abissal:'/assets/pets/corvo-abissal.webp',
+  // A versão anterior continha um lobo em vez de um corvo. Usa a arte verificada do atlas.
   grifo_celestial:'/assets/pets/grifo-celestial.webp',
-  fenix_gelo:'/assets/pets/fenix-de-gelo.webp',
+  // A versão anterior estava desfocada. A Fênix de Gelo usa o sprite oficial com paleta de gelo.
   fenix_celestial:'/assets/pets/fenix-celestial.webp',
   serpente_cosmica:'/assets/pets/serpente-cosmica.webp'
 };
@@ -348,6 +348,8 @@ const PET_IMAGE_ASSETS={
 function petExactImage(species){
   const s=String(species||'').toLowerCase();
   if(PET_IMAGE_ASSETS[s]) return PET_IMAGE_ASSETS[s];
+  // Só reutilizar um animal da mesma espécie. Nunca substituir corvo por lobo,
+  // tubarão por baleia ou criatura de Raid por figura não correspondente.
   if(s==='leao_solar') return PET_IMAGE_ASSETS.leao;
   if(s==='tigre_lunar') return PET_IMAGE_ASSETS.tigre;
   if(s==='lobo_abismo') return PET_IMAGE_ASSETS.lobo;
@@ -388,29 +390,40 @@ function petSpeciesName(species){
   const raw=String(row?.label||row?.name||titleCase(s));
   return raw.replace(/^[^\p{L}\p{N}]+/u,'').trim()||titleCase(s);
 }
+const VERIFIED_RAID_PET_SPRITES={
+  corvo_abissal:'pet-crow',tubarao_abissal:'pet-shark',
+  fenix_gelo:'pet-phoenix',fenix_fogo:'pet-phoenix',fenix_alpha:'pet-phoenix',
+  golem_ancestral:'pet-golem',urso_runico:'fixed-urso-runico',
+  leviata_gelo:'pet-leviathan',imperador_abissal:'pet-shark',
+  cerbero_carmesim:'pet-infernal-wolf'
+};
 function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
   const label=petSpeciesName(s);
   const exclusive='pet-special-'+s;
 
-  // Pets de Raid/endgame: uma única arte por card. Nunca empilha sprite de outra espécie.
-  if(PREMIUM_PET_SPRITES[exclusive]||SPECIAL_PET_SPRITES[exclusive]){
+  // Somente os 11 pets cuja arte foi conferida no atlas premium.
+  if(PREMIUM_PET_SPRITES[exclusive]){
     return petCroppedSprite(exclusive,className+' pet-primary-art',label);
   }
-
+  // Artes individuais verificadas têm prioridade; nenhum animal emprestado de outra espécie.
   const img=petExactImage(s);
   if(img){
     return '<div class="pet-art-stack">'+
       petSpeciesFallback(s,className+' pet-image-fallback',label)+
-      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=alpha-pets-20261006-5" alt="'+esc(label)+'" loading="lazy" '+
+      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=alpha-pets-audit-20261006-1" alt="'+esc(label)+'" loading="lazy" '+
       'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
 
-  // Só usa sprite oficial quando ele representa a MESMA espécie.
-  const nativeKey=petSpriteKey(s);
-  if(nativeKey) return petCroppedSprite(nativeKey,className+' pet-primary-art',label);
+  // Atlas original: apenas para animais que foram identificados visualmente.
+  const verified=VERIFIED_RAID_PET_SPRITES[s]||petSpriteKey(s);
+  if(verified){
+    const effects=(s==='fenix_gelo'||s==='leviata_gelo')?' pet-ice-palette':'';
+    return petCroppedSprite(verified,className+' pet-primary-art'+effects,label);
+  }
 
-  // Espécies que ainda não têm arquivo individual nunca recebem imagem de outro animal.
+  // Os 21 outros slots em alpha-raid-pets-1/2 são monstros genéricos e
+  // NÃO representam as espécies dos cards. Nunca voltar a usá-los.
   return petSpeciesFallback(s,className,label);
 }
 
