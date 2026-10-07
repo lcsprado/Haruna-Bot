@@ -390,18 +390,34 @@ test('all Raid/endgame pets have unique exclusive art slots',()=>{
   assert.equal(seen.size,raidSpecies.length,'every Raid/endgame pet must have its own art slot')
 })
 
-test('PWA precaches every pet-art source and never ships visible English status jargon',()=>{
-  for(const asset of [
-    '/assets/official-art-sheet.jpg','/assets/alpha-fixed-art.webp','/assets/alpha-special-pets.webp',
-    '/assets/alpha-raid-pets-1.webp','/assets/alpha-raid-pets-2.webp',
-    '/assets/pets/aguia.webp','/assets/pets/baleia-colossal.webp','/assets/pets/corvo-abissal.webp',
-    '/assets/pets/dragao.webp','/assets/pets/fenix-celestial.webp','/assets/pets/fenix-de-gelo.webp',
-    '/assets/pets/gato.webp','/assets/pets/grifo-celestial.webp','/assets/pets/kitsune.webp',
-    '/assets/pets/leao.webp','/assets/pets/lobo.webp','/assets/pets/polvo-arcano.webp',
-    '/assets/pets/raposa.webp','/assets/pets/serpente-cosmica.webp','/assets/pets/tigre.webp','/assets/pets/tubarao-abissal.webp'
-  ]){
-    assert.ok(serviceWorker.includes(asset),'pet art must be precached: '+asset)
+test('PWA precaches only audited art sources and all species-specific portraits',()=>{
+  const species=[
+    'coelho','papagaio','hamster','coruja','golfinho_celestial','moreia_sombria','gaviao','guepardo',
+    'gazela_mistica','cervo_mistico','cavalo_guerra','unicornio','colosso_cristal','salamandra_infernal',
+    'rinoceronte_titanico','guardiao_obsidiana','cerbero_carmesim','fenix_gelo','fenix_alpha',
+    'dragao_corrompido','imperador_abissal','leviata_gelo','lobo_abismo','urso_runico','golem_ancestral',
+    'corvo_abissal','tubarao_abissal','tigre_lunar','leao_solar','fenix_fogo','dragao_vulcanico',
+    'rinoceronte','colosso_alpha','serpente_cosmica'
+  ]
+  for(const species of species){
+    const asset='/assets/pet-portraits/'+species+'.svg'
+    assert.ok(serviceWorker.includes(asset),'missing PWA-cached species art: '+species)
+    assert.ok(app.includes('"' + species + '"') || app.includes("'"+species+"'"),'missing species art entry: '+species)
+    const file=readFileSync(new URL('../web'+asset,import.meta.url),'utf8')
+    assert.ok(file.includes('<svg ') && file.includes('</svg>'),'invalid SVG structure for '+species)
+    assert.ok(file.includes('aria-label="'+species.replaceAll('_',' ')+'"'),'pet art must identify its species: '+species)
   }
+  for(const invalid of ['corvo-abissal.webp','tubarao-abissal.webp','fenix-de-gelo.webp','alpha-raid-pets-1.webp','alpha-raid-pets-2.webp']){
+    assert.ok(!serviceWorker.includes("'"+(invalid.startsWith('alpha-')?'/assets/':'/assets/pets/')+invalid+"'"),
+      'invalid or unrelated art must not be precached: '+invalid)
+  }
+  assert.ok(app.includes('PET_VERIFIED_VECTOR_ASSETS.has(s)'),'missing render path for audited SVG assets')
+  assert.ok(app.includes('if(PREMIUM_PET_SPRITES[exclusive])'),'approved premium pet atlas must be preferred')
+  assert.ok(!app.includes('if(PREMIUM_PET_SPRITES[exclusive]||SPECIAL_PET_SPRITES[exclusive])'),
+    'unverified Raid sprites must never return')
+})
+
+test('visible pet labels and statuses remain Portuguese',()=>{
   assert.ok(app.includes("function raidStatusLabel(value)"),'Raid status translation helper missing')
   assert.ok(app.includes("function bossModeLabel(value)"),'Boss mode translation helper missing')
   assert.ok(app.includes("function petSpeciesName(species)"),'pet species must use catalog Portuguese names')
@@ -421,7 +437,6 @@ test('PWA precaches every pet-art source and never ships visible English status 
   assert.ok(!app.includes("esc(b.mode||'common')"),'raw Boss mode must be translated')
   assert.ok(!app.includes("esc(x.status)"),'raw loan status must be translated')
 })
-
 
 test('web raids run server-side and survive browser timer suspension',()=>{
   assert.ok(index.includes('globalThis.__alphaStartRaidRun'),'server raid runner bridge missing')
