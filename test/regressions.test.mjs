@@ -41,7 +41,7 @@ test('energia do pet possui descanso e custo transacional no Boss',async()=>{
   assert.match(indexSource,/\*!descansar\* — recupera energia e HP do pet/)
   assert.match(dbSource,/export function petMaxHp\(level=1,xp=0,species='cachorro'\)/)
   assert.match(dbSource,/const profile=PET_HP_PROFILES/)
-  assert.match(dbSource,/Number\(a\.atk\)\*2/)
+  assert.match(dbSource,/profile\.base\+\(lv-1\)\*profile\.growth/)
   assert.match(indexSource,/❤️ Vida: \*\$\{p\.hp\}\/\$\{p\.max_hp\}\*/)
 })
 
