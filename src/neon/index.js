@@ -161,6 +161,11 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
         if(r.dead){
+          for(const player of r.rewards||[]){
+            if(Number(player.share||0)>=0.02){
+              await progressAlphaContract(player.jid,'boss').catch(err=>console.error('[Contratos] boss',err?.message||err))
+            }
+          }
           const bossTitle=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
           let text=`💥 *${bossTitle} DERROTADO!*\n\n👹 ${r.maxHp.toLocaleString('pt-BR')} HP eliminados!\n\n🏆 *RANKING E RECOMPENSAS*\n`
           r.rewards.forEach((x,n)=>{
