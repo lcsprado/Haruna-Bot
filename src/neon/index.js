@@ -57,6 +57,11 @@ import {
 } from './progression.js'
 import { initNpcShops, listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {
+  initCitySystem, cityNpcCatalog, getCityStanding, getNpcMemory,
+  spreadRumor, getRumorFeed, maybeCreateCityEncounter, getPendingCityEncounter,
+  resolveCityEncounter, recordCityRobbery, getBlackMarketMission, progressBlackMarketMission
+} from './city.js'
+import {
   initLoans, startLoanCollector, createLoanOffer, acceptLoan, rejectLoan, payLoan,
   getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 } from './loans.js'
@@ -1444,6 +1449,7 @@ async function start() {
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
   await initProgression()
+  await initCitySystem()
   await initNpcShops()
   await initLoans()
   startLoanCollector()
