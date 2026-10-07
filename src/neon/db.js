@@ -354,6 +354,10 @@ export async function initDatabase() {
     ['pocao_pet_epica','Poção de Pet Épica','Recupera 320 HP do pet ativo.','consumable',3500,'epic'],
     ['pocao_pet_suprema','Poção de Pet Suprema','Recupera 800 HP do pet ativo.','consumable',9000,'legendary'],
     ['energetico_pet','Energético Pet','Restaura instantaneamente 100% da energia do pet ativo.','consumable',12000,'rare'],
+    // Consumíveis especiais de NPC: preço na tabela fica zero para não aparecerem na loja comum.
+    ['pocao_ressurreicao','Poção da Ressurreição','Na Raid, se o HP zerar e não restar cura comum, revive com 30% do HP. Máximo de uma vez por Raid.','consumable',0,'epic'],
+    ['selo_guardiao','Selo do Guardião','Consumido automaticamente no início da Raid; reduz 12% do dano recebido nessa Raid.','consumable',0,'rare'],
+    ['oleo_sombras','Óleo das Sombras','Consumido automaticamente no primeiro ataque da Raid ou Boss; aumenta em 6% o dano do jogador naquela batalha.','consumable',0,'epic'],
 
     // Armas
     ['espada_madeira','Espada de Madeira','Arma inicial do Alpha Bot. +5 ATK.','weapon',1500,'common'],
@@ -446,6 +450,9 @@ export async function initDatabase() {
           category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
     `, item)
   }
+
+  // Os consumíveis especiais são exclusivos dos NPCs e não entram na revenda geral.
+  await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras']])
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
   await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','marca_insone','coroa_madrugada','armadura_colosso']])
