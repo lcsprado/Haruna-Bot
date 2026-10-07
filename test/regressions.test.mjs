@@ -42,7 +42,7 @@ test('energia do pet possui descanso e custo transacional no Boss',async()=>{
   assert.match(dbSource,/export function petMaxHp\(level=1,xp=0,species='cachorro'\)/)
   assert.match(dbSource,/const profile=PET_HP_PROFILES/)
   assert.match(dbSource,/profile\.base\+\(lv-1\)\*profile\.growth/)
-  assert.match(indexSource,/❤️ Vida: \*\$\{p\.hp\}\/\$\{p\.max_hp\}\*/)
+  assert.match(indexSource,/petMaxHp\(p\.level,p\.xp,p\.species\)/)
 })
 
 test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',async()=>{
