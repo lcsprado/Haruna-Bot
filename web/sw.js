@@ -51,8 +51,7 @@ const SHELL=[
   '/assets/pet-portraits/dragao_vulcanico.svg',
   '/assets/pet-portraits/rinoceronte.svg',
   '/assets/pet-portraits/colosso_alpha.svg',
-  '/assets/pet-portraits/serpente_cosmica.svg',
-  '/assets/pets/tubarao-abissal.webp'
+  '/assets/pet-portraits/serpente_cosmica.svg'
 ];
 
 self.addEventListener('install',event=>{
