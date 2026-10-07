@@ -1,13 +1,14 @@
 import { db, ensureUser } from './db.js'
 import { getPatrimony } from './progression.js'
 
-const TERM_SECONDS=2*60*60
+const TERM_SECONDS=30*60
 const OFFER_TTL_SECONDS=10*60
 const INTEREST_RATE_PER_HOUR=0.02
 const MAX_INTEREST_HOURS=50
 const MIN_CREDIT=5_000
-const MAX_CREDIT=250_000
-const CREDIT_PATRIMONY_RATE=0.25
+const BASE_CREDIT_PATRIMONY_RATE=0.10
+const MAX_CREDIT_PATRIMONY_RATE=0.25
+const CREDIT_RATE_STEP=0.05
 const MAX_LENDER_ACTIVE=3
 
 const nowEpoch=()=>Math.floor(Date.now()/1000)
@@ -138,14 +139,38 @@ export async function getLoanCredit(jid){
   await ensureUser(jid)
   await expirePending()
   const patrimony=await getPatrimony(jid)
-  const base=Math.floor(Math.max(0,Number(patrimony?.total||0))*CREDIT_PATRIMONY_RATE)
-  const limit=Math.min(MAX_CREDIT,Math.max(MIN_CREDIT,base))
+  const {rows:historyRows}=await db.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE status='paid' AND COALESCE(interest_accrued,0)=0)::int AS paid_on_time,
+       COUNT(*) FILTER (WHERE status='paid' AND COALESCE(interest_accrued,0)>0)::int AS paid_late
+     FROM player_loans
+     WHERE borrower_jid=$1`,
+    [jid]
+  )
+  const paidOnTime=Math.max(0,Number(historyRows[0]?.paid_on_time||0))
+  const paidLate=Math.max(0,Number(historyRows[0]?.paid_late||0))
+  const creditScore=Math.max(0,paidOnTime-paidLate)
+  const rate=Math.min(
+    MAX_CREDIT_PATRIMONY_RATE,
+    BASE_CREDIT_PATRIMONY_RATE+(creditScore*CREDIT_RATE_STEP)
+  )
+  const patrimonyTotal=Math.max(0,Number(patrimony?.total||0))
+  const limit=Math.max(MIN_CREDIT,Math.floor(patrimonyTotal*rate))
   const {rows}=await db.query(
     "SELECT COALESCE(SUM(principal_remaining+interest_due),0)::bigint AS debt FROM player_loans WHERE borrower_jid=$1 AND status='active'",
     [jid]
   )
   const debt=Number(rows[0]?.debt||0)
-  return {limit,debt,available:Math.max(0,limit-debt),patrimony:Number(patrimony?.total||0)}
+  return {
+    limit,
+    debt,
+    available:Math.max(0,limit-debt),
+    patrimony:patrimonyTotal,
+    rate,
+    paidOnTime,
+    paidLate,
+    creditScore
+  }
 }
 
 export async function createLoanOffer(lenderJid,borrowerJid,amount){
@@ -168,10 +193,10 @@ export async function createLoanOffer(lenderJid,borrowerJid,amount){
     if(activeBorrower.rowCount) throw new Error('Essa pessoa já possui um empréstimo ou proposta em aberto.')
 
     const activeLender=await client.query(
-      "SELECT COUNT(*)::int AS total FROM player_loans WHERE lender_jid=$1 AND status='active'",
+      "SELECT COUNT(*)::int AS total FROM player_loans WHERE lender_jid=$1 AND status IN ('pending','active')",
       [lenderJid]
     )
-    if(Number(activeLender.rows[0]?.total||0)>=MAX_LENDER_ACTIVE) throw new Error('Você já atingiu o limite de '+MAX_LENDER_ACTIVE+' empréstimos ativos.')
+    if(Number(activeLender.rows[0]?.total||0)>=MAX_LENDER_ACTIVE) throw new Error('Você já atingiu o limite de '+MAX_LENDER_ACTIVE+' empréstimos/propostas em aberto.')
 
     const wallet=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[lenderJid])
     const liquid=Number(wallet.rows[0]?.cash||0)+Number(wallet.rows[0]?.bank||0)
@@ -231,7 +256,7 @@ export async function acceptLoan(borrowerJid,id=null){
     loan=accepted.rows[0]
     await client.query(
       'INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,$3,$4,$5)',
-      [loan.lender_jid,loan.borrower_jid,amount,'loan_disbursement','loan#'+loan.id+'|2h-sem-juros|mora-2pct-h']
+      [loan.lender_jid,loan.borrower_jid,amount,'loan_disbursement','loan#'+loan.id+'|30min-sem-juros|mora-2pct-h']
     )
     return loan
   })
@@ -335,6 +360,8 @@ export const LOAN_RULES={
   interestRatePerHour:INTEREST_RATE_PER_HOUR,
   maxInterestHours:MAX_INTEREST_HOURS,
   minCredit:MIN_CREDIT,
-  maxCredit:MAX_CREDIT,
-  creditPatrimonyRate:CREDIT_PATRIMONY_RATE
+  baseCreditPatrimonyRate:BASE_CREDIT_PATRIMONY_RATE,
+  maxCreditPatrimonyRate:MAX_CREDIT_PATRIMONY_RATE,
+  creditRateStep:CREDIT_RATE_STEP,
+  maxLenderOpen:MAX_LENDER_ACTIVE
 }
