@@ -613,7 +613,7 @@ _Responda apenas com o número._`
 async function alphaKarmaMessage(jid){
           const r=await getAlphaReputation(jid)
           const path=r.karma>=10?'Caminho do Herói':r.karma<=-10?'Caminho do Vilão':'Neutro'
-          return (`⚖️ *HONRA & KARMA ALPHA*\n\n🎭 Título: *${r.title}*\n📊 Karma: *${r.karma>0?'+':''}${r.karma}/100*\n🧭 Caminho: *${path}*\n\n🛡️ Raids e Bosses (+2 por vitória com participação real)\n😈 Roubo bem-sucedido (-3); tentativa fracassada (-1)\n⏳ Limite de 12 mudanças por ação a cada 24 horas.\n\n🏪 Visite *!npcs*: Helena, Mordek e Baltazar oferecem preços e itens conforme o Karma.`)
+          return (`⚖️ *HONRA & KARMA ALPHA*\n\n🎭 Título: *${r.title}*\n📊 Karma: *${r.karma>0?'+':''}${r.karma}/100*\n🧭 Caminho: *${path}*\n\n🛡️ Raids e Bosses (+2 por vitória com participação real)\n😈 Roubo bem-sucedido (-3); tentativa fracassada (-1) — punições sempre aplicam\n⏳ Limite de 12 mudanças/24h vale só para ganhos repetíveis de Honra em Raid/Boss.\n\n🏪 Visite *!npcs*: Helena, Mordek e Baltazar oferecem preços e itens conforme o Karma.`)
 }
 
 async function alphaContractBoardMessage(jid){
@@ -6692,12 +6692,14 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       if(!r.ok) await reply(`⏳ Tente roubar novamente em ${duration(r.remaining)}.`)
       else if(r.success){
         await progressAlphaContract(sender,'robbery').catch(err=>console.error('[Contratos] roubo',err?.message||err))
-        await changeAlphaReputation(sender,'robbery_success',-3).catch(err=>console.error('[Karma] roubo',err?.message||err))
-        await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.`,{mentions:[targetMention]})
+        const karma=await changeAlphaReputation(sender,'robbery_success',-3).catch(err=>{ console.error('[Karma] roubo',err?.message||err); return null })
+        const karmaLine=karma ? `\n⚖️ Karma: *-3* → *${karma.karma}*` : ''
+        await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.${karmaLine}`,{mentions:[targetMention]})
       }
       else {
-        await changeAlphaReputation(sender,'robbery_failure',-1).catch(err=>console.error('[Karma] roubo',err?.message||err))
-        await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:[targetMention]})
+        const karma=await changeAlphaReputation(sender,'robbery_failure',-1).catch(err=>{ console.error('[Karma] roubo',err?.message||err); return null })
+        const karmaLine=karma ? `\n⚖️ Karma: *-1* → *${karma.karma}*` : ''
+        await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.${karmaLine}`,{mentions:[targetMention]})
       }
       return true
     }
@@ -9927,16 +9929,18 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const victimName=victimProfile?.push_name||targetIdentity?.pushName||'Jogador'
           if(r.success){
             await progressAlphaContract(sender,'robbery').catch(err=>console.error('[Contratos] roubo',err?.message||err))
-            await changeAlphaReputation(sender,'robbery_success',-3).catch(err=>console.error('[Karma] roubo',err?.message||err))
+            const karma=await changeAlphaReputation(sender,'robbery_success',-3).catch(err=>{ console.error('[Karma] roubo',err?.message||err); return null })
+            const karmaLine=karma ? `\n⚖️ Karma: *-3* → *${karma.karma}*` : ''
             const successText=cmd==='fazol'
-              ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!* 😂\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor levado: *R$ ${fmt(r.amount)}*\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
-              : `🕵️ *ROUBO BEM-SUCEDIDO!*\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor roubado: *R$ ${fmt(r.amount)}*`
+              ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!* 😂\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor levado: *R$ ${fmt(r.amount)}*${karmaLine}\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
+              : `🕵️ *ROUBO BEM-SUCEDIDO!*\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor roubado: *R$ ${fmt(r.amount)}*${karmaLine}`
             await reply(successText,{mentions:[targetMention]})
           } else {
-            await changeAlphaReputation(sender,'robbery_failure',-1).catch(err=>console.error('[Karma] roubo',err?.message||err))
+            const karma=await changeAlphaReputation(sender,'robbery_failure',-1).catch(err=>{ console.error('[Karma] roubo',err?.message||err); return null })
+            const karmaLine=karma ? `\n⚖️ Karma: *-1* → *${karma.karma}*` : ''
             const failText=cmd==='fazol'
-              ? `🚓 *A CERVEJINHA DEU RUIM!* 😂\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*\nDessa vez não deu pra tomar a gelada.`
-              : `🚓 *ROUBO FRACASSOU!*\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*`
+              ? `🚓 *A CERVEJINHA DEU RUIM!* 😂\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*${karmaLine}\nDessa vez não deu pra tomar a gelada.`
+              : `🚓 *ROUBO FRACASSOU!*\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*${karmaLine}`
             await reply(failText,{mentions:[targetMention]})
           }
 
