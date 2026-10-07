@@ -35,7 +35,8 @@ import {
   claimDailyMissions, createClan, listClans, getClanForUser, inviteToClan, acceptClanInvite,
   leaveClan, donateClan, kickClanMember, transferClanLeadership,
   getGroupMission, claimGroupMission, getGroupMissionLeaderboard, claimGroupEvent,
-  patrimonyLeaderboard, hireCltUberDriver
+  patrimonyLeaderboard, hireCltUberDriver,
+  getAlphaContractBoard, acceptAlphaContract, claimAlphaContract, changeAlphaReputation
 } from './progression.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
@@ -1239,6 +1240,16 @@ async function runAction(session,name,body={}){
     case 'game.tournament.join': return joinTournament(requireGroup(session),jid)
     case 'game.tournament.start': return startTournament(requireGroup(session),jid)
 
+    case 'contract.accept': return acceptAlphaContract(jid,positiveInt(body.number,'Contrato',5))
+    case 'contract.claim': {
+      const result=await claimAlphaContract(jid)
+      const darkContract=result.task==='robbery'
+      const heroicContract=['raid20','raid30','raid40','boss','dungeon'].includes(result.task)
+      if(darkContract||heroicContract){
+        await changeAlphaReputation(jid,darkContract?'villain_contract':'hero_contract',darkContract?-2:2)
+      }
+      return result
+    }
     case 'loan.accept': return acceptLoan(jid,body.id==null?null:positiveInt(body.id,'Empréstimo'))
     case 'loan.reject': return rejectLoan(jid,body.id==null?null:positiveInt(body.id,'Empréstimo'))
     case 'loan.pay': return payLoan(jid,body.amount==null?'total':body.amount)
@@ -1333,6 +1344,11 @@ export async function handleWebApi(req,res){
     if(req.method==='GET' && url.pathname==='/api/v1/me/bootstrap'){
       const data=await playerBootstrap(session)
       json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/contracts'){
+      json(res,200,{ok:true,data:await getAlphaContractBoard(session.jid)})
       return true
     }
 
