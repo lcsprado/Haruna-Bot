@@ -6923,15 +6923,19 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       clearQuickFlow(chat,sender)
       if(!r.ok) await reply(`⏳ Tente roubar novamente em ${duration(r.remaining)}.`)
       else if(r.success){
+        await recordCityRobbery(sender,target,r).catch(err=>console.error('[Cidade] memória do roubo',err?.message||err))
         await progressAlphaContract(sender,'robbery').catch(err=>console.error('[Contratos] roubo',err?.message||err))
+        const black=await progressBlackMarketMission(sender,target,true).catch(err=>{ console.error('[Mercado Negro]',err?.message||err); return null })
         const karma=await changeAlphaReputation(sender,'robbery_success',-3).catch(err=>{ console.error('[Karma] roubo',err?.message||err); return null })
         const karmaLine=karma ? `\n⚖️ Karma: *-3* → *${karma.karma}*` : ''
-        await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.${karmaLine}`,{mentions:[targetMention]})
+        const blackLine=black ? `\n🌑 *MISSÃO DO MERCADO NEGRO CONCLUÍDA!* +R$ ${fmt(black.reward_cash)} • +${fmt(black.reward_xp)} XP` : ''
+        await reply(`🥷 Roubo bem-sucedido! Você levou *R$ ${fmt(r.amount)}*.${karmaLine}${blackLine}`,{mentions:[targetMention]})
       }
       else {
+        await recordCityRobbery(sender,target,r).catch(err=>console.error('[Cidade] memória do roubo',err?.message||err))
         const karma=await changeAlphaReputation(sender,'robbery_failure',-1).catch(err=>{ console.error('[Karma] roubo',err?.message||err); return null })
         const karmaLine=karma ? `\n⚖️ Karma: *-1* → *${karma.karma}*` : ''
-        await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.${karmaLine}`,{mentions:[targetMention]})
+        await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.${karmaLine}\n👁️ *A tentativa entrou na memória da cidade.*`,{mentions:[targetMention]})
       }
       return true
     }
@@ -10199,19 +10203,23 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const victimProfile=await getProfile(target).catch(()=>null)
           const victimName=victimProfile?.push_name||targetIdentity?.pushName||'Jogador'
           if(r.success){
+            await recordCityRobbery(sender,target,r).catch(err=>console.error('[Cidade] memória do roubo',err?.message||err))
             await progressAlphaContract(sender,'robbery').catch(err=>console.error('[Contratos] roubo',err?.message||err))
+            const black=await progressBlackMarketMission(sender,target,true).catch(err=>{ console.error('[Mercado Negro]',err?.message||err); return null })
             const karma=await changeAlphaReputation(sender,'robbery_success',-3).catch(err=>{ console.error('[Karma] roubo',err?.message||err); return null })
             const karmaLine=karma ? `\n⚖️ Karma: *-3* → *${karma.karma}*` : ''
+            const blackLine=black ? `\n🌑 *MISSÃO DO MERCADO NEGRO CONCLUÍDA!* +R$ ${fmt(black.reward_cash)} • +${fmt(black.reward_xp)} XP` : ''
             const successText=cmd==='fazol'
-              ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!* 😂\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor levado: *R$ ${fmt(r.amount)}*${karmaLine}\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
-              : `🕵️ *ROUBO BEM-SUCEDIDO!*\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor roubado: *R$ ${fmt(r.amount)}*${karmaLine}`
+              ? `🍺 *É SÓ PRA ELE TOMAR UMA CERVEJINHA!* 😂\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor levado: *R$ ${fmt(r.amount)}*${karmaLine}${blackLine}\n\n_“Não é roubo não... é só pra tomar uma cervejinha.”_ 😂`
+              : `🕵️ *ROUBO BEM-SUCEDIDO!*\n\n🥷 *${robberName}* roubou *${victimName}*\n💰 Valor roubado: *R$ ${fmt(r.amount)}*${karmaLine}${blackLine}\n👁️ A cidade pode comentar isso depois.`
             await reply(successText,{mentions:[targetMention]})
           } else {
+            await recordCityRobbery(sender,target,r).catch(err=>console.error('[Cidade] memória do roubo',err?.message||err))
             const karma=await changeAlphaReputation(sender,'robbery_failure',-1).catch(err=>{ console.error('[Karma] roubo',err?.message||err); return null })
             const karmaLine=karma ? `\n⚖️ Karma: *-1* → *${karma.karma}*` : ''
             const failText=cmd==='fazol'
-              ? `🚓 *A CERVEJINHA DEU RUIM!* 😂\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*${karmaLine}\nDessa vez não deu pra tomar a gelada.`
-              : `🚓 *ROUBO FRACASSOU!*\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*${karmaLine}`
+              ? `🚓 *A CERVEJINHA DEU RUIM!* 😂\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*${karmaLine}\n👁️ A tentativa entrou na memória da cidade.\nDessa vez não deu pra tomar a gelada.`
+              : `🚓 *ROUBO FRACASSOU!*\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*${karmaLine}\n👁️ *A tentativa entrou na memória da cidade.*`
             await reply(failText,{mentions:[targetMention]})
           }
 
