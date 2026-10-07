@@ -1517,6 +1517,21 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(bossLastAttackAt && bossNow-bossLastAttackAt<bossCadenceMs-250){
       return {cooldown:true,remainingMs:Math.max(250,bossCadenceMs-(bossNow-bossLastAttackAt)),mode:s.mode||'common',hp:Number(s.hp||0),maxHp:Number(s.maxHp||0)}
     }
+    // O óleo só é consumido no primeiro ataque válido de cada Boss por jogador.
+    // Não acumula, não multiplica dano do pet e dura somente até este Boss terminar.
+    let oilConsumedNow=false
+    if(!existingParticipant.oilChecked){
+      const oil=(await c.query(`
+        SELECT quantity FROM inventories
+        WHERE jid=$1 AND item_id='oleo_sombras' AND quantity>0 FOR UPDATE
+      `,[jid])).rows[0]
+      existingParticipant.oilChecked=true
+      if(oil){
+        await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
+        existingParticipant.oilActive=true
+        oilConsumedNow=true
+      }
+    }
     let activePetSlot=Number(existingParticipant.activePetSlot||1)
     let petRow=usePet?await loadBossCombatPet(c,jid,activePetSlot):null
     let petSwitch=null
@@ -1565,8 +1580,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const variance=.85+Math.random()*.45
     const rawBase=Math.max(5,Math.floor(atk*variance))
     const baselineWithGearCrit=Math.max(5,Math.floor(rawBase*(gearCrit?1.5:1)))
-    const damage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1)))
-    const petDamage=pet?Math.max(0,damage-baselineWithGearCrit):0
+    const oilBonus=existingParticipant.oilActive?Math.max(1,Math.floor(baselineWithGearCrit*.06)):0
+    const damage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1))+oilBonus)
+    const petDamage=pet?Math.max(0,damage-baselineWithGearCrit-oilBonus):0
     s.hp=Math.max(0,Number(s.hp)-damage)
     const old=existingParticipant
     const attackCount=Number(old.attacks||0)+1
@@ -1780,9 +1796,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
         await saveGame(c,chat,'boss',marker)
       }
-      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     await saveGame(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:chat,gameType,s)
-    return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),damage,bossDamage,bossCritical,playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
+    return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }
