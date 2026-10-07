@@ -46,9 +46,23 @@ const NPC_DAILY_FRAGMENT_LIMIT=2
 const RAID_MATERIAL_IDS=Object.freeze(['nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal'])
 const npcDayStart=()=>Math.floor((Math.floor(Date.now()/1000)-3*3600)/86400)*86400+3*3600
 async function npcHighestClearedRaid(query,jid){
-  const {rows}=await query.query(`SELECT COALESCE(MAX(split_part(note,'_',2)::integer),0)::integer AS level
-    FROM transactions WHERE to_jid=$1 AND type='minigame'
-    AND note ~ '^raid_(10|15|20|25|30|40|50)const GEAR_CATEGORIES=new Set(['weapon','armor','boots'])
+  const {rows}=await query.query(`
+    SELECT COALESCE(MAX(split_part(note,'_',2)::integer),0)::integer AS level
+    FROM transactions
+    WHERE to_jid=$1 AND type='minigame'
+      AND note ~ '^raid_(10|15|20|25|30|40|50)$'
+  `,[jid])
+  return Number(rows[0]?.level||0)
+}
+async function npcDailyFragmentPurchases(query,jid){
+  const {rows}=await query.query(`
+    SELECT COALESCE(SUM(quantity),0)::integer AS amount
+    FROM alpha_npc_purchases
+    WHERE jid=$1 AND created_at >= $2 AND item_id=ANY($3::text[])
+  `,[jid,npcDayStart(),RAID_MATERIAL_IDS])
+  return Number(rows[0]?.amount||0)
+}
+const GEAR_CATEGORIES=new Set(['weapon','armor','boots'])
 const resolveNpc=input=>{
   const key=String(input||'').trim().toLowerCase()
   return NPC_CATALOG.find((n,i)=>n.id===key||String(i+1)===key)||null
