@@ -606,7 +606,7 @@ test('roubo pego sempre reduz karma',()=>{
 
 test('cidade persistente liga memoria rumores mercado negro e eventos',()=>{
   assert.ok(index.includes('await initCitySystem()'),'city schema must initialize before NPC use')
-  for(const table of ['alpha_city_incidents','alpha_city_reputation','alpha_rumors','alpha_city_encounters','alpha_city_responses','alpha_black_market_missions']){
+  for(const table of ['alpha_city_incidents','alpha_city_reputation','alpha_rumors','alpha_city_encounters','alpha_city_responses','alpha_black_market_missions','alpha_black_market_purchases']){
     assert.ok(city.includes('CREATE TABLE IF NOT EXISTS '+table),'missing city table '+table)
   }
   assert.ok(city.includes('export async function recordCityRobbery'),'robbery memory recorder missing')
@@ -625,4 +625,11 @@ test('cidade persistente liga memoria rumores mercado negro e eventos',()=>{
   assert.ok(index.includes('maybeCreateCityEncounter(sender)'),'random city encounter hook missing')
   assert.ok(index.includes("flow.stage==='npc_memory_response'"),'NPC remembered-event choices missing')
   assert.ok(city.includes('respondToNpcIncident'),'NPC incident response persistence missing')
+  assert.ok(city.includes("incident?.kind==='npc_robbery'"),'NPC robberies must become dialogue memory for other visitors')
+  assert.ok(city.includes("SET status='resolved',resolved_at="),'city encounters must be atomically claimed before rewards')
+  assert.ok(city.includes('export async function getBlackMarketShop'),'black market shop missing')
+  assert.ok(city.includes('export async function buyBlackMarketItem'),'black market purchase flow missing')
+  assert.ok(city.includes('BLACK_MARKET_LIMIT=2'),'black market purchase cap missing')
+  assert.ok(index.includes("flow.stage==='black_market_main'"),'black market main flow missing')
+  assert.ok(index.includes("flow.stage==='black_market_shop'"),'black market shop flow missing')
 })
