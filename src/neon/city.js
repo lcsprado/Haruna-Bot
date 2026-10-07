@@ -298,7 +298,7 @@ export async function performDarkCityAction(jid,task){
   const active=await activeDarkContract(jid)
   if(!active||active.mission.task!==task) throw new Error('🌑 Você precisa aceitar a missão correspondente no Mercado Sombrio primeiro.')
   if(Number(active.progress)>=Number(active.target)) throw new Error('Essa missão já está concluída. Use !resgatarsombras.')
-  const successChance=task==='attack_city'?.72:.78
+  const successChance=task==='attack_city' ? 0.72 : 0.78
   const success=Math.random()<successChance
   const level=Number((await db.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]?.level||1)
   let fine=0
