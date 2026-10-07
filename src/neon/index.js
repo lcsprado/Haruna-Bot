@@ -1299,6 +1299,47 @@ function petStatusBonus(p){
 async function start() {
   await initDatabase()
 
+  // Evento administrativo de XP, de uso único. Mantém dinheiro, drops e caixas em 1x.
+  const adminXpEventToken=String(process.env.ADMIN_XP_EVENT_TOKEN||'').trim()
+  const adminXpEventMinutes=Number(process.env.ADMIN_XP_EVENT_MINUTES||0)
+  const adminXpEventMultiplier=Number(process.env.ADMIN_XP_EVENT_MULTIPLIER||0)
+  const adminXpEventLabel=String(process.env.ADMIN_XP_EVENT_LABEL||'EVENTO 2X XP').trim()||'EVENTO 2X XP'
+  if(adminXpEventToken&&Number.isInteger(adminXpEventMinutes)&&adminXpEventMinutes>=1&&adminXpEventMinutes<=180&&Number.isFinite(adminXpEventMultiplier)&&adminXpEventMultiplier>=1&&adminXpEventMultiplier<=10){
+    const markerKey='admin_xp_event:'+adminXpEventToken
+    const already=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
+    if(!already){
+      const now=Date.now()
+      const state={
+        active:true,
+        startsAt:now,
+        startedAt:now,
+        endsAt:now+(adminXpEventMinutes*60*1000),
+        moneyMultiplier:1,
+        xpMultiplier:adminXpEventMultiplier,
+        activatedBy:'admin:'+adminXpEventToken,
+        oneOffId:adminXpEventToken,
+        eventLabel:adminXpEventLabel
+      }
+      await db.query('BEGIN')
+      try{
+        await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES('double_reward_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+          ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+        `,[JSON.stringify(state)])
+        await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+        `,[markerKey,JSON.stringify({startsAt:now,endsAt:state.endsAt,xpMultiplier:adminXpEventMultiplier,moneyMultiplier:1,label:adminXpEventLabel})])
+        await db.query('COMMIT')
+        console.log('[Eventos] XP-only ativado:',adminXpEventMultiplier+'x por '+adminXpEventMinutes+' min')
+      }catch(err){
+        await db.query('ROLLBACK')
+        throw err
+      }
+    }
+  }
+
   // Patch administrativo opcional, de uso único, para correções pontuais de inventário.
   // Os dados ficam apenas nas variáveis de ambiente do serviço; o token impede repetição em restarts.
   const adminPatchToken=String(process.env.ADMIN_INVENTORY_PATCH_TOKEN||'').trim()
