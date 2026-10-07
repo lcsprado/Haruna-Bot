@@ -17,6 +17,13 @@ const cityNpc=input=>{
   return CITY_NPCS.find((n,i)=>n.id===key||n.name.toLowerCase()===key||String(i+1)===key)||null
 }
 const periodNow=()=>Math.floor(Math.floor(Date.now()/1000)/(4*HOUR))
+const BLACK_MARKET_LIMIT=2
+const BLACK_MARKET_GOODS=Object.freeze([
+  {id:'oleo_sombras',price:42000,karma:-10},
+  {id:'elixir_sombras',price:78000,karma:-30},
+  {id:'tomo_proibido',price:150000,karma:-70},
+  {id:'pocao_pet_epica',price:65000,karma:-1}
+])
 
 export async function initCitySystem(){
   await db.query(`
@@ -102,6 +109,18 @@ export async function initCitySystem(){
     );
     CREATE INDEX IF NOT EXISTS alpha_black_market_active_idx
       ON alpha_black_market_missions(jid,status,expires_at);
+
+    CREATE TABLE IF NOT EXISTS alpha_black_market_purchases(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      item_id TEXT NOT NULL REFERENCES items(id),
+      quantity INTEGER NOT NULL DEFAULT 1 CHECK(quantity=1),
+      spent BIGINT NOT NULL CHECK(spent>0),
+      period BIGINT NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT ${NOW_SQL}
+    );
+    CREATE INDEX IF NOT EXISTS alpha_black_market_purchases_idx
+      ON alpha_black_market_purchases(jid,period,created_at DESC);
   `)
 }
 
@@ -273,6 +292,24 @@ export async function getNpcMemory(visitorJid,npcRef){
     ORDER BY i.created_at DESC LIMIT 6
   `,[2*DAY])
   const incident=incidentRows[Math.floor(Math.random()*Math.max(1,incidentRows.length))]
+  if(incident?.kind==='npc_robbery'){
+    const victimNpc=cityNpc(incident.npc_id)
+    const victimName=victimNpc?.name||incident.metadata?.npcName||'um morador'
+    if(victimNpc?.id===npc.id){
+      const amount=Number(incident.amount||0).toLocaleString('pt-BR')
+      const text=incident.outcome==='success'
+        ? `“Meu dia começou mal. Me assaltaram e levaram R$ ${amount}. Você viu alguma coisa?”`
+        : '“Tentaram me assaltar recentemente. Eu consegui escapar, mas quero saber quem está por trás disso. Você viu algo?”'
+      return {npc,text,memory:'incident',incident}
+    }
+    return {
+      npc,
+      text:`“Ouvi dizer que ${victimName} foi alvo de um assalto. Essas coisas se espalham rápido por aqui. Você sabe de alguma coisa?”`,
+      memory:'incident',
+      incident
+    }
+  }
+
   if(incident?.kind==='player_robbery'){
     if(incident.outcome==='success'){
       return {npc,text:`“Meu dia começou mal para alguém daqui... ${incident.target_name||'uma pessoa'} perdeu R$ ${Number(incident.amount||0).toLocaleString('pt-BR')}. Dizem que ${incident.actor_name||'alguém'} estava por perto. Você viu alguma coisa?”`,memory:'incident',incident}
@@ -393,12 +430,13 @@ export async function resolveCityEncounter(jid,id,choice){
   choice=Number(choice)
   if(![1,2].includes(choice)) throw new Error('Escolha 1 ou 2.')
   const {rows}=await db.query(`
-    SELECT * FROM alpha_city_encounters
+    UPDATE alpha_city_encounters
+    SET status='resolved',resolved_at=${NOW_SQL}
     WHERE id=$1 AND jid=$2 AND status='pending' AND expires_at>${NOW_SQL}
-    FOR UPDATE
+    RETURNING *
   `,[Number(id),jid])
   const event=rows[0]
-  if(!event) throw new Error('Esse evento já terminou.')
+  if(!event) throw new Error('Esse evento já terminou ou já foi respondido.')
   const level=Number((await db.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]?.level||1)
   let result={eventKey:event.event_key,choice,cash:0,xp:0,karma:0,text:''}
 
@@ -488,10 +526,6 @@ export async function resolveCityEncounter(jid,id,choice){
     }
   }
 
-  await db.query(`
-    UPDATE alpha_city_encounters SET status='resolved',resolved_at=${NOW_SQL}
-    WHERE id=$1 AND jid=$2
-  `,[event.id,jid])
   return result
 }
 
@@ -565,6 +599,95 @@ export async function progressBlackMarketMission(jid,targetJid,success){
   await changeAlphaReputation(jid,'black_market',-2).catch(()=>null)
   await changeCityReputation(jid,{trust:-3,notoriety:4})
   return {...mission,xpResult}
+}
+
+export async function getBlackMarketShop(jid){
+  await ensureUser(jid)
+  const standing=await getCityStanding(jid)
+  if(standing.karma>=0){
+    return {locked:true,standing,reason:'A loja clandestina exige Karma negativo.'}
+  }
+  const period=periodNow()
+  const used=Number((await db.query(
+    'SELECT COUNT(*)::int AS n FROM alpha_black_market_purchases WHERE jid=$1 AND period=$2',
+    [jid,period]
+  )).rows[0]?.n||0)
+  const ids=BLACK_MARKET_GOODS.map(x=>x.id)
+  const {rows}=await db.query(
+    'SELECT id,name,description,rarity FROM items WHERE id=ANY($1::text[])',
+    [ids]
+  )
+  const byId=new Map(rows.map(x=>[x.id,x]))
+  const stock=BLACK_MARKET_GOODS.map((g,i)=>{
+    const item=byId.get(g.id)
+    if(!item) return null
+    return {
+      number:i+1,id:g.id,name:item.name,description:item.description,rarity:item.rarity,
+      price:g.price,requiredKarma:g.karma,
+      permitted:standing.karma<=g.karma && used<BLACK_MARKET_LIMIT
+    }
+  }).filter(Boolean)
+  return {
+    locked:false,standing,stock,
+    remaining:Math.max(0,BLACK_MARKET_LIMIT-used),
+    nextAt:(period+1)*4*HOUR*1000
+  }
+}
+
+export async function buyBlackMarketItem(jid,number){
+  await ensureUser(jid)
+  const standing=await getCityStanding(jid)
+  if(standing.karma>=0) throw new Error('🌑 O Mercado Negro não negocia com quem ainda tem Karma neutro ou positivo.')
+  const idx=Number(number)-1
+  const good=BLACK_MARKET_GOODS[idx]
+  if(!good) throw new Error('Item inválido do Mercado Negro.')
+  if(standing.karma>good.karma){
+    throw new Error('🔒 Esta oferta exige Karma '+good.karma+' ou inferior.')
+  }
+  const period=periodNow()
+  const client=await db.connect()
+  try{
+    await client.query('BEGIN')
+    const used=Number((await client.query(
+      'SELECT COUNT(*)::int AS n FROM alpha_black_market_purchases WHERE jid=$1 AND period=$2',
+      [jid,period]
+    )).rows[0]?.n||0)
+    if(used>=BLACK_MARKET_LIMIT) throw new Error('🌑 Você já fez 2 compras no Mercado Negro nesta janela de 4h.')
+    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!wallet) throw new Error('Carteira não localizada.')
+    const item=(await client.query('SELECT id,name,rarity FROM items WHERE id=$1',[good.id])).rows[0]
+    if(!item) throw new Error('Item clandestino indisponível.')
+    const cash=Number(wallet.cash||0),bank=Number(wallet.bank||0)
+    if(cash+bank<good.price) throw new Error('Saldo insuficiente. Preço: R$ '+good.price.toLocaleString('pt-BR')+'.')
+    const paidCash=Math.min(cash,good.price),paidBank=good.price-paidCash
+    await client.query(
+      `UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at=${NOW_SQL} WHERE jid=$3`,
+      [paidCash,paidBank,jid]
+    )
+    await client.query(`
+      INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+      ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1
+    `,[jid,item.id])
+    await client.query(
+      'INSERT INTO alpha_black_market_purchases(jid,item_id,quantity,spent,period) VALUES($1,$2,1,$3,$4)',
+      [jid,item.id,good.price,period]
+    )
+    await client.query(
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'black_market',$2,'purchase',$3)",
+      [jid,good.price,'Mercado Negro — '+item.name]
+    )
+    await client.query('COMMIT')
+    await changeCityReputation(jid,{trust:-1,notoriety:2})
+    return {
+      item:{id:item.id,name:item.name,rarity:item.rarity},
+      price:good.price,remaining:Math.max(0,BLACK_MARKET_LIMIT-used-1)
+    }
+  }catch(err){
+    await client.query('ROLLBACK')
+    throw err
+  }finally{
+    client.release()
+  }
 }
 
 export function cityNpcCatalog(){
