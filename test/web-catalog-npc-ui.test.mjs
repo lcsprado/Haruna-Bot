@@ -29,7 +29,7 @@ test('NPC Web compartilha a fonte de verdade de compras e reputação',()=>{
 test('loja exclui registros legados também no endpoint de compra',()=>{
   assert.match(db,/const REGULAR_SHOP_IDS = new Set/)
   assert.match(db,/return rows\.filter\(isRegularShopItem\)/)
-  assert.match(db,/if\(item\.id==='pergaminho_reclassificacao' \|\| !isRegularShopItem\(item\)\)/)
+  assert.match(db,/if\(!isRegularShopItem\(item\)\)/)
   assert.doesNotMatch(db,/REGULAR_SHOP_IDS = new Set\([^;]*lootbox_std/)
 })
 
