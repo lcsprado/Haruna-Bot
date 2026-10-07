@@ -502,7 +502,7 @@ function missionRewards(level){
   return {cash:1500,xp:250}
 }
 
-export async function getBlackMarketMission(jid){
+export async function getBlackMarketMission(jid,candidateJids=[]){
   await ensureUser(jid)
   const standing=await getCityStanding(jid)
   if(standing.karma>=0 && standing.notoriety<20){
@@ -517,14 +517,24 @@ export async function getBlackMarketMission(jid){
 
   const player=(await db.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
   const level=Number(player?.level||1)
-  const {rows:targets}=await db.query(`
-    SELECT jid,push_name,level
-    FROM users
-    WHERE jid<>$1 AND level>20 AND banned=FALSE
-    ORDER BY RANDOM()
-    LIMIT 8
-  `,[jid])
-  const target=targets[0]
+  const candidates=[...new Set((candidateJids||[]).map(String))]
+    .filter(candidate=>candidate && candidate!==jid)
+  const targetQuery=candidates.length
+    ? await db.query(`
+        SELECT jid,push_name,level
+        FROM users
+        WHERE jid<>$1 AND jid=ANY($2::text[]) AND level>20 AND banned=FALSE
+        ORDER BY RANDOM()
+        LIMIT 8
+      `,[jid,candidates])
+    : await db.query(`
+        SELECT jid,push_name,level
+        FROM users
+        WHERE jid<>$1 AND level>20 AND banned=FALSE
+        ORDER BY RANDOM()
+        LIMIT 8
+      `,[jid])
+  const target=targetQuery.rows[0]
   if(!target) return {locked:false,mission:null,standing}
   const reward=missionRewards(level)
   const expiresAt=(period+1)*4*HOUR
