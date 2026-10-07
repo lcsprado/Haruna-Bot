@@ -1340,7 +1340,7 @@ export async function getAlphaContractBoard(jid){
   await ensureUser(jid)
   const period=alphaContractPeriod()
   const [levelRow,activeRow]=await Promise.all([
-    db.query('SELECT level FROM stats WHERE jid=$1',[jid]),
+    db.query('SELECT level FROM users WHERE jid=$1',[jid]),
     db.query('SELECT * FROM alpha_contracts WHERE jid=$1 AND period=$2',[jid,period])
   ])
   return {
@@ -1357,7 +1357,7 @@ export async function acceptAlphaContract(jid,number){
     const period=alphaContractPeriod()
     const contract=alphaContractBoardFor(period).find(x=>x.number===Number(number))
     if(!contract) throw new Error('Contrato inválido. Abra !contratos e escolha um número de 1 a 5.')
-    const level=Number((await client.query('SELECT level FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.level||1)
+    const level=Number((await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.level||1)
     if(level<contract.level) throw new Error(`Você precisa estar no nível ${contract.level} para aceitar este contrato. Seu nível: ${level}.`)
     const acceptedAt=Math.floor(Date.now()/1000)
     const expiresAt=(period+1)*ALPHA_CONTRACT_SECONDS+3*3600
