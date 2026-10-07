@@ -111,7 +111,7 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
         '1️⃣ ⚔️ Defender a cidade\n'+
         '2️⃣ 🚶 Ignorar e seguir caminho\n'+
         '\n⏳ *10 minutos para decidir*\n'+
-        '👉 *!cidadeevento 1* ou *!cidadeevento 2*'
+        '👉 Responda só *1* ou *2*'
     }
     if(e?.event_key==='help'){
       return '🧓 *EVENTO DA CIDADE — PEDIDO DE AJUDA*\n\n'+
@@ -124,7 +124,7 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
         '1️⃣ 🤝 Ajudar\n'+
         '2️⃣ 🚶 Ignorar\n'+
         '\n⏳ *10 minutos para decidir*\n'+
-        '👉 *!cidadeevento 1* ou *!cidadeevento 2*'
+        '👉 Responda só *1* ou *2*'
     }
     if(e?.event_key==='rob_npc'){
       return '🌒 *EVENTO DA CIDADE — OPORTUNIDADE*\n\n'+
@@ -137,13 +137,14 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
         '1️⃣ 🥷 Assaltar\n'+
         '2️⃣ 🌙 Ignorar\n'+
         '\n⏳ *10 minutos para decidir*\n'+
-        '👉 *!cidadeevento 1* ou *!cidadeevento 2*'
+        '👉 Responda só *1* ou *2*'
     }
-    return (p.title||'🏙️ *EVENTO NA CIDADE*')+'\n\n'+(p.text||'')+'\n\n'+(p.options||[]).join('\n')+'\n\n⏳ *10 minutos para decidir*\n👉 *!cidadeevento 1* ou *!cidadeevento 2*'
+    return (p.title||'🏙️ *EVENTO NA CIDADE*')+'\n\n'+(p.text||'')+'\n\n'+(p.options||[]).join('\n')+'\n\n⏳ *10 minutos para decidir*\n👉 Responda só *1* ou *2*'
   }
 
   async function showCityEncounter(chat,sender,reply,e){
     if(!e) return reply('🌆 Você caminhou pela cidade, mas nada fora do comum aconteceu agora.')
+    setQuickFlow(chat,sender,'city_event',{eventId:e.id},10*60*1000)
     await reply(formatCityEncounterMessage(e))
   }
 
@@ -170,6 +171,25 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
 `)
 
 put("    if(flow.stage==='npc_select'){",String.raw`
+    if(flow.stage==='city_event'){
+      if(!['1','2'].includes(input)){
+        await reply('🏙️ Responda só *1* ou *2*.')
+        return true
+      }
+      try{
+        const r=await resolveCityEncounter(sender,flow.data.eventId,Number(input))
+        clearQuickFlow(chat,sender)
+        const cash=Number(r.cash||0)>0?'\n💰 Dinheiro: *+R$ '+fmt(r.cash)+'*':Number(r.cash||0)<0?'\n💸 Prejuízo: *-R$ '+fmt(Math.abs(r.cash))+'*':''
+        const xp=Number(r.xp||0)>0?'\n✨ EXP: *+'+fmt(r.xp)+'*':''
+        const karma=Number(r.karma||0)?'\n⚖️ Karma: *'+(r.karma>0?'+':'')+r.karma+'*':''
+        await reply('🏙️ *CONSEQUÊNCIA*\n\n'+r.text+cash+xp+karma)
+      }catch(e){
+        clearQuickFlow(chat,sender)
+        await reply('❌ '+e.message)
+      }
+      return true
+    }
+
     if(flow.stage==='city_select'){
       if(!/^[1-7]$/.test(input)){ await reply('🏙️ Escolha de *1 a 7*.'); return true }
       try{ await showCityPlace(chat,sender,reply,input) }catch(e){ await reply('❌ '+e.message) }
@@ -314,6 +334,7 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
           const choice=Number(args[0])
           if(![1,2].includes(choice)) return await reply('🏙️ Use *!cidadeevento 1* ou *!cidadeevento 2*.')
           const r=await resolveCityEncounter(sender,e.id,choice)
+          clearQuickFlow(chat,sender)
           const cash=Number(r.cash||0)>0?'\n💰 Dinheiro: *+R$ '+fmt(r.cash)+'*':Number(r.cash||0)<0?'\n💸 Prejuízo: *-R$ '+fmt(Math.abs(r.cash))+'*':''
           const xp=Number(r.xp||0)>0?'\n✨ EXP: *+'+fmt(r.xp)+'*':''
           const karma=Number(r.karma||0)?'\n⚖️ Karma: *'+(r.karma>0?'+':'')+r.karma+'*':''
@@ -337,7 +358,8 @@ put("          if(!flow) continue",String.raw`
                   await sock.sendMessage(chat,{
                     text:formatCityEncounterMessage(cityEvent,mention),
                     mentions:[sender]
-                  }).catch(()=>{})
+                  })
+                  setQuickFlow(chat,sender,'city_event',{eventId:cityEvent.id},10*60*1000)
                 }
               }
             }catch(err){
