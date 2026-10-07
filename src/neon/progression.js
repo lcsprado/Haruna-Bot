@@ -126,6 +126,22 @@ function dailySelection(jid,key){
 
 export async function initProgression(){
   await db.query(`
+    CREATE TABLE IF NOT EXISTS alpha_reputation (
+      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+      karma INTEGER NOT NULL DEFAULT 0 CHECK (karma BETWEEN -100 AND 100),
+      updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+    );
+    CREATE TABLE IF NOT EXISTS alpha_reputation_events (
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL,
+      action TEXT NOT NULL,
+      change INTEGER NOT NULL,
+      created_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+    );
+    CREATE INDEX IF NOT EXISTS alpha_reputation_events_jid_idx ON alpha_reputation_events(jid,created_at DESC);
+  `)
+
+  await db.query(`
     CREATE TABLE IF NOT EXISTS alpha_contracts (
       jid TEXT NOT NULL,
       period BIGINT NOT NULL,
@@ -1417,5 +1433,47 @@ export async function claimAlphaContract(jid){
       `,[jid,contract.reward_item])
     }
     return contract
+  })
+}
+
+export function alphaReputationTitle(value){
+  const score=Math.max(-100,Math.min(100,Number(value)||0))
+  if(score<=-70) return '💀 Vilão Temido'
+  if(score<=-30) return '😈 Fora da Lei'
+  if(score<=-10) return '🗡️ Suspeito'
+  if(score>=70) return '🌟 Herói Lendário'
+  if(score>=30) return '🛡️ Defensor'
+  if(score>=10) return '🤝 Benfeitor'
+  return '⚖️ Neutro'
+}
+export async function getAlphaReputation(jid){
+  await ensureUser(jid)
+  const r=await db.query('SELECT karma FROM alpha_reputation WHERE jid=$1',[jid])
+  const karma=Number(r.rows[0]?.karma||0)
+  return {karma,title:alphaReputationTitle(karma)}
+}
+export async function changeAlphaReputation(jid,action,delta){
+  await ensureUser(jid)
+  if(!['robbery_success','robbery_failure','raid_victory','boss_victory','hero_contract','villain_contract'].includes(action))
+    throw new Error('Ação de reputação inválida.')
+  const change=Math.trunc(Number(delta))
+  if(!Number.isFinite(change)||Math.abs(change)>5||change===0) return null
+  return tx(async client=>{
+    // Máximo de 12 alterações do mesmo tipo nas últimas 24h; limita farm de karma.
+    const count=Number((await client.query(
+      "SELECT COUNT(*)::INT AS n FROM alpha_reputation_events WHERE jid=$1 AND action=$2 AND created_at>EXTRACT(EPOCH FROM NOW())::BIGINT-86400",
+      [jid,action]
+    )).rows[0]?.n||0)
+    if(count>=12) return null
+    const row=(await client.query(`
+      INSERT INTO alpha_reputation(jid,karma) VALUES($1,$2)
+      ON CONFLICT(jid) DO UPDATE SET
+        karma=GREATEST(-100,LEAST(100,alpha_reputation.karma+$2)),
+        updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+      RETURNING karma
+    `,[jid,change])).rows[0]
+    await client.query('INSERT INTO alpha_reputation_events(jid,action,change) VALUES($1,$2,$3)',[jid,action,change])
+    const karma=Number(row.karma)
+    return {karma,title:alphaReputationTitle(karma)}
   })
 }
