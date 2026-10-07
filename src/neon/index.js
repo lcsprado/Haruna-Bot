@@ -11,7 +11,7 @@ import pino from 'pino'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetPotion, usePetEnergyItem, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
+  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -1046,6 +1046,11 @@ function resolveOwnedItem(items,input,categories=null){
   ) || null
 }
 
+const XP_SPECIAL_ITEM_IDS=new Set(['elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido'])
+function xpItemReceipt(r){
+  if(r.type==='boost') return `🧪 *${r.name.toUpperCase()} ATIVADO!*\n✨ +${r.percent}% de XP pelos próximos *${r.durationMinutes} minutos*.\n🛡️ Limite de *${r.cap} XP extra*; elixires não acumulam.\n📊 Use *!buffxp* para acompanhar.`
+  return `📜 *${r.name.toUpperCase()} UTILIZADO!*\n✨ +${r.xp.toLocaleString('pt-BR')} XP instantâneos\n⭐ Nível atual: *${r.level}*${r.levelUps?` • ${r.levelUps} nível(is) conquistado(s)!`:''}\n⏳ Limite: 1 tomo por dia.`
+}
 const SHOP_IDS=[
   'pocao_p','pocao_m','pocao_g','elixir_supremo','pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','energetico_pet',
   'espada_madeira','espada_ferro','espada_aco','machado_guerra','katana_sombria',
@@ -2813,7 +2818,9 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!venderrepetidos* — vende equipamentos repetidos e mantém 1 de cada
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
-*!usar* — usa um consumível
+*!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
+*!buffxp* — mostra elixir ativo, tempo e itens de XP
+*!usarxp NOME* — ativa elixir ou tomo de experiência
 *!curarpet* — usa automaticamente a menor poção suficiente para curar o pet\n*!curarpet comum|rara|epica* — escolhe a poção de cura do pet\n*!energiapet* — usa Energético Pet e restaura 100% da energia do pet ativo
 
 🏪 *Mercado entre jogadores*
@@ -2916,6 +2923,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 📈 *PROGRESSÃO*
 *!progressao* — abre o menu de progressão
 *!carpinar* — trabalho AFK de 1h a 12h para ganhar XP
+*!buffxp* / *!usarxp* — elixires de experiência e tomos instantâneos
 *!carpinarsair* — encerra o carpinar antes
 *!missoes* — missões diárias
 *!resgatarmissoes* — coleta recompensas concluídas
@@ -4938,6 +4946,12 @@ ${emoji} *${r.result.toUpperCase()}*`)
         const r=await usePetPotion(sender,itemId)
         clearQuickFlow(chat,sender)
         await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
+        return true
+      }
+      if(XP_SPECIAL_ITEM_IDS.has(itemId)){
+        const r=await useXpConsumable(sender,itemId)
+        clearQuickFlow(chat,sender)
+        await reply(xpItemReceipt(r))
         return true
       }
       const r=await usePotion(sender,itemId)
@@ -7581,7 +7595,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo','npcs','mercadores','comerciantes','mercadoalpha','lojanpc','npc','falarnpc','comprarnpc','npccomprar'])
           const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
-          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação'])
+          const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação','buffxp','bonusxp','expbuff','experiencia','usarxp','ativarxp'])
           let key=null,label=null
           if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
           else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
@@ -8789,6 +8803,25 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           text+='\n0️⃣ Sair'
           await reply(text)
 
+        } else if(['buffxp','bonusxp','expbuff','experiencia'].includes(cmd)){
+          const r=await getXpBuffStatus(sender)
+          let text='✨ *EXPERIÊNCIA — ELIXIRES & TOMOS*\n\n'
+          text+=r.active?`🧪 Elixir ativo: *+${r.percent}% XP*\n⏳ Restam *${Math.ceil(r.remainingSeconds/60)} minutos*\n🎯 XP extra ainda disponível: *${r.bonusRemaining.toLocaleString('pt-BR')}*\n\n`:'🧪 Nenhum elixir ativo.\n\n'
+          if(r.items.length){
+            text+='🎒 *Itens de XP no seu inventário:*\n'
+            r.items.forEach((item,i)=>{text+=`*${i+1}.* ${item.name} ×${item.quantity}\n`})
+            text+='\n👉 Use *!usarxp NOME* ou *!usar NOME* para ativar.'
+          }else text+='🏘️ Visite *!npcs* para adquirir itens de XP.'
+          await reply(text)
+
+        } else if(['usarxp','ativarxp'].includes(cmd)){
+          if(!args.length) return await reply('✨ Use *!buffxp* para ver seus itens de XP e depois *!usarxp Nome do item*.')
+          const owned=await getInventory(sender)
+          const item=resolveOwnedItem(owned,args.join(' '),['consumable'])
+          if(!item||!XP_SPECIAL_ITEM_IDS.has(item.item_id)) return await reply('❌ Item de XP não localizado. Use *!buffxp* para conferir.')
+          const result=await useXpConsumable(sender,item.item_id)
+          await reply(xpItemReceipt(result))
+
         } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojanpc'].includes(cmd)){
           await showNpcMerchantsMenu(chat,sender,reply)
 
@@ -8941,7 +8974,10 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             return await reply(`❌ Não encontrei uma poção com esse nome.\nUse *${prefix}usar* para ver as opções.`)
           }
 
-          if(item.item_id==='energetico_pet'){
+          if(XP_SPECIAL_ITEM_IDS.has(item.item_id)){
+            const r=await useXpConsumable(sender,item.item_id)
+            await reply(xpItemReceipt(r))
+          }else if(item.item_id==='energetico_pet'){
             const r=await usePetEnergyItem(sender,item.item_id)
             await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
           }else if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(item.item_id)){
