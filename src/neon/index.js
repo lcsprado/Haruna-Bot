@@ -8357,6 +8357,12 @@ ${results.join('\n')}
 
         } else if(['resgatarcontrato','contratoresgatar'].includes(cmd)){
           const r=await claimAlphaContract(sender)
+          const darkContract=r.task==='robbery'
+          const heroicContract=['raid20','raid30','raid40','boss','dungeon'].includes(r.task)
+          if(darkContract||heroicContract){
+            await changeAlphaReputation(sender,darkContract?'villain_contract':'hero_contract',darkContract?-2:2)
+              .catch(err=>console.error('[Karma] contrato',err?.message||err))
+          }
           await reply(`🎉 *CONTRATO ALPHA CONCLUÍDO!*\n\n💰 +R$ ${fmt(r.reward_cash)}\n✨ +${fmt(r.reward_xp)} XP${r.reward_item?'\n🎁 +1 Caixa Épica':''}\n✅ Prêmios creditados na sua conta!`)
 
         } else if(['pegar'].includes(cmd)){
