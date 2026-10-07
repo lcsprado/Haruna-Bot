@@ -48,30 +48,39 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
   async function showShadowMenu(chat,sender,reply){
     const b=await getDarkContractBoard(sender)
     let t='🌑 *MERCADO SOMBRIO*\n\n⚖️ Karma: *'+(b.karma>0?'+':'')+b.karma+'*\n\n'
-    b.missions.forEach((m,i)=>t+=(i+1)+'. *'+m.title+'*\n🎯 '+m.description+'\n💰 R$ '+fmt(m.cash)+'\n\n')
+
     if(b.active){
-      clearQuickFlow(chat,sender)
-      t+='📌 Ativo: *'+b.active.mission.title+'* — '+b.active.progress+'/'+b.active.target+(b.active.claimed?' ✅':'')+'\n💰 R$ '+fmt(b.active.reward?.cash||b.active.mission.cash)+' • ✨ '+fmt(b.active.reward?.xp||0)+' XP'
-      if(Number(b.active.progress)>=Number(b.active.target)&&!b.active.claimed) t+='\n🎁 Use *!resgatarsombras*.'
+      const done=Number(b.active.progress)>=Number(b.active.target)
+      t+='📌 *CONTRATO ATIVO*\n'+
+        b.active.mission.title+'\n🎯 Progresso: *'+b.active.progress+'/'+b.active.target+'*'+(b.active.claimed?' ✅':'')+'\n'+
+        '💰 R$ '+fmt(b.active.reward?.cash||b.active.mission.cash)+' • ✨ '+fmt(b.active.reward?.xp||0)+' XP\n\n'
+      t+='1️⃣ 🛒 Loja clandestina\n'
+      if(done&&!b.active.claimed) t+='2️⃣ 🎁 Resgatar contrato\n'
+      t+='9️⃣ ↩️ Voltar à cidade'
+      setQuickFlow(chat,sender,'city_dark_active',{canClaim:done&&!b.active.claimed},120000)
     }else{
+      b.missions.forEach((m,i)=>{
+        t+=(i+1)+'️⃣ *'+m.title+'*\n🎯 '+m.description+'\n💰 R$ '+fmt(m.cash)+'\n\n'
+      })
+      t+='4️⃣ 🛒 Loja clandestina\n'
+      t+='9️⃣ ↩️ Voltar à cidade\n\n'
+      t+='👉 Responda só com o número.'
       setQuickFlow(chat,sender,'city_dark',{},120000)
-      t+='👉 Responda 1, 2 ou 3 para aceitar.'
     }
-    t+='\n\n🛒 Loja clandestina: *!lojaclandestina*'
     await reply(t)
   }
 
-  async function showDarkShop(sender,reply){
+  async function showDarkShop(chat,sender,reply){
     const s=await getDarkShop(sender)
     let t='🌑 *LOJA CLANDESTINA*\n\n⚖️ Karma: *'+s.karma+'*\n🛒 Compras restantes: *'+s.remaining+'/2* neste ciclo\n\n'
     for(const g of s.goods){
       const lock=g.permitted?'':' 🔒 Karma '+g.requiredKarma+' ou inferior'
-      t+=g.number+'. *'+g.name+'* — R$ '+fmt(g.price)+lock+'\n'
+      t+=g.number+'️⃣ *'+g.name+'* — R$ '+fmt(g.price)+lock+'\n'
     }
-    t+='\n👉 Comprar: *!comprarsombras número*'
+    t+='\n9️⃣ ↩️ Voltar ao Mercado Sombrio\n0️⃣ Sair\n\n👉 Responda só com o número.'
+    setQuickFlow(chat,sender,'city_dark_shop',{stockCount:s.goods.length},120000)
     await reply(t)
   }
-
 
   async function showCityRumors(reply){
     const rows=await listCityRumors(6)
@@ -155,16 +164,16 @@ put('async function showNpcMerchantsMenu(chat,sender,reply){',String.raw`
     if(x.shopType==='dark') return showShadowMenu(chat,sender,reply)
     if(x.shopType==='gear'||x.shopType==='consumables') return showShopCategoryMenu(chat,sender,reply)
     if(x.shopType==='cars'){
-      clearQuickFlow(chat,sender)
+      setQuickFlow(chat,sender,'car_select',{},90000)
       let t='🚗 *CONCESSIONÁRIA DO DANTE*\n\n'
-      CARS.forEach((v,i)=>t+=(i+1)+'. *'+v.name+'* — R$ '+fmt(v.price)+'\n')
-      return reply(t+'\n🛒 Use *!comprarcarro número*.')
+      CARS.forEach((v,i)=>t+=(i+1)+'️⃣ *'+v.name+'* — R$ '+fmt(v.price)+'\n')
+      return reply(t+'\n0️⃣ Cancelar\n\n👉 Responda só com o número.')
     }
     if(x.shopType==='motorcycles'){
-      clearQuickFlow(chat,sender)
+      setQuickFlow(chat,sender,'delivery_vehicle_buy',{},90000)
       let t='🏍️ *GARAGEM DO RIKO*\n\n'
-      MOTORCYCLES.forEach((v,i)=>t+=(i+1)+'. *'+v.name+'* — R$ '+fmt(v.price)+'\n')
-      return reply(t+'\n🛒 Use *!comprarmoto número*.')
+      MOTORCYCLES.forEach((v,i)=>t+=(i+1)+'️⃣ *'+v.name+'* — R$ '+fmt(v.price)+'\n')
+      return reply(t+'\n0️⃣ Cancelar\n\n👉 Responda só com o número.')
     }
   }
 
@@ -255,13 +264,50 @@ put("    if(flow.stage==='npc_select'){",String.raw`
       return true
     }
     if(flow.stage==='city_dark'){
-      if(!['1','2','3'].includes(input)){ await reply('🌑 Escolha de *1 a 3*.'); return true }
+      if(input==='9'){ await showCityMenu(chat,sender,reply); return true }
+      if(input==='4'){ await showDarkShop(chat,sender,reply); return true }
+      if(!['1','2','3'].includes(input)){ await reply('🌑 Escolha *1, 2, 3, 4* ou *9*.'); return true }
       try{
         const r=await acceptDarkContract(sender,input)
         clearQuickFlow(chat,sender)
         const next=r.mission.task==='attack_city'?'!atacarcidade':r.mission.task==='sabotage_city'?'!sabotarcidade':'!roubarnpc 1'
         await reply('🌑 *MISSÃO ACEITA!*\n'+r.mission.title+'\n🎯 '+r.mission.description+'\n💰 R$ '+fmt(r.mission.reward?.cash||r.mission.cash)+' • ✨ '+fmt(r.mission.reward?.xp||0)+' XP\n👉 '+next)
       }catch(e){ clearQuickFlow(chat,sender); await reply('❌ '+e.message) }
+      return true
+    }
+
+    if(flow.stage==='city_dark_active'){
+      if(input==='9'){ await showCityMenu(chat,sender,reply); return true }
+      if(input==='1'){ await showDarkShop(chat,sender,reply); return true }
+      if(input==='2'&&flow.data?.canClaim){
+        try{
+          const r=await claimDarkContract(sender)
+          clearQuickFlow(chat,sender)
+          await reply('🌑 *CONTRATO SOMBRIO CONCLUÍDO!*\n💰 +R$ '+fmt(r.cash)+'\n✨ +'+fmt(r.xp||0)+' XP')
+        }catch(e){ clearQuickFlow(chat,sender); await reply('❌ '+e.message) }
+        return true
+      }
+      await reply(flow.data?.canClaim?'🌑 Escolha *1 Loja*, *2 Resgatar* ou *9 Voltar*.':'🌑 Escolha *1 Loja* ou *9 Voltar*.')
+      return true
+    }
+
+    if(flow.stage==='city_dark_shop'){
+      if(input==='0'){ clearQuickFlow(chat,sender); await reply('🌑 Você saiu da loja clandestina.'); return true }
+      if(input==='9'){ await showShadowMenu(chat,sender,reply); return true }
+      const slot=Number(input)
+      const max=Number(flow.data?.stockCount||0)
+      if(!Number.isInteger(slot)||slot<1||slot>max){
+        await reply('🌑 Escolha um item pelo número, *9* para voltar ou *0* para sair.')
+        return true
+      }
+      try{
+        const r=await buyDarkShopItem(sender,slot)
+        await reply('🌑 *NEGÓCIO FECHADO!*\n📦 '+r.item.name+' ×1\n💸 Pago: *R$ '+fmt(r.price)+'*\n🛒 Compras restantes: *'+r.remaining+'/2*\n👁️ Sua notoriedade aumentou.')
+        await showDarkShop(chat,sender,reply)
+      }catch(e){
+        await reply('❌ '+e.message)
+        await showDarkShop(chat,sender,reply).catch(()=>{})
+      }
       return true
     }
 
@@ -315,11 +361,11 @@ put("        } else if(['npcs','mercadores','comerciantes','mercadoalpha','lojan
           await reply('🌑 *CONTRATO SOMBRIO CONCLUÍDO!*\n💰 +R$ '+fmt(r.cash)+'\n✨ +'+fmt(r.xp||0)+' XP')
 
         } else if(['lojaclandestina','lojasombria'].includes(cmd)){
-          try{ await showDarkShop(sender,reply) }
+          try{ await showDarkShop(chat,sender,reply) }
           catch(e){ await reply('❌ '+e.message) }
 
         } else if(['comprarsombras','comprarsombrio'].includes(cmd)){
-          if(!args[0]) return await showDarkShop(sender,reply)
+          if(!args[0]) return await showDarkShop(chat,sender,reply)
           try{
             const r=await buyDarkShopItem(sender,args[0])
             await reply('🌑 *NEGÓCIO FECHADO!*\n📦 '+r.item.name+' ×1\n💸 Pago: *R$ '+fmt(r.price)+'*\n🛒 Compras restantes: *'+r.remaining+'/2*\n👁️ Sua notoriedade aumentou.')
