@@ -1,0 +1,15 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>QA — Artes dos Pets Alpha RPG</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#060b12;color:#e5efff;margin:0;padding:22px}header{max-width:1400px;margin:auto auto 20px}h1{font-size:22px;margin:0 0 6px}p{color:#9bb0c7;font-size:13px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:15px;max-width:1400px;margin:auto}.card{min-width:0;padding:10px;border:1px solid #2a3e59;border-radius:17px;background:linear-gradient(165deg,#111d2d,#080d15);box-shadow:0 12px 24px #0004}.card img{display:block;width:100%;aspect-ratio:1/1;object-fit:contain;border-radius:12px;outline:1px solid #263a54}h2{font-size:13px;margin:12px 3px 5px}small{font-size:11px;color:#82a0bb;margin:0 3px}.bad{border-color:#e66c62}button{border:1px solid #405675;color:white;background:#17283c;border-radius:10px;padding:8px 12px}</style></head><body>
+<header><h1>Alpha RPG — auditoria visual de pets</h1><p>Os 34 retratos do pacote de correção. Cada card mostra o arquivo final em tamanho de uso mobile.</p><button onclick="location.reload()">Recarregar artes</button></header><div class="grid" id="grid"></div>
+<script>
+const names=["coelho","papagaio","hamster","coruja","golfinho_celestial","moreia_sombria","gaviao","guepardo","gazela_mistica","cervo_mistico","cavalo_guerra","unicornio","colosso_cristal","salamandra_infernal","rinoceronte_titanico","guardiao_obsidiana","cerbero_carmesim","fenix_gelo","fenix_alpha","dragao_corrompido","imperador_abissal","leviata_gelo","lobo_abismo","urso_runico","golem_ancestral","corvo_abissal","tubarao_abissal","tigre_lunar","leao_solar","fenix_fogo","dragao_vulcanico","rinoceronte","colosso_alpha","serpente_cosmica"];
+const grid=document.getElementById('grid');
+for(const name of names){
+ const card=document.createElement('article');card.className='card';
+ const img=document.createElement('img');img.src='/assets/pet-portraits/'+name+'.svg?v=20261006-qa1';img.alt=name;img.loading='lazy';
+ img.onerror=()=>{card.classList.add('bad');card.insertAdjacentHTML('beforeend','<small>❌ Falha ao carregar</small>')};
+ const title=document.createElement('h2');title.textContent=name.replaceAll('_',' ').replace(/\b\w/g,x=>x.toUpperCase());
+ const caption=document.createElement('small');caption.textContent=name;
+ card.append(img,title,caption);grid.append(card);
+}
+</script></body></html>
