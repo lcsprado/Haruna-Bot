@@ -420,16 +420,21 @@ function petVisualMarkup(species,className='pet-official-art'){
       'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
 
-  // Para espécies sem retrato verificado, usa o SVG próprio e correto.
+  // Pets de Raid/especiais usam primeiro a célula exclusiva do atlas próprio.
+  // Isso evita retratos genéricos (ex.: Urso Rúnico virando apenas uma cabeça de urso).
+  if(SPECIAL_PET_SPRITES[exclusive]){
+    return petCroppedSprite(exclusive,className+' pet-primary-art',label);
+  }
+
+  // Para espécies comuns sem retrato fotográfico verificado, usa o SVG próprio.
   if(PET_VERIFIED_VECTOR_ASSETS.has(s)){
     const svg='/assets/pet-portraits/'+s+'.svg';
     return '<div class="pet-art-stack pet-vector-stack">'+
       petSpeciesFallback(s,className+' pet-image-fallback',label)+
-      '<img class="pet-vector-art '+esc(className)+' pet-primary-art" src="'+esc(svg)+'?v=pet-portraits-20261006-1" alt="'+esc(label)+'" loading="lazy" '+
+      '<img class="pet-vector-art '+esc(className)+' pet-primary-art" src="'+esc(svg)+'?v=pet-portraits-20261006-2" alt="'+esc(label)+'" loading="lazy" '+
       'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
 
-  // Só usa o atlas original em espécies que conferimos visualmente.
   const key=VERIFIED_RAID_PET_SPRITES[s]||petSpriteKey(s);
   if(key) return petCroppedSprite(key,className+' pet-primary-art',label);
 
@@ -1320,7 +1325,7 @@ function itemGeneratedArtMarkup(item){
   const cat=String(item?.category||'special');
   let h=0; for(const ch of id) h=(h*31+ch.charCodeAt(0))>>>0;
   const hue=h%360, hue2=(hue+55+(h%70))%360;
-  const icon=cat==='weapon'?'⚔':cat==='armor'?'🛡':cat==='boots'?'🥾':id.includes('pergaminho')||id.includes('tomo')?'📜':id.includes('pet')?'🐾':'✦';
+  const icon=cat==='weapon'?'⚔️':cat==='armor'?'🛡️':cat==='boots'?'🥾':id.includes('pergaminho')||id.includes('tomo')?'📜':id.includes('pet')?'🐾':'✦';
   const safeId=('g'+h).replace(/[^a-z0-9]/gi,'');
   return '<div class="item-art item-generated-art" role="img" aria-label="'+esc(name)+'">'+
     '<svg viewBox="0 0 400 260" aria-hidden="true" focusable="false">'+
