@@ -2437,7 +2437,8 @@ _${memory.text}_
   }
 
   async function showBlackMarket(chat,sender,reply){
-    const r=await getBlackMarketMission(sender)
+    const candidates=String(chat||'').endsWith('@g.us') ? await currentGroupPlayerJids(chat) : []
+    const r=await getBlackMarketMission(sender,candidates)
     if(r.locked){
       return reply(
 `🌑 *MERCADO NEGRO*
