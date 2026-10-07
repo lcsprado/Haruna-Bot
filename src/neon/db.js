@@ -1216,7 +1216,7 @@ export async function buyItem(jid, itemId, qty=1) {
     const itemR = await client.query('SELECT * FROM items WHERE id=$1',[itemId])
     const item=itemR.rows[0]
     if (!item) throw new Error('Item não encontrado.')
-    if(!isRegularShopItem(item)) throw new Error('Esse item não está à venda na loja comum.')
+    if(item.id==='pergaminho_reclassificacao' || !isRegularShopItem(item)) throw new Error('Esse item não está à venda na loja comum.')
 
     const total = Number(item.price)*qty
     const walletR = await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
