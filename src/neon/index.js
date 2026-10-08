@@ -7306,7 +7306,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       ;(async()=>{
         try{
           const targetChat='120363429534634131@g.us'
-          const markerKey='admin_group_progression_event:test-bot:2026-10-08-tiered-v1'
+          const markerKey='admin_group_progression_event:test-bot:2026-10-08-tiered-v2'
           const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
           if(!done){
             const meta=await sock.groupMetadata(targetChat).catch(()=>null)
@@ -7314,7 +7314,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
             const startsAt=Date.now()
             const endsAt=startsAt+30*60*1000
             const state={
-              oneOffId:'test-bot-2026-10-08-tiered-xp',
+              oneOffId:'test-bot-2026-10-08-tiered-xp-v2',
               label:'PROGRESSÃO TURBO',
               startsAt,
               endsAt,
