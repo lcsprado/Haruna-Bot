@@ -1722,6 +1722,8 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
         const chat=lic.chat_jid
         if(!chat?.endsWith('@g.us')) continue
         try{
+          const publicNotice=(await db.query("SELECT value FROM trevo_settings WHERE key='admin_broadcast:economy_audit_20261008'")).rows[0]?.value?.message
+          if(publicNotice) await sendScheduledGroupNotice(chat,'economy-audit-20261008',String(publicNotice))
           const now=Date.now()
           const rushStart=Date.parse('2026-10-04T10:30:00-03:00')
           const rushEnd=Date.parse('2026-10-04T11:30:00-03:00')
