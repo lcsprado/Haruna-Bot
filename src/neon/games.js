@@ -63,6 +63,16 @@ const lucky3xActive=()=>Date.now()>=LUCKY_3X_START&&Date.now()<LUCKY_3X_END
 const lucky3xMultiplier=()=>lucky3xActive()?3:1
 const lucky3xPlayerWins=()=>!lucky3xActive()||Math.random()<0.20
 
+async function groupGamesEventMultiplier(queryable,chat){
+  if(!String(chat||'').endsWith('@g.us')) return 1
+  const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1',['group_games_event:'+chat])).rows[0]
+  const raw=row?.value||{}
+  const now=Date.now()
+  const startsAt=Number(raw.startsAt||0),endsAt=Number(raw.endsAt||0)
+  if(!startsAt||startsAt>now||endsAt<=now) return 1
+  return Math.max(1,Number(raw.multiplier||1))
+}
+
 const CACADA_ALPHA_START=Date.parse('2026-10-06T19:00:00-03:00')
 const CACADA_ALPHA_END=Date.parse('2026-10-06T20:30:00-03:00')
 const cacadaAlphaActive=()=>Date.now()>=CACADA_ALPHA_START&&Date.now()<CACADA_ALPHA_END
@@ -77,7 +87,7 @@ async function credit(client,jid,amount,note){
   `,[jid,amount,note])
 }
 
-export async function roulette(jid,amount,choice){
+export async function roulette(jid,amount,choice,chat=null){
   amount=Number(amount)
   choice=String(choice||'').toLowerCase()
   if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
@@ -93,8 +103,9 @@ export async function roulette(jid,amount,choice){
     if(choice===color && lucky3xPlayerWins()){
       const basePayout=choice==='verde'?amount*36:amount*2
       const baseProfit=basePayout-amount
-      // Lucky 3x multiplies only the prize/profit, never the returned stake.
-      payout=amount+(baseProfit*lucky3xMultiplier())
+      const groupMultiplier=await groupGamesEventMultiplier(c,chat)
+      // Eventos multiplicam só o lucro; a aposta devolvida continua 1x.
+      payout=amount+(baseProfit*lucky3xMultiplier()*groupMultiplier)
     }
     if(payout) await credit(c,jid,payout,'roleta')
     return {number:n,color,choice,amount,payout,profit:payout-amount}
@@ -147,7 +158,8 @@ export async function spinGroupRoulette(chat,jid){
         const stake=Number(bet.amount)
         const basePayout=bet.choice==='verde'?stake*36:stake*2
         const baseProfit=basePayout-stake
-        payout=stake+(baseProfit*lucky3xMultiplier())
+        const groupMultiplier=await groupGamesEventMultiplier(c,chat)
+        payout=stake+(baseProfit*lucky3xMultiplier()*groupMultiplier)
       }
       if(payout) await credit(c,player,payout,'roleta-coletiva')
       results.push({jid:player,amount:Number(bet.amount),choice:bet.choice,payout})
@@ -157,7 +169,7 @@ export async function spinGroupRoulette(chat,jid){
   })
 }
 
-export async function coinFlip(jid,amount,choice){
+export async function coinFlip(jid,amount,choice,chat=null){
   amount=Number(amount)
   choice=String(choice||'').toLowerCase()
   if(!Number.isInteger(amount)||amount<10) throw new Error('Aposta mínima: R$ 10.')
@@ -169,9 +181,10 @@ export async function coinFlip(jid,amount,choice){
     const normalResult=Math.random()<0.5?'cara':'coroa'
     const won=lucky3xActive()?Math.random()<0.20:normalResult===choice
     const result=won?choice:(choice==='cara'?'coroa':'cara')
-    const payout=won?amount*2*lucky3xMultiplier():0
+    const groupMultiplier=await groupGamesEventMultiplier(c,chat)
+    const payout=won?amount+(amount*lucky3xMultiplier()*groupMultiplier):0
     if(payout) await credit(c,jid,payout,'cara-ou-coroa')
-    return {result,choice,amount,payout,profit:payout-amount}
+    return {result,choice,amount,payout,profit:payout-amount,eventMultiplier:groupMultiplier}
   })
 }
 
@@ -448,9 +461,10 @@ export async function answerQuiz(chat,jid,answer){
     await saveGame(c,chat,'quiz',{...s,finished:true,answeredAt:Date.now()})
     const correct=answer===Number(s.c)
     const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-    const reward=correct?1000*moneyMultiplier:0
+    const groupMultiplier=await groupGamesEventMultiplier(c,chat)
+    const reward=correct?1000*moneyMultiplier*groupMultiplier:0
     if(reward) await credit(c,jid,reward,'quiz')
-    return {correct,reward,correctAnswer:s.c,correctText:s.a[s.c-1],eventMultiplier:moneyMultiplier}
+    return {correct,reward,correctAnswer:s.c,correctText:s.a[s.c-1],eventMultiplier:moneyMultiplier*groupMultiplier}
   })
 }
 
@@ -475,9 +489,10 @@ export async function guessNumber(chat,jid,guess){
     if(guess===Number(s.number)){
       await clearGame(c,chat,'numero')
       const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-      const reward=Math.max(300,1500-(s.attempts-1)*100)*moneyMultiplier
+      const groupMultiplier=await groupGamesEventMultiplier(c,chat)
+      const reward=Math.max(300,1500-(s.attempts-1)*100)*moneyMultiplier*groupMultiplier
       await credit(c,jid,reward,'adivinhar-numero')
-      return {won:true,reward,attempts:s.attempts,number:s.number,eventMultiplier:moneyMultiplier}
+      return {won:true,reward,attempts:s.attempts,number:s.number,eventMultiplier:moneyMultiplier*groupMultiplier}
     }
     if(s.attempts>=s.max){
       await clearGame(c,chat,'numero')
