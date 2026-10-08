@@ -4432,7 +4432,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
       }
 
       if(game==='roulette'){
-        const r=await roulette(sender,flow.data.amount,flow.data.choice)
+        const r=await roulette(sender,flow.data.amount,flow.data.choice,chat)
         await progressDailyMission(sender,'game')
         const result=r.payout>0
           ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
@@ -4449,7 +4449,7 @@ ${result}`)
       }
 
       if(game==='coin'){
-        const r=await coinFlip(sender,flow.data.amount,flow.data.choice)
+        const r=await coinFlip(sender,flow.data.amount,flow.data.choice,chat)
         await progressDailyMission(sender,'game')
         await afterGame('coin',{amount:flow.data.amount,choice:flow.data.choice},
 `🪙 *CARA OU COROA*
@@ -4690,7 +4690,7 @@ _Responda só com o número._`
         await reply('Escolha *1, 2 ou 3*.')
         return true
       }
-      const r=await roulette(sender,flow.data.amount,choice)
+      const r=await roulette(sender,flow.data.amount,choice,chat)
       await progressDailyMission(sender,'game')
       const result=r.payout>0
         ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
@@ -4713,7 +4713,7 @@ ${result}`)
         await reply('Escolha *1 ou 2*.')
         return true
       }
-      const r=await coinFlip(sender,flow.data.amount,choice)
+      const r=await coinFlip(sender,flow.data.amount,choice,chat)
       await progressDailyMission(sender,'game')
       await afterGame('coin',{amount:flow.data.amount,choice},
 `🪙 *CARA OU COROA*
@@ -7234,6 +7234,77 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
       ;(async()=>{
         try{
+          const markerKey='admin_group_games_event:test-bot:2026-10-08-15x'
+          const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
+          if(!done){
+            const licenses=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+            let target=null
+            for(const lic of licenses){
+              const chatJid=String(lic.chat_jid||'')
+              if(!chatJid.endsWith('@g.us')) continue
+              const meta=await sock.groupMetadata(chatJid).catch(()=>null)
+              const subject=String(meta?.subject||'')
+              const normalized=subject.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+              if(normalized.includes('teste')&&normalized.includes('bot')){
+                target={chatJid,subject:subject||'Grupo teste'}
+                break
+              }
+            }
+            if(target){
+              const startsAt=Date.now()
+              const endsAt=startsAt+30*60*1000
+              const state={
+                oneOffId:'test-bot-2026-10-08-15x',
+                label:'GAMES 1,5X',
+                startsAt,endsAt,multiplier:1.5,
+                scope:'minigames',
+                groupName:target.subject
+              }
+              await db.query('BEGIN')
+              try{
+                await db.query(
+                  `INSERT INTO trevo_settings(key,value,updated_at)
+                   VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+                   ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
+                  ['group_games_event:'+target.chatJid,JSON.stringify(state)]
+                )
+                await db.query(
+                  `INSERT INTO trevo_settings(key,value,updated_at)
+                   VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
+                  [markerKey,JSON.stringify({chatJid:target.chatJid,groupName:target.subject,startsAt,endsAt,multiplier:1.5})]
+                )
+                await db.query('COMMIT')
+                await sock.sendMessage(target.chatJid,{text:
+`🎮🔥 *EVENTO GAMES 1,5X ATIVO!*
+
+⏱️ Duração: *30 minutos*
+💰 Recompensas dos minigames: *1,5x*
+
+✅ Roleta
+✅ Cara ou Coroa
+✅ Quiz
+✅ Adivinhe o Número
+
+👥 PvP fica fora do bônus.
+⚖️ Chances continuam normais — o bônus aumenta só a recompensa.
+
+🧪 Evento exclusivo deste grupo teste.`}).catch(()=>{})
+                console.log('[Eventos] games 1.5x ativado no grupo teste:',target.subject,target.chatJid)
+              }catch(err){
+                await db.query('ROLLBACK').catch(()=>{})
+                throw err
+              }
+            }else{
+              console.warn('[Eventos] grupo teste do bot não localizado; evento não ativado')
+            }
+          }
+        }catch(err){
+          console.error('[Eventos] falha no evento games 1.5x do grupo teste',err?.message||err)
+        }
+      })()
+
+      ;(async()=>{
+        try{
           const now=Date.now()
           const {rows}=await db.query(
             `SELECT chat_jid,game_type,state,updated_at FROM trevo_games
@@ -9554,7 +9625,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           const choice=(args[1]||'').toLowerCase()
           if(!amount||!choice) return await reply(`Uso: *${prefix}roleta 100 vermelho*\nColetiva: *${prefix}roleta grupo 1000 vermelho*`)
           const player=await resolvePlayerJid(sock,chat,sender,msg)
-          const r=await roulette(player,amount,choice)
+          const r=await roulette(player,amount,choice,chat)
           const result=r.payout>0
             ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
             : `💸 Você perdeu R$ ${fmt(r.amount)}.`
@@ -9590,7 +9661,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           }
           if(!amount) return await reply(`Uso: *${prefix}${choice} 100*\nPvP: *${prefix}${choice} @pessoa 5000*`)
           const player=await resolvePlayerJid(sock,chat,sender,msg)
-          const r=await coinFlip(player,amount,choice)
+          const r=await coinFlip(player,amount,choice,chat)
           await progressDailyMission(player,'game')
           await reply(`🪙 *CARA OU COROA*\n\nResultado: *${r.result}*\nVocê escolheu: *${r.choice}*\n${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
 
