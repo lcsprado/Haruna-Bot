@@ -415,6 +415,12 @@ put("          if(!flow) continue",String.raw`
 
 `)
 
+// Repair the known malformed collection receipt while keeping RPG Web isolated.
+const brokenStart="*R$ ${fmt(r.total)}*`"+"${r.recoveryRetained?"
+if(src.includes(brokenStart)){
+  src=src.replace(brokenStart,"*R$ ${fmt(r.total)}*${r.recoveryRetained?")
+  src=src.replace("*`:''}"+String.fromCharCode(10)+"          await reply(text)","*`:''}`"+String.fromCharCode(10)+"          await reply(text)")
+}
 await writeFile(runtimeUrl,src,'utf8')
 console.log('[Cidade] runtime WhatsApp preparado')
 await import(runtimeUrl.href)
