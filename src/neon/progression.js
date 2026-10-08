@@ -1119,9 +1119,9 @@ export async function collectBusinesses(jid){
       if(earned>0){
         total+=earned
         details.push({name:b.name,earned})
-        // Preserve fractional-hour progress while discarding time beyond storage capacity.
-        const remainder=elapsed<=(capacityHours*3600) ? elapsed%3600 : 0
-        await client.query('UPDATE user_businesses SET last_collected_at=$1 WHERE id=$2',[now-remainder,row.id])
+        // Consume credited time in full: retaining elapsed % 3600 lets players
+        // claim nearly an hour of profit again on every rapid !coletar call.
+        await client.query('UPDATE user_businesses SET last_collected_at=$1 WHERE id=$2',[now,row.id])
       }
     }
     if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
