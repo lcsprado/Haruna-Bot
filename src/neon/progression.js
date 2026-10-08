@@ -1105,6 +1105,17 @@ export async function collectBusinesses(jid){
     const {rows}=await client.query('SELECT * FROM user_businesses WHERE jid=$1 FOR UPDATE',[jid])
     if(!rows.length) throw new Error('Você ainda não possui negócios. Use !negocios.')
     const now=Math.floor(Date.now()/1000)
+    // A five-minute collection window prevents second-by-second claim spam.
+    // Read inside the business row lock so simultaneous WhatsApp groups are safe.
+    const latest=await client.query(
+      "SELECT MAX(created_at) AS last_claim FROM transactions WHERE to_jid=$1 AND type='business_profit'",
+      [jid]
+    )
+    const lastClaim=Number(latest.rows[0]?.last_claim||0)
+    const cooldownRemaining=Math.max(0,300-Math.max(0,now-lastClaim))
+    if(lastClaim>0 && cooldownRemaining>0) {
+      return {total:0,gross:0,tax:0,taxRate:10,details:[],cooldownRemaining}
+    }
     let total=0
     const details=[]
     for(const row of rows){
