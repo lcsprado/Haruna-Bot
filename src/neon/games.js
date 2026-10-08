@@ -908,7 +908,7 @@ export async function startRaid(chat,host,level=null){
   })
 }
 
-async function finishRaidRewards(c,s,cfg){
+async function finishRaidRewards(c,s,cfg,chat){
   const ranked=Object.values(s.players||{}).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
   // Invasão das Raids — 04/10/2026, 14:00–15:30 America/Sao_Paulo.
@@ -1090,7 +1090,7 @@ export async function raidRound(chat,level){
 
     if(Number(s.hp)<=0){
       s.status='completed';s.completedAt=Date.now()
-      const rewards=await finishRaidRewards(c,s,cfg)
+      const rewards=await finishRaidRewards(c,s,cfg,chat)
       await saveGame(c,chat,gameType,s)
       return {victory:true,config:cfg,round:s.round,hp:0,maxHp:s.maxHp,rewards,events}
     }
