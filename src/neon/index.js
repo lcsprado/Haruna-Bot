@@ -8813,7 +8813,7 @@ ${results.join('\n')}
         } else if(['coletar'].includes(cmd)){
           const r=await collectBusinesses(sender)
           if(!r.total) return await reply(r.cooldownRemaining
-            ? '⏳ *COLETA EM ESPERA*\\n\\nSeus negócios continuam produzindo. Próxima coleta em *'+Math.ceil(r.cooldownRemaining/60)+' min*.'
+            ? '⏳ *COLETA EM ESPERA*\n\nSeus negócios continuam produzindo. Próxima coleta em *'+Math.ceil(r.cooldownRemaining/60)+' min*.'
             : '⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
           let text='💰 *LUCROS COLETADOS!*\n\n'
           r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×${eventMultLabel(r.eventMultiplier)})_`:''}\n`)
