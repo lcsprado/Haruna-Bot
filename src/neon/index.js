@@ -8812,12 +8812,12 @@ ${results.join('\n')}
 
         } else if(['coletar'].includes(cmd)){
           const r=await collectBusinesses(sender)
-          if(!r.total) return await reply(r.cooldownRemaining
+          if(!r.total && !r.recoveryRetained) return await reply(r.cooldownRemaining
             ? '⏳ *COLETA EM ESPERA*\n\nSeus negócios continuam produzindo. Próxima coleta em *'+Math.ceil(r.cooldownRemaining/60)+' min*.'
             : '⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
           let text='💰 *LUCROS COLETADOS!*\n\n'
           r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×${eventMultLabel(r.eventMultiplier)})_`:''}\n`)
-          text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*`
+          text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*`${r.recoveryRetained?`\n⚖️ Recuperação após auditoria: *-R$ ${fmt(r.recoveryRetained)}*\n📋 Ajuste restante: *R$ ${fmt(r.recoveryRemaining)}*`:''}
           await reply(text)
 
         } else if(['motos','motocicletas'].includes(cmd)){
