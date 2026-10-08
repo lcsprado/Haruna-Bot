@@ -32,7 +32,7 @@ import {
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
   listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
-  recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel
+  recordGroupActivity, weeklyActivityLeaderboard, getAchievements, petDuel, setPlayerGroupContext
 } from './db.js'
 import { useNeonAuthState } from './auth.js'
 import {
@@ -7305,6 +7305,65 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
       ;(async()=>{
         try{
+          const targetChat='120363429534634131@g.us'
+          const markerKey='admin_group_progression_event:test-bot:2026-10-08-tiered-v1'
+          const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
+          if(!done){
+            const meta=await sock.groupMetadata(targetChat).catch(()=>null)
+            const subject=String(meta?.subject||'TESTE DO BOT')
+            const startsAt=Date.now()
+            const endsAt=startsAt+30*60*1000
+            const state={
+              oneOffId:'test-bot-2026-10-08-tiered-xp',
+              label:'PROGRESSÃO TURBO',
+              startsAt,
+              endsAt,
+              lowLevelMax:50,
+              lowMultiplier:3,
+              highMultiplier:1.5,
+              scope:'player_xp',
+              groupName:subject
+            }
+            await db.query('BEGIN')
+            try{
+              await db.query(
+                `INSERT INTO trevo_settings(key,value,updated_at)
+                 VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+                 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
+                ['group_progression_event:'+targetChat,JSON.stringify(state)]
+              )
+              await db.query(
+                `INSERT INTO trevo_settings(key,value,updated_at)
+                 VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT`,
+                [markerKey,JSON.stringify({chatJid:targetChat,groupName:subject,startsAt,endsAt,lowLevelMax:50,lowMultiplier:3,highMultiplier:1.5})]
+              )
+              await db.query('COMMIT')
+              await sock.sendMessage(targetChat,{text:
+`🚀✨ *EVENTO DE PROGRESSÃO ATIVO!*
+
+⏱️ Duração: *30 minutos*
+
+🌱 Jogadores *Lv.50 ou menos*: *3× XP*
+🔥 Jogadores *acima do Lv.50*: *1,5× XP*
+
+✅ Bônus exclusivo deste grupo.
+🎮 Vale para XP de progressão conquistado jogando.
+📜 Itens de XP/pergaminhos mantêm o valor normal.
+
+Aproveitem para upar! 🔥`}).catch(()=>{})
+              console.log('[Eventos] progressao tiered ativada no grupo teste:',subject,targetChat)
+            }catch(err){
+              await db.query('ROLLBACK').catch(()=>{})
+              throw err
+            }
+          }
+        }catch(err){
+          console.error('[Eventos] falha no evento de progressao do grupo teste',err?.message||err)
+        }
+      })()
+
+      ;(async()=>{
+        try{
           const now=Date.now()
           const {rows}=await db.query(
             `SELECT chat_jid,game_type,state,updated_at FROM trevo_games
@@ -7487,6 +7546,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         const body=textOf(msg).trim()
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
         const isGroup=chat.endsWith('@g.us')
+        setPlayerGroupContext(sender,isGroup?chat:null)
         if(isGroup){
           // Recuperação da apresentação: se o bot foi adicionado enquanto o Render
           // reiniciava/deployava, o evento group-participants.update pode ser perdido.
