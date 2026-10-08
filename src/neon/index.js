@@ -7234,7 +7234,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
       ;(async()=>{
         try{
-          const markerKey='admin_group_games_event:test-bot:2026-10-08-15x-v2'
+          const markerKey='admin_group_games_event:test-bot:2026-10-08-15x-v3'
           const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
           if(!done){
             const licenses=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
@@ -7254,7 +7254,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
               const startsAt=Date.now()
               const endsAt=startsAt+30*60*1000
               const state={
-                oneOffId:'test-bot-2026-10-08-15x-v2',
+                oneOffId:'test-bot-2026-10-08-15x-v3',
                 label:'GAMES 1,5X',
                 startsAt,endsAt,multiplier:1.5,
                 scope:'minigames',
