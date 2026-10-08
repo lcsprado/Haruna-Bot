@@ -937,7 +937,7 @@ async function finishRaidRewards(c,s,cfg){
     const cash=Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier
     const exp=Math.round(Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier)
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
-    await grantExpInTransaction(c,p.jid,exp)
+    await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
     const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.round(Math.floor(cfg.petXpPool*(.15+.85*share))*petXpMultiplier)):0
     const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp):[]
 
@@ -1735,7 +1735,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
           cash=siege?Math.round(3000+25000*share):Math.round((5000+Math.floor(80000*share))*moneyMultiplier*localMult)
           exp=siege?Math.round(Math.floor((700+3500*share+positionXp)*(1+pb.xp))):Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
           await credit(c,p.jid,cash,siege?'boss_event_cerco':(night?'boss_event_night_0303':'boss_event_eclipse'))
-          await grantExpInTransaction(c,p.jid,exp)
+          await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
           if(pp){
             petXp=siege?Math.round(180+700*share+(i===0?180:i===1?90:0)):Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
@@ -1780,7 +1780,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
           cash=(weekly?5000+Math.floor(150000*share)+tier.cash:150+Math.floor(2500*share))*moneyMultiplier
           exp=Math.floor((weekly?150+1000*share+tier.xp:10+35*share)*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
-          await grantExpInTransaction(c,p.jid,exp)
+          await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
           if(pp){
             petXp=weekly
               ? Math.round(80+260*share+(i===0?80:i===1?40:0))
