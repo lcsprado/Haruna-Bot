@@ -46,7 +46,7 @@ const clamp=(n,min,max)=>Math.max(min,Math.min(max,Number(n)||0))
 
 function resolveLocation(ref){
   const key=String(ref||'').trim().toLowerCase()
-  return CITY_LOCATIONS.find((x,i)=>x.id===key||String(i+1)===key)||null
+  return CITY_LOCATIONS.find((x,i)=>x.id===key||x.npcId===key||String(i+1)===key)||null
 }
 function npcLocation(ref){
   const key=String(ref||'').trim().toLowerCase()
@@ -710,9 +710,10 @@ export async function maybeCreateCityEncounter(jid,{force=false}={}){
   const tpl=CITY_ENCOUNTERS[Math.floor(Math.random()*CITY_ENCOUNTERS.length)]
   const candidates=CITY_LOCATIONS.filter(x=>x.robbable)
   const loc=tpl.key==='rob_npc'?candidates[Math.floor(Math.random()*candidates.length)]:null
+  const aloneWord=loc&&['lyra','iris'].includes(String(loc.npcId))?'sozinha':'sozinho'
   const payload={
     title:tpl.title,
-    text:loc?loc.npcName+' está andando sozinho pela noite. Ninguém parece estar olhando.':tpl.text,
+    text:loc?loc.npcName+' está andando '+aloneWord+' pela noite. Ninguém parece estar olhando.':tpl.text,
     options:tpl.key==='rob_npc'?['1️⃣ Assaltar','2️⃣ Ignorar']:tpl.key==='monster'?['1️⃣ Defender','2️⃣ Ignorar']:['1️⃣ Ajudar','2️⃣ Ignorar']
   }
   return (await db.query(`
