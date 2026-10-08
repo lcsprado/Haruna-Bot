@@ -3113,8 +3113,8 @@ export async function grantExp(jid,gain){
 
 // Permite que recompensas compostas (dinheiro, item e EXP) sejam confirmadas
 // juntas na mesma transação. O chamador deve fornecer um client transacional.
-export async function grantExpInTransaction(client,jid,gain){
-  return applyExp(client,jid,Number(gain))
+export async function grantExpInTransaction(client,jid,gain,options={}){
+  return applyExp(client,jid,Number(gain),options)
 }
 
 
