@@ -783,7 +783,7 @@ export async function resolveCityEncounter(jid,id,choice){
   }else if(event.event_key==='rob_npc'){
     const loc=npcLocation(event.npc_id)
     if(choice===1){
-      const robbery=await robCityNpc(jid,loc?.npcId||event.npc_id)
+      const robbery=await robCityNpc(jid,loc?.id||event.npc_id)
       out={
         cash:robbery.success?Number(robbery.amount||0):-Number(robbery.amount||0),
         xp:0,
