@@ -1138,11 +1138,22 @@ export async function collectBusinesses(jid){
     if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const gross=Math.round(total*moneyMultiplier),tax=Math.floor(gross*.10),net=gross-tax
-    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[net,jid])
+    // Settle a documented economy recovery from future net business profits.
+    // No player's wallet goes negative; all changes share the collection transaction.
+    const recoveryKey='economy_recovery:'+jid
+    const recovery=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[recoveryKey])).rows[0]?.value
+    const pending=Math.max(0,Math.trunc(Number(recovery?.remaining||0)))
+    const retained=Math.min(net,pending)
+    if(retained>0){
+      await client.query("UPDATE trevo_settings SET value=jsonb_set(value,'{remaining}',to_jsonb($2::bigint),true),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",[recoveryKey,pending-retained])
+      await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'economy_recovery_withheld',$3)",[jid,retained,String(recovery.case||'auditoria')])
+    }
+    const creditedNet=net-retained
+    if(creditedNet>0) await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[creditedNet,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | negócios')`,[jid,tax])
-    return {total:net,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier}
+    return {total:creditedNet,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:pending-retained}
   })
 }
 
