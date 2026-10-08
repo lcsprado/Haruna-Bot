@@ -2025,6 +2025,37 @@ const PET_POTIONS = {
 const MAX_LEVEL=999
 const MAX_ADMIN_EXP=50_000_000
 
+// Contexto curto do grupo onde o jogador está executando a ação.
+// Permite eventos de XP exclusivos por grupo sem vazar o bônus para outros grupos/privado.
+const playerGroupContext=new Map()
+export function setPlayerGroupContext(jid,chatJid){
+  const key=String(jid||'')
+  if(!key) return
+  if(!String(chatJid||'').endsWith('@g.us')){
+    playerGroupContext.delete(key)
+    return
+  }
+  playerGroupContext.set(key,{chatJid:String(chatJid),at:Date.now()})
+}
+
+async function getGroupProgressionEventMultiplier(queryable,jid,level,options={}){
+  if(options.ignoreGroupProgressionEvent) return 1
+  const explicit=String(options.chatJid||'')
+  const ctx=playerGroupContext.get(String(jid||''))
+  const recent=ctx && Date.now()-Number(ctx.at||0)<=60*1000 ? String(ctx.chatJid||'') : ''
+  const chatJid=explicit.endsWith('@g.us')?explicit:(recent.endsWith('@g.us')?recent:'')
+  if(!chatJid) return 1
+  const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1',['group_progression_event:'+chatJid])).rows[0]
+  const raw=row?.value||{}
+  const now=Date.now()
+  const startsAt=Number(raw.startsAt||0),endsAt=Number(raw.endsAt||0)
+  if(!startsAt||startsAt>now||endsAt<=now) return 1
+  const maxLow=Math.max(1,Number(raw.lowLevelMax||50))
+  const low=Math.max(1,Number(raw.lowMultiplier||3))
+  const high=Math.max(1,Number(raw.highMultiplier||1.5))
+  return Number(level||1)<=maxLow?low:high
+}
+
 function expNeeded(level) {
   return Math.max(100, Number(level) * 100)
 }
@@ -2034,22 +2065,27 @@ async function applyExp(client, jid, gain, options={}) {
   if(!Number.isSafeInteger(numericGain) || numericGain<0) throw new Error('EXP inválida.')
 
   const r = await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
-  if (!r.rows[0]) return { level:1, exp:0, levels:0 }
+  if (!r.rows[0]) return { level:1, exp:0, levels:0, baseGain:numericGain, awardedGain:numericGain, eventMultiplier:1 }
+  const startingLevel=Math.min(MAX_LEVEL,Math.max(1,Number(r.rows[0].level)||1))
+  const eventMultiplier=numericGain>0
+    ?await getGroupProgressionEventMultiplier(client,jid,startingLevel,options)
+    :1
+  const eventGain=Math.max(0,Math.round(numericGain*eventMultiplier))
   let bonusXp=0
-  if(numericGain>0 && !options.ignoreXpBoost && Number(r.rows[0].level)<MAX_LEVEL){
+  if(eventGain>0 && !options.ignoreXpBoost && startingLevel<MAX_LEVEL){
     const boost=(await client.query(`
       SELECT bonus_percent,bonus_remaining FROM alpha_xp_boosts
       WHERE jid=$1 AND expires_at>EXTRACT(EPOCH FROM NOW())::BIGINT AND bonus_remaining>0
       FOR UPDATE
     `,[jid])).rows[0]
     if(boost){
-      bonusXp=Math.min(Number(boost.bonus_remaining),Math.floor(numericGain*Number(boost.bonus_percent)/100))
+      bonusXp=Math.min(Number(boost.bonus_remaining),Math.floor(eventGain*Number(boost.bonus_percent)/100))
       if(bonusXp>0) await client.query('UPDATE alpha_xp_boosts SET bonus_remaining=bonus_remaining-$1 WHERE jid=$2',[bonusXp,jid])
     }
   }
 
-  let level=Math.min(MAX_LEVEL,Math.max(1,Number(r.rows[0].level)||1))
-  let exp=Math.max(0,Number(r.rows[0].exp)||0)+numericGain+bonusXp
+  let level=startingLevel
+  let exp=Math.max(0,Number(r.rows[0].exp)||0)+eventGain+bonusXp
   let levels=0
 
   // Nunca passa de 998 iterações, mesmo com EXP enorme.
@@ -2080,7 +2116,14 @@ async function applyExp(client, jid, gain, options={}) {
     `,[levels*8,levels*2,levels,levels,jid])
   }
 
-  return { level, exp, levels }
+  return {
+    level,exp,levels,
+    baseGain:numericGain,
+    awardedGain:eventGain+bonusXp,
+    eventGain,
+    boostBonus:bonusXp,
+    eventMultiplier
+  }
 }
 
 export function getEquipmentInfo(itemId) {
@@ -3055,7 +3098,7 @@ export async function useXpConsumable(jid,itemId){
         INSERT INTO alpha_xp_scroll_uses(jid,day_number) VALUES($1,$2)
         ON CONFLICT(jid) DO UPDATE SET day_number=EXCLUDED.day_number
       `,[jid,dayNumber])
-      const gain=await applyExp(client,jid,effect.xp,{ignoreXpBoost:true})
+      const gain=await applyExp(client,jid,effect.xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
       result={type:'scroll',name:effect.name,xp:effect.xp,level:gain.level,levelUps:gain.levels}
     }
     await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
