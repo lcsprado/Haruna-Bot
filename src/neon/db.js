@@ -4941,11 +4941,31 @@ const PET_EXPEDITION_TRAITS={
   leao:{label:'🦁 Líder',xp:.12,cash:.16},
   cervo_mistico:{label:'🦌 Ervas Restauradoras',xp:.10,item:'pocao_pet_rara',itemChance:.08},
   unicornio:{label:'🦄 Bênção',item:'caixa_rara',itemChance:.08,xp:.10},
-  dragao:{label:'🐉 Guardião de Tesouros',cash:.22,item:'caixa_rara',itemChance:.06}
+  dragao:{label:'🐉 Guardião de Tesouros',cash:.22,item:'caixa_rara',itemChance:.06},
+  urso_runico:{label:'🐻 Guardião da Trilha',xp:.08,cash:.14},
+  corvo_abissal:{label:'🐦 Olheiro Abissal',xp:.12,item:'caixa_sorte',itemChance:.12},
+  golem_ancestral:{label:'🗿 Coletor Ancestral',cash:.10,item:'pocao_pet_rara',itemChance:.08},
+  kitsune:{label:'🦊 Espírito Explorador',xp:.16,item:'caixa_sorte',itemChance:.10},
+  grifo_celestial:{label:'🪽 Batedor Celestial',xp:.18,cash:.08},
+  fenix_celestial:{label:'🔥 Guia Celestial',xp:.20,cash:.07},
+  fenix_gelo:{label:'❄️ Rastreira Glacial',xp:.16,cash:.08},
+  fenix_fogo:{label:'🔥 Rastreira Ígnea',xp:.16,cash:.08},
+  dragonite:{label:'🐉 Explorador Dracônico',xp:.12,cash:.14}
 }
 const EXPEDITION_ITEM_NAMES={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_p:'Poção Pequena',caixa_sorte:'Caixa da Sorte',caixa_rara:'Caixa Rara'}
 export function petExpeditionTrait(species){
-  return PET_EXPEDITION_TRAITS[String(species||'').toLowerCase()]||{label:'🐾 Explorador'}
+  return PET_EXPEDITION_TRAITS[String(species||'').toLowerCase()]||{label:'🐾 Explorador',xp:.08,cash:.05}
+}
+export const PET_EXPEDITION_MAX_CONCURRENT=12
+const PET_EXPEDITION_PLANS={2:{xp:70,cash:500},4:{xp:150,cash:1100},8:{xp:330,cash:2500}}
+function petExpeditionRewards(plan,trait,position){
+  // Pets além do terceiro ainda ganham XP integral, mas com dinheiro progressivamente menor.
+  // Evita que coleções grandes gerem dinheiro ilimitado sem esforço.
+  const cashScale=position>6?.25:position>3?.5:1
+  return {
+    petXp:Math.round(plan.xp*(1+Number(trait.xp||0))),
+    cash:Math.round(plan.cash*(1+Number(trait.cash||0))*cashScale)
+  }
 }
 export async function getPetExpeditions(jid){
   await ensureUser(jid)
@@ -4956,10 +4976,10 @@ export async function getPetExpeditions(jid){
 }
 export async function startPetExpedition(jid,petId,hours=4){
   await ensureUser(jid); petId=Number(petId); hours=Number(hours)
-  const plans={2:{xp:70,cash:500},4:{xp:150,cash:1100},8:{xp:330,cash:2500}}
-  const plan=plans[hours]
+  const plan=PET_EXPEDITION_PLANS[hours]
   if(!plan) throw new Error('Duração inválida. Use 2, 4 ou 8 horas.')
   return transaction(async client=>{
+    await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
     const pet=(await client.query('SELECT * FROM pet_collection WHERE id=$1 AND jid=$2 FOR UPDATE',[petId,jid])).rows[0]
     if(!pet) throw new Error('Pet não encontrado. Use !meuspets para ver o ID.')
     const teamSlot=(await client.query('SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId])).rows[0]
@@ -4974,14 +4994,46 @@ export async function startPetExpedition(jid,petId,hours=4){
       throw new Error(`Esse pet já está em uma expedição. ⏱️ Retorno em aproximadamente ${leftText}.`)
     }
     const activeCount=Number((await client.query('SELECT COUNT(*) n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE',[jid])).rows[0]?.n||0)
-    if(activeCount>=3) throw new Error('Você já tem 3 pets em expedição. Aguarde algum retornar.')
+    if(activeCount>=PET_EXPEDITION_MAX_CONCURRENT) throw new Error(`Você já tem ${PET_EXPEDITION_MAX_CONCURRENT} pets em expedição. Aguarde algum retornar.`)
     const trait=petExpeditionTrait(pet.species)
-    const petXp=Math.round(plan.xp*(1+Number(trait.xp||0)))
-    const cash=Math.round(plan.cash*(1+Number(trait.cash||0)))
+    const {petXp,cash}=petExpeditionRewards(plan,trait,activeCount+1)
     const now=Math.floor(Date.now()/1000),ends=now+hours*3600
     const row=(await client.query(`INSERT INTO pet_expeditions(jid,pet_id,hours,started_at,ends_at,pet_xp,cash_reward)
       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[jid,petId,hours,now,ends,petXp,cash])).rows[0]
     return {...row,pet_name:pet.name,species:pet.species,trait}
+  })
+}
+export async function startAllPetExpeditions(jid,hours=4){
+  await ensureUser(jid)
+  hours=Number(hours)
+  const plan=PET_EXPEDITION_PLANS[hours]
+  if(!plan) throw new Error('Duração inválida. Use 2, 4 ou 8 horas.')
+  return transaction(async client=>{
+    // Serializa envios em lote/individuais do mesmo jogador.
+    await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+    const activeCount=Number((await client.query(
+      'SELECT COUNT(*) n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE',[jid]
+    )).rows[0]?.n||0)
+    const availableSlots=PET_EXPEDITION_MAX_CONCURRENT-activeCount
+    if(availableSlots<=0) throw new Error(`Você já tem ${PET_EXPEDITION_MAX_CONCURRENT} pets em expedição. Aguarde algum retornar.`)
+    const pets=(await client.query(`SELECT p.id,p.name,p.species
+      FROM pet_collection p
+      WHERE p.jid=$1 AND p.active=FALSE
+        AND NOT EXISTS(SELECT 1 FROM pet_team t WHERE t.jid=p.jid AND t.pet_id=p.id)
+        AND NOT EXISTS(SELECT 1 FROM pet_expeditions e WHERE e.pet_id=p.id AND e.resolved=FALSE)
+      ORDER BY p.id ASC LIMIT $2 FOR UPDATE OF p`,[jid,availableSlots+1])).rows
+    if(!pets.length) throw new Error('Nenhum pet reserva livre para expedição. Pets do time e o pet ativo não podem ser enviados.')
+    const started=[]
+    const now=Math.floor(Date.now()/1000),ends=now+hours*3600
+    for(const pet of pets.slice(0,availableSlots)){
+      const trait=petExpeditionTrait(pet.species)
+      const {petXp,cash}=petExpeditionRewards(plan,trait,activeCount+started.length+1)
+      const row=(await client.query(`INSERT INTO pet_expeditions(jid,pet_id,hours,started_at,ends_at,pet_xp,cash_reward)
+        VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [jid,pet.id,hours,now,ends,petXp,cash])).rows[0]
+      started.push({...row,pet_name:pet.name,species:pet.species,trait})
+    }
+    return {started,hours,limit:PET_EXPEDITION_MAX_CONCURRENT,remaining:pets.length-started.length}
   })
 }
 export async function resolvePetExpeditions(jid){

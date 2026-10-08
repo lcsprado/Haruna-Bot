@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
-  adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, resolvePetExpeditions,
+  adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
   listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
@@ -2947,7 +2947,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!passear* — passeia
 *!treinarpet* — treina
 *!aventurapet* — manda para aventura
-*!petaventura* — gasta toda a energia e retorna com dinheiro e XP\n*!expedicaopet ID 2|4|8* — manda um pet reserva em expedição\n*!expedicoespet* — acompanha e recebe pets que retornaram
+*!petaventura* — gasta toda a energia e retorna com dinheiro e XP\n*!expedicaopet ID 2|4|8* — manda um pet reserva em expedição\n*!expedicaopet todos 2|4|8* — envia todos os reservas livres\n*!expedicoespet* — acompanha e recebe pets que retornaram
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
 
@@ -8052,16 +8052,33 @@ Se precisar de mais ajuda, use *!suporte*.`
                   text+=`\n• ID *${x.pet_id}* — *${x.pet_name}* — ${x.trait.label}\n  ⏱️ ${duration(Math.max(0,Number(x.ends_at)-Math.floor(Date.now()/1000)))} restantes\n  🎯 Garantido: *+${Number(x.pet_xp||0)} XP* • *R$ ${fmt(x.cash_reward)}*\n  🎁 Extra: ${expeditionTraitText(x.trait)}\n`
                 }
               }else text+='\nNenhum pet está fora agora.'
-              text+='\n\n📌 Quando o tempo acabar, use *!expedicoespet* para receber e ver o resultado.\n💡 Enviar reserva: *!expedicaopet ID 2*, *4* ou *8*.'
+              text+='\n\n📌 Quando o tempo acabar, use *!expedicoespet* para receber e ver o resultado.\n💡 Enviar reservas: *!expedicaopet todos 8* (ou *!expedicaopet ID 8*).'
               return await reply(text)
             }
             if(cmd==='expedicaopet'){
               const done=await resolvePetExpeditions(sender)
-              const petId=Number(args[0]),hours=Number(args[1]||4)
+              const hours=Number(args[1]||4)
+              if(String(args[0]||'').toLowerCase()==='todos'){
+                const r=await startAllPetExpeditions(sender,hours)
+                let text=`🧭 *EXPEDIÇÕES INICIADAS!*
+
+✅ *${r.started.length} pet(s)* reserva(s) enviados por *${r.hours}h*.
+🐾 Pets do time e pet ativo protegidos.
+
+`
+                for(const p of r.started) text+=`• *${p.pet_name}* (ID ${p.pet_id}) — +${p.pet_xp} XP • R$ ${fmt(p.cash_reward)}
+`
+                text+=`
+📌 Limite simultâneo: *${r.limit} pets*. A partir do 4º, o dinheiro diminui para proteger a economia, mas o XP de pet continua integral.
+${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳ Consulte e colete com *!expedicoespet*.`
+                return await reply(text)
+              }
+              const petId=Number(args[0])
               if(!petId){
                 const activeExpeditions=await getPetExpeditions(sender)
                 const busyIds=new Set(activeExpeditions.map(x=>Number(x.pet_id)))
-                const reservePets=(await listPets(sender)).filter(p=>!p.active)
+                const teamIds=new Set((await getPetTeam(sender)).map(p=>Number(p.id)))
+                const reservePets=(await listPets(sender)).filter(p=>!p.active&&!teamIds.has(Number(p.id)))
                 const pets=reservePets.filter(p=>!busyIds.has(Number(p.id)))
                 let text='🧭 *MANDAR PET EM EXPEDIÇÃO*\n\n'
                 if(done.length) text+=`🎉 ${done.length} pet(s) retornaram e as recompensas já foram creditadas.\n\n`
@@ -8080,7 +8097,7 @@ Se precisar de mais ajuda, use *!suporte*.`
                     text+=`• ID *${x.pet_id}* — *${x.pet_name}* — volta em *${duration(Math.max(0,Number(x.ends_at)-Math.floor(Date.now()/1000)))}*\n`
                   }
                 }
-                text+='\n🎯 *RECOMPENSAS BASE GARANTIDAS*\n• *2h* — +70 XP • R$ 500\n• *4h* — +150 XP • R$ 1.100\n• *8h* — +330 XP • R$ 2.500\n\n⭐ O bônus da espécie é aplicado sobre esses valores; chances de item são extras.\n\n👉 Ex.: *!expedicaopet 4 8*\n📌 Máximo: 3 pets fora ao mesmo tempo. O pet ativo não pode ir.'
+                text+='\n🎯 *RECOMPENSAS BASE GARANTIDAS*\n• *2h* — +70 XP • R$ 500\n• *4h* — +150 XP • R$ 1.100\n• *8h* — +330 XP • R$ 2.500\n\n⭐ Bônus da espécie e chances de item são extras. Dinheiro reduzido em 50% para o 4º–6º pet e em 75% do 7º em diante; XP integral.\n\n👉 Individual: *!expedicaopet 4 8*\n🚀 Todos: *!expedicaopet todos 8*\n📌 Até *'+PET_EXPEDITION_MAX_CONCURRENT+' pets* simultâneos. Pets do time e ativo não podem ir.'
                 return await reply(text)
               }
               const r=await startPetExpedition(sender,petId,hours)
