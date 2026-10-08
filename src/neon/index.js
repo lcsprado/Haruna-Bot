@@ -7334,7 +7334,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
               )
               await db.query(
                 `INSERT INTO trevo_settings(key,value,updated_at)
-                 VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT`,
+                 VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)`,
                 [markerKey,JSON.stringify({chatJid:targetChat,groupName:subject,startsAt,endsAt,lowLevelMax:50,lowMultiplier:3,highMultiplier:1.5})]
               )
               await db.query('COMMIT')
