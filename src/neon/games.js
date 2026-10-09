@@ -1582,7 +1582,8 @@ export async function compensateFrozenWeeklyBoss20261009(){
       return {status:'skipped',reason:'boss semanal de 09/10/2026 indisponível ou diferente da captura'}
     }
     const startAt=Date.parse('2026-10-09T00:19:00-03:00')
-    const eligibleBy=Date.parse('2026-10-09T00:40:59-03:00')
+    // Inclui quem entrou até o fim do congelamento, com tempo individual reduzido.
+    const eligibleBy=Date.parse('2026-10-09T02:45:00-03:00')
     const endAt=Date.parse('2026-10-09T02:45:00-03:00')
     const maxBudget=Math.floor((5681920-5611086)*(146/18))
     const candidates=[]
@@ -1599,10 +1600,11 @@ export async function compensateFrozenWeeklyBoss20261009(){
         averageDamage:Number(p.damage)/Number(p.attacks),
         weight:missedAttacks*Number(p.damage)/Number(p.attacks)})
     }
-    // Nunca compensar jogadores que não possam ser identificados com segurança.
-    if(candidates.length!==3){
+    // Apenas jogadores comprovadamente vinculados antes do fim da falha.
+    // Limite de 3 impede premiar adesões posteriores/participação desconhecida.
+    if(candidates.length<2||candidates.length>3){
       console.warn('[Boss Compensation] revisão necessária: participantes elegíveis=',candidates.length)
-      return {status:'skipped',reason:'esperados exatamente três participantes originais',found:candidates.length}
+      return {status:'skipped',reason:'participantes comprovados fora do intervalo de segurança de 2 a 3',found:candidates.length}
     }
     const totalWeight=candidates.reduce((sum,p)=>sum+p.weight,0)
     if(!(totalWeight>0)) return {status:'skipped',reason:'sem dano médio confiável'}
