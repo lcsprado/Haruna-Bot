@@ -84,6 +84,7 @@ const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
 })
 let connectionWatchdog=null
 let bossEventScheduler=null
+let bossProgressScheduler=null
 let reconnectTimer=null
 let reconnecting=false
 function scheduleReconnect(delayMs=3000){
@@ -2123,6 +2124,131 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
       console.error('[BossEvento] falha no agendamento',err?.message||err)
     }
   }
+
+
+  // Boletim automático a cada 30 minutos (horário de São Paulo: hh:00 / hh:30).
+  // Lê o estado GLOBAL diretamente do Neon; não executa ataques nem muda os
+  // danos, o HP, as recompensas ou a economia do jogo.
+  // Cada combinação Boss + janela de 30 min + grupo possui uma chave única,
+  // persistida em trevo_settings para evitar avisos duplicados após redeploy.
+  let bossProgressBroadcastRunning=false
+  async function broadcastBossProgressEvery30Minutes(){
+    if(trevoHealth.whatsapp!=='open' || bossProgressBroadcastRunning) return
+    const now=Date.now()
+    const slotMs=30*60*1000
+    const windowStart=Math.floor(now/slotMs)*slotMs
+    // O scheduler verifica a cada 20 s. Permite 4 min de tolerância após o
+    // horário cheio/meia hora, mas não manda mensagens antigas ao reiniciar.
+    if(now-windowStart>4*60*1000) return
+    bossProgressBroadcastRunning=true
+    try{
+      const {rows}=await db.query(`
+        SELECT chat_jid,game_type,state FROM trevo_games
+        WHERE (chat_jid='__alpha_global_weekly_boss__' AND game_type='boss')
+           OR (chat_jid='__alpha_global_boss_event__' AND game_type='boss_event')
+      `)
+      const weekly=rows.find(x=>x.chat_jid==='__alpha_global_weekly_boss__')?.state
+      const event=rows.find(x=>x.chat_jid==='__alpha_global_boss_event__')?.state
+      const eventActive=Boolean(event?.mode==='event'&&event.active!==false&&Number(event.hp)>0
+        && (!event.endsAt||Number(event.endsAt)>now))
+      const weeklyActive=Boolean(weekly?.mode==='weekly'&&Number(weekly.hp)>0
+        && Number(weekly.endsAt||0)>now)
+      // !boss prioriza o evento global quando estiver ativo.
+      const current=eventActive?event:(weeklyActive?weekly:null)
+      if(!current) return
+      const maxHp=Number(current.maxHp||0)
+      const hp=Math.max(0,Number(current.hp||0))
+      if(!Number.isFinite(maxHp)||maxHp<=0||!Number.isFinite(hp)) return
+      const progress=Math.max(0,Math.min(1,(maxHp-hp)/maxHp))
+      const percent=(progress*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
+      const barFilled=Math.max(0,Math.min(10,Math.round((hp/maxHp)*10)))
+      const healthBar='█'.repeat(barFilled)+'░'.repeat(10-barFilled)
+      const fmt=n=>Math.round(Number(n)||0).toLocaleString('pt-BR')
+      const safeName=n=>String(n||'Jogador').replace(/[\r\n\t*_~`]/g,' ').trim().slice(0,50)||'Jogador'
+      const participants=Object.entries(current.participants||{})
+        .map(([jid,p])=>({jid,name:safeName(p?.name),damage:Math.max(0,Number(p?.damage||0))}))
+        .filter(p=>p.damage>0)
+        .sort((a,b)=>b.damage-a.damage)
+      const totalRegistered=participants.reduce((sum,p)=>sum+p.damage,0)
+      const ranking=participants.length?participants.slice(0,10).map((p,i)=>{
+        const medal=['🥇','🥈','🥉'][i]||(i+1)+'.'
+        const contribution=totalRegistered>0
+          ?' ('+(p.damage/totalRegistered*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%)'
+          :''
+        return medal+' *'+p.name+'* — '+fmt(p.damage)+' dano'+contribution
+      }).join('\n'):'_Ainda não há dano registrado._'
+      const extra=participants.length>10?'\n... e mais '+(participants.length-10)+' participantes.':''
+      const brTime=new Intl.DateTimeFormat('pt-BR',{
+        timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+      }).format(new Date(windowStart))
+      const weeklyBoss=current.mode==='weekly'
+      const bossIdentity=weeklyBoss
+        ?'semanal-'+String(current.weekendKey||current.startedAt||current.endsAt)
+        :'evento-'+String(current.scheduleKey||current.eventId||current.startedAt)
+      const body=`🌍👹 *${weeklyBoss?'SUPERBOSS SEMANAL':'BOSS GLOBAL'} — BOLETIM 30 MIN*
+
+👹 *${safeName(current.name||'Boss do Alpha')}*
+🕒 Atualização: *${brTime}* (São Paulo)
+
+❤️ *HP: ${fmt(hp)}/${fmt(maxHp)}*
+[${healthBar}]
+💥 Dano acumulado: *${fmt(maxHp-hp)}* (*${percent}%*)
+👥 Participantes com dano: *${participants.length}*
+
+🏆 *RANKING DE DANO*
+${ranking}${extra}
+
+⚔️ O combate continua automaticamente.
+🔎 Use *!boss* para consultar o HP quando quiser.`
+      const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+      let sent=0
+      for(const group of groups){
+        const chat=String(group.chat_jid||'')
+        if(!chat.endsWith('@g.us')) continue
+        try{
+          const key='boss_progress_30m:'+bossIdentity+':'+windowStart+':'+chat
+          // A unicidade no Neon protege contra dois processos ou reconexões
+          // publicarem o mesmo boletim no mesmo grupo.
+          const claim=await db.query(
+            "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
+            [key,JSON.stringify({status:'sending',slot:windowStart,claimedAt:Date.now()})]
+          )
+          if(!claim.rowCount) continue
+          try{
+            await sock.sendMessage(chat,{text:body})
+            sent++
+            await db.query(
+              "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+              [key,JSON.stringify({status:'sent',slot:windowStart,sentAt:Date.now()})]
+            ).catch(err=>console.warn('[Boss 30m] envio realizado, mas atualização do marcador falhou',err?.message||err))
+          }catch(err){
+            // Não liberar o marcador após erro de envio ambíguo: isso pode
+            // reenviar a mesma mensagem duas vezes ao mesmo grupo.
+            console.error('[Boss 30m] falha ao enviar boletim',chat,err?.message||err)
+            await db.query(
+              "UPDATE trevo_settings SET value=$2::jsonb WHERE key=$1",
+              [key,JSON.stringify({status:'delivery_unknown',slot:windowStart})]
+            ).catch(()=>{})
+          }
+        }catch(err){
+          console.error('[Boss 30m] falha ao registrar boletim',chat,err?.message||err)
+        }
+      }
+      console.log('[Boss 30m] boletim',JSON.stringify({
+        boss:current.name,slot:new Date(windowStart).toISOString(),
+        remainingHp:hp,maxHp,participants:participants.length,groupsSent:sent
+      }))
+    }catch(err){
+      console.error('[Boss 30m] falha no agendamento',err?.message||err)
+    }finally{
+      bossProgressBroadcastRunning=false
+    }
+  }
+
+  if(bossProgressScheduler) clearInterval(bossProgressScheduler)
+  bossProgressScheduler=setInterval(()=>{void broadcastBossProgressEvery30Minutes()},20*1000)
+  bossProgressScheduler.unref?.()
+  setTimeout(()=>{void broadcastBossProgressEvery30Minutes()},3000).unref?.()
 
   if(bossEventScheduler) clearInterval(bossEventScheduler)
   bossEventScheduler=setInterval(runBossEventScheduler,30*1000)
