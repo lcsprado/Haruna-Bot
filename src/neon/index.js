@@ -4551,7 +4551,7 @@ Digite apenas seu chute.
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
-        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:00 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento ativo — ativado manualmente pelo dono.*':'')
+        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento ativo — ativado manualmente pelo dono.*':'')
         await reply(
 `👹 *${r.name}*
 
@@ -4641,7 +4641,7 @@ Digite *0* para sair do modo rápido.`
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
-        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:00 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento ativo — ativado manualmente pelo dono.*':'')
+        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento ativo — ativado manualmente pelo dono.*':'')
         await reply(
 `👹 *${r.name}*
 
@@ -10068,7 +10068,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const synergyLine=bossSynergy?`\n🧬 Sinergia do time: *${bossSynergy.label}*\n🎯 ${bossSynergy.text}`:''
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}${synergyLine}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
           const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
-          const schedule=r.mode==='weekly'?`\n📅 Sexta 00:00 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial ativado manualmente pelo dono.':'')
+          const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial ativado manualmente pelo dono.':'')
           if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
           await progressDailyMission(sender,'game')
           const rewardInfo=r.mode==='event'
