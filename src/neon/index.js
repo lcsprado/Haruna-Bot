@@ -159,12 +159,13 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
   }
   ;(async()=>{
     let completed=false
+    let pendingFirst=first
     let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     let sessionMode=null,sessionEndsAt=0
     try{
       for(let i=0;;i++){
         if(!runner.active||bossSessions.get(key)!==runner){completed=true;return}
-        const r=i===0?first:await attackBoss(chat,jid,name,usePet)
+        const r=pendingFirst?(pendingFirst=null,first):await attackBoss(chat,jid,name,usePet)
         runner.lastProgressAt=Date.now()
         if(r?.cooldown){
           i--
@@ -243,6 +244,8 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
 
 let bossAutoWatchdog=null
 let bossAutoWatchdogBusy=false
+let bossAutoReply=null
+let legacyWeeklyBossRecoveredId=null
 
 // Recupera a participação já existente antes da migração para runners persistentes.
 // Só recupera quem realmente atacou, vinculando ao mesmo grupo gravado no Neon.
@@ -257,6 +260,7 @@ async function recoverLegacyWeeklyBossSessions(){
   const state=row?.state
   if(!state) return
   const bossId='weekly:'+String(state.endsAt||0)
+  if(legacyWeeklyBossRecoveredId===bossId) return
   for(const [jid,participant] of Object.entries(state.participants||{})){
     if(!Number(participant.lastAttackAt||0)) continue
     const claimKey='weekly_boss_group:'+String(state.weekendKey||'')+':'+jid
@@ -273,6 +277,7 @@ async function recoverLegacyWeeklyBossSessions(){
       WHERE boss_auto_sessions.boss_id<>EXCLUDED.boss_id
     `,[jid,chat,participant.name||'Jogador',participant.usePet!==false,bossId,Number(state.endsAt||0),Number(participant.lastAttackAt||0)])
   }
+  legacyWeeklyBossRecoveredId=bossId
 }
 
 async function ensureActiveBossRuns(sendToChat){
@@ -1812,13 +1817,14 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
   // uma Raid ativa já existir quando o bot subir, o servidor relança o runner.
   // raidRuns impede dois loops simultâneos para o mesmo grupo/nível.
   void ensureActiveRaidRuns()
+  bossAutoReply=(chat,text)=>sock.sendMessage(chat,{text})
   if(!bossAutoWatchdog){
     bossAutoWatchdog=setInterval(()=>{
-      void ensureActiveBossRuns((chat,text)=>sock.sendMessage(chat,{text}))
+      void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))
     },8000)
     bossAutoWatchdog.unref?.()
   }
-  setTimeout(()=>{void ensureActiveBossRuns((chat,text)=>sock.sendMessage(chat,{text}))},1500).unref?.()
+  setTimeout(()=>{void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))},1500).unref?.()
   if(!raidAutoWatchdog){
     raidAutoWatchdog=setInterval(()=>{ void ensureActiveRaidRuns() },4000)
     raidAutoWatchdog.unref?.()
