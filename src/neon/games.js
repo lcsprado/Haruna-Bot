@@ -26,6 +26,19 @@ export async function initGames(){
       PRIMARY KEY(chat_jid,game_type)
     )
   `)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS boss_auto_sessions(
+      jid TEXT PRIMARY KEY,
+      chat_jid TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT 'Jogador',
+      use_pet BOOLEAN NOT NULL DEFAULT TRUE,
+      status TEXT NOT NULL DEFAULT 'active',
+      boss_id TEXT NOT NULL,
+      ends_at BIGINT NOT NULL DEFAULT 0,
+      last_attack_at BIGINT NOT NULL DEFAULT 0,
+      updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
+    )
+  `)
 }
 
 async function loadGame(client,chat,type){
@@ -1617,13 +1630,24 @@ export async function attackBoss(chat,jid,name,usePet=true){
       s.mode='weekly'; s.weeklyCompleted=false
     }
     if(gameType==='boss'&&s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
-    if(gameType==='boss'&&s.mode==='weekly'){
-      const claimKey='weekly_boss_group:'+weekend.weekendKey+':'+jid
+    // Vinculação persistente: impede trocar de grupo mesmo durante eventos globais.
+    if(weekend.open){
+      const initialClaimKey='weekly_boss_group:'+weekend.weekendKey+':'+jid
+      const initialClaim=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[initialClaimKey])).rows[0]?.value
+      if(initialClaim?.chat&&initialClaim.chat!==chat){
+        throw new Error('⚠️ Você já iniciou o Superboss em outro grupo. Continue atacando no grupo original; trocar de grupo não é permitido.')
+      }
+    }
+    if((gameType==='boss'&&s.mode==='weekly')||gameType==='boss_event'){
+      const globalBossId=gameType==='boss_event'
+        ?String(s.scheduleKey||s.eventId||s.startedAt||s.endsAt||'event')
+        :weekend.weekendKey
+      const claimKey=gameType==='boss_event'?'global_boss_event_group:'+globalBossId+':'+jid:'weekly_boss_group:'+weekend.weekendKey+':'+jid
       await c.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING",
-        [claimKey,JSON.stringify({chat,weekendKey:weekend.weekendKey})])
+        [claimKey,JSON.stringify({chat,globalBossId})])
       const claim=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[claimKey])).rows[0]?.value
       if(claim?.chat!==chat){
-        throw new Error('⚠️ Você já está participando do Boss Mundial em outro grupo. Para evitar ataques e recompensas duplicados, continue no grupo em que começou.')
+        throw new Error('⚠️ Você já está participando deste Boss em outro grupo. Continue no grupo original; ataques em grupos diferentes não são autorizados.')
       }
     }
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id,helmet_id,class_id,class_applied FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
