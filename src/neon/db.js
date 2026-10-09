@@ -3566,7 +3566,7 @@ export async function dungeon(jid) {
 
   return transaction(async client=>{
     const p=await client.query(`
-      SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id,s.helmet_id
+      SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id,s.helmet_id,s.class_id,s.class_applied
       FROM users u JOIN stats s ON s.jid=u.jid
       WHERE u.jid=$1
       FOR UPDATE OF u,s
