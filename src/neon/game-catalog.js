@@ -150,3 +150,16 @@ export function petCombatSpecialty(species) {
 }
 
 // Passivas de classe: implementação em avaliação.
+
+export const CLASS_PASSIVES=Object.freeze({
+  warrior:{name:'Postura de Guerra',description:'+2% dano; -1% dano recebido.',damage:.02,mitigation:.01},
+  assassin:{name:'Instinto Mortal',description:'+2 pontos percentuais de crítico.',crit:.02},
+  mage:{name:'Explosão Arcana',description:'6% chance de +15% dano a cada 4 ataques.',procChance:.06,procBonus:.15,procInterval:4},
+  archer:{name:'Caçador de Titãs',description:'+3% dano contra Bosses e Raids.',bossDamage:.03},
+  paladin:{name:'Proteção Divina',description:'Reduz 3% do dano recebido.',mitigation:.03},
+  berserker:{name:'Fúria de Sangue',description:'+5% dano abaixo de 40% HP.',lowHpDamage:.05},
+  monk:{name:'Reflexos Supremos',description:'3% chance de esquivar.',dodge:.03},
+  necromancer:{name:'Drenagem de Almas',description:'A cada 4 ataques recupera 2% do dano, até 2% HP máximo.',lifesteal:.02,lifestealInterval:4,lifestealCap:.02},
+  druid:{name:'Natureza Viva',description:'A cada 12 ataques recupera 2% HP máximo.',regen:.02,regenInterval:12},
+  samurai:{name:'Lâmina Perfeita',description:'+8% dano nos críticos.',critDamage:.08}
+})
