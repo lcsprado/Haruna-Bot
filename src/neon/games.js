@@ -569,9 +569,12 @@ const RAID_CONFIGS=[
   {level:30,name:'Rei Abissal',hp:98000,atk:55,keyId:'chave_raid_30',keyPrice:60000,cashPool:120000,xpPool:5000,petXpPool:500,material:{id:'essencia_rei_abissal',name:'Essência do Rei Abissal'},box:'caixa_epica',gear:['espada_eclipse','armadura_eclipse'],gearChance:.025},
   {level:40,name:'Serafim Caído',hp:170000,atk:77,keyId:'chave_raid_40',keyPrice:100000,cashPool:200000,xpPool:7500,petXpPool:750,material:{id:'fragmento_celestial',name:'Fragmento Celestial'},box:'caixa_epica',gear:['excalibur','armadura_titan'],gearChance:.008},
   {level:50,name:'Alpha Corrompido',hp:290000,atk:108,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.005},
+  {level:60,name:'Titã do Caos',hp:410000,atk:135,keyId:'chave_raid_60',keyPrice:230000,cashPool:440000,xpPool:14500,petXpPool:1450,material:{id:'fragmento_caos',name:'Fragmento do Caos'},box:'caixa_epica',gear:['lamina_caos','machado_tita','couraca_caos','armadura_tita_ancestral'],gearChance:.005},
+  {level:65,name:'Imperador Abissal',hp:540000,atk:165,keyId:'chave_raid_65',keyPrice:300000,cashPool:550000,xpPool:18500,petXpPool:1850,material:{id:'coroa_abissal',name:'Coroa Abissal'},box:'caixa_epica',gear:['foice_abismo','espada_aurora','manto_abismo_eterno','armadura_aurora'],gearChance:.004},
+  {level:70,name:'Deus do Eclipse',hp:710000,atk:200,keyId:'chave_raid_70',keyPrice:390000,cashPool:710000,xpPool:24000,petXpPool:2400,material:{id:'essencia_eclipse',name:'Essência do Eclipse'},box:'caixa_epica',gear:['exterminadora_eclipse','armadura_deus_eclipse'],gearChance:.003}
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
-const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:30,40:40,50:50}[Number(level)]||15)
+const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:30,40:40,50:50,60:20,65:25,70:30}[Number(level)]||15)
 export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
@@ -626,7 +629,7 @@ export async function getRaidStatus(chat,level=null){
 
 export async function createRaid(chat,host,name='Jogador',level=10){
   const cfg=raidConfig(level)
-  if(!cfg) throw new Error('Raid inválida. Níveis: 10, 15, 20, 25, 30, 40 e 50.')
+  if(!cfg) throw new Error('Raid inválida. Níveis: 10, 15, 20, 25, 30, 40, 50, 60, 65 e 70.')
   const gameType=raidGameType(cfg.level)
   await ensureUser(host,name)
   return tx(async c=>{
@@ -952,7 +955,10 @@ async function finishRaidRewards(c,s,cfg,chat){
       25:[[5,7],[3,5],[1,3]],
       30:[[6,9],[4,6],[2,3]],
       40:[[8,11],[5,7],[2,4]],
-      50:[[9,12],[6,8],[3,5]]
+      50:[[9,12],[6,8],[3,5]],
+      60:[[10,13],[7,9],[4,6]],
+      65:[[11,14],[8,10],[5,7]],
+      70:[[12,15],[9,11],[6,8]]
     }
     const weightedRange=(min,max)=>{
       const values=[]
