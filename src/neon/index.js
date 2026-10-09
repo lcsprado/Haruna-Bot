@@ -183,11 +183,12 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         }
 
         const eventSession=sessionMode==='event'
-        if(!eventSession && i>=29) break
+        // Boss semanal e de evento seguem continuamente até vitória, morte ou encerramento.
+        if(sessionMode==='common' && i>=29) break
 
         const delayMs=eventSession?8000:10000
-        if(eventSession&&sessionEndsAt&&Date.now()+delayMs>=sessionEndsAt){
-          await reply(`⏰ *BOSS DE EVENTO ENCERRADO!*\n\n🥊 Ataques automáticos: *${attacks}*\n💥 Dano causado nesta sessão: *${totalDamage.toLocaleString('pt-BR')}*\n\nO combate automático parou porque o horário do evento terminou.`)
+        if((eventSession||sessionMode==='weekly')&&sessionEndsAt&&Date.now()+delayMs>=sessionEndsAt){
+          await reply(`⏰ *BOSS ENCERRADO!*\n\n🥊 Ataques automáticos: *${attacks}*\n💥 Dano causado nesta sessão: *${totalDamage.toLocaleString('pt-BR')}*\n\nO combate automático parou porque o horário do evento terminou.`)
           return
         }
         await new Promise(resolve=>setTimeout(resolve,delayMs))
