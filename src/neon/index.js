@@ -1728,6 +1728,26 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
           const publicNotice=(await db.query("SELECT value FROM trevo_settings WHERE key='admin_broadcast:economy_audit_20261008'")).rows[0]?.value?.message
           if(publicNotice) await sendScheduledGroupNotice(chat,'economy-audit-20261008',String(publicNotice))
           const now=Date.now()
+          // Sexta 09/10 às 00:01 (Brasília): criar automaticamente o Boss semanal
+          // em cada grupo licenciado; aviso idempotente por grupo.
+          const weeklyStart=Date.parse('2026-10-09T00:01:00-03:00')
+          const weeklyEnd=Date.parse('2026-10-11T00:00:00-03:00')
+          if(now>=weeklyStart&&now<weeklyEnd){
+            const weekly=await startBoss(chat)
+            if(weekly?.mode==='weekly'){
+              await sendScheduledGroupNotice(chat,'weekly-golem-2026-10-09',
+`🌍👹 *BOSS SEMANAL — GOLEM ANCESTRAL DO ALPHA!*
+
+🕛 *INÍCIO: SEXTA 09/10 ÀS 00:01*
+🏁 *FIM: SÁBADO 10/10 ÀS 23:59* (Brasília)
+❤️ HP: *${Number(weekly.maxHp).toLocaleString('pt-BR')}*
+⚔️ ATK: *${weekly.atk}*
+
+🔥 Desafio de dois dias, com recompensas aprimoradas por colocação!
+🎁 Top 5 com caixas garantidas e chances de equipamentos lendários.
+⚔️ Use *!boss* para participar. Boa caçada!`)
+            }
+          }
           const rushStart=Date.parse('2026-10-04T10:30:00-03:00')
           const rushEnd=Date.parse('2026-10-04T11:30:00-03:00')
           const raidStart=Date.parse('2026-10-04T14:00:00-03:00')
