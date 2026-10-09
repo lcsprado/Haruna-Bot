@@ -529,11 +529,11 @@ const BOSS_BONUS_DROPS=[
   {id:'armadura_titan',name:'Armadura do Titã',weight:5,rarity:'Lendário'},
 ]
 const BOSS_PLACEMENT=[
-  {cash:120000,xp:4000,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.95,exclusiveChance:.40},
-  {cash:90000,xp:3000,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.85,exclusiveChance:.28},
-  {cash:65000,xp:2200,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.75,exclusiveChance:.20},
-  {cash:40000,xp:1400,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.65,exclusiveChance:.12},
-  {cash:25000,xp:900,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.55,exclusiveChance:.08},
+  {cash:650000,xp:4000,epicBoxes:12,bonusChance:.95,exclusiveChance:.40},
+  {cash:450000,xp:3000,epicBoxes:9,bonusChance:.85,exclusiveChance:.28},
+  {cash:300000,xp:2200,epicBoxes:7,bonusChance:.75,exclusiveChance:.20},
+  {cash:200000,xp:1400,epicBoxes:5,bonusChance:.65,exclusiveChance:.12},
+  {cash:125000,xp:900,epicBoxes:3,bonusChance:.55,exclusiveChance:.08},
 ]
 function petBossBonus(pet){
   if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,healPct:0,healCooldown:0}
@@ -1280,8 +1280,14 @@ async function giveBossDrops(c,jid,position,extraChance=0){
   const tier=BOSS_PLACEMENT[position-1]||{cash:0,xp:0,box:null,bonusChance:.18,exclusiveChance:.02}
   const drops=[]
   // Top 5 recebe caixa garantida; demais continuam com 40% de chance de Caixa da Sorte.
-  const box=tier.box||(Math.random()<.40?{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}:null)
-  if(box) drops.push(await grantBossItem(c,jid,box))
+  if(Number(tier.epicBoxes||0)>0){
+    // Quantidade fixa por colocação: não depende de sorte e não multiplica o dinheiro.
+    for(let n=0;n<Number(tier.epicBoxes);n++){
+      drops.push(await grantBossItem(c,jid,{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'}))
+    }
+  }else if(Math.random()<.40){
+    drops.push(await grantBossItem(c,jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'}))
+  }
   const luck=Math.min(.08,Math.max(0,extraChance))
   if(Math.random()<tier.exclusiveChance+luck){
     const exclusive=Math.random()<.5
