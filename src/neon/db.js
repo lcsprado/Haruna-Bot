@@ -1520,12 +1520,13 @@ export async function getInventory(jid) {
               WHEN s.helmet_id=i.item_id THEN 'helmet'
              ELSE NULL
            END AS equipped_slot,
-           GREATEST(
+           CASE WHEN it.sellable=FALSE THEN 0 ELSE GREATEST(
              0,
              i.quantity-GREATEST(COALESCE(bi.quantity,0),
                CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 1 ELSE 0 END)
-           )::int AS sellable_quantity,
+           ) END::int AS sellable_quantity,
            CASE
+             WHEN it.sellable=FALSE THEN 0
              WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
              WHEN it.rarity='legendary' THEN 100000
              WHEN it.rarity='epic' THEN 25000
