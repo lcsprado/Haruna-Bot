@@ -1011,7 +1011,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Benefício privado e único para a conta solicitante: a segunda vitória na Raid 70.
     // A contagem fica no banco (não em memória), protegida pela transação da Raid.
     // Não adiciona a recompensa ao resumo público nem altera as chances de outros jogadores.
-    if(cfg.level===70 && String(p.jid||'').split('@')[0].replace(/\\D/g,'')==='11948523167'){
+    if(cfg.level===70 && String(p.jid||'').split('@')[0].replace(/\D/g,'')==='11948523167'){
       const progressKey='private_raid70_exterminadora_11948523167'
       await c.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING",
         [progressKey,JSON.stringify({wins:0,granted:false})])
