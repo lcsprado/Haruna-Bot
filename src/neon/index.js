@@ -40,7 +40,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent, autoStartSiegeBossEvent,
+  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent, autoStartSiegeBossEvent,
   getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -1602,6 +1602,9 @@ async function start() {
   await initCommunityPack()
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
+  // Reposição da madrugada: só aplica com 3 participantes identificados e HP exato.
+  const bossCompensation=await compensateFrozenWeeklyBoss20261009().catch(err=>({status:'error',reason:String(err?.message||err)}))
+  console.log('[Boss Compensation] resultado',JSON.stringify(bossCompensation))
   await initProgression()
   await initLoans()
   startLoanCollector()
