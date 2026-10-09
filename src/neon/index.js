@@ -1744,7 +1744,7 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
 ⚔️ ATK: *${weekly.atk}*
 
 🔥 Desafio de dois dias, com recompensas aprimoradas por colocação!
-🎁 Top 5 com caixas garantidas e chances de equipamentos lendários.
+🎁 Top 5 com caixas garantidas e chances de equipamentos lendários.\n👑 *PRÊMIO EXCLUSIVO TOP 1:* Elmo do Soberano Ancestral — *+85 DEF / +220 HP*!\n🪖 Novo slot de Elmo: prêmio garantido somente ao campeão do Boss semanal.
 ⚔️ Use *!boss* para participar. Boa caçada!`)
             }
           }
