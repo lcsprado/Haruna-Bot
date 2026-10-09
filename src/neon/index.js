@@ -1189,6 +1189,7 @@ ${title}${badge?' • '+badge:''}
 🗡️ Arma: *${p.weapon_name||'Sem arma'} Lv.${Number(p.weapon_level||1)}*
 🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}*
 👢 Botas: *${p.boot_name||'Sem botas'} Lv.${Number(p.boot_level||1)}*
+🪖 Elmo: *${p.helmet_name||'Nenhum'}*
 ${petLine}
 
 💼 Carreira: *${career?.rank?.name||'Ajudante'}*
@@ -1698,6 +1699,29 @@ async function start() {
   await initLoans()
   startLoanCollector()
   await acquireRuntimeLock(sessionId)
+  // Auditoria somente leitura das recompensas únicas do Superboss de 09/10.
+  // Verifica propriedade e categoria, sem duplicar itens ou modificar inventários.
+  try{
+    const audited=[
+      {label:'João Pedro (campeão)',key:'elmo_soberano_golem',jid:'5511987308687@s.whatsapp.net'},
+      {label:'Augusto (3º)',key:'armadura_titan',jid:'5511982964423@s.whatsapp.net'}
+    ]
+    for(const entry of audited){
+      const check=await db.query(`
+        SELECT COALESCE(inv.quantity,0)::int AS quantity,
+               it.name,it.category,it.rarity,
+               COALESCE(st.helmet_id=it.id OR st.armor_id=it.id,FALSE) AS equipped
+        FROM items it
+        LEFT JOIN inventories inv ON inv.item_id=it.id AND inv.jid=$1
+        LEFT JOIN stats st ON st.jid=$1
+        WHERE it.id=$2
+      `,[entry.jid,entry.key])
+      console.log('[Superboss Prize Audit]',JSON.stringify({
+        player:entry.label,itemId:entry.key,record:check.rows[0]||null
+      }))
+    }
+  }catch(err){console.error('[Superboss Prize Audit] consulta falhou',err?.message||err)}
+
 
   // Reativação excepcional da sessão interrompida às 09:51:39 de 09/10.
   // Auditoria confirmou HP=0, combate persistido parado e 99 elixires.
@@ -2839,18 +2863,21 @@ Você possui: *${stock}*
       await reply('🎒 Seu inventário está vazio.')
       return
     }
-    const equip=items.filter(i=>['weapon','armor','boots'].includes(i.category))
+    const count=category=>items.filter(i=>i.category===category).length
     const potions=items.filter(i=>i.category==='consumable')
     const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
-    const others=items.filter(i=>!['weapon','armor','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
+    const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
     setQuickFlow(chat,sender,'inventory_category',{},5*60*1000)
     await reply(
       '🎒 *INVENTÁRIO*\n\n'+
-      '1️⃣ ⚔️ Equipamentos — '+equip.length+' tipos\n'+
-      '2️⃣ 🧪 Consumíveis — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
-      '3️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
-      '4️⃣ 📦 Outros — '+others.length+' tipos\n'+
-      '5️⃣ 💰 Vender / descartar itens\n\n'+
+      '1️⃣ ⚔️ Armas — '+count('weapon')+' tipos\n'+
+      '2️⃣ 🛡️ Armaduras — '+count('armor')+' tipos\n'+
+      '3️⃣ 🪖 Elmos — '+count('helmet')+' tipos\n'+
+      '4️⃣ 👢 Botas — '+count('boots')+' tipos\n'+
+      '5️⃣ 🧪 Consumíveis — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
+      '6️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
+      '7️⃣ 📦 Outros — '+others.length+' tipos\n'+
+      '8️⃣ 💰 Vender / descartar itens\n\n'+
       '0️⃣ Sair'
     )
   }
@@ -2860,9 +2887,10 @@ Você possui: *${stock}*
     const weapons=items.filter(i=>i.category==='weapon')
     const armors=items.filter(i=>i.category==='armor')
     const boots=items.filter(i=>i.category==='boots')
-    if(!weapons.length&&!armors.length&&!boots.length){
+    const helmets=items.filter(i=>i.category==='helmet')
+    if(!weapons.length&&!armors.length&&!boots.length&&!helmets.length){
       clearQuickFlow(chat,sender)
-      await reply('⚙️ Você não possui arma, armadura ou botas para equipar.')
+      await reply('⚙️ Você não possui armas, armaduras, elmos ou botas para equipar.')
       return
     }
     setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
@@ -2871,6 +2899,7 @@ Você possui: *${stock}*
     const weaponStats=currentMap.get(p.weapon_id)||{atk:Number(p.weapon_atk||0),hp:0,crit:0}
     const armorStats=currentMap.get(p.armor_id)||{def:Number(p.armor_def||0),hp:0,crit:0}
     const bootStats=currentMap.get(p.boot_id)||{spd:Number(p.equipment_spd||0)}
+    const helmetStats=currentMap.get(p.helmet_id)||getEquipmentInfo(p.helmet_id)||{def:0,hp:0}
     const weaponExtra=[
       Number(weaponStats.hp||0)?'❤️ +'+Number(weaponStats.hp)+' HP':null,
       Number(weaponStats.crit||0)?'🎯 +'+(Number(weaponStats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
@@ -2885,12 +2914,14 @@ Você possui: *${stock}*
 🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}* — ⚔️ +${Number(weaponStats.atk||0)} ATK${weaponExtra?' • '+weaponExtra:''}
 🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}* — 🛡️ +${Number(armorStats.def||0)} DEF${armorExtra?' • '+armorExtra:''}
 👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — 👢 +${Number(bootStats.spd||0)} VEL
+🪖 Elmo atual: *${p.helmet_name||'Nenhum'}* — 🛡️ +${Number(helmetStats.def||0)} DEF • ❤️ +${Number(helmetStats.hp||0)} HP
 
 O que deseja trocar?
 
 1️⃣ ⚔️ *Arma* — ${weapons.length} opção(ões)
 2️⃣ 🛡️ *Armadura* — ${armors.length} opção(ões)
 3️⃣ 👢 *Botas* — ${boots.length} opção(ões)
+4️⃣ 🪖 *Elmo* — ${helmets.length} opção(ões)
 
 9️⃣ Voltar ao inventário
 0️⃣ Sair`
@@ -2904,7 +2935,8 @@ O que deseja trocar?
     const statsMap=new Map(upgradeables.map(i=>[i.item_id,i.current]))
     const isWeapon=category==='weapon'
     const isArmor=category==='armor'
-    const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':isArmor?'🛡️ *ESCOLHA UMA ARMADURA*':'👢 *ESCOLHA SUAS BOTAS*'
+    const isHelmet=category==='helmet'
+    const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':isArmor?'🛡️ *ESCOLHA UMA ARMADURA*':isHelmet?'🪖 *ELMOS / TROFÉUS DE CAMPEÃO*':'👢 *ESCOLHA SUAS BOTAS*'
     if(!filtered.length){
       setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
       await reply(title+'\n\nVocê não possui itens desta categoria.\n\n9️⃣ Voltar\n0️⃣ Sair')
@@ -2916,8 +2948,8 @@ O que deseja trocar?
     filtered.forEach((i,idx)=>{
       const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
       const level=Number(levelMap.get(i.item_id)||1)
-      const mainStat=isWeapon?Number(stats.atk||0):isArmor?Number(stats.def||0):Number(stats.spd||0)
-      const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
+      const mainStat=isWeapon?Number(stats.atk||0):(isArmor||isHelmet)?Number(stats.def||0):Number(stats.spd||0)
+      const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
       const extras=[
         Number(stats.hp||0)?'❤️ +'+Number(stats.hp)+' HP':null,
         Number(stats.crit||0)?'🎯 +'+(Number(stats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null,
@@ -2925,7 +2957,7 @@ O que deseja trocar?
         !isWeapon&&Number(stats.atk||0)?'⚔️ +'+Number(stats.atk)+' ATK':null
       ].filter(Boolean).join(' • ')
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+'\n'
-      text+='   '+(isWeapon?'⚔️ +':isArmor?'🛡️ +':'💨 +')+mainStat+' '+(isWeapon?'ATK':isArmor?'DEF':'VEL')+(extras?' • '+extras:'')+active+'\n'
+      text+='   '+(isWeapon?'⚔️ +':(isArmor||isHelmet)?'🛡️ +':'💨 +')+mainStat+' '+(isWeapon?'ATK':(isArmor||isHelmet)?'DEF':'VEL')+(extras?' • '+extras:'')+active+'\n'
     })
     text+='\n👉 Responda só com o número.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
@@ -5366,9 +5398,9 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await inventoryMenu()
         return true
       }
-      const category=input==='1'?'weapon':input==='2'?'armor':input==='3'?'boots':null
+      const category=input==='1'?'weapon':input==='2'?'armor':input==='3'?'boots':input==='4'?'helmet':null
       if(!category){
-        await reply('⚙️ Escolha *1 Arma*, *2 Armadura* ou *3 Botas*.')
+        await reply('⚙️ Escolha *1 Arma*, *2 Armadura*, *3 Botas* ou *4 Elmos*.')
         return true
       }
       await equipmentTypeMenu(category)
@@ -5396,13 +5428,14 @@ ${emoji} *${r.result.toUpperCase()}*`)
       }
       const isWeapon=info.category==='weapon'
       const isArmor=info.category==='armor'
-      const currentName=isWeapon?p.weapon_name:isArmor?p.armor_name:p.boot_name
-      const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:p.boot_id
+      const isHelmet=info.category==='helmet'
+      const currentName=isWeapon?p.weapon_name:isArmor?p.armor_name:isHelmet?p.helmet_name:p.boot_name
+      const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
       const currentUp=upgradeables.find(i=>i.item_id===currentId)
-      const oldStats=currentUp?.current||{}
-      const beforeMain=isWeapon?Number(oldStats.atk||p.weapon_atk||0):isArmor?Number(oldStats.def||p.armor_def||0):Number(oldStats.spd||p.equipment_spd||0)
-      const afterMain=isWeapon?Number(info.atk||0):isArmor?Number(info.def||0):Number(info.spd||0)
-      const mainStat=isWeapon?'ATK':isArmor?'DEF':'SPD'
+      const oldStats=currentUp?.current||getEquipmentInfo(currentId)||{}
+      const beforeMain=isWeapon?Number(oldStats.atk||p.weapon_atk||0):(isArmor||isHelmet)?Number(oldStats.def||0):Number(oldStats.spd||p.equipment_spd||0)
+      const afterMain=isWeapon?Number(info.atk||0):(isArmor||isHelmet)?Number(info.def||0):Number(info.spd||0)
+      const mainStat=isWeapon?'ATK':(isArmor||isHelmet)?'DEF':'SPD'
       const delta=afterMain-beforeMain
       const arrow=delta>0?'📈':delta<0?'📉':'➖'
       const beforeHp=Number(oldStats.hp||0),afterHp=Number(info.hp||0)
@@ -5412,7 +5445,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
       setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
       await reply(
         '⚙️ *TROCAR EQUIPAMENTO?*\n\n'+
-        (isWeapon?'🗡️':isArmor?'🛡️':'👢')+' Atual: *'+currentName+'*\n'+
+        (isWeapon?'🗡️':isArmor?'🛡️':isHelmet?'🪖':'👢')+' Atual: *'+currentName+'*\n'+
         '➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+' Lv.'+Number(up?.level||1)+'*\n\n'+
         arrow+' *'+mainStat+': '+beforeMain+' → '+afterMain+'*'+(delta>0?' (+'+delta+')':delta<0?' ('+delta+')':'')+
         hpLine+critLine+'\n\n'+
@@ -5432,7 +5465,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
       }
       const r=await equipItem(sender,flow.data.itemId)
       const p=await getCombatProfile(sender)
-      await reply('✅ *EQUIPADO!*\n\n'+r.name+' agora é sua '+(r.category==='weapon'?'arma':r.category==='armor'?'armadura':'bota')+' ativa.\n\n⚔️ ATK atual: *'+p.effective_atk+'*\n🛡️ DEF atual: *'+p.effective_def+'*')
+      await reply('✅ *EQUIPADO!*\n\n'+r.name+' agora é '+(r.category==='weapon'?'sua arma':r.category==='armor'?'sua armadura':r.category==='helmet'?'seu elmo':'sua bota')+' ativo(a).\n\n⚔️ ATK atual: *'+p.effective_atk+'*\n🛡️ DEF atual: *'+p.effective_def+'*')
       await equipmentTypeMenu(r.category)
       return true
     }
@@ -5994,11 +6027,12 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       const items=await getInventory(sender)
-      if(input==='1'){
-        await equipmentMenu()
+      const equipmentCategory={1:'weapon',2:'armor',3:'helmet',4:'boots'}[input]
+      if(equipmentCategory){
+        await equipmentTypeMenu(equipmentCategory)
         return true
       }
-      if(input==='2'){
+      if(input==='5'){
         const usable=items.filter(i=>i.category==='consumable')
         if(!usable.length){
           await reply('🧪 Você não possui consumíveis.')
@@ -6011,7 +6045,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(text)
         return true
       }
-      if(input==='3'){
+      if(input==='6'){
         const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
         if(!boxes.length){
           await reply('🎁 Você não possui caixas.')
@@ -6028,8 +6062,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(text)
         return true
       }
-      if(input==='4'){
-        const others=items.filter(i=>!['weapon','armor','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
+      if(input==='7'){
+        const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
         if(!others.length){
           await reply('📦 Você não possui outros itens no momento.')
           return true
@@ -6040,11 +6074,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(text)
         return true
       }
-      if(input==='5'){
+      if(input==='8'){
         await sellMenu()
         return true
       }
-      await reply('🎒 Escolha uma opção de *1 a 5*.')
+      await reply('🎒 Escolha uma opção de *1 a 8*.')
       return true
     }
 
@@ -9551,8 +9585,8 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 
         } else if(['equipar','equip'].includes(cmd)){
           const items=await getInventory(sender)
-          const equipables=items.filter(i=>['weapon','armor','boots'].includes(i.category))
-          if(!equipables.length) return await reply('⚙️ Você não possui arma, armadura ou botas para equipar.')
+          const equipables=items.filter(i=>['weapon','armor','boots','helmet'].includes(i.category))
+          if(!equipables.length) return await reply('⚙️ Você não possui armas, armaduras, elmos ou botas para equipar.')
 
           const query=args.join(' ').trim()
           if(!query){
@@ -9561,20 +9595,20 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           }
 
           const anyItem=resolveOwnedItem(items,query)
-          if(anyItem && !['weapon','armor','boots'].includes(anyItem.category)){
+          if(anyItem && !['weapon','armor','boots','helmet'].includes(anyItem.category)){
             if(BOX_IDS.includes(anyItem.item_id)){
               return await reply(`🎁 *${anyItem.name}* não é equipamento.\nAbra pelo *${prefix}inventario*.`)
             }
             return await reply(`❌ *${anyItem.name}* não pode ser equipado.`)
           }
 
-          const item=resolveOwnedItem(items,query,['weapon','armor','boots'])
+          const item=resolveOwnedItem(items,query,['weapon','armor','boots','helmet'])
           if(!item){
             return await reply(`❌ Não encontrei esse equipamento no seu inventário.\nUse *${prefix}equipar* para escolher pela lista.`)
           }
 
           const r=await equipItem(sender,item.item_id)
-          const tipo=r.category==='weapon'?'arma':r.category==='armor'?'armadura':'bota'
+          const tipo=r.category==='weapon'?'arma':r.category==='armor'?'armadura':r.category==='helmet'?'elmo':'bota'
           await reply(`✅ *EQUIPADO!*\n\n${r.name} agora é sua ${tipo} ativa.`)
 
         } else if(['usar','use'].includes(cmd)){
@@ -9707,6 +9741,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
 👢 Botas: ${p.boot_name||'Nenhuma'} *Lv.${p.boot_level||1}*
+🪖 Elmo: *${p.helmet_name||'Nenhum'}*
 
 🏆 Vitórias: ${p.win}
 💀 Derrotas: ${p.loss}`
