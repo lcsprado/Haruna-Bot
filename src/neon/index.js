@@ -2066,11 +2066,37 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
     if(trevoHealth.whatsapp!=='open') return
     try{
       await announceCompletedEclipse()
+      // Um jogador pode derrotar o Boss global em um grupo diferente.
+      // Comunica a vitória nos demais grupos sem processar prêmios novamente.
+      const rupturaState=(await db.query(
+        "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
+      )).rows[0]?.state
+      const rupturaDefeated=rupturaState?.eventId==='ruptura_estelar' &&
+        rupturaState?.scheduleKey==='ruptura-estelar-2026-10-09' &&
+        rupturaState?.mode==='event_completed' && rupturaState?.outcome==='defeated' &&
+        Number(rupturaState?.hp)===0
+      const rupturaRanking=rupturaDefeated
+        ? (rupturaState.rankings||[]).slice(0,3).map(p=>
+            (Number(p.position)===1?'🥇':Number(p.position)===2?'🥈':'🥉')+
+            ' *'+String(p.name||'Jogador').replace(/[\r\n*_~]/g,' ').slice(0,60)+'* — '+
+            Number(p.damage||0).toLocaleString('pt-BR')+' dano').join('\n')
+        : ''
       const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
       for(const lic of groups){
         const chat=lic.chat_jid
         if(!chat?.endsWith('@g.us')) continue
         try{
+          if(rupturaDefeated){
+            await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-end',
+              '💥 *BOSS DE EVENTO DERROTADO!*\n\n'+
+              '👹 *Nharok, o Devorador de Mundos*\n'+
+              '❤️ *'+Number(rupturaState.maxHp||480000).toLocaleString('pt-BR')+
+              ' HP eliminados!*\n\n🏆 *RANKING GLOBAL*\n'+
+              (rupturaRanking||'Resultado registrado.')+'\n\n'+
+              '🎁 🥇 20 Caixas Épicas • 🥈 5 • 🥉 3\n'+
+              '🏅 Insígnia Guardião da Ruptura para os três primeiros.\n'+
+              '✅ Recompensas já processadas; este aviso não concede prêmios adicionais.')
+          }
           const publicNotice=(await db.query("SELECT value FROM trevo_settings WHERE key='admin_broadcast:economy_audit_20261008'")).rows[0]?.value?.message
           if(publicNotice) await sendScheduledGroupNotice(chat,'economy-audit-20261008',String(publicNotice))
           const now=Date.now()
