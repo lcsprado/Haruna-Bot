@@ -144,6 +144,17 @@ export async function initDatabase() {
       UNIQUE(jid, item_id)
     );
 
+    -- Prêmios exclusivos de Boss ligados ao ganhador, inclusive quando possui
+    -- cópias comuns do mesmo tipo de equipamento.
+    CREATE TABLE IF NOT EXISTS bound_inventory_items (
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      item_id TEXT NOT NULL REFERENCES items(id),
+      source_key TEXT NOT NULL,
+      quantity INTEGER NOT NULL CHECK (quantity>0),
+      created_at BIGINT NOT NULL DEFAULT ${nowSql},
+      PRIMARY KEY (jid,item_id,source_key)
+    );
+
     CREATE TABLE IF NOT EXISTS item_trade_offers (
       id BIGSERIAL PRIMARY KEY,
       from_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
@@ -496,6 +507,20 @@ export async function initDatabase() {
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
   await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','marca_insone','coroa_madrugada','armadura_colosso']])
+
+  // Elmo de campeão é exclusivo, sem comércio, descarte ou troca por jogadores.
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id='elmo_soberano_golem'")
+
+  // Augusto ganhou uma Armadura do Titã no Boss semanal de 09/10.
+  // Protege somente esta 1 unidade: as outras 2 cópias comuns não são afetadas.
+  await db.query(`
+    INSERT INTO bound_inventory_items(jid,item_id,source_key,quantity)
+    SELECT i.jid,i.item_id,'weekly-boss:2026-10-09',1
+    FROM inventories i
+    WHERE i.jid='5511982964423@s.whatsapp.net'
+      AND i.item_id='armadura_titan' AND i.quantity>0
+    ON CONFLICT(jid,item_id,source_key) DO NOTHING
+  `)
 
   // A fusão foi descontinuada. Preserva qualquer equipamento já fundido,
   // devolvendo o equivalente em cópias normais (T2=2, T3=4, T4=8...).
@@ -1327,6 +1352,14 @@ export async function buyRaidFragmentBoxes(jid, qty=1) {
 }
 
 
+async function boundItemQuantity(client,jid,itemId){
+  const r=await client.query(
+    'SELECT COALESCE(SUM(quantity),0)::int AS quantity FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
+    [jid,itemId]
+  )
+  return Math.max(0,Number(r.rows[0]?.quantity||0))
+}
+
 export async function listTradeableItems(jid,rarity=null,minQuantity=1) {
   await ensureUser(jid)
   const minQty=Math.max(1,Math.min(9999,Number(minQuantity)||1))
@@ -1345,7 +1378,7 @@ export async function listTradeableItems(jid,rarity=null,minQuantity=1) {
       AND it.sellable=TRUE
       AND it.stackable=TRUE
       AND it.rarity<>'event'
-      AND it.category NOT IN ('weapon','armor','boots')
+      AND it.category NOT IN ('weapon','armor','boots','helmet')
       ${rarityFilter}
     ORDER BY
       CASE it.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
@@ -1364,7 +1397,7 @@ export async function createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1)
     const itemR=await client.query('SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=$1',[String(offerItemId)])
     const offer=itemR.rows[0]
     if(!offer) throw new Error('Item da troca não encontrado.')
-    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !['weapon','armor','boots'].includes(item.category)
+    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !['weapon','armor','boots','helmet'].includes(item.category)
     if(!allowed(offer)) throw new Error('Esse tipo de item não pode ser trocado.')
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[fromJid,offer.id])
     if(Number(inv.rows[0]?.quantity||0)<quantity) throw new Error('Você não possui essa quantidade do item oferecido.')
@@ -1374,7 +1407,7 @@ export async function createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1)
       JOIN items it ON it.id=i.item_id
       WHERE i.jid=$1 AND i.quantity>=$2 AND it.rarity=$3
         AND it.sellable=TRUE AND it.stackable=TRUE AND it.rarity<>'event'
-        AND it.category NOT IN ('weapon','armor','boots')
+        AND it.category NOT IN ('weapon','armor','boots','helmet')
         AND it.id<>$4
       LIMIT 1
     `,[toJid,quantity,offer.rarity,offer.id])
@@ -1426,7 +1459,7 @@ export async function acceptItemTradeOffer(jid,offerId,requestItemId) {
     const offer=itemRows.find(x=>x.id===t.offer_item_id)
     const request=itemRows.find(x=>x.id===String(requestItemId))
     if(!offer||!request) throw new Error('Item da troca não encontrado.')
-    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !['weapon','armor','boots'].includes(item.category)
+    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !['weapon','armor','boots','helmet'].includes(item.category)
     if(!allowed(offer)||!allowed(request)) throw new Error('Um dos itens não pode ser trocado.')
     if(request.id===offer.id) throw new Error('Escolha um item diferente do item oferecido.')
     if(request.rarity!==t.rarity) throw new Error('O item escolhido precisa ter a mesma raridade.')
@@ -1467,6 +1500,7 @@ export async function rejectItemTradeOffer(jid,offerId) {
 export async function getInventory(jid) {
   const { rows } = await db.query(`
     SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
+           COALESCE(bi.quantity,0)::int AS bound_quantity,
            COALESCE(eu.level,1)::int AS equipment_level,
            (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped,
            CASE
@@ -1478,7 +1512,8 @@ export async function getInventory(jid) {
            END AS equipped_slot,
            GREATEST(
              0,
-             i.quantity-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 1 ELSE 0 END
+             i.quantity-GREATEST(COALESCE(bi.quantity,0),
+               CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 1 ELSE 0 END)
            )::int AS sellable_quantity,
            CASE
              WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
@@ -1492,6 +1527,10 @@ export async function getInventory(jid) {
     JOIN items it ON it.id=i.item_id
     LEFT JOIN stats s ON s.jid=i.jid
     LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(SUM(b.quantity),0)::int AS quantity
+      FROM bound_inventory_items b WHERE b.jid=i.jid AND b.item_id=i.item_id
+    ) bi ON TRUE
     WHERE i.jid=$1 AND i.quantity>0
     ORDER BY
       CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 0 ELSE 1 END,
@@ -1517,6 +1556,8 @@ export async function getInventory(jid) {
   return rows.map(r=>({
     ...r,
     equipped:Boolean(r.equipped),
+    bound_quantity:Number(r.bound_quantity||0),
+    nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
     sellable_quantity:Number(r.sellable_quantity||0),
     upgrade_refund:['weapon','armor','boots'].includes(r.category)
       ? equipmentUpgradeSellRefund(r.rarity,r.equipment_level)
@@ -1549,7 +1590,8 @@ export async function sellItem(jid, itemId, qty=1) {
     )
     const stats=statsR.rows[0]||{}
     const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId) ? 1 : 0
-    const sellable=Math.max(0,owned-equipped)
+    const bound=await boundItemQuantity(client,jid,itemId)
+    const sellable=Math.max(0,owned-Math.max(equipped,bound))
 
     if(sellable<1){
       throw new Error('Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
@@ -1656,7 +1698,8 @@ export async function sellItemsBatch(jid, selections=[]) {
       if(item.rarity==='legendary') throw new Error('Itens lendários não entram em venda em lote.')
 
       const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
-      const minimumKeep=equipped?1:0
+      const bound=await boundItemQuantity(client,jid,sel.itemId)
+      const minimumKeep=Math.max(equipped?1:0,bound)
       const maxBatch=Math.max(0,owned-minimumKeep)
 
       if(sel.qty>maxBatch){
@@ -1771,7 +1814,8 @@ export async function discardItemsBatch(jid, selections=[]) {
       if(item.rarity==='legendary') throw new Error('Itens lendários não podem ser descartados em lote.')
 
       const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
-      const maxDiscard=Math.max(0,owned-(equipped?1:0))
+      const bound=await boundItemQuantity(client,jid,sel.itemId)
+      const maxDiscard=Math.max(0,owned-Math.max(equipped?1:0,bound))
       if(sel.qty>maxDiscard){
         throw new Error(equipped
           ? `O descarte de ${item.name} deve preservar a cópia equipada.`
@@ -5515,13 +5559,15 @@ export async function createMarketListing(jid,itemId,qty,price){
   return transaction(async client=>{
     // Apenas itens revendáveis podem ser anunciados no mercado entre jogadores.
     // Impede contornar os requisitos de Honra/Karma e o limite de compras dos NPCs.
-    const itemRow=(await client.query('SELECT sellable FROM items WHERE id=$1',[itemId])).rows[0]
-    if(!itemRow || itemRow.sellable!==true) throw new Error('Este item é exclusivo de NPC e não pode ser anunciado no mercado.')
+    const itemRow=(await client.query('SELECT sellable,category FROM items WHERE id=$1',[itemId])).rows[0]
+    if(!itemRow || itemRow.sellable!==true || itemId==='elmo_soberano_golem')
+      throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
     const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])
     const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id].includes(itemId)?1:0
-    const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-equipped)
+    const bound=await boundItemQuantity(client,jid,itemId)
+    const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))
     if(qty>available){
       throw new Error(equipped
         ? 'A cópia equipada está protegida. Você pode anunciar no máximo '+available+' unidade(s) livre(s).'
@@ -5565,8 +5611,10 @@ export async function buyMarketListing(buyerJid,id){
   await ensureUser(buyerJid)
   await expireMarketListings()
   return transaction(async client=>{
-    const r=await client.query(`SELECT m.*,i.name FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
+    const r=await client.query(`SELECT m.*,i.name,i.sellable FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
     const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio não está mais disponível.')
+    if(x.sellable!==true||x.item_id==='elmo_soberano_golem')
+      throw new Error('🔒 Prêmio exclusivo do campeão não pode ser comprado nem transferido.')
     if(Number(x.expires_at||Number(x.created_at)+3600)<=Math.floor(Date.now()/1000)) throw new Error('Esse anúncio expirou.')
     if(x.seller_jid===buyerJid) throw new Error('Você não pode comprar seu próprio anúncio.')
     const w=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[buyerJid])
