@@ -44,3 +44,42 @@ setTimeout(async()=>{
 
 
 
+
+
+// Temporary read-only audit of live Raid item catalog and historic sale totals.
+// Never modifies wallet, inventory, player, Raid, or WhatsApp messages.
+setTimeout(async()=>{
+  try {
+    const {db}=await import('./db.js')
+    const items=(await db.query(`
+      SELECT id,name,category,rarity,price,sellable,
+        CASE WHEN price>0 THEN GREATEST(1,FLOOR(price*.5))
+             WHEN rarity='legendary' THEN 100000
+             WHEN rarity='epic' THEN 25000
+             WHEN rarity='rare' THEN 7500
+             WHEN rarity='uncommon' THEN 2500
+             ELSE 500 END AS nominal_sell
+      FROM items
+      WHERE id LIKE 'chave_raid_%'
+         OR id=ANY(ARRAY['nucleo_pedra','escama_vulcanica','olho_abissal',
+           'nucleo_titan','essencia_rei_abissal','fragmento_celestial',
+           'nucleo_alpha_corrompido','fragmento_caos','coroa_abissal',
+           'essencia_eclipse'])
+      ORDER BY id
+    `)).rows
+    const sales=(await db.query(`
+      SELECT split_part(note,' ',1) AS item_id,COUNT(*)::int AS operations,
+         SUM(amount)::bigint AS total_paid,
+         STRING_AGG(DISTINCT created_at::text,',') AS timestamps
+      FROM transactions
+      WHERE type='sale'
+        AND split_part(note,' ',1) = ANY(ARRAY[
+          'nucleo_pedra','escama_vulcanica','olho_abissal',
+          'nucleo_titan','essencia_rei_abissal','fragmento_celestial',
+          'nucleo_alpha_corrompido','fragmento_caos','coroa_abissal',
+          'essencia_eclipse'])
+      GROUP BY 1 ORDER BY total_paid DESC
+    `)).rows
+    console.log('[RAID PRICE AUDIT]',JSON.stringify({items,sales}))
+  }catch(err){console.error('[RAID PRICE AUDIT FAILED]',err?.message||err)}
+},10000).unref?.()
