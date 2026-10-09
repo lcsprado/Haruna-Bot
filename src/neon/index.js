@@ -40,7 +40,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent, autoStartSiegeBossEvent,
+  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent, autoStartSiegeBossEvent,
   getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -1607,6 +1607,11 @@ async function start() {
   // Reposição da madrugada: só aplica com 3 participantes identificados e HP exato.
   const bossCompensation=await compensateFrozenWeeklyBoss20261009().catch(err=>({status:'error',reason:String(err?.message||err)}))
   console.log('[Boss Compensation] resultado',JSON.stringify(bossCompensation))
+  // Corrige o rateio original após reclamação legítima sobre a primeira participação.
+  // Conserve rigorosamente o dano global já compensado (não descontar HP novamente).
+  const shareCorrection=await rectifyFrozenWeeklyBossShare20261009()
+    .catch(err=>({status:'error',reason:String(err?.message||err)}))
+  console.log('[Boss Share Correction] resultado',JSON.stringify(shareCorrection))
   await initProgression()
   await initLoans()
   startLoanCollector()
