@@ -503,6 +503,15 @@ export async function initDatabase() {
     `, item)
   }
 
+  // Materiais de Raid são recursos de invocação/progressão, não equipamentos
+  // lendários. Nunca aplicar o preço genérico de revenda (R$ 100.000).
+  // Preserva quantidades em inventários e afeta apenas negociabilidade.
+  await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[[
+    'nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan',
+    'essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido',
+    'fragmento_caos','coroa_abissal','essencia_eclipse'
+  ]])
+
   // Os consumíveis especiais são exclusivos dos NPCs e não entram na revenda geral.
   await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 
@@ -1583,6 +1592,7 @@ export async function sellItem(jid, itemId, qty=1) {
     const itemR=await client.query('SELECT * FROM items WHERE id=$1',[itemId])
     const item=itemR.rows[0]
     if(!item) throw new Error('Item não encontrado.')
+    if(['nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse'].includes(itemId)) throw new Error('Materiais de Raid são destinados a invocações e não podem ser vendidos.')
     if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
 
     const statsR=await client.query(
