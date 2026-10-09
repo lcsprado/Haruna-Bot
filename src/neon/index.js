@@ -2025,7 +2025,7 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
       if(!rewardRows.length){console.warn('[Eclipse Result] evento concluido sem premiacoes auditaveis');return}
       const fmtEclipse=n=>Math.round(Number(n)||0).toLocaleString('pt-BR')
       const safeEclipse=n=>String(n||'Jogador').replace(/[\r\n*_~]/g,' ').slice(0,60)
-      const key='boss_eclipse_final:'+String(state.scheduleKey||state.completedAt)
+      const key='boss_eclipse_final_formatted_v2:'+String(state.scheduleKey||state.completedAt)
       let message='🌘🏆 *IMPERADOR DO ECLIPSE DERROTADO!*\n\n'
         +'👹 HP eliminado: *'+fmtEclipse(state.maxHp)+'*\n'
         +'✅ *Resultado final e premiacao processados*\n\n'
@@ -2042,7 +2042,7 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
         else if(rank===2||rank===3) message+='\n🎁 Caixa Rara garantida'
         message+='\n'
       }
-      message+=archival?'\nℹ️ Valores confirmados no historico financeiro. O registro antigo nao preservou EXP detalhada nem sorteios da insignia. Nenhum premio foi redistribuido.':'\n✅ Premios acima ja creditados. Nenhuma entrega duplicada.'
+      message+=archival?'\n📣 Retificacao de formato do anuncio anterior. Nenhum premio adicional foi distribuido.\nℹ️ Valores confirmados no historico financeiro. O registro antigo nao preservou EXP detalhada nem sorteios da insignia. Nenhum premio foi redistribuido.':'\n✅ Premios acima ja creditados. Nenhuma entrega duplicada.'
       const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
       for(const group of groups){
         const chat=group.chat_jid
