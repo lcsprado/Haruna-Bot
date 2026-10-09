@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
-  adoptPet, getPet, listPets, selectPet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
+  adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
   listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
@@ -8168,6 +8168,42 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
         const ownerTarget=mentionsOf(msg)[0] || sender
         await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
+
+        if(cmd==='sacrificar'){
+          try{
+            const position=Number(args[0])
+            if(!Number.isSafeInteger(position)||position<1) {
+              await reply('🐾 Use *!meuspets* para ver a ordem e *!sacrificar NÚMERO* para escolher um pet reserva.\\n⚠️ Sacrifício permanente.')
+              continue
+            }
+            const pets=await listPets(sender)
+            const pet=pets[position-1]
+            if(!pet?.id) { await reply('🐾 Número não encontrado na sua coleção. Use *!meuspets*.'); continue }
+            const level=Math.min(100,Math.max(1,Number(pet.level||1)))
+            const cash=Math.min(3700,200+35*level)
+            const exp=Math.min(800,Math.floor(level*5+Math.max(0,Number(pet.xp||0))*.03))
+            if(String(args[1]||'').toLowerCase()!=='confirmar'){
+              await reply(`🐾 *DESPEDIDA DO PET*
+
+Pet: *${pet.name}* — Nv.${level}
+💰 Retorno: *R$ ${fmt(cash)}*
+✨ EXP do personagem: *+${fmt(exp)}*
+
+⚠️ Ação permanente: o pet será removido da coleção.
+🔒 Pets ativos, no time ou em expedição não podem ser sacrificados.
+✅ Para confirmar: *!sacrificar ${position} confirmar*
+❎ Para cancelar: ignore esta mensagem.`)
+              continue
+            }
+            // The database checks ownership, active/team/expedition state
+            // again within the same transaction as the removal and rewards.
+            const result=await sacrificePet(sender,pet.id)
+            await reply(`🕊️ *ADEUS, ${result.name}!*\\n\\n🐾 Nv.${result.level} — ${result.species}\\n✨ +${fmt(result.exp)} EXP\\n💰 +R$ ${fmt(result.cash)}\\n\\nO pet deixou sua coleção. 🐾`)
+          }catch(err){
+            await reply('⚠️ *Não foi possível sacrificar o pet.*\\n'+String(err?.message||'Tente novamente.'))
+          }
+          continue
+        }
 
         if(['despertar','despertares','evoluirpersonagem'].includes(cmd)){
           const sub=String(args[0]||'').toLowerCase()
