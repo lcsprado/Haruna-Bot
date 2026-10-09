@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
-import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass } from './game-catalog.js'
+import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus } from './game-catalog.js'
 
 const { Pool, Client } = pg
 
@@ -2632,16 +2632,19 @@ export async function battle(attackerJid, defenderJid) {
     const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const aeH=a.helmet_id?equipmentStatsAtLevel(a.helmet_id,eqLevel(attackerJid,a.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 
     const A={
       jid:attackerJid,name:au?.push_name||'Jogador',
       hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
       atk:Number(a.atk)+aeW.atk+aeA.atk,
       def:Number(a.def)+aeW.def+aeA.def+aeH.def,
-      crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)),
+      classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
+      crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+classCritBonus(a.class_id,a.class_applied)),
       spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd
     }
     const B={
@@ -2649,7 +2652,8 @@ export async function battle(attackerJid, defenderJid) {
       hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
       atk:Number(b.atk)+beW.atk+beA.atk,
       def:Number(b.def)+beW.def+beA.def+beH.def,
-      crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)),
+      classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
+      crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+classCritBonus(b.class_id,b.class_applied)),
       spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd
     }
 
