@@ -1,5 +1,5 @@
 import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
-import { petCombatSpecialty } from './game-catalog.js'
+import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -732,7 +732,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
       atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),
-      crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
+      classId:st.class_id,classApplied:Boolean(st.class_applied),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
       pet:combatPet,reservePet
     }}
     await saveGame(c,chat,gameType,s)
@@ -925,7 +925,7 @@ export async function startRaid(chat,host,level=null){
       const teamSynergy=petTeamSynergy(teamPets)
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),classId:st.class_id,classApplied:Boolean(st.class_applied),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0}
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
