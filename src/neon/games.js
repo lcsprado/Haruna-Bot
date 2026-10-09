@@ -1626,7 +1626,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
         throw new Error('⚠️ Você já está participando do Boss Mundial em outro grupo. Para evitar ataques e recompensas duplicados, continue no grupo em que começou.')
       }
     }
-    const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id,helmet_id,class_id,class_applied FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
     const existingParticipant=s.participants[jid]||{}
@@ -1692,7 +1692,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0))
     const baseCritChance=.10
     const roll=Math.random()
-    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance)
+    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance+classCritBonus(st.class_id,st.class_applied))
     const crit=roll<totalCritChance
     const petCrit=crit&&roll>=Math.min(totalCritChance,baseCritChance+gearCritChance)
     const gearCrit=crit&&!petCrit
@@ -1701,8 +1701,10 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const rawBase=Math.max(5,Math.floor(atk*variance))
     const baselineWithGearCrit=Math.max(5,Math.floor(rawBase*(gearCrit?1.5:1)))
     const oilBonus=existingParticipant.oilActive?Math.max(1,Math.floor(baselineWithGearCrit*.06)):0
-    const damage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1))+oilBonus)
-    const petDamage=pet?Math.max(0,damage-baselineWithGearCrit-oilBonus):0
+    const baseDamage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1))+oilBonus)
+    const passiveHit=classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0)})
+    const damage=passiveHit.damage
+    const petDamage=pet?Math.max(0,baseDamage-baselineWithGearCrit-oilBonus):0
     s.hp=Math.max(0,Number(s.hp)-damage)
     const old=existingParticipant
     const attackCount=Number(old.attacks||0)+1
@@ -1713,9 +1715,10 @@ export async function attackBoss(chat,jid,name,usePet=true){
       attacks:attackCount,
       petHealing:Number(old.petHealing||0),
       activePetSlot,
-      lastAttackAt:bossNow
+      lastAttackAt:bossNow,
+      classLastProcAttack:passiveHit.lastProcAttack
     }
-    let php=Math.min(Number(st.hp),effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,autoPetHeal=null,petSkillHeal=null
+    let php=Math.min(Number(st.hp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,autoPetHeal=null,petSkillHeal=null
     if(s.hp>0){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossCritical=!dodged&&Math.random()<.05
