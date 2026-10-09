@@ -1994,9 +1994,78 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
     if(inserted.rowCount) await sock.sendMessage(chat,{text}).catch(err=>console.error('[Eventos] aviso',chat,err?.message||err))
   }
 
+  // Publica o resultado final do Eclipse em TODOS os grupos, inclusive apos deploy.
+  // O pagamento ja ocorreu na transacao do ultimo ataque; esta rotina apenas comunica.
+  let eclipseResultBroadcastBusy=false
+  async function announceCompletedEclipse(){
+    if(trevoHealth.whatsapp!=='open'||eclipseResultBroadcastBusy) return
+    eclipseResultBroadcastBusy=true
+    try{
+      const row=(await db.query(
+        "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
+      )).rows[0]
+      const state=row?.state
+      if(state?.mode!=='event_completed'||state?.eventId!=='eclipse'||Number(state.hp)!==0) return
+      const completedAt=Number(state.completedAt||0)
+      if(!completedAt||Date.now()-completedAt>24*60*60*1000) return
+      let rewardRows=Array.isArray(state.result?.rewards)?state.result.rewards:[]
+      const archival=!rewardRows.length
+      if(archival && String(state.scheduleKey)==='2026-10-09'){
+        const result=await db.query(`
+          SELECT t.to_jid AS jid,COALESCE(NULLIF(u.push_name,''),'Jogador') AS name,
+                 t.amount AS cash
+          FROM transactions t LEFT JOIN users u ON u.jid=t.to_jid
+          WHERE t.note='boss_event_eclipse'
+            AND t.created_at BETWEEN $1 AND $2
+          ORDER BY t.amount DESC
+        `,[Math.floor(Date.parse('2026-10-09T19:00:00-03:00')/1000),
+           Math.floor(Date.parse('2026-10-09T20:00:00-03:00')/1000)])
+        rewardRows=result.rows.map((x,n)=>({...x,position:n+1}))
+      }
+      if(!rewardRows.length){console.warn('[Eclipse Result] evento concluido sem premiacoes auditaveis');return}
+      const fmtEclipse=n=>Math.round(Number(n)||0).toLocaleString('pt-BR')
+      const safeEclipse=n=>String(n||'Jogador').replace(/[\\r\\n*_`~]/g,' ').slice(0,60)
+      const key='boss_eclipse_final:'+String(state.scheduleKey||state.completedAt)
+      let message='🌘🏆 *IMPERADOR DO ECLIPSE DERROTADO!*\\n\\n'
+        +'👹 HP eliminado: *'+fmtEclipse(state.maxHp)+'*\\n'
+        +'✅ *Resultado final e premiacao processados*\\n\\n'
+        +'🏅 *RANKING E RECOMPENSAS*\\n'
+      for(const p of rewardRows){
+        const rank=Number(p.position||0)
+        message+='\\n'+(rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':String(rank)+'.')
+          +' *'+safeEclipse(p.name)+'* — 💰 R$ '+fmtEclipse(p.cash)
+        if(!archival){
+          message+=' • ✨ +'+fmtEclipse(p.exp)+' XP'
+          if(Number(p.damage||0)>0)message+='\\n💥 '+fmtEclipse(p.damage)+' dano'
+          if(Array.isArray(p.drops)&&p.drops.length) message+='\\n🎁 '+p.drops.map(d=>safeEclipse(d.name)).join(', ')
+        }else if(rank===1) message+='\\n🎁 Caixa Epica garantida'
+        else if(rank===2||rank===3) message+='\\n🎁 Caixa Rara garantida'
+        message+='\\n'
+      }
+      message+=archival?'\\nℹ️ Valores confirmados no historico financeiro. O registro antigo nao preservou EXP detalhada nem sorteios da insignia. Nenhum premio foi redistribuido.':'\\n✅ Premios acima ja creditados. Nenhuma entrega duplicada.'
+      const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+      for(const group of groups){
+        const chat=group.chat_jid
+        if(!chat?.endsWith('@g.us')) continue
+        const marker='boss_result_notice:'+key+':'+chat
+        const sent=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[marker])).rowCount>0
+        if(sent) continue
+        try{
+          await sock.sendMessage(chat,{text:message})
+          await db.query(
+            "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING",
+            [marker,JSON.stringify({sentAt:Date.now(),eventId:state.eventId,completedAt})])
+          console.log('[Eclipse Result] resultado enviado ao grupo',chat)
+        }catch(err){console.error('[Eclipse Result] falha ao avisar',chat,err?.message||err)}
+      }
+    }catch(err){console.error('[Eclipse Result] falha de auditoria/anuncio',err?.stack||err)}
+    finally{eclipseResultBroadcastBusy=false}
+  }
+
   async function runBossEventScheduler(){
     if(trevoHealth.whatsapp!=='open') return
     try{
+      await announceCompletedEclipse()
       const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
       for(const lic of groups){
         const chat=lic.chat_jid

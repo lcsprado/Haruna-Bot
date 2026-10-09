@@ -2292,6 +2292,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
           active:false,
           hp:0,
           participants:{},
+          // Snapshot transacional. Reenviar o resultado nunca redistribui premios.
+          result:{bossName:s.name,maxHp:Number(s.maxHp||0),
+            rewards:rewards.map(p=>({jid:p.jid,name:p.name,position:p.position,
+              damage:p.damage,cash:p.cash,exp:p.exp,petXp:p.petXp,
+              petXpTeam:p.petXpTeam,drops:p.drops}))},
           scheduleKey:s.scheduleKey||(schedule.due?schedule.fridayKey:null),
           completedAt:Date.now()
         }
