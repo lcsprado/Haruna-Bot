@@ -595,6 +595,7 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
           weapon_id=COALESCE(t.weapon_id,s.weapon_id),
           armor_id=COALESCE(t.armor_id,s.armor_id),
           boot_id=COALESCE(t.boot_id,s.boot_id),
+           helmet_id=COALESCE(t.helmet_id,s.helmet_id),
           class_id=CASE
             WHEN COALESCE(t.class_applied,FALSE) THEN t.class_id
             WHEN COALESCE(s.class_applied,FALSE) THEN s.class_id
@@ -787,7 +788,7 @@ export async function getProfile(jid) {
   const { rows } = await db.query(`
     SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
            w.cash,w.bank,w.bank_limit,
-           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.class_id,s.class_applied,
+           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,
            s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss
     FROM users u
     JOIN wallets w ON w.jid=u.jid
@@ -1467,16 +1468,17 @@ export async function getInventory(jid) {
   const { rows } = await db.query(`
     SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
            COALESCE(eu.level,1)::int AS equipment_level,
-           (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id) AS equipped,
+           (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped,
            CASE
              WHEN s.weapon_id=i.item_id THEN 'weapon'
              WHEN s.armor_id=i.item_id THEN 'armor'
              WHEN s.boot_id=i.item_id THEN 'boots'
+              WHEN s.helmet_id=i.item_id THEN 'helmet'
              ELSE NULL
            END AS equipped_slot,
            GREATEST(
              0,
-             i.quantity-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id) THEN 1 ELSE 0 END
+             i.quantity-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 1 ELSE 0 END
            )::int AS sellable_quantity,
            CASE
              WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
@@ -1492,7 +1494,7 @@ export async function getInventory(jid) {
     LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
     WHERE i.jid=$1 AND i.quantity>0
     ORDER BY
-      CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id) THEN 0 ELSE 1 END,
+      CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 0 ELSE 1 END,
       CASE it.category
         WHEN 'weapon' THEN 1
         WHEN 'armor' THEN 2
@@ -1542,11 +1544,11 @@ export async function sellItem(jid, itemId, qty=1) {
     if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
 
     const statsR=await client.query(
-      'SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1 FOR UPDATE',
+      'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
     const stats=statsR.rows[0]||{}
-    const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId) ? 1 : 0
+    const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId) ? 1 : 0
     const sellable=Math.max(0,owned-equipped)
 
     if(sellable<1){
@@ -1631,7 +1633,7 @@ export async function sellItemsBatch(jid, selections=[]) {
 
   return transaction(async client=>{
     const statsR=await client.query(
-      'SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1 FOR UPDATE',
+      'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
     const stats=statsR.rows[0]||{}
@@ -1653,7 +1655,7 @@ export async function sellItemsBatch(jid, selections=[]) {
       if(item.sellable===false) throw new Error('Um dos itens selecionados não pode ser vendido.')
       if(item.rarity==='legendary') throw new Error('Itens lendários não entram em venda em lote.')
 
-      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId)
+      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
       const minimumKeep=equipped?1:0
       const maxBatch=Math.max(0,owned-minimumKeep)
 
@@ -1747,7 +1749,7 @@ export async function discardItemsBatch(jid, selections=[]) {
 
   return transaction(async client=>{
     const statsR=await client.query(
-      'SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1 FOR UPDATE',
+      'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
     const stats=statsR.rows[0]||{}
@@ -1768,7 +1770,7 @@ export async function discardItemsBatch(jid, selections=[]) {
       if(item.sellable===false) throw new Error('Um dos itens selecionados é protegido e não pode ser descartado.')
       if(item.rarity==='legendary') throw new Error('Itens lendários não podem ser descartados em lote.')
 
-      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId)
+      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
       const maxDiscard=Math.max(0,owned-(equipped?1:0))
       if(sel.qty>maxDiscard){
         throw new Error(equipped
@@ -2458,11 +2460,11 @@ export async function usePotion(jid,itemId=null){
     if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura.')
 
     const st=await client.query(
-      'SELECT hp,max_hp,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',
+      'SELECT hp,max_hp,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
       [jid]
     )
     const row=st.rows[0]||{}
-    const idsEq=[row.weapon_id,row.armor_id].filter(Boolean)
+    const idsEq=[row.weapon_id,row.armor_id,row.helmet_id].filter(Boolean)
     const levels=idsEq.length?(await client.query(
       'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
       [jid,idsEq]
@@ -2470,6 +2472,7 @@ export async function usePotion(jid,itemId=null){
     const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
     const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id)):{hp:0}
     const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{hp:0}
+     const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{hp:0}
 
     const hp=Number(row.hp||0)
     const maxHp=Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)
@@ -5501,8 +5504,8 @@ export async function createMarketListing(jid,itemId,qty,price){
     if(!itemRow || itemRow.sellable!==true) throw new Error('Este item é exclusivo de NPC e não pode ser anunciado no mercado.')
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
-    const stats=await client.query('SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=$1',[jid])
-    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id].includes(itemId)?1:0
+    const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])
+    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id].includes(itemId)?1:0
     const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-equipped)
     if(qty>available){
       throw new Error(equipped
