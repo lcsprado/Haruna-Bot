@@ -2613,21 +2613,32 @@ export async function battle(attackerJid, defenderJid) {
   if(attackerJid===defenderJid) throw new Error('Você não pode batalhar contra si mesmo.')
   await ensureUser(defenderJid)
 
-  return transaction(async client=>{
+  // Um deadlock SQLSTATE 40P01 aborta toda a transação. Reexecutar a
+  // transação inteira é seguro: cooldown, XP, saldo e vitórias são atômicos.
+  // Não reexecutar erros de regras de jogo nem qualquer outro SQLSTATE.
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      return await transaction(async client=>{
     const now=Math.floor(Date.now()/1000)
     const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[defenderJid,now])
     if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser atacada agora.')
     const carpindo=await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[defenderJid,now])
     if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode ser atacada agora.')
     const ids=[attackerJid,defenderJid].sort()
-    const statsR=await client.query(
-      'SELECT * FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
-      [ids]
-    )
-    const usersR=await client.query(
-      'SELECT jid,push_name,level,exp FROM users WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
-      [ids]
-    )
+    // Mesma ordem: users -> stats (como applyExp / Despertar).
+    // Lock por usuário, individualmente, impede inversão entre dois PvPs
+    // simultâneos com jogadores cruzados em ambos os lados.
+    const usersR={rows:[]},statsR={rows:[]}
+    for(const id of ids){
+      const result=await client.query(
+        'SELECT jid,push_name,level,exp FROM users WHERE jid=$1 FOR UPDATE',[id]
+      )
+      usersR.rows.push(...result.rows)
+    }
+    for(const id of ids){
+      const result=await client.query('SELECT * FROM stats WHERE jid=$1 FOR UPDATE',[id])
+      statsR.rows.push(...result.rows)
+    }
     const petsR=await client.query(
       'SELECT jid,species,level,hp,energy FROM pets WHERE jid=ANY($1::text[])',
       [ids]
@@ -2765,7 +2776,14 @@ export async function battle(attackerJid, defenderJid) {
         defenderHp: B.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(B.maxHp*0.25))
       }
     }
-  })
+      })
+    }catch(err){
+      if(err?.code!=='40P01'||attempt===3)throw err
+      const delayMs=80*attempt+Math.floor(Math.random()*60)
+      console.warn('[PvP] deadlock SQL 40P01; transação cancelada e nova tentativa',JSON.stringify({attempt,delayMs}))
+      await new Promise(resolve=>setTimeout(resolve,delayMs))
+    }
+  }
 }
 
 export async function combatLeaderboard(limit=10) {
