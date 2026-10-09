@@ -146,6 +146,6 @@ export async function awakenCharacter(jid){
       [jid,tier.stage,JSON.stringify(checkpoint(current,tier.stage))])
     await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'awakening',$2,'awakening',$3)`,[jid,tier.cost,`Despertar ${tier.roman} ${s.path}`])
-    return {tier,path:s.path,className:s.className,balance:s.balance-tier.cost}
+    return {tier,path:s.path,classId:s.classId,className:s.className,balance:s.balance-tier.cost}
   })
 }
