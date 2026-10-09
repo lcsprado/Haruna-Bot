@@ -2217,32 +2217,32 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
           const horaRuptura=Date.parse('2026-10-09T20:00:00-03:00')
           if(now>=horaRuptura-600000&&now<horaRuptura){
             await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-preview',
-              '🌌 *RUPTURA ESTELAR ÀS 20H!*\\n\\n👹 Nharok, o Devorador de Mundos\\n' +
-              '⚔️ Três fases e um ranking global.\\n✨ 2x EXP de jogador • 🐾 1,5x EXP pet\\n' +
-              '🥇 20 Caixas Épicas • 🥈 5 • 🥉 3\\n' +
-              '🏅 Insígnia inédita: Guardião da Ruptura\\n⏰ 20h–21h. Use !boss e !atacar!')
+              '🌌 *RUPTURA ESTELAR ÀS 20H!*\n\n👹 Nharok, o Devorador de Mundos\n' +
+              '⚔️ Três fases e um ranking global.\n✨ 2x EXP de jogador • 🐾 1,5x EXP pet\n' +
+              '🥇 20 Caixas Épicas • 🥈 5 • 🥉 3\n' +
+              '🏅 Insígnia inédita: Guardião da Ruptura\n⏰ 20h–21h. Use !boss e !atacar!')
           }
           const ruptura=await iniciarRupturaEstelar(chat)
           if(ruptura?.spawned||ruptura?.already){
             await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-start',
-              '🌌 *A RUPTURA ESTELAR COMEÇOU!*\\n\\n👹 *Nharok, o Devorador de Mundos*\\n' +
-              '❤️ HP GLOBAL: *'+Number(ruptura.maxHp).toLocaleString('pt-BR')+'*\\n⚔️ ATK: *'+ruptura.atk+'*\\n' +
-              '🌑 Fase 1: Invasão\\n🔥 Fase 2: +15% ATK\\n💀 Fase 3: +20% ATK, recebe +10% dano\\n\\n' +
-              '✨ 2x EXP • 🐾 1,5x EXP pet\\n🥇 *20 CAIXAS ÉPICAS* • 🥈 5 • 🥉 3\\n' +
-              '🏅 Top 3 garante *Insígnia Guardião da Ruptura*; demais: 15% com 10 ataques.\\n' +
-              '🧭 Missões: 10 ataques, lutar em 2 fases e na fase 3.\\n' +
-              '🌐 Ranking, HP e cooldown globais. Sem multiplicador de dinheiro.\\n' +
-              '⏰ Até 21h; premiação do ranking garantida mesmo se não for derrotado.\\n\\n' +
+              '🌌 *A RUPTURA ESTELAR COMEÇOU!*\n\n👹 *Nharok, o Devorador de Mundos*\n' +
+              '❤️ HP GLOBAL: *'+Number(ruptura.maxHp).toLocaleString('pt-BR')+'*\n⚔️ ATK: *'+ruptura.atk+'*\n' +
+              '🌑 Fase 1: Invasão\n🔥 Fase 2: +15% ATK\n💀 Fase 3: +20% ATK, recebe +10% dano\n\n' +
+              '✨ 2x EXP • 🐾 1,5x EXP pet\n🥇 *20 CAIXAS ÉPICAS* • 🥈 5 • 🥉 3\n' +
+              '🏅 Top 3 garante *Insígnia Guardião da Ruptura*; demais: 15% com 10 ataques.\n' +
+              '🧭 Missões: 10 ataques, lutar em 2 fases e na fase 3.\n' +
+              '🌐 Ranking, HP e cooldown globais. Sem multiplicador de dinheiro.\n' +
+              '⏰ Até 21h; premiação do ranking garantida mesmo se não for derrotado.\n\n' +
               '⚔️ Use *!boss* e *!atacar*.')
           }
           const fimRuptura=await encerrarRupturaEstelar(chat)
           if(fimRuptura?.ended||(fimRuptura?.due&&fimRuptura?.alreadyEnded)){
             const colocados=(fimRuptura.rankings||[]).slice(0,3).map(p=>
-              p.position+'º '+p.name+' — '+Number(p.damage).toLocaleString('pt-BR')+' dano').join('\\n')
+              p.position+'º '+p.name+' — '+Number(p.damage).toLocaleString('pt-BR')+' dano').join('\n')
             await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-end',
-              '🌌 *RUPTURA ESTELAR ENCERRADA!*\\n\\n🏆 *RANKING GLOBAL*\\n'+
-              (colocados||'Sem participantes com dano.')+'\\n\\n' +
-              '🥇 20 Caixas Épicas • 🥈 5 • 🥉 3.\\n🏅 Insígnias entregues conforme as regras.')
+              '🌌 *RUPTURA ESTELAR ENCERRADA!*\n\n🏆 *RANKING GLOBAL*\n'+
+              (colocados||'Sem participantes com dano.')+'\n\n' +
+              '🥇 20 Caixas Épicas • 🥈 5 • 🥉 3.\n🏅 Insígnias entregues conforme as regras.')
           }
           if(ruptura?.spawned||ruptura?.already) continue
           const r=await autoStartBossEvent(chat)
@@ -10527,12 +10527,15 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}${synergyLine}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
           const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
           const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial ativado manualmente pelo dono.':'')
-          if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
+          const displayedSchedule=r.eventId==='ruptura_estelar'
+            ?'\n🌌 *RUPTURA ESTELAR ATÉ 21H* • Fase '+Number(r.phase||1)+'/3\n🥇 20 Caixas Épicas ao 1º; 5 ao 2º; 3 ao 3º.\n🏅 Insígnia Guardião da Ruptura.'
+            :schedule
+          if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
           await progressDailyMission(sender,'game')
           const rewardInfo=r.mode==='event'
-            ?'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.'
+            ?(r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
             :(r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
-          await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
+          await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
         } else if(['pararatacar','pararboss'].includes(cmd)){
           const existing=bossSessions.get(sender)
