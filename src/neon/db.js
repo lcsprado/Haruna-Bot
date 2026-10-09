@@ -2662,6 +2662,7 @@ export async function battle(attackerJid, defenderJid) {
     let second=first===A?B:A
 
     const hit=(from,to)=>{
+      from.attackIndex++
       const variance=0.85+Math.random()*0.30
       const crit=Math.random()<Number(from.crit||.10)
       const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
