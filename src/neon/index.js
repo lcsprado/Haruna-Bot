@@ -1743,8 +1743,8 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
 ❤️ HP: *${Number(weekly.maxHp).toLocaleString('pt-BR')}*
 ⚔️ ATK: *${weekly.atk}*
 
-🔥 Desafio de dois dias, com recompensas aprimoradas por colocação!
-🎁 Top 5 com caixas garantidas e chances de equipamentos lendários.\n👑 *PRÊMIO EXCLUSIVO TOP 1:* Elmo do Soberano Ancestral — *+85 DEF / +220 HP*!\n🪖 Novo slot de Elmo: prêmio garantido somente ao campeão do Boss semanal.
+🔥 Desafio de dois dias, com recompensas aprimoradas por colocação!\n💰 Bônus Top 1 a 5: R$ 650 mil / 450 mil / 300 mil / 200 mil / 125 mil.\n📦 Caixas Épicas garantidas: 12 / 9 / 7 / 5 / 3 (Top 1 a 5).
+🎁 Top 5 com caixas épicas garantidas e chances de equipamentos lendários.\n👑 *PRÊMIO EXCLUSIVO TOP 1:* Elmo do Soberano Ancestral — *+85 DEF / +220 HP*!\n🪖 Novo slot de Elmo: prêmio garantido somente ao campeão do Boss semanal.
 ⚔️ Use *!boss* para participar. Boa caçada!`)
             }
           }
