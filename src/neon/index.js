@@ -119,16 +119,53 @@ if(!connectionWatchdog){
 }
 
 const bossSessions=new Map()
-async function runBossSession(chat,jid,name,reply,usePet=true){
-  const key=chat+'|'+jid
-  if(bossSessions.has(key)) return false
-  bossSessions.set(key,true)
+async function runBossSession(chat,jid,name,sendReply,usePet=true){
+  // Identidade global do jogador, nunca chat|jid: impede sessões em dois grupos.
+  const key=jid
+  const existing=bossSessions.get(key)
+  if(existing){
+    if(existing.chat!==chat) throw new Error('⚠️ Você já está atacando em outro grupo. Volte ao grupo original do Boss.')
+    return false
+  }
+  const runner={chat,active:true,lastProgressAt:Date.now()}
+  bossSessions.set(key,runner)
+  let first,bossId
+  try{
+    // Primeiro ataque é aguardado ANTES do aviso de início.
+    // Rejeições por grupo incorreto/morte/falta de Boss não geram aviso falso.
+    first=await attackBoss(chat,jid,name,usePet)
+    if(first?.playerDead) throw new Error('Você está sem HP. Use !curar e depois !atacar no grupo original.')
+    bossId=String(first?.mode||'common')+':'+String(first?.endsAt||0)
+    await db.query(`
+      INSERT INTO boss_auto_sessions(jid,chat_jid,name,use_pet,status,boss_id,ends_at,last_attack_at)
+      VALUES($1,$2,$3,$4,'active',$5,$6,$7)
+      ON CONFLICT(jid) DO UPDATE SET
+        chat_jid=EXCLUDED.chat_jid,name=EXCLUDED.name,use_pet=EXCLUDED.use_pet,
+        status='active',boss_id=EXCLUDED.boss_id,ends_at=EXCLUDED.ends_at,
+        last_attack_at=EXCLUDED.last_attack_at,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+    `,[jid,chat,name||'Jogador',Boolean(usePet),bossId,Number(first?.endsAt||0),Date.now()])
+  }catch(err){
+    if(bossSessions.get(key)===runner) bossSessions.delete(key)
+    throw err
+  }
+  // Falhas de envio de WhatsApp não podem matar o combate.
+  const reply=async message=>{
+    try{
+      await Promise.race([
+        Promise.resolve().then(()=>sendReply(message)),
+        new Promise(resolve=>{const timer=setTimeout(resolve,2500);timer.unref?.()})
+      ])
+    }catch(err){console.warn('[Boss Auto] aviso falhou, combate continua',err?.message||err)}
+  }
   ;(async()=>{
+    let completed=false
     let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     let sessionMode=null,sessionEndsAt=0
     try{
       for(let i=0;;i++){
-        const r=await attackBoss(chat,jid,name,usePet)
+        if(!runner.active||bossSessions.get(key)!==runner){completed=true;return}
+        const r=i===0?first:await attackBoss(chat,jid,name,usePet)
+        runner.lastProgressAt=Date.now()
         if(r?.cooldown){
           i--
           await new Promise(resolve=>setTimeout(resolve,Math.max(250,Number(r.remainingMs||1000))))
@@ -153,7 +190,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
           petFaintWarned=true
           await reply('💔 Seu pet ficou sem HP e saiu do combate. Você continuará atacando sozinho. Use *!descansar* depois para recuperar a vida dele.')
         }
-        if(r.playerDead){
+        if(r.playerDead){completed=true;
           await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura disponível.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
           return
         }
@@ -161,7 +198,7 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         if(r.oilConsumedNow) await reply('🗡️ *ÓLEO DAS SOMBRAS ATIVADO!* +6% de dano do jogador neste Boss (consumido 1 Óleo; pet não recebe bônus).')
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
-        if(r.dead){
+        if(r.dead){completed=true;
           for(const player of r.rewards||[]){
             if(Number(player.share||0)>=0.02){
               await progressAlphaContract(player.jid,'boss').catch(err=>console.error('[Contratos] boss',err?.message||err))
@@ -184,17 +221,103 @@ async function runBossSession(chat,jid,name,reply,usePet=true){
         if(sessionMode==='common' && i>=29) break
 
         const delayMs=eventSession?8000:10000
-        if((eventSession||sessionMode==='weekly')&&sessionEndsAt&&Date.now()+delayMs>=sessionEndsAt){
+        if((eventSession||sessionMode==='weekly')&&sessionEndsAt&&Date.now()+delayMs>=sessionEndsAt){completed=true;
           await reply(`⏰ *BOSS ENCERRADO!*\n\n🥊 Ataques automáticos: *${attacks}*\n💥 Dano causado nesta sessão: *${totalDamage.toLocaleString('pt-BR')}*\n\nO combate automático parou porque o horário do evento terminou.`)
           return
         }
         await new Promise(resolve=>setTimeout(resolve,delayMs))
       }
+      completed=true
       await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 Curas automáticas do pet: *${petHeals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
-    finally{bossSessions.delete(key)}
+    finally{
+      if(completed){
+        await db.query("UPDATE boss_auto_sessions SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 AND boss_id=$2",[jid,bossId])
+          .catch(err=>console.error('[Boss Auto] falha ao encerrar sessão persistida',err?.message||err))
+      }
+      if(bossSessions.get(key)===runner) bossSessions.delete(key)
+    }
   })()
   return true
+}
+
+let bossAutoWatchdog=null
+let bossAutoWatchdogBusy=false
+
+// Recupera a participação já existente antes da migração para runners persistentes.
+// Só recupera quem realmente atacou, vinculando ao mesmo grupo gravado no Neon.
+async function recoverLegacyWeeklyBossSessions(){
+  const row=(await db.query(`
+    SELECT state FROM trevo_games
+    WHERE chat_jid='__alpha_global_weekly_boss__' AND game_type='boss'
+      AND state->>'mode'='weekly'
+      AND COALESCE((state->>'hp')::numeric,0)>0
+      AND COALESCE((state->>'endsAt')::numeric,0)>$1
+  `,[Date.now()])).rows[0]
+  const state=row?.state
+  if(!state) return
+  const bossId='weekly:'+String(state.endsAt||0)
+  for(const [jid,participant] of Object.entries(state.participants||{})){
+    if(!Number(participant.lastAttackAt||0)) continue
+    const claimKey='weekly_boss_group:'+String(state.weekendKey||'')+':'+jid
+    const claim=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[claimKey])).rows[0]?.value
+    const chat=String(claim?.chat||'')
+    if(!chat.endsWith('@g.us')) continue
+    await db.query(`
+      INSERT INTO boss_auto_sessions(jid,chat_jid,name,use_pet,status,boss_id,ends_at,last_attack_at)
+      VALUES($1,$2,$3,$4,'active',$5,$6,$7)
+      ON CONFLICT(jid) DO UPDATE SET
+        chat_jid=EXCLUDED.chat_jid,name=EXCLUDED.name,use_pet=EXCLUDED.use_pet,
+        status='active',boss_id=EXCLUDED.boss_id,ends_at=EXCLUDED.ends_at,
+        last_attack_at=EXCLUDED.last_attack_at,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+      WHERE boss_auto_sessions.boss_id<>EXCLUDED.boss_id
+    `,[jid,chat,participant.name||'Jogador',participant.usePet!==false,bossId,Number(state.endsAt||0),Number(participant.lastAttackAt||0)])
+  }
+}
+
+async function ensureActiveBossRuns(sendToChat){
+  if(trevoHealth.whatsapp!=='open'||bossAutoWatchdogBusy) return
+  bossAutoWatchdogBusy=true
+  try{
+    // Evita ressuscitar sessões vencidas ou jogadores derrotados.
+    await db.query(`
+      UPDATE boss_auto_sessions
+      SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+      WHERE status='active' AND
+       ((ends_at>0 AND ends_at<=$1)
+        OR EXISTS(SELECT 1 FROM stats WHERE stats.jid=boss_auto_sessions.jid AND stats.hp<=0))
+    `,[Date.now()])
+    await recoverLegacyWeeklyBossSessions()
+    const rows=(await db.query(`
+      SELECT s.jid,s.chat_jid,s.name,s.use_pet,s.last_attack_at
+      FROM boss_auto_sessions s JOIN stats st ON st.jid=s.jid
+      WHERE s.status='active' AND st.hp>0
+        AND (s.ends_at=0 OR s.ends_at>$1)
+    `,[Date.now()])).rows
+    for(const s of rows){
+      const jid=String(s.jid), chat=String(s.chat_jid)
+      if(!chat.endsWith('@g.us')) continue
+      const current=bossSessions.get(jid)
+      if(current && current.chat===chat && Date.now()-current.lastProgressAt<60000) continue
+      if(current){
+        current.active=false
+        bossSessions.delete(jid)
+        console.warn('[Boss Auto] runner travado/substituído',jid)
+      }
+      try{
+        const started=await runBossSession(chat,jid,s.name||'Jogador',
+          text=>sendToChat(chat,text),Boolean(s.use_pet))
+        if(started) console.log('[Boss Auto] runner recuperado',jid,'no grupo',chat)
+      }catch(err){
+        const message=String(err?.message||err)
+        console.error('[Boss Auto] falha ao recuperar runner',jid,message)
+        if(/outro grupo|sem HP|não há Boss ativo|encerrou/i.test(message)){
+          await db.query("UPDATE boss_auto_sessions SET status='stopped' WHERE jid=$1 AND chat_jid=$2",[jid,chat])
+        }
+      }
+    }
+  }catch(err){console.error('[Boss Auto] watchdog falhou',err?.message||err)}
+  finally{bossAutoWatchdogBusy=false}
 }
 
 const raidRuns=new Map()
@@ -1689,6 +1812,13 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
   // uma Raid ativa já existir quando o bot subir, o servidor relança o runner.
   // raidRuns impede dois loops simultâneos para o mesmo grupo/nível.
   void ensureActiveRaidRuns()
+  if(!bossAutoWatchdog){
+    bossAutoWatchdog=setInterval(()=>{
+      void ensureActiveBossRuns((chat,text)=>sock.sendMessage(chat,{text}))
+    },8000)
+    bossAutoWatchdog.unref?.()
+  }
+  setTimeout(()=>{void ensureActiveBossRuns((chat,text)=>sock.sendMessage(chat,{text}))},1500).unref?.()
   if(!raidAutoWatchdog){
     raidAutoWatchdog=setInterval(()=>{ void ensureActiveRaidRuns() },4000)
     raidAutoWatchdog.unref?.()
@@ -9948,11 +10078,21 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
             :(r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
           await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${schedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
+        } else if(['pararatacar','pararboss'].includes(cmd)){
+          const existing=bossSessions.get(sender)
+          if(existing&&existing.chat!==chat) return await reply('⚠️ Você deve controlar o combate pelo grupo em que começou.')
+          const stopped=await db.query(
+            "UPDATE boss_auto_sessions SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 AND chat_jid=$2 AND status='active' RETURNING jid",
+            [sender,chat]
+          )
+          if(existing) existing.active=false
+          return await reply(stopped.rowCount?'🛑 Combate automático interrompido. Você pode usar !atacar para retomar neste mesmo grupo.':'ℹ️ Você não possui combate automático ativo neste grupo.')
+
         } else if(['atacar'].includes(cmd)){
           const usePet=!['sempet','sozinho'].includes(normalizeItemText(args[0]||''))
           const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply,usePet)
           if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
-          await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n${usePet?'🐾 Pet participando: bônus ativos e *2 de energia por ataque*.':'🛡️ Você foi sem o pet: energia preservada, mas sem os bônus dele.'}\n⏱️ Duração: até *5 minutos*\n🥊 Ataque automático: a cada *10 segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n\nUse *!boss* para acompanhar a vida do Boss.`)
+          await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n${usePet?'🐾 Pet participando: bônus ativos e *2 de energia por ataque*.':'🛡️ Você foi sem o pet: energia preservada, mas sem os bônus dele.'}\n⏱️ Duração: contínua até o Boss acabar, seu personagem cair ou você usar !pararatacar.\n🥊 Ataque automático: a cada *10 segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n\nUse *!boss* para acompanhar a vida do Boss.`)
 
         } else if(['dungeon','masmorra'].includes(cmd)){
           const r=await dungeon(sender)
