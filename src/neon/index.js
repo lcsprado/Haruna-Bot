@@ -982,6 +982,7 @@ ${title}${badge?' • '+badge:''}
 
 ⭐ Nível: *${Number(p.level||1)}*
 🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
+⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}
 ✨ EXP: *${xp.current}/${xp.needed}*
 [${xp.bar}]
 
