@@ -89,6 +89,7 @@ export async function initDatabase() {
       weapon_id TEXT,
       armor_id TEXT,
       boot_id TEXT,
+      helmet_id TEXT,
       class_id TEXT NOT NULL DEFAULT 'warrior',
       class_applied BOOLEAN NOT NULL DEFAULT FALSE,
       class_hp_bonus INTEGER NOT NULL DEFAULT 0,
@@ -105,6 +106,7 @@ export async function initDatabase() {
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS weapon_tier INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS armor_tier INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS boot_id TEXT;
+    ALTER TABLE stats ADD COLUMN IF NOT EXISTS helmet_id TEXT;
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_id TEXT NOT NULL DEFAULT 'warrior';
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_applied BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_hp_bonus INTEGER NOT NULL DEFAULT 0;
@@ -418,6 +420,7 @@ export async function initDatabase() {
     ['couraca_vulcanica','Couraça Vulcânica','Proteção épica. +46 DEF.','armor',92000,'epic'],
     ['armadura_vazio','Armadura do Vazio','Proteção épica. +51 DEF.','armor',125000,'epic'],
     ['armadura_eclipse','Armadura do Eclipse','Proteção épica superior. +54 DEF.','armor',145000,'epic'],
+    ['elmo_soberano_golem','Elmo do Soberano Ancestral','Elmo exclusivo do primeiro colocado no Boss semanal. +85 DEF e +220 HP.','helmet',0,'legendary'],
     ['armadura_golem','Armadura do Golem Ancestral','Armadura exclusiva do Boss de Grupo. +70 DEF e +80 HP. Apenas por drop.','armor',0,'legendary'],
     ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF e +110 HP. Apenas por drop.','armor',0,'legendary'],
     ['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF, +140 HP e +1% crítico. Apenas por drop.','armor',0,'legendary'],
@@ -1979,6 +1982,7 @@ export async function leaderboard(limit=10, participantJids=[]) {
 
 
 const EQUIPMENT = {
+  elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
   espada_madeira: { category:'weapon', atk:5, def:0, name:'Espada de Madeira' },
   espada_ferro: { category:'weapon', atk:12, def:0, name:'Espada de Ferro' },
   espada_aco: { category:'weapon', atk:20, def:0, name:'Espada de Aço' },
@@ -2305,13 +2309,13 @@ export async function equipItem(jid, itemId) {
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
 
-    const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : 'boot_id'
+    const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : eq.category==='helmet' ? 'helmet_id' : 'boot_id'
     await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
 
     // Trocar equipamento com bônus de HP nunca pode deixar HP bruto acima do novo máximo efetivo.
-    if(field==='weapon_id'||field==='armor_id'){
-      const st=(await client.query('SELECT hp,max_hp,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-      const ids=[st?.weapon_id,st?.armor_id].filter(Boolean)
+    if(field==='weapon_id'||field==='armor_id'||field==='helmet_id'){
+      const st=(await client.query('SELECT hp,max_hp,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+      const ids=[st?.weapon_id,st?.armor_id,st?.helmet_id].filter(Boolean)
       const ups=ids.length?(await client.query(
         'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
         [jid,ids]
@@ -2319,7 +2323,8 @@ export async function equipItem(jid, itemId) {
       const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
       const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id)):{hp:0}
       const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id)):{hp:0}
-      const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0))
+      const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,lvl(st.helmet_id)):{hp:0}
+      const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
       if(Number(st?.hp||0)>effectiveMax){
         await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[effectiveMax,jid])
       }
@@ -2507,13 +2512,15 @@ export async function usePotion(jid,itemId=null){
 export async function getCombatProfile(jid) {
   const p=await getProfile(jid)
   if(!p) return null
-  const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id])
+  const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
   const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1):null
   const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1):null
   const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
+  const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
   const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
+  const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
   const now=Math.floor(Date.now()/1000)
   const [scrollR,classCdR]=await Promise.all([
     db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao']),
@@ -2528,19 +2535,20 @@ export async function getCombatProfile(jid) {
     base_max_hp:Number(p.max_hp),
     weapon_atk:Number(w.atk||0),
     armor_def:Number(a.def||0),
-    equipment_hp:Number(w.hp||0)+Number(a.hp||0),
+    equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
     equipment_spd:Number(b.spd||0),
     effective_spd:Number(p.spd)+Number(b.spd||0),
     equipment_crit:Number(w.crit||0)+Number(a.crit||0),
     base_crit:0.10,
     effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)),
-    effective_max_hp:Number(p.max_hp)+Number(w.hp||0)+Number(a.hp||0),
-    effective_hp:Math.min(Number(p.hp),Number(p.max_hp)+Number(w.hp||0)+Number(a.hp||0)),
+    effective_max_hp:Number(p.max_hp)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
+    effective_hp:Math.min(Number(p.hp),Number(p.max_hp)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0)),
     effective_atk:Number(p.atk)+Number(w.atk||0)+Number(a.atk||0),
-    effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0),
+    effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(h.def||0),
     weapon_name:w.name,
     armor_name:a.name,
     boot_name:b.name,
+    helmet_name:h.name,
     class_id:String(p.class_id||'warrior'),
     class_applied:Boolean(p.class_applied),
     class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
