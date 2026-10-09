@@ -60,7 +60,7 @@ import {
 } from './loans.js'
 import { toStickerBuffer } from './sticker.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive } from './game-catalog.js'
 import { createWebLinkCode } from './web-api.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
@@ -7592,14 +7592,14 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           const classes=Object.values(PLAYER_CLASSES)
           const raw=String(args[0]||'').trim().toLowerCase()
           if(!raw){
-            const lines=classes.map((c,n)=>`${n+1}. ${c.name} — ${c.role} | HP ${c.hp>=0?'+':''}${c.hp} | ATK ${c.atk>=0?'+':''}${c.atk} | DEF ${c.def>=0?'+':''}${c.def} | SPD ${c.spd>=0?'+':''}${c.spd}`)
+            const lines=classes.map((c,n)=>`${n+1}. ${c.name} — ${c.role} | HP ${c.hp>=0?'+':''}${c.hp} | ATK ${c.atk>=0?'+':''}${c.atk} | DEF ${c.def>=0?'+':''}${c.def} | SPD ${c.spd>=0?'+':''}${c.spd}\n⚜️ ${getClassPassive(c.id)?.name}: ${getClassPassive(c.id)?.description}`)
             await reply('🧙 *CLASSES DO ALPHA*\n\n'+lines.join('\n')+'\n\n🎁 A primeira escolha é grátis.\n📜 Depois, cada troca exige *1 Pergaminho de Reclassificação*.\n⏳ Após trocar, há cooldown de *7 dias*.\n\nUse *!classe número* ou *!classe id*.')
             continue
           }
           let chosen=/^\d+$/.test(raw)?classes[Number(raw)-1]:classes.find(c=>c.id===raw||c.name.toLowerCase()===raw)
           if(!chosen){await reply('❌ Classe inválida. Use *!classe*.');continue}
           const result=await setPlayerClass(sender,chosen.id)
-          await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP • ⚔️ ${result.stats.atk} ATK • 🛡️ ${result.stats.def} DEF • 💨 ${result.stats.spd} SPD`)
+          await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP • ⚔️ ${result.stats.atk} ATK • 🛡️ ${result.stats.def} DEF • 💨 ${result.stats.spd} SPD\n⚜️ *${getClassPassive(chosen.id)?.name}* — ${getClassPassive(chosen.id)?.description}`)
           continue
         }
         if(cmd==='web'){
