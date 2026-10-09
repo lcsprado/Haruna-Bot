@@ -750,6 +750,32 @@ export async function cancelRaid(chat,jid,level=null){
   })
 }
 
+export async function withdrawRaid(chat,jid,level=null){
+  return tx(async c=>{
+    const rooms=(await resolveRaidRoom(c,chat,level||null,{jid})).filter(raidIsOpen)
+    if(!rooms.length) throw new Error('Você não está participando de uma Raid ativa neste grupo.')
+    if(rooms.length>1) throw new Error('Informe o nível da Raid: !desistir 70, por exemplo.')
+    const s=rooms[0]
+    const participant=s.players?.[jid]
+    if(!participant) throw new Error('Você não participa desta Raid.')
+    const lobby=s.status==='lobby'
+    delete s.players[jid]
+    const remaining=Object.keys(s.players||{}).length
+    if(remaining===0){
+      if(lobby) await clearGame(c,chat,s.gameType)
+      else {s.status='failed';s.failReason='withdrawal';await saveGame(c,chat,s.gameType,s)}
+    }else{
+      if(s.host===jid){
+        const next=Object.values(s.players)[0]
+        s.host=next.jid
+        s.hostName=next.name||'Jogador'
+      }
+      await saveGame(c,chat,s.gameType,s)
+    }
+    return {level:Number(s.level),name:s.name,lobby,remaining,ended:remaining===0,playerName:participant.name||'Jogador'}
+  })
+}
+
 async function raidPetXp(c,jid,gain){
   gain=Math.max(0,Math.floor(Number(gain)||0))
   if(!gain) return null
