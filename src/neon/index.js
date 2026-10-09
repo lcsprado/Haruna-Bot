@@ -41,7 +41,7 @@ import {
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
   startBoss, attackBoss, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent, autoStartSiegeBossEvent,
-  getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, startRaid, raidRound
+  getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES,
@@ -9997,6 +9997,15 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
           const r=await cancelRaid(chat,sender,level||null)
           await reply(`✅ Raid Lv.${r.level} cancelada. Como a luta não começou, as chaves foram preservadas.`)
+
+        } else if(['desistir','sairraid','abandonarraide'].includes(cmd)){
+          if(!isGroup) return await reply('⚔️ Use *!desistir* dentro do grupo da Raid.')
+          const catalog=getRaidCatalog()
+          const raw=Number(args[0]||0)
+          const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):null
+          if(raw&&!level) return await reply('⚠️ Nível de Raid inválido. Exemplo: *!desistir 70*.')
+          const r=await withdrawRaid(chat,sender,level)
+          await reply(`🏳️ *DESISTÊNCIA DA RAID Lv.${r.level}*\n\n👤 *${r.playerName}* saiu da batalha.\n🧪 Nenhuma nova poção será usada automaticamente por este jogador.\n🔑 ${r.lobby?'A chave não foi consumida.':'A chave já utilizada não será devolvida.'}\n🎁 Sem recompensas por desistência.\n${r.ended?'🛑 Raid encerrada: nenhum participante restante.':`👥 ${r.remaining} participante(s) continuam na Raid.`}`)
 
         } else if(['go','iniciarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
