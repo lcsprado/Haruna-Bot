@@ -163,3 +163,18 @@ export const CLASS_PASSIVES=Object.freeze({
   druid:{name:'Natureza Viva',description:'A cada 12 ataques recupera 2% HP máximo.',regen:.02,regenInterval:12},
   samurai:{name:'Lâmina Perfeita',description:'+8% dano nos críticos.',critDamage:.08}
 })
+
+export function getClassPassive(classId,applied=true){
+  return applied?(CLASS_PASSIVES[String(classId||'').toLowerCase()]||null):null
+}
+export function classCritBonus(classId,applied=true){
+  return getClassPassive(classId,applied)?.crit||0
+}
+export function classDefense({classId,applied=true,damage=0,roll=Math.random()}={}){
+  const p=getClassPassive(classId,applied)
+  let n=Math.max(0,Math.round(Number(damage)||0))
+  if(!p||!n) return {damage:n,dodged:false}
+  if(p.dodge&&roll<p.dodge) return {damage:0,dodged:true}
+  if(p.mitigation) n=Math.max(1,Math.round(n*(1-p.mitigation)))
+  return {damage:n,dodged:false}
+}
