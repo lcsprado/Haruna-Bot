@@ -4045,7 +4045,7 @@ ${bonus.text}
       const owned=Number(inv.find(i=>i.item_id===altar.materialId)?.quantity||0)
       const summonCost=Math.max(1,Number(altar.summonCost||100))
       let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/${summonCost}*\n💠 Custo: *${summonCost}*\n\n🎲 *CHANCES*\n`
-      altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%*\n` })
+      altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
       if(owned<summonCost){
         clearQuickFlow(chat,sender)
         await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
@@ -4069,9 +4069,9 @@ ${bonus.text}
         const r=await summonLegendaryPet(sender,flow.data.materialId)
         clearQuickFlow(chat,sender)
         if(r.duplicate){
-          await reply(`♻️ *PET DE RAID REPETIDO!*\n\n🐾 Saiu novamente: *${r.pet.name}*\n🚫 Cópias da mesma espécie não acumulam no time.\n\n💰 Conversão automática: *R$ ${fmt(r.cashRefund)}*\n🧩 Fragmentos devolvidos: *+${r.fragmentRefund} ${r.altar.materialName}*\n📦 Materiais restantes: *${r.remaining}*\n\nAssim a repetição ainda devolve valor sem permitir empilhar lendários iguais.`)
+          await reply(`♻️ *PET DE RAID REPETIDO!*\n\n🐾 Saiu novamente: *${r.pet.name}*\n🧬 Tipo: *${petStyleLabel(r.pet.species)}*\n🚫 Cópias da mesma espécie não acumulam no time.\n\n💰 Conversão automática: *R$ ${fmt(r.cashRefund)}*\n🧩 Fragmentos devolvidos: *+${r.fragmentRefund} ${r.altar.materialName}*\n📦 Materiais restantes: *${r.remaining}*\n\nAssim a repetição ainda devolve valor sem permitir empilhar lendários iguais.`)
         }else{
-          await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\n🧩 ${r.altar.summonCost||100} × ${r.altar.materialName} consumidos\n\n🐾 Você invocou: *${r.pet.name}*\n🎲 Chance: *${r.pet.chance}%*\n⚡ Poder inicial: *${r.pet.power}*\n📦 Materiais restantes: *${r.remaining}*\n\nO pet foi adicionado à coleção. Use *!meuspets* e *!usarpet ID* para ativá-lo.`)
+          await reply(`✨ *INVOCAÇÃO LENDÁRIA!*\n\n🔮 Altar Lv.${r.altar.raidLevel}\n🧩 ${r.altar.summonCost||100} × ${r.altar.materialName} consumidos\n\n🐾 Você invocou: *${r.pet.name}*\n🧬 Tipo: *${petStyleLabel(r.pet.species)}*\n✨ Especialidade: ${petAbilityBaseText(r.pet.species)}\n🎲 Chance: *${r.pet.chance}%*\n⚡ Poder inicial: *${r.pet.power}*\n📦 Materiais restantes: *${r.remaining}*\n\nO pet foi adicionado à coleção. Use *!meuspets* e *!usarpet ID* para ativá-lo.`)
         }
       }catch(err){
         clearQuickFlow(chat,sender)
@@ -10213,17 +10213,24 @@ _Os comandos antigos continuam funcionando normalmente._`
           const choice=Number(args[0]||0)
 
           if(!choice){
+            const pages=[]
             let text='🔮 *ALTAR DE PETS LENDÁRIOS*\n\n'
-            LEGENDARY_PET_SUMMONS.forEach((a,i)=>{
+            for(const [i,a] of LEGENDARY_PET_SUMMONS.entries()){
+              if(i===5){
+                pages.push(text)
+                text='🔮 *ALTAR LENDÁRIO — PARTE 2/2*\n\n'
+              }
               const cost=Math.max(1,Number(a.summonCost||100))
               text+=`*${i+1}.* Raid Lv.${a.raidLevel} — *${a.materialName}*\n`
               text+=`   Você possui: *${materialQty(a.materialId)}/${cost}*\n`
-              a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%*\n` })
+              a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
               text+='\n'
-            })
+            }
             text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Responda só com o *número do altar* ou use *!invocarpet N*. Ex.: *2* ou *!invocarpet 2*.'
+            pages.push(text)
             setQuickFlow(chat,sender,'legendary_pet_altar_select',{},5*60*1000)
-            return await reply(text)
+            for(const page of pages) await reply(page)
+            continue
           }
 
           const altar=LEGENDARY_PET_SUMMONS[choice-1]
@@ -10231,7 +10238,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           const owned=materialQty(altar.materialId)
           const summonCost=Math.max(1,Number(altar.summonCost||100))
           let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/${summonCost}*\n💠 Custo: *${summonCost}*\n\n🎲 *CHANCES*\n`
-          altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%*\n` })
+          altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
           if(owned<summonCost) return await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
           setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
           return await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
