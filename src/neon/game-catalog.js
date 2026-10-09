@@ -178,3 +178,15 @@ export function classDefense({classId,applied=true,damage=0,roll=Math.random()}=
   if(p.mitigation) n=Math.max(1,Math.round(n*(1-p.mitigation)))
   return {damage:n,dodged:false}
 }
+
+export function classAttack({classId,applied=true,damage=0,critical=false,hp=1,maxHp=1,attackIndex=1,context='pvp',lastProcAttack=0,roll=Math.random()}={}){
+  const p=getClassPassive(classId,applied)
+  const base=Math.max(0,Math.round(Number(damage)||0))
+  if(!p||!base) return {damage:base,heal:0,proc:false,lastProcAttack}
+  let n=base
+  if(p.damage) n=Math.round(n*(1+p.damage))
+  if(p.bossDamage&&['boss','raid'].includes(context)) n=Math.round(n*(1+p.bossDamage))
+  if(p.lowHpDamage&&Number(maxHp)>0&&Number(hp)/Number(maxHp)<.40) n=Math.round(n*(1+p.lowHpDamage))
+  if(p.critDamage&&critical) n=Math.round(n*(1+p.critDamage))
+  return {damage:Math.max(1,n),heal:0,proc:false,lastProcAttack}
+}
