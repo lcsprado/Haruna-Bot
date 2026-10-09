@@ -2024,25 +2024,25 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
       }
       if(!rewardRows.length){console.warn('[Eclipse Result] evento concluido sem premiacoes auditaveis');return}
       const fmtEclipse=n=>Math.round(Number(n)||0).toLocaleString('pt-BR')
-      const safeEclipse=n=>String(n||'Jogador').replace(/[\\r\\n*_`~]/g,' ').slice(0,60)
+      const safeEclipse=n=>String(n||'Jogador').replace(/[\r\n*_~]/g,' ').slice(0,60)
       const key='boss_eclipse_final:'+String(state.scheduleKey||state.completedAt)
-      let message='🌘🏆 *IMPERADOR DO ECLIPSE DERROTADO!*\\n\\n'
-        +'👹 HP eliminado: *'+fmtEclipse(state.maxHp)+'*\\n'
-        +'✅ *Resultado final e premiacao processados*\\n\\n'
-        +'🏅 *RANKING E RECOMPENSAS*\\n'
+      let message='🌘🏆 *IMPERADOR DO ECLIPSE DERROTADO!*\n\n'
+        +'👹 HP eliminado: *'+fmtEclipse(state.maxHp)+'*\n'
+        +'✅ *Resultado final e premiacao processados*\n\n'
+        +'🏅 *RANKING E RECOMPENSAS*\n'
       for(const p of rewardRows){
         const rank=Number(p.position||0)
-        message+='\\n'+(rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':String(rank)+'.')
+        message+='\n'+(rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':String(rank)+'.')
           +' *'+safeEclipse(p.name)+'* — 💰 R$ '+fmtEclipse(p.cash)
         if(!archival){
           message+=' • ✨ +'+fmtEclipse(p.exp)+' XP'
-          if(Number(p.damage||0)>0)message+='\\n💥 '+fmtEclipse(p.damage)+' dano'
-          if(Array.isArray(p.drops)&&p.drops.length) message+='\\n🎁 '+p.drops.map(d=>safeEclipse(d.name)).join(', ')
-        }else if(rank===1) message+='\\n🎁 Caixa Epica garantida'
-        else if(rank===2||rank===3) message+='\\n🎁 Caixa Rara garantida'
-        message+='\\n'
+          if(Number(p.damage||0)>0)message+='\n💥 '+fmtEclipse(p.damage)+' dano'
+          if(Array.isArray(p.drops)&&p.drops.length) message+='\n🎁 '+p.drops.map(d=>safeEclipse(d.name)).join(', ')
+        }else if(rank===1) message+='\n🎁 Caixa Epica garantida'
+        else if(rank===2||rank===3) message+='\n🎁 Caixa Rara garantida'
+        message+='\n'
       }
-      message+=archival?'\\nℹ️ Valores confirmados no historico financeiro. O registro antigo nao preservou EXP detalhada nem sorteios da insignia. Nenhum premio foi redistribuido.':'\\n✅ Premios acima ja creditados. Nenhuma entrega duplicada.'
+      message+=archival?'\nℹ️ Valores confirmados no historico financeiro. O registro antigo nao preservou EXP detalhada nem sorteios da insignia. Nenhum premio foi redistribuido.':'\n✅ Premios acima ja creditados. Nenhuma entrega duplicada.'
       const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
       for(const group of groups){
         const chat=group.chat_jid
