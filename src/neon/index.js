@@ -62,6 +62,7 @@ import { toStickerBuffer } from './sticker.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive } from './game-catalog.js'
 import { createWebLinkCode } from './web-api.js'
+import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -1503,6 +1504,7 @@ function petStatusBonus(p){
 
 async function start() {
   await initDatabase()
+  await initAwakening()
 
   // Evento administrativo de XP, de uso único. Mantém dinheiro, drops e caixas em 1x.
   const adminXpEventToken=String(process.env.ADMIN_XP_EVENT_TOKEN||'').trim()
@@ -3325,6 +3327,8 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!web* — conecta o mesmo personagem ao RPG visual no navegador
 *!status* — mostra seus atributos
 *!nível* — progresso e resgata recompensas a cada 5 níveis
+*!despertar* — missões permanentes por classe, níveis 30/60/100/150/200
+*!despertar evoluir* — paga e recebe bônus base ao cumprir os desafios
 *!batalhar @pessoa* — desafia outro jogador
 *!dungeon* — entra em uma dungeon e ganha dinheiro/XP
 *!curar* — recupera HP usando cura disponível
@@ -8053,6 +8057,62 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
         const ownerTarget=mentionsOf(msg)[0] || sender
         await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
+
+        if(['despertar','despertares','evoluirpersonagem'].includes(cmd)){
+          const sub=String(args[0]||'').toLowerCase()
+          if(['evoluir','confirmar'].includes(sub)){
+            try{
+              const result=await awakenCharacter(sender)
+              await reply(`🌟 *DESPERTAR ${result.tier.roman} CONCLUÍDO!*
+
+🧙 ${result.className} — ${result.path}
+❤️ +${result.tier.hp} HP máximo
+⚔️ +${result.tier.atk} ATK base
+🛡️ +${result.tier.def} DEF base
+💰 Custo: R$ ${fmt(result.tier.cost)}
+🏦 Saldo restante: R$ ${fmt(result.balance)}
+
+⚜️ Sua passiva original continua ativa.
+📜 Use *!despertar* para ver o próximo estágio.`)
+            }catch(err){
+              await reply('⚠️ *Despertar não concluído.*\n\n'+String(err?.message||'Verifique nível, missões e saldo.'))
+            }
+          }else{
+            const prog=await getAwakeningStatus(sender)
+            if(!prog.tier){
+              await reply(`🌌 *DESPERTAR MÁXIMO*
+
+🏆 ${prog.className} — ${prog.path}
+✨ Todas as cinco etapas concluídas.
+⚜️ Passiva original preservada.`)
+            }else{
+              const t=prog.tier
+              let msg=`🌌 *JORNADA DO DESPERTAR*
+
+🧙 Classe: *${prog.className}*
+⚜️ Caminho: *${prog.path}*
+🏅 Concluídos: *${prog.stage}/5*
+✨ Próximo: *DESPERTAR ${t.roman}*
+🔓 Nível exigido: *${t.level}* • Seu nível: *${prog.level}*
+
+📜 *MISSÕES DA CLASSE*
+`
+              for(const m of prog.quests) msg+=`• ${m.done===m.target?'✅':'⬜'} ${m.label}: *${m.done}/${m.target}*\n`
+              msg+=`
+🏆 *EVOLUÇÃO DO ESTÁGIO*
+❤️ +${t.hp} HP • ⚔️ +${t.atk} ATK • 🛡️ +${t.def} DEF
+💰 Custo apenas ao despertar: *R$ ${fmt(t.cost)}*
+🏦 Seu saldo total: *R$ ${fmt(prog.balance)}*
+
+${prog.ready?'✅ Missões e nível completos!':'⏳ Complete os requisitos para evoluir.'}
+${prog.ready?'👉 Use *!despertar evoluir* para confirmar.':'📈 As missões não expiram e ficam acumuladas.'}
+
+⚖️ A passiva da classe não é alterada neste estágio.`
+              await reply(msg)
+            }
+          }
+          continue
+        }
 
         if(cmd==='classe'||cmd==='class'){
           const classes=Object.values(PLAYER_CLASSES)
