@@ -1607,6 +1607,22 @@ async function start() {
   // Reposição da madrugada: só aplica com 3 participantes identificados e HP exato.
   const bossCompensation=await compensateFrozenWeeklyBoss20261009().catch(err=>({status:'error',reason:String(err?.message||err)}))
   console.log('[Boss Compensation] resultado',JSON.stringify(bossCompensation))
+  // Auditoria não destrutiva: identifica por que parte do trio não foi elegível.
+  try{
+    const {rows}=await db.query(`
+      SELECT p.key AS jid,p.value->>'name' AS name,
+        COALESCE((p.value->>'attacks')::int,0) AS attacks,
+        COALESCE((p.value->>'damage')::bigint,0) AS damage,
+        COALESCE((p.value->>'recoveredDamage')::bigint,0) AS recovered,
+        (SELECT updated_at FROM trevo_settings
+         WHERE key='weekly_boss_group:2026-10-09:'||p.key) AS first_group_claim_seconds
+      FROM trevo_games g
+      CROSS JOIN LATERAL jsonb_each(COALESCE(g.state->'participants','{}'::jsonb)) p
+      WHERE g.chat_jid='__alpha_global_weekly_boss__' AND g.game_type='boss'
+        AND g.state->>'weekendKey'='2026-10-09'
+    `)
+    console.log('[Boss Audit 09/10]',JSON.stringify(rows))
+  }catch(err){console.warn('[Boss Audit] leitura não disponível',err?.message||err)}
   await initProgression()
   await initLoans()
   startLoanCollector()
