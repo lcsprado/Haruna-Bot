@@ -232,7 +232,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
       await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 Curas automáticas do pet: *${petHeals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{
-      if(completed){
+      if(completed&&bossSessions.get(key)===runner){
         await db.query("UPDATE boss_auto_sessions SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 AND boss_id=$2",[jid,bossId])
           .catch(err=>console.error('[Boss Auto] falha ao encerrar sessão persistida',err?.message||err))
       }
@@ -275,7 +275,9 @@ async function recoverLegacyWeeklyBossSessions(){
         status='active',boss_id=EXCLUDED.boss_id,ends_at=EXCLUDED.ends_at,
         last_attack_at=EXCLUDED.last_attack_at,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
       WHERE boss_auto_sessions.boss_id<>EXCLUDED.boss_id
-    `,[jid,chat,participant.name||'Jogador',participant.usePet!==false,bossId,Number(state.endsAt||0),Number(participant.lastAttackAt||0)])
+        AND (boss_auto_sessions.status='stopped'
+          OR (boss_auto_sessions.ends_at>0 AND boss_auto_sessions.ends_at<=$8))
+    `,[jid,chat,participant.name||'Jogador',participant.usePet!==false,bossId,Number(state.endsAt||0),Number(participant.lastAttackAt||0),Date.now()])
   }
   legacyWeeklyBossRecoveredId=bossId
 }
