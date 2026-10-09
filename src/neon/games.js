@@ -505,9 +505,9 @@ export async function guessNumber(chat,jid,guess){
 
 function bossWeekendInfo(now=new Date()){
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{
-    timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short'
+    timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
   }).formatToParts(now).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]))
-  const open=parts.weekday==='Fri'||parts.weekday==='Sat'
+  const open=parts.weekday==='Sat'||(parts.weekday==='Fri'&&(Number(parts.hour||0)>0||(Number(parts.hour||0)===0&&Number(parts.minute||0)>=1)))
   const localDate=`${parts.year}-${parts.month}-${parts.day}`
   const base=new Date(`${localDate}T12:00:00-03:00`)
   const friday=new Date(base)
@@ -529,11 +529,11 @@ const BOSS_BONUS_DROPS=[
   {id:'armadura_titan',name:'Armadura do Titã',weight:5,rarity:'Lendário'},
 ]
 const BOSS_PLACEMENT=[
-  {cash:40000,xp:400,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.75,exclusiveChance:.30},
-  {cash:25000,xp:280,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.60,exclusiveChance:.18},
-  {cash:15000,xp:180,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.48,exclusiveChance:.12},
-  {cash:8000,xp:100,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.35,exclusiveChance:.07},
-  {cash:4000,xp:50,box:{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'},bonusChance:.28,exclusiveChance:.04},
+  {cash:120000,xp:4000,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.95,exclusiveChance:.40},
+  {cash:90000,xp:3000,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.85,exclusiveChance:.28},
+  {cash:65000,xp:2200,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.75,exclusiveChance:.20},
+  {cash:40000,xp:1400,box:{id:'caixa_epica',name:'Caixa Épica',rarity:'Épico'},bonusChance:.65,exclusiveChance:.12},
+  {cash:25000,xp:900,box:{id:'caixa_rara',name:'Caixa Rara',rarity:'Raro'},bonusChance:.55,exclusiveChance:.08},
 ]
 function petBossBonus(pet){
   if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,healPct:0,healCooldown:0}
