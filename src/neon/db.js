@@ -4633,7 +4633,10 @@ const PET_BASE_ENERGY={
   rinoceronte_titanico:365,guardiao_obsidiana:380,leviata_gelo:405,
   cerbero_carmesim:380,tigre_lunar:390,imperador_abissal:420,
   leao_solar:390,grifo_celestial:410,fenix_celestial:440,
-  serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500
+  serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,
+  fera_caos:430,guardiao_caos:450,serafim_caotico:455,oraculo_caos:445,fenix_caos:470,
+  pantera_profundezas:450,guardiao_abissal:465,dragao_trono:475,oraculo_coroa:465,esfinge_mares:480,
+  lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520
 }
 export function petMaxEnergy(level=1,species='cachorro'){
   const base=PET_BASE_ENERGY[String(species||'cachorro').toLowerCase()]||100
@@ -4687,7 +4690,23 @@ export const PET_HP_PROFILES={
   fenix_celestial:{base:300,growth:23,type:'Místico'},
   serpente_cosmica:{base:300,growth:23,type:'Místico'},
   dragao_corrompido:{base:340,growth:25,type:'Boss Hunter'},
-  fenix_alpha:{base:360,growth:27,type:'Mítico'}
+  fenix_alpha:{base:360,growth:27,type:'Mítico'},
+  // Raids 60/65/70 mantêm o HP próximo ao teto da Fênix Alpha (Nv.100).
+  fera_caos:{base:310,growth:23,type:'Ofensivo'},
+  guardiao_caos:{base:340,growth:25,type:'Tanque'},
+  serafim_caotico:{base:300,growth:23,type:'Crítico'},
+  oraculo_caos:{base:320,growth:24,type:'Místico'},
+  fenix_caos:{base:350,growth:26,type:'Suporte'},
+  pantera_profundezas:{base:330,growth:25,type:'Ofensivo'},
+  guardiao_abissal:{base:360,growth:26,type:'Tanque'},
+  dragao_trono:{base:345,growth:26,type:'Boss Hunter'},
+  oraculo_coroa:{base:335,growth:25,type:'Místico'},
+  esfinge_mares:{base:370,growth:26,type:'Suporte'},
+  lobo_eclipse:{base:350,growth:25,type:'Ofensivo'},
+  sentinela_eclipse:{base:385,growth:27,type:'Tanque'},
+  dragao_solar_eclipse:{base:365,growth:27,type:'Boss Hunter'},
+  fenix_eclipse:{base:365,growth:26,type:'Suporte'},
+  avatar_primordial:{base:390,growth:27,type:'Místico'}
 }
 export function petMaxHp(level=1,xp=0,species='cachorro'){
   const profile=PET_HP_PROFILES[String(species||'cachorro').toLowerCase()]||PET_HP_PROFILES.cachorro
@@ -4724,20 +4743,24 @@ const PET_TEAM_STYLE_BY_SPECIES={
   cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
   golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
   kraken_aco:'guardiao',paladino_astral:'guardiao',colosso_alpha:'guardiao',
+  guardiao_caos:'guardiao',guardiao_abissal:'guardiao',sentinela_eclipse:'guardiao',
 
   papagaio:'voador',coruja:'voador',aguia:'voador',gaviao:'voador',dragao:'voador',
   corvo_abissal:'voador',dragao_vulcanico:'voador',fenix_fogo:'voador',fenix_gelo:'voador',
   grifo_celestial:'voador',fenix_celestial:'voador',dragao_corrompido:'voador',fenix_alpha:'voador',
+  serafim_caotico:'voador',fenix_caos:'voador',dragao_trono:'voador',dragao_solar_eclipse:'voador',fenix_eclipse:'voador',
 
   gato:'predador',raposa:'predador',lobo:'predador',guepardo:'predador',tigre:'predador',leao:'predador',
   moreia_sombria:'predador',tubarao_abissal:'predador',
   urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
   pantera_vulcanica:'predador',quimera_abissal:'predador',lince_celestial:'predador',
+  fera_caos:'predador',pantera_profundezas:'predador',lobo_eclipse:'predador',
 
   coelho:'mistico',hamster:'mistico',gazela_mistica:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
   golfinho_celestial:'mistico',polvo_arcano:'mistico',
   salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico',
-  oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico'
+  oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico',
+  oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico'
 }
 const PET_TEAM_STYLE_BONUS={
   voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
@@ -4806,6 +4829,27 @@ export const LEGENDARY_PET_SUMMONS=[
     {species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400},
     {species:'colosso_alpha',name:'🗿 Colosso Alpha',chance:15,power:360},
     {species:'oraculo_alpha',name:'🔮 Oráculo Alpha',chance:15,power:370}
+  ]},
+  {materialId:'fragmento_caos',materialName:'Fragmento do Caos',raidLevel:60,summonCost:100,pets:[
+    {species:'fera_caos',name:'🐺 Fera do Caos',chance:35,power:305},
+    {species:'guardiao_caos',name:'🛡️ Guardião do Caos',chance:25,power:320},
+    {species:'serafim_caotico',name:'🪽 Serafim Caótico',chance:15,power:345},
+    {species:'oraculo_caos',name:'🔮 Oráculo do Caos',chance:15,power:350},
+    {species:'fenix_caos',name:'🔥 Fênix do Caos',chance:10,power:370}
+  ]},
+  {materialId:'coroa_abissal',materialName:'Coroa Abissal',raidLevel:65,summonCost:100,pets:[
+    {species:'pantera_profundezas',name:'🐈‍⬛ Pantera das Profundezas',chance:35,power:330},
+    {species:'guardiao_abissal',name:'🗿 Guardião Abissal',chance:25,power:355},
+    {species:'dragao_trono',name:'🐉 Dragão do Trono Abissal',chance:15,power:375},
+    {species:'oraculo_coroa',name:'👑 Oráculo da Coroa',chance:15,power:390},
+    {species:'esfinge_mares',name:'🌊 Esfinge das Marés',chance:10,power:400}
+  ]},
+  {materialId:'essencia_eclipse',materialName:'Essência do Eclipse',raidLevel:70,summonCost:100,pets:[
+    {species:'lobo_eclipse',name:'🌘 Lobo do Eclipse',chance:35,power:355},
+    {species:'sentinela_eclipse',name:'🛡️ Sentinela do Eclipse',chance:25,power:380},
+    {species:'dragao_solar_eclipse',name:'🐉 Dragão Solar do Eclipse',chance:15,power:405},
+    {species:'fenix_eclipse',name:'🌗 Fênix do Eclipse',chance:15,power:420},
+    {species:'avatar_primordial',name:'🌌 Avatar Primordial',chance:10,power:435}
   ]}
 ]
 
