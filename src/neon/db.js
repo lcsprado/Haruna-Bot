@@ -3606,14 +3606,19 @@ export async function dungeon(jid) {
     m.atk+=Math.floor(level*1.3)
     m.def+=Math.floor(level*.7)
 
-    let php=Math.min(Number(row.hp),effectiveMaxHp),mhp=m.hp,rounds=0
+    let php=Math.min(Number(row.hp),effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0
     while(php>0&&mhp>0&&rounds<25){
       rounds++
-      const pdmg=Math.max(1,Math.round((atk-m.def*.4)*(0.85+Math.random()*.3)))
-      mhp=Math.max(0,mhp-pdmg)
+      const crit=Math.random()<(.10+classCritBonus(row.class_id,row.class_applied))
+      const pdmg=Math.max(1,Math.round((atk-m.def*.4)*(0.85+Math.random()*.3)*(crit?1.5:1)))
+      const skill=classAttack({classId:row.class_id,applied:row.class_applied,damage:pdmg,critical:crit,hp:php,maxHp:effectiveMaxHp,attackIndex:rounds,context:'dungeon',lastProcAttack})
+      lastProcAttack=skill.lastProcAttack
+      mhp=Math.max(0,mhp-skill.damage)
+      php=Math.min(effectiveMaxHp,php+skill.heal)
       if(mhp<=0) break
       const mdmg=Math.max(1,Math.round((m.atk-def*.35)*(0.85+Math.random()*.3)))
-      php=Math.max(0,php-mdmg)
+      const blocked=classDefense({classId:row.class_id,applied:row.class_applied,damage:mdmg})
+      php=Math.max(0,php-blocked.damage)
     }
 
     if(php<=0){
