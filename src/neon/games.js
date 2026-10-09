@@ -1519,8 +1519,10 @@ export async function startBoss(chat){
       if(current?.mode==='weekly'&&current.weekendKey===weekend.weekendKey&&Number(current.hp)>0&&Number(current.endsAt||0)>Date.now()){
         return {already:true,...current,endsLabel:weekend.endsLabel}
       }
-      const maxHp=85000+Math.floor(Math.random()*25001)
-      const state={mode:'weekly',name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:20,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:false,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
+      // Novo patamar semanal para personagens 100+: mais resistência e ataques relevantes.
+      // Mantém a economia e os drops atuais; somente a dificuldade do próximo spawn muda.
+      const maxHp=260000+Math.floor(Math.random()*60001)
+      const state={mode:'weekly',name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:125,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:false,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
       await saveGame(c,chat,'boss',state); return state
     }
     if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
