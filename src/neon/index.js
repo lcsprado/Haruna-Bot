@@ -2292,6 +2292,29 @@ ${ranking}${extra}
       console.log('[Boss Live Ranking]',JSON.stringify({
         at:new Date().toISOString(),remainingHp:Number(state.hp),maxHp:Number(state.maxHp),ranking
       }))
+      // Auditoria operacional temporária: explica a diferença de golpes reais
+      // checando último ataque, morte e poções (somente contagens, sem IDs).
+      const participantRows=Object.entries(state.participants||{}).filter(([,p])=>Number(p.attacks||0)>0)
+      const details=[]
+      for(const [jid,p] of participantRows){
+        const [stat,session,supplies]=await Promise.all([
+          db.query("SELECT hp,max_hp FROM stats WHERE jid=$1",[jid]),
+          db.query("SELECT status,updated_at,last_attack_at,boss_id,use_pet FROM boss_auto_sessions WHERE jid=$1",[jid]),
+          db.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0",
+            [jid,['pocao_p','pocao_m','pocao_g','elixir_supremo']])
+        ])
+        details.push({
+          name:p.name||'Jogador',hits:Number(p.attacks||0),
+          lastBossHitBrt:p.lastAttackAt?new Date(Number(p.lastAttackAt)).toISOString():null,
+          hp:Number(stat.rows[0]?.hp||0),maxHp:Number(stat.rows[0]?.max_hp||0),
+          sessionStatus:session.rows[0]?.status||'missing',
+          lastPersistentHit:session.rows[0]?.last_attack_at?new Date(Number(session.rows[0].last_attack_at)).toISOString():null,
+          sessionUpdatedAt:session.rows[0]?.updated_at||null,
+          potionCounts:Object.fromEntries(supplies.rows.map(x=>[x.item_id,Number(x.quantity)]))
+        })
+      }
+      console.log('[Boss Attack Gap Audit]',JSON.stringify({at:new Date().toISOString(),players:details}))
+
     }catch(err){console.error('[Boss Live Ranking] consulta falhou',err?.message||err)}
   },10000).unref?.()
 
