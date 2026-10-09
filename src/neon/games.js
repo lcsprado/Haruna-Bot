@@ -720,7 +720,8 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const lev=async itemId=>itemId?Number((await c.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]?.level||1):1
     const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
-    const gearHp=Number(w?.hp||0)+Number(a?.hp||0)
+    const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
+    const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
     const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
     let reservePet=await raidReservePet(c,jid)
     let combatPet=raidCombatPetState(pet,1)
@@ -730,7 +731,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     }
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
-      atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),
+      atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),
       crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
       pet:combatPet,reservePet
     }}
@@ -901,7 +902,7 @@ export async function startRaid(chat,host,level=null){
       WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[]) AND quantity>0
       FOR UPDATE
     `,[ids,['selo_guardiao','oleo_sombras']])).rows
-    const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id]).filter(Boolean))]
+    const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id,st.helmet_id]).filter(Boolean))]
     const ups=eqIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,eqIds])).rows:[]
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     for(const jid of ids){
@@ -909,7 +910,8 @@ export async function startRaid(chat,host,level=null){
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
-      const gearHp=Number(w?.hp||0)+Number(a?.hp||0)
+      const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
+      const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
       let reservePet=await raidReservePet(c,jid)
       let combatPet=raidCombatPetState(pet,1)
       if(combatPet&&Number(combatPet.hp)<=0&&reservePet){
@@ -923,7 +925,7 @@ export async function startRaid(chat,host,level=null){
       const teamSynergy=petTeamSynergy(teamPets)
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0}
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
@@ -1582,7 +1584,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
       s.mode='weekly'; s.weeklyCompleted=false
     }
     if(gameType==='boss'&&s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
-    const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
     const existingParticipant=s.participants[jid]||{}
@@ -1634,14 +1636,15 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const teamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
     const upgradeRows=(await c.query(
       'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
-      [jid,[st.weapon_id,st.armor_id].filter(Boolean)]
+      [jid,[st.weapon_id,st.armor_id,st.helmet_id].filter(Boolean)]
     )).rows
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
     const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
+    const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
     const atk=Number(st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)
-    const def=Number(st.def)+Number(weapon?.def||0)+Number(armor?.def||0)
-    const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)
+    const def=Number(st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(helmet?.def||0)
+    const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0)
     const effectiveMaxHp=Number(st.max_hp)+gearHp
     const petCritChance=Math.max(0,Number(petBonus.crit||0)+Number(teamSynergy.crit||0))
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0))
