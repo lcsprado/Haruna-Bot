@@ -8116,7 +8116,7 @@ ${result.tier.stage>3?'🛡️ Os Despertares IV e V concedem atributos; novas h
 ${prog.ready?'✅ Missões e nível completos!':'⏳ Complete os requisitos para evoluir.'}
 ${prog.ready?'👉 Use *!despertar evoluir* para confirmar.':'📈 As missões não expiram e ficam acumuladas.'}
 
-⚖️ Passivas originais preservadas. Habilidades do Despertar afetam apenas Boss/Raid; PvP continua igual.
+⚖️ Passivas originais preservadas. As habilidades extras funcionam só em Boss/Raid; os atributos ganhos também contam no PvP.
 ${t.stage>3?'🔬 Despertares IV/V: atributos adicionais, sem novas habilidades por enquanto.':''}`
               await reply(msg)
             }
