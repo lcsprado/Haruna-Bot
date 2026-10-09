@@ -3176,8 +3176,29 @@ const LEVEL_REWARDS = {
 
 function levelRewardFor(milestone){
   milestone=Number(milestone)
-  if(milestone<5 || milestone>100 || milestone%5!==0) return null
-  return LEVEL_REWARDS[milestone]||null
+  if(!Number.isInteger(milestone)||milestone<5) return null
+  if(milestone<=100) return milestone%5===0?(LEVEL_REWARDS[milestone]||null):null
+  if(milestone<200 && milestone%10!==0) return null
+  if(milestone>=200 && milestone%20!==0) return null
+  // Endgame: marcos mais espaçados, com recompensas úteis e dinheiro controlado.
+  const tier=milestone>=200?2:1
+  const step=tier===2?(milestone-200)/20:(milestone-110)/10
+  const cash=tier===2?950000+Math.min(step,20)*65000:600000+Math.min(step,9)*35000
+  const items=[
+    ['caixa_epica',tier===2?10+Math.min(step,10):6+Math.min(step,5)],
+    ['pocao_pet_suprema',tier===2?5:3],
+    ['elixir_supremo',tier===2?5:3]
+  ]
+  // Chaves de Raid avançadas sem criar equipamentos lendários gratuitamente.
+  items.push([tier===2?'chave_raid_70':'chave_raid_60',tier===2?2:1])
+  if(milestone===200) items.push(['pergaminho_reclassificacao',1])
+  return {cash,items}
+}
+
+function nextLevelRewardMilestone(level){
+  if(level<100) return (Math.floor(level/5)+1)*5
+  if(level<200) return (Math.floor(level/10)+1)*10
+  return (Math.floor(level/20)+1)*20
 }
 
 export async function getClaimedLevelRewards(jid){
@@ -3197,7 +3218,13 @@ export async function claimLevelRewards(jid){
     const claimedRows=(await client.query('SELECT milestone FROM level_reward_claims WHERE jid=$1',[jid])).rows
     const claimedSet=new Set(claimedRows.map(r=>Number(r.milestone)))
     const unlocked=[]
-    for(let milestone=5;milestone<=level;milestone+=5){
+    for(let milestone=5;milestone<=Math.min(level,100);milestone+=5){
+      if(!claimedSet.has(milestone)) unlocked.push(milestone)
+    }
+    for(let milestone=110;milestone<=Math.min(level,199);milestone+=10){
+      if(!claimedSet.has(milestone)) unlocked.push(milestone)
+    }
+    for(let milestone=200;milestone<=level;milestone+=20){
       if(!claimedSet.has(milestone)) unlocked.push(milestone)
     }
 
@@ -3226,7 +3253,7 @@ export async function claimLevelRewards(jid){
     }
 
     const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1',[jid])).rows[0]
-    const nextMilestone=(Math.floor(level/5)+1)*5
+    const nextMilestone=nextLevelRewardMilestone(level)
     const nextReward=levelRewardFor(nextMilestone)
     return {
       level,
