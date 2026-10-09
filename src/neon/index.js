@@ -1502,9 +1502,75 @@ function petStatusBonus(p){
   }
 }
 
+// Operação administrativa de uso único solicitada para ajustar o nível de
+// um jogador existente. Não concede itens, dinheiro ou EXP e não cria contas.
+async function applyRequestedLevel50Once(){
+  const jid='5511939089695@s.whatsapp.net'
+  const marker='admin:level50:2026-10-09:939089695'
+  for(let attempt=1;attempt<=3;attempt++){
+    const c=await db.connect()
+    try{
+      await c.query('BEGIN')
+      const found=(await c.query(`
+        SELECT u.push_name,u.level,u.exp,s.class_id,s.hp,s.max_hp,s.atk,s.def,s.spd
+        FROM users u JOIN stats s ON s.jid=u.jid
+        WHERE u.jid=$1 FOR UPDATE OF u,s
+      `,[jid])).rows[0]
+      if(!found){
+        await c.query('ROLLBACK')
+        console.error('[Admin Level50] alvo não existe, nenhuma alteração realizada')
+        return
+      }
+      const already=(await c.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[marker])).rowCount>0
+      if(already){
+        await c.query('COMMIT')
+        console.log('[Admin Level50] já aplicado anteriormente',JSON.stringify({
+          player:found.push_name,level:Number(found.level)
+        }))
+        return
+      }
+      const from=Number(found.level),change=50-from
+      if(change!==0){
+        // Ajusta somente os atributos ganhos por nível: preserva passivas,
+        // bônus de classe, Despertar, equipamentos, pets e economia.
+        await c.query(`UPDATE stats SET
+          max_hp=GREATEST(1,max_hp+$1),hp=GREATEST(1,max_hp+$1),
+          atk=GREATEST(1,atk+$2),def=GREATEST(0,def+$3),
+          spd=GREATEST(1,spd+$3),
+          updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$4`,
+          [change*8,change*2,change,jid])
+        await c.query(`UPDATE users SET level=50,exp=0,
+          updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1`,[jid])
+      }
+      await c.query(`INSERT INTO trevo_settings(key,value)
+        VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING`,
+        [marker,JSON.stringify({from,to:50,at:new Date().toISOString()})])
+      const verified=(await c.query(`SELECT u.push_name,u.level,u.exp,s.hp,s.max_hp,s.atk,s.def,s.spd,s.class_id
+        FROM users u JOIN stats s ON s.jid=u.jid WHERE u.jid=$1`,[jid])).rows[0]
+      await c.query('COMMIT')
+      console.log('[Admin Level50] alteração confirmada',JSON.stringify({
+        player:verified.push_name,from,to:Number(verified.level),exp:Number(verified.exp),
+        hp:Number(verified.hp),maxHp:Number(verified.max_hp),
+        atk:Number(verified.atk),def:Number(verified.def),spd:Number(verified.spd),
+        classId:verified.class_id
+      }))
+      return
+    }catch(err){
+      try{await c.query('ROLLBACK')}catch{}
+      if(err?.code==='40P01'&&attempt<3){
+        console.warn('[Admin Level50] lock concorrente, tentando novamente',attempt)
+        continue
+      }
+      console.error('[Admin Level50] falha, alteração não confirmada',String(err?.message||err))
+      return
+    }finally{c.release()}
+  }
+}
+
 async function start() {
   await initDatabase()
   await initAwakening()
+  await applyRequestedLevel50Once()
 
   // Evento administrativo de XP, de uso único. Mantém dinheiro, drops e caixas em 1x.
   const adminXpEventToken=String(process.env.ADMIN_XP_EVENT_TOKEN||'').trim()
