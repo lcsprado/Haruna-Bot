@@ -479,6 +479,7 @@ export async function initDatabase() {
     ['essencia_eclipse','Essência do Eclipse','Material exclusivo da Raid Lv.70.','special',0,'legendary'],
 
     // Exclusivo de Boss de Evento
+    ['insignia_guardiao_ruptura','Insígnia Guardião da Ruptura','Troféu cosmético único da Ruptura Estelar de 09/10/2026; não pode ser vendido, comprado ou transferido.','special',0,'event'],
     ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
     ['marca_insone','Marca do Insone','Comprova participação no evento secreto da madrugada. Concede o título Insone do Alpha no perfil.','special',0,'event'],
     ['coroa_madrugada','Coroa da Madrugada','Armadura-troféu exclusiva da Sentinela das 03:03. +20 ATK e +50 DEF.','armor',0,'event'],
@@ -506,7 +507,7 @@ export async function initDatabase() {
   await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','marca_insone','coroa_madrugada','armadura_colosso']])
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso']])
 
   // Elmo de campeão é exclusivo, sem comércio, descarte ou troca por jogadores.
   await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id='elmo_soberano_golem'")

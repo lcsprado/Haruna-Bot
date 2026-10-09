@@ -1349,6 +1349,81 @@ async function giveBossDrops(c,jid,position,extraChance=0,sourceKey=null){
 // Todo Boss de evento é universal: um único HP/ranking/cooldown compartilhado entre todos os grupos.
 // Isso impede o mesmo jogador de ganhar ataques extras só por estar em vários grupos.
 const GLOBAL_BOSS_EVENT_CHAT='__alpha_global_boss_event__'
+
+const RUPTURA_INICIO=Date.parse('2026-10-09T20:00:00-03:00')
+const RUPTURA_FIM=Date.parse('2026-10-09T21:00:00-03:00')
+const RUPTURA_ID='ruptura-estelar-2026-10-09'
+export async function iniciarRupturaEstelar(chat,now=new Date()){
+  const t=now.getTime()
+  if(t<RUPTURA_INICIO||t>=RUPTURA_FIM) return {due:false}
+  return tx(async c=>{
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+    if(current?.scheduleKey===RUPTURA_ID) return {due:true,already:current.active!==false&&Number(current.hp)>0,...current}
+    if(current&&current.active!==false&&Number(current.hp)>0&&(!current.endsAt||Number(current.endsAt)>t))
+      return {due:true,blocked:true,blockingBoss:current.name}
+    const maxHp=480000
+    const state={mode:'event',eventId:'ruptura_estelar',active:true,origin:'scheduled',scheduleKey:RUPTURA_ID,
+      name:'Nharok, o Devorador de Mundos',hp:maxHp,maxHp,atk:28,phase:1,participants:{},startedAt:t,endsAt:RUPTURA_FIM}
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
+    return {due:true,spawned:true,...state}
+  })
+}
+async function premiarRupturaEstelar(c,s,chat,outcome){
+  const entries=Object.entries(s.participants||{}).map(([jid,v])=>({
+    jid,name:v.name||'Jogador',damage:Math.max(0,Number(v.damage||0)),
+    attacks:Number(v.attacks||0),phases:Array.isArray(v.phases)?v.phases:[]
+  })).filter(p=>p.damage>0).sort((a,b)=>b.damage-a.damage)
+  const total=entries.reduce((n,p)=>n+p.damage,0)||1
+  const rewards=[]
+  for(let i=0;i<entries.length;i++){
+    const p=entries[i],position=i+1,share=p.damage/total
+    const pet=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null
+    const bonus=petBossBonus(pet)
+    const positionXp=[900,600,350,200,100][i]||50
+    const baseExp=Math.floor((900+6000*share+positionXp)*(1+bonus.xp))
+    const xp=baseExp*2
+    const cash=Math.round(3000+12000*share)
+    await credit(c,p.jid,cash,'boss_event_ruptura')
+    await grantExpInTransaction(c,p.jid,xp,{chatJid:chat})
+    const petXp=pet?Math.round((200+1200*share+(i===0?300:i===1?150:0))*1.5):0
+    const petXpTeam=pet?await grantTeamPetXp(c,p.jid,petXp):[]
+    const drops=[]
+    const epicBoxes=position===1?20:position===2?5:position===3?3:0
+    if(epicBoxes>0){
+      await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'caixa_epica',$2) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[p.jid,epicBoxes])
+      drops.push({id:'caixa_epica',name:'Caixa Épica ×'+epicBoxes,rarity:'Épico'})
+    }
+    const relicId='insignia_guardiao_ruptura'
+    const hasRelic=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,relicId])).rows[0]
+    const relicChance=position<=3?1:(p.attacks>=10?.15:0)
+    if(Number(hasRelic?.quantity||0)<1&&Math.random()<relicChance){
+      await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)',[p.jid,relicId])
+      drops.push({id:relicId,name:'Insígnia Guardião da Ruptura',rarity:'Evento Único'})
+    }
+    const phases=new Set(p.phases.map(Number))
+    const missionXP=outcome==='defeated'&&p.attacks>=10&&phases.size>=2&&phases.has(3)?500:0
+    if(missionXP){
+      await grantExpInTransaction(c,p.jid,missionXP,{chatJid:chat})
+      drops.push({id:'desafio_ruptura',name:'Missões concluídas: +500 EXP',rarity:'Especial'})
+    }
+    rewards.push({...p,position,share,cash,exp:xp+missionXP,petXp,petXpTeam,drops})
+  }
+  const marker={...s,mode:'event_completed',active:false,hp:0,participants:{},completedAt:Date.now(),
+    outcome,rankings:rewards.map(p=>({position:p.position,name:p.name,damage:p.damage})),scheduleKey:RUPTURA_ID}
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
+  return {rewards,marker}
+}
+export async function encerrarRupturaEstelar(chat,now=new Date()){
+  if(now.getTime()<RUPTURA_FIM) return {due:false}
+  return tx(async c=>{
+    const s=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+    if(s?.scheduleKey!==RUPTURA_ID) return {due:false}
+    if(s.active===false||s.mode==='event_completed') return {due:true,alreadyEnded:true,...s}
+    const result=await premiarRupturaEstelar(c,s,chat,'time_limit')
+    return {due:true,ended:true,...result.marker,rewards:result.rewards}
+  })
+}
+
 const SIEGE_EVENT_START=Date.parse('2026-10-04T18:00:00-03:00')
 const SIEGE_EVENT_END=Date.parse('2026-10-04T20:10:00-03:00')
 const SIEGE_EVENT_KEY='cerco-colosso-2026-10-04'
@@ -1493,7 +1568,7 @@ async function maybeGrantEventRelic(c,jid,chance){
 export async function getBossEventStatus(chat){
   return tx(async c=>{
     const s=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
-    return s&&s.active!==false&&Number(s.hp)>0?s:null
+    return s&&s.active!==false&&Number(s.hp)>0&&(!s.endsAt||Number(s.endsAt)>Date.now())?s:null
   })
 }
 
@@ -1524,7 +1599,7 @@ export async function autoStartBossEvent(chat,now=new Date()){
     }
 
     // Derrotado ou encerrado: nunca recria o Boss na mesma sexta.
-    if(current?.scheduleKey===schedule.fridayKey){
+    if(current?.scheduleKey===schedule.fridayKey||current?.scheduleKey===RUPTURA_ID){
       return {due:true,alreadyRun:true,...current}
     }
 
@@ -1986,9 +2061,14 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const oilBonus=existingParticipant.oilActive?Math.max(1,Math.floor(baselineWithGearCrit*.06)):0
     const baseDamage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1))+oilBonus)
     const passiveHit=classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
-    const damage=passiveHit.damage
+    const ruptura=gameType==='boss_event'&&s.eventId==='ruptura_estelar'
+    const faseAnterior=ruptura?Math.max(1,Number(s.phase||1)):1
+    const damage=ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage
     const petDamage=pet?Math.max(0,baseDamage-baselineWithGearCrit-oilBonus):0
     s.hp=Math.max(0,Number(s.hp)-damage)
+    const nextPhase=ruptura?(s.hp<=s.maxHp/3?3:(s.hp<=s.maxHp*2/3?2:1)):faseAnterior
+    const phaseChanged=ruptura&&nextPhase>faseAnterior?nextPhase:0
+    if(ruptura) s.phase=nextPhase
     const old=existingParticipant
     const attackCount=Number(old.attacks||0)+1
     s.participants[jid]={
@@ -1996,6 +2076,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
       damage:Number(old.damage||0)+damage,
       name:old.name||name||'Jogador',
       attacks:attackCount,
+      phases:ruptura?[...new Set([...(Array.isArray(old.phases)?old.phases:[]),faseAnterior])]:old.phases,
       petHealing:Number(old.petHealing||0),
       activePetSlot,
       lastAttackAt:bossNow,
@@ -2007,7 +2088,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(s.hp>0){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossCritical=!dodged&&Math.random()<.05
-      const bossRawDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)*(1-Number(teamSynergy.defense||0))*(bossCritical?1.5:1)))
+      const bossRawDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)*(ruptura?(faseAnterior===2?1.15:faseAnterior===3?1.20:1):1)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)*(1-Number(teamSynergy.defense||0))*(bossCritical?1.5:1)))
       const defResult=classDefense({classId:st.class_id,applied:st.class_applied,damage:bossRawDamage,context:'boss',hp:php,maxHp:effectiveMaxHp,awakeningStage,awakeningState:s.participants[jid].awakeningState})
       bossDamage=defResult.damage
       s.participants[jid].awakeningState=defResult.awakeningState
@@ -2103,6 +2184,14 @@ export async function attackBoss(chat,jid,name,usePet=true){
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[php,jid])
+    }
+    if(s.hp<=0&&ruptura){
+      const result=await premiarRupturaEstelar(c,s,chat,'defeated')
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,phase:nextPhase,phaseChanged,
+        playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
+        autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,
+        petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
+        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     if(s.hp<=0){
       const entries=Object.entries(s.participants).map(([pjid,v])=>({
@@ -2214,6 +2303,6 @@ export async function attackBoss(chat,jid,name,usePet=true){
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     await saveGame(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:bossChat,gameType,s)
-    return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
+    return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),phase:s.phase||0,phaseChanged,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }

@@ -40,7 +40,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, autoStartNightBossEvent, autoStartSiegeBossEvent,
+  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartSiegeBossEvent,
   getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -236,6 +236,11 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
           completed=true
           await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura pôde ser usada.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
           return
+        }
+        if(r.phaseChanged){
+          const text={2:'🔥 *FASE 2 — FÚRIA ESTELAR!* Nharok ganhou +15% ATK.',
+            3:'💀 *FASE 3 — COLAPSO!* Nharok ganhou +20% ATK e recebe +10% dano.'}[r.phaseChanged]
+          if(text) await reply(text)
         }
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.bossCritical) bossCrits++; if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
         if(r.oilConsumedNow) await reply('🗡️ *ÓLEO DAS SOMBRAS ATIVADO!* +6% de dano do jogador neste Boss (consumido 1 Óleo; pet não recebe bônus).')
@@ -2208,7 +2213,41 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
             })
           }
 
+
+          const horaRuptura=Date.parse('2026-10-09T20:00:00-03:00')
+          if(now>=horaRuptura-600000&&now<horaRuptura){
+            await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-preview',
+              '🌌 *RUPTURA ESTELAR ÀS 20H!*\\n\\n👹 Nharok, o Devorador de Mundos\\n' +
+              '⚔️ Três fases e um ranking global.\\n✨ 2x EXP de jogador • 🐾 1,5x EXP pet\\n' +
+              '🥇 20 Caixas Épicas • 🥈 5 • 🥉 3\\n' +
+              '🏅 Insígnia inédita: Guardião da Ruptura\\n⏰ 20h–21h. Use !boss e !atacar!')
+          }
+          const ruptura=await iniciarRupturaEstelar(chat)
+          if(ruptura?.spawned||ruptura?.already){
+            await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-start',
+              '🌌 *A RUPTURA ESTELAR COMEÇOU!*\\n\\n👹 *Nharok, o Devorador de Mundos*\\n' +
+              '❤️ HP GLOBAL: *'+Number(ruptura.maxHp).toLocaleString('pt-BR')+'*\\n⚔️ ATK: *'+ruptura.atk+'*\\n' +
+              '🌑 Fase 1: Invasão\\n🔥 Fase 2: +15% ATK\\n💀 Fase 3: +20% ATK, recebe +10% dano\\n\\n' +
+              '✨ 2x EXP • 🐾 1,5x EXP pet\\n🥇 *20 CAIXAS ÉPICAS* • 🥈 5 • 🥉 3\\n' +
+              '🏅 Top 3 garante *Insígnia Guardião da Ruptura*; demais: 15% com 10 ataques.\\n' +
+              '🧭 Missões: 10 ataques, lutar em 2 fases e na fase 3.\\n' +
+              '🌐 Ranking, HP e cooldown globais. Sem multiplicador de dinheiro.\\n' +
+              '⏰ Até 21h; premiação do ranking garantida mesmo se não for derrotado.\\n\\n' +
+              '⚔️ Use *!boss* e *!atacar*.')
+          }
+          const fimRuptura=await encerrarRupturaEstelar(chat)
+          if(fimRuptura?.ended||(fimRuptura?.due&&fimRuptura?.alreadyEnded)){
+            const colocados=(fimRuptura.rankings||[]).slice(0,3).map(p=>
+              p.position+'º '+p.name+' — '+Number(p.damage).toLocaleString('pt-BR')+' dano').join('\\n')
+            await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-end',
+              '🌌 *RUPTURA ESTELAR ENCERRADA!*\\n\\n🏆 *RANKING GLOBAL*\\n'+
+              (colocados||'Sem participantes com dano.')+'\\n\\n' +
+              '🥇 20 Caixas Épicas • 🥈 5 • 🥉 3.\\n🏅 Insígnias entregues conforme as regras.')
+          }
+          if(ruptura?.spawned||ruptura?.already) continue
           const r=await autoStartBossEvent(chat)
+          if(r?.eventId==='ruptura_estelar') continue
+
           if(!r?.spawned && !r?.already) continue
           const universalBossNoticeKey='universal-boss-event-'+String(r.scheduleKey||r.eventId||r.startedAt||'active')
           await sendScheduledGroupNotice(chat,universalBossNoticeKey,
@@ -2413,6 +2452,9 @@ ${ranking}${extra}
   bossEventScheduler=setInterval(runBossEventScheduler,30*1000)
   bossEventScheduler.unref?.()
   setTimeout(runBossEventScheduler,5000).unref?.()
+  for(const horario of [Date.parse('2026-10-09T19:50:00-03:00'),Date.parse('2026-10-09T20:00:00-03:00'),Date.parse('2026-10-09T21:00:00-03:00')]){
+    if(horario>Date.now()) setTimeout(runBossEventScheduler,horario-Date.now()+500).unref?.()
+  }
 
   // Evento relâmpago único de 03/10/2026 (horário de Brasília).
   // Persistido no Neon para continuar correto mesmo se o Render reiniciar.
