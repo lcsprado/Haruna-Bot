@@ -83,7 +83,27 @@ export const PET_STATUS_SPECIALTIES = {
   lince_celestial:{label:'🐆 Lince Celestial',stats:{damage:10,crit:8,xp:4},raid:true},
   arcanjo_eclipse:{label:'🪽 Arcanjo do Eclipse',stats:{crit:9,defense:6,xp:7},healPct:5,healCooldown:5,raid:true},
   colosso_alpha:{label:'🗿 Colosso Alpha',stats:{defense:10,damage:7,dodge:4,drop:4},raid:true},
-  oraculo_alpha:{label:'🔮 Oráculo Alpha',stats:{crit:10,defense:8,drop:7,xp:8},raid:true}
+  oraculo_alpha:{label:'🔮 Oráculo Alpha',stats:{crit:10,defense:8,drop:7,xp:8},raid:true},
+
+  // Raids 60/65/70: bônus por especialidade, não multiplicadores de dano
+  // globais. Todos seguem os mesmos tetos de 15% e escala por nível.
+  fera_caos:{label:'🐺 Fome do Caos',stats:{damage:10,crit:5},raid:true},
+  guardiao_caos:{label:'🛡️ Bastião Entrópico',stats:{defense:10,damage:5},raid:true},
+  serafim_caotico:{label:'🪽 Asas da Ruína',stats:{crit:9,dodge:7},raid:true},
+  oraculo_caos:{label:'🔮 Visão Entrópica',stats:{defense:7,crit:8,drop:4},raid:true},
+  fenix_caos:{label:'🔥 Renascimento do Caos',stats:{damage:8,defense:7,dodge:5},healPct:5,healCooldown:5,raid:true},
+
+  pantera_profundezas:{label:'🐈‍⬛ Predadora das Profundezas',stats:{damage:10,crit:7},raid:true},
+  guardiao_abissal:{label:'🗿 Muralha Abissal',stats:{defense:10,dodge:6},raid:true},
+  dragao_trono:{label:'🐉 Soberania Abissal',stats:{bossDamage:10,defense:7},raid:true},
+  oraculo_coroa:{label:'👑 Presságio da Coroa',stats:{crit:10,drop:7,xp:5},raid:true},
+  esfinge_mares:{label:'🌊 Maré Restauradora',stats:{defense:9,crit:8},healPct:5,healCooldown:5,raid:true},
+
+  lobo_eclipse:{label:'🌘 Caçador do Eclipse',stats:{damage:10,crit:8},raid:true},
+  sentinela_eclipse:{label:'🛡️ Muralha do Eclipse',stats:{defense:10,dodge:7,damage:4},raid:true},
+  dragao_solar_eclipse:{label:'🐉 Fogo Eclipse',stats:{bossDamage:10,crit:9,xp:4},raid:true},
+  fenix_eclipse:{label:'🌗 Graça do Eclipse',stats:{defense:10,dodge:8},healPct:6,healCooldown:5,raid:true},
+  avatar_primordial:{label:'🌌 Equilíbrio Primordial',stats:{damage:10,defense:8,crit:8,drop:5},raid:true}
 };
 
 export const ADOPTABLE_PETS = [
