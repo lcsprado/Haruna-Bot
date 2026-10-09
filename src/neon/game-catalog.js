@@ -187,40 +187,170 @@ export const CLASS_PASSIVES=Object.freeze({
 export function getClassPassive(classId,applied=true){
   return applied?(CLASS_PASSIVES[String(classId||'').toLowerCase()]||null):null
 }
-export function classCritBonus(classId,applied=true){
-  return getClassPassive(classId,applied)?.crit||0
+export const AWAKENING_CLASS_SKILLS=Object.freeze({
+  warrior:[
+    'Vanguarda: +2% de dano em Boss/Raid.',
+    'Resistência de Guerra: -2% dano recebido abaixo de 50% HP.',
+    'Golpe de Guerra: +12% de dano a cada 8 ataques.'
+  ],
+  assassin:[
+    'Instinto Aperfeiçoado: +1 ponto percentual de crítico.',
+    'Execução: após acumular 3 críticos, próximo golpe recebe +20% de dano.',
+    'Sombra Evasiva: +2 pontos percentuais de esquiva.'
+  ],
+  mage:[
+    'Arcano Amplificado: 8% de chance de +20% dano, com intervalo mínimo de 4 ataques.',
+    'Explosão: +20% de dano a cada 8 ataques.',
+    'Maestria Arcana: +3% de dano em Boss/Raid.'
+  ],
+  archer:[
+    'Caçador Superior: bônus fixo de Boss/Raid sobe de 3% para 5%.',
+    'Flecha Perfurante: +12% de dano a cada 6 ataques.',
+    'Visão de Águia: +2 pontos percentuais de crítico.'
+  ],
+  paladin:[
+    'Bênção Restauradora: cura 3% HP máximo a cada 8 ataques, se abaixo de 50% HP.',
+    'Julgamento Divino: +20% de dano a cada 8 ataques.',
+    'Proteção Celestial: -3% dano recebido adicional abaixo de 50% HP.'
+  ],
+  berserker:[
+    'Fúria Controlada: bônus abaixo de 40% HP sobe de 5% para 6%.',
+    'Instinto de Sobrevivência: +6% dano adicional abaixo de 25% HP.',
+    'Fúria Suprema: +10% de dano a cada 8 golpes abaixo de 40% HP.'
+  ],
+  monk:[
+    'Reflexos Aperfeiçoados: esquiva sobe de 3% para 5%.',
+    'Contra-ataque: depois de esquivar, próximo ataque recebe +12% de dano.',
+    'Paz Interior: -2% do dano recebido.'
+  ],
+  necromancer:[
+    'Drenagem Superior: rouba 3% do dano a cada 4 golpes, limitado a 3% HP.',
+    'Maldição: +12% de dano a cada 7 ataques.',
+    'Senhor das Almas: drenagem sobe para 4% do dano e limite de 4% HP.'
+  ],
+  druid:[
+    'Natureza Viva II: regeneração de 2% HP a cada 8 ataques.',
+    'Casca Espiritual: -4% dano recebido abaixo de 60% HP.',
+    'Coração da Floresta: regeneração sobe para 3% HP a cada 8 ataques.'
+  ],
+  samurai:[
+    'Lâmina Perfeita II: bônus nos críticos sobe de 8% para 12%.',
+    'Precisão Honrada: +2 pontos percentuais de crítico.',
+    'Corte Divino: +15% de dano a cada 6 ataques.'
+  ]
+})
+
+// Fase balanceada: habilidades de Despertar I/II/III somente em Boss/Raid.
+// I–V ainda concede atributos. Não altera PvP nem passivas dos não despertos.
+function awakenedStage(applied,stage,context){
+  return applied && (context==='boss'||context==='raid')
+    ? Math.max(0,Math.min(3,Math.floor(Number(stage)||0))) : 0
 }
-export function classDefense({classId,applied=true,damage=0,roll=Math.random()}={}){
+export function getAwakeningSkillDescriptions(classId){
+  return AWAKENING_CLASS_SKILLS[String(classId||'').toLowerCase()]||[]
+}
+export function classCritBonus(classId,applied=true,awakeningStage=0,context='pvp'){
+  const base=getClassPassive(classId,applied)?.crit||0
+  const stage=awakenedStage(applied,awakeningStage,context)
+  const id=String(classId||'').toLowerCase()
+  if(id==='assassin'&&stage>=1) return base+.01
+  if(id==='archer'&&stage>=3) return base+.02
+  if(id==='samurai'&&stage>=2) return base+.02
+  return base
+}
+export function classDefense({
+  classId,applied=true,damage=0,roll=Math.random(),hp=1,maxHp=1,
+  context='pvp',awakeningStage=0,awakeningState=null
+}={}){
   const p=getClassPassive(classId,applied)
   let n=Math.max(0,Math.round(Number(damage)||0))
-  if(!p||!n) return {damage:n,dodged:false}
-  if(p.dodge&&roll<p.dodge) return {damage:0,dodged:true}
-  if(p.mitigation) n=Math.max(1,Math.round(n*(1-p.mitigation)))
-  return {damage:n,dodged:false}
+  const state={...(awakeningState||{})}
+  if(!p||!n)return {damage:n,dodged:false,awakeningState:state}
+  const id=String(classId||'').toLowerCase()
+  const stage=awakenedStage(applied,awakeningStage,context)
+  const dodge=Math.min(.25,Number(p.dodge||0)+(
+    (id==='monk'&&stage>=1)?.02:(id==='assassin'&&stage>=3)?.02:0
+  ))
+  if(dodge&&roll<dodge){
+    if(id==='monk'&&stage>=2)state.counterReady=true
+    return {damage:0,dodged:true,awakeningState:state}
+  }
+  if(p.mitigation)n=Math.max(1,Math.round(n*(1-p.mitigation)))
+  const ratio=Number(maxHp)>0?Number(hp)/Number(maxHp):1
+  const mitigation=
+    (id==='paladin'&&stage>=3&&ratio<.5?.03:0)+
+    (id==='druid'&&stage>=2&&ratio<.6?.04:0)+
+    (id==='warrior'&&stage>=2&&ratio<.5?.02:0)+
+    (id==='monk'&&stage>=3?.02:0)
+  if(mitigation)n=Math.max(1,Math.round(n*(1-mitigation)))
+  return {damage:n,dodged:false,awakeningState:state}
 }
-
-export function classAttack({classId,applied=true,damage=0,critical=false,hp=1,maxHp=1,attackIndex=1,context='pvp',lastProcAttack=0,roll=Math.random()}={}){
+export function classAttack({
+  classId,applied=true,damage=0,critical=false,hp=1,maxHp=1,
+  attackIndex=1,context='pvp',lastProcAttack=0,roll=Math.random(),
+  awakeningStage=0,awakeningState=null
+}={}){
   const p=getClassPassive(classId,applied)
   const base=Math.max(0,Math.round(Number(damage)||0))
-  if(!p||!base) return {damage:base,heal:0,proc:false,lastProcAttack}
-  let n=base
-  if(p.damage) n=Math.round(n*(1+p.damage))
-  if(p.bossDamage&&['boss','raid'].includes(context)) n=Math.round(n*(1+p.bossDamage))
-  if(p.lowHpDamage&&Number(maxHp)>0&&Number(hp)/Number(maxHp)<.40) n=Math.round(n*(1+p.lowHpDamage))
-  if(p.critDamage&&critical) n=Math.round(n*(1+p.critDamage))
+  const state={...(awakeningState||{})}
+  if(!p||!base)return {damage:base,heal:0,proc:false,lastProcAttack,awakeningState:state}
+  const id=String(classId||'').toLowerCase()
+  const stage=awakenedStage(applied,awakeningStage,context)
+  const hpRatio=Number(maxHp)>0?Number(hp)/Number(maxHp):1
   const index=Math.max(1,Math.floor(Number(attackIndex)||1))
-  let proc=false
-  if(p.procChance&&index-Math.max(0,Number(lastProcAttack)||0)>=p.procInterval&&roll<p.procChance){
-    n=Math.round(n*(1+p.procBonus))
+  let n=base,proc=false
+  if(p.damage)n=Math.round(n*(1+p.damage))
+  if(p.bossDamage){
+    const bossBonus=(id==='archer'&&stage>=1)?.05:p.bossDamage
+    if(context==='boss'||context==='raid')n=Math.round(n*(1+bossBonus))
+  }
+  if(p.lowHpDamage&&hpRatio<.40)n=Math.round(n*(1+((id==='berserker'&&stage>=1)?.06:p.lowHpDamage)))
+  if(p.critDamage&&critical)n=Math.round(n*(1+((id==='samurai'&&stage>=1)?.12:p.critDamage)))
+  const procChance=(id==='mage'&&stage>=1)?.08:p.procChance
+  const procBonus=(id==='mage'&&stage>=1)?.20:p.procBonus
+  if(procChance&&index-Math.max(0,Number(lastProcAttack)||0)>=p.procInterval&&roll<procChance){
+    n=Math.round(n*(1+procBonus))
     proc=true
     lastProcAttack=index
   }
+  if(stage){
+    if(id==='warrior')n=Math.round(n*1.02)
+    if(id==='mage'&&stage>=2&&index%8===0)n=Math.round(n*1.20)
+    if(id==='mage'&&stage>=3)n=Math.round(n*1.03)
+    if(id==='archer'&&stage>=2&&index%6===0)n=Math.round(n*1.12)
+    if(id==='paladin'&&stage>=2&&index%8===0)n=Math.round(n*1.20)
+    if(id==='berserker'&&stage>=2&&hpRatio<.25)n=Math.round(n*1.06)
+    if(id==='berserker'&&stage>=3&&hpRatio<.40&&index%8===0)n=Math.round(n*1.10)
+    if(id==='necromancer'&&stage>=2&&index%7===0)n=Math.round(n*1.12)
+    if(id==='samurai'&&stage>=3&&index%6===0)n=Math.round(n*1.15)
+    if(id==='warrior'&&stage>=3&&index%8===0)n=Math.round(n*1.12)
+    if(id==='assassin'&&stage>=2){
+      if(state.finisherReady){
+        n=Math.round(n*1.20)
+        state.finisherReady=false
+        state.critsAccumulated=0
+      }else if(critical){
+        state.critsAccumulated=Math.min(3,Math.max(0,Number(state.critsAccumulated||0))+1)
+        if(state.critsAccumulated>=3)state.finisherReady=true
+      }
+    }
+    if(id==='monk'&&stage>=2&&state.counterReady){
+      n=Math.round(n*1.12)
+      state.counterReady=false
+    }
+  }
   let heal=0
   if(p.lifesteal&&index%p.lifestealInterval===0&&hp>0&&maxHp>0){
-    heal=Math.min(Math.ceil(maxHp*p.lifestealCap),Math.floor(n*p.lifesteal),Math.max(0,maxHp-hp))
+    const pct=id==='necromancer'&&stage>=3?.04:id==='necromancer'&&stage>=1?.03:p.lifesteal
+    const cap=id==='necromancer'&&stage>=3?.04:id==='necromancer'&&stage>=1?.03:p.lifestealCap
+    heal=Math.min(Math.ceil(maxHp*cap),Math.floor(n*pct),Math.max(0,maxHp-hp))
   }
-  if(p.regen&&index%p.regenInterval===0&&hp>0&&maxHp>0){
-    heal=Math.min(Math.floor(maxHp*p.regen),Math.max(0,maxHp-hp))
+  if(p.regen&&index%(id==='druid'&&stage>=1?8:p.regenInterval)===0&&hp>0&&maxHp>0){
+    const pct=id==='druid'&&stage>=3?.03:p.regen
+    heal=Math.min(Math.floor(maxHp*pct),Math.max(0,maxHp-hp))
   }
-  return {damage:Math.max(1,n),heal:Math.max(0,heal),proc,lastProcAttack}
+  if(id==='paladin'&&stage>=1&&hp>0&&maxHp>0&&hpRatio<.50&&index%8===0){
+    heal=Math.min(Math.floor(maxHp*.03),Math.max(0,maxHp-hp))
+  }
+  return {damage:Math.max(1,n),heal:Math.max(0,heal),proc,lastProcAttack,awakeningState:state}
 }
