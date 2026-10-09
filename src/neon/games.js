@@ -39,6 +39,9 @@ export async function initGames(){
       updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
     )
   `)
+  const repair=await reconcileAllWeeklyBossOutages20261009()
+    .catch(err=>({status:'error',message:String(err?.message||err)}))
+  console.log('[Boss All Player Repair] startup',JSON.stringify(repair))
 }
 
 async function loadGame(client,chat,type){
@@ -1712,52 +1715,91 @@ export async function rectifyFrozenWeeklyBossShare20261009(){
 
 
 /**
- * Administrative correction of the automatic-session outage of 09 Oct.
- * Original WhatsApp screenshot proves that ~LP initiated !atacar at 00:02.
- * The first documented service restart at 00:05 terminated the old RAM-only
- * session; earliest later claim was 06:56:37. Conservative interval: 00:06
- * through 06:56:37. Earlier credits count toward this amount.
- *
- * One-off, locked transaction and strict guard: never double-reduce HP.
+ * Reconstituição proporcional de participantes comprovados do Boss semanal.
+ * O intervalo 00:19-02:45 tem HP idêntico em duas capturas; somente jogadores
+ * que haviam iniciado o Boss até 00:19 são elegíveis. O primeiro atacante tem
+ * adicional documentado das 00:06 às 06:56, pois iniciou às 00:02 (captura WA)
+ * e seu loop em RAM perdeu-se nos deploys. Todos os créditos anteriores são
+ * abatidos; não atribui ataques artificiais nem muda economia/recompensas.
  */
-export async function compensateFirstAttackerOutage20261009(){
-  const marker='boss-auto-repair-20261009-first-attacker-v3'
+export async function reconcileAllWeeklyBossOutages20261009(){
+  const correctionKey='boss-auto-repair-20261009-all-participants-v4'
   return tx(async c=>{
-    const prior=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[marker])).rows[0]?.value
-    if(prior) return {status:'already',...prior}
-    const v2=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',['boss-auto-repair-20261009-share-v2'])).rows[0]?.value
-    if(v2?.status!=='corrected') return {status:'skipped',reason:'previous allocation not verified'}
+    const done=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[correctionKey])).rows[0]?.value
+    if(done) return {status:'already',...done}
+    const v1=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',
+      ['boss-auto-repair-20261009-0019-0245-v1'])).rows[0]?.value
+    const v2=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',
+      ['boss-auto-repair-20261009-share-v2'])).rows[0]?.value
+    if(v1?.status!=='applied'||Number(v1.amount)!==574542||v2?.status!=='corrected'){
+      return {status:'skipped',reason:'initial compensation audit not verified'}
+    }
     const boss=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
-    if(boss?.mode!=='weekly'||boss.weekendKey!=='2026-10-09'||Number(boss.maxHp)!==5681920||Number(boss.hp)<=0)
-      return {status:'skipped',reason:'original weekly boss is not active'}
-    const player=Object.entries(boss.participants||{}).find(([jid,p])=>String(p?.name||'').includes('LP🍀'))
-    if(!player) return {status:'skipped',reason:'first attacker not uniquely identified'}
-    const [jid,p]=player
-    const credited=Number(p.recoveredDamage||0)
-    const currentAttacks=Number(p.attacks||0)
-    const actualDamage=Number(p.damage||0)-credited
-    if(currentAttacks<100||actualDamage<=0||credited!==188731)
-      return {status:'skipped',reason:'current attack sample or prior credit does not match audit'}
-    const start=Date.parse('2026-10-09T00:06:00-03:00')
-    const finish=Date.parse('2026-10-09T06:56:37-03:00')
-    const expectedAttacks=Math.floor((finish-start)/10000)
-    const sampledAverage=actualDamage/currentAttacks
-    // 435.79 is the observed real hit average in the 08:06 audit,
-    // limiting the award if subsequent equipment makes current damage stronger.
-    const average=Math.min(sampledAverage,435.79)
-    const estimatedTotal=Math.floor(expectedAttacks*average)
-    const additional=Math.max(0,estimatedTotal-credited)
-    if(!additional||Number(boss.hp)<=additional+100000)
-      return {status:'skipped',reason:'boss HP or estimated lost damage requires manual review'}
+    if(boss?.mode!=='weekly'||boss.weekendKey!=='2026-10-09'||Number(boss.maxHp)!==5681920||Number(boss.hp)<=0){
+      return {status:'skipped',reason:'original Boss no longer active'}
+    }
+    const players=Object.entries(boss.participants||{})
+    const verified=[
+      {name:'~LP🍀☘️',since:'2026-10-09T00:06:00-03:00',until:'2026-10-09T06:56:37-03:00',avgCap:435.79},
+      {name:'João Pedro',since:'2026-10-09T00:19:00-03:00',until:'2026-10-09T02:45:00-03:00',avgCap:629.77},
+      {name:'Kaique Rodrigues',since:'2026-10-09T00:19:00-03:00',until:'2026-10-09T02:45:00-03:00',avgCap:265.17}
+    ]
+    const creditedV2=new Map((v2.allocations||[]).map(x=>[String(x.jid),Number(x.after||0)]))
+    if(creditedV2.size!==3) return {status:'skipped',reason:'unexpected previous participant count'}
+    const existingSum=players.reduce((v,[,p])=>v+Number(p.damage||0),0)
+    if(existingSum!==Number(boss.maxHp)-Number(boss.hp)){
+      return {status:'skipped',reason:'participant damage does not reconcile with global Boss HP'}
+    }
+    const allocations=[]
+    for(const rule of verified){
+      const found=players.filter(([,p])=>String(p.name||'')===rule.name)
+      if(found.length!==1) return {status:'skipped',reason:'cannot uniquely match participant '+rule.name}
+      const [jid,p]=found[0]
+      const oldCredit=Number(p.recoveredDamage||0)
+      if(creditedV2.get(jid)!==oldCredit||Number(p.attacks||0)<=0){
+        return {status:'skipped',reason:'inconsistent previous credit for '+rule.name}
+      }
+      const avg=Math.min(rule.avgCap,
+        (Number(p.damage||0)-oldCredit)/Number(p.attacks))
+      const ticks=Math.floor((Date.parse(rule.until)-Date.parse(rule.since))/10000)
+      if(!Number.isFinite(avg)||avg<=0||ticks<=0) return {status:'skipped',reason:'invalid rate for '+rule.name}
+      const expectedTotal=Math.floor(ticks*avg)
+      const additional=Math.max(0,expectedTotal-oldCredit)
+      allocations.push({jid,name:rule.name,average:Math.round(avg*100)/100,
+        expectedTicks:ticks,oldCredit,expectedTotal,additional})
+    }
+    // Os outros jogadores continuam com seus danos reais: sem bônus indevido
+    // por períodos anteriores ao início efetivo da participação.
+    const additionalTotal=allocations.reduce((n,p)=>n+p.additional,0)
+    if(additionalTotal<=0){
+      return {status:'skipped',reason:'no additional missing damage'}
+    }
+    if(Number(boss.hp)<=additionalTotal+100000){
+      return {status:'skipped',reason:'Boss too low to safely apply estimate without resolving rewards'}
+    }
+    for(const item of allocations){
+      const p=boss.participants[item.jid]
+      p.damage=Number(p.damage||0)+item.additional
+      p.recoveredDamage=Number(p.recoveredDamage||0)+item.additional
+      p.repair20261009=item.additional
+    }
     const hpBefore=Number(boss.hp)
-    p.damage=Number(p.damage||0)+additional
-    p.recoveredDamage=credited+additional
-    p.autoOutageEstimatedAttacks=expectedAttacks
-    boss.hp=hpBefore-additional
-    const record={status:'applied',bossKey:boss.weekendKey,method:'conservative 00:06–06:56:37 at 10s cadence, capped by observed real damage per hit, prior credit deducted',expectedAttacks,average,estimatedTotal,priorCredit:credited,additional,hpBefore,hpAfter:boss.hp,appliedAt:Date.now()}
+    boss.hp=hpBefore-additionalTotal
+    if(players.reduce((n,[,p])=>n+Number(p.damage||0),0)!==Number(boss.maxHp)-Number(boss.hp)){
+      throw new Error('Boss damage accounting mismatch after reconciliation')
+    }
+    const record={status:'applied',weekendKey:boss.weekendKey,method:'observed damage per real attack, capped by 08:06 audit, 10-second cadence and verified gaps; prior credits deducted',
+      hpBefore,hpAfter:boss.hp,additionalTotal,allocations,
+      unaffected:players.filter(([jid])=>!allocations.some(p=>p.jid===jid))
+        .map(([,p])=>({name:p.name,reason:'no verified outage within participation period'})),
+      appliedAt:Date.now()}
     await saveGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss',boss)
-    await c.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[marker,JSON.stringify(record)])
-    console.log('[Boss First Attacker Compensation]',JSON.stringify(record))
+    await c.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',
+      [correctionKey,JSON.stringify(record)])
+    console.log('[Boss All Player Repair] confirmed',JSON.stringify({
+      hpBefore,hpAfter:boss.hp,additionalTotal,
+      allocations:allocations.map(p=>({name:p.name,additional:p.additional,totalOutageCredit:p.oldCredit+p.additional}))
+    }))
     return record
   })
 }
