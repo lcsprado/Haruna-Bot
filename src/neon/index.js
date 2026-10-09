@@ -2236,7 +2236,8 @@ ${ranking}${extra}
       }
       console.log('[Boss 30m] boletim',JSON.stringify({
         boss:current.name,slot:new Date(windowStart).toISOString(),
-        remainingHp:hp,maxHp,participants:participants.length,groupsSent:sent
+        remainingHp:hp,maxHp,participants:participants.length,groupsSent:sent,
+        rankingTop:participants.slice(0,10).map(p=>({name:p.name,damage:p.damage}))
       }))
     }catch(err){
       console.error('[Boss 30m] falha no agendamento',err?.message||err)
@@ -2249,6 +2250,25 @@ ${ranking}${extra}
   bossProgressScheduler=setInterval(()=>{void broadcastBossProgressEvery30Minutes()},20*1000)
   bossProgressScheduler.unref?.()
   setTimeout(()=>{void broadcastBossProgressEvery30Minutes()},3000).unref?.()
+
+  // Snapshot de leitura na inicialização para diagnosticar ranking em produção.
+  setTimeout(async()=>{
+    try{
+      const {rows}=await db.query(
+        "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_weekly_boss__' AND game_type='boss'"
+      )
+      const state=rows[0]?.state
+      if(state?.mode!=='weekly'||Number(state.hp)<=0) return
+      const ranking=Object.values(state.participants||{})
+        .map(p=>({name:String(p?.name||'Jogador'),damage:Number(p?.damage||0),attacks:Number(p?.attacks||0)}))
+        .filter(p=>p.damage>0)
+        .sort((a,b)=>b.damage-a.damage)
+      console.log('[Boss Live Ranking]',JSON.stringify({
+        at:new Date().toISOString(),remainingHp:Number(state.hp),maxHp:Number(state.maxHp),ranking
+      }))
+    }catch(err){console.error('[Boss Live Ranking] consulta falhou',err?.message||err)}
+  },10000).unref?.()
+
 
   if(bossEventScheduler) clearInterval(bossEventScheduler)
   bossEventScheduler=setInterval(runBossEventScheduler,30*1000)
