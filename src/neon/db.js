@@ -2555,6 +2555,7 @@ export async function getCombatProfile(jid) {
     class_id:String(p.class_id||'warrior'),
     class_applied:Boolean(p.class_applied),
     class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
+    class_passive:getClassPassive(p.class_id,p.class_applied),
     class_scrolls:classScrolls,
     class_change_remaining:classChangeRemaining,
     class_change_days:classChangeRemaining>0?Math.ceil(classChangeRemaining/86400):0,
