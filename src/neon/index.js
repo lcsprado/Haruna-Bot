@@ -60,7 +60,7 @@ import {
 } from './loans.js'
 import { toStickerBuffer } from './sticker.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive } from './game-catalog.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, getAwakeningSkillDescriptions } from './game-catalog.js'
 import { createWebLinkCode } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 
@@ -8073,6 +8073,8 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
 🏦 Saldo restante: R$ ${fmt(result.balance)}
 
 ⚜️ Sua passiva original continua ativa.
+🌟 ${getAwakeningSkillDescriptions(result.classId||'')[Math.min(2,result.tier.stage-1)]||'Aprimoramento de atributos confirmado.'}
+${result.tier.stage>3?'🛡️ Os Despertares IV e V concedem atributos; novas habilidades aguardam avaliação.':''}
 📜 Use *!despertar* para ver o próximo estágio.`)
             }catch(err){
               await reply('⚠️ *Despertar não concluído.*\n\n'+String(err?.message||'Verifique nível, missões e saldo.'))
@@ -8098,6 +8100,13 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
 📜 *MISSÕES DA CLASSE*
 `
               for(const m of prog.quests) msg+=`• ${m.done===m.target?'✅':'⬜'} ${m.label}: *${m.done}/${m.target}*\n`
+              const skills=getAwakeningSkillDescriptions(prog.classId)
+              const unlocked=skills.slice(0,Math.min(3,prog.stage))
+              if(unlocked.length){
+                msg+='\n🌟 *HABILIDADES DESBLOQUEADAS (BOSS/RAID)*\n'
+                unlocked.forEach((desc,i)=>msg+=`✅ Despertar ${['I','II','III'][i]}: ${desc}\n`)
+              }
+              if(prog.stage<3&&skills[prog.stage])msg+=`\n🔒 Próxima habilidade: ${skills[prog.stage]}\n`
               msg+=`
 🏆 *EVOLUÇÃO DO ESTÁGIO*
 ❤️ +${t.hp} HP • ⚔️ +${t.atk} ATK • 🛡️ +${t.def} DEF
@@ -8107,7 +8116,8 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
 ${prog.ready?'✅ Missões e nível completos!':'⏳ Complete os requisitos para evoluir.'}
 ${prog.ready?'👉 Use *!despertar evoluir* para confirmar.':'📈 As missões não expiram e ficam acumuladas.'}
 
-⚖️ A passiva da classe não é alterada neste estágio.`
+⚖️ Passivas originais preservadas. Habilidades do Despertar afetam apenas Boss/Raid; PvP continua igual.
+${t.stage>3?'🔬 Despertares IV/V: atributos adicionais, sem novas habilidades por enquanto.':''}`
               await reply(msg)
             }
           }
