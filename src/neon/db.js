@@ -2666,8 +2666,11 @@ export async function battle(attackerJid, defenderJid) {
       const variance=0.85+Math.random()*0.30
       const crit=Math.random()<Number(from.crit||.10)
       const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
-      const dmg=crit?Math.round(raw*1.6):raw
+      const attack=classAttack({classId:from.classId,applied:from.classApplied,damage:crit?Math.round(raw*1.6):raw,critical:crit,hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,lastProcAttack:from.lastProcAttack})
+      from.lastProcAttack=attack.lastProcAttack
+      const dmg=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage}).damage
       to.hp=Math.max(0,to.hp-dmg)
+      if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
       log.push({from:from.name,to:to.name,dmg,crit,hp:to.hp})
     }
 
