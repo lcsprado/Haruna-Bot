@@ -1132,8 +1132,12 @@ export async function raidRound(chat,level){
       const baseline=Math.max(5,Math.floor(raw*(gearCrit?1.5:1)*3))
       const mult=(1+Number(pb.damage||0)+Number(teamSynergy.attack||0))*3
       const oilBonus=p.raidOilActive?Math.max(1,Math.floor(baseline*.06)):0
-      const dmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1))+oilBonus)
-      const petExtra=p.pet?Math.max(0,dmg-baseline-oilBonus):0
+      const baseDmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1))+oilBonus)
+      const classHit=classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0})
+      p.classLastProcAttack=classHit.lastProcAttack
+      const dmg=classHit.damage
+      if(classHit.heal>0) p.hp=Math.min(p.maxHp,p.hp+classHit.heal)
+      const petExtra=p.pet?Math.max(0,baseDmg-baseline-oilBonus):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
       p.damage=Number(p.damage||0)+dmg
@@ -1160,7 +1164,9 @@ export async function raidRound(chat,level){
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
-      const dmg=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)))
+      const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)))
+      const passiveDefense=classDefense({classId:p.classId,applied:p.classApplied,damage:hitDamage})
+      const dmg=passiveDefense.damage
       p.hp=Math.max(0,Number(p.hp)-dmg)
       let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
