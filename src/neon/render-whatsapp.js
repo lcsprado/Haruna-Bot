@@ -42,3 +42,33 @@ setTimeout(async()=>{
   }catch(err){console.error('[ECLIPSE AUDIT FAILED]',err?.stack||err)}
 },7000).unref?.()
 
+
+
+// Temporary read-only reconciliation of the documented 09/10/2026 loot sale.
+// Never sends WhatsApp messages and does not mutate player records.
+setTimeout(async()=>{
+  try{
+    const {db}=await import('./db.js')
+    const jid='5511987308687@s.whatsapp.net'
+    const player=(await db.query(
+      "SELECT jid,push_name,pn FROM users WHERE jid=$1 OR pn=$1 OR (push_name ILIKE '%João Pedro%' AND jid LIKE '5511%') LIMIT 5",
+      [jid]
+    )).rows
+    const ids=[...new Set([...player.map(x=>x.jid),jid])]
+    for(const id of ids){
+      const [wallet,businesses,inventory,txs,recovery]=await Promise.all([
+        db.query("SELECT cash,bank FROM wallets WHERE jid=$1",[id]),
+        db.query("SELECT business_id,price_paid,acquired_at,last_collected_at,level FROM user_businesses WHERE jid=$1 ORDER BY acquired_at",[id]),
+        db.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id='nucleo_alpha_corrompido'",[id]),
+        db.query("SELECT id,type,from_jid,to_jid,amount,note,created_at FROM transactions WHERE (from_jid=$1 OR to_jid=$1) AND created_at >= $2 ORDER BY id DESC LIMIT 90",
+          [id,Math.floor(Date.parse('2026-10-09T20:15:00-03:00')/1000)]),
+        db.query("SELECT value FROM trevo_settings WHERE key=$1",['economy_recovery:'+id])
+      ])
+      console.log('[JP ECONOMY AUDIT]',JSON.stringify({
+        id,matchedNames:player.filter(x=>x.jid===id).map(x=>x.push_name),
+        wallet:wallet.rows,businesses:businesses.rows,inventory:inventory.rows,
+        txs:txs.rows,recovery:recovery.rows
+      }))
+    }
+  }catch(err){ console.error('[JP ECONOMY AUDIT FAILED]',err?.stack||err) }
+},12000).unref?.()
