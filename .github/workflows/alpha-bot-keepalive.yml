@@ -1,0 +1,39 @@
+name: Alpha Bot - Manter WhatsApp Ativo
+
+# O Render Free suspende o serviço após 15 minutos sem requisições HTTP.
+# O agendamento do GitHub Actions funciona APENAS na branch padrão (master).
+# Isso NÃO faz deploy, NÃO executa comandos do jogo e NÃO toca no banco.
+on:
+  schedule:
+    - cron: "2-59/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-bot-whatsapp-health-ping
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    name: Ping no servico Render a cada 5 minutos
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Acordar o Alpha Bot e verificar WhatsApp
+        shell: bash
+        run: |
+          URL="https://alpha-bot-whatsapp.onrender.com/health"
+          echo "Solicitando endpoint de saúde sem alterar nenhuma ação do RPG."
+          STATUS=$(curl -L -sS -o /tmp/alpha-health.json \
+            -w '%{http_code}' --connect-timeout 20 --max-time 95 \
+            --retry 2 --retry-delay 4 --retry-all-errors "$URL") || true
+          echo "HTTP: ${STATUS:-sem resposta}"
+          if [ -f /tmp/alpha-health.json ]; then
+            head -c 500 /tmp/alpha-health.json
+            echo ""
+          fi
+          if [ "$STATUS" != "200" ]; then
+            echo "::warning::Alpha Bot respondeu HTTP ${STATUS:-indisponível}; servidor pode estar acordando ou WhatsApp desconectado."
+          fi
