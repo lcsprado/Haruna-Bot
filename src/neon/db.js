@@ -3582,13 +3582,39 @@ export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
         rarities.set(row.id,{rarity:row.rarity,sellUnit:Number(row.sell_unit||0)})
       }
 
+      // Do not advertise a reward unless the inventory actually received it.
+      // All checks run in the same transaction: any inconsistency rolls back
+      // the box consumption, cash and every drop together.
+      if(names.size!==itemIds.length){
+        throw new Error('Catálogo de itens incompleto: abertura cancelada sem consumir caixas.')
+      }
       for(const [itemId,itemQty] of rewards){
-        await client.query(`
+        const credited=await client.query(`
           INSERT INTO inventories(jid,item_id,quantity)
           VALUES($1,$2,$3)
           ON CONFLICT(jid,item_id) DO UPDATE
           SET quantity=inventories.quantity+EXCLUDED.quantity
+          RETURNING quantity
         `,[jid,itemId,itemQty])
+        const finalQty=Number(credited.rows[0]?.quantity||0)
+        if(credited.rowCount!==1 || finalQty<itemQty){
+          throw new Error('Falha ao creditar item no inventário: abertura revertida.')
+        }
+        // Durable per-item audit trail for investigating missing drops.
+        await client.query(`
+          INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+          VALUES('system',$1,0,'loot_item',$2)
+        `,[jid,`${boxId}|${itemId}|qty:${itemQty}|boxes:${qty}`])
+      }
+      const verification=await client.query(
+        'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[])',
+        [jid,itemIds]
+      )
+      const verified=new Map(verification.rows.map(row=>[row.item_id,Number(row.quantity)]))
+      for(const [itemId,itemQty] of rewards){
+        if((verified.get(itemId)||0)<itemQty){
+          throw new Error('Inventário não confirmou o drop: abertura revertida.')
+        }
       }
     }
 
