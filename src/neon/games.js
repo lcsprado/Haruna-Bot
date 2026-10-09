@@ -1575,6 +1575,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(sleeping.rows.length) throw new Error('Você está dormindo e não pode atacar o Boss agora.')
     const carpindo=await c.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[jid,now])
     if(carpindo.rows.length) throw new Error('Você está carpindo e não pode atacar o Boss agora.')
+    // Uma única participação por jogador no Boss semanal, mesmo em grupos diferentes.
+    // Trava por jogador antes de carregar a sala para serializar ataques simultâneos.
+    if(weekend.open){
+      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`weekly-boss-player:${weekend.weekendKey}:${jid}`])
+    }
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
     const gameType=eventActive?'boss_event':'boss'
@@ -1584,6 +1589,15 @@ export async function attackBoss(chat,jid,name,usePet=true){
       s.mode='weekly'; s.weeklyCompleted=false
     }
     if(gameType==='boss'&&s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
+    if(gameType==='boss'&&s.mode==='weekly'){
+      const claimKey='weekly_boss_group:'+weekend.weekendKey+':'+jid
+      await c.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING",
+        [claimKey,JSON.stringify({chat,weekendKey:weekend.weekendKey})])
+      const claim=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[claimKey])).rows[0]?.value
+      if(claim?.chat!==chat){
+        throw new Error('⚠️ Você já está participando do Boss Mundial em outro grupo. Para evitar ataques e recompensas duplicados, continue no grupo em que começou.')
+      }
+    }
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
