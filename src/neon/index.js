@@ -119,6 +119,27 @@ if(!connectionWatchdog){
   connectionWatchdog.unref?.()
 }
 
+// Se outra atividade reduziu o HP a zero entre rodadas, o combate automático
+// deve consumir uma cura disponível em vez de encerrar silenciosamente.
+// A função já existente valida inventário e registra consumo/HP no Neon.
+async function tryBossAutomaticRescue(jid){
+  try{
+    const potion=await usePotion(jid)
+    console.log('[Boss Auto Heal] HP recuperado',JSON.stringify({
+      item:potion.itemId,healed:potion.healed,hp:potion.hp,remaining:potion.remaining
+    }))
+    return {ok:true,potion}
+  }catch(err){
+    const hp=Number((await db.query('SELECT hp FROM stats WHERE jid=$1',[jid])).rows[0]?.hp||0)
+    if(hp>0) return {ok:true,alreadyRecovered:true}
+    const msg=String(err?.message||err)
+    if(!/não possui|sem poção|sem cura/i.test(msg)){
+      console.error('[Boss Auto Heal] não foi possível recuperar HP',msg)
+    }
+    return {ok:false,reason:msg}
+  }
+}
+
 const bossSessions=new Map()
 async function runBossSession(chat,jid,name,sendReply,usePet=true){
   // Identidade global do jogador, nunca chat|jid: impede sessões em dois grupos.
@@ -135,7 +156,16 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
     // Primeiro ataque é aguardado ANTES do aviso de início.
     // Rejeições por grupo incorreto/morte/falta de Boss não geram aviso falso.
     first=await attackBoss(chat,jid,name,usePet)
-    if(first?.playerDead) throw new Error('Você está sem HP. Use !curar e depois !atacar no grupo original.')
+    if(first?.playerDead){
+      // Somente retoma automaticamente se já havia sessão persistente ativa.
+      // Um !atacar novo com HP zerado continua exigindo a cura manual.
+      const previous=(await db.query("SELECT status FROM boss_auto_sessions WHERE jid=$1",[jid])).rows[0]
+      if(previous?.status==='active'){
+        const rescue=await tryBossAutomaticRescue(jid)
+        if(rescue.ok) first=await attackBoss(chat,jid,name,usePet)
+      }
+      if(first?.playerDead) throw new Error('Você está sem HP. Use !curar e depois !atacar no grupo original.')
+    }
     bossId=String(first?.mode||'common')+':'+String(first?.endsAt||0)
     await db.query(`
       INSERT INTO boss_auto_sessions(jid,chat_jid,name,use_pet,status,boss_id,ends_at,last_attack_at)
@@ -192,8 +222,18 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
           petFaintWarned=true
           await reply('💔 Seu pet ficou sem HP e saiu do combate. Você continuará atacando sozinho. Use *!descansar* depois para recuperar a vida dele.')
         }
-        if(r.playerDead){completed=true;
-          await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura disponível.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
+        if(r.playerDead){
+          const rescue=await tryBossAutomaticRescue(jid)
+          if(rescue.ok){
+            if(rescue.potion){
+              await reply(`🧪 *AUTOCURA NO SUPERBOSS!*\n\nVocê chegou a 0 HP entre rodadas, mas o bot usou *${rescue.potion.name}* do inventário.\n❤️ HP: *${rescue.potion.hp}/${rescue.potion.maxHp}*\n⚔️ Combate automático continua!`)
+            }
+            i--
+            await new Promise(resolve=>setTimeout(resolve,1000))
+            continue
+          }
+          completed=true
+          await reply(`💀 *VOCÊ CAIU NO BOSS!*\n\n🧪 Nenhuma cura pôde ser usada.\n⛔ Seus ataques foram interrompidos.\n💥 Dano nesta sessão: *${totalDamage}*\n\nUse *!curar* e depois *!atacar* para voltar.`)
           return
         }
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.bossCritical) bossCrits++; if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
@@ -287,14 +327,28 @@ async function ensureActiveBossRuns(sendToChat){
   if(trevoHealth.whatsapp!=='open'||bossAutoWatchdogBusy) return
   bossAutoWatchdogBusy=true
   try{
-    // Evita ressuscitar sessões vencidas ou jogadores derrotados.
+    // Só interrompe automaticamente quando o Boss acabou/expirou.
+    // Quem está com HP zerado e ainda possui poções tem direito à autocura
+    // acordada no !atacar; impedir que o watchdog mate essa sessão antes disso.
     await db.query(`
       UPDATE boss_auto_sessions
       SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
-      WHERE status='active' AND
-       ((ends_at>0 AND ends_at<=$1)
-        OR EXISTS(SELECT 1 FROM stats WHERE stats.jid=boss_auto_sessions.jid AND stats.hp<=0))
+      WHERE status='active' AND ends_at>0 AND ends_at<=$1
     `,[Date.now()])
+    const downPlayers=(await db.query(`
+      SELECT s.jid,s.chat_jid
+      FROM boss_auto_sessions s JOIN stats st ON st.jid=s.jid
+      WHERE s.status='active' AND st.hp<=0 AND (s.ends_at=0 OR s.ends_at>$1)
+    `,[Date.now()])).rows
+    for(const entry of downPlayers){
+      const rescue=await tryBossAutomaticRescue(entry.jid)
+      if(!rescue.ok){
+        await db.query(
+          "UPDATE boss_auto_sessions SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 AND chat_jid=$2 AND status='active'",
+          [entry.jid,entry.chat_jid]
+        )
+      }
+    }
     await recoverLegacyWeeklyBossSessions()
     const rows=(await db.query(`
       SELECT s.jid,s.chat_jid,s.name,s.use_pet,s.last_attack_at
@@ -1645,6 +1699,38 @@ async function start() {
   startLoanCollector()
   await acquireRuntimeLock(sessionId)
 
+  // Reativação excepcional da sessão interrompida às 09:51:39 de 09/10.
+  // Auditoria confirmou HP=0, combate persistido parado e 99 elixires.
+  // Não soma dano estimado nem altera HP do Boss: consome 1 poção existente.
+  try{
+    const offender='5511948523167@s.whatsapp.net'
+    const [sessionR,bossR,healthR]=await Promise.all([
+      db.query("SELECT status,chat_jid,updated_at FROM boss_auto_sessions WHERE jid=$1",[offender]),
+      db.query("SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_weekly_boss__' AND game_type='boss'"),
+      db.query('SELECT hp FROM stats WHERE jid=$1',[offender])
+    ])
+    const session=sessionR.rows[0], boss=bossR.rows[0]?.state
+    const player=boss?.participants?.[offender]
+    const stoppedAt=Number(session?.updated_at||0)*1000
+    const expectedStop=Date.parse('2026-10-09T09:51:42-03:00')
+    const hitAt=Number(player?.lastAttackAt||0)
+    if(session?.status==='stopped'&&session.chat_jid?.endsWith('@g.us')
+      &&boss?.mode==='weekly'&&Number(boss.hp)>0
+      &&Number(healthR.rows[0]?.hp||0)<=0
+      &&Math.abs(stoppedAt-expectedStop)<90000
+      &&Math.abs(hitAt-Date.parse('2026-10-09T09:51:39-03:00'))<90000){
+      const rescue=await tryBossAutomaticRescue(offender)
+      if(rescue.ok){
+        const recovered=await db.query(`
+          UPDATE boss_auto_sessions SET status='active',
+            last_attack_at=$3,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+          WHERE jid=$1 AND status='stopped' AND updated_at=$2 RETURNING jid
+        `,[offender,session.updated_at,hitAt])
+        if(recovered.rowCount) console.log('[Boss Auto Heal] sessão interrompida indevidamente reativada; sem compensação de dano')
+      }
+    }
+  }catch(err){console.error('[Boss Auto Heal] reativação pontual falhou',err?.message||err)}
+
   // Compensação real pelas desconexões de 04/10: 10 minutos completos a partir
   // da primeira inicialização deste patch. O oneOffId impede renovar em redeploys.
   const raidCompensationOneOffId='raid-disconnect-comp-2026-10-04-v2'
@@ -2292,28 +2378,6 @@ ${ranking}${extra}
       console.log('[Boss Live Ranking]',JSON.stringify({
         at:new Date().toISOString(),remainingHp:Number(state.hp),maxHp:Number(state.maxHp),ranking
       }))
-      // Auditoria operacional temporária: explica a diferença de golpes reais
-      // checando último ataque, morte e poções (somente contagens, sem IDs).
-      const participantRows=Object.entries(state.participants||{}).filter(([,p])=>Number(p.attacks||0)>0)
-      const details=[]
-      for(const [jid,p] of participantRows){
-        const [stat,session,supplies]=await Promise.all([
-          db.query("SELECT hp,max_hp FROM stats WHERE jid=$1",[jid]),
-          db.query("SELECT status,updated_at,last_attack_at,boss_id,use_pet FROM boss_auto_sessions WHERE jid=$1",[jid]),
-          db.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0",
-            [jid,['pocao_p','pocao_m','pocao_g','elixir_supremo']])
-        ])
-        details.push({
-          name:p.name||'Jogador',hits:Number(p.attacks||0),
-          lastBossHitBrt:p.lastAttackAt?new Date(Number(p.lastAttackAt)).toISOString():null,
-          hp:Number(stat.rows[0]?.hp||0),maxHp:Number(stat.rows[0]?.max_hp||0),
-          sessionStatus:session.rows[0]?.status||'missing',
-          lastPersistentHit:session.rows[0]?.last_attack_at?new Date(Number(session.rows[0].last_attack_at)).toISOString():null,
-          sessionUpdatedAt:session.rows[0]?.updated_at||null,
-          potionCounts:Object.fromEntries(supplies.rows.map(x=>[x.item_id,Number(x.quantity)]))
-        })
-      }
-      console.log('[Boss Attack Gap Audit]',JSON.stringify({at:new Date().toISOString(),players:details}))
 
     }catch(err){console.error('[Boss Live Ranking] consulta falhou',err?.message||err)}
   },10000).unref?.()
