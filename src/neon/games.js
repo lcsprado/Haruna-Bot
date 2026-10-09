@@ -1008,9 +1008,8 @@ async function finishRaidRewards(c,s,cfg,chat){
         }
       }
     }
-    // Benefício privado e único para a conta solicitante: a segunda vitória na Raid 70.
-    // A contagem fica no banco (não em memória), protegida pela transação da Raid.
-    // Não adiciona a recompensa ao resumo público nem altera as chances de outros jogadores.
+    // Recompensa individual e única na segunda vitória da Raid 70.
+    // Registra a contagem no banco e apresenta o item no resumo normal de drops.
     if(cfg.level===70 && String(p.jid||'').split('@')[0].replace(/\D/g,'')==='11948523167'){
       const progressKey='private_raid70_exterminadora_11948523167'
       await c.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING",
@@ -1023,6 +1022,7 @@ async function finishRaidRewards(c,s,cfg,chat){
         if(granted){
           await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'exterminadora_eclipse',1)
             ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[p.jid])
+          gearDrop={id:'exterminadora_eclipse',name:'Exterminadora do Eclipse',rarity:'Lendário'}
         }
         await c.query('UPDATE trevo_settings SET value=$2::jsonb,updated_at=NOW() WHERE key=$1',
           [progressKey,JSON.stringify({wins,granted})])
