@@ -2638,17 +2638,17 @@ export async function battle(attackerJid, defenderJid) {
 
     const A={
       jid:attackerJid,name:au?.push_name||'Jogador',
-      hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0),
+      hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
       atk:Number(a.atk)+aeW.atk+aeA.atk,
-      def:Number(a.def)+aeW.def+aeA.def,
+      def:Number(a.def)+aeW.def+aeA.def+aeH.def,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)),
       spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
-      hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0),
+      hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
       atk:Number(b.atk)+beW.atk+beA.atk,
-      def:Number(b.def)+beW.def+beA.def,
+      def:Number(b.def)+beW.def+beA.def+beH.def,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)),
       spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd
     }
@@ -3558,7 +3558,7 @@ export async function dungeon(jid) {
 
   return transaction(async client=>{
     const p=await client.query(`
-      SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id
+      SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id,s.helmet_id
       FROM users u JOIN stats s ON s.jid=u.jid
       WHERE u.jid=$1
       FOR UPDATE OF u,s
@@ -3572,7 +3572,7 @@ export async function dungeon(jid) {
     const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
 
-    const eqIds=[row.weapon_id,row.armor_id].filter(Boolean)
+    const eqIds=[row.weapon_id,row.armor_id,row.helmet_id].filter(Boolean)
     const ups=eqIds.length?(await client.query(
       'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
       [jid,eqIds]
@@ -3580,9 +3580,10 @@ export async function dungeon(jid) {
     const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
     const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id)):{atk:0,def:0,hp:0}
     const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{atk:0,def:0,hp:0}
+    const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{atk:0,def:0,hp:0}
     const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)
-    const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)
-    const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)
+    const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)+Number(helmet.def||0)
+    const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)+Number(helmet.hp||0)
     const level=Number(row.level)
 
     const monsters=[
