@@ -188,5 +188,12 @@ export function classAttack({classId,applied=true,damage=0,critical=false,hp=1,m
   if(p.bossDamage&&['boss','raid'].includes(context)) n=Math.round(n*(1+p.bossDamage))
   if(p.lowHpDamage&&Number(maxHp)>0&&Number(hp)/Number(maxHp)<.40) n=Math.round(n*(1+p.lowHpDamage))
   if(p.critDamage&&critical) n=Math.round(n*(1+p.critDamage))
-  return {damage:Math.max(1,n),heal:0,proc:false,lastProcAttack}
+  const index=Math.max(1,Math.floor(Number(attackIndex)||1))
+  let proc=false
+  if(p.procChance&&index-Math.max(0,Number(lastProcAttack)||0)>=p.procInterval&&roll<p.procChance){
+    n=Math.round(n*(1+p.procBonus))
+    proc=true
+    lastProcAttack=index
+  }
+  return {damage:Math.max(1,n),heal:0,proc,lastProcAttack}
 }
