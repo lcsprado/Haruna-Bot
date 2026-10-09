@@ -71,6 +71,25 @@ function since(start,now,type,minRaid){
   return Object.keys(now.raids||{}).reduce((sum,lvl)=>
     Number(lvl)>=minRaid?sum+Math.max(0,Number(now.raids[lvl]||0)-Number(start?.raids?.[lvl]||0)):sum,0)
 }
+// baseline pertence ao estágio atual, não à jornada inteira.
+function checkpoint(metrics,stage){
+  return {...metrics,__stage:stage}
+}
+async function normalizeAwakeningStage(c,jid,row,current){
+  const stage=Number(row.stage||0)
+  // Corrige jogadores que já despertaram na versão antiga. A migração acontece
+  // uma única vez, na próxima consulta, sem reduzir estágio ou atributos.
+  // Preserva progresso em Despertar I (stage 0) iniciado anteriormente.
+  if(stage>0&&Number(row.baseline?.__stage)!==stage){
+    const baseline=checkpoint(current,stage)
+    await c.query(`UPDATE player_awakenings
+      SET baseline=$2::jsonb,updated_at=${NOW} WHERE jid=$1`,
+      [jid,JSON.stringify(baseline)])
+    console.log('[Despertar] progresso de missões reiniciado após migração',JSON.stringify({stage}))
+    return {...row,baseline}
+  }
+  return row
+}
 function progress(row,u,counters){
   const stage=Number(row.stage||0),tier=AWAKENING_TIERS[stage]||null
   const classId=String(u.class_id||'warrior'),path=PATHS[classId]||PATHS.warrior
@@ -89,13 +108,16 @@ export async function getAwakeningStatus(jid){
   return tx(async c=>{
     const u=await getPlayer(c,jid)
     if(!u)throw new Error('Personagem não encontrado.')
+    // O lock evita aplicar a migração duas vezes quando o jogador consulta
+    // os mesmos requisitos em comandos simultâneos.
+    let row=(await c.query('SELECT * FROM player_awakenings WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const current=await getMetrics(c,jid)
-    let row=(await c.query('SELECT * FROM player_awakenings WHERE jid=$1',[jid])).rows[0]
     if(!row){
       await c.query(`INSERT INTO player_awakenings(jid,baseline) VALUES($1,$2::jsonb)
-        ON CONFLICT(jid) DO NOTHING`,[jid,JSON.stringify(current)])
-      row=(await c.query('SELECT * FROM player_awakenings WHERE jid=$1',[jid])).rows[0]
+        ON CONFLICT(jid) DO NOTHING`,[jid,JSON.stringify(checkpoint(current,0))])
+      row=(await c.query('SELECT * FROM player_awakenings WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     }
+    row=await normalizeAwakeningStage(c,jid,row,current)
     return progress(row,u,current)
   })
 }
@@ -104,9 +126,11 @@ export async function awakenCharacter(jid){
   return tx(async c=>{
     const u=await getPlayer(c,jid,true)
     if(!u)throw new Error('Personagem não encontrado.')
-    const row=(await c.query('SELECT * FROM player_awakenings WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    let row=(await c.query('SELECT * FROM player_awakenings WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(!row)throw new Error('Inicie suas missões com !despertar.')
-    const s=progress(row,u,await getMetrics(c,jid)),tier=s.tier
+    const current=await getMetrics(c,jid)
+    row=await normalizeAwakeningStage(c,jid,row,current)
+    const s=progress(row,u,current),tier=s.tier
     if(!tier)throw new Error('Despertar V já concluído; estágio máximo.')
     if(s.level<tier.level)throw new Error(`Despertar ${tier.roman} exige nível ${tier.level}.`)
     if(s.quests.some(q=>q.done<q.target))throw new Error('Missões pendentes: '+s.quests.filter(q=>q.done<q.target).map(q=>`${q.label}: ${q.done}/${q.target}`).join(' • '))
@@ -115,7 +139,11 @@ export async function awakenCharacter(jid){
     await c.query(`UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at=${NOW} WHERE jid=$3`,[payCash,tier.cost-payCash,jid])
     await c.query(`UPDATE stats SET max_hp=max_hp+$1,atk=atk+$2,def=def+$3,updated_at=${NOW}
       WHERE jid=$4`,[tier.hp,tier.atk,tier.def,jid])
-    await c.query(`UPDATE player_awakenings SET stage=$2,updated_at=${NOW} WHERE jid=$1`,[jid,tier.stage])
+    // Ao desbloquear o próximo Despertar, os contadores recomeçam em zero.
+    // Checkpoint e estágio na mesma transação das recompensas e do pagamento.
+    await c.query(`UPDATE player_awakenings
+      SET stage=$2,baseline=$3::jsonb,updated_at=${NOW} WHERE jid=$1`,
+      [jid,tier.stage,JSON.stringify(checkpoint(current,tier.stage))])
     await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'awakening',$2,'awakening',$3)`,[jid,tier.cost,`Despertar ${tier.roman} ${s.path}`])
     return {tier,path:s.path,className:s.className,balance:s.balance-tier.cost}
