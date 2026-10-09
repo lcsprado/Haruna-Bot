@@ -21,4 +21,4 @@ jobs:
           curl --silent --show-error --max-time 60 \
             -o /dev/null \
             -w "HTTP %{http_code}\n" \
-            https://haruna-bot-2fi0.onrender.com/health || true
+            https://alpha-bot-whatsapp.onrender.com/health || true
