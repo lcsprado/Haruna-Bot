@@ -195,5 +195,12 @@ export function classAttack({classId,applied=true,damage=0,critical=false,hp=1,m
     proc=true
     lastProcAttack=index
   }
-  return {damage:Math.max(1,n),heal:0,proc,lastProcAttack}
+  let heal=0
+  if(p.lifesteal&&index%p.lifestealInterval===0&&hp>0&&maxHp>0){
+    heal=Math.min(Math.ceil(maxHp*p.lifestealCap),Math.floor(n*p.lifesteal),Math.max(0,maxHp-hp))
+  }
+  if(p.regen&&index%p.regenInterval===0&&hp>0&&maxHp>0){
+    heal=Math.min(Math.floor(maxHp*p.regen),Math.max(0,maxHp-hp))
+  }
+  return {damage:Math.max(1,n),heal:Math.max(0,heal),proc,lastProcAttack}
 }
