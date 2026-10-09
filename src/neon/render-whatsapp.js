@@ -80,6 +80,18 @@ setTimeout(async()=>{
           'essencia_eclipse'])
       GROUP BY 1 ORDER BY total_paid DESC
     `)).rows
-    console.log('[RAID PRICE AUDIT]',JSON.stringify({items,sales}))
+    const byPlayer=(await db.query(`
+      SELECT COALESCE(u.push_name,'Jogador não identificado') AS player,
+        COUNT(*)::int AS sale_operations, SUM(t.amount)::bigint AS paid,
+        STRING_AGG(split_part(t.note,' ',1)||':'||t.amount::text, '; ' ORDER BY t.id) AS details
+      FROM transactions t LEFT JOIN users u ON u.jid=t.to_jid
+      WHERE t.type='sale' AND split_part(t.note,' ',1) = ANY(ARRAY[
+        'nucleo_pedra','escama_vulcanica','olho_abissal',
+        'nucleo_titan','essencia_rei_abissal','fragmento_celestial',
+        'nucleo_alpha_corrompido','fragmento_caos','coroa_abissal',
+        'essencia_eclipse'])
+      GROUP BY t.to_jid,u.push_name ORDER BY SUM(t.amount) DESC
+    `)).rows
+    console.log('[RAID PRICE AUDIT]',JSON.stringify({items,sales,byPlayer}))
   }catch(err){console.error('[RAID PRICE AUDIT FAILED]',err?.message||err)}
 },10000).unref?.()
