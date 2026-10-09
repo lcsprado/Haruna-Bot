@@ -99,7 +99,7 @@ function progress(row,u,counters){
     const done=Math.min(target,since(row.baseline,counters,type,raidMin))
     return {label:label+(type==='raid'?` (Lv.${raidMin}+)`:''),target,done}
   }):[]
-  return {stage,tier,className:getPlayerClass(classId).name,path:path.name,
+  return {stage,tier,classId,className:getPlayerClass(classId).name,path:path.name,
     level:Number(u.level),balance:Number(u.cash)+Number(u.bank),quests,
     ready:!!tier&&Number(u.level)>=tier.level&&quests.every(q=>q.done>=q.target)}
 }
