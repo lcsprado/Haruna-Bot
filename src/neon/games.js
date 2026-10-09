@@ -1632,6 +1632,84 @@ export async function compensateFrozenWeeklyBoss20261009(){
   })
 }
 
+/**
+ * Auditoria corretiva 09/10: a primeira repartição considerou indevidamente
+ * o timestamp de criação da trava de grupo como início real do combate.
+ * A vinculação tardia não comprova ausência de ataques nas horas anteriores.
+ *
+ * Redistribui o MESMO dano compensado entre os três jogadores informados,
+ * ponderando o dano médio real por ataque registrado (excluindo o crédito v1).
+ * Não altera o HP global nem emite novos drops, XP ou dinheiro.
+ */
+export async function rectifyFrozenWeeklyBossShare20261009(){
+  const marker='boss-auto-repair-20261009-share-v2'
+  const originalMarker='boss-auto-repair-20261009-0019-0245-v1'
+  const roles=[
+    {jid:'5511948523167@s.whatsapp.net',label:'~LP🍀☘️'},
+    {jid:'5511939089695@s.whatsapp.net',label:'Kaique Rodrigues'},
+    {jid:'5511987308687@s.whatsapp.net',label:'João Pedro'}
+  ]
+  return tx(async c=>{
+    const prior=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[marker])).rows[0]?.value
+    if(prior) return {status:'already',...prior}
+    const previous=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[originalMarker])).rows[0]?.value
+    if(previous?.status!=='applied'||Number(previous.amount)!==574542){
+      return {status:'skipped',reason:'crédito original não comprovado'}
+    }
+    const state=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
+    if(!state||state.mode!=='weekly'||state.weekendKey!=='2026-10-09'||Number(state.maxHp)!==5681920||Number(state.hp)<=0){
+      return {status:'skipped',reason:'Superboss original não está mais ativo; requer auditoria de recompensas'}
+    }
+    const credited=new Map((previous.allocations||[]).map(p=>[String(p.jid),Number(p.damage||0)]))
+    if(credited.size!==2
+      ||credited.get('5511939089695@s.whatsapp.net')!==169600
+      ||credited.get('5511987308687@s.whatsapp.net')!==404942){
+      return {status:'skipped',reason:'repartição anterior difere da auditoria'}
+    }
+    const candidates=[]
+    for(const role of roles){
+      const p=state.participants?.[role.jid]
+      if(!p||Number(p.attacks||0)<=0) return {status:'skipped',reason:'participante necessário não encontrado: '+role.label}
+      const old=Number(credited.get(role.jid)||0)
+      const recovered=Number(p.recoveredDamage||0)
+      const raw=Number(p.damage||0)-recovered
+      if(recovered<old||raw<=0) return {status:'skipped',reason:'histórico de dano inconclusivo: '+role.label}
+      candidates.push({...role,averageDamage:raw/Number(p.attacks),old,participant:p})
+    }
+    const weightTotal=candidates.reduce((sum,p)=>sum+p.averageDamage,0)
+    if(!(weightTotal>0)) return {status:'skipped',reason:'média inválida'}
+    const budget=574542
+    let remainder=budget
+    const allocations=candidates.map((p,i)=>{
+      const damage=i===candidates.length-1?remainder:Math.floor(budget*p.averageDamage/weightTotal)
+      remainder-=damage
+      return {...p,damage,delta:damage-p.old}
+    })
+    if(allocations.reduce((sum,p)=>sum+p.delta,0)!==0) throw new Error('redistribuição não conservou o dano total')
+    for(const item of allocations){
+      const p=item.participant
+      if(Number(p.damage||0)+item.delta<0||Number(p.recoveredDamage||0)+item.delta<0)
+        throw new Error('repartição produziria dano negativo')
+      p.damage=Number(p.damage||0)+item.delta
+      p.recoveredDamage=Number(p.recoveredDamage||0)+item.delta
+    }
+    const hpPreserved=Number(state.hp)
+    const record={
+      status:'corrected',bossKey:state.weekendKey,method:'dano médio por ataque de cada participante, sem usar timestamp tardio de claim',
+      budget,addedBossDamage:0,hpUnchanged:hpPreserved,correctedAt:Date.now(),
+      allocations:allocations.map(p=>({jid:p.jid,name:p.participant.name||p.label,
+        before:p.old,after:p.damage,delta:p.delta,averageDamage:Math.round(p.averageDamage*100)/100}))
+    }
+    await saveGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss',state)
+    await c.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[marker,JSON.stringify(record)])
+    console.log('[Boss Reallocation 09/10] confirmado',JSON.stringify({
+      budget,hpUnchanged:hpPreserved,
+      shares:record.allocations.map(p=>({name:p.name,before:p.before,after:p.after,delta:p.delta}))
+    }))
+    return record
+  })
+}
+
 export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
