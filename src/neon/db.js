@@ -396,6 +396,12 @@ export async function initDatabase() {
     ['excalibur','Excalibur','Arma lendária. +85 ATK e +2% crítico. Apenas por drop.','weapon',0,'legendary'],
     ['katana_divina','Katana Divina','Arma lendária raríssima. +95 ATK e +3% crítico. Apenas por drop.','weapon',0,'legendary'],
 
+    ['lamina_caos','Lâmina do Caos','Arma lendária de Raid. +102 ATK e +3.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+    ['machado_tita','Machado do Titã','Arma lendária de Raid. +110 ATK e +35 HP e +2.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+    ['foice_abismo','Foice do Abismo','Arma lendária de Raid. +118 ATK e +4% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+    ['espada_aurora','Espada da Aurora','Arma lendária de Raid. +125 ATK e +45 HP e +3.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+    ['exterminadora_eclipse','Exterminadora do Eclipse','Arma lendária de Raid. +135 ATK e +25 HP e +4.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+
     // Armaduras
     ['armadura_couro','Armadura de Couro','Proteção inicial. +5 DEF.','armor',2000,'common'],
     ['armadura_ferro','Armadura de Ferro','Proteção reforçada. +12 DEF.','armor',6500,'uncommon'],
@@ -416,6 +422,12 @@ export async function initDatabase() {
     ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF e +110 HP. Apenas por drop.','armor',0,'legendary'],
     ['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF, +140 HP e +1% crítico. Apenas por drop.','armor',0,'legendary'],
 
+    ['couraca_caos','Couraça do Caos','Armadura lendária de Raid. +103 DEF, +150 HP e +1% crítico. Exclusiva de drop.','armor',0,'legendary'],
+    ['armadura_tita_ancestral','Armadura Titânica Ancestral','Armadura lendária de Raid. +110 DEF, +170 HP e +1.5% crítico. Exclusiva de drop.','armor',0,'legendary'],
+    ['manto_abismo_eterno','Manto do Abismo Eterno','Armadura lendária de Raid. +117 DEF, +185 HP e +2% crítico. Exclusiva de drop.','armor',0,'legendary'],
+    ['armadura_aurora','Armadura da Aurora','Armadura lendária de Raid. +125 DEF, +205 HP e +1.5% crítico. Exclusiva de drop.','armor',0,'legendary'],
+    ['armadura_deus_eclipse','Armadura do Deus do Eclipse','Armadura lendária de Raid. +135 DEF, +230 HP e +2% crítico. Exclusiva de drop.','armor',0,'legendary'],
+
     // Botas — SPD é exclusivo deste slot
     ['bota_leve','Bota Leve','Bota básica de mobilidade. +2 SPD.','boots',8000,'common'],
     ['bota_vento','Bota do Vento','Bota incomum focada em iniciativa. +4 SPD.','boots',22000,'uncommon'],
@@ -435,6 +447,10 @@ export async function initDatabase() {
     ['chave_raid_40','Chave de Raid Lv.40','Abre uma Raid de nível 40. A chave só é consumida quando a luta começa.','special',100000,'epic'],
     ['chave_raid_50','Chave de Raid Lv.50','Abre uma Raid de nível 50. A chave só é consumida quando a luta começa.','special',160000,'legendary'],
 
+    ['chave_raid_60','Chave de Raid Lv.60','Abre a Raid Lv.60. Consumida ao iniciar.','special',230000,'legendary'],
+    ['chave_raid_65','Chave de Raid Lv.65','Abre a Raid Lv.65. Consumida ao iniciar.','special',300000,'legendary'],
+    ['chave_raid_70','Chave de Raid Lv.70','Abre a Raid Lv.70. Consumida ao iniciar.','special',390000,'legendary'],
+
     // Materiais específicos de Raid
     ['nucleo_pedra','Fragmento do Núcleo de Pedra','Fragmento conquistado na Raid Lv.10 e usado no altar lendário.','special',0,'uncommon'],
     ['escama_vulcanica','Escama Vulcânica','Material conquistado na Raid Lv.15.','special',0,'rare'],
@@ -443,6 +459,10 @@ export async function initDatabase() {
     ['essencia_rei_abissal','Essência do Rei Abissal','Material conquistado na Raid Lv.30.','special',0,'epic'],
     ['fragmento_celestial','Fragmento Celestial','Material conquistado na Raid Lv.40.','special',0,'epic'],
     ['nucleo_alpha_corrompido','Núcleo Alpha Corrompido','Material conquistado na Raid Lv.50.','special',0,'legendary'],
+
+    ['fragmento_caos','Fragmento do Caos','Material exclusivo da Raid Lv.60.','special',0,'legendary'],
+    ['coroa_abissal','Coroa Abissal','Material exclusivo da Raid Lv.65.','special',0,'legendary'],
+    ['essencia_eclipse','Essência do Eclipse','Material exclusivo da Raid Lv.70.','special',0,'legendary'],
 
     // Exclusivo de Boss de Evento
     ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
@@ -1978,6 +1998,11 @@ const EQUIPMENT = {
   lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, name:'Lâmina do Caçador' },
   espada_guardiao: { category:'weapon', atk:50, def:0, hp:25, crit:0, name:'Espada do Guardião' },
 
+  lamina_caos: { category:'weapon', atk:102, def:0, hp:0, crit:0.035, name:'Lâmina do Caos' },
+  machado_tita: { category:'weapon', atk:110, def:0, hp:35, crit:0.025, name:'Machado do Titã' },
+  foice_abismo: { category:'weapon', atk:118, def:0, hp:0, crit:0.04, name:'Foice do Abismo' },
+  espada_aurora: { category:'weapon', atk:125, def:0, hp:45, crit:0.035, name:'Espada da Aurora' },
+  exterminadora_eclipse: { category:'weapon', atk:135, def:0, hp:25, crit:0.045, name:'Exterminadora do Eclipse' },
   armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
   armadura_ferro: { category:'armor', atk:0, def:12, name:'Armadura de Ferro' },
   armadura_aco: { category:'armor', atk:0, def:20, name:'Armadura de Aço' },
@@ -2001,6 +2026,11 @@ const EQUIPMENT = {
   couraca_predador: { category:'armor', atk:0, def:38, hp:90, crit:.03, name:'Couraça do Predador' },
   armadura_colosso: { category:'armor', atk:0, def:52, hp:140, crit:.04, name:'Armadura do Colosso' },
 
+  couraca_caos: { category:'armor', atk:0, def:103, hp:150, crit:0.01, name:'Couraça do Caos' },
+  armadura_tita_ancestral: { category:'armor', atk:0, def:110, hp:170, crit:0.015, name:'Armadura Titânica Ancestral' },
+  manto_abismo_eterno: { category:'armor', atk:0, def:117, hp:185, crit:0.02, name:'Manto do Abismo Eterno' },
+  armadura_aurora: { category:'armor', atk:0, def:125, hp:205, crit:0.015, name:'Armadura da Aurora' },
+  armadura_deus_eclipse: { category:'armor', atk:0, def:135, hp:230, crit:0.02, name:'Armadura do Deus do Eclipse' },
   bota_leve: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:2, name:'Bota Leve' },
   bota_vento: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:4, name:'Bota do Vento' },
   bota_cacador: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:6, name:'Bota do Caçador' },
