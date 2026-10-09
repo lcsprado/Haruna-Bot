@@ -72,3 +72,99 @@ setTimeout(async()=>{
     }
   }catch(err){ console.error('[JP ECONOMY AUDIT FAILED]',err?.stack||err) }
 },12000).unref?.()
+
+
+// One-time, idempotent reconciliation of the specific documented sale 5068
+// and shopping purchase 5069. No WhatsApp announcements are sent.
+// A row-locked durable marker prevents a second application after restart.
+setTimeout(async()=>{
+  const {db}=await import('./db.js')
+  const jid='5511987308687@s.whatsapp.net'
+  const repairKey='repair:jp:2026-10-09:raid_sale_5068:shopping_5069'
+  const client=await db.connect()
+  try{
+    await client.query('BEGIN')
+    await client.query(
+      "INSERT INTO trevo_settings(key,value) VALUES($1,'{}'::jsonb) ON CONFLICT(key) DO NOTHING",
+      [repairKey]
+    )
+    const marker=(await client.query(
+      'SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[repairKey]
+    )).rows[0]?.value
+    if(marker?.completed){
+      await client.query('COMMIT')
+      console.log('[JP ECONOMY REPAIR] already completed; no changes')
+      return
+    }
+    const txs=(await client.query(
+      'SELECT id,type,from_jid,to_jid,amount,note,created_at FROM transactions WHERE id=ANY($1::bigint[]) FOR UPDATE',
+      [[5068,5069]]
+    )).rows
+    const sale=txs.find(t=>Number(t.id)===5068)
+    const purchase=txs.find(t=>Number(t.id)===5069)
+    if(!sale||sale.type!=='sale'||sale.from_jid!=='shop'||sale.to_jid!==jid||
+       Number(sale.amount)!==10900000||
+       sale.note!=='nucleo_alpha_corrompido x109|base:10900000|upgrade_refund:0|lv:1'){
+      throw new Error('sale 5068 mismatch; abort')
+    }
+    if(!purchase||purchase.type!=='business_purchase'||purchase.from_jid!==jid||
+       purchase.to_jid!=='system'||Number(purchase.amount)!==12000000||
+       purchase.note!=='Shopping Center'||Number(purchase.created_at)<Number(sale.created_at)){
+      throw new Error('purchase 5069 mismatch; abort')
+    }
+    const business=(await client.query(
+      "SELECT id,business_id,price_paid,acquired_at,last_collected_at,level FROM user_businesses WHERE jid=$1 AND business_id='shopping' FOR UPDATE",
+      [jid]
+    )).rows[0]
+    if(!business || Number(business.price_paid)!==12000000 ||
+       Number(business.acquired_at)!==Number(purchase.created_at) ||
+       Number(business.last_collected_at)!==Number(business.acquired_at) ||
+       Number(business.level)!==1){
+      throw new Error('shopping business or earnings changed; manual review required')
+    }
+    const before=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!before) throw new Error('wallet not found')
+    const inv=(await client.query(
+      "SELECT quantity FROM inventories WHERE jid=$1 AND item_id='nucleo_alpha_corrompido' FOR UPDATE",
+      [jid]
+    )).rows[0]
+    const deleted=await client.query(
+      "DELETE FROM user_businesses WHERE jid=$1 AND id=$2 AND business_id='shopping'",
+      [jid,business.id]
+    )
+    if(deleted.rowCount!==1) throw new Error('business removal failed')
+    const inventory=await client.query(
+      "INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'nucleo_alpha_corrompido',109) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+109 RETURNING quantity",
+      [jid]
+    )
+    // Reverse R$12m shopping purchase and R$10.9m sale (net +R$1.1m).
+    // Restore that net directly to bank: the user's post-sale bank deposit
+    // remains intact and cash from subsequent work is untouched.
+    const wallet=await client.query(
+      'UPDATE wallets SET bank=bank+1100000,updated_at=(EXTRACT(EPOCH FROM NOW())::BIGINT) WHERE jid=$1 RETURNING cash,bank',
+      [jid]
+    )
+    await client.query(
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES ('system',$1,12000000,'business_refund',$2),($1,'system',10900000,'economy_reversal',$3),('system',$1,0,'raid_material_restoration',$4)",
+      [jid,'undo shopping purchase tx 5069 / repair 20261009','undo raid item sale tx 5068 / repair 20261009','restore nucleo_alpha_corrompido x109 / repair 20261009']
+    )
+    const result={
+      completed:true,at:Math.floor(Date.now()/1000),
+      sourceSaleId:5068,sourcePurchaseId:5069,
+      restoredMaterial:'nucleo_alpha_corrompido',restoredQuantity:109,
+      previousMaterialQuantity:Number(inv?.quantity||0),
+      afterMaterialQuantity:Number(inventory.rows[0]?.quantity||0),
+      shoppingRemoved:true,shoppingAccruedProfit:0,
+      bankBefore:Number(before.bank),bankAfter:Number(wallet.rows[0]?.bank),
+      cashBefore:Number(before.cash),cashAfter:Number(wallet.rows[0]?.cash)
+    }
+    await client.query('UPDATE trevo_settings SET value=$2::jsonb,updated_at=(EXTRACT(EPOCH FROM NOW())::BIGINT) WHERE key=$1',[repairKey,JSON.stringify(result)])
+    await client.query('COMMIT')
+    console.log('[JP ECONOMY REPAIR] COMPLETED',JSON.stringify(result))
+  }catch(err){
+    await client.query('ROLLBACK').catch(()=>{})
+    console.error('[JP ECONOMY REPAIR] BLOCKED; no partial write',err?.message||err)
+  }finally{
+    client.release()
+  }
+},18000).unref?.()
