@@ -1612,6 +1612,33 @@ async function start() {
   const shareCorrection=await rectifyFrozenWeeklyBossShare20261009()
     .catch(err=>({status:'error',reason:String(err?.message||err)}))
   console.log('[Boss Share Correction] resultado',JSON.stringify(shareCorrection))
+  // Auditoria pontual somente leitura: taxas reais, ciclos e sessões,
+  // para examinar a alegação de que o primeiro atacante ficou sem contabilização.
+  if(Date.now()<Date.parse('2026-10-10T23:59:00-03:00')){
+    try{
+      const boss=(await db.query(
+        "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_weekly_boss__' AND game_type='boss'"
+      )).rows[0]?.state
+      if(boss?.weekendKey==='2026-10-09'){
+        const entries=Object.entries(boss.participants||{})
+        const audit=[]
+        for(const [jid,p] of entries){
+          const st=(await db.query('SELECT atk,def,hp,max_hp,class_id,class_applied,weapon_id,armor_id FROM stats WHERE jid=$1',[jid])).rows[0]
+          const claim=(await db.query('SELECT updated_at FROM trevo_settings WHERE key=$1',['weekly_boss_group:2026-10-09:'+jid])).rows[0]
+          const run=(await db.query('SELECT status,last_attack_at,ends_at,use_pet FROM boss_auto_sessions WHERE jid=$1',[jid])).rows[0]
+          const attacks=Number(p.attacks||0),estimated=Number(p.recoveredDamage||0),real=Number(p.damage||0)-estimated
+          audit.push({name:p.name,attacks,realDamage:real,creditedEstimated:estimated,
+            avgRealDamage:attacks?Math.round(100*real/attacks)/100:0,
+            atk:st?.atk,def:st?.def,hp:st?.hp,maxHp:st?.max_hp,classId:st?.class_id,
+            claimAt:claim?.updated_at?new Date(Number(claim.updated_at)*1000).toISOString():null,
+            lastHit:p.lastAttackAt?new Date(Number(p.lastAttackAt)).toISOString():null,
+            auto:run?.status||'absent',autoLast:run?.last_attack_at?new Date(Number(run.last_attack_at)).toISOString():null})
+        }
+        console.log('[Boss Fairness Audit]',JSON.stringify({capturedAt:new Date().toISOString(),
+          hp:boss.hp,maxHp:boss.maxHp,startedAt:boss.startedAt,players:audit}))
+      }
+    }catch(err){console.warn('[Boss Fairness Audit] unavailable',err?.message||err)}
+  }
   await initProgression()
   await initLoans()
   startLoanCollector()
