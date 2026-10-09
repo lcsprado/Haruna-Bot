@@ -2165,8 +2165,26 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
       const healthBar='█'.repeat(barFilled)+'░'.repeat(10-barFilled)
       const fmt=n=>Math.round(Number(n)||0).toLocaleString('pt-BR')
       const safeName=n=>String(n||'Jogador').replace(/[\r\n\t*_~`]/g,' ').trim().slice(0,50)||'Jogador'
+      // Recuperações de dano NÃO são ataques realmente registrados.
+      // Exibir os dois contadores separadamente evita dar a falsa impressão
+      // de que os 543 golpes reais do primeiro atacante foram a sessão toda.
+      const recoveredAttacks=new Map()
+      if(current.mode==='weekly'&&String(current.weekendKey)==='2026-10-09'){
+        const repairRow=(await db.query(
+          "SELECT value FROM trevo_settings WHERE key='boss-auto-repair-20261009-all-participants-v4'"
+        )).rows[0]?.value
+        if(repairRow?.status==='applied'){
+          for(const item of repairRow.allocations||[]){
+            recoveredAttacks.set(String(item.jid),Math.max(0,Number(item.expectedTicks||0)))
+          }
+        }
+      }
       const participants=Object.entries(current.participants||{})
-        .map(([jid,p])=>({jid,name:safeName(p?.name),damage:Math.max(0,Number(p?.damage||0))}))
+        .map(([jid,p])=>({
+          jid,name:safeName(p?.name),damage:Math.max(0,Number(p?.damage||0)),
+          realAttacks:Math.max(0,Number(p?.attacks||0)),
+          estimatedAttacks:recoveredAttacks.get(jid)||0
+        }))
         .filter(p=>p.damage>0)
         .sort((a,b)=>b.damage-a.damage)
       const totalRegistered=participants.reduce((sum,p)=>sum+p.damage,0)
@@ -2175,7 +2193,11 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
         const contribution=totalRegistered>0
           ?' ('+(p.damage/totalRegistered*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%)'
           :''
-        return medal+' *'+p.name+'* — '+fmt(p.damage)+' dano'+contribution
+        const estimated=p.estimatedAttacks>0
+          ?' + ~'+fmt(p.estimatedAttacks)+' estimados pela falha'
+          :''
+        return medal+' *'+p.name+'* — '+fmt(p.damage)+' dano'+contribution+
+          '\n   ⚔️ '+fmt(p.realAttacks)+' golpes registrados'+estimated
       }).join('\n'):'_Ainda não há dano registrado._'
       const extra=participants.length>10?'\n... e mais '+(participants.length-10)+' participantes.':''
       const brTime=new Intl.DateTimeFormat('pt-BR',{
@@ -2198,6 +2220,7 @@ Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 
 🏆 *RANKING DE DANO*
 ${ranking}${extra}
 
+📊 Golpes corrigidos são *estimativas*, separados dos ataques registrados.
 ⚔️ O combate continua automaticamente.
 🔎 Use *!boss* para consultar o HP quando quiser.`
       const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
@@ -2237,7 +2260,10 @@ ${ranking}${extra}
       console.log('[Boss 30m] boletim',JSON.stringify({
         boss:current.name,slot:new Date(windowStart).toISOString(),
         remainingHp:hp,maxHp,participants:participants.length,groupsSent:sent,
-        rankingTop:participants.slice(0,10).map(p=>({name:p.name,damage:p.damage}))
+        rankingTop:participants.slice(0,10).map(p=>({
+          name:p.name,damage:p.damage,realAttacks:p.realAttacks,
+          estimatedMissedAttacks:p.estimatedAttacks
+        }))
       }))
     }catch(err){
       console.error('[Boss 30m] falha no agendamento',err?.message||err)
