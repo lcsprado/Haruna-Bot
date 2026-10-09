@@ -148,3 +148,5 @@ export function petCombatSpecialty(species) {
     raid: Boolean(spec.raid)
   };
 }
+
+// Passivas de classe: implementação em avaliação.
