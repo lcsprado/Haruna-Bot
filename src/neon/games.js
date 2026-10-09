@@ -1503,47 +1503,67 @@ export async function deactivateBossEvent(chat){
   })
 }
 
+// O Boss semanal é único para todos os grupos. Migra o progresso já causado em
+// Bosses de grupo durante o fim de semana sem duplicar HP nem recompensas.
+const GLOBAL_WEEKLY_BOSS_CHAT='__alpha_global_weekly_boss__'
+async function loadWeeklyBoss(c,weekend,{create=false}={}){
+  const current=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
+  if(current?.weekendKey===weekend.weekendKey) return current
+  if(!create||!weekend.open) return null
+  const rows=(await c.query(`
+    SELECT chat_jid,state FROM trevo_games
+    WHERE game_type='boss' AND chat_jid<>$1
+      AND state->>'weekendKey'=$2
+      AND (state->>'mode'='weekly'
+           OR (state->>'mode' IS NULL AND COALESCE((state->>'maxHp')::numeric,0)>=25000))
+  `,[GLOBAL_WEEKLY_BOSS_CHAT,weekend.weekendKey])).rows
+  const bosses=rows.map(r=>r.state).filter(x=>Number(x.maxHp)>0)
+  const maxHp=bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):5000000+Math.floor(Math.random()*1500001)
+  const participants={}
+  let totalDamage=0
+  for(const boss of bosses){
+    totalDamage+=Math.max(0,Number(boss.maxHp)-Number(boss.hp))
+    for(const [jid,p] of Object.entries(boss.participants||{})){
+      const prev=participants[jid]
+      participants[jid]=prev?{
+        ...prev,damage:Number(prev.damage||0)+Number(p.damage||0),
+        attacks:Number(prev.attacks||0)+Number(p.attacks||0),
+        lastAttackAt:Math.max(Number(prev.lastAttackAt||0),Number(p.lastAttackAt||0)),
+        oilChecked:Boolean(prev.oilChecked||p.oilChecked),
+        oilActive:Boolean(prev.oilActive||p.oilActive)
+      }:{...p}
+    }
+  }
+  const state={
+    mode:'weekly',name:'Golem Ancestral do Alpha',
+    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:165,participants,
+    startedAt:bosses.length?Math.min(...bosses.map(x=>Number(x.startedAt||Date.now()))):Date.now(),
+    weekendKey:weekend.weekendKey,weeklyCompleted:bosses.some(x=>x.weeklyCompleted),
+    endsAt:weekend.endsAt,endsLabel:weekend.endsLabel
+  }
+  await saveGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss',state)
+  return state
+}
+
 export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
+    if(weekend.open){
+      const weekly=await loadWeeklyBoss(c,weekend,{create:true})
+      if(weekly) return {already:true,...weekly,endsLabel:weekend.endsLabel}
+    }
     const current=await loadGame(c,chat,'boss')
-    // Sessões criadas antes da separação semanal/comum não possuíam `mode`.
-    // Normalize-as sem apagar participantes, para que a conclusão semanal seja persistida.
-    if(current&&!current.mode&&Number(current.maxHp)>=25000&&current.weekendKey===weekend.weekendKey){
-      current.mode='weekly'; current.weeklyCompleted=false
-      await saveGame(c,chat,'boss',current)
-    }
-    // Um Superboss só pode existir uma vez por fim de semana. O marcador de conclusão
-    // permanece salvo mesmo depois que Bosses comuns forem iniciados.
-    const weeklyCompleted=Boolean(current?.weeklyCompleted&&current.weekendKey===weekend.weekendKey)
-    const weeklyAlreadyRan=Boolean(current?.weekendKey===weekend.weekendKey&&(
-      current?.weeklyCompleted||
-      (current?.mode==='weekly'&&Number(current.hp)<=0)||
-      (current?.mode==='completed'&&Number(current.maxHp)>=25000)
-    ))
-    if(weekend.open&&!weeklyAlreadyRan){
-      if(current?.mode==='weekly'&&current.weekendKey===weekend.weekendKey&&Number(current.hp)>0&&Number(current.endsAt||0)>Date.now()){
-        return {already:true,...current,endsLabel:weekend.endsLabel}
-      }
-      // Boss de sexta e sábado: resistência de evento de dois dias, superior às Raids.
-      // Não multiplica dinheiro ou drops: evita inflação da economia.
-      const maxHp=5000000+Math.floor(Math.random()*1500001)
-      const state={mode:'weekly',name:'Golem Ancestral do Alpha',hp:maxHp,maxHp,atk:165,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:false,endsAt:weekend.endsAt,endsLabel:weekend.endsLabel}
-      await saveGame(c,chat,'boss',state); return state
-    }
     if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
-    // Boss comum: no máximo 1 novo Boss por grupo a cada 2 horas após a derrota.
-    const commonCooldownMs=60*60*1000
     const lastCommonEndedAt=Number(current?.lastCommonEndedAt||0)
-    if(lastCommonEndedAt&&Date.now()-lastCommonEndedAt<commonCooldownMs){
-      const remaining=Math.ceil((commonCooldownMs-(Date.now()-lastCommonEndedAt))/60000)
-      return {cooldown:true,mode:'common',remainingMinutes:remaining,weeklyCompleted:Boolean(weeklyCompleted)}
+    if(lastCommonEndedAt&&Date.now()-lastCommonEndedAt<60*60*1000){
+      return {cooldown:true,mode:'common',remainingMinutes:Math.ceil((60*60*1000-(Date.now()-lastCommonEndedAt))/60000)}
     }
     const maxHp=9000+Math.floor(Math.random()*3001)
-    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:11,participants:{},startedAt:Date.now(),weekendKey:weekend.weekendKey,weeklyCompleted:Boolean(weeklyCompleted),lastCommonEndedAt}
-    await saveGame(c,chat,'boss',state); return state
+    const state={mode:'common',name:'Golem do Alpha',hp:maxHp,maxHp,atk:11,participants:{},startedAt:Date.now(),lastCommonEndedAt}
+    await saveGame(c,chat,'boss',state)
+    return state
   })
 }
 async function loadBossCombatPet(c,jid,slot=1){
@@ -1582,8 +1602,10 @@ export async function attackBoss(chat,jid,name,usePet=true){
     }
     const event=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     const eventActive=Boolean(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now()))
+    const weeklyActive=!eventActive&&weekend.open
     const gameType=eventActive?'boss_event':'boss'
-    const s=eventActive?event:await loadGame(c,chat,'boss')
+    const bossChat=weeklyActive?GLOBAL_WEEKLY_BOSS_CHAT:chat
+    const s=eventActive?event:(weeklyActive?await loadWeeklyBoss(c,weekend,{create:true}):await loadGame(c,chat,'boss'))
     if(!s||Number(s.hp)<=0) throw new Error('Não há Boss ativo. Use !boss para iniciar um.')
     if(gameType==='boss'&&!s.mode&&Number(s.maxHp)>=25000&&s.weekendKey===weekend.weekendKey){
       s.mode='weekly'; s.weeklyCompleted=false
@@ -1890,11 +1912,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
         await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
       }else{
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
-        await saveGame(c,chat,'boss',marker)
+        await saveGame(c,s.mode==='weekly'?GLOBAL_WEEKLY_BOSS_CHAT:chat,'boss',marker)
       }
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
-    await saveGame(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:chat,gameType,s)
+    await saveGame(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:bossChat,gameType,s)
     return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }
