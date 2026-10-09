@@ -5030,6 +5030,46 @@ export async function listPets(jid){
 }
 
 
+// Sacrifice is intentionally restricted to reserve pets. Rewards are modest
+// proxies for training effort; historical cash spent is not tracked per pet.
+export async function sacrificePet(jid,petId){
+  await ensureUser(jid)
+  petId=Number(petId)
+  if(!Number.isSafeInteger(petId)||petId<=0) throw new Error('Pet inválido.')
+  return transaction(async client=>{
+    const pet=(await client.query(
+      'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId]
+    )).rows[0]
+    if(!pet) throw new Error('Este pet não existe mais na sua coleção.')
+    if(pet.active) throw new Error('Troque o pet ativo antes de sacrificá-lo.')
+    const team=(await client.query(
+      'SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId]
+    )).rows[0]
+    if(team) throw new Error('Remova esse pet do time antes de sacrificá-lo.')
+    const trip=(await client.query(
+      'SELECT 1 FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=FALSE',[jid,petId]
+    )).rows[0]
+    if(trip) throw new Error('Espere a expedição terminar antes de sacrificá-lo.')
+    const level=Math.min(100,Math.max(1,Number(pet.level||1)))
+    const exp=Math.min(800,Math.floor(level*5+Math.max(0,Number(pet.xp||0))*.03))
+    const cash=Math.min(3700,200+35*level)
+    // Any reference from completed expeditions must be removed before the
+    // pet can be deleted; unresolved ones were blocked above.
+    await client.query('DELETE FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=TRUE',[jid,petId])
+    const deletion=await client.query(
+      'DELETE FROM pet_collection WHERE jid=$1 AND id=$2 AND active=FALSE RETURNING id',[jid,petId]
+    )
+    if(deletion.rowCount!==1) throw new Error('Sacrifício cancelado: pet não foi removido.')
+    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+    if(exp>0) await applyExp(client,jid,exp)
+    await client.query(
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'pet_sacrifice',$3)",
+      [jid,cash,`pet_id:${petId}|species:${pet.species}|level:${level}|exp:${exp}`]
+    )
+    return {name:pet.name,species:pet.species,level,exp,cash}
+  })
+}
+
 export async function getPetTeam(jid){
   await ensureUser(jid)
   const {rows}=await db.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot`,[jid])
