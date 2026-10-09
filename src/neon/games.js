@@ -745,10 +745,11 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       combatPet=reservePet
       reservePet=null
     }
+    const awakeningStage=Number((await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]?.stage||0)
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
       atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),
-      classId:st.class_id,classApplied:Boolean(st.class_applied),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
+      classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
       pet:combatPet,reservePet
     }}
     await saveGame(c,chat,gameType,s)
@@ -921,8 +922,10 @@ export async function startRaid(chat,host,level=null){
     const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id,st.helmet_id]).filter(Boolean))]
     const ups=eqIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,eqIds])).rows:[]
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
+    const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
     for(const jid of ids){
       const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
+      const awakeningStage=Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
@@ -941,7 +944,7 @@ export async function startRaid(chat,host,level=null){
       const teamSynergy=petTeamSynergy(teamPets)
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),classId:st.class_id,classApplied:Boolean(st.class_applied),crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied)),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0}
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
@@ -1149,8 +1152,9 @@ export async function raidRound(chat,level){
       const mult=(1+Number(pb.damage||0)+Number(teamSynergy.attack||0))*3
       const oilBonus=p.raidOilActive?Math.max(1,Math.floor(baseline*.06)):0
       const baseDmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1))+oilBonus)
-      const classHit=classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0})
+      const classHit=classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
       p.classLastProcAttack=classHit.lastProcAttack
+      p.awakeningState=classHit.awakeningState
       const dmg=classHit.damage
       if(classHit.heal>0) p.hp=Math.min(p.maxHp,p.hp+classHit.heal)
       const petExtra=p.pet?Math.max(0,baseDmg-baseline-oilBonus):0
@@ -1181,7 +1185,8 @@ export async function raidRound(chat,level){
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
       const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)))
-      const passiveDefense=classDefense({classId:p.classId,applied:p.classApplied,damage:hitDamage})
+      const passiveDefense=classDefense({classId:p.classId,applied:p.classApplied,damage:hitDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
       p.hp=Math.max(0,Number(p.hp)-dmg)
       let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
@@ -1907,6 +1912,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
     const existingParticipant=s.participants[jid]||{}
+    const awakeningStage=Number((await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]?.stage||0)
     const bossCadenceMs=gameType==='boss_event'?8000:10000
     const bossLastAttackAt=Number(existingParticipant.lastAttackAt||0)
     const bossNow=Date.now()
@@ -1969,7 +1975,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0))
     const baseCritChance=.10
     const roll=Math.random()
-    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance+classCritBonus(st.class_id,st.class_applied))
+    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance+classCritBonus(st.class_id,st.class_applied,awakeningStage,'boss'))
     const crit=roll<totalCritChance
     const petCrit=crit&&roll>=Math.min(totalCritChance,baseCritChance+gearCritChance)
     const gearCrit=crit&&!petCrit
@@ -1979,7 +1985,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const baselineWithGearCrit=Math.max(5,Math.floor(rawBase*(gearCrit?1.5:1)))
     const oilBonus=existingParticipant.oilActive?Math.max(1,Math.floor(baselineWithGearCrit*.06)):0
     const baseDamage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1))+oilBonus)
-    const passiveHit=classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0)})
+    const passiveHit=classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
     const damage=passiveHit.damage
     const petDamage=pet?Math.max(0,baseDamage-baselineWithGearCrit-oilBonus):0
     s.hp=Math.max(0,Number(s.hp)-damage)
@@ -1994,14 +2000,17 @@ export async function attackBoss(chat,jid,name,usePet=true){
       activePetSlot,
       lastAttackAt:bossNow,
       usePet:Boolean(usePet),
-      classLastProcAttack:passiveHit.lastProcAttack
+      classLastProcAttack:passiveHit.lastProcAttack,
+      awakeningState:passiveHit.awakeningState
     }
     let php=Math.min(Number(st.hp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,autoPetHeal=null,petSkillHeal=null
     if(s.hp>0){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossCritical=!dodged&&Math.random()<.05
       const bossRawDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)*(1-Number(teamSynergy.defense||0))*(bossCritical?1.5:1)))
-      bossDamage=classDefense({classId:st.class_id,applied:st.class_applied,damage:bossRawDamage}).damage
+      const defResult=classDefense({classId:st.class_id,applied:st.class_applied,damage:bossRawDamage,context:'boss',hp:php,maxHp:effectiveMaxHp,awakeningStage,awakeningState:s.participants[jid].awakeningState})
+      bossDamage=defResult.damage
+      s.participants[jid].awakeningState=defResult.awakeningState
       php=Math.max(0,php-bossDamage)
       if(pet){
         const petTaken=Math.max(1,Math.round(Number(s.atk||18)*(.30+Math.random()*.22)*(1-Math.min(.75,Number(petBonus.defense||0)))))
