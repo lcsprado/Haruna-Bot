@@ -1283,9 +1283,22 @@ export async function raidRound(chat,level){
   })
 }
 
-async function grantBossItem(c,jid,item){
+async function grantBossItem(c,jid,item,sourceKey=null){
   await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
     ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,item.id])
+  // Vincula apenas equipamentos de prêmio semanal ao ganhador;
+  // caixas, poções e materiais continuam utilizáveis/negociáveis.
+  if(sourceKey){
+    const metadata=(await c.query('SELECT category FROM items WHERE id=$1',[item.id])).rows[0]
+    if(['weapon','armor','helmet','boots'].includes(metadata?.category)){
+      await c.query(`
+        INSERT INTO bound_inventory_items(jid,item_id,source_key,quantity)
+        VALUES($1,$2,$3,1)
+        ON CONFLICT(jid,item_id,source_key)
+        DO UPDATE SET quantity=bound_inventory_items.quantity+1
+      `,[jid,item.id,sourceKey])
+    }
+  }
   return item
 }
 const RECLASS_SCROLL_DROP=Object.freeze({
@@ -1300,7 +1313,7 @@ async function maybeGrantReclassScroll(c,jid,mode){
   if(Math.random()>=chance) return null
   return grantBossItem(c,jid,RECLASS_SCROLL_DROP)
 }
-async function giveBossDrops(c,jid,position,extraChance=0){
+async function giveBossDrops(c,jid,position,extraChance=0,sourceKey=null){
   const tier=BOSS_PLACEMENT[position-1]||{cash:0,xp:0,box:null,bonusChance:.18,exclusiveChance:.02}
   const drops=[]
   // Top 5 recebe caixa garantida; demais continuam com 40% de chance de Caixa da Sorte.
@@ -1317,13 +1330,13 @@ async function giveBossDrops(c,jid,position,extraChance=0){
     const exclusive=Math.random()<.5
       ? {id:'armadura_golem',name:'Armadura do Golem Ancestral',rarity:'Lendário'}
       : {id:'martelo_golem',name:'Martelo do Golem Ancestral',rarity:'Lendário'}
-    drops.push(await grantBossItem(c,jid,exclusive))
+    drops.push(await grantBossItem(c,jid,exclusive,sourceKey))
   }
   if(Math.random()<tier.bonusChance+luck){
     const total=BOSS_BONUS_DROPS.reduce((sum,d)=>sum+d.weight,0)
     let roll=Math.random()*total,chosen=BOSS_BONUS_DROPS[0]
     for(const item of BOSS_BONUS_DROPS){roll-=item.weight;if(roll<=0){chosen=item;break}}
-    drops.push(await grantBossItem(c,jid,chosen))
+    drops.push(await grantBossItem(c,jid,chosen,sourceKey))
   }
   return drops
 }
@@ -2161,11 +2174,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
               : Math.max(5,Math.round(12+35*share))
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
-          drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
+          drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown')):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
         }
         // Prêmio exclusivo e garantido ao campeão do Boss semanal, sem sorteio.
         if(weekly&&position===1){
-          drops.push(await grantBossItem(c,p.jid,{id:'elmo_soberano_golem',name:'Elmo do Soberano Ancestral (+85 DEF / +220 HP)',rarity:'Lendário Exclusivo'}))
+          drops.push(await grantBossItem(c,p.jid,{id:'elmo_soberano_golem',name:'Elmo do Soberano Ancestral (+85 DEF / +220 HP)',rarity:'Lendário Exclusivo'},'weekly-boss:'+String(s.weekendKey||'unknown')))
         }
         // Reclassificação é recompensa de endgame: só entra no sorteio a partir do Nv.100.
         // Boss comum e Boss de evento: 1%. Superboss semanal: 3%.
