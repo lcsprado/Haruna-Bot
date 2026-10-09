@@ -1564,6 +1564,72 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
   return state
 }
 
+
+/**
+ * Reposição única, auditável e conservadora dos ataques perdidos após reinícios.
+ * 00:19 -> 02:45: Boss ficou no mesmo HP em duas capturas.
+ * O total é limitado pela cadência observada de 00:01 a 00:19 e
+ * repartido proporcionalmente ao dano médio por ataque dos 3 participantes.
+ * Não cria dinheiro, XP, itens, poções ou ataques fictícios nos logs.
+ */
+export async function compensateFrozenWeeklyBoss20261009(){
+  const marker='boss-auto-repair-20261009-0019-0245-v1'
+  return tx(async c=>{
+    const previous=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[marker])).rows[0]?.value
+    if(previous) return {status:'already',...previous}
+    const state=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
+    if(!state||state.mode!=='weekly'||state.weekendKey!=='2026-10-09'||Number(state.maxHp)!==5681920||Number(state.hp)<=0){
+      return {status:'skipped',reason:'boss semanal de 09/10/2026 indisponível ou diferente da captura'}
+    }
+    const startAt=Date.parse('2026-10-09T00:19:00-03:00')
+    const eligibleBy=Date.parse('2026-10-09T00:40:59-03:00')
+    const endAt=Date.parse('2026-10-09T02:45:00-03:00')
+    const maxBudget=Math.floor((5681920-5611086)*(146/18))
+    const candidates=[]
+    for(const [jid,p] of Object.entries(state.participants||{})){
+      if(Number(p.attacks||0)<=0||Number(p.damage||0)<=0) continue
+      const claimKey='weekly_boss_group:2026-10-09:'+jid
+      const claim=(await c.query('SELECT value,updated_at FROM trevo_settings WHERE key=$1',[claimKey])).rows[0]
+      const joinedAt=Number(claim?.updated_at||0)*1000
+      if(!claim?.value?.chat||joinedAt<=0||joinedAt>eligibleBy) continue
+      const missedMs=endAt-Math.max(startAt,joinedAt)
+      const missedAttacks=Math.max(0,Math.floor(missedMs/10000))
+      if(!missedAttacks) continue
+      candidates.push({jid,name:p.name||'Jogador',missedAttacks,
+        averageDamage:Number(p.damage)/Number(p.attacks),
+        weight:missedAttacks*Number(p.damage)/Number(p.attacks)})
+    }
+    // Nunca compensar jogadores que não possam ser identificados com segurança.
+    if(candidates.length!==3){
+      console.warn('[Boss Compensation] revisão necessária: participantes elegíveis=',candidates.length)
+      return {status:'skipped',reason:'esperados exatamente três participantes originais',found:candidates.length}
+    }
+    const totalWeight=candidates.reduce((sum,p)=>sum+p.weight,0)
+    if(!(totalWeight>0)) return {status:'skipped',reason:'sem dano médio confiável'}
+    // A compensação não deve disparar uma vitória artificial sem finalizar recompensas.
+    if(Number(state.hp)<=maxBudget){
+      return {status:'skipped',reason:'HP atual insuficiente para reposição sem finalizar prematuramente o Boss'}
+    }
+    let remainder=maxBudget
+    const allocations=candidates.map((p,i)=>{
+      const damage=i===candidates.length-1?remainder:Math.min(remainder,Math.floor(maxBudget*p.weight/totalWeight))
+      remainder-=damage
+      state.participants[p.jid].damage=Number(state.participants[p.jid].damage||0)+damage
+      state.participants[p.jid].recoveredDamage=Number(state.participants[p.jid].recoveredDamage||0)+damage
+      return {jid:p.jid,name:p.name,damage,missedAttacks:p.missedAttacks,averageDamage:Math.round(p.averageDamage)}
+    })
+    const hpBefore=Number(state.hp)
+    state.hp=hpBefore-maxBudget
+    const record={status:'applied',bossKey:state.weekendKey,hpBefore,hpAfter:state.hp,
+      amount:maxBudget,method:'00:01-00:19 HP delta / 18 min multiplied by 146 min, distributed by average attack damage and time active',
+      allocations,appliedAt:Date.now()}
+    await saveGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss',state)
+    await c.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[marker,JSON.stringify(record)])
+    console.log('[Boss Compensation] applied',JSON.stringify({amount:maxBudget,hpBefore,hpAfter:state.hp,participants:allocations.map(p=>({name:p.name,damage:p.damage}))}))
+    return record
+  })
+}
+
 export async function startBoss(chat){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
@@ -1740,6 +1806,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
       petHealing:Number(old.petHealing||0),
       activePetSlot,
       lastAttackAt:bossNow,
+      usePet:Boolean(usePet),
       classLastProcAttack:passiveHit.lastProcAttack
     }
     let php=Math.min(Number(st.hp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,autoPetHeal=null,petSkillHeal=null
