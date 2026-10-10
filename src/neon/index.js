@@ -7332,7 +7332,10 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         return true
       }
       const sleep=await startPlayerSleep(sender)
-      if(!sleep.started){
+      if(sleep.woke){
+        await reply('☀️ *DESCANSO CONCLUÍDO!*\n\n🏠 '+sleep.place+
+          '\n✨ +'+sleep.xp_reward+' XP\n🐾 HP e energia recuperados.\n\nUse *!dormir* para iniciar outro descanso.')
+      }else if(!sleep.started){
         await reply('😴 Você já está dormindo.\n⏳ Falta *'+duration(sleep.remaining)+'*.')
       }else{
         await reply('😴 *BOA NOITE!*\n\n🏠 '+sleep.place+
