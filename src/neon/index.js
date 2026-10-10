@@ -2651,6 +2651,30 @@ ${ranking}${extra}
     }
   }
 
+  let trickBoxesAnnouncing=false
+  async function announceTrickBoxes(){
+    if(trevoHealth.whatsapp!=='open'||trickBoxesAnnouncing)return
+    trickBoxesAnnouncing=true
+    try{
+      const event=(await db.query("SELECT value FROM trevo_settings WHERE key='trick_boxes_event'")).rows[0]?.value||{}
+      const now=Date.now(),start=Number(event.startsAt||0),end=Number(event.endsAt||0)
+      if(!start||!end)return
+      const key='trick_boxes_notice:'+String(event.eventId)
+      const notice=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value||{}
+      if(now>=start&&now<end&&!notice.started){
+        const endClock=new Date(end).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
+        await sendEventToGroups('🎭 *AZAR OU SORTE? — EVENTO PEGADINHA!* 🎭\\n\\n📦 Escolha uma caixa:\\n1️⃣ 🔵 Azul\\n2️⃣ 🔴 Vermelha\\n3️⃣ ⚫ Preta\\n\\n🍀 *30% de chance* de ganhar R$ 50.000!\\n💀 *70% de chance* de perder até R$ 30.000 da carteira!\\n⏳ Uma tentativa a cada 5 minutos.\\n🕒 Evento de 30 minutos — termina às *'+endClock+'*.\\n\\n🎲 Digite *!azarousorte 1*, *2* ou *3* para jogar.\\n⚠️ Dinheiro do jogo. O resultado é aleatório; nenhuma cor garante vitória.')
+        await db.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",[key,JSON.stringify({started:true})])
+      }else if(now>=end&&notice.started&&!notice.ended){
+        await sendEventToGroups('🎭 *AZAR OU SORTE ENCERRADO!*\\n\\n📦 As caixas pegadinha foram fechadas. Obrigado por participar!')
+        await db.query("UPDATE trevo_settings SET value=$2::jsonb WHERE key=$1",[key,JSON.stringify({started:true,ended:true})])
+      }
+    }catch(e){console.error('[TrickBoxes notice]',e?.message||e)}
+    finally{trickBoxesAnnouncing=false}
+  }
+  setInterval(announceTrickBoxes,5000).unref?.()
+  setTimeout(announceTrickBoxes,3000).unref?.()
+
   // Evento único: Hora do Corre — 06/10/2026 19:30–20:00 BRT.
   let cacadaCompAnnouncementRunning=false
   async function updateCacadaCompAnnouncement(){
