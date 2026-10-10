@@ -3042,7 +3042,7 @@ Você possui: *${stock}*
       '4️⃣ 👢 Botas — '+count('boots')+' tipos\n'+
       '5️⃣ 🧪 Consumíveis — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
       '6️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
-      '7️⃣ 📦 Outros — '+others.length+' tipos\n'+
+      '7️⃣ 🧩 Materiais de Raid / Outros — '+others.length+' tipos\n'+
       '8️⃣ 💰 Vender / descartar itens\n\n'+
       '0️⃣ Sair'
     )
@@ -6236,7 +6236,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           await reply('📦 Você não possui outros itens no momento.')
           return true
         }
-        let text='📦 *OUTROS ITENS*\n\n'
+        let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n🔒 Materiais protegidos não podem ser vendidos.\n\n'
         others.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
         text+='\n9️⃣ Voltar\n0️⃣ Sair'
         await reply(text)
