@@ -4511,8 +4511,10 @@ export async function wakePlayerEarly(jid){
   })
 }
 
-export async function startPlayerSleep(jid){
+export async function startPlayerSleep(jid,hours=1){
   await ensureUser(jid)
+  hours=Number(hours)
+  if(!SLEEP_CHOICES.includes(hours)) throw new Error('Escolha 1, 4 ou 8 horas de sono.')
   return transaction(async client=>{
     const now=Math.floor(Date.now()/1000)
     const carp=(await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -4520,13 +4522,19 @@ export async function startPlayerSleep(jid){
     const existing=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(existing&&Number(existing.ends_at)>now) return {active:true,...existing,remaining:Number(existing.ends_at)-now}
     if(existing){
-      const level=await applyExp(client,jid,Number(existing.xp_reward))
+      const reward=await awardSleepXp(client,jid,existing,Number(existing.ends_at))
       const petEnergy=await recoverPetEnergyFromSleep(client,jid,existing.started_at,existing.ends_at)
       await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-      return {active:false,woke:true,...existing,level,petEnergy}
+      return {active:false,woke:true,...existing,xp_reward:reward.xp,level:reward.level,petEnergy}
     }
     const home=(await client.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid])).rows[0]?.house_id
     const plan=SLEEP_PLACES[home]||SLEEP_PLACES.aluguel
+    const user=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
+    const base=sleepBaseExp(user?.level,plan)
+    const quota=await readSleepQuota(client,jid,now)
+    const sleepSeconds=hours*3600
+    const allowed=Math.min(sleepSeconds,Math.max(0,SLEEP_QUOTA_SECONDS-quota.usedSeconds))
+    const xp=Math.floor(base*allowed/SLEEP_QUOTA_SECONDS)
     if(plan.fee>0){
       const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
       const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
@@ -4536,10 +4544,11 @@ export async function startPlayerSleep(jid){
       await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
         VALUES($1,'system',$2,'sleep_rent','Aluguel para dormir')`,[jid,plan.fee])
     }
-    const endsAt=now+plan.seconds
-    await client.query(`INSERT INTO player_sleep(jid,place,started_at,ends_at,xp_reward,fee)
-      VALUES($1,$2,$3,$4,$5,$6)`,[jid,plan.label,now,endsAt,plan.xp,plan.fee])
-    return {active:true,place:plan.label,started_at:now,ends_at:endsAt,xp_reward:plan.xp,fee:plan.fee,remaining:plan.seconds,started:true}
+    const endsAt=now+sleepSeconds
+    await client.query(`INSERT INTO player_sleep(jid,place,started_at,ends_at,xp_reward,fee,xp_mode,xp_per_8h)
+      VALUES($1,$2,$3,$4,$5,$6,'scaled_v2',$7)`,[jid,plan.label,now,endsAt,xp,plan.fee,base])
+    return {active:true,place:plan.label,started_at:now,ends_at:endsAt,xp_reward:xp,
+      fee:plan.fee,remaining:sleepSeconds,hours,started:true}
   })
 }
 
