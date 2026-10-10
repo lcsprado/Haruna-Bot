@@ -8553,13 +8553,30 @@ Escolha quanto tempo vai trabalhar:
         // Assim ele funciona também no privado e não é engolido por um quick flow/configuração.
         if(['dormir','sono'].includes(cmd)){
           if(sleep?.woke) continue
-          const r=await startPlayerSleep(sender)
-          if(!r.started){
-            await reply(`😴 Você já está dormindo em *${r.place}*.\n⏳ Tempo restante: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*`)
+          if(sleep?.active){
+            await reply('😴 Você já está dormindo em *'+sleep.place+'*.\n⏳ Falta *'+duration(sleep.remaining)+'*.')
             continue
           }
-          clearQuickFlow(chat,sender)
-          await reply(`😴 *BOA NOITE!*\n\n🏠 Local: *${r.place}*\n⏳ Duração: *${duration(r.remaining)}*\n✨ Ao acordar: *+${r.xp_reward} XP*\n❤️ Você: *+1 HP por minuto dormido*\n🐾 Pet: *+1 HP e +1 energia por minuto dormido*${r.fee?`\n💰 Aluguel pago: *R$ ${fmt(r.fee)}*`:''}\n\n🛡️ Durante o sono você não pode ser roubado nem atacado, e tentativas contra você não gastam o cooldown do outro jogador.`)
+          const hours=Number(args[0]||0)
+          if(hours&&![1,4,8].includes(hours)){
+            await reply('😴 Durações disponíveis: *1, 4 ou 8 horas*. Use *!dormir* para escolher pelo menu.')
+            continue
+          }
+          if(!hours){
+            const options=await getSleepOptions(sender)
+            setQuickFlow(chat,sender,'sleep_select',{},90000)
+            await reply(sleepOptionMessage(options))
+            continue
+          }
+          const r=await startPlayerSleep(sender,hours)
+          if(r.woke){
+            await reply('☀️ *VOCÊ ACORDOU!*\n\n✨ +'+fmt(r.xp_reward)+' XP. Use *!dormir* novamente para descansar.')
+          }else if(!r.started){
+            await reply('😴 Você já está dormindo em *'+r.place+'*.\n⏳ Falta *'+duration(r.remaining)+'*.')
+          }else{
+            clearQuickFlow(chat,sender)
+            await reply(sleepStartedMessage(r))
+          }
           continue
         }
 
