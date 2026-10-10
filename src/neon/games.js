@@ -1489,6 +1489,56 @@ export async function autoStartSiegeBossEvent(chat,now=new Date()){
   })
 }
 
+// Boss global de 01h: top 3 recebe valor FIXO, mesmo quando o tempo termina.
+const INICIO_MADRUGADA_ID='inicio_madrugada_20261010_0100'
+const INICIO_MADRUGADA_START=Date.parse('2026-10-10T01:00:00-03:00')
+const INICIO_MADRUGADA_END=Date.parse('2026-10-10T01:30:00-03:00')
+const INICIO_MADRUGADA_PRIZES=[1000000,500000,200000]
+const INICIO_MADRUGADA_MIN_DAMAGE=1000
+
+async function settleInicioMadrugada(c,s,defeated){
+  const ranked=Object.entries(s.participants||{}).map(([jid,p])=>({
+    jid,name:p.name||'Jogador',damage:Math.max(0,Number(p.damage||0))
+  })).filter(p=>p.damage>=INICIO_MADRUGADA_MIN_DAMAGE).sort((a,b)=>b.damage-a.damage)
+  const rewards=[]
+  for(let i=0;i<ranked.length;i++){
+    const p=ranked[i],cash=INICIO_MADRUGADA_PRIZES[i]||0
+    // Não pagar dinheiro fora do Top 3; não conceder EXP ao personagem.
+    if(cash)await credit(c,p.jid,cash,'boss_event_inicio_madrugada_20261010')
+    const petXp=Math.round(220+Math.min(1600,p.damage/80))
+    const petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
+    rewards.push({...p,position:i+1,cash,exp:0,petXp,petXpTeam,drops:[]})
+  }
+  const marker={...s,mode:defeated?'event_completed':'event_stopped',active:false,
+    hp:defeated?0:Number(s.hp||0),completedAt:Date.now(),participants:{},
+    result:{bossName:s.name,maxHp:s.maxHp,defeated,rewards}}
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
+  return {due:true,ended:true,stopped:!defeated,...marker,rewards}
+}
+
+export async function autoStartInicioMadrugada(chat,now=new Date()){
+  const ts=now.getTime()
+  if(ts<INICIO_MADRUGADA_START)return {due:false}
+  return tx(async c=>{
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+    if(ts>=INICIO_MADRUGADA_END){
+      if(current?.eventId===INICIO_MADRUGADA_ID&&current.active!==false&&Number(current.hp)>0)
+        return settleInicioMadrugada(c,current,false)
+      return {due:false,ended:true}
+    }
+    if(current?.eventId===INICIO_MADRUGADA_ID)return {due:true,alreadyRun:true}
+    if(current&&current.active!==false&&Number(current.hp)>0&&(!current.endsAt||Number(current.endsAt)>ts))
+      return {due:true,blocked:true,boss:current.name}
+    const maxHp=90000
+    const state={mode:'event',eventId:INICIO_MADRUGADA_ID,active:true,origin:'scheduled',
+      scheduleKey:INICIO_MADRUGADA_ID,name:'Vigia do Primeiro Breu',hp:maxHp,maxHp,atk:120,
+      participants:{},startedAt:ts,endsAt:INICIO_MADRUGADA_END,
+      minDamage:INICIO_MADRUGADA_MIN_DAMAGE}
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
+    return {due:true,spawned:true,...state}
+  })
+}
+
 const NIGHT_EVENT_START=Date.parse('2026-10-10T04:04:00-03:00')
 const NIGHT_EVENT_END=Date.parse('2026-10-10T04:34:00-03:00')
 const NIGHT_EVENT_KEY='madrugada-maldita-2026-10-10-0404'
@@ -2201,6 +2251,14 @@ export async function attackBoss(chat,jid,name,usePet=true){
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[php,jid])
+    }
+    if(s.hp<=0&&s.eventId===INICIO_MADRUGADA_ID){
+      const result=await settleInicioMadrugada(c,s,true)
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,phaseChanged,
+        playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
+        autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,
+        petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
+        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     if(s.hp<=0&&ruptura){
       const result=await premiarRupturaEstelar(c,s,chat,'defeated')
