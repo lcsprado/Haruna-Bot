@@ -4368,12 +4368,45 @@ export async function clearGroupWarnings(chatJid,jid){
 }
 
 const SLEEP_PLACES={
-  kitnet:{label:'Kitnet',seconds:30*60,xp:30,fee:0},
-  casa:{label:'Casa',seconds:60*60,xp:65,fee:0},
-  sobrado:{label:'Sobrado',seconds:2*60*60,xp:140,fee:0},
-  mansao:{label:'Mansão',seconds:4*60*60,xp:300,fee:0},
-  cobertura:{label:'Cobertura',seconds:8*60*60,xp:650,fee:0},
-  aluguel:{label:'Quarto alugado',seconds:15*60,xp:15,fee:1000}
+  kitnet:{label:'Kitnet',pct:3,fee:0},
+  casa:{label:'Casa',pct:5,fee:0},
+  sobrado:{label:'Sobrado',pct:7,fee:0},
+  mansao:{label:'Mansão',pct:9,fee:0},
+  cobertura:{label:'Cobertura',pct:12,fee:0},
+  aluguel:{label:'Quarto alugado',pct:1,fee:1000}
+}
+const SLEEP_CHOICES=[1,4,8]
+const SLEEP_QUOTA_SECONDS=8*3600
+const SLEEP_QUOTA_WINDOW_SECONDS=24*3600
+const sleepQuotaKey=jid=>'sleep_xp_v2:'+jid
+function effectiveSleepQuota(value,now){
+  const t=Number(value?.windowStartedAt||0)
+  const valid=t>0&&now>=t&&now-t<SLEEP_QUOTA_WINDOW_SECONDS
+  return {windowStartedAt:valid?t:now,usedSeconds:valid?Math.max(0,Math.min(SLEEP_QUOTA_SECONDS,Number(value?.usedSeconds||0))):0}
+}
+async function readSleepQuota(queryable,jid,now,lock=false){
+  const key=sleepQuotaKey(jid)
+  if(lock) await queryable.query("INSERT INTO trevo_settings(key,value) VALUES($1,'{}'::jsonb) ON CONFLICT(key) DO NOTHING",[key])
+  const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1'+(lock?' FOR UPDATE':''),[key])).rows[0]
+  return {key,...effectiveSleepQuota(row?.value,now)}
+}
+function sleepBaseExp(level,plan){
+  const lv=Math.min(MAX_LEVEL,Math.max(1,Number(level)||1))
+  return lv>=MAX_LEVEL?0:Math.floor(expNeeded(lv)*plan.pct/100)
+}
+export async function getSleepOptions(jid){
+  await ensureUser(jid)
+  const now=Math.floor(Date.now()/1000)
+  const [h,u,q]=await Promise.all([
+    db.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid]),
+    db.query('SELECT level FROM users WHERE jid=$1',[jid]),
+    readSleepQuota(db,jid,now)
+  ])
+  const plan=SLEEP_PLACES[h.rows[0]?.house_id]||SLEEP_PLACES.aluguel
+  const fullXp=sleepBaseExp(u.rows[0]?.level,plan)
+  const available=Math.max(0,SLEEP_QUOTA_SECONDS-q.usedSeconds)
+  return {place:plan.label,pct:plan.pct,fee:plan.fee,availableSeconds:available,
+    options:SLEEP_CHOICES.map(hours=>({hours,exp:Math.floor(fullXp*Math.min(hours*3600,available)/SLEEP_QUOTA_SECONDS)}))}
 }
 
 async function recoverPetEnergyFromSleep(client,jid,startedAt,endedAt){
