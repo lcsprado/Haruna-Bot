@@ -612,7 +612,7 @@ export async function trainAtHome(jid){
     if(!house) throw new Error('Você precisa ter uma casa para treinar. Use !casas.')
     const cooldown=await claimCooldown(c,homeActivityKey(jid,'training'),HOME_ACTIVITY_COOLDOWN_SECONDS)
     if(!cooldown.ok) return {ok:false,remaining:cooldown.remaining,house}
-    const level=await grantExpInTransaction(c,jid,house.trainingXp,{ignoreXpBoost:true})
+    const level=await grantExpInTransaction(c,jid,house.trainingXp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
     return {ok:true,house,exp:Number(level.awardedGain??house.trainingXp),baseExp:house.trainingXp,level:level.level,levels:level.levels}
   })
 }
@@ -642,12 +642,15 @@ export async function restTeamPetsAtHome(jid){
         skipped.push({name:pet.name,reason:'em expedição'})
         continue
       }
-      const maxHp=Math.max(1,Number(pet.max_hp||0),petMaxHp(pet.level,pet.xp,pet.species))
+      const beforeHp=Math.max(0,Number(pet.hp||0))
+      const beforeEnergy=Math.max(0,Number(pet.energy||0))
+      const maxHp=Math.max(1,beforeHp,Number(pet.max_hp||0),petMaxHp(pet.level,pet.xp,pet.species))
       const maxEnergy=petMaxEnergy(pet.level,pet.species)
-      const hp=Math.min(maxHp,Math.max(0,Number(pet.hp||0))+Math.ceil(maxHp*house.petRestPercent/100))
-      const energy=Math.min(maxEnergy,Math.max(0,Number(pet.energy||0))+Math.ceil(maxEnergy*house.petRestPercent/100))
-      const gainedHp=hp-Math.max(0,Number(pet.hp||0))
-      const gainedEnergy=energy-Math.max(0,Number(pet.energy||0))
+      // Valores legados acima do limite não podem ser reduzidos por uma cura.
+      const hp=beforeHp>=maxHp?beforeHp:Math.min(maxHp,beforeHp+Math.ceil(maxHp*house.petRestPercent/100))
+      const energy=beforeEnergy>=maxEnergy?beforeEnergy:Math.min(maxEnergy,beforeEnergy+Math.ceil(maxEnergy*house.petRestPercent/100))
+      const gainedHp=hp-beforeHp
+      const gainedEnergy=energy-beforeEnergy
       if(gainedHp<=0&&gainedEnergy<=0){
         skipped.push({name:pet.name,reason:'HP e energia completos'})
         continue
