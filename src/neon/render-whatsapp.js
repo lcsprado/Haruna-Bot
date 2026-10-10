@@ -49,10 +49,3 @@ setTimeout(async()=>{
 
 
 
-setTimeout(async()=>{
- try{
- const {db}=await import('./db.js')
- const {rows}=await db.query("SELECT l.*,u.push_name AS borrower_name FROM player_loans l LEFT JOIN users u ON u.jid=l.borrower_jid WHERE l.lender_jid=$1 ORDER BY l.created_at DESC LIMIT 25",['5511948523167@s.whatsapp.net'])
- console.log('[LOAN AUDIT]',JSON.stringify(rows))
- }catch(e){console.error('[LOAN AUDIT FAILED]',e.message)}
-},8500).unref?.()
