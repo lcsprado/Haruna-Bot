@@ -27,7 +27,7 @@ import {
   openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
-  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
+  resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, getSleepOptions, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
   adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
@@ -66,6 +66,33 @@ import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
+
+function sleepOptionMessage(options){
+  const fmtXp=x=>Math.floor(Number(x)||0).toLocaleString('pt-BR')
+  const labels={1:'💤 Cochilo',4:'🌙 Descanso',8:'🛏️ Sono completo'}
+  let msg='😴 *ESCOLHA QUANTO TEMPO DORMIR*\n\n🏠 '+options.place+
+    '\n✨ Bônus da moradia: '+options.pct+'% do XP necessário para o próximo nível em 8h\n\n'
+  for(const row of options.options){
+    msg+=row.hours===1?'1️⃣ ':row.hours===4?'2️⃣ ':'3️⃣ '
+    msg+=labels[row.hours]+' — '+row.hours+'h • +'+fmtXp(row.exp)+' XP\n'
+  }
+  msg+='\n❤️ +1 HP/min • 🐾 +1 HP e energia/min'
+  msg+='\n🛡️ Proteção de roubo/ataque durante o sono'
+  if(options.fee) msg+='\n💰 Quarto alugado: R$ '+fmtXp(options.fee)+' por descanso'
+  if(options.availableSeconds<8*3600)msg+='\n⚖️ Limite de XP: '+Math.floor(options.availableSeconds/3600)+'h remuneradas restantes na janela de 24h.'
+  msg+='\n\n👉 Responda *1, 2 ou 3* para iniciar.\n0️⃣ Cancelar'
+  return msg
+}
+function sleepStartedMessage(r){
+  return '😴 *BOA NOITE!*\n\n🏠 Local: *'+r.place+
+    '*\n⏳ Duração: *'+(r.hours||Math.round(Number(r.remaining||0)/3600))+'h*'+
+    '\n✨ Ao acordar: *+'+Math.floor(Number(r.xp_reward||0)).toLocaleString('pt-BR')+' XP*'+
+    '\n❤️ Você: *+1 HP por minuto dormido*'+
+    '\n🐾 Pet: *+1 HP e +1 energia por minuto dormido*'+
+    (r.fee?'\n💰 Aluguel pago: *R$ '+Number(r.fee).toLocaleString('pt-BR')+'*':'')+
+    '\n\n🛡️ Durante o sono você não pode ser roubado nem atacado.'
+}
+
 const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
 // WhatsApp identity is environment-driven. Changing the bot phone must never require a code change.
 // IMPORTANT: when changing PAIRING_NUMBER, also change SESSION_ID so Baileys creates a fresh auth session.
