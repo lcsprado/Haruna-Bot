@@ -16,6 +16,7 @@ export function getPlayerClass(id){
 }
 
 export const PET_STATUS_SPECIALTIES = {
+  morcego_madrugada:{label:'🦇 Coringa da Madrugada',stats:{crit:6,dodge:5},raid:true},
   cachorro:{label:'🐶 Guardião',stat:'defense',base:5},
   gato:{label:'🐱 Instinto',stat:'crit',base:4},
   coelho:{label:'🐰 Agilidade',stat:'dodge',base:4},
