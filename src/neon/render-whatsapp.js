@@ -72,3 +72,23 @@ setTimeout(async()=>{
     }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
   }catch(e){console.error('[KATANA JP REPAIR] failed',e?.stack||e)}
 },12000).unref?.()
+
+setTimeout(async()=>{
+  try{
+    const {db}=await import('./db.js')
+    const marker='event:lucky_box:2026-10-09:15min_2x_manual'
+    const c=await db.connect()
+    try{
+      await c.query('BEGIN')
+      await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[marker])
+      const existing=await c.query('SELECT value FROM trevo_settings WHERE key=$1',[marker])
+      if(existing.rowCount){console.log('[LUCKY 2X EVENT] already scheduled',JSON.stringify(existing.rows[0].value));await c.query('COMMIT');return}
+      const now=Date.now()
+      const state={startsAt:now,endsAt:now+15*60*1000,multiplier:2,activatedBy:'owner',eventId:marker}
+      await c.query("INSERT INTO trevo_settings(key,value,updated_at) VALUES('lucky_box_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at",[JSON.stringify(state)])
+      await c.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)",[marker,JSON.stringify(state)])
+      await c.query('COMMIT')
+      console.log('[LUCKY 2X EVENT] active',JSON.stringify(state))
+    }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
+  }catch(e){console.error('[LUCKY 2X EVENT] failed',e?.stack||e)}
+},17000).unref?.()
