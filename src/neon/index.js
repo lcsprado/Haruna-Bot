@@ -2880,11 +2880,11 @@ ${moneyLine}✨ XP: *${xpMult}x*
         await sendEventToGroups(
 `🍀🍀 *DOUBLE LUCKY COMEÇOU!* 🍀🍀
 
-🎁 Durante *10 minutos*, ao abrir caixas:
-✨ chances de raridade: *2X*
+🎁 Durante *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*, ao abrir caixas:
+✨ chances de raridade: *${Number(raw.multiplier||2)}X*
 
 📦 Vale para Caixa da Sorte, Caixa Rara e Caixa Épica.
-⏱️ Termina às *21:40*.
+⏱️ Termina às *${new Date(endsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})}*.
 🛡️ Proteção de pico: *3s entre ações por jogador*; aberturas simultâneas são escalonadas.`
         )
         raw.startAnnouncementId=eventId
