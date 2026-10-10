@@ -40,7 +40,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartSiegeBossEvent,
+  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent,
   getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -2621,6 +2621,39 @@ ${ranking}${extra}
       await sock.sendMessage(lic.chat_jid,{text}).catch(err=>console.error('[Eventos] aviso',lic.chat_jid,err?.message||err))
     }
   }
+
+  // Anúncio único antecipado e início do Boss global à 01:00 de 10/10 (BRT).
+  // Dispara sem depender de mensagem nos grupos. Avisos idempotentes persistidos.
+  let inicioMadrugadaBusy=false
+  setInterval(async()=>{
+    if(inicioMadrugadaBusy||trevoHealth.whatsapp!=='open')return
+    inicioMadrugadaBusy=true
+    try{
+      const start=Date.parse('2026-10-10T01:00:00-03:00')
+      const end=Date.parse('2026-10-10T01:30:00-03:00')
+      const now=Date.now()
+      if(now>=Date.parse('2026-10-09T22:00:00-03:00')&&now<start){
+        const key='scheduled_global_notice:inicio_madrugada_preview_20261010'
+        const claim=await db.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING RETURNING key",[key,JSON.stringify({sentAt:now})])
+        if(claim.rowCount)await sendEventToGroups('🌑 *O INÍCIO DA MADRUGADA* 🌑\\n\\n⏰ HOJE À *01:00* (Brasília) — batalha de 30 minutos!\\n👹 *Vigia do Primeiro Breu* • ❤️ 90.000 HP • ⚔️ ATK 120\\n💊 Preparem poções: este Boss bate forte!\\n\\n💰 *PRÊMIOS GARANTIDOS POR DANO:*\\n🥇 Top 1: *R$ 1.000.000*\\n🥈 Top 2: *R$ 500.000*\\n🥉 Top 3: *R$ 200.000*\\n🐾 EXP somente para pets. 🚫 EXP do personagem: ZERO.\\n✅ Ranking pago também se o Boss sobreviver.\\n🌐 Boss e ranking globais. Mínimo de 1.000 dano para concorrer.\\n⚔️ Use !boss e !atacar ao começar!')
+      }
+      if(now>=start&&now<end){
+        const r=await autoStartInicioMadrugada('__alpha_global_boss_event__')
+        if(r?.spawned){
+          await sendEventToGroups('🌑⚔️ *O INÍCIO DA MADRUGADA COMEÇOU!*\\n\\n👹 Vigia do Primeiro Breu • ❤️ 90.000 HP • ⚔️ ATK 120\\n⏰ Até 01:30 (Brasília)\\n🥇 R$ 1.000.000 • 🥈 R$ 500.000 • 🥉 R$ 200.000\\n🐾 Apenas EXP para pets — EXP do jogador: 0\\n💊 Prepare suas poções! Use *!atacar*.')
+        }
+      }
+      if(now>=end&&now<end+24*60*60*1000){
+        const r=await autoStartInicioMadrugada('__alpha_global_boss_event__')
+        if(r?.stopped){
+          const rankings=(r.rewards||[]).slice(0,3).map(p=>
+            (p.position===1?'🥇':p.position===2?'🥈':'🥉')+' '+String(p.name).replace(/[\\r\\n*_~]/g,' ')+' — '+p.damage.toLocaleString('pt-BR')+' dano • R$ '+p.cash.toLocaleString('pt-BR')).join('\\n')
+          await sendEventToGroups('🌑 *O INÍCIO DA MADRUGADA TERMINOU!*\\n\\n'+(rankings||'Nenhum jogador atingiu o mínimo de dano.')+'\\n🐾 EXP de pet creditada. 🚫 Nenhuma EXP ao jogador.')
+        }
+      }
+    }catch(err){console.error('[INICIO MADRUGADA] scheduler',err?.stack||err)}
+    finally{inicioMadrugadaBusy=false}
+  },5000).unref?.()
 
   // Scheduler independente de mensagens recebidas: dispara às 04:04 mesmo com os grupos silenciosos.
   let night0404TickerBusy=false
