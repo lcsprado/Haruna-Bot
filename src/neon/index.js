@@ -8283,6 +8283,51 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         const ownerTarget=mentionsOf(msg)[0] || sender
         await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
 
+        if(cmd==='azarousorte' || cmd==='caixapegadinha'){
+          const pick=String(args[0]||'').toLowerCase()
+          const choices={'1':'🔵 Azul','2':'🔴 Vermelha','3':'⚫ Preta','azul':'🔵 Azul','vermelha':'🔴 Vermelha','preta':'⚫ Preta'}
+          const event=(await db.query("SELECT value FROM trevo_settings WHERE key='trick_boxes_event'")).rows[0]?.value||{}
+          const now=Date.now()
+          if(!(Number(event.startsAt||0)<=now && now<Number(event.endsAt||0))){
+            await reply('🎭 *AZAR OU SORTE?* O evento não está ativo.')
+            continue
+          }
+          if(!choices[pick]){
+            await reply('🎭 *AZAR OU SORTE?*\\n\\nEscolha uma caixa:\\n1️⃣ 🔵 Azul\\n2️⃣ 🔴 Vermelha\\n3️⃣ ⚫ Preta\\n\\n🎁 30% de chance de ganhar *R$ 50.000*\\n💸 70% de chance de perder até *R$ 30.000* da carteira.\\n⏳ Uma jogada a cada 5 minutos.\\n\\nUse *!azarousorte 1*, *2* ou *3*.')
+            continue
+          }
+          const client=await db.connect()
+          let outcome
+          try{
+            await client.query('BEGIN')
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['trick_box:'+sender])
+            const live=(await client.query("SELECT value FROM trevo_settings WHERE key='trick_boxes_event'")).rows[0]?.value||{}
+            const time=Date.now()
+            if(time<Number(live.startsAt||0)||time>=Number(live.endsAt||0)){outcome={error:'⏱️ O evento acabou.'}}
+            else{
+              const key='trick_box_play:'+String(live.eventId)+':'+sender
+              const last=(await client.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value||{}
+              const wait=300000-(time-Number(last.playedAt||0))
+              if(wait>0) outcome={error:'⏳ Aguarde '+Math.ceil(wait/60000)+' minuto(s) para jogar novamente.'}
+              else{
+                const win=Math.random()<0.30
+                const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[sender])
+                const balance=Number(wallet.rows[0]?.cash||0)
+                const delta=win?50000:-Math.min(30000,Math.max(0,balance))
+                const updated=await client.query('UPDATE wallets SET cash=cash+$2,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 RETURNING cash',[sender,delta])
+                await client.query('INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,$3,$4,$5)',[win?'system':sender,win?sender:'system',Math.abs(delta),'trick_boxes',String(live.eventId)+'|'+pick+'|'+(win?'win':'lose')])
+                await client.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT",[key,JSON.stringify({playedAt:time})])
+                outcome={win,delta,balance:Number(updated.rows[0]?.cash||0)}
+              }
+            }
+            await client.query('COMMIT')
+          }catch(err){await client.query('ROLLBACK');console.error('[TrickBoxes]',err);outcome={error:'⚠️ Não foi possível processar a caixa. Tente novamente.'}}
+          finally{client.release()}
+          if(outcome.error) await reply(outcome.error)
+          else await reply('🎭 *AZAR OU SORTE?*\\n📦 Você abriu a caixa *'+choices[pick]+'*!\\n\\n'+(outcome.win?'🍀 *SORTE! Você encontrou R$ 50.000!*':'💀 *AZAR! A caixa era uma armadilha!*\\n💸 Perdeu *R$ '+Math.abs(outcome.delta).toLocaleString('pt-BR')+'*')+'\\n💰 Carteira: *R$ '+outcome.balance.toLocaleString('pt-BR')+'*\\n⏳ Próxima tentativa em 5 minutos.')
+          continue
+        }
+
         if(cmd==='sacrificar'){
           try{
             const position=Number(args[0])
