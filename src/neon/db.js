@@ -4444,6 +4444,25 @@ async function recoverPetEnergyFromSleep(client,jid,startedAt,endedAt){
   return {gained,current,max,petHpGained,petHp,petMaxHp:petMax,playerHpGained,playerHp,playerMaxHp}
 }
 
+async function awardSleepXp(client,jid,row,endedAt){
+  const duration=Math.max(1,Number(row.ends_at)-Number(row.started_at))
+  const actual=Math.max(0,Math.min(duration,Number(endedAt)-Number(row.started_at)))
+  if(row.xp_mode!=='scaled_v2'){
+    const xp=Math.floor(Number(row.xp_reward||0)*actual/duration)
+    return {xp,level:xp>0?await applyExp(client,jid,xp):null}
+  }
+  const now=Math.floor(Date.now()/1000)
+  const q=await readSleepQuota(client,jid,now,true)
+  const eligible=Math.min(actual,Math.max(0,SLEEP_QUOTA_SECONDS-q.usedSeconds))
+  const xp=Math.floor(Math.max(0,Number(row.xp_per_8h||0))*eligible/SLEEP_QUOTA_SECONDS)
+  const level=xp>0?await applyExp(client,jid,xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true}):null
+  if(eligible>0){
+    await client.query('UPDATE trevo_settings SET value=$2::jsonb,updated_at='+nowSql+' WHERE key=$1',
+      [q.key,JSON.stringify({windowStartedAt:q.windowStartedAt,usedSeconds:q.usedSeconds+eligible})])
+  }
+  return {xp,level}
+}
+
 export async function resolvePlayerSleep(jid){
   return transaction(async client=>{
     const row=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
