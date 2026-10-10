@@ -2655,14 +2655,19 @@ ${ranking}${extra}
     finally{inicioMadrugadaBusy=false}
   },5000).unref?.()
 
-  // Scheduler independente de mensagens recebidas: dispara às 04:04 mesmo com os grupos silenciosos.
+  // Scheduler independente de mensagens: inicia o Boss e anuncia nos grupos às 04:04.
   let night0404TickerBusy=false
   setInterval(async()=>{
     if(night0404TickerBusy) return
     night0404TickerBusy=true
     try{
       const result=await autoStartNightBossEvent('__alpha_global_boss_event__')
-      if(result?.spawned) console.log('[NIGHT 04:04] evento iniciado automaticamente',result.eventId)
+      if(result?.spawned){
+        console.log('[NIGHT 04:04] evento iniciado automaticamente',result.eventId)
+        if(trevoHealth.whatsapp==='open'){
+          await sendEventToGroups('🌑💀 *MADRUGADA MALDITA COMEÇOU!*\\n\\n⏰ *04:04 às 04:34* (Brasília)\\n👹 *Madrugada Maldita*\\n❤️ HP global: *350.000* • ⚔️ ATK: *24*\\n\\n👢 *BOTA LENDÁRIA GARANTIDA* para cada jogador com 25.000 ou mais de dano, mesmo se o Boss sobreviver.\\n🦇 *MORCEGO EXCLUSIVO* ao Top 1 somente se o Boss for derrotado.\\n💰 Dinheiro e EXP proporcionais ao dano.\\n🌐 Mesmo Boss em todos os grupos.\\n\\n⚔️ *!boss* e *!atacar* para participar!')
+        }
+      }
       if(result?.stopped) console.log('[NIGHT 04:04] boss resistiu; apenas dinheiro/XP creditados',JSON.stringify(result.result?.rewards||[]))
     }catch(err){console.error('[NIGHT 04:04] agendamento',err?.message||err)}
     finally{night0404TickerBusy=false}
