@@ -2311,7 +2311,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
         }
         // Reclassificação é recompensa de endgame: só entra no sorteio a partir do Nv.100.
         // Boss comum e Boss de evento: 1%. Superboss semanal: 3%.
-        const reclassDrop=await maybeGrantReclassScroll(c,p.jid,weekly?'weekly':(eventMode?'event':'common'))
+        const reclassDrop=s.eventId===NIGHT_EVENT_ID?null:await maybeGrantReclassScroll(c,p.jid,weekly?'weekly':(eventMode?'event':'common'))
         if(reclassDrop) drops.push(reclassDrop)
         rewards.push({...p,position,cash,exp,petXp,petXpTeam,drops,share,pet:pp?{name:pp.name,species:pp.species,bonus:pb.label}:null})
       }
