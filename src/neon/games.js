@@ -1489,36 +1489,53 @@ export async function autoStartSiegeBossEvent(chat,now=new Date()){
   })
 }
 
-const NIGHT_EVENT_START=Date.parse('2026-10-04T03:00:00-03:00')
-const NIGHT_EVENT_END=Date.parse('2026-10-04T03:30:00-03:00')
-const NIGHT_EVENT_KEY='night-0303-2026-10-04'
+const NIGHT_EVENT_START=Date.parse('2026-10-10T04:04:00-03:00')
+const NIGHT_EVENT_END=Date.parse('2026-10-10T04:34:00-03:00')
+const NIGHT_EVENT_KEY='madrugada-maldita-2026-10-10-0404'
+const NIGHT_EVENT_ID='night_0404_20261010'
+const NIGHT_EVENT_MIN_DAMAGE=25000
 
 async function createNightBossEventState(c,chat){
-  const maxHp=36000+Math.floor(Math.random()*6001)
-  const state={mode:'event',eventId:'night_0303',active:true,origin:'scheduled',scheduleKey:NIGHT_EVENT_KEY,name:'Sentinela das 03:03',hp:maxHp,maxHp,atk:20,participants:{},startedAt:Date.now(),endsAt:NIGHT_EVENT_END}
+  const maxHp=350000
+  const state={mode:'event',eventId:NIGHT_EVENT_ID,active:true,origin:'scheduled',scheduleKey:NIGHT_EVENT_KEY,name:'Sentinela da Madrugada',hp:maxHp,maxHp,atk:24,participants:{},startedAt:Date.now(),endsAt:NIGHT_EVENT_END,minDamage:NIGHT_EVENT_MIN_DAMAGE}
   await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
   return state
 }
 
+// Finalização transacional: se o boss resistir, apenas moedas e XP proporcionais;
+// nenhuma bota nem morcego poderá ser entregue.
+async function settleUnbeatenNightBoss(c,state){
+  const entries=Object.entries(state.participants||{}).map(([jid,p])=>({jid,name:p.name||'Jogador',damage:Number(p.damage||0)})).filter(x=>x.damage>0).sort((a,b)=>b.damage-a.damage)
+  const total=entries.reduce((sum,p)=>sum+p.damage,0)||1
+  const rewards=[]
+  for(let i=0;i<entries.length;i++){
+    const p=entries[i],share=p.damage/total
+    const cash=Math.round(1500+35000*share)
+    const exp=Math.round(150+2400*share)
+    await credit(c,p.jid,cash,'boss_event_night_0404_survived')
+    await grantExpInTransaction(c,p.jid,exp,{chatJid:state.originChat||null})
+    rewards.push({...p,position:i+1,cash,exp,petXp:0,petXpTeam:[],drops:[]})
+  }
+  const marker={...state,active:false,mode:'event_stopped',stoppedAt:Date.now(),participants:{},
+    result:{bossName:state.name,maxHp:state.maxHp,defeated:false,rewards}}
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
+  return {due:false,ended:true,stopped:true,...marker}
+}
+
 export async function autoStartNightBossEvent(chat,now=new Date()){
   const ts=now.getTime()
+  if(ts<NIGHT_EVENT_START)return {due:false}
   return tx(async c=>{
     const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(ts>=NIGHT_EVENT_END){
-      if(current?.eventId==='night_0303'&&current.active!==false&&Number(current.hp)>0){
-        current.active=false;current.mode='event_stopped';current.stoppedAt=Date.now()
-        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',current)
-        return {due:false,ended:true,stopped:true,...current}
-      }
+      if(current?.eventId===NIGHT_EVENT_ID&&current.active!==false&&Number(current.hp)>0)
+        return settleUnbeatenNightBoss(c,current)
       return {due:false,ended:true}
     }
-    if(ts<NIGHT_EVENT_START) return {due:false}
-    if(current&&current.active!==false&&Number(current.hp)>0){
-      if(current.eventId==='night_0303') return {due:true,already:true,...current}
-      return {due:true,blocked:true}
-    }
-    if(current?.scheduleKey===NIGHT_EVENT_KEY) return {due:true,alreadyRun:true,...current}
+    if(current?.scheduleKey===NIGHT_EVENT_KEY)return {due:true,alreadyRun:true}
+    if(current&&current.active!==false&&Number(current.hp)>0)return {due:true,blocked:true}
     const state=await createNightBossEventState(c,chat)
+    console.log('[NIGHT 04:04] boss ativado',JSON.stringify({eventId:state.eventId,maxHp:state.maxHp,endsAt:state.endsAt}))
     return {due:true,spawned:true,...state}
   })
 }
@@ -2214,18 +2231,32 @@ export async function attackBoss(chat,jid,name,usePet=true){
         let cash=0,exp=0,petXp=0,petXpTeam=[],drops=[]
         if(eventMode){
           const night=s.eventId==='night_0303'
+          const night0404=s.eventId===NIGHT_EVENT_ID
           const siege=s.eventId==='cerco_colosso'
           const positionXp=[900,600,350,200,100][i]||50
           const localMult=night?2:1
-          cash=siege?Math.round(3000+25000*share):Math.round((5000+Math.floor(80000*share))*moneyMultiplier*localMult)
-          exp=siege?Math.round(Math.floor((700+3500*share+positionXp)*(1+pb.xp))):Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
-          await credit(c,p.jid,cash,siege?'boss_event_cerco':(night?'boss_event_night_0303':'boss_event_eclipse'))
+          cash=night0404?Math.round(2500+60000*share):siege?Math.round(3000+25000*share):Math.round((5000+Math.floor(80000*share))*moneyMultiplier*localMult)
+          exp=night0404?Math.round((450+4500*share)*(1+pb.xp)):siege?Math.round(Math.floor((700+3500*share+positionXp)*(1+pb.xp))):Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
+          await credit(c,p.jid,cash,siege?'boss_event_cerco':(night?'boss_event_night_0303':night0404?'boss_event_night_0404':'boss_event_eclipse'))
           await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
           if(pp){
-            petXp=siege?Math.round(180+700*share+(i===0?180:i===1?90:0)):Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
+            petXp=night0404?Math.round(100+500*share):siege?Math.round(180+700*share+(i===0?180:i===1?90:0)):Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
-          if(siege){
+          if(night0404){
+            // Derrota do Boss é condição obrigatória; esta seção roda apenas em HP zero.
+            // Qualquer participante com 25 mil ou mais recebe 1 bota, independentemente do ranking.
+            if(p.damage>=NIGHT_EVENT_MIN_DAMAGE){
+              drops.push(await grantBossItem(c,p.jid,{id:'bota_celestial',name:'Bota Celestial Lendária (+10 VEL)',rarity:'Lendário'}))
+              if(i===0){
+                const bat=await c.query(`INSERT INTO pet_collection
+                  (jid,species,name,level,xp,hunger,hygiene,energy,power,hp,max_hp,active)
+                  VALUES($1,'morcego_madrugada','🦇 Morcego da Madrugada',1,0,100,100,100,160,160,160,FALSE)
+                  RETURNING id`,[p.jid])
+                drops.push({id:'morcego_madrugada',name:'🦇 Morcego da Madrugada — Coringa (+6% CRIT / +5% esquiva) (Pet #'+bat.rows[0].id+')',rarity:'Evento Único'})
+              }
+            }
+          }else if(siege){
             if(p.damage>=1500 && Math.random()<.35){
               drops.push(await grantBossItem(c,p.jid,{id:'colete_vital',name:'Colete Vital (+18 DEF / +60 HP)',rarity:'Raro'}))
             }
