@@ -2304,39 +2304,10 @@ Durante 30 minutos, XP de pet será dobrado em atividades relacionadas a eles:
 Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
           }
 
-          const night=await autoStartNightBossEvent(chat)
-          if(night?.spawned){
-            await sock.sendMessage(chat,{text:
-`🌑 *MADRUGADA MALDITA — 03:03*
+          // Evento secreto às 04:04: nenhum anúncio automático antes ou durante o Boss.
+          await autoStartNightBossEvent(chat)
 
-👹 *${night.name}*
-❤️ HP: *${Number(night.maxHp).toLocaleString('pt-BR')}*
-⚔️ ATK: *${night.atk}*
-⏱️ Disponível até *03:30*.
-
-🎁 *CAIXA ÉPICA GARANTIDA* com pelo menos 500 de dano
-🌙 Título permanente: *Insone do Alpha*
-🧩 +2 Fragmentos do Núcleo de Pedra
-💰 *2x dinheiro*
-✨ *2x XP*
-🐾 *2x XP de pet*
-👥 Com *3+ participantes* acima de 500 de dano: *25% de chance de Caixa Rara extra* para cada um
-👑 Top 1 leva a *Coroa da Madrugada* — *+20 ATK / +50 DEF*
-
-⚔️ Usem *${prefix}boss* e depois *${prefix}atacar*.
-😈 Quem dormir perde.`
-            })
-          }else if(night?.stopped){
-            await sock.sendMessage(chat,{text:
-`🌘 *03:30 — A MADRUGADA ACABOU*
-
-A *Sentinela das 03:03* desapareceu.
-Quem participou ficou marcado. Quem dormiu... só amanhã saberá o que perdeu. 😈`
-            })
-          }
-
-
-          const horaRuptura=Date.parse('2026-10-09T20:00:00-03:00')
+                    const horaRuptura=Date.parse('2026-10-09T20:00:00-03:00')
           if(now>=horaRuptura-600000&&now<horaRuptura){
             await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-preview',
               '🌌 *RUPTURA ESTELAR ÀS 20H!*\n\n👹 Nharok, o Devorador de Mundos\n' +
@@ -2650,6 +2621,19 @@ ${ranking}${extra}
       await sock.sendMessage(lic.chat_jid,{text}).catch(err=>console.error('[Eventos] aviso',lic.chat_jid,err?.message||err))
     }
   }
+
+  // Scheduler independente de mensagens recebidas: dispara às 04:04 mesmo com os grupos silenciosos.
+  let night0404TickerBusy=false
+  setInterval(async()=>{
+    if(night0404TickerBusy) return
+    night0404TickerBusy=true
+    try{
+      const result=await autoStartNightBossEvent('__alpha_global_boss_event__')
+      if(result?.spawned) console.log('[NIGHT 04:04] evento iniciado automaticamente',result.eventId)
+      if(result?.stopped) console.log('[NIGHT 04:04] boss resistiu; apenas dinheiro/XP creditados',JSON.stringify(result.result?.rewards||[]))
+    }catch(err){console.error('[NIGHT 04:04] agendamento',err?.message||err)}
+    finally{night0404TickerBusy=false}
+  },5000).unref?.()
 
   let trickBoxesAnnouncing=false
   let trickBoxReminderLastScan=0
