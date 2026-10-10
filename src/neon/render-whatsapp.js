@@ -92,3 +92,24 @@ setTimeout(async()=>{
     }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
   }catch(e){console.error('[LUCKY 2X EVENT] failed',e?.stack||e)}
 },17000).unref?.()
+
+setTimeout(async()=>{
+ try{
+  const {db}=await import('./db.js')
+  const eventId='trick_boxes_2026_10_09_2204'
+  const c=await db.connect()
+  try{
+   await c.query('BEGIN')
+   await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[eventId])
+   const previous=await c.query('SELECT value FROM trevo_settings WHERE key=$1',[eventId])
+   if(!previous.rowCount){
+    const startsAt=Date.now(),endsAt=startsAt+30*60*1000
+    const state={eventId,startsAt,endsAt,winChance:0.3,winAmount:50000,loseAmount:30000,cooldownMs:300000}
+    await c.query("INSERT INTO trevo_settings(key,value,updated_at) VALUES('trick_boxes_event',$1::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at",[JSON.stringify(state)])
+    await c.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[eventId,JSON.stringify(state)])
+    console.log('[TRICK BOXES EVENT] active',JSON.stringify(state))
+   }else console.log('[TRICK BOXES EVENT] already started',JSON.stringify(previous.rows[0].value))
+   await c.query('COMMIT')
+  }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
+ }catch(e){console.error('[TRICK BOXES EVENT] failed',e?.stack||e)}
+},21000).unref?.()
