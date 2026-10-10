@@ -2030,8 +2030,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
       s.mode='weekly'; s.weeklyCompleted=false
     }
     if(gameType==='boss'&&s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
-    // Vinculação persistente: impede trocar de grupo mesmo durante eventos globais.
-    if(weekend.open){
+    // Vinculação semanal só vale para o Superboss semanal. Um evento global
+    // tem sua própria chave e nunca deve herdar o vínculo de outro Boss.
+    if(weekend.open && gameType==='boss' && s.mode==='weekly'){
       const initialClaimKey='weekly_boss_group:'+weekend.weekendKey+':'+jid
       const initialClaim=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[initialClaimKey])).rows[0]?.value
       if(initialClaim?.chat&&initialClaim.chat!==chat){
