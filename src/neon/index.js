@@ -7321,6 +7321,24 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       return true
     }
 
+    if(flow.stage==='sleep_select'){
+      const selected={'1':1,'2':4,'3':8}[input]
+      if(!selected){
+        await reply('😴 Escolha *1* (1 hora), *2* (4 horas), *3* (8 horas) ou *0* para cancelar.')
+        return true
+      }
+      const result=await startPlayerSleep(sender,selected)
+      clearQuickFlow(chat,sender)
+      if(result.woke){
+        await reply('☀️ *VOCÊ ACORDOU!*\n\n✨ +'+fmt(result.xp_reward)+' XP.\nUse *!dormir* novamente para escolher outro período.')
+      }else if(!result.started){
+        await reply('😴 Você já está dormindo em *'+result.place+'*.\n⏳ Faltam *'+duration(result.remaining)+'*.')
+      }else{
+        await reply(sleepStartedMessage(result))
+      }
+      return true
+    }
+
     if(flow.stage==='home_menu'){
       if(input==='0'){
         clearQuickFlow(chat,sender)
@@ -7358,20 +7376,9 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         }
         return true
       }
-      const sleep=await startPlayerSleep(sender)
-      if(sleep.woke){
-        await reply('☀️ *DESCANSO CONCLUÍDO!*\n\n🏠 '+sleep.place+
-          '\n✨ +'+sleep.xp_reward+' XP\n🐾 HP e energia recuperados.\n\nUse *!dormir* para iniciar outro descanso.')
-      }else if(!sleep.started){
-        await reply('😴 Você já está dormindo.\n⏳ Falta *'+duration(sleep.remaining)+'*.')
-      }else{
-        await reply('😴 *BOA NOITE!*\n\n🏠 '+sleep.place+
-          '\n⏳ Duração: '+duration(sleep.remaining)+
-          '\n✨ Ao acordar: +'+sleep.xp_reward+' XP'+
-          '\n❤️ Você: +1 HP por minuto dormido'+
-          '\n🐾 Pet: +1 HP e +1 energia por minuto dormido'+
-          '\n🛡️ Protegido de roubos e ataques durante o sono.')
-      }
+      const options=await getSleepOptions(sender)
+      setQuickFlow(chat,sender,'sleep_select',{},90000)
+      await reply(sleepOptionMessage(options))
       return true
     }
 
