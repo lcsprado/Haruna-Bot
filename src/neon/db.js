@@ -4889,16 +4889,26 @@ const PET_TEAM_STYLE_BONUS={
   predador:{styleLabel:'🐾 Predador',label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
   mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
 }
+// O Morcego da Madrugada ocupa a categoria dos outros dois pets.
+function resolveBatTeamStyles(species){
+  const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
+  const batIndex=species.indexOf('morcego_madrugada')
+  if(batIndex<0) return styles
+  const others=styles.filter((_,i)=>i!==batIndex)
+  if(others.length!==2||!others[0]||others[0]!==others[1])return styles
+  styles[batIndex]=others[0]
+  return styles
+}
 export function petStyleLabel(species){
-  const style=PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
-  return PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
+  const style=String(species||'')==='morcego_madrugada'?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+  return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
 export function petTeamSynergy(pets=[]){
   const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
   if(team.length!==3) return null
   const species=team.map(p=>String(p.species||''))
   if(new Set(species).size!==3) return null
-  const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
+  const styles=resolveBatTeamStyles(species)
   if(!styles[0]||!styles.every(x=>x===styles[0])) return null
   const bonus=PET_TEAM_STYLE_BONUS[styles[0]]
   return bonus?{style:styles[0],...bonus}:null
