@@ -5,11 +5,8 @@ import { getPlayerClass } from './game-catalog.js'
 // Valores pactuados I–V. Nenhuma passiva ou dano é alterado nesta etapa.
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
 export const AWAKENING_TIERS=[
-  {stage:1,roman:'I',level:30,cost:25000,hp:10,atk:2,def:2,mult:1},
-  {stage:2,roman:'II',level:60,cost:100000,hp:15,atk:3,def:3,mult:3},
-  {stage:3,roman:'III',level:100,cost:250000,hp:20,atk:4,def:4,mult:6},
-  {stage:4,roman:'IV',level:150,cost:600000,hp:30,atk:6,def:6,mult:10},
-  {stage:5,roman:'V',level:200,cost:1200000,hp:45,atk:9,def:9,mult:15}
+  {stage:2,roman:'II',level:150,cost:600000,hp:30,atk:6,def:6,mult:10},
+  {stage:3,roman:'III',level:200,cost:1200000,hp:45,atk:9,def:9,mult:20}
 ]
 const PATHS={
   warrior:{name:'Vanguarda de Ferro',quests:[['raid',2,10,'Vencer Raids de vanguarda'],['pvp',2,0,'Vencer duelos de honra']]},
@@ -38,12 +35,21 @@ async function tx(fn){
 export async function initAwakening(){
   await db.query(`CREATE TABLE IF NOT EXISTS player_awakenings(
     jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-    stage INTEGER NOT NULL DEFAULT 0 CHECK(stage BETWEEN 0 AND 5),
+    stage INTEGER NOT NULL DEFAULT 1 CHECK(stage BETWEEN 0 AND 5),
     baseline JSONB NOT NULL DEFAULT '{}'::jsonb,
     started_at BIGINT NOT NULL DEFAULT (${NOW}),
     updated_at BIGINT NOT NULL DEFAULT (${NOW})
   )`)
-  console.log('[Despertar] níveis 30/60/100/150/200 prontos, passivas preservadas')
+  await tx(async c=>{
+    await c.query(`CREATE TABLE IF NOT EXISTS awakening_migrations(id TEXT PRIMARY KEY)`)
+    const migration=await c.query(`INSERT INTO awakening_migrations(id) VALUES('three_stage_20261010') ON CONFLICT DO NOTHING RETURNING id`)
+    if(migration.rowCount){
+      // Stage 1 is the shared starting point. Keep earned stats and wallet untouched.
+      await c.query(`UPDATE player_awakenings SET stage=1,baseline='{}'::jsonb,updated_at=${NOW}`)
+      console.log('[Despertar] migração única: todos os registros no estágio I, atributos preservados')
+    }
+  })
+  console.log('[Despertar] progressão I/II/III (níveis 100/150/200); fase I inicial')
 }
 async function getMetrics(c,jid){
   const [st,log]=await Promise.all([
@@ -91,10 +97,10 @@ async function normalizeAwakeningStage(c,jid,row,current){
   return row
 }
 function progress(row,u,counters){
-  const stage=Number(row.stage||0),tier=AWAKENING_TIERS[stage]||null
+  const stage=Number(row.stage??1),tier=AWAKENING_TIERS.find(t=>t.stage===stage+1)||null
   const classId=String(u.class_id||'warrior'),path=PATHS[classId]||PATHS.warrior
   const quests=tier?path.quests.map(([type,amount,level,label])=>{
-    const raidMin=type==='raid'?Math.max(level,[10,20,40,50,60][tier.stage-1]):0
+    const raidMin=type==='raid'?Math.max(level,tier.stage===2?40:60):0
     const target=amount*tier.mult
     const done=Math.min(target,since(row.baseline,counters,type,raidMin))
     return {label:label+(type==='raid'?` (Lv.${raidMin}+)`:''),target,done}
@@ -114,7 +120,7 @@ export async function getAwakeningStatus(jid){
     const current=await getMetrics(c,jid)
     if(!row){
       await c.query(`INSERT INTO player_awakenings(jid,baseline) VALUES($1,$2::jsonb)
-        ON CONFLICT(jid) DO NOTHING`,[jid,JSON.stringify(checkpoint(current,0))])
+        ON CONFLICT(jid) DO NOTHING`,[jid,JSON.stringify(checkpoint(current,1))])
       row=(await c.query('SELECT * FROM player_awakenings WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     }
     row=await normalizeAwakeningStage(c,jid,row,current)
@@ -131,7 +137,7 @@ export async function awakenCharacter(jid){
     const current=await getMetrics(c,jid)
     row=await normalizeAwakeningStage(c,jid,row,current)
     const s=progress(row,u,current),tier=s.tier
-    if(!tier)throw new Error('Despertar V já concluído; estágio máximo.')
+    if(!tier)throw new Error('Despertar III já concluído; estágio máximo.')
     if(s.level<tier.level)throw new Error(`Despertar ${tier.roman} exige nível ${tier.level}.`)
     if(s.quests.some(q=>q.done<q.target))throw new Error('Missões pendentes: '+s.quests.filter(q=>q.done<q.target).map(q=>`${q.label}: ${q.done}/${q.target}`).join(' • '))
     if(s.balance<tier.cost)throw new Error(`Faltam R$ ${(tier.cost-s.balance).toLocaleString('pt-BR')} para o Despertar ${tier.roman}.`)
