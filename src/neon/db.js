@@ -4469,10 +4469,10 @@ export async function resolvePlayerSleep(jid){
     if(!row) return null
     const now=Math.floor(Date.now()/1000)
     if(Number(row.ends_at)>now) return {active:true,...row,remaining:Number(row.ends_at)-now}
-    const level=await applyExp(client,jid,Number(row.xp_reward))
+    const reward=await awardSleepXp(client,jid,row,Number(row.ends_at))
     const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,row.ends_at)
     await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-    return {active:false,woke:true,...row,level,petEnergy}
+    return {active:false,woke:true,...row,xp_reward:reward.xp,level:reward.level,petEnergy}
   })
 }
 
@@ -4484,10 +4484,10 @@ export async function wakePlayerEarly(jid){
     const now=Math.floor(Date.now()/1000)
     const remaining=Math.max(0,Number(row.ends_at)-now)
     if(remaining<=0){
-      const level=await applyExp(client,jid,Number(row.xp_reward))
+      const reward=await awardSleepXp(client,jid,row,Number(row.ends_at))
       const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,row.ends_at)
       await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-      return {natural:true,fee:0,xp:Number(row.xp_reward),level,place:row.place,petEnergy}
+      return {natural:true,fee:0,xp:reward.xp,level:reward.level,place:row.place,petEnergy}
     }
     const total=Math.max(1,Number(row.ends_at)-Number(row.started_at))
     const ratio=Math.min(1,remaining/total)
@@ -4500,9 +4500,9 @@ export async function wakePlayerEarly(jid){
     await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
     // XP proporcional ao tempo efetivamente dormido; não permite pagar para receber o XP integral.
     const elapsed=Math.max(0,now-Number(row.started_at))
-    const xp=Math.floor(Number(row.xp_reward)*Math.min(1,elapsed/total))
-    let level=null
-    if(xp>0) level=await applyExp(client,jid,xp)
+    const reward=await awardSleepXp(client,jid,row,now)
+    const xp=reward.xp
+    const level=reward.level
     const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,now)
     await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
     await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
