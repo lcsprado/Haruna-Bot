@@ -2652,13 +2652,60 @@ ${ranking}${extra}
   }
 
   let trickBoxesAnnouncing=false
+  let trickBoxReminderLastScan=0
+  const TRICK_BOX_END_FIXED=Date.parse('2026-10-09T23:00:00-03:00')
   async function announceTrickBoxes(){
     if(trevoHealth.whatsapp!=='open'||trickBoxesAnnouncing)return
     trickBoxesAnnouncing=true
     try{
       const event=(await db.query("SELECT value FROM trevo_settings WHERE key='trick_boxes_event'")).rows[0]?.value||{}
-      const now=Date.now(),start=Number(event.startsAt||0),end=Number(event.endsAt||0)
-      if(!start||!end)return
+      const now=Date.now(),start=Number(event.startsAt||0)
+      if(!start||!Number(event.endsAt||0))return
+      // Prorrogação solicitada: somente este evento vai até 23:00 de 09/10 (Brasília).
+      if(event.eventId==='trick_boxes_2026_10_09_2204' && Number(event.endsAt)!==TRICK_BOX_END_FIXED){
+        event.endsAt=TRICK_BOX_END_FIXED
+        await db.query("UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE key='trick_boxes_event' AND value->>'eventId'=$2",[JSON.stringify(event),event.eventId])
+        console.log('[TrickBoxes] horário corrigido: 23:00 BRT')
+      }
+      const end=Number(event.endsAt)
+      if(now>=start && now<end && event.eventId==='trick_boxes_2026_10_09_2204'){
+        const fixKey='trick_boxes_extended_notice_2026_10_09_2300'
+        const already=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[fixKey])).rowCount>0
+        if(!already){
+          await sendEventToGroups(`🎭 *AZAR OU SORTE?* 🎭
+
+📦 *ESCOLHA SUA CAIXA*
+1️⃣ 🔵 Azul
+2️⃣ 🔴 Vermelha
+3️⃣ ⚫ Preta
+
+🍀 *30% de chance:* GANHE *R$ 90.000*
+💀 *70% de chance:* PERCA até *R$ 30.000*
+
+⏰ *EVENTO PRORROGADO ATÉ 23H!*
+🔁 Você pode jogar novamente após *5 minutos* da última tentativa.
+
+🎲 *!azarousorte 1*, *2* ou *3*
+🛡️ Não deixa a carteira negativa.`)
+          await db.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING',[fixKey,JSON.stringify({sentAt:now})])
+          console.log('[TrickBoxes] aviso corrigido reenviado para todos os grupos ativos')
+        }
+        // Avisos pessoais, uma única vez a cada aposta quando os 5 minutos terminam.
+        if(now-trickBoxReminderLastScan>=15000){
+          trickBoxReminderLastScan=now
+          const plays=(await db.query("SELECT key,value FROM trevo_settings WHERE key LIKE $1",['trick_box_play:'+event.eventId+':%'])).rows
+          for(const play of plays){
+            const data=play.value||{},playedAt=Number(data.playedAt||0)
+            const target=String(data.chat||'')
+            if(!target||!playedAt||now<playedAt+300000||Number(data.remindedFor||0)===playedAt)continue
+            if(!target.endsWith('@g.us')&&!target.endsWith('@s.whatsapp.net'))continue
+            try{
+              await sock.sendMessage(target,{text:'🎭 *AZAR OU SORTE?*\\n\\n⏰ Seus 5 minutos passaram! Você já pode escolher outra caixa.\\n\\n1️⃣ 🔵 Azul  |  2️⃣ 🔴 Vermelha  |  3️⃣ ⚫ Preta\\n\\n🎲 *!azarousorte 1*, *2* ou *3*\\n🍀 R$ 90.000 de prêmio • 💀 risco de R$ 30.000\\n🏁 Evento até *23h*.'})
+              await db.query("UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE key=$1",[play.key,JSON.stringify({...data,remindedFor:playedAt})])
+            }catch(err){console.error('[TrickBoxes] lembrete falhou',target,err?.message||err)}
+          }
+        }
+      }
       const key='trick_boxes_notice:'+String(event.eventId)
       const notice=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value||{}
       if(now>=start&&now<end&&!notice.started){
@@ -8340,7 +8387,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
                 const delta=win?90000:-Math.min(30000,Math.max(0,balance))
                 const updated=await client.query('UPDATE wallets SET cash=cash+$2,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 RETURNING cash',[sender,delta])
                 await client.query('INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,$3,$4,$5)',[win?'system':sender,win?sender:'system',Math.abs(delta),'trick_boxes',String(live.eventId)+'|'+pick+'|'+(win?'win':'lose')])
-                await client.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT",[key,JSON.stringify({playedAt:time})])
+                await client.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT",[key,JSON.stringify({playedAt:time,chat})])
                 outcome={win,delta,balance:Number(updated.rows[0]?.cash||0)}
               }
             }
