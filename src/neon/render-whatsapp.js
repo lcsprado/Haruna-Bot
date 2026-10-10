@@ -51,3 +51,24 @@ setTimeout(async()=>{
 
 
 
+
+setTimeout(async()=>{
+  try{
+    const {db}=await import('./db.js')
+    const jid='5511987308687@s.whatsapp.net'
+    const marker='repair:joao_pedro:2026-10-09:katana_divina:epic_box_1940'
+    const client=await db.connect()
+    try{
+      await client.query('BEGIN')
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[marker])
+      const prior=await client.query('SELECT value FROM trevo_settings WHERE key=$1',[marker])
+      if(prior.rowCount){console.log('[KATANA JP REPAIR] already applied',JSON.stringify(prior.rows[0]));await client.query('COMMIT');return}
+      const before=await client.query("SELECT quantity FROM inventories WHERE jid=$1 AND item_id='katana_divina' FOR UPDATE",[jid])
+      const updated=await client.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'katana_divina',1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1 RETURNING quantity",[jid])
+      const record={source:'epic_box_9_2026_10_09_1940',item:'katana_divina',added:1,before:Number(before.rows[0]?.quantity||0),after:Number(updated.rows[0]?.quantity||0),timestamp:Date.now()}
+      await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[marker,JSON.stringify(record)])
+      await client.query('COMMIT')
+      console.log('[KATANA JP REPAIR] success',JSON.stringify(record))
+    }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+  }catch(e){console.error('[KATANA JP REPAIR] failed',e?.stack||e)}
+},12000).unref?.()
