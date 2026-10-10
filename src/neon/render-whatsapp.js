@@ -51,20 +51,3 @@ setTimeout(async()=>{
 
 
 
-// one-time JP 109 raid core inventory audit
-setTimeout(async()=>{
-  try{
-    const {db}=await import('./db.js')
-    const jid='5511987308687@s.whatsapp.net'
-    const [item,identity,marker,transactions,inv,raidMaterials]=await Promise.all([
-      db.query("SELECT i.jid,i.item_id,i.quantity,it.name,it.category,it.sellable,i.created_at FROM inventories i LEFT JOIN items it ON it.id=i.item_id WHERE i.jid=$1 AND i.item_id=$2",[jid,'nucleo_alpha_corrompido']),
-      db.query('SELECT jid,push_name FROM users WHERE jid=$1 OR push_name ILIKE $2 ORDER BY jid',[jid,'%João Pedro%']),
-      db.query('SELECT key,value FROM trevo_settings WHERE key=$1',['repair:jp:2026-10-09:raid_sale_5068:shopping_5069']),
-      db.query("SELECT id,type,note,amount,created_at FROM transactions WHERE (to_jid=$1 OR from_jid=$1) AND (note ILIKE '%nucleo_alpha_corrompido%' OR note ILIKE '%5068%' OR type='raid_material_restoration') ORDER BY id DESC LIMIT 35",[jid]),
-      db.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 ORDER BY item_id',[jid]),
-      db.query("SELECT i.item_id,i.quantity,it.name FROM inventories i JOIN items it ON it.id=i.item_id WHERE i.jid=$1 AND (i.item_id LIKE '%nucleo%' OR it.name ILIKE '%fragmento%') ORDER BY i.item_id",[jid])
-    ])
-    const clipped=inv.rows.filter(row=>['nucleo_alpha_corrompido','fragmento_caos','fragmento_celestial'].includes(row.item_id))
-    console.log('[JP109 AUDIT]',JSON.stringify({item:item.rows,identities:identity.rows,repair:marker.rows,transactions:transactions.rows,inventoryHighlights:clipped,similarItems:raidMaterials.rows}))
-  }catch(error){console.error('[JP109 AUDIT ERROR]',error?.stack||error)}
-},8000).unref?.()
