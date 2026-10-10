@@ -1547,7 +1547,7 @@ const NIGHT_EVENT_MIN_DAMAGE=25000
 
 async function createNightBossEventState(c,chat){
   const maxHp=350000
-  const state={mode:'event',eventId:NIGHT_EVENT_ID,active:true,origin:'scheduled',scheduleKey:NIGHT_EVENT_KEY,name:'Sentinela da Madrugada',hp:maxHp,maxHp,atk:24,participants:{},startedAt:Date.now(),endsAt:NIGHT_EVENT_END,minDamage:NIGHT_EVENT_MIN_DAMAGE}
+  const state={mode:'event',eventId:NIGHT_EVENT_ID,active:true,origin:'scheduled',scheduleKey:NIGHT_EVENT_KEY,name:'Madrugada Maldita',hp:maxHp,maxHp,atk:24,participants:{},startedAt:Date.now(),endsAt:NIGHT_EVENT_END,minDamage:NIGHT_EVENT_MIN_DAMAGE}
   await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
   return state
 }
