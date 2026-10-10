@@ -1204,7 +1204,7 @@ ${title}${badge?' • '+badge:''}
 ✨ EXP: *${xp.current}/${xp.needed}*
 [${xp.bar}]
 
-❤️ HP: *${Number(p.hp||0)}/${Number(p.max_hp||0)}*
+❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*
 ⚔️ ATK: *${Number(p.effective_atk||0)}*
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
@@ -11296,8 +11296,8 @@ Obrigado por apoiar o Alpha Bot 🍀`
           }
 
           const profile=await getCombatProfile(sender)
-          if(Number(profile.hp)>=Number(profile.max_hp)){
-            return await reply(`❤️ Seu HP já está cheio: *${profile.hp}/${profile.max_hp}*.`)
+          if(Number(profile.effective_hp)>=Number(profile.effective_max_hp)){
+            return await reply(`❤️ Seu HP já está cheio: *${profile.effective_hp}/${profile.effective_max_hp}*.`)
           }
 
           const requested=args.join(' ').trim()
@@ -11312,7 +11312,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
               potion=potions[0]
             }else{
               setQuickFlow(chat,sender,'use_select',{items:potions.map(i=>i.item_id)},90000)
-              let text=`🧪 *QUAL POÇÃO QUER USAR PARA SE CURAR?*\n\n❤️ HP atual: *${profile.hp}/${profile.max_hp}*\n\n`
+              let text=`🧪 *QUAL POÇÃO QUER USAR PARA SE CURAR?*\n\n❤️ HP atual: *${profile.effective_hp}/${profile.effective_max_hp}*\n\n`
               potions.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
               text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
               return await reply(text)
