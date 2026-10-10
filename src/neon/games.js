@@ -1564,7 +1564,11 @@ async function settleUnbeatenNightBoss(c,state){
     const exp=Math.round(150+2400*share)
     await credit(c,p.jid,cash,'boss_event_night_0404_survived')
     await grantExpInTransaction(c,p.jid,exp,{chatJid:state.originChat||null})
-    rewards.push({...p,position:i+1,cash,exp,petXp:0,petXpTeam:[],drops:[]})
+    const drops=[]
+    if(p.damage>=NIGHT_EVENT_MIN_DAMAGE){
+      drops.push(await grantBossItem(c,p.jid,{id:'bota_celestial',name:'Bota Celestial Lendária (+10 VEL)',rarity:'Lendário'},'night-0404:'+NIGHT_EVENT_KEY))
+    }
+    rewards.push({...p,position:i+1,cash,exp,petXp:0,petXpTeam:[],drops})
   }
   const marker={...state,active:false,mode:'event_stopped',stoppedAt:Date.now(),participants:{},
     result:{bossName:state.name,maxHp:state.maxHp,defeated:false,rewards}}
