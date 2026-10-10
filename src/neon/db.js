@@ -2528,10 +2528,11 @@ export async function usePotion(jid,itemId=null){
     const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
     const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id)):{hp:0}
     const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{hp:0}
-     const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{hp:0}
+    const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{hp:0}
 
     const hp=Number(row.hp||0)
-    const maxHp=Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)
+    // O teto de cura inclui todos os bônus de HP equipados, inclusive o elmo.
+    const maxHp=Math.max(1,Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
     if(hp>=maxHp) throw new Error('Seu HP já está cheio.')
 
     const missing=maxHp-hp
@@ -2587,6 +2588,12 @@ export async function getCombatProfile(jid) {
   ])
   const classScrolls=Number(scrollR.rows[0]?.quantity||0)
   const classChangeRemaining=Math.max(0,Number(classCdR.rows[0]?.expires_at||0)-now)
+  const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0))
+  const effectiveHp=Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
+  // Corrige HP legado acima do teto real, sem reduzir bônus válidos dos equipamentos.
+  if(Number(p.hp||0)>effectiveMaxHp){
+    await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,effectiveMaxHp])
+  }
   return {
     ...p,
     base_atk:Number(p.atk),
@@ -2600,8 +2607,8 @@ export async function getCombatProfile(jid) {
     equipment_crit:Number(w.crit||0)+Number(a.crit||0),
     base_crit:0.10,
     effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+classCritBonus(p.class_id,p.class_applied)),
-    effective_max_hp:Number(p.max_hp)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
-    effective_hp:Math.min(Number(p.hp),Number(p.max_hp)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0)),
+    effective_max_hp:effectiveMaxHp,
+    effective_hp:effectiveHp,
     effective_atk:Number(p.atk)+Number(w.atk||0)+Number(a.atk||0),
     effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(h.def||0),
     weapon_name:w.name,
