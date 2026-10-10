@@ -4281,8 +4281,12 @@ export async function initCommunityPack(){
       started_at BIGINT NOT NULL,
       ends_at BIGINT NOT NULL,
       xp_reward INTEGER NOT NULL,
-      fee BIGINT NOT NULL DEFAULT 0
+      fee BIGINT NOT NULL DEFAULT 0,
+      xp_mode TEXT NOT NULL DEFAULT 'legacy',
+      xp_per_8h INTEGER NOT NULL DEFAULT 0
     );
+    ALTER TABLE player_sleep ADD COLUMN IF NOT EXISTS xp_mode TEXT NOT NULL DEFAULT 'legacy';
+    ALTER TABLE player_sleep ADD COLUMN IF NOT EXISTS xp_per_8h INTEGER NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS player_carpinar(
       jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
