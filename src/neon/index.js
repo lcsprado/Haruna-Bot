@@ -9642,8 +9642,8 @@ ${results.join('\n')}
             `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*
 
 💰 Valor: *R$ ${fmt(r.principal)}*
-⏳ Prazo após o aceite: *2 horas sem juros*
-📈 Após 2h: *2% por hora de atraso*
+⏳ Prazo após o aceite: *30 minutos sem juros*
+📈 Após 30 minutos: *2% por hora de atraso*
 🛡️ Juros máximos: *100% do valor original*
 ⚠️ Se não pagar no vencimento, a cobrança automática pode deixar a conta *negativa*.
 💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*
@@ -9678,7 +9678,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           const rest=Number(r.loan?.principal_remaining||0)+Number(r.loan?.interest_due||0)
           const lateLine=Number(r.lateHours||0)>0
             ? `\n⏰ Atraso computado: *${r.lateHours}h* • taxa *${Math.round(Number(r.interestRatePerHour||0)*100)}%/h*`
-            : '\n🕛 Pagamento dentro das 2h sem juros.'
+            : '\n🕛 Pagamento dentro dos 30 minutos sem juros.'
           await reply(`💸 *PAGAMENTO DO EMPRÉSTIMO*\n\n✅ Pago agora: *R$ ${fmt(r.paid)}*\n📈 Juros pagos: *R$ ${fmt(r.interestPaid)}*${lateLine}\n💰 Principal pago: *R$ ${fmt(r.principalPaid)}*\n🧾 Restante: *R$ ${fmt(rest)}*\n${r.settled?'🎉 *Empréstimo quitado!*':'⏳ A dívida continua ativa.'}`)
 
         } else if(cmd==='credito'){
