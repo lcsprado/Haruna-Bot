@@ -48,7 +48,7 @@ import {
   getDailyMissions, progressDailyMission, claimDailyMissions,
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
-  getHome, buyHouse, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
+  getHome, buyHouse, getHomeActivities, trainAtHome, restTeamPetsAtHome, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
   hireCltUberDriver, getCltUberStatus, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent,
@@ -7294,6 +7294,57 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       return true
     }
 
+    if(flow.stage==='home_menu'){
+      if(input==='0'){
+        clearQuickFlow(chat,sender)
+        await reply('🏠 Menu da casa fechado.')
+        return true
+      }
+      if(!['1','2','3'].includes(input)){
+        await reply('🏠 Escolha *1 Treinar*, *2 Descansar pets*, *3 Dormir* ou *0 Sair*.')
+        return true
+      }
+      clearQuickFlow(chat,sender)
+      if(input==='1'){
+        const result=await trainAtHome(sender)
+        if(!result.ok){
+          await reply('⏳ *TREINO INDISPONÍVEL*\n\nAguarde *'+duration(result.remaining)+'* para treinar novamente em casa.')
+        }else{
+          await reply('⚔️ *TREINO EM CASA CONCLUÍDO!*\n\n🏡 '+result.house.name+'\n✨ +'+fmt(result.exp)+' XP\n⭐ Nível: '+result.level+'\n⏱️ Próximo treino em 24 horas.')
+        }
+        return true
+      }
+      if(input==='2'){
+        const result=await restTeamPetsAtHome(sender)
+        if(!result.ok){
+          if(result.full){
+            await reply('🐾 *DESCANSO NÃO NECESSÁRIO*\n\n'+
+              (result.skipped||[]).map(p=>'• '+p.name+': '+p.reason).join('\n')+
+              '\n✅ A tentativa não gastou seu descanso diário.')
+          }else{
+            await reply('⏳ *DESCANSO INDISPONÍVEL*\n\nAguarde *'+duration(result.remaining)+'* para descansar os pets novamente.')
+          }
+        }else{
+          const lines=result.restored.map(p=>'🐾 *'+p.name+'* — ❤️ +'+p.gainedHp+' HP • ⚡ +'+p.gainedEnergy+' energia').join('\n')
+          const absent=result.skipped.length?'\n\n'+result.skipped.map(p=>'↪️ '+p.name+': '+p.reason).join('\n'):''
+          await reply('🐾 *PETS DESCANSADOS!*\n\n🏡 '+result.house.name+' — Recuperação '+result.house.petRestPercent+'%\n'+lines+absent+'\n\n⏱️ Próximo descanso em 24 horas.')
+        }
+        return true
+      }
+      const sleep=await startPlayerSleep(sender)
+      if(!sleep.started){
+        await reply('😴 Você já está dormindo.\n⏳ Falta *'+duration(sleep.remaining)+'*.')
+      }else{
+        await reply('😴 *BOA NOITE!*\n\n🏠 '+sleep.place+
+          '\n⏳ Duração: '+duration(sleep.remaining)+
+          '\n✨ Ao acordar: +'+sleep.xp_reward+' XP'+
+          '\n❤️ Você: +1 HP por minuto dormido'+
+          '\n🐾 Pet: +1 HP e +1 energia por minuto dormido'+
+          '\n🛡️ Protegido de roubos e ataques durante o sono.')
+      }
+      return true
+    }
+
     if(flow.stage==='house_select'){
       const item=HOUSES[Number(input)-1]
       if(!item){
@@ -10212,9 +10263,47 @@ ${prefix}clas — ranking de clãs`
           await reply(text)
 
         } else if(['minhacasa','casa'].includes(cmd)){
-          const h=await getHome(sender)
-          if(!h) return await reply(`🏠 Você ainda não possui imóvel. Veja *${prefix}casas*.`)
-          await reply(`🏠 *SUA CASA*\n\n🏡 ${h.name}\n💰 Valor patrimonial: R$ ${fmt(h.price)}`)
+          const activity=await getHomeActivities(sender)
+          if(!activity) return await reply(`🏠 Você ainda não possui imóvel. Veja *${prefix}casas*.`)
+          const h=activity.house
+          const trainStatus=activity.trainingRemaining
+            ? '⏳ Em '+duration(activity.trainingRemaining)
+            : '✅ Disponível'
+          const restStatus=activity.petsRemaining
+            ? '⏳ Em '+duration(activity.petsRemaining)
+            : '✅ Disponível'
+          setQuickFlow(chat,sender,'home_menu',{},90000)
+          await reply(`🏠 *MINHA CASA — ${h.name.toUpperCase()}*
+
+💰 Valor patrimonial: R$ ${fmt(h.price)}
+
+⚔️ *1. Treinar* — +${h.trainingXp} XP
+${trainStatus}
+
+🐾 *2. Descansar pets* — +${h.petRestPercent}% HP e energia
+${restStatus}
+_(até 3 pets da equipe; pets em expedição não participam)_
+
+😴 *3. Dormir* — benefícios atuais
+
+⏱️ Treino e descanso: 1 vez a cada 24 horas.
+0️⃣ Sair`)
+
+        } else if(['treinar'].includes(cmd)){
+          const r=await trainAtHome(sender)
+          if(!r.ok) await reply('⏳ *TREINO INDISPONÍVEL*\n\nAguarde *'+duration(r.remaining)+'* para treinar novamente em casa.')
+          else await reply('⚔️ *TREINO EM CASA CONCLUÍDO!*\n\n🏡 '+r.house.name+'\n✨ +'+fmt(r.exp)+' XP\n⭐ Nível: '+r.level+'\n⏱️ Próximo treino em 24 horas.')
+
+        } else if(['descansarpets'].includes(cmd)){
+          const r=await restTeamPetsAtHome(sender)
+          if(!r.ok){
+            if(r.full) await reply('🐾 *DESCANSO NÃO NECESSÁRIO*\n\n'+r.skipped.map(p=>'• '+p.name+': '+p.reason).join('\n')+'\n✅ O descanso diário foi preservado.')
+            else await reply('⏳ *DESCANSO INDISPONÍVEL*\n\nAguarde *'+duration(r.remaining)+'* para recuperar os pets novamente.')
+          }else{
+            const lines=r.restored.map(p=>'🐾 *'+p.name+'* — ❤️ +'+p.gainedHp+' HP • ⚡ +'+p.gainedEnergy+' energia').join('\n')
+            const skipped=r.skipped.length?'\n\n'+r.skipped.map(p=>'↪️ '+p.name+': '+p.reason).join('\n'):''
+            await reply('🐾 *PETS DESCANSADOS!*\n\n🏡 '+r.house.name+' — +'+r.house.petRestPercent+'%\n'+lines+skipped+'\n\n⏱️ Próximo descanso em 24 horas.')
+          }
 
         } else if(['carros','concessionaria','concessionária'].includes(cmd)){
           setQuickFlow(chat,sender,'car_select',{},90000)
