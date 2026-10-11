@@ -1,4 +1,4 @@
-import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
+import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
 
