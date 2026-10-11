@@ -2727,7 +2727,7 @@ ${ranking}${extra}
    if(camEventBusy||trevoHealth.whatsapp!=='open')return;camEventBusy=true
    try{
      const e=await autoStartCamEvent()
-     if(e.spawned)await sendEventToGroups('🦎⚔️ *QUIMERA CROMÁTICA — DESAFIO EXTREMO!*\n\n🕚 23:10 até 23:45 (Brasília)\n❤️ 600.000 HP • ⚔️ 220 ATK\n🔒 Exige *4 jogadores*, com pelo menos *10.000 de dano cada*. Com 2 ou 3, NÃO é possível finalizar.\n🏆 Se derrotarem, o maior dano ganha *1 CAMALEÃO LENDÁRIO* — coringa de todas as sinergias.\n💰 Dinheiro e XP proporcionais à participação.\n⚔️ Use !atacar')
+     if(e.spawned)await sendEventToGroups('🦎⚔️ *QUIMERA CROMÁTICA — BOSS ESPECIAL!*\n\n🕚 *23:15 até 23:45* (Brasília)\n❤️ *1.300.000 HP* • ⚔️ *220 ATK*\n🏆 *PET LENDÁRIO EXCLUSIVO: 🦎 CAMALEÃO!*\n🃏 Pet coringa, compatível com todas as sinergias!\n🥇 Se o Boss cair, apenas o *1º lugar* recebe o pet.\n💰 Demais participantes recebem dinheiro e EXP conforme dano.\n⚔️ Use *!atacar*!')
      if(e.ended)await sendEventToGroups('🦎 *QUIMERA CROMÁTICA ENCERRADA!*\n'+(e.won?'🏆 Quarteto venceu! Camaleão entregue ao maior dano.':'💀 Boss resistiu; não houve drop do Camaleão.')+'\n💰 Recompensas de participação creditadas.')
      if(e.blocked)console.log('[CAM] outro Boss global ativo; bloqueado')
    }catch(err){console.error('[CAM EVENT]',err?.stack||err)}finally{camEventBusy=false}
