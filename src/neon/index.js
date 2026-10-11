@@ -2670,6 +2670,43 @@ ${ranking}${extra}
     }
   }
 
+  // Quizzes automáticos somente nos grupos cuja missão semanal exige acertos.
+  // Não concede acertos automáticos: apenas respostas corretas de jogadores pontuam.
+  let weeklyQuizBusy=false
+  setInterval(async()=>{
+    if(weeklyQuizBusy||trevoHealth.whatsapp!=='open')return
+    weeklyQuizBusy=true
+    try{
+      const clock=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'}).format(new Date())
+      const hour=Number(clock)
+      if(hour<8||hour>=23)return
+      for(const group of await activeEventGroups()){
+        const chat=String(group.chat_jid||'')
+        const mission=await getGroupMission(chat)
+        if(mission.mission_type!=='quiz'||mission.completed||Number(mission.progress)>=Number(mission.target))continue
+        const slot=Math.floor(Date.now()/(5*60*1000))
+        const key='weekly_auto_quiz:'+mission.week_key+':'+chat+':'+slot
+        const claim=await db.query(
+          "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
+          [key,JSON.stringify({status:'claimed',at:Date.now()})]
+        )
+        if(!claim.rowCount)continue
+        try{
+          const q=await startQuiz(chat)
+          if(q.already)continue
+          let body='🧠 *QUIZ AUTOMÁTICO — MISSÃO COLETIVA*'+(q.difficulty==='difícil'?' • 🔥 DIFÍCIL':'')+'\n\n'+q.q+'\n\n'
+          q.a.forEach((option,i)=>{body+='*'+(i+1)+'.* '+option+'\n'})
+          body+='\n⏳ *2 minutos* para responder com *1, 2, 3 ou 4*.\n🎯 Cada acerto soma +1 na missão semanal.'
+          await sock.sendMessage(chat,{text:body})
+          console.log('[WEEKLY AUTO QUIZ]',chat,mission.week_key,slot)
+        }catch(err){
+          console.error('[WEEKLY AUTO QUIZ] send failed',chat,err?.message||err)
+        }
+      }
+    }catch(err){console.error('[WEEKLY AUTO QUIZ]',err?.stack||err)}
+    finally{weeklyQuizBusy=false}
+  },5*60*1000).unref?.()
+
   // Enquete nativa do WhatsApp: uma por grupo, janela anunciada de 30 minutos.
   // Estado persistido impede reenvios em reinicializações.
   let pollThirtyRunning=false
@@ -10229,7 +10266,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 
         } else if(['uparitem','upgradeitem','melhoraritem'].includes(cmd)){
           const [items,profile]=await Promise.all([listUpgradeableEquipment(sender),getCombatProfile(sender)])
-          if(!items.length) return await reply('⬆️ Você ainda não possui arma ou armadura para aprimorar.')
+          if(!items.length) return await reply('⬆️ Você ainda não possui equipamentos para aprimorar.')
           const available=items.filter(i=>i.next)
           if(!available.length) return await reply('🏆 Todos os seus equipamentos já estão no *Lv.10*.')
           setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id}))},5*60*1000)
@@ -10242,10 +10279,10 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             ].filter(Boolean).join(' • ')
             const stat=i.category==='weapon'
               ? `${i.current.atk} → ${i.next.atk} ATK${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
-              : i.category==='armor'
+              : ['armor','helmet'].includes(i.category)
                 ? `${i.current.def} → ${i.next.def} DEF${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
                 : `${i.current.spd} → ${i.next.spd} VEL`
-            const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)
+            const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)||(i.category==='helmet'&&profile?.helmet_id===i.item_id)
             text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
           })
           text+='\n💡 Os ganhos crescem progressivamente por nível; no *Lv.10* os atributos escaláveis chegam a *2,5×* a base. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
