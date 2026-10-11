@@ -41,7 +41,7 @@ import {
   startQuiz, answerQuiz, expireQuiz,
   startNumberGame, guessNumber,
   startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
-  getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
+  tickSetePecados, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES,
@@ -294,6 +294,17 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
               : (x.petXp?` • 🐾 +${x.petXp} XP pet`:'')
             text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${teamXp}${items}`
           })
+          if(r.eventId==='sete_pecados'){
+            const rank=(r.rewards||[]).filter(x=>x.eligible).slice(0,3).map(x=>
+              (x.position===1?'🥇':x.position===2?'🥈':'🥉')+' '+x.name+' — '+Number(x.damage).toLocaleString('pt-BR')+
+              ' dano • R$ '+Number(x.cash).toLocaleString('pt-BR')).join('\n')
+            await sendEventToGroups('🌑 *PECADO DERROTADO!*\n\n'+(rank||'Nenhum jogador alcançou 10.000 de dano.')+
+              '\n🎁 Recompensas creditadas após este Boss.'+
+              (r.nextPhase?'\n\n⚔️ *PRÓXIMO PECADO: '+r.nextPhase.name+'*\n❤️ '+r.nextPhase.hp.toLocaleString('pt-BR')+' HP • ⚔️ '+r.nextPhase.atk+' ATK\nUse *!atacar* para continuar.':
+              '\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente concedida somente a quem atingiu 10.000 de dano em TODOS os oito Bosses.'))
+            await reply(text)
+            return
+          }
           await reply(text); return
         }
 
@@ -2817,6 +2828,24 @@ ${ranking}${extra}
       }
     }catch(err){console.error('[INICIO MADRUGADA] scheduler',err?.stack||err)}
     finally{inicioMadrugadaBusy=false}
+  },5000).unref?.()
+
+  // Invasão dos Sete Pecados — 11/10 18:40–20:40 BRT.
+  let setePecadosBusy=false
+  setInterval(async()=>{
+    if(setePecadosBusy)return
+    const now=Date.now()
+    if(now<Date.parse('2026-10-11T18:40:00-03:00')||now>Date.parse('2026-10-11T20:42:00-03:00'))return
+    setePecadosBusy=true
+    try{
+      const event=await tickSetePecados(now)
+      if(event.spawned){
+        await sendEventToGroups('🌑⚔️ *INVASÃO DOS SETE PECADOS COMEÇOU!*\n\n⏰ 18:40–20:40 (Brasília)\n👹 Oito Bosses sequenciais, incluindo Azazel.\n💤 *PRIMEIRO: PREGUIÇA* • ❤️ 60.000 HP • ⚔️ 35 ATK\n👥 HP aumenta em 35% da base por participante adicional, inclusive quem entrar depois.\n🎯 10.000 de dano individual em CADA Boss para receber a Insígnia permanente.\n⚜️ +2% dano e +1pp crítico contra Bosses/Raids.\n🎁 Dinheiro, EXP e essências após cada vitória.\n⚔️ Use *!atacar* para começar!')
+      }
+      if(event.ended)await sendEventToGroups('🌑 *INVASÃO DOS SETE PECADOS ENCERRADA!*\n\n⏰ O prazo das 20:40 terminou.\n🏆 Bosses já derrotados tiveram seus prêmios distribuídos. Não há prêmio retroativo por Boss não derrotado.')
+      if(event.blocked)console.warn('[SETE PECADOS] início aguardando Boss ativo',event.blockingBoss)
+    }catch(err){console.error('[SETE PECADOS] scheduler',err?.stack||err)}
+    finally{setePecadosBusy=false}
   },5000).unref?.()
 
   // Scheduler independente de mensagens: inicia o Boss e anuncia nos grupos às 04:04.
