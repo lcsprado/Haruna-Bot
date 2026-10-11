@@ -1157,13 +1157,14 @@ export async function raidRound(chat,level){
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
       const dmg=classHit.damage
+      const actualDamage=Math.min(Math.max(0,dmg),Math.max(0,Number(s.hp||0)))
       if(classHit.heal>0) p.hp=Math.min(p.maxHp,p.hp+classHit.heal)
       const petExtra=p.pet?Math.max(0,baseDmg-baseline-oilBonus):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
       p.damage=Number(p.damage||0)+dmg
       s.hp=Math.max(0,Number(s.hp)-dmg)
-      events.push({type:'hit',jid:p.jid,name:p.name,damage:dmg,crit})
+      events.push({type:'hit',jid:p.jid,name:p.name,damage:dmg,actualDamage,crit})
       if(Number(s.hp)<=0) break
     }
 
