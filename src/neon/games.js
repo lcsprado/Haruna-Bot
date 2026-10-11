@@ -1545,7 +1545,7 @@ export async function autoStartInicioMadrugada(chat,now=new Date()){
 const CAM_START=Date.parse('2026-10-10T23:15:00-03:00'),CAM_END=Date.parse('2026-10-10T23:45:00-03:00'),CAM_ID='camaleao_20261010'
 async function finishCam(c,state,beaten){
  const ranking=Object.entries(state.participants||{}).map(([jid,v])=>({jid,name:v.name||'Jogador',damage:Number(v.damage||0)})).filter(x=>x.damage>0).sort((a,b)=>b.damage-a.damage)
- const eligible=ranking.filter(x=>x.damage>=10000),win=beaten&&eligible.length>=4,total=ranking.reduce((a,p)=>a+p.damage,0)||1,rewards=[]
+ const eligible=ranking.filter(x=>x.damage>0),win=beaten,total=ranking.reduce((a,p)=>a+p.damage,0)||1,rewards=[]
  for(const p of ranking){
    const cash=Math.round(1000+18000*p.damage/total),exp=Math.round(150+2400*p.damage/total),drops=[]
    await credit(c,p.jid,cash,'boss_camaleao');await grantExpInTransaction(c,p.jid,exp)
@@ -1566,7 +1566,7 @@ export async function autoStartCamEvent(now=new Date()){
   if(old?.eventId===CAM_ID&&Number(old.startedAt||0)>=CAM_START){if(ts>=CAM_END&&old.active!==false)return finishCam(c,old,false);return {due:true}}
   if(ts>=CAM_END)return {due:false,expired:true}
   if(old?.active!==false&&Number(old?.hp)>0&&(!old.endsAt||Number(old.endsAt)>ts))return {due:true,blocked:true}
-  const state={mode:'event',eventId:CAM_ID,scheduleKey:CAM_ID,origin:'scheduled',active:true,name:'Quimera Cromática',hp:600000,maxHp:600000,atk:220,participants:{},startedAt:ts,endsAt:CAM_END}
+  const state={mode:'event',eventId:CAM_ID,scheduleKey:CAM_ID,origin:'scheduled',active:true,name:'Quimera Cromática',hp:1300000,maxHp:1300000,atk:220,participants:{},startedAt:ts,endsAt:CAM_END}
   await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state);return {due:true,spawned:true}
  })
 }
@@ -2215,7 +2215,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const eclipseRelic=await activeRelic(c,jid)
     const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
     let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage
-    if(s.eventId===CAM_ID&&Object.entries(s.participants||{}).filter(([id,p])=>id!==jid&&Number(p.damage||0)>=10000).length<3)damage=Math.min(damage,Math.max(0,Number(s.hp)-1))
+
     const petDamage=pet?Math.max(0,baseDamage-baselineWithGearCrit-oilBonus):0
     s.hp=Math.max(0,Number(s.hp)-damage)
     const nextPhase=ruptura?(s.hp<=s.maxHp/3?3:(s.hp<=s.maxHp*2/3?2:1)):faseAnterior
