@@ -7522,19 +7522,20 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       if(input==='1'){
         const r=await getDailyMissions(sender)
         clearQuickFlow(chat,sender)
-        let text='📋 *MISSÕES DIÁRIAS*\n\n'
-        r.missions.forEach((m,i)=>text+=`${i+1}. ${Number(m.progress)>=Number(m.target)?'✅':'⬜'} *${m.title}* — ${m.progress}/${m.target}\n`)
-        await reply(text.trim())
+        await reply(dailyMissionsText(r,prefix))
         return true
       }
       if(input==='2'){
         const r=await claimDailyMissions(sender)
         clearQuickFlow(chat,sender)
-        if(!r.claimed) await reply('📋 Nenhuma missão concluída para resgatar.')
-        else await reply(`🎁 Missões resgatadas: ${r.claimed}\n💰 R$ ${fmt(r.cash)}\n🎁 Caixas: ${r.boxes}`)
+        if(!r.claimed&&!r.drops?.length)await reply('📋 Nenhuma missão concluída para resgatar.')
+        else await reply('🎁 *MISSÕES RESGATADAS!*\n✅ Missões: '+r.claimed+
+          '\n💰 R$ '+fmt(r.cash)+' • ✨ +'+Number(r.exp||0)+' EXP'+
+          '\n🐾 EXP de pet: +'+Number(r.petXp||0)+'\n🎁 Caixas: '+Number(r.boxes||0)+
+          (r.drops?.length?'\n🏆 '+r.drops.join(' • '):''))
         return true
       }
-      if(input==='3'){
+            if(input==='3'){
         setQuickFlow(chat,sender,'house_select',{},90000)
         let text='🏠 *ESCOLHA UM IMÓVEL*\n\n'
         HOUSES.forEach((h,i)=>text+=`*${i+1}.* ${h.name} — R$ ${fmt(h.price)}\n`)
@@ -10465,30 +10466,19 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 
         } else if(['missoes','missões','missions'].includes(cmd)){
           const r=await getDailyMissions(sender)
-          let text='📋 *MISSÕES DIÁRIAS*\n\n'
-          for(const m of r.missions){
-            const done=Number(m.progress)>=Number(m.target)
-            const reward=[
-              Number(m.reward_cash)>0?`R$ ${fmt(m.reward_cash)}`:null,
-              Number(m.reward_box)>0?`${m.reward_box}x Caixa da Sorte`:null
-            ].filter(Boolean).join(' + ')
-            text+=`${done?'✅':'⬜'} *${m.title}* — ${m.progress}/${m.target}\n🎁 ${reward}${m.claimed?' _(resgatada)_':''}\n\n`
-          }
-          text+=`Use *${prefix}resgatarmissoes* para coletar missões concluídas.`
-          await reply(text.trim())
+          await reply(dailyMissionsText(r,prefix))
 
         } else if(['resgatarmissoes','resgatarmissao','claimmissions'].includes(cmd)){
           const r=await claimDailyMissions(sender)
-          if(!r.claimed) return await reply('📋 Você não tem missão concluída e não resgatada agora.')
-          await reply(
-`🎁 *MISSÕES RESGATADAS!*
+          if(!r.claimed&&!r.drops?.length)return await reply('📋 Você não tem missão concluída e não resgatada agora.')
+          await reply('🎁 *MISSÕES RESGATADAS!*\n\n✅ Missões: '+r.claimed+
+            '\n💰 Dinheiro: R$ '+fmt(r.cash)+
+            '\n✨ EXP: +'+Number(r.exp||0)+
+            '\n🐾 EXP de pet: +'+Number(r.petXp||0)+
+            '\n🎁 Caixas: '+Number(r.boxes||0)+
+            (r.drops?.length?'\n🏆 '+r.drops.join(' • '):''))
 
-✅ Missões: ${r.claimed}
-💰 Dinheiro: R$ ${fmt(r.cash)}
-🎁 Caixas da Sorte: ${r.boxes}`
-          )
-
-        } else if(['cla','clã','clacofre'].includes(cmd)){
+                } else if(['cla','clã','clacofre'].includes(cmd)){
           const c=await getClanForUser(sender)
           setQuickFlow(chat,sender,'clan_menu',{},90000)
           if(!c){
