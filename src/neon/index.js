@@ -301,7 +301,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
               ' dano • R$ '+Number(x.cash).toLocaleString('pt-BR')).join('\n')
             await (setePecadosBroadcaster||reply)('🌑 *PECADO DERROTADO!*\n\n'+(rank||'Nenhum jogador alcançou 10.000 de dano.')+
               '\n🎁 Recompensas creditadas após este Boss.'+
-              (r.nextPhase?'\n\n⚔️ *PRÓXIMO PECADO: '+r.nextPhase.name+'*\n❤️ '+r.nextPhase.hp.toLocaleString('pt-BR')+' HP • ⚔️ '+r.nextPhase.atk+' ATK\nUse *!atacar* para continuar.':
+              (r.nextPhase?'\n\n🔔 O próximo pecado já está ativo. O anúncio será enviado separadamente a todos os grupos.':
               '\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente concedida somente a quem atingiu 10.000 de dano em TODOS os oito Bosses.'))
             await reply(text)
             return
@@ -2832,6 +2832,70 @@ ${ranking}${extra}
   },5000).unref?.()
 
   setePecadosBroadcaster=sendEventToGroups
+  // A transição dos Pecados ocorre na transação do último ataque. Avisos são
+  // independentes da sessão do jogador, com confirmação por grupo no Neon:
+  // falha de WhatsApp/redeploy não suprime o anúncio da nova fase.
+  async function announceNextPecado(){
+    if(trevoHealth.whatsapp!=='open') return
+    const current=(await db.query(
+      "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
+    )).rows[0]?.state
+    const index=Number(current?.phaseIndex||0)
+    if(current?.eventId!=='sete_pecados'||current.active===false||index<1||index>7||
+       Date.now()>=Number(current.endsAt||0)) return
+    const groupIds=new Set((await activeEventGroups()).map(x=>String(x.chat_jid||'')).filter(x=>x.endsWith('@g.us')))
+    // Inclui o grupo original de cada jogador que atacou este evento.
+    const claims=(await db.query(
+      "SELECT DISTINCT value->>'chat' AS chat FROM trevo_settings WHERE key LIKE $1",
+      ['global_boss_event_group:'+String(current.scheduleKey)+':%']
+    )).rows
+    for(const row of claims){
+      const chat=String(row.chat||'')
+      if(chat.endsWith('@g.us')) groupIds.add(chat)
+    }
+    const message='🌑⚔️ *PRÓXIMO PECADO LIBERADO! — FASE '+(index+1)+'/8*\n\n'+
+      '👹 *'+String(current.name||'Boss de Evento')+'*\n'+
+      '❤️ HP: *'+Number(current.maxHp||0).toLocaleString('pt-BR')+'*'+
+      ' • ⚔️ ATK: *'+Number(current.atk||0)+'*\n'+
+      '⏰ Evento até *20:40* (Brasília)\n'+
+      '🎯 Cause pelo menos *10.000 de dano* neste Boss para contar para a insígnia.\n'+
+      '⚔️ Use *!atacar* para participar!'
+    for(const chat of groupIds){
+      const key='sete_pecados_phase_notice:'+String(current.scheduleKey)+':'+index+':'+chat
+      const now=Date.now()
+      try{
+        const claim=await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+          ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+          WHERE (
+            trevo_settings.value->>'status'='failed'
+            AND COALESCE((trevo_settings.value->>'retryAt')::bigint,0)<=$3
+          ) OR (
+            trevo_settings.value->>'status'='sending'
+            AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<=$4
+          )
+          RETURNING key
+        `,[key,JSON.stringify({status:'sending',claimedAt:now}),now,now-90000])
+        if(!claim.rowCount) continue
+        try{
+          await sock.sendMessage(chat,{text:message})
+          await db.query(
+            "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+            [key,JSON.stringify({status:'sent',sentAt:Date.now()})]
+          )
+          console.log('[SETE PECADOS] fase anunciada',index,chat)
+        }catch(err){
+          console.warn('[SETE PECADOS] falha ao anunciar fase',index,chat,err?.message||err)
+          await db.query(
+            "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+            [key,JSON.stringify({status:'failed',retryAt:Date.now()+60000})]
+          ).catch(e=>console.warn('[SETE PECADOS] falha ao salvar retry',e?.message||e))
+        }
+      }catch(err){console.error('[SETE PECADOS] notificação',chat,err?.message||err)}
+    }
+  }
+
   // Invasão dos Sete Pecados — 11/10 18:40–20:40 BRT.
   let setePecadosBusy=false
   setInterval(async()=>{
@@ -2846,6 +2910,7 @@ ${ranking}${extra}
       }
       if(event.ended)await sendEventToGroups('🌑 *INVASÃO DOS SETE PECADOS ENCERRADA!*\n\n⏰ O prazo das 20:40 terminou.\n🏆 Bosses já derrotados tiveram seus prêmios distribuídos. Não há prêmio retroativo por Boss não derrotado.')
       if(event.blocked)console.warn('[SETE PECADOS] início aguardando Boss ativo',event.blockingBoss)
+      if(event.active && Number(event.phaseIndex||0)>=1) await announceNextPecado()
     }catch(err){console.error('[SETE PECADOS] scheduler',err?.stack||err)}
     finally{setePecadosBusy=false}
   },5000).unref?.()
@@ -3367,7 +3432,7 @@ Você possui: *${stock}*
       '7️⃣ 🧩 Materiais de Raid / Outros — '+others.length+' tipos\n'+
       '8️⃣ 💰 Vender / descartar itens\n'+
       '9️⃣ ⚜️ Insígnias — '+relicItems.length+' tipos\n\n'+
-      '0️⃣ Sair'
+      '🔟 Voltar\n0️⃣ Sair'
     )
   }
 
@@ -6495,7 +6560,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='inventory_category'){
-      if(input==='9'){
+      if(input==='10'){
         setQuickFlow(chat,sender,'nav_items',{},90000)
         await reply('🛒 *ITENS E INVENTÁRIO*\n\n1️⃣ Loja\n2️⃣ Inventário\n3️⃣ Equipar\n4️⃣ Usar consumível\n5️⃣ Abrir caixas\n\n0️⃣ Sair')
         return true
@@ -6560,7 +6625,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           const relic=relics.items[idx]
           text+='\n*'+(idx+1)+'.* '+relic.name+(relics.active?.id===relic.id?' ✅ *EQUIPADA*':'')+'\n   ✨ '+relic.effect+'\n'
         }
-        text+='\n👉 Envie *!reliquias* para equipar ou trocar.\n↩️ Envie *0* para voltar.'
+        text+='\n👉 Envie *!reliquias* para equipar ou trocar.\n9️⃣ Voltar ao inventário\n0️⃣ Sair.'
         setQuickFlow(chat,sender,'inventory_relic_view',{},90000)
         await reply(text)
         return true
