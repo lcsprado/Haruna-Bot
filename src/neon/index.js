@@ -1310,7 +1310,8 @@ const POTION_SELL_IDS=[
 const RAID_SELL_IDS=[
   'chave_raid_10','chave_raid_15','chave_raid_20','chave_raid_25','chave_raid_30','chave_raid_40','chave_raid_50',
   'nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan',
-  'essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido'
+  'essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido',
+  'fragmento_caos','coroa_abissal','essencia_eclipse'
 ]
 
 const CARPINAR_MENU=[
@@ -3285,7 +3286,7 @@ Escolha o que deseja vender:
 
 1️⃣ ⚔️ *Equipamentos* — inclui lendários não equipados e não vinculados
 2️⃣ 🧪 *Poções e cura* — jogador e pet
-3️⃣ 🧩 *Itens de Raid* — materiais e chaves
+3️⃣ 🧩 *Itens de Raid* — materiais por R$ 100/un. e chaves
 
 🔒 Cópias equipadas e vinculadas são protegidas; lendários podem ser vendidos à loja, não a outros jogadores.
 🌘 Itens protegidos/de evento não aparecem.
@@ -6371,7 +6372,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           await reply('📦 Você não possui outros itens no momento.')
           return true
         }
-        let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n🔒 Materiais protegidos não podem ser vendidos.\n\n'
+        let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Insígnias seguem protegidas.\n\n'
         others.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
         text+='\n9️⃣ Voltar\n0️⃣ Sair'
         await reply(text)

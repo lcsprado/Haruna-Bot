@@ -30,6 +30,9 @@ export const db = new Pool({
 db.on('error', err => console.error('[Neon] pool error', err))
 
 const nowSql = '(EXTRACT(EPOCH FROM NOW())::BIGINT)'
+const RAID_MATERIAL_IDS=Object.freeze(["nucleo_pedra","escama_vulcanica","olho_abissal","nucleo_titan","essencia_rei_abissal","fragmento_celestial","nucleo_alpha_corrompido","fragmento_caos","coroa_abissal","essencia_eclipse"])
+const RAID_MATERIAL_SELL_VALUE=100
+const raidMaterialId=id=>RAID_MATERIAL_IDS.includes(String(id||''))
 
 async function transaction(fn) {
   const client = await db.connect()
@@ -504,14 +507,8 @@ export async function initDatabase() {
     `, item)
   }
 
-  // Materiais de Raid são recursos de invocação/progressão, não equipamentos
-  // lendários. Nunca aplicar o preço genérico de revenda (R$ 100.000).
-  // Preserva quantidades em inventários e afeta apenas negociabilidade.
-  await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[[
-    'nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan',
-    'essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido',
-    'fragmento_caos','coroa_abissal','essencia_eclipse'
-  ]])
+  // Somente o bot recompra materiais de Raid; mercado e trocas permanecem bloqueados.
+  await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
 
   // Os consumíveis especiais são exclusivos dos NPCs e não entram na revenda geral.
   await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
@@ -1389,7 +1386,7 @@ export async function listTradeableItems(jid,rarity=null,minQuantity=1) {
       AND it.sellable=TRUE
       AND it.stackable=TRUE
       AND it.rarity<>'event'
-      AND it.category NOT IN ('weapon','armor','boots','helmet')
+      AND it.category NOT IN ('weapon','armor','boots','helmet') AND it.id NOT IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')
       ${rarityFilter}
     ORDER BY
       CASE it.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
@@ -1408,7 +1405,7 @@ export async function createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1)
     const itemR=await client.query('SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=$1',[String(offerItemId)])
     const offer=itemR.rows[0]
     if(!offer) throw new Error('Item da troca não encontrado.')
-    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && item.rarity!=='legendary' && !['weapon','armor','boots','helmet'].includes(item.category)
+    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && item.rarity!=='legendary' && !raidMaterialId(item.id) && !['weapon','armor','boots','helmet'].includes(item.category)
     if(!allowed(offer)) throw new Error('Esse tipo de item não pode ser trocado.')
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[fromJid,offer.id])
     if(Number(inv.rows[0]?.quantity||0)<quantity) throw new Error('Você não possui essa quantidade do item oferecido.')
@@ -1418,7 +1415,7 @@ export async function createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1)
       JOIN items it ON it.id=i.item_id
       WHERE i.jid=$1 AND i.quantity>=$2 AND it.rarity=$3
         AND it.sellable=TRUE AND it.stackable=TRUE AND it.rarity<>'event'
-        AND it.category NOT IN ('weapon','armor','boots','helmet')
+        AND it.category NOT IN ('weapon','armor','boots','helmet') AND it.id NOT IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')
         AND it.id<>$4
       LIMIT 1
     `,[toJid,quantity,offer.rarity,offer.id])
@@ -1470,7 +1467,7 @@ export async function acceptItemTradeOffer(jid,offerId,requestItemId) {
     const offer=itemRows.find(x=>x.id===t.offer_item_id)
     const request=itemRows.find(x=>x.id===String(requestItemId))
     if(!offer||!request) throw new Error('Item da troca não encontrado.')
-    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !['weapon','armor','boots','helmet'].includes(item.category)
+    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !raidMaterialId(item.id) && !['weapon','armor','boots','helmet'].includes(item.category)
     if(!allowed(offer)||!allowed(request)) throw new Error('Um dos itens não pode ser trocado.')
     if(request.id===offer.id) throw new Error('Escolha um item diferente do item oferecido.')
     if(request.rarity!==t.rarity) throw new Error('O item escolhido precisa ter a mesma raridade.')
@@ -1528,6 +1525,7 @@ export async function getInventory(jid) {
            ) END::int AS sellable_quantity,
            CASE
              WHEN it.sellable=FALSE THEN 0
+             WHEN it.id IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse') THEN 100
              WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
              WHEN it.rarity='legendary' THEN 100000
              WHEN it.rarity='epic' THEN 25000
@@ -1594,7 +1592,7 @@ export async function sellItem(jid, itemId, qty=1) {
     const itemR=await client.query('SELECT * FROM items WHERE id=$1',[itemId])
     const item=itemR.rows[0]
     if(!item) throw new Error('Item não encontrado.')
-    if(['nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse'].includes(itemId)) throw new Error('Materiais de Raid são destinados a invocações e não podem ser vendidos.')
+    // Materiais de Raid têm preço fixo e simbólico.
     if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
 
     const statsR=await client.query(
@@ -1614,7 +1612,8 @@ export async function sellItem(jid, itemId, qty=1) {
     }
 
     let unit
-    if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
+    if(raidMaterialId(itemId)) unit=RAID_MATERIAL_SELL_VALUE
+    else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
     else if(item.rarity==='legendary') unit=100000
     else if(item.rarity==='epic') unit=25000
     else if(item.rarity==='rare') unit=7500
@@ -1722,7 +1721,8 @@ export async function sellItemsBatch(jid, selections=[]) {
       }
 
       let unit
-      if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
+      if(raidMaterialId(sel.itemId)) unit=RAID_MATERIAL_SELL_VALUE
+      else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
       else if(item.rarity==='legendary') unit=100000
       else if(item.rarity==='epic') unit=25000
       else if(item.rarity==='rare') unit=7500
@@ -5792,7 +5792,7 @@ export async function createMarketListing(jid,itemId,qty,price){
     // Apenas itens revendáveis podem ser anunciados no mercado entre jogadores.
     // Impede contornar os requisitos de Honra/Karma e o limite de compras dos NPCs.
     const itemRow=(await client.query('SELECT sellable,category,rarity FROM items WHERE id=$1',[itemId])).rows[0]
-    if(!itemRow || itemRow.sellable!==true || itemRow.rarity==='legendary' || itemId==='elmo_soberano_golem')
+    if(!itemRow || itemRow.sellable!==true || raidMaterialId(itemId) || itemRow.rarity==='legendary' || itemId==='elmo_soberano_golem')
       throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
