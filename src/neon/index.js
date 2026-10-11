@@ -2626,6 +2626,51 @@ ${ranking}${extra}
     }
   }
 
+  // Enquete nativa do WhatsApp: uma por grupo, janela anunciada de 30 minutos.
+  // Estado persistido impede reenvios em reinicializações.
+  let pollThirtyRunning=false
+  setInterval(async()=>{
+    if(pollThirtyRunning||trevoHealth.whatsapp!=='open')return
+    pollThirtyRunning=true
+    try{
+      const groups=await activeEventGroups()
+      const options=['⚔️ Boss Mundial','🐉 Caçada Lendária','🎁 Chuva de Caixas','💰 Festival da Fortuna','🏆 Torneio dos Campeões','🌑 Evento Surpresa']
+      for(const group of groups){
+        const key='poll:next-event:20261010:'+group.chat_jid
+        const row=(await db.query("SELECT value FROM trevo_settings WHERE key=$1",[key])).rows[0]
+        if(!row){
+          const created=await db.query(
+            "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
+            [key,JSON.stringify({status:'sending',createdAt:Date.now()})]
+          )
+          if(created.rowCount){
+            try{
+              const sent=await sock.sendMessage(group.chat_jid,{poll:{name:'🗳️ Qual será o próximo evento do Alpha RPG? (30 minutos para votar)',values:options,selectableCount:1}})
+              const endAt=Date.now()+30*60*1000
+              await db.query("UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+                [key,JSON.stringify({status:'open',createdAt:Date.now(),endsAt:endAt,pollId:sent?.key?.id||null})])
+              console.log('[EVENT POLL 30M] enviada',group.chat_jid,sent?.key?.id)
+              await sock.sendMessage(group.chat_jid,{text:'🗳️ *ENQUETE ABERTA!*\\n⏳ Vocês têm *30 minutos* para escolher o próximo evento do Alpha RPG.\\n✅ Apenas uma opção por pessoa. O prazo da votação será sinalizado no grupo.'})
+            }catch(err){
+              console.error('[EVENT POLL 30M] envio falhou',group.chat_jid,err?.message||err)
+              await db.query("DELETE FROM trevo_settings WHERE key=$1 AND value->>'status'='sending'",[key])
+            }
+          }
+        }else if(row.value?.status==='open'&&Date.now()>=Number(row.value.endsAt||0)){
+          const claimed=await db.query(
+            "UPDATE trevo_settings SET value=jsonb_set(value,'{status}',to_jsonb('closed'::text)),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1 AND value->>'status'='open' RETURNING key",
+            [key]
+          )
+          if(claimed.rowCount){
+            await sock.sendMessage(group.chat_jid,{text:'🗳️ *VOTAÇÃO ENCERRADA!*\\n⏳ Os 30 minutos terminaram. Obrigado por participarem!\\n📊 Confiram a contagem dos votos na enquete acima. Votos posteriores ao prazo não serão considerados para a escolha do evento.'})
+            console.log('[EVENT POLL 30M] encerrada',group.chat_jid)
+          }
+        }
+      }
+    }catch(err){console.error('[EVENT POLL 30M]',err?.stack||err)}
+    finally{pollThirtyRunning=false}
+  },12000).unref?.()
+
   // Aviso antecipado do Guardião da Aurora. Sem revelar comparação com outros elmos.
   let auroraPreviewBusy=false
   const auroraPreviewEnd=Date.parse('2026-10-11T07:00:00-03:00')
