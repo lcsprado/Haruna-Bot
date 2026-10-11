@@ -495,6 +495,7 @@ export async function initDatabase() {
     ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
     ['caixa_rara','Caixa Rara','Item garantido no mínimo Incomum. Chance de Lendário: 0,3%.','special',12000,'rare'],
     ['caixa_epica','Caixa Épica','Item garantido no mínimo Raro. Chance de Lendário: 1%.','special',35000,'epic'],
+    ['caixa_lendaria','Caixa Lendária','Caixa de marco Daily: 1 equipamento Lendário garantido.','special',0,'legendary'],
   ]
 
   for (const item of starterItems) {
@@ -932,22 +933,11 @@ export async function claimCooldown(queryable, key, seconds) {
   return {ok:false,remaining:Math.max(1,Number(current.rows[0]?.expires_at||now)-now)}
 }
 
-function streakRewardFor(streak){
-  const cycleDay=((Number(streak)-1)%30)+1
-  if(cycleDay===3) return { label:'🎁 Caixa da Sorte', itemId:'caixa_sorte', qty:1, bonusCash:0 }
-  if(cycleDay===7) return { label:'🔵 Caixa Rara', itemId:'caixa_rara', qty:1, bonusCash:0 }
-  if(cycleDay===15) return { label:'🟣 Caixa Épica', itemId:'caixa_epica', qty:1, bonusCash:0 }
-  if(cycleDay===30) return { label:'🏆 R$ 20.000 + Caixa Épica', itemId:'caixa_epica', qty:1, bonusCash:20000 }
-  return null
-}
-
 function nextStreakMilestone(streak){
-  const cycleDay=((Math.max(1,Number(streak)||1)-1)%30)+1
-  const checkpoints=[3,7,15,30]
-  const next=checkpoints.find(n=>n>cycleDay) ?? 30
-  const days=next-cycleDay
-  const labels={3:'Caixa da Sorte',7:'Caixa Rara',15:'Caixa Épica',30:'R$ 20.000 + Caixa Épica'}
-  return { day:next, days:Math.max(0,days), label:labels[next] }
+  const day=((Math.max(1,Number(streak)||1)-1)%30)+1
+  const next=[3,7,14,21,30].find(n=>n>day)??30
+  const labels={3:'R$ 50.000',7:'R$ 150.000 + Caixa Épica',14:'R$ 300.000 + 2 Caixas Épicas',21:'R$ 500.000 + 3 Caixas Épicas',30:'R$ 1.000.000 + Caixa Lendária'}
+  return {day:next,days:Math.max(0,next-day),label:labels[next]}
 }
 
 async function ensureDailyStreakState(queryable,jid){
@@ -998,99 +988,9 @@ export async function getDailyStreak(jid) {
   }
 }
 
-export async function claimDaily(jid) {
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const clock=await client.query(`
-      SELECT
-        TO_CHAR(NOW() AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS today,
-        TO_CHAR((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1,'YYYY-MM-DD') AS yesterday,
-        GREATEST(
-          1,
-          FLOOR(EXTRACT(EPOCH FROM (
-            (((NOW() AT TIME ZONE 'America/Sao_Paulo')::date + 1)::timestamp AT TIME ZONE 'America/Sao_Paulo')
-            - NOW()
-          )))
-        )::INT AS remaining
-    `)
-    const {today,yesterday,remaining}=clock.rows[0]
-
-    await ensureDailyStreakState(client,jid)
-
-    const stateR=await client.query(
-      'SELECT streak,best_streak,last_claim_day FROM daily_streaks WHERE jid=$1 FOR UPDATE',
-      [jid]
-    )
-    const state=stateR.rows[0]
-    // pg devolve DATE como Date em UTC em muitos ambientes. String(Date).slice(0,10)
-    // vira "Wed O..." e fazia a sequência reiniciar em 1 diariamente.
-    const dateKey=(value)=>{
-      if(!value) return null
-      if(value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0,10)
-      const raw=String(value)
-      const iso=raw.match(/\\d{4}-\\d{2}-\\d{2}/)
-      return iso ? iso[0] : null
-    }
-    const lastDay=dateKey(state.last_claim_day)
-
-    if(lastDay===today){
-      return {
-        ok:false,
-        remaining:Number(remaining||1),
-        streak:Number(state.streak||0),
-        bestStreak:Number(state.best_streak||0)
-      }
-    }
-
-    const continued=lastDay===yesterday
-    const streak=continued ? Number(state.streak||0)+1 : 1
-    const bestStreak=Math.max(Number(state.best_streak||0),streak)
-    const baseAmount=5000
-    const reward=streakRewardFor(streak)
-    const bonusCash=Number(reward?.bonusCash||0)
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const totalCash=Math.round((baseAmount+bonusCash)*moneyMultiplier)
-
-    await client.query(
-      `UPDATE daily_streaks
-       SET streak=$1,best_streak=$2,last_claim_day=$3::date,updated_at=${nowSql}
-       WHERE jid=$4`,
-      [streak,bestStreak,today,jid]
-    )
-
-    await client.query(
-      'UPDATE wallets SET cash=cash+$1, updated_at='+nowSql+' WHERE jid=$2',
-      [totalCash,jid]
-    )
-
-    await client.query(`
-      INSERT INTO transactions (from_jid,to_jid,amount,type,note)
-      VALUES ('system',$1,$2,'reward',$3)
-    `,[jid,totalCash,`daily streak:${streak}`])
-
-    if(reward?.itemId){
-      await client.query(`
-        INSERT INTO inventories(jid,item_id,quantity)
-        VALUES($1,$2,$3)
-        ON CONFLICT(jid,item_id)
-        DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
-      `,[jid,reward.itemId,reward.qty||1])
-    }
-
-    return {
-      ok:true,
-      amount:baseAmount,
-      bonusCash,
-      totalCash,
-      streak,
-      bestStreak,
-      continued,
-      reward:reward ? {label:reward.label,itemId:reward.itemId,qty:reward.qty||0,bonusCash} : null,
-      next:nextStreakMilestone(streak),
-      eventMultiplier:moneyMultiplier
-    }
-  })
+export async function claimDaily(jid){
+  const {claimDailyV2}=await import('./daily-v2.js')
+  return claimDailyV2(jid)
 }
 
 const CAREER_RANKS=[
@@ -3477,6 +3377,10 @@ const BOX_CONFIG = {
     expChance:0.10,
     cash:[5000,20000],
     exp:[200,700]
+  },
+  caixa_lendaria: {
+    label:'Caixa Lendária',minRarity:'legendary',legendary:1,epic:1,rare:1,uncommon:1,
+    cashChance:0,expChance:0,cash:[0,0],exp:[0,0]
   },
   caixa_epica: {
     label:'Caixa Épica',
