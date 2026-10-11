@@ -1169,10 +1169,10 @@ function xpBar(exp,level){
 }
 
 async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
-  const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks]=await Promise.all([
+  const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,relics]=await Promise.all([
     getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
     getMotorcycleGarage(jid),getBusinesses(jid),getCareer(jid),getPet(jid),
-    getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid)
+    getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid),relicStatus(jid)
   ])
   if(!p) throw new Error('Perfil não encontrado.')
 
@@ -1224,7 +1224,8 @@ ${title}${badge?' • '+badge:''}
 🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}*
 👢 Botas: *${p.boot_name||'Sem botas'} Lv.${Number(p.boot_level||1)}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
-${petLine}
+⚜️ Insígnia: *${relics.active?.name||'Nenhuma ativa'}*
+${relics.active?'✨ Efeito: '+relics.active.effect+'\n':''}${petLine}
 
 💼 Carreira: *${career?.rank?.name||'Ajudante'}*
 🏴 Clã: *${clan?.name||'Sem clã'}*
@@ -3162,7 +3163,8 @@ Você possui: *${stock}*
     const count=category=>items.filter(i=>i.category===category).length
     const potions=items.filter(i=>i.category==='consumable')
     const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
-    const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
+    const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !relicCatalog[i.item_id])
+    const relicItems=items.filter(i=>Boolean(relicCatalog[i.item_id]))
     setQuickFlow(chat,sender,'inventory_category',{},5*60*1000)
     await reply(
       '🎒 *INVENTÁRIO*\n\n'+
@@ -3173,7 +3175,8 @@ Você possui: *${stock}*
       '5️⃣ 🧪 Consumíveis — '+potions.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
       '6️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
       '7️⃣ 🧩 Materiais de Raid / Outros — '+others.length+' tipos\n'+
-      '8️⃣ 💰 Vender / descartar itens\n\n'+
+      '8️⃣ 💰 Vender / descartar itens\n'+
+      '9️⃣ ⚜️ Insígnias — '+relicItems.length+' tipos\n\n'+
       '0️⃣ Sair'
     )
   }
@@ -6363,7 +6366,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       if(input==='7'){
-        const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id))
+        const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !relicCatalog[i.item_id])
         if(!others.length){
           await reply('📦 Você não possui outros itens no momento.')
           return true
@@ -6378,7 +6381,26 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await sellMenu()
         return true
       }
-      await reply('🎒 Escolha uma opção de *1 a 8*.')
+      if(input==='9'){
+        const relics=await relicStatus(sender)
+        let text='⚜️ *INSÍGNIAS DE EVENTO*\n\n🎖️ Relíquias únicas, separadas dos fragmentos.\n🔒 Apenas uma ativa; efeitos não acumulam e não valem no PvP.\n'
+        if(!relics.items.length) text+='\nVocê ainda não possui insígnias.\n'
+        for(let idx=0;idx<relics.items.length;idx++){
+          const relic=relics.items[idx]
+          text+='\n*'+(idx+1)+'.* '+relic.name+(relics.active?.id===relic.id?' ✅ *EQUIPADA*':'')+'\n   ✨ '+relic.effect+'\n'
+        }
+        text+='\n👉 Envie *!reliquias* para equipar ou trocar.\n↩️ Envie *0* para voltar.'
+        setQuickFlow(chat,sender,'inventory_relic_view',{},90000)
+        await reply(text)
+        return true
+      }
+      await reply('🎒 Escolha uma opção de *1 a 9*.')
+      return true
+    }
+
+    if(flow.stage==='inventory_relic_view'){
+      if(input==='0'||input==='9')await inventoryMenu()
+      else await reply('⚜️ Use *!reliquias* para ativar ou trocar sua insígnia, ou *0* para voltar ao inventário.')
       return true
     }
 
