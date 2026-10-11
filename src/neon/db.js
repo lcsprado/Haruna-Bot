@@ -4902,7 +4902,7 @@ const PET_TEAM_STYLE_BONUS={
 // O Morcego da Madrugada ocupa a categoria dos outros dois pets.
 function resolveBatTeamStyles(species){
   const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
-  const batIndex=species.indexOf('morcego_madrugada')
+  const batIndex=species.findIndex(x=>x==='morcego_madrugada'||x==='camaleao_lendario')
   if(batIndex<0) return styles
   const others=styles.filter((_,i)=>i!==batIndex)
   if(others.length!==2||!others[0]||others[0]!==others[1])return styles
@@ -4910,7 +4910,7 @@ function resolveBatTeamStyles(species){
   return styles
 }
 export function petStyleLabel(species){
-  const style=String(species||'')==='morcego_madrugada'?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+  const style=['morcego_madrugada','camaleao_lendario'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
   return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
 export function petTeamSynergy(pets=[]){
