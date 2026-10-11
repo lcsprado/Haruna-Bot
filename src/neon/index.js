@@ -280,7 +280,11 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
         if(r.oilConsumedNow) await reply('🗡️ *ÓLEO DAS SOMBRAS ATIVADO!* +6% de dano do jogador neste Boss (consumido 1 Óleo; pet não recebe bônus).')
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
-        if(r.dead){completed=true;
+        if(r.dead){
+          // Sete Pecados troca o Boss imediatamente, sem encerrar a sessão
+          // de quem aplicou o golpe final. Outros eventos mantêm a regra anterior.
+          const nextPecado= r.eventId==='sete_pecados' && Boolean(r.nextPhase)
+          completed=!nextPecado;
           for(const player of r.rewards||[]){
             if(Number(player.share||0)>=0.02){
               await progressAlphaContract(player.jid,'boss').catch(err=>console.error('[Contratos] boss',err?.message||err))
@@ -304,6 +308,19 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
               (r.nextPhase?'\n\n🔔 O próximo pecado já está ativo. O anúncio será enviado separadamente a todos os grupos.':
               '\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente concedida somente a quem atingiu 10.000 de dano em TODOS os oito Bosses.'))
             await reply(text)
+            if(nextPecado){
+              if(sessionEndsAt && Date.now()>=sessionEndsAt){
+                completed=true
+                return
+              }
+              await reply('⚔️ *COMBATE AUTOMÁTICO MANTIDO!*\n\n'+
+                '🌑 Próximo Boss: *'+r.nextPhase.name+'*\n'+
+                '✅ Você continua atacando sem precisar enviar *!atacar* novamente.\n'+
+                '🛑 Use *!pararatacar* se quiser interromper.')
+              console.log('[SETE PECADOS] runner continua na próxima fase',JSON.stringify({phase:r.nextPhase.phaseIndex,jid}))
+              await new Promise(resolve=>setTimeout(resolve,8000))
+              continue
+            }
             return
           }
           await reply(text); return
@@ -338,6 +355,51 @@ let bossAutoWatchdog=null
 let bossAutoWatchdogBusy=false
 let bossAutoReply=null
 let legacyWeeklyBossRecoveredId=null
+
+// Recuperação ÚNICA do evento 11/10: a versão anterior encerrava a sessão
+// do jogador que derrotava uma fase. A reativação só alcança quem já estava
+// participando deste mesmo evento, está vivo e não pediu !pararatacar.
+// O marcador em trevo_settings impede reativação recorrente após morte/saída.
+async function recoverPecadosParticipantsStoppedByOldPhase(){
+  const now=Date.now()
+  if(now<Date.parse('2026-10-11T18:40:00-03:00')||
+     now>=Date.parse('2026-10-11T20:40:00-03:00')) return
+  const event=(await db.query(
+    "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
+  )).rows[0]?.state
+  if(event?.eventId!=='sete_pecados'||event.active===false||
+     Number(event.phaseIndex||0)<1||Number(event.endsAt||0)<=now) return
+  const jids=Object.keys(event.ledger||{})
+  if(!jids.length) return
+  const endsAt=Number(event.endsAt)
+  const bossId='event:'+String(endsAt)
+  const stopped=(await db.query(`
+    SELECT s.jid,s.chat_jid
+    FROM boss_auto_sessions s JOIN stats st ON st.jid=s.jid
+    WHERE s.status='stopped' AND s.boss_id=$1 AND s.ends_at=$2
+      AND st.hp>0 AND s.jid=ANY($3::text[])
+  `,[bossId,endsAt,jids])).rows
+  for(const row of stopped){
+    if(!String(row.chat_jid||'').endsWith('@g.us')) continue
+    const marker='sete_pecados_resume_once:'+String(event.scheduleKey)+':'+row.jid
+    const restored=await db.query(`
+      WITH one_time_marker AS (
+        INSERT INTO trevo_settings(key,value,updated_at)
+        VALUES($4,$5::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+        ON CONFLICT(key) DO NOTHING RETURNING key
+      )
+      UPDATE boss_auto_sessions
+      SET status='active',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+      WHERE jid=$1 AND status='stopped' AND boss_id=$2 AND ends_at=$3
+        AND EXISTS(SELECT 1 FROM one_time_marker)
+      RETURNING jid
+    `,[row.jid,bossId,endsAt,marker,JSON.stringify({recovered:true,at:now})])
+    if(restored.rowCount){
+      console.log('[SETE PECADOS] sessão anterior retomada automaticamente',JSON.stringify({jid:row.jid,phase:event.phaseIndex,chat:row.chat_jid}))
+    }
+  }
+}
+
 
 // Recupera a participação já existente antes da migração para runners persistentes.
 // Só recupera quem realmente atacou, vinculando ao mesmo grupo gravado no Neon.
@@ -401,6 +463,7 @@ async function ensureActiveBossRuns(sendToChat){
       }
     }
     await recoverLegacyWeeklyBossSessions()
+    await recoverPecadosParticipantsStoppedByOldPhase()
     const rows=(await db.query(`
       SELECT s.jid,s.chat_jid,s.name,s.use_pet,s.last_attack_at
       FROM boss_auto_sessions s JOIN stats st ON st.jid=s.jid
@@ -11243,6 +11306,18 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
         } else if(['pararatacar','pararboss'].includes(cmd)){
           const existing=bossSessions.get(sender)
           if(existing&&existing.chat!==chat) return await reply('⚠️ Você deve controlar o combate pelo grupo em que começou.')
+          // Opt-out explícito também bloqueia a recuperação pontual de sessões
+          // interrompidas pela versão antiga entre os Pecados.
+          const currentEvent=(await db.query(
+            "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
+          )).rows[0]?.state
+          if(currentEvent?.eventId==='sete_pecados'&&currentEvent.active!==false){
+            const key='sete_pecados_resume_once:'+String(currentEvent.scheduleKey)+':'+sender
+            await db.query(
+              "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING",
+              [key,JSON.stringify({manualStop:true,at:Date.now()})]
+            )
+          }
           const stopped=await db.query(
             "UPDATE boss_auto_sessions SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 AND chat_jid=$2 AND status='active' RETURNING jid",
             [sender,chat]
