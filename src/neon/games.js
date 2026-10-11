@@ -1541,6 +1541,36 @@ export async function autoStartInicioMadrugada(chat,now=new Date()){
 }
 
 
+
+const CAM_START=Date.parse('2026-10-10T23:10:00-03:00'),CAM_END=Date.parse('2026-10-10T23:45:00-03:00'),CAM_ID='camaleao_20261010'
+async function finishCam(c,state,beaten){
+ const ranking=Object.entries(state.participants||{}).map(([jid,v])=>({jid,name:v.name||'Jogador',damage:Number(v.damage||0)})).filter(x=>x.damage>0).sort((a,b)=>b.damage-a.damage)
+ const eligible=ranking.filter(x=>x.damage>=10000),win=beaten&&eligible.length>=4,total=ranking.reduce((a,p)=>a+p.damage,0)||1,rewards=[]
+ for(const p of ranking){
+   const cash=Math.round(1000+18000*p.damage/total),exp=Math.round(150+2400*p.damage/total),drops=[]
+   await credit(c,p.jid,cash,'boss_camaleao');await grantExpInTransaction(c,p.jid,exp)
+   if(win&&p.jid===eligible[0].jid){
+     const got=await c.query("INSERT INTO pet_collection(jid,species,name,level,xp,hunger,hygiene,energy,power,hp,max_hp,active) VALUES($1,'camaleao_lendario','🦎 Camaleão Lendário',1,0,100,100,100,145,145,145,FALSE) RETURNING id",[p.jid])
+     drops.push({id:'camaleao_lendario',name:'🦎 Camaleão Lendário #'+got.rows[0].id,rarity:'Lendário'})
+   }
+   rewards.push({...p,position:rewards.length+1,cash,exp,petXp:0,petXpTeam:[],drops})
+ }
+ const end={...state,active:false,mode:'event_completed',participants:{},result:{bossName:state.name,maxHp:state.maxHp,defeated:win,rewards}}
+ await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',end)
+ return {ended:true,won:win,rewards}
+}
+export async function autoStartCamEvent(now=new Date()){
+ const ts=now.getTime();if(ts<CAM_START)return {due:false}
+ return tx(async c=>{
+  const old=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+  if(old?.eventId===CAM_ID){if(ts>=CAM_END&&old.active!==false)return finishCam(c,old,false);return {due:true}}
+  if(ts>=CAM_END)return {due:false,expired:true}
+  if(old?.active!==false&&Number(old?.hp)>0&&(!old.endsAt||Number(old.endsAt)>ts))return {due:true,blocked:true}
+  const state={mode:'event',eventId:CAM_ID,scheduleKey:CAM_ID,origin:'scheduled',active:true,name:'Quimera Cromática',hp:600000,maxHp:600000,atk:220,participants:{},startedAt:ts,endsAt:CAM_END}
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state);return {due:true,spawned:true}
+ })
+}
+
 const AURORA_START=Date.parse('2026-10-11T07:00:00-03:00')
 const AURORA_END=Date.parse('2026-10-11T07:45:00-03:00')
 const AURORA_KEY='guardiao-aurora-2026-10-11-0700'
@@ -2184,7 +2214,8 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const faseAnterior=ruptura?Math.max(1,Number(s.phase||1)):1
     const eclipseRelic=await activeRelic(c,jid)
     const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
-    const damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage
+    let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage
+    if(s.eventId===CAM_ID&&Object.entries(s.participants||{}).filter(([id,p])=>id!==jid&&Number(p.damage||0)>=10000).length<3)damage=Math.min(damage,Math.max(0,Number(s.hp)-1))
     const petDamage=pet?Math.max(0,baseDamage-baselineWithGearCrit-oilBonus):0
     s.hp=Math.max(0,Number(s.hp)-damage)
     const nextPhase=ruptura?(s.hp<=s.maxHp/3?3:(s.hp<=s.maxHp*2/3?2:1)):faseAnterior
@@ -2313,6 +2344,10 @@ export async function attackBoss(chat,jid,name,usePet=true){
         autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
         petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+    }
+    if(s.hp<=0&&s.eventId===CAM_ID){
+      const result=await finishCam(c,s,true)
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,phaseChanged,playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     if(s.hp<=0&&s.eventId===AURORA_ID){
       const result=await settleAurora(c,s,true)
