@@ -1437,9 +1437,9 @@ async function settlePecadoPhase(c,s,chat){
     old.name=p.name
     old.phases={...(old.phases||{}),[phase.id]:p.damage}
     ledger[p.jid]=old
-    if(cash){
-      await credit(c,p.jid,cash,'boss_event_sete_pecados')
-      await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
+    if(eligible){
+      if(cash)await credit(c,p.jid,cash,'boss_event_sete_pecados')
+      if(exp)await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
     }
     if(eligible&&phaseIndex<7){
       const itemId=PECADOS_ESSENCES[phaseIndex]
