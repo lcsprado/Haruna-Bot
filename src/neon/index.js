@@ -38,7 +38,7 @@ import { useNeonAuthState } from './auth.js'
 import {
   initGames, roulette, createGroupRoulette, joinGroupRoulette, spinGroupRoulette, coinFlip, createCoinDuel, acceptCoinDuel, createRpsDuel, acceptRpsDuel, createTournament, joinTournament, startTournament, rps,
   startHangman, hangmanLetter, hangmanWord,
-  startQuiz, answerQuiz,
+  startQuiz, answerQuiz, expireQuiz,
   startNumberGame, guessNumber,
   startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
   getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
@@ -2695,6 +2695,18 @@ ${ranking}${extra}
     quizClear(chat)
     const q=await startQuiz(chat)
     await reply((q.already?'🧠 *JÁ EXISTE UM QUIZ ATIVO*\n\n':'')+quizFormat(q))
+    const started=Number(q.started)
+    const delay=Math.max(100,started+120000-Date.now()+100)
+    const timeout=setTimeout(async()=>{
+      try{
+        const expired=await expireQuiz(chat,started)
+        if(expired){
+          quizAwaitChoice(chat)
+          await sock.sendMessage(chat,{text:'⏳ *Tempo esgotado!*\n\n'+quizFinishPrompt})
+        }
+      }catch(err){console.error('[QUIZ EXPIRE]',err?.message||err)}
+    },delay)
+    timeout.unref?.()
     return q
   }
   async function quizAnswerRequested(chat,sender,answer,reply,isGroup){
