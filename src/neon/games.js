@@ -1372,6 +1372,119 @@ async function giveBossDrops(c,jid,position,extraChance=0,sourceKey=null){
 // Isso impede o mesmo jogador de ganhar ataques extras só por estar em vários grupos.
 const GLOBAL_BOSS_EVENT_CHAT='__alpha_global_boss_event__'
 
+const PECADOS_START=Date.parse('2026-10-11T18:40:00-03:00')
+const PECADOS_END=Date.parse('2026-10-11T20:40:00-03:00')
+const PECADOS_KEY='sete-pecados-20261011-1840-v1'
+const PECADOS_PHASES=[
+  {id:'preguica',name:'💤 Preguiça',hp:60000,atk:35,cash:[20000,15000,10000]},
+  {id:'gula',name:'🍖 Gula',hp:75000,atk:45,cash:[25000,18000,12000]},
+  {id:'ganancia',name:'💰 Ganância',hp:90000,atk:55,cash:[30000,22000,15000]},
+  {id:'inveja',name:'🐍 Inveja',hp:105000,atk:65,cash:[35000,25000,18000]},
+  {id:'luxuria',name:'💋 Luxúria',hp:120000,atk:75,cash:[40000,30000,20000]},
+  {id:'ira',name:'🔥 Ira',hp:140000,atk:90,cash:[50000,35000,25000]},
+  {id:'soberba',name:'👑 Soberba',hp:160000,atk:110,cash:[60000,45000,30000]},
+  {id:'azazel',name:'👹 Azazel, o Pecado Original',hp:200000,atk:135,cash:[150000,100000,70000],boxes:[10,6,4]}
+]
+const PECADOS_MIN_DAMAGE=10000
+const PECADOS_ESSENCES=['essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']
+const PECADOS_RELIC='insignia_sete_pecados'
+const PECADOS_TITLE='titulo_conquistador_pecados'
+function pecadosPhaseState(index,ledger,startedAt){
+  const phase=PECADOS_PHASES[index]
+  return {mode:'event',eventId:'sete_pecados',origin:'scheduled',scheduleKey:PECADOS_KEY,
+    active:true,phaseIndex:index,phaseCount:PECADOS_PHASES.length,name:phase.name,
+    hp:phase.hp,maxHp:phase.hp,baseHp:phase.hp,atk:phase.atk,
+    participants:{},ledger:ledger||{},startedAt,endsAt:PECADOS_END}
+}
+export async function tickSetePecados(now=Date.now()){
+  if(now<PECADOS_START)return {due:false}
+  return tx(async c=>{
+    const s=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+    if(s?.scheduleKey===PECADOS_KEY){
+      if(s.active!==false&&now>=PECADOS_END){
+        const ended={...s,active:false,mode:'event_completed',completedAt:now,outcome:'time_limit'}
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',ended)
+        console.log('[SETE PECADOS] ended on time',JSON.stringify({phase:s.phaseIndex,hp:s.hp}))
+        return {due:true,ended:true,phaseIndex:s.phaseIndex}
+      }
+      return {due:true,already:true,active:s.active!==false,phaseIndex:s.phaseIndex}
+    }
+    if(now>=PECADOS_END)return {due:false,missed:true}
+    if(s&&s.active!==false&&Number(s.hp)>0&&(!s.endsAt||Number(s.endsAt)>now)){
+      console.warn('[SETE PECADOS] existing global boss blocks spawn',s.name)
+      return {due:true,blocked:true,blockingBoss:s.name}
+    }
+    const state=pecadosPhaseState(0,{},now)
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
+    console.log('[SETE PECADOS] started',JSON.stringify({phase:0,at:now,endsAt:PECADOS_END}))
+    return {due:true,spawned:true,...state}
+  })
+}
+async function settlePecadoPhase(c,s,chat){
+  const phaseIndex=Number(s.phaseIndex||0),phase=PECADOS_PHASES[phaseIndex]
+  const participants=Object.entries(s.participants||{})
+    .map(([jid,p])=>({jid,name:p.name||'Jogador',damage:Math.max(0,Number(p.damage||0))}))
+    .filter(p=>p.damage>0).sort((a,b)=>b.damage-a.damage)
+  const ledger={...(s.ledger||{})},rewards=[]
+  for(let i=0;i<participants.length;i++){
+    const p=participants[i]
+    const eligible=p.damage>=PECADOS_MIN_DAMAGE
+    const cash=eligible?Number(phase.cash[i]||0):0
+    const exp=eligible?Math.round(250+Math.min(3000,p.damage/75)):0
+    const drops=[]
+    const old=ledger[p.jid]||{name:p.name,phases:{}}
+    old.name=p.name
+    old.phases={...(old.phases||{}),[phase.id]:p.damage}
+    ledger[p.jid]=old
+    if(cash){
+      await credit(c,p.jid,cash,'boss_event_sete_pecados')
+      await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
+    }
+    if(eligible&&phaseIndex<7){
+      const itemId=PECADOS_ESSENCES[phaseIndex]
+      await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,itemId])
+      drops.push({id:itemId,name:'Essência de '+phase.name,rarity:'Evento'})
+    }
+    if(eligible&&phaseIndex===7){
+      const boxQty=Number(phase.boxes?.[i]||0)
+      if(boxQty){
+        await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'caixa_epica',$2) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[p.jid,boxQty])
+        drops.push({id:'caixa_epica',name:'Caixa Épica ×'+boxQty,rarity:'Épico'})
+      }
+      const full=PECADOS_PHASES.every(x=>Number(old.phases[x.id]||0)>=PECADOS_MIN_DAMAGE)
+      if(full){
+        const oldRelic=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,PECADOS_RELIC])).rows[0]
+        if(Number(oldRelic?.quantity||0)<1){
+          await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,PECADOS_RELIC])
+          drops.push({id:PECADOS_RELIC,name:'⚜️ Insígnia dos Sete Pecados (+2% Boss/Raid, +1pp CRIT)',rarity:'Evento Único'})
+        }
+        const oldTitle=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,PECADOS_TITLE])).rows[0]
+        if(Number(oldTitle?.quantity||0)<1){
+          await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,PECADOS_TITLE])
+          await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'caixa_epica',3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+3",[p.jid])
+          await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'caixa_lendaria',1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1",[p.jid])
+          drops.push({id:PECADOS_TITLE,name:'Título Conquistador dos Pecados + 3 Caixas Épicas + 1 Caixa Lendária',rarity:'Evento Único'})
+        }
+      }
+    }
+    rewards.push({...p,position:i+1,share:p.damage/(participants.reduce((n,x)=>n+x.damage,0)||1),cash,exp,petXp:0,petXpTeam:[],drops,eligible})
+  }
+  const nextIndex=phaseIndex+1
+  if(nextIndex>=PECADOS_PHASES.length){
+    const end={...s,active:false,mode:'event_completed',hp:0,participants:{},
+      ledger,completedAt:Date.now(),outcome:'defeated',
+      result:{bossName:s.name,maxHp:s.maxHp,rewards}}
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',end)
+    console.log('[SETE PECADOS] completed',JSON.stringify({phase:phaseIndex,players:rewards.length}))
+    return {completed:true,rewards,phaseIndex,phaseName:phase.name}
+  }
+  const next=pecadosPhaseState(nextIndex,ledger,s.startedAt)
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',next)
+  console.log('[SETE PECADOS] next phase',JSON.stringify({defeated:phaseIndex,next:nextIndex,rewards:rewards.length}))
+  return {completed:false,rewards,phaseIndex,phaseName:phase.name,next:{name:next.name,hp:next.hp,atk:next.atk,phaseIndex:nextIndex}}
+}
+
+
 const RUPTURA_INICIO=Date.parse('2026-10-09T20:00:00-03:00')
 const RUPTURA_FIM=Date.parse('2026-10-09T21:00:00-03:00')
 const RUPTURA_ID='ruptura-estelar-2026-10-09'
@@ -2156,6 +2269,15 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id,helmet_id,class_id,class_applied FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
+    // HP escala quando um NOVO participante causa seu primeiro ataque, inclusive após !go.
+    if(s.eventId==='sete_pecados'&&!s.participants[jid]){
+      const oldCount=Object.keys(s.participants).length
+      if(oldCount>=1){
+        const hpIncrease=Math.round(Number(s.baseHp||s.maxHp)*.35)
+        s.maxHp+=hpIncrease
+        s.hp+=hpIncrease
+      }
+    }
     const existingParticipant=s.participants[jid]||{}
     const awakeningStage=Number((await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]?.stage||0)
     const bossCadenceMs=gameType==='boss_event'?8000:10000
@@ -2236,6 +2358,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const eclipseRelic=await activeRelic(c,jid)
     const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
     let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage
+    if(s.eventId==='sete_pecados'){
+      damage=Math.min(Math.max(0,damage),Math.max(0,Number(s.hp||0)))
+    }
 
     const petDamage=pet?Math.max(0,baseDamage-baselineWithGearCrit-oilBonus):0
     s.hp=Math.max(0,Number(s.hp)-damage)
@@ -2357,6 +2482,15 @@ export async function attackBoss(chat,jid,name,usePet=true){
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[php,jid])
+    }
+    if(s.hp<=0&&s.eventId==='sete_pecados'){
+      const outcome=await settlePecadoPhase(c,s,chat)
+      return {dead:true,mode:s.mode,eventId:s.eventId,damage,bossDamage,bossCritical,
+        playerHp:php,hp:0,maxHp:s.maxHp,players:outcome.rewards.length,rewards:outcome.rewards,
+        nextPhase:outcome.next||null,phaseIndex:outcome.phaseIndex,finalCompleted:outcome.completed,
+        autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,
+        petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
+        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     if(s.hp<=0&&s.eventId===INICIO_MADRUGADA_ID){
       const result=await settleInicioMadrugada(c,s,true)
