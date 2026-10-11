@@ -1542,7 +1542,7 @@ export async function autoStartInicioMadrugada(chat,now=new Date()){
 
 
 
-const CAM_START=Date.parse('2026-10-10T23:10:00-03:00'),CAM_END=Date.parse('2026-10-10T23:45:00-03:00'),CAM_ID='camaleao_20261010'
+const CAM_START=Date.parse('2026-10-10T23:15:00-03:00'),CAM_END=Date.parse('2026-10-10T23:45:00-03:00'),CAM_ID='camaleao_20261010'
 async function finishCam(c,state,beaten){
  const ranking=Object.entries(state.participants||{}).map(([jid,v])=>({jid,name:v.name||'Jogador',damage:Number(v.damage||0)})).filter(x=>x.damage>0).sort((a,b)=>b.damage-a.damage)
  const eligible=ranking.filter(x=>x.damage>=10000),win=beaten&&eligible.length>=4,total=ranking.reduce((a,p)=>a+p.damage,0)||1,rewards=[]
@@ -1563,7 +1563,7 @@ export async function autoStartCamEvent(now=new Date()){
  const ts=now.getTime();if(ts<CAM_START)return {due:false}
  return tx(async c=>{
   const old=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
-  if(old?.eventId===CAM_ID){if(ts>=CAM_END&&old.active!==false)return finishCam(c,old,false);return {due:true}}
+  if(old?.eventId===CAM_ID&&Number(old.startedAt||0)>=CAM_START){if(ts>=CAM_END&&old.active!==false)return finishCam(c,old,false);return {due:true}}
   if(ts>=CAM_END)return {due:false,expired:true}
   if(old?.active!==false&&Number(old?.hp)>0&&(!old.endsAt||Number(old.endsAt)>ts))return {due:true,blocked:true}
   const state={mode:'event',eventId:CAM_ID,scheduleKey:CAM_ID,origin:'scheduled',active:true,name:'Quimera Cromática',hp:600000,maxHp:600000,atk:220,participants:{},startedAt:ts,endsAt:CAM_END}
