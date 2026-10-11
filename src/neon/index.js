@@ -270,6 +270,11 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
             3:'💀 *FASE 3 — COLAPSO!* Nharok ganhou +20% ATK e recebe +10% dano.'}[r.phaseChanged]
           if(text) await reply(text)
         }
+        if(Number(r.damage||0)>0){
+          await creditDailyActivity(jid,'boss_damage',Number(r.damage),
+            'boss:'+String(sessionMode||'common')+':'+String(sessionEndsAt||0)+':'+jid+':'+Date.now(),reply)
+            .catch(err=>console.error('[MISSIONS V2 BOSS]',err?.message||err))
+        }
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.bossCritical) bossCrits++; if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
         if(r.oilConsumedNow) await reply('🗡️ *ÓLEO DAS SOMBRAS ATIVADO!* +6% de dano do jogador neste Boss (consumido 1 Óleo; pet não recebe bônus).')
         if(r.autoHeal) heals.push(r.autoHeal.name)
@@ -528,6 +533,14 @@ async function runRaidCombat(chat,level,reply){
           continue
         }
 
+        // Apenas hits confirmados em transação podem progredir missão de Raid.
+        for(const hit of (r.events||[])){
+          if(hit.type==='hit'&&Number(hit.damage)>0){
+            await creditDailyActivity(hit.jid,'raid_damage',Number(hit.damage),
+              'raid:'+chat+':'+Number(r.config?.level||level)+':'+Number(r.raidId||0)+':'+Number(r.round)+':'+hit.jid)
+              .catch(err=>console.error('[MISSIONS V2 RAID]',err?.message||err))
+          }
+        }
         if(r.victory){
           for(const player of r.rewards||[]){
             if(Number(player.share||0)>=0.02){
@@ -6199,7 +6212,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         clearQuickFlow(chat,sender)
         if(!r.ok) await reply(`⏳ Você já trabalhou. Tente novamente em ${duration(r.remaining)}.`)
         else{
-          await progressDailyMission(sender,'work')
+          await creditDailyActivity(sender,'work',1,null,reply)
           if(isGroup) await progressGroupMission(chat,sender,'work')
           await reply(workResultText(r))
         }
@@ -7386,7 +7399,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         clearQuickFlow(chat,sender)
         if(!r.ok) await reply(`⏳ Nova dungeon em ${duration(r.remaining)}.`)
         else{
-          await progressDailyMission(sender,'dungeon')
+          if(r.won) await creditDailyActivity(sender,'dungeon',1,null,reply)
           if(r.won) await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
           if(r.won) await reply(`🏆 Você venceu *${r.monster}*!\n💰 +R$ ${fmt(r.cash)}\n✨ +${r.exp} EXP\n❤️ HP: ${r.hp}/${r.maxHp}`)
           else await reply(`💀 Você perdeu para *${r.monster}*.\n❤️ Recuperou para ${r.hp}/${r.maxHp} HP.`)
@@ -7472,7 +7485,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         await reply(`⏳ Você poderá batalhar novamente em ${duration(r.remaining)}.`)
         return true
       }
-      await progressDailyMission(sender,'battle')
+      if(r.winner.jid===sender) await creditDailyActivity(sender,'battle',1,null,reply)
       if(String(chat).endsWith('@g.us')) await progressGroupMission(chat,sender,'battle')
       clearQuickFlow(chat,sender)
       await reply(`⚔️ *BATALHA ENCERRADA!*\n🏆 Vencedor: *${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}`,{mentions:[targetMention]})
@@ -9293,6 +9306,7 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
             }
             const action={alimentar:'alimentar',banho:'banho',descansar:'descansar',passear:'passear',treinarpet:'treinar',aventurapet:'aventura'}[cmd]
             const p=await petAction(sender,action)
+            if(cmd==='treinarpet')await creditDailyActivity(sender,'pet_train',1,'pet_train:'+p.last_action,reply)
             const actionResult=cmd==='descansar'?'descansou e recuperou energia e HP!':cmd==='banho'?'tomou banho!':'completou a ação!'
             const petVitals=cmd==='descansar'
               ? `❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`
@@ -9721,7 +9735,7 @@ ${status}
               }
               grossTotal+=Number(r.gross||0); taxTotal+=Number(r.tax||0); netTotal+=Number(r.amount??r.total??0)
               results.push(`${icon} *${label}:* R$ ${fmt(r.gross)} bruto • TAXADE ${r.taxRate}%: -R$ ${fmt(r.tax)} • *R$ ${fmt(r.amount??r.total??0)} líquido*${Number(r.eventMultiplier||1)>1?` 🔥 *×${eventMultLabel(r.eventMultiplier)} (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}`)
-              await progressDailyMission(sender,'work')
+              await creditDailyActivity(sender,'work',1,null,reply)
               if(isGroup) await progressGroupMission(chat,sender,'work')
             }catch(err){
               results.push(`${icon} *${label}:* ⚠️ ${String(err?.message||'indisponível')}`)
@@ -9746,7 +9760,7 @@ ${results.join('\n')}
           const r=await work(sender)
           if(!r.ok) await reply(`⏳ Você já trabalhou. Tente novamente em ${duration(r.remaining)}.`)
           else {
-            await progressDailyMission(sender,'work')
+            await creditDailyActivity(sender,'work',1,null,reply)
           if(isGroup) await progressGroupMission(chat,sender,'work')
             await reply(workResultText(r))
           }
@@ -9877,7 +9891,7 @@ ${results.join('\n')}
           if(!r.ok){
             await reply(`🍔 Sua frota já trabalhou. Próxima rodada em *${duration(r.remaining)}*.`)
           }else{
-            await progressDailyMission(sender,'work')
+            await creditDailyActivity(sender,'work',1,null,reply)
             await progressAlphaContract(sender,'ifood').catch(err=>console.error('[Contratos] ifood',err?.message||err))
             if(isGroup) await progressGroupMission(chat,sender,'work')
             let text='🍔 *IFOOD — FROTA EM ROTA*\n\n'
@@ -9956,7 +9970,7 @@ ${results.join('\n')}
           if(!r.ok){
             await reply(`🚗 Sua frota já trabalhou. Próxima rodada em *${duration(r.remaining)}*.`)
           }else{
-            await progressDailyMission(sender,'work')
+            await creditDailyActivity(sender,'work',1,null,reply)
             await progressAlphaContract(sender,'uber').catch(err=>console.error('[Contratos] uber',err?.message||err))
             if(isGroup) await progressGroupMission(chat,sender,'work')
             let text='🚗 *UBER — FROTA NA RUA*\n\n'
@@ -10423,7 +10437,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           text+=`\n🏆 *Vencedor: ${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}\n✨ EXP: +${r.winXpGain||40} vencedor / +${r.loseXpGain||15} derrotado${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} ATIVO*`:''}`
           if(r.winExp.levels>0) text+=`\n⬆️ ${r.winner.name} subiu ${r.winExp.levels} nível(is)!`
           if(r.loseExp.levels>0) text+=`\n⬆️ ${r.loser.name} subiu ${r.loseExp.levels} nível(is)!`
-          await progressDailyMission(sender,'battle')
+          if(r.winner.jid===sender) await creditDailyActivity(sender,'battle',1,null,reply)
       if(isGroup) await progressGroupMission(chat,sender,'battle')
           await reply(text,{mentions:[target]})
 
@@ -11135,7 +11149,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
         } else if(['dungeon','masmorra'].includes(cmd)){
           const r=await dungeon(sender)
           if(!r.ok) return await reply(`⏳ Você poderá entrar novamente na dungeon em ${duration(r.remaining)}.`)
-          await progressDailyMission(sender,'dungeon')
+          if(r.won) await creditDailyActivity(sender,'dungeon',1,null,reply)
           if(r.won) await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
           if(r.won){
             let text=`🏰 *DUNGEON CONCLUÍDA!*\n\n👹 Inimigo: *${r.monster}*\n❤️ HP restante: ${r.hp}/${r.maxHp}\n💰 Recompensa: R$ ${fmt(r.cash)}\n✨ EXP: +${r.exp}`
