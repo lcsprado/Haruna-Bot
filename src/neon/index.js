@@ -244,6 +244,10 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
           petHeals.push(r.autoPetHeal.name)
           await reply(`🐾🧪 *AUTOCURA DO PET!*\n\n💔 *${r.autoPetHeal.petName||r.pet?.name||'Pet'}* chegou a 0 HP e usou *${r.autoPetHeal.name}* automaticamente.\n❤️ HP: *${Number(r.autoPetHeal.hp||0).toLocaleString('pt-BR')}/${Number(r.autoPetHeal.maxHp||0).toLocaleString('pt-BR')}*`)
         }
+        if(r.autoPetEnergy){
+          petExitWarned=false
+          await reply(`⚡ *ENERGIA DO PET RECARREGADA AUTOMATICAMENTE!*\n\n🐾 ${r.autoPetEnergy.petName}\n🔋 Energia: *${r.autoPetEnergy.before} → ${r.autoPetEnergy.max}*\n📦 Energéticos restantes: *${r.autoPetEnergy.remaining}*\n⚔️ Combate automático continua.`)
+        }
         if(r.petUnavailableReason==='energy'&&!petExitWarned){
           petExitWarned=true
           await reply('⚡ Seu pet ficou sem energia e saiu do combate. Você continuará atacando sozinho, sem o bônus dele.')
