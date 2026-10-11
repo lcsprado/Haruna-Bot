@@ -1161,8 +1161,9 @@ export async function raidRound(chat,level){
           await persistRaidCombatPet(c,p.jid,p.pet)
         }
       }
+      const equippedRaidRelic=await activeRelic(c,p.jid)
       const petCritChance=Math.max(0,Number(pb.crit||0)+Number(teamSynergy.crit||0))
-      const gearCritChance=Math.max(0,Number(p.crit||0))
+      const gearCritChance=Math.max(0,Number(p.crit||0)+Number(equippedRaidRelic?.raidCrit||0))
       const roll=Math.random()
       const petCrit=petCritChance>0&&roll<petCritChance
       const gearCrit=!petCrit&&gearCritChance>0&&roll<Math.min(.50,petCritChance+gearCritChance)
@@ -1176,7 +1177,7 @@ export async function raidRound(chat,level){
       const classHit=classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
-      const dmg=classHit.damage
+      const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))
       const actualDamage=Math.min(Math.max(0,dmg),Math.max(0,Number(s.hp||0)))
       if(classHit.heal>0) p.hp=Math.min(p.maxHp,p.hp+classHit.heal)
       const petExtra=p.pet?Math.max(0,baseDmg-baseline-oilBonus):0
@@ -2342,7 +2343,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0))
     const baseCritChance=.10
     const roll=Math.random()
-    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance+classCritBonus(st.class_id,st.class_applied,awakeningStage,'boss'))
+    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance+classCritBonus(st.class_id,st.class_applied,awakeningStage,'boss')+Number((await activeRelic(c,jid))?.bossCrit||0))
     const crit=roll<totalCritChance
     const petCrit=crit&&roll>=Math.min(totalCritChance,baseCritChance+gearCritChance)
     const gearCrit=crit&&!petCrit
