@@ -1171,7 +1171,7 @@ export async function raidRound(chat,level){
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
       await saveGame(c,chat,gameType,s)
-      return {victory:true,config:cfg,round:s.round,hp:0,maxHp:s.maxHp,rewards,events}
+      return {victory:true,config:cfg,raidId:s.startedAt,round:s.round,hp:0,maxHp:s.maxHp,rewards,events}
     }
 
     const special=Math.random()<.22
@@ -1282,10 +1282,10 @@ export async function raidRound(chat,level){
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
     if(!survivors){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
-      return {failed:true,reason:'party_wipe',config:cfg,round:s.round,hp:s.hp,maxHp:s.maxHp,events}
+      return {failed:true,reason:'party_wipe',config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,events}
     }
     await saveGame(c,chat,gameType,s)
-    return {config:cfg,round:s.round,hp:s.hp,maxHp:s.maxHp,survivors,special,specialName,events}
+    return {config:cfg,raidId:s.startedAt,round:s.round,hp:s.hp,maxHp:s.maxHp,survivors,special,specialName,events}
   })
 }
 
