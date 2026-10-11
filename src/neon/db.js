@@ -2180,8 +2180,8 @@ export async function listUpgradeableEquipment(jid){
     FROM inventories inv
     JOIN items i ON i.id=inv.item_id
     LEFT JOIN equipment_upgrades u ON u.jid=inv.jid AND u.item_id=inv.item_id
-    WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor','boots')
-    ORDER BY CASE i.category WHEN 'weapon' THEN 1 WHEN 'armor' THEN 2 ELSE 3 END,
+    WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor','boots','helmet')
+    ORDER BY CASE i.category WHEN 'weapon' THEN 1 WHEN 'armor' THEN 2 WHEN 'helmet' THEN 3 ELSE 4 END,
              CASE i.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
              i.name
   `,[jid])
