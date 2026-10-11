@@ -3216,7 +3216,8 @@ O que deseja trocar?
         !isWeapon&&Number(stats.atk||0)?'⚔️ +'+Number(stats.atk)+' ATK':null
       ].filter(Boolean).join(' • ')
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+' • 📦 ×'+Number(i.quantity||0)+' no total\n'
-      text+='   '+(isWeapon?'⚔️ +':(isArmor||isHelmet)?'🛡️ +':'💨 +')+mainStat+' '+(isWeapon?'ATK':(isArmor||isHelmet)?'DEF':'VEL')+(extras?' • '+extras:'')+active+'\n'\n      text+='   🎒 *'+Math.max(0,Number(i.quantity||0)-(active?1:0))+'* reserva(s)'+(active?' • 🔒 *1 equipada*':'')+'\n'
+      text+='   '+(isWeapon?'⚔️ +':(isArmor||isHelmet)?'🛡️ +':'💨 +')+mainStat+' '+(isWeapon?'ATK':(isArmor||isHelmet)?'DEF':'VEL')+(extras?' • '+extras:'')+active+'\n'
+      text+='   🎒 *'+Math.max(0,Number(i.quantity||0)-(active?1:0))+'* reserva(s)'+(active?' • 🔒 *1 equipada*':'')+'\n'
     })
     text+='\n👉 Responda só com o número.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
