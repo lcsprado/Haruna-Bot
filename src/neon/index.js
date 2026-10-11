@@ -2670,43 +2670,51 @@ ${ranking}${extra}
     }
   }
 
-  // Quizzes automáticos somente nos grupos cuja missão semanal exige acertos.
-  // Não concede acertos automáticos: apenas respostas corretas de jogadores pontuam.
-  let weeklyQuizBusy=false
-  setInterval(async()=>{
-    if(weeklyQuizBusy||trevoHealth.whatsapp!=='open')return
-    weeklyQuizBusy=true
-    try{
-      const clock=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'}).format(new Date())
-      const hour=Number(clock)
-      if(hour<8||hour>=23)return
-      for(const group of await activeEventGroups()){
-        const chat=String(group.chat_jid||'')
-        const mission=await getGroupMission(chat)
-        if(mission.mission_type!=='quiz'||mission.completed||Number(mission.progress)>=Number(mission.target))continue
-        const slot=Math.floor(Date.now()/(5*60*1000))
-        const key='weekly_auto_quiz:'+mission.week_key+':'+chat+':'+slot
-        const claim=await db.query(
-          "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
-          [key,JSON.stringify({status:'claimed',at:Date.now()})]
-        )
-        if(!claim.rowCount)continue
-        try{
-          const q=await startQuiz(chat)
-          if(q.already)continue
-          let body='🧠 *QUIZ AUTOMÁTICO — MISSÃO COLETIVA*'+(q.difficulty==='difícil'?' • 🔥 DIFÍCIL':'')+'\n\n'+q.q+'\n\n'
-          q.a.forEach((option,i)=>{body+='*'+(i+1)+'.* '+option+'\n'})
-          body+='\n⏳ *2 minutos* para responder com *1, 2, 3 ou 4*.\n🎯 Cada acerto soma +1 na missão semanal.'
-          await sock.sendMessage(chat,{text:body})
-          console.log('[WEEKLY AUTO QUIZ]',chat,mission.week_key,slot)
-        }catch(err){
-          console.error('[WEEKLY AUTO QUIZ] send failed',chat,err?.message||err)
-        }
-      }
-    }catch(err){console.error('[WEEKLY AUTO QUIZ]',err?.stack||err)}
-    finally{weeklyQuizBusy=false}
-  },5*60*1000).unref?.()
+  // Quiz apenas sob solicitação do jogador. Timers automáticos desativados.
 
+  const quizPending=new Map()
+  const quizFinishPrompt='🧠 *QUIZ FINALIZADO!*\n\n1. 🔄 Outra pergunta\n2. ❌ Finalizar quiz\n\nResponda com *1 ou 2*.'
+  const quizFormat=q=>{
+    let t='🧠 *QUIZ DO ALPHA BOT*'+(q.difficulty==='difícil'?' • 🔥 DIFÍCIL':'')+'\n\n'+q.q+'\n\n'
+    q.a.forEach((x,i)=>t+='*'+(i+1)+'.* '+x+'\n')
+    return t+'\n⏳ Você tem *2 minutos*.\nResponda com *1, 2, 3 ou 4*.'
+  }
+  function quizClear(chat){
+    const p=quizPending.get(chat)
+    if(p?.timer)clearTimeout(p.timer)
+    quizPending.delete(chat)
+  }
+  function quizAwaitChoice(chat){
+    quizClear(chat)
+    const p={expiresAt:Date.now()+120000}
+    p.timer=setTimeout(()=>{if(quizPending.get(chat)===p)quizPending.delete(chat)},120000)
+    p.timer.unref?.()
+    quizPending.set(chat,p)
+  }
+  async function quizStartRequested(chat,reply){
+    quizClear(chat)
+    const q=await startQuiz(chat)
+    await reply((q.already?'🧠 *JÁ EXISTE UM QUIZ ATIVO*\n\n':'')+quizFormat(q))
+    return q
+  }
+  async function quizAnswerRequested(chat,sender,answer,reply,isGroup){
+    const r=await answerQuiz(chat,sender,answer)
+    if(r.correct&&isGroup)await progressGroupMission(chat,sender,'quiz')
+    await reply((r.correct?'✅ *Acertou!* +R$ '+fmt(r.reward)+'\nResposta: *'+r.correctText+'*':
+      '❌ Errou. A resposta correta era *'+r.correctAnswer+'. '+r.correctText+'*.')+'\n\n'+quizFinishPrompt)
+    quizAwaitChoice(chat)
+    return r
+  }
+  async function quizHandleChoice(chat,choice,reply){
+    const p=quizPending.get(chat)
+    if(!p)return false
+    if(Date.now()>p.expiresAt){quizClear(chat);return false}
+    if(choice!=='1'&&choice!=='2')return false
+    quizClear(chat)
+    if(choice==='2')await reply('❌ *Sessão de quiz encerrada.*')
+    else await quizStartRequested(chat,reply)
+    return true
+  }
   // Enquete nativa do WhatsApp: uma por grupo, janela anunciada de 30 minutos.
   // Estado persistido impede reenvios em reinicializações.
   let pollThirtyRunning=false
@@ -8530,20 +8538,15 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             }
           }catch(err){ console.error('[moderacao]',err?.message||err) }
         }
+        if(!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)){
+          if(await quizHandleChoice(chat,body,reply))continue
+        }
         if(!body.startsWith(prefix)){
           let flow=getQuickFlow(chat,sender)
           if(!flow) flow=await recoverQuickFlow(chat,sender)
           if(!flow && /^[1-4]$/.test(body)){
-            try{
-              const r=await answerQuiz(chat,sender,Number(body))
-              if(r.correct){
-                if(isGroup) await progressGroupMission(chat,sender,'quiz')
-                await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
-              }else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
-              continue
-            }catch(err){
-              if(!String(err?.message||'').includes('Não há quiz ativo')) throw err
-            }
+            try{await quizAnswerRequested(chat,sender,Number(body),reply,isGroup);continue}
+            catch(err){if(!/Não há quiz ativo|expirou/.test(String(err?.message||'')))throw err}
           }
           if(!flow) continue
 
