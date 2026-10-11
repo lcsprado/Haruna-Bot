@@ -431,6 +431,7 @@ export async function initDatabase() {
     ['couraca_vulcanica','Couraça Vulcânica','Proteção épica. +46 DEF.','armor',92000,'epic'],
     ['armadura_vazio','Armadura do Vazio','Proteção épica. +51 DEF.','armor',125000,'epic'],
     ['armadura_eclipse','Armadura do Eclipse','Proteção épica superior. +54 DEF.','armor',145000,'epic'],
+    ['elmo_aurora','Elmo da Aurora','Elmo épico do Guardião da Aurora. +40 DEF e +100 HP.','helmet',0,'epic'],
     ['elmo_soberano_golem','Elmo do Soberano Ancestral','Elmo exclusivo do primeiro colocado no Boss semanal. +85 DEF e +220 HP.','helmet',0,'legendary'],
     ['armadura_golem','Armadura do Golem Ancestral','Armadura exclusiva do Boss de Grupo. +70 DEF e +80 HP. Apenas por drop.','armor',0,'legendary'],
     ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF e +110 HP. Apenas por drop.','armor',0,'legendary'],
@@ -2040,6 +2041,7 @@ export async function leaderboard(limit=10, participantJids=[]) {
 
 
 const EQUIPMENT = {
+  elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
   elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
   espada_madeira: { category:'weapon', atk:5, def:0, name:'Espada de Madeira' },
   espada_ferro: { category:'weapon', atk:12, def:0, name:'Espada de Ferro' },

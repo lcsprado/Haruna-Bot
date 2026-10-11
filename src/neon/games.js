@@ -1539,6 +1539,52 @@ export async function autoStartInicioMadrugada(chat,now=new Date()){
   })
 }
 
+
+const AURORA_START=Date.parse('2026-10-11T07:00:00-03:00')
+const AURORA_END=Date.parse('2026-10-11T07:45:00-03:00')
+const AURORA_KEY='guardiao-aurora-2026-10-11-0700'
+const AURORA_ID='aurora_20261011'
+const AURORA_MIN_DAMAGE=20000
+async function settleAurora(c,s,defeated){
+  const entries=Object.entries(s.participants||{}).map(([jid,p])=>({jid,name:p.name||'Jogador',damage:Number(p.damage||0)})).filter(p=>p.damage>0).sort((a,b)=>b.damage-a.damage)
+  const total=entries.reduce((n,p)=>n+p.damage,0)||1
+  let eligibleRank=0
+  const rewards=[]
+  for(const p of entries){
+    const share=p.damage/total
+    const cash=Math.round(2500+45000*share)
+    const exp=Math.round(350+4800*share)
+    await credit(c,p.jid,cash,'boss_event_aurora_20261011')
+    await grantExpInTransaction(c,p.jid,exp)
+    const drops=[]
+    if(p.damage>=AURORA_MIN_DAMAGE && eligibleRank<3){
+      eligibleRank++
+      drops.push(await grantBossItem(c,p.jid,{id:'elmo_aurora',name:'Elmo da Aurora (+40 DEF / +100 HP)',rarity:'Épico'}))
+    }
+    rewards.push({...p,position:rewards.length+1,cash,exp,petXp:0,petXpTeam:[],drops,eligible:p.damage>=AURORA_MIN_DAMAGE})
+  }
+  const marker={...s,active:false,mode:'event_completed',hp:defeated?0:s.hp,completedAt:Date.now(),participants:{},result:{bossName:s.name,maxHp:s.maxHp,defeated,rewards}}
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
+  return {due:true,ended:true,stopped:!defeated,rewards,result:marker.result}
+}
+export async function autoStartAuroraBossEvent(chat,now=new Date()){
+  const ts=now.getTime()
+  if(ts<AURORA_START)return {due:false}
+  return tx(async c=>{
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+    if(current?.eventId===AURORA_ID){
+      if(ts>=AURORA_END&&current.active!==false&&Number(current.hp)>0)return settleAurora(c,current,false)
+      return {due:true,alreadyRun:true,completed:current.active===false}
+    }
+    if(ts>=AURORA_END)return {due:false,expired:true}
+    if(current&&current.active!==false&&Number(current.hp)>0&&(!current.endsAt||Number(current.endsAt)>ts))
+      return {due:true,blocked:true,blockingBoss:current.name}
+    const state={mode:'event',eventId:AURORA_ID,active:true,origin:'scheduled',scheduleKey:AURORA_KEY,name:'Guardião da Aurora',hp:180000,maxHp:180000,atk:35,participants:{},startedAt:ts,endsAt:AURORA_END,minDamage:AURORA_MIN_DAMAGE}
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
+    return {due:true,spawned:true,...state}
+  })
+}
+
 const NIGHT_EVENT_START=Date.parse('2026-10-10T04:04:00-03:00')
 const NIGHT_EVENT_END=Date.parse('2026-10-10T04:34:00-03:00')
 const NIGHT_EVENT_KEY='madrugada-maldita-2026-10-10-0404'
@@ -2259,6 +2305,14 @@ export async function attackBoss(chat,jid,name,usePet=true){
     }
     if(s.hp<=0&&s.eventId===INICIO_MADRUGADA_ID){
       const result=await settleInicioMadrugada(c,s,true)
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,phaseChanged,
+        playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
+        autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,
+        petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
+        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+    }
+    if(s.hp<=0&&s.eventId===AURORA_ID){
+      const result=await settleAurora(c,s,true)
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,phaseChanged,
         playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
         autoHeal,autoPetHeal,petSkillHeal,petSwitch,petUnavailable,

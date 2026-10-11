@@ -40,7 +40,7 @@ import {
   startHangman, hangmanLetter, hangmanWord,
   startQuiz, answerQuiz,
   startNumberGame, guessNumber,
-  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent,
+  startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent,
   getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
@@ -2656,6 +2656,27 @@ ${ranking}${extra}
   },5000).unref?.()
 
   // Scheduler independente de mensagens: inicia o Boss e anuncia nos grupos às 04:04.
+
+  // Evento global de 11/10 às 07h; início e encerramento persistidos e idempotentes.
+  let auroraTickerBusy=false
+  setInterval(async()=>{
+    if(auroraTickerBusy)return
+    auroraTickerBusy=true
+    try{
+      const result=await autoStartAuroraBossEvent('__alpha_global_boss_event__')
+      if(result?.spawned){
+        await sendEventToGroups('🌅🪖 *GUARDIÃO DA AURORA COMEÇOU!*\n\n⏰ 07:00–07:45 (Brasília)\n❤️ HP GLOBAL: *180.000* • ⚔️ ATK: *35*\n🌐 Mesmo Boss em todos os grupos.\n🎯 *20.000 de dano individual* para concorrer ao Elmo.\n🏆 *TOP 3 ELEGÍVEL:* 1 Elmo da Aurora (+40 DEF / +100 HP) para cada.\n💰 Dinheiro e EXP por participação, proporcionais ao dano.\n🪖 Elmos garantidos aos 3 elegíveis mesmo se o tempo acabar.\n⚔️ Use *!atacar*!')
+      }
+      if(result?.ended){
+        const ranking=(result.rewards||[]).map(p=>
+          (p.position===1?'🥇':p.position===2?'🥈':p.position===3?'🥉':'🏅')+' '+String(p.name).replace(/[\\r\\n*_~]/g,' ')+' — '+p.damage.toLocaleString('pt-BR')+' dano • R$ '+p.cash.toLocaleString('pt-BR')+' • +'+p.exp+' EXP'+(p.drops?.length?' • 🪖 EL​​MO':'')).join('\n')
+        await sendEventToGroups('🌅 *GUARDIÃO DA AURORA ENCERRADO!*\n\n'+(ranking||'Sem participantes.')+'\n🏆 Prêmios creditados no inventário.')
+      }
+      if(result?.blocked)console.log('[AURORA 07H] Boss anterior bloqueia início',result.blockingBoss)
+    }catch(e){console.error('[AURORA 07H] scheduler',e?.stack||e)}
+    finally{auroraTickerBusy=false}
+  },5000).unref?.()
+
   let night0404TickerBusy=false
   setInterval(async()=>{
     if(night0404TickerBusy) return
