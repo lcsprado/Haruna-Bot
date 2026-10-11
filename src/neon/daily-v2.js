@@ -61,6 +61,9 @@ async function ensureRows(c,jid){
  const ur=await c.query('SELECT level FROM users WHERE jid=$1',[jid])
  if(!ur.rows.length)throw new Error('Jogador não encontrado para missões diárias.')
  const level=Number(ur.rows[0].level||1),tier=levelTier(level)
+ const existing=(await c.query(`SELECT COUNT(*)::integer AS n FROM daily_missions
+   WHERE jid=$1 AND day_key=$2 AND mission_type=ANY($3::text[])`,[jid,today,TYPES])).rows[0]
+ if(Number(existing?.n||0)===6)return {today,level,tier}
  const special=level<10
    ?{type:'legend_raid',title:'🌟 Caçador de Lendas (alternativa: Boss)',target:2500,cash:25000,xp:1500,petXp:500}
    :{type:'legend_raid',title:'🌟 Caçador de Lendas (Raids)',target:50000,cash:25000,xp:1500,petXp:500}
@@ -184,8 +187,9 @@ export async function progressDailyMissionV2(jid,type,amount=1,sourceKey=null){
      VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING jid`,[jid,ctx.today,key,type,amount])
    if(!recorded.rowCount)return {duplicate:true}
    const changes=[]
-   const targets=type==='raid_damage'?['boss_damage','legend_raid']
-     :type==='boss_damage'?['boss_damage',...(ctx.level<10?['legend_raid']:[])]:[type]
+   const alt=type==='boss_damage'?(await c.query("SELECT target FROM daily_missions WHERE jid=$1 AND day_key=$2 AND mission_type='legend_raid'",[jid,ctx.today])).rows[0]:null
+   const targets=type==='raid_damage'?['boss_damage',...(Number(alt?.target||50000)>=50000?['legend_raid']:[]) ]
+     :type==='boss_damage'?['boss_damage',...(Number(alt?.target||50000)===2500?['legend_raid']:[])]:[type]
    for(const target of targets){
      const updated=await c.query(`UPDATE daily_missions SET progress=LEAST(target,progress+$1)
        WHERE jid=$2 AND day_key=$3 AND mission_type=$4
