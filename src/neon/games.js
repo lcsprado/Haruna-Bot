@@ -1565,7 +1565,7 @@ export async function autoStartCamEvent(now=new Date()){
   const old=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
   if(old?.eventId===CAM_ID&&Number(old.startedAt||0)>=CAM_START){if(ts>=CAM_END&&old.active!==false)return finishCam(c,old,false);return {due:true}}
   if(ts>=CAM_END)return {due:false,expired:true}
-  if(old?.active!==false&&Number(old?.hp)>0&&(!old.endsAt||Number(old.endsAt)>ts))return {due:true,blocked:true}
+  if(old?.eventId!==CAM_ID&&old?.active!==false&&Number(old?.hp)>0&&(!old.endsAt||Number(old.endsAt)>ts))return {due:true,blocked:true}
   const state={mode:'event',eventId:CAM_ID,scheduleKey:CAM_ID,origin:'scheduled',active:true,name:'Quimera Cromática',hp:1300000,maxHp:1300000,atk:220,participants:{},startedAt:ts,endsAt:CAM_END}
   await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state);return {due:true,spawned:true}
  })
