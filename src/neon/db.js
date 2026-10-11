@@ -1408,7 +1408,7 @@ export async function createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1)
     const itemR=await client.query('SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=$1',[String(offerItemId)])
     const offer=itemR.rows[0]
     if(!offer) throw new Error('Item da troca não encontrado.')
-    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !['weapon','armor','boots','helmet'].includes(item.category)
+    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && item.rarity!=='legendary' && !['weapon','armor','boots','helmet'].includes(item.category)
     if(!allowed(offer)) throw new Error('Esse tipo de item não pode ser trocado.')
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[fromJid,offer.id])
     if(Number(inv.rows[0]?.quantity||0)<quantity) throw new Error('Você não possui essa quantidade do item oferecido.')
@@ -1708,7 +1708,7 @@ export async function sellItemsBatch(jid, selections=[]) {
       const item=itemR.rows[0]
       if(!item) throw new Error('Item não encontrado.')
       if(item.sellable===false) throw new Error('Um dos itens selecionados não pode ser vendido.')
-      if(item.rarity==='legendary') throw new Error('Itens lendários não entram em venda em lote.')
+      // Lendários podem ser vendidos apenas à loja do sistema; as proteções de equipado e vinculado continuam.
 
       const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
       const bound=await boundItemQuantity(client,jid,sel.itemId)
@@ -1723,6 +1723,7 @@ export async function sellItemsBatch(jid, selections=[]) {
 
       let unit
       if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
+      else if(item.rarity==='legendary') unit=100000
       else if(item.rarity==='epic') unit=25000
       else if(item.rarity==='rare') unit=7500
       else if(item.rarity==='uncommon') unit=2500
@@ -5783,8 +5784,8 @@ export async function createMarketListing(jid,itemId,qty,price){
   return transaction(async client=>{
     // Apenas itens revendáveis podem ser anunciados no mercado entre jogadores.
     // Impede contornar os requisitos de Honra/Karma e o limite de compras dos NPCs.
-    const itemRow=(await client.query('SELECT sellable,category FROM items WHERE id=$1',[itemId])).rows[0]
-    if(!itemRow || itemRow.sellable!==true || itemId==='elmo_soberano_golem')
+    const itemRow=(await client.query('SELECT sellable,category,rarity FROM items WHERE id=$1',[itemId])).rows[0]
+    if(!itemRow || itemRow.sellable!==true || itemRow.rarity==='legendary' || itemId==='elmo_soberano_golem')
       throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
     const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')

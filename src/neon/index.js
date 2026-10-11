@@ -2622,6 +2622,20 @@ ${ranking}${extra}
     }
   }
 
+  // Aviso antecipado do Guardião da Aurora. Sem revelar comparação com outros elmos.
+  let auroraPreviewBusy=false
+  const auroraPreviewEnd=Date.parse('2026-10-11T07:00:00-03:00')
+  setInterval(async()=>{
+    if(auroraPreviewBusy||trevoHealth.whatsapp!=='open'||Date.now()>=auroraPreviewEnd)return
+    auroraPreviewBusy=true
+    try{
+      const groups=await activeEventGroups()
+      const notice='🌅🪖 *AMANHÃ, 11/10, ÀS 07H — GUARDIÃO DA AURORA!*\\n\\n👹 Boss GLOBAL, compartilhado entre os grupos.\\n🏆 Os *3 primeiros* que cumprirem a meta individual de *20.000 de dano* garantem um *ELMO EXCLUSIVO DA AURORA*!\\n✨ EXP e 💰 dinheiro de acordo com sua contribuição.\\n⏰ Início: *07:00* • fim: *07:45* (horário de Brasília).\\n⚔️ Prepare seus pets, poções e equipamentos!'
+      for(const lic of groups) await sendScheduledGroupNotice(lic.chat_jid,'aurora-preview-20261011',notice)
+    }catch(err){console.error('[AURORA PREVIEW]',err?.message||err)}
+    finally{auroraPreviewBusy=false}
+  },12000).unref?.()
+
   // Anúncio único antecipado e início do Boss global à 01:00 de 10/10 (BRT).
   // Dispara sem depender de mensagem nos grupos. Avisos idempotentes persistidos.
   let inicioMadrugadaBusy=false
@@ -3247,8 +3261,8 @@ O que deseja trocar?
   async function showSellMenu(chat,sender,reply){
     const items=(await getInventory(sender)).filter(i=>i.sellable!==false)
     const p=await getCombatProfile(sender)
-    const equippedIds=new Set([p.weapon_id,p.armor_id,p.boot_id].filter(Boolean))
-    const equipment=items.filter(i=>['weapon','armor','boots'].includes(i.category)&&!equippedIds.has(i.item_id))
+    const equippedIds=new Set([p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean))
+    const equipment=items.filter(i=>['weapon','armor','boots','helmet'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
     const potions=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
     const raid=items.filter(i=>RAID_SELL_IDS.includes(i.item_id))
 
@@ -3264,11 +3278,11 @@ O que deseja trocar?
 
 Escolha o que deseja vender:
 
-1️⃣ ⚔️ *Equipamentos* — armas e armaduras não equipadas
+1️⃣ ⚔️ *Equipamentos* — inclui lendários não equipados e não vinculados
 2️⃣ 🧪 *Poções e cura* — jogador e pet
 3️⃣ 🧩 *Itens de Raid* — materiais e chaves
 
-🔒 Arma e armadura equipadas *não aparecem* na venda.
+🔒 Cópias equipadas e vinculadas são protegidas; lendários podem ser vendidos à loja, não a outros jogadores.
 🌘 Itens protegidos/de evento não aparecem.
 
 9️⃣ Voltar ao inventário
@@ -3285,7 +3299,7 @@ Escolha o que deseja vender:
     let title=''
     if(category==='equipment'){
       title='⚔️ *VENDER EQUIPAMENTOS*'
-      filtered=items.filter(i=>['weapon','armor','boots'].includes(i.category)&&!equippedIds.has(i.item_id))
+      filtered=items.filter(i=>['weapon','armor','boots','helmet'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
     }else if(category==='potions'){
       title='🧪 *VENDER POÇÕES E CURA*'
       filtered=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
@@ -6397,12 +6411,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         const prepared=[]
         const protectedItems=[]
         for(const item of selected){
-          if(item.rarity==='legendary'){
-            protectedItems.push(item.name+' (lendário)')
-            continue
-          }
-          const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id)
-          const maxAll=Math.max(0,Number(item.quantity)-(equipped?1:0))
+          const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id || p.helmet_id===item.item_id)
+          const maxAll=Math.max(0,Number(item.sellable_quantity||0))
           const duplicates=Math.max(0,Number(item.quantity)-1)
           if(maxAll<1){
             protectedItems.push(item.name+' (equipado/protegido)')
@@ -6424,7 +6434,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         }
 
         if(!prepared.length){
-          await reply('🔒 Nenhum dos itens escolhidos pode ser alterado em lote. Equipados únicos e lendários ficam protegidos.')
+          await reply('🔒 Nenhum dos itens escolhidos pode ser alterado em lote. Equipados e vinculados ficam protegidos.')
           return true
         }
 
@@ -6447,8 +6457,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       const p=await getCombatProfile(sender)
-      const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id)
-      const sellable=Math.max(0,Number(item.quantity)-(equipped?1:0))
+      const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id || p.helmet_id===item.item_id)
+      const sellable=Math.max(0,Number(item.sellable_quantity||0))
       if(sellable<1){
         await reply('🔒 Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
         return true
