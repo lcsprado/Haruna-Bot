@@ -5288,7 +5288,7 @@ Digite apenas seu chute.
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
-        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento ativo — ativado manualmente pelo dono.*':'')
+        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento em andamento.*':'')
         await reply(
 `👹 *${r.name}*
 
@@ -5378,7 +5378,7 @@ Digite *0* para sair do modo rápido.`
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
-        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento ativo — ativado manualmente pelo dono.*':'')
+        const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento em andamento.*':'')
         await reply(
 `👹 *${r.name}*
 
@@ -11074,7 +11074,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const synergyLine=bossSynergy?`\n🧬 Sinergia do time: *${bossSynergy.label}*\n🎯 ${bossSynergy.text}`:''
           const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}${synergyLine}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
           const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
-          const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial ativado manualmente pelo dono.':'')
+          const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial em andamento.':'')
           const displayedSchedule=r.eventId==='ruptura_estelar'
             ?'\n🌌 *RUPTURA ESTELAR ATÉ 21H* • Fase '+Number(r.phase||1)+'/3\n🥇 20 Caixas Épicas ao 1º; 5 ao 2º; 3 ao 3º.\n🏅 Insígnia Guardião da Ruptura.'
             :schedule
