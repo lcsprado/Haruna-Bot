@@ -463,6 +463,16 @@ export async function startQuiz(chat){
   })
 }
 
+export async function expireQuiz(chat,expectedStarted){
+  return tx(async c=>{
+    const state=await loadGame(c,chat,'quiz')
+    if(!state||state.finished||Number(state.started)!==Number(expectedStarted))return false
+    if(Date.now()-Number(state.started||0)<120000)return false
+    await saveGame(c,chat,'quiz',{...state,finished:true,answeredAt:Date.now(),expired:true})
+    return true
+  })
+}
+
 export async function answerQuiz(chat,jid,answer){
   answer=Number(answer)
   if(![1,2,3,4].includes(answer)) throw new Error('Responda com 1, 2, 3 ou 4.')
