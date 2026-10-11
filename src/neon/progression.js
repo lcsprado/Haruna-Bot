@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
+import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -296,6 +297,7 @@ export async function initProgression(){
     CREATE INDEX IF NOT EXISTS clt_uber_drivers_jid_idx ON clt_uber_drivers(jid);
     CREATE INDEX IF NOT EXISTS clt_uber_drivers_active_car_idx ON clt_uber_drivers(jid,car_id,shift_ends_at);
   `)
+  await initDailyV2()
 }
 
 async function ensureMissions(jid){
@@ -314,74 +316,11 @@ async function ensureMissions(jid){
   return key
 }
 
-export async function getDailyMissions(jid){
-  const key=await ensureMissions(jid)
-  const {rows}=await db.query(`
-    SELECT mission_type,title,target,reward_cash,reward_box,progress,claimed
-    FROM daily_missions
-    WHERE jid=$1 AND day_key=$2
-    ORDER BY created_at,mission_type
-  `,[jid,key])
-  return {day:key,missions:rows}
+export async function getDailyMissions(jid){return getDailyMissionsV2(jid)}
+export async function progressDailyMission(jid,type,amount=1,sourceKey=null){
+  return progressDailyMissionV2(jid,type,amount,sourceKey)
 }
-
-export async function progressDailyMission(jid,type,amount=1){
-  amount=Math.max(1,Number(amount)||1)
-  const key=await ensureMissions(jid)
-  const {rows}=await db.query(`
-    UPDATE daily_missions
-    SET progress=LEAST(target,progress+$1)
-    WHERE jid=$2 AND day_key=$3 AND mission_type=$4
-    RETURNING mission_type,title,target,progress,claimed
-  `,[amount,jid,key,type])
-  return rows[0]||null
-}
-
-export async function claimDailyMissions(jid){
-  await ensureUser(jid)
-  const key=await ensureMissions(jid)
-  return tx(async c=>{
-    const r=await c.query(`
-      SELECT *
-      FROM daily_missions
-      WHERE jid=$1 AND day_key=$2
-        AND progress>=target AND claimed=FALSE
-      FOR UPDATE
-    `,[jid,key])
-
-    if(!r.rows.length) return {claimed:0,cash:0,boxes:0}
-
-    const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
-    const cash=Math.round(r.rows.reduce((a,m)=>a+Number(m.reward_cash||0),0)*moneyMultiplier)
-    const boxes=r.rows.reduce((a,m)=>a+Number(m.reward_box||0),0)
-
-    if(cash>0){
-      await c.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[cash,jid])
-      await c.query(`
-        INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-        VALUES('system',$1,$2,'mission_reward','daily missions')
-      `,[jid,cash])
-    }
-
-    if(boxes>0){
-      await c.query(`
-        INSERT INTO inventories(jid,item_id,quantity)
-        VALUES($1,'caixa_sorte',$2)
-        ON CONFLICT(jid,item_id)
-        DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
-      `,[jid,boxes])
-    }
-
-    await c.query(`
-      UPDATE daily_missions
-      SET claimed=TRUE
-      WHERE jid=$1 AND day_key=$2
-        AND progress>=target AND claimed=FALSE
-    `,[jid,key])
-
-    return {claimed:r.rows.length,cash,boxes,eventMultiplier:moneyMultiplier}
-  })
-}
+export async function claimDailyMissions(jid){return claimDailyMissionsV2(jid)}
 
 export async function getClanForUser(jid){
   const {rows}=await db.query(`
