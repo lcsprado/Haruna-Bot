@@ -5346,15 +5346,9 @@ Digite uma *letra* ou tente a *palavra inteira*.
       }
 
       if(game==='quiz'){
-        const q=await startQuiz(chat)
-        if(!q.already) await progressDailyMission(sender,'game')
-        const ttl=Math.max(10,Number(q.remaining||120))*1000
-        setQuickFlow(chat,sender,'quiz_answer',{},ttl)
-        let text=`🧠 *QUIZ DO ALPHA BOT*${q.difficulty==='difícil'?' • 🔥 DIFÍCIL':''}\n\n${q.q}\n\n`
-        q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
-        text+='\n_Responda só com 1, 2, 3 ou 4._'
-        await reply(text)
-        return true
+        const q=await quizStartRequested(chat,reply)
+        if(!q.already)await progressDailyMission(sender,'game')
+                return true
       }
 
       if(game==='number'){
@@ -5438,15 +5432,9 @@ Digite *0* para sair do modo rápido.`
         return true
       }
       if(input==='5'){
-        const q=await startQuiz(chat)
-        if(!q.already) await progressDailyMission(sender,'game')
-        const ttl=Math.max(10,Number(q.remaining||120))*1000
-        setQuickFlow(chat,sender,'quiz_answer',{},ttl)
-        let text=`🧠 *QUIZ DO ALPHA BOT*${q.difficulty==='difícil'?' • 🔥 DIFÍCIL':''}\n\n${q.q}\n\n`
-        q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
-        text+='\n_Responda só com 1, 2, 3 ou 4._'
-        await reply(text)
-        return true
+        const q=await quizStartRequested(chat,reply)
+        if(!q.already)await progressDailyMission(sender,'game')
+                return true
       }
       if(input==='6'){
         const r=await startNumberGame(chat)
@@ -5619,17 +5607,10 @@ ${emoji} *${r.result.toUpperCase()}*`)
     }
 
     if(flow.stage==='quiz_answer'){
-      const n=parseInt(input,10)
-      if(![1,2,3,4].includes(n)){
-        await reply('Responda apenas com *1, 2, 3 ou 4*.')
-        return true
-      }
-      const r=await answerQuiz(chat,sender,n)
-      if(r.correct && String(chat).endsWith('@g.us')) await progressGroupMission(chat,sender,'quiz')
-      const resultText=r.correct
-        ? `✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`
-        : `❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`
-      await afterGame('quiz',{},resultText)
+      if(!/^[1-4]$/.test(input)){await reply('Responda apenas com *1, 2, 3 ou 4*.');return true}
+      try{await quizAnswerRequested(chat,sender,Number(input),reply,String(chat).endsWith('@g.us'))}
+      catch(err){if(!/Não há quiz ativo|expirou/.test(String(err?.message||'')))throw err}
+      clearQuickFlow(chat,sender)
       return true
     }
 
@@ -10907,27 +10888,13 @@ _Os comandos antigos continuam funcionando normalmente._`
           await reply(`❌ Não é essa.\n${r.masked}\n❤️ Vidas: ${r.lives}`)
 
         } else if(['quiz'].includes(cmd)){
-          const q=await startQuiz(chat)
-          if(q.already){
-            let text=`🧠 *JÁ EXISTE UM QUIZ ATIVO*\n\n${q.q}\n\n`
-            q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
-            text+=`\n⏳ Expira em cerca de *${q.remaining}s*.\nResponda apenas com *1, 2, 3 ou 4*.`
-            return await reply(text)
-          }
-          await progressDailyMission(sender,'game')
-          let text=`🧠 *QUIZ DO ALPHA BOT*${q.difficulty==='difícil'?' • 🔥 DIFÍCIL':''}\n\n${q.q}\n\n`
-          q.a.forEach((a,i)=>text+=`*${i+1}.* ${a}\n`)
-          text+=`\n⏳ Você tem *2 minutos*.\nResponda apenas com *1, 2, 3 ou 4*.`
-          await reply(text)
+          const q=await quizStartRequested(chat,reply)
+          if(!q.already)await progressDailyMission(sender,'game')
 
         } else if(['resposta'].includes(cmd)){
-          const n=parseInt(args[0]||'0',10)
-          const r=await answerQuiz(chat,sender,n)
-          if(r.correct){
-            if(isGroup) await progressGroupMission(chat,sender,'quiz')
-            await reply(`✅ *Acertou!* +R$ ${fmt(r.reward)}\nResposta: *${r.correctText}*`)
-          }
-          else await reply(`❌ Errou. A resposta correta era *${r.correctAnswer}. ${r.correctText}*.`)
+          const n=Number(args[0]||0)
+          if(![1,2,3,4].includes(n))return await reply('Responda apenas com *1, 2, 3 ou 4*.')
+          await quizAnswerRequested(chat,sender,n,reply,isGroup)
 
         } else if(['numero','adivinhar'].includes(cmd)){
           const r=await startNumberGame(chat)
