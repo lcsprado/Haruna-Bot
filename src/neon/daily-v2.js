@@ -54,6 +54,7 @@ export async function initDailyV2(){
  `)
  console.log('[DAILY V2] schema ready')
  try{await auditAndRepairLp20261010()}catch(err){console.error('[DAILY V2] LP repair audit failed; no speculative repair',err?.message||err)}
+ try{await runDailyV2SmokeTest()}catch(err){console.error('[DAILY V2 SMOKE FAIL]',err?.stack||err)}
 }
 
 async function ensureRows(c,jid){
@@ -279,4 +280,45 @@ export async function auditAndRepairLp20261010(){
    console.log('[LP STREAK REPAIR APPLIED]',JSON.stringify(result))
    return {status:'repaired',...result}
  })
+}
+
+export function validateDailyV2Formulas(){
+  const money=[1,1.5,2,2.5,3],xp=[1,1.25,1.5,1.75,2]
+  const levels=[1,49,50,99,100,149,150,199,200,500]
+  const expected=[0,0,1,1,2,2,3,3,4,4]
+  if(levels.some((v,i)=>levelTier(v)!==expected[i]))throw new Error('Level tier boundaries incorrect')
+  const total=DEFINITIONS.reduce((n,m)=>n+m.cash,0)
+  if(total!==135000)throw new Error('Base money mission pool does not total 135000')
+  for(let t=0;t<5;t++){
+    if(MONEY[t]!==money[t]||XP[t]!==xp[t])throw new Error('Multiplier mismatch for tier '+t)
+  }
+  if(milestone(3)?.cash!==50000||milestone(7)?.item!=='caixa_epica'||milestone(14)?.qty!==2
+    ||milestone(21)?.cash!==500000||milestone(30)?.item!=='caixa_lendaria'
+    ||milestone(31)!==null||milestone(33)?.cash!==50000)
+    throw new Error('Sequence milestones or cycle invalid')
+  return {status:'pass',tiers:5,levelBoundaries:levels.length,baseCash:total,mainMissions:5,specialMissions:1,
+    milestoneDays:[3,7,14,21,30],day31Continues:true}
+}
+
+export async function runDailyV2SmokeTest(){
+  const checks=validateDailyV2Formulas()
+  const jid='5511948523167@s.whatsapp.net'
+  const catalog=await db.query("SELECT id FROM items WHERE id=ANY($1::text[])",[['caixa_rara','caixa_epica','caixa_lendaria']])
+  const found=new Set(catalog.rows.map(x=>x.id))
+  if(found.size!==3)throw new Error('Mission catalog is missing one or more real box IDs')
+  const result=await getDailyMissionsV2(jid)
+  if(result.missions.length!==6||TYPES.some(t=>!result.missions.some(m=>m.mission_type===t)))
+    throw new Error('Expected 5+1 generated mission rows')
+  if(result.missions.some(m=>Number(m.target)<1||Number(m.reward_cash)<0))
+    throw new Error('Invalid mission rewards or targets')
+  const streak=(await db.query("SELECT streak,best_streak,TO_CHAR(last_claim_day,'YYYY-MM-DD') AS day FROM daily_streaks WHERE jid=$1",[jid])).rows[0]
+  const rewardDup=(await db.query("SELECT jid,day_key,reward_type FROM daily_reward_claims GROUP BY jid,day_key,reward_type HAVING COUNT(*)>1 LIMIT 1")).rows
+  if(rewardDup.length)throw new Error('Duplicate reward idempotency markers detected')
+  const summary={...checks,missionCount:result.missions.length,missionDay:result.day,
+    currentLevelSnapshot:Number(result.missions.find(m=>m.mission_type==='battle')?.level_snapshot||0),
+    ids:[...found],lpStreak:streak,
+    sample:result.missions.map(m=>({type:m.mission_type,target:Number(m.target),cash:Number(m.reward_cash),
+      xp:Number(m.reward_xp),petXp:Number(m.reward_pet_xp),claimed:m.claimed}))}
+  console.log('[DAILY V2 SMOKE PASS]',JSON.stringify(summary))
+  return summary
 }
