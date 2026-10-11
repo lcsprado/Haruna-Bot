@@ -6966,15 +6966,17 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('Nenhum item disponível nesta categoria.')
         return true
       }
+      const backOption=filtered.length>=9?String(filtered.length+1):'9'
       setQuickFlow(chat,sender,'shop_item',{
         items:filtered.map(i=>i.id),
-        category:input
+        category:input,
+        backOption
       },90000)
       let text=`${shopCategoryLabel(filtered[0].category)}\n\n`
       filtered.forEach((i,idx)=>{
         text+=`*${idx+1}.* ${rarityLabel(i.rarity)} — *${i.name}*\n💰 R$ ${fmt(i.price)}\n_${i.description}_\n\n`
       })
-      text+='9️⃣ Voltar\n0️⃣ Sair'
+      text+=(backOption==='9'?'9️⃣':`*${backOption}.*`)+' Voltar\n0️⃣ Sair'
       await reply(text.trim())
       return true
     }
@@ -7049,7 +7051,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='shop_item'){
-      if(input==='9'){
+      const backOption=String(flow.data.backOption||((flow.data.items?.length||0)>=9?flow.data.items.length+1:9))
+      if(input===backOption){
         await shopCategoryMenu()
         return true
       }
