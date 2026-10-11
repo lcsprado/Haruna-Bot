@@ -535,8 +535,8 @@ async function runRaidCombat(chat,level,reply){
 
         // Apenas hits confirmados em transação podem progredir missão de Raid.
         for(const hit of (r.events||[])){
-          if(hit.type==='hit'&&Number(hit.damage)>0){
-            await creditDailyActivity(hit.jid,'raid_damage',Number(hit.damage),
+          if(hit.type==='hit'&&Number(hit.actualDamage??hit.damage)>0){
+            await creditDailyActivity(hit.jid,'raid_damage',Number(hit.actualDamage??hit.damage),
               'raid:'+chat+':'+Number(r.config?.level||level)+':'+Number(r.raidId||0)+':'+Number(r.round)+':'+hit.jid)
               .catch(err=>console.error('[MISSIONS V2 RAID]',err?.message||err))
           }
