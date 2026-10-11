@@ -5277,6 +5277,12 @@ export async function syncPetTeamPrimary(jid,petId){
   await db.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,petId])
 }
 
+
+async function getRelicPetXpBonus(queryable,jid){
+  const r=await queryable.query("SELECT 1 FROM player_active_relics WHERE jid=$1 AND item_id='marca_insone'",[jid])
+  return r.rowCount?0.02:0
+}
+
 const PET_EXPEDITION_TRAITS={
   cachorro:{label:'🐶 Rastreador',cash:.10,item:'pocao_pet_comum',itemChance:.10},
   gato:{label:'🐱 Catador',item:'caixa_sorte',itemChance:.14},
@@ -5400,7 +5406,7 @@ export async function resolvePetExpeditions(jid){
       const trait=petExpeditionTrait(row.species)
       const oldLevel=Math.min(100,Math.max(1,Number(row.level||1)))
       const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-      const awardedPetXp=Math.round(Number(row.pet_xp||0)*petXpEventMultiplier)
+      const awardedPetXp=Math.round(Number(row.pet_xp||0)*petXpEventMultiplier*(1+await getRelicPetXpBonus(client,jid)))
       const rawXp=Number(row.xp||0)+awardedPetXp
       const level=Math.min(100,1+Math.floor(rawXp/100))
       const xp=level>=100?9900:rawXp
@@ -5522,7 +5528,8 @@ export async function petAction(jid,action){
     const oldLevel=Number(pet.level||1)
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
     const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-    const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier)
+    const relicXP=await getRelicPetXpBonus(client,jid)
+    const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier*(1+relicXP))
     const rawXp=Number(pet.xp)+actionXp
     const level=Math.min(100,1+Math.floor(rawXp/100))
     const xp=level>=100?9900:rawXp

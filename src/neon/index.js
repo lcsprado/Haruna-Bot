@@ -63,6 +63,7 @@ import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeam
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, getAwakeningSkillDescriptions } from './game-catalog.js'
 import { createWebLinkCode } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
+import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -1537,6 +1538,7 @@ function petStatusBonus(p){
 async function start() {
   await initDatabase()
   await initAwakening()
+  await initRelics()
 
   // Evento administrativo de XP, de uso único. Mantém dinheiro, drops e caixas em 1x.
   const adminXpEventToken=String(process.env.ADMIN_XP_EVENT_TOKEN||'').trim()
@@ -3620,7 +3622,8 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!web* — conecta o mesmo personagem ao RPG visual no navegador
 *!status* — mostra seus atributos
 *!nível* — progresso e resgata recompensas a cada 5 níveis
-*!despertar* — missões permanentes por classe, níveis 30/60/100/150/200
+*!despertar* — missões permanentes de Despertar
+*!reliquias* — equipar 1 insígnia de evento por vez
 *!despertar evoluir* — paga e recebe bônus base ao cumprir os desafios
 *!batalhar @pessoa* — desafia outro jogador
 *!dungeon* — entra em uma dungeon e ganha dinheiro/XP
@@ -8486,6 +8489,27 @@ Pet: *${pet.name}* — Nv.${level}
           }catch(err){
             await reply('⚠️ *Não foi possível sacrificar o pet.*\\n'+String(err?.message||'Tente novamente.'))
           }
+          continue
+        }
+
+        if(['reliquias','reliquia','insignias','insignia'].includes(cmd)){
+          try{
+            const selection=String(args[0]||'').trim().toLowerCase()
+            if(selection){
+              const before=await relicStatus(sender)
+              const chosen=selection==='0'||selection==='nenhuma'?null:before.items[Number(selection)-1]
+              if(!chosen&&selection!=='0'&&selection!=='nenhuma')throw Error('Escolha o número de uma insígnia sua.')
+              const activated=await selectRelic(sender,chosen?.id||'nenhuma')
+              await reply(activated?'✅ *RELÍQUIA ATIVADA*\\n\\n⚜️ '+activated.name+'\\n'+activated.effect+'\\n\\n🔒 Só uma insígnia ativa. Sem bônus no PvP.':'✅ Insígnia desativada.')
+            }else{
+              const state=await relicStatus(sender)
+              let out='⚜️ *RELÍQUIAS DE EVENTO*\\n\\n🔒 Apenas uma pode ser equipada. Os bônus não funcionam no PvP.\\n'
+              if(!state.items.length)out+='\\nVocê ainda não possui insígnias.\\n'
+              else state.items.forEach((r,n)=>{out+='\\n*'+(n+1)+'.* '+r.name+(state.active?.id===r.id?' ✅ *ATIVA*':'')+'\\n   '+r.effect+'\\n'})
+              out+='\\n➡️ *!reliquias NÚMERO* para ativar\\n➡️ *!reliquias 0* para desativar'
+              await reply(out)
+            }
+          }catch(err){await reply('⚠️ Relíquias: '+String(err?.message||err))}
           continue
         }
 

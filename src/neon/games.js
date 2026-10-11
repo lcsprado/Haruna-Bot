@@ -1,5 +1,6 @@
 import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
+import {activeRelic} from './relics.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -750,7 +751,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
       atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),
       classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,
-      pet:combatPet,reservePet
+      pet:combatPet,reservePet,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     await saveGame(c,chat,gameType,s)
     return {...s,lateJoin:true,joinedJid:jid,autoKeyPurchased,keyPrice:cfg.keyPrice}
@@ -815,7 +816,7 @@ async function grantTeamPetXp(c,jid,baseGain){
   baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
   if(!baseGain) return []
   const petXpEventMultiplier=await getPetXpEventMultiplier(c)
-  baseGain=Math.max(0,Math.round(baseGain*petXpEventMultiplier))
+  baseGain=Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0))))
   const awards=[]
   const primary=await raidPetXp(c,jid,baseGain)
   if(primary) awards.push({slot:1,name:primary.name,xp:baseGain})
@@ -944,7 +945,7 @@ export async function startRaid(chat,host,level=null){
       const teamSynergy=petTeamSynergy(teamPets)
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
@@ -1184,7 +1185,7 @@ export async function raidRound(chat,level){
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
-      const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)))
+      const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)*(1-Number(p.relicRaidDefense||0))))
       const passiveDefense=classDefense({classId:p.classId,applied:p.classApplied,damage:hitDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
@@ -2181,7 +2182,9 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const passiveHit=classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
     const ruptura=gameType==='boss_event'&&s.eventId==='ruptura_estelar'
     const faseAnterior=ruptura?Math.max(1,Number(s.phase||1)):1
-    const damage=ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage
+    const eclipseRelic=await activeRelic(c,jid)
+    const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
+    const damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage
     const petDamage=pet?Math.max(0,baseDamage-baselineWithGearCrit-oilBonus):0
     s.hp=Math.max(0,Number(s.hp)-damage)
     const nextPhase=ruptura?(s.hp<=s.maxHp/3?3:(s.hp<=s.maxHp*2/3?2:1)):faseAnterior
