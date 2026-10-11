@@ -1247,10 +1247,39 @@ function workResultText(r){
   return text
 }
 
+function dailyMissionsText(board,prefix='!'){
+  const money=v=>Number(v||0).toLocaleString('pt-BR')
+  let out='📋 *MISSÕES DIÁRIAS*\\n\\n'
+  for(const m of board.missions||[]){
+    const done=Number(m.progress)>=Number(m.target)
+    const xp=Number(m.reward_xp||0),petXp=Number(m.reward_pet_xp||0)
+    const extras=xp?' + '+money(xp)+' EXP':petXp?' + '+money(petXp)+' EXP de pet':''
+    const special=m.mission_type==='legend_raid'
+    out+=(special?'🌟 *MISSÃO ESPECIAL — CAÇADOR DE LENDAS*':'')+(special?'\\n':'')
+    out+=(done?'✅ ':'⬜ ')+m.title+' — *'+money(m.progress)+'/'+money(m.target)+'*\\n'
+    out+='🎁 R$ '+money(m.reward_cash)+extras+(special?' + 1 Caixa Épica':'')+(m.claimed?' _(resgatada)_':'')+'\\n\\n'
+  }
+  out+='🎁 *BÔNUS DAS 5 MISSÕES:* '+Number(board.bonusQty||0)+' '+(board.bonusItem==='caixa_rara'?'Caixa(s) Rara(s)':'Caixa(s) Épica(s)')+(board.bonusClaimed?' ✅ Resgatado':'')+'\\n'
+  out+='🔥 *Sequência Daily:* '+Number(board.streak||0)+' dia(s)\\n\\n'
+  out+='Use *'+prefix+'resgatarmissoes* para coletar as recompensas concluídas.'
+  return out.replace(/\\\\n/g,'\\n')
+}
+
+async function creditDailyActivity(jid,type,amount=1,sourceKey=null,notify=null){
+  const out=await progressDailyMission(jid,type,amount,sourceKey)
+  if(out?.daily?.ok&&typeof notify==='function'){
+    const d=out.daily
+    const msg='🔥 *DAILY AUTOMÁTICO!*\\n💰 +R$ '+fmt(d.totalCash)+' • ✨ +'+Number(d.exp||0)+' EXP\\n🔥 Sequência: '+d.streak+' dia(s)'
+      +(d.protectedGap?'\\n🛡️ Sua proteção de sequência foi utilizada por um único dia perdido.':'')
+    try{await notify(msg.replace(/\\\\n/g,'\\n'))}catch(err){console.warn('[DAILY V2] aviso WhatsApp falhou',err?.message||err)}
+  }
+  return out
+}
+
 function dailyResultText(r){
   const eventLine=Number(r.eventMultiplier||1)>1?`🔥 *EVENTO x${Number(r.eventMultiplier).toLocaleString('pt-BR',{maximumFractionDigits:2})} APLICADO*\n`:''
   let text=`🔥 *DAILY ALPHA*\n\n${eventLine}💰 +R$ ${fmt(r.totalCash)}\n🔥 Sequência: *${r.streak} dia${r.streak===1?'':'s'}*\n🏅 Recorde: *${r.bestStreak} dia${r.bestStreak===1?'':'s'}*`
-  if(r.reward){
+  if(Number(r.exp||0)>0)text+=`\n✨ EXP: *+${r.exp}*`\n  if(r.protectedGap)text+='\n🛡️ *Proteção de sequência utilizada:* um único dia perdido foi preservado.'\n  if(r.reward){
     text+=`\n\n🎉 *RECOMPENSA DE SEQUÊNCIA!*\n${r.reward.label}`
   }
   if(r.next){
@@ -1301,7 +1330,7 @@ const SHOP_IDS=[
   'caixa_sorte','caixa_rara','caixa_epica'
 ]
 
-const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica']
+const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica','caixa_lendaria']
 
 const POTION_SELL_IDS=[
   'pocao_p','pocao_m','pocao_g','elixir_supremo',
