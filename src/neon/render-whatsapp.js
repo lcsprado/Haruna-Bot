@@ -113,3 +113,25 @@ setTimeout(async()=>{
   }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
  }catch(e){console.error('[TRICK BOXES EVENT] failed',e?.stack||e)}
 },21000).unref?.()
+
+// Auditoria de rastreabilidade, somente leitura: Katana Divina de João Pedro, 10/10 22:07 BRT.
+setTimeout(async()=>{
+  const tag='[KATANA JP AUDIT 2026-10-10 22:07]'
+  try{
+    const {db}=await import('./db.js')
+    const jid='5511987308687@s.whatsapp.net'
+    const start=Math.floor(Date.parse('2026-10-11T00:55:00Z')/1000)
+    const oldStart=Math.floor(Date.parse('2026-10-09T18:00:00Z')/1000)
+    const [inventory,equipment,bound,previous,specificTx,otherDrops,sales,latest]=await Promise.all([
+      db.query("SELECT item_id,quantity,created_at FROM inventories WHERE jid=$1 AND item_id='katana_divina'",[jid]),
+      db.query('SELECT weapon_id FROM stats WHERE jid=$1',[jid]),
+      db.query("SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id='katana_divina'",[jid]),
+      db.query("SELECT value FROM trevo_settings WHERE key='repair:joao_pedro:2026-10-09:katana_divina:epic_box_1940'"),
+      db.query("SELECT type,note,created_at FROM transactions WHERE to_jid=$1 AND created_at >= $2 AND note ILIKE '%katana_divina%' ORDER BY created_at DESC LIMIT 30",[jid,oldStart]),
+      db.query("SELECT to_jid, note, created_at FROM transactions WHERE type='loot_item' AND note ILIKE '%katana_divina%' AND created_at BETWEEN $1 AND $2 ORDER BY created_at DESC LIMIT 30",[start,start+1200]),
+      db.query("SELECT type,note,created_at FROM transactions WHERE to_jid=$1 AND type IN ('sale','sale_batch','item_trade') AND created_at >= $2 ORDER BY created_at DESC LIMIT 50",[jid,oldStart]),
+      db.query("SELECT type,note,created_at FROM transactions WHERE to_jid=$1 AND type='loot_item' AND created_at >= $2 ORDER BY created_at DESC LIMIT 25",[jid,start])
+    ])
+    console.log(tag,JSON.stringify({inventory:inventory.rows,weapon:equipment.rows[0]?.weapon_id||null,bound:bound.rows[0]?.qty||0,previous:previous.rows[0]?.value||null,specificTx:specificTx.rows,otherDrops:otherDrops.rows.map(x=>({matchedJoao:x.to_jid===jid,note:x.note,created_at:x.created_at})),sales:sales.rows,latest:latest.rows}))
+  }catch(e){console.error(tag,'failed',e?.stack||e)}
+},25000).unref?.()
