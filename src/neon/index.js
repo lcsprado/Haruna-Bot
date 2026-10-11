@@ -113,6 +113,7 @@ const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
 })
 let connectionWatchdog=null
 let bossEventScheduler=null
+let setePecadosBroadcaster=null
 let bossProgressScheduler=null
 let reconnectTimer=null
 let reconnecting=false
@@ -298,7 +299,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
             const rank=(r.rewards||[]).filter(x=>x.eligible).slice(0,3).map(x=>
               (x.position===1?'🥇':x.position===2?'🥈':'🥉')+' '+x.name+' — '+Number(x.damage).toLocaleString('pt-BR')+
               ' dano • R$ '+Number(x.cash).toLocaleString('pt-BR')).join('\n')
-            await sendEventToGroups('🌑 *PECADO DERROTADO!*\n\n'+(rank||'Nenhum jogador alcançou 10.000 de dano.')+
+            await (setePecadosBroadcaster||reply)('🌑 *PECADO DERROTADO!*\n\n'+(rank||'Nenhum jogador alcançou 10.000 de dano.')+
               '\n🎁 Recompensas creditadas após este Boss.'+
               (r.nextPhase?'\n\n⚔️ *PRÓXIMO PECADO: '+r.nextPhase.name+'*\n❤️ '+r.nextPhase.hp.toLocaleString('pt-BR')+' HP • ⚔️ '+r.nextPhase.atk+' ATK\nUse *!atacar* para continuar.':
               '\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente concedida somente a quem atingiu 10.000 de dano em TODOS os oito Bosses.'))
@@ -2830,6 +2831,7 @@ ${ranking}${extra}
     finally{inicioMadrugadaBusy=false}
   },5000).unref?.()
 
+  setePecadosBroadcaster=sendEventToGroups
   // Invasão dos Sete Pecados — 11/10 18:40–20:40 BRT.
   let setePecadosBusy=false
   setInterval(async()=>{
