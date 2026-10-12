@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
-import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus } from './game-catalog.js'
+import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty } from './game-catalog.js'
 
 const { Pool, Client } = pg
 
