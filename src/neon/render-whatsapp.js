@@ -25,7 +25,13 @@ http.createServer((req,res)=>{
       messagesSeen:Number(health.messagesSeen||0),
       lastUpsertAt:health.lastUpsertAt||null,
       lastInboundAt:health.lastInboundAt||null,
-      lastInboundSecondsAgo:health.lastInboundAt?Math.floor((Date.now()-health.lastInboundAt)/1000):null
+      lastInboundSecondsAgo:health.lastInboundAt?Math.floor((Date.now()-health.lastInboundAt)/1000):null,
+      rawMessagesSeen:Number(health.rawMessagesSeen||0),
+      lastRawMessageAt:health.lastRawMessageAt||null,
+      pendingNotificationsReceived:health.pendingNotificationsReceived??null,
+      offlinePreviewCount:Number(health.offlinePreviewCount||0),
+      offlineCompletionCount:Number(health.offlineCompletionCount||0),
+      forceFlushCount:Number(health.forceFlushCount||0)
     }))
   }
   res.writeHead(200,{'content-type':'text/plain; charset=utf-8','cache-control':'no-store'})
