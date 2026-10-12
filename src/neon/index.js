@@ -8995,36 +8995,35 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         if(cmd==='sacrificar'){
           try{
             const position=Number(args[0])
-            if(!Number.isSafeInteger(position)||position<1) {
+            if(!Number.isSafeInteger(position)||position<1){
               const state=await getPetCollectionState(sender)
               if(!state.pets.length){ await reply('🐾 Você ainda não tem pets. Use *!adotar*.'); continue }
               setQuickFlow(chat,sender,'pet_collection_categories',{mode:'sacrifice'},5*60*1000)
               await reply(petCollectionMenuText(state.pets,{mode:'sacrifice',isLegendary:isCollectionLegendary}))
               continue
             }
-            const pets=await listPets(sender)
-            const pet=pets[position-1]
-            if(!pet?.id) { await reply('🐾 Número não encontrado na sua coleção. Use *!meuspets*.'); continue }
-            const {level,cash,exp,originalPrice,shopRefund}=petSacrificeReward(pet.species,pet.level,pet.xp,pet.purchase_price)
-            if(String(args[1]||'').toLowerCase()!=='confirmar'){
-              await reply(`🐾 *DESPEDIDA DO PET*
-
-Pet: *${pet.name}* — Nv.${level}
-${shopRefund?`🛒 Preço original: *R$ ${fmt(originalPrice)}*\n♻️ Reembolso: *50%*\n`:''}💰 Retorno: *R$ ${fmt(cash)}*
-✨ EXP do personagem: *+${fmt(exp)}*
-
-⚠️ Ação permanente: o pet será removido da coleção.
-🔒 Pets ativos, no time ou em expedição não podem ser sacrificados.
-✅ Para confirmar: *!sacrificar ${position} confirmar*
-❎ Para cancelar: ignore esta mensagem.`)
+            // Atalho antigo (!sacrificar N): N é a posição em !pets, não
+            // o número relativo à categoria. A ação exige confirmação no fluxo.
+            if(String(args[1]||'').toLowerCase()==='confirmar'){
+              await reply('🛡️ Por segurança, não é mais possível sacrificar diretamente por comando.\nUse *!sacrificar* → categoria → pet → *2* → *1* para confirmar.')
               continue
             }
-            // The database checks ownership, active/team/expedition state
-            // again within the same transaction as the removal and rewards.
-            const result=await sacrificePet(sender,pet.id)
-            await reply(`🕊️ *ADEUS, ${result.name}!*\\n\\n🐾 Nv.${result.level} — ${result.species}\\n✨ +${fmt(result.exp)} EXP\\n💰 +R$ ${fmt(result.cash)}\\n\\nO pet deixou sua coleção. 🐾`)
+            const state=await getPetCollectionState(sender)
+            const pet=state.pets[position-1]
+            if(!pet?.id){
+              await reply('🐾 Número inválido. Use *!sacrificar* para escolher pela categoria, ou *!pets* para ver os números antigos.')
+              continue
+            }
+            if(pet.active||state.teamIds.has(Number(pet.id))||state.expeditionIds.has(Number(pet.id))){
+              await reply('🔒 *PET PROTEGIDO*\n\n*'+pet.name+'* não pode ser sacrificado enquanto estiver equipado, no time ou em expedição.\nUse *!sacrificar* para ver a coleção por categoria.')
+              continue
+            }
+            setQuickFlow(chat,sender,'pet_collection_sacrifice_confirm',{
+              petId:pet.id,category:10,mode:'sacrifice',species:pet.species,petName:pet.name
+            },90*1000)
+            await reply(petCollectionSacrificeText(pet,{money:fmt,isLegendary:isCollectionLegendary}))
           }catch(err){
-            await reply('⚠️ *Não foi possível sacrificar o pet.*\\n'+String(err?.message||'Tente novamente.'))
+            await reply('⚠️ *Não foi possível abrir o sacrifício.*\n'+String(err?.message||'Tente novamente.'))
           }
           continue
         }
