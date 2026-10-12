@@ -105,6 +105,17 @@ const sessionId=(process.env.SESSION_ID || 'alpha-primary').trim()
 const ownerNumber=(process.env.OWNER_NUMBER || '').replace(/\D/g,'')
 const ownerJid=(process.env.OWNER_JID || (ownerNumber ? ownerNumber+'@s.whatsapp.net' : '')).trim()
 
+// Evita vazamento de chaves privadas Signal nos logs ao rotacionar sessões.
+// Não interfere nas operações criptográficas nem nos outros logs do bot.
+for(const level of ['warn','info','error']){
+  const original=console[level].bind(console)
+  console[level]=(...args)=>{
+    const first=typeof args[0]==='string'?args[0]:''
+    if(first.startsWith('Closing session:') || first.startsWith('Closing stale open session'))return
+    original(...args)
+  }
+}
+
 const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
   whatsapp:'starting',
   lastChange:Date.now(),
@@ -2061,6 +2072,28 @@ async function start() {
       delayBetweenTriesMs:500
     }
   })
+
+  // Registra somente contagens (sem texto, JIDs ou conteúdo de mensagens).
+  // Se o websocket receber muitos pacotes mas o Baileys parar de emitir
+  // messages.upsert por cinco minutos, recupera uma sessão WhatsApp "surda".
+  let whatsappDeafRecoveryTriggered=false
+  sock.ws?.on?.('CB:message',()=>{
+    trevoHealth.lastRawMessageAt=Date.now()
+    trevoHealth.rawMessagesSeen=Number(trevoHealth.rawMessagesSeen||0)+1
+  })
+  const deafWatchdog=setInterval(()=>{
+    if(whatsappDeafRecoveryTriggered || trevoHealth.whatsapp!=='open')return
+    const lastHandled=Math.max(Number(trevoHealth.lastUpsertAt||0),Number(trevoHealth.lastOpen||0))
+    const unhandled=Number(trevoHealth.rawMessagesSeen||0)-Number(trevoHealth.rawMessagesAtLastUpsert||0)
+    if(Date.now()-lastHandled>5*60*1000 && unhandled>=20){
+      whatsappDeafRecoveryTriggered=true
+      console.error('[WhatsApp] recuperação de sessão surda: pacotes recebidos sem messages.upsert',{
+        unhandledPackets:unhandled,lastProcessedAt:lastHandled
+      })
+      process.exit(1)
+    }
+  },60*1000)
+  deafWatchdog.unref?.()
 
   sock.ev.on('creds.update',saveCreds)
 
@@ -8825,6 +8858,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
 
   sock.ev.on('messages.upsert',async({messages,type})=>{
     trevoHealth.lastUpsertAt=Date.now()
+    trevoHealth.rawMessagesAtLastUpsert=Number(trevoHealth.rawMessagesSeen||0)
     trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
     if(type!=='notify') return
     for(const msg of messages){
