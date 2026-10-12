@@ -1,5 +1,15 @@
 import http from 'node:http'
 
+// A dependência Signal pode imprimir sessões criptográficas completas em texto.
+// Silencia exclusivamente esse diagnóstico verboso, protegendo as chaves e a CPU;
+// demais avisos e erros continuam registrados normalmente.
+const originalConsoleLog=console.log.bind(console)
+console.log=(...args)=>{
+  if(typeof args[0]==='string' && args[0].startsWith('Closing session:'))return
+  originalConsoleLog(...args)
+}
+
+
 // Entrada dedicada ao WhatsApp. Não injeta módulos de Cidade/NPC/Karma.
 const port=Number(process.env.PORT||10000)
 const health=globalThis.__trevoHealth||(globalThis.__trevoHealth={whatsapp:'starting',lastChange:Date.now(),lastOpen:0,everConnected:false})
@@ -8,7 +18,15 @@ http.createServer((req,res)=>{
   if(req.url==='/health'){
     const connected=health.whatsapp==='open'
     res.writeHead(connected?200:503,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'})
-    return res.end(JSON.stringify({ok:connected,service:'alpha-bot-whatsapp',whatsapp:health.whatsapp,lastOpen:health.lastOpen||null}))
+    return res.end(JSON.stringify({
+      ok:connected,service:'alpha-bot-whatsapp',whatsapp:health.whatsapp,
+      lastOpen:health.lastOpen||null,
+      uptimeSeconds:Math.floor(process.uptime()),
+      messagesSeen:Number(health.messagesSeen||0),
+      lastUpsertAt:health.lastUpsertAt||null,
+      lastInboundAt:health.lastInboundAt||null,
+      lastInboundSecondsAgo:health.lastInboundAt?Math.floor((Date.now()-health.lastInboundAt)/1000):null
+    }))
   }
   res.writeHead(200,{'content-type':'text/plain; charset=utf-8','cache-control':'no-store'})
   res.end('Alpha Bot WhatsApp online')
