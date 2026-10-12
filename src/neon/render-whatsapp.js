@@ -113,3 +113,103 @@ setTimeout(async()=>{
   }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
  }catch(e){console.error('[TRICK BOXES EVENT] failed',e?.stack||e)}
 },21000).unref?.()
+
+
+// Estorno isolado e idempotente: compra acidental de 99 Espadas de Aço pelo João Pedro
+// em 12/10/2026, 15h31 BRT. Não altera preços, loot ou regras globais.
+setTimeout(async () => {
+  const tag='[REFUND JP 2026-10-12 15:31]'
+  const jid='5511987308687@s.whatsapp.net'
+  const marker='refund:joao_pedro:2026-10-12:1531:espada_aco_x99'
+  const itemId='espada_aco'
+  const quantity=99
+  const amount=1188000
+  let client
+  try {
+    const {db}=await import('./db.js')
+    client=await db.connect()
+    await client.query('BEGIN')
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[marker])
+    const already=await client.query('SELECT value FROM trevo_settings WHERE key=$1',[marker])
+    if(already.rowCount){
+      console.log(tag,'ALREADY_APPLIED',JSON.stringify(already.rows[0].value))
+      await client.query('COMMIT')
+      return
+    }
+    const start=Math.floor(Date.parse('2026-10-12T15:30:00-03:00')/1000)
+    const end=Math.floor(Date.parse('2026-10-12T15:34:00-03:00')/1000)
+    const purchases=await client.query(
+      "SELECT id,created_at FROM transactions WHERE from_jid=$1 AND to_jid='shop' AND amount=$2 AND type='purchase' AND note=$3 AND created_at BETWEEN $4 AND $5 ORDER BY id FOR UPDATE",
+      [jid,amount,itemId+' x'+quantity,start,end]
+    )
+    if(purchases.rowCount!==1){
+      console.error(tag,'ABORT: purchase not uniquely identified',purchases.rowCount)
+      await client.query('ROLLBACK')
+      return
+    }
+    const purchase=purchases.rows[0]
+    const wallet=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const inventory=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+    const stats=await client.query('SELECT weapon_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])
+    if(wallet.rowCount!==1 || inventory.rowCount!==1 || Number(inventory.rows[0].quantity)<quantity || stats.rows[0]?.weapon_id===itemId){
+      console.error(tag,'ABORT: inventory/wallet/equipment mismatch',JSON.stringify({
+        walletFound:wallet.rowCount===1,available:Number(inventory.rows[0]?.quantity||0),
+        itemCurrentlyEquipped:stats.rows[0]?.weapon_id===itemId
+      }))
+      await client.query('ROLLBACK')
+      return
+    }
+    // Qualquer negociação posterior com este item exige análise manual antes do estorno.
+    const movements=await client.query(
+      "SELECT id,type,note FROM transactions WHERE from_jid=$1 AND id>$2 AND created_at>=$3 AND note ILIKE $4 ORDER BY id LIMIT 3",
+      [jid,purchase.id,purchase.created_at,'%'+itemId+'%']
+    )
+    const market=await client.query(
+      'SELECT id FROM market_listings WHERE seller_jid=$1 AND item_id=$2 AND created_at >= $3 LIMIT 1',
+      [jid,itemId,purchase.created_at]
+    )
+    const trades=await client.query(
+      'SELECT id FROM item_trade_offers WHERE (from_jid=$1 OR to_jid=$1) AND (offer_item_id=$2 OR request_item_id=$2) AND created_at >= $3 LIMIT 1',
+      [jid,itemId,purchase.created_at]
+    )
+    if(movements.rowCount || market.rowCount || trades.rowCount){
+      console.error(tag,'ABORT: possible subsequent item disposition',JSON.stringify({
+        transactionMovements:movements.rowCount,marketListings:market.rowCount,tradeOffers:trades.rowCount
+      }))
+      await client.query('ROLLBACK')
+      return
+    }
+    const removed=await client.query(
+      'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3 AND quantity >= $1 RETURNING quantity',
+      [quantity,jid,itemId]
+    )
+    if(removed.rowCount!==1) throw new Error('Inventory guard failed')
+    const balance=await client.query(
+      'UPDATE wallets SET cash=cash+$1,updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE jid=$2 RETURNING cash,bank',
+      [amount,jid]
+    )
+    const reverse=await client.query(
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('shop',$1,$2,'purchase_refund',$3) RETURNING id",
+      [jid,amount,'Reversão compra #'+purchase.id+' | espada_aco x99 | 2026-10-12 15:31 BRT']
+    )
+    const proof={
+      purchaseId:String(purchase.id),refundId:String(reverse.rows[0].id),
+      removedQuantity:quantity,refundedAmount:amount,
+      remainingQuantity:Number(removed.rows[0].quantity),
+      walletCashAfter:String(balance.rows[0].cash),
+      walletBankAfter:String(balance.rows[0].bank),
+      appliedAt:new Date().toISOString()
+    }
+    await client.query(
+      'INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',
+      [marker,JSON.stringify(proof)]
+    )
+    await client.query('COMMIT')
+    console.log(tag,'SUCCESS',JSON.stringify(proof))
+  } catch(error) {
+    if(client) await client.query('ROLLBACK').catch(()=>{})
+    console.error(tag,'ERROR',error?.stack||error)
+  } finally {
+    client?.release()
+  }
+},24000).unref?.()
