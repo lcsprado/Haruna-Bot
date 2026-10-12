@@ -111,15 +111,16 @@ async function tick(sock){
             ' • '+(gain?'+'+gain+' ponto(s)': '-'+loss+' vida(s)')+
             ' • ❤️ '+p.lives+' • ⭐ '+p.points
         }
-        if(s.round>=5){
+        const survivors=entries.filter(([,p])=>n(p.lives)>0)
+        if(s.round>=5 || survivors.length===0){
           s.phase='completed'
-          const survivors=entries.filter(([,p])=>p.lives>0)
           const finalists=[...survivors]
           finalists.sort((a,b)=>n(b[1].points)-n(a[1].points)||String(a[0]).localeCompare(String(b[0])))
           // Pagamento limitado por número de inscritos; solo não recebe prêmio de quatro pessoas.
           const solo=entries.length===1
           const prizes=solo?[30000]:entries.length===2?[120000,60000]:entries.length===3?[200000,100000,50000]:[300000,150000,75000,20000]
           text+='\n\n🏆 *RESULTADO FINAL*'
+          if(!finalists.length)text+='\n💀 Todos foram eliminados. Sem campeão e sem recompensas.'
           let i=0
           for(const [jid,p] of finalists){
             const money=prizes[i]||0
@@ -143,7 +144,7 @@ async function tick(sock){
             }
             i++
           }
-          text+='\n🎲 Evento encerrado. Premiação única registrada.'
+          text+='\n🎲 Evento encerrado. '+(finalists.length?'Premiação única registrada.':'Nenhuma recompensa distribuída.')
         }else{
           s.round++
           s.roundEnds=now+CHOICE_MS
