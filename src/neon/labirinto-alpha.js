@@ -124,6 +124,19 @@ async function tick(sock){
               await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'labirinto_reward',$3)",[jid,money,KEY+':'+i])
               text+='\n'+(i+1)+'º '+p.name+' — R$ '+money.toLocaleString('pt-BR')
             }
+            // Somente o campeão recebe o elmo lendário; prêmio silencioso no inventário.
+            // Inventário + vinculação ao vencedor fazem parte da mesma transação do resultado.
+            if(i===0 && money){
+              const helmId='elmo_labirinto_alpha'
+              const exists=await c.query('SELECT id FROM items WHERE id=$1 AND category=$2 AND rarity=$3',[helmId,'helmet','legendary'])
+              if(exists.rows.length!==1)throw new Error('Elmo do Labirinto não cadastrado; premiação revertida para nova tentativa.')
+              await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+                ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,helmId])
+              await c.query(`INSERT INTO bound_inventory_items(jid,item_id,source_key,quantity)
+                VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,source_key) DO NOTHING`,
+                [jid,helmId,KEY+':champion'])
+              console.log('[LABIRINTO] Elmo lendário preparado para campeão',JSON.stringify({item:helmId,jid}))
+            }
             i++
           }
           text+='\n🎲 Evento encerrado. Premiação única registrada.'
