@@ -2601,6 +2601,8 @@ export async function battle(attackerJid, defenderJid) {
     }
     const ap=petFor(attackerJid)
     const bp=petFor(defenderJid)
+    const aPetBonus=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petPvpSpecialty(ap.species,ap.level):null
+    const bPetBonus=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petPvpSpecialty(bp.species,bp.level):null
     const apSpd=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petSpeedBonus(ap.species,ap.level):0
     const bpSpd=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petSpeedBonus(bp.species,bp.level):0
     const aSynergySpd=synergySpeedFor(attackerJid)
@@ -2632,7 +2634,8 @@ export async function battle(attackerJid, defenderJid) {
       def:Number(a.def)+aeW.def+aeA.def+aeH.def,
       classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+classCritBonus(a.class_id,a.class_applied)),
-      spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd
+      spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd,
+      petBonus:aPetBonus,petSpecies:ap?.species||null,petHealUses:0
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
@@ -2641,7 +2644,8 @@ export async function battle(attackerJid, defenderJid) {
       def:Number(b.def)+beW.def+beA.def+beH.def,
       classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+classCritBonus(b.class_id,b.class_applied)),
-      spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd
+      spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd,
+      petBonus:bPetBonus,petSpecies:bp?.species||null,petHealUses:0
     }
 
     const log=[]
