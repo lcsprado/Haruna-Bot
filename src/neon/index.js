@@ -28,7 +28,7 @@ import {
   initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
   addGroupWarning, getGroupWarnings, clearGroupWarnings,
   resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, getSleepOptions, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
-  adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
+  adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, raid50PhoenixGuaranteeStatus, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
   proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
   createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
   listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
@@ -4883,6 +4883,12 @@ ${bonus.text}
       const summonCost=Math.max(1,Number(altar.summonCost||100))
       let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/${summonCost}*\n💠 Custo: *${summonCost}*\n\n🎲 *CHANCES*\n`
       altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
+      const guarantee=altar.materialId==='nucleo_alpha_corrompido'?await raid50PhoenixGuaranteeStatus(sender):null
+      if(guarantee?.active){
+        text+='\n🎯 *GARANTIA ATIVA: FÊNIX ALPHA 100% nesta invocação!*\n'
+        if(guarantee.alreadyOwned)text+='⚠️ Você JÁ POSSUI Fênix Alpha: o pet repetido vira dinheiro + fragmentos. Não receberá uma segunda cópia.\n'
+        text+='\n'
+      }
       if(owned<summonCost){
         clearQuickFlow(chat,sender)
         await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
@@ -11330,6 +11336,12 @@ _Os comandos antigos continuam funcionando normalmente._`
           const summonCost=Math.max(1,Number(altar.summonCost||100))
           let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/${summonCost}*\n💠 Custo: *${summonCost}*\n\n🎲 *CHANCES*\n`
           altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
+          const guarantee=altar.materialId==='nucleo_alpha_corrompido'?await raid50PhoenixGuaranteeStatus(sender):null
+          if(guarantee?.active){
+            text+='\n🎯 *GARANTIA ATIVA: FÊNIX ALPHA 100% nesta invocação!*\n'
+            if(guarantee.alreadyOwned)text+='⚠️ Você JÁ POSSUI Fênix Alpha: o pet repetido vira dinheiro + fragmentos. Não receberá uma segunda cópia.\n'
+            text+='\n'
+          }
           if(owned<summonCost) return await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
           setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
           return await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
