@@ -52,7 +52,7 @@ test('listas são compactas, numeradas por categoria e sem identificadores técn
 test('detalhes exibem estado, bônus e bloqueiam sacrifício de ativos, time e expedição',()=>{
   for(const petIndex of [0,1,4]){
     const txt=petCollectionDetailText(pets[petIndex],options)
-    assert.match(txt,/Sacrifício: 🔒 Bloqueado/)
+    assert.match(txt,/Sacrifício:\* 🔒 Bloqueado/)
     assert.match(txt,/Sacrifício indisponível/)
   }
   const normal=petCollectionDetailText(pets[3],options)
