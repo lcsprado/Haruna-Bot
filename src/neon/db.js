@@ -4945,8 +4945,19 @@ export async function summonLegendaryPet(jid,materialId){
     // A chave fica persistida até o jogador realmente ter materiais e concluir a invocação.
     const forcedKey='forced_summon:'+jid+':'+altar.materialId
     const forcedRow=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[forcedKey])).rows[0]
-    const forcedSpecies=String(forcedRow?.value?.species||'')
+    // Garantia pontual e de uso unico autorizada para a proxima invocacao Raid 50.
+    // O marcador persiste no Neon e so e consumido em uma transacao concluida.
+    const specialGuaranteeKey='raid50_fenix_once_20261012:'+jid
+    const specialGuaranteeEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='nucleo_alpha_corrompido'
+    const specialGuaranteeUsed=specialGuaranteeEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[specialGuaranteeKey])).rowCount):true
+    const specialGuaranteeActive=specialGuaranteeEligible&&!specialGuaranteeUsed
+    const forcedSpecies=specialGuaranteeActive?'fenix_alpha':String(forcedRow?.value?.species||'')
     let chosen=altar.pets.find(p=>p.species===forcedSpecies)||null
+    if(specialGuaranteeActive){
+      await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
+        specialGuaranteeKey,JSON.stringify({species:'fenix_alpha',materialId:altar.materialId,at:Date.now()})
+      ])
+    }
     if(chosen){
       await client.query('DELETE FROM trevo_settings WHERE key=$1',[forcedKey])
     }else{
