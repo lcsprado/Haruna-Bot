@@ -2077,6 +2077,44 @@ async function start() {
   // Se o websocket receber muitos pacotes mas o Baileys parar de emitir
   // messages.upsert por cinco minutos, recupera uma sessão WhatsApp "surda".
   let whatsappDeafRecoveryTriggered=false
+  // Diagnóstico do bloqueio de sincronização inicial que mantém o socket
+  // "open", mas impede o Baileys de entregar messages.upsert.
+  trevoHealth.pendingNotificationsReceived=false
+  trevoHealth.offlinePreviewCount=0
+  trevoHealth.offlineCompletionCount=0
+  sock.ws?.on?.('CB:ib,,offline_preview',()=>{
+    trevoHealth.offlinePreviewCount++
+    trevoHealth.lastOfflinePreviewAt=Date.now()
+    console.warn('[WhatsApp Sync] preview de mensagens pendentes recebido')
+  })
+  sock.ws?.on?.('CB:ib,,offline',()=>{
+    trevoHealth.offlineCompletionCount++
+    console.warn('[WhatsApp Sync] lote offline encerrado pelo servidor')
+  })
+  sock.ev.on('connection.update',update=>{
+    if(update.receivedPendingNotifications!==undefined){
+      trevoHealth.pendingNotificationsReceived=Boolean(update.receivedPendingNotifications)
+      console.log('[WhatsApp Sync] notificações pendentes sincronizadas:',trevoHealth.pendingNotificationsReceived)
+    }
+  })
+  let forceFlushAttempted=false
+  const forceFlushTimer=setTimeout(()=>{
+    if(forceFlushAttempted || trevoHealth.whatsapp!=='open')return
+    if(trevoHealth.pendingNotificationsReceived || trevoHealth.offlineCompletionCount>0)return
+    if(trevoHealth.offlinePreviewCount===0 && trevoHealth.rawMessagesSeen===0)return
+    if(typeof sock.ev?.flush!=='function'){
+      console.error('[WhatsApp Sync] flush indisponível no evento Baileys')
+      return
+    }
+    forceFlushAttempted=true
+    try{
+      sock.ev.flush()
+      trevoHealth.forceFlushCount=Number(trevoHealth.forceFlushCount||0)+1
+      console.warn('[WhatsApp Sync] recuperação: buffer de eventos liberado após 40 segundos sem fim da sincronização')
+    }catch(e){console.error('[WhatsApp Sync] recuperação do buffer falhou',e?.message)}
+  },40000)
+  forceFlushTimer.unref?.()
+
   sock.ws?.on?.('CB:message',()=>{
     trevoHealth.lastRawMessageAt=Date.now()
     trevoHealth.rawMessagesSeen=Number(trevoHealth.rawMessagesSeen||0)+1
