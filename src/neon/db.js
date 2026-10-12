@@ -4928,12 +4928,12 @@ export const LEGENDARY_PET_SUMMONS=[
   ]}
 ]
 
-export async function raid50PhoenixGuaranteeStatus(jid){
+export async function raid50DragonGuaranteeStatus(jid){
   if(String(jid)!=='5511948523167@s.whatsapp.net') return {active:false,alreadyOwned:false}
   const marker='raid50_fenix_once_20261012:'+jid
   const [used,existing]=await Promise.all([
     db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[marker]),
-    db.query("SELECT 1 FROM pet_collection WHERE jid=$1 AND species='fenix_alpha' LIMIT 1",[jid])
+    db.query("SELECT 1 FROM pet_collection WHERE jid=$1 AND species='dragao_corrompido' LIMIT 1",[jid])
   ])
   return {active:used.rowCount===0,alreadyOwned:existing.rowCount>0}
 }
@@ -4961,11 +4961,11 @@ export async function summonLegendaryPet(jid,materialId){
     const specialGuaranteeEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='nucleo_alpha_corrompido'
     const specialGuaranteeUsed=specialGuaranteeEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[specialGuaranteeKey])).rowCount):true
     const specialGuaranteeActive=specialGuaranteeEligible&&!specialGuaranteeUsed
-    const forcedSpecies=specialGuaranteeActive?'fenix_alpha':String(forcedRow?.value?.species||'')
+    const forcedSpecies=specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||'')
     let chosen=altar.pets.find(p=>p.species===forcedSpecies)||null
     if(specialGuaranteeActive){
       await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
-        specialGuaranteeKey,JSON.stringify({species:'fenix_alpha',materialId:altar.materialId,at:Date.now()})
+        specialGuaranteeKey,JSON.stringify({species:'dragao_corrompido',materialId:altar.materialId,at:Date.now()})
       ])
     }
     if(chosen){
