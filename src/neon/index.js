@@ -1708,6 +1708,24 @@ async function start() {
   await initAwakening()
   await initRelics()
 
+  // Ativação única, atômica e persistente do evento de fragmentos (30 minutos).
+  // O início ocorre nesta inicialização; restarts NÃO reiniciam nem prolongam o evento.
+  {
+    const key='raid_fragment_double_20261012_30min_v1'
+    const startAt=Date.now()
+    const event={
+      oneOffId:key,startsAt:startAt,endsAt:startAt+30*60*1000,
+      multiplier:2,scope:'raid_materials',label:'FRAGMENTOS DE RAID 2X'
+    }
+    const claimed=await db.query(
+      `INSERT INTO trevo_settings(key,value,updated_at)
+       VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+       ON CONFLICT(key) DO NOTHING RETURNING key`,
+      [key,JSON.stringify(event)]
+    )
+    if(claimed.rowCount) console.log('[RAID FRAG 2X] evento iniciado',JSON.stringify(event))
+  }
+
   // Evento administrativo de XP, de uso único. Mantém dinheiro, drops e caixas em 1x.
   const adminXpEventToken=String(process.env.ADMIN_XP_EVENT_TOKEN||'').trim()
   const adminXpEventMinutes=Number(process.env.ADMIN_XP_EVENT_MINUTES||0)
@@ -8649,6 +8667,36 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
       startLabirintoScheduler(sock)
       startBingoRebootScheduler(sock)
+
+      // Anúncio único por grupo licenciado. Apenas este evento, sem mensagens repetidas.
+      ;(async()=>{
+        try{
+          const event=(await db.query(
+            "SELECT value FROM trevo_settings WHERE key='raid_fragment_double_20261012_30min_v1'"
+          )).rows[0]?.value
+          const now=Date.now()
+          if(!event || now<Number(event.startsAt||0) || now>=Number(event.endsAt||0))return
+          const ending=new Date(Number(event.endsAt)).toLocaleTimeString('pt-BR',{
+            timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'
+          })
+          const message='🧩🔥 *EVENTO 2X FRAGMENTOS DE RAID ATIVO!*\\n\\n'+
+            '⏱️ *30 minutos* de duração\\n'+
+            '📦 Materiais de todas as Raids: *2x*\\n'+
+            '✅ Válido nas Raids concluídas durante o evento.\\n'+
+            '💰 Dinheiro, ✨ XP, 🎁 caixas e ⚔️ equipamentos seguem normais.\\n'+
+            '⏰ Termina às *'+ending+'* (Brasília).\\n\\n'+
+            '⚔️ Abram suas Raids e boa sorte!'
+          const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+          let targeted=0
+          for(const lic of groups){
+            const chat=String(lic.chat_jid||'')
+            if(!chat.endsWith('@g.us'))continue
+            await sendScheduledGroupNotice(chat,'raid_fragment_double_20261012_30min_v1',message)
+            targeted++
+          }
+          console.log('[RAID FRAG 2X] anúncios processados em',targeted,'grupos licenciados')
+        }catch(err){console.error('[RAID FRAG 2X] falha no aviso',err?.message||err)}
+      })()
 
       ;(async()=>{
         try{
