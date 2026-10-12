@@ -2655,14 +2655,28 @@ export async function battle(attackerJid, defenderJid) {
     const hit=(from,to)=>{
       from.attackIndex++
       const variance=0.85+Math.random()*0.30
-      const crit=Math.random()<Number(from.crit||.10)
+      const crit=Math.random()<Math.min(.40,Number(from.crit||.10)+Number(from.petBonus?.crit||0))
+      const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
       const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
-      const attack=classAttack({classId:from.classId,applied:from.classApplied,damage:crit?Math.round(raw*1.6):raw,critical:crit,hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,lastProcAttack:from.lastProcAttack})
+      const adjusted=Math.max(1,Math.round(raw*(1+Number(from.petBonus?.damage||0))))
+      const attack=classAttack({classId:from.classId,applied:from.classApplied,damage:crit?Math.round(adjusted*1.6):adjusted,critical:crit,hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,lastProcAttack:from.lastProcAttack})
       from.lastProcAttack=attack.lastProcAttack
-      const dmg=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage}).damage
+      const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage}).damage
+      const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-Number(to.petBonus?.defense||0))))
       to.hp=Math.max(0,to.hp-dmg)
       if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
-      log.push({from:from.name,to:to.name,dmg,crit,hp:to.hp})
+      log.push({from:from.name,to:to.name,dmg,crit:!dodged&&crit,dodged,hp:to.hp})
+      // Cura do pet principal: após seu próprio ataque, até 3 vezes por duelo.
+      const cooldown=Number(from.petBonus?.healCooldown||0)
+      if(from.hp>0&&cooldown>0&&from.petHealUses<3&&Number(from.petBonus?.healPct||0)>0&&
+         from.attackIndex%cooldown===0&&from.hp/from.maxHp<.70){
+        const before=from.hp
+        from.hp=Math.min(from.maxHp,from.hp+Math.max(1,Math.round(from.maxHp*Number(from.petBonus.healPct))))
+        if(from.hp>before){
+          from.petHealUses++
+          log.push({petHeal:true,from:from.name,to:from.name,petSpecies:from.petSpecies,heal:from.hp-before,hp:from.hp})
+        }
+      }
     }
 
     for(let round=1;round<=20 && A.hp>0 && B.hp>0;round++){
