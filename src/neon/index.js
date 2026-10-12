@@ -2284,13 +2284,19 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
     raidAutoWatchdog.unref?.()
   }
 
+  // Protege avisos de evento contra o texto literal "\n" no WhatsApp.
+  // Não altera a formatação em negrito, os emojis ou o conteúdo dos prêmios.
+  function formatEventNotice(text){
+    return String(text??'').replace(/\\r\\n/g,'\n').replace(/\\n/g,'\n')
+  }
+
   async function sendScheduledGroupNotice(chat,key,text){
     const settingKey='scheduled_notice:'+key+':'+chat
     const inserted=await db.query(
       "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
       [settingKey,JSON.stringify({sentAt:Date.now()})]
     )
-    if(inserted.rowCount) await sock.sendMessage(chat,{text}).catch(err=>console.error('[Eventos] aviso',chat,err?.message||err))
+    if(inserted.rowCount) await sock.sendMessage(chat,{text:formatEventNotice(text)}).catch(err=>console.error('[Eventos] aviso',chat,err?.message||err))
   }
 
   // Publica o resultado final do Eclipse em TODOS os grupos, inclusive apos deploy.
@@ -2889,8 +2895,9 @@ ${ranking}${extra}
 
   async function sendEventToGroups(text){
     const groups=await activeEventGroups()
+    const formattedText=formatEventNotice(text)
     for(const lic of groups){
-      await sock.sendMessage(lic.chat_jid,{text}).catch(err=>console.error('[Eventos] aviso',lic.chat_jid,err?.message||err))
+      await sock.sendMessage(lic.chat_jid,{text:formattedText}).catch(err=>console.error('[Eventos] aviso',lic.chat_jid,err?.message||err))
     }
   }
 
