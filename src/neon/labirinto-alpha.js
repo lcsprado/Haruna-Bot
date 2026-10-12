@@ -183,6 +183,7 @@ export async function handleLabirintoCommand({cmd,args,sender,name,reply}){
     }
     if(s.phase!=='active'){out='🏰 O Labirinto não está em rodada ativa.';return}
     if(!s.players[sender]){out='🔒 Somente quem digitou !pronto antes das 18h participa.';return}
+    if(n(s.players[sender].lives)===0){out='💀 Você foi eliminado do Labirinto e não pode escolher novas portas.';return}
     const needed=['','porta','enigma','bau','destino','final'][s.round]
     if(cmd!==needed){out='🚪 Estamos na etapa '+s.round+'. Use *!'+needed+' 1*, 2 ou 3.';return}
     const choice=Number(args[0])
