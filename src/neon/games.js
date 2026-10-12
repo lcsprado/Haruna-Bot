@@ -1093,7 +1093,7 @@ async function finishRaidRewards(c,s,cfg,chat){
         const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
         if(item){
           await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,gearId])
-          gearDrop={id:item.id,name:item.name,rarity:item.rarity}
+          gearDrop={id:item.id,name:item.name,rarity:item.rarity,normalPresentation:Boolean(singleUseGear)}
         }
       }
     }
