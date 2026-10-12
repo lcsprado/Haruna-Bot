@@ -261,7 +261,23 @@ async function tick(sock){
               '\n✅ Premiações registradas uma única vez.')
           }
         }
-        if(parts.length)outgoing='🎰 *BINGO DO REBOOT — SORTEIO*\n\n'+parts.join('\n\n')
+        // Mantém o sorteio a cada 25 s, sem inundar os grupos com uma mensagem por bola.
+        // Os jogadores continuam consultando sua cartela em tempo real via !cartela.
+        const important=parts.flatMap(p=>p.split('\n').filter(line=>/^(?:🥉|🥈|🥇|⚡|🎁|🍀|🏁|🏆|✅)/u.test(line)))
+        const isFinal=s.phase==='completed'
+        const showRound=Boolean(s.drawn.length && s.drawn.length%4===0)
+        if(isFinal || important.length || showRound){
+          const nums=(s.drawn||[]).slice(-5).map(x=>String(x).padStart(2,'0')).join(' • ')
+          outgoing=[
+            '🎰 *BINGO DO REBOOT*',
+            '',
+            '🔢 *Últimos números:* '+(nums||'Nenhum'),
+            '📊 *Sorteados:* '+(s.drawn?.length||0)+'/40',
+            ...(important.length?['','✨ *Destaques:*',...important]:[]),
+            '',
+            isFinal?'🏁 Sorteio concluído.':'🎟️ Consulte sua cartela: *!cartela*'
+          ].join('\n')
+        }
       }
       targets=s.groups||targets
     })
