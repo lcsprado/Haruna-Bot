@@ -60,7 +60,7 @@ import {
 } from './loans.js'
 import { toStickerBuffer } from './sticker.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, getAwakeningSkillDescriptions } from './game-catalog.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, getAwakeningSkillDescriptions, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
 import { createWebLinkCode } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
@@ -8829,14 +8829,12 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             const pets=await listPets(sender)
             const pet=pets[position-1]
             if(!pet?.id) { await reply('🐾 Número não encontrado na sua coleção. Use *!meuspets*.'); continue }
-            const level=Math.min(100,Math.max(1,Number(pet.level||1)))
-            const cash=Math.min(3700,200+35*level)
-            const exp=Math.min(800,Math.floor(level*5+Math.max(0,Number(pet.xp||0))*.03))
+            const {level,cash,exp,originalPrice,shopRefund}=petSacrificeReward(pet.species,pet.level,pet.xp,pet.purchase_price)
             if(String(args[1]||'').toLowerCase()!=='confirmar'){
               await reply(`🐾 *DESPEDIDA DO PET*
 
 Pet: *${pet.name}* — Nv.${level}
-💰 Retorno: *R$ ${fmt(cash)}*
+${shopRefund?`🛒 Preço original: *R$ ${fmt(originalPrice)}*\n♻️ Reembolso: *50%*\n`:''}💰 Retorno: *R$ ${fmt(cash)}*
 ✨ EXP do personagem: *+${fmt(exp)}*
 
 ⚠️ Ação permanente: o pet será removido da coleção.
