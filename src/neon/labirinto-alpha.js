@@ -144,6 +144,7 @@ async function tick(sock){
             }
             i++
           }
+          if(finalists.length)text+='\n\n🪖 *PRÊMIO ESPECIAL DO CAMPEÃO:* Elmo do Labirinto Eterno (lendário, +92 DEF / +240 HP) — entregue no inventário.'
           text+='\n🎲 Evento encerrado. '+(finalists.length?'Premiação única registrada.':'Nenhuma recompensa distribuída.')
         }else{
           s.round++
