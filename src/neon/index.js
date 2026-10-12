@@ -62,6 +62,7 @@ import { toStickerBuffer } from './sticker.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, getAwakeningSkillDescriptions, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
+import {petCollectionCategory,petCollectionCategoryPets,petCollectionMenuText,petCollectionListText,petCollectionDetailText,petCollectionSacrificeText} from './pet-collection-menu.js'
 import { createWebLinkCode } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
@@ -1618,6 +1619,34 @@ function petRoleTags(species){
 
 function petIdentityTag(species){
   return petStyleLabel(species)+' • '+petRoleTags(species)
+}
+
+const COLLECTION_LEGENDARY_SPECIES=new Set(
+  LEGENDARY_PET_SUMMONS.flatMap(a=>a.pets.map(p=>String(p.species||'')))
+)
+const isCollectionLegendary=species=>COLLECTION_LEGENDARY_SPECIES.has(String(species||''))
+async function getPetCollectionState(jid){
+  const [pets,team,expeditions]=await Promise.all([
+    listPets(jid),getPetTeam(jid),getPetExpeditions(jid)
+  ])
+  return {
+    pets,
+    teamIds:new Set(team.map(p=>Number(p.id))),
+    expeditionIds:new Set(expeditions.map(e=>Number(e.pet_id)))
+  }
+}
+const petCollectionOptions=(state,mode='manage')=>({
+  mode,isLegendary:isCollectionLegendary,
+  style:petStyleLabel,identity:petIdentityTag,bonus:petStatusBonus,
+  teamIds:state.teamIds,expeditionIds:state.expeditionIds,
+  maxHp:petMaxHp,maxEnergy:petMaxEnergy,money:fmt
+})
+function petCollectionListMessage(state,category,mode='manage'){
+  return petCollectionListText(state.pets,category,petCollectionOptions(state,mode))
+}
+function petCollectionDetailMessage(state,id,mode='manage'){
+  const pet=state.pets.find(p=>Number(p.id)===Number(id))
+  return pet?petCollectionDetailText(pet,petCollectionOptions(state,mode)):null
 }
 
 function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
@@ -3683,7 +3712,7 @@ Escolha o que deseja vender:
 
     if(['0','sair','cancelar','cancel'].includes(input)){
       clearQuickFlow(chat,sender)
-      await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
+      await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':String(flow.stage||'').startsWith('pet_collection_')?'✅ Coleção encerrada. Use *!meuspets* para abrir novamente.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
       return true
     }
 
@@ -3722,6 +3751,150 @@ Escolha o que deseja vender:
         return true
       }
       await reply('🐾 Para comprar use *!adotar espécie Nome*.\n9️⃣ Voltar à lista • 0️⃣ Sair')
+      return true
+    }
+
+
+    // Coleção por categoria: os números são locais à categoria; o ID real
+    // do pet fica no fluxo para impedir sacrifício do item errado.
+    if(flow.stage==='pet_collection_categories'){
+      const category=petCollectionCategory(input)
+      if(!category){
+        await reply('🐾 Escolha uma categoria de *1 a 10* ou *0* para sair.')
+        return true
+      }
+      const mode=flow.data?.mode==='sacrifice'?'sacrifice':'manage'
+      const state=await getPetCollectionState(sender)
+      setQuickFlow(chat,sender,'pet_collection_list',{category:category.id,mode},5*60*1000)
+      await reply(petCollectionListMessage(state,category.id,mode))
+      return true
+    }
+    if(flow.stage==='pet_collection_list'){
+      const mode=flow.data?.mode==='sacrifice'?'sacrifice':'manage'
+      const category=petCollectionCategory(flow.data?.category)
+      if(!category){
+        setQuickFlow(chat,sender,'pet_collection_categories',{mode},5*60*1000)
+        await reply(petCollectionMenuText((await getPetCollectionState(sender)).pets,{mode,isLegendary:isCollectionLegendary}))
+        return true
+      }
+      if(input==='99'){
+        const state=await getPetCollectionState(sender)
+        setQuickFlow(chat,sender,'pet_collection_categories',{mode},5*60*1000)
+        await reply(petCollectionMenuText(state.pets,{mode,isLegendary:isCollectionLegendary}))
+        return true
+      }
+      const state=await getPetCollectionState(sender)
+      const choices=petCollectionCategoryPets(state.pets,category.id,isCollectionLegendary)
+      const choice=Number(input)
+      if(!Number.isInteger(choice)||choice<1||choice>choices.length){
+        await reply('🐾 Escolha um pet de *1 a '+choices.length+'*, *99* para voltar ou *0* para sair.')
+        return true
+      }
+      const pet=choices[choice-1]
+      setQuickFlow(chat,sender,'pet_collection_detail',{petId:pet.id,category:category.id,mode},5*60*1000)
+      await reply(petCollectionDetailMessage(state,pet.id,mode))
+      return true
+    }
+    if(flow.stage==='pet_collection_detail'){
+      const {petId,category}=flow.data||{}
+      const mode=flow.data?.mode==='sacrifice'?'sacrifice':'manage'
+      const state=await getPetCollectionState(sender)
+      const pet=state.pets.find(p=>Number(p.id)===Number(petId))
+      if(!pet){
+        setQuickFlow(chat,sender,'pet_collection_categories',{mode},5*60*1000)
+        await reply('⚠️ Este pet não está mais na coleção.\n\n'+petCollectionMenuText(state.pets,{mode,isLegendary:isCollectionLegendary}))
+        return true
+      }
+      if(input==='99'){
+        setQuickFlow(chat,sender,'pet_collection_list',{category,mode},5*60*1000)
+        await reply(petCollectionListMessage(state,category,mode))
+        return true
+      }
+      if(input==='1'){
+        if(pet.active){
+          await reply('🟢 *'+pet.name+'* já está equipado.\n\n'+petCollectionDetailMessage(state,pet.id,mode))
+          return true
+        }
+        setQuickFlow(chat,sender,'pet_collection_equip_confirm',{petId:pet.id,category,mode},90*1000)
+        await reply('🐾 *EQUIPAR PET?*\n\n🐾 *'+pet.name+'* — Nv.'+pet.level+
+          '\n❤️ '+pet.hp+'/'+petMaxHp(pet.level,pet.xp,pet.species)+
+          '\n\n1️⃣ Confirmar equipamento\n2️⃣ Voltar sem equipar\n0️⃣ Sair')
+        return true
+      }
+      if(input==='2'){
+        const locked=pet.active||state.teamIds.has(Number(pet.id))||state.expeditionIds.has(Number(pet.id))
+        if(locked){
+          await reply('🔒 *PET PROTEGIDO*\n\nPara sacrificar, ele não pode estar equipado, no time nem em expedição.\n\n'+
+            petCollectionDetailMessage(state,pet.id,mode))
+          return true
+        }
+        setQuickFlow(chat,sender,'pet_collection_sacrifice_confirm',{
+          petId:pet.id,category,mode,species:pet.species,petName:pet.name
+        },90*1000)
+        await reply(petCollectionSacrificeText(pet,{money:fmt,isLegendary:isCollectionLegendary}))
+        return true
+      }
+      await reply('🐾 Escolha *1* para equipar, *2* para sacrificar, *99* para voltar ou *0* para sair.')
+      return true
+    }
+    if(flow.stage==='pet_collection_equip_confirm'){
+      const {petId,category}=flow.data||{}
+      const mode=flow.data?.mode==='sacrifice'?'sacrifice':'manage'
+      if(input==='2'||input==='99'){
+        const state=await getPetCollectionState(sender)
+        setQuickFlow(chat,sender,'pet_collection_detail',{petId,category,mode},5*60*1000)
+        await reply(petCollectionDetailMessage(state,petId,mode)||'⚠️ Pet não encontrado. Use *!meuspets*.')
+        return true
+      }
+      if(input!=='1'){
+        await reply('🐾 1️⃣ Confirmar equipamento • 2️⃣ Voltar • 0️⃣ Sair')
+        return true
+      }
+      try{
+        const pet=await selectPet(sender,petId)
+        clearQuickFlow(chat,sender)
+        await reply(pet.already?'🟢 Este pet já estava equipado.':'✅ *PET EQUIPADO!*\n\n🐾 '+pet.name+
+          '\n⭐ Nv.'+pet.level+' • ❤️ '+pet.hp+'/'+petMaxHp(pet.level,pet.xp,pet.species)+
+          '\n\n👉 Use *!meuspets* para voltar à coleção.')
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('⚠️ Não foi possível equipar este pet: '+String(err?.message||'Erro inesperado.'))
+      }
+      return true
+    }
+    if(flow.stage==='pet_collection_sacrifice_confirm'){
+      const {petId,category,species,petName}=flow.data||{}
+      const mode=flow.data?.mode==='sacrifice'?'sacrifice':'manage'
+      if(input==='2'||input==='99'){
+        const state=await getPetCollectionState(sender)
+        setQuickFlow(chat,sender,'pet_collection_detail',{petId,category,mode},5*60*1000)
+        await reply('✅ Sacrifício cancelado. O pet foi preservado.\n\n'+
+          (petCollectionDetailMessage(state,petId,mode)||'Use *!meuspets* para abrir a coleção.'))
+        return true
+      }
+      if(input!=='1'){
+        await reply('⚠️ Confirmação necessária: *1* para sacrificar definitivamente ou *2* para preservar o pet.')
+        return true
+      }
+      try{
+        const state=await getPetCollectionState(sender)
+        const pet=state.pets.find(p=>Number(p.id)===Number(petId))
+        if(!pet||pet.species!==species||pet.name!==petName)
+          throw new Error('O pet mudou desde a confirmação. Sacrifício cancelado por segurança.')
+        // O banco bloqueia sacrifícios de pet ativo, no time ou em expedição
+        // dentro da própria transação, sem alterar economia/recompensas.
+        const result=await sacrificePet(sender,pet.id)
+        clearQuickFlow(chat,sender)
+        await reply('🕊️ *SACRIFÍCIO CONCLUÍDO*\n\n🐾 *'+result.name+'* — Nv.'+result.level+
+          '\n💰 Recebido: *R$ '+fmt(result.cash)+'*'+
+          (result.shopRefund?'\n♻️ Reembolso: *50% da adoção*':'\n🌟 Retorno simbólico do pet especial')+
+          '\n✨ EXP do personagem: *+'+fmt(result.exp)+'*'+
+          '\n\n✅ Pet removido da coleção. Use *!meuspets* para consultar os demais.')
+      }catch(err){
+        clearQuickFlow(chat,sender)
+        await reply('🛡️ *SACRIFÍCIO NÃO REALIZADO*\n'+String(err?.message||'Tente novamente.')+
+          '\n\nNenhum pet foi sacrificado neste fluxo. Use *!meuspets* para conferir.')
+      }
       return true
     }
 
@@ -8823,7 +8996,10 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           try{
             const position=Number(args[0])
             if(!Number.isSafeInteger(position)||position<1) {
-              await reply('🐾 Use *!meuspets* para ver a ordem e *!sacrificar NÚMERO* para escolher um pet reserva.\\n⚠️ Sacrifício permanente.')
+              const state=await getPetCollectionState(sender)
+              if(!state.pets.length){ await reply('🐾 Você ainda não tem pets. Use *!adotar*.'); continue }
+              setQuickFlow(chat,sender,'pet_collection_categories',{mode:'sacrifice'},5*60*1000)
+              await reply(petCollectionMenuText(state.pets,{mode:'sacrifice',isLegendary:isCollectionLegendary}))
               continue
             }
             const pets=await listPets(sender)
@@ -9511,18 +9687,8 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
             if(cmd==='meuspets'){
               const pets=await listPets(sender)
               if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
-              setQuickFlow(chat,sender,'pet_select',{pets},5*60*1000)
-              const legendarySpecies=new Set(
-                LEGENDARY_PET_SUMMONS.flatMap(a=>a.pets.map(p=>String(p.species||'')))
-              )
-              let text='🐾 *SUA COLEÇÃO DE PETS*\n\n'
-              pets.forEach((p,i)=>{
-                const bonus=petStatusBonus(p)
-                const legendary=legendarySpecies.has(String(p.species||''))
-                text+=`*${i+1}.* ${p.active?'🟢':'⚪'} ${legendary?'🌟 *LENDÁRIO* — ':''}*${p.name}* — ${p.species}\n   ${petIdentityTag(p.species)}\n   ⭐ Nv.${p.level} • ⚔️ ${p.power} • ❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)}\n   ✨ ${bonus.text}\n`
-              })
-              text+='\n🟢 = pet equipado agora • 🌟 = pet lendário de Raid\n\n👉 Mande apenas o *número* para escolher.\n0️⃣ Cancelar'
-              return await reply(text)
+              setQuickFlow(chat,sender,'pet_collection_categories',{mode:'manage'},5*60*1000)
+              return await reply(petCollectionMenuText(pets,{mode:'manage',isLegendary:isCollectionLegendary}))
             }
             if(cmd==='usarpet'){
               if(!args[0]) return await reply('🐾 Use *!meuspets* e depois *!usarpet ID*.')
