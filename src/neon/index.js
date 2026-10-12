@@ -67,6 +67,7 @@ import { createWebLinkCode } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
+import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -8619,6 +8620,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
       startLabirintoScheduler(sock)
+      startBingoRebootScheduler(sock)
 
       ;(async()=>{
         try{
@@ -9074,6 +9076,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
 
         if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
+        if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 
         if(cmd==='azarousorte' || cmd==='caixapegadinha'){
           const pick=String(args[0]||'').toLowerCase()
