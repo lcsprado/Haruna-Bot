@@ -8894,12 +8894,30 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
     }
   })
 
+  // Evita comandos duplicados se uma mensagem recém-chegada for classificada
+  // primeiro como append e depois como notify pelo Baileys.
+  const recentMessageKeys=new Map()
   sock.ev.on('messages.upsert',async({messages,type})=>{
-    trevoHealth.lastUpsertAt=Date.now()
+    const receivedAt=Date.now()
+    trevoHealth.lastUpsertAt=receivedAt
     trevoHealth.rawMessagesAtLastUpsert=Number(trevoHealth.rawMessagesSeen||0)
     trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
-    if(type!=='notify') return
+    trevoHealth.lastUpsertType=type||null
+    if(type!=='notify' && type!=='append')return
+    if(recentMessageKeys.size>1200){
+      for(const [k,t] of recentMessageKeys)if(receivedAt-t>10*60*1000)recentMessageKeys.delete(k)
+    }
     for(const msg of messages){
+      if(type==='append'){
+        // Nunca execute comandos antigos da sincronização de histórico.
+        const ts=Number(msg?.messageTimestamp?.toNumber?.()??msg?.messageTimestamp??0)*1000
+        if(!ts || Math.abs(receivedAt-ts)>30000)continue
+      }
+      const ident=[msg?.key?.remoteJid,msg?.key?.participant||'',msg?.key?.id].join('|')
+      if(msg?.key?.id){
+        if(recentMessageKeys.has(ident))continue
+        recentMessageKeys.set(ident,receivedAt)
+      }
       try{
         if(!msg?.message || msg.key.fromMe) continue
         trevoHealth.lastInboundAt=Date.now()
