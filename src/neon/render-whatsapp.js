@@ -151,19 +151,29 @@ setTimeout(async () => {
     const wallet=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     const inventory=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
     const stats=await client.query('SELECT weapon_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])
-    if(wallet.rowCount!==1 || inventory.rowCount!==1 || Number(inventory.rows[0].quantity)<quantity || stats.rows[0]?.weapon_id===itemId){
-      console.error(tag,'ABORT: inventory/wallet/equipment mismatch',JSON.stringify({
-        walletFound:wallet.rowCount===1,available:Number(inventory.rows[0]?.quantity||0),
-        itemCurrentlyEquipped:stats.rows[0]?.weapon_id===itemId
+    const existingQuantity=Number(inventory.rows[0]?.quantity||0)
+    if(wallet.rowCount!==1 || stats.rows[0]?.weapon_id===itemId){
+      console.error(tag,'ABORT: wallet/equipment mismatch',JSON.stringify({
+        walletFound:wallet.rowCount===1,itemEquipped:stats.rows[0]?.weapon_id===itemId
       }))
       await client.query('ROLLBACK')
       return
     }
-    // Qualquer negociação posterior com este item exige análise manual antes do estorno.
-    const movements=await client.query(
-      "SELECT id,type,note FROM transactions WHERE from_jid=$1 AND id>$2 AND created_at>=$3 AND note ILIKE $4 ORDER BY id LIMIT 3",
+    // Rastreia vendas posteriores. Se o comprador já vendeu as espadas,
+    // desconta integralmente essa receita do estorno, impedindo lucro duplo.
+    const related=(await client.query(
+      "SELECT id,from_jid,to_jid,amount,type,note FROM transactions WHERE id>$2 AND created_at>=$3 AND (from_jid=$1 OR to_jid=$1) AND note ILIKE $4 ORDER BY id",
       [jid,purchase.id,purchase.created_at,'%'+itemId+'%']
-    )
+    )).rows
+    const sales=related.filter(t=>t.to_jid===jid && t.from_jid==='shop' &&
+      ['sale','sale_batch'].includes(t.type) &&
+      /^espada_aco x[0-9]+(?:\\||$)/.test(t.note))
+    const details=sales.map(t=>{
+      const m=String(t.note).match(/^espada_aco x([0-9]+)(?:\\||$)/)
+      return {id:String(t.id),quantity:Number(m?.[1]||0),credit:Number(t.amount)}
+    })
+    const soldTotal=details.reduce((n,x)=>n+x.quantity,0)
+    const validSales=details.every(x=>x.quantity>0 && x.credit===x.quantity*6000)
     const market=await client.query(
       'SELECT id FROM market_listings WHERE seller_jid=$1 AND item_id=$2 AND created_at >= $3 LIMIT 1',
       [jid,itemId,purchase.created_at]
@@ -172,29 +182,35 @@ setTimeout(async () => {
       'SELECT id FROM item_trade_offers WHERE (from_jid=$1 OR to_jid=$1) AND (offer_item_id=$2 OR request_item_id=$2) AND created_at >= $3 LIMIT 1',
       [jid,itemId,purchase.created_at]
     )
-    if(movements.rowCount || market.rowCount || trades.rowCount){
-      console.error(tag,'ABORT: possible subsequent item disposition',JSON.stringify({
-        transactionMovements:movements.rowCount,marketListings:market.rowCount,tradeOffers:trades.rowCount
+    const removeQty=Math.max(0,quantity-Math.min(soldTotal,quantity))
+    const saleOffset=Math.min(soldTotal,quantity)*6000
+    const refund=amount-saleOffset
+    if(!validSales || related.length!==sales.length || market.rowCount || trades.rowCount || existingQuantity<removeQty){
+      console.error(tag,'ABORT: unable to prove advantage-free cancellation',JSON.stringify({
+        available:existingQuantity,requiredToRemove:removeQty,
+        soldTotal,sales:details,otherRelated:related.filter(t=>!sales.includes(t)).map(t=>({type:t.type,note:t.note,amount:t.amount})),
+        marketListings:market.rowCount,tradeOffers:trades.rowCount
       }))
       await client.query('ROLLBACK')
       return
     }
     const removed=await client.query(
       'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3 AND quantity >= $1 RETURNING quantity',
-      [quantity,jid,itemId]
+      [removeQty,jid,itemId]
     )
     if(removed.rowCount!==1) throw new Error('Inventory guard failed')
     const balance=await client.query(
       'UPDATE wallets SET cash=cash+$1,updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE jid=$2 RETURNING cash,bank',
-      [amount,jid]
+      [refund,jid]
     )
     const reverse=await client.query(
       "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('shop',$1,$2,'purchase_refund',$3) RETURNING id",
-      [jid,amount,'Reversão compra #'+purchase.id+' | espada_aco x99 | 2026-10-12 15:31 BRT']
+      [jid,refund,'Reversão compra #'+purchase.id+' | espada_aco x99 | descontadas vendas '+Math.min(soldTotal,quantity)+' x R$6000']
     )
     const proof={
       purchaseId:String(purchase.id),refundId:String(reverse.rows[0].id),
-      removedQuantity:quantity,refundedAmount:amount,
+      removedQuantity:removeQty,soldQuantityOffset:Math.min(soldTotal,quantity),
+      recoveredFromSales:saleOffset,refundedAmount:refund,originalCost:amount,
       remainingQuantity:Number(removed.rows[0].quantity),
       walletCashAfter:String(balance.rows[0].cash),
       walletBankAfter:String(balance.rows[0].bank),
