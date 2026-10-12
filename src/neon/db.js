@@ -4928,6 +4928,16 @@ export const LEGENDARY_PET_SUMMONS=[
   ]}
 ]
 
+export async function raid50PhoenixGuaranteeStatus(jid){
+  if(String(jid)!=='5511948523167@s.whatsapp.net') return {active:false,alreadyOwned:false}
+  const marker='raid50_fenix_once_20261012:'+jid
+  const [used,existing]=await Promise.all([
+    db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[marker]),
+    db.query("SELECT 1 FROM pet_collection WHERE jid=$1 AND species='fenix_alpha' LIMIT 1",[jid])
+  ])
+  return {active:used.rowCount===0,alreadyOwned:existing.rowCount>0}
+}
+
 export async function summonLegendaryPet(jid,materialId){
   await ensureUser(jid)
   const altar=LEGENDARY_PET_SUMMONS.find(x=>x.materialId===String(materialId||''))
