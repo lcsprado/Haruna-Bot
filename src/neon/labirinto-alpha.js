@@ -94,6 +94,10 @@ async function tick(sock){
         let text='🏰 *RESULTADO — ETAPA '+s.round+'/5*\n'
         const entries=Object.entries(s.players)
         for(const [jid,p] of entries){
+          if(n(p.lives)===0){
+            text+='\n• '+(p.name||'Jogador')+': 💀 ELIMINADO • ❤️ 0 • ⭐ '+n(p.points)
+            continue
+          }
           const choice=n(p.choices?.[s.round])
           let gain=0,loss=0
           if(choice){
