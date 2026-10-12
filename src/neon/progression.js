@@ -1015,12 +1015,15 @@ function sqlCase(column,catalog){
 const houseCase=sqlCase('h.house_id',HOUSES)
 const carCase=sqlCase('uc.car_id',CARS)
 const motorcycleCase=sqlCase('um.motorcycle_id',MOTORCYCLES)
+const RAID_MATERIAL_PATRIMONY_SQL = "('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')"
+const RAID_MATERIAL_PATRIMONY_VALUE=100 // Igual ao preço de recompra do bot; nunca R$100 mil por raridade.
 
 export async function getPatrimony(jid){
   await ensureUser(jid)
   const {rows}=await db.query(`
     WITH inv AS (
       SELECT i.jid,COALESCE(SUM(i.quantity*CASE
+        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
         WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
         WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END),0)::bigint AS value
       FROM inventories i JOIN items it ON it.id=i.item_id
@@ -1079,6 +1082,7 @@ export async function patrimonyLeaderboard(limit=10){
   const {rows}=await db.query(`
     WITH inv AS (
       SELECT i.jid,COALESCE(SUM(i.quantity*CASE
+        WHEN it.id IN ${RAID_MATERIAL_PATRIMONY_SQL} THEN ${RAID_MATERIAL_PATRIMONY_VALUE}
         WHEN it.price>0 THEN it.price WHEN it.rarity='legendary' THEN 100000
         WHEN it.rarity='epic' THEN 25000 WHEN it.rarity='rare' THEN 8000 ELSE 1000 END),0)::bigint AS value
       FROM inventories i JOIN items it ON it.id=i.item_id GROUP BY i.jid
