@@ -2057,7 +2057,8 @@ async function start() {
     logger:logger.child({level:'silent'}),
     browser:Browsers.ubuntu('Chrome'),
     printQRInTerminal:!pairingNumber,
-    markOnlineOnConnect:true,
+    // Evita que a sessão vinculada se anuncie permanentemente online e impeça push do WhatsApp.
+    markOnlineOnConnect:false,
     syncFullHistory:false,
     connectTimeoutMs:60000,
     defaultQueryTimeoutMs:60000,
