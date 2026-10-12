@@ -3602,6 +3602,13 @@ Você possui: *${stock}*
     )
   }
 
+  // Diferencia todas as insígnias (inclusive troféus exclusivos que não
+  // possuem passiva ativável) dos materiais/fragmentos de Raid.
+  const isEventInsignia=item=>Boolean(item && (
+    String(item.item_id||'').startsWith('insignia_') ||
+    Boolean(relicCatalog[item.item_id])
+  ))
+
   async function showInventoryMenu(chat,sender,reply){
     const items=await getInventory(sender)
     if(!items.length){
@@ -3612,8 +3619,8 @@ Você possui: *${stock}*
     const count=category=>items.filter(i=>i.category===category).length
     const potions=items.filter(i=>i.category==='consumable')
     const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
-    const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !relicCatalog[i.item_id])
-    const relicItems=items.filter(i=>Boolean(relicCatalog[i.item_id]))
+    const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
+    const relicItems=items.filter(isEventInsignia)
     setQuickFlow(chat,sender,'inventory_category',{},5*60*1000)
     await reply(
       '🎒 *INVENTÁRIO*\n\n'+
@@ -6984,7 +6991,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       if(input==='7'){
-        const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !relicCatalog[i.item_id])
+        const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
         if(!others.length){
           await reply('📦 Você não possui outros itens no momento.')
           return true
@@ -7001,13 +7008,24 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       if(input==='9'){
         const relics=await relicStatus(sender)
-        let text='⚜️ *INSÍGNIAS DE EVENTO*\n\n🎖️ Relíquias únicas, separadas dos fragmentos.\n🔒 Apenas uma ativa; efeitos não acumulam e não valem no PvP.\n'
-        if(!relics.items.length) text+='\nVocê ainda não possui insígnias.\n'
-        for(let idx=0;idx<relics.items.length;idx++){
-          const relic=relics.items[idx]
-          text+='\n*'+(idx+1)+'.* '+relic.name+(relics.active?.id===relic.id?' ✅ *EQUIPADA*':'')+'\n   ✨ '+relic.effect+'\n'
+        // A coleção inclui insígnias equipáveis e troféus comemorativos, tais
+        // como a Insígnia do Reboot, sem misturá-los aos fragmentos.
+        const badges=items.filter(isEventInsignia).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'))
+        let text='⚜️ *INSÍGNIAS E TROFÉUS*\n\n🎖️ Exclusivos dos eventos; separados dos fragmentos e materiais.\n🔒 Insígnias equipáveis: só uma ativa de cada vez; sem PvP.\n'
+        if(!badges.length)text+='\nVocê ainda não possui insígnias.\n'
+        for(let idx=0;idx<badges.length;idx++){
+          const badge=badges[idx]
+          const active=relics.active?.id===badge.item_id
+          const effect=relicCatalog[badge.item_id]?.effect ||
+            (badge.item_id==='insignia_bingo_reboot_20261012'
+              ?'🎰 Insígnia comemorativa do Bingo do Reboot — visual, sem bônus de atributos.'
+              :(badge.description||'🏅 Troféu de evento sem bônus de atributos.'))
+          text+='\n*'+(idx+1)+'.* ⚜️ *'+badge.name+'*'+
+            (active?' ✅ *ATIVA*':'')+' ×'+Number(badge.quantity||1)+
+            '\n   ✨ '+effect+
+            '\n   '+(relicCatalog[badge.item_id]?'⚙️ Pode ativar com !reliquias':'🏆 Troféu cosmético • não equipável')+'\n'
         }
-        text+='\n👉 Envie *!reliquias* para equipar ou trocar.\n9️⃣ Voltar ao inventário\n0️⃣ Sair.'
+        text+='\n👉 *!reliquias* para escolher entre as insígnias com passiva.\n9️⃣ Voltar ao inventário\n0️⃣ Sair.'
         setQuickFlow(chat,sender,'inventory_relic_view',{},90000)
         await reply(text)
         return true
