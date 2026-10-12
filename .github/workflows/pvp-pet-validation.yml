@@ -1,0 +1,26 @@
+name: PvP pet validation
+
+on:
+  push:
+    branches: [feature/pvp-pet-bonuses-test-20261012]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Syntax checks
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/game-catalog.js
+          node --check src/neon/index.js
+      - name: Pet PvP tests
+        run: node --test test/pvp-pet-bonuses.test.mjs
+      - name: Regression suite
+        run: npm test
