@@ -61,6 +61,7 @@ import {
 import { toStickerBuffer } from './sticker.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, getAwakeningSkillDescriptions } from './game-catalog.js'
+import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
 import { createWebLinkCode } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
@@ -3682,7 +3683,45 @@ Escolha o que deseja vender:
 
     if(['0','sair','cancelar','cancel'].includes(input)){
       clearQuickFlow(chat,sender)
-      await reply('✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
+      await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
+      return true
+    }
+
+    // Menu de adoção por habilidade. Seleção só consulta; nunca compra automaticamente.
+    if(flow.stage==='pet_adopt_categories'){
+      const category=petAdoptionCategory(input)
+      if(!category){
+        await reply('🐾 Escolha uma categoria de *1 a 8* ou *0* para sair.')
+        return true
+      }
+      setQuickFlow(chat,sender,'pet_adopt_list',{category:category.id},5*60*1000)
+      await reply(petAdoptionListText(category.id,{style:petStyleLabel,ability:petAbilityBaseText,money:fmt}))
+      return true
+    }
+    if(flow.stage==='pet_adopt_list'){
+      if(input==='9'){
+        setQuickFlow(chat,sender,'pet_adopt_categories',{},5*60*1000)
+        await reply(petAdoptionMenuText())
+        return true
+      }
+      const pets=petAdoptionCategoryPets(flow.data?.category)
+      const choice=Number(input)
+      if(!Number.isInteger(choice)||choice<1||choice>pets.length){
+        await reply(`🐾 Escolha um pet de *1 a ${pets.length}*, *9* para voltar ou *0* para sair.`)
+        return true
+      }
+      const pet=pets[choice-1]
+      setQuickFlow(chat,sender,'pet_adopt_detail',{category:flow.data.category,species:pet.species},5*60*1000)
+      await reply(petAdoptionDetailText(pet.species,{style:petStyleLabel,ability:petAbilityBaseText,money:fmt}))
+      return true
+    }
+    if(flow.stage==='pet_adopt_detail'){
+      if(input==='9'){
+        setQuickFlow(chat,sender,'pet_adopt_list',{category:flow.data.category},5*60*1000)
+        await reply(petAdoptionListText(flow.data.category,{style:petStyleLabel,ability:petAbilityBaseText,money:fmt}))
+        return true
+      }
+      await reply('🐾 Para comprar use *!adotar espécie Nome*.\n9️⃣ Voltar à lista • 0️⃣ Sair')
       return true
     }
 
@@ -9356,10 +9395,10 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
               const r=await startPetExpedition(sender,petId,hours)
               return await reply(`🧭 *EXPEDIÇÃO INICIADA!*\n\n🐾 *${r.pet_name}* — ${r.trait.label}\n⏱️ Tempo: *${r.hours}h*\n\n🎯 *GARANTIDO NO RETORNO*\n✨ Pet XP: *+${r.pet_xp}*\n💰 Dinheiro: *R$ ${fmt(r.cash_reward)}*\n\n🎁 *BÔNUS DA ESPÉCIE*\n${expeditionTraitText(r.trait)}\n\n📌 O pet fica indisponível durante a expedição. Quando o tempo acabar, use *!expedicoespet* para receber e conferir as recompensas.`)
             }
-            if(cmd==='pet') return await reply(
-              adoptablePetCatalogText('🐾 *PETS DO ALPHA BOT*')+
-              '\n📌 *Como adotar:* !adotar espécie Nome\nEx.: *!adotar cachorro Rex*\n\n📚 Você pode ter vários pets. O novo pet entra na coleção e fica ativo.\n🔄 Use *!pets* para escolher e equipar um pet da sua coleção.\n💡 Use *!meupet* para ver seu pet atual.'
-            )
+            if(cmd==='pet'){
+              setQuickFlow(chat,sender,'pet_adopt_categories',{},5*60*1000)
+              return await reply(petAdoptionMenuText())
+            }
             if(cmd==='pets'){
               const pets=await listPets(sender)
               if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
@@ -9373,12 +9412,19 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
               return await reply(text)
             }
             if(cmd==='adotar'){
-              if(!args[0]) return await reply(
-                adoptablePetCatalogText()+
-                '\n📚 Você pode colecionar vários pets. Cada um mantém seu próprio nível, XP, poder, HP e energia.\n\nEx.: *!adotar cachorro Rex*'
-              )
+              if(!args[0]){
+                setQuickFlow(chat,sender,'pet_adopt_categories',{},5*60*1000)
+                return await reply(petAdoptionMenuText())
+              }
+              // Atalho opcional: !adotar cura, !adotar defesa, !adotar 3 etc.
+              const category=petAdoptionCategory(args[0])
+              if(category && args.length===1){
+                setQuickFlow(chat,sender,'pet_adopt_list',{category:category.id},5*60*1000)
+                return await reply(petAdoptionListText(category.id,{style:petStyleLabel,ability:petAbilityBaseText,money:fmt}))
+              }
               const pet=await adoptPet(sender,args[0],args.slice(1).join(' ')||msg.pushName||'Alpha')
-              return await reply(`🐾 PET ADOTADO!\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n✨ Habilidade: *${petAbilityBaseText(pet.species)}*\n💰 Total pago: *R$ ${fmt(pet.fee)}*\n\nUse *!meupet* para cuidar dele.`)
+              clearQuickFlow(chat,sender)
+              return await reply(`🐾 *PET ADOTADO!*\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n✨ Habilidade: *${petAbilityBaseText(pet.species)}*\n💰 Total pago: *R$ ${fmt(pet.fee)}*\n\nUse *!meupet* para cuidar dele.`)
             }
             if(cmd==='duelopet'){
               const targetRaw=mentionsOf(msg)[0]; if(!targetRaw) return await reply('Uso: *!duelopet @pessoa*')
