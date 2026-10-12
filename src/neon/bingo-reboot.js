@@ -67,17 +67,32 @@ function rowCount(marked){
   return [[0,1,2],[3,4,5],[6,7,8]].filter(row=>row.every(i=>marked[i])).length
 }
 function cardText(p,s){
-  const checked=cover(p.card,p,s)
-  const row=(from)=>[0,1,2].map(k=>{
+  // Em WhatsApp, emojis entre colunas desalinhavam a cartela.
+  // Apenas ASCII dentro do bloco monoespaçado.
+  const marked=cover(p.card,p,s)
+  const row=from=>[0,1,2].map(k=>{
     const i=from+k,value=p.card[i]
-    if(value===null)return ' ⭐ '
-    return (checked[i]?'✅':'▫️')+String(value).padStart(2,'0')
-  }).join(' │ ')
-  return '🎟️ *CARTELA — '+p.name+'*\n\n'+row(0)+'\n'+row(3)+'\n'+row(6)+
-    '\n\n⭐ = casa gratuita • ✅ = marcada'+
-    '\n🔢 Sorteados: '+(s.drawn?.length||0)+'/40'+
-    '\n🎯 Linhas: '+rowCount(checked)+'/3'+
-    '\n🎲 Um jogador, uma cartela. Nenhum atributo interfere.'
+    if(value===null)return 'LIV '
+    const n=String(value).padStart(2,'0')
+    return marked[i]?'['+n+']':' '+n+' '
+  }).join(' | ')
+  const safeName=String(p.name||'Jogador').replace(/[\r\n*`]/g,' ').slice(0,50)
+  const situation=s.phase==='completed'?'🏁 Encerrado':s.phase==='running'?'🟢 Sorteio em andamento':'⏰ Início às 19h25'
+  return [
+    '🎟️ *BINGO DO REBOOT*',
+    '👤 *'+safeName+'*',
+    '',
+    '```',
+    row(0),
+    row(3),
+    row(6),
+    '```',
+    '',
+    '📌 [07] = marcado • LIV = grátis',
+    '🔢 Números sorteados: *'+(s.drawn?.length||0)+'/40*',
+    '✅ Linhas completas: *'+rowCount(marked)+'/3*',
+    situation
+  ].join('\n')
 }
 function ticket(){
   const values=shuffle(Array.from({length:NUMBER_LIMIT},(_,i)=>i+1)).slice(0,8)
