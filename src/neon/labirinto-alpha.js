@@ -110,7 +110,7 @@ async function tick(sock){
         if(s.round>=5){
           s.phase='completed'
           const survivors=entries.filter(([,p])=>p.lives>0)
-          const finalists=survivors.length?survivors:[...entries]
+          const finalists=[...survivors]
           finalists.sort((a,b)=>n(b[1].points)-n(a[1].points)||String(a[0]).localeCompare(String(b[0])))
           // Pagamento limitado por número de inscritos; solo não recebe prêmio de quatro pessoas.
           const solo=entries.length===1
