@@ -991,6 +991,14 @@ async function finishRaidRewards(c,s,cfg,chat){
   // Formatos aceitos: raid_compensation_event e raid_reward_event.
   const raidRewardEvent=(await c.query("SELECT value FROM trevo_settings WHERE key='raid_reward_event'")).rows[0]?.value||{}
   const rewardEventActive=Number(raidRewardEvent.startsAt||0)<=now && now<Number(raidRewardEvent.endsAt||0)
+  // Evento independente: somente materiais de Raid em dobro durante os 30 minutos.
+  // Estado único no Neon, preservado em reconexões; XP, dinheiro, caixas e gear inalterados.
+  const fragmentEvent=(await c.query(
+    "SELECT value FROM trevo_settings WHERE key='raid_fragment_double_20261012_30min_v1'"
+  )).rows[0]?.value||{}
+  const doubleRaidFragments=Number(fragmentEvent.startsAt||0)<=now &&
+    now<Number(fragmentEvent.endsAt||0) &&
+    Number(fragmentEvent.multiplier||0)===2
   const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive || rewardEventActive
   const cacadaActive=cacadaAlphaActive()
   const moneyMultiplier=cacadaActive?1.25:1
@@ -1036,8 +1044,9 @@ async function finishRaidRewards(c,s,cfg,chat){
     const range=(materialRanges[cfg.level]||materialRanges[50])?.[i]
     const eligibleMaterial=Boolean(range)&&share>=.02
     const baseQty=eligibleMaterial?weightedRange(range[0],range[1]):0
-    // Durante a Invasão das Raids, os materiais de invocação de pet continuam triplicados.
-    const qty=raidEventActive ? baseQty*3 : baseQty
+    // Invasão mantém 3x quando ativa; evento independente concede 2x apenas nos materiais.
+    // Não acumula multiplicadores e não modifica as demais recompensas.
+    const qty=baseQty*(raidEventActive?3:(doubleRaidFragments?2:1))
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
