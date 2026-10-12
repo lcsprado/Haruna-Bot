@@ -171,6 +171,24 @@ export function petCombatSpecialty(species) {
   };
 }
 
+// Bônus de pet exclusivos de PvP. Não altera as especialidades de Boss/Raid.
+// Somente o pet principal, vivo e com energia, participa desta mecânica.
+export function petPvpSpecialty(species, level=1) {
+  const base=petCombatSpecialty(species)
+  const growth=base.raid ? .25 : .50
+  const scale=1+Math.min(growth,Math.max(0,Number(level||1)-1)*(growth/99))
+  const cap=base.raid ? .15 : .10
+  const scaled=k=>Math.min(cap,Math.max(0,Number(base[k]||0)*scale))
+  return {
+    damage:scaled('damage')*.30,
+    defense:scaled('defense')*.30,
+    crit:scaled('crit')*.30,
+    dodge:Math.min(.05,scaled('dodge')*.30),
+    healPct:scaled('healPct')*.50,
+    healCooldown:Math.max(0,Number(base.healCooldown||0))
+  }
+}
+
 // Passivas de classe: implementação em avaliação.
 
 export const CLASS_PASSIVES=Object.freeze({
