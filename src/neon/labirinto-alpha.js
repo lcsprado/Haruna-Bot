@@ -8,6 +8,7 @@ const NOTICE=Date.parse(DAY+'T17:50:00-03:00')
 const CHOICE_MS=90000
 let running=false
 let timer=null
+const groupMemberCache=new Map()
 const n=v=>Number(v||0)
 const pick=arr=>arr[Math.floor(Math.random()*arr.length)]
 async function mutate(fn){
@@ -29,7 +30,10 @@ async function groups(sock){
   const all=await sock.groupFetchAllParticipating()
   const eligible=[]
   for(const jid of Object.keys(all||{})){
-    try{const lic=await getGroupLicense(jid);if(lic && groupLicenseIsActive(lic))eligible.push(jid)}
+    try{const lic=await getGroupLicense(jid);if(lic && groupLicenseIsActive(lic)){
+      eligible.push(jid)
+      groupMemberCache.set(jid,all[jid]?.participants||[])
+    }}
     catch(e){console.warn('[LABIRINTO] license',jid,e?.message)}
   }
   return eligible
@@ -37,10 +41,16 @@ async function groups(sock){
 async function announce(sock,text,targets,mentionAll=false){
   for(const jid of targets){
     try{
-      const participants=mentionAll?(await sock.groupMetadata(jid)).participants:[]
+      let participants=mentionAll?(groupMemberCache.get(jid)||[]):[]
+      if(mentionAll && !participants.length){
+        try{participants=(await sock.groupMetadata(jid)).participants||[]}
+        catch(error){console.warn('[LABIRINTO] mentions unavailable',jid,error?.message)}
+      }
       const mentions=[...new Set((participants||[]).map(p=>p.id).filter(Boolean))]
-      await sock.sendMessage(jid,{text:mentionAll?'📣 @todos\n\n'+text:text,...(mentions.length?{mentions}:{})})
+      await sock.sendMessage(jid,{text:mentionAll?'📣 *ATENÇÃO, @todos!*\n\n'+text:text,...(mentions.length?{mentions}:{})})
+      if(mentionAll)console.log('[LABIRINTO] aviso enviado',jid,'membros marcados',mentions.length)
     }catch(e){console.error('[LABIRINTO] send',jid,e?.message)}
+    await new Promise(resolve=>setTimeout(resolve,500))
   }
 }
 function stageText(s){
@@ -67,7 +77,7 @@ async function tick(sock){
     const sendTo=(now<START && !cached?.notice && !cached?.groups?.length)?await groups(sock):[]
     await mutate(async(s,c)=>{
       if(!s.groups?.length)s.groups=sendTo
-      if(!s.notice && now>=NOTICE && now<START){
+      if(!s.notice && s.groups?.length && now>=NOTICE && now<START){
         s.notice=now
         action={kind:'notice',targets:s.groups,text:'🏰 *O LABIRINTO DO ALPHA*\n\n⏰ Começa HOJE às *18h00*!\n👥 Até 4 jogadores (vagas globais).\n✅ Digite *!pronto* ANTES das 18h para entrar.\n🎲 Todos têm as mesmas chances: nível, armas e pets não contam.\n🚪 As portas abrirão só para inscritos.\n⏳ Etapas automáticas, mesmo com 1 participante.'}
       }
