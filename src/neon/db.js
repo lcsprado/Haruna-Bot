@@ -4695,7 +4695,7 @@ const PET_BASE_ENERGY={
   rinoceronte_titanico:365,guardiao_obsidiana:380,leviata_gelo:405,
   cerbero_carmesim:380,tigre_lunar:390,imperador_abissal:420,
   leao_solar:390,grifo_celestial:410,fenix_celestial:440,
-  serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,
+  serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,colosso_alpha:475,oraculo_alpha:455,
   fera_caos:430,guardiao_caos:450,serafim_caotico:455,oraculo_caos:445,fenix_caos:470,
   pantera_profundezas:450,guardiao_abissal:465,dragao_trono:475,oraculo_coroa:465,esfinge_mares:480,
   lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520
@@ -4753,6 +4753,8 @@ export const PET_HP_PROFILES={
   serpente_cosmica:{base:300,growth:23,type:'Místico'},
   dragao_corrompido:{base:340,growth:25,type:'Boss Hunter'},
   fenix_alpha:{base:360,growth:27,type:'Mítico'},
+  colosso_alpha:{base:355,growth:26,type:'Tanque'},
+  oraculo_alpha:{base:310,growth:23,type:'Místico'},
   // Raids 60/65/70 mantêm o HP próximo ao teto da Fênix Alpha (Nv.100).
   fera_caos:{base:310,growth:23,type:'Ofensivo'},
   guardiao_caos:{base:340,growth:25,type:'Tanque'},
