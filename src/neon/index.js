@@ -2097,6 +2097,17 @@ async function start() {
       console.log('[WhatsApp Sync] notificações pendentes sincronizadas:',trevoHealth.pendingNotificationsReceived)
     }
   })
+  // Baileys rc14 interpreta a string offline="0" como true e deixa
+  // notificações recentes presas na fila offline.
+  for(const eventName of ['CB:message','CB:notification','CB:receipt']){
+    sock.ws?.prependListener?.(eventName,node=>{
+      if(node?.attrs?.offline==='0'){
+        delete node.attrs.offline
+        trevoHealth.offlineZeroCorrected=Number(trevoHealth.offlineZeroCorrected||0)+1
+      }
+    })
+  }
+
   let forceFlushAttempted=false
   const forceFlushTimer=setTimeout(()=>{
     if(forceFlushAttempted || trevoHealth.whatsapp!=='open')return
@@ -2108,9 +2119,21 @@ async function start() {
     }
     forceFlushAttempted=true
     try{
-      sock.ev.flush()
+      // O fluxo original só libera o buffer quando chega <ib><offline>.
+      // Se o servidor não envia esse fechamento, o socket parece conectado,
+      // mas nenhum comando chega ao bot. Reproduz exclusivamente o sinal
+      // de conclusão local; não remove ou modifica as credenciais do WhatsApp.
+      const fakeEnd={tag:'ib',attrs:{},content:[{tag:'offline',attrs:{count:'0'}}]}
+      const emitters=sock.ws?.listenerCount?.('CB:ib,,offline')||0
+      if(emitters>0){
+        sock.ws.emit('CB:ib,,offline',fakeEnd)
+        trevoHealth.syntheticOfflineCompleted=Date.now()
+        console.warn('[WhatsApp Sync] buffer inicial destravado: encerramento offline local',emitters)
+      }else{
+        sock.ev.flush()
+        console.warn('[WhatsApp Sync] fallback flush após ausência do sinal offline')
+      }
       trevoHealth.forceFlushCount=Number(trevoHealth.forceFlushCount||0)+1
-      console.warn('[WhatsApp Sync] recuperação: buffer de eventos liberado após 40 segundos sem fim da sincronização')
     }catch(e){console.error('[WhatsApp Sync] recuperação do buffer falhou',e?.message)}
   },40000)
   forceFlushTimer.unref?.()
@@ -8908,10 +8931,14 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
       for(const [k,t] of recentMessageKeys)if(receivedAt-t>10*60*1000)recentMessageKeys.delete(k)
     }
     for(const msg of messages){
+      // Não executar comandos financeiros, consumíveis ou combate de mensagens
+      // antigas que voltam no backlog durante a recuperação da sincronização.
+      const ts=Number(msg?.messageTimestamp?.toNumber?.()??msg?.messageTimestamp??0)*1000
       if(type==='append'){
-        // Nunca execute comandos antigos da sincronização de histórico.
-        const ts=Number(msg?.messageTimestamp?.toNumber?.()??msg?.messageTimestamp??0)*1000
-        if(!ts || Math.abs(receivedAt-ts)>30000)continue
+        if(!ts || Math.abs(receivedAt-ts)>45000)continue
+      }else if(ts && (receivedAt-ts>120000 || ts-receivedAt>60000)){
+        console.warn('[WhatsApp Sync] mensagem antiga ignorada para evitar comandos repetidos')
+        continue
       }
       const ident=[msg?.key?.remoteJid,msg?.key?.participant||'',msg?.key?.id].join('|')
       if(msg?.key?.id){
