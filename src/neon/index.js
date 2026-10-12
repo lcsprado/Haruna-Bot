@@ -7008,26 +7008,36 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       if(input==='9'){
         const relics=await relicStatus(sender)
-        // A coleção inclui insígnias equipáveis e troféus comemorativos, tais
-        // como a Insígnia do Reboot, sem misturá-los aos fragmentos.
         const badges=items.filter(isEventInsignia).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'))
-        let text='⚜️ *INSÍGNIAS E TROFÉUS*\n\n🎖️ Exclusivos dos eventos; separados dos fragmentos e materiais.\n🔒 Insígnias equipáveis: só uma ativa de cada vez; sem PvP.\n'
-        if(!badges.length)text+='\nVocê ainda não possui insígnias.\n'
-        for(let idx=0;idx<badges.length;idx++){
-          const badge=badges[idx]
-          const active=relics.active?.id===badge.item_id
-          const effect=relicCatalog[badge.item_id]?.effect ||
-            (badge.item_id==='insignia_bingo_reboot_20261012'
-              ?'🎰 Insígnia comemorativa do Bingo do Reboot — visual, sem bônus de atributos.'
-              :(badge.description||'🏅 Troféu de evento sem bônus de atributos.'))
-          text+='\n*'+(idx+1)+'.* ⚜️ *'+badge.name+'*'+
-            (active?' ✅ *ATIVA*':'')+' ×'+Number(badge.quantity||1)+
-            '\n   ✨ '+effect+
-            '\n   '+(relicCatalog[badge.item_id]?'⚙️ Pode ativar com !reliquias':'🏆 Troféu cosmético • não equipável')+'\n'
+        const equipaveis=badges.filter(i=>Boolean(relicCatalog[i.item_id]))
+        const trofeus=badges.filter(i=>!relicCatalog[i.item_id])
+        const lines=['⚜️ *SUAS INSÍGNIAS*','']
+        if(!badges.length){
+          lines.push('📭 Você ainda não possui insígnias.')
+        }else{
+          if(equipaveis.length){
+            lines.push('🛡️ *INSÍGNIAS COM EFEITO*')
+            for(const badge of equipaveis){
+              const ativa=relics.active?.id===badge.item_id
+              lines.push((ativa?'✅ ':'▫️ ')+'*'+badge.name+'*'+(ativa?' — ATIVA':''))
+              lines.push('   ✨ '+relicCatalog[badge.item_id].effect)
+              lines.push('')
+            }
+          }
+          if(trofeus.length){
+            lines.push('🏆 *TROFÉUS COMEMORATIVOS*')
+            for(const badge of trofeus){
+              lines.push('🎖️ *'+badge.name+'*'+(Number(badge.quantity||1)>1?' ×'+badge.quantity:''))
+              lines.push('   🔒 Exclusivo de evento • visual, sem bônus de combate.')
+              lines.push('')
+            }
+          }
         }
-        text+='\n👉 *!reliquias* para escolher entre as insígnias com passiva.\n9️⃣ Voltar ao inventário\n0️⃣ Sair.'
+        lines.push('──────────────')
+        lines.push('⚙️ *!reliquias* — ativar ou trocar as insígnias com efeito.')
+        lines.push('9️⃣ Voltar ao inventário  •  0️⃣ Sair')
         setQuickFlow(chat,sender,'inventory_relic_view',{},90000)
-        await reply(text)
+        await reply(lines.join('\n'))
         return true
       }
       await reply('🎒 Escolha uma opção de *1 a 9*.')
