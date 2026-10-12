@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -17,10 +19,19 @@ jobs:
       - run: npm ci
       - name: Syntax checks
         run: |
+          npm run check
           node --check src/neon/db.js
           node --check src/neon/game-catalog.js
           node --check src/neon/index.js
-      - name: Pet PvP tests
-        run: node --test test/pvp-pet-bonuses.test.mjs
-      - name: Regression suite
-        run: npm test
+          node --check src/neon/pvp-combat.js
+      - name: Unit tests and 200 simulated duels
+        run: node --test test/pvp-pet-bonuses.test.mjs test/pvp-pet-combat.test.mjs
+      - name: Fetch production baseline
+        run: |
+          git fetch --no-tags --depth=1 origin whatsapp-only:refs/remotes/origin/whatsapp-only
+          git worktree add --detach "$RUNNER_TEMP/pvp-baseline" origin/whatsapp-only
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/pvp-baseline/node_modules"
+      - name: Compare entire regression suite to production
+        env:
+          PVP_BASELINE_DIR: ${{ runner.temp }}/pvp-baseline
+        run: node scripts/check-pvp-regression-baseline.mjs
