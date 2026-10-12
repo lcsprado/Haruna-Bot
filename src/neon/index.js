@@ -8679,12 +8679,12 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           const ending=new Date(Number(event.endsAt)).toLocaleTimeString('pt-BR',{
             timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'
           })
-          const message='🧩🔥 *EVENTO 2X FRAGMENTOS DE RAID ATIVO!*\\n\\n'+
-            '⏱️ *30 minutos* de duração\\n'+
-            '📦 Materiais de todas as Raids: *2x*\\n'+
-            '✅ Válido nas Raids concluídas durante o evento.\\n'+
-            '💰 Dinheiro, ✨ XP, 🎁 caixas e ⚔️ equipamentos seguem normais.\\n'+
-            '⏰ Termina às *'+ending+'* (Brasília).\\n\\n'+
+          const message='🧩🔥 *EVENTO 2X FRAGMENTOS DE RAID ATIVO!*\n\n'+
+            '⏱️ *30 minutos* de duração\n'+
+            '📦 Materiais de todas as Raids: *2x*\n'+
+            '✅ Válido nas Raids concluídas durante o evento.\n'+
+            '💰 Dinheiro, ✨ XP, 🎁 caixas e ⚔️ equipamentos seguem normais.\n'+
+            '⏰ Termina às *'+ending+'* (Brasília).\n\n'+
             '⚔️ Abram suas Raids e boa sorte!'
           const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
           let targeted=0
