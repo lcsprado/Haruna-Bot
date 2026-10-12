@@ -34,9 +34,13 @@ async function groups(sock){
   }
   return eligible
 }
-async function announce(sock,text,targets){
+async function announce(sock,text,targets,mentionAll=false){
   for(const jid of targets){
-    try{await sock.sendMessage(jid,{text})}catch(e){console.error('[LABIRINTO] send',jid,e?.message)}
+    try{
+      const participants=mentionAll?(await sock.groupMetadata(jid)).participants:[]
+      const mentions=[...new Set((participants||[]).map(p=>p.id).filter(Boolean))]
+      await sock.sendMessage(jid,{text:mentionAll?'📣 @todos\n\n'+text:text,...(mentions.length?{mentions}:{})})
+    }catch(e){console.error('[LABIRINTO] send',jid,e?.message)}
   }
 }
 function stageText(s){
@@ -59,7 +63,8 @@ async function tick(sock){
     const now=Date.now()
     if(now<NOTICE||now>START+30*60*1000)return
     let action=null
-    const sendTo=await groups(sock)
+    const cached=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
+    const sendTo=(now<START && !cached?.notice && !cached?.groups?.length)?await groups(sock):[]
     await mutate(async(s,c)=>{
       if(!s.groups?.length)s.groups=sendTo
       if(!s.notice && now>=NOTICE && now<START){
@@ -121,7 +126,7 @@ async function tick(sock){
         action={kind:'advance',targets:s.groups,text}
       }
     })
-    if(action){console.log('[LABIRINTO]',action.kind);await announce(sock,action.text,action.targets)}
+    if(action){console.log('[LABIRINTO]',action.kind);await announce(sock,action.text,action.targets,action.kind==='notice')}
   }catch(e){console.error('[LABIRINTO] tick',e?.stack||e)}
   finally{running=false}
 }
