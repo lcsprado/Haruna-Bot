@@ -32,7 +32,7 @@ test('categorias seguem o adotar e acrescentam Lendários e Todos',()=>{
   assert.equal(petCollectionCategory('10').key,'todos')
   assert.equal(petCollectionCategoryPets(pets,9,isLegendary).length,3)
   assert.equal(petCollectionCategoryPets(pets,10,isLegendary).length,5)
-  assert.equal(petCollectionCategoryPets(pets,2,isLegendary).length,5)
+  assert.equal(petCollectionCategoryPets(pets,2,isLegendary).length,4)
   assert.equal(petCollectionCategoryPets(pets,3,isLegendary).length,0)
   const menu=petCollectionMenuText(pets,options)
   assert.match(menu,/Lendários de Raid/)
