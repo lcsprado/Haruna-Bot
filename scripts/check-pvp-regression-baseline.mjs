@@ -5,7 +5,7 @@ if(!baseline)throw new Error('PVP_BASELINE_DIR ausente')
 function run(dir){
  const p=spawnSync('npm',['test'],{cwd:dir,encoding:'utf8',timeout:180000,maxBuffer:20*1024*1024})
  const log=(p.stdout||'')+'\n'+(p.stderr||'')
- const failures=[...log.matchAll(/^not ok \\d+ - (.+)$/gm)].map(m=>m[1].trim()).sort()
+ const failures=[...log.matchAll(/^not ok \d+ - (.+)$/gm)].map(m=>m[1].trim()).sort()
  if(p.error)throw p.error
  if(p.status!==0&&!failures.length)throw new Error('Suite terminou sem lista de falhas: '+log.slice(-2000))
  return {status:p.status,failures}
