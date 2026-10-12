@@ -659,7 +659,7 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
 🧩 ${x.material.name} ×${x.material.qty}`
             if(x.drop) text+=`
 🎁 DROP: *${x.drop.name}* (${x.drop.rarity})`
-            if(x.gearDrop) text+=x.gearDrop.rarity==='Lendário'?`
+            if(x.gearDrop) text+=x.gearDrop.rarity==='Lendário'&&!x.gearDrop.normalPresentation?`
 🌟🌟 *LENDÁRIO ENCONTRADO!* ×1
 🎒 *Itens recebidos:*
    • 🟠 Lendário — *${x.gearDrop.name}* ×1`:`
