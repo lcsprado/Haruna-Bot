@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
-import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty } from './game-catalog.js'
+import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 
 const { Pool, Client } = pg
 
@@ -4183,6 +4183,7 @@ export async function initCommunityPack(){
     );
     ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
     ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
+    ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS purchase_price BIGINT;
 
     -- Pets têm nível máximo 100. Corrige registros antigos que ultrapassaram o teto.
     UPDATE pets SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
@@ -5033,7 +5034,7 @@ export async function adoptPet(jid,species='cachorro',name='Alpha'){
     await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
     const maxEnergy=petMaxEnergy(1,species)
     const maxHp=petMaxHp(1,0,species)
-    const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,hp,max_hp,active) VALUES($1,$2,$3,$4,$5,$5,TRUE) RETURNING *`,[jid,species,petName,maxEnergy,maxHp])).rows[0]
+    const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,hp,max_hp,active,purchase_price) VALUES($1,$2,$3,$4,$5,$5,TRUE,$6) RETURNING *`,[jid,species,petName,maxEnergy,maxHp,rule.price])).rows[0]
     await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,collected.id])
     await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,collected.id])
     const {rows}=await client.query(`INSERT INTO pets(jid,species,name,energy,hp,max_hp) VALUES($1,$2,$3,$4,$5,$5)
@@ -5079,9 +5080,7 @@ export async function sacrificePet(jid,petId){
       'SELECT 1 FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=FALSE',[jid,petId]
     )).rows[0]
     if(trip) throw new Error('Espere a expedição terminar antes de sacrificá-lo.')
-    const level=Math.min(100,Math.max(1,Number(pet.level||1)))
-    const exp=Math.min(800,Math.floor(level*5+Math.max(0,Number(pet.xp||0))*.03))
-    const cash=Math.min(3700,200+35*level)
+    const {level,exp,cash,originalPrice,shopRefund}=petSacrificeReward(pet.species,pet.level,pet.xp,pet.purchase_price)
     // Any reference from completed expeditions must be removed before the
     // pet can be deleted; unresolved ones were blocked above.
     await client.query('DELETE FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=TRUE',[jid,petId])
@@ -5093,9 +5092,9 @@ export async function sacrificePet(jid,petId){
     if(exp>0) await applyExp(client,jid,exp)
     await client.query(
       "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'pet_sacrifice',$3)",
-      [jid,cash,`pet_id:${petId}|species:${pet.species}|level:${level}|exp:${exp}`]
+      [jid,cash,`pet_id:${petId}|species:${pet.species}|level:${level}|exp:${exp}|purchase_price:${originalPrice}|shop_refund:${shopRefund}`]
     )
-    return {name:pet.name,species:pet.species,level,exp,cash}
+    return {name:pet.name,species:pet.species,level,exp,cash,originalPrice,shopRefund}
   })
 }
 

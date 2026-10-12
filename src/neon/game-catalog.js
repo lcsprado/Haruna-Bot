@@ -145,6 +145,21 @@ export function getAdoptablePetRule(species) {
   return ADOPTABLE_PETS_BY_SPECIES[String(species || '').toLowerCase()] || null;
 }
 
+// Reembolso de sacrifício: metade do preço pago para pets de loja.
+// pricePaid=null representa pet legado (anterior ao rastreio de origem):
+// recupera o preço da espécie comprável. pricePaid=0 indica pet obtido
+// sem compra (Raid/evento), mantendo o retorno anterior por nível.
+export function petSacrificeReward(species,level=1,xp=0,pricePaid=null) {
+  const lvl=Math.min(100,Math.max(1,Number(level||1)))
+  const exp=Math.min(800,Math.floor(lvl*5+Math.max(0,Number(xp||0))*.03))
+  const previousCash=Math.min(3700,200+35*lvl)
+  const shopPrice=getAdoptablePetRule(species)?.price||0
+  const tracked=pricePaid===null||pricePaid===undefined?shopPrice:Math.max(0,Number(pricePaid)||0)
+  const cash=tracked>0?Math.floor(tracked*.5):previousCash
+  return {level:lvl,exp,cash,originalPrice:tracked,shopRefund:tracked>0}
+}
+
+
 export function petSpecialtyStats(species) {
   const spec = PET_STATUS_SPECIALTIES[String(species || '').toLowerCase()];
   if (!spec) return {};
