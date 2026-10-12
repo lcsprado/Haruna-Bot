@@ -1067,8 +1067,29 @@ async function finishRaidRewards(c,s,cfg,chat){
       const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
       const baseGearChance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
       const chance=cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance
-      if(Math.random()<chance){
-        const gearId=cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
+      // Acerto de recompensa individual e de uso único: segue o fluxo comum de drop.
+      // A chave transacional impede repetição, inclusive após restart ou em grupos diferentes.
+      let singleUseGear=null
+      if(cfg.level===60 && Number(p.damage||0)>0){
+        const playerDigits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
+        const isPlayer=playerDigits.endsWith('11948523167') ||
+          (await c.query(
+            "SELECT 1 FROM users WHERE jid=$1 AND RIGHT(regexp_replace(COALESCE(pn,''),'[^0-9]','','g'),11)=$2",
+            [p.jid,'11948523167']
+          )).rowCount>0
+        if(isPlayer){
+          const oneOff=(await c.query(
+            `INSERT INTO trevo_settings(key,value)
+             VALUES($1,$2::jsonb)
+             ON CONFLICT(key) DO NOTHING
+             RETURNING key`,
+            ['raid60_drop_once_11948523167_20261012',JSON.stringify({jid:p.jid,raidId:s.startedAt,at:Date.now()})]
+          ))
+          if(oneOff.rowCount) singleUseGear='armadura_tita_ancestral'
+        }
+      }
+      if(singleUseGear || Math.random()<chance){
+        const gearId=singleUseGear || cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
         const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
         if(item){
           await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,gearId])
