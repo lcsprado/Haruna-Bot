@@ -556,6 +556,7 @@ export async function initDatabase() {
     await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
     await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
   })
+  await fixLegacyPetVitals()
 }
 
 export async function ensureUser(jid, pushName='') {
@@ -4732,17 +4733,53 @@ const PET_BASE_ENERGY={
   tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,gaviao:190,
   panda:200,guepardo:220,tigre:225,gazela_mistica:235,leao:250,cervo_mistico:265,cavalo_guerra:275,unicornio:280,dragao:320,
   golfinho_celestial:160,moreia_sombria:175,tubarao_abissal:215,polvo_arcano:240,orca_guerra:270,baleia_colossal:310,
-  golem_ancestral:340,urso_runico:345,colosso_cristal:360,
-  salamandra_infernal:350,dragao_vulcanico:365,fenix_fogo:390,
-  corvo_abissal:350,lobo_abismo:370,fenix_gelo:395,
-  rinoceronte_titanico:365,guardiao_obsidiana:380,leviata_gelo:405,
-  cerbero_carmesim:380,tigre_lunar:390,imperador_abissal:420,
-  leao_solar:390,grifo_celestial:410,fenix_celestial:440,
+  golem_ancestral:340,urso_runico:345,colosso_cristal:360,oraculo_pedra:335,
+  salamandra_infernal:350,dragao_vulcanico:365,fenix_fogo:390,pantera_vulcanica:355,
+  corvo_abissal:350,lobo_abismo:370,fenix_gelo:395,espectro_abissal:365,
+  rinoceronte_titanico:365,guardiao_obsidiana:380,leviata_gelo:405,kraken_aco:375,esfinge_titanica:385,
+  cerbero_carmesim:380,tigre_lunar:390,imperador_abissal:420,quimera_abissal:385,paladino_astral:400,
+  leao_solar:390,grifo_celestial:410,fenix_celestial:440,lince_celestial:400,arcanjo_eclipse:420,
   serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,colosso_alpha:475,oraculo_alpha:455,
   fera_caos:430,guardiao_caos:450,serafim_caotico:455,oraculo_caos:445,fenix_caos:470,
   pantera_profundezas:450,guardiao_abissal:465,dragao_trono:475,oraculo_coroa:465,esfinge_mares:480,
-  lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520
+  lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520,
+  // Eventos: perfis equilibrados de resistência sem mudar as skills.
+  morcego_madrugada:430,camaleao_lendario:425
 }
+
+// Corrige os 11 perfis legados de HP/energia sem mexer nos demais pets.
+// A migração é idempotente e só atualiza linhas que ainda têm max_hp antigo.
+const PET_VITALS_LEGACY_FIX=Object.freeze([
+  'oraculo_pedra','pantera_vulcanica','espectro_abissal',
+  'kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral',
+  'lince_celestial','arcanjo_eclipse','morcego_madrugada','camaleao_lendario'
+])
+async function fixLegacyPetVitals(){
+  const species=PET_VITALS_LEGACY_FIX
+  const profiles=species.map(s=>PET_HP_PROFILES[s])
+  const energyBases=species.map(s=>PET_BASE_ENERGY[s])
+  if(profiles.some(p=>!p)||energyBases.some(n=>!n))throw new Error('Perfil incompleto na reparação de HP/energia.')
+  const hpBases=profiles.map(p=>p.base)
+  const hpGrowths=profiles.map(p=>p.growth)
+  const expectedHp='GREATEST(1,sp.base+(GREATEST(1,p.level)-1)*sp.growth+FLOOR(GREATEST(0,p.xp)/100)::integer*2)'
+  const oldEnergy='GREATEST(1,100+(GREATEST(1,p.level)-1)*2)'
+  const newEnergy='(sp.energy_base+(GREATEST(1,p.level)-1)*2)'
+  await transaction(async client=>{
+    for(const table of ['pet_collection','pets']){
+      await client.query(`
+        UPDATE ${table} AS p SET
+          hp=CASE WHEN COALESCE(p.hp,0)<=0 THEN 0 ELSE
+            LEAST(${expectedHp},GREATEST(0,p.hp+GREATEST(0,${expectedHp}-GREATEST(1,p.max_hp)))) END,
+          max_hp=${expectedHp},
+          energy=LEAST(${newEnergy},GREATEST(0,
+            ROUND(GREATEST(0,COALESCE(p.energy,0))::numeric*${newEnergy}/${oldEnergy})::integer))
+        FROM UNNEST($1::text[],$2::int[],$3::int[],$4::int[]) AS sp(species,base,growth,energy_base)
+        WHERE p.species=sp.species AND p.max_hp IS DISTINCT FROM ${expectedHp}
+      `,[species,hpBases,hpGrowths,energyBases])
+    }
+  })
+}
+
 export function petMaxEnergy(level=1,species='cachorro'){
   const base=PET_BASE_ENERGY[String(species||'cachorro').toLowerCase()]||100
   return base+Math.max(0,Number(level||1)-1)*2
@@ -4778,21 +4815,30 @@ export const PET_HP_PROFILES={
   golem_ancestral:{base:240,growth:18,type:'Tanque'},
   urso_runico:{base:225,growth:17,type:'Tanque'},
   colosso_cristal:{base:280,growth:21,type:'Tanque'},
+  oraculo_pedra:{base:205,growth:16,type:'Místico'},
   salamandra_infernal:{base:210,growth:16,type:'Ofensivo'},
   dragao_vulcanico:{base:250,growth:19,type:'Ofensivo'},
   fenix_fogo:{base:235,growth:18,type:'Místico'},
+  pantera_vulcanica:{base:220,growth:17,type:'Ofensivo'},
   corvo_abissal:{base:200,growth:15,type:'Crítico'},
   lobo_abismo:{base:240,growth:18,type:'Ofensivo'},
   fenix_gelo:{base:240,growth:18,type:'Místico'},
+  espectro_abissal:{base:225,growth:17,type:'Ágil Místico'},
   rinoceronte_titanico:{base:285,growth:22,type:'Tanque'},
   guardiao_obsidiana:{base:300,growth:23,type:'Tanque'},
   leviata_gelo:{base:320,growth:24,type:'Tanque'},
+  kraken_aco:{base:290,growth:22,type:'Tanque'},
+  esfinge_titanica:{base:260,growth:20,type:'Místico'},
   cerbero_carmesim:{base:270,growth:21,type:'Ofensivo'},
   tigre_lunar:{base:260,growth:20,type:'Ofensivo'},
   imperador_abissal:{base:300,growth:23,type:'Boss Hunter'},
+  quimera_abissal:{base:265,growth:20,type:'Ofensivo'},
+  paladino_astral:{base:285,growth:22,type:'Tanque'},
   leao_solar:{base:290,growth:22,type:'Ofensivo'},
   grifo_celestial:{base:275,growth:21,type:'Crítico'},
   fenix_celestial:{base:300,growth:23,type:'Místico'},
+  lince_celestial:{base:270,growth:21,type:'Ofensivo'},
+  arcanjo_eclipse:{base:290,growth:22,type:'Curandeiro'},
   serpente_cosmica:{base:300,growth:23,type:'Místico'},
   dragao_corrompido:{base:340,growth:25,type:'Boss Hunter'},
   fenix_alpha:{base:360,growth:27,type:'Mítico'},
@@ -4813,7 +4859,9 @@ export const PET_HP_PROFILES={
   sentinela_eclipse:{base:385,growth:27,type:'Tanque'},
   dragao_solar_eclipse:{base:365,growth:27,type:'Boss Hunter'},
   fenix_eclipse:{base:365,growth:26,type:'Suporte'},
-  avatar_primordial:{base:390,growth:27,type:'Místico'}
+  avatar_primordial:{base:390,growth:27,type:'Místico'},
+  morcego_madrugada:{base:285,growth:22,type:'Coringa'},
+  camaleao_lendario:{base:290,growth:22,type:'Coringa'}
 }
 export function petMaxHp(level=1,xp=0,species='cachorro'){
   const profile=PET_HP_PROFILES[String(species||'cachorro').toLowerCase()]||PET_HP_PROFILES.cachorro

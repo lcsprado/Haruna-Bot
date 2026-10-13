@@ -1695,7 +1695,7 @@ function petStatusBonus(p){
     .filter(([,value])=>Number(value)>0)
     .map(([stat,value])=>stat==='speed'?`+${petSpeedBonus(p.species,p.level)} ${labels[stat]||stat}`:`+${pct(value)}% ${labels[stat]||stat}`)
   if(Number(spec.healPct||0)>0 && Number(spec.healCooldown||0)>0){
-    parts.push(`💚 cura ${Number(spec.healPct).toLocaleString('pt-BR',{maximumFractionDigits:1})}% HP a cada ${Number(spec.healCooldown)} rodadas se o jogador estiver abaixo de 70%`)
+    parts.push(`💚 cura ${pct(spec.healPct)}% HP a cada ${Number(spec.healCooldown)} rodadas se o jogador estiver abaixo de 70%`)
   }
   return {
     label:spec.label,
