@@ -666,6 +666,11 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
             }else{
               text+='\n💚 Cura recebida: *0 HP* (nenhuma cura ativada)'
             }
+            if(String(x.playerClassId||'')==='paladin'){
+              const activations=Math.max(0,Number(x.classHealingActivations||0))
+              const opportunities=Math.max(0,Number(x.classHealingOpportunities||0))
+              text+='\n🛡️ Bênção Restauradora: *'+activations+' ativação(ões)* / '+opportunities+' oportunidade(s) • *+'+fmt(classHealing)+' HP*'
+            }
             const petPotionHealing=Math.max(0,Number(x.petPotionHealing||0))
             if(petPotionHealing>0)text+='\n🐾🧪 Cura do pet combatente: +'+fmt(petPotionHealing)+' HP ('+Number(x.petPotionUses||0)+' poção(ões))'
             if(x.material) text+=`
