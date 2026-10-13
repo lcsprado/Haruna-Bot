@@ -103,7 +103,7 @@ export const PET_STATUS_SPECIALTIES = {
   lobo_eclipse:{label:'🌘 Caçador do Eclipse',stats:{damage:12,crit:9},raid:true},
   sentinela_eclipse:{label:'🛡️ Muralha do Eclipse',stats:{defense:11,dodge:8,damage:4},raid:true},
   dragao_solar_eclipse:{label:'🐉 Fogo Eclipse',stats:{bossDamage:12,crit:11,xp:4},raid:true},
-  fenix_eclipse:{label:'🌗 Graça do Eclipse',stats:{defense:10,dodge:8},healPct:10,healCooldown:4,raid:true},
+  fenix_eclipse:{label:'🌗 Graça do Eclipse',stats:{defense:10,dodge:8},healPct:9,healCooldown:4,raid:true},
   avatar_primordial:{label:'🌌 Equilíbrio Primordial',stats:{damage:11.5,defense:8,crit:9,drop:5},raid:true},
   camaleao_lendario:{label:'🦎 Camuflagem Adaptativa',stats:{damage:3,defense:3,crit:2},raid:true}
 };

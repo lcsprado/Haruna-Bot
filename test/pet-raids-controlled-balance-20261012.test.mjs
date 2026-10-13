@@ -63,7 +63,7 @@ test('Fênix Eclipse cura mais que Fênix Celestial e mantém intervalo de 4 rod
   const fenix40=scale('fenix_celestial'),fenix60=scale('fenix_caos'),fenix70=scale('fenix_eclipse')
   assert.ok(fenix60.heal>0 && fenix60.damage>0)
   assert.ok(fenix70.heal>fenix40.heal)
-  close(fenix70.heal,.125)
+  close(fenix70.heal,.1125)
   assert.equal(fenix70.cooldown,4)
   assert.equal(fenix40.cooldown,4)
 })
