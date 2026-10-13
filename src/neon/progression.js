@@ -1235,7 +1235,26 @@ export async function collectBusinesses(jid){
 }
 
 
-export async function upgradeBusiness(jid,input){
+// Cotação única para o menu e a gravação: mantém exatamente a tabela
+// original de 20% / 30% / 40% / 50% sobre o preço do negócio.
+export function businessUpgradeQuote(business,currentLevel,targetLevel){
+  const fromLevel=Math.max(1,Math.floor(Number(currentLevel)||1))
+  const toLevel=Number(targetLevel)
+  if(fromLevel>=5)throw new Error('Esse negócio já está no nível máximo (5).')
+  if(!Number.isInteger(toLevel)||toLevel<=fromLevel||toLevel>5)
+    throw new Error('Escolha um nível final entre '+(fromLevel+1)+' e 5.')
+  const rates={1:0.20,2:0.30,3:0.40,4:0.50}
+  let cost=0
+  for(let level=fromLevel;level<toLevel;level++)
+    cost+=Math.floor(Number(business.price)*rates[level])
+  return {fromLevel,toLevel,levelsGained:toLevel-fromLevel,cost,
+    previousProfitHour:Math.floor(business.profitHour*(1+(fromLevel-1)*0.25)),
+    profitHour:Math.floor(business.profitHour*(1+(toLevel-1)*0.25)),
+    previousCapacityHours:business.capacityHours+fromLevel-1,
+    capacityHours:business.capacityHours+toLevel-1}
+}
+
+export async function upgradeBusiness(jid,input,targetLevel=null){
   await ensureUser(jid)
   const business=resolveCatalog(input,BUSINESSES)
   if(!business) throw new Error('Negócio inválido. Use !meusnegocios.')
@@ -1243,16 +1262,17 @@ export async function upgradeBusiness(jid,input){
     const own=await client.query('SELECT * FROM user_businesses WHERE jid=$1 AND business_id=$2 FOR UPDATE',[jid,business.id])
     if(!own.rows.length) throw new Error('Você não possui esse negócio.')
     const level=Math.max(1,Number(own.rows[0].level||1))
-    if(level>=5) throw new Error('Esse negócio já está no nível máximo (5).')
-    const upgradeCostRate={1:0.20,2:0.30,3:0.40,4:0.50}[level]||0.50
-    const cost=Math.floor(business.price*upgradeCostRate)
+    const target=targetLevel===null?level+1:Number(targetLevel)
+    const quote=businessUpgradeQuote(business,level,target)
     const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    if(Number(wallet.rows[0]?.cash||0)<cost) throw new Error('Saldo insuficiente. Upgrade custa R$ '+cost.toLocaleString('pt-BR')+'.')
-    await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[cost,jid])
-    await client.query('UPDATE user_businesses SET level=level+1 WHERE jid=$1 AND business_id=$2',[jid,business.id])
-    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_upgrade',$3)",[jid,cost,business.name])
-    const newLevel=level+1
-    return {...business,level:newLevel,cost,multiplier:1+(newLevel-1)*0.25,capacityHours:business.capacityHours+(newLevel-1)}
+    const cash=Number(wallet.rows[0]?.cash||0)
+    if(cash<quote.cost) throw new Error('Saldo insuficiente. Upgrade até o Lv.'+target+' custa R$ '+quote.cost.toLocaleString('pt-BR')+'.')
+    // Uma cobrança e uma atualização no Neon: sem níveis parciais se faltar saldo.
+    await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[quote.cost,jid])
+    await client.query('UPDATE user_businesses SET level=$1 WHERE jid=$2 AND business_id=$3',[target,jid,business.id])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_upgrade',$3)",
+      [jid,quote.cost,business.name+' Lv.'+level+' → Lv.'+target])
+    return {...business,...quote,level:target,cost:quote.cost,multiplier:1+(target-1)*0.25,cash:cash-quote.cost}
   })
 }
 

@@ -50,7 +50,7 @@ import {
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getHomeActivities, trainAtHome, restTeamPetsAtHome, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
   hireCltUberDriver, getCltUberStatus, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
-  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, sellCar, sellMotorcycle,
+  getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, businessUpgradeQuote, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent,
   getAlphaContractBoard, acceptAlphaContract, progressAlphaContract, claimAlphaContract
 } from './progression.js'
@@ -6708,25 +6708,72 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='business_manage_select'){
-      const id=flow.data.ids?.[Number(input)-1]
-      if(!id){ await reply('🏢 Escolha um dos seus negócios pelo número.'); return true }
-      const b=(await getBusinesses(sender)).find(x=>x.id===id)
+      const n=Number(input), ids=flow.data.ids||[]
+      if(!Number.isInteger(n)||n<1||n>ids.length){ await reply('🏢 Escolha um dos seus negócios pelo número.'); return true }
+      const b=(await getBusinesses(sender)).find(x=>x.id===ids[n-1])
       if(!b){ clearQuickFlow(chat,sender); await reply('❌ Negócio não encontrado.'); return true }
       const level=Math.max(1,Number(b.level||1))
       if(level>=5){ await reply(`🏆 *${b.name}* já está no nível máximo (5).`); return true }
-      const upgradeCostRate={1:0.20,2:0.30,3:0.40,4:0.50}[level]||0.50
-      const cost=Math.floor(b.price*upgradeCostRate)
-      setQuickFlow(chat,sender,'business_upgrade_confirm',{id:b.id},90000)
-      await reply(`🔧 *UPGRADE — ${b.name}*\n\nNível: *${level} → ${level+1}*\n💰 Custo: *R$ ${fmt(cost)}*\n📈 Produção: *R$ ${fmt(Math.floor(b.profitHour*(1+level*0.25)))}/h*\n⏳ Capacidade: *${b.capacityHours+level}h*\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
+      const opts=[
+        [1,'+1 nível',Math.min(5,level+1)],
+        [2,'até +2 níveis',Math.min(5,level+2)],
+        [3,'até +3 níveis',Math.min(5,level+3)],
+        [4,'direto ao Lv.5',5]
+      ]
+      const lines=opts.map(([number,label,target])=>{
+        const q=businessUpgradeQuote(b,level,target)
+        return `*${number}.* ${label} → *Lv.${target}* — R$ ${fmt(q.cost)}`
+      })
+      setQuickFlow(chat,sender,'business_upgrade_amount',{id:b.id},90000)
+      await reply('🔧 *UPGRADE DE NEGÓCIO*\n\n🏪 *'+b.name+'* • ⭐ Lv.'+level+'/5\n\n'+
+        lines.join('\n')+'\n*5.* 🎯 Escolher nível final\n\n'+
+        '💡 A cobrança equivale à soma dos upgrades individuais, sem desconto ou taxa extra.\n0️⃣ Cancelar')
+      return true
+    }
+
+    if(flow.stage==='business_upgrade_amount'||flow.stage==='business_upgrade_custom'){
+      const b=(await getBusinesses(sender)).find(x=>x.id===flow.data.id)
+      if(!b){clearQuickFlow(chat,sender);await reply('❌ Negócio não encontrado.');return true}
+      const level=Math.max(1,Number(b.level||1))
+      if(level>=5){clearQuickFlow(chat,sender);await reply('🏆 Esse negócio já está no nível máximo.');return true}
+      if(flow.stage==='business_upgrade_amount'&&input==='5'){
+        setQuickFlow(chat,sender,'business_upgrade_custom',{id:b.id},90000)
+        await reply('🎯 *ESCOLHA O NÍVEL FINAL*\n\n🏪 '+b.name+' — Lv.'+level+
+          '\nDigite um nível entre *'+(level+1)+' e 5*.\n0️⃣ Cancelar')
+        return true
+      }
+      const target=flow.stage==='business_upgrade_custom'?Number(input):({
+        '1':Math.min(5,level+1),'2':Math.min(5,level+2),
+        '3':Math.min(5,level+3),'4':5
+      })[input]
+      if(!Number.isInteger(target)||target<=level||target>5){
+        await reply(flow.stage==='business_upgrade_custom'
+          ?'🎯 Digite um nível entre *'+(level+1)+' e 5*.'
+          :'⬆️ Escolha *1, 2, 3, 4 ou 5*.')
+        return true
+      }
+      const q=businessUpgradeQuote(b,level,target)
+      setQuickFlow(chat,sender,'business_upgrade_confirm',{id:b.id,targetLevel:target},90000)
+      await reply('🔧 *CONFIRMAR UPGRADE?*\n\n🏪 *'+b.name+'*\n'+
+        '⭐ Lv.'+q.fromLevel+' → *Lv.'+q.toLevel+'* (+'+q.levelsGained+' níveis)\n'+
+        '📈 Produção: R$ '+fmt(q.previousProfitHour)+'/h → *R$ '+fmt(q.profitHour)+'/h*\n'+
+        '⏳ Capacidade: '+q.previousCapacityHours+'h → *'+q.capacityHours+'h*\n'+
+        '💰 Total a pagar: *R$ '+fmt(q.cost)+'*\n\n'+
+        '1️⃣ Confirmar\n2️⃣ Cancelar')
       return true
     }
 
     if(flow.stage==='business_upgrade_confirm'){
-      if(input==='2'){ clearQuickFlow(chat,sender); await reply('❌ Upgrade cancelado.'); return true }
-      if(input!=='1'){ await reply('Escolha *1 Confirmar* ou *2 Cancelar*.'); return true }
-      const r=await upgradeBusiness(sender,flow.data.id)
+      if(input==='2'){clearQuickFlow(chat,sender);await reply('❌ Upgrade cancelado.');return true}
+      if(input!=='1'){await reply('Escolha *1 Confirmar* ou *2 Cancelar*.');return true}
+      const r=await upgradeBusiness(sender,flow.data.id,flow.data.targetLevel)
       clearQuickFlow(chat,sender)
-      await reply(`✅ *NEGÓCIO MELHORADO!*\n🏪 ${r.name} — *Nível ${r.level}/5*\n📈 Produção: *R$ ${fmt(Math.floor(r.profitHour*r.multiplier))}/h*\n⏳ Capacidade: *${r.capacityHours}h*`)
+      await reply('✅ *NEGÓCIO MELHORADO!*\n\n🏪 *'+r.name+'*\n'+
+        '⭐ Lv.'+r.fromLevel+' → *Lv.'+r.level+'* (+'+r.levelsGained+' níveis)\n'+
+        '📈 Produção: *R$ '+fmt(r.profitHour)+'/h*\n'+
+        '⏳ Capacidade: *'+r.capacityHours+'h*\n'+
+        '💸 Pago: *R$ '+fmt(r.cost)+'*\n'+
+        '🪙 Carteira: *R$ '+fmt(r.cash)+'*')
       return true
     }
 
