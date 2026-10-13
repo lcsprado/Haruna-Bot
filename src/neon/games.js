@@ -1025,7 +1025,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Top 3 precisa ter participação real (>= 2% do dano total); evita carona de 1 ataque.
     // O teto da faixa é propositalmente raro via pesos decrescentes.
     const materialRanges={
-      10:[[2,4],[1,3],[1,2]],
+      10:[[5,7],[1,3],[1,2]],
       15:[[3,5],[2,4],[1,2]],
       20:[[4,6],[2,4],[1,3]],
       25:[[5,7],[3,5],[1,3]],
