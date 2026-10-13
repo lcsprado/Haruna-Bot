@@ -743,7 +743,7 @@ export async function buyMotorcycle(jid,input){
 export function carTradeInCredit(paid){
   const value=Number(paid)
   if(!Number.isSafeInteger(value)||value<0)throw new Error('Valor de compra do veículo inválido.')
-  return Math.floor(value*0.70)
+  return Math.floor(value*7/10)
 }
 
 // Troca atômica: valida posse, turno CLT, crédito e saldo antes de modificar

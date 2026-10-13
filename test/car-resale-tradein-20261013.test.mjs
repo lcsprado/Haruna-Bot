@@ -8,7 +8,7 @@ const credit=new Function(only+'return carTradeInCredit')()
 test('Entrada e revenda usam 70% do custo histórico do veículo',()=>{
   assert.equal(credit(35000),24500)
   assert.equal(credit(500000),350000)
-  assert.equal(credit(175000),122499)
+  assert.equal(credit(175000),122500)
   assert.throws(()=>credit(-1))
 })
 test('Troca é transação única e não paga troco em dinheiro',()=>{
