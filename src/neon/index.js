@@ -1707,6 +1707,26 @@ async function start() {
   await initDatabase()
   await initAwakening()
   await initRelics()
+  // TEMP read-only audit: when the user's Armadura Divina first entered inventory.
+  try {
+    const auditJid='5511948523167@s.whatsapp.net'
+    const rows=(await db.query(
+      "SELECT item_id,quantity,created_at FROM inventories WHERE jid=$1 AND item_id IN ('armadura_divina','armadura_tita_ancestral') ORDER BY item_id",
+      [auditJid]
+    )).rows
+    const divine=rows.find(x=>x.item_id==='armadura_divina')
+    let near=[]
+    if(divine){
+      near=(await db.query(
+        `SELECT id,type,amount,note,created_at,from_jid,to_jid FROM transactions
+         WHERE (from_jid=$1 OR to_jid=$1)
+           AND created_at BETWEEN $2-86400 AND $2+86400
+         ORDER BY ABS(created_at-$2),created_at LIMIT 55`,
+        [auditJid,Number(divine.created_at)]
+      )).rows
+    }
+    console.log('[TEMP ARMADURA DIVINA ACQUISITION AUDIT]',JSON.stringify({jid:auditJid,items:rows,nearTransactions:near}))
+  }catch(err){console.warn('[TEMP ARMADURA DIVINA ACQUISITION AUDIT] read error',err?.message||err)}
 
   // Ativação única, atômica e persistente do evento de fragmentos (30 minutos).
   // O início ocorre nesta inicialização; restarts NÃO reiniciam nem prolongam o evento.
