@@ -1767,6 +1767,63 @@ async function start() {
     }
   }
 
+  // Troca individual autorizada: silenciosa, atômica e de execução única.
+  // Sem mensagens WhatsApp, alterações de chances, dinheiro ou outros jogadores.
+  {
+    const marker='private_exchange:11948523167:divina_titanica_to_machado_tita:20261012'
+    const client=await db.connect()
+    try{
+      await client.query('BEGIN')
+      const claim=await client.query(
+        "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
+        [marker,JSON.stringify({status:'processing'})]
+      )
+      if(claim.rowCount){
+        const jid='5511948523167@s.whatsapp.net'
+        const user=await client.query('SELECT jid FROM users WHERE jid=$1',[jid])
+        if(user.rowCount!==1) throw new Error('[PrivateExchange] jogador não encontrado')
+        const inv=await client.query(
+          "SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) FOR UPDATE",
+          [jid,['armadura_divina','armadura_tita_ancestral','machado_tita']]
+        )
+        const owned=Object.fromEntries(inv.rows.map(x=>[x.item_id,Number(x.quantity)]))
+        if((owned.armadura_divina||0)<1||(owned.armadura_tita_ancestral||0)<1){
+          throw new Error('[PrivateExchange] armaduras indisponíveis; nenhuma troca efetuada')
+        }
+        const equipment=await client.query('SELECT armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])
+        if(['armadura_divina','armadura_tita_ancestral'].includes(equipment.rows[0]?.armor_id)){
+          throw new Error('[PrivateExchange] uma das armaduras está equipada; troca não efetuada')
+        }
+        const bound=await client.query(
+          "SELECT item_id,COALESCE(SUM(quantity),0)::int AS qty FROM bound_inventory_items WHERE jid=$1 AND item_id=ANY($2::text[]) GROUP BY item_id",
+          [jid,['armadura_divina','armadura_tita_ancestral']]
+        )
+        const protectedQty=Object.fromEntries(bound.rows.map(x=>[x.item_id,Number(x.qty)]))
+        for(const id of ['armadura_divina','armadura_tita_ancestral']){
+          if((owned[id]||0)-(protectedQty[id]||0)<1)throw new Error('[PrivateExchange] item vinculado; troca não efetuada')
+        }
+        const item=await client.query("SELECT id FROM items WHERE id='machado_tita'")
+        if(item.rowCount!==1)throw new Error('[PrivateExchange] machado indisponível')
+        for(const id of ['armadura_divina','armadura_tita_ancestral']){
+          await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,id])
+        }
+        await client.query(
+          "INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'machado_tita',1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1",
+          [jid]
+        )
+        await client.query(
+          "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+          [marker,JSON.stringify({status:'completed',jid,removed:['armadura_divina','armadura_tita_ancestral'],added:'machado_tita',at:Date.now()})]
+        )
+        console.log('[PrivateExchange] troca individual concluída')
+      }
+      await client.query('COMMIT')
+    }catch(err){
+      await client.query('ROLLBACK')
+      console.error('[PrivateExchange] falha sem alterações',err?.message||err)
+    }finally{client.release()}
+  }
+
   // Patch administrativo opcional, de uso único, para correções pontuais de inventário.
   // Os dados ficam apenas nas variáveis de ambiente do serviço; o token impede repetição em restarts.
   const adminPatchToken=String(process.env.ADMIN_INVENTORY_PATCH_TOKEN||'').trim()
