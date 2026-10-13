@@ -9,7 +9,7 @@ const approx=(value,expected)=>assert.ok(Math.abs(value-expected)<1e-10,`expecte
 test('Raid 60 Fera do Caos é ofensiva, sem alterar Dragão comprado por 1 milhão',()=>{
   const fera=petCombatSpecialty('fera_caos')
   const dragao=petCombatSpecialty('dragao')
-  assert.equal(fera.damage,.10)
+  assert.equal(fera.damage,.11)
   assert.equal(fera.crit,.07)
   assert.equal(fera.bossDamage,0)
   assert.equal(dragao.damage,0)
@@ -18,15 +18,15 @@ test('Raid 60 Fera do Caos é ofensiva, sem alterar Dragão comprado por 1 milh�
   approx(petPvpSpecialty('fera_caos',100).crit,.07*1.25*.30)
 })
 
-test('Predadores 60, 65 e 70 preservam progressão de crítico sem escalada de dano',()=>{
+test('Predadores 60, 65 e 70 preservam progressão controlada de dano e crítico',()=>{
   const fera=petCombatSpecialty('fera_caos')
   const pantera=petCombatSpecialty('pantera_profundezas')
   const lobo=petCombatSpecialty('lobo_eclipse')
-  assert.deepEqual([fera.damage,pantera.damage,lobo.damage],[.10,.10,.10])
+  assert.deepEqual([fera.damage,pantera.damage,lobo.damage],[.11,.114,.12])
   assert.ok(fera.crit<pantera.crit)
   assert.ok(pantera.crit<lobo.crit)
-  approx(petPvpSpecialty('pantera_profundezas',100).crit,.075*1.25*.30)
-  approx(petPvpSpecialty('lobo_eclipse',100).crit,.08*1.25*.30)
+  approx(petPvpSpecialty('pantera_profundezas',100).crit,.078*1.25*.30)
+  approx(petPvpSpecialty('lobo_eclipse',100).crit,.09*1.25*.30)
 })
 
 test('Bônus do menu crescem até o nível 100 com mesma regra do combate',()=>{

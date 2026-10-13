@@ -88,23 +88,23 @@ export const PET_STATUS_SPECIALTIES = {
 
   // Raids 60/65/70: bônus por especialidade, não multiplicadores de dano
   // globais. Todos seguem os mesmos tetos de 15% e escala por nível.
-  fera_caos:{label:'🐺 Fome do Caos',stats:{damage:10,crit:7},raid:true},
-  guardiao_caos:{label:'🛡️ Bastião Entrópico',stats:{defense:10,damage:5},raid:true},
-  serafim_caotico:{label:'🪽 Asas da Ruína',stats:{crit:9,dodge:7},raid:true},
-  oraculo_caos:{label:'🔮 Visão Entrópica',stats:{defense:7,crit:8,drop:4},raid:true},
-  fenix_caos:{label:'🔥 Renascimento do Caos',stats:{damage:8,defense:7,dodge:5},healPct:5,healCooldown:5,raid:true},
+  fera_caos:{label:'🐺 Fome do Caos',stats:{damage:11,crit:7},raid:true},
+  guardiao_caos:{label:'🛡️ Bastião Entrópico',stats:{defense:11,damage:5},raid:true},
+  serafim_caotico:{label:'🪽 Asas da Ruína',stats:{crit:11,dodge:7},raid:true},
+  oraculo_caos:{label:'🔮 Visão Entrópica',stats:{defense:10,crit:9,drop:4},raid:true},
+  fenix_caos:{label:'🔥 Renascimento do Caos',stats:{damage:8,defense:7,dodge:5},healPct:6.5,healCooldown:5,raid:true},
 
-  pantera_profundezas:{label:'🐈‍⬛ Predadora das Profundezas',stats:{damage:10,crit:7.5},raid:true},
-  guardiao_abissal:{label:'🗿 Muralha Abissal',stats:{defense:10,dodge:6},raid:true},
-  dragao_trono:{label:'🐉 Soberania Abissal',stats:{bossDamage:10,defense:7},raid:true},
-  oraculo_coroa:{label:'👑 Presságio da Coroa',stats:{crit:10,drop:7,xp:5},raid:true},
-  esfinge_mares:{label:'🌊 Maré Restauradora',stats:{defense:9,crit:8},healPct:5,healCooldown:5,raid:true},
+  pantera_profundezas:{label:'🐈‍⬛ Predadora das Profundezas',stats:{damage:11.4,crit:7.8},raid:true},
+  guardiao_abissal:{label:'🗿 Muralha Abissal',stats:{defense:11,dodge:7},raid:true},
+  dragao_trono:{label:'🐉 Soberania Abissal',stats:{bossDamage:11,defense:8,drop:4},raid:true},
+  oraculo_coroa:{label:'👑 Presságio da Coroa',stats:{crit:10,drop:9,xp:5},raid:true},
+  esfinge_mares:{label:'🌊 Maré Restauradora',stats:{defense:9,crit:8},healPct:7,healCooldown:4,raid:true},
 
-  lobo_eclipse:{label:'🌘 Caçador do Eclipse',stats:{damage:10,crit:8},raid:true},
-  sentinela_eclipse:{label:'🛡️ Muralha do Eclipse',stats:{defense:10,dodge:7,damage:4},raid:true},
-  dragao_solar_eclipse:{label:'🐉 Fogo Eclipse',stats:{bossDamage:10,crit:9,xp:4},raid:true},
-  fenix_eclipse:{label:'🌗 Graça do Eclipse',stats:{defense:10,dodge:8},healPct:6,healCooldown:5,raid:true},
-  avatar_primordial:{label:'🌌 Equilíbrio Primordial',stats:{damage:10,defense:8,crit:8,drop:5},raid:true},
+  lobo_eclipse:{label:'🌘 Caçador do Eclipse',stats:{damage:12,crit:9},raid:true},
+  sentinela_eclipse:{label:'🛡️ Muralha do Eclipse',stats:{defense:11,dodge:8,damage:4},raid:true},
+  dragao_solar_eclipse:{label:'🐉 Fogo Eclipse',stats:{bossDamage:12,crit:11,xp:4},raid:true},
+  fenix_eclipse:{label:'🌗 Graça do Eclipse',stats:{defense:10,dodge:8},healPct:10,healCooldown:4,raid:true},
+  avatar_primordial:{label:'🌌 Equilíbrio Primordial',stats:{damage:11.5,defense:8,crit:9,drop:5},raid:true},
   camaleao_lendario:{label:'🦎 Camuflagem Adaptativa',stats:{damage:3,defense:3,crit:2},raid:true}
 };
 
