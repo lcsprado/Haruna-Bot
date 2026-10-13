@@ -49,7 +49,7 @@ import {
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getHomeActivities, trainAtHome, restTeamPetsAtHome, getGarage, buyCar, tradeCar, carTradeInCredit, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
-  hireCltUberDriver, getCltUberStatus, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
+  hireCltUberDriver, getCltUberStatus, sellCltUberDriver, tradeCltUberDriver, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, businessUpgradeQuote, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent,
   getAlphaContractBoard, acceptAlphaContract, progressAlphaContract, claimAlphaContract
@@ -4174,6 +4174,92 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       return true
     }
 
+    if(flow.stage==='driver_sale_select'){
+      const n=Number(input), ids=flow.data.ids||[]
+      if(!Number.isInteger(n)||n<1||n>ids.length){
+        await reply('👨‍✈️ Selecione um motorista pelo número ou 0 para sair.')
+        return true
+      }
+      const d=(await getCltUberStatus(sender)).drivers.find(x=>Number(x.id)===Number(ids[n-1]))
+      if(!d){clearQuickFlow(chat,sender);await reply('❌ Motorista não encontrado. Use !vendermotorista novamente.');return true}
+      setQuickFlow(chat,sender,'driver_sale_action',{id:d.id},90000)
+      await reply('👨‍✈️ *REVENDA OU TROCA?*\n\n'+
+        '🚕 *'+d.type.name+'*\n'+
+        '💰 Valor pago: R$ '+fmt(d.paid)+'\n'+
+        '♻️ Revenda/entrada (70%): *R$ '+fmt(d.resale)+'*\n'+
+        (d.active?'🔒 Em turno: faltam '+duration(d.remaining)+'\n':'')+
+        (Number(d.accrued||0)>0?'💵 Saldo pendente: R$ '+fmt(Number(d.accrued))+' — use !coletauber primeiro\n':'')+
+        '\n1️⃣ Vender e receber o dinheiro\n2️⃣ Trocar por motorista superior\n0️⃣ Cancelar')
+      return true
+    }
+
+    if(flow.stage==='driver_sale_action'){
+      const d=(await getCltUberStatus(sender)).drivers.find(x=>Number(x.id)===Number(flow.data.id))
+      if(!d){clearQuickFlow(chat,sender);await reply('❌ Motorista não encontrado.');return true}
+      if(input==='1'){
+        setQuickFlow(chat,sender,'driver_sale_confirm',{id:d.id},90000)
+        await reply('⚠️ *CONFIRMAR REVENDA DO MOTORISTA*\n\n'+
+          '👨‍✈️ '+d.type.name+'\n💰 Valor pago: R$ '+fmt(d.paid)+
+          '\n💵 Você receberá: *R$ '+fmt(d.resale)+'*\n📉 Desvalorização: 30%\n\n'+
+          '1️⃣ Confirmar venda\n2️⃣ Cancelar')
+        return true
+      }
+      if(input==='2'){
+        const options=CLT_UBER_TYPES.filter(type=>type.price>d.type.price&&type.price>d.resale)
+        if(!options.length){await reply('🏆 Esse motorista já é da maior categoria. Use 1 para vender ou 0 para sair.');return true}
+        setQuickFlow(chat,sender,'driver_trade_select',{id:d.id,types:options.map(x=>x.id)},90000)
+        let out='🔄 *TROCAR MOTORISTA*\n\n👨‍✈️ Atual: '+d.type.name+
+          '\n♻️ Crédito de entrada: R$ '+fmt(d.resale)+'\n\n'
+        options.forEach((type,i)=>out+='*'+(i+1)+'.* '+type.name+' — R$ '+fmt(type.price)+
+          '\n   💸 Diferença: *R$ '+fmt(type.price-d.resale)+'*\n')
+        out+='\n👉 Escolha pelo número.\n0️⃣ Cancelar'
+        await reply(out)
+        return true
+      }
+      await reply('👨‍✈️ Escolha *1* Vender, *2* Trocar ou *0* Cancelar.')
+      return true
+    }
+
+    if(flow.stage==='driver_trade_select'){
+      const n=Number(input),ids=flow.data.types||[]
+      if(!Number.isInteger(n)||n<1||n>ids.length){await reply('👨‍✈️ Escolha um motorista pelo número.');return true}
+      const d=(await getCltUberStatus(sender)).drivers.find(x=>Number(x.id)===Number(flow.data.id))
+      const type=CLT_UBER_TYPES.find(x=>x.id===ids[n-1])
+      if(!d||!type||type.price<=d.type.price){clearQuickFlow(chat,sender);await reply('❌ Oferta indisponível. Abra !vendermotorista novamente.');return true}
+      setQuickFlow(chat,sender,'driver_trade_confirm',{id:d.id,typeId:type.id},90000)
+      await reply('🔄 *CONFIRMAR TROCA DE MOTORISTA*\n\n'+
+        '👨‍✈️ Atual: *'+d.type.name+'*\n💰 Valor pago: R$ '+fmt(d.paid)+
+        '\n♻️ Entrada de 70%: *R$ '+fmt(d.resale)+'*\n\n'+
+        '👨‍✈️ Novo: *'+type.name+'*\n🏷️ Preço: R$ '+fmt(type.price)+
+        '\n💸 Diferença a pagar: *R$ '+fmt(type.price-d.resale)+'*\n\n'+
+        '1️⃣ Confirmar troca\n2️⃣ Cancelar')
+      return true
+    }
+
+    if(flow.stage==='driver_sale_confirm'){
+      if(input==='2'){clearQuickFlow(chat,sender);await reply('✅ Venda cancelada.');return true}
+      if(input!=='1'){await reply('Digite 1 para confirmar ou 2 para cancelar.');return true}
+      const result=await sellCltUberDriver(sender,flow.data.id)
+      clearQuickFlow(chat,sender)
+      await reply('✅ *MOTORISTA VENDIDO!*\n\n👨‍✈️ '+result.type.name+
+        '\n💵 Recebido: *R$ '+fmt(result.resale)+'*\n'+
+        '📉 Desvalorização: R$ '+fmt(result.depreciation)+
+        '\n🪙 Carteira: R$ '+fmt(result.cash))
+      return true
+    }
+
+    if(flow.stage==='driver_trade_confirm'){
+      if(input==='2'){clearQuickFlow(chat,sender);await reply('✅ Troca cancelada.');return true}
+      if(input!=='1'){await reply('Digite 1 para confirmar ou 2 para cancelar.');return true}
+      const result=await tradeCltUberDriver(sender,flow.data.id,flow.data.typeId)
+      clearQuickFlow(chat,sender)
+      await reply('✅ *MOTORISTA TROCADO!*\n\n👨‍✈️ Anterior: '+result.previous.name+
+        '\n🏆 Novo: *'+result.target.name+'*\n♻️ Entrada: R$ '+fmt(result.credit)+
+        '\n💸 Pago: *R$ '+fmt(result.difference)+'*\n'+
+        '🪙 Carteira: R$ '+fmt(result.cash)+'\n\n🚘 Use !centraluber para iniciar o próximo turno.')
+      return true
+    }
+
     if(flow.stage==='cltuber_driver_select'){
       const slot=Number(input)
       const status=await getCltUberStatus(sender)
@@ -4277,7 +4363,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 
 🚕 *CLT UBER — RENDA AUTOMÁTICA*
 *!cltuber* — mostra os motoristas disponíveis
-*!cltuber 1* — contrata pelo número
+*!cltuber 1* — contrata pelo número\n*!vendermotorista* — revenda de 70% ou troca por motorista superior
 *!centraluber* — motoristas, carros, turnos e saldo acumulado\n*!centraluber todos* — envia todos os disponíveis, pareando melhor motorista com melhor carro\n*!centraluber 1 3* — envia somente os motoristas escolhidos
 *!coletauber* — coleta todo o dinheiro da Central Uber
 🛑 Cada turno automático dura no máximo *8 horas*.
@@ -9658,7 +9744,7 @@ Escolha quanto tempo vai trabalhar:
 
         const EVENT_ACTION_CMDS=new Set([
           'daily','diario','trabalhar','work','trampo','all','tudo',
-          'uber','cltuber','centraluber','coletauber','ifood','ifoodbike','coletar',
+          'uber','cltuber','centraluber','coletauber','vendermotorista','trocarmotorista','ifood','ifoodbike','coletar',
           'dungeon','batalhar','battle','roubar','atacar','attack',
           'boss','raid','lojaraid','entrar','go','iniciarraid',
           'comprar','buy','compraritem','vender','sell',
@@ -10759,6 +10845,29 @@ ${results.join('\n')}
             text+='\n🛑 Cada turno dura no máximo *8 horas* e depois para sozinho.\n👥 Limite: *3 motoristas*.\n\n👉 Contrate com *!cltuber 1*, *2* ou *3*.'
             await reply(text)
           }
+
+        } else if(['vendermotorista','vendermotoristas','trocar motorista','trocarmotorista'].includes(cmd)){
+          const status=await getCltUberStatus(sender)
+          if(!status.drivers.length)return await reply('👨‍✈️ Você não possui motoristas. Use *!cltuber*.')
+          const chosen=args.length?status.drivers[Number(args[0])-1]:null
+          if(args.length&&!chosen)return await reply('👨‍✈️ Motorista não encontrado. Use !vendermotorista sem número.')
+          if(chosen){
+            setQuickFlow(chat,sender,'driver_sale_action',{id:chosen.id},90000)
+            return await reply('👨‍✈️ *REVENDA OU TROCA?*\n\n'+chosen.type.name+
+              '\n💰 Valor pago: R$ '+fmt(chosen.paid)+
+              '\n♻️ Revenda/entrada (70%): *R$ '+fmt(chosen.resale)+'*\n\n'+
+              '1️⃣ Vender e receber\n2️⃣ Usar como entrada em um motorista superior\n0️⃣ Cancelar')
+          }
+          setQuickFlow(chat,sender,'driver_sale_select',{ids:status.drivers.map(d=>d.id)},90000)
+          let out='👨‍✈️ *REVENDA E TROCA — MOTORISTAS*\n\n'
+          status.drivers.forEach(d=>{
+            out+='*'+d.slot+'.* '+d.type.name+(d.active?' 🔒 em turno':'')+
+              '\n   💰 Pago: R$ '+fmt(d.paid)+'\n   ♻️ Revenda/entrada: *R$ '+fmt(d.resale)+'*'+
+              (Number(d.accrued||0)>0?'\n   💵 A coletar: R$ '+fmt(Number(d.accrued)):'')+'\n'
+          })
+          out+='\n📌 Para vender ou trocar, finalize o turno e colete o saldo com *!coletauber*.\n'+
+            '👉 Escolha *1, 2 ou 3*.\n0️⃣ Sair'
+          await reply(out)
 
         } else if(['centraluber'].includes(cmd)){
           const s=await getCltUberStatus(sender)

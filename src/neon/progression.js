@@ -295,6 +295,10 @@ export async function initProgression(){
       accrued BIGINT NOT NULL DEFAULT 0
     );
     ALTER TABLE clt_uber_drivers ADD COLUMN IF NOT EXISTS credited_trips INTEGER;
+    ALTER TABLE clt_uber_drivers ADD COLUMN IF NOT EXISTS price_paid BIGINT;
+    UPDATE clt_uber_drivers SET price_paid=CASE driver_type
+      WHEN 'comum' THEN 25000 WHEN 'experiente' THEN 75000 WHEN 'executivo' THEN 200000 ELSE 0 END
+      WHERE price_paid IS NULL;
     CREATE INDEX IF NOT EXISTS clt_uber_drivers_jid_idx ON clt_uber_drivers(jid);
     CREATE INDEX IF NOT EXISTS clt_uber_drivers_active_car_idx ON clt_uber_drivers(jid,car_id,shift_ends_at);
   `)
@@ -963,18 +967,84 @@ async function accrueCltUber(client,jid){
   }
 }
 
+// Crédito de 70% sempre sobre o preço pago originalmente.
+export function cltDriverTradeInValue(paid){
+  const n=Number(paid)
+  if(!Number.isSafeInteger(n)||n<0)throw new Error('Valor pago pelo motorista inválido.')
+  return Math.floor(n*7/10)
+}
+
+const driverFromId=id=>CLT_UBER_TYPES.find(type=>type.id===id)||null
+const driverResaleInfo=row=>{
+  const type=driverFromId(row.driver_type)
+  if(!type)throw new Error('Tipo de motorista inválido.')
+  const paid=Number(row.price_paid??type.price)
+  const resale=cltDriverTradeInValue(paid)
+  return {type,paid,resale}
+}
+
+export async function sellCltUberDriver(jid,driverId){
+  await ensureUser(jid)
+  return tx(async client=>{
+    // A carteira é o mutex global do usuário para vender, trocar e contratar.
+    const w=(await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!w)throw new Error('Carteira não encontrada.')
+    await accrueCltUber(client,jid)
+    const row=(await client.query('SELECT * FROM clt_uber_drivers WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,driverId])).rows[0]
+    if(!row)throw new Error('Motorista não encontrado. Abra !vendermotorista novamente.')
+    const now=Math.floor(Date.now()/1000)
+    if(Number(row.shift_ends_at||0)>now)throw new Error('Motorista em turno ativo. Aguarde o fim das 8 horas.')
+    if(Number(row.accrued||0)>0)throw new Error('Esse motorista tem R$ '+Number(row.accrued).toLocaleString('pt-BR')+' acumulados. Use !coletauber antes de vender.')
+    const {type,paid,resale}=driverResaleInfo(row)
+    await client.query('DELETE FROM clt_uber_drivers WHERE jid=$1 AND id=$2',[jid,driverId])
+    await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[resale,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'clt_driver_sale',$3)",[jid,resale,type.name])
+    return {type,paid,resale,depreciation:paid-resale,cash:Number(w.cash)+resale}
+  })
+}
+
+export async function tradeCltUberDriver(jid,driverId,newTypeInput){
+  await ensureUser(jid)
+  const target=resolveCatalog(newTypeInput,CLT_UBER_TYPES)
+  if(!target)throw new Error('Escolha um tipo de motorista válido.')
+  return tx(async client=>{
+    const wallet=(await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    if(!wallet)throw new Error('Carteira não encontrada.')
+    await accrueCltUber(client,jid)
+    const row=(await client.query('SELECT * FROM clt_uber_drivers WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,driverId])).rows[0]
+    if(!row)throw new Error('Motorista não encontrado. Abra !vendermotorista novamente.')
+    const now=Math.floor(Date.now()/1000)
+    if(Number(row.shift_ends_at||0)>now)throw new Error('Motorista em turno ativo. Aguarde o fim das 8 horas.')
+    if(Number(row.accrued||0)>0)throw new Error('Esse motorista tem R$ '+Number(row.accrued).toLocaleString('pt-BR')+' acumulados. Use !coletauber antes de trocar.')
+    const {type,paid,resale}=driverResaleInfo(row)
+    if(target.price<=type.price)throw new Error('Só é possível evoluir para um motorista de categoria superior.')
+    const difference=target.price-resale
+    if(difference<=0)throw new Error('Essa troca não pode gerar troco em dinheiro.')
+    const cash=Number(wallet.cash||0)
+    if(cash<difference)throw new Error('Saldo insuficiente. Faltam R$ '+(difference-cash).toLocaleString('pt-BR')+' para trocar de motorista.')
+    // Mantém o ID/vaga para não exceder o limite de 3; não herda turno anterior.
+    await client.query(`UPDATE clt_uber_drivers SET driver_type=$1,price_paid=$2,car_id=NULL,
+      shift_started_at=NULL,shift_ends_at=NULL,last_accrual_at=NULL,
+      credited_trips=0,accrued=0 WHERE jid=$3 AND id=$4`,[target.id,target.price,jid,driverId])
+    await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[difference,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'clt_driver_trade_in',$3)",
+      [jid,difference,type.name+' -> '+target.name+' | entrada: R$ '+resale])
+    return {previous:type,target,paid,credit:resale,difference,cash:cash-difference}
+  })
+}
+
 export async function hireCltUberDriver(jid,input){
   await ensureUser(jid)
   const idx=Number(input)
   const type=CLT_UBER_TYPES[idx-1]
   if(!type) throw new Error('Motorista inválido. Use !cltuber para ver 1, 2 ou 3.')
   return tx(async client=>{
+    const w=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     const count=Number((await client.query('SELECT COUNT(*)::int n FROM clt_uber_drivers WHERE jid=$1',[jid])).rows[0]?.n||0)
     if(count>=3) throw new Error('Você já atingiu o limite de 3 motoristas CLT Uber.')
-    const w=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     if(Number(w.rows[0]?.cash||0)<type.price) throw new Error('Saldo insuficiente. Contratação custa R$ '+type.price.toLocaleString('pt-BR')+'.')
     await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[type.price,jid])
-    const ins=await client.query('INSERT INTO clt_uber_drivers(jid,driver_type) VALUES($1,$2) RETURNING id',[jid,type.id])
+    const ins=await client.query('INSERT INTO clt_uber_drivers(jid,driver_type,price_paid) VALUES($1,$2,$3) RETURNING id',[jid,type.id,type.price])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'clt_uber_hire',$3)",[jid,type.price,type.name])
     return {...type,id:Number(ins.rows[0].id),slot:count+1}
   })
@@ -991,7 +1061,9 @@ export async function getCltUberStatus(jid){
       const type=CLT_UBER_TYPES.find(x=>x.id===r.driver_type)
       const car=CARS.find(x=>x.id===r.car_id)||null
       const active=Boolean(r.car_id&&Number(r.shift_ends_at||0)>now)
-      return {...r,slot:i+1,type,car,active,remaining:active?Number(r.shift_ends_at)-now:0,finished:Boolean(r.car_id&&r.shift_ends_at&&Number(r.shift_ends_at)<=now)}
+      return {...r,slot:i+1,type,car,active,paid:Number(r.price_paid??type?.price||0),
+        resale:cltDriverTradeInValue(Number(r.price_paid??type?.price??0)),
+        remaining:active?Number(r.shift_ends_at)-now:0,finished:Boolean(r.car_id&&r.shift_ends_at&&Number(r.shift_ends_at)<=now)}
     }),
     garage
   }
