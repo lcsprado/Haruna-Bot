@@ -40,24 +40,6 @@ http.createServer((req,res)=>{
 
 await import('./index.js')
 
-  
-// AUDITORIA TEMPORÁRIA, somente SELECT: origem temporal da Armadura Divina de ~LP.
-setTimeout(async()=>{
-  try{
-    const {db}=await import('./db.js')
-    const jid='5511948523167@s.whatsapp.net'
-    const item=(await db.query(
-      "SELECT i.item_id,i.quantity,i.created_at,to_char(to_timestamp(i.created_at) AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS') AS created_br,i.data FROM inventories i WHERE i.jid=$1 AND i.item_id='armadura_divina'",
-      [jid]
-    )).rows[0]||null
-    const raids=(await db.query(
-      "SELECT id,note,amount,created_at,to_char(to_timestamp(created_at) AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY HH24:MI:SS') AS created_br FROM transactions WHERE (to_jid=$1 OR from_jid=$1) AND (note LIKE 'raid_%' OR note LIKE '%box%' OR note LIKE '%caixa%') ORDER BY ABS(created_at-$2) ASC LIMIT 12",
-      [jid,Number(item?.created_at||Date.now()/1000)]
-    )).rows
-    console.log('[AUDIT LP ARMADURA DIVINA 20261012]',JSON.stringify({item,nearestRelevantTransactions:raids}))
-  }catch(err){console.error('[AUDIT LP ARMADURA DIVINA 20261012 FAILED]',err?.stack||err)}
-},9000).unref?.()
-
 // Auditoria somente leitura do último Eclipse. Não modifica HP nem recompensas.
 setTimeout(async()=>{
   try{
