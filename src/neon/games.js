@@ -1097,6 +1097,27 @@ async function finishRaidRewards(c,s,cfg,chat){
           if(oneOff.rowCount) singleUseGear='armadura_tita_ancestral'
         }
       }
+      // Concessão única e individual na Raid 50, somente após vitória com dano real.
+      // Mantém a apresentação habitual do drop; não altera chances de outros jogadores.
+      if(!singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
+        const phone='11939089695'
+        const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
+        const ownerMatch=digits.endsWith(phone) ||
+          (await c.query(
+            "SELECT 1 FROM users WHERE jid=$1 AND RIGHT(regexp_replace(COALESCE(pn,''),'[^0-9]','','g'),11)=$2",
+            [p.jid,phone]
+          )).rowCount>0
+        if(ownerMatch){
+          const oneOff=await c.query(
+            `INSERT INTO trevo_settings(key,value)
+             VALUES($1,$2::jsonb)
+             ON CONFLICT(key) DO NOTHING
+             RETURNING key`,
+            ['raid50_drop_once_11939089695_20261012',JSON.stringify({jid:p.jid,raidId:s.startedAt,at:Date.now()})]
+          )
+          if(oneOff.rowCount) singleUseGear='armadura_divina'
+        }
+      }
       if(singleUseGear || Math.random()<chance){
         const gearId=singleUseGear || cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
         const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
