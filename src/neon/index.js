@@ -1675,7 +1675,8 @@ function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
 function petStatusBonus(p){
   const spec=PET_STATUS_SPECIALTIES[String(p?.species||'').toLowerCase()]
   if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada',critPct:0}
-  const scale=1+Math.min(.25,Math.max(0,Number(p.level||1)-1)*.01)
+  const maxGrowth=spec.raid?.25:.50
+  const scale=1+Math.min(maxGrowth,Math.max(0,Number(p.level||1)-1)*(maxGrowth/99))
   const cap=spec.raid?15:10
   const rawPct=n=>Math.min(cap,Number(n||0)*scale)
   const pct=n=>rawPct(n).toLocaleString('pt-BR',{maximumFractionDigits:1})
@@ -9920,7 +9921,7 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
             if(cmd==='meupet'||cmd==='statuspet'){
               const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
               const bonus=petStatusBonus(p)
-              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🎯 Perfil: *${petIdentityTag(p.species)}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n🧭 Especialidade de expedição: *${petExpeditionTrait(p.species).label}*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
+              return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🎯 Perfil: *${petIdentityTag(p.species)}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n🧭 Especialidade de expedição: *${petExpeditionTrait(p.species).label}*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\nℹ️ Poder influencia duelos de pets, mas não aumenta o dano no Boss/Raid.\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
             }
             if(cmd==='petaventura'){
               const p=await petAdventure(sender)

@@ -88,13 +88,13 @@ export const PET_STATUS_SPECIALTIES = {
 
   // Raids 60/65/70: bônus por especialidade, não multiplicadores de dano
   // globais. Todos seguem os mesmos tetos de 15% e escala por nível.
-  fera_caos:{label:'🐺 Fome do Caos',stats:{damage:10,crit:5},raid:true},
+  fera_caos:{label:'🐺 Fome do Caos',stats:{damage:10,crit:7},raid:true},
   guardiao_caos:{label:'🛡️ Bastião Entrópico',stats:{defense:10,damage:5},raid:true},
   serafim_caotico:{label:'🪽 Asas da Ruína',stats:{crit:9,dodge:7},raid:true},
   oraculo_caos:{label:'🔮 Visão Entrópica',stats:{defense:7,crit:8,drop:4},raid:true},
   fenix_caos:{label:'🔥 Renascimento do Caos',stats:{damage:8,defense:7,dodge:5},healPct:5,healCooldown:5,raid:true},
 
-  pantera_profundezas:{label:'🐈‍⬛ Predadora das Profundezas',stats:{damage:10,crit:7},raid:true},
+  pantera_profundezas:{label:'🐈‍⬛ Predadora das Profundezas',stats:{damage:10,crit:7.5},raid:true},
   guardiao_abissal:{label:'🗿 Muralha Abissal',stats:{defense:10,dodge:6},raid:true},
   dragao_trono:{label:'🐉 Soberania Abissal',stats:{bossDamage:10,defense:7},raid:true},
   oraculo_coroa:{label:'👑 Presságio da Coroa',stats:{crit:10,drop:7,xp:5},raid:true},

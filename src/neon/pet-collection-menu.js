@@ -82,6 +82,7 @@ export function petCollectionDetailText(p,{
   text+=`📍 Situação: *${petStatus(p,{teamIds,expeditionIds})}*\n`
   text+=`${identity(p.species)}\n`
   text+=`⭐ Nível: *${p.level}* • ⚔️ Poder: *${p.power}*\n`
+  text+='ℹ️ Poder serve para duelos de pets; não aumenta o dano no Boss/Raid.\n'
   text+=`❤️ HP: *${p.hp}/${maxHp(p.level,p.xp,p.species)}*\n`
   text+=`⚡ Energia: *${p.energy}/${maxEnergy(p.level,p.species)}*\n\n`
   text+=`✨ *${itemBonus.label}*\n${itemBonus.text}\n\n`
