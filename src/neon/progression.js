@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {homeTrainingReward,homeRestCapacity} from './home-menu.js'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 
@@ -20,11 +21,11 @@ async function tx(fn){
 }
 
 export const HOUSES=[
-  {id:'kitnet',name:'Kitnet',price:25000,trainingXp:100,petRestPercent:15},
-  {id:'casa',name:'Casa',price:80000,trainingXp:180,petRestPercent:25},
-  {id:'sobrado',name:'Sobrado',price:200000,trainingXp:300,petRestPercent:35},
-  {id:'mansao',name:'Mansão',price:600000,trainingXp:450,petRestPercent:50},
-  {id:'cobertura',name:'Cobertura',price:1500000,trainingXp:650,petRestPercent:70},
+  {id:'kitnet',name:'Kitnet',price:25000,trainingXp:100,trainingPercent:0.5,petRestPercent:15,reserveRestSlots:0,sleepXpPercent:3},
+  {id:'casa',name:'Casa',price:80000,trainingXp:180,trainingPercent:0.75,petRestPercent:25,reserveRestSlots:0,sleepXpPercent:5},
+  {id:'sobrado',name:'Sobrado',price:200000,trainingXp:300,trainingPercent:1,petRestPercent:35,reserveRestSlots:1,sleepXpPercent:7},
+  {id:'mansao',name:'Mansão',price:600000,trainingXp:450,trainingPercent:1.25,petRestPercent:50,reserveRestSlots:2,sleepXpPercent:9},
+  {id:'cobertura',name:'Cobertura',price:1500000,trainingXp:650,trainingPercent:1.5,petRestPercent:70,reserveRestSlots:3,sleepXpPercent:12},
 ]
 
 export const CARS=[
@@ -531,15 +532,16 @@ export async function getHomeActivities(jid){
   if(!house) return null
   const keys=[homeActivityKey(jid,'training'),homeActivityKey(jid,'pets')]
   const now=Math.floor(Date.now()/1000)
-  const cooldowns=(await db.query(
-    'SELECT key,expires_at FROM cooldowns WHERE key=ANY($1::text[])',
-    [keys]
-  )).rows
+  const [cooldownResult,userResult]=await Promise.all([
+    db.query('SELECT key,expires_at FROM cooldowns WHERE key=ANY($1::text[])',[keys]),
+    db.query('SELECT level FROM users WHERE jid=$1',[jid])
+  ])
+  const cooldowns=cooldownResult.rows
   const remaining=key=>Math.max(0,Number(cooldowns.find(row=>row.key===key)?.expires_at||0)-now)
+  const playerLevel=Number(userResult.rows[0]?.level||1)
   return {
-    house,
-    trainingRemaining:remaining(keys[0]),
-    petsRemaining:remaining(keys[1])
+    house,playerLevel,trainingReward:homeTrainingReward(house,playerLevel),
+    trainingRemaining:remaining(keys[0]),petsRemaining:remaining(keys[1])
   }
 }
 
@@ -549,10 +551,15 @@ export async function trainAtHome(jid){
     const row=(await c.query('SELECT house_id FROM user_homes WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const house=homeFromId(row?.house_id)
     if(!house) throw new Error('Você precisa ter uma casa para treinar. Use !casas.')
+    // Nível máximo não consome o treino; preserva o XP fixo original.
+    const player=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const currentLevel=Number(player?.level||1)
+    if(currentLevel>=999)return {ok:false,maxLevel:true,house}
+    const reward=homeTrainingReward(house,currentLevel)
     const cooldown=await claimCooldown(c,homeActivityKey(jid,'training'),HOME_ACTIVITY_COOLDOWN_SECONDS)
     if(!cooldown.ok) return {ok:false,remaining:cooldown.remaining,house}
-    const level=await grantExpInTransaction(c,jid,house.trainingXp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
-    return {ok:true,house,exp:Number(level.awardedGain??house.trainingXp),baseExp:house.trainingXp,level:level.level,levels:level.levels}
+    const level=await grantExpInTransaction(c,jid,reward.total,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
+    return {ok:true,house,exp:Number(level.awardedGain??reward.total),baseExp:reward.base,bonusExp:reward.bonus,level:level.level,levels:level.levels}
   })
 }
 
@@ -569,6 +576,19 @@ export async function restTeamPetsAtHome(jid){
       [jid]
     )).rows
     if(!team.length) throw new Error('Monte uma equipe em !timepet para descansar seus pets.')
+    // Sobrado, Mansão e Cobertura recuperam 1, 2 e 3 reservas adicionais.
+    // Nunca seleciona pets da equipe novamente ou pets em expedição.
+    const reserveLimit=Math.max(0,homeRestCapacity(house)-3)
+    const reserves=reserveLimit?(await c.query(
+      `SELECT NULL::integer AS slot,p.id,p.name,p.species,p.level,p.xp,p.hp,p.max_hp,p.energy,p.active
+       FROM pet_collection p
+       WHERE p.jid=$1 AND p.active=FALSE
+         AND NOT EXISTS (SELECT 1 FROM pet_team t WHERE t.jid=p.jid AND t.pet_id=p.id)
+         AND NOT EXISTS (SELECT 1 FROM pet_expeditions e
+                         WHERE e.pet_id=p.id AND e.resolved=FALSE)
+       ORDER BY p.id FOR UPDATE OF p`,
+      [jid]
+    )).rows:[]
     const awayIds=(await c.query(
       'SELECT pet_id FROM pet_expeditions WHERE jid=$1 AND pet_id=ANY($2::bigint[]) AND resolved=FALSE',
       [jid,team.map(p=>p.id)]
@@ -596,6 +616,22 @@ export async function restTeamPetsAtHome(jid){
       }
       candidates.push({pet,hp,energy,maxHp,maxEnergy,gainedHp,gainedEnergy})
     }
+    // Seleciona primeiro reservas com maior déficit de HP/energia.
+    const reserveCandidates=[]
+    for(const pet of reserves){
+      const beforeHp=Math.max(0,Number(pet.hp||0))
+      const beforeEnergy=Math.max(0,Number(pet.energy||0))
+      const maxHp=Math.max(1,beforeHp,Number(pet.max_hp||0),petMaxHp(pet.level,pet.xp,pet.species))
+      const maxEnergy=petMaxEnergy(pet.level,pet.species)
+      const gainedHp=Math.max(0,Math.min(maxHp,beforeHp+Math.ceil(maxHp*house.petRestPercent/100))-beforeHp)
+      const gainedEnergy=Math.max(0,Math.min(maxEnergy,beforeEnergy+Math.ceil(maxEnergy*house.petRestPercent/100))-beforeEnergy)
+      if(gainedHp<=0&&gainedEnergy<=0)continue
+      const need=Math.max(0,maxHp-beforeHp)/maxHp+Math.max(0,maxEnergy-beforeEnergy)/maxEnergy
+      reserveCandidates.push({pet,hp:beforeHp+gainedHp,energy:beforeEnergy+gainedEnergy,
+        maxHp,maxEnergy,gainedHp,gainedEnergy,need})
+    }
+    reserveCandidates.sort((a,b)=>b.need-a.need||Number(a.pet.id)-Number(b.pet.id))
+    candidates.push(...reserveCandidates.slice(0,reserveLimit))
     if(!candidates.length){
       return {ok:false,full:true,house,skipped}
     }
@@ -611,7 +647,7 @@ export async function restTeamPetsAtHome(jid){
         // A tabela pets é o espelho do pet principal usado no combate.
         await c.query('UPDATE pets SET hp=$1,max_hp=$2,energy=$3 WHERE jid=$4',[hp,maxHp,energy,jid])
       }
-      restored.push({slot:Number(pet.slot),name:pet.name,hp,energy,maxHp,maxEnergy,gainedHp,gainedEnergy})
+      restored.push({slot:pet.slot==null?null:Number(pet.slot),reserve:pet.slot==null,name:pet.name,hp,energy,maxHp,maxEnergy,gainedHp,gainedEnergy})
     }
     return {ok:true,house,restored,skipped}
   })

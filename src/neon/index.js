@@ -66,6 +66,7 @@ import {petCollectionCategory,petCollectionCategoryPets,petCollectionMenuText,pe
 import { createWebLinkCode } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
+import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 
@@ -8166,10 +8167,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       }
             if(input==='3'){
         setQuickFlow(chat,sender,'house_select',{},90000)
-        let text='🏠 *ESCOLHA UM IMÓVEL*\n\n'
-        HOUSES.forEach((h,i)=>text+=`*${i+1}.* ${h.name} — R$ ${fmt(h.price)}\n`)
-        text+='\n0️⃣ Cancelar'
-        await reply(text)
+        await reply(homeCatalogText(HOUSES,'🏠 *ESCOLHA UM IMÓVEL*'))
         return true
       }
       if(input==='4'){
@@ -8235,9 +8233,10 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       if(input==='1'){
         const result=await trainAtHome(sender)
         if(!result.ok){
-          await reply('⏳ *TREINO INDISPONÍVEL*\n\nAguarde *'+duration(result.remaining)+'* para treinar novamente em casa.')
+          if(result.maxLevel) await reply('🏆 Você já está no nível máximo. O treino foi preservado.')
+          else await reply('⏳ *TREINO INDISPONÍVEL*\n\nAguarde *'+duration(result.remaining)+'* para treinar novamente em casa.')
         }else{
-          await reply('⚔️ *TREINO EM CASA CONCLUÍDO!*\n\n🏡 '+result.house.name+'\n✨ +'+fmt(result.exp)+' XP\n⭐ Nível: '+result.level+'\n⏱️ Próximo treino em 24 horas.')
+          await reply('⚔️ *TREINO EM CASA CONCLUÍDO!*\n\n🏡 '+result.house.name+'\n✨ +'+fmt(result.exp)+' XP ('+fmt(result.baseExp)+' fixos + '+fmt(result.bonusExp)+' pelo nível)\n⭐ Nível: '+result.level+'\n⏱️ Próximo treino em 24 horas.')
         }
         return true
       }
@@ -8252,7 +8251,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
             await reply('⏳ *DESCANSO INDISPONÍVEL*\n\nAguarde *'+duration(result.remaining)+'* para descansar os pets novamente.')
           }
         }else{
-          const lines=result.restored.map(p=>'🐾 *'+p.name+'* — ❤️ +'+p.gainedHp+' HP • ⚡ +'+p.gainedEnergy+' energia').join('\n')
+          const lines=result.restored.map(p=>'🐾 *'+p.name+'*'+(p.reserve?' (reserva)':'')+' — ❤️ +'+p.gainedHp+' HP • ⚡ +'+p.gainedEnergy+' energia').join('\n')
           const absent=result.skipped.length?'\n\n'+result.skipped.map(p=>'↪️ '+p.name+': '+p.reason).join('\n'):''
           await reply('🐾 *PETS DESCANSADOS!*\n\n🏡 '+result.house.name+' — Recuperação '+result.house.petRestPercent+'%\n'+lines+absent+'\n\n⏱️ Próximo descanso em 24 horas.')
         }
@@ -8280,6 +8279,8 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
 Imóvel: *${item.name}*
 Valor: R$ ${fmt(item.price)}
 ${current?`Entrada da ${current.name}: R$ ${fmt(tradeIn)}\n`:''}💸 A pagar: *R$ ${fmt(cost)}*
+
+${homeBenefitsText(item)}
 
 1️⃣ Confirmar
 2️⃣ Cancelar`
@@ -11286,19 +11287,13 @@ ${prefix}clas — ranking de clãs`
 
         } else if(['casas','imoveis','imóveis'].includes(cmd)){
           setQuickFlow(chat,sender,'house_select',{},90000)
-          let text='🏠 *IMÓVEIS DO ALPHA BOT*\n\n'
-          HOUSES.forEach((h,i)=>text+=`*${i+1}.* ${h.name} — R$ ${fmt(h.price)}\n`)
-          text+='\n🏡 Sua casa atual vale 60% como entrada em uma melhor.\n👉 *Responda com o número do imóvel.*\n0️⃣ Cancelar'
-          await reply(text)
+          await reply(homeCatalogText(HOUSES))
 
         } else if(['comprarcasa'].includes(cmd)){
           const input=args[0]
           if(!input){
             setQuickFlow(chat,sender,'house_select',{},90000)
-            let text='🏠 *QUAL IMÓVEL QUER COMPRAR?*\n\n'
-            HOUSES.forEach((h,i)=>text+=`*${i+1}.* ${h.name} — R$ ${fmt(h.price)}\n`)
-            text+='\n0️⃣ Cancelar'
-            return await reply(text)
+            return await reply(homeCatalogText(HOUSES,'🏠 *QUAL IMÓVEL QUER COMPRAR?*'))
           }
           const r=await buyHouse(sender,input)
           let text=`🏠 *NOVA CASA!*\n\n🏡 ${r.house.name}\n💰 Valor: R$ ${fmt(r.house.price)}\n`
@@ -11321,22 +11316,22 @@ ${prefix}clas — ranking de clãs`
 
 💰 Valor patrimonial: R$ ${fmt(h.price)}
 
-⚔️ *1. Treinar* — +${h.trainingXp} XP
+⚔️ *1. Treinar* — +${fmt(activity.trainingReward.total)} XP (${h.trainingXp} fixos + ${fmt(activity.trainingReward.bonus)} pelo nível)
 ${trainStatus}
 
 🐾 *2. Descansar pets* — +${h.petRestPercent}% HP e energia
 ${restStatus}
-_(até 3 pets da equipe; pets em expedição não participam)_
+_(${homeRestDescription(h)}; pets em expedição não participam)_
 
-😴 *3. Dormir* — benefícios atuais
+😴 *3. Dormir* — +${h.sleepXpPercent}% do XP para o próximo nível em 8h
 
 ⏱️ Treino e descanso: 1 vez a cada 24 horas.
 0️⃣ Sair`)
 
         } else if(['treinar'].includes(cmd)){
           const r=await trainAtHome(sender)
-          if(!r.ok) await reply('⏳ *TREINO INDISPONÍVEL*\n\nAguarde *'+duration(r.remaining)+'* para treinar novamente em casa.')
-          else await reply('⚔️ *TREINO EM CASA CONCLUÍDO!*\n\n🏡 '+r.house.name+'\n✨ +'+fmt(r.exp)+' XP\n⭐ Nível: '+r.level+'\n⏱️ Próximo treino em 24 horas.')
+          if(!r.ok) await reply(r.maxLevel?'🏆 Você já está no nível máximo. O treino foi preservado.':'⏳ *TREINO INDISPONÍVEL*\n\nAguarde *'+duration(r.remaining)+'* para treinar novamente em casa.')
+          else await reply('⚔️ *TREINO EM CASA CONCLUÍDO!*\n\n🏡 '+r.house.name+'\n✨ +'+fmt(r.exp)+' XP ('+fmt(r.baseExp)+' fixos + '+fmt(r.bonusExp)+' pelo nível)\n⭐ Nível: '+r.level+'\n⏱️ Próximo treino em 24 horas.')
 
         } else if(['descansarpets'].includes(cmd)){
           const r=await restTeamPetsAtHome(sender)
@@ -11344,7 +11339,7 @@ _(até 3 pets da equipe; pets em expedição não participam)_
             if(r.full) await reply('🐾 *DESCANSO NÃO NECESSÁRIO*\n\n'+r.skipped.map(p=>'• '+p.name+': '+p.reason).join('\n')+'\n✅ O descanso diário foi preservado.')
             else await reply('⏳ *DESCANSO INDISPONÍVEL*\n\nAguarde *'+duration(r.remaining)+'* para recuperar os pets novamente.')
           }else{
-            const lines=r.restored.map(p=>'🐾 *'+p.name+'* — ❤️ +'+p.gainedHp+' HP • ⚡ +'+p.gainedEnergy+' energia').join('\n')
+            const lines=r.restored.map(p=>'🐾 *'+p.name+'*'+(p.reserve?' (reserva)':'')+' — ❤️ +'+p.gainedHp+' HP • ⚡ +'+p.gainedEnergy+' energia').join('\n')
             const skipped=r.skipped.length?'\n\n'+r.skipped.map(p=>'↪️ '+p.name+': '+p.reason).join('\n'):''
             await reply('🐾 *PETS DESCANSADOS!*\n\n🏡 '+r.house.name+' — +'+r.house.petRestPercent+'%\n'+lines+skipped+'\n\n⏱️ Próximo descanso em 24 horas.')
           }
