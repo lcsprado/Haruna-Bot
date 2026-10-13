@@ -654,8 +654,20 @@ async function runRaidCombat(chat,level,reply){
 ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Number(x.petBonusDamage||0)>0?` *(+${Number(x.petBonusDamage).toLocaleString('pt-BR')} bônus pet)*`:''}
 💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP`
             if(x.petXp) text+=` • 🐾 +${x.petXp} XP pet`
-            if(Number(x.petSkillHealing||0)>0) text+=`
-💚 Cura do pet: *+${Number(x.petSkillHealing).toLocaleString('pt-BR')} HP*`
+            const skillHealing=Math.max(0,Number(x.petSkillHealing||0))
+            const classHealing=Math.max(0,Number(x.classHealing||0))
+            const potionHealing=Math.max(0,Number(x.potionHealing||0))
+            const healedTotal=skillHealing+classHealing+potionHealing
+            if(healedTotal>0){
+              text+='\n💚 *Cura recebida: +'+fmt(healedTotal)+' HP*'
+              if(skillHealing>0) text+='\n   🐾 Skill do pet: +'+fmt(skillHealing)+' HP'
+              if(classHealing>0) text+='\n   ⚜️ Passiva da classe: +'+fmt(classHealing)+' HP'
+              if(potionHealing>0) text+='\n   🧪 Poções: +'+fmt(potionHealing)+' HP ('+Number(x.potionUses||0)+' uso(s))'
+            }else{
+              text+='\n💚 Cura recebida: *0 HP* (nenhuma cura ativada)'
+            }
+            const petPotionHealing=Math.max(0,Number(x.petPotionHealing||0))
+            if(petPotionHealing>0)text+='\n🐾🧪 Cura do pet combatente: +'+fmt(petPotionHealing)+' HP ('+Number(x.petPotionUses||0)+' poção(ões))'
             if(x.material) text+=`
 🧩 ${x.material.name} ×${x.material.qty}`
             if(x.drop) text+=`
