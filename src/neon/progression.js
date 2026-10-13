@@ -1061,7 +1061,7 @@ export async function getCltUberStatus(jid){
       const type=CLT_UBER_TYPES.find(x=>x.id===r.driver_type)
       const car=CARS.find(x=>x.id===r.car_id)||null
       const active=Boolean(r.car_id&&Number(r.shift_ends_at||0)>now)
-      return {...r,slot:i+1,type,car,active,paid:Number(r.price_paid??type?.price||0),
+      return {...r,slot:i+1,type,car,active,paid:Number(r.price_paid??type?.price??0),
         resale:cltDriverTradeInValue(Number(r.price_paid??type?.price??0)),
         remaining:active?Number(r.shift_ends_at)-now:0,finished:Boolean(r.car_id&&r.shift_ends_at&&Number(r.shift_ends_at)<=now)}
     }),
