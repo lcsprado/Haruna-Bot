@@ -739,6 +739,50 @@ export async function buyMotorcycle(jid,input){
   })
 }
 
+// Valor de revenda/troca: 70% do preço efetivamente pago, não do catálogo.
+export function carTradeInCredit(paid){
+  const value=Number(paid)
+  if(!Number.isSafeInteger(value)||value<0)throw new Error('Valor de compra do veículo inválido.')
+  return Math.floor(value*0.70)
+}
+
+// Troca atômica: valida posse, turno CLT, crédito e saldo antes de modificar
+// ambos os carros. O crédito NUNCA vira saldo na carteira nessa operação.
+export async function tradeCar(jid,oldInput,newInput){
+  await ensureUser(jid)
+  const oldCar=resolveCatalog(oldInput,CARS)
+  const newCar=resolveCatalog(newInput,CARS)
+  if(!oldCar||!newCar)throw new Error('Carro inválido. Confira !garagem e !carros.')
+  if(oldCar.id===newCar.id)throw new Error('Escolha um carro diferente para a troca.')
+  return tx(async client=>{
+    // A carteira funciona como mutex por jogador também para operações paralelas.
+    const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    const cash=Number(wallet.rows[0]?.cash||0)
+    const owned=await client.query('SELECT car_id,price_paid FROM user_cars WHERE jid=$1 FOR UPDATE',[jid])
+    const current=owned.rows.find(row=>row.car_id===oldCar.id)
+    if(!current)throw new Error('Você não possui o carro oferecido como entrada.')
+    if(owned.rows.some(row=>row.car_id===newCar.id))throw new Error('Você já possui o carro escolhido.')
+    const credit=carTradeInCredit(Number(current.price_paid))
+    // Impede trocar um carro mais caro por outro barato e gerar dinheiro do nada.
+    if(newCar.price<=credit)throw new Error('Escolha um veículo com preço superior ao valor da entrada. Não há troco em dinheiro.')
+    const now=Math.floor(Date.now()/1000)
+    const active=await client.query(
+      'SELECT 1 FROM clt_uber_drivers WHERE jid=$1 AND car_id=$2 AND shift_ends_at>$3 LIMIT 1',
+      [jid,oldCar.id,now]
+    )
+    if(active.rowCount)throw new Error('Esse carro está em turno no CLT Uber. Aguarde o término para trocá-lo.')
+    const difference=newCar.price-credit
+    if(cash<difference)throw new Error('Saldo insuficiente. Faltam R$ '+(difference-cash).toLocaleString('pt-BR')+' para completar a troca.')
+    await client.query('UPDATE clt_uber_drivers SET car_id=NULL WHERE jid=$1 AND car_id=$2',[jid,oldCar.id])
+    await client.query('DELETE FROM user_cars WHERE jid=$1 AND car_id=$2',[jid,oldCar.id])
+    await client.query('INSERT INTO user_cars(jid,car_id,price_paid) VALUES($1,$2,$3)',[jid,newCar.id,newCar.price])
+    await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[difference,jid])
+    await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'vehicle_trade_in',$3)",
+      [jid,difference,oldCar.name+' -> '+newCar.name+' | entrada: R$ '+credit])
+    return {oldCar,newCar,paid:Number(current.price_paid),credit,difference,depreciation:Number(current.price_paid)-credit,cash:cash-difference}
+  })
+}
+
 export async function sellCar(jid,input){
   await ensureUser(jid)
   const car=resolveCatalog(input,CARS)
@@ -751,7 +795,7 @@ export async function sellCar(jid,input){
     if(active.rowCount) throw new Error('Esse carro está trabalhando no CLT Uber. Espere o turno terminar.')
     await client.query('UPDATE clt_uber_drivers SET car_id=NULL WHERE jid=$1 AND car_id=$2',[jid,car.id])
     const paid=Number(r.rows[0].price_paid||car.price)
-    const resale=Math.floor(paid*0.70)
+    const resale=carTradeInCredit(paid)
     await client.query('DELETE FROM user_cars WHERE jid=$1 AND car_id=$2',[jid,car.id])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[resale,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'vehicle_sale',$3)",[jid,resale,car.name])

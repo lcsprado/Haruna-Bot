@@ -48,7 +48,7 @@ import {
   getDailyMissions, progressDailyMission, claimDailyMissions,
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
-  getHome, buyHouse, getHomeActivities, trainAtHome, restTeamPetsAtHome, getGarage, buyCar, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
+  getHome, buyHouse, getHomeActivities, trainAtHome, restTeamPetsAtHome, getGarage, buyCar, tradeCar, carTradeInCredit, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
   hireCltUberDriver, getCltUberStatus, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, businessUpgradeQuote, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent,
@@ -6810,9 +6810,100 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       return true
     }
 
+    if(flow.stage==='car_resale_select'){
+      const num=Number(input)
+      const ids=flow.data?.ids||[]
+      if(!Number.isInteger(num)||num<1||num>ids.length){
+        await reply('🚗 Escolha um carro da lista pelo número ou *0* para sair.')
+        return true
+      }
+      const car=(await getGarage(sender)).find(c=>c.id===ids[num-1])
+      if(!car){clearQuickFlow(chat,sender);await reply('❌ Carro não encontrado na garagem. Use !vendercarro novamente.');return true}
+      const paid=Number(car.price_paid??car.price),credit=carTradeInCredit(paid)
+      setQuickFlow(chat,sender,'car_resale_action',{id:car.id},90000)
+      await reply('🚗 *O QUE DESEJA FAZER?*\n\n🔑 *'+car.name+'*\n'+
+        '💰 Valor pago: R$ '+fmt(paid)+'\n'+
+        '💵 Crédito de revenda (70%): *R$ '+fmt(credit)+'*\n'+
+        '📉 Desvalorização: 30%\n\n'+
+        '1️⃣ Vender e receber o dinheiro\n'+
+        '2️⃣ Usar como entrada em outro carro\n'+
+        '0️⃣ Cancelar')
+      return true
+    }
+
+    if(flow.stage==='car_resale_action'){
+      const car=(await getGarage(sender)).find(c=>c.id===flow.data.id)
+      if(!car){clearQuickFlow(chat,sender);await reply('❌ Carro não encontrado. Abra !vendercarro novamente.');return true}
+      const paid=Number(car.price_paid??car.price),credit=carTradeInCredit(paid)
+      if(input==='1'){
+        setQuickFlow(chat,sender,'confirm_sell_car',{id:car.id},90000)
+        await reply('⚠️ *CONFIRMAR REVENDA*\n\n🚗 *'+car.name+'*\n'+
+          '💰 Pago originalmente: R$ '+fmt(paid)+'\n'+
+          '💵 Você receberá: *R$ '+fmt(credit)+'*\n'+
+          '📉 Desvalorização: R$ '+fmt(paid-credit)+' (30%)\n\n'+
+          '1️⃣ Confirmar venda\n2️⃣ Cancelar')
+        return true
+      }
+      if(input==='2'){
+        const garage=await getGarage(sender)
+        const options=CARS.filter(c=>c.id!==car.id&&!garage.some(g=>g.id===c.id)&&c.price>credit)
+        if(!options.length){
+          clearQuickFlow(chat,sender)
+          await reply('🚗 Não há outro carro disponível para troca com esse crédito.')
+          return true
+        }
+        setQuickFlow(chat,sender,'car_trade_target',{oldId:car.id,ids:options.map(c=>c.id)},90000)
+        let out='🔄 *TROCAR CARRO — ESCOLHA O NOVO*\n\n'
+        out+='🚗 Entrada: *'+car.name+'* — R$ '+fmt(credit)+' (70% do pago)\n\n'
+        options.forEach((c,n)=>out+='*'+(n+1)+'.* '+c.name+' — R$ '+fmt(c.price)+'\n   💸 Diferença: *R$ '+fmt(c.price-credit)+'*\n')
+        out+='\n👉 Responda com o número.\n0️⃣ Cancelar'
+        await reply(out)
+        return true
+      }
+      await reply('🚗 Escolha *1* Vender, *2* Trocar ou *0* Cancelar.')
+      return true
+    }
+
+    if(flow.stage==='car_trade_target'){
+      const number=Number(input),ids=flow.data?.ids||[]
+      if(!Number.isInteger(number)||number<1||number>ids.length){
+        await reply('🚗 Escolha um carro pelo número ou *0* para cancelar.')
+        return true
+      }
+      const car=(await getGarage(sender)).find(c=>c.id===flow.data.oldId)
+      const target=CARS.find(c=>c.id===ids[number-1])
+      if(!car||!target){clearQuickFlow(chat,sender);await reply('❌ A garagem mudou. Reinicie com !vendercarro.');return true}
+      const paid=Number(car.price_paid??car.price),credit=carTradeInCredit(paid)
+      if(target.price<=credit){clearQuickFlow(chat,sender);await reply('❌ Troca indisponível para esse veículo.');return true}
+      setQuickFlow(chat,sender,'car_trade_confirm',{oldId:car.id,newId:target.id},90000)
+      await reply('🔄 *CONFIRMAR TROCA DE CARRO*\n\n'+
+        '🚙 Seu carro: *'+car.name+'*\n'+
+        '💰 Valor pago: R$ '+fmt(paid)+'\n'+
+        '♻️ Entrada (70%): *R$ '+fmt(credit)+'*\n\n'+
+        '🚗 Novo carro: *'+target.name+'*\n'+
+        '🏷️ Preço: R$ '+fmt(target.price)+'\n'+
+        '💸 Diferença a pagar: *R$ '+fmt(target.price-credit)+'*\n\n'+
+        '1️⃣ Confirmar troca\n2️⃣ Cancelar')
+      return true
+    }
+
+    if(flow.stage==='car_trade_confirm'){
+      if(input==='2'){clearQuickFlow(chat,sender);await reply('❌ Troca cancelada.');return true}
+      if(input!=='1'){await reply('Escolha *1* para confirmar ou *2* para cancelar.');return true}
+      const result=await tradeCar(sender,flow.data.oldId,flow.data.newId)
+      clearQuickFlow(chat,sender)
+      await reply('✅ *CARRO TROCADO!*\n\n'+
+        '🚗 Antigo: *'+result.oldCar.name+'*\n'+
+        '🔑 Novo: *'+result.newCar.name+'*\n'+
+        '♻️ Entrada: R$ '+fmt(result.credit)+'\n'+
+        '💸 Pago: *R$ '+fmt(result.difference)+'*\n'+
+        '🪙 Carteira: R$ '+fmt(result.cash))
+      return true
+    }
+
     if(flow.stage==='confirm_sell_car'){
-      if(['nao','não','n'].includes(input)){ clearQuickFlow(chat,sender); await reply('❌ Venda cancelada.'); return true }
-      if(!['sim','s'].includes(input)){ await reply('⚠️ Responda *SIM* para vender ou *NÃO* para cancelar.'); return true }
+      if(['nao','não','n','2'].includes(input)){ clearQuickFlow(chat,sender); await reply('❌ Venda cancelada.'); return true }
+      if(!['sim','s','1'].includes(input)){ await reply('⚠️ Digite *1* para vender ou *2* para cancelar.'); return true }
       const r=await sellCar(sender,flow.data.id)
       clearQuickFlow(chat,sender)
       await reply(`✅ *CARRO VENDIDO*\n🚗 ${r.name}\n💰 Recebido: *R$ ${fmt(r.resale)}*\n📉 Desvalorização: R$ ${fmt(r.depreciation)} (30%)`)
@@ -10500,14 +10591,30 @@ ${results.join('\n')}
           else text+='\n🏆 Cargo máximo alcançado!'
           await reply(text)
 
-        } else if(['vendercarro'].includes(cmd)){
-          if(!args.length) return await reply(`🚗 Use *${prefix}vendercarro número* conforme sua *${prefix}garagem*.\n⚠️ Revenda: *70% do valor pago* (30% de desvalorização).`)
+        } else if(['vendercarro','trocarcarro'].includes(cmd)){
           const garage=await getGarage(sender)
-          const idx=Number(args[0])
-          const selected=/^\d+$/.test(args[0]||'') ? garage[idx-1] : garage.find(x=>x.id===args.join(' ').toLowerCase())
-          if(!selected) return await reply(`❌ Carro não encontrado na sua garagem. Use *${prefix}garagem*.`)
-          setQuickFlow(chat,sender,'confirm_sell_car',{id:selected.id,name:selected.name,resale:Math.floor(Number(selected.price_paid||selected.price)*0.70)},90000)
-          await reply(`⚠️ *CONFIRMAR VENDA*\n\n🚗 ${selected.name}\n💰 Você recebe: *R$ ${fmt(Math.floor(Number(selected.price_paid||selected.price)*0.70))}*\n📉 Desvalorização: *30%*\n\nResponda *SIM* para vender ou *NÃO* para cancelar.`)
+          if(!garage.length) return await reply('🚗 Sua garagem está vazia. Veja *!carros*.')
+          if(args.length){
+            const index=Number(args[0])
+            const selected=/^\d+$/.test(args[0])?garage[index-1]:garage.find(c=>c.id===args.join(' ').toLowerCase())
+            if(!selected)return await reply('❌ Carro não encontrado. Use *!vendercarro* para listar os seus veículos.')
+            const paid=Number(selected.price_paid??selected.price),credit=carTradeInCredit(paid)
+            setQuickFlow(chat,sender,'car_resale_action',{id:selected.id},90000)
+            return await reply('🚗 *O QUE DESEJA FAZER?*\n\n🔑 *'+selected.name+'*\n'+
+              '💰 Valor pago: R$ '+fmt(paid)+'\n'+
+              '💵 Revenda/entrada (70%): *R$ '+fmt(credit)+'*\n\n'+
+              '1️⃣ Vender e receber o dinheiro\n2️⃣ Usar como entrada em outro carro\n0️⃣ Cancelar')
+          }
+          setQuickFlow(chat,sender,'car_resale_select',{ids:garage.map(car=>car.id)},90000)
+          let out='🚗 *REVENDA E TROCA DE CARROS*\n\n'
+          garage.forEach((car,n)=>{
+            const paid=Number(car.price_paid??car.price),credit=carTradeInCredit(paid)
+            out+='*'+(n+1)+'.* *'+car.name+'*\n'+
+              '   💰 Valor pago: R$ '+fmt(paid)+'\n'+
+              '   ♻️ Revenda/entrada: *R$ '+fmt(credit)+'* (70%)\n'
+          })
+          out+='\n👉 Escolha *1, 2, 3...* para vender ou trocar.\n0️⃣ Sair'
+          await reply(out)
 
         } else if(['vendermoto','venderbike','venderbicicleta'].includes(cmd)){
           if(!args.length) return await reply(`🚲🏍️ Use *${prefix}vendermoto número* conforme *${prefix}minhasmotos*.\n⚠️ Revenda: *70% do valor pago*.`)
@@ -11395,7 +11502,7 @@ _(${homeRestDescription(h)}; pets em expedição não participam)_
           setQuickFlow(chat,sender,'car_select',{},90000)
           let text='🚗 *CONCESSIONÁRIA DO ALPHA BOT*\n\n'
           CARS.forEach((c,i)=>text+=`*${i+1}.* ${c.name} — R$ ${fmt(c.price)}\n`)
-          text+='\n🚗 Garagem atual comporta até 5 carros.\n👉 *Responda com o número do carro.*\n0️⃣ Cancelar'
+          text+='\n🚗 Garagem atual comporta até 5 carros.\n♻️ Para trocar usando um carro de entrada, utilize *!vendercarro*.\n👉 *Responda com o número do carro.*\n0️⃣ Cancelar'
           await reply(text)
 
         } else if(['comprarcarro'].includes(cmd)){
