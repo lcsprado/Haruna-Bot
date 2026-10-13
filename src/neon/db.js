@@ -1415,6 +1415,28 @@ export async function rejectItemTradeOffer(jid,offerId) {
   })
 }
 
+// Revenda de lendários exclusivos do catálogo de Raids. Eventos e caixas não mudam.
+const RAID_LEGENDARY_GEAR_SELL_VALUES=Object.freeze({
+  "excalibur": 150000,
+  "armadura_titan": 150000,
+  "katana_divina": 200000,
+  "armadura_divina": 200000,
+  "lamina_caos": 300000,
+  "machado_tita": 300000,
+  "couraca_caos": 300000,
+  "armadura_tita_ancestral": 300000,
+  "foice_abismo": 350000,
+  "espada_aurora": 350000,
+  "manto_abismo_eterno": 350000,
+  "armadura_aurora": 350000,
+  "exterminadora_eclipse": 400000,
+  "armadura_deus_eclipse": 400000
+})
+function raidLegendarySellValue(item){
+  if(item?.rarity!=='legendary'||!['weapon','armor'].includes(item.category))return null
+  return RAID_LEGENDARY_GEAR_SELL_VALUES[item.id]??null
+}
+
 export async function getInventory(jid) {
   const { rows } = await db.query(`
     SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
@@ -1437,6 +1459,24 @@ export async function getInventory(jid) {
              WHEN it.sellable=FALSE THEN 0
              WHEN it.id IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse') THEN 100
              WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
+             WHEN it.rarity='legendary' AND it.category IN ('weapon','armor') THEN
+               CASE it.id
+                 WHEN 'excalibur' THEN 150000
+                 WHEN 'armadura_titan' THEN 150000
+                 WHEN 'katana_divina' THEN 200000
+                 WHEN 'armadura_divina' THEN 200000
+                 WHEN 'lamina_caos' THEN 300000
+                 WHEN 'machado_tita' THEN 300000
+                 WHEN 'couraca_caos' THEN 300000
+                 WHEN 'armadura_tita_ancestral' THEN 300000
+                 WHEN 'foice_abismo' THEN 350000
+                 WHEN 'espada_aurora' THEN 350000
+                 WHEN 'manto_abismo_eterno' THEN 350000
+                 WHEN 'armadura_aurora' THEN 350000
+                 WHEN 'exterminadora_eclipse' THEN 400000
+                 WHEN 'armadura_deus_eclipse' THEN 400000
+                 ELSE 100000
+               END
              WHEN it.rarity='legendary' THEN 100000
              WHEN it.rarity='epic' THEN 25000
              WHEN it.rarity='rare' THEN 7500
@@ -1524,7 +1564,7 @@ export async function sellItem(jid, itemId, qty=1) {
     let unit
     if(raidMaterialId(itemId)) unit=RAID_MATERIAL_SELL_VALUE
     else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
-    else if(item.rarity==='legendary') unit=100000
+    else if(item.rarity==='legendary') unit=raidLegendarySellValue(item)??100000
     else if(item.rarity==='epic') unit=25000
     else if(item.rarity==='rare') unit=7500
     else if(item.rarity==='uncommon') unit=2500
@@ -1633,7 +1673,7 @@ export async function sellItemsBatch(jid, selections=[]) {
       let unit
       if(raidMaterialId(sel.itemId)) unit=RAID_MATERIAL_SELL_VALUE
       else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
-      else if(item.rarity==='legendary') unit=100000
+      else if(item.rarity==='legendary') unit=raidLegendarySellValue(item)??100000
       else if(item.rarity==='epic') unit=25000
       else if(item.rarity==='rare') unit=7500
       else if(item.rarity==='uncommon') unit=2500
