@@ -9886,6 +9886,16 @@ Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
             )
           }
 
+          // O WhatsApp informa fileLength no envelope; nunca baixe mídia sem tamanho
+          // declarado ou acima do teto. Isso evita downloads gigantes por comando.
+          const stickerNode=source.raw?.message?.[source.type]
+          const stickerLength=stickerNode?.fileLength
+          const stickerBytes=Number(stickerLength?.toString?.() || stickerLength || 0)
+          const stickerMaxBytes=source.type==='videoMessage' ? 3*1024*1024 : 2*1024*1024
+          if(!Number.isSafeInteger(stickerBytes)||stickerBytes<=0||stickerBytes>stickerMaxBytes){
+            return await reply('❌ Mídia sem tamanho válido ou muito grande. Para figurinha, envie imagem até 2 MB ou vídeo até 3 MB.')
+          }
+
           try{
             await sock.sendMessage(chat,{react:{text:'⏳',key:msg.key}})
           }catch{}
