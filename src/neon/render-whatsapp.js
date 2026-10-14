@@ -24,11 +24,15 @@ http.createServer((req,res)=>{
     res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'})
     return res.end(healthPageHtml)
   }
-  if(url.pathname==='/health'){
+  // Liveness HTTP independente do socket WhatsApp: monitores externos nao devem
+  // marcar a instancia como indisponivel durante uma reconexao do Baileys.
+  // /ready preserva o diagnostico estrito: 503 se o WhatsApp nao estiver aberto.
+  if(url.pathname==='/health' || url.pathname==='/ready'){
     const connected=health.whatsapp==='open'
-    res.writeHead(connected?200:503,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'})
+    const isReadyCheck=url.pathname==='/ready'
+    res.writeHead(isReadyCheck&&!connected?503:200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'})
     return res.end(JSON.stringify({
-      ok:connected,service:'alpha-bot-whatsapp',whatsapp:health.whatsapp,
+      ok:isReadyCheck?connected:true,whatsappConnected:connected,service:'alpha-bot-whatsapp',whatsapp:health.whatsapp,
       lastOpen:health.lastOpen||null,
       uptimeSeconds:Math.floor(process.uptime()),
       messagesSeen:Number(health.messagesSeen||0),
