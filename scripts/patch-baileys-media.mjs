@@ -11,8 +11,14 @@ const manifest=JSON.parse(await readFile(join(root,'package.json'),'utf8'))
 if(manifest.version!=='7.0.0-rc14')throw Error('Revalidate the bounded media patch before changing Baileys versions.')
 const path=join(root,'lib/Utils/messages-media.js')
 const marker='// Alpha bounded media transport (rc14)'
+const explicitSignal='signal: options.signal ?? (Number(options.timeout)>0?AbortSignal.timeout(Number(options.timeout)):undefined)'
 let source=await readFile(path,'utf8')
 if(source.includes(marker)){
+  const oldDefault='signal: options.signal ?? AbortSignal.timeout(Number(options.timeout)||30000)'
+  if(source.includes(oldDefault)){
+    source=source.replace(oldDefault,explicitSignal)
+    await writeFile(path,source)
+  }else if(!source.includes(explicitSignal))throw Error('Unexpected bounded media timeout patch.')
   console.log('Baileys bounded media transport already applied.')
 }else{
   const fetchBefore=`        dispatcher: options.dispatcher,
@@ -27,7 +33,7 @@ if(source.includes(marker)){
         dispatcher: options.dispatcher,
         method: 'GET',
         headers: options.headers,
-        signal: options.signal ?? AbortSignal.timeout(Number(options.timeout)||30000)
+        ${explicitSignal}
     });`)
   source=source.replace(pipeBefore,`    fetched.once('error', error => output.destroy(error));
     output.once('close', () => fetched.destroy());

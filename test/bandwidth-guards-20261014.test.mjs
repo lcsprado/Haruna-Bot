@@ -131,5 +131,7 @@ test('RPG combat, catalog, rewards, pets and reserved event remain byte-for-byte
   assert.match(reserved,/Status: PLANEJADO \/ BLOQUEADO/)
   const runtime=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.doesNotMatch(runtime,/calcanhar|aquiles/i)
+  assert.match(runtime,/syncFullHistory:false/)
+  assert.doesNotMatch(runtime,/shouldSyncHistoryMessage:\(\)=>false/)
   assert.doesNotMatch(runtime.slice(runtime.indexOf("sock.ev.on('messages.upsert'")),/cacheIncomingMessage\(sock,msg\)/)
 })

@@ -2197,8 +2197,7 @@ async function start() {
     // Evita que a sessão vinculada se anuncie permanentemente online e impeça push do WhatsApp.
     markOnlineOnConnect:false,
     syncFullHistory:false,
-    // syncFullHistory=false alone still accepts history bundles by default in rc14.
-    shouldSyncHistoryMessage:()=>false,
+    // Preserve Baileys' initial identity/LID synchronization; full history remains off.
     cachedGroupMetadata:jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid)),
     mediaCache:whatsappMediaCache,
     connectTimeoutMs:60000,
