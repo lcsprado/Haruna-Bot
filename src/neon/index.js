@@ -798,6 +798,24 @@ async function allowEventPlayerAction(chat,sender,isOwner=false){
   return true
 }
 
+// Captura Snipe em memoria com teto de bytes; midias nao sao replicadas ao Neon.
+// Isso evita uploads base64 de ate 8 MB a cada midia comum recebida em grupos.
+const SNIPE_MEDIA_LIMIT_BYTES=512*1024
+const SNIPE_MEDIA_BUDGET_PER_HOUR_BYTES=8*1024*1024
+let snipeMediaHourStartedAt=Date.now()
+let snipeMediaReservedBytes=0
+function reserveSnipeMediaBudget(declaredSize){
+  const now=Date.now()
+  if(now-snipeMediaHourStartedAt>=60*60*1000){
+    snipeMediaHourStartedAt=now
+    snipeMediaReservedBytes=0
+  }
+  // Tamanho ausente: jamais iniciar download ilimitado.
+  if(!Number.isSafeInteger(declaredSize)||declaredSize<=0||declaredSize>SNIPE_MEDIA_LIMIT_BYTES)return false
+  if(snipeMediaReservedBytes+declaredSize>SNIPE_MEDIA_BUDGET_PER_HOUR_BYTES)return false
+  snipeMediaReservedBytes+=declaredSize
+  return true
+}
 const deletedMessageCache=new Map()
 const lastDeletedByChat=new Map()
 const SNIPE_TTL_MS=30*60*1000
@@ -820,7 +838,7 @@ async function cacheIncomingMessage(sock,msg){
   const declaredSize=Number(rawLength?.toString?.() || rawLength || 0)
   let mediaBuffer=null
 
-  if(supportedMedia && (!declaredSize || declaredSize<=8*1024*1024)){
+  if(supportedMedia && reserveSnipeMediaBudget(declaredSize)){
     try{
       const downloaded=await downloadMediaMessage(
         msg,
@@ -828,16 +846,12 @@ async function cacheIncomingMessage(sock,msg){
         {},
         {logger,reuploadRequest:sock.updateMediaMessage}
       )
-      if(downloaded?.length && downloaded.length<=8*1024*1024){
+      if(downloaded?.length && downloaded.length<=SNIPE_MEDIA_LIMIT_BYTES){
         mediaBuffer=Buffer.from(downloaded)
-      }else if(downloaded?.length){
-        console.log('[Snipe] mídia ignorada por exceder 8 MB')
       }
     }catch(err){
       console.log('[Snipe] não foi possível armazenar mídia:',err?.message||err)
     }
-  }else if(supportedMedia && declaredSize>8*1024*1024){
-    console.log('[Snipe] mídia ignorada por exceder 8 MB')
   }
 
   const entry={
@@ -858,7 +872,7 @@ async function cacheIncomingMessage(sock,msg){
   setTimeout(()=>deletedMessageCache.delete(key),SNIPE_TTL_MS).unref?.()
 
   try{
-    await saveSnipeMessage(entry)
+    await saveSnipeMessage({...entry,mediaBuffer:null})
   }catch(err){
     console.error('[Snipe] falha ao persistir mensagem:',err?.message||err)
   }
