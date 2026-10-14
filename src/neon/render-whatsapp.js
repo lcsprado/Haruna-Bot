@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { healthPageHtml } from './health-page.js'
 
 // A dependência Signal pode imprimir sessões criptográficas completas em texto.
 // Silencia exclusivamente esse diagnóstico verboso, protegendo as chaves e a CPU;
@@ -15,7 +16,15 @@ const port=Number(process.env.PORT||10000)
 const health=globalThis.__trevoHealth||(globalThis.__trevoHealth={whatsapp:'starting',lastChange:Date.now(),lastOpen:0,everConnected:false})
 
 http.createServer((req,res)=>{
-  if(req.url==='/health'){
+  const url=new URL(req.url||'/', 'http://localhost')
+  const browserWantsHtml=/text\/html/i.test(String(req.headers.accept||''))
+  const showPage=url.pathname==='/'||url.pathname==='/acordar'||
+    (url.pathname==='/health'&&browserWantsHtml&&url.searchParams.get('format')!=='json')
+  if(showPage){
+    res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'})
+    return res.end(healthPageHtml)
+  }
+  if(url.pathname==='/health'){
     const connected=health.whatsapp==='open'
     res.writeHead(connected?200:503,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'})
     return res.end(JSON.stringify({
@@ -34,8 +43,8 @@ http.createServer((req,res)=>{
       forceFlushCount:Number(health.forceFlushCount||0)
     }))
   }
-  res.writeHead(200,{'content-type':'text/plain; charset=utf-8','cache-control':'no-store'})
-  res.end('Alpha Bot WhatsApp online')
+  res.writeHead(404,{'content-type':'text/plain; charset=utf-8','cache-control':'no-store'})
+  res.end('Not found')
 }).listen(port,'0.0.0.0',()=>console.log('[HTTP] Alpha Bot WhatsApp-only listening on port '+port))
 
 await import('./index.js')
