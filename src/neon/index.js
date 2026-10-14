@@ -9395,10 +9395,13 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         })
         // Instância dedicada ao RPG: não armazenar mensagens nem baixar mídias para Snipe.
         if(isGroup) await recordGroupActivity(chat,sender,body.startsWith(prefix)).catch(()=>{})
-        if(isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))){
+        // Uma única consulta de administrador/configuração por mensagem, em vez de duas.
+        const shouldModerate=isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))
+        const moderationSettings=shouldModerate ? await getCommunitySettings(chat).catch(()=>null) : null
+        if(shouldModerate){
           try{
-            const cs=await getCommunitySettings(chat)
-            if(cs.antiflood_enabled){
+            const cs=moderationSettings
+            if(cs?.antiflood_enabled){
               const fk=chat+'|'+sender, now=Date.now()
               const recent=(floodTracker.get(fk)||[]).filter(t=>now-t<12000)
               recent.push(now); floodTracker.set(fk,recent)
@@ -9412,15 +9415,15 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             }
           }catch(err){ console.error('[antiflood]',err?.message||err) }
         }
-        if(isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))){
+        if(shouldModerate){
           try{
-            const cs=await getCommunitySettings(chat)
+            const cs=moderationSettings
             const lowerBody=body.toLowerCase()
             const linkHit=/(https?:\/\/|www\.|chat\.whatsapp\.com\/|wa\.me\/)/i.test(body)
             const badHit=/\b(porra|caralho|fdp|filho da puta|vai se foder|vsf)\b/i.test(lowerBody)
-            if((cs.antilink_enabled && linkHit) || (cs.antibadword_enabled && badHit)){
+            if((cs?.antilink_enabled && linkHit) || (cs?.antibadword_enabled && badHit)){
               await sock.sendMessage(chat,{delete:msg.key}).catch(()=>{})
-              const reason=cs.antilink_enabled && linkHit?'link não permitido':'palavra bloqueada'
+              const reason=cs?.antilink_enabled && linkHit?'link não permitido':'palavra bloqueada'
               const n=await addGroupWarning(chat,sender)
               await reply(`🛡️ Mensagem removida: *${reason}*. Avisos: *${n}/3*.`)
               if(n>=3){
