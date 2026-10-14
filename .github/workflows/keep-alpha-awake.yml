@@ -1,13 +1,6 @@
 name: Keep Alpha Bot Awake
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - '.github/workflows/keep-alpha-awake.yml'
-  schedule:
-    - cron: '4,17,30,43,56 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -21,4 +14,4 @@ jobs:
           curl --silent --show-error --max-time 60 \
             -o /dev/null \
             -w "HTTP %{http_code}\n" \
-            https://alpha-bot-whatsapp.onrender.com/health || true
+            https://alpha-bot-whatsapp-m3lc.onrender.com/health || true

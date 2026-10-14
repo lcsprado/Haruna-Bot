@@ -1,4 +1,4 @@
-name: Alpha Bot - Manter WhatsApp Ativo
+name: Alpha Bot - Manter WhatsApp Ativo (doidodanave15)
 
 # O Render Free suspende o serviço após 15 minutos sem requisições HTTP.
 # O agendamento do GitHub Actions funciona APENAS na branch padrão (master).
@@ -24,7 +24,7 @@ jobs:
       - name: Acordar o Alpha Bot e verificar WhatsApp
         shell: bash
         run: |
-          URL="https://alpha-bot-whatsapp.onrender.com/health"
+          URL="https://alpha-bot-whatsapp-m3lc.onrender.com/health"
           echo "Solicitando endpoint de saúde sem alterar nenhuma ação do RPG."
           STATUS=$(curl -L -sS -o /tmp/alpha-health.json \
             -w '%{http_code}' --connect-timeout 20 --max-time 95 \
