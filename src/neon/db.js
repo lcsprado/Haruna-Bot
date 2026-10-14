@@ -380,6 +380,7 @@ export async function initDatabase() {
     ['pocao_pet_rara','Poção de Pet Rara','Recupera 160 HP do pet ativo.','consumable',1500,'rare'],
     ['pocao_pet_epica','Poção de Pet Épica','Recupera 320 HP do pet ativo.','consumable',3500,'epic'],
     ['pocao_pet_suprema','Poção de Pet Suprema','Recupera 800 HP do pet ativo.','consumable',9000,'legendary'],
+    ['pocao_pet_full','Poção Full de Pet','Restaura 100% do HP do pet escolhido. Não recupera energia.','consumable',40000,'legendary'],
     ['energetico_pet','Energético Pet','Restaura instantaneamente 100% da energia do pet ativo.','consumable',12000,'rare'],
     // Consumíveis especiais de NPC: preço na tabela fica zero para não aparecerem na loja comum.
     ['pocao_ressurreicao','Poção da Ressurreição','Na Raid, se o HP zerar e não restar cura comum, revive com 30% do HP. Máximo de uma vez por Raid.','consumable',0,'epic'],
@@ -1163,7 +1164,7 @@ export async function purchaseService(jid, serviceId, price) {
 
 // Fonte única da loja comum: catálogo canônico ativo, não todo registro legado do banco.
 // O mesmo filtro é aplicado à listagem e à compra (WhatsApp/Web).
-const REGULAR_SHOP_IDS = new Set(["pocao_p","pocao_m","pocao_g","elixir_supremo","pocao_pet_comum","pocao_pet_rara","pocao_pet_epica","pocao_pet_suprema","energetico_pet","espada_madeira","espada_ferro","espada_aco","machado_guerra","katana_sombria","espada_flamas","tridente_tempestade","lamina_abissal","sabre_runico","lamina_cacador","espada_guardiao","foice_carmesim","lanca_solar","garras_vazio","espada_eclipse","armadura_couro","armadura_ferro","armadura_aco","armadura_samurai","armadura_cavaleiro","armadura_dragao","armadura_abissal","armadura_celestial","armadura_bastiao","manto_runico","couraca_guardiao","manto_fenix","couraca_vulcanica","armadura_vazio","armadura_eclipse","bota_leve","bota_vento","bota_cacador","bota_relampago","chave_raid_10","chave_raid_15","chave_raid_20","chave_raid_25","chave_raid_30","chave_raid_40","chave_raid_50","caixa_sorte","caixa_rara","caixa_epica"]);
+const REGULAR_SHOP_IDS = new Set(["pocao_p","pocao_m","pocao_g","elixir_supremo","pocao_pet_comum","pocao_pet_rara","pocao_pet_epica","pocao_pet_suprema","pocao_pet_full","energetico_pet","espada_madeira","espada_ferro","espada_aco","machado_guerra","katana_sombria","espada_flamas","tridente_tempestade","lamina_abissal","sabre_runico","lamina_cacador","espada_guardiao","foice_carmesim","lanca_solar","garras_vazio","espada_eclipse","armadura_couro","armadura_ferro","armadura_aco","armadura_samurai","armadura_cavaleiro","armadura_dragao","armadura_abissal","armadura_celestial","armadura_bastiao","manto_runico","couraca_guardiao","manto_fenix","couraca_vulcanica","armadura_vazio","armadura_eclipse","bota_leve","bota_vento","bota_cacador","bota_relampago","chave_raid_10","chave_raid_15","chave_raid_20","chave_raid_25","chave_raid_30","chave_raid_40","chave_raid_50","caixa_sorte","caixa_rara","caixa_epica"]);
 export const isRegularShopItem = item => Boolean(item && Number(item.price)>0 && REGULAR_SHOP_IDS.has(String(item.id)));
 
 export async function getShop() {
@@ -2067,6 +2068,8 @@ const PET_POTIONS = {
   pocao_pet_rara: { heal:160, name:'Poção de Pet Rara' },
   pocao_pet_epica: { heal:320, name:'Poção de Pet Épica' },
   pocao_pet_suprema: { heal:800, name:'Poção de Pet Suprema' },
+  // Cura qualquer HP faltante, inclusive pets de níveis futuros; o resultado é limitado a maxHp.
+  pocao_pet_full: { heal:Number.MAX_SAFE_INTEGER, name:'Poção Full de Pet' },
 }
 
 const MAX_LEVEL=999

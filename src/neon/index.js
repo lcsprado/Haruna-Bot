@@ -1448,7 +1448,7 @@ function xpItemReceipt(r){
   return `📜 *${r.name.toUpperCase()} UTILIZADO!*\n✨ +${r.xp.toLocaleString('pt-BR')} XP instantâneos\n⭐ Nível atual: *${r.level}*${r.levelUps?` • ${r.levelUps} nível(is) conquistado(s)!`:''}\n⏳ Limite: 1 tomo por dia.`
 }
 const SHOP_IDS=[
-  'pocao_p','pocao_m','pocao_g','elixir_supremo','pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','energetico_pet',
+  'pocao_p','pocao_m','pocao_g','elixir_supremo','pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full','energetico_pet',
   'espada_madeira','espada_ferro','espada_aco','machado_guerra','katana_sombria',
   'sabre_runico','espada_flamas','lamina_cacador','tridente_tempestade','espada_guardiao','lamina_abissal',
   'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
@@ -1461,7 +1461,7 @@ const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica','caixa_lendaria']
 
 const POTION_SELL_IDS=[
   'pocao_p','pocao_m','pocao_g','elixir_supremo',
-  'pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','energetico_pet'
+  'pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full','energetico_pet'
 ]
 const RAID_SELL_IDS=[
   'chave_raid_10','chave_raid_15','chave_raid_20','chave_raid_25','chave_raid_30','chave_raid_40','chave_raid_50',
@@ -4426,7 +4426,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
 *!usarxp NOME* — ativa elixir ou tomo de experiência
-*!curarpet* — usa automaticamente a menor poção suficiente para curar o pet\n*!curarpet comum|rara|epica* — escolhe a poção de cura do pet\n*!energiapet* — usa Energético Pet e restaura 100% da energia do pet ativo
+*!curarpet* — usa automaticamente a menor poção suficiente para curar o pet\n*!curarpet comum|rara|epica|suprema|full* — escolhe a poção de cura do pet\n*!energiapet* — usa Energético Pet e restaura 100% da energia do pet ativo
 
 🏪 *Mercado entre jogadores*
 *!mercado* — lista anúncios e mostra quanto tempo falta para expirar
@@ -6601,7 +6601,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
         return true
       }
-      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(itemId)){
+      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full'].includes(itemId)){
         const r=await usePetPotion(sender,itemId)
         clearQuickFlow(chat,sender)
         await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
@@ -8143,7 +8143,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
         return true
       }
-      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(itemId)){
+      if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full'].includes(itemId)){
         const r=await usePetPotion(sender,itemId)
         clearQuickFlow(chat,sender)
         await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
@@ -11277,7 +11277,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           }else if(item.item_id==='energetico_pet'){
             const r=await usePetEnergyItem(sender,item.item_id)
             await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
-          }else if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(item.item_id)){
+          }else if(['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full'].includes(item.item_id)){
             const r=await usePetPotion(sender,item.item_id)
             await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
           }else{
@@ -11290,15 +11290,16 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             comum:'pocao_pet_comum',common:'pocao_pet_comum',
             rara:'pocao_pet_rara',raro:'pocao_pet_rara',rare:'pocao_pet_rara',
             epica:'pocao_pet_epica','épica':'pocao_pet_epica',epico:'pocao_pet_epica','épico':'pocao_pet_epica',epic:'pocao_pet_epica',
-            suprema:'pocao_pet_suprema',supremo:'pocao_pet_suprema',legendaria:'pocao_pet_suprema','lendária':'pocao_pet_suprema'
+            suprema:'pocao_pet_suprema',supremo:'pocao_pet_suprema',legendaria:'pocao_pet_suprema','lendária':'pocao_pet_suprema',
+            full:'pocao_pet_full',completa:'pocao_pet_full',total:'pocao_pet_full'
           }
           const requested=normalizeItemText(args.join(' '))
           let itemId=aliases[requested]||null
           if(requested && !itemId){
             const items=await getInventory(sender)
-            const petPotions=items.filter(i=>['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema'].includes(i.item_id))
+            const petPotions=items.filter(i=>['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full'].includes(i.item_id))
             itemId=resolveOwnedItem(petPotions,requested,['consumable'])?.item_id||null
-            if(!itemId) return await reply(`❌ Não encontrei essa poção de pet.\nUse *${prefix}curarpet comum*, *rara*, *epica* ou *suprema*.`)
+            if(!itemId) return await reply(`❌ Não encontrei essa poção de pet.\nUse *${prefix}curarpet comum*, *rara*, *epica* ou *suprema* ou *full*.`)
           }
           const r=await usePetPotion(sender,itemId)
           await reply(`🐾🧪 *${r.name} usada!*\n\n🐾 ${r.petName}\n❤️ HP: *${r.before} → ${r.hp}/${r.maxHp}*\n💚 Recuperado: *+${r.healed}*\n📦 Restam: *${r.remaining}*\n\n💡 Sem escolher raridade, *!curarpet* usa a menor poção suficiente disponível.`)
@@ -11316,6 +11317,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             pocao_pet_rara:'Poção de Pet Rara',
             pocao_pet_epica:'Poção de Pet Épica',
             pocao_pet_suprema:'Poção de Pet Suprema',
+            pocao_pet_full:'Poção Full de Pet',
             energetico_pet:'Energético Pet',
             caixa_sorte:'Caixa da Sorte',
             caixa_rara:'Caixa Rara',
