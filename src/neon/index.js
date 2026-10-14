@@ -3059,7 +3059,7 @@ ${ranking}${extra}
   // Enquete nativa do WhatsApp: uma por grupo, janela anunciada de 30 minutos.
   // Estado persistido impede reenvios em reinicializações.
   let pollThirtyRunning=false
-  setInterval(async()=>{
+  if(Date.now()<Date.parse('2026-10-11T00:00:00-03:00'))setInterval(async()=>{
     if(pollThirtyRunning||trevoHealth.whatsapp!=='open')return
     pollThirtyRunning=true
     try{
@@ -3104,7 +3104,7 @@ ${ranking}${extra}
   // Aviso antecipado do Guardião da Aurora. Sem revelar comparação com outros elmos.
   let auroraPreviewBusy=false
   const auroraPreviewEnd=Date.parse('2026-10-11T07:00:00-03:00')
-  setInterval(async()=>{
+  if(Date.now()<auroraPreviewEnd)setInterval(async()=>{
     if(auroraPreviewBusy||trevoHealth.whatsapp!=='open'||Date.now()>=auroraPreviewEnd)return
     auroraPreviewBusy=true
     try{
@@ -3118,7 +3118,7 @@ ${ranking}${extra}
   // Anúncio único antecipado e início do Boss global à 01:00 de 10/10 (BRT).
   // Dispara sem depender de mensagem nos grupos. Avisos idempotentes persistidos.
   let inicioMadrugadaBusy=false
-  setInterval(async()=>{
+  if(Date.now()<Date.parse('2026-10-11T01:30:00-03:00'))setInterval(async()=>{
     if(inicioMadrugadaBusy||trevoHealth.whatsapp!=='open')return
     inicioMadrugadaBusy=true
     try{
@@ -3215,7 +3215,7 @@ ${ranking}${extra}
 
   // Invasão dos Sete Pecados — 11/10 18:40–20:40 BRT.
   let setePecadosBusy=false
-  setInterval(async()=>{
+  if(Date.now()<=Date.parse('2026-10-11T20:42:00-03:00'))setInterval(async()=>{
     if(setePecadosBusy)return
     const now=Date.now()
     if(now<Date.parse('2026-10-11T18:40:00-03:00')||now>Date.parse('2026-10-11T20:42:00-03:00'))return
@@ -3392,8 +3392,10 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
       cacadaCompAnnouncementRunning=false
     }
   }
-  setInterval(updateCacadaCompAnnouncement,5000).unref?.()
-  setTimeout(updateCacadaCompAnnouncement,2500).unref?.()
+  if(Date.now()<Date.parse('2026-10-06T20:30:00-03:00')){
+    setInterval(updateCacadaCompAnnouncement,5000).unref?.()
+    setTimeout(updateCacadaCompAnnouncement,2500).unref?.()
+  }
 
   let horaCorreAnnouncementRunning=false
   async function updateHoraCorreAnnouncement(){
@@ -3456,8 +3458,10 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
       horaCorreAnnouncementRunning=false
     }
   }
-  setInterval(updateHoraCorreAnnouncement,5000).unref?.()
-  setTimeout(updateHoraCorreAnnouncement,2500).unref?.()
+  if(Date.now()<Date.parse('2026-10-06T20:00:00-03:00')){
+    setInterval(updateHoraCorreAnnouncement,5000).unref?.()
+    setTimeout(updateHoraCorreAnnouncement,2500).unref?.()
+  }
 
   async function updateDoubleRewardAnnouncements(){
     if(trevoHealth.whatsapp!=='open' || doubleRewardAnnouncementRunning) return
