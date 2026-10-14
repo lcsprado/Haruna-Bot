@@ -11187,13 +11187,21 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           text+='\n\n🛡️ 1 cópia de cada equipamento foi preservada.'
           await reply(text)
 
-        } else if(['uparitem','upgradeitem','melhoraritem'].includes(cmd)){
+        } else if(['uparitem','upgradeitem','melhoraritem','uparelmo','melhorarelmo','upgradeelmo'].includes(cmd)){
           const [items,profile]=await Promise.all([listUpgradeableEquipment(sender),getCombatProfile(sender)])
-          if(!items.length) return await reply('⬆️ Você ainda não possui equipamentos para aprimorar.')
-          const available=items.filter(i=>i.next)
-          if(!available.length) return await reply('🏆 Todos os seus equipamentos já estão no *Lv.10*.')
+          const categoryInput=String(args[0]||'').toLowerCase()
+          const helmetOnly=['uparelmo','melhorarelmo','upgradeelmo'].includes(cmd) ||
+            ['elmo','elmos','helmet','capacete'].includes(categoryInput)
+          const filtered=helmetOnly?items.filter(i=>i.category==='helmet'):items
+          if(!filtered.length){
+            return await reply(helmetOnly
+              ? '🪖 *UPAR ELMO*\n\nNão encontrei elmo no seu inventário. Confira em *!inventario* → *Elmos*. Se o elmo estiver equipado mas não aparecer, informe qual é para conferirmos o cadastro.'
+              : '⬆️ Você ainda não possui equipamentos para aprimorar.')
+          }
+          const available=filtered.filter(i=>i.next)
+          if(!available.length) return await reply(helmetOnly?'🏆 Seus elmos já estão no *Lv.10*.':'🏆 Todos os seus equipamentos já estão no *Lv.10*.')
           setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id}))},5*60*1000)
-          let text='⬆️ *UPAR EQUIPAMENTO*\n\n'
+          let text=helmetOnly?'🪖 *UPAR ELMO*\n\n':'⬆️ *UPAR EQUIPAMENTO*\n\n'
           available.forEach((i,n)=>{
             const extras=(s,n)=>[
               Number(s.hp||0)||Number(n.hp||0)?`${Number(s.hp||0)} → ${Number(n.hp||0)} HP`:null,
@@ -11209,6 +11217,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
           })
           text+='\n💡 Os ganhos crescem progressivamente por nível; no *Lv.10* os atributos escaláveis chegam a *2,5×* a base. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
+          if(!helmetOnly) text+='\n\n🪖 Para ver apenas os elmos: *!uparelmo*'
           await reply(text)
 
         } else if(['equipar','equip'].includes(cmd)){
