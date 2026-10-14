@@ -13,7 +13,7 @@ function fakePool(){
     if(typeof text==='object'){values=text.values||[];text=text.text}
     if(text.includes('SELECT 1 FROM trevo_settings'))return {rows:[{seen:1}],rowCount:1}
     if(text.includes('SELECT value FROM auth_creds'))return {rows:[{value:{registered:true,counter:1}}],rowCount:1}
-    if(text.includes('SELECT type,id,value FROM auth_keys'))return {rows:[{type:'session',id:'existing',value:{counter:1}}],rowCount:1}
+    if(text.includes('SELECT type,id,value,md5(value::text) AS revision FROM auth_keys'))return {rows:[{type:'session',id:'existing',value:{counter:1}}],rowCount:1}
     if(text.includes('INSERT INTO auth_keys')||text.includes('INSERT INTO auth_creds')){
       if(failNext){failNext=false;throw Error('database unavailable')}
       writes.push({text,values:structuredClone(values)})

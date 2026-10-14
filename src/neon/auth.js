@@ -2,6 +2,7 @@ import { BufferJSON, initAuthCreds } from 'baileys'
 import { db } from './db.js'
 import {createSerializedSaver} from './resource-guards.js'
 import {countBandwidth} from './bandwidth.js'
+import {planAuthJsonPatch,authPatchQuery} from './auth-patch.js'
 
 const AUTH_QUERY_TIMEOUT_MS=10000
 
@@ -61,7 +62,7 @@ export async function useNeonAuthState(sessionId='default',queryable=db) {
       query_timeout:AUTH_QUERY_TIMEOUT_MS
     }),
     queryable.query({
-      text:'SELECT type,id,value FROM auth_keys WHERE session_id=$1',
+      text:'SELECT type,id,value,md5(value::text) AS revision FROM auth_keys WHERE session_id=$1',
       values:[sessionId],
       query_timeout:AUTH_QUERY_TIMEOUT_MS
     })
@@ -76,11 +77,18 @@ export async function useNeonAuthState(sessionId='default',queryable=db) {
   const keyCache=new Map()
   // Keep committed encodings separate: Baileys can mutate objects returned by get().
   const persistedKeys=new Map()
+  const persistedRevisions=new Map()
+  const keySizes=new Map()
   for(const row of keysResult.rows){
     const key=`${row.type}\0${row.id}`
     const value=parseStored(row.value)
     keyCache.set(key,value)
-    persistedKeys.set(key,encodeStored(value))
+    const encoded=encodeStored(value)
+    persistedKeys.set(key,encoded)
+    if(row.revision)persistedRevisions.set(key,row.revision)
+    const bytes=Buffer.byteLength(encoded),summary=keySizes.get(row.type)||{type:row.type,count:0,bytes:0,maxBytes:0}
+    summary.count++;summary.bytes+=bytes;summary.maxBytes=Math.max(summary.maxBytes,bytes)
+    keySizes.set(row.type,summary)
   }
 
   const saveCredSnapshot=createSerializedSaver(credsResult.rows[0]?encodeStored(creds):null,async value=>{
@@ -95,6 +103,8 @@ export async function useNeonAuthState(sessionId='default',queryable=db) {
       query_timeout:AUTH_QUERY_TIMEOUT_MS
     })
     countBandwidth('authWrites')
+    countBandwidth('authFullValueJsonBytes',Buffer.byteLength(value))
+    countBandwidth('authValueJsonBytesSubmitted',Buffer.byteLength(value))
   },{onSkip:()=>countBandwidth('authSkipped')})
   const saveCreds=()=>saveCredSnapshot(encodeStored(creds))
 
@@ -144,19 +154,40 @@ export async function useNeonAuthState(sessionId='default',queryable=db) {
         await client.query("SET LOCAL statement_timeout = '8000ms'")
         await client.query("SET LOCAL lock_timeout = '3000ms'")
 
-        if(upserts.length){
-          await client.query(`
+        const fullUpserts=[],revisions=new Map()
+        let semanticNoops=0,patchWrites=0
+        for(const entry of upserts){
+          const key=`${entry.type}\0${entry.id}`
+          countBandwidth('authFullValueJsonBytes',Buffer.byteLength(entry.value))
+          const revision=persistedRevisions.get(key)
+          const plan=revision?planAuthJsonPatch(persistedKeys.get(key),entry.value):null
+          if(!plan){fullUpserts.push(entry);continue}
+          if(!plan.operations.length){semanticNoops++;countBandwidth('authSkipped');continue}
+          countBandwidth('authValueJsonBytesSubmitted',plan.valueJsonBytes)
+          const result=await client.query(authPatchQuery(sessionId,entry.type,entry.id,revision,plan.operations))
+          if(result.rows[0]){revisions.set(key,result.rows[0].revision);patchWrites++}
+          else{
+            // A changed/missing database revision gets exactly the original full upsert.
+            countBandwidth('authPatchFallbacks')
+            fullUpserts.push(entry)
+          }
+        }
+        if(fullUpserts.length){
+          for(const entry of fullUpserts)countBandwidth('authValueJsonBytesSubmitted',Buffer.byteLength(entry.value))
+          const result=await client.query(`
             INSERT INTO auth_keys (session_id,type,id,value)
             SELECT $1,u.type,u.id,u.value::jsonb
             FROM UNNEST($2::text[],$3::text[],$4::text[]) AS u(type,id,value)
             ON CONFLICT(session_id,type,id) DO UPDATE
             SET value=EXCLUDED.value, updated_at=NOW()
+            RETURNING type,id,md5(value::text) AS revision
           `,[
             sessionId,
-            upserts.map(x=>x.type),
-            upserts.map(x=>x.id),
-            upserts.map(x=>x.value)
+            fullUpserts.map(x=>x.type),
+            fullUpserts.map(x=>x.id),
+            fullUpserts.map(x=>x.value)
           ])
+          for(const row of result.rows)revisions.set(`${row.type}\0${row.id}`,row.revision)
         }
 
         if(deletes.length){
@@ -174,17 +205,20 @@ export async function useNeonAuthState(sessionId='default',queryable=db) {
         }
 
         await client.query('COMMIT')
-        countBandwidth('authWrites',upserts.length+deletes.length)
+        countBandwidth('authWrites',upserts.length+deletes.length-semanticNoops)
+        countBandwidth('authPatchWrites',patchWrites)
 
         // Update RAM only after persistence succeeds so memory and Neon never
         // knowingly diverge after a rolled-back transaction.
         for(const x of upserts){
           keyCache.set(`${x.type}\0${x.id}`,parseStored(JSON.parse(x.value)))
           persistedKeys.set(`${x.type}\0${x.id}`,x.value)
+          if(revisions.has(`${x.type}\0${x.id}`))persistedRevisions.set(`${x.type}\0${x.id}`,revisions.get(`${x.type}\0${x.id}`))
         }
         for(const x of deletes){
           keyCache.delete(`${x.type}\0${x.id}`)
           persistedKeys.delete(`${x.type}\0${x.id}`)
+          persistedRevisions.delete(`${x.type}\0${x.id}`)
         }
       } catch (e) {
         await client.query('ROLLBACK').catch(()=>{})
@@ -195,5 +229,6 @@ export async function useNeonAuthState(sessionId='default',queryable=db) {
   }
 
   console.log('[WhatsApp] auth Neon carregado em memória:',keyCache.size,'chaves')
+  console.log('[Auth bandwidth]',JSON.stringify({types:[...keySizes.values()].sort((a,b)=>b.bytes-a.bytes)}))
   return { state:{creds,keys}, saveCreds }
 }

@@ -4,6 +4,7 @@ const startedAt=Date.now()
 const streams=new Set(),tracked=new WeakSet()
 const bytes={postgres:{sent:0,received:0},whatsapp:{sent:0,received:0},http:{sent:0,received:0}}
 const counters={dbQueries:0,authWrites:0,authSkipped:0,mediaDownloaded:0,mediaUploadPayloadSubmitted:0,reconnections:0}
+Object.assign(counters,{authFullValueJsonBytes:0,authValueJsonBytesSubmitted:0,authPatchWrites:0,authPatchFallbacks:0})
 
 function collect(entry){
   for(const [field,property] of [['sent','bytesWritten'],['received','bytesRead']]){
