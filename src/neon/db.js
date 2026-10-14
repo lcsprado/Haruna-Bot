@@ -1,5 +1,7 @@
 import crypto from 'node:crypto'
 import pg from 'pg'
+import {createTtlCache} from './resource-guards.js'
+import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 
 const { Pool, Client } = pg
@@ -28,6 +30,11 @@ export const db = new Pool({
 })
 
 db.on('error', err => console.error('[Neon] pool error', err))
+db.on('connect',client=>{
+  trackBandwidthStream('postgres',client.connection?.stream)
+  const query=client.query
+  client.query=function(...args){countBandwidth('dbQueries');return query.apply(this,args)}
+})
 
 const nowSql = '(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 const RAID_MATERIAL_IDS=Object.freeze(["nucleo_pedra","escama_vulcanica","olho_abissal","nucleo_titan","essencia_rei_abissal","fragmento_celestial","nucleo_alpha_corrompido","fragmento_caos","coroa_abissal","essencia_eclipse"])
@@ -1835,9 +1842,7 @@ export async function saveSnipeMessage({
   mediaType=null,mimeType=null,mediaBuffer=null,createdAt=Date.now(),expiresAt=Date.now()+30*60*1000
 }){
   if(!chat || !messageId) return false
-  const buf=mediaBuffer ? Buffer.from(mediaBuffer) : null
-  if(buf && buf.length>8*1024*1024) throw new Error('Snipe media exceeds 8 MB.')
-  await db.query('DELETE FROM snipe_messages WHERE expires_at < $1',[Date.now()])
+  // Defense in depth: even alternate callers may never upload media/base64 to Neon.
   await db.query(`
     INSERT INTO snipe_messages(
       chat_jid,message_id,sender_jid,push_name,text_content,media_label,
@@ -1856,7 +1861,7 @@ export async function saveSnipeMessage({
       expires_at=EXCLUDED.expires_at
   `,[
     chat,messageId,sender,pushName,text,mediaLabel,mediaType,mimeType,
-    buf?.length ? buf.toString('base64') : null,
+    null,
     Math.floor(Number(createdAt)||Date.now()),
     Math.floor(Number(expiresAt)||Date.now()+30*60*1000)
   ])
@@ -1889,14 +1894,17 @@ export async function markSnipeDeleted(chat,messageId){
     UPDATE snipe_messages
     SET deleted_at=${nowSql}
     WHERE chat_jid=$1 AND message_id=$2 AND expires_at >= $3
-    RETURNING *
+    RETURNING chat_jid,message_id,sender_jid,push_name,text_content,media_label,
+      media_type,mime_type,NULL::text AS media_data,created_at,deleted_at,expires_at
   `,[chat,messageId,Date.now()])
   return snipeRow(rows[0])
 }
 
 export async function getLastDeletedSnipe(chat){
   const {rows}=await db.query(`
-    SELECT * FROM snipe_messages
+    SELECT chat_jid,message_id,sender_jid,push_name,text_content,media_label,
+      media_type,mime_type,NULL::text AS media_data,created_at,deleted_at,expires_at
+    FROM snipe_messages
     WHERE chat_jid=$1 AND deleted_at IS NOT NULL AND expires_at >= $2
     ORDER BY deleted_at DESC
     LIMIT 1
@@ -2842,6 +2850,7 @@ export async function acquireRuntimeLock(sessionId) {
 
     try {
       await client.connect()
+      trackBandwidthStream('postgres',client.connection?.stream)
       const { rows } = await client.query(
         'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',
         [lockName]
@@ -2911,14 +2920,14 @@ export async function cleanupQuickFlows() {
   await db.query('DELETE FROM quick_flows WHERE expires_at<=$1',[now])
 }
 
+const groupSettingsCache=createTtlCache({ttlMs:15000,maxEntries:128})
 export async function getGroupSettings(chatJid) {
-  const { rows } = await db.query(`
-    INSERT INTO group_settings(chat_jid)
-    VALUES ($1)
-    ON CONFLICT(chat_jid) DO UPDATE SET chat_jid=EXCLUDED.chat_jid
-    RETURNING *
-  `,[chatJid])
-  return rows[0]
+  return groupSettingsCache.get(chatJid,async()=>{
+    const existing=await db.query('SELECT * FROM group_settings WHERE chat_jid=$1',[chatJid])
+    if(existing.rows[0])return existing.rows[0]
+    await db.query('INSERT INTO group_settings(chat_jid) VALUES($1) ON CONFLICT(chat_jid) DO NOTHING',[chatJid])
+    return (await db.query('SELECT * FROM group_settings WHERE chat_jid=$1',[chatJid])).rows[0]
+  })
 }
 
 export async function setGroupSetting(chatJid, key, enabled, updatedBy='') {
@@ -2932,6 +2941,7 @@ export async function setGroupSetting(chatJid, key, enabled, updatedBy='') {
      RETURNING *`,
     [Boolean(enabled),updatedBy,chatJid]
   )
+  groupSettingsCache.delete(chatJid)
   return rows[0]
 }
 
@@ -4350,11 +4360,13 @@ export async function setCommunitySetting(chatJid,key,enabled,updatedBy=''){
   if(!allowed.has(key)) throw new Error('Configuração inválida.')
   await getGroupSettings(chatJid)
   const {rows}=await db.query(`UPDATE group_settings SET ${key}=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[Boolean(enabled),updatedBy,chatJid])
+  groupSettingsCache.delete(chatJid)
   return rows[0]
 }
 export async function setGroupRules(chatJid,text,updatedBy=''){
   await getGroupSettings(chatJid)
   const {rows}=await db.query(`UPDATE group_settings SET rules_text=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[String(text||'').slice(0,3000),updatedBy,chatJid])
+  groupSettingsCache.delete(chatJid)
   return rows[0]
 }
 export async function addGroupWarning(chatJid,jid){

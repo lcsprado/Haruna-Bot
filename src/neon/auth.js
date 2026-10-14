@@ -1,5 +1,7 @@
 import { BufferJSON, initAuthCreds } from 'baileys'
 import { db } from './db.js'
+import {createSerializedSaver} from './resource-guards.js'
+import {countBandwidth} from './bandwidth.js'
 
 const AUTH_QUERY_TIMEOUT_MS=10000
 
@@ -11,9 +13,9 @@ function encodeStored(value){
   return JSON.stringify(value,BufferJSON.replacer)
 }
 
-async function repairCorruptedSenderKeysOnce(sessionId){
+async function repairCorruptedSenderKeysOnce(sessionId,queryable=db){
   const marker='signal_sender_key_buffer_repair_v1'
-  const client=await db.connect()
+  const client=await queryable.connect()
   try{
     await client.query('BEGIN')
     const seen=await client.query(
@@ -50,15 +52,15 @@ async function repairCorruptedSenderKeysOnce(sessionId){
   }
 }
 
-export async function useNeonAuthState(sessionId='default') {
-  await repairCorruptedSenderKeysOnce(sessionId)
+export async function useNeonAuthState(sessionId='default',queryable=db) {
+  await repairCorruptedSenderKeysOnce(sessionId,queryable)
   const [credsResult,keysResult] = await Promise.all([
-    db.query({
+    queryable.query({
       text:'SELECT value FROM auth_creds WHERE session_id=$1 AND key=$2',
       values:[sessionId,'creds'],
       query_timeout:AUTH_QUERY_TIMEOUT_MS
     }),
-    db.query({
+    queryable.query({
       text:'SELECT type,id,value FROM auth_keys WHERE session_id=$1',
       values:[sessionId],
       query_timeout:AUTH_QUERY_TIMEOUT_MS
@@ -72,13 +74,17 @@ export async function useNeonAuthState(sessionId='default') {
   // Warm in-memory mirror. Baileys asks for Signal keys constantly; serving
   // reads from RAM avoids putting Neon network latency inside its message mutex.
   const keyCache=new Map()
+  // Keep committed encodings separate: Baileys can mutate objects returned by get().
+  const persistedKeys=new Map()
   for(const row of keysResult.rows){
-    keyCache.set(`${row.type}\0${row.id}`,parseStored(row.value))
+    const key=`${row.type}\0${row.id}`
+    const value=parseStored(row.value)
+    keyCache.set(key,value)
+    persistedKeys.set(key,encodeStored(value))
   }
 
-  async function saveCreds() {
-    const value = encodeStored(creds)
-    await db.query({
+  const saveCredSnapshot=createSerializedSaver(credsResult.rows[0]?encodeStored(creds):null,async value=>{
+    await queryable.query({
       text:`
         INSERT INTO auth_creds (session_id,key,value)
         VALUES ($1,'creds',$2::jsonb)
@@ -88,10 +94,13 @@ export async function useNeonAuthState(sessionId='default') {
       values:[sessionId,value],
       query_timeout:AUTH_QUERY_TIMEOUT_MS
     })
-  }
+    countBandwidth('authWrites')
+  },{onSkip:()=>countBandwidth('authSkipped')})
+  const saveCreds=()=>saveCredSnapshot(encodeStored(creds))
 
   if (!credsResult.rows[0]) await saveCreds()
 
+  let keyWriteQueue=Promise.resolve()
   const keys = {
     async get(type, ids) {
       const out={}
@@ -102,20 +111,34 @@ export async function useNeonAuthState(sessionId='default') {
       return out
     },
 
-    async set(data) {
+    set(data) {
+      // Snapshot now, persist in call order. Never delay or drop changed key material.
+      const snapshot=[]
+      for(const [type,entries] of Object.entries(data??{})){
+        for(const [id,value] of Object.entries(entries??{})){
+          snapshot.push({type,id,value:value?encodeStored(value):null})
+        }
+      }
+      const write=keyWriteQueue.then(()=>persistKeys(snapshot))
+      keyWriteQueue=write.catch(()=>{})
+      return write
+    }
+  }
+
+  async function persistKeys(snapshot){
       const upserts=[]
       const deletes=[]
-
-      for (const [type,entries] of Object.entries(data ?? {})) {
-        for (const [id,value] of Object.entries(entries ?? {})) {
-          if(value) upserts.push({type,id,value:encodeStored(value)})
-          else deletes.push({type,id})
-        }
+      for(const entry of snapshot){
+        const key=`${entry.type}\0${entry.id}`
+        if(entry.value!==null){
+          if(persistedKeys.get(key)!==entry.value)upserts.push(entry)
+          else countBandwidth('authSkipped')
+        }else if(persistedKeys.has(key))deletes.push(entry)
       }
 
       if(!upserts.length && !deletes.length) return
 
-      const client=await db.connect()
+      const client=await queryable.connect()
       try {
         await client.query('BEGIN')
         await client.query("SET LOCAL statement_timeout = '8000ms'")
@@ -151,14 +174,17 @@ export async function useNeonAuthState(sessionId='default') {
         }
 
         await client.query('COMMIT')
+        countBandwidth('authWrites',upserts.length+deletes.length)
 
         // Update RAM only after persistence succeeds so memory and Neon never
         // knowingly diverge after a rolled-back transaction.
         for(const x of upserts){
           keyCache.set(`${x.type}\0${x.id}`,parseStored(JSON.parse(x.value)))
+          persistedKeys.set(`${x.type}\0${x.id}`,x.value)
         }
         for(const x of deletes){
           keyCache.delete(`${x.type}\0${x.id}`)
+          persistedKeys.delete(`${x.type}\0${x.id}`)
         }
       } catch (e) {
         await client.query('ROLLBACK').catch(()=>{})
@@ -166,7 +192,6 @@ export async function useNeonAuthState(sessionId='default') {
       } finally {
         client.release()
       }
-    }
   }
 
   console.log('[WhatsApp] auth Neon carregado em memória:',keyCache.size,'chaves')

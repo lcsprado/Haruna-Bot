@@ -10,6 +10,8 @@ import { fileTypeFromBuffer } from 'file-type'
 if(ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath)
 
 const TEMP_DIR=path.join(os.tmpdir(),'alpha-bot-stickers')
+const MAX_INPUT_BYTES=3*1024*1024
+const MAX_OUTPUT_BYTES=512*1024
 try{ fs.mkdirSync(TEMP_DIR,{recursive:true}) }catch{}
 
 function tempFile(ext){
@@ -30,9 +32,10 @@ async function convertToWebp(buffer,type){
 
   try{
     await new Promise((resolve,reject)=>{
+      let timer
       let job=ffmpeg(input)
-        .on('error',reject)
-        .on('end',resolve)
+        .on('error',error=>{clearTimeout(timer);reject(error)})
+        .on('end',()=>{clearTimeout(timer);resolve()})
         .outputOptions([
           '-vcodec','libwebp',
           '-vf',"scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000",
@@ -49,9 +52,11 @@ async function convertToWebp(buffer,type){
           '-r','15'
         ])
       }else{
-        job=job.outputOptions(['-lossless','1','-q:v','82'])
+        job=job.outputOptions(['-lossless','0','-q:v','82'])
       }
 
+      timer=setTimeout(()=>{job.kill('SIGKILL');reject(new Error('A conversão da figurinha excedeu 30 segundos.'))},30000)
+      timer.unref?.()
       job.toFormat('webp').save(output)
     })
 
@@ -95,7 +100,7 @@ async function addExif(webpBuffer,metadata={}){
 
 export async function toStickerBuffer(buffer,metadata={}){
   if(!Buffer.isBuffer(buffer)) buffer=Buffer.from(buffer)
-  if(buffer.length>30*1024*1024) throw new Error('Mídia muito grande para figurinha.')
+  if(buffer.length>MAX_INPUT_BYTES) throw new Error('Mídia muito grande para figurinha.')
 
   const type=await fileTypeFromBuffer(buffer)
   if(!type) throw new Error('Não consegui identificar o formato da mídia.')
@@ -111,5 +116,8 @@ export async function toStickerBuffer(buffer,metadata={}){
     ? buffer
     : await convertToWebp(buffer,type)
 
-  return addExif(webpBuffer,metadata)
+  if(webpBuffer.length>MAX_OUTPUT_BYTES)throw new Error('A figurinha gerada excedeu 512 KB.')
+  const result=await addExif(webpBuffer,metadata)
+  if(result.length>MAX_OUTPUT_BYTES)throw new Error('A figurinha gerada excedeu 512 KB.')
+  return result
 }

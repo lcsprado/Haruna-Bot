@@ -287,6 +287,7 @@ async function tick(sock){
 }
 export function startBingoRebootScheduler(sock){
   if(timer)clearInterval(timer)
+  if(Date.now()>START+60*60*1000)return
   timer=setInterval(()=>tick(sock),5000)
   timer.unref?.()
   tick(sock)

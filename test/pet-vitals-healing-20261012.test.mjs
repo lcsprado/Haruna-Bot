@@ -52,7 +52,7 @@ test('Menu mostra a cura efetiva por nível, sem alterar o efeito real',()=>{
   assert.match(petStatusBonus({species:'fenix_celestial',level:1}).text,/cura 8% HP/)
   assert.match(petStatusBonus({species:'fenix_celestial',level:100}).text,/cura 10% HP/)
   assert.match(petStatusBonus({species:'unicornio',level:100}).text,/cura 9% HP/)
-  assert.match(petStatusBonus({species:'fenix_eclipse',level:100}).text,/cura 7,5% HP/)
+  assert.match(petStatusBonus({species:'fenix_eclipse',level:100}).text,/cura 11,3% HP/)
   assert.match(petStatusBonus({species:'arcanjo_eclipse',level:100}).text,/cura 6,3% HP/)
 })
 

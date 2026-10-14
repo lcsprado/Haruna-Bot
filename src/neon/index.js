@@ -8,6 +8,9 @@ import makeWASocket, {
   makeCacheableSignalKeyStore
 } from 'baileys'
 import pino from 'pino'
+import NodeCache from 'node-cache'
+import {createTtlCache,createByteBudget,createMessageDeduplicator,declaredMediaBytes,downloadBoundedMedia,scheduleUntil} from './resource-guards.js'
+import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
@@ -135,6 +138,8 @@ let bossProgressScheduler=null
 let reconnectTimer=null
 let reconnecting=false
 let reconnectAttempts=0
+// Retained across socket reconnections; unique messages from the same player remain free.
+const acceptIncomingMessage=createMessageDeduplicator()
 function scheduleReconnect(){
   if(reconnectTimer || reconnecting) return
   // Backoff exponencial com teto e jitter: evita rajadas de reconexão
@@ -142,6 +147,7 @@ function scheduleReconnect(){
   const base=Math.min(30000,3000*2**Math.min(reconnectAttempts,4))
   const delayMs=Math.round(base*(0.8+Math.random()*0.4))
   reconnectAttempts++
+  countBandwidth('reconnections')
   console.log('[WhatsApp] nova tentativa em',delayMs,'ms; tentativa',reconnectAttempts)
   reconnectTimer=setTimeout(async()=>{
     reconnectTimer=null
@@ -543,27 +549,32 @@ function touchRaidRun(runKey,token){
 
 async function safeRaidNotify(reply,text){
   if(!text || typeof reply!=='function') return false
+  let timer
   try{
     return await Promise.race([
       Promise.resolve().then(()=>reply(text)).then(()=>true).catch(err=>{
         console.error('[Raid Auto] aviso falhou; combate continua',err?.message||err)
         return false
       }),
-      new Promise(resolve=>setTimeout(()=>{
+      new Promise(resolve=>{timer=setTimeout(()=>{
         console.warn('[Raid Auto] aviso excedeu '+RAID_NOTIFY_TIMEOUT_MS+'ms; combate continua')
         resolve(false)
-      },RAID_NOTIFY_TIMEOUT_MS))
+      },RAID_NOTIFY_TIMEOUT_MS);timer.unref?.()})
     ])
   }catch(err){
     console.error('[Raid Auto] aviso falhou; combate continua',err?.message||err)
     return false
-  }
+  }finally{clearTimeout(timer)}
 }
 
+let raidAutoWatchdogBusy=false
 async function ensureActiveRaidRuns(){
+  if(raidAutoWatchdogBusy)return
+  raidAutoWatchdogBusy=true
   try{
     const {rows}=await db.query(`
-      SELECT chat_jid,game_type,state
+      SELECT chat_jid,game_type,
+        jsonb_build_object('level',state->'level','lastRoundAt',state->'lastRoundAt') AS state
       FROM trevo_games
       WHERE (game_type='raid' OR game_type LIKE 'raid:%')
         AND state->>'status'='active'
@@ -597,7 +608,7 @@ async function ensureActiveRaidRuns(){
     }
   }catch(err){
     console.error('[Raid Auto] falha no watchdog',err?.message||err)
-  }
+  }finally{raidAutoWatchdogBusy=false}
 }
 
 async function runRaidCombat(chat,level,reply){
@@ -810,6 +821,10 @@ async function allowEventPlayerAction(chat,sender,isOwner=false){
 // Isso evita uploads base64 de ate 8 MB a cada midia comum recebida em grupos.
 const SNIPE_MEDIA_LIMIT_BYTES=512*1024
 const SNIPE_MEDIA_BUDGET_PER_HOUR_BYTES=8*1024*1024
+const commandMediaDownloads=createByteBudget(8*1024*1024)
+const commandMediaUploads=createByteBudget(2*1024*1024)
+const COMMAND_MEDIA_OUTPUT_LIMIT=512*1024
+let stickerCommandBusy=false
 let snipeMediaHourStartedAt=Date.now()
 let snipeMediaReservedBytes=0
 function reserveSnipeMediaBudget(declaredSize){
@@ -848,12 +863,14 @@ async function cacheIncomingMessage(sock,msg){
 
   if(supportedMedia && reserveSnipeMediaBudget(declaredSize)){
     try{
-      const downloaded=await downloadMediaMessage(
+      const downloaded=await downloadBoundedMedia(signal=>downloadMediaMessage(
         msg,
-        'buffer',
-        {},
+        'stream',
+        {options:{timeout:30000,signal}},
         {logger,reuploadRequest:sock.updateMediaMessage}
-      )
+      ),Math.min(declaredSize,SNIPE_MEDIA_LIMIT_BYTES),{
+        onBytes:bytes=>countBandwidth('mediaDownloaded',bytes)
+      })
       if(downloaded?.length && downloaded.length<=SNIPE_MEDIA_LIMIT_BYTES){
         mediaBuffer=Buffer.from(downloaded)
       }
@@ -2165,6 +2182,9 @@ async function start() {
   const { state, saveCreds }=await useNeonAuthState(sessionId)
   const { version }=await fetchLatestBaileysVersion()
 
+  const groupMetadataCache=createTtlCache({ttlMs:5*60*1000,maxEntries:128})
+  const whatsappMediaCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false,maxKeys:2048})
+  let loadGroupMetadata
   const sock=makeWASocket({
     version,
     auth:{
@@ -2177,6 +2197,10 @@ async function start() {
     // Evita que a sessão vinculada se anuncie permanentemente online e impeça push do WhatsApp.
     markOnlineOnConnect:false,
     syncFullHistory:false,
+    // syncFullHistory=false alone still accepts history bundles by default in rc14.
+    shouldSyncHistoryMessage:()=>false,
+    cachedGroupMetadata:jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid)),
+    mediaCache:whatsappMediaCache,
     connectTimeoutMs:60000,
     defaultQueryTimeoutMs:60000,
     keepAliveIntervalMs:25000,
@@ -2190,6 +2214,14 @@ async function start() {
       delayBetweenTriesMs:500
     }
   })
+  const datedEventStops=[]
+  loadGroupMetadata=sock.groupMetadata.bind(sock)
+  sock.groupMetadata=jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid))
+  sock.ev.on('groups.update',updates=>{
+    for(const update of updates||[])groupMetadataCache.delete(update.id)
+  })
+  sock.ev.on('group-participants.update',event=>groupMetadataCache.delete(event.id))
+  sock.ws?.on?.('open',()=>trackBandwidthStream('whatsapp',sock.ws?.socket?._socket))
 
   // Registra somente contagens (sem texto, JIDs ou conteúdo de mensagens).
   // Se o websocket receber muitos pacotes mas o Baileys parar de emitir
@@ -2274,7 +2306,9 @@ async function start() {
   },60*1000)
   deafWatchdog.unref?.()
 
-  sock.ev.on('creds.update',saveCreds)
+  sock.ev.on('creds.update',()=>{
+    void saveCreds().catch(err=>console.error('[WhatsApp] falha ao persistir credenciais',err?.message||err))
+  })
 
   const botGroupIntroKey=chat=>'bot_group_intro:'+chat
   const botGroupIntroText=groupName=>`😈🤖 *OLÁ, BETAS!*
@@ -2388,12 +2422,16 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
     return String(text??'').replace(/\\r\\n/g,'\n').replace(/\\n/g,'\n')
   }
 
+  const knownScheduledNotices=new Set()
   async function sendScheduledGroupNotice(chat,key,text){
     const settingKey='scheduled_notice:'+key+':'+chat
+    if(knownScheduledNotices.has(settingKey))return
     const inserted=await db.query(
       "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
       [settingKey,JSON.stringify({sentAt:Date.now()})]
     )
+    if(knownScheduledNotices.size>=2048)knownScheduledNotices.delete(knownScheduledNotices.values().next().value)
+    knownScheduledNotices.add(settingKey)
     if(inserted.rowCount) await sock.sendMessage(chat,{text:formatEventNotice(text)}).catch(err=>console.error('[Eventos] aviso',chat,err?.message||err))
   }
 
@@ -2465,15 +2503,24 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
     finally{eclipseResultBroadcastBusy=false}
   }
 
+  let bossEventSchedulerBusy=false
+  let historicBossCleanupDone=false
   async function runBossEventScheduler(){
-    if(trevoHealth.whatsapp!=='open') return
+    if(trevoHealth.whatsapp!=='open'||bossEventSchedulerBusy) return
+    bossEventSchedulerBusy=true
     try{
-      await announceCompletedEclipse()
+      const historicalNoticesOpen=Date.now()<Date.parse('2026-10-10T00:00:00-03:00')
+      if(historicalNoticesOpen)await announceCompletedEclipse()
+      // One catch-up settlement after downtime, never perpetual polling of October 9.
+      if(!historicalNoticesOpen&&!historicBossCleanupDone){
+        await encerrarRupturaEstelar('__alpha_global_boss_event__')
+        historicBossCleanupDone=true
+      }
       // Um jogador pode derrotar o Boss global em um grupo diferente.
       // Comunica a vitória nos demais grupos sem processar prêmios novamente.
-      const rupturaState=(await db.query(
+      const rupturaState=historicalNoticesOpen?(await db.query(
         "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
-      )).rows[0]?.state
+      )).rows[0]?.state:null
       const rupturaDefeated=rupturaState?.eventId==='ruptura_estelar' &&
         rupturaState?.scheduleKey==='ruptura-estelar-2026-10-09' &&
         rupturaState?.mode==='event_completed' && rupturaState?.outcome==='defeated' &&
@@ -2485,6 +2532,8 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
             Number(p.damage||0).toLocaleString('pt-BR')+' dano').join('\n')
         : ''
       const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+      const publicNotice=historicalNoticesOpen?(await db.query("SELECT value FROM trevo_settings WHERE key='admin_broadcast:economy_audit_20261008'")).rows[0]?.value?.message:null
+      const raidComp=(await db.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
       for(const lic of groups){
         const chat=lic.chat_jid
         if(!chat?.endsWith('@g.us')) continue
@@ -2500,7 +2549,6 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
               '🏅 Insígnia Guardião da Ruptura para os três primeiros.\n'+
               '✅ Recompensas já processadas; este aviso não concede prêmios adicionais.')
           }
-          const publicNotice=(await db.query("SELECT value FROM trevo_settings WHERE key='admin_broadcast:economy_audit_20261008'")).rows[0]?.value?.message
           if(publicNotice) await sendScheduledGroupNotice(chat,'economy-audit-20261008',String(publicNotice))
           const now=Date.now()
           // Sexta 09/10 às 00:01 (Brasília): criar automaticamente o Boss semanal
@@ -2591,7 +2639,6 @@ O evento não aumenta a chance de ganhar — somente *triplica a recompensa quan
 
 🔑 Abram as Raids e montem o grupo.`)
 
-          const raidComp=(await db.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
           if(Number(raidComp.startsAt||0)<=now && now<Number(raidComp.endsAt||0)){
             const compRemaining=Math.max(1,Math.ceil((Number(raidComp.endsAt)-now)/60000))
             await sendScheduledGroupNotice(chat,'raid-compensation-'+String(raidComp.oneOffId||raidComp.startsAt),
@@ -2681,7 +2728,7 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
           }
 
           // Evento secreto às 04:04: nenhum anúncio automático antes ou durante o Boss.
-          await autoStartNightBossEvent(chat)
+          if(now<=Date.parse('2026-10-10T04:34:00-03:00'))await autoStartNightBossEvent(chat)
 
                     const horaRuptura=Date.parse('2026-10-09T20:00:00-03:00')
           if(now>=horaRuptura-600000&&now<horaRuptura){
@@ -2704,7 +2751,7 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
               '⏰ Até 21h; premiação do ranking garantida mesmo se não for derrotado.\n\n' +
               '⚔️ Use *!boss* e *!atacar*.')
           }
-          const fimRuptura=await encerrarRupturaEstelar(chat)
+          const fimRuptura=historicalNoticesOpen?await encerrarRupturaEstelar(chat):null
           if(fimRuptura?.ended||(fimRuptura?.due&&fimRuptura?.alreadyEnded)){
             const colocados=(fimRuptura.rankings||[]).slice(0,3).map(p=>
               p.position+'º '+p.name+' — '+Number(p.damage).toLocaleString('pt-BR')+' dano').join('\n')
@@ -2742,7 +2789,7 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
       }
     }catch(err){
       console.error('[BossEvento] falha no agendamento',err?.message||err)
-    }
+    }finally{bossEventSchedulerBusy=false}
   }
 
 
@@ -3237,19 +3284,19 @@ ${ranking}${extra}
   // Evento global de 11/10 às 07h; início e encerramento persistidos e idempotentes.
 
   let camEventBusy=false
-  setInterval(async()=>{
-   if(camEventBusy||trevoHealth.whatsapp!=='open')return;camEventBusy=true
+  datedEventStops.push(scheduleUntil(async()=>{
+   if(camEventBusy||trevoHealth.whatsapp!=='open')return false;camEventBusy=true
    try{
      const e=await autoStartCamEvent()
      if(e.spawned)await sendEventToGroups('🦎⚔️ *QUIMERA CROMÁTICA — BOSS ESPECIAL!*\n\n🕚 *23:15 até 23:45* (Brasília)\n❤️ *1.300.000 HP* • ⚔️ *220 ATK*\n🏆 *PET LENDÁRIO EXCLUSIVO: 🦎 CAMALEÃO!*\n🃏 Pet coringa, compatível com todas as sinergias!\n🥇 Se o Boss cair, apenas o *1º lugar* recebe o pet.\n💰 Demais participantes recebem dinheiro e EXP conforme dano.\n⚔️ Use *!atacar*!')
      if(e.ended)await sendEventToGroups('🦎 *QUIMERA CROMÁTICA ENCERRADA!*\n'+(e.won?'🏆 Quarteto venceu! Camaleão entregue ao maior dano.':'💀 Boss resistiu; não houve drop do Camaleão.')+'\n💰 Recompensas de participação creditadas.')
      if(e.blocked)console.log('[CAM] outro Boss global ativo; bloqueado')
-   }catch(err){console.error('[CAM EVENT]',err?.stack||err)}finally{camEventBusy=false}
-  },5000).unref?.()
+   }catch(err){console.error('[CAM EVENT]',err?.stack||err);return false}finally{camEventBusy=false}
+  },Date.parse('2026-10-10T23:45:00-03:00')))
 
   let auroraTickerBusy=false
-  setInterval(async()=>{
-    if(auroraTickerBusy)return
+  datedEventStops.push(scheduleUntil(async()=>{
+    if(auroraTickerBusy||trevoHealth.whatsapp!=='open')return false
     auroraTickerBusy=true
     try{
       const result=await autoStartAuroraBossEvent('__alpha_global_boss_event__')
@@ -3262,13 +3309,13 @@ ${ranking}${extra}
         await sendEventToGroups('🌅 *GUARDIÃO DA AURORA ENCERRADO!*\n\n'+(ranking||'Sem participantes.')+'\n🏆 Prêmios creditados no inventário.')
       }
       if(result?.blocked)console.log('[AURORA 07H] Boss anterior bloqueia início',result.blockingBoss)
-    }catch(e){console.error('[AURORA 07H] scheduler',e?.stack||e)}
+    }catch(e){console.error('[AURORA 07H] scheduler',e?.stack||e);return false}
     finally{auroraTickerBusy=false}
-  },5000).unref?.()
+  },Date.parse('2026-10-11T07:45:00-03:00')))
 
   let night0404TickerBusy=false
-  setInterval(async()=>{
-    if(night0404TickerBusy) return
+  datedEventStops.push(scheduleUntil(async()=>{
+    if(night0404TickerBusy||trevoHealth.whatsapp!=='open') return false
     night0404TickerBusy=true
     try{
       const result=await autoStartNightBossEvent('__alpha_global_boss_event__')
@@ -3279,19 +3326,21 @@ ${ranking}${extra}
         }
       }
       if(result?.stopped) console.log('[NIGHT 04:04] boss resistiu; apenas dinheiro/XP creditados',JSON.stringify(result.result?.rewards||[]))
-    }catch(err){console.error('[NIGHT 04:04] agendamento',err?.message||err)}
+    }catch(err){console.error('[NIGHT 04:04] agendamento',err?.message||err);return false}
     finally{night0404TickerBusy=false}
-  },5000).unref?.()
+  },Date.parse('2026-10-10T04:34:00-03:00')))
 
   let trickBoxesAnnouncing=false
   let trickBoxReminderLastScan=0
   const TRICK_BOX_END_FIXED=Date.parse('2026-10-09T23:00:00-03:00')
+  let trickBoxesRetireAt=TRICK_BOX_END_FIXED+10*60*1000
   async function announceTrickBoxes(){
-    if(trevoHealth.whatsapp!=='open'||trickBoxesAnnouncing)return
+    if(trevoHealth.whatsapp!=='open'||trickBoxesAnnouncing)return false
     trickBoxesAnnouncing=true
     try{
       const event=(await db.query("SELECT value FROM trevo_settings WHERE key='trick_boxes_event'")).rows[0]?.value||{}
       const now=Date.now(),start=Number(event.startsAt||0)
+      trickBoxesRetireAt=Math.max(TRICK_BOX_END_FIXED,Number(event.endsAt||0))+10*60*1000
       if(!start||!Number(event.endsAt||0))return
       // Prorrogação solicitada: somente este evento vai até 23:00 de 09/10 (Brasília).
       if(event.eventId==='trick_boxes_2026_10_09_2204' && Number(event.endsAt)!==TRICK_BOX_END_FIXED){
@@ -3348,11 +3397,10 @@ ${ranking}${extra}
         await sendEventToGroups('🎭 *AZAR OU SORTE ENCERRADO!*\n\n📦 As caixas pegadinha foram fechadas. Obrigado por participar!')
         await db.query("UPDATE trevo_settings SET value=$2::jsonb WHERE key=$1",[key,JSON.stringify({started:true,ended:true})])
       }
-    }catch(e){console.error('[TrickBoxes notice]',e?.message||e)}
+    }catch(e){console.error('[TrickBoxes notice]',e?.message||e);return false}
     finally{trickBoxesAnnouncing=false}
   }
-  setInterval(announceTrickBoxes,5000).unref?.()
-  setTimeout(announceTrickBoxes,3000).unref?.()
+  datedEventStops.push(scheduleUntil(announceTrickBoxes,()=>trickBoxesRetireAt,{startupMs:3000}))
 
   // Evento único: Hora do Corre — 06/10/2026 19:30–20:00 BRT.
   let cacadaCompAnnouncementRunning=false
@@ -3633,12 +3681,12 @@ ${moneyLine}✨ XP: *${xpMult}x*
   }
 
   if(doubleRewardEventScheduler) clearInterval(doubleRewardEventScheduler)
-  doubleRewardEventScheduler=setInterval(updateDoubleRewardAnnouncements,5000)
+  doubleRewardEventScheduler=setInterval(updateDoubleRewardAnnouncements,30000)
   doubleRewardEventScheduler.unref?.()
   setTimeout(updateDoubleRewardAnnouncements,3000).unref?.()
 
   if(luckyBoxEventScheduler) clearInterval(luckyBoxEventScheduler)
-  luckyBoxEventScheduler=setInterval(updateLuckyBoxAnnouncements,5000)
+  luckyBoxEventScheduler=setInterval(updateLuckyBoxAnnouncements,30000)
   luckyBoxEventScheduler.unref?.()
   setTimeout(updateLuckyBoxAnnouncements,3500).unref?.()
 
@@ -9227,6 +9275,11 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
     }
 
     if(connection==='close'){
+      clearTimeout(forceFlushTimer)
+      clearInterval(deafWatchdog)
+      for(const stop of datedEventStops)stop()
+      groupMetadataCache.clear()
+      whatsappMediaCache.close()
       setWhatsAppHealth('closed')
       const code=lastDisconnect?.error?.output?.statusCode
       const loggedOut=code===DisconnectReason.loggedOut
@@ -9315,7 +9368,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
 
   // Evita comandos duplicados se uma mensagem recém-chegada for classificada
   // primeiro como append e depois como notify pelo Baileys.
-  const recentMessageKeys=new Map()
   sock.ev.on('messages.upsert',async({messages,type})=>{
     const receivedAt=Date.now()
     trevoHealth.lastUpsertAt=receivedAt
@@ -9323,9 +9375,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
     trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
     trevoHealth.lastUpsertType=type||null
     if(type!=='notify' && type!=='append')return
-    if(recentMessageKeys.size>1200){
-      for(const [k,t] of recentMessageKeys)if(receivedAt-t>10*60*1000)recentMessageKeys.delete(k)
-    }
     for(const msg of messages){
       // Não executar comandos financeiros, consumíveis ou combate de mensagens
       // antigas que voltam no backlog durante a recuperação da sincronização.
@@ -9337,10 +9386,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         continue
       }
       const ident=[msg?.key?.remoteJid,msg?.key?.participant||'',msg?.key?.id].join('|')
-      if(msg?.key?.id){
-        if(recentMessageKeys.has(ident))continue
-        recentMessageKeys.set(ident,receivedAt)
-      }
+      if(msg?.key?.id&&!acceptIncomingMessage(ident))continue
       try{
         if(!msg?.message || msg.key.fromMe) continue
         trevoHealth.lastInboundAt=Date.now()
@@ -9894,28 +9940,38 @@ Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
           if(!Number.isSafeInteger(stickerBytes)||stickerBytes<=0||stickerBytes>stickerMaxBytes){
             return await reply('❌ Mídia sem tamanho válido ou muito grande. Para figurinha, envie imagem até 2 MB ou vídeo até 3 MB.')
           }
+          declaredMediaBytes(stickerNode,stickerMaxBytes)
+          if(stickerCommandBusy)return await reply('⏳ Há uma figurinha em processamento. Tente novamente quando ela terminar.')
+          if(commandMediaUploads.remaining===0 || !commandMediaDownloads.reserve(stickerBytes)){
+            return await reply('⏳ O limite de mídia desta hora foi atingido. Os comandos RPG continuam disponíveis normalmente.')
+          }
+          stickerCommandBusy=true
 
           try{
             await sock.sendMessage(chat,{react:{text:'⏳',key:msg.key}})
           }catch{}
 
           try{
-            const media=await downloadMediaMessage(
+            const media=await downloadBoundedMedia(signal=>downloadMediaMessage(
               source.raw,
-              'buffer',
-              {},
+              'stream',
+              {options:{timeout:30000,signal}},
               {
                 logger,
                 reuploadRequest:sock.updateMediaMessage
               }
-            )
-            if(!media || !media.length) throw new Error('Não consegui baixar essa mídia.')
+            ),Math.min(stickerBytes,stickerMaxBytes),{
+              onBytes:bytes=>countBandwidth('mediaDownloaded',bytes)
+            })
 
-            const customPack=args.join(' ').trim()
-            const sticker=await toStickerBuffer(Buffer.from(media),{
+            const customPack=args.join(' ').trim().slice(0,64)
+            const sticker=await toStickerBuffer(media,{
               packName:customPack || 'Alpha Bot',
               packPublish:'Alpha Bot'
             })
+            if(sticker.length>COMMAND_MEDIA_OUTPUT_LIMIT)throw new Error('A figurinha gerada excedeu 512 KB. Use uma imagem mais simples ou um vídeo menor.')
+            if(!commandMediaUploads.reserve(sticker.length))throw new Error('O limite de envio de mídia desta hora foi atingido. Tente novamente mais tarde.')
+            countBandwidth('mediaUploadPayloadSubmitted',sticker.length)
 
             await sock.sendMessage(
               chat,
@@ -9931,12 +9987,13 @@ Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
               await sock.sendMessage(chat,{react:{text:'✅',key:msg.key}})
             }catch{}
           }catch(err){
-            console.error('[sticker] erro',err)
+            console.error('[sticker] erro',err?.message||'conversion_failed')
             try{
               await sock.sendMessage(chat,{react:{text:'❌',key:msg.key}})
             }catch{}
-            await reply('❌ Não consegui criar a figurinha. Tente outra foto ou um vídeo menor.')
-          }
+            const reason=String(err?.message||'')
+            await reply('❌ '+(/tamanho|limite|512 KB|30 segundos|Mídia|mídia/.test(reason)?reason:'Não consegui criar a figurinha. Tente outra foto ou um vídeo menor.'))
+          }finally{stickerCommandBusy=false}
 
         } else if(['suporte','support','ajuda'].includes(cmd)){
           setQuickFlow(chat,sender,'support_menu',{},10*60*1000)

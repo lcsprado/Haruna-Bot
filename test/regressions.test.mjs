@@ -54,7 +54,7 @@ test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',
   assert.match(gamesSource,/150000\*share/)
   assert.match(gamesSource,/grantExpInTransaction\(c,p\.jid,exp\)/)
   assert.match(gamesSource,/caixa_epica/)
-  assert.match(gamesSource,/giveBossDrops\(c,p\.jid,position,pb\.drop\)/)
+  assert.match(gamesSource,/giveBossDrops\(c,p\.jid,position,pb\.drop,'weekly-boss:'/)
   assert.match(gamesSource,/mode:'weekly'/)
   assert.match(gamesSource,/mode:'common'/)
   assert.match(gamesSource,/weeklyCompleted:s\.mode==='weekly'/)
@@ -64,8 +64,8 @@ test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',
 
 test('Boss legado é normalizado antes de permitir outra sessão semanal',async()=>{
   const games=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
-  assert.match(games,/!current\.mode&&Number\(current\.maxHp\)>=25000/)
-  assert.match(games,/current\.mode='weekly'; current\.weeklyCompleted=false/)
+  assert.match(games,/async function loadWeeklyBoss\(c,weekend/)
+  assert.match(games,/s\.mode='weekly'; s\.weeklyCompleted=false/)
   assert.match(games,/!s\.mode&&Number\(s\.maxHp\)>=25000/)
 })
 
@@ -129,7 +129,7 @@ test('dormir protege de batalha e roubo antes do cooldown e concede XP ao acorda
   const gamesSource=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
   const indexSource=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(dbSource,/CREATE TABLE IF NOT EXISTS player_sleep/)
-  assert.match(dbSource,/export async function startPlayerSleep\(jid\)/)
+  assert.match(dbSource,/export async function startPlayerSleep\(jid,hours=1\)/)
   assert.match(dbSource,/export async function resolvePlayerSleep\(jid\)/)
   assert.match(dbSource,/recoverPetEnergyFromSleep/)
   assert.match(dbSource,/playerHpGained/)
@@ -141,7 +141,7 @@ test('dormir protege de batalha e roubo antes do cooldown e concede XP ao acorda
   assert.ok(dbSource.indexOf("dormindo e não pode ser roubada")<dbSource.indexOf("claimCooldown(client,`rob:"))
   assert.match(indexSource,/\*!dormir\* — descansa protegido/)
   assert.match(indexSource,/sleepAllowed=new Set/)
-  assert.match(indexSource,/startPlayerSleep\(sender\)/)
+  assert.match(indexSource,/startPlayerSleep\(sender,hours\)/)
   const sleepDispatch=indexSource.indexOf("if(['dormir','sono'].includes(cmd))")
   const licenseGate=indexSource.indexOf("if(isGroup && !isOwner && !['termos'")
   assert.ok(sleepDispatch>0 && sleepDispatch<licenseGate,'!dormir deve ser despachado antes da licença do grupo')

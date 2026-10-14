@@ -48,7 +48,7 @@ export const healthPageHtml=String.raw`<!doctype html>
       <span>Atualizado: <strong id="checked">--:--:--</strong></span>
     </div>
     <button id="retry" type="button">↻ Verificar novamente</button>
-    <p class="foot">Esta página verifica o bot automaticamente a cada 6 segundos.<br>
+    <p class="foot">Verificação rápida ao iniciar e a cada minuto após conectar.<br>
       Se o Render estiver hibernando, pode demorar até 1 minuto para iniciar.<br>
       Não é necessário escanear um QR Code quando o WhatsApp já está conectado.</p>
   </main>
@@ -63,6 +63,8 @@ export const healthPageHtml=String.raw`<!doctype html>
       var checked=document.getElementById('checked');
       var retry=document.getElementById('retry');
       var busy=false;
+      var pollTimer;
+      var connected=false;
       function show(kind,emoji,title,description,serverState){
         panel.className='status '+kind;
         symbol.textContent=emoji;
@@ -71,6 +73,7 @@ export const healthPageHtml=String.raw`<!doctype html>
         server.textContent=serverState;
       }
       function update(data){
+        connected=data.ok===true&&data.whatsapp==='open';
         var uptime=Number(data.uptimeSeconds||0);
         var seconds=uptime<60?uptime+' segundo(s)':Math.floor(uptime/60)+' minuto(s)';
         if(data.ok===true&&data.whatsapp==='open'){
@@ -87,7 +90,7 @@ export const healthPageHtml=String.raw`<!doctype html>
           'Servidor ligado, mas o WhatsApp ainda não confirmou a conexão. Tentando novamente.','Ligado');
       }
       async function check(){
-        if(busy)return;
+        if(busy||document.hidden)return;
         busy=true;retry.disabled=true;
         var controller=new AbortController();
         var timeout=setTimeout(function(){controller.abort()},9000);
@@ -98,17 +101,23 @@ export const healthPageHtml=String.raw`<!doctype html>
           var data=await response.json();
           update(data);
         }catch(_err){
+          connected=false;
           show('wait','⏳','Acordando o servidor...',
             'O Render está demorando a responder. Aguarde e a página tentará novamente.','Aguardando');
         }finally{
           clearTimeout(timeout);
           checked.textContent=new Date().toLocaleTimeString('pt-BR');
           busy=false;retry.disabled=false;
+          clearTimeout(pollTimer);
+          pollTimer=setTimeout(check,connected?60000:6000);
         }
       }
       retry.addEventListener('click',check);
+      document.addEventListener('visibilitychange',function(){
+        clearTimeout(pollTimer);
+        if(!document.hidden)check();
+      });
       check();
-      setInterval(check,6000);
     })();
   </script>
 </body>

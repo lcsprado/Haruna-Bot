@@ -25,26 +25,26 @@ test('Alpha 3.0 commands and new progression menu entries remain discoverable',(
   const menuEnd=index.indexOf('function textOf(',menuStart)
   assert.ok(menuStart>=0&&menuEnd>menuStart,'the !comandos main menu is missing')
   const mainMenu=index.slice(menuStart,menuEnd)
-  for(const command of ['!web','!contratos','!karma','!npcs']){
+  for(const command of ['!web','!contratos']){
     assert.ok(mainMenu.includes(command),'!comandos must advertise '+command)
   }
   const pagesStart=index.indexOf('const commandPages={')
   const pagesEnd=index.indexOf('const commandsMenu=async',pagesStart)
   assert.ok(pagesStart>=0&&pagesEnd>pagesStart,'command category pages missing')
   const pages=index.slice(pagesStart,pagesEnd)
-  for(const command of ['!web','!contratos','!aceitarcontrato 1','!resgatarcontrato','!karma','!npcs','!npc 1','!comprarnpc 1 2']){
+  for(const command of ['!web','!contratos','!aceitarcontrato 1','!resgatarcontrato']){
     assert.ok(pages.includes(command),'command categories must explain '+command)
   }
   const progressStart=index.indexOf("if(flow.stage==='nav_progress')")
   const progressEnd=index.indexOf("if(flow.stage==='house_select')",progressStart)
   assert.ok(progressStart>=0&&progressEnd>progressStart,'progression menu flow missing')
   const progress=index.slice(progressStart,progressEnd)
-  for(const entry of ["if(input==='7')","if(input==='8')","if(input==='9')"]){
+  for(const entry of ["if(input==='7')"]){
     assert.ok(progress.includes(entry),'progression menu choice missing '+entry)
   }
   assert.ok(progress.includes('alphaContractBoardMessage(sender)'),'contract option must open live board')
-  assert.ok(progress.includes('alphaKarmaMessage(sender)'),'karma option must show actual score')
-  assert.ok(progress.includes('showNpcMerchantsMenu(chat,sender,reply)'),'NPC option must open merchant menu')
+  assert.ok(progress.includes('Escolha uma opção de *1 a 7*'),'WhatsApp-only progression menu keeps seven supported options')
+  assert.ok(!progress.includes('showNpcMerchantsMenu(chat,sender,reply)'),'WhatsApp-only runtime does not inject the NPC module')
 })
 
 test('NPC upgrades preserve scarcity, meaningful reputation thresholds, and XP caps',()=>{
@@ -78,15 +78,15 @@ test('boss and raid combat loop limits stay separated',()=>{
   assert.ok(bossStart>=0 && raidStart>bossStart,'combat functions missing or reordered unexpectedly')
   const boss=index.slice(bossStart,raidStart)
   const raid=index.slice(raidStart)
-  assert.ok(boss.includes("if(!eventSession && i>=29) break"),'common/weekly boss must still stop after 30 attacks')
+  assert.ok(boss.includes("if(sessionMode==='common' && i>=29) break"),'only the common boss stops after 30 attacks; weekly/event remain continuous')
   assert.ok(boss.includes("const eventSession=sessionMode==='event'"),'event boss must use continuous auto-combat mode')
   assert.ok(raid.includes('for(let i=0;;i++){'),'raid combat runner must continue until Raid state ends it')
 })
 
-test('03:03 event wiring remains intact',()=>{
+test('04:04 event wiring remains intact',()=>{
   assert.ok(index.includes('autoStartNightBossEvent'),'night event scheduler import/call missing')
   assert.ok(games.includes('export async function autoStartNightBossEvent'),'night event export missing')
-  assert.ok(games.includes("eventId:'night_0303'"),'night event state missing')
+  assert.ok(games.includes("const NIGHT_EVENT_ID='night_0404_20261010'"),'night event state missing')
 })
 
 test('Coroa da Madrugada keeps dual stats',()=>{
@@ -113,7 +113,7 @@ test('purchasable pet specialties keep the intended progression',()=>{
 })
 
 test('boss and event combat auto-heal pets like raids',()=>{
-  assert.ok(games.includes("const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema']"),'Boss pet potion inventory lookup missing')
+  assert.ok(games.includes("const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']"),'Boss pet potion inventory lookup missing')
   assert.ok(games.includes("const chosenPet=raidPetPotion(petPotionRows,missing)"),'Boss must reuse raid pet-potion selection')
   assert.ok(games.includes("autoPetHeal={id:chosenPet.item_id"),'Boss must return pet auto-heal details')
   assert.ok(index.includes("🐾🧪 *AUTOCURA DO PET!*"),'Boss session must announce pet auto-heal')
@@ -167,7 +167,7 @@ test('inventory and shop labels are localized',()=>{
 })
 
 test('web inventory separates equipped gear and protects it from every sale path',()=>{
-  assert.ok(db.includes("(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id) AS equipped"),'inventory bootstrap must expose equipped state')
+  assert.ok(db.includes("(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped"),'inventory bootstrap must expose equipped state')
   assert.ok(db.includes("END AS equipped_slot"),'inventory bootstrap must expose equipped slot')
   assert.ok(db.includes("AS sellable_quantity"),'inventory bootstrap must expose free quantity')
   assert.ok(app.includes("['weapons','🗡️ Armas']"),'inventory must have an Armas section')
@@ -178,13 +178,13 @@ test('web inventory separates equipped gear and protects it from every sale path
   assert.ok(app.includes("🔒 Equipados"),'inventory must isolate equipped gear')
   assert.ok(app.includes("PROTEGIDO DE VENDA"),'equipped cards must visibly block selling')
   assert.ok(app.includes("quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)"),'normal inventory sections must exclude the equipped copy')
-  const batchStats=(db.match(/SELECT weapon_id,armor_id,boot_id FROM stats WHERE jid=\$1 FOR UPDATE/g)||[]).length
+  const batchStats=(db.match(/SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=\$1 FOR UPDATE/g)||[]).length
   assert.ok(batchStats>=2,'batch sell/discard must protect equipped boots as well as weapon/armor')
   assert.ok(db.includes("['weapon','armor','boots'].includes(i.category)"),'duplicate equipment sale must include boots safely')
   assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
   assert.ok(db.includes("qty:Number(i.quantity)-1"),'duplicate sale must always preserve one copy')
   assert.ok(app.includes("market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0"),'market UI must exclude equipped copies')
-  assert.ok(db.includes("const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-equipped)"),'market backend must preserve equipped copy')
+  assert.ok(db.includes("const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))"),'market backend must preserve equipped copy')
 })
 
 test('marriage proposals appear to the recipient in web and can be accepted or rejected',()=>{
@@ -238,12 +238,14 @@ test('class reclassification requires scroll and seven-day cooldown',()=>{
   assert.ok(app.includes('Primeira classe grátis'),'first-choice UX missing')
 })
 
-test('level rewards are explicit, balanced through level 100 and use real claim history',()=>{
+test('level rewards retain the explicit table and spaced endgame milestones with real claim history',()=>{
   for(const milestone of [55,60,65,70,75,80,85,90,95,100]){
     assert.ok(db.includes(milestone+':{cash:'),'missing explicit reward for Lv.'+milestone)
   }
   assert.ok(db.includes("100:{cash:750000,items:[['pergaminho_reclassificacao',1]"),'Lv.100 must grant the reclassification scroll')
-  assert.ok(db.includes('if(milestone<5 || milestone>100 || milestone%5!==0) return null'),'level rewards must stop at 100')
+  assert.ok(db.includes('if(milestone<=100) return milestone%5===0?'),'early milestones remain every 5 levels')
+  assert.ok(db.includes('if(milestone<200 && milestone%10!==0) return null'),'endgame milestones remain every 10 levels')
+  assert.ok(db.includes('if(milestone>=200 && milestone%20!==0) return null'),'late endgame milestones remain every 20 levels')
   assert.ok(db.includes('export async function getClaimedLevelRewards(jid)'),'claimed milestones query missing')
   assert.ok(webApi.includes('claimedLevelRewards'),'PWA extras must expose actual claimed milestones')
   assert.ok(webApi.includes('Array.from({length:20}'),'PWA must list milestones through level 100')
@@ -277,9 +279,9 @@ test('fuzzy equipment art matching is category gated',()=>{
 
 test('Lucky 3x multiplies roulette profit, not returned stake',()=>{
   assert.ok(games.includes("const baseProfit=basePayout-amount"),'single roulette must separate stake from profit')
-  assert.ok(games.includes("payout=amount+(baseProfit*lucky3xMultiplier())"),'single roulette Lucky 3x payout formula is wrong')
+  assert.ok(games.includes("payout=amount+(baseProfit*lucky3xMultiplier()*groupMultiplier)"),'single roulette Lucky 3x payout formula is wrong')
   assert.ok(games.includes("const baseProfit=basePayout-stake"),'group roulette must separate stake from profit')
-  assert.ok(games.includes("payout=stake+(baseProfit*lucky3xMultiplier())"),'group roulette Lucky 3x payout formula is wrong')
+  assert.ok(games.includes("payout=stake+(baseProfit*lucky3xMultiplier()*groupMultiplier)"),'group roulette Lucky 3x payout formula is wrong')
 })
 
 
@@ -305,7 +307,7 @@ test('reclassification scroll is endgame Boss-only loot',()=>{
   assert.ok(db.includes("if(item.id==='pergaminho_reclassificacao' || Number(item.price)<=0)"),'direct purchase of drop-only items must be blocked')
   assert.ok(games.includes("if(Number(user?.level||1)<100) return null"),'reclass scroll must require level 100')
   assert.ok(games.includes("const chance=mode==='weekly'?.03:.01"),'Boss drop chances must be 3% weekly and 1% common/event')
-  assert.ok(games.includes("const reclassDrop=await maybeGrantReclassScroll"),'Boss reward flow must roll the reclass scroll')
+  assert.ok(games.includes("const reclassDrop=s.eventId===NIGHT_EVENT_ID?null:await maybeGrantReclassScroll"),'Boss reward flow must roll the reclass scroll')
 })
 
 
@@ -476,7 +478,7 @@ test('PWA precaches only audited art sources and all species-specific portraits'
     'unverified Raid sprites must never return')
 })
 
-test('all catalog items use existing, distinct visual slots',()=>{
+test('all catalog items use existing, distinct visual slots',{skip:process.env.ALPHA_RUNTIME==='whatsapp-only'?'RPG Web visual catalog is outside this WhatsApp-only deployment':false},()=>{
   const starterMatch=db.match(/const starterItems = (\[[\s\S]*?\n  \])/)
   assert.ok(starterMatch,'starter item catalog missing')
   const starterItems=Function('return '+starterMatch[1])()
