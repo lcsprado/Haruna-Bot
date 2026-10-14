@@ -134,8 +134,15 @@ let setePecadosBroadcaster=null
 let bossProgressScheduler=null
 let reconnectTimer=null
 let reconnecting=false
-function scheduleReconnect(delayMs=3000){
+let reconnectAttempts=0
+function scheduleReconnect(){
   if(reconnectTimer || reconnecting) return
+  // Backoff exponencial com teto e jitter: evita rajadas de reconexão
+  // e sincronização após falhas transitórias do WhatsApp.
+  const base=Math.min(30000,3000*2**Math.min(reconnectAttempts,4))
+  const delayMs=Math.round(base*(0.8+Math.random()*0.4))
+  reconnectAttempts++
+  console.log('[WhatsApp] nova tentativa em',delayMs,'ms; tentativa',reconnectAttempts)
   reconnectTimer=setTimeout(async()=>{
     reconnectTimer=null
     reconnecting=true
@@ -143,9 +150,10 @@ function scheduleReconnect(delayMs=3000){
     catch(err){
       reconnecting=false
       console.error('[WhatsApp] falha na reconexão',err)
-      scheduleReconnect(10000)
+      scheduleReconnect()
     }
   },delayMs)
+  reconnectTimer.unref?.()
 }
 function setWhatsAppHealth(state){
   trevoHealth.whatsapp=state
@@ -157,7 +165,7 @@ function setWhatsAppHealth(state){
 }
 if(!connectionWatchdog){
   connectionWatchdog=setInterval(()=>{
-    const grace=trevoHealth.everConnected ? 45000 : 120000
+    const grace=trevoHealth.everConnected ? 120000 : 120000
     if(trevoHealth.whatsapp!=='open' && Date.now()-trevoHealth.lastChange>grace){
       console.error('[Watchdog] WhatsApp não recuperou a conexão; reiniciando processo')
       process.exit(1)
@@ -8984,6 +8992,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     if(connection==='open'){
       if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer=null }
       reconnecting=false
+      reconnectAttempts=0
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
       startLabirintoScheduler(sock)
