@@ -9306,25 +9306,8 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
     }catch(err){ console.error('[boas-vindas]',err?.message||err) }
   })
 
-  sock.ev.on('messages.delete',async(event)=>{
-    for(const key of event?.keys||[]) await rememberDeletedMessage(key,'messages.delete')
-  })
+  // Snipe desativado nesta instância RPG: sem listeners de exclusão/edição.
 
-  sock.ev.on('messages.update',async(updates)=>{
-    for(const entry of updates||[]){
-      const change=entry?.update||{}
-      const content=unwrapMessageContent(change.message)
-      const protocol=content?.protocolMessage
-      if(protocol?.type===0 && protocol?.key){
-        await rememberDeletedMessage(protocol.key,'messages.update/protocol')
-        continue
-      }
-
-      if(change.message===null && change.messageStubType!=null){
-        await rememberDeletedMessage(entry?.key,'messages.update/revoke')
-      }
-    }
-  })
 
   // Evita comandos duplicados se uma mensagem recém-chegada for classificada
   // primeiro como append e depois como notify pelo Baileys.
@@ -9406,7 +9389,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         await consolidateUserIdentity(sender,senderIdentity.aliases,msg.pushName||'').catch(err=>{
           console.error('[identidade] falha ao consolidar cadastro',err?.message||err)
         })
-        await cacheIncomingMessage(sock,msg)
+        // Instância dedicada ao RPG: não armazenar mensagens nem baixar mídias para Snipe.
         if(isGroup) await recordGroupActivity(chat,sender,body.startsWith(prefix)).catch(()=>{})
         if(isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))){
           try{
