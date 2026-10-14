@@ -59,6 +59,7 @@ import {
   getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 } from './loans.js'
 import { toStickerBuffer } from './sticker.js'
+import {formatPvpBattleReport} from './pvp-report.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, getAwakeningSkillDescriptions, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
@@ -8359,7 +8360,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       if(r.winner.jid===sender) await creditDailyActivity(sender,'battle',1,null,reply)
       if(String(chat).endsWith('@g.us')) await progressGroupMission(chat,sender,'battle')
       clearQuickFlow(chat,sender)
-      await reply(`⚔️ *BATALHA ENCERRADA!*\n🏆 Vencedor: *${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}`,{mentions:[targetMention]})
+      await reply(formatPvpBattleReport(r),{mentions:[targetMention]})
       return true
     }
 
@@ -11401,16 +11402,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           const r=await battle(sender,target)
           if(!r.ok) return await reply(`⏳ Você poderá batalhar novamente em ${duration(r.remaining)}.`)
 
-          const last=r.log.slice(-6)
-          let text='⚔️ *BATALHA DO ALPHA BOT*\n\n'
-          for(const l of last){
-            if(l.petHeal) text+=`💚 Pet de ${l.from} curou *+${l.heal} HP* — ❤️ ${l.hp}\n`
-            else if(l.dodged) text+=`🌀 ${l.to} esquivou do ataque de ${l.from} — ❤️ ${l.hp}\n`
-            else text+=`${l.crit?'💥 CRÍTICO! ':'⚔️ '}${l.from} causou *${l.dmg}* em ${l.to} — ❤️ ${l.hp}\n`
-          }
-          text+=`\n🏆 *Vencedor: ${r.winner.name}*\n💰 Prêmio: R$ ${fmt(r.reward)}\n✨ EXP: +${r.winXpGain||40} vencedor / +${r.loseXpGain||15} derrotado${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} ATIVO*`:''}`
-          if(r.winExp.levels>0) text+=`\n⬆️ ${r.winner.name} subiu ${r.winExp.levels} nível(is)!`
-          if(r.loseExp.levels>0) text+=`\n⬆️ ${r.loser.name} subiu ${r.loseExp.levels} nível(is)!`
+          const text=formatPvpBattleReport(r)
           if(r.winner.jid===sender) await creditDailyActivity(sender,'battle',1,null,reply)
       if(isGroup) await progressGroupMission(chat,sender,'battle')
           await reply(text,{mentions:[target]})

@@ -2617,7 +2617,7 @@ export async function battle(attackerJid, defenderJid) {
       statsR.rows.push(...result.rows)
     }
     const petsR=await client.query(
-      'SELECT jid,species,level,hp,energy FROM pets WHERE jid=ANY($1::text[])',
+      'SELECT jid,name,species,level,hp,energy FROM pets WHERE jid=ANY($1::text[])',
       [ids]
     )
     const petTeamR=await client.query(
@@ -2681,7 +2681,7 @@ export async function battle(attackerJid, defenderJid) {
       classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+classCritBonus(a.class_id,a.class_applied)),
       spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd,
-      petBonus:aPetBonus,petSpecies:ap?.species||null,petHealUses:0
+      petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
@@ -2691,9 +2691,17 @@ export async function battle(attackerJid, defenderJid) {
       classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+classCritBonus(b.class_id,b.class_applied)),
       spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd,
-      petBonus:bPetBonus,petSpecies:bp?.species||null,petHealUses:0
+      petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
     }
 
+    // Foto fiel do HP e dos bônus antes de qualquer golpe (independe do resumo exibido).
+    const snapshot=fighter=>({
+      jid:fighter.jid,name:fighter.name,hp:fighter.hp,maxHp:fighter.maxHp,
+      atk:fighter.atk,def:fighter.def,spd:fighter.spd,
+      crit:Math.min(.40,Number(fighter.crit||0)+Number(fighter.petBonus?.crit||0)),
+      petName:fighter.petName||null,petSpecies:fighter.petSpecies||null
+    })
+    const opening={attacker:snapshot(A),defender:snapshot(B)}
     const log=[]
     let first=A.spd>=B.spd?A:B
     let second=first===A?B:A
@@ -2709,9 +2717,13 @@ export async function battle(attackerJid, defenderJid) {
       from.lastProcAttack=attack.lastProcAttack
       const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage}).damage
       const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-Number(to.petBonus?.defense||0))))
+      const targetHpBefore=to.hp
       to.hp=Math.max(0,to.hp-dmg)
+      const classHealBefore=from.hp
       if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
-      log.push({from:from.name,to:to.name,dmg,crit:!dodged&&crit,dodged,hp:to.hp})
+      const classHealed=Math.max(0,from.hp-classHealBefore)
+      log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,actualDamage:targetHpBefore-to.hp,crit:!dodged&&crit,dodged,hp:to.hp})
+      if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
       // Cura do pet principal: após seu próprio ataque, até 3 vezes por duelo.
       const cooldown=Number(from.petBonus?.healCooldown||0)
       if(from.hp>0&&cooldown>0&&from.petHealUses<3&&Number(from.petBonus?.healPct||0)>0&&
@@ -2720,7 +2732,7 @@ export async function battle(attackerJid, defenderJid) {
         from.hp=Math.min(from.maxHp,from.hp+Math.max(1,Math.round(from.maxHp*Number(from.petBonus.healPct))))
         if(from.hp>before){
           from.petHealUses++
-          log.push({petHeal:true,from:from.name,to:from.name,petSpecies:from.petSpecies,heal:from.hp-before,hp:from.hp})
+          log.push({round:from.attackIndex,petHeal:true,from:from.name,fromJid:from.jid,to:from.name,toJid:from.jid,petSpecies:from.petSpecies,heal:from.hp-before,hp:from.hp})
         }
       }
     }
@@ -2731,6 +2743,9 @@ export async function battle(attackerJid, defenderJid) {
       hit(second,first)
     }
 
+    const roundCount=Math.max(A.attackIndex,B.attackIndex)
+    const decidedByLimit=A.hp>0&&B.hp>0
+    const ending={attackerHp:A.hp,defenderHp:B.hp}
     let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
     let loser=winner===A?B:A
     if(A.hp>0 && B.hp>0){
@@ -2764,7 +2779,7 @@ export async function battle(attackerJid, defenderJid) {
     const loseExp=await applyExp(client,loser.jid,loseXpGain)
 
     return {
-      ok:true,winner,loser,reward,log,
+      ok:true,winner,loser,reward,log,opening,ending,roundCount,decidedByLimit,
       winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
       final:{
         attackerHp: A.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(A.maxHp*0.25)),
