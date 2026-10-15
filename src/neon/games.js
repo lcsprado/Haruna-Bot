@@ -1279,6 +1279,19 @@ export async function raidRound(chat,level){
     if(Number(s.hp)<=0){
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
+      // Despertar V: somente Raids Lv.60+ vencidas com 2+ jogadores
+      // distintos causando pelo menos 2% do dano cada. Não altera drops.
+      if(Number(cfg.level)>=60){
+        const participants=Object.values(s.players||{})
+        const totalDamage=participants.reduce((sum,p)=>sum+Math.max(0,Number(p.damage||0)),0)
+        const contributors=participants.filter(p=>p.jid&&Number(p.damage||0)>0&&Number(p.damage||0)>=totalDamage*.02)
+        const distinct=[...new Set(contributors.map(p=>p.jid))]
+        if(totalDamage>0&&distinct.length>=2){
+          await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+            SELECT 'system',jid,0,'awakening','awakening_coop_raid_60'
+            FROM player_awakenings WHERE stage=4 AND jid=ANY($1::text[])`,[distinct])
+        }
+      }
       await saveGame(c,chat,gameType,s)
       return {victory:true,config:cfg,raidId:s.startedAt,round:s.round,hp:0,maxHp:s.maxHp,rewards,events}
     }
