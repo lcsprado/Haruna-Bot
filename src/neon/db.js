@@ -3790,27 +3790,33 @@ export async function robPlayer(thiefJid,targetJid) {
     const victimCash=Number(vw?.cash||0)
     if(victimCash<100) throw new Error('Essa pessoa está praticamente sem dinheiro na carteira.')
 
-    const cd=await claimCooldown(client,`rob:${thiefJid}`,60*60)
+    const protection=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1',[`rob_protection:${targetJid}`])
+    const protectedUntil=Number(protection.rows[0]?.expires_at||0)
+    if(protectedUntil>now) throw new Error('🛡️ Essa pessoa foi roubada recentemente e está protegida por mais '+Math.ceil((protectedUntil-now)/60)+' minuto(s).')
+
+    const cd=await claimCooldown(client,`rob:${thiefJid}`,45*60)
     if(!cd.ok) return cd
 
     const speedDiff=Number(ts?.spd||10)-Number(vs?.spd||10)
-    const chance=Math.max(.25,Math.min(.70,.45+(speedDiff*.015)))
+    const chance=Math.max(.25,Math.min(.65,.45+(speedDiff*.015)))
     const success=Math.random()<chance
 
     if(success){
-      const pct=.05+Math.random()*.10
-      const amount=Math.min(3000,Math.max(50,Math.floor(victimCash*pct)))
+      const pct=.02+Math.random()*.03
+      const amount=Math.min(victimCash,50000,Math.max(50,Math.floor(victimCash*pct)))
       await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[amount,thiefJid])
       await client.query('UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',[amount,targetJid])
       await client.query(`
         INSERT INTO transactions(from_jid,to_jid,amount,type,note)
         VALUES($1,$2,$3,'robbery','success')
       `,[targetJid,thiefJid,amount])
+      await client.query(`INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+        ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at`,[`rob_protection:${targetJid}`,now+2*60*60])
       return {ok:true,success:true,amount,chance}
     }
 
     const thiefCash=Number(tw?.cash||0)
-    const fine=Math.min(500,thiefCash)
+    const fine=Math.min(20000,Math.floor(thiefCash*.02))
     if(fine>0){
       await client.query('UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',[fine,thiefJid])
     }
