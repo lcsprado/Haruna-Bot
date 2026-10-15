@@ -1402,8 +1402,8 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const bonusSummary=`💥 DANO EXTRA RAID: *+${pct(raidDamagePct)}%*
 👹 DANO EXTRA BOSS: *+${pct(bossDamagePct)}%*
 ${Math.abs(raidCritPct-bossCritPct)<.05
-    ?`🎯 CRIT RAID/BOSS: *${pct(raidCritPct)}%*`
-    :`🎯 CRIT RAID: *${pct(raidCritPct)}%*\n🎯 CRIT BOSS: *${pct(bossCritPct)}%*`}`
+    ?`🔥 CRIT COM PETS: *${pct(raidCritPct)}%*`
+    :`🔥 CRIT COM PETS — RAID: *${pct(raidCritPct)}%*\n🔥 CRIT COM PETS — BOSS: *${pct(bossCritPct)}%*`}`
 
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
@@ -1419,7 +1419,7 @@ ${title}${badge?' • '+badge:''}
 ⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
-🎯 CRIT NORMAL: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
+🎯 CRIT BASE: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
 ${bonusSummary}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
