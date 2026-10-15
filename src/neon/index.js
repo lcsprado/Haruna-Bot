@@ -1408,7 +1408,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
 👹 DANO EXTRA BOSS: *+${pct(bossDamagePct)}%*
 ${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNoPetsPct)<.05
     ?critLine('CRIT RAID/BOSS',raidCritPct,raidCritNoPetsPct)
-    :critLine('CRIT RAID',raidCritPct,raidCritNoPetsPct)+'\\n'+critLine('CRIT BOSS',bossCritPct,bossCritNoPetsPct)}`
+    :critLine('CRIT RAID',raidCritPct,raidCritNoPetsPct)+'\n'+critLine('CRIT BOSS',bossCritPct,bossCritNoPetsPct)}`
 
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
