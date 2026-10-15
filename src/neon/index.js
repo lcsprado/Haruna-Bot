@@ -1399,11 +1399,16 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
   const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
   const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
+  // Mostrar a chance final e, ao lado, os pontos percentuais que pets e
+  // sinergia realmente acrescentam apos os limites de critico do combate.
+  const raidCritNoPetsPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0))*100
+  const bossCritNoPetsPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0))*100
+  const critLine=(label,total,noPets)=>`🎯 ${label}: *${pct(total)}%* (🐾 +${pct(Math.max(0,total-noPets))} p.p. pets)`
   const bonusSummary=`💥 DANO EXTRA RAID: *+${pct(raidDamagePct)}%*
 👹 DANO EXTRA BOSS: *+${pct(bossDamagePct)}%*
-${Math.abs(raidCritPct-bossCritPct)<.05
-    ?`🔥 CRIT COM PETS: *${pct(raidCritPct)}%*`
-    :`🔥 CRIT COM PETS — RAID: *${pct(raidCritPct)}%*\n🔥 CRIT COM PETS — BOSS: *${pct(bossCritPct)}%*`}`
+${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNoPetsPct)<.05
+    ?critLine('CRIT RAID/BOSS',raidCritPct,raidCritNoPetsPct)
+    :critLine('CRIT RAID',raidCritPct,raidCritNoPetsPct)+'\\n'+critLine('CRIT BOSS',bossCritPct,bossCritNoPetsPct)}`
 
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
@@ -1419,7 +1424,6 @@ ${title}${badge?' • '+badge:''}
 ⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
-🎯 CRIT BASE: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
 ${bonusSummary}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
