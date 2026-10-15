@@ -6,7 +6,9 @@ import { getPlayerClass } from './game-catalog.js'
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
 export const AWAKENING_TIERS=[
   {stage:2,roman:'II',level:150,cost:600000,hp:30,atk:6,def:6,mult:10},
-  {stage:3,roman:'III',level:200,cost:1200000,hp:45,atk:9,def:9,mult:20}
+  {stage:3,roman:'III',level:200,cost:1200000,hp:45,atk:9,def:9,mult:20},
+  {stage:4,roman:'IV',level:250,cost:2500000,hp:60,atk:12,def:12,mult:30},
+  {stage:5,roman:'V',level:300,cost:5000000,hp:80,atk:16,def:16,mult:40}
 ]
 const PATHS={
   warrior:{name:'Vanguarda de Ferro',quests:[['raid',2,10,'Vencer Raids de vanguarda'],['pvp',2,0,'Vencer duelos de honra']]},
@@ -49,7 +51,7 @@ export async function initAwakening(){
       console.log('[Despertar] migração única: todos os registros no estágio I, atributos preservados')
     }
   })
-  console.log('[Despertar] progressão I/II/III (níveis 100/150/200); fase I inicial')
+  console.log('[Despertar] progressão I–V (etapas II/III/IV/V nos níveis 150/200/250/300); estágio inicial I')
 }
 async function getMetrics(c,jid){
   const [st,log]=await Promise.all([
@@ -137,7 +139,7 @@ export async function awakenCharacter(jid){
     const current=await getMetrics(c,jid)
     row=await normalizeAwakeningStage(c,jid,row,current)
     const s=progress(row,u,current),tier=s.tier
-    if(!tier)throw new Error('Despertar III já concluído; estágio máximo.')
+    if(!tier)throw new Error('Despertar V já concluído; estágio máximo.')
     if(s.level<tier.level)throw new Error(`Despertar ${tier.roman} exige nível ${tier.level}.`)
     if(s.quests.some(q=>q.done<q.target))throw new Error('Missões pendentes: '+s.quests.filter(q=>q.done<q.target).map(q=>`${q.label}: ${q.done}/${q.target}`).join(' • '))
     if(s.balance<tier.cost)throw new Error(`Faltam R$ ${(tier.cost-s.balance).toLocaleString('pt-BR')} para o Despertar ${tier.roman}.`)
