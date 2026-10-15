@@ -1360,6 +1360,17 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     ? `🐾 Pet: *${pet.name}* (${pet.species}, Nv.${pet.level}) • ❤️ ${pet.hp}/${petMaxHp(pet.level,pet.xp,pet.species)} • ⚡ ${pet.energy}/${petMaxEnergy(pet.level,pet.species)}`
     : '🐾 Pet: *Nenhum*'
 
+  // Indicadores informativos: somente especialidade do pet principal.
+  // Nao somar sinergia de ATK ou efeitos de insignia aqui: possuem regras proprias.
+  const activePetBonus=pet?petStatusBonus(pet):null
+  const activePetSpec=pet?PET_STATUS_SPECIALTIES[String(pet.species||'').toLowerCase()]:null
+  const petBonusScale=activePetSpec?(1+Math.min(activePetSpec.raid?.25:.50,Math.max(0,Number(pet.level||1)-1)*((activePetSpec.raid?.25:.50)/99))):1
+  const petBonusCap=activePetSpec?.raid?15:10
+  const petStats=activePetSpec?.stats||(activePetSpec?.stat?{[activePetSpec.stat]:activePetSpec.base}:{})
+  const petPct=key=>Math.min(petBonusCap,Number(petStats[key]||0)*petBonusScale)
+  const formatPetPct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
+  const petDamageLine=pet?`💥 DANO PET: *+${formatPetPct(petPct('damage'))}%*\n👹 DANO BOSS PET: *+${formatPetPct(petPct('bossDamage'))}%*\n`:''
+
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
 ${title}${badge?' • '+badge:''}
@@ -1375,7 +1386,7 @@ ${title}${badge?' • '+badge:''}
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
 🎯 CRIT: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
-
+${petDamageLine}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
 🥊 Ranking RPG: *#${Number(ranks.combatRank||0)||'-'}*
