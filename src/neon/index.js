@@ -1365,9 +1365,10 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     ? `🐾 Pet: *${pet.name}* (${pet.species}, Nv.${pet.level}) • ❤️ ${pet.hp}/${petMaxHp(pet.level,pet.xp,pet.species)} • ⚡ ${pet.energy}/${petMaxEnergy(pet.level,pet.species)}`
     : '🐾 Pet: *Nenhum*'
 
-  // Projecao de dano fixo por golpe em Raid/Boss, comparada ao ATK base sem equipamento.
-  // Efeitos condicionais (critico, procs, HP baixo, oleos temporarios) nao entram no
-  // dano fixo; a chance de critico e exibida separadamente.
+  // O ATK exibido ja inclui armas/armaduras e seus upgrades.
+  // Dano extra deve ser calculado SOBRE esse ATK, sem converter equipamento
+  // novamente em percentual. Critico e probabilidade, nao dano fixo.
+  // Efeitos condicionais (procs, HP baixo, oleos temporarios) ficam fora da porcentagem.
   const context=combatContext.rows[0]||{}
   const awakeningStage=Boolean(p.class_applied)?Math.min(3,Math.max(0,Number(context.awakening_stage||0))):0
   const synergy=petTeamSynergy(context.team||[])||{}
@@ -1380,8 +1381,8 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const petStatPct=name=>Math.min(petCap,Number(stats[name]||0)*scale)
   const petDamage=(petStatPct('damage')+petStatPct('bossDamage'))/100
   const petCrit=petStatPct('crit')/100
-  const baseAtk=Math.max(1,Number(p.base_atk||0))
-  const gearAtkMult=Number(p.effective_atk||baseAtk)/baseAtk
+  const baseAtk=Math.max(0,Number(p.base_atk||0))
+  const gearAtk=Math.max(0,Number(p.effective_atk||0)-baseAtk)
   const passive=getClassPassive(p.class_id,p.class_applied)||{}
   const classId=String(p.class_id||'').toLowerCase()
   const fixedClassMult=(1+Number(passive.damage||0))*
@@ -1389,7 +1390,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     (classId==='warrior'&&awakeningStage>=1?1.02:1)*
     (classId==='mage'&&awakeningStage>=3?1.03:1)
   const petTeamMult=1+petDamage+Number(synergy.attack||0)
-  const fixedDamagePct=relicRate=>(gearAtkMult*petTeamMult*fixedClassMult*(1+Number(relicRate||0))-1)*100
+  const fixedDamagePct=relicRate=>(petTeamMult*fixedClassMult*(1+Number(relicRate||0))-1)*100
   const raidDamagePct=fixedDamagePct(relics.active?.raidAttack)
   const bossDamagePct=fixedDamagePct(relics.active?.boss)
   const baseCrit=.10+Number(p.equipment_crit||0)
@@ -1398,10 +1399,11 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
   const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
   const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
-  const bonusSummary=`💥 DANO TOTAL RAID: *+${pct(raidDamagePct)}%*
-👹 DANO TOTAL BOSS: *+${pct(bossDamagePct)}%*
-🎯 CRIT RAID: *${pct(raidCritPct)}%*
-🎯 CRIT BOSS: *${pct(bossCritPct)}%*`
+  const bonusSummary=`💥 DANO EXTRA RAID: *+${pct(raidDamagePct)}%*
+👹 DANO EXTRA BOSS: *+${pct(bossDamagePct)}%*
+${Math.abs(raidCritPct-bossCritPct)<.05
+    ?`🎯 CRIT RAID/BOSS: *${pct(raidCritPct)}%*`
+    :`🎯 CRIT RAID: *${pct(raidCritPct)}%*\\n🎯 CRIT BOSS: *${pct(bossCritPct)}%*`}`
 
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
@@ -1414,10 +1416,10 @@ ${title}${badge?' • '+badge:''}
 [${xp.bar}]
 
 ❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*
-⚔️ ATK: *${Number(p.effective_atk||0)}*
+⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
-🎯 CRIT: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
+🎯 CRIT NORMAL: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
 ${bonusSummary}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
