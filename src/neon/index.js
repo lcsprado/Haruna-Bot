@@ -64,7 +64,7 @@ import {
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, getAwakeningSkillDescriptions, petSacrificeReward } from './game-catalog.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
 import {petCollectionCategory,petCollectionCategoryPets,petCollectionMenuText,petCollectionListText,petCollectionDetailText,petCollectionSacrificeText} from './pet-collection-menu.js'
 import { createWebLinkCode } from './web-api.js'
@@ -1334,10 +1334,15 @@ function xpBar(exp,level){
 }
 
 async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
-  const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,relics]=await Promise.all([
+  const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,relics,combatContext]=await Promise.all([
     getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
     getMotorcycleGarage(jid),getBusinesses(jid),getCareer(jid),getPet(jid),
-    getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid),relicStatus(jid)
+    getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid),relicStatus(jid),
+    db.query(`SELECT COALESCE(a.stage,0)::int AS awakening_stage,
+      COALESCE((SELECT json_agg(json_build_object('species',pc.species) ORDER BY pt.slot)
+        FROM pet_team pt JOIN pet_collection pc ON pc.id=pt.pet_id
+        WHERE pt.jid=$1),'[]'::json) AS team
+      FROM (SELECT $1::text AS jid) u LEFT JOIN player_awakenings a ON a.jid=u.jid`,[jid])
   ])
   if(!p) throw new Error('Perfil não encontrado.')
 
@@ -1360,16 +1365,43 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     ? `🐾 Pet: *${pet.name}* (${pet.species}, Nv.${pet.level}) • ❤️ ${pet.hp}/${petMaxHp(pet.level,pet.xp,pet.species)} • ⚡ ${pet.energy}/${petMaxEnergy(pet.level,pet.species)}`
     : '🐾 Pet: *Nenhum*'
 
-  // Indicadores informativos: somente especialidade do pet principal.
-  // Nao somar sinergia de ATK ou efeitos de insignia aqui: possuem regras proprias.
-  const activePetBonus=pet?petStatusBonus(pet):null
-  const activePetSpec=pet?PET_STATUS_SPECIALTIES[String(pet.species||'').toLowerCase()]:null
-  const petBonusScale=activePetSpec?(1+Math.min(activePetSpec.raid?.25:.50,Math.max(0,Number(pet.level||1)-1)*((activePetSpec.raid?.25:.50)/99))):1
-  const petBonusCap=activePetSpec?.raid?15:10
-  const petStats=activePetSpec?.stats||(activePetSpec?.stat?{[activePetSpec.stat]:activePetSpec.base}:{})
-  const petPct=key=>Math.min(petBonusCap,Number(petStats[key]||0)*petBonusScale)
-  const formatPetPct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
-  const petDamageLine=pet?`💥 DANO PET: *+${formatPetPct(petPct('damage'))}%*\n👹 DANO BOSS PET: *+${formatPetPct(petPct('bossDamage'))}%*\n`:''
+  // Projecao de dano fixo por golpe em Raid/Boss, comparada ao ATK base sem equipamento.
+  // Efeitos condicionais (critico, procs, HP baixo, oleos temporarios) nao entram no
+  // dano fixo; a chance de critico e exibida separadamente.
+  const context=combatContext.rows[0]||{}
+  const awakeningStage=Boolean(p.class_applied)?Math.min(3,Math.max(0,Number(context.awakening_stage||0))):0
+  const synergy=petTeamSynergy(context.team||[])||{}
+  const petReady=Boolean(pet&&Number(pet.hp)>0&&Number(pet.energy)>0)
+  const spec=petReady?PET_STATUS_SPECIALTIES[String(pet.species||'').toLowerCase()]:null
+  const stats=spec?(spec.stats||{[spec.stat]:spec.base}):{}
+  const growth=spec?.raid?.25:.50
+  const scale=petReady?(1+Math.min(growth,Math.max(0,Number(pet.level||1)-1)*(growth/99))):1
+  const petCap=spec?.raid?15:10
+  const petStatPct=name=>Math.min(petCap,Number(stats[name]||0)*scale)
+  const petDamage=(petStatPct('damage')+petStatPct('bossDamage'))/100
+  const petCrit=petStatPct('crit')/100
+  const baseAtk=Math.max(1,Number(p.base_atk||0))
+  const gearAtkMult=Number(p.effective_atk||baseAtk)/baseAtk
+  const passive=getClassPassive(p.class_id,p.class_applied)||{}
+  const classId=String(p.class_id||'').toLowerCase()
+  const fixedClassMult=(1+Number(passive.damage||0))*
+    (1+(classId==='archer'&&awakeningStage>=1?.05:Number(passive.bossDamage||0)))*
+    (classId==='warrior'&&awakeningStage>=1?1.02:1)*
+    (classId==='mage'&&awakeningStage>=3?1.03:1)
+  const petTeamMult=1+petDamage+Number(synergy.attack||0)
+  const fixedDamagePct=relicRate=>(gearAtkMult*petTeamMult*fixedClassMult*(1+Number(relicRate||0))-1)*100
+  const raidDamagePct=fixedDamagePct(relics.active?.raidAttack)
+  const bossDamagePct=fixedDamagePct(relics.active?.boss)
+  const baseCrit=.10+Number(p.equipment_crit||0)
+  const raidClassCrit=classCritBonus(p.class_id,p.class_applied,awakeningStage,'raid')
+  const bossClassCrit=classCritBonus(p.class_id,p.class_applied,awakeningStage,'boss')
+  const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
+  const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
+  const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
+  const bonusSummary=`💥 DANO TOTAL RAID: *+${pct(raidDamagePct)}%*
+👹 DANO TOTAL BOSS: *+${pct(bossDamagePct)}%*
+🎯 CRIT RAID: *${pct(raidCritPct)}%*
+🎯 CRIT BOSS: *${pct(bossCritPct)}%*`
 
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
@@ -1386,7 +1418,7 @@ ${title}${badge?' • '+badge:''}
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
 🎯 CRIT: *${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%*
-${petDamageLine}
+${bonusSummary}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
 🥊 Ranking RPG: *#${Number(ranks.combatRank||0)||'-'}*
