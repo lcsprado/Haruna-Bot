@@ -9,6 +9,7 @@ const {PGlite}=await import(pathToFileURL(process.argv[2]).href)
 const sql=new PGlite()
 process.env.DATABASE_URL='postgresql://test@127.0.0.1:1/never_used'
 const {useNeonAuthState}=await import('../src/neon/auth.js')
+const {BufferJSON}=await import('baileys')
 try{
   await sql.exec(`CREATE TABLE auth_keys(session_id text,type text,id text,value jsonb,updated_at timestamptz DEFAULT now(),PRIMARY KEY(session_id,type,id));
     CREATE TABLE auth_creds(session_id text,key text,value jsonb,updated_at timestamptz DEFAULT now(),PRIMARY KEY(session_id,key));
@@ -77,6 +78,23 @@ try{
     assert.deepEqual((await sql.query("SELECT value FROM auth_keys WHERE id='large'")).rows[0].value,after)
     cases++
   }
-  console.log(JSON.stringify({status:'pass',sqlCases:cases,revisionFallback:true,rollbackAndRetry:true,mixedBatch:true,
-    fixtureFullJsonBytes:Buffer.byteLength(JSON.stringify(base)),fixturePatchSqlAndParameterBytes:patchBytes}))
+  let bufferCases=0,bufferFullBytes=0,bufferSqlBytes=0
+  const bufferState={counter:100,keys:Array.from({length:2800},(_,i)=>({iteration:i,seed:Buffer.from('fixture-'+i).toString('base64')})),tail:'unchanged'}
+  const encode=b=>JSON.stringify(b,BufferJSON.replacer)
+  for(let i=0;i<24;i++){
+    const before=Buffer.from(JSON.stringify(bufferState)),changed=structuredClone(bufferState)
+    changed.counter+=i+1;changed.keys.splice(2100,1+i%3);changed.tail='alterado'+i
+    const after=Buffer.from(JSON.stringify(changed))
+    await sql.query("UPDATE auth_keys SET value=$1::jsonb WHERE id='large'",[encode(before)])
+    const revision=(await sql.query("SELECT md5(value::text) AS revision FROM auth_keys WHERE id='large'")).rows[0].revision
+    const plan=planAuthJsonPatch(encode(before),encode(after));assert.ok(plan?.operations[0]?.bufferDelta)
+    const statement=authPatchQuery('test','session','large',revision,plan.operations)
+    await sql.query(statement.text,statement.values)
+    const stored=(await sql.query("SELECT value FROM auth_keys WHERE id='large'")).rows[0].value
+    assert.deepEqual(JSON.parse(JSON.stringify(stored),BufferJSON.reviver),after)
+    bufferFullBytes=Buffer.byteLength(encode(after));bufferSqlBytes=Buffer.byteLength(statement.text)+Buffer.byteLength(JSON.stringify(statement.values))
+    assert.ok(bufferSqlBytes<bufferFullBytes/20);bufferCases++
+  }
+  console.log(JSON.stringify({status:'pass',sqlCases:cases,bufferSqlCases:bufferCases,revisionFallback:true,rollbackAndRetry:true,mixedBatch:true,
+    fixtureFullJsonBytes:Buffer.byteLength(JSON.stringify(base)),fixturePatchSqlAndParameterBytes:patchBytes,bufferFullBytes,bufferSqlBytes}))
 }finally{await sql.close()}
