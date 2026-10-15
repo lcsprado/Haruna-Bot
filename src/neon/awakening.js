@@ -58,16 +58,18 @@ async function getMetrics(c,jid){
     c.query('SELECT win FROM stats WHERE jid=$1',[jid]),
     c.query(`SELECT note,COUNT(*)::int AS total FROM transactions
        WHERE from_jid='system' AND to_jid=$1 AND type='minigame'
-       AND (note LIKE 'raid_%' OR note LIKE 'boss_%') GROUP BY note`,[jid])
+       AND ((type='minigame' AND (note LIKE 'raid_%' OR note LIKE 'boss_%'))
+         OR (type='awakening' AND note='awakening_coop_raid_60')) GROUP BY note`,[jid])
   ])
-  const raids={};let boss=0
+  const raids={};let boss=0,coop=0
   for(const r of log.rows){
     const note=String(r.note||'')
     const match=/^raid_(\d+)$/.exec(note)
     if(match)raids[match[1]]=Number(r.total||0)
     else if(/^boss_(common|weekend|event_.*)$/.test(note))boss+=Number(r.total||0)
+    else if(note==='awakening_coop_raid_60')coop+=Number(r.total||0)
   }
-  return {pvp:Number(st.rows[0]?.win||0),boss,raids}
+  return {pvp:Number(st.rows[0]?.win||0),boss,raids,coop}
 }
 async function getPlayer(c,jid,locked=false){
   return (await c.query(`SELECT u.level,s.class_id,w.cash,w.bank FROM users u
@@ -107,6 +109,11 @@ function progress(row,u,counters){
     const done=Math.min(target,since(row.baseline,counters,type,raidMin))
     return {label:label+(type==='raid'?` (Lv.${raidMin}+)`:''),target,done}
   }):[]
+  if(tier?.stage===5)quests.push({
+    label:'Vencer Raids cooperativas (Lv.60+, 2 jogadores com 2%+ do dano)',
+    target:10,
+    done:Math.min(10,since(row.baseline,counters,'coop',0))
+  })
   return {stage,tier,classId,className:getPlayerClass(classId).name,path:path.name,
     level:Number(u.level),balance:Number(u.cash)+Number(u.bank),quests,
     ready:!!tier&&Number(u.level)>=tier.level&&quests.every(q=>q.done>=q.target)}
