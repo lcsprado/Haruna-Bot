@@ -339,8 +339,8 @@ async function ensureMissions(jid){
 }
 
 export async function getDailyMissions(jid){return getDailyMissionsV2(jid)}
-export async function progressDailyMission(jid,type,amount=1,sourceKey=null){
-  return progressDailyMissionV2(jid,type,amount,sourceKey)
+export async function progressDailyMission(jid,type,amount=1,sourceKey=null,options={}){
+  return progressDailyMissionV2(jid,type,amount,sourceKey,options)
 }
 export async function claimDailyMissions(jid){return claimDailyMissionsV2(jid)}
 
