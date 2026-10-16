@@ -1051,15 +1051,18 @@ export async function work(jid, taxMultiplier=1) {
     const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
     const xpGain=Math.round((25+Math.floor(Math.random()*16))*xpMultiplier)
     const newXp=oldXp+xpGain, newRank=careerRank(newXp)
-    // Faixa salarial maior para manter o !trabalhar relevante ao longo da progressão,
-    // sem ultrapassar o retorno de ativos caros como Uber e negócios.
-    let base=1000+Math.floor(Math.random()*801)
+    // Remuneracao escalonada por nivel; carreira continua progredindo com XP.
+    // Todos os bonus de desempenho/evento respeitam o teto da faixa.
+    const playerRow=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
+    const level=Math.max(1,Number(playerRow?.level)||1)
+    const payCap=level<=20?1500:level<=50?3000:level<=100?5000:level<=150?7500:level<=200?10000:level<=250?12500:15000
+    const base=Math.round(payCap/Math.max(1,newRank.mult))
     let event=null, factor=1
     const roll=Math.random()
     if(roll<.08){event='🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
     else if(roll<.15){event='⏰ Hora extra! Bônus de 25%.';factor=1.25}
     else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
-    const gross=Math.max(1,Math.round(base*newRank.mult*factor*moneyMultiplier))
+    const gross=Math.min(payCap,Math.max(1,Math.round(base*newRank.mult*factor*moneyMultiplier)))
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100))
     const amount=gross-tax
