@@ -1524,6 +1524,65 @@ async function giveBossDrops(c,jid,position,extraChance=0,sourceKey=null){
 // Isso impede o mesmo jogador de ganhar ataques extras só por estar em vários grupos.
 const GLOBAL_BOSS_EVENT_CHAT='__alpha_global_boss_event__'
 
+
+const CALCANHAR_ID='calcanhar_jp_20261016'
+const CALCANHAR_START=Date.parse('2026-10-16T19:30:00-03:00')
+const CALCANHAR_END=Date.parse('2026-10-16T21:30:00-03:00')
+const CALCANHAR_HP=1000000
+const CALCANHAR_KEY='calcanhar-jp-20261016-1930'
+async function settleCalcanhar(c,state,defeated){
+  const entries=Object.entries(state.participants||{})
+    .map(([jid,p])=>({jid,name:p.name||'Jogador',damage:Math.max(0,Number(p.damage||0))}))
+    .filter(p=>p.damage>0).sort((a,b)=>b.damage-a.damage)
+  const total=entries.reduce((n,p)=>n+p.damage,0)||1
+  const rewards=[]
+  for(let i=0;i<entries.length;i++){
+    const p=entries[i],position=i+1,share=p.damage/total
+    const cash=Math.round((position===1?100000:position===2?65000:position===3?40000:20000)+80000*share)
+    const exp=Math.round((position===1?3500:position===2?2500:position===3?1700:900)+2500*share)
+    await credit(c,p.jid,cash,'boss_event_calcanhar_20261016')
+    await grantExpInTransaction(c,p.jid,exp,{chatJid:state.originChat||null})
+    const drops=[]
+    if(defeated&&position===1){
+      drops.push(await grantBossItem(c,p.jid,{id:'bota_jp_aquiles',name:'Bota do JP — Passo da Lenda (+12 VEL / +2% CRIT)',rarity:'Lendário Exclusivo'},'calcanhar-jp:2026-10-16'))
+    }else if(position>1){
+      const itemId='insignia_nem_cirurgia_derrubou_lenda'
+      await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,itemId])
+      drops.push({id:itemId,name:'Insígnia Nem a Cirurgia Derrubou a Lenda (+1% dano Boss/Raid)',rarity:'Evento Único'})
+    }
+    rewards.push({...p,position,share,cash,exp,petXp:0,petXpTeam:[],drops})
+  }
+  const marker={...state,active:false,mode:'event_completed',hp:defeated?0:state.hp,
+    completedAt:Date.now(),participants:{},
+    result:{bossName:state.name,maxHp:state.maxHp,defeated,rewards}}
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
+  return {due:true,ended:true,won:defeated,rewards,result:marker.result}
+}
+export async function tickCalcanharBoss(now=Date.now()){
+  if(now<CALCANHAR_START)return {due:false}
+  return tx(async c=>{
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+    if(current?.eventId===CALCANHAR_ID){
+      if(now>=CALCANHAR_END&&current.active!==false&&Number(current.hp)>0)return settleCalcanhar(c,current,false)
+      return {due:true,already:true,active:current.active!==false&&Number(current.hp)>0,
+        completed:current.mode==='event_completed',result:current.result}
+    }
+    if(now>=CALCANHAR_END)return {due:false,expired:true}
+    // Nunca substituir o Boss de outro evento que tenha participantes.
+    const activeOther=current&&current.active!==false&&Number(current.hp)>0&&(!current.endsAt||Number(current.endsAt)>now)
+    const emptyFridayEclipse=activeOther&&current.eventId==='eclipse'&&current.scheduleKey==='2026-10-16'&&
+      Object.keys(current.participants||{}).length===0
+    if(activeOther&&!emptyFridayEclipse)return {due:true,blocked:true,blockingBoss:current.name}
+    const state={mode:'event',eventId:CALCANHAR_ID,origin:'scheduled',active:true,
+      scheduleKey:CALCANHAR_KEY,name:'Carrasco de Aquiles — Calcanhar do JP',
+      hp:CALCANHAR_HP,maxHp:CALCANHAR_HP,baseHp:CALCANHAR_HP,atk:85,
+      participants:{},startedAt:now,endsAt:CALCANHAR_END}
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
+    console.log('[CALCANHAR JP] iniciado',JSON.stringify({hp:state.hp,endsAt:state.endsAt}))
+    return {due:true,spawned:true,...state}
+  })
+}
+
 const PECADOS_START=Date.parse('2026-10-11T18:40:00-03:00')
 const PECADOS_END=Date.parse('2026-10-11T20:40:00-03:00')
 const PECADOS_KEY='sete-pecados-20261011-1840-v1'
@@ -2018,6 +2077,8 @@ export async function autoStartBossEvent(chat,now=new Date()){
   if(now.getTime()<BOSS_EVENT_AUTO_NOT_BEFORE) return {due:false,notBefore:BOSS_EVENT_AUTO_NOT_BEFORE}
   const schedule=bossEventFridayInfo(now)
   if(!schedule.due) return {due:false}
+  // Sexta 16/10 reservada para o Calcanhar do JP às 19:30.
+  if(schedule.fridayKey==='2026-10-16')return {due:false,reservedFor:'calcanhar_jp_20261016'}
   return tx(async c=>{
     const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
 
@@ -2420,10 +2481,10 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
     // HP escala quando um NOVO participante causa seu primeiro ataque, inclusive após !go.
-    if(s.eventId==='sete_pecados'&&!s.participants[jid]){
+    if((s.eventId==='sete_pecados'||s.eventId===CALCANHAR_ID)&&!s.participants[jid]){
       const oldCount=Object.keys(s.participants).length
       if(oldCount>=1){
-        const hpIncrease=Math.round(Number(s.baseHp||s.maxHp)*.35)
+        const hpIncrease=Math.round(Number(s.baseHp||s.maxHp)*(s.eventId===CALCANHAR_ID?.12:.35))
         s.maxHp+=hpIncrease
         s.hp+=hpIncrease
       }
@@ -2657,6 +2718,14 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[php,jid])
+    }
+    if(s.hp<=0&&s.eventId===CALCANHAR_ID){
+      const result=await settleCalcanhar(c,s,true)
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,
+        playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
+        autoHeal,autoPetHeal,petSkillHeal,petSwitch,autoPetEnergy,petUnavailable,
+        petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
+        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     if(s.hp<=0&&s.eventId==='sete_pecados'){
       const outcome=await settlePecadoPhase(c,s,chat)
