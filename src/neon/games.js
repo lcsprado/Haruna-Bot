@@ -2792,7 +2792,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         }
         // Prêmio exclusivo e garantido ao campeão do Boss semanal, sem sorteio.
         if(weekly&&position===1){
-          drops.push(await grantBossItem(c,p.jid,{id:'elmo_soberano_golem',name:'Elmo do Soberano Ancestral (+85 DEF / +220 HP)',rarity:'Lendário Exclusivo'},'weekly-boss:'+String(s.weekendKey||'unknown')))
+          drops.push(await grantBossItem(c,p.jid,{id:'insignia_tita_ancestral',name:'Insígnia do Titã Ancestral (+3% dano / +1pp CRIT Boss e Raid)',rarity:'Lendário Exclusivo'},'weekly-boss:'+String(s.weekendKey||'unknown')))
         }
         // Reclassificação é recompensa de endgame: só entra no sorteio a partir do Nv.100.
         // Boss comum e Boss de evento: 1%. Superboss semanal: 3%.
