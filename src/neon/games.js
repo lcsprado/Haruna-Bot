@@ -63,6 +63,28 @@ async function saveGame(client,chat,type,state){
   `,[chat,type,JSON.stringify(state)])
 }
 
+// Golpe normal: só transmite HP, o participante afetado e escala/fase caso mudem.
+// loadGame já mantém o bloqueio FOR UPDATE até o COMMIT, então o ranking e
+// os ataques permanecem atômicos mesmo com jogadores em grupos diferentes.
+// Conclusão do Boss continua usando saveGame para persistir o resultado completo.
+async function saveBossAttackProgress(client,chat,type,state,jid){
+  const patch={hp:Number(state.hp)}
+  if(state.maxHp!==undefined) patch.maxHp=Number(state.maxHp)
+  if(state.phase!==undefined) patch.phase=state.phase
+  if(state.mode!==undefined) patch.mode=state.mode
+  if(state.weeklyCompleted!==undefined) patch.weeklyCompleted=state.weeklyCompleted
+  const updated=await client.query(`
+    UPDATE trevo_games
+    SET state=(state || $3::jsonb) || jsonb_build_object(
+      'participants',
+      COALESCE(state->'participants','{}'::jsonb)
+        || jsonb_build_object($4::text,$5::jsonb)
+    ),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+    WHERE chat_jid=$1 AND game_type=$2
+  `,[chat,type,JSON.stringify(patch),jid,JSON.stringify(state.participants[jid])])
+  if(updated.rowCount!==1) throw new Error('Estado do Boss ausente durante persistência do golpe.')
+}
+
 async function clearGame(client,chat,type){
   await client.query('DELETE FROM trevo_games WHERE chat_jid=$1 AND game_type=$2',[chat,type])
 }
@@ -2350,8 +2372,10 @@ async function persistBossCombatPet(c,jid,pet){
     await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE id=$3 AND jid=$4',[pet.hp,pet.energy,pet.collectionId,jid])
   }
 }
-export async function attackBoss(chat,jid,name,usePet=true){
-  await ensureUser(jid,name||'')
+export async function attackBoss(chat,jid,name,usePet=true,options={}){
+  // O runner já garantiu users/wallets/stats na primeira chamada desta sessão.
+  // Chamadas diretas e sessões retomadas mantêm o cadastro inicial obrigatório.
+  if(!options.skipEnsureUser) await ensureUser(jid,name||'')
   const weekend=bossWeekendInfo()
   return tx(async c=>{
     const now=Math.floor(Date.now()/1000)
@@ -2378,15 +2402,8 @@ export async function attackBoss(chat,jid,name,usePet=true){
       s.mode='weekly'; s.weeklyCompleted=false
     }
     if(gameType==='boss'&&s.mode==='weekly'&&(!weekend.open||s.weekendKey!==weekend.weekendKey||Number(s.endsAt||0)<=Date.now())) throw new Error('O Superboss semanal encerrou. Use !boss para iniciar um Boss comum.')
-    // Vinculação semanal só vale para o Superboss semanal. Um evento global
-    // tem sua própria chave e nunca deve herdar o vínculo de outro Boss.
-    if(weekend.open && gameType==='boss' && s.mode==='weekly'){
-      const initialClaimKey='weekly_boss_group:'+weekend.weekendKey+':'+jid
-      const initialClaim=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',[initialClaimKey])).rows[0]?.value
-      if(initialClaim?.chat&&initialClaim.chat!==chat){
-        throw new Error('⚠️ Você já iniciou o Superboss em outro grupo. Continue atacando no grupo original; trocar de grupo não é permitido.')
-      }
-    }
+    // A checagem atômica de grupo abaixo também protege o Superboss semanal;
+    // não ler o mesmo vínculo duas vezes antes da validação.
     if((gameType==='boss'&&s.mode==='weekly')||gameType==='boss_event'){
       const globalBossId=gameType==='boss_event'
         ?String(s.scheduleKey||s.eventId||s.startedAt||s.endsAt||'event')
@@ -2412,7 +2429,6 @@ export async function attackBoss(chat,jid,name,usePet=true){
       }
     }
     const existingParticipant=s.participants[jid]||{}
-    const awakeningStage=Number((await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]?.stage||0)
     const bossCadenceMs=gameType==='boss_event'?8000:10000
     const bossLastAttackAt=Number(existingParticipant.lastAttackAt||0)
     const bossNow=Date.now()
@@ -2468,16 +2484,26 @@ export async function attackBoss(chat,jid,name,usePet=true){
       pet.energy=Number(pet.energy)-2
       await persistBossCombatPet(c,jid,pet)
     }
-    const teamPets=(await c.query(
-      'SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
-      [jid]
-    )).rows
+    // Lê composição do time, melhorias e despertar no mesmo round-trip.
+    // Sem cache: qualquer troca de equipamento, pet ou evolução é observada
+    // no próximo golpe, inclusive após reconexão/redeploy.
+    const combatSnapshot=(await c.query(`
+      SELECT
+        COALESCE((SELECT stage FROM player_awakenings WHERE jid=$1),0) AS awakening_stage,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object(
+          'slot',t.slot,'species',p.species,'level',p.level,'hp',p.hp,'energy',p.energy
+        ) ORDER BY t.slot)
+          FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
+          WHERE t.jid=$1),'[]'::jsonb) AS team_pets,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('item_id',u.item_id,'level',u.level))
+          FROM equipment_upgrades u
+          WHERE u.jid=$1 AND u.item_id=ANY($2::text[])),'[]'::jsonb) AS upgrade_rows
+    `,[jid,[st.weapon_id,st.armor_id,st.helmet_id].filter(Boolean)])).rows[0]
+    const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
+    const teamPets=combatSnapshot?.team_pets||[]
     const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
     const teamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
-    const upgradeRows=(await c.query(
-      'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
-      [jid,[st.weapon_id,st.armor_id,st.helmet_id].filter(Boolean)]
-    )).rows
+    const upgradeRows=combatSnapshot?.upgrade_rows||[]
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
     const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
@@ -2797,7 +2823,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
       }
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
-    await saveGame(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:bossChat,gameType,s)
+    await saveBossAttackProgress(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:bossChat,gameType,s,jid)
     return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),phase:s.phase||0,phaseChanged,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   })
 }
