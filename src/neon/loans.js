@@ -6,8 +6,8 @@ const OFFER_TTL_SECONDS=10*60
 const INTEREST_RATE_PER_HOUR=0.02
 const MAX_INTEREST_HOURS=50
 const MIN_CREDIT=5_000
-const MAX_CREDIT=250_000
-const CREDIT_PATRIMONY_RATE=0.25
+const MAX_CREDIT=Number.MAX_SAFE_INTEGER
+const CREDIT_PATRIMONY_RATE=0.15
 const MAX_LENDER_ACTIVE=3
 
 const nowEpoch=()=>Math.floor(Date.now()/1000)
@@ -139,7 +139,7 @@ export async function getLoanCredit(jid){
   await expirePending()
   const patrimony=await getPatrimony(jid)
   const base=Math.floor(Math.max(0,Number(patrimony?.total||0))*CREDIT_PATRIMONY_RATE)
-  const limit=Math.min(MAX_CREDIT,Math.max(MIN_CREDIT,base))
+  const limit=Math.max(MIN_CREDIT,base)
   const {rows}=await db.query(
     "SELECT COALESCE(SUM(principal_remaining+interest_due),0)::bigint AS debt FROM player_loans WHERE borrower_jid=$1 AND status='active'",
     [jid]
