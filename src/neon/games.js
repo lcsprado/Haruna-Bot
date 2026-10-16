@@ -586,6 +586,26 @@ function petBossBonus(pet){
   }
 }
 
+
+// Bônus passivos do esquadrão: 100% ativo, 50% slot 2, 25% slot 3.
+// O slot ativo não é contado duas vezes. As habilidades especiais e
+// bônus econômicos de XP/drop continuam exclusivos do pet combatente.
+function squadCombatBonus(activeBonus,activeSlot,team=[]){
+  const total={...activeBonus}
+  for(const key of ['damage','defense','crit','dodge']){
+    let value=Number(activeBonus?.[key]||0)
+    for(const row of team){
+      const slot=Number(row.slot)
+      if(slot===Number(activeSlot)||![1,2,3].includes(slot)) continue
+      if(Number(row.hp)<=0||Number(row.energy)<=0) continue
+      const weight=slot===1?1:slot===2?.5:.25
+      value+=Number(petBossBonus(row)[key]||0)*weight
+    }
+    total[key]=Math.min(({damage:.30,defense:.25,crit:.20,dodge:.20})[key],Math.max(0,value))
+  }
+  return total
+}
+
 // Rebalance pós-!timepet: mais vida para absorver crítico/bônus de pet sem transformar
 // o combate em puro dano recebido. ATK sobe ~10%; HP base sobe ~25–32%.
 const RAID_CONFIGS=[
@@ -959,13 +979,14 @@ export async function startRaid(chat,host,level=null){
         reservePet=null
       }
       const teamPets=(await c.query(
-        'SELECT t.slot,p.species FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
+        'SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
         [jid]
       )).rows
       const teamSynergy=petTeamSynergy(teamPets)
+      const teamPassives=teamPets
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0),classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
@@ -1226,6 +1247,7 @@ export async function raidRound(chat,level){
           await persistRaidCombatPet(c,p.jid,p.pet)
           p.reservePet=p.pet
           p.pet=primary
+          if(p.teamPassives) p.teamPassives=p.teamPassives.map(x=>Number(x.slot)===1?{...x,hp:primary.hp,energy:primary.energy}:x)
           events.push({type:'pet_return',jid:p.jid,name:p.name,petName:primary.name})
         }
       }
@@ -1239,6 +1261,7 @@ export async function raidRound(chat,level){
           await persistRaidCombatPet(c,p.jid,p.pet)
         }
       }
+      if(p.pet?.roundActive) pb=squadCombatBonus(pb,p.pet.teamSlot,p.teamPassives||[])
       const equippedRaidRelic=await activeRelic(c,p.jid)
       const petCritChance=Math.max(0,Number(pb.crit||0)+Number(teamSynergy.crit||0))
       const gearCritChance=Math.max(0,Number(p.crit||0)+Number(equippedRaidRelic?.raidCrit||0))
@@ -1325,6 +1348,7 @@ export async function raidRound(chat,level){
           if(reserve){
             petSwitch={from:fallenPetName,to:reserve.name}
             p.pet=reserve
+            if(p.teamPassives) p.teamPassives=p.teamPassives.map(x=>Number(x.slot)===1?{...x,hp:0}:x)
             p.reservePet=null
             p.pet.roundActive=false
             petFainted=false
@@ -2441,11 +2465,11 @@ export async function attackBoss(chat,jid,name,usePet=true){
       pet.energy=Number(pet.energy)-2
       await persistBossCombatPet(c,jid,pet)
     }
-    const petBonus=petBossBonus(pet)
     const teamPets=(await c.query(
-      'SELECT t.slot,p.species FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
+      'SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
       [jid]
     )).rows
+    const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
     const teamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
     const upgradeRows=(await c.query(
       'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
