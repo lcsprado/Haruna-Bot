@@ -75,6 +75,16 @@ export const CLT_UBER_TYPES=[
   {id:'executivo',name:'Motorista Executivo',price:200000,intervalMin:12,efficiency:.75,commission:.18},
 ]
 const CLT_UBER_SHIFT_SECONDS=8*60*60
+export const CLT_IFOOD_TYPES=[
+  {id:'comum',name:'Motoboy Comum',price:15000,intervalMin:20,efficiency:.55,commission:.35},
+  {id:'experiente',name:'Motoboy Experiente',price:45000,intervalMin:15,efficiency:.65,commission:.25},
+  {id:'premium',name:'Motoboy Premium',price:120000,intervalMin:12,efficiency:.75,commission:.18}
+]
+const CLT_IFOOD_SHIFT_SECONDS=8*3600
+const IFOOD_FARES={
+  bicicleta:[45,95],moto_125:[130,230],moto_160:[240,380],
+  moto_300:[430,650],moto_600:[780,1100],moto_1000:[1350,1900]
+}
 
 const SUNDAY_RUSH_START=Date.parse('2026-10-04T10:30:00-03:00')
 const SUNDAY_RUSH_END=Date.parse('2026-10-04T11:30:00-03:00')
@@ -301,6 +311,13 @@ export async function initProgression(){
       WHERE price_paid IS NULL;
     CREATE INDEX IF NOT EXISTS clt_uber_drivers_jid_idx ON clt_uber_drivers(jid);
     CREATE INDEX IF NOT EXISTS clt_uber_drivers_active_car_idx ON clt_uber_drivers(jid,car_id,shift_ends_at);
+    CREATE TABLE IF NOT EXISTS clt_ifood_drivers(
+      id BIGSERIAL PRIMARY KEY,jid TEXT NOT NULL,driver_type TEXT NOT NULL,motorcycle_id TEXT,
+      price_paid BIGINT NOT NULL,hired_at BIGINT NOT NULL DEFAULT ${nowSql},
+      shift_started_at BIGINT,shift_ends_at BIGINT,last_accrual_at BIGINT,
+      credited_trips INTEGER NOT NULL DEFAULT 0,accrued BIGINT NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS clt_ifood_drivers_jid_idx ON clt_ifood_drivers(jid);
   `)
   await initDailyV2()
 }
@@ -814,6 +831,8 @@ export async function sellMotorcycle(jid,input){
   return tx(async client=>{
     const r=await client.query('SELECT price_paid FROM user_motorcycles WHERE jid=$1 AND motorcycle_id=$2 FOR UPDATE',[jid,vehicle.id])
     if(!r.rows.length) throw new Error('Você não possui esse veículo.')
+    const busy=await client.query('SELECT 1 FROM clt_ifood_drivers WHERE jid=$1 AND motorcycle_id=$2 AND shift_ends_at>$3',[jid,vehicle.id,Math.floor(Date.now()/1000)])
+    if(busy.rowCount)throw new Error('Moto em turno CLT iFood. Aguarde o fim das 8 horas.')
     const paid=Number(r.rows[0].price_paid||vehicle.price)
     const resale=Math.floor(paid*0.70)
     await client.query('DELETE FROM user_motorcycles WHERE jid=$1 AND motorcycle_id=$2',[jid,vehicle.id])
@@ -827,6 +846,10 @@ export async function deliverIfood(jid,taxMultiplier=1){
   await ensureUser(jid)
   const garage=await getMotorcycleGarage(jid)
   if(!garage.length) throw new Error('Você precisa ter bicicleta ou moto para fazer entregas. Use !motos para comprar uma.')
+  const busy=(await db.query('SELECT motorcycle_id FROM clt_ifood_drivers WHERE jid=$1 AND shift_ends_at>$2',[jid,Math.floor(Date.now()/1000)])).rows
+  const busyIds=new Set(busy.map(x=>x.motorcycle_id))
+  const freeGarage=garage.filter(x=>!busyIds.has(x.id))
+  if(!freeGarage.length)throw new Error('Todas as motos estão em turno CLT iFood.')
   const tiers={
     bicicleta:{category:'Bike',min:45,max:95}, moto_125:{category:'Básica',min:130,max:230},
     moto_160:{category:'Rápida',min:240,max:380}, moto_300:{category:'Turbo',min:430,max:650},
@@ -837,7 +860,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
     const cd=await claimCooldown(client,`ifood:frota:${jid}`,cooldown)
     if(!cd.ok) return cd
     const types=[{name:'curta',factor:.85},{name:'média',factor:1},{name:'longa',factor:1.25},{name:'especial',factor:1.5}]
-    const details=garage.map(v=>{
+    const details=freeGarage.map(v=>{
       const tier=tiers[v.id]||tiers.bicicleta
       const delivery=types[Math.floor(Math.random()*types.length)]
       const base=Math.floor(tier.min+Math.random()*(tier.max-tier.min+1))
@@ -1157,6 +1180,100 @@ export async function collectCltUber(jid){
     await client.query('UPDATE clt_uber_drivers SET accrued=0 WHERE jid=$1',[jid])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'clt_uber_collect','Central Uber — líquido após comissão e TAXADE')",[jid,total])
+    return {total,details}
+  })
+}
+
+function cltIfoodNet(motoId,typeId){
+  const fare=IFOOD_FARES[motoId]||IFOOD_FARES.bicicleta
+  const d=CLT_IFOOD_TYPES.find(x=>x.id===typeId)||CLT_IFOOD_TYPES[0]
+  const gross=((fare[0]+fare[1])/2)*1.15*1.018*d.efficiency
+  return Math.max(1,Math.round(gross*(1-d.commission)*.9))
+}
+async function accrueCltIfood(c,jid){
+  const now=Math.floor(Date.now()/1000)
+  const rows=(await c.query('SELECT * FROM clt_ifood_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])).rows
+  for(const r of rows){
+    if(!r.motorcycle_id||!r.shift_started_at||!r.shift_ends_at)continue
+    const d=CLT_IFOOD_TYPES.find(x=>x.id===r.driver_type)
+    if(!d)continue
+    const due=Math.floor(Math.max(0,Math.min(now,Number(r.shift_ends_at))-Number(r.shift_started_at))/(d.intervalMin*60))
+    const diff=Math.max(0,due-Number(r.credited_trips||0))
+    if(!diff)continue
+    await c.query('UPDATE clt_ifood_drivers SET accrued=accrued+$1,credited_trips=$2,last_accrual_at=$3 WHERE id=$4',
+      [diff*cltIfoodNet(r.motorcycle_id,r.driver_type),due,Number(r.shift_started_at)+due*d.intervalMin*60,r.id])
+  }
+}
+export async function hireCltIfoodDriver(jid,input){
+  await ensureUser(jid)
+  const d=CLT_IFOOD_TYPES[Number(input)-1]
+  if(!d)throw new Error('Use !cltifood 1, 2 ou 3.')
+  return tx(async c=>{
+    const wallet=(await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const count=Number((await c.query('SELECT COUNT(*)::int AS n FROM clt_ifood_drivers WHERE jid=$1',[jid])).rows[0]?.n||0)
+    if(count>=3)throw new Error('Limite de 3 motoboys atingido.')
+    if(Number(wallet?.cash||0)<d.price)throw new Error('Saldo insuficiente para contratar.')
+    await c.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[d.price,jid])
+    await c.query('INSERT INTO clt_ifood_drivers(jid,driver_type,price_paid) VALUES($1,$2,$3)',[jid,d.id,d.price])
+    await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'clt_ifood_hire',$3)",[jid,d.price,d.name])
+    return {...d,slot:count+1}
+  })
+}
+export async function getCltIfoodStatus(jid){
+  await ensureUser(jid)
+  return tx(async c=>{
+    await accrueCltIfood(c,jid)
+    const now=Math.floor(Date.now()/1000)
+    const rows=(await c.query('SELECT * FROM clt_ifood_drivers WHERE jid=$1 ORDER BY id',[jid])).rows
+    const garage=(await c.query('SELECT motorcycle_id FROM user_motorcycles WHERE jid=$1 ORDER BY acquired_at',[jid])).rows
+    return {drivers:rows.map((r,i)=>{
+      const type=CLT_IFOOD_TYPES.find(x=>x.id===r.driver_type)
+      const motorcycle=MOTORCYCLES.find(x=>x.id===r.motorcycle_id)||null
+      const active=Boolean(motorcycle&&Number(r.shift_ends_at||0)>now)
+      return {...r,slot:i+1,type,motorcycle,active,remaining:active?Number(r.shift_ends_at)-now:0,finished:Boolean(r.shift_ends_at&&Number(r.shift_ends_at)<=now)}
+    }),garage:garage.map(x=>MOTORCYCLES.find(m=>m.id===x.motorcycle_id)).filter(Boolean)}
+  })
+}
+export async function startCltIfoodShifts(jid,selection='todos'){
+  await ensureUser(jid)
+  return tx(async c=>{
+    await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    await accrueCltIfood(c,jid)
+    const now=Math.floor(Date.now()/1000)
+    const rows=(await c.query('SELECT * FROM clt_ifood_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])).rows
+    const raw=String(selection).trim().toLowerCase()
+    const slots=['todos','tudo','all'].includes(raw)?null:[...new Set(raw.split(/[\\s,;]+/).map(Number))]
+    if(slots&&(!slots.length||slots.some(n=>!Number.isInteger(n)||n<1||n>rows.length)))throw new Error('Selecione motoboys válidos. Ex.: !centralifood 1 3.')
+    const drivers=rows.map((row,i)=>({row,slot:i+1,type:CLT_IFOOD_TYPES.find(x=>x.id===row.driver_type)}))
+      .filter(x=>(!slots||slots.includes(x.slot))&&Number(x.row.shift_ends_at||0)<=now)
+      .sort((a,b)=>(b.type?.price||0)-(a.type?.price||0))
+    if(!drivers.length)throw new Error('Nenhum motoboy selecionado disponível.')
+    const busy=new Set(rows.filter(x=>Number(x.shift_ends_at||0)>now&&x.motorcycle_id).map(x=>x.motorcycle_id))
+    const garage=(await c.query('SELECT motorcycle_id FROM user_motorcycles WHERE jid=$1 ORDER BY acquired_at FOR UPDATE',[jid])).rows
+    const free=garage.map(x=>MOTORCYCLES.find(m=>m.id===x.motorcycle_id)).filter(x=>x&&!busy.has(x.id)).sort((a,b)=>b.price-a.price)
+    if(!free.length)throw new Error('Nenhuma moto livre na garagem.')
+    const started=[]
+    for(let i=0;i<Math.min(drivers.length,free.length);i++){
+      const d=drivers[i],m=free[i]
+      await c.query('UPDATE clt_ifood_drivers SET motorcycle_id=$1,shift_started_at=$2,shift_ends_at=$3,last_accrual_at=$2,credited_trips=0 WHERE id=$4',[m.id,now,now+CLT_IFOOD_SHIFT_SECONDS,d.row.id])
+      started.push({slot:d.slot,type:d.type,motorcycle:m,estimated8h:Math.floor(CLT_IFOOD_SHIFT_SECONDS/(d.type.intervalMin*60))*cltIfoodNet(m.id,d.type.id)})
+    }
+    return {started,withoutMoto:drivers.length-started.length}
+  })
+}
+export async function collectCltIfood(jid){
+  await ensureUser(jid)
+  return tx(async c=>{
+    await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+    await accrueCltIfood(c,jid)
+    const rows=(await c.query('SELECT * FROM clt_ifood_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])).rows
+    const details=rows.map((r,i)=>({slot:i+1,driver:CLT_IFOOD_TYPES.find(x=>x.id===r.driver_type),
+      motorcycle:MOTORCYCLES.find(x=>x.id===r.motorcycle_id),amount:Number(r.accrued||0)})).filter(x=>x.amount>0)
+    const total=details.reduce((n,x)=>n+x.amount,0)
+    if(!total)return {total:0,details:[]}
+    await c.query('UPDATE clt_ifood_drivers SET accrued=0 WHERE jid=$1',[jid])
+    await c.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[total,jid])
+    await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'clt_ifood_collect','Central iFood — líquido após comissão e TAXADE')",[jid,total])
     return {total,details}
   })
 }
