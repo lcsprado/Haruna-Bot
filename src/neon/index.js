@@ -3351,7 +3351,7 @@ ${ranking}${extra}
     try{
       const groups=await activeEventGroups()
       if(now<calcanharStart){
-        const notice='🦶⚔️ *CALCANHAR DE AQUILES — EM 5 MINUTOS!*\\n\\n👹 Carrasco de Aquiles — Calcanhar do JP\\n❤️ HP inicial: *1.000.000*\\n⏰ Começa *19:30* • termina *21:30* (Brasília)\\n🏆 Bota exclusiva ao campeão se o Boss cair.\\n🏅 Insígnia Nem a Cirurgia Derrubou a Lenda aos demais que causarem dano.\\n💰 Dinheiro e XP conforme dano.\\n⚔️ Preparem pets e poções!'
+        const notice='🦶⚔️ *CALCANHAR DE AQUILES — EM 5 MINUTOS!*\n\n👹 Carrasco de Aquiles — Calcanhar do JP\n❤️ HP inicial: *1.000.000*\n⏰ Começa *19:30* • termina *21:30* (Brasília)\n🏆 Bota exclusiva ao campeão se o Boss cair.\n🏅 Insígnia Nem a Cirurgia Derrubou a Lenda aos demais que causarem dano.\n💰 Dinheiro e XP conforme dano.\n⚔️ Preparem pets e poções!'
         for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,'calcanhar-jp-preview-20261016',notice)
         return false
       }
@@ -3361,16 +3361,16 @@ ${ranking}${extra}
         return false
       }
       if(r?.spawned||r?.active){
-        const notice='🦶⚔️ *CALCANHAR DE AQUILES COMEÇOU!*\\n\\n👹 *Carrasco de Aquiles — Calcanhar do JP*\\n❤️ HP inicial: *1.000.000* (+12% da base por jogador adicional)\\n⏰ Até *21:30* (Brasília)\\n🌐 Boss global com ranking único em todos os grupos.\\n🥇 Se derrotado, campeão ganha *Bota do JP — Passo da Lenda* (+12 VEL / +2% CRIT).\\n🏅 Outros participantes que causarem dano ganham *Insígnia Nem a Cirurgia Derrubou a Lenda* (+1% dano Boss/Raid).\\n💰 Dinheiro e EXP proporcionais ao dano.\\n⚔️ Use *!atacar* para lutar!'
+        const notice='🦶⚔️ *CALCANHAR DE AQUILES COMEÇOU!*\n\n👹 *Carrasco de Aquiles — Calcanhar do JP*\n❤️ HP inicial: *1.000.000* (+12% da base por jogador adicional)\n⏰ Até *21:30* (Brasília)\n🌐 Boss global com ranking único em todos os grupos.\n🥇 Se derrotado, campeão ganha *Bota do JP — Passo da Lenda* (+12 VEL / +2% CRIT).\n🏅 Outros participantes que causarem dano ganham *Insígnia Nem a Cirurgia Derrubou a Lenda* (+1% dano Boss/Raid).\n💰 Dinheiro e EXP proporcionais ao dano.\n⚔️ Use *!atacar* para lutar!'
         for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,'calcanhar-jp-start-20261016',notice)
         return false
       }
       if(r?.ended||r?.completed){
         const rewards=r.rewards||r.result?.rewards||[]
         const fmt=n=>Math.round(Number(n)||0).toLocaleString('pt-BR')
-        const ranking=rewards.slice(0,8).map((p,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':'🏅')+' '+String(p.name||'Jogador').replace(/[\\r\\n*_~]/g,' ')+' — '+fmt(p.damage)+' dano • R$ '+fmt(p.cash)+' • '+fmt(p.exp)+' XP'+(p.drops?.length?' • 🎁 '+p.drops.map(d=>d.name).join(', '):'')).join('\\n')
+        const ranking=rewards.slice(0,8).map((p,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':'🏅')+' '+String(p.name||'Jogador').replace(/[\r\n*_~]/g,' ')+' — '+fmt(p.damage)+' dano • R$ '+fmt(p.cash)+' • '+fmt(p.exp)+' XP'+(p.drops?.length?' • 🎁 '+p.drops.map(d=>d.name).join(', '):'')).join('\n')
         const won=Boolean(r.won||r.result?.defeated)
-        const notice='🦶🏆 *CALCANHAR DE AQUILES ENCERRADO!*\\n\\n'+(won?'✅ Carrasco de Aquiles derrotado!':'⏰ O tempo acabou; o Boss resistiu.')+'\\n\\n'+(ranking||'Sem dano registrado.')+'\\n\\n✅ Recompensas creditadas no inventário.'
+        const notice='🦶🏆 *CALCANHAR DE AQUILES ENCERRADO!*\n\n'+(won?'✅ Carrasco de Aquiles derrotado!':'⏰ O tempo acabou; o Boss resistiu.')+'\n\n'+(ranking||'Sem dano registrado.')+'\n\n✅ Recompensas creditadas no inventário.'
         for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,'calcanhar-jp-end-20261016',notice)
         return true
       }
