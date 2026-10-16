@@ -1242,7 +1242,7 @@ export async function startCltIfoodShifts(jid,selection='todos'){
     const now=Math.floor(Date.now()/1000)
     const rows=(await c.query('SELECT * FROM clt_ifood_drivers WHERE jid=$1 ORDER BY id FOR UPDATE',[jid])).rows
     const raw=String(selection).trim().toLowerCase()
-    const slots=['todos','tudo','all'].includes(raw)?null:[...new Set(raw.split(/[\\s,;]+/).map(Number))]
+    const slots=['todos','tudo','all'].includes(raw)?null:[...new Set(raw.split(/[ ,;]+/).map(Number))]
     if(slots&&(!slots.length||slots.some(n=>!Number.isInteger(n)||n<1||n>rows.length)))throw new Error('Selecione motoboys válidos. Ex.: !centralifood 1 3.')
     const drivers=rows.map((row,i)=>({row,slot:i+1,type:CLT_IFOOD_TYPES.find(x=>x.id===row.driver_type)}))
       .filter(x=>(!slots||slots.includes(x.slot))&&Number(x.row.shift_ends_at||0)<=now)
