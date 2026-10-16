@@ -443,6 +443,7 @@ export async function initDatabase() {
     ['armadura_vazio','Armadura do Vazio','Proteção épica. +51 DEF.','armor',125000,'epic'],
     ['armadura_eclipse','Armadura do Eclipse','Proteção épica superior. +54 DEF.','armor',145000,'epic'],
     ['elmo_aurora','Elmo da Aurora','Elmo épico do Guardião da Aurora. +40 DEF e +100 HP.','helmet',0,'epic'],
+    ['insignia_tita_ancestral','Insígnia do Titã Ancestral','Insígnia exclusiva do campeão do Superboss semanal. Equipe em !reliquias: +3% dano e +1pp crítico contra Boss e Raid; sem PvP.','special',0,'event'],
     ['elmo_soberano_golem','Elmo do Soberano Ancestral','Elmo exclusivo do primeiro colocado no Boss semanal. +85 DEF e +220 HP.','helmet',0,'legendary'],
     ['elmo_labirinto_alpha','Elmo do Labirinto Eterno','Elmo lendário exclusivo do campeão do Labirinto do Alpha de 12/10/2026. +92 DEF e +240 HP.','helmet',0,'legendary'],
     ['armadura_golem','Armadura do Golem Ancestral','Armadura exclusiva do Boss de Grupo. +70 DEF e +80 HP. Apenas por drop.','armor',0,'legendary'],
