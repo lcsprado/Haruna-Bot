@@ -9723,19 +9723,41 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         if(['reliquias','reliquia','insignias','insignia'].includes(cmd)){
           try{
             const selection=String(args[0]||'').trim().toLowerCase()
+            const cleanEffect=value=>String(value||'').replace(/\s*\(sem PvP\)/gi,'').trim()
             if(selection){
               const before=await relicStatus(sender)
               const chosen=selection==='0'||selection==='nenhuma'?null:before.items[Number(selection)-1]
               if(!chosen&&selection!=='0'&&selection!=='nenhuma')throw Error('Escolha o número de uma insígnia sua.')
               const activated=await selectRelic(sender,chosen?.id||'nenhuma')
-              await reply(activated?'✅ *RELÍQUIA ATIVADA*\\n\\n⚜️ '+activated.name+'\\n'+activated.effect+'\\n\\n🔒 Só uma insígnia ativa. Sem bônus no PvP.':'✅ Insígnia desativada.')
+              await reply(activated?[
+                '✅ *INSÍGNIA EQUIPADA*',
+                '',
+                '⚜️ *'+activated.name+'*',
+                '   '+cleanEffect(activated.effect),
+                '',
+                '🔒 Uma ativa por vez • Sem bônus no PvP.'
+              ].join('\n'):'✅ *INSÍGNIA DESEQUIPADA*')
             }else{
               const state=await relicStatus(sender)
-              let out='⚜️ *RELÍQUIAS DE EVENTO*\\n\\n🔒 Apenas uma pode ser equipada. Os bônus não funcionam no PvP.\\n'
-              if(!state.items.length)out+='\\nVocê ainda não possui insígnias.\\n'
-              else state.items.forEach((r,n)=>{out+='\\n*'+(n+1)+'.* '+r.name+(state.active?.id===r.id?' ✅ *ATIVA*':'')+'\\n   '+r.effect+'\\n'})
-              out+='\\n➡️ *!reliquias NÚMERO* para ativar\\n➡️ *!reliquias 0* para desativar'
-              await reply(out)
+              const lines=[
+                '⚜️ *MINHAS INSÍGNIAS*',
+                '🔒 Uma ativa por vez • Sem bônus no PvP',
+                ''
+              ]
+              if(!state.items.length){
+                lines.push('📭 Você ainda não possui insígnias.','')
+              }else{
+                state.items.forEach((item,n)=>{
+                  const active=state.active?.id===item.id
+                  lines.push((active?'🟢':'⚪')+' *'+(n+1)+'. '+item.name+'*'+(active?' ✅ *EQUIPADA*':''))
+                  lines.push('   '+cleanEffect(item.effect))
+                  lines.push('')
+                })
+              }
+              lines.push('──────────────')
+              lines.push('🎯 *Equipar:* !reliquias NÚMERO')
+              lines.push('🚫 *Desequipar:* !reliquias 0')
+              await reply(lines.join('\n'))
             }
           }catch(err){await reply('⚠️ Relíquias: '+String(err?.message||err))}
           continue
