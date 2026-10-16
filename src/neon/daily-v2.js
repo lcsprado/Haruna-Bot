@@ -59,12 +59,16 @@ export async function initDailyV2(){
 
 async function ensureRows(c,jid){
  const today=nowDay()
- const ur=await c.query('SELECT level FROM users WHERE jid=$1',[jid])
+ // Nível e presença das seis missões em um único round-trip ao Neon.
+ const ur=await c.query(`
+   SELECT u.level,
+     (SELECT COUNT(*)::integer FROM daily_missions
+       WHERE jid=$1 AND day_key=$2 AND mission_type=ANY($3::text[])) AS mission_count
+   FROM users u WHERE u.jid=$1
+ `,[jid,today,TYPES])
  if(!ur.rows.length)throw new Error('Jogador não encontrado para missões diárias.')
  const level=Number(ur.rows[0].level||1),tier=levelTier(level)
- const existing=(await c.query(`SELECT COUNT(*)::integer AS n FROM daily_missions
-   WHERE jid=$1 AND day_key=$2 AND mission_type=ANY($3::text[])`,[jid,today,TYPES])).rows[0]
- if(Number(existing?.n||0)===6)return {today,level,tier}
+ if(Number(ur.rows[0].mission_count||0)===6)return {today,level,tier}
  const special=level<10
    ?{type:'legend_raid',title:'🌟 Caçador de Lendas (alternativa: Boss)',target:2500,cash:25000,xp:1500,petXp:500}
    :{type:'legend_raid',title:'🌟 Caçador de Lendas (Raids)',target:50000,cash:25000,xp:1500,petXp:500}
@@ -133,6 +137,11 @@ async function creditCash(c,jid,amount,kind,day){
 }
 
 async function claimDailyInTx(c,jid,day){
+ // Nos golpes seguintes do mesmo dia não é necessário INSERT/SELECT FOR UPDATE.
+ // A primeira atividade ainda passa pelo bloqueio transacional original.
+ const prior=(await c.query('SELECT streak,best_streak,last_claim_day FROM daily_streaks WHERE jid=$1',[jid])).rows[0]
+ if(prior&&dateValue(prior.last_claim_day)===day)
+   return {ok:false,streak:Number(prior.streak||0),bestStreak:Number(prior.best_streak||0)}
  await c.query(`INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
     VALUES($1,0,0,NULL) ON CONFLICT(jid) DO NOTHING`,[jid])
  const row=(await c.query('SELECT * FROM daily_streaks WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -176,11 +185,13 @@ export async function claimDailyV2(jid){
  return tx(async c=>claimDailyInTx(c,jid,nowDay()))
 }
 
-export async function progressDailyMissionV2(jid,type,amount=1,sourceKey=null){
+export async function progressDailyMissionV2(jid,type,amount=1,sourceKey=null,options={}){
  if(!['battle','dungeon','work','pet_train','boss_damage','raid_damage'].includes(type))return null
  amount=Math.floor(Number(amount))
  if(!Number.isSafeInteger(amount)||amount<=0)return null
- await ensureUser(jid)
+ // Boss já executa ensureUser no primeiro golpe da sessão (inclusive retomadas).
+ // ensureRows mantém a conferência de existência em users antes de registrar XP.
+ if(!options.skipEnsureUser) await ensureUser(jid)
  return tx(async c=>{
    const ctx=await ensureRows(c,jid)
    const key=sourceKey?String(sourceKey).slice(0,220):'valid:'+type+':'+Date.now()+':'+Math.random().toString(36).slice(2)
