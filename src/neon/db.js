@@ -463,6 +463,7 @@ export async function initDatabase() {
     ['bota_cacador','Bota do Caçador','Bota rara para agir primeiro. +6 SPD.','boots',52000,'rare'],
     ['bota_relampago','Bota do Relâmpago','Bota épica de alta velocidade. +8 SPD.','boots',110000,'epic'],
     ['bota_celestial','Bota Celestial','Bota lendária de velocidade extrema. +10 SPD. Apenas por drop.','boots',0,'legendary'],
+    ['bota_jp_aquiles','Bota do JP — Passo da Lenda','Bota lendária exclusiva do campeão do evento Calcanhar de Aquiles de 16/10/2026. +12 VEL e +2% CRIT.','boots',0,'legendary'],
 
     // Reclassificação
     ['pergaminho_reclassificacao','Pergaminho de Reclassificação','Relíquia de endgame. Só pode cair em Boss para jogadores Nv.100+ e permite trocar de classe; após a troca, há 7 dias de cooldown.','special',0,'epic'],
@@ -496,6 +497,7 @@ export async function initDatabase() {
     // Exclusivo de Boss de Evento
     ['insignia_guardiao_ruptura','Insígnia Guardião da Ruptura','Troféu cosmético único da Ruptura Estelar de 09/10/2026; não pode ser vendido, comprado ou transferido.','special',0,'event'],
     ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
+    ['insignia_nem_cirurgia_derrubou_lenda','Insígnia Nem a Cirurgia Derrubou a Lenda','Relíquia permanente de participação no evento Calcanhar de Aquiles. +1% dano contra Bosses e Raids; não afeta PvP.','special',0,'event'],
     ['insignia_sete_pecados','Insígnia dos Sete Pecados','Relíquia permanente do evento de 11/10/2026. +2% dano e +1 ponto percentual de crítico contra Bosses e Raids.','special',0,'event'],
     ['titulo_conquistador_pecados','Título Conquistador dos Pecados','Título cosmético permanente obtido após derrotar os oito Bosses com 10.000 de dano em cada.','special',0,'event'],
     ['essencia_pecado_preguica','Essência de Preguica','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
@@ -535,10 +537,10 @@ export async function initDatabase() {
   await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
 
   // Elmo de campeão é exclusivo, sem comércio, descarte ou troca por jogadores.
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha')")
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
 
   // Augusto ganhou uma Armadura do Titã no Boss semanal de 09/10.
   // Protege somente esta 1 unidade: as outras 2 cópias comuns não são afetadas.
@@ -2067,6 +2069,7 @@ const EQUIPMENT = {
   bota_cacador: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:6, name:'Bota do Caçador' },
   bota_relampago: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:8, name:'Bota do Relâmpago' },
   bota_celestial: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:10, name:'Bota Celestial' },
+  bota_jp_aquiles: { category:'boots', atk:0, def:0, hp:0, crit:0.02, spd:12, name:'Bota do JP — Passo da Lenda' },
 }
 
 const POTIONS = {
