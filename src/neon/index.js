@@ -258,7 +258,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
     try{
       for(let i=0;;i++){
         if(!runner.active||bossSessions.get(key)!==runner){completed=true;return}
-        const r=pendingFirst?(pendingFirst=null,first):await attackBoss(chat,jid,name,usePet)
+        const r=pendingFirst?(pendingFirst=null,first):await attackBoss(chat,jid,name,usePet,{skipEnsureUser:true})
         runner.lastProgressAt=Date.now()
         if(r?.cooldown){
           i--
@@ -309,7 +309,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
         }
         if(Number(r.damage||0)>0){
           await creditDailyActivity(jid,'boss_damage',Number(r.damage),
-            'boss:'+String(sessionMode||'common')+':'+String(sessionEndsAt||0)+':'+jid+':'+Date.now(),reply)
+            'boss:'+String(sessionMode||'common')+':'+String(sessionEndsAt||0)+':'+jid+':'+Date.now(),reply,{skipEnsureUser:true})
             .catch(err=>console.error('[MISSIONS V2 BOSS]',err?.message||err))
         }
         attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0); if(r.bossCritical) bossCrits++; if(r.pet){petName=r.pet.name;petBonus=r.pet.bonus}
@@ -1480,8 +1480,8 @@ function dailyMissionsText(board,prefix='!'){
   return out
 }
 
-async function creditDailyActivity(jid,type,amount=1,sourceKey=null,notify=null){
-  const out=await progressDailyMission(jid,type,amount,sourceKey)
+async function creditDailyActivity(jid,type,amount=1,sourceKey=null,notify=null,options={}){
+  const out=await progressDailyMission(jid,type,amount,sourceKey,options)
   if(out?.daily?.ok&&typeof notify==='function'){
     const d=out.daily
     const msg='🔥 *DAILY AUTOMÁTICO!*\n💰 +R$ '+fmt(d.totalCash)+' • ✨ +'+Number(d.exp||0)+' EXP\n🔥 Sequência: '+d.streak+' dia(s)'
@@ -2456,7 +2456,7 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
   if(!bossAutoWatchdog){
     bossAutoWatchdog=setInterval(()=>{
       void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))
-    },8000)
+    },20000)
     bossAutoWatchdog.unref?.()
   }
   setTimeout(()=>{void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))},1500).unref?.()
@@ -2848,6 +2848,8 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
   // Cada combinação Boss + janela de 30 min + grupo possui uma chave única,
   // persistida em trevo_settings para evitar avisos duplicados após redeploy.
   let bossProgressBroadcastRunning=false
+  let bossProgressLastCheckWindow=0
+  let bossProgressLastCheckAt=0
   async function broadcastBossProgressEvery30Minutes(){
     if(trevoHealth.whatsapp!=='open' || bossProgressBroadcastRunning) return
     const now=Date.now()
@@ -2856,6 +2858,12 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
     // O scheduler verifica a cada 20 s. Permite 4 min de tolerância após o
     // horário cheio/meia hora, mas não manda mensagens antigas ao reiniciar.
     if(now-windowStart>4*60*1000) return
+    // Em cada janela, limitar a leitura do estado a uma por minuto.
+    // O marcador persistido por Boss/grupo continua evitando avisos duplicados
+    // e a nova janela ou evento ainda pode ser detectado após o intervalo.
+    if(bossProgressLastCheckWindow===windowStart && now-bossProgressLastCheckAt<60000) return
+    bossProgressLastCheckWindow=windowStart
+    bossProgressLastCheckAt=now
     bossProgressBroadcastRunning=true
     try{
       const {rows}=await db.query(`
