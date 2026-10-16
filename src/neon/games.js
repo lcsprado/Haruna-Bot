@@ -2355,10 +2355,13 @@ export async function attackBoss(chat,jid,name,usePet=true){
   const weekend=bossWeekendInfo()
   return tx(async c=>{
     const now=Math.floor(Date.now()/1000)
-    const sleeping=await c.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[jid,now])
-    if(sleeping.rows.length) throw new Error('Você está dormindo e não pode atacar o Boss agora.')
-    const carpindo=await c.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[jid,now])
-    if(carpindo.rows.length) throw new Error('Você está carpindo e não pode atacar o Boss agora.')
+    // Uma consulta para os dois impedimentos, preservando a prioridade do sono.
+    const blocked=await c.query(`
+      SELECT EXISTS(SELECT 1 FROM player_sleep WHERE jid=$1 AND ends_at>$2) AS sleeping,
+             EXISTS(SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>$2) AS carpindo
+    `,[jid,now])
+    if(blocked.rows[0]?.sleeping) throw new Error('Você está dormindo e não pode atacar o Boss agora.')
+    if(blocked.rows[0]?.carpindo) throw new Error('Você está carpindo e não pode atacar o Boss agora.')
     // Uma única participação por jogador no Boss semanal, mesmo em grupos diferentes.
     // Trava por jogador antes de carregar a sala para serializar ataques simultâneos.
     if(weekend.open){
@@ -2487,7 +2490,8 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0))
     const baseCritChance=.10
     const roll=Math.random()
-    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance+classCritBonus(st.class_id,st.class_applied,awakeningStage,'boss')+Number((await activeRelic(c,jid))?.bossCrit||0))
+    const equippedRelic=await activeRelic(c,jid)
+    const totalCritChance=Math.min(.45,baseCritChance+gearCritChance+petCritChance+classCritBonus(st.class_id,st.class_applied,awakeningStage,'boss')+Number(equippedRelic?.bossCrit||0))
     const crit=roll<totalCritChance
     const petCrit=crit&&roll>=Math.min(totalCritChance,baseCritChance+gearCritChance)
     const gearCrit=crit&&!petCrit
@@ -2500,7 +2504,7 @@ export async function attackBoss(chat,jid,name,usePet=true){
     const passiveHit=classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
     const ruptura=gameType==='boss_event'&&s.eventId==='ruptura_estelar'
     const faseAnterior=ruptura?Math.max(1,Number(s.phase||1)):1
-    const eclipseRelic=await activeRelic(c,jid)
+    const eclipseRelic=equippedRelic
     const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
     let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage
     if(s.eventId==='sete_pecados'){
