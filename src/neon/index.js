@@ -255,6 +255,8 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
     let pendingFirst=first
     let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
     let sessionMode=null,sessionEndsAt=0
+    const petHealTally=new Map()
+    const petHealSummary=()=>[...petHealTally].map(([pet,v])=>`\n🐾 *${pet}*: caiu *${v.count}x* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')
     try{
       for(let i=0;;i++){
         if(!runner.active||bossSessions.get(key)!==runner){completed=true;return}
@@ -274,7 +276,12 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
         }
         if(r.autoPetHeal){
           petHeals.push(r.autoPetHeal.name)
-          await reply(`🐾🧪 *AUTOCURA DO PET!*\n\n💔 *${r.autoPetHeal.petName||r.pet?.name||'Pet'}* chegou a 0 HP e usou *${r.autoPetHeal.name}* automaticamente.\n❤️ HP: *${Number(r.autoPetHeal.hp||0).toLocaleString('pt-BR')}/${Number(r.autoPetHeal.maxHp||0).toLocaleString('pt-BR')}*`)
+          const pet=String(r.autoPetHeal.petName||r.pet?.name||'Pet')
+          const potion=String(r.autoPetHeal.name||'Poção')
+          const tally=petHealTally.get(pet)||{count:0,potions:new Map()}
+          tally.count++
+          tally.potions.set(potion,(tally.potions.get(potion)||0)+1)
+          petHealTally.set(pet,tally)
         }
         if(r.autoPetEnergy){
           petExitWarned=false
@@ -374,7 +381,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
         await new Promise(resolve=>setTimeout(resolve,delayMs))
       }
       completed=true
-      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 Curas automáticas do pet: *${petHeals.length}*`:''}\n\nUse *!boss* para ver a situação atual.`)
+      await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 *Boletim de autocura (${petHeals.length} uso(s))*:${petHealSummary()}`:''}\n\nUse *!boss* para ver a situação atual.`)
     }catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
     finally{
       if(completed&&bossSessions.get(key)===runner){
@@ -619,6 +626,8 @@ async function runRaidCombat(chat,level,reply){
   raidRuns.set(runKey,{token,startedAt:Date.now(),lastProgressAt:Date.now()})
 
   ;(async()=>{
+    const raidPetHealTally=new Map()
+    const tallyRaidPetHeals=()=>[...raidPetHealTally].map(([player,pets])=>[...pets].map(([pet,v])=>`\n🐾 ${player} — *${pet}*: caiu *${v.count}x* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')).join('')
     try{
       // A própria Raid controla o tempo máximo em raidRound via activeElapsedMs.
       // Não usamos limite fixo de rodadas: Lv.30/40/50 podem passar de 180 rodadas.
@@ -647,6 +656,16 @@ async function runRaidCombat(chat,level,reply){
           i--
           await new Promise(resolve=>setTimeout(resolve,Math.max(250,Number(r.remainingMs||1000))))
           continue
+        }
+
+        for(const e of (r.events||[])){
+          if(e.type!=='boss'||!e.autoPetHeal)continue
+          const player=String(e.name||'Jogador'),pet=String(e.petName||e.autoPetHeal.petName||'Pet'),potion=String(e.autoPetHeal.name||'Poção')
+          const pets=raidPetHealTally.get(player)||new Map()
+          const v=pets.get(pet)||{count:0,potions:new Map()}
+          v.count++
+          v.potions.set(potion,(v.potions.get(potion)||0)+1)
+          pets.set(pet,v);raidPetHealTally.set(player,pets)
         }
 
         // Apenas hits confirmados em transação podem progredir missão de Raid.
@@ -704,6 +723,7 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
    • 🟠 Lendário — *${x.gearDrop.name}* ×1`:`
 ⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
           })
+          if(raidPetHealTally.size)text+='\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals()
           void safeRaidNotify(reply,text)
           return
         }
@@ -715,7 +735,7 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
 ❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*
 ⚠️ Motivo: *${why}*.
 
-🔑 A chave foi consumida. Não há recompensa em caso de derrota.`)
+🔑 A chave foi consumida. Não há recompensa em caso de derrota.${raidPetHealTally.size?'\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals():''}`)
           return
         }
 
@@ -752,9 +772,7 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
 🧪 ${e.name} caiu e usou *${e.autoHeal.name}* automaticamente.`
           for(const e of revives) text+=`
 ✨ ${e.name} foi *RESSUSCITADO* pela Poção da Ressurreição com *${e.autoRevive.hp}/${e.autoRevive.maxHp} HP*! (1 uso por Raid)`
-          for(const e of petHeals) text+=`
-🐾🧪 *${e.petName}* caiu e usou *${e.autoPetHeal.name}* automaticamente, voltando com *${Number(e.autoPetHeal.hp||0).toLocaleString('pt-BR')} HP*.`
-          for(const e of petSkillHeals) text+=`
+           for(const e of petSkillHeals) text+=`
 💚 *${e.petSkillHeal.name}* ativou a skill de cura em ${e.name}: *+${Number(e.petSkillHeal.heal||0).toLocaleString('pt-BR')} HP* (${Number(e.petSkillHeal.hp||0).toLocaleString('pt-BR')}/${Number(e.petSkillHeal.maxHp||0).toLocaleString('pt-BR')}).`
           for(const e of petSwitches) text+=`
 🔄 *${e.petSwitch.from}* caiu! O Reserva *${e.petSwitch.to}* entrou automaticamente.`
