@@ -1545,11 +1545,11 @@ async function settleCalcanhar(c,state,defeated){
     const drops=[]
     if(defeated&&position===1){
       drops.push(await grantBossItem(c,p.jid,{id:'bota_jp_aquiles',name:'Bota do JP — Passo da Lenda (+12 VEL / +2% CRIT)',rarity:'Lendário Exclusivo'},'calcanhar-jp:2026-10-16'))
-    }else{
-      const itemId='insignia_nem_cirurgia_derrubou_lenda'
-      await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,itemId])
-      drops.push({id:itemId,name:'Insígnia Nem a Cirurgia Derrubou a Lenda (+1% dano Boss/Raid)',rarity:'Evento Único'})
     }
+    // A insígnia é para TODOS os participantes, inclusive o campeão que recebeu a bota.
+    const itemId='insignia_nem_cirurgia_derrubou_lenda'
+    await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,itemId])
+    drops.push({id:itemId,name:'Insígnia Nem a Cirurgia Derrubou a Lenda (+1% dano Boss/Raid)',rarity:'Evento Único'})
     rewards.push({...p,position,share,cash,exp,petXp:0,petXpTeam:[],drops})
   }
   const marker={...state,active:false,mode:'event_completed',hp:defeated?0:state.hp,
@@ -1564,6 +1564,18 @@ export async function tickCalcanharBoss(now=Date.now()){
     const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(current?.eventId===CALCANHAR_ID){
       if(now>=CALCANHAR_END&&current.active!==false&&Number(current.hp)>0)return settleCalcanhar(c,current,false)
+      // Reparo retroativo e silencioso do prêmio do campeão de 16/10.
+      // Executa somente no resultado finalizado e é idempotente.
+      if(current.mode==='event_completed'&&current.result?.defeated){
+        const winner=(current.result.rewards||[]).find(p=>Number(p.position)===1)
+        const itemId='insignia_nem_cirurgia_derrubou_lenda'
+        if(winner?.jid&&!(winner.drops||[]).some(d=>d.id===itemId)){
+          await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[winner.jid,itemId])
+          winner.drops=[...(winner.drops||[]),{id:itemId,name:'Insígnia Nem a Cirurgia Derrubou a Lenda (+1% dano Boss/Raid)',rarity:'Evento Único'}]
+          await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',current)
+          console.log('[CALCANHAR JP] insignia do campeao reconciliada no inventario')
+        }
+      }
       return {due:true,already:true,active:current.active!==false&&Number(current.hp)>0,
         completed:current.mode==='event_completed',result:current.result}
     }
