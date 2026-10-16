@@ -10973,15 +10973,15 @@ ${results.join('\n')}
         } else if(['cltifood'].includes(cmd)){
           if(args[0]){
             const d=await hireCltIfoodDriver(sender,args[0])
-            await reply('✅ *MOTOBOY CONTRATADO*\\n\\n🏍️ '+d.name+' — vaga '+d.slot+
-              '\\n💸 R$ '+fmt(d.price)+'\\n⏱️ Entrega a cada '+d.intervalMin+' min'+
-              '\\n📉 Comissão '+Math.round(d.commission*100)+'% • eficiência '+Math.round(d.efficiency*100)+'%'+
-              '\\n\\nUse *!centralifood todos* para iniciar turnos.')
+            await reply('✅ *MOTOBOY CONTRATADO*\n\n🏍️ '+d.name+' — vaga '+d.slot+
+              '\n💸 R$ '+fmt(d.price)+'\n⏱️ Entrega a cada '+d.intervalMin+' min'+
+              '\n📉 Comissão '+Math.round(d.commission*100)+'% • eficiência '+Math.round(d.efficiency*100)+'%'+
+              '\n\nUse *!centralifood todos* para iniciar turnos.')
           }else{
-            let out='🏍️ *CLT IFOOD — CONTRATAÇÃO*\\n\\n'
+            let out='🏍️ *CLT IFOOD — CONTRATAÇÃO*\n\n'
             CLT_IFOOD_TYPES.forEach((d,n)=>{out+=(n+1)+'. *'+d.name+'* — R$ '+fmt(d.price)+
-              '\\n   ⏱️ '+d.intervalMin+' min/entrega • comissão '+Math.round(d.commission*100)+'%\\n'})
-            out+='\\n👥 Até 3 motoboys • turnos de 8h.\\n👉 *!cltifood 1*, *2* ou *3*.'
+              '\n   ⏱️ '+d.intervalMin+' min/entrega • comissão '+Math.round(d.commission*100)+'%\n'})
+            out+='\n👥 Até 3 motoboys • turnos de 8h.\n👉 *!cltifood 1*, *2* ou *3*.'
             await reply(out)
           }
 
@@ -10990,32 +10990,32 @@ ${results.join('\n')}
           if(!status.drivers.length)return await reply('🏍️ Contrate motoboys com *!cltifood*.')
           if(args.length){
             const result=await startCltIfoodShifts(sender,args.join(' '))
-            let out='🏍️ *CENTRAL IFOOD — TURNOS INICIADOS*\\n\\n'
+            let out='🏍️ *CENTRAL IFOOD — TURNOS INICIADOS*\n\n'
             for(const d of result.started)out+=d.slot+'. '+d.type.name+' → '+d.motorcycle.name+
-              '\\n💰 Estimativa 8h: R$ '+fmt(d.estimated8h)+'\\n'
-            if(result.withoutMoto)out+='\\n⚠️ '+result.withoutMoto+' motoboy(s) sem veículo livre.'
-            out+='\\n⏱️ Encerramento automático após 8h.\\n💵 Saque: *!coletaifood*.'
+              '\n💰 Estimativa 8h: R$ '+fmt(d.estimated8h)+'\n'
+            if(result.withoutMoto)out+='\n⚠️ '+result.withoutMoto+' motoboy(s) sem veículo livre.'
+            out+='\n⏱️ Encerramento automático após 8h.\n💵 Saque: *!coletaifood*.'
             return await reply(out)
           }
-          let out='🏢 *CENTRAL IFOOD*\\n\\n'
+          let out='🏢 *CENTRAL IFOOD*\n\n'
           for(const d of status.drivers){
             out+=d.slot+'. *'+d.type.name+'* — '+(d.active?'🟢 Em turno ('+duration(d.remaining)+')':d.finished?'🟡 Encerrado':'⚪ Disponível')+
-              '\\n   🏍️ '+(d.motorcycle?.name||'sem moto')+' • 💵 R$ '+fmt(Number(d.accrued||0))+' a coletar\\n'
+              '\n   🏍️ '+(d.motorcycle?.name||'sem moto')+' • 💵 R$ '+fmt(Number(d.accrued||0))+' a coletar\n'
           }
-          out+='\\n🏍️ *Garagem:* '+status.garage.map(x=>x.name).join(', ')+
-            '\\n\\n*!centralifood todos* — iniciar todos disponíveis'+
-            '\\n*!centralifood 1 3* — iniciar selecionados'+
-            '\\n*!coletaifood* — sacar ganhos acumulados'
+          out+='\n🏍️ *Garagem:* '+status.garage.map(x=>x.name).join(', ')+
+            '\n\n*!centralifood todos* — iniciar todos disponíveis'+
+            '\n*!centralifood 1 3* — iniciar selecionados'+
+            '\n*!coletaifood* — sacar ganhos acumulados'
           await reply(out)
 
         } else if(['coletaifood'].includes(cmd)){
           const r=await collectCltIfood(sender)
           if(!r.total)return await reply('💵 A Central iFood ainda não tem saldo para coletar.')
-          let out='💰 *CENTRAL IFOOD — COLETA CONCLUÍDA*\\n\\n'
+          let out='💰 *CENTRAL IFOOD — COLETA CONCLUÍDA*\n\n'
           for(const d of r.details)out+=d.slot+'. '+d.driver?.name+' — '+(d.motorcycle?.name||'Moto')+
-            '\\n   💵 R$ '+fmt(d.amount)+'\\n'
-          out+='\\n💰 *TOTAL RECEBIDO: R$ '+fmt(r.total)+'*'+
-            '\\n🧾 Líquido após comissão e TAXADE. Coletas anteriores não são pagas novamente.'
+            '\n   💵 R$ '+fmt(d.amount)+'\n'
+          out+='\n💰 *TOTAL RECEBIDO: R$ '+fmt(r.total)+'*'+
+            '\n🧾 Líquido após comissão e TAXADE. Coletas anteriores não são pagas novamente.'
           await reply(out)
 
         } else if(['cltuber'].includes(cmd)){
