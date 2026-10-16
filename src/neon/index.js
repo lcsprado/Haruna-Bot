@@ -44,7 +44,7 @@ import {
   startQuiz, answerQuiz, expireQuiz,
   startNumberGame, guessNumber,
   startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
-  tickSetePecados, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
+  tickSetePecados, tickCalcanharBoss, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
@@ -3334,6 +3334,50 @@ ${ranking}${extra}
       }catch(err){console.error('[SETE PECADOS] notificação',chat,err?.message||err)}
     }
   }
+
+
+  // Evento autorizado: Calcanhar de Aquiles, 16/10/2026 19:30 BRT.
+  // O agendamento consulta o estado global e não substitui um Boss ativo com dano.
+  // Avisos idempotentes por grupo evitam spam após reconnect/redeploy.
+  const calcanharStart=Date.parse('2026-10-16T19:30:00-03:00')
+  const calcanharEnd=Date.parse('2026-10-16T21:30:00-03:00')
+  let calcanharBusy=false
+  if(Date.now()<calcanharEnd+60000)datedEventStops.push(scheduleUntil(async()=>{
+    if(calcanharBusy)return false
+    const now=Date.now()
+    if(now<calcanharStart-5*60000)return false
+    if(trevoHealth.whatsapp!=='open')return false
+    calcanharBusy=true
+    try{
+      const groups=await activeEventGroups()
+      if(now<calcanharStart){
+        const notice='🦶⚔️ *CALCANHAR DE AQUILES — EM 5 MINUTOS!*\\n\\n👹 Carrasco de Aquiles — Calcanhar do JP\\n❤️ HP inicial: *1.000.000*\\n⏰ Começa *19:30* • termina *21:30* (Brasília)\\n🏆 Bota exclusiva ao campeão se o Boss cair.\\n🏅 Insígnia Nem a Cirurgia Derrubou a Lenda aos demais que causarem dano.\\n💰 Dinheiro e XP conforme dano.\\n⚔️ Preparem pets e poções!'
+        for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,'calcanhar-jp-preview-20261016',notice)
+        return false
+      }
+      const r=await tickCalcanharBoss(now)
+      if(r?.blocked){
+        console.warn('[CALCANHAR JP] aguardando Boss anterior',r.blockingBoss)
+        return false
+      }
+      if(r?.spawned||r?.active){
+        const notice='🦶⚔️ *CALCANHAR DE AQUILES COMEÇOU!*\\n\\n👹 *Carrasco de Aquiles — Calcanhar do JP*\\n❤️ HP inicial: *1.000.000* (+12% da base por jogador adicional)\\n⏰ Até *21:30* (Brasília)\\n🌐 Boss global com ranking único em todos os grupos.\\n🥇 Se derrotado, campeão ganha *Bota do JP — Passo da Lenda* (+12 VEL / +2% CRIT).\\n🏅 Outros participantes que causarem dano ganham *Insígnia Nem a Cirurgia Derrubou a Lenda* (+1% dano Boss/Raid).\\n💰 Dinheiro e EXP proporcionais ao dano.\\n⚔️ Use *!atacar* para lutar!'
+        for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,'calcanhar-jp-start-20261016',notice)
+        return false
+      }
+      if(r?.ended||r?.completed){
+        const rewards=r.rewards||r.result?.rewards||[]
+        const fmt=n=>Math.round(Number(n)||0).toLocaleString('pt-BR')
+        const ranking=rewards.slice(0,8).map((p,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':'🏅')+' '+String(p.name||'Jogador').replace(/[\\r\\n*_~]/g,' ')+' — '+fmt(p.damage)+' dano • R$ '+fmt(p.cash)+' • '+fmt(p.exp)+' XP'+(p.drops?.length?' • 🎁 '+p.drops.map(d=>d.name).join(', '):'')).join('\\n')
+        const won=Boolean(r.won||r.result?.defeated)
+        const notice='🦶🏆 *CALCANHAR DE AQUILES ENCERRADO!*\\n\\n'+(won?'✅ Carrasco de Aquiles derrotado!':'⏰ O tempo acabou; o Boss resistiu.')+'\\n\\n'+(ranking||'Sem dano registrado.')+'\\n\\n✅ Recompensas creditadas no inventário.'
+        for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,'calcanhar-jp-end-20261016',notice)
+        return true
+      }
+      return Boolean(r?.expired)
+    }catch(err){console.error('[CALCANHAR JP]',err?.stack||err);return false}
+    finally{calcanharBusy=false}
+  },calcanharEnd+60000,{intervalMs:10000,startupMs:1000}))
 
   // Invasão dos Sete Pecados — 11/10 18:40–20:40 BRT.
   let setePecadosBusy=false
