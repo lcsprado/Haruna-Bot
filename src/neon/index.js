@@ -47,12 +47,13 @@ import {
   tickSetePecados, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
 } from './games.js'
 import {
-  initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES,
+  initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
   getDailyMissions, progressDailyMission, claimDailyMissions,
   getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
   kickClanMember, leaveClan, donateClan, listClans,
   getHome, buyHouse, getHomeActivities, trainAtHome, restTeamPetsAtHome, getGarage, buyCar, tradeCar, carTradeInCredit, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
   hireCltUberDriver, getCltUberStatus, sellCltUberDriver, tradeCltUberDriver, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
+  hireCltIfoodDriver, getCltIfoodStatus, startCltIfoodShifts, collectCltIfood,
   getPatrimony, patrimonyLeaderboard, getBusinesses, buyBusiness, collectBusinesses, upgradeBusiness, businessUpgradeQuote, sellCar, sellMotorcycle,
   getGroupMission, getGroupMissionLeaderboard, progressGroupMission, claimGroupMission, maybeSpawnGroupEvent, claimGroupEvent,
   getAlphaContractBoard, acceptAlphaContract, progressAlphaContract, claimAlphaContract
@@ -10968,6 +10969,54 @@ ${results.join('\n')}
             text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
+
+        } else if(['cltifood'].includes(cmd)){
+          if(args[0]){
+            const d=await hireCltIfoodDriver(sender,args[0])
+            await reply('✅ *MOTOBOY CONTRATADO*\\n\\n🏍️ '+d.name+' — vaga '+d.slot+
+              '\\n💸 R$ '+fmt(d.price)+'\\n⏱️ Entrega a cada '+d.intervalMin+' min'+
+              '\\n📉 Comissão '+Math.round(d.commission*100)+'% • eficiência '+Math.round(d.efficiency*100)+'%'+
+              '\\n\\nUse *!centralifood todos* para iniciar turnos.')
+          }else{
+            let out='🏍️ *CLT IFOOD — CONTRATAÇÃO*\\n\\n'
+            CLT_IFOOD_TYPES.forEach((d,n)=>{out+=(n+1)+'. *'+d.name+'* — R$ '+fmt(d.price)+
+              '\\n   ⏱️ '+d.intervalMin+' min/entrega • comissão '+Math.round(d.commission*100)+'%\\n'})
+            out+='\\n👥 Até 3 motoboys • turnos de 8h.\\n👉 *!cltifood 1*, *2* ou *3*.'
+            await reply(out)
+          }
+
+        } else if(['centralifood'].includes(cmd)){
+          const status=await getCltIfoodStatus(sender)
+          if(!status.drivers.length)return await reply('🏍️ Contrate motoboys com *!cltifood*.')
+          if(args.length){
+            const result=await startCltIfoodShifts(sender,args.join(' '))
+            let out='🏍️ *CENTRAL IFOOD — TURNOS INICIADOS*\\n\\n'
+            for(const d of result.started)out+=d.slot+'. '+d.type.name+' → '+d.motorcycle.name+
+              '\\n💰 Estimativa 8h: R$ '+fmt(d.estimated8h)+'\\n'
+            if(result.withoutMoto)out+='\\n⚠️ '+result.withoutMoto+' motoboy(s) sem veículo livre.'
+            out+='\\n⏱️ Encerramento automático após 8h.\\n💵 Saque: *!coletaifood*.'
+            return await reply(out)
+          }
+          let out='🏢 *CENTRAL IFOOD*\\n\\n'
+          for(const d of status.drivers){
+            out+=d.slot+'. *'+d.type.name+'* — '+(d.active?'🟢 Em turno ('+duration(d.remaining)+')':d.finished?'🟡 Encerrado':'⚪ Disponível')+
+              '\\n   🏍️ '+(d.motorcycle?.name||'sem moto')+' • 💵 R$ '+fmt(Number(d.accrued||0))+' a coletar\\n'
+          }
+          out+='\\n🏍️ *Garagem:* '+status.garage.map(x=>x.name).join(', ')+
+            '\\n\\n*!centralifood todos* — iniciar todos disponíveis'+
+            '\\n*!centralifood 1 3* — iniciar selecionados'+
+            '\\n*!coletaifood* — sacar ganhos acumulados'
+          await reply(out)
+
+        } else if(['coletaifood'].includes(cmd)){
+          const r=await collectCltIfood(sender)
+          if(!r.total)return await reply('💵 A Central iFood ainda não tem saldo para coletar.')
+          let out='💰 *CENTRAL IFOOD — COLETA CONCLUÍDA*\\n\\n'
+          for(const d of r.details)out+=d.slot+'. '+d.driver?.name+' — '+(d.motorcycle?.name||'Moto')+
+            '\\n   💵 R$ '+fmt(d.amount)+'\\n'
+          out+='\\n💰 *TOTAL RECEBIDO: R$ '+fmt(r.total)+'*'+
+            '\\n🧾 Líquido após comissão e TAXADE. Coletas anteriores não são pagas novamente.'
+          await reply(out)
 
         } else if(['cltuber'].includes(cmd)){
           if(args[0]){
