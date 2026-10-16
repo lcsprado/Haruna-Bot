@@ -2790,9 +2790,13 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           }
           drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown')):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
         }
-        // Prêmio exclusivo e garantido ao campeão do Boss semanal, sem sorteio.
-        if(weekly&&position===1){
-          drops.push(await grantBossItem(c,p.jid,{id:'insignia_tita_ancestral',name:'Insígnia do Titã Ancestral (+3% dano / +1pp CRIT Boss e Raid)',rarity:'Lendário Exclusivo'},'weekly-boss:'+String(s.weekendKey||'unknown')))
+        // Uma insígnia por participante com dano: campeão recebe versão superior.
+        // Não distribuir novamente o Elmo do Soberano Ancestral.
+        if(weekly&&Number(p.damage||0)>0){
+          const insignia=position===1
+            ?{id:'insignia_tita_ancestral',name:'Insígnia do Titã Ancestral (+3% dano / +1pp CRIT Boss e Raid)',rarity:'Lendário Exclusivo'}
+            :{id:'insignia_eco_ancestral',name:'Insígnia do Eco Ancestral (+1% dano Boss e Raid)',rarity:'Evento Único'}
+          drops.push(await grantBossItem(c,p.jid,insignia,'weekly-boss:'+String(s.weekendKey||'unknown')))
         }
         // Reclassificação é recompensa de endgame: só entra no sorteio a partir do Nv.100.
         // Boss comum e Boss de evento: 1%. Superboss semanal: 3%.
