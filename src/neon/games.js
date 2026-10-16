@@ -598,7 +598,7 @@ function squadCombatBonus(activeBonus,activeSlot,team=[]){
       const slot=Number(row.slot)
       if(slot===Number(activeSlot)||![1,2,3].includes(slot)) continue
       if(Number(row.hp)<=0||Number(row.energy)<=0) continue
-      const weight=slot===1?1:slot===2?.5:.25
+      const weight=slot===1 ? 1 : slot===2 ? 0.5 : 0.25
       value+=Number(petBossBonus(row)[key]||0)*weight
     }
     total[key]=Math.min(({damage:.30,defense:.25,crit:.20,dodge:.20})[key],Math.max(0,value))
