@@ -1127,7 +1127,7 @@ export async function startCltUberShiftsAuto(jid,selection='todos'){
     if(['todos','tudo','all'].includes(requested)){
       selected=drivers.filter(x=>Number(x.row.shift_ends_at||0)<=now)
     }else{
-      const slots=[...new Set(requested.split(/[\\s,;]+/).map(Number).filter(Number.isInteger))]
+      const slots=[...new Set(requested.split(/[\s,;]+/).map(Number).filter(Number.isInteger))]
       if(!slots.length) throw new Error('Informe todos ou os números dos motoristas. Ex.: 1 3')
       const invalid=slots.filter(slot=>!drivers.some(x=>x.slot===slot))
       if(invalid.length) throw new Error('Motorista inválido: '+invalid.join(', '))
