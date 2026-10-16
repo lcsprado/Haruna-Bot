@@ -1545,7 +1545,7 @@ async function settleCalcanhar(c,state,defeated){
     const drops=[]
     if(defeated&&position===1){
       drops.push(await grantBossItem(c,p.jid,{id:'bota_jp_aquiles',name:'Bota do JP — Passo da Lenda (+12 VEL / +2% CRIT)',rarity:'Lendário Exclusivo'},'calcanhar-jp:2026-10-16'))
-    }else if(position>1){
+    }else{
       const itemId='insignia_nem_cirurgia_derrubou_lenda'
       await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,itemId])
       drops.push({id:itemId,name:'Insígnia Nem a Cirurgia Derrubou a Lenda (+1% dano Boss/Raid)',rarity:'Evento Único'})
