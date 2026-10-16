@@ -1,5 +1,6 @@
 import {db,ensureUser} from './db.js'
 const RELICS={
+  insignia_eco_ancestral:{name:'Insígnia do Eco Ancestral',effect:'🪨 +1% dano contra Bosses e Raids (sem PvP)',boss:0.01,raidAttack:0.01},
   insignia_tita_ancestral:{name:'Insígnia do Titã Ancestral',effect:'🗿 +3% dano e +1pp crítico contra Bosses e Raids (sem PvP)',boss:0.03,raidAttack:0.03,bossCrit:0.01,raidCrit:0.01},
   insignia_eclipse:{name:'Insígnia do Eclipse',effect:'🌘 +2% dano contra Bosses (sem PvP)',boss:0.02},
   insignia_sete_pecados:{name:'Insígnia dos Sete Pecados',effect:'🌑 +2% dano e +1pp crítico contra Bosses e Raids (sem PvP)',boss:0.02,raidAttack:0.02,bossCrit:0.01,raidCrit:0.01},
