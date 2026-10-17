@@ -307,9 +307,8 @@ export function classCritBonus(classId,applied=true,awakeningStage=0,context='pv
   const base=getClassPassive(classId,applied)?.crit||0
   const stage=awakenedStage(applied,awakeningStage,context)
   const id=String(classId||'').toLowerCase()
-  if(id==='assassin'&&stage>=1) return base+(stage>=4?.03:.01)
-  if(id==='archer'&&stage>=3) return base+.02
-  if(id==='samurai'&&stage>=2) return base+.02
+  if(id==='assassin'&&stage>=1)return base+.01
+  if(id==='samurai'&&stage>=2)return base+.02
   return base
 }
 export function classDefense({
@@ -320,27 +319,49 @@ export function classDefense({
   let n=Math.max(0,Math.round(Number(damage)||0))
   const state={...(awakeningState||{})}
   if(!p||!n)return {damage:n,dodged:false,awakeningState:state}
-  const id=String(classId||'').toLowerCase()
-  const stage=awakenedStage(applied,awakeningStage,context)
-  const dodge=Math.min(.25,Number(p.dodge||0)+(
-    (id==='monk'&&stage>=1)?(stage>=4?.04:.02):(id==='assassin'&&stage>=3)?.02:0
-  ))
+  const id=String(classId||'').toLowerCase(),stage=awakenedStage(applied,awakeningStage,context)
+  const ratio=Number(maxHp)>0?Number(hp)/Number(maxHp):1
+  const dodge=Math.min(.25,Number(p.dodge||0)+(id==='monk'&&stage>=1?.02:0))
   if(dodge&&roll<dodge){
     if(id==='monk'&&stage>=2)state.counterReady=true
+    if(id==='monk'&&stage>=3)state.monkChi=Math.min(2,Number(state.monkChi||0)+1)
+    if(id==='monk'&&stage>=4)state.monkGuardReady=true
     return {damage:0,dodged:true,awakeningState:state}
   }
   if(p.mitigation)n=Math.max(1,Math.round(n*(1-p.mitigation)))
-  const ratio=Number(maxHp)>0?Number(hp)/Number(maxHp):1
-  const mitigation=
-    (id==='paladin'&&stage>=3&&ratio<.5?.03:0)+
-    (id==='druid'&&stage>=2&&ratio<.6?.04:0)+
-    (id==='warrior'&&stage>=2&&ratio<.5?.02:0)+
-    (id==='monk'&&stage>=3?.02:0)
-  const advancedMitigation=stage>=4?(
-    ['warrior','mage','paladin','necromancer','druid','samurai'].includes(id)?.03:
-    (id==='berserker'&&ratio<.40)?.03:0):0
-  if(mitigation+advancedMitigation)n=Math.max(1,Math.round(n*(1-mitigation-advancedMitigation)))
-  return {damage:n,dodged:false,awakeningState:state}
+  const mitigation=(id==='warrior'&&stage>=2&&ratio<.50?.02:0)+
+    (id==='druid'&&stage>=2&&ratio<.60?.04:0)+
+    (id==='paladin'&&stage>=4?.02:0)
+  if(mitigation)n=Math.max(1,Math.round(n*(1-mitigation)))
+  if(stage>=4){
+    if(id==='warrior'){
+      state.warriorBlocks=Math.max(0,Number(state.warriorBlocks||0))+1
+      if(state.warriorBlocks%5===0){n=Math.max(1,Math.round(n*.85));state.warriorRiposte=true}
+    }
+    if(id==='assassin'&&state.assassinSmokeReady){n=Math.max(1,Math.round(n*.85));state.assassinSmokeReady=false}
+    if(id==='archer'&&state.archerBraceReady){n=Math.max(1,Math.round(n*.88));state.archerBraceReady=false}
+    if(id==='berserker'&&ratio<.40)state.berserkerRevengeReady=true
+    if(id==='monk'&&state.monkGuardReady){n=Math.max(1,Math.round(n*.80));state.monkGuardReady=false}
+    if(id==='druid'&&state.druidRootsReady){n=Math.max(1,Math.round(n*.88));state.druidRootsReady=false}
+    if(id==='samurai'&&state.samuraiGuardReady){n=Math.max(1,Math.round(n*.88));state.samuraiGuardReady=false}
+  }
+  // Escudos não afetam PvP (estágio 0 nesse contexto).
+  if(stage>=3&&['warrior','paladin','mage','necromancer','druid'].includes(id)){
+    const shield=Math.max(0,Math.floor(Number(state.awakeningShield||0)))
+    if(shield>0){
+      const absorbed=Math.min(shield,n)
+      n-=absorbed
+      state.awakeningShield=shield-absorbed
+      if(id==='druid'&&stage>=4&&absorbed>0&&state.awakeningShield===0)state.druidRootsReady=true
+    }
+  }
+  // Uma chance de sobrevivência por Raid/Boss, sem ressuscitar mortos.
+  if(id==='paladin'&&stage>=5&&!state.paladinMiracleUsed&&hp>0&&n>=hp){
+    state.paladinMiracleUsed=true
+    n=Math.max(0,Math.floor(Number(hp)-Math.ceil(Number(maxHp)*.15)))
+    state.awakeningShield=Math.max(0,Math.ceil(Number(maxHp)*.10))
+  }
+  return {damage:Math.max(0,n),dodged:false,awakeningState:state}
 }
 export function classAttack({
   classId,applied=true,damage=0,critical=false,hp=1,maxHp=1,
@@ -371,32 +392,104 @@ export function classAttack({
     lastProcAttack=index
   }
   if(stage){
-    if(id==='warrior')n=Math.round(n*1.02)
-    if(id==='mage'&&stage>=2&&index%8===0)n=Math.round(n*(stage>=5?1.30:1.20))
-    if(id==='mage'&&stage>=3)n=Math.round(n*1.03)
-    if(id==='archer'&&stage>=2&&index%6===0)n=Math.round(n*(stage>=5?1.20:1.12))
-    if(id==='archer'&&stage>=4)n=Math.round(n*1.03)
-    if(id==='paladin'&&stage>=2&&index%8===0)n=Math.round(n*1.20)
-    if(id==='berserker'&&stage>=2&&hpRatio<.25)n=Math.round(n*1.06)
-    if(id==='berserker'&&stage>=5&&hpRatio<.40)n=Math.round(n*1.05)
-    if(id==='berserker'&&stage>=3&&hpRatio<.40&&index%8===0)n=Math.round(n*1.10)
-    if(id==='necromancer'&&stage>=2&&index%7===0)n=Math.round(n*1.12)
-    if(id==='samurai'&&stage>=3&&index%6===0)n=Math.round(n*(stage>=5?1.22:1.15))
-    if(id==='warrior'&&stage>=3&&index%8===0)n=Math.round(n*1.12)
-    if(id==='warrior'&&stage>=5&&index%6===0)n=Math.round(n*1.10)
+    if(id==='warrior'){
+      n=Math.round(n*1.02) // Despertar I preservado.
+      if(stage>=3){
+        if(index%4===0)state.warriorMomentum=Math.min(4,Number(state.warriorMomentum||0)+1)
+        n=Math.round(n*(1+.015*Number(state.warriorMomentum||0)))
+      }
+      if(stage>=4&&state.warriorRiposte){
+        n=Math.round(n*(stage>=5?1.15:1.08));state.warriorRiposte=false
+      }
+      if(stage>=5&&hpRatio<.30&&!state.warriorBannerUsed){
+        state.warriorBannerUsed=true
+        state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.10))
+      }
+    }
     if(id==='assassin'&&stage>=2){
+      if(stage>=3&&Number(state.assassinBleed||0)>0){
+        n=Math.round(n*1.04)
+        state.assassinBleed=Number(state.assassinBleed)-1
+      }
       if(state.finisherReady){
-        n=Math.round(n*(stage>=5?1.30:1.20))
+        n=Math.round(n*(stage>=5?1.32:1.20))
         state.finisherReady=false
-        state.critsAccumulated=0
+        state.critsAccumulated=stage>=5?1:0
+        if(stage>=3)state.assassinBleed=3
+        if(stage>=4)state.assassinSmokeReady=true
       }else if(critical){
-        state.critsAccumulated=Math.min(3,Math.max(0,Number(state.critsAccumulated||0))+1)
+        state.critsAccumulated=Math.min(3,Number(state.critsAccumulated||0)+1)
         if(state.critsAccumulated>=3)state.finisherReady=true
       }
     }
+    if(id==='mage'){
+      if(stage>=3&&proc)state.arcaneCharges=Math.min(3,Number(state.arcaneCharges||0)+1)
+      if(stage>=2&&index%8===0){
+        let boost=.20
+        if(stage>=3&&Number(state.arcaneCharges||0)>=2){
+          boost=stage>=5?.40:.28
+          state.arcaneCharges-=2
+        }
+        n=Math.round(n*(1+boost))
+      }
+      if(stage>=4&&proc&&maxHp>0)
+        state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.06))
+    }
+    if(id==='archer'){
+      if(stage>=2&&index%6===0)n=Math.round(n*1.12)
+      if(stage>=3){
+        state.archerMarks=Math.min(5,Number(state.archerMarks||0)+1)
+        const marks=Number(state.archerMarks)
+        n=Math.round(n*(1+.01*marks))
+        if(stage>=5&&index%6===0&&marks>=5){
+          n=Math.round(n*1.22);state.archerMarks=0
+          if(stage>=4)state.archerBraceReady=true
+        }else if(critical){
+          n=Math.round(n*(1+.02*marks));state.archerMarks=0
+          if(stage>=4&&marks>=5)state.archerBraceReady=true
+        }
+      }
+    }
+    if(id==='paladin'){
+      if(stage>=2&&index%8===0)n=Math.round(n*1.20)
+      if(stage>=3&&index%8===0&&hpRatio<.50&&maxHp>0)
+        state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.08))
+    }
+    if(id==='berserker'){
+      if(stage>=2&&hpRatio<.25)n=Math.round(n*1.06)
+      if(stage>=3){
+        if(hpRatio>.50)state.berserkerFury=0
+        else if(hpRatio<.40)state.berserkerFury=Math.min(4,Number(state.berserkerFury||0)+1)
+        n=Math.round(n*(1+.01*Number(state.berserkerFury||0)))
+      }
+      if(stage>=4&&state.berserkerRevengeReady&&hpRatio<.40){
+        n=Math.round(n*1.05);state.berserkerRevengeReady=false
+      }
+      if(stage>=5){
+        if(hpRatio<.25)state.berserkerFrenzy=Math.min(5,Number(state.berserkerFrenzy||0)+1)
+        else state.berserkerFrenzy=0
+        n=Math.round(n*(1+.01*Number(state.berserkerFrenzy||0)))
+      }
+    }
     if(id==='monk'&&stage>=2&&state.counterReady){
-      n=Math.round(n*(stage>=5?1.20:1.12))
-      state.counterReady=false
+      n=Math.round(n*(stage>=5?1.28:1.12));state.counterReady=false
+    }
+    if(id==='necromancer'){
+      if(stage>=2&&index%7===0)n=Math.round(n*1.12)
+      if(stage>=3)n=Math.round(n*(1+.01*Number(state.necroSouls||0)))
+      if(stage>=5&&index%4===0&&Number(state.necroSouls||0)>=4){
+        n=Math.round(n*1.18);state.necroSouls=0
+      }
+    }
+    if(id==='samurai'&&stage>=3){
+      if(critical){
+        const focus=Math.max(0,Math.min(4,Number(state.samuraiFocus||0)))
+        if(focus){
+          n=Math.round(n*(1+(stage>=5&&focus===4?.30:.04*focus)))
+          if(stage>=4)state.samuraiGuardReady=true
+        }
+        state.samuraiFocus=stage>=5&&focus===4?1:0
+      }else state.samuraiFocus=Math.min(4,Number(state.samuraiFocus||0)+1)
     }
   }
   let heal=0
@@ -404,13 +497,23 @@ export function classAttack({
     const pct=id==='necromancer'&&stage>=5?.05:id==='necromancer'&&stage>=3?.04:id==='necromancer'&&stage>=1?.03:p.lifesteal
     const cap=id==='necromancer'&&stage>=5?.05:id==='necromancer'&&stage>=3?.04:id==='necromancer'&&stage>=1?.03:p.lifestealCap
     heal=Math.min(Math.ceil(maxHp*cap),Math.floor(n*pct),Math.max(0,maxHp-hp))
+    if(id==='necromancer'&&stage>=3){
+      state.necroSouls=Math.min(4,Number(state.necroSouls||0)+1)
+      if(stage>=4)state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.03))
+    }
   }
   if(p.regen&&index%(id==='druid'&&stage>=1?8:p.regenInterval)===0&&hp>0&&maxHp>0){
-    const pct=id==='druid'&&stage>=5?.04:id==='druid'&&stage>=3?.03:p.regen
+    const pct=id==='druid'&&stage>=5?(hpRatio<.35?.06:.04):id==='druid'&&stage>=3?.03:p.regen
     heal=Math.min(Math.floor(maxHp*pct),Math.max(0,maxHp-hp))
+    if(id==='druid'&&stage>=3)
+      state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*(stage>=5?.05:.03)))
   }
   if(id==='paladin'&&stage>=1&&hp>0&&maxHp>0&&hpRatio<.50&&index%8===0){
-    heal=Math.min(Math.floor(maxHp*(stage>=5?.05:.03)),Math.max(0,maxHp-hp))
+    heal=Math.min(Math.floor(maxHp*.03),Math.max(0,maxHp-hp))
+  }
+  if(id==='monk'&&stage>=3&&Number(state.monkChi||0)>0&&hp>0&&maxHp>0){
+    heal=Math.min(Math.floor(maxHp*.02*Number(state.monkChi)),Math.max(0,maxHp-hp))
+    state.monkChi=0
   }
   return {damage:Math.max(1,n),heal:Math.max(0,heal),proc,lastProcAttack,awakeningState:state}
 }
