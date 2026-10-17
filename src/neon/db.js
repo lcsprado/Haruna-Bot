@@ -4405,7 +4405,9 @@ const SLEEP_PLACES={
   aluguel:{label:'Quarto alugado',pct:1,fee:1000}
 }
 const SLEEP_CHOICES=[1,4,8]
-const SLEEP_QUOTA_SECONDS=8*3600
+// Até 16 horas de sono com XP em uma janela de 24h; taxa de XP continua baseada em 8 horas.
+const SLEEP_QUOTA_SECONDS=16*3600
+const SLEEP_XP_BASE_SECONDS=8*3600
 const SLEEP_QUOTA_WINDOW_SECONDS=24*3600
 const sleepQuotaKey=jid=>'sleep_xp_v2:'+jid
 function effectiveSleepQuota(value,now){
@@ -4434,8 +4436,9 @@ export async function getSleepOptions(jid){
   const plan=SLEEP_PLACES[h.rows[0]?.house_id]||SLEEP_PLACES.aluguel
   const fullXp=sleepBaseExp(u.rows[0]?.level,plan)
   const available=Math.max(0,SLEEP_QUOTA_SECONDS-q.usedSeconds)
-  return {place:plan.label,pct:plan.pct,fee:plan.fee,availableSeconds:available,
-    options:SLEEP_CHOICES.map(hours=>({hours,exp:Math.floor(fullXp*Math.min(hours*3600,available)/SLEEP_QUOTA_SECONDS)}))}
+  return {place:plan.label,pct:plan.pct,fee:plan.fee,availableSeconds:available,quotaSeconds:SLEEP_QUOTA_SECONDS,
+    resetInSeconds:Math.max(0,SLEEP_QUOTA_WINDOW_SECONDS-(now-q.windowStartedAt)),
+    options:SLEEP_CHOICES.map(hours=>({hours,exp:Math.floor(fullXp*Math.min(hours*3600,available)/SLEEP_XP_BASE_SECONDS)}))}
 }
 
 async function recoverPetEnergyFromSleep(client,jid,startedAt,endedAt){
@@ -4483,7 +4486,7 @@ async function awardSleepXp(client,jid,row,endedAt){
   const now=Math.floor(Date.now()/1000)
   const q=await readSleepQuota(client,jid,now,true)
   const eligible=Math.min(actual,Math.max(0,SLEEP_QUOTA_SECONDS-q.usedSeconds))
-  const xp=Math.floor(Math.max(0,Number(row.xp_per_8h||0))*eligible/SLEEP_QUOTA_SECONDS)
+  const xp=Math.floor(Math.max(0,Number(row.xp_per_8h||0))*eligible/SLEEP_XP_BASE_SECONDS)
   const level=xp>0?await applyExp(client,jid,xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true}):null
   if(eligible>0){
     await client.query('UPDATE trevo_settings SET value=$2::jsonb,updated_at='+nowSql+' WHERE key=$1',
@@ -4563,7 +4566,7 @@ export async function startPlayerSleep(jid,hours=1){
     const quota=await readSleepQuota(client,jid,now)
     const sleepSeconds=hours*3600
     const allowed=Math.min(sleepSeconds,Math.max(0,SLEEP_QUOTA_SECONDS-quota.usedSeconds))
-    const xp=Math.floor(base*allowed/SLEEP_QUOTA_SECONDS)
+    const xp=Math.floor(base*allowed/SLEEP_XP_BASE_SECONDS)
     if(plan.fee>0){
       const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
       const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
