@@ -1408,10 +1408,16 @@ export async function raidRound(chat,level){
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
       const bossCritical=!dodged&&!special&&Math.random()<.05
       const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)*(1-Number(p.relicRaidDefense||0))))
-      const passiveDefense=classDefense({classId:p.classId,applied:p.classApplied,damage:hitDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      // Aura Consagrada IV: proteção cooperativa de 2%, sem acumular por Paladino.
+      // O próprio Paladino recebe o efeito dentro de classDefense.
+      const guardianAura=alive.some(ally=>ally.jid!==p.jid&&ally.alive&&
+        Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&
+        Number(ally.awakeningStage||0)>=4)
+      const protectedDamage=guardianAura?Math.max(0,Math.round(hitDamage*.98)):hitDamage
+      const passiveDefense=classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
-      p.hp=Math.max(0,Number(p.hp)-dmg)
+      p.hp=Math.max(0,Number(p.hp)-dmg+Number(passiveDefense.healAfter||0))
       let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
@@ -2693,7 +2699,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       const defResult=classDefense({classId:st.class_id,applied:st.class_applied,damage:bossRawDamage,context:'boss',hp:php,maxHp:effectiveMaxHp,awakeningStage,awakeningState:s.participants[jid].awakeningState})
       bossDamage=defResult.damage
       s.participants[jid].awakeningState=defResult.awakeningState
-      php=Math.max(0,php-bossDamage)
+      php=Math.max(0,php-bossDamage+Number(defResult.healAfter||0))
       if(pet){
         const petTaken=Math.max(1,Math.round(Number(s.atk||18)*(.30+Math.random()*.22)*(1-Math.min(.75,Number(petBonus.defense||0)))))
         pet.hp=Math.max(0,Number(pet.hp)-petTaken)
