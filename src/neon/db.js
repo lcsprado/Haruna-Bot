@@ -862,7 +862,6 @@ export async function setPlayerClass(jid,classId){
   if(!PLAYER_CLASSES[key]) throw new Error('Classe inválida.')
   const next=getPlayerClass(key)
   const RECLASS_ITEM='pergaminho_reclassificacao'
-  const RECLASS_SECONDS=7*24*60*60
 
   return transaction(async client=>{
     const st=(await client.query(
@@ -881,15 +880,6 @@ export async function setPlayerClass(jid,classId){
     let consumedScroll=false
     let nextChangeAt=null
     if(applied){
-      const now=Math.floor(Date.now()/1000)
-      const cooldownKey='classchange:'+jid
-      const cd=(await client.query('SELECT expires_at FROM cooldowns WHERE key=$1 FOR UPDATE',[cooldownKey])).rows[0]
-      const remaining=Math.max(0,Number(cd?.expires_at||0)-now)
-      if(remaining>0){
-        const days=Math.ceil(remaining/86400)
-        throw new Error('Você já trocou de classe recentemente. Aguarde '+days+' dia(s) para trocar novamente.')
-      }
-
       const inv=(await client.query(
         'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
         [jid,RECLASS_ITEM]
@@ -901,11 +891,6 @@ export async function setPlayerClass(jid,classId){
       await client.query(
         'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
         [jid,RECLASS_ITEM]
-      )
-      nextChangeAt=now+RECLASS_SECONDS
-      await client.query(
-        'INSERT INTO cooldowns(key,expires_at) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at',
-        [cooldownKey,nextChangeAt]
       )
       consumedScroll=true
     }
@@ -2555,13 +2540,9 @@ export async function getCombatProfile(jid) {
   const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
-  const now=Math.floor(Date.now()/1000)
-  const [scrollR,classCdR]=await Promise.all([
-    db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao']),
-    db.query('SELECT expires_at FROM cooldowns WHERE key=$1',['classchange:'+jid])
-  ])
+  const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao'])
   const classScrolls=Number(scrollR.rows[0]?.quantity||0)
-  const classChangeRemaining=Math.max(0,Number(classCdR.rows[0]?.expires_at||0)-now)
+  const classChangeRemaining=0
   const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0))
   const effectiveHp=Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
   // Corrige HP legado acima do teto real, sem reduzir bônus válidos dos equipamentos.
