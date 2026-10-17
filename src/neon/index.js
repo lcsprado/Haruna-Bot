@@ -9836,8 +9836,8 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
 🏦 Saldo restante: R$ ${fmt(result.balance)}
 
 ⚜️ Sua passiva original continua ativa.
-🌟 ${getAwakeningSkillDescriptions(result.classId||'')[Math.min(2,result.tier.stage-1)]||'Aprimoramento de atributos confirmado.'}
-${result.tier.stage>3?'🛡️ Os Despertares IV e V concedem atributos; novas habilidades aguardam avaliação.':''}
+🌟 ${getAwakeningSkillDescriptions(result.classId||'')[result.tier.stage-1]||'Aprimoramento de atributos confirmado.'}
+${result.tier.stage===5?'🏆 Sua jornada de cinco despertares está completa.':''}
 📜 Use *!despertar* para ver o próximo estágio.`)
             }catch(err){
               await reply('⚠️ *Despertar não concluído.*\n\n'+String(err?.message||'Verifique nível, missões e saldo.'))
@@ -9864,12 +9864,12 @@ ${result.tier.stage>3?'🛡️ Os Despertares IV e V concedem atributos; novas h
 `
               for(const m of prog.quests) msg+=`• ${m.done===m.target?'✅':'⬜'} ${m.label}: *${m.done}/${m.target}*\n`
               const skills=getAwakeningSkillDescriptions(prog.classId)
-              const unlocked=skills.slice(0,Math.min(3,prog.stage))
+              const unlocked=skills.slice(0,Math.min(5,prog.stage))
               if(unlocked.length){
                 msg+='\n🌟 *HABILIDADES DESBLOQUEADAS (BOSS/RAID)*\n'
-                unlocked.forEach((desc,i)=>msg+=`✅ Despertar ${['I','II','III'][i]}: ${desc}\n`)
+                unlocked.forEach((desc,i)=>msg+=`✅ Despertar ${['I','II','III','IV','V'][i]}: ${desc}\n`)
               }
-              if(prog.stage<3&&skills[prog.stage])msg+=`\n🔒 Próxima habilidade: ${skills[prog.stage]}\n`
+              if(prog.stage<5&&skills[prog.stage])msg+=`\n🔒 Próxima habilidade: ${skills[prog.stage]}\n`
               msg+=`
 🏆 *EVOLUÇÃO DO ESTÁGIO*
 ❤️ +${t.hp} HP • ⚔️ +${t.atk} ATK • 🛡️ +${t.def} DEF
@@ -9880,7 +9880,7 @@ ${prog.ready?'✅ Missões e nível completos!':'⏳ Complete os requisitos para
 ${prog.ready?'👉 Use *!despertar evoluir* para confirmar.':'📈 As missões não expiram e ficam acumuladas.'}
 
 ⚖️ Passivas originais preservadas. As habilidades extras funcionam só em Boss/Raid; os atributos ganhos também contam no PvP.
-${t.stage>3?'🔬 Despertares IV/V: atributos adicionais, sem novas habilidades por enquanto.':''}`
+${t.stage===5?'🤝 Despertar V: as Raids cooperativas exigem pelo menos 2 jogadores com 2%+ do dano cada.':''}`
               await reply(msg)
             }
           }
