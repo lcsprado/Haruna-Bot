@@ -233,16 +233,16 @@ export const AWAKENING_CLASS_SKILLS=Object.freeze({
   "assassin": [
     "Instinto Aperfeiçoado: +1 ponto percentual de crítico.",
     "Execução: após 3 críticos, próximo golpe +20% dano.",
-    "Ferida Sombria: após Execução, próximos 3 golpes +4% dano.",
+    "Ferida Sombria: após Execução, próximos 3 golpes +6% dano.",
     "Passo Fantasma: após Execução, próximo golpe recebido -15%.",
-    "Execução Implacável: Execução passa a +32% e preserva 1 carga crítica após uso."
+    "Execução Implacável: Execução passa a +45% e preserva 1 carga crítica após uso."
   ],
   "mage": [
     "Arcano Amplificado: 8% chance de +20% dano, intervalo mínimo 4 ataques.",
     "Explosão: +20% de dano a cada 8 ataques.",
-    "Reservatório Arcano: procs geram mana; com 2 cargas, Explosão sobe a +28% e consome mana.",
-    "Barreira Arcana: proc concede escudo 6% HP máximo.",
-    "Cataclismo: Explosão carregada passa de +28% para +40%."
+    "Reservatório Arcano: gera 1 mana a cada 6 ataques ou proc; com 1 carga, Explosão sobe a +32% e consome 1 mana.",
+    "Barreira Arcana: proc gera escudo 6% HP máximo; Explosão carregada gera escudo 4% HP máximo.",
+    "Cataclismo: Explosão carregada passa de +32% para +48%."
   ],
   "archer": [
     "Caçador Superior: bônus contra Boss/Raid sobe de 3% para 5%.",
@@ -256,7 +256,7 @@ export const AWAKENING_CLASS_SKILLS=Object.freeze({
     "Julgamento Divino: +20% de dano a cada 8 ataques.",
     "Égide Celestial: a cada 8 ataques abaixo de 50% HP, escudo de 8% HP máximo.",
     "Aura Consagrada: -2% dano recebido por si e aliados da Raid; não acumula.",
-    "Intervenção Divina: 1 vez por Raid/Boss golpe fatal deixa 15% HP e gera escudo 10% HP máximo."
+    "Intervenção Divina: uma vez por Raid/Boss, golpe fatal deixa 15% HP e gera escudo de 8% HP máximo."
   ],
   "berserker": [
     "Fúria Controlada: abaixo de 40% HP, bônus sobe de 5% para 6%.",
@@ -268,15 +268,15 @@ export const AWAKENING_CLASS_SKILLS=Object.freeze({
   "monk": [
     "Reflexos Aperfeiçoados: esquiva sobe de 3% para 5%.",
     "Contra-ataque: após esquivar, próximo ataque +12% dano.",
-    "Chi Vital: esquivar gera Chi; próximo ataque cura 2% HP máximo por carga (até 2).",
+    "Chi Vital: esquivar ou completar 8 ataques gera Chi; cura 2% HP máximo por carga (máximo 2).",
     "Defesa Fluida: após esquivar, reduz 20% do próximo golpe recebido.",
-    "Punho Celestial: contra-ataque após esquiva sobe de +12% para +28%."
+    "Punho Celestial: contra-ataque sobe para +35% e Chi passa a curar 3% HP máximo por carga."
   ],
   "necromancer": [
     "Drenagem Superior: rouba 3% dano a cada 4 ataques, limitado a 3% HP máximo.",
     "Maldição: +12% de dano a cada 7 ataques.",
     "Essências Roubadas: drenagem sobe a 4%; cada drenagem ganha uma alma (+1% dano por alma, até 4).",
-    "Escudo Ósseo: drenagens concedem escudo 3% HP máximo.",
+    "Escudo Ósseo: drenagens concedem escudo de 1,5% do HP máximo (limite de uma barreira ativa).",
     "Colheita Final: drenagem sobe a 5%; com 4 almas, o próximo golpe de drenagem +18% e consome almas."
   ],
   "druid": [
@@ -362,7 +362,7 @@ export function classDefense({
     const savedHp=Math.max(1,Math.ceil(Number(maxHp)*.15))
     n=Math.max(0,Math.floor(Number(hp)-savedHp))
     healAfter=Math.max(0,savedHp-Number(hp))
-    state.awakeningShield=Math.max(0,Math.ceil(Number(maxHp)*.10))
+    state.awakeningShield=Math.max(0,Math.ceil(Number(maxHp)*.08))
   }
   return {damage:Math.max(0,n),dodged:false,healAfter,awakeningState:state}
 }
@@ -411,11 +411,11 @@ export function classAttack({
     }
     if(id==='assassin'&&stage>=2){
       if(stage>=3&&Number(state.assassinBleed||0)>0){
-        n=Math.round(n*1.04)
+        n=Math.round(n*1.06)
         state.assassinBleed=Number(state.assassinBleed)-1
       }
       if(state.finisherReady){
-        n=Math.round(n*(stage>=5?1.32:1.20))
+        n=Math.round(n*(stage>=5?1.45:1.20))
         state.finisherReady=false
         state.critsAccumulated=stage>=5?1:0
         if(stage>=3)state.assassinBleed=3
@@ -426,17 +426,24 @@ export function classAttack({
       }
     }
     if(id==='mage'){
-      if(stage>=3&&proc)state.arcaneCharges=Math.min(3,Number(state.arcaneCharges||0)+1)
+      // Cargas geradas apenas em Boss/Raid; 1 a cada 6 ataques ou ao ativar proc.
+      // Não cria duas cargas quando os eventos coincidem.
+      if(stage>=3&&(proc||index%6===0))
+        state.arcaneCharges=Math.min(3,Number(state.arcaneCharges||0)+1)
+      let chargedExplosion=false
       if(stage>=2&&index%8===0){
         let boost=.20
-        if(stage>=3&&Number(state.arcaneCharges||0)>=2){
-          boost=stage>=5?.40:.28
-          state.arcaneCharges-=2
+        if(stage>=3&&Number(state.arcaneCharges||0)>=1){
+          boost=stage>=5?.48:.32
+          state.arcaneCharges-=1
+          chargedExplosion=true
         }
         n=Math.round(n*(1+boost))
       }
-      if(stage>=4&&proc&&maxHp>0)
-        state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.06))
+      if(stage>=4&&maxHp>0&&(proc||chargedExplosion)){
+        const shieldPct=proc?.06:.04
+        state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*shieldPct))
+      }
     }
     if(id==='archer'){
       if(stage>=2&&index%6===0)n=Math.round(n*1.12)
@@ -474,8 +481,10 @@ export function classAttack({
         n=Math.round(n*(1+.01*Number(state.berserkerFrenzy||0)))
       }
     }
+    if(id==='monk'&&stage>=3&&index%8===0)
+      state.monkChi=Math.min(2,Number(state.monkChi||0)+1)
     if(id==='monk'&&stage>=2&&state.counterReady){
-      n=Math.round(n*(stage>=5?1.28:1.12));state.counterReady=false
+      n=Math.round(n*(stage>=5?1.35:1.12));state.counterReady=false
     }
     if(id==='necromancer'){
       if(stage>=2&&index%7===0)n=Math.round(n*1.12)
@@ -502,7 +511,7 @@ export function classAttack({
     heal=Math.min(Math.ceil(maxHp*cap),Math.floor(n*pct),Math.max(0,maxHp-hp))
     if(id==='necromancer'&&stage>=3){
       state.necroSouls=Math.min(4,Number(state.necroSouls||0)+1)
-      if(stage>=4)state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.03))
+      if(stage>=4)state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.015))
     }
   }
   if(p.regen&&index%(id==='druid'&&stage>=1?8:p.regenInterval)===0&&hp>0&&maxHp>0){
@@ -514,8 +523,8 @@ export function classAttack({
   if(id==='paladin'&&stage>=1&&hp>0&&maxHp>0&&hpRatio<.50&&index%8===0){
     heal=Math.min(Math.floor(maxHp*.03),Math.max(0,maxHp-hp))
   }
-  if(id==='monk'&&stage>=3&&Number(state.monkChi||0)>0&&hp>0&&maxHp>0){
-    heal=Math.min(Math.floor(maxHp*.02*Number(state.monkChi)),Math.max(0,maxHp-hp))
+  if(id==='monk'&&stage>=3&&Number(state.monkChi||0)>0&&hp>0&&maxHp>0&&hp<maxHp){
+    heal=Math.min(Math.floor(maxHp*(stage>=5?.03:.02)*Number(state.monkChi)),Math.max(0,maxHp-hp))
     state.monkChi=0
   }
   return {damage:Math.max(1,n),heal:Math.max(0,heal),proc,lastProcAttack,awakeningState:state}
