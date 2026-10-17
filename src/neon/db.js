@@ -920,6 +920,11 @@ export async function setPlayerClass(jid,classId){
       [hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
     )
 
+    // Reclassificação é atômica: preserva Despertares I–V concluídos,
+    // porém passa a contar missões pendentes somente na classe nova.
+    const {checkpointAwakeningAfterClassChange}=await import('./awakening.js')
+    await checkpointAwakeningAfterClassChange(client,jid)
+
     return {
       ok:true,firstChoice:!applied,consumedScroll,nextChangeAt,
       classId:next.id,classInfo:next,stats:{hp,maxHp,atk,def,spd}
