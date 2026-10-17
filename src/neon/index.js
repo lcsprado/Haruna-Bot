@@ -9891,6 +9891,7 @@ ${prog.ready?'✅ Missões e nível completos!':'⏳ Complete os requisitos para
 ${prog.ready?'👉 Use *!despertar evoluir* para confirmar.':'📈 As missões não expiram e ficam acumuladas.'}
 
 ⚖️ Passivas originais preservadas. As habilidades extras funcionam só em Boss/Raid; os atributos ganhos também contam no PvP.
+🔁 Trocar de classe preserva os estágios concluídos e reinicia apenas as missões do estágio pendente.
 ${t.stage===5?'🤝 Despertar V: as Raids cooperativas exigem pelo menos 2 jogadores com 2%+ do dano cada.':''}`
               await reply(msg)
             }
