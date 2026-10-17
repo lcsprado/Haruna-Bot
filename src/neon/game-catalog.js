@@ -276,7 +276,7 @@ export const AWAKENING_CLASS_SKILLS=Object.freeze({
     "Drenagem Superior: rouba 3% dano a cada 4 ataques, limitado a 3% HP máximo.",
     "Maldição: +12% de dano a cada 7 ataques.",
     "Essências Roubadas: drenagem sobe a 4%; cada drenagem ganha uma alma (+1% dano por alma, até 4).",
-    "Escudo Ósseo: drenagens concedem escudo de 1,5% do HP máximo (limite de uma barreira ativa).",
+    "Escudo Ósseo: drenagens concedem escudo de 2,5% do HP máximo (limite de uma barreira ativa).",
     "Colheita Final: drenagem sobe a 5%; com 4 almas, o próximo golpe de drenagem +18% e consome almas."
   ],
   "druid": [
@@ -511,7 +511,7 @@ export function classAttack({
     heal=Math.min(Math.ceil(maxHp*cap),Math.floor(n*pct),Math.max(0,maxHp-hp))
     if(id==='necromancer'&&stage>=3){
       state.necroSouls=Math.min(4,Number(state.necroSouls||0)+1)
-      if(stage>=4)state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.015))
+      if(stage>=4)state.awakeningShield=Math.max(Number(state.awakeningShield||0),Math.ceil(maxHp*.025))
     }
   }
   if(p.regen&&index%(id==='druid'&&stage>=1?8:p.regenInterval)===0&&hp>0&&maxHp>0){
