@@ -356,12 +356,15 @@ export function classDefense({
     }
   }
   // Uma chance de sobrevivência por Raid/Boss, sem ressuscitar mortos.
+  let healAfter=0
   if(id==='paladin'&&stage>=5&&!state.paladinMiracleUsed&&hp>0&&n>=hp){
     state.paladinMiracleUsed=true
-    n=Math.max(0,Math.floor(Number(hp)-Math.ceil(Number(maxHp)*.15)))
+    const savedHp=Math.max(1,Math.ceil(Number(maxHp)*.15))
+    n=Math.max(0,Math.floor(Number(hp)-savedHp))
+    healAfter=Math.max(0,savedHp-Number(hp))
     state.awakeningShield=Math.max(0,Math.ceil(Number(maxHp)*.10))
   }
-  return {damage:Math.max(0,n),dodged:false,awakeningState:state}
+  return {damage:Math.max(0,n),dodged:false,healAfter,awakeningState:state}
 }
 export function classAttack({
   classId,applied=true,damage=0,critical=false,hp=1,maxHp=1,
