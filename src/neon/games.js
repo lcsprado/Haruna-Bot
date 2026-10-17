@@ -1,6 +1,7 @@
 import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
+import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 
 async function tx(fn){
   const c=await db.connect()
@@ -822,16 +823,20 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
       pet:combatPet,reservePet,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
-    // Escala igual antes/depois do !go: cada participante extra adiciona 12% do HP-base.
-    // HP já perdido permanece perdido; somente a parcela adicional entra no HP atual.
-    const previousCount=Object.keys(s.players||{}).length-1
-    const oldMaxHp=Math.max(0,Number(s.maxHp||cfg.hp))
-    const scaledMaxHp=Math.round(cfg.hp*(1+Math.max(0,previousCount-1)*.12))
-    const nextMaxHp=Math.round(cfg.hp*(1+Math.max(0,previousCount)*.12))
-    const addedHp=Math.max(0,nextMaxHp-scaledMaxHp)
-    s.maxHp=oldMaxHp+addedHp
-    s.hp=Math.min(s.maxHp,Math.max(0,Number(s.hp||0))+addedHp)
-    console.log('[RAID LATE JOIN HP SCALE]',JSON.stringify({level:s.level,chat,players:previousCount+1,addedHp,hp:s.hp,maxHp:s.maxHp}))
+    // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
+    // O maxHp persistido impede que desistir e reentrar infle o mesmo Boss.
+    // Somente um novo pico acrescenta HP; o dano causado não é restaurado.
+    const hpScale=scaleRaidHpOnLateJoin({
+      baseHp:cfg.hp,
+      currentHp:s.hp,
+      currentMaxHp:s.maxHp,
+      playersAfterJoin:Object.keys(s.players||{}).length
+    })
+    s.maxHp=hpScale.maxHp
+    s.hp=hpScale.hp
+    if(hpScale.addedHp>0){
+      console.log('[RAID LATE JOIN HP SCALE]',JSON.stringify({level:s.level,chat,players:Object.keys(s.players||{}).length,addedHp:hpScale.addedHp,hp:s.hp,maxHp:s.maxHp}))
+    }
     await saveGame(c,chat,gameType,s)
     return {...s,lateJoin:true,joinedJid:jid,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
