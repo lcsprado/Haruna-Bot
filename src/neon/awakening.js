@@ -50,6 +50,28 @@ export async function initAwakening(){
       await c.query(`UPDATE player_awakenings SET stage=1,baseline='{}'::jsonb,updated_at=${NOW}`)
       console.log('[Despertar] migração única: todos os registros no estágio I, atributos preservados')
     }
+    // Reparação única do caso anterior à regra de checkpoint automático.
+    // João Pedro mudou de Mago para Samurai mantendo o histórico das missões.
+    // Não modifica seu estágio, atributos, carteira ou outros jogadores.
+    const once=await c.query(`INSERT INTO awakening_migrations(id)
+      VALUES('samurai_pending_quests_joao_pedro_20261017')
+      ON CONFLICT DO NOTHING RETURNING id`)
+    if(once.rowCount){
+      const {rows}=await c.query(`SELECT aw.jid,aw.stage FROM player_awakenings aw
+        JOIN stats s ON s.jid=aw.jid JOIN users u ON u.jid=aw.jid
+        WHERE aw.stage=3 AND s.class_id='samurai'
+          AND (u.push_name ILIKE '%João Pedro%' OR u.push_name ILIKE '%Joao Pedro%')
+        FOR UPDATE OF aw`)
+      if(rows.length===1){
+        const current=await getMetrics(c,rows[0].jid)
+        await c.query(`UPDATE player_awakenings SET baseline=$2::jsonb,
+          updated_at=${NOW} WHERE jid=$1 AND stage=3`,
+          [rows[0].jid,JSON.stringify(checkpoint(current,3))])
+        console.log('[Despertar] reparo Samurai IV: missões pendentes reiniciadas para um jogador, estágios preservados')
+      }else{
+        console.log('[Despertar] reparo Samurai IV: nenhum jogador alterado; correspondências:',rows.length)
+      }
+    }
   })
   console.log('[Despertar] progressão I–V (etapas II/III/IV/V nos níveis 150/200/250/300); estágio inicial I')
 }
