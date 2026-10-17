@@ -466,7 +466,7 @@ export async function initDatabase() {
     ['bota_jp_aquiles','Bota do JP — Passo da Lenda','Bota lendária exclusiva do campeão do evento Calcanhar de Aquiles de 16/10/2026. +12 VEL e +2% CRIT.','boots',0,'legendary'],
 
     // Reclassificação
-    ['pergaminho_reclassificacao','Pergaminho de Reclassificação','Relíquia de endgame. Só pode cair em Boss para jogadores Nv.100+ e permite trocar de classe; após a troca, há 7 dias de cooldown.','special',0,'epic'],
+    ['pergaminho_reclassificacao','Pergaminho de Reclassificação','Relíquia de endgame. Só pode cair em Boss para jogadores Nv.100+ e permite trocar de classe com 1 pergaminho por troca, sem prazo de espera.','special',0,'epic'],
 
     // Chaves de Raid
     ['chave_raid_10','Chave de Raid Lv.10','Abre uma Raid de nível 10. A chave só é consumida quando a luta começa.','special',10000,'uncommon'],
