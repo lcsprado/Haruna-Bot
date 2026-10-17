@@ -90,7 +90,16 @@ function sleepOptionMessage(options){
   msg+='\n❤️ +1 HP/min • 🐾 +1 HP e energia/min'
   msg+='\n🛡️ Proteção de roubo/ataque durante o sono'
   if(options.fee) msg+='\n💰 Quarto alugado: R$ '+fmtXp(options.fee)+' por descanso'
-  if(options.availableSeconds<8*3600)msg+='\n⚖️ Limite de XP: '+Math.floor(options.availableSeconds/3600)+'h remuneradas restantes na janela de 24h.'
+  if(options.availableSeconds<(options.quotaSeconds||16*3600)){
+    const hours=Math.floor(options.availableSeconds/3600)
+    const minutes=Math.floor((options.availableSeconds%3600)/60)
+    msg+='\n⚖️ Sono com XP disponível: '+hours+'h'+(minutes?' '+minutes+'min':'')+' nesta janela de 24h.'
+    if(options.availableSeconds===0&&options.resetInSeconds>0){
+      const waitHours=Math.floor(options.resetInSeconds/3600)
+      const waitMinutes=Math.ceil((options.resetInSeconds%3600)/60)
+      msg+='\n⏳ XP do sono será liberado em '+waitHours+'h'+(waitMinutes?' '+waitMinutes+'min':'')+'.'
+    }
+  }
   msg+='\n\n👉 Responda *1, 2 ou 3* para iniciar.\n0️⃣ Cancelar'
   return msg
 }
