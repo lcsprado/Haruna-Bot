@@ -1410,7 +1410,9 @@ export async function raidRound(chat,level){
       const hitDamage=dodged?0:Math.max(1,Math.round(raw*(special?1.55:(bossCritical?1.5:1))*(p.raidShieldActive?.88:1)*(1-Number(p.relicRaidDefense||0))))
       // Aura Consagrada IV: proteção cooperativa de 2%, sem acumular por Paladino.
       // O próprio Paladino recebe o efeito dentro de classDefense.
-      const guardianAura=alive.some(ally=>ally.jid!==p.jid&&ally.alive&&
+      const alreadyGuarded=p.classId==='paladin'&&p.classApplied&&
+        Number(p.awakeningStage||0)>=4
+      const guardianAura=!alreadyGuarded&&alive.some(ally=>ally.jid!==p.jid&&ally.alive&&
         Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&
         Number(ally.awakeningStage||0)>=4)
       const protectedDamage=guardianAura?Math.max(0,Math.round(hitDamage*.98)):hitDamage
