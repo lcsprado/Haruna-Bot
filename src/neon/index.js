@@ -586,7 +586,7 @@ async function safeRaidNotify(reply,text){
 
 // A conclusão da Raid deve sobreviver a desconexões do WhatsApp e reinícios.
 // A fila mantém somente avisos finais: não grava cada rodada nem aumenta tráfego de combate.
-const raidFinalNoticePrefix='raid_final_notice:'
+const raidFinalNoticePrefix='raid_final_notice_v2:'
 let raidFinalFlushBusy=false
 async function flushRaidFinalNotices(){
   if(raidFinalFlushBusy || typeof raidAutoReply!=='function') return
@@ -599,11 +599,22 @@ async function flushRaidFinalNotices(){
     for(const row of rows){
       const msg=row.value||{}
       if(!msg.chat || !msg.text) continue
-      const delivered=await safeRaidNotify(text=>raidAutoReply(msg.chat,text),msg.text)
-      if(delivered) await db.query(
-        "DELETE FROM trevo_settings WHERE key=$1 AND value=$2::jsonb",
+      // Claim persistente: uma mensagem de WhatsApp pode ser entregue após o timeout.
+      // Somente avisos novos (v2) são processados; avisos históricos ficam intactos.
+      const claimed=await db.query(
+        "UPDATE trevo_settings SET value=jsonb_set(value,'{deliveryAttempted}','true'::jsonb),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1 AND value=$2::jsonb AND COALESCE(value->>'deliveryAttempted','false')='false' RETURNING key",
         [row.key,JSON.stringify(msg)]
       )
+      if(!claimed.rowCount) continue
+      const delivered=await safeRaidNotify(text=>raidAutoReply(msg.chat,text),msg.text)
+      if(delivered){
+        await db.query(
+          "DELETE FROM trevo_settings WHERE key=$1 AND value->>'deliveryAttempted'='true'",
+          [row.key]
+        )
+      }else{
+        console.warn('[Raid Final Notice] envio sem confirmação; reenvio automático bloqueado para evitar duplicação',row.key)
+      }
     }
   }catch(err){console.error('[Raid Final Notice] fila pendente',err?.message||err)}
   finally{raidFinalFlushBusy=false}
