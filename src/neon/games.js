@@ -628,6 +628,23 @@ function squadCombatBonus(activeBonus,activeSlot,team=[]){
   return total
 }
 
+// Mesmo cálculo de bônus fixos que a Raid/Boss usa: principal (100%),
+// suporte no slot 2 (50%), reserva no slot 3 (25%) e limites por atributo.
+// Se o principal ficar sem HP, a reserva pode assumir; sem energia, os
+// bônus dele ficam suspensos até recuperação (sem forçar troca).
+export function profileCombatPetBonuses(primaryPet,team=[]){
+  const squad=Array.isArray(team)?team:[]
+  const primaryReady=Boolean(primaryPet&&Number(primaryPet.hp)>0&&Number(primaryPet.energy)>0)
+  const reserve=primaryPet&&!primaryReady&&Number(primaryPet.hp)<=0
+    ?squad.find(row=>Number(row.slot)===3&&Number(row.hp)>0&&Number(row.energy)>0)
+    :null
+  const activePet=primaryReady?primaryPet:reserve||null
+  const activeSlot=reserve?3:1
+  const active=activePet?squadCombatBonus(petBossBonus(activePet),activeSlot,squad):petBossBonus(null)
+  const recovered=primaryPet?squadCombatBonus(petBossBonus(primaryPet),1,squad):petBossBonus(null)
+  return {active,recovered,activeSlot:activePet?activeSlot:0,usingReserve:Boolean(reserve)}
+}
+
 // Rebalance pós-!timepet: mais vida para absorver crítico/bônus de pet sem transformar
 // o combate em puro dano recebido. ATK sobe ~10%; HP base sobe ~25–32%.
 const RAID_CONFIGS=[
