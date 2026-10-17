@@ -108,7 +108,7 @@ function progress(row,u,counters){
     // Ajuste individual da missão de proteção do Despertar III; não altera a regra geral.
     const personalProtection=String(row.jid||'')==='5511948523167@s.whatsapp.net'
       &&classId==='paladin'&&tier.stage===3&&type==='raid'
-    const target=personalProtection?69:amount*tier.mult
+    const target=personalProtection?60:amount*tier.mult
     const earned=since(row.baseline,counters,type,raidMin)
     const done=Math.min(target,earned+(personalProtection?34:0))
     return {label:label+(type==='raid'?` (Lv.${raidMin}+)`:''),target,done}
