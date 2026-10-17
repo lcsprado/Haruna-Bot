@@ -57,7 +57,7 @@ async function getMetrics(c,jid){
   const [st,log]=await Promise.all([
     c.query('SELECT win FROM stats WHERE jid=$1',[jid]),
     c.query(`SELECT note,COUNT(*)::int AS total FROM transactions
-       WHERE from_jid='system' AND to_jid=$1 AND type='minigame'
+       WHERE from_jid='system' AND to_jid=$1
        AND ((type='minigame' AND (note LIKE 'raid_%' OR note LIKE 'boss_%'))
          OR (type='awakening' AND note='awakening_coop_raid_60')) GROUP BY note`,[jid])
   ])
