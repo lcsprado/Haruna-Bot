@@ -569,7 +569,7 @@ async function safeRaidNotify(reply,text){
   let timer
   try{
     return await Promise.race([
-      Promise.resolve().then(()=>reply(text)).then(()=>true).catch(err=>{
+      Promise.resolve().then(()=>reply(text)).then(result=>result!==false).catch(err=>{
         console.error('[Raid Auto] aviso falhou; combate continua',err?.message||err)
         return false
       }),
@@ -582,6 +582,45 @@ async function safeRaidNotify(reply,text){
     console.error('[Raid Auto] aviso falhou; combate continua',err?.message||err)
     return false
   }finally{clearTimeout(timer)}
+}
+
+// A conclusão da Raid deve sobreviver a desconexões do WhatsApp e reinícios.
+// A fila mantém somente avisos finais: não grava cada rodada nem aumenta tráfego de combate.
+const raidFinalNoticePrefix='raid_final_notice:'
+let raidFinalFlushBusy=false
+async function flushRaidFinalNotices(){
+  if(raidFinalFlushBusy || typeof raidAutoReply!=='function') return
+  raidFinalFlushBusy=true
+  try{
+    const {rows}=await db.query(
+      "SELECT key,value FROM trevo_settings WHERE key LIKE $1 ORDER BY updated_at ASC LIMIT 20",
+      [raidFinalNoticePrefix+'%']
+    )
+    for(const row of rows){
+      const msg=row.value||{}
+      if(!msg.chat || !msg.text) continue
+      const delivered=await safeRaidNotify(text=>raidAutoReply(msg.chat,text),msg.text)
+      if(delivered) await db.query(
+        "DELETE FROM trevo_settings WHERE key=$1 AND value=$2::jsonb",
+        [row.key,JSON.stringify(msg)]
+      )
+    }
+  }catch(err){console.error('[Raid Final Notice] fila pendente',err?.message||err)}
+  finally{raidFinalFlushBusy=false}
+}
+async function persistRaidFinalNotice(chat,level,reply,text){
+  const key=raidFinalNoticePrefix+chat+':'+Number(level)
+  const value={chat,text,createdAt:Date.now()}
+  try{
+    await db.query(
+      "INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT",
+      [key,JSON.stringify(value)]
+    )
+    await flushRaidFinalNotices()
+  }catch(err){
+    console.error('[Raid Final Notice] persistência falhou',err?.message||err)
+    await safeRaidNotify(reply,text)
+  }
 }
 
 let raidAutoWatchdogBusy=false
@@ -733,13 +772,13 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
 ⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
           })
           if(raidPetHealTally.size)text+='\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals()
-          void safeRaidNotify(reply,text)
+          void persistRaidFinalNotice(chat,level,reply,text)
           return
         }
 
         if(r.failed){
           const why=r.reason==='party_wipe'?'todos os jogadores caíram':'o tempo acabou'
-          void safeRaidNotify(reply,`💀 *RAID FRACASSADA — ${r.config.name}*
+          void persistRaidFinalNotice(chat,level,reply,`💀 *RAID FRACASSADA — ${r.config.name}*
 
 ❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*
 ⚠️ Motivo: *${why}*.
@@ -2479,6 +2518,7 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
   // uma Raid ativa já existir quando o bot subir, o servidor relança o runner.
   // raidRuns impede dois loops simultâneos para o mesmo grupo/nível.
   void ensureActiveRaidRuns()
+  void flushRaidFinalNotices()
   bossAutoReply=(chat,text)=>sock.sendMessage(chat,{text})
   if(!bossAutoWatchdog){
     bossAutoWatchdog=setInterval(()=>{
@@ -2489,6 +2529,8 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
   setTimeout(()=>{void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))},1500).unref?.()
   if(!raidAutoWatchdog){
     raidAutoWatchdog=setInterval(()=>{ void ensureActiveRaidRuns() },4000)
+    // Reenvia encerramentos pendentes quando o WhatsApp reconectar.
+    setInterval(()=>{void flushRaidFinalNotices()},20000).unref?.()
     raidAutoWatchdog.unref?.()
   }
 
