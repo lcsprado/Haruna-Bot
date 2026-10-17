@@ -9903,7 +9903,7 @@ ${t.stage===5?'🤝 Despertar V: as Raids cooperativas exigem pelo menos 2 jogad
           const raw=String(args[0]||'').trim().toLowerCase()
           if(!raw){
             const lines=classes.map((c,n)=>`${n+1}. ${c.name} — ${c.role} | HP ${c.hp>=0?'+':''}${c.hp} | ATK ${c.atk>=0?'+':''}${c.atk} | DEF ${c.def>=0?'+':''}${c.def} | SPD ${c.spd>=0?'+':''}${c.spd}\n⚜️ ${getClassPassive(c.id)?.name}: ${getClassPassive(c.id)?.description}`)
-            await reply('🧙 *CLASSES DO ALPHA*\n\n'+lines.join('\n')+'\n\n🎁 A primeira escolha é grátis.\n📜 Depois, cada troca exige *1 Pergaminho de Reclassificação*.\n⏳ Após trocar, há cooldown de *7 dias*.\n\nUse *!classe número* ou *!classe id*.')
+            await reply('🧙 *CLASSES DO ALPHA*\n\n'+lines.join('\n')+'\n\n🎁 A primeira escolha é grátis.\n📜 Depois, cada troca exige *1 Pergaminho de Reclassificação*.\n🔓 Sem tempo de espera entre trocas; cada nova classe consome 1 Pergaminho.\n\nUse *!classe número* ou *!classe id*.')
             continue
           }
           let chosen=/^\d+$/.test(raw)?classes[Number(raw)-1]:classes.find(c=>c.id===raw||c.name.toLowerCase()===raw)
