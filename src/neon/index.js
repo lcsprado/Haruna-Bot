@@ -44,7 +44,7 @@ import {
   startQuiz, answerQuiz, expireQuiz,
   startNumberGame, guessNumber,
   startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
-  tickSetePecados, tickCalcanharBoss, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound
+  tickSetePecados, tickCalcanharBoss, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
@@ -1406,7 +1406,8 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     getMotorcycleGarage(jid),getBusinesses(jid),getCareer(jid),getPet(jid),
     getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid),relicStatus(jid),
     db.query(`SELECT COALESCE(a.stage,0)::int AS awakening_stage,
-      COALESCE((SELECT json_agg(json_build_object('species',pc.species) ORDER BY pt.slot)
+      COALESCE((SELECT json_agg(json_build_object('slot',pt.slot,'species',pc.species,
+          'level',pc.level,'hp',pc.hp,'energy',pc.energy) ORDER BY pt.slot)
         FROM pet_team pt JOIN pet_collection pc ON pc.id=pt.pet_id
         WHERE pt.jid=$1),'[]'::json) AS team
       FROM (SELECT $1::text AS jid) u LEFT JOIN player_awakenings a ON a.jid=u.jid`,[jid])
@@ -1437,17 +1438,13 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   // novamente em percentual. Critico e probabilidade, nao dano fixo.
   // Efeitos condicionais (procs, HP baixo, oleos temporarios) ficam fora da porcentagem.
   const context=combatContext.rows[0]||{}
-  const awakeningStage=Boolean(p.class_applied)?Math.min(3,Math.max(0,Number(context.awakening_stage||0))):0
+  const awakeningStage=Boolean(p.class_applied)?Math.min(5,Math.max(0,Number(context.awakening_stage||0))):0
   const synergy=petTeamSynergy(context.team||[])||{}
-  const petReady=Boolean(pet&&Number(pet.hp)>0&&Number(pet.energy)>0)
-  const spec=petReady?PET_STATUS_SPECIALTIES[String(pet.species||'').toLowerCase()]:null
-  const stats=spec?(spec.stats||{[spec.stat]:spec.base}):{}
-  const growth=spec?.raid?.25:.50
-  const scale=petReady?(1+Math.min(growth,Math.max(0,Number(pet.level||1)-1)*(growth/99))):1
-  const petCap=spec?.raid?15:10
-  const petStatPct=name=>Math.min(petCap,Number(stats[name]||0)*scale)
-  const petDamage=(petStatPct('damage')+petStatPct('bossDamage'))/100
-  const petCrit=petStatPct('crit')/100
+  // Uma só regra para o perfil e o combate real; inclui suportes aptos,
+  // reserva e limites por atributo. Pet sem energia não concede bônus ativo.
+  const combatPets=profileCombatPetBonuses(pet,context.team||[])
+  const petDamage=Number(combatPets.active.damage||0)
+  const petCrit=Number(combatPets.active.crit||0)
   const baseAtk=Math.max(0,Number(p.base_atk||0))
   const gearAtk=Math.max(0,Number(p.effective_atk||0)-baseAtk)
   const passive=getClassPassive(p.class_id,p.class_applied)||{}
@@ -1456,10 +1453,12 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     (1+(classId==='archer'&&awakeningStage>=1?.05:Number(passive.bossDamage||0)))*
     (classId==='warrior'&&awakeningStage>=1?1.02:1)*
     (classId==='mage'&&awakeningStage>=3?1.03:1)
-  const petTeamMult=1+petDamage+Number(synergy.attack||0)
-  const fixedDamagePct=relicRate=>(petTeamMult*fixedClassMult*(1+Number(relicRate||0))-1)*100
+  const fixedDamagePct=(relicRate,petRate=petDamage)=>
+    ((1+petRate+Number(synergy.attack||0))*fixedClassMult*(1+Number(relicRate||0))-1)*100
   const raidDamagePct=fixedDamagePct(relics.active?.raidAttack)
   const bossDamagePct=fixedDamagePct(relics.active?.boss)
+  const recoveredRaidDamagePct=fixedDamagePct(relics.active?.raidAttack,Number(combatPets.recovered.damage||0))
+  const recoveredBossDamagePct=fixedDamagePct(relics.active?.boss,Number(combatPets.recovered.damage||0))
   const baseCrit=.10+Number(p.equipment_crit||0)
   const raidClassCrit=classCritBonus(p.class_id,p.class_applied,awakeningStage,'raid')
   const bossClassCrit=classCritBonus(p.class_id,p.class_applied,awakeningStage,'boss')
@@ -1471,11 +1470,20 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const raidCritNoPetsPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0))*100
   const bossCritNoPetsPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0))*100
   const critLine=(label,total,noPets)=>`🎯 ${label}: *${pct(total)}%* (🐾 +${pct(Math.max(0,total-noPets))} p.p. pets)`
+  const primaryPetReady=Boolean(pet&&Number(pet.hp)>0&&Number(pet.energy)>0)
+  const petStatus=pet&&!primaryPetReady
+    ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
+    :null
+  const petDetail=`🐾 DANO DOS PETS ATIVOS: *+${pct(petDamage*100)}%* (principal e suportes)
+${combatPets.usingReserve?'🐾 Reserva apta: bônus do slot 3 considerados.\n':''}${petStatus?`⚠️ Pet principal ${petStatus}: bônus suspensos.
+🐾 Com ele recuperado: Raid *+${pct(recoveredRaidDamagePct)}%* / Boss *+${pct(recoveredBossDamagePct)}%*
+`:''}${classId==='paladin'&&awakeningStage>=2?'⚜️ Julgamento Divino: +20% a cada 8 ataques (efeito condicional).\n':''}`.trim()
   const bonusSummary=`💥 DANO EXTRA RAID: *+${pct(raidDamagePct)}%*
 👹 DANO EXTRA BOSS: *+${pct(bossDamagePct)}%*
 ${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNoPetsPct)<.05
     ?critLine('CRIT RAID/BOSS',raidCritPct,raidCritNoPetsPct)
-    :critLine('CRIT RAID',raidCritPct,raidCritNoPetsPct)+'\n'+critLine('CRIT BOSS',bossCritPct,bossCritNoPetsPct)}`
+    :critLine('CRIT RAID',raidCritPct,raidCritNoPetsPct)+'\n'+critLine('CRIT BOSS',bossCritPct,bossCritNoPetsPct)}
+${petDetail}`
 
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
