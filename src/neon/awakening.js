@@ -71,6 +71,22 @@ async function getMetrics(c,jid){
   }
   return {pvp:Number(st.rows[0]?.win||0),boss,raids,coop}
 }
+// Quando a classe muda, os Despertares já concluídos permanecem intactos.
+// Apenas o progresso das missões ainda pendentes passa a contar da nova classe.
+// Deve rodar com o MESMO client/transação da troca, para evitar estado parcial.
+export async function checkpointAwakeningAfterClassChange(client,jid){
+  const row=(await client.query(
+    'SELECT stage FROM player_awakenings WHERE jid=$1 FOR UPDATE',[jid]
+  )).rows[0]
+  if(!row) return false
+  const current=await getMetrics(client,jid)
+  const baseline=checkpoint(current,Number(row.stage))
+  await client.query(`UPDATE player_awakenings
+    SET baseline=$2::jsonb,updated_at=${NOW} WHERE jid=$1`,
+    [jid,JSON.stringify(baseline)])
+  return true
+}
+
 async function getPlayer(c,jid,locked=false){
   return (await c.query(`SELECT u.level,s.class_id,w.cash,w.bank FROM users u
    JOIN stats s ON s.jid=u.jid JOIN wallets w ON w.jid=u.jid WHERE u.jid=$1
