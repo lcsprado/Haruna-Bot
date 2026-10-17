@@ -41,6 +41,39 @@ export async function initGames(){
       updated_at BIGINT NOT NULL DEFAULT (EXTRACT(EPOCH FROM NOW())::BIGINT)
     )
   `)
+  // Compensação pontual da Raid 65 de 17/10/2026: o HP inflou com
+  // reentradas repetidas antes da correção. Não altera o HP-base nem futuras Raids.
+  // A UPDATE é atômica com as rodadas (bloqueio da mesma linha no Neon).
+  const raid65Repair=await db.query(`
+    UPDATE trevo_games
+    SET state=jsonb_set(
+      jsonb_set(state,'{hp}',to_jsonb(30000::integer),true),
+      '{raidHpRepair20261017}',
+      jsonb_build_object(
+        'reason','HP aumentado indevidamente por reentradas',
+        'previousHp',(state->>'hp')::numeric,
+        'hpAfter',30000,
+        'round',(state->>'round')::integer,
+        'appliedAt',EXTRACT(EPOCH FROM NOW())::bigint
+      ),
+      true
+    ),
+    updated_at=EXTRACT(EPOCH FROM NOW())::bigint
+    WHERE chat_jid='120363429534634131@g.us'
+      AND game_type='raid:65'
+      AND state->>'status'='active'
+      AND (state->>'round')::integer>=70
+      AND (state->>'maxHp')::numeric>=993600
+      AND (state->>'hp')::numeric>30000
+      AND (state->>'startedAt')::bigint>=1792249200000
+      AND (state->>'startedAt')::bigint<1792251000000
+      AND NOT (state ? 'raidHpRepair20261017')
+    RETURNING state->>'hp' AS hp_after,
+              state->>'maxHp' AS max_hp,
+              state->>'round' AS round,
+              state->'raidHpRepair20261017' AS correction
+  `).catch(err=>({rows:[],error:String(err?.message||err)}))
+  console.log('[RAID 65 HP REPAIR 20261017]',JSON.stringify(raid65Repair.error?{error:raid65Repair.error}:{applied:raid65Repair.rows.length,details:raid65Repair.rows}))
   const repair=await reconcileAllWeeklyBossOutages20261009()
     .catch(err=>({status:'error',message:String(err?.message||err)}))
   console.log('[Boss All Player Repair] startup',JSON.stringify(repair))
