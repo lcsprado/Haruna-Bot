@@ -5098,11 +5098,22 @@ export async function summonLegendaryPet(jid,materialId){
     const specialGuaranteeEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='nucleo_alpha_corrompido'
     const specialGuaranteeUsed=specialGuaranteeEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[specialGuaranteeKey])).rowCount):true
     const specialGuaranteeActive=specialGuaranteeEligible&&!specialGuaranteeUsed
-    const forcedSpecies=specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||'')
+    // One-time private Raid 65 summon for the same player as the existing personal guarantee.
+    // Consumed atomically only after a successful summon; no UI odds or other players change.
+    const sphinxKey='raid65_esfinge_once_20261017:'+jid
+    const sphinxEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='coroa_abissal'
+    const sphinxAlreadyUsed=sphinxEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[sphinxKey])).rowCount):true
+    const sphinxActive=sphinxEligible&&!sphinxAlreadyUsed
+    const forcedSpecies=sphinxActive?'esfinge_mares':(specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||''))
     let chosen=altar.pets.find(p=>p.species===forcedSpecies)||null
     if(specialGuaranteeActive){
       await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
         specialGuaranteeKey,JSON.stringify({species:'dragao_corrompido',materialId:altar.materialId,at:Date.now()})
+      ])
+    }
+    if(sphinxActive){
+      await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
+        sphinxKey,JSON.stringify({species:'esfinge_mares',materialId:altar.materialId,at:Date.now()})
       ])
     }
     if(chosen){
