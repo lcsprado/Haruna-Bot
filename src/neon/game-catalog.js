@@ -223,75 +223,75 @@ export function getClassPassive(classId,applied=true){
   return applied?(CLASS_PASSIVES[String(classId||'').toLowerCase()]||null):null
 }
 export const AWAKENING_CLASS_SKILLS=Object.freeze({
-  warrior:[
-    'Vanguarda: +2% de dano em Boss/Raid.',
-    'Resistência de Guerra: -2% dano recebido abaixo de 50% HP.',
-    'Golpe de Guerra: +12% de dano a cada 8 ataques.',
-    'Bastião de Guerra: -3% do dano recebido em Boss/Raid.',
-    'Investida Suprema: +10% de dano a cada 6 ataques.'
+  "warrior": [
+    "Vanguarda: +2% de dano em Boss/Raid.",
+    "Resistência de Guerra: -2% dano recebido abaixo de 50% HP.",
+    "Ímpeto de Guerra: a cada 4 ataques +1,5% dano, até +6%.",
+    "Aparar de Ferro: a cada 5 golpes recebidos bloqueia 15% e prepara contra-ataque de +8%.",
+    "Último Estandarte: contra-ataque sobe a +15%; escudo 10% HP máximo uma vez ao cair abaixo de 30% HP."
   ],
-  assassin:[
-    'Instinto Aperfeiçoado: +1 ponto percentual de crítico.',
-    'Execução: após acumular 3 críticos, próximo golpe recebe +20% de dano.',
-    'Sombra Evasiva: +2 pontos percentuais de esquiva.',
-    'Lâmina Oculta: +2 pontos percentuais de crítico.',
-    'Execução Absoluta: golpe após 3 críticos passa de +20% para +30%.'
+  "assassin": [
+    "Instinto Aperfeiçoado: +1 ponto percentual de crítico.",
+    "Execução: após 3 críticos, próximo golpe +20% dano.",
+    "Ferida Sombria: após Execução, próximos 3 golpes +4% dano.",
+    "Passo Fantasma: após Execução, próximo golpe recebido -15%.",
+    "Execução Implacável: Execução passa a +32% e preserva 1 carga crítica após uso."
   ],
-  mage:[
-    'Arcano Amplificado: 8% de chance de +20% dano, com intervalo mínimo de 4 ataques.',
-    'Explosão: +20% de dano a cada 8 ataques.',
-    'Maestria Arcana: +3% de dano em Boss/Raid.',
-    'Foco Arcano: -2% do dano recebido em Boss/Raid.',
-    'Cataclismo: explosão a cada 8 ataques passa de +20% para +30%.'
+  "mage": [
+    "Arcano Amplificado: 8% chance de +20% dano, intervalo mínimo 4 ataques.",
+    "Explosão: +20% de dano a cada 8 ataques.",
+    "Reservatório Arcano: procs geram mana; com 2 cargas, Explosão sobe a +28% e consome mana.",
+    "Barreira Arcana: proc concede escudo 6% HP máximo.",
+    "Cataclismo: Explosão carregada passa de +28% para +40%."
   ],
-  archer:[
-    'Caçador Superior: bônus fixo de Boss/Raid sobe de 3% para 5%.',
-    'Flecha Perfurante: +12% de dano a cada 6 ataques.',
-    'Visão de Águia: +2 pontos percentuais de crítico.',
-    'Alvo Marcado: +3% de dano em Boss/Raid.',
-    'Flecha Celestial: flecha a cada 6 ataques passa de +12% para +20%.'
+  "archer": [
+    "Caçador Superior: bônus contra Boss/Raid sobe de 3% para 5%.",
+    "Flecha Perfurante: +12% de dano a cada 6 ataques.",
+    "Marca de Caça: até 5 marcas (+1% dano por marca); crítico consome-as para +2% por marca.",
+    "Disparo no Tendão: consumir 5 marcas reduz 12% do próximo golpe recebido.",
+    "Flecha Celestial: no sexto ataque com 5 marcas, consome-as para +22% dano."
   ],
-  paladin:[
-    'Bênção Restauradora: cura 3% HP máximo a cada 8 ataques, se abaixo de 50% HP.',
-    'Julgamento Divino: +20% de dano a cada 8 ataques.',
-    'Proteção Celestial: -3% dano recebido adicional abaixo de 50% HP.',
-    'Escudo Consagrado: -3% dano recebido em Boss/Raid.',
-    'Cura Sagrada: Bênção Restauradora sobe de 3% para 5% do HP máximo.'
+  "paladin": [
+    "Bênção Restauradora: cura 3% HP máximo a cada 8 ataques abaixo de 50% HP.",
+    "Julgamento Divino: +20% de dano a cada 8 ataques.",
+    "Égide Celestial: a cada 8 ataques abaixo de 50% HP, escudo de 8% HP máximo.",
+    "Aura Consagrada: -2% dano recebido por si e aliados da Raid; não acumula.",
+    "Intervenção Divina: 1 vez por Raid/Boss golpe fatal deixa 15% HP e gera escudo 10% HP máximo."
   ],
-  berserker:[
-    'Fúria Controlada: bônus abaixo de 40% HP sobe de 5% para 6%.',
-    'Instinto de Sobrevivência: +6% dano adicional abaixo de 25% HP.',
-    'Fúria Suprema: +10% de dano a cada 8 golpes abaixo de 40% HP.',
-    'Resistência Brutal: -3% do dano recebido abaixo de 40% HP.',
-    'Fúria Ancestral: +5% dano adicional abaixo de 40% HP.'
+  "berserker": [
+    "Fúria Controlada: abaixo de 40% HP, bônus sobe de 5% para 6%.",
+    "Instinto de Sobrevivência: +6% dano adicional abaixo de 25% HP.",
+    "Fúria Crescente: ataques abaixo de 40% HP acumulam até 4 cargas de +1% dano; zera acima de 50%.",
+    "Retaliação Sangrenta: tomar dano abaixo de 40% HP prepara +5% no próximo ataque.",
+    "Frenesi Mortal: ataques consecutivos abaixo de 25% HP acumulam até +5% dano; zera se curar acima do limite."
   ],
-  monk:[
-    'Reflexos Aperfeiçoados: esquiva sobe de 3% para 5%.',
-    'Contra-ataque: depois de esquivar, próximo ataque recebe +12% de dano.',
-    'Paz Interior: -2% do dano recebido.',
-    'Reflexo Supremo: +2 pontos percentuais de esquiva.',
-    'Punho Celestial: contra-ataque depois de esquiva sobe de +12% para +20%.'
+  "monk": [
+    "Reflexos Aperfeiçoados: esquiva sobe de 3% para 5%.",
+    "Contra-ataque: após esquivar, próximo ataque +12% dano.",
+    "Chi Vital: esquivar gera Chi; próximo ataque cura 2% HP máximo por carga (até 2).",
+    "Defesa Fluida: após esquivar, reduz 20% do próximo golpe recebido.",
+    "Punho Celestial: contra-ataque após esquiva sobe de +12% para +28%."
   ],
-  necromancer:[
-    'Drenagem Superior: rouba 3% do dano a cada 4 golpes, limitado a 3% HP.',
-    'Maldição: +12% de dano a cada 7 ataques.',
-    'Senhor das Almas: drenagem sobe para 4% do dano e limite de 4% HP.',
-    'Véu das Almas: -3% do dano recebido em Boss/Raid.',
-    'Colheita Final: drenagem sobe para 5% do dano e limite de 5% HP.'
+  "necromancer": [
+    "Drenagem Superior: rouba 3% dano a cada 4 ataques, limitado a 3% HP máximo.",
+    "Maldição: +12% de dano a cada 7 ataques.",
+    "Essências Roubadas: drenagem sobe a 4%; cada drenagem ganha uma alma (+1% dano por alma, até 4).",
+    "Escudo Ósseo: drenagens concedem escudo 3% HP máximo.",
+    "Colheita Final: drenagem sobe a 5%; com 4 almas, o próximo golpe de drenagem +18% e consome almas."
   ],
-  druid:[
-    'Natureza Viva II: regeneração de 2% HP a cada 8 ataques.',
-    'Casca Espiritual: -4% dano recebido abaixo de 60% HP.',
-    'Coração da Floresta: regeneração sobe para 3% HP a cada 8 ataques.',
-    'Raízes Antigas: -3% do dano recebido em Boss/Raid.',
-    'Coração Ancestral: regeneração sobe para 4% HP a cada 8 ataques.'
+  "druid": [
+    "Natureza Viva II: regeneração de 2% HP a cada 8 ataques.",
+    "Casca Espiritual: -4% dano recebido abaixo de 60% HP.",
+    "Semente Curativa: regeneração passa a 3% e cria escudo 3% HP máximo.",
+    "Raízes Antigas: quando escudo se rompe, reduz em 12% o próximo golpe recebido.",
+    "Forma Ancestral: regeneração 4%, ou 6% se abaixo de 35% HP; escudo 5% HP máximo."
   ],
-  samurai:[
-    'Lâmina Perfeita II: bônus nos críticos sobe de 8% para 12%.',
-    'Precisão Honrada: +2 pontos percentuais de crítico.',
-    'Corte Divino: +15% de dano a cada 6 ataques.',
-    'Disciplina da Lâmina: -3% dano recebido em Boss/Raid.',
-    'Corte Celestial: corte a cada 6 ataques sobe de +15% para +22%.'
+  "samurai": [
+    "Lâmina Perfeita II: bônus nos críticos sobe de 8% para 12%.",
+    "Precisão Honrada: +2 pontos percentuais de crítico.",
+    "Postura Iai: não-críticos geram até 4 focos; próximo crítico +4% dano por foco.",
+    "Parada Perfeita: crítico focado reduz 12% do próximo golpe recebido.",
+    "Corte da Lua: crítico com 4 focos +30% dano, em vez de +16%; preserva 1 foco."
   ]
 })
 
