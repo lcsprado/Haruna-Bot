@@ -226,60 +226,79 @@ export const AWAKENING_CLASS_SKILLS=Object.freeze({
   warrior:[
     'Vanguarda: +2% de dano em Boss/Raid.',
     'Resistência de Guerra: -2% dano recebido abaixo de 50% HP.',
-    'Golpe de Guerra: +12% de dano a cada 8 ataques.'
+    'Golpe de Guerra: +12% de dano a cada 8 ataques.',
+    'Bastião de Guerra: -3% do dano recebido em Boss/Raid.',
+    'Investida Suprema: +10% de dano a cada 6 ataques.'
   ],
   assassin:[
     'Instinto Aperfeiçoado: +1 ponto percentual de crítico.',
     'Execução: após acumular 3 críticos, próximo golpe recebe +20% de dano.',
-    'Sombra Evasiva: +2 pontos percentuais de esquiva.'
+    'Sombra Evasiva: +2 pontos percentuais de esquiva.',
+    'Lâmina Oculta: +2 pontos percentuais de crítico.',
+    'Execução Absoluta: golpe após 3 críticos passa de +20% para +30%.'
   ],
   mage:[
     'Arcano Amplificado: 8% de chance de +20% dano, com intervalo mínimo de 4 ataques.',
     'Explosão: +20% de dano a cada 8 ataques.',
-    'Maestria Arcana: +3% de dano em Boss/Raid.'
+    'Maestria Arcana: +3% de dano em Boss/Raid.',
+    'Foco Arcano: -2% do dano recebido em Boss/Raid.',
+    'Cataclismo: explosão a cada 8 ataques passa de +20% para +30%.'
   ],
   archer:[
     'Caçador Superior: bônus fixo de Boss/Raid sobe de 3% para 5%.',
     'Flecha Perfurante: +12% de dano a cada 6 ataques.',
-    'Visão de Águia: +2 pontos percentuais de crítico.'
+    'Visão de Águia: +2 pontos percentuais de crítico.',
+    'Alvo Marcado: +3% de dano em Boss/Raid.',
+    'Flecha Celestial: flecha a cada 6 ataques passa de +12% para +20%.'
   ],
   paladin:[
     'Bênção Restauradora: cura 3% HP máximo a cada 8 ataques, se abaixo de 50% HP.',
     'Julgamento Divino: +20% de dano a cada 8 ataques.',
-    'Proteção Celestial: -3% dano recebido adicional abaixo de 50% HP.'
+    'Proteção Celestial: -3% dano recebido adicional abaixo de 50% HP.',
+    'Escudo Consagrado: -3% dano recebido em Boss/Raid.',
+    'Cura Sagrada: Bênção Restauradora sobe de 3% para 5% do HP máximo.'
   ],
   berserker:[
     'Fúria Controlada: bônus abaixo de 40% HP sobe de 5% para 6%.',
     'Instinto de Sobrevivência: +6% dano adicional abaixo de 25% HP.',
-    'Fúria Suprema: +10% de dano a cada 8 golpes abaixo de 40% HP.'
+    'Fúria Suprema: +10% de dano a cada 8 golpes abaixo de 40% HP.',
+    'Resistência Brutal: -3% do dano recebido abaixo de 40% HP.',
+    'Fúria Ancestral: +5% dano adicional abaixo de 40% HP.'
   ],
   monk:[
     'Reflexos Aperfeiçoados: esquiva sobe de 3% para 5%.',
     'Contra-ataque: depois de esquivar, próximo ataque recebe +12% de dano.',
-    'Paz Interior: -2% do dano recebido.'
+    'Paz Interior: -2% do dano recebido.',
+    'Reflexo Supremo: +2 pontos percentuais de esquiva.',
+    'Punho Celestial: contra-ataque depois de esquiva sobe de +12% para +20%.'
   ],
   necromancer:[
     'Drenagem Superior: rouba 3% do dano a cada 4 golpes, limitado a 3% HP.',
     'Maldição: +12% de dano a cada 7 ataques.',
-    'Senhor das Almas: drenagem sobe para 4% do dano e limite de 4% HP.'
+    'Senhor das Almas: drenagem sobe para 4% do dano e limite de 4% HP.',
+    'Véu das Almas: -3% do dano recebido em Boss/Raid.',
+    'Colheita Final: drenagem sobe para 5% do dano e limite de 5% HP.'
   ],
   druid:[
     'Natureza Viva II: regeneração de 2% HP a cada 8 ataques.',
     'Casca Espiritual: -4% dano recebido abaixo de 60% HP.',
-    'Coração da Floresta: regeneração sobe para 3% HP a cada 8 ataques.'
+    'Coração da Floresta: regeneração sobe para 3% HP a cada 8 ataques.',
+    'Raízes Antigas: -3% do dano recebido em Boss/Raid.',
+    'Coração Ancestral: regeneração sobe para 4% HP a cada 8 ataques.'
   ],
   samurai:[
     'Lâmina Perfeita II: bônus nos críticos sobe de 8% para 12%.',
     'Precisão Honrada: +2 pontos percentuais de crítico.',
-    'Corte Divino: +15% de dano a cada 6 ataques.'
+    'Corte Divino: +15% de dano a cada 6 ataques.',
+    'Disciplina da Lâmina: -3% dano recebido em Boss/Raid.',
+    'Corte Celestial: corte a cada 6 ataques sobe de +15% para +22%.'
   ]
 })
 
-// Fase balanceada: habilidades de Despertar I/II/III somente em Boss/Raid.
-// I–V ainda concede atributos. Não altera PvP nem passivas dos não despertos.
+// Habilidades I–V em Boss/Raid, com atributos dos cinco estágios. Não altera PvP nem passivas dos não despertos.
 function awakenedStage(applied,stage,context){
   return applied && (context==='boss'||context==='raid')
-    ? Math.max(0,Math.min(3,Math.floor(Number(stage)||0))) : 0
+    ? Math.max(0,Math.min(5,Math.floor(Number(stage)||0))) : 0
 }
 export function getAwakeningSkillDescriptions(classId){
   return AWAKENING_CLASS_SKILLS[String(classId||'').toLowerCase()]||[]
@@ -288,7 +307,7 @@ export function classCritBonus(classId,applied=true,awakeningStage=0,context='pv
   const base=getClassPassive(classId,applied)?.crit||0
   const stage=awakenedStage(applied,awakeningStage,context)
   const id=String(classId||'').toLowerCase()
-  if(id==='assassin'&&stage>=1) return base+.01
+  if(id==='assassin'&&stage>=1) return base+(stage>=4?.03:.01)
   if(id==='archer'&&stage>=3) return base+.02
   if(id==='samurai'&&stage>=2) return base+.02
   return base
@@ -304,7 +323,7 @@ export function classDefense({
   const id=String(classId||'').toLowerCase()
   const stage=awakenedStage(applied,awakeningStage,context)
   const dodge=Math.min(.25,Number(p.dodge||0)+(
-    (id==='monk'&&stage>=1)?.02:(id==='assassin'&&stage>=3)?.02:0
+    (id==='monk'&&stage>=1)?(stage>=4?.04:.02):(id==='assassin'&&stage>=3)?.02:0
   ))
   if(dodge&&roll<dodge){
     if(id==='monk'&&stage>=2)state.counterReady=true
@@ -317,7 +336,10 @@ export function classDefense({
     (id==='druid'&&stage>=2&&ratio<.6?.04:0)+
     (id==='warrior'&&stage>=2&&ratio<.5?.02:0)+
     (id==='monk'&&stage>=3?.02:0)
-  if(mitigation)n=Math.max(1,Math.round(n*(1-mitigation)))
+  const advancedMitigation=stage>=4?(
+    ['warrior','mage','paladin','necromancer','druid','samurai'].includes(id)?.03:
+    (id==='berserker'&&ratio<.40)?.03:0):0
+  if(mitigation+advancedMitigation)n=Math.max(1,Math.round(n*(1-mitigation-advancedMitigation)))
   return {damage:n,dodged:false,awakeningState:state}
 }
 export function classAttack({
@@ -350,18 +372,21 @@ export function classAttack({
   }
   if(stage){
     if(id==='warrior')n=Math.round(n*1.02)
-    if(id==='mage'&&stage>=2&&index%8===0)n=Math.round(n*1.20)
+    if(id==='mage'&&stage>=2&&index%8===0)n=Math.round(n*(stage>=5?1.30:1.20))
     if(id==='mage'&&stage>=3)n=Math.round(n*1.03)
-    if(id==='archer'&&stage>=2&&index%6===0)n=Math.round(n*1.12)
+    if(id==='archer'&&stage>=2&&index%6===0)n=Math.round(n*(stage>=5?1.20:1.12))
+    if(id==='archer'&&stage>=4)n=Math.round(n*1.03)
     if(id==='paladin'&&stage>=2&&index%8===0)n=Math.round(n*1.20)
     if(id==='berserker'&&stage>=2&&hpRatio<.25)n=Math.round(n*1.06)
+    if(id==='berserker'&&stage>=5&&hpRatio<.40)n=Math.round(n*1.05)
     if(id==='berserker'&&stage>=3&&hpRatio<.40&&index%8===0)n=Math.round(n*1.10)
     if(id==='necromancer'&&stage>=2&&index%7===0)n=Math.round(n*1.12)
-    if(id==='samurai'&&stage>=3&&index%6===0)n=Math.round(n*1.15)
+    if(id==='samurai'&&stage>=3&&index%6===0)n=Math.round(n*(stage>=5?1.22:1.15))
     if(id==='warrior'&&stage>=3&&index%8===0)n=Math.round(n*1.12)
+    if(id==='warrior'&&stage>=5&&index%6===0)n=Math.round(n*1.10)
     if(id==='assassin'&&stage>=2){
       if(state.finisherReady){
-        n=Math.round(n*1.20)
+        n=Math.round(n*(stage>=5?1.30:1.20))
         state.finisherReady=false
         state.critsAccumulated=0
       }else if(critical){
@@ -370,22 +395,22 @@ export function classAttack({
       }
     }
     if(id==='monk'&&stage>=2&&state.counterReady){
-      n=Math.round(n*1.12)
+      n=Math.round(n*(stage>=5?1.20:1.12))
       state.counterReady=false
     }
   }
   let heal=0
   if(p.lifesteal&&index%p.lifestealInterval===0&&hp>0&&maxHp>0){
-    const pct=id==='necromancer'&&stage>=3?.04:id==='necromancer'&&stage>=1?.03:p.lifesteal
-    const cap=id==='necromancer'&&stage>=3?.04:id==='necromancer'&&stage>=1?.03:p.lifestealCap
+    const pct=id==='necromancer'&&stage>=5?.05:id==='necromancer'&&stage>=3?.04:id==='necromancer'&&stage>=1?.03:p.lifesteal
+    const cap=id==='necromancer'&&stage>=5?.05:id==='necromancer'&&stage>=3?.04:id==='necromancer'&&stage>=1?.03:p.lifestealCap
     heal=Math.min(Math.ceil(maxHp*cap),Math.floor(n*pct),Math.max(0,maxHp-hp))
   }
   if(p.regen&&index%(id==='druid'&&stage>=1?8:p.regenInterval)===0&&hp>0&&maxHp>0){
-    const pct=id==='druid'&&stage>=3?.03:p.regen
+    const pct=id==='druid'&&stage>=5?.04:id==='druid'&&stage>=3?.03:p.regen
     heal=Math.min(Math.floor(maxHp*pct),Math.max(0,maxHp-hp))
   }
   if(id==='paladin'&&stage>=1&&hp>0&&maxHp>0&&hpRatio<.50&&index%8===0){
-    heal=Math.min(Math.floor(maxHp*.03),Math.max(0,maxHp-hp))
+    heal=Math.min(Math.floor(maxHp*(stage>=5?.05:.03)),Math.max(0,maxHp-hp))
   }
   return {damage:Math.max(1,n),heal:Math.max(0,heal),proc,lastProcAttack,awakeningState:state}
 }
