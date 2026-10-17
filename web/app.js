@@ -1078,12 +1078,9 @@ function renderCharacter(){
   const applied=Boolean(cp.class_applied);
   const currentRule=classRule(selected.id);
   const scrolls=Number(cp.class_scrolls||0);
-  const remaining=Number(cp.class_change_remaining||0);
   const reclassNotice=!applied
-    ? '<div class="notice good"><strong>Primeira classe grátis.</strong><br>Depois de confirmar, trocar de classe exige 1 Pergaminho de Reclassificação e respeita recarga de 7 dias.</div>'
-    : remaining>0
-      ? '<div class="notice"><strong>Classe bloqueada temporariamente.</strong><br>Próxima troca em '+esc(formatRemaining(remaining))+' • Pergaminhos: '+num(scrolls)+'</div>'
-      : '<div class="notice"><strong>Troca de classe controlada.</strong><br>Custa 1 Pergaminho de Reclassificação • recarga de 7 dias após a troca • Pergaminhos: '+num(scrolls)+'</div>';
+    ? '<div class="notice good"><strong>Primeira classe grátis.</strong><br>Depois de confirmar, cada nova troca exige 1 Pergaminho de Reclassificação, sem tempo de espera.</div>'
+    : '<div class="notice"><strong>Troca de classe disponível.</strong><br>Custa 1 Pergaminho de Reclassificação por troca, sem recarga • Pergaminhos: '+num(scrolls)+'</div>';
 
   return '<div class="page-head"><div><h2>Seu personagem</h2><p>Cada classe tem uma distribuição própria de HP, ATK, DEF e SPD. Não existem mais bônus negativos nem atributo zerado.</p></div><span class="tag '+(applied?'good':'')+'">'+esc(applied?selected.name+' ativo':'Escolha sua classe')+'</span></div>'+
     reclassNotice+
@@ -1093,7 +1090,7 @@ function renderCharacter(){
     '<div class="character-grid">'+CHARACTER_ART.map(ch=>{
       const rule=classRule(ch.id)||{};
       const active=applied&&ch.id===selected.id;
-      const locked=applied&&!active&&(remaining>0||scrolls<1);
+      const locked=applied&&!active&&scrolls<1;
       const stats=[
         '❤️ +'+num(rule.hp||0)+' HP',
         '⚔️ +'+num(rule.atk||0)+' ATK',
@@ -1102,7 +1099,6 @@ function renderCharacter(){
       ];
       let label='Escolher classe';
       if(active) label='Selecionado';
-      else if(applied&&remaining>0) label='Recarga ativa';
       else if(applied&&scrolls<1) label='Precisa de Pergaminho';
       else if(applied) label='Trocar classe';
       return '<div class="card character-card '+(active?'selected':'')+'">'+
