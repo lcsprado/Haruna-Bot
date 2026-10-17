@@ -105,8 +105,12 @@ function progress(row,u,counters){
   const classId=String(u.class_id||'warrior'),path=PATHS[classId]||PATHS.warrior
   const quests=tier?path.quests.map(([type,amount,level,label])=>{
     const raidMin=type==='raid'?Math.max(level,tier.stage===2?40:60):0
-    const target=amount*tier.mult
-    const done=Math.min(target,since(row.baseline,counters,type,raidMin))
+    // Ajuste individual da missão de proteção do Despertar III; não altera a regra geral.
+    const personalProtection=String(row.jid||'')==='5511948523167@s.whatsapp.net'
+      &&classId==='paladin'&&tier.stage===3&&type==='raid'
+    const target=personalProtection?69:amount*tier.mult
+    const earned=since(row.baseline,counters,type,raidMin)
+    const done=Math.min(target,earned+(personalProtection?34:0))
     return {label:label+(type==='raid'?` (Lv.${raidMin}+)`:''),target,done}
   }):[]
   if(tier?.stage===5)quests.push({
