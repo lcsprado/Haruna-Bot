@@ -229,9 +229,12 @@ test('all player classes now have positive non-zero role bonuses',()=>{
   }
 })
 
-test('class reclassification requires scroll and seven-day cooldown',()=>{
+test('class reclassification requires one scroll per change with no cooldown',()=>{
   assert.ok(db.includes("const RECLASS_ITEM='pergaminho_reclassificacao'"),'reclass scroll id missing')
-  assert.ok(db.includes('const RECLASS_SECONDS=7*24*60*60'),'7-day cooldown missing')
+  assert.ok(!db.includes('const RECLASS_SECONDS=7*24*60*60'),'reclassification must have no seven-day wait')
+  assert.ok(!db.includes("const cooldownKey='classchange:'+jid"),'old class cooldown must not block a reclassification')
+  assert.ok(app.includes('sem tempo de espera'),'web should show unrestricted reclassification')
+  assert.ok(!app.includes('Recarga ativa'),'web must not present old class cooldown')
   assert.ok(db.includes("UPDATE inventories SET quantity=quantity-1"),'reclass scroll must be consumed')
   assert.ok(db.includes("class_hp_bonus INTEGER NOT NULL DEFAULT 0"),'class bonus snapshot migration missing')
   assert.ok(app.includes('Precisa de Pergaminho'),'web class lock state missing')
