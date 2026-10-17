@@ -1451,8 +1451,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const classId=String(p.class_id||'').toLowerCase()
   const fixedClassMult=(1+Number(passive.damage||0))*
     (1+(classId==='archer'&&awakeningStage>=1?.05:Number(passive.bossDamage||0)))*
-    (classId==='warrior'&&awakeningStage>=1?1.02:1)*
-    (classId==='mage'&&awakeningStage>=3?1.03:1)
+    (classId==='warrior'&&awakeningStage>=1?1.02:1)
   const fixedDamagePct=(relicRate,petRate=petDamage)=>
     ((1+petRate+Number(synergy.attack||0))*fixedClassMult*(1+Number(relicRate||0))-1)*100
   const raidDamagePct=fixedDamagePct(relics.active?.raidAttack)
