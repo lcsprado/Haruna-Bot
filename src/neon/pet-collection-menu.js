@@ -51,7 +51,7 @@ function petStatus(p,{teamIds=new Set(),expeditionIds=new Set()}={}){
 
 export function petCollectionListText(pets,selection,{
   mode='manage',isLegendary=()=>false,style=species=>species,
-  teamIds=new Set(),expeditionIds=new Set(),maxHp=()=>0
+  teamIds=new Set(),expeditionIds=new Set(),maxHp=()=>0,bonus=()=>({text:''})
 }={}){
   const c=petCollectionCategory(selection)
   if(!c)return '🐾 Categoria não encontrada. Use *!meuspets*.'
@@ -63,6 +63,10 @@ export function petCollectionListText(pets,selection,{
     const legendary=isLegendary(p.species)
     text+=`*${i+1}.* ${legendary?'🌟 ':''}*${p.name}* — ${petStatus(p,{teamIds,expeditionIds})}\n`
     text+=`   ⭐ Nv.${p.level} • ❤️ ${p.hp}/${maxHp(p.level,p.xp,p.species)} • ${style(p.species)}\n`
+    // Mostra os bônus efetivos do nível atual diretamente na listagem.
+    // Reaproveita o cálculo oficial do jogo, sem duplicar regras de evolução.
+    const bonusText=String(bonus(p)?.text||'').replace(/ no Boss\/Raid$/,'').trim()
+    if(bonusText && bonusText!=='Sem especialidade cadastrada')text+=`   ✨ ${bonusText}\n`
   })
   text+='\n👉 Responda com o *número do pet* para ver detalhes e ações.\n'
   text+='99️⃣ Voltar às categorias • 0️⃣ Sair'
