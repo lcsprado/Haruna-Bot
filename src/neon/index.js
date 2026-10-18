@@ -74,6 +74,8 @@ import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
+import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
+import {initEnchantments,handleEnchantCommand} from './enchantments-alpha.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -1477,7 +1479,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     (1+(classId==='archer'&&awakeningStage>=1?.05:Number(passive.bossDamage||0)))*
     (classId==='warrior'&&awakeningStage>=1?1.02:1)
   const fixedDamagePct=(relicRate,petRate=petDamage)=>
-    ((1+petRate+Number(synergy.attack||0))*fixedClassMult*(1+Number(relicRate||0))-1)*100
+    ((1+petRate+Number(synergy.attack||0))*fixedClassMult*(1+Number(relicRate||0))-1)*100+Number(p.enchant_damage||0)*100
   const raidDamagePct=fixedDamagePct(relics.active?.raidAttack)
   const bossDamagePct=fixedDamagePct(relics.active?.boss)
   const recoveredRaidDamagePct=fixedDamagePct(relics.active?.raidAttack,Number(combatPets.recovered.damage||0))
@@ -1497,6 +1499,15 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const petStatus=pet&&!primaryPetReady
     ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
     :null
+  const en=p.enchant_breakdown||{}
+  const enchantParts=[
+    Number(en.damage||0)?'💥 +'+pct(en.damage*100)+' p.p. dano':null,
+    Number(en.atk||0)?'⚔️ +'+en.atk+' ATK':null,
+    Number(en.def||0)?'🛡️ +'+en.def+' DEF':null,
+    Number(en.spd||0)?'👢 +'+en.spd+' VEL':null,
+    Number(en.crit||0)?'🎯 +'+pct(en.crit*100)+' p.p. CRIT':null
+  ].filter(Boolean)
+  const enchantDetail=enchantParts.length?'\n✨ ENCANTAMENTOS EQUIPADOS: *'+enchantParts.join(' • ')+'*':''
   const petDetail=`🐾 DANO DOS PETS ATIVOS: *+${pct(petDamage*100)}%* (principal e suportes)
 ${combatPets.usingReserve?'🐾 Reserva apta: bônus do slot 3 considerados.\n':''}${petStatus?`⚠️ Pet principal ${petStatus}: bônus suspensos.
 🐾 Com ele recuperado: Raid *+${pct(recoveredRaidDamagePct)}%* / Boss *+${pct(recoveredBossDamagePct)}%*
@@ -1506,7 +1517,7 @@ ${combatPets.usingReserve?'🐾 Reserva apta: bônus do slot 3 considerados.\n':
 ${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNoPetsPct)<.05
     ?critLine('CRIT RAID/BOSS',raidCritPct,raidCritNoPetsPct)
     :critLine('CRIT RAID',raidCritPct,raidCritNoPetsPct)+'\n'+critLine('CRIT BOSS',bossCritPct,bossCritNoPetsPct)}
-${petDetail}`
+${petDetail}${enchantDetail}`
 
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
@@ -1629,7 +1640,7 @@ function resolveOwnedItem(items,input,categories=null){
   ) || null
 }
 
-const XP_SPECIAL_ITEM_IDS=new Set(['elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido'])
+const XP_SPECIAL_ITEM_IDS=new Set(['elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido','elixir_leilao_30m','pergaminho_leilao_10k'])
 function xpItemReceipt(r){
   if(r.type==='boost') return `🧪 *${r.name.toUpperCase()} ATIVADO!*\n✨ +${r.percent}% de XP pelos próximos *${r.durationMinutes} minutos*.\n🛡️ Limite de *${r.cap} XP extra*; elixires não acumulam.\n📊 Use *!buffxp* para acompanhar.`
   return `📜 *${r.name.toUpperCase()} UTILIZADO!*\n✨ +${r.xp.toLocaleString('pt-BR')} XP instantâneos\n⭐ Nível atual: *${r.level}*${r.levelUps?` • ${r.levelUps} nível(is) conquistado(s)!`:''}\n⏳ Limite: 1 tomo por dia.`
@@ -1913,6 +1924,7 @@ async function start() {
   await initDatabase()
   await initAwakening()
   await initRelics()
+  await initEnchantments()
   // Ativação única, atômica e persistente do evento de fragmentos (30 minutos).
   // O início ocorre nesta inicialização; restarts NÃO reiniciam nem prolongam o evento.
   {
@@ -9329,6 +9341,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
       startLabirintoScheduler(sock)
       startBingoRebootScheduler(sock)
+      startAuctionAlphaScheduler(sock)
 
       // Anúncio único por grupo licenciado. Apenas este evento, sem mensagens repetidas.
       ;(async()=>{
@@ -9799,6 +9812,8 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
 
         if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
         if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+        if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+        if(await handleEnchantCommand({cmd,args,sender,reply})) continue
 
         if(cmd==='azarousorte' || cmd==='caixapegadinha'){
           const pick=String(args[0]||'').toLowerCase()
