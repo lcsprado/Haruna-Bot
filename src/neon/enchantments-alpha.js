@@ -11,12 +11,17 @@ export const STONES=Object.freeze({
 const fm=n=>Number(n).toLocaleString('pt-BR')
 const itemRows=Object.entries(STONES).map(([id,v])=>[id,v.name,'Encantamento permanente: '+v.label+'. Até 3 pedras por equipamento.','consumable',0,'event'])
 
+let initPromise=null
 export async function initEnchantments(){
+  if(initPromise)return initPromise
+  initPromise=(async()=>{
   await db.query('CREATE TABLE IF NOT EXISTS equipment_enchantments (jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE, item_id TEXT NOT NULL REFERENCES items(id), stone_id TEXT NOT NULL REFERENCES items(id), quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 3), PRIMARY KEY(jid,item_id,stone_id))')
   for(const [id,name,description,category,price,rarity] of itemRows){
     await db.query('INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,$2,$3,$4,$5,$6,FALSE,TRUE) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,category=EXCLUDED.category,rarity=EXCLUDED.rarity,sellable=FALSE',
       [id,name,description,category,price,rarity])
   }
+  })()
+  try{return await initPromise}catch(e){initPromise=null;throw e}
 }
 export function sumEnchants(rows=[]){
   const out={atk:0,def:0,spd:0,crit:0,damage:0,stones:[]}
