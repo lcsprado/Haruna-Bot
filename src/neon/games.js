@@ -2,6 +2,7 @@ import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp,
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
+import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
 async function tx(fn){
   const c=await db.connect()
