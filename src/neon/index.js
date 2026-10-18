@@ -4260,9 +4260,67 @@ Escolha o que deseja vender:
       text+='   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
       if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Última cópia: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
     })
+    text+='\n🚀 *VENDA EM MASSA*\nDigite *T* — vender TODOS os itens desta lista\nDigite *R* — vender só os repetidos (mantém 1 de cada)\n'
     text+='\n👉 Um item: mande só o número.\n📦 Vários: *1,3,5*\n'
     text+='\nAo selecionar vários:\n1️⃣ vender tudo\n2️⃣ vender só repetidos\n3️⃣ descartar tudo\n'
-    text+='\n9️⃣ Voltar às categorias\n0️⃣ Sair'
+    text+='\n99️⃣ Voltar às categorias\n0️⃣ Sair'
+    await reply(text)
+  }
+
+  async function showSellBatchConfirmation(chat,sender,reply,items,mode){
+    const batch=[]
+    const skipped=[]
+    for(const item of items||[]){
+      const maxAll=Math.max(0,Number(item.maxAll||0))
+      const qty=mode==='sell_duplicates'
+        ? Math.min(maxAll,Math.max(0,Number(item.duplicates||0)))
+        : maxAll
+      if(qty<1){
+        skipped.push(item.name)
+        continue
+      }
+      const upgradeRefundApplied=(mode==='sell_all'&&!item.equipped&&qty===Number(item.quantity))
+        ? Number(item.upgradeRefund||0) : 0
+      batch.push({...item,qty,upgradeRefundApplied})
+    }
+
+    if(!batch.length){
+      await reply(mode==='sell_duplicates'
+        ? '♻️ Não há cópias repetidas disponíveis para venda nesta seleção.'
+        : '🔒 Nenhum dos itens selecionados pode ser alterado.')
+      return
+    }
+    if(batch.length>50 || batch.some(i=>!Number.isSafeInteger(i.qty)||i.qty>9999)){
+      await reply('⚠️ Lote muito grande. Selecione menos tipos ou quantidades por vez (máximo: 50 tipos e 9.999 unidades por tipo). Nenhum item foi alterado.')
+      return
+    }
+
+    if(mode==='discard_all'){
+      let text='⚠️ *CONFIRMAR DESCARTE EM LOTE*\n\n'
+      batch.forEach(i=>{text+='• *'+i.name+'* ×'+i.qty+'\n'})
+      text+='\n🗑️ Unidades que serão apagadas: *'+batch.reduce((s,i)=>s+i.qty,0)+'*'
+      text+='\n💰 Você receberá: *R$ 0*'
+      text+='\n\n⚠️ Essa ação não pode ser desfeita.\n\n1️⃣ Confirmar descarte\n2️⃣ Cancelar'
+      setQuickFlow(chat,sender,'inventory_discard_batch_confirm',{batch},90000)
+      await reply(text)
+      return
+    }
+
+    const total=batch.reduce((sum,i)=>sum+(i.qty*i.unit)+Number(i.upgradeRefundApplied||0),0)
+    let text='⚠️ *CONFIRMAR VENDA EM LOTE*\n\n'
+    batch.forEach(i=>{
+      const base=i.qty*i.unit
+      text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(base+Number(i.upgradeRefundApplied||0))
+      if(Number(i.upgradeRefundApplied||0)>0) text+=' _(inclui +R$ '+fmt(i.upgradeRefundApplied)+' dos upgrades)_'
+      text+='\n'
+    })
+    text+='\n🧮 Unidades: *'+batch.reduce((s,i)=>s+i.qty,0)+'*'
+    text+='\n💵 Total estimado: *R$ '+fmt(total)+'*'
+    if(batch.some(i=>i.rarity==='legendary')) text+='\n🌟 Atenção: inclui equipamentos lendários.'
+    if(skipped.length) text+='\n⏭️ Sem unidades para vender: '+skipped.join(', ')
+    text+='\n🔒 Equipados/vinculados permanecem protegidos.'
+    text+='\n\n1️⃣ Confirmar venda\n2️⃣ Cancelar'
+    setQuickFlow(chat,sender,'inventory_sell_batch_confirm',{batch},90000)
     await reply(text)
   }
 
@@ -7771,16 +7829,21 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='inventory_sell_select'){
-      if(input==='9'){
+      if(input==='99'){
         await sellMenu()
         return true
       }
 
-      if(input.includes(',')){
-        const indexes=[...new Set(input.split(',').map(x=>Number(x.trim())-1).filter(Number.isInteger))]
+      const sellAll=['t','tudo','vender tudo'].includes(input)
+      const sellDuplicates=['r','repetidos','vender repetidos'].includes(input)
+      const selectAll=sellAll||sellDuplicates
+      if(input.includes(',')||selectAll){
+        const indexes=selectAll
+          ? (flow.data.items||[]).map((_,i)=>i)
+          : [...new Set(input.split(',').map(x=>Number(x.trim())-1).filter(Number.isInteger))]
         const selected=indexes.map(i=>flow.data.items?.[i]).filter(Boolean)
-        if(selected.length<2){
-          await reply('📦 Para gerenciar vários itens, mande pelo menos dois números. Exemplo: *1,3,5*.')
+        if(selected.length<(selectAll?1:2)){
+          await reply('📦 Para gerenciar vários itens, mande pelo menos dois números (ex.: *1,3,5*) ou *T* para todos.')
           return true
         }
 
@@ -7790,7 +7853,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         for(const item of selected){
           const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id || p.helmet_id===item.item_id)
           const maxAll=Math.max(0,Number(item.sellable_quantity||0))
-          const duplicates=Math.max(0,Number(item.quantity)-1)
+          const duplicates=Math.min(maxAll,Math.max(0,Number(item.quantity)-1))
           if(maxAll<1){
             protectedItems.push(item.name+' (equipado/protegido)')
             continue
@@ -7812,6 +7875,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 
         if(!prepared.length){
           await reply('🔒 Nenhum dos itens escolhidos pode ser alterado em lote. Equipados e vinculados ficam protegidos.')
+          return true
+        }
+
+        if(selectAll){
+          await showSellBatchConfirmation(chat,sender,reply,prepared,sellAll?'sell_all':'sell_duplicates')
           return true
         }
 
@@ -7857,50 +7925,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
 
       const mode=input==='1'?'sell_all':input==='2'?'sell_duplicates':'discard_all'
-      const batch=[]
-      const skipped=[]
-      for(const item of flow.data.items||[]){
-        const qty=mode==='sell_duplicates'?Number(item.duplicates||0):Number(item.maxAll||0)
-        if(qty<1){
-          skipped.push(item.name)
-          continue
-        }
-        const upgradeRefundApplied=(mode==='sell_all'&&!item.equipped&&qty===Number(item.quantity))?Number(item.upgradeRefund||0):0
-        batch.push({...item,qty,upgradeRefundApplied})
-      }
-
-      if(!batch.length){
-        await reply(mode==='sell_duplicates'
-          ? '♻️ Os itens selecionados não possuem cópias repetidas para vender.'
-          : '🔒 Nenhum item selecionado pode ser alterado.')
-        return true
-      }
-
-      if(mode==='discard_all'){
-        let text='⚠️ *CONFIRMAR DESCARTE EM LOTE*\n\n'
-        batch.forEach(i=>{text+='• *'+i.name+'* ×'+i.qty+'\n'})
-        text+='\n🗑️ Unidades que serão apagadas: *'+batch.reduce((s,i)=>s+i.qty,0)+'*'
-        text+='\n💰 Você receberá: *R$ 0*'
-        text+='\n\n⚠️ Essa ação não pode ser desfeita.\n\n1️⃣ Confirmar descarte\n2️⃣ Cancelar'
-        setQuickFlow(chat,sender,'inventory_discard_batch_confirm',{batch},90000)
-        await reply(text)
-        return true
-      }
-
-      const total=batch.reduce((sum,i)=>sum+(i.qty*i.unit)+Number(i.upgradeRefundApplied||0),0)
-      let text='⚠️ *CONFIRMAR VENDA EM LOTE*\n\n'
-      batch.forEach(i=>{
-        const base=i.qty*i.unit
-        text+='• *'+i.name+'* ×'+i.qty+' — R$ '+fmt(base+Number(i.upgradeRefundApplied||0))
-        if(Number(i.upgradeRefundApplied||0)>0) text+=' _(inclui +R$ '+fmt(i.upgradeRefundApplied)+' dos upgrades)_'
-        text+='\n'
-      })
-      text+='\n🧮 Unidades: *'+batch.reduce((s,i)=>s+i.qty,0)+'*'
-      text+='\n💵 Total estimado: *R$ '+fmt(total)+'*'
-      if(skipped.length) text+='\n⏭️ Sem repetidos: '+skipped.join(', ')
-      text+='\n\n1️⃣ Confirmar venda\n2️⃣ Cancelar'
-      setQuickFlow(chat,sender,'inventory_sell_batch_confirm',{batch},90000)
-      await reply(text)
+      await showSellBatchConfirmation(chat,sender,reply,flow.data.items||[],mode)
       return true
     }
 
