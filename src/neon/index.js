@@ -3461,6 +3461,27 @@ ${ranking}${extra}
     finally{calcanharBusy=false}
   },calcanharEnd+60000,{intervalMs:10000,startupMs:1000}))
 
+  // Hora do Corre extra: aviso único por grupo, sem bônus em CLT ou trabalho.
+  if(Date.now()<Date.parse('2026-10-17T23:00:00-03:00')){
+    const extraCorreTimer=setInterval(async()=>{
+      if(trevoHealth.whatsapp!=='open')return
+      const now=Date.now()
+      if(now<Date.parse('2026-10-17T22:30:00-03:00'))return
+      if(now>=Date.parse('2026-10-17T23:00:00-03:00')){clearInterval(extraCorreTimer);return}
+      try{
+        const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+        for(const group of groups){
+          if(group.chat_jid?.endsWith('@g.us')){
+            await sendScheduledGroupNotice(group.chat_jid,'hora-corre-extra-20261017-2230',
+              '🚗🍔 *HORA DO CORRE ATIVA!*\n\n⏰ Até *23h00* (Brasília)\n💰 *2X DINHEIRO* em *!uber* e *!ifood*.\n\n⚠️ CLT, trabalho, negócios e demais comandos continuam normais.\n🔥 Aproveitem os 30 minutos!')
+          }
+        }
+        clearInterval(extraCorreTimer)
+      }catch(err){console.error('[Hora do Corre Extra]',err?.message||err)}
+    },5000)
+    extraCorreTimer.unref?.()
+  }
+
   // Invasão dos Titãs 17/10, 21:30–22:10 BRT. Controle por estado global persistente.
   const titasStart=Date.parse('2026-10-17T21:30:00-03:00')
   const titasEnd=Date.parse('2026-10-17T22:10:00-03:00')
