@@ -44,7 +44,7 @@ import {
   startQuiz, answerQuiz, expireQuiz,
   startNumberGame, guessNumber,
   startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
-  tickSetePecados, tickCalcanharBoss, tickTitanInvasion, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
+  tickSetePecados, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
 } from './games.js'
 import {
   initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
@@ -10207,7 +10207,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
 
         if(isGroup && !isOwner){
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo','npcs','mercadores','comerciantes','mercadoalpha','lojanpc','npc','falarnpc','comprarnpc','npccomprar'])
-          const RPG_CMDS=new Set(['perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
+          const RPG_CMDS=new Set(['dano','perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
           const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
           const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação','buffxp','bonusxp','expbuff','experiencia','usarxp','ativarxp'])
           let key=null,label=null
@@ -10981,6 +10981,33 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           const p=await getProfile(sender)
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 
+        } else if(cmd==='dano'){
+          const mentioned=mentionsOf(msg)[0]
+          const identity=mentioned?await resolvePlayerIdentity(sock,chat,mentioned,msg):{jid:sender}
+          const target=identity.jid||sender
+          const profile=await getProfile(target)
+          const stats=await getPlayerDamageStats(target)
+          const boss=stats.boss||null,raid=stats.raid||null
+          const n=(boss?.count||0)+(raid?.count||0)
+          if(!n){
+            await reply('⚔️ *ANÁLISE DE DANO*\n\nAinda não há ataques registrados para este jogador.\n📊 As estatísticas começam a contar a partir da ativação do comando.')
+          }else{
+            const total=(boss?.average||0)*(boss?.count||0)+(raid?.average||0)*(raid?.count||0)
+            const critTotal=(boss?.critAverage||0)*(boss?.critCount||0)+(raid?.critAverage||0)*(raid?.critCount||0)
+            const critCount=(boss?.critCount||0)+(raid?.critCount||0)
+            const normalCount=n-critCount
+            const normalTotal=total-critTotal
+            const label=String(profile?.push_name||profile?.name||'Jogador').replace(/[\r\n*_~]/g,' ').slice(0,60)
+            await reply('⚔️ *ANÁLISE DE DANO — '+label+'*\n\n'+
+              '💥 Média por ataque: *'+fmt(Math.round(total/n))+'*\n'+
+              '⚔️ Média normal: *'+(normalCount?fmt(Math.round(normalTotal/normalCount)):'—')+'*\n'+
+              '🎯 Média crítica: *'+(critCount?fmt(Math.round(critTotal/critCount)):'—')+'*\n'+
+              '🔥 Maior dano: *'+fmt(Math.max(boss?.max||0,raid?.max||0))+'*\n'+
+              '📊 Ataques analisados: *'+n+'* (até 100 Boss + 100 Raid)\n\n'+
+              '👹 Boss: *'+(boss?fmt(boss.average)+' ('+boss.count+' ataques)':'sem registros')+'*\n'+
+              '🐉 Raid: *'+(raid?fmt(raid.average)+' ('+raid.count+' ataques)':'sem registros')+'*\n\n'+
+              '_Médias reais dos ataques recentes, sem PvP. Contagem iniciada após a atualização._')
+          }
         } else if(['perfil','profile'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
           const profileIdentity=await resolvePlayerIdentity(sock,chat,mentioned || sender,msg)
