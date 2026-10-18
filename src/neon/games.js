@@ -1783,8 +1783,14 @@ async function settlePecadoPhase(c,s,chat){
     }
     if(eligible&&phaseIndex<7){
       const itemId=PECADOS_ESSENCES[phaseIndex]
-      await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,itemId])
-      drops.push({id:itemId,name:'Essência de '+phase.name,rarity:'Evento'})
+      const ownedEssence=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,itemId])).rows[0]
+      if(Number(ownedEssence?.quantity||0)>=1){
+        await credit(c,p.jid,150000,'boss_event_sete_pecados_essencia_repetida')
+        drops.push({id:'bonus_essencia_repetida',name:'💰 Essência repetida convertida em R$ 150.000 ('+phase.name+')',rarity:'Compensação'})
+      }else{
+        await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,itemId])
+        drops.push({id:itemId,name:'Essência de '+phase.name,rarity:'Evento'})
+      }
     }
     if(eligible&&phaseIndex===7){
       const boxQty=Number(phase.boxes?.[i]||0)
