@@ -92,7 +92,9 @@ const sundayRushMultiplier=()=>Date.now()>=SUNDAY_RUSH_START&&Date.now()<SUNDAY_
 
 const HORA_CORRE_START=Date.parse('2026-10-06T19:30:00-03:00')
 const HORA_CORRE_END=Date.parse('2026-10-06T20:00:00-03:00')
-const horaCorreMultiplier=()=>Date.now()>=HORA_CORRE_START&&Date.now()<HORA_CORRE_END?2:1
+const EXTRA_CORRE_START=Date.parse('2026-10-17T22:30:00-03:00')
+const EXTRA_CORRE_END=Date.parse('2026-10-17T23:00:00-03:00')
+const horaCorreMultiplier=()=>((Date.now()>=HORA_CORRE_START&&Date.now()<HORA_CORRE_END)||(Date.now()>=EXTRA_CORRE_START&&Date.now()<EXTRA_CORRE_END))?2:1
 
 
 export const BUSINESSES=[
