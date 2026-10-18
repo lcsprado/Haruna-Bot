@@ -3552,6 +3552,22 @@ ${ranking}${extra}
     titasTimer.unref?.()
   }
 
+  // Corrida do Ouro — somente dois avisos, sem boletins por rodada.
+  if(Date.now()<Date.parse('2026-10-18T21:00:00-03:00')){
+    const goldTimer=setInterval(async()=>{
+      const now=Date.now()
+      if(now<Date.parse('2026-10-18T20:25:00-03:00')||now>=Date.parse('2026-10-18T21:00:00-03:00'))return
+      const before=now<Date.parse('2026-10-18T20:30:00-03:00')
+      const groups=await activeEventGroups()
+      const key=before?'garimpo-20261018-aviso':'garimpo-20261018-inicio'
+      const message=before
+        ?'⛏️💰 *CORRIDA DO OURO ALPHA EM 5 MINUTOS!*\\n\\n⏰ 20h30–21h (Brasília)\\n🎯 15 rodadas fixas de 2 minutos.\\n💰 R$ 20 mil a R$ 300 mil por tentativa!\\n⚔️ Não precisa de força. Use *!garimpar* a partir das 20h30.'
+        :'⛏️💰 *CORRIDA DO OURO COMEÇOU!*\\n\\n⏰ Até 21h!\\n🎯 Uma tentativa por rodada fixa de 2 minutos. Perdeu uma rodada? Participe da próxima.\\n💎 Prêmios de R$ 20 mil a R$ 300 mil.\\n👉 Digite *!garimpar*.'
+      for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,key,message.replaceAll('\\n','\\n'))
+    },15000)
+    goldTimer.unref?.()
+  }
+
   // Invasão dos Sete Pecados — 2ª edição 18/10 18:00–21:00 BRT.
   let setePecadosBusy=false
   if(Date.now()<=Date.parse('2026-10-18T21:02:00-03:00'))setInterval(async()=>{
@@ -9856,6 +9872,38 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         if(await handleEnchantCommand({cmd,args,sender,reply,
           setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
           clearFlow:()=>clearQuickFlow(chat,sender)})) continue
+
+        if(cmd==='garimpar'){
+          const start=Date.parse('2026-10-18T20:30:00-03:00')
+          const end=Date.parse('2026-10-18T21:00:00-03:00')
+          const now=Date.now()
+          if(now<start){await reply('⛏️ *CORRIDA DO OURO* começa às 20h30 (Brasília)!');continue}
+          if(now>=end){await reply('⛏️ *CORRIDA DO OURO ENCERRADA!* As 15 rodadas terminaram às 21h.');continue}
+          const round=Math.floor((now-start)/120000)+1
+          const prizeRoll=Math.random()
+          const prize=prizeRoll<.45?20000:prizeRoll<.75?50000:prizeRoll<.95?100000:300000
+          const label=prize===20000?'🪨 Pedra comum':prize===50000?'🥈 Veio de prata':prize===100000?'🥇 Veio de ouro':'💎 Diamante raro'
+          const claimKey='garimpo-20261018-'+round+'-'+sender
+          const client=await db.connect()
+          let awarded=false
+          let total=0
+          try{
+            await client.query('BEGIN')
+            const claim=await client.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING RETURNING key",[claimKey,JSON.stringify({jid:sender,round,prize})])
+            if(claim.rowCount){
+              await client.query('UPDATE wallets SET cash=cash+$1,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$2',[prize,sender])
+              await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('event',$1,$2,'event_reward',$3)",[sender,prize,'garimpo-20261018-rodada-'+round])
+              awarded=true
+            }
+            const sum=await client.query("SELECT COALESCE(SUM((value->>'prize')::bigint),0)::bigint AS total FROM trevo_settings WHERE key LIKE $1",['garimpo-20261018-%-'+sender])
+            total=Number(sum.rows[0]?.total||0)
+            await client.query('COMMIT')
+          }catch(err){await client.query('ROLLBACK').catch(()=>{});console.error('[GARIMPO] falha',err?.message||err);await reply('⛏️ Não foi possível processar seu garimpo. Tente novamente.');continue}
+          finally{client.release()}
+          if(!awarded){await reply('🔒 Você já garimpou nesta rodada ('+round+'/15). Aguarde a próxima janela de 2 minutos.\n💰 Total no evento: R$ '+fmt(total));continue}
+          await reply('⛏️ *GARIMPO CONCLUÍDO!*\n\n'+label+'\n💰 Ganhou: *R$ '+fmt(prize)+'*\n🎯 Rodada: *'+round+'/15*\n💵 Acumulado: *R$ '+fmt(total)+'*\n⏳ Próxima rodada no próximo horário par até 21h.')
+          continue
+        }
 
         if(cmd==='azarousorte' || cmd==='caixapegadinha'){
           const pick=String(args[0]||'').toLowerCase()
