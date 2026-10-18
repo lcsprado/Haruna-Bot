@@ -1112,8 +1112,12 @@ async function finishRaidRewards(c,s,cfg,chat){
     Number(fragmentEvent.multiplier||0)===2
   const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive || rewardEventActive
   const cacadaActive=cacadaAlphaActive()
-  const moneyMultiplier=cacadaActive?1.25:1
-  const xpMultiplier=raidEventActive?1.5:(cacadaActive?1.5:1)
+  // 18/10: hora dourada de Raid, apenas dinheiro e EXP do jogador.
+  // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
+  const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
+    now<Date.parse('2026-10-18T22:00:00-03:00')
+  const moneyMultiplier=raidGoldHour?2:(cacadaActive?1.25:1)
+  const xpMultiplier=raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1))
   const petXpMultiplier=raidEventActive?1.5:(cacadaActive?1.25:1)
   const gearEventBonus=raidEventActive?.015:0
   const rewards=[]
