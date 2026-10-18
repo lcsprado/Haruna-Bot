@@ -1713,9 +1713,9 @@ export async function tickCalcanharBoss(now=Date.now()){
   })
 }
 
-const PECADOS_START=Date.parse('2026-10-11T18:40:00-03:00')
-const PECADOS_END=Date.parse('2026-10-11T20:40:00-03:00')
-const PECADOS_KEY='sete-pecados-20261011-1840-v1'
+const PECADOS_START=Date.parse('2026-10-18T18:00:00-03:00')
+const PECADOS_END=Date.parse('2026-10-18T21:00:00-03:00')
+const PECADOS_KEY='sete-pecados-20261018-1800-v2'
 const PECADOS_PHASES=[
   {id:'preguica',name:'💤 Preguiça',hp:60000,atk:35,cash:[20000,15000,10000]},
   {id:'gula',name:'🍖 Gula',hp:75000,atk:45,cash:[25000,18000,12000]},
@@ -1798,6 +1798,10 @@ async function settlePecadoPhase(c,s,chat){
         if(Number(oldRelic?.quantity||0)<1){
           await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,PECADOS_RELIC])
           drops.push({id:PECADOS_RELIC,name:'⚜️ Insígnia dos Sete Pecados (+2% Boss/Raid, +1pp CRIT)',rarity:'Evento Único'})
+        }else{
+          // Segunda edição: insígnia já conquistada vira dinheiro, sem duplicar bônus.
+          await credit(c,p.jid,1000000,'boss_event_sete_pecados_insignia_repetida')
+          drops.push({id:'bonus_pecados_repetido',name:'💰 Insígnia repetida convertida em R$ 1.000.000',rarity:'Compensação'})
         }
         const oldTitle=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,PECADOS_TITLE])).rows[0]
         if(Number(oldTitle?.quantity||0)<1){
