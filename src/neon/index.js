@@ -335,7 +335,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
         if(r.dead){
           // Sete Pecados troca o Boss imediatamente, sem encerrar a sessão
           // de quem aplicou o golpe final. Outros eventos mantêm a regra anterior.
-          const nextPecado= r.eventId==='sete_pecados' && Boolean(r.nextPhase)
+          const nextPecado= (r.eventId==='sete_pecados'||r.eventId==='invasao_titas_20261017') && Boolean(r.nextPhase)
           completed=!nextPecado;
           for(const player of r.rewards||[]){
             if(Number(player.share||0)>=0.02){
@@ -351,6 +351,19 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
               : (x.petXp?` • 🐾 +${x.petXp} XP pet`:'')
             text+=`\n${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano\n💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP${teamXp}${items}`
           })
+          if(r.eventId==='invasao_titas_20261017'){
+            if(r.nextPhase){
+              if(sessionEndsAt&&Date.now()>=sessionEndsAt){completed=true;return}
+              await reply('⚔️ *TITÃ DERROTADO! FASE '+(Number(r.nextPhase.phaseIndex)+1)+'/3*\n'+
+                '👹 Próximo: *'+r.nextPhase.name+'*\n'+
+                '✅ Sua sessão de ataque continua automaticamente.\n'+
+                '🏆 A premiação será paga apenas no encerramento do evento.')
+              await new Promise(resolve=>setTimeout(resolve,8000))
+              continue
+            }
+            // Um relatório único será enviado pelo agendador a todos os grupos.
+            return
+          }
           if(r.eventId==='sete_pecados'){
             const rank=(r.rewards||[]).filter(x=>x.eligible).slice(0,3).map(x=>
               (x.position===1?'🥇':x.position===2?'🥈':'🥉')+' '+x.name+' — '+Number(x.damage).toLocaleString('pt-BR')+
