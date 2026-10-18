@@ -1772,6 +1772,50 @@ async function settlePecadoPhase(c,s,chat){
 }
 
 
+// Invasão dos Titãs: três fases, HP fixo e um pagamento somente no encerramento.
+async function finishTitanInvasion(c,state,defeated){
+ const ledger=rollupTitanDamage(state)
+ const ranked=rankTitanPlayers(ledger),rewards=[]
+ for(const player of ranked){
+  const {cash,exp}=titanRewards(player.rank),drops=[]
+  if(cash)await credit(c,player.jid,cash,'boss_event_titas_20261017')
+  if(exp)await grantExpInTransaction(c,player.jid,exp,{chatJid:GLOBAL_BOSS_EVENT_CHAT})
+  if(defeated&&player.phases.length===TITAN_PHASES.length){
+    await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'insignia_matador_titas',1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[player.jid])
+    drops.push({id:'insignia_matador_titas',name:'Insígnia Matador de Titãs (+1% Boss/Raid)',rarity:'Evento Único'})
+  }
+  rewards.push({...player,position:player.rank||ranked.length+1,cash,exp,petXp:0,petXpTeam:[],drops,eligible:player.rank>0})
+ }
+ const ended={...state,active:false,mode:'event_completed',participants:{},ledger,
+  completedAt:Date.now(),outcome:defeated?'defeated':'time_limit',
+  result:{bossName:state.name,maxHp:state.maxHp,defeated,rewards}}
+ await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',ended)
+ return {ended:true,completed:defeated,rewards}
+}
+export async function tickTitanInvasion(now=Date.now()){
+ if(now<TITAN_START)return {due:false}
+ return tx(async c=>{
+  const state=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+  if(state?.scheduleKey===TITAN_EVENT_KEY){
+    if(now>=TITAN_END&&state.active!==false)return {due:true,...await finishTitanInvasion(c,state,false)}
+    return {due:true,already:true,active:state.active!==false,phaseIndex:state.phaseIndex}
+  }
+  if(now>=TITAN_END)return {due:false,missed:true}
+  if(state&&state.active!==false&&Number(state.hp)>0&&(!state.endsAt||Number(state.endsAt)>now))
+    return {due:true,blocked:true,blockingBoss:state.name}
+  const next=createTitanState(0,{},now)
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',next)
+  return {due:true,spawned:true,...next}
+ })
+}
+async function defeatTitanPhase(c,state){
+ const index=Number(state.phaseIndex||0)
+ if(index===TITAN_PHASES.length-1)return {...await finishTitanInvasion(c,state,true),next:null}
+ const next=createTitanState(index+1,rollupTitanDamage(state),state.startedAt)
+ await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',next)
+ return {completed:false,rewards:[],next:{name:next.name,hp:next.hp,atk:next.atk,phaseIndex:next.phaseIndex}}
+}
+
 const RUPTURA_INICIO=Date.parse('2026-10-09T20:00:00-03:00')
 const RUPTURA_FIM=Date.parse('2026-10-09T21:00:00-03:00')
 const RUPTURA_ID='ruptura-estelar-2026-10-09'
