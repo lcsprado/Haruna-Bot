@@ -1798,7 +1798,7 @@ export async function tickTitanInvasion(now=Date.now()){
   const state=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
   if(state?.scheduleKey===TITAN_EVENT_KEY){
     if(now>=TITAN_END&&state.active!==false)return {due:true,...await finishTitanInvasion(c,state,false)}
-    return {due:true,already:true,active:state.active!==false,phaseIndex:state.phaseIndex}
+    return {due:true,already:true,active:state.active!==false,phaseIndex:state.phaseIndex,result:state.result||null,completedAt:state.completedAt||null}
   }
   if(now>=TITAN_END)return {due:false,missed:true}
   if(state&&state.active!==false&&Number(state.hp)>0&&(!state.endsAt||Number(state.endsAt)>now))
