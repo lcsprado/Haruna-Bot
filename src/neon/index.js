@@ -3561,9 +3561,9 @@ ${ranking}${extra}
       const groups=await activeEventGroups()
       const key=before?'garimpo-20261018-aviso':'garimpo-20261018-inicio'
       const message=before
-        ?'⛏️💰 *CORRIDA DO OURO ALPHA EM 5 MINUTOS!*\\n\\n⏰ 20h30–21h (Brasília)\\n🎯 15 rodadas fixas de 2 minutos.\\n💰 R$ 20 mil a R$ 300 mil por tentativa!\\n⚔️ Não precisa de força. Use *!garimpar* a partir das 20h30.'
-        :'⛏️💰 *CORRIDA DO OURO COMEÇOU!*\\n\\n⏰ Até 21h!\\n🎯 Uma tentativa por rodada fixa de 2 minutos. Perdeu uma rodada? Participe da próxima.\\n💎 Prêmios de R$ 20 mil a R$ 300 mil.\\n👉 Digite *!garimpar*.'
-      for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,key,message.replaceAll('\\n','\\n'))
+        ?'⛏️💰 *CORRIDA DO OURO ALPHA EM 5 MINUTOS!*\n\n⏰ 20h30–21h (Brasília)\n🎯 15 rodadas fixas de 2 minutos.\n💰 R$ 20 mil a R$ 300 mil por tentativa!\n⚔️ Não precisa de força. Use *!garimpar* a partir das 20h30.'
+        :'⛏️💰 *CORRIDA DO OURO COMEÇOU!*\n\n⏰ Até 21h!\n🎯 Uma tentativa por rodada fixa de 2 minutos. Perdeu uma rodada? Participe da próxima.\n💎 Prêmios de R$ 20 mil a R$ 300 mil.\n👉 Digite *!garimpar*.'
+      for(const group of groups)await sendScheduledGroupNotice(group.chat_jid,key,message)
     },15000)
     goldTimer.unref?.()
   }
