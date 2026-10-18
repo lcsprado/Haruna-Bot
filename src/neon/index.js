@@ -3448,6 +3448,64 @@ ${ranking}${extra}
     finally{calcanharBusy=false}
   },calcanharEnd+60000,{intervalMs:10000,startupMs:1000}))
 
+  // Invasão dos Titãs 17/10, 21:30–22:10 BRT. Controle por estado global persistente.
+  const titasStart=Date.parse('2026-10-17T21:30:00-03:00')
+  const titasEnd=Date.parse('2026-10-17T22:10:00-03:00')
+  let titasBusy=false
+  if(Date.now()<titasEnd+2*60*1000){
+    const titasTimer=setInterval(async()=>{
+      if(titasBusy||trevoHealth.whatsapp!=='open')return
+      const now=Date.now()
+      if(now<titasStart||now>titasEnd+2*60*1000){
+        if(now>titasEnd+2*60*1000)clearInterval(titasTimer)
+        return
+      }
+      titasBusy=true
+      try{
+        const state=await tickTitanInvasion(now)
+        if(state.blocked){
+          console.warn('[TITAS] aguardando outro Boss global',state.blockingBoss)
+          return
+        }
+        const groups=await activeEventGroups()
+        if(state.spawned||state.active){
+          const phase=Number(state.phaseIndex||0)
+          const phases=[
+            {name:'🔥 Titã Vulcânico',hp:450000,atk:120},
+            {name:'🗿 Colosso Ancestral',hp:650000,atk:150},
+            {name:'⚡ Imperador dos Titãs',hp:900000,atk:180}
+          ]
+          const t=phases[phase]
+          if(t){
+            const notice='⚔️ *INVASÃO DOS TITÃS — FASE '+(phase+1)+'/3*\n\n'+
+              '👹 *'+t.name+'*\n❤️ HP: *'+t.hp.toLocaleString('pt-BR')+'*\n⚔️ ATK: *'+t.atk+'*\n'+
+              '⏰ Evento global até *22h10* (Brasília).\n'+
+              '🏆 Prêmios por contribuição apenas uma vez, no encerramento.\n'+
+              '🛡️ HP fixo: entrar ou sair não aumenta a vida do Titã.\n'+
+              '⚔️ Use *!boss* e *!atacar*. Ataque automático continua nas próximas fases.'
+            for(const g of groups)await sendScheduledGroupNotice(g.chat_jid,'invasao-titas-20261017-fase-'+phase,notice)
+          }
+        }
+        if(state.ended||state.result){
+          const rewards=state.rewards||state.result?.rewards||[]
+          const ranking=rewards.filter(x=>x.eligible).slice(0,10).map((x,i)=>
+            (i===0?'🥇':i===1?'🥈':i===2?'🥉':'🏅')+' '+String(x.name||'Jogador').replace(/[\r\n*_~]/g,' ')+
+            ' — '+Number(x.damage||0).toLocaleString('pt-BR')+' dano • R$ '+
+            Number(x.cash||0).toLocaleString('pt-BR')+' • '+Number(x.exp||0).toLocaleString('pt-BR')+' XP'
+          ).join('\n')
+          const text='🏆 *INVASÃO DOS TITÃS ENCERRADA!*\n\n'+
+            (state.completed||state.result?.defeated?'✅ Os três Titãs foram derrotados!':'⏰ O tempo do evento acabou.')+
+            '\n\n'+(ranking||'Nenhum participante elegível.')+
+            '\n\n✅ Recompensas processadas uma única vez. Insígnia exclusiva para participantes das três fases concluídas.'
+          for(const g of groups)await sendScheduledGroupNotice(g.chat_jid,'invasao-titas-20261017-final',text)
+          clearInterval(titasTimer)
+        }
+      }catch(err){console.error('[TITAS] agendamento',err?.stack||err)}
+      finally{titasBusy=false}
+    },5000)
+    titasTimer.unref?.()
+  }
+
   // Invasão dos Sete Pecados — 11/10 18:40–20:40 BRT.
   let setePecadosBusy=false
   if(Date.now()<=Date.parse('2026-10-11T20:42:00-03:00'))setInterval(async()=>{
