@@ -1,14 +1,14 @@
 import {randomInt} from 'node:crypto'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense} from './db.js'
 
-// Evento único — 12/10/2026 às 19:25 (America/Sao_Paulo).
+// Evento único — 18/10/2026 às 16:30 (America/Sao_Paulo).
 // Persistência e premiação transacional; não depende do nível/força dos jogadores.
-const KEY='bingo_reboot_20261012_1925_v1'
-const START=Date.parse('2026-10-12T19:25:00-03:00')
-const ANNOUNCE=Date.parse('2026-10-12T19:14:00-03:00')
+const KEY='bingo_reboot_20261018_1630_v1'
+const START=Date.parse('2026-10-18T16:30:00-03:00')
+const ANNOUNCE=Date.parse('2026-10-18T16:20:00-03:00')
 const BALL_INTERVAL_MS=25000
 const PRICE=5000
-const TROPHY='insignia_bingo_reboot_20261012'
+const TROPHY='insignia_bingo_reboot_20261018'
 const NUMBER_LIMIT=40
 const REWARD={row:40000,twoRows:80000,full:150000}
 let busy=false
@@ -34,7 +34,7 @@ async function ensureTrophy(){
       category=EXCLUDED.category,price=0,rarity='event',
       sellable=FALSE,stackable=FALSE`,[
     TROPHY,'Insígnia do Reboot',
-    'Troféu visual exclusivo do Bingo do Reboot de 12/10/2026, sem bônus de combate. Não pode ser vendido ou transferido.'
+    'Troféu visual exclusivo do Bingo do Reboot de 18/10/2026, sem bônus de combate. Não pode ser vendido ou transferido.'
   ])
   registeredItem=true
 }
@@ -77,7 +77,7 @@ function cardText(p,s){
     return marked[i]?'['+n+']':' '+n+' '
   }).join(' | ')
   const safeName=String(p.name||'Jogador').replace(/[\r\n*`]/g,' ').slice(0,50)
-  const situation=s.phase==='completed'?'🏁 Encerrado':s.phase==='running'?'🟢 Sorteio em andamento':'⏰ Início às 19h25'
+  const situation=s.phase==='completed'?'🏁 Encerrado':s.phase==='running'?'🟢 Sorteio em andamento':'⏰ Início às 16h30'
   return [
     '🎟️ *BINGO DO REBOOT*',
     '👤 *'+safeName+'*',
@@ -200,7 +200,7 @@ async function processBall(s,c){
   return {message:line,finished:Boolean(s.prizes.full)}
 }
 const welcome=(count)=>'🎰 *BINGO DO REBOOT — ALPHA BOT VOLTOU!*\n\n'+
-  '🕢 Começa *HOJE às 19h25* (Brasília)!\n'+
+  '🕟 Inscrições *HOJE às 16h20*; sorteio *16h30* (Brasília)!\n'+
   '🎟️ Cartela: *'+formatMoney(PRICE)+'* (carteira/banco)\n'+
   '⚖️ Apenas *1 cartela por jogador*. Todos têm chances iguais.\n'+
   '✅ Digite *!bingo* agora para comprar sua cartela.\n'+
@@ -233,7 +233,7 @@ async function tick(sock){
       if(now>=START && s.phase==='registration'){
         if(!Object.keys(s.players||{}).length){
           s.phase='cancelled'
-          outgoing='🎰 *BINGO DO REBOOT CANCELADO*\nNenhuma cartela comprada antes das 19h25. Não houve cobranças nem prêmios.'
+          outgoing='🎰 *BINGO DO REBOOT CANCELADO*\nNenhuma cartela comprada antes das 16h30. Não houve cobranças nem prêmios.'
         }else{
           s.phase='running'
           s.queue=buildQueue()
@@ -310,7 +310,7 @@ export async function handleBingoRebootCommand({cmd,sender,name,chat,reply}){
     }
     if(me){out='✅ Você já possui sua cartela. Não será cobrado novamente.\n\n'+cardText(me,s);return}
     if(s.phase!=='registration' || now>=START){
-      out='🔒 Inscrições encerradas. O Bingo começou às 19h25 e só aceita uma cartela por jogador.'
+      out='🔒 Inscrições encerradas. O Bingo começou às 16h30 e só aceita uma cartela por jogador.'
       return
     }
     const payment=await c.query(`UPDATE wallets
@@ -325,7 +325,7 @@ export async function handleBingoRebootCommand({cmd,sender,name,chat,reply}){
     const player={name:String(name||'Jogador').slice(0,50),card:ticket(),wild:[],joinedAt:now}
     s.players[sender]=player
     out='✅ *CARTELA COMPRADA!* '+formatMoney(PRICE)+' debitados.\n\n'+cardText(player,s)+
-      '\n\n⏰ Sorteio global às *19h25*. Boa sorte!'
+      '\n\n⏰ Sorteio global às *16h30*. Boa sorte!'
   })
   await reply(out)
   return true
