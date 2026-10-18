@@ -2714,7 +2714,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const eclipseRelic=equippedRelic
     const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
     let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage
-    if(s.eventId==='sete_pecados'){
+    if(s.eventId==='sete_pecados'||s.eventId===TITAN_EVENT_ID){
       damage=Math.min(Math.max(0,damage),Math.max(0,Number(s.hp||0)))
     }
 
@@ -2838,6 +2838,15 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[php,jid])
+    }
+    if(s.hp<=0&&s.eventId===TITAN_EVENT_ID){
+      const result=await defeatTitanPhase(c,s)
+      return {dead:true,mode:s.mode,eventId:s.eventId,damage,bossDamage,bossCritical,
+        playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
+        nextPhase:result.next||null,finalCompleted:result.completed,
+        autoHeal,autoPetHeal,petSkillHeal,petSwitch,autoPetEnergy,petUnavailable,
+        petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
+        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
     }
     if(s.hp<=0&&s.eventId===CALCANHAR_ID){
       const result=await settleCalcanhar(c,s,true)
