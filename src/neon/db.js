@@ -2682,6 +2682,22 @@ export async function battle(attackerJid, defenderJid) {
       'SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[])',
       [[attackerJid,defenderJid]]
     )).rows
+    const enchantRows=(await client.query(
+      'SELECT jid,item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=ANY($1::text[])',
+      [[attackerJid,defenderJid]])).rows
+    const eqEnch=(jid,ids)=>{
+      const stats={atk:0,def:0,spd:0,crit:0,damage:0}
+      const map={pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
+        pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
+        pedra_precisao_alpha:['crit',.01]}
+      for(const e of enchantRows){
+        const st=map[e.stone_id]
+        if(e.jid===jid&&st&&ids.includes(e.item_id))stats[st[0]]+=st[1]*Math.min(3,Number(e.quantity)||0)
+      }
+      return stats
+    }
+    const aEn=eqEnch(attackerJid,[a.weapon_id,a.armor_id,a.boot_id,a.helmet_id])
+    const bEn=eqEnch(defenderJid,[b.weapon_id,b.armor_id,b.boot_id,b.helmet_id])
     const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
     const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
@@ -2695,21 +2711,23 @@ export async function battle(attackerJid, defenderJid) {
     const A={
       jid:attackerJid,name:au?.push_name||'Jogador',
       hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
-      atk:Number(a.atk)+aeW.atk+aeA.atk,
-      def:Number(a.def)+aeW.def+aeA.def+aeH.def,
+      atk:Number(a.atk)+aeW.atk+aeA.atk+aEn.atk,
+      def:Number(a.def)+aeW.def+aeA.def+aeH.def+aEn.def,
       classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
-      crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+classCritBonus(a.class_id,a.class_applied)),
-      spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd,
+      crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
+      spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd+aEn.spd,
+      enchantDamage:aEn.damage,
       petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
     }
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
       hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
-      atk:Number(b.atk)+beW.atk+beA.atk,
-      def:Number(b.def)+beW.def+beA.def+beH.def,
+      atk:Number(b.atk)+beW.atk+beA.atk+bEn.atk,
+      def:Number(b.def)+beW.def+beA.def+beH.def+bEn.def,
       classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
-      crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+classCritBonus(b.class_id,b.class_applied)),
-      spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd,
+      crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
+      spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd+bEn.spd,
+      enchantDamage:bEn.damage,
       petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
     }
 
@@ -2731,7 +2749,7 @@ export async function battle(attackerJid, defenderJid) {
       const crit=Math.random()<Math.min(.40,Number(from.crit||.10)+Number(from.petBonus?.crit||0))
       const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
       const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
-      const adjusted=Math.max(1,Math.round(raw*(1+Number(from.petBonus?.damage||0))))
+      const adjusted=Math.max(1,Math.round(raw*(1+Number(from.petBonus?.damage||0)+Number(from.enchantDamage||0))))
       const attack=classAttack({classId:from.classId,applied:from.classApplied,damage:crit?Math.round(adjusted*1.6):adjusted,critical:crit,hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,lastProcAttack:from.lastProcAttack})
       from.lastProcAttack=attack.lastProcAttack
       const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage}).damage
