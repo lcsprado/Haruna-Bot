@@ -21,6 +21,14 @@ async function tx(fn){
 
 export async function initGames(){
   await db.query(`
+    CREATE TABLE IF NOT EXISTS player_damage_stats(
+      jid TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('boss','raid')),
+      samples JSONB NOT NULL DEFAULT '[]'::jsonb,
+      PRIMARY KEY(jid,category)
+    )
+  `)
+  await db.query(`
     CREATE TABLE IF NOT EXISTS trevo_games(
       chat_jid TEXT NOT NULL,
       game_type TEXT NOT NULL,
@@ -1278,6 +1286,40 @@ async function finishRaidRewards(c,s,cfg,chat){
   return rewards
 }
 
+async function recordPlayerDamage(client,jid,category,damage,critical){
+  if(!jid||!['boss','raid'].includes(category)||!Number.isFinite(Number(damage))||Number(damage)<=0)return
+  await client.query(`
+    INSERT INTO player_damage_stats(jid,category,samples)
+    VALUES($1,$2,jsonb_build_array(jsonb_build_array($3::integer,$4::boolean)))
+    ON CONFLICT(jid,category) DO UPDATE
+    SET samples=(
+      SELECT COALESCE(jsonb_agg(value ORDER BY ord),'[]'::jsonb)
+      FROM (
+        SELECT value,ord FROM jsonb_array_elements(
+          player_damage_stats.samples || jsonb_build_array(jsonb_build_array($3::integer,$4::boolean))
+        ) WITH ORDINALITY AS t(value,ord)
+        ORDER BY ord DESC LIMIT 100
+      ) last100
+    )
+  `,[jid,category,Math.max(0,Math.round(Number(damage))),Boolean(critical)])
+}
+export async function getPlayerDamageStats(jid){
+ const result=await db.query('SELECT category,samples FROM player_damage_stats WHERE jid=$1',[jid])
+ const out={}
+ for(const row of result.rows){
+   const samples=Array.isArray(row.samples)?row.samples:[]
+   const total=samples.reduce((n,x)=>n+Number(x[0]||0),0)
+   const critical=samples.filter(x=>Boolean(x[1]))
+   const critTotal=critical.reduce((n,x)=>n+Number(x[0]||0),0)
+   out[row.category]={count:samples.length,average:samples.length?Math.round(total/samples.length):0,
+     max:samples.reduce((n,x)=>Math.max(n,Number(x[0]||0)),0),
+     critCount:critical.length,critAverage:critical.length?Math.round(critTotal/critical.length):0,
+     normalCount:samples.length-critical.length,
+     normalAverage:samples.length>critical.length?Math.round((total-critTotal)/(samples.length-critical.length)):0}
+ }
+ return out
+}
+
 export async function raidRound(chat,level){
   return tx(async c=>{
     const rooms=await resolveRaidRoom(c,chat,level||null)
@@ -1373,6 +1415,7 @@ export async function raidRound(chat,level){
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
       p.damage=Number(p.damage||0)+dmg
       s.hp=Math.max(0,Number(s.hp)-dmg)
+      await recordPlayerDamage(c,p.jid,'raid',actualDamage,crit)
       events.push({type:'hit',jid:p.jid,name:p.name,damage:dmg,actualDamage,crit})
       if(Number(s.hp)<=0) break
     }
@@ -2839,6 +2882,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[php,jid])
     }
+    await recordPlayerDamage(c,jid,'boss',damage,crit)
     if(s.hp<=0&&s.eventId===TITAN_EVENT_ID){
       const result=await defeatTitanPhase(c,s)
       return {dead:true,mode:s.mode,eventId:s.eventId,damage,bossDamage,bossCritical,
