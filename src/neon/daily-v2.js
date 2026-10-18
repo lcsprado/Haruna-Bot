@@ -9,6 +9,26 @@ const DEFINITIONS=[
   {type:'pet_train',title:'🐾 Treinador',target:5,cash:20000,xp:0,petXp:500},
   {type:'boss_damage',title:'👹 Caçador',target:10000,cash:40000,xp:800,petXp:0}
 ]
+// Rotação determinística: cada dia troca as metas, sem alterar tipos de atividade,
+// valores de recompensa, sequência, nem as missões já geradas no banco.
+const DAILY_ROTATION_START='2026-10-19'
+const MISSION_VARIANTS={
+ battle:[['⚔️ Guerreiro',5],['⚔️ Duelista',3],['⚔️ Veterano da Arena',7],['⚔️ Mestre de Combate',4]],
+ dungeon:[['🏰 Explorador',2],['🏰 Desbravador',3],['🏰 Caçador de Masmorras',1],['🏰 Aventureiro',4]],
+ work:[['💼 Trabalhador',3],['💼 Jornada Produtiva',5],['💼 Turno Extra',2],['💼 Maratona de Trabalho',4]],
+ pet_train:[['🐾 Treinador',5],['🐾 Mestre dos Pets',3],['🐾 Treino Intensivo',7],['🐾 Cuidador de Lendas',4]],
+ boss_damage:[['👹 Caçador',10000],['👹 Destruidor de Boss',20000],['👹 Caçador Implacável',15000],['👹 Golpe Titânico',30000]]
+}
+function dailyRotatedDefinitions(day){
+ if(day<DAILY_ROTATION_START)return DEFINITIONS
+ const dayIndex=Math.floor(Date.parse(day+'T12:00:00Z')/86400000)
+ return DEFINITIONS.map((mission,i)=>{
+   const variants=MISSION_VARIANTS[mission.type]
+   const index=((dayIndex*7+i*3)%variants.length+variants.length)%variants.length
+   const [title,target]=variants[index]
+   return {...mission,title,target}
+ })
+}
 const MONEY=[1,1.5,2,2.5,3],XP=[1,1.25,1.5,1.75,2]
 const levelTier=n=>n>=200?4:n>=150?3:n>=100?2:n>=50?1:0
 const dateValue=x=>x instanceof Date?x.toISOString().slice(0,10):(String(x||'').match(/\d{4}-\d{2}-\d{2}/)?.[0]||null)
@@ -72,7 +92,7 @@ async function ensureRows(c,jid){
  const special=level<10
    ?{type:'legend_raid',title:'🌟 Caçador de Lendas (alternativa: Boss)',target:2500,cash:25000,xp:1500,petXp:500}
    :{type:'legend_raid',title:'🌟 Caçador de Lendas (Raids)',target:50000,cash:25000,xp:1500,petXp:500}
- const insert=[...DEFINITIONS,special]
+ const insert=[...dailyRotatedDefinitions(today),special]
  for(const m of insert){
    const cash=Math.round(m.cash*(m.type==='legend_raid'?1:MONEY[tier]))
    const xp=Math.round(m.xp*(m.type==='legend_raid'?1:XP[tier]))
