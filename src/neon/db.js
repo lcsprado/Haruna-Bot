@@ -2542,6 +2542,20 @@ export async function getCombatProfile(jid) {
   const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1):null
   const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
   const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
+  const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
+  const enchantRows=enchantedIds.length?(await db.query(
+    'SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',
+    [jid,enchantedIds])).rows:[]
+  const enchantMap={
+    pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
+    pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
+    pedra_precisao_alpha:['crit',.01]
+  }
+  const ench={atk:0,def:0,spd:0,crit:0,damage:0}
+  for(const row of enchantRows){
+    const data=enchantMap[row.stone_id]
+    if(data)ench[data[0]]+=data[1]*Math.min(3,Math.max(0,Number(row.quantity)||0))
+  }
   const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
   const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
@@ -2560,18 +2574,20 @@ export async function getCombatProfile(jid) {
     base_atk:Number(p.atk),
     base_def:Number(p.def),
     base_max_hp:Number(p.max_hp),
-    weapon_atk:Number(w.atk||0),
-    armor_def:Number(a.def||0),
+    weapon_atk:Number(w.atk||0)+ench.atk,
+    armor_def:Number(a.def||0)+ench.def,
     equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
-    equipment_spd:Number(b.spd||0),
-    effective_spd:Number(p.spd)+Number(b.spd||0),
-    equipment_crit:Number(w.crit||0)+Number(a.crit||0),
+    equipment_spd:Number(b.spd||0)+ench.spd,
+    effective_spd:Number(p.spd)+Number(b.spd||0)+ench.spd,
+    equipment_crit:Number(w.crit||0)+Number(a.crit||0)+ench.crit,
     base_crit:0.10,
-    effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+classCritBonus(p.class_id,p.class_applied)),
+    effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
     effective_max_hp:effectiveMaxHp,
     effective_hp:effectiveHp,
-    effective_atk:Number(p.atk)+Number(w.atk||0)+Number(a.atk||0),
-    effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(h.def||0),
+    effective_atk:Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+ench.atk,
+    effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(h.def||0)+ench.def,
+    enchant_damage:Number(ench.damage||0),
+    enchant_breakdown:ench,
     weapon_name:w.name,
     armor_name:a.name,
     boot_name:b.name,
@@ -3177,9 +3193,11 @@ export async function ownerGrantItem(jid, itemId, qty=1) {
 const XP_ITEM_EFFECTS=Object.freeze({
   elixir_disciplina:{type:'boost',name:'Elixir da Disciplina',percent:20,seconds:20*60,cap:1200},
   elixir_sombras:{type:'boost',name:'Elixir das Sombras',percent:20,seconds:20*60,cap:1200},
+  elixir_leilao_30m:{type:'boost',name:'Elixir do Leilão',percent:20,seconds:30*60,cap:5000},
   pergaminho_experiencia:{type:'scroll',name:'Pergaminho de Experiência',xp:500},
   pergaminho_virtude:{type:'scroll',name:'Tomo da Virtude',xp:1200},
-  tomo_proibido:{type:'scroll',name:'Tomo Proibido',xp:1200}
+  tomo_proibido:{type:'scroll',name:'Tomo Proibido',xp:1200},
+  pergaminho_leilao_10k:{type:'scroll',name:'Pergaminho de 10.000 XP',xp:10000}
 })
 export async function getXpBuffStatus(jid){
   await ensureUser(jid)
@@ -4828,6 +4846,7 @@ export const PET_HP_PROFILES={
   tartaruga:{base:145,growth:13,type:'Tanque'},
   coruja:{base:100,growth:8,type:'Suporte'},
   raposa:{base:110,growth:9,type:'Ágil'},
+  raposa_astral:{base:115,growth:10,type:'Neutro — Leilão Alpha'},
   lobo:{base:130,growth:11,type:'Ofensivo'},
   aguia:{base:115,growth:9,type:'Crítico'},
   gaviao:{base:120,growth:9,type:'Ágil Crítico'},
