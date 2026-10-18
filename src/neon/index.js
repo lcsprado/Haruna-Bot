@@ -373,7 +373,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
             await (setePecadosBroadcaster||reply)('🌑 *PECADO DERROTADO!*\n\n'+(rank||'Nenhum jogador alcançou 10.000 de dano.')+
               '\n🎁 Recompensas creditadas após este Boss.'+
               (r.nextPhase?'\n\n🔔 O próximo pecado já está ativo. O anúncio será enviado separadamente a todos os grupos.':
-              '\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente concedida somente a quem atingiu 10.000 de dano em TODOS os oito Bosses.'))
+              '\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente para quem atingiu 10.000 de dano em todos os oito Bosses; quem já a possui recebe R$ 1.000.000.'))
             await reply(text)
             if(nextPecado){
               if(sessionEndsAt && Date.now()>=sessionEndsAt){
@@ -3552,19 +3552,19 @@ ${ranking}${extra}
     titasTimer.unref?.()
   }
 
-  // Invasão dos Sete Pecados — 11/10 18:40–20:40 BRT.
+  // Invasão dos Sete Pecados — 2ª edição 18/10 18:00–21:00 BRT.
   let setePecadosBusy=false
-  if(Date.now()<=Date.parse('2026-10-11T20:42:00-03:00'))setInterval(async()=>{
+  if(Date.now()<=Date.parse('2026-10-18T21:02:00-03:00'))setInterval(async()=>{
     if(setePecadosBusy)return
     const now=Date.now()
-    if(now<Date.parse('2026-10-11T18:40:00-03:00')||now>Date.parse('2026-10-11T20:42:00-03:00'))return
+    if(now<Date.parse('2026-10-18T18:00:00-03:00')||now>Date.parse('2026-10-18T21:02:00-03:00'))return
     setePecadosBusy=true
     try{
       const event=await tickSetePecados(now)
       if(event.spawned){
-        await sendEventToGroups('🌑⚔️ *INVASÃO DOS SETE PECADOS COMEÇOU!*\n\n⏰ 18:40–20:40 (Brasília)\n👹 Oito Bosses sequenciais, incluindo Azazel.\n💤 *PRIMEIRO: PREGUIÇA* • ❤️ 60.000 HP • ⚔️ 35 ATK\n👥 HP aumenta em 35% da base por participante adicional, inclusive quem entrar depois.\n🎯 10.000 de dano individual em CADA Boss para receber a Insígnia permanente.\n⚜️ +2% dano e +1pp crítico contra Bosses/Raids.\n🎁 Dinheiro, EXP e essências após cada vitória.\n⚔️ Use *!atacar* para começar!')
+        await sendEventToGroups('🌑⚔️ *INVASÃO DOS SETE PECADOS COMEÇOU!*\n\n⏰ 18:00–21:00 (Brasília)\n👹 Sete Pecados + Azazel: oito Bosses sequenciais.\n💤 *PRIMEIRO: PREGUIÇA* • ❤️ 60.000 HP • ⚔️ 35 ATK\n👥 HP aumenta em 35% da base por participante adicional, inclusive quem entrar depois.\n🎯 10.000 de dano individual em CADA Boss para receber a Insígnia permanente.\n⚜️ +2% dano e +1pp crítico contra Bosses/Raids.\n💰 Quem já tem a insígnia recebe R$ 1.000.000 ao conquistar novamente.\n🎁 Dinheiro, EXP e essências após cada vitória.\n⚔️ Use *!atacar* para começar!')
       }
-      if(event.ended)await sendEventToGroups('🌑 *INVASÃO DOS SETE PECADOS ENCERRADA!*\n\n⏰ O prazo das 20:40 terminou.\n🏆 Bosses já derrotados tiveram seus prêmios distribuídos. Não há prêmio retroativo por Boss não derrotado.')
+      if(event.ended)await sendEventToGroups('🌑 *INVASÃO DOS SETE PECADOS ENCERRADA!*\n\n⏰ O prazo das 21:00 terminou.\n🏆 Bosses já derrotados tiveram seus prêmios distribuídos. Não há prêmio retroativo por Boss não derrotado.')
       if(event.blocked)console.warn('[SETE PECADOS] início aguardando Boss ativo',event.blockingBoss)
       if(event.active && Number(event.phaseIndex||0)>=1) await announceNextPecado()
     }catch(err){console.error('[SETE PECADOS] scheduler',err?.stack||err)}
@@ -12544,14 +12544,14 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
           const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial em andamento.':'')
           const displayedSchedule=r.eventId==='sete_pecados'
-            ?'\n🌑 *INVASÃO DOS SETE PECADOS* • Fase '+(Number(r.phaseIndex||0)+1)+'/8\n⏰ Até 20:40 (Brasília)\n🎯 10.000 de dano em cada um dos 8 Bosses para obter a insígnia.\n⚜️ +2% dano e +1pp crítico Boss/Raid.'
+            ?'\n🌑 *INVASÃO DOS SETE PECADOS* • Fase '+(Number(r.phaseIndex||0)+1)+'/8\n⏰ Até 21:00 (Brasília)\n🎯 10.000 de dano em cada um dos 8 Bosses para obter a insígnia.\n⚜️ +2% dano e +1pp crítico Boss/Raid.'
             :r.eventId==='ruptura_estelar'
             ?'\n🌌 *RUPTURA ESTELAR ATÉ 21H* • Fase '+Number(r.phase||1)+'/3\n🥇 20 Caixas Épicas ao 1º; 5 ao 2º; 3 ao 3º.\n🏅 Insígnia Guardião da Ruptura.'
             :schedule
           if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
           await progressDailyMission(sender,'game')
           const rewardInfo=r.mode==='event'
-            ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia permanente para 10.000 dano em cada um dos oito.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
+            ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou R$ 1.000.000 se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
             :(r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
           await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 
