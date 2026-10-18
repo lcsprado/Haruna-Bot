@@ -498,6 +498,7 @@ export async function initDatabase() {
     ['insignia_guardiao_ruptura','Insígnia Guardião da Ruptura','Troféu cosmético único da Ruptura Estelar de 09/10/2026; não pode ser vendido, comprado ou transferido.','special',0,'event'],
     ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
     ['insignia_nem_cirurgia_derrubou_lenda','Insígnia Nem a Cirurgia Derrubou a Lenda','Relíquia permanente de participação no evento Calcanhar de Aquiles. +1% dano contra Bosses e Raids; não afeta PvP.','special',0,'event'],
+    ['insignia_matador_titas','Insígnia Matador de Titãs','Relíquia exclusiva da Invasão dos Titãs de 17/10/2026. +1% de dano em Boss/Raid, sem PvP.','special',0,'event'],
     ['insignia_sete_pecados','Insígnia dos Sete Pecados','Relíquia permanente do evento de 11/10/2026. +2% dano e +1 ponto percentual de crítico contra Bosses e Raids.','special',0,'event'],
     ['titulo_conquistador_pecados','Título Conquistador dos Pecados','Título cosmético permanente obtido após derrotar os oito Bosses com 10.000 de dano em cada.','special',0,'event'],
     ['essencia_pecado_preguica','Essência de Preguica','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
@@ -537,7 +538,7 @@ export async function initDatabase() {
   await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
 
   // Elmo de campeão é exclusivo, sem comércio, descarte ou troca por jogadores.
   await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
