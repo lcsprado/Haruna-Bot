@@ -3557,9 +3557,17 @@ ${ranking}${extra}
   if(Date.now()<=Date.parse('2026-10-18T21:02:00-03:00'))setInterval(async()=>{
     if(setePecadosBusy)return
     const now=Date.now()
-    if(now<Date.parse('2026-10-18T18:00:00-03:00')||now>Date.parse('2026-10-18T21:02:00-03:00'))return
+    if(now<Date.parse('2026-10-18T17:55:00-03:00')||now>Date.parse('2026-10-18T21:02:00-03:00'))return
     setePecadosBusy=true
     try{
+      if(now<Date.parse('2026-10-18T18:00:00-03:00')){
+        const groups=await activeEventGroups()
+        for(const group of groups){
+          await sendScheduledGroupNotice(group.chat_jid,'sete-pecados-20261018-aviso-1755',
+            '🌑⚔️ *ATENÇÃO! SETE PECADOS EM 5 MINUTOS!*\n\n⏰ Início às *18h* e encerramento às *21h* (Brasília).\n👹 Sete Pecados + Azazel: 8 Bosses sequenciais.\n🎯 10.000 de dano em cada Boss para conquistar a insígnia.\n💰 Quem já possui a insígnia e cumprir tudo novamente recebe R$ 1.000.000.\n⚔️ Prepare-se para usar *!atacar* às 18h!')
+        }
+        return
+      }
       const event=await tickSetePecados(now)
       if(event.spawned){
         await sendEventToGroups('🌑⚔️ *INVASÃO DOS SETE PECADOS COMEÇOU!*\n\n⏰ 18:00–21:00 (Brasília)\n👹 Sete Pecados + Azazel: oito Bosses sequenciais.\n💤 *PRIMEIRO: PREGUIÇA* • ❤️ 60.000 HP • ⚔️ 35 ATK\n👥 HP aumenta em 35% da base por participante adicional, inclusive quem entrar depois.\n🎯 10.000 de dano individual em CADA Boss para receber a Insígnia permanente.\n⚜️ +2% dano e +1pp crítico contra Bosses/Raids.\n💰 Quem já tem a insígnia recebe R$ 1.000.000 ao conquistar novamente.\n🎁 Dinheiro, EXP e essências após cada vitória.\n⚔️ Use *!atacar* para começar!')
