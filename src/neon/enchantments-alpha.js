@@ -64,26 +64,155 @@ async function applyStone(jid,stoneId,itemId){
     return '✨ *ENCANTAMENTO APLICADO!*\n⚙️ '+eq.name+'\n💎 '+stone.name+' — '+stone.label+'\n✅ Bônus permanente enquanto o equipamento estiver equipado.'
   }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e}finally{c.release()}
 }
-export async function handleEnchantCommand({cmd,args,sender,reply}){
+
+const ENCHANT_FLOW_MINUTES=5
+const percentageStoneIds=Object.keys(STONES).filter(id=>['damage','crit'].includes(STONES[id].stat))
+const fmtBonus=n=>Number(n.toFixed(2)).toLocaleString('pt-BR',{maximumFractionDigits:2})
+const nChoice=raw=>/^\d+$/.test(String(raw||''))?Number(raw):NaN
+
+async function stoneChoices(jid){
+  const owned=(await db.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[])',[jid,Object.keys(STONES)])).rows
+  const counts=new Map(owned.map(r=>[r.item_id,Number(r.quantity)]))
+  return Object.keys(STONES).filter(id=>Number(counts.get(id)||0)>0).map(id=>({id,quantity:counts.get(id),...STONES[id]}))
+}
+async function equipmentChoices(jid,stoneId){
+  const stone=STONES[stoneId]
+  if(!stone)return []
+  const rows=(await db.query(
+    'SELECT v.item_id,i.name,i.category,COALESCE(SUM(e.quantity),0)::int AS used_slots,COALESCE(SUM(CASE WHEN e.stone_id=ANY($3::text[]) THEN e.quantity ELSE 0 END),0)::int AS used_percentage FROM inventories v JOIN items i ON i.id=v.item_id LEFT JOIN equipment_enchantments e ON e.jid=v.jid AND e.item_id=v.item_id WHERE v.jid=$1 AND v.quantity>0 AND i.category=ANY($2::text[]) GROUP BY v.item_id,i.name,i.category ORDER BY i.category,i.name',
+    [jid,stone.categories,percentageStoneIds]
+  )).rows
+  return rows.filter(r=>Number(r.used_slots)<3&&(!['damage','crit'].includes(stone.stat)||Number(r.used_percentage)<2))
+}
+async function stoneMenu(jid){
+  const stones=await stoneChoices(jid)
+  if(!stones.length)return {ids:[],text:'✨ *ENCANTAMENTOS ALPHA*\n\nVocê não possui nenhuma pedra de encantamento no inventário.\n🎁 Conquiste pedras em eventos ou leilões.\n\nNenhum item será consumido.'}
+  let text='✨ *ENCANTAR EQUIPAMENTO*\n\n💎 *Escolha uma pedra disponível:*\n\n'
+  stones.forEach((s,i)=>{text+=(i+1)+'. *'+s.name+'* — '+s.label+' (×'+fm(s.quantity)+')\n'})
+  text+='\n👉 Responda só com o número da pedra.\n0️⃣ Cancelar'
+  return {ids:stones.map(s=>s.id),text}
+}
+async function gearMenu(jid,stoneId){
+  const stone=STONES[stoneId]
+  if(!stone)return {ids:[],text:'Pedra inválida. Use *!encantar* novamente.'}
+  const gear=await equipmentChoices(jid,stoneId)
+  if(!gear.length)return {ids:[],text:'⚠️ Nenhum equipamento disponível para *'+stone.name+'*.\nVerifique se você tem um equipamento compatível e espaço para novos encantamentos.\n\n9️⃣ Voltar às pedras • 0️⃣ Cancelar'}
+  const shown=gear.slice(0,40)
+  let text='⚙️ *ESCOLHA O EQUIPAMENTO*\n\n💎 '+stone.name+' — *'+stone.label+'*\n\n'
+  shown.forEach((g,i)=>{
+    const icon=g.category==='weapon'?'⚔️':g.category==='armor'?'🛡️':g.category==='boots'?'👢':'🪖'
+    text+=(i+1)+'. '+icon+' *'+g.name+'* — '+g.used_slots+'/3 encantamentos\n'
+  })
+  if(gear.length>shown.length)text+='\n⚠️ Exibindo os primeiros 40 equipamentos elegíveis.\n'
+  text+='\n👉 Responda apenas o número do equipamento.\n9️⃣ Voltar às pedras • 0️⃣ Cancelar'
+  return {ids:shown.map(g=>g.item_id),text}
+}
+async function confirmMenu(jid,stoneId,itemId){
+  const stone=STONES[stoneId]
+  const gear=(await equipmentChoices(jid,stoneId)).find(g=>g.item_id===itemId)
+  if(!stone||!gear)throw Error('Equipamento indisponível ou sem espaço para essa pedra. Escolha outro.')
+  const owned=(await stoneChoices(jid)).some(s=>s.id===stoneId)
+  if(!owned)throw Error('Você não possui mais essa pedra. Use !encantar novamente.')
+  const existing=(await db.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows
+  const previous=existing.reduce((sum,r)=>sum+(STONES[r.stone_id]?.stat===stone.stat?Number(STONES[r.stone_id].value)*Number(r.quantity):0),0)
+  const multiplier=['damage','crit'].includes(stone.stat)?100:1
+  const unit=multiplier===100?' p.p.':''
+  const oldLabel=fmtBonus(previous*multiplier)+unit
+  const newLabel=fmtBonus((previous+stone.value)*multiplier)+unit
+  return '✨ *CONFIRMAR ENCANTAMENTO?*\n\n💎 Pedra: *'+stone.name+'*\n⚙️ Equipamento: *'+gear.name+'*\n🎯 Efeito: *'+stone.label+'*\n📈 Bônus desse atributo no item: *'+oldLabel+' → '+newLabel+'*\n🔒 Espaços usados: *'+gear.used_slots+'/3 → '+(Number(gear.used_slots)+1)+'/3*\n\n⚠️ A pedra será consumida apenas ao confirmar. O bônus é permanente e funciona quando esse equipamento estiver equipado.\n\n1️⃣ *Confirmar aplicação*\n2️⃣ *Cancelar aplicação*\n9️⃣ Voltar aos equipamentos\n0️⃣ Sair'
+}
+export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,clearFlow}){
+  if(!String(stage||'').startsWith('enchant_'))return false
+  await initEnchantments()
+  const set=(next,values)=>setFlow(next,values,ENCHANT_FLOW_MINUTES*60*1000)
+  const restart=async()=>{
+    const menu=await stoneMenu(sender)
+    if(menu.ids.length)set('enchant_stone',{stoneIds:menu.ids})
+    else clearFlow()
+    await reply(menu.text)
+  }
+  if(stage==='enchant_stone'){
+    if(input==='9'){await restart();return true}
+    const index=nChoice(input)-1
+    const stoneId=data?.stoneIds?.[index]
+    if(!STONES[stoneId]){await reply('❌ Escolha um número da lista ou *0* para cancelar.');return true}
+    const menu=await gearMenu(sender,stoneId)
+    if(menu.ids.length)set('enchant_gear',{stoneId,gearIds:menu.ids})
+    else set('enchant_gear',{stoneId,gearIds:[]})
+    await reply(menu.text)
+    return true
+  }
+  if(stage==='enchant_gear'){
+    if(input==='9'){await restart();return true}
+    const index=nChoice(input)-1
+    const itemId=data?.gearIds?.[index]
+    if(!itemId){await reply('❌ Escolha um equipamento pelo número, *9* para voltar ou *0* para sair.');return true}
+    try{
+      const menu=await confirmMenu(sender,data.stoneId,itemId)
+      set('enchant_confirm',{stoneId:data.stoneId,itemId})
+      await reply(menu)
+    }catch(e){await reply('❌ '+String(e.message||e)+'\n9️⃣ Voltar • 0️⃣ Sair')}
+    return true
+  }
+  if(stage==='enchant_confirm'){
+    if(input==='9'){
+      const menu=await gearMenu(sender,data.stoneId)
+      set('enchant_gear',{stoneId:data.stoneId,gearIds:menu.ids})
+      await reply(menu.text)
+      return true
+    }
+    if(input==='2'){
+      clearFlow()
+      await reply('✅ Encantamento cancelado. Nenhuma pedra foi consumida.\nUse *!encantar* para tentar novamente.')
+      return true
+    }
+    if(input!=='1'){
+      await reply('Responda *1* para confirmar, *2* para cancelar, *9* para voltar ou *0* para sair.')
+      return true
+    }
+    // Evita que uma confirmação antiga seja reutilizada. A transação confere
+    // novamente a posse da pedra, do equipamento e os limites no banco.
+    clearFlow()
+    try{
+      await reply(await applyStone(sender,String(data.stoneId),String(data.itemId))+'\n\n💡 Use *!encantar* para aplicar outra pedra.')
+    }catch(e){await reply('❌ '+String(e.message||e)+'\nNenhuma pedra foi consumida. Use *!encantar* para recomeçar.')}
+    return true
+  }
+  clearFlow()
+  await reply('⚠️ Menu expirado. Use *!encantar* novamente.')
+  return true
+}
+export async function handleEnchantCommand({cmd,args,sender,reply,setFlow,clearFlow}){
   if(cmd!=='encantar'&&cmd!=='encantamentos')return false
   await initEnchantments()
+  if(cmd==='encantar'){
+    if(args.length>=2){
+      // Compatibilidade com o comando antigo, sem pular a confirmação.
+      const stoneId=String(args[0]),itemId=String(args[1])
+      try{
+        const message=await confirmMenu(sender,stoneId,itemId)
+        setFlow('enchant_confirm',{stoneId,itemId},ENCHANT_FLOW_MINUTES*60*1000)
+        await reply(message)
+      }catch(e){await reply('❌ '+String(e.message||e)+'\nUse *!encantar* para escolher pelas listas numeradas.')}
+      return true
+    }
+    const menu=await stoneMenu(sender)
+    if(menu.ids.length)setFlow('enchant_stone',{stoneIds:menu.ids},ENCHANT_FLOW_MINUTES*60*1000)
+    else clearFlow()
+    await reply(menu.text)
+    return true
+  }
   const items=(await db.query('SELECT v.item_id,i.name,i.category,v.quantity FROM inventories v JOIN items i ON i.id=v.item_id WHERE v.jid=$1 AND v.quantity>0 ORDER BY i.name',[sender])).rows
   const gear=items.filter(x=>['weapon','armor','boots','helmet'].includes(x.category))
   const stones=items.filter(x=>Boolean(STONES[x.item_id]))
-  if(cmd==='encantamentos'||!args.length){
-    const ids=gear.map(x=>x.item_id)
-    const enchanted=ids.length?(await db.query('SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',[sender,ids])).rows:[]
-    let out='✨ *ENCANTAMENTOS ALPHA*\n\n💎 *Pedras disponíveis:*\n'
-    out+=stones.length?stones.map(x=>'- '+x.name+' ×'+fm(x.quantity)+' ['+x.item_id+']').join('\n'):'Nenhuma pedra no inventário.'
-    out+='\n\n⚙️ *Seus equipamentos:*\n'
-    out+=gear.length?gear.map(x=>{
-      const v=enchanted.filter(y=>y.item_id===x.item_id)
-      return '- '+x.name+' ['+x.item_id+']'+(v.length?' — '+v.map(y=>STONES[y.stone_id]?.name+' ×'+y.quantity).join(', '):'')
-    }).join('\n'):'Nenhum equipamento.'
-    out+='\n\n👉 *!encantar pedra_furia_alpha espada_ferro*\n👉 *!encantamentos* para consultar.\n🔒 Limite: 3 encantamentos por equipamento; 2 percentuais.'
-    await reply(out);return true
-  }
-  if(args.length<2){await reply('Uso: *!encantar <pedra_id> <equipamento_id>*. Confira *!encantamentos*.');return true}
-  try{await reply(await applyStone(sender,String(args[0]),String(args[1])))}catch(e){await reply('❌ '+String(e.message||e))}
+  const ids=gear.map(x=>x.item_id)
+  const enchanted=ids.length?(await db.query('SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',[sender,ids])).rows:[]
+  let out='✨ *ENCANTAMENTOS ALPHA*\n\n💎 *Suas pedras:*\n'
+  out+=stones.length?stones.map(x=>'• '+x.name+' ×'+fm(x.quantity)+' — '+STONES[x.item_id].label).join('\n'):'Nenhuma pedra no inventário.'
+  out+='\n\n⚙️ *Encantamentos nos equipamentos:*\n'
+  const enchantedGear=gear.filter(x=>enchanted.some(y=>y.item_id===x.item_id))
+  out+=enchantedGear.length?enchantedGear.map(x=>'• '+x.name+': '+enchanted.filter(y=>y.item_id===x.item_id).map(y=>(STONES[y.stone_id]?.name||y.stone_id)+' ×'+y.quantity).join(', ')).join('\n'):'Nenhum encantamento aplicado.'
+  out+='\n\n👉 Digite *!encantar* para escolher a pedra e o equipamento pelos números.'
+  await reply(out)
   return true
 }

@@ -75,7 +75,7 @@ import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
-import {initEnchantments,handleEnchantCommand} from './enchantments-alpha.js'
+import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -4283,8 +4283,15 @@ Escolha o que deseja vender:
 
     if(['0','sair','cancelar','cancel'].includes(input)){
       clearQuickFlow(chat,sender)
-      await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':String(flow.stage||'').startsWith('pet_collection_')?'✅ Coleção encerrada. Use *!meuspets* para abrir novamente.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
+      await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':String(flow.stage||'').startsWith('pet_collection_')?'✅ Coleção encerrada. Use *!meuspets* para abrir novamente.':String(flow.stage||'').startsWith('enchant_')?'✅ Encantamento cancelado. Nenhuma pedra consumida. Use *!encantar* para voltar.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
       return true
+    }
+
+    // Encantamento guiado: escolha pedra, equipamento e confirme antes do consumo.
+    if(String(flow.stage||'').startsWith('enchant_')){
+      return await handleEnchantFlow({stage:flow.stage,data:flow.data,input,sender,reply,
+        setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
+        clearFlow:()=>clearQuickFlow(chat,sender)})
     }
 
     // Menu de adoção por habilidade. Seleção só consulta; nunca compra automaticamente.
@@ -9772,7 +9779,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             }
           }catch(err){ console.error('[moderacao]',err?.message||err) }
         }
-        if(!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)){
+        if(!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)&&!String(getQuickFlow(chat,sender)?.stage||'').startsWith('enchant_')){
           if(await quizHandleChoice(chat,body,reply))continue
         }
         if(!body.startsWith(prefix)){
@@ -9813,7 +9820,9 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
         if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
         if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
-        if(await handleEnchantCommand({cmd,args,sender,reply})) continue
+        if(await handleEnchantCommand({cmd,args,sender,reply,
+          setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
+          clearFlow:()=>clearQuickFlow(chat,sender)})) continue
 
         if(cmd==='azarousorte' || cmd==='caixapegadinha'){
           const pick=String(args[0]||'').toLowerCase()
