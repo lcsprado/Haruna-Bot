@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "axios": "^1.7.0",
-    "baileys": "7.0.0-rc14",
+    "baileys": "6.7.24",
     "blessed": "^0.1.81",
     "dotenv": "^16.4.0",
     "file-type": "^21.3.1",
