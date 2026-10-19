@@ -1472,7 +1472,8 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const petDamage=Number(combatPets.active.damage||0)
   const petCrit=Number(combatPets.active.crit||0)
   const baseAtk=Math.max(0,Number(p.base_atk||0))
-  const gearAtk=Math.max(0,Number(p.effective_atk||0)-baseAtk)
+  const gearAtk=Math.max(0,Math.round(Number(p.weapon_atk||0)))
+  const sealAtk=Number(p.attack_pct_bonus||0)>0?`\n🔥 Selo de Potência Alpha: *+${Math.round(Number(p.attack_pct_bonus)*100)}% ATK*`:''
   const passive=getClassPassive(p.class_id,p.class_applied)||{}
   const classId=String(p.class_id||'').toLowerCase()
   const fixedClassMult=(1+Number(passive.damage||0))*
@@ -1530,7 +1531,7 @@ ${title}${badge?' • '+badge:''}
 [${xp.bar}]
 
 ❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*
-⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)
+⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
 ${bonusSummary}
@@ -8705,7 +8706,7 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
 `⚔️ *STATUS RPG*
 ⭐ Nível: ${p.level}
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp}
-⚔️ ATK: ${p.effective_atk}
+⚔️ ATK: ${p.effective_atk}${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}
 🛡️ DEF: ${p.effective_def}
 🎯 CRIT: ${(Number(p.effective_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%
 🗡️ ${p.weapon_name}
@@ -11960,7 +11961,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 ⭐ Nível: ${p.level}
 ✨ EXP: ${p.exp}/${p.level*100}
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)
-⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)
+⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}
 🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
 👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)
 🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
