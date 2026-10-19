@@ -57,3 +57,48 @@ export async function handleBauGolpeCommand({cmd,sender,chat,reply}){
   await reply(message.replace(/\\\\n/g,'\\n'))
   return true
 }
+
+// Anúncio único por grupo ativo, com início imediato e estado persistente.
+// Não repetir em reconexões ou novos deploys.
+export async function announceBauGolpeEvent(sock){
+  const {listGroupLicenses,groupLicenseIsActive}=await import('./db.js')
+  const groups=(await listGroupLicenses(500)).filter(groupLicenseIsActive)
+  const notice=[
+    '🚨🎭 *EVENTO SURPRESA — O BAÚ DO GOLPE ALPHA!*',
+    '',
+    '💰 Um baú misterioso apareceu com prêmios de até *R$ 1.000.000*!',
+    '😈 Mas cuidado: nem tudo que reluz é ouro!',
+    '',
+    '🎁 Prêmios especiais e muita surpresa!',
+    '⏳ Duração: *30 minutos*',
+    '🎮 Digite *!abrirbau* para participar!',
+    '⚡ Uma tentativa a cada 2 minutos.',
+    '',
+    '🔥 *QUE COMECE O GOLPE!*'
+  ].join('\n')
+  for(const group of groups){
+    const chat=String(group.chat_jid||'')
+    if(!chat.endsWith('@g.us'))continue
+    const key=KEY_PREFIX+chat
+    const mark='bau_golpe_alpha_v1:announcement:'+chat
+    try{
+      const c=await db.connect()
+      let shouldSend=false
+      try{
+        await c.query('BEGIN')
+        await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[mark])
+        const already=await c.query('SELECT 1 FROM trevo_settings WHERE key=$1',[mark])
+        if(!already.rowCount){
+          const now=Date.now()
+          await c.query('INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT(key) DO NOTHING',[key,JSON.stringify({startedAt:now,endsAt:now+DURATION,players:{}})])
+          await c.query('INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT(key) DO NOTHING',[mark,JSON.stringify({at:now})])
+          shouldSend=true
+        }
+        await c.query('COMMIT')
+      }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e}
+      finally{c.release()}
+      if(shouldSend)await sock.sendMessage(chat,{text:notice})
+    }catch(e){console.error('[BAU GOLPE] anúncio falhou',chat,e?.message||e)}
+    await new Promise(resolve=>setTimeout(resolve,350))
+  }
+}
