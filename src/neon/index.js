@@ -787,6 +787,7 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
             }
             const petPotionHealing=Math.max(0,Number(x.petPotionHealing||0))
             if(petPotionHealing>0)text+='\n🐾🧪 Cura do pet combatente: +'+fmt(petPotionHealing)+' HP ('+Number(x.petPotionUses||0)+' poção(ões))'
+            if(x.autoPetEnergy) text+='\n⚡ Energético Pet automático: '+x.autoPetEnergy.petName+' • energia '+x.autoPetEnergy.before+' → '+x.autoPetEnergy.max+' • restantes: '+x.autoPetEnergy.remaining
             if(x.material) text+=`
 🧩 ${x.material.name} ×${x.material.qty}`
             if(x.drop) text+=`
