@@ -24,7 +24,7 @@ export async function initEnchantments(){
   try{return await initPromise}catch(e){initPromise=null;throw e}
 }
 export function sumEnchants(rows=[]){
-  const out={atk:0,def:0,spd:0,crit:0,damage:0,stones:[]}
+  const out={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0,stones:[]}
   for(const r of rows){
     const stone=STONES[r.stone_id]
     if(!stone)continue
@@ -37,9 +37,19 @@ export function sumEnchants(rows=[]){
 }
 export async function getEquippedEnchants(queryable,jid,itemIds=[]){
   const ids=[...new Set(itemIds.filter(Boolean))]
-  if(!ids.length)return sumEnchants()
-  const result=await queryable.query('SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])
-  return sumEnchants(result.rows)
+  // Selo de Potência: bônus passivo e permanente de +5% no ATK final.
+  // Mesmo SELECT de encantamentos, sem consulta extra por ataque de Boss.
+  const sealId='selo_poder_5pct_alpha_20261019'
+  const result=await queryable.query(`
+    SELECT item_id,stone_id,quantity FROM equipment_enchantments
+      WHERE jid=$1 AND item_id=ANY($2::text[])
+    UNION ALL
+    SELECT NULL::text AS item_id,$3::text AS stone_id,1::integer AS quantity
+      FROM inventories WHERE jid=$1 AND item_id=$3 AND quantity>0
+  `,[jid,ids,sealId])
+  const out=sumEnchants(result.rows)
+  out.attackPct=result.rows.some(row=>row.stone_id===sealId)?0.05:0
+  return out
 }
 async function applyStone(jid,stoneId,itemId){
   const stone=STONES[stoneId],eq=getEquipmentInfo(itemId)
