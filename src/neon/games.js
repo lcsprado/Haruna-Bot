@@ -1254,33 +1254,41 @@ async function finishRaidRewards(c,s,cfg,chat){
           if(oneOff.rowCount) singleUseGear='katana_divina'
         }
       }
+      // Pendência individual da Raid 70: conceder uma única vez na próxima vitória,
+      // com participação real, pelo fluxo habitual de drop (sem aviso separado).
+      if(!singleUseGear && cfg.level===70 && Number(p.damage||0)>0){
+        const phone='11948523167'
+        const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
+        const playerMatch=digits.endsWith(phone) ||
+          (await c.query(
+            "SELECT 1 FROM users WHERE jid=$1 AND RIGHT(regexp_replace(COALESCE(pn,''),'[^0-9]','','g'),11)=$2",
+            [p.jid,phone]
+          )).rowCount>0
+        if(playerMatch){
+          const owned=(await c.query(
+            "SELECT quantity FROM inventories WHERE jid=$1 AND item_id='exterminadora_eclipse' FOR UPDATE",
+            [p.jid]
+          )).rows[0]
+          if(Number(owned?.quantity||0)<=0){
+            const oneOff=await c.query(
+              `INSERT INTO trevo_settings(key,value)
+               VALUES($1,$2::jsonb)
+               ON CONFLICT(key) DO NOTHING
+               RETURNING key`,
+              ['raid70_exterminadora_next_win_20261019_11948523167',
+               JSON.stringify({jid:p.jid,raidId:s.startedAt,at:Date.now()})]
+            )
+            if(oneOff.rowCount) singleUseGear='exterminadora_eclipse'
+          }
+        }
+      }
       if(singleUseGear || Math.random()<chance){
         const gearId=singleUseGear || cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
         const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
         if(item){
           await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,gearId])
-          gearDrop={id:item.id,name:item.name,rarity:item.rarity,normalPresentation:Boolean(singleUseGear)}
+          gearDrop={id:item.id,name:item.name,rarity:item.rarity,normalPresentation:Boolean(singleUseGear&&singleUseGear!=='exterminadora_eclipse')}
         }
-      }
-    }
-    // Recompensa individual e única na segunda vitória da Raid 70.
-    // Registra a contagem no banco e apresenta o item no resumo normal de drops.
-    if(cfg.level===70 && String(p.jid||'').split('@')[0].replace(/\D/g,'')==='11948523167'){
-      const progressKey='private_raid70_exterminadora_11948523167'
-      await c.query("INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING",
-        [progressKey,JSON.stringify({wins:0,granted:false})])
-      const stateRow=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[progressKey])).rows[0]
-      const progress=stateRow?.value||{}
-      if(!progress.granted){
-        const wins=Math.max(0,Number(progress.wins||0))+1
-        const granted=wins>=2
-        if(granted){
-          await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'exterminadora_eclipse',1)
-            ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[p.jid])
-          gearDrop={id:'exterminadora_eclipse',name:'Exterminadora do Eclipse',rarity:'Lendário'}
-        }
-        await c.query('UPDATE trevo_settings SET value=$2::jsonb,updated_at=NOW() WHERE key=$1',
-          [progressKey,JSON.stringify({wins,granted})])
       }
     }
     rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),petBonusDamage:Number(p.petBonusDamage||0),petSkillHealing:Number(p.petSkillHealing||0),classHealing:Number(p.classHealing||0),
