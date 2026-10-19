@@ -118,6 +118,7 @@ function sleepStartedMessage(r){
     '\n\n🛡️ Durante o sono você não pode ser roubado nem atacado.'
 }
 
+const temporaryRecoveryMode=String(process.env.ALPHA_DATASET_MODE||'').startsWith('TEMPORARY_')
 const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
 // WhatsApp identity is environment-driven. Changing the bot phone must never require a code change.
 // IMPORTANT: when changing PAIRING_NUMBER, also change SESSION_ID so Baileys creates a fresh auth session.
@@ -2531,6 +2532,7 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
   }
 
   async function sendBotGroupIntro(chat,{force=false,reason='participant-add'}={}){
+    if(temporaryRecoveryMode)return false
     if(!chat?.endsWith('@g.us')) return false
     const current=await getBotGroupIntroState(chat)
     if(!force && current?.sent) return false
@@ -9462,10 +9464,14 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       reconnectAttempts=0
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
-      startLabirintoScheduler(sock)
-      startBingoRebootScheduler(sock)
-      startAuctionAlphaScheduler(sock)
-      void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
+      if(!temporaryRecoveryMode){
+        startLabirintoScheduler(sock)
+        startBingoRebootScheduler(sock)
+        startAuctionAlphaScheduler(sock)
+        void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
+      }else{
+        console.log('[TEMPORARY] eventos automáticos Bingo/Leilão/Labirinto/Baú não iniciados')
+      }
 
       // Anúncio único por grupo licenciado. Apenas este evento, sem mensagens repetidas.
       ;(async()=>{
@@ -9499,6 +9505,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 
       ;(async()=>{
         try{
+          if(temporaryRecoveryMode)return // evento antigo não é reexecutado em recuperação temporária
           const markerKey='admin_group_games_event:test-bot:2026-10-08-15x-v4'
           const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
           if(!done){
@@ -9571,6 +9578,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       ;(async()=>{
         try{
           const targetChat='120363429534634131@g.us'
+          if(temporaryRecoveryMode)return // evento antigo não é reexecutado em recuperação temporária
           const markerKey='admin_group_progression_event:test-bot:2026-10-08-tiered-v2'
           const done=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
           if(!done){
@@ -9848,7 +9856,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             if(recentGroup) await sendBotGroupIntro(chat,{reason:'first-message-recovery'})
           }
 
-          const spawned=await maybeSpawnGroupEvent(chat)
+          const spawned=temporaryRecoveryMode?null:await maybeSpawnGroupEvent(chat)
           if(spawned) await sock.sendMessage(chat,{text:`${spawned.text}\n\n💰 Dinheiro possível: *R$ ${fmt(spawned.reward)}*\n🎁 ${spawned.hint||'Pode haver recompensa extra.'}\n⚡ Primeiro a mandar *${prefix}pegar* leva!\n⏳ Some em 2 minutos.`}).catch(()=>{})
         }
         const ownerCanonical=canonicalPlayerJid(ownerJid)
