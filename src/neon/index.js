@@ -74,7 +74,7 @@ import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
-import {handleBauGolpeCommand} from './bau-golpe-alpha.js'
+import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 
@@ -9432,6 +9432,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       startLabirintoScheduler(sock)
       startBingoRebootScheduler(sock)
       startAuctionAlphaScheduler(sock)
+      void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
 
       // Anúncio único por grupo licenciado. Apenas este evento, sem mensagens repetidas.
       ;(async()=>{
