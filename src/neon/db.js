@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -521,6 +522,9 @@ export async function initDatabase() {
     ['caixa_lendaria','Caixa Lendária','Caixa de marco Daily: 1 equipamento Lendário garantido.','special',0,'legendary'],
   ]
 
+  starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
+  starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
+
   for (const item of starterItems) {
     await db.query(`
       INSERT INTO items (id,name,description,category,price,rarity)
@@ -539,6 +543,10 @@ export async function initDatabase() {
 
   // Troféu de evento: não é item de loja e não pode ser vendido.
   await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
+
+  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
+  await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_universal_raid'")
+  await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
 
   // Elmo de campeão é exclusivo, sem comércio, descarte ou troca por jogadores.
   await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
@@ -2000,6 +2008,7 @@ export async function leaderboard(limit=10, participantJids=[]) {
 
 
 const EQUIPMENT = {
+  ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
   elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
   elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
   elmo_labirinto_alpha: {category:'helmet',atk:0,def:92,hp:240,crit:0,name:'Elmo do Labirinto Eterno'},
@@ -2675,8 +2684,10 @@ export async function battle(attackerJid, defenderJid) {
     const bPetBonus=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petPvpSpecialty(bp.species,bp.level):null
     const apSpd=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petSpeedBonus(ap.species,ap.level):0
     const bpSpd=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petSpeedBonus(bp.species,bp.level):0
-    const aSynergySpd=synergySpeedFor(attackerJid)
-    const bSynergySpd=synergySpeedFor(defenderJid)
+    const aSynergy=petTeamSynergy(teamFor(attackerJid))||{}
+    const bSynergy=petTeamSynergy(teamFor(defenderJid))||{}
+    const aSynergySpd=Number(aSynergy.speed||0)
+    const bSynergySpd=Number(bSynergy.speed||0)
     if(!a || !b) throw new Error('Não foi possível carregar os jogadores.')
     if(Number(a.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes de batalhar.')
     if(Number(b.hp)<=0) throw new Error('O adversário está sem HP.')
@@ -2724,7 +2735,7 @@ export async function battle(attackerJid, defenderJid) {
       classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
       spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd+aEn.spd,
-      enchantDamage:aEn.damage,
+      enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
       petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
     }
     const B={
@@ -2735,7 +2746,7 @@ export async function battle(attackerJid, defenderJid) {
       classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
       spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd+bEn.spd,
-      enchantDamage:bEn.damage,
+      enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
       petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
     }
 
@@ -2743,7 +2754,7 @@ export async function battle(attackerJid, defenderJid) {
     const snapshot=fighter=>({
       jid:fighter.jid,name:fighter.name,hp:fighter.hp,maxHp:fighter.maxHp,
       atk:fighter.atk,def:fighter.def,spd:fighter.spd,
-      crit:Math.min(.40,Number(fighter.crit||0)+Number(fighter.petBonus?.crit||0)),
+      crit:Math.min(.40,Number(fighter.crit||0)+Number(fighter.petBonus?.crit||0)+Number(fighter.collabCrit||0)),
       petName:fighter.petName||null,petSpecies:fighter.petSpecies||null
     })
     const opening={attacker:snapshot(A),defender:snapshot(B)}
@@ -2754,10 +2765,10 @@ export async function battle(attackerJid, defenderJid) {
     const hit=(from,to)=>{
       from.attackIndex++
       const variance=0.85+Math.random()*0.30
-      const crit=Math.random()<Math.min(.40,Number(from.crit||.10)+Number(from.petBonus?.crit||0))
+      const crit=Math.random()<Math.min(.40,Number(from.crit||.10)+Number(from.petBonus?.crit||0)+Number(from.collabCrit||0))
       const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
       const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
-      const adjusted=Math.max(1,Math.round(raw*(1+Number(from.petBonus?.damage||0)+Number(from.enchantDamage||0))))
+      const adjusted=Math.max(1,Math.round(raw*(1+Number(from.petBonus?.damage||0)+Number(from.enchantDamage||0)+Number(from.collabDamage||0))))
       const attack=classAttack({classId:from.classId,applied:from.classApplied,damage:crit?Math.round(adjusted*1.6):adjusted,critical:crit,hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,lastProcAttack:from.lastProcAttack})
       from.lastProcAttack=attack.lastProcAttack
       const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage}).damage
@@ -4807,6 +4818,7 @@ export async function leavePlayerCarpinarEarly(jid){
 }
 
 const PET_BASE_ENERGY={
+  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,450])),
   cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
   tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,gaviao:190,
   panda:200,guepardo:220,tigre:225,gazela_mistica:235,leao:250,cervo_mistico:265,cavalo_guerra:275,unicornio:280,dragao:320,
@@ -4864,6 +4876,7 @@ export function petMaxEnergy(level=1,species='cachorro'){
 }
 
 export const PET_HP_PROFILES={
+  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{base:350,growth:p.style==='guardiao'?26:23,type:'Sagrado'}])),
   cachorro:{base:105,growth:9,type:'Equilibrado'},
   gato:{base:90,growth:7,type:'Ágil'},
   coelho:{base:85,growth:7,type:'Ágil'},
@@ -4974,6 +4987,7 @@ export function petSpeedBonus(species,level=1){
 // Estilos do time pet. A sinergia exige 3 ESPÉCIES DIFERENTES do mesmo estilo:
  // cópias da mesma espécie nunca multiplicam o bônus.
 const PET_TEAM_STYLE_BY_SPECIES={
+  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,p.style])),
   cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
   golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
   kraken_aco:'guardiao',paladino_astral:'guardiao',colosso_alpha:'guardiao',
@@ -5018,13 +5032,23 @@ export function petStyleLabel(species){
 }
 export function petTeamSynergy(pets=[]){
   const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
-  if(team.length!==3) return null
   const species=team.map(p=>String(p.species||''))
-  if(new Set(species).size!==3) return null
+  const unique=new Set(species).size===species.length
+  const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
   const styles=resolveBatTeamStyles(species)
-  if(!styles[0]||!styles.every(x=>x===styles[0])) return null
-  const bonus=PET_TEAM_STYLE_BONUS[styles[0]]
-  return bonus?{style:styles[0],...bonus}:null
+  const base=team.length===3&&unique&&styles[0]&&styles.every(s=>s===styles[0])
+    ?PET_TEAM_STYLE_BONUS[styles[0]]:null
+  if(!base&&!count)return null
+  const attack=Number(base?.attack||0)+pecadosBonus(count)
+  const crit=Number(base?.crit||0)+(count===3?.05:0)
+  const collabText=count?'🌈 '+count+' Pecado(s): +'+Math.round(pecadosBonus(count)*100)+'% dano'+(count===3?' e +5 p.p. CRIT':''):''
+  return {
+    ...(base||{}),style:base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
+    label:[base?.label, count?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
+    text:[base?.text,collabText].filter(Boolean).join(' | '),
+    attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
+    collabCount:count,collabAttack:pecadosBonus(count),collabCrit:count===3?.05:0
+  }
 }
 
 export const LEGENDARY_PET_SUMMONS=[
@@ -5117,8 +5141,12 @@ export async function summonLegendaryPet(jid,materialId){
     // A Raid Lv10 é a porta de entrada para pets especiais: exige 50 materiais.
     // Todas as demais invocações continuam exigindo 100.
     const summonCost=Math.max(1,Number(altar.summonCost||100))
-    if(owned<summonCost) throw new Error(`Você precisa de ${summonCost} ${altar.materialName}. Você possui ${owned}.`)
-    await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[summonCost,jid,altar.materialId])
+    const missing=Math.max(0,summonCost-owned)
+    const universal=(await client.query("SELECT quantity FROM inventories WHERE jid=$1 AND item_id='fragmento_universal_raid' FOR UPDATE",[jid])).rows[0]
+    const universalOwned=Number(universal?.quantity||0)
+    if(owned+universalOwned<summonCost) throw new Error(`Você precisa de ${summonCost} materiais de Raid. ${altar.materialName}: ${owned}; universais: ${universalOwned}.`)
+    if(summonCost-missing>0)await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[summonCost-missing,jid,altar.materialId])
+    if(missing)await client.query("UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id='fragmento_universal_raid'",[missing,jid])
 
     // Garantia administrativa opcional de uma única invocação.
     // A chave fica persistida até o jogador realmente ter materiais e concluir a invocação.
@@ -5191,7 +5219,7 @@ export async function summonLegendaryPet(jid,materialId){
         duplicate:true,
         cashRefund,
         fragmentRefund,
-        remaining:owned-summonCost+fragmentRefund
+        remaining:Math.max(0,owned-summonCost)+fragmentRefund
       }
     }
 
@@ -5207,7 +5235,7 @@ export async function summonLegendaryPet(jid,materialId){
       [jid,chosen.species,petName,startLevel,startXp,energy,chosen.power,maxHp]
     )).rows[0]
 
-    return {altar:{...altar,summonCost},pet:chosen,collectionId:collected.id,remaining:owned-summonCost}
+    return {altar:{...altar,summonCost},pet:chosen,collectionId:collected.id,remaining:Math.max(0,owned-summonCost)}
   })
 }
 
