@@ -2210,6 +2210,11 @@ async function start() {
   await initLoans()
   startLoanCollector()
   await acquireRuntimeLock(sessionId)
+  // Run once on a strictly guarded temporary Neon dataset; marker makes redeploys idempotent.
+  if(process.env.ALPHA_RESTORE_20261019==='yes') {
+    const {restoreTemporaryPlayers20261019}=await import('./temporary-recovery-20261019.js')
+    await restoreTemporaryPlayers20261019()
+  }
   // Auditoria somente leitura das recompensas únicas do Superboss de 09/10.
   // Verifica propriedade e categoria, sem duplicar itens ou modificar inventários.
   try{
