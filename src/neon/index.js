@@ -3552,6 +3552,21 @@ ${ranking}${extra}
     titasTimer.unref?.()
   }
 
+  // Anúncio da Hora Dourada de Raid: idempotente por grupo, inclusive após deploy tardio.
+  if(Date.now()<Date.parse('2026-10-18T22:00:00-03:00')){
+    const raidDoubleNotice=setInterval(async()=>{
+      const now=Date.now()
+      if(now<Date.parse('2026-10-18T21:00:00-03:00')||now>=Date.parse('2026-10-18T22:00:00-03:00'))return
+      try{
+        for(const group of await activeEventGroups()){
+          await sendScheduledGroupNotice(group.chat_jid,'raid-2x-20261018-21h',
+            '⚔️💰 *HORA DOURADA DAS RAIDS ATIVA!*\n\n⏰ Hoje, das *21h às 22h* (Brasília).\n✨ *2× XP do jogador*\n💰 *2× dinheiro*\n🏰 Vale para Raids concluídas durante o evento.\n🐾 XP de pets e materiais permanecem normais.\n🔥 Bora farmar!')
+        }
+      }catch(err){console.error('[Raid 2x] aviso',err?.message||err)}
+    },10000)
+    raidDoubleNotice.unref?.()
+  }
+
   // Corrida do Ouro — somente dois avisos, sem boletins por rodada.
   if(Date.now()<Date.parse('2026-10-18T21:00:00-03:00')){
     const goldTimer=setInterval(async()=>{
