@@ -2590,8 +2590,8 @@ export async function getCombatProfile(jid) {
     weapon_atk:Number(w.atk||0)+ench.atk,
     armor_def:Number(a.def||0)+ench.def,
     equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
-    equipment_spd:Number(b.spd||0)+ench.spd,
-    effective_spd:Number(p.spd)+Number(b.spd||0)+ench.spd,
+    equipment_spd:Number(b.spd||0)+Number(w.spd||0)+ench.spd,
+    effective_spd:Number(p.spd)+Number(b.spd||0)+Number(w.spd||0)+ench.spd,
     equipment_crit:Number(w.crit||0)+Number(a.crit||0)+ench.crit,
     base_crit:0.10,
     effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
@@ -2734,7 +2734,7 @@ export async function battle(attackerJid, defenderJid) {
       def:Number(a.def)+aeW.def+aeA.def+aeH.def+aEn.def,
       classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
-      spd:Number(a.spd)+Number(aeB.spd||0)+apSpd+aSynergySpd+aEn.spd,
+      spd:Number(a.spd)+Number(aeW.spd||0)+Number(aeB.spd||0)+apSpd+aSynergySpd+aEn.spd,
       enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
       petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
     }
@@ -2745,7 +2745,7 @@ export async function battle(attackerJid, defenderJid) {
       def:Number(b.def)+beW.def+beA.def+beH.def+bEn.def,
       classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
-      spd:Number(b.spd)+Number(beB.spd||0)+bpSpd+bSynergySpd+bEn.spd,
+      spd:Number(b.spd)+Number(beW.spd||0)+Number(beB.spd||0)+bpSpd+bSynergySpd+bEn.spd,
       enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
       petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
     }
@@ -5300,6 +5300,7 @@ export async function sacrificePet(jid,petId){
       'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId]
     )).rows[0]
     if(!pet) throw new Error('Este pet não existe mais na sua coleção.')
+    if(PECADOS_HERO_IDS.includes(pet.species)) throw new Error('Personagens sagrados da collab não podem ser sacrificados.')
     if(pet.active) throw new Error('Troque o pet ativo antes de sacrificá-lo.')
     const team=(await client.query(
       'SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId]
