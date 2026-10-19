@@ -1388,6 +1388,19 @@ export async function raidRound(chat,level){
         }
       }
 
+      if(p.pet&&Number(p.pet.hp)>0&&Number(p.pet.energy)<1){
+        // Recarrega apenas ao esgotar; debita exatamente um energético sob lock.
+        // A mesma transação da rodada garante que falhas não consumam o item.
+        const inv=(await c.query("SELECT quantity FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0 FOR UPDATE",[p.jid])).rows[0]
+        if(inv){
+          const max=petMaxEnergy(p.pet.level,p.pet.species)
+          const before=Number(p.pet.energy||0)
+          await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0",[p.jid])
+          p.pet.energy=max
+          await persistRaidCombatPet(c,p.jid,p.pet)
+          events.push({type:'pet_energy_auto',jid:p.jid,name:p.name,petName:p.pet.name,before,max,remaining:Number(inv.quantity)-1})
+        }
+      }
       if(p.pet){
         p.pet.roundActive=Number(p.pet.energy)>0&&Number(p.pet.hp)>0
         if(p.pet.roundActive){
