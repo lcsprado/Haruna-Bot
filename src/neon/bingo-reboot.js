@@ -1,14 +1,15 @@
 import {randomInt} from 'node:crypto'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense} from './db.js'
 
-// Evento único — 18/10/2026 às 16:30 (America/Sao_Paulo).
-// Persistência e premiação transacional; não depende do nível/força dos jogadores.
-const KEY='bingo_reboot_20261018_1630_v1'
-const START=Date.parse('2026-10-18T16:30:00-03:00')
-const ANNOUNCE=Date.parse('2026-10-18T16:20:00-03:00')
+// Evento único de 19/10/2026. Inscrição aberta ao iniciar o serviço;
+// horário do sorteio persistido para sobreviver a reinícios e deploys.
+const KEY='bingo_alpha_20261019_agora_v1'
+const ANNOUNCE=Date.parse('2026-10-19T13:00:00-03:00')
+const EVENT_END=Date.parse('2026-10-20T00:00:00-03:00')
+const REGISTRATION_MS=6*60*1000
 const BALL_INTERVAL_MS=25000
 const PRICE=5000
-const TROPHY='insignia_bingo_reboot_20261018'
+const TROPHY='insignia_bingo_alpha_20261019'
 const NUMBER_LIMIT=40
 const REWARD={row:40000,twoRows:80000,full:150000}
 let busy=false
@@ -22,7 +23,8 @@ const shuffle=list=>{
   return a
 }
 const pick=a=>a[randomInt(a.length)]
-const basicState=()=>({phase:'registration',players:{},drawn:[],prizes:{},bonusPayDone:false,stage:0})
+const basicState=()=>({phase:'registration',players:{},drawn:[],prizes:{},bonusPayDone:false,stage:0,startAt:Date.now()+REGISTRATION_MS})
+const localClock=ms=>new Date(Number(ms)).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
 
 async function ensureTrophy(){
   if(registeredItem)return
@@ -33,8 +35,8 @@ async function ensureTrophy(){
       name=EXCLUDED.name,description=EXCLUDED.description,
       category=EXCLUDED.category,price=0,rarity='event',
       sellable=FALSE,stackable=FALSE`,[
-    TROPHY,'Insígnia do Reboot',
-    'Troféu visual exclusivo do Bingo do Reboot de 18/10/2026, sem bônus de combate. Não pode ser vendido ou transferido.'
+    TROPHY,'Insígnia do Bingo Alpha',
+    'Troféu visual exclusivo do Bingo Alpha de 19/10/2026, sem bônus de combate. Não pode ser vendido ou transferido.'
   ])
   registeredItem=true
 }
@@ -46,6 +48,7 @@ async function mutate(fn){
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[KEY])
     const found=await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[KEY])
     const s=found.rows[0]?.value||basicState()
+    if(!Number(s.startAt))s.startAt=Date.now()+REGISTRATION_MS
     const r=await fn(s,c)
     await c.query(`INSERT INTO trevo_settings(key,value,updated_at)
       VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::bigint)
@@ -67,30 +70,34 @@ function rowCount(marked){
   return [[0,1,2],[3,4,5],[6,7,8]].filter(row=>row.every(i=>marked[i])).length
 }
 function cardText(p,s){
-  // Em WhatsApp, emojis entre colunas desalinhavam a cartela.
-  // Apenas ASCII dentro do bloco monoespaçado.
+  // ● marcado automaticamente; ○ pendente; LIV é a casa grátis.
+  // Símbolos de largura fixa garantem alinhamento no WhatsApp.
   const marked=cover(p.card,p,s)
-  const row=from=>[0,1,2].map(k=>{
-    const i=from+k,value=p.card[i]
-    if(value===null)return 'LIV '
-    const n=String(value).padStart(2,'0')
-    return marked[i]?'['+n+']':' '+n+' '
-  }).join(' | ')
+  const cell=i=>{
+    if(p.card[i]===null)return ' LIV '
+    const n=String(p.card[i]).padStart(2,'0')
+    return ' '+(marked[i]?'●':'○')+n+' '
+  }
+  const line=from=>'│'+[0,1,2].map(k=>cell(from+k)).join('│')+'│'
   const safeName=String(p.name||'Jogador').replace(/[\r\n*`]/g,' ').slice(0,50)
-  const situation=s.phase==='completed'?'🏁 Encerrado':s.phase==='running'?'🟢 Sorteio em andamento':'⏰ Início às 16h30'
+  const situation=s.phase==='completed'?'🏁 Sorteio encerrado':s.phase==='running'?'🟢 Sorteio em andamento':'⏰ Sorteio às '+localClock(s.startAt)+' (Brasília)'
+  const called=(s.drawn||[]).slice(-6).map(v=>String(v).padStart(2,'0')).join(' • ')
   return [
-    '🎟️ *BINGO DO REBOOT*',
+    '🎟️ *BINGO ALPHA — SUA CARTELA*',
     '👤 *'+safeName+'*',
     '',
     '```',
-    row(0),
-    row(3),
-    row(6),
+    '┌─────┬─────┬─────┐',
+    line(0),
+    '├─────┼─────┼─────┤',
+    line(3),
+    '├─────┼─────┼─────┤',
+    line(6),
+    '└─────┴─────┴─────┘',
     '```',
-    '',
-    '📌 [07] = marcado • LIV = grátis',
-    '🔢 Números sorteados: *'+(s.drawn?.length||0)+'/40*',
-    '✅ Linhas completas: *'+rowCount(marked)+'/3*',
+    '🟢 ● Marcado   ⚪ ○ Pendente   ⭐ LIV Grátis',
+    '🔢 Últimos sorteados: '+(called||'Aguardando'),
+    '📊 Bolas: *'+(s.drawn?.length||0)+'/40*  •  ✅ Linhas: *'+rowCount(marked)+'/3*',
     situation
   ].join('\n')
 }
@@ -158,7 +165,7 @@ async function checkPrizes(s,c){
     if(m.id==='full')await giveTrophy(c,jid)
     s.prizes[m.id]={jid,name:player.name,amount:m.money,at:Date.now()}
     out+='\n'+m.label+': *'+player.name+'* — '+formatMoney(m.money)
-    if(m.id==='full')out+=' + 🏅 *Insígnia do Reboot*'
+    if(m.id==='full')out+=' + 🏅 *Insígnia do Bingo Alpha*'
   }
   return out
 }
@@ -199,17 +206,17 @@ async function processBall(s,c){
   line+=(await checkPrizes(s,c))
   return {message:line,finished:Boolean(s.prizes.full)}
 }
-const welcome=(count)=>'🎰 *BINGO DO REBOOT — ALPHA BOT VOLTOU!*\n\n'+
-  '🕟 Inscrições *HOJE às 16h20*; sorteio *16h30* (Brasília)!\n'+
+const welcome=(count,startAt)=>'🎰 *BINGO ALPHA — NOVA EDIÇÃO!*\n\n'+
+  '✅ Inscrições *ABERTAS AGORA*! Sorteio às *'+localClock(startAt)+'* (Brasília).\n'+
   '🎟️ Cartela: *'+formatMoney(PRICE)+'* (carteira/banco)\n'+
   '⚖️ Apenas *1 cartela por jogador*. Todos têm chances iguais.\n'+
-  '✅ Digite *!bingo* agora para comprar sua cartela.\n'+
-  '📋 Use *!cartela* para consultar.\n'+
+  '✅ Digite *!bingo* para comprar sua cartela.\n'+
+  '📋 Digite *!cartela* para conferir as marcações automáticas.\n'+
   '🔢 Uma bola global a cada *25 segundos*.\n\n'+
-  '🏆 Primeira linha: *R$ 40.000*\n'+
+  '🥉 Primeira linha: *R$ 40.000*\n'+
   '🥈 Primeiras duas linhas: *R$ 80.000*\n'+
-  '🥇 Primeira cartela cheia: *R$ 150.000* + 🏅 Insígnia do Reboot.\n'+
-  '⚡ 3 bolas especiais: Reconexão, Pacote Recuperado e Sorte Alpha.\n'+
+  '🥇 Primeira cartela cheia: *R$ 150.000* + 🏅 Insígnia do Bingo Alpha.\n'+
+  '⚡ Bolas especiais: Reconexão, Pacote Recuperado e Sorte Alpha.\n'+
   '👥 Inscritos até agora: *'+count+'*\n'+
   '_Sem força, pets, nível ou equipamento._'
 async function tick(sock){
@@ -217,31 +224,36 @@ async function tick(sock){
   busy=true
   try{
     const now=Date.now()
-    if(now<ANNOUNCE || now>START+60*60*1000)return
+    if(now<ANNOUNCE || now>EVENT_END)return
     await ensureTrophy()
     let outgoing=''
     let targets=[]
     // Evita consultar licenças repetidamente quando o jogo está rodando.
     const curr=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
+    if(curr?.phase==='completed'||curr?.phase==='cancelled'){
+      if(timer){clearInterval(timer);timer=null}
+      return
+    }
     if(!curr?.announced || !curr?.groups?.length)targets=await eligibleGroups()
     await mutate(async(s,c)=>{
       if(!s.groups?.length)s.groups=targets
+      const startAt=Number(s.startAt)
       if(!s.announced && s.groups?.length){
         s.announced=now
-        outgoing=welcome(Object.keys(s.players||{}).length)
+        outgoing=welcome(Object.keys(s.players||{}).length,startAt)
       }
-      if(now>=START && s.phase==='registration'){
+      if(now>=startAt && s.phase==='registration'){
         if(!Object.keys(s.players||{}).length){
           s.phase='cancelled'
-          outgoing='🎰 *BINGO DO REBOOT CANCELADO*\nNenhuma cartela comprada antes das 16h30. Não houve cobranças nem prêmios.'
+          outgoing='🎰 *BINGO ALPHA CANCELADO*\nNenhuma cartela comprada até o início do sorteio. Não houve cobranças nem prêmios.'
         }else{
           s.phase='running'
           s.queue=buildQueue()
           s.cursor=0
           s.drawn=[]
           s.prizes={}
-          s.nextAt=START+BALL_INTERVAL_MS>now?START+BALL_INTERVAL_MS:now+BALL_INTERVAL_MS
-          outgoing='🎰 *BINGO DO REBOOT COMEÇOU!*\n🎟️ '+Object.keys(s.players).length+
+          s.nextAt=now+BALL_INTERVAL_MS
+          outgoing='🎰 *BINGO ALPHA COMEÇOU!*\n🎟️ '+Object.keys(s.players).length+
             ' cartela(s) no sorteio global.\n🔢 Primeira bola em 25 segundos.\n📋 Digite *!cartela* para acompanhar.'
         }
       }else if(s.phase==='running' && now>=num(s.nextAt)){
@@ -257,7 +269,7 @@ async function tick(sock){
             s.phase='completed'
             s.completedAt=Date.now()
             parts.push('🏁 *BINGO ENCERRADO!*\n'+
-              (s.prizes.full?'🏆 Campeão: *'+s.prizes.full.name+'* com a Insígnia do Reboot.':'Todas as bolas saíram.')+
+              (s.prizes.full?'🏆 Campeão: *'+s.prizes.full.name+'* com a Insígnia do Bingo Alpha.':'Todas as bolas saíram.')+
               '\n✅ Premiações registradas uma única vez.')
           }
         }
@@ -269,7 +281,7 @@ async function tick(sock){
         if(isFinal || important.length || showRound){
           const nums=(s.drawn||[]).slice(-5).map(x=>String(x).padStart(2,'0')).join(' • ')
           outgoing=[
-            '🎰 *BINGO DO REBOOT*',
+            '🎰 *BINGO ALPHA*',
             '',
             '🔢 *Últimos números:* '+(nums||'Nenhum'),
             '📊 *Sorteados:* '+(s.drawn?.length||0)+'/40',
@@ -287,7 +299,7 @@ async function tick(sock){
 }
 export function startBingoRebootScheduler(sock){
   if(timer)clearInterval(timer)
-  if(Date.now()>START+60*60*1000)return
+  if(Date.now()>EVENT_END)return
   timer=setInterval(()=>tick(sock),5000)
   timer.unref?.()
   tick(sock)
@@ -295,7 +307,7 @@ export function startBingoRebootScheduler(sock){
 export async function handleBingoRebootCommand({cmd,sender,name,chat,reply}){
   if(cmd!=='bingo' && cmd!=='cartela')return false
   const now=Date.now()
-  if(now<ANNOUNCE || now>START+60*60*1000)return false
+  if(now<ANNOUNCE || now>EVENT_END)return false
   if(!chat?.endsWith('@g.us')){await reply('🎰 O Bingo do Reboot funciona nos grupos do Alpha Bot.');return true}
   const license=await getGroupLicense(chat)
   if(!groupLicenseIsActive(license)){await reply('🔒 O grupo precisa de licença ativa para entrar no Bingo.');return true}
@@ -309,8 +321,8 @@ export async function handleBingoRebootCommand({cmd,sender,name,chat,reply}){
       return
     }
     if(me){out='✅ Você já possui sua cartela. Não será cobrado novamente.\n\n'+cardText(me,s);return}
-    if(s.phase!=='registration' || now>=START){
-      out='🔒 Inscrições encerradas. O Bingo começou às 16h30 e só aceita uma cartela por jogador.'
+    if(s.phase!=='registration' || now>=Number(s.startAt)){
+      out='🔒 Inscrições encerradas. O Bingo só aceita uma cartela por jogador antes do sorteio.'
       return
     }
     const payment=await c.query(`UPDATE wallets
@@ -325,7 +337,7 @@ export async function handleBingoRebootCommand({cmd,sender,name,chat,reply}){
     const player={name:String(name||'Jogador').slice(0,50),card:ticket(),wild:[],joinedAt:now}
     s.players[sender]=player
     out='✅ *CARTELA COMPRADA!* '+formatMoney(PRICE)+' debitados.\n\n'+cardText(player,s)+
-      '\n\n⏰ Sorteio global às *16h30*. Boa sorte!'
+      '\n\n⏰ Sorteio global às *'+localClock(s.startAt)+'*. Boa sorte!'
   })
   await reply(out)
   return true
