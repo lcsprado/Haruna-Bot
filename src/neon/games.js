@@ -1388,6 +1388,7 @@ export async function raidRound(chat,level){
         }
       }
 
+      let raidAutoPetEnergy=null
       if(p.pet&&Number(p.pet.hp)>0&&Number(p.pet.energy)<1){
         // Recarrega apenas ao esgotar; debita exatamente um energético sob lock.
         // A mesma transação da rodada garante que falhas não consumam o item.
@@ -1398,7 +1399,7 @@ export async function raidRound(chat,level){
           await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0",[p.jid])
           p.pet.energy=max
           await persistRaidCombatPet(c,p.jid,p.pet)
-          events.push({type:'pet_energy_auto',jid:p.jid,name:p.name,petName:p.pet.name,before,max,remaining:Number(inv.quantity)-1})
+          raidAutoPetEnergy={petName:p.pet.name,before,max,remaining:Number(inv.quantity)-1}
         }
       }
       if(p.pet){
@@ -1592,7 +1593,7 @@ export async function raidRound(chat,level){
         }
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
-      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoRevive,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
+      events.push({type:'boss',jid:p.jid,name:p.name,autoPetEnergy:raidAutoPetEnergy,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoRevive,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
