@@ -75,6 +75,8 @@ import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
+import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
+import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 
@@ -3592,32 +3594,33 @@ ${ranking}${extra}
     goldTimer.unref?.()
   }
 
-  // Invasão dos Sete Pecados — 2ª edição 18/10 18:00–21:00 BRT.
+  // Collab Sete Pecados: terceiro e quarto domingos; zero consultas fora da janela.
   let setePecadosBusy=false
-  if(Date.now()<=Date.parse('2026-10-18T21:02:00-03:00'))setInterval(async()=>{
+  if(Date.now()<=PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000)setInterval(async()=>{
     if(setePecadosBusy)return
     const now=Date.now()
-    if(now<Date.parse('2026-10-18T17:55:00-03:00')||now>Date.parse('2026-10-18T21:02:00-03:00'))return
+    const edition=PECADOS_EDITIONS.find(e=>now>=e.start-300000&&now<=e.end+120000)
+    if(!edition)return
     setePecadosBusy=true
     try{
-      if(now<Date.parse('2026-10-18T18:00:00-03:00')){
+      if(now<edition.start){
         const groups=await activeEventGroups()
         for(const group of groups){
-          await sendScheduledGroupNotice(group.chat_jid,'sete-pecados-20261018-aviso-1755',
-            '🌑⚔️ *ATENÇÃO! SETE PECADOS EM 5 MINUTOS!*\n\n⏰ Início às *18h* e encerramento às *21h* (Brasília).\n👹 Sete Pecados + Azazel: 8 Bosses sequenciais.\n🎯 10.000 de dano em cada Boss para conquistar a insígnia.\n💰 Quem já possui a insígnia e cumprir tudo novamente recebe R$ 1.000.000.\n⚔️ Prepare-se para usar *!atacar* às 18h!')
+          await sendScheduledGroupNotice(group.chat_jid,edition.key+'-aviso-1755',
+            '🌈⚔️ *7 PECADOS CAPITAIS EM 5 MINUTOS!*\n\n⏰ 18h–20h (Brasília).\n👹 Oito Bosses em sequência.\n🩸 Todas as essências são acumuláveis, inclusive repetidas.\n🎁 *!7pecados* para conhecer o baú da collab.\n⚔️ Prepare-se para *!atacar*!')
         }
         return
       }
       const event=await tickSetePecados(now)
       if(event.spawned){
-        await sendEventToGroups('🌑⚔️ *INVASÃO DOS SETE PECADOS COMEÇOU!*\n\n⏰ 18:00–21:00 (Brasília)\n👹 Sete Pecados + Azazel: oito Bosses sequenciais.\n💤 *PRIMEIRO: PREGUIÇA* • ❤️ 60.000 HP • ⚔️ 35 ATK\n👥 HP aumenta em 35% da base por participante adicional, inclusive quem entrar depois.\n🎯 10.000 de dano individual em CADA Boss para receber a Insígnia permanente.\n⚜️ +2% dano e +1pp crítico contra Bosses/Raids.\n💰 Quem já tem a insígnia recebe R$ 1.000.000 ao conquistar novamente.\n🎁 Dinheiro, EXP e essências após cada vitória.\n⚔️ Use *!atacar* para começar!')
+        await sendEventToGroups('🌈⚔️ *COLLAB DOS 7 PECADOS COMEÇOU!*\n\n⏰ 18h–20h (Brasília)\n👹 Sete Pecados + Azazel • oito Bosses sequenciais.\n🎯 10.000 de dano por Boss para as recompensas.\n🩸 Essências repetidas NÃO são convertidas em dinheiro.\n🎁 *!7pecados abrir*: 7 essências por baú (1/3 personagem, 1/3 arma, 1/3 armadura).\n♻️ Duplicatas viram 50 Fragmentos Universais de Raid.\n⚔️ Use *!atacar*!')
       }
-      if(event.ended)await sendEventToGroups('🌑 *INVASÃO DOS SETE PECADOS ENCERRADA!*\n\n⏰ O prazo das 21:00 terminou.\n🏆 Bosses já derrotados tiveram seus prêmios distribuídos. Não há prêmio retroativo por Boss não derrotado.')
-      if(event.blocked)console.warn('[SETE PECADOS] início aguardando Boss ativo',event.blockingBoss)
-      if(event.active && Number(event.phaseIndex||0)>=1) await announceNextPecado()
+      if(event.ended)await sendEventToGroups('🌈🏁 *COLLAB DOS 7 PECADOS ENCERRADA POR HOJE!*\n\n⏰ A janela de 18h–20h acabou.\n🩸 Essências conquistadas permanecem no inventário para o baú.\n🎁 Use *!7pecados* para ver sua coleção.')
+      if(event.blocked)console.warn('[SETE PECADOS] Boss existente bloqueia início',event.blockingBoss)
+      if(event.active&&Number(event.phaseIndex||0)>=1)await announceNextPecado()
     }catch(err){console.error('[SETE PECADOS] scheduler',err?.stack||err)}
     finally{setePecadosBusy=false}
-  },5000).unref?.()
+  },30000).unref?.()
 
   // Scheduler independente de mensagens: inicia o Boss e anuncia nos grupos às 04:04.
 
@@ -9904,6 +9907,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
         if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
         if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
+        if(await handleSetePecadosCollabCommand({cmd,args,sender,reply})) continue
         if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
         if(await handleEnchantCommand({cmd,args,sender,reply,
           setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
@@ -12661,7 +12665,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
           const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial em andamento.':'')
           const displayedSchedule=r.eventId==='sete_pecados'
-            ?'\n🌑 *INVASÃO DOS SETE PECADOS* • Fase '+(Number(r.phaseIndex||0)+1)+'/8\n⏰ Até 21:00 (Brasília)\n🎯 10.000 de dano em cada um dos 8 Bosses para obter a insígnia.\n⚜️ +2% dano e +1pp crítico Boss/Raid.'
+            ?'\n🌑 *INVASÃO DOS SETE PECADOS* • Fase '+(Number(r.phaseIndex||0)+1)+'/8\n⏰ Até 20:00 (Brasília)\n🎯 10.000 de dano em cada um dos 8 Bosses para obter a insígnia.\n⚜️ +2% dano e +1pp crítico Boss/Raid.'
             :r.eventId==='ruptura_estelar'
             ?'\n🌌 *RUPTURA ESTELAR ATÉ 21H* • Fase '+Number(r.phase||1)+'/3\n🥇 20 Caixas Épicas ao 1º; 5 ao 2º; 3 ao 3º.\n🏅 Insígnia Guardião da Ruptura.'
             :schedule
