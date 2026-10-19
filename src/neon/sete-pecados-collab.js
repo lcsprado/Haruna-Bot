@@ -31,7 +31,7 @@ async function legacyReward(c,jid){
  await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[jid,PECADOS_ESSENCES[0],quantity])
  return {already:false,quantity,days}
 }
-async function openBox(jid,requestId=null){
+export async function openBox(jid,requestId=null){
  return inTransaction(async c=>{
   await c.query("SELECT jid FROM users WHERE jid=$1 FOR UPDATE",[jid])
   // A chave deriva da mensagem original do WhatsApp. Toda recompensa e seu
