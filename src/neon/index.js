@@ -567,6 +567,7 @@ const raidRuns=new Map()
 let raidAutoWatchdog=null
 let raidAutoReply=null
 const raidAutoRetryAt=new Map()
+const raidAutoLastErrorNotice=new Map()
 const RAID_RUN_STALE_MS=25000
 const RAID_NOTIFY_TIMEOUT_MS=2500
 
@@ -865,7 +866,12 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
     }catch(err){
       console.error('[Raid]',err)
       raidAutoRetryAt.set(runKey,Date.now()+5000)
-      void safeRaidNotify(reply,'⚠️ A Raid teve uma falha temporária. O servidor vai tentar retomar automaticamente.')
+      // Aviso único por Raid a cada 10 minutos; erros recorrentes ficam nos logs.
+      const lastNotice=raidAutoLastErrorNotice.get(runKey)||0
+      if(Date.now()-lastNotice>=10*60*1000){
+        raidAutoLastErrorNotice.set(runKey,Date.now())
+        void safeRaidNotify(reply,'⚠️ A Raid teve uma falha temporária. O servidor vai tentar retomar automaticamente.')
+      }
     }finally{
       // Um runner antigo/stale nunca pode apagar o runner novo que o substituiu.
       if(raidRunCurrent(runKey,token)) raidRuns.delete(runKey)
