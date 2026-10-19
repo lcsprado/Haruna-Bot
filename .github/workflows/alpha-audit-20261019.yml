@@ -42,6 +42,10 @@ jobs:
           grep -E '^not ok [0-9]+ - ' "$RUNNER_TEMP/baseline.tap" | sed -E 's/^not ok [0-9]+ - //' | sort > "$RUNNER_TEMP/baseline-fails.txt"
           echo "Falhas no pacote de correcao: $(wc -l < "$RUNNER_TEMP/feature-fails.txt")"
           echo "Falhas na branch atual: $(wc -l < "$RUNNER_TEMP/baseline-fails.txt")"
+          echo "=== Falhas preexistentes ==="
+          cat "$RUNNER_TEMP/baseline-fails.txt"
+          echo "=== Falhas atuais ==="
+          cat "$RUNNER_TEMP/feature-fails.txt"
           comm -13 "$RUNNER_TEMP/baseline-fails.txt" "$RUNNER_TEMP/feature-fails.txt" > "$RUNNER_TEMP/new-fails.txt"
           if [[ -s "$RUNNER_TEMP/new-fails.txt" ]]; then
             echo "Novas falhas detectadas:"
