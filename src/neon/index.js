@@ -2383,6 +2383,17 @@ async function start() {
       delayBetweenTriesMs:500
     }
   })
+  // QR temporário em memória, visível somente pela página protegida por senha.
+  // Nenhuma credencial ou código QR é gravado em logs, GitHub ou no banco original.
+  const privateQrState=globalThis.__alphaPairingQr||(globalThis.__alphaPairingQr={value:null,updatedAt:0})
+  if(!state.creds.registered){
+    sock.ev.on('connection.update',update=>{
+      if(!update?.qr)return
+      privateQrState.value=update.qr
+      privateQrState.updatedAt=Date.now()
+      console.log('[WhatsApp] QR de pareamento pronto na página privada')
+    })
+  }
   const datedEventStops=[]
   loadGroupMetadata=sock.groupMetadata.bind(sock)
   sock.groupMetadata=jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid))
@@ -9441,6 +9452,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
     if(connection==='connecting') setWhatsAppHealth('connecting')
 
     if(connection==='open'){
+      privateQrState.value=null
+      privateQrState.updatedAt=0
       if(reconnectTimer){ clearTimeout(reconnectTimer); reconnectTimer=null }
       reconnecting=false
       reconnectAttempts=0
@@ -9676,6 +9689,8 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
     }
 
     if(connection==='close'){
+      privateQrState.value=null
+      privateQrState.updatedAt=0
       clearTimeout(forceFlushTimer)
       clearInterval(deafWatchdog)
       // Agendadores pertencem a este socket: não reter timers após reconexões.
@@ -9700,6 +9715,10 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
       }
 
       if(loggedOut){
+        if(!pairingNumber && !state.creds.registered){
+          console.warn('[WhatsApp] QR não autenticado; aguardando reinicialização controlada para gerar novo QR')
+          return
+        }
         if(pairingNumber && !state.creds.registered){
           console.warn('[WhatsApp] pareamento não concluído; reiniciando sessão de conexão para solicitar novo código')
           scheduleReconnect()
