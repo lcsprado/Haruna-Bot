@@ -8,6 +8,10 @@ import {dirname,join} from 'node:path'
 const require=createRequire(import.meta.url)
 const root=dirname(dirname(require.resolve('baileys')))
 const manifest=JSON.parse(await readFile(join(root,'package.json'),'utf8'))
+if(manifest.version==='6.7.24'){
+  console.log('Baileys 6.7.24: patch de transporte exclusivo da rc14 ignorado.')
+  process.exit(0)
+}
 if(manifest.version!=='7.0.0-rc14')throw Error('Revalidate the bounded media patch before changing Baileys versions.')
 const path=join(root,'lib/Utils/messages-media.js')
 const marker='// Alpha bounded media transport (rc14)'
