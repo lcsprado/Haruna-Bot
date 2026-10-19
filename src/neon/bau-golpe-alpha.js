@@ -54,7 +54,7 @@ export async function handleBauGolpeCommand({cmd,sender,chat,reply}){
     console.error('[BAU GOLPE]',e)
     message='⚠️ O baú está emperrado. Tente novamente mais tarde.'
   }finally{c.release()}
-  await reply(message.replace(/\\\\n/g,'\\n'))
+  await reply(message.replace(/\\\\n/g,'\n').replace(/\\n/g,'\n'))
   return true
 }
 
