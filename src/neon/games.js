@@ -704,7 +704,7 @@ const RAID_CONFIGS=[
   {level:70,name:'Deus do Eclipse',hp:710000,atk:200,keyId:'chave_raid_70',keyPrice:390000,cashPool:710000,xpPool:24000,petXpPool:2400,material:{id:'essencia_eclipse',name:'Essência do Eclipse'},box:'caixa_epica',gear:['exterminadora_eclipse','armadura_deus_eclipse'],gearChance:.003}
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
-const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:30,40:40,50:50,60:20,65:25,70:30}[Number(level)]||15)
+const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50}[Number(level)]||15)
 export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
