@@ -9700,7 +9700,12 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
       }
 
       if(loggedOut){
-        console.error('[WhatsApp] sessão deslogada; reinício automático não consegue recuperar sem novo pareamento')
+        if(pairingNumber && !state.creds.registered){
+          console.warn('[WhatsApp] pareamento não concluído; reiniciando sessão de conexão para solicitar novo código')
+          scheduleReconnect()
+          return
+        }
+        console.error('[WhatsApp] sessão autenticada deslogada; requer novo pareamento')
         return
       }
 
