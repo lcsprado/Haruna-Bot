@@ -2543,15 +2543,19 @@ export async function getCombatProfile(jid) {
   const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
   const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
   const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
-  const enchantRows=enchantedIds.length?(await db.query(
-    'SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',
-    [jid,enchantedIds])).rows:[]
+  const enchantRows=(await db.query(`
+    SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])
+    UNION ALL
+    SELECT 'selo_poder_5pct_alpha_20261019'::text AS stone_id,1::integer AS quantity
+      FROM inventories WHERE jid=$1 AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
+  `,[jid,enchantedIds])).rows
   const enchantMap={
     pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
     pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
-    pedra_precisao_alpha:['crit',.01]
+    pedra_precisao_alpha:['crit',.01],
+    selo_poder_5pct_alpha_20261019:['attackPct',.05]
   }
-  const ench={atk:0,def:0,spd:0,crit:0,damage:0}
+  const ench={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
   for(const row of enchantRows){
     const data=enchantMap[row.stone_id]
     if(data)ench[data[0]]+=data[1]*Math.min(3,Math.max(0,Number(row.quantity)||0))
@@ -2584,7 +2588,8 @@ export async function getCombatProfile(jid) {
     effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
     effective_max_hp:effectiveMaxHp,
     effective_hp:effectiveHp,
-    effective_atk:Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+ench.atk,
+    effective_atk:Math.round((Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+ench.atk)*(1+ench.attackPct)),
+    attack_pct_bonus:ench.attackPct,
     effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(h.def||0)+ench.def,
     enchant_damage:Number(ench.damage||0),
     enchant_breakdown:ench,
@@ -2682,17 +2687,20 @@ export async function battle(attackerJid, defenderJid) {
       'SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[])',
       [[attackerJid,defenderJid]]
     )).rows
-    const enchantRows=(await client.query(
-      'SELECT jid,item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=ANY($1::text[])',
-      [[attackerJid,defenderJid]])).rows
+    const enchantRows=(await client.query(`
+      SELECT jid,item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=ANY($1::text[])
+      UNION ALL
+      SELECT jid,NULL::text,'selo_poder_5pct_alpha_20261019'::text,1::integer
+        FROM inventories WHERE jid=ANY($1::text[]) AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
+    `,[[attackerJid,defenderJid]])).rows
     const eqEnch=(jid,ids)=>{
-      const stats={atk:0,def:0,spd:0,crit:0,damage:0}
+      const stats={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
       const map={pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
         pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
-        pedra_precisao_alpha:['crit',.01]}
+        pedra_precisao_alpha:['crit',.01],selo_poder_5pct_alpha_20261019:['attackPct',.05]}
       for(const e of enchantRows){
         const st=map[e.stone_id]
-        if(e.jid===jid&&st&&ids.includes(e.item_id))stats[st[0]]+=st[1]*Math.min(3,Number(e.quantity)||0)
+        if(e.jid===jid&&st&&(st[0]==='attackPct'||ids.includes(e.item_id)))stats[st[0]]+=st[1]*Math.min(3,Number(e.quantity)||0)
       }
       return stats
     }
@@ -2711,7 +2719,7 @@ export async function battle(attackerJid, defenderJid) {
     const A={
       jid:attackerJid,name:au?.push_name||'Jogador',
       hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
-      atk:Number(a.atk)+aeW.atk+aeA.atk+aEn.atk,
+      atk:Math.round((Number(a.atk)+aeW.atk+aeA.atk+aEn.atk)*(1+aEn.attackPct)),
       def:Number(a.def)+aeW.def+aeA.def+aeH.def+aEn.def,
       classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
@@ -2722,7 +2730,7 @@ export async function battle(attackerJid, defenderJid) {
     const B={
       jid:defenderJid,name:bu?.push_name||'Jogador',
       hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
-      atk:Number(b.atk)+beW.atk+beA.atk+bEn.atk,
+      atk:Math.round((Number(b.atk)+beW.atk+beA.atk+bEn.atk)*(1+bEn.attackPct)),
       def:Number(b.def)+beW.def+beA.def+beH.def+bEn.def,
       classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
