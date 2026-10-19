@@ -1402,6 +1402,7 @@ export async function raidRound(chat,level){
           raidAutoPetEnergy={petName:p.pet.name,before,max,remaining:Number(inv.quantity)-1}
         }
       }
+      if(raidAutoPetEnergy) events.push({type:'pet_energy_auto',jid:p.jid,name:p.name,...raidAutoPetEnergy})
       if(p.pet){
         p.pet.roundActive=Number(p.pet.energy)>0&&Number(p.pet.hp)>0
         if(p.pet.roundActive){
@@ -1593,7 +1594,7 @@ export async function raidRound(chat,level){
         }
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
-      events.push({type:'boss',jid:p.jid,name:p.name,autoPetEnergy:raidAutoPetEnergy,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoRevive,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
+      events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoRevive,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
     const survivors=Object.values(s.players||{}).filter(p=>p.alive).length
