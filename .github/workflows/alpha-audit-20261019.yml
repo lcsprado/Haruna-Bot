@@ -1,0 +1,32 @@
+name: Auditoria Alpha Bot - timers e baus
+
+on:
+  push:
+    branches:
+      - audit/fix-event-timers-20261019
+  pull_request:
+    branches:
+      - whatsapp-only
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias sem executar scripts nativos
+        run: npm ci --ignore-scripts
+      - name: Validar sintaxe dos arquivos alterados
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/sete-pecados-collab.js
+          node --check test/sete-pecados-replay-20261019.test.mjs
+      - name: Testar deduplicacao e rotinas relacionadas
+        run: node --test test/sete-pecados-replay-20261019.test.mjs test/auth-bandwidth-20261014.test.mjs test/pvp-pet-bonuses.test.mjs
