@@ -4115,6 +4115,8 @@ Você possui: *${stock}*
     Boolean(relicCatalog[item.item_id])
   ))
 
+  const isEnchantStone=item=>String(item?.item_id||'').startsWith('pedra_') && String(item.item_id).endsWith('_alpha')
+
   async function showInventoryMenu(chat,sender,reply){
     const items=await getInventory(sender)
     if(!items.length){
@@ -4123,7 +4125,7 @@ Você possui: *${stock}*
       return
     }
     const count=category=>items.filter(i=>i.category===category).length
-    const potions=items.filter(i=>i.category==='consumable')
+    const potions=items.filter(i=>i.category==='consumable'&&!isEnchantStone(i))
     const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
     const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
     const relicItems=items.filter(isEventInsignia)
@@ -4138,7 +4140,8 @@ Você possui: *${stock}*
       '6️⃣ 🎁 Caixas — '+boxes.reduce((a,i)=>a+Number(i.quantity),0)+' un.\n'+
       '7️⃣ 🧩 Materiais de Raid / Outros — '+others.length+' tipos\n'+
       '8️⃣ 💰 Vender / descartar itens\n'+
-      '9️⃣ ⚜️ Insígnias — '+relicItems.length+' tipos\n\n'+
+      '9️⃣ ⚜️ Insígnias — '+relicItems.length+' tipos\n'+
+      '11️⃣ ✨ Encantamentos — '+items.filter(isEnchantStone).reduce((a,i)=>a+Number(i.quantity),0)+' pedra(s)\n\n'+
       '🔟 Voltar\n0️⃣ Sair'
     )
   }
@@ -7707,7 +7710,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       if(input==='4'){
         const items=await getInventory(sender)
-        const usable=items.filter(i=>i.category==='consumable')
+        const usable=items.filter(i=>i.category==='consumable'&&!isEnchantStone(i))
         if(!usable.length){
           clearQuickFlow(chat,sender)
           await reply('🧪 Você não possui consumíveis utilizáveis.')
@@ -7744,6 +7747,13 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
     }
 
     if(flow.stage==='inventory_category'){
+      if(input==='11'){
+        clearQuickFlow(chat,sender)
+        await handleEnchantCommand({cmd:'encantamentos',args:[],sender,reply,
+          setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
+          clearFlow:()=>clearQuickFlow(chat,sender)})
+        return true
+      }
       if(input==='10'){
         setQuickFlow(chat,sender,'nav_items',{},90000)
         await reply('🛒 *ITENS E INVENTÁRIO*\n\n1️⃣ Loja\n2️⃣ Inventário\n3️⃣ Equipar\n4️⃣ Usar consumível\n5️⃣ Abrir caixas\n\n0️⃣ Sair')
@@ -7835,7 +7845,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(lines.join('\n'))
         return true
       }
-      await reply('🎒 Escolha uma opção de *1 a 9*.')
+      await reply('🎒 Escolha uma opção de *1 a 9* ou *11* para Encantamentos.')
       return true
     }
 
