@@ -186,7 +186,10 @@ function setWhatsAppHealth(state){
 }
 if(!connectionWatchdog){
   connectionWatchdog=setInterval(()=>{
-    const grace=trevoHealth.everConnected ? 120000 : 120000
+    // Durante o pareamento, manter o QR disponível sem reiniciar o processo a cada 2 minutos.
+    // A proteção original de 120s volta automaticamente após conexão bem-sucedida.
+    const awaitingPairing=Boolean(process.env.ALPHA_QR_SECRET) && !trevoHealth.everConnected
+    const grace=awaitingPairing ? 15*60*1000 : 120000
     if(trevoHealth.whatsapp!=='open' && Date.now()-trevoHealth.lastChange>grace){
       console.error('[Watchdog] WhatsApp não recuperou a conexão; reiniciando processo')
       process.exit(1)
