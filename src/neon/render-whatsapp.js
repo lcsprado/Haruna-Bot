@@ -29,11 +29,38 @@ http.createServer((req,res)=>{
     res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-robots-tag':'noindex, nofollow','referrer-policy':'no-referrer','x-content-type-options':'nosniff'})
     return res.end(qrPageHtml)
   }
-  if(url.pathname==='/api/link-qr' && req.method==='POST'){
+  if(url.pathname==='/api/link-qr' && (req.method==='GET'||req.method==='POST')){
     const token=String(process.env.ALPHA_QR_SECRET||'')
     if(!token){res.writeHead(404);return res.end('Not found')}
     const chunks=[]
     let total=0,tooLarge=false
+    // GET com header Authorization evita POST/body incompatível com alguns WebViews.
+    // A senha não aparece na URL nem é escrita nos logs.
+    if(req.method==='GET'){
+      void (async()=>{
+        const provided=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'')
+        const given=Buffer.from(provided),expected=Buffer.from(token)
+        if(given.length!==expected.length||!timingSafeEqual(given,expected)){
+          console.warn('[QR] Requisição GET rejeitada: autenticação inválida (sem exibir segredo)')
+          res.writeHead(401,{'cache-control':'no-store','access-control-allow-origin':'none'})
+          return res.end('Unauthorized')
+        }
+        try{
+          const connected=health.whatsapp==='open'
+          const qrState=globalThis.__alphaPairingQr||{}
+          const fresh=Date.now()-Number(qrState.updatedAt||0)<45000
+          const value=!connected&&fresh?qrState.value:null
+          const image=value?await QRCode.toDataURL(value,{width:320,margin:2,errorCorrectionLevel:'M'}):null
+          res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate','referrer-policy':'no-referrer'})
+          console.log('[QR] Consulta autorizada:',connected?'conectado':image?'QR entregue':'aguardando QR')
+          return res.end(JSON.stringify({connected,image}))
+        }catch(err){
+          console.error('[QR] falha no processamento:',err?.message||'erro_desconhecido')
+          if(!res.writableEnded){res.writeHead(500,{'cache-control':'no-store'});res.end('QR unavailable')}
+        }
+      })()
+      return
+    }
     req.on('data',chunk=>{
       if(tooLarge)return
       total+=chunk.length
