@@ -1,4 +1,7 @@
 import http from 'node:http'
+import {timingSafeEqual} from 'node:crypto'
+import QRCode from 'qrcode'
+import {qrPageHtml} from './qr-page.js'
 import {bandwidthSnapshot,trackBandwidthStream,startBandwidthReporting,auditDatabaseBandwidth} from './bandwidth.js'
 import { healthPageHtml } from './health-page.js'
 
@@ -20,6 +23,53 @@ startBandwidthReporting()
 http.createServer((req,res)=>{
   trackBandwidthStream('http',req.socket)
   const url=new URL(req.url||'/', 'http://localhost')
+
+  if(url.pathname==='/parear' && req.method==='GET'){
+    if(!process.env.ALPHA_QR_SECRET){res.writeHead(404);return res.end('Not found')}
+    res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-robots-tag':'noindex, nofollow','referrer-policy':'no-referrer','x-content-type-options':'nosniff'})
+    return res.end(qrPageHtml)
+  }
+  if(url.pathname==='/api/link-qr' && req.method==='POST'){
+    const token=String(process.env.ALPHA_QR_SECRET||'')
+    if(!token){res.writeHead(404);return res.end('Not found')}
+    const chunks=[]
+    let total=0,tooLarge=false
+    req.on('data',chunk=>{
+      if(tooLarge)return
+      total+=chunk.length
+      if(total>1024){
+        tooLarge=true
+        res.writeHead(413,{'cache-control':'no-store'})
+        res.end('Request too large')
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end',async()=>{
+      if(tooLarge||res.writableEnded)return
+      let supplied=''
+      try{supplied=JSON.parse(Buffer.concat(chunks).toString('utf8')).secret||''}catch{}
+      const actual=Buffer.from(String(supplied)),expected=Buffer.from(token)
+      if(actual.length!==expected.length||!timingSafeEqual(actual,expected)){
+        res.writeHead(401,{'cache-control':'no-store'})
+        return res.end('Unauthorized')
+      }
+      try{
+        const connected=health.whatsapp==='open'
+        const qrState=globalThis.__alphaPairingQr||{}
+        const value=!connected && Date.now()-Number(qrState.updatedAt||0)<45000?qrState.value:null
+        const image=value?await QRCode.toDataURL(value,{width:320,margin:2,errorCorrectionLevel:'M'}):null
+        res.writeHead(200,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'})
+        return res.end(JSON.stringify({connected,image}))
+      }catch(err){
+        console.error('[WhatsApp] QR indisponível:',err?.message||'conversion_failed')
+        if(!res.writableEnded){res.writeHead(500,{'cache-control':'no-store'});res.end('QR unavailable')}
+      }
+    })
+    req.on('error',()=>{if(!res.writableEnded){res.writeHead(400);res.end('Bad request')}})
+    return
+  }
+
   const browserWantsHtml=/text\/html/i.test(String(req.headers.accept||''))
   const showPage=url.pathname==='/'||url.pathname==='/acordar'||
     (url.pathname==='/health'&&browserWantsHtml&&url.searchParams.get('format')!=='json')
