@@ -53,14 +53,19 @@ form.addEventListener('submit',function(e){
 async function poll(){
  if(document.hidden){timer=setTimeout(poll,3500);return}
  try{
-  var res=await fetch('/api/link-qr',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({secret:secret}),cache:'no-store'});
+  var controller=new AbortController();
+  var timeout=setTimeout(function(){controller.abort()},9000);
+  var res;
+  try{
+    res=await fetch('/api/link-qr',{method:'GET',headers:{'Authorization':'Bearer '+secret,'Accept':'application/json'},cache:'no-store',signal:controller.signal});
+  }finally{clearTimeout(timeout)}
   if(res.status===401){status.textContent='Senha incorreta. Tente novamente.';qr.hidden=true;form.hidden=false;panel.hidden=true;secret='';return}
-  if(!res.ok)throw Error('Falha temporária');
+  if(!res.ok)throw Error('Servidor retornou HTTP '+res.status);
   var data=await res.json();
   if(data.connected){status.textContent='✅ WhatsApp conectado!';qr.hidden=true;return}
   if(data.image){qr.src=data.image;qr.hidden=false;status.textContent='Escaneie agora com o WhatsApp do número 3631.'}
   else{qr.hidden=true;status.textContent='Aguardando novo QR Code. Esta tela atualiza automaticamente.'}
- }catch(_err){status.textContent='Aguardando resposta do servidor...'}
+ }catch(err){status.textContent='Falha ao buscar QR: '+(err.name==='AbortError'?'tempo esgotado':err.message||'erro de rede')+'. Tentando novamente...'}
  timer=setTimeout(poll,3500)
 }
 document.addEventListener('visibilitychange',function(){if(!document.hidden&&secret){clearTimeout(timer);poll()}})
