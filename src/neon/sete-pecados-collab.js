@@ -3,6 +3,7 @@ import {PECADOS_ESSENCES,PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS,PECADOS_G
 
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
 const KEY_PREFIX='sete-pecados-retro-20261019:'
+const BOX_MESSAGE_PREFIX='sete-pecados-box-message:'
 async function inTransaction(fn){
  const c=await db.connect()
  try{await c.query('BEGIN');const result=await fn(c);await c.query('COMMIT');return result}
@@ -30,12 +31,34 @@ async function legacyReward(c,jid){
  await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[jid,PECADOS_ESSENCES[0],quantity])
  return {already:false,quantity,days}
 }
-async function openBox(jid){
+export async function openBox(jid,requestId=null){
  return inTransaction(async c=>{
   await c.query("SELECT jid FROM users WHERE jid=$1 FOR UPDATE",[jid])
+  // A chave deriva da mensagem original do WhatsApp. Toda recompensa e seu
+  // marcador são confirmados na MESMA transação. Replay não consome essências.
+  const markerKey=requestId?BOX_MESSAGE_PREFIX+jid+':'+requestId:null
+  if(markerKey){
+    const claimed=await c.query(
+      "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
+      [markerKey,JSON.stringify({status:'processing'})]
+    )
+    if(!claimed.rowCount){
+      const previous=(await c.query("SELECT value FROM trevo_settings WHERE key=$1",[markerKey])).rows[0]?.value
+      return previous?.result?{...previous.result,replay:true}:{replay:true,unknown:true}
+    }
+  }
+  async function finish(result){
+    if(markerKey){
+      await c.query(
+        "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+        [markerKey,JSON.stringify({result,processedAt:Date.now()})]
+      )
+    }
+    return result
+  }
   const rows=(await c.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) ORDER BY item_id FOR UPDATE",[jid,PECADOS_ESSENCES])).rows
   const owned=rows.reduce((n,r)=>n+Number(r.quantity||0),0)
-  if(owned<7)return {insufficient:true,owned}
+  if(owned<7)return finish({insufficient:true,owned})
   let remaining=7
   for(const row of rows){
     if(!remaining)break
@@ -60,17 +83,19 @@ async function openBox(jid){
   }else{
     await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1",[jid,itemId])
   }
-  return {category,reward:reward.name,duplicate,ownedAfter:owned-7}
+  return finish({category,reward:reward.name,duplicate,ownedAfter:owned-7})
  })
 }
-export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply}){
+export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,messageId=null}){
  if(!['7pecados','setepecados','pecados7'].includes(cmd))return false
  await ensureUser(sender)
  const action=String(args[0]||'status').toLowerCase()
  if(action==='abrir'||action==='bau'||action==='caixa'){
-  const r=await openBox(sender)
-  if(r.insufficient)await reply('🌈 *BAÚ DOS 7 PECADOS*\n\nSão necessárias *7 essências* de qualquer pecado. Você possui *'+fmt(r.owned)+'*.\nUse *!7pecados* para consultar o calendário.')
-  else await reply('🌈🎁 *BAÚ DOS 7 PECADOS ABERTO!*\n\n'+(r.duplicate?'♻️ *RECOMPENSA REPETIDA:* '+r.reward+'\n🎁 Recebeu *50 Fragmentos Universais de Raid*.':'✅ *'+r.category.toUpperCase()+':* '+r.reward+'\n🎉 Adicionado à sua coleção!')+'\n\n🩸 Essências restantes: *'+fmt(r.ownedAfter)+'*.')
+  const r=await openBox(sender,messageId)
+  if(r.unknown){await reply('⚠️ Esta mensagem já foi processada, mas o resultado não pôde ser recuperado. Nenhuma essência foi consumida novamente.');return true}
+  const replayNotice=r.replay?'🔁 *Mensagem já processada.* Nenhuma essência foi cobrada novamente.\n\n':''
+  if(r.insufficient)await reply(replayNotice+'🌈 *BAÚ DOS 7 PECADOS*\n\nSão necessárias *7 essências* de qualquer pecado. Você possui *'+fmt(r.owned)+'*.\nUse *!7pecados* para consultar o calendário.')
+  else await reply(replayNotice+'🌈🎁 *BAÚ DOS 7 PECADOS ABERTO!*\n\n'+(r.duplicate?'♻️ *RECOMPENSA REPETIDA:* '+r.reward+'\n🎁 Recebeu *50 Fragmentos Universais de Raid*.':'✅ *'+r.category.toUpperCase()+':* '+r.reward+'\n🎉 Adicionado à sua coleção!')+'\n\n🩸 Essências restantes: *'+fmt(r.ownedAfter)+'*.')
   return true
  }
  if(action==='resgatar'||action==='compensacao'){

@@ -376,7 +376,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
             await (setePecadosBroadcaster||reply)('🌑 *PECADO DERROTADO!*\n\n'+(rank||'Nenhum jogador alcançou 10.000 de dano.')+
               '\n🎁 Recompensas creditadas após este Boss.'+
               (r.nextPhase?'\n\n🔔 O próximo pecado já está ativo. O anúncio será enviado separadamente a todos os grupos.':
-              '\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente para quem atingiu 10.000 de dano em todos os oito Bosses; quem já a possui recebe R$ 1.000.000.'))
+              '\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente para quem atingiu 10.000 de dano em todos os oito Bosses; quem já a possui recebe 7 essências.'))
             await reply(text)
             if(nextPecado){
               if(sessionEndsAt && Date.now()>=sessionEndsAt){
@@ -3209,6 +3209,10 @@ ${ranking}${extra}
 
   let doubleRewardEventScheduler=null
   let luckyBoxEventScheduler=null
+  let setePecadosScheduler=null
+  let doubleRewardStartupTimer=null
+  let luckyBoxStartupTimer=null
+  let eventSchedulerClosed=false
   let doubleRewardAnnouncementRunning=false
   let luckyBoxAnnouncementRunning=false
 
@@ -3596,9 +3600,15 @@ ${ranking}${extra}
 
   // Collab Sete Pecados: terceiro e quarto domingos; zero consultas fora da janela.
   let setePecadosBusy=false
-  if(Date.now()<=PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000)setInterval(async()=>{
-    if(setePecadosBusy)return
+  if(Date.now()<=PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000){
+    setePecadosScheduler=setInterval(async()=>{
+    if(eventSchedulerClosed||setePecadosBusy)return
     const now=Date.now()
+    if(now>PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000){
+      clearInterval(setePecadosScheduler)
+      setePecadosScheduler=null
+      return
+    }
     const edition=PECADOS_EDITIONS.find(e=>now>=e.start-300000&&now<=e.end+120000)
     if(!edition)return
     setePecadosBusy=true
@@ -3620,7 +3630,9 @@ ${ranking}${extra}
       if(event.active&&Number(event.phaseIndex||0)>=1)await announceNextPecado()
     }catch(err){console.error('[SETE PECADOS] scheduler',err?.stack||err)}
     finally{setePecadosBusy=false}
-  },30000).unref?.()
+    },30000)
+    setePecadosScheduler.unref?.()
+  }
 
   // Scheduler independente de mensagens: inicia o Boss e anuncia nos grupos às 04:04.
 
@@ -3855,7 +3867,7 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
   }
 
   async function updateDoubleRewardAnnouncements(){
-    if(trevoHealth.whatsapp!=='open' || doubleRewardAnnouncementRunning) return
+    if(eventSchedulerClosed || trevoHealth.whatsapp!=='open' || doubleRewardAnnouncementRunning) return
     doubleRewardAnnouncementRunning=true
     try{
       const event=await getDoubleRewardEvent()
@@ -3963,7 +3975,7 @@ ${moneyLine}✨ XP: *${xpMult}x*
   }
 
   async function updateLuckyBoxAnnouncements(){
-    if(trevoHealth.whatsapp!=='open' || luckyBoxAnnouncementRunning) return
+    if(eventSchedulerClosed || trevoHealth.whatsapp!=='open' || luckyBoxAnnouncementRunning) return
     luckyBoxAnnouncementRunning=true
     try{
       const event=await getLuckyBoxEvent()
@@ -4026,12 +4038,14 @@ ${moneyLine}✨ XP: *${xpMult}x*
   if(doubleRewardEventScheduler) clearInterval(doubleRewardEventScheduler)
   doubleRewardEventScheduler=setInterval(updateDoubleRewardAnnouncements,30000)
   doubleRewardEventScheduler.unref?.()
-  setTimeout(updateDoubleRewardAnnouncements,3000).unref?.()
+  doubleRewardStartupTimer=setTimeout(updateDoubleRewardAnnouncements,3000)
+  doubleRewardStartupTimer.unref?.()
 
   if(luckyBoxEventScheduler) clearInterval(luckyBoxEventScheduler)
   luckyBoxEventScheduler=setInterval(updateLuckyBoxAnnouncements,30000)
   luckyBoxEventScheduler.unref?.()
-  setTimeout(updateLuckyBoxAnnouncements,3500).unref?.()
+  luckyBoxStartupTimer=setTimeout(updateLuckyBoxAnnouncements,3500)
+  luckyBoxStartupTimer.unref?.()
 
   async function senderIsGroupAdmin(chatJid,userJid){
     if(userJid===ownerJid) return true
@@ -9664,6 +9678,13 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
     if(connection==='close'){
       clearTimeout(forceFlushTimer)
       clearInterval(deafWatchdog)
+      // Agendadores pertencem a este socket: não reter timers após reconexões.
+      eventSchedulerClosed=true
+      clearInterval(doubleRewardEventScheduler)
+      clearInterval(luckyBoxEventScheduler)
+      clearInterval(setePecadosScheduler)
+      clearTimeout(doubleRewardStartupTimer)
+      clearTimeout(luckyBoxStartupTimer)
       for(const stop of datedEventStops)stop()
       groupMetadataCache.clear()
       whatsappMediaCache.close()
@@ -9907,7 +9928,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
         if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
         if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
-        if(await handleSetePecadosCollabCommand({cmd,args,sender,reply})) continue
+        if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.key?.id?chat+':'+msg.key.id:null})) continue
         if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
         if(await handleEnchantCommand({cmd,args,sender,reply,
           setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
@@ -12672,7 +12693,7 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
           await progressDailyMission(sender,'game')
           const rewardInfo=r.mode==='event'
-            ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou R$ 1.000.000 se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
+            ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou 7 essências se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
             :(r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
           await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 

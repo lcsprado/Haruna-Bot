@@ -1,0 +1,55 @@
+name: Auditoria Alpha Bot - timers e baus
+
+on:
+  push:
+    branches:
+      - audit/fix-event-timers-20261019
+  pull_request:
+    branches:
+      - whatsapp-only
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependencias sem executar scripts nativos
+        run: npm ci --ignore-scripts
+      - name: Validar sintaxe dos arquivos alterados
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/sete-pecados-collab.js
+          node --check test/sete-pecados-replay-20261019.test.mjs
+      - name: Testar deduplicacao e rotinas relacionadas
+        run: node --test test/sete-pecados-replay-20261019.test.mjs test/auth-bandwidth-20261014.test.mjs test/pvp-pet-bonuses.test.mjs
+      - name: Comparar suite integral com a branch em producao
+        shell: bash
+        run: |
+          node --test --test-reporter=tap > "$RUNNER_TEMP/feature.tap" 2>&1 || true
+          git fetch --no-tags --depth=1 origin whatsapp-only:refs/remotes/origin/whatsapp-only
+          git worktree add --detach "$RUNNER_TEMP/alpha-baseline" origin/whatsapp-only
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/alpha-baseline/node_modules"
+          (cd "$RUNNER_TEMP/alpha-baseline" && node --test --test-reporter=tap > "$RUNNER_TEMP/baseline.tap" 2>&1) || true
+          grep -E '^not ok [0-9]+ - ' "$RUNNER_TEMP/feature.tap" | sed -E 's/^not ok [0-9]+ - //' | sort > "$RUNNER_TEMP/feature-fails.txt"
+          grep -E '^not ok [0-9]+ - ' "$RUNNER_TEMP/baseline.tap" | sed -E 's/^not ok [0-9]+ - //' | sort > "$RUNNER_TEMP/baseline-fails.txt"
+          echo "Falhas no pacote de correcao: $(wc -l < "$RUNNER_TEMP/feature-fails.txt")"
+          echo "Falhas na branch atual: $(wc -l < "$RUNNER_TEMP/baseline-fails.txt")"
+          echo "=== Falhas preexistentes ==="
+          cat "$RUNNER_TEMP/baseline-fails.txt"
+          echo "=== Falhas atuais ==="
+          cat "$RUNNER_TEMP/feature-fails.txt"
+          comm -13 "$RUNNER_TEMP/baseline-fails.txt" "$RUNNER_TEMP/feature-fails.txt" > "$RUNNER_TEMP/new-fails.txt"
+          if [[ -s "$RUNNER_TEMP/new-fails.txt" ]]; then
+            echo "Novas falhas detectadas:"
+            cat "$RUNNER_TEMP/new-fails.txt"
+            exit 1
+          fi
+          echo "Nenhuma falha de teste nova em relacao a whatsapp-only"
