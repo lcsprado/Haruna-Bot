@@ -74,6 +74,7 @@ import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
 import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.js'
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
+import {handleBauGolpeCommand} from './bau-golpe-alpha.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 
@@ -9901,6 +9902,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
 
         if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
         if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+        if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
         if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
         if(await handleEnchantCommand({cmd,args,sender,reply,
           setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
