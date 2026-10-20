@@ -715,6 +715,19 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
           updated_at=${nowSql}
       `,[targetJid,sourceJid])
 
+      // Keep the payment history before the alias row is removed. Both tables
+      // cascade on users, and losing either can make an old milestone payable.
+      await client.query(`
+        INSERT INTO level_reward_claims(jid,milestone,claimed_at)
+        SELECT $1,milestone,claimed_at FROM level_reward_claims WHERE jid=$2
+        ON CONFLICT(jid,milestone) DO NOTHING
+      `,[targetJid,sourceJid])
+      await client.query(`
+        INSERT INTO level_reward_audit(jid,milestone,claimed_at)
+        SELECT $1,milestone,claimed_at FROM level_reward_audit WHERE jid=$2
+        ON CONFLICT(jid,milestone) DO NOTHING
+      `,[targetJid,sourceJid])
+
       await client.query(`
         INSERT INTO profile_avatars(jid,image_data,mime_type,updated_at)
         SELECT $1,image_data,mime_type,updated_at FROM profile_avatars WHERE jid=$2
@@ -800,6 +813,30 @@ export async function consolidateUserIdentity(targetJid, aliases=[], pushName=''
           wins=pets.wins+EXCLUDED.wins,losses=pets.losses+EXCLUDED.losses,
           last_action=GREATEST(pets.last_action,EXCLUDED.last_action),created_at=LEAST(pets.created_at,EXCLUDED.created_at)
       `,[targetJid,sourceJid])
+
+      // Collection pets have their own owner and team rows. Moving only the
+      // legacy pets row silently deletes the collection on alias removal.
+      const targetHasActivePet=(await client.query(
+        'SELECT 1 FROM pet_collection WHERE jid=$1 AND active=TRUE LIMIT 1',[targetJid]
+      )).rowCount>0
+      if(targetHasActivePet){
+        await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1 AND active=TRUE',[sourceJid])
+      }
+      await client.query('UPDATE pet_collection SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
+      await client.query('UPDATE pet_expeditions SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
+      const sourceTeam=(await client.query(
+        'SELECT pet_id FROM pet_team WHERE jid=$1 ORDER BY slot',[sourceJid]
+      )).rows
+      for(const {pet_id} of sourceTeam){
+        await client.query(`
+          INSERT INTO pet_team(jid,slot,pet_id)
+          SELECT $1,gs.slot,$2 FROM generate_series(1,3) AS gs(slot)
+          WHERE NOT EXISTS(SELECT 1 FROM pet_team WHERE jid=$1 AND pet_id=$2)
+            AND NOT EXISTS(SELECT 1 FROM pet_team WHERE jid=$1 AND slot=gs.slot)
+          ORDER BY gs.slot LIMIT 1
+          ON CONFLICT DO NOTHING
+        `,[targetJid,pet_id])
+      }
       await client.query(`UPDATE clans SET owner_jid=$1 WHERE owner_jid=$2`,[targetJid,sourceJid])
       await client.query(`
         INSERT INTO clan_members(jid,clan_id,role,joined_at)
