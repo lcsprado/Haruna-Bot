@@ -1042,6 +1042,7 @@ async function rememberDeletedMessage(key,source='unknown'){
   return true
 }
 
+const alphaIdentityMergeChecked=new Map()
 const quickGameFlows=new Map()
 const alphaNoQuickFlowUntil=new Map()
 const quickFlowWrites=new Map()
@@ -9950,9 +9951,20 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             String(canonicalPlayerJid(chat)).split('@')[0].replace(/\D/g,'')===configuredOwnerDigits)
         )
 
-        await consolidateUserIdentity(sender,senderIdentity.aliases,msg.pushName||'').catch(err=>{
-          console.error('[identidade] falha ao consolidar cadastro',err?.message||err)
-        })
+        // A mesma combinação PN/LID normalmente reaparece em toda mensagem
+        // do grupo. Após uma consolidação bem-sucedida, evitar transações
+        // repetidas por 30 minutos; aliases novos continuam sendo processados.
+        const identityKey=sender+'|'+[...new Set(senderIdentity.aliases||[])].sort().join('|')
+        const identityAt=alphaIdentityMergeChecked.get(identityKey)||0
+        if(!neonEcoMode || Date.now()-identityAt>30*60*1000){
+          try{
+            await consolidateUserIdentity(sender,senderIdentity.aliases,msg.pushName||'')
+            if(neonEcoMode){
+              if(alphaIdentityMergeChecked.size>5000)alphaIdentityMergeChecked.clear()
+              alphaIdentityMergeChecked.set(identityKey,Date.now())
+            }
+          }catch(err){console.error('[identidade] falha ao consolidar cadastro',err?.message||err)}
+        }
         // Instância dedicada ao RPG: não armazenar mensagens nem baixar mídias para Snipe.
         if(isGroup) await recordGroupActivity(chat,sender,body.startsWith(prefix)).catch(()=>{})
         // Uma única consulta de administrador/configuração por mensagem, em vez de duas.
