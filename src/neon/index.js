@@ -4307,7 +4307,9 @@ Você possui: *${stock}*
     const helmetStats=currentMap.get(p.helmet_id)||getEquipmentInfo(p.helmet_id)||{def:0,hp:0}
     const weaponExtra=[
       Number(weaponStats.hp||0)?'❤️ +'+Number(weaponStats.hp)+' HP':null,
-      Number(weaponStats.crit||0)?'🎯 +'+(Number(weaponStats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
+      Number(weaponStats.crit||0)?'🎯 +'+(Number(weaponStats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null,
+      Number(weaponStats.spd||0)?'💨 +'+Number(weaponStats.spd)+' VEL':null,
+      Number(weaponStats.def||0)?'🛡️ +'+Number(weaponStats.def)+' DEF':null
     ].filter(Boolean).join(' • ')
     const armorExtra=[
       Number(armorStats.hp||0)?'❤️ +'+Number(armorStats.hp)+' HP':null,
@@ -4359,6 +4361,7 @@ O que deseja trocar?
         Number(stats.hp||0)?'❤️ +'+Number(stats.hp)+' HP':null,
         Number(stats.crit||0)?'🎯 +'+(Number(stats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null,
         isWeapon&&Number(stats.def||0)?'🛡️ +'+Number(stats.def)+' DEF':null,
+        isWeapon&&Number(stats.spd||0)?'💨 +'+Number(stats.spd)+' VEL':null,
         !isWeapon&&Number(stats.atk||0)?'⚔️ +'+Number(stats.atk)+' ATK':null
       ].filter(Boolean).join(' • ')
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+' • 📦 ×'+Number(i.quantity||0)+' no total\n'
@@ -7171,13 +7174,17 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const beforeCrit=Number(oldStats.crit||0),afterCrit=Number(info.crit||0)
       const hpLine=(beforeHp||afterHp)?'\n❤️ *HP bônus: '+beforeHp+' → '+afterHp+'*'+(afterHp-beforeHp>0?' (+'+(afterHp-beforeHp)+')':afterHp-beforeHp<0?' ('+(afterHp-beforeHp)+')':''):''
       const critLine=(beforeCrit||afterCrit)?'\n🎯 *CRIT: '+(beforeCrit*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% → '+(afterCrit*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%*':''
+      const beforeSpd=Number(oldStats.spd||0),afterSpd=Number(info.spd||0)
+      const spdLine=isWeapon&&(beforeSpd||afterSpd)?'\n💨 *VEL bônus: '+beforeSpd+' → '+afterSpd+'*'+(afterSpd-beforeSpd>0?' (+'+(afterSpd-beforeSpd)+')':afterSpd-beforeSpd<0?' ('+(afterSpd-beforeSpd)+')':''):''
+      const beforeDef=Number(oldStats.def||0),afterDef=Number(info.def||0)
+      const defLine=isWeapon&&(beforeDef||afterDef)?'\n🛡️ *DEF bônus: '+beforeDef+' → '+afterDef+'*':''
       setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
       await reply(
         '⚙️ *TROCAR EQUIPAMENTO?*\n\n'+
         (isWeapon?'🗡️':isArmor?'🛡️':isHelmet?'🪖':'👢')+' Atual: *'+currentName+'*\n'+
         '➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+' Lv.'+Number(up?.level||1)+'*\n\n'+
         arrow+' *'+mainStat+': '+beforeMain+' → '+afterMain+'*'+(delta>0?' (+'+delta+')':delta<0?' ('+delta+')':'')+
-        hpLine+critLine+'\n\n'+
+        hpLine+critLine+spdLine+defLine+'\n\n'+
         '1️⃣ Equipar\n2️⃣ Cancelar\n9️⃣ Voltar'
       )
       return true
