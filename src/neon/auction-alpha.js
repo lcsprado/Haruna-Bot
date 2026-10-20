@@ -6,6 +6,9 @@ import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTran
 import {initEnchantments} from './enchantments-alpha.js'
 
 const KEY='leilao_oculto_alpha_20261020_nova_edicao_3lotes_v2'
+// All 20/10 auctions were cancelled by the organizer pending audit.
+// Keep reward packs and implementation intact; re-enable only after audit review.
+const AUCTION_PAUSED_FOR_AUDIT=true
 // Temporary-recovery datasets must not broadcast or revive historical auctions.
 // Chave isolada: modo temporário não reativa leilões históricos.
 const START=Date.parse('2026-10-20T12:30:00-03:00')
@@ -211,6 +214,11 @@ async function tick(sock){
   }finally{busy=false}
 }
 export function startAuctionAlphaScheduler(sock){
+  if(AUCTION_PAUSED_FOR_AUDIT){
+    if(timer){clearInterval(timer);timer=null}
+    console.log('[LEILAO OCULTO] pausado para auditoria — sem novos leiloes ou avisos')
+    return
+  }
   if(timer){clearInterval(timer);timer=null}
   if(Date.now()>END){
     console.log('[LEILAO OCULTO] scheduler desativado: recuperação temporária ou evento histórico encerrado')
@@ -230,6 +238,10 @@ function parseAmount(raw){
 }
 export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply}){
   if(!['leilao','lance'].includes(cmd))return false
+  if(AUCTION_PAUSED_FOR_AUDIT){
+    await reply('🔒 Os leilões de hoje foram cancelados e estão pausados até a auditoria. Lances foram estornados; prêmios serão revisados. Nenhuma nova cobrança será feita.')
+    return true
+  }
   if(!String(chat||'').endsWith('@g.us')){
     await reply('🔨 O Leilão Oculto acontece nos grupos.')
     return true
