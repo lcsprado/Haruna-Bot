@@ -148,7 +148,14 @@ function progress(row,u,counters){
       &&classId==='paladin'&&tier.stage===3&&type==='raid'
     const target=personalProtection?60:amount*tier.mult
     const earned=since(row.baseline,counters,type,raidMin)
-    const done=Math.min(target,earned+(personalProtection?34:0))
+    // Quota-blocked original Neon: verified awakening missions from the WhatsApp
+    // export have no corresponding historic raid/Boss transactions in the
+    // temporary DB. Carry ONLY audited progress for this stage, separate from
+    // live metrics. A real stage advance/class switch clears it via checkpoint().
+    const recoveredStage=Number(row.baseline?.__recovery_stage||0)
+    const recoveredQuests=recoveredStage===stage?row.baseline?.__recovered_quests||{}:{}
+    const recovered=Math.max(0,Math.min(target,Math.floor(Number(recoveredQuests[type]||0))))
+    const done=Math.min(target,earned+recovered+(personalProtection?34:0))
     return {label:label+(type==='raid'?` (Lv.${raidMin}+)`:''),target,done}
   }):[]
   if(tier?.stage===5)quests.push({
