@@ -371,6 +371,14 @@ export async function initDatabase() {
     );
   `)
 
+  await db.query(`DO $ BEGIN
+    IF EXISTS(SELECT 1 FROM pg_constraint WHERE conname='alpha_xp_boosts_bonus_percent_check' AND pg_get_constraintdef(oid) NOT LIKE '%100%') THEN
+      ALTER TABLE alpha_xp_boosts DROP CONSTRAINT alpha_xp_boosts_bonus_percent_check;
+    END IF;
+    IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='alpha_xp_boosts_bonus_percent_check') THEN
+      ALTER TABLE alpha_xp_boosts ADD CONSTRAINT alpha_xp_boosts_bonus_percent_check CHECK (bonus_percent BETWEEN 1 AND 100);
+    END IF;
+  END $;`)
   await db.query(`
     INSERT INTO trevo_settings(key,value)
     VALUES
@@ -2058,6 +2066,7 @@ export async function leaderboard(limit=10, participantJids=[]) {
 
 const EQUIPMENT = {
   ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
+  elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
   elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
   elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
   elmo_labirinto_alpha: {category:'helmet',atk:0,def:92,hp:240,crit:0,name:'Elmo do Labirinto Eterno'},
@@ -2118,6 +2127,7 @@ const EQUIPMENT = {
   bota_cacador: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:6, name:'Bota do Caçador' },
   bota_relampago: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:8, name:'Bota do Relâmpago' },
   bota_celestial: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:10, name:'Bota Celestial' },
+  bota_vortice_alpha_20261020: {category:'boots',atk:0,def:0,hp:70,spd:14,crit:.025,name:'Botas do Vórtice'},
   bota_jp_aquiles: { category:'boots', atk:0, def:0, hp:0, crit:0.02, spd:12, name:'Bota do JP — Passo da Lenda' },
 }
 
@@ -3304,6 +3314,7 @@ const XP_ITEM_EFFECTS=Object.freeze({
   elixir_disciplina:{type:'boost',name:'Elixir da Disciplina',percent:20,seconds:20*60,cap:1200},
   elixir_sombras:{type:'boost',name:'Elixir das Sombras',percent:20,seconds:20*60,cap:1200},
   elixir_leilao_30m:{type:'boost',name:'Elixir do Leilão',percent:20,seconds:30*60,cap:5000},
+  elixir_leilao_2h:{type:'boost',name:'Ampulheta Dourada — XP 2×',percent:100,seconds:2*60*60,cap:100000000},
   pergaminho_experiencia:{type:'scroll',name:'Pergaminho de Experiência',xp:500},
   pergaminho_virtude:{type:'scroll',name:'Tomo da Virtude',xp:1200},
   tomo_proibido:{type:'scroll',name:'Tomo Proibido',xp:1200},
