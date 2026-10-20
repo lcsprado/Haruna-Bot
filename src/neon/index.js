@@ -2600,13 +2600,20 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
   bossAutoReply=(chat,text)=>sock.sendMessage(chat,{text})
   if(!bossAutoWatchdog){
     bossAutoWatchdog=setInterval(()=>{
+      // Com nenhum atacante ativo, não manter o Neon acordado a cada 20s.
+      if(neonEcoMode && bossSessions.size===0)return
       void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))
     },20000)
     bossAutoWatchdog.unref?.()
   }
   setTimeout(()=>{void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))},1500).unref?.()
   if(!raidAutoWatchdog){
-    raidAutoWatchdog=setInterval(()=>{ void ensureActiveRaidRuns() },4000)
+    raidAutoWatchdog=setInterval(()=>{
+      // Recuperação inicial roda no boot. Nova Raid aciona seu runner diretamente.
+      // Só consultar o banco periodicamente enquanto existem runners/retries.
+      if(neonEcoMode && raidRuns.size===0 && raidAutoRetryAt.size===0)return
+      void ensureActiveRaidRuns()
+    },4000)
     // Reenvia encerramentos pendentes quando o WhatsApp reconectar.
     setInterval(()=>{void flushRaidFinalNotices()},20000).unref?.()
     raidAutoWatchdog.unref?.()
@@ -3169,8 +3176,13 @@ ${ranking}${extra}
 
 
   if(bossEventScheduler) clearInterval(bossEventScheduler)
-  bossEventScheduler=setInterval(runBossEventScheduler,30*1000)
-  bossEventScheduler.unref?.()
+  if(!neonEcoMode || Date.now()<Date.parse('2026-10-11T00:15:00-03:00')){
+    bossEventScheduler=setInterval(runBossEventScheduler,30*1000)
+    bossEventScheduler.unref?.()
+  }else{
+    bossEventScheduler=null
+    console.log('[Neon Eco] sem polling dos eventos históricos encerrados')
+  }
   setTimeout(runBossEventScheduler,5000).unref?.()
   for(const horario of [Date.parse('2026-10-09T19:50:00-03:00'),Date.parse('2026-10-09T20:00:00-03:00'),Date.parse('2026-10-09T21:00:00-03:00')]){
     if(horario>Date.now()) setTimeout(runBossEventScheduler,horario-Date.now()+500).unref?.()
