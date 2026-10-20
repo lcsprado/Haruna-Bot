@@ -249,6 +249,7 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
       }
       if(first?.playerDead) throw new Error('Você está sem HP. Use !curar e depois !atacar no grupo original.')
     }
+    if(first?.mode==='weekly'||first?.mode==='event')bossProgressKnownActiveUntil=Math.max(bossProgressKnownActiveUntil,Number(first?.endsAt||0))
     bossId=String(first?.mode||'common')+':'+String(first?.endsAt||0)
     await db.query(`
       INSERT INTO boss_auto_sessions(jid,chat_jid,name,use_pet,status,boss_id,ends_at,last_attack_at)
@@ -3019,6 +3020,7 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
   async function broadcastBossProgressEvery30Minutes(){
     if(trevoHealth.whatsapp!=='open' || bossProgressBroadcastRunning) return
     const now=Date.now()
+    if(neonEcoMode && bossSessions.size===0 && bossProgressKnownActiveUntil<=now)return
     const slotMs=30*60*1000
     const windowStart=Math.floor(now/slotMs)*slotMs
     // O scheduler verifica a cada 20 s. Permite 4 min de tolerância após o
@@ -3165,6 +3167,16 @@ ${ranking}${extra}
   if(bossProgressScheduler) clearInterval(bossProgressScheduler)
   bossProgressScheduler=setInterval(()=>{void broadcastBossProgressEvery30Minutes()},20*1000)
   bossProgressScheduler.unref?.()
+  if(neonEcoMode)setTimeout(async()=>{
+    try{
+      const {rows}=await db.query("SELECT state FROM trevo_games WHERE chat_jid IN ('__alpha_global_weekly_boss__','__alpha_global_boss_event__') AND game_type IN ('boss','boss_event')")
+      for(const {state} of rows){
+        if(Number(state?.hp||0)>0 && state.active!==false){
+          bossProgressKnownActiveUntil=Math.max(bossProgressKnownActiveUntil,Number(state.endsAt||0))
+        }
+      }
+    }catch(err){console.warn('[Neon Eco] leitura de Boss ativo',err?.message||err)}
+  },1000).unref?.()
   setTimeout(()=>{void broadcastBossProgressEvery30Minutes()},3000).unref?.()
 
   // Snapshot de leitura na inicialização para diagnosticar ranking em produção.
