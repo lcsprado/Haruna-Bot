@@ -1043,6 +1043,7 @@ async function rememberDeletedMessage(key,source='unknown'){
 }
 
 const quickGameFlows=new Map()
+const alphaNoQuickFlowUntil=new Map()
 const quickFlowWrites=new Map()
 const quickFlowKey=(chat,sender)=>`${chat}|${sender}`
 function queueQuickFlowWrite(key,write){
@@ -1056,6 +1057,7 @@ function setQuickFlow(chat,sender,stage,data={},ttlMs=90000){
   const key=quickFlowKey(chat,sender)
   const flow={stage,data,expiresAt:Date.now()+ttlMs}
   quickGameFlows.set(key,flow)
+  alphaNoQuickFlowUntil.delete(key)
   queueQuickFlowWrite(key,()=>saveQuickFlow(key,chat,sender,stage,data,flow.expiresAt))
 }
 function getQuickFlow(chat,sender){
@@ -1071,15 +1073,24 @@ function getQuickFlow(chat,sender){
 }
 async function recoverQuickFlow(chat,sender){
   const key=quickFlowKey(chat,sender)
+  if(neonEcoMode && Number(alphaNoQuickFlowUntil.get(key)||0)>Date.now())return null
   await quickFlowWrites.get(key)?.catch(()=>{})
   const stored=await getStoredQuickFlow(key)
-  if(!stored) return null
+  if(!stored){
+    if(neonEcoMode){
+      if(alphaNoQuickFlowUntil.size>3000)alphaNoQuickFlowUntil.clear()
+      alphaNoQuickFlowUntil.set(key,Date.now()+30*60*1000)
+    }
+    return null
+  }
+  alphaNoQuickFlowUntil.delete(key)
   quickGameFlows.set(key,stored)
   return stored
 }
 function clearQuickFlow(chat,sender){
   const key=quickFlowKey(chat,sender)
   quickGameFlows.delete(key)
+  alphaNoQuickFlowUntil.set(key,Date.now()+30*60*1000)
   queueQuickFlowWrite(key,()=>deleteQuickFlow(key))
 }
 
@@ -9902,7 +9913,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
         const isGroup=chat.endsWith('@g.us')
         setPlayerGroupContext(sender,isGroup?chat:null)
-        if(isGroup){
+        if(isGroup && !temporaryRecoveryMode){
           // Recuperação da apresentação: se o bot foi adicionado enquanto o Render
           // reiniciava/deployava, o evento group-participants.update pode ser perdido.
           // No primeiro tráfego do grupo, grupos novos/recentes recebem a introdução
