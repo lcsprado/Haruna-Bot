@@ -2231,6 +2231,10 @@ async function start() {
     const {restoreTemporaryPlayers20261019}=await import('./temporary-recovery-20261019.js')
     await restoreTemporaryPlayers20261019()
   }
+  if(temporaryRecoveryMode && process.env.ALPHA_INVENTORY_RECOVERY_20261019==='yes') {
+    const {restoreLostInventories20261019}=await import('./inventory-recovery-20261019.js')
+    await restoreLostInventories20261019()
+  }
   // Auditoria somente leitura das recompensas únicas do Superboss de 09/10.
   // Verifica propriedade e categoria, sem duplicar itens ou modificar inventários.
   try{
@@ -9947,7 +9951,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         const senderCanonical=canonicalPlayerJid(sender)
         const senderDigits=String(senderCanonical||'').split('@')[0].replace(/\D/g,'')
         const ownerDigits=String(ownerCanonical||'').split('@')[0].replace(/\D/g,'')
-        const altDigits=[msg.key?.participantAlt,msg.key?.remoteJidAlt]
+        const altDigits=[msg.key?.participantAlt,msg.key?.remoteJidAlt,...(senderIdentity.aliases||[])]
           .filter(Boolean)
           .map(v=>String(canonicalPlayerJid(v)).split('@')[0].replace(/\D/g,''))
         const configuredOwnerDigits=ownerDigits || pairingNumber
