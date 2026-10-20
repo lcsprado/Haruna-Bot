@@ -180,12 +180,30 @@ export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,c
       await reply('Responda *1* para confirmar, *2* para cancelar, *9* para voltar ou *0* para sair.')
       return true
     }
-    // Evita que uma confirmação antiga seja reutilizada. A transação confere
-    // novamente a posse da pedra, do equipamento e os limites no banco.
-    clearFlow()
+    // Reserva o fluxo enquanto o encantamento é gravado, evitando que um
+    // segundo "1" seja interpretado por outro menu durante a confirmação.
+    set('enchant_processing',{stoneId:data.stoneId,itemId:data.itemId})
+    let receipt
     try{
-      await reply(await applyStone(sender,String(data.stoneId),String(data.itemId))+'\n\n💡 Use *!encantar* para aplicar outra pedra.')
-    }catch(e){await reply('❌ '+String(e.message||e)+'\nNenhuma pedra foi consumida. Use *!encantar* para recomeçar.')}
+      receipt=await applyStone(sender,String(data.stoneId),String(data.itemId))
+    }catch(e){
+      clearFlow()
+      await reply('❌ '+String(e.message||e)+'\nNenhuma pedra foi consumida. Use *!encantar* para recomeçar.')
+      return true
+    }
+    // O commit já aconteceu: erro ao enviar mensagem não é falha do
+    // encantamento. Nunca orientar o jogador a reaplicar por esse motivo.
+    try{
+      await reply(receipt+'\n\n📋 Confira em *!encantamentos*. Use *!encantar* para outra pedra.')
+    }catch(e){
+      console.warn('[ENCANTAMENTO] aplicado no banco, mas confirmação WhatsApp não enviada:',e?.message||e)
+    }finally{
+      clearFlow()
+    }
+    return true
+  }
+  if(stage==='enchant_processing'){
+    await reply('⌛ Encantamento em processamento. Aguarde a confirmação; não envie outra escolha.')
     return true
   }
   clearFlow()
