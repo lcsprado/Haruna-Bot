@@ -1516,6 +1516,25 @@ export async function raidRound(chat,level){
         petDamage=Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense)))
         p.pet.hp=Math.max(0,Number(p.pet.hp)-petDamage)
         petFainted=p.pet.hp<=0
+        // Autocura preventiva da Raid, igual ao Boss: abaixo de 35% do HP,
+        // antes de desmaiar, usa a menor poção disponível para o HP perdido.
+        // O inventário já está bloqueado FOR UPDATE na mesma transação.
+        const maxPetHp=Math.max(1,Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)))
+        if(!petFainted&&Number(p.pet.hp)/maxPetHp<.35){
+          const missing=Math.max(1,maxPetHp-Number(p.pet.hp))
+          const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
+          if(chosenPet){
+            const beforePetHeal=Math.max(0,Number(p.pet.hp))
+            p.pet.hp=Math.min(maxPetHp,beforePetHeal+Number(chosenPet.heal||0))
+            const healed=Math.max(0,Number(p.pet.hp)-beforePetHeal)
+            p.petPotionHealing=Number(p.petPotionHealing||0)+healed
+            p.petPotionUses=Number(p.petPotionUses||0)+1
+            const row=petPotionRows.find(x=>x.jid===p.jid&&x.item_id===chosenPet.item_id)
+            if(row) row.quantity=Number(row.quantity)-1
+            await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>0',[p.jid,chosenPet.item_id])
+            autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:healed,hp:Number(p.pet.hp),maxHp:maxPetHp,petName:p.pet.name}
+          }
+        }
         if(petFainted){
           fallenPetName=p.pet.name
           await persistRaidCombatPet(c,p.jid,p.pet)
