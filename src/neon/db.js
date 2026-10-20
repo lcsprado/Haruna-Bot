@@ -2195,6 +2195,7 @@ async function applyExp(client, jid, gain, options={}) {
     :1
   const eventGain=Math.max(0,Math.round(numericGain*eventMultiplier))
   let bonusXp=0
+  let boostPercent=0
   if(eventGain>0 && !options.ignoreXpBoost && startingLevel<MAX_LEVEL){
     const boost=(await client.query(`
       SELECT bonus_percent,bonus_remaining FROM alpha_xp_boosts
@@ -2203,6 +2204,7 @@ async function applyExp(client, jid, gain, options={}) {
     `,[jid])).rows[0]
     if(boost){
       bonusXp=Math.min(Number(boost.bonus_remaining),Math.floor(eventGain*Number(boost.bonus_percent)/100))
+      if(bonusXp>0) boostPercent=Number(boost.bonus_percent)
       if(bonusXp>0) await client.query('UPDATE alpha_xp_boosts SET bonus_remaining=bonus_remaining-$1 WHERE jid=$2',[bonusXp,jid])
     }
   }
@@ -2245,6 +2247,7 @@ async function applyExp(client, jid, gain, options={}) {
     awardedGain:eventGain+bonusXp,
     eventGain,
     boostBonus:bonusXp,
+    boostPercent,
     eventMultiplier
   }
 }
