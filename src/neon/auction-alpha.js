@@ -1,16 +1,16 @@
-// Leilão Oculto Alpha — edição única de 19/10/2026.
+// Leilão Oculto Alpha — edição 20/10/2026: 4 lotes de 2 minutos.
 // Os lotes são embaralhados e os prêmios de todos os lotes só são revelados no final.
 // Estado, lances reservados e entrega final são transacionais no Neon.
 import {randomInt,randomBytes,createHash} from 'node:crypto'
-import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,petMaxHp} from './db.js'
+import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction} from './db.js'
 import {initEnchantments} from './enchantments-alpha.js'
 
-const KEY='leilao_oculto_alpha_20261019_v1'
+const KEY='leilao_oculto_alpha_20261020_1215_v1'
 // Temporary-recovery datasets must not broadcast or revive historical auctions.
-const isTemporaryDataset=()=>String(process.env.ALPHA_DATASET_MODE||'').startsWith('TEMPORARY_')
-const START=Date.parse('2026-10-19T13:00:00-03:00')
-const END=Date.parse('2026-10-20T02:00:00-03:00')
-const DURATION=5*60*1000
+// Chave isolada: modo temporário não reativa leilões históricos.
+const START=Date.parse('2026-10-20T12:15:00-03:00')
+const END=Date.parse('2026-10-20T16:00:00-03:00')
+const DURATION=2*60*1000
 const OPENING=100000
 const STEP=50000
 const SEAL_ITEM='selo_poder_5pct_alpha_20261019'
@@ -20,10 +20,10 @@ const clock=n=>new Date(Number(n)).toLocaleTimeString('pt-BR',{timeZone:'America
 // Os pacotes nunca são exibidos nos anúncios, status ou lances; cada lote
 // oferece mais de um item e o pacote de maior valor pode ocupar qualquer posição.
 const PACKAGES=[
-  [{id:SEAL_ITEM,qty:1},{id:'pedra_furia_alpha',qty:1}],
-  [{pet:'raposa_astral'},{id:'pedra_precisao_alpha',qty:1},{id:'caixa_epica',qty:2}],
-  [{id:'pedra_agilidade_alpha',qty:1},{id:'pedra_fortaleza_alpha',qty:1},
-   {id:'pergaminho_leilao_10k',qty:1},{id:'caixa_epica',qty:3}]
+  [{xp:20000},{id:'pedra_furia_alpha',qty:1},{id:'caixa_epica',qty:2}],
+  [{id:'bota_vortice_alpha_20261020',qty:1},{id:'pedra_agilidade_alpha',qty:1},{xp:10000}],
+  [{id:'elmo_imperador_alpha_20261020',qty:1},{id:'pedra_precisao_alpha',qty:1},{id:'caixa_lendaria',qty:1}],
+  [{id:'elixir_leilao_2h',qty:1},{id:'pedra_fortaleza_alpha',qty:2},{id:'caixa_epica',qty:3},{id:'caixa_lendaria',qty:1}]
 ]
 let timer=null,busy=false,initPromise=null
 
@@ -40,7 +40,7 @@ async function init(){
     for(const [id,name,description,category,stackable] of definitions){
       await db.query(
         'INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,$2,$3,$4,0,$5,FALSE,$6) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,category=EXCLUDED.category,sellable=FALSE,stackable=EXCLUDED.stackable',
-        [id,name,description,category,'event',stackable]
+        [id,name,description,category,['helmet','boots'].includes(category)?'legendary':'event',stackable]
       )
     }
   })()
@@ -88,12 +88,12 @@ function shufflePackages(){
 }
 function status(state){
   const lot=state.lots?.[state.lot]
-  if(state.phase==='completed')return '🏁 *LEILÃO OCULTO ENCERRADO!*\nOs 3 lotes foram revelados e as recompensas foram entregues.'
+  if(state.phase==='completed')return '🏁 *LEILÃO OCULTO ENCERRADO!*\nOs 4 lotes foram revelados e as recompensas foram entregues.'
   if(!lot)return '🔨 Leilão Oculto Alpha em preparação.'
   const minimum=state.high?Number(state.high.value)+lot.step:lot.min
-  return '🔨 *LEILÃO OCULTO ALPHA — LOTE '+(Number(state.lot)+1)+'/3*'+
+  return '🔨 *LEILÃO OCULTO ALPHA — LOTE '+(Number(state.lot)+1)+'/4*'+
     '\n🎁 *CAIXA MISTERIOSA* — conteúdo e valor desconhecidos!'+
-    '\n🔒 O prêmio só aparece quando os *3 lotes* terminarem.'+
+    '\n🔒 O prêmio só aparece quando os *4 lotes* terminarem.'+
     '\n💰 Lance inicial: '+fmt(lot.min)+
     '\n📈 Próximo lance mínimo: *'+fmt(minimum)+'* (aumentos de '+fmt(lot.step)+' ou mais)'+
     '\n🏆 Maior lance: '+(state.high?fmt(state.high.value)+' — '+clean(state.high.name):'Nenhum')+
@@ -104,13 +104,9 @@ function status(state){
 async function prize(c,jid,packageItems){
   const received=[]
   for(const item of packageItems){
-    if(item.pet){
-      const hp=petMaxHp(1,0,'raposa_astral')
-      await c.query(
-        "INSERT INTO pet_collection(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,active,hp,max_hp,purchase_price) VALUES($1,'raposa_astral','🦊 Raposa Astral',1,0,100,100,100,40,0,0,0,0,FALSE,$2,$2,0)",
-        [jid,hp]
-      )
-      received.push('🦊 Raposa Astral (coleção de pets)')
+    if(item.xp){
+      await grantExpInTransaction(c,jid,item.xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
+      received.push('✨ '+Number(item.xp).toLocaleString('pt-BR')+' XP instantâneos')
     }else{
       const metadata=(await c.query('SELECT name FROM items WHERE id=$1',[item.id])).rows[0]
       if(!metadata)throw Error('Item de prêmio não encontrado: '+item.id)
@@ -133,9 +129,9 @@ function finishLot(state){
   const lot=state.lots[state.lot]
   const high=state.high
   state.history.push({lot:state.lot,winner:high?{jid:high.jid,name:high.name,bid:high.value}:null})
-  return '🔨 *LOTE '+(state.lot+1)+'/3 ENCERRADO*'+
+  return '🔨 *LOTE '+(state.lot+1)+'/4 ENCERRADO*'+
     '\n🏆 '+(high?'Arrematado por *'+clean(high.name)+'* — '+fmt(high.value):'Sem comprador')+
-    '\n🎁 Conteúdo continuará *OCULTO* até o fim do terceiro lote.'
+    '\n🎁 Conteúdo continuará *OCULTO* até o fim do quarto lote.'
 }
 async function revealAll(state,c){
   let report='\n\n🎉 *REVELAÇÃO FINAL — LEILÃO OCULTO ALPHA*'
@@ -161,7 +157,6 @@ async function revealAll(state,c){
     '\n🔑 Chave: '+state.salt
 }
 async function tick(sock){
-  if(isTemporaryDataset())return
   if(busy)return
   busy=true
   try{
@@ -190,16 +185,16 @@ async function tick(sock){
         state.lot=0
         beginLot(state,now)
         outgoing='🔨🎁 *LEILÃO OCULTO ALPHA COMEÇOU!*\n\n'+
-          '🎭 *3 lotes totalmente secretos*. Até quem organiza não conhece a ordem dos pacotes.'+
+          '🎭 *4 lotes totalmente secretos*. Até quem organiza não conhece a ordem dos pacotes.'+
           '\n💰 Lance inicial por lote: *'+fmt(OPENING)+'*'+
           '\n📈 Aumentos de pelo menos *'+fmt(STEP)+'*; também vale dar lances maiores.'+
-          '\n⏱️ *5 minutos por lote*. Últimos 15 s com prorrogação limitada.'+
+          '\n⏱️ *2 minutos por lote*, sem prorrogação.'+
           '\n✅ Sem taxa de entrada. O lance é reservado e devolvido se for superado.'+
           '\n🔒 Os prêmios de TODOS os lotes serão revelados somente quando o leilão terminar.'+
           '\n\n'+status(state)
       }else if(state.phase==='running' && now>=Number(state.ends||0)){
         outgoing=finishLot(state)
-        if(state.lot===2){
+        if(state.lot===PACKAGES.length-1){
           outgoing+=await revealAll(state,c)
         }else{
           state.lot++
@@ -215,7 +210,7 @@ async function tick(sock){
 }
 export function startAuctionAlphaScheduler(sock){
   if(timer){clearInterval(timer);timer=null}
-  if(isTemporaryDataset() || Date.now()>END){
+  if(Date.now()>END){
     console.log('[LEILAO OCULTO] scheduler desativado: recuperação temporária ou evento histórico encerrado')
     return
   }
@@ -233,10 +228,6 @@ function parseAmount(raw){
 }
 export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply}){
   if(!['leilao','lance'].includes(cmd))return false
-  if(isTemporaryDataset()){
-    await reply('🔨 *Leilão Oculto de 19/10 encerrado.* O banco temporário não reabre nem cobra lances de eventos históricos. Os prêmios e saldos foram preservados para conciliação.')
-    return true
-  }
   if(!String(chat||'').endsWith('@g.us')){
     await reply('🔨 O Leilão Oculto acontece nos grupos.')
     return true
@@ -285,12 +276,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
         cash:cash+(old?.jid===sender?Number(old.cash):0),
         bank:bank+(old?.jid===sender?Number(old.bank):0)
       }
-      if(state.ends-Date.now()<=15000&&state.extra<120000){
-        const ext=Math.min(20000,120000-state.extra)
-        state.ends+=ext
-        state.extra+=ext
-      }
-      return '✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/3*\n💰 '+fmt(offered)+
+      return '✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/4*\n💰 '+fmt(offered)+
         '\n🔒 Reservado até você vencer ou ser superado.'+
         '\n🎁 O conteúdo só será revelado ao final dos três lotes.'+
         '\n📈 Próximo lance: '+fmt(offered+lot.step)+
