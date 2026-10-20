@@ -1189,7 +1189,7 @@ async function runAction(session,name,body={}){
     case 'ifood': return deliverIfood(jid)
     case 'business.buy': return buyBusiness(jid,String(body.id||body.input||''))
     case 'business.collect': return collectBusinesses(jid)
-    case 'business.upgrade': return upgradeBusiness(jid,String(body.id||body.input||''))
+    case 'business.upgrade': return upgradeBusiness(jid,String(body.id||body.input||''),body.targetLevel)
     case 'cltUber.start': return startCltUberShift(jid,positiveInt(body.driverSlot,'Motorista',100),positiveInt(body.carSlot,'Carro',100))
     case 'cltUber.collect': return collectCltUber(jid)
 

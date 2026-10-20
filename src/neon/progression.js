@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import {homeTrainingReward,homeRestCapacity} from './home-menu.js'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
+import {businessIntervalGross} from './business-profit.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -260,6 +261,7 @@ export async function initProgression(){
       UNIQUE(jid,business_id)
     );
     ALTER TABLE user_businesses ADD COLUMN IF NOT EXISTS level INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE user_businesses ADD COLUMN IF NOT EXISTS accrued_gross BIGINT NOT NULL DEFAULT 0 CHECK(accrued_gross>=0);
 
     CREATE INDEX IF NOT EXISTS user_businesses_jid_idx
       ON user_businesses(jid);
@@ -1390,7 +1392,7 @@ export async function patrimonyLeaderboard(limit=10){
 
 export async function getBusinesses(jid){
   await ensureUser(jid)
-  const {rows}=await db.query('SELECT business_id,price_paid,acquired_at,last_collected_at,level FROM user_businesses WHERE jid=$1 ORDER BY acquired_at',[jid])
+  const {rows}=await db.query('SELECT business_id,price_paid,acquired_at,last_collected_at,level,accrued_gross FROM user_businesses WHERE jid=$1 ORDER BY acquired_at',[jid])
   return rows.map(r=>({...BUSINESSES.find(b=>b.id===r.business_id),...r,id:r.business_id}))
 }
 
@@ -1433,18 +1435,13 @@ export async function collectBusinesses(jid){
     for(const row of rows){
       const b=BUSINESSES.find(x=>x.id===row.business_id)
       if(!b) continue
-      const elapsed=Math.max(0,now-Number(row.last_collected_at||now))
-      const level=Math.max(1,Number(row.level||1))
-      const multiplier=1+(level-1)*0.25
-      const capacityHours=b.capacityHours+(level-1)
-      const capped=Math.min(elapsed,capacityHours*3600)
-      const earned=Math.floor((capped/3600)*b.profitHour*multiplier)
+      const earned=Number(row.accrued_gross||0)+businessIntervalGross(b,row,now)
       if(earned>0){
         total+=earned
         details.push({name:b.name,earned})
         // Consume credited time in full: retaining elapsed % 3600 lets players
         // claim nearly an hour of profit again on every rapid !coletar call.
-        await client.query('UPDATE user_businesses SET last_collected_at=$1 WHERE id=$2',[now,row.id])
+        await client.query('UPDATE user_businesses SET last_collected_at=$1,accrued_gross=0 WHERE id=$2',[now,row.id])
       }
     }
     if(total<=0) return {total:0,gross:0,tax:0,taxRate:10,details}
@@ -1493,18 +1490,21 @@ export async function upgradeBusiness(jid,input,targetLevel=null){
   await ensureUser(jid)
   const business=resolveCatalog(input,BUSINESSES)
   if(!business) throw new Error('Negócio inválido. Use !meusnegocios.')
+  if(!Number.isInteger(Number(targetLevel))||targetLevel===null) throw new Error('Informe o nível final do upgrade.')
   return tx(async client=>{
     const own=await client.query('SELECT * FROM user_businesses WHERE jid=$1 AND business_id=$2 FOR UPDATE',[jid,business.id])
     if(!own.rows.length) throw new Error('Você não possui esse negócio.')
     const level=Math.max(1,Number(own.rows[0].level||1))
-    const target=targetLevel===null?level+1:Number(targetLevel)
+    const target=Number(targetLevel)
     const quote=businessUpgradeQuote(business,level,target)
     const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     const cash=Number(wallet.rows[0]?.cash||0)
     if(cash<quote.cost) throw new Error('Saldo insuficiente. Upgrade até o Lv.'+target+' custa R$ '+quote.cost.toLocaleString('pt-BR')+'.')
     // Uma cobrança e uma atualização no Neon: sem níveis parciais se faltar saldo.
     await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2',[quote.cost,jid])
-    await client.query('UPDATE user_businesses SET level=$1 WHERE jid=$2 AND business_id=$3',[target,jid,business.id])
+    const now=Math.floor(Date.now()/1000)
+    const accrued=businessIntervalGross(business,own.rows[0],now)
+    await client.query('UPDATE user_businesses SET level=$1,accrued_gross=accrued_gross+$2,last_collected_at=$3 WHERE jid=$4 AND business_id=$5',[target,accrued,now,jid,business.id])
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'business_upgrade',$3)",
       [jid,quote.cost,business.name+' Lv.'+level+' → Lv.'+target])
     return {...business,...quote,level:target,cost:quote.cost,multiplier:1+(target-1)*0.25,cash:cash-quote.cost}
