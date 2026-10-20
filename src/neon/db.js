@@ -371,14 +371,12 @@ export async function initDatabase() {
     );
   `)
 
-  await db.query(`DO $ BEGIN
-    IF EXISTS(SELECT 1 FROM pg_constraint WHERE conname='alpha_xp_boosts_bonus_percent_check' AND pg_get_constraintdef(oid) NOT LIKE '%100%') THEN
-      ALTER TABLE alpha_xp_boosts DROP CONSTRAINT alpha_xp_boosts_bonus_percent_check;
-    END IF;
-    IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='alpha_xp_boosts_bonus_percent_check') THEN
-      ALTER TABLE alpha_xp_boosts ADD CONSTRAINT alpha_xp_boosts_bonus_percent_check CHECK (bonus_percent BETWEEN 1 AND 100);
-    END IF;
-  END $;`)
+  // Permite XP 2x na mesma tabela de buffs; migração executada somente uma vez.
+  const xpConstraint=(await db.query("SELECT pg_get_constraintdef(oid) AS rule FROM pg_constraint WHERE conrelid='alpha_xp_boosts'::regclass AND conname='alpha_xp_boosts_bonus_percent_check'")).rows[0]?.rule||''
+  if(!xpConstraint.includes('100')){
+    await db.query('ALTER TABLE alpha_xp_boosts DROP CONSTRAINT IF EXISTS alpha_xp_boosts_bonus_percent_check')
+    await db.query('ALTER TABLE alpha_xp_boosts ADD CONSTRAINT alpha_xp_boosts_bonus_percent_check CHECK (bonus_percent BETWEEN 1 AND 100)')
+  }
   await db.query(`
     INSERT INTO trevo_settings(key,value)
     VALUES
