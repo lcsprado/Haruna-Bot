@@ -119,6 +119,9 @@ function sleepStartedMessage(r){
 }
 
 const temporaryRecoveryMode=String(process.env.ALPHA_DATASET_MODE||'').startsWith('TEMPORARY_')
+const neonEcoMode=temporaryRecoveryMode||process.env.ALPHA_DB_ECO_MODE==='1'
+let lastAlphaGameActionAt=0
+let bossProgressKnownActiveUntil=0
 const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
 // WhatsApp identity is environment-driven. Changing the bot phone must never require a code change.
 // IMPORTANT: when changing PAIRING_NUMBER, also change SESSION_ID so Baileys creates a fresh auth session.
