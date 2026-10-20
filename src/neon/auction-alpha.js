@@ -35,7 +35,10 @@ async function init(){
       [SEAL_ITEM,'Selo de Potência Alpha',
         'Relíquia permanente: +5% de ATK total, inclusive equipamentos e encantamentos; ativo automaticamente enquanto estiver no inventário. Não acumula.','special',false],
       ['pergaminho_leilao_10k','Pergaminho de 10.000 XP',
-        '+10.000 XP instantâneo; um pergaminho por dia.','consumable',true]
+        '+10.000 XP instantâneo; um pergaminho por dia.','consumable',true],
+      ['elixir_leilao_2h','Ampulheta Dourada XP 2x','Ative via buffxp por duas horas','consumable',true],
+      ['elmo_imperador_alpha_20261020','Elmo do Imperador Alpha','108 DEF, 260 HP e 2,5% critico','helmet',false],
+      ['bota_vortice_alpha_20261020','Botas do Vortice','14 VEL, 70 HP e 2,5% critico','boots',false]
     ]
     for(const [id,name,description,category,stackable] of definitions){
       await db.query(
@@ -278,7 +281,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
       }
       return '✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/4*\n💰 '+fmt(offered)+
         '\n🔒 Reservado até você vencer ou ser superado.'+
-        '\n🎁 O conteúdo só será revelado ao final dos três lotes.'+
+        '\n🎁 O conteúdo só será revelado ao final dos quatro lotes.'+
         '\n📈 Próximo lance: '+fmt(offered+lot.step)+
         '\n⏳ Encerra: '+clock(state.ends)
     })
