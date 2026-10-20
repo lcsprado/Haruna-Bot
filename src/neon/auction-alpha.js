@@ -6,6 +6,8 @@ import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,petMaxHp} from
 import {initEnchantments} from './enchantments-alpha.js'
 
 const KEY='leilao_oculto_alpha_20261019_v1'
+// Temporary-recovery datasets must not broadcast or revive historical auctions.
+const isTemporaryDataset=()=>String(process.env.ALPHA_DATASET_MODE||'').startsWith('TEMPORARY_')
 const START=Date.parse('2026-10-19T13:00:00-03:00')
 const END=Date.parse('2026-10-20T02:00:00-03:00')
 const DURATION=5*60*1000
@@ -159,6 +161,7 @@ async function revealAll(state,c){
     '\n🔑 Chave: '+state.salt
 }
 async function tick(sock){
+  if(isTemporaryDataset())return
   if(busy)return
   busy=true
   try{
@@ -211,8 +214,11 @@ async function tick(sock){
   }finally{busy=false}
 }
 export function startAuctionAlphaScheduler(sock){
-  if(timer)clearInterval(timer)
-  if(Date.now()>END)return
+  if(timer){clearInterval(timer);timer=null}
+  if(isTemporaryDataset() || Date.now()>END){
+    console.log('[LEILAO OCULTO] scheduler desativado: recuperação temporária ou evento histórico encerrado')
+    return
+  }
   timer=setInterval(()=>tick(sock),5000)
   timer.unref?.()
   void tick(sock)
@@ -227,6 +233,10 @@ function parseAmount(raw){
 }
 export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply}){
   if(!['leilao','lance'].includes(cmd))return false
+  if(isTemporaryDataset()){
+    await reply('🔨 *Leilão Oculto de 19/10 encerrado.* O banco temporário não reabre nem cobra lances de eventos históricos. Os prêmios e saldos foram preservados para conciliação.')
+    return true
+  }
   if(!String(chat||'').endsWith('@g.us')){
     await reply('🔨 O Leilão Oculto acontece nos grupos.')
     return true
