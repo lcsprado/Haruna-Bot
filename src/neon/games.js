@@ -851,6 +851,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const lev=async itemId=>itemId?Number((await c.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]?.level||1):1
     const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
+    const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
     const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
@@ -865,8 +866,8 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const teamPassives=(await c.query('SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',[jid])).rows
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
-      atk:Math.round((Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0)+ench.def,
-      classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
+      atk:Math.round((Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
+      classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
       pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
@@ -1050,7 +1051,7 @@ export async function startRaid(chat,host,level=null){
       WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[]) AND quantity>0
       FOR UPDATE
     `,[ids,['selo_guardiao','oleo_sombras']])).rows
-    const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id,st.helmet_id]).filter(Boolean))]
+    const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id]).filter(Boolean))]
     const ups=eqIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,eqIds])).rows:[]
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
@@ -1060,6 +1061,7 @@ export async function startRaid(chat,host,level=null){
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
+      const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
       const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
       const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
@@ -1077,7 +1079,7 @@ export async function startRaid(chat,host,level=null){
       const teamPassives=teamPets
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Math.round((Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Math.round((Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
@@ -2682,7 +2684,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         throw new Error('⚠️ Você já está participando deste Boss em outro grupo. Continue no grupo original; ataques em grupos diferentes não são autorizados.')
       }
     }
-    const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id,helmet_id,class_id,class_applied FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const st=(await c.query('SELECT hp,max_hp,atk,def,weapon_id,armor_id,boot_id,helmet_id,class_id,class_applied FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
     // HP escala quando um NOVO participante causa seu primeiro ataque, inclusive após !go.
@@ -2764,7 +2766,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         COALESCE((SELECT jsonb_agg(jsonb_build_object('item_id',u.item_id,'level',u.level))
           FROM equipment_upgrades u
           WHERE u.jid=$1 AND u.item_id=ANY($2::text[])),'[]'::jsonb) AS upgrade_rows
-    `,[jid,[st.weapon_id,st.armor_id,st.helmet_id].filter(Boolean)])).rows[0]
+    `,[jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean)])).rows[0]
     const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
     const teamPets=combatSnapshot?.team_pets||[]
     const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
@@ -2774,13 +2776,14 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
     const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
+    const boots=st.boot_id?equipmentStatsAtLevel(st.boot_id,itemLevel(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
-    const atk=Math.round((Number(st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
-    const def=Number(st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(helmet?.def||0)+enchanted.def
+    const atk=Math.round((Number(st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
+    const def=Number(st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
     const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0)
     const effectiveMaxHp=Number(st.max_hp)+gearHp
     const petCritChance=Math.max(0,Number(petBonus.crit||0)+Number(teamSynergy.crit||0))
-    const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0))
+    const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0)+Number(boots?.crit||0)+Number(helmet?.crit||0))
     const baseCritChance=.10
     const roll=Math.random()
     const equippedRelic=await activeRelic(c,jid)
