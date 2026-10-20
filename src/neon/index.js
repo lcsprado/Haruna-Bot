@@ -615,7 +615,7 @@ async function safeRaidNotify(reply,text){
 const raidFinalNoticePrefix='raid_final_notice_v2:'
 let raidFinalFlushBusy=false
 async function flushRaidFinalNotices(){
-  if(raidFinalFlushBusy || typeof raidAutoReply!=='function') return
+  if(raidFinalFlushBusy || typeof raidAutoReply!=='function' || trevoHealth.whatsapp!=='open') return
   raidFinalFlushBusy=true
   try{
     const {rows}=await db.query(
@@ -2615,7 +2615,7 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
       void ensureActiveRaidRuns()
     },4000)
     // Reenvia encerramentos pendentes quando o WhatsApp reconectar.
-    setInterval(()=>{void flushRaidFinalNotices()},20000).unref?.()
+    if(!neonEcoMode)setInterval(()=>{void flushRaidFinalNotices()},20000).unref?.()
     raidAutoWatchdog.unref?.()
   }
 
@@ -9484,6 +9484,7 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       reconnectAttempts=0
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
+      if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
       if(!temporaryRecoveryMode){
         startLabirintoScheduler(sock)
         startBingoRebootScheduler(sock)
