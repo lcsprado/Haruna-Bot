@@ -129,6 +129,9 @@ const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
 const sessionId=(process.env.SESSION_ID || 'alpha-primary').trim()
 const ownerNumber=(process.env.OWNER_NUMBER || '').replace(/\D/g,'')
 const ownerJid=(process.env.OWNER_JID || (ownerNumber ? ownerNumber+'@s.whatsapp.net' : '')).trim()
+// Dedicated identity binding for the verified owner's WhatsApp LID on this instance.
+// Never map other LIDs by display name; the exact LID is provided in Render secrets.
+const ownerLid=String(process.env.OWNER_LID||'').trim()
 
 // Evita vazamento de chaves privadas Signal nos logs ao rotacionar sessões.
 // Não interfere nas operações criptográficas nem nos outros logs do bot.
@@ -1289,6 +1292,15 @@ async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
     }
   }
 
+  // WhatsApp sometimes sends only an @lid without its phone alias.
+  // The verified owner's exact LID must always resolve to the original PN account.
+  // This prevents a separate Lv.1 account and restores founder/admin privileges.
+  if(ownerLid && ownerNumber && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
+    const canonicalOwner=ownerNumber+'@s.whatsapp.net'
+    aliases.add(ownerLid)
+    aliases.add(canonicalOwner)
+    return {jid:canonicalOwner,aliases:[...aliases]}
+  }
   return {jid:phoneJid || canonicalPlayerJid(jid),aliases:[...aliases]}
 }
 
