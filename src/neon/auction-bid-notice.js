@@ -7,7 +7,7 @@ export function otherAuctionGroups(groups,originChat){
 
 export function crossGroupBidNotice({lot,totalLots,bidder,value,nextMinimum,endsAt}){
   const fmt=value=>'R$ '+Number(value).toLocaleString('pt-BR')
-  const name=String(bidder||'Jogador').replace(/[\r\n*]/g,' ').slice(0,45)
+  const name=String(bidder||'Jogador').replace(/[\r\n*]/g,' ').replace(/\s+/g,' ').trim().slice(0,45)
   const close=new Date(Number(endsAt)).toLocaleTimeString('pt-BR',{
     timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'
   })
