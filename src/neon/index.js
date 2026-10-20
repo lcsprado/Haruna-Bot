@@ -9549,13 +9549,13 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       setWhatsAppHealth('open')
       console.log('[WhatsApp] ALPHA BOT CONECTADO')
       if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
+      startAuctionAlphaScheduler(sock)
       if(!temporaryRecoveryMode){
         startLabirintoScheduler(sock)
         startBingoRebootScheduler(sock)
-        startAuctionAlphaScheduler(sock)
         void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
       }else{
-        console.log('[TEMPORARY] eventos automáticos Bingo/Leilão/Labirinto/Baú não iniciados')
+        console.log('[TEMPORARY] eventos históricos Bingo/Labirinto/Baú bloqueados; leilão isolado de 20/10 habilitado')
       }
 
       // Anúncio único por grupo licenciado. Apenas este evento, sem mensagens repetidas.
