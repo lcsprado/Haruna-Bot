@@ -12857,11 +12857,12 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           if(r.won) await creditDailyActivity(sender,'dungeon',1,null,reply)
           if(r.won) await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
           if(r.won){
-            let text=`🏰 *DUNGEON CONCLUÍDA!*\n\n👹 Inimigo: *${r.monster}*\n❤️ HP restante: ${r.hp}/${r.maxHp}\n💰 Recompensa: R$ ${fmt(r.cash)}\n✨ EXP: +${r.exp}`
+            let text=`🏰 *DUNGEON CONCLUÍDA!*\n\n👹 Inimigo: *${r.monster}*\n❤️ HP restante: ${r.hp}/${r.maxHp}\n💰 Recompensa: R$ ${fmt(r.cash)}\n✨ EXP: +${fmt(r.level?.awardedGain??r.exp)}`
+            if(Number(r.level?.boostBonus||0)>0) text+=`\n⚡ Bônus pessoal de XP: +${fmt(r.level.boostBonus)} (incluído no total)`
             if(r.level.levels>0) text+=`\n⬆️ Você subiu ${r.level.levels} nível(is)!`
             await reply(text)
           }else{
-            await reply(`💀 *DERROTA NA DUNGEON*\n\n👹 ${r.monster} venceu.\n❤️ Você se recuperou para ${r.hp}/${r.maxHp}\n✨ Consolação: +${r.exp} EXP`)
+            await reply(`💀 *DERROTA NA DUNGEON*\n\n👹 ${r.monster} venceu.\n❤️ Você se recuperou para ${r.hp}/${r.maxHp}\n✨ Consolação: +${fmt(r.level?.awardedGain??r.exp)} EXP${Number(r.level?.boostBonus||0)>0?`\n⚡ Bônus pessoal de XP: +${fmt(r.level.boostBonus)} (incluído no total)`:''}`)
           }
 
         } else if(['roubar','roubo','fazol'].includes(cmd)){
