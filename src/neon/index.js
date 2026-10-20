@@ -1514,7 +1514,7 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const petDamage=Number(combatPets.active.damage||0)
   const petCrit=Number(combatPets.active.crit||0)
   const baseAtk=Math.max(0,Number(p.base_atk||0))
-  const gearAtk=Math.max(0,Math.round(Number(p.weapon_atk||0)))
+  const gearAtk=Math.max(0,Math.round(Number(p.equipment_atk||0)))
   const sealAtk=Number(p.attack_pct_bonus||0)>0?`\n🔥 Selo de Potência Alpha: *+${Math.round(Number(p.attack_pct_bonus)*100)}% ATK*`:''
   const passive=getClassPassive(p.class_id,p.class_applied)||{}
   const classId=String(p.class_id||'').toLowerCase()
@@ -4287,6 +4287,39 @@ Você possui: *${stock}*
     )
   }
 
+
+  // Todos os equipamentos usam o mesmo formatador. Evita ocultar bônus híbridos
+  // (ex.: Courechouse +VEL, Gideon +DEF, Bota do JP +CRIT, Coroa +ATK).
+  const EQUIPMENT_BONUS_FIELDS={
+    atk:['⚔️','ATK'],def:['🛡️','DEF'],hp:['❤️','HP'],spd:['💨','VEL'],crit:['🎯','CRIT']
+  }
+  const gearStatKeys=category=>{
+    const primary=category==='weapon'?'atk':category==='boots'?'spd':'def'
+    return [primary,...Object.keys(EQUIPMENT_BONUS_FIELDS).filter(key=>key!==primary)]
+  }
+  const gearStatValue=(key,value)=>{
+    const n=Number(value||0)
+    return key==='crit'?(n*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%':fmt(n)
+  }
+  const gearStatsText=(stats,category)=>{
+    const keys=gearStatKeys(category)
+    return keys.map((key,i)=>{
+      const n=Number(stats?.[key]||0)
+      if(!n&&i!==0)return null
+      const [emoji,label]=EQUIPMENT_BONUS_FIELDS[key]
+      return emoji+' +'+gearStatValue(key,n)+' '+label
+    }).filter(Boolean).join(' • ')
+  }
+  const gearStatsChanges=(before,after,category)=>{
+    const keys=gearStatKeys(category)
+    return keys.map((key,i)=>{
+      const a=Number(before?.[key]||0),b=Number(after?.[key]||0)
+      if(!a&&!b&&i!==0)return null
+      const [emoji,label]=EQUIPMENT_BONUS_FIELDS[key]
+      return emoji+' '+label+': '+gearStatValue(key,a)+' → *'+gearStatValue(key,b)+'*'
+    }).filter(Boolean).join('\n')
+  }
+
   async function showEquipmentMenu(chat,sender,reply){
     const [items,p]=await Promise.all([getInventory(sender),getCombatProfile(sender)])
     const weapons=items.filter(i=>i.category==='weapon')
@@ -4301,27 +4334,17 @@ Você possui: *${stock}*
     setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
     const [upgradeables]=await Promise.all([listUpgradeableEquipment(sender)])
     const currentMap=new Map(upgradeables.map(i=>[i.item_id,i.current]))
-    const weaponStats=currentMap.get(p.weapon_id)||{atk:Number(p.weapon_atk||0),hp:0,crit:0}
-    const armorStats=currentMap.get(p.armor_id)||{def:Number(p.armor_def||0),hp:0,crit:0}
-    const bootStats=currentMap.get(p.boot_id)||{spd:Number(p.equipment_spd||0)}
-    const helmetStats=currentMap.get(p.helmet_id)||getEquipmentInfo(p.helmet_id)||{def:0,hp:0}
-    const weaponExtra=[
-      Number(weaponStats.hp||0)?'❤️ +'+Number(weaponStats.hp)+' HP':null,
-      Number(weaponStats.crit||0)?'🎯 +'+(Number(weaponStats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null,
-      Number(weaponStats.spd||0)?'💨 +'+Number(weaponStats.spd)+' VEL':null,
-      Number(weaponStats.def||0)?'🛡️ +'+Number(weaponStats.def)+' DEF':null
-    ].filter(Boolean).join(' • ')
-    const armorExtra=[
-      Number(armorStats.hp||0)?'❤️ +'+Number(armorStats.hp)+' HP':null,
-      Number(armorStats.crit||0)?'🎯 +'+(Number(armorStats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
-    ].filter(Boolean).join(' • ')
+    const weaponStats=currentMap.get(p.weapon_id)||getEquipmentInfo(p.weapon_id)||{}
+    const armorStats=currentMap.get(p.armor_id)||getEquipmentInfo(p.armor_id)||{}
+    const bootStats=currentMap.get(p.boot_id)||getEquipmentInfo(p.boot_id)||{}
+    const helmetStats=currentMap.get(p.helmet_id)||getEquipmentInfo(p.helmet_id)||{}
     await reply(
 `⚙️ *EQUIPAR*
 
-🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}* — ⚔️ +${Number(weaponStats.atk||0)} ATK${weaponExtra?' • '+weaponExtra:''}
-🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}* — 🛡️ +${Number(armorStats.def||0)} DEF${armorExtra?' • '+armorExtra:''}
-👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — 👢 +${Number(bootStats.spd||0)} VEL
-🪖 Elmo atual: *${p.helmet_name||'Nenhum'}* — 🛡️ +${Number(helmetStats.def||0)} DEF • ❤️ +${Number(helmetStats.hp||0)} HP
+🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}* — ${gearStatsText(weaponStats,'weapon')}
+🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}* — ${gearStatsText(armorStats,'armor')}
+👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(bootStats,'boots')}
+🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(p.helmet_level||1)}* — ${gearStatsText(helmetStats,'helmet')}
 
 O que deseja trocar?
 
@@ -4355,17 +4378,9 @@ O que deseja trocar?
     filtered.forEach((i,idx)=>{
       const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
       const level=Number(levelMap.get(i.item_id)||1)
-      const mainStat=isWeapon?Number(stats.atk||0):(isArmor||isHelmet)?Number(stats.def||0):Number(stats.spd||0)
       const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
-      const extras=[
-        Number(stats.hp||0)?'❤️ +'+Number(stats.hp)+' HP':null,
-        Number(stats.crit||0)?'🎯 +'+(Number(stats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null,
-        isWeapon&&Number(stats.def||0)?'🛡️ +'+Number(stats.def)+' DEF':null,
-        isWeapon&&Number(stats.spd||0)?'💨 +'+Number(stats.spd)+' VEL':null,
-        !isWeapon&&Number(stats.atk||0)?'⚔️ +'+Number(stats.atk)+' ATK':null
-      ].filter(Boolean).join(' • ')
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+' • 📦 ×'+Number(i.quantity||0)+' no total\n'
-      text+='   '+(isWeapon?'⚔️ +':(isArmor||isHelmet)?'🛡️ +':'💨 +')+mainStat+' '+(isWeapon?'ATK':(isArmor||isHelmet)?'DEF':'VEL')+(extras?' • '+extras:'')+active+'\n'
+      text+='   '+gearStatsText(stats,category)+active+'\n'
       text+='   🎒 *'+Math.max(0,Number(i.quantity||0)-(active?1:0))+'* reserva(s)'+(active?' • 🔒 *1 equipada*':'')+'\n'
     })
     text+='\n👉 Responda só com o número.\n9️⃣ Voltar\n0️⃣ Sair'
@@ -7027,24 +7042,14 @@ ${emoji} *${r.result.toUpperCase()}*`)
         return true
       }
 
-      const stat=item.category==='weapon'
-        ? item.current.atk+' → *'+targetStats.atk+' ATK*'
-        : item.current.def+' → *'+targetStats.def+' DEF*'
-      const extras=[
-        Number(item.current.hp||0)||Number(targetStats.hp||0)
-          ? '❤️ '+Number(item.current.hp||0)+' → *'+Number(targetStats.hp||0)+' HP*'
-          : null,
-        Number(item.current.crit||0)||Number(targetStats.crit||0)
-          ? '🎯 '+(Number(item.current.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% → *'+(Number(targetStats.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT*'
-          : null
-      ].filter(Boolean).join('\n')
+      const stat=gearStatsChanges(item.current,targetStats,item.category)
 
       setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,targetLevel:target},90000)
       await reply(
         '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
         rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
         '⭐ Lv.'+level+' → *Lv.'+target+'* (+'+(target-level)+' níveis)\n'+
-        '💪 '+stat+(extras?'\n'+extras:'')+'\n'+
+        '💪 '+stat+'\n'+
         '💰 Custo total: *R$ '+fmt(cost)+'*\n\n'+
         '1️⃣ Confirmar\n2️⃣ Cancelar'
       )
@@ -7072,24 +7077,14 @@ ${emoji} *${r.result.toUpperCase()}*`)
         return true
       }
 
-      const stat=item.category==='weapon'
-        ? item.current.atk+' → *'+targetStats.atk+' ATK*'
-        : item.current.def+' → *'+targetStats.def+' DEF*'
-      const extras=[
-        Number(item.current.hp||0)||Number(targetStats.hp||0)
-          ? '❤️ '+Number(item.current.hp||0)+' → *'+Number(targetStats.hp||0)+' HP*'
-          : null,
-        Number(item.current.crit||0)||Number(targetStats.crit||0)
-          ? '🎯 '+(Number(item.current.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% → *'+(Number(targetStats.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT*'
-          : null
-      ].filter(Boolean).join('\n')
+      const stat=gearStatsChanges(item.current,targetStats,item.category)
 
       setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,targetLevel:target},90000)
       await reply(
         '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
         rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
         '⭐ Lv.'+level+' → *Lv.'+target+'* (+'+(target-level)+' níveis)\n'+
-        '💪 '+stat+(extras?'\n'+extras:'')+'\n'+
+        '💪 '+stat+'\n'+
         '💰 Custo total: *R$ '+fmt(cost)+'*\n\n'+
         '1️⃣ Confirmar\n2️⃣ Cancelar'
       )
@@ -7108,16 +7103,12 @@ ${emoji} *${r.result.toUpperCase()}*`)
       }
       const r=await upgradeEquipment(sender,flow.data.itemId,flow.data.targetLevel)
       clearQuickFlow(chat,sender)
-      const stat=r.stats.category==='weapon'?r.stats.atk+' ATK':r.stats.def+' DEF'
-      const extras=[
-        Number(r.stats.hp||0)?'❤️ '+r.stats.hp+' HP':null,
-        Number(r.stats.crit||0)?'🎯 '+(Number(r.stats.crit)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% CRIT':null
-      ].filter(Boolean).join(' • ')
+      const stat=gearStatsText(r.stats,r.stats.category)
       await reply(
         '⬆️ *EQUIPAMENTO APRIMORADO!*\n\n'+
         '⚙️ *'+r.name+'*\n'+
         '⭐ Lv.'+r.fromLevel+' → *Lv.'+r.level+'* (+'+r.levelsGained+' níveis)\n'+
-        '💪 Agora: *'+stat+'*'+(extras?' • '+extras:'')+'\n'+
+        '💪 Agora: *'+stat+'*\n'+
         '💸 Pago: *R$ '+fmt(r.cost)+'*\n'+
         '🪙 Carteira: *R$ '+fmt(r.cash)+'*\n\n'+
         (r.level>=10?'🏆 Equipamento no nível máximo.':'Use *!uparitem* para continuar evoluindo.')
@@ -7165,26 +7156,13 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
       const currentUp=upgradeables.find(i=>i.item_id===currentId)
       const oldStats=currentUp?.current||getEquipmentInfo(currentId)||{}
-      const beforeMain=isWeapon?Number(oldStats.atk||p.weapon_atk||0):(isArmor||isHelmet)?Number(oldStats.def||0):Number(oldStats.spd||p.equipment_spd||0)
-      const afterMain=isWeapon?Number(info.atk||0):(isArmor||isHelmet)?Number(info.def||0):Number(info.spd||0)
-      const mainStat=isWeapon?'ATK':(isArmor||isHelmet)?'DEF':'SPD'
-      const delta=afterMain-beforeMain
-      const arrow=delta>0?'📈':delta<0?'📉':'➖'
-      const beforeHp=Number(oldStats.hp||0),afterHp=Number(info.hp||0)
-      const beforeCrit=Number(oldStats.crit||0),afterCrit=Number(info.crit||0)
-      const hpLine=(beforeHp||afterHp)?'\n❤️ *HP bônus: '+beforeHp+' → '+afterHp+'*'+(afterHp-beforeHp>0?' (+'+(afterHp-beforeHp)+')':afterHp-beforeHp<0?' ('+(afterHp-beforeHp)+')':''):''
-      const critLine=(beforeCrit||afterCrit)?'\n🎯 *CRIT: '+(beforeCrit*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'% → '+(afterCrit*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%*':''
-      const beforeSpd=Number(oldStats.spd||0),afterSpd=Number(info.spd||0)
-      const spdLine=isWeapon&&(beforeSpd||afterSpd)?'\n💨 *VEL bônus: '+beforeSpd+' → '+afterSpd+'*'+(afterSpd-beforeSpd>0?' (+'+(afterSpd-beforeSpd)+')':afterSpd-beforeSpd<0?' ('+(afterSpd-beforeSpd)+')':''):''
-      const beforeDef=Number(oldStats.def||0),afterDef=Number(info.def||0)
-      const defLine=isWeapon&&(beforeDef||afterDef)?'\n🛡️ *DEF bônus: '+beforeDef+' → '+afterDef+'*':''
+      const statLines=gearStatsChanges(oldStats,info,info.category)
       setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
       await reply(
         '⚙️ *TROCAR EQUIPAMENTO?*\n\n'+
         (isWeapon?'🗡️':isArmor?'🛡️':isHelmet?'🪖':'👢')+' Atual: *'+currentName+'*\n'+
         '➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+' Lv.'+Number(up?.level||1)+'*\n\n'+
-        arrow+' *'+mainStat+': '+beforeMain+' → '+afterMain+'*'+(delta>0?' (+'+delta+')':delta<0?' ('+delta+')':'')+
-        hpLine+critLine+spdLine+defLine+'\n\n'+
+        '📊 *ATRIBUTOS (atual → novo):*\n'+statLines+'\n\n'+
         '1️⃣ Equipar\n2️⃣ Cancelar\n9️⃣ Voltar'
       )
       return true
@@ -11981,16 +11959,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id}))},5*60*1000)
           let text=helmetOnly?'🪖 *UPAR ELMO*\n\n':'⬆️ *UPAR EQUIPAMENTO*\n\n'
           available.forEach((i,n)=>{
-            const extras=(s,n)=>[
-              Number(s.hp||0)||Number(n.hp||0)?`${Number(s.hp||0)} → ${Number(n.hp||0)} HP`:null,
-              Number(s.spd||0)||Number(n.spd||0)?`${Number(s.spd||0)} → ${Number(n.spd||0)} VEL`:null,
-              Number(s.crit||0)||Number(n.crit||0)?`${(Number(s.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% → ${(Number(n.crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% CRIT`:null
-            ].filter(Boolean).join(' • ')
-            const stat=i.category==='weapon'
-              ? `${i.current.atk} → ${i.next.atk} ATK${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
-              : ['armor','helmet'].includes(i.category)
-                ? `${i.current.def} → ${i.next.def} DEF${extras(i.current,i.next)?' • '+extras(i.current,i.next):''}`
-                : `${i.current.spd} → ${i.next.spd} VEL`
+            const stat=gearStatsChanges(i.current,i.next,i.category).replaceAll('\n',' • ')
             const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)||(i.category==='helmet'&&profile?.helmet_id===i.item_id)
             text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
           })
@@ -12149,8 +12118,8 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 ⭐ Nível: ${p.level}
 ✨ EXP: ${p.exp}/${p.level*100}
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)
-⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.weapon_atk} arma)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}
-🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.armor_def} armadura)
+⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}
+🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)
 👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)
 🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
 👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
