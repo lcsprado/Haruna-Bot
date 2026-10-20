@@ -2906,11 +2906,33 @@ export async function acquireRuntimeLock(sessionId) {
 
       if (rows[0]?.locked) {
         runtimeLockClient = client
-        client.on('error', err=>{
-          console.error('[Runtime] conexão direta do lock Neon encerrada',err?.message || err)
+
+        // O Neon pode suspender o compute ao considerar o SQL ocioso,
+        // mesmo que o WebSocket do WhatsApp continue conectado.
+        // Sem atividade na conexao direta, a sessao que detem o
+        // advisory lock e encerrada e o bot cai a cada poucos minutos.
+        // Uma consulta minima a cada 2 min preserva a sessao e o lock.
+        let lockLost = false
+        let heartbeatBusy = false
+        const onLockLost = err => {
+          if(lockLost) return
+          lockLost = true
+          clearInterval(lockHeartbeat)
+          console.error('[Runtime] conexao do lock Neon perdida',err?.message || err || 'connection_end')
           if(runtimeLockClient===client) runtimeLockClient=null
+          // Nao continuar recebendo comandos sem exclusividade garantida.
           setTimeout(()=>process.exit(1),100)
-        })
+        }
+        const lockHeartbeat = setInterval(()=>{
+          if(lockLost || heartbeatBusy || runtimeLockClient!==client)return
+          heartbeatBusy = true
+          client.query('SELECT 1')
+            .catch(onLockLost)
+            .finally(()=>{heartbeatBusy=false})
+        },120000)
+        lockHeartbeat.unref?.()
+        client.on('error',onLockLost)
+        client.on('end',()=>onLockLost(new Error('connection_end')))
         console.log('[Runtime] lock exclusivo direto adquirido para', sessionId)
         return true
       }
