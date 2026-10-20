@@ -4071,17 +4071,56 @@ ${moneyLine}✨ XP: *${xpMult}x*
     }
   }
 
-  if(doubleRewardEventScheduler) clearInterval(doubleRewardEventScheduler)
-  doubleRewardEventScheduler=setInterval(updateDoubleRewardAnnouncements,30000)
-  doubleRewardEventScheduler.unref?.()
-  doubleRewardStartupTimer=setTimeout(updateDoubleRewardAnnouncements,3000)
-  doubleRewardStartupTimer.unref?.()
+  if(doubleRewardEventScheduler)clearInterval(doubleRewardEventScheduler)
+  if(luckyBoxEventScheduler)clearInterval(luckyBoxEventScheduler)
 
-  if(luckyBoxEventScheduler) clearInterval(luckyBoxEventScheduler)
-  luckyBoxEventScheduler=setInterval(updateLuckyBoxAnnouncements,30000)
-  luckyBoxEventScheduler.unref?.()
-  luckyBoxStartupTimer=setTimeout(updateLuckyBoxAnnouncements,3500)
-  luckyBoxStartupTimer.unref?.()
+  async function refreshEcoScheduledEvents(){
+    if(!neonEcoMode)return
+    for(const t of globalThis.__alphaEcoNoticeTimers||[])clearTimeout(t)
+    globalThis.__alphaEcoNoticeTimers=[]
+    try{
+      const {rows}=await db.query("SELECT key,value FROM trevo_settings WHERE key IN ('double_reward_event','lucky_box_event')")
+      const now=Date.now()
+      for(const entry of rows){
+        const v=entry.value||{}
+        const start=Number(v.startsAt||v.startedAt||0),end=Number(v.endsAt||0)
+        if(!start||!end||end<=now)continue
+        for(const stamp of [start,end]){
+          if(stamp<=now)continue
+          const delay=Math.min(2**31-1,Math.max(1000,stamp-now+700))
+          const timer=setTimeout(async()=>{
+            if(entry.key==='double_reward_event')await updateDoubleRewardAnnouncements()
+            else await updateLuckyBoxAnnouncements()
+            await refreshEcoScheduledEvents()
+          },delay)
+          timer.unref?.()
+          globalThis.__alphaEcoNoticeTimers.push(timer)
+        }
+      }
+    }catch(err){console.error('[Neon Eco] falha no agendamento de eventos',err?.message||err)}
+  }
+  if(neonEcoMode){
+    doubleRewardEventScheduler=null
+    luckyBoxEventScheduler=null
+    for(const t of globalThis.__alphaEcoNoticeTimers||[])clearTimeout(t)
+    globalThis.__alphaEcoNoticeTimers=[]
+    doubleRewardStartupTimer=setTimeout(async()=>{
+      await updateDoubleRewardAnnouncements()
+      await updateLuckyBoxAnnouncements()
+      await refreshEcoScheduledEvents()
+      console.log('[Neon Eco] avisos de bônus agendados por horário, sem polling')
+    },3000)
+    doubleRewardStartupTimer.unref?.()
+  }else{
+    doubleRewardEventScheduler=setInterval(updateDoubleRewardAnnouncements,30000)
+    doubleRewardEventScheduler.unref?.()
+    doubleRewardStartupTimer=setTimeout(updateDoubleRewardAnnouncements,3000)
+    doubleRewardStartupTimer.unref?.()
+    luckyBoxEventScheduler=setInterval(updateLuckyBoxAnnouncements,30000)
+    luckyBoxEventScheduler.unref?.()
+    luckyBoxStartupTimer=setTimeout(updateLuckyBoxAnnouncements,3500)
+    luckyBoxStartupTimer.unref?.()
+  }
 
   async function senderIsGroupAdmin(chatJid,userJid){
     if(userJid===ownerJid) return true
@@ -13180,6 +13219,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
           const action=String(args[0]||'').toLowerCase()
           if(['off','desativar','parar','stop'].includes(action)){
             await stopDoubleRewardEvent(sender)
+            if(neonEcoMode)void refreshEcoScheduledEvents()
             return await reply('🛑 *EVENTO 2X ENCERRADO*\n\nOs multiplicadores de dinheiro e XP voltaram ao normal.')
           }
           const minutes=args[0] ? parseInt(args[0],10) : 20
@@ -13187,6 +13227,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
             return await reply(`Uso: *${prefix}eventodobro* para 20 minutos ou *${prefix}eventodobro 30*.\nPara encerrar: *${prefix}eventodobro off*.`)
           }
           const event=await startDoubleRewardEvent(minutes,sender)
+          if(neonEcoMode){void updateDoubleRewardAnnouncements();void refreshEcoScheduledEvents()}
           await reply(`🔥🔥 *EVENTO 2X ATIVADO!* 🔥🔥\n\n⏱️ Duração: *${minutes} minutos*\n💰 Recompensas em dinheiro: *2x*\n✨ XP: *2x*\n\n🏃 Aproveitem enquanto está ativo!\nUse *${prefix}evento* para consultar o tempo restante.`)
 
         } else if(['admin','ownermenu','adminmenu','donocomandos'].includes(cmd)){
