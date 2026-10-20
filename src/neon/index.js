@@ -781,7 +781,8 @@ async function runRaidCombat(chat,level,reply){
             const pct=(x.share*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
             text+=`
 ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Number(x.petBonusDamage||0)>0?` *(+${Number(x.petBonusDamage).toLocaleString('pt-BR')} bônus pet)*`:''}
-💰 R$ ${fmt(x.cash)} • ✨ +${x.exp} XP`
+💰 R$ ${fmt(x.cash)} • ✨ +${fmt(x.awardedExp??x.exp)} XP`
+            if(Number(x.xpBoostBonus||0)>0) text+=`\n⚡ XP extra da Ampulheta: +${fmt(x.xpBoostBonus)} (já incluído no total)`
             if(x.petXp) text+=` • 🐾 +${x.petXp} XP pet`
             const skillHealing=Math.max(0,Number(x.petSkillHealing||0))
             const classHealing=Math.max(0,Number(x.classHealing||0))
