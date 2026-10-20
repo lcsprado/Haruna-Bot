@@ -71,7 +71,7 @@ export async function restoreTemporaryPlayers20261019(){
    const existingCars=(await c.query("SELECT COUNT(*)::int AS n FROM user_cars WHERE jid=$1",[p.jid])).rows[0].n;
    for(let i=existingCars;i<p.tempCarIds.length;i++){const car=p.tempCarIds[i];await c.query("INSERT INTO user_cars(jid,car_id,price_paid) VALUES($1,$2,$3)",[p.jid,car,CAR_PRICES[car]]);}
    const existingMotos=(await c.query("SELECT COUNT(*)::int AS n FROM user_motorcycles WHERE jid=$1",[p.jid])).rows[0].n;
-   for(let i=existingMotos;i<p.motorcycles;i++)await c.query("INSERT INTO user_motorcycles(jid,motorcycle_id,price_paid) VALUES($1,'moto_125',9000)",[p.jid]);
+   const motorOptions=[["bicicleta",1500],["moto_125",9000],["moto_160",16000],["moto_300",35000],["moto_600",90000],["moto_1000",220000]];const ownedMotors=new Set((await c.query("SELECT motorcycle_id FROM user_motorcycles WHERE jid=$1",[p.jid])).rows.map(x=>x.motorcycle_id));for(const [id,price] of motorOptions){if(ownedMotors.size>=p.motorcycles)break;if(ownedMotors.has(id))continue;await c.query("INSERT INTO user_motorcycles(jid,motorcycle_id,price_paid) VALUES($1,$2,$3)",[p.jid,id,price]);ownedMotors.add(id)}
    const savedPetIds=new Map();
    for(const pet of p.pets){
     const lv=(pet.role==="ativo"&&p.primaryLevel)?p.primaryLevel:pet.level;
