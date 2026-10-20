@@ -4,6 +4,7 @@ import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
+import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
 
 const { Pool, Client } = pg
 
@@ -229,6 +230,17 @@ export async function initDatabase() {
       claimed_at BIGINT NOT NULL DEFAULT ${nowSql},
       PRIMARY KEY(jid,milestone)
     );
+
+    CREATE TABLE IF NOT EXISTS level_reward_audit (
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      milestone INTEGER NOT NULL CHECK (milestone >= 5 AND milestone % 5 = 0),
+      claimed_at BIGINT NOT NULL,
+      PRIMARY KEY(jid,milestone)
+    );
+    INSERT INTO level_reward_audit(jid,milestone,claimed_at)
+      SELECT jid,milestone,claimed_at FROM level_reward_claims
+      WHERE true
+      ON CONFLICT(jid,milestone) DO NOTHING;
 
     CREATE TABLE IF NOT EXISTS profile_avatars (
       jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
@@ -3392,23 +3404,37 @@ export async function claimLevelRewards(jid){
     const user=(await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const level=Number(user?.level||1)
     const claimedRows=(await client.query('SELECT milestone FROM level_reward_claims WHERE jid=$1',[jid])).rows
-    const claimedSet=new Set(claimedRows.map(r=>Number(r.milestone)))
-    const unlocked=[]
-    for(let milestone=5;milestone<=Math.min(level,100);milestone+=5){
-      if(!claimedSet.has(milestone)) unlocked.push(milestone)
-    }
-    for(let milestone=110;milestone<=Math.min(level,199);milestone+=10){
-      if(!claimedSet.has(milestone)) unlocked.push(milestone)
-    }
-    for(let milestone=200;milestone<=level;milestone+=20){
-      if(!claimedSet.has(milestone)) unlocked.push(milestone)
+    const claimedMilestones=claimedRows.map(r=>Number(r.milestone))
+    const unlocked=unlockedLevelMilestones(level,claimedMilestones)
+    if(unlocked.length){
+      const auditedMilestones=(await client.query('SELECT milestone FROM level_reward_audit WHERE jid=$1',[jid])).rows.map(r=>Number(r.milestone))
+      const manifestExists=(await client.query("SELECT to_regclass('public.alpha_temp_recovery_manifest') AS relation")).rows[0]?.relation
+      const recovery=manifestExists
+        ?(await client.query("SELECT state FROM alpha_temp_recovery_manifest WHERE id='alpha-whatsapp-temporary-2026-10-19'")).rows[0]
+        :null
+      const problem=levelRewardHistoryProblem({level,claimedMilestones,auditedMilestones,recoveryActive:recovery?.state==='TEMPORARY_ACTIVE'})
+      if(problem) throw new Error('Recompensas em auditoria: '+problem+' Nenhum prêmio foi pago. Avise o administrador.')
     }
 
     const claimed=[]
     for(const milestone of unlocked){
       const reward=levelRewardFor(milestone)
       if(!reward) continue
+      const inserted=await client.query(
+        'INSERT INTO level_reward_claims(jid,milestone) VALUES($1,$2) ON CONFLICT(jid,milestone) DO NOTHING RETURNING milestone',
+        [jid,milestone]
+      )
+      if(inserted.rowCount!==1) throw new Error('Resgate concorrente detectado; nenhum prêmio foi pago.')
+      const audited=await client.query(
+        'INSERT INTO level_reward_audit(jid,milestone,claimed_at) VALUES($1,$2,'+nowSql+') ON CONFLICT(jid,milestone) DO NOTHING RETURNING milestone',
+        [jid,milestone]
+      )
+      if(audited.rowCount!==1) throw new Error('Resgate anterior detectado; nenhum prêmio foi pago.')
       await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[reward.cash,jid])
+      await client.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'level_reward',$3)",
+        [jid,reward.cash,'marco:'+milestone]
+      )
       const delivered=[]
       for(const [itemId,qty] of reward.items||[]){
         const item=(await client.query('SELECT id,name FROM items WHERE id=$1',[itemId])).rows[0]
@@ -3421,10 +3447,6 @@ export async function claimLevelRewards(jid){
         `,[jid,itemId,qty])
         delivered.push({id:item.id,name:item.name,qty:Number(qty)})
       }
-      await client.query(
-        'INSERT INTO level_reward_claims(jid,milestone) VALUES($1,$2) ON CONFLICT(jid,milestone) DO NOTHING',
-        [jid,milestone]
-      )
       claimed.push({milestone,cash:Number(reward.cash),items:delivered})
     }
 

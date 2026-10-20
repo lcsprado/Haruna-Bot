@@ -94,7 +94,7 @@ test('Coroa da Madrugada keeps dual stats',()=>{
 })
 
 test('raid timers remain level-scaled',()=>{
-  assert.ok(games.includes("10:12,15:15,20:18,25:22,30:30,40:40,50:50"),'raid duration table changed unexpectedly')
+  assert.ok(games.includes("10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50"),'raid duration table changed unexpectedly')
 })
 
 test('equiparpet without args opens the interactive team flow',()=>{
@@ -116,7 +116,7 @@ test('boss and event combat auto-heal pets like raids',()=>{
   assert.ok(games.includes("const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']"),'Boss pet potion inventory lookup missing')
   assert.ok(games.includes("const chosenPet=raidPetPotion(petPotionRows,missing)"),'Boss must reuse raid pet-potion selection')
   assert.ok(games.includes("autoPetHeal={id:chosenPet.item_id"),'Boss must return pet auto-heal details')
-  assert.ok(index.includes("🐾🧪 *AUTOCURA DO PET!*"),'Boss session must announce pet auto-heal')
+  assert.ok(index.includes("🐾🧪 *Boletim de autocura"),'Boss session must announce pet auto-heal')
 })
 
 
