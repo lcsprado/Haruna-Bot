@@ -4257,6 +4257,7 @@ Você possui: *${stock}*
   ))
 
   const isEnchantStone=item=>String(item?.item_id||'').startsWith('pedra_') && String(item.item_id).endsWith('_alpha')
+  const isUsableConsumable=item=>item?.category==='consumable'&&!isEnchantStone(item)
 
   async function showInventoryMenu(chat,sender,reply){
     const items=await getInventory(sender)
@@ -4266,7 +4267,7 @@ Você possui: *${stock}*
       return
     }
     const count=category=>items.filter(i=>i.category===category).length
-    const potions=items.filter(i=>i.category==='consumable'&&!isEnchantStone(i))
+    const potions=items.filter(isUsableConsumable)
     const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
     const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
     const relicItems=items.filter(isEventInsignia)
@@ -7836,7 +7837,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       if(input==='4'){
         const items=await getInventory(sender)
-        const usable=items.filter(i=>i.category==='consumable'&&!isEnchantStone(i))
+        const usable=items.filter(isUsableConsumable)
         if(!usable.length){
           clearQuickFlow(chat,sender)
           await reply('🧪 Você não possui consumíveis utilizáveis.')
@@ -7892,7 +7893,7 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         return true
       }
       if(input==='5'){
-        const usable=items.filter(i=>i.category==='consumable')
+        const usable=items.filter(isUsableConsumable)
         if(!usable.length){
           await reply('🧪 Você não possui consumíveis.')
           return true
@@ -11997,7 +11998,7 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 
         } else if(['usar','use'].includes(cmd)){
           const items=await getInventory(sender)
-          const usable=items.filter(i=>i.category==='consumable')
+          const usable=items.filter(isUsableConsumable)
           const query=args.join(' ').trim()
 
           if(!query){
@@ -12009,11 +12010,14 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             return await reply(text)
           }
 
-          const item=resolveOwnedItem(items,query,['consumable'])
+          const item=resolveOwnedItem(usable,query,['consumable'])
           if(!item){
             const anyItem=resolveOwnedItem(items,query)
             if(anyItem?.item_id==='caixa_sorte'){
               return await reply(`🎁 Para abrir a Caixa da Sorte, use *${prefix}caixa_sorte*.`)
+            }
+            if(isEnchantStone(anyItem)){
+              return await reply(`💎 *${anyItem.name}* é um encantamento, não uma poção. Use *${prefix}encantar* para aplicá-la.`)
             }
             return await reply(`❌ Não encontrei uma poção com esse nome.\nUse *${prefix}usar* para ver as opções.`)
           }
