@@ -6615,7 +6615,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
 
 Número: *${r.number}*
 Cor: *${r.color}*
-${r.programmed?'📢 *GIRO ESPECIAL PROGRAMADO — 6º VERDE GARANTIDO*\n':''}Sua escolha: *${r.choice}*
+Sua escolha: *${r.choice}*
 
 ${result}`)
         return true
@@ -6861,7 +6861,7 @@ _Responda só com o número._`
 
 Número: *${r.number}*
 Cor: *${r.color}*
-${r.programmed?'📢 *GIRO ESPECIAL PROGRAMADO — 6º VERDE GARANTIDO*\n':''}Sua escolha: *${r.choice}*
+Sua escolha: *${r.choice}*
 
 ${result}`)
       return true
@@ -12482,7 +12482,7 @@ _Os comandos antigos continuam funcionando normalmente._`
             ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
             : `💸 Você perdeu R$ ${fmt(r.amount)}.`
           await progressDailyMission(player,'game')
-          await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\n${r.programmed?'📢 *GIRO ESPECIAL PROGRAMADO — 6º VERDE GARANTIDO*\n':''}Sua escolha: *${r.choice}*\n\n${result}`)
+          await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\nSua escolha: *${r.choice}*\n\n${result}`)
 
         } else if(['apostar','entrarroleta'].includes(cmd)){
           const amount=parseAmount(args[0]); const choice=(args[1]||'').toLowerCase()
