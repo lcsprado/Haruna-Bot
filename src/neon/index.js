@@ -6608,7 +6608,7 @@ Obrigado por apoiar o Alpha Bot 🍀`
         const r=await roulette(sender,flow.data.amount,flow.data.choice,chat)
         await progressDailyMission(sender,'game')
         const result=r.payout>0
-          ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+          ? `📢 *GIRO ESPECIAL PROGRAMADO*\n🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
           : `💸 Você perdeu R$ ${fmt(r.amount)}.`
         await afterGame('roulette',{amount:flow.data.amount,choice:flow.data.choice},
 `🎰 *ROLETA*
@@ -6854,7 +6854,7 @@ _Responda só com o número._`
       const r=await roulette(sender,flow.data.amount,choice,chat)
       await progressDailyMission(sender,'game')
       const result=r.payout>0
-        ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+        ? `📢 *GIRO ESPECIAL PROGRAMADO*\n🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
         : `💸 Você perdeu R$ ${fmt(r.amount)}.`
       await afterGame('roulette',{amount:flow.data.amount,choice},
 `🎰 *ROLETA*
@@ -12479,7 +12479,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           const player=await resolvePlayerJid(sock,chat,sender,msg)
           const r=await roulette(player,amount,choice,chat)
           const result=r.payout>0
-            ? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+            ? `📢 *GIRO ESPECIAL PROGRAMADO*\n🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
             : `💸 Você perdeu R$ ${fmt(r.amount)}.`
           await progressDailyMission(player,'game')
           await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\nSua escolha: *${r.choice}*\n\n${result}`)
@@ -12496,7 +12496,7 @@ _Os comandos antigos continuam funcionando normalmente._`
           const r=await spinGroupRoulette(chat,player)
           let out=`🎰 *ROLETA COLETIVA*\n\n🎯 Número: *${r.number}*\n🎨 Cor: *${r.color.toUpperCase()}*\n\n`
           for(const x of r.results){
-            out+=`@${String(x.jid).split('@')[0]} — R$ ${fmt(x.amount)} no ${x.choice}: ${x.payout>0?`🏆 ganhou R$ ${fmt(x.payout)}`:'💸 perdeu'}\n`
+            out+=`@${String(x.jid).split('@')[0]} — R$ ${fmt(x.amount)} no ${x.choice}: ${x.payout>0?`🏆 ganhou R$ ${fmt(x.payout)}\n📢 *GIRO ESPECIAL PROGRAMADO*`:'💸 perdeu'}\n`
           }
           await reply(out.trim(),{mentions:r.results.map(x=>x.jid)})
 
