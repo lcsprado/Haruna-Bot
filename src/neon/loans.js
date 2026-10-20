@@ -198,7 +198,7 @@ export async function acceptLoan(borrowerJid,id=null){
   const credit=await getLoanCredit(borrowerJid)
   if(Number(preview.principal)>credit.available) throw new Error('Seu limite de crédito atual não cobre mais essa proposta.')
 
-  return tx(async client=>{
+  const accepted=await tx(async client=>{
     const {rows}=await client.query('SELECT * FROM player_loans WHERE id=$1 FOR UPDATE',[preview.id])
     let loan=rows[0]
     if(!loan||loan.status!=='pending'||Number(loan.offer_expires_at)<=nowEpoch()) throw new Error('Essa proposta expirou ou não está mais disponível.')
@@ -235,6 +235,8 @@ export async function acceptLoan(borrowerJid,id=null){
     )
     return loan
   })
+  startLoanCollector()
+  return accepted
 }
 
 export async function rejectLoan(borrowerJid,id=null){
@@ -304,11 +306,26 @@ export async function collectOverdueLoans(){
 
 export function startLoanCollector(){
   if(globalThis.__alphaLoanCollector) return globalThis.__alphaLoanCollector
-  const tick=()=>collectOverdueLoans().catch(err=>console.error('[Empréstimos] varredura falhou',err?.message||err))
-  const timer=setInterval(tick,60*1000)
+  let busy=false
+  const tick=async()=>{
+    if(busy)return
+    busy=true
+    try{
+      await collectOverdueLoans()
+      // Sem empréstimos ativos, encerra o polling. Uma nova aceitação o reativa.
+      const {rows}=await db.query("SELECT 1 FROM player_loans WHERE status='active' LIMIT 1")
+      if(!rows.length){
+        clearInterval(timer)
+        if(globalThis.__alphaLoanCollector===timer)globalThis.__alphaLoanCollector=null
+        console.log('[Neon Eco] varredura de empréstimos pausada; nenhum empréstimo ativo')
+      }
+    }catch(err){console.error('[Empréstimos] varredura falhou',err?.message||err)}
+    finally{busy=false}
+  }
+  const timer=setInterval(()=>{void tick()},60*1000)
   timer.unref?.()
   globalThis.__alphaLoanCollector=timer
-  tick()
+  void tick()
   return timer
 }
 
