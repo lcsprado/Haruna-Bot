@@ -4,6 +4,30 @@ import {PECADOS_ESSENCES,PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS,PECADOS_G
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
 const KEY_PREFIX='sete-pecados-retro-20261019:'
 const BOX_MESSAGE_PREFIX='sete-pecados-box-message:'
+
+const BONUS_STYLE={predador:'🐾 Predador',guardiao:'🛡️ Guardião',mistico:'✨ Místico',voador:'🪽 Voador'}
+const pct=value=>Number(value*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%'
+function collabGearBonus(item){
+ const values=[]
+ if(item.atk)values.push('⚔️ +'+fmt(item.atk)+' ATK')
+ if(item.def)values.push('🛡️ +'+fmt(item.def)+' DEF')
+ if(item.hp)values.push('❤️ +'+fmt(item.hp)+' HP')
+ if(item.spd)values.push('💨 +'+fmt(item.spd)+' VEL')
+ if(item.crit)values.push('🎯 +'+pct(item.crit)+' CRIT')
+ return values.join(' • ')
+}
+function collabHeroBonus(hero){
+ const s=hero.stats||{}
+ const values=[]
+ if(s.damage)values.push('⚔️ +'+s.damage+'% dano')
+ if(s.bossDamage)values.push('👹 +'+s.bossDamage+'% dano Boss')
+ if(s.defense)values.push('🛡️ +'+s.defense+'% defesa')
+ if(s.crit)values.push('🎯 +'+s.crit+'% CRIT')
+ if(s.dodge)values.push('💨 +'+s.dodge+'% esquiva')
+ if(s.drop)values.push('🎁 +'+s.drop+'% drop')
+ return values.join(' • ')
+}
+
 async function inTransaction(fn){
  const c=await db.connect()
  try{await c.query('BEGIN');const result=await fn(c);await c.query('COMMIT');return result}
@@ -90,6 +114,30 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
  if(!['7pecados','setepecados','pecados7'].includes(cmd))return false
  await ensureUser(sender)
  const action=String(args[0]||'status').toLowerCase()
+
+ if(['personagens','personagem','herois','heróis'].includes(action)){
+  const entries=PECADOS_HEROES.map((hero,i)=>
+   '*'+(i+1)+'. '+hero.name+'* — '+(BONUS_STYLE[hero.style]||hero.style)+'\n   '+collabHeroBonus(hero)).join('\n')
+  await reply('🌈🐾 *PERSONAGENS — COLLAB 7 PECADOS*\n\n'+entries+'\n\n📦 Chance de personagem por baú: *33,33%* (1 entre 7 nesta categoria).\n🎁 *!7pecados abrir* — custa 7 essências.\n♻️ Repetido: 50 Fragmentos Universais de Raid.')
+  return true
+ }
+ if(['armas','arma'].includes(action)){
+  const entries=PECADOS_WEAPONS.map((weapon,i)=>
+   '*'+(i+1)+'. '+weapon.name+'*\n   '+collabGearBonus(weapon)).join('\n')
+  await reply('🌈⚔️ *ARMAS — COLLAB 7 PECADOS*\n\n'+entries+'\n\n📊 Atributos no *Lv.1*; aprimoramentos até Lv.10 (2,5×).\n📦 Chance de arma por baú: *33,33%* (1 entre 7 nesta categoria).\n🎁 *!7pecados abrir* — custa 7 essências.\n♻️ Repetido: 50 Fragmentos Universais de Raid.')
+  return true
+ }
+ if(['armaduras','armadura'].includes(action)){
+  const entries=PECADOS_ARMORS.map((armor,i)=>
+   '*'+(i+1)+'. '+armor.name+'*\n   '+collabGearBonus(armor)).join('\n')
+  await reply('🌈🛡️ *ARMADURAS — COLLAB 7 PECADOS*\n\n'+entries+'\n\n📊 Atributos no *Lv.1*; aprimoramentos até Lv.10 (2,5×).\n📦 Chance de armadura por baú: *33,33%* (1 entre 7 nesta categoria).\n🎁 *!7pecados abrir* — custa 7 essências.\n♻️ Repetido: 50 Fragmentos Universais de Raid.')
+  return true
+ }
+ if(action==='ajuda'){
+  await reply('🌈 *COLLAB DOS 7 PECADOS — COMANDOS*\n\n📋 *!7pecados* — Calendário, essências e coleção\n🐾 *!7pecados personagens* — Os 7 personagens e seus bônus\n⚔️ *!7pecados armas* — As 7 armas e seus atributos\n🛡️ *!7pecados armaduras* — As 7 armaduras e seus atributos\n🎁 *!7pecados abrir* — Abre um baú usando 7 essências\n👹 *!boss* — Boss global ativo\n⚔️ *!atacar* — Ataca o Boss\n\n🎲 Cada categoria tem chance de 1/3 no baú.\n🩸 Essências repetidas *ACUMULAM*, não viram dinheiro.\n♻️ Recompensa do baú repetida vira *50 Fragmentos Universais de Raid*.\n📅 25/10 e 01/11, das 18h às 20h (Brasília).\n✅ As consultas não gastam essências.')
+  return true
+ }
+
  if(action==='abrir'||action==='bau'||action==='caixa'){
   const r=await openBox(sender,messageId)
   if(r.unknown){await reply('⚠️ Esta mensagem já foi processada, mas o resultado não pôde ser recuperado. Nenhuma essência foi consumida novamente.');return true}
@@ -99,16 +147,15 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
   return true
  }
  if(action==='resgatar'||action==='compensacao'){
-  const r=await inTransaction(async c=>{await c.query("SELECT jid FROM users WHERE jid=$1 FOR UPDATE",[sender]);return legacyReward(c,sender)})
-  await reply(r.already?'✅ Compensação histórica já resgatada.':r.unverified?'🔎 Não encontrei registro suficiente dos dois eventos anteriores neste perfil. Nenhuma recompensa foi alterada.':'⚜️ *COMPENSAÇÃO RETROATIVA!*\n\n+*'+fmt(r.quantity)+' essências* pelos eventos anteriores.\n✅ Crédito realizado uma única vez.')
+  await reply('✅ O período de compensações históricas foi encerrado. Os inventários restaurados são definitivos e não há novos resgates retroativos.')
   return true
  }
- if(action!=='status'&&action!=='ajuda'){await reply('🌈 Use *!7pecados*, *!7pecados abrir* ou *!7pecados resgatar*.');return true}
+ if(action!=='status'){await reply('🌈 Comando não reconhecido. Use *!7pecados ajuda* para ver as opções.');return true}
  const rows=(await db.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[])",[sender,PECADOS_ESSENCES])).rows
  const qty=rows.reduce((n,r)=>n+Number(r.quantity||0),0)
  const h=(await db.query("SELECT COUNT(DISTINCT species)::int AS n FROM pet_collection WHERE jid=$1 AND species=ANY($2::text[])",[sender,PECADOS_HEROES.map(p=>p.species)])).rows[0]
  const g=(await db.query("SELECT COUNT(DISTINCT item_id)::int AS n FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0",[sender,PECADOS_GEAR_IDS])).rows[0]
  const future=PECADOS_EDITIONS.filter(x=>Date.now()<x.end).map(x=>new Date(x.start).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'}))
- await reply('🌈 *COLLAB — 7 PECADOS CAPITAIS*\n\n🩸 Essências: *'+fmt(qty)+'* (*'+Math.floor(qty/7)+' baú(s)*)\n🐾 Personagens: *'+fmt(h?.n)+'/7*\n⚔️🛡️ Equipamentos: *'+fmt(g?.n)+'/14*\n🎁 Cada baú: *7 essências*\n🎲 Personagem 1/3 | Arma 1/3 | Armadura 1/3\n♻️ Repetido: *50 Fragmentos Universais de Raid*\n📅 Domingos *25/10 e 01/11, 18h–20h* (Brasília).\n'+(future.length?'Próximas edições: '+future.join(' e '):'Distribuição encerrada; essências restantes continuam válidas.')+'\n\n👉 *!7pecados abrir* — Abrir um baú\n👉 *!7pecados resgatar* — Compensação dos eventos anteriores')
+ await reply('🌈 *COLLAB — 7 PECADOS CAPITAIS*\n\n🩸 Essências: *'+fmt(qty)+'* (*'+Math.floor(qty/7)+' baú(s)*)\n🐾 Personagens: *'+fmt(h?.n)+'/7*\n⚔️🛡️ Equipamentos: *'+fmt(g?.n)+'/14*\n🎁 Cada baú: *7 essências*\n🎲 Personagem 1/3 | Arma 1/3 | Armadura 1/3\n♻️ Repetido: *50 Fragmentos Universais de Raid*\n📅 Domingos *25/10 e 01/11, 18h–20h* (Brasília).\n'+(future.length?'Próximas edições: '+future.join(' e '):'Distribuição encerrada; essências restantes continuam válidas.')+'\n\n👉 *!7pecados armas* • *personagens* • *armaduras*\n👉 *!7pecados abrir* — Abrir um baú\n👉 *!7pecados ajuda* — Ver todos os comandos')
  return true
 }
