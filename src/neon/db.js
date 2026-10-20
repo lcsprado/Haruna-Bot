@@ -5775,12 +5775,66 @@ export async function petLeaderboard(limit=10){
   const {rows}=await db.query(`SELECT p.*,u.push_name FROM pets p JOIN users u ON u.jid=p.jid ORDER BY p.level DESC,p.power DESC,p.xp DESC LIMIT $1`,[Math.min(20,Math.max(1,Number(limit)||10))]); return rows
 }
 
+const alphaEcoGroupActivity=String(process.env.ALPHA_DATASET_MODE||'').startsWith('TEMPORARY_')||process.env.ALPHA_DB_ECO_MODE==='1'
+let pendingGroupActivity=new Map()
+let groupActivityFlushTimer=null
+let groupActivityFlushing=null
+
+async function flushGroupActivityBatch(){
+  if(!pendingGroupActivity.size)return
+  if(groupActivityFlushing)return groupActivityFlushing
+  if(groupActivityFlushTimer){clearTimeout(groupActivityFlushTimer);groupActivityFlushTimer=null}
+  const payload=pendingGroupActivity
+  pendingGroupActivity=new Map()
+  groupActivityFlushing=(async()=>{
+    try{
+      await db.query(`INSERT INTO group_activity(chat_jid,jid,day,messages,commands)
+        SELECT x.chat_jid,x.jid,x.day::date,x.messages,x.commands
+        FROM jsonb_to_recordset($1::jsonb)
+          AS x(chat_jid text,jid text,day text,messages integer,commands integer)
+        ON CONFLICT(chat_jid,jid,day) DO UPDATE SET
+          messages=group_activity.messages+EXCLUDED.messages,
+          commands=group_activity.commands+EXCLUDED.commands`,
+        [JSON.stringify([...payload.values()])])
+    }catch(err){
+      for(const [key,row] of payload){
+        const newer=pendingGroupActivity.get(key)
+        if(newer){newer.messages+=row.messages;newer.commands+=row.commands}
+        else pendingGroupActivity.set(key,row)
+      }
+      console.error('[Neon Eco] lote de atividade não gravado; mantido em memória',err?.message||err)
+    }
+  })()
+  try{await groupActivityFlushing}finally{
+    groupActivityFlushing=null
+    if(pendingGroupActivity.size&&!groupActivityFlushTimer){
+      groupActivityFlushTimer=setTimeout(()=>{void flushGroupActivityBatch()},60000)
+      groupActivityFlushTimer.unref?.()
+    }
+  }
+}
+
 export async function recordGroupActivity(chatJid,jid,isCommand=false){
   if(!chatJid?.endsWith('@g.us')||!jid) return
-  await db.query(`INSERT INTO group_activity(chat_jid,jid,day,messages,commands) VALUES($1,$2,CURRENT_DATE,1,$3)
-    ON CONFLICT(chat_jid,jid,day) DO UPDATE SET messages=group_activity.messages+1,commands=group_activity.commands+EXCLUDED.commands`,[chatJid,jid,isCommand?1:0])
+  // Comando continua com gravação imediata; conversa comum vira lote de
+  // 15 minutos, evitando despertar o PostgreSQL a cada mensagem do grupo.
+  if(!alphaEcoGroupActivity || isCommand){
+    await db.query(`INSERT INTO group_activity(chat_jid,jid,day,messages,commands) VALUES($1,$2,CURRENT_DATE,1,$3)
+      ON CONFLICT(chat_jid,jid,day) DO UPDATE SET messages=group_activity.messages+1,commands=group_activity.commands+EXCLUDED.commands`,
+      [chatJid,jid,isCommand?1:0])
+    return
+  }
+  const day=new Date().toISOString().slice(0,10),key=JSON.stringify([chatJid,jid,day])
+  const prev=pendingGroupActivity.get(key)
+  if(prev)prev.messages++
+  else pendingGroupActivity.set(key,{chat_jid:chatJid,jid,day,messages:1,commands:0})
+  if(!groupActivityFlushTimer){
+    groupActivityFlushTimer=setTimeout(()=>{void flushGroupActivityBatch()},15*60*1000)
+    groupActivityFlushTimer.unref?.()
+  }
 }
 export async function weeklyActivityLeaderboard(chatJid,limit=10){
+  if(alphaEcoGroupActivity)await flushGroupActivityBatch()
   const {rows}=await db.query(`SELECT a.jid,COALESCE(NULLIF(u.push_name,''),'Jogador') push_name,SUM(a.messages)::int messages,SUM(a.commands)::int commands
     FROM group_activity a LEFT JOIN users u ON u.jid=a.jid WHERE a.chat_jid=$1 AND a.day>=CURRENT_DATE-6
     GROUP BY a.jid,u.push_name ORDER BY SUM(a.messages) DESC,SUM(a.commands) DESC LIMIT $2`,[chatJid,Math.min(20,Math.max(1,Number(limit)||10))]); return rows
