@@ -4,6 +4,7 @@
 import {randomInt,randomBytes,createHash} from 'node:crypto'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction} from './db.js'
 import {initEnchantments} from './enchantments-alpha.js'
+import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
 
 const KEY='leilao_oculto_alpha_20261020_nova_edicao_3lotes_v2'
 // All 20/10 auctions were cancelled by the organizer pending audit.
@@ -27,7 +28,7 @@ const PACKAGES=[
   [{id:'fragmento_universal_raid',qty:12},{id:'chave_raid_70',qty:2},{id:'caixa_epica',qty:3}],
   [{id:'pocao_pet_full',qty:3},{id:'energetico_pet',qty:5},{id:'pedra_furia_alpha',qty:2},{xp:25000}]
 ]
-let timer=null,busy=false,initPromise=null
+let timer=null,busy=false,initPromise=null,auctionSocket=null
 
 async function init(){
   if(initPromise)return initPromise
@@ -214,6 +215,8 @@ async function tick(sock){
   }finally{busy=false}
 }
 export function startAuctionAlphaScheduler(sock){
+  // Atualiza o socket após cada reconexão, sem criar um segundo polling.
+  auctionSocket=sock
   if(AUCTION_PAUSED_FOR_AUDIT){
     if(timer){clearInterval(timer);timer=null}
     console.log('[LEILAO OCULTO] pausado para auditoria — sem novos leiloes ou avisos')
@@ -269,6 +272,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
   try{
     const result=await change(async(state,c)=>{
       if(state.phase!=='running'||Date.now()>=Number(state.ends||0))throw Error('Lote não está recebendo lances. Consulte !leilao.')
+      if(!Array.isArray(state.groups)||!state.groups.includes(chat))throw Error('Este grupo não participa desta edição do leilão.')
       const lot=state.lots[state.lot]
       const old=state.high
       const minimum=old?Number(old.value)+lot.step:lot.min
@@ -290,13 +294,26 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
         cash:cash+(old?.jid===sender?Number(old.cash):0),
         bank:bank+(old?.jid===sender?Number(old.bank):0)
       }
-      return '✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/3*\n💰 '+fmt(offered)+
-        '\n🔒 Reservado até você vencer ou ser superado.'+
-        '\n🎁 O conteúdo só será revelado ao final dos três lotes.'+
-        '\n📈 Próximo lance: '+fmt(offered+lot.step)+
-        '\n⏳ Encerra: '+clock(state.ends)
+      return {
+        confirmation:'✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/3*\n💰 '+fmt(offered)+
+          '\n🔒 Reservado até você vencer ou ser superado.'+
+          '\n🎁 O conteúdo só será revelado ao final dos três lotes.'+
+          '\n📈 Próximo lance: '+fmt(offered+lot.step)+
+          '\n⏳ Encerra: '+clock(state.ends),
+        otherGroups:otherAuctionGroups(state.groups,chat),
+        notice:crossGroupBidNotice({
+          lot:state.lot+1,totalLots:state.lots.length,bidder:state.high.name,
+          value:offered,nextMinimum:offered+lot.step,endsAt:state.ends
+        })
+      }
     })
-    await reply(result)
+    // O lance já foi confirmado no Neon. Uma falha de envio não o desfaz.
+    try{await reply(result.confirmation)}
+    catch(err){console.warn('[LEILAO OCULTO] lance gravado; confirmação local não enviada',err?.message||err)}
+    if(result.otherGroups.length){
+      if(auctionSocket?.sendMessage)await sendGroups(auctionSocket,result.notice,result.otherGroups)
+      else console.warn('[LEILAO OCULTO] lance aceito, mas socket indisponível para avisar outros grupos')
+    }
   }catch(err){await reply('❌ '+String(err?.message||err))}
   return true
 }
