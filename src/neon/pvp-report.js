@@ -57,7 +57,9 @@ export function formatPvpBattleReport(r){
   lines.push('',
     `🏆 *Vencedor: ${name(r.winner.name)}* — ❤️ ${fmt(r.winner.hp)} HP restante`,
     `💰 Prêmio: R$ ${fmt(r.reward)}`,
-    `✨ EXP: +${fmt(r.winXpGain??40)} vencedor / +${fmt(r.loseXpGain??15)} derrotado`)
+    `✨ EXP: +${fmt(r.winExp?.awardedGain??r.winXpGain??40)} vencedor / +${fmt(r.loseExp?.awardedGain??r.loseXpGain??15)} derrotado`)
+  if(Number(r.winExp?.boostBonus||0)>0)lines.push(`⚡ Bônus pessoal de XP do vencedor: +${fmt(r.winExp.boostBonus)} (incluído no total)`)
+  if(Number(r.loseExp?.boostBonus||0)>0)lines.push(`⚡ Bônus pessoal de XP do derrotado: +${fmt(r.loseExp.boostBonus)} (incluído no total)`)
   if(Number(r.eventMultiplier||1)>1)lines.push(`🔥 Evento de recompensa x${String(r.eventMultiplier).replace('.',',')} ativo`)
   if(Number(r.winExp?.levels||0)>0)lines.push(`⬆️ ${name(r.winner.name)} subiu ${fmt(r.winExp.levels)} nível(is)!`)
   if(Number(r.loseExp?.levels||0)>0)lines.push(`⬆️ ${name(r.loser.name)} subiu ${fmt(r.loseExp.levels)} nível(is)!`)
