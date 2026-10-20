@@ -1146,7 +1146,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const cash=Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier
     const exp=Math.round(Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier)
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
-    await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
+    const expCredit=await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
     const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.round(Math.floor(cfg.petXpPool*(.15+.85*share))*petXpMultiplier)):0
     const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp):[]
 
@@ -1312,7 +1312,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       playerClassId:p.classId,
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,petXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),petXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
