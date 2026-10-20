@@ -180,19 +180,7 @@ export async function roulette(jid,amount,choice,chat=null){
 
   return tx(async c=>{
     await debit(c,jid,amount)
-    // A exceção só existe para o jogador com agendamento registrado e
-    // desaparece na sexta aposta concluída; todos os demais seguem aleatórios.
-    const eventType='roulette_green_once'
-    const oneShot=await loadGame(c,jid,eventType)
-    const completed=Number(oneShot?.completed)
-    const scheduled=oneShot?.mode==='sixth_green_one_time'
-      && Number.isInteger(completed) && completed>=0 && completed<=5
-    const programmed=scheduled && completed===5
-    const n=programmed?0:Math.floor(Math.random()*37)
-    if(scheduled){
-      if(programmed) await clearGame(c,jid,eventType)
-      else await saveGame(c,jid,eventType,{mode:'sixth_green_one_time',completed:completed+1})
-    }
+    const n=Math.floor(Math.random()*37)
     const redNumbers=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36])
     const color=n===0?'verde':(redNumbers.has(n)?'vermelho':'preto')
     let payout=0
@@ -204,7 +192,7 @@ export async function roulette(jid,amount,choice,chat=null){
       payout=amount+(baseProfit*lucky3xMultiplier()*groupMultiplier)
     }
     if(payout) await credit(c,jid,payout,'roleta')
-    return {number:n,color,choice,amount,payout,profit:payout-amount,programmed}
+    return {number:n,color,choice,amount,payout,profit:payout-amount}
   })
 }
 
