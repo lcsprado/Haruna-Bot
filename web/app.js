@@ -2555,7 +2555,7 @@ document.addEventListener('visibilitychange',()=>{
 
 setInterval(()=>{
   if(!document.hidden && ui.token && !ui.syncing) sync(true);
-},15000);
+},60000);
 setInterval(()=>{
   if(!document.hidden && ui.token) refreshLiveCountdowns();
 },1000);
