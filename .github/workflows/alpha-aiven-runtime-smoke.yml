@@ -32,10 +32,24 @@ jobs:
         # O lockfile legado esta dessincronizado com o package.json, entao npm ci falharia.
         # Isto modifica somente o executor temporario do CI, nunca as branches do bot.
         run: npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: "Preparar certificado de confianca do Aiven"
+        env:
+          AIVEN_CA_PEM: ${{ secrets.ALPHA_AIVEN_CA }}
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${AIVEN_CA_PEM:-}" || "$AIVEN_CA_PEM" != *"-----BEGIN CERTIFICATE-----"* || "$AIVEN_CA_PEM" != *"-----END CERTIFICATE-----"* ]]; then
+            echo "::error::Falta o GitHub Actions Repository Secret ALPHA_AIVEN_CA com o certificado CA publico do Aiven."
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$AIVEN_CA_PEM" > "$RUNNER_TEMP/alpha-aiven-ca.pem"
+          openssl x509 -in "$RUNNER_TEMP/alpha-aiven-ca.pem" -noout >/dev/null
+          echo 'CA publica do Aiven carregada e formato PEM validado.'
       - name: "Confirmar conexao Aiven e modo somente-leitura"
         env:
           DATABASE_URL: ${{ secrets.ALPHA_AIVEN_URI }}
           PGOPTIONS: "-c default_transaction_read_only=on"
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/alpha-aiven-ca.pem
         run: |
           set -Eeuo pipefail
           node --input-type=module <<'NODE'
@@ -67,6 +81,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.ALPHA_AIVEN_URI }}
           PGOPTIONS: "-c default_transaction_read_only=on"
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/alpha-aiven-ca.pem
           ALPHA_RUNTIME: web-api-only
           WEB_ALLOWED_ORIGINS: "https://alpha-web-rpg.vercel.app"
           PORT: "18437"
