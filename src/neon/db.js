@@ -1490,6 +1490,8 @@ else if(item.rarity==='rare') unit=7500
 else if(item.rarity==='uncommon') unit=2500
 else unit=500
 const remaining=owned-qty
+const reserved=(await client.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
+if(remaining<Number(reserved?.qty||0))throw new Error('Não é permitido vender cópias aprimoradas; venda apenas cópias Lv.1.')
 if(remaining===0 && ['weapon','armor'].includes(item.category)){
 const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
 if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: mantenha pelo menos uma cópia para preservar suas estrelas.')
@@ -1589,6 +1591,8 @@ else if(item.rarity==='rare') unit=7500
 else if(item.rarity==='uncommon') unit=2500
 else unit=500
 const remaining=owned-sel.qty
+const reserved=(await client.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
+if(remaining<Number(reserved?.qty||0))throw new Error('Não é permitido vender cópias aprimoradas; venda apenas cópias Lv.1.')
 if(remaining===0 && ['weapon','armor'].includes(item.category)){
 const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
 if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: venda apenas cópias extras.')
@@ -1687,6 +1691,8 @@ throw new Error(equipped
 : `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
 }
 const remaining=owned-sel.qty
+const reserved=(await client.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
+if(remaining<Number(reserved?.qty||0))throw new Error('Cópias aprimoradas não podem ser descartadas como Lv.1.')
 if(remaining===0 && ['weapon','armor'].includes(item.category)){
 const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
 if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: não descarte a última cópia.')
@@ -1722,7 +1728,8 @@ await ensureUser(jid)
 const items=await getInventory(jid)
 const selections=items
 .filter(i=>['weapon','armor','boots'].includes(i.category) && i.rarity!=='legendary' && Number(i.quantity)>1)
-.map(i=>({itemId:i.item_id,qty:Number(i.quantity)-1}))
+.map(i=>({itemId:i.item_id,qty:Math.min(Number(i.quantity)-1,
+Math.max(0,Number(i.quantity)-(i.upgrade_distribution||[]).filter(t=>t.level>1).reduce((n,t)=>n+Number(t.quantity),0)))})).filter(i=>i.qty>0)
 if(!selections.length) return {sold:[],types:0,totalUnits:0,total:0,cash:null}
 return sellItemsBatch(jid,selections)
 }
