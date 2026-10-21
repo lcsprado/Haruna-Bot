@@ -14,7 +14,7 @@ import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
+equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
 acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
 ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
 ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -3833,6 +3833,20 @@ const [emoji,label]=EQUIPMENT_BONUS_FIELDS[key]
 return emoji+' '+label+': '+gearStatValue(key,a)+' → *'+gearStatValue(key,b)+'*'
 }).filter(Boolean).join('\n')
 }
+// Uma estrela de forja (🌟) nao e o nivel da copia (⭐).
+const forgeStarsIcon=stars=>{
+const n=Math.max(1,Math.min(5,Math.trunc(Number(stars)||1)))
+return '★'.repeat(n)+'☆'.repeat(5-n)
+}
+const forgeBonusText=stars=>'+'+((Math.max(1,Math.trunc(Number(stars)||1))-1)*4)+'%'
+const equipmentCopyLabel=i=>i.sourceKind==='star'
+?'🌟 *FORJADA '+forgeStarsIcon(i.stars)+'* • bônus *'+forgeBonusText(i.stars)+'*'
+:'⚪ *COMUM* • ×'+Number(i.tierQuantity||1)+' cópia(s)'
+const activeCopyLabel=(p,category)=>{
+const stars=Number(category==='weapon'?p?.weapon_stars:category==='armor'?p?.armor_stars:1)
+const level=Number(category==='weapon'?p?.weapon_level:category==='armor'?p?.armor_level:category==='helmet'?p?.helmet_level:p?.boot_level)||1
+return (stars>1?'🌟 FORJADA '+forgeStarsIcon(stars)+' ('+forgeBonusText(stars)+')':'⚪ COMUM')+' • ⭐ Lv.'+level
+}
 async function showEquipmentMenu(chat,sender,reply){
 const [items,p]=await Promise.all([getInventory(sender),getCombatProfile(sender)])
 const weapons=items.filter(i=>i.category==='weapon')
@@ -3867,32 +3881,44 @@ O que deseja trocar?
 )
 }
 async function showEquipmentTypeMenu(chat,sender,reply,category){
-const [items,p,upgradeables]=await Promise.all([getInventory(sender),getCombatProfile(sender),listUpgradeableEquipment(sender)])
+const [items,p]=await Promise.all([getInventory(sender),getCombatProfile(sender)])
 const filtered=items.filter(i=>i.category===category)
-const levelMap=new Map(upgradeables.map(i=>[i.item_id,Number(i.level||1)]))
-const statsMap=new Map(upgradeables.map(i=>[i.item_id,i.current]))
 const isWeapon=category==='weapon'
 const isArmor=category==='armor'
 const isHelmet=category==='helmet'
-const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':isArmor?'🛡️ *ESCOLHA UMA ARMADURA*':isHelmet?'🪖 *ELMOS / TROFÉUS DE CAMPEÃO*':'👢 *ESCOLHA SUAS BOTAS*'
+const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':isArmor?'🛡️ *ESCOLHA UMA ARMADURA*':isHelmet?'🪖 *ESCOLHA UM ELMO*':'👢 *ESCOLHA UMA BOTA*'
 if(!filtered.length){
 setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
 await reply(title+'\n\nVocê não possui itens desta categoria.\n\n9️⃣ Voltar\n0️⃣ Sair')
 return
 }
 setQuickFlow(chat,sender,'equip_select',{items:filtered.map(i=>i.item_id),category},5*60*1000)
+const activeId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
 let text=title+'\n\n'
 filtered.forEach((i,idx)=>{
-const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
-const level=Number(levelMap.get(i.item_id)||1)
-const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
-const copySummary=(i.upgrade_distribution||[]).map(c=>(c.stars?'🌟 '+c.stars+'/5':'⭐')+' Lv.'+c.level+' ×'+c.quantity).join(' • ')
-text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • 📦 ×'+Number(i.quantity||0)+' no total\n'
-text+='   📋 *Cópias:* '+(copySummary||'⭐ Lv.'+level+' ×'+Number(i.quantity||0))+((isWeapon||isArmor)&&Number(i.equipment_stars||1)>1?' • 🌟 '+Number(i.equipment_stars)+'/5':'')+'\n'
-text+='   '+gearStatsText(stats,category)+active+'\n'
-text+='   🎒 *'+Math.max(0,Number(i.quantity||0)-(active?1:0))+'* reserva(s)'+(active?' • 🔒 *1 equipada*':'')+'\n'
+const active=activeId===i.item_id
+const tiers=(i.upgrade_distribution||[]).filter(c=>Number(c.quantity)>0)
+text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'*\n'
+text+='   📦 *'+Number(i.quantity||0)+' unidade(s)*'+(active?' • ✅ EQUIPADO':'')+'\n'
+for(const c of tiers){
+const forged=Number(c.stars||1)>1
+const level=Number(c.level||1)
+const stars=forged?Number(c.stars):1
+const stats=equipmentStatsAtLevel(i.item_id,level,stars)||getEquipmentInfo(i.item_id)||{}
+text+='   '+(forged?'🌟 *FORJADA '+forgeStarsIcon(stars)+'* ('+forgeBonusText(stars)+')':'⚪ *COMUM* ×'+Number(c.quantity||1))+' • ⭐ Lv.'+level+'\n'
+text+='      '+gearStatsText(stats,category)+'\n'
+}
+if(!tiers.length){
+const level=Number(i.equipment_level||1)
+text+='   ⚪ COMUM • ⭐ Lv.'+level+'\n'
+text+='      '+gearStatsText(equipmentStatsAtLevel(i.item_id,level)||getEquipmentInfo(i.item_id),category)+'\n'
+}
+if(active)text+='   ✅ *Em uso:* '+activeCopyLabel(p,category)+'\n'
+text+='   🎒 Reservas: '+Math.max(0,Number(i.quantity||0)-(active?1:0))+'\n\n'
 })
-text+='\n👉 Responda só com o número.\n9️⃣ Voltar\n0️⃣ Sair'
+text+='📌 *⭐ Lv.* indica nivel. *🌟 ★★* indica forja (+4% por estrela adicional).\n'
+text+='🔎 Cada copia tem atributos proprios; o bot utiliza automaticamente a mais forte do mesmo modelo.\n\n'
+text+='👉 Responda apenas o numero do modelo.\n9️⃣ Voltar\n0️⃣ Sair'
 await reply(text)
 }
 async function showSellMenu(chat,sender,reply){
@@ -6254,6 +6280,7 @@ return option+' '+label+' → *Lv.'+target+'* (+'+gain+') — *R$ '+fmt(cost)+'*
 await reply(
 '⬆️ *QUANTOS NÍVEIS QUER SUBIR?*\n\n'+
 rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+equipmentCopyLabel(item)+'\n'+
 '⭐ Nível atual: *Lv.'+level+'*\n\n'+
 line('1️⃣','+1 nível',targets[1])+'\n'+
 line('2️⃣','até +3 níveis',targets[2])+'\n'+
@@ -6277,6 +6304,7 @@ if(input==='5'){
 setQuickFlow(chat,sender,'upgrade_custom_level',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind},90000)
 await reply('🎯 *ESCOLHER NÍVEL*\n\n'+
 rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+equipmentCopyLabel(item)+'\n'+
 '⭐ Atual: *Lv.'+item.level+'*\n\n'+
 'Digite o nível final desejado entre *'+(Number(item.level)+1)+' e 10*.\n'+
 'Ex.: *8*\n\n0️⃣ Cancelar')
@@ -6305,6 +6333,7 @@ setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item
 await reply(
 '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
 rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+equipmentCopyLabel(item)+'\n'+
 '⭐ Lv.'+level+' → *Lv.'+target+'* (+'+(target-level)+' níveis)\n'+
 '💪 '+stat+'\n'+
 '💰 Custo total: *R$ '+fmt(cost)+'*\n\n'+
@@ -6336,7 +6365,7 @@ const stat=gearStatsChanges(item.current,targetStats,item.category)
 setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind,targetLevel:target},90000)
 await reply(
 '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
-rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+rarityLabel(item.rarity)+' — *'+item.name+'*\n'+equipmentCopyLabel(item)+'\n'+
 '⭐ Lv.'+level+' → *Lv.'+target+'* (+'+(target-level)+' níveis)\n'+
 '💪 '+stat+'\n'+
 '💰 Custo total: *R$ '+fmt(cost)+'*\n\n'+
@@ -6408,11 +6437,14 @@ const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.b
 const currentUp=upgradeables.find(i=>i.item_id===currentId)
 const oldStats=currentUp?.current||getEquipmentInfo(currentId)||{}
 const statLines=gearStatsChanges(oldStats,info,info.category)
+const selectedStars=Number(up?.activeStars||1)
+const selectedType=selectedStars>1?'🌟 FORJADA '+forgeStarsIcon(selectedStars)+' ('+forgeBonusText(selectedStars)+')':'⚪ COMUM'
 setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
 await reply(
 '⚙️ *TROCAR EQUIPAMENTO?*\n\n'+
 (isWeapon?'🗡️':isArmor?'🛡️':isHelmet?'🪖':'👢')+' Atual: *'+currentName+'*\n'+
-'➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+' Lv.'+Number(up?.level||1)+'*\n\n'+
+'➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
+'   '+selectedType+' • ⭐ Lv.'+Number(up?.level||1)+'\n\n'+
 '📊 *ATRIBUTOS (atual → novo):*\n'+statLines+'\n\n'+
 '1️⃣ Equipar\n2️⃣ Cancelar\n9️⃣ Voltar'
 )
@@ -10819,9 +10851,14 @@ let text=helmetOnly?'🪖 *UPAR ELMO*\n\n':'⬆️ *UPAR EQUIPAMENTO*\n\n'
 available.forEach((i,n)=>{
 const stat=gearStatsChanges(i.current,i.next,i.category).replaceAll('\n',' • ')
 const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)||(i.category==='helmet'&&profile?.helmet_id===i.item_id)
-text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${i.sourceKind==='star'?'🌟 '+i.stars+'/5':'×'+i.tierQuantity+' cópia(s)'} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
+text+='*'+(n+1)+'.* '+(i.category==='armor'?'🛡️ ':i.category==='weapon'?'⚔️ ':i.category==='helmet'?'🪖 ':'👢 ')+rarityLabel(i.rarity)+' — *'+i.name+'*\n'
+text+='   '+equipmentCopyLabel(i)+(equipped?' • 📌 modelo equipado':'')+'\n'
+text+='   ⭐ *Lv.'+i.level+' → Lv.'+(Number(i.level)+1)+'*\n'
+text+='   📊 '+stat+'\n'
+text+='   💰 *R$ '+fmt(i.cost)+'*\n\n'
 })
-text+='\n💡 Os ganhos crescem progressivamente por nível; no *Lv.10* os atributos escaláveis chegam a *2,5×* a base. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
+text+='📌 *⭐ Lv.* e o nivel da copia; *🌟 ★★* sao as estrelas. ★★ concede *+4%* desde o Lv.1 da peca forjada.\n'
+text+='⚠️ Cada copia mantem seus atributos: o bonus da forja nao passa para copias comuns.\n👉 Responda apenas com o numero.\n0️⃣ Cancelar'
 if(!helmetOnly) text+='\n\n🪖 Para ver apenas os elmos: *!uparelmo*'
 await reply(text)
 } else if(['equipar','equip'].includes(cmd)){
