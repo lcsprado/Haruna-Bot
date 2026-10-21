@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm install --no-package-lock --no-audit --no-fund
       - name: Check backend entrypoints
         run: |
           node --check src/neon/game-catalog.js
