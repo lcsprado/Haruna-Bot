@@ -78,9 +78,9 @@ jobs:
             echo "::error::WhatsApp ainda mantem conexao runtime-lock. Pausar Render antes de criar corte."
             exit 1
           fi
-          existing="$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_prod'")"
+          existing="$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_prod_v2'")"
           if [[ "$existing" != "0" ]];then
-            echo "::error::alpha_prod ja existe: nenhum banco sera sobrescrito."
+            echo "::error::alpha_prod_v2 ja existe: nenhum banco sera sobrescrito."
             exit 1
           fi
           src_tables="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
@@ -109,13 +109,13 @@ jobs:
           if [[ "$after_lock" != "0" ]];then
             echo "::error::WhatsApp reiniciou durante dump; abandonando corte.";exit 1
           fi
-          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_prod'")" != "0" ]];then
-            echo "::error::alpha_prod foi criado por outro processo.";exit 1
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_prod_v2'")" != "0" ]];then
+            echo "::error::alpha_prod_v2 foi criado por outro processo.";exit 1
           fi
-          psql -X -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'CREATE DATABASE alpha_prod' >/dev/null
-          prod="${AIVEN_URI/\/defaultdb/\/alpha_prod}"
-          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$prod" -c 'SELECT current_database()')" != "alpha_prod" ]];then
-            echo "::error::Destino alpha_prod incorreto.";exit 1
+          psql -X -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'CREATE DATABASE alpha_prod_v2' >/dev/null
+          prod="${AIVEN_URI/\/defaultdb/\/alpha_prod_v2}"
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$prod" -c 'SELECT current_database()')" != "alpha_prod_v2" ]];then
+            echo "::error::Destino alpha_prod_v2 incorreto.";exit 1
           fi
           pg_restore --list /tmp/alpha-final/snapshot.dump > /tmp/alpha-final/toc
           awk '!/ SCHEMA - public( |$)/ && !/ COMMENT - SCHEMA public( |$)/' /tmp/alpha-final/toc > /tmp/alpha-final/list
@@ -131,12 +131,18 @@ jobs:
           if [[ -z "$sql" ]];then echo "::error::SQL de auditoria vazio.";exit 1;fi
           psql -X -A -t -F '|' -v ON_ERROR_STOP=1 "$NEON_URI" -c "$sql" > /tmp/alpha-final/source.txt
           psql -X -A -t -F '|' -v ON_ERROR_STOP=1 "$prod" -c "$sql" > /tmp/alpha-final/target.txt
+          # Neon/C.UTF-8 and Aiven/en_US.UTF-8 order names differently.
+          # Canonicalize locally; otherwise byte-comparison reports false mismatches.
+          LC_ALL=C sort /tmp/alpha-final/source.txt -o /tmp/alpha-final/source.txt
+          LC_ALL=C sort /tmp/alpha-final/target.txt -o /tmp/alpha-final/target.txt
           if ! cmp -s /tmp/alpha-final/source.txt /tmp/alpha-final/target.txt;then
-            echo "::error::Divergencia de linhas/valores entre Neon e alpha_prod. Nao alterar Render."
+            echo "::error::Divergencia de linhas/valores entre Neon e alpha_prod_v2. Nao alterar Render."
             exit 1
           fi
           psql -X -A -t -F '|' -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT sequencename,COALESCE(last_value::text,'NULL') FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename" > /tmp/alpha-final/seq-source
           psql -X -A -t -F '|' -v ON_ERROR_STOP=1 "$prod" -c "SELECT sequencename,COALESCE(last_value::text,'NULL') FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename" > /tmp/alpha-final/seq-target
+          LC_ALL=C sort /tmp/alpha-final/seq-source -o /tmp/alpha-final/seq-source
+          LC_ALL=C sort /tmp/alpha-final/seq-target -o /tmp/alpha-final/seq-target
           if ! cmp -s /tmp/alpha-final/seq-source /tmp/alpha-final/seq-target;then
             echo "::error::Divergencia de sequencias. Nao alterar Render."
             exit 1
