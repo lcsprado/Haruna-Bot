@@ -2789,8 +2789,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         COALESCE((SELECT jsonb_agg(jsonb_build_object('item_id',u.item_id,'level',u.level))
           FROM equipment_upgrades u
           WHERE u.jid=$1 AND u.item_id=ANY($2::text[])),'[]'::jsonb) AS upgrade_rows,
-        COALESCE((SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$3),1) AS weapon_stars,
-        COALESCE((SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$4),1) AS armor_stars
+        COALESCE((SELECT sf.stars FROM equipment_star_forges sf WHERE sf.jid=$1 AND sf.item_id=$3 AND sf.level=COALESCE((SELECT u.level FROM equipment_upgrades u WHERE u.jid=sf.jid AND u.item_id=sf.item_id),1)),1) AS weapon_stars,
+        COALESCE((SELECT sf.stars FROM equipment_star_forges sf WHERE sf.jid=$1 AND sf.item_id=$4 AND sf.level=COALESCE((SELECT u.level FROM equipment_upgrades u WHERE u.jid=sf.jid AND u.item_id=sf.item_id),1)),1) AS armor_stars
     `,[jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean),st.weapon_id,st.armor_id])).rows[0]
     const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
     const teamPets=combatSnapshot?.team_pets||[]
