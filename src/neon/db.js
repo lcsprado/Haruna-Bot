@@ -2039,16 +2039,38 @@ await client.query(
 [level,exp,jid]
 )
 if(levels>0){
+// A cura por level-up precisa incluir o HP dos equipamentos realmente equipados.
+// Sem isto, o jogador perde temporariamente todo o HP extra de armadura/elmo.
+const st=(await client.query(`
+SELECT s.max_hp,s.weapon_id,s.armor_id,s.helmet_id,
+COALESCE(uw.level,1)::int AS weapon_level,
+COALESCE(ua.level,1)::int AS armor_level,
+COALESCE(uh.level,1)::int AS helmet_level,
+CASE WHEN fw.level=COALESCE(uw.level,1) THEN fw.stars ELSE 1 END AS weapon_stars,
+CASE WHEN fa.level=COALESCE(ua.level,1) THEN fa.stars ELSE 1 END AS armor_stars
+FROM stats s
+LEFT JOIN equipment_upgrades uw ON uw.jid=s.jid AND uw.item_id=s.weapon_id
+LEFT JOIN equipment_upgrades ua ON ua.jid=s.jid AND ua.item_id=s.armor_id
+LEFT JOIN equipment_upgrades uh ON uh.jid=s.jid AND uh.item_id=s.helmet_id
+LEFT JOIN equipment_star_forges fw ON fw.jid=s.jid AND fw.item_id=s.weapon_id
+LEFT JOIN equipment_star_forges fa ON fa.jid=s.jid AND fa.item_id=s.armor_id
+WHERE s.jid=$1 FOR UPDATE OF s
+`,[jid])).rows[0]
+const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,st.weapon_level,st.weapon_stars):null
+const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,st.armor_level,st.armor_stars):null
+const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,st.helmet_level):null
+const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0)
+const restoredHp=Math.max(1,Number(st?.max_hp||100)+levels*8+gearHp)
 await client.query(`
 UPDATE stats
 SET max_hp=max_hp+$1,
-hp=max_hp+$1,
+hp=$5,
 atk=atk+$2,
 def=def+$3,
 spd=spd+$4,
 updated_at=${nowSql}
-WHERE jid=$5
-`,[levels*8,levels*2,levels,levels,jid])
+WHERE jid=$6
+`,[levels*8,levels*2,levels,levels,restoredHp,jid])
 }
 return {
 level,exp,levels,
