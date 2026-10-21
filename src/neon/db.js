@@ -2692,8 +2692,8 @@ return stats
 const aEn=eqEnch(attackerJid,[a.weapon_id,a.armor_id,a.boot_id,a.helmet_id])
 const bEn=eqEnch(defenderJid,[b.weapon_id,b.armor_id,b.boot_id,b.helmet_id])
 const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
-const starRows=(await client.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[[attackerJid,defenderJid]])).rows
-const starLevel=(jid,itemId)=>Number(starRows.find(r=>r.jid===jid&&r.item_id===itemId)?.stars||1)
+const starRows=(await client.query('SELECT jid,item_id,stars,level FROM equipment_star_forges WHERE jid=ANY($1::text[])',[[attackerJid,defenderJid]])).rows
+const starLevel=(jid,itemId)=>{const r=starRows.find(x=>x.jid===jid&&x.item_id===itemId);return r&&Number(r.level)===eqLevel(jid,itemId)?Number(r.stars):1}
 const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id),starLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id),starLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
