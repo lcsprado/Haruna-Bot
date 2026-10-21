@@ -4542,6 +4542,12 @@ Escolha o que deseja vender:
       flow=await recoverQuickFlow(chat,sender)
     }
     if(!flow) return false
+    // Fluxos de adoção antigos não podem reabrir a loja após a desativação.
+    if(String(flow.stage||'').startsWith('pet_adopt_')){
+      clearQuickFlow(chat,sender)
+      await reply('🐾 *ADOÇÃO COMUM DESATIVADA*\n\nOs pets já adquiridos permanecem na coleção.\n🔮 Use *!invocarpet* para o Altar Lendário ou *!meuspets* para administrar seus pets.')
+      return true
+    }
     let nativeFlowSelection=''
     try{
       const params=msg?.message?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson
@@ -5122,8 +5128,10 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
 
 🐾 *Pets & Time Pet*
-*!pet* / *!pets* — catálogo rápido dos pets
-*!adotar* — lista os 22 pets, preços, níveis e bônus\n*!adotar cachorro Nome* — adiciona um pet à coleção\n*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
+*!pet* — atalhos de pets e Altar Lendário
+*!pets* — selecionar um pet da coleção
+*!invocarpet* — abre o Altar de Pets Lendários\n*!altarpets* — atalho para o altar lendário
+🔒 Adoção de pets comuns inativa; pets já obtidos permanecem na coleção
 *!meuspets* — mostra todos os seus pets
 *!equiparpet* — abre o gerenciador do time; monte 1,2,3 de uma vez ou troque um slot
 *!timepet* — mostra os 3 slots, estilos e a sinergia ativa
@@ -10166,7 +10174,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             const position=Number(args[0])
             if(!Number.isSafeInteger(position)||position<1){
               const state=await getPetCollectionState(sender)
-              if(!state.pets.length){ await reply('🐾 Você ainda não tem pets. Use *!adotar*.'); continue }
+              if(!state.pets.length){ await reply('🐾 Você ainda não tem pets. Use *!invocarpet* para invocar um lendário.'); continue }
               setQuickFlow(chat,sender,'pet_collection_categories',{mode:'sacrifice'},5*60*1000)
               await reply(petCollectionMenuText(state.pets,{mode:'sacrifice',isLegendary:isCollectionLegendary}))
               continue
@@ -10782,12 +10790,11 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
               return await reply(`🧭 *EXPEDIÇÃO INICIADA!*\n\n🐾 *${r.pet_name}* — ${r.trait.label}\n⏱️ Tempo: *${r.hours}h*\n\n🎯 *GARANTIDO NO RETORNO*\n✨ Pet XP: *+${r.pet_xp}*\n💰 Dinheiro: *R$ ${fmt(r.cash_reward)}*\n\n🎁 *BÔNUS DA ESPÉCIE*\n${expeditionTraitText(r.trait)}\n\n📌 O pet fica indisponível durante a expedição. Quando o tempo acabar, use *!expedicoespet* para receber e conferir as recompensas.`)
             }
             if(cmd==='pet'){
-              setQuickFlow(chat,sender,'pet_adopt_categories',{},5*60*1000)
-              return await reply(petAdoptionMenuText())
+              return await reply('🐾 *PETS DO ALPHA*\n\n🔮 *!invocarpet* — Altar de Pets Lendários\n🐾 *!meuspets* — sua coleção\n⚔️ *!equiparpet* — montar o time\n🧬 *!sinergia* — bônus dos times\n\n🔒 A adoção de pets comuns foi desativada. Pets existentes foram preservados.')
             }
             if(cmd==='pets'){
               const pets=await listPets(sender)
-              if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
+              if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!invocarpet* para invocar um lendário.')
               setQuickFlow(chat,sender,'pet_select',{pets},5*60*1000)
               let text='🐾 *ESCOLHA SEU PET*\n\n'
               pets.forEach((p,i)=>{
@@ -10798,19 +10805,8 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
               return await reply(text)
             }
             if(cmd==='adotar'){
-              if(!args[0]){
-                setQuickFlow(chat,sender,'pet_adopt_categories',{},5*60*1000)
-                return await reply(petAdoptionMenuText())
-              }
-              // Atalho opcional: !adotar cura, !adotar defesa, !adotar 3 etc.
-              const category=petAdoptionCategory(args[0])
-              if(category && args.length===1){
-                setQuickFlow(chat,sender,'pet_adopt_list',{category:category.id},5*60*1000)
-                return await reply(petAdoptionListText(category.id,{style:petStyleLabel,ability:petAbilityBaseText,money:fmt}))
-              }
-              const pet=await adoptPet(sender,args[0],args.slice(1).join(' ')||msg.pushName||'Alpha')
               clearQuickFlow(chat,sender)
-              return await reply(`🐾 *PET ADOTADO!*\n\nVocê agora tem *${pet.name}*, um(a) *${pet.species}*.\n✨ Habilidade: *${petAbilityBaseText(pet.species)}*\n💰 Total pago: *R$ ${fmt(pet.fee)}*\n\nUse *!meupet* para cuidar dele.`)
+              return await reply('🐾 *ADOÇÃO COMUM DESATIVADA*\n\nNão é mais possível comprar pets comuns.\n✅ Seus pets atuais continuam disponíveis.\n🔮 Use *!invocarpet* para invocar pets lendários com materiais de Raid.')
             }
             if(cmd==='duelopet'){
               const targetRaw=mentionsOf(msg)[0]; if(!targetRaw) return await reply('Uso: *!duelopet @pessoa*')
@@ -10898,7 +10894,7 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
             }
             if(cmd==='meuspets'){
               const pets=await listPets(sender)
-              if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!adotar cachorro Nome*.')
+              if(!pets.length) return await reply('🐾 Você ainda não tem pets. Use *!invocarpet* para invocar um lendário.')
               setQuickFlow(chat,sender,'pet_collection_categories',{mode:'manage'},5*60*1000)
               return await reply(petCollectionMenuText(pets,{mode:'manage',isLegendary:isCollectionLegendary}))
             }
@@ -10918,7 +10914,7 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
               return await reply('🏆 *RANKING DE PETS*\n\n'+rows.map((p,i)=>`${i+1}º ${p.name} — Nv.${p.level} • ⚔️ ${p.power} (${p.push_name||'Jogador'})`).join('\n'))
             }
             if(cmd==='meupet'||cmd==='statuspet'){
-              const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!adotar cachorro Nome*.')
+              const p=await getPet(sender); if(!p) return await reply('🐾 Você ainda não tem pet. Use *!invocarpet* para invocar um lendário.')
               const bonus=petStatusBonus(p)
               return await reply(`🐾 *STATUS DO PET — ${p.name.toUpperCase()}*\n\n🧬 Espécie: *${p.species}*\n🎯 Perfil: *${petIdentityTag(p.species)}*\n🏷️ Tipo: *${petHpType(p.species)}*\n⭐ Nível: *${p.level}* • XP: *${p.xp}*\n⚔️ Poder: *${p.power}*\n❤️ HP: *${p.hp}/${petMaxHp(p.level,p.xp,p.species)}*\n🍖 Fome: *${p.hunger}/100*\n⚡ Energia: *${p.energy}/${petMaxEnergy(p.level,p.species)}*\n🏆 Duelos: *${p.wins}V / ${p.losses}D*\n🧭 Especialidade de expedição: *${petExpeditionTrait(p.species).label}*\n\n👹 *BÔNUS NO BOSS*\n${bonus.label}\n✨ ${bonus.text}\n\nℹ️ Poder influencia duelos de pets, mas não aumenta o dano no Boss/Raid.\n💡 HP cresce conforme *espécie + nível + XP*. Se zerar, o pet sai da luta. *!descansar* recupera energia e 35% do HP.`)
             }
