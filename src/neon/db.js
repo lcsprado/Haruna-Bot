@@ -201,6 +201,19 @@ stars INTEGER NOT NULL DEFAULT 1 CHECK(stars BETWEEN 1 AND 5),
 updated_at BIGINT NOT NULL DEFAULT ${nowSql},
 PRIMARY KEY(jid,item_id)
 );
+ALTER TABLE equipment_star_forges ADD COLUMN IF NOT EXISTS level INTEGER;
+UPDATE equipment_upgrade_copies uc SET quantity=quantity-1
+FROM equipment_star_forges sf
+WHERE sf.level IS NULL AND sf.jid=uc.jid AND sf.item_id=uc.item_id
+AND uc.level=10 AND uc.quantity>0;
+DELETE FROM equipment_upgrade_copies WHERE quantity=0;
+UPDATE equipment_upgrades eu SET level=COALESCE(
+(SELECT MAX(uc.level) FROM equipment_upgrade_copies uc
+WHERE uc.jid=eu.jid AND uc.item_id=eu.item_id),1)
+FROM equipment_star_forges sf WHERE sf.level IS NULL
+AND sf.jid=eu.jid AND sf.item_id=eu.item_id;
+UPDATE equipment_star_forges SET level=1 WHERE level IS NULL;
+ALTER TABLE equipment_star_forges ALTER COLUMN level SET DEFAULT 1;
 CREATE TABLE IF NOT EXISTS alpha_xp_boosts (
 jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
 bonus_percent INTEGER NOT NULL CHECK (bonus_percent BETWEEN 1 AND 30),
