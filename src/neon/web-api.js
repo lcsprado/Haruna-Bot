@@ -196,6 +196,7 @@ async function exchangeWebLinkCode(code){
       [codeHash]
     )).rows[0]
     if(!row || row.used_at || Number(row.expires_at)<now()) throw new Error('Código inválido ou expirado.')
+    if(row.jid!=='__alpha_web_health__' && !webCanaryAllowed(row.jid)) throw new Error('Alpha RPG Web ainda não liberado para este jogador.')
 
     const token=crypto.randomBytes(32).toString('base64url')
     const tokenHash=sha256(token)
