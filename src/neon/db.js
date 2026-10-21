@@ -5746,7 +5746,9 @@ if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa
 const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])
 const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id].includes(itemId)?1:0
 const bound=await boundItemQuantity(client,jid,itemId)
-const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))
+const paid=(await client.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
+const owned=Number(inv.rows[0]?.quantity||0)
+const available=Math.min(Math.max(0,owned-Math.max(equipped,bound)),Math.max(0,owned-Number(paid?.qty||0)))
 if(qty>available){
 throw new Error(equipped
 ? 'A cópia equipada está protegida. Você pode anunciar no máximo '+available+' unidade(s) livre(s).'
