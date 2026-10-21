@@ -5,6406 +5,5808 @@ import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
-
 const { Pool, Client } = pg
-
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
-
 const databaseUrl=(()=>{
-  const raw=process.env.DATABASE_URL
-  try{
-    const url=new URL(raw)
-    const mode=String(url.searchParams.get('sslmode')||'').toLowerCase()
-    if(['require','prefer','verify-ca'].includes(mode)) url.searchParams.set('sslmode','verify-full')
-    return url.toString()
-  }catch{
-    return raw
-  }
+const raw=process.env.DATABASE_URL
+try{
+const url=new URL(raw)
+const mode=String(url.searchParams.get('sslmode')||'').toLowerCase()
+if(['require','prefer','verify-ca'].includes(mode)) url.searchParams.set('sslmode','verify-full')
+return url.toString()
+}catch{
+return raw
+}
 })()
-
 export const db = new Pool({
-  connectionString: databaseUrl,
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 15000,
-  statement_timeout: 12000,
-  query_timeout: 15000,
+connectionString: databaseUrl,
+max: 10,
+idleTimeoutMillis: 30000,
+connectionTimeoutMillis: 15000,
+statement_timeout: 12000,
+query_timeout: 15000,
 })
-
 db.on('error', err => console.error('[Neon] pool error', err))
 db.on('connect',client=>{
-  trackBandwidthStream('postgres',client.connection?.stream)
-  const query=client.query
-  client.query=function(...args){countBandwidth('dbQueries');return query.apply(this,args)}
+trackBandwidthStream('postgres',client.connection?.stream)
+const query=client.query
+client.query=function(...args){countBandwidth('dbQueries');return query.apply(this,args)}
 })
-
 const nowSql = '(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 const RAID_MATERIAL_IDS=Object.freeze(["nucleo_pedra","escama_vulcanica","olho_abissal","nucleo_titan","essencia_rei_abissal","fragmento_celestial","nucleo_alpha_corrompido","fragmento_caos","coroa_abissal","essencia_eclipse"])
 const RAID_MATERIAL_SELL_VALUE=100
 const raidMaterialId=id=>RAID_MATERIAL_IDS.includes(String(id||''))
-
 async function transaction(fn) {
-  const client = await db.connect()
-  try {
-    await client.query('BEGIN')
-    const out = await fn(client)
-    await client.query('COMMIT')
-    return out
-  } catch (err) {
-    await client.query('ROLLBACK')
-    throw err
-  } finally {
-    client.release()
-  }
+const client = await db.connect()
+try {
+await client.query('BEGIN')
+const out = await fn(client)
+await client.query('COMMIT')
+return out
+} catch (err) {
+await client.query('ROLLBACK')
+throw err
+} finally {
+client.release()
 }
-
+}
 export async function initDatabase() {
-  await db.query('SELECT 1')
-  console.log('[Neon] banco conectado')
-
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      jid TEXT PRIMARY KEY,
-      pn TEXT UNIQUE,
-      push_name TEXT NOT NULL DEFAULT '',
-      level INTEGER NOT NULL DEFAULT 1,
-      exp INTEGER NOT NULL DEFAULT 0,
-      premium BOOLEAN NOT NULL DEFAULT FALSE,
-      premium_exp BIGINT NOT NULL DEFAULT 0,
-      banned BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS careers (
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      career_xp INTEGER NOT NULL DEFAULT 0,
-      total_shifts INTEGER NOT NULL DEFAULT 0,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS wallets (
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      cash BIGINT NOT NULL DEFAULT 0,
-      bank BIGINT NOT NULL DEFAULT 0,
-      bank_limit BIGINT NOT NULL DEFAULT 9223372036854775807,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS stats (
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      hp INTEGER NOT NULL DEFAULT 100,
-      max_hp INTEGER NOT NULL DEFAULT 100,
-      atk INTEGER NOT NULL DEFAULT 10,
-      def INTEGER NOT NULL DEFAULT 5,
-      spd INTEGER NOT NULL DEFAULT 10,
-      weapon_id TEXT,
-      armor_id TEXT,
-      boot_id TEXT,
-      helmet_id TEXT,
-      class_id TEXT NOT NULL DEFAULT 'warrior',
-      class_applied BOOLEAN NOT NULL DEFAULT FALSE,
-      class_hp_bonus INTEGER NOT NULL DEFAULT 0,
-      class_atk_bonus INTEGER NOT NULL DEFAULT 0,
-      class_def_bonus INTEGER NOT NULL DEFAULT 0,
-      class_spd_bonus INTEGER NOT NULL DEFAULT 0,
-      weapon_tier INTEGER NOT NULL DEFAULT 1,
-      armor_tier INTEGER NOT NULL DEFAULT 1,
-      win INTEGER NOT NULL DEFAULT 0,
-      loss INTEGER NOT NULL DEFAULT 0,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS weapon_tier INTEGER NOT NULL DEFAULT 1;
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS armor_tier INTEGER NOT NULL DEFAULT 1;
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS boot_id TEXT;
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS helmet_id TEXT;
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_id TEXT NOT NULL DEFAULT 'warrior';
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_applied BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_hp_bonus INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_atk_bonus INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_def_bonus INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_spd_bonus INTEGER NOT NULL DEFAULT 0;
-
-    UPDATE stats SET
-      class_hp_bonus=CASE class_id WHEN 'warrior' THEN 30 WHEN 'assassin' THEN -10 WHEN 'mage' THEN 0 WHEN 'archer' THEN 0 WHEN 'paladin' THEN 80 WHEN 'berserker' THEN 25 WHEN 'monk' THEN 20 WHEN 'necromancer' THEN -5 WHEN 'druid' THEN 45 WHEN 'samurai' THEN 10 ELSE 0 END,
-      class_atk_bonus=CASE class_id WHEN 'warrior' THEN 6 WHEN 'assassin' THEN 8 WHEN 'mage' THEN 10 WHEN 'archer' THEN 6 WHEN 'paladin' THEN -4 WHEN 'berserker' THEN 12 WHEN 'monk' THEN 5 WHEN 'necromancer' THEN 9 WHEN 'druid' THEN 3 WHEN 'samurai' THEN 8 ELSE 0 END,
-      class_def_bonus=CASE class_id WHEN 'warrior' THEN 4 WHEN 'assassin' THEN -2 WHEN 'mage' THEN -2 WHEN 'archer' THEN 0 WHEN 'paladin' THEN 12 WHEN 'berserker' THEN -5 WHEN 'monk' THEN 5 WHEN 'necromancer' THEN -1 WHEN 'druid' THEN 8 WHEN 'samurai' THEN 3 ELSE 0 END,
-      class_spd_bonus=CASE class_id WHEN 'warrior' THEN 0 WHEN 'assassin' THEN 8 WHEN 'mage' THEN 3 WHEN 'archer' THEN 7 WHEN 'paladin' THEN -3 WHEN 'berserker' THEN 2 WHEN 'monk' THEN 6 WHEN 'necromancer' THEN 2 WHEN 'druid' THEN 1 WHEN 'samurai' THEN 5 ELSE 0 END
-    WHERE class_applied=TRUE
-      AND class_hp_bonus=0 AND class_atk_bonus=0 AND class_def_bonus=0 AND class_spd_bonus=0;
-
-    CREATE TABLE IF NOT EXISTS items (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      category TEXT NOT NULL DEFAULT 'misc',
-      price BIGINT NOT NULL DEFAULT 0,
-      sellable BOOLEAN NOT NULL DEFAULT TRUE,
-      stackable BOOLEAN NOT NULL DEFAULT TRUE,
-      rarity TEXT NOT NULL DEFAULT 'common',
-      data JSONB NOT NULL DEFAULT '{}'::jsonb
-    );
-
-    CREATE TABLE IF NOT EXISTS inventories (
-      id BIGSERIAL PRIMARY KEY,
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      item_id TEXT NOT NULL REFERENCES items(id),
-      quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
-      data JSONB NOT NULL DEFAULT '{}'::jsonb,
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      UNIQUE(jid, item_id)
-    );
-
-    -- Prêmios exclusivos de Boss ligados ao ganhador, inclusive quando possui
-    -- cópias comuns do mesmo tipo de equipamento.
-    CREATE TABLE IF NOT EXISTS bound_inventory_items (
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      item_id TEXT NOT NULL REFERENCES items(id),
-      source_key TEXT NOT NULL,
-      quantity INTEGER NOT NULL CHECK (quantity>0),
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      PRIMARY KEY (jid,item_id,source_key)
-    );
-
-    CREATE TABLE IF NOT EXISTS item_trade_offers (
-      id BIGSERIAL PRIMARY KEY,
-      from_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      to_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      offer_item_id TEXT NOT NULL REFERENCES items(id),
-      request_item_id TEXT NOT NULL REFERENCES items(id),
-      quantity INTEGER NOT NULL CHECK(quantity>=1 AND quantity<=9999),
-      rarity TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      expires_at BIGINT NOT NULL,
-      completed_at BIGINT
-    );
-    CREATE INDEX IF NOT EXISTS item_trade_offers_to_idx
-      ON item_trade_offers(to_jid,status,expires_at);
-    ALTER TABLE item_trade_offers ALTER COLUMN request_item_id DROP NOT NULL;
-
-    CREATE TABLE IF NOT EXISTS equipment_fusions(
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      item_id TEXT NOT NULL REFERENCES items(id),
-      tier INTEGER NOT NULL DEFAULT 1 CHECK(tier>=1 AND tier<=10),
-      quantity INTEGER NOT NULL DEFAULT 0 CHECK(quantity>=0),
-      PRIMARY KEY(jid,item_id,tier)
-    );
-
-    CREATE TABLE IF NOT EXISTS equipment_upgrades(
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      item_id TEXT NOT NULL REFERENCES items(id),
-      level INTEGER NOT NULL DEFAULT 1 CHECK(level>=1 AND level<=10),
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql},
-      PRIMARY KEY(jid,item_id)
-    );
-
-    -- Estrelas por modelo de arma; não alteram os upgrades existentes.
-    CREATE TABLE IF NOT EXISTS equipment_star_forges(
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      item_id TEXT NOT NULL REFERENCES items(id),
-      stars INTEGER NOT NULL DEFAULT 1 CHECK(stars BETWEEN 1 AND 5),
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql},
-      PRIMARY KEY(jid,item_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS alpha_xp_boosts (
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      bonus_percent INTEGER NOT NULL CHECK (bonus_percent BETWEEN 1 AND 30),
-      expires_at BIGINT NOT NULL,
-      bonus_remaining INTEGER NOT NULL DEFAULT 0 CHECK (bonus_remaining>=0)
-    );
-    CREATE TABLE IF NOT EXISTS alpha_xp_scroll_uses (
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      day_number BIGINT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS cooldowns (
-      key TEXT PRIMARY KEY,
-      expires_at BIGINT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS daily_streaks (
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      streak INTEGER NOT NULL DEFAULT 0,
-      best_streak INTEGER NOT NULL DEFAULT 0,
-      last_claim_day DATE,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS level_reward_claims (
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      milestone INTEGER NOT NULL CHECK (milestone >= 5 AND milestone % 5 = 0),
-      claimed_at BIGINT NOT NULL DEFAULT ${nowSql},
-      PRIMARY KEY(jid,milestone)
-    );
-
-    CREATE TABLE IF NOT EXISTS level_reward_audit (
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      milestone INTEGER NOT NULL CHECK (milestone >= 5 AND milestone % 5 = 0),
-      claimed_at BIGINT NOT NULL,
-      PRIMARY KEY(jid,milestone)
-    );
-    INSERT INTO level_reward_audit(jid,milestone,claimed_at)
-      SELECT jid,milestone,claimed_at FROM level_reward_claims
-      WHERE true
-      ON CONFLICT(jid,milestone) DO NOTHING;
-
-    CREATE TABLE IF NOT EXISTS profile_avatars (
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      image_data TEXT NOT NULL,
-      mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS snipe_messages (
-      chat_jid TEXT NOT NULL,
-      message_id TEXT NOT NULL,
-      sender_jid TEXT NOT NULL DEFAULT '',
-      push_name TEXT NOT NULL DEFAULT '',
-      text_content TEXT NOT NULL DEFAULT '',
-      media_label TEXT NOT NULL DEFAULT '',
-      media_type TEXT,
-      mime_type TEXT,
-      media_data TEXT,
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      deleted_at BIGINT,
-      expires_at BIGINT NOT NULL,
-      PRIMARY KEY(chat_jid,message_id)
-    );
-
-    CREATE INDEX IF NOT EXISTS snipe_messages_exp_idx
-      ON snipe_messages(expires_at);
-
-    CREATE INDEX IF NOT EXISTS snipe_messages_deleted_idx
-      ON snipe_messages(chat_jid,deleted_at DESC);
-
-    CREATE TABLE IF NOT EXISTS transactions (
-      id BIGSERIAL PRIMARY KEY,
-      from_jid TEXT NOT NULL,
-      to_jid TEXT,
-      amount BIGINT NOT NULL,
-      type TEXT NOT NULL,
-      note TEXT NOT NULL DEFAULT '',
-      created_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS trevo_settings (
-      key TEXT PRIMARY KEY,
-      value JSONB NOT NULL,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS subscription_orders (
-      code TEXT PRIMARY KEY,
-      chat_jid TEXT NOT NULL,
-      requester_jid TEXT NOT NULL,
-      amount NUMERIC(10,2) NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      expires_at BIGINT NOT NULL,
-      approved_at BIGINT,
-      approved_by TEXT,
-      cancelled_at BIGINT
-    );
-
-    CREATE INDEX IF NOT EXISTS subscription_orders_chat_idx
-      ON subscription_orders(chat_jid, status);
-
-    CREATE TABLE IF NOT EXISTS support_tickets (
-      code TEXT PRIMARY KEY,
-      requester_jid TEXT NOT NULL,
-      chat_jid TEXT NOT NULL,
-      category TEXT NOT NULL,
-      message TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'open',
-      answer TEXT,
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql},
-      answered_at BIGINT,
-      answered_by TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS support_tickets_status_idx
-      ON support_tickets(status, created_at);
-
-    CREATE TABLE IF NOT EXISTS group_licenses (
-      chat_jid TEXT PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'blocked',
-      plan TEXT NOT NULL DEFAULT 'trial',
-      trial_started_at BIGINT,
-      paid_until BIGINT,
-      activated_by TEXT,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS group_settings (
-      chat_jid TEXT PRIMARY KEY,
-      economy_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      rpg_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      games_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      progression_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      updated_by TEXT,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS quick_flows (
-      flow_key TEXT PRIMARY KEY,
-      chat_jid TEXT NOT NULL,
-      sender_jid TEXT NOT NULL,
-      stage TEXT NOT NULL,
-      data JSONB NOT NULL DEFAULT '{}'::jsonb,
-      expires_at BIGINT NOT NULL,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE INDEX IF NOT EXISTS quick_flows_expires_idx
-      ON quick_flows(expires_at);
-
-    CREATE TABLE IF NOT EXISTS auth_creds (
-      session_id TEXT NOT NULL,
-      key TEXT NOT NULL,
-      value JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (session_id, key)
-    );
-
-    CREATE TABLE IF NOT EXISTS auth_keys (
-      session_id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      id TEXT NOT NULL,
-      value JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (session_id, type, id)
-    );
-  `)
-
-  // Permite XP 2x na mesma tabela de buffs; migração executada somente uma vez.
-  const xpConstraint=(await db.query("SELECT pg_get_constraintdef(oid) AS rule FROM pg_constraint WHERE conrelid='alpha_xp_boosts'::regclass AND conname='alpha_xp_boosts_bonus_percent_check'")).rows[0]?.rule||''
-  if(!xpConstraint.includes('100')){
-    await db.query('ALTER TABLE alpha_xp_boosts DROP CONSTRAINT IF EXISTS alpha_xp_boosts_bonus_percent_check')
-    await db.query('ALTER TABLE alpha_xp_boosts ADD CONSTRAINT alpha_xp_boosts_bonus_percent_check CHECK (bonus_percent BETWEEN 1 AND 100)')
-  }
-  await db.query(`
-    INSERT INTO trevo_settings(key,value)
-    VALUES
-      ('launch_price','2'::jsonb),
-      ('pix_key','""'::jsonb),
-      ('pix_name','"Alpha Bot"'::jsonb),
-      ('payment_link','"https://mpago.la/1Aqm14o"'::jsonb)
-    ON CONFLICT(key) DO NOTHING
-  `)
-
-  await db.query(`
-    UPDATE trevo_settings
-    SET value='"Alpha Bot"'::jsonb, updated_at=${nowSql}
-    WHERE key='pix_name' AND value='"Trevo"'::jsonb
-  `)
-
-  // Banco sem teto prático: remove o antigo limite de R$ 10.000 também das contas já existentes.
-  await db.query('UPDATE wallets SET bank_limit=9223372036854775807 WHERE bank_limit<9223372036854775807')
-
-  const starterItems = [
-    // Poções
-    ['pocao_p','Poção Pequena','Recupera 35 HP.','consumable',500,'common'],
-    ['pocao_m','Poção Média','Recupera 80 HP.','consumable',1200,'uncommon'],
-    ['pocao_g','Poção Grande','Recupera 160 HP.','consumable',3000,'rare'],
-    ['elixir_supremo','Elixir Supremo','Recupera uma grande quantidade de HP.','consumable',9000,'epic'],
-    ['pocao_pet_comum','Poção de Pet Comum','Recupera 60 HP do pet ativo.','consumable',500,'common'],
-    ['pocao_pet_rara','Poção de Pet Rara','Recupera 160 HP do pet ativo.','consumable',1500,'rare'],
-    ['pocao_pet_epica','Poção de Pet Épica','Recupera 320 HP do pet ativo.','consumable',3500,'epic'],
-    ['pocao_pet_suprema','Poção de Pet Suprema','Recupera 800 HP do pet ativo.','consumable',9000,'legendary'],
-    ['pocao_pet_full','Poção Full de Pet','Restaura 100% do HP do pet escolhido. Não recupera energia.','consumable',40000,'legendary'],
-    ['energetico_pet','Energético Pet','Restaura instantaneamente 100% da energia do pet ativo.','consumable',12000,'rare'],
-    // Consumíveis especiais de NPC: preço na tabela fica zero para não aparecerem na loja comum.
-    ['pocao_ressurreicao','Poção da Ressurreição','Na Raid, se o HP zerar e não restar cura comum, revive com 30% do HP. Máximo de uma vez por Raid.','consumable',0,'epic'],
-    ['selo_guardiao','Selo do Guardião','Consumido automaticamente no início da Raid; reduz 12% do dano recebido nessa Raid.','consumable',0,'rare'],
-    ['oleo_sombras','Óleo das Sombras','Consumido automaticamente no primeiro ataque da Raid ou Boss; aumenta em 6% o dano do jogador naquela batalha.','consumable',0,'epic'],
-    // XP restrito a comerciantes NPC; valores de loja = 0, sem revenda.
-    ['elixir_disciplina','Elixir da Disciplina','Honra +30: +20% de XP por 20 min (máximo 1200 XP extra). Não acumula.','consumable',0,'epic'],
-    ['elixir_sombras','Elixir das Sombras','Karma -30: +20% de XP por 20 min (máximo 1200 XP extra). Não acumula.','consumable',0,'epic'],
-    ['pergaminho_experiencia','Pergaminho de Experiência','Concede imediatamente 500 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'rare'],
-    ['pergaminho_virtude','Tomo da Virtude','Honra +70: concede imediatamente 1200 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'epic'],
-    ['tomo_proibido','Tomo Proibido','Karma -70: concede imediatamente 1200 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'epic'],
-
-    // Armas
-    ['espada_madeira','Espada de Madeira','Arma inicial do Alpha Bot. +5 ATK.','weapon',1500,'common'],
-    ['espada_ferro','Espada de Ferro','Arma reforçada. +12 ATK.','weapon',5000,'uncommon'],
-    ['espada_aco','Espada de Aço','Lâmina rara. +20 ATK.','weapon',12000,'rare'],
-    ['machado_guerra','Machado de Guerra','Golpes pesados. +24 ATK.','weapon',18000,'rare'],
-    ['katana_sombria','Katana Sombria','Lâmina veloz e rara. +28 ATK.','weapon',25000,'rare'],
-    ['espada_flamas','Espada das Chamas','Arma épica. +40 ATK.','weapon',60000,'epic'],
-    ['tridente_tempestade','Tridente da Tempestade','Arma épica. +48 ATK.','weapon',95000,'epic'],
-    ['lamina_abissal','Lâmina Abissal','Arma épica de alto nível. +55 ATK.','weapon',140000,'epic'],
-    ['sabre_runico','Sabre Rúnico','Arma rara híbrida. +32 ATK e +1% crítico.','weapon',36000,'rare'],
-    ['lamina_cacador','Lâmina do Caçador','Arma épica agressiva. +42 ATK e +2% crítico.','weapon',74000,'epic'],
-    ['espada_guardiao','Espada do Guardião','Arma épica equilibrada. +50 ATK e +25 HP.','weapon',122000,'epic'],
-    ['foice_carmesim','Foice Carmesim','Arma épica. +43 ATK.','weapon',72000,'epic'],
-    ['lanca_solar','Lança Solar','Arma épica. +46 ATK.','weapon',85000,'epic'],
-    ['garras_vazio','Garras do Vazio','Arma épica. +51 ATK.','weapon',115000,'epic'],
-    ['espada_eclipse','Espada do Eclipse','Arma épica superior. +54 ATK.','weapon',132000,'epic'],
-    ['martelo_golem','Martelo do Golem Ancestral','Arma exclusiva do Boss de Grupo. +70 ATK e +50 HP. Apenas por drop.','weapon',0,'legendary'],
-    ['excalibur','Excalibur','Arma lendária. +85 ATK e +2% crítico. Apenas por drop.','weapon',0,'legendary'],
-    ['katana_divina','Katana Divina','Arma lendária raríssima. +95 ATK e +3% crítico. Apenas por drop.','weapon',0,'legendary'],
-
-    ['lamina_caos','Lâmina do Caos','Arma lendária de Raid. +102 ATK e +3.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
-    ['machado_tita','Machado do Titã','Arma lendária de Raid. +110 ATK e +35 HP e +2.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
-    ['foice_abismo','Foice do Abismo','Arma lendária de Raid. +118 ATK e +4% crítico. Exclusiva de drop.','weapon',0,'legendary'],
-    ['espada_aurora','Espada da Aurora','Arma lendária de Raid. +125 ATK e +45 HP e +3.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
-    ['exterminadora_eclipse','Exterminadora do Eclipse','Arma lendária de Raid. +135 ATK e +25 HP e +4.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
-
-    // Armaduras
-    ['armadura_couro','Armadura de Couro','Proteção inicial. +5 DEF.','armor',2000,'common'],
-    ['armadura_ferro','Armadura de Ferro','Proteção reforçada. +12 DEF.','armor',6500,'uncommon'],
-    ['armadura_aco','Armadura de Aço','Proteção rara. +20 DEF.','armor',14000,'rare'],
-    ['armadura_samurai','Armadura Samurai','Proteção rara. +24 DEF.','armor',22000,'rare'],
-    ['armadura_cavaleiro','Armadura do Cavaleiro','Proteção rara superior. +28 DEF.','armor',30000,'rare'],
-    ['armadura_dragao','Armadura de Dragão','Proteção épica. +40 DEF.','armor',70000,'epic'],
-    ['armadura_abissal','Armadura Abissal','Proteção épica. +48 DEF.','armor',110000,'epic'],
-    ['armadura_celestial','Armadura Celestial','Proteção épica de alto nível. +55 DEF.','armor',155000,'epic'],
-    ['armadura_bastiao','Armadura do Bastião','Armadura rara resistente. +30 DEF e +35 HP.','armor',42000,'rare'],
-    ['manto_runico','Manto Rúnico','Armadura épica híbrida. +42 DEF, +55 HP e +1% crítico.','armor',82000,'epic'],
-    ['couraca_guardiao','Couraça do Guardião','Armadura épica defensiva. +50 DEF e +70 HP.','armor',138000,'epic'],
-    ['manto_fenix','Manto da Fênix','Proteção épica. +43 DEF.','armor',78000,'epic'],
-    ['couraca_vulcanica','Couraça Vulcânica','Proteção épica. +46 DEF.','armor',92000,'epic'],
-    ['armadura_vazio','Armadura do Vazio','Proteção épica. +51 DEF.','armor',125000,'epic'],
-    ['armadura_eclipse','Armadura do Eclipse','Proteção épica superior. +54 DEF.','armor',145000,'epic'],
-    ['elmo_aurora','Elmo da Aurora','Elmo épico do Guardião da Aurora. +40 DEF e +100 HP.','helmet',0,'epic'],
-    ['insignia_eco_ancestral','Insígnia do Eco Ancestral','Recompensa de participação no Superboss semanal. Equipe em !reliquias: +1% dano contra Boss e Raid; sem PvP.','special',0,'event'],
-    ['insignia_tita_ancestral','Insígnia do Titã Ancestral','Insígnia exclusiva do campeão do Superboss semanal. Equipe em !reliquias: +3% dano e +1pp crítico contra Boss e Raid; sem PvP.','special',0,'event'],
-    ['elmo_soberano_golem','Elmo do Soberano Ancestral','Elmo exclusivo do primeiro colocado no Boss semanal. +85 DEF e +220 HP.','helmet',0,'legendary'],
-    ['elmo_labirinto_alpha','Elmo do Labirinto Eterno','Elmo lendário exclusivo do campeão do Labirinto do Alpha de 12/10/2026. +92 DEF e +240 HP.','helmet',0,'legendary'],
-    ['armadura_golem','Armadura do Golem Ancestral','Armadura exclusiva do Boss de Grupo. +70 DEF e +80 HP. Apenas por drop.','armor',0,'legendary'],
-    ['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF e +110 HP. Apenas por drop.','armor',0,'legendary'],
-    ['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF, +140 HP e +1% crítico. Apenas por drop.','armor',0,'legendary'],
-
-    ['couraca_caos','Couraça do Caos','Armadura lendária de Raid. +103 DEF, +150 HP e +1% crítico. Exclusiva de drop.','armor',0,'legendary'],
-    ['armadura_tita_ancestral','Armadura Titânica Ancestral','Armadura lendária de Raid. +110 DEF, +170 HP e +1.5% crítico. Exclusiva de drop.','armor',0,'legendary'],
-    ['manto_abismo_eterno','Manto do Abismo Eterno','Armadura lendária de Raid. +117 DEF, +185 HP e +2% crítico. Exclusiva de drop.','armor',0,'legendary'],
-    ['armadura_aurora','Armadura da Aurora','Armadura lendária de Raid. +125 DEF, +205 HP e +1.5% crítico. Exclusiva de drop.','armor',0,'legendary'],
-    ['armadura_deus_eclipse','Armadura do Deus do Eclipse','Armadura lendária de Raid. +135 DEF, +230 HP e +2% crítico. Exclusiva de drop.','armor',0,'legendary'],
-
-    // Botas — SPD é exclusivo deste slot
-    ['bota_leve','Bota Leve','Bota básica de mobilidade. +2 SPD.','boots',8000,'common'],
-    ['bota_vento','Bota do Vento','Bota incomum focada em iniciativa. +4 SPD.','boots',22000,'uncommon'],
-    ['bota_cacador','Bota do Caçador','Bota rara para agir primeiro. +6 SPD.','boots',52000,'rare'],
-    ['bota_relampago','Bota do Relâmpago','Bota épica de alta velocidade. +8 SPD.','boots',110000,'epic'],
-    ['bota_celestial','Bota Celestial','Bota lendária de velocidade extrema. +10 SPD. Apenas por drop.','boots',0,'legendary'],
-    ['bota_jp_aquiles','Bota do JP — Passo da Lenda','Bota lendária exclusiva do campeão do evento Calcanhar de Aquiles de 16/10/2026. +12 VEL e +2% CRIT.','boots',0,'legendary'],
-
-    // Reclassificação
-    ['pergaminho_reclassificacao','Pergaminho de Reclassificação','Relíquia de endgame. Só pode cair em Boss para jogadores Nv.100+ e permite trocar de classe com 1 pergaminho por troca, sem prazo de espera.','special',0,'epic'],
-
-    // Chaves de Raid
-    ['chave_raid_10','Chave de Raid Lv.10','Abre uma Raid de nível 10. A chave só é consumida quando a luta começa.','special',10000,'uncommon'],
-    ['chave_raid_15','Chave de Raid Lv.15','Abre uma Raid de nível 15. A chave só é consumida quando a luta começa.','special',16000,'uncommon'],
-    ['chave_raid_20','Chave de Raid Lv.20','Abre uma Raid de nível 20. A chave só é consumida quando a luta começa.','special',25000,'rare'],
-    ['chave_raid_25','Chave de Raid Lv.25','Abre uma Raid de nível 25. A chave só é consumida quando a luta começa.','special',40000,'rare'],
-    ['chave_raid_30','Chave de Raid Lv.30','Abre uma Raid de nível 30. A chave só é consumida quando a luta começa.','special',60000,'epic'],
-    ['chave_raid_40','Chave de Raid Lv.40','Abre uma Raid de nível 40. A chave só é consumida quando a luta começa.','special',100000,'epic'],
-    ['chave_raid_50','Chave de Raid Lv.50','Abre uma Raid de nível 50. A chave só é consumida quando a luta começa.','special',160000,'legendary'],
-
-    ['chave_raid_60','Chave de Raid Lv.60','Abre a Raid Lv.60. Consumida ao iniciar.','special',230000,'legendary'],
-    ['chave_raid_65','Chave de Raid Lv.65','Abre a Raid Lv.65. Consumida ao iniciar.','special',300000,'legendary'],
-    ['chave_raid_70','Chave de Raid Lv.70','Abre a Raid Lv.70. Consumida ao iniciar.','special',390000,'legendary'],
-
-    // Materiais específicos de Raid
-    ['nucleo_pedra','Fragmento do Núcleo de Pedra','Fragmento conquistado na Raid Lv.10 e usado no altar lendário.','special',0,'uncommon'],
-    ['escama_vulcanica','Escama Vulcânica','Material conquistado na Raid Lv.15.','special',0,'rare'],
-    ['olho_abissal','Olho Abissal','Material conquistado na Raid Lv.20.','special',0,'rare'],
-    ['nucleo_titan','Núcleo do Titã','Material conquistado na Raid Lv.25.','special',0,'epic'],
-    ['essencia_rei_abissal','Essência do Rei Abissal','Material conquistado na Raid Lv.30.','special',0,'epic'],
-    ['fragmento_celestial','Fragmento Celestial','Material conquistado na Raid Lv.40.','special',0,'epic'],
-    ['nucleo_alpha_corrompido','Núcleo Alpha Corrompido','Material conquistado na Raid Lv.50.','special',0,'legendary'],
-
-    ['fragmento_caos','Fragmento do Caos','Material exclusivo da Raid Lv.60.','special',0,'legendary'],
-    ['coroa_abissal','Coroa Abissal','Material exclusivo da Raid Lv.65.','special',0,'legendary'],
-    ['essencia_eclipse','Essência do Eclipse','Material exclusivo da Raid Lv.70.','special',0,'legendary'],
-
-    // Exclusivo de Boss de Evento
-    ['insignia_guardiao_ruptura','Insígnia Guardião da Ruptura','Troféu cosmético único da Ruptura Estelar de 09/10/2026; não pode ser vendido, comprado ou transferido.','special',0,'event'],
-    ['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
-    ['insignia_nem_cirurgia_derrubou_lenda','Insígnia Nem a Cirurgia Derrubou a Lenda','Relíquia permanente de participação no evento Calcanhar de Aquiles. +1% dano contra Bosses e Raids; não afeta PvP.','special',0,'event'],
-    ['insignia_matador_titas','Insígnia Matador de Titãs','Relíquia exclusiva da Invasão dos Titãs de 17/10/2026. +1% de dano em Boss/Raid, sem PvP.','special',0,'event'],
-    ['insignia_sete_pecados','Insígnia dos Sete Pecados','Relíquia permanente do evento de 11/10/2026. +2% dano e +1 ponto percentual de crítico contra Bosses e Raids.','special',0,'event'],
-    ['titulo_conquistador_pecados','Título Conquistador dos Pecados','Título cosmético permanente obtido após derrotar os oito Bosses com 10.000 de dano em cada.','special',0,'event'],
-    ['essencia_pecado_preguica','Essência de Preguica','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
-    ['essencia_pecado_gula','Essência de Gula','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
-    ['essencia_pecado_ganancia','Essência de Ganancia','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
-    ['essencia_pecado_inveja','Essência de Inveja','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
-    ['essencia_pecado_luxuria','Essência de Luxuria','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
-    ['essencia_pecado_ira','Essência de Ira','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
-    ['essencia_pecado_soberba','Essência de Soberba','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
-    ['marca_insone','Marca do Insone','Comprova participação no evento secreto da madrugada. Concede o título Insone do Alpha no perfil.','special',0,'event'],
-    ['coroa_madrugada','Coroa da Madrugada','Armadura-troféu exclusiva da Sentinela das 03:03. +20 ATK e +50 DEF.','armor',0,'event'],
-    ['colete_vital','Colete Vital','Armadura rara alternativa. +18 DEF e +60 HP. Menos defesa que armaduras raras superiores, mas aumenta a sobrevivência.','armor',0,'rare'],
-    ['couraca_predador','Couraça do Predador','Armadura épica alternativa. +38 DEF, +90 HP e +3% crítico. Troca defesa pura por vida e dano crítico.','armor',0,'epic'],
-    ['armadura_colosso','Armadura do Colosso','Armadura de evento. +52 DEF, +140 HP e +4% crítico. Não supera lendárias em DEF; é uma opção híbrida.','armor',0,'event'],
-
-    // Caixas
-    ['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
-    ['caixa_rara','Caixa Rara','Item garantido no mínimo Incomum. Chance de Lendário: 0,3%.','special',12000,'rare'],
-    ['caixa_epica','Caixa Épica','Item garantido no mínimo Raro. Chance de Lendário: 1%.','special',35000,'epic'],
-    ['caixa_lendaria','Caixa Lendária','Caixa de marco Daily: 1 equipamento Lendário garantido.','special',0,'legendary'],
-  ]
-
-  starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
-  starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
-
-  for (const item of starterItems) {
-    await db.query(`
-      INSERT INTO items (id,name,description,category,price,rarity)
-      VALUES ($1,$2,$3,$4,$5,$6)
-      ON CONFLICT(id) DO UPDATE
-      SET name=EXCLUDED.name, description=EXCLUDED.description,
-          category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
-    `, item)
-  }
-
-  // Somente o bot recompra materiais de Raid; mercado e trocas permanecem bloqueados.
-  await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
-
-  // Os consumíveis especiais são exclusivos dos NPCs e não entram na revenda geral.
-  await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
-
-  // Troféu de evento: não é item de loja e não pode ser vendido.
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
-
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
-  await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_universal_raid'")
-  await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
-
-  // Elmo de campeão é exclusivo, sem comércio, descarte ou troca por jogadores.
-  await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
-
-  // Augusto ganhou uma Armadura do Titã no Boss semanal de 09/10.
-  // Protege somente esta 1 unidade: as outras 2 cópias comuns não são afetadas.
-  await db.query(`
-    INSERT INTO bound_inventory_items(jid,item_id,source_key,quantity)
-    SELECT i.jid,i.item_id,'weekly-boss:2026-10-09',1
-    FROM inventories i
-    WHERE i.jid='5511982964423@s.whatsapp.net'
-      AND i.item_id='armadura_titan' AND i.quantity>0
-    ON CONFLICT(jid,item_id,source_key) DO NOTHING
-  `)
-
-  // A fusão foi descontinuada. Preserva qualquer equipamento já fundido,
-  // devolvendo o equivalente em cópias normais (T2=2, T3=4, T4=8...).
-  await transaction(async client=>{
-    await client.query(`
-      INSERT INTO inventories(jid,item_id,quantity)
-      SELECT jid,item_id,SUM(quantity * (1::bigint << (tier-1)))::integer
-      FROM equipment_fusions
-      WHERE quantity>0
-      GROUP BY jid,item_id
-      ON CONFLICT(jid,item_id) DO UPDATE
-      SET quantity=inventories.quantity+EXCLUDED.quantity
-    `)
-    await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
-    await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
-  })
-  await fixLegacyPetVitals()
+await db.query('SELECT 1')
+console.log('[Neon] banco conectado')
+await db.query(`
+CREATE TABLE IF NOT EXISTS users (
+jid TEXT PRIMARY KEY,
+pn TEXT UNIQUE,
+push_name TEXT NOT NULL DEFAULT '',
+level INTEGER NOT NULL DEFAULT 1,
+exp INTEGER NOT NULL DEFAULT 0,
+premium BOOLEAN NOT NULL DEFAULT FALSE,
+premium_exp BIGINT NOT NULL DEFAULT 0,
+banned BOOLEAN NOT NULL DEFAULT FALSE,
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS careers (
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+career_xp INTEGER NOT NULL DEFAULT 0,
+total_shifts INTEGER NOT NULL DEFAULT 0,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS wallets (
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+cash BIGINT NOT NULL DEFAULT 0,
+bank BIGINT NOT NULL DEFAULT 0,
+bank_limit BIGINT NOT NULL DEFAULT 9223372036854775807,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS stats (
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+hp INTEGER NOT NULL DEFAULT 100,
+max_hp INTEGER NOT NULL DEFAULT 100,
+atk INTEGER NOT NULL DEFAULT 10,
+def INTEGER NOT NULL DEFAULT 5,
+spd INTEGER NOT NULL DEFAULT 10,
+weapon_id TEXT,
+armor_id TEXT,
+boot_id TEXT,
+helmet_id TEXT,
+class_id TEXT NOT NULL DEFAULT 'warrior',
+class_applied BOOLEAN NOT NULL DEFAULT FALSE,
+class_hp_bonus INTEGER NOT NULL DEFAULT 0,
+class_atk_bonus INTEGER NOT NULL DEFAULT 0,
+class_def_bonus INTEGER NOT NULL DEFAULT 0,
+class_spd_bonus INTEGER NOT NULL DEFAULT 0,
+weapon_tier INTEGER NOT NULL DEFAULT 1,
+armor_tier INTEGER NOT NULL DEFAULT 1,
+win INTEGER NOT NULL DEFAULT 0,
+loss INTEGER NOT NULL DEFAULT 0,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS weapon_tier INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS armor_tier INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS boot_id TEXT;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS helmet_id TEXT;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_id TEXT NOT NULL DEFAULT 'warrior';
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_applied BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_hp_bonus INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_atk_bonus INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_def_bonus INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_spd_bonus INTEGER NOT NULL DEFAULT 0;
+UPDATE stats SET
+class_hp_bonus=CASE class_id WHEN 'warrior' THEN 30 WHEN 'assassin' THEN -10 WHEN 'mage' THEN 0 WHEN 'archer' THEN 0 WHEN 'paladin' THEN 80 WHEN 'berserker' THEN 25 WHEN 'monk' THEN 20 WHEN 'necromancer' THEN -5 WHEN 'druid' THEN 45 WHEN 'samurai' THEN 10 ELSE 0 END,
+class_atk_bonus=CASE class_id WHEN 'warrior' THEN 6 WHEN 'assassin' THEN 8 WHEN 'mage' THEN 10 WHEN 'archer' THEN 6 WHEN 'paladin' THEN -4 WHEN 'berserker' THEN 12 WHEN 'monk' THEN 5 WHEN 'necromancer' THEN 9 WHEN 'druid' THEN 3 WHEN 'samurai' THEN 8 ELSE 0 END,
+class_def_bonus=CASE class_id WHEN 'warrior' THEN 4 WHEN 'assassin' THEN -2 WHEN 'mage' THEN -2 WHEN 'archer' THEN 0 WHEN 'paladin' THEN 12 WHEN 'berserker' THEN -5 WHEN 'monk' THEN 5 WHEN 'necromancer' THEN -1 WHEN 'druid' THEN 8 WHEN 'samurai' THEN 3 ELSE 0 END,
+class_spd_bonus=CASE class_id WHEN 'warrior' THEN 0 WHEN 'assassin' THEN 8 WHEN 'mage' THEN 3 WHEN 'archer' THEN 7 WHEN 'paladin' THEN -3 WHEN 'berserker' THEN 2 WHEN 'monk' THEN 6 WHEN 'necromancer' THEN 2 WHEN 'druid' THEN 1 WHEN 'samurai' THEN 5 ELSE 0 END
+WHERE class_applied=TRUE
+AND class_hp_bonus=0 AND class_atk_bonus=0 AND class_def_bonus=0 AND class_spd_bonus=0;
+CREATE TABLE IF NOT EXISTS items (
+id TEXT PRIMARY KEY,
+name TEXT NOT NULL,
+description TEXT NOT NULL DEFAULT '',
+category TEXT NOT NULL DEFAULT 'misc',
+price BIGINT NOT NULL DEFAULT 0,
+sellable BOOLEAN NOT NULL DEFAULT TRUE,
+stackable BOOLEAN NOT NULL DEFAULT TRUE,
+rarity TEXT NOT NULL DEFAULT 'common',
+data JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE TABLE IF NOT EXISTS inventories (
+id BIGSERIAL PRIMARY KEY,
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+item_id TEXT NOT NULL REFERENCES items(id),
+quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+data JSONB NOT NULL DEFAULT '{}'::jsonb,
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+UNIQUE(jid, item_id)
+);
+-- Prêmios exclusivos de Boss ligados ao ganhador, inclusive quando possui
+-- cópias comuns do mesmo tipo de equipamento.
+CREATE TABLE IF NOT EXISTS bound_inventory_items (
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+item_id TEXT NOT NULL REFERENCES items(id),
+source_key TEXT NOT NULL,
+quantity INTEGER NOT NULL CHECK (quantity>0),
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+PRIMARY KEY (jid,item_id,source_key)
+);
+CREATE TABLE IF NOT EXISTS item_trade_offers (
+id BIGSERIAL PRIMARY KEY,
+from_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+to_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+offer_item_id TEXT NOT NULL REFERENCES items(id),
+request_item_id TEXT NOT NULL REFERENCES items(id),
+quantity INTEGER NOT NULL CHECK(quantity>=1 AND quantity<=9999),
+rarity TEXT NOT NULL,
+status TEXT NOT NULL DEFAULT 'pending',
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+expires_at BIGINT NOT NULL,
+completed_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS item_trade_offers_to_idx
+ON item_trade_offers(to_jid,status,expires_at);
+ALTER TABLE item_trade_offers ALTER COLUMN request_item_id DROP NOT NULL;
+CREATE TABLE IF NOT EXISTS equipment_fusions(
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+item_id TEXT NOT NULL REFERENCES items(id),
+tier INTEGER NOT NULL DEFAULT 1 CHECK(tier>=1 AND tier<=10),
+quantity INTEGER NOT NULL DEFAULT 0 CHECK(quantity>=0),
+PRIMARY KEY(jid,item_id,tier)
+);
+CREATE TABLE IF NOT EXISTS equipment_upgrades(
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+item_id TEXT NOT NULL REFERENCES items(id),
+level INTEGER NOT NULL DEFAULT 1 CHECK(level>=1 AND level<=10),
+updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+PRIMARY KEY(jid,item_id)
+);
+-- Estrelas por modelo de arma; não alteram os upgrades existentes.
+CREATE TABLE IF NOT EXISTS equipment_upgrade_copies(
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+item_id TEXT NOT NULL REFERENCES items(id),
+level INTEGER NOT NULL CHECK(level BETWEEN 2 AND 10),
+quantity INTEGER NOT NULL CHECK(quantity>=1),
+PRIMARY KEY(jid,item_id,level)
+);
+-- Upgrade antigo por modelo corresponde a apenas uma cópia aprimorada.
+INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity)
+SELECT e.jid,e.item_id,e.level,1 FROM equipment_upgrades e
+JOIN inventories i ON i.jid=e.jid AND i.item_id=e.item_id AND i.quantity>0
+WHERE e.level>1 AND NOT EXISTS (SELECT 1 FROM equipment_upgrade_copies c
+WHERE c.jid=e.jid AND c.item_id=e.item_id)
+ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS equipment_star_forges(
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+item_id TEXT NOT NULL REFERENCES items(id),
+stars INTEGER NOT NULL DEFAULT 1 CHECK(stars BETWEEN 1 AND 5),
+updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+PRIMARY KEY(jid,item_id)
+);
+CREATE TABLE IF NOT EXISTS alpha_xp_boosts (
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+bonus_percent INTEGER NOT NULL CHECK (bonus_percent BETWEEN 1 AND 30),
+expires_at BIGINT NOT NULL,
+bonus_remaining INTEGER NOT NULL DEFAULT 0 CHECK (bonus_remaining>=0)
+);
+CREATE TABLE IF NOT EXISTS alpha_xp_scroll_uses (
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+day_number BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cooldowns (
+key TEXT PRIMARY KEY,
+expires_at BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS daily_streaks (
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+streak INTEGER NOT NULL DEFAULT 0,
+best_streak INTEGER NOT NULL DEFAULT 0,
+last_claim_day DATE,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS level_reward_claims (
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+milestone INTEGER NOT NULL CHECK (milestone >= 5 AND milestone % 5 = 0),
+claimed_at BIGINT NOT NULL DEFAULT ${nowSql},
+PRIMARY KEY(jid,milestone)
+);
+CREATE TABLE IF NOT EXISTS level_reward_audit (
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+milestone INTEGER NOT NULL CHECK (milestone >= 5 AND milestone % 5 = 0),
+claimed_at BIGINT NOT NULL,
+PRIMARY KEY(jid,milestone)
+);
+INSERT INTO level_reward_audit(jid,milestone,claimed_at)
+SELECT jid,milestone,claimed_at FROM level_reward_claims
+WHERE true
+ON CONFLICT(jid,milestone) DO NOTHING;
+CREATE TABLE IF NOT EXISTS profile_avatars (
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+image_data TEXT NOT NULL,
+mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS snipe_messages (
+chat_jid TEXT NOT NULL,
+message_id TEXT NOT NULL,
+sender_jid TEXT NOT NULL DEFAULT '',
+push_name TEXT NOT NULL DEFAULT '',
+text_content TEXT NOT NULL DEFAULT '',
+media_label TEXT NOT NULL DEFAULT '',
+media_type TEXT,
+mime_type TEXT,
+media_data TEXT,
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+deleted_at BIGINT,
+expires_at BIGINT NOT NULL,
+PRIMARY KEY(chat_jid,message_id)
+);
+CREATE INDEX IF NOT EXISTS snipe_messages_exp_idx
+ON snipe_messages(expires_at);
+CREATE INDEX IF NOT EXISTS snipe_messages_deleted_idx
+ON snipe_messages(chat_jid,deleted_at DESC);
+CREATE TABLE IF NOT EXISTS transactions (
+id BIGSERIAL PRIMARY KEY,
+from_jid TEXT NOT NULL,
+to_jid TEXT,
+amount BIGINT NOT NULL,
+type TEXT NOT NULL,
+note TEXT NOT NULL DEFAULT '',
+created_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS trevo_settings (
+key TEXT PRIMARY KEY,
+value JSONB NOT NULL,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS subscription_orders (
+code TEXT PRIMARY KEY,
+chat_jid TEXT NOT NULL,
+requester_jid TEXT NOT NULL,
+amount NUMERIC(10,2) NOT NULL,
+status TEXT NOT NULL DEFAULT 'pending',
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+expires_at BIGINT NOT NULL,
+approved_at BIGINT,
+approved_by TEXT,
+cancelled_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS subscription_orders_chat_idx
+ON subscription_orders(chat_jid, status);
+CREATE TABLE IF NOT EXISTS support_tickets (
+code TEXT PRIMARY KEY,
+requester_jid TEXT NOT NULL,
+chat_jid TEXT NOT NULL,
+category TEXT NOT NULL,
+message TEXT NOT NULL,
+status TEXT NOT NULL DEFAULT 'open',
+answer TEXT,
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+answered_at BIGINT,
+answered_by TEXT
+);
+CREATE INDEX IF NOT EXISTS support_tickets_status_idx
+ON support_tickets(status, created_at);
+CREATE TABLE IF NOT EXISTS group_licenses (
+chat_jid TEXT PRIMARY KEY,
+status TEXT NOT NULL DEFAULT 'blocked',
+plan TEXT NOT NULL DEFAULT 'trial',
+trial_started_at BIGINT,
+paid_until BIGINT,
+activated_by TEXT,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS group_settings (
+chat_jid TEXT PRIMARY KEY,
+economy_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+rpg_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+games_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+progression_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+updated_by TEXT,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS quick_flows (
+flow_key TEXT PRIMARY KEY,
+chat_jid TEXT NOT NULL,
+sender_jid TEXT NOT NULL,
+stage TEXT NOT NULL,
+data JSONB NOT NULL DEFAULT '{}'::jsonb,
+expires_at BIGINT NOT NULL,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE INDEX IF NOT EXISTS quick_flows_expires_idx
+ON quick_flows(expires_at);
+CREATE TABLE IF NOT EXISTS auth_creds (
+session_id TEXT NOT NULL,
+key TEXT NOT NULL,
+value JSONB NOT NULL,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+PRIMARY KEY (session_id, key)
+);
+CREATE TABLE IF NOT EXISTS auth_keys (
+session_id TEXT NOT NULL,
+type TEXT NOT NULL,
+id TEXT NOT NULL,
+value JSONB NOT NULL,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+PRIMARY KEY (session_id, type, id)
+);
+`)
+const xpConstraint=(await db.query("SELECT pg_get_constraintdef(oid) AS rule FROM pg_constraint WHERE conrelid='alpha_xp_boosts'::regclass AND conname='alpha_xp_boosts_bonus_percent_check'")).rows[0]?.rule||''
+if(!xpConstraint.includes('100')){
+await db.query('ALTER TABLE alpha_xp_boosts DROP CONSTRAINT IF EXISTS alpha_xp_boosts_bonus_percent_check')
+await db.query('ALTER TABLE alpha_xp_boosts ADD CONSTRAINT alpha_xp_boosts_bonus_percent_check CHECK (bonus_percent BETWEEN 1 AND 100)')
 }
-
+await db.query(`
+INSERT INTO trevo_settings(key,value)
+VALUES
+('launch_price','2'::jsonb),
+('pix_key','""'::jsonb),
+('pix_name','"Alpha Bot"'::jsonb),
+('payment_link','"https://mpago.la/1Aqm14o"'::jsonb)
+ON CONFLICT(key) DO NOTHING
+`)
+await db.query(`
+UPDATE trevo_settings
+SET value='"Alpha Bot"'::jsonb, updated_at=${nowSql}
+WHERE key='pix_name' AND value='"Trevo"'::jsonb
+`)
+await db.query('UPDATE wallets SET bank_limit=9223372036854775807 WHERE bank_limit<9223372036854775807')
+const starterItems = [
+['pocao_p','Poção Pequena','Recupera 35 HP.','consumable',500,'common'],
+['pocao_m','Poção Média','Recupera 80 HP.','consumable',1200,'uncommon'],
+['pocao_g','Poção Grande','Recupera 160 HP.','consumable',3000,'rare'],
+['elixir_supremo','Elixir Supremo','Recupera uma grande quantidade de HP.','consumable',9000,'epic'],
+['pocao_pet_comum','Poção de Pet Comum','Recupera 60 HP do pet ativo.','consumable',500,'common'],
+['pocao_pet_rara','Poção de Pet Rara','Recupera 160 HP do pet ativo.','consumable',1500,'rare'],
+['pocao_pet_epica','Poção de Pet Épica','Recupera 320 HP do pet ativo.','consumable',3500,'epic'],
+['pocao_pet_suprema','Poção de Pet Suprema','Recupera 800 HP do pet ativo.','consumable',9000,'legendary'],
+['pocao_pet_full','Poção Full de Pet','Restaura 100% do HP do pet escolhido. Não recupera energia.','consumable',40000,'legendary'],
+['energetico_pet','Energético Pet','Restaura instantaneamente 100% da energia do pet ativo.','consumable',12000,'rare'],
+['pocao_ressurreicao','Poção da Ressurreição','Na Raid, se o HP zerar e não restar cura comum, revive com 30% do HP. Máximo de uma vez por Raid.','consumable',0,'epic'],
+['selo_guardiao','Selo do Guardião','Consumido automaticamente no início da Raid; reduz 12% do dano recebido nessa Raid.','consumable',0,'rare'],
+['oleo_sombras','Óleo das Sombras','Consumido automaticamente no primeiro ataque da Raid ou Boss; aumenta em 6% o dano do jogador naquela batalha.','consumable',0,'epic'],
+['elixir_disciplina','Elixir da Disciplina','Honra +30: +20% de XP por 20 min (máximo 1200 XP extra). Não acumula.','consumable',0,'epic'],
+['elixir_sombras','Elixir das Sombras','Karma -30: +20% de XP por 20 min (máximo 1200 XP extra). Não acumula.','consumable',0,'epic'],
+['pergaminho_experiencia','Pergaminho de Experiência','Concede imediatamente 500 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'rare'],
+['pergaminho_virtude','Tomo da Virtude','Honra +70: concede imediatamente 1200 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'epic'],
+['tomo_proibido','Tomo Proibido','Karma -70: concede imediatamente 1200 XP. Máximo 1 pergaminho de XP por dia.','consumable',0,'epic'],
+['espada_madeira','Espada de Madeira','Arma inicial do Alpha Bot. +5 ATK.','weapon',1500,'common'],
+['espada_ferro','Espada de Ferro','Arma reforçada. +12 ATK.','weapon',5000,'uncommon'],
+['espada_aco','Espada de Aço','Lâmina rara. +20 ATK.','weapon',12000,'rare'],
+['machado_guerra','Machado de Guerra','Golpes pesados. +24 ATK.','weapon',18000,'rare'],
+['katana_sombria','Katana Sombria','Lâmina veloz e rara. +28 ATK.','weapon',25000,'rare'],
+['espada_flamas','Espada das Chamas','Arma épica. +40 ATK.','weapon',60000,'epic'],
+['tridente_tempestade','Tridente da Tempestade','Arma épica. +48 ATK.','weapon',95000,'epic'],
+['lamina_abissal','Lâmina Abissal','Arma épica de alto nível. +55 ATK.','weapon',140000,'epic'],
+['sabre_runico','Sabre Rúnico','Arma rara híbrida. +32 ATK e +1% crítico.','weapon',36000,'rare'],
+['lamina_cacador','Lâmina do Caçador','Arma épica agressiva. +42 ATK e +2% crítico.','weapon',74000,'epic'],
+['espada_guardiao','Espada do Guardião','Arma épica equilibrada. +50 ATK e +25 HP.','weapon',122000,'epic'],
+['foice_carmesim','Foice Carmesim','Arma épica. +43 ATK.','weapon',72000,'epic'],
+['lanca_solar','Lança Solar','Arma épica. +46 ATK.','weapon',85000,'epic'],
+['garras_vazio','Garras do Vazio','Arma épica. +51 ATK.','weapon',115000,'epic'],
+['espada_eclipse','Espada do Eclipse','Arma épica superior. +54 ATK.','weapon',132000,'epic'],
+['martelo_golem','Martelo do Golem Ancestral','Arma exclusiva do Boss de Grupo. +70 ATK e +50 HP. Apenas por drop.','weapon',0,'legendary'],
+['excalibur','Excalibur','Arma lendária. +85 ATK e +2% crítico. Apenas por drop.','weapon',0,'legendary'],
+['katana_divina','Katana Divina','Arma lendária raríssima. +95 ATK e +3% crítico. Apenas por drop.','weapon',0,'legendary'],
+['lamina_caos','Lâmina do Caos','Arma lendária de Raid. +102 ATK e +3.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+['machado_tita','Machado do Titã','Arma lendária de Raid. +110 ATK e +35 HP e +2.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+['foice_abismo','Foice do Abismo','Arma lendária de Raid. +118 ATK e +4% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+['espada_aurora','Espada da Aurora','Arma lendária de Raid. +125 ATK e +45 HP e +3.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+['exterminadora_eclipse','Exterminadora do Eclipse','Arma lendária de Raid. +135 ATK e +25 HP e +4.5% crítico. Exclusiva de drop.','weapon',0,'legendary'],
+['armadura_couro','Armadura de Couro','Proteção inicial. +5 DEF.','armor',2000,'common'],
+['armadura_ferro','Armadura de Ferro','Proteção reforçada. +12 DEF.','armor',6500,'uncommon'],
+['armadura_aco','Armadura de Aço','Proteção rara. +20 DEF.','armor',14000,'rare'],
+['armadura_samurai','Armadura Samurai','Proteção rara. +24 DEF.','armor',22000,'rare'],
+['armadura_cavaleiro','Armadura do Cavaleiro','Proteção rara superior. +28 DEF.','armor',30000,'rare'],
+['armadura_dragao','Armadura de Dragão','Proteção épica. +40 DEF.','armor',70000,'epic'],
+['armadura_abissal','Armadura Abissal','Proteção épica. +48 DEF.','armor',110000,'epic'],
+['armadura_celestial','Armadura Celestial','Proteção épica de alto nível. +55 DEF.','armor',155000,'epic'],
+['armadura_bastiao','Armadura do Bastião','Armadura rara resistente. +30 DEF e +35 HP.','armor',42000,'rare'],
+['manto_runico','Manto Rúnico','Armadura épica híbrida. +42 DEF, +55 HP e +1% crítico.','armor',82000,'epic'],
+['couraca_guardiao','Couraça do Guardião','Armadura épica defensiva. +50 DEF e +70 HP.','armor',138000,'epic'],
+['manto_fenix','Manto da Fênix','Proteção épica. +43 DEF.','armor',78000,'epic'],
+['couraca_vulcanica','Couraça Vulcânica','Proteção épica. +46 DEF.','armor',92000,'epic'],
+['armadura_vazio','Armadura do Vazio','Proteção épica. +51 DEF.','armor',125000,'epic'],
+['armadura_eclipse','Armadura do Eclipse','Proteção épica superior. +54 DEF.','armor',145000,'epic'],
+['elmo_aurora','Elmo da Aurora','Elmo épico do Guardião da Aurora. +40 DEF e +100 HP.','helmet',0,'epic'],
+['insignia_eco_ancestral','Insígnia do Eco Ancestral','Recompensa de participação no Superboss semanal. Equipe em !reliquias: +1% dano contra Boss e Raid; sem PvP.','special',0,'event'],
+['insignia_tita_ancestral','Insígnia do Titã Ancestral','Insígnia exclusiva do campeão do Superboss semanal. Equipe em !reliquias: +3% dano e +1pp crítico contra Boss e Raid; sem PvP.','special',0,'event'],
+['elmo_soberano_golem','Elmo do Soberano Ancestral','Elmo exclusivo do primeiro colocado no Boss semanal. +85 DEF e +220 HP.','helmet',0,'legendary'],
+['elmo_labirinto_alpha','Elmo do Labirinto Eterno','Elmo lendário exclusivo do campeão do Labirinto do Alpha de 12/10/2026. +92 DEF e +240 HP.','helmet',0,'legendary'],
+['armadura_golem','Armadura do Golem Ancestral','Armadura exclusiva do Boss de Grupo. +70 DEF e +80 HP. Apenas por drop.','armor',0,'legendary'],
+['armadura_titan','Armadura do Titã','Armadura lendária. +85 DEF e +110 HP. Apenas por drop.','armor',0,'legendary'],
+['armadura_divina','Armadura Divina','Armadura lendária raríssima. +95 DEF, +140 HP e +1% crítico. Apenas por drop.','armor',0,'legendary'],
+['couraca_caos','Couraça do Caos','Armadura lendária de Raid. +103 DEF, +150 HP e +1% crítico. Exclusiva de drop.','armor',0,'legendary'],
+['armadura_tita_ancestral','Armadura Titânica Ancestral','Armadura lendária de Raid. +110 DEF, +170 HP e +1.5% crítico. Exclusiva de drop.','armor',0,'legendary'],
+['manto_abismo_eterno','Manto do Abismo Eterno','Armadura lendária de Raid. +117 DEF, +185 HP e +2% crítico. Exclusiva de drop.','armor',0,'legendary'],
+['armadura_aurora','Armadura da Aurora','Armadura lendária de Raid. +125 DEF, +205 HP e +1.5% crítico. Exclusiva de drop.','armor',0,'legendary'],
+['armadura_deus_eclipse','Armadura do Deus do Eclipse','Armadura lendária de Raid. +135 DEF, +230 HP e +2% crítico. Exclusiva de drop.','armor',0,'legendary'],
+['bota_leve','Bota Leve','Bota básica de mobilidade. +2 SPD.','boots',8000,'common'],
+['bota_vento','Bota do Vento','Bota incomum focada em iniciativa. +4 SPD.','boots',22000,'uncommon'],
+['bota_cacador','Bota do Caçador','Bota rara para agir primeiro. +6 SPD.','boots',52000,'rare'],
+['bota_relampago','Bota do Relâmpago','Bota épica de alta velocidade. +8 SPD.','boots',110000,'epic'],
+['bota_celestial','Bota Celestial','Bota lendária de velocidade extrema. +10 SPD. Apenas por drop.','boots',0,'legendary'],
+['bota_jp_aquiles','Bota do JP — Passo da Lenda','Bota lendária exclusiva do campeão do evento Calcanhar de Aquiles de 16/10/2026. +12 VEL e +2% CRIT.','boots',0,'legendary'],
+['pergaminho_reclassificacao','Pergaminho de Reclassificação','Relíquia de endgame. Só pode cair em Boss para jogadores Nv.100+ e permite trocar de classe com 1 pergaminho por troca, sem prazo de espera.','special',0,'epic'],
+['chave_raid_10','Chave de Raid Lv.10','Abre uma Raid de nível 10. A chave só é consumida quando a luta começa.','special',10000,'uncommon'],
+['chave_raid_15','Chave de Raid Lv.15','Abre uma Raid de nível 15. A chave só é consumida quando a luta começa.','special',16000,'uncommon'],
+['chave_raid_20','Chave de Raid Lv.20','Abre uma Raid de nível 20. A chave só é consumida quando a luta começa.','special',25000,'rare'],
+['chave_raid_25','Chave de Raid Lv.25','Abre uma Raid de nível 25. A chave só é consumida quando a luta começa.','special',40000,'rare'],
+['chave_raid_30','Chave de Raid Lv.30','Abre uma Raid de nível 30. A chave só é consumida quando a luta começa.','special',60000,'epic'],
+['chave_raid_40','Chave de Raid Lv.40','Abre uma Raid de nível 40. A chave só é consumida quando a luta começa.','special',100000,'epic'],
+['chave_raid_50','Chave de Raid Lv.50','Abre uma Raid de nível 50. A chave só é consumida quando a luta começa.','special',160000,'legendary'],
+['chave_raid_60','Chave de Raid Lv.60','Abre a Raid Lv.60. Consumida ao iniciar.','special',230000,'legendary'],
+['chave_raid_65','Chave de Raid Lv.65','Abre a Raid Lv.65. Consumida ao iniciar.','special',300000,'legendary'],
+['chave_raid_70','Chave de Raid Lv.70','Abre a Raid Lv.70. Consumida ao iniciar.','special',390000,'legendary'],
+['nucleo_pedra','Fragmento do Núcleo de Pedra','Fragmento conquistado na Raid Lv.10 e usado no altar lendário.','special',0,'uncommon'],
+['escama_vulcanica','Escama Vulcânica','Material conquistado na Raid Lv.15.','special',0,'rare'],
+['olho_abissal','Olho Abissal','Material conquistado na Raid Lv.20.','special',0,'rare'],
+['nucleo_titan','Núcleo do Titã','Material conquistado na Raid Lv.25.','special',0,'epic'],
+['essencia_rei_abissal','Essência do Rei Abissal','Material conquistado na Raid Lv.30.','special',0,'epic'],
+['fragmento_celestial','Fragmento Celestial','Material conquistado na Raid Lv.40.','special',0,'epic'],
+['nucleo_alpha_corrompido','Núcleo Alpha Corrompido','Material conquistado na Raid Lv.50.','special',0,'legendary'],
+['fragmento_caos','Fragmento do Caos','Material exclusivo da Raid Lv.60.','special',0,'legendary'],
+['coroa_abissal','Coroa Abissal','Material exclusivo da Raid Lv.65.','special',0,'legendary'],
+['essencia_eclipse','Essência do Eclipse','Material exclusivo da Raid Lv.70.','special',0,'legendary'],
+['insignia_guardiao_ruptura','Insígnia Guardião da Ruptura','Troféu cosmético único da Ruptura Estelar de 09/10/2026; não pode ser vendido, comprado ou transferido.','special',0,'event'],
+['insignia_eclipse','Insígnia do Eclipse','Relíquia exclusiva do Boss de Evento Imperador do Eclipse. Raridade Evento Único; não pode ser comprada nem obtida fora do evento.','special',0,'event'],
+['insignia_nem_cirurgia_derrubou_lenda','Insígnia Nem a Cirurgia Derrubou a Lenda','Relíquia permanente de participação no evento Calcanhar de Aquiles. +1% dano contra Bosses e Raids; não afeta PvP.','special',0,'event'],
+['insignia_matador_titas','Insígnia Matador de Titãs','Relíquia exclusiva da Invasão dos Titãs de 17/10/2026. +1% de dano em Boss/Raid, sem PvP.','special',0,'event'],
+['insignia_sete_pecados','Insígnia dos Sete Pecados','Relíquia permanente do evento de 11/10/2026. +2% dano e +1 ponto percentual de crítico contra Bosses e Raids.','special',0,'event'],
+['titulo_conquistador_pecados','Título Conquistador dos Pecados','Título cosmético permanente obtido após derrotar os oito Bosses com 10.000 de dano em cada.','special',0,'event'],
+['essencia_pecado_preguica','Essência de Preguica','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
+['essencia_pecado_gula','Essência de Gula','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
+['essencia_pecado_ganancia','Essência de Ganancia','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
+['essencia_pecado_inveja','Essência de Inveja','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
+['essencia_pecado_luxuria','Essência de Luxuria','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
+['essencia_pecado_ira','Essência de Ira','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
+['essencia_pecado_soberba','Essência de Soberba','Material de participação exclusiva no evento Sete Pecados.','special',0,'event'],
+['marca_insone','Marca do Insone','Comprova participação no evento secreto da madrugada. Concede o título Insone do Alpha no perfil.','special',0,'event'],
+['coroa_madrugada','Coroa da Madrugada','Armadura-troféu exclusiva da Sentinela das 03:03. +20 ATK e +50 DEF.','armor',0,'event'],
+['colete_vital','Colete Vital','Armadura rara alternativa. +18 DEF e +60 HP. Menos defesa que armaduras raras superiores, mas aumenta a sobrevivência.','armor',0,'rare'],
+['couraca_predador','Couraça do Predador','Armadura épica alternativa. +38 DEF, +90 HP e +3% crítico. Troca defesa pura por vida e dano crítico.','armor',0,'epic'],
+['armadura_colosso','Armadura do Colosso','Armadura de evento. +52 DEF, +140 HP e +4% crítico. Não supera lendárias em DEF; é uma opção híbrida.','armor',0,'event'],
+['caixa_sorte','Caixa da Sorte','Pode conter dinheiro, EXP ou itens. Lendário: 0,1%.','special',3000,'common'],
+['caixa_rara','Caixa Rara','Item garantido no mínimo Incomum. Chance de Lendário: 0,3%.','special',12000,'rare'],
+['caixa_epica','Caixa Épica','Item garantido no mínimo Raro. Chance de Lendário: 1%.','special',35000,'epic'],
+['caixa_lendaria','Caixa Lendária','Caixa de marco Daily: 1 equipamento Lendário garantido.','special',0,'legendary'],
+]
+starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
+starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
+for (const item of starterItems) {
+await db.query(`
+INSERT INTO items (id,name,description,category,price,rarity)
+VALUES ($1,$2,$3,$4,$5,$6)
+ON CONFLICT(id) DO UPDATE
+SET name=EXCLUDED.name, description=EXCLUDED.description,
+category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
+`, item)
+}
+await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
+await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
+await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
+await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
+await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_universal_raid'")
+await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
+await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
+await db.query(`
+INSERT INTO bound_inventory_items(jid,item_id,source_key,quantity)
+SELECT i.jid,i.item_id,'weekly-boss:2026-10-09',1
+FROM inventories i
+WHERE i.jid='5511982964423@s.whatsapp.net'
+AND i.item_id='armadura_titan' AND i.quantity>0
+ON CONFLICT(jid,item_id,source_key) DO NOTHING
+`)
+await transaction(async client=>{
+await client.query(`
+INSERT INTO inventories(jid,item_id,quantity)
+SELECT jid,item_id,SUM(quantity * (1::bigint << (tier-1)))::integer
+FROM equipment_fusions
+WHERE quantity>0
+GROUP BY jid,item_id
+ON CONFLICT(jid,item_id) DO UPDATE
+SET quantity=inventories.quantity+EXCLUDED.quantity
+`)
+await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
+await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
+})
+await fixLegacyPetVitals()
+}
 export async function ensureUser(jid, pushName='') {
-  await db.query(`
-    INSERT INTO users (jid, push_name)
-    VALUES ($1,$2)
-    ON CONFLICT(jid) DO UPDATE
-      SET push_name = CASE WHEN EXCLUDED.push_name <> '' THEN EXCLUDED.push_name ELSE users.push_name END,
-          updated_at = ${nowSql}
-  `, [jid, pushName])
-
-  await db.query('INSERT INTO wallets (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
-  await db.query('INSERT INTO stats (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
+await db.query(`
+INSERT INTO users (jid, push_name)
+VALUES ($1,$2)
+ON CONFLICT(jid) DO UPDATE
+SET push_name = CASE WHEN EXCLUDED.push_name <> '' THEN EXCLUDED.push_name ELSE users.push_name END,
+updated_at = ${nowSql}
+`, [jid, pushName])
+await db.query('INSERT INTO wallets (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
+await db.query('INSERT INTO stats (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
 }
-
-// WhatsApp can identify the same person as a phone JID, a device JID or a LID.
-// Consolidate an old alias as soon as Baileys gives us the stable phone JID so
-// profile cards and rankings never read split/outdated player records.
 export async function consolidateUserIdentity(targetJid, aliases=[], pushName='') {
-  if(!targetJid?.endsWith('@s.whatsapp.net')) return false
-  const targetDigits=targetJid.split('@')[0].replace(/:\d+$/,'')
-  const sources=[...new Set((aliases||[]).filter(Boolean))].filter(alias=>{
-    if(alias===targetJid) return false
-    if(alias.endsWith('@lid')) return true
-    if(alias.endsWith('@s.whatsapp.net')){
-      return alias.split('@')[0].replace(/:\d+$/,'')===targetDigits
-    }
-    return false
-  })
-  if(!sources.length) return false
-
-  return transaction(async client=>{
-    await client.query(`
-      INSERT INTO users(jid,pn,push_name)
-      VALUES($1,$1,$2)
-      ON CONFLICT(jid) DO UPDATE SET
-        pn=COALESCE(users.pn,EXCLUDED.pn),
-        push_name=CASE WHEN EXCLUDED.push_name<>'' THEN EXCLUDED.push_name ELSE users.push_name END,
-        updated_at=${nowSql}
-    `,[targetJid,pushName])
-    await client.query('INSERT INTO wallets(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING',[targetJid])
-    await client.query('INSERT INTO stats(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING',[targetJid])
-
-    let changed=false
-    for(const sourceJid of sources){
-      const sourceR=await client.query('SELECT * FROM users WHERE jid=$1 FOR UPDATE',[sourceJid])
-      if(!sourceR.rows[0]) continue
-      changed=true
-      const source=sourceR.rows[0]
-
-      await client.query(`
-        UPDATE users SET
-          push_name=COALESCE(NULLIF($2,''),NULLIF(push_name,''),$3),
-          level=GREATEST(level,$4),
-          exp=CASE WHEN $4>level THEN $5 ELSE GREATEST(exp,$5) END,
-          premium=premium OR $6,
-          premium_exp=GREATEST(premium_exp,$7),
-          banned=banned OR $8,
-          created_at=LEAST(created_at,$9),
-          pn=$1,
-          updated_at=${nowSql}
-        WHERE jid=$1
-      `,[targetJid,pushName,source.push_name,Number(source.level||1),Number(source.exp||0),Boolean(source.premium),Number(source.premium_exp||0),Boolean(source.banned),Number(source.created_at||Math.floor(Date.now()/1000))])
-
-      await client.query(`
-        UPDATE wallets t SET
-          cash=t.cash+COALESCE(s.cash,0),
-          bank=t.bank+COALESCE(s.bank,0),
-          bank_limit=GREATEST(t.bank_limit,COALESCE(s.bank_limit,0)),
-          updated_at=${nowSql}
-        FROM wallets s WHERE t.jid=$1 AND s.jid=$2
-      `,[targetJid,sourceJid])
-
-      await client.query(`
-        UPDATE stats t SET
-          hp=GREATEST(t.hp,COALESCE(s.hp,0)),
-          max_hp=GREATEST(t.max_hp,COALESCE(s.max_hp,0)),
-          atk=GREATEST(t.atk,COALESCE(s.atk,0)),
-          def=GREATEST(t.def,COALESCE(s.def,0)),
-          spd=GREATEST(t.spd,COALESCE(s.spd,0)),
-          weapon_id=COALESCE(t.weapon_id,s.weapon_id),
-          armor_id=COALESCE(t.armor_id,s.armor_id),
-          boot_id=COALESCE(t.boot_id,s.boot_id),
-           helmet_id=COALESCE(t.helmet_id,s.helmet_id),
-          class_id=CASE
-            WHEN COALESCE(t.class_applied,FALSE) THEN t.class_id
-            WHEN COALESCE(s.class_applied,FALSE) THEN s.class_id
-            ELSE COALESCE(t.class_id,s.class_id,'warrior')
-          END,
-          class_applied=COALESCE(t.class_applied,FALSE) OR COALESCE(s.class_applied,FALSE),
-          class_hp_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_hp_bonus ELSE COALESCE(s.class_hp_bonus,t.class_hp_bonus,0) END,
-          class_atk_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_atk_bonus ELSE COALESCE(s.class_atk_bonus,t.class_atk_bonus,0) END,
-          class_def_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_def_bonus ELSE COALESCE(s.class_def_bonus,t.class_def_bonus,0) END,
-          class_spd_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_spd_bonus ELSE COALESCE(s.class_spd_bonus,t.class_spd_bonus,0) END,
-          win=t.win+COALESCE(s.win,0),
-          loss=t.loss+COALESCE(s.loss,0),
-          updated_at=${nowSql}
-        FROM stats s WHERE t.jid=$1 AND s.jid=$2
-      `,[targetJid,sourceJid])
-
-      await client.query(`
-        INSERT INTO inventories(jid,item_id,quantity,data,created_at)
-        SELECT $1,item_id,quantity,data,created_at FROM inventories WHERE jid=$2
-        ON CONFLICT(jid,item_id) DO UPDATE
-        SET quantity=inventories.quantity+EXCLUDED.quantity
-      `,[targetJid,sourceJid])
-
-      await client.query(`
-        INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
-        SELECT $1,item_id,level,${nowSql} FROM equipment_upgrades WHERE jid=$2
-        ON CONFLICT(jid,item_id) DO UPDATE SET
-          level=GREATEST(equipment_upgrades.level,EXCLUDED.level),
-          updated_at=${nowSql}
-      `,[targetJid,sourceJid])
-
-      await client.query(`
-        INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day,updated_at)
-        SELECT $1,streak,best_streak,last_claim_day,${nowSql} FROM daily_streaks WHERE jid=$2
-        ON CONFLICT(jid) DO UPDATE SET
-          streak=GREATEST(daily_streaks.streak,EXCLUDED.streak),
-          best_streak=GREATEST(daily_streaks.best_streak,EXCLUDED.best_streak),
-          last_claim_day=GREATEST(daily_streaks.last_claim_day,EXCLUDED.last_claim_day),
-          updated_at=${nowSql}
-      `,[targetJid,sourceJid])
-
-      // Keep the payment history before the alias row is removed. Both tables
-      // cascade on users, and losing either can make an old milestone payable.
-      await client.query(`
-        INSERT INTO level_reward_claims(jid,milestone,claimed_at)
-        SELECT $1,milestone,claimed_at FROM level_reward_claims WHERE jid=$2
-        ON CONFLICT(jid,milestone) DO NOTHING
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO level_reward_audit(jid,milestone,claimed_at)
-        SELECT $1,milestone,claimed_at FROM level_reward_audit WHERE jid=$2
-        ON CONFLICT(jid,milestone) DO NOTHING
-      `,[targetJid,sourceJid])
-
-      await client.query(`
-        INSERT INTO profile_avatars(jid,image_data,mime_type,updated_at)
-        SELECT $1,image_data,mime_type,updated_at FROM profile_avatars WHERE jid=$2
-        ON CONFLICT(jid) DO NOTHING
-      `,[targetJid,sourceJid])
-
-      // Progression tables are initialized before messages start arriving.
-      await client.query(`
-        INSERT INTO daily_missions(jid,day_key,mission_type,title,target,reward_cash,reward_box,progress,claimed,created_at)
-        SELECT $1,day_key,mission_type,title,target,reward_cash,reward_box,progress,claimed,created_at
-        FROM daily_missions WHERE jid=$2
-        ON CONFLICT(jid,day_key,mission_type) DO UPDATE SET
-          progress=GREATEST(daily_missions.progress,EXCLUDED.progress),
-          claimed=daily_missions.claimed OR EXCLUDED.claimed
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO user_cars(jid,car_id,price_paid,acquired_at)
-        SELECT $1,car_id,price_paid,acquired_at FROM user_cars WHERE jid=$2
-        ON CONFLICT(jid,car_id) DO NOTHING
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO user_homes(jid,house_id,price_paid,acquired_at)
-        SELECT $1,house_id,price_paid,acquired_at FROM user_homes WHERE jid=$2
-        ON CONFLICT(jid) DO UPDATE SET
-          house_id=CASE WHEN EXCLUDED.price_paid>user_homes.price_paid THEN EXCLUDED.house_id ELSE user_homes.house_id END,
-          price_paid=GREATEST(user_homes.price_paid,EXCLUDED.price_paid),
-          acquired_at=LEAST(user_homes.acquired_at,EXCLUDED.acquired_at)
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO careers(jid,career_xp,total_shifts,updated_at)
-        SELECT $1,career_xp,total_shifts,${nowSql} FROM careers WHERE jid=$2
-        ON CONFLICT(jid) DO UPDATE SET
-          career_xp=careers.career_xp+EXCLUDED.career_xp,
-          total_shifts=careers.total_shifts+EXCLUDED.total_shifts,
-          updated_at=${nowSql}
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO user_motorcycles(jid,motorcycle_id,price_paid,acquired_at)
-        SELECT $1,motorcycle_id,price_paid,acquired_at FROM user_motorcycles WHERE jid=$2
-        ON CONFLICT(jid,motorcycle_id) DO UPDATE SET
-          price_paid=GREATEST(user_motorcycles.price_paid,EXCLUDED.price_paid),
-          acquired_at=LEAST(user_motorcycles.acquired_at,EXCLUDED.acquired_at)
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO user_businesses(jid,business_id,price_paid,acquired_at,last_collected_at,level)
-        SELECT $1,business_id,price_paid,acquired_at,last_collected_at,level FROM user_businesses WHERE jid=$2
-        ON CONFLICT(jid,business_id) DO UPDATE SET
-          price_paid=GREATEST(user_businesses.price_paid,EXCLUDED.price_paid),
-          acquired_at=LEAST(user_businesses.acquired_at,EXCLUDED.acquired_at),
-          last_collected_at=GREATEST(user_businesses.last_collected_at,EXCLUDED.last_collected_at),
-          level=GREATEST(user_businesses.level,EXCLUDED.level)
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO group_mission_members(chat_jid,week_key,jid,contribution,claimed)
-        SELECT chat_jid,week_key,$1,contribution,claimed FROM group_mission_members WHERE jid=$2
-        ON CONFLICT(chat_jid,week_key,jid) DO UPDATE SET
-          contribution=group_mission_members.contribution+EXCLUDED.contribution,
-          claimed=group_mission_members.claimed OR EXCLUDED.claimed
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO group_activity(chat_jid,jid,day,messages,commands)
-        SELECT chat_jid,$1,day,messages,commands FROM group_activity WHERE jid=$2
-        ON CONFLICT(chat_jid,jid,day) DO UPDATE SET
-          messages=group_activity.messages+EXCLUDED.messages,
-          commands=group_activity.commands+EXCLUDED.commands
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO group_warnings(chat_jid,jid,warnings,updated_at)
-        SELECT chat_jid,$1,warnings,updated_at FROM group_warnings WHERE jid=$2
-        ON CONFLICT(chat_jid,jid) DO UPDATE SET
-          warnings=group_warnings.warnings+EXCLUDED.warnings,
-          updated_at=GREATEST(group_warnings.updated_at,EXCLUDED.updated_at)
-      `,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,created_at)
-        SELECT $1,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,created_at FROM pets WHERE jid=$2
-        ON CONFLICT(jid) DO UPDATE SET
-          species=CASE WHEN EXCLUDED.xp>pets.xp THEN EXCLUDED.species ELSE pets.species END,
-          name=CASE WHEN EXCLUDED.xp>pets.xp THEN EXCLUDED.name ELSE pets.name END,
-          xp=pets.xp+EXCLUDED.xp,level=1+FLOOR((pets.xp+EXCLUDED.xp)/100),
-          hunger=GREATEST(pets.hunger,EXCLUDED.hunger),hygiene=GREATEST(pets.hygiene,EXCLUDED.hygiene),
-          energy=GREATEST(pets.energy,EXCLUDED.energy),power=GREATEST(pets.power,EXCLUDED.power),
-          wins=pets.wins+EXCLUDED.wins,losses=pets.losses+EXCLUDED.losses,
-          last_action=GREATEST(pets.last_action,EXCLUDED.last_action),created_at=LEAST(pets.created_at,EXCLUDED.created_at)
-      `,[targetJid,sourceJid])
-
-      // Collection pets have their own owner and team rows. Moving only the
-      // legacy pets row silently deletes the collection on alias removal.
-      const targetHasActivePet=(await client.query(
-        'SELECT 1 FROM pet_collection WHERE jid=$1 AND active=TRUE LIMIT 1',[targetJid]
-      )).rowCount>0
-      if(targetHasActivePet){
-        await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1 AND active=TRUE',[sourceJid])
-      }
-      await client.query('UPDATE pet_collection SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE pet_expeditions SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
-      const sourceTeam=(await client.query(
-        'SELECT pet_id FROM pet_team WHERE jid=$1 ORDER BY slot',[sourceJid]
-      )).rows
-      for(const {pet_id} of sourceTeam){
-        await client.query(`
-          INSERT INTO pet_team(jid,slot,pet_id)
-          SELECT $1,gs.slot,$2 FROM generate_series(1,3) AS gs(slot)
-          WHERE NOT EXISTS(SELECT 1 FROM pet_team WHERE jid=$1 AND pet_id=$2)
-            AND NOT EXISTS(SELECT 1 FROM pet_team WHERE jid=$1 AND slot=gs.slot)
-          ORDER BY gs.slot LIMIT 1
-          ON CONFLICT DO NOTHING
-        `,[targetJid,pet_id])
-      }
-      await client.query(`UPDATE clans SET owner_jid=$1 WHERE owner_jid=$2`,[targetJid,sourceJid])
-      await client.query(`
-        INSERT INTO clan_members(jid,clan_id,role,joined_at)
-        SELECT $1,clan_id,role,joined_at FROM clan_members WHERE jid=$2
-        ON CONFLICT(jid) DO NOTHING
-      `,[targetJid,sourceJid])
-
-      const cooldowns=await client.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1',[`%${sourceJid}%`])
-      for(const row of cooldowns.rows){
-        const nextKey=String(row.key).replaceAll(sourceJid,targetJid)
-        await client.query(`
-          INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-          ON CONFLICT(key) DO UPDATE SET expires_at=GREATEST(cooldowns.expires_at,EXCLUDED.expires_at)
-        `,[nextKey,row.expires_at])
-      }
-
-      await client.query('UPDATE transactions SET from_jid=$1 WHERE from_jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE transactions SET to_jid=$1 WHERE to_jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE subscription_orders SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE support_tickets SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE snipe_messages SET sender_jid=$1 WHERE sender_jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE clan_invites SET inviter_jid=$1 WHERE inviter_jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE market_listings SET seller_jid=$1 WHERE seller_jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE market_listings SET buyer_jid=$1 WHERE buyer_jid=$2',[targetJid,sourceJid])
-      await client.query('UPDATE group_events SET claimed_by=$1 WHERE claimed_by=$2',[targetJid,sourceJid])
-
-      const targetRelationship=await client.query('SELECT 1 FROM relationships WHERE jid=$1 OR partner_jid=$1 LIMIT 1',[targetJid])
-      if(targetRelationship.rowCount){
-        await client.query('DELETE FROM relationships WHERE jid=$1 OR partner_jid=$1',[sourceJid])
-      }else{
-        await client.query('UPDATE relationships SET partner_jid=$1 WHERE partner_jid=$2',[targetJid,sourceJid])
-        await client.query('UPDATE relationships SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
-      }
-      await client.query(`
-        INSERT INTO relationship_proposals(from_jid,to_jid,created_at)
-        SELECT CASE WHEN from_jid=$2 THEN $1 ELSE from_jid END,
-               CASE WHEN to_jid=$2 THEN $1 ELSE to_jid END,created_at
-        FROM relationship_proposals
-        WHERE (from_jid=$2 OR to_jid=$2)
-          AND NOT (from_jid IN ($1,$2) AND to_jid IN ($1,$2))
-        ON CONFLICT(from_jid,to_jid) DO UPDATE SET created_at=GREATEST(relationship_proposals.created_at,EXCLUDED.created_at)
-      `,[targetJid,sourceJid])
-
-      await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%${sourceJid}%`])
-      await client.query('DELETE FROM daily_missions WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM relationship_proposals WHERE from_jid=$1 OR to_jid=$1',[sourceJid])
-      await client.query('DELETE FROM group_warnings WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM group_activity WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM group_mission_members WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM user_businesses WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM user_motorcycles WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM clan_members WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM clan_invites WHERE invitee_jid=$1',[sourceJid])
-      await client.query('DELETE FROM user_homes WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM user_cars WHERE jid=$1',[sourceJid])
-      await client.query('DELETE FROM quick_flows WHERE sender_jid=$1',[sourceJid])
-      await client.query('DELETE FROM users WHERE jid=$1',[sourceJid])
-    }
-    return changed
-  })
+if(!targetJid?.endsWith('@s.whatsapp.net')) return false
+const targetDigits=targetJid.split('@')[0].replace(/:\d+$/,'')
+const sources=[...new Set((aliases||[]).filter(Boolean))].filter(alias=>{
+if(alias===targetJid) return false
+if(alias.endsWith('@lid')) return true
+if(alias.endsWith('@s.whatsapp.net')){
+return alias.split('@')[0].replace(/:\d+$/,'')===targetDigits
 }
-
+return false
+})
+if(!sources.length) return false
+return transaction(async client=>{
+await client.query(`
+INSERT INTO users(jid,pn,push_name)
+VALUES($1,$1,$2)
+ON CONFLICT(jid) DO UPDATE SET
+pn=COALESCE(users.pn,EXCLUDED.pn),
+push_name=CASE WHEN EXCLUDED.push_name<>'' THEN EXCLUDED.push_name ELSE users.push_name END,
+updated_at=${nowSql}
+`,[targetJid,pushName])
+await client.query('INSERT INTO wallets(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING',[targetJid])
+await client.query('INSERT INTO stats(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING',[targetJid])
+let changed=false
+for(const sourceJid of sources){
+const sourceR=await client.query('SELECT * FROM users WHERE jid=$1 FOR UPDATE',[sourceJid])
+if(!sourceR.rows[0]) continue
+changed=true
+const source=sourceR.rows[0]
+await client.query(`
+UPDATE users SET
+push_name=COALESCE(NULLIF($2,''),NULLIF(push_name,''),$3),
+level=GREATEST(level,$4),
+exp=CASE WHEN $4>level THEN $5 ELSE GREATEST(exp,$5) END,
+premium=premium OR $6,
+premium_exp=GREATEST(premium_exp,$7),
+banned=banned OR $8,
+created_at=LEAST(created_at,$9),
+pn=$1,
+updated_at=${nowSql}
+WHERE jid=$1
+`,[targetJid,pushName,source.push_name,Number(source.level||1),Number(source.exp||0),Boolean(source.premium),Number(source.premium_exp||0),Boolean(source.banned),Number(source.created_at||Math.floor(Date.now()/1000))])
+await client.query(`
+UPDATE wallets t SET
+cash=t.cash+COALESCE(s.cash,0),
+bank=t.bank+COALESCE(s.bank,0),
+bank_limit=GREATEST(t.bank_limit,COALESCE(s.bank_limit,0)),
+updated_at=${nowSql}
+FROM wallets s WHERE t.jid=$1 AND s.jid=$2
+`,[targetJid,sourceJid])
+await client.query(`
+UPDATE stats t SET
+hp=GREATEST(t.hp,COALESCE(s.hp,0)),
+max_hp=GREATEST(t.max_hp,COALESCE(s.max_hp,0)),
+atk=GREATEST(t.atk,COALESCE(s.atk,0)),
+def=GREATEST(t.def,COALESCE(s.def,0)),
+spd=GREATEST(t.spd,COALESCE(s.spd,0)),
+weapon_id=COALESCE(t.weapon_id,s.weapon_id),
+armor_id=COALESCE(t.armor_id,s.armor_id),
+boot_id=COALESCE(t.boot_id,s.boot_id),
+helmet_id=COALESCE(t.helmet_id,s.helmet_id),
+class_id=CASE
+WHEN COALESCE(t.class_applied,FALSE) THEN t.class_id
+WHEN COALESCE(s.class_applied,FALSE) THEN s.class_id
+ELSE COALESCE(t.class_id,s.class_id,'warrior')
+END,
+class_applied=COALESCE(t.class_applied,FALSE) OR COALESCE(s.class_applied,FALSE),
+class_hp_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_hp_bonus ELSE COALESCE(s.class_hp_bonus,t.class_hp_bonus,0) END,
+class_atk_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_atk_bonus ELSE COALESCE(s.class_atk_bonus,t.class_atk_bonus,0) END,
+class_def_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_def_bonus ELSE COALESCE(s.class_def_bonus,t.class_def_bonus,0) END,
+class_spd_bonus=CASE WHEN COALESCE(t.class_applied,FALSE) THEN t.class_spd_bonus ELSE COALESCE(s.class_spd_bonus,t.class_spd_bonus,0) END,
+win=t.win+COALESCE(s.win,0),
+loss=t.loss+COALESCE(s.loss,0),
+updated_at=${nowSql}
+FROM stats s WHERE t.jid=$1 AND s.jid=$2
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO inventories(jid,item_id,quantity,data,created_at)
+SELECT $1,item_id,quantity,data,created_at FROM inventories WHERE jid=$2
+ON CONFLICT(jid,item_id) DO UPDATE
+SET quantity=inventories.quantity+EXCLUDED.quantity
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
+SELECT $1,item_id,level,${nowSql} FROM equipment_upgrades WHERE jid=$2
+ON CONFLICT(jid,item_id) DO UPDATE SET
+level=GREATEST(equipment_upgrades.level,EXCLUDED.level),
+updated_at=${nowSql}
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity)
+SELECT $1,item_id,level,quantity FROM equipment_upgrade_copies WHERE jid=$2
+ON CONFLICT(jid,item_id,level) DO UPDATE
+SET quantity=equipment_upgrade_copies.quantity+EXCLUDED.quantity
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day,updated_at)
+SELECT $1,streak,best_streak,last_claim_day,${nowSql} FROM daily_streaks WHERE jid=$2
+ON CONFLICT(jid) DO UPDATE SET
+streak=GREATEST(daily_streaks.streak,EXCLUDED.streak),
+best_streak=GREATEST(daily_streaks.best_streak,EXCLUDED.best_streak),
+last_claim_day=GREATEST(daily_streaks.last_claim_day,EXCLUDED.last_claim_day),
+updated_at=${nowSql}
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO level_reward_claims(jid,milestone,claimed_at)
+SELECT $1,milestone,claimed_at FROM level_reward_claims WHERE jid=$2
+ON CONFLICT(jid,milestone) DO NOTHING
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO level_reward_audit(jid,milestone,claimed_at)
+SELECT $1,milestone,claimed_at FROM level_reward_audit WHERE jid=$2
+ON CONFLICT(jid,milestone) DO NOTHING
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO profile_avatars(jid,image_data,mime_type,updated_at)
+SELECT $1,image_data,mime_type,updated_at FROM profile_avatars WHERE jid=$2
+ON CONFLICT(jid) DO NOTHING
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO daily_missions(jid,day_key,mission_type,title,target,reward_cash,reward_box,progress,claimed,created_at)
+SELECT $1,day_key,mission_type,title,target,reward_cash,reward_box,progress,claimed,created_at
+FROM daily_missions WHERE jid=$2
+ON CONFLICT(jid,day_key,mission_type) DO UPDATE SET
+progress=GREATEST(daily_missions.progress,EXCLUDED.progress),
+claimed=daily_missions.claimed OR EXCLUDED.claimed
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO user_cars(jid,car_id,price_paid,acquired_at)
+SELECT $1,car_id,price_paid,acquired_at FROM user_cars WHERE jid=$2
+ON CONFLICT(jid,car_id) DO NOTHING
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO user_homes(jid,house_id,price_paid,acquired_at)
+SELECT $1,house_id,price_paid,acquired_at FROM user_homes WHERE jid=$2
+ON CONFLICT(jid) DO UPDATE SET
+house_id=CASE WHEN EXCLUDED.price_paid>user_homes.price_paid THEN EXCLUDED.house_id ELSE user_homes.house_id END,
+price_paid=GREATEST(user_homes.price_paid,EXCLUDED.price_paid),
+acquired_at=LEAST(user_homes.acquired_at,EXCLUDED.acquired_at)
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO careers(jid,career_xp,total_shifts,updated_at)
+SELECT $1,career_xp,total_shifts,${nowSql} FROM careers WHERE jid=$2
+ON CONFLICT(jid) DO UPDATE SET
+career_xp=careers.career_xp+EXCLUDED.career_xp,
+total_shifts=careers.total_shifts+EXCLUDED.total_shifts,
+updated_at=${nowSql}
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO user_motorcycles(jid,motorcycle_id,price_paid,acquired_at)
+SELECT $1,motorcycle_id,price_paid,acquired_at FROM user_motorcycles WHERE jid=$2
+ON CONFLICT(jid,motorcycle_id) DO UPDATE SET
+price_paid=GREATEST(user_motorcycles.price_paid,EXCLUDED.price_paid),
+acquired_at=LEAST(user_motorcycles.acquired_at,EXCLUDED.acquired_at)
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO user_businesses(jid,business_id,price_paid,acquired_at,last_collected_at,level)
+SELECT $1,business_id,price_paid,acquired_at,last_collected_at,level FROM user_businesses WHERE jid=$2
+ON CONFLICT(jid,business_id) DO UPDATE SET
+price_paid=GREATEST(user_businesses.price_paid,EXCLUDED.price_paid),
+acquired_at=LEAST(user_businesses.acquired_at,EXCLUDED.acquired_at),
+last_collected_at=GREATEST(user_businesses.last_collected_at,EXCLUDED.last_collected_at),
+level=GREATEST(user_businesses.level,EXCLUDED.level)
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO group_mission_members(chat_jid,week_key,jid,contribution,claimed)
+SELECT chat_jid,week_key,$1,contribution,claimed FROM group_mission_members WHERE jid=$2
+ON CONFLICT(chat_jid,week_key,jid) DO UPDATE SET
+contribution=group_mission_members.contribution+EXCLUDED.contribution,
+claimed=group_mission_members.claimed OR EXCLUDED.claimed
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO group_activity(chat_jid,jid,day,messages,commands)
+SELECT chat_jid,$1,day,messages,commands FROM group_activity WHERE jid=$2
+ON CONFLICT(chat_jid,jid,day) DO UPDATE SET
+messages=group_activity.messages+EXCLUDED.messages,
+commands=group_activity.commands+EXCLUDED.commands
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO group_warnings(chat_jid,jid,warnings,updated_at)
+SELECT chat_jid,$1,warnings,updated_at FROM group_warnings WHERE jid=$2
+ON CONFLICT(chat_jid,jid) DO UPDATE SET
+warnings=group_warnings.warnings+EXCLUDED.warnings,
+updated_at=GREATEST(group_warnings.updated_at,EXCLUDED.updated_at)
+`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,created_at)
+SELECT $1,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,created_at FROM pets WHERE jid=$2
+ON CONFLICT(jid) DO UPDATE SET
+species=CASE WHEN EXCLUDED.xp>pets.xp THEN EXCLUDED.species ELSE pets.species END,
+name=CASE WHEN EXCLUDED.xp>pets.xp THEN EXCLUDED.name ELSE pets.name END,
+xp=pets.xp+EXCLUDED.xp,level=1+FLOOR((pets.xp+EXCLUDED.xp)/100),
+hunger=GREATEST(pets.hunger,EXCLUDED.hunger),hygiene=GREATEST(pets.hygiene,EXCLUDED.hygiene),
+energy=GREATEST(pets.energy,EXCLUDED.energy),power=GREATEST(pets.power,EXCLUDED.power),
+wins=pets.wins+EXCLUDED.wins,losses=pets.losses+EXCLUDED.losses,
+last_action=GREATEST(pets.last_action,EXCLUDED.last_action),created_at=LEAST(pets.created_at,EXCLUDED.created_at)
+`,[targetJid,sourceJid])
+const targetHasActivePet=(await client.query(
+'SELECT 1 FROM pet_collection WHERE jid=$1 AND active=TRUE LIMIT 1',[targetJid]
+)).rowCount>0
+if(targetHasActivePet){
+await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1 AND active=TRUE',[sourceJid])
+}
+await client.query('UPDATE pet_collection SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE pet_expeditions SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
+const sourceTeam=(await client.query(
+'SELECT pet_id FROM pet_team WHERE jid=$1 ORDER BY slot',[sourceJid]
+)).rows
+for(const {pet_id} of sourceTeam){
+await client.query(`
+INSERT INTO pet_team(jid,slot,pet_id)
+SELECT $1,gs.slot,$2 FROM generate_series(1,3) AS gs(slot)
+WHERE NOT EXISTS(SELECT 1 FROM pet_team WHERE jid=$1 AND pet_id=$2)
+AND NOT EXISTS(SELECT 1 FROM pet_team WHERE jid=$1 AND slot=gs.slot)
+ORDER BY gs.slot LIMIT 1
+ON CONFLICT DO NOTHING
+`,[targetJid,pet_id])
+}
+await client.query(`UPDATE clans SET owner_jid=$1 WHERE owner_jid=$2`,[targetJid,sourceJid])
+await client.query(`
+INSERT INTO clan_members(jid,clan_id,role,joined_at)
+SELECT $1,clan_id,role,joined_at FROM clan_members WHERE jid=$2
+ON CONFLICT(jid) DO NOTHING
+`,[targetJid,sourceJid])
+const cooldowns=await client.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1',[`%${sourceJid}%`])
+for(const row of cooldowns.rows){
+const nextKey=String(row.key).replaceAll(sourceJid,targetJid)
+await client.query(`
+INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+ON CONFLICT(key) DO UPDATE SET expires_at=GREATEST(cooldowns.expires_at,EXCLUDED.expires_at)
+`,[nextKey,row.expires_at])
+}
+await client.query('UPDATE transactions SET from_jid=$1 WHERE from_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE transactions SET to_jid=$1 WHERE to_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE subscription_orders SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE support_tickets SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE snipe_messages SET sender_jid=$1 WHERE sender_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE clan_invites SET inviter_jid=$1 WHERE inviter_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE market_listings SET seller_jid=$1 WHERE seller_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE market_listings SET buyer_jid=$1 WHERE buyer_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE group_events SET claimed_by=$1 WHERE claimed_by=$2',[targetJid,sourceJid])
+const targetRelationship=await client.query('SELECT 1 FROM relationships WHERE jid=$1 OR partner_jid=$1 LIMIT 1',[targetJid])
+if(targetRelationship.rowCount){
+await client.query('DELETE FROM relationships WHERE jid=$1 OR partner_jid=$1',[sourceJid])
+}else{
+await client.query('UPDATE relationships SET partner_jid=$1 WHERE partner_jid=$2',[targetJid,sourceJid])
+await client.query('UPDATE relationships SET jid=$1 WHERE jid=$2',[targetJid,sourceJid])
+}
+await client.query(`
+INSERT INTO relationship_proposals(from_jid,to_jid,created_at)
+SELECT CASE WHEN from_jid=$2 THEN $1 ELSE from_jid END,
+CASE WHEN to_jid=$2 THEN $1 ELSE to_jid END,created_at
+FROM relationship_proposals
+WHERE (from_jid=$2 OR to_jid=$2)
+AND NOT (from_jid IN ($1,$2) AND to_jid IN ($1,$2))
+ON CONFLICT(from_jid,to_jid) DO UPDATE SET created_at=GREATEST(relationship_proposals.created_at,EXCLUDED.created_at)
+`,[targetJid,sourceJid])
+await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%${sourceJid}%`])
+await client.query('DELETE FROM daily_missions WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM relationship_proposals WHERE from_jid=$1 OR to_jid=$1',[sourceJid])
+await client.query('DELETE FROM group_warnings WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM group_activity WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM group_mission_members WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM user_businesses WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM user_motorcycles WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM clan_members WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM clan_invites WHERE invitee_jid=$1',[sourceJid])
+await client.query('DELETE FROM user_homes WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM user_cars WHERE jid=$1',[sourceJid])
+await client.query('DELETE FROM quick_flows WHERE sender_jid=$1',[sourceJid])
+await client.query('DELETE FROM users WHERE jid=$1',[sourceJid])
+}
+return changed
+})
+}
 export async function getProfile(jid) {
-  const { rows } = await db.query(`
-    SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
-           w.cash,w.bank,w.bank_limit,
-           s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,
-           s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss
-    FROM users u
-    JOIN wallets w ON w.jid=u.jid
-    JOIN stats s ON s.jid=u.jid
-    WHERE u.jid=$1
-  `, [jid])
-  return rows[0] ?? null
+const { rows } = await db.query(`
+SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
+w.cash,w.bank,w.bank_limit,
+s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,
+s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss
+FROM users u
+JOIN wallets w ON w.jid=u.jid
+JOIN stats s ON s.jid=u.jid
+WHERE u.jid=$1
+`, [jid])
+return rows[0] ?? null
 }
-
-
 export async function setPlayerClass(jid,classId){
-  await ensureUser(jid)
-  const key=String(classId||'').toLowerCase()
-  if(!PLAYER_CLASSES[key]) throw new Error('Classe inválida.')
-  const next=getPlayerClass(key)
-  const RECLASS_ITEM='pergaminho_reclassificacao'
-
-  return transaction(async client=>{
-    const st=(await client.query(
-      'SELECT hp,max_hp,atk,def,spd,class_id,class_applied,class_hp_bonus,class_atk_bonus,class_def_bonus,class_spd_bonus FROM stats WHERE jid=$1 FOR UPDATE',
-      [jid]
-    )).rows[0]
-    if(!st) throw new Error('Status do jogador não encontrado.')
-
-    const applied=Boolean(st.class_applied)
-    if(applied&&String(st.class_id)===next.id){
-      return {ok:true,unchanged:true,firstChoice:false,classId:next.id,classInfo:next,stats:{
-        hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
-      }}
-    }
-
-    let consumedScroll=false
-    let nextChangeAt=null
-    if(applied){
-      const inv=(await client.query(
-        'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-        [jid,RECLASS_ITEM]
-      )).rows[0]
-      if(Number(inv?.quantity||0)<1){
-        throw new Error('Para trocar de classe você precisa de 1 Pergaminho de Reclassificação. A primeira escolha é grátis.')
-      }
-
-      await client.query(
-        'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
-        [jid,RECLASS_ITEM]
-      )
-      consumedScroll=true
-    }
-
-    const prev={
-      hp:Number(st.class_hp_bonus||0),
-      atk:Number(st.class_atk_bonus||0),
-      def:Number(st.class_def_bonus||0),
-      spd:Number(st.class_spd_bonus||0)
-    }
-
-    const oldMax=Math.max(1,Number(st.max_hp||100))
-    const hpRatio=Math.max(0,Math.min(1,Number(st.hp||0)/oldMax))
-    const neutralMax=Math.max(1,oldMax-prev.hp)
-    const neutralAtk=Math.max(1,Number(st.atk||10)-prev.atk)
-    const neutralDef=Math.max(1,Number(st.def||5)-prev.def)
-    const neutralSpd=Math.max(1,Number(st.spd||10)-prev.spd)
-
-    const maxHp=Math.max(1,neutralMax+Number(next.hp||0))
-    const atk=Math.max(1,neutralAtk+Number(next.atk||0))
-    const def=Math.max(1,neutralDef+Number(next.def||0))
-    const spd=Math.max(1,neutralSpd+Number(next.spd||0))
-    const hp=Math.max(1,Math.min(maxHp,Math.round(maxHp*hpRatio)))
-
-    await client.query(
-      'UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,class_hp_bonus=$7,class_atk_bonus=$8,class_def_bonus=$9,class_spd_bonus=$10,updated_at='+nowSql+' WHERE jid=$11',
-      [hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
-    )
-
-    // Reclassificação é atômica: preserva Despertares I–V concluídos,
-    // porém passa a contar missões pendentes somente na classe nova.
-    const {checkpointAwakeningAfterClassChange}=await import('./awakening.js')
-    await checkpointAwakeningAfterClassChange(client,jid)
-
-    return {
-      ok:true,firstChoice:!applied,consumedScroll,nextChangeAt,
-      classId:next.id,classInfo:next,stats:{hp,maxHp,atk,def,spd}
-    }
-  })
+await ensureUser(jid)
+const key=String(classId||'').toLowerCase()
+if(!PLAYER_CLASSES[key]) throw new Error('Classe inválida.')
+const next=getPlayerClass(key)
+const RECLASS_ITEM='pergaminho_reclassificacao'
+return transaction(async client=>{
+const st=(await client.query(
+'SELECT hp,max_hp,atk,def,spd,class_id,class_applied,class_hp_bonus,class_atk_bonus,class_def_bonus,class_spd_bonus FROM stats WHERE jid=$1 FOR UPDATE',
+[jid]
+)).rows[0]
+if(!st) throw new Error('Status do jogador não encontrado.')
+const applied=Boolean(st.class_applied)
+if(applied&&String(st.class_id)===next.id){
+return {ok:true,unchanged:true,firstChoice:false,classId:next.id,classInfo:next,stats:{
+hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
+}}
 }
-
+let consumedScroll=false
+let nextChangeAt=null
+if(applied){
+const inv=(await client.query(
+'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+[jid,RECLASS_ITEM]
+)).rows[0]
+if(Number(inv?.quantity||0)<1){
+throw new Error('Para trocar de classe você precisa de 1 Pergaminho de Reclassificação. A primeira escolha é grátis.')
+}
+await client.query(
+'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
+[jid,RECLASS_ITEM]
+)
+consumedScroll=true
+}
+const prev={
+hp:Number(st.class_hp_bonus||0),
+atk:Number(st.class_atk_bonus||0),
+def:Number(st.class_def_bonus||0),
+spd:Number(st.class_spd_bonus||0)
+}
+const oldMax=Math.max(1,Number(st.max_hp||100))
+const hpRatio=Math.max(0,Math.min(1,Number(st.hp||0)/oldMax))
+const neutralMax=Math.max(1,oldMax-prev.hp)
+const neutralAtk=Math.max(1,Number(st.atk||10)-prev.atk)
+const neutralDef=Math.max(1,Number(st.def||5)-prev.def)
+const neutralSpd=Math.max(1,Number(st.spd||10)-prev.spd)
+const maxHp=Math.max(1,neutralMax+Number(next.hp||0))
+const atk=Math.max(1,neutralAtk+Number(next.atk||0))
+const def=Math.max(1,neutralDef+Number(next.def||0))
+const spd=Math.max(1,neutralSpd+Number(next.spd||0))
+const hp=Math.max(1,Math.min(maxHp,Math.round(maxHp*hpRatio)))
+await client.query(
+'UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,class_hp_bonus=$7,class_atk_bonus=$8,class_def_bonus=$9,class_spd_bonus=$10,updated_at='+nowSql+' WHERE jid=$11',
+[hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
+)
+const {checkpointAwakeningAfterClassChange}=await import('./awakening.js')
+await checkpointAwakeningAfterClassChange(client,jid)
+return {
+ok:true,firstChoice:!applied,consumedScroll,nextChangeAt,
+classId:next.id,classInfo:next,stats:{hp,maxHp,atk,def,spd}
+}
+})
+}
 export async function claimCooldown(queryable, key, seconds) {
-  const now = Math.floor(Date.now()/1000)
-  const expires = now + seconds
-  const claimed = await queryable.query(`
-    INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-    ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
-    WHERE cooldowns.expires_at <= $3
-    RETURNING expires_at
-  `,[key,expires,now])
-  if(claimed.rowCount) return {ok:true,expires}
-  const current=await queryable.query('SELECT expires_at FROM cooldowns WHERE key=$1',[key])
-  return {ok:false,remaining:Math.max(1,Number(current.rows[0]?.expires_at||now)-now)}
+const now = Math.floor(Date.now()/1000)
+const expires = now + seconds
+const claimed = await queryable.query(`
+INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at
+WHERE cooldowns.expires_at <= $3
+RETURNING expires_at
+`,[key,expires,now])
+if(claimed.rowCount) return {ok:true,expires}
+const current=await queryable.query('SELECT expires_at FROM cooldowns WHERE key=$1',[key])
+return {ok:false,remaining:Math.max(1,Number(current.rows[0]?.expires_at||now)-now)}
 }
-
 function nextStreakMilestone(streak){
-  const day=((Math.max(1,Number(streak)||1)-1)%30)+1
-  const next=[3,7,14,21,30].find(n=>n>day)??30
-  const labels={3:'R$ 50.000',7:'R$ 150.000 + Caixa Épica',14:'R$ 300.000 + 2 Caixas Épicas',21:'R$ 500.000 + 3 Caixas Épicas',30:'R$ 1.000.000 + Caixa Lendária'}
-  return {day:next,days:Math.max(0,next-day),label:labels[next]}
+const day=((Math.max(1,Number(streak)||1)-1)%30)+1
+const next=[3,7,14,21,30].find(n=>n>day)??30
+const labels={3:'R$ 50.000',7:'R$ 150.000 + Caixa Épica',14:'R$ 300.000 + 2 Caixas Épicas',21:'R$ 500.000 + 3 Caixas Épicas',30:'R$ 1.000.000 + Caixa Lendária'}
+return {day:next,days:Math.max(0,next-day),label:labels[next]}
 }
-
 async function ensureDailyStreakState(queryable,jid){
-  await queryable.query(`
-    INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
-    SELECT
-      $1,
-      1,
-      1,
-      (to_timestamp(expires_at - 72000) AT TIME ZONE 'America/Sao_Paulo')::date
-    FROM cooldowns
-    WHERE key=$2
-      AND (to_timestamp(expires_at - 72000) AT TIME ZONE 'America/Sao_Paulo')::date
-          >= ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1)
-    ON CONFLICT(jid) DO NOTHING
-  `,[jid,`daily:${jid}`])
-
-  await queryable.query(`
-    INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
-    VALUES($1,0,0,NULL)
-    ON CONFLICT(jid) DO NOTHING
-  `,[jid])
+await queryable.query(`
+INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
+SELECT
+$1,
+1,
+1,
+(to_timestamp(expires_at - 72000) AT TIME ZONE 'America/Sao_Paulo')::date
+FROM cooldowns
+WHERE key=$2
+AND (to_timestamp(expires_at - 72000) AT TIME ZONE 'America/Sao_Paulo')::date
+>= ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - 1)
+ON CONFLICT(jid) DO NOTHING
+`,[jid,`daily:${jid}`])
+await queryable.query(`
+INSERT INTO daily_streaks(jid,streak,best_streak,last_claim_day)
+VALUES($1,0,0,NULL)
+ON CONFLICT(jid) DO NOTHING
+`,[jid])
 }
-
 export async function getDailyStreak(jid) {
-  await ensureUser(jid)
-  await ensureDailyStreakState(db,jid)
-  const {rows}=await db.query(`
-    SELECT d.streak,d.best_streak,d.last_claim_day,
-           TO_CHAR(NOW() AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS today
-    FROM (SELECT $1::text AS jid) x
-    LEFT JOIN daily_streaks d ON d.jid=x.jid
-  `,[jid])
-
-  const row=rows[0]||{}
-  const streak=Number(row.streak||0)
-  const bestStreak=Number(row.best_streak||0)
-  const lastClaimDay=row.last_claim_day instanceof Date
-    ? row.last_claim_day.toISOString().slice(0,10)
-    : (String(row.last_claim_day||'').match(/\\d{4}-\\d{2}-\\d{2}/)?.[0] || null)
-  const today=String(row.today||'')
-  return {
-    streak,
-    bestStreak,
-    lastClaimDay,
-    claimedToday:Boolean(lastClaimDay && lastClaimDay===today),
-    next:nextStreakMilestone(streak)
-  }
+await ensureUser(jid)
+await ensureDailyStreakState(db,jid)
+const {rows}=await db.query(`
+SELECT d.streak,d.best_streak,d.last_claim_day,
+TO_CHAR(NOW() AT TIME ZONE 'America/Sao_Paulo','YYYY-MM-DD') AS today
+FROM (SELECT $1::text AS jid) x
+LEFT JOIN daily_streaks d ON d.jid=x.jid
+`,[jid])
+const row=rows[0]||{}
+const streak=Number(row.streak||0)
+const bestStreak=Number(row.best_streak||0)
+const lastClaimDay=row.last_claim_day instanceof Date
+? row.last_claim_day.toISOString().slice(0,10)
+: (String(row.last_claim_day||'').match(/\\d{4}-\\d{2}-\\d{2}/)?.[0] || null)
+const today=String(row.today||'')
+return {
+streak,
+bestStreak,
+lastClaimDay,
+claimedToday:Boolean(lastClaimDay && lastClaimDay===today),
+next:nextStreakMilestone(streak)
 }
-
+}
 export async function claimDaily(jid){
-  const {claimDailyV2}=await import('./daily-v2.js')
-  return claimDailyV2(jid)
+const {claimDailyV2}=await import('./daily-v2.js')
+return claimDailyV2(jid)
 }
-
 const CAREER_RANKS=[
-  {name:'Ajudante',xp:0,mult:1},
-  {name:'Auxiliar',xp:100,mult:1.12},
-  {name:'Assistente',xp:300,mult:1.25},
-  {name:'Analista',xp:700,mult:1.45},
-  {name:'Especialista',xp:1400,mult:1.7},
-  {name:'Coordenador',xp:2500,mult:2},
-  {name:'Gerente',xp:4000,mult:2.4},
-  {name:'Diretor',xp:6500,mult:3},
-  {name:'CEO',xp:10000,mult:4},
+{name:'Ajudante',xp:0,mult:1},
+{name:'Auxiliar',xp:100,mult:1.12},
+{name:'Assistente',xp:300,mult:1.25},
+{name:'Analista',xp:700,mult:1.45},
+{name:'Especialista',xp:1400,mult:1.7},
+{name:'Coordenador',xp:2500,mult:2},
+{name:'Gerente',xp:4000,mult:2.4},
+{name:'Diretor',xp:6500,mult:3},
+{name:'CEO',xp:10000,mult:4},
 ]
 const careerRank=xp=>[...CAREER_RANKS].reverse().find(r=>xp>=r.xp)||CAREER_RANKS[0]
-
 export async function getCareer(jid){
-  await ensureUser(jid)
-  await db.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
-  const {rows}=await db.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1',[jid])
-  const row=rows[0], rank=careerRank(Number(row.career_xp))
-  const idx=CAREER_RANKS.findIndex(r=>r.name===rank.name), next=CAREER_RANKS[idx+1]||null
-  return {...row,rank,next}
+await ensureUser(jid)
+await db.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
+const {rows}=await db.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1',[jid])
+const row=rows[0], rank=careerRank(Number(row.career_xp))
+const idx=CAREER_RANKS.findIndex(r=>r.name===rank.name), next=CAREER_RANKS[idx+1]||null
+return {...row,rank,next}
 }
-
 const SUNDAY_RUSH_START=Date.parse('2026-10-04T10:30:00-03:00')
 const SUNDAY_RUSH_END=Date.parse('2026-10-04T11:30:00-03:00')
 const sundayRushMultiplier=()=>Date.now()>=SUNDAY_RUSH_START&&Date.now()<SUNDAY_RUSH_END?1.5:1
-
 export async function work(jid, taxMultiplier=1) {
-  await ensureUser(jid)
-  const jobs=['organizando documentos','atendendo clientes','resolvendo uma demanda','fechando um relatório','ajudando a equipe','entregando um projeto']
-  return transaction(async client=>{
-    const cd=await claimCooldown(client,`work:${jid}`,30*60)
-    if(!cd.ok) return cd
-    await client.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
-    const cr=(await client.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const oldXp=Number(cr.career_xp), oldRank=careerRank(oldXp)
-    const moneyMultiplier=(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()
-    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const xpGain=Math.round((25+Math.floor(Math.random()*16))*xpMultiplier)
-    const newXp=oldXp+xpGain, newRank=careerRank(newXp)
-    // Remuneracao escalonada por nivel; carreira continua progredindo com XP.
-    // Todos os bonus de desempenho/evento respeitam o teto da faixa.
-    const playerRow=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
-    const level=Math.max(1,Number(playerRow?.level)||1)
-    const payCap=level<=20?1500:level<=50?3000:level<=100?5000:level<=150?7500:level<=200?10000:level<=250?12500:15000
-    const base=Math.round(payCap/Math.max(1,newRank.mult))
-    let event=null, factor=1
-    const roll=Math.random()
-    if(roll<.08){event='🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
-    else if(roll<.15){event='⏰ Hora extra! Bônus de 25%.';factor=1.25}
-    else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
-    const gross=Math.min(payCap,Math.max(1,Math.round(base*newRank.mult*factor*moneyMultiplier)))
-    const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
-    const tax=Math.floor(gross*(taxRate/100))
-    const amount=gross-tax
-    await client.query('UPDATE careers SET career_xp=$1,total_shifts=total_shifts+1,updated_at='+nowSql+' WHERE jid=$2',[newXp,jid])
-    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[amount,jid])
-    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'work',$3)`,
-      [jid,gross,`${newRank.name} | ${jobs[Math.floor(Math.random()*jobs.length)]}`])
-    if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | trabalho`])
-    const promoted=newRank.name!==oldRank.name
-    const idx=CAREER_RANKS.findIndex(r=>r.name===newRank.name), next=CAREER_RANKS[idx+1]||null
-    return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
-  })
+await ensureUser(jid)
+const jobs=['organizando documentos','atendendo clientes','resolvendo uma demanda','fechando um relatório','ajudando a equipe','entregando um projeto']
+return transaction(async client=>{
+const cd=await claimCooldown(client,`work:${jid}`,30*60)
+if(!cd.ok) return cd
+await client.query(`INSERT INTO careers(jid) VALUES($1) ON CONFLICT(jid) DO NOTHING`,[jid])
+const cr=(await client.query('SELECT career_xp,total_shifts FROM careers WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const oldXp=Number(cr.career_xp), oldRank=careerRank(oldXp)
+const moneyMultiplier=(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()
+const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+const xpGain=Math.round((25+Math.floor(Math.random()*16))*xpMultiplier)
+const newXp=oldXp+xpGain, newRank=careerRank(newXp)
+const playerRow=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
+const level=Math.max(1,Number(playerRow?.level)||1)
+const payCap=level<=20?1500:level<=50?3000:level<=100?5000:level<=150?7500:level<=200?10000:level<=250?12500:15000
+const base=Math.round(payCap/Math.max(1,newRank.mult))
+let event=null, factor=1
+const roll=Math.random()
+if(roll<.08){event='🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
+else if(roll<.15){event='⏰ Hora extra! Bônus de 25%.';factor=1.25}
+else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
+const gross=Math.min(payCap,Math.max(1,Math.round(base*newRank.mult*factor*moneyMultiplier)))
+const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
+const tax=Math.floor(gross*(taxRate/100))
+const amount=gross-tax
+await client.query('UPDATE careers SET career_xp=$1,total_shifts=total_shifts+1,updated_at='+nowSql+' WHERE jid=$2',[newXp,jid])
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[amount,jid])
+await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'work',$3)`,
+[jid,gross,`${newRank.name} | ${jobs[Math.floor(Math.random()*jobs.length)]}`])
+if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'income_tax',$3)`,[jid,tax,`TAXADE te pegou ${taxRate}% | trabalho`])
+const promoted=newRank.name!==oldRank.name
+const idx=CAREER_RANKS.findIndex(r=>r.name===newRank.name), next=CAREER_RANKS[idx+1]||null
+return {ok:true,gross,tax,taxRate,amount,job:newRank.name,careerXp:newXp,xpGain,totalShifts:Number(cr.total_shifts)+1,event,promoted,oldRank:oldRank.name,rank:newRank,next,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
+})
 }
-
 export async function deposit(jid, amount) {
-  const depositAll=['total','tudo'].includes(String(amount||'').trim().toLowerCase())
-  if(!depositAll){
-    amount = Number(amount)
-    if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
-  }
-
-  return transaction(async client => {
-    const { rows } = await client.query('SELECT * FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const w=rows[0]
-    if(depositAll) amount=Number(w?.cash||0)
-    if(amount<=0) throw new Error('Você não possui dinheiro na carteira para depositar.')
-    if (!w || Number(w.cash) < amount) throw new Error('Saldo em carteira insuficiente.')
-        await client.query(`
-      UPDATE wallets
-      SET cash=cash-$1, bank=bank+$1, updated_at=${nowSql}
-      WHERE jid=$2
-    `,[amount,jid])
-    return { amount,cash:Number(w.cash)-amount, bank:Number(w.bank)+amount }
-  })
+const depositAll=['total','tudo'].includes(String(amount||'').trim().toLowerCase())
+if(!depositAll){
+amount = Number(amount)
+if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
 }
-
+return transaction(async client => {
+const { rows } = await client.query('SELECT * FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const w=rows[0]
+if(depositAll) amount=Number(w?.cash||0)
+if(amount<=0) throw new Error('Você não possui dinheiro na carteira para depositar.')
+if (!w || Number(w.cash) < amount) throw new Error('Saldo em carteira insuficiente.')
+await client.query(`
+UPDATE wallets
+SET cash=cash-$1, bank=bank+$1, updated_at=${nowSql}
+WHERE jid=$2
+`,[amount,jid])
+return { amount,cash:Number(w.cash)-amount, bank:Number(w.bank)+amount }
+})
+}
 export async function withdraw(jid, amount) {
-  amount = Number(amount)
-  if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
-
-  return transaction(async client => {
-    const { rows } = await client.query('SELECT * FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const w=rows[0]
-    if (!w || Number(w.bank) < amount) throw new Error('Saldo no banco insuficiente.')
-
-    await client.query(`
-      UPDATE wallets
-      SET bank=bank-$1, cash=cash+$1, updated_at=${nowSql}
-      WHERE jid=$2
-    `,[amount,jid])
-    return { cash:Number(w.cash)+amount, bank:Number(w.bank)-amount }
-  })
+amount = Number(amount)
+if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
+return transaction(async client => {
+const { rows } = await client.query('SELECT * FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const w=rows[0]
+if (!w || Number(w.bank) < amount) throw new Error('Saldo no banco insuficiente.')
+await client.query(`
+UPDATE wallets
+SET bank=bank-$1, cash=cash+$1, updated_at=${nowSql}
+WHERE jid=$2
+`,[amount,jid])
+return { cash:Number(w.cash)+amount, bank:Number(w.bank)-amount }
+})
 }
-
 export async function transfer(fromJid, toJid, amount) {
-  amount = Number(amount)
-  if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
-  if (fromJid === toJid) throw new Error('Você não pode transferir para si mesmo.')
-
-  const fee = Math.max(1, Math.floor(amount*0.02))
-  const total = amount + fee
-
-  await ensureUser(toJid)
-
-  return transaction(async client => {
-    const { rows } = await client.query(
-      'SELECT jid,cash FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
-      [[fromJid,toJid]]
-    )
-    const from = rows.find(r=>r.jid===fromJid)
-    if (!from || Number(from.cash) < total) throw new Error(`Você precisa de R$ ${total.toLocaleString('pt-BR')} contando a taxa de 2%.`)
-
-    await client.query('UPDATE wallets SET cash=cash-$1, updated_at='+nowSql+' WHERE jid=$2',[total,fromJid])
-    await client.query('UPDATE wallets SET cash=cash+$1, updated_at='+nowSql+' WHERE jid=$2',[amount,toJid])
-    await client.query(`
-      INSERT INTO transactions (from_jid,to_jid,amount,type,note)
-      VALUES ($1,$2,$3,'transfer',$4)
-    `,[fromJid,toJid,amount,`taxa:${fee}`])
-
-    return { amount, fee, total }
-  })
+amount = Number(amount)
+if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
+if (fromJid === toJid) throw new Error('Você não pode transferir para si mesmo.')
+const fee = Math.max(1, Math.floor(amount*0.02))
+const total = amount + fee
+await ensureUser(toJid)
+return transaction(async client => {
+const { rows } = await client.query(
+'SELECT jid,cash FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+[[fromJid,toJid]]
+)
+const from = rows.find(r=>r.jid===fromJid)
+if (!from || Number(from.cash) < total) throw new Error(`Você precisa de R$ ${total.toLocaleString('pt-BR')} contando a taxa de 2%.`)
+await client.query('UPDATE wallets SET cash=cash-$1, updated_at='+nowSql+' WHERE jid=$2',[total,fromJid])
+await client.query('UPDATE wallets SET cash=cash+$1, updated_at='+nowSql+' WHERE jid=$2',[amount,toJid])
+await client.query(`
+INSERT INTO transactions (from_jid,to_jid,amount,type,note)
+VALUES ($1,$2,$3,'transfer',$4)
+`,[fromJid,toJid,amount,`taxa:${fee}`])
+return { amount, fee, total }
+})
 }
-
 export async function purchaseService(jid, serviceId, price) {
-  price=Number(price)
-  if(!Number.isSafeInteger(price) || price<1) throw new Error('Preço de serviço inválido.')
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const walletR=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const wallet=walletR.rows[0]
-    const cash=Number(wallet?.cash||0), bank=Number(wallet?.bank||0)
-    if(!wallet || cash+bank<price) throw new Error('Saldo insuficiente para essa compra.')
-    const fromCash=Math.min(cash,price)
-    const fromBank=price-fromCash
-
-    await client.query(
-      'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
-      [fromCash,fromBank,jid]
-    )
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'shop',$2,'service',$3)
-    `,[jid,price,serviceId])
-
-    return { serviceId, price, cash:cash-fromCash, bank:bank-fromBank }
-  })
+price=Number(price)
+if(!Number.isSafeInteger(price) || price<1) throw new Error('Preço de serviço inválido.')
+await ensureUser(jid)
+return transaction(async client=>{
+const walletR=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const wallet=walletR.rows[0]
+const cash=Number(wallet?.cash||0), bank=Number(wallet?.bank||0)
+if(!wallet || cash+bank<price) throw new Error('Saldo insuficiente para essa compra.')
+const fromCash=Math.min(cash,price)
+const fromBank=price-fromCash
+await client.query(
+'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
+[fromCash,fromBank,jid]
+)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'shop',$2,'service',$3)
+`,[jid,price,serviceId])
+return { serviceId, price, cash:cash-fromCash, bank:bank-fromBank }
+})
 }
-
-// Fonte única da loja comum: catálogo canônico ativo, não todo registro legado do banco.
-// O mesmo filtro é aplicado à listagem e à compra (WhatsApp/Web).
 const REGULAR_SHOP_IDS = new Set(["pocao_p","pocao_m","pocao_g","elixir_supremo","pocao_pet_comum","pocao_pet_rara","pocao_pet_epica","pocao_pet_suprema","pocao_pet_full","energetico_pet","espada_madeira","espada_ferro","espada_aco","machado_guerra","katana_sombria","espada_flamas","tridente_tempestade","lamina_abissal","sabre_runico","lamina_cacador","espada_guardiao","foice_carmesim","lanca_solar","garras_vazio","espada_eclipse","armadura_couro","armadura_ferro","armadura_aco","armadura_samurai","armadura_cavaleiro","armadura_dragao","armadura_abissal","armadura_celestial","armadura_bastiao","manto_runico","couraca_guardiao","manto_fenix","couraca_vulcanica","armadura_vazio","armadura_eclipse","bota_leve","bota_vento","bota_cacador","bota_relampago","chave_raid_10","chave_raid_15","chave_raid_20","chave_raid_25","chave_raid_30","chave_raid_40","chave_raid_50","caixa_sorte","caixa_rara","caixa_epica"]);
 export const isRegularShopItem = item => Boolean(item && Number(item.price)>0 && REGULAR_SHOP_IDS.has(String(item.id)));
-
 export async function getShop() {
-  const { rows } = await db.query(`
-    SELECT id,name,description,category,price,rarity
-    FROM items
-    WHERE price > 0
-    ORDER BY category,price
-  `)
-  return rows.filter(isRegularShopItem)
+const { rows } = await db.query(`
+SELECT id,name,description,category,price,rarity
+FROM items
+WHERE price > 0
+ORDER BY category,price
+`)
+return rows.filter(isRegularShopItem)
 }
-
 export async function buyItem(jid, itemId, qty=1) {
-  qty = Number(qty)
-  if (!Number.isInteger(qty) || qty < 1 || qty > 99) throw new Error('Quantidade inválida.')
-
-  return transaction(async client => {
-    const itemR = await client.query('SELECT * FROM items WHERE id=$1',[itemId])
-    const item=itemR.rows[0]
-    if (!item) throw new Error('Item não encontrado.')
-    if(item.id==='pergaminho_reclassificacao' || Number(item.price)<=0) throw new Error('Esse item não está à venda.')
-    if(!isRegularShopItem(item)) throw new Error('Esse item não está à venda na loja comum.')
-
-    const total = Number(item.price)*qty
-    const walletR = await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const wallet=walletR.rows[0]
-    const cash=Number(wallet?.cash||0), bank=Number(wallet?.bank||0)
-    if (!wallet || cash+bank < total) throw new Error('Saldo insuficiente para essa compra.')
-    const fromCash=Math.min(cash,total)
-    const fromBank=total-fromCash
-
-    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2, updated_at='+nowSql+' WHERE jid=$3',[fromCash,fromBank,jid])
-    await client.query(`
-      INSERT INTO inventories (jid,item_id,quantity)
-      VALUES ($1,$2,$3)
-      ON CONFLICT(jid,item_id)
-      DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
-    `,[jid,itemId,qty])
-    await client.query(`
-      INSERT INTO transactions (from_jid,to_jid,amount,type,note)
-      VALUES ($1,'shop',$2,'purchase',$3)
-    `,[jid,total,`${itemId} x${qty}`])
-
-    return { item, qty, total }
-  })
+qty = Number(qty)
+if (!Number.isInteger(qty) || qty < 1 || qty > 99) throw new Error('Quantidade inválida.')
+return transaction(async client => {
+const itemR = await client.query('SELECT * FROM items WHERE id=$1',[itemId])
+const item=itemR.rows[0]
+if (!item) throw new Error('Item não encontrado.')
+if(item.id==='pergaminho_reclassificacao' || Number(item.price)<=0) throw new Error('Esse item não está à venda.')
+if(!isRegularShopItem(item)) throw new Error('Esse item não está à venda na loja comum.')
+const total = Number(item.price)*qty
+const walletR = await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const wallet=walletR.rows[0]
+const cash=Number(wallet?.cash||0), bank=Number(wallet?.bank||0)
+if (!wallet || cash+bank < total) throw new Error('Saldo insuficiente para essa compra.')
+const fromCash=Math.min(cash,total)
+const fromBank=total-fromCash
+await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2, updated_at='+nowSql+' WHERE jid=$3',[fromCash,fromBank,jid])
+await client.query(`
+INSERT INTO inventories (jid,item_id,quantity)
+VALUES ($1,$2,$3)
+ON CONFLICT(jid,item_id)
+DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
+`,[jid,itemId,qty])
+await client.query(`
+INSERT INTO transactions (from_jid,to_jid,amount,type,note)
+VALUES ($1,'shop',$2,'purchase',$3)
+`,[jid,total,`${itemId} x${qty}`])
+return { item, qty, total }
+})
 }
-
 export async function buyRaidFragmentBoxes(jid, qty=1) {
-  await ensureUser(jid)
-  qty=Number(qty)
-  if(!Number.isInteger(qty) || qty<1 || qty>10) throw new Error('Quantidade inválida. Compre de 1 a 10 caixas por vez.')
-
-  const unitPrice=30000
-  const totalPrice=unitPrice*qty
-
-  return transaction(async client=>{
-    const walletR=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const wallet=walletR.rows[0]
-    const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
-    if(!wallet || cash+bank<totalPrice) throw new Error('Saldo insuficiente para comprar essa quantidade de caixas.')
-
-    const fromCash=Math.min(cash,totalPrice)
-    const fromBank=totalPrice-fromCash
-    await client.query(
-      'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
-      [fromCash,fromBank,jid]
-    )
-
-    let fragments=0
-    const rolls={1:0,2:0,3:0,4:0,5:0}
-    for(let i=0;i<qty;i++){
-      const roll=Math.random()
-      const amount=roll<.45?1:roll<.75?2:roll<.90?3:roll<.98?4:5
-      fragments+=amount
-      rolls[amount]=(rolls[amount]||0)+1
-    }
-
-    await client.query(`
-      INSERT INTO inventories(jid,item_id,quantity)
-      VALUES($1,'nucleo_pedra',$2)
-      ON CONFLICT(jid,item_id) DO UPDATE
-      SET quantity=inventories.quantity+EXCLUDED.quantity
-    `,[jid,fragments])
-
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'raid_shop',$2,'raid_fragment_box',$3)
-    `,[jid,totalPrice,'Raid 1 fragment box x'+qty+' | fragments:'+fragments])
-
-    const inv=await client.query(
-      "SELECT quantity FROM inventories WHERE jid=$1 AND item_id='nucleo_pedra'",
-      [jid]
-    )
-    return {
-      qty,
-      unitPrice,
-      totalPrice,
-      fragments,
-      rolls,
-      owned:Number(inv.rows[0]?.quantity||0),
-      cash:cash-fromCash,
-      bank:bank-fromBank
-    }
-  })
+await ensureUser(jid)
+qty=Number(qty)
+if(!Number.isInteger(qty) || qty<1 || qty>10) throw new Error('Quantidade inválida. Compre de 1 a 10 caixas por vez.')
+const unitPrice=30000
+const totalPrice=unitPrice*qty
+return transaction(async client=>{
+const walletR=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const wallet=walletR.rows[0]
+const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+if(!wallet || cash+bank<totalPrice) throw new Error('Saldo insuficiente para comprar essa quantidade de caixas.')
+const fromCash=Math.min(cash,totalPrice)
+const fromBank=totalPrice-fromCash
+await client.query(
+'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
+[fromCash,fromBank,jid]
+)
+let fragments=0
+const rolls={1:0,2:0,3:0,4:0,5:0}
+for(let i=0;i<qty;i++){
+const roll=Math.random()
+const amount=roll<.45?1:roll<.75?2:roll<.90?3:roll<.98?4:5
+fragments+=amount
+rolls[amount]=(rolls[amount]||0)+1
 }
-
-
+await client.query(`
+INSERT INTO inventories(jid,item_id,quantity)
+VALUES($1,'nucleo_pedra',$2)
+ON CONFLICT(jid,item_id) DO UPDATE
+SET quantity=inventories.quantity+EXCLUDED.quantity
+`,[jid,fragments])
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'raid_shop',$2,'raid_fragment_box',$3)
+`,[jid,totalPrice,'Raid 1 fragment box x'+qty+' | fragments:'+fragments])
+const inv=await client.query(
+"SELECT quantity FROM inventories WHERE jid=$1 AND item_id='nucleo_pedra'",
+[jid]
+)
+return {
+qty,
+unitPrice,
+totalPrice,
+fragments,
+rolls,
+owned:Number(inv.rows[0]?.quantity||0),
+cash:cash-fromCash,
+bank:bank-fromBank
+}
+})
+}
 async function boundItemQuantity(client,jid,itemId){
-  const r=await client.query(
-    'SELECT COALESCE(SUM(quantity),0)::int AS quantity FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
-    [jid,itemId]
-  )
-  return Math.max(0,Number(r.rows[0]?.quantity||0))
+const r=await client.query(
+'SELECT COALESCE(SUM(quantity),0)::int AS quantity FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
+[jid,itemId]
+)
+return Math.max(0,Number(r.rows[0]?.quantity||0))
 }
-
 export async function listTradeableItems(jid,rarity=null,minQuantity=1) {
-  await ensureUser(jid)
-  const minQty=Math.max(1,Math.min(9999,Number(minQuantity)||1))
-  const params=[jid,minQty]
-  let rarityFilter=''
-  if(rarity){
-    params.push(String(rarity))
-    rarityFilter=' AND it.rarity=$3'
-  }
-  const {rows}=await db.query(`
-    SELECT inv.item_id,inv.quantity,it.name,it.category,it.rarity,it.price
-    FROM inventories inv
-    JOIN items it ON it.id=inv.item_id
-    WHERE inv.jid=$1
-      AND inv.quantity >= $2
-      AND it.sellable=TRUE
-      AND it.stackable=TRUE
-      AND it.rarity<>'event'
-      AND it.category NOT IN ('weapon','armor','boots','helmet') AND it.id NOT IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')
-      ${rarityFilter}
-    ORDER BY
-      CASE it.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
-      it.name
-  `,params)
-  return rows
+await ensureUser(jid)
+const minQty=Math.max(1,Math.min(9999,Number(minQuantity)||1))
+const params=[jid,minQty]
+let rarityFilter=''
+if(rarity){
+params.push(String(rarity))
+rarityFilter=' AND it.rarity=$3'
 }
-
+const {rows}=await db.query(`
+SELECT inv.item_id,inv.quantity,it.name,it.category,it.rarity,it.price
+FROM inventories inv
+JOIN items it ON it.id=inv.item_id
+WHERE inv.jid=$1
+AND inv.quantity >= $2
+AND it.sellable=TRUE
+AND it.stackable=TRUE
+AND it.rarity<>'event'
+AND it.category NOT IN ('weapon','armor','boots','helmet') AND it.id NOT IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')
+${rarityFilter}
+ORDER BY
+CASE it.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
+it.name
+`,params)
+return rows
+}
 export async function createItemTradeOffer(fromJid,toJid,offerItemId,quantity=1) {
-  quantity=Number(quantity)
-  if(fromJid===toJid) throw new Error('Você não pode trocar item consigo mesmo.')
-  if(!Number.isInteger(quantity)||quantity<1||quantity>9999) throw new Error('Quantidade inválida para troca.')
-  await ensureUser(fromJid)
-  await ensureUser(toJid)
-  return transaction(async client=>{
-    const itemR=await client.query('SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=$1',[String(offerItemId)])
-    const offer=itemR.rows[0]
-    if(!offer) throw new Error('Item da troca não encontrado.')
-    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && item.rarity!=='legendary' && !raidMaterialId(item.id) && !['weapon','armor','boots','helmet'].includes(item.category)
-    if(!allowed(offer)) throw new Error('Esse tipo de item não pode ser trocado.')
-    const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[fromJid,offer.id])
-    if(Number(inv.rows[0]?.quantity||0)<quantity) throw new Error('Você não possui essa quantidade do item oferecido.')
-    const compatible=await client.query(`
-      SELECT 1
-      FROM inventories i
-      JOIN items it ON it.id=i.item_id
-      WHERE i.jid=$1 AND i.quantity>=$2 AND it.rarity=$3
-        AND it.sellable=TRUE AND it.stackable=TRUE AND it.rarity<>'event'
-        AND it.category NOT IN ('weapon','armor','boots','helmet') AND it.id NOT IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')
-        AND it.id<>$4
-      LIMIT 1
-    `,[toJid,quantity,offer.rarity,offer.id])
-    if(!compatible.rowCount) throw new Error('A outra pessoa não possui item compatível dessa raridade e quantidade.')
-    await client.query("UPDATE item_trade_offers SET status='expired' WHERE status='pending' AND expires_at<=$1",[Math.floor(Date.now()/1000)])
-    const expiresAt=Math.floor(Date.now()/1000)+10*60
-    const r=await client.query(`
-      INSERT INTO item_trade_offers(from_jid,to_jid,offer_item_id,request_item_id,quantity,rarity,expires_at)
-      VALUES($1,$2,$3,NULL,$4,$5,$6)
-      RETURNING id,expires_at
-    `,[fromJid,toJid,offer.id,quantity,offer.rarity,expiresAt])
-    return {id:Number(r.rows[0].id),expiresAt,quantity,rarity:offer.rarity,offer:{id:offer.id,name:offer.name}}
-  })
+quantity=Number(quantity)
+if(fromJid===toJid) throw new Error('Você não pode trocar item consigo mesmo.')
+if(!Number.isInteger(quantity)||quantity<1||quantity>9999) throw new Error('Quantidade inválida para troca.')
+await ensureUser(fromJid)
+await ensureUser(toJid)
+return transaction(async client=>{
+const itemR=await client.query('SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=$1',[String(offerItemId)])
+const offer=itemR.rows[0]
+if(!offer) throw new Error('Item da troca não encontrado.')
+const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && item.rarity!=='legendary' && !raidMaterialId(item.id) && !['weapon','armor','boots','helmet'].includes(item.category)
+if(!allowed(offer)) throw new Error('Esse tipo de item não pode ser trocado.')
+const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[fromJid,offer.id])
+if(Number(inv.rows[0]?.quantity||0)<quantity) throw new Error('Você não possui essa quantidade do item oferecido.')
+const compatible=await client.query(`
+SELECT 1
+FROM inventories i
+JOIN items it ON it.id=i.item_id
+WHERE i.jid=$1 AND i.quantity>=$2 AND it.rarity=$3
+AND it.sellable=TRUE AND it.stackable=TRUE AND it.rarity<>'event'
+AND it.category NOT IN ('weapon','armor','boots','helmet') AND it.id NOT IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse')
+AND it.id<>$4
+LIMIT 1
+`,[toJid,quantity,offer.rarity,offer.id])
+if(!compatible.rowCount) throw new Error('A outra pessoa não possui item compatível dessa raridade e quantidade.')
+await client.query("UPDATE item_trade_offers SET status='expired' WHERE status='pending' AND expires_at<=$1",[Math.floor(Date.now()/1000)])
+const expiresAt=Math.floor(Date.now()/1000)+10*60
+const r=await client.query(`
+INSERT INTO item_trade_offers(from_jid,to_jid,offer_item_id,request_item_id,quantity,rarity,expires_at)
+VALUES($1,$2,$3,NULL,$4,$5,$6)
+RETURNING id,expires_at
+`,[fromJid,toJid,offer.id,quantity,offer.rarity,expiresAt])
+return {id:Number(r.rows[0].id),expiresAt,quantity,rarity:offer.rarity,offer:{id:offer.id,name:offer.name}}
+})
 }
 export async function getLatestPendingTradeOffer(jid) {
-  const now=Math.floor(Date.now()/1000)
-  await db.query("UPDATE item_trade_offers SET status='expired' WHERE status='pending' AND expires_at<=$1",[now])
-  const {rows}=await db.query(`
-    SELECT t.id,t.from_jid,t.to_jid,t.offer_item_id,t.request_item_id,t.quantity,t.rarity,t.expires_at,
-           a.name AS offer_name,u.push_name AS from_name
-    FROM item_trade_offers t
-    JOIN items a ON a.id=t.offer_item_id
-    LEFT JOIN users u ON u.jid=t.from_jid
-    WHERE t.to_jid=$1 AND t.status='pending' AND t.expires_at>$2
-    ORDER BY t.created_at DESC,t.id DESC
-    LIMIT 1
-  `,[jid,now])
-  return rows[0]||null
+const now=Math.floor(Date.now()/1000)
+await db.query("UPDATE item_trade_offers SET status='expired' WHERE status='pending' AND expires_at<=$1",[now])
+const {rows}=await db.query(`
+SELECT t.id,t.from_jid,t.to_jid,t.offer_item_id,t.request_item_id,t.quantity,t.rarity,t.expires_at,
+a.name AS offer_name,u.push_name AS from_name
+FROM item_trade_offers t
+JOIN items a ON a.id=t.offer_item_id
+LEFT JOIN users u ON u.jid=t.from_jid
+WHERE t.to_jid=$1 AND t.status='pending' AND t.expires_at>$2
+ORDER BY t.created_at DESC,t.id DESC
+LIMIT 1
+`,[jid,now])
+return rows[0]||null
 }
 export async function acceptItemTradeOffer(jid,offerId,requestItemId) {
-  offerId=Number(offerId)
-  if(!Number.isSafeInteger(offerId)||offerId<1) throw new Error('ID de troca inválido.')
-  if(!requestItemId) throw new Error('Escolha qual item você quer oferecer na troca.')
-  return transaction(async client=>{
-    const now=Math.floor(Date.now()/1000)
-    const r=await client.query('SELECT * FROM item_trade_offers WHERE id=$1 FOR UPDATE',[offerId])
-    const t=r.rows[0]
-    if(!t) throw new Error('Troca não encontrada.')
-    if(t.to_jid!==jid) throw new Error('Essa proposta de troca não é para você.')
-    if(t.status!=='pending') throw new Error('Essa proposta não está mais pendente.')
-    if(Number(t.expires_at)<=now){
-      await client.query("UPDATE item_trade_offers SET status='expired' WHERE id=$1",[offerId])
-      throw new Error('Essa proposta de troca expirou.')
-    }
-    const itemRows=(await client.query(
-      'SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=ANY($1::text[])',
-      [[t.offer_item_id,String(requestItemId)]]
-    )).rows
-    const offer=itemRows.find(x=>x.id===t.offer_item_id)
-    const request=itemRows.find(x=>x.id===String(requestItemId))
-    if(!offer||!request) throw new Error('Item da troca não encontrado.')
-    const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !raidMaterialId(item.id) && !['weapon','armor','boots','helmet'].includes(item.category)
-    if(!allowed(offer)||!allowed(request)) throw new Error('Um dos itens não pode ser trocado.')
-    if(request.id===offer.id) throw new Error('Escolha um item diferente do item oferecido.')
-    if(request.rarity!==t.rarity) throw new Error('O item escolhido precisa ter a mesma raridade.')
-    const qty=Number(t.quantity)
-    const first=[t.from_jid,t.offer_item_id].join('|')<[t.to_jid,request.id].join('|')
-      ? [[t.from_jid,t.offer_item_id],[t.to_jid,request.id]]
-      : [[t.to_jid,request.id],[t.from_jid,t.offer_item_id]]
-    const locked={}
-    for(const [owner,itemId] of first){
-      const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[owner,itemId])
-      locked[owner+'|'+itemId]=Number(inv.rows[0]?.quantity||0)
-    }
-    if((locked[t.from_jid+'|'+t.offer_item_id]||0)<qty) throw new Error('Quem ofereceu não possui mais a quantidade combinada.')
-    if((locked[t.to_jid+'|'+request.id]||0)<qty) throw new Error('Você não possui mais a quantidade combinada.')
-    await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,t.from_jid,t.offer_item_id])
-    await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,t.to_jid,request.id])
-    await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[t.from_jid,request.id,qty])
-    await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[t.to_jid,t.offer_item_id,qty])
-    await client.query("UPDATE item_trade_offers SET request_item_id=$1,status='accepted',completed_at=$2 WHERE id=$3",[request.id,now,offerId])
-    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,0,'item_trade',$3)`,[t.from_jid,t.to_jid,`${t.offer_item_id} x${qty} <-> ${request.id} x${qty}`])
-    return {id:offerId,fromJid:t.from_jid,toJid:t.to_jid,quantity:qty,rarity:t.rarity,offer:{id:offer.id,name:offer.name},request:{id:request.id,name:request.name}}
-  })
+offerId=Number(offerId)
+if(!Number.isSafeInteger(offerId)||offerId<1) throw new Error('ID de troca inválido.')
+if(!requestItemId) throw new Error('Escolha qual item você quer oferecer na troca.')
+return transaction(async client=>{
+const now=Math.floor(Date.now()/1000)
+const r=await client.query('SELECT * FROM item_trade_offers WHERE id=$1 FOR UPDATE',[offerId])
+const t=r.rows[0]
+if(!t) throw new Error('Troca não encontrada.')
+if(t.to_jid!==jid) throw new Error('Essa proposta de troca não é para você.')
+if(t.status!=='pending') throw new Error('Essa proposta não está mais pendente.')
+if(Number(t.expires_at)<=now){
+await client.query("UPDATE item_trade_offers SET status='expired' WHERE id=$1",[offerId])
+throw new Error('Essa proposta de troca expirou.')
+}
+const itemRows=(await client.query(
+'SELECT id,name,category,rarity,sellable,stackable FROM items WHERE id=ANY($1::text[])',
+[[t.offer_item_id,String(requestItemId)]]
+)).rows
+const offer=itemRows.find(x=>x.id===t.offer_item_id)
+const request=itemRows.find(x=>x.id===String(requestItemId))
+if(!offer||!request) throw new Error('Item da troca não encontrado.')
+const allowed=item=>item.sellable!==false && item.stackable!==false && item.rarity!=='event' && !raidMaterialId(item.id) && !['weapon','armor','boots','helmet'].includes(item.category)
+if(!allowed(offer)||!allowed(request)) throw new Error('Um dos itens não pode ser trocado.')
+if(request.id===offer.id) throw new Error('Escolha um item diferente do item oferecido.')
+if(request.rarity!==t.rarity) throw new Error('O item escolhido precisa ter a mesma raridade.')
+const qty=Number(t.quantity)
+const first=[t.from_jid,t.offer_item_id].join('|')<[t.to_jid,request.id].join('|')
+? [[t.from_jid,t.offer_item_id],[t.to_jid,request.id]]
+: [[t.to_jid,request.id],[t.from_jid,t.offer_item_id]]
+const locked={}
+for(const [owner,itemId] of first){
+const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[owner,itemId])
+locked[owner+'|'+itemId]=Number(inv.rows[0]?.quantity||0)
+}
+if((locked[t.from_jid+'|'+t.offer_item_id]||0)<qty) throw new Error('Quem ofereceu não possui mais a quantidade combinada.')
+if((locked[t.to_jid+'|'+request.id]||0)<qty) throw new Error('Você não possui mais a quantidade combinada.')
+await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,t.from_jid,t.offer_item_id])
+await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,t.to_jid,request.id])
+await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[t.from_jid,request.id,qty])
+await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[t.to_jid,t.offer_item_id,qty])
+await client.query("UPDATE item_trade_offers SET request_item_id=$1,status='accepted',completed_at=$2 WHERE id=$3",[request.id,now,offerId])
+await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,0,'item_trade',$3)`,[t.from_jid,t.to_jid,`${t.offer_item_id} x${qty} <-> ${request.id} x${qty}`])
+return {id:offerId,fromJid:t.from_jid,toJid:t.to_jid,quantity:qty,rarity:t.rarity,offer:{id:offer.id,name:offer.name},request:{id:request.id,name:request.name}}
+})
 }
 export async function rejectItemTradeOffer(jid,offerId) {
-  offerId=Number(offerId)
-  if(!Number.isSafeInteger(offerId)||offerId<1) throw new Error('ID de troca inválido.')
-  return transaction(async client=>{
-    const r=await client.query('SELECT * FROM item_trade_offers WHERE id=$1 FOR UPDATE',[offerId])
-    const t=r.rows[0]
-    if(!t) throw new Error('Troca não encontrada.')
-    if(t.to_jid!==jid) throw new Error('Essa proposta de troca não é para você.')
-    if(t.status!=='pending') throw new Error('Essa proposta não está mais pendente.')
-    await client.query("UPDATE item_trade_offers SET status='rejected',completed_at=$1 WHERE id=$2",[Math.floor(Date.now()/1000),offerId])
-    return {id:offerId}
-  })
+offerId=Number(offerId)
+if(!Number.isSafeInteger(offerId)||offerId<1) throw new Error('ID de troca inválido.')
+return transaction(async client=>{
+const r=await client.query('SELECT * FROM item_trade_offers WHERE id=$1 FOR UPDATE',[offerId])
+const t=r.rows[0]
+if(!t) throw new Error('Troca não encontrada.')
+if(t.to_jid!==jid) throw new Error('Essa proposta de troca não é para você.')
+if(t.status!=='pending') throw new Error('Essa proposta não está mais pendente.')
+await client.query("UPDATE item_trade_offers SET status='rejected',completed_at=$1 WHERE id=$2",[Math.floor(Date.now()/1000),offerId])
+return {id:offerId}
+})
 }
-
-// Revenda de lendários exclusivos do catálogo de Raids. Eventos e caixas não mudam.
 const RAID_LEGENDARY_GEAR_SELL_VALUES=Object.freeze({
-  "excalibur": 150000,
-  "armadura_titan": 150000,
-  "katana_divina": 200000,
-  "armadura_divina": 200000,
-  "lamina_caos": 300000,
-  "machado_tita": 300000,
-  "couraca_caos": 300000,
-  "armadura_tita_ancestral": 300000,
-  "foice_abismo": 350000,
-  "espada_aurora": 350000,
-  "manto_abismo_eterno": 350000,
-  "armadura_aurora": 350000,
-  "exterminadora_eclipse": 400000,
-  "armadura_deus_eclipse": 400000
+"excalibur": 150000,
+"armadura_titan": 150000,
+"katana_divina": 200000,
+"armadura_divina": 200000,
+"lamina_caos": 300000,
+"machado_tita": 300000,
+"couraca_caos": 300000,
+"armadura_tita_ancestral": 300000,
+"foice_abismo": 350000,
+"espada_aurora": 350000,
+"manto_abismo_eterno": 350000,
+"armadura_aurora": 350000,
+"exterminadora_eclipse": 400000,
+"armadura_deus_eclipse": 400000
 })
 function raidLegendarySellValue(item){
-  if(item?.rarity!=='legendary'||!['weapon','armor'].includes(item.category))return null
-  return RAID_LEGENDARY_GEAR_SELL_VALUES[item.id]??null
+if(item?.rarity!=='legendary'||!['weapon','armor'].includes(item.category))return null
+return RAID_LEGENDARY_GEAR_SELL_VALUES[item.id]??null
 }
-
 export async function getInventory(jid) {
-  const { rows } = await db.query(`
-    SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
-           COALESCE(bi.quantity,0)::int AS bound_quantity,
-           COALESCE(eu.level,1)::int AS equipment_level,
-           COALESCE(sf.stars,1)::int AS equipment_stars,
-           (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped,
-           CASE
-             WHEN s.weapon_id=i.item_id THEN 'weapon'
-             WHEN s.armor_id=i.item_id THEN 'armor'
-             WHEN s.boot_id=i.item_id THEN 'boots'
-              WHEN s.helmet_id=i.item_id THEN 'helmet'
-             ELSE NULL
-           END AS equipped_slot,
-           CASE WHEN it.sellable=FALSE THEN 0 ELSE GREATEST(
-             0,
-             i.quantity-GREATEST(COALESCE(bi.quantity,0),
-               CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 1 ELSE 0 END)
-           ) END::int AS sellable_quantity,
-           CASE
-             WHEN it.sellable=FALSE THEN 0
-             WHEN it.id IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse') THEN 100
-             WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
-             WHEN it.rarity='legendary' AND it.category IN ('weapon','armor') THEN
-               CASE it.id
-                 WHEN 'excalibur' THEN 150000
-                 WHEN 'armadura_titan' THEN 150000
-                 WHEN 'katana_divina' THEN 200000
-                 WHEN 'armadura_divina' THEN 200000
-                 WHEN 'lamina_caos' THEN 300000
-                 WHEN 'machado_tita' THEN 300000
-                 WHEN 'couraca_caos' THEN 300000
-                 WHEN 'armadura_tita_ancestral' THEN 300000
-                 WHEN 'foice_abismo' THEN 350000
-                 WHEN 'espada_aurora' THEN 350000
-                 WHEN 'manto_abismo_eterno' THEN 350000
-                 WHEN 'armadura_aurora' THEN 350000
-                 WHEN 'exterminadora_eclipse' THEN 400000
-                 WHEN 'armadura_deus_eclipse' THEN 400000
-                 ELSE 100000
-               END
-             WHEN it.rarity='legendary' THEN 100000
-             WHEN it.rarity='epic' THEN 25000
-             WHEN it.rarity='rare' THEN 7500
-             WHEN it.rarity='uncommon' THEN 2500
-             ELSE 500
-           END::bigint AS sell_unit
-    FROM inventories i
-    JOIN items it ON it.id=i.item_id
-    LEFT JOIN stats s ON s.jid=i.jid
-    LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
-    LEFT JOIN equipment_star_forges sf ON sf.jid=i.jid AND sf.item_id=i.item_id
-    LEFT JOIN LATERAL (
-      SELECT COALESCE(SUM(b.quantity),0)::int AS quantity
-      FROM bound_inventory_items b WHERE b.jid=i.jid AND b.item_id=i.item_id
-    ) bi ON TRUE
-    WHERE i.jid=$1 AND i.quantity>0
-    ORDER BY
-      CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 0 ELSE 1 END,
-      CASE it.category
-        WHEN 'weapon' THEN 1
-        WHEN 'armor' THEN 2
-        WHEN 'boots' THEN 3
-        WHEN 'consumable' THEN 4
-        WHEN 'raid' THEN 5
-        WHEN 'material' THEN 6
-        WHEN 'special' THEN 7
-        ELSE 8
-      END,
-      CASE it.rarity
-        WHEN 'legendary' THEN 5
-        WHEN 'epic' THEN 4
-        WHEN 'rare' THEN 3
-        WHEN 'uncommon' THEN 2
-        ELSE 1
-      END DESC,
-      it.name
-  `,[jid])
-  return rows.map(r=>({
-    ...r,
-    equipped:Boolean(r.equipped),
-    bound_quantity:Number(r.bound_quantity||0),
-    nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
-    sellable_quantity:Number(r.sellable_quantity||0),
-    upgrade_refund:['weapon','armor','boots'].includes(r.category)
-      ? equipmentUpgradeSellRefund(r.rarity,r.equipment_level)
-      : 0
-  }))
+const { rows } = await db.query(`
+SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
+COALESCE(bi.quantity,0)::int AS bound_quantity,
+COALESCE(eu.level,1)::int AS equipment_level,
+COALESCE(cu.levels,'[]'::jsonb) AS upgraded_copies,
+COALESCE(sf.stars,1)::int AS equipment_stars,
+(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped,
+CASE
+WHEN s.weapon_id=i.item_id THEN 'weapon'
+WHEN s.armor_id=i.item_id THEN 'armor'
+WHEN s.boot_id=i.item_id THEN 'boots'
+WHEN s.helmet_id=i.item_id THEN 'helmet'
+ELSE NULL
+END AS equipped_slot,
+CASE WHEN it.sellable=FALSE THEN 0 ELSE GREATEST(
+0,
+i.quantity-GREATEST(COALESCE(bi.quantity,0),
+CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 1 ELSE 0 END)
+) END::int AS sellable_quantity,
+CASE
+WHEN it.sellable=FALSE THEN 0
+WHEN it.id IN ('nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido','fragmento_caos','coroa_abissal','essencia_eclipse') THEN 100
+WHEN it.price > 0 THEN GREATEST(1,FLOOR(it.price*0.50))
+WHEN it.rarity='legendary' AND it.category IN ('weapon','armor') THEN
+CASE it.id
+WHEN 'excalibur' THEN 150000
+WHEN 'armadura_titan' THEN 150000
+WHEN 'katana_divina' THEN 200000
+WHEN 'armadura_divina' THEN 200000
+WHEN 'lamina_caos' THEN 300000
+WHEN 'machado_tita' THEN 300000
+WHEN 'couraca_caos' THEN 300000
+WHEN 'armadura_tita_ancestral' THEN 300000
+WHEN 'foice_abismo' THEN 350000
+WHEN 'espada_aurora' THEN 350000
+WHEN 'manto_abismo_eterno' THEN 350000
+WHEN 'armadura_aurora' THEN 350000
+WHEN 'exterminadora_eclipse' THEN 400000
+WHEN 'armadura_deus_eclipse' THEN 400000
+ELSE 100000
+END
+WHEN it.rarity='legendary' THEN 100000
+WHEN it.rarity='epic' THEN 25000
+WHEN it.rarity='rare' THEN 7500
+WHEN it.rarity='uncommon' THEN 2500
+ELSE 500
+END::bigint AS sell_unit
+FROM inventories i
+JOIN items it ON it.id=i.item_id
+LEFT JOIN stats s ON s.jid=i.jid
+LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
+LEFT JOIN equipment_star_forges sf ON sf.jid=i.jid AND sf.item_id=i.item_id
+LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('level',level,'quantity',quantity)
+ORDER BY level DESC) AS levels FROM equipment_upgrade_copies
+WHERE jid=i.jid AND item_id=i.item_id) cu ON TRUE
+LEFT JOIN LATERAL (
+SELECT COALESCE(SUM(b.quantity),0)::int AS quantity
+FROM bound_inventory_items b WHERE b.jid=i.jid AND b.item_id=i.item_id
+) bi ON TRUE
+WHERE i.jid=$1 AND i.quantity>0
+ORDER BY
+CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 0 ELSE 1 END,
+CASE it.category
+WHEN 'weapon' THEN 1
+WHEN 'armor' THEN 2
+WHEN 'boots' THEN 3
+WHEN 'consumable' THEN 4
+WHEN 'raid' THEN 5
+WHEN 'material' THEN 6
+WHEN 'special' THEN 7
+ELSE 8
+END,
+CASE it.rarity
+WHEN 'legendary' THEN 5
+WHEN 'epic' THEN 4
+WHEN 'rare' THEN 3
+WHEN 'uncommon' THEN 2
+ELSE 1
+END DESC,
+it.name
+`,[jid])
+return rows.map(r=>({
+...r,
+equipped:Boolean(r.equipped),
+upgrade_distribution:(()=>{
+const paid=Array.isArray(r.upgraded_copies)?r.upgraded_copies.map(c=>({level:Number(c.level),quantity:Number(c.quantity)})):[]
+const basic=Math.max(0,Number(r.quantity||0)-paid.reduce((n,c)=>n+c.quantity,0))
+return [...paid,...(basic?[{level:1,quantity:basic}]:[])].sort((a,b)=>b.level-a.level)
+})(),
+bound_quantity:Number(r.bound_quantity||0),
+nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
+sellable_quantity:Number(r.sellable_quantity||0),
+upgrade_refund:['weapon','armor','boots'].includes(r.category)
+? equipmentUpgradeSellRefund(r.rarity,r.equipment_level)
+: 0
+}))
 }
-
 export async function sellItem(jid, itemId, qty=1) {
-  qty=Number(qty)
-  if(!Number.isInteger(qty) || qty<1 || qty>9999) throw new Error('Quantidade inválida.')
-
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const invR=await client.query(
-      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-      [jid,itemId]
-    )
-    const owned=Number(invR.rows[0]?.quantity||0)
-    if(owned<1) throw new Error('Você não possui esse item.')
-
-    const itemR=await client.query('SELECT * FROM items WHERE id=$1',[itemId])
-    const item=itemR.rows[0]
-    if(!item) throw new Error('Item não encontrado.')
-    // Materiais de Raid têm preço fixo e simbólico.
-    if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
-
-    const statsR=await client.query(
-      'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
-      [jid]
-    )
-    const stats=statsR.rows[0]||{}
-    const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId) ? 1 : 0
-    const bound=await boundItemQuantity(client,jid,itemId)
-    const sellable=Math.max(0,owned-Math.max(equipped,bound))
-
-    if(sellable<1){
-      throw new Error('Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
-    }
-    if(qty>sellable){
-      throw new Error(`Você pode vender no máximo ${sellable} unidade(s); 1 cópia está equipada.`)
-    }
-
-    let unit
-    if(raidMaterialId(itemId)) unit=RAID_MATERIAL_SELL_VALUE
-    else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
-    else if(item.rarity==='legendary') unit=raidLegendarySellValue(item)??100000
-    else if(item.rarity==='epic') unit=25000
-    else if(item.rarity==='rare') unit=7500
-    else if(item.rarity==='uncommon') unit=2500
-    else unit=500
-
-    const remaining=owned-qty
-    if(remaining===0 && ['weapon','armor'].includes(item.category)){
-      const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
-      if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: mantenha pelo menos uma cópia para preservar suas estrelas.')
-    }
-    const upR=['weapon','armor','boots'].includes(item.category)
-      ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
-      : {rows:[]}
-    const equipmentLevel=Number(upR.rows[0]?.level||1)
-    const upgradeRefund=(remaining===0 && equipmentLevel>1)
-      ? equipmentUpgradeSellRefund(item.rarity,equipmentLevel)
-      : 0
-    const baseTotal=unit*qty
-    const total=baseTotal+upgradeRefund
-
-    await client.query(
-      'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
-      [qty,jid,itemId]
-    )
-    if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
-      await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
-      await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
-    }
-    await client.query(
-      'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
-      [total,jid]
-    )
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('shop',$1,$2,'sale',$3)
-    `,[jid,total,`${itemId} x${qty}|base:${baseTotal}|upgrade_refund:${upgradeRefund}|lv:${equipmentLevel}`])
-
-    const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
-
-    return {
-      item:{
-        id:item.id,
-        name:item.name,
-        rarity:item.rarity,
-        category:item.category
-      },
-      qty,
-      unit,
-      baseTotal,
-      total,
-      remaining,
-      equipped:Boolean(equipped),
-      equipmentLevel,
-      upgradeRefund,
-      cash:Number(walletR.rows[0]?.cash||0)
-    }
-  })
+qty=Number(qty)
+if(!Number.isInteger(qty) || qty<1 || qty>9999) throw new Error('Quantidade inválida.')
+await ensureUser(jid)
+return transaction(async client=>{
+const invR=await client.query(
+'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+[jid,itemId]
+)
+const owned=Number(invR.rows[0]?.quantity||0)
+if(owned<1) throw new Error('Você não possui esse item.')
+const itemR=await client.query('SELECT * FROM items WHERE id=$1',[itemId])
+const item=itemR.rows[0]
+if(!item) throw new Error('Item não encontrado.')
+if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
+const statsR=await client.query(
+'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
+[jid]
+)
+const stats=statsR.rows[0]||{}
+const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId) ? 1 : 0
+const bound=await boundItemQuantity(client,jid,itemId)
+const sellable=Math.max(0,owned-Math.max(equipped,bound))
+if(sellable<1){
+throw new Error('Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
 }
-
+if(qty>sellable){
+throw new Error(`Você pode vender no máximo ${sellable} unidade(s); 1 cópia está equipada.`)
+}
+let unit
+if(raidMaterialId(itemId)) unit=RAID_MATERIAL_SELL_VALUE
+else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
+else if(item.rarity==='legendary') unit=raidLegendarySellValue(item)??100000
+else if(item.rarity==='epic') unit=25000
+else if(item.rarity==='rare') unit=7500
+else if(item.rarity==='uncommon') unit=2500
+else unit=500
+const remaining=owned-qty
+if(remaining===0 && ['weapon','armor'].includes(item.category)){
+const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
+if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: mantenha pelo menos uma cópia para preservar suas estrelas.')
+}
+const upR=['weapon','armor','boots'].includes(item.category)
+? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+: {rows:[]}
+const equipmentLevel=Number(upR.rows[0]?.level||1)
+const upgradeRefund=(remaining===0 && equipmentLevel>1)
+? equipmentUpgradeSellRefund(item.rarity,equipmentLevel)
+: 0
+const baseTotal=unit*qty
+const total=baseTotal+upgradeRefund
+await client.query(
+'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
+[qty,jid,itemId]
+)
+if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
+await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
+await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
+}
+await client.query(
+'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+[total,jid]
+)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('shop',$1,$2,'sale',$3)
+`,[jid,total,`${itemId} x${qty}|base:${baseTotal}|upgrade_refund:${upgradeRefund}|lv:${equipmentLevel}`])
+const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
+return {
+item:{
+id:item.id,
+name:item.name,
+rarity:item.rarity,
+category:item.category
+},
+qty,
+unit,
+baseTotal,
+total,
+remaining,
+equipped:Boolean(equipped),
+equipmentLevel,
+upgradeRefund,
+cash:Number(walletR.rows[0]?.cash||0)
+}
+})
+}
 export async function sellItemsBatch(jid, selections=[]) {
-  if(!Array.isArray(selections) || selections.length<1 || selections.length>50) {
-    throw new Error('Seleção de venda inválida.')
-  }
-
-  const normalized=selections.map(s=>({
-    itemId:String(s?.itemId||''),
-    qty:Number(s?.qty||0)
-  }))
-
-  if(normalized.some(s=>!s.itemId || !Number.isInteger(s.qty) || s.qty<1 || s.qty>9999)) {
-    throw new Error('Quantidade inválida na venda em lote.')
-  }
-
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const statsR=await client.query(
-      'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
-      [jid]
-    )
-    const stats=statsR.rows[0]||{}
-    const sold=[]
-    let grandTotal=0
-    let totalUnits=0
-
-    for(const sel of normalized){
-      const invR=await client.query(
-        'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-        [jid,sel.itemId]
-      )
-      const owned=Number(invR.rows[0]?.quantity||0)
-      if(owned<1) throw new Error('Um dos itens selecionados não está mais no inventário.')
-
-      const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
-      const item=itemR.rows[0]
-      if(!item) throw new Error('Item não encontrado.')
-      if(item.sellable===false) throw new Error('Um dos itens selecionados não pode ser vendido.')
-      // Lendários podem ser vendidos apenas à loja do sistema; as proteções de equipado e vinculado continuam.
-
-      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
-      const bound=await boundItemQuantity(client,jid,sel.itemId)
-      const minimumKeep=Math.max(equipped?1:0,bound)
-      const maxBatch=Math.max(0,owned-minimumKeep)
-
-      if(sel.qty>maxBatch){
-        throw new Error(equipped
-          ? `A venda em lote de ${item.name} deve preservar a cópia equipada.`
-          : `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
-      }
-
-      let unit
-      if(raidMaterialId(sel.itemId)) unit=RAID_MATERIAL_SELL_VALUE
-      else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
-      else if(item.rarity==='legendary') unit=raidLegendarySellValue(item)??100000
-      else if(item.rarity==='epic') unit=25000
-      else if(item.rarity==='rare') unit=7500
-      else if(item.rarity==='uncommon') unit=2500
-      else unit=500
-
-      const remaining=owned-sel.qty
-      if(remaining===0 && ['weapon','armor'].includes(item.category)){
-        const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
-        if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: venda apenas cópias extras.')
-      }
-      const upR=['weapon','armor','boots'].includes(item.category)
-        ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
-        : {rows:[]}
-      const equipmentLevel=Number(upR.rows[0]?.level||1)
-      const upgradeRefund=(remaining===0 && equipmentLevel>1)
-        ? equipmentUpgradeSellRefund(item.rarity,equipmentLevel)
-        : 0
-      const baseTotal=unit*sel.qty
-      const total=baseTotal+upgradeRefund
-      await client.query(
-        'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
-        [sel.qty,jid,sel.itemId]
-      )
-      if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
-        await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
-        await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
-      }
-
-      sold.push({
-        itemId:item.id,
-        name:item.name,
-        rarity:item.rarity,
-        qty:sel.qty,
-        remaining,
-        unit,
-        baseTotal,
-        total,
-        equipped,
-        equipmentLevel,
-        upgradeRefund
-      })
-      grandTotal+=total
-      totalUnits+=sel.qty
-    }
-
-    await client.query(
-      'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
-      [grandTotal,jid]
-    )
-
-    for(const row of sold){
-      await client.query(`
-        INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-        VALUES('shop',$1,$2,'sale_batch',$3)
-      `,[jid,row.total,`${row.itemId} x${row.qty}`])
-    }
-
-    const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
-    return {
-      sold,
-      types:sold.length,
-      totalUnits,
-      total:grandTotal,
-      cash:Number(walletR.rows[0]?.cash||0)
-    }
-  })
+if(!Array.isArray(selections) || selections.length<1 || selections.length>50) {
+throw new Error('Seleção de venda inválida.')
 }
-
-
-
+const normalized=selections.map(s=>({
+itemId:String(s?.itemId||''),
+qty:Number(s?.qty||0)
+}))
+if(normalized.some(s=>!s.itemId || !Number.isInteger(s.qty) || s.qty<1 || s.qty>9999)) {
+throw new Error('Quantidade inválida na venda em lote.')
+}
+await ensureUser(jid)
+return transaction(async client=>{
+const statsR=await client.query(
+'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
+[jid]
+)
+const stats=statsR.rows[0]||{}
+const sold=[]
+let grandTotal=0
+let totalUnits=0
+for(const sel of normalized){
+const invR=await client.query(
+'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+[jid,sel.itemId]
+)
+const owned=Number(invR.rows[0]?.quantity||0)
+if(owned<1) throw new Error('Um dos itens selecionados não está mais no inventário.')
+const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
+const item=itemR.rows[0]
+if(!item) throw new Error('Item não encontrado.')
+if(item.sellable===false) throw new Error('Um dos itens selecionados não pode ser vendido.')
+const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
+const bound=await boundItemQuantity(client,jid,sel.itemId)
+const minimumKeep=Math.max(equipped?1:0,bound)
+const maxBatch=Math.max(0,owned-minimumKeep)
+if(sel.qty>maxBatch){
+throw new Error(equipped
+? `A venda em lote de ${item.name} deve preservar a cópia equipada.`
+: `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
+}
+let unit
+if(raidMaterialId(sel.itemId)) unit=RAID_MATERIAL_SELL_VALUE
+else if(Number(item.price)>0) unit=Math.max(1,Math.floor(Number(item.price)*0.50))
+else if(item.rarity==='legendary') unit=raidLegendarySellValue(item)??100000
+else if(item.rarity==='epic') unit=25000
+else if(item.rarity==='rare') unit=7500
+else if(item.rarity==='uncommon') unit=2500
+else unit=500
+const remaining=owned-sel.qty
+if(remaining===0 && ['weapon','armor'].includes(item.category)){
+const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
+if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: venda apenas cópias extras.')
+}
+const upR=['weapon','armor','boots'].includes(item.category)
+? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
+: {rows:[]}
+const equipmentLevel=Number(upR.rows[0]?.level||1)
+const upgradeRefund=(remaining===0 && equipmentLevel>1)
+? equipmentUpgradeSellRefund(item.rarity,equipmentLevel)
+: 0
+const baseTotal=unit*sel.qty
+const total=baseTotal+upgradeRefund
+await client.query(
+'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
+[sel.qty,jid,sel.itemId]
+)
+if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
+await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+}
+sold.push({
+itemId:item.id,
+name:item.name,
+rarity:item.rarity,
+qty:sel.qty,
+remaining,
+unit,
+baseTotal,
+total,
+equipped,
+equipmentLevel,
+upgradeRefund
+})
+grandTotal+=total
+totalUnits+=sel.qty
+}
+await client.query(
+'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+[grandTotal,jid]
+)
+for(const row of sold){
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('shop',$1,$2,'sale_batch',$3)
+`,[jid,row.total,`${row.itemId} x${row.qty}`])
+}
+const walletR=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
+return {
+sold,
+types:sold.length,
+totalUnits,
+total:grandTotal,
+cash:Number(walletR.rows[0]?.cash||0)
+}
+})
+}
 export async function discardItemsBatch(jid, selections=[]) {
-  if(!Array.isArray(selections) || selections.length<1 || selections.length>50) {
-    throw new Error('Seleção de descarte inválida.')
-  }
-
-  const normalized=selections.map(s=>({
-    itemId:String(s?.itemId||''),
-    qty:Number(s?.qty||0)
-  }))
-  if(normalized.some(s=>!s.itemId || !Number.isInteger(s.qty) || s.qty<1 || s.qty>9999)) {
-    throw new Error('Quantidade inválida no descarte em lote.')
-  }
-
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const statsR=await client.query(
-      'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
-      [jid]
-    )
-    const stats=statsR.rows[0]||{}
-    const discarded=[]
-    let totalUnits=0
-
-    for(const sel of normalized){
-      const invR=await client.query(
-        'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-        [jid,sel.itemId]
-      )
-      const owned=Number(invR.rows[0]?.quantity||0)
-      if(owned<1) throw new Error('Um dos itens selecionados não está mais no inventário.')
-
-      const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
-      const item=itemR.rows[0]
-      if(!item) throw new Error('Item não encontrado.')
-      if(item.sellable===false) throw new Error('Um dos itens selecionados é protegido e não pode ser descartado.')
-      if(item.rarity==='legendary') throw new Error('Itens lendários não podem ser descartados em lote.')
-
-      const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
-      const bound=await boundItemQuantity(client,jid,sel.itemId)
-      const maxDiscard=Math.max(0,owned-Math.max(equipped?1:0,bound))
-      if(sel.qty>maxDiscard){
-        throw new Error(equipped
-          ? `O descarte de ${item.name} deve preservar a cópia equipada.`
-          : `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
-      }
-
-      const remaining=owned-sel.qty
-      if(remaining===0 && ['weapon','armor'].includes(item.category)){
-        const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
-        if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: não descarte a última cópia.')
-      }
-      await client.query(
-        'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
-        [sel.qty,jid,sel.itemId]
-      )
-      if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
-        await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
-        await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
-      }
-
-      discarded.push({
-        itemId:item.id,
-        name:item.name,
-        rarity:item.rarity,
-        category:item.category,
-        qty:sel.qty,
-        remaining,
-        equipped
-      })
-      totalUnits+=sel.qty
-    }
-
-    return {
-      discarded,
-      types:discarded.length,
-      totalUnits
-    }
-  })
+if(!Array.isArray(selections) || selections.length<1 || selections.length>50) {
+throw new Error('Seleção de descarte inválida.')
 }
-
-
+const normalized=selections.map(s=>({
+itemId:String(s?.itemId||''),
+qty:Number(s?.qty||0)
+}))
+if(normalized.some(s=>!s.itemId || !Number.isInteger(s.qty) || s.qty<1 || s.qty>9999)) {
+throw new Error('Quantidade inválida no descarte em lote.')
+}
+await ensureUser(jid)
+return transaction(async client=>{
+const statsR=await client.query(
+'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
+[jid]
+)
+const stats=statsR.rows[0]||{}
+const discarded=[]
+let totalUnits=0
+for(const sel of normalized){
+const invR=await client.query(
+'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+[jid,sel.itemId]
+)
+const owned=Number(invR.rows[0]?.quantity||0)
+if(owned<1) throw new Error('Um dos itens selecionados não está mais no inventário.')
+const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
+const item=itemR.rows[0]
+if(!item) throw new Error('Item não encontrado.')
+if(item.sellable===false) throw new Error('Um dos itens selecionados é protegido e não pode ser descartado.')
+if(item.rarity==='legendary') throw new Error('Itens lendários não podem ser descartados em lote.')
+const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
+const bound=await boundItemQuantity(client,jid,sel.itemId)
+const maxDiscard=Math.max(0,owned-Math.max(equipped?1:0,bound))
+if(sel.qty>maxDiscard){
+throw new Error(equipped
+? `O descarte de ${item.name} deve preservar a cópia equipada.`
+: `Você possui apenas ${owned} unidade(s) de ${item.name}.`)
+}
+const remaining=owned-sel.qty
+if(remaining===0 && ['weapon','armor'].includes(item.category)){
+const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
+if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: não descarte a última cópia.')
+}
+await client.query(
+'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
+[sel.qty,jid,sel.itemId]
+)
+if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
+await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+}
+discarded.push({
+itemId:item.id,
+name:item.name,
+rarity:item.rarity,
+category:item.category,
+qty:sel.qty,
+remaining,
+equipped
+})
+totalUnits+=sel.qty
+}
+return {
+discarded,
+types:discarded.length,
+totalUnits
+}
+})
+}
 export async function sellDuplicateEquipment(jid) {
-  await ensureUser(jid)
-  const items=await getInventory(jid)
-  const selections=items
-    .filter(i=>['weapon','armor','boots'].includes(i.category) && i.rarity!=='legendary' && Number(i.quantity)>1)
-    .map(i=>({itemId:i.item_id,qty:Number(i.quantity)-1}))
-
-  if(!selections.length) return {sold:[],types:0,totalUnits:0,total:0,cash:null}
-  return sellItemsBatch(jid,selections)
+await ensureUser(jid)
+const items=await getInventory(jid)
+const selections=items
+.filter(i=>['weapon','armor','boots'].includes(i.category) && i.rarity!=='legendary' && Number(i.quantity)>1)
+.map(i=>({itemId:i.item_id,qty:Number(i.quantity)-1}))
+if(!selections.length) return {sold:[],types:0,totalUnits:0,total:0,cash:null}
+return sellItemsBatch(jid,selections)
 }
-
-
 export async function saveSnipeMessage({
-  chat,messageId,sender='',pushName='',text='',mediaLabel='',
-  mediaType=null,mimeType=null,mediaBuffer=null,createdAt=Date.now(),expiresAt=Date.now()+30*60*1000
+chat,messageId,sender='',pushName='',text='',mediaLabel='',
+mediaType=null,mimeType=null,mediaBuffer=null,createdAt=Date.now(),expiresAt=Date.now()+30*60*1000
 }){
-  if(!chat || !messageId) return false
-  // Defense in depth: even alternate callers may never upload media/base64 to Neon.
-  await db.query(`
-    INSERT INTO snipe_messages(
-      chat_jid,message_id,sender_jid,push_name,text_content,media_label,
-      media_type,mime_type,media_data,created_at,expires_at
-    )
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-    ON CONFLICT(chat_jid,message_id) DO UPDATE SET
-      sender_jid=EXCLUDED.sender_jid,
-      push_name=EXCLUDED.push_name,
-      text_content=EXCLUDED.text_content,
-      media_label=EXCLUDED.media_label,
-      media_type=EXCLUDED.media_type,
-      mime_type=EXCLUDED.mime_type,
-      media_data=EXCLUDED.media_data,
-      created_at=EXCLUDED.created_at,
-      expires_at=EXCLUDED.expires_at
-  `,[
-    chat,messageId,sender,pushName,text,mediaLabel,mediaType,mimeType,
-    null,
-    Math.floor(Number(createdAt)||Date.now()),
-    Math.floor(Number(expiresAt)||Date.now()+30*60*1000)
-  ])
-  return true
+if(!chat || !messageId) return false
+await db.query(`
+INSERT INTO snipe_messages(
+chat_jid,message_id,sender_jid,push_name,text_content,media_label,
+media_type,mime_type,media_data,created_at,expires_at
+)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+ON CONFLICT(chat_jid,message_id) DO UPDATE SET
+sender_jid=EXCLUDED.sender_jid,
+push_name=EXCLUDED.push_name,
+text_content=EXCLUDED.text_content,
+media_label=EXCLUDED.media_label,
+media_type=EXCLUDED.media_type,
+mime_type=EXCLUDED.mime_type,
+media_data=EXCLUDED.media_data,
+created_at=EXCLUDED.created_at,
+expires_at=EXCLUDED.expires_at
+`,[
+chat,messageId,sender,pushName,text,mediaLabel,mediaType,mimeType,
+null,
+Math.floor(Number(createdAt)||Date.now()),
+Math.floor(Number(expiresAt)||Date.now()+30*60*1000)
+])
+return true
 }
-
 function snipeRow(row){
-  if(!row) return null
-  let mediaBuffer=null
-  try{ if(row.media_data) mediaBuffer=Buffer.from(row.media_data,'base64') }catch{}
-  return {
-    chat:row.chat_jid,
-    messageId:row.message_id,
-    sender:row.sender_jid,
-    pushName:row.push_name||'',
-    text:row.text_content||'',
-    mediaLabel:row.media_label||'',
-    mediaType:row.media_type||null,
-    mimeType:row.mime_type||null,
-    mediaBuffer,
-    createdAt:Number(row.created_at||0),
-    deletedAt:Number(row.deleted_at||0),
-    expiresAt:Number(row.expires_at||0)
-  }
+if(!row) return null
+let mediaBuffer=null
+try{ if(row.media_data) mediaBuffer=Buffer.from(row.media_data,'base64') }catch{}
+return {
+chat:row.chat_jid,
+messageId:row.message_id,
+sender:row.sender_jid,
+pushName:row.push_name||'',
+text:row.text_content||'',
+mediaLabel:row.media_label||'',
+mediaType:row.media_type||null,
+mimeType:row.mime_type||null,
+mediaBuffer,
+createdAt:Number(row.created_at||0),
+deletedAt:Number(row.deleted_at||0),
+expiresAt:Number(row.expires_at||0)
 }
-
+}
 export async function markSnipeDeleted(chat,messageId){
-  if(!chat || !messageId) return null
-  const {rows}=await db.query(`
-    UPDATE snipe_messages
-    SET deleted_at=${nowSql}
-    WHERE chat_jid=$1 AND message_id=$2 AND expires_at >= $3
-    RETURNING chat_jid,message_id,sender_jid,push_name,text_content,media_label,
-      media_type,mime_type,NULL::text AS media_data,created_at,deleted_at,expires_at
-  `,[chat,messageId,Date.now()])
-  return snipeRow(rows[0])
+if(!chat || !messageId) return null
+const {rows}=await db.query(`
+UPDATE snipe_messages
+SET deleted_at=${nowSql}
+WHERE chat_jid=$1 AND message_id=$2 AND expires_at >= $3
+RETURNING chat_jid,message_id,sender_jid,push_name,text_content,media_label,
+media_type,mime_type,NULL::text AS media_data,created_at,deleted_at,expires_at
+`,[chat,messageId,Date.now()])
+return snipeRow(rows[0])
 }
-
 export async function getLastDeletedSnipe(chat){
-  const {rows}=await db.query(`
-    SELECT chat_jid,message_id,sender_jid,push_name,text_content,media_label,
-      media_type,mime_type,NULL::text AS media_data,created_at,deleted_at,expires_at
-    FROM snipe_messages
-    WHERE chat_jid=$1 AND deleted_at IS NOT NULL AND expires_at >= $2
-    ORDER BY deleted_at DESC
-    LIMIT 1
-  `,[chat,Date.now()])
-  return snipeRow(rows[0])
+const {rows}=await db.query(`
+SELECT chat_jid,message_id,sender_jid,push_name,text_content,media_label,
+media_type,mime_type,NULL::text AS media_data,created_at,deleted_at,expires_at
+FROM snipe_messages
+WHERE chat_jid=$1 AND deleted_at IS NOT NULL AND expires_at >= $2
+ORDER BY deleted_at DESC
+LIMIT 1
+`,[chat,Date.now()])
+return snipeRow(rows[0])
 }
-
 export async function cleanupSnipeMessages(){
-  const r=await db.query('DELETE FROM snipe_messages WHERE expires_at < $1',[Date.now()])
-  return r.rowCount
+const r=await db.query('DELETE FROM snipe_messages WHERE expires_at < $1',[Date.now()])
+return r.rowCount
 }
-
-
 export async function getProfileAvatar(jid){
-  const {rows}=await db.query('SELECT image_data,mime_type FROM profile_avatars WHERE jid=$1',[jid])
-  if(!rows[0]) return null
-  try{
-    return { buffer:Buffer.from(rows[0].image_data,'base64'), mimeType:rows[0].mime_type }
-  }catch{return null}
+const {rows}=await db.query('SELECT image_data,mime_type FROM profile_avatars WHERE jid=$1',[jid])
+if(!rows[0]) return null
+try{
+return { buffer:Buffer.from(rows[0].image_data,'base64'), mimeType:rows[0].mime_type }
+}catch{return null}
 }
-
 export async function setProfileAvatar(jid,buffer,mimeType='image/jpeg'){
-  await ensureUser(jid)
-  const b=Buffer.from(buffer)
-  if(!b.length) throw new Error('Imagem vazia.')
-  if(b.length>8*1024*1024) throw new Error('A imagem deve ter no máximo 8 MB.')
-  await db.query(`
-    INSERT INTO profile_avatars(jid,image_data,mime_type,updated_at)
-    VALUES($1,$2,$3,${nowSql})
-    ON CONFLICT(jid) DO UPDATE
-    SET image_data=EXCLUDED.image_data,mime_type=EXCLUDED.mime_type,updated_at=${nowSql}
-  `,[jid,b.toString('base64'),mimeType])
-  return true
+await ensureUser(jid)
+const b=Buffer.from(buffer)
+if(!b.length) throw new Error('Imagem vazia.')
+if(b.length>8*1024*1024) throw new Error('A imagem deve ter no máximo 8 MB.')
+await db.query(`
+INSERT INTO profile_avatars(jid,image_data,mime_type,updated_at)
+VALUES($1,$2,$3,${nowSql})
+ON CONFLICT(jid) DO UPDATE
+SET image_data=EXCLUDED.image_data,mime_type=EXCLUDED.mime_type,updated_at=${nowSql}
+`,[jid,b.toString('base64'),mimeType])
+return true
 }
-
 export async function removeProfileAvatar(jid){
-  const r=await db.query('DELETE FROM profile_avatars WHERE jid=$1',[jid])
-  return r.rowCount>0
+const r=await db.query('DELETE FROM profile_avatars WHERE jid=$1',[jid])
+return r.rowCount>0
 }
-
 export async function getPlayerRanks(jid) {
-  const {rows}=await db.query(`
-    SELECT
-      1+(SELECT COUNT(*) FROM users x JOIN wallets wx ON wx.jid=x.jid
-         WHERE x.jid NOT LIKE '%@local'
-           AND x.jid NOT LIKE '%@lid'
-           AND x.jid NOT LIKE '%:%@s.whatsapp.net'
-           AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
-           AND LOWER(BTRIM(x.push_name))<>'jogador' AND
-         ((wx.cash+wx.bank)>(w.cash+w.bank) OR
-          ((wx.cash+wx.bank)=(w.cash+w.bank) AND x.level>u.level) OR
-          ((wx.cash+wx.bank)=(w.cash+w.bank) AND x.level=u.level AND x.created_at<u.created_at))) AS economy_rank,
-      1+(SELECT COUNT(*) FROM users x JOIN stats sx ON sx.jid=x.jid
-         WHERE x.jid NOT LIKE '%@local'
-           AND x.jid NOT LIKE '%@lid'
-           AND x.jid NOT LIKE '%:%@s.whatsapp.net'
-           AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
-           AND LOWER(BTRIM(x.push_name))<>'jogador' AND
-         ((sx.win*3-sx.loss)>(s.win*3-s.loss) OR
-          ((sx.win*3-sx.loss)=(s.win*3-s.loss) AND sx.win>s.win) OR
-          ((sx.win*3-sx.loss)=(s.win*3-s.loss) AND sx.win=s.win AND x.level>u.level))) AS combat_rank,
-      (SELECT COUNT(*) FROM users x
-       WHERE x.jid NOT LIKE '%@local'
-         AND x.jid NOT LIKE '%@lid'
-         AND x.jid NOT LIKE '%:%@s.whatsapp.net'
-         AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
-         AND LOWER(BTRIM(x.push_name))<>'jogador') AS players
-    FROM users u JOIN wallets w ON w.jid=u.jid JOIN stats s ON s.jid=u.jid
-    WHERE u.jid=$1
-  `,[jid])
-  const r=rows[0]||{}
-  return {economyRank:Number(r.economy_rank||0),combatRank:Number(r.combat_rank||0),players:Number(r.players||0)}
+const {rows}=await db.query(`
+SELECT
+1+(SELECT COUNT(*) FROM users x JOIN wallets wx ON wx.jid=x.jid
+WHERE x.jid NOT LIKE '%@local'
+AND x.jid NOT LIKE '%@lid'
+AND x.jid NOT LIKE '%:%@s.whatsapp.net'
+AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
+AND LOWER(BTRIM(x.push_name))<>'jogador' AND
+((wx.cash+wx.bank)>(w.cash+w.bank) OR
+((wx.cash+wx.bank)=(w.cash+w.bank) AND x.level>u.level) OR
+((wx.cash+wx.bank)=(w.cash+w.bank) AND x.level=u.level AND x.created_at<u.created_at))) AS economy_rank,
+1+(SELECT COUNT(*) FROM users x JOIN stats sx ON sx.jid=x.jid
+WHERE x.jid NOT LIKE '%@local'
+AND x.jid NOT LIKE '%@lid'
+AND x.jid NOT LIKE '%:%@s.whatsapp.net'
+AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
+AND LOWER(BTRIM(x.push_name))<>'jogador' AND
+((sx.win*3-sx.loss)>(s.win*3-s.loss) OR
+((sx.win*3-sx.loss)=(s.win*3-s.loss) AND sx.win>s.win) OR
+((sx.win*3-sx.loss)=(s.win*3-s.loss) AND sx.win=s.win AND x.level>u.level))) AS combat_rank,
+(SELECT COUNT(*) FROM users x
+WHERE x.jid NOT LIKE '%@local'
+AND x.jid NOT LIKE '%@lid'
+AND x.jid NOT LIKE '%:%@s.whatsapp.net'
+AND COALESCE(NULLIF(BTRIM(x.push_name),''),'')<>''
+AND LOWER(BTRIM(x.push_name))<>'jogador') AS players
+FROM users u JOIN wallets w ON w.jid=u.jid JOIN stats s ON s.jid=u.jid
+WHERE u.jid=$1
+`,[jid])
+const r=rows[0]||{}
+return {economyRank:Number(r.economy_rank||0),combatRank:Number(r.combat_rank||0),players:Number(r.players||0)}
 }
-
 export async function leaderboard(limit=10, participantJids=[]) {
-  const participants=[...new Set((participantJids||[]).filter(Boolean))]
-  const { rows } = await db.query(`
-    SELECT u.jid,u.push_name,u.level,
-           COALESCE(w.cash,0)::bigint AS cash,
-           COALESCE(w.bank,0)::bigint AS bank,
-           (COALESCE(w.cash,0)+COALESCE(w.bank,0))::bigint AS total
-    FROM users u
-    JOIN wallets w ON w.jid=u.jid
-    WHERE u.jid NOT LIKE '%@local'
-      AND u.jid NOT LIKE '%@lid'
-      AND u.jid NOT LIKE '%:%@s.whatsapp.net'
-      AND COALESCE(NULLIF(BTRIM(u.push_name),''),'') <> ''
-      AND LOWER(BTRIM(u.push_name)) <> 'jogador'
-      AND (CARDINALITY($2::text[])=0 OR u.jid=ANY($2::text[]))
-    ORDER BY total DESC,u.level DESC,u.created_at ASC
-    LIMIT $1
-  `,[limit,participants])
-  return rows
+const participants=[...new Set((participantJids||[]).filter(Boolean))]
+const { rows } = await db.query(`
+SELECT u.jid,u.push_name,u.level,
+COALESCE(w.cash,0)::bigint AS cash,
+COALESCE(w.bank,0)::bigint AS bank,
+(COALESCE(w.cash,0)+COALESCE(w.bank,0))::bigint AS total
+FROM users u
+JOIN wallets w ON w.jid=u.jid
+WHERE u.jid NOT LIKE '%@local'
+AND u.jid NOT LIKE '%@lid'
+AND u.jid NOT LIKE '%:%@s.whatsapp.net'
+AND COALESCE(NULLIF(BTRIM(u.push_name),''),'') <> ''
+AND LOWER(BTRIM(u.push_name)) <> 'jogador'
+AND (CARDINALITY($2::text[])=0 OR u.jid=ANY($2::text[]))
+ORDER BY total DESC,u.level DESC,u.created_at ASC
+LIMIT $1
+`,[limit,participants])
+return rows
 }
-
-
 const EQUIPMENT = {
-  ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
-  elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
-  elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
-  elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
-  elmo_labirinto_alpha: {category:'helmet',atk:0,def:92,hp:240,crit:0,name:'Elmo do Labirinto Eterno'},
-  espada_madeira: { category:'weapon', atk:5, def:0, name:'Espada de Madeira' },
-  espada_ferro: { category:'weapon', atk:12, def:0, name:'Espada de Ferro' },
-  espada_aco: { category:'weapon', atk:20, def:0, name:'Espada de Aço' },
-  machado_guerra: { category:'weapon', atk:24, def:0, name:'Machado de Guerra' },
-  katana_sombria: { category:'weapon', atk:28, def:0, name:'Katana Sombria' },
-  espada_flamas: { category:'weapon', atk:40, def:0, name:'Espada das Chamas' },
-  tridente_tempestade: { category:'weapon', atk:48, def:0, name:'Tridente da Tempestade' },
-  lamina_abissal: { category:'weapon', atk:55, def:0, name:'Lâmina Abissal' },
-  foice_carmesim: { category:'weapon', atk:43, def:0, name:'Foice Carmesim' },
-  lanca_solar: { category:'weapon', atk:46, def:0, name:'Lança Solar' },
-  garras_vazio: { category:'weapon', atk:51, def:0, name:'Garras do Vazio' },
-  espada_eclipse: { category:'weapon', atk:54, def:0, name:'Espada do Eclipse' },
-  martelo_golem: { category:'weapon', atk:70, def:0, hp:50, crit:0, name:'Martelo do Golem Ancestral' },
-  excalibur: { category:'weapon', atk:85, def:0, hp:0, crit:.02, name:'Excalibur' },
-  katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, name:'Katana Divina' },
-  sabre_runico: { category:'weapon', atk:32, def:0, hp:0, crit:.01, name:'Sabre Rúnico' },
-  lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, name:'Lâmina do Caçador' },
-  espada_guardiao: { category:'weapon', atk:50, def:0, hp:25, crit:0, name:'Espada do Guardião' },
-
-  lamina_caos: { category:'weapon', atk:102, def:0, hp:0, crit:0.035, name:'Lâmina do Caos' },
-  machado_tita: { category:'weapon', atk:110, def:0, hp:35, crit:0.025, name:'Machado do Titã' },
-  foice_abismo: { category:'weapon', atk:118, def:0, hp:0, crit:0.04, name:'Foice do Abismo' },
-  espada_aurora: { category:'weapon', atk:125, def:0, hp:45, crit:0.035, name:'Espada da Aurora' },
-  exterminadora_eclipse: { category:'weapon', atk:135, def:0, hp:25, crit:0.045, name:'Exterminadora do Eclipse' },
-  armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
-  armadura_ferro: { category:'armor', atk:0, def:12, name:'Armadura de Ferro' },
-  armadura_aco: { category:'armor', atk:0, def:20, name:'Armadura de Aço' },
-  armadura_samurai: { category:'armor', atk:0, def:24, name:'Armadura Samurai' },
-  armadura_cavaleiro: { category:'armor', atk:0, def:28, name:'Armadura do Cavaleiro' },
-  armadura_dragao: { category:'armor', atk:0, def:40, name:'Armadura de Dragão' },
-  armadura_abissal: { category:'armor', atk:0, def:48, name:'Armadura Abissal' },
-  armadura_celestial: { category:'armor', atk:0, def:55, name:'Armadura Celestial' },
-  manto_fenix: { category:'armor', atk:0, def:43, name:'Manto da Fênix' },
-  couraca_vulcanica: { category:'armor', atk:0, def:46, name:'Couraça Vulcânica' },
-  armadura_vazio: { category:'armor', atk:0, def:51, name:'Armadura do Vazio' },
-  armadura_eclipse: { category:'armor', atk:0, def:54, name:'Armadura do Eclipse' },
-  armadura_golem: { category:'armor', atk:0, def:70, hp:80, crit:0, name:'Armadura do Golem Ancestral' },
-  armadura_titan: { category:'armor', atk:0, def:85, hp:110, crit:0, name:'Armadura do Titã' },
-  armadura_divina: { category:'armor', atk:0, def:95, hp:140, crit:.01, name:'Armadura Divina' },
-  armadura_bastiao: { category:'armor', atk:0, def:30, hp:35, crit:0, name:'Armadura do Bastião' },
-  manto_runico: { category:'armor', atk:0, def:42, hp:55, crit:.01, name:'Manto Rúnico' },
-  couraca_guardiao: { category:'armor', atk:0, def:50, hp:70, crit:0, name:'Couraça do Guardião' },
-  coroa_madrugada: { category:'armor', atk:20, def:50, name:'Coroa da Madrugada' },
-  colete_vital: { category:'armor', atk:0, def:18, hp:60, crit:0, name:'Colete Vital' },
-  couraca_predador: { category:'armor', atk:0, def:38, hp:90, crit:.03, name:'Couraça do Predador' },
-  armadura_colosso: { category:'armor', atk:0, def:52, hp:140, crit:.04, name:'Armadura do Colosso' },
-
-  couraca_caos: { category:'armor', atk:0, def:103, hp:150, crit:0.01, name:'Couraça do Caos' },
-  armadura_tita_ancestral: { category:'armor', atk:0, def:110, hp:170, crit:0.015, name:'Armadura Titânica Ancestral' },
-  manto_abismo_eterno: { category:'armor', atk:0, def:117, hp:185, crit:0.02, name:'Manto do Abismo Eterno' },
-  armadura_aurora: { category:'armor', atk:0, def:125, hp:205, crit:0.015, name:'Armadura da Aurora' },
-  armadura_deus_eclipse: { category:'armor', atk:0, def:135, hp:230, crit:0.02, name:'Armadura do Deus do Eclipse' },
-  bota_leve: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:2, name:'Bota Leve' },
-  bota_vento: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:4, name:'Bota do Vento' },
-  bota_cacador: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:6, name:'Bota do Caçador' },
-  bota_relampago: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:8, name:'Bota do Relâmpago' },
-  bota_celestial: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:10, name:'Bota Celestial' },
-  bota_vortice_alpha_20261020: {category:'boots',atk:0,def:0,hp:70,spd:14,crit:.025,name:'Botas do Vórtice'},
-  bota_jp_aquiles: { category:'boots', atk:0, def:0, hp:0, crit:0.02, spd:12, name:'Bota do JP — Passo da Lenda' },
+...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
+elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
+elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
+elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
+elmo_labirinto_alpha: {category:'helmet',atk:0,def:92,hp:240,crit:0,name:'Elmo do Labirinto Eterno'},
+espada_madeira: { category:'weapon', atk:5, def:0, name:'Espada de Madeira' },
+espada_ferro: { category:'weapon', atk:12, def:0, name:'Espada de Ferro' },
+espada_aco: { category:'weapon', atk:20, def:0, name:'Espada de Aço' },
+machado_guerra: { category:'weapon', atk:24, def:0, name:'Machado de Guerra' },
+katana_sombria: { category:'weapon', atk:28, def:0, name:'Katana Sombria' },
+espada_flamas: { category:'weapon', atk:40, def:0, name:'Espada das Chamas' },
+tridente_tempestade: { category:'weapon', atk:48, def:0, name:'Tridente da Tempestade' },
+lamina_abissal: { category:'weapon', atk:55, def:0, name:'Lâmina Abissal' },
+foice_carmesim: { category:'weapon', atk:43, def:0, name:'Foice Carmesim' },
+lanca_solar: { category:'weapon', atk:46, def:0, name:'Lança Solar' },
+garras_vazio: { category:'weapon', atk:51, def:0, name:'Garras do Vazio' },
+espada_eclipse: { category:'weapon', atk:54, def:0, name:'Espada do Eclipse' },
+martelo_golem: { category:'weapon', atk:70, def:0, hp:50, crit:0, name:'Martelo do Golem Ancestral' },
+excalibur: { category:'weapon', atk:85, def:0, hp:0, crit:.02, name:'Excalibur' },
+katana_divina: { category:'weapon', atk:95, def:0, hp:0, crit:.03, name:'Katana Divina' },
+sabre_runico: { category:'weapon', atk:32, def:0, hp:0, crit:.01, name:'Sabre Rúnico' },
+lamina_cacador: { category:'weapon', atk:42, def:0, hp:0, crit:.02, name:'Lâmina do Caçador' },
+espada_guardiao: { category:'weapon', atk:50, def:0, hp:25, crit:0, name:'Espada do Guardião' },
+lamina_caos: { category:'weapon', atk:102, def:0, hp:0, crit:0.035, name:'Lâmina do Caos' },
+machado_tita: { category:'weapon', atk:110, def:0, hp:35, crit:0.025, name:'Machado do Titã' },
+foice_abismo: { category:'weapon', atk:118, def:0, hp:0, crit:0.04, name:'Foice do Abismo' },
+espada_aurora: { category:'weapon', atk:125, def:0, hp:45, crit:0.035, name:'Espada da Aurora' },
+exterminadora_eclipse: { category:'weapon', atk:135, def:0, hp:25, crit:0.045, name:'Exterminadora do Eclipse' },
+armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
+armadura_ferro: { category:'armor', atk:0, def:12, name:'Armadura de Ferro' },
+armadura_aco: { category:'armor', atk:0, def:20, name:'Armadura de Aço' },
+armadura_samurai: { category:'armor', atk:0, def:24, name:'Armadura Samurai' },
+armadura_cavaleiro: { category:'armor', atk:0, def:28, name:'Armadura do Cavaleiro' },
+armadura_dragao: { category:'armor', atk:0, def:40, name:'Armadura de Dragão' },
+armadura_abissal: { category:'armor', atk:0, def:48, name:'Armadura Abissal' },
+armadura_celestial: { category:'armor', atk:0, def:55, name:'Armadura Celestial' },
+manto_fenix: { category:'armor', atk:0, def:43, name:'Manto da Fênix' },
+couraca_vulcanica: { category:'armor', atk:0, def:46, name:'Couraça Vulcânica' },
+armadura_vazio: { category:'armor', atk:0, def:51, name:'Armadura do Vazio' },
+armadura_eclipse: { category:'armor', atk:0, def:54, name:'Armadura do Eclipse' },
+armadura_golem: { category:'armor', atk:0, def:70, hp:80, crit:0, name:'Armadura do Golem Ancestral' },
+armadura_titan: { category:'armor', atk:0, def:85, hp:110, crit:0, name:'Armadura do Titã' },
+armadura_divina: { category:'armor', atk:0, def:95, hp:140, crit:.01, name:'Armadura Divina' },
+armadura_bastiao: { category:'armor', atk:0, def:30, hp:35, crit:0, name:'Armadura do Bastião' },
+manto_runico: { category:'armor', atk:0, def:42, hp:55, crit:.01, name:'Manto Rúnico' },
+couraca_guardiao: { category:'armor', atk:0, def:50, hp:70, crit:0, name:'Couraça do Guardião' },
+coroa_madrugada: { category:'armor', atk:20, def:50, name:'Coroa da Madrugada' },
+colete_vital: { category:'armor', atk:0, def:18, hp:60, crit:0, name:'Colete Vital' },
+couraca_predador: { category:'armor', atk:0, def:38, hp:90, crit:.03, name:'Couraça do Predador' },
+armadura_colosso: { category:'armor', atk:0, def:52, hp:140, crit:.04, name:'Armadura do Colosso' },
+couraca_caos: { category:'armor', atk:0, def:103, hp:150, crit:0.01, name:'Couraça do Caos' },
+armadura_tita_ancestral: { category:'armor', atk:0, def:110, hp:170, crit:0.015, name:'Armadura Titânica Ancestral' },
+manto_abismo_eterno: { category:'armor', atk:0, def:117, hp:185, crit:0.02, name:'Manto do Abismo Eterno' },
+armadura_aurora: { category:'armor', atk:0, def:125, hp:205, crit:0.015, name:'Armadura da Aurora' },
+armadura_deus_eclipse: { category:'armor', atk:0, def:135, hp:230, crit:0.02, name:'Armadura do Deus do Eclipse' },
+bota_leve: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:2, name:'Bota Leve' },
+bota_vento: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:4, name:'Bota do Vento' },
+bota_cacador: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:6, name:'Bota do Caçador' },
+bota_relampago: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:8, name:'Bota do Relâmpago' },
+bota_celestial: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:10, name:'Bota Celestial' },
+bota_vortice_alpha_20261020: {category:'boots',atk:0,def:0,hp:70,spd:14,crit:.025,name:'Botas do Vórtice'},
+bota_jp_aquiles: { category:'boots', atk:0, def:0, hp:0, crit:0.02, spd:12, name:'Bota do JP — Passo da Lenda' },
 }
-
 const POTIONS = {
-  pocao_p: { heal:35, name:'Poção Pequena' },
-  pocao_m: { heal:80, name:'Poção Média' },
-  pocao_g: { heal:160, name:'Poção Grande' },
-  elixir_supremo: { heal:999999, name:'Elixir Supremo' },
+pocao_p: { heal:35, name:'Poção Pequena' },
+pocao_m: { heal:80, name:'Poção Média' },
+pocao_g: { heal:160, name:'Poção Grande' },
+elixir_supremo: { heal:999999, name:'Elixir Supremo' },
 }
-
 const PET_POTIONS = {
-  pocao_pet_comum: { heal:60, name:'Poção de Pet Comum' },
-  pocao_pet_rara: { heal:160, name:'Poção de Pet Rara' },
-  pocao_pet_epica: { heal:320, name:'Poção de Pet Épica' },
-  pocao_pet_suprema: { heal:800, name:'Poção de Pet Suprema' },
-  // Cura qualquer HP faltante, inclusive pets de níveis futuros; o resultado é limitado a maxHp.
-  pocao_pet_full: { heal:Number.MAX_SAFE_INTEGER, name:'Poção Full de Pet' },
+pocao_pet_comum: { heal:60, name:'Poção de Pet Comum' },
+pocao_pet_rara: { heal:160, name:'Poção de Pet Rara' },
+pocao_pet_epica: { heal:320, name:'Poção de Pet Épica' },
+pocao_pet_suprema: { heal:800, name:'Poção de Pet Suprema' },
+pocao_pet_full: { heal:Number.MAX_SAFE_INTEGER, name:'Poção Full de Pet' },
 }
-
 const MAX_LEVEL=999
 const MAX_ADMIN_EXP=50_000_000
-
-// Contexto curto do grupo onde o jogador está executando a ação.
-// Permite eventos de XP exclusivos por grupo sem vazar o bônus para outros grupos/privado.
 const playerGroupContext=new Map()
 export function setPlayerGroupContext(jid,chatJid){
-  const key=String(jid||'')
-  if(!key) return
-  if(!String(chatJid||'').endsWith('@g.us')){
-    playerGroupContext.delete(key)
-    return
-  }
-  playerGroupContext.set(key,{chatJid:String(chatJid),at:Date.now()})
+const key=String(jid||'')
+if(!key) return
+if(!String(chatJid||'').endsWith('@g.us')){
+playerGroupContext.delete(key)
+return
 }
-
+playerGroupContext.set(key,{chatJid:String(chatJid),at:Date.now()})
+}
 async function getGroupProgressionEventMultiplier(queryable,jid,level,options={}){
-  if(options.ignoreGroupProgressionEvent) return 1
-  const explicit=String(options.chatJid||'')
-  const ctx=playerGroupContext.get(String(jid||''))
-  const recent=ctx && Date.now()-Number(ctx.at||0)<=60*1000 ? String(ctx.chatJid||'') : ''
-  const chatJid=explicit.endsWith('@g.us')?explicit:(recent.endsWith('@g.us')?recent:'')
-  if(!chatJid) return 1
-  const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1',['group_progression_event:'+chatJid])).rows[0]
-  const raw=row?.value||{}
-  const now=Date.now()
-  const startsAt=Number(raw.startsAt||0),endsAt=Number(raw.endsAt||0)
-  if(!startsAt||startsAt>now||endsAt<=now) return 1
-  const maxLow=Math.max(1,Number(raw.lowLevelMax||50))
-  const low=Math.max(1,Number(raw.lowMultiplier||3))
-  const high=Math.max(1,Number(raw.highMultiplier||1.5))
-  return Number(level||1)<=maxLow?low:high
+if(options.ignoreGroupProgressionEvent) return 1
+const explicit=String(options.chatJid||'')
+const ctx=playerGroupContext.get(String(jid||''))
+const recent=ctx && Date.now()-Number(ctx.at||0)<=60*1000 ? String(ctx.chatJid||'') : ''
+const chatJid=explicit.endsWith('@g.us')?explicit:(recent.endsWith('@g.us')?recent:'')
+if(!chatJid) return 1
+const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1',['group_progression_event:'+chatJid])).rows[0]
+const raw=row?.value||{}
+const now=Date.now()
+const startsAt=Number(raw.startsAt||0),endsAt=Number(raw.endsAt||0)
+if(!startsAt||startsAt>now||endsAt<=now) return 1
+const maxLow=Math.max(1,Number(raw.lowLevelMax||50))
+const low=Math.max(1,Number(raw.lowMultiplier||3))
+const high=Math.max(1,Number(raw.highMultiplier||1.5))
+return Number(level||1)<=maxLow?low:high
 }
-
 function expNeeded(level) {
-  return Math.max(100, Number(level) * 100)
+return Math.max(100, Number(level) * 100)
 }
-
 async function applyExp(client, jid, gain, options={}) {
-  const numericGain=Number(gain)
-  if(!Number.isSafeInteger(numericGain) || numericGain<0) throw new Error('EXP inválida.')
-
-  const r = await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
-  if (!r.rows[0]) return { level:1, exp:0, levels:0, baseGain:numericGain, awardedGain:numericGain, eventMultiplier:1 }
-  const startingLevel=Math.min(MAX_LEVEL,Math.max(1,Number(r.rows[0].level)||1))
-  const eventMultiplier=numericGain>0
-    ?await getGroupProgressionEventMultiplier(client,jid,startingLevel,options)
-    :1
-  const eventGain=Math.max(0,Math.round(numericGain*eventMultiplier))
-  let bonusXp=0
-  let boostPercent=0
-  if(eventGain>0 && !options.ignoreXpBoost && startingLevel<MAX_LEVEL){
-    const boost=(await client.query(`
-      SELECT bonus_percent,bonus_remaining FROM alpha_xp_boosts
-      WHERE jid=$1 AND expires_at>EXTRACT(EPOCH FROM NOW())::BIGINT AND bonus_remaining>0
-      FOR UPDATE
-    `,[jid])).rows[0]
-    if(boost){
-      bonusXp=Math.min(Number(boost.bonus_remaining),Math.floor(eventGain*Number(boost.bonus_percent)/100))
-      if(bonusXp>0) boostPercent=Number(boost.bonus_percent)
-      if(bonusXp>0) await client.query('UPDATE alpha_xp_boosts SET bonus_remaining=bonus_remaining-$1 WHERE jid=$2',[bonusXp,jid])
-    }
-  }
-
-  let level=startingLevel
-  let exp=Math.max(0,Number(r.rows[0].exp)||0)+eventGain+bonusXp
-  let levels=0
-
-  // Nunca passa de 998 iterações, mesmo com EXP enorme.
-  while(level<MAX_LEVEL && exp>=expNeeded(level)) {
-    exp-=expNeeded(level)
-    level++
-    levels++
-  }
-
-  // Nível máximo não acumula EXP infinito.
-  if(level>=MAX_LEVEL) exp=0
-
-  await client.query(
-    'UPDATE users SET level=$1,exp=$2,updated_at='+nowSql+' WHERE jid=$3',
-    [level,exp,jid]
-  )
-
-  if(levels>0){
-    await client.query(`
-      UPDATE stats
-      SET max_hp=max_hp+$1,
-          hp=max_hp+$1,
-          atk=atk+$2,
-          def=def+$3,
-          spd=spd+$4,
-          updated_at=${nowSql}
-      WHERE jid=$5
-    `,[levels*8,levels*2,levels,levels,jid])
-  }
-
-  return {
-    level,exp,levels,
-    baseGain:numericGain,
-    awardedGain:eventGain+bonusXp,
-    eventGain,
-    boostBonus:bonusXp,
-    boostPercent,
-    eventMultiplier
-  }
+const numericGain=Number(gain)
+if(!Number.isSafeInteger(numericGain) || numericGain<0) throw new Error('EXP inválida.')
+const r = await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
+if (!r.rows[0]) return { level:1, exp:0, levels:0, baseGain:numericGain, awardedGain:numericGain, eventMultiplier:1 }
+const startingLevel=Math.min(MAX_LEVEL,Math.max(1,Number(r.rows[0].level)||1))
+const eventMultiplier=numericGain>0
+?await getGroupProgressionEventMultiplier(client,jid,startingLevel,options)
+:1
+const eventGain=Math.max(0,Math.round(numericGain*eventMultiplier))
+let bonusXp=0
+let boostPercent=0
+if(eventGain>0 && !options.ignoreXpBoost && startingLevel<MAX_LEVEL){
+const boost=(await client.query(`
+SELECT bonus_percent,bonus_remaining FROM alpha_xp_boosts
+WHERE jid=$1 AND expires_at>EXTRACT(EPOCH FROM NOW())::BIGINT AND bonus_remaining>0
+FOR UPDATE
+`,[jid])).rows[0]
+if(boost){
+bonusXp=Math.min(Number(boost.bonus_remaining),Math.floor(eventGain*Number(boost.bonus_percent)/100))
+if(bonusXp>0) boostPercent=Number(boost.bonus_percent)
+if(bonusXp>0) await client.query('UPDATE alpha_xp_boosts SET bonus_remaining=bonus_remaining-$1 WHERE jid=$2',[bonusXp,jid])
 }
-
+}
+let level=startingLevel
+let exp=Math.max(0,Number(r.rows[0].exp)||0)+eventGain+bonusXp
+let levels=0
+while(level<MAX_LEVEL && exp>=expNeeded(level)) {
+exp-=expNeeded(level)
+level++
+levels++
+}
+if(level>=MAX_LEVEL) exp=0
+await client.query(
+'UPDATE users SET level=$1,exp=$2,updated_at='+nowSql+' WHERE jid=$3',
+[level,exp,jid]
+)
+if(levels>0){
+await client.query(`
+UPDATE stats
+SET max_hp=max_hp+$1,
+hp=max_hp+$1,
+atk=atk+$2,
+def=def+$3,
+spd=spd+$4,
+updated_at=${nowSql}
+WHERE jid=$5
+`,[levels*8,levels*2,levels,levels,jid])
+}
+return {
+level,exp,levels,
+baseGain:numericGain,
+awardedGain:eventGain+bonusXp,
+eventGain,
+boostBonus:bonusXp,
+boostPercent,
+eventMultiplier
+}
+}
 export function getEquipmentInfo(itemId) {
-  const eq=EQUIPMENT[itemId]
-  return eq ? {...eq,itemId} : null
+const eq=EQUIPMENT[itemId]
+return eq ? {...eq,itemId} : null
 }
-
 const EQUIPMENT_MAX_LEVEL=10
-
 export const FORGE_STAR_MATERIALS=Object.freeze([0,30,50,80,120])
 export const RAID_WEAPON_FORGE_ORIGINS=Object.freeze({
-  foice_carmesim:{raidLevel:15,materialId:'escama_vulcanica',materialName:'Escama Vulcânica'},
-  lanca_solar:{raidLevel:20,materialId:'olho_abissal',materialName:'Olho Abissal'},
-  garras_vazio:{raidLevel:25,materialId:'nucleo_titan',materialName:'Núcleo do Titã'},
-  espada_eclipse:{raidLevel:30,materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal'},
-  excalibur:{raidLevel:40,materialId:'fragmento_celestial',materialName:'Fragmento Celestial'},
-  katana_divina:{raidLevel:50,materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido'},
-  lamina_caos:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
-  machado_tita:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
-  foice_abismo:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
-  espada_aurora:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
-  exterminadora_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'Essência do Eclipse'}
+foice_carmesim:{raidLevel:15,materialId:'escama_vulcanica',materialName:'Escama Vulcânica'},
+lanca_solar:{raidLevel:20,materialId:'olho_abissal',materialName:'Olho Abissal'},
+garras_vazio:{raidLevel:25,materialId:'nucleo_titan',materialName:'Núcleo do Titã'},
+espada_eclipse:{raidLevel:30,materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal'},
+excalibur:{raidLevel:40,materialId:'fragmento_celestial',materialName:'Fragmento Celestial'},
+katana_divina:{raidLevel:50,materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido'},
+lamina_caos:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
+machado_tita:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
+foice_abismo:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
+espada_aurora:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
+exterminadora_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'Essência do Eclipse'}
 })
-
-// Armaduras elegíveis: somente os modelos que caem efetivamente em cada Raid.
 export const RAID_ARMOR_FORGE_ORIGINS=Object.freeze({
-  manto_fenix:{raidLevel:15,materialId:'escama_vulcanica',materialName:'Escama Vulcânica'},
-  couraca_vulcanica:{raidLevel:20,materialId:'olho_abissal',materialName:'Olho Abissal'},
-  armadura_vazio:{raidLevel:25,materialId:'nucleo_titan',materialName:'Núcleo do Titã'},
-  armadura_eclipse:{raidLevel:30,materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal'},
-  armadura_titan:{raidLevel:40,materialId:'fragmento_celestial',materialName:'Fragmento Celestial'},
-  armadura_divina:{raidLevel:50,materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido'},
-  couraca_caos:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
-  armadura_tita_ancestral:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
-  manto_abismo_eterno:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
-  armadura_aurora:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
-  armadura_deus_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'Essência do Eclipse'}
+manto_fenix:{raidLevel:15,materialId:'escama_vulcanica',materialName:'Escama Vulcânica'},
+couraca_vulcanica:{raidLevel:20,materialId:'olho_abissal',materialName:'Olho Abissal'},
+armadura_vazio:{raidLevel:25,materialId:'nucleo_titan',materialName:'Núcleo do Titã'},
+armadura_eclipse:{raidLevel:30,materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal'},
+armadura_titan:{raidLevel:40,materialId:'fragmento_celestial',materialName:'Fragmento Celestial'},
+armadura_divina:{raidLevel:50,materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido'},
+couraca_caos:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
+armadura_tita_ancestral:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
+manto_abismo_eterno:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
+armadura_aurora:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
+armadura_deus_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'Essência do Eclipse'}
 })
 export const RAID_GEAR_FORGE_ORIGINS=Object.freeze({...RAID_WEAPON_FORGE_ORIGINS,...RAID_ARMOR_FORGE_ORIGINS})
-
 const UPGRADE_BASE_COST={common:1500,uncommon:3000,rare:7000,epic:16000,legendary:40000,event:50000}
-
 export function equipmentStatsAtLevel(itemId,level=1,stars=1){
-  const eq=EQUIPMENT[itemId]
-  if(!eq) return null
-  level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
-  // Curva revisada: upgrade precisa ter retorno perceptível sem substituir itens de raridade maior.
-  // Lv.10 chega a 2,5x os atributos escaláveis.
-  const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
-  const starLevel=['weapon','armor'].includes(eq.category)&&RAID_GEAR_FORGE_ORIGINS[itemId] ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
-  const starMult=1+.04*(starLevel-1)
-  const mult=multipliers[level-1]
-  return {
-    ...eq,itemId,level,stars:starLevel,starMult,mult,
-    atk:Math.round(Number(eq.atk||0)*mult*starMult),
-    def:Math.round(Number(eq.def||0)*mult*starMult),
-    hp:Math.round(Number(eq.hp||0)*mult*starMult),
-    spd:Math.round(Number(eq.spd||0)*mult*starMult),
-    crit:Number((Number(eq.crit||0)*mult*starMult).toFixed(6))
-  }
+const eq=EQUIPMENT[itemId]
+if(!eq) return null
+level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
+const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
+const starLevel=['weapon','armor'].includes(eq.category)&&RAID_GEAR_FORGE_ORIGINS[itemId] ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
+const starMult=1+.04*(starLevel-1)
+const mult=multipliers[level-1]
+return {
+...eq,itemId,level,stars:starLevel,starMult,mult,
+atk:Math.round(Number(eq.atk||0)*mult*starMult),
+def:Math.round(Number(eq.def||0)*mult*starMult),
+hp:Math.round(Number(eq.hp||0)*mult*starMult),
+spd:Math.round(Number(eq.spd||0)*mult*starMult),
+crit:Number((Number(eq.crit||0)*mult*starMult).toFixed(6))
 }
-
+}
 function equipmentUpgradeCost(rarity,currentLevel){
-  const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
-  return base*Math.max(1,Number(currentLevel)||1)
+const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
+return base*Math.max(1,Number(currentLevel)||1)
 }
-
 function equipmentUpgradeInvested(rarity,level=1){
-  const lv=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
-  const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
-  return base*((lv-1)*lv/2)
+const lv=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
+const base=UPGRADE_BASE_COST[String(rarity||'common')]||2500
+return base*((lv-1)*lv/2)
 }
-
 function equipmentUpgradeSellRefund(rarity,level=1){
-  return Math.floor(equipmentUpgradeInvested(rarity,level)*0.25)
+return Math.floor(equipmentUpgradeInvested(rarity,level)*0.25)
 }
-
 export async function getEquipmentStarLevels(jid,itemIds=[],client=db){
-  const ids=[...new Set((itemIds||[]).filter(Boolean))]
-  if(!ids.length)return {}
-  const {rows}=await client.query('SELECT item_id,stars FROM equipment_star_forges WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])
-  return Object.fromEntries(ids.map(id=>[id,Number(rows.find(row=>row.item_id===id)?.stars||1)]))
+const ids=[...new Set((itemIds||[]).filter(Boolean))]
+if(!ids.length)return {}
+const {rows}=await client.query('SELECT item_id,stars FROM equipment_star_forges WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])
+return Object.fromEntries(ids.map(id=>[id,Number(rows.find(row=>row.item_id===id)?.stars||1)]))
 }
-
 export async function listStarForgeEquipment(jid){
-  await ensureUser(jid)
-  const ids=Object.keys(RAID_GEAR_FORGE_ORIGINS)
-  const {rows}=await db.query(`
-    SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,
-           (eq.weapon_id=inv.item_id OR eq.armor_id=inv.item_id) AS equipped,
-           COALESCE(up.level,1)::int AS level,
-           COALESCE(st.stars,1)::int AS stars,
-           COALESCE(mat.quantity,0)::int AS materials,
-           COALESCE(bound.qty,0)::int AS bound_quantity
-    FROM inventories inv
-    JOIN items i ON i.id=inv.item_id
-    LEFT JOIN stats eq ON eq.jid=inv.jid
-    LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
-    LEFT JOIN equipment_star_forges st ON st.jid=inv.jid AND st.item_id=inv.item_id
-    LEFT JOIN LATERAL (SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items
-      WHERE jid=inv.jid AND item_id=inv.item_id) bound ON TRUE
-    LEFT JOIN inventories mat ON mat.jid=inv.jid AND mat.item_id=
-      CASE inv.item_id
-        WHEN 'foice_carmesim' THEN 'escama_vulcanica'
-        WHEN 'lanca_solar' THEN 'olho_abissal'
-        WHEN 'garras_vazio' THEN 'nucleo_titan'
-        WHEN 'espada_eclipse' THEN 'essencia_rei_abissal'
-        WHEN 'excalibur' THEN 'fragmento_celestial'
-        WHEN 'katana_divina' THEN 'nucleo_alpha_corrompido'
-        WHEN 'lamina_caos' THEN 'fragmento_caos'
-        WHEN 'machado_tita' THEN 'fragmento_caos'
-        WHEN 'foice_abismo' THEN 'coroa_abissal'
-        WHEN 'espada_aurora' THEN 'coroa_abissal'
-        WHEN 'exterminadora_eclipse' THEN 'essencia_eclipse'
-        WHEN 'manto_fenix' THEN 'escama_vulcanica'
-        WHEN 'couraca_vulcanica' THEN 'olho_abissal'
-        WHEN 'armadura_vazio' THEN 'nucleo_titan'
-        WHEN 'armadura_eclipse' THEN 'essencia_rei_abissal'
-        WHEN 'armadura_titan' THEN 'fragmento_celestial'
-        WHEN 'armadura_divina' THEN 'nucleo_alpha_corrompido'
-        WHEN 'couraca_caos' THEN 'fragmento_caos'
-        WHEN 'armadura_tita_ancestral' THEN 'fragmento_caos'
-        WHEN 'manto_abismo_eterno' THEN 'coroa_abissal'
-        WHEN 'armadura_aurora' THEN 'coroa_abissal'
-        WHEN 'armadura_deus_eclipse' THEN 'essencia_eclipse'
-      END
-    WHERE inv.jid=$1 AND inv.quantity>0 AND inv.item_id=ANY($2::text[])
-    ORDER BY COALESCE(st.stars,1) DESC,i.name
-  `,[jid,ids])
-  return rows.map(r=>{
-    const origin=RAID_GEAR_FORGE_ORIGINS[r.item_id]
-    const stars=Number(r.stars||1),needed=FORGE_STAR_MATERIALS[stars]||0
-    const copies=Number(r.quantity||0)
-    const free=Math.max(0,copies-Number(r.bound_quantity||0)-(r.equipped?1:0))
-    return {...r,origin,stars,needed,free,canForge:stars<5&&Number(r.level)===10&&copies>=2&&free>=1&&Number(r.materials)>=needed,
-      current:equipmentStatsAtLevel(r.item_id,Number(r.level||1),stars),
-      next:stars<5?equipmentStatsAtLevel(r.item_id,10,stars+1):null}
-  })
+await ensureUser(jid)
+const ids=Object.keys(RAID_GEAR_FORGE_ORIGINS)
+const {rows}=await db.query(`
+SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,
+(eq.weapon_id=inv.item_id OR eq.armor_id=inv.item_id) AS equipped,
+COALESCE(up.level,1)::int AS level,
+COALESCE(lv10.quantity,0)::int AS level10_copies,
+COALESCE(st.stars,1)::int AS stars,
+COALESCE(mat.quantity,0)::int AS materials,
+COALESCE(bound.qty,0)::int AS bound_quantity
+FROM inventories inv
+JOIN items i ON i.id=inv.item_id
+LEFT JOIN stats eq ON eq.jid=inv.jid
+LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
+LEFT JOIN equipment_star_forges st ON st.jid=inv.jid AND st.item_id=inv.item_id
+LEFT JOIN equipment_upgrade_copies lv10 ON lv10.jid=inv.jid AND lv10.item_id=inv.item_id AND lv10.level=10
+LEFT JOIN LATERAL (SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items
+WHERE jid=inv.jid AND item_id=inv.item_id) bound ON TRUE
+LEFT JOIN inventories mat ON mat.jid=inv.jid AND mat.item_id=
+CASE inv.item_id
+WHEN 'foice_carmesim' THEN 'escama_vulcanica'
+WHEN 'lanca_solar' THEN 'olho_abissal'
+WHEN 'garras_vazio' THEN 'nucleo_titan'
+WHEN 'espada_eclipse' THEN 'essencia_rei_abissal'
+WHEN 'excalibur' THEN 'fragmento_celestial'
+WHEN 'katana_divina' THEN 'nucleo_alpha_corrompido'
+WHEN 'lamina_caos' THEN 'fragmento_caos'
+WHEN 'machado_tita' THEN 'fragmento_caos'
+WHEN 'foice_abismo' THEN 'coroa_abissal'
+WHEN 'espada_aurora' THEN 'coroa_abissal'
+WHEN 'exterminadora_eclipse' THEN 'essencia_eclipse'
+WHEN 'manto_fenix' THEN 'escama_vulcanica'
+WHEN 'couraca_vulcanica' THEN 'olho_abissal'
+WHEN 'armadura_vazio' THEN 'nucleo_titan'
+WHEN 'armadura_eclipse' THEN 'essencia_rei_abissal'
+WHEN 'armadura_titan' THEN 'fragmento_celestial'
+WHEN 'armadura_divina' THEN 'nucleo_alpha_corrompido'
+WHEN 'couraca_caos' THEN 'fragmento_caos'
+WHEN 'armadura_tita_ancestral' THEN 'fragmento_caos'
+WHEN 'manto_abismo_eterno' THEN 'coroa_abissal'
+WHEN 'armadura_aurora' THEN 'coroa_abissal'
+WHEN 'armadura_deus_eclipse' THEN 'essencia_eclipse'
+END
+WHERE inv.jid=$1 AND inv.quantity>0 AND inv.item_id=ANY($2::text[])
+ORDER BY COALESCE(st.stars,1) DESC,i.name
+`,[jid,ids])
+return rows.map(r=>{
+const origin=RAID_GEAR_FORGE_ORIGINS[r.item_id]
+const stars=Number(r.stars||1),needed=FORGE_STAR_MATERIALS[stars]||0
+const copies=Number(r.quantity||0)
+const free=Math.max(0,copies-Number(r.bound_quantity||0)-(r.equipped?1:0))
+return {...r,origin,stars,needed,free,canForge:stars<5&&Number(r.level10_copies)>=2&&copies>=2&&free>=1&&Number(r.materials)>=needed,
+current:equipmentStatsAtLevel(r.item_id,Number(r.level||1),stars),
+next:stars<5?equipmentStatsAtLevel(r.item_id,10,stars+1):null}
+})
 }
-
 export async function forgeEquipmentStar(jid,itemId,expectedStars=null){
-  await ensureUser(jid)
-  const origin=RAID_GEAR_FORGE_ORIGINS[itemId]
-  if(!origin)throw new Error('Esse equipamento não é um drop de Raid elegível para Forja Estelar.')
-  return transaction(async client=>{
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`equipment-forge:${jid}`])
-    const item=(await client.query(`
-      SELECT inv.quantity,i.name,i.category,COALESCE(up.level,1)::int level
-      FROM inventories inv JOIN items i ON i.id=inv.item_id
-      LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
-      WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv
-    `,[jid,itemId])).rows[0]
-    if(!item||Number(item.quantity)<2)throw new Error('A forja exige duas cópias do mesmo equipamento; uma será preservada e a outra consumida.')
-    if(!['weapon','armor'].includes(item.category)||Number(item.level)!==10)throw new Error('As duas cópias precisam estar no Lv.10 (upgrade compartilhado por modelo).')
-    // Reserva 1 cópia física para a arma equipada E não consome prêmios vinculados.
-    const statsEquip=(await client.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const equipped=statsEquip?.weapon_id===itemId||statsEquip?.armor_id===itemId
-    const bound=(await client.query(
-      'SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
-      [jid,itemId])).rows[0]
-    if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)
-      throw new Error('Sem cópia extra livre: equipamentos equipados e vinculados são protegidos.')
-    const current=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
-    const stars=Number(current?.stars||1)
-    if(expectedStars!==null && stars!==Number(expectedStars))throw new Error('Essa forja já foi concluída ou as estrelas mudaram. Abra !forjar novamente.')
-    if(stars>=5)throw new Error('Essa arma já atingiu ★★★★★.')
-    const required=FORGE_STAR_MATERIALS[stars]
-    const material=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
-    if(Number(material?.quantity||0)<required)throw new Error(`São necessários ${required}× ${origin.materialName} (Raid ${origin.raidLevel}).`)
-    const copiesSpent=await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>=2 RETURNING quantity',[jid,itemId])
-    const materialsSpent=await client.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',[jid,origin.materialId,required])
-    if(!copiesSpent.rowCount||!materialsSpent.rowCount)throw new Error('Não foi possível reservar a cópia e os fragmentos; nada foi consumido.')
-    await client.query(`
-      INSERT INTO equipment_star_forges(jid,item_id,stars,updated_at) VALUES($1,$2,$3,${nowSql})
-      ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,updated_at=EXCLUDED.updated_at
-    `,[jid,itemId,stars+1])
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'forge',0,'equipment_star_forge',$2)
-    `,[jid,`${itemId} ★${stars}->★${stars+1}; -1 copy, -${required} ${origin.materialId}`])
-    return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,copies:copiesSpent.rows[0].quantity,
-      remainingMaterials:materialsSpent.rows[0].quantity,materialsSpent:required,origin,
-      before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,10,stars+1)}
-  })
+await ensureUser(jid)
+const origin=RAID_GEAR_FORGE_ORIGINS[itemId]
+if(!origin)throw new Error('Esse equipamento não é um drop de Raid elegível para Forja Estelar.')
+return transaction(async client=>{
+await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`equipment-forge:${jid}`])
+const item=(await client.query(`
+SELECT inv.quantity,i.name,i.category,COALESCE(up.level,1)::int level
+FROM inventories inv JOIN items i ON i.id=inv.item_id
+LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
+WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv
+`,[jid,itemId])).rows[0]
+if(!item||Number(item.quantity)<2)throw new Error('A forja exige duas cópias do mesmo equipamento; uma será preservada e a outra consumida.')
+if(!['weapon','armor'].includes(item.category)||Number(item.level)!==10)throw new Error('As duas cópias precisam estar no Lv.10 (upgrade compartilhado por modelo).')
+const statsEquip=(await client.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const equipped=statsEquip?.weapon_id===itemId||statsEquip?.armor_id===itemId
+const bound=(await client.query(
+'SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
+[jid,itemId])).rows[0]
+if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)
+throw new Error('Sem cópia extra livre: equipamentos equipados e vinculados são protegidos.')
+const current=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
+const stars=Number(current?.stars||1)
+const maxed=(await client.query('SELECT quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 FOR UPDATE',[jid,itemId])).rows[0]
+if(Number(maxed?.quantity||0)<2)throw new Error('Forja exige 2 cópias realmente aprimoradas no Lv.10. Use !uparitem na segunda cópia.')
+if(expectedStars!==null && stars!==Number(expectedStars))throw new Error('Essa forja já foi concluída ou as estrelas mudaram. Abra !forjar novamente.')
+if(stars>=5)throw new Error('Essa arma já atingiu ★★★★★.')
+const required=FORGE_STAR_MATERIALS[stars]
+const material=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
+if(Number(material?.quantity||0)<required)throw new Error(`São necessários ${required}× ${origin.materialName} (Raid ${origin.raidLevel}).`)
+const copiesSpent=await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>=2 RETURNING quantity',[jid,itemId])
+const materialsSpent=await client.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',[jid,origin.materialId,required])
+if(!copiesSpent.rowCount||!materialsSpent.rowCount)throw new Error('Não foi possível reservar a cópia e os fragmentos; nada foi consumido.')
+const consumed=await client.query('UPDATE equipment_upgrade_copies SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity>=2 RETURNING quantity',[jid,itemId])
+if(!consumed.rowCount)throw new Error('Segunda cópia Lv.10 não disponível; a forja foi cancelada.')
+await client.query(`
+INSERT INTO equipment_star_forges(jid,item_id,stars,updated_at) VALUES($1,$2,$3,${nowSql})
+ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,updated_at=EXCLUDED.updated_at
+`,[jid,itemId,stars+1])
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'forge',0,'equipment_star_forge',$2)
+`,[jid,`${itemId} ★${stars}->★${stars+1}; -1 copy, -${required} ${origin.materialId}`])
+return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,copies:copiesSpent.rows[0].quantity,
+remainingMaterials:materialsSpent.rows[0].quantity,materialsSpent:required,origin,
+before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,10,stars+1)}
+})
 }
-
-// Aliases retrocompatíveis para rotas e integrações anteriores.
 export const listStarForgeWeapons=listStarForgeEquipment
 export const forgeWeaponStar=forgeEquipmentStar
-
 export async function getEquipmentLevels(jid,itemIds=[]){
-  const ids=[...new Set((itemIds||[]).filter(Boolean))]
-  if(!ids.length) return {}
-  const {rows}=await db.query('SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])
-  const out={}
-  for(const id of ids) out[id]=1
-  for(const row of rows) out[row.item_id]=Number(row.level||1)
-  return out
+const ids=[...new Set((itemIds||[]).filter(Boolean))]
+if(!ids.length) return {}
+const {rows}=await db.query('SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])
+const out={}
+for(const id of ids) out[id]=1
+for(const row of rows) out[row.item_id]=Number(row.level||1)
+return out
 }
-
 export async function listUpgradeableEquipment(jid){
-  await ensureUser(jid)
-  const {rows}=await db.query(`
-    SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,i.price,
-           COALESCE(u.level,1)::int AS level, COALESCE(sf.stars,1)::int AS stars
-    FROM inventories inv
-    JOIN items i ON i.id=inv.item_id
-    LEFT JOIN equipment_upgrades u ON u.jid=inv.jid AND u.item_id=inv.item_id
-    LEFT JOIN equipment_star_forges sf ON sf.jid=inv.jid AND sf.item_id=inv.item_id
-    WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor','boots','helmet')
-    ORDER BY CASE i.category WHEN 'weapon' THEN 1 WHEN 'armor' THEN 2 WHEN 'helmet' THEN 3 ELSE 4 END,
-             CASE i.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
-             i.name
-  `,[jid])
-  return rows.map(r=>{
-    const level=Number(r.level||1)
-    const current=equipmentStatsAtLevel(r.item_id,level,Number(r.stars||1))
-    const next=level<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,level+1,Number(r.stars||1)):null
-    const costToLevel=target=>{
-      const t=Math.max(level+1,Math.min(EQUIPMENT_MAX_LEVEL,Number(target)||level+1))
-      let total=0
-      for(let lv=level;lv<t;lv++) total+=equipmentUpgradeCost(r.rarity,lv)
-      return total
-    }
-    const targetCosts={}
-    const targetStats={}
-    for(let t=level+1;t<=EQUIPMENT_MAX_LEVEL;t++){
-      targetCosts[t]=costToLevel(t)
-      targetStats[t]=equipmentStatsAtLevel(r.item_id,t,Number(r.stars||1))
-    }
-    return {
-      ...r,level,current,next,maxLevel:EQUIPMENT_MAX_LEVEL,
-      cost:next?equipmentUpgradeCost(r.rarity,level):0,
-      targetCosts,targetStats
-    }
-  })
+await ensureUser(jid)
+const {rows}=await db.query(`
+SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,i.price,
+COALESCE(u.level,1)::int AS level, COALESCE(sf.stars,1)::int AS stars
+FROM inventories inv
+JOIN items i ON i.id=inv.item_id
+LEFT JOIN equipment_upgrades u ON u.jid=inv.jid AND u.item_id=inv.item_id
+LEFT JOIN equipment_star_forges sf ON sf.jid=inv.jid AND sf.item_id=inv.item_id
+WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor','boots','helmet')
+ORDER BY CASE i.category WHEN 'weapon' THEN 1 WHEN 'armor' THEN 2 WHEN 'helmet' THEN 3 ELSE 4 END,
+CASE i.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
+i.name
+`,[jid])
+return rows.map(r=>{
+const level=Number(r.level||1)
+const current=equipmentStatsAtLevel(r.item_id,level,Number(r.stars||1))
+const next=level<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,level+1,Number(r.stars||1)):null
+const costToLevel=target=>{
+const t=Math.max(level+1,Math.min(EQUIPMENT_MAX_LEVEL,Number(target)||level+1))
+let total=0
+for(let lv=level;lv<t;lv++) total+=equipmentUpgradeCost(r.rarity,lv)
+return total
 }
-
-export async function upgradeEquipment(jid,itemId,targetLevel=null){
-  await ensureUser(jid)
-  const eq=EQUIPMENT[itemId]
-  if(!eq) throw new Error('Esse item não pode ser aprimorado.')
-  return transaction(async client=>{
-    const inv=await client.query(`
-      SELECT inv.quantity,i.rarity,i.name
-      FROM inventories inv JOIN items i ON i.id=inv.item_id
-      WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE
-    `,[jid,itemId])
-    if(!inv.rows[0]||Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse equipamento.')
-
-    const up=await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
-    const currentLevel=Number(up.rows[0]?.level||1)
-    if(currentLevel>=EQUIPMENT_MAX_LEVEL) throw new Error('Esse equipamento já está no Lv.10.')
-
-    const requested=targetLevel==null ? currentLevel+1 : Number(targetLevel)
-    if(!Number.isInteger(requested)) throw new Error('Nível alvo inválido.')
-    const nextLevel=Math.min(EQUIPMENT_MAX_LEVEL,requested)
-    if(nextLevel<=currentLevel) throw new Error(`Escolha um nível entre ${currentLevel+1} e ${EQUIPMENT_MAX_LEVEL}.`)
-
-    let cost=0
-    for(let lv=currentLevel;lv<nextLevel;lv++){
-      cost+=equipmentUpgradeCost(inv.rows[0].rarity,lv)
-    }
-
-    const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    if(Number(wallet.rows[0]?.cash||0)<cost){
-      throw new Error(`Saldo insuficiente. Upgrade Lv.${currentLevel} → Lv.${nextLevel} custa R$ ${cost.toLocaleString('pt-BR')}.`)
-    }
-
-    await client.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
-    await client.query(`
-      INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
-      VALUES($1,$2,$3,${nowSql})
-      ON CONFLICT(jid,item_id) DO UPDATE SET level=EXCLUDED.level,updated_at=EXCLUDED.updated_at
-    `,[jid,itemId,nextLevel])
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'upgrade',$2,'equipment_upgrade',$3)
-    `,[jid,cost,`${itemId} Lv.${currentLevel}->Lv.${nextLevel}`])
-
-    const cash=(await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]?.cash||0
-    return {
-      itemId,name:inv.rows[0].name,rarity:inv.rows[0].rarity,
-      fromLevel:currentLevel,level:nextLevel,levelsGained:nextLevel-currentLevel,
-      cost,cash:Number(cash),
-      before:equipmentStatsAtLevel(itemId,currentLevel),
-      stats:equipmentStatsAtLevel(itemId,nextLevel)
-    }
-  })
+const targetCosts={}
+const targetStats={}
+for(let t=level+1;t<=EQUIPMENT_MAX_LEVEL;t++){
+targetCosts[t]=costToLevel(t)
+targetStats[t]=equipmentStatsAtLevel(r.item_id,t,Number(r.stars||1))
 }
-
+return {
+...r,level,current,next,maxLevel:EQUIPMENT_MAX_LEVEL,
+cost:next?equipmentUpgradeCost(r.rarity,level):0,
+targetCosts,targetStats
+}
+})
+}
+export async function listUpgradeableCopies(jid){
+const models=await listUpgradeableEquipment(jid)
+if(!models.length)return []
+const {rows}=await db.query('SELECT item_id,level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,models.map(m=>m.item_id)])
+return models.flatMap(m=>{
+const upgraded=rows.filter(r=>r.item_id===m.item_id)
+const basic=Math.max(0,Number(m.quantity)-upgraded.reduce((n,r)=>n+Number(r.quantity),0))
+const tiers=[...(basic?[{level:1,quantity:basic}]:[]),...upgraded]
+return tiers.filter(t=>Number(t.quantity)>0).sort((a,b)=>Number(a.level)-Number(b.level)).map(t=>{
+const level=Number(t.level),targetCosts={},targetStats={}
+for(let target=level+1;target<=10;target++){
+let cost=0
+for(let lv=level;lv<target;lv++)cost+=equipmentUpgradeCost(m.rarity,lv)
+targetCosts[target]=cost
+targetStats[target]=equipmentStatsAtLevel(m.item_id,target,Number(m.stars||1))
+}
+return {...m,level,sourceLevel:level,tierQuantity:Number(t.quantity),
+current:equipmentStatsAtLevel(m.item_id,level,Number(m.stars||1)),
+next:level<10?equipmentStatsAtLevel(m.item_id,level+1,Number(m.stars||1)):null,
+cost:level<10?equipmentUpgradeCost(m.rarity,level):0,targetCosts,targetStats}
+})
+})
+}
+export async function upgradeEquipment(jid,itemId,targetLevel=null,sourceLevel=null){
+await ensureUser(jid)
+if(!EQUIPMENT[itemId])throw new Error('Esse item não pode ser aprimorado.')
+return transaction(async client=>{
+const inv=await client.query(`
+SELECT inv.quantity,i.rarity,i.name FROM inventories inv JOIN items i ON i.id=inv.item_id
+WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv
+`,[jid,itemId])
+const owned=Number(inv.rows[0]?.quantity||0)
+if(owned<1)throw new Error('Você não possui esse equipamento.')
+const tiers=(await client.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 ORDER BY level FOR UPDATE',[jid,itemId])).rows
+const basic=owned-tiers.reduce((n,r)=>n+Number(r.quantity||0),0)
+if(basic<0)throw new Error('Inconsistência nas cópias; nenhum valor foi debitado.')
+const available=[...(basic?[{level:1,quantity:basic}]:[]),...tiers].filter(t=>Number(t.quantity)>0&&Number(t.level)<10)
+const current=sourceLevel==null?Number(available[0]?.level||10):Number(sourceLevel)
+if(!Number.isInteger(current)||current<1||current>9||!available.some(t=>Number(t.level)===current))
+throw new Error('Cópia de origem indisponível. Abra !uparitem novamente.')
+const requested=targetLevel==null?current+1:Number(targetLevel)
+if(!Number.isInteger(requested)||requested>10||requested<=current)
+throw new Error(`Nível destino inválido (escolha ${current+1} a 10).`)
+let cost=0
+for(let lv=current;lv<requested;lv++)cost+=equipmentUpgradeCost(inv.rows[0].rarity,lv)
+const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+if(Number(wallet.rows[0]?.cash||0)<cost)throw new Error(`Saldo insuficiente: R$ ${cost.toLocaleString('pt-BR')}.`)
+if(current>1){
+const moved=await client.query('UPDATE equipment_upgrade_copies SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity>0 RETURNING quantity',[jid,itemId,current])
+if(!moved.rowCount)throw new Error('Cópia já movimentada.')
+await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity=0',[jid,itemId,current])
+}
+await client.query(`
+INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity) VALUES($1,$2,$3,1)
+ON CONFLICT(jid,item_id,level) DO UPDATE SET quantity=equipment_upgrade_copies.quantity+1
+`,[jid,itemId,requested])
+await client.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
+await client.query(`
+INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
+VALUES($1,$2,$3,${nowSql}) ON CONFLICT(jid,item_id) DO UPDATE SET
+level=GREATEST(equipment_upgrades.level,EXCLUDED.level),updated_at=${nowSql}
+`,[jid,itemId,requested])
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'upgrade',$2,'equipment_upgrade',$3)
+`,[jid,cost,`${itemId} 1 cópia Lv.${current}->Lv.${requested}`])
+const cash=(await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]?.cash||0
+const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
+return {itemId,name:inv.rows[0].name,rarity:inv.rows[0].rarity,
+fromLevel:current,level:requested,levelsGained:requested-current,cost,cash:Number(cash),
+before:equipmentStatsAtLevel(itemId,current,Number(star?.stars||1)),
+stats:equipmentStatsAtLevel(itemId,requested,Number(star?.stars||1))}
+})
+}
 export async function equipItem(jid, itemId) {
-  const eq=EQUIPMENT[itemId]
-  if(!eq) throw new Error('Esse item não pode ser equipado.')
-
-  return transaction(async client=>{
-    const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
-    if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
-
-    const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : eq.category==='helmet' ? 'helmet_id' : 'boot_id'
-    await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
-
-    // Trocar equipamento com bônus de HP nunca pode deixar HP bruto acima do novo máximo efetivo.
-    if(field==='weapon_id'||field==='armor_id'||field==='helmet_id'){
-      const st=(await client.query('SELECT hp,max_hp,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-      const ids=[st?.weapon_id,st?.armor_id,st?.helmet_id].filter(Boolean)
-      const ups=ids.length?(await client.query(
-        'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
-        [jid,ids]
-      )).rows:[]
-      const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
-      const starLv=await getEquipmentStarLevels(jid,[st?.weapon_id,st?.armor_id],client)
-      const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id),starLv[st.weapon_id]||1):{hp:0}
-      const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id),starLv[st.armor_id]||1):{hp:0}
-      const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,lvl(st.helmet_id)):{hp:0}
-      const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
-      if(Number(st?.hp||0)>effectiveMax){
-        await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[effectiveMax,jid])
-      }
-    }
-    return {...eq,itemId}
-  })
+const eq=EQUIPMENT[itemId]
+if(!eq) throw new Error('Esse item não pode ser equipado.')
+return transaction(async client=>{
+const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
+const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : eq.category==='helmet' ? 'helmet_id' : 'boot_id'
+await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
+if(field==='weapon_id'||field==='armor_id'||field==='helmet_id'){
+const st=(await client.query('SELECT hp,max_hp,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const ids=[st?.weapon_id,st?.armor_id,st?.helmet_id].filter(Boolean)
+const ups=ids.length?(await client.query(
+'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
+[jid,ids]
+)).rows:[]
+const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
+const starLv=await getEquipmentStarLevels(jid,[st?.weapon_id,st?.armor_id],client)
+const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id),starLv[st.weapon_id]||1):{hp:0}
+const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id),starLv[st.armor_id]||1):{hp:0}
+const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,lvl(st.helmet_id)):{hp:0}
+const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
+if(Number(st?.hp||0)>effectiveMax){
+await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[effectiveMax,jid])
 }
-
+}
+return {...eq,itemId}
+})
+}
 export async function usePetPotion(jid,itemId=null,petId=null){
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const ids=Object.keys(PET_POTIONS)
-    const rows=(await client.query(
-      'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
-      [jid,ids]
-    )).rows
-    if(itemId && !PET_POTIONS[itemId]) throw new Error('Esse item não recupera HP do pet.')
-    if(itemId && !rows.some(r=>r.item_id===itemId)) throw new Error('Você não possui essa poção de pet.')
-    if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura de pet.')
-
-    let pet=null
-    let collectionId=null
-    let isActive=true
-
-    if(petId!=null){
-      const id=Number(petId)
-      if(!Number.isInteger(id)||id<=0) throw new Error('Pet inválido.')
-      const collection=(await client.query(
-        'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',
-        [jid,id]
-      )).rows[0]
-      if(!collection) throw new Error('Pet não encontrado na sua coleção.')
-      collectionId=Number(collection.id)
-      isActive=Boolean(collection.active)
-      if(isActive){
-        pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||collection
-      }else{
-        pet=collection
-      }
-    }else{
-      pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-      if(pet){
-        const active=(await client.query(
-          'SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',
-          [jid]
-        )).rows[0]
-        collectionId=active?Number(active.id):null
-      }
-    }
-
-    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-
-    const maxHp=petMaxHp(pet.level,pet.xp,pet.species)
-    const before=Math.max(0,Number(pet.hp??maxHp))
-    if(before>=maxHp) throw new Error(`O HP de ${pet.name} já está cheio (${maxHp}/${maxHp}).`)
-
-    const missing=maxHp-before
-    const available=rows
-      .map(r=>({...r,...PET_POTIONS[r.item_id]}))
-      .sort((a,b)=>a.heal-b.heal)
-    const chosen=itemId
-      ? available.find(x=>x.item_id===itemId)
-      : (available.find(x=>x.heal>=missing) || available[available.length-1])
-
-    const potion=PET_POTIONS[chosen.item_id]
-    const hp=Math.min(maxHp,before+potion.heal)
-    const healed=hp-before
-
-    await client.query(
-      'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
-      [jid,chosen.item_id]
-    )
-
-    if(collectionId){
-      await client.query(
-        'UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND id=$4',
-        [hp,maxHp,jid,collectionId]
-      )
-    }else if(isActive){
-      await client.query(
-        'UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',
-        [hp,maxHp,jid]
-      )
-    }
-
-    if(isActive){
-      await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[hp,maxHp,jid])
-    }
-
-    return {
-      petId:collectionId,itemId:chosen.item_id,name:potion.name,petName:pet.name,
-      before,hp,maxHp,healed,remaining:Number(chosen.quantity)-1
-    }
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const ids=Object.keys(PET_POTIONS)
+const rows=(await client.query(
+'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
+[jid,ids]
+)).rows
+if(itemId && !PET_POTIONS[itemId]) throw new Error('Esse item não recupera HP do pet.')
+if(itemId && !rows.some(r=>r.item_id===itemId)) throw new Error('Você não possui essa poção de pet.')
+if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura de pet.')
+let pet=null
+let collectionId=null
+let isActive=true
+if(petId!=null){
+const id=Number(petId)
+if(!Number.isInteger(id)||id<=0) throw new Error('Pet inválido.')
+const collection=(await client.query(
+'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',
+[jid,id]
+)).rows[0]
+if(!collection) throw new Error('Pet não encontrado na sua coleção.')
+collectionId=Number(collection.id)
+isActive=Boolean(collection.active)
+if(isActive){
+pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||collection
+}else{
+pet=collection
 }
-
+}else{
+pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(pet){
+const active=(await client.query(
+'SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',
+[jid]
+)).rows[0]
+collectionId=active?Number(active.id):null
+}
+}
+if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
+const maxHp=petMaxHp(pet.level,pet.xp,pet.species)
+const before=Math.max(0,Number(pet.hp??maxHp))
+if(before>=maxHp) throw new Error(`O HP de ${pet.name} já está cheio (${maxHp}/${maxHp}).`)
+const missing=maxHp-before
+const available=rows
+.map(r=>({...r,...PET_POTIONS[r.item_id]}))
+.sort((a,b)=>a.heal-b.heal)
+const chosen=itemId
+? available.find(x=>x.item_id===itemId)
+: (available.find(x=>x.heal>=missing) || available[available.length-1])
+const potion=PET_POTIONS[chosen.item_id]
+const hp=Math.min(maxHp,before+potion.heal)
+const healed=hp-before
+await client.query(
+'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
+[jid,chosen.item_id]
+)
+if(collectionId){
+await client.query(
+'UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND id=$4',
+[hp,maxHp,jid,collectionId]
+)
+}else if(isActive){
+await client.query(
+'UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',
+[hp,maxHp,jid]
+)
+}
+if(isActive){
+await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[hp,maxHp,jid])
+}
+return {
+petId:collectionId,itemId:chosen.item_id,name:potion.name,petName:pet.name,
+before,hp,maxHp,healed,remaining:Number(chosen.quantity)-1
+}
+})
+}
 export async function usePetEnergyItem(jid,itemId='energetico_pet'){
-  if(itemId!=='energetico_pet') throw new Error('Esse item não recupera energia do pet.')
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const inv=(await client.query(
-      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-      [jid,itemId]
-    )).rows[0]
-    if(!inv || Number(inv.quantity)<1) throw new Error('Você não possui Energético Pet.')
-
-    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-    const max=petMaxEnergy(pet.level,pet.species)
-    const before=Number(pet.energy||0)
-    if(before>=max) throw new Error(`A energia de ${pet.name} já está cheia (${max}/${max}).`)
-
-    await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
-    await client.query('UPDATE pets SET energy=$1 WHERE jid=$2',[max,jid])
-    await client.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[max,jid])
-    return {name:'Energético Pet',petName:pet.name,before,energy:max,max,recovered:max-before,remaining:Number(inv.quantity)-1}
-  })
+if(itemId!=='energetico_pet') throw new Error('Esse item não recupera energia do pet.')
+await ensureUser(jid)
+return transaction(async client=>{
+const inv=(await client.query(
+'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+[jid,itemId]
+)).rows[0]
+if(!inv || Number(inv.quantity)<1) throw new Error('Você não possui Energético Pet.')
+const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
+const max=petMaxEnergy(pet.level,pet.species)
+const before=Number(pet.energy||0)
+if(before>=max) throw new Error(`A energia de ${pet.name} já está cheia (${max}/${max}).`)
+await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
+await client.query('UPDATE pets SET energy=$1 WHERE jid=$2',[max,jid])
+await client.query('UPDATE pet_collection SET energy=$1 WHERE jid=$2 AND active=TRUE',[max,jid])
+return {name:'Energético Pet',petName:pet.name,before,energy:max,max,recovered:max-before,remaining:Number(inv.quantity)-1}
+})
 }
-
 export async function usePotion(jid,itemId=null){
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const ids=Object.keys(POTIONS)
-    const rows=(await client.query(
-      'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
-      [jid,ids]
-    )).rows
-
-    if(itemId && !POTIONS[itemId]) throw new Error('Esse item não é uma poção utilizável.')
-    if(itemId && !rows.some(r=>r.item_id===itemId)) throw new Error('Você não possui essa poção.')
-    if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura.')
-
-    const st=await client.query(
-      'SELECT hp,max_hp,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
-      [jid]
-    )
-    const row=st.rows[0]||{}
-    const idsEq=[row.weapon_id,row.armor_id,row.helmet_id].filter(Boolean)
-    const levels=idsEq.length?(await client.query(
-      'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
-      [jid,idsEq]
-    )).rows:[]
-    const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
-    const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id],client)
-    const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{hp:0}
-    const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{hp:0}
-    const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{hp:0}
-
-    const hp=Number(row.hp||0)
-    // O teto de cura inclui todos os bônus de HP equipados, inclusive o elmo.
-    const maxHp=Math.max(1,Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
-    if(hp>=maxHp) throw new Error('Seu HP já está cheio.')
-
-    const missing=maxHp-hp
-    const available=rows
-      .map(r=>({...r,...POTIONS[r.item_id]}))
-      .sort((a,b)=>a.heal-b.heal)
-
-    const chosen=itemId
-      ? available.find(x=>x.item_id===itemId)
-      : (available.find(x=>x.heal>=missing) || available[available.length-1])
-
-    const potion=POTIONS[chosen.item_id]
-    const newHp=Math.min(maxHp,hp+potion.heal)
-    const healed=newHp-hp
-
-    await client.query(
-      'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
-      [jid,chosen.item_id]
-    )
-    await client.query(
-      'UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',
-      [newHp,jid]
-    )
-
-    return {
-      itemId:chosen.item_id,
-      name:potion.name,
-      before:hp,
-      healed,
-      hp:newHp,
-      maxHp,
-      remaining:Number(chosen.quantity)-1
-    }
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const ids=Object.keys(POTIONS)
+const rows=(await client.query(
+'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
+[jid,ids]
+)).rows
+if(itemId && !POTIONS[itemId]) throw new Error('Esse item não é uma poção utilizável.')
+if(itemId && !rows.some(r=>r.item_id===itemId)) throw new Error('Você não possui essa poção.')
+if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura.')
+const st=await client.query(
+'SELECT hp,max_hp,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
+[jid]
+)
+const row=st.rows[0]||{}
+const idsEq=[row.weapon_id,row.armor_id,row.helmet_id].filter(Boolean)
+const levels=idsEq.length?(await client.query(
+'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
+[jid,idsEq]
+)).rows:[]
+const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
+const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id],client)
+const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{hp:0}
+const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{hp:0}
+const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{hp:0}
+const hp=Number(row.hp||0)
+const maxHp=Math.max(1,Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
+if(hp>=maxHp) throw new Error('Seu HP já está cheio.')
+const missing=maxHp-hp
+const available=rows
+.map(r=>({...r,...POTIONS[r.item_id]}))
+.sort((a,b)=>a.heal-b.heal)
+const chosen=itemId
+? available.find(x=>x.item_id===itemId)
+: (available.find(x=>x.heal>=missing) || available[available.length-1])
+const potion=POTIONS[chosen.item_id]
+const newHp=Math.min(maxHp,hp+potion.heal)
+const healed=newHp-hp
+await client.query(
+'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
+[jid,chosen.item_id]
+)
+await client.query(
+'UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',
+[newHp,jid]
+)
+return {
+itemId:chosen.item_id,
+name:potion.name,
+before:hp,
+healed,
+hp:newHp,
+maxHp,
+remaining:Number(chosen.quantity)-1
 }
-
+})
+}
 export async function getCombatProfile(jid) {
-  const p=await getProfile(jid)
-  if(!p) return null
-  const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
-  const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id])
-  const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
-  const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1,stars[p.armor_id]||1):null
-  const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
-  const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
-  const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
-  const enchantRows=(await db.query(`
-    SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])
-    UNION ALL
-    SELECT 'selo_poder_5pct_alpha_20261019'::text AS stone_id,1::integer AS quantity
-      FROM inventories WHERE jid=$1 AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
-  `,[jid,enchantedIds])).rows
-  const enchantMap={
-    pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
-    pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
-    pedra_precisao_alpha:['crit',.01],
-    selo_poder_5pct_alpha_20261019:['attackPct',.05]
-  }
-  const ench={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
-  for(const row of enchantRows){
-    const data=enchantMap[row.stone_id]
-    if(data)ench[data[0]]+=data[1]*Math.min(3,Math.max(0,Number(row.quantity)||0))
-  }
-  const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
-  const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
-  const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
-  const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
-  const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao'])
-  const classScrolls=Number(scrollR.rows[0]?.quantity||0)
-  const classChangeRemaining=0
-  const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0))
-  const effectiveHp=Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
-  // Corrige HP legado acima do teto real, sem reduzir bônus válidos dos equipamentos.
-  if(Number(p.hp||0)>effectiveMaxHp){
-    await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,effectiveMaxHp])
-  }
-  return {
-    ...p,
-    base_atk:Number(p.atk),
-    base_def:Number(p.def),
-    base_max_hp:Number(p.max_hp),
-    weapon_atk:Number(w.atk||0)+ench.atk,
-    armor_def:Number(a.def||0)+ench.def,
-    equipment_atk:Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk,
-    equipment_def:Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
-    equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
-    equipment_spd:Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
-    effective_spd:Number(p.spd)+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
-    equipment_crit:Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit,
-    base_crit:0.10,
-    effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
-    effective_max_hp:effectiveMaxHp,
-    effective_hp:effectiveHp,
-    effective_atk:Math.round((Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
-    attack_pct_bonus:ench.attackPct,
-    effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
-    enchant_damage:Number(ench.damage||0),
-    enchant_breakdown:ench,
-    weapon_name:w.name,
-    weapon_stars:Number(w.stars||1),
-    armor_stars:Number(a.stars||1),
-    armor_name:a.name,
-    boot_name:b.name,
-    helmet_name:h.name,
-    class_id:String(p.class_id||'warrior'),
-    class_applied:Boolean(p.class_applied),
-    class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
-    class_passive:getClassPassive(p.class_id,p.class_applied),
-    class_scrolls:classScrolls,
-    class_change_remaining:classChangeRemaining,
-    class_change_days:classChangeRemaining>0?Math.ceil(classChangeRemaining/86400):0,
-    weapon_level:Number(w.level||1),
-    armor_level:Number(a.level||1),
-    boot_level:Number(b.level||1),
-  }
+const p=await getProfile(jid)
+if(!p) return null
+const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
+const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id])
+const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
+const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1,stars[p.armor_id]||1):null
+const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
+const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
+const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
+const enchantRows=(await db.query(`
+SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])
+UNION ALL
+SELECT 'selo_poder_5pct_alpha_20261019'::text AS stone_id,1::integer AS quantity
+FROM inventories WHERE jid=$1 AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
+`,[jid,enchantedIds])).rows
+const enchantMap={
+pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
+pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
+pedra_precisao_alpha:['crit',.01],
+selo_poder_5pct_alpha_20261019:['attackPct',.05]
 }
-
+const ench={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
+for(const row of enchantRows){
+const data=enchantMap[row.stone_id]
+if(data)ench[data[0]]+=data[1]*Math.min(3,Math.max(0,Number(row.quantity)||0))
+}
+const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
+const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
+const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
+const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
+const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao'])
+const classScrolls=Number(scrollR.rows[0]?.quantity||0)
+const classChangeRemaining=0
+const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0))
+const effectiveHp=Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
+if(Number(p.hp||0)>effectiveMaxHp){
+await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,effectiveMaxHp])
+}
+return {
+...p,
+base_atk:Number(p.atk),
+base_def:Number(p.def),
+base_max_hp:Number(p.max_hp),
+weapon_atk:Number(w.atk||0)+ench.atk,
+armor_def:Number(a.def||0)+ench.def,
+equipment_atk:Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk,
+equipment_def:Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
+equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
+equipment_spd:Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
+effective_spd:Number(p.spd)+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
+equipment_crit:Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit,
+base_crit:0.10,
+effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
+effective_max_hp:effectiveMaxHp,
+effective_hp:effectiveHp,
+effective_atk:Math.round((Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
+attack_pct_bonus:ench.attackPct,
+effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
+enchant_damage:Number(ench.damage||0),
+enchant_breakdown:ench,
+weapon_name:w.name,
+weapon_stars:Number(w.stars||1),
+armor_stars:Number(a.stars||1),
+armor_name:a.name,
+boot_name:b.name,
+helmet_name:h.name,
+class_id:String(p.class_id||'warrior'),
+class_applied:Boolean(p.class_applied),
+class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
+class_passive:getClassPassive(p.class_id,p.class_applied),
+class_scrolls:classScrolls,
+class_change_remaining:classChangeRemaining,
+class_change_days:classChangeRemaining>0?Math.ceil(classChangeRemaining/86400):0,
+weapon_level:Number(w.level||1),
+armor_level:Number(a.level||1),
+boot_level:Number(b.level||1),
+}
+}
 export async function battle(attackerJid, defenderJid) {
-  if(attackerJid===defenderJid) throw new Error('Você não pode batalhar contra si mesmo.')
-  await ensureUser(defenderJid)
-
-  // Um deadlock SQLSTATE 40P01 aborta toda a transação. Reexecutar a
-  // transação inteira é seguro: cooldown, XP, saldo e vitórias são atômicos.
-  // Não reexecutar erros de regras de jogo nem qualquer outro SQLSTATE.
-  for(let attempt=1;attempt<=3;attempt++){
-    try{
-      return await transaction(async client=>{
-    const now=Math.floor(Date.now()/1000)
-    const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[defenderJid,now])
-    if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser atacada agora.')
-    const carpindo=await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[defenderJid,now])
-    if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode ser atacada agora.')
-    const ids=[attackerJid,defenderJid].sort()
-    // Mesma ordem: users -> stats (como applyExp / Despertar).
-    // Lock por usuário, individualmente, impede inversão entre dois PvPs
-    // simultâneos com jogadores cruzados em ambos os lados.
-    const usersR={rows:[]},statsR={rows:[]}
-    for(const id of ids){
-      const result=await client.query(
-        'SELECT jid,push_name,level,exp FROM users WHERE jid=$1 FOR UPDATE',[id]
-      )
-      usersR.rows.push(...result.rows)
-    }
-    for(const id of ids){
-      const result=await client.query('SELECT * FROM stats WHERE jid=$1 FOR UPDATE',[id])
-      statsR.rows.push(...result.rows)
-    }
-    const petsR=await client.query(
-      'SELECT jid,name,species,level,hp,energy FROM pets WHERE jid=ANY($1::text[])',
-      [ids]
-    )
-    const petTeamR=await client.query(
-      `SELECT t.jid,t.slot,p.species,p.level,p.hp,p.energy
-       FROM pet_team t
-       JOIN pet_collection p ON p.id=t.pet_id
-       WHERE t.jid=ANY($1::text[]) AND t.slot IN (1,2,3)
-       ORDER BY t.jid,t.slot`,
-      [ids]
-    )
-
-    const statFor=jid=>statsR.rows.find(r=>r.jid===jid)
-    const userFor=jid=>usersR.rows.find(r=>r.jid===jid)
-    const petFor=jid=>petsR.rows.find(r=>r.jid===jid)
-    const teamFor=jid=>petTeamR.rows.filter(r=>r.jid===jid)
-    const synergySpeedFor=jid=>{
-      const team=teamFor(jid)
-      const synergy=petTeamSynergy(team)
-      return Number(synergy?.speed||0)
-    }
-    const a=statFor(attackerJid)
-    const b=statFor(defenderJid)
-    const au=userFor(attackerJid)
-    const bu=userFor(defenderJid)
-    if(Number(bu?.level||1)<=20){
-      throw new Error(`🛡️ PROTEÇÃO DE INICIANTE\n\n${bu?.push_name||'Esse jogador'} está no *Lv.${Number(bu?.level||1)}* e não pode ser atacado até completar o *Lv.20*.\n⚔️ O PvP contra ele é liberado a partir do *Lv.21*.`)
-    }
-    const ap=petFor(attackerJid)
-    const bp=petFor(defenderJid)
-    const aPetBonus=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petPvpSpecialty(ap.species,ap.level):null
-    const bPetBonus=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petPvpSpecialty(bp.species,bp.level):null
-    const apSpd=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petSpeedBonus(ap.species,ap.level):0
-    const bpSpd=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petSpeedBonus(bp.species,bp.level):0
-    const aSynergy=petTeamSynergy(teamFor(attackerJid))||{}
-    const bSynergy=petTeamSynergy(teamFor(defenderJid))||{}
-    const aSynergySpd=Number(aSynergy.speed||0)
-    const bSynergySpd=Number(bSynergy.speed||0)
-    if(!a || !b) throw new Error('Não foi possível carregar os jogadores.')
-    if(Number(a.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes de batalhar.')
-    if(Number(b.hp)<=0) throw new Error('O adversário está sem HP.')
-    const cd=await claimCooldown(client,`battle:${attackerJid}`,10*60)
-    if(!cd.ok) return {ok:false,remaining:cd.remaining}
-
-    const levelRows=(await client.query(
-      'SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[])',
-      [[attackerJid,defenderJid]]
-    )).rows
-    const enchantRows=(await client.query(`
-      SELECT jid,item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=ANY($1::text[])
-      UNION ALL
-      SELECT jid,NULL::text,'selo_poder_5pct_alpha_20261019'::text,1::integer
-        FROM inventories WHERE jid=ANY($1::text[]) AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
-    `,[[attackerJid,defenderJid]])).rows
-    const eqEnch=(jid,ids)=>{
-      const stats={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
-      const map={pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
-        pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
-        pedra_precisao_alpha:['crit',.01],selo_poder_5pct_alpha_20261019:['attackPct',.05]}
-      for(const e of enchantRows){
-        const st=map[e.stone_id]
-        if(e.jid===jid&&st&&(st[0]==='attackPct'||ids.includes(e.item_id)))stats[st[0]]+=st[1]*Math.min(3,Number(e.quantity)||0)
-      }
-      return stats
-    }
-    const aEn=eqEnch(attackerJid,[a.weapon_id,a.armor_id,a.boot_id,a.helmet_id])
-    const bEn=eqEnch(defenderJid,[b.weapon_id,b.armor_id,b.boot_id,b.helmet_id])
-    const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
-    const starRows=(await client.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[[attackerJid,defenderJid]])).rows
-    const starLevel=(jid,itemId)=>Number(starRows.find(r=>r.jid===jid&&r.item_id===itemId)?.stars||1)
-    const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id),starLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id),starLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const aeH=a.helmet_id?equipmentStatsAtLevel(a.helmet_id,eqLevel(attackerJid,a.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id),starLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id),starLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-
-    const A={
-      jid:attackerJid,name:au?.push_name||'Jogador',
-      hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
-      atk:Math.round((Number(a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
-      def:Number(a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
-      classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
-      crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
-      spd:Number(a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
-      enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
-      petSpeed:apSpd,teamSpeed:aSynergySpd,
-      petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
-    }
-    const B={
-      jid:defenderJid,name:bu?.push_name||'Jogador',
-      hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
-      atk:Math.round((Number(b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
-      def:Number(b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
-      classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
-      crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
-      spd:Number(b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
-      enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
-      petSpeed:bpSpd,teamSpeed:bSynergySpd,
-      petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
-    }
-
-    // Foto fiel do HP e dos bônus antes de qualquer golpe (independe do resumo exibido).
-    const snapshot=fighter=>{
-      const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
-      const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
-      return {
-        jid:fighter.jid,name:fighter.name,hp:fighter.hp,maxHp:fighter.maxHp,
-        atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
-        petName:fighter.petName||null,petSpecies:fighter.petSpecies||null,
-        petPvpBonus:fighter.petBonus?{
-          damage:Number(fighter.petBonus.damage||0),
-          defense:Number(fighter.petBonus.defense||0),
-          crit:Math.max(0,critWithPet-critNoPet),
-          dodge:Number(fighter.petBonus.dodge||0),
-          healPct:Number(fighter.petBonus.healPct||0),
-          healCooldown:Number(fighter.petBonus.healCooldown||0),
-          speed:Number(fighter.petSpeed||0)
-        }:null,
-        teamSpeed:Number(fighter.teamSpeed||0)
-      }
-    }
-    const opening={attacker:snapshot(A),defender:snapshot(B)}
-    const log=[]
-    let first=A.spd>=B.spd?A:B
-    let second=first===A?B:A
-
-    const hit=(from,to)=>{
-      from.attackIndex++
-      const variance=0.85+Math.random()*0.30
-      const critRoll=Math.random()
-      const critWithoutPet=Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0))
-      const crit=critRoll<Math.min(.40,critWithoutPet+Number(from.petBonus?.crit||0))
-      const petCrit=crit&&critRoll>=critWithoutPet
-      const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
-      const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
-      const damageWithoutPet=1+Number(from.enchantDamage||0)+Number(from.collabDamage||0)
-      const adjusted=Math.max(1,Math.round(raw*(damageWithoutPet+Number(from.petBonus?.damage||0))))
-      const adjustedNoPet=Math.max(1,Math.round(raw*damageWithoutPet))
-      // Mesmos sorteios e estado da classe nos dois cenários:
-      // comparar com e sem bônus de dano do pet sem alterar o resultado do combate.
-      const classRoll=Math.random()
-      const oldLastProcAttack=from.lastProcAttack
-      const attackArgs={classId:from.classId,applied:from.classApplied,critical:crit,
-        hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
-        lastProcAttack:oldLastProcAttack,roll:classRoll}
-      const attack=classAttack({...attackArgs,damage:crit?Math.round(adjusted*1.6):adjusted})
-      const noPetAttack=Number(from.petBonus?.damage||0)>0
-        ?classAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet})
-        :attack
-      from.lastProcAttack=attack.lastProcAttack
-      const defenseRoll=Math.random()
-      const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage,roll:defenseRoll}).damage
-      const withoutPetClassDamage=noPetAttack===attack?classDamage:
-        classDefense({classId:to.classId,applied:to.classApplied,damage:noPetAttack.damage,roll:defenseRoll}).damage
-      const petDefense=Number(to.petBonus?.defense||0)
-      const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-petDefense)))
-      const noPetDmg=dodged?0:Math.max(1,Math.round(withoutPetClassDamage*(1-petDefense)))
-      const targetHpBefore=to.hp
-      const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
-      const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
-      to.hp=Math.max(0,to.hp-dmg)
-      const classHealBefore=from.hp
-      if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
-      const classHealed=Math.max(0,from.hp-classHealBefore)
-      log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
-        actualDamage:targetHpBefore-to.hp,crit:!dodged&&crit,dodged,hp:to.hp,
-        petExtraDamage,petDamageBlocked,petCrit:!dodged&&petCrit,petDodge:dodged})
-      if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
-      // Cura do pet principal: após seu próprio ataque, até 3 vezes por duelo.
-      const cooldown=Number(from.petBonus?.healCooldown||0)
-      if(from.hp>0&&cooldown>0&&from.petHealUses<3&&Number(from.petBonus?.healPct||0)>0&&
-         from.attackIndex%cooldown===0&&from.hp/from.maxHp<.70){
-        const before=from.hp
-        from.hp=Math.min(from.maxHp,from.hp+Math.max(1,Math.round(from.maxHp*Number(from.petBonus.healPct))))
-        if(from.hp>before){
-          from.petHealUses++
-          log.push({round:from.attackIndex,petHeal:true,from:from.name,fromJid:from.jid,to:from.name,toJid:from.jid,petSpecies:from.petSpecies,heal:from.hp-before,hp:from.hp})
-        }
-      }
-    }
-
-    for(let round=1;round<=20 && A.hp>0 && B.hp>0;round++){
-      hit(first,second)
-      if(second.hp<=0) break
-      hit(second,first)
-    }
-
-    const roundCount=Math.max(A.attackIndex,B.attackIndex)
-    const decidedByLimit=A.hp>0&&B.hp>0
-    const ending={attackerHp:A.hp,defenderHp:B.hp}
-    let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
-    let loser=winner===A?B:A
-    if(A.hp>0 && B.hp>0){
-      loser.hp=0
-    }
-
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-    const reward=Math.round((600+Math.floor(Math.random()*601))*moneyMultiplier)
-    await client.query(
-      'UPDATE stats SET hp=$1,win=win+1,updated_at='+nowSql+' WHERE jid=$2',
-      [Math.max(1,winner.hp),winner.jid]
-    )
-    await client.query(
-      'UPDATE stats SET hp=$1,loss=loss+1,updated_at='+nowSql+' WHERE jid=$2',
-      [Math.max(1,Math.floor(loser.maxHp*0.25)),loser.jid]
-    )
-    await client.query(
-      'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
-      [reward,winner.jid]
-    )
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('system',$1,$2,'battle_reward','pvp victory')
-    `,[winner.jid,reward])
-
-    const winXpGain=Math.round(40*xpMultiplier)
-    const loseXpGain=Math.round(15*xpMultiplier)
-    const winExp=await applyExp(client,winner.jid,winXpGain)
-    const loseExp=await applyExp(client,loser.jid,loseXpGain)
-
-    return {
-      ok:true,winner,loser,reward,log,opening,ending,roundCount,decidedByLimit,
-      winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
-      final:{
-        attackerHp: A.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(A.maxHp*0.25)),
-        defenderHp: B.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(B.maxHp*0.25))
-      }
-    }
-      })
-    }catch(err){
-      if(err?.code!=='40P01'||attempt===3)throw err
-      const delayMs=80*attempt+Math.floor(Math.random()*60)
-      console.warn('[PvP] deadlock SQL 40P01; transação cancelada e nova tentativa',JSON.stringify({attempt,delayMs}))
-      await new Promise(resolve=>setTimeout(resolve,delayMs))
-    }
-  }
+if(attackerJid===defenderJid) throw new Error('Você não pode batalhar contra si mesmo.')
+await ensureUser(defenderJid)
+for(let attempt=1;attempt<=3;attempt++){
+try{
+return await transaction(async client=>{
+const now=Math.floor(Date.now()/1000)
+const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[defenderJid,now])
+if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser atacada agora.')
+const carpindo=await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[defenderJid,now])
+if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode ser atacada agora.')
+const ids=[attackerJid,defenderJid].sort()
+const usersR={rows:[]},statsR={rows:[]}
+for(const id of ids){
+const result=await client.query(
+'SELECT jid,push_name,level,exp FROM users WHERE jid=$1 FOR UPDATE',[id]
+)
+usersR.rows.push(...result.rows)
 }
-
+for(const id of ids){
+const result=await client.query('SELECT * FROM stats WHERE jid=$1 FOR UPDATE',[id])
+statsR.rows.push(...result.rows)
+}
+const petsR=await client.query(
+'SELECT jid,name,species,level,hp,energy FROM pets WHERE jid=ANY($1::text[])',
+[ids]
+)
+const petTeamR=await client.query(
+`SELECT t.jid,t.slot,p.species,p.level,p.hp,p.energy
+FROM pet_team t
+JOIN pet_collection p ON p.id=t.pet_id
+WHERE t.jid=ANY($1::text[]) AND t.slot IN (1,2,3)
+ORDER BY t.jid,t.slot`,
+[ids]
+)
+const statFor=jid=>statsR.rows.find(r=>r.jid===jid)
+const userFor=jid=>usersR.rows.find(r=>r.jid===jid)
+const petFor=jid=>petsR.rows.find(r=>r.jid===jid)
+const teamFor=jid=>petTeamR.rows.filter(r=>r.jid===jid)
+const synergySpeedFor=jid=>{
+const team=teamFor(jid)
+const synergy=petTeamSynergy(team)
+return Number(synergy?.speed||0)
+}
+const a=statFor(attackerJid)
+const b=statFor(defenderJid)
+const au=userFor(attackerJid)
+const bu=userFor(defenderJid)
+if(Number(bu?.level||1)<=20){
+throw new Error(`🛡️ PROTEÇÃO DE INICIANTE\n\n${bu?.push_name||'Esse jogador'} está no *Lv.${Number(bu?.level||1)}* e não pode ser atacado até completar o *Lv.20*.\n⚔️ O PvP contra ele é liberado a partir do *Lv.21*.`)
+}
+const ap=petFor(attackerJid)
+const bp=petFor(defenderJid)
+const aPetBonus=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petPvpSpecialty(ap.species,ap.level):null
+const bPetBonus=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petPvpSpecialty(bp.species,bp.level):null
+const apSpd=ap&&Number(ap.hp)>0&&Number(ap.energy)>0?petSpeedBonus(ap.species,ap.level):0
+const bpSpd=bp&&Number(bp.hp)>0&&Number(bp.energy)>0?petSpeedBonus(bp.species,bp.level):0
+const aSynergy=petTeamSynergy(teamFor(attackerJid))||{}
+const bSynergy=petTeamSynergy(teamFor(defenderJid))||{}
+const aSynergySpd=Number(aSynergy.speed||0)
+const bSynergySpd=Number(bSynergy.speed||0)
+if(!a || !b) throw new Error('Não foi possível carregar os jogadores.')
+if(Number(a.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes de batalhar.')
+if(Number(b.hp)<=0) throw new Error('O adversário está sem HP.')
+const cd=await claimCooldown(client,`battle:${attackerJid}`,10*60)
+if(!cd.ok) return {ok:false,remaining:cd.remaining}
+const levelRows=(await client.query(
+'SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[])',
+[[attackerJid,defenderJid]]
+)).rows
+const enchantRows=(await client.query(`
+SELECT jid,item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=ANY($1::text[])
+UNION ALL
+SELECT jid,NULL::text,'selo_poder_5pct_alpha_20261019'::text,1::integer
+FROM inventories WHERE jid=ANY($1::text[]) AND item_id='selo_poder_5pct_alpha_20261019' AND quantity>0
+`,[[attackerJid,defenderJid]])).rows
+const eqEnch=(jid,ids)=>{
+const stats={atk:0,def:0,spd:0,crit:0,damage:0,attackPct:0}
+const map={pedra_furia_alpha:['damage',.02],pedra_forca_alpha:['atk',5],
+pedra_fortaleza_alpha:['def',5],pedra_agilidade_alpha:['spd',2],
+pedra_precisao_alpha:['crit',.01],selo_poder_5pct_alpha_20261019:['attackPct',.05]}
+for(const e of enchantRows){
+const st=map[e.stone_id]
+if(e.jid===jid&&st&&(st[0]==='attackPct'||ids.includes(e.item_id)))stats[st[0]]+=st[1]*Math.min(3,Number(e.quantity)||0)
+}
+return stats
+}
+const aEn=eqEnch(attackerJid,[a.weapon_id,a.armor_id,a.boot_id,a.helmet_id])
+const bEn=eqEnch(defenderJid,[b.weapon_id,b.armor_id,b.boot_id,b.helmet_id])
+const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
+const starRows=(await client.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[[attackerJid,defenderJid]])).rows
+const starLevel=(jid,itemId)=>Number(starRows.find(r=>r.jid===jid&&r.item_id===itemId)?.stars||1)
+const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id),starLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id),starLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const aeH=a.helmet_id?equipmentStatsAtLevel(a.helmet_id,eqLevel(attackerJid,a.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id),starLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id),starLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const A={
+jid:attackerJid,name:au?.push_name||'Jogador',
+hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
+atk:Math.round((Number(a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
+def:Number(a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
+classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
+crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
+spd:Number(a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
+enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
+petSpeed:apSpd,teamSpeed:aSynergySpd,
+petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
+}
+const B={
+jid:defenderJid,name:bu?.push_name||'Jogador',
+hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
+atk:Math.round((Number(b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
+def:Number(b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
+classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
+crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
+spd:Number(b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
+enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
+petSpeed:bpSpd,teamSpeed:bSynergySpd,
+petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
+}
+const snapshot=fighter=>{
+const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
+const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
+return {
+jid:fighter.jid,name:fighter.name,hp:fighter.hp,maxHp:fighter.maxHp,
+atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
+petName:fighter.petName||null,petSpecies:fighter.petSpecies||null,
+petPvpBonus:fighter.petBonus?{
+damage:Number(fighter.petBonus.damage||0),
+defense:Number(fighter.petBonus.defense||0),
+crit:Math.max(0,critWithPet-critNoPet),
+dodge:Number(fighter.petBonus.dodge||0),
+healPct:Number(fighter.petBonus.healPct||0),
+healCooldown:Number(fighter.petBonus.healCooldown||0),
+speed:Number(fighter.petSpeed||0)
+}:null,
+teamSpeed:Number(fighter.teamSpeed||0)
+}
+}
+const opening={attacker:snapshot(A),defender:snapshot(B)}
+const log=[]
+let first=A.spd>=B.spd?A:B
+let second=first===A?B:A
+const hit=(from,to)=>{
+from.attackIndex++
+const variance=0.85+Math.random()*0.30
+const critRoll=Math.random()
+const critWithoutPet=Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0))
+const crit=critRoll<Math.min(.40,critWithoutPet+Number(from.petBonus?.crit||0))
+const petCrit=crit&&critRoll>=critWithoutPet
+const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
+const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
+const damageWithoutPet=1+Number(from.enchantDamage||0)+Number(from.collabDamage||0)
+const adjusted=Math.max(1,Math.round(raw*(damageWithoutPet+Number(from.petBonus?.damage||0))))
+const adjustedNoPet=Math.max(1,Math.round(raw*damageWithoutPet))
+const classRoll=Math.random()
+const oldLastProcAttack=from.lastProcAttack
+const attackArgs={classId:from.classId,applied:from.classApplied,critical:crit,
+hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
+lastProcAttack:oldLastProcAttack,roll:classRoll}
+const attack=classAttack({...attackArgs,damage:crit?Math.round(adjusted*1.6):adjusted})
+const noPetAttack=Number(from.petBonus?.damage||0)>0
+?classAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet})
+:attack
+from.lastProcAttack=attack.lastProcAttack
+const defenseRoll=Math.random()
+const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage,roll:defenseRoll}).damage
+const withoutPetClassDamage=noPetAttack===attack?classDamage:
+classDefense({classId:to.classId,applied:to.classApplied,damage:noPetAttack.damage,roll:defenseRoll}).damage
+const petDefense=Number(to.petBonus?.defense||0)
+const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-petDefense)))
+const noPetDmg=dodged?0:Math.max(1,Math.round(withoutPetClassDamage*(1-petDefense)))
+const targetHpBefore=to.hp
+const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
+const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
+to.hp=Math.max(0,to.hp-dmg)
+const classHealBefore=from.hp
+if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
+const classHealed=Math.max(0,from.hp-classHealBefore)
+log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
+actualDamage:targetHpBefore-to.hp,crit:!dodged&&crit,dodged,hp:to.hp,
+petExtraDamage,petDamageBlocked,petCrit:!dodged&&petCrit,petDodge:dodged})
+if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
+const cooldown=Number(from.petBonus?.healCooldown||0)
+if(from.hp>0&&cooldown>0&&from.petHealUses<3&&Number(from.petBonus?.healPct||0)>0&&
+from.attackIndex%cooldown===0&&from.hp/from.maxHp<.70){
+const before=from.hp
+from.hp=Math.min(from.maxHp,from.hp+Math.max(1,Math.round(from.maxHp*Number(from.petBonus.healPct))))
+if(from.hp>before){
+from.petHealUses++
+log.push({round:from.attackIndex,petHeal:true,from:from.name,fromJid:from.jid,to:from.name,toJid:from.jid,petSpecies:from.petSpecies,heal:from.hp-before,hp:from.hp})
+}
+}
+}
+for(let round=1;round<=20 && A.hp>0 && B.hp>0;round++){
+hit(first,second)
+if(second.hp<=0) break
+hit(second,first)
+}
+const roundCount=Math.max(A.attackIndex,B.attackIndex)
+const decidedByLimit=A.hp>0&&B.hp>0
+const ending={attackerHp:A.hp,defenderHp:B.hp}
+let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
+let loser=winner===A?B:A
+if(A.hp>0 && B.hp>0){
+loser.hp=0
+}
+const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+const petXpEventMultiplier=await getPetXpEventMultiplier(client)
+const reward=Math.round((600+Math.floor(Math.random()*601))*moneyMultiplier)
+await client.query(
+'UPDATE stats SET hp=$1,win=win+1,updated_at='+nowSql+' WHERE jid=$2',
+[Math.max(1,winner.hp),winner.jid]
+)
+await client.query(
+'UPDATE stats SET hp=$1,loss=loss+1,updated_at='+nowSql+' WHERE jid=$2',
+[Math.max(1,Math.floor(loser.maxHp*0.25)),loser.jid]
+)
+await client.query(
+'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+[reward,winner.jid]
+)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('system',$1,$2,'battle_reward','pvp victory')
+`,[winner.jid,reward])
+const winXpGain=Math.round(40*xpMultiplier)
+const loseXpGain=Math.round(15*xpMultiplier)
+const winExp=await applyExp(client,winner.jid,winXpGain)
+const loseExp=await applyExp(client,loser.jid,loseXpGain)
+return {
+ok:true,winner,loser,reward,log,opening,ending,roundCount,decidedByLimit,
+winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
+final:{
+attackerHp: A.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(A.maxHp*0.25)),
+defenderHp: B.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(B.maxHp*0.25))
+}
+}
+})
+}catch(err){
+if(err?.code!=='40P01'||attempt===3)throw err
+const delayMs=80*attempt+Math.floor(Math.random()*60)
+console.warn('[PvP] deadlock SQL 40P01; transação cancelada e nova tentativa',JSON.stringify({attempt,delayMs}))
+await new Promise(resolve=>setTimeout(resolve,delayMs))
+}
+}
+}
 export async function combatLeaderboard(limit=10) {
-  const {rows}=await db.query(`
-    SELECT u.jid,u.push_name,u.level,s.win,s.loss,
-           (s.win*3-s.loss) AS score,
-           (s.win+s.loss) AS battles
-    FROM users u
-    JOIN stats s ON s.jid=u.jid
-    WHERE u.jid NOT LIKE '%@local'
-    ORDER BY
-      CASE WHEN (s.win+s.loss)>0 THEN 0 ELSE 1 END ASC,
-      score DESC,
-      s.win DESC,
-      u.level DESC,
-      s.loss ASC
-    LIMIT $1
-  `,[limit])
-  return rows
+const {rows}=await db.query(`
+SELECT u.jid,u.push_name,u.level,s.win,s.loss,
+(s.win*3-s.loss) AS score,
+(s.win+s.loss) AS battles
+FROM users u
+JOIN stats s ON s.jid=u.jid
+WHERE u.jid NOT LIKE '%@local'
+ORDER BY
+CASE WHEN (s.win+s.loss)>0 THEN 0 ELSE 1 END ASC,
+score DESC,
+s.win DESC,
+u.level DESC,
+s.loss ASC
+LIMIT $1
+`,[limit])
+return rows
 }
-
-
 let runtimeLockClient = null
-
 function directDatabaseUrl() {
-  const url = new URL(databaseUrl)
-  url.hostname = url.hostname.replace('-pooler.', '.')
-  return url.toString()
+const url = new URL(databaseUrl)
+url.hostname = url.hostname.replace('-pooler.', '.')
+return url.toString()
 }
-
 export async function acquireRuntimeLock(sessionId) {
-  if (runtimeLockClient) return true
-
-  // v2 intentionally uses a new key because older releases acquired the
-  // session advisory lock through PgBouncer, which could leave it pinned
-  // to a pooled backend after a rolling deploy.
-  const lockName = `trevo-whatsapp-v2:${sessionId}`
-  const connectionString = directDatabaseUrl()
-
-  while (true) {
-    const client = new Client({
-      connectionString,
-      connectionTimeoutMillis: 15000,
-      application_name: 'trevo-runtime-lock'
-    })
-
-    try {
-      await client.connect()
-      trackBandwidthStream('postgres',client.connection?.stream)
-      const { rows } = await client.query(
-        'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',
-        [lockName]
-      )
-
-      if (rows[0]?.locked) {
-        runtimeLockClient = client
-
-        // O Neon pode suspender o compute ao considerar o SQL ocioso,
-        // mesmo que o WebSocket do WhatsApp continue conectado.
-        // Sem atividade na conexao direta, a sessao que detem o
-        // advisory lock e encerrada e o bot cai a cada poucos minutos.
-        // Uma consulta minima a cada 2 min preserva a sessao e o lock.
-        let lockLost = false
-        let heartbeatBusy = false
-        const onLockLost = err => {
-          if(lockLost) return
-          lockLost = true
-          clearInterval(lockHeartbeat)
-          console.error('[Runtime] conexao do lock Neon perdida',err?.message || err || 'connection_end')
-          if(runtimeLockClient===client) runtimeLockClient=null
-          // Nao continuar recebendo comandos sem exclusividade garantida.
-          setTimeout(()=>process.exit(1),100)
-        }
-        const lockHeartbeat = setInterval(()=>{
-          if(lockLost || heartbeatBusy || runtimeLockClient!==client)return
-          heartbeatBusy = true
-          client.query('SELECT 1')
-            .catch(onLockLost)
-            .finally(()=>{heartbeatBusy=false})
-        },120000)
-        lockHeartbeat.unref?.()
-        client.on('error',onLockLost)
-        client.on('end',()=>onLockLost(new Error('connection_end')))
-        console.log('[Runtime] lock exclusivo direto adquirido para', sessionId)
-        return true
-      }
-    } catch (err) {
-      await client.end().catch(()=>{})
-      throw err
-    }
-
-    await client.end().catch(()=>{})
-    console.log('[Runtime] outra instância ainda usa a sessão; aguardando...')
-    await new Promise(resolve => setTimeout(resolve, 2500))
-  }
+if (runtimeLockClient) return true
+const lockName = `trevo-whatsapp-v2:${sessionId}`
+const connectionString = directDatabaseUrl()
+while (true) {
+const client = new Client({
+connectionString,
+connectionTimeoutMillis: 15000,
+application_name: 'trevo-runtime-lock'
+})
+try {
+await client.connect()
+trackBandwidthStream('postgres',client.connection?.stream)
+const { rows } = await client.query(
+'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',
+[lockName]
+)
+if (rows[0]?.locked) {
+runtimeLockClient = client
+let lockLost = false
+let heartbeatBusy = false
+const onLockLost = err => {
+if(lockLost) return
+lockLost = true
+clearInterval(lockHeartbeat)
+console.error('[Runtime] conexao do lock Neon perdida',err?.message || err || 'connection_end')
+if(runtimeLockClient===client) runtimeLockClient=null
+setTimeout(()=>process.exit(1),100)
 }
-
-
+const lockHeartbeat = setInterval(()=>{
+if(lockLost || heartbeatBusy || runtimeLockClient!==client)return
+heartbeatBusy = true
+client.query('SELECT 1')
+.catch(onLockLost)
+.finally(()=>{heartbeatBusy=false})
+},120000)
+lockHeartbeat.unref?.()
+client.on('error',onLockLost)
+client.on('end',()=>onLockLost(new Error('connection_end')))
+console.log('[Runtime] lock exclusivo direto adquirido para', sessionId)
+return true
+}
+} catch (err) {
+await client.end().catch(()=>{})
+throw err
+}
+await client.end().catch(()=>{})
+console.log('[Runtime] outra instância ainda usa a sessão; aguardando...')
+await new Promise(resolve => setTimeout(resolve, 2500))
+}
+}
 export async function saveQuickFlow(flowKey, chatJid, senderJid, stage, data, expiresAtMs) {
-  const expiresAt=Math.floor(Number(expiresAtMs)/1000)
-  await db.query(`
-    INSERT INTO quick_flows(flow_key,chat_jid,sender_jid,stage,data,expires_at,updated_at)
-    VALUES($1,$2,$3,$4,$5::jsonb,$6,${nowSql})
-    ON CONFLICT(flow_key) DO UPDATE
-    SET chat_jid=EXCLUDED.chat_jid,
-        sender_jid=EXCLUDED.sender_jid,
-        stage=EXCLUDED.stage,
-        data=EXCLUDED.data,
-        expires_at=EXCLUDED.expires_at,
-        updated_at=${nowSql}
-  `,[flowKey,chatJid,senderJid,stage,JSON.stringify(data??{}),expiresAt])
+const expiresAt=Math.floor(Number(expiresAtMs)/1000)
+await db.query(`
+INSERT INTO quick_flows(flow_key,chat_jid,sender_jid,stage,data,expires_at,updated_at)
+VALUES($1,$2,$3,$4,$5::jsonb,$6,${nowSql})
+ON CONFLICT(flow_key) DO UPDATE
+SET chat_jid=EXCLUDED.chat_jid,
+sender_jid=EXCLUDED.sender_jid,
+stage=EXCLUDED.stage,
+data=EXCLUDED.data,
+expires_at=EXCLUDED.expires_at,
+updated_at=${nowSql}
+`,[flowKey,chatJid,senderJid,stage,JSON.stringify(data??{}),expiresAt])
 }
-
 export async function getStoredQuickFlow(flowKey) {
-  const now=Math.floor(Date.now()/1000)
-  const {rows}=await db.query(
-    'SELECT stage,data,expires_at FROM quick_flows WHERE flow_key=$1 AND expires_at>$2',
-    [flowKey,now]
-  )
-  const row=rows[0]
-  if(!row){
-    await db.query('DELETE FROM quick_flows WHERE flow_key=$1',[flowKey]).catch(()=>{})
-    return null
-  }
-  return {
-    stage:row.stage,
-    data:row.data||{},
-    expiresAt:Number(row.expires_at)*1000
-  }
+const now=Math.floor(Date.now()/1000)
+const {rows}=await db.query(
+'SELECT stage,data,expires_at FROM quick_flows WHERE flow_key=$1 AND expires_at>$2',
+[flowKey,now]
+)
+const row=rows[0]
+if(!row){
+await db.query('DELETE FROM quick_flows WHERE flow_key=$1',[flowKey]).catch(()=>{})
+return null
 }
-
+return {
+stage:row.stage,
+data:row.data||{},
+expiresAt:Number(row.expires_at)*1000
+}
+}
 export async function deleteQuickFlow(flowKey) {
-  await db.query('DELETE FROM quick_flows WHERE flow_key=$1',[flowKey])
+await db.query('DELETE FROM quick_flows WHERE flow_key=$1',[flowKey])
 }
-
 export async function cleanupQuickFlows() {
-  const now=Math.floor(Date.now()/1000)
-  await db.query('DELETE FROM quick_flows WHERE expires_at<=$1',[now])
+const now=Math.floor(Date.now()/1000)
+await db.query('DELETE FROM quick_flows WHERE expires_at<=$1',[now])
 }
-
 const groupSettingsCache=createTtlCache({ttlMs:15000,maxEntries:128})
 export async function getGroupSettings(chatJid) {
-  return groupSettingsCache.get(chatJid,async()=>{
-    const existing=await db.query('SELECT * FROM group_settings WHERE chat_jid=$1',[chatJid])
-    if(existing.rows[0])return existing.rows[0]
-    await db.query('INSERT INTO group_settings(chat_jid) VALUES($1) ON CONFLICT(chat_jid) DO NOTHING',[chatJid])
-    return (await db.query('SELECT * FROM group_settings WHERE chat_jid=$1',[chatJid])).rows[0]
-  })
+return groupSettingsCache.get(chatJid,async()=>{
+const existing=await db.query('SELECT * FROM group_settings WHERE chat_jid=$1',[chatJid])
+if(existing.rows[0])return existing.rows[0]
+await db.query('INSERT INTO group_settings(chat_jid) VALUES($1) ON CONFLICT(chat_jid) DO NOTHING',[chatJid])
+return (await db.query('SELECT * FROM group_settings WHERE chat_jid=$1',[chatJid])).rows[0]
+})
 }
-
 export async function setGroupSetting(chatJid, key, enabled, updatedBy='') {
-  const allowed=new Set(['economy_enabled','rpg_enabled','games_enabled','progression_enabled'])
-  if(!allowed.has(key)) throw new Error('Configuração de grupo inválida.')
-  await getGroupSettings(chatJid)
-  const { rows } = await db.query(
-    `UPDATE group_settings
-     SET ${key}=$1, updated_by=$2, updated_at=${nowSql}
-     WHERE chat_jid=$3
-     RETURNING *`,
-    [Boolean(enabled),updatedBy,chatJid]
-  )
-  groupSettingsCache.delete(chatJid)
-  return rows[0]
+const allowed=new Set(['economy_enabled','rpg_enabled','games_enabled','progression_enabled'])
+if(!allowed.has(key)) throw new Error('Configuração de grupo inválida.')
+await getGroupSettings(chatJid)
+const { rows } = await db.query(
+`UPDATE group_settings
+SET ${key}=$1, updated_by=$2, updated_at=${nowSql}
+WHERE chat_jid=$3
+RETURNING *`,
+[Boolean(enabled),updatedBy,chatJid]
+)
+groupSettingsCache.delete(chatJid)
+return rows[0]
 }
-
 export async function ownerAddBalance(jid, amount) {
-  amount=Number(amount)
-  if(!Number.isInteger(amount) || amount<=0) throw new Error('Valor inválido.')
-  await ensureUser(jid)
-  await transaction(async client=>{
-    await client.query(
-      'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
-      [amount,jid]
-    )
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('owner',$1,$2,'owner_credit','admin')
-    `,[jid,amount])
-  })
-  return getProfile(jid)
+amount=Number(amount)
+if(!Number.isInteger(amount) || amount<=0) throw new Error('Valor inválido.')
+await ensureUser(jid)
+await transaction(async client=>{
+await client.query(
+'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+[amount,jid]
+)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('owner',$1,$2,'owner_credit','admin')
+`,[jid,amount])
+})
+return getProfile(jid)
 }
-
 export async function ownerRemoveBalance(jid, amount) {
-  amount=Number(amount)
-  if(!Number.isInteger(amount) || amount<=0) throw new Error('Valor inválido.')
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const r=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const current=Number(r.rows[0]?.cash||0)
-    const removed=Math.min(current,amount)
-    await client.query(
-      'UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',
-      [amount,jid]
-    )
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'owner',$2,'owner_debit','admin')
-    `,[jid,removed])
-    return { removed, cash:current-removed }
-  })
+amount=Number(amount)
+if(!Number.isInteger(amount) || amount<=0) throw new Error('Valor inválido.')
+await ensureUser(jid)
+return transaction(async client=>{
+const r=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const current=Number(r.rows[0]?.cash||0)
+const removed=Math.min(current,amount)
+await client.query(
+'UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',
+[amount,jid]
+)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'owner',$2,'owner_debit','admin')
+`,[jid,removed])
+return { removed, cash:current-removed }
+})
 }
-
-
 export async function ownerSetBalance(jid, amount) {
-  amount=Number(amount)
-  if(!Number.isSafeInteger(amount) || amount<0) throw new Error('Valor inválido.')
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const r=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const oldCash=Number(r.rows[0]?.cash||0)
-    await client.query(
-      'UPDATE wallets SET cash=$1,updated_at='+nowSql+' WHERE jid=$2',
-      [amount,jid]
-    )
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('owner',$1,$2,'owner_set_balance',$3)
-    `,[jid,Math.abs(amount-oldCash),`from:${oldCash};to:${amount}`])
-    return { oldCash, cash:amount, bank:Number(r.rows[0]?.bank||0) }
-  })
+amount=Number(amount)
+if(!Number.isSafeInteger(amount) || amount<0) throw new Error('Valor inválido.')
+await ensureUser(jid)
+return transaction(async client=>{
+const r=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const oldCash=Number(r.rows[0]?.cash||0)
+await client.query(
+'UPDATE wallets SET cash=$1,updated_at='+nowSql+' WHERE jid=$2',
+[amount,jid]
+)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('owner',$1,$2,'owner_set_balance',$3)
+`,[jid,Math.abs(amount-oldCash),`from:${oldCash};to:${amount}`])
+return { oldCash, cash:amount, bank:Number(r.rows[0]?.bank||0) }
+})
 }
-
 export async function ownerResetBalance(jid) {
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const r=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const cash=Number(r.rows[0]?.cash||0)
-    const bank=Number(r.rows[0]?.bank||0)
-    await client.query(
-      'UPDATE wallets SET cash=0,bank=0,updated_at='+nowSql+' WHERE jid=$1',
-      [jid]
-    )
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'owner',$2,'owner_reset_balance','admin reset cash+bank')
-    `,[jid,cash+bank])
-    return { oldCash:cash, oldBank:bank, cash:0, bank:0 }
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const r=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const cash=Number(r.rows[0]?.cash||0)
+const bank=Number(r.rows[0]?.bank||0)
+await client.query(
+'UPDATE wallets SET cash=0,bank=0,updated_at='+nowSql+' WHERE jid=$1',
+[jid]
+)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'owner',$2,'owner_reset_balance','admin reset cash+bank')
+`,[jid,cash+bank])
+return { oldCash:cash, oldBank:bank, cash:0, bank:0 }
+})
 }
-
 export async function ownerResetExp(jid) {
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const u=await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
-    const oldLevel=Number(u.rows[0]?.level||1)
-    const oldExp=Number(u.rows[0]?.exp||0)
-    await client.query(
-      'UPDATE users SET level=1,exp=0,updated_at='+nowSql+' WHERE jid=$1',
-      [jid]
-    )
-    await client.query(`
-      UPDATE stats
-      SET hp=100,max_hp=100,atk=10,def=5,spd=10,updated_at=${nowSql}
-      WHERE jid=$1
-    `,[jid])
-    return { oldLevel, oldExp, level:1, exp:0 }
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const u=await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
+const oldLevel=Number(u.rows[0]?.level||1)
+const oldExp=Number(u.rows[0]?.exp||0)
+await client.query(
+'UPDATE users SET level=1,exp=0,updated_at='+nowSql+' WHERE jid=$1',
+[jid]
+)
+await client.query(`
+UPDATE stats
+SET hp=100,max_hp=100,atk=10,def=5,spd=10,updated_at=${nowSql}
+WHERE jid=$1
+`,[jid])
+return { oldLevel, oldExp, level:1, exp:0 }
+})
 }
-
 export async function ownerResetInventory(jid) {
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const r=await client.query('SELECT COALESCE(SUM(quantity),0)::BIGINT AS qty FROM inventories WHERE jid=$1',[jid])
-    const removed=Number(r.rows[0]?.qty||0)
-    await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
-    await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
-    await client.query('DELETE FROM equipment_star_forges WHERE jid=$1',[jid])
-    await client.query(
-      'UPDATE stats SET weapon_id=NULL,armor_id=NULL,updated_at='+nowSql+' WHERE jid=$1',
-      [jid]
-    )
-    return { removed }
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const r=await client.query('SELECT COALESCE(SUM(quantity),0)::BIGINT AS qty FROM inventories WHERE jid=$1',[jid])
+const removed=Number(r.rows[0]?.qty||0)
+await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
+await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
+await client.query('DELETE FROM equipment_star_forges WHERE jid=$1',[jid])
+await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1',[jid])
+await client.query(
+'UPDATE stats SET weapon_id=NULL,armor_id=NULL,updated_at='+nowSql+' WHERE jid=$1',
+[jid]
+)
+return { removed }
+})
 }
-
 export async function ownerResetTotal(jid) {
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const u=await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
-    const w=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-    const inv=await client.query('SELECT COALESCE(SUM(quantity),0)::BIGINT AS qty FROM inventories WHERE jid=$1',[jid])
-
-    const previous={
-      level:Number(u.rows[0]?.level||1),
-      exp:Number(u.rows[0]?.exp||0),
-      cash:Number(w.rows[0]?.cash||0),
-      bank:Number(w.rows[0]?.bank||0),
-      inventory:Number(inv.rows[0]?.qty||0)
-    }
-
-    await client.query(
-      'UPDATE users SET level=1,exp=0,updated_at='+nowSql+' WHERE jid=$1',
-      [jid]
-    )
-    await client.query(
-      'UPDATE wallets SET cash=0,bank=0,bank_limit=9223372036854775807,updated_at='+nowSql+' WHERE jid=$1',
-      [jid]
-    )
-    await client.query(`
-      UPDATE stats
-      SET hp=100,max_hp=100,atk=10,def=5,spd=10,
-          weapon_id=NULL,armor_id=NULL,win=0,loss=0,updated_at=${nowSql}
-      WHERE jid=$1
-    `,[jid])
-    await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
-    await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
-    await client.query('DELETE FROM equipment_star_forges WHERE jid=$1',[jid])
-    await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%:${jid}`])
-    await client.query('DELETE FROM daily_streaks WHERE jid=$1',[jid])
-    await client.query('DELETE FROM profile_avatars WHERE jid=$1',[jid])
-
-    // Tabelas de progressão são criadas por initProgression() antes dos comandos serem usados.
-    await client.query('DELETE FROM daily_missions WHERE jid=$1',[jid])
-    await client.query('DELETE FROM user_homes WHERE jid=$1',[jid])
-    await client.query('DELETE FROM user_cars WHERE jid=$1',[jid])
-
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'owner',$2,'owner_reset_total','admin full gameplay reset')
-    `,[jid,previous.cash+previous.bank])
-
-    return { ...previous, level:1, exp:0, cash:0, bank:0, inventory:0 }
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const u=await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
+const w=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+const inv=await client.query('SELECT COALESCE(SUM(quantity),0)::BIGINT AS qty FROM inventories WHERE jid=$1',[jid])
+const previous={
+level:Number(u.rows[0]?.level||1),
+exp:Number(u.rows[0]?.exp||0),
+cash:Number(w.rows[0]?.cash||0),
+bank:Number(w.rows[0]?.bank||0),
+inventory:Number(inv.rows[0]?.qty||0)
 }
-
+await client.query(
+'UPDATE users SET level=1,exp=0,updated_at='+nowSql+' WHERE jid=$1',
+[jid]
+)
+await client.query(
+'UPDATE wallets SET cash=0,bank=0,bank_limit=9223372036854775807,updated_at='+nowSql+' WHERE jid=$1',
+[jid]
+)
+await client.query(`
+UPDATE stats
+SET hp=100,max_hp=100,atk=10,def=5,spd=10,
+weapon_id=NULL,armor_id=NULL,win=0,loss=0,updated_at=${nowSql}
+WHERE jid=$1
+`,[jid])
+await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
+await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
+await client.query('DELETE FROM equipment_star_forges WHERE jid=$1',[jid])
+await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1',[jid])
+await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%:${jid}`])
+await client.query('DELETE FROM daily_streaks WHERE jid=$1',[jid])
+await client.query('DELETE FROM profile_avatars WHERE jid=$1',[jid])
+await client.query('DELETE FROM daily_missions WHERE jid=$1',[jid])
+await client.query('DELETE FROM user_homes WHERE jid=$1',[jid])
+await client.query('DELETE FROM user_cars WHERE jid=$1',[jid])
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'owner',$2,'owner_reset_total','admin full gameplay reset')
+`,[jid,previous.cash+previous.bank])
+return { ...previous, level:1, exp:0, cash:0, bank:0, inventory:0 }
+})
+}
 export async function ownerAddExp(jid, amount) {
-  amount=Number(amount)
-  if(!Number.isSafeInteger(amount) || amount<=0 || amount>MAX_ADMIN_EXP) {
-    throw new Error('EXP inválida. Use no máximo 50.000.000 por ação.')
-  }
-  await ensureUser(jid)
-  return transaction(async client=>applyExp(client,jid,amount))
+amount=Number(amount)
+if(!Number.isSafeInteger(amount) || amount<=0 || amount>MAX_ADMIN_EXP) {
+throw new Error('EXP inválida. Use no máximo 50.000.000 por ação.')
 }
-
+await ensureUser(jid)
+return transaction(async client=>applyExp(client,jid,amount))
+}
 export async function ownerSetLevel(jid, level) {
-  level=Number(level)
-  if(!Number.isInteger(level) || level<1 || level>999) throw new Error('Nível inválido.')
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const r=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])
-    const current=Number(r.rows[0]?.level||1)
-    const maxHp=100+((level-1)*8)
-    const atk=10+((level-1)*2)
-    const def=5+(level-1)
-    const spd=10+(level-1)
-
-    await client.query(
-      'UPDATE users SET level=$1,exp=0,updated_at='+nowSql+' WHERE jid=$2',
-      [level,jid]
-    )
-    await client.query(`
-      UPDATE stats
-      SET max_hp=$1,hp=$1,atk=$2,def=$3,spd=$4,updated_at=${nowSql}
-      WHERE jid=$5
-    `,[maxHp,atk,def,spd,jid])
-
-    return { oldLevel:current, level, maxHp, atk, def, spd }
-  })
+level=Number(level)
+if(!Number.isInteger(level) || level<1 || level>999) throw new Error('Nível inválido.')
+await ensureUser(jid)
+return transaction(async client=>{
+const r=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])
+const current=Number(r.rows[0]?.level||1)
+const maxHp=100+((level-1)*8)
+const atk=10+((level-1)*2)
+const def=5+(level-1)
+const spd=10+(level-1)
+await client.query(
+'UPDATE users SET level=$1,exp=0,updated_at='+nowSql+' WHERE jid=$2',
+[level,jid]
+)
+await client.query(`
+UPDATE stats
+SET max_hp=$1,hp=$1,atk=$2,def=$3,spd=$4,updated_at=${nowSql}
+WHERE jid=$5
+`,[maxHp,atk,def,spd,jid])
+return { oldLevel:current, level, maxHp, atk, def, spd }
+})
 }
-
 export async function ownerHeal(jid) {
-  await ensureUser(jid)
-  const {rows}=await db.query(`
-    UPDATE stats
-    SET hp=max_hp,updated_at=${nowSql}
-    WHERE jid=$1
-    RETURNING hp,max_hp
-  `,[jid])
-  return rows[0]
+await ensureUser(jid)
+const {rows}=await db.query(`
+UPDATE stats
+SET hp=max_hp,updated_at=${nowSql}
+WHERE jid=$1
+RETURNING hp,max_hp
+`,[jid])
+return rows[0]
 }
-
 export async function ownerGrantItem(jid, itemId, qty=1) {
-  qty=Number(qty)
-  if(!Number.isInteger(qty) || qty<1 || qty>999) throw new Error('Quantidade inválida.')
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const itemR=await client.query('SELECT id,name FROM items WHERE id=$1',[itemId])
-    const item=itemR.rows[0]
-    if(!item) throw new Error('Item não encontrado.')
-
-    await client.query(`
-      INSERT INTO inventories(jid,item_id,quantity)
-      VALUES($1,$2,$3)
-      ON CONFLICT(jid,item_id)
-      DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
-    `,[jid,itemId,qty])
-
-    return { item, qty }
-  })
+qty=Number(qty)
+if(!Number.isInteger(qty) || qty<1 || qty>999) throw new Error('Quantidade inválida.')
+await ensureUser(jid)
+return transaction(async client=>{
+const itemR=await client.query('SELECT id,name FROM items WHERE id=$1',[itemId])
+const item=itemR.rows[0]
+if(!item) throw new Error('Item não encontrado.')
+await client.query(`
+INSERT INTO inventories(jid,item_id,quantity)
+VALUES($1,$2,$3)
+ON CONFLICT(jid,item_id)
+DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
+`,[jid,itemId,qty])
+return { item, qty }
+})
 }
-
-
-// Consumíveis de XP comprados nos NPCs: uso atômico para impedir duplicação.
 const XP_ITEM_EFFECTS=Object.freeze({
-  elixir_disciplina:{type:'boost',name:'Elixir da Disciplina',percent:20,seconds:20*60,cap:1200},
-  elixir_sombras:{type:'boost',name:'Elixir das Sombras',percent:20,seconds:20*60,cap:1200},
-  elixir_leilao_30m:{type:'boost',name:'Elixir do Leilão',percent:20,seconds:30*60,cap:5000},
-  elixir_leilao_2h:{type:'boost',name:'Ampulheta Dourada — XP 2×',percent:100,seconds:2*60*60,cap:100000000},
-  pergaminho_experiencia:{type:'scroll',name:'Pergaminho de Experiência',xp:500},
-  pergaminho_virtude:{type:'scroll',name:'Tomo da Virtude',xp:1200},
-  tomo_proibido:{type:'scroll',name:'Tomo Proibido',xp:1200},
-  pergaminho_leilao_10k:{type:'scroll',name:'Pergaminho de 10.000 XP',xp:10000}
+elixir_disciplina:{type:'boost',name:'Elixir da Disciplina',percent:20,seconds:20*60,cap:1200},
+elixir_sombras:{type:'boost',name:'Elixir das Sombras',percent:20,seconds:20*60,cap:1200},
+elixir_leilao_30m:{type:'boost',name:'Elixir do Leilão',percent:20,seconds:30*60,cap:5000},
+elixir_leilao_2h:{type:'boost',name:'Ampulheta Dourada — XP 2×',percent:100,seconds:2*60*60,cap:100000000},
+pergaminho_experiencia:{type:'scroll',name:'Pergaminho de Experiência',xp:500},
+pergaminho_virtude:{type:'scroll',name:'Tomo da Virtude',xp:1200},
+tomo_proibido:{type:'scroll',name:'Tomo Proibido',xp:1200},
+pergaminho_leilao_10k:{type:'scroll',name:'Pergaminho de 10.000 XP',xp:10000}
 })
 export async function getXpBuffStatus(jid){
-  await ensureUser(jid)
-  const [boost,inventory]=await Promise.all([
-    db.query('SELECT bonus_percent,expires_at,bonus_remaining FROM alpha_xp_boosts WHERE jid=$1',[jid]),
-    db.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[])',[jid,Object.keys(XP_ITEM_EFFECTS)])
-  ])
-  const now=Math.floor(Date.now()/1000)
-  const active=boost.rows[0]&&Number(boost.rows[0].expires_at)>now&&Number(boost.rows[0].bonus_remaining)>0
-  return {active:Boolean(active),remainingSeconds:active?Number(boost.rows[0].expires_at)-now:0,
-    percent:active?Number(boost.rows[0].bonus_percent):0,bonusRemaining:active?Number(boost.rows[0].bonus_remaining):0,
-    items:inventory.rows.map(r=>({id:r.item_id,name:XP_ITEM_EFFECTS[r.item_id].name,quantity:Number(r.quantity)}))}
+await ensureUser(jid)
+const [boost,inventory]=await Promise.all([
+db.query('SELECT bonus_percent,expires_at,bonus_remaining FROM alpha_xp_boosts WHERE jid=$1',[jid]),
+db.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[])',[jid,Object.keys(XP_ITEM_EFFECTS)])
+])
+const now=Math.floor(Date.now()/1000)
+const active=boost.rows[0]&&Number(boost.rows[0].expires_at)>now&&Number(boost.rows[0].bonus_remaining)>0
+return {active:Boolean(active),remainingSeconds:active?Number(boost.rows[0].expires_at)-now:0,
+percent:active?Number(boost.rows[0].bonus_percent):0,bonusRemaining:active?Number(boost.rows[0].bonus_remaining):0,
+items:inventory.rows.map(r=>({id:r.item_id,name:XP_ITEM_EFFECTS[r.item_id].name,quantity:Number(r.quantity)}))}
 }
 export async function useXpConsumable(jid,itemId){
-  await ensureUser(jid)
-  const effect=XP_ITEM_EFFECTS[itemId]
-  if(!effect) throw new Error('Item de XP inválido. Use !buffxp para ver os disponíveis.')
-  return transaction(async client=>{
-    const user=(await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!user) throw new Error('Jogador não encontrado.')
-    if(Number(user.level)>=MAX_LEVEL) throw new Error('Você já atingiu o nível máximo. Guarde esse item.')
-    const row=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 AND quantity>0 FOR UPDATE',[jid,itemId])).rows[0]
-    if(!row) throw new Error('Você não possui '+effect.name+'.')
-    const now=Math.floor(Date.now()/1000)
-    let result
-    if(effect.type==='boost'){
-      const already=(await client.query('SELECT expires_at,bonus_remaining FROM alpha_xp_boosts WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-      if(already&&Number(already.expires_at)>now&&Number(already.bonus_remaining)>0)
-        throw new Error('Já existe um bônus de XP ativo. Aguarde acabar antes de usar outro.')
-      await client.query(`
-        INSERT INTO alpha_xp_boosts(jid,bonus_percent,expires_at,bonus_remaining)
-        VALUES($1,$2,$3,$4)
-        ON CONFLICT(jid) DO UPDATE SET bonus_percent=EXCLUDED.bonus_percent,
-          expires_at=EXCLUDED.expires_at,bonus_remaining=EXCLUDED.bonus_remaining
-      `,[jid,effect.percent,now+effect.seconds,effect.cap])
-      result={type:'boost',name:effect.name,percent:effect.percent,durationMinutes:Math.floor(effect.seconds/60),cap:effect.cap}
-    }else{
-      // Mesma regra para todos os tomos: no máximo 1 por dia por jogador (Brasília).
-      const dayNumber=Math.floor((now-3*3600)/86400)
-      const used=(await client.query('SELECT day_number FROM alpha_xp_scroll_uses WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-      if(used&&Number(used.day_number)===dayNumber) throw new Error('Você já usou um pergaminho de XP hoje. Volte amanhã.')
-      await client.query(`
-        INSERT INTO alpha_xp_scroll_uses(jid,day_number) VALUES($1,$2)
-        ON CONFLICT(jid) DO UPDATE SET day_number=EXCLUDED.day_number
-      `,[jid,dayNumber])
-      const gain=await applyExp(client,jid,effect.xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
-      result={type:'scroll',name:effect.name,xp:effect.xp,level:gain.level,levelUps:gain.levels}
-    }
-    await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
-    return result
-  })
+await ensureUser(jid)
+const effect=XP_ITEM_EFFECTS[itemId]
+if(!effect) throw new Error('Item de XP inválido. Use !buffxp para ver os disponíveis.')
+return transaction(async client=>{
+const user=(await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!user) throw new Error('Jogador não encontrado.')
+if(Number(user.level)>=MAX_LEVEL) throw new Error('Você já atingiu o nível máximo. Guarde esse item.')
+const row=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 AND quantity>0 FOR UPDATE',[jid,itemId])).rows[0]
+if(!row) throw new Error('Você não possui '+effect.name+'.')
+const now=Math.floor(Date.now()/1000)
+let result
+if(effect.type==='boost'){
+const already=(await client.query('SELECT expires_at,bonus_remaining FROM alpha_xp_boosts WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(already&&Number(already.expires_at)>now&&Number(already.bonus_remaining)>0)
+throw new Error('Já existe um bônus de XP ativo. Aguarde acabar antes de usar outro.')
+await client.query(`
+INSERT INTO alpha_xp_boosts(jid,bonus_percent,expires_at,bonus_remaining)
+VALUES($1,$2,$3,$4)
+ON CONFLICT(jid) DO UPDATE SET bonus_percent=EXCLUDED.bonus_percent,
+expires_at=EXCLUDED.expires_at,bonus_remaining=EXCLUDED.bonus_remaining
+`,[jid,effect.percent,now+effect.seconds,effect.cap])
+result={type:'boost',name:effect.name,percent:effect.percent,durationMinutes:Math.floor(effect.seconds/60),cap:effect.cap}
+}else{
+const dayNumber=Math.floor((now-3*3600)/86400)
+const used=(await client.query('SELECT day_number FROM alpha_xp_scroll_uses WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(used&&Number(used.day_number)===dayNumber) throw new Error('Você já usou um pergaminho de XP hoje. Volte amanhã.')
+await client.query(`
+INSERT INTO alpha_xp_scroll_uses(jid,day_number) VALUES($1,$2)
+ON CONFLICT(jid) DO UPDATE SET day_number=EXCLUDED.day_number
+`,[jid,dayNumber])
+const gain=await applyExp(client,jid,effect.xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
+result={type:'scroll',name:effect.name,xp:effect.xp,level:gain.level,levelUps:gain.levels}
 }
-
+await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,itemId])
+return result
+})
+}
 export async function grantExp(jid,gain){
-  await ensureUser(jid)
-  return transaction(async client=>applyExp(client,jid,Number(gain)))
+await ensureUser(jid)
+return transaction(async client=>applyExp(client,jid,Number(gain)))
 }
-
-// Permite que recompensas compostas (dinheiro, item e EXP) sejam confirmadas
-// juntas na mesma transação. O chamador deve fornecer um client transacional.
 export async function grantExpInTransaction(client,jid,gain,options={}){
-  return applyExp(client,jid,Number(gain),options)
+return applyExp(client,jid,Number(gain),options)
 }
-
-
 const LEVEL_REWARDS = {
-  5:{cash:15000,items:[['pocao_m',3]]},
-  10:{cash:30000,items:[['caixa_sorte',2],['energetico_pet',1]]},
-  15:{cash:50000,items:[['caixa_sorte',2],['pocao_pet_rara',2]]},
-  20:{cash:75000,items:[['caixa_rara',2],['pocao_g',2]]},
-  25:{cash:100000,items:[['caixa_rara',2],['energetico_pet',2]]},
-  30:{cash:140000,items:[['caixa_epica',2],['elixir_supremo',2]]},
-  35:{cash:180000,items:[['caixa_epica',2],['pocao_pet_epica',3]]},
-  40:{cash:240000,items:[['caixa_epica',3],['energetico_pet',3]]},
-  45:{cash:320000,items:[['caixa_epica',4],['elixir_supremo',3]]},
-  50:{cash:450000,items:[['caixa_epica',5],['chave_raid_50',1]]},
-
-  // Endgame 55–100: crescimento controlado. O valor principal vem de utilidade,
-  // caixas e chaves; dinheiro cresce devagar para não inflar a economia.
-  55:{cash:325000,items:[['caixa_epica',3],['pocao_pet_suprema',2],['energetico_pet',2]]},
-  60:{cash:350000,items:[['caixa_epica',4],['chave_raid_40',1],['elixir_supremo',3]]},
-  65:{cash:375000,items:[['caixa_epica',4],['pocao_pet_suprema',3],['energetico_pet',3]]},
-  70:{cash:400000,items:[['caixa_epica',5],['chave_raid_50',1],['elixir_supremo',4]]},
-  75:{cash:425000,items:[['caixa_epica',5],['pocao_pet_suprema',4],['energetico_pet',3]]},
-  80:{cash:450000,items:[['caixa_epica',6],['chave_raid_50',1],['pocao_pet_suprema',4]]},
-  85:{cash:500000,items:[['caixa_epica',6],['chave_raid_50',1],['energetico_pet',4]]},
-  90:{cash:550000,items:[['caixa_epica',7],['chave_raid_50',2],['pocao_pet_suprema',5]]},
-  95:{cash:625000,items:[['caixa_epica',8],['chave_raid_50',2],['elixir_supremo',5]]},
-  100:{cash:750000,items:[['pergaminho_reclassificacao',1],['caixa_epica',10],['chave_raid_50',2],['pocao_pet_suprema',5]]}
+5:{cash:15000,items:[['pocao_m',3]]},
+10:{cash:30000,items:[['caixa_sorte',2],['energetico_pet',1]]},
+15:{cash:50000,items:[['caixa_sorte',2],['pocao_pet_rara',2]]},
+20:{cash:75000,items:[['caixa_rara',2],['pocao_g',2]]},
+25:{cash:100000,items:[['caixa_rara',2],['energetico_pet',2]]},
+30:{cash:140000,items:[['caixa_epica',2],['elixir_supremo',2]]},
+35:{cash:180000,items:[['caixa_epica',2],['pocao_pet_epica',3]]},
+40:{cash:240000,items:[['caixa_epica',3],['energetico_pet',3]]},
+45:{cash:320000,items:[['caixa_epica',4],['elixir_supremo',3]]},
+50:{cash:450000,items:[['caixa_epica',5],['chave_raid_50',1]]},
+55:{cash:325000,items:[['caixa_epica',3],['pocao_pet_suprema',2],['energetico_pet',2]]},
+60:{cash:350000,items:[['caixa_epica',4],['chave_raid_40',1],['elixir_supremo',3]]},
+65:{cash:375000,items:[['caixa_epica',4],['pocao_pet_suprema',3],['energetico_pet',3]]},
+70:{cash:400000,items:[['caixa_epica',5],['chave_raid_50',1],['elixir_supremo',4]]},
+75:{cash:425000,items:[['caixa_epica',5],['pocao_pet_suprema',4],['energetico_pet',3]]},
+80:{cash:450000,items:[['caixa_epica',6],['chave_raid_50',1],['pocao_pet_suprema',4]]},
+85:{cash:500000,items:[['caixa_epica',6],['chave_raid_50',1],['energetico_pet',4]]},
+90:{cash:550000,items:[['caixa_epica',7],['chave_raid_50',2],['pocao_pet_suprema',5]]},
+95:{cash:625000,items:[['caixa_epica',8],['chave_raid_50',2],['elixir_supremo',5]]},
+100:{cash:750000,items:[['pergaminho_reclassificacao',1],['caixa_epica',10],['chave_raid_50',2],['pocao_pet_suprema',5]]}
 }
-
 function levelRewardFor(milestone){
-  milestone=Number(milestone)
-  if(!Number.isInteger(milestone)||milestone<5) return null
-  if(milestone<=100) return milestone%5===0?(LEVEL_REWARDS[milestone]||null):null
-  if(milestone<200 && milestone%10!==0) return null
-  if(milestone>=200 && milestone%20!==0) return null
-  // Endgame: marcos mais espaçados, com recompensas úteis e dinheiro controlado.
-  const tier=milestone>=200?2:1
-  const step=tier===2?(milestone-200)/20:(milestone-110)/10
-  const cash=tier===2?950000+Math.min(step,20)*65000:600000+Math.min(step,9)*35000
-  const items=[
-    ['caixa_epica',tier===2?10+Math.min(step,10):6+Math.min(step,5)],
-    ['pocao_pet_suprema',tier===2?5:3],
-    ['elixir_supremo',tier===2?5:3]
-  ]
-  // Chaves de Raid avançadas sem criar equipamentos lendários gratuitamente.
-  items.push([tier===2?'chave_raid_70':'chave_raid_60',tier===2?2:1])
-  if(milestone===200) items.push(['pergaminho_reclassificacao',1])
-  return {cash,items}
+milestone=Number(milestone)
+if(!Number.isInteger(milestone)||milestone<5) return null
+if(milestone<=100) return milestone%5===0?(LEVEL_REWARDS[milestone]||null):null
+if(milestone<200 && milestone%10!==0) return null
+if(milestone>=200 && milestone%20!==0) return null
+const tier=milestone>=200?2:1
+const step=tier===2?(milestone-200)/20:(milestone-110)/10
+const cash=tier===2?950000+Math.min(step,20)*65000:600000+Math.min(step,9)*35000
+const items=[
+['caixa_epica',tier===2?10+Math.min(step,10):6+Math.min(step,5)],
+['pocao_pet_suprema',tier===2?5:3],
+['elixir_supremo',tier===2?5:3]
+]
+items.push([tier===2?'chave_raid_70':'chave_raid_60',tier===2?2:1])
+if(milestone===200) items.push(['pergaminho_reclassificacao',1])
+return {cash,items}
 }
-
 function nextLevelRewardMilestone(level){
-  if(level<100) return (Math.floor(level/5)+1)*5
-  if(level<200) return (Math.floor(level/10)+1)*10
-  return (Math.floor(level/20)+1)*20
+if(level<100) return (Math.floor(level/5)+1)*5
+if(level<200) return (Math.floor(level/10)+1)*10
+return (Math.floor(level/20)+1)*20
 }
-
 export async function getClaimedLevelRewards(jid){
-  await ensureUser(jid)
-  const {rows}=await db.query(
-    'SELECT milestone FROM level_reward_claims WHERE jid=$1 ORDER BY milestone',
-    [jid]
-  )
-  return rows.map(r=>Number(r.milestone)).filter(n=>Number.isInteger(n))
+await ensureUser(jid)
+const {rows}=await db.query(
+'SELECT milestone FROM level_reward_claims WHERE jid=$1 ORDER BY milestone',
+[jid]
+)
+return rows.map(r=>Number(r.milestone)).filter(n=>Number.isInteger(n))
 }
-
 export async function claimLevelRewards(jid){
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const user=(await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const level=Number(user?.level||1)
-    const claimedRows=(await client.query('SELECT milestone FROM level_reward_claims WHERE jid=$1',[jid])).rows
-    const claimedMilestones=claimedRows.map(r=>Number(r.milestone))
-    const unlocked=unlockedLevelMilestones(level,claimedMilestones)
-    if(unlocked.length){
-      const auditedMilestones=(await client.query('SELECT milestone FROM level_reward_audit WHERE jid=$1',[jid])).rows.map(r=>Number(r.milestone))
-      const manifestExists=(await client.query("SELECT to_regclass('public.alpha_temp_recovery_manifest') AS relation")).rows[0]?.relation
-      const recovery=manifestExists
-        ?(await client.query("SELECT state FROM alpha_temp_recovery_manifest WHERE id='alpha-whatsapp-temporary-2026-10-19'")).rows[0]
-        :null
-      const problem=levelRewardHistoryProblem({level,claimedMilestones,auditedMilestones,recoveryActive:recovery?.state==='TEMPORARY_ACTIVE'})
-      if(problem) throw new Error('Recompensas em auditoria: '+problem+' Nenhum prêmio foi pago. Avise o administrador.')
-    }
-
-    const claimed=[]
-    for(const milestone of unlocked){
-      const reward=levelRewardFor(milestone)
-      if(!reward) continue
-      const inserted=await client.query(
-        'INSERT INTO level_reward_claims(jid,milestone) VALUES($1,$2) ON CONFLICT(jid,milestone) DO NOTHING RETURNING milestone',
-        [jid,milestone]
-      )
-      if(inserted.rowCount!==1) throw new Error('Resgate concorrente detectado; nenhum prêmio foi pago.')
-      const audited=await client.query(
-        'INSERT INTO level_reward_audit(jid,milestone,claimed_at) VALUES($1,$2,'+nowSql+') ON CONFLICT(jid,milestone) DO NOTHING RETURNING milestone',
-        [jid,milestone]
-      )
-      if(audited.rowCount!==1) throw new Error('Resgate anterior detectado; nenhum prêmio foi pago.')
-      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[reward.cash,jid])
-      await client.query(
-        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'level_reward',$3)",
-        [jid,reward.cash,'marco:'+milestone]
-      )
-      const delivered=[]
-      for(const [itemId,qty] of reward.items||[]){
-        const item=(await client.query('SELECT id,name FROM items WHERE id=$1',[itemId])).rows[0]
-        if(!item) continue
-        await client.query(`
-          INSERT INTO inventories(jid,item_id,quantity)
-          VALUES($1,$2,$3)
-          ON CONFLICT(jid,item_id) DO UPDATE
-          SET quantity=inventories.quantity+EXCLUDED.quantity
-        `,[jid,itemId,qty])
-        delivered.push({id:item.id,name:item.name,qty:Number(qty)})
-      }
-      claimed.push({milestone,cash:Number(reward.cash),items:delivered})
-    }
-
-    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1',[jid])).rows[0]
-    const nextMilestone=nextLevelRewardMilestone(level)
-    const nextReward=levelRewardFor(nextMilestone)
-    return {
-      level,
-      exp:Number(user?.exp||0),
-      claimed,
-      nextMilestone,
-      nextReward,
-      cash:Number(wallet?.cash||0),
-      bank:Number(wallet?.bank||0)
-    }
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const user=(await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const level=Number(user?.level||1)
+const claimedRows=(await client.query('SELECT milestone FROM level_reward_claims WHERE jid=$1',[jid])).rows
+const claimedMilestones=claimedRows.map(r=>Number(r.milestone))
+const unlocked=unlockedLevelMilestones(level,claimedMilestones)
+if(unlocked.length){
+const auditedMilestones=(await client.query('SELECT milestone FROM level_reward_audit WHERE jid=$1',[jid])).rows.map(r=>Number(r.milestone))
+const manifestExists=(await client.query("SELECT to_regclass('public.alpha_temp_recovery_manifest') AS relation")).rows[0]?.relation
+const recovery=manifestExists
+?(await client.query("SELECT state FROM alpha_temp_recovery_manifest WHERE id='alpha-whatsapp-temporary-2026-10-19'")).rows[0]
+:null
+const problem=levelRewardHistoryProblem({level,claimedMilestones,auditedMilestones,recoveryActive:recovery?.state==='TEMPORARY_ACTIVE'})
+if(problem) throw new Error('Recompensas em auditoria: '+problem+' Nenhum prêmio foi pago. Avise o administrador.')
 }
-
+const claimed=[]
+for(const milestone of unlocked){
+const reward=levelRewardFor(milestone)
+if(!reward) continue
+const inserted=await client.query(
+'INSERT INTO level_reward_claims(jid,milestone) VALUES($1,$2) ON CONFLICT(jid,milestone) DO NOTHING RETURNING milestone',
+[jid,milestone]
+)
+if(inserted.rowCount!==1) throw new Error('Resgate concorrente detectado; nenhum prêmio foi pago.')
+const audited=await client.query(
+'INSERT INTO level_reward_audit(jid,milestone,claimed_at) VALUES($1,$2,'+nowSql+') ON CONFLICT(jid,milestone) DO NOTHING RETURNING milestone',
+[jid,milestone]
+)
+if(audited.rowCount!==1) throw new Error('Resgate anterior detectado; nenhum prêmio foi pago.')
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[reward.cash,jid])
+await client.query(
+"INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'level_reward',$3)",
+[jid,reward.cash,'marco:'+milestone]
+)
+const delivered=[]
+for(const [itemId,qty] of reward.items||[]){
+const item=(await client.query('SELECT id,name FROM items WHERE id=$1',[itemId])).rows[0]
+if(!item) continue
+await client.query(`
+INSERT INTO inventories(jid,item_id,quantity)
+VALUES($1,$2,$3)
+ON CONFLICT(jid,item_id) DO UPDATE
+SET quantity=inventories.quantity+EXCLUDED.quantity
+`,[jid,itemId,qty])
+delivered.push({id:item.id,name:item.name,qty:Number(qty)})
+}
+claimed.push({milestone,cash:Number(reward.cash),items:delivered})
+}
+const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1',[jid])).rows[0]
+const nextMilestone=nextLevelRewardMilestone(level)
+const nextReward=levelRewardFor(nextMilestone)
+return {
+level,
+exp:Number(user?.exp||0),
+claimed,
+nextMilestone,
+nextReward,
+cash:Number(wallet?.cash||0),
+bank:Number(wallet?.bank||0)
+}
+})
+}
 export function getLevelRewardPreview(milestone){
-  const reward=levelRewardFor(milestone)
-  return reward?{milestone:Number(milestone),cash:Number(reward.cash),items:(reward.items||[]).map(([id,qty])=>({id,qty:Number(qty)}))}:null
+const reward=levelRewardFor(milestone)
+return reward?{milestone:Number(milestone),cash:Number(reward.cash),items:(reward.items||[]).map(([id,qty])=>({id,qty:Number(qty)}))}:null
 }
-
 export async function getGroupLicense(chatJid) {
-  const { rows } = await db.query(
-    'SELECT * FROM group_licenses WHERE chat_jid=$1',
-    [chatJid]
-  )
-  return rows[0] || null
+const { rows } = await db.query(
+'SELECT * FROM group_licenses WHERE chat_jid=$1',
+[chatJid]
+)
+return rows[0] || null
 }
-
 export async function ensureGroupTrial(chatJid) {
-  const now=Math.floor(Date.now()/1000)
-  const trialUntil=now+(3*24*60*60)
-  await db.query(`
-    INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,updated_at)
-    VALUES($1,'active','trial',$2,$3,${nowSql})
-    ON CONFLICT(chat_jid) DO NOTHING
-  `,[chatJid,now,trialUntil])
-  return getGroupLicense(chatJid)
+const now=Math.floor(Date.now()/1000)
+const trialUntil=now+(3*24*60*60)
+await db.query(`
+INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,updated_at)
+VALUES($1,'active','trial',$2,$3,${nowSql})
+ON CONFLICT(chat_jid) DO NOTHING
+`,[chatJid,now,trialUntil])
+return getGroupLicense(chatJid)
 }
-
 export async function activateGroupLicense(chatJid,days=30,activatedBy='owner',plan='basic') {
-  if(String(plan).toLowerCase()==='permanent'){
-    await db.query(`
-      INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
-      VALUES($1,'active','permanent',NULL,NULL,$2,${nowSql})
-      ON CONFLICT(chat_jid)
-      DO UPDATE SET status='active',plan='permanent',trial_started_at=NULL,paid_until=NULL,
-                    activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
-    `,[chatJid,activatedBy])
-    return getGroupLicense(chatJid)
-  }
-  days=Number(days)
-  if(!Number.isInteger(days)||days<1||days>3650) throw new Error('Dias inválidos.')
-  const now=Math.floor(Date.now()/1000)
-  const current=await getGroupLicense(chatJid)
-  const base=current?.paid_until && Number(current.paid_until)>now ? Number(current.paid_until) : now
-  const paidUntil=base+(days*24*60*60)
-
-  await db.query(`
-    INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
-    VALUES($1,'active',$2,NULL,$3,$4,${nowSql})
-    ON CONFLICT(chat_jid)
-    DO UPDATE SET status='active',plan=EXCLUDED.plan,paid_until=EXCLUDED.paid_until,
-                  activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
-  `,[chatJid,plan,paidUntil,activatedBy])
-
-  return getGroupLicense(chatJid)
+if(String(plan).toLowerCase()==='permanent'){
+await db.query(`
+INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
+VALUES($1,'active','permanent',NULL,NULL,$2,${nowSql})
+ON CONFLICT(chat_jid)
+DO UPDATE SET status='active',plan='permanent',trial_started_at=NULL,paid_until=NULL,
+activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
+`,[chatJid,activatedBy])
+return getGroupLicense(chatJid)
 }
-
+days=Number(days)
+if(!Number.isInteger(days)||days<1||days>3650) throw new Error('Dias inválidos.')
+const now=Math.floor(Date.now()/1000)
+const current=await getGroupLicense(chatJid)
+const base=current?.paid_until && Number(current.paid_until)>now ? Number(current.paid_until) : now
+const paidUntil=base+(days*24*60*60)
+await db.query(`
+INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
+VALUES($1,'active',$2,NULL,$3,$4,${nowSql})
+ON CONFLICT(chat_jid)
+DO UPDATE SET status='active',plan=EXCLUDED.plan,paid_until=EXCLUDED.paid_until,
+activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
+`,[chatJid,plan,paidUntil,activatedBy])
+return getGroupLicense(chatJid)
+}
 export async function blockGroupLicense(chatJid,activatedBy='owner') {
-  await db.query(`
-    INSERT INTO group_licenses(chat_jid,status,plan,activated_by,updated_at)
-    VALUES($1,'blocked','blocked',$2,${nowSql})
-    ON CONFLICT(chat_jid)
-    DO UPDATE SET status='blocked',plan='blocked',activated_by=EXCLUDED.activated_by,
-                  updated_at=EXCLUDED.updated_at
-  `,[chatJid,activatedBy])
-  return getGroupLicense(chatJid)
+await db.query(`
+INSERT INTO group_licenses(chat_jid,status,plan,activated_by,updated_at)
+VALUES($1,'blocked','blocked',$2,${nowSql})
+ON CONFLICT(chat_jid)
+DO UPDATE SET status='blocked',plan='blocked',activated_by=EXCLUDED.activated_by,
+updated_at=EXCLUDED.updated_at
+`,[chatJid,activatedBy])
+return getGroupLicense(chatJid)
 }
-
 export async function listGroupLicenses(limit=50) {
-  const { rows } = await db.query(`
-    SELECT chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at
-    FROM group_licenses
-    ORDER BY updated_at DESC
-    LIMIT $1
-  `,[limit])
-  return rows
+const { rows } = await db.query(`
+SELECT chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at
+FROM group_licenses
+ORDER BY updated_at DESC
+LIMIT $1
+`,[limit])
+return rows
 }
-
 export function groupLicenseIsActive(license) {
-  if(!license || license.status!=='active') return false
-  if(String(license.plan||'').toLowerCase()==='permanent') return true
-  const now=Math.floor(Date.now()/1000)
-  return Number(license.paid_until||0)>now
+if(!license || license.status!=='active') return false
+if(String(license.plan||'').toLowerCase()==='permanent') return true
+const now=Math.floor(Date.now()/1000)
+return Number(license.paid_until||0)>now
 }
-
-
 const BOX_CONFIG = {
-  caixa_sorte: {
-    label:'Caixa da Sorte',
-    minRarity:'common',
-    legendary:0.001,
-    epic:0.015,
-    rare:0.08,
-    uncommon:0.25,
-    cashChance:0.38,
-    expChance:0.18,
-    cash:[800,4500],
-    exp:[60,220]
-  },
-  caixa_rara: {
-    label:'Caixa Rara',
-    minRarity:'uncommon',
-    legendary:0.003,
-    epic:0.05,
-    rare:0.35,
-    uncommon:1.00,
-    cashChance:0.20,
-    expChance:0.10,
-    cash:[5000,20000],
-    exp:[200,700]
-  },
-  caixa_lendaria: {
-    label:'Caixa Lendária',minRarity:'legendary',legendary:1,epic:1,rare:1,uncommon:1,
-    cashChance:0,expChance:0,cash:[0,0],exp:[0,0]
-  },
-  caixa_epica: {
-    label:'Caixa Épica',
-    minRarity:'rare',
-    legendary:0.01,
-    epic:0.25,
-    rare:1.00,
-    uncommon:1.00,
-    cashChance:0.12,
-    expChance:0.08,
-    cash:[20000,60000],
-    exp:[800,1800]
-  }
+caixa_sorte: {
+label:'Caixa da Sorte',
+minRarity:'common',
+legendary:0.001,
+epic:0.015,
+rare:0.08,
+uncommon:0.25,
+cashChance:0.38,
+expChance:0.18,
+cash:[800,4500],
+exp:[60,220]
+},
+caixa_rara: {
+label:'Caixa Rara',
+minRarity:'uncommon',
+legendary:0.003,
+epic:0.05,
+rare:0.35,
+uncommon:1.00,
+cashChance:0.20,
+expChance:0.10,
+cash:[5000,20000],
+exp:[200,700]
+},
+caixa_lendaria: {
+label:'Caixa Lendária',minRarity:'legendary',legendary:1,epic:1,rare:1,uncommon:1,
+cashChance:0,expChance:0,cash:[0,0],exp:[0,0]
+},
+caixa_epica: {
+label:'Caixa Épica',
+minRarity:'rare',
+legendary:0.01,
+epic:0.25,
+rare:1.00,
+uncommon:1.00,
+cashChance:0.12,
+expChance:0.08,
+cash:[20000,60000],
+exp:[800,1800]
 }
-
+}
 const LOOT_POOLS = {
-  common:['pocao_p','espada_madeira','armadura_couro','bota_leve'],
-  uncommon:['pocao_m','espada_ferro','armadura_ferro','bota_vento'],
-  rare:['pocao_g','espada_aco','machado_guerra','katana_sombria','armadura_aco','armadura_samurai','armadura_cavaleiro','bota_cacador'],
-  epic:['elixir_supremo','espada_flamas','tridente_tempestade','lamina_abissal','foice_carmesim','lanca_solar','garras_vazio','espada_eclipse','armadura_dragao','armadura_abissal','armadura_celestial','manto_fenix','couraca_vulcanica','armadura_vazio','armadura_eclipse','bota_relampago'],
-  legendary:['excalibur','katana_divina','armadura_titan','armadura_divina','bota_celestial']
+common:['pocao_p','espada_madeira','armadura_couro','bota_leve'],
+uncommon:['pocao_m','espada_ferro','armadura_ferro','bota_vento'],
+rare:['pocao_g','espada_aco','machado_guerra','katana_sombria','armadura_aco','armadura_samurai','armadura_cavaleiro','bota_cacador'],
+epic:['elixir_supremo','espada_flamas','tridente_tempestade','lamina_abissal','foice_carmesim','lanca_solar','garras_vazio','espada_eclipse','armadura_dragao','armadura_abissal','armadura_celestial','manto_fenix','couraca_vulcanica','armadura_vazio','armadura_eclipse','bota_relampago'],
+legendary:['excalibur','katana_divina','armadura_titan','armadura_divina','bota_celestial']
 }
-
 function pick(arr){
-  return arr[Math.floor(Math.random()*arr.length)]
+return arr[Math.floor(Math.random()*arr.length)]
 }
-
 export async function openLootBoxes(jid, boxId='caixa_sorte', qty=1) {
-  await ensureUser(jid)
-  qty=Number(qty)
-  const config=BOX_CONFIG[boxId]
-  if(!config) throw new Error('Essa caixa não pode ser aberta.')
-  if(!Number.isInteger(qty) || qty<1 || qty>5000) throw new Error('Quantidade inválida de caixas.')
-
-  return transaction(async client=>{
-    const inv=await client.query(
-      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
-      [jid,boxId]
-    )
-    const available=Number(inv.rows[0]?.quantity||0)
-    if(available<qty){
-      throw new Error(`Você possui apenas ${available} caixa(s) desse tipo.`)
-    }
-
-    await client.query(
-      'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
-      [qty,jid,boxId]
-    )
-
-    let cash=0
-    let exp=0
-    const rewards=new Map()
-    const rarityCounts={common:0,uncommon:0,rare:0,epic:0,legendary:0}
-    const luckyMultiplier=await getLuckyBoxMultiplier(client)
-
-    for(let i=0;i<qty;i++){
-      const utilityRoll=Math.random()
-      if(utilityRoll<config.cashChance){
-        const [min,max]=config.cash
-        cash+=min+Math.floor(Math.random()*(max-min+1))
-        continue
-      }
-      if(utilityRoll<config.cashChance+config.expChance){
-        const [min,max]=config.exp
-        exp+=min+Math.floor(Math.random()*(max-min+1))
-        continue
-      }
-
-      const roll=Math.random()
-      const legendaryChance=Math.min(1,config.legendary*luckyMultiplier)
-      const epicChance=Math.min(1,config.epic*luckyMultiplier)
-      const rareChance=Math.min(1,config.rare*luckyMultiplier)
-      const uncommonChance=Math.min(1,config.uncommon*luckyMultiplier)
-      let rarity='common'
-      if(roll<legendaryChance) rarity='legendary'
-      else if(roll<epicChance) rarity='epic'
-      else if(roll<rareChance) rarity='rare'
-      else if(roll<uncommonChance) rarity='uncommon'
-
-      const rarityOrder={common:0,uncommon:1,rare:2,epic:3,legendary:4}
-      if(rarityOrder[rarity]<rarityOrder[config.minRarity]){
-        rarity=config.minRarity
-      }
-
-      rarityCounts[rarity]++
-      const itemId=pick(LOOT_POOLS[rarity])
-      rewards.set(itemId,(rewards.get(itemId)||0)+1)
-    }
-
-    if(cash>0){
-      await client.query(
-        'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
-        [cash,jid]
-      )
-      await client.query(`
-        INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-        VALUES('system',$1,$2,'loot_box',$3)
-      `,[jid,cash,`${boxId} x${qty}`])
-    }
-
-    let level=null
-    if(exp>0) level=await applyExp(client,jid,exp)
-
-    const itemIds=[...rewards.keys()]
-    const names=new Map()
-    const rarities=new Map()
-    if(itemIds.length){
-      const itemRows=await client.query(
-        `SELECT id,name,rarity,price,
-           CASE
-             WHEN price > 0 THEN GREATEST(1,FLOOR(price*0.50))
-             WHEN rarity='legendary' THEN 100000
-             WHEN rarity='epic' THEN 25000
-             WHEN rarity='rare' THEN 7500
-             WHEN rarity='uncommon' THEN 2500
-             ELSE 500
-           END::bigint AS sell_unit
-         FROM items
-         WHERE id = ANY($1::text[])`,
-        [itemIds]
-      )
-      for(const row of itemRows.rows){
-        names.set(row.id,row.name)
-        rarities.set(row.id,{rarity:row.rarity,sellUnit:Number(row.sell_unit||0)})
-      }
-
-      // Do not advertise a reward unless the inventory actually received it.
-      // All checks run in the same transaction: any inconsistency rolls back
-      // the box consumption, cash and every drop together.
-      if(names.size!==itemIds.length){
-        throw new Error('Catálogo de itens incompleto: abertura cancelada sem consumir caixas.')
-      }
-      for(const [itemId,itemQty] of rewards){
-        const credited=await client.query(`
-          INSERT INTO inventories(jid,item_id,quantity)
-          VALUES($1,$2,$3)
-          ON CONFLICT(jid,item_id) DO UPDATE
-          SET quantity=inventories.quantity+EXCLUDED.quantity
-          RETURNING quantity
-        `,[jid,itemId,itemQty])
-        const finalQty=Number(credited.rows[0]?.quantity||0)
-        if(credited.rowCount!==1 || finalQty<itemQty){
-          throw new Error('Falha ao creditar item no inventário: abertura revertida.')
-        }
-        // Durable per-item audit trail for investigating missing drops.
-        await client.query(`
-          INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-          VALUES('system',$1,0,'loot_item',$2)
-        `,[jid,`${boxId}|${itemId}|qty:${itemQty}|boxes:${qty}`])
-      }
-      const verification=await client.query(
-        'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[])',
-        [jid,itemIds]
-      )
-      const verified=new Map(verification.rows.map(row=>[row.item_id,Number(row.quantity)]))
-      for(const [itemId,itemQty] of rewards){
-        if((verified.get(itemId)||0)<itemQty){
-          throw new Error('Inventário não confirmou o drop: abertura revertida.')
-        }
-      }
-    }
-
-    const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
-    const remaining=Math.max(0,available-qty)
-
-    return {
-      boxId,
-      boxName:config.label||boxId,
-      opened:qty,
-      remaining,
-      cash,
-      exp,
-      level,
-      balance:Number(wallet.rows[0]?.cash||0),
-      rarityCounts,
-      luckyMultiplier,
-      items:[...rewards.entries()].map(([itemId,itemQty])=>({
-        itemId,
-        name:names.get(itemId)||itemId,
-        rarity:rarities.get(itemId)?.rarity||'common',
-        qty:itemQty,
-        sellUnit:Number(rarities.get(itemId)?.sellUnit||0)
-      }))
-    }
-  })
+await ensureUser(jid)
+qty=Number(qty)
+const config=BOX_CONFIG[boxId]
+if(!config) throw new Error('Essa caixa não pode ser aberta.')
+if(!Number.isInteger(qty) || qty<1 || qty>5000) throw new Error('Quantidade inválida de caixas.')
+return transaction(async client=>{
+const inv=await client.query(
+'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+[jid,boxId]
+)
+const available=Number(inv.rows[0]?.quantity||0)
+if(available<qty){
+throw new Error(`Você possui apenas ${available} caixa(s) desse tipo.`)
 }
-
+await client.query(
+'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
+[qty,jid,boxId]
+)
+let cash=0
+let exp=0
+const rewards=new Map()
+const rarityCounts={common:0,uncommon:0,rare:0,epic:0,legendary:0}
+const luckyMultiplier=await getLuckyBoxMultiplier(client)
+for(let i=0;i<qty;i++){
+const utilityRoll=Math.random()
+if(utilityRoll<config.cashChance){
+const [min,max]=config.cash
+cash+=min+Math.floor(Math.random()*(max-min+1))
+continue
+}
+if(utilityRoll<config.cashChance+config.expChance){
+const [min,max]=config.exp
+exp+=min+Math.floor(Math.random()*(max-min+1))
+continue
+}
+const roll=Math.random()
+const legendaryChance=Math.min(1,config.legendary*luckyMultiplier)
+const epicChance=Math.min(1,config.epic*luckyMultiplier)
+const rareChance=Math.min(1,config.rare*luckyMultiplier)
+const uncommonChance=Math.min(1,config.uncommon*luckyMultiplier)
+let rarity='common'
+if(roll<legendaryChance) rarity='legendary'
+else if(roll<epicChance) rarity='epic'
+else if(roll<rareChance) rarity='rare'
+else if(roll<uncommonChance) rarity='uncommon'
+const rarityOrder={common:0,uncommon:1,rare:2,epic:3,legendary:4}
+if(rarityOrder[rarity]<rarityOrder[config.minRarity]){
+rarity=config.minRarity
+}
+rarityCounts[rarity]++
+const itemId=pick(LOOT_POOLS[rarity])
+rewards.set(itemId,(rewards.get(itemId)||0)+1)
+}
+if(cash>0){
+await client.query(
+'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+[cash,jid]
+)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('system',$1,$2,'loot_box',$3)
+`,[jid,cash,`${boxId} x${qty}`])
+}
+let level=null
+if(exp>0) level=await applyExp(client,jid,exp)
+const itemIds=[...rewards.keys()]
+const names=new Map()
+const rarities=new Map()
+if(itemIds.length){
+const itemRows=await client.query(
+`SELECT id,name,rarity,price,
+CASE
+WHEN price > 0 THEN GREATEST(1,FLOOR(price*0.50))
+WHEN rarity='legendary' THEN 100000
+WHEN rarity='epic' THEN 25000
+WHEN rarity='rare' THEN 7500
+WHEN rarity='uncommon' THEN 2500
+ELSE 500
+END::bigint AS sell_unit
+FROM items
+WHERE id = ANY($1::text[])`,
+[itemIds]
+)
+for(const row of itemRows.rows){
+names.set(row.id,row.name)
+rarities.set(row.id,{rarity:row.rarity,sellUnit:Number(row.sell_unit||0)})
+}
+if(names.size!==itemIds.length){
+throw new Error('Catálogo de itens incompleto: abertura cancelada sem consumir caixas.')
+}
+for(const [itemId,itemQty] of rewards){
+const credited=await client.query(`
+INSERT INTO inventories(jid,item_id,quantity)
+VALUES($1,$2,$3)
+ON CONFLICT(jid,item_id) DO UPDATE
+SET quantity=inventories.quantity+EXCLUDED.quantity
+RETURNING quantity
+`,[jid,itemId,itemQty])
+const finalQty=Number(credited.rows[0]?.quantity||0)
+if(credited.rowCount!==1 || finalQty<itemQty){
+throw new Error('Falha ao creditar item no inventário: abertura revertida.')
+}
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('system',$1,0,'loot_item',$2)
+`,[jid,`${boxId}|${itemId}|qty:${itemQty}|boxes:${qty}`])
+}
+const verification=await client.query(
+'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[])',
+[jid,itemIds]
+)
+const verified=new Map(verification.rows.map(row=>[row.item_id,Number(row.quantity)]))
+for(const [itemId,itemQty] of rewards){
+if((verified.get(itemId)||0)<itemQty){
+throw new Error('Inventário não confirmou o drop: abertura revertida.')
+}
+}
+}
+const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])
+const remaining=Math.max(0,available-qty)
+return {
+boxId,
+boxName:config.label||boxId,
+opened:qty,
+remaining,
+cash,
+exp,
+level,
+balance:Number(wallet.rows[0]?.cash||0),
+rarityCounts,
+luckyMultiplier,
+items:[...rewards.entries()].map(([itemId,itemQty])=>({
+itemId,
+name:names.get(itemId)||itemId,
+rarity:rarities.get(itemId)?.rarity||'common',
+qty:itemQty,
+sellUnit:Number(rarities.get(itemId)?.sellUnit||0)
+}))
+}
+})
+}
 export async function openLuckyBoxes(jid, qty=1) {
-  return openLootBoxes(jid,'caixa_sorte',qty)
+return openLootBoxes(jid,'caixa_sorte',qty)
 }
-
 export async function openLuckyBox(jid) {
-  return openLootBoxes(jid,'caixa_sorte',1)
+return openLootBoxes(jid,'caixa_sorte',1)
 }
-
 export async function dungeon(jid) {
-  await ensureUser(jid)
-
-  return transaction(async client=>{
-    const p=await client.query(`
-      SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id,s.helmet_id,s.class_id,s.class_applied
-      FROM users u JOIN stats s ON s.jid=u.jid
-      WHERE u.jid=$1
-      FOR UPDATE OF u,s
-    `,[jid])
-    const row=p.rows[0]
-    if(!row) throw new Error('Perfil não encontrado.')
-    if(Number(row.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes.')
-
-    const cd=await claimCooldown(client,`dungeon:${jid}`,20*60)
-    if(!cd.ok) return cd
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-
-    const eqIds=[row.weapon_id,row.armor_id,row.helmet_id].filter(Boolean)
-    const ups=eqIds.length?(await client.query(
-      'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
-      [jid,eqIds]
-    )).rows:[]
-    const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
-    const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id],client)
-    const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{atk:0,def:0,hp:0}
-    const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{atk:0,def:0,hp:0}
-    const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{atk:0,def:0,hp:0}
-    const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)
-    const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)+Number(helmet.def||0)
-    const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)+Number(helmet.hp||0)
-    const level=Number(row.level)
-
-    const monsters=[
-      {name:'Slime Sombrio',hp:45,atk:8,def:2,mult:1},
-      {name:'Goblin do Beco',hp:70,atk:12,def:4,mult:1.2},
-      {name:'Orc Brutal',hp:105,atk:17,def:7,mult:1.5},
-      {name:'Cavaleiro Espectral',hp:145,atk:22,def:10,mult:2}
-    ]
-    const idx=Math.min(monsters.length-1,Math.floor((level-1)/3)+Math.floor(Math.random()*2))
-    const m={...monsters[Math.min(idx,monsters.length-1)]}
-    m.hp+=level*6
-    m.atk+=Math.floor(level*1.3)
-    m.def+=Math.floor(level*.7)
-
-    let php=Math.min(Number(row.hp),effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0
-    while(php>0&&mhp>0&&rounds<25){
-      rounds++
-      const crit=Math.random()<(.10+classCritBonus(row.class_id,row.class_applied))
-      const pdmg=Math.max(1,Math.round((atk-m.def*.4)*(0.85+Math.random()*.3)*(crit?1.5:1)))
-      const skill=classAttack({classId:row.class_id,applied:row.class_applied,damage:pdmg,critical:crit,hp:php,maxHp:effectiveMaxHp,attackIndex:rounds,context:'dungeon',lastProcAttack})
-      lastProcAttack=skill.lastProcAttack
-      mhp=Math.max(0,mhp-skill.damage)
-      php=Math.min(effectiveMaxHp,php+skill.heal)
-      if(mhp<=0) break
-      const mdmg=Math.max(1,Math.round((m.atk-def*.35)*(0.85+Math.random()*.3)))
-      const blocked=classDefense({classId:row.class_id,applied:row.class_applied,damage:mdmg})
-      php=Math.max(0,php-blocked.damage)
-    }
-
-    if(php<=0){
-      const recover=Math.max(1,Math.floor(effectiveMaxHp*.30))
-      await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[recover,jid])
-      const lossExp=Math.round(10*xpMultiplier)
-      const expRes=await applyExp(client,jid,lossExp)
-      return {ok:true,won:false,monster:m.name,hp:recover,maxHp:effectiveMaxHp,exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
-    }
-
-    const cash=Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
-    const exp=Math.round(Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier)
-    await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
-    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
-    await client.query(`
-      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('system',$1,$2,'dungeon_reward',$3)
-    `,[jid,cash,m.name])
-    const expRes=await applyExp(client,jid,exp)
-    return {ok:true,won:true,monster:m.name,hp:Math.max(1,php),maxHp:effectiveMaxHp,cash,exp,level:expRes,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const p=await client.query(`
+SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id,s.helmet_id,s.class_id,s.class_applied
+FROM users u JOIN stats s ON s.jid=u.jid
+WHERE u.jid=$1
+FOR UPDATE OF u,s
+`,[jid])
+const row=p.rows[0]
+if(!row) throw new Error('Perfil não encontrado.')
+if(Number(row.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes.')
+const cd=await claimCooldown(client,`dungeon:${jid}`,20*60)
+if(!cd.ok) return cd
+const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+const eqIds=[row.weapon_id,row.armor_id,row.helmet_id].filter(Boolean)
+const ups=eqIds.length?(await client.query(
+'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
+[jid,eqIds]
+)).rows:[]
+const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
+const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id],client)
+const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{atk:0,def:0,hp:0}
+const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{atk:0,def:0,hp:0}
+const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{atk:0,def:0,hp:0}
+const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)
+const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)+Number(helmet.def||0)
+const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)+Number(helmet.hp||0)
+const level=Number(row.level)
+const monsters=[
+{name:'Slime Sombrio',hp:45,atk:8,def:2,mult:1},
+{name:'Goblin do Beco',hp:70,atk:12,def:4,mult:1.2},
+{name:'Orc Brutal',hp:105,atk:17,def:7,mult:1.5},
+{name:'Cavaleiro Espectral',hp:145,atk:22,def:10,mult:2}
+]
+const idx=Math.min(monsters.length-1,Math.floor((level-1)/3)+Math.floor(Math.random()*2))
+const m={...monsters[Math.min(idx,monsters.length-1)]}
+m.hp+=level*6
+m.atk+=Math.floor(level*1.3)
+m.def+=Math.floor(level*.7)
+let php=Math.min(Number(row.hp),effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0
+while(php>0&&mhp>0&&rounds<25){
+rounds++
+const crit=Math.random()<(.10+classCritBonus(row.class_id,row.class_applied))
+const pdmg=Math.max(1,Math.round((atk-m.def*.4)*(0.85+Math.random()*.3)*(crit?1.5:1)))
+const skill=classAttack({classId:row.class_id,applied:row.class_applied,damage:pdmg,critical:crit,hp:php,maxHp:effectiveMaxHp,attackIndex:rounds,context:'dungeon',lastProcAttack})
+lastProcAttack=skill.lastProcAttack
+mhp=Math.max(0,mhp-skill.damage)
+php=Math.min(effectiveMaxHp,php+skill.heal)
+if(mhp<=0) break
+const mdmg=Math.max(1,Math.round((m.atk-def*.35)*(0.85+Math.random()*.3)))
+const blocked=classDefense({classId:row.class_id,applied:row.class_applied,damage:mdmg})
+php=Math.max(0,php-blocked.damage)
 }
-
+if(php<=0){
+const recover=Math.max(1,Math.floor(effectiveMaxHp*.30))
+await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[recover,jid])
+const lossExp=Math.round(10*xpMultiplier)
+const expRes=await applyExp(client,jid,lossExp)
+return {ok:true,won:false,monster:m.name,hp:recover,maxHp:effectiveMaxHp,exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
+}
+const cash=Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
+const exp=Math.round(Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier)
+await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('system',$1,$2,'dungeon_reward',$3)
+`,[jid,cash,m.name])
+const expRes=await applyExp(client,jid,exp)
+return {ok:true,won:true,monster:m.name,hp:Math.max(1,php),maxHp:effectiveMaxHp,cash,exp,level:expRes,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
+})
+}
 export async function robPlayer(thiefJid,targetJid) {
-  if(thiefJid===targetJid) throw new Error('Você não pode roubar a si mesmo.')
-  await ensureUser(thiefJid)
-  await ensureUser(targetJid)
-
-  return transaction(async client=>{
-    const now=Math.floor(Date.now()/1000)
-    const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,now])
-    if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser roubada agora.')
-    const carpindo=await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[targetJid,now])
-    if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode ser roubada agora.')
-    const ids=[thiefJid,targetJid].sort()
-    const wallets=await client.query(
-      'SELECT jid,cash FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
-      [ids]
-    )
-    const stats=await client.query(
-      'SELECT jid,spd FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
-      [ids]
-    )
-    const users=await client.query(
-      'SELECT jid,push_name,level FROM users WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
-      [ids]
-    )
-    const victim=users.rows.find(r=>r.jid===targetJid)
-    if(Number(victim?.level||1)<=20){
-      throw new Error(`🛡️ PROTEÇÃO DE INICIANTE\n\n${victim?.push_name||'Esse jogador'} está no *Lv.${Number(victim?.level||1)}* e não pode ser roubado até completar o *Lv.20*.\n🥷 Roubo contra ele é liberado a partir do *Lv.21*.`)
-    }
-    const tw=wallets.rows.find(r=>r.jid===thiefJid)
-    const vw=wallets.rows.find(r=>r.jid===targetJid)
-    const ts=stats.rows.find(r=>r.jid===thiefJid)
-    const vs=stats.rows.find(r=>r.jid===targetJid)
-    const victimCash=Number(vw?.cash||0)
-    if(victimCash<100) throw new Error('Essa pessoa está praticamente sem dinheiro na carteira.')
-
-    const protection=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1',[`rob_protection:${targetJid}`])
-    const protectedUntil=Number(protection.rows[0]?.expires_at||0)
-    if(protectedUntil>now) throw new Error('🛡️ Essa pessoa foi roubada recentemente e está protegida por mais '+Math.ceil((protectedUntil-now)/60)+' minuto(s).')
-
-    const cd=await claimCooldown(client,`rob:${thiefJid}`,45*60)
-    if(!cd.ok) return cd
-
-    const speedDiff=Number(ts?.spd||10)-Number(vs?.spd||10)
-    const chance=Math.max(.25,Math.min(.65,.45+(speedDiff*.015)))
-    const success=Math.random()<chance
-
-    if(success){
-      const pct=.02+Math.random()*.03
-      const amount=Math.min(victimCash,50000,Math.max(50,Math.floor(victimCash*pct)))
-      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[amount,thiefJid])
-      await client.query('UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',[amount,targetJid])
-      await client.query(`
-        INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-        VALUES($1,$2,$3,'robbery','success')
-      `,[targetJid,thiefJid,amount])
-      await client.query(`INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
-        ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at`,[`rob_protection:${targetJid}`,now+2*60*60])
-      return {ok:true,success:true,amount,chance}
-    }
-
-    const thiefCash=Number(tw?.cash||0)
-    const fine=Math.min(20000,Math.floor(thiefCash*.02))
-    if(fine>0){
-      await client.query('UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',[fine,thiefJid])
-    }
-    return {ok:true,success:false,fine,chance}
-  })
+if(thiefJid===targetJid) throw new Error('Você não pode roubar a si mesmo.')
+await ensureUser(thiefJid)
+await ensureUser(targetJid)
+return transaction(async client=>{
+const now=Math.floor(Date.now()/1000)
+const sleeping=await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,now])
+if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode ser roubada agora.')
+const carpindo=await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[targetJid,now])
+if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode ser roubada agora.')
+const ids=[thiefJid,targetJid].sort()
+const wallets=await client.query(
+'SELECT jid,cash FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+[ids]
+)
+const stats=await client.query(
+'SELECT jid,spd FROM stats WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+[ids]
+)
+const users=await client.query(
+'SELECT jid,push_name,level FROM users WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+[ids]
+)
+const victim=users.rows.find(r=>r.jid===targetJid)
+if(Number(victim?.level||1)<=20){
+throw new Error(`🛡️ PROTEÇÃO DE INICIANTE\n\n${victim?.push_name||'Esse jogador'} está no *Lv.${Number(victim?.level||1)}* e não pode ser roubado até completar o *Lv.20*.\n🥷 Roubo contra ele é liberado a partir do *Lv.21*.`)
 }
-
+const tw=wallets.rows.find(r=>r.jid===thiefJid)
+const vw=wallets.rows.find(r=>r.jid===targetJid)
+const ts=stats.rows.find(r=>r.jid===thiefJid)
+const vs=stats.rows.find(r=>r.jid===targetJid)
+const victimCash=Number(vw?.cash||0)
+if(victimCash<100) throw new Error('Essa pessoa está praticamente sem dinheiro na carteira.')
+const protection=await client.query('SELECT expires_at FROM cooldowns WHERE key=$1',[`rob_protection:${targetJid}`])
+const protectedUntil=Number(protection.rows[0]?.expires_at||0)
+if(protectedUntil>now) throw new Error('🛡️ Essa pessoa foi roubada recentemente e está protegida por mais '+Math.ceil((protectedUntil-now)/60)+' minuto(s).')
+const cd=await claimCooldown(client,`rob:${thiefJid}`,45*60)
+if(!cd.ok) return cd
+const speedDiff=Number(ts?.spd||10)-Number(vs?.spd||10)
+const chance=Math.max(.25,Math.min(.65,.45+(speedDiff*.015)))
+const success=Math.random()<chance
+if(success){
+const pct=.02+Math.random()*.03
+const amount=Math.min(victimCash,50000,Math.max(50,Math.floor(victimCash*pct)))
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[amount,thiefJid])
+await client.query('UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',[amount,targetJid])
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,$2,$3,'robbery','success')
+`,[targetJid,thiefJid,amount])
+await client.query(`INSERT INTO cooldowns(key,expires_at) VALUES($1,$2)
+ON CONFLICT(key) DO UPDATE SET expires_at=EXCLUDED.expires_at`,[`rob_protection:${targetJid}`,now+2*60*60])
+return {ok:true,success:true,amount,chance}
+}
+const thiefCash=Number(tw?.cash||0)
+const fine=Math.min(20000,Math.floor(thiefCash*.02))
+if(fine>0){
+await client.query('UPDATE wallets SET cash=GREATEST(0,cash-$1),updated_at='+nowSql+' WHERE jid=$2',[fine,thiefJid])
+}
+return {ok:true,success:false,fine,chance}
+})
+}
 async function readDoubleRewardEvent(queryable=db){
-  const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")
-  const raw=rows[0]?.value || {}
-  const startsAt=Number(raw?.startsAt||raw?.startedAt||0)
-  const endsAt=Number(raw?.endsAt||0)
-  const moneyMultiplier=Math.max(1,Number(raw?.moneyMultiplier||2))
-  const xpMultiplier=Math.max(1,Number(raw?.xpMultiplier||2))
-  const now=Date.now()
-  return {
-    active:Boolean(startsAt && startsAt<=now && endsAt>now),
-    scheduled:Boolean(startsAt>now && endsAt>startsAt),
-    startsAt,
-    startedAt:startsAt,
-    endsAt,
-    moneyMultiplier,
-    xpMultiplier,
-    activatedBy:String(raw?.activatedBy||''),
-    remainingMs:Math.max(0,endsAt-now),
-    startsInMs:Math.max(0,startsAt-now)
-  }
+const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='double_reward_event'")
+const raw=rows[0]?.value || {}
+const startsAt=Number(raw?.startsAt||raw?.startedAt||0)
+const endsAt=Number(raw?.endsAt||0)
+const moneyMultiplier=Math.max(1,Number(raw?.moneyMultiplier||2))
+const xpMultiplier=Math.max(1,Number(raw?.xpMultiplier||2))
+const now=Date.now()
+return {
+active:Boolean(startsAt && startsAt<=now && endsAt>now),
+scheduled:Boolean(startsAt>now && endsAt>startsAt),
+startsAt,
+startedAt:startsAt,
+endsAt,
+moneyMultiplier,
+xpMultiplier,
+activatedBy:String(raw?.activatedBy||''),
+remainingMs:Math.max(0,endsAt-now),
+startsInMs:Math.max(0,startsAt-now)
 }
-
+}
 export async function getDoubleRewardEvent(){
-  return readDoubleRewardEvent(db)
+return readDoubleRewardEvent(db)
 }
-
 export async function getDoubleEventMultiplier(queryable=db,kind='money'){
-  const event=await readDoubleRewardEvent(queryable)
-  if(!event.active) return 1
-  return kind==='xp' ? event.xpMultiplier : event.moneyMultiplier
+const event=await readDoubleRewardEvent(queryable)
+if(!event.active) return 1
+return kind==='xp' ? event.xpMultiplier : event.moneyMultiplier
 }
-
 export async function getPetXpEventMultiplier(queryable=db){
-  const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='pet_care_event'")
-  const raw=rows[0]?.value||{}
-  const now=Date.now()
-  const startsAt=Number(raw.startsAt||0)
-  const endsAt=Number(raw.endsAt||0)
-  if(!startsAt||startsAt>now||endsAt<=now) return 1
-  return Math.max(1,Number(raw.multiplier||2))
+const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='pet_care_event'")
+const raw=rows[0]?.value||{}
+const now=Date.now()
+const startsAt=Number(raw.startsAt||0)
+const endsAt=Number(raw.endsAt||0)
+if(!startsAt||startsAt>now||endsAt<=now) return 1
+return Math.max(1,Number(raw.multiplier||2))
 }
-
-
 export async function startDoubleRewardEvent(minutes=20,activatedBy='owner',moneyMultiplier=2,xpMultiplier=2){
-  minutes=Number(minutes)
-  moneyMultiplier=Number(moneyMultiplier)
-  xpMultiplier=Number(xpMultiplier)
-  if(!Number.isInteger(minutes)||minutes<1||minutes>180) throw new Error('Duração inválida. Use entre 1 e 180 minutos.')
-  if(!Number.isFinite(moneyMultiplier)||moneyMultiplier<1||moneyMultiplier>10) throw new Error('Multiplicador de dinheiro inválido.')
-  if(!Number.isFinite(xpMultiplier)||xpMultiplier<1||xpMultiplier>10) throw new Error('Multiplicador de XP inválido.')
-  const now=Date.now()
-  const state={
-    active:true,
-    startsAt:now,
-    startedAt:now,
-    endsAt:now+(minutes*60*1000),
-    moneyMultiplier,
-    xpMultiplier,
-    activatedBy:String(activatedBy||'owner')
-  }
-  await db.query(`
-    INSERT INTO trevo_settings(key,value,updated_at)
-    VALUES('double_reward_event',$1::jsonb,${nowSql})
-    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
-  `,[JSON.stringify(state)])
-  return readDoubleRewardEvent(db)
+minutes=Number(minutes)
+moneyMultiplier=Number(moneyMultiplier)
+xpMultiplier=Number(xpMultiplier)
+if(!Number.isInteger(minutes)||minutes<1||minutes>180) throw new Error('Duração inválida. Use entre 1 e 180 minutos.')
+if(!Number.isFinite(moneyMultiplier)||moneyMultiplier<1||moneyMultiplier>10) throw new Error('Multiplicador de dinheiro inválido.')
+if(!Number.isFinite(xpMultiplier)||xpMultiplier<1||xpMultiplier>10) throw new Error('Multiplicador de XP inválido.')
+const now=Date.now()
+const state={
+active:true,
+startsAt:now,
+startedAt:now,
+endsAt:now+(minutes*60*1000),
+moneyMultiplier,
+xpMultiplier,
+activatedBy:String(activatedBy||'owner')
 }
-
+await db.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+VALUES('double_reward_event',$1::jsonb,${nowSql})
+ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+`,[JSON.stringify(state)])
+return readDoubleRewardEvent(db)
+}
 export async function stopDoubleRewardEvent(activatedBy='owner'){
-  const state={
-    active:false,
-    startsAt:0,
-    startedAt:0,
-    endsAt:0,
-    moneyMultiplier:2,
-    xpMultiplier:2,
-    activatedBy:String(activatedBy||'owner')
-  }
-  await db.query(`
-    INSERT INTO trevo_settings(key,value,updated_at)
-    VALUES('double_reward_event',$1::jsonb,${nowSql})
-    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
-  `,[JSON.stringify(state)])
-  return readDoubleRewardEvent(db)
+const state={
+active:false,
+startsAt:0,
+startedAt:0,
+endsAt:0,
+moneyMultiplier:2,
+xpMultiplier:2,
+activatedBy:String(activatedBy||'owner')
 }
-
+await db.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+VALUES('double_reward_event',$1::jsonb,${nowSql})
+ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+`,[JSON.stringify(state)])
+return readDoubleRewardEvent(db)
+}
 async function readLuckyBoxEvent(queryable=db){
-  const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")
-  const raw=rows[0]?.value || {}
-  const startsAt=Number(raw?.startsAt||0)
-  const endsAt=Number(raw?.endsAt||0)
-  const multiplier=Math.max(1,Number(raw?.multiplier||2))
-  const now=Date.now()
-  return {
-    active:Boolean(startsAt && startsAt<=now && endsAt>now),
-    scheduled:Boolean(startsAt>now && endsAt>startsAt),
-    startsAt,
-    endsAt,
-    multiplier,
-    remainingMs:Math.max(0,endsAt-now),
-    startsInMs:Math.max(0,startsAt-now)
-  }
+const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")
+const raw=rows[0]?.value || {}
+const startsAt=Number(raw?.startsAt||0)
+const endsAt=Number(raw?.endsAt||0)
+const multiplier=Math.max(1,Number(raw?.multiplier||2))
+const now=Date.now()
+return {
+active:Boolean(startsAt && startsAt<=now && endsAt>now),
+scheduled:Boolean(startsAt>now && endsAt>startsAt),
+startsAt,
+endsAt,
+multiplier,
+remainingMs:Math.max(0,endsAt-now),
+startsInMs:Math.max(0,startsAt-now)
 }
-
+}
 export async function getLuckyBoxEvent(){
-  return readLuckyBoxEvent(db)
+return readLuckyBoxEvent(db)
 }
-
 export async function getLuckyBoxMultiplier(queryable=db){
-  const event=await readLuckyBoxEvent(queryable)
-  return event.active ? event.multiplier : 1
+const event=await readLuckyBoxEvent(queryable)
+return event.active ? event.multiplier : 1
 }
-
-
 export async function getLaunchPrice() {
-  const { rows } = await db.query(
-    "SELECT value FROM trevo_settings WHERE key='launch_price'"
-  )
-  const raw=rows[0]?.value
-  const value=Number(raw ?? 2)
-  return Number.isFinite(value) && value>0 ? value : 2
+const { rows } = await db.query(
+"SELECT value FROM trevo_settings WHERE key='launch_price'"
+)
+const raw=rows[0]?.value
+const value=Number(raw ?? 2)
+return Number.isFinite(value) && value>0 ? value : 2
 }
-
 export async function setLaunchPrice(value) {
-  value=Number(String(value).replace(',','.'))
-  if(!Number.isFinite(value) || value<=0 || value>9999) throw new Error('Preço inválido.')
-  value=Math.round(value*100)/100
-
-  await db.query(`
-    INSERT INTO trevo_settings(key,value,updated_at)
-    VALUES('launch_price',$1::jsonb,${nowSql})
-    ON CONFLICT(key)
-    DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
-  `,[JSON.stringify(value)])
-
-  return value
+value=Number(String(value).replace(',','.'))
+if(!Number.isFinite(value) || value<=0 || value>9999) throw new Error('Preço inválido.')
+value=Math.round(value*100)/100
+await db.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+VALUES('launch_price',$1::jsonb,${nowSql})
+ON CONFLICT(key)
+DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+`,[JSON.stringify(value)])
+return value
 }
-
-
 function orderCode() {
-  const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let out='ALPHA-'
-  const bytes=crypto.randomBytes(6)
-  for(let i=0;i<6;i++) out+=alphabet[bytes[i]%alphabet.length]
-  return out
+const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+let out='ALPHA-'
+const bytes=crypto.randomBytes(6)
+for(let i=0;i<6;i++) out+=alphabet[bytes[i]%alphabet.length]
+return out
 }
-
 export async function getPixSettings() {
-  const { rows } = await db.query(
-    "SELECT key,value FROM trevo_settings WHERE key=ANY($1::text[])",
-    [['pix_key','pix_name']]
-  )
-  const map=Object.fromEntries(rows.map(r=>[r.key,r.value]))
-  return {
-    key:String(map.pix_key ?? ''),
-    name:String(map.pix_name ?? 'Alpha Bot')
-  }
+const { rows } = await db.query(
+"SELECT key,value FROM trevo_settings WHERE key=ANY($1::text[])",
+[['pix_key','pix_name']]
+)
+const map=Object.fromEntries(rows.map(r=>[r.key,r.value]))
+return {
+key:String(map.pix_key ?? ''),
+name:String(map.pix_name ?? 'Alpha Bot')
 }
-
+}
 export async function setPixKey(value) {
-  value=String(value||'').trim()
-  if(value.length<3 || value.length>200) throw new Error('Chave Pix inválida.')
-  await db.query(`
-    INSERT INTO trevo_settings(key,value,updated_at)
-    VALUES('pix_key',$1::jsonb,${nowSql})
-    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
-  `,[JSON.stringify(value)])
-  return value
+value=String(value||'').trim()
+if(value.length<3 || value.length>200) throw new Error('Chave Pix inválida.')
+await db.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+VALUES('pix_key',$1::jsonb,${nowSql})
+ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+`,[JSON.stringify(value)])
+return value
 }
-
 export async function setPixName(value) {
-  value=String(value||'').trim()
-  if(value.length<2 || value.length>100) throw new Error('Nome Pix inválido.')
-  await db.query(`
-    INSERT INTO trevo_settings(key,value,updated_at)
-    VALUES('pix_name',$1::jsonb,${nowSql})
-    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
-  `,[JSON.stringify(value)])
-  return value
+value=String(value||'').trim()
+if(value.length<2 || value.length>100) throw new Error('Nome Pix inválido.')
+await db.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+VALUES('pix_name',$1::jsonb,${nowSql})
+ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+`,[JSON.stringify(value)])
+return value
 }
-
 export async function createSubscriptionOrder(chatJid, requesterJid) {
-  if(!chatJid?.endsWith('@g.us')) throw new Error('A assinatura é vinculada a um grupo.')
-  const price=await getLaunchPrice()
-  const now=Math.floor(Date.now()/1000)
-  const expires=now+(24*60*60)
-
-  const existing=await db.query(`
-    SELECT * FROM subscription_orders
-    WHERE chat_jid=$1 AND status='pending' AND expires_at>$2
-    ORDER BY created_at DESC
-    LIMIT 1
-  `,[chatJid,now])
-  if(existing.rows[0]) return {order:existing.rows[0],reused:true}
-
-  for(let attempt=0;attempt<8;attempt++){
-    const code=orderCode()
-    try{
-      const {rows}=await db.query(`
-        INSERT INTO subscription_orders(code,chat_jid,requester_jid,amount,status,expires_at)
-        VALUES($1,$2,$3,$4,'pending',$5)
-        RETURNING *
-      `,[code,chatJid,requesterJid,price,expires])
-      return {order:rows[0],reused:false}
-    }catch(err){
-      if(err?.code!=='23505') throw err
-    }
-  }
-  throw new Error('Não foi possível gerar o pedido. Tente novamente.')
+if(!chatJid?.endsWith('@g.us')) throw new Error('A assinatura é vinculada a um grupo.')
+const price=await getLaunchPrice()
+const now=Math.floor(Date.now()/1000)
+const expires=now+(24*60*60)
+const existing=await db.query(`
+SELECT * FROM subscription_orders
+WHERE chat_jid=$1 AND status='pending' AND expires_at>$2
+ORDER BY created_at DESC
+LIMIT 1
+`,[chatJid,now])
+if(existing.rows[0]) return {order:existing.rows[0],reused:true}
+for(let attempt=0;attempt<8;attempt++){
+const code=orderCode()
+try{
+const {rows}=await db.query(`
+INSERT INTO subscription_orders(code,chat_jid,requester_jid,amount,status,expires_at)
+VALUES($1,$2,$3,$4,'pending',$5)
+RETURNING *
+`,[code,chatJid,requesterJid,price,expires])
+return {order:rows[0],reused:false}
+}catch(err){
+if(err?.code!=='23505') throw err
 }
-
+}
+throw new Error('Não foi possível gerar o pedido. Tente novamente.')
+}
 export async function getSubscriptionOrder(code) {
-  code=String(code||'').trim().toUpperCase()
-  const {rows}=await db.query(
-    'SELECT * FROM subscription_orders WHERE code=$1',
-    [code]
-  )
-  return rows[0]||null
+code=String(code||'').trim().toUpperCase()
+const {rows}=await db.query(
+'SELECT * FROM subscription_orders WHERE code=$1',
+[code]
+)
+return rows[0]||null
 }
-
 export async function listPendingSubscriptionOrders(limit=30) {
-  const now=Math.floor(Date.now()/1000)
-  await db.query(
-    "UPDATE subscription_orders SET status='expired' WHERE status='pending' AND expires_at<=$1",
-    [now]
-  )
-  const {rows}=await db.query(`
-    SELECT * FROM subscription_orders
-    WHERE status='pending'
-    ORDER BY created_at ASC
-    LIMIT $1
-  `,[limit])
-  return rows
+const now=Math.floor(Date.now()/1000)
+await db.query(
+"UPDATE subscription_orders SET status='expired' WHERE status='pending' AND expires_at<=$1",
+[now]
+)
+const {rows}=await db.query(`
+SELECT * FROM subscription_orders
+WHERE status='pending'
+ORDER BY created_at ASC
+LIMIT $1
+`,[limit])
+return rows
 }
-
 export async function approveSubscriptionOrder(code, ownerJid) {
-  code=String(code||'').trim().toUpperCase()
-  return transaction(async client=>{
-    const now=Math.floor(Date.now()/1000)
-    const r=await client.query(
-      'SELECT * FROM subscription_orders WHERE code=$1 FOR UPDATE',
-      [code]
-    )
-    const order=r.rows[0]
-    if(!order) throw new Error('Pedido não encontrado.')
-    if(order.status==='approved') throw new Error('Esse pedido já foi aprovado.')
-    if(order.status!=='pending') throw new Error(`Pedido está ${order.status}.`)
-    if(Number(order.expires_at)<=now){
-      await client.query(
-        "UPDATE subscription_orders SET status='expired' WHERE code=$1",
-        [code]
-      )
-      throw new Error('Esse pedido expirou. Gere outro com !assinar.')
-    }
-
-    const lic=await client.query(
-      'SELECT paid_until FROM group_licenses WHERE chat_jid=$1 FOR UPDATE',
-      [order.chat_jid]
-    )
-    const currentUntil=Number(lic.rows[0]?.paid_until||0)
-    const base=currentUntil>now?currentUntil:now
-    const paidUntil=base+(30*24*60*60)
-
-    await client.query(`
-      INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
-      VALUES($1,'active','basic',NULL,$2,$3,${nowSql})
-      ON CONFLICT(chat_jid)
-      DO UPDATE SET status='active',plan='basic',paid_until=EXCLUDED.paid_until,
-                    activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
-    `,[order.chat_jid,paidUntil,ownerJid])
-
-    await client.query(`
-      UPDATE subscription_orders
-      SET status='approved',approved_at=$2,approved_by=$3
-      WHERE code=$1
-    `,[code,now,ownerJid])
-
-    return {...order,status:'approved',approved_at:now,approved_by:ownerJid,paid_until:paidUntil}
-  })
+code=String(code||'').trim().toUpperCase()
+return transaction(async client=>{
+const now=Math.floor(Date.now()/1000)
+const r=await client.query(
+'SELECT * FROM subscription_orders WHERE code=$1 FOR UPDATE',
+[code]
+)
+const order=r.rows[0]
+if(!order) throw new Error('Pedido não encontrado.')
+if(order.status==='approved') throw new Error('Esse pedido já foi aprovado.')
+if(order.status!=='pending') throw new Error(`Pedido está ${order.status}.`)
+if(Number(order.expires_at)<=now){
+await client.query(
+"UPDATE subscription_orders SET status='expired' WHERE code=$1",
+[code]
+)
+throw new Error('Esse pedido expirou. Gere outro com !assinar.')
 }
-
+const lic=await client.query(
+'SELECT paid_until FROM group_licenses WHERE chat_jid=$1 FOR UPDATE',
+[order.chat_jid]
+)
+const currentUntil=Number(lic.rows[0]?.paid_until||0)
+const base=currentUntil>now?currentUntil:now
+const paidUntil=base+(30*24*60*60)
+await client.query(`
+INSERT INTO group_licenses(chat_jid,status,plan,trial_started_at,paid_until,activated_by,updated_at)
+VALUES($1,'active','basic',NULL,$2,$3,${nowSql})
+ON CONFLICT(chat_jid)
+DO UPDATE SET status='active',plan='basic',paid_until=EXCLUDED.paid_until,
+activated_by=EXCLUDED.activated_by,updated_at=EXCLUDED.updated_at
+`,[order.chat_jid,paidUntil,ownerJid])
+await client.query(`
+UPDATE subscription_orders
+SET status='approved',approved_at=$2,approved_by=$3
+WHERE code=$1
+`,[code,now,ownerJid])
+return {...order,status:'approved',approved_at:now,approved_by:ownerJid,paid_until:paidUntil}
+})
+}
 export async function cancelSubscriptionOrder(code) {
-  code=String(code||'').trim().toUpperCase()
-  const now=Math.floor(Date.now()/1000)
-  const {rows}=await db.query(`
-    UPDATE subscription_orders
-    SET status='cancelled',cancelled_at=$2
-    WHERE code=$1 AND status='pending'
-    RETURNING *
-  `,[code,now])
-  if(!rows[0]) throw new Error('Pedido pendente não encontrado.')
-  return rows[0]
+code=String(code||'').trim().toUpperCase()
+const now=Math.floor(Date.now()/1000)
+const {rows}=await db.query(`
+UPDATE subscription_orders
+SET status='cancelled',cancelled_at=$2
+WHERE code=$1 AND status='pending'
+RETURNING *
+`,[code,now])
+if(!rows[0]) throw new Error('Pedido pendente não encontrado.')
+return rows[0]
 }
-
-
 function supportCode(){
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let out='SUP-'
-  for(let i=0;i<6;i++) out+=chars[Math.floor(Math.random()*chars.length)]
-  return out
+const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+let out='SUP-'
+for(let i=0;i<6;i++) out+=chars[Math.floor(Math.random()*chars.length)]
+return out
 }
-
 export async function createSupportTicket(requesterJid, chatJid, category, message) {
-  category=String(category||'outro').trim().slice(0,40)
-  message=String(message||'').trim()
-  if(message.length<3) throw new Error('Descreva o problema com um pouco mais de detalhe.')
-  if(message.length>1500) throw new Error('Mensagem muito longa. Use no máximo 1.500 caracteres.')
-
-  for(let attempt=0;attempt<8;attempt++){
-    const code=supportCode()
-    try{
-      const {rows}=await db.query(`
-        INSERT INTO support_tickets(code,requester_jid,chat_jid,category,message)
-        VALUES($1,$2,$3,$4,$5)
-        RETURNING *
-      `,[code,requesterJid,chatJid,category,message])
-      return rows[0]
-    }catch(err){
-      if(err?.code!=='23505') throw err
-    }
-  }
-  throw new Error('Não foi possível abrir o chamado. Tente novamente.')
+category=String(category||'outro').trim().slice(0,40)
+message=String(message||'').trim()
+if(message.length<3) throw new Error('Descreva o problema com um pouco mais de detalhe.')
+if(message.length>1500) throw new Error('Mensagem muito longa. Use no máximo 1.500 caracteres.')
+for(let attempt=0;attempt<8;attempt++){
+const code=supportCode()
+try{
+const {rows}=await db.query(`
+INSERT INTO support_tickets(code,requester_jid,chat_jid,category,message)
+VALUES($1,$2,$3,$4,$5)
+RETURNING *
+`,[code,requesterJid,chatJid,category,message])
+return rows[0]
+}catch(err){
+if(err?.code!=='23505') throw err
 }
-
+}
+throw new Error('Não foi possível abrir o chamado. Tente novamente.')
+}
 export async function getSupportTicket(code) {
-  code=String(code||'').trim().toUpperCase()
-  const {rows}=await db.query('SELECT * FROM support_tickets WHERE code=$1',[code])
-  return rows[0]||null
+code=String(code||'').trim().toUpperCase()
+const {rows}=await db.query('SELECT * FROM support_tickets WHERE code=$1',[code])
+return rows[0]||null
 }
-
 export async function listOpenSupportTickets(limit=30) {
-  const {rows}=await db.query(`
-    SELECT * FROM support_tickets
-    WHERE status='open'
-    ORDER BY created_at ASC
-    LIMIT $1
-  `,[limit])
-  return rows
+const {rows}=await db.query(`
+SELECT * FROM support_tickets
+WHERE status='open'
+ORDER BY created_at ASC
+LIMIT $1
+`,[limit])
+return rows
 }
-
 export async function answerSupportTicket(code, ownerJid, answer) {
-  code=String(code||'').trim().toUpperCase()
-  answer=String(answer||'').trim()
-  if(answer.length<1) throw new Error('A resposta não pode ficar vazia.')
-  if(answer.length>1800) throw new Error('Resposta muito longa. Use no máximo 1.800 caracteres.')
-
-  const now=Math.floor(Date.now()/1000)
-  const {rows}=await db.query(`
-    UPDATE support_tickets
-    SET status='answered',
-        answer=$2,
-        answered_at=$3,
-        answered_by=$4,
-        updated_at=${nowSql}
-    WHERE code=$1 AND status='open'
-    RETURNING *
-  `,[code,answer,now,ownerJid])
-  if(!rows[0]) throw new Error('Chamado aberto não encontrado.')
-  return rows[0]
+code=String(code||'').trim().toUpperCase()
+answer=String(answer||'').trim()
+if(answer.length<1) throw new Error('A resposta não pode ficar vazia.')
+if(answer.length>1800) throw new Error('Resposta muito longa. Use no máximo 1.800 caracteres.')
+const now=Math.floor(Date.now()/1000)
+const {rows}=await db.query(`
+UPDATE support_tickets
+SET status='answered',
+answer=$2,
+answered_at=$3,
+answered_by=$4,
+updated_at=${nowSql}
+WHERE code=$1 AND status='open'
+RETURNING *
+`,[code,answer,now,ownerJid])
+if(!rows[0]) throw new Error('Chamado aberto não encontrado.')
+return rows[0]
 }
-
 export async function getPaymentLink() {
-  const { rows } = await db.query(
-    "SELECT value FROM trevo_settings WHERE key='payment_link'"
-  )
-  return String(rows[0]?.value ?? 'https://mpago.la/1Aqm14o')
+const { rows } = await db.query(
+"SELECT value FROM trevo_settings WHERE key='payment_link'"
+)
+return String(rows[0]?.value ?? 'https://mpago.la/1Aqm14o')
 }
-
 export async function setPaymentLink(value) {
-  value=String(value||'').trim()
-  try{
-    const u=new URL(value)
-    if(!['http:','https:'].includes(u.protocol)) throw new Error()
-  }catch{
-    throw new Error('Link de pagamento inválido.')
-  }
-
-  await db.query(`
-    INSERT INTO trevo_settings(key,value,updated_at)
-    VALUES('payment_link',$1::jsonb,${nowSql})
-    ON CONFLICT(key)
-    DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
-  `,[JSON.stringify(value)])
-
-  return value
+value=String(value||'').trim()
+try{
+const u=new URL(value)
+if(!['http:','https:'].includes(u.protocol)) throw new Error()
+}catch{
+throw new Error('Link de pagamento inválido.')
 }
-
-
-// ===== Alpha Community Pack: moderação, pets, relacionamentos e mercado P2P =====
+await db.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+VALUES('payment_link',$1::jsonb,${nowSql})
+ON CONFLICT(key)
+DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+`,[JSON.stringify(value)])
+return value
+}
 export async function initCommunityPack(){
-  await db.query(`
-    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS welcome_enabled BOOLEAN NOT NULL DEFAULT TRUE;
-    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antilink_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antibadword_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antidelete_enabled BOOLEAN NOT NULL DEFAULT TRUE;
-    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS rules_text TEXT NOT NULL DEFAULT '';
-    ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antiflood_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-
-    CREATE TABLE IF NOT EXISTS group_warnings(
-      chat_jid TEXT NOT NULL,
-      jid TEXT NOT NULL,
-      warnings INTEGER NOT NULL DEFAULT 0,
-      updated_at BIGINT NOT NULL DEFAULT ${nowSql},
-      PRIMARY KEY(chat_jid,jid)
-    );
-
-    CREATE TABLE IF NOT EXISTS pets(
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      species TEXT NOT NULL,
-      name TEXT NOT NULL,
-      level INTEGER NOT NULL DEFAULT 1,
-      xp INTEGER NOT NULL DEFAULT 0,
-      hunger INTEGER NOT NULL DEFAULT 100,
-      hygiene INTEGER NOT NULL DEFAULT 100,
-      energy INTEGER NOT NULL DEFAULT 100,
-      power INTEGER NOT NULL DEFAULT 10,
-      wins INTEGER NOT NULL DEFAULT 0,
-      losses INTEGER NOT NULL DEFAULT 0,
-      last_action BIGINT NOT NULL DEFAULT 0,
-      created_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-    ALTER TABLE pets ADD COLUMN IF NOT EXISTS last_rest BIGINT NOT NULL DEFAULT 0;
-    ALTER TABLE pets ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
-    ALTER TABLE pets ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
-
-    CREATE TABLE IF NOT EXISTS pet_collection(
-      id BIGSERIAL PRIMARY KEY,
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      species TEXT NOT NULL,name TEXT NOT NULL,level INTEGER NOT NULL DEFAULT 1,xp INTEGER NOT NULL DEFAULT 0,
-      hunger INTEGER NOT NULL DEFAULT 100,hygiene INTEGER NOT NULL DEFAULT 100,energy INTEGER NOT NULL DEFAULT 100,
-      power INTEGER NOT NULL DEFAULT 10,wins INTEGER NOT NULL DEFAULT 0,losses INTEGER NOT NULL DEFAULT 0,
-      last_action BIGINT NOT NULL DEFAULT 0,last_rest BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      active BOOLEAN NOT NULL DEFAULT FALSE
-    );
-    ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
-    ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
-    ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS purchase_price BIGINT;
-
-    -- Pets têm nível máximo 100. Corrige registros antigos que ultrapassaram o teto.
-    UPDATE pets SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
-    UPDATE pet_collection SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
-
-    CREATE INDEX IF NOT EXISTS pet_collection_owner_idx ON pet_collection(jid,id);
-    CREATE UNIQUE INDEX IF NOT EXISTS pet_collection_one_active_idx ON pet_collection(jid) WHERE active;
-    INSERT INTO pet_collection(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,active)
-      SELECT p.jid,p.species,p.name,p.level,p.xp,p.hunger,p.hygiene,p.energy,p.power,p.wins,p.losses,p.last_action,p.last_rest,p.created_at,TRUE FROM pets p
-      WHERE NOT EXISTS(SELECT 1 FROM pet_collection pc WHERE pc.jid=p.jid);
-
-    CREATE TABLE IF NOT EXISTS pet_team(
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      slot INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 3),
-      pet_id BIGINT NOT NULL REFERENCES pet_collection(id) ON DELETE CASCADE,
-      PRIMARY KEY(jid,slot),
-      UNIQUE(jid,pet_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS pet_expeditions(
-      id BIGSERIAL PRIMARY KEY,
-      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      pet_id BIGINT NOT NULL REFERENCES pet_collection(id) ON DELETE CASCADE,
-      hours INTEGER NOT NULL,
-      started_at BIGINT NOT NULL,
-      ends_at BIGINT NOT NULL,
-      pet_xp INTEGER NOT NULL,
-      cash_reward BIGINT NOT NULL,
-      resolved BOOLEAN NOT NULL DEFAULT FALSE
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS pet_expeditions_active_pet_idx ON pet_expeditions(pet_id) WHERE resolved=FALSE;
-    CREATE INDEX IF NOT EXISTS pet_expeditions_owner_idx ON pet_expeditions(jid,resolved,ends_at);
-
-    CREATE TABLE IF NOT EXISTS player_sleep(
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      place TEXT NOT NULL,
-      started_at BIGINT NOT NULL,
-      ends_at BIGINT NOT NULL,
-      xp_reward INTEGER NOT NULL,
-      fee BIGINT NOT NULL DEFAULT 0,
-      xp_mode TEXT NOT NULL DEFAULT 'legacy',
-      xp_per_8h INTEGER NOT NULL DEFAULT 0
-    );
-    ALTER TABLE player_sleep ADD COLUMN IF NOT EXISTS xp_mode TEXT NOT NULL DEFAULT 'legacy';
-    ALTER TABLE player_sleep ADD COLUMN IF NOT EXISTS xp_per_8h INTEGER NOT NULL DEFAULT 0;
-
-    CREATE TABLE IF NOT EXISTS player_carpinar(
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      hours INTEGER NOT NULL,
-      started_at BIGINT NOT NULL,
-      ends_at BIGINT NOT NULL,
-      xp_reward INTEGER NOT NULL,
-      cash_reward BIGINT NOT NULL DEFAULT 0
-    );
-    ALTER TABLE player_carpinar ADD COLUMN IF NOT EXISTS cash_reward BIGINT NOT NULL DEFAULT 0;
-
-    CREATE TABLE IF NOT EXISTS relationship_proposals(
-      from_jid TEXT NOT NULL,
-      to_jid TEXT NOT NULL,
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      PRIMARY KEY(from_jid,to_jid)
-    );
-
-    CREATE TABLE IF NOT EXISTS relationships(
-      jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-      partner_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      since_at BIGINT NOT NULL DEFAULT ${nowSql}
-    );
-
-    CREATE TABLE IF NOT EXISTS market_listings(
-      id BIGSERIAL PRIMARY KEY,
-      seller_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-      item_id TEXT NOT NULL REFERENCES items(id),
-      quantity INTEGER NOT NULL CHECK(quantity>0),
-      price BIGINT NOT NULL CHECK(price>0),
-      status TEXT NOT NULL DEFAULT 'active',
-      buyer_jid TEXT,
-      created_at BIGINT NOT NULL DEFAULT ${nowSql},
-      sold_at BIGINT
-    );
-    ALTER TABLE market_listings ADD COLUMN IF NOT EXISTS expires_at BIGINT;
-    UPDATE market_listings SET expires_at=created_at+3600 WHERE expires_at IS NULL;
-    CREATE INDEX IF NOT EXISTS market_active_idx ON market_listings(status,created_at DESC);
-
-    CREATE TABLE IF NOT EXISTS group_activity(
-      chat_jid TEXT NOT NULL,
-      jid TEXT NOT NULL,
-      day DATE NOT NULL DEFAULT CURRENT_DATE,
-      messages INTEGER NOT NULL DEFAULT 0,
-      commands INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY(chat_jid,jid,day)
-    );
-    CREATE INDEX IF NOT EXISTS group_activity_week_idx ON group_activity(chat_jid,day DESC);
-  `)
+await db.query(`
+ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS welcome_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antilink_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antibadword_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antidelete_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS rules_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE group_settings ADD COLUMN IF NOT EXISTS antiflood_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS group_warnings(
+chat_jid TEXT NOT NULL,
+jid TEXT NOT NULL,
+warnings INTEGER NOT NULL DEFAULT 0,
+updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+PRIMARY KEY(chat_jid,jid)
+);
+CREATE TABLE IF NOT EXISTS pets(
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+species TEXT NOT NULL,
+name TEXT NOT NULL,
+level INTEGER NOT NULL DEFAULT 1,
+xp INTEGER NOT NULL DEFAULT 0,
+hunger INTEGER NOT NULL DEFAULT 100,
+hygiene INTEGER NOT NULL DEFAULT 100,
+energy INTEGER NOT NULL DEFAULT 100,
+power INTEGER NOT NULL DEFAULT 10,
+wins INTEGER NOT NULL DEFAULT 0,
+losses INTEGER NOT NULL DEFAULT 0,
+last_action BIGINT NOT NULL DEFAULT 0,
+created_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+ALTER TABLE pets ADD COLUMN IF NOT EXISTS last_rest BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE pets ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
+ALTER TABLE pets ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
+CREATE TABLE IF NOT EXISTS pet_collection(
+id BIGSERIAL PRIMARY KEY,
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+species TEXT NOT NULL,name TEXT NOT NULL,level INTEGER NOT NULL DEFAULT 1,xp INTEGER NOT NULL DEFAULT 0,
+hunger INTEGER NOT NULL DEFAULT 100,hygiene INTEGER NOT NULL DEFAULT 100,energy INTEGER NOT NULL DEFAULT 100,
+power INTEGER NOT NULL DEFAULT 10,wins INTEGER NOT NULL DEFAULT 0,losses INTEGER NOT NULL DEFAULT 0,
+last_action BIGINT NOT NULL DEFAULT 0,last_rest BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT ${nowSql},
+active BOOLEAN NOT NULL DEFAULT FALSE
+);
+ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 100;
+ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS max_hp INTEGER NOT NULL DEFAULT 100;
+ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS purchase_price BIGINT;
+-- Pets têm nível máximo 100. Corrige registros antigos que ultrapassaram o teto.
+UPDATE pets SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
+UPDATE pet_collection SET level=LEAST(level,100),xp=LEAST(xp,9900) WHERE level>100 OR xp>9900;
+CREATE INDEX IF NOT EXISTS pet_collection_owner_idx ON pet_collection(jid,id);
+CREATE UNIQUE INDEX IF NOT EXISTS pet_collection_one_active_idx ON pet_collection(jid) WHERE active;
+INSERT INTO pet_collection(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,active)
+SELECT p.jid,p.species,p.name,p.level,p.xp,p.hunger,p.hygiene,p.energy,p.power,p.wins,p.losses,p.last_action,p.last_rest,p.created_at,TRUE FROM pets p
+WHERE NOT EXISTS(SELECT 1 FROM pet_collection pc WHERE pc.jid=p.jid);
+CREATE TABLE IF NOT EXISTS pet_team(
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+slot INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 3),
+pet_id BIGINT NOT NULL REFERENCES pet_collection(id) ON DELETE CASCADE,
+PRIMARY KEY(jid,slot),
+UNIQUE(jid,pet_id)
+);
+CREATE TABLE IF NOT EXISTS pet_expeditions(
+id BIGSERIAL PRIMARY KEY,
+jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+pet_id BIGINT NOT NULL REFERENCES pet_collection(id) ON DELETE CASCADE,
+hours INTEGER NOT NULL,
+started_at BIGINT NOT NULL,
+ends_at BIGINT NOT NULL,
+pet_xp INTEGER NOT NULL,
+cash_reward BIGINT NOT NULL,
+resolved BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS pet_expeditions_active_pet_idx ON pet_expeditions(pet_id) WHERE resolved=FALSE;
+CREATE INDEX IF NOT EXISTS pet_expeditions_owner_idx ON pet_expeditions(jid,resolved,ends_at);
+CREATE TABLE IF NOT EXISTS player_sleep(
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+place TEXT NOT NULL,
+started_at BIGINT NOT NULL,
+ends_at BIGINT NOT NULL,
+xp_reward INTEGER NOT NULL,
+fee BIGINT NOT NULL DEFAULT 0,
+xp_mode TEXT NOT NULL DEFAULT 'legacy',
+xp_per_8h INTEGER NOT NULL DEFAULT 0
+);
+ALTER TABLE player_sleep ADD COLUMN IF NOT EXISTS xp_mode TEXT NOT NULL DEFAULT 'legacy';
+ALTER TABLE player_sleep ADD COLUMN IF NOT EXISTS xp_per_8h INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS player_carpinar(
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+hours INTEGER NOT NULL,
+started_at BIGINT NOT NULL,
+ends_at BIGINT NOT NULL,
+xp_reward INTEGER NOT NULL,
+cash_reward BIGINT NOT NULL DEFAULT 0
+);
+ALTER TABLE player_carpinar ADD COLUMN IF NOT EXISTS cash_reward BIGINT NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS relationship_proposals(
+from_jid TEXT NOT NULL,
+to_jid TEXT NOT NULL,
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+PRIMARY KEY(from_jid,to_jid)
+);
+CREATE TABLE IF NOT EXISTS relationships(
+jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+partner_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+since_at BIGINT NOT NULL DEFAULT ${nowSql}
+);
+CREATE TABLE IF NOT EXISTS market_listings(
+id BIGSERIAL PRIMARY KEY,
+seller_jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+item_id TEXT NOT NULL REFERENCES items(id),
+quantity INTEGER NOT NULL CHECK(quantity>0),
+price BIGINT NOT NULL CHECK(price>0),
+status TEXT NOT NULL DEFAULT 'active',
+buyer_jid TEXT,
+created_at BIGINT NOT NULL DEFAULT ${nowSql},
+sold_at BIGINT
+);
+ALTER TABLE market_listings ADD COLUMN IF NOT EXISTS expires_at BIGINT;
+UPDATE market_listings SET expires_at=created_at+3600 WHERE expires_at IS NULL;
+CREATE INDEX IF NOT EXISTS market_active_idx ON market_listings(status,created_at DESC);
+CREATE TABLE IF NOT EXISTS group_activity(
+chat_jid TEXT NOT NULL,
+jid TEXT NOT NULL,
+day DATE NOT NULL DEFAULT CURRENT_DATE,
+messages INTEGER NOT NULL DEFAULT 0,
+commands INTEGER NOT NULL DEFAULT 0,
+PRIMARY KEY(chat_jid,jid,day)
+);
+CREATE INDEX IF NOT EXISTS group_activity_week_idx ON group_activity(chat_jid,day DESC);
+`)
 }
-
 export async function getCommunitySettings(chatJid){
-  const st=await getGroupSettings(chatJid)
-  return st
+const st=await getGroupSettings(chatJid)
+return st
 }
 export async function setCommunitySetting(chatJid,key,enabled,updatedBy=''){
-  const allowed=new Set(['welcome_enabled','antilink_enabled','antibadword_enabled','antidelete_enabled','antiflood_enabled'])
-  if(!allowed.has(key)) throw new Error('Configuração inválida.')
-  await getGroupSettings(chatJid)
-  const {rows}=await db.query(`UPDATE group_settings SET ${key}=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[Boolean(enabled),updatedBy,chatJid])
-  groupSettingsCache.delete(chatJid)
-  return rows[0]
+const allowed=new Set(['welcome_enabled','antilink_enabled','antibadword_enabled','antidelete_enabled','antiflood_enabled'])
+if(!allowed.has(key)) throw new Error('Configuração inválida.')
+await getGroupSettings(chatJid)
+const {rows}=await db.query(`UPDATE group_settings SET ${key}=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[Boolean(enabled),updatedBy,chatJid])
+groupSettingsCache.delete(chatJid)
+return rows[0]
 }
 export async function setGroupRules(chatJid,text,updatedBy=''){
-  await getGroupSettings(chatJid)
-  const {rows}=await db.query(`UPDATE group_settings SET rules_text=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[String(text||'').slice(0,3000),updatedBy,chatJid])
-  groupSettingsCache.delete(chatJid)
-  return rows[0]
+await getGroupSettings(chatJid)
+const {rows}=await db.query(`UPDATE group_settings SET rules_text=$1,updated_by=$2,updated_at=${nowSql} WHERE chat_jid=$3 RETURNING *`,[String(text||'').slice(0,3000),updatedBy,chatJid])
+groupSettingsCache.delete(chatJid)
+return rows[0]
 }
 export async function addGroupWarning(chatJid,jid){
-  const {rows}=await db.query(`INSERT INTO group_warnings(chat_jid,jid,warnings) VALUES($1,$2,1)
-    ON CONFLICT(chat_jid,jid) DO UPDATE SET warnings=group_warnings.warnings+1,updated_at=${nowSql} RETURNING warnings`,[chatJid,jid])
-  return Number(rows[0]?.warnings||0)
+const {rows}=await db.query(`INSERT INTO group_warnings(chat_jid,jid,warnings) VALUES($1,$2,1)
+ON CONFLICT(chat_jid,jid) DO UPDATE SET warnings=group_warnings.warnings+1,updated_at=${nowSql} RETURNING warnings`,[chatJid,jid])
+return Number(rows[0]?.warnings||0)
 }
 export async function getGroupWarnings(chatJid,jid){
-  const {rows}=await db.query('SELECT warnings FROM group_warnings WHERE chat_jid=$1 AND jid=$2',[chatJid,jid])
-  return Number(rows[0]?.warnings||0)
+const {rows}=await db.query('SELECT warnings FROM group_warnings WHERE chat_jid=$1 AND jid=$2',[chatJid,jid])
+return Number(rows[0]?.warnings||0)
 }
 export async function clearGroupWarnings(chatJid,jid){
-  await db.query('DELETE FROM group_warnings WHERE chat_jid=$1 AND jid=$2',[chatJid,jid])
+await db.query('DELETE FROM group_warnings WHERE chat_jid=$1 AND jid=$2',[chatJid,jid])
 }
-
 const SLEEP_PLACES={
-  kitnet:{label:'Kitnet',pct:3,fee:0},
-  casa:{label:'Casa',pct:5,fee:0},
-  sobrado:{label:'Sobrado',pct:7,fee:0},
-  mansao:{label:'Mansão',pct:9,fee:0},
-  cobertura:{label:'Cobertura',pct:12,fee:0},
-  aluguel:{label:'Quarto alugado',pct:1,fee:1000}
+kitnet:{label:'Kitnet',pct:3,fee:0},
+casa:{label:'Casa',pct:5,fee:0},
+sobrado:{label:'Sobrado',pct:7,fee:0},
+mansao:{label:'Mansão',pct:9,fee:0},
+cobertura:{label:'Cobertura',pct:12,fee:0},
+aluguel:{label:'Quarto alugado',pct:1,fee:1000}
 }
 const SLEEP_CHOICES=[1,4,8]
-// Até 16 horas de sono com XP em uma janela de 24h; taxa de XP continua baseada em 8 horas.
 const SLEEP_QUOTA_SECONDS=16*3600
 const SLEEP_XP_BASE_SECONDS=8*3600
 const SLEEP_QUOTA_WINDOW_SECONDS=24*3600
 const sleepQuotaKey=jid=>'sleep_xp_v2:'+jid
 function effectiveSleepQuota(value,now){
-  const t=Number(value?.windowStartedAt||0)
-  const valid=t>0&&now>=t&&now-t<SLEEP_QUOTA_WINDOW_SECONDS
-  return {windowStartedAt:valid?t:now,usedSeconds:valid?Math.max(0,Math.min(SLEEP_QUOTA_SECONDS,Number(value?.usedSeconds||0))):0}
+const t=Number(value?.windowStartedAt||0)
+const valid=t>0&&now>=t&&now-t<SLEEP_QUOTA_WINDOW_SECONDS
+return {windowStartedAt:valid?t:now,usedSeconds:valid?Math.max(0,Math.min(SLEEP_QUOTA_SECONDS,Number(value?.usedSeconds||0))):0}
 }
 async function readSleepQuota(queryable,jid,now,lock=false){
-  const key=sleepQuotaKey(jid)
-  if(lock) await queryable.query("INSERT INTO trevo_settings(key,value) VALUES($1,'{}'::jsonb) ON CONFLICT(key) DO NOTHING",[key])
-  const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1'+(lock?' FOR UPDATE':''),[key])).rows[0]
-  return {key,...effectiveSleepQuota(row?.value,now)}
+const key=sleepQuotaKey(jid)
+if(lock) await queryable.query("INSERT INTO trevo_settings(key,value) VALUES($1,'{}'::jsonb) ON CONFLICT(key) DO NOTHING",[key])
+const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1'+(lock?' FOR UPDATE':''),[key])).rows[0]
+return {key,...effectiveSleepQuota(row?.value,now)}
 }
 function sleepBaseExp(level,plan){
-  const lv=Math.min(MAX_LEVEL,Math.max(1,Number(level)||1))
-  return lv>=MAX_LEVEL?0:Math.floor(expNeeded(lv)*plan.pct/100)
+const lv=Math.min(MAX_LEVEL,Math.max(1,Number(level)||1))
+return lv>=MAX_LEVEL?0:Math.floor(expNeeded(lv)*plan.pct/100)
 }
 export async function getSleepOptions(jid){
-  await ensureUser(jid)
-  const now=Math.floor(Date.now()/1000)
-  const [h,u,q]=await Promise.all([
-    db.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid]),
-    db.query('SELECT level FROM users WHERE jid=$1',[jid]),
-    readSleepQuota(db,jid,now)
-  ])
-  const plan=SLEEP_PLACES[h.rows[0]?.house_id]||SLEEP_PLACES.aluguel
-  const fullXp=sleepBaseExp(u.rows[0]?.level,plan)
-  const available=Math.max(0,SLEEP_QUOTA_SECONDS-q.usedSeconds)
-  return {place:plan.label,pct:plan.pct,fee:plan.fee,availableSeconds:available,quotaSeconds:SLEEP_QUOTA_SECONDS,
-    resetInSeconds:Math.max(0,SLEEP_QUOTA_WINDOW_SECONDS-(now-q.windowStartedAt)),
-    options:SLEEP_CHOICES.map(hours=>({hours,exp:Math.floor(fullXp*Math.min(hours*3600,available)/SLEEP_XP_BASE_SECONDS)}))}
+await ensureUser(jid)
+const now=Math.floor(Date.now()/1000)
+const [h,u,q]=await Promise.all([
+db.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid]),
+db.query('SELECT level FROM users WHERE jid=$1',[jid]),
+readSleepQuota(db,jid,now)
+])
+const plan=SLEEP_PLACES[h.rows[0]?.house_id]||SLEEP_PLACES.aluguel
+const fullXp=sleepBaseExp(u.rows[0]?.level,plan)
+const available=Math.max(0,SLEEP_QUOTA_SECONDS-q.usedSeconds)
+return {place:plan.label,pct:plan.pct,fee:plan.fee,availableSeconds:available,quotaSeconds:SLEEP_QUOTA_SECONDS,
+resetInSeconds:Math.max(0,SLEEP_QUOTA_WINDOW_SECONDS-(now-q.windowStartedAt)),
+options:SLEEP_CHOICES.map(hours=>({hours,exp:Math.floor(fullXp*Math.min(hours*3600,available)/SLEEP_XP_BASE_SECONDS)}))}
 }
-
 async function recoverPetEnergyFromSleep(client,jid,startedAt,endedAt){
-  const elapsed=Math.max(0,Math.floor((Number(endedAt)-Number(startedAt))/60))
-  if(elapsed<1) return {gained:0,current:null,max:null,petHpGained:0,playerHpGained:0}
-
-  const player=(await client.query('SELECT hp,max_hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-  let playerHpGained=0,playerHp=null,playerMaxHp=null
-  if(player){
-    playerMaxHp=Number(player.max_hp||100)
-    const beforeHp=Number(player.hp||0)
-    playerHp=Math.min(playerMaxHp,beforeHp+elapsed)
-    playerHpGained=Math.max(0,playerHp-beforeHp)
-    if(playerHpGained>0) await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[playerHp,jid])
-  }
-
-  const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-  if(!pet) return {gained:0,current:null,max:null,petHpGained:0,playerHpGained,playerHp,playerMaxHp}
-
-  const max=petMaxEnergy(pet.level,pet.species)
-  const before=Number(pet.energy||0)
-  const current=Math.min(max,before+elapsed)
-  const gained=Math.max(0,current-before)
-
-  const petMax=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)))
-  const petBeforeHp=Number(pet.hp??petMax)
-  const petHp=Math.min(petMax,petBeforeHp+elapsed)
-  const petHpGained=Math.max(0,petHp-petBeforeHp)
-
-  if(gained>0 || petHpGained>0){
-    await client.query('UPDATE pets SET energy=$1,hp=$2,max_hp=$3 WHERE jid=$4',[current,petHp,petMax,jid])
-    await client.query('UPDATE pet_collection SET energy=$1,hp=$2,max_hp=$3 WHERE jid=$4 AND active=TRUE',[current,petHp,petMax,jid])
-  }
-
-  return {gained,current,max,petHpGained,petHp,petMaxHp:petMax,playerHpGained,playerHp,playerMaxHp}
+const elapsed=Math.max(0,Math.floor((Number(endedAt)-Number(startedAt))/60))
+if(elapsed<1) return {gained:0,current:null,max:null,petHpGained:0,playerHpGained:0}
+const player=(await client.query('SELECT hp,max_hp FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+let playerHpGained=0,playerHp=null,playerMaxHp=null
+if(player){
+playerMaxHp=Number(player.max_hp||100)
+const beforeHp=Number(player.hp||0)
+playerHp=Math.min(playerMaxHp,beforeHp+elapsed)
+playerHpGained=Math.max(0,playerHp-beforeHp)
+if(playerHpGained>0) await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[playerHp,jid])
 }
-
+const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!pet) return {gained:0,current:null,max:null,petHpGained:0,playerHpGained,playerHp,playerMaxHp}
+const max=petMaxEnergy(pet.level,pet.species)
+const before=Number(pet.energy||0)
+const current=Math.min(max,before+elapsed)
+const gained=Math.max(0,current-before)
+const petMax=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)))
+const petBeforeHp=Number(pet.hp??petMax)
+const petHp=Math.min(petMax,petBeforeHp+elapsed)
+const petHpGained=Math.max(0,petHp-petBeforeHp)
+if(gained>0 || petHpGained>0){
+await client.query('UPDATE pets SET energy=$1,hp=$2,max_hp=$3 WHERE jid=$4',[current,petHp,petMax,jid])
+await client.query('UPDATE pet_collection SET energy=$1,hp=$2,max_hp=$3 WHERE jid=$4 AND active=TRUE',[current,petHp,petMax,jid])
+}
+return {gained,current,max,petHpGained,petHp,petMaxHp:petMax,playerHpGained,playerHp,playerMaxHp}
+}
 async function awardSleepXp(client,jid,row,endedAt){
-  const duration=Math.max(1,Number(row.ends_at)-Number(row.started_at))
-  const actual=Math.max(0,Math.min(duration,Number(endedAt)-Number(row.started_at)))
-  if(row.xp_mode!=='scaled_v2'){
-    const xp=Math.floor(Number(row.xp_reward||0)*actual/duration)
-    return {xp,level:xp>0?await applyExp(client,jid,xp):null}
-  }
-  const now=Math.floor(Date.now()/1000)
-  const q=await readSleepQuota(client,jid,now,true)
-  const eligible=Math.min(actual,Math.max(0,SLEEP_QUOTA_SECONDS-q.usedSeconds))
-  const xp=Math.floor(Math.max(0,Number(row.xp_per_8h||0))*eligible/SLEEP_XP_BASE_SECONDS)
-  const level=xp>0?await applyExp(client,jid,xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true}):null
-  if(eligible>0){
-    await client.query('UPDATE trevo_settings SET value=$2::jsonb,updated_at='+nowSql+' WHERE key=$1',
-      [q.key,JSON.stringify({windowStartedAt:q.windowStartedAt,usedSeconds:q.usedSeconds+eligible})])
-  }
-  return {xp,level}
+const duration=Math.max(1,Number(row.ends_at)-Number(row.started_at))
+const actual=Math.max(0,Math.min(duration,Number(endedAt)-Number(row.started_at)))
+if(row.xp_mode!=='scaled_v2'){
+const xp=Math.floor(Number(row.xp_reward||0)*actual/duration)
+return {xp,level:xp>0?await applyExp(client,jid,xp):null}
 }
-
+const now=Math.floor(Date.now()/1000)
+const q=await readSleepQuota(client,jid,now,true)
+const eligible=Math.min(actual,Math.max(0,SLEEP_QUOTA_SECONDS-q.usedSeconds))
+const xp=Math.floor(Math.max(0,Number(row.xp_per_8h||0))*eligible/SLEEP_XP_BASE_SECONDS)
+const level=xp>0?await applyExp(client,jid,xp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true}):null
+if(eligible>0){
+await client.query('UPDATE trevo_settings SET value=$2::jsonb,updated_at='+nowSql+' WHERE key=$1',
+[q.key,JSON.stringify({windowStartedAt:q.windowStartedAt,usedSeconds:q.usedSeconds+eligible})])
+}
+return {xp,level}
+}
 export async function resolvePlayerSleep(jid){
-  return transaction(async client=>{
-    const row=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!row) return null
-    const now=Math.floor(Date.now()/1000)
-    if(Number(row.ends_at)>now) return {active:true,...row,remaining:Number(row.ends_at)-now}
-    const reward=await awardSleepXp(client,jid,row,Number(row.ends_at))
-    const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,row.ends_at)
-    await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-    return {active:false,woke:true,...row,xp_reward:reward.xp,level:reward.level,petEnergy}
-  })
+return transaction(async client=>{
+const row=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!row) return null
+const now=Math.floor(Date.now()/1000)
+if(Number(row.ends_at)>now) return {active:true,...row,remaining:Number(row.ends_at)-now}
+const reward=await awardSleepXp(client,jid,row,Number(row.ends_at))
+const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,row.ends_at)
+await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
+return {active:false,woke:true,...row,xp_reward:reward.xp,level:reward.level,petEnergy}
+})
 }
-
 export async function wakePlayerEarly(jid){
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const row=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!row) throw new Error('Você não está dormindo.')
-    const now=Math.floor(Date.now()/1000)
-    const remaining=Math.max(0,Number(row.ends_at)-now)
-    if(remaining<=0){
-      const reward=await awardSleepXp(client,jid,row,Number(row.ends_at))
-      const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,row.ends_at)
-      await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-      return {natural:true,fee:0,xp:reward.xp,level:reward.level,place:row.place,petEnergy}
-    }
-    const total=Math.max(1,Number(row.ends_at)-Number(row.started_at))
-    const ratio=Math.min(1,remaining/total)
-    // Acordar cedo é propositalmente caro: R$ 1.500 mínimo e até R$ 15.000 no início do sono.
-    const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
-    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
-    if(cash+bank<fee) throw new Error(`Acordar agora custa R$ ${fee.toLocaleString('pt-BR')}. Saldo insuficiente.`)
-    const fromCash=Math.min(cash,fee)
-    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
-    // XP proporcional ao tempo efetivamente dormido; não permite pagar para receber o XP integral.
-    const elapsed=Math.max(0,now-Number(row.started_at))
-    const reward=await awardSleepXp(client,jid,row,now)
-    const xp=reward.xp
-    const level=reward.level
-    const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,now)
-    await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'wake_early',$3)`,[jid,fee,`Acordou antes: ${remaining}s restantes`])
-    return {natural:false,fee,xp,remaining,place:row.place,level,petEnergy}
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const row=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!row) throw new Error('Você não está dormindo.')
+const now=Math.floor(Date.now()/1000)
+const remaining=Math.max(0,Number(row.ends_at)-now)
+if(remaining<=0){
+const reward=await awardSleepXp(client,jid,row,Number(row.ends_at))
+const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,row.ends_at)
+await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
+return {natural:true,fee:0,xp:reward.xp,level:reward.level,place:row.place,petEnergy}
 }
-
+const total=Math.max(1,Number(row.ends_at)-Number(row.started_at))
+const ratio=Math.min(1,remaining/total)
+const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
+const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+if(cash+bank<fee) throw new Error(`Acordar agora custa R$ ${fee.toLocaleString('pt-BR')}. Saldo insuficiente.`)
+const fromCash=Math.min(cash,fee)
+await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
+const elapsed=Math.max(0,now-Number(row.started_at))
+const reward=await awardSleepXp(client,jid,row,now)
+const xp=reward.xp
+const level=reward.level
+const petEnergy=await recoverPetEnergyFromSleep(client,jid,row.started_at,now)
+await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
+await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'system',$2,'wake_early',$3)`,[jid,fee,`Acordou antes: ${remaining}s restantes`])
+return {natural:false,fee,xp,remaining,place:row.place,level,petEnergy}
+})
+}
 export async function startPlayerSleep(jid,hours=1){
-  await ensureUser(jid)
-  hours=Number(hours)
-  if(!SLEEP_CHOICES.includes(hours)) throw new Error('Escolha 1, 4 ou 8 horas de sono.')
-  return transaction(async client=>{
-    const now=Math.floor(Date.now()/1000)
-    const carp=(await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(carp&&Number(carp.ends_at)>now) throw new Error('Você está carpindo e não pode dormir agora. Use !carpinarsair se quiser encerrar antes.')
-    const existing=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(existing&&Number(existing.ends_at)>now) return {active:true,...existing,remaining:Number(existing.ends_at)-now}
-    if(existing){
-      const reward=await awardSleepXp(client,jid,existing,Number(existing.ends_at))
-      const petEnergy=await recoverPetEnergyFromSleep(client,jid,existing.started_at,existing.ends_at)
-      await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
-      return {active:false,woke:true,...existing,xp_reward:reward.xp,level:reward.level,petEnergy}
-    }
-    const home=(await client.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid])).rows[0]?.house_id
-    const plan=SLEEP_PLACES[home]||SLEEP_PLACES.aluguel
-    const user=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
-    const base=sleepBaseExp(user?.level,plan)
-    const quota=await readSleepQuota(client,jid,now)
-    const sleepSeconds=hours*3600
-    const allowed=Math.min(sleepSeconds,Math.max(0,SLEEP_QUOTA_SECONDS-quota.usedSeconds))
-    const xp=Math.floor(base*allowed/SLEEP_XP_BASE_SECONDS)
-    if(plan.fee>0){
-      const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-      const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
-      if(cash+bank<plan.fee) throw new Error('Sem imóvel, dormir custa R$ 1.000 de aluguel. Saldo insuficiente.')
-      const fromCash=Math.min(cash,plan.fee)
-      await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,plan.fee-fromCash,jid])
-      await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-        VALUES($1,'system',$2,'sleep_rent','Aluguel para dormir')`,[jid,plan.fee])
-    }
-    const endsAt=now+sleepSeconds
-    await client.query(`INSERT INTO player_sleep(jid,place,started_at,ends_at,xp_reward,fee,xp_mode,xp_per_8h)
-      VALUES($1,$2,$3,$4,$5,$6,'scaled_v2',$7)`,[jid,plan.label,now,endsAt,xp,plan.fee,base])
-    return {active:true,place:plan.label,started_at:now,ends_at:endsAt,xp_reward:xp,
-      fee:plan.fee,remaining:sleepSeconds,hours,started:true}
-  })
+await ensureUser(jid)
+hours=Number(hours)
+if(!SLEEP_CHOICES.includes(hours)) throw new Error('Escolha 1, 4 ou 8 horas de sono.')
+return transaction(async client=>{
+const now=Math.floor(Date.now()/1000)
+const carp=(await client.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(carp&&Number(carp.ends_at)>now) throw new Error('Você está carpindo e não pode dormir agora. Use !carpinarsair se quiser encerrar antes.')
+const existing=(await client.query('SELECT * FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(existing&&Number(existing.ends_at)>now) return {active:true,...existing,remaining:Number(existing.ends_at)-now}
+if(existing){
+const reward=await awardSleepXp(client,jid,existing,Number(existing.ends_at))
+const petEnergy=await recoverPetEnergyFromSleep(client,jid,existing.started_at,existing.ends_at)
+await client.query('DELETE FROM player_sleep WHERE jid=$1',[jid])
+return {active:false,woke:true,...existing,xp_reward:reward.xp,level:reward.level,petEnergy}
 }
-
+const home=(await client.query('SELECT house_id FROM user_homes WHERE jid=$1',[jid])).rows[0]?.house_id
+const plan=SLEEP_PLACES[home]||SLEEP_PLACES.aluguel
+const user=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
+const base=sleepBaseExp(user?.level,plan)
+const quota=await readSleepQuota(client,jid,now)
+const sleepSeconds=hours*3600
+const allowed=Math.min(sleepSeconds,Math.max(0,SLEEP_QUOTA_SECONDS-quota.usedSeconds))
+const xp=Math.floor(base*allowed/SLEEP_XP_BASE_SECONDS)
+if(plan.fee>0){
+const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+if(cash+bank<plan.fee) throw new Error('Sem imóvel, dormir custa R$ 1.000 de aluguel. Saldo insuficiente.')
+const fromCash=Math.min(cash,plan.fee)
+await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,plan.fee-fromCash,jid])
+await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'system',$2,'sleep_rent','Aluguel para dormir')`,[jid,plan.fee])
+}
+const endsAt=now+sleepSeconds
+await client.query(`INSERT INTO player_sleep(jid,place,started_at,ends_at,xp_reward,fee,xp_mode,xp_per_8h)
+VALUES($1,$2,$3,$4,$5,$6,'scaled_v2',$7)`,[jid,plan.label,now,endsAt,xp,plan.fee,base])
+return {active:true,place:plan.label,started_at:now,ends_at:endsAt,xp_reward:xp,
+fee:plan.fee,remaining:sleepSeconds,hours,started:true}
+})
+}
 const CARPINAR_PLANS={
-  1:{hours:1,xp:220,cash:700,rareBoxChance:0.02},
-  2:{hours:2,xp:470,cash:1500,rareBoxChance:0.04},
-  4:{hours:4,xp:1000,cash:3200,rareBoxChance:0.07},
-  6:{hours:6,xp:1600,cash:5000,rareBoxChance:0.10},
-  8:{hours:8,xp:2300,cash:7200,rareBoxChance:0.14},
-  12:{hours:12,xp:3600,cash:11500,rareBoxChance:0.20}
+1:{hours:1,xp:220,cash:700,rareBoxChance:0.02},
+2:{hours:2,xp:470,cash:1500,rareBoxChance:0.04},
+4:{hours:4,xp:1000,cash:3200,rareBoxChance:0.07},
+6:{hours:6,xp:1600,cash:5000,rareBoxChance:0.10},
+8:{hours:8,xp:2300,cash:7200,rareBoxChance:0.14},
+12:{hours:12,xp:3600,cash:11500,rareBoxChance:0.20}
 }
-
 export function getCarpinarPlans(){
-  return Object.values(CARPINAR_PLANS).map(x=>({...x}))
+return Object.values(CARPINAR_PLANS).map(x=>({...x}))
 }
-
 export async function resolvePlayerCarpinar(jid){
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!row) return null
-    const now=Math.floor(Date.now()/1000)
-    const currentPlan=CARPINAR_PLANS[Number(row.hours)]||null
-    const upgradedXp=Math.max(Number(row.xp_reward||0),Number(currentPlan?.xp||0))
-    const upgradedCash=Math.max(Number(row.cash_reward||0),Number(currentPlan?.cash||0))
-    if(Number(row.ends_at)>now) return {active:true,...row,xp_reward:upgradedXp,cash_reward:upgradedCash,rare_box_chance:Number(currentPlan?.rareBoxChance||0),remaining:Number(row.ends_at)-now}
-    const xp=upgradedXp
-    const cash=upgradedCash
-    const level=await applyExp(client,jid,xp)
-
-    if(cash>0){
-      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
-      await client.query(
-        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_reward',$3)",
-        [jid,cash,'Carpinar '+Number(row.hours||0)+'h concluído']
-      )
-    }
-
-    const plan=CARPINAR_PLANS[Number(row.hours)]||{rareBoxChance:0}
-    const rareBoxDrop=Math.random()<Number(plan.rareBoxChance||0)
-    if(rareBoxDrop){
-      await client.query(`
-        INSERT INTO inventories(jid,item_id,quantity)
-        VALUES($1,'caixa_rara',1)
-        ON CONFLICT(jid,item_id) DO UPDATE
-        SET quantity=inventories.quantity+1
-      `,[jid])
-    }
-
-    // Achados leves do trabalho AFK: dão variedade sem competir com Raid/Boss.
-    // Uma jornada concluída faz no máximo um achado comum, além da Caixa Rara.
-    let found=null
-    const findChance=Math.min(0.45,0.12+Number(row.hours||0)*0.025)
-    if(Math.random()<findChance){
-      const roll=Math.random()
-      if(roll<0.50){
-        await client.query(`
-          INSERT INTO inventories(jid,item_id,quantity)
-          VALUES($1,'pocao_p',1)
-          ON CONFLICT(jid,item_id) DO UPDATE
-          SET quantity=inventories.quantity+1
-        `,[jid])
-        found={type:'item',itemId:'pocao_p',label:'Poção Pequena',qty:1}
-      }else if(roll<0.75){
-        await client.query(`
-          INSERT INTO inventories(jid,item_id,quantity)
-          VALUES($1,'caixa_sorte',1)
-          ON CONFLICT(jid,item_id) DO UPDATE
-          SET quantity=inventories.quantity+1
-        `,[jid])
-        found={type:'item',itemId:'caixa_sorte',label:'Caixa da Sorte',qty:1}
-      }else{
-        const bonusCash=(500+Math.floor(Math.random()*1501))
-        await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[bonusCash,jid])
-        await client.query(
-          "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_find',$3)",
-          [jid,bonusCash,'Dinheiro encontrado enquanto carpava']
-        )
-        found={type:'cash',label:'Dinheiro encontrado',cash:bonusCash}
-      }
-    }
-
-    await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
-    return {active:false,completed:true,...row,xp,cash,rareBoxDrop,rareBoxChance:Number(plan.rareBoxChance||0),found,level}
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!row) return null
+const now=Math.floor(Date.now()/1000)
+const currentPlan=CARPINAR_PLANS[Number(row.hours)]||null
+const upgradedXp=Math.max(Number(row.xp_reward||0),Number(currentPlan?.xp||0))
+const upgradedCash=Math.max(Number(row.cash_reward||0),Number(currentPlan?.cash||0))
+if(Number(row.ends_at)>now) return {active:true,...row,xp_reward:upgradedXp,cash_reward:upgradedCash,rare_box_chance:Number(currentPlan?.rareBoxChance||0),remaining:Number(row.ends_at)-now}
+const xp=upgradedXp
+const cash=upgradedCash
+const level=await applyExp(client,jid,xp)
+if(cash>0){
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+await client.query(
+"INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_reward',$3)",
+[jid,cash,'Carpinar '+Number(row.hours||0)+'h concluído']
+)
 }
-
+const plan=CARPINAR_PLANS[Number(row.hours)]||{rareBoxChance:0}
+const rareBoxDrop=Math.random()<Number(plan.rareBoxChance||0)
+if(rareBoxDrop){
+await client.query(`
+INSERT INTO inventories(jid,item_id,quantity)
+VALUES($1,'caixa_rara',1)
+ON CONFLICT(jid,item_id) DO UPDATE
+SET quantity=inventories.quantity+1
+`,[jid])
+}
+let found=null
+const findChance=Math.min(0.45,0.12+Number(row.hours||0)*0.025)
+if(Math.random()<findChance){
+const roll=Math.random()
+if(roll<0.50){
+await client.query(`
+INSERT INTO inventories(jid,item_id,quantity)
+VALUES($1,'pocao_p',1)
+ON CONFLICT(jid,item_id) DO UPDATE
+SET quantity=inventories.quantity+1
+`,[jid])
+found={type:'item',itemId:'pocao_p',label:'Poção Pequena',qty:1}
+}else if(roll<0.75){
+await client.query(`
+INSERT INTO inventories(jid,item_id,quantity)
+VALUES($1,'caixa_sorte',1)
+ON CONFLICT(jid,item_id) DO UPDATE
+SET quantity=inventories.quantity+1
+`,[jid])
+found={type:'item',itemId:'caixa_sorte',label:'Caixa da Sorte',qty:1}
+}else{
+const bonusCash=(500+Math.floor(Math.random()*1501))
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[bonusCash,jid])
+await client.query(
+"INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_find',$3)",
+[jid,bonusCash,'Dinheiro encontrado enquanto carpava']
+)
+found={type:'cash',label:'Dinheiro encontrado',cash:bonusCash}
+}
+}
+await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+return {active:false,completed:true,...row,xp,cash,rareBoxDrop,rareBoxChance:Number(plan.rareBoxChance||0),found,level}
+})
+}
 export async function startPlayerCarpinar(jid,hours){
-  await ensureUser(jid)
-  hours=Number(hours)
-  const plan=CARPINAR_PLANS[hours]
-  if(!plan) throw new Error('Tempo inválido. Escolha 1h, 2h, 4h, 6h, 8h ou 12h.')
-
-  return transaction(async client=>{
-    const now=Math.floor(Date.now()/1000)
-    const sleep=(await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(sleep&&Number(sleep.ends_at)>now) throw new Error('Você está dormindo e não pode começar a carpinar agora.')
-
-    const existing=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(existing&&Number(existing.ends_at)>now){
-      return {active:true,...existing,remaining:Number(existing.ends_at)-now,started:false}
-    }
-    if(existing){
-      await applyExp(client,jid,Number(existing.xp_reward||0))
-      await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
-    }
-
-    const activeRaid=await client.query(
-      "SELECT 1 FROM trevo_games WHERE game_type='raid' AND state->>'status'='active' AND (state->'players') ? $1 LIMIT 1",
-      [jid]
-    )
-    if(activeRaid.rowCount) throw new Error('Você está participando de uma Raid ativa. Espere ela terminar antes de carpinar.')
-
-    const endsAt=now+plan.hours*60*60
-    await client.query(
-      'INSERT INTO player_carpinar(jid,hours,started_at,ends_at,xp_reward,cash_reward) VALUES($1,$2,$3,$4,$5,$6)',
-      [jid,plan.hours,now,endsAt,plan.xp,plan.cash]
-    )
-    return {
-      active:true,
-      started:true,
-      hours:plan.hours,
-      started_at:now,
-      ends_at:endsAt,
-      xp_reward:plan.xp,
-      cash_reward:plan.cash,
-      rare_box_chance:plan.rareBoxChance,
-      remaining:plan.hours*60*60
-    }
-  })
+await ensureUser(jid)
+hours=Number(hours)
+const plan=CARPINAR_PLANS[hours]
+if(!plan) throw new Error('Tempo inválido. Escolha 1h, 2h, 4h, 6h, 8h ou 12h.')
+return transaction(async client=>{
+const now=Math.floor(Date.now()/1000)
+const sleep=(await client.query('SELECT ends_at FROM player_sleep WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(sleep&&Number(sleep.ends_at)>now) throw new Error('Você está dormindo e não pode começar a carpinar agora.')
+const existing=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(existing&&Number(existing.ends_at)>now){
+return {active:true,...existing,remaining:Number(existing.ends_at)-now,started:false}
 }
-
+if(existing){
+await applyExp(client,jid,Number(existing.xp_reward||0))
+await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+}
+const activeRaid=await client.query(
+"SELECT 1 FROM trevo_games WHERE game_type='raid' AND state->>'status'='active' AND (state->'players') ? $1 LIMIT 1",
+[jid]
+)
+if(activeRaid.rowCount) throw new Error('Você está participando de uma Raid ativa. Espere ela terminar antes de carpinar.')
+const endsAt=now+plan.hours*60*60
+await client.query(
+'INSERT INTO player_carpinar(jid,hours,started_at,ends_at,xp_reward,cash_reward) VALUES($1,$2,$3,$4,$5,$6)',
+[jid,plan.hours,now,endsAt,plan.xp,plan.cash]
+)
+return {
+active:true,
+started:true,
+hours:plan.hours,
+started_at:now,
+ends_at:endsAt,
+xp_reward:plan.xp,
+cash_reward:plan.cash,
+rare_box_chance:plan.rareBoxChance,
+remaining:plan.hours*60*60
+}
+})
+}
 export async function leavePlayerCarpinarEarly(jid){
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!row) throw new Error('Você não está carpindo.')
-    const now=Math.floor(Date.now()/1000)
-    const remaining=Math.max(0,Number(row.ends_at)-now)
-
-    if(remaining<=0){
-      const xp=Number(row.xp_reward||0)
-      const level=xp>0?await applyExp(client,jid,xp):null
-      await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
-      return {natural:true,fee:0,xp,remaining:0,hours:Number(row.hours||0),level}
-    }
-
-    const total=Math.max(1,Number(row.ends_at)-Number(row.started_at))
-    const ratio=Math.min(1,remaining/total)
-    const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
-    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
-    if(cash+bank<fee) throw new Error('Sair agora custa R$ '+fee.toLocaleString('pt-BR')+'. Saldo insuficiente.')
-
-    const fromCash=Math.min(cash,fee)
-    await client.query(
-      'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
-      [fromCash,fee-fromCash,jid]
-    )
-
-    const elapsed=Math.max(0,now-Number(row.started_at))
-    const progress=Math.min(1,elapsed/total)
-    const xp=Math.floor(Number(row.xp_reward||0)*progress)
-    const cashReward=Math.floor(Number(row.cash_reward||0)*progress)
-    const level=xp>0?await applyExp(client,jid,xp):null
-
-    if(cashReward>0){
-      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cashReward,jid])
-      await client.query(
-        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_partial_reward',$3)",
-        [jid,cashReward,'Carpinar interrompido após '+elapsed+'s']
-      )
-    }
-
-    await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
-    await client.query(
-      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'carpinar_early_exit',$3)",
-      [jid,fee,'Saiu do carpinar antes: '+remaining+'s restantes']
-    )
-
-    return {
-      natural:false,
-      fee,
-      xp,
-      cash:cashReward,
-      rareBoxDrop:false,
-      remaining,
-      hours:Number(row.hours||0),
-      elapsed,
-      level
-    }
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const row=(await client.query('SELECT * FROM player_carpinar WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!row) throw new Error('Você não está carpindo.')
+const now=Math.floor(Date.now()/1000)
+const remaining=Math.max(0,Number(row.ends_at)-now)
+if(remaining<=0){
+const xp=Number(row.xp_reward||0)
+const level=xp>0?await applyExp(client,jid,xp):null
+await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+return {natural:true,fee:0,xp,remaining:0,hours:Number(row.hours||0),level}
 }
-
+const total=Math.max(1,Number(row.ends_at)-Number(row.started_at))
+const ratio=Math.min(1,remaining/total)
+const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
+const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+if(cash+bank<fee) throw new Error('Sair agora custa R$ '+fee.toLocaleString('pt-BR')+'. Saldo insuficiente.')
+const fromCash=Math.min(cash,fee)
+await client.query(
+'UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',
+[fromCash,fee-fromCash,jid]
+)
+const elapsed=Math.max(0,now-Number(row.started_at))
+const progress=Math.min(1,elapsed/total)
+const xp=Math.floor(Number(row.xp_reward||0)*progress)
+const cashReward=Math.floor(Number(row.cash_reward||0)*progress)
+const level=xp>0?await applyExp(client,jid,xp):null
+if(cashReward>0){
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cashReward,jid])
+await client.query(
+"INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'carpinar_partial_reward',$3)",
+[jid,cashReward,'Carpinar interrompido após '+elapsed+'s']
+)
+}
+await client.query('DELETE FROM player_carpinar WHERE jid=$1',[jid])
+await client.query(
+"INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'carpinar_early_exit',$3)",
+[jid,fee,'Saiu do carpinar antes: '+remaining+'s restantes']
+)
+return {
+natural:false,
+fee,
+xp,
+cash:cashReward,
+rareBoxDrop:false,
+remaining,
+hours:Number(row.hours||0),
+elapsed,
+level
+}
+})
+}
 const PET_BASE_ENERGY={
-  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,450])),
-  cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
-  tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,gaviao:190,
-  panda:200,guepardo:220,tigre:225,gazela_mistica:235,leao:250,cervo_mistico:265,cavalo_guerra:275,unicornio:280,dragao:320,
-  golfinho_celestial:160,moreia_sombria:175,tubarao_abissal:215,polvo_arcano:240,orca_guerra:270,baleia_colossal:310,
-  golem_ancestral:340,urso_runico:345,colosso_cristal:360,oraculo_pedra:335,
-  salamandra_infernal:350,dragao_vulcanico:365,fenix_fogo:390,pantera_vulcanica:355,
-  corvo_abissal:350,lobo_abismo:370,fenix_gelo:395,espectro_abissal:365,
-  rinoceronte_titanico:365,guardiao_obsidiana:380,leviata_gelo:405,kraken_aco:375,esfinge_titanica:385,
-  cerbero_carmesim:380,tigre_lunar:390,imperador_abissal:420,quimera_abissal:385,paladino_astral:400,
-  leao_solar:390,grifo_celestial:410,fenix_celestial:440,lince_celestial:400,arcanjo_eclipse:420,
-  serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,colosso_alpha:475,oraculo_alpha:455,
-  fera_caos:430,guardiao_caos:450,serafim_caotico:455,oraculo_caos:445,fenix_caos:470,
-  pantera_profundezas:450,guardiao_abissal:465,dragao_trono:475,oraculo_coroa:465,esfinge_mares:480,
-  lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520,
-  // Eventos: perfis equilibrados de resistência sem mudar as skills.
-  morcego_madrugada:430,camaleao_lendario:425
+...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,450])),
+cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
+tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,gaviao:190,
+panda:200,guepardo:220,tigre:225,gazela_mistica:235,leao:250,cervo_mistico:265,cavalo_guerra:275,unicornio:280,dragao:320,
+golfinho_celestial:160,moreia_sombria:175,tubarao_abissal:215,polvo_arcano:240,orca_guerra:270,baleia_colossal:310,
+golem_ancestral:340,urso_runico:345,colosso_cristal:360,oraculo_pedra:335,
+salamandra_infernal:350,dragao_vulcanico:365,fenix_fogo:390,pantera_vulcanica:355,
+corvo_abissal:350,lobo_abismo:370,fenix_gelo:395,espectro_abissal:365,
+rinoceronte_titanico:365,guardiao_obsidiana:380,leviata_gelo:405,kraken_aco:375,esfinge_titanica:385,
+cerbero_carmesim:380,tigre_lunar:390,imperador_abissal:420,quimera_abissal:385,paladino_astral:400,
+leao_solar:390,grifo_celestial:410,fenix_celestial:440,lince_celestial:400,arcanjo_eclipse:420,
+serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,colosso_alpha:475,oraculo_alpha:455,
+fera_caos:430,guardiao_caos:450,serafim_caotico:455,oraculo_caos:445,fenix_caos:470,
+pantera_profundezas:450,guardiao_abissal:465,dragao_trono:475,oraculo_coroa:465,esfinge_mares:480,
+lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520,
+morcego_madrugada:430,camaleao_lendario:425
 }
-
-// Corrige os 11 perfis legados de HP/energia sem mexer nos demais pets.
-// A migração é idempotente e só atualiza linhas que ainda têm max_hp antigo.
 const PET_VITALS_LEGACY_FIX=Object.freeze([
-  'oraculo_pedra','pantera_vulcanica','espectro_abissal',
-  'kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral',
-  'lince_celestial','arcanjo_eclipse','morcego_madrugada','camaleao_lendario'
+'oraculo_pedra','pantera_vulcanica','espectro_abissal',
+'kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral',
+'lince_celestial','arcanjo_eclipse','morcego_madrugada','camaleao_lendario'
 ])
 async function fixLegacyPetVitals(){
-  const species=PET_VITALS_LEGACY_FIX
-  const profiles=species.map(s=>PET_HP_PROFILES[s])
-  const energyBases=species.map(s=>PET_BASE_ENERGY[s])
-  if(profiles.some(p=>!p)||energyBases.some(n=>!n))throw new Error('Perfil incompleto na reparação de HP/energia.')
-  const hpBases=profiles.map(p=>p.base)
-  const hpGrowths=profiles.map(p=>p.growth)
-  const expectedHp='GREATEST(1,sp.base+(GREATEST(1,p.level)-1)*sp.growth+FLOOR(GREATEST(0,p.xp)/100)::integer*2)'
-  const oldEnergy='GREATEST(1,100+(GREATEST(1,p.level)-1)*2)'
-  const newEnergy='(sp.energy_base+(GREATEST(1,p.level)-1)*2)'
-  await transaction(async client=>{
-    for(const table of ['pet_collection','pets']){
-      await client.query(`
-        UPDATE ${table} AS p SET
-          hp=CASE WHEN COALESCE(p.hp,0)<=0 THEN 0 ELSE
-            LEAST(${expectedHp},GREATEST(0,p.hp+GREATEST(0,${expectedHp}-GREATEST(1,p.max_hp)))) END,
-          max_hp=${expectedHp},
-          energy=LEAST(${newEnergy},GREATEST(0,
-            ROUND(GREATEST(0,COALESCE(p.energy,0))::numeric*${newEnergy}/${oldEnergy})::integer))
-        FROM UNNEST($1::text[],$2::int[],$3::int[],$4::int[]) AS sp(species,base,growth,energy_base)
-        WHERE p.species=sp.species AND p.max_hp IS DISTINCT FROM ${expectedHp}
-      `,[species,hpBases,hpGrowths,energyBases])
-    }
-  })
+const species=PET_VITALS_LEGACY_FIX
+const profiles=species.map(s=>PET_HP_PROFILES[s])
+const energyBases=species.map(s=>PET_BASE_ENERGY[s])
+if(profiles.some(p=>!p)||energyBases.some(n=>!n))throw new Error('Perfil incompleto na reparação de HP/energia.')
+const hpBases=profiles.map(p=>p.base)
+const hpGrowths=profiles.map(p=>p.growth)
+const expectedHp='GREATEST(1,sp.base+(GREATEST(1,p.level)-1)*sp.growth+FLOOR(GREATEST(0,p.xp)/100)::integer*2)'
+const oldEnergy='GREATEST(1,100+(GREATEST(1,p.level)-1)*2)'
+const newEnergy='(sp.energy_base+(GREATEST(1,p.level)-1)*2)'
+await transaction(async client=>{
+for(const table of ['pet_collection','pets']){
+await client.query(`
+UPDATE ${table} AS p SET
+hp=CASE WHEN COALESCE(p.hp,0)<=0 THEN 0 ELSE
+LEAST(${expectedHp},GREATEST(0,p.hp+GREATEST(0,${expectedHp}-GREATEST(1,p.max_hp)))) END,
+max_hp=${expectedHp},
+energy=LEAST(${newEnergy},GREATEST(0,
+ROUND(GREATEST(0,COALESCE(p.energy,0))::numeric*${newEnergy}/${oldEnergy})::integer))
+FROM UNNEST($1::text[],$2::int[],$3::int[],$4::int[]) AS sp(species,base,growth,energy_base)
+WHERE p.species=sp.species AND p.max_hp IS DISTINCT FROM ${expectedHp}
+`,[species,hpBases,hpGrowths,energyBases])
 }
-
+})
+}
 export function petMaxEnergy(level=1,species='cachorro'){
-  const base=PET_BASE_ENERGY[String(species||'cachorro').toLowerCase()]||100
-  return base+Math.max(0,Number(level||1)-1)*2
+const base=PET_BASE_ENERGY[String(species||'cachorro').toLowerCase()]||100
+return base+Math.max(0,Number(level||1)-1)*2
 }
-
 export const PET_HP_PROFILES={
-  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{base:350,growth:p.style==='guardiao'?26:23,type:'Sagrado'}])),
-  cachorro:{base:105,growth:9,type:'Equilibrado'},
-  gato:{base:90,growth:7,type:'Ágil'},
-  coelho:{base:85,growth:7,type:'Ágil'},
-  papagaio:{base:90,growth:7,type:'Suporte'},
-  hamster:{base:80,growth:6,type:'Ágil'},
-  tartaruga:{base:145,growth:13,type:'Tanque'},
-  coruja:{base:100,growth:8,type:'Suporte'},
-  raposa:{base:110,growth:9,type:'Ágil'},
-  raposa_astral:{base:115,growth:10,type:'Neutro — Leilão Alpha'},
-  lobo:{base:130,growth:11,type:'Ofensivo'},
-  aguia:{base:115,growth:9,type:'Crítico'},
-  gaviao:{base:120,growth:9,type:'Ágil Crítico'},
-  panda:{base:165,growth:14,type:'Tanque'},
-  guepardo:{base:125,growth:10,type:'Velocista'},
-  tigre:{base:150,growth:13,type:'Ofensivo'},
-  gazela_mistica:{base:135,growth:11,type:'Ágil Místico'},
-  leao:{base:170,growth:14,type:'Ofensivo'},
-  cervo_mistico:{base:175,growth:14,type:'Curandeiro'},
-  cavalo_guerra:{base:185,growth:15,type:'Guardião Ágil'},
-  unicornio:{base:190,growth:16,type:'Místico'},
-  dragao:{base:230,growth:19,type:'Boss Hunter'},
-  golfinho_celestial:{base:120,growth:10,type:'Suporte Ágil'},
-  moreia_sombria:{base:125,growth:10,type:'Ofensivo Ágil'},
-  tubarao_abissal:{base:175,growth:14,type:'Ofensivo'},
-  polvo_arcano:{base:165,growth:13,type:'Místico'},
-  orca_guerra:{base:205,growth:16,type:'Equilibrado'},
-  baleia_colossal:{base:245,growth:19,type:'Tanque'},
-  golem_ancestral:{base:240,growth:18,type:'Tanque'},
-  urso_runico:{base:225,growth:17,type:'Tanque'},
-  colosso_cristal:{base:280,growth:21,type:'Tanque'},
-  oraculo_pedra:{base:205,growth:16,type:'Místico'},
-  salamandra_infernal:{base:210,growth:16,type:'Ofensivo'},
-  dragao_vulcanico:{base:250,growth:19,type:'Ofensivo'},
-  fenix_fogo:{base:235,growth:18,type:'Místico'},
-  pantera_vulcanica:{base:220,growth:17,type:'Ofensivo'},
-  corvo_abissal:{base:200,growth:15,type:'Crítico'},
-  lobo_abismo:{base:240,growth:18,type:'Ofensivo'},
-  fenix_gelo:{base:240,growth:18,type:'Místico'},
-  espectro_abissal:{base:225,growth:17,type:'Ágil Místico'},
-  rinoceronte_titanico:{base:285,growth:22,type:'Tanque'},
-  guardiao_obsidiana:{base:300,growth:23,type:'Tanque'},
-  leviata_gelo:{base:320,growth:24,type:'Tanque'},
-  kraken_aco:{base:290,growth:22,type:'Tanque'},
-  esfinge_titanica:{base:260,growth:20,type:'Místico'},
-  cerbero_carmesim:{base:270,growth:21,type:'Ofensivo'},
-  tigre_lunar:{base:260,growth:20,type:'Ofensivo'},
-  imperador_abissal:{base:300,growth:23,type:'Boss Hunter'},
-  quimera_abissal:{base:265,growth:20,type:'Ofensivo'},
-  paladino_astral:{base:285,growth:22,type:'Tanque'},
-  leao_solar:{base:290,growth:22,type:'Ofensivo'},
-  grifo_celestial:{base:275,growth:21,type:'Crítico'},
-  fenix_celestial:{base:300,growth:23,type:'Místico'},
-  lince_celestial:{base:270,growth:21,type:'Ofensivo'},
-  arcanjo_eclipse:{base:290,growth:22,type:'Curandeiro'},
-  serpente_cosmica:{base:300,growth:23,type:'Místico'},
-  dragao_corrompido:{base:340,growth:25,type:'Boss Hunter'},
-  fenix_alpha:{base:360,growth:27,type:'Mítico'},
-  colosso_alpha:{base:355,growth:26,type:'Tanque'},
-  oraculo_alpha:{base:310,growth:23,type:'Místico'},
-  // Raids 60/65/70 mantêm o HP próximo ao teto da Fênix Alpha (Nv.100).
-  fera_caos:{base:310,growth:23,type:'Ofensivo'},
-  guardiao_caos:{base:340,growth:25,type:'Tanque'},
-  serafim_caotico:{base:300,growth:23,type:'Crítico'},
-  oraculo_caos:{base:320,growth:24,type:'Místico'},
-  fenix_caos:{base:350,growth:26,type:'Suporte'},
-  pantera_profundezas:{base:330,growth:25,type:'Ofensivo'},
-  guardiao_abissal:{base:360,growth:26,type:'Tanque'},
-  dragao_trono:{base:345,growth:26,type:'Boss Hunter'},
-  oraculo_coroa:{base:335,growth:25,type:'Místico'},
-  esfinge_mares:{base:370,growth:26,type:'Suporte'},
-  lobo_eclipse:{base:350,growth:25,type:'Ofensivo'},
-  sentinela_eclipse:{base:385,growth:27,type:'Tanque'},
-  dragao_solar_eclipse:{base:365,growth:27,type:'Boss Hunter'},
-  fenix_eclipse:{base:365,growth:26,type:'Suporte'},
-  avatar_primordial:{base:390,growth:27,type:'Místico'},
-  morcego_madrugada:{base:285,growth:22,type:'Coringa'},
-  camaleao_lendario:{base:290,growth:22,type:'Coringa'}
+...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{base:350,growth:p.style==='guardiao'?26:23,type:'Sagrado'}])),
+cachorro:{base:105,growth:9,type:'Equilibrado'},
+gato:{base:90,growth:7,type:'Ágil'},
+coelho:{base:85,growth:7,type:'Ágil'},
+papagaio:{base:90,growth:7,type:'Suporte'},
+hamster:{base:80,growth:6,type:'Ágil'},
+tartaruga:{base:145,growth:13,type:'Tanque'},
+coruja:{base:100,growth:8,type:'Suporte'},
+raposa:{base:110,growth:9,type:'Ágil'},
+raposa_astral:{base:115,growth:10,type:'Neutro — Leilão Alpha'},
+lobo:{base:130,growth:11,type:'Ofensivo'},
+aguia:{base:115,growth:9,type:'Crítico'},
+gaviao:{base:120,growth:9,type:'Ágil Crítico'},
+panda:{base:165,growth:14,type:'Tanque'},
+guepardo:{base:125,growth:10,type:'Velocista'},
+tigre:{base:150,growth:13,type:'Ofensivo'},
+gazela_mistica:{base:135,growth:11,type:'Ágil Místico'},
+leao:{base:170,growth:14,type:'Ofensivo'},
+cervo_mistico:{base:175,growth:14,type:'Curandeiro'},
+cavalo_guerra:{base:185,growth:15,type:'Guardião Ágil'},
+unicornio:{base:190,growth:16,type:'Místico'},
+dragao:{base:230,growth:19,type:'Boss Hunter'},
+golfinho_celestial:{base:120,growth:10,type:'Suporte Ágil'},
+moreia_sombria:{base:125,growth:10,type:'Ofensivo Ágil'},
+tubarao_abissal:{base:175,growth:14,type:'Ofensivo'},
+polvo_arcano:{base:165,growth:13,type:'Místico'},
+orca_guerra:{base:205,growth:16,type:'Equilibrado'},
+baleia_colossal:{base:245,growth:19,type:'Tanque'},
+golem_ancestral:{base:240,growth:18,type:'Tanque'},
+urso_runico:{base:225,growth:17,type:'Tanque'},
+colosso_cristal:{base:280,growth:21,type:'Tanque'},
+oraculo_pedra:{base:205,growth:16,type:'Místico'},
+salamandra_infernal:{base:210,growth:16,type:'Ofensivo'},
+dragao_vulcanico:{base:250,growth:19,type:'Ofensivo'},
+fenix_fogo:{base:235,growth:18,type:'Místico'},
+pantera_vulcanica:{base:220,growth:17,type:'Ofensivo'},
+corvo_abissal:{base:200,growth:15,type:'Crítico'},
+lobo_abismo:{base:240,growth:18,type:'Ofensivo'},
+fenix_gelo:{base:240,growth:18,type:'Místico'},
+espectro_abissal:{base:225,growth:17,type:'Ágil Místico'},
+rinoceronte_titanico:{base:285,growth:22,type:'Tanque'},
+guardiao_obsidiana:{base:300,growth:23,type:'Tanque'},
+leviata_gelo:{base:320,growth:24,type:'Tanque'},
+kraken_aco:{base:290,growth:22,type:'Tanque'},
+esfinge_titanica:{base:260,growth:20,type:'Místico'},
+cerbero_carmesim:{base:270,growth:21,type:'Ofensivo'},
+tigre_lunar:{base:260,growth:20,type:'Ofensivo'},
+imperador_abissal:{base:300,growth:23,type:'Boss Hunter'},
+quimera_abissal:{base:265,growth:20,type:'Ofensivo'},
+paladino_astral:{base:285,growth:22,type:'Tanque'},
+leao_solar:{base:290,growth:22,type:'Ofensivo'},
+grifo_celestial:{base:275,growth:21,type:'Crítico'},
+fenix_celestial:{base:300,growth:23,type:'Místico'},
+lince_celestial:{base:270,growth:21,type:'Ofensivo'},
+arcanjo_eclipse:{base:290,growth:22,type:'Curandeiro'},
+serpente_cosmica:{base:300,growth:23,type:'Místico'},
+dragao_corrompido:{base:340,growth:25,type:'Boss Hunter'},
+fenix_alpha:{base:360,growth:27,type:'Mítico'},
+colosso_alpha:{base:355,growth:26,type:'Tanque'},
+oraculo_alpha:{base:310,growth:23,type:'Místico'},
+fera_caos:{base:310,growth:23,type:'Ofensivo'},
+guardiao_caos:{base:340,growth:25,type:'Tanque'},
+serafim_caotico:{base:300,growth:23,type:'Crítico'},
+oraculo_caos:{base:320,growth:24,type:'Místico'},
+fenix_caos:{base:350,growth:26,type:'Suporte'},
+pantera_profundezas:{base:330,growth:25,type:'Ofensivo'},
+guardiao_abissal:{base:360,growth:26,type:'Tanque'},
+dragao_trono:{base:345,growth:26,type:'Boss Hunter'},
+oraculo_coroa:{base:335,growth:25,type:'Místico'},
+esfinge_mares:{base:370,growth:26,type:'Suporte'},
+lobo_eclipse:{base:350,growth:25,type:'Ofensivo'},
+sentinela_eclipse:{base:385,growth:27,type:'Tanque'},
+dragao_solar_eclipse:{base:365,growth:27,type:'Boss Hunter'},
+fenix_eclipse:{base:365,growth:26,type:'Suporte'},
+avatar_primordial:{base:390,growth:27,type:'Místico'},
+morcego_madrugada:{base:285,growth:22,type:'Coringa'},
+camaleao_lendario:{base:290,growth:22,type:'Coringa'}
 }
 export function petMaxHp(level=1,xp=0,species='cachorro'){
-  const profile=PET_HP_PROFILES[String(species||'cachorro').toLowerCase()]||PET_HP_PROFILES.cachorro
-  const lv=Math.max(1,Number(level)||1)
-  const experience=Math.max(0,Number(xp)||0)
-  return Math.max(1,Math.floor(profile.base+(lv-1)*profile.growth+Math.floor(experience/100)*2))
+const profile=PET_HP_PROFILES[String(species||'cachorro').toLowerCase()]||PET_HP_PROFILES.cachorro
+const lv=Math.max(1,Number(level)||1)
+const experience=Math.max(0,Number(xp)||0)
+return Math.max(1,Math.floor(profile.base+(lv-1)*profile.growth+Math.floor(experience/100)*2))
 }
 export function petHpType(species='cachorro'){
-  return (PET_HP_PROFILES[String(species||'cachorro').toLowerCase()]||PET_HP_PROFILES.cachorro).type
+return (PET_HP_PROFILES[String(species||'cachorro').toLowerCase()]||PET_HP_PROFILES.cachorro).type
 }
 function normalizedPetHp(p){
-  if(!p) return p
-  const desired=petMaxHp(p.level,p.xp,p.species)
-  const oldMax=Math.max(1,Number(p.max_hp||100))
-  const oldHp=Math.max(0,Number(p.hp??oldMax))
-  const hp=Math.min(desired,Math.max(0,oldHp+(desired-oldMax)))
-  const max_energy=petMaxEnergy(p.level,p.species)
-  return {...p,hp,max_hp:desired,max_energy}
+if(!p) return p
+const desired=petMaxHp(p.level,p.xp,p.species)
+const oldMax=Math.max(1,Number(p.max_hp||100))
+const oldHp=Math.max(0,Number(p.hp??oldMax))
+const hp=Math.min(desired,Math.max(0,oldHp+(desired-oldMax)))
+const max_energy=petMaxEnergy(p.level,p.species)
+return {...p,hp,max_hp:desired,max_energy}
 }
-
-
-// VEL dos pets rápidos é bônus plano de iniciativa, separado de Esquiva.
 const PET_SPEED_BASE={guepardo:5,gaviao:4,gazela_mistica:4,cavalo_guerra:3}
 export function petSpeedBonus(species,level=1){
-  const base=Number(PET_SPEED_BASE[String(species||'').toLowerCase()]||0)
-  if(!base) return 0
-  const scale=1+Math.min(.50,Math.max(0,Number(level||1)-1)*(.50/99))
-  return Math.round(base*scale)
+const base=Number(PET_SPEED_BASE[String(species||'').toLowerCase()]||0)
+if(!base) return 0
+const scale=1+Math.min(.50,Math.max(0,Number(level||1)-1)*(.50/99))
+return Math.round(base*scale)
 }
-
-// Estilos do time pet. A sinergia exige 3 ESPÉCIES DIFERENTES do mesmo estilo:
- // cópias da mesma espécie nunca multiplicam o bônus.
 const PET_TEAM_STYLE_BY_SPECIES={
-  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,p.style])),
-  cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
-  golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
-  kraken_aco:'guardiao',paladino_astral:'guardiao',colosso_alpha:'guardiao',
-  guardiao_caos:'guardiao',guardiao_abissal:'guardiao',sentinela_eclipse:'guardiao',
-
-  papagaio:'voador',coruja:'voador',aguia:'voador',gaviao:'voador',dragao:'voador',
-  corvo_abissal:'voador',dragao_vulcanico:'voador',fenix_fogo:'voador',fenix_gelo:'voador',
-  grifo_celestial:'voador',fenix_celestial:'voador',dragao_corrompido:'voador',fenix_alpha:'voador',
-  serafim_caotico:'voador',fenix_caos:'voador',dragao_trono:'voador',dragao_solar_eclipse:'voador',fenix_eclipse:'voador',
-
-  gato:'predador',raposa:'predador',lobo:'predador',guepardo:'predador',tigre:'predador',leao:'predador',
-  moreia_sombria:'predador',tubarao_abissal:'predador',
-  urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
-  pantera_vulcanica:'predador',quimera_abissal:'predador',lince_celestial:'predador',
-  fera_caos:'predador',pantera_profundezas:'predador',lobo_eclipse:'predador',
-
-  coelho:'mistico',hamster:'mistico',gazela_mistica:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
-  golfinho_celestial:'mistico',polvo_arcano:'mistico',
-  salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico',
-  oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico',
-  oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico'
+...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,p.style])),
+cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
+golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
+kraken_aco:'guardiao',paladino_astral:'guardiao',colosso_alpha:'guardiao',
+guardiao_caos:'guardiao',guardiao_abissal:'guardiao',sentinela_eclipse:'guardiao',
+papagaio:'voador',coruja:'voador',aguia:'voador',gaviao:'voador',dragao:'voador',
+corvo_abissal:'voador',dragao_vulcanico:'voador',fenix_fogo:'voador',fenix_gelo:'voador',
+grifo_celestial:'voador',fenix_celestial:'voador',dragao_corrompido:'voador',fenix_alpha:'voador',
+serafim_caotico:'voador',fenix_caos:'voador',dragao_trono:'voador',dragao_solar_eclipse:'voador',fenix_eclipse:'voador',
+gato:'predador',raposa:'predador',lobo:'predador',guepardo:'predador',tigre:'predador',leao:'predador',
+moreia_sombria:'predador',tubarao_abissal:'predador',
+urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
+pantera_vulcanica:'predador',quimera_abissal:'predador',lince_celestial:'predador',
+fera_caos:'predador',pantera_profundezas:'predador',lobo_eclipse:'predador',
+coelho:'mistico',hamster:'mistico',gazela_mistica:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
+golfinho_celestial:'mistico',polvo_arcano:'mistico',
+salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico',
+oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico',
+oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico'
 }
 const PET_TEAM_STYLE_BONUS={
-  voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
-  guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
-  predador:{styleLabel:'🐾 Predador',label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
-  mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
+voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
+guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
+predador:{styleLabel:'🐾 Predador',label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
+mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
 }
-// O Morcego da Madrugada ocupa a categoria dos outros dois pets.
 function resolveBatTeamStyles(species){
-  const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
-  const batIndex=species.findIndex(x=>x==='morcego_madrugada'||x==='camaleao_lendario')
-  if(batIndex<0) return styles
-  const others=styles.filter((_,i)=>i!==batIndex)
-  if(others.length!==2||!others[0]||others[0]!==others[1])return styles
-  styles[batIndex]=others[0]
-  return styles
+const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
+const batIndex=species.findIndex(x=>x==='morcego_madrugada'||x==='camaleao_lendario')
+if(batIndex<0) return styles
+const others=styles.filter((_,i)=>i!==batIndex)
+if(others.length!==2||!others[0]||others[0]!==others[1])return styles
+styles[batIndex]=others[0]
+return styles
 }
 export function petStyleLabel(species){
-  const style=['morcego_madrugada','camaleao_lendario'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
-  return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
+const style=['morcego_madrugada','camaleao_lendario'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
 export function petTeamSynergy(pets=[]){
-  const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
-  const species=team.map(p=>String(p.species||''))
-  const unique=new Set(species).size===species.length
-  const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
-  const styles=resolveBatTeamStyles(species)
-  const base=team.length===3&&unique&&styles[0]&&styles.every(s=>s===styles[0])
-    ?PET_TEAM_STYLE_BONUS[styles[0]]:null
-  if(!base&&!count)return null
-  const attack=Number(base?.attack||0)+pecadosBonus(count)
-  const crit=Number(base?.crit||0)+(count===3?.05:0)
-  const collabText=count?'🌈 '+count+' Pecado(s): +'+Math.round(pecadosBonus(count)*100)+'% dano'+(count===3?' e +5 p.p. CRIT':''):''
-  return {
-    ...(base||{}),style:base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
-    label:[base?.label, count?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
-    text:[base?.text,collabText].filter(Boolean).join(' | '),
-    attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
-    collabCount:count,collabAttack:pecadosBonus(count),collabCrit:count===3?.05:0
-  }
+const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
+const species=team.map(p=>String(p.species||''))
+const unique=new Set(species).size===species.length
+const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
+const styles=resolveBatTeamStyles(species)
+const base=team.length===3&&unique&&styles[0]&&styles.every(s=>s===styles[0])
+?PET_TEAM_STYLE_BONUS[styles[0]]:null
+if(!base&&!count)return null
+const attack=Number(base?.attack||0)+pecadosBonus(count)
+const crit=Number(base?.crit||0)+(count===3?.05:0)
+const collabText=count?'🌈 '+count+' Pecado(s): +'+Math.round(pecadosBonus(count)*100)+'% dano'+(count===3?' e +5 p.p. CRIT':''):''
+return {
+...(base||{}),style:base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
+label:[base?.label, count?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
+text:[base?.text,collabText].filter(Boolean).join(' | '),
+attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
+collabCount:count,collabAttack:pecadosBonus(count),collabCrit:count===3?.05:0
 }
-
+}
 export const LEGENDARY_PET_SUMMONS=[
-  {materialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
-    {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:45,power:150},
-    {species:'urso_runico',name:'🐻 Urso Rúnico',chance:25,power:175},
-    {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205},
-    {species:'oraculo_pedra',name:'🔮 Oráculo de Pedra',chance:20,power:185}
-  ]},
-  {materialId:'escama_vulcanica',materialName:'Escama Vulcânica',raidLevel:15,summonCost:100,pets:[
-    {species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:50,power:165},
-    {species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:10,power:190},
-    {species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:10,power:225},
-    {species:'pantera_vulcanica',name:'🐈‍⬛ Pantera Vulcânica',chance:30,power:210}
-  ]},
-  {materialId:'olho_abissal',materialName:'Olho Abissal',raidLevel:20,summonCost:100,pets:[
-    {species:'corvo_abissal',name:'👁️ Corvo Abissal',chance:40,power:180},
-    {species:'lobo_abismo',name:'🌑 Lobo do Abismo',chance:30,power:210},
-    {species:'fenix_gelo',name:'❄️ Fênix de Gelo',chance:15,power:245},
-    {species:'espectro_abissal',name:'👻 Espectro Abissal',chance:15,power:235}
-  ]},
-  {materialId:'nucleo_titan',materialName:'Núcleo do Titã',raidLevel:25,summonCost:100,pets:[
-    {species:'rinoceronte_titanico',name:'🦏 Rinoceronte Titânico',chance:35,power:195},
-    {species:'guardiao_obsidiana',name:'🗿 Guardião de Obsidiana',chance:25,power:230},
-    {species:'leviata_gelo',name:'🌊 Leviatã de Gelo',chance:15,power:270},
-    {species:'kraken_aco',name:'🦑 Kraken de Aço',chance:15,power:255},
-    {species:'esfinge_titanica',name:'🗿 Esfinge Titânica',chance:10,power:265}
-  ]},
-  {materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal',raidLevel:30,summonCost:100,pets:[
-    {species:'cerbero_carmesim',name:'🩸 Cérbero Carmesim',chance:40,power:215},
-    {species:'tigre_lunar',name:'🌙 Tigre Lunar',chance:25,power:250},
-    {species:'imperador_abissal',name:'👑 Imperador Abissal',chance:15,power:295},
-    {species:'quimera_abissal',name:'🐲 Quimera Abissal',chance:10,power:285},
-    {species:'paladino_astral',name:'🛡️ Paladino Astral',chance:10,power:280}
-  ]},
-  {materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,summonCost:100,pets:[
-    {species:'leao_solar',name:'☀️ Leão Solar',chance:35,power:245},
-    {species:'grifo_celestial',name:'✨ Grifo Celestial',chance:25,power:290},
-    {species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:345},
-    {species:'lince_celestial',name:'🐆 Lince Celestial',chance:15,power:320},
-    {species:'arcanjo_eclipse',name:'🪽 Arcanjo do Eclipse',chance:10,power:335}
-  ]},
-  {materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,summonCost:100,pets:[
-    {species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:35,power:280},
-    {species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:25,power:335},
-    {species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400},
-    {species:'colosso_alpha',name:'🗿 Colosso Alpha',chance:15,power:360},
-    {species:'oraculo_alpha',name:'🔮 Oráculo Alpha',chance:15,power:370}
-  ]},
-  {materialId:'fragmento_caos',materialName:'Fragmento do Caos',raidLevel:60,summonCost:100,pets:[
-    {species:'fera_caos',name:'🐺 Fera do Caos',chance:35,power:305},
-    {species:'guardiao_caos',name:'🛡️ Guardião do Caos',chance:25,power:320},
-    {species:'serafim_caotico',name:'🪽 Serafim Caótico',chance:15,power:345},
-    {species:'oraculo_caos',name:'🔮 Oráculo do Caos',chance:15,power:350},
-    {species:'fenix_caos',name:'🔥 Fênix do Caos',chance:10,power:370}
-  ]},
-  {materialId:'coroa_abissal',materialName:'Coroa Abissal',raidLevel:65,summonCost:100,pets:[
-    {species:'pantera_profundezas',name:'🐈‍⬛ Pantera das Profundezas',chance:35,power:330},
-    {species:'guardiao_abissal',name:'🗿 Guardião Abissal',chance:25,power:355},
-    {species:'dragao_trono',name:'🐉 Dragão do Trono Abissal',chance:15,power:375},
-    {species:'oraculo_coroa',name:'👑 Oráculo da Coroa',chance:15,power:390},
-    {species:'esfinge_mares',name:'🌊 Esfinge das Marés',chance:10,power:400}
-  ]},
-  {materialId:'essencia_eclipse',materialName:'Essência do Eclipse',raidLevel:70,summonCost:100,pets:[
-    {species:'lobo_eclipse',name:'🌘 Lobo do Eclipse',chance:35,power:355},
-    {species:'sentinela_eclipse',name:'🛡️ Sentinela do Eclipse',chance:25,power:380},
-    {species:'dragao_solar_eclipse',name:'🐉 Dragão Solar do Eclipse',chance:15,power:405},
-    {species:'fenix_eclipse',name:'🌗 Fênix do Eclipse',chance:15,power:420},
-    {species:'avatar_primordial',name:'🌌 Avatar Primordial',chance:10,power:435}
-  ]}
+{materialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
+{species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:45,power:150},
+{species:'urso_runico',name:'🐻 Urso Rúnico',chance:25,power:175},
+{species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205},
+{species:'oraculo_pedra',name:'🔮 Oráculo de Pedra',chance:20,power:185}
+]},
+{materialId:'escama_vulcanica',materialName:'Escama Vulcânica',raidLevel:15,summonCost:100,pets:[
+{species:'salamandra_infernal',name:'🔥 Salamandra Infernal',chance:50,power:165},
+{species:'dragao_vulcanico',name:'🐲 Dragão Vulcânico',chance:10,power:190},
+{species:'fenix_fogo',name:'🔥 Fênix de Fogo',chance:10,power:225},
+{species:'pantera_vulcanica',name:'🐈‍⬛ Pantera Vulcânica',chance:30,power:210}
+]},
+{materialId:'olho_abissal',materialName:'Olho Abissal',raidLevel:20,summonCost:100,pets:[
+{species:'corvo_abissal',name:'👁️ Corvo Abissal',chance:40,power:180},
+{species:'lobo_abismo',name:'🌑 Lobo do Abismo',chance:30,power:210},
+{species:'fenix_gelo',name:'❄️ Fênix de Gelo',chance:15,power:245},
+{species:'espectro_abissal',name:'👻 Espectro Abissal',chance:15,power:235}
+]},
+{materialId:'nucleo_titan',materialName:'Núcleo do Titã',raidLevel:25,summonCost:100,pets:[
+{species:'rinoceronte_titanico',name:'🦏 Rinoceronte Titânico',chance:35,power:195},
+{species:'guardiao_obsidiana',name:'🗿 Guardião de Obsidiana',chance:25,power:230},
+{species:'leviata_gelo',name:'🌊 Leviatã de Gelo',chance:15,power:270},
+{species:'kraken_aco',name:'🦑 Kraken de Aço',chance:15,power:255},
+{species:'esfinge_titanica',name:'🗿 Esfinge Titânica',chance:10,power:265}
+]},
+{materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal',raidLevel:30,summonCost:100,pets:[
+{species:'cerbero_carmesim',name:'🩸 Cérbero Carmesim',chance:40,power:215},
+{species:'tigre_lunar',name:'🌙 Tigre Lunar',chance:25,power:250},
+{species:'imperador_abissal',name:'👑 Imperador Abissal',chance:15,power:295},
+{species:'quimera_abissal',name:'🐲 Quimera Abissal',chance:10,power:285},
+{species:'paladino_astral',name:'🛡️ Paladino Astral',chance:10,power:280}
+]},
+{materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,summonCost:100,pets:[
+{species:'leao_solar',name:'☀️ Leão Solar',chance:35,power:245},
+{species:'grifo_celestial',name:'✨ Grifo Celestial',chance:25,power:290},
+{species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:345},
+{species:'lince_celestial',name:'🐆 Lince Celestial',chance:15,power:320},
+{species:'arcanjo_eclipse',name:'🪽 Arcanjo do Eclipse',chance:10,power:335}
+]},
+{materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,summonCost:100,pets:[
+{species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:35,power:280},
+{species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:25,power:335},
+{species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400},
+{species:'colosso_alpha',name:'🗿 Colosso Alpha',chance:15,power:360},
+{species:'oraculo_alpha',name:'🔮 Oráculo Alpha',chance:15,power:370}
+]},
+{materialId:'fragmento_caos',materialName:'Fragmento do Caos',raidLevel:60,summonCost:100,pets:[
+{species:'fera_caos',name:'🐺 Fera do Caos',chance:35,power:305},
+{species:'guardiao_caos',name:'🛡️ Guardião do Caos',chance:25,power:320},
+{species:'serafim_caotico',name:'🪽 Serafim Caótico',chance:15,power:345},
+{species:'oraculo_caos',name:'🔮 Oráculo do Caos',chance:15,power:350},
+{species:'fenix_caos',name:'🔥 Fênix do Caos',chance:10,power:370}
+]},
+{materialId:'coroa_abissal',materialName:'Coroa Abissal',raidLevel:65,summonCost:100,pets:[
+{species:'pantera_profundezas',name:'🐈‍⬛ Pantera das Profundezas',chance:35,power:330},
+{species:'guardiao_abissal',name:'🗿 Guardião Abissal',chance:25,power:355},
+{species:'dragao_trono',name:'🐉 Dragão do Trono Abissal',chance:15,power:375},
+{species:'oraculo_coroa',name:'👑 Oráculo da Coroa',chance:15,power:390},
+{species:'esfinge_mares',name:'🌊 Esfinge das Marés',chance:10,power:400}
+]},
+{materialId:'essencia_eclipse',materialName:'Essência do Eclipse',raidLevel:70,summonCost:100,pets:[
+{species:'lobo_eclipse',name:'🌘 Lobo do Eclipse',chance:35,power:355},
+{species:'sentinela_eclipse',name:'🛡️ Sentinela do Eclipse',chance:25,power:380},
+{species:'dragao_solar_eclipse',name:'🐉 Dragão Solar do Eclipse',chance:15,power:405},
+{species:'fenix_eclipse',name:'🌗 Fênix do Eclipse',chance:15,power:420},
+{species:'avatar_primordial',name:'🌌 Avatar Primordial',chance:10,power:435}
+]}
 ]
-
 export async function raid50DragonGuaranteeStatus(jid){
-  if(String(jid)!=='5511948523167@s.whatsapp.net') return {active:false,alreadyOwned:false}
-  const marker='raid50_fenix_once_20261012:'+jid
-  const [used,existing]=await Promise.all([
-    db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[marker]),
-    db.query("SELECT 1 FROM pet_collection WHERE jid=$1 AND species='dragao_corrompido' LIMIT 1",[jid])
-  ])
-  return {active:used.rowCount===0,alreadyOwned:existing.rowCount>0}
+if(String(jid)!=='5511948523167@s.whatsapp.net') return {active:false,alreadyOwned:false}
+const marker='raid50_fenix_once_20261012:'+jid
+const [used,existing]=await Promise.all([
+db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[marker]),
+db.query("SELECT 1 FROM pet_collection WHERE jid=$1 AND species='dragao_corrompido' LIMIT 1",[jid])
+])
+return {active:used.rowCount===0,alreadyOwned:existing.rowCount>0}
 }
-
 export async function summonLegendaryPet(jid,materialId){
-  await ensureUser(jid)
-  const altar=LEGENDARY_PET_SUMMONS.find(x=>x.materialId===String(materialId||''))
-  if(!altar) throw new Error('Material de invocação inválido.')
-  return transaction(async client=>{
-    const inv=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,altar.materialId])).rows[0]
-    const owned=Number(inv?.quantity||0)
-    // A Raid Lv10 é a porta de entrada para pets especiais: exige 50 materiais.
-    // Todas as demais invocações continuam exigindo 100.
-    const summonCost=Math.max(1,Number(altar.summonCost||100))
-    const missing=Math.max(0,summonCost-owned)
-    const universal=(await client.query("SELECT quantity FROM inventories WHERE jid=$1 AND item_id='fragmento_universal_raid' FOR UPDATE",[jid])).rows[0]
-    const universalOwned=Number(universal?.quantity||0)
-    if(owned+universalOwned<summonCost) throw new Error(`Você precisa de ${summonCost} materiais de Raid. ${altar.materialName}: ${owned}; universais: ${universalOwned}.`)
-    if(summonCost-missing>0)await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[summonCost-missing,jid,altar.materialId])
-    if(missing)await client.query("UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id='fragmento_universal_raid'",[missing,jid])
-
-    // Garantia administrativa opcional de uma única invocação.
-    // A chave fica persistida até o jogador realmente ter materiais e concluir a invocação.
-    const forcedKey='forced_summon:'+jid+':'+altar.materialId
-    const forcedRow=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[forcedKey])).rows[0]
-    // Garantia pontual e de uso unico autorizada para a proxima invocacao Raid 50.
-    // O marcador persiste no Neon e so e consumido em uma transacao concluida.
-    const specialGuaranteeKey='raid50_fenix_once_20261012:'+jid
-    const specialGuaranteeEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='nucleo_alpha_corrompido'
-    const specialGuaranteeUsed=specialGuaranteeEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[specialGuaranteeKey])).rowCount):true
-    const specialGuaranteeActive=specialGuaranteeEligible&&!specialGuaranteeUsed
-    // One-time private Raid 65 summon for the same player as the existing personal guarantee.
-    // Consumed atomically only after a successful summon; no UI odds or other players change.
-    const sphinxKey='raid65_esfinge_once_20261017:'+jid
-    const sphinxEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='coroa_abissal'
-    const sphinxAlreadyUsed=sphinxEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[sphinxKey])).rowCount):true
-    const sphinxActive=sphinxEligible&&!sphinxAlreadyUsed
-    const forcedSpecies=sphinxActive?'esfinge_mares':(specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||''))
-    let chosen=altar.pets.find(p=>p.species===forcedSpecies)||null
-    if(specialGuaranteeActive){
-      await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
-        specialGuaranteeKey,JSON.stringify({species:'dragao_corrompido',materialId:altar.materialId,at:Date.now()})
-      ])
-    }
-    if(sphinxActive){
-      await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
-        sphinxKey,JSON.stringify({species:'esfinge_mares',materialId:altar.materialId,at:Date.now()})
-      ])
-    }
-    if(chosen){
-      await client.query('DELETE FROM trevo_settings WHERE key=$1',[forcedKey])
-    }else{
-      const roll=Math.random()*100
-      let acc=0
-      chosen=altar.pets[altar.pets.length-1]
-      for(const pet of altar.pets){
-        acc+=Number(pet.chance||0)
-        if(roll<acc){ chosen=pet; break }
-      }
-    }
-
-    const petName=chosen.name.replace(/^[^\p{L}\p{N}]+/u,'').slice(0,24)
-
-    // Pet de Raid repetido não cria uma cópia inútil nem permite empilhar 3 iguais.
-    // Converte automaticamente em dinheiro + parte dos materiais gastos.
-    const duplicate=(await client.query(
-      'SELECT id FROM pet_collection WHERE jid=$1 AND species=$2 LIMIT 1 FOR UPDATE',
-      [jid,chosen.species]
-    )).rows[0]
-    if(duplicate){
-      const rare=Number(chosen.chance||100)<=15
-      const fragmentRate=rare ? 0.35 : 0.25
-      const fragmentRefund=Math.max(1,Math.floor(summonCost*fragmentRate))
-      let cashRefund=Math.round((Number(altar.raidLevel||1)*800+Number(chosen.power||0)*60)/1000)*1000
-      if(rare) cashRefund=Math.round(cashRefund*1.25/1000)*1000
-
-      await client.query(
-        'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
-        [jid,altar.materialId,fragmentRefund]
-      )
-      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cashRefund,jid])
-      await client.query(
-        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'raid_pet_duplicate',$3)",
-        [jid,cashRefund,`Pet de Raid repetido: ${chosen.species} | +${fragmentRefund} ${altar.materialId}`]
-      )
-
-      return {
-        altar:{...altar,summonCost},
-        pet:chosen,
-        duplicate:true,
-        cashRefund,
-        fragmentRefund,
-        remaining:Math.max(0,owned-summonCost)+fragmentRefund
-      }
-    }
-
-    // Pet invocado nasce no nível da Raid de origem para já ser uma recompensa
-    // endgame utilizável, em vez de um "lendário Lv.1" pior que pets comuns veteranos.
-    const startLevel=Math.max(1,Number(altar.raidLevel||1))
-    const startXp=(startLevel-1)*100
-    const energy=petMaxEnergy(startLevel,chosen.species)
-    const maxHp=petMaxHp(startLevel,startXp,chosen.species)
-    const collected=(await client.query(
-      `INSERT INTO pet_collection(jid,species,name,level,xp,energy,power,hp,max_hp,active)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE) RETURNING *`,
-      [jid,chosen.species,petName,startLevel,startXp,energy,chosen.power,maxHp]
-    )).rows[0]
-
-    return {altar:{...altar,summonCost},pet:chosen,collectionId:collected.id,remaining:Math.max(0,owned-summonCost)}
-  })
+await ensureUser(jid)
+const altar=LEGENDARY_PET_SUMMONS.find(x=>x.materialId===String(materialId||''))
+if(!altar) throw new Error('Material de invocação inválido.')
+return transaction(async client=>{
+const inv=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,altar.materialId])).rows[0]
+const owned=Number(inv?.quantity||0)
+const summonCost=Math.max(1,Number(altar.summonCost||100))
+const missing=Math.max(0,summonCost-owned)
+const universal=(await client.query("SELECT quantity FROM inventories WHERE jid=$1 AND item_id='fragmento_universal_raid' FOR UPDATE",[jid])).rows[0]
+const universalOwned=Number(universal?.quantity||0)
+if(owned+universalOwned<summonCost) throw new Error(`Você precisa de ${summonCost} materiais de Raid. ${altar.materialName}: ${owned}; universais: ${universalOwned}.`)
+if(summonCost-missing>0)await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[summonCost-missing,jid,altar.materialId])
+if(missing)await client.query("UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id='fragmento_universal_raid'",[missing,jid])
+const forcedKey='forced_summon:'+jid+':'+altar.materialId
+const forcedRow=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[forcedKey])).rows[0]
+const specialGuaranteeKey='raid50_fenix_once_20261012:'+jid
+const specialGuaranteeEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='nucleo_alpha_corrompido'
+const specialGuaranteeUsed=specialGuaranteeEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[specialGuaranteeKey])).rowCount):true
+const specialGuaranteeActive=specialGuaranteeEligible&&!specialGuaranteeUsed
+const sphinxKey='raid65_esfinge_once_20261017:'+jid
+const sphinxEligible=jid==='5511948523167@s.whatsapp.net'&&altar.materialId==='coroa_abissal'
+const sphinxAlreadyUsed=sphinxEligible?Boolean((await client.query('SELECT 1 FROM trevo_settings WHERE key=$1 FOR UPDATE',[sphinxKey])).rowCount):true
+const sphinxActive=sphinxEligible&&!sphinxAlreadyUsed
+const forcedSpecies=sphinxActive?'esfinge_mares':(specialGuaranteeActive?'dragao_corrompido':String(forcedRow?.value?.species||''))
+let chosen=altar.pets.find(p=>p.species===forcedSpecies)||null
+if(specialGuaranteeActive){
+await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
+specialGuaranteeKey,JSON.stringify({species:'dragao_corrompido',materialId:altar.materialId,at:Date.now()})
+])
 }
-
+if(sphinxActive){
+await client.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)',[
+sphinxKey,JSON.stringify({species:'esfinge_mares',materialId:altar.materialId,at:Date.now()})
+])
+}
+if(chosen){
+await client.query('DELETE FROM trevo_settings WHERE key=$1',[forcedKey])
+}else{
+const roll=Math.random()*100
+let acc=0
+chosen=altar.pets[altar.pets.length-1]
+for(const pet of altar.pets){
+acc+=Number(pet.chance||0)
+if(roll<acc){ chosen=pet; break }
+}
+}
+const petName=chosen.name.replace(/^[^\p{L}\p{N}]+/u,'').slice(0,24)
+const duplicate=(await client.query(
+'SELECT id FROM pet_collection WHERE jid=$1 AND species=$2 LIMIT 1 FOR UPDATE',
+[jid,chosen.species]
+)).rows[0]
+if(duplicate){
+const rare=Number(chosen.chance||100)<=15
+const fragmentRate=rare ? 0.35 : 0.25
+const fragmentRefund=Math.max(1,Math.floor(summonCost*fragmentRate))
+let cashRefund=Math.round((Number(altar.raidLevel||1)*800+Number(chosen.power||0)*60)/1000)*1000
+if(rare) cashRefund=Math.round(cashRefund*1.25/1000)*1000
+await client.query(
+'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
+[jid,altar.materialId,fragmentRefund]
+)
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cashRefund,jid])
+await client.query(
+"INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'raid_pet_duplicate',$3)",
+[jid,cashRefund,`Pet de Raid repetido: ${chosen.species} | +${fragmentRefund} ${altar.materialId}`]
+)
+return {
+altar:{...altar,summonCost},
+pet:chosen,
+duplicate:true,
+cashRefund,
+fragmentRefund,
+remaining:Math.max(0,owned-summonCost)+fragmentRefund
+}
+}
+const startLevel=Math.max(1,Number(altar.raidLevel||1))
+const startXp=(startLevel-1)*100
+const energy=petMaxEnergy(startLevel,chosen.species)
+const maxHp=petMaxHp(startLevel,startXp,chosen.species)
+const collected=(await client.query(
+`INSERT INTO pet_collection(jid,species,name,level,xp,energy,power,hp,max_hp,active)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE) RETURNING *`,
+[jid,chosen.species,petName,startLevel,startXp,energy,chosen.power,maxHp]
+)).rows[0]
+return {altar:{...altar,summonCost},pet:chosen,collectionId:collected.id,remaining:Math.max(0,owned-summonCost)}
+})
+}
 export async function adoptPet(jid,species='cachorro',name='Alpha'){
-  // Adoção de pets comuns desativada em 21/10/2026.
-  // Bloqueio central: WhatsApp e API Web; sem excluir pets existentes.
-  throw new Error('🐾 Adoção de pets comuns desativada. Use !invocarpet para o Altar Lendário ou !meuspets para sua coleção.')
-  await ensureUser(jid)
-  species=String(species||'cachorro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-  const rule=getAdoptablePetRule(species)
-  if(!rule) throw new Error('Pet inválido. Use !adotar para ver os pets disponíveis.')
-  return transaction(async client=>{
-    const ur=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid]); const level=Number(ur.rows[0]?.level||1)
-    if(level<rule.level) throw new Error(`${rule.label} exige nível ${rule.level}. Seu nível atual: ${level}.`)
-    const old=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const changeFee=0
-    const total=rule.price
-    const wr=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0],cash=Number(wr?.cash||0),bank=Number(wr?.bank||0)
-    if(cash+bank<total) throw new Error(`Você precisa de R$ ${total.toLocaleString('pt-BR')} (${rule.label}: R$ ${rule.price.toLocaleString('pt-BR')}).`)
-    const fromCash=Math.min(cash,total)
-    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,total-fromCash,jid])
-    const petName=String(name||'Alpha').slice(0,24)
-    if(old){
-      const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
-      if(active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
-        [old.species,old.name,old.level,old.xp,old.hunger,old.hygiene,old.energy,old.power,old.wins,old.losses,old.last_action,old.last_rest,old.created_at,old.hp||old.max_hp||100,old.max_hp||petMaxHp(old.level,old.xp,old.species),active.id])
-    }
-    await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
-    const maxEnergy=petMaxEnergy(1,species)
-    const maxHp=petMaxHp(1,0,species)
-    const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,hp,max_hp,active,purchase_price) VALUES($1,$2,$3,$4,$5,$5,TRUE,$6) RETURNING *`,[jid,species,petName,maxEnergy,maxHp,rule.price])).rows[0]
-    await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,collected.id])
-    await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,collected.id])
-    const {rows}=await client.query(`INSERT INTO pets(jid,species,name,energy,hp,max_hp) VALUES($1,$2,$3,$4,$5,$5)
-      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=EXCLUDED.energy,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp,wins=0,losses=0,last_action=0,last_rest=0 RETURNING *`,[jid,species,petName,maxEnergy,maxHp])
-    return {...rows[0],collectionId:collected.id,fee:total,petPrice:rule.price,changeFee:0,replaced:false,added:true}
-  })
+throw new Error('🐾 Adoção de pets comuns desativada. Use !invocarpet para o Altar Lendário ou !meuspets para sua coleção.')
+await ensureUser(jid)
+species=String(species||'cachorro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+const rule=getAdoptablePetRule(species)
+if(!rule) throw new Error('Pet inválido. Use !adotar para ver os pets disponíveis.')
+return transaction(async client=>{
+const ur=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid]); const level=Number(ur.rows[0]?.level||1)
+if(level<rule.level) throw new Error(`${rule.label} exige nível ${rule.level}. Seu nível atual: ${level}.`)
+const old=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const changeFee=0
+const total=rule.price
+const wr=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0],cash=Number(wr?.cash||0),bank=Number(wr?.bank||0)
+if(cash+bank<total) throw new Error(`Você precisa de R$ ${total.toLocaleString('pt-BR')} (${rule.label}: R$ ${rule.price.toLocaleString('pt-BR')}).`)
+const fromCash=Math.min(cash,total)
+await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,total-fromCash,jid])
+const petName=String(name||'Alpha').slice(0,24)
+if(old){
+const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
+if(active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
+[old.species,old.name,old.level,old.xp,old.hunger,old.hygiene,old.energy,old.power,old.wins,old.losses,old.last_action,old.last_rest,old.created_at,old.hp||old.max_hp||100,old.max_hp||petMaxHp(old.level,old.xp,old.species),active.id])
+}
+await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
+const maxEnergy=petMaxEnergy(1,species)
+const maxHp=petMaxHp(1,0,species)
+const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,hp,max_hp,active,purchase_price) VALUES($1,$2,$3,$4,$5,$5,TRUE,$6) RETURNING *`,[jid,species,petName,maxEnergy,maxHp,rule.price])).rows[0]
+await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,collected.id])
+await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,collected.id])
+const {rows}=await client.query(`INSERT INTO pets(jid,species,name,energy,hp,max_hp) VALUES($1,$2,$3,$4,$5,$5)
+ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=EXCLUDED.energy,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp,wins=0,losses=0,last_action=0,last_rest=0 RETURNING *`,[jid,species,petName,maxEnergy,maxHp])
+return {...rows[0],collectionId:collected.id,fee:total,petPrice:rule.price,changeFee:0,replaced:false,added:true}
+})
 }
 export async function getPet(jid){
-  const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid])
-  if(!rows[0]) return null
-  const before=rows[0], pet=normalizedPetHp(before)
-  if(Number(before.hp)!==Number(pet.hp)||Number(before.max_hp)!==Number(pet.max_hp)){
-    await db.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[pet.hp,pet.max_hp,jid])
-    await db.query('UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.max_hp,jid])
-  }
-  return pet
+const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid])
+if(!rows[0]) return null
+const before=rows[0], pet=normalizedPetHp(before)
+if(Number(before.hp)!==Number(pet.hp)||Number(before.max_hp)!==Number(pet.max_hp)){
+await db.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[pet.hp,pet.max_hp,jid])
+await db.query('UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.max_hp,jid])
+}
+return pet
 }
 export async function listPets(jid){
-  const active=await getPet(jid)
-  const {rows}=await db.query('SELECT * FROM pet_collection WHERE jid=$1 ORDER BY active DESC,id ASC',[jid])
-  if(!rows.length&&active) return [{...active,id:null,active:true}]
-  return rows.map(normalizedPetHp)
+const active=await getPet(jid)
+const {rows}=await db.query('SELECT * FROM pet_collection WHERE jid=$1 ORDER BY active DESC,id ASC',[jid])
+if(!rows.length&&active) return [{...active,id:null,active:true}]
+return rows.map(normalizedPetHp)
 }
-
-
-// Sacrifice is intentionally restricted to reserve pets. Rewards are modest
-// proxies for training effort; historical cash spent is not tracked per pet.
 export async function sacrificePet(jid,petId){
-  await ensureUser(jid)
-  petId=Number(petId)
-  if(!Number.isSafeInteger(petId)||petId<=0) throw new Error('Pet inválido.')
-  return transaction(async client=>{
-    const pet=(await client.query(
-      'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId]
-    )).rows[0]
-    if(!pet) throw new Error('Este pet não existe mais na sua coleção.')
-    if(PECADOS_HERO_IDS.includes(pet.species)) throw new Error('Personagens sagrados da collab não podem ser sacrificados.')
-    if(pet.active) throw new Error('Troque o pet ativo antes de sacrificá-lo.')
-    const team=(await client.query(
-      'SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId]
-    )).rows[0]
-    if(team) throw new Error('Remova esse pet do time antes de sacrificá-lo.')
-    const trip=(await client.query(
-      'SELECT 1 FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=FALSE',[jid,petId]
-    )).rows[0]
-    if(trip) throw new Error('Espere a expedição terminar antes de sacrificá-lo.')
-    const {level,exp,cash,originalPrice,shopRefund}=petSacrificeReward(pet.species,pet.level,pet.xp,pet.purchase_price)
-    // Any reference from completed expeditions must be removed before the
-    // pet can be deleted; unresolved ones were blocked above.
-    await client.query('DELETE FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=TRUE',[jid,petId])
-    const deletion=await client.query(
-      'DELETE FROM pet_collection WHERE jid=$1 AND id=$2 AND active=FALSE RETURNING id',[jid,petId]
-    )
-    if(deletion.rowCount!==1) throw new Error('Sacrifício cancelado: pet não foi removido.')
-    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
-    if(exp>0) await applyExp(client,jid,exp)
-    await client.query(
-      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'pet_sacrifice',$3)",
-      [jid,cash,`pet_id:${petId}|species:${pet.species}|level:${level}|exp:${exp}|purchase_price:${originalPrice}|shop_refund:${shopRefund}`]
-    )
-    return {name:pet.name,species:pet.species,level,exp,cash,originalPrice,shopRefund}
-  })
+await ensureUser(jid)
+petId=Number(petId)
+if(!Number.isSafeInteger(petId)||petId<=0) throw new Error('Pet inválido.')
+return transaction(async client=>{
+const pet=(await client.query(
+'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId]
+)).rows[0]
+if(!pet) throw new Error('Este pet não existe mais na sua coleção.')
+if(PECADOS_HERO_IDS.includes(pet.species)) throw new Error('Personagens sagrados da collab não podem ser sacrificados.')
+if(pet.active) throw new Error('Troque o pet ativo antes de sacrificá-lo.')
+const team=(await client.query(
+'SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId]
+)).rows[0]
+if(team) throw new Error('Remova esse pet do time antes de sacrificá-lo.')
+const trip=(await client.query(
+'SELECT 1 FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=FALSE',[jid,petId]
+)).rows[0]
+if(trip) throw new Error('Espere a expedição terminar antes de sacrificá-lo.')
+const {level,exp,cash,originalPrice,shopRefund}=petSacrificeReward(pet.species,pet.level,pet.xp,pet.purchase_price)
+await client.query('DELETE FROM pet_expeditions WHERE jid=$1 AND pet_id=$2 AND resolved=TRUE',[jid,petId])
+const deletion=await client.query(
+'DELETE FROM pet_collection WHERE jid=$1 AND id=$2 AND active=FALSE RETURNING id',[jid,petId]
+)
+if(deletion.rowCount!==1) throw new Error('Sacrifício cancelado: pet não foi removido.')
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+if(exp>0) await applyExp(client,jid,exp)
+await client.query(
+"INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'pet_sacrifice',$3)",
+[jid,cash,`pet_id:${petId}|species:${pet.species}|level:${level}|exp:${exp}|purchase_price:${originalPrice}|shop_refund:${shopRefund}`]
+)
+return {name:pet.name,species:pet.species,level,exp,cash,originalPrice,shopRefund}
+})
 }
-
 export async function getPetTeam(jid){
-  await ensureUser(jid)
-  const {rows}=await db.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot`,[jid])
-  return rows.map(normalizedPetHp)
+await ensureUser(jid)
+const {rows}=await db.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot`,[jid])
+return rows.map(normalizedPetHp)
 }
 export async function equipPetTeam(jid,slot,petId){
-  slot=Number(slot); petId=Number(petId)
-  if(![1,2,3].includes(slot)) throw new Error('Posição inválida. Use 1, 2 ou 3.')
-  if(!Number.isInteger(petId)||petId<=0) throw new Error('Informe o ID do pet. Ex.: !equiparpet 2 5')
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const pet=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId])).rows[0]
-    if(!pet) throw new Error('Pet não encontrado. Use !meuspets.')
-    const away=(await client.query('SELECT 1 FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
-    if(away) throw new Error('Esse pet está em expedição e não pode entrar no time agora.')
-    await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=$2 OR pet_id=$3)',[jid,slot,petId])
-    await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,$2,$3)',[jid,slot,petId])
-    return {...normalizedPetHp(pet),slot}
-  })
+slot=Number(slot); petId=Number(petId)
+if(![1,2,3].includes(slot)) throw new Error('Posição inválida. Use 1, 2 ou 3.')
+if(!Number.isInteger(petId)||petId<=0) throw new Error('Informe o ID do pet. Ex.: !equiparpet 2 5')
+await ensureUser(jid)
+return transaction(async client=>{
+const pet=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId])).rows[0]
+if(!pet) throw new Error('Pet não encontrado. Use !meuspets.')
+const away=(await client.query('SELECT 1 FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
+if(away) throw new Error('Esse pet está em expedição e não pode entrar no time agora.')
+await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=$2 OR pet_id=$3)',[jid,slot,petId])
+await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,$2,$3)',[jid,slot,petId])
+return {...normalizedPetHp(pet),slot}
+})
 }
 export async function removePetTeamSlot(jid,slot){
-  slot=Number(slot); if(![2,3].includes(slot)) throw new Error('Só as posições 2 e 3 podem ser removidas. A posição 1 é o pet principal.')
-  const {rowCount}=await db.query('DELETE FROM pet_team WHERE jid=$1 AND slot=$2',[jid,slot])
-  return rowCount>0
+slot=Number(slot); if(![2,3].includes(slot)) throw new Error('Só as posições 2 e 3 podem ser removidas. A posição 1 é o pet principal.')
+const {rowCount}=await db.query('DELETE FROM pet_team WHERE jid=$1 AND slot=$2',[jid,slot])
+return rowCount>0
 }
-
 export async function setPetTeam(jid,petIds=[],replaceAll=true){
-  await ensureUser(jid)
-  const ids=[...new Set((Array.isArray(petIds)?petIds:[petIds]).map(Number).filter(Number.isInteger))]
-  if(!ids.length||ids.length>3) throw new Error('Escolha de 1 a 3 pets para o time.')
-  return transaction(async client=>{
-    const pets=(await client.query(
-      'SELECT * FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[]) FOR UPDATE',
-      [jid,ids]
-    )).rows
-    if(pets.length!==ids.length) throw new Error('Um dos pets escolhidos não foi encontrado.')
-    const away=(await client.query(
-      'SELECT pet_id FROM pet_expeditions WHERE pet_id=ANY($1::bigint[]) AND resolved=FALSE',
-      [ids]
-    )).rows
-    if(away.length) throw new Error('Um dos pets escolhidos está em expedição e não pode entrar no time.')
-
-    const currentTeam=(await client.query(
-      'SELECT slot,pet_id FROM pet_team WHERE jid=$1 ORDER BY slot FOR UPDATE',
-      [jid]
-    )).rows
-
-    let slots={}
-    if(!replaceAll && ids.length===1){
-      slots={
-        1:ids[0],
-        2:Number(currentTeam.find(x=>Number(x.slot)===2)?.pet_id||0)||null,
-        3:Number(currentTeam.find(x=>Number(x.slot)===3)?.pet_id||0)||null
-      }
-      for(const slot of [2,3]) if(slots[slot]===ids[0]) slots[slot]=null
-    }else{
-      slots={1:ids[0]||null,2:ids[1]||null,3:ids[2]||null}
-    }
-
-    const selectedIds=Object.values(slots).filter(Boolean)
-    const selectedPets=(await client.query(
-      'SELECT id,species FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[])',
-      [jid,selectedIds]
-    )).rows
-    const selectedSpecies=selectedPets.map(p=>String(p.species||''))
-    if(new Set(selectedSpecies).size!==selectedSpecies.length){
-      throw new Error('Não é permitido equipar duas cópias da mesma espécie no mesmo time. Use espécies diferentes para formar sinergias.')
-    }
-
-    const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
-    const targetRaw=pets.find(p=>Number(p.id)===Number(slots[1]))
-    if(!targetRaw) throw new Error('Pet principal inválido.')
-    const target=normalizedPetHp(targetRaw)
-
-    if(current&&active&&Number(active.id)!==Number(target.id)){
-      await client.query(
-        `UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
-        [current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,current.hp||current.max_hp||100,current.max_hp||petMaxHp(current.level,current.xp,current.species),active.id]
-      )
-    }
-
-    await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
-    await client.query('UPDATE pet_collection SET active=TRUE WHERE id=$1',[target.id])
-    await client.query(
-      `INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,hp,max_hp)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-       ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp`,
-      [jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at,target.hp,target.max_hp]
-    )
-
-    await client.query('DELETE FROM pet_team WHERE jid=$1',[jid])
-    for(const slot of [1,2,3]){
-      const petId=slots[slot]
-      if(petId) await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,$2,$3)',[jid,slot,petId])
-    }
-
-    const team=(await client.query(
-      `SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
-       WHERE t.jid=$1 ORDER BY t.slot`,
-      [jid]
-    )).rows
-    return team.map(normalizedPetHp)
-  })
+await ensureUser(jid)
+const ids=[...new Set((Array.isArray(petIds)?petIds:[petIds]).map(Number).filter(Number.isInteger))]
+if(!ids.length||ids.length>3) throw new Error('Escolha de 1 a 3 pets para o time.')
+return transaction(async client=>{
+const pets=(await client.query(
+'SELECT * FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[]) FOR UPDATE',
+[jid,ids]
+)).rows
+if(pets.length!==ids.length) throw new Error('Um dos pets escolhidos não foi encontrado.')
+const away=(await client.query(
+'SELECT pet_id FROM pet_expeditions WHERE pet_id=ANY($1::bigint[]) AND resolved=FALSE',
+[ids]
+)).rows
+if(away.length) throw new Error('Um dos pets escolhidos está em expedição e não pode entrar no time.')
+const currentTeam=(await client.query(
+'SELECT slot,pet_id FROM pet_team WHERE jid=$1 ORDER BY slot FOR UPDATE',
+[jid]
+)).rows
+let slots={}
+if(!replaceAll && ids.length===1){
+slots={
+1:ids[0],
+2:Number(currentTeam.find(x=>Number(x.slot)===2)?.pet_id||0)||null,
+3:Number(currentTeam.find(x=>Number(x.slot)===3)?.pet_id||0)||null
+}
+for(const slot of [2,3]) if(slots[slot]===ids[0]) slots[slot]=null
+}else{
+slots={1:ids[0]||null,2:ids[1]||null,3:ids[2]||null}
+}
+const selectedIds=Object.values(slots).filter(Boolean)
+const selectedPets=(await client.query(
+'SELECT id,species FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[])',
+[jid,selectedIds]
+)).rows
+const selectedSpecies=selectedPets.map(p=>String(p.species||''))
+if(new Set(selectedSpecies).size!==selectedSpecies.length){
+throw new Error('Não é permitido equipar duas cópias da mesma espécie no mesmo time. Use espécies diferentes para formar sinergias.')
+}
+const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
+const targetRaw=pets.find(p=>Number(p.id)===Number(slots[1]))
+if(!targetRaw) throw new Error('Pet principal inválido.')
+const target=normalizedPetHp(targetRaw)
+if(current&&active&&Number(active.id)!==Number(target.id)){
+await client.query(
+`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
+[current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,current.hp||current.max_hp||100,current.max_hp||petMaxHp(current.level,current.xp,current.species),active.id]
+)
+}
+await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
+await client.query('UPDATE pet_collection SET active=TRUE WHERE id=$1',[target.id])
+await client.query(
+`INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,hp,max_hp)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp`,
+[jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at,target.hp,target.max_hp]
+)
+await client.query('DELETE FROM pet_team WHERE jid=$1',[jid])
+for(const slot of [1,2,3]){
+const petId=slots[slot]
+if(petId) await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,$2,$3)',[jid,slot,petId])
+}
+const team=(await client.query(
+`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
+WHERE t.jid=$1 ORDER BY t.slot`,
+[jid]
+)).rows
+return team.map(normalizedPetHp)
+})
 }
 export async function syncPetTeamPrimary(jid,petId){
-  petId=Number(petId); if(!petId) return
-  await db.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,petId])
-  await db.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,petId])
+petId=Number(petId); if(!petId) return
+await db.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,petId])
+await db.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,petId])
 }
-
-
 async function getRelicPetXpBonus(queryable,jid){
-  const r=await queryable.query("SELECT 1 FROM player_active_relics WHERE jid=$1 AND item_id='marca_insone'",[jid])
-  return r.rowCount?0.02:0
+const r=await queryable.query("SELECT 1 FROM player_active_relics WHERE jid=$1 AND item_id='marca_insone'",[jid])
+return r.rowCount?0.02:0
 }
-
 const PET_EXPEDITION_TRAITS={
-  cachorro:{label:'🐶 Rastreador',cash:.10,item:'pocao_pet_comum',itemChance:.10},
-  gato:{label:'🐱 Catador',item:'caixa_sorte',itemChance:.14},
-  coelho:{label:'🐰 Explorador Veloz',xp:.18},
-  papagaio:{label:'🦜 Batedor',xp:.10,item:'pocao_p',itemChance:.12},
-  hamster:{label:'🐹 Sortudo',item:'caixa_sorte',itemChance:.18},
-  tartaruga:{label:'🐢 Resistente',cash:.08,item:'pocao_pet_rara',itemChance:.10},
-  coruja:{label:'🦉 Sábio',xp:.25},
-  raposa:{label:'🦊 Caçadora de Tesouros',cash:.18},
-  lobo:{label:'🐺 Caçador',xp:.12,cash:.10},
-  aguia:{label:'🦅 Olhos de Águia',item:'caixa_sorte',itemChance:.22},
-  panda:{label:'🐼 Coletor',cash:.14,item:'pocao_pet_rara',itemChance:.12},
-  tigre:{label:'🐯 Predador',xp:.15,cash:.12},
-  leao:{label:'🦁 Líder',xp:.12,cash:.16},
-  cervo_mistico:{label:'🦌 Ervas Restauradoras',xp:.10,item:'pocao_pet_rara',itemChance:.08},
-  unicornio:{label:'🦄 Bênção',item:'caixa_rara',itemChance:.08,xp:.10},
-  dragao:{label:'🐉 Guardião de Tesouros',cash:.22,item:'caixa_rara',itemChance:.06},
-  urso_runico:{label:'🐻 Guardião da Trilha',xp:.08,cash:.14},
-  corvo_abissal:{label:'🐦 Olheiro Abissal',xp:.12,item:'caixa_sorte',itemChance:.12},
-  golem_ancestral:{label:'🗿 Coletor Ancestral',cash:.10,item:'pocao_pet_rara',itemChance:.08},
-  kitsune:{label:'🦊 Espírito Explorador',xp:.16,item:'caixa_sorte',itemChance:.10},
-  grifo_celestial:{label:'🪽 Batedor Celestial',xp:.18,cash:.08},
-  fenix_celestial:{label:'🔥 Guia Celestial',xp:.20,cash:.07},
-  fenix_gelo:{label:'❄️ Rastreira Glacial',xp:.16,cash:.08},
-  fenix_fogo:{label:'🔥 Rastreira Ígnea',xp:.16,cash:.08},
-  dragonite:{label:'🐉 Explorador Dracônico',xp:.12,cash:.14}
+cachorro:{label:'🐶 Rastreador',cash:.10,item:'pocao_pet_comum',itemChance:.10},
+gato:{label:'🐱 Catador',item:'caixa_sorte',itemChance:.14},
+coelho:{label:'🐰 Explorador Veloz',xp:.18},
+papagaio:{label:'🦜 Batedor',xp:.10,item:'pocao_p',itemChance:.12},
+hamster:{label:'🐹 Sortudo',item:'caixa_sorte',itemChance:.18},
+tartaruga:{label:'🐢 Resistente',cash:.08,item:'pocao_pet_rara',itemChance:.10},
+coruja:{label:'🦉 Sábio',xp:.25},
+raposa:{label:'🦊 Caçadora de Tesouros',cash:.18},
+lobo:{label:'🐺 Caçador',xp:.12,cash:.10},
+aguia:{label:'🦅 Olhos de Águia',item:'caixa_sorte',itemChance:.22},
+panda:{label:'🐼 Coletor',cash:.14,item:'pocao_pet_rara',itemChance:.12},
+tigre:{label:'🐯 Predador',xp:.15,cash:.12},
+leao:{label:'🦁 Líder',xp:.12,cash:.16},
+cervo_mistico:{label:'🦌 Ervas Restauradoras',xp:.10,item:'pocao_pet_rara',itemChance:.08},
+unicornio:{label:'🦄 Bênção',item:'caixa_rara',itemChance:.08,xp:.10},
+dragao:{label:'🐉 Guardião de Tesouros',cash:.22,item:'caixa_rara',itemChance:.06},
+urso_runico:{label:'🐻 Guardião da Trilha',xp:.08,cash:.14},
+corvo_abissal:{label:'🐦 Olheiro Abissal',xp:.12,item:'caixa_sorte',itemChance:.12},
+golem_ancestral:{label:'🗿 Coletor Ancestral',cash:.10,item:'pocao_pet_rara',itemChance:.08},
+kitsune:{label:'🦊 Espírito Explorador',xp:.16,item:'caixa_sorte',itemChance:.10},
+grifo_celestial:{label:'🪽 Batedor Celestial',xp:.18,cash:.08},
+fenix_celestial:{label:'🔥 Guia Celestial',xp:.20,cash:.07},
+fenix_gelo:{label:'❄️ Rastreira Glacial',xp:.16,cash:.08},
+fenix_fogo:{label:'🔥 Rastreira Ígnea',xp:.16,cash:.08},
+dragonite:{label:'🐉 Explorador Dracônico',xp:.12,cash:.14}
 }
 const EXPEDITION_ITEM_NAMES={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_p:'Poção Pequena',caixa_sorte:'Caixa da Sorte',caixa_rara:'Caixa Rara'}
 export function petExpeditionTrait(species){
-  return PET_EXPEDITION_TRAITS[String(species||'').toLowerCase()]||{label:'🐾 Explorador',xp:.08,cash:.05}
+return PET_EXPEDITION_TRAITS[String(species||'').toLowerCase()]||{label:'🐾 Explorador',xp:.08,cash:.05}
 }
 export const PET_EXPEDITION_MAX_CONCURRENT=12
 const PET_EXPEDITION_PLANS={2:{xp:70,cash:500},4:{xp:150,cash:1100},8:{xp:330,cash:2500}}
 function petExpeditionRewards(plan,trait,position){
-  // Pets além do terceiro ainda ganham XP integral, mas com dinheiro progressivamente menor.
-  // Evita que coleções grandes gerem dinheiro ilimitado sem esforço.
-  const cashScale=position>6?.25:position>3?.5:1
-  return {
-    petXp:Math.round(plan.xp*(1+Number(trait.xp||0))),
-    cash:Math.round(plan.cash*(1+Number(trait.cash||0))*cashScale)
-  }
+const cashScale=position>6?.25:position>3?.5:1
+return {
+petXp:Math.round(plan.xp*(1+Number(trait.xp||0))),
+cash:Math.round(plan.cash*(1+Number(trait.cash||0))*cashScale)
+}
 }
 export async function getPetExpeditions(jid){
-  await ensureUser(jid)
-  const {rows}=await db.query(`SELECT e.*,p.name pet_name,p.species,p.level
-    FROM pet_expeditions e JOIN pet_collection p ON p.id=e.pet_id
-    WHERE e.jid=$1 AND e.resolved=FALSE ORDER BY e.ends_at`,[jid])
-  return rows.map(r=>({...r,trait:petExpeditionTrait(r.species)}))
+await ensureUser(jid)
+const {rows}=await db.query(`SELECT e.*,p.name pet_name,p.species,p.level
+FROM pet_expeditions e JOIN pet_collection p ON p.id=e.pet_id
+WHERE e.jid=$1 AND e.resolved=FALSE ORDER BY e.ends_at`,[jid])
+return rows.map(r=>({...r,trait:petExpeditionTrait(r.species)}))
 }
 export async function startPetExpedition(jid,petId,hours=4){
-  await ensureUser(jid); petId=Number(petId); hours=Number(hours)
-  const plan=PET_EXPEDITION_PLANS[hours]
-  if(!plan) throw new Error('Duração inválida. Use 2, 4 ou 8 horas.')
-  return transaction(async client=>{
-    await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
-    const pet=(await client.query('SELECT * FROM pet_collection WHERE id=$1 AND jid=$2 FOR UPDATE',[petId,jid])).rows[0]
-    if(!pet) throw new Error('Pet não encontrado. Use !meuspets para ver o ID.')
-    const teamSlot=(await client.query('SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId])).rows[0]
-    if(teamSlot) throw new Error(`Esse pet está no seu Time Pet (Slot ${teamSlot.slot}). Remova/troque o pet antes de mandar em expedição.`)
-    if(pet.active) throw new Error('O pet ativo não pode sair em expedição. Escolha um pet reserva.')
-    const busy=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
-    if(busy){
-      const remaining=Math.max(0,Number(busy.ends_at||0)-Math.floor(Date.now()/1000))
-      const hoursLeft=Math.floor(remaining/3600)
-      const minsLeft=Math.ceil((remaining%3600)/60)
-      const leftText=hoursLeft>0?`${hoursLeft}h ${minsLeft}min`:`${minsLeft}min`
-      throw new Error(`Esse pet já está em uma expedição. ⏱️ Retorno em aproximadamente ${leftText}.`)
-    }
-    const activeCount=Number((await client.query('SELECT COUNT(*) n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE',[jid])).rows[0]?.n||0)
-    if(activeCount>=PET_EXPEDITION_MAX_CONCURRENT) throw new Error(`Você já tem ${PET_EXPEDITION_MAX_CONCURRENT} pets em expedição. Aguarde algum retornar.`)
-    const trait=petExpeditionTrait(pet.species)
-    const {petXp,cash}=petExpeditionRewards(plan,trait,activeCount+1)
-    const now=Math.floor(Date.now()/1000),ends=now+hours*3600
-    const row=(await client.query(`INSERT INTO pet_expeditions(jid,pet_id,hours,started_at,ends_at,pet_xp,cash_reward)
-      VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[jid,petId,hours,now,ends,petXp,cash])).rows[0]
-    return {...row,pet_name:pet.name,species:pet.species,trait}
-  })
+await ensureUser(jid); petId=Number(petId); hours=Number(hours)
+const plan=PET_EXPEDITION_PLANS[hours]
+if(!plan) throw new Error('Duração inválida. Use 2, 4 ou 8 horas.')
+return transaction(async client=>{
+await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+const pet=(await client.query('SELECT * FROM pet_collection WHERE id=$1 AND jid=$2 FOR UPDATE',[petId,jid])).rows[0]
+if(!pet) throw new Error('Pet não encontrado. Use !meuspets para ver o ID.')
+const teamSlot=(await client.query('SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId])).rows[0]
+if(teamSlot) throw new Error(`Esse pet está no seu Time Pet (Slot ${teamSlot.slot}). Remova/troque o pet antes de mandar em expedição.`)
+if(pet.active) throw new Error('O pet ativo não pode sair em expedição. Escolha um pet reserva.')
+const busy=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
+if(busy){
+const remaining=Math.max(0,Number(busy.ends_at||0)-Math.floor(Date.now()/1000))
+const hoursLeft=Math.floor(remaining/3600)
+const minsLeft=Math.ceil((remaining%3600)/60)
+const leftText=hoursLeft>0?`${hoursLeft}h ${minsLeft}min`:`${minsLeft}min`
+throw new Error(`Esse pet já está em uma expedição. ⏱️ Retorno em aproximadamente ${leftText}.`)
+}
+const activeCount=Number((await client.query('SELECT COUNT(*) n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE',[jid])).rows[0]?.n||0)
+if(activeCount>=PET_EXPEDITION_MAX_CONCURRENT) throw new Error(`Você já tem ${PET_EXPEDITION_MAX_CONCURRENT} pets em expedição. Aguarde algum retornar.`)
+const trait=petExpeditionTrait(pet.species)
+const {petXp,cash}=petExpeditionRewards(plan,trait,activeCount+1)
+const now=Math.floor(Date.now()/1000),ends=now+hours*3600
+const row=(await client.query(`INSERT INTO pet_expeditions(jid,pet_id,hours,started_at,ends_at,pet_xp,cash_reward)
+VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,[jid,petId,hours,now,ends,petXp,cash])).rows[0]
+return {...row,pet_name:pet.name,species:pet.species,trait}
+})
 }
 export async function startAllPetExpeditions(jid,hours=4){
-  await ensureUser(jid)
-  hours=Number(hours)
-  const plan=PET_EXPEDITION_PLANS[hours]
-  if(!plan) throw new Error('Duração inválida. Use 2, 4 ou 8 horas.')
-  return transaction(async client=>{
-    // Serializa envios em lote/individuais do mesmo jogador.
-    await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
-    const activeCount=Number((await client.query(
-      'SELECT COUNT(*) n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE',[jid]
-    )).rows[0]?.n||0)
-    const availableSlots=PET_EXPEDITION_MAX_CONCURRENT-activeCount
-    if(availableSlots<=0) throw new Error(`Você já tem ${PET_EXPEDITION_MAX_CONCURRENT} pets em expedição. Aguarde algum retornar.`)
-    const pets=(await client.query(`SELECT p.id,p.name,p.species
-      FROM pet_collection p
-      WHERE p.jid=$1 AND p.active=FALSE
-        AND NOT EXISTS(SELECT 1 FROM pet_team t WHERE t.jid=p.jid AND t.pet_id=p.id)
-        AND NOT EXISTS(SELECT 1 FROM pet_expeditions e WHERE e.pet_id=p.id AND e.resolved=FALSE)
-      ORDER BY p.id ASC LIMIT $2 FOR UPDATE OF p`,[jid,availableSlots+1])).rows
-    if(!pets.length) throw new Error('Nenhum pet reserva livre para expedição. Pets do time e o pet ativo não podem ser enviados.')
-    const started=[]
-    const now=Math.floor(Date.now()/1000),ends=now+hours*3600
-    for(const pet of pets.slice(0,availableSlots)){
-      const trait=petExpeditionTrait(pet.species)
-      const {petXp,cash}=petExpeditionRewards(plan,trait,activeCount+started.length+1)
-      const row=(await client.query(`INSERT INTO pet_expeditions(jid,pet_id,hours,started_at,ends_at,pet_xp,cash_reward)
-        VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [jid,pet.id,hours,now,ends,petXp,cash])).rows[0]
-      started.push({...row,pet_name:pet.name,species:pet.species,trait})
-    }
-    return {started,hours,limit:PET_EXPEDITION_MAX_CONCURRENT,remaining:pets.length-started.length}
-  })
+await ensureUser(jid)
+hours=Number(hours)
+const plan=PET_EXPEDITION_PLANS[hours]
+if(!plan) throw new Error('Duração inválida. Use 2, 4 ou 8 horas.')
+return transaction(async client=>{
+await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+const activeCount=Number((await client.query(
+'SELECT COUNT(*) n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE',[jid]
+)).rows[0]?.n||0)
+const availableSlots=PET_EXPEDITION_MAX_CONCURRENT-activeCount
+if(availableSlots<=0) throw new Error(`Você já tem ${PET_EXPEDITION_MAX_CONCURRENT} pets em expedição. Aguarde algum retornar.`)
+const pets=(await client.query(`SELECT p.id,p.name,p.species
+FROM pet_collection p
+WHERE p.jid=$1 AND p.active=FALSE
+AND NOT EXISTS(SELECT 1 FROM pet_team t WHERE t.jid=p.jid AND t.pet_id=p.id)
+AND NOT EXISTS(SELECT 1 FROM pet_expeditions e WHERE e.pet_id=p.id AND e.resolved=FALSE)
+ORDER BY p.id ASC LIMIT $2 FOR UPDATE OF p`,[jid,availableSlots+1])).rows
+if(!pets.length) throw new Error('Nenhum pet reserva livre para expedição. Pets do time e o pet ativo não podem ser enviados.')
+const started=[]
+const now=Math.floor(Date.now()/1000),ends=now+hours*3600
+for(const pet of pets.slice(0,availableSlots)){
+const trait=petExpeditionTrait(pet.species)
+const {petXp,cash}=petExpeditionRewards(plan,trait,activeCount+started.length+1)
+const row=(await client.query(`INSERT INTO pet_expeditions(jid,pet_id,hours,started_at,ends_at,pet_xp,cash_reward)
+VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+[jid,pet.id,hours,now,ends,petXp,cash])).rows[0]
+started.push({...row,pet_name:pet.name,species:pet.species,trait})
+}
+return {started,hours,limit:PET_EXPEDITION_MAX_CONCURRENT,remaining:pets.length-started.length}
+})
 }
 export async function resolvePetExpeditions(jid){
-  await ensureUser(jid)
-  return transaction(async client=>{
-    const now=Math.floor(Date.now()/1000)
-    const rows=(await client.query(`SELECT e.*,p.name pet_name,p.species,p.level,p.xp,p.power
-      FROM pet_expeditions e JOIN pet_collection p ON p.id=e.pet_id
-      WHERE e.jid=$1 AND e.resolved=FALSE AND e.ends_at<=$2 ORDER BY e.ends_at FOR UPDATE OF e,p`,[jid,now])).rows
-    const results=[]
-    for(const row of rows){
-      const trait=petExpeditionTrait(row.species)
-      const oldLevel=Math.min(100,Math.max(1,Number(row.level||1)))
-      const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-      const awardedPetXp=Math.round(Number(row.pet_xp||0)*petXpEventMultiplier*(1+await getRelicPetXpBonus(client,jid)))
-      const rawXp=Number(row.xp||0)+awardedPetXp
-      const level=Math.min(100,1+Math.floor(rawXp/100))
-      const xp=level>=100?9900:rawXp
-      const gained=Math.max(0,level-oldLevel)
-      const maxHp=petMaxHp(level,xp,row.species)
-      await client.query('UPDATE pet_collection SET xp=$1,level=$2,power=power+$3,max_hp=$4,hp=LEAST($4,hp+$5) WHERE id=$6',
-        [xp,level,gained*2,maxHp,Math.max(0,maxHp-petMaxHp(oldLevel,Number(row.xp||0),row.species)),row.pet_id])
-      await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[Number(row.cash_reward||0),jid])
-      let item=null
-      if(trait.item&&Math.random()<Number(trait.itemChance||0)){
-        await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
-          ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,trait.item])
-        item={id:trait.item,name:EXPEDITION_ITEM_NAMES[trait.item]||trait.item}
-      }
-      await client.query('UPDATE pet_expeditions SET resolved=TRUE WHERE id=$1',[row.id])
-      results.push({petId:Number(row.pet_id),name:row.pet_name,species:row.species,hours:Number(row.hours),xp:awardedPetXp,cash:Number(row.cash_reward),level,item,trait,petXpEventMultiplier})
-    }
-    return results
-  })
+await ensureUser(jid)
+return transaction(async client=>{
+const now=Math.floor(Date.now()/1000)
+const rows=(await client.query(`SELECT e.*,p.name pet_name,p.species,p.level,p.xp,p.power
+FROM pet_expeditions e JOIN pet_collection p ON p.id=e.pet_id
+WHERE e.jid=$1 AND e.resolved=FALSE AND e.ends_at<=$2 ORDER BY e.ends_at FOR UPDATE OF e,p`,[jid,now])).rows
+const results=[]
+for(const row of rows){
+const trait=petExpeditionTrait(row.species)
+const oldLevel=Math.min(100,Math.max(1,Number(row.level||1)))
+const petXpEventMultiplier=await getPetXpEventMultiplier(client)
+const awardedPetXp=Math.round(Number(row.pet_xp||0)*petXpEventMultiplier*(1+await getRelicPetXpBonus(client,jid)))
+const rawXp=Number(row.xp||0)+awardedPetXp
+const level=Math.min(100,1+Math.floor(rawXp/100))
+const xp=level>=100?9900:rawXp
+const gained=Math.max(0,level-oldLevel)
+const maxHp=petMaxHp(level,xp,row.species)
+await client.query('UPDATE pet_collection SET xp=$1,level=$2,power=power+$3,max_hp=$4,hp=LEAST($4,hp+$5) WHERE id=$6',
+[xp,level,gained*2,maxHp,Math.max(0,maxHp-petMaxHp(oldLevel,Number(row.xp||0),row.species)),row.pet_id])
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[Number(row.cash_reward||0),jid])
+let item=null
+if(trait.item&&Math.random()<Number(trait.itemChance||0)){
+await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1`,[jid,trait.item])
+item={id:trait.item,name:EXPEDITION_ITEM_NAMES[trait.item]||trait.item}
 }
-
+await client.query('UPDATE pet_expeditions SET resolved=TRUE WHERE id=$1',[row.id])
+results.push({petId:Number(row.pet_id),name:row.pet_name,species:row.species,hours:Number(row.hours),xp:awardedPetXp,cash:Number(row.cash_reward),level,item,trait,petXpEventMultiplier})
+}
+return results
+})
+}
 export async function selectPet(jid,id){
-  id=Number(id); if(!Number.isInteger(id)||id<=0) throw new Error('Use !usarp et ID. Ex.: !usarpet 2')
-  return transaction(async client=>{
-    const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const rawTarget=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,id])).rows[0]
-    if(!rawTarget) throw new Error('Pet não encontrado. Use !meuspets.')
-    const away=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[id])).rows[0]
-    if(away) throw new Error('Esse pet está em expedição e não pode ser equipado até retornar.')
-    const target=normalizedPetHp(rawTarget)
-    if(target.active) return {...target,already:true}
-    const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
-    if(current&&active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
-      [current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,current.hp||current.max_hp||100,current.max_hp||petMaxHp(current.level,current.xp,current.species),active.id])
-    await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
-    await client.query('UPDATE pet_collection SET active=TRUE WHERE id=$1',[id])
-    await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,id])
-    await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,id])
-    await client.query(`INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,hp,max_hp) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-      ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp`,
-      [jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at,target.hp,target.max_hp])
-    return target
-  })
+id=Number(id); if(!Number.isInteger(id)||id<=0) throw new Error('Use !usarp et ID. Ex.: !usarpet 2')
+return transaction(async client=>{
+const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const rawTarget=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,id])).rows[0]
+if(!rawTarget) throw new Error('Pet não encontrado. Use !meuspets.')
+const away=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[id])).rows[0]
+if(away) throw new Error('Esse pet está em expedição e não pode ser equipado até retornar.')
+const target=normalizedPetHp(rawTarget)
+if(target.active) return {...target,already:true}
+const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
+if(current&&active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
+[current.species,current.name,current.level,current.xp,current.hunger,current.hygiene,current.energy,current.power,current.wins,current.losses,current.last_action,current.last_rest,current.created_at,current.hp||current.max_hp||100,current.max_hp||petMaxHp(current.level,current.xp,current.species),active.id])
+await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
+await client.query('UPDATE pet_collection SET active=TRUE WHERE id=$1',[id])
+await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,id])
+await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,id])
+await client.query(`INSERT INTO pets(jid,species,name,level,xp,hunger,hygiene,energy,power,wins,losses,last_action,last_rest,created_at,hp,max_hp) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=EXCLUDED.level,xp=EXCLUDED.xp,hunger=EXCLUDED.hunger,hygiene=EXCLUDED.hygiene,energy=EXCLUDED.energy,power=EXCLUDED.power,wins=EXCLUDED.wins,losses=EXCLUDED.losses,last_action=EXCLUDED.last_action,last_rest=EXCLUDED.last_rest,created_at=EXCLUDED.created_at,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp`,
+[jid,target.species,target.name,target.level,target.xp,target.hunger,target.hygiene,target.energy,target.power,target.wins,target.losses,target.last_action,target.last_rest,target.created_at,target.hp,target.max_hp])
+return target
+})
 }
 export async function renamePet(jid,name,petId=null){
-  const newName=String(name||'').replace(/[\u0000-\u001F\u007F]/g,'').replace(/\s+/g,' ').trim()
-  if(newName.length<2||newName.length>24) throw new Error('O nome do pet deve ter entre 2 e 24 caracteres.')
-  const fee=1000
-  const requestedId=petId==null?null:Number(petId)
-  if(requestedId!=null && (!Number.isInteger(requestedId)||requestedId<=0)) throw new Error('Pet inválido.')
-
-  return transaction(async client=>{
-    // Com petId, renomeia exatamente o pet escolhido na coleção.
-    // Sem petId, mantém compatibilidade com !nomepet e renomeia o pet ativo.
-    let collectionPet=null
-    if(requestedId!=null){
-      collectionPet=(await client.query(
-        'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',
-        [jid,requestedId]
-      )).rows[0]
-      if(!collectionPet) throw new Error('Esse pet não foi encontrado na sua coleção.')
-    }else{
-      collectionPet=(await client.query(
-        'SELECT * FROM pet_collection WHERE jid=$1 AND active=TRUE ORDER BY id DESC LIMIT 1 FOR UPDATE',
-        [jid]
-      )).rows[0]
-    }
-
-    const legacy=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const pet=collectionPet||legacy
-    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-    if(String(pet.name||'').toLocaleLowerCase('pt-BR')===newName.toLocaleLowerCase('pt-BR')) throw new Error('Esse já é o nome desse pet.')
-
-    const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
-    if(cash+bank<fee) throw new Error('Você precisa de R$ 1.000 para trocar o nome do pet.')
-    const fromCash=Math.min(cash,fee)
-    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
-
-    if(collectionPet) await client.query('UPDATE pet_collection SET name=$1 WHERE id=$2 AND jid=$3',[newName,collectionPet.id,jid])
-
-    // O espelho legado representa somente o pet ativo.
-    const shouldSyncLegacy=!collectionPet || Boolean(collectionPet.active)
-    if(legacy&&shouldSyncLegacy) await client.query('UPDATE pets SET name=$1 WHERE jid=$2',[newName,jid])
-
-    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES($1,'system',$2,'pet_rename',$3)`,[jid,fee,`${pet.name} -> ${newName}`])
-    return {...pet,id:collectionPet?.id||pet.id||null,name:newName,oldName:pet.name,fee}
-  })
+const newName=String(name||'').replace(/[\u0000-\u001F\u007F]/g,'').replace(/\s+/g,' ').trim()
+if(newName.length<2||newName.length>24) throw new Error('O nome do pet deve ter entre 2 e 24 caracteres.')
+const fee=1000
+const requestedId=petId==null?null:Number(petId)
+if(requestedId!=null && (!Number.isInteger(requestedId)||requestedId<=0)) throw new Error('Pet inválido.')
+return transaction(async client=>{
+let collectionPet=null
+if(requestedId!=null){
+collectionPet=(await client.query(
+'SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',
+[jid,requestedId]
+)).rows[0]
+if(!collectionPet) throw new Error('Esse pet não foi encontrado na sua coleção.')
+}else{
+collectionPet=(await client.query(
+'SELECT * FROM pet_collection WHERE jid=$1 AND active=TRUE ORDER BY id DESC LIMIT 1 FOR UPDATE',
+[jid]
+)).rows[0]
 }
-
+const legacy=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const pet=collectionPet||legacy
+if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
+if(String(pet.name||'').toLocaleLowerCase('pt-BR')===newName.toLocaleLowerCase('pt-BR')) throw new Error('Esse já é o nome desse pet.')
+const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
+if(cash+bank<fee) throw new Error('Você precisa de R$ 1.000 para trocar o nome do pet.')
+const fromCash=Math.min(cash,fee)
+await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fee-fromCash,jid])
+if(collectionPet) await client.query('UPDATE pet_collection SET name=$1 WHERE id=$2 AND jid=$3',[newName,collectionPet.id,jid])
+const shouldSyncLegacy=!collectionPet || Boolean(collectionPet.active)
+if(legacy&&shouldSyncLegacy) await client.query('UPDATE pets SET name=$1 WHERE jid=$2',[newName,jid])
+await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'system',$2,'pet_rename',$3)`,[jid,fee,`${pet.name} -> ${newName}`])
+return {...pet,id:collectionPet?.id||pet.id||null,name:newName,oldName:pet.name,fee}
+})
+}
 export async function petAction(jid,action){
-  const map={
-    alimentar:{hunger:25,hygiene:-2,energy:2,xp:8},
-    banho:{hunger:0,hygiene:30,energy:0,xp:0},
-    descansar:{hunger:-5,hygiene:0,energy:30,xp:0,rest:true},
-    passear:{hunger:-8,hygiene:-6,energy:-12,xp:15},
-    treinar:{hunger:-10,hygiene:-4,energy:-15,xp:25,power:1},
-    aventura:{hunger:-15,hygiene:-10,energy:-20,xp:40,power:1}
-  }
-  const a=map[action]; if(!a) throw new Error('Ação de pet inválida.')
-  return transaction(async client=>{
-    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-    const now=Math.floor(Date.now()/1000)
-    const petHp=normalizedPetHp(pet)
-    if(Number(petHp.hp)<=0 && !a.rest) throw new Error('Seu pet está sem HP. Use !descansar para recuperá-lo.')
-    if(a.rest){
-      const restCooldown=30*60
-      const remaining=restCooldown-(now-Number(pet.last_rest||0))
-      if(remaining>0) throw new Error(`Seu pet poderá descansar novamente em ${Math.ceil(remaining/60)} min.`)
-      const maxEnergy=petMaxEnergy(pet.level,pet.species)
-      if(Number(pet.energy)>=maxEnergy && Number(petHp.hp)>=Number(petHp.max_hp)) throw new Error(`Seu pet já está com energia e HP cheios.`)
-    }
-    // !descansar é justamente a ação de recuperação e não deve ser bloqueada
-    // pelo cooldown curto deixado por treino, passeio ou aventura.
-    if(!a.rest && now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
-    if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
-    const oldLevel=Number(pet.level||1)
-    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-    const relicXP=await getRelicPetXpBonus(client,jid)
-    const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier*(1+relicXP))
-    const rawXp=Number(pet.xp)+actionXp
-    const level=Math.min(100,1+Math.floor(rawXp/100))
-    const xp=level>=100?9900:rawXp
-    const levelsGained=Math.max(0,level-Math.min(100,oldLevel))
-    // Progressão natural: cada nível do pet concede +2 de Poder, além do bônus de treino/aventura.
-    const powerGain=(a.power||0)+(levelsGained*2)
-    const levelEnergyGain=levelsGained*3
-    const maxEnergyAtLevel=petMaxEnergy(level,pet.species)
-    const {rows}=await client.query(`UPDATE pets SET
-      hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
-      energy=LEAST($11,GREATEST(0,energy+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
-      last_rest=CASE WHEN $8 THEN $7 ELSE last_rest END
-      WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid,levelEnergyGain,maxEnergyAtLevel])
-    let updated=rows[0]
-    const newMax=petMaxHp(updated.level,updated.xp,updated.species)
-    const oldMax=Math.max(1,Number(petHp.max_hp||100))
-    const levelHpGain=Math.max(0,newMax-oldMax)
-    const restHeal=a.rest?Math.max(1,Math.ceil(newMax*.35)):0
-    const newHp=Math.min(newMax,Math.max(0,Number(petHp.hp)+levelHpGain+restHeal))
-    updated=(await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3 RETURNING *',[newHp,newMax,jid])).rows[0]
-    await client.query(`UPDATE pet_collection SET level=$1,xp=$2,hunger=$3,hygiene=$4,energy=$5,power=$6,last_action=$7,last_rest=$8,hp=$9,max_hp=$10 WHERE jid=$11 AND active=TRUE`,
-      [updated.level,updated.xp,updated.hunger,updated.hygiene,updated.energy,updated.power,updated.last_action,updated.last_rest,updated.hp,updated.max_hp,jid])
-    return {...updated,hpRecovered:restHeal}
-  })
+const map={
+alimentar:{hunger:25,hygiene:-2,energy:2,xp:8},
+banho:{hunger:0,hygiene:30,energy:0,xp:0},
+descansar:{hunger:-5,hygiene:0,energy:30,xp:0,rest:true},
+passear:{hunger:-8,hygiene:-6,energy:-12,xp:15},
+treinar:{hunger:-10,hygiene:-4,energy:-15,xp:25,power:1},
+aventura:{hunger:-15,hygiene:-10,energy:-20,xp:40,power:1}
+}
+const a=map[action]; if(!a) throw new Error('Ação de pet inválida.')
+return transaction(async client=>{
+const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
+const now=Math.floor(Date.now()/1000)
+const petHp=normalizedPetHp(pet)
+if(Number(petHp.hp)<=0 && !a.rest) throw new Error('Seu pet está sem HP. Use !descansar para recuperá-lo.')
+if(a.rest){
+const restCooldown=30*60
+const remaining=restCooldown-(now-Number(pet.last_rest||0))
+if(remaining>0) throw new Error(`Seu pet poderá descansar novamente em ${Math.ceil(remaining/60)} min.`)
+const maxEnergy=petMaxEnergy(pet.level,pet.species)
+if(Number(pet.energy)>=maxEnergy && Number(petHp.hp)>=Number(petHp.max_hp)) throw new Error(`Seu pet já está com energia e HP cheios.`)
+}
+if(!a.rest && now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco.')
+if(a.energy<0 && Number(pet.energy)<Math.abs(a.energy)) throw new Error(`Energia insuficiente. Esta ação exige ${Math.abs(a.energy)} de energia. Use !descansar.`)
+const oldLevel=Number(pet.level||1)
+const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+const petXpEventMultiplier=await getPetXpEventMultiplier(client)
+const relicXP=await getRelicPetXpBonus(client,jid)
+const actionXp=Math.round(Math.max(0,Number(a.xp||0))*xpMultiplier*petXpEventMultiplier*(1+relicXP))
+const rawXp=Number(pet.xp)+actionXp
+const level=Math.min(100,1+Math.floor(rawXp/100))
+const xp=level>=100?9900:rawXp
+const levelsGained=Math.max(0,level-Math.min(100,oldLevel))
+const powerGain=(a.power||0)+(levelsGained*2)
+const levelEnergyGain=levelsGained*3
+const maxEnergyAtLevel=petMaxEnergy(level,pet.species)
+const {rows}=await client.query(`UPDATE pets SET
+hunger=LEAST(100,GREATEST(0,hunger+$1)),hygiene=LEAST(100,GREATEST(0,hygiene+$2)),
+energy=LEAST($11,GREATEST(0,energy+$3+$10)),xp=$4,level=$5,power=power+$6,last_action=$7,
+last_rest=CASE WHEN $8 THEN $7 ELSE last_rest END
+WHERE jid=$9 RETURNING *`,[a.hunger,a.hygiene,a.energy,xp,level,powerGain,now,Boolean(a.rest),jid,levelEnergyGain,maxEnergyAtLevel])
+let updated=rows[0]
+const newMax=petMaxHp(updated.level,updated.xp,updated.species)
+const oldMax=Math.max(1,Number(petHp.max_hp||100))
+const levelHpGain=Math.max(0,newMax-oldMax)
+const restHeal=a.rest?Math.max(1,Math.ceil(newMax*.35)):0
+const newHp=Math.min(newMax,Math.max(0,Number(petHp.hp)+levelHpGain+restHeal))
+updated=(await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3 RETURNING *',[newHp,newMax,jid])).rows[0]
+await client.query(`UPDATE pet_collection SET level=$1,xp=$2,hunger=$3,hygiene=$4,energy=$5,power=$6,last_action=$7,last_rest=$8,hp=$9,max_hp=$10 WHERE jid=$11 AND active=TRUE`,
+[updated.level,updated.xp,updated.hunger,updated.hygiene,updated.energy,updated.power,updated.last_action,updated.last_rest,updated.hp,updated.max_hp,jid])
+return {...updated,hpRecovered:restHeal}
+})
 }
 export async function petAdventure(jid){
-  return transaction(async client=>{
-    const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-    const petHp=normalizedPetHp(pet)
-    if(Number(petHp.hp)<=0) throw new Error('Seu pet está sem HP. Use !descansar antes de mandar para aventura.')
-    const energy=Number(pet.energy||0)
-    if(energy<10) throw new Error(`Seu pet precisa de pelo menos 10 de energia para explorar. Energia atual: ${energy}/${petMaxEnergy(pet.level,pet.species)}. Use !descansar.`)
-    const now=Math.floor(Date.now()/1000)
-    if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco antes de sair.')
-    const adventureCooldown=await claimCooldown(client,`pet_adventure:${jid}`,30*60)
-    if(!adventureCooldown.ok){
-      throw new Error(`Seu pet poderá sair em outra aventura em ${Math.ceil(adventureCooldown.remaining/60)} min.`)
-    }
-    const level=Number(pet.level||1),power=Number(pet.power||10)
-    const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
-    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-    // Com 30 min de cooldown, uma aventura feita com energia cheia/quase cheia
-    // paga entre R$ 13 mil e R$ 18 mil. Se o pet sair com pouca energia, o prêmio
-    // cai proporcionalmente para impedir farm de aventuras curtas.
-    const maxAdventureEnergy=Math.max(1,petMaxEnergy(level,pet.species))
-    const fullAdventureThreshold=maxAdventureEnergy*.85
-    const energyFactor=Math.min(1,energy/fullAdventureThreshold)
-    const fullAdventureCash=13000+Math.floor(Math.random()*5001)
-    const baseCash=Math.max(1000,Math.floor(fullAdventureCash*energyFactor))
-    const cash=Math.round(baseCash*moneyMultiplier)
-    // Aventura deve dar progresso relevante, mas não vários níveis de uma vez.
-    // Com a progressão atual (100 XP por nível), usar 2 XP por energia fazia
-    // pets de alta capacidade subirem 5-7 níveis numa única aventura.
-    const baseAdventureXp=Math.max(3,Math.floor(energy*0.35))
-    const xpGain=Math.round(baseAdventureXp*xpMultiplier*petXpEventMultiplier)
-    const rawXp=Number(pet.xp||0)+xpGain
-    const nextLevel=Math.min(100,1+Math.floor(rawXp/100))
-    const xp=nextLevel>=100?9900:rawXp
-    const levelsGained=Math.max(0,nextLevel-Math.min(100,Number(pet.level||1)))
-    const powerGain=Math.floor(energy/50)+(levelsGained*2)
-    const levelEnergyGain=levelsGained*3
-    const {rows}=await client.query(`UPDATE pets SET energy=LEAST((CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,$2-1)*2,$8),xp=$1,level=$2,power=power+$3,
-      hunger=GREATEST(0,hunger-$4),hygiene=GREATEST(0,hygiene-$5),last_action=$6
-      WHERE jid=$7 RETURNING *`,[xp,nextLevel,powerGain,Math.ceil(energy*.25),Math.ceil(energy*.15),now,jid,levelEnergyGain])
-    let updated=rows[0]
-    const newMax=petMaxHp(updated.level,updated.xp,updated.species)
-    const oldMax=Math.max(1,Number(petHp.max_hp||100))
-    const newHp=Math.min(newMax,Math.max(0,Number(petHp.hp)+Math.max(0,newMax-oldMax)))
-    updated=(await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3 RETURNING *',[newHp,newMax,jid])).rows[0]
-    await client.query('UPDATE pet_collection SET level=$1,xp=$2,hunger=$3,hygiene=$4,energy=$5,power=$6,last_action=$7,hp=$8,max_hp=$9 WHERE jid=$10 AND active=TRUE',
-      [updated.level,updated.xp,updated.hunger,updated.hygiene,updated.energy,updated.power,updated.last_action,updated.hp,updated.max_hp,jid])
-    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
-    await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-      VALUES('system',$1,$2,'pet_adventure',$3)`,[jid,cash,`${pet.name}: ${energy} energia`])
-    return {...updated,cash,xpGain,energySpent:energy,powerGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
-  })
+return transaction(async client=>{
+const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
+const petHp=normalizedPetHp(pet)
+if(Number(petHp.hp)<=0) throw new Error('Seu pet está sem HP. Use !descansar antes de mandar para aventura.')
+const energy=Number(pet.energy||0)
+if(energy<10) throw new Error(`Seu pet precisa de pelo menos 10 de energia para explorar. Energia atual: ${energy}/${petMaxEnergy(pet.level,pet.species)}. Use !descansar.`)
+const now=Math.floor(Date.now()/1000)
+if(now-Number(pet.last_action||0)<60) throw new Error('Seu pet precisa descansar um pouco antes de sair.')
+const adventureCooldown=await claimCooldown(client,`pet_adventure:${jid}`,30*60)
+if(!adventureCooldown.ok){
+throw new Error(`Seu pet poderá sair em outra aventura em ${Math.ceil(adventureCooldown.remaining/60)} min.`)
+}
+const level=Number(pet.level||1),power=Number(pet.power||10)
+const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
+const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+const petXpEventMultiplier=await getPetXpEventMultiplier(client)
+const maxAdventureEnergy=Math.max(1,petMaxEnergy(level,pet.species))
+const fullAdventureThreshold=maxAdventureEnergy*.85
+const energyFactor=Math.min(1,energy/fullAdventureThreshold)
+const fullAdventureCash=13000+Math.floor(Math.random()*5001)
+const baseCash=Math.max(1000,Math.floor(fullAdventureCash*energyFactor))
+const cash=Math.round(baseCash*moneyMultiplier)
+const baseAdventureXp=Math.max(3,Math.floor(energy*0.35))
+const xpGain=Math.round(baseAdventureXp*xpMultiplier*petXpEventMultiplier)
+const rawXp=Number(pet.xp||0)+xpGain
+const nextLevel=Math.min(100,1+Math.floor(rawXp/100))
+const xp=nextLevel>=100?9900:rawXp
+const levelsGained=Math.max(0,nextLevel-Math.min(100,Number(pet.level||1)))
+const powerGain=Math.floor(energy/50)+(levelsGained*2)
+const levelEnergyGain=levelsGained*3
+const {rows}=await client.query(`UPDATE pets SET energy=LEAST((CASE species WHEN 'cachorro' THEN 100 WHEN 'gato' THEN 105 WHEN 'coelho' THEN 110 WHEN 'papagaio' THEN 115 WHEN 'hamster' THEN 120 WHEN 'tartaruga' THEN 130 WHEN 'coruja' THEN 140 WHEN 'raposa' THEN 150 WHEN 'lobo' THEN 165 WHEN 'aguia' THEN 180 WHEN 'panda' THEN 200 WHEN 'tigre' THEN 225 WHEN 'leao' THEN 250 WHEN 'unicornio' THEN 280 WHEN 'dragao' THEN 320 ELSE 100 END)+GREATEST(0,$2-1)*2,$8),xp=$1,level=$2,power=power+$3,
+hunger=GREATEST(0,hunger-$4),hygiene=GREATEST(0,hygiene-$5),last_action=$6
+WHERE jid=$7 RETURNING *`,[xp,nextLevel,powerGain,Math.ceil(energy*.25),Math.ceil(energy*.15),now,jid,levelEnergyGain])
+let updated=rows[0]
+const newMax=petMaxHp(updated.level,updated.xp,updated.species)
+const oldMax=Math.max(1,Number(petHp.max_hp||100))
+const newHp=Math.min(newMax,Math.max(0,Number(petHp.hp)+Math.max(0,newMax-oldMax)))
+updated=(await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3 RETURNING *',[newHp,newMax,jid])).rows[0]
+await client.query('UPDATE pet_collection SET level=$1,xp=$2,hunger=$3,hygiene=$4,energy=$5,power=$6,last_action=$7,hp=$8,max_hp=$9 WHERE jid=$10 AND active=TRUE',
+[updated.level,updated.xp,updated.hunger,updated.hygiene,updated.energy,updated.power,updated.last_action,updated.hp,updated.max_hp,jid])
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
+await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('system',$1,$2,'pet_adventure',$3)`,[jid,cash,`${pet.name}: ${energy} energia`])
+return {...updated,cash,xpGain,energySpent:energy,powerGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier)}
+})
 }
 export async function petLeaderboard(limit=10){
-  const {rows}=await db.query(`SELECT p.*,u.push_name FROM pets p JOIN users u ON u.jid=p.jid ORDER BY p.level DESC,p.power DESC,p.xp DESC LIMIT $1`,[Math.min(20,Math.max(1,Number(limit)||10))]); return rows
+const {rows}=await db.query(`SELECT p.*,u.push_name FROM pets p JOIN users u ON u.jid=p.jid ORDER BY p.level DESC,p.power DESC,p.xp DESC LIMIT $1`,[Math.min(20,Math.max(1,Number(limit)||10))]); return rows
 }
-
 const alphaEcoGroupActivity=String(process.env.ALPHA_DATASET_MODE||'').startsWith('TEMPORARY_')||process.env.ALPHA_DB_ECO_MODE==='1'
 let pendingGroupActivity=new Map()
 let groupActivityFlushTimer=null
 let groupActivityFlushing=null
-
 async function flushGroupActivityBatch(){
-  if(!pendingGroupActivity.size)return
-  if(groupActivityFlushing)return groupActivityFlushing
-  if(groupActivityFlushTimer){clearTimeout(groupActivityFlushTimer);groupActivityFlushTimer=null}
-  const payload=pendingGroupActivity
-  pendingGroupActivity=new Map()
-  groupActivityFlushing=(async()=>{
-    try{
-      await db.query(`INSERT INTO group_activity(chat_jid,jid,day,messages,commands)
-        SELECT x.chat_jid,x.jid,x.day::date,x.messages,x.commands
-        FROM jsonb_to_recordset($1::jsonb)
-          AS x(chat_jid text,jid text,day text,messages integer,commands integer)
-        ON CONFLICT(chat_jid,jid,day) DO UPDATE SET
-          messages=group_activity.messages+EXCLUDED.messages,
-          commands=group_activity.commands+EXCLUDED.commands`,
-        [JSON.stringify([...payload.values()])])
-    }catch(err){
-      for(const [key,row] of payload){
-        const newer=pendingGroupActivity.get(key)
-        if(newer){newer.messages+=row.messages;newer.commands+=row.commands}
-        else pendingGroupActivity.set(key,row)
-      }
-      console.error('[Neon Eco] lote de atividade não gravado; mantido em memória',err?.message||err)
-    }
-  })()
-  try{await groupActivityFlushing}finally{
-    groupActivityFlushing=null
-    if(pendingGroupActivity.size&&!groupActivityFlushTimer){
-      groupActivityFlushTimer=setTimeout(()=>{void flushGroupActivityBatch()},60000)
-      groupActivityFlushTimer.unref?.()
-    }
-  }
+if(!pendingGroupActivity.size)return
+if(groupActivityFlushing)return groupActivityFlushing
+if(groupActivityFlushTimer){clearTimeout(groupActivityFlushTimer);groupActivityFlushTimer=null}
+const payload=pendingGroupActivity
+pendingGroupActivity=new Map()
+groupActivityFlushing=(async()=>{
+try{
+await db.query(`INSERT INTO group_activity(chat_jid,jid,day,messages,commands)
+SELECT x.chat_jid,x.jid,x.day::date,x.messages,x.commands
+FROM jsonb_to_recordset($1::jsonb)
+AS x(chat_jid text,jid text,day text,messages integer,commands integer)
+ON CONFLICT(chat_jid,jid,day) DO UPDATE SET
+messages=group_activity.messages+EXCLUDED.messages,
+commands=group_activity.commands+EXCLUDED.commands`,
+[JSON.stringify([...payload.values()])])
+}catch(err){
+for(const [key,row] of payload){
+const newer=pendingGroupActivity.get(key)
+if(newer){newer.messages+=row.messages;newer.commands+=row.commands}
+else pendingGroupActivity.set(key,row)
 }
-
+console.error('[Neon Eco] lote de atividade não gravado; mantido em memória',err?.message||err)
+}
+})()
+try{await groupActivityFlushing}finally{
+groupActivityFlushing=null
+if(pendingGroupActivity.size&&!groupActivityFlushTimer){
+groupActivityFlushTimer=setTimeout(()=>{void flushGroupActivityBatch()},60000)
+groupActivityFlushTimer.unref?.()
+}
+}
+}
 export async function recordGroupActivity(chatJid,jid,isCommand=false){
-  if(!chatJid?.endsWith('@g.us')||!jid) return
-  // Comando continua com gravação imediata; conversa comum vira lote de
-  // 15 minutos, evitando despertar o PostgreSQL a cada mensagem do grupo.
-  if(!alphaEcoGroupActivity || isCommand){
-    await db.query(`INSERT INTO group_activity(chat_jid,jid,day,messages,commands) VALUES($1,$2,CURRENT_DATE,1,$3)
-      ON CONFLICT(chat_jid,jid,day) DO UPDATE SET messages=group_activity.messages+1,commands=group_activity.commands+EXCLUDED.commands`,
-      [chatJid,jid,isCommand?1:0])
-    return
-  }
-  const day=new Date().toISOString().slice(0,10),key=JSON.stringify([chatJid,jid,day])
-  const prev=pendingGroupActivity.get(key)
-  if(prev)prev.messages++
-  else pendingGroupActivity.set(key,{chat_jid:chatJid,jid,day,messages:1,commands:0})
-  if(!groupActivityFlushTimer){
-    groupActivityFlushTimer=setTimeout(()=>{void flushGroupActivityBatch()},15*60*1000)
-    groupActivityFlushTimer.unref?.()
-  }
+if(!chatJid?.endsWith('@g.us')||!jid) return
+if(!alphaEcoGroupActivity || isCommand){
+await db.query(`INSERT INTO group_activity(chat_jid,jid,day,messages,commands) VALUES($1,$2,CURRENT_DATE,1,$3)
+ON CONFLICT(chat_jid,jid,day) DO UPDATE SET messages=group_activity.messages+1,commands=group_activity.commands+EXCLUDED.commands`,
+[chatJid,jid,isCommand?1:0])
+return
+}
+const day=new Date().toISOString().slice(0,10),key=JSON.stringify([chatJid,jid,day])
+const prev=pendingGroupActivity.get(key)
+if(prev)prev.messages++
+else pendingGroupActivity.set(key,{chat_jid:chatJid,jid,day,messages:1,commands:0})
+if(!groupActivityFlushTimer){
+groupActivityFlushTimer=setTimeout(()=>{void flushGroupActivityBatch()},15*60*1000)
+groupActivityFlushTimer.unref?.()
+}
 }
 export async function weeklyActivityLeaderboard(chatJid,limit=10){
-  if(alphaEcoGroupActivity)await flushGroupActivityBatch()
-  const {rows}=await db.query(`SELECT a.jid,COALESCE(NULLIF(u.push_name,''),'Jogador') push_name,SUM(a.messages)::int messages,SUM(a.commands)::int commands
-    FROM group_activity a LEFT JOIN users u ON u.jid=a.jid WHERE a.chat_jid=$1 AND a.day>=CURRENT_DATE-6
-    GROUP BY a.jid,u.push_name ORDER BY SUM(a.messages) DESC,SUM(a.commands) DESC LIMIT $2`,[chatJid,Math.min(20,Math.max(1,Number(limit)||10))]); return rows
+if(alphaEcoGroupActivity)await flushGroupActivityBatch()
+const {rows}=await db.query(`SELECT a.jid,COALESCE(NULLIF(u.push_name,''),'Jogador') push_name,SUM(a.messages)::int messages,SUM(a.commands)::int commands
+FROM group_activity a LEFT JOIN users u ON u.jid=a.jid WHERE a.chat_jid=$1 AND a.day>=CURRENT_DATE-6
+GROUP BY a.jid,u.push_name ORDER BY SUM(a.messages) DESC,SUM(a.commands) DESC LIMIT $2`,[chatJid,Math.min(20,Math.max(1,Number(limit)||10))]); return rows
 }
 export async function getAchievements(jid){
-  const [p,pet,rel,streak,inv]=await Promise.all([getCombatProfile(jid),getPet(jid),getRelationship(jid),getDailyStreak(jid),db.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM inventories WHERE jid=$1',[jid])])
-  if(!p) return []
-  const total=Number(p.cash||0)+Number(p.bank||0), out=[]
-  if(Number(streak?.bestStreak||0)>=7) out.push('🔥 Sequência de 7 dias')
-  if(Number(streak?.bestStreak||0)>=30) out.push('🌟 Sequência de 30 dias')
-  if(total>=1000000) out.push('💎 Primeiro milhão')
-  if(Number(p.win||0)>=10) out.push('⚔️ 10 vitórias')
-  if(Number(p.win||0)>=100) out.push('👑 100 vitórias')
-  if(pet) out.push('🐾 Melhor amigo')
-  if(Number(pet?.level||0)>=10) out.push('🦁 Pet nível 10')
-  if(rel) out.push('💍 Comprometido')
-  if(Number(inv.rows[0]?.qty||0)>=25) out.push('🎒 Colecionador')
-  const night=(await db.query("SELECT item_id FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0",[jid,['marca_insone','coroa_madrugada']])).rows
-  if(night.some(x=>x.item_id==='marca_insone')) out.push('🌙 Insone do Alpha')
-  if(night.some(x=>x.item_id==='coroa_madrugada')) out.push('👑 Campeão das 03:03')
-  return out
+const [p,pet,rel,streak,inv]=await Promise.all([getCombatProfile(jid),getPet(jid),getRelationship(jid),getDailyStreak(jid),db.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM inventories WHERE jid=$1',[jid])])
+if(!p) return []
+const total=Number(p.cash||0)+Number(p.bank||0), out=[]
+if(Number(streak?.bestStreak||0)>=7) out.push('🔥 Sequência de 7 dias')
+if(Number(streak?.bestStreak||0)>=30) out.push('🌟 Sequência de 30 dias')
+if(total>=1000000) out.push('💎 Primeiro milhão')
+if(Number(p.win||0)>=10) out.push('⚔️ 10 vitórias')
+if(Number(p.win||0)>=100) out.push('👑 100 vitórias')
+if(pet) out.push('🐾 Melhor amigo')
+if(Number(pet?.level||0)>=10) out.push('🦁 Pet nível 10')
+if(rel) out.push('💍 Comprometido')
+if(Number(inv.rows[0]?.qty||0)>=25) out.push('🎒 Colecionador')
+const night=(await db.query("SELECT item_id FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0",[jid,['marca_insone','coroa_madrugada']])).rows
+if(night.some(x=>x.item_id==='marca_insone')) out.push('🌙 Insone do Alpha')
+if(night.some(x=>x.item_id==='coroa_madrugada')) out.push('👑 Campeão das 03:03')
+return out
 }
 export async function petDuel(challengerJid,targetJid){
-  if(challengerJid===targetJid) throw new Error('Escolha outro jogador.')
-  const now=Math.floor(Date.now()/1000)
-  const sleeping=await db.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,now])
-  if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode disputar duelo de pets agora.')
-  const carpindo=await db.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[targetJid,now])
-  if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode disputar duelo de pets agora.')
-  return transaction(async client=>{
-    const rows=(await client.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',[[challengerJid,targetJid]])).rows
-    const a=normalizedPetHp(rows.find(p=>p.jid===challengerJid))
-    const b=normalizedPetHp(rows.find(p=>p.jid===targetJid))
-    if(!a||!b) throw new Error('Os dois jogadores precisam ter um pet.')
-    if(Number(a.hp)<=0) throw new Error(`${a.name} está sem HP. Use !descansar antes do duelo.`)
-    if(Number(b.hp)<=0) throw new Error(`${b.name} está sem HP e não pode duelar agora.`)
-
-    let hpA=Number(a.hp),hpB=Number(b.hp),rounds=0
-    const hit=p=>Math.max(4,Math.floor((Number(p.power||10)+Number(p.level||1)*2)*(.45+Math.random()*.35)))
-    const aFirst=Math.random()<.5
-    while(hpA>0&&hpB>0&&rounds<20){
-      rounds++
-      if(aFirst){
-        hpB=Math.max(0,hpB-hit(a))
-        if(hpB>0) hpA=Math.max(0,hpA-hit(b))
-      }else{
-        hpA=Math.max(0,hpA-hit(b))
-        if(hpA>0) hpB=Math.max(0,hpB-hit(a))
-      }
-    }
-    let winnerKey
-    if(hpA<=0&&hpB<=0) winnerKey=Math.random()<.5?'a':'b'
-    else if(hpB<=0) winnerKey='a'
-    else if(hpA<=0) winnerKey='b'
-    else {
-      const ratioA=hpA/Math.max(1,Number(a.max_hp)),ratioB=hpB/Math.max(1,Number(b.max_hp))
-      winnerKey=ratioA===ratioB?(Math.random()<.5?'a':'b'):(ratioA>ratioB?'a':'b')
-    }
-
-    const evolve=async(p,hpAfter,xpGain,won)=>{
-      const oldLevel=Math.min(100,Math.max(1,Number(p.level||1)))
-      const rawXp=Number(p.xp||0)+xpGain
-      const level=Math.min(100,1+Math.floor(rawXp/100))
-      const xp=level>=100?9900:rawXp
-      const levelsGained=Math.max(0,level-oldLevel)
-      const power=Number(p.power||10)+levelsGained*2
-      const maxHp=petMaxHp(level,xp,p.species)
-      const oldMax=Math.max(1,Number(p.max_hp||100))
-      const hp=Math.min(maxHp,Math.max(0,hpAfter+Math.max(0,maxHp-oldMax)))
-      const updated=(await client.query(
-        'UPDATE pets SET xp=$1,level=$2,power=$3,hp=$4,max_hp=$5,wins=wins+$6,losses=losses+$7 WHERE jid=$8 RETURNING *',
-        [xp,level,power,hp,maxHp,won?1:0,won?0:1,p.jid]
-      )).rows[0]
-      await client.query('UPDATE pet_collection SET xp=$1,level=$2,power=$3,hp=$4,max_hp=$5,wins=$6,losses=$7 WHERE jid=$8 AND active=TRUE',
-        [updated.xp,updated.level,updated.power,updated.hp,updated.max_hp,updated.wins,updated.losses,p.jid])
-      return updated
-    }
-
-    const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-    const petXpEventMultiplier=await getPetXpEventMultiplier(client)
-    const updatedA=await evolve(a,hpA,Math.round((winnerKey==='a'?25:10)*xpMultiplier*petXpEventMultiplier),winnerKey==='a')
-    const updatedB=await evolve(b,hpB,Math.round((winnerKey==='b'?25:10)*xpMultiplier*petXpEventMultiplier),winnerKey==='b')
-    const winner=winnerKey==='a'?updatedA:updatedB
-    const loser=winnerKey==='a'?updatedB:updatedA
-    return {winnerJid:winner.jid,loserJid:loser.jid,winner,loser,rounds}
-  })
+if(challengerJid===targetJid) throw new Error('Escolha outro jogador.')
+const now=Math.floor(Date.now()/1000)
+const sleeping=await db.query('SELECT ends_at FROM player_sleep WHERE jid=$1 AND ends_at>$2',[targetJid,now])
+if(sleeping.rows.length) throw new Error('Essa pessoa está dormindo e não pode disputar duelo de pets agora.')
+const carpindo=await db.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 AND ends_at>$2',[targetJid,now])
+if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode disputar duelo de pets agora.')
+return transaction(async client=>{
+const rows=(await client.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',[[challengerJid,targetJid]])).rows
+const a=normalizedPetHp(rows.find(p=>p.jid===challengerJid))
+const b=normalizedPetHp(rows.find(p=>p.jid===targetJid))
+if(!a||!b) throw new Error('Os dois jogadores precisam ter um pet.')
+if(Number(a.hp)<=0) throw new Error(`${a.name} está sem HP. Use !descansar antes do duelo.`)
+if(Number(b.hp)<=0) throw new Error(`${b.name} está sem HP e não pode duelar agora.`)
+let hpA=Number(a.hp),hpB=Number(b.hp),rounds=0
+const hit=p=>Math.max(4,Math.floor((Number(p.power||10)+Number(p.level||1)*2)*(.45+Math.random()*.35)))
+const aFirst=Math.random()<.5
+while(hpA>0&&hpB>0&&rounds<20){
+rounds++
+if(aFirst){
+hpB=Math.max(0,hpB-hit(a))
+if(hpB>0) hpA=Math.max(0,hpA-hit(b))
+}else{
+hpA=Math.max(0,hpA-hit(b))
+if(hpA>0) hpB=Math.max(0,hpB-hit(a))
 }
-
+}
+let winnerKey
+if(hpA<=0&&hpB<=0) winnerKey=Math.random()<.5?'a':'b'
+else if(hpB<=0) winnerKey='a'
+else if(hpA<=0) winnerKey='b'
+else {
+const ratioA=hpA/Math.max(1,Number(a.max_hp)),ratioB=hpB/Math.max(1,Number(b.max_hp))
+winnerKey=ratioA===ratioB?(Math.random()<.5?'a':'b'):(ratioA>ratioB?'a':'b')
+}
+const evolve=async(p,hpAfter,xpGain,won)=>{
+const oldLevel=Math.min(100,Math.max(1,Number(p.level||1)))
+const rawXp=Number(p.xp||0)+xpGain
+const level=Math.min(100,1+Math.floor(rawXp/100))
+const xp=level>=100?9900:rawXp
+const levelsGained=Math.max(0,level-oldLevel)
+const power=Number(p.power||10)+levelsGained*2
+const maxHp=petMaxHp(level,xp,p.species)
+const oldMax=Math.max(1,Number(p.max_hp||100))
+const hp=Math.min(maxHp,Math.max(0,hpAfter+Math.max(0,maxHp-oldMax)))
+const updated=(await client.query(
+'UPDATE pets SET xp=$1,level=$2,power=$3,hp=$4,max_hp=$5,wins=wins+$6,losses=losses+$7 WHERE jid=$8 RETURNING *',
+[xp,level,power,hp,maxHp,won?1:0,won?0:1,p.jid]
+)).rows[0]
+await client.query('UPDATE pet_collection SET xp=$1,level=$2,power=$3,hp=$4,max_hp=$5,wins=$6,losses=$7 WHERE jid=$8 AND active=TRUE',
+[updated.xp,updated.level,updated.power,updated.hp,updated.max_hp,updated.wins,updated.losses,p.jid])
+return updated
+}
+const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
+const petXpEventMultiplier=await getPetXpEventMultiplier(client)
+const updatedA=await evolve(a,hpA,Math.round((winnerKey==='a'?25:10)*xpMultiplier*petXpEventMultiplier),winnerKey==='a')
+const updatedB=await evolve(b,hpB,Math.round((winnerKey==='b'?25:10)*xpMultiplier*petXpEventMultiplier),winnerKey==='b')
+const winner=winnerKey==='a'?updatedA:updatedB
+const loser=winnerKey==='a'?updatedB:updatedA
+return {winnerJid:winner.jid,loserJid:loser.jid,winner,loser,rounds}
+})
+}
 export async function proposeRelationship(fromJid,toJid){
-  if(fromJid===toJid) throw new Error('Você não pode casar consigo mesmo.')
-  await ensureUser(toJid)
-  const taken=await db.query('SELECT jid FROM relationships WHERE jid=ANY($1::text[])',[[fromJid,toJid]])
-  if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
-  await db.query(`INSERT INTO relationship_proposals(from_jid,to_jid) VALUES($1,$2)
-    ON CONFLICT(from_jid,to_jid) DO UPDATE SET created_at=${nowSql}`,[fromJid,toJid])
-  return {ok:true,fromJid,toJid}
+if(fromJid===toJid) throw new Error('Você não pode casar consigo mesmo.')
+await ensureUser(toJid)
+const taken=await db.query('SELECT jid FROM relationships WHERE jid=ANY($1::text[])',[[fromJid,toJid]])
+if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
+await db.query(`INSERT INTO relationship_proposals(from_jid,to_jid) VALUES($1,$2)
+ON CONFLICT(from_jid,to_jid) DO UPDATE SET created_at=${nowSql}`,[fromJid,toJid])
+return {ok:true,fromJid,toJid}
 }
 export async function getRelationshipProposals(jid){
-  const {rows}=await db.query(`
-    SELECT p.from_jid,p.to_jid,p.created_at,
-           fu.push_name AS from_name,
-           tu.push_name AS to_name
-    FROM relationship_proposals p
-    LEFT JOIN users fu ON fu.jid=p.from_jid
-    LEFT JOIN users tu ON tu.jid=p.to_jid
-    WHERE p.from_jid=$1 OR p.to_jid=$1
-    ORDER BY p.created_at DESC
-  `,[jid])
-  return {
-    incoming:rows.filter(r=>r.to_jid===jid),
-    outgoing:rows.filter(r=>r.from_jid===jid)
-  }
+const {rows}=await db.query(`
+SELECT p.from_jid,p.to_jid,p.created_at,
+fu.push_name AS from_name,
+tu.push_name AS to_name
+FROM relationship_proposals p
+LEFT JOIN users fu ON fu.jid=p.from_jid
+LEFT JOIN users tu ON tu.jid=p.to_jid
+WHERE p.from_jid=$1 OR p.to_jid=$1
+ORDER BY p.created_at DESC
+`,[jid])
+return {
+incoming:rows.filter(r=>r.to_jid===jid),
+outgoing:rows.filter(r=>r.from_jid===jid)
+}
 }
 export async function acceptRelationship(toJid,fromJid){
-  await ensureUser(fromJid); await ensureUser(toJid)
-  return transaction(async client=>{
-    const p=await client.query('SELECT 1 FROM relationship_proposals WHERE from_jid=$1 AND to_jid=$2 FOR UPDATE',[fromJid,toJid])
-    if(!p.rowCount) throw new Error('Pedido de casamento não encontrado.')
-    const taken=await client.query('SELECT jid FROM relationships WHERE jid=ANY($1::text[])',[[fromJid,toJid]])
-    if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
-    await client.query('INSERT INTO relationships(jid,partner_jid) VALUES($1,$2),($2,$1)',[fromJid,toJid])
-    await client.query(
-      'DELETE FROM relationship_proposals WHERE from_jid=ANY($1::text[]) OR to_jid=ANY($1::text[])',
-      [[fromJid,toJid]]
-    )
-    return {ok:true,fromJid,toJid}
-  })
+await ensureUser(fromJid); await ensureUser(toJid)
+return transaction(async client=>{
+const p=await client.query('SELECT 1 FROM relationship_proposals WHERE from_jid=$1 AND to_jid=$2 FOR UPDATE',[fromJid,toJid])
+if(!p.rowCount) throw new Error('Pedido de casamento não encontrado.')
+const taken=await client.query('SELECT jid FROM relationships WHERE jid=ANY($1::text[])',[[fromJid,toJid]])
+if(taken.rowCount) throw new Error('Uma das pessoas já está em um relacionamento.')
+await client.query('INSERT INTO relationships(jid,partner_jid) VALUES($1,$2),($2,$1)',[fromJid,toJid])
+await client.query(
+'DELETE FROM relationship_proposals WHERE from_jid=ANY($1::text[]) OR to_jid=ANY($1::text[])',
+[[fromJid,toJid]]
+)
+return {ok:true,fromJid,toJid}
+})
 }
 export async function rejectRelationship(toJid,fromJid){
-  const r=await db.query(
-    'DELETE FROM relationship_proposals WHERE from_jid=$1 AND to_jid=$2',
-    [fromJid,toJid]
-  )
-  if(!r.rowCount) throw new Error('Pedido de casamento não encontrado.')
-  return {ok:true,fromJid,toJid}
+const r=await db.query(
+'DELETE FROM relationship_proposals WHERE from_jid=$1 AND to_jid=$2',
+[fromJid,toJid]
+)
+if(!r.rowCount) throw new Error('Pedido de casamento não encontrado.')
+return {ok:true,fromJid,toJid}
 }
 export async function divorceRelationship(jid){
-  return transaction(async client=>{
-    const r=await client.query('SELECT partner_jid FROM relationships WHERE jid=$1 FOR UPDATE',[jid])
-    const partner=r.rows[0]?.partner_jid; if(!partner) throw new Error('Você não está casado(a).')
-    await client.query('DELETE FROM relationships WHERE jid=ANY($1::text[])',[[jid,partner]])
-    return partner
-  })
+return transaction(async client=>{
+const r=await client.query('SELECT partner_jid FROM relationships WHERE jid=$1 FOR UPDATE',[jid])
+const partner=r.rows[0]?.partner_jid; if(!partner) throw new Error('Você não está casado(a).')
+await client.query('DELETE FROM relationships WHERE jid=ANY($1::text[])',[[jid,partner]])
+return partner
+})
 }
 export async function getRelationship(jid){
-  const {rows}=await db.query(`SELECT r.*,u.push_name AS partner_name FROM relationships r LEFT JOIN users u ON u.jid=r.partner_jid WHERE r.jid=$1`,[jid]); return rows[0]||null
+const {rows}=await db.query(`SELECT r.*,u.push_name AS partner_name FROM relationships r LEFT JOIN users u ON u.jid=r.partner_jid WHERE r.jid=$1`,[jid]); return rows[0]||null
 }
-
 export async function expireMarketListings(){
-  return transaction(async client=>{
-    const now=Math.floor(Date.now()/1000)
-    const {rows}=await client.query(
-      "SELECT * FROM market_listings WHERE status='active' AND COALESCE(expires_at,created_at+3600)<=$1 FOR UPDATE",
-      [now]
-    )
-    for(const x of rows){
-      await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3)
-        ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,
-        [x.seller_jid,x.item_id,x.quantity])
-      await client.query("UPDATE market_listings SET status='expired' WHERE id=$1",[x.id])
-    }
-    return rows.length
-  })
+return transaction(async client=>{
+const now=Math.floor(Date.now()/1000)
+const {rows}=await client.query(
+"SELECT * FROM market_listings WHERE status='active' AND COALESCE(expires_at,created_at+3600)<=$1 FOR UPDATE",
+[now]
+)
+for(const x of rows){
+await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3)
+ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,
+[x.seller_jid,x.item_id,x.quantity])
+await client.query("UPDATE market_listings SET status='expired' WHERE id=$1",[x.id])
 }
-
+return rows.length
+})
+}
 export async function createMarketListing(jid,itemId,qty,price){
-  qty=Number(qty); price=Number(price)
-  if(!Number.isInteger(qty)||qty<1||!Number.isSafeInteger(price)||price<1) throw new Error('Quantidade ou preço inválido.')
-  await expireMarketListings()
-  return transaction(async client=>{
-    // Apenas itens revendáveis podem ser anunciados no mercado entre jogadores.
-    // Impede contornar os requisitos de Honra/Karma e o limite de compras dos NPCs.
-    const itemRow=(await client.query('SELECT sellable,category,rarity FROM items WHERE id=$1',[itemId])).rows[0]
-    if(!itemRow || itemRow.sellable!==true || raidMaterialId(itemId) || itemRow.rarity==='legendary' || itemId==='elmo_soberano_golem')
-      throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
-    const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
-    if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
-    const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])
-    const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id].includes(itemId)?1:0
-    const bound=await boundItemQuantity(client,jid,itemId)
-    const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))
-    if(qty>available){
-      throw new Error(equipped
-        ? 'A cópia equipada está protegida. Você pode anunciar no máximo '+available+' unidade(s) livre(s).'
-        : 'Você não possui essa quantidade.')
-    }
-    await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,jid,itemId])
-    const expiresAt=Math.floor(Date.now()/1000)+3600
-    const r=await client.query(
-      `INSERT INTO market_listings(seller_jid,item_id,quantity,price,expires_at) VALUES($1,$2,$3,$4,$5) RETURNING *`,
-      [jid,itemId,qty,price,expiresAt]
-    )
-    return r.rows[0]
-  })
+qty=Number(qty); price=Number(price)
+if(!Number.isInteger(qty)||qty<1||!Number.isSafeInteger(price)||price<1) throw new Error('Quantidade ou preço inválido.')
+await expireMarketListings()
+return transaction(async client=>{
+const itemRow=(await client.query('SELECT sellable,category,rarity FROM items WHERE id=$1',[itemId])).rows[0]
+if(!itemRow || itemRow.sellable!==true || raidMaterialId(itemId) || itemRow.rarity==='legendary' || itemId==='elmo_soberano_golem')
+throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
+const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
+if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
+const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])
+const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id].includes(itemId)?1:0
+const bound=await boundItemQuantity(client,jid,itemId)
+const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))
+if(qty>available){
+throw new Error(equipped
+? 'A cópia equipada está protegida. Você pode anunciar no máximo '+available+' unidade(s) livre(s).'
+: 'Você não possui essa quantidade.')
+}
+await client.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[qty,jid,itemId])
+const expiresAt=Math.floor(Date.now()/1000)+3600
+const r=await client.query(
+`INSERT INTO market_listings(seller_jid,item_id,quantity,price,expires_at) VALUES($1,$2,$3,$4,$5) RETURNING *`,
+[jid,itemId,qty,price,expiresAt]
+)
+return r.rows[0]
+})
 }
 export async function listMarket(limit=15){
-  await expireMarketListings()
-  const now=Math.floor(Date.now()/1000)
-  const {rows}=await db.query(`SELECT m.*,i.name,u.push_name AS seller_name,
-    GREATEST(0,COALESCE(m.expires_at,m.created_at+3600)-$2)::bigint AS remaining_seconds
-    FROM market_listings m JOIN items i ON i.id=m.item_id LEFT JOIN users u ON u.jid=m.seller_jid
-    WHERE m.status='active' AND COALESCE(m.expires_at,m.created_at+3600)>$2
-    ORDER BY m.created_at DESC LIMIT $1`,[Math.min(30,Math.max(1,Number(limit)||15)),now])
-  return rows
+await expireMarketListings()
+const now=Math.floor(Date.now()/1000)
+const {rows}=await db.query(`SELECT m.*,i.name,u.push_name AS seller_name,
+GREATEST(0,COALESCE(m.expires_at,m.created_at+3600)-$2)::bigint AS remaining_seconds
+FROM market_listings m JOIN items i ON i.id=m.item_id LEFT JOIN users u ON u.jid=m.seller_jid
+WHERE m.status='active' AND COALESCE(m.expires_at,m.created_at+3600)>$2
+ORDER BY m.created_at DESC LIMIT $1`,[Math.min(30,Math.max(1,Number(limit)||15)),now])
+return rows
 }
-
 export async function listMyMarketListings(jid,limit=30){
-  await expireMarketListings()
-  const now=Math.floor(Date.now()/1000)
-  const {rows}=await db.query(`SELECT m.*,i.name,
-    GREATEST(0,COALESCE(m.expires_at,m.created_at+3600)-$3)::bigint AS remaining_seconds
-    FROM market_listings m
-    JOIN items i ON i.id=m.item_id
-    WHERE m.seller_jid=$1
-      AND m.status='active'
-      AND COALESCE(m.expires_at,m.created_at+3600)>$3
-    ORDER BY m.created_at DESC
-    LIMIT $2`,[jid,Math.min(50,Math.max(1,Number(limit)||30)),now])
-  return rows
+await expireMarketListings()
+const now=Math.floor(Date.now()/1000)
+const {rows}=await db.query(`SELECT m.*,i.name,
+GREATEST(0,COALESCE(m.expires_at,m.created_at+3600)-$3)::bigint AS remaining_seconds
+FROM market_listings m
+JOIN items i ON i.id=m.item_id
+WHERE m.seller_jid=$1
+AND m.status='active'
+AND COALESCE(m.expires_at,m.created_at+3600)>$3
+ORDER BY m.created_at DESC
+LIMIT $2`,[jid,Math.min(50,Math.max(1,Number(limit)||30)),now])
+return rows
 }
 export async function buyMarketListing(buyerJid,id){
-  await ensureUser(buyerJid)
-  await expireMarketListings()
-  return transaction(async client=>{
-    const r=await client.query(`SELECT m.*,i.name,i.sellable FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
-    const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio não está mais disponível.')
-    if(x.sellable!==true||x.item_id==='elmo_soberano_golem')
-      throw new Error('🔒 Prêmio exclusivo do campeão não pode ser comprado nem transferido.')
-    if(Number(x.expires_at||Number(x.created_at)+3600)<=Math.floor(Date.now()/1000)) throw new Error('Esse anúncio expirou.')
-    if(x.seller_jid===buyerJid) throw new Error('Você não pode comprar seu próprio anúncio.')
-    const w=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[buyerJid])
-    const cash=Number(w.rows[0]?.cash||0),bank=Number(w.rows[0]?.bank||0),price=Number(x.price)
-    if(cash+bank<price) throw new Error('Saldo insuficiente.')
-    const fromCash=Math.min(cash,price),fromBank=price-fromCash
-    await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fromBank,buyerJid])
-    await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[price,x.seller_jid])
-    await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[buyerJid,x.item_id,x.quantity])
-    await client.query(`UPDATE market_listings SET status='sold',buyer_jid=$1,sold_at=${nowSql} WHERE id=$2`,[buyerJid,x.id])
-    return x
-  })
+await ensureUser(buyerJid)
+await expireMarketListings()
+return transaction(async client=>{
+const r=await client.query(`SELECT m.*,i.name,i.sellable FROM market_listings m JOIN items i ON i.id=m.item_id WHERE m.id=$1 FOR UPDATE`,[Number(id)])
+const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio não está mais disponível.')
+if(x.sellable!==true||x.item_id==='elmo_soberano_golem')
+throw new Error('🔒 Prêmio exclusivo do campeão não pode ser comprado nem transferido.')
+if(Number(x.expires_at||Number(x.created_at)+3600)<=Math.floor(Date.now()/1000)) throw new Error('Esse anúncio expirou.')
+if(x.seller_jid===buyerJid) throw new Error('Você não pode comprar seu próprio anúncio.')
+const w=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[buyerJid])
+const cash=Number(w.rows[0]?.cash||0),bank=Number(w.rows[0]?.bank||0),price=Number(x.price)
+if(cash+bank<price) throw new Error('Saldo insuficiente.')
+const fromCash=Math.min(cash,price),fromBank=price-fromCash
+await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fromBank,buyerJid])
+await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[price,x.seller_jid])
+await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[buyerJid,x.item_id,x.quantity])
+await client.query(`UPDATE market_listings SET status='sold',buyer_jid=$1,sold_at=${nowSql} WHERE id=$2`,[buyerJid,x.id])
+return x
+})
 }
 export async function cancelMarketListing(jid,id){
-  const listingId=Number(id)
-  if(!Number.isSafeInteger(listingId)||listingId<1) throw new Error('Escolha um anúncio válido para cancelar.')
-  await expireMarketListings()
-  return transaction(async client=>{
-    const r=await client.query('SELECT * FROM market_listings WHERE id=$1 AND seller_jid=$2 FOR UPDATE',[listingId,jid])
-    const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio ativo não encontrado.')
-    await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[jid,x.item_id,x.quantity])
-    await client.query(`UPDATE market_listings SET status='cancelled' WHERE id=$1`,[x.id]); return x
-  })
+const listingId=Number(id)
+if(!Number.isSafeInteger(listingId)||listingId<1) throw new Error('Escolha um anúncio válido para cancelar.')
+await expireMarketListings()
+return transaction(async client=>{
+const r=await client.query('SELECT * FROM market_listings WHERE id=$1 AND seller_jid=$2 FOR UPDATE',[listingId,jid])
+const x=r.rows[0]; if(!x||x.status!=='active') throw new Error('Anúncio ativo não encontrado.')
+await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[jid,x.item_id,x.quantity])
+await client.query(`UPDATE market_listings SET status='cancelled' WHERE id=$1`,[x.id]); return x
+})
 }
