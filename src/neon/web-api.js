@@ -5,7 +5,7 @@ import {
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship, getProfileAvatar,
   listMyMarketListings, getGroupLicense, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
   petStyleLabel, getEquipmentInfo, equipmentStatsAtLevel, getDoubleRewardEvent, getLuckyBoxEvent,
-  claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment,
+  claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment, listStarForgeWeapons, forgeWeaponStar,
   usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
   setPetTeam, summonLegendaryPet, getCombatProfile, setPlayerClass, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
   transfer, battle, petDuel, dungeon, robPlayer,
@@ -389,7 +389,7 @@ async function groupSnapshot(chatJid){
   const rosterJids=(baseRoster||[]).map(x=>x.jid).filter(Boolean)
   let roster=baseRoster||[]
   if(rosterJids.length){
-    const [detailRows,upgradeRows]=await Promise.all([
+    const [detailRows,upgradeRows,forgeRows]=await Promise.all([
       db.query(`
         SELECT u.jid,u.level,
                s.class_id,s.class_applied,s.hp,s.max_hp,s.atk,s.def,s.spd,
@@ -404,14 +404,16 @@ async function groupSnapshot(chatJid){
       db.query(
         'SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[])',
         [rosterJids]
-      )
+      ),
+      db.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[rosterJids])
     ])
     const levelFor=(jid,itemId)=>Number(
       upgradeRows.rows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1
     )
+    const starFor=(jid,itemId)=>Number(forgeRows.rows.find(r=>r.jid===jid&&r.item_id===itemId)?.stars||1)
     const details=detailRows.rows.map(row=>{
       const zero={atk:0,def:0,hp:0,spd:0,crit:0}
-      const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,levelFor(row.jid,row.weapon_id)):zero
+      const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,levelFor(row.jid,row.weapon_id),starFor(row.jid,row.weapon_id)):zero
       const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,levelFor(row.jid,row.armor_id)):zero
       const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,levelFor(row.jid,row.boot_id)):zero
       const effectiveMaxHp=Number(row.max_hp||0)+Number(weapon?.hp||0)+Number(armor?.hp||0)
@@ -427,6 +429,7 @@ async function groupSnapshot(chatJid){
         armor_name:armor?.name||null,
         boot_name:boots?.name||null,
         weapon_level:Number(weapon?.level||1),
+        weapon_stars:Number(weapon?.stars||1),
         armor_level:Number(armor?.level||1),
         boot_level:Number(boots?.level||1)
       }
@@ -1140,6 +1143,8 @@ async function runAction(session,name,body={}){
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
     case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10))
+    case 'item.forge.list': return listStarForgeWeapons(jid)
+    case 'item.forge': return forgeWeaponStar(jid,String(body.itemId||''),body.expectedStars==null?null:positiveInt(body.expectedStars,'Estrelas',5))
     case 'player.heal': return usePotion(jid,body.itemId?String(body.itemId):null)
     case 'item.use': return usePotion(jid,String(body.itemId||''))
 
