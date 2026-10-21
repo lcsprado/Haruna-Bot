@@ -56,9 +56,9 @@ jobs:
           [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NEON_URI" -c 'SELECT current_database()')" == "neondb" ]]
           [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'SELECT current_database()')" == "defaultdb" ]]
           # Database is new and dedicated. Existing snapshots are never overwritten.
-          existing="$(psql -X -At -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_verify_snapshot_v2'")"
+          existing="$(psql -X -At -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_verify_snapshot_v3'")"
           if [[ "$existing" != "0" ]]; then
-            echo 'alpha_verify_snapshot_v2 ja existe; nao sobrescrever.'; exit 1
+            echo 'alpha_verify_snapshot_v3 ja existe; nao sobrescrever.'; exit 1
           fi
 
           # Keep one read-only REPEATABLE READ transaction open while BOTH dump
@@ -78,9 +78,9 @@ jobs:
           awk '!/ SCHEMA - public( |$)/ && !/ COMMENT - SCHEMA public( |$)/' "$tmp/toc" > "$tmp/toc-clean"
 
           # Create one fresh Aiven test DB only; WhatsApp still runs on Neon.
-          psql -X -q -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'CREATE DATABASE alpha_verify_snapshot_v2'
-          dest="${AIVEN_URI/\/defaultdb/\/alpha_verify_snapshot_v2}"
-          [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$dest" -c 'SELECT current_database()')" == "alpha_verify_snapshot_v2" ]]
+          psql -X -q -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'CREATE DATABASE alpha_verify_snapshot_v3'
+          dest="${AIVEN_URI/\/defaultdb/\/alpha_verify_snapshot_v3}"
+          [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$dest" -c 'SELECT current_database()')" == "alpha_verify_snapshot_v3" ]]
           pg_restore --dbname="$dest" --use-list="$tmp/toc-clean" \
             --single-transaction --exit-on-error --no-owner --no-acl --no-comments "$tmp/db.dump"
 
@@ -90,7 +90,7 @@ jobs:
               format('SELECT %L AS tab, COUNT(*)::bigint AS qty, md5(COALESCE(string_agg(md5(to_jsonb(t)::text),%L ORDER BY md5(to_jsonb(t)::text)),%L)) AS digest FROM %I.%I t',
                 tablename,'','none',schemaname,tablename),
               ' UNION ALL ' ORDER BY tablename
-            )||' ORDER BY tab COLLATE "C"' FROM pg_tables WHERE schemaname='public'")"
+            )||' ORDER BY tab COLLATE '||quote_ident('C') FROM pg_tables WHERE schemaname='public'")"
           [[ -n "$audit_sql" ]] || { echo "::error::Auditoria vazia";exit 1; }
 
           psql -X -qAt -F '|' -v ON_ERROR_STOP=1 "$NEON_URI" \
