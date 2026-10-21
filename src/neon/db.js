@@ -2371,7 +2371,7 @@ export async function listStarForgeWeapons(jid){
   })
 }
 
-export async function forgeWeaponStar(jid,itemId){
+export async function forgeWeaponStar(jid,itemId,expectedStars=null){
   await ensureUser(jid)
   const origin=RAID_WEAPON_FORGE_ORIGINS[itemId]
   if(!origin)throw new Error('Essa arma não é um drop de Raid elegível para Forja Estelar.')
@@ -2391,6 +2391,7 @@ export async function forgeWeaponStar(jid,itemId){
     if(Number(item.quantity)-Number(bound?.qty||0)<1)throw new Error('Nenhuma cópia livre para consumir; itens vinculados são protegidos.')
     const current=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
     const stars=Number(current?.stars||1)
+    if(expectedStars!==null && stars!==Number(expectedStars))throw new Error('Essa forja já foi concluída ou as estrelas mudaram. Abra !forjar novamente.')
     if(stars>=5)throw new Error('Essa arma já atingiu ★★★★★.')
     const required=FORGE_STAR_MATERIALS[stars]
     const material=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
