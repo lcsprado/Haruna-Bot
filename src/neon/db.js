@@ -2283,20 +2283,21 @@ const models=await listUpgradeableEquipment(jid)
 if(!models.length)return []
 const {rows}=await db.query('SELECT item_id,level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,models.map(m=>m.item_id)])
 return models.flatMap(m=>{
-const upgraded=rows.filter(r=>r.item_id===m.item_id)
-const basic=Math.max(0,Number(m.quantity)-upgraded.reduce((n,r)=>n+Number(r.quantity),0))
-const tiers=[...(basic?[{level:1,quantity:basic}]:[]),...upgraded]
-return tiers.filter(t=>Number(t.quantity)>0).sort((a,b)=>Number(a.level)-Number(b.level)).map(t=>{
-const level=Number(t.level),targetCosts={},targetStats={}
-for(let target=level+1;target<=10;target++){
+const normal=rows.filter(r=>r.item_id===m.item_id)
+const forged=m.stars>1&&m.forged_level>0
+const basic=Math.max(0,m.quantity-normal.reduce((n,r)=>n+Number(r.quantity),0)-(forged?1:0))
+const tiers=[...(basic?[{level:1,quantity:basic}]:[]),...normal,...(forged?[{level:m.forged_level,quantity:1,kind:'star'}]:[])]
+return tiers.filter(t=>t.quantity>0).map(t=>{
+const level=Number(t.level),stars=t.kind==='star'?m.stars:1,targetCosts={},targetStats={}
+for(let n=level+1;n<=10;n++){
 let cost=0
-for(let lv=level;lv<target;lv++)cost+=equipmentUpgradeCost(m.rarity,lv)
-targetCosts[target]=cost
-targetStats[target]=equipmentStatsAtLevel(m.item_id,target,Number(m.stars||1))
+for(let v=level;v<n;v++)cost+=equipmentUpgradeCost(m.rarity,v)
+targetCosts[n]=cost
+targetStats[n]=equipmentStatsAtLevel(m.item_id,n,stars)
 }
-return {...m,level,sourceLevel:level,tierQuantity:Number(t.quantity),
-current:equipmentStatsAtLevel(m.item_id,level,Number(m.stars||1)),
-next:level<10?equipmentStatsAtLevel(m.item_id,level+1,Number(m.stars||1)):null,
+return {...m,level,stars,sourceLevel:level,sourceKind:t.kind||'normal',tierQuantity:Number(t.quantity),
+current:equipmentStatsAtLevel(m.item_id,level,stars),
+next:level<10?equipmentStatsAtLevel(m.item_id,level+1,stars):null,
 cost:level<10?equipmentUpgradeCost(m.rarity,level):0,targetCosts,targetStats}
 })
 })
