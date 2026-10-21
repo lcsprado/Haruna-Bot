@@ -199,22 +199,15 @@ CREATE TABLE IF NOT EXISTS equipment_star_forges(
 jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
 item_id TEXT NOT NULL REFERENCES items(id),
 stars INTEGER NOT NULL DEFAULT 1 CHECK(stars BETWEEN 1 AND 5),
+level INTEGER NOT NULL DEFAULT 1 CHECK(level BETWEEN 1 AND 10),
 updated_at BIGINT NOT NULL DEFAULT ${nowSql},
 PRIMARY KEY(jid,item_id)
 );
-ALTER TABLE equipment_star_forges ADD COLUMN IF NOT EXISTS level INTEGER;
-UPDATE equipment_upgrade_copies uc SET quantity=quantity-1
-FROM equipment_star_forges sf
-WHERE sf.level IS NULL AND sf.jid=uc.jid AND sf.item_id=uc.item_id
-AND uc.level=10 AND uc.quantity>0;
-DELETE FROM equipment_upgrade_copies WHERE quantity=0;
-UPDATE equipment_upgrades eu SET level=COALESCE(
-(SELECT MAX(uc.level) FROM equipment_upgrade_copies uc
-WHERE uc.jid=eu.jid AND uc.item_id=eu.item_id),1)
-FROM equipment_star_forges sf WHERE sf.level IS NULL
-AND sf.jid=eu.jid AND sf.item_id=eu.item_id;
+-- A peça estrelada ganha nível próprio; jamais retirar upgrades pagos de cópias comuns.
+ALTER TABLE equipment_star_forges ADD COLUMN IF NOT EXISTS level INTEGER NOT NULL DEFAULT 1;
 UPDATE equipment_star_forges SET level=1 WHERE level IS NULL;
 ALTER TABLE equipment_star_forges ALTER COLUMN level SET DEFAULT 1;
+ALTER TABLE equipment_star_forges ALTER COLUMN level SET NOT NULL;
 CREATE TABLE IF NOT EXISTS alpha_xp_boosts (
 jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
 bonus_percent INTEGER NOT NULL CHECK (bonus_percent BETWEEN 1 AND 30),
@@ -2218,9 +2211,11 @@ if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)throw new Error(
 const required=FORGE_STAR_MATERIALS[stars]
 const material=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
 if(Number(material?.quantity||0)<required)throw new Error(`Faltam ${required-Number(material?.quantity||0)} ${origin.materialName} (Raid ${origin.raidLevel}).`)
-const donor=await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity>=$3 RETURNING quantity',[jid,itemId,donors])
+// A coluna quantity exige >=1: deletar a última linha em vez de escrever zero.
+const donor=Number(paid.quantity)===donors
+?await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity=$3 RETURNING 1',[jid,itemId,donors])
+:await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity>$3 RETURNING 1',[jid,itemId,donors])
 if(!donor.rowCount)throw new Error('Cópias Lv.10 indisponíveis.')
-await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity=0',[jid,itemId])
 const units=await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>=2 RETURNING quantity',[jid,itemId])
 const fragments=await c.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',[jid,origin.materialId,required])
 if(!units.rowCount||!fragments.rowCount)throw new Error('Reserva de materiais/cópia não concluída.')
@@ -2327,8 +2322,11 @@ if(isStar){
 await c.query('UPDATE equipment_star_forges SET level=$3,updated_at='+nowSql+' WHERE jid=$1 AND item_id=$2 AND level=$4',[jid,itemId,requested,current])
 }else{
 if(current>1){
-await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity>0',[jid,itemId,current])
-await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity=0',[jid,itemId,current])
+const oldQty=Number(tiers.find(t=>Number(t.level)===current)?.quantity||0)
+const moved=oldQty===1
+?await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity=1 RETURNING 1',[jid,itemId,current])
+:await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity>1 RETURNING 1',[jid,itemId,current])
+if(!moved.rowCount)throw new Error('Cópia selecionada mudou; nenhuma cobrança.')
 }
 await c.query('INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity) VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,level) DO UPDATE SET quantity=equipment_upgrade_copies.quantity+1',[jid,itemId,requested])
 }
