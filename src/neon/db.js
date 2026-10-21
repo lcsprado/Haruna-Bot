@@ -200,6 +200,15 @@ export async function initDatabase() {
       PRIMARY KEY(jid,item_id)
     );
 
+    -- Estrelas por modelo de arma; não alteram os upgrades existentes.
+    CREATE TABLE IF NOT EXISTS equipment_star_forges(
+      jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+      item_id TEXT NOT NULL REFERENCES items(id),
+      stars INTEGER NOT NULL DEFAULT 1 CHECK(stars BETWEEN 1 AND 5),
+      updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+      PRIMARY KEY(jid,item_id)
+    );
+
     CREATE TABLE IF NOT EXISTS alpha_xp_boosts (
       jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
       bonus_percent INTEGER NOT NULL CHECK (bonus_percent BETWEEN 1 AND 30),
@@ -1512,6 +1521,7 @@ export async function getInventory(jid) {
     SELECT i.item_id,i.quantity,it.name,it.description,it.category,it.rarity,it.price,it.sellable,
            COALESCE(bi.quantity,0)::int AS bound_quantity,
            COALESCE(eu.level,1)::int AS equipment_level,
+           COALESCE(sf.stars,1)::int AS equipment_stars,
            (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped,
            CASE
              WHEN s.weapon_id=i.item_id THEN 'weapon'
@@ -1557,6 +1567,7 @@ export async function getInventory(jid) {
     JOIN items it ON it.id=i.item_id
     LEFT JOIN stats s ON s.jid=i.jid
     LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
+    LEFT JOIN equipment_star_forges sf ON sf.jid=i.jid AND sf.item_id=i.item_id
     LEFT JOIN LATERAL (
       SELECT COALESCE(SUM(b.quantity),0)::int AS quantity
       FROM bound_inventory_items b WHERE b.jid=i.jid AND b.item_id=i.item_id
@@ -2258,23 +2269,41 @@ export function getEquipmentInfo(itemId) {
 }
 
 const EQUIPMENT_MAX_LEVEL=10
+
+export const FORGE_STAR_MATERIALS=Object.freeze([0,30,50,80,120])
+export const RAID_WEAPON_FORGE_ORIGINS=Object.freeze({
+  foice_carmesim:{raidLevel:15,materialId:'escama_vulcanica',materialName:'Escama Vulcânica'},
+  lanca_solar:{raidLevel:20,materialId:'olho_abissal',materialName:'Olho Abissal'},
+  garras_vazio:{raidLevel:25,materialId:'nucleo_titan',materialName:'Núcleo do Titã'},
+  espada_eclipse:{raidLevel:30,materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal'},
+  excalibur:{raidLevel:40,materialId:'fragmento_celestial',materialName:'Fragmento Celestial'},
+  katana_divina:{raidLevel:50,materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido'},
+  lamina_caos:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
+  machado_tita:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
+  foice_abismo:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
+  espada_aurora:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
+  exterminadora_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'Essência do Eclipse'}
+})
+
 const UPGRADE_BASE_COST={common:1500,uncommon:3000,rare:7000,epic:16000,legendary:40000,event:50000}
 
-export function equipmentStatsAtLevel(itemId,level=1){
+export function equipmentStatsAtLevel(itemId,level=1,stars=1){
   const eq=EQUIPMENT[itemId]
   if(!eq) return null
   level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
   // Curva revisada: upgrade precisa ter retorno perceptível sem substituir itens de raridade maior.
   // Lv.10 chega a 2,5x os atributos escaláveis.
   const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
+  const starLevel=eq.category==='weapon'&&RAID_WEAPON_FORGE_ORIGINS[itemId] ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
+  const starMult=1+.04*(starLevel-1)
   const mult=multipliers[level-1]
   return {
-    ...eq,itemId,level,mult,
-    atk:Math.round(Number(eq.atk||0)*mult),
-    def:Math.round(Number(eq.def||0)*mult),
-    hp:Math.round(Number(eq.hp||0)*mult),
-    spd:Math.round(Number(eq.spd||0)*mult),
-    crit:Number((Number(eq.crit||0)*mult).toFixed(4))
+    ...eq,itemId,level,stars:starLevel,starMult,mult,
+    atk:Math.round(Number(eq.atk||0)*mult*starMult),
+    def:Math.round(Number(eq.def||0)*mult*starMult),
+    hp:Math.round(Number(eq.hp||0)*mult*starMult),
+    spd:Math.round(Number(eq.spd||0)*mult*starMult),
+    crit:Number((Number(eq.crit||0)*mult*starMult).toFixed(6))
   }
 }
 
@@ -2291,6 +2320,96 @@ function equipmentUpgradeInvested(rarity,level=1){
 
 function equipmentUpgradeSellRefund(rarity,level=1){
   return Math.floor(equipmentUpgradeInvested(rarity,level)*0.25)
+}
+
+export async function getEquipmentStarLevels(jid,itemIds=[],client=db){
+  const ids=[...new Set((itemIds||[]).filter(Boolean))]
+  if(!ids.length)return {}
+  const {rows}=await client.query('SELECT item_id,stars FROM equipment_star_forges WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])
+  return Object.fromEntries(ids.map(id=>[id,Number(rows.find(row=>row.item_id===id)?.stars||1)]))
+}
+
+export async function listStarForgeWeapons(jid){
+  await ensureUser(jid)
+  const ids=Object.keys(RAID_WEAPON_FORGE_ORIGINS)
+  const {rows}=await db.query(`
+    SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,
+           COALESCE(up.level,1)::int AS level,
+           COALESCE(st.stars,1)::int AS stars,
+           COALESCE(mat.quantity,0)::int AS materials,
+           COALESCE(bound.qty,0)::int AS bound_quantity
+    FROM inventories inv
+    JOIN items i ON i.id=inv.item_id
+    LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
+    LEFT JOIN equipment_star_forges st ON st.jid=inv.jid AND st.item_id=inv.item_id
+    LEFT JOIN LATERAL (SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items
+      WHERE jid=inv.jid AND item_id=inv.item_id) bound ON TRUE
+    LEFT JOIN inventories mat ON mat.jid=inv.jid AND mat.item_id=
+      CASE inv.item_id
+        WHEN 'foice_carmesim' THEN 'escama_vulcanica'
+        WHEN 'lanca_solar' THEN 'olho_abissal'
+        WHEN 'garras_vazio' THEN 'nucleo_titan'
+        WHEN 'espada_eclipse' THEN 'essencia_rei_abissal'
+        WHEN 'excalibur' THEN 'fragmento_celestial'
+        WHEN 'katana_divina' THEN 'nucleo_alpha_corrompido'
+        WHEN 'lamina_caos' THEN 'fragmento_caos'
+        WHEN 'machado_tita' THEN 'fragmento_caos'
+        WHEN 'foice_abismo' THEN 'coroa_abissal'
+        WHEN 'espada_aurora' THEN 'coroa_abissal'
+        WHEN 'exterminadora_eclipse' THEN 'essencia_eclipse'
+      END
+    WHERE inv.jid=$1 AND inv.quantity>0 AND inv.item_id=ANY($2::text[])
+    ORDER BY COALESCE(st.stars,1) DESC,i.name
+  `,[jid,ids])
+  return rows.map(r=>{
+    const origin=RAID_WEAPON_FORGE_ORIGINS[r.item_id]
+    const stars=Number(r.stars||1),needed=FORGE_STAR_MATERIALS[stars]||0
+    const copies=Number(r.quantity||0),free=Math.max(0,copies-Number(r.bound_quantity||0))
+    return {...r,origin,stars,needed,free,canForge:stars<5&&Number(r.level)===10&&copies>=2&&free>=1&&Number(r.materials)>=needed,
+      current:equipmentStatsAtLevel(r.item_id,Number(r.level||1),stars),
+      next:stars<5?equipmentStatsAtLevel(r.item_id,10,stars+1):null}
+  })
+}
+
+export async function forgeWeaponStar(jid,itemId){
+  await ensureUser(jid)
+  const origin=RAID_WEAPON_FORGE_ORIGINS[itemId]
+  if(!origin)throw new Error('Essa arma não é um drop de Raid elegível para Forja Estelar.')
+  return transaction(async client=>{
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`equipment-forge:${jid}`])
+    const item=(await client.query(`
+      SELECT inv.quantity,i.name,i.category,COALESCE(up.level,1)::int level
+      FROM inventories inv JOIN items i ON i.id=inv.item_id
+      LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
+      WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv
+    `,[jid,itemId])).rows[0]
+    if(!item||Number(item.quantity)<2)throw new Error('A forja exige duas cópias da mesma arma; uma será preservada e a outra consumida.')
+    if(item.category!=='weapon'||Number(item.level)!==10)throw new Error('As cópias precisam estar no Lv.10 (upgrade compartilhado por modelo).')
+    const bound=(await client.query(
+      'SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
+      [jid,itemId])).rows[0]
+    if(Number(item.quantity)-Number(bound?.qty||0)<1)throw new Error('Nenhuma cópia livre para consumir; itens vinculados são protegidos.')
+    const current=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
+    const stars=Number(current?.stars||1)
+    if(stars>=5)throw new Error('Essa arma já atingiu ★★★★★.')
+    const required=FORGE_STAR_MATERIALS[stars]
+    const material=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
+    if(Number(material?.quantity||0)<required)throw new Error(`São necessários ${required}× ${origin.materialName} (Raid ${origin.raidLevel}).`)
+    const copiesSpent=await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>=2 RETURNING quantity',[jid,itemId])
+    const materialsSpent=await client.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',[jid,origin.materialId,required])
+    if(!copiesSpent.rowCount||!materialsSpent.rowCount)throw new Error('Não foi possível reservar a cópia e os fragmentos; nada foi consumido.')
+    await client.query(`
+      INSERT INTO equipment_star_forges(jid,item_id,stars,updated_at) VALUES($1,$2,$3,${nowSql})
+      ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,updated_at=EXCLUDED.updated_at
+    `,[jid,itemId,stars+1])
+    await client.query(`
+      INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+      VALUES($1,'forge',0,'equipment_star_forge',$2)
+    `,[jid,`${itemId} ★${stars}->★${stars+1}; -1 copy, -${required} ${origin.materialId}`])
+    return {itemId,name:item.name,fromStars:stars,stars:stars+1,copies:copiesSpent.rows[0].quantity,
+      remainingMaterials:materialsSpent.rows[0].quantity,materialsSpent:required,origin,
+      before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,10,stars+1)}
+  })
 }
 
 export async function getEquipmentLevels(jid,itemIds=[]){
@@ -2413,7 +2532,8 @@ export async function equipItem(jid, itemId) {
         [jid,ids]
       )).rows:[]
       const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
-      const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id)):{hp:0}
+      const starLv=await getEquipmentStarLevels(jid,[st?.weapon_id],client)
+      const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id),starLv[st.weapon_id]||1):{hp:0}
       const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id)):{hp:0}
       const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,lvl(st.helmet_id)):{hp:0}
       const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
@@ -2560,7 +2680,8 @@ export async function usePotion(jid,itemId=null){
       [jid,idsEq]
     )).rows:[]
     const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
-    const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id)):{hp:0}
+    const starLv=await getEquipmentStarLevels(jid,[row.weapon_id],client)
+    const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{hp:0}
     const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{hp:0}
     const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{hp:0}
 
@@ -2607,7 +2728,8 @@ export async function getCombatProfile(jid) {
   const p=await getProfile(jid)
   if(!p) return null
   const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
-  const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1):null
+  const stars=await getEquipmentStarLevels(jid,[p.weapon_id])
+  const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
   const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1):null
   const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
   const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
@@ -2665,6 +2787,7 @@ export async function getCombatProfile(jid) {
     enchant_damage:Number(ench.damage||0),
     enchant_breakdown:ench,
     weapon_name:w.name,
+    weapon_stars:Number(w.stars||1),
     armor_name:a.name,
     boot_name:b.name,
     helmet_name:h.name,
@@ -2780,11 +2903,13 @@ export async function battle(attackerJid, defenderJid) {
     const aEn=eqEnch(attackerJid,[a.weapon_id,a.armor_id,a.boot_id,a.helmet_id])
     const bEn=eqEnch(defenderJid,[b.weapon_id,b.armor_id,b.boot_id,b.helmet_id])
     const eqLevel=(jid,itemId)=>Number(levelRows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1)
-    const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const starRows=(await client.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[[attackerJid,defenderJid]])).rows
+    const starLevel=(jid,itemId)=>Number(starRows.find(r=>r.jid===jid&&r.item_id===itemId)?.stars||1)
+    const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id),starLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeH=a.helmet_id?equipmentStatsAtLevel(a.helmet_id,eqLevel(attackerJid,a.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id),starLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
@@ -3222,6 +3347,7 @@ export async function ownerResetInventory(jid) {
     const removed=Number(r.rows[0]?.qty||0)
     await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
     await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
+    await client.query('DELETE FROM equipment_star_forges WHERE jid=$1',[jid])
     await client.query(
       'UPDATE stats SET weapon_id=NULL,armor_id=NULL,updated_at='+nowSql+' WHERE jid=$1',
       [jid]
@@ -3262,6 +3388,7 @@ export async function ownerResetTotal(jid) {
     `,[jid])
     await client.query('DELETE FROM inventories WHERE jid=$1',[jid])
     await client.query('DELETE FROM equipment_upgrades WHERE jid=$1',[jid])
+    await client.query('DELETE FROM equipment_star_forges WHERE jid=$1',[jid])
     await client.query('DELETE FROM cooldowns WHERE key LIKE $1',[`%:${jid}`])
     await client.query('DELETE FROM daily_streaks WHERE jid=$1',[jid])
     await client.query('DELETE FROM profile_avatars WHERE jid=$1',[jid])
@@ -3883,7 +4010,8 @@ export async function dungeon(jid) {
       [jid,eqIds]
     )).rows:[]
     const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
-    const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id)):{atk:0,def:0,hp:0}
+    const starLv=await getEquipmentStarLevels(jid,[row.weapon_id],client)
+    const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{atk:0,def:0,hp:0}
     const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{atk:0,def:0,hp:0}
     const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{atk:0,def:0,hp:0}
     const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)
