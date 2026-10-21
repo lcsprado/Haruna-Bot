@@ -36,6 +36,7 @@ jobs:
           node --check src/neon/db.js
           node --check src/neon/web-api.js
           node --check src/neon/render.js
+          node --check scripts/start-web-api.mjs
           node --check web/app.js
       - name: "Instalar dependências somente no executor descartável"
         run: npm install --no-save --package-lock=false --legacy-peer-deps --no-audit --no-fund
@@ -47,6 +48,7 @@ jobs:
           ALPHA_WEB_DB_POOL_MAX: '3'
           ALPHA_WEB_BETA_JIDS: ''
           ALPHA_WEB_ENABLE_AUTH_SELFTEST: '0'
+          WEB_MEMBER_TOKEN_SECRET: 'ci-only-safety-smoke-token-not-for-deploy'
           WEB_ALLOWED_ORIGINS: 'https://alpha-web-rpg.vercel.app'
           PGOPTIONS: '-c default_transaction_read_only=on'
           NODE_ENV: production
@@ -66,7 +68,11 @@ jobs:
           export DATABASE_URL="$(cat "$RUNNER_TEMP/alpha-aiven-target.txt")"
           rm -f "$RUNNER_TEMP/alpha-aiven-target.txt"
           export DATABASE_URL
-          node src/neon/render.js >"$RUNNER_TEMP/alpha-web-api-beta.log" 2>&1 &
+          # Invalid runtime must fail BEFORE opening HTTP or database.
+          if ALPHA_RUNTIME=whatsapp-only node scripts/start-web-api.mjs >"$RUNNER_TEMP/blocked-start.log" 2>&1; then
+            echo "::error::Web safety guard did not reject WhatsApp mode";exit 1
+          fi
+          node scripts/start-web-api.mjs >"$RUNNER_TEMP/alpha-web-api-beta.log" 2>&1 &
           apppid=$!
           cleanup(){ kill "$apppid" 2>/dev/null || true; wait "$apppid" 2>/dev/null || true; }
           trap cleanup EXIT
