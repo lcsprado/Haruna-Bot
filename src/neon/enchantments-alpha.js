@@ -1,5 +1,5 @@
 // Encantamentos permanentes: pontos percentuais somados, sem multiplicacao.
-import {db, getEquipmentInfo} from './db.js'
+import {db, getEquipmentInfo, equipmentStatsAtLevel} from './db.js'
 
 export const STONES=Object.freeze({
   pedra_furia_alpha:{name:'Pedra da Fúria',stat:'damage',value:.02,categories:['weapon'],label:'+2 p.p. dano'},
@@ -85,14 +85,56 @@ async function stoneChoices(jid){
   const counts=new Map(owned.map(r=>[r.item_id,Number(r.quantity)]))
   return Object.keys(STONES).filter(id=>Number(counts.get(id)||0)>0).map(id=>({id,quantity:counts.get(id),...STONES[id]}))
 }
+// Prévia somente de leitura: nível do equipamento + encantamentos existentes.
+// A nova pedra é simulada, sem modificar atributos ou consumir inventário.
+export function previewEquipmentEnchantment(itemId,level,rows=[],stoneId){
+  const base=equipmentStatsAtLevel(itemId,level)
+  const stone=STONES[stoneId]
+  if(!base||!stone)return null
+  const applied=sumEnchants(rows)
+  const before={
+    atk:Number(base.atk||0)+applied.atk,
+    def:Number(base.def||0)+applied.def,
+    hp:Number(base.hp||0),
+    spd:Number(base.spd||0)+applied.spd,
+    crit:Number(base.crit||0)+applied.crit,
+    damage:applied.damage
+  }
+  const after={...before,[stone.stat]:before[stone.stat]+stone.value}
+  return {before,after}
+}
+const statDescriptions={
+  atk:['⚔️','ATK'],def:['🛡️','DEF'],hp:['❤️','HP'],
+  spd:['💨','VEL'],crit:['🎯','CRIT'],damage:['💥','DANO']
+}
+const statValue=(key,value)=>fmtBonus((key==='crit'||key==='damage'?100:1)*Number(value||0))+(key==='crit'||key==='damage'?'%':'')
+function equipmentStatLine(stats){
+  return Object.entries(statDescriptions)
+    .filter(([key])=>Math.abs(Number(stats?.[key]||0))>1e-8)
+    .map(([key,[icon,label]])=>icon+' +'+statValue(key,stats[key])+' '+label)
+    .join(' • ')||'Sem bônus de atributos'
+}
+function changedEquipmentStat(stone,before,after){
+  const [icon,label]=statDescriptions[stone.stat]
+  return icon+' '+label+': *+'+statValue(stone.stat,before[stone.stat])+' → +'+statValue(stone.stat,after[stone.stat])+'*'
+}
+
 async function equipmentChoices(jid,stoneId){
   const stone=STONES[stoneId]
   if(!stone)return []
   const rows=(await db.query(
-    'SELECT v.item_id,i.name,i.category,COALESCE(SUM(e.quantity),0)::int AS used_slots,COALESCE(SUM(CASE WHEN e.stone_id=ANY($3::text[]) THEN e.quantity ELSE 0 END),0)::int AS used_percentage FROM inventories v JOIN items i ON i.id=v.item_id LEFT JOIN equipment_enchantments e ON e.jid=v.jid AND e.item_id=v.item_id WHERE v.jid=$1 AND v.quantity>0 AND i.category=ANY($2::text[]) GROUP BY v.item_id,i.name,i.category ORDER BY i.category,i.name',
+    'SELECT v.item_id,i.name,i.category,COALESCE(u.level,1)::int AS level,COALESCE(SUM(e.quantity),0)::int AS used_slots,COALESCE(SUM(CASE WHEN e.stone_id=ANY($3::text[]) THEN e.quantity ELSE 0 END),0)::int AS used_percentage FROM inventories v JOIN items i ON i.id=v.item_id LEFT JOIN equipment_upgrades u ON u.jid=v.jid AND u.item_id=v.item_id LEFT JOIN equipment_enchantments e ON e.jid=v.jid AND e.item_id=v.item_id WHERE v.jid=$1 AND v.quantity>0 AND i.category=ANY($2::text[]) GROUP BY v.item_id,i.name,i.category,u.level ORDER BY i.category,i.name',
     [jid,stone.categories,percentageStoneIds]
   )).rows
-  return rows.filter(r=>Number(r.used_slots)<3&&(!['damage','crit'].includes(stone.stat)||Number(r.used_percentage)<2))
+  const eligible=rows.filter(r=>getEquipmentInfo(r.item_id)&&Number(r.used_slots)<3&&(!['damage','crit'].includes(stone.stat)||Number(r.used_percentage)<2))
+  if(!eligible.length)return []
+  const enchanted=(await db.query('SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,eligible.map(r=>r.item_id)])).rows
+  const enchantByItem=new Map()
+  for(const row of enchanted){
+    if(!enchantByItem.has(row.item_id))enchantByItem.set(row.item_id,[])
+    enchantByItem.get(row.item_id).push(row)
+  }
+  return eligible.map(r=>({...r,preview:previewEquipmentEnchantment(r.item_id,r.level,enchantByItem.get(r.item_id)||[],stoneId)}))
 }
 async function stoneMenu(jid){
   const stones=await stoneChoices(jid)
@@ -111,7 +153,9 @@ async function gearMenu(jid,stoneId){
   let text='⚙️ *ESCOLHA O EQUIPAMENTO*\n\n💎 '+stone.name+' — *'+stone.label+'*\n\n'
   shown.forEach((g,i)=>{
     const icon=g.category==='weapon'?'⚔️':g.category==='armor'?'🛡️':g.category==='boots'?'👢':'🪖'
-    text+=(i+1)+'. '+icon+' *'+g.name+'* — '+g.used_slots+'/3 encantamentos\n'
+    text+=(i+1)+'. '+icon+' *'+g.name+'* • ⭐ Lv.'+g.level+' • 🔒 '+g.used_slots+'/3\n'+
+      '   📊 Atual: '+equipmentStatLine(g.preview.before)+'\n'+
+      '   💎 Com pedra: '+equipmentStatLine(g.preview.after)+'\n'
   })
   if(gear.length>shown.length)text+='\n⚠️ Exibindo os primeiros 40 equipamentos elegíveis.\n'
   text+='\n👉 Responda apenas o número do equipamento.\n9️⃣ Voltar às pedras • 0️⃣ Cancelar'
@@ -123,13 +167,8 @@ async function confirmMenu(jid,stoneId,itemId){
   if(!stone||!gear)throw Error('Equipamento indisponível ou sem espaço para essa pedra. Escolha outro.')
   const owned=(await stoneChoices(jid)).some(s=>s.id===stoneId)
   if(!owned)throw Error('Você não possui mais essa pedra. Use !encantar novamente.')
-  const existing=(await db.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows
-  const previous=existing.reduce((sum,r)=>sum+(STONES[r.stone_id]?.stat===stone.stat?Number(STONES[r.stone_id].value)*Number(r.quantity):0),0)
-  const multiplier=['damage','crit'].includes(stone.stat)?100:1
-  const unit=multiplier===100?' p.p.':''
-  const oldLabel=fmtBonus(previous*multiplier)+unit
-  const newLabel=fmtBonus((previous+stone.value)*multiplier)+unit
-  return '✨ *CONFIRMAR ENCANTAMENTO?*\n\n💎 Pedra: *'+stone.name+'*\n⚙️ Equipamento: *'+gear.name+'*\n🎯 Efeito: *'+stone.label+'*\n📈 Bônus desse atributo no item: *'+oldLabel+' → '+newLabel+'*\n🔒 Espaços usados: *'+gear.used_slots+'/3 → '+(Number(gear.used_slots)+1)+'/3*\n\n⚠️ A pedra será consumida apenas ao confirmar. O bônus é permanente e funciona quando esse equipamento estiver equipado.\n\n1️⃣ *Confirmar aplicação*\n2️⃣ *Cancelar aplicação*\n9️⃣ Voltar aos equipamentos\n0️⃣ Sair'
+  const {before,after}=gear.preview
+  return '✨ *CONFIRMAR ENCANTAMENTO?*\n\n💎 Pedra: *'+stone.name+'*\n⚙️ Equipamento: *'+gear.name+' Lv.'+gear.level+'*\n🎯 Efeito: *'+stone.label+'*\n\n📊 *ATRIBUTOS TOTAIS DA PEÇA*\n• Atual: '+equipmentStatLine(before)+'\n• Com a pedra: '+equipmentStatLine(after)+'\n\n📈 '+changedEquipmentStat(stone,before,after)+'\n🔒 Espaços usados: *'+gear.used_slots+'/3 → '+(Number(gear.used_slots)+1)+'/3*\n\n⚠️ A pedra será consumida apenas ao confirmar. O bônus é permanente e funciona quando esse equipamento estiver equipado.\n\n1️⃣ *Confirmar aplicação*\n2️⃣ *Cancelar aplicação*\n9️⃣ Voltar aos equipamentos\n0️⃣ Sair'
 }
 export async function handleEnchantFlow({stage,data,input,sender,reply,setFlow,clearFlow}){
   if(!String(stage||'').startsWith('enchant_'))return false
