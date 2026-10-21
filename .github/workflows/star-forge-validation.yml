@@ -5,6 +5,7 @@ on:
     branches: [whatsapp-only]
     paths:
       - 'src/neon/db.js'
+      - 'src/neon/games.js'
       - 'src/neon/index.js'
       - 'src/neon/equipment-star-logic.js'
       - 'test/star-forge-level-20261021.test.mjs'
