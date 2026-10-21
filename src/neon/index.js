@@ -4398,7 +4398,7 @@ O que deseja trocar?
       const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
       const level=Number(levelMap.get(i.item_id)||1)
       const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
-      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+' • 📦 ×'+Number(i.quantity||0)+' no total\n'
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+(isWeapon&&Number(i.equipment_stars||1)>1?' • 🌟 '+Number(i.equipment_stars)+'/5':'')+' • 📦 ×'+Number(i.quantity||0)+' no total\n'
       text+='   '+gearStatsText(stats,category)+active+'\n'
       text+='   🎒 *'+Math.max(0,Number(i.quantity||0)-(active?1:0))+'* reserva(s)'+(active?' • 🔒 *1 equipada*':'')+'\n'
     })
