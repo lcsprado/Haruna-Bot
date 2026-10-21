@@ -1,0 +1,109 @@
+# Controlled live-origin COPY test. Zero Neon writes, no Render activity.
+# Validates 67/67 against the SAME exported PostgreSQL snapshot, not against
+# the current changing live Neon database.
+name: "Alpha Bot | Validar snapshot consistente Aiven"
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/alpha-aiven-snapshot-consistency.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-snapshot-consistency-validation
+  cancel-in-progress: false
+
+jobs:
+  snapshot-consistency:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: postgres:18
+    env:
+      NEON_URI: ${{ secrets.ALPHA_NEON_URI }}
+      AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+      PGSSLMODE: require
+      PGCONNECT_TIMEOUT: '20'
+    steps:
+      - name: "Snapshot MVCC consistente, restauração em banco isolado e 67 hashes"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          tmp=/tmp/alpha-snapshot-consistency
+          mkdir -p "$tmp"
+          cleanup(){
+            if [[ -n "${SNAP_PID:-}" ]]; then
+              kill "$SNAP_PID" 2>/dev/null || true
+              wait "$SNAP_PID" 2>/dev/null || true
+            fi
+            rm -rf "$tmp"
+          }
+          trap cleanup EXIT
+          [[ -n "${NEON_URI:-}" && -n "${AIVEN_URI:-}" ]] || { echo "::error::Secrets ausentes";exit 1; }
+          case "$NEON_URI" in
+            *"@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb"*|*"@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432/neondb"*) ;;
+            *) echo "::error::Neon DIRECT esperado nao encontrado";exit 1;;
+          esac
+          case "$AIVEN_URI" in
+            *"@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb"*) ;;
+            *) echo "::error::Aiven alphabot/defaultdb esperado nao encontrado";exit 1;;
+          esac
+          [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$NEON_URI" -c 'SELECT current_database()')" == "neondb" ]]
+          [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'SELECT current_database()')" == "defaultdb" ]]
+          # Database is new and dedicated. Existing snapshots are never overwritten.
+          existing="$(psql -X -At -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_verify_snapshot'")"
+          if [[ "$existing" != "0" ]]; then
+            echo 'alpha_verify_snapshot ja existe; nao sobrescrever.'; exit 1
+          fi
+
+          # Keep one read-only REPEATABLE READ transaction open while BOTH dump
+          # and source-side checksum queries refer to the same MVCC snapshot.
+          coproc SNAP { psql -X -qAt -v ON_ERROR_STOP=1 "$NEON_URI"; }
+          printf 'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSELECT pg_export_snapshot();\n' >&"${SNAP[1]}"
+          IFS= read -r snapshot_id <&"${SNAP[0]}"
+          if [[ -z "$snapshot_id" || "$snapshot_id" != *-* ]]; then
+            echo "::error::Nao foi possivel exportar snapshot do Neon"; exit 1
+          fi
+          echo "Fonte de dados fixada em transacao PostgreSQL READ ONLY."
+          pg_dump --dbname="$NEON_URI" --snapshot="$snapshot_id" \
+            --schema=public --format=custom --no-owner --no-acl --no-comments \
+            --file="$tmp/db.dump"
+          test -s "$tmp/db.dump"
+          pg_restore --list "$tmp/db.dump" > "$tmp/toc"
+          awk '!/ SCHEMA - public( |$)/ && !/ COMMENT - SCHEMA public( |$)/' "$tmp/toc" > "$tmp/toc-clean"
+
+          # Create one fresh Aiven test DB only; WhatsApp still runs on Neon.
+          psql -X -q -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'CREATE DATABASE alpha_verify_snapshot'
+          dest="${AIVEN_URI/\/defaultdb/\/alpha_verify_snapshot}"
+          [[ "$(psql -X -At -v ON_ERROR_STOP=1 "$dest" -c 'SELECT current_database()')" == "alpha_verify_snapshot" ]]
+          pg_restore --dbname="$dest" --use-list="$tmp/toc-clean" \
+            --single-transaction --exit-on-error --no-owner --no-acl --no-comments "$tmp/db.dump"
+
+          # Exact same source snapshot as pg_dump, not latest changing data.
+          audit_sql="$(psql -X -qAt -v ON_ERROR_STOP=1 "$NEON_URI" -c "
+            SELECT string_agg(
+              format('SELECT %L AS tab, COUNT(*)::bigint AS qty, md5(COALESCE(string_agg(md5(to_jsonb(t)::text),%L ORDER BY md5(to_jsonb(t)::text)),%L)) AS digest FROM %I.%I t',
+                tablename,'','none',schemaname,tablename),
+              ' UNION ALL ' ORDER BY tablename
+            )||' ORDER BY tab' FROM pg_tables WHERE schemaname='public'")"
+          [[ -n "$audit_sql" ]] || { echo "::error::Auditoria vazia";exit 1; }
+
+          psql -X -qAt -F '|' -v ON_ERROR_STOP=1 "$NEON_URI" \
+            -c "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '$snapshot_id'; $audit_sql; COMMIT;" > "$tmp/expected.txt"
+          psql -X -qAt -F '|' -v ON_ERROR_STOP=1 "$dest" -c "$audit_sql" > "$tmp/actual.txt"
+
+          count="$(wc -l < "$tmp/expected.txt" | tr -d ' ')"
+          if [[ "$count" != "67" ]]; then echo "::error::Numero de tabelas divergente: $count";exit 1;fi
+          if ! cmp -s "$tmp/expected.txt" "$tmp/actual.txt"; then
+            echo "::error::Snapshot consistente apresentou divergencias nas seguintes tabelas:"
+            paste "$tmp/expected.txt" "$tmp/actual.txt" | awk -F '\t' '$1!=$2 {split($1,f,"|"); print f[1]}' | head -30
+            exit 1
+          fi
+          echo "SUCESSO: 67 de 67 tabelas idênticas AO MESMO SNAPSHOT, incluindo auth_keys e users."
+          echo "Nenhum dado retornado ao log; todas as comparacoes por hash foram locais ao executor."
+          echo "Neon em producao NAO foi alterado, e Render nao foi tocado."
