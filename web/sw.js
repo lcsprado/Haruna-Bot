@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261007-complete-item-art-v1';
+const CACHE='alpha-rpg-pwa-20261021-canary-eco-v1';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
@@ -98,14 +98,13 @@ self.addEventListener('fetch',event=>{
   }
 
   if(url.pathname.startsWith('/assets/')){
+    // Sprite arts are versioned by CACHE; do not download again at every visit.
+    // Bump CACHE on future art releases to invalidate these entries.
     event.respondWith(
-      caches.match(request).then(cached=>{
-        const fresh=fetch(request).then(response=>{
-          if(response&&response.ok) caches.open(CACHE).then(cache=>cache.put(request,response.clone())).catch(()=>{});
-          return response;
-        }).catch(()=>cached);
-        return cached||fresh;
-      })
+      caches.match(request).then(cached=>cached||fetch(request).then(response=>{
+        if(response&&response.ok) caches.open(CACHE).then(cache=>cache.put(request,response.clone())).catch(()=>{});
+        return response;
+      }))
     );
   }
 });

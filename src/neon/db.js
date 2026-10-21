@@ -4,6 +4,7 @@ import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecad
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
+import {acquireRedisRuntimeLease} from './runtime-redis-lease.js'
 import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
 const { Pool, Client } = pg
@@ -2876,7 +2877,7 @@ const url = new URL(databaseUrl)
 url.hostname = url.hostname.replace('-pooler.', '.')
 return url.toString()
 }
-export async function acquireRuntimeLock(sessionId) {
+async function acquirePostgresRuntimeLock(sessionId) {
 if (runtimeLockClient) return true
 const lockName = `trevo-whatsapp-v2:${sessionId}`
 const connectionString = directDatabaseUrl()
@@ -2926,6 +2927,17 @@ await client.end().catch(()=>{})
 console.log('[Runtime] outra instância ainda usa a sessão; aguardando...')
 await new Promise(resolve => setTimeout(resolve, 2500))
 }
+}
+// Staged migration: postgres -> dual (both leases) -> redis (Neon can suspend).
+export async function acquireRuntimeLock(sessionId){
+  const mode=String(process.env.ALPHA_RUNTIME_LOCK_MODE||'postgres').toLowerCase()
+  if(mode==='postgres')return acquirePostgresRuntimeLock(sessionId)
+  if(mode==='dual'){
+    await acquirePostgresRuntimeLock(sessionId)
+    return acquireRedisRuntimeLease(sessionId)
+  }
+  if(mode==='redis')return acquireRedisRuntimeLease(sessionId)
+  throw new Error('ALPHA_RUNTIME_LOCK_MODE inválido; esperado postgres, dual ou redis')
 }
 export async function saveQuickFlow(flowKey, chatJid, senderJid, stage, data, expiresAtMs) {
 const expiresAt=Math.floor(Number(expiresAtMs)/1000)

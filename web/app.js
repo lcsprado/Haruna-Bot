@@ -676,6 +676,21 @@ async function sync(silent){
   }finally{ ui.syncing=false; }
 }
 
+// Pequena consulta de estado apenas quando a página de Boss precisa acompanhar combate.
+async function syncLiveBoss(force=false){
+  if(!ui.token || !ui.data || !ui.data.group || ui.syncing || document.hidden) return;
+  if(!force && (ui.page!=='boss' || !activeBoss())) return;
+  try{
+    const response=await api('/api/v1/me/live');
+    if(!ui.data || !ui.data.group) return;
+    ui.data.group.boss=response.data.boss;
+    ui.data.group.bossEvent=response.data.bossEvent;
+    if(ui.page==='boss') render();
+  }catch(err){
+    if(/inválida|expirada/i.test(String(err.message||''))) logout(false);
+  }
+}
+
 async function syncExtras(force){
   if(!ui.token) return null;
   if(!force && ui.extras && Date.now()-ui.extrasFetchedAt<30000) return ui.extras;
@@ -767,6 +782,7 @@ function renderNav(){
     setMenu(false);
     if(ui.page==='npcs') await loadNpcShops();
     if(ui.page==='contracts') await loadContracts();
+    if(ui.page==='boss') await syncLiveBoss(true);
     if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
       await syncExtras(false).catch(()=>null);
     }
@@ -2553,9 +2569,11 @@ document.addEventListener('visibilitychange',()=>{
   if(!document.hidden && ui.token) sync(true);
 });
 
+// Não consultar todo o perfil de 15 em 15 segundos.
+// Somente um Boss ativo, na página visível, recebe consultas leves a cada 60 segundos.
 setInterval(()=>{
-  if(!document.hidden && ui.token && !ui.syncing) sync(true);
-},15000);
+  if(!document.hidden && ui.token && ui.page==='boss' && activeBoss()) void syncLiveBoss();
+},60000);
 setInterval(()=>{
   if(!document.hidden && ui.token) refreshLiveCountdowns();
 },1000);
