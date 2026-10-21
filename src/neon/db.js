@@ -2302,55 +2302,41 @@ cost:level<10?equipmentUpgradeCost(m.rarity,level):0,targetCosts,targetStats}
 })
 })
 }
-export async function upgradeEquipment(jid,itemId,targetLevel=null,sourceLevel=null){
+export async function upgradeEquipment(jid,itemId,targetLevel=null,sourceLevel=null,sourceKind='normal'){
 await ensureUser(jid)
-if(!EQUIPMENT[itemId])throw new Error('Esse item não pode ser aprimorado.')
-return transaction(async client=>{
-const inv=await client.query(`
-SELECT inv.quantity,i.rarity,i.name FROM inventories inv JOIN items i ON i.id=inv.item_id
-WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv
-`,[jid,itemId])
-const owned=Number(inv.rows[0]?.quantity||0)
-if(owned<1)throw new Error('Você não possui esse equipamento.')
-const tiers=(await client.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 ORDER BY level FOR UPDATE',[jid,itemId])).rows
-const basic=owned-tiers.reduce((n,r)=>n+Number(r.quantity||0),0)
-if(basic<0)throw new Error('Inconsistência nas cópias; nenhum valor foi debitado.')
-const available=[...(basic?[{level:1,quantity:basic}]:[]),...tiers].filter(t=>Number(t.quantity)>0&&Number(t.level)<10)
-const current=sourceLevel==null?Number(available[0]?.level||10):Number(sourceLevel)
-if(!Number.isInteger(current)||current<1||current>9||!available.some(t=>Number(t.level)===current))
-throw new Error('Cópia de origem indisponível. Abra !uparitem novamente.')
+if(!EQUIPMENT[itemId])throw new Error('Equipamento não aprimorável.')
+return transaction(async c=>{
+const inv=(await c.query('SELECT inv.quantity,i.rarity,i.name FROM inventories inv JOIN items i ON i.id=inv.item_id WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv',[jid,itemId])).rows[0]
+if(!inv||Number(inv.quantity)<1)throw new Error('Equipamento indisponível.')
+const tiers=(await c.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 ORDER BY level FOR UPDATE',[jid,itemId])).rows
+const sf=(await c.query('SELECT level,stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
+const isStar=sourceKind==='star',basic=Number(inv.quantity)-tiers.reduce((n,r)=>n+Number(r.quantity),0)-(sf?1:0)
+if(basic<0)throw new Error('Divergência nas cópias; nenhuma cobrança.')
+const available=[...(basic?[{level:1,quantity:basic}]:[]),...tiers].filter(t=>t.quantity>0&&t.level<10)
+const current=sourceLevel==null?(isStar?Number(sf?.level):Number(available[0]?.level||10)):Number(sourceLevel)
+if(!Number.isInteger(current)||current<1||current>9)throw new Error('Nível de origem inválido.')
+if(isStar?(!sf||Number(sf.level)!==current):!available.some(t=>Number(t.level)===current))throw new Error('Cópia selecionada mudou; abra !uparitem novamente.')
 const requested=targetLevel==null?current+1:Number(targetLevel)
-if(!Number.isInteger(requested)||requested>10||requested<=current)
-throw new Error(`Nível destino inválido (escolha ${current+1} a 10).`)
+if(!Number.isInteger(requested)||requested<=current||requested>10)throw new Error('Nível destino inválido.')
 let cost=0
-for(let lv=current;lv<requested;lv++)cost+=equipmentUpgradeCost(inv.rows[0].rarity,lv)
-const wallet=await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
-if(Number(wallet.rows[0]?.cash||0)<cost)throw new Error(`Saldo insuficiente: R$ ${cost.toLocaleString('pt-BR')}.`)
+for(let lv=current;lv<requested;lv++)cost+=equipmentUpgradeCost(inv.rarity,lv)
+const wallet=(await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+if(Number(wallet?.cash||0)<cost)throw new Error(`Saldo insuficiente: R$ ${cost.toLocaleString('pt-BR')}.`)
+if(isStar){
+await c.query('UPDATE equipment_star_forges SET level=$3,updated_at='+nowSql+' WHERE jid=$1 AND item_id=$2 AND level=$4',[jid,itemId,requested,current])
+}else{
 if(current>1){
-const moved=await client.query('UPDATE equipment_upgrade_copies SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity>0 RETURNING quantity',[jid,itemId,current])
-if(!moved.rowCount)throw new Error('Cópia já movimentada.')
-await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity=0',[jid,itemId,current])
+await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity>0',[jid,itemId,current])
+await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity=0',[jid,itemId,current])
 }
-await client.query(`
-INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity) VALUES($1,$2,$3,1)
-ON CONFLICT(jid,item_id,level) DO UPDATE SET quantity=equipment_upgrade_copies.quantity+1
-`,[jid,itemId,requested])
-await client.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
-await client.query(`
-INSERT INTO equipment_upgrades(jid,item_id,level,updated_at)
-VALUES($1,$2,$3,${nowSql}) ON CONFLICT(jid,item_id) DO UPDATE SET
-level=GREATEST(equipment_upgrades.level,EXCLUDED.level),updated_at=${nowSql}
-`,[jid,itemId,requested])
-await client.query(`
-INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-VALUES($1,'upgrade',$2,'equipment_upgrade',$3)
-`,[jid,cost,`${itemId} 1 cópia Lv.${current}->Lv.${requested}`])
-const cash=(await client.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]?.cash||0
-const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
-return {itemId,name:inv.rows[0].name,rarity:inv.rows[0].rarity,
-fromLevel:current,level:requested,levelsGained:requested-current,cost,cash:Number(cash),
-before:equipmentStatsAtLevel(itemId,current,Number(star?.stars||1)),
-stats:equipmentStatsAtLevel(itemId,requested,Number(star?.stars||1))}
+await c.query('INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity) VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,level) DO UPDATE SET quantity=equipment_upgrade_copies.quantity+1',[jid,itemId,requested])
+}
+await c.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
+await syncEffectiveGear(c,jid,itemId)
+await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'upgrade',$2,'equipment_upgrade',$3)`,[jid,cost,`${itemId} ${isStar?'STAR':'COPY'} Lv.${current}->Lv.${requested}`])
+const money=(await c.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]
+const stars=isStar?Number(sf.stars):1
+return {itemId,name:inv.name,rarity:inv.rarity,stars,fromLevel:current,level:requested,levelsGained:requested-current,cost,cash:Number(money?.cash||0),before:equipmentStatsAtLevel(itemId,current,stars),stats:equipmentStatsAtLevel(itemId,requested,stars)}
 })
 }
 export async function equipItem(jid, itemId) {
