@@ -2131,8 +2131,8 @@ return Math.floor(equipmentUpgradeInvested(rarity,level)*0.25)
 export async function getEquipmentStarLevels(jid,itemIds=[],client=db){
 const ids=[...new Set((itemIds||[]).filter(Boolean))]
 if(!ids.length)return {}
-const {rows}=await client.query('SELECT item_id,stars FROM equipment_star_forges WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])
-return Object.fromEntries(ids.map(id=>[id,Number(rows.find(row=>row.item_id===id)?.stars||1)]))
+const {rows}=await client.query('SELECT sf.item_id,sf.stars,sf.level,COALESCE(eu.level,1) effective FROM equipment_star_forges sf LEFT JOIN equipment_upgrades eu ON eu.jid=sf.jid AND eu.item_id=sf.item_id WHERE sf.jid=$1 AND sf.item_id=ANY($2::text[])',[jid,ids])
+return Object.fromEntries(ids.map(id=>{const r=rows.find(x=>x.item_id===id);return [id,r&&Number(r.level)===Number(r.effective)?Number(r.stars):1]}))
 }
 export async function listStarForgeEquipment(jid){
 await ensureUser(jid)
