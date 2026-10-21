@@ -44,6 +44,14 @@ import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 const CODE_TTL_MS = 30 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const SESSION_TOUCH_MS = 5 * 60 * 1000
+// During isolated testing, no user is allowed unless explicitly admitted.
+// Without an allowlist, the Web API remains closed even if somebody discovers its URL.
+function betaWebAccess(jid){
+  if(String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()!=='web-api-only') return true
+  const allowed=String(process.env.ALPHA_WEB_BETA_JIDS||'').split(/[\\s,;]+/).filter(Boolean)
+  return allowed.includes(String(jid||''))
+}
 let webTablesReady = false
 let webTablesPromise = null
 
@@ -192,6 +200,7 @@ async function exchangeWebLinkCode(code){
       [codeHash]
     )).rows[0]
     if(!row || row.used_at || Number(row.expires_at)<now()) throw new Error('Código inválido ou expirado.')
+    if(!betaWebAccess(row.jid)) throw new Error('Alpha RPG Web ainda está fechado para testes. Aguarde a liberação.')
 
     const token=crypto.randomBytes(32).toString('base64url')
     const tokenHash=sha256(token)
@@ -252,14 +261,22 @@ async function authSession(req){
   if(!match) return null
   const tokenHash=sha256(match[1])
   const row=(await db.query(
-    'SELECT jid,chat_jid,expires_at FROM web_sessions WHERE token_hash=$1',
+    'SELECT jid,chat_jid,expires_at,last_seen_at FROM web_sessions WHERE token_hash=$1',
     [tokenHash]
   )).rows[0]
   if(!row || Number(row.expires_at)<now()){
     if(row) await db.query('DELETE FROM web_sessions WHERE token_hash=$1',[tokenHash]).catch(()=>{})
     return null
   }
-  await db.query('UPDATE web_sessions SET last_seen_at=$1 WHERE token_hash=$2',[now(),tokenHash]).catch(()=>{})
+  if(!betaWebAccess(row.jid)) return null
+  // Revalidate the token on every read, but persist activity at most once / 5 min.
+  const checkedAt=now()
+  if(checkedAt-Number(row.last_seen_at||0)>=SESSION_TOUCH_MS){
+    await db.query(
+      'UPDATE web_sessions SET last_seen_at=$1 WHERE token_hash=$2 AND last_seen_at<$3',
+      [checkedAt,tokenHash,checkedAt-SESSION_TOUCH_MS]
+    ).catch(()=>{})
+  }
   return {tokenHash,jid:row.jid,chatJid:row.chat_jid||null,expiresAt:Number(row.expires_at)}
 }
 
@@ -1344,6 +1361,29 @@ export async function handleWebApi(req,res){
         'content-length':String(avatar.buffer.length)
       })
       res.end(avatar.buffer)
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/boss-live'){
+      // One small indexed group-state query: never loads wallets, inventory, pets or rankings.
+      if(!session.chatJid){
+        json(res,200,{ok:true,data:{changed:false,version:'none'}})
+        return true
+      }
+      const {rows}=await db.query(
+        "SELECT game_type,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'status' AS status,updated_at FROM trevo_games WHERE chat_jid=$1 AND game_type IN ('boss','boss_event') ORDER BY game_type",
+        [session.chatJid]
+      )
+      const states={}
+      for(const r of rows){
+        states[r.game_type]={
+          hp:Number(r.hp||0),maxHp:Number(r.max_hp||0),
+          status:String(r.status||''),updatedAt:Number(r.updated_at||0)
+        }
+      }
+      const version=sha256(JSON.stringify(states)).slice(0,20)
+      const unchanged=String(url.searchParams.get('v')||'')===version
+      json(res,200,{ok:true,data:unchanged?{changed:false,version}:{changed:true,version,boss:states.boss||null,bossEvent:states.boss_event||null}})
       return true
     }
 
