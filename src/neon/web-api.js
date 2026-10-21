@@ -414,7 +414,7 @@ async function groupSnapshot(chatJid){
     const details=detailRows.rows.map(row=>{
       const zero={atk:0,def:0,hp:0,spd:0,crit:0}
       const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,levelFor(row.jid,row.weapon_id),starFor(row.jid,row.weapon_id)):zero
-      const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,levelFor(row.jid,row.armor_id)):zero
+      const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,levelFor(row.jid,row.armor_id),starFor(row.jid,row.armor_id)):zero
       const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,levelFor(row.jid,row.boot_id)):zero
       const effectiveMaxHp=Number(row.max_hp||0)+Number(weapon?.hp||0)+Number(armor?.hp||0)
       return {
@@ -431,6 +431,7 @@ async function groupSnapshot(chatJid){
         weapon_level:Number(weapon?.level||1),
         weapon_stars:Number(weapon?.stars||1),
         armor_level:Number(armor?.level||1),
+        armor_stars:Number(armor?.stars||1),
         boot_level:Number(boots?.level||1)
       }
     })
