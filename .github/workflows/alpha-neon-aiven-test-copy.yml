@@ -1,0 +1,111 @@
+# Cópia de TESTE do banco ALPHA BOT. Não troca nenhuma variável do WhatsApp.
+# Executar manualmente após cadastrar:
+#   ALPHA_NEON_URI = string Direct (não pooled) do banco neondb (console.neon.tech).
+#   ALPHA_AIVEN_URI = Service URI do Aiven alphabot, banco defaultdb.
+# Ambas em Settings > Secrets and variables > Actions > Repository secrets.
+# Nunca adicionar URIs ou senhas ao código/issue/log. Não subir o dump como artifact.
+name: "Alpha Bot | Cópia Neon → Aiven (teste)"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-test-neon-aiven
+  cancel-in-progress: false
+
+jobs:
+  snapshot-test:
+    name: "Copiar snapshot e conferir contagens"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: postgres:18
+    env:
+      NEON_URI: ${{ secrets.ALPHA_NEON_URI }}
+      AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+      PGSSLMODE: require
+      PGCONNECT_TIMEOUT: "20"
+    steps:
+      - name: "Verificar credenciais, origem e destino"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          if [[ -z "${NEON_URI:-}" || -z "${AIVEN_URI:-}" ]]; then
+            echo "::error::Cadastre ALPHA_NEON_URI e ALPHA_AIVEN_URI como GitHub Actions repository secrets."
+            exit 1
+          fi
+          # Impede inverter origem e destino, inclusive por engano ao copiar uma URI.
+          case "$NEON_URI" in
+            *"@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb"*|*"@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432/neondb"*) ;;
+            *) echo "::error::A origem deve ser o endpoint DIRECT do Neon ALPHA BOT (neondb)."; exit 1;;
+          esac
+          case "$AIVEN_URI" in
+            *"@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb"*) ;;
+            *) echo "::error::O destino deve ser o banco Aiven alphabot/defaultdb."; exit 1;;
+          esac
+          origem="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c 'SELECT current_database()')"
+          destino="$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'SELECT current_database()')"
+          if [[ "$origem" != "neondb" || "$destino" != "defaultdb" ]]; then
+            echo "::error::O nome do banco não corresponde ao par Neon/Aiven esperado."; exit 1
+          fi
+          src_tables="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+          dst_tables="$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+          echo "Tabelas de origem: $src_tables; destino: $dst_tables"
+          if (( src_tables < 60 )); then
+            echo "::error::Origem não corresponde ao schema do jogo."; exit 1
+          fi
+          if (( dst_tables != 0 )); then
+            echo "::error::Destino não está vazio; importação cancelada para evitar sobrescrita."; exit 1
+          fi
+
+      - name: "Criar snapshot consistente do schema public do Neon"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          mkdir -p /tmp/alpha-db-copy
+          pg_dump --dbname="$NEON_URI" --format=custom --schema=public \
+            --no-owner --no-acl --no-comments --file=/tmp/alpha-db-copy/alpha.dump
+          test -s /tmp/alpha-db-copy/alpha.dump
+          echo "Snapshot criado em armazenamento temporário do executor (não é publicado)."
+
+      - name: "Restaurar atomicamente no Aiven e validar"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          file=/tmp/alpha-db-copy/alpha.dump
+          toc=/tmp/alpha-db-copy/toc.list
+          trap 'rm -rf /tmp/alpha-db-copy' EXIT
+          pg_restore --list "$file" > "$toc"
+          # A extensão neon NÃO está instalada no banco de origem. Se aparecer
+          # algum item de extensão específico no dump, abortar em vez de adivinhar.
+          if grep -E ' EXTENSION - (neon|neon_monitor|neon_rmgr|neon_utils)( |$)' "$toc" >/dev/null; then
+            echo "::error::Dump contém extensão específica do Neon; abortando com segurança."
+            exit 1
+          fi
+          # defaultdb já inclui o schema public. Evita recriá-lo, se presente.
+          awk '!/ SCHEMA - public( |$)/ && !/ COMMENT - SCHEMA public( |$)/' "$toc" > /tmp/alpha-db-copy/restore.list
+          dst_tables="$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+          if (( dst_tables != 0 )); then
+            echo "::error::Destino deixou de estar vazio; abortando."; exit 1
+          fi
+          # Uma transação: qualquer falha de criação/cópia reverte o RESTORE inteiro.
+          pg_restore --dbname="$AIVEN_URI" --use-list=/tmp/alpha-db-copy/restore.list \
+            --single-transaction --exit-on-error --no-owner --no-acl --no-comments "$file"
+          psql -X -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'ANALYZE' >/dev/null
+          psql -X -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "
+            SELECT 'users' AS tabela,COUNT(*) AS linhas FROM public.users
+            UNION ALL SELECT 'wallets',COUNT(*) FROM public.wallets
+            UNION ALL SELECT 'inventories',COUNT(*) FROM public.inventories
+            UNION ALL SELECT 'pet_collection',COUNT(*) FROM public.pet_collection
+            UNION ALL SELECT 'transactions',COUNT(*) FROM public.transactions
+            UNION ALL SELECT 'equipment_star_forges',COUNT(*) FROM public.equipment_star_forges
+            UNION ALL SELECT 'trevo_games',COUNT(*) FROM public.trevo_games
+            ORDER BY tabela;"
+          echo "CÓPIA DE TESTE CONCLUÍDA. O Render/WhatsApp continua no Neon."
+          echo "Atenção: alterações no Neon após o snapshot NÃO estão no Aiven."
