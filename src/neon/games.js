@@ -1054,15 +1054,21 @@ export async function startRaid(chat,host,level=null){
     `,[ids,['selo_guardiao','oleo_sombras']])).rows
     const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id]).filter(Boolean))]
     const ups=eqIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,eqIds])).rows:[]
-    const forgeRows=(await c.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[ids])).rows
+    const forgeRows=(await c.query('SELECT jid,item_id,stars,level FROM equipment_star_forges WHERE jid=ANY($1::text[])',[ids])).rows
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
     for(const jid of ids){
       const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
       const awakeningStage=Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
-      const weaponStars=Number(forgeRows.find(x=>x.jid===jid&&x.item_id===st.weapon_id)?.stars||1)
-      const armorStars=Number(forgeRows.find(x=>x.jid===jid&&x.item_id===st.armor_id)?.stars||1)
+      // Só usar as estrelas quando o nível efetivo corresponder à peça estrelada real.
+      // Uma cópia comum Lv.10 não herda as estrelas de outra cópia forjada Lv.1.
+      const activeStars=itemId=>{
+        const forged=forgeRows.find(x=>x.jid===jid&&x.item_id===itemId)
+        return forged&&Number(forged.level)===lev(itemId)?Number(forged.stars):1
+      }
+      const weaponStars=activeStars(st.weapon_id)
+      const armorStars=activeStars(st.armor_id)
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id),weaponStars):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id),armorStars):{atk:0,def:0,hp:0,crit:0}
       const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
