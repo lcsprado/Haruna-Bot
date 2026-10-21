@@ -6,6 +6,7 @@ import {selectEffectiveGear} from '../src/neon/equipment-star-logic.js'
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const logic=readFileSync(new URL('../src/neon/equipment-star-logic.js',import.meta.url),'utf8')
+const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const migration=db.split('CREATE TABLE IF NOT EXISTS equipment_star_forges(')[1]?.split('CREATE TABLE IF NOT EXISTS alpha_xp_boosts (')[0]||''
 const forge=db.split('export async function forgeEquipmentStar(')[1]?.split('export const listStarForgeWeapons=')[0]||''
 const upgrade=db.split('export async function upgradeEquipment(')[1]?.split('export async function equipItem(')[0]||''
@@ -67,4 +68,25 @@ test('effective level and star bonus come from the same physical forged copy',()
   assert.match(db,/Number\(r\.level\)===Number\(r\.effective\)/)
   assert.match(db,/multipliers\[level-1\]/)
   assert.match(db,/const starMult=1\+\.04\*\(starLevel-1\)/)
+})
+
+test('Raid HP uses stars only on real forged equipment level',()=>{
+  // A forged Lv.1 must never lend ★★ HP to a separate ordinary Lv.10.
+  const start=games.split('export async function startRaid(')[1]?.split('export async function raidRound(')[0]||''
+  assert.ok(start,'Raid starting routine missing')
+  assert.match(start,/SELECT jid,item_id,stars,level FROM equipment_star_forges/)
+  assert.match(start,/Number\(forged\.level\)===lev\(itemId\)\?Number\(forged\.stars\):1/)
+  assert.match(start,/const weaponStars=activeStars\(st\.weapon_id\)/)
+  assert.match(start,/const armorStars=activeStars\(st\.armor_id\)/)
+  assert.match(start,/const gearHp=Number\(w\?\.hp\|\|0\)\+Number\(a\?\.hp\|\|0\)\+Number\(h\?\.hp\|\|0\)/)
+})
+
+test('Titan armor HP preview follows real level rather than multiplying a maxed forged copy',()=>{
+  const titanBaseHp=110
+  const lv10Scale=2.5
+  const twoStarMult=1.04
+  assert.equal(Math.round(titanBaseHp*twoStarMult),114)
+  assert.equal(Math.round(titanBaseHp*lv10Scale),275)
+  assert.equal(Math.round(titanBaseHp*lv10Scale*twoStarMult),286)
+  assert.deepEqual(selectEffectiveGear(10,1,2),{level:10,stars:1})
 })
