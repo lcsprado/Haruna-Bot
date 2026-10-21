@@ -1375,6 +1375,7 @@ COALESCE(bi.quantity,0)::int AS bound_quantity,
 COALESCE(eu.level,1)::int AS equipment_level,
 COALESCE(cu.levels,'[]'::jsonb) AS upgraded_copies,
 COALESCE(sf.stars,1)::int AS equipment_stars,
+COALESCE(sf.level,0)::int AS forged_level,
 (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped,
 CASE
 WHEN s.weapon_id=i.item_id THEN 'weapon'
@@ -1455,8 +1456,8 @@ return rows.map(r=>({
 equipped:Boolean(r.equipped),
 upgrade_distribution:(()=>{
 const paid=Array.isArray(r.upgraded_copies)?r.upgraded_copies.map(c=>({level:Number(c.level),quantity:Number(c.quantity)})):[]
-const basic=Math.max(0,Number(r.quantity||0)-paid.reduce((n,c)=>n+c.quantity,0))
-return [...paid,...(basic?[{level:1,quantity:basic}]:[])].sort((a,b)=>b.level-a.level)
+const basic=Math.max(0,Number(r.quantity||0)-paid.reduce((n,c)=>n+c.quantity,0)-(r.forged_level?1:0))
+return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{level:r.forged_level,quantity:1,stars:r.equipment_stars}]:[])].sort((a,b)=>b.level-a.level)
 })(),
 bound_quantity:Number(r.bound_quantity||0),
 nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
