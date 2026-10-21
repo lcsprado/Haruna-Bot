@@ -8,16 +8,18 @@ const types={
 }
 const directFiles=new Map([
   ['/rpg','index.html'],['/rpg/','index.html'],['/rpg/index.html','index.html'],
+  ['/app.js','app.js'],['/styles.css','styles.css'],
+  ['/manifest.webmanifest','manifest.webmanifest'],['/sw.js','sw.js'],
   ['/rpg/app.js','app.js'],['/rpg/styles.css','styles.css'],
   ['/rpg/manifest.webmanifest','manifest.webmanifest'],['/rpg/sw.js','sw.js']
 ])
 export function isAlphaWebPath(pathname){
-  return directFiles.has(pathname) || /^\/rpg\/assets\/[A-Za-z0-9._/-]+$/.test(pathname)
+  return directFiles.has(pathname) || /^\/(?:rpg\/)?assets\/[A-Za-z0-9._/-]+$/.test(pathname)
 }
 export async function serveAlphaWeb(req,res,pathname){
   let file=directFiles.get(pathname)
   if(!file){
-    const match=pathname.match(/^\/rpg\/assets\/([A-Za-z0-9._/-]+)$/)
+    const match=pathname.match(/^\/(?:rpg\/)?assets\/([A-Za-z0-9._/-]+)$/)
     if(!match || match[1].split('/').some(p=>p==='..'||p==='.'||!p)) return false
     file='assets/'+match[1]
   }
@@ -31,7 +33,7 @@ export async function serveAlphaWeb(req,res,pathname){
       'cache-control':cache,
       'x-content-type-options':'nosniff',
       'referrer-policy':'no-referrer',
-      ...(file==='sw.js'?{'service-worker-allowed':'/rpg/'}:{})
+      ...(file==='sw.js'?{'service-worker-allowed':'/'}:{})
     })
     res.end(data)
   }catch(err){
