@@ -14,7 +14,7 @@ import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, listStarForgeWeapons, forgeWeaponStar, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
+  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -1605,7 +1605,7 @@ ${pvpPetLine}
 🔥 Daily: *${Number(streak.streak||0)} dia(s)* • Recorde: *${Number(streak.bestStreak||0)}*
 
 🗡️ Arma: *${p.weapon_name||'Sem arma'} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}*
-🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}*
+🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}*
 👢 Botas: *${p.boot_name||'Sem botas'} Lv.${Number(p.boot_level||1)}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
 ⚜️ Insígnia: *${relics.active?.name||'Nenhuma ativa'}*
@@ -4361,7 +4361,7 @@ Você possui: *${stock}*
 `⚙️ *EQUIPAR*
 
 🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}* — ${gearStatsText(weaponStats,'weapon')}
-🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}* — ${gearStatsText(armorStats,'armor')}
+🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}* — ${gearStatsText(armorStats,'armor')}
 👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(bootStats,'boots')}
 🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(p.helmet_level||1)}* — ${gearStatsText(helmetStats,'helmet')}
 
@@ -4398,7 +4398,7 @@ O que deseja trocar?
       const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
       const level=Number(levelMap.get(i.item_id)||1)
       const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
-      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+(isWeapon&&Number(i.equipment_stars||1)>1?' • 🌟 '+Number(i.equipment_stars)+'/5':'')+' • 📦 ×'+Number(i.quantity||0)+' no total\n'
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+((isWeapon||isArmor)&&Number(i.equipment_stars||1)>1?' • 🌟 '+Number(i.equipment_stars)+'/5':'')+' • 📦 ×'+Number(i.quantity||0)+' no total\n'
       text+='   '+gearStatsText(stats,category)+active+'\n'
       text+='   🎒 *'+Math.max(0,Number(i.quantity||0)-(active?1:0))+'* reserva(s)'+(active?' • 🔒 *1 equipada*':'')+'\n'
     })
@@ -5081,7 +5081,7 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!venderrepetidos* — vende equipamentos repetidos e mantém 1 de cada
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
-*!forjar* — Forja Estelar das armas de Raid no Lv.10 (até 5 estrelas)
+*!forjar* — Forja Estelar de armas e armaduras de Raid no Lv.10 (até 5 estrelas)
 *!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
 *!usarxp NOME* — ativa elixir ou tomo de experiência
@@ -6991,15 +6991,15 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const items=flow.data?.items||[]
       const index=Number(input)
       if(!Number.isSafeInteger(index)||index<1||index>items.length){
-        await reply('⚒️ Escolha o número de uma arma da lista ou 0 para cancelar.')
+        await reply('⚒️ Escolha o número de um equipamento da lista ou 0 para cancelar.')
         return true
       }
-      const latest=(await listStarForgeWeapons(sender)).find(x=>x.item_id===items[index-1])
-      if(!latest){clearQuickFlow(chat,sender);await reply('⚠️ Essa arma não está mais no inventário.');return true}
-      if(latest.stars>=5){clearQuickFlow(chat,sender);await reply('🌟 Essa arma já está em ★★★★★.');return true}
+      const latest=(await listStarForgeEquipment(sender)).find(x=>x.item_id===items[index-1])
+      if(!latest){clearQuickFlow(chat,sender);await reply('⚠️ Esse equipamento não está mais no inventário.');return true}
+      if(latest.stars>=5){clearQuickFlow(chat,sender);await reply('🌟 Esse equipamento já está em ★★★★★.');return true}
       const missing=[]
-      if(latest.level!==10)missing.push('⬆️ A arma precisa estar no Lv.10.')
-      if(Number(latest.quantity)<2)missing.push('⚔️ Faltam '+Math.max(0,2-Number(latest.quantity))+' cópia(s) idêntica(s).')
+      if(latest.level!==10)missing.push('⬆️ O equipamento precisa estar no Lv.10.')
+      if(Number(latest.quantity)<2)missing.push('⚔️ Faltam '+Math.max(0,2-Number(latest.quantity))+' cópia(s) idêntica(s) no Lv.10.')
       if(Number(latest.free)<1)missing.push('🔒 Não há cópia livre para consumir (vinculadas são protegidas).')
       if(latest.materials<latest.needed)missing.push('🧩 Faltam '+(latest.needed-latest.materials)+'× '+latest.origin.materialName+'.')
       if(missing.length){
@@ -7012,10 +7012,10 @@ ${emoji} *${r.result.toUpperCase()}*`)
         '⚒️ *CONFIRMAR FORJA ESTELAR?*\n\n'+
         '*'+latest.name+'*\n'+
         '🌟 Estrelas: *'+latest.stars+' → '+(latest.stars+1)+'* (máximo 5)\n'+
-        '⚔️ Serão consumidos: *1 cópia extra Lv.10* (a principal permanece)\n'+
+        '⚔️ Será consumida: *1 cópia extra Lv.10* (a principal permanece)\n'+
         '🧩 Fragmentos: *'+latest.needed+'× '+latest.origin.materialName+'* (Raid '+latest.origin.raidLevel+')\n'+
         '💰 Dinheiro: *R$ 0*\n'+
-        '📈 '+gearStatsChanges(latest.current,latest.next,'weapon')+'\n\n'+
+        '📈 '+gearStatsChanges(latest.current,latest.next,latest.category)+'\n\n'+
         '1️⃣ Confirmar forja\n2️⃣ Cancelar')
       return true
     }
@@ -7025,8 +7025,8 @@ ${emoji} *${r.result.toUpperCase()}*`)
       const chosen=flow.data
       clearQuickFlow(chat,sender)
       try{
-        const result=await forgeWeaponStar(sender,chosen.itemId,chosen.stars)
-        await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\n\n⚔️ *'+result.name+'*\n⭐ Lv.10 • 🌟 '+result.stars+'/5 estrelas\n💥 Bônus total de forja: *+'+((result.stars-1)*4)+'% nos atributos da arma*\n📈 '+gearStatsChanges(result.before,result.after,'weapon')+'\n\n🧩 Consumidos: '+result.materialsSpent+'× '+result.origin.materialName+' (Raid '+result.origin.raidLevel+')\n⚔️ Cópias restantes: '+result.copies+'\n🧩 Materiais restantes: '+result.remainingMaterials+'\n✅ Equipamento equipado e encantamentos preservados.')
+        const result=await forgeEquipmentStar(sender,chosen.itemId,chosen.stars)
+        await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\n\n'+(result.category==='armor'?'🛡️':'⚔️')+' *'+result.name+'*\n⭐ Lv.10 • 🌟 '+result.stars+'/5 estrelas\n💥 Bônus total de forja: *+'+((result.stars-1)*4)+'% nos atributos do equipamento*\n📈 '+gearStatsChanges(result.before,result.after,result.category)+'\n\n🧩 Consumidos: '+result.materialsSpent+'× '+result.origin.materialName+' (Raid '+result.origin.raidLevel+')\n⚔️ Cópias restantes: '+result.copies+'\n🧩 Materiais restantes: '+result.remainingMaterials+'\n✅ Equipamento equipado e encantamentos preservados.')
       }catch(err){await reply('❌ '+(err?.message||'Não foi possível concluir a forja; confira os requisitos.'))}
       return true
     }
@@ -12004,17 +12004,17 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           await reply(text)
 
         } else if(['forjar','forja','forjaestelar'].includes(cmd)){
-          const list=await listStarForgeWeapons(sender)
-          if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê ainda não possui armas de drop das Raids elegíveis.\n🔎 A forja exige uma arma Lv.10, 1 cópia extra idêntica e materiais da Raid de origem.')
+          const list=await listStarForgeEquipment(sender)
+          if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê ainda não possui armas ou armaduras de drop das Raids elegíveis.\n🔎 A forja exige um equipamento Lv.10, 1 cópia extra idêntica e materiais da Raid de origem.')
           setQuickFlow(chat,sender,'starforge_select',{items:list.map(r=>r.item_id)},5*60*1000)
-          let result='⚒️ *FORJA ESTELAR — ARMAS DAS RAIDS*\n\n'
+          let result='⚒️ *FORJA ESTELAR — ARMAS E ARMADURAS*\n\n'
           list.forEach((r,i)=>{
-            result+='*'+(i+1)+'.* *'+r.name+'* • Lv.'+r.level+' • 🌟 '+r.stars+'/5\n'
+            result+='*'+(i+1)+'.* '+(r.category==='armor'?'🛡️':'⚔️')+' *'+r.name+'* • Lv.'+r.level+' • 🌟 '+r.stars+'/5\n'
             result+='   ⚔️ Cópias: '+r.quantity+' (livres: '+r.free+') • Raid '+r.origin.raidLevel+'\n'
             result+='   🧩 '+r.origin.materialName+': '+r.materials+'/'+(r.stars>=5?'MÁX':r.needed)+'\n'
             result+='   '+(r.stars>=5?'🏆 Evolução máxima':r.canForge?'✅ PRONTA PARA FORJAR':'🔒 Requisitos pendentes')+'\n'
           })
-          result+='\n📌 Cada forja consome *1 cópia extra Lv.10* e os fragmentos da *Raid onde a arma dropa*.\n'
+          result+='\n📌 Cada forja consome *1 cópia extra idêntica Lv.10* e os fragmentos da *Raid onde a arma dropa*.\n'
           result+='🌟 Progressão: +4% por estrela adicional; máximo ★★★★★.\n💰 Sem custo em dinheiro e sem chance de falha.\n'
           result+='\n👉 Responda o número da arma para ver detalhes.\n0️⃣ Cancelar'
           return await reply(result)
