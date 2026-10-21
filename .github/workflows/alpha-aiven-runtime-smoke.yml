@@ -28,8 +28,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - name: "Instalar dependencias de teste"
-        run: npm ci --no-audit --no-fund
+      - name: "Instalar dependencias de teste sem modificar lockfile"
+        # O lockfile legado esta dessincronizado com o package.json, entao npm ci falharia.
+        # Isto modifica somente o executor temporario do CI, nunca as branches do bot.
+        run: npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund
       - name: "Confirmar conexao Aiven e modo somente-leitura"
         env:
           DATABASE_URL: ${{ secrets.ALPHA_AIVEN_URI }}
