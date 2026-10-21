@@ -2467,7 +2467,7 @@ export async function usePetPotion(jid,itemId=null,petId=null){
       }
     }
 
-    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
 
     const maxHp=petMaxHp(pet.level,pet.xp,pet.species)
     const before=Math.max(0,Number(pet.hp??maxHp))
@@ -2524,7 +2524,7 @@ export async function usePetEnergyItem(jid,itemId='energetico_pet'){
     if(!inv || Number(inv.quantity)<1) throw new Error('Você não possui Energético Pet.')
 
     const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
     const max=petMaxEnergy(pet.level,pet.species)
     const before=Number(pet.energy||0)
     if(before>=max) throw new Error(`A energia de ${pet.name} já está cheia (${max}/${max}).`)
@@ -5374,6 +5374,9 @@ export async function summonLegendaryPet(jid,materialId){
 }
 
 export async function adoptPet(jid,species='cachorro',name='Alpha'){
+  // Adoção de pets comuns desativada em 21/10/2026.
+  // Bloqueio central: WhatsApp e API Web; sem excluir pets existentes.
+  throw new Error('🐾 Adoção de pets comuns desativada. Use !invocarpet para o Altar Lendário ou !meuspets para sua coleção.')
   await ensureUser(jid)
   species=String(species||'cachorro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
   const rule=getAdoptablePetRule(species)
@@ -5773,7 +5776,7 @@ export async function renamePet(jid,name,petId=null){
 
     const legacy=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const pet=collectionPet||legacy
-    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
     if(String(pet.name||'').toLocaleLowerCase('pt-BR')===newName.toLocaleLowerCase('pt-BR')) throw new Error('Esse já é o nome desse pet.')
 
     const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -5806,7 +5809,7 @@ export async function petAction(jid,action){
   const a=map[action]; if(!a) throw new Error('Ação de pet inválida.')
   return transaction(async client=>{
     const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
     const now=Math.floor(Date.now()/1000)
     const petHp=normalizedPetHp(pet)
     if(Number(petHp.hp)<=0 && !a.rest) throw new Error('Seu pet está sem HP. Use !descansar para recuperá-lo.')
@@ -5854,7 +5857,7 @@ export async function petAction(jid,action){
 export async function petAdventure(jid){
   return transaction(async client=>{
     const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(!pet) throw new Error('Você ainda não tem pet. Use !adotar.')
+    if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
     const petHp=normalizedPetHp(pet)
     if(Number(petHp.hp)<=0) throw new Error('Seu pet está sem HP. Use !descansar antes de mandar para aventura.')
     const energy=Number(pet.energy||0)
