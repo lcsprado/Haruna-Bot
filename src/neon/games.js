@@ -1,4 +1,4 @@
-import { db, ensureUser, equipmentStatsAtLevel, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
+import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
@@ -849,7 +849,8 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     // Dano começa em zero, portanto não há crédito pelas rodadas anteriores.
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])
     const lev=async itemId=>itemId?Number((await c.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]?.level||1):1
-    const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
+    const forgeStars=await getEquipmentStarLevels(jid,[st.weapon_id],c)
+    const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id),forgeStars[st.weapon_id]||1):{atk:0,def:0,hp:0,crit:0}
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
     const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
@@ -1053,13 +1054,15 @@ export async function startRaid(chat,host,level=null){
     `,[ids,['selo_guardiao','oleo_sombras']])).rows
     const eqIds=[...new Set(stats.flatMap(st=>[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id]).filter(Boolean))]
     const ups=eqIds.length?(await c.query('SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[]) AND item_id=ANY($2::text[])',[ids,eqIds])).rows:[]
+    const forgeRows=(await c.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[ids])).rows
     const pets=(await c.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
     for(const jid of ids){
       const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
       const awakeningStage=Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
-      const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
+      const weaponStars=Number(forgeRows.find(x=>x.jid===jid&&x.item_id===st.weapon_id)?.stars||1)
+      const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id),weaponStars):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
       const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
       const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
@@ -2784,8 +2787,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           WHERE t.jid=$1),'[]'::jsonb) AS team_pets,
         COALESCE((SELECT jsonb_agg(jsonb_build_object('item_id',u.item_id,'level',u.level))
           FROM equipment_upgrades u
-          WHERE u.jid=$1 AND u.item_id=ANY($2::text[])),'[]'::jsonb) AS upgrade_rows
-    `,[jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean)])).rows[0]
+          WHERE u.jid=$1 AND u.item_id=ANY($2::text[])),'[]'::jsonb) AS upgrade_rows,
+        COALESCE((SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$3),1) AS weapon_stars
+    `,[jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean),st.weapon_id])).rows[0]
     const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
     const teamPets=combatSnapshot?.team_pets||[]
     const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
@@ -2793,7 +2797,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const upgradeRows=combatSnapshot?.upgrade_rows||[]
     const enchanted=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
-    const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id)):{atk:0,def:0,hp:0,crit:0}
+    const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id),Number(combatSnapshot?.weapon_stars||1)):{atk:0,def:0,hp:0,crit:0}
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id)):{atk:0,def:0,hp:0,crit:0}
     const boots=st.boot_id?equipmentStatsAtLevel(st.boot_id,itemLevel(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
