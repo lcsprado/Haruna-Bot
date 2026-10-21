@@ -8,21 +8,38 @@ import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, c
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
 const { Pool, Client } = pg
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
-const databaseUrl=(()=>{
-const raw=process.env.DATABASE_URL
-try{
-const url=new URL(raw)
-const mode=String(url.searchParams.get('sslmode')||'').toLowerCase()
-if(['require','prefer','verify-ca'].includes(mode)) url.searchParams.set('sslmode','verify-full')
-return url.toString()
-}catch{
-return raw
-}
+// For Neon, keep the existing connection settings unchanged.
+// For an explicitly configured Aiven cutover, verify its CA and cap the pool.
+// Merely deploying this code DOES NOT change the DB: DATABASE_URL still controls it.
+const parsedDatabaseUrl=(()=>{
+  try{return new URL(process.env.DATABASE_URL)}catch{return null}
 })()
+const isAivenDb=Boolean(parsedDatabaseUrl?.hostname?.endsWith('.aivencloud.com'))
+const aivenCaPem=isAivenDb?String(process.env.ALPHA_AIVEN_CA_PEM||'')
+  .replace(/\\n/g,'\n').trim():''
+if(isAivenDb && aivenCaPem && (!aivenCaPem.startsWith('-----BEGIN CERTIFICATE-----') || !aivenCaPem.endsWith('-----END CERTIFICATE-----'))){
+  throw new Error('ALPHA_AIVEN_CA_PEM invalido: esperado certificado CA em formato PEM')
+}
+if(isAivenDb && !aivenCaPem && !process.env.NODE_EXTRA_CA_CERTS){
+  throw new Error('Conexao Aiven requer ALPHA_AIVEN_CA_PEM ou NODE_EXTRA_CA_CERTS para validar TLS')
+}
+const databaseUrl=(()=>{
+  if(!parsedDatabaseUrl) return process.env.DATABASE_URL
+  const url=new URL(parsedDatabaseUrl)
+  const mode=String(url.searchParams.get('sslmode')||'').toLowerCase()
+  // node-postgres may override an explicit ssl.ca if sslmode is left in URI.
+  if(isAivenDb && aivenCaPem) url.searchParams.delete('sslmode')
+  else if(['require','prefer','verify-ca'].includes(mode)) url.searchParams.set('sslmode','verify-full')
+  return url.toString()
+})()
+const poolSize=isAivenDb
+  ?Math.max(1,Math.min(10,Number(process.env.ALPHA_DB_POOL_MAX)||5))
+  :10
 export const db = new Pool({
 connectionString: databaseUrl,
-max: 10,
-idleTimeoutMillis: 30000,
+...(isAivenDb && aivenCaPem?{ssl:{ca:aivenCaPem,rejectUnauthorized:true}}:{}),
+max:poolSize,
+idleTimeoutMillis: isAivenDb?12000:30000,
 connectionTimeoutMillis: 15000,
 statement_timeout: 12000,
 query_timeout: 15000,
