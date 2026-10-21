@@ -1,0 +1,101 @@
+# One-time isolated Aiven staging verification. No Render deploy, no WhatsApp login.
+name: "Alpha Bot | Auditoria Web Aiven isolada"
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/alpha-aiven-staging-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-aiven-staging-safety
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: "Checkout da branch de testes em commit fixo"
+        uses: actions/checkout@v4
+        with:
+          ref: bd22dda48b148b80910c4055b7de90f5d1311cda
+          persist-credentials: false
+      - name: "Preparar Node 22"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: "Validar sintaxe do frontend, API e banco"
+        run: |
+          set -Eeuo pipefail
+          node --check web/app.js
+          node --check src/neon/db.js
+          node --check src/neon/web-api.js
+          node --check src/neon/render.js
+          echo 'Sintaxe dos 4 modulos: OK'
+      - name: "Instalar dependencias apenas no executor descartavel"
+        run: npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: "Carregar certificado CA publico do Aiven"
+        env:
+          AIVEN_CA_PEM: ${{ secrets.ALPHA_AIVEN_CA }}
+        run: |
+          set -Eeuo pipefail
+          test -n "${AIVEN_CA_PEM:-}"
+          umask 077
+          printf '%s\n' "$AIVEN_CA_PEM" > "$RUNNER_TEMP/alpha-aiven-ca.pem"
+          openssl x509 -in "$RUNNER_TEMP/alpha-aiven-ca.pem" -noout >/dev/null
+      - name: "Executar Web API com banco somente leitura"
+        env:
+          DATABASE_URL: ${{ secrets.ALPHA_AIVEN_URI }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/alpha-aiven-ca.pem
+          PGOPTIONS: '-c default_transaction_read_only=on'
+          ALPHA_RUNTIME: web-api-only
+          ALPHA_WEB_DB_POOL_MAX: '3'
+          ALPHA_WEB_BETA_JIDS: ''
+          WEB_ALLOWED_ORIGINS: 'https://alpha-web-rpg.vercel.app'
+          PORT: '18349'
+          NODE_ENV: test
+        run: |
+          set -Eeuo pipefail
+          node --input-type=module <<'NODE'
+          import {db} from './src/neon/db.js'
+          try{
+            const u = new URL(process.env.DATABASE_URL)
+            if(u.hostname!=='alphabot-lcsh-3393.b.aivencloud.com'||u.port!=='26343'||u.pathname!=='/defaultdb') throw new Error('Destino Aiven invalido')
+            if(db.options.max!==3) throw new Error('Pool Web excedeu 3 conexoes')
+            const q=await db.query("SELECT current_database() AS db,current_setting('default_transaction_read_only') AS ro,(SELECT count(*)::int FROM public.users) AS users,(SELECT count(*)::int FROM public.wallets) AS wallets")
+            if(q.rows[0]?.db!=='defaultdb'||q.rows[0]?.ro!=='on'||q.rows[0]?.users!==5||q.rows[0]?.wallets!==5) throw new Error('Aiven readonly/dados divergentes')
+            console.log('Aiven seguro: TLS, read-only, 5 usuarios e pool max 3.')
+          }finally{await db.end()}
+          NODE
+          node src/neon/render.js > "$RUNNER_TEMP/api-staging.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 35); do
+            if curl -fsS --max-time 2 "http://127.0.0.1:$PORT/health" -o "$RUNNER_TEMP/web-health.json" 2>/dev/null;then break;fi
+            if ! kill -0 "$pid" 2>/dev/null; then echo "::error::API isolada encerrou, sem revelar logs.";exit 1;fi
+            sleep 1
+          done
+          curl -fsS --max-time 5 "http://127.0.0.1:$PORT/api/v1/health" -o "$RUNNER_TEMP/api-health.json"
+          curl -fsS --max-time 20 "http://127.0.0.1:$PORT/api/v1/catalog" -o "$RUNNER_TEMP/api-catalog.json"
+          unauth="$(curl -s -o "$RUNNER_TEMP/unauth.json" -w '%{http_code}' "http://127.0.0.1:$PORT/api/v1/me/boss-live")"
+          auth_test="$(curl -s -o "$RUNNER_TEMP/auth-test.json" -w '%{http_code}' "http://127.0.0.1:$PORT/api/v1/health/auth")"
+          cors="$(curl -s -o "$RUNNER_TEMP/cors.json" -w '%{http_code}' -H 'Origin: https://unapproved.invalid' "http://127.0.0.1:$PORT/api/v1/catalog")"
+          if [[ "$unauth" != 401 || "$auth_test" != 404 || "$cors" != 403 ]]; then
+            echo "::error::Acesso anonimo, autoteste publico ou CORS incorretos"
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const load=f=>JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/'+f,'utf8'))
+          const h=load('web-health.json'),api=load('api-health.json'),catalog=load('api-catalog.json')
+          if(h.ok!==true||h.runtime!=='web-api-only'||api.ok!==true||!Array.isArray(catalog.data?.allItems)||catalog.data.allItems.length<100) throw new Error('Rotas API publicas invalidas')
+          console.log('API isolada OK: health; catalogo '+catalog.data.allItems.length+' itens; anônimo 401; autoteste 404; CORS 403.')
+          NODE
+          echo "Auditoria aprovada: nenhum cliente WhatsApp, nenhum deploy Render, nenhum dado economico alterado."
