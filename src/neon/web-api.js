@@ -255,10 +255,11 @@ async function webAuthSelfTest(){
 }
 
 async function authSession(req){
-  await ensureWebTables()
   const auth=String(req.headers.authorization||'')
   const match=auth.match(/^Bearer\s+(.+)$/i)
+  // An unauthenticated probe must never create tables or touch a session.
   if(!match) return null
+  await ensureWebTables()
   const tokenHash=sha256(match[1])
   const row=(await db.query(
     'SELECT jid,chat_jid,expires_at,last_seen_at FROM web_sessions WHERE token_hash=$1',
@@ -1300,6 +1301,13 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='GET' && url.pathname==='/api/v1/health/auth'){
+      // This endpoint writes synthetic authentication data. Never expose it publicly.
+      const peer=String(req.socket?.remoteAddress||'')
+      const loopback=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(peer)
+      if(process.env.ALPHA_WEB_ENABLE_AUTH_SELFTEST!=='1' || !loopback){
+        json(res,404,{ok:false,error:'Endpoint não encontrado.'})
+        return true
+      }
       try{
         const check=await webAuthSelfTest()
         json(res,200,{ok:true,...check})
