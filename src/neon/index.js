@@ -14,7 +14,7 @@ import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import {
   db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
   deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
+  equipItem, getEquipmentInfo, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
   acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
   ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
   ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -4398,7 +4398,9 @@ O que deseja trocar?
       const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
       const level=Number(levelMap.get(i.item_id)||1)
       const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
-      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • ⭐ Lv.'+level+((isWeapon||isArmor)&&Number(i.equipment_stars||1)>1?' • 🌟 '+Number(i.equipment_stars)+'/5':'')+' • 📦 ×'+Number(i.quantity||0)+' no total\n'
+      const copySummary=(i.upgrade_distribution||[]).map(c=>'⭐ Lv.'+c.level+' ×'+c.quantity).join(' • ')
+      text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • 📦 ×'+Number(i.quantity||0)+' no total\n'
+      text+='   📋 *Cópias:* '+(copySummary||'⭐ Lv.'+level+' ×'+Number(i.quantity||0))+((isWeapon||isArmor)&&Number(i.equipment_stars||1)>1?' • 🌟 '+Number(i.equipment_stars)+'/5':'')+'\n'
       text+='   '+gearStatsText(stats,category)+active+'\n'
       text+='   🎒 *'+Math.max(0,Number(i.quantity||0)-(active?1:0))+'* reserva(s)'+(active?' • 🔒 *1 equipada*':'')+'\n'
     })
@@ -6998,7 +7000,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
       if(!latest){clearQuickFlow(chat,sender);await reply('⚠️ Esse equipamento não está mais no inventário.');return true}
       if(latest.stars>=5){clearQuickFlow(chat,sender);await reply('🌟 Esse equipamento já está em ★★★★★.');return true}
       const missing=[]
-      if(latest.level!==10)missing.push('⬆️ O equipamento precisa estar no Lv.10.')
+      if(Number(latest.level10_copies||0)<2)missing.push('⬆️ Precisa de *2 cópias Lv.10*, possui '+Number(latest.level10_copies||0)+'. Use !uparitem na segunda.')
       if(Number(latest.quantity)<2)missing.push('⚔️ Faltam '+Math.max(0,2-Number(latest.quantity))+' cópia(s) idêntica(s) no Lv.10.')
       if(Number(latest.free)<1)missing.push('🔒 Não há cópia livre para consumir (vinculadas são protegidas).')
       if(latest.materials<latest.needed)missing.push('🧩 Faltam '+(latest.needed-latest.materials)+'× '+latest.origin.materialName+'.')
@@ -7038,8 +7040,8 @@ ${emoji} *${r.result.toUpperCase()}*`)
         return true
       }
       const pick=items[n-1]
-      const current=await listUpgradeableEquipment(sender)
-      const item=current.find(i=>i.item_id===pick.itemId)
+      const current=await listUpgradeableCopies(sender)
+      const item=current.find(i=>i.item_id===pick.itemId&&i.sourceLevel===Number(pick.sourceLevel))
       if(!item || !item.next){
         clearQuickFlow(chat,sender)
         await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
@@ -7053,7 +7055,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
         3:Math.min(10,level+5),
         4:10
       }
-      setQuickFlow(chat,sender,'upgrade_amount',{itemId:item.item_id},90000)
+      setQuickFlow(chat,sender,'upgrade_amount',{itemId:item.item_id,sourceLevel:item.sourceLevel},90000)
 
       const line=(option,label,target)=>{
         const gain=Math.max(0,target-level)
@@ -7076,8 +7078,8 @@ ${emoji} *${r.result.toUpperCase()}*`)
     }
 
     if(flow.stage==='upgrade_amount'){
-      const current=await listUpgradeableEquipment(sender)
-      const item=current.find(i=>i.item_id===flow.data.itemId)
+      const current=await listUpgradeableCopies(sender)
+      const item=current.find(i=>i.item_id===flow.data.itemId&&i.sourceLevel===Number(flow.data.sourceLevel))
       if(!item || !item.next){
         clearQuickFlow(chat,sender)
         await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
@@ -7085,7 +7087,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
       }
 
       if(input==='5'){
-        setQuickFlow(chat,sender,'upgrade_custom_level',{itemId:item.item_id},90000)
+        setQuickFlow(chat,sender,'upgrade_custom_level',{itemId:item.item_id,sourceLevel:item.sourceLevel},90000)
         await reply('🎯 *ESCOLHER NÍVEL*\n\n'+
           rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
           '⭐ Atual: *Lv.'+item.level+'*\n\n'+
@@ -7116,7 +7118,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
 
       const stat=gearStatsChanges(item.current,targetStats,item.category)
 
-      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,targetLevel:target},90000)
+      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,targetLevel:target},90000)
       await reply(
         '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
         rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
@@ -7130,8 +7132,8 @@ ${emoji} *${r.result.toUpperCase()}*`)
 
     if(flow.stage==='upgrade_custom_level'){
       const target=Number(input)
-      const current=await listUpgradeableEquipment(sender)
-      const item=current.find(i=>i.item_id===flow.data.itemId)
+      const current=await listUpgradeableCopies(sender)
+      const item=current.find(i=>i.item_id===flow.data.itemId&&i.sourceLevel===Number(flow.data.sourceLevel))
       if(!item || !item.next){
         clearQuickFlow(chat,sender)
         await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
@@ -7151,7 +7153,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
 
       const stat=gearStatsChanges(item.current,targetStats,item.category)
 
-      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,targetLevel:target},90000)
+      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,targetLevel:target},90000)
       await reply(
         '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
         rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
@@ -7173,7 +7175,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
         return true
       }
-      const r=await upgradeEquipment(sender,flow.data.itemId,flow.data.targetLevel)
+      const r=await upgradeEquipment(sender,flow.data.itemId,flow.data.targetLevel,flow.data.sourceLevel)
       clearQuickFlow(chat,sender)
       const stat=gearStatsText(r.stats,r.stats.category)
       await reply(
@@ -12010,17 +12012,17 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           let result='⚒️ *FORJA ESTELAR — ARMAS E ARMADURAS*\n\n'
           list.forEach((r,i)=>{
             result+='*'+(i+1)+'.* '+(r.category==='armor'?'🛡️':'⚔️')+' *'+r.name+'* • Lv.'+r.level+' • 🌟 '+r.stars+'/5\n'
-            result+='   ⚔️ Cópias: '+r.quantity+' (livres: '+r.free+') • Raid '+r.origin.raidLevel+'\n'
+            result+='   ⚙️ Lv.10: '+Number(r.level10_copies||0)+'/2 • 📦 Total: '+r.quantity+' (livres: '+r.free+') • Raid '+r.origin.raidLevel+'\n'
             result+='   🧩 '+r.origin.materialName+': '+r.materials+'/'+(r.stars>=5?'MÁX':r.needed)+'\n'
             result+='   '+(r.stars>=5?'🏆 Evolução máxima':r.canForge?'✅ PRONTA PARA FORJAR':'🔒 Requisitos pendentes')+'\n'
           })
           result+='\n📌 Cada forja consome *1 cópia extra idêntica Lv.10* e os fragmentos da *Raid onde a arma dropa*.\n'
           result+='🌟 Progressão: +4% por estrela adicional; máximo ★★★★★.\n💰 Sem custo em dinheiro e sem chance de falha.\n'
-          result+='\n👉 Responda o número da arma para ver detalhes.\n0️⃣ Cancelar'
+          result+='\n👉 Responda o número do equipamento para ver detalhes.\n0️⃣ Cancelar'
           return await reply(result)
 
         } else if(['uparitem','upgradeitem','melhoraritem','uparelmo','melhorarelmo','upgradeelmo'].includes(cmd)){
-          const [items,profile]=await Promise.all([listUpgradeableEquipment(sender),getCombatProfile(sender)])
+          const [items,profile]=await Promise.all([listUpgradeableCopies(sender),getCombatProfile(sender)])
           const categoryInput=String(args[0]||'').toLowerCase()
           const helmetOnly=['uparelmo','melhorarelmo','upgradeelmo'].includes(cmd) ||
             ['elmo','elmos','helmet','capacete'].includes(categoryInput)
@@ -12032,12 +12034,12 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           }
           const available=filtered.filter(i=>i.next)
           if(!available.length) return await reply(helmetOnly?'🏆 Seus elmos já estão no *Lv.10*.':'🏆 Todos os seus equipamentos já estão no *Lv.10*.')
-          setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id}))},5*60*1000)
+          setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id,sourceLevel:i.sourceLevel}))},5*60*1000)
           let text=helmetOnly?'🪖 *UPAR ELMO*\n\n':'⬆️ *UPAR EQUIPAMENTO*\n\n'
           available.forEach((i,n)=>{
             const stat=gearStatsChanges(i.current,i.next,i.category).replaceAll('\n',' • ')
             const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)||(i.category==='helmet'&&profile?.helmet_id===i.item_id)
-            text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
+            text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ×${i.tierQuantity} cópia(s) nesse nível • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
           })
           text+='\n💡 Os ganhos crescem progressivamente por nível; no *Lv.10* os atributos escaláveis chegam a *2,5×* a base. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
           if(!helmetOnly) text+='\n\n🪖 Para ver apenas os elmos: *!uparelmo*'
