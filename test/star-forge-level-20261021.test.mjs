@@ -1,0 +1,70 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+import {selectEffectiveGear} from '../src/neon/equipment-star-logic.js'
+
+const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
+const logic=readFileSync(new URL('../src/neon/equipment-star-logic.js',import.meta.url),'utf8')
+const migration=db.split('CREATE TABLE IF NOT EXISTS equipment_star_forges(')[1]?.split('CREATE TABLE IF NOT EXISTS alpha_xp_boosts (')[0]||''
+const forge=db.split('export async function forgeEquipmentStar(')[1]?.split('export const listStarForgeWeapons=')[0]||''
+const upgrade=db.split('export async function upgradeEquipment(')[1]?.split('export async function equipItem(')[0]||''
+
+test('starred Lv.1 is independent of paid ordinary Lv.10',()=>{
+  assert.deepEqual(selectEffectiveGear(10,1,2),{level:10,stars:1})
+  assert.deepEqual(selectEffectiveGear(1,1,2),{level:1,stars:2})
+  assert.deepEqual(selectEffectiveGear(10,10,2),{level:10,stars:2})
+  assert.deepEqual(selectEffectiveGear(10,9,2),{level:10,stars:1})
+})
+
+test('existing starred row gains its own Lv.1 without deleting upgrades',()=>{
+  assert.match(migration,/level INTEGER NOT NULL DEFAULT 1/)
+  assert.match(migration,/ALTER TABLE equipment_star_forges ADD COLUMN IF NOT EXISTS level/)
+  assert.match(migration,/UPDATE equipment_star_forges SET level=1 WHERE level IS NULL/)
+  assert.match(migration,/ALTER COLUMN level SET NOT NULL/)
+  assert.doesNotMatch(migration,/(UPDATE|DELETE)\s+equipment_upgrade_copies/i)
+  assert.doesNotMatch(migration,/UPDATE\s+equipment_upgrades/i)
+})
+
+test('star tier progression and donor consumption are guarded and atomic',()=>{
+  assert.match(forge,/return transaction\(async c=>/)
+  assert.match(forge,/pg_advisory_xact_lock/)
+  assert.match(forge,/if\(stars>1&&level!==10\)/)
+  assert.match(forge,/const donors=stars===1\?2:1/)
+  assert.match(forge,/if\(Number\(paid\?\.quantity\|\|0\)<donors\)/)
+  assert.match(forge,/DELETE FROM equipment_upgrade_copies WHERE jid=\$1 AND item_id=\$2 AND level=10 AND quantity=\$3 RETURNING 1/)
+  assert.match(forge,/quantity>\$3 RETURNING 1/)
+  assert.match(forge,/VALUES\(\$1,\$2,\$3,1,/)
+  assert.match(forge,/level=1,updated_at=EXCLUDED.updated_at/)
+  assert.match(forge,/await syncEffectiveGear\(c,jid,itemId\)/)
+})
+
+test('ordinary upgrades never decrement a checked quantity to zero',()=>{
+  assert.match(upgrade,/const oldQty=Number\(tiers.find/)
+  assert.match(upgrade,/oldQty===1/)
+  assert.match(upgrade,/DELETE FROM equipment_upgrade_copies WHERE jid=\$1 AND item_id=\$2 AND level=\$3 AND quantity=1 RETURNING 1/)
+  assert.match(upgrade,/quantity>1 RETURNING 1/)
+  assert.match(upgrade,/if\(!moved.rowCount\)/)
+  assert.match(upgrade,/if\(isStar\)/)
+  assert.match(upgrade,/UPDATE equipment_star_forges SET level=\$3/)
+})
+
+test('the WhatsApp forge menu discloses stars, level, shortages and Lv.1 reset',()=>{
+  const menu=index.split("} else if(['forjar','forja','forjaestelar'].includes(cmd)){")[1]?.split("} else if(['uparitem'")[0]||''
+  assert.match(menu,/r\.forged_level/)
+  assert.match(menu,/r\.level10_copies/)
+  assert.match(menu,/r\.needed/)
+  assert.match(menu,/PRONTO PARA FORJAR/)
+  assert.match(menu,/Falta:/)
+  assert.match(menu,/Lv\.1/)
+  assert.match(index,/if\(latest\.stars>1&&latest\.forged_level<10\)/)
+  assert.match(index,/forgeEquipmentStar\(sender,chosen\.itemId,chosen\.stars\)/)
+})
+
+test('effective level and star bonus come from the same physical forged copy',()=>{
+  assert.match(logic,/SELECT level,stars FROM equipment_star_forges/)
+  assert.match(logic,/MAX\(level\),1/)
+  assert.match(db,/Number\(r\.level\)===Number\(r\.effective\)/)
+  assert.match(db,/multipliers\[level-1\]/)
+  assert.match(db,/const starMult=1\+\.04\*\(starLevel-1\)/)
+})
