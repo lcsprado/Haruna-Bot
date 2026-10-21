@@ -4,8 +4,7 @@ name: Alpha Bot - Manter WhatsApp Ativo (doidodanave15)
 # O agendamento do GitHub Actions funciona APENAS na branch padrão (master).
 # Isso NÃO faz deploy, NÃO executa comandos do jogo e NÃO toca no banco.
 on:
-  schedule:
-    - cron: "2-59/5 * * * *"
+  # Temporarily pause free Render wakeup pings during Aiven first boot/deploy.
   workflow_dispatch:
 
 permissions:
