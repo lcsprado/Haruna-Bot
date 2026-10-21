@@ -6215,12 +6215,12 @@ const chosen=flow.data
 clearQuickFlow(chat,sender)
 try{
 const result=await forgeEquipmentStar(sender,chosen.itemId,chosen.stars)
-await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\\n\\n'+(result.category==='armor'?'🛡️':'⚔️')+' *'+result.name+'*\\n'+
-'🌟 *'+result.stars+'/5 estrelas* • ⭐ *Lv.1*\\n'+
-'💪 Atributos: '+gearStatsText(result.after,result.category)+'\\n\\n'+
-'🧩 Gasto: '+result.materialsSpent+'× '+result.origin.materialName+'\\n'+
-'📦 Cópias: '+result.copies+' • Fragmentos: '+result.remainingMaterials+'\\n\\n'+
-'⬆️ Use *!uparitem* para levar a peça estrelada ao Lv.10.\\n✅ Encantamentos preservados.')
+await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\n\n'+(result.category==='armor'?'🛡️':'⚔️')+' *'+result.name+'*\n'+
+'🌟 *'+result.stars+'/5 estrelas* • ⭐ *Lv.1*\n'+
+'💪 Atributos: '+gearStatsText(result.after,result.category)+'\n\n'+
+'🧩 Gasto: '+result.materialsSpent+'× '+result.origin.materialName+'\n'+
+'📦 Cópias: '+result.copies+' • Fragmentos: '+result.remainingMaterials+'\n\n'+
+'⬆️ Use *!uparitem* para levar a peça estrelada ao Lv.10.\n✅ Encantamentos preservados.')
 }catch(err){await reply('❌ '+(err?.message||'Não foi possível concluir a forja; confira os requisitos.'))}
 return true
 }
@@ -10785,16 +10785,21 @@ await reply(text)
 const list=await listStarForgeEquipment(sender)
 if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê ainda não possui armas ou armaduras de drop das Raids elegíveis.\n🔎 A forja exige um equipamento Lv.10, 1 cópia extra idêntica e materiais da Raid de origem.')
 setQuickFlow(chat,sender,'starforge_select',{items:list.map(r=>r.item_id)},5*60*1000)
-let result='⚒️ *FORJA ESTELAR — ARMAS E ARMADURAS*\n\n'
-list.forEach((r,i)=>{
-result+='*'+(i+1)+'.* '+(r.category==='armor'?'🛡️':'⚔️')+' *'+r.name+'* • Lv.'+r.level+' • 🌟 '+r.stars+'/5\n'
-result+='   ⚙️ Lv.10: '+Number(r.level10_copies||0)+'/2 • 📦 Total: '+r.quantity+' (livres: '+r.free+') • Raid '+r.origin.raidLevel+'\n'
-result+='   🧩 '+r.origin.materialName+': '+r.materials+'/'+(r.stars>=5?'MÁX':r.needed)+'\n'
-result+='   '+(r.stars>=5?'🏆 Evolução máxima':r.canForge?'✅ PRONTA PARA FORJAR':'🔒 Requisitos pendentes')+'\n'
-})
-result+='\n📌 Cada forja consome *1 cópia extra idêntica Lv.10* e os fragmentos da *Raid onde a arma dropa*.\n'
-result+='🌟 Progressão: +4% por estrela adicional; máximo ★★★★★.\n💰 Sem custo em dinheiro e sem chance de falha.\n'
-result+='\n👉 Responda o número do equipamento para ver detalhes.\n0️⃣ Cancelar'
+let result='⚒️ *FORJA ESTELAR*\n\nEscolha o equipamento:\n\n'
+for(const [i,r] of list.entries()){
+const lvl=r.stars>1?r.forged_level:0,need=Math.max(0,r.requiredCopies-r.level10_copies),missing=[]
+if(r.stars>1&&lvl<10)missing.push('elevar a peça 🌟 ao Lv.10')
+if(need)missing.push('upar '+need+' cópia(s) comum(ns) ao Lv.10')
+if(r.quantity<2||r.free<1)missing.push('obter cópia extra livre')
+if(r.materials<r.needed)missing.push('obter '+(r.needed-r.materials)+' fragmentos')
+result+='*'+(i+1)+'.* '+(r.category==='armor'?'🛡️':'⚔️')+' *'+r.name+'*\n'
+result+='   🌟 '+r.stars+'/5'+(lvl?' • ⭐ Lv.'+lvl:'')+'\n'
+if(r.stars===5){result+='   🏆 Evolução máxima\n\n';continue}
+result+='   ⚔️ Cópias comuns Lv.10: '+r.level10_copies+'/'+r.requiredCopies+'\n'
+result+='   🧩 '+r.origin.materialName+': '+r.materials+'/'+r.needed+' (Raid '+r.origin.raidLevel+')\n'
+result+='   '+(r.canForge?'✅ *PRONTO PARA FORJAR*':'🔒 Falta: '+missing.join('; '))+'\n\n'
+}
+result+='📌 Cada nova estrela começa no *Lv.1*.\n👉 Envie o número ou 0 para cancelar.\n'
 return await reply(result)
 } else if(['uparitem','upgradeitem','melhoraritem','uparelmo','melhorarelmo','upgradeelmo'].includes(cmd)){
 const [items,profile]=await Promise.all([listUpgradeableCopies(sender),getCombatProfile(sender)])
