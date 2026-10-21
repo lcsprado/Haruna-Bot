@@ -19,10 +19,14 @@ return url.toString()
 return raw
 }
 })()
+// Only the isolated Web API uses a small pool; leave the WhatsApp pool unchanged.
+// Aiven Free accepts 20 concurrent connections across ALL clients.
+const webApiOnly=String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()==='web-api-only'
+const webPoolMax=Math.max(1,Math.min(5,Number(process.env.ALPHA_WEB_DB_POOL_MAX)||3))
 export const db = new Pool({
 connectionString: databaseUrl,
-max: 10,
-idleTimeoutMillis: 30000,
+max: webApiOnly?webPoolMax:10,
+idleTimeoutMillis: webApiOnly?12000:30000,
 connectionTimeoutMillis: 15000,
 statement_timeout: 12000,
 query_timeout: 15000,
