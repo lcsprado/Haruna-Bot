@@ -1,0 +1,71 @@
+# Isolated smoke test of driver PR; no Render deployment or WhatsApp start.
+name: "Alpha Bot | Driver Neon e Aiven TLS"
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/alpha-aiven-driver-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  driver:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: "Checkout opt-in driver branch at a fixed tested commit"
+        uses: actions/checkout@v4
+        with:
+          ref: 95acaf0cadedfb0c7b5ee04827d0cc79e0a0714a
+          persist-credentials: false
+      - name: "Node 22"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: "Validate syntax and temporary install"
+        run: |
+          set -Eeuo pipefail
+          node --check src/neon/db.js
+          npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: "Validate Aiven custom CA (full TLS) and pool 5; read only"
+        env:
+          DATABASE_URL: ${{ secrets.ALPHA_AIVEN_URI }}
+          ALPHA_AIVEN_CA_PEM: ${{ secrets.ALPHA_AIVEN_CA }}
+          ALPHA_DB_POOL_MAX: '5'
+          PGOPTIONS: '-c default_transaction_read_only=on'
+        run: |
+          set -Eeuo pipefail
+          node --input-type=module <<'NODE'
+          import {db} from './src/neon/db.js'
+          try {
+            const url=new URL(process.env.DATABASE_URL)
+            if(url.hostname!=='alphabot-lcsh-3393.b.aivencloud.com' || url.pathname!=='/defaultdb')throw Error('Unexpected database')
+            if(db.options.max!==5 || db.options.ssl?.rejectUnauthorized!==true)throw Error('Pool/CA not configured correctly')
+            const r=(await db.query("SELECT current_database() AS db, current_setting('default_transaction_read_only') AS read_only, (SELECT count(*)::int FROM users) AS users")).rows[0]
+            if(r.db!=='defaultdb'||r.read_only!=='on'||r.users!==5)throw Error('Aiven database incorrect')
+            console.log('Aiven: verified public CA, TLS and pool max 5, read-only query passed.')
+          } finally {await db.end()}
+          NODE
+      - name: "Validate Neon original config remains pool 10; read only"
+        env:
+          DATABASE_URL: ${{ secrets.ALPHA_NEON_URI }}
+          ALPHA_DB_POOL_MAX: '5'
+          PGOPTIONS: '-c default_transaction_read_only=on'
+        run: |
+          set -Eeuo pipefail
+          node --input-type=module <<'NODE'
+          import {db} from './src/neon/db.js'
+          try {
+            const url=new URL(process.env.DATABASE_URL)
+            if(!url.hostname.endsWith('neon.tech') || db.options.max!==10)throw Error('Neon default changed unexpectedly')
+            const r=(await db.query("SELECT current_database() AS db,current_setting('default_transaction_read_only') AS read_only")).rows[0]
+            if(r.db!=='neondb'||r.read_only!=='on')throw Error('Neon connection failed')
+            console.log('Neon original configuration: unchanged, pool 10, SSL verification active.')
+          } finally {await db.end()}
+          NODE
+      - name: "No Render deploy or WhatsApp session initiated"
+        run: echo 'Cutover driver tested in disposable GitHub runner; no production configuration changed.'
