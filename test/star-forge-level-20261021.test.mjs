@@ -107,3 +107,36 @@ test('level-up restores actual max HP including equipped armor, helmet and star 
   // A pre-existing XP routine always refills HP; it must now refill to the equipped limit.
   assert.equal(2886+8+Math.round(230*2.5)+Math.round(260*2.5),4119)
 })
+
+test('WhatsApp upgrade menu visibly separates common armor from starred armor with correct HP',()=>{
+  const menu=index.split("} else if(['uparitem','upgradeitem','melhoraritem'")[1]?.split("} else if(['equipar','equip'].includes(cmd))")[0]||''
+  assert.match(menu,/equipmentCopyLabel\(i\)/)
+  assert.match(menu,/gearStatsChanges\(i\.current,i\.next,i\.category\)/)
+  assert.match(index,/const forgeStarsIcon=stars=>/)
+  assert.match(index,/const equipmentCopyLabel=i=>i\.sourceKind==='star'/)
+  assert.match(index,/FORJADA/)
+  assert.match(index,/COMUM/)
+  assert.match(menu,/Lv\.'/)
+  assert.match(menu,/Cada cópia mantém seus atributos/)
+  assert.equal(Math.round(85*1.04),88)
+  assert.equal(Math.round(85*1.1*1.04),97)
+  assert.equal(Math.round(110*1.04),114)
+  assert.equal(Math.round(110*1.1*1.04),126)
+  assert.equal(Math.round(85*1.1),94)
+  assert.equal(Math.round(110*1.1),121)
+})
+
+test('WhatsApp equip menu calculates each independent copy and labels the active tier',()=>{
+  const menu=index.split('async function showEquipmentTypeMenu(chat,sender,reply,category){')[1]?.split('async function showSellMenu(chat,sender,reply){')[0]||''
+  assert.match(menu,/i\.upgrade_distribution/)
+  assert.match(menu,/equipmentStatsAtLevel\(i\.item_id,level,stars\)/)
+  assert.match(menu,/forgeStarsIcon\(stars\)/)
+  assert.match(menu,/activeCopyLabel\(p,category\)/)
+  assert.match(menu,/COMUM/)
+  assert.match(menu,/FORJADA/)
+  assert.doesNotMatch(menu,/copySummary\|\|/)
+  const comparison=index.split("if(flow.stage==='equip_select'){")[1]?.split("if(flow.stage==='equip_compare_confirm'){")[0]||''
+  assert.match(comparison,/Number\(up\?\.forged_level\|\|0\)===Number\(up\?\.level\|\|1\)/)
+  assert.match(comparison,/forgeStarsIcon\(selectedStars\)/)
+  assert.doesNotMatch(comparison,/up\?\.activeStars/)
+})
