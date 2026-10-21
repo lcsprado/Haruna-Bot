@@ -2197,49 +2197,36 @@ next:stars<5?equipmentStatsAtLevel(r.item_id,1,stars+1):null}
 export async function forgeEquipmentStar(jid,itemId,expectedStars=null){
 await ensureUser(jid)
 const origin=RAID_GEAR_FORGE_ORIGINS[itemId]
-if(!origin)throw new Error('Esse equipamento não é um drop de Raid elegível para Forja Estelar.')
-return transaction(async client=>{
-await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`equipment-forge:${jid}`])
-const item=(await client.query(`
-SELECT inv.quantity,i.name,i.category,COALESCE(up.level,1)::int level
-FROM inventories inv JOIN items i ON i.id=inv.item_id
-LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
-WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv
-`,[jid,itemId])).rows[0]
-if(!item||Number(item.quantity)<2)throw new Error('A forja exige duas cópias do mesmo equipamento; uma será preservada e a outra consumida.')
-if(!['weapon','armor'].includes(item.category)||Number(item.level)!==10)throw new Error('As duas cópias precisam estar no Lv.10 (upgrade compartilhado por modelo).')
-const statsEquip=(await client.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-const equipped=statsEquip?.weapon_id===itemId||statsEquip?.armor_id===itemId
-const bound=(await client.query(
-'SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
-[jid,itemId])).rows[0]
-if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)
-throw new Error('Sem cópia extra livre: equipamentos equipados e vinculados são protegidos.')
-const current=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
-const stars=Number(current?.stars||1)
-const maxed=(await client.query('SELECT quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 FOR UPDATE',[jid,itemId])).rows[0]
-if(Number(maxed?.quantity||0)<2)throw new Error('Forja exige 2 cópias realmente aprimoradas no Lv.10. Use !uparitem na segunda cópia.')
-if(expectedStars!==null && stars!==Number(expectedStars))throw new Error('Essa forja já foi concluída ou as estrelas mudaram. Abra !forjar novamente.')
-if(stars>=5)throw new Error('Essa arma já atingiu ★★★★★.')
+if(!origin)throw new Error('Equipamento não elegível à Forja Estelar.')
+return transaction(async c=>{
+await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`equipment-forge:${jid}`])
+const item=(await c.query(`SELECT inv.quantity,i.name,i.category FROM inventories inv JOIN items i ON i.id=inv.item_id WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv`,[jid,itemId])).rows[0]
+if(!item||Number(item.quantity)<2)throw new Error('Faltam cópias idênticas.')
+const sf=(await c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
+const stars=Number(sf?.stars||1),level=Number(sf?.level||10)
+if(expectedStars!==null&&Number(expectedStars)!==stars)throw new Error('Estrelas alteradas; reabra !forjar.')
+if(stars>=5)throw new Error('Máximo de cinco estrelas.')
+if(stars>1&&level!==10)throw new Error(`Primeiro aprimore a peça ★${stars} do Lv.${level} ao Lv.10.`)
+const donors=stars===1?2:1
+const paid=(await c.query('SELECT quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 FOR UPDATE',[jid,itemId])).rows[0]
+if(Number(paid?.quantity||0)<donors)throw new Error(`Precisa de ${donors} cópia(s) comum(ns) Lv.10; disponíveis: ${Number(paid?.quantity||0)}.`)
+const eq=(await c.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const equipped=eq?.weapon_id===itemId||eq?.armor_id===itemId
+const bound=(await c.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
+if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)throw new Error('A cópia equipada ou vinculada está protegida.')
 const required=FORGE_STAR_MATERIALS[stars]
-const material=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
-if(Number(material?.quantity||0)<required)throw new Error(`São necessários ${required}× ${origin.materialName} (Raid ${origin.raidLevel}).`)
-const copiesSpent=await client.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>=2 RETURNING quantity',[jid,itemId])
-const materialsSpent=await client.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',[jid,origin.materialId,required])
-if(!copiesSpent.rowCount||!materialsSpent.rowCount)throw new Error('Não foi possível reservar a cópia e os fragmentos; nada foi consumido.')
-const consumed=await client.query('UPDATE equipment_upgrade_copies SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity>=2 RETURNING quantity',[jid,itemId])
-if(!consumed.rowCount)throw new Error('Segunda cópia Lv.10 não disponível; a forja foi cancelada.')
-await client.query(`
-INSERT INTO equipment_star_forges(jid,item_id,stars,updated_at) VALUES($1,$2,$3,${nowSql})
-ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,updated_at=EXCLUDED.updated_at
-`,[jid,itemId,stars+1])
-await client.query(`
-INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-VALUES($1,'forge',0,'equipment_star_forge',$2)
-`,[jid,`${itemId} ★${stars}->★${stars+1}; -1 copy, -${required} ${origin.materialId}`])
-return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,copies:copiesSpent.rows[0].quantity,
-remainingMaterials:materialsSpent.rows[0].quantity,materialsSpent:required,origin,
-before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,10,stars+1)}
+const material=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
+if(Number(material?.quantity||0)<required)throw new Error(`Faltam ${required-Number(material?.quantity||0)} ${origin.materialName} (Raid ${origin.raidLevel}).`)
+const donor=await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity>=$3 RETURNING quantity',[jid,itemId,donors])
+if(!donor.rowCount)throw new Error('Cópias Lv.10 indisponíveis.')
+await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity=0',[jid,itemId])
+const units=await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>=2 RETURNING quantity',[jid,itemId])
+const fragments=await c.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',[jid,origin.materialId,required])
+if(!units.rowCount||!fragments.rowCount)throw new Error('Reserva de materiais/cópia não concluída.')
+await c.query(`INSERT INTO equipment_star_forges(jid,item_id,stars,level,updated_at) VALUES($1,$2,$3,1,${nowSql}) ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,level=1,updated_at=EXCLUDED.updated_at`,[jid,itemId,stars+1])
+await syncEffectiveGear(c,jid,itemId)
+await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'forge',0,'equipment_star_forge',$2)`,[jid,`${itemId} ★${stars}->★${stars+1}; Lv.1; -1 cópia; -${required} ${origin.materialId}`])
+return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,origin,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
 })
 }
 export const listStarForgeWeapons=listStarForgeEquipment
