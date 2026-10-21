@@ -1652,9 +1652,9 @@ export async function sellItem(jid, itemId, qty=1) {
     else unit=500
 
     const remaining=owned-qty
-    if(remaining===0 && item.category==='weapon'){
+    if(remaining===0 && ['weapon','armor'].includes(item.category)){
       const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
-      if(Number(star?.stars||1)>1)throw new Error('Arma forjada protegida: mantenha pelo menos uma cópia para preservar suas estrelas.')
+      if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: mantenha pelo menos uma cópia para preservar suas estrelas.')
     }
     const upR=['weapon','armor','boots'].includes(item.category)
       ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
@@ -1766,9 +1766,9 @@ export async function sellItemsBatch(jid, selections=[]) {
       else unit=500
 
       const remaining=owned-sel.qty
-      if(remaining===0 && item.category==='weapon'){
+      if(remaining===0 && ['weapon','armor'].includes(item.category)){
         const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
-        if(Number(star?.stars||1)>1)throw new Error('Arma forjada protegida: venda apenas cópias extras.')
+        if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: venda apenas cópias extras.')
       }
       const upR=['weapon','armor','boots'].includes(item.category)
         ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
@@ -1878,9 +1878,9 @@ export async function discardItemsBatch(jid, selections=[]) {
       }
 
       const remaining=owned-sel.qty
-      if(remaining===0 && item.category==='weapon'){
+      if(remaining===0 && ['weapon','armor'].includes(item.category)){
         const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
-        if(Number(star?.stars||1)>1)throw new Error('Arma forjada protegida: não descarte a última cópia.')
+        if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: não descarte a última cópia.')
       }
       await client.query(
         'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
@@ -2300,6 +2300,22 @@ export const RAID_WEAPON_FORGE_ORIGINS=Object.freeze({
   exterminadora_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'Essência do Eclipse'}
 })
 
+// Armaduras elegíveis: somente os modelos que caem efetivamente em cada Raid.
+export const RAID_ARMOR_FORGE_ORIGINS=Object.freeze({
+  manto_fenix:{raidLevel:15,materialId:'escama_vulcanica',materialName:'Escama Vulcânica'},
+  couraca_vulcanica:{raidLevel:20,materialId:'olho_abissal',materialName:'Olho Abissal'},
+  armadura_vazio:{raidLevel:25,materialId:'nucleo_titan',materialName:'Núcleo do Titã'},
+  armadura_eclipse:{raidLevel:30,materialId:'essencia_rei_abissal',materialName:'Essência do Rei Abissal'},
+  armadura_titan:{raidLevel:40,materialId:'fragmento_celestial',materialName:'Fragmento Celestial'},
+  armadura_divina:{raidLevel:50,materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido'},
+  couraca_caos:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
+  armadura_tita_ancestral:{raidLevel:60,materialId:'fragmento_caos',materialName:'Fragmento do Caos'},
+  manto_abismo_eterno:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
+  armadura_aurora:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
+  armadura_deus_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'Essência do Eclipse'}
+})
+export const RAID_GEAR_FORGE_ORIGINS=Object.freeze({...RAID_WEAPON_FORGE_ORIGINS,...RAID_ARMOR_FORGE_ORIGINS})
+
 const UPGRADE_BASE_COST={common:1500,uncommon:3000,rare:7000,epic:16000,legendary:40000,event:50000}
 
 export function equipmentStatsAtLevel(itemId,level=1,stars=1){
@@ -2309,7 +2325,7 @@ export function equipmentStatsAtLevel(itemId,level=1,stars=1){
   // Curva revisada: upgrade precisa ter retorno perceptível sem substituir itens de raridade maior.
   // Lv.10 chega a 2,5x os atributos escaláveis.
   const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
-  const starLevel=eq.category==='weapon'&&RAID_WEAPON_FORGE_ORIGINS[itemId] ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
+  const starLevel=['weapon','armor'].includes(eq.category)&&RAID_GEAR_FORGE_ORIGINS[itemId] ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
   const starMult=1+.04*(starLevel-1)
   const mult=multipliers[level-1]
   return {
@@ -2344,12 +2360,12 @@ export async function getEquipmentStarLevels(jid,itemIds=[],client=db){
   return Object.fromEntries(ids.map(id=>[id,Number(rows.find(row=>row.item_id===id)?.stars||1)]))
 }
 
-export async function listStarForgeWeapons(jid){
+export async function listStarForgeEquipment(jid){
   await ensureUser(jid)
-  const ids=Object.keys(RAID_WEAPON_FORGE_ORIGINS)
+  const ids=Object.keys(RAID_GEAR_FORGE_ORIGINS)
   const {rows}=await db.query(`
     SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,
-           (eq.weapon_id=inv.item_id) AS equipped,
+           (eq.weapon_id=inv.item_id OR eq.armor_id=inv.item_id) AS equipped,
            COALESCE(up.level,1)::int AS level,
            COALESCE(st.stars,1)::int AS stars,
            COALESCE(mat.quantity,0)::int AS materials,
@@ -2374,12 +2390,23 @@ export async function listStarForgeWeapons(jid){
         WHEN 'foice_abismo' THEN 'coroa_abissal'
         WHEN 'espada_aurora' THEN 'coroa_abissal'
         WHEN 'exterminadora_eclipse' THEN 'essencia_eclipse'
+        WHEN 'manto_fenix' THEN 'escama_vulcanica'
+        WHEN 'couraca_vulcanica' THEN 'olho_abissal'
+        WHEN 'armadura_vazio' THEN 'nucleo_titan'
+        WHEN 'armadura_eclipse' THEN 'essencia_rei_abissal'
+        WHEN 'armadura_titan' THEN 'fragmento_celestial'
+        WHEN 'armadura_divina' THEN 'nucleo_alpha_corrompido'
+        WHEN 'couraca_caos' THEN 'fragmento_caos'
+        WHEN 'armadura_tita_ancestral' THEN 'fragmento_caos'
+        WHEN 'manto_abismo_eterno' THEN 'coroa_abissal'
+        WHEN 'armadura_aurora' THEN 'coroa_abissal'
+        WHEN 'armadura_deus_eclipse' THEN 'essencia_eclipse'
       END
     WHERE inv.jid=$1 AND inv.quantity>0 AND inv.item_id=ANY($2::text[])
     ORDER BY COALESCE(st.stars,1) DESC,i.name
   `,[jid,ids])
   return rows.map(r=>{
-    const origin=RAID_WEAPON_FORGE_ORIGINS[r.item_id]
+    const origin=RAID_GEAR_FORGE_ORIGINS[r.item_id]
     const stars=Number(r.stars||1),needed=FORGE_STAR_MATERIALS[stars]||0
     const copies=Number(r.quantity||0)
     const free=Math.max(0,copies-Number(r.bound_quantity||0)-(r.equipped?1:0))
@@ -2389,10 +2416,10 @@ export async function listStarForgeWeapons(jid){
   })
 }
 
-export async function forgeWeaponStar(jid,itemId,expectedStars=null){
+export async function forgeEquipmentStar(jid,itemId,expectedStars=null){
   await ensureUser(jid)
-  const origin=RAID_WEAPON_FORGE_ORIGINS[itemId]
-  if(!origin)throw new Error('Essa arma não é um drop de Raid elegível para Forja Estelar.')
+  const origin=RAID_GEAR_FORGE_ORIGINS[itemId]
+  if(!origin)throw new Error('Esse equipamento não é um drop de Raid elegível para Forja Estelar.')
   return transaction(async client=>{
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`equipment-forge:${jid}`])
     const item=(await client.query(`
@@ -2401,15 +2428,16 @@ export async function forgeWeaponStar(jid,itemId,expectedStars=null){
       LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
       WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv
     `,[jid,itemId])).rows[0]
-    if(!item||Number(item.quantity)<2)throw new Error('A forja exige duas cópias da mesma arma; uma será preservada e a outra consumida.')
-    if(item.category!=='weapon'||Number(item.level)!==10)throw new Error('As cópias precisam estar no Lv.10 (upgrade compartilhado por modelo).')
+    if(!item||Number(item.quantity)<2)throw new Error('A forja exige duas cópias do mesmo equipamento; uma será preservada e a outra consumida.')
+    if(!['weapon','armor'].includes(item.category)||Number(item.level)!==10)throw new Error('As duas cópias precisam estar no Lv.10 (upgrade compartilhado por modelo).')
     // Reserva 1 cópia física para a arma equipada E não consome prêmios vinculados.
-    const equipped=(await client.query('SELECT weapon_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.weapon_id===itemId
+    const statsEquip=(await client.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const equipped=statsEquip?.weapon_id===itemId||statsEquip?.armor_id===itemId
     const bound=(await client.query(
       'SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
       [jid,itemId])).rows[0]
     if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)
-      throw new Error('Sem cópia extra livre: a arma equipada e os itens vinculados são protegidos.')
+      throw new Error('Sem cópia extra livre: equipamentos equipados e vinculados são protegidos.')
     const current=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
     const stars=Number(current?.stars||1)
     if(expectedStars!==null && stars!==Number(expectedStars))throw new Error('Essa forja já foi concluída ou as estrelas mudaram. Abra !forjar novamente.')
@@ -2428,11 +2456,15 @@ export async function forgeWeaponStar(jid,itemId,expectedStars=null){
       INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'forge',0,'equipment_star_forge',$2)
     `,[jid,`${itemId} ★${stars}->★${stars+1}; -1 copy, -${required} ${origin.materialId}`])
-    return {itemId,name:item.name,fromStars:stars,stars:stars+1,copies:copiesSpent.rows[0].quantity,
+    return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,copies:copiesSpent.rows[0].quantity,
       remainingMaterials:materialsSpent.rows[0].quantity,materialsSpent:required,origin,
       before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,10,stars+1)}
   })
 }
+
+// Aliases retrocompatíveis para rotas e integrações anteriores.
+export const listStarForgeWeapons=listStarForgeEquipment
+export const forgeWeaponStar=forgeEquipmentStar
 
 export async function getEquipmentLevels(jid,itemIds=[]){
   const ids=[...new Set((itemIds||[]).filter(Boolean))]
@@ -2555,9 +2587,9 @@ export async function equipItem(jid, itemId) {
         [jid,ids]
       )).rows:[]
       const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
-      const starLv=await getEquipmentStarLevels(jid,[st?.weapon_id],client)
+      const starLv=await getEquipmentStarLevels(jid,[st?.weapon_id,st?.armor_id],client)
       const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id),starLv[st.weapon_id]||1):{hp:0}
-      const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id)):{hp:0}
+      const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id),starLv[st.armor_id]||1):{hp:0}
       const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,lvl(st.helmet_id)):{hp:0}
       const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
       if(Number(st?.hp||0)>effectiveMax){
@@ -2703,9 +2735,9 @@ export async function usePotion(jid,itemId=null){
       [jid,idsEq]
     )).rows:[]
     const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
-    const starLv=await getEquipmentStarLevels(jid,[row.weapon_id],client)
+    const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id],client)
     const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{hp:0}
-    const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{hp:0}
+    const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{hp:0}
     const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{hp:0}
 
     const hp=Number(row.hp||0)
@@ -2751,9 +2783,9 @@ export async function getCombatProfile(jid) {
   const p=await getProfile(jid)
   if(!p) return null
   const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
-  const stars=await getEquipmentStarLevels(jid,[p.weapon_id])
+  const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id])
   const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
-  const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1):null
+  const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1,stars[p.armor_id]||1):null
   const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
   const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
   const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
@@ -2811,6 +2843,7 @@ export async function getCombatProfile(jid) {
     enchant_breakdown:ench,
     weapon_name:w.name,
     weapon_stars:Number(w.stars||1),
+    armor_stars:Number(a.stars||1),
     armor_name:a.name,
     boot_name:b.name,
     helmet_name:h.name,
@@ -2929,11 +2962,11 @@ export async function battle(attackerJid, defenderJid) {
     const starRows=(await client.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[[attackerJid,defenderJid]])).rows
     const starLevel=(jid,itemId)=>Number(starRows.find(r=>r.jid===jid&&r.item_id===itemId)?.stars||1)
     const aeW=a.weapon_id?equipmentStatsAtLevel(a.weapon_id,eqLevel(attackerJid,a.weapon_id),starLevel(attackerJid,a.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const aeA=a.armor_id?equipmentStatsAtLevel(a.armor_id,eqLevel(attackerJid,a.armor_id),starLevel(attackerJid,a.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeB=a.boot_id?equipmentStatsAtLevel(a.boot_id,eqLevel(attackerJid,a.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const aeH=a.helmet_id?equipmentStatsAtLevel(a.helmet_id,eqLevel(attackerJid,a.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.weapon_id),starLevel(defenderJid,b.weapon_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
-    const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+    const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id),starLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
     const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 
@@ -4033,9 +4066,9 @@ export async function dungeon(jid) {
       [jid,eqIds]
     )).rows:[]
     const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
-    const starLv=await getEquipmentStarLevels(jid,[row.weapon_id],client)
+    const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id],client)
     const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{atk:0,def:0,hp:0}
-    const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id)):{atk:0,def:0,hp:0}
+    const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{atk:0,def:0,hp:0}
     const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{atk:0,def:0,hp:0}
     const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)
     const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)+Number(helmet.def||0)
