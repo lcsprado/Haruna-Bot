@@ -1,0 +1,39 @@
+name: Alpha Bot - forja estelar sem fusoes reais
+
+on:
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'src/neon/equipment-star-logic.js'
+      - 'test/star-forge-level-20261021.test.mjs'
+      - '.github/workflows/star-forge-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar-forja:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validar sintaxe
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/equipment-star-logic.js
+          node --check src/neon/web-api.js
+          node --check src/neon/games.js
+      - name: Testar regras da forja (sem banco e sem mutacoes)
+        run: node --test test/star-forge-level-20261021.test.mjs
+      - name: Instalar dependencias para regressao
+        run: npm ci --ignore-scripts
+      - name: Verificar regressao existente
+        run: node --test test/regression-smoke.test.mjs test/regressions.test.mjs
