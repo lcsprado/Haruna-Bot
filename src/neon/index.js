@@ -79,10 +79,8 @@ import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
-
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
-
 function sleepOptionMessage(options){
   const fmtXp=x=>Math.floor(Number(x)||0).toLocaleString('pt-BR')
   const labels={1:'💤 Cochilo',4:'🌙 Descanso',8:'🛏️ Sono completo'}
@@ -117,24 +115,15 @@ function sleepStartedMessage(r){
     (r.fee?'\n💰 Aluguel pago: *R$ '+Number(r.fee).toLocaleString('pt-BR')+'*':'')+
     '\n\n🛡️ Durante o sono você não pode ser roubado nem atacado.'
 }
-
 const temporaryRecoveryMode=String(process.env.ALPHA_DATASET_MODE||'').startsWith('TEMPORARY_')
 const neonEcoMode=temporaryRecoveryMode||process.env.ALPHA_DB_ECO_MODE==='1'
 let lastAlphaGameActionAt=0
 let bossProgressKnownActiveUntil=0
 const pairingNumber=(process.env.PAIRING_NUMBER || '').replace(/\D/g,'')
-// WhatsApp identity is environment-driven. Changing the bot phone must never require a code change.
-// IMPORTANT: when changing PAIRING_NUMBER, also change SESSION_ID so Baileys creates a fresh auth session.
-// Game data remains in the same Neon database and is not tied to either value.
 const sessionId=(process.env.SESSION_ID || 'alpha-primary').trim()
 const ownerNumber=(process.env.OWNER_NUMBER || '').replace(/\D/g,'')
 const ownerJid=(process.env.OWNER_JID || (ownerNumber ? ownerNumber+'@s.whatsapp.net' : '')).trim()
-// Dedicated identity binding for the verified owner's WhatsApp LID on this instance.
-// Never map other LIDs by display name; the exact LID is provided in Render secrets.
 const ownerLid=String(process.env.OWNER_LID||'').trim()
-
-// Evita vazamento de chaves privadas Signal nos logs ao rotacionar sessões.
-// Não interfere nas operações criptográficas nem nos outros logs do bot.
 for(const level of ['warn','info','error']){
   const original=console[level].bind(console)
   console[level]=(...args)=>{
@@ -143,7 +132,6 @@ for(const level of ['warn','info','error']){
     original(...args)
   }
 }
-
 const trevoHealth=globalThis.__trevoHealth || (globalThis.__trevoHealth={
   whatsapp:'starting',
   lastChange:Date.now(),
@@ -160,12 +148,9 @@ let bossProgressScheduler=null
 let reconnectTimer=null
 let reconnecting=false
 let reconnectAttempts=0
-// Retained across socket reconnections; unique messages from the same player remain free.
 const acceptIncomingMessage=createMessageDeduplicator()
 function scheduleReconnect(){
   if(reconnectTimer || reconnecting) return
-  // Backoff exponencial com teto e jitter: evita rajadas de reconexão
-  // e sincronização após falhas transitórias do WhatsApp.
   const base=Math.min(30000,3000*2**Math.min(reconnectAttempts,4))
   const delayMs=Math.round(base*(0.8+Math.random()*0.4))
   reconnectAttempts++
@@ -193,8 +178,6 @@ function setWhatsAppHealth(state){
 }
 if(!connectionWatchdog){
   connectionWatchdog=setInterval(()=>{
-    // Durante o pareamento, manter o QR disponível sem reiniciar o processo a cada 2 minutos.
-    // A proteção original de 120s volta automaticamente após conexão bem-sucedida.
     const awaitingPairing=Boolean(process.env.ALPHA_QR_SECRET) && !trevoHealth.everConnected
     const grace=awaitingPairing ? 15*60*1000 : 120000
     if(trevoHealth.whatsapp!=='open' && Date.now()-trevoHealth.lastChange>grace){
@@ -204,10 +187,6 @@ if(!connectionWatchdog){
   },10000)
   connectionWatchdog.unref?.()
 }
-
-// Se outra atividade reduziu o HP a zero entre rodadas, o combate automático
-// deve consumir uma cura disponível em vez de encerrar silenciosamente.
-// A função já existente valida inventário e registra consumo/HP no Neon.
 async function tryBossAutomaticRescue(jid){
   try{
     const potion=await usePotion(jid)
@@ -225,10 +204,8 @@ async function tryBossAutomaticRescue(jid){
     return {ok:false,reason:msg}
   }
 }
-
 const bossSessions=new Map()
 async function runBossSession(chat,jid,name,sendReply,usePet=true){
-  // Identidade global do jogador, nunca chat|jid: impede sessões em dois grupos.
   const key=jid
   const existing=bossSessions.get(key)
   if(existing){
@@ -239,12 +216,8 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
   bossSessions.set(key,runner)
   let first,bossId
   try{
-    // Primeiro ataque é aguardado ANTES do aviso de início.
-    // Rejeições por grupo incorreto/morte/falta de Boss não geram aviso falso.
     first=await attackBoss(chat,jid,name,usePet)
     if(first?.playerDead){
-      // Somente retoma automaticamente se já havia sessão persistente ativa.
-      // Um !atacar novo com HP zerado continua exigindo a cura manual.
       const previous=(await db.query("SELECT status FROM boss_auto_sessions WHERE jid=$1",[jid])).rows[0]
       if(previous?.status==='active'){
         const rescue=await tryBossAutomaticRescue(jid)
@@ -266,7 +239,6 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
     if(bossSessions.get(key)===runner) bossSessions.delete(key)
     throw err
   }
-  // Falhas de envio de WhatsApp não podem matar o combate.
   const reply=async message=>{
     try{
       await Promise.race([
@@ -349,8 +321,6 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
         if(r.autoHeal) heals.push(r.autoHeal.name)
         if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
         if(r.dead){
-          // Sete Pecados troca o Boss imediatamente, sem encerrar a sessão
-          // de quem aplicou o golpe final. Outros eventos mantêm a regra anterior.
           const nextPecado= (r.eventId==='sete_pecados'||r.eventId==='invasao_titas_20261017') && Boolean(r.nextPhase)
           completed=!nextPecado;
           for(const player of r.rewards||[]){
@@ -377,7 +347,6 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
               await new Promise(resolve=>setTimeout(resolve,8000))
               continue
             }
-            // Um relatório único será enviado pelo agendador a todos os grupos.
             return
           }
           if(r.eventId==='sete_pecados'){
@@ -406,11 +375,8 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
           }
           await reply(text); return
         }
-
         const eventSession=sessionMode==='event'
-        // Boss semanal e de evento seguem continuamente até vitória, morte ou encerramento.
         if(sessionMode==='common' && i>=29) break
-
         const delayMs=eventSession?8000:10000
         if((eventSession||sessionMode==='weekly')&&sessionEndsAt&&Date.now()+delayMs>=sessionEndsAt){completed=true;
           await reply(`⏰ *BOSS ENCERRADO!*\n\n🥊 Ataques automáticos: *${attacks}*\n💥 Dano causado nesta sessão: *${totalDamage.toLocaleString('pt-BR')}*\n\nO combate automático parou porque o horário do evento terminou.`)
@@ -431,16 +397,10 @@ async function runBossSession(chat,jid,name,sendReply,usePet=true){
   })()
   return true
 }
-
 let bossAutoWatchdog=null
 let bossAutoWatchdogBusy=false
 let bossAutoReply=null
 let legacyWeeklyBossRecoveredId=null
-
-// Recuperação ÚNICA do evento 11/10: a versão anterior encerrava a sessão
-// do jogador que derrotava uma fase. A reativação só alcança quem já estava
-// participando deste mesmo evento, está vivo e não pediu !pararatacar.
-// O marcador em trevo_settings impede reativação recorrente após morte/saída.
 async function recoverPecadosParticipantsStoppedByOldPhase(){
   const now=Date.now()
   if(now<Date.parse('2026-10-11T18:40:00-03:00')||
@@ -480,10 +440,6 @@ async function recoverPecadosParticipantsStoppedByOldPhase(){
     }
   }
 }
-
-
-// Recupera a participação já existente antes da migração para runners persistentes.
-// Só recupera quem realmente atacou, vinculando ao mesmo grupo gravado no Neon.
 async function recoverLegacyWeeklyBossSessions(){
   const row=(await db.query(`
     SELECT state FROM trevo_games
@@ -516,14 +472,10 @@ async function recoverLegacyWeeklyBossSessions(){
   }
   legacyWeeklyBossRecoveredId=bossId
 }
-
 async function ensureActiveBossRuns(sendToChat){
   if(trevoHealth.whatsapp!=='open'||bossAutoWatchdogBusy) return
   bossAutoWatchdogBusy=true
   try{
-    // Só interrompe automaticamente quando o Boss acabou/expirou.
-    // Quem está com HP zerado e ainda possui poções tem direito à autocura
-    // acordada no !atacar; impedir que o watchdog mate essa sessão antes disso.
     await db.query(`
       UPDATE boss_auto_sessions
       SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
@@ -576,7 +528,6 @@ async function ensureActiveBossRuns(sendToChat){
   }catch(err){console.error('[Boss Auto] watchdog falhou',err?.message||err)}
   finally{bossAutoWatchdogBusy=false}
 }
-
 const raidRuns=new Map()
 let raidAutoWatchdog=null
 let raidAutoReply=null
@@ -584,16 +535,13 @@ const raidAutoRetryAt=new Map()
 const raidAutoLastErrorNotice=new Map()
 const RAID_RUN_STALE_MS=25000
 const RAID_NOTIFY_TIMEOUT_MS=2500
-
 function raidRunCurrent(runKey,token){
   return raidRuns.get(runKey)?.token===token
 }
-
 function touchRaidRun(runKey,token){
   const run=raidRuns.get(runKey)
   if(run?.token===token) run.lastProgressAt=Date.now()
 }
-
 async function safeRaidNotify(reply,text){
   if(!text || typeof reply!=='function') return false
   let timer
@@ -613,9 +561,6 @@ async function safeRaidNotify(reply,text){
     return false
   }finally{clearTimeout(timer)}
 }
-
-// A conclusão da Raid deve sobreviver a desconexões do WhatsApp e reinícios.
-// A fila mantém somente avisos finais: não grava cada rodada nem aumenta tráfego de combate.
 const raidFinalNoticePrefix='raid_final_notice_v2:'
 let raidFinalFlushBusy=false
 async function flushRaidFinalNotices(){
@@ -629,8 +574,6 @@ async function flushRaidFinalNotices(){
     for(const row of rows){
       const msg=row.value||{}
       if(!msg.chat || !msg.text) continue
-      // Claim persistente: uma mensagem de WhatsApp pode ser entregue após o timeout.
-      // Somente avisos novos (v2) são processados; avisos históricos ficam intactos.
       const claimed=await db.query(
         "UPDATE trevo_settings SET value=jsonb_set(value,'{deliveryAttempted}','true'::jsonb),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1 AND value=$2::jsonb AND COALESCE(value->>'deliveryAttempted','false')='false' RETURNING key",
         [row.key,JSON.stringify(msg)]
@@ -663,7 +606,6 @@ async function persistRaidFinalNotice(chat,level,reply,text){
     await safeRaidNotify(reply,text)
   }
 }
-
 let raidAutoWatchdogBusy=false
 async function ensureActiveRaidRuns(){
   if(raidAutoWatchdogBusy)return
@@ -683,18 +625,14 @@ async function ensureActiveRaidRuns(){
       if(!chat.endsWith('@g.us')||!level) continue
       const runKey=`${chat}|${level}`
       activeKeys.add(runKey)
-
       const existing=raidRuns.get(runKey)
       if(existing){
         const heartbeatAge=Date.now()-Number(existing.lastProgressAt||existing.startedAt||0)
         const persistedRoundAge=Date.now()-Number(row.state?.lastRoundAt||0)
         if(heartbeatAge<=RAID_RUN_STALE_MS || (Number(row.state?.lastRoundAt||0)>0 && persistedRoundAge<=RAID_RUN_STALE_MS)) continue
-
         console.warn('[Raid Auto] runner travado detectado; substituindo',chat,'Lv.'+level,'heartbeat '+heartbeatAge+'ms')
-        // Invalidar o token faz o runner antigo encerrar assim que qualquer await pendente liberar.
         raidRuns.delete(runKey)
       }
-
       const retryAt=Number(raidAutoRetryAt.get(runKey)||0)
       if(retryAt>Date.now()) continue
       const started=await runRaidCombat(chat,level,text=>raidAutoReply?raidAutoReply(chat,text):false)
@@ -707,23 +645,18 @@ async function ensureActiveRaidRuns(){
     console.error('[Raid Auto] falha no watchdog',err?.message||err)
   }finally{raidAutoWatchdogBusy=false}
 }
-
 async function runRaidCombat(chat,level,reply){
   const runKey=`${chat}|${Number(level)}`
   if(raidRuns.has(runKey)) return false
   const token=crypto.randomUUID()
   raidRuns.set(runKey,{token,startedAt:Date.now(),lastProgressAt:Date.now()})
-
   ;(async()=>{
     const raidPetHealTally=new Map()
     const tallyRaidPetHeals=()=>[...raidPetHealTally].map(([player,pets])=>[...pets].map(([pet,v])=>`\n🐾 ${player} — *${pet}*: caiu *${v.count}x* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')).join('')
     try{
-      // A própria Raid controla o tempo máximo em raidRound via activeElapsedMs.
-      // Não usamos limite fixo de rodadas: Lv.30/40/50 podem passar de 180 rodadas.
       for(let i=0;;i++){
         if(!raidRunCurrent(runKey,token)) return
         touchRaidRun(runKey,token)
-
         let r
         for(let deadlockAttempt=0;;deadlockAttempt++){
           if(!raidRunCurrent(runKey,token)) return
@@ -738,7 +671,6 @@ async function runRaidCombat(chat,level,reply){
             await new Promise(resolve=>setTimeout(resolve,350*(deadlockAttempt+1)))
           }
         }
-
         if(!raidRunCurrent(runKey,token)) return
         if(r.reason==='inactive') return
         if(r.reason==='cooldown'){
@@ -746,7 +678,6 @@ async function runRaidCombat(chat,level,reply){
           await new Promise(resolve=>setTimeout(resolve,Math.max(250,Number(r.remainingMs||1000))))
           continue
         }
-
         for(const e of (r.events||[])){
           if(e.type!=='boss'||!e.autoPetHeal)continue
           const player=String(e.name||'Jogador'),pet=String(e.petName||e.autoPetHeal.petName||'Pet'),potion=String(e.autoPetHeal.name||'Poção')
@@ -756,8 +687,6 @@ async function runRaidCombat(chat,level,reply){
           v.potions.set(potion,(v.potions.get(potion)||0)+1)
           pets.set(pet,v);raidPetHealTally.set(player,pets)
         }
-
-        // Apenas hits confirmados em transação podem progredir missão de Raid.
         for(const hit of (r.events||[])){
           if(hit.type==='hit'&&Number(hit.actualDamage??hit.damage)>0){
             await creditDailyActivity(hit.jid,'raid_damage',Number(hit.actualDamage??hit.damage),
@@ -772,9 +701,7 @@ async function runRaidCombat(chat,level,reply){
             }
           }
           let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*
-
 ❤️ Boss derrotado em *${r.round} rodadas*.
-
 📊 *RECOMPENSAS POR COLABORAÇÃO*
 `
           r.rewards.forEach((x,n)=>{
@@ -821,18 +748,14 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
           void persistRaidFinalNotice(chat,level,reply,text)
           return
         }
-
         if(r.failed){
           const why=r.reason==='party_wipe'?'todos os jogadores caíram':'o tempo acabou'
           void persistRaidFinalNotice(chat,level,reply,`💀 *RAID FRACASSADA — ${r.config.name}*
-
 ❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*
 ⚠️ Motivo: *${why}*.
-
 🔑 A chave foi consumida. Não há recompensa em caso de derrota.${raidPetHealTally.size?'\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals():''}`)
           return
         }
-
         const bossEvents=(r.events||[]).filter(e=>e.type==='boss')
         const hitEvents=(r.events||[]).filter(e=>e.type==='hit')
         const bossCrits=bossEvents.filter(e=>e.critical).length
@@ -843,12 +766,10 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
         const petSwitches=bossEvents.filter(e=>e.petSwitch)
         const deaths=bossEvents.filter(e=>!e.alive)
         const petFalls=bossEvents.filter(e=>e.petFainted)
-
         if(r.round===1 || r.round%10===0 || deaths.length || revives.length || petSwitches.length){
           const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
           let text=`⚔️ *RAID — RODADA ${r.round}*
-
 👹 *${r.config.name}*
 ❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*
 💥 Grupo causou: *${groupDamage.toLocaleString('pt-BR')}*
@@ -874,47 +795,35 @@ ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Num
 💀 *${e.name}* caiu sem cura e saiu da Raid.`
           for(const e of petFalls) text+=`
 💔 *${e.petName}* ficou sem HP e saiu da Raid.`
-
-          // Notificação jamais bloqueia a progressão da Raid.
           void safeRaidNotify(reply,text)
         }
-
         await new Promise(resolve=>setTimeout(resolve,8000))
       }
     }catch(err){
       console.error('[Raid]',err)
       raidAutoRetryAt.set(runKey,Date.now()+5000)
-      // Aviso único por Raid a cada 10 minutos; erros recorrentes ficam nos logs.
       const lastNotice=raidAutoLastErrorNotice.get(runKey)||0
       if(Date.now()-lastNotice>=10*60*1000){
         raidAutoLastErrorNotice.set(runKey,Date.now())
         void safeRaidNotify(reply,'⚠️ A Raid teve uma falha temporária. O servidor vai tentar retomar automaticamente.')
       }
     }finally{
-      // Um runner antigo/stale nunca pode apagar o runner novo que o substituiu.
       if(raidRunCurrent(runKey,token)) raidRuns.delete(runKey)
     }
   })()
   return true
 }
-
 const floodTracker=new Map()
-
-// Proteção de pico para eventos: evita várias transações pesadas disparando ao mesmo tempo.
-// Ações repetidas do mesmo jogador dentro de 3s são ignoradas silenciosamente;
-// ações simultâneas do grupo são escalonadas em pequenos intervalos.
 const eventActionLastByUser=new Map()
 const eventGroupNextActionAt=new Map()
 const EVENT_ACTION_COOLDOWN_MS=3000
 const EVENT_GROUP_STAGGER_MS=700
 const EVENT_TRAFFIC_START_AT=1791072000000 // 03/10/2026 21:00 BRT
 const EVENT_TRAFFIC_END_AT=1791074400000   // 03/10/2026 21:40 BRT
-
 function eventTrafficActiveNow(){
   const now=Date.now()
   return now>=EVENT_TRAFFIC_START_AT && now<EVENT_TRAFFIC_END_AT
 }
-
 async function staggerEventGroupAction(chat){
   if(!chat?.endsWith('@g.us') || !eventTrafficActiveNow()) return
   const now=Date.now()
@@ -923,7 +832,6 @@ async function staggerEventGroupAction(chat){
   const wait=scheduledAt-now
   if(wait>0) await new Promise(resolve=>setTimeout(resolve,wait))
 }
-
 async function allowEventPlayerAction(chat,sender,isOwner=false){
   if(isOwner || !chat?.endsWith('@g.us') || !eventTrafficActiveNow()) return true
   const key=chat+'|'+sender
@@ -934,9 +842,6 @@ async function allowEventPlayerAction(chat,sender,isOwner=false){
   await staggerEventGroupAction(chat)
   return true
 }
-
-// Captura Snipe em memoria com teto de bytes; midias nao sao replicadas ao Neon.
-// Isso evita uploads base64 de ate 8 MB a cada midia comum recebida em grupos.
 const SNIPE_MEDIA_LIMIT_BYTES=512*1024
 const SNIPE_MEDIA_BUDGET_PER_HOUR_BYTES=8*1024*1024
 const commandMediaDownloads=createByteBudget(8*1024*1024)
@@ -951,7 +856,6 @@ function reserveSnipeMediaBudget(declaredSize){
     snipeMediaHourStartedAt=now
     snipeMediaReservedBytes=0
   }
-  // Tamanho ausente: jamais iniciar download ilimitado.
   if(!Number.isSafeInteger(declaredSize)||declaredSize<=0||declaredSize>SNIPE_MEDIA_LIMIT_BYTES)return false
   if(snipeMediaReservedBytes+declaredSize>SNIPE_MEDIA_BUDGET_PER_HOUR_BYTES)return false
   snipeMediaReservedBytes+=declaredSize
@@ -971,14 +875,12 @@ async function cacheIncomingMessage(sock,msg){
   const text=textOf({...msg,message:content}).trim()
   const mediaLabel=type==='imageMessage'?'📷 Foto':type==='videoMessage'?'🎥 Vídeo':type==='audioMessage'?'🎵 Áudio':type==='stickerMessage'?'🖼️ Figurinha':type==='documentMessage'?'📄 Documento':''
   if(!text && !mediaLabel) return
-
   const supportedMedia=['imageMessage','videoMessage','audioMessage','stickerMessage'].includes(type)
   const mediaNode=type ? content?.[type] : null
   const mimeType=mediaNode?.mimetype || (type==='stickerMessage'?'image/webp':null)
   const rawLength=mediaNode?.fileLength
   const declaredSize=Number(rawLength?.toString?.() || rawLength || 0)
   let mediaBuffer=null
-
   if(supportedMedia && reserveSnipeMediaBudget(declaredSize)){
     try{
       const downloaded=await downloadBoundedMedia(signal=>downloadMediaMessage(
@@ -996,7 +898,6 @@ async function cacheIncomingMessage(sock,msg){
       console.log('[Snipe] não foi possível armazenar mídia:',err?.message||err)
     }
   }
-
   const entry={
     chat,
     messageId:msg.key.id,
@@ -1013,14 +914,12 @@ async function cacheIncomingMessage(sock,msg){
   const key=messageCacheKey(msg.key)
   deletedMessageCache.set(key,entry)
   setTimeout(()=>deletedMessageCache.delete(key),SNIPE_TTL_MS).unref?.()
-
   try{
     await saveSnipeMessage({...entry,mediaBuffer:null})
   }catch(err){
     console.error('[Snipe] falha ao persistir mensagem:',err?.message||err)
   }
 }
-
 async function rememberDeletedMessage(key,source='unknown'){
   const exact=deletedMessageCache.get(messageCacheKey(key))
   let hit=exact
@@ -1029,14 +928,12 @@ async function rememberDeletedMessage(key,source='unknown'){
       if(cacheKey.endsWith('|'+key.id) && value.chat===key.remoteJid){ hit=value; break }
     }
   }
-
   try{
     const persisted=await markSnipeDeleted(key?.remoteJid,key?.id)
     if(!hit && persisted) hit=persisted
   }catch(err){
     console.error('[Snipe] falha ao marcar exclusão:',err?.message||err)
   }
-
   if(!hit){
     console.log('[Snipe] exclusão recebida sem mensagem no cache ('+source+')')
     return false
@@ -1049,7 +946,6 @@ async function rememberDeletedMessage(key,source='unknown'){
   },SNIPE_TTL_MS).unref?.()
   return true
 }
-
 const alphaIdentityMergeChecked=new Map()
 const quickGameFlows=new Map()
 const alphaNoQuickFlowUntil=new Map()
@@ -1102,28 +998,22 @@ function clearQuickFlow(chat,sender){
   alphaNoQuickFlowUntil.set(key,Date.now()+30*60*1000)
   queueQuickFlowWrite(key,()=>deleteQuickFlow(key))
 }
-
 async function showAdminMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
   await reply(
 `👑 *ADMIN ALPHA BOT*
-
 1️⃣ 👤 Jogadores
 2️⃣ 💚 Grupos / assinaturas
 3️⃣ 🧾 Pedidos pendentes
 4️⃣ ⚙️ Configurações comerciais
 5️⃣ 🩺 Diagnóstico
 6️⃣ 🆘 Chamados de suporte
-
 🌘 Boss de Evento: automático toda *sexta às 19:00* • controles: *!eventoboss desativar* / *status*
 🔥 Evento 2x: *!eventodobro* (20 min) • *!eventodobro 30* • *!eventodobro off*
-
 0️⃣ Sair
-
 _Responda apenas com o número._`
   )
 }
-
 async function alphaContractBoardMessage(jid){
           const board=await getAlphaContractBoard(jid)
           const remaining=Math.max(1,Math.ceil((board.nextAt-Date.now())/60000))
@@ -1138,33 +1028,24 @@ async function alphaContractBoardMessage(jid){
           text+=board.active?(`📌 *Sua missão:* ${board.active.progress}/${board.active.target}\n${Number(board.active.progress)>=Number(board.active.target)&&!board.active.claimed?'🎁 Use *!resgatarcontrato* para receber.':'📊 Use !contratos para acompanhar.'}`):'👉 Aceite usando *!aceitarcontrato 1* (1 a 5).'
           return text.trim()
 }
-
 async function showMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'nav_main',{},90000)
   await reply(
 `🤖 *ALPHA BOT — CENTRAL DO GRUPO*
-
 Um bot completo para o grupo — não só RPG.
-
 🚀 *NOVIDADES 3.0*
 🌐 *!web* — RPG visual no navegador, conectado ao mesmo personagem
 📜 *!contratos* — missões rotativas de 4 em 4 horas
-
 💰 *Economia & patrimônio*
 Trabalho, banco, PIX, Uber, iFood, negócios, veículos e ranking.
-
 ⚔️ *RPG & progressão*
 Personagem, itens, pets, Dungeon, Raids, Boss, clãs e missões.
-
 🎮 *Diversão & competição*
 Minigames, duelos, eventos e rankings.
-
 🛡️ *Grupo & utilidades*
 Moderação, futebol, ferramentas, assinatura e suporte.
-
 ━━━━━━━━━━━━━━
 📍 *MENU PRINCIPAL*
-
 1️⃣ 👤 Perfil & conta
 2️⃣ 💰 Economia & banco
 3️⃣ 🛒 Loja, itens & inventário
@@ -1174,32 +1055,26 @@ Moderação, futebol, ferramentas, assinatura e suporte.
 7️⃣ 🏴 Clãs
 8️⃣ 💚 Grupo & assinatura
 9️⃣ 🧰 Futebol, utilidades & suporte
-
 💡 *ATALHOS*
 *!perfil* • *!saldo* • *!trabalhar* • *!uber* • *!ifood*
 *!rpg* • *!pet* • *!raid* • *!minigames*
 📜 *!contratos*
 📚 Todos os recursos: *!comandos*
 🌐 RPG Web lançado: *!web*
-
 🎁 Grupos novos podem testar o Alpha Bot por *3 dias grátis*.
 👉 Responda apenas com o número.
 0️⃣ Sair`
   )
 }
-
 async function showCommandsMainMenu(chat,sender,reply){
   setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
   await reply(
 `📚 *ALPHA BOT — CENTRAL DE COMANDOS*
-
 O Alpha reúne *economia, entretenimento, RPG, recursos de grupo e utilidades* no mesmo bot.
 Escolha a área e eu mostro só os comandos que interessam.
-
 🚀 *NOVIDADES 3.0*
 🌐 *!web* — acesso ao novo RPG visual no navegador
 📜 *!contratos* — missões de 4 em 4 horas
-
 1️⃣ 👤 Perfil, conta & social
 2️⃣ 💰 Economia, trabalho, banco & PIX
 3️⃣ 🛒 Loja, inventário & mercado
@@ -1209,15 +1084,12 @@ Escolha a área e eu mostro só os comandos que interessam.
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo, moderação & assinatura
 9️⃣ 🧰 Futebol, utilidades & suporte
-
 💡 Dica: use *!menu* para navegar sem decorar comandos.
 🎁 Teste do grupo: *3 dias grátis*.
-
 👉 Responda só com o número.
 0️⃣ Fechar`
   )
 }
-
 function textOf(msg) {
   const m=msg?.message
   return m?.conversation
@@ -1226,7 +1098,6 @@ function textOf(msg) {
     || m?.videoMessage?.caption
     || ''
 }
-
 function mentionsOf(msg) {
   const m=unwrapMessageContent(msg?.message)
   return m?.extendedTextMessage?.contextInfo?.mentionedJid
@@ -1235,19 +1106,14 @@ function mentionsOf(msg) {
     || m?.conversation?.contextInfo?.mentionedJid
     || []
 }
-
 function canonicalPlayerJid(jid){
   if(!jid) return jid
-  // Baileys pode devolver PNs com device id (ex.: numero:2@s.whatsapp.net).
-  // O banco histórico usa numero@s.whatsapp.net; nunca deixe o device criar outro jogador.
   if(jid.endsWith('@s.whatsapp.net')) return jid.replace(/:\\d+(?=@)/,'')
   return jid
 }
-
 function normalizedAddressJid(jid){
   return String(jid||'').replace(/:\d+(?=@)/,'')
 }
-
 async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
   if(!jid) return {jid,aliases:[]}
   const aliases=new Set([jid])
@@ -1262,7 +1128,6 @@ async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
       if(alt.endsWith('@s.whatsapp.net')) phoneJid=canonicalPlayerJid(alt)
     }
   }
-
   try{
     if(chat?.endsWith('@g.us')){
       const meta=await sock.groupMetadata(chat)
@@ -1278,10 +1143,6 @@ async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
       }
     }
   }catch{}
-
-  // Try every LID we collected. This covers both directions used by WhatsApp:
-  // a message can arrive by LID while a mention arrives by phone JID, or the
-  // opposite. Keeping every alias is what allows the database rows to merge.
   if(!phoneJid){
     for(const alias of aliases){
       if(!alias?.endsWith('@lid')) continue
@@ -1295,10 +1156,6 @@ async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
       }catch{}
     }
   }
-
-  // WhatsApp sometimes sends only an @lid without its phone alias.
-  // The verified owner's exact LID must always resolve to the original PN account.
-  // This prevents a separate Lv.1 account and restores founder/admin privileges.
   if(ownerLid && ownerNumber && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
     const canonicalOwner=ownerNumber+'@s.whatsapp.net'
     aliases.add(ownerLid)
@@ -1307,11 +1164,9 @@ async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
   }
   return {jid:phoneJid || canonicalPlayerJid(jid),aliases:[...aliases]}
 }
-
 async function resolvePlayerJid(sock,chat,jid,msg=null) {
   return (await resolvePlayerIdentity(sock,chat,jid,msg)).jid
 }
-
 function unwrapMessageContent(message){
   let current=message
   for(let i=0;i<6;i++){
@@ -1327,24 +1182,20 @@ function unwrapMessageContent(message){
   }
   return current
 }
-
 function stickerMediaOf(msg){
   const supported=new Set(['imageMessage','videoMessage','stickerMessage'])
   const directMessage=unwrapMessageContent(msg?.message)
   const directType=directMessage ? getContentType(directMessage) : null
-
   if(directType && supported.has(directType)){
     return {
       type:directType,
       raw:{key:msg.key,message:directMessage}
     }
   }
-
   const directContent=directType ? directMessage?.[directType] : null
   const ctx=directContent?.contextInfo
   const quotedMessage=unwrapMessageContent(ctx?.quotedMessage)
   const quotedType=quotedMessage ? getContentType(quotedMessage) : null
-
   if(quotedType && supported.has(quotedType)){
     return {
       type:quotedType,
@@ -1358,17 +1209,13 @@ function stickerMediaOf(msg){
       }
     }
   }
-
   return null
 }
-
 function fmt(n){ return Number(n||0).toLocaleString('pt-BR') }
-
 function lootDispositionPrompt(item,index,total){
   const sellTotal=Number(item.sellUnit||0)*Number(item.qty||0)
   return `🎒 *O QUE FAZER COM O DROP?*\n\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n💰 Venda imediata: *R$ ${fmt(sellTotal)}*\n\n1️⃣ Guardar no inventário\n2️⃣ Vender agora\n\n📦 Item ${index+1}/${total}`
 }
-
 function lootDispositionBulkPrompt(items){
   const counts={common:0,uncommon:0,rare:0,epic:0,legendary:0}
   for(const item of items){
@@ -1377,7 +1224,6 @@ function lootDispositionBulkPrompt(items){
   }
   return `🎒 *O QUE QUER FAZER COM OS ITENS?*\n\n⚪ Comuns: *${fmt(counts.common)}*\n🟢 Incomuns: *${fmt(counts.uncommon)}*\n🔵 Raros: *${fmt(counts.rare)}*\n🟣 Épicos: *${fmt(counts.epic)}*\n🟠 Lendários: *${fmt(counts.legendary)}*\n\n1️⃣ Guardar tudo\n2️⃣ Vender tudo, menos Lendário\n3️⃣ Vender todos os Comuns\n4️⃣ Vender todos os Incomuns\n5️⃣ Vender todos os Raros\n6️⃣ Vender todos os Épicos\n7️⃣ Vender Raros + Épicos\n8️⃣ Escolher item por item\n\n🛡️ *Lendário nunca entra na venda em massa.*`
 }
-
 async function sellLootBatch(sender,items,predicate){
   let soldTotal=0
   let soldQty=0
@@ -1397,7 +1243,6 @@ async function sellLootBatch(sender,items,predicate){
   }
   return {soldTotal,soldQty,failures}
 }
-
 async function beginLootDisposition(chat,sender,result,reply){
   const items=Array.isArray(result?.items)?result.items.filter(i=>Number(i.qty||0)>0):[]
   if(!items.length) return false
@@ -1405,13 +1250,11 @@ async function beginLootDisposition(chat,sender,result,reply){
   await reply(lootDispositionBulkPrompt(items))
   return true
 }
-
 function luckyBoxSummary(r){
   let text=`🎁 *CAIXAS — RESULTADO*\n\n📦 Caixa: *${r.boxName||r.boxId||'Caixa'}*\n📦 Caixas abertas: *${r.opened}*\n`
   if(Number(r.luckyMultiplier||1)>1) text+=`🍀 *DOUBLE LUCKY x${Number(r.luckyMultiplier).toLocaleString('pt-BR')} ATIVO — chances de raridade multiplicadas*\n`
   if(r.cash>0) text+=`💰 Dinheiro: *R$ ${fmt(r.cash)}*\n`
   if(r.exp>0) text+=`✨ EXP: *+${fmt(r.exp)}*\n`
-
   const rc=r.rarityCounts||{}
   if(Number(rc.legendary||0)>0) text+=`\n🌟🌟 *LENDÁRIO ENCONTRADO!* ×${rc.legendary}\n`
   if(r.items?.length){
@@ -1422,7 +1265,6 @@ function luckyBoxSummary(r){
       text+=`   • ${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}\n`
     }
   }
-
   text+=`\n📦 Caixas restantes: *${r.remaining}*\n💵 Carteira: *R$ ${fmt(r.balance)}*`
   return text
 }
@@ -1447,8 +1289,6 @@ function duration(sec){
   const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60)
   return h ? `${h}h ${m}min` : `${m}min`
 }
-
-
 function alphaTitle(p,patrimony){
   const wins=Number(p?.win||0), level=Number(p?.level||1), total=Number(patrimony||0)
   if(wins>=100) return '👑 Lenda da Arena'
@@ -1460,18 +1300,15 @@ function alphaTitle(p,patrimony){
   if(wins>=5) return '🥊 Lutador'
   return '🌱 Novato'
 }
-
 function founderBadge(p){
   return Number(p?.created_at||0)>0 && Number(p.created_at)<=1790748000 ? '🍀 FUNDADOR ALPHA' : ''
 }
-
 function xpBar(exp,level){
   const needed=Math.max(100,Number(level||1)*100)
   const current=Math.max(0,Math.min(needed,Number(exp||0)))
   const filled=Math.max(0,Math.min(10,Math.floor((current/needed)*10)))
   return {bar:'█'.repeat(filled)+'░'.repeat(10-filled),current,needed}
 }
-
 async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,relics,combatContext]=await Promise.all([
     getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
@@ -1485,7 +1322,6 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
       FROM (SELECT $1::text AS jid) u LEFT JOIN player_awakenings a ON a.jid=u.jid`,[jid])
   ])
   if(!p) throw new Error('Perfil não encontrado.')
-
   const wins=Number(p.win||0),loss=Number(p.loss||0)
   const title=alphaTitle(p,pat.total)
   const badge=founderBadge(p)
@@ -1500,20 +1336,12 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
     Number(streak.bestStreak)>=7?'🔥 7 DIAS':null,
     Number(streak.bestStreak)>=30?'🌟 30 DIAS':null
   ].filter(Boolean)
-
   const petLine=pet
     ? `🐾 Pet: *${pet.name}* (${pet.species}, Nv.${pet.level}) • ❤️ ${pet.hp}/${petMaxHp(pet.level,pet.xp,pet.species)} • ⚡ ${pet.energy}/${petMaxEnergy(pet.level,pet.species)}`
     : '🐾 Pet: *Nenhum*'
-
-  // O ATK exibido ja inclui armas/armaduras e seus upgrades.
-  // Dano extra deve ser calculado SOBRE esse ATK, sem converter equipamento
-  // novamente em percentual. Critico e probabilidade, nao dano fixo.
-  // Efeitos condicionais (procs, HP baixo, oleos temporarios) ficam fora da porcentagem.
   const context=combatContext.rows[0]||{}
   const awakeningStage=Boolean(p.class_applied)?Math.min(5,Math.max(0,Number(context.awakening_stage||0))):0
   const synergy=petTeamSynergy(context.team||[])||{}
-  // Uma só regra para o perfil e o combate real; inclui suportes aptos,
-  // reserva e limites por atributo. Pet sem energia não concede bônus ativo.
   const combatPets=profileCombatPetBonuses(pet,context.team||[])
   const petDamage=Number(combatPets.active.damage||0)
   const petCrit=Number(combatPets.active.crit||0)
@@ -1537,8 +1365,6 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
   const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
   const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
-  // Mostrar a chance final e, ao lado, os pontos percentuais que pets e
-  // sinergia realmente acrescentam apos os limites de critico do combate.
   const raidCritNoPetsPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0))*100
   const bossCritNoPetsPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0))*100
   const critLine=(label,total,noPets)=>`🎯 ${label}: *${pct(total)}%* (🐾 +${pct(Math.max(0,total-noPets))} p.p. pets)`
@@ -1546,8 +1372,6 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const petStatus=pet&&!primaryPetReady
     ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
     :null
-  // PvP é calculado pelo pet principal apto, independentemente do painel Boss/Raid.
-  // Chance efetiva respeita teto de 40% e a sinergia dos 7 Pecados.
   const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
   const pvpCritNoPet=Math.min(.40,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
   const pvpCritWithPet=Math.min(.40,pvpCritNoPet+Number(pvpPet?.crit||0))
@@ -1577,50 +1401,41 @@ ${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNo
     ?critLine('CRIT RAID/BOSS',raidCritPct,raidCritNoPetsPct)
     :critLine('CRIT RAID',raidCritPct,raidCritNoPetsPct)+'\n'+critLine('CRIT BOSS',bossCritPct,bossCritNoPetsPct)}
 ${petDetail}${enchantDetail}`
-
   const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
 ${title}${badge?' • '+badge:''}
-
 ⭐ Nível: *${Number(p.level||1)}*
 🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}
 ✨ EXP: *${xp.current}/${xp.needed}*
 [${xp.bar}]
-
 ❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*
 ⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
 ${bonusSummary}
-
 ${pvpPetLine}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
 🥊 Ranking RPG: *#${Number(ranks.combatRank||0)||'-'}*
 💰 Ranking Economia: *#${Number(ranks.economyRank||0)||'-'}*
-
 🪙 Saldo total: *R$ ${fmt(Number(p.cash||0)+Number(p.bank||0))}*
 💎 Patrimônio: *R$ ${fmt(Number(pat.total||0))}*
 🔥 Daily: *${Number(streak.streak||0)} dia(s)* • Recorde: *${Number(streak.bestStreak||0)}*
-
 🗡️ Arma: *${p.weapon_name||'Sem arma'} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}*
 🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}*
 👢 Botas: *${p.boot_name||'Sem botas'} Lv.${Number(p.boot_level||1)}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
 ⚜️ Insígnia: *${relics.active?.name||'Nenhuma ativa'}*
 ${relics.active?'✨ Efeito: '+relics.active.effect+'\n':''}${petLine}
-
 💼 Carreira: *${career?.rank?.name||'Ajudante'}*
 🏴 Clã: *${clan?.name||'Sem clã'}*
 🏠 Casa: *${home?.name||'Nenhuma'}*
 🚗 Carros: *${Array.isArray(cars)?cars.length:0}*
 🏍️ Motos/Bikes: *${Array.isArray(motorcycles)?motorcycles.length:0}*
 🏢 Negócios: *${Array.isArray(businesses)?businesses.length:0}*${achievements.length?'\n\n🏅 '+achievements.join(' • '):''}`
-
   await sock.sendMessage(chat,{text},{quoted:msg})
 }
-
 function workResultText(r){
   const eventLine=Number(r.eventMultiplier||1)>1?`🔥 *EVENTO x${Number(r.eventMultiplier).toLocaleString('pt-BR',{maximumFractionDigits:2})} APLICADO — dinheiro e XP profissional multiplicados*\n\n`:''
   let text=`💼 *TRABALHO — ${r.rank.name.toUpperCase()}*\n\n${eventLine}💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.amount)}*\n📈 XP profissional: *+${r.xpGain}* (${r.careerXp})\n🧾 Expedientes: *${r.totalShifts}*`
@@ -1630,7 +1445,6 @@ function workResultText(r){
   else text+='\n🏆 Você chegou ao topo da carreira!'
   return text
 }
-
 function dailyMissionsText(board,prefix='!'){
   const money=v=>Number(v||0).toLocaleString('pt-BR')
   let out='📋 *MISSÕES DIÁRIAS*\n\n'
@@ -1648,7 +1462,6 @@ function dailyMissionsText(board,prefix='!'){
   out+='Use *'+prefix+'resgatarmissoes* para coletar as recompensas concluídas.'
   return out
 }
-
 async function creditDailyActivity(jid,type,amount=1,sourceKey=null,notify=null,options={}){
   const out=await progressDailyMission(jid,type,amount,sourceKey,options)
   if(out?.daily?.ok&&typeof notify==='function'){
@@ -1659,7 +1472,6 @@ async function creditDailyActivity(jid,type,amount=1,sourceKey=null,notify=null,
   }
   return out
 }
-
 function dailyResultText(r){
   const eventLine=Number(r.eventMultiplier||1)>1?`🔥 *EVENTO x${Number(r.eventMultiplier).toLocaleString('pt-BR',{maximumFractionDigits:2})} APLICADO*\n`:''
   let text=`🔥 *DAILY ALPHA*\n\n${eventLine}💰 +R$ ${fmt(r.totalCash)}\n🔥 Sequência: *${r.streak} dia${r.streak===1?'':'s'}*\n🏅 Recorde: *${r.bestStreak} dia${r.bestStreak===1?'':'s'}*`
@@ -1674,14 +1486,12 @@ function dailyResultText(r){
   }
   return text
 }
-
 function parseAmount(s){
   if(!s) return 0
   const clean=String(s).replace(/\./g,'').replace(',','.')
   const n=Number(clean)
   return Number.isFinite(n) ? Math.floor(n) : 0
 }
-
 function normalizeItemText(value){
   return String(value||'')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -1690,7 +1500,6 @@ function normalizeItemText(value){
     .replace(/\s+/g,' ')
     .trim()
 }
-
 function resolveOwnedItem(items,input,categories=null){
   const allowed=categories ? items.filter(i=>categories.includes(i.category)) : items
   const raw=normalizeItemText(input)
@@ -1700,7 +1509,6 @@ function resolveOwnedItem(items,input,categories=null){
     normalizeItemText(i.name)===raw
   ) || null
 }
-
 const XP_SPECIAL_ITEM_IDS=new Set(['elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido','elixir_leilao_30m','elixir_leilao_2h','pergaminho_leilao_10k'])
 function xpItemReceipt(r){
   if(r.type==='boost') return `🧪 *${r.name.toUpperCase()} ATIVADO!*\n✨ +${r.percent}% de XP pelos próximos *${r.durationMinutes} minutos*.\n🛡️ Limite de *${r.cap} XP extra*; elixires não acumulam.\n📊 Use *!buffxp* para acompanhar.`
@@ -1715,9 +1523,7 @@ const SHOP_IDS=[
   'bota_leve','bota_vento','bota_cacador','bota_relampago',
   'caixa_sorte','caixa_rara','caixa_epica'
 ]
-
 const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica','caixa_lendaria']
-
 const POTION_SELL_IDS=[
   'pocao_p','pocao_m','pocao_g','elixir_supremo',
   'pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full','energetico_pet'
@@ -1728,7 +1534,6 @@ const RAID_SELL_IDS=[
   'essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido',
   'fragmento_caos','coroa_abissal','essencia_eclipse'
 ]
-
 const CARPINAR_MENU=[
   {option:1,hours:1,xp:140,cash:300,boxChance:1},
   {option:2,hours:2,xp:300,cash:650,boxChance:2},
@@ -1737,7 +1542,6 @@ const CARPINAR_MENU=[
   {option:5,hours:8,xp:1450,cash:3200,boxChance:8},
   {option:6,hours:12,xp:2200,cash:5000,boxChance:12}
 ]
-
 const RARITY_META={
   common:['⚪','Comum'],
   uncommon:['🟢','Incomum'],
@@ -1746,12 +1550,10 @@ const RARITY_META={
   legendary:['🟠','Lendário'],
   event:['🌘','Evento Único']
 }
-
 function rarityLabel(rarity){
   const [icon,label]=RARITY_META[rarity]||['⚪',String(rarity||'Comum')]
   return `${icon} ${label}`
 }
-
 function shopCategoryLabel(category){
   if(category==='consumable') return '🧪 CONSUMÍVEIS'
   if(category==='weapon') return '⚔️ ARMAS'
@@ -1759,14 +1561,11 @@ function shopCategoryLabel(category){
   if(category==='boots') return '👢 BOTAS'
   return '🎁 CAIXAS'
 }
-
 function shopCategoryItems(items,choice){
   const category={1:'consumable',2:'weapon',3:'armor',4:'boots',5:'special'}[choice]
   if(!category) return []
   return items.filter(i=>i.category===category && SHOP_IDS.includes(i.id))
 }
-
-
 function resolveShopItem(input){
   const raw=String(input||'').toLowerCase().trim()
   if(/^\d+$/.test(raw)){
@@ -1775,13 +1574,10 @@ function resolveShopItem(input){
   }
   return SHOP_IDS.includes(raw) ? raw : null
 }
-
-
 const FUN_PRICES={
   joke:250,
   horoscope:500
 }
-
 const JOKES=[
   'Por que o computador foi ao médico? Porque ele estava com um vírus. 🤧💻',
   'Qual é o café mais perigoso? O ex-presso. ☕😂',
@@ -1804,13 +1600,11 @@ const JOKES=[
   'O que a parede falou para a outra? A gente se encontra na esquina. 🧱',
   'Por que o banco de dados terminou o namoro? Faltava relacionamento. 🗄️😂'
 ]
-
 const SIGNS=[
   ['aries','Áries'],['touro','Touro'],['gemeos','Gêmeos'],['cancer','Câncer'],
   ['leao','Leão'],['virgem','Virgem'],['libra','Libra'],['escorpiao','Escorpião'],
   ['sagitario','Sagitário'],['capricornio','Capricórnio'],['aquario','Aquário'],['peixes','Peixes']
 ]
-
 const HOROSCOPE_MOODS=[
   'Dia bom para organizar ideias e terminar algo que ficou pela metade.',
   'Uma conversa leve pode trazer uma surpresa positiva.',
@@ -1823,7 +1617,6 @@ const HOROSCOPE_MOODS=[
   'Seu foco tende a melhorar quando você resolve primeiro as tarefas menores.',
   'Hoje a sorte está mais ligada a iniciativa do que a esperar acontecer.'
 ]
-
 const HOROSCOPE_LUCK=[
   '🍀 Sorte: boa',
   '🍀 Sorte: moderada',
@@ -1831,14 +1624,12 @@ const HOROSCOPE_LUCK=[
   '🍀 Sorte: melhor no fim do dia',
   '🍀 Sorte: favorece quem arrisca com calma'
 ]
-
 function dayKeySaoPaulo(){
   return new Intl.DateTimeFormat('en-CA',{
     timeZone:'America/Sao_Paulo',
     year:'numeric',month:'2-digit',day:'2-digit'
   }).format(new Date())
 }
-
 function hashText(text){
   let h=2166136261
   for(const ch of String(text)){
@@ -1847,11 +1638,9 @@ function hashText(text){
   }
   return h>>>0
 }
-
 function jokeText(){
   return JOKES[Math.floor(Math.random()*JOKES.length)]
 }
-
 function horoscopeText(signId,signName){
   const seed=hashText(signId+'|'+dayKeySaoPaulo())
   const mood=HOROSCOPE_MOODS[seed%HOROSCOPE_MOODS.length]
@@ -1860,7 +1649,6 @@ function horoscopeText(signId,signName){
     mood+'\n\n'+luck+
     '\n\n_Leitura criada só por diversão/entretenimento._'
 }
-
 function petAbilityBaseText(species){
   const spec=PET_STATUS_SPECIALTIES[String(species||'').toLowerCase()]
   if(!spec) return 'Sem habilidade especial'
@@ -1883,7 +1671,6 @@ function petAbilityBaseText(species){
   }
   return parts.join(' • ')
 }
-
 function petRoleTags(species){
   const spec=PET_STATUS_SPECIALTIES[String(species||'').toLowerCase()]
   if(!spec) return '🐾 Geral'
@@ -1906,11 +1693,9 @@ function petRoleTags(species){
   if(Number(spec.healPct||0)>0) ranked.push('💚 Cura')
   return ranked.slice(0,2).join(' / ')||'🐾 Geral'
 }
-
 function petIdentityTag(species){
   return petStyleLabel(species)+' • '+petRoleTags(species)
 }
-
 const COLLECTION_LEGENDARY_SPECIES=new Set(
   LEGENDARY_PET_SUMMONS.flatMap(a=>a.pets.map(p=>String(p.species||'')))
 )
@@ -1938,7 +1723,6 @@ function petCollectionDetailMessage(state,id,mode='manage'){
   const pet=state.pets.find(p=>Number(p.id)===Number(id))
   return pet?petCollectionDetailText(pet,petCollectionOptions(state,mode)):null
 }
-
 function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
   let text=title+'\n\n'
   for(const p of ADOPTABLE_PETS){
@@ -1948,7 +1732,6 @@ function adoptablePetCatalogText(title='🐾 *ADOÇÃO DE PETS*'){
   text+='\n📈 As habilidades aumentam com o nível do pet.\n'
   return text
 }
-
 function petStatusBonus(p){
   const spec=PET_STATUS_SPECIALTIES[String(p?.species||'').toLowerCase()]
   if(!spec) return {label:'🐾 Companheiro',text:'Sem especialidade cadastrada',critPct:0}
@@ -1980,14 +1763,11 @@ function petStatusBonus(p){
     critPct:rawPct(Number(stats.crit||0))
   }
 }
-
 async function start() {
   await initDatabase()
   await initAwakening()
   await initRelics()
   await initEnchantments()
-  // Ativação única, atômica e persistente do evento de fragmentos (30 minutos).
-  // O início ocorre nesta inicialização; restarts NÃO reiniciam nem prolongam o evento.
   {
     const key='raid_fragment_double_20261012_30min_v1'
     const startAt=Date.now()
@@ -2003,8 +1783,6 @@ async function start() {
     )
     if(claimed.rowCount) console.log('[RAID FRAG 2X] evento iniciado',JSON.stringify(event))
   }
-
-  // Evento administrativo de XP, de uso único. Mantém dinheiro, drops e caixas em 1x.
   const adminXpEventToken=String(process.env.ADMIN_XP_EVENT_TOKEN||'').trim()
   const adminXpEventMinutes=Number(process.env.ADMIN_XP_EVENT_MINUTES||0)
   const adminXpEventMultiplier=Number(process.env.ADMIN_XP_EVENT_MULTIPLIER||0)
@@ -2044,9 +1822,6 @@ async function start() {
       }
     }
   }
-
-  // Troca individual autorizada: silenciosa, atômica e de execução única.
-  // Sem mensagens WhatsApp, alterações de chances, dinheiro ou outros jogadores.
   {
     const marker='private_exchange:11948523167:divina_titanica_to_machado_tita:20261012'
     const client=await db.connect()
@@ -2101,9 +1876,6 @@ async function start() {
       console.error('[PrivateExchange] falha sem alterações',err?.message||err)
     }finally{client.release()}
   }
-
-  // Patch administrativo opcional, de uso único, para correções pontuais de inventário.
-  // Os dados ficam apenas nas variáveis de ambiente do serviço; o token impede repetição em restarts.
   const adminPatchToken=String(process.env.ADMIN_INVENTORY_PATCH_TOKEN||'').trim()
   const adminPatchPhone=String(process.env.ADMIN_INVENTORY_PATCH_PHONE||'').replace(/\D/g,'')
   const adminPatchItem=String(process.env.ADMIN_INVENTORY_PATCH_ITEM||'').trim()
@@ -2139,8 +1911,6 @@ async function start() {
       }
     }
   }
-
-  // Crédito administrativo único de materiais de Raid (sem mensagem ao jogador).
   {
     const markerKey='admin_material_grant:11987308687:2026-10-05'
     const already=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[markerKey])).rowCount>0
@@ -2175,8 +1945,6 @@ async function start() {
       }
     }
   }
-
-  // Garantia opcional de uma única invocação, persistente até ser consumida.
   const summonPatchToken=String(process.env.ADMIN_SUMMON_PATCH_TOKEN||'').trim()
   const summonPatchPhone=String(process.env.ADMIN_SUMMON_PATCH_PHONE||'').replace(/\D/g,'')
   const summonPatchMaterial=String(process.env.ADMIN_SUMMON_PATCH_MATERIAL||'').trim()
@@ -2213,20 +1981,14 @@ async function start() {
       }
     }
   }
-
   await initCommunityPack()
   await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
   await initGames()
-  // Reposição da madrugada: só aplica com 3 participantes identificados e HP exato.
   const bossCompensation=await compensateFrozenWeeklyBoss20261009().catch(err=>({status:'error',reason:String(err?.message||err)}))
   console.log('[Boss Compensation] resultado',JSON.stringify(bossCompensation))
-  // Corrige o rateio original após reclamação legítima sobre a primeira participação.
-  // Conserve rigorosamente o dano global já compensado (não descontar HP novamente).
   const shareCorrection=await rectifyFrozenWeeklyBossShare20261009()
     .catch(err=>({status:'error',reason:String(err?.message||err)}))
   console.log('[Boss Share Correction] resultado',JSON.stringify(shareCorrection))
-  // Auditoria pontual somente leitura: taxas reais, ciclos e sessões,
-  // para examinar a alegação de que o primeiro atacante ficou sem contabilização.
   if(Date.now()<Date.parse('2026-10-10T23:59:00-03:00')){
     try{
       const boss=(await db.query(
@@ -2256,7 +2018,6 @@ async function start() {
   await initLoans()
   startLoanCollector()
   await acquireRuntimeLock(sessionId)
-  // Run once on a strictly guarded temporary Neon dataset; marker makes redeploys idempotent.
   if(process.env.ALPHA_RESTORE_20261019==='yes') {
     const {restoreTemporaryPlayers20261019}=await import('./temporary-recovery-20261019.js')
     await restoreTemporaryPlayers20261019()
@@ -2265,8 +2026,6 @@ async function start() {
     const {restoreLostInventories20261019}=await import('./inventory-recovery-20261019.js')
     await restoreLostInventories20261019()
   }
-  // Auditoria somente leitura das recompensas únicas do Superboss de 09/10.
-  // Verifica propriedade e categoria, sem duplicar itens ou modificar inventários.
   try{
     const audited=[
       {label:'João Pedro (campeão)',key:'elmo_soberano_golem',jid:'5511987308687@s.whatsapp.net'},
@@ -2287,11 +2046,6 @@ async function start() {
       }))
     }
   }catch(err){console.error('[Superboss Prize Audit] consulta falhou',err?.message||err)}
-
-
-  // Reativação excepcional da sessão interrompida às 09:51:39 de 09/10.
-  // Auditoria confirmou HP=0, combate persistido parado e 99 elixires.
-  // Não soma dano estimado nem altera HP do Boss: consome 1 poção existente.
   try{
     const offender='5511948523167@s.whatsapp.net'
     const [sessionR,bossR,healthR]=await Promise.all([
@@ -2320,9 +2074,6 @@ async function start() {
       }
     }
   }catch(err){console.error('[Boss Auto Heal] reativação pontual falhou',err?.message||err)}
-
-  // Compensação real pelas desconexões de 04/10: 10 minutos completos a partir
-  // da primeira inicialização deste patch. O oneOffId impede renovar em redeploys.
   const raidCompensationOneOffId='raid-disconnect-comp-2026-10-04-v2'
   const existingRaidComp=(await db.query("SELECT value FROM trevo_settings WHERE key='raid_compensation_event'")).rows[0]?.value||{}
   if(String(existingRaidComp.oneOffId||'')!==raidCompensationOneOffId){
@@ -2344,8 +2095,6 @@ async function start() {
     })])
     console.log('[Eventos] compensação de Raid ativada por 10 minutos completos')
   }
-
-  // Evento relâmpago de pets — 04/10/2026, 20:00–20:30 America/Sao_Paulo.
   const petCareStartsAt=Date.parse('2026-10-04T20:00:00-03:00')
   const petCareEndsAt=Date.parse('2026-10-04T20:30:00-03:00')
   if(Date.now()<petCareEndsAt){
@@ -2361,9 +2110,6 @@ async function start() {
       multiplier:2
     })])
   }
-
-  // Programação única solicitada para domingo, 04/10/2026, horário de Brasília.
-  // O scheduleId impede que reinícios sobrescrevam marcadores de avisos já enviados.
   const scheduledEventsId='alpha-events-2026-10-03-v3'
   const rewardStartsAt=1791072000000 // 03/10 21:00 BRT
   const rewardEndsAt=1791075000000   // 03/10 21:50 BRT (+20 min compensação)
@@ -2389,7 +2135,6 @@ async function start() {
       )
       console.log('[Eventos] 2x agendado para 03/10 21:00–21:50 BRT (compensação +20 min)')
     }
-
     const existingLucky=(await db.query("SELECT value FROM trevo_settings WHERE key='lucky_box_event'")).rows[0]?.value||{}
     if(String(existingLucky.scheduleId||'')!==scheduledEventsId){
       await db.query(
@@ -2410,7 +2155,6 @@ async function start() {
   }
   const { state, saveCreds }=await useNeonAuthState(sessionId)
   const { version }=await fetchLatestBaileysVersion()
-
   const groupMetadataCache=createTtlCache({ttlMs:5*60*1000,maxEntries:128})
   const whatsappMediaCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false,maxKeys:2048})
   let loadGroupMetadata
@@ -2423,10 +2167,8 @@ async function start() {
     logger:logger.child({level:'silent'}),
     browser:Browsers.ubuntu('Chrome'),
     printQRInTerminal:!pairingNumber,
-    // Evita que a sessão vinculada se anuncie permanentemente online e impeça push do WhatsApp.
     markOnlineOnConnect:false,
     syncFullHistory:false,
-    // Preserve Baileys' initial identity/LID synchronization; full history remains off.
     cachedGroupMetadata:jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid)),
     mediaCache:whatsappMediaCache,
     connectTimeoutMs:60000,
@@ -2442,8 +2184,6 @@ async function start() {
       delayBetweenTriesMs:500
     }
   })
-  // QR temporário em memória, visível somente pela página protegida por senha.
-  // Nenhuma credencial ou código QR é gravado em logs, GitHub ou no banco original.
   const privateQrState=globalThis.__alphaPairingQr||(globalThis.__alphaPairingQr={value:null,updatedAt:0})
   if(!state.creds.registered){
     sock.ev.on('connection.update',update=>{
@@ -2461,13 +2201,7 @@ async function start() {
   })
   sock.ev.on('group-participants.update',event=>groupMetadataCache.delete(event.id))
   sock.ws?.on?.('open',()=>trackBandwidthStream('whatsapp',sock.ws?.socket?._socket))
-
-  // Registra somente contagens (sem texto, JIDs ou conteúdo de mensagens).
-  // Se o websocket receber muitos pacotes mas o Baileys parar de emitir
-  // messages.upsert por cinco minutos, recupera uma sessão WhatsApp "surda".
   let whatsappDeafRecoveryTriggered=false
-  // Diagnóstico do bloqueio de sincronização inicial que mantém o socket
-  // "open", mas impede o Baileys de entregar messages.upsert.
   trevoHealth.pendingNotificationsReceived=false
   trevoHealth.offlinePreviewCount=0
   trevoHealth.offlineCompletionCount=0
@@ -2486,8 +2220,6 @@ async function start() {
       console.log('[WhatsApp Sync] notificações pendentes sincronizadas:',trevoHealth.pendingNotificationsReceived)
     }
   })
-  // Baileys rc14 interpreta a string offline="0" como true e deixa
-  // notificações recentes presas na fila offline.
   for(const eventName of ['CB:message','CB:notification','CB:receipt']){
     sock.ws?.prependListener?.(eventName,node=>{
       if(node?.attrs?.offline==='0'){
@@ -2496,7 +2228,6 @@ async function start() {
       }
     })
   }
-
   let forceFlushAttempted=false
   const forceFlushTimer=setTimeout(()=>{
     if(forceFlushAttempted || trevoHealth.whatsapp!=='open')return
@@ -2508,10 +2239,6 @@ async function start() {
     }
     forceFlushAttempted=true
     try{
-      // O fluxo original só libera o buffer quando chega <ib><offline>.
-      // Se o servidor não envia esse fechamento, o socket parece conectado,
-      // mas nenhum comando chega ao bot. Reproduz exclusivamente o sinal
-      // de conclusão local; não remove ou modifica as credenciais do WhatsApp.
       const fakeEnd={tag:'ib',attrs:{},content:[{tag:'offline',attrs:{count:'0'}}]}
       const emitters=sock.ws?.listenerCount?.('CB:ib,,offline')||0
       if(emitters>0){
@@ -2526,7 +2253,6 @@ async function start() {
     }catch(e){console.error('[WhatsApp Sync] recuperação do buffer falhou',e?.message)}
   },40000)
   forceFlushTimer.unref?.()
-
   sock.ws?.on?.('CB:message',()=>{
     trevoHealth.lastRawMessageAt=Date.now()
     trevoHealth.rawMessagesSeen=Number(trevoHealth.rawMessagesSeen||0)+1
@@ -2544,22 +2270,17 @@ async function start() {
     }
   },60*1000)
   deafWatchdog.unref?.()
-
   sock.ev.on('creds.update',()=>{
     void saveCreds().catch(err=>console.error('[WhatsApp] falha ao persistir credenciais',err?.message||err))
   })
-
   const botGroupIntroKey=chat=>'bot_group_intro:'+chat
   const botGroupIntroText=groupName=>`😈🤖 *OLÁ, BETAS!*
-
 Eu sou o *Alpha Bot* — cheguei no *${groupName||'grupo'}* para transformar conversa em jogo.
-
 ⚔️ Monte seu personagem, evolua atributos e equipamentos
 🐾 Adote pets e forme seu time
 👹 Enfrente Bosses e Raids com a galera
 💰 Trabalhe, faça Uber/iFood, abra negócios e aumente seu patrimônio
 🎮 Jogue minigames, duelos e eventos com seus amigos
-
 🚀 *Pra começar agora:*
 *!perfil* — cria/mostra seu perfil
 *!rpg* — abre o RPG
@@ -2567,16 +2288,12 @@ Eu sou o *Alpha Bot* — cheguei no *${groupName||'grupo'}* para transformar con
 *!raid* — vê as Raids
 *!minigames* — jogos rápidos
 *!comandos* — lista completa
-
 🧪 Testem o RPG, chamem os amigos e tentem descobrir quem realmente é Alpha aqui.
-
 _Boa sorte, Betas. Vocês vão precisar._ 😎`
-
   async function getBotGroupIntroState(chat){
     const row=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[botGroupIntroKey(chat)])).rows[0]
     return row?.value||{}
   }
-
   async function setBotGroupIntroState(chat,value){
     await db.query(
       `INSERT INTO trevo_settings(key,value,updated_at)
@@ -2585,7 +2302,6 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
       [botGroupIntroKey(chat),JSON.stringify(value)]
     )
   }
-
   async function sendBotGroupIntro(chat,{force=false,reason='participant-add'}={}){
     if(temporaryRecoveryMode)return false
     if(!chat?.endsWith('@g.us')) return false
@@ -2602,9 +2318,6 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
       return false
     }
   }
-
-  // Ponte usada pelo RPG Web para publicar resultados competitivos no mesmo grupo
-  // do WhatsApp. Mantém rivalidade/atividade visível mesmo quando a ação veio do PWA.
   globalThis.__alphaWebGroupLog=async(chat,text,mentions=[])=>{
     if(!chat?.endsWith('@g.us') || !text || trevoHealth.whatsapp!=='open') return false
     try{
@@ -2615,14 +2328,6 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
       return false
     }
   }
-
-  // A Raid iniciada pelo PWA roda no processo do servidor, igual ao comando !go.
-  // Assim continua mesmo se o celular bloquear a tela, o navegador for para segundo
-  // plano ou os timers do PWA forem suspensos pelo Android/iOS.
-  //
-  // IMPORTANTE: o combate não pode depender do envio de mensagens do WhatsApp.
-  // Se uma notificação falhar, as rodadas continuam; o watchdog abaixo também
-  // recupera Raids ativas após erro transitório, reconexão ou restart do processo.
   raidAutoReply=async(chat,text)=>{
     if(!text || trevoHealth.whatsapp!=='open') return false
     try{
@@ -2633,21 +2338,15 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
       return false
     }
   }
-
   globalThis.__alphaStartRaidRun=async(chat,level)=>{
     if(!chat?.endsWith('@g.us')) return false
     return runRaidCombat(chat,Number(level),text=>raidAutoReply?raidAutoReply(chat,text):false)
   }
-
-  // Recuperação persistente: se o loop em memória morrer, o processo reiniciar ou
-  // uma Raid ativa já existir quando o bot subir, o servidor relança o runner.
-  // raidRuns impede dois loops simultâneos para o mesmo grupo/nível.
   void ensureActiveRaidRuns()
   void flushRaidFinalNotices()
   bossAutoReply=(chat,text)=>sock.sendMessage(chat,{text})
   if(!bossAutoWatchdog){
     bossAutoWatchdog=setInterval(()=>{
-      // Com nenhum atacante ativo, não manter o Neon acordado a cada 20s.
       if(neonEcoMode && bossSessions.size===0)return
       void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))
     },20000)
@@ -2656,22 +2355,15 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
   setTimeout(()=>{void ensureActiveBossRuns((chat,text)=>bossAutoReply?.(chat,text))},1500).unref?.()
   if(!raidAutoWatchdog){
     raidAutoWatchdog=setInterval(()=>{
-      // Recuperação inicial roda no boot. Nova Raid aciona seu runner diretamente.
-      // Só consultar o banco periodicamente enquanto existem runners/retries.
       if(neonEcoMode && raidRuns.size===0 && raidAutoRetryAt.size===0)return
       void ensureActiveRaidRuns()
     },4000)
-    // Reenvia encerramentos pendentes quando o WhatsApp reconectar.
     if(!neonEcoMode)setInterval(()=>{void flushRaidFinalNotices()},20000).unref?.()
     raidAutoWatchdog.unref?.()
   }
-
-  // Protege avisos de evento contra o texto literal "\n" no WhatsApp.
-  // Não altera a formatação em negrito, os emojis ou o conteúdo dos prêmios.
   function formatEventNotice(text){
     return String(text??'').replace(/\\r\\n/g,'\n').replace(/\\n/g,'\n')
   }
-
   const knownScheduledNotices=new Set()
   async function sendScheduledGroupNotice(chat,key,text){
     const settingKey='scheduled_notice:'+key+':'+chat
@@ -2684,9 +2376,6 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
     knownScheduledNotices.add(settingKey)
     if(inserted.rowCount) await sock.sendMessage(chat,{text:formatEventNotice(text)}).catch(err=>console.error('[Eventos] aviso',chat,err?.message||err))
   }
-
-  // Publica o resultado final do Eclipse em TODOS os grupos, inclusive apos deploy.
-  // O pagamento ja ocorreu na transacao do ultimo ataque; esta rotina apenas comunica.
   let eclipseResultBroadcastBusy=false
   async function announceCompletedEclipse(){
     if(trevoHealth.whatsapp!=='open'||eclipseResultBroadcastBusy) return
@@ -2752,7 +2441,6 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
     }catch(err){console.error('[Eclipse Result] falha de auditoria/anuncio',err?.stack||err)}
     finally{eclipseResultBroadcastBusy=false}
   }
-
   let bossEventSchedulerBusy=false
   let historicBossCleanupDone=false
   async function runBossEventScheduler(){
@@ -2761,13 +2449,10 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
     try{
       const historicalNoticesOpen=Date.now()<Date.parse('2026-10-10T00:00:00-03:00')
       if(historicalNoticesOpen)await announceCompletedEclipse()
-      // One catch-up settlement after downtime, never perpetual polling of October 9.
       if(!historicalNoticesOpen&&!historicBossCleanupDone){
         await encerrarRupturaEstelar('__alpha_global_boss_event__')
         historicBossCleanupDone=true
       }
-      // Um jogador pode derrotar o Boss global em um grupo diferente.
-      // Comunica a vitória nos demais grupos sem processar prêmios novamente.
       const rupturaState=historicalNoticesOpen?(await db.query(
         "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
       )).rows[0]?.state:null
@@ -2801,8 +2486,6 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
           }
           if(publicNotice) await sendScheduledGroupNotice(chat,'economy-audit-20261008',String(publicNotice))
           const now=Date.now()
-          // Sexta 09/10 às 00:01 (Brasília): criar automaticamente o Boss semanal
-          // em cada grupo licenciado; aviso idempotente por grupo.
           const weeklyStart=Date.parse('2026-10-09T00:01:00-03:00')
           const weeklyEnd=Date.parse('2026-10-11T00:00:00-03:00')
           if(now>=weeklyStart&&now<weeklyEnd){
@@ -2810,12 +2493,10 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
             if(weekly?.mode==='weekly'){
               await sendScheduledGroupNotice(chat,'weekly-golem-2026-10-09',
 `🌍👹 *BOSS SEMANAL — GOLEM ANCESTRAL DO ALPHA!*
-
 🕛 *INÍCIO: SEXTA 09/10 ÀS 00:01*
 🏁 *FIM: SÁBADO 10/10 ÀS 23:59* (Brasília)
 ❤️ HP: *${Number(weekly.maxHp).toLocaleString('pt-BR')}*
 ⚔️ ATK: *${weekly.atk}*
-
 🔥 Desafio de dois dias, com recompensas aprimoradas por colocação!\n💰 Bônus Top 1 a 5: R$ 650 mil / 450 mil / 300 mil / 200 mil / 125 mil.\n📦 Caixas Épicas garantidas: 12 / 9 / 7 / 5 / 3 (Top 1 a 5).
 🎁 Top 5 com caixas épicas garantidas e chances de equipamentos lendários.\n👑 *PRÊMIO EXCLUSIVO TOP 1:* Elmo do Soberano Ancestral — *+85 DEF / +220 HP*!\n🪖 Novo slot de Elmo: prêmio garantido somente ao campeão do Boss semanal.
 ⚔️ Use *!boss* para participar. Boa caçada!`)
@@ -2831,155 +2512,116 @@ _Boa sorte, Betas. Vocês vão precisar._ 😎`
           const petCareEnd=Date.parse('2026-10-04T20:30:00-03:00')
           const luckyGamesStart=Date.parse('2026-10-06T07:30:00-03:00')
           const luckyGamesEnd=Date.parse('2026-10-06T08:30:00-03:00')
-
           if(now>=luckyGamesStart&&now<luckyGamesEnd){
             await sendScheduledGroupNotice(chat,'lucky-games-3x-2026-10-06',
 `🍀🎰 *LUCKY 3X ATIVO!*
-
 ⏰ *Até 08:30 de hoje*
 🎰 Roleta/Cassino: *prêmios 3x*
 🪙 Cara ou Coroa: *prêmios 3x*
-
 ⚖️ *As chances continuam exatamente as mesmas.*
 O evento não aumenta a chance de ganhar — somente *triplica a recompensa quando você vence*.
-
 👥 Apostas PvP ficam fora do bônus.
 🔥 Aproveitem enquanto está valendo!`)
           }
-
           if(now<siegeEnd){
             await sendScheduledGroupNotice(chat,'agenda-2026-10-04',
 `📅 *EVENTOS DE HOJE — 04/10*
-
 ⚡ *10:30–11:30 — HORA DO CORRE*
 💰 +50% em *!trabalhar*, *!uber* e *!ifood*
 🚕 CLT Uber não recebe o bônus.
-
 🔥 *14:00–15:30 — INVASÃO DAS RAIDS*
 ✨ +50% XP de jogador
 🐾 +50% XP de pet
 ⚔️ Chance maior de equipamento
 💰 Dinheiro continua normal.
-
 👹 *18:00–20:00 — CERCO DO COLOSSO*
 🤝 Boss coletivo de *170–200 mil HP*
 🏆 Recompensas por colaboração
 🛡️ Novas armaduras híbridas com HP/crítico.
-
 ⚔️ Preparem poções, pets e equipamentos.`)
           }
-
           if(now>=rushStart&&now<rushEnd) await sendScheduledGroupNotice(chat,'rush-start-2026-10-04',
 `⚡ *HORA DO CORRE COMEÇOU!*
-
 ⏱️ Até *11:30*
 💰 *+50%* em !trabalhar, !uber e !ifood
 🚕 CLT Uber fica fora do bônus.
-
 🏃 Quem jogar ativo ganha mais nesta hora.`)
-
           if(now>=raidStart&&now<raidEnd) await sendScheduledGroupNotice(chat,'raid-start-2026-10-04',
 `🔥 *INVASÃO DAS RAIDS COMEÇOU!*
-
 ⏱️ Até *15:30*
 ✨ +50% XP de jogador
 🐾 +50% XP de pet
 ⚔️ Chance adicional de equipamento
 💰 Recompensa em dinheiro continua normal.
-
 🔑 Abram as Raids e montem o grupo.`)
-
           if(Number(raidComp.startsAt||0)<=now && now<Number(raidComp.endsAt||0)){
             const compRemaining=Math.max(1,Math.ceil((Number(raidComp.endsAt)-now)/60000))
             await sendScheduledGroupNotice(chat,'raid-compensation-'+String(raidComp.oneOffId||raidComp.startsAt),
 `🛠️ *COMPENSAÇÃO POR DESCONEXÕES ATIVA!*
-
 ⏱️ *10 minutos completos* de compensação.
 🔥 Restam aproximadamente *${compRemaining} min*.
-
 ✨ +50% XP de jogador
 🐾 +50% XP de pet
 ⚔️ Chance adicional de equipamento
 🧩 Materiais de invocação da Raid continuam *3x*
-
 💰 Dinheiro da Raid continua normal.`)
           }
-
-
           if(now>=siegeStart&&now<siegeEnd){
             const siege=await autoStartSiegeBossEvent(chat)
             if(siege?.spawned){
               await sendScheduledGroupNotice(chat,'siege-start-2026-10-04',
 `👹 *CERCO DO COLOSSO COMEÇOU!*
-
 🗿 *${siege.name}*
 ❤️ HP: *${Number(siege.maxHp).toLocaleString('pt-BR')}*
 ⚔️ ATK: *${siege.atk}*
 ⏱️ O Cerco termina às *20:10*.
-
 🏆 *DROPS ESPECIAIS*
 🟢 Colete Vital — +18 DEF / +60 HP
 🟣 Couraça do Predador — +38 DEF / +90 HP / +3% CRIT
 🔴 Armadura do Colosso — +52 DEF / +140 HP / +4% CRIT
-
 🥇 Top 1 garante a Armadura do Colosso.
 🥈/🥉 têm chance da Couraça do Predador.
 🤝 Participantes com dano relevante podem encontrar o Colete Vital.
-
 ⚔️ Usem *!boss* e depois *!atacar*.`)
             }
           }else if(now>=siegeEnd && now<siegeEnd+10*60*1000){
             const siege=await autoStartSiegeBossEvent(chat)
             if(siege?.stopped) await sendScheduledGroupNotice(chat,'siege-end-2026-10-04',
 `🌘 *CERCO ENCERRADO*
-
 O Colosso recuou às *20:10*.
 Se ele não foi derrotado, o HP restante foi perdido. Até o próximo Cerco.`)
           }
-
           if(now<petCareStart){
             await sendScheduledGroupNotice(chat,'pet-care-announcement-2026-10-04',
 `⚡🐾 *EVENTO RELÂMPAGO HOJE — CUIDANDO DOS PETS*
-
 ⏰ *20:00 → 20:30*
 ✨ *2X XP SOMENTE PARA PETS*
-
 Durante 30 minutos, XP de pet será dobrado em atividades relacionadas a eles:
 🐾 treino, passeio e aventura
 ⚔️ duelo de pets
 🧭 expedições concluídas
 👹 Boss e ⚔️ Raid
-
 💰 Dinheiro e XP do jogador continuam normais.
 🔥 Aproveitem para evoluir o time pet.`)
           }
-
           if(now>=petCareStart&&now<petCareEnd){
             await sendScheduledGroupNotice(chat,'pet-care-start-2026-10-04',
 `🐾⚡ *CUIDANDO DOS PETS COMEÇOU!*
-
 ⏱️ Até *20:30*
 ✨ *2X XP DE PET* ativo.
-
 🐾 Treine, passeie, aventure, duele e conclua expedições.
 👹 XP de pet em Boss e ⚔️ Raid também recebe o bônus.
-
 💰 Sem bônus de dinheiro.
 ⭐ Sem bônus de XP do jogador.
 🔥 É meia hora só para evoluir os pets!`)
           }else if(now>=petCareEnd && now<petCareEnd+10*60*1000){
             await sendScheduledGroupNotice(chat,'pet-care-end-2026-10-04',
 `🐾 *CUIDANDO DOS PETS ENCERRADO*
-
 ⏰ O evento terminou às *20:30*.
 ✨ O XP dos pets voltou ao normal.
-
 Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
           }
-
-          // Evento secreto às 04:04: nenhum anúncio automático antes ou durante o Boss.
           if(now<=Date.parse('2026-10-10T04:34:00-03:00'))await autoStartNightBossEvent(chat)
-
                     const horaRuptura=Date.parse('2026-10-09T20:00:00-03:00')
           if(now>=horaRuptura-600000&&now<horaRuptura){
             await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-preview',
@@ -3013,25 +2655,20 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
           if(ruptura?.spawned||ruptura?.already) continue
           const r=await autoStartBossEvent(chat)
           if(r?.eventId==='ruptura_estelar') continue
-
           if(!r?.spawned && !r?.already) continue
           const universalBossNoticeKey='universal-boss-event-'+String(r.scheduleKey||r.eventId||r.startedAt||'active')
           await sendScheduledGroupNotice(chat,universalBossNoticeKey,
 `🌘 *BOSS UNIVERSAL DE EVENTO APARECEU!*
-
 👹 *${r.name}*
 ❤️ HP GLOBAL: *${Number(r.maxHp).toLocaleString('pt-BR')}*
 ⚔️ ATK: *${r.atk}*
-
 🌐 É *o mesmo Boss para todos os grupos* com Alpha Bot.
 💥 Todo dano reduz o mesmo HP e entra no mesmo ranking.
 🔒 O cooldown do jogador também é global: trocar de grupo não libera ataque extra.
-
 ✨ EXP elevada para jogador
 🐾 EXP elevada para o pet
 🎁 Top 3 recebe caixa garantida
 🏅 Chance de *Insígnia do Eclipse — Evento Único*
-
 ⚔️ Usem *${prefix}boss* para ver o status e *${prefix}atacar* para lutar.`)
         }catch(err){
           console.error('[BossEvento] falha no grupo',chat,err?.message||err)
@@ -3041,13 +2678,6 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
       console.error('[BossEvento] falha no agendamento',err?.message||err)
     }finally{bossEventSchedulerBusy=false}
   }
-
-
-  // Boletim automático a cada 30 minutos (horário de São Paulo: hh:00 / hh:30).
-  // Lê o estado GLOBAL diretamente do Neon; não executa ataques nem muda os
-  // danos, o HP, as recompensas ou a economia do jogo.
-  // Cada combinação Boss + janela de 30 min + grupo possui uma chave única,
-  // persistida em trevo_settings para evitar avisos duplicados após redeploy.
   let bossProgressBroadcastRunning=false
   let bossProgressLastCheckWindow=0
   let bossProgressLastCheckAt=0
@@ -3057,12 +2687,7 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
     if(neonEcoMode && bossSessions.size===0 && bossProgressKnownActiveUntil<=now)return
     const slotMs=30*60*1000
     const windowStart=Math.floor(now/slotMs)*slotMs
-    // O scheduler verifica a cada 20 s. Permite 4 min de tolerância após o
-    // horário cheio/meia hora, mas não manda mensagens antigas ao reiniciar.
     if(now-windowStart>4*60*1000) return
-    // Em cada janela, limitar a leitura do estado a uma por minuto.
-    // O marcador persistido por Boss/grupo continua evitando avisos duplicados
-    // e a nova janela ou evento ainda pode ser detectado após o intervalo.
     if(bossProgressLastCheckWindow===windowStart && now-bossProgressLastCheckAt<60000) return
     bossProgressLastCheckWindow=windowStart
     bossProgressLastCheckAt=now
@@ -3079,7 +2704,6 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
         && (!event.endsAt||Number(event.endsAt)>now))
       const weeklyActive=Boolean(weekly?.mode==='weekly'&&Number(weekly.hp)>0
         && Number(weekly.endsAt||0)>now)
-      // !boss prioriza o evento global quando estiver ativo.
       const current=eventActive?event:(weeklyActive?weekly:null)
       if(!current) return
       const maxHp=Number(current.maxHp||0)
@@ -3091,9 +2715,6 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
       const healthBar='█'.repeat(barFilled)+'░'.repeat(10-barFilled)
       const fmt=n=>Math.round(Number(n)||0).toLocaleString('pt-BR')
       const safeName=n=>String(n||'Jogador').replace(/[\r\n\t*_~`]/g,' ').trim().slice(0,50)||'Jogador'
-      // Recuperações de dano NÃO são ataques realmente registrados.
-      // Exibir os dois contadores separadamente evita dar a falsa impressão
-      // de que os 543 golpes reais do primeiro atacante foram a sessão toda.
       const recoveredAttacks=new Map()
       if(current.mode==='weekly'&&String(current.weekendKey)==='2026-10-09'){
         const repairRow=(await db.query(
@@ -3134,18 +2755,14 @@ Quem aproveitou a meia hora acelerou bem a evolução do time. 🐾`)
         ?'semanal-'+String(current.weekendKey||current.startedAt||current.endsAt)
         :'evento-'+String(current.scheduleKey||current.eventId||current.startedAt)
       const body=`🌍👹 *${weeklyBoss?'SUPERBOSS SEMANAL':'BOSS GLOBAL'} — BOLETIM 30 MIN*
-
 👹 *${safeName(current.name||'Boss do Alpha')}*
 🕒 Atualização: *${brTime}* (São Paulo)
-
 ❤️ *HP: ${fmt(hp)}/${fmt(maxHp)}*
 [${healthBar}]
 💥 Dano acumulado: *${fmt(maxHp-hp)}* (*${percent}%*)
 👥 Participantes com dano: *${participants.length}*
-
 🏆 *RANKING DE DANO*
 ${ranking}${extra}
-
 📊 Golpes corrigidos são *estimativas*, separados dos ataques registrados.
 ⚔️ O combate continua automaticamente.
 🔎 Use *!boss* para consultar o HP quando quiser.`
@@ -3156,8 +2773,6 @@ ${ranking}${extra}
         if(!chat.endsWith('@g.us')) continue
         try{
           const key='boss_progress_30m:'+bossIdentity+':'+windowStart+':'+chat
-          // A unicidade no Neon protege contra dois processos ou reconexões
-          // publicarem o mesmo boletim no mesmo grupo.
           const claim=await db.query(
             "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",
             [key,JSON.stringify({status:'sending',slot:windowStart,claimedAt:Date.now()})]
@@ -3171,8 +2786,6 @@ ${ranking}${extra}
               [key,JSON.stringify({status:'sent',slot:windowStart,sentAt:Date.now()})]
             ).catch(err=>console.warn('[Boss 30m] envio realizado, mas atualização do marcador falhou',err?.message||err))
           }catch(err){
-            // Não liberar o marcador após erro de envio ambíguo: isso pode
-            // reenviar a mesma mensagem duas vezes ao mesmo grupo.
             console.error('[Boss 30m] falha ao enviar boletim',chat,err?.message||err)
             await db.query(
               "UPDATE trevo_settings SET value=$2::jsonb WHERE key=$1",
@@ -3197,7 +2810,6 @@ ${ranking}${extra}
       bossProgressBroadcastRunning=false
     }
   }
-
   if(bossProgressScheduler) clearInterval(bossProgressScheduler)
   bossProgressScheduler=setInterval(()=>{void broadcastBossProgressEvery30Minutes()},20*1000)
   bossProgressScheduler.unref?.()
@@ -3212,8 +2824,6 @@ ${ranking}${extra}
     }catch(err){console.warn('[Neon Eco] leitura de Boss ativo',err?.message||err)}
   },1000).unref?.()
   setTimeout(()=>{void broadcastBossProgressEvery30Minutes()},3000).unref?.()
-
-  // Snapshot de leitura na inicialização para diagnosticar ranking em produção.
   setTimeout(async()=>{
     try{
       const {rows}=await db.query(
@@ -3228,11 +2838,8 @@ ${ranking}${extra}
       console.log('[Boss Live Ranking]',JSON.stringify({
         at:new Date().toISOString(),remainingHp:Number(state.hp),maxHp:Number(state.maxHp),ranking
       }))
-
     }catch(err){console.error('[Boss Live Ranking] consulta falhou',err?.message||err)}
   },10000).unref?.()
-
-
   if(bossEventScheduler) clearInterval(bossEventScheduler)
   if(!neonEcoMode || Date.now()<Date.parse('2026-10-11T00:15:00-03:00')){
     bossEventScheduler=setInterval(runBossEventScheduler,30*1000)
@@ -3245,9 +2852,6 @@ ${ranking}${extra}
   for(const horario of [Date.parse('2026-10-09T19:50:00-03:00'),Date.parse('2026-10-09T20:00:00-03:00'),Date.parse('2026-10-09T21:00:00-03:00')]){
     if(horario>Date.now()) setTimeout(runBossEventScheduler,horario-Date.now()+500).unref?.()
   }
-
-  // Evento relâmpago único de 03/10/2026 (horário de Brasília).
-  // Persistido no Neon para continuar correto mesmo se o Render reiniciar.
   const flash3xStartsAt=Date.parse('2026-10-03T15:00:00-03:00')
   const flash3xEndsAt=Date.parse('2026-10-03T15:10:00-03:00')
   if(Date.now()<flash3xEndsAt){
@@ -3273,9 +2877,6 @@ ${ranking}${extra}
       console.log('[Eventos] Evento Relâmpago 3x de 03/10 agendado para 15:00–15:10')
     }
   }
-
-  // Evento único de 06/10/2026, 19:00–20:00 (Brasília): Treino Alpha.
-  // Bônus apenas de XP para preservar a economia: sem dinheiro extra.
   const treinoAlphaStartsAt=Date.parse('2026-10-06T19:00:00-03:00')
   const treinoAlphaEndsAt=Date.parse('2026-10-06T20:30:00-03:00')
   if(Date.now()<treinoAlphaEndsAt){
@@ -3300,7 +2901,6 @@ ${ranking}${extra}
       console.log('[Eventos] Caçada Alpha estendida até 20:30 BRT como compensação')
     }
   }
-
   let doubleRewardEventScheduler=null
   let luckyBoxEventScheduler=null
   let setePecadosScheduler=null
@@ -3309,13 +2909,10 @@ ${ranking}${extra}
   let eventSchedulerClosed=false
   let doubleRewardAnnouncementRunning=false
   let luckyBoxAnnouncementRunning=false
-
   const eventMultLabel=n=>Number(n||1).toLocaleString('pt-BR',{maximumFractionDigits:2})
-
   async function activeEventGroups(){
     return (await listGroupLicenses(500)).filter(groupLicenseIsActive).filter(x=>x.chat_jid?.endsWith('@g.us'))
   }
-
   async function sendEventToGroups(text){
     const groups=await activeEventGroups()
     const formattedText=formatEventNotice(text)
@@ -3323,9 +2920,6 @@ ${ranking}${extra}
       await sock.sendMessage(lic.chat_jid,{text:formattedText}).catch(err=>console.error('[Eventos] aviso',lic.chat_jid,err?.message||err))
     }
   }
-
-  // Quiz apenas sob solicitação do jogador. Timers automáticos desativados.
-
   const quizPending=new Map()
   const quizFinishPrompt='🧠 *QUIZ FINALIZADO!*\n\n1. 🔄 Outra pergunta\n2. ❌ Finalizar quiz\n\nResponda com *1 ou 2*.'
   const quizFormat=q=>{
@@ -3381,8 +2975,6 @@ ${ranking}${extra}
     else await quizStartRequested(chat,reply)
     return true
   }
-  // Enquete nativa do WhatsApp: uma por grupo, janela anunciada de 30 minutos.
-  // Estado persistido impede reenvios em reinicializações.
   let pollThirtyRunning=false
   if(Date.now()<Date.parse('2026-10-11T00:00:00-03:00'))setInterval(async()=>{
     if(pollThirtyRunning||trevoHealth.whatsapp!=='open')return
@@ -3425,8 +3017,6 @@ ${ranking}${extra}
     }catch(err){console.error('[EVENT POLL 30M]',err?.stack||err)}
     finally{pollThirtyRunning=false}
   },12000).unref?.()
-
-  // Aviso antecipado do Guardião da Aurora. Sem revelar comparação com outros elmos.
   let auroraPreviewBusy=false
   const auroraPreviewEnd=Date.parse('2026-10-11T07:00:00-03:00')
   if(Date.now()<auroraPreviewEnd)setInterval(async()=>{
@@ -3439,9 +3029,6 @@ ${ranking}${extra}
     }catch(err){console.error('[AURORA PREVIEW]',err?.message||err)}
     finally{auroraPreviewBusy=false}
   },12000).unref?.()
-
-  // Anúncio único antecipado e início do Boss global à 01:00 de 10/10 (BRT).
-  // Dispara sem depender de mensagem nos grupos. Avisos idempotentes persistidos.
   let inicioMadrugadaBusy=false
   if(Date.now()<Date.parse('2026-10-11T01:30:00-03:00'))setInterval(async()=>{
     if(inicioMadrugadaBusy||trevoHealth.whatsapp!=='open')return
@@ -3472,11 +3059,7 @@ ${ranking}${extra}
     }catch(err){console.error('[INICIO MADRUGADA] scheduler',err?.stack||err)}
     finally{inicioMadrugadaBusy=false}
   },5000).unref?.()
-
   setePecadosBroadcaster=sendEventToGroups
-  // A transição dos Pecados ocorre na transação do último ataque. Avisos são
-  // independentes da sessão do jogador, com confirmação por grupo no Neon:
-  // falha de WhatsApp/redeploy não suprime o anúncio da nova fase.
   async function announceNextPecado(){
     if(trevoHealth.whatsapp!=='open') return
     const current=(await db.query(
@@ -3486,7 +3069,6 @@ ${ranking}${extra}
     if(current?.eventId!=='sete_pecados'||current.active===false||index<1||index>7||
        Date.now()>=Number(current.endsAt||0)) return
     const groupIds=new Set((await activeEventGroups()).map(x=>String(x.chat_jid||'')).filter(x=>x.endsWith('@g.us')))
-    // Inclui o grupo original de cada jogador que atacou este evento.
     const claims=(await db.query(
       "SELECT DISTINCT value->>'chat' AS chat FROM trevo_settings WHERE key LIKE $1",
       ['global_boss_event_group:'+String(current.scheduleKey)+':%']
@@ -3537,11 +3119,6 @@ ${ranking}${extra}
       }catch(err){console.error('[SETE PECADOS] notificação',chat,err?.message||err)}
     }
   }
-
-
-  // Evento autorizado: Calcanhar de Aquiles, 16/10/2026 19:30 BRT.
-  // O agendamento consulta o estado global e não substitui um Boss ativo com dano.
-  // Avisos idempotentes por grupo evitam spam após reconnect/redeploy.
   const calcanharStart=Date.parse('2026-10-16T19:30:00-03:00')
   const calcanharEnd=Date.parse('2026-10-16T21:30:00-03:00')
   let calcanharBusy=false
@@ -3581,8 +3158,6 @@ ${ranking}${extra}
     }catch(err){console.error('[CALCANHAR JP]',err?.stack||err);return false}
     finally{calcanharBusy=false}
   },calcanharEnd+60000,{intervalMs:10000,startupMs:1000}))
-
-  // Hora do Corre extra: aviso único por grupo, sem bônus em CLT ou trabalho.
   if(Date.now()<Date.parse('2026-10-17T23:00:00-03:00')){
     const extraCorreTimer=setInterval(async()=>{
       if(trevoHealth.whatsapp!=='open')return
@@ -3602,8 +3177,6 @@ ${ranking}${extra}
     },5000)
     extraCorreTimer.unref?.()
   }
-
-  // Invasão dos Titãs 17/10, 21:30–22:10 BRT. Controle por estado global persistente.
   const titasStart=Date.parse('2026-10-17T21:30:00-03:00')
   const titasEnd=Date.parse('2026-10-17T22:10:00-03:00')
   let titasBusy=false
@@ -3660,8 +3233,6 @@ ${ranking}${extra}
     },5000)
     titasTimer.unref?.()
   }
-
-  // Anúncio da Hora Dourada de Raid: idempotente por grupo, inclusive após deploy tardio.
   if(Date.now()<Date.parse('2026-10-18T22:00:00-03:00')){
     const raidDoubleNotice=setInterval(async()=>{
       const now=Date.now()
@@ -3675,8 +3246,6 @@ ${ranking}${extra}
     },10000)
     raidDoubleNotice.unref?.()
   }
-
-  // Corrida do Ouro — somente dois avisos, sem boletins por rodada.
   if(Date.now()<Date.parse('2026-10-18T21:00:00-03:00')){
     const goldTimer=setInterval(async()=>{
       const now=Date.now()
@@ -3691,8 +3260,6 @@ ${ranking}${extra}
     },15000)
     goldTimer.unref?.()
   }
-
-  // Collab Sete Pecados: terceiro e quarto domingos; zero consultas fora da janela.
   let setePecadosBusy=false
   if(Date.now()<=PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end+120000){
     setePecadosScheduler=setInterval(async()=>{
@@ -3727,11 +3294,6 @@ ${ranking}${extra}
     },30000)
     setePecadosScheduler.unref?.()
   }
-
-  // Scheduler independente de mensagens: inicia o Boss e anuncia nos grupos às 04:04.
-
-  // Evento global de 11/10 às 07h; início e encerramento persistidos e idempotentes.
-
   let camEventBusy=false
   datedEventStops.push(scheduleUntil(async()=>{
    if(camEventBusy||trevoHealth.whatsapp!=='open')return false;camEventBusy=true
@@ -3742,7 +3304,6 @@ ${ranking}${extra}
      if(e.blocked)console.log('[CAM] outro Boss global ativo; bloqueado')
    }catch(err){console.error('[CAM EVENT]',err?.stack||err);return false}finally{camEventBusy=false}
   },Date.parse('2026-10-10T23:45:00-03:00')))
-
   let auroraTickerBusy=false
   datedEventStops.push(scheduleUntil(async()=>{
     if(auroraTickerBusy||trevoHealth.whatsapp!=='open')return false
@@ -3761,7 +3322,6 @@ ${ranking}${extra}
     }catch(e){console.error('[AURORA 07H] scheduler',e?.stack||e);return false}
     finally{auroraTickerBusy=false}
   },Date.parse('2026-10-11T07:45:00-03:00')))
-
   let night0404TickerBusy=false
   datedEventStops.push(scheduleUntil(async()=>{
     if(night0404TickerBusy||trevoHealth.whatsapp!=='open') return false
@@ -3778,7 +3338,6 @@ ${ranking}${extra}
     }catch(err){console.error('[NIGHT 04:04] agendamento',err?.message||err);return false}
     finally{night0404TickerBusy=false}
   },Date.parse('2026-10-10T04:34:00-03:00')))
-
   let trickBoxesAnnouncing=false
   let trickBoxReminderLastScan=0
   const TRICK_BOX_END_FIXED=Date.parse('2026-10-09T23:00:00-03:00')
@@ -3791,7 +3350,6 @@ ${ranking}${extra}
       const now=Date.now(),start=Number(event.startsAt||0)
       trickBoxesRetireAt=Math.max(TRICK_BOX_END_FIXED,Number(event.endsAt||0))+10*60*1000
       if(!start||!Number(event.endsAt||0))return
-      // Prorrogação solicitada: somente este evento vai até 23:00 de 09/10 (Brasília).
       if(event.eventId==='trick_boxes_2026_10_09_2204' && Number(event.endsAt)!==TRICK_BOX_END_FIXED){
         event.endsAt=TRICK_BOX_END_FIXED
         await db.query("UPDATE trevo_settings SET value=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE key='trick_boxes_event' AND value->>'eventId'=$2",[JSON.stringify(event),event.eventId])
@@ -3803,24 +3361,19 @@ ${ranking}${extra}
         const already=(await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[fixKey])).rowCount>0
         if(!already){
           await sendEventToGroups(`🎭 *AZAR OU SORTE?* 🎭
-
 📦 *ESCOLHA SUA CAIXA*
 1️⃣ 🔵 Azul
 2️⃣ 🔴 Vermelha
 3️⃣ ⚫ Preta
-
 🍀 *30% de chance:* GANHE *R$ 90.000*
 💀 *70% de chance:* PERCA até *R$ 30.000*
-
 ⏰ *EVENTO PRORROGADO ATÉ 23H!*
 🔁 Você pode jogar novamente após *5 minutos* da última tentativa.
-
 🎲 *!azarousorte 1*, *2* ou *3*
 🛡️ Não deixa a carteira negativa.`)
           await db.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING',[fixKey,JSON.stringify({sentAt:now})])
           console.log('[TrickBoxes] aviso corrigido reenviado para todos os grupos ativos')
         }
-        // Avisos pessoais, uma única vez a cada aposta quando os 5 minutos terminam.
         if(now-trickBoxReminderLastScan>=15000){
           trickBoxReminderLastScan=now
           const plays=(await db.query("SELECT key,value FROM trevo_settings WHERE key LIKE $1",['trick_box_play:'+event.eventId+':%'])).rows
@@ -3850,8 +3403,6 @@ ${ranking}${extra}
     finally{trickBoxesAnnouncing=false}
   }
   datedEventStops.push(scheduleUntil(announceTrickBoxes,()=>trickBoxesRetireAt,{startupMs:3000}))
-
-  // Evento único: Hora do Corre — 06/10/2026 19:30–20:00 BRT.
   let cacadaCompAnnouncementRunning=false
   async function updateCacadaCompAnnouncement(){
     if(trevoHealth.whatsapp!=='open' || cacadaCompAnnouncementRunning) return
@@ -3865,16 +3416,13 @@ ${ranking}${extra}
       if(sent?.sent) return
       await sendEventToGroups(
 `🛠️⚔️ *COMPENSAÇÃO — CAÇADA ALPHA*
-
 ⏱️ O evento foi estendido em *30 minutos*.
 🔥 Novo término: *20:30*.
-
 💰 Raid: *+25% dinheiro*
 ✨ XP do jogador: *+50%*
 🐾 XP de pet: *+25%*
 🎁 Caixas/equipamentos: *+20% sobre a chance normal*
 🧩 Fragmentos continuam *1x*.
-
 A compensação cobre o período prejudicado sem adicionar bônus além do evento original.`
       )
       await db.query(
@@ -3893,7 +3441,6 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
     setInterval(updateCacadaCompAnnouncement,5000).unref?.()
     setTimeout(updateCacadaCompAnnouncement,2500).unref?.()
   }
-
   let horaCorreAnnouncementRunning=false
   async function updateHoraCorreAnnouncement(){
     if(trevoHealth.whatsapp!=='open' || horaCorreAnnouncementRunning) return
@@ -3903,22 +3450,17 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
       const endsAt=Date.parse('2026-10-06T20:00:00-03:00')
       const now=Date.now()
       if(now>=endsAt) return
-
       if(now<startsAt){
         const preKey='hora_corre_2026_10_06_1930_preannounced'
         const preRaw=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[preKey])).rows[0]?.value
         if(preRaw?.sent) return
         await sendEventToGroups(
 `📢🔥 *ATENÇÃO — HORA DO CORRE ÀS 19:30!* 🔥📢
-
 🚗🍔 Das *19:30 às 20:00* vai ter:
-
 💰 *2X DINHEIRO NO UBER*
 💰 *2X DINHEIRO NO IFOOD*
-
 ⚠️ O bônus vale *somente* para Uber e iFood.
 🏢 Negócios, 💼 trabalho, ⚔️ Raid/Boss e 🎰 minigames seguem normais.
-
 ⏰ Se prepara: às *19:30* começa o corre!`
         )
         await db.query(`
@@ -3928,20 +3470,16 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
         `,[preKey,JSON.stringify({sent:true,sentAt:Date.now()})])
         return
       }
-
       const key='hora_corre_2026_10_06_1930_announced'
       const raw=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value
       if(raw?.sent) return
       await sendEventToGroups(
 `🚗🍔 *HORA DO CORRE COMEÇOU!* 🍔🚗
-
 ⏱️ *19:30 → 20:00*
 💰 *2X DINHEIRO* somente em:
 🚗 *Uber*
 🍔 *iFood*
-
 ⚠️ Trabalho, negócios, Raid, Boss e minigames continuam com ganhos normais.
-
 🔥 É meia hora pra fazer caixa. *Corre!*`
       )
       await db.query(`
@@ -3959,7 +3497,6 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
     setInterval(updateHoraCorreAnnouncement,5000).unref?.()
     setTimeout(updateHoraCorreAnnouncement,2500).unref?.()
   }
-
   async function updateDoubleRewardAnnouncements(){
     if(eventSchedulerClosed || trevoHealth.whatsapp!=='open' || doubleRewardAnnouncementRunning) return
     doubleRewardAnnouncementRunning=true
@@ -3969,26 +3506,20 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
       const startsAt=Number(raw.startsAt||raw.startedAt||0)
       const endsAt=Number(raw.endsAt||0)
       if(!startsAt || !endsAt) return
-
       const now=Date.now()
       const eventId=`${startsAt}:${endsAt}:${raw.moneyMultiplier||2}:${raw.xpMultiplier||2}`
-
       if(event.active && String(raw.startAnnouncementId||'')!==eventId){
         if(String(raw.oneOffId||'')==='treino-alpha-2026-10-06-1900'){
           await sendEventToGroups(
 `⚔️🔥 *CAÇADA ALPHA COMEÇOU!* 🔥⚔️
-
 ⏱️ *19:00 → 20:30*
 🎯 Bônus válidos *somente nas RAIDS*:
-
 💰 Recompensa em dinheiro: *+25%*
 ✨ XP do jogador: *+50%*
 🐾 XP de pet: *+25%*
 🎁 Chance de caixas/equipamentos: *+20% sobre a chance normal*
-
 🧩 Fragmentos continuam *1x*.
 🏢 Negócios, 💼 trabalho, 🚗 Uber, 🍔 iFood e 🎰 minigames continuam *sem bônus*.
-
 🔥 Hora de farmar sem destruir a economia.`
           )
           raw.startAnnouncementId=eventId
@@ -4007,10 +3538,8 @@ A compensação cobre o período prejudicado sem adicionar bônus além do event
           : '💰 Dinheiro: *normal* — sem inflação de moeda\n'
         await sendEventToGroups(
 `⚡🔥 *${title} COMEÇOU!* 🔥⚡
-
 ⏱️ Duração: *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*
 ${moneyLine}✨ XP: *${xpMult}x*
-
 🎯 Evento focado em progressão, sem bônus de dinheiro, drops ou caixas.
 ⏰ Termina às *${endClock}*.`
         )
@@ -4022,10 +3551,7 @@ ${moneyLine}✨ XP: *${xpMult}x*
         )
         return
       }
-
       if(now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
-        // Nunca publique "evento encerrado" horas/dias depois por causa de restart ou grupo novo.
-        // Após 10 min de tolerância, marca como tratado silenciosamente.
         if(now>=endsAt+10*60*1000){
           raw.endAnnouncementId=eventId
           await db.query(
@@ -4037,7 +3563,6 @@ ${moneyLine}✨ XP: *${xpMult}x*
         if(String(raw.oneOffId||'')==='treino-alpha-2026-10-06-1900'){
           await sendEventToGroups(
 `⏱️ *CAÇADA ALPHA ENCERRADA!*
-
 ⚔️ Os bônus das Raids voltaram ao normal.
 💰 Nenhuma fonte passiva de renda recebeu multiplicador durante o evento.`
           )
@@ -4051,7 +3576,6 @@ ${moneyLine}✨ XP: *${xpMult}x*
         const title=String(raw.eventLabel||`EVENTO ${eventMultLabel(event.moneyMultiplier)}X`)
         await sendEventToGroups(
 `⏱️ *${title} ENCERRADO!*
-
 ✨ O bônus de XP acabou.
 💰 A economia permaneceu sem multiplicador de dinheiro durante todo o evento.`
         )
@@ -4067,7 +3591,6 @@ ${moneyLine}✨ XP: *${xpMult}x*
       doubleRewardAnnouncementRunning=false
     }
   }
-
   async function updateLuckyBoxAnnouncements(){
     if(eventSchedulerClosed || trevoHealth.whatsapp!=='open' || luckyBoxAnnouncementRunning) return
     luckyBoxAnnouncementRunning=true
@@ -4079,14 +3602,11 @@ ${moneyLine}✨ XP: *${xpMult}x*
       if(!startsAt || !endsAt) return
       const now=Date.now()
       const eventId=`${startsAt}:${endsAt}:${raw.multiplier||2}`
-
       if(event.active && String(raw.startAnnouncementId||'')!==eventId){
         await sendEventToGroups(
 `🍀🍀 *DOUBLE LUCKY COMEÇOU!* 🍀🍀
-
 🎁 Durante *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*, ao abrir caixas:
 ✨ chances de raridade: *${Number(raw.multiplier||2)}X*
-
 📦 Vale para Caixa da Sorte, Caixa Rara e Caixa Épica.
 ⏱️ Termina às *${new Date(endsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})}*.
 🛡️ Proteção de pico: *3s entre ações por jogador*; aberturas simultâneas são escalonadas.`
@@ -4099,9 +3619,7 @@ ${moneyLine}✨ XP: *${xpMult}x*
         )
         return
       }
-
       if(now>=endsAt && String(raw.startAnnouncementId||'')===eventId && String(raw.endAnnouncementId||'')!==eventId){
-        // Evita avisos históricos em grupos adicionados/reconectados depois do evento.
         if(now>=endsAt+10*60*1000){
           raw.endAnnouncementId=eventId
           await db.query(
@@ -4112,7 +3630,6 @@ ${moneyLine}✨ XP: *${xpMult}x*
         }
         await sendEventToGroups(
 `🍀 *DOUBLE LUCKY ENCERRADO!*
-
 🎁 As chances das caixas voltaram ao normal.
 🔥 Obrigado a quem participou dos eventos!`
         )
@@ -4128,10 +3645,8 @@ ${moneyLine}✨ XP: *${xpMult}x*
       luckyBoxAnnouncementRunning=false
     }
   }
-
   if(doubleRewardEventScheduler)clearInterval(doubleRewardEventScheduler)
   if(luckyBoxEventScheduler)clearInterval(luckyBoxEventScheduler)
-
   async function refreshEcoScheduledEvents(){
     if(!neonEcoMode)return
     for(const t of globalThis.__alphaEcoNoticeTimers||[])clearTimeout(t)
@@ -4179,7 +3694,6 @@ ${moneyLine}✨ XP: *${xpMult}x*
     luckyBoxStartupTimer=setTimeout(updateLuckyBoxAnnouncements,3500)
     luckyBoxStartupTimer.unref?.()
   }
-
   async function senderIsGroupAdmin(chatJid,userJid){
     if(userJid===ownerJid) return true
     if(!chatJid?.endsWith('@g.us')) return false
@@ -4197,13 +3711,11 @@ ${moneyLine}✨ XP: *${xpMult}x*
       return false
     }
   }
-
   async function groupModuleEnabled(chatJid,key){
     if(!chatJid?.endsWith('@g.us')) return true
     const settings=await getGroupSettings(chatJid)
     return settings?.[key]!==false
   }
-
   async function currentGroupPlayerJids(chatJid){
     if(!chatJid?.endsWith('@g.us')) return []
     try{
@@ -4222,12 +3734,10 @@ ${moneyLine}✨ XP: *${xpMult}x*
       return []
     }
   }
-
   async function showShopCategoryMenu(chat,sender,reply){
     setQuickFlow(chat,sender,'shop_category',{},90000)
     await reply(
 `🍀 *LOJA DO ALPHA BOT*
-
 1️⃣ 🧪 Consumíveis
 2️⃣ ⚔️ Armas
 3️⃣ 🛡️ Armaduras
@@ -4237,13 +3747,10 @@ ${moneyLine}✨ XP: *${xpMult}x*
 7️⃣ 🚗 Carros
 8️⃣ 🚲🏍️ Bicicletas e motos
 9️⃣ 🔑 Chaves de Raid
-
 0️⃣ Sair
-
 _Responda só com o número._`
     )
   }
-
   async function showBoxQuantityMenu(chat,sender,reply,box){
     const stock=Number(box?.quantity||0)
     setQuickFlow(chat,sender,'inventory_box_qty',{
@@ -4253,30 +3760,22 @@ _Responda só com o número._`
     },90000)
     await reply(
 `🎁 *${box.name.toUpperCase()}*
-
 Você possui: *${stock}*
-
 1️⃣ Abrir 1
 2️⃣ Abrir 5
 3️⃣ Abrir 10
 4️⃣ Abrir todas
 5️⃣ Escolher quantidade
-
 9️⃣ Voltar
 0️⃣ Sair`
     )
   }
-
-  // Diferencia todas as insígnias (inclusive troféus exclusivos que não
-  // possuem passiva ativável) dos materiais/fragmentos de Raid.
   const isEventInsignia=item=>Boolean(item && (
     String(item.item_id||'').startsWith('insignia_') ||
     Boolean(relicCatalog[item.item_id])
   ))
-
   const isEnchantStone=item=>String(item?.item_id||'').startsWith('pedra_') && String(item.item_id).endsWith('_alpha')
   const isUsableConsumable=item=>item?.category==='consumable'&&!isEnchantStone(item)
-
   async function showInventoryMenu(chat,sender,reply){
     const items=await getInventory(sender)
     if(!items.length){
@@ -4305,10 +3804,6 @@ Você possui: *${stock}*
       '🔟 Voltar\n0️⃣ Sair'
     )
   }
-
-
-  // Todos os equipamentos usam o mesmo formatador. Evita ocultar bônus híbridos
-  // (ex.: Courechouse +VEL, Gideon +DEF, Bota do JP +CRIT, Coroa +ATK).
   const EQUIPMENT_BONUS_FIELDS={
     atk:['⚔️','ATK'],def:['🛡️','DEF'],hp:['❤️','HP'],spd:['💨','VEL'],crit:['🎯','CRIT']
   }
@@ -4338,7 +3833,6 @@ Você possui: *${stock}*
       return emoji+' '+label+': '+gearStatValue(key,a)+' → *'+gearStatValue(key,b)+'*'
     }).filter(Boolean).join('\n')
   }
-
   async function showEquipmentMenu(chat,sender,reply){
     const [items,p]=await Promise.all([getInventory(sender),getCombatProfile(sender)])
     const weapons=items.filter(i=>i.category==='weapon')
@@ -4359,24 +3853,19 @@ Você possui: *${stock}*
     const helmetStats=currentMap.get(p.helmet_id)||getEquipmentInfo(p.helmet_id)||{}
     await reply(
 `⚙️ *EQUIPAR*
-
 🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}* — ${gearStatsText(weaponStats,'weapon')}
 🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}* — ${gearStatsText(armorStats,'armor')}
 👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(bootStats,'boots')}
 🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(p.helmet_level||1)}* — ${gearStatsText(helmetStats,'helmet')}
-
 O que deseja trocar?
-
 1️⃣ ⚔️ *Arma* — ${weapons.length} opção(ões)
 2️⃣ 🛡️ *Armadura* — ${armors.length} opção(ões)
 3️⃣ 👢 *Botas* — ${boots.length} opção(ões)
 4️⃣ 🪖 *Elmo* — ${helmets.length} opção(ões)
-
 9️⃣ Voltar ao inventário
 0️⃣ Sair`
     )
   }
-
   async function showEquipmentTypeMenu(chat,sender,reply,category){
     const [items,p,upgradeables]=await Promise.all([getInventory(sender),getCombatProfile(sender),listUpgradeableEquipment(sender)])
     const filtered=items.filter(i=>i.category===category)
@@ -4391,14 +3880,13 @@ O que deseja trocar?
       await reply(title+'\n\nVocê não possui itens desta categoria.\n\n9️⃣ Voltar\n0️⃣ Sair')
       return
     }
-
     setQuickFlow(chat,sender,'equip_select',{items:filtered.map(i=>i.item_id),category},5*60*1000)
     let text=title+'\n\n'
     filtered.forEach((i,idx)=>{
       const stats=statsMap.get(i.item_id)||getEquipmentInfo(i.item_id)||{}
       const level=Number(levelMap.get(i.item_id)||1)
       const active=(isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id)===i.item_id?' ✅ *ATIVO*':''
-      const copySummary=(i.upgrade_distribution||[]).map(c=>'⭐ Lv.'+c.level+' ×'+c.quantity).join(' • ')
+      const copySummary=(i.upgrade_distribution||[]).map(c=>(c.stars?'🌟 '+c.stars+'/5':'⭐')+' Lv.'+c.level+' ×'+c.quantity).join(' • ')
       text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* • 📦 ×'+Number(i.quantity||0)+' no total\n'
       text+='   📋 *Cópias:* '+(copySummary||'⭐ Lv.'+level+' ×'+Number(i.quantity||0))+((isWeapon||isArmor)&&Number(i.equipment_stars||1)>1?' • 🌟 '+Number(i.equipment_stars)+'/5':'')+'\n'
       text+='   '+gearStatsText(stats,category)+active+'\n'
@@ -4407,7 +3895,6 @@ O que deseja trocar?
     text+='\n👉 Responda só com o número.\n9️⃣ Voltar\n0️⃣ Sair'
     await reply(text)
   }
-
   async function showSellMenu(chat,sender,reply){
     const items=(await getInventory(sender)).filter(i=>i.sellable!==false)
     const p=await getCombatProfile(sender)
@@ -4415,36 +3902,28 @@ O que deseja trocar?
     const equipment=items.filter(i=>['weapon','armor','boots','helmet'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
     const potions=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
     const raid=items.filter(i=>RAID_SELL_IDS.includes(i.item_id))
-
     if(!equipment.length&&!potions.length&&!raid.length){
       clearQuickFlow(chat,sender)
       await reply('💰 Você não possui itens vendáveis agora.')
       return
     }
-
     setQuickFlow(chat,sender,'inventory_sell_category',{},5*60*1000)
     await reply(
 `💰 *VENDER ITENS*
-
 Escolha o que deseja vender:
-
 1️⃣ ⚔️ *Equipamentos* — inclui lendários não equipados e não vinculados
 2️⃣ 🧪 *Poções e cura* — jogador e pet
 3️⃣ 🧩 *Itens de Raid* — materiais por R$ 100/un. e chaves
-
 🔒 Cópias equipadas e vinculadas são protegidas; lendários podem ser vendidos à loja, não a outros jogadores.
 🌘 Itens protegidos/de evento não aparecem.
-
 9️⃣ Voltar ao inventário
 0️⃣ Sair`
     )
   }
-
   async function showSellItemsMenu(chat,sender,reply,category){
     const items=(await getInventory(sender)).filter(i=>i.sellable!==false)
     const p=await getCombatProfile(sender)
     const equippedIds=new Set([p.weapon_id,p.armor_id,p.boot_id].filter(Boolean))
-
     let filtered=[]
     let title=''
     if(category==='equipment'){
@@ -4459,13 +3938,11 @@ Escolha o que deseja vender:
     }else{
       return showSellMenu(chat,sender,reply)
     }
-
     if(!filtered.length){
       setQuickFlow(chat,sender,'inventory_sell_category',{},5*60*1000)
       await reply(title+'\n\nNenhum item vendável nesta categoria.\n\n9️⃣ Voltar\n0️⃣ Sair')
       return
     }
-
     setQuickFlow(chat,sender,'inventory_sell_select',{items:filtered,category},5*60*1000)
     let text=title+'\n\n'
     filtered.forEach((i,idx)=>{
@@ -4480,7 +3957,6 @@ Escolha o que deseja vender:
     text+='\n99️⃣ Voltar às categorias\n0️⃣ Sair'
     await reply(text)
   }
-
   async function showSellBatchConfirmation(chat,sender,reply,items,mode){
     const batch=[]
     const skipped=[]
@@ -4497,7 +3973,6 @@ Escolha o que deseja vender:
         ? Number(item.upgradeRefund||0) : 0
       batch.push({...item,qty,upgradeRefundApplied})
     }
-
     if(!batch.length){
       await reply(mode==='sell_duplicates'
         ? '♻️ Não há cópias repetidas disponíveis para venda nesta seleção.'
@@ -4508,7 +3983,6 @@ Escolha o que deseja vender:
       await reply('⚠️ Lote muito grande. Selecione menos tipos ou quantidades por vez (máximo: 50 tipos e 9.999 unidades por tipo). Nenhum item foi alterado.')
       return
     }
-
     if(mode==='discard_all'){
       let text='⚠️ *CONFIRMAR DESCARTE EM LOTE*\n\n'
       batch.forEach(i=>{text+='• *'+i.name+'* ×'+i.qty+'\n'})
@@ -4519,7 +3993,6 @@ Escolha o que deseja vender:
       await reply(text)
       return
     }
-
     const total=batch.reduce((sum,i)=>sum+(i.qty*i.unit)+Number(i.upgradeRefundApplied||0),0)
     let text='⚠️ *CONFIRMAR VENDA EM LOTE*\n\n'
     batch.forEach(i=>{
@@ -4537,14 +4010,12 @@ Escolha o que deseja vender:
     setQuickFlow(chat,sender,'inventory_sell_batch_confirm',{batch},90000)
     await reply(text)
   }
-
   async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
     let flow=getQuickFlow(chat,sender)
     if(!flow){
       flow=await recoverQuickFlow(chat,sender)
     }
     if(!flow) return false
-    // Fluxos de adoção antigos não podem reabrir a loja após a desativação.
     if(String(flow.stage||'').startsWith('pet_adopt_')){
       clearQuickFlow(chat,sender)
       await reply('🐾 *ADOÇÃO COMUM DESATIVADA*\n\nOs pets já adquiridos permanecem na coleção.\n🔮 Use *!invocarpet* para o Altar Lendário ou *!meuspets* para administrar seus pets.')
@@ -4566,21 +4037,16 @@ Escolha o que deseja vender:
       ''
     const rawInput=String(listSelection || body || '').trim()
     const input=rawInput.toLowerCase()
-
     if(['0','sair','cancelar','cancel'].includes(input)){
       clearQuickFlow(chat,sender)
       await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':String(flow.stage||'').startsWith('pet_collection_')?'✅ Coleção encerrada. Use *!meuspets* para abrir novamente.':String(flow.stage||'').startsWith('enchant_')?'✅ Encantamento cancelado. Nenhuma pedra consumida. Use *!encantar* para voltar.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
       return true
     }
-
-    // Encantamento guiado: escolha pedra, equipamento e confirme antes do consumo.
     if(String(flow.stage||'').startsWith('enchant_')){
       return await handleEnchantFlow({stage:flow.stage,data:flow.data,input,sender,reply,
         setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
         clearFlow:()=>clearQuickFlow(chat,sender)})
     }
-
-    // Menu de adoção por habilidade. Seleção só consulta; nunca compra automaticamente.
     if(flow.stage==='pet_adopt_categories'){
       const category=petAdoptionCategory(input)
       if(!category){
@@ -4617,10 +4083,6 @@ Escolha o que deseja vender:
       await reply('🐾 Para comprar use *!adotar espécie Nome*.\n9️⃣ Voltar à lista • 0️⃣ Sair')
       return true
     }
-
-
-    // Coleção por categoria: os números são locais à categoria; o ID real
-    // do pet fica no fluxo para impedir sacrifício do item errado.
     if(flow.stage==='pet_collection_categories'){
       const category=petCollectionCategory(input)
       if(!category){
@@ -4745,8 +4207,6 @@ Escolha o que deseja vender:
         const pet=state.pets.find(p=>Number(p.id)===Number(petId))
         if(!pet||pet.species!==species||pet.name!==petName)
           throw new Error('O pet mudou desde a confirmação. Sacrifício cancelado por segurança.')
-        // O banco bloqueia sacrifícios de pet ativo, no time ou em expedição
-        // dentro da própria transação, sem alterar economia/recompensas.
         const result=await sacrificePet(sender,pet.id)
         clearQuickFlow(chat,sender)
         await reply('🕊️ *SACRIFÍCIO CONCLUÍDO*\n\n🐾 *'+result.name+'* — Nv.'+result.level+
@@ -4761,7 +4221,6 @@ Escolha o que deseja vender:
       }
       return true
     }
-
     if(flow.stage==='carpinar_select'){
       const choice=CARPINAR_MENU.find(x=>String(x.option)===input)
       if(!choice){
@@ -4778,21 +4237,17 @@ Escolha o que deseja vender:
       clearQuickFlow(chat,sender)
       await reply(
 `🌾 *VOCÊ FOI CARPINAR!*
-
 ⏳ Jornada: *${r.hours}h*
 ✨ XP ao concluir: *+${r.xp_reward}*
 💰 Dinheiro ao concluir: *R$ ${fmt(r.cash_reward)}*
 🎁 Chance de Caixa Rara: *${Math.round(Number(r.rare_box_chance||0)*100)}%*
 🕒 Tempo restante: *${duration(r.remaining)}*
-
 🔒 Enquanto estiver carpindo você não pode usar outros comandos, entrar em combate, ser roubado ou atacado.
-
 🚪 Para sair antes: *!carpinarsair*
 _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concorre à Caixa Rara._`
       )
       return true
     }
-
     if(flow.stage==='carpinar_exit_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -4807,17 +4262,14 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       clearQuickFlow(chat,sender)
       await reply(
 `🚪 *VOCÊ SAIU DO SERVIÇO*
-
 💸 Taxa: *R$ ${fmt(r.fee)}*
 ✨ XP pelo tempo trabalhado: *+${r.xp}*
 💰 Dinheiro pelo tempo trabalhado: *R$ ${fmt(r.cash||0)}*
 🎁 Caixa Rara: *não concorre ao sair antes*
-
 ✅ Você está livre para usar os comandos novamente.`
       )
       return true
     }
-
     if(flow.stage==='loan_offer_response'){
       if(input!=='1'&&input!=='2'){
         await reply('💳 Responda *1 para aceitar* ou *2 para recusar* a proposta de empréstimo.')
@@ -4834,7 +4286,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
           const r=await acceptLoan(sender,loanId)
           clearQuickFlow(chat,sender)
           await reply(`✅ *EMPRÉSTIMO ACEITO #${r.id}*
-
 💰 Recebido: *R$ ${fmt(r.principal)}*
 🕛 Sem juros até: *${fmtDate(r.due_at)}*
 📈 Depois: *2% por hora de atraso*
@@ -4850,7 +4301,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       }
       return true
     }
-
     if(flow.stage==='driver_sale_select'){
       const n=Number(input), ids=flow.data.ids||[]
       if(!Number.isInteger(n)||n<1||n>ids.length){
@@ -4869,7 +4319,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
         '\n1️⃣ Vender e receber o dinheiro\n2️⃣ Trocar por motorista superior\n0️⃣ Cancelar')
       return true
     }
-
     if(flow.stage==='driver_sale_action'){
       const d=(await getCltUberStatus(sender)).drivers.find(x=>Number(x.id)===Number(flow.data.id))
       if(!d){clearQuickFlow(chat,sender);await reply('❌ Motorista não encontrado.');return true}
@@ -4896,7 +4345,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       await reply('👨‍✈️ Escolha *1* Vender, *2* Trocar ou *0* Cancelar.')
       return true
     }
-
     if(flow.stage==='driver_trade_select'){
       const n=Number(input),ids=flow.data.types||[]
       if(!Number.isInteger(n)||n<1||n>ids.length){await reply('👨‍✈️ Escolha um motorista pelo número.');return true}
@@ -4912,7 +4360,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
         '1️⃣ Confirmar troca\n2️⃣ Cancelar')
       return true
     }
-
     if(flow.stage==='driver_sale_confirm'){
       if(input==='2'){clearQuickFlow(chat,sender);await reply('✅ Venda cancelada.');return true}
       if(input!=='1'){await reply('Digite 1 para confirmar ou 2 para cancelar.');return true}
@@ -4924,7 +4371,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
         '\n🪙 Carteira: R$ '+fmt(result.cash))
       return true
     }
-
     if(flow.stage==='driver_trade_confirm'){
       if(input==='2'){clearQuickFlow(chat,sender);await reply('✅ Troca cancelada.');return true}
       if(input!=='1'){await reply('Digite 1 para confirmar ou 2 para cancelar.');return true}
@@ -4936,7 +4382,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
         '🪙 Carteira: R$ '+fmt(result.cash)+'\n\n🚘 Use !centraluber para iniciar o próximo turno.')
       return true
     }
-
     if(flow.stage==='cltuber_driver_select'){
       const slot=Number(input)
       const status=await getCltUberStatus(sender)
@@ -4958,7 +4403,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       }
       setQuickFlow(chat,sender,'cltuber_car_select',{driverSlot:slot},90000)
       let out=`🚗 *ESCOLHA O CARRO — MOTORISTA ${slot}*
-
 `
       status.garage.forEach((car,i)=>{
         const busy=status.drivers.some(x=>x.active&&x.car?.id===car.id)
@@ -4969,7 +4413,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       await reply(out)
       return true
     }
-
     if(flow.stage==='cltuber_car_select'){
       const carSlot=Number(input)
       if(!Number.isInteger(carSlot)||carSlot<1){
@@ -4980,24 +4423,20 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
       clearQuickFlow(chat,sender)
       await reply(
 `🚕 *TURNO CLT UBER INICIADO!*
-
 👨‍✈️ ${r.type.name}
 🚗 ${r.car.name}
 ⏱️ Turno: *8 horas*
 💰 Retorno estimado em 8h: *R$ ${fmt(r.estimated8h)}*
-
 🛑 Após 8h o motorista *PARA AUTOMATICAMENTE*.
 🚘 Enquanto estiver em turno, esse carro não participa do *!uber* manual.
 💵 Use *!coletauber* para sacar o que já foi produzido.`
       )
       return true
     }
-
     const gamesMenu=async()=>{
       setQuickFlow(chat,sender,'main',{},90000)
       await reply(
 `🎮 *MINIGAMES DO ALPHA BOT*
-
 1️⃣ 🎰 Roleta
 2️⃣ 🪙 Cara ou Coroa
 3️⃣ ✊ Pedra, Papel e Tesoura
@@ -5005,14 +4444,11 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
-
 0️⃣ Sair`
       )
     }
-
     const commandPages={
       '1':`👤 *PERFIL, CONTA & SOCIAL*
-
 *!perfil* — mostra seu perfil completo em texto
 *!web* — gera link de acesso ao RPG Web com seu personagem e inventário
 *!perfil @pessoa* — vê o perfil de outra pessoa em texto
@@ -5026,38 +4462,31 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!divorciar* — encerra o relacionamento
 *!conquistas* — badges e objetivos desbloqueados
 *!ping* — verifica se o Alpha está online
-
-
 9️⃣ Voltar • 0️⃣ Fechar`,
       '2':`💰 *ECONOMIA, TRABALHO & BANCO*
-
 💼 *TRABALHO ATIVO*
 *!trabalhar* — trabalha e evolui a carreira
 *!carreira* — cargo e progresso profissional
 *!all* — Trabalho + Uber + iFood disponíveis de uma vez
 *!ifood* — coloca sua frota de bike/motos para entregar
 *!uber* — coloca seus carros livres para trabalhar
-
 🚕 *CLT UBER — RENDA AUTOMÁTICA*
 *!cltuber* — mostra os motoristas disponíveis
 *!cltuber 1* — contrata pelo número\n*!vendermotorista* — revenda de 70% ou troca por motorista superior
 *!centraluber* — motoristas, carros, turnos e saldo acumulado\n*!centraluber todos* — envia todos os disponíveis, pareando melhor motorista com melhor carro\n*!centraluber 1 3* — envia somente os motoristas escolhidos
 *!coletauber* — coleta todo o dinheiro da Central Uber
 🛑 Cada turno automático dura no máximo *8 horas*.
-
 🏪 *NEGÓCIOS*
 *!negocios* — catálogo de negócios
 *!comprarnegocio N* — compra pelo número
 *!meusnegocios* — seus negócios e upgrades
 *!coletar* — coleta a renda acumulada
-
 🏦 *BANCO & DINHEIRO*
 *!saldo* — carteira, banco e total
 *!depositar valor* / *!depositar total* — deposita
 *!sacar valor* — saca
 *!pix @pessoa valor* — transfere
 *!ranking* — ranking dos mais ricos
-
 💳 *EMPRÉSTIMOS*
 *!emprestimo @pessoa valor* — oferece empréstimo
 *!aceitaremprestimo [ID]* — aceita proposta
@@ -5065,16 +4494,13 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!pagar valor|total* — paga dívida
 *!credito* — limite de crédito
 *!dividas* — empréstimos recebidos e concedidos
-
 🎉 *EXTRAS*
 *!evento* — mostra evento de recompensa ativo
 *!piada* • *!horoscopo* • *!dado* • *!chance*
 *!escolher A | B* • *!ship @pessoa @pessoa*
 *!verdade* • *!desafio*
-
 9️⃣ Voltar • 0️⃣ Fechar`,
       '3':`🛒 *LOJA, INVENTÁRIO & MERCADO*
-
 *!itens* — abre o menu de itens
 *!loja* — loja completa (itens, carros, bike e motos)
 *!comprar item quantidade* — compra da loja
@@ -5088,24 +4514,19 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
 *!usarxp NOME* — ativa elixir ou tomo de experiência
 *!curarpet* — usa automaticamente a menor poção suficiente para curar o pet\n*!curarpet comum|rara|epica|suprema|full* — escolhe a poção de cura do pet\n*!energiapet* — usa Energético Pet e restaura 100% da energia do pet ativo
-
 🏪 *Mercado entre jogadores*
 *!mercado* — lista anúncios e mostra quanto tempo falta para expirar
 *!anunciar* — escolhe item, quantidade e preço; mostra preço sugerido e anuncia por 1 hora
 *!comprar#3* / *!comprar #3* — abre o anúncio #3 e confirma a compra
 *!compraritem* — abre a lista de anúncios
 *!cancelarvenda ID* / *!cancelaranuncio ID* — cancela seu anúncio
-
 🤝 *Troca direta*
 *!troca @pessoa* — troca itens da mesma raridade e na mesma quantidade
 *!aceitartroca ID* — aceita uma proposta recebida
 *!recusartroca ID* — recusa uma proposta
 🔒 Equipamentos e itens de Evento Único não entram em trocas.
-
-
 9️⃣ Voltar • 0️⃣ Fechar`,
       '4':`⚔️ *RPG, COMBATE & PETS*
-
 *!rpg* — abre o menu de RPG
 *!web* — conecta o mesmo personagem ao RPG visual no navegador
 *!status* — mostra seus atributos
@@ -5118,7 +4539,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!curar* — recupera HP usando cura disponível
 *!roubar @pessoa* / *!fazoL @pessoa* — tenta roubar
 *!rankingrpg* — ranking de combate
-
 ⚔️ *Raids cooperativas*
 *!raid* — lista as Raids e mostra a Raid ativa
 *!raid 20* — abre a Raid Lv.20; se faltar chave, compra automaticamente
@@ -5129,7 +4549,6 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!cancelarraide NÚMERO/NÍVEL* — host cancela sua sala antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
-
 🐾 *Pets & Time Pet*
 *!pet* — atalhos de pets e Altar Lendário
 *!pets* — selecionar um pet da coleção
@@ -5151,11 +4570,8 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!petaventura* — gasta toda a energia e retorna com dinheiro e XP\n*!expedicaopet ID 2|4|8* — manda um pet reserva em expedição\n*!expedicaopet todos 2|4|8* — envia todos os reservas livres\n*!expedicoespet* — acompanha e recebe pets que retornaram
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
-
-
 9️⃣ Voltar • 0️⃣ Fechar`,
       '5':`🎮 *MINIGAMES*
-
 *!games* / *!minigames* — menu de jogos
 *!roleta valor cor* — roleta
 *!cara valor* / *!coroa valor* — cara ou coroa
@@ -5186,11 +4602,8 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
 🌘 *Boss de Evento:* sexta às 19:00 • muita EXP para jogador e pet + chance de item Evento Único
 🐾 Principal luta, Reserva assume se ele cair e o Suporte entra nas sinergias passivas
-
-
 9️⃣ Voltar • 0️⃣ Fechar`,
       '6':`📋 *PROGRESSÃO, MISSÕES & PATRIMÔNIO*
-
 📈 *PROGRESSÃO*
 *!progressao* — abre o menu de progressão
 *!carpinar* — trabalho AFK de 1h a 12h para ganhar XP
@@ -5199,34 +4612,27 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!missoes* — missões diárias
 *!resgatarmissoes* — coleta recompensas concluídas
 *!conquistas* — conquistas e objetivos
-
 🏠 *IMÓVEIS*
 *!casas* — lista imóveis
 *!comprarcasa número* — compra imóvel
 *!minhacasa* — mostra sua casa
-
 📜 *CONTRATOS ALPHA — MISSÕES DA HORA*
 *!contratos* — consulta 5 missões rotativas, por nível, a cada 4 horas
 *!aceitarcontrato 1* — aceita o contrato número 1 (escolha de 1 a 5)
 *!resgatarcontrato* — recebe dinheiro, XP e itens após concluir
 📊 O progresso é automático em roubo, Uber, iFood, carpinar, Dungeon, Boss e Raid.
-
 🤝 *MISSÕES COLETIVAS & EVENTOS*
 *!missaogrupo* / *!missao* — objetivo, progresso e ranking
 *!missaostatus* — status da missão coletiva
 *!resgatarmissao* — resgata sua parte da recompensa
 *!pegar* — pega evento aleatório ativo no grupo
-
 💎 *PATRIMÔNIO*
 *!patrimonio* — soma dinheiro, itens, imóveis, veículos e negócios
 *!rankingpatrimonio* — ranking de patrimônio
-
 💡 Carros, motos, Uber e negócios ficam na categoria *2 — Economia*.
 🛒 Itens e mercado ficam na categoria *3 — Loja*.
-
 9️⃣ Voltar • 0️⃣ Fechar`,
       '7':`🏴 *CLÃS*
-
 *!clans* — menu de clãs
 *!cla* — mostra seu clã/cofre
 *!claajuda* — ajuda de clãs
@@ -5238,11 +4644,8 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!cladoar valor* — doa ao cofre
 *!rankingclas* — ranking
 *!saircla* — sai do clã
-
-
 9️⃣ Voltar • 0️⃣ Fechar`,
       '8':`💚 *GRUPO & MODERAÇÃO*
-
 *!grupo* — menu do grupo
 *!statusgrupo* — status da assinatura
 *!assinar* — cria/renova assinatura
@@ -5261,20 +4664,15 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!expulsar @pessoa* — alias de !banir (ADM)
 *!promover @pessoa* — promove a ADM
 *!rebaixar @pessoa* — remove ADM
-
 ⚙️ No *!configgrupo*: Anti-link, Anti-palavrão, Anti-delete, Antiflood, Boas-vindas e módulos do Alpha.
-
-
 9️⃣ Voltar • 0️⃣ Fechar`,
       '9':`⚽ *FUTEBOL, UTILIDADES & SUPORTE*
-
 ⚽ *Futebol*
 *!futebol* — ajuda de futebol
 *!partidas* — jogos brasileiros de hoje
 *!partidas amanha* — jogos de amanhã
 *!tabela* — Brasileirão Série A
 *!time Corinthians* — resumo do clube
-
 🛠️ *Utilidades & resenha*
 *!sticker* / *!s* / *!fig* — cria figurinha
 *!snipe* — última mensagem apagada do grupo
@@ -5284,26 +4682,19 @@ _A saída antecipada cobra uma taxa, paga XP/dinheiro proporcional e não concor
 *!burro @pessoa* — meme
 *!menu* — menu principal
 *!comandos* — este catálogo
-
 🆘 *Suporte*
 *!suporte* — abre chamado
 *!chamado CODIGO* — consulta chamado
-
-
 9️⃣ Voltar • 0️⃣ Fechar`
     }
-
     const commandsMenu=async()=>{
       setQuickFlow(chat,sender,'commands_main',{},5*60*1000)
       await reply(
 `📚 *COMANDOS DO ALPHA*
-
 Todos os comandos de usuário estão organizados abaixo. Comandos administrativos ficam ocultos.
-
 🚀 *ALPHA BOT 3.0*
 🌐 *!web* — RPG no navegador
 📜 *!contratos* — missões por nível, renovadas a cada 4h
-
 1️⃣ 👤 Perfil, conta, casamento & social
 2️⃣ 💰 Economia & diversão
 3️⃣ 🛒 Loja, inventário & mercado
@@ -5313,12 +4704,10 @@ Todos os comandos de usuário estão organizados abaixo. Comandos administrativo
 7️⃣ 🏴 Clãs
 8️⃣ 🛡️ Grupo & moderação
 9️⃣ ⚽ Futebol, utilidades & suporte
-
 👉 Responda só com o número.
 0️⃣ Fechar`
       )
     }
-
     const commandCategory=async(input)=>{
       const page=commandPages[input]
       if(!page) return false
@@ -5330,27 +4719,21 @@ Todos os comandos de usuário estão organizados abaixo. Comandos administrativo
       setQuickFlow(chat,sender,'admin_main',{},5*60*1000)
       await reply(
 `👑 *ADMIN ALPHA BOT*
-
 1️⃣ 👤 Jogadores
 2️⃣ 💚 Grupos / assinaturas
 3️⃣ 🧾 Pedidos pendentes
 4️⃣ ⚙️ Configurações comerciais
 5️⃣ 🩺 Diagnóstico
 6️⃣ 🆘 Chamados de suporte
-
 🔥 Evento 2x: *!eventodobro* (20 min) • *!eventodobro off*
-
 0️⃣ Sair
-
 _Responda apenas com o número._`
       )
     }
-
     const adminPlayersMenu=async()=>{
       setQuickFlow(chat,sender,'admin_players',{},5*60*1000)
       await reply(
 `👤 *ADMIN — JOGADORES*
-
 1️⃣ Adicionar saldo
 2️⃣ Remover saldo
 3️⃣ Adicionar EXP
@@ -5358,29 +4741,24 @@ _Responda apenas com o número._`
 5️⃣ Curar jogador
 6️⃣ Dar item
 7️⃣ Resetar / ajustar jogador
-
 9️⃣ Voltar
 0️⃣ Sair`
       )
     }
-
     const adminGroupsMenu=async()=>{
       setQuickFlow(chat,sender,'admin_groups',{},5*60*1000)
       await reply(
 `💚 *ADMIN — GRUPOS*
-
 1️⃣ Status deste grupo
 2️⃣ Ativar este grupo por 30 dias
 3️⃣ Ativar por outro período
 4️⃣ Tornar este grupo permanente
 5️⃣ Bloquear este grupo
 6️⃣ Ver grupos registrados
-
 9️⃣ Voltar
 0️⃣ Sair`
       )
     }
-
     const adminOrdersMenu=async()=>{
       const rows=await listPendingSubscriptionOrders(30)
       const codes=rows.map(r=>r.code)
@@ -5388,9 +4766,7 @@ _Responda apenas com o número._`
       if(!rows.length){
         await reply(
 `🧾 *PEDIDOS PENDENTES*
-
 Nenhum pedido pendente agora.
-
 9️⃣ Voltar
 0️⃣ Sair`
         )
@@ -5403,55 +4779,43 @@ Nenhum pedido pendente agora.
       text+='\n👉 Escolha o número do pedido.\n\n9️⃣ Voltar\n0️⃣ Sair'
       await reply(text)
     }
-
     const adminSettingsMenu=async()=>{
       setQuickFlow(chat,sender,'admin_settings',{},5*60*1000)
       await reply(
 `⚙️ *ADMIN — CONFIGURAÇÕES*
-
 1️⃣ Ver preço atual
 2️⃣ Alterar preço
 3️⃣ Alterar link de pagamento
-
 9️⃣ Voltar
 0️⃣ Sair`
       )
     }
-
     const supportMenu=async()=>{
       setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
       await reply(
 `🆘 *SUPORTE ALPHA BOT*
-
 Como podemos ajudar?
-
 1️⃣ 💳 Pagamento / assinatura
 2️⃣ 🛠️ Problema técnico
 3️⃣ ❓ Dúvida sobre comandos
 4️⃣ 🐞 Reportar erro / bug
 5️⃣ 💬 Outro assunto
-
 0️⃣ Sair`
       )
     }
-
     const adminSupportMenu=async()=>{
       const rows=await listOpenSupportTickets(30)
       const codes=rows.map(r=>r.code)
       setQuickFlow(chat,sender,'admin_support',{codes},10*60*1000)
-
       if(!rows.length){
         await reply(
 `🆘 *CHAMADOS DE SUPORTE*
-
 Nenhum chamado aberto agora.
-
 9️⃣ Voltar
 0️⃣ Sair`
         )
         return
       }
-
       let text='🆘 *CHAMADOS DE SUPORTE*\n\n'
       rows.forEach((r,i)=>{
         const preview=String(r.message||'').replace(/\s+/g,' ').slice(0,55)
@@ -5460,7 +4824,6 @@ Nenhum chamado aberto agora.
       text+='👉 Escolha o número do chamado.\n\n9️⃣ Voltar\n0️⃣ Sair'
       await reply(text.trim())
     }
-
     const adminBackFor=async(action)=>{
       if(['addsaldo','remsaldo','addexp','setnivel','curar','daritem','setsaldo','resetsaldo','resetxp','resetinventory','resettotal'].includes(action)) return adminPlayersMenu()
       if(['activategroup','activategrouppermanent','blockgroup'].includes(action)) return adminGroupsMenu()
@@ -5468,7 +4831,6 @@ Nenhum chamado aberto agora.
       if(['setprice','setlink'].includes(action)) return adminSettingsMenu()
       return adminMainMenu()
     }
-
     const shopCategoryMenu=async()=>showShopCategoryMenu(chat,sender,reply)
     const boxQuantityMenu=async(box)=>showBoxQuantityMenu(chat,sender,reply,box)
     const inventoryMenu=async()=>showInventoryMenu(chat,sender,reply)
@@ -5480,15 +4842,12 @@ Nenhum chamado aberto agora.
       setQuickFlow(chat,sender,'fun_shop',{},90000)
       await reply(
 `🎭 *DIVERSÃO*
-
 1️⃣ 😂 Piada do Alpha Bot — R$ ${fmt(FUN_PRICES.joke)}
 2️⃣ 🔮 Horóscopo do dia — R$ ${fmt(FUN_PRICES.horoscope)}
-
 9️⃣ Voltar
 0️⃣ Sair`
       )
     }
-
     const horoscopeSignMenu=async()=>{
       setQuickFlow(chat,sender,'horoscope_sign',{},90000)
       let text='🔮 *ESCOLHA SEU SIGNO*\n\n'
@@ -5496,33 +4855,27 @@ Nenhum chamado aberto agora.
       text+='\n9️⃣ Voltar\n0️⃣ Sair'
       await reply(text)
     }
-
     const afterGame=async(game,data,text)=>{
       setQuickFlow(chat,sender,'game_after',{game,...data},5*60*1000)
       await reply(
 `${text}
-
 1️⃣ *Jogar novamente*
 2️⃣ Voltar aos minigames
 9️⃣ Menu principal
 0️⃣ Sair`
       )
     }
-
     const askBet=(stage)=> {
       setQuickFlow(chat,sender,stage,{},90000)
       return reply(
 `💰 *QUANTO QUER APOSTAR?*
-
 1️⃣ R$ 100
 2️⃣ R$ 500
 3️⃣ R$ 1.000
 4️⃣ Outro valor
-
 _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       )
     }
-
     if(flow.stage==='pet_team_select'){
       if(input==='0'){
         clearQuickFlow(chat,sender)
@@ -5551,7 +4904,6 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       await reply(text)
       return true
     }
-
     if(flow.stage==='pet_team_manage'){
       if(input==='0'){
         clearQuickFlow(chat,sender)
@@ -5590,7 +4942,6 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       await reply(text)
       return true
     }
-
     if(flow.stage==='pet_team_replace_select'){
       if(input==='0'){
         clearQuickFlow(chat,sender)
@@ -5640,22 +4991,18 @@ _Responda só com 1, 2, 3 ou 4. Digite 0 para sair._`
       setQuickFlow(chat,sender,'pet_equip_confirm',{petId:selected.id},90000)
       await reply(
 `🐾 *EQUIPAR PET?*
-
 🐾 *${selected.name}* — ${selected.species}
 🏷️ Tipo: *${petHpType(selected.species)}*
 ⭐ Nv.${selected.level} • ⚔️ Poder ${selected.power}
 ❤️ ${selected.hp}/${petMaxHp(selected.level,selected.xp,selected.species)}
 ⚡ ${selected.energy}/${petMaxEnergy(selected.level,selected.species)}
-
 ✨ *${bonus.label}*
 ${bonus.text}
-
 1️⃣ *Equipar*
 2️⃣ Cancelar`
       )
       return true
     }
-
     if(flow.stage==='pet_equip_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -5673,7 +5020,6 @@ ${bonus.text}
         await reply(p.already
           ? `🟢 *${p.name}* já é seu pet ativo.`
           : `🐾 *PET EQUIPADO!*
-
 🟢 *${p.name}* — ${p.species}
 🏷️ Tipo: *${petHpType(p.species)}*
 ⭐ Nv.${p.level} • ⚔️ Poder ${p.power}
@@ -5686,7 +5032,6 @@ ${bonus.text}
       }
       return true
     }
-
     if(flow.stage==='loot_disposition_bulk'){
       const items=Array.isArray(flow.data?.items)?flow.data.items:[]
       if(!items.length){
@@ -5694,20 +5039,17 @@ ${bonus.text}
         await reply('✅ Nenhum item para processar.')
         return true
       }
-
       const legendaryQty=items
         .filter(i=>String(i.rarity)==='legendary')
         .reduce((sum,item)=>sum+Number(item.qty||0),0)
       const legendaryLine=legendaryQty
         ? '\n🛡️ Lendários protegidos: *'+fmt(legendaryQty)+'*'
         : ''
-
       if(input==='0'||input==='1'){
         clearQuickFlow(chat,sender)
         await reply('✅ *ITENS GUARDADOS*\n\n🎒 Tudo ficou no inventário.'+legendaryLine)
         return true
       }
-
       if(input==='8'){
         const manualItems=items.filter(i=>String(i.rarity)!=='legendary')
         if(!manualItems.length){
@@ -5722,7 +5064,6 @@ ${bonus.text}
         await reply(protectedNotice+lootDispositionPrompt(manualItems[0],0,manualItems.length))
         return true
       }
-
       const filters={
         '2':()=>true,
         '3':item=>String(item.rarity)==='common',
@@ -5736,18 +5077,15 @@ ${bonus.text}
         await reply('🎒 Escolha uma opção de *1 a 8*.')
         return true
       }
-
       const result=await sellLootBatch(sender,items,predicate)
       clearQuickFlow(chat,sender)
       const failedLine=result.failures.length
         ? '\n⚠️ Não foi possível vender: *'+result.failures.join(', ')+'*. Esses itens ficaram no inventário.'
         : ''
-
       if(result.soldQty<1){
         await reply('ℹ️ Nenhum item dessa seleção foi vendido.\n🎒 Os itens continuam no inventário.'+legendaryLine+failedLine)
         return true
       }
-
       await reply(
         '💰 *VENDA EM MASSA CONCLUÍDA*\n\n'+
         '📦 Itens vendidos: *'+fmt(result.soldQty)+'*\n'+
@@ -5758,7 +5096,6 @@ ${bonus.text}
       )
       return true
     }
-
     if(flow.stage==='loot_disposition'){
       const items=Array.isArray(flow.data?.items)?flow.data.items:[]
       const index=Math.max(0,Number(flow.data?.index||0))
@@ -5772,7 +5109,6 @@ ${bonus.text}
         await reply('🎒 Escolha *1 Guardar* ou *2 Vender agora*.')
         return true
       }
-
       let soldTotal=Number(flow.data?.soldTotal||0)
       if(input==='2'){
         try{
@@ -5785,19 +5121,16 @@ ${bonus.text}
       }else{
         await reply(`✅ *GUARDADO!*\n${rarityLabel(item.rarity)} — *${item.name}* ×${item.qty}`)
       }
-
       const nextIndex=index+1
       if(nextIndex>=items.length){
         clearQuickFlow(chat,sender)
         await reply(`✅ *DROPS PROCESSADOS*\n\n💰 Total vendido agora: *R$ ${fmt(soldTotal)}*\n🎒 O restante ficou no inventário.`)
         return true
       }
-
       setQuickFlow(chat,sender,'loot_disposition',{items,index:nextIndex,soldTotal},5*60*1000)
       await reply(lootDispositionPrompt(items[nextIndex],nextIndex,items.length))
       return true
     }
-
     if(flow.stage==='wake_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -5823,7 +5156,6 @@ ${bonus.text}
       }
       return true
     }
-
     if(flow.stage==='legendary_pet_altar_select'){
       const choice=Number(input)
       if(!Number.isInteger(choice)||choice<1||choice>LEGENDARY_PET_SUMMONS.length){
@@ -5875,7 +5207,6 @@ ${bonus.text}
       }
       return true
     }
-
     if(flow.stage==='support_menu'){
       const categories={
         '1':['pagamento','💳 Pagamento / assinatura'],
@@ -5892,23 +5223,18 @@ ${bonus.text}
       setQuickFlow(chat,sender,'support_message',{category:selected[0],label:selected[1]},15*60*1000)
       await reply(
 `🆘 *${selected[1]}*
-
 Escreva agora sua mensagem para o suporte.
-
 Explique o que aconteceu com o máximo de detalhes que conseguir.
-
 0️⃣ Cancelar`
       )
       return true
     }
-
     if(flow.stage==='support_message'){
       const message=rawInput.trim()
       if(message.length<3){
         await reply('🆘 Escreva uma mensagem um pouco mais detalhada.')
         return true
       }
-
       const ticket=await createSupportTicket(
         sender,
         chat,
@@ -5916,19 +5242,14 @@ Explique o que aconteceu com o máximo de detalhes que conseguir.
         message
       )
       clearQuickFlow(chat,sender)
-
       await reply(
 `✅ *CHAMADO ABERTO*
-
 Protocolo: *${ticket.code}*
 Assunto: *${flow.data.label}*
-
 Sua mensagem foi enviada ao suporte do Alpha Bot.
 Quando houver resposta, ela chegará por aqui.
-
 Guarde o protocolo: *${ticket.code}*`
       )
-
       if(ownerJid){
         try{
           let origin='Conversa privada'
@@ -5942,14 +5263,11 @@ Guarde o protocolo: *${ticket.code}*`
           }
           await sock.sendMessage(ownerJid,{text:
 `🆘 *NOVO CHAMADO ALPHA BOT*
-
 Protocolo: *${ticket.code}*
 Categoria: *${flow.data.label}*
 Usuário: *${msg.pushName||'Usuário'}*
 Origem: *${origin}*
-
 📝 ${message}
-
 Abra *!admin* → *Chamados de suporte* para responder.`
           })
         }catch(err){
@@ -5958,34 +5276,29 @@ Abra *!admin* → *Chamados de suporte* para responder.`
       }
       return true
     }
-
     if(flow.stage.startsWith('admin_')){
       if(!isOwner){
         clearQuickFlow(chat,sender)
         await reply('⛔ Comando não disponível para Beta.')
         return true
       }
-
       if(flow.stage==='admin_main'){
         if(input==='1') return await adminPlayersMenu(),true
         if(input==='2') return await adminGroupsMenu(),true
         if(input==='3') return await adminOrdersMenu(),true
         if(input==='4') return await adminSettingsMenu(),true
         if(input==='6') return await adminSupportMenu(),true
-
         if(input==='5'){
           const age=(ts)=>ts?Math.max(0,Math.floor((Date.now()-ts)/1000)):null
           const lastUpsert=age(trevoHealth.lastUpsertAt)
           const lastInbound=age(trevoHealth.lastInboundAt)
           await reply(
 `🩺 *DIAGNÓSTICO ALPHA BOT*
-
 WhatsApp: *${String(trevoHealth.whatsapp||'desconhecido').toUpperCase()}*
 Mensagens observadas: *${Number(trevoHealth.messagesSeen||0)}*
 Último evento: *${lastUpsert===null?'ainda nenhum':lastUpsert+'s atrás'}*
 Última mensagem recebida: *${lastInbound===null?'ainda nenhuma':lastInbound+'s atrás'}*
 Processo ativo há: *${Math.floor(process.uptime()/60)} min*
-
 9️⃣ Voltar
 0️⃣ Sair`
           )
@@ -5995,13 +5308,11 @@ Processo ativo há: *${Math.floor(process.uptime()/60)} min*
         await reply('👑 Escolha uma opção de *1 a 6* ou *0* para sair.')
         return true
       }
-
       if(flow.stage==='admin_diag'){
         if(input==='9') return await adminMainMenu(),true
         await reply('🩺 Digite *9* para voltar ou *0* para sair.')
         return true
       }
-
       if(flow.stage==='admin_support'){
         if(input==='9') return await adminMainMenu(),true
         const code=flow.data.codes?.[Number(input)-1]
@@ -6017,20 +5328,16 @@ Processo ativo há: *${Math.floor(process.uptime()/60)} min*
         setQuickFlow(chat,sender,'admin_support_ticket',{code},10*60*1000)
         await reply(
 `🆘 *${ticket.code}*
-
 Categoria: *${ticket.category}*
 Criado: *${fmtDate(ticket.created_at)}*
-
 📝 *Mensagem:*
 ${ticket.message}
-
 1️⃣ Responder
 9️⃣ Voltar
 0️⃣ Sair`
         )
         return true
       }
-
       if(flow.stage==='admin_support_ticket'){
         if(input==='9') return await adminSupportMenu(),true
         if(input!=='1'){
@@ -6041,7 +5348,6 @@ ${ticket.message}
         await reply('✍️ Digite agora a resposta que será enviada ao usuário.\n\n0️⃣ Cancelar')
         return true
       }
-
       if(flow.stage==='admin_support_answer'){
         const answer=rawInput.trim()
         if(answer.length<1){
@@ -6053,11 +5359,8 @@ ${ticket.message}
         try{
           await sock.sendMessage(ticket.requester_jid,{text:
 `🆘 *RESPOSTA DO SUPORTE ALPHA BOT*
-
 Protocolo: *${ticket.code}*
-
 💬 ${answer}
-
 Se precisar de mais ajuda, use *!suporte* para abrir um novo chamado.`
           })
           delivered=true
@@ -6066,11 +5369,8 @@ Se precisar de mais ajuda, use *!suporte* para abrir um novo chamado.`
           try{
             await sock.sendMessage(ticket.chat_jid,{text:
 `🆘 *RESPOSTA DO SUPORTE ALPHA BOT*
-
 Protocolo: *${ticket.code}*
-
 💬 ${answer}
-
 Se precisar de mais ajuda, use *!suporte*.`
             })
             delivered=true
@@ -6078,16 +5378,13 @@ Se precisar de mais ajuda, use *!suporte*.`
             console.error('[suporte] falha no fallback da resposta',err2?.message||err2)
           }
         }
-
         await reply(
 `✅ *CHAMADO RESPONDIDO*
-
 Protocolo: *${ticket.code}*
 Entrega: *${delivered?'enviada ao usuário':'não foi possível entregar automaticamente'}*`
         )
         return await adminSupportMenu(),true
       }
-
       if(flow.stage==='admin_players'){
         if(input==='9') return await adminMainMenu(),true
         const actions={1:'addsaldo',2:'remsaldo',3:'addexp',4:'setnivel',5:'curar',6:'daritem',7:'resetplayer'}
@@ -6099,16 +5396,13 @@ Entrega: *${delivered?'enviada ao usuário':'não foi possível entregar automat
         setQuickFlow(chat,sender,'admin_player_target',{action},5*60*1000)
         await reply(
 `👤 *ESCOLHA O JOGADOR*
-
 1️⃣ Aplicar em mim
 ou marque a pessoa com *@*.
-
 9️⃣ Voltar
 0️⃣ Sair`
         )
         return true
       }
-
       if(flow.stage==='admin_player_target'){
         if(input==='9') return await adminPlayersMenu(),true
         const action=flow.data.action
@@ -6118,31 +5412,26 @@ ou marque a pessoa com *@*.
           await reply('👤 Marque a pessoa com *@* ou mande *1* para aplicar em você.')
           return true
         }
-
         if(action==='resetplayer'){
           setQuickFlow(chat,sender,'admin_player_reset',{target},5*60*1000)
           await reply(
 `🧹 *RESET / AJUSTE DO JOGADOR*
-
 1️⃣ Zerar saldo (carteira + banco)
 2️⃣ Resetar EXP e nível
 3️⃣ Limpar inventário
 4️⃣ Definir saldo da carteira
 5️⃣ ⚠️ RESET TOTAL
-
 9️⃣ Voltar
 0️⃣ Sair`,
             {mentions:target===sender?[]:[target]}
           )
           return true
         }
-
         if(action==='curar'){
           setQuickFlow(chat,sender,'admin_confirm',{action,target},5*60*1000)
           await reply('❤️ Curar completamente o jogador selecionado?\n\n1️⃣ Confirmar\n2️⃣ Cancelar',{mentions:target===sender?[]:[target]})
           return true
         }
-
         if(action==='daritem'){
           const shop=await getShop()
           const items=shop.filter(i=>SHOP_IDS.includes(i.id || i.item_id))
@@ -6154,47 +5443,39 @@ ou marque a pessoa com *@*.
           await reply(text,{mentions:target===sender?[]:[target]})
           return true
         }
-
         if(action==='setnivel'){
           setQuickFlow(chat,sender,'admin_level_value',{action,target},5*60*1000)
           await reply('⭐ Digite o *novo nível* do jogador.\nExemplo: *10*\n\n9️⃣ Voltar\n0️⃣ Sair')
           return true
         }
-
         const isExp=action==='addexp'
         const presets=isExp?[100,500,1000]:[1000,5000,10000]
         setQuickFlow(chat,sender,'admin_amount',{action,target,presets},5*60*1000)
         await reply(
 `💰 *ESCOLHA O VALOR*
-
 1️⃣ ${fmt(presets[0])}
 2️⃣ ${fmt(presets[1])}
 3️⃣ ${fmt(presets[2])}
 4️⃣ Outro valor
-
 9️⃣ Voltar
 0️⃣ Sair`
         )
         return true
       }
-
       if(flow.stage==='admin_player_reset'){
         if(input==='9') return await adminPlayersMenu(),true
         const target=flow.data.target
-
         if(input==='4'){
           setQuickFlow(chat,sender,'admin_set_balance_value',{target},5*60*1000)
           await reply('💰 Digite o novo saldo da *carteira*.\nExemplo: *5000*\nPara zerar, envie *0*.')
           return true
         }
-
         const actions={1:'resetsaldo',2:'resetxp',3:'resetinventory',5:'resettotal'}
         const action=actions[input]
         if(!action){
           await reply('🧹 Escolha *1, 2, 3, 4 ou 5*, *9* para voltar ou *0* para sair.')
           return true
         }
-
         setQuickFlow(chat,sender,'admin_confirm',{action,target},5*60*1000)
         const warning=action==='resettotal'
           ? '⚠️ *RESET TOTAL* apaga saldo, banco, EXP, nível, inventário, equipamentos, vitórias/derrotas, missões, casa, carros e cooldowns do jogador.\n\n1️⃣ Confirmar\n2️⃣ Cancelar'
@@ -6206,7 +5487,6 @@ ou marque a pessoa com *@*.
         await reply(warning,{mentions:target===sender?[]:[target]})
         return true
       }
-
       if(flow.stage==='admin_set_balance_value'){
         if(input==='9') return await adminPlayersMenu(),true
         const target=flow.data.target
@@ -6223,7 +5503,6 @@ ou marque a pessoa com *@*.
         await reply(`⚠️ Definir o saldo da carteira para *R$ ${fmt(amount)}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`,{mentions:target===sender?[]:[target]})
         return true
       }
-
       if(flow.stage==='admin_amount'){
         if(input==='9') return await adminPlayersMenu(),true
         const {action,target,presets}=flow.data
@@ -6240,16 +5519,13 @@ ou marque a pessoa com *@*.
         setQuickFlow(chat,sender,'admin_confirm',{action,target,amount},5*60*1000)
         await reply(
 `⚠️ *CONFIRMAR AÇÃO*
-
 ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar saldo'}: *${action==='addexp'?fmt(amount):'R$ '+fmt(amount)}*
-
 1️⃣ Confirmar
 2️⃣ Cancelar`,
           {mentions:target===sender?[]:[target]}
         )
         return true
       }
-
       if(flow.stage==='admin_amount_custom'){
         const {action,target}=flow.data
         const amount=parseAmount(rawInput)
@@ -6263,16 +5539,13 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
         setQuickFlow(chat,sender,'admin_confirm',{action,target,amount},5*60*1000)
         await reply(
 `⚠️ *CONFIRMAR AÇÃO*
-
 ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar saldo'}: *${action==='addexp'?fmt(amount):'R$ '+fmt(amount)}*
-
 1️⃣ Confirmar
 2️⃣ Cancelar`,
           {mentions:target===sender?[]:[target]}
         )
         return true
       }
-
       if(flow.stage==='admin_level_value'){
         if(input==='9') return await adminPlayersMenu(),true
         const level=parseInt(input,10)
@@ -6284,7 +5557,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
         await reply(`⚠️ Alterar o nível para *${level}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
         return true
       }
-
       if(flow.stage==='admin_item_select'){
         if(input==='9') return await adminPlayersMenu(),true
         const idx=Number(input)-1
@@ -6297,7 +5569,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
         await reply('🎁 *QUANTIDADE*\n\n1️⃣ 1 unidade\n2️⃣ 5 unidades\n3️⃣ 10 unidades\n4️⃣ Outra quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
         return true
       }
-
       if(flow.stage==='admin_item_qty'){
         if(input==='9') return await adminPlayersMenu(),true
         if(input==='4'){
@@ -6315,7 +5586,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
         await reply(`⚠️ Entregar *${qty} unidade(s)* deste item?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
         return true
       }
-
       if(flow.stage==='admin_item_qty_custom'){
         const qty=parseInt(input,10)
         if(!Number.isInteger(qty)||qty<1||qty>999){
@@ -6326,10 +5596,8 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
         await reply(`⚠️ Entregar *${qty} unidade(s)* deste item?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
         return true
       }
-
       if(flow.stage==='admin_groups'){
         if(input==='9') return await adminMainMenu(),true
-
         if(input==='1'){
           if(!chat.endsWith('@g.us')){
             await reply('💚 Use esta opção dentro do grupo que deseja consultar.')
@@ -6339,7 +5607,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
           await reply(groupLicenseStatusText(lic,'💚 *STATUS DO GRUPO*'))
           return true
         }
-
         if(input==='2'){
           if(!chat.endsWith('@g.us')){
             await reply('💚 Use esta opção dentro do grupo que deseja ativar.')
@@ -6349,7 +5616,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
           await reply('⚠️ Ativar este grupo por *30 dias*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
           return true
         }
-
         if(input==='3'){
           if(!chat.endsWith('@g.us')){
             await reply('💚 Use esta opção dentro do grupo que deseja ativar.')
@@ -6359,7 +5625,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
           await reply('📅 Digite a quantidade de dias.\nExemplo: *30*\n\n9️⃣ Voltar\n0️⃣ Sair')
           return true
         }
-
         if(input==='4'){
           if(!chat.endsWith('@g.us')){
             await reply('💚 Use esta opção dentro do grupo que deseja tornar permanente.')
@@ -6369,7 +5634,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
           await reply('⚠️ Tornar este grupo *PERMANENTE*?\n\n♾️ Ele não terá data de expiração.\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
           return true
         }
-
         if(input==='5'){
           if(!chat.endsWith('@g.us')){
             await reply('💚 Use esta opção dentro do grupo que deseja bloquear.')
@@ -6379,7 +5643,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
           await reply('⚠️ *Bloquear este grupo?*\nO acesso do Alpha Bot será interrompido.\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
           return true
         }
-
         if(input==='6'){
           const rows=await listGroupLicenses(50)
           if(!rows.length){
@@ -6404,11 +5667,9 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
           await reply(text.trim())
           return true
         }
-
         await reply('💚 Escolha uma opção de *1 a 6*, *9* para voltar ou *0* para sair.')
         return true
       }
-
       if(flow.stage==='admin_group_days'){
         if(input==='9') return await adminGroupsMenu(),true
         const days=parseInt(input,10)
@@ -6420,7 +5681,6 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
         await reply(`⚠️ Ativar este grupo por *${days} dias*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
         return true
       }
-
       if(flow.stage==='admin_orders'){
         if(input==='9') return await adminMainMenu(),true
         const idx=Number(input)-1
@@ -6438,11 +5698,9 @@ ${action==='remsaldo'?'Remover':action==='addexp'?'Adicionar EXP':'Adicionar sal
         setQuickFlow(chat,sender,'admin_order_action',{code},5*60*1000)
         await reply(
 `🧾 *${order.code}*
-
 Status: *${String(order.status).toUpperCase()}*
 Valor: *R$ ${Number(order.amount).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}*
 Criado: *${fmtDate(order.created_at)}*
-
 1️⃣ ✅ Aprovar
 2️⃣ 🚫 Cancelar
 9️⃣ Voltar
@@ -6450,7 +5708,6 @@ Criado: *${fmtDate(order.created_at)}*
         )
         return true
       }
-
       if(flow.stage==='admin_order_action'){
         if(input==='9') return await adminOrdersMenu(),true
         if(input==='1'){
@@ -6466,39 +5723,31 @@ Criado: *${fmtDate(order.created_at)}*
         await reply('Escolha *1 Aprovar*, *2 Cancelar* ou *9 Voltar*.')
         return true
       }
-
       if(flow.stage==='admin_settings'){
         if(input==='9') return await adminMainMenu(),true
-
         if(input==='1'){
           const [price,link]=await Promise.all([getLaunchPrice(),getPaymentLink()])
           await reply(
 `⚙️ *CONFIGURAÇÃO ATUAL*
-
 💰 Preço: *R$ ${Number(price).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias*
 💳 Link: ${link}
-
 9️⃣ Voltar`
           )
           return true
         }
-
         if(input==='2'){
           setQuickFlow(chat,sender,'admin_price_value',{},5*60*1000)
           await reply('💰 Digite o novo preço.\nExemplo: *5* ou *5,90*\n\n9️⃣ Voltar\n0️⃣ Sair')
           return true
         }
-
         if(input==='3'){
           setQuickFlow(chat,sender,'admin_link_value',{},5*60*1000)
           await reply('💳 Envie o novo link de pagamento completo.\n\n9️⃣ Voltar\n0️⃣ Sair')
           return true
         }
-
         await reply('⚙️ Escolha *1, 2 ou 3*, *9* para voltar ou *0* para sair.')
         return true
       }
-
       if(flow.stage==='admin_price_value'){
         if(input==='9') return await adminSettingsMenu(),true
         const raw=rawInput.replace(',','.')
@@ -6511,7 +5760,6 @@ Criado: *${fmtDate(order.created_at)}*
         await reply(`⚠️ Alterar o preço para *R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
         return true
       }
-
       if(flow.stage==='admin_link_value'){
         if(input==='9') return await adminSettingsMenu(),true
         if(!/^https?:\/\//i.test(rawInput)){
@@ -6522,7 +5770,6 @@ Criado: *${fmtDate(order.created_at)}*
         await reply('⚠️ Atualizar o link de pagamento?\n\n1️⃣ Confirmar\n2️⃣ Cancelar')
         return true
       }
-
       if(flow.stage==='admin_confirm'){
         const data=flow.data
         if(input==='2'){
@@ -6534,7 +5781,6 @@ Criado: *${fmtDate(order.created_at)}*
           await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
           return true
         }
-
         if(data.action==='addsaldo'){
           const p=await ownerAddBalance(data.target,data.amount)
           await reply(`✅ Saldo adicionado. Novo saldo: *R$ ${fmt(p.cash)}*.`,{mentions:data.target===sender?[]:[data.target]})
@@ -6583,11 +5829,9 @@ Criado: *${fmtDate(order.created_at)}*
           try{
             await sock.sendMessage(r.chat_jid,{text:
 `💚 *PAGAMENTO CONFIRMADO!*
-
 🧾 Pedido: *${r.code}*
 ✅ Alpha Bot liberado por mais *30 dias*.
 📅 Validade: *${fmtDate(r.paid_until)}*
-
 Obrigado por apoiar o Alpha Bot 🍀`
             })
           }catch(err){
@@ -6603,32 +5847,25 @@ Obrigado por apoiar o Alpha Bot 🍀`
           await setPaymentLink(data.link)
           await reply('✅ Link de pagamento atualizado.')
         }
-
         await adminBackFor(data.action)
         return true
       }
-
       return true
     }
-
     if(flow.stage==='game_after'){
       const game=flow.data.game
-
       if(input==='2'){
         await gamesMenu()
         return true
       }
-
       if(input==='9'){
         await showMainMenu(chat,sender,reply)
         return true
       }
-
       if(input!=='1'){
         await reply('🎮 Escolha *1 Jogar novamente*, *2 Minigames*, *9 Menu principal* ou *0 Sair*.')
         return true
       }
-
       if(game==='roulette'){
         const r=await roulette(sender,flow.data.amount,flow.data.choice,chat)
         await progressDailyMission(sender,'game')
@@ -6637,42 +5874,33 @@ Obrigado por apoiar o Alpha Bot 🍀`
           : `💸 Você perdeu R$ ${fmt(r.amount)}.`
         await afterGame('roulette',{amount:flow.data.amount,choice:flow.data.choice},
 `🎰 *ROLETA*
-
 Número: *${r.number}*
 Cor: *${r.color}*
 Sua escolha: *${r.choice}*
-
 ${result}`)
         return true
       }
-
       if(game==='coin'){
         const r=await coinFlip(sender,flow.data.amount,flow.data.choice,chat)
         await progressDailyMission(sender,'game')
         await afterGame('coin',{amount:flow.data.amount,choice:flow.data.choice},
 `🪙 *CARA OU COROA*
-
 Resultado: *${r.result}*
 Você escolheu: *${r.choice}*
-
 ${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
         return true
       }
-
       if(game==='ppt'){
         const r=rps(flow.data.choice)
         await progressDailyMission(sender,'game')
         const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
         await afterGame('ppt',{choice:flow.data.choice},
 `✊ *PEDRA, PAPEL E TESOURA*
-
 Você: *${r.choice}*
 Alpha Bot: *${r.bot}*
-
 ${emoji} *${r.result.toUpperCase()}*`)
         return true
       }
-
       if(game==='hangman'){
         const r=await startHangman(chat)
         setQuickFlow(chat,sender,'hangman',{},5*60*1000)
@@ -6680,39 +5908,32 @@ ${emoji} *${r.result.toUpperCase()}*`)
         const masked=r.word.split('').map(ch=>r.letters?.includes(ch)?ch:'_').join(' ')
         await reply(
 `🔤 *FORCA*
-
 Dica: *${r.hint}*
 Palavra: ${masked}
 ❤️ Vidas: ${r.lives||6}
-
 Digite uma *letra* ou tente a *palavra inteira*.
 0️⃣ Sair`
         )
         return true
       }
-
       if(game==='quiz'){
         const q=await quizStartRequested(chat,reply)
         if(!q.already)await progressDailyMission(sender,'game')
                 return true
       }
-
       if(game==='number'){
         const r=await startNumberGame(chat)
         if(!r.already) await progressDailyMission(sender,'game')
         setQuickFlow(chat,sender,'number_guess',{},5*60*1000)
         await reply(
 `🔢 *ADIVINHE O NÚMERO*
-
 Escolhi um número de *1 a 100*.
 Vocês têm até *10 tentativas*.
-
 Digite apenas seu chute.
 0️⃣ Sair`
         )
         return true
       }
-
       if(game==='boss'){
         const r=await startBoss(chat)
         if(!r.already) await progressDailyMission(sender,'game')
@@ -6720,25 +5941,20 @@ Digite apenas seu chute.
         const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento em andamento.*':'')
         await reply(
 `👹 *${r.name}*
-
 ❤️ ${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}${schedule}
-
 1️⃣ Iniciar combate automático
 0️⃣ Sair`
         )
         return true
       }
-
       await gamesMenu()
       return true
     }
-
     if(flow.stage==='main'){
       if(!/^[1-7]$/.test(input)){
         await reply('🎮 Escolha uma opção de *1 a 7* ou digite *0* para sair.')
         return true
       }
-
       if(input==='1'){
         await askBet('roulette_bet')
         return true
@@ -6751,11 +5967,9 @@ Digite apenas seu chute.
         setQuickFlow(chat,sender,'ppt_choice',{},90000)
         await reply(
 `✊ *PEDRA, PAPEL E TESOURA*
-
 1️⃣ Pedra
 2️⃣ Papel
 3️⃣ Tesoura
-
 _Responda só com o número._`
         )
         return true
@@ -6767,11 +5981,9 @@ _Responda só com o número._`
         const masked=r.word.split('').map(ch=>r.letters?.includes(ch)?ch:'_').join(' ')
         await reply(
 `🔤 *FORCA*
-
 Dica: *${r.hint}*
 Palavra: ${masked}
 ❤️ Vidas: ${r.lives||6}
-
 Digite apenas uma *letra* ou tente a *palavra inteira*.
 Digite *0* para sair do modo rápido.`
         )
@@ -6788,10 +6000,8 @@ Digite *0* para sair do modo rápido.`
         setQuickFlow(chat,sender,'number_guess',{},5*60*1000)
         await reply(
 `🔢 *ADIVINHE O NÚMERO*
-
 Escolhi um número de *1 a 100*.
 Vocês têm até *10 tentativas*.
-
 Digite apenas seu chute, por exemplo: *50*.
 Digite *0* para sair do modo rápido.`
         )
@@ -6804,18 +6014,14 @@ Digite *0* para sair do modo rápido.`
         const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento em andamento.*':'')
         await reply(
 `👹 *${r.name}*
-
 ❤️ ${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}${schedule}
-
 1️⃣ Iniciar combate automático
 0️⃣ Sair do modo rápido
-
 _Ao mandar 1, começa uma sessão automática de até 5 minutos._`
         )
         return true
       }
     }
-
     if(flow.stage==='roulette_bet' || flow.stage==='coin_bet'){
       const presets={1:100,2:500,3:1000}
       if(input==='4'){
@@ -6832,27 +6038,22 @@ _Ao mandar 1, começa uma sessão automática de até 5 minutos._`
         setQuickFlow(chat,sender,'roulette_color',{amount},90000)
         await reply(
 `🎰 *ESCOLHA A COR*
-
 1️⃣ 🔴 Vermelho
 2️⃣ ⚫ Preto
 3️⃣ 🟢 Verde
-
 _Responda só com o número._`
         )
       }else{
         setQuickFlow(chat,sender,'coin_side',{amount},90000)
         await reply(
 `🪙 *CARA OU COROA*
-
 1️⃣ Cara
 2️⃣ Coroa
-
 _Responda só com o número._`
         )
       }
       return true
     }
-
     if(flow.stage==='roulette_custom' || flow.stage==='coin_custom'){
       const amount=parseAmount(input)
       if(amount<1){
@@ -6868,7 +6069,6 @@ _Responda só com o número._`
       }
       return true
     }
-
     if(flow.stage==='roulette_color'){
       const colors={1:'vermelho',2:'preto',3:'verde'}
       const choice=colors[input]
@@ -6883,15 +6083,12 @@ _Responda só com o número._`
         : `💸 Você perdeu R$ ${fmt(r.amount)}.`
       await afterGame('roulette',{amount:flow.data.amount,choice},
 `🎰 *ROLETA*
-
 Número: *${r.number}*
 Cor: *${r.color}*
 Sua escolha: *${r.choice}*
-
 ${result}`)
       return true
     }
-
     if(flow.stage==='coin_side'){
       const sides={1:'cara',2:'coroa'}
       const choice=sides[input]
@@ -6903,14 +6100,11 @@ ${result}`)
       await progressDailyMission(sender,'game')
       await afterGame('coin',{amount:flow.data.amount,choice},
 `🪙 *CARA OU COROA*
-
 Resultado: *${r.result}*
 Você escolheu: *${r.choice}*
-
 ${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
       return true
     }
-
     if(flow.stage==='ppt_choice'){
       const choices={1:'pedra',2:'papel',3:'tesoura'}
       const choice=choices[input]
@@ -6923,19 +6117,15 @@ ${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}
       const emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
       await afterGame('ppt',{choice},
 `✊ *PEDRA, PAPEL E TESOURA*
-
 Você: *${r.choice}*
 Alpha Bot: *${r.bot}*
-
 ${emoji} *${r.result.toUpperCase()}*`)
       return true
     }
-
     if(flow.stage==='hangman'){
       let r
       if(input.length===1) r=await hangmanLetter(chat,input)
       else r=await hangmanWord(chat,input)
-
       if(r.repeat){
         await reply(`🔁 Essa letra já foi usada.\n${r.masked}\n❤️ Vidas: ${r.lives}`)
         return true
@@ -6951,7 +6141,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       await reply(`🔤 ${r.masked}\n❤️ Vidas: ${r.lives}${r.wrong?`\n❌ Erros: ${r.wrong.join(', ')||'nenhum'}`:''}`)
       return true
     }
-
     if(flow.stage==='quiz_answer'){
       if(!/^[1-4]$/.test(input)){await reply('Responda apenas com *1, 2, 3 ou 4*.');return true}
       try{await quizAnswerRequested(chat,sender,Number(input),reply,String(chat).endsWith('@g.us'))}
@@ -6959,7 +6148,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       clearQuickFlow(chat,sender)
       return true
     }
-
     if(flow.stage==='number_guess'){
       const n=parseInt(input,10)
       if(!Number.isInteger(n)||n<1||n>100){
@@ -6976,7 +6164,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       }
       return true
     }
-
     if(flow.stage==='boss_attack'){
       if(input!=='1'){
         await reply('👹 Mande *1* para iniciar o combate automático ou *0* para sair.')
@@ -6988,7 +6175,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Até *5 minutos* • 🥊 ataque a cada *10 segundos*\n🧪 Cura automática quando possível.\n📅 O Boss encerra *sábado às 23:59* (São Paulo).\n\nUse *!boss* para acompanhar o HP.')
       return true
     }
-
     if(flow.stage==='starforge_select'){
       const items=flow.data?.items||[]
       const index=Number(input)
@@ -7032,7 +6218,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       }catch(err){await reply('❌ '+(err?.message||'Não foi possível concluir a forja; confira os requisitos.'))}
       return true
     }
-
     if(flow.stage==='upgrade_select'){
       const n=Number(input), items=flow.data?.items||[]
       if(!Number.isInteger(n)||n<1||n>items.length){
@@ -7041,13 +6226,12 @@ ${emoji} *${r.result.toUpperCase()}*`)
       }
       const pick=items[n-1]
       const current=await listUpgradeableCopies(sender)
-      const item=current.find(i=>i.item_id===pick.itemId&&i.sourceLevel===Number(pick.sourceLevel))
+      const item=current.find(i=>i.item_id===pick.itemId&&i.sourceLevel===Number(pick.sourceLevel)&&i.sourceKind===(pick.sourceKind||'normal'))
       if(!item || !item.next){
         clearQuickFlow(chat,sender)
         await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
         return true
       }
-
       const level=Number(item.level)
       const targets={
         1:Math.min(10,level+1),
@@ -7055,8 +6239,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
         3:Math.min(10,level+5),
         4:10
       }
-      setQuickFlow(chat,sender,'upgrade_amount',{itemId:item.item_id,sourceLevel:item.sourceLevel},90000)
-
+      setQuickFlow(chat,sender,'upgrade_amount',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind},90000)
       const line=(option,label,target)=>{
         const gain=Math.max(0,target-level)
         const cost=Number(item.targetCosts?.[target]||0)
@@ -7076,18 +6259,16 @@ ${emoji} *${r.result.toUpperCase()}*`)
       )
       return true
     }
-
     if(flow.stage==='upgrade_amount'){
       const current=await listUpgradeableCopies(sender)
-      const item=current.find(i=>i.item_id===flow.data.itemId&&i.sourceLevel===Number(flow.data.sourceLevel))
+      const item=current.find(i=>i.item_id===flow.data.itemId&&i.sourceLevel===Number(flow.data.sourceLevel)&&i.sourceKind===(flow.data.sourceKind||'normal'))
       if(!item || !item.next){
         clearQuickFlow(chat,sender)
         await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
         return true
       }
-
       if(input==='5'){
-        setQuickFlow(chat,sender,'upgrade_custom_level',{itemId:item.item_id,sourceLevel:item.sourceLevel},90000)
+        setQuickFlow(chat,sender,'upgrade_custom_level',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind},90000)
         await reply('🎯 *ESCOLHER NÍVEL*\n\n'+
           rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
           '⭐ Atual: *Lv.'+item.level+'*\n\n'+
@@ -7095,12 +6276,10 @@ ${emoji} *${r.result.toUpperCase()}*`)
           'Ex.: *8*\n\n0️⃣ Cancelar')
         return true
       }
-
       if(!['1','2','3','4'].includes(input)){
         await reply('⬆️ Escolha *1, 2, 3, 4 ou 5*.')
         return true
       }
-
       const level=Number(item.level)
       const target={
         1:Math.min(10,level+1),
@@ -7115,10 +6294,8 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply('✅ Esse equipamento já está no nível máximo.')
         return true
       }
-
       const stat=gearStatsChanges(item.current,targetStats,item.category)
-
-      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,targetLevel:target},90000)
+      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind,targetLevel:target},90000)
       await reply(
         '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
         rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
@@ -7129,11 +6306,10 @@ ${emoji} *${r.result.toUpperCase()}*`)
       )
       return true
     }
-
     if(flow.stage==='upgrade_custom_level'){
       const target=Number(input)
       const current=await listUpgradeableCopies(sender)
-      const item=current.find(i=>i.item_id===flow.data.itemId&&i.sourceLevel===Number(flow.data.sourceLevel))
+      const item=current.find(i=>i.item_id===flow.data.itemId&&i.sourceLevel===Number(flow.data.sourceLevel)&&i.sourceKind===(flow.data.sourceKind||'normal'))
       if(!item || !item.next){
         clearQuickFlow(chat,sender)
         await reply('✅ Esse equipamento já está no nível máximo ou não está mais disponível.')
@@ -7150,10 +6326,8 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply('❌ Não consegui calcular esse nível. Tente novamente.')
         return true
       }
-
       const stat=gearStatsChanges(item.current,targetStats,item.category)
-
-      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,targetLevel:target},90000)
+      setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind,targetLevel:target},90000)
       await reply(
         '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
         rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
@@ -7164,7 +6338,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       )
       return true
     }
-
     if(flow.stage==='upgrade_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -7175,7 +6348,7 @@ ${emoji} *${r.result.toUpperCase()}*`)
         await reply('Escolha *1 Confirmar* ou *2 Cancelar*.')
         return true
       }
-      const r=await upgradeEquipment(sender,flow.data.itemId,flow.data.targetLevel,flow.data.sourceLevel)
+      const r=await upgradeEquipment(sender,flow.data.itemId,flow.data.targetLevel,flow.data.sourceLevel,flow.data.sourceKind)
       clearQuickFlow(chat,sender)
       const stat=gearStatsText(r.stats,r.stats.category)
       await reply(
@@ -7189,7 +6362,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       )
       return true
     }
-
     if(flow.stage==='equip_category'){
       if(input==='9'){
         await inventoryMenu()
@@ -7203,7 +6375,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       await equipmentTypeMenu(category)
       return true
     }
-
     if(flow.stage==='equip_select'){
       if(input==='9'){
         await equipmentMenu()
@@ -7241,7 +6412,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       )
       return true
     }
-
     if(flow.stage==='equip_compare_confirm'){
       if(input==='9' || input==='2'){
         await equipmentTypeMenu(flow.data.category||'weapon')
@@ -7257,7 +6427,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
       await equipmentTypeMenu(r.category)
       return true
     }
-
     if(flow.stage==='use_select'){
       if(input==='9'){
         await inventoryMenu()
@@ -7292,14 +6461,11 @@ ${emoji} *${r.result.toUpperCase()}*`)
       await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
       return true
     }
-
-
     if(flow.stage==='commands_main'){
       if(await commandCategory(input)) return true
       await reply('📚 Escolha uma categoria de *1 a 9* ou *0* para fechar.')
       return true
     }
-
     if(flow.stage==='commands_category'){
       if(input==='9'){
         await commandsMenu()
@@ -7308,19 +6474,16 @@ ${emoji} *${r.result.toUpperCase()}*`)
       await reply('📚 Digite *9* para voltar às categorias ou *0* para fechar.')
       return true
     }
-
     if(flow.stage==='nav_main'){
       if(!/^[1-9]$/.test(input)){
         await reply('🍀 Escolha uma opção de *1 a 9* ou digite *0* para sair.')
         return true
       }
-
       if(input==='1'){
         clearQuickFlow(chat,sender)
         await sendAlphaProfile(sock,chat,sender,msg)
         return true
       }
-
       if(input==='2'){
         if(sender!==ownerJid && !(await groupModuleEnabled(chat,'economy_enabled'))){
           clearQuickFlow(chat,sender)
@@ -7330,7 +6493,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
         setQuickFlow(chat,sender,'nav_economy',{},90000)
         await reply(
 `💰 *ECONOMIA*
-
 1️⃣ Ver saldo
 2️⃣ Daily + sequência 🔥
 3️⃣ Trabalhar
@@ -7338,28 +6500,23 @@ ${emoji} *${r.result.toUpperCase()}*`)
 5️⃣ Sacar
 6️⃣ Ranking dos mais ricos
 7️⃣ PIX para jogador
-
 0️⃣ Voltar/sair`
         )
         return true
       }
-
       if(input==='3'){
         setQuickFlow(chat,sender,'nav_items',{},90000)
         await reply(
 `🛒 *ITENS E INVENTÁRIO*
-
 1️⃣ Loja
 2️⃣ Inventário
 3️⃣ Equipar
 4️⃣ Usar consumível
 5️⃣ Abrir caixas
-
 0️⃣ Sair`
         )
         return true
       }
-
       if(input==='4'){
         if(sender!==ownerJid && !(await groupModuleEnabled(chat,'rpg_enabled'))){
           clearQuickFlow(chat,sender)
@@ -7369,19 +6526,16 @@ ${emoji} *${r.result.toUpperCase()}*`)
         setQuickFlow(chat,sender,'nav_rpg',{},90000)
         await reply(
 `⚔️ *RPG*
-
 1️⃣ Status
 2️⃣ Dungeon
 3️⃣ Batalhar com alguém
 4️⃣ Roubar alguém
 5️⃣ Ranking RPG
 6️⃣ ⚔️ Raids cooperativas
-
 0️⃣ Sair`
         )
         return true
       }
-
       if(input==='5'){
         if(sender!==ownerJid && !(await groupModuleEnabled(chat,'games_enabled'))){
           clearQuickFlow(chat,sender)
@@ -7391,7 +6545,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
         setQuickFlow(chat,sender,'main',{},90000)
         await reply(
 `🎮 *MINIGAMES DO ALPHA BOT*
-
 1️⃣ 🎰 Roleta
 2️⃣ 🪙 Cara ou Coroa
 3️⃣ ✊ Pedra, Papel e Tesoura
@@ -7399,12 +6552,10 @@ ${emoji} *${r.result.toUpperCase()}*`)
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
-
 0️⃣ Sair`
         )
         return true
       }
-
       if(input==='6'){
         if(sender!==ownerJid && !(await groupModuleEnabled(chat,'progression_enabled'))){
           clearQuickFlow(chat,sender)
@@ -7414,7 +6565,6 @@ ${emoji} *${r.result.toUpperCase()}*`)
         setQuickFlow(chat,sender,'nav_progress',{},90000)
         await reply(
 `📋 *PROGRESSÃO*
-
 1️⃣ Missões diárias
 2️⃣ Resgatar missões
 3️⃣ Casas
@@ -7422,12 +6572,10 @@ ${emoji} *${r.result.toUpperCase()}*`)
 5️⃣ Patrimônio
 6️⃣ Ranking de patrimônio
 7️⃣ 📜 Quadro de Contratos Alpha
-
 0️⃣ Sair`
         )
         return true
       }
-
       if(input==='7'){
         if(sender!==ownerJid && !(await groupModuleEnabled(chat,'progression_enabled'))){
           clearQuickFlow(chat,sender)
@@ -7439,51 +6587,42 @@ ${emoji} *${r.result.toUpperCase()}*`)
         if(!clan){
           await reply(
 `🏴 *CLÃS*
-
 1️⃣ Criar um clã
 2️⃣ Aceitar convite
 3️⃣ Ranking de clãs
-
 0️⃣ Sair`
           )
         }else{
           const leader=clan.role==='leader'
           await reply(
 `🏴 *CLÃ ${clan.name}*
-
 1️⃣ Ver informações
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
 ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'5️⃣ Sair do clã'}
-
 0️⃣ Sair`
           )
         }
         return true
       }
-
       if(input==='8'){
         setQuickFlow(chat,sender,'nav_group',{},90000)
         await reply(
 `💚 *GRUPO / ASSINATURA*
-
 1️⃣ Status do grupo
 2️⃣ Assinar / renovar
 3️⃣ Termos
 4️⃣ ⚙️ Configurações do grupo
-
 0️⃣ Sair`
         )
         return true
       }
-
       if(input==='9'){
         await supportMenu()
         return true
       }
     }
-
     if(flow.stage==='business_manage_select'){
       const n=Number(input), ids=flow.data.ids||[]
       if(!Number.isInteger(n)||n<1||n>ids.length){ await reply('🏢 Escolha um dos seus negócios pelo número.'); return true }
@@ -7507,7 +6646,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         '💡 A cobrança equivale à soma dos upgrades individuais, sem desconto ou taxa extra.\n0️⃣ Cancelar')
       return true
     }
-
     if(flow.stage==='business_upgrade_amount'||flow.stage==='business_upgrade_custom'){
       const b=(await getBusinesses(sender)).find(x=>x.id===flow.data.id)
       if(!b){clearQuickFlow(chat,sender);await reply('❌ Negócio não encontrado.');return true}
@@ -7539,7 +6677,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         '1️⃣ Confirmar\n2️⃣ Cancelar')
       return true
     }
-
     if(flow.stage==='business_upgrade_confirm'){
       if(input==='2'){clearQuickFlow(chat,sender);await reply('❌ Upgrade cancelado.');return true}
       if(input!=='1'){await reply('Escolha *1 Confirmar* ou *2 Cancelar*.');return true}
@@ -7553,7 +6690,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         '🪙 Carteira: *R$ '+fmt(r.cash)+'*')
       return true
     }
-
     if(flow.stage==='business_buy_select'){
       if(!/^([1-9])$/.test(input)){
         await reply('🏪 Escolha um negócio de *1 a 9* ou digite *0* para cancelar.')
@@ -7570,7 +6706,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🏪 Comprar *${b.name}* por *R$ ${fmt(b.price)}*?\n\n💵 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
       return true
     }
-
     if(flow.stage==='business_buy_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -7586,7 +6721,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`✅ *NEGÓCIO COMPRADO!*\n\n🏪 ${b.name}\n💰 Investimento: R$ ${fmt(b.price)}\n📈 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h.\n\nUse *${prefix}coletar* para receber os lucros.`)
       return true
     }
-
     if(flow.stage==='car_resale_select'){
       const num=Number(input)
       const ids=flow.data?.ids||[]
@@ -7607,7 +6741,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         '0️⃣ Cancelar')
       return true
     }
-
     if(flow.stage==='car_resale_action'){
       const car=(await getGarage(sender)).find(c=>c.id===flow.data.id)
       if(!car){clearQuickFlow(chat,sender);await reply('❌ Carro não encontrado. Abra !vendercarro novamente.');return true}
@@ -7640,7 +6773,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply('🚗 Escolha *1* Vender, *2* Trocar ou *0* Cancelar.')
       return true
     }
-
     if(flow.stage==='car_trade_target'){
       const number=Number(input),ids=flow.data?.ids||[]
       if(!Number.isInteger(number)||number<1||number>ids.length){
@@ -7663,7 +6795,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         '1️⃣ Confirmar troca\n2️⃣ Cancelar')
       return true
     }
-
     if(flow.stage==='car_trade_confirm'){
       if(input==='2'){clearQuickFlow(chat,sender);await reply('❌ Troca cancelada.');return true}
       if(input!=='1'){await reply('Escolha *1* para confirmar ou *2* para cancelar.');return true}
@@ -7677,7 +6808,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         '🪙 Carteira: R$ '+fmt(result.cash))
       return true
     }
-
     if(flow.stage==='confirm_sell_car'){
       if(['nao','não','n','2'].includes(input)){ clearQuickFlow(chat,sender); await reply('❌ Venda cancelada.'); return true }
       if(!['sim','s','1'].includes(input)){ await reply('⚠️ Digite *1* para vender ou *2* para cancelar.'); return true }
@@ -7686,7 +6816,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`✅ *CARRO VENDIDO*\n🚗 ${r.name}\n💰 Recebido: *R$ ${fmt(r.resale)}*\n📉 Desvalorização: R$ ${fmt(r.depreciation)} (30%)`)
       return true
     }
-
     if(flow.stage==='confirm_sell_motorcycle'){
       if(['nao','não','n'].includes(input)){ clearQuickFlow(chat,sender); await reply('❌ Venda cancelada.'); return true }
       if(!['sim','s'].includes(input)){ await reply('⚠️ Responda *SIM* para vender ou *NÃO* para cancelar.'); return true }
@@ -7695,7 +6824,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`✅ *VEÍCULO VENDIDO*\n🚲🏍️ ${r.name}\n💰 Recebido: *R$ ${fmt(r.resale)}*\n📉 Desvalorização: R$ ${fmt(r.depreciation)} (30%)`)
       return true
     }
-
     if(flow.stage==='delivery_vehicle_buy'){
       if(!/^[1-6]$/.test(input)){
         await reply('🚲🏍️ Escolha um veículo de *1 a 6* ou digite *0* para cancelar.')
@@ -7710,7 +6838,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       return true
     }
-
     if(flow.stage==='nav_economy'){
       if(input==='1'){
         const p=await getProfile(sender)
@@ -7743,14 +6870,12 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         setQuickFlow(chat,sender,'deposit_amount',{},90000)
         await reply(
 `🏦 *DEPOSITAR*
-
 1️⃣ R$ 100
 2️⃣ R$ 500
 3️⃣ R$ 1.000
 4️⃣ R$ 5.000
 5️⃣ Máximo possível
 6️⃣ Outro valor
-
 0️⃣ Cancelar`
         )
         return true
@@ -7759,14 +6884,12 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         setQuickFlow(chat,sender,'withdraw_amount',{},90000)
         await reply(
 `💵 *SACAR*
-
 1️⃣ R$ 100
 2️⃣ R$ 500
 3️⃣ R$ 1.000
 4️⃣ R$ 5.000
 5️⃣ Todo o saldo do banco
 6️⃣ Outro valor
-
 0️⃣ Cancelar`
         )
         return true
@@ -7790,7 +6913,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply('💰 Escolha de *1 a 7* ou *0* para sair.')
       return true
     }
-
     if(flow.stage==='pix_target'){
       const target=mentionsOf(msg)[0]
       if(!target){
@@ -7800,18 +6922,15 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       setQuickFlow(chat,sender,'pix_amount',{target},90000)
       await reply(
 `💸 *VALOR DO PIX*
-
 1️⃣ R$ 100
 2️⃣ R$ 500
 3️⃣ R$ 1.000
 4️⃣ R$ 5.000
 5️⃣ Outro valor
-
 0️⃣ Cancelar`
       )
       return true
     }
-
     if(flow.stage==='pix_amount'){
       const values={1:100,2:500,3:1000,4:5000}
       if(input==='5'){
@@ -7829,7 +6948,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`💸 *PIX realizado!*\n➡️ Enviado: R$ ${fmt(r.amount)}\n🧾 Taxa: R$ ${fmt(r.fee)}\n💰 Total: R$ ${fmt(r.total)}`,{mentions:[flow.data.target]})
       return true
     }
-
     if(flow.stage==='pix_custom'){
       const amount=parseAmount(input)
       if(amount<1){
@@ -7841,7 +6959,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`💸 *PIX realizado!*\n➡️ Enviado: R$ ${fmt(r.amount)}\n🧾 Taxa: R$ ${fmt(r.fee)}\n💰 Total: R$ ${fmt(r.total)}`,{mentions:[flow.data.target]})
       return true
     }
-
     if(flow.stage==='deposit_amount' || flow.stage==='withdraw_amount'){
       const presets={1:100,2:500,3:1000,4:5000}
       if(input==='6'){
@@ -7849,7 +6966,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('Digite apenas o valor. Exemplo: *2500*')
         return true
       }
-
       let amount=presets[input]
       if(input==='5'){
         if(flow.stage==='deposit_amount') amount='total'
@@ -7859,7 +6975,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('Escolha uma opção válida.')
         return true
       }
-
       if(flow.stage==='deposit_amount'){
         const r=await deposit(sender,amount)
         clearQuickFlow(chat,sender)
@@ -7871,7 +6986,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       return true
     }
-
     if(flow.stage==='deposit_custom' || flow.stage==='withdraw_custom'){
       const amount=parseAmount(input)
       if(amount<1){
@@ -7889,7 +7003,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       return true
     }
-
     if(flow.stage==='nav_items'){
       if(input==='1'){
         if(sender!==ownerJid && !(await groupModuleEnabled(chat,'economy_enabled'))){
@@ -7945,7 +7058,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply('🛒 Escolha de *1 a 5* ou *0* para sair.')
       return true
     }
-
     if(flow.stage==='inventory_category'){
       if(input==='11'){
         clearQuickFlow(chat,sender)
@@ -8048,13 +7160,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply('🎒 Escolha uma opção de *1 a 9* ou *11* para Encantamentos.')
       return true
     }
-
     if(flow.stage==='inventory_relic_view'){
       if(input==='0'||input==='9')await inventoryMenu()
       else await reply('⚜️ Use *!reliquias* para ativar ou trocar sua insígnia, ou *0* para voltar ao inventário.')
       return true
     }
-
     if(flow.stage==='inventory_sell_category'){
       if(input==='9'){
         await inventoryMenu()
@@ -8068,13 +7178,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await sellItemsMenu(category)
       return true
     }
-
     if(flow.stage==='inventory_sell_select'){
       if(input==='99'){
         await sellMenu()
         return true
       }
-
       const sellAll=['t','tudo','vender tudo'].includes(input)
       const sellDuplicates=['r','repetidos','vender repetidos'].includes(input)
       const selectAll=sellAll||sellDuplicates
@@ -8087,7 +7195,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           await reply('📦 Para gerenciar vários itens, mande pelo menos dois números (ex.: *1,3,5*) ou *T* para todos.')
           return true
         }
-
         const p=await getCombatProfile(sender)
         const prepared=[]
         const protectedItems=[]
@@ -8113,17 +7220,14 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
             duplicates
           })
         }
-
         if(!prepared.length){
           await reply('🔒 Nenhum dos itens escolhidos pode ser alterado em lote. Equipados e vinculados ficam protegidos.')
           return true
         }
-
         if(selectAll){
           await showSellBatchConfirmation(chat,sender,reply,prepared,sellAll?'sell_all':'sell_duplicates')
           return true
         }
-
         let text='🧹 *AÇÃO EM LOTE*\n\n'
         for(const i of prepared){
           text+='• '+rarityLabel(i.rarity)+' *'+i.name+'* ×'+i.quantity
@@ -8136,7 +7240,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply(text)
         return true
       }
-
       const item=flow.data.items?.[Number(input)-1]
       if(!item){
         await reply('💰 Escolha um item pelo número.')
@@ -8154,7 +7257,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*'+(Number(item.equipment_level||1)>1?'\n⭐ Nível do equipamento: *Lv.'+Number(item.equipment_level)+'*':'')+upInfo+'\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
       return true
     }
-
     if(flow.stage==='inventory_batch_action'){
       if(input==='4'){
         await sellMenu()
@@ -8164,12 +7266,10 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('🧹 Escolha *1 Vender tudo*, *2 Vender repetidos*, *3 Descartar tudo* ou *4 Cancelar*.')
         return true
       }
-
       const mode=input==='1'?'sell_all':input==='2'?'sell_duplicates':'discard_all'
       await showSellBatchConfirmation(chat,sender,reply,flow.data.items||[],mode)
       return true
     }
-
     if(flow.stage==='inventory_discard_batch_confirm'){
       if(input==='2'){
         await reply('✅ Descarte cancelado.')
@@ -8191,7 +7291,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await inventoryMenu()
       return true
     }
-
     if(flow.stage==='inventory_sell_qty'){
       if(input==='9'){
         await sellMenu()
@@ -8219,7 +7318,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVenda base: *R$ '+fmt(Number(flow.data.unit)*qty)+'*'+refundText+'\n💵 Total: *R$ '+fmt(Number(flow.data.unit)*qty+upgradeRefundApplied)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
       return true
     }
-
     if(flow.stage==='inventory_sell_custom'){
       const qty=parseInt(input,10)
       if(!Number.isInteger(qty)||qty<1||qty>Number(flow.data.sellable)){
@@ -8233,7 +7331,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVenda base: *R$ '+fmt(Number(flow.data.unit)*qty)+'*'+refundText+'\n💵 Total: *R$ '+fmt(Number(flow.data.unit)*qty+upgradeRefundApplied)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
       return true
     }
-
     if(flow.stage==='inventory_sell_batch_confirm'){
       if(input==='2'){
         await reply('✅ Venda em lote cancelada.')
@@ -8288,7 +7385,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply('🎭 Escolha *1 Piada* ou *2 Horóscopo*.')
       return true
     }
-
     if(flow.stage==='horoscope_sign'){
       if(input==='9'){
         await funMenu()
@@ -8311,7 +7407,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       )
       return true
     }
-
     if(flow.stage==='fun_confirm'){
       if(input==='2'){
         await funMenu()
@@ -8321,12 +7416,10 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         await reply('Escolha *1 Comprar* ou *2 Cancelar*.')
         return true
       }
-
       const service=flow.data.service
       const signId=flow.data.signId
       const signName=flow.data.signName
       const r=await purchaseService(sender,service,Number(flow.data.price))
-
       if(service==='joke'){
         setQuickFlow(chat,sender,'fun_after',{service:'joke'},5*60*1000)
         await reply(
@@ -8346,13 +7439,11 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       return true
     }
-
     if(flow.stage==='fun_after'){
       if(input!=='1'){
         await reply('Escolha *1 Comprar outro* ou *0 Sair*.')
         return true
       }
-
       if(flow.data.service==='joke'){
         const r=await purchaseService(sender,'joke',FUN_PRICES.joke)
         setQuickFlow(chat,sender,'fun_after',{service:'joke'},5*60*1000)
@@ -8364,11 +7455,9 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
         )
         return true
       }
-
       await horoscopeSignMenu()
       return true
     }
-
     if(flow.stage==='shop_category'){
       if(input==='6'){
         await funMenu()
@@ -8427,7 +7516,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(text.trim())
       return true
     }
-
     if(flow.stage==='shop_raid_key_select'){
       if(input==='9'){ await shopCategoryMenu(); return true }
       const itemId=flow.data.items?.[Number(input)-1]
@@ -8444,7 +7532,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🔑 *${item?.name||itemId}*\n\n💰 Preço: *R$ ${fmt(item?.price||0)}*\n⚔️ Requisito: *Nível ${level}+*\n\n1️⃣ Comprar\n2️⃣ Cancelar\n9️⃣ Voltar`)
       return true
     }
-
     if(flow.stage==='shop_raid_key_confirm'){
       if(input==='9'){ await shopCategoryMenu(); return true }
       if(input==='2'){ await shopCategoryMenu(); return true }
@@ -8460,7 +7547,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🔑 *CHAVE COMPRADA!*\n\n📦 ${r.item.name}\n💸 R$ ${fmt(r.total)}\n\nAgora use *!raid ${flow.data.level}* dentro do grupo.`)
       return true
     }
-
     if(flow.stage==='shop_car_select'){
       if(input==='9'){ await shopCategoryMenu(); return true }
       if(!/^[1-5]$/.test(input)){ await reply('🚗 Escolha um carro de *1 a 5*.'); return true }
@@ -8469,7 +7555,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🚗 Comprar *${car.name}* por *R$ ${fmt(car.price)}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
       return true
     }
-
     if(flow.stage==='shop_car_confirm'){
       if(input==='2'){ await shopCategoryMenu(); return true }
       if(input!=='1'){ await reply('Escolha *1 Confirmar* ou *2 Cancelar*.'); return true }
@@ -8478,7 +7563,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`✅ *CARRO COMPRADO!*\n🚗 ${car.name}\n💰 R$ ${fmt(car.price)}\n\nUse *${prefix}uber* para trabalhar.`)
       return true
     }
-
     if(flow.stage==='shop_delivery_select'){
       if(input==='9'){ await shopCategoryMenu(); return true }
       if(!/^[1-6]$/.test(input)){ await reply('🚲🏍️ Escolha um veículo de *1 a 6*.'); return true }
@@ -8487,7 +7571,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🚲🏍️ Comprar *${v.name}* por *R$ ${fmt(v.price)}*?\n\n1️⃣ Confirmar\n2️⃣ Cancelar`)
       return true
     }
-
     if(flow.stage==='shop_delivery_confirm'){
       if(input==='2'){ await shopCategoryMenu(); return true }
       if(input!=='1'){ await reply('Escolha *1 Confirmar* ou *2 Cancelar*.'); return true }
@@ -8496,7 +7579,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`✅ *VEÍCULO COMPRADO!*\n🚲🏍️ ${v.name}\n💰 R$ ${fmt(v.price)}\n\nBike: *${prefix}ifoodbike* • Moto: *${prefix}ifood*`)
       return true
     }
-
     if(flow.stage==='shop_item'){
       const backOption=String(flow.data.backOption||((flow.data.items?.length||0)>=9?flow.data.items.length+1:9))
       if(input===backOption){
@@ -8514,18 +7596,15 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       setQuickFlow(chat,sender,'shop_qty',{itemId,itemName:item?.name||itemId,price:Number(item?.price||0)},90000)
       await reply(
 `🛒 *${item?.name||itemId}*
-
 1️⃣ 1 unidade
 2️⃣ 2 unidades
 3️⃣ 5 unidades
 4️⃣ 10 unidades
 5️⃣ Outra quantidade
-
 0️⃣ Cancelar`
       )
       return true
     }
-
     if(flow.stage==='shop_qty'){
       const qtyMap={1:1,2:2,3:5,4:10}
       if(input==='5'){
@@ -8544,7 +7623,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
       return true
     }
-
     if(flow.stage==='shop_qty_custom'){
       const qty=parseInt(input,10)
       if(!Number.isInteger(qty)||qty<1||qty>99){
@@ -8557,7 +7635,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
       return true
     }
-
     if(flow.stage==='trade_offer_item'){
       const item=flow.data.items?.[Number(input)-1]
       if(!item){ await reply('🤝 Escolha o item que você quer oferecer pelo número.'); return true }
@@ -8574,7 +7651,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }catch(err){ clearQuickFlow(chat,sender); await reply('❌ '+(err?.message||'Não foi possível criar a troca.')) }
       return true
     }
-
     if(flow.stage==='trade_offer_qty'){
       const qty=Number(input)
       const maxQty=Number(flow.data.maxQty||1)
@@ -8586,7 +7662,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }catch(err){ clearQuickFlow(chat,sender); await reply('❌ '+(err?.message||'Não foi possível criar a troca.')) }
       return true
     }
-
     if(flow.stage==='trade_recipient_choose'){
       const item=flow.data.items?.[Number(input)-1]
       if(!item){
@@ -8634,7 +7709,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🏷️ *${item.name}* ×1\n\n💡 Preço sugerido: *R$ ${suggestedTotal.toLocaleString('pt-BR')}*\n\n1️⃣ Usar preço sugerido\n✍️ Ou digite outro valor total.\nEx.: *20000*\n\n0️⃣ Cancelar`)
       return true
     }
-
     if(flow.stage==='market_sell_quantity'){
       if(input==='0'){
         clearQuickFlow(chat,sender)
@@ -8653,7 +7727,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🏷️ *${flow.data.name}* ×${qty}\n\n💡 Preço sugerido por unidade: *R$ ${suggestedUnit.toLocaleString('pt-BR')}*\n💰 Sugerido pelo lote: *R$ ${suggestedTotal.toLocaleString('pt-BR')}*\n\n1️⃣ Usar preço sugerido\n✍️ Ou digite outro valor *TOTAL* do anúncio.\nEx.: *20000*\n\n0️⃣ Cancelar`)
       return true
     }
-
     if(flow.stage==='market_sell_price'){
       if(input==='0'){
         clearQuickFlow(chat,sender)
@@ -8678,7 +7751,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       return true
     }
-
     if(flow.stage==='market_cancel_select'){
       if(input==='0'){
         clearQuickFlow(chat,sender)
@@ -8700,7 +7772,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       return true
     }
-
     if(flow.stage==='market_buy_select'){
       const listing=flow.data.items?.[Number(input)-1]
       if(!listing){
@@ -8711,7 +7782,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🛒 *CONFIRMAR COMPRA?*\n\n📦 *${listing.name}* ×${listing.quantity}\n👤 Vendedor: *${listing.seller_name||'Jogador'}*\n💰 Valor: *R$ ${Number(listing.price).toLocaleString('pt-BR')}*\n\n1️⃣ Sim\n2️⃣ Não`)
       return true
     }
-
     if(flow.stage==='market_buy_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -8732,7 +7802,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       }
       return true
     }
-
     if(flow.stage==='inventory_select'){
       const item=flow.data.items?.[Number(input)-1]
       if(!item){
@@ -8757,7 +7826,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`📦 *${item.name}* não possui ação direta no momento.`)
       return true
     }
-
     if(flow.stage==='inventory_equip_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -8773,7 +7841,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`✅ *EQUIPADO!*\n${r.name} agora está ativo.`)
       return true
     }
-
     if(flow.stage==='inventory_use_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -8802,7 +7869,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
       return true
     }
-
     if(flow.stage==='inventory_boxes_select'){
       if(input==='9'){
         await inventoryMenu()
@@ -8816,34 +7882,28 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
       await boxQuantityMenu(box)
       return true
     }
-
     if(flow.stage==='inventory_box_qty'){
       if(input==='9'){
         await inventoryMenu()
         return true
       }
-
       const stock=Number(flow.data.stock||0)
       const boxId=flow.data.boxId||'caixa_sorte'
       if(input==='4'){
         setQuickFlow(chat,sender,'inventory_box_all_confirm',{qty:stock,boxId,boxName:flow.data.boxName},90000)
         await reply(
 `⚠️ *ABRIR TODAS AS CAIXAS?*
-
 Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
-
 1️⃣ Confirmar
 2️⃣ Cancelar`
         )
         return true
       }
-
       if(input==='5'){
         setQuickFlow(chat,sender,'inventory_box_custom',{stock,boxId,boxName:flow.data.boxName},90000)
         await reply(`⌨️ Digite quantas caixas quer abrir.\nVocê possui *${stock}*.\n\n0️⃣ Sair`)
         return true
       }
-
       const qtyMap={1:1,2:5,3:10}
       const qty=qtyMap[input]
       if(!qty){
@@ -8854,14 +7914,12 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
         await reply(`🎁 Você possui apenas *${stock}* caixa(s). Escolha outra quantidade.`)
         return true
       }
-
       const r=await openLootBoxes(sender,boxId,qty)
       clearQuickFlow(chat,sender)
       await reply(luckyBoxSummary(r))
       await beginLootDisposition(chat,sender,r,reply)
       return true
     }
-
     if(flow.stage==='inventory_box_custom'){
       const stock=Number(flow.data.stock||0)
       const qty=parseInt(input,10)
@@ -8879,7 +7937,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       await beginLootDisposition(chat,sender,r,reply)
       return true
     }
-
     if(flow.stage==='inventory_box_all_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -8896,7 +7953,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       await beginLootDisposition(chat,sender,r,reply)
       return true
     }
-
     if(flow.stage==='nav_rpg'){
       if(input==='1'){
         const p=await getCombatProfile(sender)
@@ -8965,7 +8021,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       await reply('⚔️ Escolha de *1 a 6*.')
       return true
     }
-
     if(flow.stage==='raid_select'){
       const levels=flow.data?.levels||[]
       const idx=Number(input)-1
@@ -8984,7 +8039,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       }
       return true
     }
-
     if(flow.stage==='battle_target'){
       const targetMention=mentionsOf(msg)[0]
       if(!targetMention){
@@ -9010,7 +8064,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       await reply(formatPvpBattleReport(r),{mentions:[targetMention]})
       return true
     }
-
     if(flow.stage==='rob_target'){
       const targetMention=mentionsOf(msg)[0]
       if(!targetMention){
@@ -9036,7 +8089,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       }
       return true
     }
-
     if(flow.stage==='nav_progress'){
       if(input==='1'){
         const r=await getDailyMissions(sender)
@@ -9089,7 +8141,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       await reply('📋 Escolha uma opção de *1 a 7*.')
       return true
     }
-
     if(flow.stage==='sleep_select'){
       const selected={'1':1,'2':4,'3':8}[input]
       if(!selected){
@@ -9107,7 +8158,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       }
       return true
     }
-
     if(flow.stage==='home_menu'){
       if(input==='0'){
         clearQuickFlow(chat,sender)
@@ -9151,7 +8201,6 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       await reply(sleepOptionMessage(options))
       return true
     }
-
     if(flow.stage==='house_select'){
       const item=HOUSES[Number(input)-1]
       if(!item){
@@ -9164,19 +8213,15 @@ Você vai abrir *${stock} ${flow.data.boxName||'caixa(s)'}* de uma vez.
       setQuickFlow(chat,sender,'house_confirm',{id:item.id,name:item.name,cost,tradeIn,current:current?.name||null},90000)
       await reply(
 `🏠 *CONFIRMAR COMPRA*
-
 Imóvel: *${item.name}*
 Valor: R$ ${fmt(item.price)}
 ${current?`Entrada da ${current.name}: R$ ${fmt(tradeIn)}\n`:''}💸 A pagar: *R$ ${fmt(cost)}*
-
 ${homeBenefitsText(item)}
-
 1️⃣ Confirmar
 2️⃣ Cancelar`
       )
       return true
     }
-
     if(flow.stage==='house_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -9192,7 +8237,6 @@ ${homeBenefitsText(item)}
       await reply(`🏠 *NOVA CASA!*\n🏡 ${r.house.name}\n💸 Pago: R$ ${fmt(r.cost)}`)
       return true
     }
-
     if(flow.stage==='car_select'){
       const item=CARS[Number(input)-1]
       if(!item){
@@ -9202,16 +8246,13 @@ ${homeBenefitsText(item)}
       setQuickFlow(chat,sender,'car_confirm',{id:item.id,name:item.name,price:item.price},90000)
       await reply(
 `🚗 *CONFIRMAR COMPRA*
-
 Carro: *${item.name}*
 Valor: *R$ ${fmt(item.price)}*
-
 1️⃣ Confirmar
 2️⃣ Cancelar`
       )
       return true
     }
-
     if(flow.stage==='car_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -9227,7 +8268,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply(`🚗 *CARRO COMPRADO!*\n🔑 ${c.name}\n💰 R$ ${fmt(c.price)}`)
       return true
     }
-
     if(flow.stage==='clan_menu'){
       const clan=await getClanForUser(sender)
       if(!clan){
@@ -9253,7 +8293,6 @@ Valor: *R$ ${fmt(item.price)}*
         await reply('🏴 Escolha *1, 2 ou 3*.')
         return true
       }
-
       const leader=clan.role==='leader'
       if(input==='1'){
         clearQuickFlow(chat,sender)
@@ -9264,13 +8303,11 @@ Valor: *R$ ${fmt(item.price)}*
         setQuickFlow(chat,sender,'clan_donate',{},90000)
         await reply(
 `💰 *QUANTO DOAR AO CLÃ?*
-
 1️⃣ R$ 100
 2️⃣ R$ 1.000
 3️⃣ R$ 5.000
 4️⃣ R$ 10.000
 5️⃣ Outro valor
-
 0️⃣ Cancelar`
         )
         return true
@@ -9306,7 +8343,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply('🏴 Escolha uma das opções exibidas.')
       return true
     }
-
     if(flow.stage==='clan_create_name'){
       const name=String(body||'').trim()
       if(name.length<3){
@@ -9318,7 +8354,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply(`🏴 Clã *${c.name}* criado!\n👑 Você é o líder.\n💰 Custo: R$ 10.000`)
       return true
     }
-
     if(flow.stage==='clan_donate'){
       const values={1:100,2:1000,3:5000,4:10000}
       if(input==='5'){
@@ -9336,7 +8371,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply(`🏴 Doação realizada: R$ ${fmt(r.amount)}\n🏦 Cofre: R$ ${fmt(r.treasury)}\n⭐ Nível: ${r.level}`)
       return true
     }
-
     if(flow.stage==='clan_donate_custom'){
       const amount=parseAmount(input)
       if(amount<100){
@@ -9348,7 +8382,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply(`🏴 Doação realizada: R$ ${fmt(r.amount)}\n🏦 Cofre: R$ ${fmt(r.treasury)}`)
       return true
     }
-
     if(flow.stage==='clan_invite_target'){
       const target=mentionsOf(msg)[0]
       if(!target){
@@ -9360,7 +8393,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply(`🏴 Convite enviado para entrar no clã *${r.clan.name}*.`,{mentions:[target]})
       return true
     }
-
     if(flow.stage==='clan_transfer_target'){
       const target=mentionsOf(msg)[0]
       if(!target){
@@ -9372,7 +8404,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply(`👑 Liderança do clã *${r.name}* transferida.`,{mentions:[target]})
       return true
     }
-
     if(flow.stage==='clan_kick_target'){
       const target=mentionsOf(msg)[0]
       if(!target){
@@ -9384,7 +8415,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply(`🚪 Membro removido do clã *${r.name}*.`,{mentions:[target]})
       return true
     }
-
     if(flow.stage==='clan_leave_confirm'){
       if(input==='2'){
         clearQuickFlow(chat,sender)
@@ -9400,7 +8430,6 @@ Valor: *R$ ${fmt(item.price)}*
       await reply(r.dissolved?`🏴 O clã *${r.name}* foi encerrado.`:`🏴 Você saiu do clã *${r.name}*.`)
       return true
     }
-
     if(flow.stage==='group_config'){
       if(!chat.endsWith('@g.us')){
         clearQuickFlow(chat,sender)
@@ -9412,22 +8441,18 @@ Valor: *R$ ${fmt(item.price)}*
         await reply('🔒 Apenas administradores deste grupo podem alterar estas configurações.')
         return true
       }
-
       if(input==='9'){
         setQuickFlow(chat,sender,'nav_group',{},90000)
         await reply(
 `💚 *GRUPO / ASSINATURA*
-
 1️⃣ Status do grupo
 2️⃣ Assinar / renovar
 3️⃣ Termos
 4️⃣ ⚙️ Configurações do grupo
-
 0️⃣ Sair`
         )
         return true
       }
-
       const map={
         '1':['economy_enabled','Economia'],
         '2':['rpg_enabled','RPG'],
@@ -9450,18 +8475,14 @@ Valor: *R$ ${fmt(item.price)}*
       setQuickFlow(chat,sender,'group_config_confirm',{key,label,next},90000)
       await reply(
 `⚙️ *${label.toUpperCase()}*
-
 Estado atual: *${current?.[key]!==false?'ATIVADO ✅':'DESATIVADO ❌'}*
-
 Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
-
 1️⃣ Confirmar
 2️⃣ Cancelar
 9️⃣ Voltar`
       )
       return true
     }
-
     if(flow.stage==='group_config_confirm'){
       if(!chat.endsWith('@g.us')){
         clearQuickFlow(chat,sender)
@@ -9477,7 +8498,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         setQuickFlow(chat,sender,'group_config',{},5*60*1000)
         await reply(
 `⚙️ *CONFIGURAÇÕES DO GRUPO*
-
 1️⃣ Economia: *${st.economy_enabled?'ON ✅':'OFF ❌'}*
 2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
 3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
@@ -9487,7 +8507,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
 8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
 9️⃣ Antiflood: *${st.antiflood_enabled?'ON ✅':'OFF ❌'}*
-
 0️⃣ Sair`
         )
         return true
@@ -9501,7 +8520,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       setQuickFlow(chat,sender,'group_config',{},5*60*1000)
       await reply(
 `✅ *${label}* foi ${next?'ativado':'desativado'} neste grupo.
-
 1️⃣ Economia: *${st.economy_enabled?'ON ✅':'OFF ❌'}*
 2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
 3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
@@ -9511,13 +8529,11 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
 8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
 9️⃣ Antiflood: *${st.antiflood_enabled?'ON ✅':'OFF ❌'}*
-
 9️⃣ Voltar
 0️⃣ Sair`
       )
       return true
     }
-
     if(flow.stage==='nav_group'){
       if(input==='1'){
         if(!chat.endsWith('@g.us')){
@@ -9569,7 +8585,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
         setQuickFlow(chat,sender,'group_config',{},5*60*1000)
         await reply(
 `⚙️ *CONFIGURAÇÕES DO GRUPO*
-
 1️⃣ Economia: *${st.economy_enabled?'ON ✅':'OFF ❌'}*
 2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
 3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
@@ -9579,7 +8594,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
 7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
 8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
 9️⃣ Antiflood: *${st.antiflood_enabled?'ON ✅':'OFF ❌'}*
-
 9️⃣ Voltar
 0️⃣ Sair`
         )
@@ -9588,16 +8602,12 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       await reply('💚 Escolha *1, 2, 3 ou 4*.')
       return true
     }
-
     clearQuickFlow(chat,sender)
     return false
   }
-
-
   if(!state.creds.registered && !pairingNumber){
     console.error('[WhatsApp] sessão sem login e PAIRING_NUMBER não configurado. Defina o novo número no Render e use um SESSION_ID novo.')
   }
-
   if(pairingNumber && !state.creds.registered){
     setTimeout(async()=>{
       try{
@@ -9610,10 +8620,8 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       }catch(err){console.error('[WhatsApp] falha ao gerar pairing code',err)}
     },3000)
   }
-
   sock.ev.on('connection.update',({connection,lastDisconnect})=>{
     if(connection==='connecting') setWhatsAppHealth('connecting')
-
     if(connection==='open'){
       privateQrState.value=null
       privateQrState.updatedAt=0
@@ -9631,8 +8639,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
       }else{
         console.log('[TEMPORARY] eventos históricos Bingo/Labirinto/Baú bloqueados; leilão isolado de 20/10 habilitado')
       }
-
-      // Anúncio único por grupo licenciado. Apenas este evento, sem mensagens repetidas.
       ;(async()=>{
         try{
           const event=(await db.query(
@@ -9661,7 +8667,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           console.log('[RAID FRAG 2X] anúncios processados em',targeted,'grupos licenciados')
         }catch(err){console.error('[RAID FRAG 2X] falha no aviso',err?.message||err)}
       })()
-
       ;(async()=>{
         try{
           if(temporaryRecoveryMode)return // evento antigo não é reexecutado em recuperação temporária
@@ -9707,18 +8712,14 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
                 await db.query('COMMIT')
                 await sock.sendMessage(target.chatJid,{text:
 `🎮🔥 *EVENTO GAMES 1,5X ATIVO!*
-
 ⏱️ Duração: *30 minutos*
 💰 Recompensas dos minigames: *1,5x*
-
 ✅ Roleta
 ✅ Cara ou Coroa
 ✅ Quiz
 ✅ Adivinhe o Número
-
 👥 PvP fica fora do bônus.
 ⚖️ Chances continuam normais — o bônus aumenta só a recompensa.
-
 🧪 Evento exclusivo deste grupo teste.`}).catch(()=>{})
                 console.log('[Eventos] games 1.5x ativado no grupo teste:',target.subject,target.chatJid)
               }catch(err){
@@ -9733,7 +8734,6 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
           console.error('[Eventos] falha no evento games 1.5x do grupo teste',err?.message||err)
         }
       })()
-
       ;(async()=>{
         try{
           const targetChat='120363429534634131@g.us'
@@ -9772,16 +8772,12 @@ Deseja *${next?'ATIVAR':'DESATIVAR'}* este módulo?
               await db.query('COMMIT')
               await sock.sendMessage(targetChat,{text:
 `🚀✨ *EVENTO DE PROGRESSÃO ATIVO!*
-
 ⏱️ Duração: *30 minutos*
-
 🌱 Jogadores *Lv.50 ou menos*: *3× XP*
 🔥 Jogadores *acima do Lv.50*: *1,5× XP*
-
 ✅ Bônus exclusivo deste grupo.
 🎮 Vale para XP de progressão conquistado jogando.
 📜 Itens de XP/pergaminhos mantêm o valor normal.
-
 Aproveitem para upar! 🔥`}).catch(()=>{})
               console.log('[Eventos] progressao tiered ativada no grupo teste:',subject,targetChat)
             }catch(err){
@@ -9793,7 +8789,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           console.error('[Eventos] falha no evento de progressao do grupo teste',err?.message||err)
         }
       })()
-
       ;(async()=>{
         try{
           const now=Date.now()
@@ -9805,8 +8800,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           for(let raidIndex=0;raidIndex<rows.length;raidIndex++){
             const row=rows[raidIndex]
             const raid=row.state||{}
-            // Compensação única pela Raid mais recente interrompida por deadlock.
-            // Mantém o marcador legado para não compensar novamente Raids que já receberam a antiga Caixa Épica.
             if(raidIndex===0 && !raid.deadlockEpicCompensated){
               const participantIds=Object.keys(raid.players||{}).sort()
               if(participantIds.length){
@@ -9857,13 +8850,11 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         }
       })()
     }
-
     if(connection==='close'){
       privateQrState.value=null
       privateQrState.updatedAt=0
       clearTimeout(forceFlushTimer)
       clearInterval(deafWatchdog)
-      // Agendadores pertencem a este socket: não reter timers após reconexões.
       eventSchedulerClosed=true
       clearInterval(doubleRewardEventScheduler)
       clearInterval(luckyBoxEventScheduler)
@@ -9877,13 +8868,11 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
       const code=lastDisconnect?.error?.output?.statusCode
       const loggedOut=code===DisconnectReason.loggedOut
       const replaced=code===440
-
       if(replaced){
         console.log('[WhatsApp] sessão assumida por outra instância; encerrando esta instância')
         setTimeout(()=>process.exit(0),100)
         return
       }
-
       if(loggedOut){
         if(!pairingNumber && !state.creds.registered){
           console.warn('[WhatsApp] QR não autenticado; aguardando reinicialização controlada para gerar novo QR')
@@ -9897,12 +8886,10 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         console.error('[WhatsApp] sessão autenticada deslogada; requer novo pareamento')
         return
       }
-
       console.log('[WhatsApp] conexão fechada',code,'reconectando')
       scheduleReconnect()
     }
   })
-
   sock.ev.on('group-participants.update',async(event)=>{
     try{
       const chat=event?.id
@@ -9914,7 +8901,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         return [participant.phoneNumber,participant.pn,participant.id,participant.jid,participant.lid].filter(Boolean)
       }
       const people=rawPeople.map(participant=>participantJids(participant)[0]).filter(Boolean)
-
       const meIds=[sock.user?.id,sock.user?.lid,state.creds?.me?.id,state.creds?.me?.lid].filter(Boolean)
       const normalizedSet=list=>new Set((list||[]).map(normalizedAddressJid).filter(Boolean))
       const meSet=normalizedSet(meIds)
@@ -9924,9 +8910,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         const eventIds=participantJids(participant)
         const eventSet=normalizedSet(eventIds)
         if([...eventSet].some(jid=>meSet.has(jid))) return true
-
-        // Baileys v7 pode entregar o evento em LID enquanto sock.user está em PN (ou vice-versa).
-        // Faz a ponte usando os aliases phoneNumber/pn/id/jid/lid presentes no metadata do grupo.
         return metaParticipants.some(groupParticipant=>{
           const groupIds=participantJids(groupParticipant)
           const groupSet=normalizedSet(groupIds)
@@ -9935,20 +8918,16 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           return matchesEvent&&matchesBot
         })
       })
-
       if(event.action==='add' && eventTouchesBot){
         await sendBotGroupIntro(chat,{force:true,reason:'participant-add'})
         return
       }
-
       if(event.action==='remove' && eventTouchesBot){
         await setBotGroupIntroState(chat,{sent:false,removedAt:Date.now(),reason:'participant-remove'}).catch(()=>{})
         return
       }
-
       const st=await getCommunitySettings(chat)
       if(!st?.welcome_enabled) return
-
       if(event.action==='add'){
         const meta=await sock.groupMetadata(chat).catch(()=>null)
         for(const jid of people){
@@ -9964,12 +8943,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
       }
     }catch(err){ console.error('[boas-vindas]',err?.message||err) }
   })
-
-  // Snipe desativado nesta instância RPG: sem listeners de exclusão/edição.
-
-
-  // Evita comandos duplicados se uma mensagem recém-chegada for classificada
-  // primeiro como append e depois como notify pelo Baileys.
   sock.ev.on('messages.upsert',async({messages,type})=>{
     const receivedAt=Date.now()
     trevoHealth.lastUpsertAt=receivedAt
@@ -9978,8 +8951,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
     trevoHealth.lastUpsertType=type||null
     if(type!=='notify' && type!=='append')return
     for(const msg of messages){
-      // Não executar comandos financeiros, consumíveis ou combate de mensagens
-      // antigas que voltam no backlog durante a recuperação da sincronização.
       const ts=Number(msg?.messageTimestamp?.toNumber?.()??msg?.messageTimestamp??0)*1000
       if(type==='append'){
         if(!ts || Math.abs(receivedAt-ts)>45000)continue
@@ -10002,10 +8973,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         const isGroup=chat.endsWith('@g.us')
         setPlayerGroupContext(sender,isGroup?chat:null)
         if(isGroup && !temporaryRecoveryMode){
-          // Recuperação da apresentação: se o bot foi adicionado enquanto o Render
-          // reiniciava/deployava, o evento group-participants.update pode ser perdido.
-          // No primeiro tráfego do grupo, grupos novos/recentes recebem a introdução
-          // uma única vez antes de qualquer evento aleatório ou resposta de comando.
           const introState=await getBotGroupIntroState(chat)
           if(!introState?.sent){
             const license=await getGroupLicense(chat)
@@ -10014,7 +8981,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             const recentGroup=!license || (trialStartedAt>0 && nowSec-trialStartedAt<=6*60*60)
             if(recentGroup) await sendBotGroupIntro(chat,{reason:'first-message-recovery'})
           }
-
           const spawned=temporaryRecoveryMode?null:await maybeSpawnGroupEvent(chat)
           if(spawned) await sock.sendMessage(chat,{text:`${spawned.text}\n\n💰 Dinheiro possível: *R$ ${fmt(spawned.reward)}*\n🎁 ${spawned.hint||'Pode haver recompensa extra.'}\n⚡ Primeiro a mandar *${prefix}pegar* leva!\n⏳ Some em 2 minutos.`}).catch(()=>{})
         }
@@ -10033,14 +8999,9 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           (pairingNumber && senderDigits===pairingNumber) ||
           altDigits.includes(configuredOwnerDigits) ||
           (pairingNumber && altDigits.includes(pairingNumber)) ||
-          // No privado, o remoteJid é a própria conta do usuário e é a fonte mais estável.
           (!isGroup && String(chat||'').endsWith('@s.whatsapp.net') &&
             String(canonicalPlayerJid(chat)).split('@')[0].replace(/\D/g,'')===configuredOwnerDigits)
         )
-
-        // A mesma combinação PN/LID normalmente reaparece em toda mensagem
-        // do grupo. Após uma consolidação bem-sucedida, evitar transações
-        // repetidas por 30 minutos; aliases novos continuam sendo processados.
         const identityKey=sender+'|'+[...new Set(senderIdentity.aliases||[])].sort().join('|')
         const identityAt=alphaIdentityMergeChecked.get(identityKey)||0
         if(!neonEcoMode || Date.now()-identityAt>30*60*1000){
@@ -10052,9 +9013,7 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             }
           }catch(err){console.error('[identidade] falha ao consolidar cadastro',err?.message||err)}
         }
-        // Instância dedicada ao RPG: não armazenar mensagens nem baixar mídias para Snipe.
         if(isGroup) await recordGroupActivity(chat,sender,body.startsWith(prefix)).catch(()=>{})
-        // Uma única consulta de administrador/configuração por mensagem, em vez de duas.
         const shouldModerate=isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))
         const moderationSettings=shouldModerate ? await getCommunitySettings(chat).catch(()=>null) : null
         if(shouldModerate){
@@ -10103,7 +9062,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
             catch(err){if(!/Não há quiz ativo|expirou/.test(String(err?.message||'')))throw err}
           }
           if(!flow) continue
-
           if(isGroup && eventTrafficActiveNow()) await staggerEventGroupAction(chat)
           await ensureUser(sender,msg.pushName || '')
           const supportFlow=String(flow.stage||'').startsWith('support_')
@@ -10115,11 +9073,9 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
               continue
             }
           }
-
           await handleQuickGameFlow({chat,sender,body,reply,msg,isOwner,isGroup})
           continue
         }
-
         await ensureUser(sender,msg.pushName || '')
         const [rawCmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
         const rawCmdLower=(rawCmd||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -10129,7 +9085,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
         const ownerTarget=mentionsOf(msg)[0] || sender
         await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
-
         if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
         if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
         if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
@@ -10138,7 +9093,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
         if(await handleEnchantCommand({cmd,args,sender,reply,
           setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
           clearFlow:()=>clearQuickFlow(chat,sender)})) continue
-
         if(cmd==='garimpar'){
           const start=Date.parse('2026-10-18T20:30:00-03:00')
           const end=Date.parse('2026-10-18T21:00:00-03:00')
@@ -10170,7 +9124,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           await reply('⛏️ *GARIMPO CONCLUÍDO!*\n\n'+label+'\n💰 Ganhou: *R$ '+fmt(prize)+'*\n🎯 Rodada: *'+round+'/15*\n💵 Acumulado: *R$ '+fmt(total)+'*\n⏳ Próxima rodada no próximo horário par até 21h.')
           continue
         }
-
         if(cmd==='azarousorte' || cmd==='caixapegadinha'){
           const pick=String(args[0]||'').toLowerCase()
           const choices={'1':'🔵 Azul','2':'🔴 Vermelha','3':'⚫ Preta','azul':'🔵 Azul','vermelha':'🔴 Vermelha','preta':'⚫ Preta'}
@@ -10215,7 +9168,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           else await reply('🎭 *AZAR OU SORTE?*\n📦 Você abriu a caixa *'+choices[pick]+'*!\n\n'+(outcome.win?'🍀 *SORTE! Você encontrou R$ 90.000!*':'💀 *AZAR! A caixa era uma armadilha!*\n💸 Perdeu *R$ '+Math.abs(outcome.delta).toLocaleString('pt-BR')+'*')+'\n💰 Carteira: *R$ '+outcome.balance.toLocaleString('pt-BR')+'*\n⏳ Próxima tentativa em 5 minutos.')
           continue
         }
-
         if(cmd==='sacrificar'){
           try{
             const position=Number(args[0])
@@ -10226,8 +9178,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
               await reply(petCollectionMenuText(state.pets,{mode:'sacrifice',isLegendary:isCollectionLegendary}))
               continue
             }
-            // Atalho antigo (!sacrificar N): N é a posição em !pets, não
-            // o número relativo à categoria. A ação exige confirmação no fluxo.
             if(String(args[1]||'').toLowerCase()==='confirmar'){
               await reply('🛡️ Por segurança, não é mais possível sacrificar diretamente por comando.\nUse *!sacrificar* → categoria → pet → *2* → *1* para confirmar.')
               continue
@@ -10251,7 +9201,6 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           }
           continue
         }
-
         if(['reliquias','reliquia','insignias','insignia'].includes(cmd)){
           try{
             const selection=String(args[0]||'').trim().toLowerCase()
@@ -10294,21 +9243,18 @@ Aproveitem para upar! 🔥`}).catch(()=>{})
           }catch(err){await reply('⚠️ Relíquias: '+String(err?.message||err))}
           continue
         }
-
         if(['despertar','despertares','evoluirpersonagem'].includes(cmd)){
           const sub=String(args[0]||'').toLowerCase()
           if(['evoluir','confirmar'].includes(sub)){
             try{
               const result=await awakenCharacter(sender)
               await reply(`🌟 *DESPERTAR ${result.tier.roman} CONCLUÍDO!*
-
 🧙 ${result.className} — ${result.path}
 ❤️ +${result.tier.hp} HP máximo
 ⚔️ +${result.tier.atk} ATK base
 🛡️ +${result.tier.def} DEF base
 💰 Custo: R$ ${fmt(result.tier.cost)}
 🏦 Saldo restante: R$ ${fmt(result.balance)}
-
 ⚜️ Sua passiva original continua ativa.
 🌟 ${getAwakeningSkillDescriptions(result.classId||'')[result.tier.stage-1]||'Aprimoramento de atributos confirmado.'}
 ${result.tier.stage===5?'🏆 Sua jornada de cinco despertares está completa.':''}
@@ -10320,20 +9266,17 @@ ${result.tier.stage===5?'🏆 Sua jornada de cinco despertares está completa.':
             const prog=await getAwakeningStatus(sender)
             if(!prog.tier){
               await reply(`🌌 *DESPERTAR MÁXIMO*
-
 🏆 ${prog.className} — ${prog.path}
 ✨ Todas as cinco etapas concluídas.
 ⚜️ Passiva original preservada.`)
             }else{
               const t=prog.tier
               let msg=`🌌 *JORNADA DO DESPERTAR*
-
 🧙 Classe: *${prog.className}*
 ⚜️ Caminho: *${prog.path}*
 🏅 Concluídos: *${prog.stage}/5*
 ✨ Próximo: *DESPERTAR ${t.roman}*
 🔓 Nível exigido: *${t.level}* • Seu nível: *${prog.level}*
-
 📜 *MISSÕES DA CLASSE*
 `
               for(const m of prog.quests) msg+=`• ${m.done===m.target?'✅':'⬜'} ${m.label}: *${m.done}/${m.target}*\n`
@@ -10349,10 +9292,8 @@ ${result.tier.stage===5?'🏆 Sua jornada de cinco despertares está completa.':
 ❤️ +${t.hp} HP • ⚔️ +${t.atk} ATK • 🛡️ +${t.def} DEF
 💰 Custo apenas ao despertar: *R$ ${fmt(t.cost)}*
 🏦 Seu saldo total: *R$ ${fmt(prog.balance)}*
-
 ${prog.ready?'✅ Missões e nível completos!':'⏳ Complete os requisitos para evoluir.'}
 ${prog.ready?'👉 Use *!despertar evoluir* para confirmar.':'📈 As missões não expiram e ficam acumuladas.'}
-
 ⚖️ Passivas originais preservadas. As habilidades extras funcionam só em Boss/Raid; os atributos ganhos também contam no PvP.
 🔁 Trocar de classe preserva os estágios concluídos e reinicia apenas as missões do estágio pendente.
 ${t.stage===5?'🤝 Despertar V: as Raids cooperativas exigem pelo menos 2 jogadores com 2%+ do dano cada.':''}`
@@ -10361,7 +9302,6 @@ ${t.stage===5?'🤝 Despertar V: as Raids cooperativas exigem pelo menos 2 jogad
           }
           continue
         }
-
         if(cmd==='classe'||cmd==='class'){
           const classes=Object.values(PLAYER_CLASSES)
           const raw=String(args[0]||'').trim().toLowerCase()
@@ -10388,12 +9328,10 @@ ${t.stage===5?'🤝 Despertar V: as Raids cooperativas exigem pelo menos 2 jogad
           await reply(`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ O link acima faz a conexão automaticamente.\n⚠️ O código é de uso único. Não envie para outras pessoas.`)
           continue
         }
-
         const carp=await resolvePlayerCarpinar(sender)
         if(carp?.completed){
           if(Number(carp.hours||0)>=1) await progressAlphaContract(sender,'carpinar').catch(err=>console.error('[Contratos] carpinar',err?.message||err))
           await reply(`🌾 *SERVIÇO CONCLUÍDO!*
-
 ⏱️ Jornada: *${Number(carp.hours||0)}h*
 ✨ XP recebido: *+${Number(carp.xp||0)}*
 💰 Dinheiro recebido: *R$ ${fmt(Number(carp.cash||0))}*
@@ -10401,16 +9339,13 @@ ${carp.found?(carp.found.type==='cash'?`🍀 Enquanto carpia você encontrou: *R
 ${carp.rareBoxDrop?'🎁 *ACHOU UMA CAIXA RARA ENQUANTO CARPINAVA!* Ela foi para seu inventário.':'🎁 Nenhuma Caixa Rara apareceu desta vez.'}
 ✅ Você voltou e já pode usar os comandos normalmente.`)
         }
-
         if(carp?.active){
           if(cmd==='carpinar'){
             return await reply(`🌾 *VOCÊ ESTÁ CARPINANDO*
-
 ⏳ Falta: *${duration(carp.remaining)}*
 ✨ XP ao concluir: *+${Number(carp.xp_reward||0)}*
 💰 Dinheiro ao concluir: *R$ ${fmt(Number(carp.cash_reward||0))}*
 🎁 Chance de Caixa Rara: *${Math.round(Number(CARPINAR_MENU.find(x=>x.hours===Number(carp.hours))?.boxChance||0))}%*
-
 🚪 Para sair antes: *!carpinarsair*`)
           }
           if(cmd==='carpinarsair'){
@@ -10419,30 +9354,24 @@ ${carp.rareBoxDrop?'🎁 *ACHOU UMA CAIXA RARA ENQUANTO CARPINAVA!* Ela foi para
             const fee=Math.max(1500,Math.ceil((1500+13500*ratio)/100)*100)
             setQuickFlow(chat,sender,'carpinar_exit_confirm',{quotedFee:fee},90000)
             return await reply(`🚪 *SAIR DO CARPINAR?*
-
 ⏳ Ainda faltam: *${duration(carp.remaining)}*
 💸 Taxa para sair agora: *R$ ${fmt(fee)}*
 ✨ Você recebe XP proporcional ao tempo já trabalhado.
 💰 O dinheiro também será proporcional.
 🎁 Saindo antes, você *perde a chance da Caixa Rara*.
-
 1️⃣ *Sair agora*
 2️⃣ *Continuar carpindo*`)
           }
           return await reply(`🌾 Você está carpindo e não pode usar outros comandos agora.
-
 ⏳ Falta: *${duration(carp.remaining)}*
 ✨ Ao concluir: *+${Number(carp.xp_reward||0)} XP*
 💰 Ao concluir: *R$ ${fmt(Number(carp.cash_reward||0))}*
-
 Use *!carpinar* para ver o status ou *!carpinarsair* para encerrar antes.`)
         }
-
         if(cmd==='carpinarsair'){
           await reply('🌾 Você não está carpindo.')
           continue
         }
-
         if(cmd==='carpinar'){
           const bossBusy=[...bossSessions.keys()].some(key=>key.endsWith('|'+sender))
           if(bossBusy){
@@ -10459,40 +9388,32 @@ Use *!carpinar* para ver o status ou *!carpinarsair* para encerrar antes.`)
             clearQuickFlow(chat,sender)
             const r=await startPlayerCarpinar(sender,choice.hours)
             await reply(`🌾 *VOCÊ FOI CARPINAR!*
-
 ⏳ Jornada: *${r.hours}h*
 ✨ XP ao concluir: *+${r.xp_reward}*
 💰 Dinheiro ao concluir: *R$ ${fmt(r.cash_reward)}*
 🎁 Chance de Caixa Rara: *${Math.round(Number(r.rare_box_chance||0)*100)}%*
 🕒 Tempo restante: *${duration(r.remaining)}*
-
 🔒 Até terminar, nenhum outro comando poderá ser usado e você não poderá ser roubado ou atacado.
 🚪 Saída antecipada: *!carpinarsair*`)
             continue
           }
-
           setQuickFlow(chat,sender,'carpinar_select',{},5*60*1000)
           await reply(
 `🌾 *CARPINAR — TRABALHO AFK*
-
 Escolha quanto tempo vai trabalhar:
-
 1️⃣ *1 hora* — +140 XP • R$ 300 • 🎁 1%
 2️⃣ *2 horas* — +300 XP • R$ 650 • 🎁 2%
 3️⃣ *4 horas* — +650 XP • R$ 1.400 • 🎁 4%
 4️⃣ *6 horas* — +1.000 XP • R$ 2.200 • 🎁 6%
 5️⃣ *8 horas* — +1.450 XP • R$ 3.200 • 🎁 8%
 6️⃣ *12 horas* — +2.200 XP • R$ 5.000 • 🎁 12%
-
 🎁 A porcentagem é a chance de encontrar *1 Caixa Rara* durante a jornada.
 🔒 Durante o serviço você não poderá usar outros comandos e ficará protegido de roubo/ataque.
 🚪 Se sair antes com *!carpinarsair*, paga uma taxa, recebe XP/dinheiro proporcional e não concorre à caixa.
-
 0️⃣ Cancelar`
           )
           continue
         }
-
         const EVENT_ACTION_CMDS=new Set([
           'daily','diario','trabalhar','work','trampo','all','tudo',
           'uber','cltuber','centraluber','coletauber','vendermotorista','trocarmotorista','ifood','ifoodbike','coletar',
@@ -10511,7 +9432,6 @@ Escolha quanto tempo vai trabalhar:
         if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
         const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping','meupet','statuspet','credito','dividas','emprestimos','pagar','pagaremprestimo','aceitaremprestimo','recusaremprestimo'])
         if(sleep?.active&&!sleepAllowed.has(cmd)) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
-
         if(cmd==='acordar'){
           if(sleep?.woke) continue
           if(!sleep?.active){
@@ -10525,9 +9445,6 @@ Escolha quanto tempo vai trabalhar:
           await reply(`⏰ *ACORDAR AGORA?*\n\n🏠 Local: *${sleep.place}*\n⏳ Falta: *${duration(sleep.remaining)}*\n💸 Custo para acordar agora: *R$ ${fmt(fee)}*\n\n1️⃣ *Sim, acordar*\n2️⃣ *Não, continuar dormindo*\n\n_O valor cai conforme o horário normal de acordar se aproxima._`)
           continue
         }
-
-        // O sono precisa ser despachado antes das licenças e dos módulos do grupo.
-        // Assim ele funciona também no privado e não é engolido por um quick flow/configuração.
         if(['dormir','sono'].includes(cmd)){
           if(sleep?.woke) continue
           if(sleep?.active){
@@ -10556,26 +9473,20 @@ Escolha quanto tempo vai trabalhar:
           }
           continue
         }
-
         if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pedido','configgrupo','configuragrupo','suporte','support','ajuda','chamado'].includes(cmd)){
           let license=await getGroupLicense(chat)
           if(!license) license=await ensureGroupTrial(chat)
-
           if(!groupLicenseIsActive(license)){
             return await reply(
 `🔒 *ALPHA BOT BLOQUEADO NESTE GRUPO*
-
 O período de acesso terminou ou este grupo foi bloqueado.
-
 💚 Plano simbólico: *R$ 2 por 30 dias*
 📄 Leia: *${prefix}termos*
 📅 Consulte: *${prefix}statusgrupo*
-
 Fale com o responsável pelo Alpha Bot para ativação.`
             )
           }
         }
-
         if(isGroup && !isOwner){
           const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo','npcs','mercadores','comerciantes','mercadoalpha','lojanpc','npc','falarnpc','comprarnpc','npccomprar'])
           const RPG_CMDS=new Set(['dano','perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
@@ -10590,23 +9501,16 @@ Fale com o responsável pelo Alpha Bot para ativação.`
             return await reply(`🔒 *${label}* foi desativado pelo administrador deste grupo.`)
           }
         }
-
         if(['sticker','s','stiker','fig','figurinha'].includes(cmd)){
           const source=stickerMediaOf(msg)
           if(!source){
             return await reply(
 `🖼️ *CRIAR FIGURINHA*
-
 Responda uma *foto*, *vídeo* ou *figurinha* com *${prefix}sticker*.
-
 Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
-
 🎬 Vídeos usam os primeiros segundos automaticamente.`
             )
           }
-
-          // O WhatsApp informa fileLength no envelope; nunca baixe mídia sem tamanho
-          // declarado ou acima do teto. Isso evita downloads gigantes por comando.
           const stickerNode=source.raw?.message?.[source.type]
           const stickerLength=stickerNode?.fileLength
           const stickerBytes=Number(stickerLength?.toString?.() || stickerLength || 0)
@@ -10620,11 +9524,9 @@ Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
             return await reply('⏳ O limite de mídia desta hora foi atingido. Os comandos RPG continuam disponíveis normalmente.')
           }
           stickerCommandBusy=true
-
           try{
             await sock.sendMessage(chat,{react:{text:'⏳',key:msg.key}})
           }catch{}
-
           try{
             const media=await downloadBoundedMedia(signal=>downloadMediaMessage(
               source.raw,
@@ -10637,7 +9539,6 @@ Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
             ),Math.min(stickerBytes,stickerMaxBytes),{
               onBytes:bytes=>countBandwidth('mediaDownloaded',bytes)
             })
-
             const customPack=args.join(' ').trim().slice(0,64)
             const sticker=await toStickerBuffer(media,{
               packName:customPack || 'Alpha Bot',
@@ -10646,7 +9547,6 @@ Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
             if(sticker.length>COMMAND_MEDIA_OUTPUT_LIMIT)throw new Error('A figurinha gerada excedeu 512 KB. Use uma imagem mais simples ou um vídeo menor.')
             if(!commandMediaUploads.reserve(sticker.length))throw new Error('O limite de envio de mídia desta hora foi atingido. Tente novamente mais tarde.')
             countBandwidth('mediaUploadPayloadSubmitted',sticker.length)
-
             await sock.sendMessage(
               chat,
               {
@@ -10656,7 +9556,6 @@ Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
               },
               {quoted:msg}
             )
-
             try{
               await sock.sendMessage(chat,{react:{text:'✅',key:msg.key}})
             }catch{}
@@ -10668,23 +9567,18 @@ Também funciona enviando uma foto/vídeo com *${prefix}sticker* na legenda.
             const reason=String(err?.message||'')
             await reply('❌ '+(/tamanho|limite|512 KB|30 segundos|Mídia|mídia/.test(reason)?reason:'Não consegui criar a figurinha. Tente outra foto ou um vídeo menor.'))
           }finally{stickerCommandBusy=false}
-
         } else if(['suporte','support','ajuda'].includes(cmd)){
           setQuickFlow(chat,sender,'support_menu',{},10*60*1000)
           await reply(
 `🆘 *SUPORTE ALPHA BOT*
-
 Como podemos ajudar?
-
 1️⃣ 💳 Pagamento / assinatura
 2️⃣ 🛠️ Problema técnico
 3️⃣ ❓ Dúvida sobre comandos
 4️⃣ 🐞 Reportar erro / bug
 5️⃣ 💬 Outro assunto
-
 0️⃣ Sair`
           )
-
         } else if(['chamado'].includes(cmd)){
           const code=String(args[0]||'').toUpperCase()
           if(!code) return await reply(`Uso: *${prefix}chamado SUP-XXXXXX*`)
@@ -10695,13 +9589,11 @@ Como podemos ajudar?
           const statusLabel={open:'ABERTO',answered:'RESPONDIDO'}[ticket.status]||String(ticket.status||'').toUpperCase()
           await reply(
 `🆘 *${ticket.code}*
-
 Status: *${statusLabel}*
 Categoria: *${ticket.category}*
 Criado: *${fmtDate(ticket.created_at)}*
 ${ticket.answer?'\n💬 Resposta:\n'+ticket.answer:''}`
           )
-
         } else if(['responder','responderchamado'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const code=String(args[0]||'').toUpperCase()
@@ -10712,11 +9604,8 @@ ${ticket.answer?'\n💬 Resposta:\n'+ticket.answer:''}`
           try{
             await sock.sendMessage(ticket.requester_jid,{text:
 `🆘 *RESPOSTA DO SUPORTE ALPHA BOT*
-
 Protocolo: *${ticket.code}*
-
 💬 ${answer}
-
 Se precisar de mais ajuda, use *!suporte*.`
             })
             delivered=true
@@ -10724,19 +9613,16 @@ Se precisar de mais ajuda, use *!suporte*.`
             console.error('[suporte] falha ao enviar resposta',err?.message||err)
           }
           await reply(`✅ Chamado *${ticket.code}* respondido. ${delivered?'Resposta entregue.':'Não foi possível entregar automaticamente.'}`)
-
         } else if(['regras','rules'].includes(cmd)){
           if(!isGroup) return await reply('📜 Use este comando em um grupo.')
           const st=await getCommunitySettings(chat)
           await reply(st.rules_text ? `📜 *REGRAS DO GRUPO*\n\n${st.rules_text}` : '📜 Este grupo ainda não definiu regras.')
-
         } else if(['setregras'].includes(cmd)){
           if(!isGroup || !(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores do grupo podem definir as regras.')
           const rules=args.join(' ').trim()
           if(!rules) return await reply(`Uso: *${prefix}setregras texto das regras*`)
           await setGroupRules(chat,rules,sender)
           await reply('✅ Regras do grupo atualizadas.')
-
         } else if(['advertir','aviso','avisos','limparavisos'].includes(cmd)){
           if(!isGroup) return await reply('🛡️ Use este comando em um grupo.')
           const targetRaw=mentionsOf(msg)[0]
@@ -10753,14 +9639,12 @@ Se precisar de mais ajuda, use *!suporte*.`
           }
           const n=await addGroupWarning(chat,target)
           await reply(`⚠️ Advertência registrada. Total: *${n}/3*.`,{mentions:[targetRaw]})
-
         } else if(['abrirgrupo','fechargrupo'].includes(cmd)){
           if(!isGroup || !(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores podem alterar o grupo.')
           try{
             await sock.groupSettingUpdate(chat,cmd==='fechargrupo'?'announcement':'not_announcement')
             await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
           }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
-
         } else if(['pet','pets','adotar','nomepet','petnome','meupet','meuspets','usarpet','equiparpet','timepet','sinergia','sinergias','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
           try{
             const expeditionTraitText=t=>{
@@ -10794,10 +9678,8 @@ Se precisar de mais ajuda, use *!suporte*.`
               if(String(args[0]||'').toLowerCase()==='todos'){
                 const r=await startAllPetExpeditions(sender,hours)
                 let text=`🧭 *EXPEDIÇÕES INICIADAS!*
-
 ✅ *${r.started.length} pet(s)* reserva(s) enviados por *${r.hours}h*.
 🐾 Pets do time e pet ativo protegidos.
-
 `
                 for(const p of r.started) text+=`• *${p.pet_name}* (ID ${p.pet_id}) — +${p.pet_xp} XP • R$ ${fmt(p.cash_reward)}
 `
@@ -10906,7 +9788,6 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
                 const synergy=petTeamSynergy(team)
                 return await reply('🐾 *TIME PET EQUIPADO!*\n\n1️⃣ Principal: *'+(bySlot(1)?.name||'Vazio')+'*\n2️⃣ Suporte: *'+(bySlot(2)?.name||'Vazio')+'*\n3️⃣ Reserva: *'+(bySlot(3)?.name||'Vazio')+'*'+(synergy?'\n\n✨ *'+synergy.label+'*\n🎯 Bônus: *'+synergy.text+'*':'')+'\n\n💡 O Reserva entra se o Principal cair; o Suporte participa das sinergias.')
               }
-
               const team=await getPetTeam(sender)
               const bySlot=n=>team.find(x=>Number(x.slot)===n)
               const synergy=petTeamSynergy(team)
@@ -10921,7 +9802,6 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
                 text+='\n🔄 Qual slot deseja trocar?\n1️⃣ Principal\n2️⃣ Suporte\n3️⃣ Reserva\n4️⃣ Remontar o time inteiro\n0️⃣ Sair'
                 return await reply(text)
               }
-
               const slotById=new Map(team.map(x=>[Number(x.id),Number(x.slot)]))
               setQuickFlow(chat,sender,'pet_team_select',{pets,replaceAll:true},5*60*1000)
               let text='🐾 *MONTAR TIME PET*\n\n'
@@ -10978,16 +9858,13 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
               : `❤️ ${p.hp}/${petMaxHp(p.level,p.xp,p.species)} • 🍖 ${p.hunger}/100 • ⚡ ${p.energy}/${petMaxEnergy(p.level,p.species)}`
             await reply(`🐾 *${p.name}* ${actionResult}\nNível ${p.level} • XP ${p.xp} • Poder ${p.power}\n${petVitals}`)
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível cuidar do pet.')) }
-
         } else if(['conquistas','achievements'].includes(cmd)){
           const rows=await getAchievements(sender)
           await reply(rows.length?'🏆 *SUAS CONQUISTAS*\n\n'+rows.map((x,i)=>`${i+1}. ${x}`).join('\n'):'🏆 Você ainda não desbloqueou conquistas. Continue jogando!')
-
         } else if(['topativo','atividade'].includes(cmd)){
           if(!isGroup) return await reply('📊 Use este comando em um grupo.')
           const rows=await weeklyActivityLeaderboard(chat,10)
           await reply('📊 *TOP ATIVIDADE — ÚLTIMOS 7 DIAS*\n\n'+(rows.map((x,i)=>`${i+1}º ${x.push_name} — ${x.messages} msgs • ${x.commands} cmds`).join('\n')||'Sem atividade registrada ainda.'))
-
         } else if(['casar','aceitarcasamento','divorciar','casal'].includes(cmd)){
           try{
             if(cmd==='casal'){
@@ -11008,7 +9885,6 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
             await acceptRelationship(sender,target)
             await reply('💍 *CASAMENTO CONFIRMADO!* 🎉',{mentions:[targetRaw]})
           }catch(err){ await reply('❌ '+(err?.message||'Não foi possível concluir.')) }
-
         } else if(['troca','aceitartroca','recusartroca'].includes(cmd)){
           try{
             if(cmd==='troca'){
@@ -11114,7 +9990,6 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
             text+='👉 Responda somente com o *número do anúncio* da lista.\n0️⃣ Sair'
             await reply(text.trim())
           }catch(err){ await reply('❌ '+(err?.message||'Erro no mercado.')) }
-
         } else if(['dado','chance','escolher','ship','verdade','desafio'].includes(cmd)){
           if(cmd==='dado') return await reply(`🎲 Caiu *${1+Math.floor(Math.random()*6)}*.`)
           if(cmd==='chance') return await reply(`🎯 Chance: *${Math.floor(Math.random()*101)}%*.`)
@@ -11130,7 +10005,6 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
           const truths=['Qual foi a última mentira que você contou?','Quem do grupo você levaria para uma viagem?','Qual hábito seu quase ninguém conhece?','Qual foi sua maior vergonha?']
           const dares=['Mande um áudio cantando por 10 segundos.','Troque sua foto por 10 minutos.','Elogie alguém do grupo sem ironia.','Mande o último emoji usado 5 vezes.']
           return await reply((cmd==='verdade'?'🤔 *VERDADE*\n':'🔥 *DESAFIO*\n')+(cmd==='verdade'?truths:dares)[Math.floor(Math.random()*4)])
-
         } else if(['banir','kick','expulsar','promover','rebaixar'].includes(cmd)){
           if(!isGroup) return await reply('⚙️ Use este comando dentro de um grupo.')
           if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores do grupo podem usar este comando.')
@@ -11163,7 +10037,6 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
           if(!targetPart.admin) return await reply('ℹ️ Essa pessoa não é administradora.')
           await sock.groupParticipantsUpdate(chat,[targetId],'demote')
           return await reply('⬇️ Administrador rebaixado para participante.',{mentions:[targetRaw]})
-
         } else if(['xingar','arrogante','gado','burro'].includes(cmd)){
           if(!isGroup) return await reply('😂 Use esse comando em um grupo.')
           const target=mentionsOf(msg)[0]
@@ -11186,7 +10059,6 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
           ]
           const text=fixed[cmd] || memes[Math.floor(Math.random()*memes.length)]
           await reply(text,{mentions:[target]})
-
         } else if(['configgrupo','configuragrupo'].includes(cmd)){
           if(!isGroup) return await reply('⚙️ Use este comando dentro do grupo que deseja configurar.')
           if(!(await senderIsGroupAdmin(chat,sender))) return await reply('🔒 Apenas administradores deste grupo podem abrir as configurações.')
@@ -11196,7 +10068,6 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
           setQuickFlow(chat,sender,'group_config',{},5*60*1000)
           await reply(
 `⚙️ *CONFIGURAÇÕES DO GRUPO*
-
 1️⃣ Economia: *${st.economy_enabled?'ON ✅':'OFF ❌'}*
 2️⃣ RPG: *${st.rpg_enabled?'ON ✅':'OFF ❌'}*
 3️⃣ Minigames: *${st.games_enabled?'ON ✅':'OFF ❌'}*
@@ -11206,16 +10077,13 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
 7️⃣ Anti-palavrão: *${st.antibadword_enabled?'ON ✅':'OFF ❌'}*
 8️⃣ Anti-delete: *${st.antidelete_enabled?'ON ✅':'OFF ❌'}*
 9️⃣ Antiflood: *${st.antiflood_enabled?'ON ✅':'OFF ❌'}*
-
 9️⃣ Voltar
 0️⃣ Sair`
           )
-
         } else if(['economia','eco'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_economy',{},90000)
           await reply(
 `💰 *ECONOMIA*
-
 1️⃣ Ver saldo
 2️⃣ Daily + sequência 🔥
 3️⃣ Trabalhar
@@ -11223,44 +10091,35 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
 5️⃣ Sacar
 6️⃣ Ranking dos mais ricos
 7️⃣ PIX para jogador
-
 0️⃣ Sair`
           )
-
         } else if(['itens','item','mochila'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_items',{},90000)
           await reply(
 `🛒 *ITENS E INVENTÁRIO*
-
 1️⃣ Loja
 2️⃣ Inventário
 3️⃣ Equipar
 4️⃣ Usar poção
 5️⃣ Abrir caixas
-
 0️⃣ Sair`
           )
-
         } else if(['rpg'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_rpg',{},90000)
           await reply(
 `⚔️ *RPG*
-
 1️⃣ Status
 2️⃣ Dungeon
 3️⃣ Batalhar com alguém
 4️⃣ Roubar alguém
 5️⃣ Ranking RPG
 6️⃣ ⚔️ Raids cooperativas
-
 0️⃣ Sair`
           )
-
         } else if(['progressao','progressão','progresso'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_progress',{},90000)
           await reply(
 `📋 *PROGRESSÃO*
-
 1️⃣ Missões diárias
 2️⃣ Resgatar missões
 3️⃣ Casas
@@ -11268,56 +10127,45 @@ ${r.remaining>0?`⚠️ ${r.remaining} reserva(s) ainda aguardam vaga.\n`:''}⏳
 5️⃣ Patrimônio
 6️⃣ Ranking de patrimônio
 7️⃣ 📜 Quadro de Contratos Alpha
-
 0️⃣ Sair`
           )
-
         } else if(['grupo','assinatura'].includes(cmd)){
           setQuickFlow(chat,sender,'nav_group',{},90000)
           await reply(
 `💚 *GRUPO / ASSINATURA*
-
 1️⃣ Status do grupo
 2️⃣ Assinar / renovar
 3️⃣ Termos
 4️⃣ ⚙️ Configurações do grupo
-
 0️⃣ Sair`
           )
-
         } else if(['clans','clanes','clãsmenu'].includes(cmd)){
           const clan=await getClanForUser(sender)
           setQuickFlow(chat,sender,'clan_menu',{},90000)
           if(!clan){
             await reply(
 `🏴 *CLÃS*
-
 1️⃣ Criar um clã
 2️⃣ Aceitar convite
 3️⃣ Ranking de clãs
-
 0️⃣ Sair`
             )
           }else{
             const leader=clan.role==='leader'
             await reply(
 `🏴 *CLÃ ${clan.name}*
-
 1️⃣ Ver informações
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
 ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'5️⃣ Sair do clã'}
-
 0️⃣ Sair`
             )
           }
-
         } else if(['minigames','minigame'].includes(cmd)){
           setQuickFlow(chat,sender,'main',{},90000)
           await reply(
 `🎮 *MINIGAMES DO ALPHA BOT*
-
 1️⃣ 🎰 Roleta
 2️⃣ 🪙 Cara ou Coroa
 3️⃣ ✊ Pedra, Papel e Tesoura
@@ -11325,21 +10173,15 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
-
 0️⃣ Sair`
           )
-
         } else if(['comandos','comando','commands','cmds'].includes(cmd)){
-          // Uma única fonte para o catálogo. Evita a lista antiga ficar desatualizada.
           await showCommandsMainMenu(chat,sender,reply)
-
         } else if(['ping','p'].includes(cmd)){
           await reply('🍀 Pong! Alpha Bot online e conectado ao Neon.')
-
         } else if(['saldo','balance','bal'].includes(cmd)){
           const p=await getProfile(sender)
           await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
-
         } else if(cmd==='dano'){
           const mentioned=mentionsOf(msg)[0]
           const identity=mentioned?await resolvePlayerIdentity(sock,chat,mentioned,msg):{jid:sender}
@@ -11371,7 +10213,6 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
           const mentioned=mentionsOf(msg)[0]
           const profileIdentity=await resolvePlayerIdentity(sock,chat,mentioned || sender,msg)
           const profileTarget=profileIdentity.jid
-
           try{
             if(!mentioned) await ensureUser(profileTarget,msg.pushName||'')
             if(mentioned && !profileTarget?.endsWith('@s.whatsapp.net')){
@@ -11389,10 +10230,8 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
             console.error('[perfil] erro ao carregar perfil',profileTarget,err)
             await reply('⚠️ Não consegui carregar esse perfil agora. Tente novamente em alguns segundos.')
           }
-
         } else if(['setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp'].includes(cmd)){
           await reply(`ℹ️ O card de perfil foi desativado. Agora o *${prefix}perfil* é exibido somente em texto.`)
-
         } else if(['daily','diario'].includes(cmd)){
           const r=await claimDaily(sender)
           if(!r.ok) await reply(`⏳ Daily já coletado hoje.\n🔥 Sequência atual: *${r.streak} dia${r.streak===1?'':'s'}*.\n🌙 Volte em aproximadamente ${duration(r.remaining)}.`)
@@ -11400,21 +10239,17 @@ ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair d
             await progressDailyMission(sender,'daily')
             await reply(dailyResultText(r))
           }
-
         } else if(['streak','sequencia','sequência'].includes(cmd)){
           const s=await getDailyStreak(sender)
           const status=s.claimedToday?'✅ Daily de hoje já coletado.':'🎁 Daily de hoje disponível.'
           await reply(
 `🔥 *SEQUÊNCIA DAILY*
-
 🔥 Atual: *${s.streak} dia${s.streak===1?'':'s'}*
 🏅 Recorde: *${s.bestStreak} dia${s.bestStreak===1?'':'s'}*
 ${status}
-
 🎯 Próxima recompensa: *Dia ${s.next.day} — ${s.next.label}*
 ⏳ Faltam *${s.next.days} dia${s.next.days===1?'':'s'}* mantendo a sequência.`
           )
-
         } else if(['all','tudo'].includes(cmd)){
           const results=[]
           let grossTotal=0,taxTotal=0,netTotal=0
@@ -11438,16 +10273,12 @@ ${status}
           await add('iFood','🍔',()=>deliverIfood(sender,3))
           await reply(
 `⚡ *ALL — ATIVIDADES EM LOTE*
-
 ${results.join('\n')}
-
 💵 Bruto executado: *R$ ${fmt(grossTotal)}*
 🧾 TAXADE te pegou 3×: *-R$ ${fmt(taxTotal)}*
 💰 Líquido recebido: *R$ ${fmt(netTotal)}*
-
 🏪 *!coletar* não faz parte do !all.`
           )
-
         } else if(['trabalhar','work','trampo'].includes(cmd)){
           const r=await work(sender)
           if(!r.ok) await reply(`⏳ Você já trabalhou. Tente novamente em ${duration(r.remaining)}.`)
@@ -11456,14 +10287,12 @@ ${results.join('\n')}
           if(isGroup) await progressGroupMission(chat,sender,'work')
             await reply(workResultText(r))
           }
-
         } else if(['carreira','emprego','profissao','profissão'].includes(cmd)){
           const r=await getCareer(sender)
           let text=`💼 *MINHA CARREIRA*\n\n🏷️ Cargo: *${r.rank.name}*\n📈 XP profissional: *${r.career_xp}*\n🧾 Expedientes: *${r.total_shifts}*\n💵 Multiplicador salarial: *x${r.rank.mult.toFixed(2)}*`
           if(r.next) text+=`\n🎯 Próximo: *${r.next.name}* — faltam ${Math.max(0,r.next.xp-Number(r.career_xp))} XP.`
           else text+='\n🏆 Cargo máximo alcançado!'
           await reply(text)
-
         } else if(['vendercarro','trocarcarro'].includes(cmd)){
           const garage=await getGarage(sender)
           if(!garage.length) return await reply('🚗 Sua garagem está vazia. Veja *!carros*.')
@@ -11488,7 +10317,6 @@ ${results.join('\n')}
           })
           out+='\n👉 Escolha *1, 2, 3...* para vender ou trocar.\n0️⃣ Sair'
           await reply(out)
-
         } else if(['vendermoto','venderbike','venderbicicleta'].includes(cmd)){
           if(!args.length) return await reply(`🚲🏍️ Use *${prefix}vendermoto número* conforme *${prefix}minhasmotos*.\n⚠️ Revenda: *70% do valor pago*.`)
           const garage=await getMotorcycleGarage(sender)
@@ -11497,7 +10325,6 @@ ${results.join('\n')}
           if(!selected) return await reply(`❌ Veículo não encontrado. Use *${prefix}minhasmotos*.`)
           setQuickFlow(chat,sender,'confirm_sell_motorcycle',{id:selected.id,name:selected.name,resale:Math.floor(Number(selected.price_paid||selected.price)*0.70)},90000)
           await reply(`⚠️ *CONFIRMAR VENDA*\n\n🚲🏍️ ${selected.name}\n💰 Você recebe: *R$ ${fmt(Math.floor(Number(selected.price_paid||selected.price)*0.70))}*\n📉 Desvalorização: *30%*\n\nResponda *SIM* para vender ou *NÃO* para cancelar.`)
-
         } else if(['negocios','negócios'].includes(cmd)){
           const owned=await getBusinesses(sender)
           setQuickFlow(chat,sender,'business_buy_select',{},90000)
@@ -11508,12 +10335,10 @@ ${results.join('\n')}
           })
           text+=`\n🧾 *TAXADE:* 10% sobre o lucro no momento da coleta.\n👉 Responda *só com o número* para comprar.\n🛒 Ou use *${prefix}comprarnegocio N*\n💰 Lucros: *${prefix}coletar*\n🏢 Seus negócios: *${prefix}meusnegocios*\n0️⃣ Cancelar`
           await reply(text)
-
         } else if(['comprarnegocio','comprarnegócio'].includes(cmd)){
           if(!args.length) return await reply(`🏪 Veja *${prefix}negocios* e use *${prefix}comprarnegocio número*.`)
           const b=await buyBusiness(sender,args.join(' '))
           await reply(`🏪 *NEGÓCIO COMPRADO!*\n\n*${b.name}*\n💰 Investimento: R$ ${fmt(b.price)}\n📈 Lucro: R$ ${fmt(b.profitHour)}/h\n⏳ Acumula até ${b.capacityHours}h.\n\nUse *${prefix}coletar* para receber os lucros.`)
-
         } else if(['meusnegocios','meusnegócios'].includes(cmd)){
           const rows=await getBusinesses(sender)
           if(!rows.length) return await reply(`🏪 Você ainda não possui negócios. Veja *${prefix}negocios*.`)
@@ -11525,7 +10350,6 @@ ${results.join('\n')}
           })
           text+='\n🔧 Responda com o número para fazer upgrade.\n0️⃣ Sair'
           await reply(text.trim())
-
         } else if(['missaogrupo','missãogrupo','missaocoletiva','missãocoletiva','missao','missão','missaostatus','missãostatus','statusmissao','statusmissão'].includes(cmd)){
           if(!isGroup) return await reply('👥 Esse comando funciona somente em grupos.')
           const b=await getGroupMissionLeaderboard(chat), m=b.mission
@@ -11536,7 +10360,6 @@ ${results.join('\n')}
           else b.rows.forEach((x,i)=>out+=`${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} *${x.push_name||'Jogador'}* — ${x.contribution} ${unit}${m.completed?' • R$ '+fmt(x.share):''}\n`)
           out+=m.completed?`\n✅ Concluída! Use *${prefix}resgatarmissao*.`:`\n💡 Quanto mais você contribuir, maior será sua parte do prêmio.`
           await reply(out)
-
         } else if(['resgatarmissao','resgatarmissão'].includes(cmd)){
           if(!isGroup) return await reply('👥 Esse comando funciona somente em grupos.')
           const r=await claimGroupMission(chat,sender)
@@ -11544,23 +10367,18 @@ ${results.join('\n')}
           let out=`🎉 *RECOMPENSA COLETIVA!*\nSua contribuição: *${r.contribution} ${unit}*\n💰 Você recebeu: *R$ ${fmt(r.share)}*\n\n🏆 *RESULTADO DA MISSÃO*\n`
           r.leaderboard.forEach((x,i)=>out+=`${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} *${x.push_name||'Jogador'}* — ${x.contribution} ${unit} • *R$ ${fmt(x.share)}*\n`)
           await reply(out)
-
         } else if(['contratos','quadro','quadrocontratos','missoeshora','missoesdahora'].includes(cmd)){
           await reply(await alphaContractBoardMessage(sender))
-
         } else if(['aceitarcontrato','contratoaceitar'].includes(cmd)){
           const r=await acceptAlphaContract(sender,args[0])
           await reply(`📜 *CONTRATO ACEITO!*\n\n🎯 *${r.contract.title}*\n${r.contract.description}\n📈 Progresso: 0/${r.target}\n🎁 R$ ${fmt(r.reward_cash)} + ${fmt(r.reward_xp)} XP${r.reward_item?' + Caixa Épica':''}\n⏳ Conclua antes da renovação do quadro.\n\nUse *!contratos* para acompanhar.`)
-
         } else if(['resgatarcontrato','contratoresgatar'].includes(cmd)){
           const r=await claimAlphaContract(sender)
           await reply(`🎉 *CONTRATO ALPHA CONCLUÍDO!*\n\n💰 +R$ ${fmt(r.reward_cash)}\n✨ +${fmt(r.reward_xp)} XP${r.reward_item?'\n🎁 +1 Caixa Épica':''}\n✅ Prêmios creditados na sua conta!`)
-
         } else if(['pegar'].includes(cmd)){
           if(!isGroup) return
           const r=await claimGroupEvent(chat,sender)
           await reply(`⚡ *VOCÊ FOI O MAIS RÁPIDO!*\n\n💰 Dinheiro: *R$ ${fmt(r.reward_cash)}*${r.bonusItem?`\n🎁 Item bônus: *${r.bonusItem.name}* (${r.bonusItem.rarity})`:''}\n\n🏃 A próxima pode aparecer a qualquer momento.`)
-
         } else if(['coletar'].includes(cmd)){
           const r=await collectBusinesses(sender)
           if(!r.total && !r.recoveryRetained) return await reply(r.cooldownRemaining
@@ -11570,7 +10388,6 @@ ${results.join('\n')}
           r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×${eventMultLabel(r.eventMultiplier)})_`:''}\n`)
           text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*${r.recoveryRetained?`\n⚖️ Recuperação após auditoria: *-R$ ${fmt(r.recoveryRetained)}*\n📋 Ajuste restante: *R$ ${fmt(r.recoveryRemaining)}*`:''}${r.recoveryCashSettled?`\n✅ Ajuste antigo quitado pelo saldo que já estava na carteira: *-R$ ${fmt(r.recoveryCashSettled)}* (separado do lucro da coleta).\n💵 As próximas coletas serão creditadas normalmente.`:''}`
           await reply(text)
-
         } else if(['motos','motocicletas'].includes(cmd)){
           const owned=await getMotorcycleGarage(sender)
           let text='🚲🏍️ *DELIVERY — BICICLETAS E MOTOS*\n\n'
@@ -11581,19 +10398,16 @@ ${results.join('\n')}
           text+=`\n🛒 *Responda só com o número* para comprar.\n⌨️ Ou use *${prefix}comprarmoto número ou nome*.\n🍔 Moto: *${prefix}ifood* • Bicicleta: *${prefix}ifoodbike*.`
           setQuickFlow(chat,sender,'delivery_vehicle_buy',{},90000)
           await reply(text)
-
         } else if(['comprarmoto'].includes(cmd)){
           if(!args.length) return await reply(`🏍️ Use *${prefix}motos* para ver as opções e depois *${prefix}comprarmoto número ou nome*.`)
           const m=await buyMotorcycle(sender,args.join(' '))
           await reply(`🚲🏍️ *Veículo comprado!*\n\n${m.name}\n💰 R$ ${fmt(m.price)}\n\n🍔 Agora você pode usar *${prefix}ifood*.`)
-
         } else if(['minhasmotos','garagemmotos'].includes(cmd)){
           const rows=await getMotorcycleGarage(sender)
           if(!rows.length) return await reply(`🚲🏍️ Sua garagem de delivery está vazia. Veja *${prefix}motos*.`)
           let text='🚲🏍️ *MEUS VEÍCULOS DE DELIVERY*\n\n'
           rows.forEach((m,i)=>text+=`${i+1}. *${m.name}* — R$ ${fmt(m.price)}\n`)
           await reply(text.trim())
-
         } else if(['ifood','ifoodbike'].includes(cmd)){
           const r=await deliverIfood(sender)
           if(!r.ok){
@@ -11609,7 +10423,6 @@ ${results.join('\n')}
             text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
-
         } else if(['cltifood'].includes(cmd)){
           if(args[0]){
             const d=await hireCltIfoodDriver(sender,args[0])
@@ -11624,7 +10437,6 @@ ${results.join('\n')}
             out+='\n👥 Até 3 motoboys • turnos de 8h.\n👉 *!cltifood 1*, *2* ou *3*.'
             await reply(out)
           }
-
         } else if(['centralifood'].includes(cmd)){
           const status=await getCltIfoodStatus(sender)
           if(!status.drivers.length)return await reply('🏍️ Contrate motoboys com *!cltifood*.')
@@ -11647,7 +10459,6 @@ ${results.join('\n')}
             '\n*!centralifood 1 3* — iniciar selecionados'+
             '\n*!coletaifood* — sacar ganhos acumulados'
           await reply(out)
-
         } else if(['coletaifood'].includes(cmd)){
           const r=await collectCltIfood(sender)
           if(!r.total)return await reply('💵 A Central iFood ainda não tem saldo para coletar.')
@@ -11657,19 +10468,16 @@ ${results.join('\n')}
           out+='\n💰 *TOTAL RECEBIDO: R$ '+fmt(r.total)+'*'+
             '\n🧾 Líquido após comissão e TAXADE. Coletas anteriores não são pagas novamente.'
           await reply(out)
-
         } else if(['cltuber'].includes(cmd)){
           if(args[0]){
             const r=await hireCltUberDriver(sender,args[0])
             await reply(
 `✅ *CLT UBER CONTRATADO!*
-
 👨‍✈️ Motorista ${r.slot}: *${r.name}*
 💸 Contratação: *R$ ${fmt(r.price)}*
 ⏱️ Corrida automática: a cada *${r.intervalMin} min*
 📉 Comissão do motorista: *${Math.round(r.commission*100)}%*
 ⚙️ Eficiência automática: *${Math.round(r.efficiency*100)}%*
-
 🚗 Agora use *!centraluber* para escolher o carro e iniciar um turno de até *8 horas*.`
             )
           }else{
@@ -11680,7 +10488,6 @@ ${results.join('\n')}
             text+='\n🛑 Cada turno dura no máximo *8 horas* e depois para sozinho.\n👥 Limite: *3 motoristas*.\n\n👉 Contrate com *!cltuber 1*, *2* ou *3*.'
             await reply(text)
           }
-
         } else if(['vendermotorista','vendermotoristas','trocar motorista','trocarmotorista'].includes(cmd)){
           const status=await getCltUberStatus(sender)
           if(!status.drivers.length)return await reply('👨‍✈️ Você não possui motoristas. Use *!cltuber*.')
@@ -11703,7 +10510,6 @@ ${results.join('\n')}
           out+='\n📌 Para vender ou trocar, finalize o turno e colete o saldo com *!coletauber*.\n'+
             '👉 Escolha *1, 2 ou 3*.\n0️⃣ Sair'
           await reply(out)
-
         } else if(['centraluber'].includes(cmd)){
           const s=await getCltUberStatus(sender)
           if(!s.drivers.length) return await reply('👨‍✈️ Você ainda não contratou motorista. Use *!cltuber*.')
@@ -11731,7 +10537,6 @@ ${results.join('\n')}
           })
           text+='\n⚡ *DESPACHO RÁPIDO*\n*!centraluber todos* — envia todos os disponíveis\n*!centraluber 1 3* — envia somente os motoristas escolhidos\n🏆 Automático: motorista mais caro → carro mais caro.\n\n👉 Ou responda com *1, 2 ou 3* para escolher motorista e carro manualmente.\n💵 Para sacar tudo: *!coletauber*\n0️⃣ Sair'
           await reply(text)
-
         } else if(['coletauber'].includes(cmd)){
           const r=await collectCltUber(sender)
           if(!r.total) await reply('💵 A Central Uber ainda não tem valor disponível para coleta.')
@@ -11743,7 +10548,6 @@ ${results.join('\n')}
             text+=`\n💰 *TOTAL SACADO: R$ ${fmt(r.total)}*\n🧾 Valores líquidos, após comissão do motorista e TAXADE.\n\nℹ️ *Importante:* este saque mostra apenas o saldo gerado *desde a última !coletauber*. Valores coletados antes no mesmo turno não aparecem novamente aqui.\n\n🛑 Motoristas cujo turno de 8h terminou continuam parados até você iniciar outro em *!centraluber*.`
             await reply(text)
           }
-
         } else if(['uber'].includes(cmd)){
           const r=await driveUber(sender)
           if(!r.ok){
@@ -11759,7 +10563,6 @@ ${results.join('\n')}
             text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO ×${eventMultLabel(r.eventMultiplier)} APLICADO (+${Math.round((Number(r.eventMultiplier)-1)*100)}%)*`:''}\n💵 Bruto da frota: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 *LÍQUIDO RECEBIDO: R$ ${fmt(r.total)}*\n⏳ Nova rodada em ${Math.ceil(r.cooldown/60)} minutos.`
             await reply(text)
           }
-
         } else if(['depositar','deposit','dep'].includes(cmd)){
           const depositAll=['total','tudo'].includes(normalizeItemText(args[0]||''))
           const amount=depositAll?'total':parseAmount(args[0])
@@ -11767,20 +10570,17 @@ ${results.join('\n')}
             setQuickFlow(chat,sender,'deposit_amount',{},90000)
             return await reply(
 `🏦 *DEPOSITAR*
-
 1️⃣ R$ 100
 2️⃣ R$ 500
 3️⃣ R$ 1.000
 4️⃣ R$ 5.000
 5️⃣ Máximo possível
 6️⃣ Outro valor
-
 0️⃣ Cancelar`
             )
           }
           const r=await deposit(sender,amount)
           await reply(`🏦 Depósito concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
-
         } else if(['sacar','withdraw','saque'].includes(cmd)){
           const withdrawAll=['tudo','total'].includes(normalizeItemText(args[0]||''))
           let amount=parseAmount(args[0])
@@ -11793,20 +10593,17 @@ ${results.join('\n')}
             setQuickFlow(chat,sender,'withdraw_amount',{},90000)
             return await reply(
 `💵 *SACAR*
-
 1️⃣ R$ 100
 2️⃣ R$ 500
 3️⃣ R$ 1.000
 4️⃣ R$ 5.000
 5️⃣ Todo o saldo do banco
 6️⃣ Outro valor
-
 0️⃣ Cancelar`
             )
           }
           const r=await withdraw(sender,amount)
           await reply(`💵 Saque concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
-
         } else if(['pix','transferir','transfer'].includes(cmd)){
           const target=mentionsOf(msg)[0]
           const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
@@ -11818,19 +10615,16 @@ ${results.join('\n')}
             setQuickFlow(chat,sender,'pix_amount',{target},90000)
             return await reply(
 `💸 *VALOR DO PIX*
-
 1️⃣ R$ 100
 2️⃣ R$ 500
 3️⃣ R$ 1.000
 4️⃣ R$ 5.000
 5️⃣ Outro valor
-
 0️⃣ Cancelar`
             )
           }
           const r=await transfer(sender,target,amount)
           await reply(`💸 *PIX realizado!*\n\n➡️ Enviado: R$ ${fmt(r.amount)}\n🧾 Taxa: R$ ${fmt(r.fee)}\n💰 Total debitado: R$ ${fmt(r.total)}`,{mentions:[target]})
-
         } else if(['emprestimo','emprestar'].includes(cmd)){
           const targetMention=mentionsOf(msg)[0]
           const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
@@ -11843,7 +10637,6 @@ ${results.join('\n')}
           setQuickFlow(chat,target,'loan_offer_response',{loanId:r.id},10*60*1000)
           await reply(
             `💳 *PROPOSTA DE EMPRÉSTIMO #${r.id}*
-
 💰 Valor: *R$ ${fmt(r.principal)}*
 ⏳ Prazo após o aceite: *30 minutos sem juros*
 📈 Após 30 minutos: *2% por hora de atraso*
@@ -11851,27 +10644,21 @@ ${results.join('\n')}
 ⚠️ Se não pagar no vencimento, a cobrança automática pode deixar a conta *negativa*.
 💳 Limite do devedor: *R$ ${fmt(r.credit.limit)}*
 ⌛ Expira em *10 minutos*.
-
 👤 @${String(target).split('@')[0]}, responda apenas:
-
 1️⃣ *Aceitar*
 2️⃣ *Recusar*
-
 _O dinheiro só sai de quem empresta quando a proposta for aceita._
 _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             {mentions:[targetMention]}
           )
-
         } else if(cmd==='aceitaremprestimo'){
           const id=Number(args[0]||0)||null
           const r=await acceptLoan(sender,id)
           await reply(`✅ *EMPRÉSTIMO ACEITO #${r.id}*\n\n💰 Recebido: *R$ ${fmt(r.principal)}*\n🕛 Sem juros até: *${fmtDate(r.due_at)}*\n📈 Depois: *2% por hora de atraso*\n🤖 Após o vencimento o Alpha cobra automaticamente. Se faltar saldo, o banco pode ficar *negativo*.`)
-
         } else if(cmd==='recusaremprestimo'){
           const id=Number(args[0]||0)||null
           const r=await rejectLoan(sender,id)
           await reply(`❌ Proposta de empréstimo *#${r.id}* recusada.`)
-
         } else if(['pagar','pagaremprestimo'].includes(cmd)){
           const input=normalizeItemText(args[0]||'')
           if(!input) return await reply('💳 Use *!pagar total* ou *!pagar 5000*.')
@@ -11883,11 +10670,9 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             ? `\n⏰ Atraso computado: *${r.lateHours}h* • taxa *${Math.round(Number(r.interestRatePerHour||0)*100)}%/h*`
             : '\n🕛 Pagamento dentro dos 30 minutos sem juros.'
           await reply(`💸 *PAGAMENTO DO EMPRÉSTIMO*\n\n✅ Pago agora: *R$ ${fmt(r.paid)}*\n📈 Juros pagos: *R$ ${fmt(r.interestPaid)}*${lateLine}\n💰 Principal pago: *R$ ${fmt(r.principalPaid)}*\n🧾 Restante: *R$ ${fmt(rest)}*\n${r.settled?'🎉 *Empréstimo quitado!*':'⏳ A dívida continua ativa.'}`)
-
         } else if(cmd==='credito'){
           const r=await getLoanCredit(sender)
           await reply(`💳 *SEU CRÉDITO*\n\n💎 Patrimônio considerado: *R$ ${fmt(r.patrimony)}*\n🏦 Limite total: *R$ ${fmt(r.limit)}*\n🧾 Dívida ativa: *R$ ${fmt(r.debt)}*\n✅ Disponível: *R$ ${fmt(r.available)}*\n\n_O limite é 25% do patrimônio, mínimo de R$ 5.000 e máximo de R$ 250.000._`)
-
         } else if(['dividas','emprestimos'].includes(cmd)){
           const o=await getLoanOverview(sender)
           let text=`💳 *EMPRÉSTIMOS*\n\n🏦 Limite: *R$ ${fmt(o.credit.limit)}* • Disponível: *R$ ${fmt(o.credit.available)}*\n`
@@ -11913,14 +10698,12 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
         } else if(['piada','joke'].includes(cmd)){
           setQuickFlow(chat,sender,'fun_confirm',{service:'joke',price:FUN_PRICES.joke},90000)
           await reply('😂 Comprar uma *Piada do Alpha Bot* por *R$ '+fmt(FUN_PRICES.joke)+'*?\n\n1️⃣ Comprar\n2️⃣ Cancelar')
-
         } else if(['horoscopo','horóscopo'].includes(cmd)){
           setQuickFlow(chat,sender,'horoscope_sign',{},90000)
           let text='🔮 *ESCOLHA SEU SIGNO*\n\n'
           SIGNS.forEach((sg,i)=>text+='*'+(i+1)+'.* '+sg[1]+'\n')
           text+='\n0️⃣ Sair'
           await reply(text)
-
         } else if(['buffxp','bonusxp','expbuff','experiencia'].includes(cmd)){
           const r=await getXpBuffStatus(sender)
           let text='✨ *EXPERIÊNCIA — ELIXIRES & TOMOS*\n\n'
@@ -11931,7 +10714,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             text+='\n👉 Use *!usarxp NOME* ou *!usar NOME* para ativar.'
           }else text+='✨ Você não possui itens de bônus de XP no inventário.'
           await reply(text)
-
         } else if(['usarxp','ativarxp'].includes(cmd)){
           if(!args.length) return await reply('✨ Use *!buffxp* para ver seus itens de XP e depois *!usarxp Nome do item*.')
           const owned=await getInventory(sender)
@@ -11939,10 +10721,8 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           if(!item||!XP_SPECIAL_ITEM_IDS.has(item.item_id)) return await reply('❌ Item de XP não localizado. Use *!buffxp* para conferir.')
           const result=await useXpConsumable(sender,item.item_id)
           await reply(xpItemReceipt(result))
-
         } else if(['loja','shop'].includes(cmd)){
           await showShopCategoryMenu(chat,sender,reply)
-
         } else if(['comprar','buy'].includes(cmd)){
           const id=resolveShopItem(args[0])
           const qty=parseInt(args[1]||'1',10)
@@ -11953,18 +10733,15 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           const r=await buyItem(sender,id,qty)
           await progressDailyMission(sender,'shop')
           await reply(`🛒 Compra concluída!\n📦 ${r.item.name} ×${r.qty}\n💸 R$ ${fmt(r.total)}`)
-
         } else if(BOX_IDS.includes(cmd)){
           const items=await getInventory(sender)
           const box=items.find(i=>i.item_id===cmd)
           if(!box) return await reply('🎁 Você não possui essa caixa.')
           await showBoxQuantityMenu(chat,sender,reply,box)
-
         } else if(SHOP_IDS.includes(cmd) && !BOX_IDS.includes(cmd)){
           const r=await buyItem(sender,cmd,1)
           await progressDailyMission(sender,'shop')
           await reply(`🛒 Compra rápida concluída!\n📦 ${r.item.name} ×1\n💸 R$ ${fmt(r.total)}`)
-
         } else if(['caixas','boxes','abrircaixas'].includes(cmd)){
           const items=await getInventory(sender)
           const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
@@ -11978,22 +10755,16 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           boxes.forEach((b,idx)=>text+=`*${idx+1}.* ${rarityLabel(b.rarity)} — *${b.name}* ×${b.quantity}\n`)
           text+='\n👉 Responda só com o número.\n0️⃣ Sair'
           await reply(text)
-
         } else if(['inventario','inventory','inv'].includes(cmd)){
           await showInventoryMenu(chat,sender,reply)
-
         } else if(['vender','sell'].includes(cmd)){
           await showSellMenu(chat,sender,reply)
-
         } else if(['venderraid','sellraid'].includes(cmd)){
           await showSellItemsMenu(chat,sender,reply,'raid')
-
         } else if(['venderpocoes','venderpocoes','sellpotions'].includes(cmd)){
           await showSellItemsMenu(chat,sender,reply,'potions')
-
         } else if(['venderequipamentos','venderequip','sellequipment'].includes(cmd)){
           await showSellItemsMenu(chat,sender,reply,'equipment')
-
         } else if(['venderrepetidos','venderduplicados'].includes(cmd)){
           const r=await sellDuplicateEquipment(sender)
           if(!r.types) return await reply('💰 Você não tem equipamentos repetidos vendáveis agora.\n\nO Alpha mantém *1 cópia de cada arma/armadura*. Itens lendários não são vendidos automaticamente.')
@@ -12004,7 +10775,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           text+='\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
           text+='\n\n🛡️ 1 cópia de cada equipamento foi preservada.'
           await reply(text)
-
         } else if(['forjar','forja','forjaestelar'].includes(cmd)){
           const list=await listStarForgeEquipment(sender)
           if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê ainda não possui armas ou armaduras de drop das Raids elegíveis.\n🔎 A forja exige um equipamento Lv.10, 1 cópia extra idêntica e materiais da Raid de origem.')
@@ -12020,7 +10790,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           result+='🌟 Progressão: +4% por estrela adicional; máximo ★★★★★.\n💰 Sem custo em dinheiro e sem chance de falha.\n'
           result+='\n👉 Responda o número do equipamento para ver detalhes.\n0️⃣ Cancelar'
           return await reply(result)
-
         } else if(['uparitem','upgradeitem','melhoraritem','uparelmo','melhorarelmo','upgradeelmo'].includes(cmd)){
           const [items,profile]=await Promise.all([listUpgradeableCopies(sender),getCombatProfile(sender)])
           const categoryInput=String(args[0]||'').toLowerCase()
@@ -12034,28 +10803,25 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           }
           const available=filtered.filter(i=>i.next)
           if(!available.length) return await reply(helmetOnly?'🏆 Seus elmos já estão no *Lv.10*.':'🏆 Todos os seus equipamentos já estão no *Lv.10*.')
-          setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id,sourceLevel:i.sourceLevel}))},5*60*1000)
+          setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id,sourceLevel:i.sourceLevel,sourceKind:i.sourceKind}))},5*60*1000)
           let text=helmetOnly?'🪖 *UPAR ELMO*\n\n':'⬆️ *UPAR EQUIPAMENTO*\n\n'
           available.forEach((i,n)=>{
             const stat=gearStatsChanges(i.current,i.next,i.category).replaceAll('\n',' • ')
             const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)||(i.category==='helmet'&&profile?.helmet_id===i.item_id)
-            text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ×${i.tierQuantity} cópia(s) nesse nível • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
+            text+=`*${n+1}.* ${equipped?'✅ *EQUIPADO* • ':''}${rarityLabel(i.rarity)} — *${i.name}*\n   ⭐ Lv.${i.level} → Lv.${Number(i.level)+1} • ${i.sourceKind==='star'?'🌟 '+i.stars+'/5':'×'+i.tierQuantity+' cópia(s)'} • ${stat}\n   💰 R$ ${fmt(i.cost)}\n`
           })
           text+='\n💡 Os ganhos crescem progressivamente por nível; no *Lv.10* os atributos escaláveis chegam a *2,5×* a base. Máximo: *Lv.10*.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
           if(!helmetOnly) text+='\n\n🪖 Para ver apenas os elmos: *!uparelmo*'
           await reply(text)
-
         } else if(['equipar','equip'].includes(cmd)){
           const items=await getInventory(sender)
           const equipables=items.filter(i=>['weapon','armor','boots','helmet'].includes(i.category))
           if(!equipables.length) return await reply('⚙️ Você não possui armas, armaduras, elmos ou botas para equipar.')
-
           const query=args.join(' ').trim()
           if(!query){
             await showEquipmentMenu(chat,sender,reply)
             return
           }
-
           const anyItem=resolveOwnedItem(items,query)
           if(anyItem && !['weapon','armor','boots','helmet'].includes(anyItem.category)){
             if(BOX_IDS.includes(anyItem.item_id)){
@@ -12063,21 +10829,17 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             }
             return await reply(`❌ *${anyItem.name}* não pode ser equipado.`)
           }
-
           const item=resolveOwnedItem(items,query,['weapon','armor','boots','helmet'])
           if(!item){
             return await reply(`❌ Não encontrei esse equipamento no seu inventário.\nUse *${prefix}equipar* para escolher pela lista.`)
           }
-
           const r=await equipItem(sender,item.item_id)
           const tipo=r.category==='weapon'?'arma':r.category==='armor'?'armadura':r.category==='helmet'?'elmo':'bota'
           await reply(`✅ *EQUIPADO!*\n\n${r.name} agora é sua ${tipo} ativa.`)
-
         } else if(['usar','use'].includes(cmd)){
           const items=await getInventory(sender)
           const usable=items.filter(isUsableConsumable)
           const query=args.join(' ').trim()
-
           if(!query){
             if(!usable.length) return await reply('🧪 Você não possui poções utilizáveis no momento.')
             setQuickFlow(chat,sender,'use_select',{items:usable.map(i=>i.item_id)},90000)
@@ -12086,7 +10848,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
             return await reply(text)
           }
-
           const item=resolveOwnedItem(usable,query,['consumable'])
           if(!item){
             const anyItem=resolveOwnedItem(items,query)
@@ -12098,7 +10859,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             }
             return await reply(`❌ Não encontrei uma poção com esse nome.\nUse *${prefix}usar* para ver as opções.`)
           }
-
           if(XP_SPECIAL_ITEM_IDS.has(item.item_id)){
             const r=await useXpConsumable(sender,item.item_id)
             await reply(xpItemReceipt(r))
@@ -12112,7 +10872,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             const r=await usePotion(sender,item.item_id)
             await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
           }
-
         } else if(['curarpet','curapet','petcura'].includes(cmd)){
           const aliases={
             comum:'pocao_pet_comum',common:'pocao_pet_comum',
@@ -12131,11 +10890,9 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           }
           const r=await usePetPotion(sender,itemId)
           await reply(`🐾🧪 *${r.name} usada!*\n\n🐾 ${r.petName}\n❤️ HP: *${r.before} → ${r.hp}/${r.maxHp}*\n💚 Recuperado: *+${r.healed}*\n📦 Restam: *${r.remaining}*\n\n💡 Sem escolher raridade, *!curarpet* usa a menor poção suficiente disponível.`)
-
         } else if(['energiapet','energia_pet','petenergia'].includes(cmd)){
           const r=await usePetEnergyItem(sender,'energetico_pet')
           await reply(`⚡ *ENERGÉTICO PET USADO!*\n\n🐾 ${r.petName}\n🔋 Energia: *${r.before} → ${r.energy}/${r.max}*\n⚡ Recuperado: *+${r.recovered}*\n📦 Restam: *${r.remaining}*`)
-
         } else if(['nivel','nível'].includes(cmd)){
           const r=await claimLevelRewards(sender)
           const itemLabels={
@@ -12153,10 +10910,8 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             chave_raid_50:'Chave de Raid Lv.50'
           }
           let text=`⭐ *NÍVEL — PROGRESSÃO*
-
 🏅 Nível atual: *${r.level}*
 ✨ EXP: *${r.exp}/${r.level*100}*`
-
           if(r.claimed.length){
             text+='\n\n🎁 *RECOMPENSAS RESGATADAS AGORA*'
             for(const reward of r.claimed){
@@ -12166,7 +10921,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           }else{
             text+='\n\n✅ Você não tem recompensa de nível pendente.'
           }
-
           const next=r.nextReward
           if(next){
             text+=`\n\n🎯 *PRÓXIMO MARCO — Lv.${r.nextMilestone}*\n💰 R$ ${fmt(next.cash)}`
@@ -12174,10 +10928,8 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
               text+=`\n📦 ${itemLabels[itemId]||itemId} ×${qty}`
             }
           }
-
           text+=`\n\n💡 A cada *5 níveis* há uma nova recompensa. O *!nível* resgata automaticamente tudo que estiver liberado e ainda não tiver sido recebido.`
           await reply(text)
-
         } else if(['status'].includes(cmd)){
           const mentioned=mentionsOf(msg)[0]
           const statusTarget=await resolvePlayerJid(sock,chat,mentioned || sender,msg)
@@ -12195,7 +10947,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           const bossCritPct=Math.min(50,gearCritPct+Number(statusPetBonus.critPct||0))
           await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
-
 ⭐ Nível: ${p.level}
 ✨ EXP: ${p.exp}/${p.level*100}
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)
@@ -12204,16 +10955,13 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
 👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)
 🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
 👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
-
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
 👢 Botas: ${p.boot_name||'Nenhuma'} *Lv.${p.boot_level||1}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
-
 🏆 Vitórias: ${p.win}
 💀 Derrotas: ${p.loss}`
           )
-
         } else if(['batalhar','batalha','battle','duelo'].includes(cmd)){
           const targetMention=mentionsOf(msg)[0]
           if(!targetMention){
@@ -12228,12 +10976,10 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
           await consolidateUserIdentity(target,targetIdentity.aliases)
           const r=await battle(sender,target)
           if(!r.ok) return await reply(`⏳ Você poderá batalhar novamente em ${duration(r.remaining)}.`)
-
           const text=formatPvpBattleReport(r)
           if(r.winner.jid===sender) await creditDailyActivity(sender,'battle',1,null,reply)
       if(isGroup) await progressGroupMission(chat,sender,'battle')
           await reply(text,{mentions:[target]})
-
         } else if(['rankingrpg','rankrpg','toprpg'].includes(cmd)){
           const rows=await combatLeaderboard(10)
           if(!rows.length) return await reply('⚔️ Ainda não há jogadores no ranking RPG.')
@@ -12243,7 +10989,6 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             text+=`${medal} *${r.push_name || 'Jogador'}* — Nv.${r.level} | ${r.win}V/${r.loss}D\n`
           })
           await reply(text.trim())
-
         } else if(['ranking','rank','top'].includes(cmd)){
           const rows=await leaderboard(10,await currentGroupPlayerJids(chat))
           if(!rows.length) return await reply('🏆 Ainda não há jogadores no ranking.')
@@ -12253,13 +10998,9 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             text+=`${medal} *${r.push_name || 'Jogador'}* — R$ ${fmt(r.total)}\n`
           })
           await reply(text.trim())
-
-
-
         } else if(['missoes','missões','missions'].includes(cmd)){
           const r=await getDailyMissions(sender)
           await reply(dailyMissionsText(r,prefix))
-
         } else if(['resgatarmissoes','resgatarmissao','claimmissions'].includes(cmd)){
           const r=await claimDailyMissions(sender)
           if(!r.claimed&&!r.drops?.length)return await reply('📋 Você não tem missão concluída e não resgatada agora.')
@@ -12269,38 +11010,31 @@ _Os comandos !aceitaremprestimo e !recusaremprestimo continuam funcionando._`,
             '\n🐾 EXP de pet: +'+Number(r.petXp||0)+
             '\n🎁 Caixas: '+Number(r.boxes||0)+
             (r.drops?.length?'\n🏆 '+r.drops.join(' • '):''))
-
                 } else if(['cla','clã','clacofre'].includes(cmd)){
           const c=await getClanForUser(sender)
           setQuickFlow(chat,sender,'clan_menu',{},90000)
           if(!c){
             return await reply(
 `🏴 *CLÃS*
-
 1️⃣ Criar um clã
 2️⃣ Aceitar convite
 3️⃣ Ranking de clãs
-
 0️⃣ Sair`
             )
           }
           const leader=c.role==='leader'
           await reply(
 `🏴 *CLÃ ${c.name}*
-
 1️⃣ Ver informações
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
 ${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'5️⃣ Sair do clã'}
-
 0️⃣ Sair`
           )
-
         } else if(['claajuda','clãajuda'].includes(cmd)){
           await reply(
 `🏴 *COMANDOS DE CLÃ*
-
 ${prefix}cla — informações do seu clã
 ${prefix}criarcla Nome — criar por R$ 10.000
 ${prefix}claconvidar @pessoa — convidar
@@ -12311,7 +11045,6 @@ ${prefix}claexpulsar @pessoa — expulsar membro
 ${prefix}saircla — sair do clã
 ${prefix}clas — ranking de clãs`
           )
-
         } else if(['criarcla','criarclã'].includes(cmd)){
           const name=args.join(' ')
           if(!name){
@@ -12320,7 +11053,6 @@ ${prefix}clas — ranking de clãs`
           }
           const c=await createClan(sender,name)
           await reply(`🏴 Clã *${c.name}* criado!\n👑 Você é o líder.\n💰 Custo: R$ 10.000`)
-
         } else if(['claconvidar','clãconvidar','convidarcla'].includes(cmd)){
           const target=mentionsOf(msg)[0]
           if(!target){
@@ -12332,11 +11064,9 @@ ${prefix}clas — ranking de clãs`
 `🏴 Convite enviado para entrar no clã *${r.clan.name}*.\nA pessoa deve usar *${prefix}claaceitar* em até 24h.`,
             {mentions:[target]}
           )
-
         } else if(['claaceitar','clãaceitar','aceitarcla'].includes(cmd)){
           const r=await acceptClanInvite(sender)
           await reply(`🏴 Você entrou no clã *${r.name}*!`)
-
         } else if(['clapromover','clãpromover'].includes(cmd)){
           const target=mentionsOf(msg)[0]
           if(!target){
@@ -12345,7 +11075,6 @@ ${prefix}clas — ranking de clãs`
           }
           const r=await transferClanLeadership(sender,target)
           await reply(`👑 Liderança do clã *${r.name}* transferida.`,{mentions:[target]})
-
         } else if(['claexpulsar','clãexpulsar'].includes(cmd)){
           const target=mentionsOf(msg)[0]
           if(!target){
@@ -12354,37 +11083,31 @@ ${prefix}clas — ranking de clãs`
           }
           const r=await kickClanMember(sender,target)
           await reply(`🚪 Membro removido do clã *${r.name}*.`,{mentions:[target]})
-
         } else if(['cladoar','clãdoar','doarcla'].includes(cmd)){
           const amount=parseAmount(args[0])
           if(!amount){
             setQuickFlow(chat,sender,'clan_donate',{},90000)
             return await reply(
 `💰 *QUANTO DOAR AO CLÃ?*
-
 1️⃣ R$ 100
 2️⃣ R$ 1.000
 3️⃣ R$ 5.000
 4️⃣ R$ 10.000
 5️⃣ Outro valor
-
 0️⃣ Cancelar`
             )
           }
           const r=await donateClan(sender,amount)
           await reply(
 `🏴 *DOAÇÃO AO CLÃ*
-
 💰 Doado: R$ ${fmt(r.amount)}
 🏦 Cofre: R$ ${fmt(r.treasury)}
 ⭐ Nível do clã: ${r.level}`
           )
-
         } else if(['saircla','sairclã'].includes(cmd)){
           const r=await leaveClan(sender)
           if(r.dissolved) await reply(`🏴 O clã *${r.name}* foi encerrado porque você era o único membro.`)
           else await reply(`🏴 Você saiu do clã *${r.name}*.`)
-
         } else if(['clas','clãs','rankingclas','topclas'].includes(cmd)){
           const rows=await listClans(10)
           if(!rows.length) return await reply('🏴 Ainda não existem clãs.')
@@ -12394,11 +11117,9 @@ ${prefix}clas — ranking de clãs`
             text+=`${medal} *${c.name}* — Nv.${c.level} | ${c.members} membros | R$ ${fmt(c.treasury)}\n`
           })
           await reply(text.trim())
-
         } else if(['casas','imoveis','imóveis'].includes(cmd)){
           setQuickFlow(chat,sender,'house_select',{},90000)
           await reply(homeCatalogText(HOUSES))
-
         } else if(['comprarcasa'].includes(cmd)){
           const input=args[0]
           if(!input){
@@ -12410,7 +11131,6 @@ ${prefix}clas — ranking de clãs`
           if(r.previous) text+=`🔁 Entrada da ${r.previous.name}: R$ ${fmt(r.tradeIn)}\n`
           text+=`💸 Pago agora: R$ ${fmt(r.cost)}`
           await reply(text)
-
         } else if(['minhacasa','casa'].includes(cmd)){
           const activity=await getHomeActivities(sender)
           if(!activity) return await reply(`🏠 Você ainda não possui imóvel. Veja *${prefix}casas*.`)
@@ -12423,26 +11143,19 @@ ${prefix}clas — ranking de clãs`
             : '✅ Disponível'
           setQuickFlow(chat,sender,'home_menu',{},90000)
           await reply(`🏠 *MINHA CASA — ${h.name.toUpperCase()}*
-
 💰 Valor patrimonial: R$ ${fmt(h.price)}
-
 ⚔️ *1. Treinar* — +${fmt(activity.trainingReward.total)} XP (${h.trainingXp} fixos + ${fmt(activity.trainingReward.bonus)} pelo nível)
 ${trainStatus}
-
 🐾 *2. Descansar pets* — +${h.petRestPercent}% HP e energia
 ${restStatus}
 _(${homeRestDescription(h)}; pets em expedição não participam)_
-
 😴 *3. Dormir* — +${h.sleepXpPercent}% do XP para o próximo nível em 8h
-
 ⏱️ Treino e descanso: 1 vez a cada 24 horas.
 0️⃣ Sair`)
-
         } else if(['treinar'].includes(cmd)){
           const r=await trainAtHome(sender)
           if(!r.ok) await reply(r.maxLevel?'🏆 Você já está no nível máximo. O treino foi preservado.':'⏳ *TREINO INDISPONÍVEL*\n\nAguarde *'+duration(r.remaining)+'* para treinar novamente em casa.')
           else await reply('⚔️ *TREINO EM CASA CONCLUÍDO!*\n\n🏡 '+r.house.name+'\n✨ +'+fmt(r.exp)+' XP ('+fmt(r.baseExp)+' fixos + '+fmt(r.bonusExp)+' pelo nível)\n⭐ Nível: '+r.level+'\n⏱️ Próximo treino em 24 horas.')
-
         } else if(['descansarpets'].includes(cmd)){
           const r=await restTeamPetsAtHome(sender)
           if(!r.ok){
@@ -12453,14 +11166,12 @@ _(${homeRestDescription(h)}; pets em expedição não participam)_
             const skipped=r.skipped.length?'\n\n'+r.skipped.map(p=>'↪️ '+p.name+': '+p.reason).join('\n'):''
             await reply('🐾 *PETS DESCANSADOS!*\n\n🏡 '+r.house.name+' — +'+r.house.petRestPercent+'%\n'+lines+skipped+'\n\n⏱️ Próximo descanso em 24 horas.')
           }
-
         } else if(['carros','concessionaria','concessionária'].includes(cmd)){
           setQuickFlow(chat,sender,'car_select',{},90000)
           let text='🚗 *CONCESSIONÁRIA DO ALPHA BOT*\n\n'
           CARS.forEach((c,i)=>text+=`*${i+1}.* ${c.name} — R$ ${fmt(c.price)}\n`)
           text+='\n🚗 Garagem atual comporta até 5 carros.\n♻️ Para trocar usando um carro de entrada, utilize *!vendercarro*.\n👉 *Responda com o número do carro.*\n0️⃣ Cancelar'
           await reply(text)
-
         } else if(['comprarcarro'].includes(cmd)){
           const input=args[0]
           if(!input){
@@ -12472,19 +11183,16 @@ _(${homeRestDescription(h)}; pets em expedição não participam)_
           }
           const c=await buyCar(sender,input)
           await reply(`🚗 *CARRO COMPRADO!*\n\n🔑 ${c.name}\n💰 R$ ${fmt(c.price)}`)
-
         } else if(['garagem','meuscarros'].includes(cmd)){
           const cars=await getGarage(sender)
           if(!cars.length) return await reply(`🚗 Sua garagem está vazia. Veja *${prefix}carros*.`)
           let text=`🚗 *SUA GARAGEM* — ${cars.length}/5\n\n`
           cars.forEach((c,i)=>text+=`${i+1}. *${c.name}* — R$ ${fmt(c.price)}\n`)
           await reply(text.trim())
-
         } else if(['patrimonio','patrimônio'].includes(cmd)){
           const p=await getPatrimony(sender)
           await reply(
 `💎 *SEU PATRIMÔNIO*
-
 🪙 Carteira: R$ ${fmt(p.cash)}
 🏦 Banco: R$ ${fmt(p.bank)}
 🎒 Itens: R$ ${fmt(p.inventory_value)}
@@ -12492,10 +11200,8 @@ _(${homeRestDescription(h)}; pets em expedição não participam)_
 🚗 Carros: R$ ${fmt(p.cars_value)}
 🏍️ Motos/Bike: R$ ${fmt(p.motorcycles_value)}
 🏪 Negócios: R$ ${fmt(p.businesses_value)}
-
 💰 *Total: R$ ${fmt(p.total)}*`
           )
-
         } else if(['rankingpatrimonio','rankingpatrimônio','toppatrimonio'].includes(cmd)){
           const rows=await patrimonyLeaderboard(10)
           if(!rows.length) return await reply('💎 Ainda não há dados de patrimônio.')
@@ -12505,7 +11211,6 @@ _(${homeRestDescription(h)}; pets em expedição não participam)_
             text+=`${medal} *${r.push_name||'Jogador'}* — R$ ${fmt(r.total)}\n`
           })
           await reply(text.trim())
-
         } else if(['futebol','fut'].includes(cmd)){
           await reply('⚽ *ALPHA FUTEBOL*\n\n*!partidas* — jogos brasileiros de hoje\n*!partidas amanha* — jogos de amanhã\n*!tabela* — Brasileirão Série A\n*!time Corinthians* — último e próximo jogo\n\n💡 *!jogos* continua sendo o menu de minigames.')
         } else if(['partidas','jogoshoje'].includes(cmd)){
@@ -12519,7 +11224,6 @@ _(${homeRestDescription(h)}; pets em expedição não participam)_
           setQuickFlow(chat,sender,'main',{},90000)
           await reply(
 `🎮 *MINIGAMES DO ALPHA BOT*
-
 1️⃣ 🎰 Roleta
 2️⃣ 🪙 Cara ou Coroa
 3️⃣ ✊ Pedra, Papel e Tesoura
@@ -12527,15 +11231,11 @@ _(${homeRestDescription(h)}; pets em expedição não participam)_
 5️⃣ 🧠 Quiz
 6️⃣ 🔢 Adivinhe o Número
 7️⃣ 👹 Boss
-
 👉 *Responda apenas com o número do jogo.*
 Você não precisa usar ! enquanto estiver neste menu.
-
 0️⃣ Sair
-
 _Os comandos antigos continuam funcionando normalmente._`
           )
-
         } else if(['roleta','roletagrupo'].includes(cmd)){
           const sub=(args[0]||'').toLowerCase()
           if(cmd==='roletagrupo' || ['grupo','galera','multi'].includes(sub)){
@@ -12556,14 +11256,12 @@ _Os comandos antigos continuam funcionando normalmente._`
             : `💸 Você perdeu R$ ${fmt(r.amount)}.`
           await progressDailyMission(player,'game')
           await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\nSua escolha: *${r.choice}*\n\n${result}`)
-
         } else if(['apostar','entrarroleta'].includes(cmd)){
           const amount=parseAmount(args[0]); const choice=(args[1]||'').toLowerCase()
           if(!amount||!choice) return await reply(`Uso: *${prefix}apostar 500 preto*`)
           const player=await resolvePlayerJid(sock,chat,sender,msg)
           await joinGroupRoulette(chat,player,amount,choice)
           await reply(`✅ Você entrou na roleta coletiva com *R$ ${fmt(amount)}* no *${choice}*.`)
-
         } else if(['girar','girarroleta'].includes(cmd)){
           const player=await resolvePlayerJid(sock,chat,sender,msg)
           const r=await spinGroupRoulette(chat,player)
@@ -12572,7 +11270,6 @@ _Os comandos antigos continuam funcionando normalmente._`
             out+=`@${String(x.jid).split('@')[0]} — R$ ${fmt(x.amount)} no ${x.choice}: ${x.payout>0?`🏆 ganhou R$ ${fmt(x.payout)}\n📢 *GIRO ESPECIAL PROGRAMADO*`:'💸 perdeu'}\n`
           }
           await reply(out.trim(),{mentions:r.results.map(x=>x.jid)})
-
         } else if(['cara','coroa'].includes(cmd)){
           const choice=cmd
           const targetRaw=mentionsOf(msg)[0]
@@ -12589,14 +11286,12 @@ _Os comandos antigos continuam funcionando normalmente._`
           const r=await coinFlip(player,amount,choice,chat)
           await progressDailyMission(player,'game')
           await reply(`🪙 *CARA OU COROA*\n\nResultado: *${r.result}*\nVocê escolheu: *${r.choice}*\n${r.payout>0?`🎉 Ganhou R$ ${fmt(r.payout)}!`:`💸 Perdeu R$ ${fmt(r.amount)}.`}`)
-
         } else if(['aceitar'].includes(cmd)){
           const player=await resolvePlayerJid(sock,chat,sender,msg)
           const r=await acceptCoinDuel(chat,player)
           await progressDailyMission(player,'game')
           await progressDailyMission(r.challenger,'game')
           await reply(`🪙 *CARA OU COROA — PvP*\n\nResultado: *${r.result.toUpperCase()}*\n💰 Pote: *R$ ${fmt(r.pot)}*\n🏆 Vencedor: @${String(r.winner).split('@')[0]}\n\nO prêmio foi creditado automaticamente.`,{mentions:[r.winner]})
-
         } else if(['ppt'].includes(cmd)){
           const targetRaw=mentionsOf(msg)[0]
           if(targetRaw){
@@ -12612,38 +11307,31 @@ _Os comandos antigos continuam funcionando normalmente._`
           const r=rps(choice), emoji=r.result==='vitoria'?'🏆':r.result==='empate'?'🤝':'💀'
           await progressDailyMission(sender,'game')
           await reply(`✊ *PEDRA, PAPEL E TESOURA*\n\nVocê: *${r.choice}*\nAlpha Bot: *${r.bot}*\n\n${emoji} *${r.result.toUpperCase()}*`)
-
         } else if(cmd==='aceitarppt'){
           const player=await resolvePlayerJid(sock,chat,sender,msg), r=await acceptRpsDuel(chat,player,args[0])
           await reply(r.winner?`✊ *PPT PvP*\n\n🏆 Vencedor: @${String(r.winner).split('@')[0]}\n💰 Pote: R$ ${fmt(r.pot)}`:`🤝 *EMPATE!* As apostas foram devolvidas.`,{mentions:r.winner?[r.winner]:[r.challenger,player]})
-
         } else if(cmd==='torneio'){
           if(!isGroup) return await reply('🏆 Torneios funcionam em grupos.')
           const amount=parseAmount(args[0])||0, host=await resolvePlayerJid(sock,chat,sender,msg)
           const r=await createTournament(chat,host,amount)
           await reply(`🏆 *TORNEIO ABERTO!*\n\n💰 Entrada: R$ ${fmt(r.amount)}\n⏱️ Inscrições por 5 minutos.\n\nUse *${prefix}entrartorneio*.\nO criador inicia com *${prefix}iniciartorneio*.`)
-
         } else if(cmd==='entrartorneio'){
           const player=await resolvePlayerJid(sock,chat,sender,msg),r=await joinTournament(chat,player)
           await reply(`🏆 Você entrou no torneio! Participantes: *${r.players.length}*.`)
-
         } else if(cmd==='iniciartorneio'){
           const player=await resolvePlayerJid(sock,chat,sender,msg),r=await startTournament(chat,player)
           await reply(`🏆 *TORNEIO ENCERRADO!*\n\n👥 Participantes: ${r.players.length}\n🏆 Campeão: @${String(r.winner).split('@')[0]}\n💰 Prêmio: R$ ${fmt(r.pot)}`,{mentions:[r.winner]})
-
         } else if(['forca'].includes(cmd)){
           const r=await startHangman(chat)
           if(r.already) return await reply(`🔤 Já existe uma forca ativa.\nDica: *${r.hint}*\nPalavra: ${r.word.split('').map(ch=>r.letters.includes(ch)?ch:'_').join(' ')}\n❤️ Vidas: ${r.lives}`)
           await progressDailyMission(sender,'game')
           await reply(`🔤 *FORCA INICIADA!*\n\nDica: *${r.hint}*\nPalavra: ${r.word.split('').map(()=> '_').join(' ')}\n❤️ Vidas: 6\n\nUse *${prefix}letra a* ou *${prefix}palavra resposta*`)
-
         } else if(['letra'].includes(cmd)){
           const r=await hangmanLetter(chat,args[0])
           if(r.repeat) return await reply(`🔁 Essa letra já foi usada.\n${r.masked}\n❤️ Vidas: ${r.lives}`)
           if(r.won) return await reply(`🎉 *FORCA VENCIDA!*\nA palavra era *${r.word}*.`)
           if(r.lost) return await reply(`💀 *FORCA ENCERRADA!*\nA palavra era *${r.word}*.`)
           await reply(`🔤 ${r.masked}\n❤️ Vidas: ${r.lives}\n❌ Erros: ${r.wrong.join(', ')||'nenhum'}`)
-
         } else if(['palavra'].includes(cmd)){
           const guess=args.join(' ')
           if(!guess) return await reply(`Uso: *${prefix}palavra resposta*`)
@@ -12651,34 +11339,28 @@ _Os comandos antigos continuam funcionando normalmente._`
           if(r.won) return await reply(`🎉 *ACERTOU!* A palavra era *${r.word}*.`)
           if(r.lost) return await reply(`💀 Acabaram as vidas. A palavra era *${r.word}*.`)
           await reply(`❌ Não é essa.\n${r.masked}\n❤️ Vidas: ${r.lives}`)
-
         } else if(['quiz'].includes(cmd)){
           const q=await quizStartRequested(chat,reply)
           if(!q.already)await progressDailyMission(sender,'game')
-
         } else if(['resposta'].includes(cmd)){
           const n=Number(args[0]||0)
           if(![1,2,3,4].includes(n))return await reply('Responda apenas com *1, 2, 3 ou 4*.')
           await quizAnswerRequested(chat,sender,n,reply,isGroup)
-
         } else if(['numero','adivinhar'].includes(cmd)){
           const r=await startNumberGame(chat)
           if(r.already) return await reply(`🔢 Já existe um número secreto ativo de 1 a 100.\nUse *${prefix}chute 50*.`)
           await progressDailyMission(sender,'game')
           await reply(`🔢 *ADIVINHE O NÚMERO*\n\nEscolhi um número de *1 a 100*.\nVocês têm até *10 tentativas*.\nUse *${prefix}chute 50*.`)
-
         } else if(['chute'].includes(cmd)){
           const guess=parseInt(args[0]||'0',10)
           const r=await guessNumber(chat,sender,guess)
           if(r.won) return await reply(`🎉 *ACERTOU!* O número era *${r.number}*.\nTentativas: ${r.attempts}\n💰 Prêmio: R$ ${fmt(r.reward)}`)
           if(r.lost) return await reply(`💀 Acabaram as tentativas. O número era *${r.number}*.`)
           await reply(`❌ Não foi dessa vez. O número é *${r.hint}* que ${guess}.\nTentativas restantes: ${r.left}`)
-
         } else if(['invocarpet','altarpets','altarpets','lojalendaria'].includes(cmd)){
           const inv=await getInventory(sender)
           const materialQty=id=>Number(inv.find(i=>i.item_id===id)?.quantity||0)
           const choice=Number(args[0]||0)
-
           if(!choice){
             const pages=[]
             let text='🔮 *ALTAR DE PETS LENDÁRIOS*\n\n'
@@ -12699,7 +11381,6 @@ _Os comandos antigos continuam funcionando normalmente._`
             for(const page of pages) await reply(page)
             continue
           }
-
           const altar=LEGENDARY_PET_SUMMONS[choice-1]
           if(!altar) return await reply(`🔮 Escolha um altar de *1 a ${LEGENDARY_PET_SUMMONS.length}*.`)
           const owned=materialQty(altar.materialId)
@@ -12715,44 +11396,34 @@ _Os comandos antigos continuam funcionando normalmente._`
           if(owned<summonCost) return await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
           setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
           return await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
-
         } else if(cmd==='lojaraid'){
           const choice=Number(args[0]||0)
           const qty=Number(args[1]||1)
-
           if(!choice){
             return await reply(
 `🏪 *LOJA DE RAID*
-
 *1️⃣ Caixa de Fragmentos — Raid 1*
 💰 Preço: *R$ 30.000*
 🧩 Contém de *1 a 5 Fragmentos do Núcleo de Pedra*
 🎲 A quantidade é aleatória; as chances exatas ficam ocultas.
 🔮 O Altar da Raid 1 exige *50 fragmentos* para uma invocação.
-
 👉 Comprar 1: *!lojaraid 1*
 👉 Comprar várias: *!lojaraid 1 5*
 ⚠️ Máximo de *10 caixas* por compra.
-
 _A caixa é aberta automaticamente na compra._`
             )
           }
-
           if(choice!==1) return await reply('🏪 Por enquanto a Loja de Raid possui apenas a opção *1 — Caixa de Fragmentos da Raid 1*.')
           if(!Number.isInteger(qty)||qty<1||qty>10) return await reply('📦 Escolha de *1 a 10 caixas*. Ex.: *!lojaraid 1 5*.')
-
           const r=await buyRaidFragmentBoxes(sender,qty)
           await reply(
 `📦 *CAIXA DE FRAGMENTOS — RAID 1*
-
 🛒 Caixas compradas: *${r.qty}*
 💸 Pago: *R$ ${fmt(r.totalPrice)}*
 🧩 Fragmentos obtidos: *+${r.fragments}*
 💠 Total no inventário: *${r.owned}/50*
-
 ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 1*.':'⚔️ Continue na Raid 1 ou compre mais caixas para completar o altar.'}`
           )
-
         } else if(['chaveraid'].includes(cmd)){
           const level=Number(args[0]||0)
           const cfg=getRaidCatalog().find(r=>r.level===level)
@@ -12761,7 +11432,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *nível ${level}* para comprar essa chave.`)
           const r=await buyItem(sender,cfg.keyId,1)
           await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
-
         } else if(['raid','raidstatus'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
           const raidCatalog=getRaidCatalog()
@@ -12776,7 +11446,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           if(args[0]&&!requested) return await reply('⚔️ Raid inválida. Use *1 a 7* ou os níveis *10, 15, 20, 25, 30, 40, 50*.')
           const rooms=await getRaidStatuses(chat)
           const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
-
           if(requestedRoom){
             const players=Object.values(requestedRoom.players||{})
             let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n👥 Jogadores: *${players.length}/5*\n`
@@ -12788,7 +11457,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
             }
             return await reply(text)
           }
-
           if(!requested){
             let text='⚔️ *RAIDS DO ALPHA*\n\n'
             if(rooms.length){
@@ -12813,12 +11481,10 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
             text+='\n🔑 Se faltar chave, o Alpha tenta comprar automaticamente.'
             return await reply(text)
           }
-
           const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
           await progressDailyMission(sender,'game')
           const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
           await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
-
         } else if(['entrar','entrarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
           const catalog=getRaidCatalog()
@@ -12829,7 +11495,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
           const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
           await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n✅ O host já pode usar *!go ${r.level}*. Todas as Raids aceitam início solo.`))
-
         } else if(['cancelarraide','cancelarraid','raidcancelar','raidcancel'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
           const catalog=getRaidCatalog()
@@ -12837,7 +11502,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
           const r=await cancelRaid(chat,sender,level||null)
           await reply(`✅ Raid Lv.${r.level} cancelada. Como a luta não começou, as chaves foram preservadas.`)
-
         } else if(['desistir','sairraid','abandonarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use *!desistir* dentro do grupo da Raid.')
           const catalog=getRaidCatalog()
@@ -12846,7 +11510,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           if(raw&&!level) return await reply('⚠️ Nível de Raid inválido. Exemplo: *!desistir 70*.')
           const r=await withdrawRaid(chat,sender,level)
           await reply(`🏳️ *DESISTÊNCIA DA RAID Lv.${r.level}*\n\n👤 *${r.playerName}* saiu da batalha.\n🧪 Nenhuma nova poção será usada automaticamente por este jogador.\n🔑 ${r.lobby?'A chave não foi consumida.':'A chave já utilizada não será devolvida.'}\n🎁 Sem recompensas por desistência.\n${r.ended?'🛑 Raid encerrada: nenhum participante restante.':`👥 ${r.remaining} participante(s) continuam na Raid.`}`)
-
         } else if(['go','iniciarraide'].includes(cmd)){
           if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
           const catalog=getRaidCatalog()
@@ -12856,7 +11519,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
           await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Jogadores: *${Object.keys(r.players||{}).length}*\n⏱️ Tempo máximo: *${Number(r.durationMinutes||10)} min*\n\n🔑 Chaves consumidas desta sala.\n⚔️ Combate automático iniciado.\n🛡️ Selo e 🗡️ Óleo são consumidos automaticamente se possuídos.\n✨ Ressurreição ativa sem cura normal (1 uso por Raid).\n🐾 Pets e curas automáticas continuam funcionando.\n🏆 Recompensas serão proporcionais à colaboração.`)
           runRaidCombat(chat,Number(r.level),reply)
-
         } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           if(!isGroup) return await reply(`🌘 Use *${prefix}eventoboss* dentro do grupo onde quer controlar o evento.`)
@@ -12876,7 +11538,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           const r=await getBossEventStatus(chat)
           if(!r) return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO: INATIVO*\n\n⏰ Próximo spawn automático: *sexta às 19:00* (horário de São Paulo).\n\nQuando ativado, o mesmo HP/ranking/cooldown vale para todos os grupos.\nO comando *${prefix}eventoboss ativar* continua disponível apenas como acionamento manual de emergência.`)
           return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO: ATIVO*\n\n👹 *${r.name}*\n❤️ HP global: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\n🌐 Mesmo Boss e ranking em todos os grupos.\n🔒 Trocar de grupo não libera ataque extra.\n\nPara encerrar manualmente: *${prefix}eventoboss desativar*.`)
-
         } else if(['boss'].includes(cmd)){
           const r=await startBoss(chat)
           if(r.cooldown) return await reply(`⏳ *BOSS COMUM EM COOLDOWN*\n\nO próximo Golem do Alpha poderá aparecer em aproximadamente *${r.remainingMinutes} min*.\n\n👹 O Superboss semanal continua sendo um evento separado, disponível apenas uma vez por fim de semana.`)
@@ -12899,12 +11560,9 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
             ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou 7 essências se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
             :(r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
           await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
-
         } else if(['pararatacar','pararboss'].includes(cmd)){
           const existing=bossSessions.get(sender)
           if(existing&&existing.chat!==chat) return await reply('⚠️ Você deve controlar o combate pelo grupo em que começou.')
-          // Opt-out explícito também bloqueia a recuperação pontual de sessões
-          // interrompidas pela versão antiga entre os Pecados.
           const currentEvent=(await db.query(
             "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
           )).rows[0]?.state
@@ -12921,13 +11579,11 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           )
           if(existing) existing.active=false
           return await reply(stopped.rowCount?'🛑 Combate automático interrompido. Você pode usar !atacar para retomar neste mesmo grupo.':'ℹ️ Você não possui combate automático ativo neste grupo.')
-
         } else if(['atacar'].includes(cmd)){
           const usePet=!['sempet','sozinho'].includes(normalizeItemText(args[0]||''))
           const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply,usePet)
           if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
           await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n${usePet?'🐾 Pet participando: bônus ativos e *2 de energia por ataque*.':'🛡️ Você foi sem o pet: energia preservada, mas sem os bônus dele.'}\n⏱️ Duração: contínua até o Boss acabar, seu personagem cair ou você usar !pararatacar.\n🥊 Ataque automático: a cada *10 segundos*\n🧪 Se você cair, o bot tentará usar uma poção automaticamente.\n\nUse *!boss* para acompanhar a vida do Boss.`)
-
         } else if(['dungeon','masmorra'].includes(cmd)){
           const r=await dungeon(sender)
           if(!r.ok) return await reply(`⏳ Você poderá entrar novamente na dungeon em ${duration(r.remaining)}.`)
@@ -12941,7 +11597,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           }else{
             await reply(`💀 *DERROTA NA DUNGEON*\n\n👹 ${r.monster} venceu.\n❤️ Você se recuperou para ${r.hp}/${r.maxHp}\n✨ Consolação: +${fmt(r.level?.awardedGain??r.exp)} EXP${Number(r.level?.boostBonus||0)>0?`\n⚡ Bônus pessoal de XP: +${fmt(r.level.boostBonus)} (incluído no total)`:''}`)
           }
-
         } else if(['roubar','roubo','fazol'].includes(cmd)){
           const targetMention=mentionsOf(msg)[0]
           if(!targetMention) return await reply(`Uso no grupo: *${prefix}roubar @pessoa* ou *${prefix}fazoL @pessoa*`)
@@ -12973,7 +11628,6 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
               : `🚓 *ROUBO FRACASSOU!*\n\n🥷 *${robberName}* tentou roubar *${victimName}* e foi pego.\n💸 Multa: *R$ ${fmt(r.fine)}*`
             await reply(failText,{mentions:[targetMention]})
           }
-
         } else if(['snipe','apagada','apagou'].includes(cmd)){
           if(!isGroup) return await reply('Use este comando dentro de um grupo.')
           let deleted=lastDeletedByChat.get(chat)
@@ -12981,12 +11635,10 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
             try{ deleted=await getLastDeletedSnipe(chat) }catch{}
           }
           if(!deleted || Date.now()-deleted.deletedAt>SNIPE_TTL_MS) return await reply('🕵️ Não tenho nenhuma mensagem apagada recente deste grupo.')
-
           const who=deleted.pushName ? '*'+deleted.pushName+'*' : '@'+String(deleted.sender||'').split('@')[0]
           const content=[deleted.mediaLabel,deleted.text].filter(Boolean).join(deleted.mediaLabel&&deleted.text?' — ':'') || 'Mensagem sem texto'
           const caption='🕵️ *ÚLTIMA MENSAGEM APAGADA*\n\n👤 '+who+'\n💬 '+content+'\n\n_A memória do !snipe expira em 30 minutos._'
           const mentions=deleted.pushName?[]:[deleted.sender]
-
           if(deleted.mediaBuffer?.length){
             const media=Buffer.from(deleted.mediaBuffer)
             if(deleted.mediaType==='imageMessage'){
@@ -13005,25 +11657,18 @@ ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 
           }else{
             await reply(caption+(deleted.mediaLabel?'\n\n⚠️ A mídia era grande demais ou não pôde ser armazenada.':''),{mentions})
           }
-
         } else if(['termos'].includes(cmd)){
           const price=await getLaunchPrice()
           await reply(
 `📄 *TERMOS DO ALPHA BOT — RESUMO*
-
 🎉 *Preço de lançamento:* R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} por grupo / 30 dias
 🎁 *Teste:* 3 dias grátis no primeiro uso do grupo
-
 ⚠️ *Aviso importante*
 O Alpha Bot utiliza integração não oficial com o WhatsApp. Por esse motivo, podem ocorrer desconexões, limitações ou bloqueios do número utilizado pelo bot por decisão da própria plataforma.
-
 Ao contratar o acesso, o responsável pelo grupo declara estar ciente desse risco. O Alpha Bot não garante funcionamento ininterrupto nem pode impedir eventuais restrições aplicadas pelo WhatsApp.
-
 O pagamento refere-se ao acesso às funcionalidades do bot durante o período contratado, enquanto o serviço estiver disponível.
-
 🚫 Spam, automações abusivas ou uso que coloque o bot em risco podem resultar na suspensão do grupo.`
           )
-
         } else if(['statusgrupo'].includes(cmd)){
           if(!isGroup) return await reply('Este comando funciona dentro de grupos.')
           const lic=await getGroupLicense(chat)
@@ -13032,7 +11677,6 @@ O pagamento refere-se ao acesso às funcionalidades do bot durante o período co
           else if(lic.plan==='trial') text+='\n🎁 Este grupo está no período de teste grátis.'
           else if(lic.plan!=='permanent') text+=`\n💚 Plano atual: R$ ${Number(await getLaunchPrice()).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias.`
           await reply(text)
-
         } else if(['assinar','plano','preco'].includes(cmd)){
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja assinar.')
           const r=await createSubscriptionOrder(chat,sender)
@@ -13040,22 +11684,16 @@ O pagamento refere-se ao acesso às funcionalidades do bot durante o período co
           const paymentLink=await getPaymentLink()
           await reply(
 `💚 *ALPHA BOT — ASSINATURA*
-
 🎉 Preço de lançamento: *R$ ${price.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}*
 📅 Acesso: *30 dias*
 🧾 Pedido: *${r.order.code}*
-
 💳 *PAGAMENTO PELO MERCADO PAGO*
 ${paymentLink}
-
 Após o pagamento, envie o comprovante ao responsável pelo Alpha Bot junto com o código *${r.order.code}*.
-
 ⏳ O pedido fica válido por 24 horas.
 📄 Antes de pagar, leia *${prefix}termos*.
-
 _${r.reused?'Este grupo já tinha um pedido pendente; reutilizei o mesmo código.':'Pedido criado para este grupo.'}_`
           )
-
         } else if(['pedido'].includes(cmd)){
           const code=String(args[0]||'').toUpperCase()
           if(!code) return await reply(`Uso: *${prefix}pedido ALPHA-XXXXXX*`)
@@ -13065,20 +11703,17 @@ _${r.reused?'Este grupo já tinha um pedido pendente; reutilizei o mesmo código
           const labels={pending:'PENDENTE',approved:'APROVADO',cancelled:'CANCELADO',expired:'EXPIRADO'}
           await reply(
 `🧾 *PEDIDO ${order.code}*
-
 Status: *${labels[order.status]||order.status}*
 Valor: *R$ ${Number(order.amount).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}*
 Criado em: *${fmtDate(order.created_at)}*
 Expira em: *${fmtDate(order.expires_at)}*`
           )
-
         } else if(['setlinkpagamento','setlink'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const value=args.join(' ').trim()
           if(!value) return await reply(`Uso: *${prefix}setlinkpagamento https://...*`)
           const link=await setPaymentLink(value)
           await reply(`👑 Link de pagamento atualizado:\n${link}`)
-
         } else if(['pedidos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const rows=await listPendingSubscriptionOrders(30)
@@ -13089,7 +11724,6 @@ Expira em: *${fmtDate(order.expires_at)}*`
           })
           text+=`\nPara aprovar: *${prefix}aprovarpedido ALPHA-XXXXXX*`
           await reply(text)
-
         } else if(['aprovarpedido'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const code=String(args[0]||'').toUpperCase()
@@ -13097,7 +11731,6 @@ Expira em: *${fmtDate(order.expires_at)}*`
           const r=await approveSubscriptionOrder(code,sender)
           await reply(
 `✅ *PEDIDO APROVADO*
-
 🧾 ${r.code}
 💰 R$ ${Number(r.amount).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 📅 Grupo liberado até: *${fmtDate(r.paid_until)}*`
@@ -13105,31 +11738,26 @@ Expira em: *${fmtDate(order.expires_at)}*`
           try{
             await sock.sendMessage(r.chat_jid,{text:
 `💚 *PAGAMENTO CONFIRMADO!*
-
 🧾 Pedido: *${r.code}*
 ✅ Alpha Bot liberado por mais *30 dias*.
 📅 Validade: *${fmtDate(r.paid_until)}*
-
 Obrigado por apoiar o Alpha Bot 🍀`
             })
           }catch(err){
             console.error('[assinatura] não foi possível avisar o grupo',err?.message||err)
           }
-
         } else if(['cancelarpedido'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const code=String(args[0]||'').toUpperCase()
           if(!code) return await reply(`Uso: *${prefix}cancelarpedido ALPHA-XXXXXX*`)
           const r=await cancelSubscriptionOrder(code)
           await reply(`🚫 Pedido *${r.code}* cancelado.`)
-
         } else if(['setpreco'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const raw=args[0]
           if(!raw) return await reply(`Uso: *${prefix}setpreco 5*`)
           const value=await setLaunchPrice(raw)
           await reply(`👑 Preço de lançamento atualizado para *R$ ${value.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} / 30 dias*.`)
-
         } else if(['ativargrupo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja ativar.')
@@ -13141,13 +11769,11 @@ Obrigado por apoiar o Alpha Bot 🍀`
           const days=parseInt(mode,10)
           const lic=await activateGroupLicense(chat,days,sender,'basic')
           await reply(`👑 Grupo ativado por *${days} dias*.\n📅 Validade: *${fmtDate(lic.paid_until)}*`)
-
         } else if(['bloqueargrupo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           if(!isGroup) return await reply('Use este comando dentro do grupo que deseja bloquear.')
           await blockGroupLicense(chat,sender)
           await reply('🔒 Grupo bloqueado pelo dono.')
-
         } else if(['gruposativos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const rows=await listGroupLicenses(50)
@@ -13168,10 +11794,8 @@ Obrigado por apoiar o Alpha Bot 🍀`
             text+=`${i+1}. ${active?'✅':'❌'} *${r.group_name}*\n   Plano: *${plan}*\n   Validade: *${permanent?'Sem expiração':fmtDate(r.paid_until)}*\n\n`
           })
           await reply(text.trim())
-
         } else if(['reset','resetsaldo','resetxp','resetinventario','resettotal'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
-
           let kind=cmd
           if(cmd==='reset') kind=String(args[0]||'').toLowerCase()
           const aliases={
@@ -13181,7 +11805,6 @@ Obrigado por apoiar o Alpha Bot 🍀`
             total:'resettotal',resettotal:'resettotal'
           }
           kind=aliases[kind]||kind
-
           if(!['resetsaldo','resetxp','resetinventario','resettotal'].includes(kind)){
             return await reply(
 `Uso:
@@ -13191,7 +11814,6 @@ Obrigado por apoiar o Alpha Bot 🍀`
 *${prefix}reset total [@pessoa]*`
             )
           }
-
           if(kind==='resettotal'){
             setQuickFlow(chat,sender,'admin_confirm',{action:'resettotal',target:ownerTarget},5*60*1000)
             return await reply(
@@ -13199,7 +11821,6 @@ Obrigado por apoiar o Alpha Bot 🍀`
               {mentions:ownerTarget===sender?[]:[ownerTarget]}
             )
           }
-
           if(kind==='resetsaldo'){
             const r=await ownerResetBalance(ownerTarget)
             return await reply(`👑 Saldo resetado. Carteira e banco agora estão em *R$ 0*.\nAntes: R$ ${fmt(r.oldCash+r.oldBank)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
@@ -13210,7 +11831,6 @@ Obrigado por apoiar o Alpha Bot 🍀`
           }
           const r=await ownerResetInventory(ownerTarget)
           return await reply(`👑 Inventário resetado. *${fmt(r.removed)} item(ns)* removidos.`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
-
         } else if(['set','setsaldo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           if(cmd==='set' && String(args[0]||'').toLowerCase()!=='saldo'){
@@ -13222,55 +11842,46 @@ Obrigado por apoiar o Alpha Bot 🍀`
           if(!Number.isSafeInteger(amount) || amount<0) return await reply('Valor inválido.')
           const r=await ownerSetBalance(ownerTarget,amount)
           await reply(`👑 Saldo definido: R$ ${fmt(r.oldCash)} → *R$ ${fmt(r.cash)}*\n🏦 Banco mantido: R$ ${fmt(r.bank)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
-
         } else if(['addsaldo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
           if(!amount) return await reply(`Uso: *${prefix}addsaldo 50000* ou *${prefix}addsaldo @pessoa 50000*`)
           const p=await ownerAddBalance(ownerTarget,amount)
           await reply(`👑 Saldo adicionado.\n💰 Novo saldo: R$ ${fmt(p.cash)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
-
         } else if(['remsaldo'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
           if(!amount) return await reply(`Uso: *${prefix}remsaldo 10000* ou *${prefix}remsaldo @pessoa 10000*`)
           const r=await ownerRemoveBalance(ownerTarget,amount)
           await reply(`👑 Saldo removido: R$ ${fmt(r.removed)}\n💰 Saldo atual: R$ ${fmt(r.cash)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
-
         } else if(['addexp'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const amount=parseAmount(args.find(a=>/^\d+$/.test(a)))
           if(!amount) return await reply(`Uso: *${prefix}addexp 500* ou *${prefix}addexp @pessoa 500*`)
           const r=await ownerAddExp(ownerTarget,amount)
           await reply(`👑 EXP adicionada: +${fmt(amount)}\n⭐ Nível: ${r.level}\n✨ EXP atual: ${r.exp}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
-
         } else if(['setnivel'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const level=parseInt(args.find(a=>/^\d+$/.test(a))||'0',10)
           if(!level) return await reply(`Uso: *${prefix}setnivel 10* ou *${prefix}setnivel @pessoa 10*`)
           const r=await ownerSetLevel(ownerTarget,level)
           await reply(`👑 Nível alterado: ${r.oldLevel} → ${r.level}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
-
         } else if(['curar'].includes(cmd)){
           const items=await getInventory(sender)
           const potions=items.filter(i=>i.category==='consumable' && ['pocao_p','pocao_m','pocao_g','elixir_supremo'].includes(i.item_id))
-
           if(!potions.length){
             return await reply(`🧪 Você não possui nenhuma poção no inventário.\nCompre uma em *${prefix}loja* para recuperar HP.`)
           }
-
           const profile=await getCombatProfile(sender)
           if(Number(profile.effective_hp)>=Number(profile.effective_max_hp)){
             return await reply(`❤️ Seu HP já está cheio: *${profile.effective_hp}/${profile.effective_max_hp}*.`)
           }
-
           const requested=args.join(' ').trim()
           let potion=null
           if(requested){
             potion=resolveOwnedItem(potions,requested,['consumable'])
             if(!potion) return await reply(`❌ Não encontrei essa poção no seu inventário.\nUse *${prefix}curar* para escolher uma.`)
           }
-
           if(!potion){
             if(potions.length===1){
               potion=potions[0]
@@ -13282,10 +11893,8 @@ Obrigado por apoiar o Alpha Bot 🍀`
               return await reply(text)
             }
           }
-
           const r=await usePotion(sender,potion.item_id)
           await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 1 poção consumida do inventário.`)
-
         } else if(['daritem'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const itemArg=args.find(a=>SHOP_IDS.includes(a.toLowerCase()))
@@ -13294,7 +11903,6 @@ Obrigado por apoiar o Alpha Bot 🍀`
           if(!itemArg) return await reply(`Uso: *${prefix}daritem espada_ferro 1* ou *${prefix}daritem @pessoa espada_ferro 1*`)
           const r=await ownerGrantItem(ownerTarget,itemArg.toLowerCase(),qty)
           await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
-
         } else if(['evento','evento2x','bonus2x'].includes(cmd)){
           const [event,lucky]=await Promise.all([getDoubleRewardEvent(),getLuckyBoxEvent()])
           if(event.active){
@@ -13322,7 +11930,6 @@ Obrigado por apoiar o Alpha Bot 🍀`
             return await reply(`🍀 *PRÓXIMO EVENTO*\n\n${starts}–${ends} — *Double Lucky x${eventMultLabel(lucky.multiplier)} nas caixas*`)
           }
           return await reply('⏱️ *EVENTOS*\n\nNenhum evento de bônus está ativo agora.')
-
         } else if(['eventodobro','dobroevento','ativar2x'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           const action=String(args[0]||'').toLowerCase()
@@ -13338,14 +11945,11 @@ Obrigado por apoiar o Alpha Bot 🍀`
           const event=await startDoubleRewardEvent(minutes,sender)
           if(neonEcoMode){void updateDoubleRewardAnnouncements();void refreshEcoScheduledEvents()}
           await reply(`🔥🔥 *EVENTO 2X ATIVADO!* 🔥🔥\n\n⏱️ Duração: *${minutes} minutos*\n💰 Recompensas em dinheiro: *2x*\n✨ XP: *2x*\n\n🏃 Aproveitem enquanto está ativo!\nUse *${prefix}evento* para consultar o tempo restante.`)
-
         } else if(['admin','ownermenu','adminmenu','donocomandos'].includes(cmd)){
           if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
           await showAdminMainMenu(chat,sender,reply)
-
         } else if(['comandos','comando','commands','cmds'].includes(cmd)){
           await showCommandsMainMenu(chat,sender,reply)
-
         } else if(['menu','help','ajuda'].includes(cmd)){
           await showMainMenu(chat,sender,reply)
         } else {
@@ -13363,7 +11967,6 @@ Obrigado por apoiar o Alpha Bot 🍀`
     }
   })
 }
-
 start().catch(err=>{
   console.error('[fatal]',err)
   process.exit(1)
