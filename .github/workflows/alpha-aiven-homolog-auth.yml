@@ -1,0 +1,127 @@
+# Temporary isolated test of Web auth. Writes only synthetic, auto-deleted
+# web_link_codes/web_sessions in alpha_homolog, never wallets or production.
+name: "Alpha Bot | Autenticacao Web na homologacao Aiven"
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/alpha-aiven-homolog-auth.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-homolog-only-auth-ci
+  cancel-in-progress: false
+
+jobs:
+  test-auth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: "Codigo isolado, nenhum cliente WhatsApp"
+        uses: actions/checkout@v4
+        with:
+          ref: bd22dda48b148b80910c4055b7de90f5d1311cda
+          persist-credentials: false
+      - name: "Preparar Node 22"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: "Instalar no executor temporario"
+        run: npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: "Validar CA publica"
+        env:
+          AIVEN_CA_PEM: ${{ secrets.ALPHA_AIVEN_CA }}
+        run: |
+          set -Eeuo pipefail
+          test -n "${AIVEN_CA_PEM:-}"
+          umask 077
+          printf '%s\n' "$AIVEN_CA_PEM" > "$RUNNER_TEMP/alpha-aiven-ca.pem"
+          openssl x509 -in "$RUNNER_TEMP/alpha-aiven-ca.pem" -noout >/dev/null
+      - name: "Validar autenticação de teste sem alterar dados do jogo"
+        env:
+          AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/alpha-aiven-ca.pem
+          ALPHA_RUNTIME: web-api-only
+          ALPHA_WEB_DB_POOL_MAX: '3'
+          ALPHA_WEB_BETA_JIDS: '__alpha_web_health__'
+          ALPHA_WEB_ENABLE_AUTH_SELFTEST: '1'
+          WEB_ALLOWED_ORIGINS: 'https://alpha-web-rpg.vercel.app'
+          PORT: '18350'
+          NODE_ENV: test
+        run: |
+          set -Eeuo pipefail
+          case "$AIVEN_URI" in
+            *"@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb"*) ;;
+            *) echo "::error::URI destino invalida. Abortado.";exit 1;;
+          esac
+          export DATABASE_URL="${AIVEN_URI/\/defaultdb/\/alpha_homolog}"
+          node --input-type=module <<'NODE'
+          import pg from 'pg'
+          import fs from 'node:fs'
+          const client=new pg.Client({connectionString:process.env.DATABASE_URL})
+          try{
+            await client.connect()
+            const before=await client.query(`
+              SELECT current_database() AS db,
+                (SELECT count(*)::int FROM pg_tables WHERE schemaname='public') AS tables,
+                (SELECT count(*)::int FROM users) AS users,
+                (SELECT count(*)::int FROM transactions) AS transactions,
+                (SELECT md5(coalesce(string_agg(md5(to_jsonb(t)::text),' ' ORDER BY t.jid),'none')) FROM wallets t) AS wallets_hash,
+                (SELECT md5(coalesce(string_agg(md5(to_jsonb(t)::text),' ' ORDER BY t.id),'none')) FROM inventories t) AS inventories_hash,
+                (SELECT md5(coalesce(string_agg(md5(to_jsonb(t)::text),' ' ORDER BY t.jid),'none')) FROM equipment_star_forges t) AS forges_hash
+            `)
+            const b=before.rows[0]
+            if(b?.db!=='alpha_homolog'||b.tables!==67||b.users!==5||b.transactions<1040)throw Error('Ambiente nao e copia isolada completa')
+            fs.writeFileSync(process.env.RUNNER_TEMP+'/baseline.json',JSON.stringify(b))
+            console.log('Banco correto: alpha_homolog, linhas de producao apenas consultadas.')
+          }finally{await client.end()}
+          NODE
+          node src/neon/render.js > "$RUNNER_TEMP/web-auth-test.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 35); do
+            if curl -fsS --max-time 2 "http://127.0.0.1:$PORT/health" -o "$RUNNER_TEMP/health.json" 2>/dev/null;then break;fi
+            if ! kill -0 "$pid" 2>/dev/null;then echo "::error::API isolada caiu (logs retidos no runner).";exit 1;fi
+            sleep 1
+          done
+          curl -fsS --max-time 25 "http://127.0.0.1:$PORT/api/v1/health/auth" -o "$RUNNER_TEMP/auth.json"
+          unauth="$(curl -s -o "$RUNNER_TEMP/unauth.json" -w '%{http_code}' "http://127.0.0.1:$PORT/api/v1/me/bootstrap")"
+          if [[ "$unauth" != 401 ]]; then echo "::error::API nao bloqueou usuario sem token.";exit 1;fi
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const auth=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/auth.json','utf8'))
+          if(auth.ok!==true||auth.codeExchange!==true||auth.sessionPersisted!==true||auth.groupLinked!==true){
+            throw Error('Autenticacao Web sintetica incompleta')
+          }
+          console.log('Teste de auth: codigo consumido, sessao persistida e vinculo grupo confirmado.')
+          NODE
+          node --input-type=module <<'NODE'
+          import pg from 'pg'
+          import fs from 'node:fs'
+          const old=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/baseline.json','utf8'))
+          const client=new pg.Client({connectionString:process.env.DATABASE_URL})
+          try{
+            await client.connect()
+            const after=(await client.query(`
+              SELECT current_database() AS db,
+                (SELECT count(*)::int FROM users) AS users,
+                (SELECT count(*)::int FROM transactions) AS transactions,
+                (SELECT md5(coalesce(string_agg(md5(to_jsonb(t)::text),' ' ORDER BY t.jid),'none')) FROM wallets t) AS wallets_hash,
+                (SELECT md5(coalesce(string_agg(md5(to_jsonb(t)::text),' ' ORDER BY t.id),'none')) FROM inventories t) AS inventories_hash,
+                (SELECT md5(coalesce(string_agg(md5(to_jsonb(t)::text),' ' ORDER BY t.jid),'none')) FROM equipment_star_forges t) AS forges_hash,
+                (SELECT count(*)::int FROM web_sessions) AS sessions,
+                (SELECT count(*)::int FROM web_link_codes) AS codes
+            `)).rows[0]
+            for(const k of ['db','users','transactions','wallets_hash','inventories_hash','forges_hash']){
+              if(String(after[k])!==String(old[k]))throw Error('Divergencia em registros protegidos: '+k)
+            }
+            if(after.sessions!==0||after.codes!==0)throw Error('Sessao de teste nao foi limpa.')
+            console.log('Integridade: carteiras, inventarios, forjas, usuarios e transacoes INALTERADOS; sessoes sinteticas limpas.')
+          }finally{await client.end()}
+          NODE
+          echo 'TESTE WEB AUTENTICACAO APROVADO; Neon/WhatsApp/Render nao foram acessados.'
