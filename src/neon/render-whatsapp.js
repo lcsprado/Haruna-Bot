@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import {qrPageHtml} from './qr-page.js'
 import {bandwidthSnapshot,trackBandwidthStream,startBandwidthReporting,auditDatabaseBandwidth} from './bandwidth.js'
 import { healthPageHtml } from './health-page.js'
+import {isAlphaWebPath,serveAlphaWeb} from './web-canary-static.js'
 
 // A dependência Signal pode imprimir sessões criptográficas completas em texto.
 // Silencia exclusivamente esse diagnóstico verboso, protegendo as chaves e a CPU;
@@ -17,12 +18,38 @@ console.log=(...args)=>{
 
 // Entrada dedicada ao WhatsApp. Não injeta módulos de Cidade/NPC/Karma.
 const port=Number(process.env.PORT||10000)
+const webCanaryEnabled=process.env.ALPHA_WEB_ENABLED==='1'
+let alphaWebHandlerPromise=null
 const health=globalThis.__trevoHealth||(globalThis.__trevoHealth={whatsapp:'starting',lastChange:Date.now(),lastOpen:0,everConnected:false})
 
 startBandwidthReporting()
 http.createServer((req,res)=>{
   trackBandwidthStream('http',req.socket)
   const url=new URL(req.url||'/', 'http://localhost')
+
+  if(webCanaryEnabled && isAlphaWebPath(url.pathname)){
+    void serveAlphaWeb(req,res,url.pathname).catch(err=>{
+      console.error('[Alpha Web] static handler failed',err?.message)
+      if(!res.headersSent)res.writeHead(500)
+      if(!res.writableEnded)res.end('Web indisponível')
+    })
+    return
+  }
+  if(url.pathname.startsWith('/api/v1/')){
+    if(!webCanaryEnabled){res.writeHead(404);res.end('Not found');return}
+    void (async()=>{
+      try{
+        alphaWebHandlerPromise ||= import('./web-api.js')
+        const api=await alphaWebHandlerPromise
+        await api.handleWebApi(req,res)
+      }catch(err){
+        console.error('[Alpha Web] API handler failed',err?.message)
+        if(!res.headersSent)res.writeHead(500,{'content-type':'application/json'})
+        if(!res.writableEnded)res.end(JSON.stringify({ok:false,error:'Erro interno.'}))
+      }
+    })()
+    return
+  }
 
   if(url.pathname==='/parear' && req.method==='GET'){
     if(!process.env.ALPHA_QR_SECRET){res.writeHead(404);return res.end('Not found')}
