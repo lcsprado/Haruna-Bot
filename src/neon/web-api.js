@@ -405,12 +405,12 @@ async function groupSnapshot(chatJid){
         'SELECT jid,item_id,level FROM equipment_upgrades WHERE jid=ANY($1::text[])',
         [rosterJids]
       ),
-      db.query('SELECT jid,item_id,stars FROM equipment_star_forges WHERE jid=ANY($1::text[])',[rosterJids])
+      db.query('SELECT jid,item_id,stars,level FROM equipment_star_forges WHERE jid=ANY($1::text[])',[rosterJids])
     ])
     const levelFor=(jid,itemId)=>Number(
       upgradeRows.rows.find(r=>r.jid===jid&&r.item_id===itemId)?.level||1
     )
-    const starFor=(jid,itemId)=>Number(forgeRows.rows.find(r=>r.jid===jid&&r.item_id===itemId)?.stars||1)
+    const starFor=(jid,itemId)=>{const r=forgeRows.rows.find(r=>r.jid===jid&&r.item_id===itemId);return r&&Number(r.level)===levelFor(jid,itemId)?Number(r.stars):1}
     const details=detailRows.rows.map(row=>{
       const zero={atk:0,def:0,hp:0,spd:0,crit:0}
       const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,levelFor(row.jid,row.weapon_id),starFor(row.jid,row.weapon_id)):zero
