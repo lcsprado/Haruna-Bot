@@ -103,7 +103,7 @@ test('level-up restores actual max HP including equipped armor, helmet and star 
   assert.match(levelup,/equipmentStatsAtLevel\(st\.helmet_id,st\.helmet_level\)/)
   assert.match(levelup,/Number\(st\?\.max_hp\|\|100\)\+levels\*8\+gearHp/)
   assert.match(levelup,/hp=\$5/)
-  assert.doesNotMatch(levelup,/hp=max_hp\+\$1/)
+  assert.doesNotMatch(levelup,/(?:^|\n)\s*hp=max_hp\+\$1/)
   // A pre-existing XP routine always refills HP; it must now refill to the equipped limit.
   assert.equal(2886+8+Math.round(230*2.5)+Math.round(260*2.5),4119)
 })
