@@ -2798,6 +2798,7 @@ export async function battle(attackerJid, defenderJid) {
       crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
       spd:Number(a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
       enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
+      petSpeed:apSpd,teamSpeed:aSynergySpd,
       petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
     }
     const B={
@@ -2809,16 +2810,30 @@ export async function battle(attackerJid, defenderJid) {
       crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
       spd:Number(b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
       enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
+      petSpeed:bpSpd,teamSpeed:bSynergySpd,
       petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
     }
 
     // Foto fiel do HP e dos bônus antes de qualquer golpe (independe do resumo exibido).
-    const snapshot=fighter=>({
-      jid:fighter.jid,name:fighter.name,hp:fighter.hp,maxHp:fighter.maxHp,
-      atk:fighter.atk,def:fighter.def,spd:fighter.spd,
-      crit:Math.min(.40,Number(fighter.crit||0)+Number(fighter.petBonus?.crit||0)+Number(fighter.collabCrit||0)),
-      petName:fighter.petName||null,petSpecies:fighter.petSpecies||null
-    })
+    const snapshot=fighter=>{
+      const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
+      const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
+      return {
+        jid:fighter.jid,name:fighter.name,hp:fighter.hp,maxHp:fighter.maxHp,
+        atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
+        petName:fighter.petName||null,petSpecies:fighter.petSpecies||null,
+        petPvpBonus:fighter.petBonus?{
+          damage:Number(fighter.petBonus.damage||0),
+          defense:Number(fighter.petBonus.defense||0),
+          crit:Math.max(0,critWithPet-critNoPet),
+          dodge:Number(fighter.petBonus.dodge||0),
+          healPct:Number(fighter.petBonus.healPct||0),
+          healCooldown:Number(fighter.petBonus.healCooldown||0),
+          speed:Number(fighter.petSpeed||0)
+        }:null,
+        teamSpeed:Number(fighter.teamSpeed||0)
+      }
+    }
     const opening={attacker:snapshot(A),defender:snapshot(B)}
     const log=[]
     let first=A.spd>=B.spd?A:B
@@ -2827,20 +2842,44 @@ export async function battle(attackerJid, defenderJid) {
     const hit=(from,to)=>{
       from.attackIndex++
       const variance=0.85+Math.random()*0.30
-      const crit=Math.random()<Math.min(.40,Number(from.crit||.10)+Number(from.petBonus?.crit||0)+Number(from.collabCrit||0))
+      const critRoll=Math.random()
+      const critWithoutPet=Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0))
+      const crit=critRoll<Math.min(.40,critWithoutPet+Number(from.petBonus?.crit||0))
+      const petCrit=crit&&critRoll>=critWithoutPet
       const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
       const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
-      const adjusted=Math.max(1,Math.round(raw*(1+Number(from.petBonus?.damage||0)+Number(from.enchantDamage||0)+Number(from.collabDamage||0))))
-      const attack=classAttack({classId:from.classId,applied:from.classApplied,damage:crit?Math.round(adjusted*1.6):adjusted,critical:crit,hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,lastProcAttack:from.lastProcAttack})
+      const damageWithoutPet=1+Number(from.enchantDamage||0)+Number(from.collabDamage||0)
+      const adjusted=Math.max(1,Math.round(raw*(damageWithoutPet+Number(from.petBonus?.damage||0))))
+      const adjustedNoPet=Math.max(1,Math.round(raw*damageWithoutPet))
+      // Mesmos sorteios e estado da classe nos dois cenários:
+      // comparar com e sem bônus de dano do pet sem alterar o resultado do combate.
+      const classRoll=Math.random()
+      const oldLastProcAttack=from.lastProcAttack
+      const attackArgs={classId:from.classId,applied:from.classApplied,critical:crit,
+        hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
+        lastProcAttack:oldLastProcAttack,roll:classRoll}
+      const attack=classAttack({...attackArgs,damage:crit?Math.round(adjusted*1.6):adjusted})
+      const noPetAttack=Number(from.petBonus?.damage||0)>0
+        ?classAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet})
+        :attack
       from.lastProcAttack=attack.lastProcAttack
-      const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage}).damage
-      const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-Number(to.petBonus?.defense||0))))
+      const defenseRoll=Math.random()
+      const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage,roll:defenseRoll}).damage
+      const withoutPetClassDamage=noPetAttack===attack?classDamage:
+        classDefense({classId:to.classId,applied:to.classApplied,damage:noPetAttack.damage,roll:defenseRoll}).damage
+      const petDefense=Number(to.petBonus?.defense||0)
+      const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-petDefense)))
+      const noPetDmg=dodged?0:Math.max(1,Math.round(withoutPetClassDamage*(1-petDefense)))
       const targetHpBefore=to.hp
+      const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
+      const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
       to.hp=Math.max(0,to.hp-dmg)
       const classHealBefore=from.hp
       if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
       const classHealed=Math.max(0,from.hp-classHealBefore)
-      log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,actualDamage:targetHpBefore-to.hp,crit:!dodged&&crit,dodged,hp:to.hp})
+      log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
+        actualDamage:targetHpBefore-to.hp,crit:!dodged&&crit,dodged,hp:to.hp,
+        petExtraDamage,petDamageBlocked,petCrit:!dodged&&petCrit,petDodge:dodged})
       if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
       // Cura do pet principal: após seu próprio ataque, até 3 vezes por duelo.
       const cooldown=Number(from.petBonus?.healCooldown||0)
