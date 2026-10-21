@@ -1,0 +1,149 @@
+# FINAL CUTOVER COPY. This never changes Render. No automatic data import.
+# A push to this file runs ONLY a read-only readiness check.
+# The copy requires manual dispatch, exact confirmation, and NO live runtime lock.
+name: "Alpha Bot | Corte final Aiven (protegido)"
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/alpha-aiven-final-cutover.yml
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: "Depois de suspender o WhatsApp no Render, digite: WHATSAPP_SUSPENSO_E_VERIFICADO"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-aiven-final-cutover-no-repeats
+  cancel-in-progress: false
+
+jobs:
+  cutover:
+    name: "Verificar pausa e preparar snapshot final"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    container:
+      image: postgres:18
+    env:
+      NEON_URI: ${{ secrets.ALPHA_NEON_URI }}
+      AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+      PGSSLMODE: require
+      PGCONNECT_TIMEOUT: "20"
+      EVENT_TYPE: ${{ github.event_name }}
+      CUTOVER_CONFIRM: ${{ inputs.confirmacao }}
+    steps:
+      - name: "Checagem de seguranca do WhatsApp e destinos"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          if [[ -z "${NEON_URI:-}" || -z "${AIVEN_URI:-}" ]]; then
+            echo "::error::Credenciais ausentes; abortado.";exit 1
+          fi
+          case "$NEON_URI" in
+            *"@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb"*|*"@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432/neondb"*) ;;
+            *) echo "::error::Fonte diferente do Neon de producao; abortado.";exit 1;;
+          esac
+          case "$AIVEN_URI" in
+            *"@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb"*) ;;
+            *) echo "::error::Destino diferente do Aiven original; abortado.";exit 1;;
+          esac
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c 'SELECT current_database()')" != "neondb" ]];then
+            echo "::error::Fonte nao e neondb";exit 1
+          fi
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'SELECT current_database()')" != "defaultdb" ]];then
+            echo "::error::Destino nao e defaultdb";exit 1
+          fi
+          lock_count="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name='trevo-runtime-lock'")"
+          echo "Sessoes runtime-lock no Neon: $lock_count"
+          if [[ "$EVENT_TYPE" == "push" ]];then
+            echo 'MODO PREPARACAO: somente consulta, sem criar qualquer banco ou copiar dados.'
+            if [[ "$lock_count" != "0" ]];then
+              echo 'Bloqueio confirmado: WhatsApp ainda esta ativo; corte final seria recusado.'
+            else
+              echo 'Nenhum runtime-lock encontrado neste instante. Isto NAO comprova suspensao do Render.'
+            fi
+            exit 0
+          fi
+          if [[ "$CUTOVER_CONFIRM" != "WHATSAPP_SUSPENSO_E_VERIFICADO" ]];then
+            echo "::error::Confirmacao explicita da suspensao ausente; abortado."
+            exit 1
+          fi
+          if [[ "$lock_count" != "0" ]];then
+            echo "::error::WhatsApp ainda mantem conexao runtime-lock. Pausar Render antes de criar corte."
+            exit 1
+          fi
+          existing="$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_prod'")"
+          if [[ "$existing" != "0" ]];then
+            echo "::error::alpha_prod ja existe: nenhum banco sera sobrescrito."
+            exit 1
+          fi
+          src_tables="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+          if (( src_tables < 67 ));then
+            echo "::error::Menos de 67 tabelas no Neon; abortado."
+            exit 1
+          fi
+          echo "Corte liberado para dump: Neon parado (runtime-lock ausente), fonte com $src_tables tabelas."
+      - name: "Dump consistente e criacao de banco NOVO no Aiven"
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          mkdir -p /tmp/alpha-final
+          trap 'rm -rf /tmp/alpha-final' EXIT
+          # Fonte SOMENTE LEITURA. Nao altera um byte do Neon.
+          before_lock="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name='trevo-runtime-lock'")"
+          if [[ "$before_lock" != "0" ]];then
+            echo "::error::WhatsApp conectado novamente; abortado.";exit 1
+          fi
+          pg_dump --dbname="$NEON_URI" --format=custom --schema=public \
+            --no-owner --no-acl --no-comments --file=/tmp/alpha-final/snapshot.dump
+          test -s /tmp/alpha-final/snapshot.dump
+          after_lock="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name='trevo-runtime-lock'")"
+          if [[ "$after_lock" != "0" ]];then
+            echo "::error::WhatsApp reiniciou durante dump; abandonando corte.";exit 1
+          fi
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_prod'")" != "0" ]];then
+            echo "::error::alpha_prod foi criado por outro processo.";exit 1
+          fi
+          psql -X -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'CREATE DATABASE alpha_prod' >/dev/null
+          prod="${AIVEN_URI/\/defaultdb/\/alpha_prod}"
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$prod" -c 'SELECT current_database()')" != "alpha_prod" ]];then
+            echo "::error::Destino alpha_prod incorreto.";exit 1
+          fi
+          pg_restore --list /tmp/alpha-final/snapshot.dump > /tmp/alpha-final/toc
+          awk '!/ SCHEMA - public( |$)/ && !/ COMMENT - SCHEMA public( |$)/' /tmp/alpha-final/toc > /tmp/alpha-final/list
+          pg_restore --dbname="$prod" --use-list=/tmp/alpha-final/list \
+            --single-transaction --exit-on-error --no-owner --no-acl --no-comments /tmp/alpha-final/snapshot.dump
+          # Compara TODAS as tabelas public, incluindo hashes dos registros, nao so counts.
+          sql="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "
+            SELECT string_agg(
+              format('SELECT %L AS tab, COUNT(*)::bigint AS qtd,md5(COALESCE(string_agg(md5(to_jsonb(t)::text),%L ORDER BY md5(to_jsonb(t)::text)),%L)) AS digest FROM %I.%I t',
+                     tablename,'','',schemaname,tablename),
+              ' UNION ALL ' ORDER BY tablename
+            )||' ORDER BY tab' FROM pg_tables WHERE schemaname='public'")"
+          if [[ -z "$sql" ]];then echo "::error::SQL de auditoria vazio.";exit 1;fi
+          psql -X -A -t -F '|' -v ON_ERROR_STOP=1 "$NEON_URI" -c "$sql" > /tmp/alpha-final/source.txt
+          psql -X -A -t -F '|' -v ON_ERROR_STOP=1 "$prod" -c "$sql" > /tmp/alpha-final/target.txt
+          if ! cmp -s /tmp/alpha-final/source.txt /tmp/alpha-final/target.txt;then
+            echo "::error::Divergencia de linhas/valores entre Neon e alpha_prod. Nao alterar Render."
+            exit 1
+          fi
+          psql -X -A -t -F '|' -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT sequencename,COALESCE(last_value::text,'NULL') FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename" > /tmp/alpha-final/seq-source
+          psql -X -A -t -F '|' -v ON_ERROR_STOP=1 "$prod" -c "SELECT sequencename,COALESCE(last_value::text,'NULL') FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename" > /tmp/alpha-final/seq-target
+          if ! cmp -s /tmp/alpha-final/seq-source /tmp/alpha-final/seq-target;then
+            echo "::error::Divergencia de sequencias. Nao alterar Render."
+            exit 1
+          fi
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name='trevo-runtime-lock'")" != "0" ]];then
+            echo "::error::WhatsApp ativo novamente. NAO ALTERAR RENDER.";exit 1
+          fi
+          echo "CANDIDATO FINAL VALIDADO: todas as tabelas, dados e sequencias coincidem."
+          echo "NENHUM DEPLOY: WhatsApp deve permanecer suspenso ate atualizar DATABASE_URL e CA manualmente."
+          echo "IMPORTANTE: qualquer nova escrita no Neon invalida este ponto de corte."
