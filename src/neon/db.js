@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {syncEffectiveGear} from './equipment-star-logic.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
@@ -2142,6 +2143,7 @@ SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,
 (eq.weapon_id=inv.item_id OR eq.armor_id=inv.item_id) AS equipped,
 COALESCE(up.level,1)::int AS level,
 COALESCE(lv10.quantity,0)::int AS level10_copies,
+COALESCE(st.level,0)::int AS forged_level,
 COALESCE(st.stars,1)::int AS stars,
 COALESCE(mat.quantity,0)::int AS materials,
 COALESCE(bound.qty,0)::int AS bound_quantity
@@ -2186,9 +2188,10 @@ const origin=RAID_GEAR_FORGE_ORIGINS[r.item_id]
 const stars=Number(r.stars||1),needed=FORGE_STAR_MATERIALS[stars]||0
 const copies=Number(r.quantity||0)
 const free=Math.max(0,copies-Number(r.bound_quantity||0)-(r.equipped?1:0))
-return {...r,origin,stars,needed,free,canForge:stars<5&&Number(r.level10_copies)>=2&&copies>=2&&free>=1&&Number(r.materials)>=needed,
-current:equipmentStatsAtLevel(r.item_id,Number(r.level||1),stars),
-next:stars<5?equipmentStatsAtLevel(r.item_id,10,stars+1):null}
+const ready=stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1
+return {...r,origin,stars,needed,free,requiredCopies:stars===1?2:1,ready,canForge:stars<5&&ready&&copies>=2&&free>=1&&Number(r.materials)>=needed,
+current:equipmentStatsAtLevel(r.item_id,stars>1?Number(r.forged_level):10,stars),
+next:stars<5?equipmentStatsAtLevel(r.item_id,1,stars+1):null}
 })
 }
 export async function forgeEquipmentStar(jid,itemId,expectedStars=null){
