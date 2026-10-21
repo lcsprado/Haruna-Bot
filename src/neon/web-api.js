@@ -44,6 +44,9 @@ import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 const CODE_TTL_MS = 30 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const WEB_SESSION_TOUCH_INTERVAL_MS = 15 * 60 * 1000
+const webEnabled = () => process.env.ALPHA_WEB_ENABLED === '1'
+const webCanaryAllowed = jid => webEnabled() && String(process.env.ALPHA_WEB_CANARY_JIDS || '').split(',').map(v => v.trim()).filter(Boolean).includes(String(jid))
 let webTablesReady = false
 let webTablesPromise = null
 
@@ -127,6 +130,7 @@ function makeLinkCode(){
 
 export async function createWebLinkCode(jid,chatJid=null){
   if(!jid) throw new Error('Jogador inválido.')
+  if(!webCanaryAllowed(jid)) throw new Error('Alpha RPG Web em implantação gradual; acesso ainda não liberado para este jogador.')
   await ensureUser(jid)
   await ensureWebTables()
   const group=cleanChatJid(chatJid)
@@ -252,14 +256,20 @@ async function authSession(req){
   if(!match) return null
   const tokenHash=sha256(match[1])
   const row=(await db.query(
-    'SELECT jid,chat_jid,expires_at FROM web_sessions WHERE token_hash=$1',
+    'SELECT jid,chat_jid,expires_at,last_seen_at FROM web_sessions WHERE token_hash=$1',
     [tokenHash]
   )).rows[0]
   if(!row || Number(row.expires_at)<now()){
     if(row) await db.query('DELETE FROM web_sessions WHERE token_hash=$1',[tokenHash]).catch(()=>{})
     return null
   }
-  await db.query('UPDATE web_sessions SET last_seen_at=$1 WHERE token_hash=$2',[now(),tokenHash]).catch(()=>{})
+  if(!webCanaryAllowed(row.jid)) return null
+  // Leitura autenticada continua validando o token, sem gravar em todas as requisições.
+  const touchedAt=now()
+  if(touchedAt-Number(row.last_seen_at||0)>=WEB_SESSION_TOUCH_INTERVAL_MS){
+    await db.query('UPDATE web_sessions SET last_seen_at=$1 WHERE token_hash=$2 AND last_seen_at<$3',
+      [touchedAt,tokenHash,touchedAt-WEB_SESSION_TOUCH_INTERVAL_MS]).catch(err=>console.warn('[Web Auth] touch não realizado',err?.message||err))
+  }
   return {tokenHash,jid:row.jid,chatJid:row.chat_jid||null,expiresAt:Number(row.expires_at)}
 }
 
@@ -1265,6 +1275,10 @@ async function runAction(session,name,body={}){
 export async function handleWebApi(req,res){
   const url=new URL(req.url||'/', 'http://localhost')
   if(!url.pathname.startsWith('/api/v1/')) return false
+  if(!webEnabled()){
+    json(res,503,{ok:false,error:'Alpha RPG Web desativado para implantação gradual.'})
+    return true
+  }
 
   if(!setCors(req,res)){
     json(res,403,{ok:false,error:'Origem não autorizada.'})
@@ -1344,6 +1358,16 @@ export async function handleWebApi(req,res){
         'content-length':String(avatar.buffer.length)
       })
       res.end(avatar.buffer)
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/live'){
+      // Endpoint mínimo: consulta só o estado dos dois Bosses do grupo, sem inventário,
+      // pets, negócios, rankings ou atualizações de recompensa.
+      if(!session.chatJid){json(res,200,{ok:true,data:{boss:null,bossEvent:null}});return true}
+      const {rows}=await db.query("SELECT game_type,state FROM trevo_games WHERE chat_jid=$1 AND game_type IN ('boss','boss_event')",[session.chatJid])
+      const states=Object.fromEntries(rows.map(r=>[r.game_type,sanitizeGameState(r.game_type,r.state)||null]))
+      json(res,200,{ok:true,data:sanitizePrivateRefs({boss:states.boss||null,bossEvent:states.boss_event||null},session)})
       return true
     }
 
