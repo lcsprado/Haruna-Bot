@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [neon-migration]
   push:
-    branches: [neon-migration, 'web-integration-*']
+    branches: [neon-migration, 'web-integration-*', 'alpha-web-eco-*']
 
 jobs:
   syntax:
@@ -21,6 +21,9 @@ jobs:
           node --check src/neon/game-catalog.js
           node --check src/neon/web-api.js
           node --check src/neon/render.js
+          node --check src/neon/render-whatsapp.js
+          node --check src/neon/web-canary-static.js
+          node --check src/neon/runtime-redis-lease.js
           node --check src/neon/db.js
           node --check src/neon/games.js
           node --check src/neon/index.js
