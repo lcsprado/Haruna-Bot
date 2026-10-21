@@ -1,0 +1,110 @@
+# Alpha Bot: a fresh TEST copy into a NEW Aiven database, no production switch.
+# Runs only when added/edited on master, or manually. Does not change Render.
+name: "Alpha Bot | Snapshot Neon para Aiven homologacao"
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/alpha-aiven-stage-snapshot.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-aiven-safe-stage-import
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: postgres:18
+    env:
+      NEON_URI: ${{ secrets.ALPHA_NEON_URI }}
+      AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+      PGCONNECT_TIMEOUT: "20"
+      PGSSLMODE: require
+    steps:
+      - name: "Validar bancos e capacidade, sem escritas"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          if [[ -z "${NEON_URI:-}" || -z "${AIVEN_URI:-}" ]]; then
+            echo "::error::Secrets ALPHA_NEON_URI e ALPHA_AIVEN_URI ausentes."
+            exit 1
+          fi
+          case "$NEON_URI" in
+            *"@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb"*|*"@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432/neondb"*) ;;
+            *) echo "::error::Origem precisa ser Neon DIRECT neondb.";exit 1;;
+          esac
+          case "$AIVEN_URI" in
+            *"@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb") ;;
+            *) echo "::error::Destino precisa ser Aiven alphabot/defaultdb.";exit 1;;
+          esac
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c 'SELECT current_database()')" != "neondb" ]]; then
+            echo "::error::Origem diferente de neondb."; exit 1
+          fi
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'SELECT current_database()')" != "defaultdb" ]]; then
+            echo "::error::Destino nao e Aiven defaultdb."; exit 1
+          fi
+          src_tables="$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+          if [[ "$src_tables" != "67" ]]; then echo "::error::Origem nao contem 67 tabelas.";exit 1;fi
+          previous="$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+          if [[ "$previous" != "67" ]]; then echo "::error::Snapshot anterior do Aiven nao tem 67 tabelas.";exit 1;fi
+          newdb="$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_homolog'")"
+          if [[ "$newdb" != "0" ]]; then
+            echo "::error::Banco de homologacao ja existe: abortado sem sobrescrever."
+            exit 1
+          fi
+          echo 'Origem verificada, copia anterior intacta, novo banco alpha_homolog nao existe.'
+
+      - name: "Extrair snapshot consistente do Neon, apenas leitura"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          mkdir -p /tmp/alpha-stage
+          pg_dump --dbname="$NEON_URI" --schema=public --format=custom \
+            --no-owner --no-acl --no-comments --file=/tmp/alpha-stage/alpha.dump
+          test -s /tmp/alpha-stage/alpha.dump
+          pg_restore --list /tmp/alpha-stage/alpha.dump > /tmp/alpha-stage/toc
+          if grep -E ' EXTENSION - (neon|neon_monitor|neon_rmgr|neon_utils)( |$)' /tmp/alpha-stage/toc >/dev/null; then
+            echo "::error::Extensao exclusiva Neon no dump; sem importacao."
+            exit 1
+          fi
+
+      - name: "Criar banco de homologacao e restaurar transacionalmente"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          trap 'rm -rf /tmp/alpha-stage' EXIT
+          dump=/tmp/alpha-stage/alpha.dump
+          # A unica criacao e um NOVO banco no Aiven; defaultdb nunca e modificado.
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$AIVEN_URI" -c "SELECT count(*) FROM pg_database WHERE datname='alpha_homolog'")" != "0" ]];then
+            echo "::error::Outro processo criou alpha_homolog; abortado.";exit 1
+          fi
+          psql -X -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'CREATE DATABASE alpha_homolog' >/dev/null
+          stage="${AIVEN_URI%/defaultdb}/alpha_homolog"
+          if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$stage" -c 'SELECT current_database()')" != "alpha_homolog" ]];then
+            echo "::error::Nao foi possivel acessar banco de homologacao.";exit 1
+          fi
+          awk '!/ SCHEMA - public( |$)/ && !/ COMMENT - SCHEMA public( |$)/' /tmp/alpha-stage/toc > /tmp/alpha-stage/restore.list
+          pg_restore --dbname="$stage" --use-list=/tmp/alpha-stage/restore.list \
+            --single-transaction --exit-on-error --no-owner --no-acl --no-comments "$dump"
+          psql -X -v ON_ERROR_STOP=1 "$stage" -c 'ANALYZE' >/dev/null
+          psql -X -v ON_ERROR_STOP=1 "$stage" -c "
+            SELECT 'tabelas' AS item,(SELECT count(*) FROM pg_tables WHERE schemaname='public') AS qtd
+            UNION ALL SELECT 'jogadores',count(*) FROM users
+            UNION ALL SELECT 'carteiras',count(*) FROM wallets
+            UNION ALL SELECT 'inventarios',count(*) FROM inventories
+            UNION ALL SELECT 'pets',count(*) FROM pet_collection
+            UNION ALL SELECT 'transacoes',count(*) FROM transactions
+            UNION ALL SELECT 'forjas',count(*) FROM equipment_star_forges
+            ORDER BY item;"
+          echo 'SNAPSHOT DE HOMOLOGACAO CONCLUIDO. whatsapp-only/Render continuam ligados ao Neon.'
+          echo 'IMPORTANTE: snapshot ainda nao e sincronizacao continua nem ponto de corte.'
