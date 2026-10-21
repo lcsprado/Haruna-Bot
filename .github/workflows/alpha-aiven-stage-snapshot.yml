@@ -42,7 +42,7 @@ jobs:
             *) echo "::error::Origem precisa ser Neon DIRECT neondb.";exit 1;;
           esac
           case "$AIVEN_URI" in
-            *"@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb") ;;
+            *"@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb"*) ;;
             *) echo "::error::Destino precisa ser Aiven alphabot/defaultdb.";exit 1;;
           esac
           if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$NEON_URI" -c 'SELECT current_database()')" != "neondb" ]]; then
@@ -89,7 +89,7 @@ jobs:
             echo "::error::Outro processo criou alpha_homolog; abortado.";exit 1
           fi
           psql -X -v ON_ERROR_STOP=1 "$AIVEN_URI" -c 'CREATE DATABASE alpha_homolog' >/dev/null
-          stage="${AIVEN_URI%/defaultdb}/alpha_homolog"
+          stage="${AIVEN_URI/\/defaultdb/\/alpha_homolog}"
           if [[ "$(psql -X -A -t -v ON_ERROR_STOP=1 "$stage" -c 'SELECT current_database()')" != "alpha_homolog" ]];then
             echo "::error::Nao foi possivel acessar banco de homologacao.";exit 1
           fi
