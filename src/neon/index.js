@@ -11511,7 +11511,7 @@ ${results.join('\n')}
             : '⏳ Seus negócios ainda não geraram pelo menos R$ 1 de lucro.')
           let text='💰 *LUCROS COLETADOS!*\n\n'
           r.details.forEach(x=>text+=`🏪 ${x.name}: *R$ ${fmt(Number(x.earned)*(Number(r.eventMultiplier||1)>1?Number(r.eventMultiplier):1))}*${Number(r.eventMultiplier||1)>1?` _(base R$ ${fmt(x.earned)} ×${eventMultLabel(r.eventMultiplier)})_`:''}\n`)
-          text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*${r.recoveryRetained?`\n⚖️ Recuperação após auditoria: *-R$ ${fmt(r.recoveryRetained)}*\n📋 Ajuste restante: *R$ ${fmt(r.recoveryRemaining)}*`:''}`
+          text+=`${Number(r.eventMultiplier||1)>1?`\n🔥 *EVENTO x${eventMultLabel(r.eventMultiplier)} APLICADO*`:''}\n💵 Bruto: *R$ ${fmt(r.gross)}*\n🧾 *TAXADE te pegou* (${r.taxRate}%): *-R$ ${fmt(r.tax)}*\n💰 Líquido recebido: *R$ ${fmt(r.total)}*${r.recoveryRetained?`\n⚖️ Recuperação após auditoria: *-R$ ${fmt(r.recoveryRetained)}*\n📋 Ajuste restante: *R$ ${fmt(r.recoveryRemaining)}*`:''}${r.recoveryCashSettled?`\n✅ Ajuste antigo quitado pelo saldo que já estava na carteira: *-R$ ${fmt(r.recoveryCashSettled)}* (separado do lucro da coleta).\n💵 As próximas coletas serão creditadas normalmente.`:''}`
           await reply(text)
 
         } else if(['motos','motocicletas'].includes(cmd)){
