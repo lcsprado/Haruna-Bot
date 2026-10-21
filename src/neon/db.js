@@ -2244,7 +2244,7 @@ export async function listUpgradeableEquipment(jid){
 await ensureUser(jid)
 const {rows}=await db.query(`
 SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,i.price,
-COALESCE(u.level,1)::int AS level, COALESCE(sf.stars,1)::int AS stars
+COALESCE(u.level,1)::int AS level, COALESCE(sf.stars,1)::int AS stars, COALESCE(sf.level,0)::int AS forged_level
 FROM inventories inv
 JOIN items i ON i.id=inv.item_id
 LEFT JOIN equipment_upgrades u ON u.jid=inv.jid AND u.item_id=inv.item_id
@@ -2256,8 +2256,9 @@ i.name
 `,[jid])
 return rows.map(r=>{
 const level=Number(r.level||1)
-const current=equipmentStatsAtLevel(r.item_id,level,Number(r.stars||1))
-const next=level<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,level+1,Number(r.stars||1)):null
+const activeStars=Number(r.forged_level||0)===level?Number(r.stars||1):1
+const current=equipmentStatsAtLevel(r.item_id,level,activeStars)
+const next=level<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,level+1,activeStars):null
 const costToLevel=target=>{
 const t=Math.max(level+1,Math.min(EQUIPMENT_MAX_LEVEL,Number(target)||level+1))
 let total=0
@@ -2268,7 +2269,7 @@ const targetCosts={}
 const targetStats={}
 for(let t=level+1;t<=EQUIPMENT_MAX_LEVEL;t++){
 targetCosts[t]=costToLevel(t)
-targetStats[t]=equipmentStatsAtLevel(r.item_id,t,Number(r.stars||1))
+targetStats[t]=equipmentStatsAtLevel(r.item_id,t,activeStars)
 }
 return {
 ...r,level,current,next,maxLevel:EQUIPMENT_MAX_LEVEL,
