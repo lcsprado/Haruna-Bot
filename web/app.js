@@ -25,6 +25,9 @@ const ui = {
   raidLevel: null,
   bossTimer: null,
   syncing: false,
+  bossPolling: false,
+  bossLiveVersion: '',
+  lastFullSyncAt: 0,
   avatarUrl: '',
   avatarFetchedAt: 0
 };
@@ -644,8 +647,9 @@ async function exchange(code){
   return body;
 }
 
-async function sync(silent){
+async function sync(silent,force=false){
   if(!ui.token || ui.syncing) return;
+  if(!force && ui.data && Date.now()-ui.lastFullSyncAt<45000) return;
   ui.syncing=true;
   setSync(false);
   try{
@@ -659,6 +663,8 @@ async function sync(silent){
     const nextData=values[1].data;
     const freshProposal=incomingRelationshipProposals(nextData).find(p=>!previousIncoming.has(String(p.from_jid||'')));
     ui.data=nextData;
+    ui.lastFullSyncAt=Date.now();
+    ui.bossLiveVersion='';
     await syncAvatar(false);
     showApp();
     render();
@@ -674,6 +680,35 @@ async function sync(silent){
       if(!silent) toast(err.message);
     }
   }finally{ ui.syncing=false; }
+}
+
+// Lightweight HP/status delta: never downloads full inventories or wallets.
+async function syncBossLive(){
+  if(!ui.token || !ui.data?.group || document.hidden || ui.syncing || ui.bossPolling) return;
+  if(!['boss','raids'].includes(ui.page)) return;
+  ui.bossPolling=true;
+  try{
+    const response=await api('/api/v1/me/boss-live?v='+encodeURIComponent(ui.bossLiveVersion));
+    const live=response.data||{};
+    if(!live.changed) return;
+    ui.bossLiveVersion=String(live.version||'');
+    const group=ui.data.group;
+    for(const [key,next] of [['boss',live.boss],['bossEvent',live.bossEvent]]){
+      const existing=group[key];
+      if(Boolean(existing)!==Boolean(next)){
+        await sync(true,true);
+        return;
+      }
+      if(!existing || !next) continue;
+      existing.hp=Number(next.hp||0);
+      existing.maxHp=Number(next.maxHp||0);
+      existing.status=String(next.status||existing.status||'');
+      existing.updatedAt=Number(next.updatedAt||0);
+    }
+    render();
+  }catch{
+    // The next scheduled or manual full refresh remains available.
+  }finally{ui.bossPolling=false;}
 }
 
 async function syncExtras(force){
@@ -704,7 +739,7 @@ async function doAction(name,body,options){
     if(!options.quiet) toast('Processando...');
     const response=await api('/api/v1/action/'+encodeURIComponent(name),{method:'POST',body:JSON.stringify(body||{})});
     ui.lastResult=response.result;
-    if(options.afterSync!==false) await sync(true);
+    if(options.afterSync!==false) await sync(true,true);
     if(['social','market','clan','games','activities','progression','rankings','loans','contracts'].includes(ui.page)){
       await syncExtras(true).catch(()=>null);
       render();
@@ -720,7 +755,7 @@ async function doAction(name,body,options){
 function setSync(ok){
   const el=$('#syncBadge');
   if(!el) return;
-  el.textContent=ok?'● WPP / NEON SINCRONIZADO':'● SINCRONIZANDO';
+  el.textContent=ok?'● DADOS DO RPG SINCRONIZADOS':'● SINCRONIZANDO';
   el.classList.toggle('ok',!!ok);
 }
 
@@ -2167,7 +2202,7 @@ function render(){
 }
 
 function bind(){
-  document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
+  document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false,true));
   document.querySelectorAll('[data-character-select]').forEach(x=>x.onclick=async()=>{
     ui.characterId=x.dataset.characterSelect;
     localStorage.setItem(CHARACTER_KEY,ui.characterId);
@@ -2522,7 +2557,7 @@ function toggleBossAuto(){
   const tick=async()=>{
     try{
       const result=await doAction('boss.attack',{name:ui.data.profile.push_name,usePet:true},{quiet:true,afterSync:false});
-      await sync(true);
+      await syncBossLive();
       animateCombatImpact('boss',result);
       if(!activeBoss()) stopBossAuto();
     }catch{stopBossAuto();render();}
@@ -2550,12 +2585,16 @@ $('#menuBackdrop').addEventListener('touchmove',e=>e.preventDefault(),{passive:f
 document.addEventListener('keydown',e=>{if(e.key==='Escape') setMenu(false);});
 
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden && ui.token) sync(true);
+  if(!document.hidden && ui.token && Date.now()-ui.lastFullSyncAt>60000) sync(true);
 });
 
+// Full bootstrap no more often than 2 minutes, plus explicit actions/refresh.
 setInterval(()=>{
   if(!document.hidden && ui.token && !ui.syncing) sync(true);
-},60000);
+},120000);
+
+// During Boss/Raid views, use the small HP endpoint only.
+setInterval(()=>{void syncBossLive();},25000);
 setInterval(()=>{
   if(!document.hidden && ui.token) refreshLiveCountdowns();
 },1000);
