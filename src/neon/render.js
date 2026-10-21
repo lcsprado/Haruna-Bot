@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import { handleWebApi } from './web-api.js'
 
 const port = Number(process.env.PORT || 10000)
+// Railway can serve the game API without starting a second WhatsApp client.
+const apiOnly = String(process.env.ALPHA_RUNTIME || '').trim().toLowerCase() === 'web-api-only'
 const webFiles={
   '/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css',
   '/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js',
@@ -57,7 +59,7 @@ const health=globalThis.__trevoHealth || (globalThis.__trevoHealth={
 })
 
 http.createServer(async (req, res) => {
-  if(await serveWeb(req,res)) return
+  if(!apiOnly && await serveWeb(req,res)) return
 
   try{
     if(await handleWebApi(req,res)) return
@@ -68,6 +70,10 @@ http.createServer(async (req, res) => {
   }
 
   if (req.url === '/health') {
+    if(apiOnly){
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      return res.end(JSON.stringify({ok:true,service:'alpha-web-api',runtime:'web-api-only'}))
+    }
     const connected=health.whatsapp==='open'
     res.writeHead(connected ? 200 : 503, { 'content-type': 'application/json' })
     return res.end(JSON.stringify({
@@ -78,10 +84,11 @@ http.createServer(async (req, res) => {
     }))
   }
 
-  res.writeHead(200, { 'content-type': 'text/plain' })
-  res.end('Alpha Bot online')
+  res.writeHead(apiOnly ? 404 : 200, { 'content-type': 'text/plain' })
+  res.end(apiOnly ? 'Not Found' : 'Alpha Bot online')
 }).listen(port, '0.0.0.0', () => {
-  console.log('[HTTP] Alpha Bot listening on port ' + port)
+  console.log('[HTTP] ' + (apiOnly ? 'Alpha Web API' : 'Alpha Bot') + ' listening on port ' + port)
 })
 
-await import('./index.js')
+if(!apiOnly) await import('./index.js')
+else console.log('[Runtime] Web API isolada: conexão WhatsApp desativada.')
