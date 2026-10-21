@@ -34,6 +34,6 @@ jobs:
       - name: Testar regras da forja (sem banco e sem mutacoes)
         run: node --test test/star-forge-level-20261021.test.mjs
       - name: Instalar dependencias para regressao
-        run: npm ci --ignore-scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Verificar regressao existente
         run: node --test test/regression-smoke.test.mjs test/regressions.test.mjs
