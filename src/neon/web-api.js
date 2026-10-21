@@ -1144,7 +1144,7 @@ async function runAction(session,name,body={}){
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
     case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10))
     case 'item.forge.list': return listStarForgeWeapons(jid)
-    case 'item.forge': return forgeWeaponStar(jid,String(body.itemId||''),body.expectedStars==null?null:positiveInt(body.expectedStars,'Estrelas',5))
+    case 'item.forge': return forgeWeaponStar(jid,String(body.itemId||''),positiveInt(body.expectedStars,'Estrelas esperadas',4))
     case 'player.heal': return usePotion(jid,body.itemId?String(body.itemId):null)
     case 'item.use': return usePotion(jid,String(body.itemId||''))
 
