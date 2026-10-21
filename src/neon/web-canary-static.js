@@ -14,7 +14,9 @@ const directFiles=new Map([
   ['/rpg/manifest.webmanifest','manifest.webmanifest'],['/rpg/sw.js','sw.js']
 ])
 export function isAlphaWebPath(pathname){
-  return directFiles.has(pathname) || /^\/(?:rpg\/)?assets\/[A-Za-z0-9._/-]+$/.test(pathname)
+  if(directFiles.has(pathname))return true
+  const match=String(pathname).match(/^\/(?:rpg\/)?assets\/([A-Za-z0-9._/-]+)$/)
+  return Boolean(match && !match[1].split('/').some(part=>!part||part==='.'||part==='..'))
 }
 export async function serveAlphaWeb(req,res,pathname){
   let file=directFiles.get(pathname)
