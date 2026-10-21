@@ -90,3 +90,20 @@ test('Titan armor HP preview follows real level rather than multiplying a maxed 
   assert.equal(Math.round(titanBaseHp*lv10Scale*twoStarMult),286)
   assert.deepEqual(selectEffectiveGear(10,1,2),{level:10,stars:1})
 })
+
+
+test('level-up restores actual max HP including equipped armor, helmet and star level',()=>{
+  const levelup=db.split('async function applyExp(')[1]?.split('export function getEquipmentInfo(')[0]||''
+  assert.ok(levelup,'XP processing routine missing')
+  assert.match(levelup,/COALESCE\(ua\.level,1\)/)
+  assert.match(levelup,/COALESCE\(uh\.level,1\)/)
+  assert.match(levelup,/fw\.level=COALESCE\(uw\.level,1\)/)
+  assert.match(levelup,/fa\.level=COALESCE\(ua\.level,1\)/)
+  assert.match(levelup,/equipmentStatsAtLevel\(st\.armor_id,st\.armor_level,st\.armor_stars\)/)
+  assert.match(levelup,/equipmentStatsAtLevel\(st\.helmet_id,st\.helmet_level\)/)
+  assert.match(levelup,/Number\(st\?\.max_hp\|\|100\)\+levels\*8\+gearHp/)
+  assert.match(levelup,/hp=\$5/)
+  assert.doesNotMatch(levelup,/hp=max_hp\+\$1/)
+  // A pre-existing XP routine always refills HP; it must now refill to the equipped limit.
+  assert.equal(2886+8+Math.round(230*2.5)+Math.round(260*2.5),4119)
+})
