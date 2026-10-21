@@ -1652,6 +1652,10 @@ export async function sellItem(jid, itemId, qty=1) {
     else unit=500
 
     const remaining=owned-qty
+    if(remaining===0 && item.category==='weapon'){
+      const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
+      if(Number(star?.stars||1)>1)throw new Error('Arma forjada protegida: mantenha pelo menos uma cópia para preservar suas estrelas.')
+    }
     const upR=['weapon','armor','boots'].includes(item.category)
       ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
       : {rows:[]}
@@ -1668,6 +1672,7 @@ export async function sellItem(jid, itemId, qty=1) {
     )
     if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
       await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
+      await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
     }
     await client.query(
       'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
@@ -1761,6 +1766,10 @@ export async function sellItemsBatch(jid, selections=[]) {
       else unit=500
 
       const remaining=owned-sel.qty
+      if(remaining===0 && item.category==='weapon'){
+        const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
+        if(Number(star?.stars||1)>1)throw new Error('Arma forjada protegida: venda apenas cópias extras.')
+      }
       const upR=['weapon','armor','boots'].includes(item.category)
         ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
         : {rows:[]}
@@ -1776,6 +1785,7 @@ export async function sellItemsBatch(jid, selections=[]) {
       )
       if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
         await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+        await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
       }
 
       sold.push({
@@ -1868,12 +1878,17 @@ export async function discardItemsBatch(jid, selections=[]) {
       }
 
       const remaining=owned-sel.qty
+      if(remaining===0 && item.category==='weapon'){
+        const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
+        if(Number(star?.stars||1)>1)throw new Error('Arma forjada protegida: não descarte a última cópia.')
+      }
       await client.query(
         'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
         [sel.qty,jid,sel.itemId]
       )
       if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
         await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+        await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
       }
 
       discarded.push({
@@ -2433,10 +2448,11 @@ export async function listUpgradeableEquipment(jid){
   await ensureUser(jid)
   const {rows}=await db.query(`
     SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,i.price,
-           COALESCE(u.level,1)::int AS level
+           COALESCE(u.level,1)::int AS level, COALESCE(sf.stars,1)::int AS stars
     FROM inventories inv
     JOIN items i ON i.id=inv.item_id
     LEFT JOIN equipment_upgrades u ON u.jid=inv.jid AND u.item_id=inv.item_id
+    LEFT JOIN equipment_star_forges sf ON sf.jid=inv.jid AND sf.item_id=inv.item_id
     WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor','boots','helmet')
     ORDER BY CASE i.category WHEN 'weapon' THEN 1 WHEN 'armor' THEN 2 WHEN 'helmet' THEN 3 ELSE 4 END,
              CASE i.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
@@ -2444,8 +2460,8 @@ export async function listUpgradeableEquipment(jid){
   `,[jid])
   return rows.map(r=>{
     const level=Number(r.level||1)
-    const current=equipmentStatsAtLevel(r.item_id,level)
-    const next=level<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,level+1):null
+    const current=equipmentStatsAtLevel(r.item_id,level,Number(r.stars||1))
+    const next=level<EQUIPMENT_MAX_LEVEL?equipmentStatsAtLevel(r.item_id,level+1,Number(r.stars||1)):null
     const costToLevel=target=>{
       const t=Math.max(level+1,Math.min(EQUIPMENT_MAX_LEVEL,Number(target)||level+1))
       let total=0
@@ -2456,7 +2472,7 @@ export async function listUpgradeableEquipment(jid){
     const targetStats={}
     for(let t=level+1;t<=EQUIPMENT_MAX_LEVEL;t++){
       targetCosts[t]=costToLevel(t)
-      targetStats[t]=equipmentStatsAtLevel(r.item_id,t)
+      targetStats[t]=equipmentStatsAtLevel(r.item_id,t,Number(r.stars||1))
     }
     return {
       ...r,level,current,next,maxLevel:EQUIPMENT_MAX_LEVEL,
