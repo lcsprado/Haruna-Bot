@@ -4,7 +4,10 @@ const percent=value=>(Math.max(0,Number(value)||0)*100).toLocaleString('pt-BR',{
 const name=value=>String(value||'Jogador')
 function openingLine(icon,p){
   if(!p)return `${icon} *Dados iniciais indisponíveis*`
-  const pet=p.petName?`🐾 ${p.petName}`:'🐾 Sem pet ativo no PvP'
+  const bonus=p.petPvpBonus
+  const pet=p.petName
+    ?`🐾 ${p.petName} — PvP: 💥 +${percent(bonus?.damage)} dano • 🛡️ -${percent(bonus?.defense)} recebido • 🎯 +${percent(bonus?.crit)} p.p. CRIT • 🌀 ${percent(bonus?.dodge)} esquiva${Number(bonus?.speed||0)>0?` • 👢 +${fmt(bonus.speed)} VEL`:''}`
+    :'🐾 Sem pet apto para bônus individuais no PvP'
   return `${icon} *${name(p.name)}*\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}`
 }
 export function formatPvpBattleReport(r){
@@ -14,11 +17,16 @@ export function formatPvpBattleReport(r){
   const events=Array.isArray(r.log)?r.log:[]
   const roundCount=Math.max(0,Number(r.roundCount)||events.reduce((n,e)=>Math.max(n,Number(e.round)||0),0))
   const damage=new Map(),crits=new Map(),dodges=new Map(),petHeals=new Map(),classHeals=new Map()
+  const petExtraDamage=new Map(),petDamageBlocked=new Map(),petCrits=new Map(),petDodges=new Map()
   const add=(map,key,value=1)=>map.set(key,(map.get(key)||0)+value)
   for(const e of events){
     if(e.petHeal){add(petHeals,e.fromJid||e.from,Number(e.heal)||0);continue}
     if(e.classHeal){add(classHeals,e.fromJid||e.from,Number(e.heal)||0);continue}
     add(damage,e.fromJid||e.from,Math.max(0,Number(e.actualDamage??e.dmg)||0))
+    add(petExtraDamage,e.fromJid||e.from,Math.max(0,Number(e.petExtraDamage)||0))
+    add(petDamageBlocked,e.toJid||e.to,Math.max(0,Number(e.petDamageBlocked)||0))
+    if(e.petCrit)add(petCrits,e.fromJid||e.from)
+    if(e.petDodge)add(petDodges,e.toJid||e.to)
     if(e.crit)add(crits,e.fromJid||e.from)
     if(e.dodged)add(dodges,e.toJid||e.to)
   }
@@ -50,6 +58,13 @@ export function formatPvpBattleReport(r){
     const healed=(petHeals.get(key)||0)+(classHeals.get(key)||0)
     lines.push(`${name(p.name)}: 💥 ${fmt(damage.get(key)||0)} dano efetivo • 🎯 ${fmt(crits.get(key)||0)} crítico(s) • 🌀 ${fmt(dodges.get(key)||0)} esquiva(s) • 💚 +${fmt(healed)} HP curados`)
   }
+  lines.push('','🐾 *RESULTADO REAL DOS PETS NO PVP*')
+  for(const p of [attacker,defender].filter(Boolean)){
+    const key=p.jid||p.name
+    if(!p.petName){lines.push(`${name(p.name)}: sem pet principal apto.`);continue}
+    lines.push(`${name(p.name)} (${name(p.petName)}): 💥 +${fmt(petExtraDamage.get(key)||0)} dano extra direto • 🛡️ ${fmt(petDamageBlocked.get(key)||0)} dano bloqueado • 🎯 ${fmt(petCrits.get(key)||0)} crítico(s) ativados pelo pet • 🌀 ${fmt(petDodges.get(key)||0)} esquiva(s) • 💚 ${fmt(petHeals.get(key)||0)} HP curados pelo pet`)
+  }
+  lines.push('_Dano extra direto não inclui o aumento adicional causado pelos críticos ativados pelo pet._')
   if(r.ending&&attacker&&defender){
     lines.push(`❤️ HP ao fim das trocas: ${name(attacker.name)} ${fmt(r.ending.attackerHp)} • ${name(defender.name)} ${fmt(r.ending.defenderHp)}`)
   }
