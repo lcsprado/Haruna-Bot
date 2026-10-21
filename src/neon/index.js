@@ -3916,9 +3916,9 @@ text+='      '+gearStatsText(equipmentStatsAtLevel(i.item_id,level)||getEquipmen
 if(active)text+='   ✅ *Em uso:* '+activeCopyLabel(p,category)+'\n'
 text+='   🎒 Reservas: '+Math.max(0,Number(i.quantity||0)-(active?1:0))+'\n\n'
 })
-text+='📌 *⭐ Lv.* indica nivel. *🌟 ★★* indica forja (+4% por estrela adicional).\n'
+text+='📌 *⭐ Lv.* indica nível. *🌟 ★★* indica forja (+4% por estrela adicional).\n'
 text+='🔎 Cada copia tem atributos proprios; o bot utiliza automaticamente a mais forte do mesmo modelo.\n\n'
-text+='👉 Responda apenas o numero do modelo.\n9️⃣ Voltar\n0️⃣ Sair'
+text+='👉 Responda apenas o número do modelo.\n9️⃣ Voltar\n0️⃣ Sair'
 await reply(text)
 }
 async function showSellMenu(chat,sender,reply){
@@ -6437,7 +6437,7 @@ const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.b
 const currentUp=upgradeables.find(i=>i.item_id===currentId)
 const oldStats=currentUp?.current||getEquipmentInfo(currentId)||{}
 const statLines=gearStatsChanges(oldStats,info,info.category)
-const selectedStars=Number(up?.activeStars||1)
+const selectedStars=Number(up?.forged_level||0)===Number(up?.level||1)?Number(up?.stars||1):1
 const selectedType=selectedStars>1?'🌟 FORJADA '+forgeStarsIcon(selectedStars)+' ('+forgeBonusText(selectedStars)+')':'⚪ COMUM'
 setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
 await reply(
@@ -10857,8 +10857,8 @@ text+='   ⭐ *Lv.'+i.level+' → Lv.'+(Number(i.level)+1)+'*\n'
 text+='   📊 '+stat+'\n'
 text+='   💰 *R$ '+fmt(i.cost)+'*\n\n'
 })
-text+='📌 *⭐ Lv.* e o nivel da copia; *🌟 ★★* sao as estrelas. ★★ concede *+4%* desde o Lv.1 da peca forjada.\n'
-text+='⚠️ Cada copia mantem seus atributos: o bonus da forja nao passa para copias comuns.\n👉 Responda apenas com o numero.\n0️⃣ Cancelar'
+text+='📌 *⭐ Lv.* é o nível da cópia; *🌟 ★★* são as estrelas. ★★ concede *+4%* desde o Lv.1 da peça forjada.\n'
+text+='⚠️ Cada cópia mantém seus atributos: o bônus da forja não passa para cópias comuns.\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
 if(!helmetOnly) text+='\n\n🪖 Para ver apenas os elmos: *!uparelmo*'
 await reply(text)
 } else if(['equipar','equip'].includes(cmd)){
