@@ -1452,9 +1452,25 @@ export async function collectBusinesses(jid){
     const recoveryKey='economy_recovery:'+jid
     const recovery=(await client.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[recoveryKey])).rows[0]?.value
     const pending=Math.max(0,Math.trunc(Number(recovery?.remaining||0)))
-    const retained=Math.min(net,pending)
+    // Augusto: o saldo anterior já cobre a parcela final do estorno.
+    // Quitá-la separadamente preserva a auditoria, sem reter mais lucros futuros.
+    // Sempre na mesma transação e com a carteira bloqueada para evitar saldo negativo.
+    const settleFromCash=jid==='5511982964423@s.whatsapp.net'
+      && recovery?.case==='estorno_roleta_verde_579_tech_580'
+    let cashSettled=0
+    if(settleFromCash && pending>0){
+      const wallet=(await client.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+      if(wallet && Number(wallet.cash)>=pending){
+        await client.query('UPDATE wallets SET cash=cash-$1 WHERE jid=$2 AND cash>=$1',[pending,jid])
+        await client.query("UPDATE trevo_settings SET value=jsonb_set(value,'{remaining}',to_jsonb(0::bigint),true),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",[recoveryKey])
+        await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'economy_recovery_cash_settled',$3)",[jid,pending,String(recovery.case)])
+        cashSettled=pending
+      }
+    }
+    const remainingToRecover=pending-cashSettled
+    const retained=Math.min(net,remainingToRecover)
     if(retained>0){
-      await client.query("UPDATE trevo_settings SET value=jsonb_set(value,'{remaining}',to_jsonb($2::bigint),true),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",[recoveryKey,pending-retained])
+      await client.query("UPDATE trevo_settings SET value=jsonb_set(value,'{remaining}',to_jsonb($2::bigint),true),updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",[recoveryKey,remainingToRecover-retained])
       await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'economy_recovery_withheld',$3)",[jid,retained,String(recovery.case||'auditoria')])
     }
     const creditedNet=net-retained
@@ -1462,7 +1478,7 @@ export async function collectBusinesses(jid){
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | negócios')`,[jid,tax])
-    return {total:creditedNet,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:pending-retained}
+    return {total:creditedNet,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled}
   })
 }
 
