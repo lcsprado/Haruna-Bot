@@ -49,7 +49,7 @@ const SESSION_TOUCH_MS = 5 * 60 * 1000
 // Without an allowlist, the Web API remains closed even if somebody discovers its URL.
 function betaWebAccess(jid){
   if(String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()!=='web-api-only') return true
-  const allowed=String(process.env.ALPHA_WEB_BETA_JIDS||'').split(/[\\s,;]+/).filter(Boolean)
+  const allowed=String(process.env.ALPHA_WEB_BETA_JIDS||'').split(',').map(s=>s.trim()).filter(Boolean)
   return allowed.includes(String(jid||''))
 }
 let webTablesReady = false
