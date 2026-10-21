@@ -1,0 +1,88 @@
+# Diagnostico SOMENTE LEITURA. Fonte Neon está ativa; diferenças posteriores
+# ao snapshot são esperadas e NÃO significam corrupção do backup.
+name: "Alpha Bot | Diagnostico diferenças Neon x Aiven"
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/alpha-aiven-diff-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-aiven-readonly-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0c758f4eda926e8cf4b1d764eb93eb1f03ebc727
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: "Dependencias apenas no executor descartavel"
+        run: npm install --no-save --package-lock=false --ignore-scripts --legacy-peer-deps --no-audit --no-fund
+      - name: "Certificado de confiança"
+        env:
+          AIVEN_CA_PEM: ${{ secrets.ALPHA_AIVEN_CA }}
+        run: |
+          set -Eeuo pipefail
+          test -n "${AIVEN_CA_PEM:-}"
+          umask 077
+          printf '%s\n' "$AIVEN_CA_PEM" > "$RUNNER_TEMP/alpha-ca.pem"
+          openssl x509 -in "$RUNNER_TEMP/alpha-ca.pem" -noout >/dev/null
+      - name: "Comparar somente contagens e fingerprints, sem exibir dados"
+        env:
+          NEON_URI: ${{ secrets.ALPHA_NEON_URI }}
+          AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/alpha-ca.pem
+          PGOPTIONS: '-c default_transaction_read_only=on'
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from 'pg'
+          const n=new URL(process.env.NEON_URI||'')
+          const a=new URL(process.env.AIVEN_URI||'')
+          if(n.hostname!=='ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech'||n.pathname!=='/neondb') throw Error('Neon DIRECT diferente do esperado')
+          if(a.hostname!=='alphabot-lcsh-3393.b.aivencloud.com'||a.port!=='26343'||a.pathname!=='/defaultdb') throw Error('Aiven diferente do esperado')
+          a.pathname='/alpha_prod'
+          const source=new pg.Client({connectionString:n.toString(),connectionTimeoutMillis:15000})
+          const dest=new pg.Client({connectionString:a.toString(),connectionTimeoutMillis:15000})
+          try{
+            await source.connect()
+            await dest.connect()
+            for(const c of [source,dest]){
+              await c.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+              await c.query('SET LOCAL statement_timeout=30000')
+            }
+            const sourceTables=(await source.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows.map(x=>x.tablename)
+            const targetTables=(await dest.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows.map(x=>x.tablename)
+            if(sourceTables.length!==67||targetTables.length!==67||sourceTables.join('|')!==targetTables.join('|'))throw Error('Esquemas diferentes ou incompletos')
+            let same=0,changed=0
+            for(const table of sourceTables){
+              if(!/^[a-z_][a-z0-9_]*$/.test(table))throw Error('Nome de tabela inesperado')
+              const sql=`SELECT count(*)::int AS total,md5(COALESCE(string_agg(md5(to_jsonb(t)::text),'' ORDER BY md5(to_jsonb(t)::text)),'none')) AS h FROM public."${table}" t`
+              const [before,after]=await Promise.all([source.query(sql),dest.query(sql)])
+              const x=before.rows[0],y=after.rows[0]
+              if(x.total===y.total&&x.h===y.h){same++;continue}
+              changed++
+              console.log('DIFERENCA_SNAPSHOT',table,'linhas_neon_atual',x.total,'linhas_aiven_snapshot',y.total,
+                'contagens_iguais',x.total===y.total)
+            }
+            console.log('COMPARACAO_CONCLUIDA',JSON.stringify({tabelas:67,identicas_agora:same,diferentes_agora:changed}))
+            console.log('NOTA: O Neon está ativo. Diferenças após a data de snapshot não são evidência de corrupção.')
+          }finally{
+            for(const client of [source,dest]){
+              await client.query('ROLLBACK').catch(()=>{})
+              await client.end().catch(()=>{})
+            }
+          }
+          NODE
