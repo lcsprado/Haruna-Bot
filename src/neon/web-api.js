@@ -1143,7 +1143,7 @@ async function runAction(session,name,body={}){
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
-    case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10))
+    case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10),body.sourceLevel==null?null:positiveInt(body.sourceLevel,'Nível de origem',9))
     case 'item.forge.list': return listStarForgeWeapons(jid)
     case 'item.forge': return forgeWeaponStar(jid,String(body.itemId||''),positiveInt(body.expectedStars,'Estrelas esperadas',4))
     case 'player.heal': return usePotion(jid,body.itemId?String(body.itemId):null)
