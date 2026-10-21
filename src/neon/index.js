@@ -65,7 +65,7 @@ import {
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petSacrificeReward } from './game-catalog.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
 import {petCollectionCategory,petCollectionCategoryPets,petCollectionMenuText,petCollectionListText,petCollectionDetailText,petCollectionSacrificeText} from './pet-collection-menu.js'
 import { createWebLinkCode } from './web-api.js'
@@ -1546,6 +1546,18 @@ async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
   const petStatus=pet&&!primaryPetReady
     ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
     :null
+  // PvP é calculado pelo pet principal apto, independentemente do painel Boss/Raid.
+  // Chance efetiva respeita teto de 40% e a sinergia dos 7 Pecados.
+  const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
+  const pvpCritNoPet=Math.min(.40,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
+  const pvpCritWithPet=Math.min(.40,pvpCritNoPet+Number(pvpPet?.crit||0))
+  const pvpPct=n=>pct(Number(n||0)*100)
+  const pvpPetLine=`🐾 *CONTRIBUIÇÃO DO PET NO PVP*
+${pet?`${pet.name} — Nv.${pet.level} ${primaryPetReady?'✅ ativo':'⚠️ bônus suspensos ('+petStatus+')'}`:'Nenhum pet principal'}
+💥 Dano adicional: *+${pvpPct(pvpPet?.damage)}%* • 🛡️ Dano reduzido: *${pvpPct(pvpPet?.defense)}%*
+🎯 CRIT do pet: *+${pvpPct(pvpCritWithPet-pvpCritNoPet)} p.p.* (total *${pvpPct(pvpCritWithPet)}%*)
+🌀 Esquiva: *${pvpPct(pvpPet?.dodge)}%*${Number(pvpPet?.healCooldown||0)>0&&Number(pvpPet?.healPct||0)>0?` • 💚 Cura: *${pvpPct(pvpPet.healPct)}% HP* a cada ${pvpPet.healCooldown} ataques, abaixo de 70% HP (até 3 vezes)`:''}
+👢 Velocidade do pet: *+${primaryPetReady?Number(petSpeedBonus(pet.species,pet.level)||0):0}* • Sinergia do time: *+${Number(synergy.speed||0)} VEL*`
   const en=p.enchant_breakdown||{}
   const enchantParts=[
     Number(en.damage||0)?'💥 +'+pct(en.damage*100)+' p.p. dano':null,
@@ -1581,6 +1593,8 @@ ${title}${badge?' • '+badge:''}
 🛡️ DEF: *${Number(p.effective_def||0)}*
 👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
 ${bonusSummary}
+
+${pvpPetLine}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
 🥊 Ranking RPG: *#${Number(ranks.combatRank||0)||'-'}*
