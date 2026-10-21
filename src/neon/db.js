@@ -2922,6 +2922,9 @@ const connectionString = directDatabaseUrl()
 while (true) {
 const client = new Client({
 connectionString,
+// The long-lived advisory lock uses a separate PG Client from the Pool.
+// Aiven requires TLS on BOTH connections, using the same validated CA.
+...(isAivenDb && aivenCaPem?{ssl:{ca:aivenCaPem,rejectUnauthorized:true}}:{}),
 connectionTimeoutMillis: 15000,
 application_name: 'trevo-runtime-lock'
 })
