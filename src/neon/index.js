@@ -6230,7 +6230,8 @@ await reply(
 '⚔️ Será consumida: *1 cópia extra Lv.10* (a principal permanece)\n'+
 '🧩 Fragmentos: *'+latest.needed+'× '+latest.origin.materialName+'* (Raid '+latest.origin.raidLevel+')\n'+
 '💰 Dinheiro: *R$ 0*\n'+
-'📈 A nova estrela concede +4% de bônus nos atributos após upar novamente.\n\n'+
+'📈 A nova estrela já aplica *+4%* aos atributos desta peça desde o *Lv.1*.\n'+
+'📌 O nível da peça recomeça; não é perda das estrelas nem dos upgrades das cópias comuns.\n\n'+
 '1️⃣ Confirmar forja\n2️⃣ Cancelar')
 return true
 }
@@ -6242,7 +6243,7 @@ clearQuickFlow(chat,sender)
 try{
 const result=await forgeEquipmentStar(sender,chosen.itemId,chosen.stars)
 await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\n\n'+(result.category==='armor'?'🛡️':'⚔️')+' *'+result.name+'*\n'+
-'🌟 *'+result.stars+'/5 estrelas* • ⭐ *Lv.1*\n'+
+'🌟 *'+forgeStarsIcon(result.stars)+'* • bônus *'+forgeBonusText(result.stars)+'* • ⭐ *Lv.1*\n'+
 '💪 Atributos: '+gearStatsText(result.after,result.category)+'\n\n'+
 '🧩 Gasto: '+result.materialsSpent+'× '+result.origin.materialName+'\n'+
 '📦 Cópias: '+result.copies+' • Fragmentos: '+result.remainingMaterials+'\n\n'+
@@ -10825,13 +10826,13 @@ if(need)missing.push('upar '+need+' cópia(s) comum(ns) ao Lv.10')
 if(r.quantity<2||r.free<1)missing.push('obter cópia extra livre')
 if(r.materials<r.needed)missing.push('obter '+(r.needed-r.materials)+' fragmentos')
 result+='*'+(i+1)+'.* '+(r.category==='armor'?'🛡️':'⚔️')+' *'+r.name+'*\n'
-result+='   🌟 '+r.stars+'/5'+(lvl?' • ⭐ Lv.'+lvl:'')+'\n'
+result+='   🌟 '+forgeStarsIcon(r.stars)+' • bônus '+forgeBonusText(r.stars)+(lvl?' • ⭐ Lv.'+lvl:'')+'\n'
 if(r.stars===5){result+='   🏆 Evolução máxima\n\n';continue}
 result+='   ⚔️ Cópias comuns Lv.10: '+r.level10_copies+'/'+r.requiredCopies+'\n'
 result+='   🧩 '+r.origin.materialName+': '+r.materials+'/'+r.needed+' (Raid '+r.origin.raidLevel+')\n'
 result+='   '+(r.canForge?'✅ *PRONTO PARA FORJAR*':'🔒 Falta: '+missing.join('; '))+'\n\n'
 }
-result+='📌 Cada nova estrela começa no *Lv.1*.\n👉 Envie o número ou 0 para cancelar.\n'
+result+='📌 Cada nova estrela começa no *Lv.1*, já com o bônus percentual.\n👉 Envie o número ou 0 para cancelar.\n'
 return await reply(result)
 } else if(['uparitem','upgradeitem','melhoraritem','uparelmo','melhorarelmo','upgradeelmo'].includes(cmd)){
 const [items,profile]=await Promise.all([listUpgradeableCopies(sender),getCombatProfile(sender)])
