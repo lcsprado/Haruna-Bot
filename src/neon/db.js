@@ -5037,39 +5037,7 @@ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE) RETURNING *`,
 return {altar:{...altar,summonCost},pet:chosen,collectionId:collected.id,remaining:Math.max(0,owned-summonCost)}
 })
 }
-export async function adoptPet(jid,species='cachorro',name='Alpha'){
-throw new Error('🐾 Adoção de pets comuns desativada. Use !invocarpet para o Altar Lendário ou !meuspets para sua coleção.')
-await ensureUser(jid)
-species=String(species||'cachorro').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-const rule=getAdoptablePetRule(species)
-if(!rule) throw new Error('Pet inválido. Use !adotar para ver os pets disponíveis.')
-return transaction(async client=>{
-const ur=await client.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[jid]); const level=Number(ur.rows[0]?.level||1)
-if(level<rule.level) throw new Error(`${rule.label} exige nível ${rule.level}. Seu nível atual: ${level}.`)
-const old=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-const changeFee=0
-const total=rule.price
-const wr=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0],cash=Number(wr?.cash||0),bank=Number(wr?.bank||0)
-if(cash+bank<total) throw new Error(`Você precisa de R$ ${total.toLocaleString('pt-BR')} (${rule.label}: R$ ${rule.price.toLocaleString('pt-BR')}).`)
-const fromCash=Math.min(cash,total)
-await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,total-fromCash,jid])
-const petName=String(name||'Alpha').slice(0,24)
-if(old){
-const active=(await client.query('SELECT id FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
-if(active) await client.query(`UPDATE pet_collection SET species=$1,name=$2,level=$3,xp=$4,hunger=$5,hygiene=$6,energy=$7,power=$8,wins=$9,losses=$10,last_action=$11,last_rest=$12,created_at=$13,hp=$14,max_hp=$15 WHERE id=$16`,
-[old.species,old.name,old.level,old.xp,old.hunger,old.hygiene,old.energy,old.power,old.wins,old.losses,old.last_action,old.last_rest,old.created_at,old.hp||old.max_hp||100,old.max_hp||petMaxHp(old.level,old.xp,old.species),active.id])
-}
-await client.query('UPDATE pet_collection SET active=FALSE WHERE jid=$1',[jid])
-const maxEnergy=petMaxEnergy(1,species)
-const maxHp=petMaxHp(1,0,species)
-const collected=(await client.query(`INSERT INTO pet_collection(jid,species,name,energy,hp,max_hp,active,purchase_price) VALUES($1,$2,$3,$4,$5,$5,TRUE,$6) RETURNING *`,[jid,species,petName,maxEnergy,maxHp,rule.price])).rows[0]
-await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,collected.id])
-await client.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,collected.id])
-const {rows}=await client.query(`INSERT INTO pets(jid,species,name,energy,hp,max_hp) VALUES($1,$2,$3,$4,$5,$5)
-ON CONFLICT(jid) DO UPDATE SET species=EXCLUDED.species,name=EXCLUDED.name,level=1,xp=0,power=10,hunger=100,hygiene=100,energy=EXCLUDED.energy,hp=EXCLUDED.hp,max_hp=EXCLUDED.max_hp,wins=0,losses=0,last_action=0,last_rest=0 RETURNING *`,[jid,species,petName,maxEnergy,maxHp])
-return {...rows[0],collectionId:collected.id,fee:total,petPrice:rule.price,changeFee:0,replaced:false,added:true}
-})
-}
+export async function adoptPet(){throw new Error('Adoção comum desativada; use !invocarpet.')}
 export async function getPet(jid){
 const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid])
 if(!rows[0]) return null
