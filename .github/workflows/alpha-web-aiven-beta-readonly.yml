@@ -38,7 +38,7 @@ jobs:
           node --check src/neon/render.js
           node --check web/app.js
       - name: "Instalar dependências somente no executor descartável"
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-save --package-lock=false --legacy-peer-deps --no-audit --no-fund
       - name: "Testar API isolada contra alpha_prod_v2 em modo READ ONLY"
         env:
           ALPHA_AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
