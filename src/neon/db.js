@@ -2334,12 +2334,14 @@ export async function listStarForgeWeapons(jid){
   const ids=Object.keys(RAID_WEAPON_FORGE_ORIGINS)
   const {rows}=await db.query(`
     SELECT inv.item_id,inv.quantity,i.name,i.category,i.rarity,
+           (eq.weapon_id=inv.item_id) AS equipped,
            COALESCE(up.level,1)::int AS level,
            COALESCE(st.stars,1)::int AS stars,
            COALESCE(mat.quantity,0)::int AS materials,
            COALESCE(bound.qty,0)::int AS bound_quantity
     FROM inventories inv
     JOIN items i ON i.id=inv.item_id
+    LEFT JOIN stats eq ON eq.jid=inv.jid
     LEFT JOIN equipment_upgrades up ON up.jid=inv.jid AND up.item_id=inv.item_id
     LEFT JOIN equipment_star_forges st ON st.jid=inv.jid AND st.item_id=inv.item_id
     LEFT JOIN LATERAL (SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items
@@ -2364,7 +2366,8 @@ export async function listStarForgeWeapons(jid){
   return rows.map(r=>{
     const origin=RAID_WEAPON_FORGE_ORIGINS[r.item_id]
     const stars=Number(r.stars||1),needed=FORGE_STAR_MATERIALS[stars]||0
-    const copies=Number(r.quantity||0),free=Math.max(0,copies-Number(r.bound_quantity||0))
+    const copies=Number(r.quantity||0)
+    const free=Math.max(0,copies-Number(r.bound_quantity||0)-(r.equipped?1:0))
     return {...r,origin,stars,needed,free,canForge:stars<5&&Number(r.level)===10&&copies>=2&&free>=1&&Number(r.materials)>=needed,
       current:equipmentStatsAtLevel(r.item_id,Number(r.level||1),stars),
       next:stars<5?equipmentStatsAtLevel(r.item_id,10,stars+1):null}
@@ -2385,10 +2388,13 @@ export async function forgeWeaponStar(jid,itemId,expectedStars=null){
     `,[jid,itemId])).rows[0]
     if(!item||Number(item.quantity)<2)throw new Error('A forja exige duas cópias da mesma arma; uma será preservada e a outra consumida.')
     if(item.category!=='weapon'||Number(item.level)!==10)throw new Error('As cópias precisam estar no Lv.10 (upgrade compartilhado por modelo).')
+    // Reserva 1 cópia física para a arma equipada E não consome prêmios vinculados.
+    const equipped=(await client.query('SELECT weapon_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.weapon_id===itemId
     const bound=(await client.query(
       'SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',
       [jid,itemId])).rows[0]
-    if(Number(item.quantity)-Number(bound?.qty||0)<1)throw new Error('Nenhuma cópia livre para consumir; itens vinculados são protegidos.')
+    if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)
+      throw new Error('Sem cópia extra livre: a arma equipada e os itens vinculados são protegidos.')
     const current=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
     const stars=Number(current?.stars||1)
     if(expectedStars!==null && stars!==Number(expectedStars))throw new Error('Essa forja já foi concluída ou as estrelas mudaram. Abra !forjar novamente.')
