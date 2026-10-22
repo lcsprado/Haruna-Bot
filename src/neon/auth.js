@@ -129,9 +129,15 @@ export async function useNeonAuthState(sessionId='default',queryable=db) {
           snapshot.push({type,id,value:value?encodeStored(value):null})
         }
       }
+      const queuedAt=Date.now()
       const write=keyWriteQueue.then(()=>persistKeys(snapshot))
       keyWriteQueue=write.catch(()=>{})
-      return write
+      return write.finally(()=>{
+        const durationMs=Date.now()-queuedAt
+        if(durationMs>=750) console.warn('[AuthKeyWriteLatency]',JSON.stringify({
+          ms:durationMs,entries:snapshot.length
+        }))
+      })
     }
   }
 
