@@ -7,7 +7,11 @@
     },
     {
       "source": "/rpg",
-      "destination": "/index.html"
+      "destination": "/"
+    },
+    {
+      "source": "/rpg/",
+      "destination": "/"
     },
     {
       "source": "/rpg/:path*",
