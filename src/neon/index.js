@@ -9126,9 +9126,13 @@ alphaIdentityMergeChecked.set(identityKey,Date.now())
 }
 }catch(err){console.error('[identidade] falha ao consolidar cadastro',err?.message||err)}
 }
-if(isGroup) await recordGroupActivity(chat,sender,body.startsWith(prefix)).catch(()=>{})
+// A contagem de atividade é independente da leitura de admin/configuração.
+const activityRecorded=isGroup
+  ? recordGroupActivity(chat,sender,body.startsWith(prefix)).catch(err=>console.error('[atividade grupo]',err?.message||err))
+  : Promise.resolve()
 const shouldModerate=isGroup && !isOwner && !(await senderIsGroupAdmin(chat,sender))
 const moderationSettings=shouldModerate ? await getCommunitySettings(chat).catch(()=>null) : null
+await activityRecorded
 if(shouldModerate){
 try{
 const cs=moderationSettings
