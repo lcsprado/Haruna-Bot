@@ -2189,7 +2189,20 @@ delayBetweenTriesMs:500
 // Não altera o conteúdo das mensagens nem repete operações de inventário/carteira.
 const enqueueOutgoingByChat=createKeyedAsyncQueue()
 const sendWithoutQueue=sock.sendMessage.bind(sock)
-sock.sendMessage=(chat,content,options)=>enqueueOutgoingByChat(chat,()=>sendWithoutQueue(chat,content,options))
+sock.sendMessage=(chat,content,options)=>{
+  const queuedAt=Date.now()
+  return enqueueOutgoingByChat(chat,async()=>{
+    const waitMs=Date.now()-queuedAt
+    const sendAt=Date.now()
+    try{return await sendWithoutQueue(chat,content,options)}
+    finally{
+      const transportMs=Date.now()-sendAt
+      if(waitMs>=350 || transportMs>=1250) console.warn('[OutboundLatency]',JSON.stringify({
+        queueMs:waitMs,transportMs,kind:content?.text?'text':'other'
+      }))
+    }
+  })
+}
 const privateQrState=globalThis.__alphaPairingQr||(globalThis.__alphaPairingQr={value:null,updatedAt:0})
 if(!state.creds.registered){
 sock.ev.on('connection.update',update=>{
@@ -9022,6 +9035,7 @@ continue
 const ident=[msg?.key?.remoteJid,msg?.key?.participant||'',msg?.key?.id].join('|')
 if(msg?.key?.id&&!acceptIncomingMessage(ident))continue
 const messageProcessingStartedAt=Date.now()
+const timingMarks={receivedAt,start:messageProcessingStartedAt}
 try{
 if(!msg?.message || msg.key.fromMe) continue
 trevoHealth.lastInboundAt=Date.now()
@@ -9029,6 +9043,7 @@ const chat=msg.key.remoteJid
 if(!chat || chat==='status@broadcast') continue
 const rawSender=msg.key.participant || chat
 const senderIdentity=await resolvePlayerIdentity(sock,chat,rawSender,msg)
+timingMarks.identity=Date.now()
 const sender=senderIdentity.jid
 const body=textOf(msg).trim()
 let firstReplyTimed=false
@@ -9037,7 +9052,18 @@ const first=!firstReplyTimed
 if(first){
 firstReplyTimed=true
 const preSendMs=Date.now()-messageProcessingStartedAt
-if(preSendMs>=1250) console.warn('[CommandLatency]',JSON.stringify({phase:'before-send',ms:preSendMs,kind:body.startsWith(prefix)?'command':'menu'}))
+if(preSendMs>=1250){
+  const timing={
+    phase:'before-send',ms:preSendMs,kind:body.startsWith(prefix)?'command':'menu',
+    inboundQueueMs:messageProcessingStartedAt-receivedAt,
+    identityMs:timingMarks.identity?timingMarks.identity-messageProcessingStartedAt:null,
+    preflightMs:timingMarks.preflight&&timingMarks.identity?timingMarks.preflight-timingMarks.identity:null,
+    ensureMs:timingMarks.ensured&&timingMarks.preflight?timingMarks.ensured-timingMarks.preflight:null,
+    loansMs:timingMarks.loans&&timingMarks.ensured?timingMarks.loans-timingMarks.ensured:null,
+    actionMs:timingMarks.loans?Date.now()-timingMarks.loans:null
+  }
+  console.warn('[CommandLatency]',JSON.stringify(timing))
+}
 }
 const sentAt=Date.now()
 return Promise.resolve().then(()=>sock.sendMessage(chat,{text,...extra},{quoted:msg}))
@@ -9138,6 +9164,7 @@ continue
 }
 }catch(err){ console.error('[moderacao]',err?.message||err) }
 }
+timingMarks.preflight=Date.now()
 if(!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)&&!String(getQuickFlow(chat,sender)?.stage||'').startsWith('enchant_')){
 if(await quizHandleChoice(chat,body,reply))continue
 }
@@ -9151,6 +9178,7 @@ catch(err){if(!/Não há quiz ativo|expirou/.test(String(err?.message||'')))thro
 if(!flow) continue
 if(isGroup && eventTrafficActiveNow()) await staggerEventGroupAction(chat)
 await ensureUser(sender,msg.pushName || '')
+timingMarks.ensured=Date.now()
 const supportFlow=String(flow.stage||'').startsWith('support_')
 if(isGroup && !isOwner && !supportFlow){
 const license=await getGroupLicense(chat)
@@ -9164,6 +9192,7 @@ await handleQuickGameFlow({chat,sender,body,reply,msg,isOwner,isGroup})
 continue
 }
 await ensureUser(sender,msg.pushName || '')
+timingMarks.ensured=Date.now()
 const [rawCmd,...args]=body.slice(prefix.length).trim().split(/\s+/)
 const rawCmdLower=(rawCmd||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
 const compactMarketBuy=rawCmdLower.match(/^comprar#(\d+)$/)
@@ -9172,6 +9201,7 @@ if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
 const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
 const ownerTarget=mentionsOf(msg)[0] || sender
 await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
+timingMarks.loans=Date.now()
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
