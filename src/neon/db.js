@@ -557,15 +557,26 @@ await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tie
 await fixLegacyPetVitals()
 }
 export async function ensureUser(jid, pushName='') {
+// Same inserts/update and foreign-key checks, but in ONE atomic statement:
+// removes two long Ohio <-> Aiven round trips from EVERY WhatsApp command.
 await db.query(`
-INSERT INTO users (jid, push_name)
-VALUES ($1,$2)
-ON CONFLICT(jid) DO UPDATE
-SET push_name = CASE WHEN EXCLUDED.push_name <> '' THEN EXCLUDED.push_name ELSE users.push_name END,
-updated_at = ${nowSql}
+WITH usr AS (
+  INSERT INTO users (jid, push_name)
+  VALUES ($1,$2)
+  ON CONFLICT(jid) DO UPDATE
+  SET push_name = CASE WHEN EXCLUDED.push_name <> '' THEN EXCLUDED.push_name ELSE users.push_name END,
+      updated_at = ${nowSql}
+  RETURNING jid
+), wallet AS (
+  INSERT INTO wallets (jid)
+  SELECT jid FROM usr
+  ON CONFLICT(jid) DO NOTHING
+  RETURNING jid
+)
+INSERT INTO stats (jid)
+SELECT jid FROM usr
+ON CONFLICT(jid) DO NOTHING
 `, [jid, pushName])
-await db.query('INSERT INTO wallets (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
-await db.query('INSERT INTO stats (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
 }
 export async function consolidateUserIdentity(targetJid, aliases=[], pushName='') {
 if(!targetJid?.endsWith('@s.whatsapp.net')) return false
