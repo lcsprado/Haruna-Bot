@@ -12,6 +12,7 @@ import NodeCache from 'node-cache'
 import {createTtlCache,createByteBudget,createMessageDeduplicator,declaredMediaBytes,downloadBoundedMedia,scheduleUntil} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import {createKeyedAsyncQueue} from './chat-queue.js'
+import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
@@ -2185,24 +2186,17 @@ maxCommitRetries:3,
 delayBetweenTriesMs:500
 }
 })
-// Todas as respostas e avisos enviados ao MESMO grupo compartilham a ordem.
-// Não altera o conteúdo das mensagens nem repete operações de inventário/carteira.
-const enqueueOutgoingByChat=createKeyedAsyncQueue()
+// Uma fila POR JOGADOR preserva a ordem das respostas. Até dois envios
+// podem ocorrer no grupo simultaneamente, sem bloqueio global dos jogadores.
 const sendWithoutQueue=sock.sendMessage.bind(sock)
-sock.sendMessage=(chat,content,options)=>{
-  const queuedAt=Date.now()
-  return enqueueOutgoingByChat(chat,async()=>{
-    const waitMs=Date.now()-queuedAt
-    const sendAt=Date.now()
-    try{return await sendWithoutQueue(chat,content,options)}
-    finally{
-      const transportMs=Date.now()-sendAt
-      if(waitMs>=350 || transportMs>=1250) console.warn('[OutboundLatency]',JSON.stringify({
-        queueMs:waitMs,transportMs,kind:content?.text?'text':'other'
-      }))
-    }
-  })
-}
+const scheduleOutbound=createBoundedOutboundScheduler({
+  maxConcurrentPerChat:2,
+  onTiming:({queueMs,transportMs,kind})=>{
+    if(queueMs>=350||transportMs>=1250)
+      console.warn('[OutboundLatency]',JSON.stringify({queueMs,transportMs,kind}))
+  }
+})
+sock.sendMessage=(chat,content,options)=>scheduleOutbound(chat,options,()=>sendWithoutQueue(chat,content,options),content?.text?'text':'other')
 const privateQrState=globalThis.__alphaPairingQr||(globalThis.__alphaPairingQr={value:null,updatedAt:0})
 if(!state.creds.registered){
 sock.ev.on('connection.update',update=>{
@@ -9034,21 +9028,16 @@ await sock.sendMessage(chat,{text:`👋 ${tag} saiu do grupo. Até a próxima!`,
 }
 }catch(err){ console.error('[boas-vindas]',err?.message||err) }
 })
-// O Baileys pode disparar lotes concorrentes. Serializar apenas POR CHAT evita
-// que dois comandos simultâneos disputem fluxo de venda, dungeon ou resposta.
-const enqueueIncomingByChat=createKeyedAsyncQueue()
+// Jogadores diferentes no mesmo grupo são atendidos em paralelo.
+// Menus, confirmações e transações de CADA jogador continuam sequenciais.
+const enqueueIncomingByPlayer=createKeyedAsyncQueue()
 sock.ev.on('messages.upsert',({messages,type})=>{
 const receivedAt=Date.now()
 trevoHealth.lastUpsertAt=receivedAt
-const batches=new Map()
-for(const msg of messages||[]){
-  const key=String(msg?.key?.remoteJid||'__unknown__')
-  if(!batches.has(key))batches.set(key,[])
-  batches.get(key).push(msg)
-}
-for(const [chatKey,batch] of batches){
-  void enqueueIncomingByChat(chatKey,()=>processIncomingMessages({messages:batch,type},receivedAt))
-    .catch(err=>console.error('[WhatsApp Inbound] falha na fila',err?.message||err))
+trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
+for(const [playerKey,batch] of groupIncomingByPlayer(messages)){
+  void enqueueIncomingByPlayer(playerKey,()=>processIncomingMessages({messages:batch,type},receivedAt))
+    .catch(err=>console.error('[WhatsApp Inbound] falha na fila por jogador',err?.message||err))
 }
 })
 async function processIncomingMessages({messages,type},receivedAt){
