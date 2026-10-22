@@ -11,6 +11,7 @@ import pino from 'pino'
 import NodeCache from 'node-cache'
 import {createTtlCache,createByteBudget,createMessageDeduplicator,declaredMediaBytes,downloadBoundedMedia,scheduleUntil} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
+import {createKeyedAsyncQueue} from './chat-queue.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
@@ -2184,6 +2185,11 @@ maxCommitRetries:3,
 delayBetweenTriesMs:500
 }
 })
+// Todas as respostas e avisos enviados ao MESMO grupo compartilham a ordem.
+// Não altera o conteúdo das mensagens nem repete operações de inventário/carteira.
+const enqueueOutgoingByChat=createKeyedAsyncQueue()
+const sendWithoutQueue=sock.sendMessage.bind(sock)
+sock.sendMessage=(chat,content,options)=>enqueueOutgoingByChat(chat,()=>sendWithoutQueue(chat,content,options))
 const privateQrState=globalThis.__alphaPairingQr||(globalThis.__alphaPairingQr={value:null,updatedAt:0})
 if(!state.creds.registered){
 sock.ev.on('connection.update',update=>{
@@ -8982,8 +8988,24 @@ await sock.sendMessage(chat,{text:`👋 ${tag} saiu do grupo. Até a próxima!`,
 }
 }catch(err){ console.error('[boas-vindas]',err?.message||err) }
 })
-sock.ev.on('messages.upsert',async({messages,type})=>{
+// O Baileys pode disparar lotes concorrentes. Serializar apenas POR CHAT evita
+// que dois comandos simultâneos disputem fluxo de venda, dungeon ou resposta.
+const enqueueIncomingByChat=createKeyedAsyncQueue()
+sock.ev.on('messages.upsert',({messages,type})=>{
 const receivedAt=Date.now()
+trevoHealth.lastUpsertAt=receivedAt
+const batches=new Map()
+for(const msg of messages||[]){
+  const key=String(msg?.key?.remoteJid||'__unknown__')
+  if(!batches.has(key))batches.set(key,[])
+  batches.get(key).push(msg)
+}
+for(const [chatKey,batch] of batches){
+  void enqueueIncomingByChat(chatKey,()=>processIncomingMessages({messages:batch,type},receivedAt))
+    .catch(err=>console.error('[WhatsApp Inbound] falha na fila',err?.message||err))
+}
+})
+async function processIncomingMessages({messages,type},receivedAt){
 trevoHealth.lastUpsertAt=receivedAt
 trevoHealth.rawMessagesAtLastUpsert=Number(trevoHealth.rawMessagesSeen||0)
 trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
@@ -9018,8 +9040,19 @@ const preSendMs=Date.now()-messageProcessingStartedAt
 if(preSendMs>=1250) console.warn('[CommandLatency]',JSON.stringify({phase:'before-send',ms:preSendMs,kind:body.startsWith(prefix)?'command':'menu'}))
 }
 const sentAt=Date.now()
-const promise=sock.sendMessage(chat,{text,...extra},{quoted:msg})
-return Promise.resolve(promise).finally(()=>{
+return Promise.resolve().then(()=>sock.sendMessage(chat,{text,...extra},{quoted:msg}))
+.catch(err=>{
+  // A venda ou ação pode JÁ TER sido confirmada pelo banco: nunca dizer
+  // "operação falhou" por causa de transporte nem executá-la uma segunda vez.
+  console.error('[WhatsApp Reply] confirmação não enviada',JSON.stringify({
+    messageId:String(msg?.key?.id||'').slice(0,80),
+    kind:body.startsWith(prefix)?'command':'menu',
+    cause:String(err?.message||err).slice(0,160)
+  }))
+  const sendError=new Error('A confirmação WhatsApp não pôde ser enviada')
+  sendError.alphaReplySendFailed=true
+  throw sendError
+}).finally(()=>{
 const sendMs=Date.now()-sentAt
 if(sendMs>=1250) console.warn('[CommandLatency]',JSON.stringify({phase:'whatsapp-send',ms:sendMs,kind:body.startsWith(prefix)?'command':'menu'}))
 })
@@ -12022,6 +12055,11 @@ const picked=UNKNOWN_COMMAND_REPLIES[Math.floor(Math.random()*UNKNOWN_COMMAND_RE
 await reply(picked)
 }
 }catch(err){
+if(err?.alphaReplySendFailed){
+  // Erro apenas da entrega da resposta; transações anteriores NÃO são desfeitas.
+  console.error('[mensagem] ação não repetida após falha de resposta',String(msg?.key?.id||'').slice(0,80))
+  continue
+}
 console.error('[mensagem] erro',err)
 try{
 const chat=msg.key.remoteJid
@@ -12029,7 +12067,7 @@ await sock.sendMessage(chat,{text:`❌ ${err.message || 'Ocorreu um erro.'}`},{q
 }catch{}
 }
 }
-})
+}
 }
 start().catch(err=>{
 console.error('[fatal]',err)
