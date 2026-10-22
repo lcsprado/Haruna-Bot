@@ -564,8 +564,12 @@ ON CONFLICT(jid) DO UPDATE
 SET push_name = CASE WHEN EXCLUDED.push_name <> '' THEN EXCLUDED.push_name ELSE users.push_name END,
 updated_at = ${nowSql}
 `, [jid, pushName])
-await db.query('INSERT INTO wallets (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
-await db.query('INSERT INTO stats (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
+// Both tables depend only on the users row above, not on each other.
+// Run independent idempotent inserts concurrently to reduce Aiven WAN RTT.
+await Promise.all([
+db.query('INSERT INTO wallets (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid]),
+db.query('INSERT INTO stats (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
+])
 }
 export async function consolidateUserIdentity(targetJid, aliases=[], pushName='') {
 if(!targetJid?.endsWith('@s.whatsapp.net')) return false

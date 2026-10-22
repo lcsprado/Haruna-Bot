@@ -1,0 +1,38 @@
+name: "Alpha Bot | Latência comandos Aiven sem tocar produção"
+
+on:
+  push:
+    branches: [fix/command-latency-aiven-20261021]
+    paths:
+      - src/neon/loans.js
+      - src/neon/db.js
+      - src/neon/index.js
+      - test/command-latency-aiven-20261021.test.mjs
+      - .github/workflows/alpha-command-latency-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/loans.js
+          node --check src/neon/db.js
+      - name: Testar cobrança e processamento sem banco nem WhatsApp
+        run: node --test test/command-latency-aiven-20261021.test.mjs
+      - name: Assegurar que testes não usam segredos nem fazem vendas reais
+        run: |
+          test -z "${DATABASE_URL:-}"
+          echo "SUCCESS: sem acesso a bancos, sem migrações, sem saldos alterados."

@@ -275,6 +275,16 @@ export async function payLoan(borrowerJid,amount='total'){
 }
 
 export async function collectOverdueLoansForBorrower(borrowerJid){
+  // This runs before EVERY WhatsApp command. Avoid 3 remote round trips
+  // (BEGIN, SELECT FOR UPDATE, COMMIT) unless an overdue active loan exists.
+  // PostgreSQL is remote to the bot; this preflight is strictly read-only.
+  const due=(await db.query(
+    "SELECT 1 FROM player_loans WHERE borrower_jid=$1 AND status='active' AND due_at<EXTRACT(EPOCH FROM NOW())::BIGINT LIMIT 1",
+    [borrowerJid]
+  )).rowCount>0
+  if(!due) return {paid:0,loan:null}
+  // Critical financial mutations retain the original row lock/transaction.
+  // A concurrent collector can safely win the race and make found empty.
   return tx(async client=>{
     const found=await client.query(
       "SELECT * FROM player_loans WHERE borrower_jid=$1 AND status='active' AND due_at<EXTRACT(EPOCH FROM NOW())::BIGINT ORDER BY due_at ASC LIMIT 1 FOR UPDATE",

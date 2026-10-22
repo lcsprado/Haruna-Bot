@@ -8999,6 +8999,7 @@ continue
 }
 const ident=[msg?.key?.remoteJid,msg?.key?.participant||'',msg?.key?.id].join('|')
 if(msg?.key?.id&&!acceptIncomingMessage(ident))continue
+const messageProcessingStartedAt=Date.now()
 try{
 if(!msg?.message || msg.key.fromMe) continue
 trevoHealth.lastInboundAt=Date.now()
@@ -9008,7 +9009,21 @@ const rawSender=msg.key.participant || chat
 const senderIdentity=await resolvePlayerIdentity(sock,chat,rawSender,msg)
 const sender=senderIdentity.jid
 const body=textOf(msg).trim()
-const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
+let firstReplyTimed=false
+const reply=(text,extra={})=>{
+const first=!firstReplyTimed
+if(first){
+firstReplyTimed=true
+const preSendMs=Date.now()-messageProcessingStartedAt
+if(preSendMs>=1250) console.warn('[CommandLatency]',JSON.stringify({phase:'before-send',ms:preSendMs,kind:body.startsWith(prefix)?'command':'menu'}))
+}
+const sentAt=Date.now()
+const promise=sock.sendMessage(chat,{text,...extra},{quoted:msg})
+return Promise.resolve(promise).finally(()=>{
+const sendMs=Date.now()-sentAt
+if(sendMs>=1250) console.warn('[CommandLatency]',JSON.stringify({phase:'whatsapp-send',ms:sendMs,kind:body.startsWith(prefix)?'command':'menu'}))
+})
+}
 const isGroup=chat.endsWith('@g.us')
 setPlayerGroupContext(sender,isGroup?chat:null)
 if(isGroup && !temporaryRecoveryMode){
