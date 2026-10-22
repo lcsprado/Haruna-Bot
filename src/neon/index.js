@@ -69,6 +69,8 @@ import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
 import {petCollectionCategory,petCollectionCategoryPets,petCollectionMenuText,petCollectionListText,petCollectionDetailText,petCollectionSacrificeText} from './pet-collection-menu.js'
 import { createWebLinkCode } from './web-api.js'
+import { planLootBatch } from './loot-batch-plan.js'
+import { randomUUID } from 'node:crypto'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
@@ -948,6 +950,8 @@ return true
 }
 const alphaIdentityMergeChecked=new Map()
 const quickGameFlows=new Map()
+// A persisted quick flow may be delivered twice before the first slow DB sale ends.
+const claimedLootBatchIds=new Set()
 const alphaNoQuickFlowUntil=new Map()
 const quickFlowWrites=new Map()
 const quickFlowKey=(chat,sender)=>`${chat}|${sender}`
@@ -1224,21 +1228,27 @@ counts[rarity]=(counts[rarity]||0)+Number(item?.qty||0)
 }
 return `🎒 *O QUE QUER FAZER COM OS ITENS?*\n\n⚪ Comuns: *${fmt(counts.common)}*\n🟢 Incomuns: *${fmt(counts.uncommon)}*\n🔵 Raros: *${fmt(counts.rare)}*\n🟣 Épicos: *${fmt(counts.epic)}*\n🟠 Lendários: *${fmt(counts.legendary)}*\n\n1️⃣ Guardar tudo\n2️⃣ Vender tudo, menos Lendário\n3️⃣ Vender todos os Comuns\n4️⃣ Vender todos os Incomuns\n5️⃣ Vender todos os Raros\n6️⃣ Vender todos os Épicos\n7️⃣ Vender Raros + Épicos\n8️⃣ Escolher item por item\n\n🛡️ *Lendário nunca entra na venda em massa.*`
 }
+// Use one DB connection and one wallet settlement per batch instead of
+// N independent transactions across the Ohio -> San Francisco link.
 async function sellLootBatch(sender,items,predicate){
+const inventory=await getInventory(sender)
+const {selections,failures}=planLootBatch(items,inventory,predicate)
 let soldTotal=0
 let soldQty=0
-const failures=[]
-for(const item of items){
-if(String(item?.rarity||'common')==='legendary') continue
-if(!predicate(item)) continue
-const qty=Math.max(0,Number(item?.qty||0))
-if(!qty) continue
+for(let start=0;start<selections.length;start+=50){
+const group=selections.slice(start,start+50)
 try{
-const sold=await sellItem(sender,item.itemId,qty)
+const sold=await sellItemsBatch(sender,group)
 soldTotal+=Number(sold.total||0)
-soldQty+=qty
+soldQty+=Number(sold.totalUnits||0)
 }catch(err){
-failures.push(item.name||item.itemId)
+// sellItemsBatch rolls back as a unit. Do NOT retry or replay writes
+// automatically: a connection failure at commit time can be ambiguous.
+console.error('[Loot batch] transação não confirmada; verificar extrato:',err?.code||err?.name||'error')
+failures.push(...group.map(row=>{
+const name=inventory.find(i=>i.item_id===row.itemId)?.name||row.itemId
+return name+' (venda não confirmada; conferir extrato)'
+}))
 }
 }
 return {soldTotal,soldQty,failures}
@@ -1246,7 +1256,7 @@ return {soldTotal,soldQty,failures}
 async function beginLootDisposition(chat,sender,result,reply){
 const items=Array.isArray(result?.items)?result.items.filter(i=>Number(i.qty||0)>0):[]
 if(!items.length) return false
-setQuickFlow(chat,sender,'loot_disposition_bulk',{items},5*60*1000)
+setQuickFlow(chat,sender,'loot_disposition_bulk',{items,claimId:randomUUID()},5*60*1000)
 await reply(lootDispositionBulkPrompt(items))
 return true
 }
@@ -5103,13 +5113,29 @@ if(!predicate){
 await reply('🎒 Escolha uma opção de *1 a 8*.')
 return true
 }
-const result=await sellLootBatch(sender,items,predicate)
+// Claim synchronously before the FIRST await and immediately invalidate
+// the persisted menu, preventing a duplicate WhatsApp message from selling twice.
+const claimId=String(flow.data?.claimId||quickFlowKey(chat,sender)+':'+flow.expiresAt)
+if(claimedLootBatchIds.has(claimId)){
+await reply('⏳ Essa venda já foi processada ou está em andamento. Confira o extrato antes de repetir.')
+return true
+}
+claimedLootBatchIds.add(claimId)
+if(claimedLootBatchIds.size>5000){claimedLootBatchIds.clear();claimedLootBatchIds.add(claimId)}
 clearQuickFlow(chat,sender)
+let result
+try{
+result=await sellLootBatch(sender,items,predicate)
+}catch(err){
+console.error('[Loot batch] falha antes da confirmação:',err?.code||err?.name||'error')
+await reply('⚠️ Não foi possível confirmar essa venda. Confira o inventário e o extrato antes de tentar novamente.')
+return true
+}
 const failedLine=result.failures.length
-? '\n⚠️ Não foi possível vender: *'+result.failures.join(', ')+'*. Esses itens ficaram no inventário.'
+? '\n⚠️ Não vendidos nesta operação: *'+result.failures.join(', ')+'*. Alguns podem já ter sido vendidos antes; confira o extrato.'
 : ''
 if(result.soldQty<1){
-await reply('ℹ️ Nenhum item dessa seleção foi vendido.\n🎒 Os itens continuam no inventário.'+legendaryLine+failedLine)
+await reply('ℹ️ Nenhuma nova venda foi confirmada nesta operação.\n🔍 Consulte o inventário e o extrato para conferir itens já processados.'+legendaryLine+failedLine)
 return true
 }
 await reply(
