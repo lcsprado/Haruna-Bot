@@ -275,6 +275,14 @@ export async function payLoan(borrowerJid,amount='total'){
 }
 
 export async function collectOverdueLoansForBorrower(borrowerJid){
+  // Most players have no overdue loans. Avoid BEGIN/SELECT FOR UPDATE/COMMIT
+  // on every command unless a due loan exists. The transaction below remains
+  // authoritative and applies the same interest/payment rules under row lock.
+  const due=await db.query(
+    "SELECT 1 FROM player_loans WHERE borrower_jid=$1 AND status='active' AND due_at<EXTRACT(EPOCH FROM NOW())::BIGINT LIMIT 1",
+    [borrowerJid]
+  )
+  if(!due.rowCount) return {paid:0,loan:null}
   return tx(async client=>{
     const found=await client.query(
       "SELECT * FROM player_loans WHERE borrower_jid=$1 AND status='active' AND due_at<EXTRACT(EPOCH FROM NOW())::BIGINT ORDER BY due_at ASC LIMIT 1 FOR UPDATE",
