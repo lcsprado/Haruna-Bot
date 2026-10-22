@@ -9043,7 +9043,6 @@ for(const [playerKey,batch] of groupIncomingByPlayer(messages)){
 async function processIncomingMessages({messages,type},receivedAt){
 trevoHealth.lastUpsertAt=receivedAt
 trevoHealth.rawMessagesAtLastUpsert=Number(trevoHealth.rawMessagesSeen||0)
-trevoHealth.messagesSeen=Number(trevoHealth.messagesSeen||0)+(messages?.length||0)
 trevoHealth.lastUpsertType=type||null
 if(type!=='notify' && type!=='append')return
 for(const msg of messages){
