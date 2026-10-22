@@ -9046,7 +9046,21 @@ const rawSender=msg.key.participant || chat
 const senderIdentity=await resolvePlayerIdentity(sock,chat,rawSender,msg)
 const sender=senderIdentity.jid
 const body=textOf(msg).trim()
-const reply=(text,extra={})=>sock.sendMessage(chat,{text,...extra},{quoted:msg})
+const commandStartedAt=Date.now()
+let firstReplyPending=true
+const reply=(text,extra={})=>{
+  // Measure actual command-to-first-reply latency without identifiers or
+  // message contents. Logs only slow commands to avoid extra bandwidth.
+  if(firstReplyPending && body.startsWith(prefix)){
+    firstReplyPending=false
+    const delayMs=Date.now()-commandStartedAt
+    if(delayMs>=1000){
+      const commandLabel=String(body.slice(prefix.length).trim().split(/\s+/)[0]||'?').slice(0,30)
+      console.info('[Command latency]',JSON.stringify({command:commandLabel,ms:delayMs,thresholdMs:1000}))
+    }
+  }
+  return sock.sendMessage(chat,{text,...extra},{quoted:msg})
+}
 const isGroup=chat.endsWith('@g.us')
 setPlayerGroupContext(sender,isGroup?chat:null)
 if(isGroup && !temporaryRecoveryMode){
