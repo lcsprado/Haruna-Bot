@@ -48,7 +48,7 @@ export function createBoundedOutboundScheduler({maxConcurrentPerChat=2,onTiming=
       else slot.waiting.push(admit)
     })
   }
-  return (chat,options,task)=>{
+  return (chat,options,task,kind='other')=>{
     const queuedAt=now()
     return perLane(outgoingLane(chat,options),async()=>{
       const release=await enter(String(chat))
@@ -58,7 +58,7 @@ export function createBoundedOutboundScheduler({maxConcurrentPerChat=2,onTiming=
       finally{
         const transportMs=now()-startedAt
         release()
-        try{onTiming({queueMs:waitMs,transportMs})}catch{}
+        try{onTiming({queueMs:waitMs,transportMs,kind})}catch{}
       }
     })
   }
