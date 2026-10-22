@@ -2300,9 +2300,20 @@ Eu sou o *Alpha Bot* — cheguei no *${groupName||'grupo'}* para transformar con
 *!comandos* — lista completa
 🧪 Testem o RPG, chamem os amigos e tentem descobrir quem realmente é Alpha aqui.
 _Boa sorte, Betas. Vocês vão precisar._ 😎`
+// Group intro status is immutable during ordinary gameplay. Avoid a remote
+// SELECT for every incoming WhatsApp message, including non-commands.
+const groupIntroSentCache=new Map()
+const GROUP_INTRO_CACHE_MS=5*60*1000
 async function getBotGroupIntroState(chat){
+const cached=groupIntroSentCache.get(chat)
+if(cached?.expiresAt>Date.now()) return cached.value
 const row=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[botGroupIntroKey(chat)])).rows[0]
-return row?.value||{}
+const value=row?.value||{}
+if(value.sent){
+  if(groupIntroSentCache.size>=1000)groupIntroSentCache.clear()
+  groupIntroSentCache.set(chat,{value,expiresAt:Date.now()+GROUP_INTRO_CACHE_MS})
+}
+return value
 }
 async function setBotGroupIntroState(chat,value){
 await db.query(
@@ -2311,6 +2322,7 @@ VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
 [botGroupIntroKey(chat),JSON.stringify(value)]
 )
+groupIntroSentCache.delete(chat)
 }
 async function sendBotGroupIntro(chat,{force=false,reason='participant-add'}={}){
 if(temporaryRecoveryMode)return false
