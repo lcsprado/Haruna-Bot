@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {createRecentEnsureCache} from './recent-ensure.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
 import pg from 'pg'
@@ -556,7 +557,9 @@ await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tie
 })
 await fixLegacyPetVitals()
 }
+const recentEnsureUsers=createRecentEnsureCache()
 export async function ensureUser(jid, pushName='') {
+if(recentEnsureUsers.isFresh(jid,pushName))return
 await db.query(`
 INSERT INTO users (jid, push_name)
 VALUES ($1,$2)
@@ -570,6 +573,7 @@ await Promise.all([
 db.query('INSERT INTO wallets (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid]),
 db.query('INSERT INTO stats (jid) VALUES ($1) ON CONFLICT(jid) DO NOTHING', [jid])
 ])
+recentEnsureUsers.remember(jid,pushName)
 }
 export async function consolidateUserIdentity(targetJid, aliases=[], pushName='') {
 if(!targetJid?.endsWith('@s.whatsapp.net')) return false
