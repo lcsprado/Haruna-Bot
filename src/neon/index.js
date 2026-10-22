@@ -2939,6 +2939,35 @@ for(const lic of groups){
 await sock.sendMessage(lic.chat_jid,{text:formattedText}).catch(err=>console.error('[Eventos] aviso',lic.chat_jid,err?.message||err))
 }
 }
+// Track delivery separately for every group. A failed group can be retried
+// without repeating a successful announcement to another group.
+async function sendTrackedXpEventStart(text,eventId){
+const groups=await activeEventGroups()
+if(!groups.length){
+console.warn('[Eventos XP] nenhum grupo ativo para anúncio')
+return false
+}
+const formattedText=formatEventNotice(text)
+let failures=0,delivered=0,alreadySent=0
+for(const lic of groups){
+const marker='xp_event_notice:'+eventId+':'+lic.chat_jid
+try{
+const exists=await db.query('SELECT 1 FROM trevo_settings WHERE key=$1',[marker])
+if(exists.rowCount){alreadySent++;continue}
+await sock.sendMessage(lic.chat_jid,{text:formattedText})
+await db.query(
+'INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING',
+[marker,JSON.stringify({sentAt:Date.now(),eventId})]
+)
+delivered++
+}catch(err){
+failures++
+console.error('[Eventos XP] envio falhou',err?.message||err)
+}
+}
+console.log('[Eventos XP] resumo de anúncios',JSON.stringify({groups:groups.length,delivered,alreadySent,failures}))
+return failures===0
+}
 const quizPending=new Map()
 const quizFinishPrompt='🧠 *QUIZ FINALIZADO!*\n\n1. 🔄 Outra pergunta\n2. ❌ Finalizar quiz\n\nResponda com *1 ou 2*.'
 const quizFormat=q=>{
@@ -3555,13 +3584,15 @@ const endClock=new Date(endsAt).toLocaleTimeString('pt-BR',{timeZone:'America/Sa
 const moneyLine=Number(event.moneyMultiplier||1)>1
 ? `💰 Dinheiro de recompensas: *${mult}x*\n`
 : '💰 Dinheiro: *normal* — sem inflação de moeda\n'
-await sendEventToGroups(
+const sentToAll=await sendTrackedXpEventStart(
 `⚡🔥 *${title} COMEÇOU!* 🔥⚡
 ⏱️ Duração: *${Math.max(1,Math.round((endsAt-startsAt)/60000))} minutos*
 ${moneyLine}✨ XP: *${xpMult}x*
 🎯 Evento focado em progressão, sem bônus de dinheiro, drops ou caixas.
-⏰ Termina às *${endClock}*.`
+⏰ Termina às *${endClock}*.`,
+eventId
 )
+if(!sentToAll) return
 raw.startAnnouncementId=eventId
 console.log('[Eventos] evento de ganhos iniciado e anunciado')
 await db.query(
@@ -3692,7 +3723,9 @@ globalThis.__alphaEcoNoticeTimers.push(timer)
 }catch(err){console.error('[Neon Eco] falha no agendamento de eventos',err?.message||err)}
 }
 if(neonEcoMode){
-doubleRewardEventScheduler=null
+// One lightweight check per minute detects externally activated XP events.
+doubleRewardEventScheduler=setInterval(updateDoubleRewardAnnouncements,60*1000)
+doubleRewardEventScheduler.unref?.()
 luckyBoxEventScheduler=null
 for(const t of globalThis.__alphaEcoNoticeTimers||[])clearTimeout(t)
 globalThis.__alphaEcoNoticeTimers=[]
@@ -3700,7 +3733,7 @@ doubleRewardStartupTimer=setTimeout(async()=>{
 await updateDoubleRewardAnnouncements()
 await updateLuckyBoxAnnouncements()
 await refreshEcoScheduledEvents()
-console.log('[Neon Eco] avisos de bônus agendados por horário, sem polling')
+console.log('[Neon Eco] avisos agendados; verificação leve de XP a cada 60s')
 },3000)
 doubleRewardStartupTimer.unref?.()
 }else{
