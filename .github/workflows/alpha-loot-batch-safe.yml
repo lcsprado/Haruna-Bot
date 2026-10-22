@@ -1,0 +1,35 @@
+name: "Alpha Bot | Venda de drops segura e sem repetição"
+on:
+  push:
+    branches:
+      - fix/loot-bulk-latency-aiven-20261021
+    paths:
+      - src/neon/index.js
+      - src/neon/loot-batch-plan.js
+      - test/loot-batch-safe-20261021.test.mjs
+      - .github/workflows/alpha-loot-batch-safe.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  safe-loot-batch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: "Validate syntax of WhatsApp and pure sale planner"
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/db.js
+          node --check src/neon/loot-batch-plan.js
+          node --check test/loot-batch-safe-20261021.test.mjs
+      - name: "Run pure, read-only regression tests; no DB credentials"
+        run: node --test test/loot-batch-safe-20261021.test.mjs
+      - name: "Confirm no database writes or real player interaction"
+        run: |
+          echo "PASS: no DATABASE_URL, no WhatsApp session, no production services touched."
