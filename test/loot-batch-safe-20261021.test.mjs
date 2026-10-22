@@ -21,7 +21,7 @@ test('cópias forjadas e upadas ficam protegidas; apenas extras são vendáveis'
   const inv=[owned('bota_relampago',5,5,{upgraded_copies:[{level:10,quantity:1}],forged_level:0})]
   assert.deepEqual(planLootBatch(items,inv).selections,[{itemId:'bota_relampago',qty:1}])
   assert.equal(planLootBatch([drop('bota_relampago','Bota do Relâmpago',5,'epic')],inv).selections.length,0)
-  const forged=[owned('espada','Espada',1,1,{forged_level:1,upgraded_copies:[]})]
+  const forged=[owned('espada',1,1,{forged_level:1,upgraded_copies:[]})]
   assert.equal(planLootBatch([drop('espada','Espada')],forged).selections.length,0)
 })
 test('nunca vende cópia equipada, vinculada, item bloqueado ou lendário',()=>{
