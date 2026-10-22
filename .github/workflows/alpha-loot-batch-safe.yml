@@ -5,6 +5,8 @@ on:
       - fix/loot-bulk-latency-aiven-20261021
     paths:
       - src/neon/index.js
+      - src/neon/db.js
+      - src/neon/loans.js
       - src/neon/loot-batch-plan.js
       - test/loot-batch-safe-20261021.test.mjs
       - .github/workflows/alpha-loot-batch-safe.yml
@@ -26,10 +28,62 @@ jobs:
         run: |
           node --check src/neon/index.js
           node --check src/neon/db.js
+          node --check src/neon/loans.js
           node --check src/neon/loot-batch-plan.js
           node --check test/loot-batch-safe-20261021.test.mjs
       - name: "Run pure, read-only regression tests; no DB credentials"
         run: node --test test/loot-batch-safe-20261021.test.mjs
-      - name: "Confirm no database writes or real player interaction"
+      - name: "Dependencies in throwaway runner"
+        run: npm install --no-save --package-lock=false --legacy-peer-deps --no-audit --no-fund
+      - name: "Prove one-roundtrip ensureUser in Aiven homolog, all writes ROLLED BACK"
+        shell: bash
+        env:
+          ALPHA_AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+          ALPHA_AIVEN_CA_PEM: ${{ secrets.ALPHA_AIVEN_CA }}
         run: |
-          echo "PASS: no DATABASE_URL, no WhatsApp session, no production services touched."
+          set -Eeuo pipefail
+          node --input-type=module <<'NODE'
+          import pg from 'pg'
+          import fs from 'node:fs'
+          const u=new URL(process.env.ALPHA_AIVEN_URI||'')
+          if(u.hostname!=='alphabot-lcsh-3393.b.aivencloud.com'||u.port!=='26343'||u.pathname!=='/defaultdb')throw Error('Unexpected Aiven source')
+          u.pathname='/alpha_homolog'
+          u.searchParams.delete('sslmode')
+          const ca=String(process.env.ALPHA_AIVEN_CA_PEM||'')
+          if(!ca.includes('BEGIN CERTIFICATE'))throw Error('CA missing')
+          const client=new pg.Client({connectionString:u.toString(),ssl:{ca,rejectUnauthorized:true},connectionTimeoutMillis:15000})
+          const jid='__alpha_latency_ensureuser_test__@s.whatsapp.net'
+          const sql=`
+          WITH usr AS (
+            INSERT INTO users (jid,push_name) VALUES ($1,$2)
+            ON CONFLICT(jid) DO UPDATE SET
+              push_name=CASE WHEN EXCLUDED.push_name<>'' THEN EXCLUDED.push_name ELSE users.push_name END,
+              updated_at=(EXTRACT(EPOCH FROM NOW())::BIGINT)
+            RETURNING jid
+          ), wallet AS (
+            INSERT INTO wallets (jid) SELECT jid FROM usr ON CONFLICT(jid) DO NOTHING RETURNING jid
+          )
+          INSERT INTO stats (jid) SELECT jid FROM usr ON CONFLICT(jid) DO NOTHING
+          `
+          try{
+            await client.connect()
+            await client.query('BEGIN')
+            await client.query("SET LOCAL statement_timeout='15000ms'")
+            await client.query(sql,[jid,'alpha-test-name'])
+            let x=await client.query('SELECT (SELECT count(*) FROM users WHERE jid=$1) AS users,(SELECT count(*) FROM wallets WHERE jid=$1) AS wallets,(SELECT count(*) FROM stats WHERE jid=$1) AS stats',[jid])
+            if(['users','wallets','stats'].some(k=>Number(x.rows[0][k])!==1))throw Error('Creation/upsert CTE did not ensure all 3')
+            await client.query(sql,[jid,'alpha-test-updated'])
+            x=await client.query('SELECT push_name FROM users WHERE jid=$1',[jid])
+            if(x.rows[0]?.push_name!=='alpha-test-updated')throw Error('Name update diverges from old behavior')
+            await client.query('ROLLBACK')
+            x=await client.query('SELECT 1 FROM users WHERE jid=$1',[jid])
+            if(x.rowCount)throw Error('Temporary test account not rolled back')
+            console.log('PASS: 3 ensureUser effects in one CTE; test transaction ROLLED BACK')
+          }finally{
+            await client.query('ROLLBACK').catch(()=>{})
+            await client.end().catch(()=>{})
+          }
+          NODE
+      - name: "Confirm safe branch no deployment"
+        run: |
+          echo "PASS: tested in homolog only; production and WhatsApp unchanged."
