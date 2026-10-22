@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/v1/:path*",
+      "destination": "https://alpha-web-api-beta.onrender.com/api/v1/:path*"
+    },
+    {
       "source": "/rpg",
       "destination": "/index.html"
     },
@@ -11,6 +15,15 @@
     }
   ],
   "headers": [
+    {
+      "source": "/api/v1/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
     {
       "source": "/assets/:path*",
       "headers": [
