@@ -5,9 +5,16 @@ if(runtime!=='web-api-only')throw Error('WEB API BLOCKED: ALPHA_RUNTIME=web-api-
 const raw=String(process.env.DATABASE_URL||'')
 let url
 try{url=new URL(raw)}catch{throw Error('WEB API BLOCKED: DATABASE_URL missing or invalid')}
+// Aiven's connection page usually provides /defaultdb. Accept only that
+// default database name as input and explicitly target the approved game DB.
+// The approved hostname, port, and all other credential/CA checks remain strict.
 if(url.hostname!=='alphabot-lcsh-3393.b.aivencloud.com'||
-  url.port!=='26343'||url.pathname!=='/alpha_prod_v2'){
+  url.port!=='26343'||!['/alpha_prod_v2','/defaultdb'].includes(url.pathname)){
   throw Error('WEB API BLOCKED: DATABASE_URL must target approved Aiven alpha_prod_v2')
+}
+if(url.pathname==='/defaultdb'){
+  url.pathname='/alpha_prod_v2'
+  process.env.DATABASE_URL=url.toString()
 }
 const ca=String(process.env.ALPHA_AIVEN_CA_PEM||'').replace(/\\n/g,'\n').trim()
 if(!ca.startsWith('-----BEGIN CERTIFICATE-----')||
