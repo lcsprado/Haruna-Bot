@@ -160,3 +160,14 @@ test('regressões conhecidas de escopo não reaparecem',async()=>{
   assert.match(source,/async function showMainMenu\(chat,sender,reply\)/)
   assert.doesNotMatch(source,/await mainMenu\(\)/)
 })
+
+
+test('roleta não mostra aviso de giro programado em nenhum caminho',async()=>{
+  const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
+  const games=await readFile(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  assert.doesNotMatch(source,/GIRO ESPECIAL PROGRAMADO/i)
+  assert.match(source,/🎉 Você ganhou R\$ \$\{fmt\(r\.payout\)\}! Lucro: R\$ \$\{fmt\(r\.profit\)\}/)
+  assert.match(source,/🏆 ganhou R\$ \$\{fmt\(x\.payout\)\}/)
+  assert.match(source,/💸 Você perdeu R\$ \$\{fmt\(r\.amount\)\}/)
+  assert.match(games,/if\(payout\) await credit\(c,jid,payout,'roleta'\)/)
+})
