@@ -106,7 +106,8 @@ const EVENT_ITEM_ART_SHEETS=[
   {url:'/assets/raid-armors.webp?v=20261023-1',w:1536,h:1024},
   {url:'/assets/event-gear.webp?v=20261023-1',w:1254,h:1254},
   {url:'/assets/event-relics.webp?v=20261023-1',w:1254,h:1254},
-  {url:'/assets/raid-keys.webp?v=20261023-1',w:1254,h:1254}
+  {url:'/assets/raid-keys.webp?v=20261023-1',w:1254,h:1254},
+  {url:'/assets/final-items.webp?v=20261023-1',w:1774,h:887}
 ];
 const EVENT_RELIC_IDS=[
   'insignia_eco_ancestral','insignia_tita_ancestral','insignia_guardiao_ruptura',
@@ -126,7 +127,8 @@ const EVENT_ITEM_SPRITES={
   elmo_labirinto_alpha:[2,0,627,627,627],bota_jp_aquiles:[2,627,627,627,627],
   ...Object.fromEntries(EVENT_RELIC_IDS.map((id,i)=>[id,[3,(i%4)*313.5,Math.floor(i/4)*313.5,313.5,313.5]])),
   chave_raid_60:[4,0,0,627,627],chave_raid_65:[4,627,0,627,627],
-  chave_raid_70:[4,0,627,627,627],essencia_eclipse:[4,627,627,627,627]
+  chave_raid_70:[4,0,627,627,627],essencia_eclipse:[4,627,627,627,627],
+  pocao_pet_full:[5,0,0,887,887],fragmento_universal_raid:[5,887,0,887,887]
 };
 
 const ITEM_DEDICATED_SPRITES={
@@ -1285,7 +1287,7 @@ function itemSpriteKey(item){
     essencia_rei_abissal:'fixed-essencia-abissal',nucleo_titan:'fixed-nucleo-tita',
     pocao_p:'potion-small',pocao_m:'potion-medium',pocao_g:'potion-large',elixir_supremo:'potion-elixir',
     pocao_pet_comum:'pet-potion-small',pocao_pet_rara:'pet-potion-medium',pocao_pet_epica:'pet-potion-large',pocao_pet_suprema:'pet-potion-elixir',
-    caixa_sorte:'box-luck',caixa_rara:'box-rare',caixa_epica:'box-epic',
+    caixa_sorte:'box-luck',caixa_rara:'box-rare',caixa_epica:'box-epic',caixa_lendaria:'box-legendary',
     espada_eclipse:'weapon-eclipse',lamina_abissal:'weapon-abyss',tridente_tempestade:'weapon-trident',
     foice_carmesim:'weapon-scythe',martelo_golem:'weapon-hammer',
     armadura_abissal:'armor-abyss',armadura_celestial:'armor-celestial',
