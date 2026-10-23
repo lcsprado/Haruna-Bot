@@ -193,6 +193,34 @@ const COLLAB_PET_SPRITES={
   pecado_merlin:[1864,20,306,500]
 };
 
+// Retratos de Raid e evento, conferidos na ordem de cada folha.
+const RAID_PET_SHEETS=[
+  {url:'/assets/raid-pets-10-30.webp?v=20261023-1',w:1440,h:1080},
+  {url:'/assets/raid-pets-30-65.webp?v=20261023-1',w:1440,h:1080},
+  {url:'/assets/raid-pets-65-70.webp?v=20261023-1',w:1080,h:1080},
+  {url:'/assets/event-pets.webp?v=20261023-1',w:720,h:360}
+];
+const RAID_PET_SPRITES={
+  golem_ancestral:[0,0,0,360,360],colosso_cristal:[0,360,0,360,360],
+  salamandra_infernal:[0,720,0,360,360],dragao_vulcanico:[0,1080,0,360,360],
+  fenix_fogo:[0,0,360,360,360],corvo_abissal:[0,360,360,360,360],
+  lobo_abismo:[0,720,360,360,360],fenix_gelo:[0,1080,360,360,360],
+  rinoceronte_titanico:[0,0,720,360,360],guardiao_obsidiana:[0,360,720,360,360],
+  leviata_gelo:[0,720,720,360,360],cerbero_carmesim:[0,1080,720,360,360],
+  tigre_lunar:[1,0,0,360,360],imperador_abissal:[1,360,0,360,360],
+  leao_solar:[1,720,0,360,360],dragao_corrompido:[1,1080,0,360,360],
+  fenix_alpha:[1,0,360,360,360],fera_caos:[1,360,360,360,360],
+  guardiao_caos:[1,720,360,360,360],serafim_caotico:[1,1080,360,360,360],
+  oraculo_caos:[1,0,720,360,360],fenix_caos:[1,360,720,360,360],
+  pantera_profundezas:[1,720,720,360,360],guardiao_abissal:[1,1080,720,360,360],
+  dragao_trono:[2,0,0,360,360],oraculo_coroa:[2,360,0,360,360],
+  esfinge_mares:[2,720,0,360,360],lobo_eclipse:[2,0,360,360,360],
+  sentinela_eclipse:[2,360,360,360,360],dragao_solar_eclipse:[2,720,360,360,360],
+  fenix_eclipse:[2,0,720,360,360],avatar_primordial:[2,360,720,360,360],
+  raposa_astral:[2,720,720,360,360],
+  morcego_madrugada:[3,0,0,360,360],camaleao_lendario:[3,360,0,360,360]
+};
+
 const PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp?v=alpha-special-pets-20261007-3';
 const PREMIUM_PET_ART_W=1200;
 const PREMIUM_PET_ART_H=900;
@@ -443,14 +471,16 @@ function petSpeciesFallback(species,className,label){
     '<span aria-hidden="true">'+emoji+'</span><small>'+esc(label||petSpeciesName(s))+'</small></div>';
 }
 function petCroppedSprite(key,className,label){
+  const raid=RAID_PET_SPRITES[key];
   const collab=COLLAB_PET_SPRITES[key];
   const premium=PREMIUM_PET_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=collab||premium||fixed||OFFICIAL_SPRITES[key];
+  const b=raid?raid.slice(1):(collab||premium||fixed||OFFICIAL_SPRITES[key]);
   if(!b) return '';
-  const sheet=collab?COLLAB_PET_ART_SHEET:(premium?PREMIUM_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET));
-  const sw=collab?COLLAB_PET_ART_W:(premium?PREMIUM_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W));
-  const sh=collab?COLLAB_PET_ART_H:(premium?PREMIUM_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H));
+  const raidSheet=raid?RAID_PET_SHEETS[raid[0]]:null;
+  const sheet=raidSheet?raidSheet.url:(collab?COLLAB_PET_ART_SHEET:(premium?PREMIUM_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET)));
+  const sw=raidSheet?raidSheet.w:(collab?COLLAB_PET_ART_W:(premium?PREMIUM_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W)));
+  const sh=raidSheet?raidSheet.h:(collab?COLLAB_PET_ART_H:(premium?PREMIUM_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H)));
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
@@ -480,6 +510,7 @@ function petVisualMarkup(species,className='pet-official-art'){
   if(PREMIUM_PET_SPRITES[exclusive]){
     return petCroppedSprite(exclusive,className+' pet-primary-art',label);
   }
+  if(RAID_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
 
   // Artes individuais verificadas têm preferência sobre desenhos substitutos.
   // Os dois webps rotulados como Corvo e Tubarão foram removidos após auditoria.
