@@ -1,0 +1,25 @@
+name: Alpha Bot - Boss deadlock regression
+on:
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/games.js'
+      - 'src/neon/index.js'
+      - 'src/neon/boss-deadlock-retry.js'
+      - 'test/boss-deadlock-retry.test.mjs'
+      - '.github/workflows/boss-deadlock-validation.yml'
+jobs:
+  boss-deadlock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: |
+          node --check src/neon/games.js
+          node --check src/neon/index.js
+          node --check src/neon/boss-deadlock-retry.js
+      - name: Verify deadlock handling without touching database
+        run: node --test test/boss-deadlock-retry.test.mjs
