@@ -7,6 +7,7 @@ import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
+import {checkPixLimits} from './pix-limits.js'
 const { Pool, Client } = pg
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
 // For Neon, keep the existing connection settings unchanged.
@@ -1089,18 +1090,30 @@ return { cash:Number(w.cash)+amount, bank:Number(w.bank)-amount }
 }
 export async function transfer(fromJid, toJid, amount) {
 amount = Number(amount)
-if (!Number.isInteger(amount) || amount <= 0) throw new Error('Valor inválido.')
+checkPixLimits(amount)
 if (fromJid === toJid) throw new Error('Você não pode transferir para si mesmo.')
 const fee = Math.max(1, Math.floor(amount*0.02))
 const total = amount + fee
 await ensureUser(toJid)
 return transaction(async client => {
+// Locks ordered by jid serialize PIX transfers (including concurrent groups).
+// Check the daily history *after* locking wallets, before any debit or credit.
 const { rows } = await client.query(
 'SELECT jid,cash FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
 [[fromJid,toJid]]
 )
 const from = rows.find(r=>r.jid===fromJid)
 if (!from || Number(from.cash) < total) throw new Error(`Você precisa de R$ ${total.toLocaleString('pt-BR')} contando a taxa de 2%.`)
+const daily = await client.query(`
+SELECT COALESCE(SUM(amount),0)::BIGINT AS sent_today
+FROM transactions
+WHERE from_jid=$1 AND type='transfer'
+  AND created_at >= EXTRACT(EPOCH FROM (
+    DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Sao_Paulo')
+    AT TIME ZONE 'America/Sao_Paulo'
+  ))::BIGINT
+`,[fromJid])
+checkPixLimits(amount,Number(daily.rows[0]?.sent_today||0))
 await client.query('UPDATE wallets SET cash=cash-$1, updated_at='+nowSql+' WHERE jid=$2',[total,fromJid])
 await client.query('UPDATE wallets SET cash=cash+$1, updated_at='+nowSql+' WHERE jid=$2',[amount,toJid])
 await client.query(`
