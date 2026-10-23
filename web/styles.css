@@ -1004,6 +1004,7 @@ body.loot-open{overflow:hidden!important}
   background-repeat:no-repeat!important;
   background-color:transparent!important;
 }
+.item-art .item-final-art{height:150px!important;max-height:100%!important}
 .item-card .item-art{
   height:170px!important;
   min-height:170px!important;
@@ -1011,6 +1012,7 @@ body.loot-open{overflow:hidden!important}
 }
 @media(max-width:600px){
   .item-art .item-cropped-art{width:auto!important;max-width:100%!important;height:132px!important}
+  .item-art .item-final-art{height:138px!important}
   .item-card .item-art{height:158px!important;min-height:158px!important}
   .pet-portrait .pet-cropped-art{width:auto!important;height:92%!important;max-width:92%!important}
 }

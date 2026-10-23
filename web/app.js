@@ -131,6 +131,20 @@ const EVENT_ITEM_SPRITES={
   pocao_pet_full:[5,0,0,887,887],fragmento_universal_raid:[5,887,0,887,887]
 };
 
+// Consumíveis, caixas e pergaminho que ainda usavam recortes pequenos da folha antiga.
+const FINAL_ITEM_ART_SHEET='/assets/final-consumables.webp?v=20261023-1';
+const FINAL_ITEM_ART_W=1280;
+const FINAL_ITEM_ART_H=1280;
+const FINAL_ITEM_SPRITES={
+  pocao_p:[0,0,320,320],pocao_m:[320,0,320,320],
+  pocao_g:[640,0,320,320],elixir_supremo:[960,0,320,320],
+  pocao_pet_comum:[0,320,320,320],pocao_pet_rara:[320,320,320,320],
+  pocao_pet_epica:[640,320,320,320],pocao_pet_suprema:[960,320,320,320],
+  caixa_sorte:[0,640,320,320],caixa_rara:[320,640,320,320],
+  caixa_epica:[640,640,320,320],caixa_lendaria:[960,640,320,320],
+  pergaminho_reclassificacao:[0,960,320,320]
+};
+
 const ITEM_DEDICATED_SPRITES={
   'item-espada-madeira':[0,0,0,256,256],
   'item-espada-ferro':[0,256,0,256,256],
@@ -219,6 +233,13 @@ const RAID_PET_SPRITES={
   fenix_eclipse:[2,0,720,360,360],avatar_primordial:[2,360,720,360,360],
   raposa_astral:[2,720,720,360,360],
   morcego_madrugada:[3,0,0,360,360],camaleao_lendario:[3,360,0,360,360]
+};
+
+const COLLECTION_PET_ART_SHEET='/assets/final-collection-pets.webp?v=20261023-1';
+const COLLECTION_PET_ART_W=1440;
+const COLLECTION_PET_ART_H=480;
+const COLLECTION_PET_SPRITES={
+  cachorro:[0,0,480,480],lobo:[480,0,480,480],leao:[960,0,480,480]
 };
 
 const PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp?v=alpha-special-pets-20261007-3';
@@ -471,16 +492,17 @@ function petSpeciesFallback(species,className,label){
     '<span aria-hidden="true">'+emoji+'</span><small>'+esc(label||petSpeciesName(s))+'</small></div>';
 }
 function petCroppedSprite(key,className,label){
+  const collection=COLLECTION_PET_SPRITES[key];
   const raid=RAID_PET_SPRITES[key];
   const collab=COLLAB_PET_SPRITES[key];
   const premium=PREMIUM_PET_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=raid?raid.slice(1):(collab||premium||fixed||OFFICIAL_SPRITES[key]);
+  const b=collection||(raid?raid.slice(1):(collab||premium||fixed||OFFICIAL_SPRITES[key]));
   if(!b) return '';
   const raidSheet=raid?RAID_PET_SHEETS[raid[0]]:null;
-  const sheet=raidSheet?raidSheet.url:(collab?COLLAB_PET_ART_SHEET:(premium?PREMIUM_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET)));
-  const sw=raidSheet?raidSheet.w:(collab?COLLAB_PET_ART_W:(premium?PREMIUM_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W)));
-  const sh=raidSheet?raidSheet.h:(collab?COLLAB_PET_ART_H:(premium?PREMIUM_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H)));
+  const sheet=collection?COLLECTION_PET_ART_SHEET:(raidSheet?raidSheet.url:(collab?COLLAB_PET_ART_SHEET:(premium?PREMIUM_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET))));
+  const sw=collection?COLLECTION_PET_ART_W:(raidSheet?raidSheet.w:(collab?COLLAB_PET_ART_W:(premium?PREMIUM_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W))));
+  const sh=collection?COLLECTION_PET_ART_H:(raidSheet?raidSheet.h:(collab?COLLAB_PET_ART_H:(premium?PREMIUM_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H))));
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
@@ -510,6 +532,7 @@ function petVisualMarkup(species,className='pet-official-art'){
   if(PREMIUM_PET_SPRITES[exclusive]){
     return petCroppedSprite(exclusive,className+' pet-primary-art',label);
   }
+  if(COLLECTION_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
   if(RAID_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
 
   // Artes individuais verificadas têm preferência sobre desenhos substitutos.
@@ -1330,7 +1353,7 @@ function itemSpriteKey(item){
     cristal_ancestral:'material-ancestral',nucleo_celestial:'material-celestial',
     fragmento_celestial:'material-celestial'
   };
-  if(EVENT_ITEM_SPRITES[id]) return id;
+  if(FINAL_ITEM_SPRITES[id]||EVENT_ITEM_SPRITES[id]) return id;
   if(exact[id]) return exact[id];
 
   if(raw.includes('chave')&&raw.includes('raid')){
@@ -1428,22 +1451,23 @@ function itemFallbackVisual(item){
   return ['💠','Item'];
 }
 function itemCroppedSprite(key,className,label){
+  const final=FINAL_ITEM_SPRITES[key];
   const event=EVENT_ITEM_SPRITES[key];
   const eventSheet=event?EVENT_ITEM_ART_SHEETS[event[0]]:null;
   const collab=COLLAB_ITEM_SPRITES[key];
   const dedicated=ITEM_DEDICATED_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=event?event.slice(1):(collab?collab.slice(1):(dedicated?dedicated.slice(1):(fixed||OFFICIAL_SPRITES[key])));
+  const b=final||(event?event.slice(1):(collab?collab.slice(1):(dedicated?dedicated.slice(1):(fixed||OFFICIAL_SPRITES[key]))));
   if(!b) return '';
-  const sheet=eventSheet?eventSheet.url:(collab?COLLAB_ITEM_ART_SHEETS[collab[0]]:(dedicated?ITEM_ART_SHEETS[dedicated[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET)));
-  const sw=eventSheet?eventSheet.w:(collab?COLLAB_ITEM_ART_W:(dedicated?ITEM_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W)));
-  const sh=eventSheet?eventSheet.h:(collab?COLLAB_ITEM_ART_H:(dedicated?ITEM_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H)));
+  const sheet=final?FINAL_ITEM_ART_SHEET:(eventSheet?eventSheet.url:(collab?COLLAB_ITEM_ART_SHEETS[collab[0]]:(dedicated?ITEM_ART_SHEETS[dedicated[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET))));
+  const sw=final?FINAL_ITEM_ART_W:(eventSheet?eventSheet.w:(collab?COLLAB_ITEM_ART_W:(dedicated?ITEM_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W))));
+  const sh=final?FINAL_ITEM_ART_H:(eventSheet?eventSheet.h:(collab?COLLAB_ITEM_ART_H:(dedicated?ITEM_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H))));
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
   const posX=sw===w?0:(x/(sw-w))*100;
   const posY=sh===h?0:(y/(sh-h))*100;
-  return '<div class="item-cropped-art '+esc(className||'')+'" role="img" aria-label="'+esc(label||key)+'" '+
+  return '<div class="item-cropped-art '+esc(className||'')+(final?' item-final-art':'')+'" role="img" aria-label="'+esc(label||key)+'" '+
     'style="aspect-ratio:'+w+'/'+h+';background-image:url(\''+esc(sheet)+'\');background-size:'+sizeX+'% '+sizeY+'%;background-position:'+posX+'% '+posY+'%"></div>';
 }
 const LEGACY_ITEM_ART={lootbox_std:'/assets/items/lootbox_std.svg'};
