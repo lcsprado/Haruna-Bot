@@ -13,6 +13,8 @@ const ui = {
   page: 'home',
   petTab: 'owned',
   inventoryTab: 'weapons',
+  inventorySection: 'equipment',
+  inventorySearch: '',
   inventoryTabsScrollLeft: 0,
   contractData: null,
   contractLoading: false,
@@ -1248,6 +1250,7 @@ function renderCharacter(){
     reclassNotice+
     '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):'Sem classe aplicada')+'</small></div><button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+
       '<div class="stat-strip"><span>❤️ '+num(cp.effective_hp||cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
+      '<div class="character-equipment-summary">'+INVENTORY_GROUPS.filter(([key])=>EQUIPMENT_GROUP_KEYS.has(key)).map(([key,label])=>'<span>'+label+': <strong>'+equipmentSlotText(key)+'</strong></span>').join('')+'</div>'+
     '</div>'+
     '<div class="character-grid">'+CHARACTER_ART.map(ch=>{
       const rule=classRule(ch.id)||{};
@@ -1505,7 +1508,7 @@ function rarityLabel(value){
 }
 function categoryLabel(value){
   const key=String(value||'item').toLowerCase();
-  return ({weapon:'Arma',armor:'Armadura',boots:'Botas',consumable:'Consumível',special:'Especial',material:'Material',potion:'Poção',pet_potion:'Cura Pet',pet_energy:'Energia Pet',box:'Caixa',raid:'Raid'}[key]||titleCase(key));
+  return ({weapon:'Arma',armor:'Armadura',boots:'Botas',helmet:'Elmo',consumable:'Consumível',special:'Especial',material:'Material',potion:'Poção',pet_potion:'Cura Pet',pet_energy:'Energia Pet',box:'Caixa',raid:'Raid'}[key]||titleCase(key));
 }
 function itemDisplayName(item){
   const name=String(item&&item.name||'Item');
@@ -1545,6 +1548,7 @@ function inventoryBucket(item){
   if(cat==='weapon') return 'weapons';
   if(cat==='armor') return 'armors';
   if(cat==='boots') return 'boots';
+  if(cat==='helmet') return 'helmets';
   if(cat==='box' || id.includes('caixa_') || id==='lootbox_std') return 'boxes';
   if(cat==='pet_potion'||cat==='pet_energy'||id.includes('pet_')||id==='energetico_pet') return 'pets';
   if(
@@ -1560,9 +1564,10 @@ function inventoryBucket(item){
   return 'other';
 }
 const INVENTORY_GROUPS=[
-  ['weapons','🗡️ Armas'],
+  ['weapons','⚔️ Armas'],
   ['armors','🛡️ Armaduras'],
   ['boots','🥾 Botas'],
+  ['helmets','🪖 Elmos'],
   ['consumables','🧪 Consumíveis'],
   ['pets','🐾 Pets / Itens de Pet'],
   ['boxes','📦 Caixas'],
@@ -1571,11 +1576,45 @@ const INVENTORY_GROUPS=[
   ['special','✨ Itens especiais'],
   ['other','🎒 Outros itens']
 ];
+const EQUIPMENT_GROUP_KEYS=new Set(['weapons','armors','boots','helmets']);
+function equipmentSlotData(key){
+  const p=ui.data?.combatProfile||ui.data?.profile||{};
+  const inv=ui.data?.inventory||[];
+  const fields={weapons:['weapon_id','weapon_name','weapon_level','weapon_stars'],armors:['armor_id','armor_name','armor_level','armor_stars'],boots:['boot_id','boot_name','boot_level'],helmets:['helmet_id','helmet_name','helmet_level']};
+  const [idField,nameField,levelField,starsField]=fields[key];
+  const id=p[idField];
+  const item=id?inv.find(i=>i.item_id===id&&i.category===({weapons:'weapon',armors:'armor',boots:'boots',helmets:'helmet'}[key])):inv.find(i=>i.equipped&&inventoryBucket(i)===key);
+  if(!id&&!item) return null;
+  return {item:item||{item_id:id,name:p[nameField]||id,category:({weapons:'weapon',armors:'armor',boots:'boots',helmets:'helmet'}[key])},
+    level:item?.equipment_level??p[levelField],stars:starsField&&item?.forged_level?item.equipment_stars:(starsField&&Number(p[starsField])>1?p[starsField]:null)};
+}
+function equipmentSlotText(key){
+  const slot=equipmentSlotData(key);
+  return slot?esc(itemDisplayName(slot.item))+(slot.level!=null?' Lv.'+num(slot.level):'')+(slot.stars!=null?' • '+num(slot.stars)+' ⭐':''):'Vazio';
+}
+function equipmentBonusMarkup(){
+  const p=ui.data?.combatProfile||{};
+  const specs=[['equipment_hp','❤️ HP'],['equipment_atk','⚔️ ATK'],['equipment_def','🛡️ DEF'],['equipment_spd','💨 SPD'],['equipment_crit','⚡ CRIT']];
+  const values=specs.filter(([field])=>p[field]!=null).map(([field,label])=>'<span>'+label+' '+(field==='equipment_crit'?num(Number(p[field])*100)+'%':(Number(p[field])>=0?'+':'')+num(p[field]))+'</span>');
+  return values.length?'<div class="equipment-total"><small>Bônus totais informados pelo servidor, incluindo encantamentos</small><div>'+values.join('')+'</div></div>':'';
+}
+function equipmentPanel(){
+  return '<div class="equipment-panel"><div class="section-title"><h3>⚔️ Equipamentos</h3><small>Em uso no personagem</small></div><div class="equipment-slots">'+
+    INVENTORY_GROUPS.filter(([key])=>EQUIPMENT_GROUP_KEYS.has(key)).map(([key,label])=>{
+      const data=equipmentSlotData(key),item=data?.item;
+      return '<button type="button" class="equipment-slot'+(item?' occupied':'')+'" data-equipment-slot="'+key+'"><span class="equipment-slot-label">'+label+'</span>'+
+        (item?itemArtMarkup(item):'<span class="equipment-slot-empty">Vazio</span>')+
+        '<strong>'+esc(item?itemDisplayName(item):'Vazio')+'</strong>'+
+        (item?'<span class="equipment-slot-meta">'+(item.rarity?esc(rarityLabel(item.rarity)):'Equipamento')+(data.level!=null?' • Lv.'+num(data.level):'')+(data.stars!=null?' • '+num(data.stars)+' ⭐':'')+'</span>':'')+
+        '<span class="tag '+(item?'good':'')+'">'+(item?'🔒 Equipado':'Ver peças')+'</span></button>';
+    }).join('')+'</div>'+equipmentBonusMarkup()+'</div>';
+}
 function inventoryCard(i,options={}){
   const id=i.item_id;
-  const eq=['weapon','armor','boots'].includes(i.category);
+  const eq=['weapon','armor','boots','helmet'].includes(i.category);
   const equippedCopy=Boolean(options.equippedCopy);
   const qty=Math.max(0,Number(options.quantity??i.quantity??0));
+  const sellQty=Math.min(qty,Math.max(0,Number(i.sellable_quantity??qty)));
   const petPotion=id.startsWith('pocao_pet_');
   const energy=id==='energetico_pet';
   const box=String(id).includes('caixa_') || id==='lootbox_std' || i.category==='box';
@@ -1593,40 +1632,47 @@ function inventoryCard(i,options={}){
     else if(box) actions='<button class="btn good" data-box-open="'+esc(id)+'">Abrir 1</button>'+(qty>1?'<button class="btn" data-box-open-all="'+esc(id)+'" data-box-qty="'+qty+'">Abrir '+qty+'</button>':'');
     else if(usable) actions='<button class="btn good" data-item-use="'+esc(id)+'">Usar</button>';
 
-    if(i.sellable!==false && String(i.rarity)!=='legendary' && qty>0){
+    if(i.sellable!==false && String(i.rarity)!=='legendary' && sellQty>0){
       actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
-      if(qty>1) actions+='<button class="btn danger-soft" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+qty+'">Vender '+qty+'</button>';
+      if(sellQty>1) actions+='<button class="btn danger-soft" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+sellQty+'">Vender '+sellQty+'</button>';
     }
   }
 
   const equippedTag=equippedCopy
     ? '<span class="tag good">🔒 EQUIPADO</span><span class="tag">PROTEGIDO DE VENDA</span>'
-    : '';
+    : (eq?'<span class="tag">CÓPIA DISPONÍVEL</span>':'');
   return '<div class="card item-card '+rarityClass(i.rarity)+(equippedCopy?' equipped-item-card':'')+'">'+itemArtMarkup(i)+
     '<div class="tag-row">'+equippedTag+'<span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
-    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq?' • Lv.'+num(i.equipment_level||1):'')+'</p><p>'+esc(itemDisplayDescription(i))+'</p>'+
-    (!equippedCopy&&i.sellable!==false?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
+    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq&&i.equipment_level!=null?' • Lv.'+num(i.equipment_level):'')+(eq&&i.forged_level&&i.equipment_stars!=null?' • '+num(i.equipment_stars)+' ⭐':'')+'</p><p>'+esc(itemDisplayDescription(i))+'</p>'+
+    (!equippedCopy&&i.sellable!==false&&sellQty>0?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
     (equippedCopy?'<div class="notice good inventory-lock-note">🔒 Esta cópia está equipada e não pode ser vendida pelo inventário.</div>':'')+
     (!equippedCopy&&eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' somente quando a última cópia não equipada for vendida.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
 }
 function renderInventory(){
   const inv=ui.data.inventory||[];
+  const query=String(ui.inventorySearch||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const groups=INVENTORY_GROUPS.map(([key,label])=>{
-    const all=inv.filter(i=>inventoryBucket(i)===key);
+    const all=inv.filter(i=>inventoryBucket(i)===key&&(!query||String(i.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(query)));
     const equipped=all.filter(i=>i.equipped).map(i=>({...i,quantity:1}));
-    const available=all.map(i=>({...i,quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)}))
+    const available=all.map(i=>({...i,quantity:EQUIPMENT_GROUP_KEYS.has(key)?Math.max(0,Number(i.quantity||0)-(i.equipped?1:0)):(i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0))}))
       .filter(i=>Number(i.quantity)>0);
     return {key,label,all,equipped,available};
   });
-  if(!groups.some(g=>g.key===ui.inventoryTab)) ui.inventoryTab=groups.find(g=>g.all.length)?.key||'weapons';
+  const isEquipment=ui.inventorySection==='equipment';
+  if(isEquipment&&!EQUIPMENT_GROUP_KEYS.has(ui.inventoryTab)) ui.inventoryTab='weapons';
+  if(!isEquipment) ui.inventoryTab=ui.inventorySection;
   const selected=groups.find(g=>g.key===ui.inventoryTab)||groups[0];
   const totalTypes=inv.length;
   return '<div class="page-head"><div><h2>Inventário</h2><p>Escolha uma categoria. Equipados ficam visíveis, separados e protegidos contra venda.</p></div><div class="hero-actions">'+
     '<button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+totalTypes+' tipos</span></div></div>'+
     renderLuckyBoxEvent()+
+    '<label class="inventory-search-label" for="inventory-search">Buscar item por nome</label><input id="inventory-search" class="inventory-search" type="search" placeholder="Buscar no inventário" value="'+esc(ui.inventorySearch||'')+'" autocomplete="off">'+
     '<div class="tabs inventory-tabs section" role="tablist" aria-label="Categorias do inventário">'+
-      groups.map(g=>'<button type="button" role="tab" aria-selected="'+(g.key===ui.inventoryTab)+'" class="tab '+(g.key===ui.inventoryTab?'active':'')+'" data-inventory-tab="'+g.key+'">'+g.label+' ('+g.all.length+')</button>').join('')+'</div>'+
+      '<button type="button" role="tab" aria-selected="'+isEquipment+'" class="tab '+(isEquipment?'active':'')+'" data-inventory-section="equipment">⚔️ Equipamentos ('+groups.filter(g=>EQUIPMENT_GROUP_KEYS.has(g.key)).reduce((total,g)=>total+g.all.length,0)+')</button>'+
+      groups.filter(g=>!EQUIPMENT_GROUP_KEYS.has(g.key)).map(g=>'<button type="button" role="tab" aria-selected="'+(ui.inventorySection===g.key)+'" class="tab '+(ui.inventorySection===g.key?'active':'')+'" data-inventory-section="'+g.key+'">'+g.label+' ('+g.all.length+')</button>').join('')+'</div>'+
+    (isEquipment?equipmentPanel()+'<div class="tabs equipment-tabs" role="tablist" aria-label="Tipos de equipamentos">'+
+      groups.filter(g=>EQUIPMENT_GROUP_KEYS.has(g.key)).map(g=>'<button type="button" role="tab" aria-selected="'+(g.key===ui.inventoryTab)+'" class="tab '+(g.key===ui.inventoryTab?'active':'')+'" data-inventory-tab="'+g.key+'">'+g.label+' ('+g.all.length+')</button>').join('')+'</div>':'')+
     '<div class="section inventory-group">'+
       '<div class="section-title"><h3>'+selected.label+'</h3><small>'+selected.all.length+' tipo(s)</small></div>'+
       (selected.equipped.length?
@@ -1639,7 +1685,7 @@ function renderInventory(){
 }
 
 function shopCategoryLabel(cat){
-  return ({weapons:'⚔️ Armas',armors:'🛡️ Armaduras',boots:'🥾 Botas / Equipamentos',consumables:'🧪 Consumíveis',pets:'🐾 Itens de Pet',boxes:'🎁 Caixas',raid:'🔑 Chaves e Raid',materials:'🧩 Materiais',special:'✨ Especiais',other:'📦 Outros'}[cat]||'📦 Outros');
+  return ({weapons:'⚔️ Armas',armors:'🛡️ Armaduras',boots:'🥾 Botas',helmets:'🪖 Elmos',consumables:'🧪 Consumíveis',pets:'🐾 Itens de Pet',boxes:'🎁 Caixas',raid:'🔑 Chaves e Raid',materials:'🧩 Materiais',special:'✨ Especiais',other:'📦 Outros'}[cat]||'📦 Outros');
 }
 function shopCard(i){
   const eq=i.equipment||{};
@@ -2100,9 +2146,10 @@ function renderProgression(){
         '<div class="list-row"><span>💀 Derrotas</span><strong>'+num(p.loss||p.losses||0)+'</strong></div>'+
       '</div></div>'+
       '<div class="card"><div class="section-title"><h3>Equipamentos</h3><small>Níveis reais</small></div><div class="list">'+
-        '<div class="list-row"><span>🗡️ Arma</span><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div>'+
-        '<div class="list-row"><span>🛡️ Armadura</span><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div>'+
-        '<div class="list-row"><span>👢 Botas</span><strong>'+esc(p.boot_name||'Nenhuma')+' Lv.'+num(p.boot_level||1)+'</strong></div>'+
+        '<div class="list-row"><span>⚔️ Arma</span><strong>'+equipmentSlotText('weapons')+'</strong></div>'+
+        '<div class="list-row"><span>🛡️ Armadura</span><strong>'+equipmentSlotText('armors')+'</strong></div>'+
+        '<div class="list-row"><span>🥾 Botas</span><strong>'+equipmentSlotText('boots')+'</strong></div>'+
+        '<div class="list-row"><span>🪖 Elmo</span><strong>'+equipmentSlotText('helmets')+'</strong></div>'+
       '</div></div>'+
     '</div>'+
     '<div class="section grid two">'+
@@ -2325,11 +2372,40 @@ function bind(){
     window.scrollTo({top:0,left:0,behavior:'auto'});
   });
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
+  document.querySelectorAll('[data-inventory-section]').forEach(x=>x.onclick=()=>{
+    ui.inventoryTabsScrollLeft=x.closest('.inventory-tabs')?.scrollLeft||0;
+    ui.inventorySection=x.dataset.inventorySection;
+    if(ui.inventorySection==='equipment'&&!EQUIPMENT_GROUP_KEYS.has(ui.inventoryTab)) ui.inventoryTab='weapons';
+    render();
+  });
+  document.querySelectorAll('[data-equipment-slot]').forEach(x=>x.onclick=()=>{
+    ui.inventorySection='equipment';
+    ui.inventoryTab=x.dataset.equipmentSlot;
+    render();
+    document.querySelector('.inventory-group')?.scrollIntoView({block:'start',behavior:'smooth'});
+  });
+  document.querySelectorAll('#inventory-search').forEach(x=>x.oninput=()=>{
+    const caret=x.selectionStart,scrollY=window.scrollY;
+    ui.inventorySearch=x.value;
+    const query=ui.inventorySearch.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    if(query){
+      const matches=(ui.data.inventory||[]).filter(i=>String(i.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(query));
+      if(matches.length&&!matches.some(i=>inventoryBucket(i)===ui.inventoryTab)){
+        ui.inventoryTab=inventoryBucket(matches[0]);
+        ui.inventorySection=EQUIPMENT_GROUP_KEYS.has(ui.inventoryTab)?'equipment':ui.inventoryTab;
+      }
+    }
+    render();
+    const next=document.querySelector('#inventory-search');
+    if(next){next.focus();next.setSelectionRange(caret,caret);}
+    window.scrollTo({top:scrollY,left:0,behavior:'auto'});
+  });
   document.querySelectorAll('[data-inventory-tab]').forEach(x=>x.onclick=()=>{
-    const tabs=x.closest('.inventory-tabs');
+    const tabs=document.querySelector('.inventory-tabs');
     const keepX=tabs?tabs.scrollLeft:Number(ui.inventoryTabsScrollLeft||0);
     const keepY=window.scrollY;
     ui.inventoryTabsScrollLeft=keepX;
+    ui.inventorySection='equipment';
     ui.inventoryTab=x.dataset.inventoryTab;
     render();
     requestAnimationFrame(()=>{
