@@ -2299,6 +2299,8 @@ sock.ev.on('creds.update',()=>{
 void saveCreds().catch(err=>console.error('[WhatsApp] falha ao persistir credenciais',err?.message||err))
 })
 const botGroupIntroKey=chat=>'bot_group_intro:'+chat
+const botGroupIntroSentCache=new Map()
+const BOT_GROUP_INTRO_CACHE_MS=2*60*1000
 const botGroupIntroText=groupName=>`😈🤖 *OLÁ, BETAS!*
 Eu sou o *Alpha Bot* — cheguei no *${groupName||'grupo'}* para transformar conversa em jogo.
 ⚔️ Monte seu personagem, evolua atributos e equipamentos
@@ -2316,8 +2318,15 @@ Eu sou o *Alpha Bot* — cheguei no *${groupName||'grupo'}* para transformar con
 🧪 Testem o RPG, chamem os amigos e tentem descobrir quem realmente é Alpha aqui.
 _Boa sorte, Betas. Vocês vão precisar._ 😎`
 async function getBotGroupIntroState(chat){
+const cachedUntil=botGroupIntroSentCache.get(chat)||0
+if(cachedUntil>Date.now())return {sent:true}
 const row=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[botGroupIntroKey(chat)])).rows[0]
-return row?.value||{}
+const state=row?.value||{}
+if(state.sent){
+  if(botGroupIntroSentCache.size>500)botGroupIntroSentCache.clear()
+  botGroupIntroSentCache.set(chat,Date.now()+BOT_GROUP_INTRO_CACHE_MS)
+}
+return state
 }
 async function setBotGroupIntroState(chat,value){
 await db.query(
@@ -2326,6 +2335,8 @@ VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
 ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at`,
 [botGroupIntroKey(chat),JSON.stringify(value)]
 )
+if(value?.sent)botGroupIntroSentCache.set(chat,Date.now()+BOT_GROUP_INTRO_CACHE_MS)
+else botGroupIntroSentCache.delete(chat)
 }
 async function sendBotGroupIntro(chat,{force=false,reason='participant-add'}={}){
 if(temporaryRecoveryMode)return false

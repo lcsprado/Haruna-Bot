@@ -1616,6 +1616,9 @@ function pickWeightedGroupEventItem(pool){
 
 export async function maybeSpawnGroupEvent(chatJid){
   if(!String(chatJid).endsWith('@g.us')) return null
+  // A tentativa tem a mesma chance por mensagem elegível. Sorteie antes da
+  // transação para que a maioria das mensagens comuns não faça leituras/locks.
+  if(Math.random()>.035) return null
   return tx(async client=>{
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`group-event:${chatJid}`])
     const now=Math.floor(Date.now()/1000)
@@ -1623,7 +1626,6 @@ export async function maybeSpawnGroupEvent(chatJid){
     const old=rows[0]
     if(old && !old.claimed_by && Number(old.expires_at)>now) return null
     if(old && Number(old.spawned_at)>now-1800) return null
-    if(Math.random()>.035) return null
     const events=[
       {type:'maleta',reward:randomGroupEventCash(8000,16000),text:'💼 Uma *Maleta Misteriosa* apareceu no grupo!',hint:'Pode ter dinheiro e até item bônus.'},
       {type:'pix',reward:randomGroupEventCash(12000,20000),text:'💸 Um *PIX Misterioso* caiu no grupo!',hint:'Essa é focada em dinheiro.'},
