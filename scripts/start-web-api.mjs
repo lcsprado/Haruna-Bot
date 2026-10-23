@@ -5,23 +5,18 @@ if(runtime!=='web-api-only')throw Error('WEB API BLOCKED: ALPHA_RUNTIME=web-api-
 const raw=String(process.env.DATABASE_URL||'')
 let url
 try{url=new URL(raw)}catch{throw Error('WEB API BLOCKED: DATABASE_URL missing or invalid')}
-// Aiven's connection page usually provides /defaultdb. Accept only that
-// default database name as input and explicitly target the approved game DB.
-// The approved hostname, port, and all other credential/CA checks remain strict.
-if(url.hostname!=='alphabot-lcsh-3393.b.aivencloud.com'||
-  url.port!=='26343'||!['/alpha_prod_v2','/defaultdb'].includes(url.pathname)){
-  // Report booleans only: never log the actual URI, host, credentials, or DB name.
-  console.error('[Alpha Web] DB target validation:', JSON.stringify({
+// The credential's hostname and port must be exactly our approved Aiven service.
+// Whatever DB name Aiven includes in its copied URI, explicitly select only
+// alpha_prod_v2. Never access or initialize any other database.
+if(url.hostname!=='alphabot-lcsh-3393.b.aivencloud.com'||url.port!=='26343'){
+  console.error('[Alpha Web] DB target validation:',JSON.stringify({
     hostApproved:url.hostname==='alphabot-lcsh-3393.b.aivencloud.com',
-    portApproved:url.port==='26343',
-    nameApproved:['/alpha_prod_v2','/defaultdb'].includes(url.pathname)
+    portApproved:url.port==='26343'
   }))
-  throw Error('WEB API BLOCKED: DATABASE_URL must target approved Aiven alpha_prod_v2')
+  throw Error('WEB API BLOCKED: approved Aiven hostname and port required')
 }
-if(url.pathname==='/defaultdb'){
-  url.pathname='/alpha_prod_v2'
-  process.env.DATABASE_URL=url.toString()
-}
+url.pathname='/alpha_prod_v2'
+process.env.DATABASE_URL=url.toString()
 const ca=String(process.env.ALPHA_AIVEN_CA_PEM||'').replace(/\\n/g,'\n').trim()
 if(!ca.startsWith('-----BEGIN CERTIFICATE-----')||
    !ca.endsWith('-----END CERTIFICATE-----')){
