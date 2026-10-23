@@ -21,6 +21,7 @@ const ui = {
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
   raidTimer: null,
   raidLevel: null,
+  selectedRaidLevel: null,
   bossTimer: null,
   syncing: false,
   bossPolling: false,
@@ -291,6 +292,14 @@ const CLASS_PORTRAITS={
   'char-samurai':[2,512,0,512,768]
 };
 
+const RAID_BOSS_ART_SHEET='/assets/raid-bosses-60-70.webp?v=20261023-1';
+const RAID_BOSS_SPRITES={
+  'raid-60':[0,0,480,480],
+  'raid-65':[480,0,480,480],
+  'raid-70':[960,0,480,480]
+};
+const RAID_BOSS_LEVELS=new Set([10,15,20,25,30,40,50,60,65,70]);
+
 const OFFICIAL_SPRITES={
 
   // 15 pets finais
@@ -403,6 +412,11 @@ function artSprite(key,className,alt){
     const sheet=CLASS_ART_SHEETS[portrait[0]];
     return '<svg class="official-art class-portrait-art '+esc(className||'')+'" viewBox="'+portrait.slice(1).join(' ')+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(alt||key)+'">'+
       '<image href="'+sheet+'" x="0" y="0" width="1024" height="1536" preserveAspectRatio="none"></image></svg>';
+  }
+  const raidBoss=RAID_BOSS_SPRITES[key];
+  if(raidBoss){
+    return '<svg class="official-art raid-boss-art '+esc(className||'')+'" viewBox="'+raidBoss.join(' ')+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(alt||key)+'">'+
+      '<image href="'+RAID_BOSS_ART_SHEET+'" x="0" y="0" width="1440" height="480" preserveAspectRatio="none"></image></svg>';
   }
   const fixed=FIXED_SPRITES[key];
   const b=fixed||OFFICIAL_SPRITES[key];
@@ -575,16 +589,7 @@ function petVisualMarkup(species,className='pet-official-art'){
 }
 function raidSpriteKey(level,name){
   const lv=Number(level||0);
-  if([10,15,20,25,30,40,50].includes(lv)) return 'raid-'+lv;
-  const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-  if(n.includes('pedra')) return 'raid-10';
-  if(n.includes('vulcan')||n.includes('dragao')) return 'raid-15';
-  if(n.includes('abiss')) return 'raid-20';
-  if(n.includes('tita')||n.includes('ferro')) return 'raid-25';
-  if(n.includes('cristal')) return 'raid-30';
-  if(n.includes('seraf')) return 'raid-40';
-  if(n.includes('corromp')) return 'raid-50';
-  return 'raid-10';
+  return RAID_BOSS_LEVELS.has(lv)?'raid-'+lv:'';
 }
 function bossSpriteKey(name,mode){
   const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -1704,28 +1709,38 @@ function raidState(level){
 function renderRaids(){
   const group=currentGroup();
   if(!group) return '<div class="notice warn">Esta sessão foi vinculada no privado. Para compartilhar Raid com o WhatsApp, mande <b>!web</b> no grupo e conecte novamente.</div>';
-  const raids=(ui.catalog&&ui.catalog.raids)||[];
+  const raids=((ui.catalog&&ui.catalog.raids)||[]).slice().sort((a,b)=>Number(a.level)-Number(b.level));
   return '<div class="page-head"><div><h2>Raids do grupo</h2><p>As salas abaixo são as mesmas gravadas em trevo_games pelo WhatsApp.</p></div><span class="tag good">GRUPO VINCULADO</span></div>'+
-    '<div class="grid cards">'+raids.map(r=>{
+    '<div class="raid-list">'+raids.map(r=>{
       const s=raidState(r.level);
       const hp=s?Number(s.hp||0):Number(r.hp||0), max=s?Number(s.maxHp||s.max_hp||r.hp):Number(r.hp||1);
-      let buttons='';
       const players=Object.values((s&&s.players)||{});
-      const meJoined=players.some(p=>p&&p.jid===ui.data.identity.jid);
-      const isHost=Boolean(s&&s.host===ui.data.identity.jid);
-      if(!s) buttons='<button class="btn primary" data-raid-create="'+r.level+'">Abrir Raid</button>';
+      const myJid=ui.data&&ui.data.identity&&ui.data.identity.jid;
+      const meJoined=players.some(p=>p&&p.jid===myJid);
+      const isHost=Boolean(s&&s.host===myJid);
+      let quickAction='',detailActions='';
+      if(!s) quickAction='<button class="btn primary" data-raid-create="'+r.level+'">Abrir Raid</button>';
       else if(s.status==='lobby'){
-        buttons=(meJoined?'':'<button class="btn primary" data-raid-join="'+r.level+'">Entrar</button>')+
-          (isHost?'<button class="btn good" data-raid-start="'+r.level+'">Iniciar</button><button class="btn danger" data-raid-cancel="'+r.level+'">Cancelar</button>':'');
+        quickAction=meJoined?'':'<button class="btn primary" data-raid-join="'+r.level+'">Entrar</button>';
+        detailActions=isHost?'<button class="btn good" data-raid-start="'+r.level+'">Iniciar</button><button class="btn danger" data-raid-cancel="'+r.level+'">Cancelar</button>':'';
       }else if(s.status==='active'){
-        buttons=(meJoined?'':'<button class="btn primary" data-raid-join="'+r.level+'">Entrar agora</button>')+
-          '<button class="btn good" data-raid-auto="'+r.level+'">⚡ AUTO SERVIDOR</button><button class="btn" data-raid-round="'+r.level+'">Rodada manual</button>';
+        quickAction=meJoined?'':'<button class="btn primary" data-raid-join="'+r.level+'">Entrar agora</button>';
+        detailActions='<button class="btn good" data-raid-auto="'+r.level+'">⚡ AUTO SERVIDOR</button><button class="btn" data-raid-round="'+r.level+'">Rodada manual</button>';
       }
       const ranked=players.slice().sort((a,z)=>Number(z.damage||0)-Number(a.damage||0));
       const totalDamage=ranked.reduce((sum,p)=>sum+Number(p.damage||0),0);
-      const party=ranked.length?'<div class="raid-party"><div class="section-title"><h4>Equipe / dano</h4><small>'+num(totalDamage)+' total</small></div><div class="list compact">'+ranked.map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+(p.alive===false?'💀 CAÍDO':'❤️ '+num(p.hp||0)+' HP')+(p.pet&&p.pet.name?' • 🐾 '+esc(p.pet.name):'')+'</small></div><strong>'+num(p.damage||0)+'</strong></div>').join('')+'</div></div>':'<div class="empty">Sem participantes.</div>';
+      const party=ranked.length?'<div class="raid-party"><div class="section-title"><h4>Equipe / dano</h4><small>'+num(totalDamage)+' total</small></div><div class="list compact">'+ranked.map((p,i)=>'<div class="list-row"><div><strong>#'+(i+1)+' '+esc(p.name||'Jogador')+'</strong><small>'+(p.alive===false?'💀 CAÍDO':'❤️ '+num(p.hp||0)+' HP')+(p.pet&&p.pet.name?' • 🐾 '+esc(p.pet.name):'')+'</small></div><strong>'+num(p.damage||0)+'</strong></div>').join('')+'</div></div>':'';
       const timeLeft=s&&Number(s.expiresAt||0)>Date.now()?Math.ceil((Number(s.expiresAt)-Date.now())/60000):null;
-      return '<div class="card raid-card"><div class="tag-row"><span class="tag">LV.'+r.level+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(raidStatusLabel(s.status)).toUpperCase():'DISPONÍVEL')+'</span><span class="tag">'+players.length+'/5</span>'+(timeLeft!=null?'<span class="tag">⏳ '+timeLeft+' min</span>':'')+'</div><h3>'+esc(r.name)+'</h3>'+raidArenaMarkup(r,s)+'<p>❤️ '+num(hp)+'/'+num(max)+' • ATK '+num(r.atk)+' • '+num(r.durationMinutes)+' min</p><div class="progress raid-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div><p>🔑 '+money(r.keyPrice)+'</p>'+party+'<div class="raid-actions">'+buttons+'</div></div>';
+      const autoExpanded=Boolean(s&&(s.status==='active'||(s.status==='lobby'&&(meJoined||isHost))));
+      const expanded=autoExpanded||Number(ui.selectedRaidLevel)===Number(r.level);
+      const toggle=autoExpanded?'':'<button class="btn" data-raid-select="'+r.level+'" aria-expanded="'+expanded+'">'+(expanded?'Ocultar detalhes':'Ver detalhes')+'</button>';
+      const details=expanded?'<div class="raid-details">'+raidArenaMarkup(r,s)+
+        '<p>❤️ '+num(hp)+'/'+num(max)+' HP • ⚔️ '+num(r.atk)+' ATK • '+num(r.durationMinutes)+' min</p><div class="progress raid-progress"><span style="width:'+pct(hp/max*100)+'%"></span></div>'+
+        party+(detailActions?'<div class="raid-actions">'+detailActions+'</div>':'')+'</div>':'';
+      return '<div class="card raid-card'+(expanded?' expanded':'')+'"><div class="raid-summary"><div class="raid-thumb">'+artSprite(raidSpriteKey(r.level,r.name),'raid-thumb-art',r.name)+'</div><div class="raid-summary-body">'+
+        '<div class="tag-row"><span class="tag">LV.'+num(r.level)+'</span><span class="tag '+(s?'good':'')+'">'+(s?esc(raidStatusLabel(s.status)).toUpperCase():'DISPONÍVEL')+'</span>'+(timeLeft!=null?'<span class="tag">⏳ '+timeLeft+' min</span>':'')+'</div><h3>'+esc(r.name)+'</h3>'+
+        '<div class="raid-metrics"><span>❤️ '+num(hp)+'/'+num(max)+'</span><span>⚔️ '+num(r.atk)+' ATK</span><span>🔑 '+money(r.keyPrice)+'</span><span>👥 '+players.length+'/5</span></div>'+
+        '<div class="raid-actions">'+quickAction+toggle+'</div></div></div>'+details+'</div>';
     }).join('')+'</div>';
 }
 
@@ -1740,7 +1755,7 @@ function renderBoss(){
   const g=currentGroup();
   if(!g) return '<div class="notice warn">Vincule pelo <b>!web</b> dentro do grupo para usar o Boss compartilhado.</div>';
   const b=activeBoss();
-  if(!b) return '<div class="page-head"><div><h2>Boss do grupo</h2><p>Nenhum Boss ativo neste momento.</p></div></div><div class="card boss-idle-card"><div class="boss-idle-art">'+artSprite('boss-common','boss-showcase-art','Boss comum')+'</div><button class="btn primary" data-boss-start>Iniciar Boss</button></div>';
+  if(!b) return '<div class="page-head"><div><h2>Boss do grupo</h2><p>Nenhum Boss ativo neste momento.</p></div></div><div class="card boss-idle-card boss-idle-compact"><div class="boss-idle-art">'+artSprite('boss-common','boss-showcase-art','Boss comum')+'</div><div><h3>Boss disponível</h3><p>O grupo pode iniciar uma nova batalha.</p><button class="btn primary" data-boss-start>Iniciar Boss</button></div></div>';
   const hp=Number(b.hp||0), max=Number(b.maxHp||1);
   const participants=Object.values(b.participants||{}).sort((a,z)=>Number(z.damage||0)-Number(a.damage||0));
   const totalDamage=participants.reduce((s,p)=>s+Number(p.damage||0),0);
@@ -2430,6 +2445,11 @@ function bind(){
     doAction('item.buy',{itemId:x.dataset.shopBuyQty,qty},{});
   });
   document.querySelectorAll('[data-raid-create]').forEach(x=>x.onclick=()=>doAction('raid.create',{level:Number(x.dataset.raidCreate),name:ui.data.profile.push_name},{}));
+  document.querySelectorAll('[data-raid-select]').forEach(x=>x.onclick=()=>{
+    const level=Number(x.dataset.raidSelect);
+    ui.selectedRaidLevel=Number(ui.selectedRaidLevel)===level?null:level;
+    render();
+  });
   document.querySelectorAll('[data-raid-join]').forEach(x=>x.onclick=()=>doAction('raid.join',{level:Number(x.dataset.raidJoin),name:ui.data.profile.push_name},{}));
   document.querySelectorAll('[data-raid-start]').forEach(x=>x.onclick=async()=>{
     const level=Number(x.dataset.raidStart);

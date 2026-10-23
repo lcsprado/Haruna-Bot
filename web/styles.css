@@ -1019,3 +1019,40 @@ body.loot-open{overflow:hidden!important}
 
 /* Collab portraits retain their tall panel crop inside mobile pet cards. */
 .pet-portrait .pet-collab-art{width:auto!important;height:88%!important;max-width:88%!important;max-height:88%!important;aspect-ratio:306/500!important}
+
+/* Raids: resumo compacto; arena e participantes só na sala selecionada/ativa. */
+.raid-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.raid-card{padding:12px}
+.raid-summary{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center}
+.raid-thumb{width:88px;height:88px;display:grid;place-items:center;overflow:hidden;border:1px solid #304058;border-radius:12px;background:radial-gradient(circle at 50% 35%,#24354c,#070c13 75%)}
+.raid-thumb-art{display:block;width:auto;height:82px;max-width:86px;max-height:82px}
+.raid-summary-body{min-width:0}
+.raid-summary-body h3{margin:5px 0;font-size:15px;line-height:1.2}
+.raid-summary-body .tag-row{gap:4px}
+.raid-metrics{display:flex;gap:3px 10px;flex-wrap:wrap;color:#b7c8dc;font-size:10px;line-height:1.4}
+.raid-summary .raid-actions{margin-top:8px;gap:6px}
+.raid-summary .raid-actions .btn{padding:7px 10px;font-size:10px}
+.raid-details{border-top:1px solid #263950;margin-top:12px;padding-top:2px}
+.raid-details .raid-art-showcase{min-height:170px;margin:10px 0;padding:8px}
+.raid-details .raid-showcase-art{height:160px!important;max-height:160px!important}
+.raid-details .raid-party{margin-top:12px}
+.raid-details .raid-actions{margin-top:12px}
+.boss-idle-compact{display:grid;grid-template-columns:118px minmax(0,1fr);gap:16px;align-items:center;padding:14px}
+.boss-idle-compact .boss-idle-art{width:118px;height:118px;min-height:0;margin:0;padding:6px;border-radius:12px}
+.boss-idle-compact .boss-showcase-art{height:104px!important;max-height:104px!important}
+.boss-idle-compact h3{margin:0 0 5px}
+.boss-idle-compact p{color:var(--muted);font-size:11px;margin:0 0 10px}
+.boss-idle-compact .btn{justify-self:start;min-width:0}
+@media(max-width:820px){.raid-list{grid-template-columns:1fr}}
+@media(max-width:520px){
+  .raid-card{padding:10px}
+  .raid-summary{grid-template-columns:72px minmax(0,1fr);gap:9px}
+  .raid-thumb{width:72px;height:72px}
+  .raid-thumb-art{height:68px;max-height:68px;max-width:70px}
+  .raid-summary-body h3{font-size:13px}
+  .raid-metrics{font-size:9px;gap:2px 8px}
+  .raid-summary .raid-actions .btn{padding:6px 9px;font-size:9px}
+  .boss-idle-compact{grid-template-columns:88px minmax(0,1fr);gap:10px}
+  .boss-idle-compact .boss-idle-art{width:88px;height:88px}
+  .boss-idle-compact .boss-showcase-art{height:78px!important;max-height:78px!important}
+}
