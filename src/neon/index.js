@@ -81,6 +81,7 @@ import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
+import {startCofreDasSombras,handleCofreDasSombrasCommand} from './cofre-sombras-alpha.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -8742,6 +8743,7 @@ console.log('[WhatsApp] ALPHA BOT CONECTADO')
 if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
 startAuctionAlphaScheduler(sock)
 startAuctionNotificationPilot(sock)
+startCofreDasSombras(sock)
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
 startBingoRebootScheduler(sock)
@@ -9658,6 +9660,7 @@ Fale com o responsável pelo Alpha Bot para ativação.`
 )
 }
 }
+if(await handleCofreDasSombrasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(isGroup && !isOwner){
 const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo','npcs','mercadores','comerciantes','mercadoalpha','lojanpc','npc','falarnpc','comprarnpc','npccomprar'])
 const RPG_CMDS=new Set(['dano','perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
