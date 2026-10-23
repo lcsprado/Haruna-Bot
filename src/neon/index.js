@@ -9645,6 +9645,9 @@ if(isGroup && !isOwner && !['termos','statusgrupo','assinar','plano','preco','pe
 let license=await getGroupLicense(chat)
 if(!license) license=await ensureGroupTrial(chat)
 if(!groupLicenseIsActive(license)){
+// Temporary, zero-cost pilot only; no normal gameplay is unlocked.
+if(['leilao','lance','leilaoteste','lanceteste'].includes(cmd) &&
+  await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 return await reply(
 `🔒 *ALPHA BOT BLOQUEADO NESTE GRUPO*
 O período de acesso terminou ou este grupo foi bloqueado.

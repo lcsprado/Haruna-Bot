@@ -71,11 +71,44 @@ async function tick(){
   try{
     await setup()
     let state=await getState()
+    // Historical groups are invited only to this zero-cost message test.
+    if(state?.phase==='running'){
+      const historical=(await db.query(
+        "SELECT value->'groups' AS groups FROM trevo_settings WHERE key=$1",
+        ['leilao_oculto_alpha_20261020_reedicao_quatro_lotes_v4']
+      )).rows[0]?.groups
+      const missing=(Array.isArray(historical)?historical:[])
+        .filter(g=>String(g).endsWith('@g.us')&&!state.groups.includes(g))
+      if(missing.length){
+        state=await mutate(async(s,c)=>{
+          if(s?.phase!=='running')return {value:s}
+          const newlyInvited=missing.filter(g=>!s.groups.includes(g))
+          if(newlyInvited.length){
+            s.groups=[...s.groups,...newlyInvited]
+            const welcome='🧪 *LEILÃO TESTE GLOBAL EM ANDAMENTO*\n'
+              +'⚠️ Somente simulação: sem descontos e sem prêmios.\n'
+              +'📢 Lances dos dois grupos devem aparecer nos avisos.\n'
+              +'💰 Lance inicial fictício: '+fmt(MINIMUM)
+              +'\n⏳ Encerra às *'+clock(s.ends)+'* (Brasília)'
+              +'\n📩 Use *!leilao* ou *!lance '+(s.high?Number(s.high.value)+STEP:MINIMUM)+'*.'
+            await queueAuctionBidNotices(c,{key:KEY,version:0,groups:newlyInvited,origin:'system',message:welcome})
+          }
+          return {save:s,value:s}
+        })
+        console.log('[AUCTION PILOT] historical group included',{groups:state.groups.length})
+      }
+    }
+
     if(!state){
       const groups=(await listGroupLicenses(500))
         .filter(groupLicenseIsActive).map(g=>g.chat_jid)
         .filter(j=>String(j).endsWith('@g.us'))
-      const unique=[...new Set(groups)]
+      const past=(await db.query(
+        "SELECT value->'groups' AS groups FROM trevo_settings WHERE key=$1",
+        ['leilao_oculto_alpha_20261020_reedicao_quatro_lotes_v4']
+      )).rows[0]?.groups
+      const unique=[...new Set([...groups,...(Array.isArray(past)?past:[])]
+        .filter(j=>String(j).endsWith('@g.us')))]
       if(unique.length){
         const result=await mutate(async(existing,c)=>{
           if(existing)return {value:existing}
@@ -131,7 +164,7 @@ export async function handleAuctionNotificationPilotCommand({cmd,args,sender,nam
   if(!state)return false
   if(state.phase==='completed' && Date.now()>Number(state.finished||state.ends)+3*60*1000)return false
   if(!String(chat||'').endsWith('@g.us')){await reply('🧪 O leilão teste acontece nos grupos.');return true}
-  if(!groupLicenseIsActive(await getGroupLicense(chat)) || !state.groups.includes(chat)){
+  if(!state.groups.includes(chat)){
     await reply('🧪 Este grupo não participa desta rodada teste.');return true
   }
   if(cmd==='leilao'||cmd==='leilaoteste'){
