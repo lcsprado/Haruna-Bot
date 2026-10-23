@@ -133,12 +133,20 @@ http.createServer((req,res)=>{
   res.end('Not found')
 }).listen(port,'0.0.0.0',()=>console.log('[HTTP] Alpha Bot WhatsApp-only listening on port '+port))
 
-await import('./index.js')
+if(process.env.ALPHA_WHATSAPP_ENABLE==='0'){
+  // Safe migration cutover: keep HTTP diagnostics up without opening another
+  // Baileys socket or running automatic RPG jobs. Unset preserves old behavior.
+  health.whatsapp='standby'
+  health.lastChange=Date.now()
+  console.log('[WhatsApp] INSTÂNCIA EM ESPERA: ALPHA_WHATSAPP_ENABLE=0; sessão não iniciada')
+}else{
+  await import('./index.js')
 
-// Auditoria agregada uma única vez; nenhuma migração, concessão ou evento antigo.
-setTimeout(async()=>{
-  try{
-    const {db}=await import('./db.js')
-    await auditDatabaseBandwidth(db)
-  }catch(err){console.warn('[Bandwidth DB audit] indisponível',err?.code||'query_failed')}
-},60000).unref?.()
+  // Auditoria agregada uma única vez; nenhuma migração, concessão ou evento antigo.
+  setTimeout(async()=>{
+    try{
+      const {db}=await import('./db.js')
+      await auditDatabaseBandwidth(db)
+    }catch(err){console.warn('[Bandwidth DB audit] indisponível',err?.code||'query_failed')}
+  },60000).unref?.()
+}
