@@ -5954,7 +5954,7 @@ if(game==='roulette'){
 const r=await roulette(sender,flow.data.amount,flow.data.choice,chat)
 await progressDailyMission(sender,'game')
 const result=r.payout>0
-? `📢 *GIRO ESPECIAL PROGRAMADO*\n🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
 : `💸 Você perdeu R$ ${fmt(r.amount)}.`
 await afterGame('roulette',{amount:flow.data.amount,choice:flow.data.choice},
 `🎰 *ROLETA*
@@ -6163,7 +6163,7 @@ return true
 const r=await roulette(sender,flow.data.amount,choice,chat)
 await progressDailyMission(sender,'game')
 const result=r.payout>0
-? `📢 *GIRO ESPECIAL PROGRAMADO*\n🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
 : `💸 Você perdeu R$ ${fmt(r.amount)}.`
 await afterGame('roulette',{amount:flow.data.amount,choice},
 `🎰 *ROLETA*
@@ -11416,7 +11416,7 @@ if(!amount||!choice) return await reply(`Uso: *${prefix}roleta 100 vermelho*\nCo
 const player=await resolvePlayerJid(sock,chat,sender,msg)
 const r=await roulette(player,amount,choice,chat)
 const result=r.payout>0
-? `📢 *GIRO ESPECIAL PROGRAMADO*\n🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
+? `🎉 Você ganhou R$ ${fmt(r.payout)}! Lucro: R$ ${fmt(r.profit)}`
 : `💸 Você perdeu R$ ${fmt(r.amount)}.`
 await progressDailyMission(player,'game')
 await reply(`🎰 *ROLETA*\n\nNúmero: *${r.number}*\nCor: *${r.color}*\nSua escolha: *${r.choice}*\n\n${result}`)
@@ -11431,7 +11431,7 @@ const player=await resolvePlayerJid(sock,chat,sender,msg)
 const r=await spinGroupRoulette(chat,player)
 let out=`🎰 *ROLETA COLETIVA*\n\n🎯 Número: *${r.number}*\n🎨 Cor: *${r.color.toUpperCase()}*\n\n`
 for(const x of r.results){
-out+=`@${String(x.jid).split('@')[0]} — R$ ${fmt(x.amount)} no ${x.choice}: ${x.payout>0?`🏆 ganhou R$ ${fmt(x.payout)}\n📢 *GIRO ESPECIAL PROGRAMADO*`:'💸 perdeu'}\n`
+out+=`@${String(x.jid).split('@')[0]} — R$ ${fmt(x.amount)} no ${x.choice}: ${x.payout>0?`🏆 ganhou R$ ${fmt(x.payout)}`:'💸 perdeu'}\n`
 }
 await reply(out.trim(),{mentions:r.results.map(x=>x.jid)})
 } else if(['cara','coroa'].includes(cmd)){
