@@ -101,6 +101,34 @@ const COLLAB_ITEM_SPRITES={
   'collab-armadura-merlin':[1,887,444,443,443]
 };
 
+const EVENT_ITEM_ART_SHEETS=[
+  {url:'/assets/raid-weapons.webp?v=20261023-1',w:1536,h:1024},
+  {url:'/assets/raid-armors.webp?v=20261023-1',w:1536,h:1024},
+  {url:'/assets/event-gear.webp?v=20261023-1',w:1254,h:1254},
+  {url:'/assets/event-relics.webp?v=20261023-1',w:1254,h:1254},
+  {url:'/assets/raid-keys.webp?v=20261023-1',w:1254,h:1254}
+];
+const EVENT_RELIC_IDS=[
+  'insignia_eco_ancestral','insignia_tita_ancestral','insignia_guardiao_ruptura',
+  'insignia_nem_cirurgia_derrubou_lenda','insignia_matador_titas','insignia_sete_pecados',
+  'titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula',
+  'essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria',
+  'essencia_pecado_ira','essencia_pecado_soberba','fragmento_caos','coroa_abissal'
+];
+const EVENT_ITEM_SPRITES={
+  lamina_caos:[0,0,0,512,512],machado_tita:[0,512,0,512,512],
+  foice_abismo:[0,1024,0,512,512],espada_aurora:[0,0,512,512,512],
+  exterminadora_eclipse:[0,512,512,512,512],
+  couraca_caos:[1,0,0,512,512],armadura_tita_ancestral:[1,512,0,512,512],
+  manto_abismo_eterno:[1,1024,0,512,512],armadura_aurora:[1,0,512,512,512],
+  armadura_deus_eclipse:[1,512,512,512,512],
+  elmo_aurora:[2,0,0,627,627],elmo_soberano_golem:[2,627,0,627,627],
+  elmo_labirinto_alpha:[2,0,627,627,627],bota_jp_aquiles:[2,627,627,627,627],
+  ...Object.fromEntries(EVENT_RELIC_IDS.map((id,i)=>[id,[3,(i%4)*313.5,Math.floor(i/4)*313.5,313.5,313.5]])),
+  chave_raid_60:[4,0,0,627,627],chave_raid_65:[4,627,0,627,627],
+  chave_raid_70:[4,0,627,627,627],essencia_eclipse:[4,627,627,627,627]
+};
+
 const ITEM_DEDICATED_SPRITES={
   'item-espada-madeira':[0,0,0,256,256],
   'item-espada-ferro':[0,256,0,256,256],
@@ -1269,6 +1297,7 @@ function itemSpriteKey(item){
     cristal_ancestral:'material-ancestral',nucleo_celestial:'material-celestial',
     fragmento_celestial:'material-celestial'
   };
+  if(EVENT_ITEM_SPRITES[id]) return id;
   if(exact[id]) return exact[id];
 
   if(raw.includes('chave')&&raw.includes('raid')){
@@ -1366,14 +1395,16 @@ function itemFallbackVisual(item){
   return ['💠','Item'];
 }
 function itemCroppedSprite(key,className,label){
+  const event=EVENT_ITEM_SPRITES[key];
+  const eventSheet=event?EVENT_ITEM_ART_SHEETS[event[0]]:null;
   const collab=COLLAB_ITEM_SPRITES[key];
   const dedicated=ITEM_DEDICATED_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=collab?collab.slice(1):(dedicated?dedicated.slice(1):(fixed||OFFICIAL_SPRITES[key]));
+  const b=event?event.slice(1):(collab?collab.slice(1):(dedicated?dedicated.slice(1):(fixed||OFFICIAL_SPRITES[key])));
   if(!b) return '';
-  const sheet=collab?COLLAB_ITEM_ART_SHEETS[collab[0]]:(dedicated?ITEM_ART_SHEETS[dedicated[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET));
-  const sw=collab?COLLAB_ITEM_ART_W:(dedicated?ITEM_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W));
-  const sh=collab?COLLAB_ITEM_ART_H:(dedicated?ITEM_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H));
+  const sheet=eventSheet?eventSheet.url:(collab?COLLAB_ITEM_ART_SHEETS[collab[0]]:(dedicated?ITEM_ART_SHEETS[dedicated[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET)));
+  const sw=eventSheet?eventSheet.w:(collab?COLLAB_ITEM_ART_W:(dedicated?ITEM_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W)));
+  const sh=eventSheet?eventSheet.h:(collab?COLLAB_ITEM_ART_H:(dedicated?ITEM_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H)));
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
