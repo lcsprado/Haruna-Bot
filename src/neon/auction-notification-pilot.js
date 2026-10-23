@@ -177,7 +177,7 @@ export async function handleAuctionNotificationPilotCommand({cmd,args,sender,nam
     return true
   }
   const parsed=parseAmount(args?.[0])
-  if(!parsed){await reply('❌ Teste: use *!lance 100000* ou *!lance +50000*. Não desconta dinheiro.');return true}
+  if(!parsed){await reply('🧪 *LEILÃO TESTE*\n❌ Valor inválido. Use *!lance 100000* ou *!lance +50000*. Nenhum dinheiro foi movimentado.');return true}
   try{
     const result=await mutate(async(s,c)=>{
       if(!s||s.phase!=='running'||Date.now()>=Number(s.ends))
@@ -198,15 +198,22 @@ export async function handleAuctionNotificationPilotCommand({cmd,args,sender,nam
         +'📈 Próximo lance mínimo: *'+fmt(offered+STEP)+'*\n'
         +'⏳ Encerra às *'+clock(s.ends)+'* (Brasília)\n'
         +'📩 Use *!lance '+(offered+STEP)+'* para testar ou *!leilao* para conferir.'
+      // The originating group gets a durable, unquoted confirmation via
+      // exactly the same transport path as the other groups' bid alerts.
+      const confirmation='🧪 *LEILÃO TESTE — LANCE CONFIRMADO*\n'
+        +'✅ Lance fictício aceito no Aiven: *'+fmt(offered)+'*\n'
+        +'📈 Próximo lance mínimo: *'+fmt(offered+STEP)+'*\n'
+        +'📡 Outros grupos avisados pela fila: '+otherGroups.length+'\n'
+        +'💰 R$ 0 debitado. Nenhum prêmio será distribuído.\n'
+        +'📋 Use *!leilao* para conferir o maior lance global.'
+      await queueAuctionBidNotices(c,{key:KEY,version:s.version,groups:[chat],origin:'system',message:confirmation})
       await queueAuctionBidNotices(c,{key:KEY,version:s.version,groups:otherGroups,origin:chat,message:notice})
       return {save:s,value:{offered,version:s.version,targets:otherGroups.length}}
     })
-    await reply('✅ *LANCE TESTE ACEITO GLOBALMENTE*\n'
-      +'💰 '+fmt(result.offered)+'\n📈 Próximo mínimo: '+fmt(result.offered+STEP)
-      +'\n📡 Outros grupos a avisar: '+result.targets
-      +'\n🧪 Simulação: R$ 0 debitado; nenhum prêmio.')
-    // Start delivery without delaying subsequent WhatsApp commands.
+    // Do not send a second, quoted confirmation. Queue persistence survives
+    // transport problems and ensures only one acknowledgement per bid/group.
+    console.log('[AUCTION PILOT] bid committed',JSON.stringify({version:result.version,targets:result.targets}))
     void tick()
-  }catch(err){await reply('❌ '+String(err?.message||err))}
+  }catch(err){await reply('🧪 *LEILÃO TESTE*\n❌ '+String(err?.message||err)+'\nNenhum valor foi debitado.')}
   return true
 }

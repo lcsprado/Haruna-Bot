@@ -12,6 +12,10 @@ test('pilot: only one event, 15-minute simulated one-lot auction and global high
   assert.match(pilot,/state.*high|s\.high=/)
   assert.match(pilot,/otherAuctionGroups\(s\.groups,chat\)/)
   assert.match(pilot,/queueAuctionBidNotices\(c,/)
+  assert.match(pilot,/groups:\[chat\],origin:'system'/)
+  assert.match(pilot,/LEILÃO TESTE — LANCE CONFIRMADO/)
+  assert.doesNotMatch(pilot,/await reply\('✅ \*LANCE TESTE ACEITO GLOBALMENTE/)
+
   assert.match(pilot,/auctionNoticeSummary\(db,KEY,/)
   assert.match(pilot,/Nenhum saldo, XP ou item será alterado/)
   assert.match(pilot,/LEILÃO TESTE — LANCE DE OUTRO GRUPO/)

@@ -9256,7 +9256,7 @@ if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',re
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
 if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.key?.id?chat+':'+msg.key.id:null})) continue
-if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleEnchantCommand({cmd,args,sender,reply,
 setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
@@ -9647,7 +9647,7 @@ if(!license) license=await ensureGroupTrial(chat)
 if(!groupLicenseIsActive(license)){
 // Temporary, zero-cost pilot only; no normal gameplay is unlocked.
 if(['leilao','lance','leilaoteste','lanceteste'].includes(cmd) &&
-  await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+  await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 return await reply(
 `🔒 *ALPHA BOT BLOQUEADO NESTE GRUPO*
 O período de acesso terminou ou este grupo foi bloqueado.
