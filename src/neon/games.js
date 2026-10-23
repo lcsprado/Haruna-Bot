@@ -1,3 +1,4 @@
+import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
@@ -2674,7 +2675,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
   // Chamadas diretas e sessões retomadas mantêm o cadastro inicial obrigatório.
   if(!options.skipEnsureUser) await ensureUser(jid,name||'')
   const weekend=bossWeekendInfo()
-  return tx(async c=>{
+  return retryBossDeadlock(()=>tx(async c=>{
     const now=Math.floor(Date.now()/1000)
     // Uma consulta para os dois impedimentos, preservando a prioridade do sono.
     const blocked=await c.query(`
@@ -3148,5 +3149,5 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     }
     await saveBossAttackProgress(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:bossChat,gameType,s,jid)
     return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),phase:s.phase||0,phaseChanged,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
-  })
+  }),{onRetry:({attempt,waitMs})=>console.warn('[Boss] deadlock SQL 40P01; transação revertida, nova tentativa',attempt,'em',waitMs,'ms')})
 }

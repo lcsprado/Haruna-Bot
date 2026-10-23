@@ -259,7 +259,19 @@ const petHealSummary=()=>[...petHealTally].map(([pet,v])=>`\n🐾 *${pet}*: caiu
 try{
 for(let i=0;;i++){
 if(!runner.active||bossSessions.get(key)!==runner){completed=true;return}
-const r=pendingFirst?(pendingFirst=null,first):await attackBoss(chat,jid,name,usePet,{skipEnsureUser:true})
+let r
+try{
+r=pendingFirst?(pendingFirst=null,first):await attackBoss(chat,jid,name,usePet,{skipEnsureUser:true})
+}catch(err){
+if(err?.code!=='40P01') throw err
+// A deadlocked transaction was rolled back; keep the persisted session active.
+runner.lastProgressAt=Date.now()
+if(sessionEndsAt && Date.now()>=sessionEndsAt){completed=true;return}
+i--
+console.warn('[Boss Auto] deadlock persistente após retries; mantendo sessão ativa',jid)
+await new Promise(resolve=>setTimeout(resolve,1800))
+continue
+}
 runner.lastProgressAt=Date.now()
 if(r?.cooldown){
 i--
