@@ -163,7 +163,7 @@ const status=(r,event)=>{
   +'\n💚 Recuperações: *'+r.cures+'/2*'
  if(r.status!=='active')return s+'\n\n🏁 Sua aventura terminou ('+r.status+').\n✅ Crédito único confirmado.'
  if(Date.now()>=Number(event.ends))return s+'\n\n⌛ Tempo esgotado. Use *!guardar* para resgatar o checkpoint.'
- if(Date.now()<r.nextAt)return s+'\n\n⏳ Próxima sala às *'+time(r.nextAt)+'*. Use *!explorar* depois.'
+ if(Date.now()<r.nextAt)return s+'\n\n⏳ Próxima sala às *'+time(r.nextAt)+'*. Use *!explorar* depois.'+(r.room>0&&r.room%2===0?'\n🚪 Pode usar *!guardar* agora para sair com o garantido.':'')
  return s+'\n\n🏰 *SALA '+(r.room+1)+'/8*'+doorMenu
 }
 export async function handleCofreDasSombrasCommand({cmd,args=[],sender,name,chat,reply}){
@@ -221,7 +221,7 @@ export async function handleCofreDasSombrasCommand({cmd,args=[],sender,name,chat
     if(r.hp>=r.maxHp)return {error:'Seu HP já está cheio.'}
     const wallet=(await c.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[sender])).rows[0]
     if(!wallet||Number(wallet.cash)+Number(wallet.bank)<25000)return {error:'Saldo insuficiente. Precisa de R$ 25.000.'}
-    const usedCash=Math.min(25000,Number(wallet.cash)),usedBank=25000-usedCash
+    const usedCash=Math.max(0,Math.min(25000,Number(wallet.cash))),usedBank=25000-usedCash
     await c.query('UPDATE wallets SET cash=cash-$2,bank=bank-$3,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1',[sender,usedCash,usedBank])
     r.hp=Math.min(r.maxHp,r.hp+Math.ceil(r.maxHp*.25));r.cures++;r.spent+=25000
     await save(c,sender,r)
