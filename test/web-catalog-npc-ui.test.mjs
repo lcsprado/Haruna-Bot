@@ -18,14 +18,14 @@ test('inventário usa abas selecionadas, sem renderizar todos os grupos',()=>{
   assert.match(app,/PROTEGIDO DE VENDA/)
 })
 
-test('NPC Web compartilha a fonte de verdade de compras e reputação',()=>{
+test('NPCs permanecem no backend histórico, mas não aparecem na interface Web',()=>{
   assert.match(api,/import \{ listNpcShops, getNpcShop, buyNpcShopItem \} from '\.\/npc-shops\.js'/)
   assert.match(api,/case 'npc\.buy': return buyNpcShopItem/)
   assert.match(api,/\/api\/v1\/me\/npcs/)
   assert.match(npc,/requiredKarma:/)
   assert.match(npc,/fragmentsRemaining:/)
-  assert.match(app,/data-npc-buy/)
-  assert.match(app,/Compras restantes:/)
+  assert.doesNotMatch(app,/data-npc-buy|NPCs \/ Comerciantes|renderNpcs|loadNpcShops/)
+  assert.doesNotMatch(app,/\['npcs'/)
 })
 
 test('loja exclui registros legados também no endpoint de compra',()=>{

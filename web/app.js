@@ -14,8 +14,6 @@ const ui = {
   petTab: 'owned',
   inventoryTab: 'weapons',
   inventoryTabsScrollLeft: 0,
-  npcData: null,
-  npcLoading: false,
   contractData: null,
   contractLoading: false,
   petAdoptSpecies: '',
@@ -38,7 +36,6 @@ const navItems = [
   ['pets','🐾','Pets'],
   ['inventory','🎒','Inventário'],
   ['shop','🏪','Loja'],
-  ['npcs','🏘️','NPCs / Comerciantes'],
   ['contracts','📜','Contratos'],
   ['raids','⚔️','Raids'],
   ['boss','👹','Boss'],
@@ -87,6 +84,23 @@ const ITEM_ART_SHEETS=[
 ];
 const ITEM_ART_W=1024;
 const ITEM_ART_H=1024;
+const COLLAB_ITEM_ART_SHEETS=[
+  '/assets/pecados-weapons.webp?v=20261023-1',
+  '/assets/pecados-armors.webp?v=20261023-1'
+];
+const COLLAB_ITEM_ART_W=1774;
+const COLLAB_ITEM_ART_H=887;
+const COLLAB_ITEM_SPRITES={
+  'collab-lostvayne':[0,0,0,443,443],'collab-courechouse':[0,444,0,443,443],
+  'collab-rhitta':[0,887,0,443,443],'collab-chastiefol':[0,1331,0,443,443],
+  'collab-gideon':[0,0,444,443,443],'collab-herritt':[0,444,444,443,443],
+  'collab-aldan':[0,887,444,443,443],
+  'collab-armadura-meliodas':[1,0,0,443,443],'collab-armadura-ban':[1,444,0,443,443],
+  'collab-armadura-escanor':[1,887,0,443,443],'collab-armadura-king':[1,1331,0,443,443],
+  'collab-armadura-diane':[1,0,444,443,443],'collab-armadura-gowther':[1,444,444,443,443],
+  'collab-armadura-merlin':[1,887,444,443,443]
+};
+
 const ITEM_DEDICATED_SPRITES={
   'item-espada-madeira':[0,0,0,256,256],
   'item-espada-ferro':[0,256,0,256,256],
@@ -139,6 +153,16 @@ const ITEM_DEDICATED_SPRITES={
 
 // Artes exclusivas dos pets especiais/endgame. Uma única spritesheet evita
 // dezenas de downloads sem reaproveitar a identidade visual entre espécies.
+const COLLAB_PET_ART_SHEET='/assets/pecados-heroes.webp?v=20261023-1';
+const COLLAB_PET_ART_W=2172;
+const COLLAB_PET_ART_H=724;
+const COLLAB_PET_SPRITES={
+  pecado_meliodas:[2,20,306,500],pecado_ban:[312,20,306,500],
+  pecado_escanor:[623,20,306,500],pecado_king:[933,20,306,500],
+  pecado_diane:[1243,20,306,500],pecado_gowther:[1553,20,306,500],
+  pecado_merlin:[1864,20,306,500]
+};
+
 const PREMIUM_PET_ART_SHEET='/assets/alpha-special-pets.webp?v=alpha-special-pets-20261007-3';
 const PREMIUM_PET_ART_W=1200;
 const PREMIUM_PET_ART_H=900;
@@ -365,8 +389,8 @@ const PET_IMAGE_ASSETS={
   // A versão anterior continha uma baleia em vez de um tubarão. Usa a arte verificada do atlas.
   polvo_arcano:'/assets/pets/polvo-arcano.webp',
   baleia_colossal:'/assets/pets/baleia-colossal.webp',
-  // A versão anterior continha um lobo em vez de um corvo. Usa a arte verificada do atlas.
-  grifo_celestial:'/assets/pets/grifo-celestial.webp',
+  // Retrato completo, com asas e patas dentro do enquadramento.
+  grifo_celestial:'/assets/pets/grifo-celestial-v2.webp',
   // A versão anterior estava desfocada. A Fênix de Gelo usa o sprite oficial com paleta de gelo.
   fenix_celestial:'/assets/pets/fenix-celestial.webp',
   serpente_cosmica:'/assets/pets/serpente-cosmica.webp'
@@ -389,13 +413,14 @@ function petSpeciesFallback(species,className,label){
     '<span aria-hidden="true">'+emoji+'</span><small>'+esc(label||petSpeciesName(s))+'</small></div>';
 }
 function petCroppedSprite(key,className,label){
+  const collab=COLLAB_PET_SPRITES[key];
   const premium=PREMIUM_PET_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=premium?premium:(fixed||OFFICIAL_SPRITES[key]);
+  const b=collab||premium||fixed||OFFICIAL_SPRITES[key];
   if(!b) return '';
-  const sheet=premium?PREMIUM_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
-  const sw=premium?PREMIUM_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
-  const sh=premium?PREMIUM_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
+  const sheet=collab?COLLAB_PET_ART_SHEET:(premium?PREMIUM_PET_ART_SHEET:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET));
+  const sw=collab?COLLAB_PET_ART_W:(premium?PREMIUM_PET_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W));
+  const sh=collab?COLLAB_PET_ART_H:(premium?PREMIUM_PET_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H));
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
@@ -419,6 +444,7 @@ const VERIFIED_RAID_PET_SPRITES={
 function petVisualMarkup(species,className='pet-official-art'){
   const s=String(species||'').toLowerCase();
   const label=petSpeciesName(s);
+  if(COLLAB_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-collab-art pet-primary-art',label);
   const exclusive='pet-special-'+s;
   // Onze retratos do atlas premium foram verificados visualmente, célula por célula.
   if(PREMIUM_PET_SPRITES[exclusive]){
@@ -800,7 +826,6 @@ function renderNav(){
   document.querySelectorAll('[data-page]').forEach(btn=>btn.onclick=async()=>{
     ui.page=btn.dataset.page;
     setMenu(false);
-    if(ui.page==='npcs') await loadNpcShops();
     if(ui.page==='contracts') await loadContracts();
     if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
       await syncExtras(false).catch(()=>null);
@@ -1203,6 +1228,13 @@ function itemSpriteKey(item){
   const raw=(id+' '+name+' '+category).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[_-]+/g,' ');
 
   const exact={
+    pecados_lostvayne:'collab-lostvayne',pecados_courechouse:'collab-courechouse',
+    pecados_rhitta:'collab-rhitta',pecados_chastiefol:'collab-chastiefol',
+    pecados_gideon:'collab-gideon',pecados_herritt:'collab-herritt',pecados_aldan:'collab-aldan',
+    pecados_armadura_meliodas:'collab-armadura-meliodas',pecados_armadura_ban:'collab-armadura-ban',
+    pecados_armadura_escanor:'collab-armadura-escanor',pecados_armadura_king:'collab-armadura-king',
+    pecados_armadura_diane:'collab-armadura-diane',pecados_armadura_gowther:'collab-armadura-gowther',
+    pecados_armadura_merlin:'collab-armadura-merlin',
     espada_madeira:'item-espada-madeira',espada_ferro:'item-espada-ferro',espada_aco:'item-espada-aco',
     machado_guerra:'item-machado-guerra',katana_sombria:'item-katana-sombria',espada_flamas:'item-espada-flamas',
     sabre_runico:'item-sabre-runico',lamina_cacador:'item-lamina-cacador',espada_guardiao:'item-espada-guardiao',
@@ -1334,13 +1366,14 @@ function itemFallbackVisual(item){
   return ['💠','Item'];
 }
 function itemCroppedSprite(key,className,label){
+  const collab=COLLAB_ITEM_SPRITES[key];
   const dedicated=ITEM_DEDICATED_SPRITES[key];
   const fixed=FIXED_SPRITES[key];
-  const b=dedicated?dedicated.slice(1):(fixed||OFFICIAL_SPRITES[key]);
+  const b=collab?collab.slice(1):(dedicated?dedicated.slice(1):(fixed||OFFICIAL_SPRITES[key]));
   if(!b) return '';
-  const sheet=dedicated?ITEM_ART_SHEETS[dedicated[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET);
-  const sw=dedicated?ITEM_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W);
-  const sh=dedicated?ITEM_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H);
+  const sheet=collab?COLLAB_ITEM_ART_SHEETS[collab[0]]:(dedicated?ITEM_ART_SHEETS[dedicated[0]]:(fixed?FIXED_ART_SHEET:OFFICIAL_ART_SHEET));
+  const sw=collab?COLLAB_ITEM_ART_W:(dedicated?ITEM_ART_W:(fixed?FIXED_ART_W:OFFICIAL_ART_W));
+  const sh=collab?COLLAB_ITEM_ART_H:(dedicated?ITEM_ART_H:(fixed?FIXED_ART_H:OFFICIAL_ART_H));
   const x=Number(b[0]),y=Number(b[1]),w=Number(b[2]),h=Number(b[3]);
   const sizeX=(sw/w)*100;
   const sizeY=(sh/h)*100;
@@ -1527,15 +1560,6 @@ function renderShop(){
     (groups.length?groups.map(g=>'<div class="section shop-section"><div class="section-title"><h3>'+esc(shopCategoryLabel(g.key))+'</h3><small>'+g.items.length+' item(ns)</small></div><div class="grid cards">'+g.items.map(shopCard).join('')+'</div></div>').join(''):'<div class="empty">Loja sem itens disponíveis.</div>');
 }
 
-async function loadNpcShops(){
-  if(ui.npcLoading) return;
-  ui.npcLoading=true;
-  try{
-    const result=await api('/api/v1/me/npcs');
-    ui.npcData=result.data;
-  }catch(err){ui.npcData={error:err.message}}
-  finally{ui.npcLoading=false}
-}
 async function loadContracts(){
   if(ui.contractLoading) return;
   ui.contractLoading=true;
@@ -1572,38 +1596,6 @@ function renderContracts(){
       '</div>';
     }).join('')+'</div>';
 }
-function renderNpcs(){
-  const d=ui.npcData;
-  if(!d) return '<div class="notice">Carregando comerciantes…</div>';
-  if(d.error) return '<div class="notice warn">'+esc(d.error)+'</div>';
-  const karma=Number(d.karma||0);
-  return '<div class="page-head"><div><h2>🏘️ NPCs / Comerciantes</h2><p>As mesmas ofertas, preços e limites disponíveis no WhatsApp.</p></div><span class="tag">⚖️ '+(karma>=0?'+':'')+karma+' • '+esc(d.title||'Neutro')+'</span></div>'+
-    (d.shops||[]).map(shop=>{
-      const n=shop.npc||{};
-      return '<div class="section shop-section"><div class="section-title"><h3>'+esc(n.emoji||'🏘️')+' '+esc(n.name||'Comerciante')+'</h3><small>'+esc(n.title||'')+'</small></div>'+
-      '<p>'+esc(n.description||'')+'</p><div class="tag-row"><span class="tag">⚖️ Reputação: '+(karma>=0?'+':'')+karma+'</span>'+
-      '<span class="tag">Relação: '+(Number(shop.factor)<1?'Desconto de '+num(Math.round((1-Number(shop.factor))*100))+'%':Number(shop.factor)>1?'Acréscimo de '+num(Math.round((Number(shop.factor)-1)*100))+'%':'Preço normal')+'</span><span class="tag">Compras restantes: '+num(shop.remaining||0)+'</span><span class="tag">Fragmentos restantes: '+num(shop.fragmentsRemaining||0)+'</span><span class="tag">Equipamentos restantes: '+num(shop.gearRemaining||0)+'</span></div>'+
-      '<div class="grid cards section">'+(shop.stock||[]).map(i=>{
-        let reason='';
-        if(i.requiredKarma!=null&&(n.id==='helena'?karma<Number(i.requiredKarma):karma>Number(i.requiredKarma)))
-          reason='🔒 Requer '+(n.id==='helena'?'Honra +':'Karma ')+i.requiredKarma;
-        else if(i.requiredRaid&&Number(shop.highestRaid||0)<Number(i.requiredRaid)) reason='🔒 Requer vitória na Raid Lv.'+i.requiredRaid;
-        else if(i.soldOut) reason='🔒 Limite diário de fragmentos atingido';
-        else if(!i.permitted) reason='🔒 Requisito não atendido';
-        else if(Number(shop.remaining)<=0) reason='🔒 Limite de compras atingido';
-        else if(['weapon','armor','boots'].includes(i.category)&&Number(shop.gearRemaining)<=0) reason='🔒 Limite de equipamentos atingido';
-        const blocked=Boolean(reason);
-        return '<div class="card item-card '+rarityClass(i.rarity)+'">'+itemArtMarkup(i)+
-        '<div class="tag-row"><span class="tag">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
-        '<h3>'+esc(itemDisplayName(i))+'</h3>'+
-        '<p>'+esc(itemDisplayDescription(i))+'</p>'+ 
-        (Number(i.price)!==Number(i.basePrice)?'<p>Preço original: <s>'+money(i.basePrice)+'</s></p>':'')+
-        '<strong>'+money(i.price)+'</strong><p>'+(reason||'✅ Disponível')+'</p>'+
-        '<button class="btn primary" data-npc-buy="'+esc(n.id)+'" data-npc-number="'+Number(i.number)+'" '+(blocked?'disabled':'')+'>Comprar 1</button></div>';
-      }).join('')+'</div></div>';
-    }).join('');
-}
-
 function raidState(level){
   const group=currentGroup();
   return group&&Array.isArray(group.raids)?group.raids.find(x=>Number(x.level)===Number(level)):null;
@@ -2190,7 +2182,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,npcs:renderNpcs,contracts:renderContracts,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,contracts:renderContracts,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
   if(ui.page==='inventory' && Number(ui.inventoryTabsScrollLeft)>0){
@@ -2233,7 +2225,6 @@ function bind(){
   document.querySelectorAll('.inventory-tabs').forEach(tabs=>tabs.addEventListener('scroll',()=>{ui.inventoryTabsScrollLeft=tabs.scrollLeft;},{passive:true}));
   document.querySelectorAll('[data-contract-accept]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.accept',{number:Number(x.dataset.contractAccept)},{success:'📜 Contrato aceito.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-contract-claim]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.claim',{}, {success:'🎁 Contrato resgatado.'});await loadContracts();render();}catch{render();}});
-  document.querySelectorAll('[data-npc-buy]').forEach(x=>x.onclick=async()=>{if(!confirm('Confirmar compra com '+x.dataset.npcBuy+'?'))return;x.disabled=true;try{await doAction('npc.buy',{npcId:x.dataset.npcBuy,number:Number(x.dataset.npcNumber)},{success:'🛍️ Compra realizada.'});await loadNpcShops();render();}catch{render();}});
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
   document.querySelectorAll('[data-pet-team-save]').forEach(x=>x.onclick=()=>{
     const selects=[...document.querySelectorAll('[data-team-slot]')].sort((a,b)=>Number(a.dataset.teamSlot)-Number(b.dataset.teamSlot));

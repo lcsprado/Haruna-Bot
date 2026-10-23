@@ -1014,3 +1014,6 @@ body.loot-open{overflow:hidden!important}
   .item-card .item-art{height:158px!important;min-height:158px!important}
   .pet-portrait .pet-cropped-art{width:auto!important;height:92%!important;max-width:92%!important}
 }
+
+/* Collab portraits retain their tall panel crop inside mobile pet cards. */
+.pet-portrait .pet-collab-art{width:auto!important;height:88%!important;max-width:88%!important;max-height:88%!important;aspect-ratio:306/500!important}
