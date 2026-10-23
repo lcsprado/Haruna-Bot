@@ -273,18 +273,25 @@ const FIXED_SPRITES={
 
 // Recortes da arte final aprovada. Cada viewBox mostra a peça inteira dentro
 // do card, sem esticar e sem usar object-fit: cover.
+const CLASS_ART_SHEETS=[
+  '/assets/classes-warrior-archer.webp?v=20261023-1',
+  '/assets/classes-paladin-necromancer.webp?v=20261023-1',
+  '/assets/classes-druid-samurai.webp?v=20261023-1'
+];
+const CLASS_PORTRAITS={
+  'char-warrior':[0,0,0,512,768],
+  'char-assassin':[0,512,0,512,768],
+  'char-mage':[0,0,768,512,768],
+  'char-archer':[0,512,768,512,768],
+  'char-paladin':[1,0,0,512,768],
+  'char-berserker':[1,512,0,512,768],
+  'char-monk':[1,0,768,512,768],
+  'char-necromancer':[1,512,768,512,768],
+  'char-druid':[2,0,0,512,768],
+  'char-samurai':[2,512,0,512,768]
+};
+
 const OFFICIAL_SPRITES={
-  // 10 classes finais
-  'char-warrior':[10,28,140,158],
-  'char-assassin':[153,28,126,158],
-  'char-mage':[282,28,129,158],
-  'char-archer':[414,28,134,158],
-  'char-paladin':[551,28,139,158],
-  'char-berserker':[693,28,137,158],
-  'char-monk':[833,28,145,158],
-  'char-necromancer':[981,28,149,158],
-  'char-druid':[1133,28,133,158],
-  'char-samurai':[1393,28,135,158],
 
   // 15 pets finais
   'pet-dog':[10,250,90,121],
@@ -391,6 +398,12 @@ const OFFICIAL_SPRITES={
 };
 
 function artSprite(key,className,alt){
+  const portrait=CLASS_PORTRAITS[key];
+  if(portrait){
+    const sheet=CLASS_ART_SHEETS[portrait[0]];
+    return '<svg class="official-art class-portrait-art '+esc(className||'')+'" viewBox="'+portrait.slice(1).join(' ')+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(alt||key)+'">'+
+      '<image href="'+sheet+'" x="0" y="0" width="1024" height="1536" preserveAspectRatio="none"></image></svg>';
+  }
   const fixed=FIXED_SPRITES[key];
   const b=fixed||OFFICIAL_SPRITES[key];
   if(!b) return '';
@@ -471,7 +484,7 @@ const PET_IMAGE_ASSETS={
   // Retrato completo, com asas e patas dentro do enquadramento.
   grifo_celestial:'/assets/pets/grifo-celestial-v2.webp',
   // A versão anterior estava desfocada. A Fênix de Gelo usa o sprite oficial com paleta de gelo.
-  fenix_celestial:'/assets/pets/fenix-celestial.webp',
+  fenix_celestial:'/assets/pets/fenix-celestial-v2.webp',
   serpente_cosmica:'/assets/pets/serpente-cosmica.webp'
 };
 
