@@ -1425,6 +1425,7 @@ function itemSpriteKey(item){
   if(category==='weapon') return raw.includes('arco')?'weapon-bow':raw.includes('martelo')||raw.includes('machado')?'weapon-hammer':'weapon-eclipse';
   if(category==='armor') return 'armor-titan';
   if(category==='boots') return raw.includes('vento')||raw.includes('relamp')||raw.includes('celestial')?'fixed-bota-vento':'fixed-bota-leve';
+  if(category==='helmet') return '';
   if(category==='box') return 'box-luck';
   if(category==='consumable'||category==='potion') return 'potion-small';
   if(category==='pet_potion') return 'pet-potion-small';
@@ -1467,6 +1468,7 @@ function itemFallbackVisual(item){
   if(category==='weapon') return ['🗡️','Arma'];
   if(category==='armor') return ['🛡️','Armadura'];
   if(category==='boots') return ['🥾','Botas'];
+  if(category==='helmet') return ['🪖','Elmo'];
   if(category==='material'||category==='special') return ['💎','Material'];
   if(category==='consumable'||category==='potion') return ['🧪','Consumível'];
   return ['💠','Item'];
