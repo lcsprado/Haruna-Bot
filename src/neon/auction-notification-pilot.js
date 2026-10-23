@@ -185,7 +185,9 @@ export async function handleAuctionNotificationPilotCommand({cmd,args,sender,nam
       if(!s.groups.includes(chat))throw Error('Grupo não participante.')
       const minimum=s.high?Number(s.high.value)+STEP:MINIMUM
       const offered=parsed.relative?(s.high?Number(s.high.value):MINIMUM-STEP)+parsed.value:parsed.value
-      if(!Number.isSafeInteger(offered)||offered<minimum||offered>100000000)
+      if(!Number.isSafeInteger(offered)||offered>100000000)
+        throw Error('O lance de teste não pode ultrapassar R$ 100.000.000.')
+      if(offered<minimum)
         throw Error('Próximo lance mínimo: '+fmt(minimum))
       s.high={jid:sender,name:clean(name),value:offered}
       s.version=Number(s.version||0)+1
