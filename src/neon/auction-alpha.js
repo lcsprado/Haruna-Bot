@@ -5,6 +5,7 @@ import {randomInt,randomBytes,createHash} from 'node:crypto'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction} from './db.js'
 import {initEnchantments} from './enchantments-alpha.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
+import {initAuctionNoticeOutbox,queueAuctionBidNotices,auctionNoticeSummary,flushAuctionBidNotices,warnAuctionDeliveryFailures} from './auction-notice-outbox.js'
 
 const KEY='leilao_oculto_alpha_20261020_reedicao_quatro_lotes_v4'
 // Edições anteriores permanecem canceladas e isoladas nas próprias chaves.
@@ -34,6 +35,7 @@ async function init(){
   if(initPromise)return initPromise
   initPromise=(async()=>{
     await initEnchantments()
+    await initAuctionNoticeOutbox(db)
     const definitions=[
       [SEAL_ITEM,'Selo de Potência Alpha',
         'Relíquia permanente: +5% de ATK total, inclusive equipamentos e encantamentos; ativo automaticamente enquanto estiver no inventário. Não acumula.','special',false],
@@ -169,10 +171,14 @@ async function tick(sock){
   busy=true
   try{
     const now=Date.now()
-    if(now<START||now>END)return
+    if(now<START)return
+    if(now>END+5*60*1000){if(timer){clearInterval(timer);timer=null};return}
+    await flushAuctionBidNotices(db,sock,KEY,{limit:8})
+    await warnAuctionDeliveryFailures(db,sock,KEY)
+    if(now>END)return
     const current=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
     if(current?.phase==='completed'){
-      if(timer){clearInterval(timer);timer=null}
+      if(now>Number(current.finished||END)+5*60*1000){if(timer){clearInterval(timer);timer=null}}
       return
     }
     if(current?.phase==='running' && now<Number(current.ends||0))return
@@ -261,7 +267,9 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
   }
   if(cmd==='leilao'){
     const state=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
-    await reply(state?.phase==='running'?status(state):
+    const sync=state?.phase==='running'?await auctionNoticeSummary(db,KEY,Number(state.bidNoticeVersion||0)):null
+    const syncLine=sync?'\n📡 Avisos: '+sync.sent+' enviados, '+sync.pending+' pendentes, '+sync.failed+' falharam.':''
+    await reply(state?.phase==='running'?status(state)+syncLine:
       state?.phase==='completed'?'🏁 Leilão Oculto encerrado. Todos os prêmios foram revelados.':
       '⏳ Leilão Oculto sendo aberto. Consulte novamente em instantes.')
     return true
@@ -296,25 +304,31 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
         cash:cash+(old?.jid===sender?Number(old.cash):0),
         bank:bank+(old?.jid===sender?Number(old.bank):0)
       }
-      return {
+      const result={
         confirmation:'✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/4*\n💰 '+fmt(offered)+
           '\n🔒 Reservado até você vencer ou ser superado.'+
           '\n🎁 O conteúdo só será revelado ao final dos quatro lotes.'+
           '\n📈 Próximo lance: '+fmt(offered+lot.step)+
           '\n⏳ Encerra: '+clock(state.ends),
+        version:Number(state.bidNoticeVersion=(Number(state.bidNoticeVersion||0)+1)),
         otherGroups:otherAuctionGroups(state.groups,chat),
         notice:crossGroupBidNotice({
           lot:state.lot+1,totalLots:state.lots.length,bidder:state.high.name,
           value:offered,nextMinimum:offered+lot.step,endsAt:state.ends
         })
       }
+      await queueAuctionBidNotices(c,{key:KEY,version:result.version,groups:result.otherGroups,origin:chat,message:result.notice})
+      return result
     })
     // O lance já foi confirmado no Neon. Uma falha de envio não o desfaz.
     try{await reply(result.confirmation)}
     catch(err){console.warn('[LEILAO OCULTO] lance gravado; confirmação local não enviada',err?.message||err)}
     if(result.otherGroups.length){
-      if(auctionSocket?.sendMessage)await sendGroups(auctionSocket,result.notice,result.otherGroups)
-      else console.warn('[LEILAO OCULTO] lance aceito, mas socket indisponível para avisar outros grupos')
+      if(auctionSocket?.sendMessage){
+        // Delivery is durable: a failed transport does not discard the notice.
+        void flushAuctionBidNotices(db,auctionSocket,KEY).then(()=>warnAuctionDeliveryFailures(db,auctionSocket,KEY))
+          .catch(err=>console.error('[LEILAO OCULTO] fila de avisos',err?.message||err))
+      }else console.warn('[LEILAO OCULTO] lance aceito, avisos pendentes até reconexão')
     }
   }catch(err){await reply('❌ '+String(err?.message||err))}
   return true

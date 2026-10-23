@@ -80,6 +80,7 @@ import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
+import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -8740,6 +8741,7 @@ setWhatsAppHealth('open')
 console.log('[WhatsApp] ALPHA BOT CONECTADO')
 if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
 startAuctionAlphaScheduler(sock)
+startAuctionNotificationPilot(sock)
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
 startBingoRebootScheduler(sock)
@@ -9254,6 +9256,7 @@ if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',re
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
 if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.key?.id?chat+':'+msg.key.id:null})) continue
+if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleEnchantCommand({cmd,args,sender,reply,
 setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
