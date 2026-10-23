@@ -96,6 +96,10 @@ async function tick(){
       }
     }
     if(!state)return
+    if(state.phase==='completed' && Date.now()>Number(state.finished||state.ends)+3*60*1000){
+      if(timer){clearInterval(timer);timer=null}
+      return
+    }
     if(state.phase==='running'&&Date.now()>=Number(state.ends)){
       const closed=await mutate(async(s,c)=>{
         if(!s||s.phase!=='running'||Date.now()<Number(s.ends))return {value:false}

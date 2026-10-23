@@ -171,10 +171,14 @@ async function tick(sock){
   busy=true
   try{
     const now=Date.now()
-    if(now<START||now>END)return
+    if(now<START)return
+    if(now>END+5*60*1000){if(timer){clearInterval(timer);timer=null};return}
+    await flushAuctionBidNotices(db,sock,KEY,{limit:8})
+    await warnAuctionDeliveryFailures(db,sock,KEY)
+    if(now>END)return
     const current=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
     if(current?.phase==='completed'){
-      if(timer){clearInterval(timer);timer=null}
+      if(now>Number(current.finished||END)+5*60*1000){if(timer){clearInterval(timer);timer=null}}
       return
     }
     if(current?.phase==='running' && now<Number(current.ends||0))return
