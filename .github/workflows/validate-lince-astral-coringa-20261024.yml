@@ -1,0 +1,25 @@
+name: Validate Lince Astral Joker Synergy
+on:
+  push:
+    branches: [feat/lince-astral-sinergia-coringa-20261024]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Syntax checks
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/game-catalog.js
+          node --check src/neon/pet-astral-wildcard.js
+          node --check src/neon/index.js
+      - name: Pet synergy + combat regression tests
+        run: |
+          node --test test/lince-astral-coringa-20261024.test.mjs test/pet-raid-balance-20261012.test.mjs test/pvp-pet-bonuses.test.mjs test/pet-collection-menu.test.mjs
