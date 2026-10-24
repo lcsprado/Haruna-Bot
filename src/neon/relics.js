@@ -1,6 +1,27 @@
 import {db,ensureUser} from './db.js'
 import {weeklyInsigniaFromId} from './weekly-boss-insignias.js'
 const RELICS={
+  titulo_cacador_mimics_20261024:{
+    name:'👹 Insígnia Caçador Lendário de Mimics',
+    effect:'👹 +2% dano e +0,5 p.p. CRIT Boss/Raid (sem PvP)',
+    boss:0.02,raidAttack:0.02,bossCrit:0.005,raidCrit:0.005
+  },
+  titulo_mimic_campiao_20261024:{
+    name:'👑 Insígnia Rei dos Mimics',
+    effect:'👑 +4% dano e +1,5 p.p. CRIT Boss/Raid (sem PvP)',
+    boss:0.04,raidAttack:0.04,bossCrit:0.015,raidCrit:0.015
+  },
+  titulo_mimic_vice_20261024:{
+    name:'🥈 Insígnia Mestre dos Mimics',
+    effect:'🥈 +3% dano e +1 p.p. CRIT Boss/Raid (sem PvP)',
+    boss:0.03,raidAttack:0.03,bossCrit:0.01,raidCrit:0.01
+  },
+  titulo_mimic_terceiro_20261024:{
+    name:'🥉 Insígnia Senhor dos Baús',
+    effect:'🥉 +2,5% dano e +0,5 p.p. CRIT Boss/Raid (sem PvP)',
+    boss:0.025,raidAttack:0.025,bossCrit:0.005,raidCrit:0.005
+  },
+
   insignia_nem_cirurgia_derrubou_lenda:{name:'Insígnia Nem a Cirurgia Derrubou a Lenda',effect:'🦶 +1% dano contra Bosses e Raids (sem PvP)',boss:0.01,raidAttack:0.01},
   insignia_matador_titas:{name:'Insígnia Matador de Titãs',effect:'⚔️ +1% dano Boss/Raid (sem PvP)',boss:0.01,raidAttack:0.01},
   insignia_eco_ancestral:{name:'Insígnia do Eco Ancestral',effect:'🪨 +1% dano contra Bosses e Raids (sem PvP)',boss:0.01,raidAttack:0.01},

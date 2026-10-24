@@ -13,18 +13,19 @@ export const MIMIC_EVENT={
  milestones:[
   {hunts:10,cash:100000,box:'caixa_rara',qty:2,label:'🎯 10 caçadas'},
   {hunts:20,cash:350000,box:'caixa_epica',qty:1,label:'⚔️ 20 caçadas'},
+  {hunts:20,cash:0,box:'titulo_cacador_mimics_20261024',qty:1,label:'🏅 Insígnia Mimic'},
   {hunts:25,cash:200000,box:'caixa_epica',qty:2,label:'🎁 25 caçadas'},
-  {hunts:30,cash:0,box:'titulo_cacador_mimics_20261024',qty:1,label:'🏅 30 caçadas'}
+  {hunts:30,cash:0,box:'caixa_epica',qty:1,label:'🎁 30 caçadas'}
  ]
 }
 const FMT=n=>Number(n||0).toLocaleString('pt-BR')
 const prettyName=v=>String(v||'Caçador').replace(/[\r\n*_~]/g,' ').replace(/\s+/g,' ').trim().slice(0,40)||'Caçador'
 const remaining=ms=>Math.max(0,Math.ceil(ms/1000))
 const TITLES=[
- ['titulo_cacador_mimics_20261024','👹 Caçador Lendário de Mimics','Visual cosmético obtido ao concluir 30 caçadas no evento de 24/10/2026.'],
- ['titulo_mimic_campiao_20261024','👑 Rei dos Mimics','Título cosmético do primeiro colocado no ranking global da edição de 24/10/2026.'],
- ['titulo_mimic_vice_20261024','🥈 Mestre dos Mimics','Título cosmético do segundo colocado na edição de 24/10/2026.'],
- ['titulo_mimic_terceiro_20261024','🥉 Senhor dos Baús','Título cosmético do terceiro colocado na edição de 24/10/2026.']
+ ['titulo_cacador_mimics_20261024','👹 Insígnia Caçador Lendário de Mimics','Insígnia equipável obtida após 20 caçadas no evento 24/10/2026. +2% de dano e +0,5 p.p. crítico em Boss e Raid. Não afeta PvP.'],
+ ['titulo_mimic_campiao_20261024','👑 Insígnia Rei dos Mimics','Insígnia exclusiva do campeão global de 24/10/2026. +4% dano e +1,5 p.p. crítico em Boss/Raid. Não afeta PvP.'],
+ ['titulo_mimic_vice_20261024','🥈 Insígnia Mestre dos Mimics','Insígnia do vice global da edição 24/10/2026. +3% dano e +1 p.p. crítico em Boss/Raid. Não afeta PvP.'],
+ ['titulo_mimic_terceiro_20261024','🥉 Insígnia Senhor dos Baús','Insígnia do terceiro colocado global da edição 24/10/2026. +2,5% dano e +0,5 p.p. crítico em Boss/Raid. Não afeta PvP.']
 ]
 const INTRO='👹💰 *INVASÃO DOS MIMICS — CAÇADA LENDÁRIA!*\n'
  +'━━━━━━━━━━━━━━━━━━\n'
@@ -32,9 +33,9 @@ const INTRO='👹💰 *INVASÃO DOS MIMICS — CAÇADA LENDÁRIA!*\n'
  +'🕹️ *!m* — caçar a cada *2 minutos* (máximo 30).\n'
  +'💰 *R$ 6.000–14.000 por caça* + ✨ *100–250 XP*.\n'
  +'🎯 *10 caçadas*: R$ 100 mil + 2 Caixas Raras\n'
- +'⚔️ *20 caçadas*: R$ 350 mil + 1 Caixa Épica\n'
+ +'⚔️ *20 caçadas*: R$ 350 mil + 1 Caixa Épica + Insígnia (+2% dano / +0,5 p.p. crítico Boss/Raid)\n'
  +'🎁 *25 caçadas*: R$ 200 mil + 2 Caixas Épicas\n'
- +'🏅 *30 caçadas*: título cosmético no perfil\n'
+ +'🎁 *30 caçadas*: 1 Caixa Épica adicional\n'
  +'🧩 Fragmentos: Comum +5 • Raro +8 • Épico +14 • Dourado +30.\n'
  +'🌟 *!m trocar lendaria*: 120 fragmentos, 40% chance de Lendária; se não sair, 2 Caixas Épicas. Uma tentativa por pessoa.\n'
  +'🟣 *!m trocar epica*: 25 fragmentos por Caixa Épica (até 3 trocas).\n'
@@ -53,7 +54,7 @@ const UPDATE='👹⚡ *MIMICS — EVENTO AJUSTADO!*\n'
  +'🌟 *120 fragmentos* = *1 tentativa* de Caixa Lendária: *40% de chance*; caso não saia, recebe *2 Caixas Épicas*.\n'
  +'🟣 *25 fragmentos* = Caixa Épica, até *3 trocas* por jogador.\n'
  +'🔵 *10 fragmentos* = Caixa Rara, até *2 trocas*.\n'
- +'🎁 Metas agora são 10, 20, 25 e 30 caçadas. O prêmio de 45 caçadas foi substituído pela oportunidade de Lendária por fragmentos.\n'
+ +'🎁 Aos *20* você recebe uma *insígnia equipável* de +2% dano e +0,5 p.p. CRIT Boss/Raid; aos *30* recebe outra Caixa Épica.\n'+'🌟 O prêmio de 45 foi substituído pela chance de Lendária por fragmentos.\n'
  +'🏆 Ranking global permanece, encerramento às 16h; trocas até *16h20*.\n'
  +'🎮 *!m* • *!m status* • *!m trocar epica* • *!m trocar lendaria*\n'
  +'━━━━━━━━━━━━━━━━━━\n'
@@ -291,7 +292,7 @@ async function action(jid,name,args=[]){
    s.cash+=m.cash
    message+='\n🎯 *META CONCLUÍDA — '+m.hunts+'/60!*\n'
     +(m.cash?'💰 *+R$ '+FMT(m.cash)+'*\n':'')
-    +'🎁 *'+m.qty+'× '+(m.hunts===30?'Título Caçador Lendário':m.box==='caixa_rara'?'Caixa Rara':m.box==='caixa_epica'?'Caixa Épica':'Caixa Lendária')+'*\n'
+    +'🎁 *'+m.qty+'× '+(m.box==='titulo_cacador_mimics_20261024'?'Insígnia Caçador Lendário':m.box==='caixa_rara'?'Caixa Rara':m.box==='caixa_epica'?'Caixa Épica':'Caixa Lendária')+'*\n'
   }
   if(rarity.kind==='epico'&&s.epicDrops<2 && randomInt(100)<12){
    await giveItem(c,jid,'caixa_epica')
