@@ -405,6 +405,109 @@ export async function handleMimicCommand({cmd,args,sender,name,chat,reply}){
  }
  return true
 }
+
+function formatAutoSummary(a,reason='concluído'){
+ const done=Number(a.completed||0)
+ const footer=reason==='interrompido'?'🛑 Bloco interrompido, prêmios preservados.'
+  :reason==='encerrado'?'🏁 Encerrado às 17h. Todas as caçadas realizadas ficaram salvas.'
+  :done===5?'✅ Bloco completo!':'✅ Limite de caçadas atingido.'
+ return '🤖👹 *MIMICS — CAÇA AUTOMÁTICA '+String(reason).toUpperCase()+'*\n'
+  +'━━━━━━━━━━━━━━━━━━\n'
+  +'⚔️ Caçadas concluídas: *'+done+'/5*\n'
+  +'💰 Dinheiro recebido: *R$ '+FMT(a.cash)+'*\n'
+  +'✨ XP recebido: *'+FMT(a.xp)+'*\n'
+  +'🧩 Fragmentos obtidos: *'+FMT(a.fragments)+'*\n'
+  +'🏆 Pontos obtidos: *+'+FMT(a.points)+'*\n'
+  +'🎁 Drops e metas: creditados no inventário.\n'
+  +'━━━━━━━━━━━━━━━━━━\n'
+  +footer+'\n'
+  +(Date.now()<MIMIC_EVENT.endsAt&&reason==='concluído'
+    ?'▶️ *!m auto* para mais 5 • 📊 *!m status*'
+    :'📊 Consulte seu progresso em *!m status*.')
+}
+// Um agendador global para todos os participantes; nenhuma tarefa por jogador.
+function scheduleAutoWorker(delay=1000){
+ if(autoTimer){clearTimeout(autoTimer);autoTimer=null}
+ if(!autoSock||Date.now()>=MIMIC_EVENT.endsAt+120000)return
+ autoTimer=setTimeout(()=>{autoTimer=null;void runAutoWorker()},
+  Math.max(200,Math.min(2147483647,Math.ceil(delay))))
+ autoTimer.unref?.()
+}
+async function finishAuto(jid){
+ return locked(jid,async(c,old)=>{
+  if(old?.auto?.status!=='active')return {text:''}
+  const s={...old,auto:{...old.auto,status:'finished',summaryPending:true,reason:'encerrado'}}
+  return {state:s,text:''}
+ })
+}
+async function sendAutoSummary(jid,record){
+ const a=record?.auto
+ if(!a||a.status!=='finished'||!a.summaryPending)return
+ if(!autoSock||!String(a.chat||'').endsWith('@g.us'))return
+ const lic=await getGroupLicense(a.chat)
+ if(!lic||!groupLicenseIsActive(lic)){
+  console.warn('[MIMIC AUTO] grupo do resumo inativo; prêmios estão salvos')
+  return
+ }
+ await autoSock.sendMessage(a.chat,{text:formatAutoSummary(a,a.reason||'concluído')})
+ await locked(jid,async(c,old)=>{
+  if(old?.auto?.id!==a.id||old.auto.status!=='finished'||!old.auto.summaryPending)return {text:''}
+  const s={...old,auto:{...old.auto,status:'done',summaryPending:false,sentAt:Date.now()}}
+  return {state:s,text:''}
+ })
+ console.log('[MIMIC AUTO] resumo entregue',JSON.stringify({hunts:a.completed}))
+}
+async function runAutoWorker(){
+ if(autoRunning||!autoSock)return
+ autoRunning=true
+ let next=null
+ const sql="SELECT jid,state FROM mimic_hunt_sessions WHERE event_key=$1 AND "
+  +"(state->'auto'->>'status'='active' OR "
+  +"(state->'auto'->>'status'='finished' AND state->'auto'->>'summaryPending'='true')) "
+  +"ORDER BY updated_at ASC LIMIT 50"
+ try{
+  const rows=(await db.query(sql,[MIMIC_EVENT.id])).rows
+  for(const record of rows){
+   const a=record.state?.auto
+   if(a?.status==='finished'&&a.summaryPending){
+    try{await sendAutoSummary(record.jid,record.state)}
+    catch(e){console.error('[MIMIC AUTO] resumo pendente',String(e?.message||e).slice(0,190))}
+    continue
+   }
+   if(a?.status!=='active')continue
+   if(Date.now()>=MIMIC_EVENT.endsAt){
+    await finishAuto(record.jid)
+   }else if(Number(record.state?.nextAt||0)<=Date.now()){
+    try{
+     // Motor normal: prêmio aleatório e metas validados na mesma transação.
+     await action(record.jid,record.state.name||'Caçador',[],a.chat,true)
+    }catch(e){console.error('[MIMIC AUTO] caçada adiada',String(e?.message||e).slice(0,190))}
+   }
+   try{
+    const updated=(await db.query('SELECT state FROM mimic_hunt_sessions WHERE event_key=$1 AND jid=$2',
+      [MIMIC_EVENT.id,record.jid])).rows[0]?.state
+    if(updated?.auto?.summaryPending)await sendAutoSummary(record.jid,updated)
+   }catch(e){console.warn('[MIMIC AUTO] resumo será tentado novamente',String(e?.message||e).slice(0,140))}
+  }
+  const updated=(await db.query(sql,[MIMIC_EVENT.id])).rows
+  const now=Date.now()
+  for(const record of updated){
+   const a=record.state.auto
+   const due=a.status==='active'
+      ?Math.min(MIMIC_EVENT.endsAt,Math.max(now,Number(record.state.nextAt||0)))
+      :now+15000
+   const wait=Math.max(500,due-now+250)
+   next=next===null?wait:Math.min(next,wait)
+  }
+ }catch(e){
+  console.error('[MIMIC AUTO] falha agendador',String(e?.message||e).slice(0,210))
+  next=15000
+ }finally{
+  autoRunning=false
+  if(next!==null)scheduleAutoWorker(next)
+ }
+}
+
 const sortByScore=(a,b)=>{
  const x=a.state,y=b.state
  return Number(y.points)-Number(x.points)||Number(y.hunts)-Number(x.hunts)
