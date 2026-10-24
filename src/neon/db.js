@@ -3244,6 +3244,7 @@ elixir_disciplina:{type:'boost',name:'Elixir da Disciplina',percent:20,seconds:2
 elixir_sombras:{type:'boost',name:'Elixir das Sombras',percent:20,seconds:20*60,cap:1200},
 elixir_leilao_30m:{type:'boost',name:'Elixir do Leilão',percent:20,seconds:30*60,cap:5000},
 elixir_leilao_2h:{type:'boost',name:'Ampulheta Dourada — XP 2×',percent:100,seconds:2*60*60,cap:100000000},
+elixir_leilao_1h_20261024:{type:'boost',name:'Ampulheta Prateada — XP 2×',percent:100,seconds:60*60,cap:100000000},
 pergaminho_experiencia:{type:'scroll',name:'Pergaminho de Experiência',xp:500},
 pergaminho_virtude:{type:'scroll',name:'Tomo da Virtude',xp:1200},
 tomo_proibido:{type:'scroll',name:'Tomo Proibido',xp:1200},
