@@ -15,6 +15,12 @@ const ui = {
   lastResult: null,
   lootReveal: null,
   page: 'home',
+  auction: null,
+  auctionError: '',
+  auctionLoading: false,
+  auctionSubmitting: false,
+  auctionAmount: '',
+  auctionClockOffset: 0,
   petTab: 'owned',
   petTeamDraft: null,
   petTeamPickerSlot: 0,
@@ -58,6 +64,7 @@ const navItems = [
   ['raids','⚔️','Raids'],
   ['boss','👹','Boss'],
   ['events','🎉','Eventos'],
+  ['auction','🔨','Leilão'],
   ['duels','⚔️','Duelos'],
   ['social','🥊','Social'],
   ['market','📣','Mercado'],
@@ -857,6 +864,44 @@ async function syncBossLive(){
   }finally{ui.bossPolling=false;}
 }
 
+async function loadAuction(){
+  if(!ui.token || ui.auctionLoading) return;
+  ui.auctionLoading=true;
+  try{
+    const response=await api('/api/v1/me/auction');
+    ui.auction=response.data;
+    ui.auctionClockOffset=Number(response.data.serverTime||Date.now())-Date.now();
+    ui.auctionError='';
+  }catch(err){
+    ui.auctionError=String(err.message||'Leilão indisponível');
+    ui.auction=null;
+  }finally{
+    ui.auctionLoading=false;
+    if(ui.page==='auction' && ui.data && ui.catalog) render();
+  }
+}
+
+async function auctionBid(amount){
+  if(ui.auctionSubmitting) return;
+  ui.auctionSubmitting=true;
+  try{
+    if(!ui.auction?.acceptingBids) throw new Error('Este lote já não aceita lances.');
+    const response=await api('/api/v1/action/auction.bid',{
+      method:'POST',body:JSON.stringify({amount})
+    });
+    ui.auctionAmount='';
+    await loadAuction();
+    await sync(true,true); // refresh the real wallet only after a confirmed auction transaction
+    toast(response.result?.accepted?'🔨 Lance registrado no leilão!':'Lance não confirmado.');
+  }catch(err){
+    toast(String(err.message||'Não foi possível registrar o lance.'));
+    await loadAuction();
+  }finally{
+    ui.auctionSubmitting=false;
+    if(ui.page==='auction') render();
+  }
+}
+
 async function syncExtras(force){
   if(!ui.token) return null;
   if(!force && ui.extras && Date.now()-ui.extrasFetchedAt<30000) return ui.extras;
@@ -894,6 +939,7 @@ async function openWebPage(page){
   if(['social','market','clan','games','activities','progression','rankings','loans','contracts','events'].includes(page))
     jobs.push(syncExtras(false).catch(()=>null));
   if(page==='events')jobs.push(loadEventCenter(false));
+  if(page==='auction')jobs.push(loadAuction());
   await Promise.all(jobs);
   render();
   window.scrollTo({top:0,left:0,behavior:'auto'});
@@ -1029,6 +1075,11 @@ function cooldownRemaining(action){
   return expires?Math.max(0,expires-nowSec):0;
 }
 function refreshLiveCountdowns(){
+  document.querySelectorAll('[data-auction-ends]').forEach(el=>{
+    const left=Math.max(0,Math.ceil((Number(el.dataset.auctionEnds||0)-Date.now()-ui.auctionClockOffset)/1000));
+    el.textContent=left>0?formatRemaining(left):'Encerrando...';
+    if(left<=0)document.querySelectorAll('[data-auction-increment],[data-auction-form] button').forEach(btn=>{btn.disabled=true;});
+  });
   const nowSec=Math.floor(Date.now()/1000);
   document.querySelectorAll('[data-cooldown-expires]').forEach(el=>{
     const expires=Number(el.dataset.cooldownExpires||0);
@@ -2237,6 +2288,39 @@ function gameStatePanel(type,state){
   return '<div class="game-state"><span class="tag good">ATIVO</span></div>';
 }
 
+function renderAuction(){
+  const a=ui.auction;
+  if(ui.auctionError)return '<div class="page-head"><h2>🔨 Leilão</h2></div><div class="card"><p>'+esc(ui.auctionError)+'</p><button class="btn" data-auction-refresh>Atualizar</button></div>';
+  if(!a)return '<div class="page-head"><h2>🔨 Leilão</h2></div><div class="card">Carregando leilão...</div>';
+  const active=Boolean(a.acceptingBids);
+  const closed=a.phase==='completed';
+  const running=a.phase==='running';
+  const label=closed?'ENCERRADO':(active?'RECEBENDO LANCES':running?'AGUARDANDO APURAÇÃO':a.phase==='scheduled'?'AGENDADO':'AGUARDANDO ABERTURA');
+  const remaining=Math.max(0,Math.ceil((Number(a.endsAt||0)-Date.now()-ui.auctionClockOffset)/1000));
+  const timer=running?'<span data-auction-ends="'+num(a.endsAt||0)+'">'+formatRemaining(remaining)+'</span>':'—';
+  const history=(a.history||[]).map(h=>'<div class="list-row"><div><strong>Lote '+num(h.lotNumber)+'</strong><small>'+
+    (h.winner?'Arrematado por '+esc(h.winner.name)+' • '+money(h.winner.bid):'Sem arremate')+
+    '</small>'+(h.rewards?.length?'<small>🎁 '+h.rewards.map(esc).join(' • ')+'</small>':'')+'</div></div>').join('');
+  const recent=(a.recentBids||[]).slice().reverse().map(b=>'<div class="list-row"><div><strong>'+esc(b.name)+'</strong><small>Lance público</small></div><strong>'+money(b.value)+'</strong></div>').join('');
+  const custom='<form data-auction-form><label for="auctionCustomAmount">Valor total do seu lance (R$)</label>'+
+    '<div class="game-answer"><input id="auctionCustomAmount" class="game-input" data-auction-amount type="number" inputmode="numeric" step="1" min="'+num(a.nextMinimum)+'" placeholder="Mínimo: '+num(a.nextMinimum)+'" value="'+esc(ui.auctionAmount||'')+'" required'+(active?'':' disabled')+'>'+
+    '<button class="btn primary" type="submit"'+(active&&!ui.auctionSubmitting?'':' disabled')+'>Ofertar valor</button></div></form>';
+  return '<div class="page-head"><div><h2>🔨 '+esc(a.title||'Leilão')+'</h2><p>Mesmo leilão do WhatsApp. Os lances são públicos; o conteúdo de cada lote permanece secreto até o arremate.</p></div><span class="tag '+(active?'good':'')+'">'+label+'</span></div>'+
+    '<div class="grid stats">'+
+    statCard('LOTE',a.lotNumber?num(a.lotNumber)+' / '+num(a.totalLots):'—','🎁 Prêmio misterioso')+
+    statCard('MAIOR LANCE',a.currentBid!=null?money(a.currentBid):'Nenhum',a.leader?a.leader:'Sem líder')+
+    statCard('PRÓXIMO MÍNIMO',money(a.nextMinimum),'Incremento mínimo: '+money(a.step))+
+    '<div class="card stat-card"><small>TEMPO RESTANTE</small><strong>'+timer+'</strong><span>Últimos 15s: +20s, até 2min extras</span></div>'+'</div>'+
+    '<div class="grid two section">'+
+    '<div class="card"><h3>Dar lance</h3><p>O valor é reservado da sua carteira e banco; se alguém superar seu lance, a reserva é devolvida.</p>'+
+    (a.isLeading?'<p class="tag good">🏆 Você está vencendo este lote.</p>':'')+
+    '<div class="hero-actions"><button class="btn good" data-auction-increment'+(active&&!ui.auctionSubmitting?'':' disabled')+'>+ R$ 50.000</button></div>'+
+    custom+'<p class="muted">O lance personalizado representa o valor total, não um acréscimo.</p></div>'+
+    '<div class="card"><div class="section-title"><h3>Lances públicos deste lote</h3><button class="btn" data-auction-refresh>Atualizar</button></div>'+
+    (recent?'<div class="list">'+recent+'</div>':'<p class="muted">Ainda não há lances registrados neste lote.</p>')+'</div></div>'+
+    '<div class="section card"><h3>Lotes encerrados</h3>'+(history?'<div class="list">'+history+'</div>':'<p class="muted">Nenhum lote encerrado.</p>')+'</div>';
+}
+
 function renderGames(){
   const games=currentGroup()&&currentGroup().games||{};
   const groupLinked=Boolean(currentGroup());
@@ -2796,7 +2880,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,contracts:renderContracts,raids:renderRaids,boss:renderBoss,events:renderEvents,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,contracts:renderContracts,raids:renderRaids,boss:renderBoss,events:renderEvents,auction:renderAuction,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
   if(ui.page==='inventory' && Number(ui.inventoryTabsScrollLeft)>0){
@@ -2808,6 +2892,15 @@ function render(){
 }
 
 function bind(){
+  document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
+  document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
+  document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+50000'));
+  document.querySelectorAll('[data-auction-form]').forEach(x=>x.onsubmit=e=>{
+    e.preventDefault();
+    const value=String(x.querySelector('[data-auction-amount]')?.value||'').trim();
+    if(!/^\d+$/.test(value)||Number(value)<Number(ui.auction?.nextMinimum||0))return toast('Informe um lance igual ou superior ao mínimo.');
+    void auctionBid(value);
+  });
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false,true));
   document.querySelectorAll('[data-character-select]').forEach(x=>x.onclick=async()=>{
     ui.characterId=x.dataset.characterSelect;
@@ -3415,3 +3508,6 @@ setInterval(()=>{
 
   showLogin();
 })();
+
+// Auction-only updates: never poll inventory, pets, or economy while viewing other pages.
+setInterval(()=>{if(ui.page==='auction'&&ui.token&&!ui.auctionLoading&&!ui.auctionSubmitting)void loadAuction()},8000);
