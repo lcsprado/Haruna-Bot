@@ -12,6 +12,7 @@ import NodeCache from 'node-cache'
 import {createTtlCache,createByteBudget,createMessageDeduplicator,declaredMediaBytes,downloadBoundedMedia,scheduleUntil} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import {createKeyedAsyncQueue} from './chat-queue.js'
+import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
@@ -2380,6 +2381,13 @@ globalThis.__alphaStartRaidRun=async(chat,level)=>{
 if(!chat?.endsWith('@g.us')) return false
 return runRaidCombat(chat,Number(level),text=>raidAutoReply?raidAutoReply(chat,text):false)
 }
+// One WhatsApp process consumes durable Web notifications and Raid start jobs.
+// The Web API never opens another WhatsApp session.
+void startWebActionConsumer(db,{
+  sendMessage:(chat,text,mentions)=>globalThis.__alphaWebGroupLog(chat,text,mentions),
+  startRaidRun:(chat,level)=>globalThis.__alphaStartRaidRun(chat,level),
+  isConnected:()=>trevoHealth.whatsapp==='open'
+}).then(()=>console.info('[Web Relay] consumer ativo')).catch(err=>console.error('[Web Relay] inicialização falhou',err?.message||err))
 void ensureActiveRaidRuns()
 void flushRaidFinalNotices()
 bossAutoReply=(chat,text)=>sock.sendMessage(chat,{text})
