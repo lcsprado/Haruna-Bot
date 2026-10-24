@@ -1,7 +1,7 @@
 // Invasão dos Mimics — edição única, 24/10/2026. 15h–17h BRT.
 // Tudo por comando, sem polling, sem dano, sem cobrança, sem combate automático.
 // Cada caçada e premiação é uma transação atômica por usuário.
-import {randomInt} from 'node:crypto'
+import {randomInt,randomUUID} from 'node:crypto'
 import {db,ensureUser,grantExpInTransaction,listGroupLicenses,groupLicenseIsActive,getGroupLicense} from './db.js'
 export const MIMIC_EVENT={
  id:'mimic_legendario_20261024_v1',
@@ -72,6 +72,8 @@ const END='🏁👹 *INVASÃO DOS MIMICS — ENCERRADA!*\n'
  +'⚔️ Próximo evento: Caçada de Sábado das 19h às 21h (+50% XP nas Raids 50/60/65/70).'
 const BOUND='━━━━━━━━━━━━━━━━━━'
 let initPromise=null,timers=[],closing=false
+let autoTimer=null,autoSock=null,autoRunning=false
+const AUTO_SIZE=5
 export function mimicOutcome(roll){
  const r=Number(roll)
  if(!Number.isInteger(r)||r<0||r>9999)throw Error('Sorteio inválido')
@@ -193,7 +195,8 @@ function statusMsg(s,rank){
  +(done?'🏁 *Você completou as 60 caçadas!*'
   :cool?'⏳ Próxima caça em *'+remaining(cool)+' segundos*.'
   :'⚔️ Pronto! Use *!m* para caçar.')
- +'\n📊 *!mimic ranking* • 🧩 *!mimic trocar rara/epica*'
+ +'\n🤖 Auto: *'+(s.auto?.status==='active'?s.auto.completed+'/5 feitos • '+s.auto.remaining+' restantes':s.auto?.status==='finished'?'concluído':'desligado')+'*'
+ +'\n📊 *!m ranking* • 🧩 *!m trocar rara/epica*'
 }
 async function ranking(){
  const {rows}=await db.query(`
@@ -233,8 +236,45 @@ const locked=async(jid,work)=>{
  }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e}
  finally{c.release()}
 }
-async function action(jid,name,args=[]){
+async function action(jid,name,args=[],chat=null,automatic=false){
  const now=Date.now(),sub=String(args[0]||'').toLowerCase()
+ if(['auto','automatico','automático'].includes(sub) && !automatic){
+  if(now<MIMIC_EVENT.startsAt||now>=MIMIC_EVENT.endsAt)
+   return '🏁 A caça automática só pode ser ativada durante o evento, até as *17h*.'
+  const msg=await locked(jid,async(c,old)=>{
+   const s={...(old||emptyState(name))}
+   if(s.auto?.status==='active')return {text:'🤖 *AUTO JÁ ATIVO!*\n'
+    +'🎯 Caçadas do bloco: *'+s.auto.completed+'/5* • Faltam *'+s.auto.remaining+'*.\n'
+    +'📊 *!m status* • 🛑 *!m parar*'}
+   if(s.auto?.summaryPending)return {text:'⏳ O resumo do seu último bloco está sendo enviado. Tente novamente em instantes.'}
+   if(Number(s.hunts)>=60)return {text:'🏆 Você já completou todas as 60 caçadas!'}
+   if(!String(chat||'').endsWith('@g.us'))return {text:'👹 Disponível apenas nos grupos do Alpha Bot.'}
+   s.name=prettyName(name)
+   s.auto={id:randomUUID(),status:'active',remaining:Math.min(AUTO_SIZE,60-Number(s.hunts||0)),
+     completed:0,cash:0,xp:0,points:0,fragments:0,epicDrops:0,goldenDrops:0,
+     chat,startedAt:Date.now(),summaryPending:false}
+   return {state:s,text:'🤖👹 *CAÇA AUTOMÁTICA ATIVADA!*\n'
+    +'━━━━━━━━━━━━━━━━━━\n'
+    +'⚔️ Até *'+s.auto.remaining+' caçadas*, uma a cada 2 minutos.\n'
+    +'🎁 Recompensas e metas creditadas normalmente.\n'
+    +'📬 *Um resumo* ao concluir o bloco.\n'
+    +'🛑 Para interromper: *!m parar*.\n'
+    +'⏰ Auto desliga às *17h*. \n'
+    +'📊 Acompanhe com *!m status*.'}
+  })
+  scheduleAutoWorker(500)
+  return msg
+ }
+ if(['parar','stop','cancelarauto'].includes(sub) && !automatic){
+  const msg=await locked(jid,async(c,old)=>{
+   if(!old?.auto || old.auto.status!=='active')return {text:'🛑 Nenhum bloco em andamento. Inicie com *!m auto*.'}
+   const a={...old.auto,status:'stopped',summaryPending:false,remaining:0}
+   const s={...old,auto:a}
+   return {state:s,text:formatAutoSummary(a,'interrompido')}
+  })
+  scheduleAutoWorker(500)
+  return msg
+ }
  if(['rank','ranking','top'].includes(sub)){
   const rows=await ranking()
   const list=rows.map((r,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':'🏅')
@@ -266,12 +306,14 @@ async function action(jid,name,args=[]){
   })
  }
  if(args.length && !['cacar','caçar','caca','caça'].includes(sub))
-  return '⚔️ Comandos: *!mimic* (caçar), *!mimic status*, *!mimic ranking* e *!mimic trocar rara/epica*.'
+  return '⚔️ *!m* caçar • *!m auto* 5 caçadas • *!m parar* parar • *!m status* • *!m ranking* • *!m trocar rara/epica*.'
  if(now<MIMIC_EVENT.startsAt)return '⏳ *INVASÃO DOS MIMICS*\nComeça hoje às *15h* (Brasília). Prepare-se!'
  if(now>=MIMIC_EVENT.endsAt)return '🏁 *INVASÃO DOS MIMICS ENCERRADA!*\n'
   +'O evento terminou às *17h*. Use *!mimic ranking* para ver os vencedores.'
  return locked(jid,async(c,old)=>{
   const instant=Date.now()
+  if(automatic && old?.auto?.status!=='active')return {text:'🤖 Bloco indisponível.'}
+  if(!automatic && old?.auto?.status==='active')return {text:'🤖 Sua caça automática está ativa. Use *!m status* ou *!m parar*.'}
   if(instant>=MIMIC_EVENT.endsAt)return {text:'🏁 Evento encerrado às 17h. Nenhuma nova caça foi cobrada ou creditada.'}
   const s={...(old||emptyState(name))}
   s.name=prettyName(name)
@@ -325,6 +367,22 @@ async function action(jid,name,args=[]){
    +'🏅 Pontos totais: *'+FMT(s.points)+'*\n'
    +(s.hunts<60?'⏳ Próxima caça em *2 minutos*.':'🏆 *60/60! Caçadas completas!*\n')
    +'📊 *!mimic status* • *!mimic ranking*'
+  if(automatic && s.auto?.status==='active'){
+   const a={...s.auto,
+     completed:Number(s.auto.completed||0)+1,remaining:Math.max(0,Number(s.auto.remaining||0)-1),
+     cash:Number(s.auto.cash||0)+s.cash-Number(old.cash||0),
+     xp:Number(s.auto.xp||0)+s.xp-Number(old.xp||0),
+     points:Number(s.auto.points||0)+s.points-Number(old.points||0),
+     fragments:Number(s.auto.fragments||0)+s.fragments-Number(old.fragments||0),
+     epicDrops:Number(s.auto.epicDrops||0)+Number(s.epicDrops||0)-Number(old.epicDrops||0),
+     goldenDrops:Number(s.auto.goldenDrops||0)+(s.goldenLegendary&&!old.goldenLegendary?1:0)
+   }
+   if(a.remaining<=0 || s.hunts>=MIMIC_EVENT.maxHunts || s.nextAt>=MIMIC_EVENT.endsAt){
+    a.status='finished'
+    a.summaryPending=true
+   }
+   s.auto=a
+  }
   return {state:s,text:message}
  })
 }
@@ -337,7 +395,7 @@ export async function handleMimicCommand({cmd,args,sender,name,chat,reply}){
  }
  try{
   await initMimic()
-  const result=await action(sender,name,args)
+  const result=await action(sender,name,args,chat)
   await reply(result)
  }catch(err){
   console.error('[MIMIC HUNT] ação falhou',String(err?.message||err).slice(0,180))
@@ -435,6 +493,8 @@ async function announce(sock,phase){
 }
 export async function scheduleMimics(sock){
  await initMimic()
+ autoSock=sock
+ scheduleAutoWorker(750)
  for(const t of timers)clearTimeout(t)
  timers=[]
  const now=Date.now()
@@ -445,7 +505,7 @@ export async function scheduleMimics(sock){
   timers.push(t)
  }
  if(now<MIMIC_EVENT.startsAt)later(MIMIC_EVENT.startsAt,'open')
- else if(now<MIMIC_EVENT.endsAt)void announce(sock,'update')
+ // Sem aviso geral adicional: cada participante recebe somente seu resumo de bloco.
  later(MIMIC_EVENT.endsAt+15000,'close')
  console.log('[MIMIC HUNT] agendado',JSON.stringify({start:'15:00',end:'17:00',levels:'livre'}))
 }
