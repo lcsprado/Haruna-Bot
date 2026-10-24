@@ -18,6 +18,8 @@ const ui = {
   inventoryTabsScrollLeft: 0,
   contractData: null,
   contractLoading: false,
+  relicStatus: null,
+  lootSaleBusy: false,
   petAdoptSpecies: '',
   duelTarget: '',
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
@@ -931,6 +933,7 @@ function renderNav(){
     ui.page=btn.dataset.page;
     setMenu(false);
     if(ui.page==='contracts') await loadContracts();
+    if(ui.page==='inventory') await loadRelics();
     if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
       await syncExtras(false).catch(()=>null);
     }
@@ -1560,6 +1563,7 @@ function inventoryBucket(item){
     ['nucleo_pedra','escama_vulcanica','olho_abissal','nucleo_titan','essencia_rei_abissal','fragmento_celestial','nucleo_alpha_corrompido'].includes(id) ||
     text.includes('raid lv.') || text.includes('conquistado na raid') || text.includes('conquistada na raid')
   ) return 'raid';
+  if(id.startsWith('insignia_')||id==='marca_insone') return 'relics';
   if(cat==='material') return 'materials';
   if(['consumable','potion','pet_potion','pet_energy'].includes(cat) || id.startsWith('pocao_') || id==='energetico_pet') return 'consumables';
   if(cat==='special') return 'special';
@@ -1575,6 +1579,7 @@ const INVENTORY_GROUPS=[
   ['boxes','📦 Caixas'],
   ['raid','⚔️ Itens de Raid'],
   ['materials','🧩 Materiais'],
+  ['relics','⚜️ Insígnias'],
   ['special','✨ Itens especiais'],
   ['other','🎒 Outros itens']
 ];
@@ -1629,12 +1634,16 @@ function inventoryCard(i,options={}){
     if(eq){
       if(!i.equipped) actions+='<button class="btn primary" data-item-equip="'+esc(id)+'">Equipar</button>';
       actions+='<button class="btn" data-item-upgrade="'+esc(id)+'">Melhorar</button>';
+    }else if(inventoryBucket(i)==='relics'){
+      const info=ui.catalog?.relics?.[id];
+      const active=ui.relicStatus?.active?.id===id;
+      actions=info?(active?'<span class="tag good">✅ ATIVA</span>':'<button class="btn primary" data-relic-equip="'+esc(id)+'">⚜️ Ativar insígnia</button>'):'<span class="tag">🏅 Troféu de evento</span>';
     }else if(petPotion) actions='<button class="btn good" data-pet-heal="'+esc(id)+'">Curar pet</button>';
     else if(energy) actions='<button class="btn good" data-pet-energy>Energia pet</button>';
     else if(box) actions='<button class="btn good" data-box-open="'+esc(id)+'">Abrir 1</button>'+(qty>1?'<button class="btn" data-box-open-all="'+esc(id)+'" data-box-qty="'+qty+'">Abrir '+qty+'</button>':'');
     else if(usable) actions='<button class="btn good" data-item-use="'+esc(id)+'">Usar</button>';
 
-    if(i.sellable!==false && String(i.rarity)!=='legendary' && sellQty>0){
+    if(inventoryBucket(i)!=='relics' && i.sellable!==false && !['legendary','event'].includes(String(i.rarity)) && sellQty>0){
       actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
       if(sellQty>1) actions+='<button class="btn danger-soft" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+sellQty+'">Vender '+sellQty+'</button>';
     }
@@ -1669,6 +1678,7 @@ function renderInventory(){
   return '<div class="page-head"><div><h2>Inventário</h2><p>Escolha uma categoria. Equipados ficam visíveis, separados e protegidos contra venda.</p></div><div class="hero-actions">'+
     '<button class="btn" data-sell-duplicates>💰 Vender repetidos</button><span class="tag">'+totalTypes+' tipos</span></div></div>'+
     renderLuckyBoxEvent()+
+    (ui.inventorySection==='relics'?'<div class="card section"><h3>⚜️ Insígnia equipada</h3><p>'+esc(ui.relicStatus?.active?.name||'Nenhuma ativa')+'</p>'+(ui.relicStatus?.active?'<p>'+esc(ui.relicStatus.active.effect||'')+'</p><button class="btn" data-relic-unequip>Desequipar insígnia</button>':'<p>Ative uma insígnia com efeito abaixo. Apenas uma pode ficar ativa por vez.</p>')+'</div>':'')+
     '<label class="inventory-search-label" for="inventory-search">Buscar item por nome</label><input id="inventory-search" class="inventory-search" type="search" placeholder="Buscar no inventário" value="'+esc(ui.inventorySearch||'')+'" autocomplete="off">'+
     '<div class="tabs inventory-tabs section" role="tablist" aria-label="Categorias do inventário">'+
       '<button type="button" role="tab" aria-selected="'+isEquipment+'" class="tab '+(isEquipment?'active':'')+'" data-inventory-section="equipment">⚔️ Equipamentos ('+groups.filter(g=>EQUIPMENT_GROUP_KEYS.has(g.key)).reduce((total,g)=>total+g.all.length,0)+')</button>'+
@@ -1714,6 +1724,17 @@ function renderShop(){
     (groups.length?groups.map(g=>'<div class="section shop-section"><div class="section-title"><h3>'+esc(shopCategoryLabel(g.key))+'</h3><small>'+g.items.length+' item(ns)</small></div><div class="grid cards">'+g.items.map(shopCard).join('')+'</div></div>').join(''):'<div class="empty">Loja sem itens disponíveis.</div>');
 }
 
+async function loadRelics(){
+  if(!ui.token)return null;
+  try{
+    const response=await api('/api/v1/me/relics');
+    ui.relicStatus=response.data||null;
+    return ui.relicStatus;
+  }catch(err){
+    console.warn('[Relíquias Web] consulta falhou',err?.message||err);
+    return null;
+  }
+}
 async function loadContracts(){
   if(ui.contractLoading) return;
   ui.contractLoading=true;
@@ -2369,6 +2390,7 @@ function bind(){
     ui.page=x.dataset.goPage;
     setMenu(false);
     if(ui.page==='contracts') await loadContracts();
+    if(ui.page==='inventory') await loadRelics();
     if(['social','market','clan','games','activities','progression','rankings','loans','contracts'].includes(ui.page)) await syncExtras(false).catch(()=>null);
     render();
     window.scrollTo({top:0,left:0,behavior:'auto'});
@@ -2492,6 +2514,18 @@ function bind(){
   document.querySelectorAll('[data-pet-heal]').forEach(x=>x.onclick=()=>doAction('pet.heal',{itemId:x.dataset.petHeal},{success:'❤️ Pet ativo curado.'}));
   document.querySelectorAll('[data-pet-energy]').forEach(x=>x.onclick=()=>doAction('pet.energy',{},{}));
   document.querySelectorAll('[data-item-equip]').forEach(x=>x.onclick=()=>doAction('item.equip',{itemId:x.dataset.itemEquip},{}));
+  document.querySelectorAll('[data-relic-equip]').forEach(x=>x.onclick=async()=>{
+    x.disabled=true;
+    try{
+      await doAction('relic.equip',{itemId:x.dataset.relicEquip},{success:'⚜️ Insígnia ativada.'});
+      await loadRelics();render();
+    }catch{ x.disabled=false; }
+  });
+  document.querySelectorAll('[data-relic-unequip]').forEach(x=>x.onclick=async()=>{
+    x.disabled=true;
+    try{await doAction('relic.unequip',{}, {success:'⚜️ Insígnia desequipada.'});await loadRelics();render();}
+    catch{x.disabled=false;}
+  });
   document.querySelectorAll('[data-item-upgrade]').forEach(x=>x.onclick=()=>doAction('item.upgrade',{itemId:x.dataset.itemUpgrade},{}));
   document.querySelectorAll('[data-item-use]').forEach(x=>x.onclick=()=>doAction('item.use',{itemId:x.dataset.itemUse},{}));
   document.querySelectorAll('[data-box-open]').forEach(x=>x.onclick=()=>openLootBoxUI(x.dataset.boxOpen,1));
