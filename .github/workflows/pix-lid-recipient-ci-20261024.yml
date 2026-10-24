@@ -1,0 +1,25 @@
+name: PIX recipient identity regression
+
+on:
+  push:
+    branches:
+      - fix/pix-mentions-lid-20261024
+  pull_request:
+    branches:
+      - whatsapp-only
+
+jobs:
+  pix-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/db.js
+      - name: Run PIX regression tests without database writes
+        run: node --test test/pix-lid-recipient-20261024.test.mjs test/pix-transfer-limits-20261023.test.mjs
