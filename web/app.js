@@ -862,6 +862,7 @@ function actionFeedback(name,result){
   if(result&&result.cooldown&&Number(result.remainingMs)>0) return '⏳ Aguarde '+formatRemaining(Number(result.remainingMs)/1000);
   if(name==='daily'&&result&&result.ok) return '🎁 Bônus diário recebido • '+money(result.totalCash||result.amount||0)+' • sequência '+num(result.streak||1);
   if(name==='work'&&result&&result.ok) return '💼 Trabalho concluído • +'+money(result.amount||0)+' • recarga de 30 min';
+  if(name==='pet.energy'&&result) return '⚡ '+String(result.petName||'Pet')+' recuperou '+num(result.recovered||0)+' energia • '+num(result.energy||0)+'/'+num(result.max||0)+' • Energéticos restantes: '+num(result.remaining||0);
   if(name==='all'&&result) return '⚡ Rotina completa processada. Veja o resultado abaixo.';
   return 'Ação concluída no Alpha Bot.';
 }
@@ -1178,6 +1179,15 @@ function ownedPetCard(p){
   const cat=catalogPets().find(x=>x.species===p.species);
   const active=Boolean(p.active);
   const hp=Number(p.hp||0), maxHp=Math.max(1,Number(p.max_hp||1));
+  const energy=Math.max(0,Number(p.energy||0));
+  const maxEnergy=Math.max(1,Number(p.max_energy||100));
+  const energyItems=itemCount('energetico_pet');
+  const energyButton=active
+    ? '<button class="btn '+(energy<maxEnergy && energyItems>0?'good':'')+'" data-pet-card-energy type="button" '+
+       (energy>=maxEnergy||energyItems<=0?'disabled':'')+'>'+
+       (energy>=maxEnergy?'⚡ Energia cheia':energyItems<=0?'⚡ Sem Energético Pet':'⚡ Recuperar energia (×'+energyItems+')')+
+      '</button>'
+    : '';
   const healButton=hp<maxHp
     ? '<button class="btn heal" data-pet-card-heal="'+p.id+'">❤️ Curar</button>'
     : '<button class="btn" disabled>❤️ HP cheio</button>';
@@ -1190,7 +1200,7 @@ function ownedPetCard(p){
     '<div class="pet-needs"><span>🍗 '+num(p.hunger)+'/100</span><span>🧼 '+num(p.hygiene)+'/100</span></div>'+
     '<p>'+esc(specialtyText(cat))+'</p>'+
     '<div class="pet-actions">'+
-      healButton+
+      healButton+energyButton+
       (!active?'<button class="btn good" data-pet-select="'+p.id+'">Usar pet</button>':'')+
       '<div class="pet-rename-inline"><input data-pet-name="'+p.id+'" maxlength="24" value="'+esc(p.name||'')+'" placeholder="Nome do pet"><button class="btn" type="button" data-pet-rename="'+p.id+'">✏️ Renomear • R$ 1.000</button></div>'+
       (active?'<button class="btn good" data-pet-action="descansar">Descansar</button><button class="btn" data-pet-action="alimentar">Alimentar</button><button class="btn" data-pet-action="banho">Banho</button><button class="btn" data-pet-action="passear">Passear</button><button class="btn" data-pet-action="treinar">Treinar</button>':'')+
@@ -2515,6 +2525,16 @@ function bind(){
     doAction('pet.rename',{petId,name},{success:'✏️ Nome do pet alterado.'});
   });
   document.querySelectorAll('[data-pet-action]').forEach(x=>x.onclick=()=>doAction('pet.action',{action:x.dataset.petAction},{}));
+  document.querySelectorAll('[data-pet-card-energy]').forEach(x=>x.onclick=async()=>{
+    const activePet=collection().find(p=>p.active);
+    if(!activePet)return toast('Selecione o pet ativo primeiro.');
+    const stock=itemCount('energetico_pet');
+    if(stock<1)return toast('Você não possui Energético Pet. Compre na Loja.');
+    if(Number(activePet.energy||0)>=Number(activePet.max_energy||100))return toast('A energia do pet já está cheia.');
+    x.disabled=true;
+    try{await doAction('pet.energy',{itemId:'energetico_pet'},{});}
+    catch{ x.disabled=false; }
+  });
   document.querySelectorAll('[data-pet-adopt-direct]').forEach(x=>x.onclick=async()=>{
     const species=String(x.dataset.petAdoptDirect||'');
     const input=x.parentElement&&x.parentElement.querySelector('[data-pet-adopt-name]');
