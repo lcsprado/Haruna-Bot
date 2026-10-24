@@ -43,6 +43,7 @@ import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoa
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
+const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 let webTablesReady = false
@@ -1181,19 +1182,19 @@ async function runAction(session,name,body={}){
     case 'pet.team': return setPetTeam(jid,Array.isArray(body.petIds)?body.petIds:[],body.replaceAll!==false)
     case 'pet.summon': return summonLegendaryPet(jid,String(body.materialId||''))
 
-    case 'raid.create': return createRaid(requireGroup(session),jid,String(body.name||'Jogador'),positiveInt(body.level,'Nível',70))
-    case 'raid.join': return joinRaid(requireGroup(session),jid,String(body.name||'Jogador'),body.level==null?null:positiveInt(body.level,'Nível',70))
-    case 'raid.cancel': return cancelRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',70))
+    case 'raid.create': return createRaid(requireGroup(session),jid,String(body.name||'Jogador'),positiveInt(body.level,'Nível',WEB_RAID_MAX_LEVEL))
+    case 'raid.join': return joinRaid(requireGroup(session),jid,String(body.name||'Jogador'),body.level==null?null:positiveInt(body.level,'Nível',WEB_RAID_MAX_LEVEL))
+    case 'raid.cancel': return cancelRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',WEB_RAID_MAX_LEVEL))
     case 'raid.start': {
-      const level=body.level==null?null:positiveInt(body.level,'Nível',70)
+      const level=body.level==null?null:positiveInt(body.level,'Nível',WEB_RAID_MAX_LEVEL)
       // Prepare durable handoff before the transaction consumes raid keys.
       await ensureWebActionOutbox(db)
       const started=await startRaid(requireGroup(session),jid,level)
       const auto=await startRaidServerRun(session,started.level)
       return {...started,serverAuto:true,serverAutoQueued:Boolean(auto.queued)}
     }
-    case 'raid.auto': return startRaidServerRun(session,body.level==null?null:positiveInt(body.level,'Nível',70))
-    case 'raid.round': return raidRound(requireGroup(session),body.level==null?null:positiveInt(body.level,'Nível',70))
+    case 'raid.auto': return startRaidServerRun(session,body.level==null?null:positiveInt(body.level,'Nível',WEB_RAID_MAX_LEVEL))
+    case 'raid.round': return raidRound(requireGroup(session),body.level==null?null:positiveInt(body.level,'Nível',WEB_RAID_MAX_LEVEL))
     case 'boss.start': return startBoss(requireGroup(session))
     case 'boss.attack': return attackBoss(requireGroup(session),jid,String(body.name||'Jogador'),body.usePet!==false)
 
