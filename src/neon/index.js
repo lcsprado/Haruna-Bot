@@ -9251,7 +9251,12 @@ if(!flow && /^[1-4]$/.test(body)){
 try{await quizAnswerRequested(chat,sender,Number(body),reply,isGroup);continue}
 catch(err){if(!/Não há quiz ativo|expirou/.test(String(err?.message||'')))throw err}
 }
-if(!flow) continue
+if(!flow){
+  // A seleção isolada não deve desaparecer silenciosamente quando o menu expirou,
+  // houve reinício ou uma resposta anterior cancelou o fluxo.
+  if(/^[1-5]$/.test(body)) await reply('⌛ Não encontrei um menu ativo para essa escolha. Abra *!inventario* e selecione sua caixa novamente. Nenhum item foi consumido por esta resposta.')
+  continue
+}
 if(isGroup && eventTrafficActiveNow()) await staggerEventGroupAction(chat)
 await ensureUser(sender,msg.pushName || '')
 timingMarks.ensured=Date.now()
