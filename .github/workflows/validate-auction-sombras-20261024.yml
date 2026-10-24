@@ -1,0 +1,25 @@
+name: Validate Leilao Sombras 20261024
+on:
+  push:
+    branches: [feat/leilao-sombras-cinco-lotes-20261024]
+  workflow_dispatch:
+jobs:
+  auction-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check src/neon/auction-alpha.js
+          node --check src/neon/auction-rules.js
+          node --check src/neon/auction-bid-notice.js
+          node --check src/neon/game-catalog.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+      - name: Auction logic checks
+        run: |
+          node --test test/auction-shadows-20261024.test.mjs test/auction-cross-group-notices.test.mjs test/auction-notification-pilot-20261023.test.mjs
