@@ -2298,6 +2298,189 @@ function renderExpeditions(rows){
   }).join('')+'</div>';
 }
 
+
+function eventCenterPhase(startsAt,endsAt,now=Date.now()){
+  return now<Number(startsAt)?'upcoming':now<Number(endsAt)?'active':'finished';
+}
+function eventCenterTime(ms,withDay=false){
+  const t=Number(ms||0);
+  if(!Number.isFinite(t)||t<=0)return '—';
+  return new Date(t).toLocaleString('pt-BR',{
+    timeZone:'America/Sao_Paulo',
+    ...(withDay?{day:'2-digit',month:'2-digit'}:{}),
+    hour:'2-digit',minute:'2-digit'
+  });
+}
+function eventCenterRemaining(until,now=Date.now()){
+  const ms=Math.max(0,Number(until||0)-now);
+  if(!ms)return 'Prazo encerrado';
+  const minutes=Math.ceil(ms/60000);
+  if(minutes<60)return minutes+' min';
+  return Math.floor(minutes/60)+'h '+String(minutes%60).padStart(2,'0')+'min';
+}
+function eventCenterCard(info){
+  const start=Number(info.startsAt||0),end=Number(info.endsAt||0);
+  const phase=info.phase||'active';
+  const chip=phase==='active'?'● ACONTECENDO':phase==='upcoming'?'◷ EM BREVE':'✓ ENCERRADO';
+  const timer=start&&end
+    ? '<span class="event-center-timer" data-event-countdown="'+(phase==='upcoming'?start:end)+'" data-event-status="'+phase+'">'+
+        (phase==='finished'?'Encerrado':(phase==='upcoming'?'Começa em ':'Termina em ')+eventCenterRemaining(phase==='upcoming'?start:end))+
+      '</span>':'';
+  const when=start&&end
+    ? '<div class="event-center-schedule">📅 '+eventCenterTime(start,true)+' • '+eventCenterTime(start)+'–'+eventCenterTime(end)+' (Brasília)</div>'
+    : '';
+  return '<article class="card event-center-card event-center-'+phase+'" id="event-'+esc(info.id)+'">'+
+    '<div class="event-center-card-top"><span class="event-center-art">'+esc(info.icon||'🎉')+'</span>'+
+      '<div class="event-center-card-title"><span class="event-center-category">'+esc(info.category||'Evento')+'</span>'+
+        '<h3>'+esc(info.title)+'</h3></div>'+
+      '<span class="event-center-state '+phase+'">'+chip+'</span></div>'+
+    when+
+    '<p class="event-center-desc">'+esc(info.description||'')+'</p>'+
+    (info.reward?'<div class="event-center-reward"><span>🎁 Recompensas</span><strong>'+esc(info.reward)+'</strong></div>':'')+
+    (info.extra||'')+
+    '<div class="event-center-actions">'+(info.actions||'')+timer+'</div>'+
+    '</article>';
+}
+function eventCenterMimicCard(mimic){
+  if(!mimic)return '';
+  const now=Date.now(),phase=eventCenterPhase(mimic.startsAt,mimic.endsAt,now);
+  const progress=mimic.progress||{},hunts=Number(progress.hunts||0);
+  const rewards=Array.isArray(mimic.milestones)?mimic.milestones:[];
+  const next=rewards.find(m=>hunts<Number(m.hunts||0));
+  const leaderboard=Array.isArray(mimic.leaderboard)?mimic.leaderboard:[];
+  const available=!mimic.unavailable;
+  let progressHtml='<div class="event-center-player"><div class="event-center-player-head">'+
+    '<strong>🎯 Suas caçadas: '+num(hunts)+'/'+num(mimic.maxHunts||60)+'</strong>'+
+    '<span>🏆 '+num(progress.points||0)+' pontos'+(progress.rank?' • #'+num(progress.rank):'')+'</span></div>'+
+    '<div class="progress"><span style="width:'+pct(hunts/Math.max(1,Number(mimic.maxHunts||60))*100)+'%"></span></div>'+
+    '<div class="event-center-pieces"><span>🧩 '+num(progress.fragments||0)+' fragmentos</span><span>💰 '+money(progress.cash||0)+'</span><span>✨ '+num(progress.xp||0)+' XP</span></div>'+
+    (next?'<small>🎯 Próxima meta: '+num(next.hunts)+' caçadas • '+esc(next.reward)+'</small>':hunts>=60?'<small>🏅 Todas as metas alcançadas!</small>':'')+
+    (phase==='active'&&Number(progress.nextAt||0)>now?
+      '<small class="event-center-cooldown" data-event-countdown="'+Number(progress.nextAt)+'" data-event-status="cooldown">⏳ Próxima caça em '+eventCenterRemaining(progress.nextAt)+'</small>':'')+
+    '</div>';
+  if(!available)progressHtml='<div class="notice warn">O status dos Mimics está temporariamente indisponível. Consulte <strong>!mimic status</strong> no WhatsApp.</div>';
+  const goals='<div class="event-center-goals">'+rewards.map(m=>{
+    const done=hunts>=Number(m.hunts||0);
+    return '<div class="event-center-goal '+(done?'done':'')+'"><span>'+ (done?'✓':'○')+' '+num(m.hunts)+' caçadas</span><strong>'+esc(m.reward)+'</strong></div>';
+  }).join('')+'</div>';
+  const leaderRows=leaderboard.map(row=>{
+    const medal=Number(row.position)===1?'🥇':Number(row.position)===2?'🥈':Number(row.position)===3?'🥉':'🏅';
+    return '<div class="event-center-rank"><span>'+medal+' #'+num(row.position)+' '+esc(row.name)+'</span><strong>'+num(row.points)+' pts</strong></div>';
+  }).join('');
+  const ranking=available?'<details class="event-center-ranking"><summary>🏆 Ver ranking global dos dois grupos'+(mimic.prizesFinalized?' • resultado final':'')+'</summary>'+
+    (leaderRows||'<p class="muted">Ainda não há caçadas registradas.</p>')+
+    '<small>Premiação do Top 3: R$ 300 mil • R$ 200 mil • R$ 100 mil.</small>'+
+    '</details>':'';
+  const actions=phase==='active'
+    ?'<button class="btn primary" data-event-copy="!mimic">📋 Copiar !mimic</button><button class="btn" data-event-copy="!mimic status">Meu status</button>'
+    :'<button class="btn" data-event-copy="!mimic ranking">Copiar ranking</button>';
+  const trades=phase!=='upcoming'&&now<Number(mimic.endsAt||0)+20*60000
+    ?'<div class="event-center-trades">Troque fragmentos no WhatsApp: <button class="btn" data-event-copy="!mimic trocar rara">🔵 10 por Rara</button><button class="btn" data-event-copy="!mimic trocar epica">🟣 25 por Épica</button></div>':'';
+  return eventCenterCard({
+    id:'mimic',icon:'👹',category:'Evento global • Dois grupos',title:'Invasão dos Mimics',
+    phase,startsAt:mimic.startsAt,endsAt:mimic.endsAt,
+    description:'Caçadas a cada 2 minutos, até 60 tentativas por jogador. O ranking é compartilhado entre os dois grupos.',
+    reward:'R$ 6–14 mil e 100–250 XP por caça; caixas nas metas e até R$ 300 mil no ranking.',
+    extra:progressHtml+goals+ranking+trades+
+      '<p class="event-center-whatsapp">📱 Para participar, envie o comando no grupo do WhatsApp. O site mostra seu progresso, mas não executa a caçada.</p>',
+    actions
+  });
+}
+function renderEvents(){
+  const now=Date.now();
+  const data=ui.eventCenter||{},group=currentGroup(),extras=ui.extras||{};
+  const items=[];
+  if(data.mimic){
+    const e=data.mimic;
+    items.push({id:'mimic',phase:eventCenterPhase(e.startsAt,e.endsAt,now),from:Number(e.startsAt),to:Number(e.endsAt),html:eventCenterMimicCard(e)});
+  }
+  if(data.saturdayRaid){
+    const e=data.saturdayRaid,phase=eventCenterPhase(e.startsAt,e.endsAt,now);
+    items.push({id:'saturday',phase,from:e.startsAt,to:e.endsAt,html:eventCenterCard({
+      id:'saturday',icon:'⚔️',category:'Evento de Raid',title:'Caçada de Sábado',phase,
+      startsAt:e.startsAt,endsAt:e.endsAt,
+      description:'Bônus aplicado nas Raids vencidas e concluídas durante o período. Dinheiro, XP dos pets, materiais e drops permanecem normais.',
+      reward:'+50% de XP do jogador nas Raids '+(e.levels||[50,60,65,70]).join(', ')+'. Não acumula com outro bônus temporário de XP de Raid.',
+      actions:'<button class="btn primary" data-go-page="raids">⚔️ Abrir Raids</button>'
+    })});
+  }
+  const double=ui.data?.events?.doubleReward;
+  if(double&&Number(double.endsAt||0)>now&&Number(double.startsAt||0)>0){
+    const phase=eventCenterPhase(double.startsAt,double.endsAt,now);
+    items.push({id:'double',phase,from:double.startsAt,to:double.endsAt,html:eventCenterCard({
+      id:'double',icon:'🔥',category:'Bônus de recompensa',title:'Evento de multiplicadores',
+      phase,startsAt:double.startsAt,endsAt:double.endsAt,
+      description:'Multiplicadores aplicados automaticamente apenas às atividades elegíveis no servidor.',
+      reward:'Dinheiro ×'+num(double.moneyMultiplier||1)+' • XP ×'+num(double.xpMultiplier||1),
+      actions:'<button class="btn" data-go-page="activities">Ver atividades</button>'
+    })});
+  }
+  const lucky=ui.data?.events?.luckyBox;
+  if(lucky&&Number(lucky.endsAt||0)>now&&Number(lucky.startsAt||0)>0){
+    const phase=eventCenterPhase(lucky.startsAt,lucky.endsAt,now);
+    items.push({id:'lucky',phase,from:lucky.startsAt,to:lucky.endsAt,html:eventCenterCard({
+      id:'lucky',icon:'🎁',category:'Evento de caixas',title:'Caixa da Sorte',
+      phase,startsAt:lucky.startsAt,endsAt:lucky.endsAt,
+      description:'As caixas abertas durante o período recebem o multiplicador configurado pelo bot.',
+      reward:'Multiplicador da Caixa da Sorte ×'+num(lucky.multiplier||2),
+      actions:'<button class="btn" data-go-page="inventory">Abrir inventário</button>'
+    })});
+  }
+  const liveBoss=group?.bossEvent;
+  if(liveBoss&&Number(liveBoss.hp||0)>0&&liveBoss.active!==false&&(!liveBoss.endsAt||Number(liveBoss.endsAt)>now)){
+    items.push({id:'boss',phase:'active',from:Number(liveBoss.startedAt||now),to:Number(liveBoss.endsAt||0),html:eventCenterCard({
+      id:'boss',icon:'👹',category:'Boss de evento',title:liveBoss.name||'Boss especial',
+      phase:'active',startsAt:0,endsAt:0,
+      description:'Combate global ativo. O HP e a premiação seguem as regras do WhatsApp.',
+      reward:'Confira recompensas e classificação na página do Boss.',
+      extra:'<div class="event-center-boss-hp"><strong>❤️ '+num(liveBoss.hp)+'/'+num(liveBoss.maxHp||1)+'</strong><div class="progress"><span style="width:'+pct(Number(liveBoss.hp||0)/Math.max(1,Number(liveBoss.maxHp||1))*100)+'%"></span></div></div>',
+      actions:'<button class="btn primary" data-go-page="boss">Atacar Boss</button>'
+    })});
+  }
+  const flash=extras.groupEvent;
+  if(group&&flash&&!flash.claimed&&Number(flash.expires_at||0)*1000>now){
+    const deadline=Number(flash.expires_at)*1000;
+    const labels={maleta:'💼 Maleta misteriosa',pix:'💸 PIX misterioso',tesouro:'🧰 Tesouro relâmpago'};
+    items.push({id:'flash',phase:'active',from:Number(flash.spawned_at||0)*1000,to:deadline,html:eventCenterCard({
+      id:'flash',icon:'🎁',category:'Evento relâmpago do grupo',
+      title:labels[flash.event_type]||'Recompensa surpresa',
+      phase:'active',startsAt:Number(flash.spawned_at||0)*1000,endsAt:deadline,
+      description:'Resgate antes do prazo. A premiação segue as regras atuais do grupo.',
+      reward:money(flash.reward_cash||0),
+      actions:'<button class="btn good" data-group-event-claim>Resgatar prêmio</button>'
+    })});
+  }
+  const mission=extras.groupMissionLeaderboard?.mission||extras.groupMission;
+  if(group&&mission){
+    const target=Math.max(1,Number(mission.target||1)),completed=Boolean(mission.completed);
+    items.push({id:'mission',phase:completed?'finished':'active',from:0,to:0,html:eventCenterCard({
+      id:'mission',icon:'🎯',category:'Missão coletiva do grupo',
+      title:mission.title||'Desafio coletivo',
+      phase:completed?'finished':'active',startsAt:0,endsAt:0,
+      description:'Progresso conjunto: '+num(mission.progress||0)+'/'+num(target)+'.',
+      reward:'Prêmio coletivo de '+money(mission.reward_cash||0)+' conforme a contribuição.',
+      extra:'<div class="progress"><span style="width:'+pct(Number(mission.progress||0)/target*100)+'%"></span></div>',
+      actions:'<button class="btn" data-go-page="activities">Ver missão e resgates</button>'
+    })});
+  }
+  const order={active:0,upcoming:1,finished:2};
+  items.sort((a,b)=>order[a.phase]-order[b.phase]||
+    (a.phase==='upcoming'?a.from-b.from:a.phase==='active'?Number(a.to||Infinity)-Number(b.to||Infinity):Number(b.to||0)-Number(a.to||0)));
+  const active=items.filter(e=>e.phase==='active'),upcoming=items.filter(e=>e.phase==='upcoming'),finished=items.filter(e=>e.phase==='finished');
+  const groupCards=(title,rows,empty)=>'<section class="event-center-section"><div class="section-title"><h3>'+title+'</h3><small>'+rows.length+' evento(s)</small></div>'+
+    (rows.length?'<div class="event-center-grid">'+rows.map(e=>e.html).join('')+'</div>':'<div class="empty">'+empty+'</div>')+'</section>';
+  return '<div class="page-head event-center-heading"><div><p class="eyebrow">AO VIVO • ALPHA RPG</p><h2>🎉 Central de Eventos</h2><p>Eventos compartilhados com o WhatsApp, com horários de Brasília e recompensas reais.</p></div>'+
+    '<button class="btn primary" data-event-center-refresh '+(ui.eventCenterLoading?'disabled':'')+'>↻ Atualizar eventos</button></div>'+
+    (!group?'<div class="notice warn">Use !web dentro de um grupo ativo para acompanhar os eventos coletivos.</div>':'')+
+    (ui.eventCenterError?'<div class="notice warn">⚠️ '+esc(ui.eventCenterError)+' — tente atualizar a Central.</div>':'')+
+    (!ui.eventCenter?'<div class="notice">'+(ui.eventCenterLoading?'Carregando eventos…':'Abra a Central novamente para carregar os eventos.')+'</div>':'')+
+    '<div class="event-center-summary"><div><strong>'+active.length+'</strong><span>Em andamento</span></div><div><strong>'+upcoming.length+'</strong><span>Próximos</span></div><div><strong>'+finished.length+'</strong><span>Encerrados</span></div></div>'+
+    groupCards('🔴 Acontecendo agora',active,'Nenhum evento em andamento neste momento.')+
+    groupCards('🕒 Próximos eventos',upcoming,'Nenhum próximo evento confirmado.')+
+    groupCards('🏁 Eventos encerrados',finished,'Nenhum encerramento recente registrado nesta Central.')+
+    '<div class="event-center-footnote">Os botões do site só executam as ações já existentes no RPG. Eventos exclusivos do WhatsApp mostram o comando para copiar. Sem consultas automáticas constantes ao banco.</div>';
+}
+
 function renderActivities(){
   const d=ui.data, ex=ui.extras||{}, sleep=d.activities&&d.activities.sleep, carp=d.activities&&d.activities.carpinar;
   const missions=d.dailyMissions||[], exp=d.petExpeditions||[], plans=ex.carpinarPlans||[];
