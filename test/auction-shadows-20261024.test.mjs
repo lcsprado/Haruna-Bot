@@ -24,11 +24,11 @@ test('2 minutos por lote e prorrogação no limite, sem ultrapassar 2 minutos',(
   assert.equal(extendAuctionDeadline(120000,0,120000).extended,false)
 })
 
-test('cinco lotes secretos, uma edição nova, sem reutilizar dinheiro dos leilões passados',()=>{
-  assert.match(auction,/const KEY='leilao_sombras_cinco_lotes_20261024_v1'/)
+test('três lotes de consumíveis, uma edição nova, sem reutilizar dinheiro dos leilões passados',()=>{
+  assert.match(auction,/const KEY='leilao_consumiveis_tres_lotes_20261024_v1'/)
   const packages=auction.split('const PACKAGES=[')[1]?.split('\n]\nlet timer=')[0]||''
-  assert.equal(packages.split("  [{").length-1,5)
-  assert.match(auction,/const START=Date\.parse\('2026-10-24T17:00:00-03:00'\)/)
+  assert.equal(packages.split("  [{").length-1,3)
+  assert.match(auction,/const START=Date\.parse\('2026-10-24T18:30:00-03:00'\)/)
   assert.match(auction,/shufflePackages\(\)/)
   assert.match(auction,/await finishLot\(state,c\)/)
   assert.match(auction,/await prize\(c,high\.jid,lot\.prize\)/)
@@ -39,17 +39,21 @@ test('cinco lotes secretos, uma edição nova, sem reutilizar dinheiro dos leil�
   assert.doesNotMatch(auction,/const KEY='leilao_oculto_alpha_20261020/)
 })
 
-test('novo elmo pequeno incremento, pet comparável à Raposa Astral e ampulheta ativa',()=>{
-  assert.match(db,/elmo_soberano_celestial_20261024: \{category:'helmet',atk:0,def:112,hp:275,crit:\.025/)
+test('prêmios são consumíveis utilizáveis e nenhum lote oferece equipamentos ou pets',()=>{
+  const packages=auction.split('const PACKAGES=[')[1]?.split('\n]\nlet timer=')[0]||''
   assert.match(db,/elixir_leilao_1h_20261024:\{type:'boost'.*seconds:60\*60/)
-  assert.match(catalog,/lince_astral:.*damage:1\.6,defense:2\.4/)
+  assert.match(db,/pergaminho_reclassificacao/)
   assert.match(index,/XP_SPECIAL_ITEM_IDS=.*elixir_leilao_1h_20261024/)
-  assert.match(auction,/INSERT INTO pet_collection/)
-  assert.match(auction,/ELMO DO SOBERANO CELESTIAL/)
+  for(const id of ['elixir_leilao_2h','pergaminho_leilao_10k','pergaminho_reclassificacao','caixa_epica','caixa_lendaria','elixir_leilao_1h_20261024']){
+    assert.ok(packages.includes(id),'prêmio ausente: '+id)
+  }
+  assert.doesNotMatch(packages,/pet:|elmo_|bota_|espada_|armadura_/)
+  assert.match(auction,/3 lotes misteriosos, somente consumíveis/)
+  assert.match(auction,/totalLots:PACKAGES\.length/)
 })
 
 test('valor e líder aparecem entre grupos; os prêmios permanecem ocultos',()=>{
-  const msg=crossGroupBidNotice({lot:1,totalLots:5,bidder:'Augusto',value:2500000,nextMinimum:2550000,endsAt:Date.parse('2026-10-24T17:20:00-03:00')})
+  const msg=crossGroupBidNotice({lot:1,totalLots:3,bidder:'Augusto',value:2500000,nextMinimum:2550000,endsAt:Date.parse('2026-10-24T17:20:00-03:00')})
   assert.match(msg,/Augusto/)
   assert.match(msg,/2\.500\.000/)
   assert.match(msg,/2\.550\.000/)
