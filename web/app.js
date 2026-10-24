@@ -8,6 +8,10 @@ const ui = {
   data: null,
   extras: null,
   extrasFetchedAt: 0,
+  eventCenter: null,
+  eventCenterFetchedAt: 0,
+  eventCenterLoading: false,
+  eventCenterError: '',
   lastResult: null,
   lootReveal: null,
   page: 'home',
@@ -53,6 +57,7 @@ const navItems = [
   ['contracts','📜','Contratos'],
   ['raids','⚔️','Raids'],
   ['boss','👹','Boss'],
+  ['events','🎉','Eventos'],
   ['duels','⚔️','Duelos'],
   ['social','🥊','Social'],
   ['market','📣','Mercado'],
@@ -866,6 +871,33 @@ async function syncExtras(force){
   }
 }
 
+async function loadEventCenter(force=false){
+  if(!ui.token || ui.eventCenterLoading)return ui.eventCenter;
+  if(!force && ui.eventCenter && Date.now()-ui.eventCenterFetchedAt<30000)return ui.eventCenter;
+  ui.eventCenterLoading=true;
+  try{
+    const response=await api('/api/v1/me/event-center');
+    ui.eventCenter=response.data||null;
+    ui.eventCenterFetchedAt=Date.now();
+    ui.eventCenterError='';
+  }catch(err){
+    ui.eventCenterError=String(err?.message||'Não foi possível carregar os eventos.');
+  }finally{ui.eventCenterLoading=false;}
+  return ui.eventCenter;
+}
+async function openWebPage(page){
+  ui.page=page;
+  setMenu(false);
+  const jobs=[];
+  if(page==='contracts')jobs.push(loadContracts());
+  if(page==='inventory')jobs.push(loadRelics());
+  if(['social','market','clan','games','activities','progression','rankings','loans','contracts','events'].includes(page))
+    jobs.push(syncExtras(false).catch(()=>null));
+  if(page==='events')jobs.push(loadEventCenter(false));
+  await Promise.all(jobs);
+  render();
+  window.scrollTo({top:0,left:0,behavior:'auto'});
+}
 function actionFeedback(name,result){
   if(result&&result.ok===false&&Number(result.remaining)>0) return '⏳ Recarga: '+formatRemaining(result.remaining);
   if(result&&result.cooldown&&Number(result.remainingMs)>0) return '⏳ Aguarde '+formatRemaining(Number(result.remainingMs)/1000);
@@ -939,17 +971,7 @@ function renderNav(){
   $('#nav').innerHTML=navItems.map(item=>{
     return '<button class="nav-btn '+(ui.page===item[0]?'active':'')+'" data-page="'+item[0]+'"><span>'+item[1]+'</span>'+item[2]+'</button>';
   }).join('');
-  document.querySelectorAll('[data-page]').forEach(btn=>btn.onclick=async()=>{
-    ui.page=btn.dataset.page;
-    setMenu(false);
-    if(ui.page==='contracts') await loadContracts();
-    if(ui.page==='inventory') await loadRelics();
-    if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
-      await syncExtras(false).catch(()=>null);
-    }
-    render();
-    window.scrollTo({top:0,left:0,behavior:'auto'});
-  });
+  document.querySelectorAll('[data-page]').forEach(btn=>btn.onclick=()=>openWebPage(btn.dataset.page));
 }
 
 function profile(){
@@ -1126,7 +1148,9 @@ function renderHome(){
   const workRemain=cooldownRemaining('work');
   const dailyText=dailyDone?'✅ Bônus diário feito':'🎁 Bônus diário';
   const workText=workRemain>0?'⏳ Trabalhar • '+formatRemaining(workRemain):'💼 Trabalhar';
-  return renderDoubleRewardEvent()+renderLuckyBoxEvent()+'<div class="hero card">'+
+  return renderDoubleRewardEvent()+renderLuckyBoxEvent()+
+    '<div class="event-home-link"><div><strong>🎉 Central de Eventos</strong><small>Eventos ativos, próximas caçadas e rankings do RPG</small></div><button class="btn primary" data-go-page="events">Ver eventos →</button></div>'+
+    '<div class="hero card">'+
     '<div><p class="eyebrow">CONTA REAL DO WHATSAPP</p><h2>'+esc(raw.push_name||'Jogador')+'</h2>'+
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
@@ -2574,6 +2598,7 @@ function pageSceneKey(page){
     shop:'bg-shop',
     raids:'bg-raid',
     boss:'bg-boss',
+    events:'bg-raid',
     duels:'bg-arena',
     social:'bg-arena',
     games:'bg-abilities',
@@ -2588,7 +2613,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,contracts:renderContracts,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,contracts:renderContracts,raids:renderRaids,boss:renderBoss,events:renderEvents,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
   if(ui.page==='inventory' && Number(ui.inventoryTabsScrollLeft)>0){
@@ -2606,15 +2631,7 @@ function bind(){
     localStorage.setItem(CHARACTER_KEY,ui.characterId);
     await doAction('character.select',{classId:ui.characterId},{success:'🧙 Classe aplicada aos seus atributos.'});
   });
-  document.querySelectorAll('[data-go-page]').forEach(x=>x.onclick=async()=>{
-    ui.page=x.dataset.goPage;
-    setMenu(false);
-    if(ui.page==='contracts') await loadContracts();
-    if(ui.page==='inventory') await loadRelics();
-    if(['social','market','clan','games','activities','progression','rankings','loans','contracts'].includes(ui.page)) await syncExtras(false).catch(()=>null);
-    render();
-    window.scrollTo({top:0,left:0,behavior:'auto'});
-  });
+  document.querySelectorAll('[data-go-page]').forEach(x=>x.onclick=()=>openWebPage(x.dataset.goPage));
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
   document.querySelectorAll('[data-inventory-section]').forEach(x=>x.onclick=()=>{
     ui.inventoryTabsScrollLeft=x.closest('.inventory-tabs')?.scrollLeft||0;
