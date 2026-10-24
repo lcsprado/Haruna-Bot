@@ -84,6 +84,7 @@ import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-al
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
+import {scheduleMimics,handleMimicCommand} from './mimic-hunt.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -1343,6 +1344,11 @@ FROM (SELECT $1::text AS jid) u LEFT JOIN player_awakenings a ON a.jid=u.jid`,[j
 if(!p) throw new Error('Perfil não encontrado.')
 const wins=Number(p.win||0),loss=Number(p.loss||0)
 const title=alphaTitle(p,pat.total)
+const mimicTitleRows=await db.query(
+  "SELECT i.name FROM inventories inv JOIN items i ON i.id=inv.item_id WHERE inv.jid=$1 AND inv.quantity>0 AND inv.item_id=ANY($2::text[]) ORDER BY array_position($2::text[],inv.item_id) LIMIT 1",
+  [jid,['titulo_mimic_campiao_20261024','titulo_mimic_vice_20261024','titulo_mimic_terceiro_20261024','titulo_cacador_mimics_20261024']]
+)
+const mimicTitle=mimicTitleRows.rows[0]?.name||''
 const badge=founderBadge(p)
 const xp=xpBar(p.exp,p.level)
 const achievements=[
@@ -1422,7 +1428,7 @@ ${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNo
 ${petDetail}${enchantDetail}`
 const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
-${title}${badge?' • '+badge:''}
+${title}${mimicTitle?' • '+mimicTitle:''}${badge?' • '+badge:''}
 ⭐ Nível: *${Number(p.level||1)}*
 🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}
@@ -8754,6 +8760,7 @@ if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] 
 startAuctionAlphaScheduler(sock)
 startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
+void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
@@ -9272,6 +9279,7 @@ if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.ke
 if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleEnchantCommand({cmd,args,sender,reply,
 setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
 clearFlow:()=>clearQuickFlow(chat,sender)})) continue
