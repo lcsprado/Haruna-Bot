@@ -1,0 +1,89 @@
+name: "Alpha Web | transferir secrets Aiven para Render beta"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/web-aiven-beta-protegido-20261021
+    paths:
+      - .github/workflows/alpha-web-render-env-sync.yml
+
+permissions:
+  contents: read
+
+jobs:
+  transferir-com-seguranca:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      ALPHA_AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+      ALPHA_AIVEN_CA: ${{ secrets.ALPHA_AIVEN_CA }}
+      RENDER_WEB_API_KEY: ${{ secrets.ALPHA_WEB_RENDER_API_KEY }}
+    steps:
+      - name: "Transferir por HTTPS diretamente para o serviço Render correto, sem imprimir secrets"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json, os, sys, urllib.parse, urllib.request, urllib.error
+
+          # This workflow is purposely pinned to the independent WEB beta.
+          # Never access or update the WhatsApp Render service.
+          SERVICE_ID='srv-dbcu8jfavr4c738r58n0'
+          OWNER_ID='tea-dbcu4v2vcj2c73fsn71g'
+          SERVICE_NAME='alpha-web-api-beta'
+          EXPECTED_BRANCH='feat/web-aiven-beta-protegido-20261021'
+          API='https://api.render.com/v1/services/'+SERVICE_ID
+
+          uri=os.environ.get('ALPHA_AIVEN_URI','').strip()
+          ca=os.environ.get('ALPHA_AIVEN_CA','').replace('\\n','\n').strip()
+          token=os.environ.get('RENDER_WEB_API_KEY','').strip()
+          if not uri or not ca:
+              sys.exit('BLOQUEADO: GitHub Actions ALPHA_AIVEN_URI/ALPHA_AIVEN_CA ausentes. Sem alteracoes.')
+          if not token:
+              sys.exit('BLOQUEADO: GitHub Actions Secret ALPHA_WEB_RENDER_API_KEY ausente. Sem alteracoes.')
+
+          # Validate source DB without ever outputting connection credentials.
+          parsed=urllib.parse.urlsplit(uri)
+          if (parsed.scheme not in ('postgres','postgresql') or
+              parsed.hostname!='alphabot-lcsh-3393.b.aivencloud.com' or
+              parsed.port!=26343 or parsed.username!='avnadmin' or not parsed.password or
+              parsed.path not in ('/defaultdb','/alpha_prod_v2')):
+              sys.exit('BLOQUEADO: a origem Aiven nao corresponde ao banco esperado. Sem alteracoes.')
+          if not ca.startswith('-----BEGIN CERTIFICATE-----') or not ca.endswith('-----END CERTIFICATE-----'):
+              sys.exit('BLOQUEADO: CA Aiven nao esta no formato PEM. Sem alteracoes.')
+          query=urllib.parse.urlencode([(k,v) for k,v in urllib.parse.parse_qsl(parsed.query,keep_blank_values=True)
+                                        if k.lower()!='sslmode'])
+          target=urllib.parse.urlunsplit((parsed.scheme,parsed.netloc,'/alpha_prod_v2',query,''))
+
+          def request(method,path,payload=None):
+              req=urllib.request.Request(path,
+                  data=json.dumps(payload).encode('utf-8') if payload is not None else None,
+                  headers={'Authorization':'Bearer '+token,'Accept':'application/json',
+                           'Content-Type':'application/json'},
+                  method=method)
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as response:
+                      raw=response.read(200000)
+                      return json.loads(raw.decode('utf-8')) if raw else {}
+              except urllib.error.HTTPError as exc:
+                  # Do not print an HTTP response body: some APIs echo secrets.
+                  sys.exit('BLOQUEADO: Render retornou HTTP '+str(exc.code)+
+                           ' em '+method+' (nenhum valor de secret exibido).')
+
+          service=request('GET',API)
+          if (service.get('id')!=SERVICE_ID or service.get('ownerId')!=OWNER_ID or
+              service.get('name')!=SERVICE_NAME or service.get('branch')!=EXPECTED_BRANCH or
+              service.get('serviceDetails',{}).get('region')!='oregon'):
+              sys.exit('BLOQUEADO: conta, regiao ou servico Render nao coincide. Sem alteracoes.')
+          if service.get('autoDeploy')!='no':
+              sys.exit('BLOQUEADO: deploy automatico nao pode estar ativo no beta. Sem alteracoes.')
+
+          # Single-key PUT adds/updates, preserving all other environment keys.
+          # Render returns the secret in the response; never print or persist it.
+          request('PUT',API+'/env-vars/DATABASE_URL',{'value':target})
+          request('PUT',API+'/env-vars/ALPHA_AIVEN_CA_PEM',{'value':ca})
+          print('OK: somente DATABASE_URL e ALPHA_AIVEN_CA_PEM atualizados no beta (valores ocultos).')
+          request('POST',API+'/deploys',{'clearCache':'do_not_clear'})
+          print('OK: deploy solicitado no Render da Web. WhatsApp intocado; permitir acesso beta so apos validar a API.')
+          PY

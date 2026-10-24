@@ -34,9 +34,12 @@ const databaseUrl=(()=>{
   else if(['require','prefer','verify-ca'].includes(mode)) url.searchParams.set('sslmode','verify-full')
   return url.toString()
 })()
-const poolSize=isAivenDb
-  ?Math.max(1,Math.min(10,Number(process.env.ALPHA_DB_POOL_MAX)||5))
-  :10
+// Web uses a separate API process with a strict small pool.
+// WhatsApp keeps its existing cap (5 on Aiven), independent of Web.
+const webApiOnly=String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()==='web-api-only'
+const webPoolSize=Math.max(1,Math.min(3,Number(process.env.ALPHA_WEB_DB_POOL_MAX)||3))
+const poolSize=webApiOnly?webPoolSize:
+  isAivenDb?Math.max(1,Math.min(10,Number(process.env.ALPHA_DB_POOL_MAX)||5)):10
 export const db = new Pool({
 connectionString: databaseUrl,
 ...(isAivenDb && aivenCaPem?{ssl:{ca:aivenCaPem,rejectUnauthorized:true}}:{}),

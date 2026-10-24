@@ -1,0 +1,111 @@
+name: "Alpha Web | Aiven read-only beta gate"
+
+on:
+  push:
+    branches:
+      - feat/web-aiven-beta-protegido-20261021
+    paths:
+      - src/neon/db.js
+      - src/neon/render.js
+      - src/neon/web-api.js
+      - web/app.js
+      - .github/workflows/alpha-web-aiven-beta-readonly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-web-readonly-beta
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: "Check sintaxe de backend e frontend"
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/web-api.js
+          node --check src/neon/render.js
+          node --check scripts/start-web-api.mjs
+          node --check web/app.js
+      - name: "Instalar dependências somente no executor descartável"
+        run: npm install --no-save --package-lock=false --legacy-peer-deps --no-audit --no-fund
+      - name: "Testar API isolada contra alpha_prod_v2 em modo READ ONLY"
+        env:
+          ALPHA_AIVEN_URI: ${{ secrets.ALPHA_AIVEN_URI }}
+          ALPHA_AIVEN_CA_PEM: ${{ secrets.ALPHA_AIVEN_CA }}
+          ALPHA_RUNTIME: web-api-only
+          ALPHA_WEB_DB_POOL_MAX: '3'
+          ALPHA_WEB_BETA_JIDS: ''
+          ALPHA_WEB_ENABLE_AUTH_SELFTEST: '0'
+          WEB_MEMBER_TOKEN_SECRET: 'ci-only-safety-smoke-token-not-for-deploy'
+          WEB_ALLOWED_ORIGINS: 'https://alpha-web-rpg.vercel.app'
+          PGOPTIONS: '-c default_transaction_read_only=on'
+          NODE_ENV: production
+          PORT: '11379'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${ALPHA_AIVEN_URI:-}" && test -n "${ALPHA_AIVEN_CA_PEM:-}" || { echo "::error::Aiven secrets not configured"; exit 1; }
+          node --input-type=module <<'NODE'
+          const url=new URL(process.env.ALPHA_AIVEN_URI)
+          if(url.hostname!=='alphabot-lcsh-3393.b.aivencloud.com' || url.port!=='26343' || url.pathname!=='/defaultdb'){
+            throw Error('Unexpected Aiven target; stop before opening any DB connection')
+          }
+          url.pathname='/alpha_prod_v2'
+          import('node:fs').then(fs=>fs.writeFileSync(process.env.RUNNER_TEMP+'/alpha-aiven-target.txt',url.toString(),{mode:0o600}))
+          NODE
+          export DATABASE_URL="$(cat "$RUNNER_TEMP/alpha-aiven-target.txt")"
+          rm -f "$RUNNER_TEMP/alpha-aiven-target.txt"
+          export DATABASE_URL
+          # Invalid runtime must fail BEFORE opening HTTP or database.
+          if ALPHA_RUNTIME=whatsapp-only node scripts/start-web-api.mjs >"$RUNNER_TEMP/blocked-start.log" 2>&1; then
+            echo "::error::Web safety guard did not reject WhatsApp mode";exit 1
+          fi
+          node scripts/start-web-api.mjs >"$RUNNER_TEMP/alpha-web-api-beta.log" 2>&1 &
+          apppid=$!
+          cleanup(){ kill "$apppid" 2>/dev/null || true; wait "$apppid" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:11379/health >"$RUNNER_TEMP/health.json"; then ready=1;break;fi
+            if ! kill -0 "$apppid" 2>/dev/null; then break;fi
+            sleep 1
+          done
+          if [[ "$ready" != 1 ]];then
+            echo "::error::API not ready"
+            sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED]#g' "$RUNNER_TEMP/alpha-web-api-beta.log" | tail -15
+            exit 1
+          fi
+          node --input-type=module -e "
+          import fs from 'node:fs'
+          const p=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/health.json','utf8'))
+          if(!p.ok || p.runtime!=='web-api-only'||p.service!=='alpha-web-api')process.exit(1)
+          "
+          check(){
+            local method="$1" path="$2" expected="$3" actual
+            actual="$(curl -sS -X "$method" --max-time 15 -o "$RUNNER_TEMP/response.json" -w '%{http_code}' "http://127.0.0.1:11379$path")"
+            if [[ "$actual" != "$expected" ]]; then echo "::error::$method $path expected $expected, returned $actual";exit 1;fi
+            echo "PASS $method $path = $expected"
+          }
+          check GET /api/v1/health 200
+          check GET /api/v1/catalog 200
+          check GET /api/v1/me/bootstrap 401
+          check GET /api/v1/health/auth 404
+          check GET /rpg 404
+          # Force non-browser and browser unauthorized probes to fail without writes.
+          bad_origin="$(curl -sS --max-time 12 -H 'Origin: https://unauthorized.example' -o "$RUNNER_TEMP/response.json" -w '%{http_code}' http://127.0.0.1:11379/api/v1/catalog)"
+          if [[ "$bad_origin" != "403" ]];then echo "::error::Unexpected CORS status $bad_origin";exit 1;fi
+          if grep -q 'ALPHA BOT CONECTADO' "$RUNNER_TEMP/alpha-web-api-beta.log";then echo "::error::WhatsApp started in Web-only mode";exit 1;fi
+          echo "WEB API BETA SAFE: no WhatsApp runtime, anonymous private reads blocked, foreign CORS rejected."
+          echo "All PostgreSQL sessions were READ ONLY; no gameplay or auth writes were attempted."

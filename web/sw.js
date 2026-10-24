@@ -13,7 +13,6 @@ const SHELL=[
   '/assets/pets/dragao.webp',
   '/assets/pets/fenix-celestial.webp',
   '/assets/pets/gato.webp',
-  '/assets/pets/grifo-celestial.webp',
   '/assets/pets/kitsune.webp',
   '/assets/pets/leao.webp',
   '/assets/pets/lobo.webp',

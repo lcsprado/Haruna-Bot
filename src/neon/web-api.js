@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
+import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship, getProfileAvatar,
@@ -44,6 +45,14 @@ import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 const CODE_TTL_MS = 30 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const SESSION_TOUCH_MS = 5 * 60 * 1000
+// During isolated testing, no user is allowed unless explicitly admitted.
+// Without an allowlist, the Web API remains closed even if somebody discovers its URL.
+function betaWebAccess(jid){
+  if(String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()!=='web-api-only') return true
+  const allowed=String(process.env.ALPHA_WEB_BETA_JIDS||'').split(',').map(s=>s.trim()).filter(Boolean)
+  return allowed.includes(String(jid||''))
+}
 let webTablesReady = false
 let webTablesPromise = null
 
@@ -192,6 +201,7 @@ async function exchangeWebLinkCode(code){
       [codeHash]
     )).rows[0]
     if(!row || row.used_at || Number(row.expires_at)<now()) throw new Error('Código inválido ou expirado.')
+    if(!betaWebAccess(row.jid)) throw new Error('Alpha RPG Web ainda está fechado para testes. Aguarde a liberação.')
 
     const token=crypto.randomBytes(32).toString('base64url')
     const tokenHash=sha256(token)
@@ -246,20 +256,29 @@ async function webAuthSelfTest(){
 }
 
 async function authSession(req){
-  await ensureWebTables()
   const auth=String(req.headers.authorization||'')
   const match=auth.match(/^Bearer\s+(.+)$/i)
+  // An unauthenticated probe must never create tables or touch a session.
   if(!match) return null
+  await ensureWebTables()
   const tokenHash=sha256(match[1])
   const row=(await db.query(
-    'SELECT jid,chat_jid,expires_at FROM web_sessions WHERE token_hash=$1',
+    'SELECT jid,chat_jid,expires_at,last_seen_at FROM web_sessions WHERE token_hash=$1',
     [tokenHash]
   )).rows[0]
   if(!row || Number(row.expires_at)<now()){
     if(row) await db.query('DELETE FROM web_sessions WHERE token_hash=$1',[tokenHash]).catch(()=>{})
     return null
   }
-  await db.query('UPDATE web_sessions SET last_seen_at=$1 WHERE token_hash=$2',[now(),tokenHash]).catch(()=>{})
+  if(!betaWebAccess(row.jid)) return null
+  // Revalidate the token on every read, but persist activity at most once / 5 min.
+  const checkedAt=now()
+  if(checkedAt-Number(row.last_seen_at||0)>=SESSION_TOUCH_MS){
+    await db.query(
+      'UPDATE web_sessions SET last_seen_at=$1 WHERE token_hash=$2 AND last_seen_at<$3',
+      [checkedAt,tokenHash,checkedAt-SESSION_TOUCH_MS]
+    ).catch(()=>{})
+  }
   return {tokenHash,jid:row.jid,chatJid:row.chat_jid||null,expiresAt:Number(row.expires_at)}
 }
 
@@ -703,8 +722,11 @@ async function webItemName(id,fallback='item'){
 
 async function sendWebGroupActivity(session,actionName,body,result){
   if(!session?.chatJid || !result) return
-  const send=globalThis.__alphaWebGroupLog
-  if(typeof send!=='function') return
+  // Web API runs in a separate Render process: persist the group notice for
+  // the single WhatsApp worker instead of silently discarding successful actions.
+  const send=typeof globalThis.__alphaWebGroupLog==='function'
+    ?globalThis.__alphaWebGroupLog
+    :(chat,text,mentions)=>enqueueWebAction(db,{chat,kind:'message',payload:{text,mentions}})
 
   const me=session.jid
   const meName=await playerDisplayName(me)
@@ -1088,7 +1110,12 @@ async function sendWebGroupActivity(session,actionName,body,result){
 
 async function startRaidServerRun(session,level){
   const starter=globalThis.__alphaStartRaidRun
-  if(typeof starter!=='function') throw new Error('Automação de Raid indisponível no servidor.')
+  if(typeof starter!=='function'){
+    // The WhatsApp process owns the automatic raid loop. Never start a second
+    // socket or runner in this isolated Web API.
+    await enqueueWebAction(db,{chat:requireGroup(session),kind:'raid_auto',payload:{level:Number(level)}})
+    return {ok:true,serverAuto:true,queued:true,level:Number(level)}
+  }
   const started=await starter(requireGroup(session),Number(level))
   return {ok:true,serverAuto:true,started:Boolean(started),level:Number(level)}
 }
@@ -1172,17 +1199,19 @@ async function runAction(session,name,body={}){
     case 'pet.team': return setPetTeam(jid,Array.isArray(body.petIds)?body.petIds:[],body.replaceAll!==false)
     case 'pet.summon': return summonLegendaryPet(jid,String(body.materialId||''))
 
-    case 'raid.create': return createRaid(requireGroup(session),jid,String(body.name||'Jogador'),positiveInt(body.level,'Nível',50))
-    case 'raid.join': return joinRaid(requireGroup(session),jid,String(body.name||'Jogador'),body.level==null?null:positiveInt(body.level,'Nível',50))
-    case 'raid.cancel': return cancelRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'raid.create': return createRaid(requireGroup(session),jid,String(body.name||'Jogador'),positiveInt(body.level,'Nível',70))
+    case 'raid.join': return joinRaid(requireGroup(session),jid,String(body.name||'Jogador'),body.level==null?null:positiveInt(body.level,'Nível',70))
+    case 'raid.cancel': return cancelRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',70))
     case 'raid.start': {
-      const level=body.level==null?null:positiveInt(body.level,'Nível',50)
+      const level=body.level==null?null:positiveInt(body.level,'Nível',70)
+      // Prepare durable handoff before the transaction consumes raid keys.
+      await ensureWebActionOutbox(db)
       const started=await startRaid(requireGroup(session),jid,level)
-      await startRaidServerRun(session,started.level)
-      return {...started,serverAuto:true}
+      const auto=await startRaidServerRun(session,started.level)
+      return {...started,serverAuto:true,serverAutoQueued:Boolean(auto.queued)}
     }
-    case 'raid.auto': return startRaidServerRun(session,body.level==null?null:positiveInt(body.level,'Nível',50))
-    case 'raid.round': return raidRound(requireGroup(session),body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'raid.auto': return startRaidServerRun(session,body.level==null?null:positiveInt(body.level,'Nível',70))
+    case 'raid.round': return raidRound(requireGroup(session),body.level==null?null:positiveInt(body.level,'Nível',70))
     case 'boss.start': return startBoss(requireGroup(session))
     case 'boss.attack': return attackBoss(requireGroup(session),jid,String(body.name||'Jogador'),body.usePet!==false)
 
@@ -1283,6 +1312,13 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='GET' && url.pathname==='/api/v1/health/auth'){
+      // This endpoint writes synthetic authentication data. Never expose it publicly.
+      const peer=String(req.socket?.remoteAddress||'')
+      const loopback=['127.0.0.1','::1','::ffff:127.0.0.1'].includes(peer)
+      if(process.env.ALPHA_WEB_ENABLE_AUTH_SELFTEST!=='1' || !loopback){
+        json(res,404,{ok:false,error:'Endpoint não encontrado.'})
+        return true
+      }
       try{
         const check=await webAuthSelfTest()
         json(res,200,{ok:true,...check})
@@ -1344,6 +1380,29 @@ export async function handleWebApi(req,res){
         'content-length':String(avatar.buffer.length)
       })
       res.end(avatar.buffer)
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/boss-live'){
+      // One small indexed group-state query: never loads wallets, inventory, pets or rankings.
+      if(!session.chatJid){
+        json(res,200,{ok:true,data:{changed:false,version:'none'}})
+        return true
+      }
+      const {rows}=await db.query(
+        "SELECT game_type,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'status' AS status,updated_at FROM trevo_games WHERE chat_jid=$1 AND game_type IN ('boss','boss_event') ORDER BY game_type",
+        [session.chatJid]
+      )
+      const states={}
+      for(const r of rows){
+        states[r.game_type]={
+          hp:Number(r.hp||0),maxHp:Number(r.max_hp||0),
+          status:String(r.status||''),updatedAt:Number(r.updated_at||0)
+        }
+      }
+      const version=sha256(JSON.stringify(states)).slice(0,20)
+      const unchanged=String(url.searchParams.get('v')||'')===version
+      json(res,200,{ok:true,data:unchanged?{changed:false,version}:{changed:true,version,boss:states.boss||null,bossEvent:states.boss_event||null}})
       return true
     }
 
