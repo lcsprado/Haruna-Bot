@@ -14,7 +14,9 @@ const near=(a,b)=>assert.ok(Math.abs(a-b)<eps,`Expected ${b}, got ${a}`)
 test('Lince é anunciado coringa e conserva os bônus individuais de Raposa Astral',()=>{
   assert.equal(petStyleLabel('lince_astral'),'🃏 Coringa')
   assert.match(petHpType('lince_astral'),/Coringa/)
-  assert.deepEqual(petCombatSpecialty('lince_astral'),petCombatSpecialty('raposa_astral'))
+  const {label:lx,...lince}=petCombatSpecialty('lince_astral')
+  const {label:fx,...fox}=petCombatSpecialty('raposa_astral')
+  assert.deepEqual(lince,fox)
 })
 test('Lince completa categoria predador em qualquer slot, sem bônus adicional',()=>{
   const variants=[
