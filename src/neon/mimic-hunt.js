@@ -80,6 +80,30 @@ export function mimicOutcome(roll){
  if(r<3200)return {kind:'raro',label:'🔵 MIMIC RARO',points:20,fragments:8}
  return {kind:'comum',label:'🟤 MIMIC COMUM',points:10,fragments:5}
 }
+async function catchUpTwentyMilestone(){
+ const result=await db.query("SELECT jid FROM mimic_hunt_sessions WHERE event_key=$1 AND (state->>'hunts')::int BETWEEN 20 AND 24",[MIMIC_EVENT.id])
+ let awarded=0
+ for(const {jid} of result.rows){
+  const client=await db.connect()
+  try{
+   await client.query('BEGIN')
+   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[MIMIC_EVENT.id+'|'+jid])
+   const row=await client.query('SELECT state FROM mimic_hunt_sessions WHERE event_key=$1 AND jid=$2 FOR UPDATE',[MIMIC_EVENT.id,jid])
+   const p=row.rows[0]?.state
+   if(p && p.hunts>=20 && p.hunts<25 && !p.milestone20){
+    await giveCash(client,jid,200000)
+    await giveItem(client,jid,'caixa_epica',2)
+    p.cash=Number(p.cash||0)+200000
+    p.milestone20=true
+    await client.query('UPDATE mimic_hunt_sessions SET state=$1::jsonb WHERE event_key=$2 AND jid=$3',[JSON.stringify(p),MIMIC_EVENT.id,jid])
+    awarded++
+   }
+   await client.query('COMMIT')
+  }catch(err){await client.query('ROLLBACK').catch(()=>{});throw err}
+  finally{client.release()}
+ }
+ console.log('[MIMIC HUNT] meta 20 retroativa',awarded)
+}
 export async function initMimic(){
  if(!initPromise)initPromise=(async()=>{
   await db.query(`
@@ -127,6 +151,7 @@ export async function initMimic(){
     ) SELECT COUNT(*)::int AS adjusted FROM adjusted
   `,['mimic_frg_rebalance_20261024_final_v3',JSON.stringify({old:[1,2,5,10],new:[5,8,14,30]}),MIMIC_EVENT.id])
   console.log('[MIMIC HUNT] fragmentos compensados',Number(retro.rows[0]?.adjusted||0))
+  await catchUpTwentyMilestone()
  })().catch(err=>{initPromise=null;throw err})
  await initPromise
 }
@@ -273,6 +298,7 @@ async function action(jid,name,args=[]){
     +'🏆 Pontos nesta caçada: *+'+rarity.points+'*\n'
   const achievements=MIMIC_EVENT.milestones.filter(x=>x.hunts===s.hunts)
   for(const m of achievements){
+   if(m.hunts===20)s.milestone20=true
    await giveCash(c,jid,m.cash)
    await giveItem(c,jid,m.box,m.qty)
    s.cash+=m.cash
