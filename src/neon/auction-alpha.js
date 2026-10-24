@@ -2,6 +2,7 @@
 // Conteúdo oculto até o encerramento. Duração: 2 minutos por lote.
 // Estado, lances reservados e entrega final são transacionais no Neon.
 import {randomInt,randomBytes,createHash} from 'node:crypto'
+import {extendAuctionDeadline,LOT_DURATION_MS} from './auction-rules.js'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction,petMaxEnergy,petMaxHp} from './db.js'
 import {initEnchantments} from './enchantments-alpha.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
@@ -15,10 +16,7 @@ const AUCTION_PAUSED_FOR_AUDIT=false
 // Chave isolada: modo temporário não reativa leilões históricos.
 const START=Date.parse('2026-10-24T17:00:00-03:00')
 const END=Date.parse('2026-10-24T20:00:00-03:00')
-const DURATION=2*60*1000
-const OVERTIME_WINDOW=15000
-const OVERTIME_STEP=20000
-const OVERTIME_MAX=120000
+const DURATION=LOT_DURATION_MS
 const OPENING=100000
 const STEP=50000
 const SEAL_ITEM='selo_poder_5pct_alpha_20261019'
@@ -306,12 +304,9 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
         cash:cash+(old?.jid===sender?Number(old.cash):0),
         bank:bank+(old?.jid===sender?Number(old.bank):0)
       }
-      const nowBid=Date.now()
-      if(Number(state.ends)-nowBid<=OVERTIME_WINDOW && Number(state.extra||0)<OVERTIME_MAX){
-        const added=Math.min(OVERTIME_STEP,OVERTIME_MAX-Number(state.extra||0))
-        state.ends+=added
-        state.extra=Number(state.extra||0)+added
-      }
+      const overtime=extendAuctionDeadline(state.ends,state.extra,Date.now())
+      state.ends=overtime.ends
+      state.extra=overtime.extra
       const result={
         confirmation:'✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/5*\n💰 '+fmt(offered)+
           '\n🔒 Reservado até você vencer ou ser superado.'+
