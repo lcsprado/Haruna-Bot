@@ -1,0 +1,28 @@
+name: Alpha Web auction smoke tests
+
+on:
+  push:
+    branches:
+      - feat/auction-web-bidding-20261024
+  pull_request:
+    branches:
+      - whatsapp-only
+
+jobs:
+  validate-auction-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check without external dependencies
+        run: |
+          node --check src/neon/auction-alpha.js
+          node --check src/neon/web-api.js
+          node --check web/app.js
+          node --check test/web-auction-integration-20261024.test.mjs
+      - name: Auction unit and web integration checks
+        run: |
+          node --test test/auction-shadows-20261024.test.mjs test/auction-cross-group-notices.test.mjs test/web-auction-integration-20261024.test.mjs
