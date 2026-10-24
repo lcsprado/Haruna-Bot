@@ -12,6 +12,15 @@ const ui = {
   lootReveal: null,
   page: 'home',
   petTab: 'owned',
+  petTeamDraft: null,
+  petTeamPickerSlot: 0,
+  petTeamPickerQuery: '',
+  petTeamPickerFilter: 'all',
+  petTeamPickerSort: 'power',
+  petTeamPreview: null,
+  petTeamPreviewKey: '',
+  petTeamPreviewRequest: 0,
+  petTeamSaving: false,
   inventoryTab: 'weapons',
   inventorySection: 'equipment',
   inventorySearch: '',
@@ -1288,6 +1297,152 @@ function renderCharacter(){
       '</div>';
     }).join('')+'</div>';
 }
+
+const PET_TEAM_SLOT_LABELS=['','Principal','Suporte','Reserva'];
+const PET_TEAM_STYLES=[
+  ['all','Todos'],['voador','🪽 Voadores'],['guardiao','🛡️ Guardiões'],
+  ['predador','🐾 Predadores'],['mistico','✨ Místicos'],['coringa','🃏 Coringas']
+];
+function petTeamSavedIds(){
+  const team=ui.data?.petTeam||[];
+  return [1,2,3].map(slot=>Number(team.find(p=>Number(p.slot)===slot)?.id||0));
+}
+function petTeamDraftIds(){
+  if(!Array.isArray(ui.petTeamDraft)||ui.petTeamDraft.length!==3)
+    ui.petTeamDraft=petTeamSavedIds();
+  return ui.petTeamDraft;
+}
+function petTeamHasChanges(){
+  const existing=petTeamSavedIds();
+  return petTeamDraftIds().some((id,i)=>Number(id||0)!==existing[i]);
+}
+function petTeamStyle(p){
+  const cat=catalogPets().find(x=>x.species===p?.species);
+  return String(cat?.teamStyle||cat?.style||'⚪ Sem estilo');
+}
+function petTeamStyleKey(p){
+  const style=petTeamStyle(p).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  for(const key of ['voador','guardiao','predador','mistico','coringa'])
+    if(style.includes(key))return key;
+  return 'outro';
+}
+function petTeamSpecialty(p){
+  const cat=catalogPets().find(x=>x.species===p?.species);
+  return cat?.specialty||{};
+}
+function petTeamBonusValues(p){
+  const sp=petTeamSpecialty(p);
+  return sp.stats||(sp.stat?{[sp.stat]:Number(sp.base||0)}:{});
+}
+function petTeamPickerRows(){
+  const chosen=petTeamDraftIds();
+  const selectedSlot=Number(ui.petTeamPickerSlot||0);
+  const otherPets=chosen.filter((_,i)=>i!==selectedSlot-1).map(id=>collection().find(p=>Number(p.id)===Number(id))).filter(Boolean);
+  const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const term=normalize(ui.petTeamPickerQuery).trim();
+  const filter=ui.petTeamPickerFilter;
+  const byScore=p=>{
+    const bonus=petTeamBonusValues(p);
+    if(ui.petTeamPickerSort==='level')return Number(p.level||0);
+    if(ui.petTeamPickerSort==='damage')return Number(bonus.damage||0);
+    if(ui.petTeamPickerSort==='boss')return Number(bonus.bossDamage||0)+Number(bonus.damage||0);
+    if(ui.petTeamPickerSort==='crit')return Number(bonus.crit||0);
+    if(ui.petTeamPickerSort==='defense')return Number(bonus.defense||0);
+    return Number(p.power||0);
+  };
+  return collection().filter(p=>{
+    if(filter!=='all'&&petTeamStyleKey(p)!==filter)return false;
+    if(!term)return true;
+    return normalize([p.name,petSpeciesName(p.species),petTeamStyle(p),specialtyText(catalogPets().find(x=>x.species===p.species))].join(' ')).includes(term);
+  }).sort((a,b)=>{
+    if(ui.petTeamPickerSort==='name')return String(a.name||a.species).localeCompare(String(b.name||b.species),'pt-BR');
+    return byScore(b)-byScore(a) || Number(b.level||0)-Number(a.level||0) || String(a.name).localeCompare(String(b.name),'pt-BR');
+  }).map(p=>{
+    const used=otherPets.some(x=>Number(x.id)===Number(p.id));
+    const repeat=otherPets.some(x=>String(x.species)===String(p.species));
+    const blocked=used||repeat;
+    const chosenHere=Number(chosen[selectedSlot-1]||0)===Number(p.id);
+    const catalog=catalogPets().find(x=>x.species===p.species);
+    return '<button type="button" class="pet-picker-entry '+(chosenHere?'chosen':'')+'" data-team-pick-id="'+Number(p.id)+'" '+(blocked?'disabled':'')+'>'+
+      '<span class="pet-picker-entry-portrait">'+petVisualMarkup(p.species,'pet-picker-portrait-art')+'</span>'+
+      '<span class="pet-picker-entry-main">'+
+        '<span class="pet-picker-entry-top"><strong>'+esc(p.name||petSpeciesName(p.species))+'</strong><small>Lv.'+num(p.level)+' • Poder '+num(p.power)+'</small></span>'+
+        '<span class="pet-picker-entry-style">'+esc(petTeamStyle(p))+' • '+esc(petSpeciesName(p.species))+'</span>'+
+        '<span class="pet-picker-entry-bonuses">'+esc(specialtyText(catalog)||'Sem bônus individual informado')+'</span>'+
+        '<span class="pet-picker-entry-vitals">❤️ '+num(p.hp)+'/'+num(p.max_hp)+' &nbsp; ⚡ '+num(p.energy)+'/'+num(p.max_energy||100)+'</span>'+
+        (blocked?'<span class="pet-picker-entry-blocked">'+(used?'Já selecionado em outro slot':'Espécie repetida no time')+'</span>':chosenHere?'<span class="pet-picker-entry-picked">✓ Selecionado neste slot</span>':'')+
+      '</span></button>';
+  }).join('')||'<div class="empty">Nenhum pet encontrado com esse filtro.</div>';
+}
+function petTeamPickerModal(){
+  const slot=Number(ui.petTeamPickerSlot||0);
+  if(![1,2,3].includes(slot))return '';
+  const search=String(ui.petTeamPickerQuery||'');
+  return '<div class="pet-picker-overlay" data-pet-picker-overlay>'+
+    '<section class="pet-picker-dialog" role="dialog" aria-modal="true" aria-label="Escolher pet para '+PET_TEAM_SLOT_LABELS[slot]+'">'+
+      '<div class="pet-picker-header"><div><p class="eyebrow">MONTAR TIME PET</p><h2>Escolher '+PET_TEAM_SLOT_LABELS[slot]+'</h2><small>Compare estilo, bônus, HP, energia e poder antes de equipar.</small></div>'+
+      '<button class="btn" type="button" data-pet-picker-close aria-label="Fechar escolha de pet">✕</button></div>'+
+      '<label class="pet-picker-search-label" for="team-pet-search">🔎 Pesquisar pet, espécie ou bônus</label>'+
+      '<input id="team-pet-search" class="pet-picker-search" data-pet-picker-search placeholder="Ex.: Voador, dano, Grifo..." value="'+esc(search)+'" autocomplete="off">'+
+      '<div class="pet-picker-controls"><div class="pet-picker-filters">'+PET_TEAM_STYLES.map(([key,label])=>'<button class="pet-picker-filter '+(ui.petTeamPickerFilter===key?'active':'')+'" type="button" data-pet-picker-filter="'+key+'">'+label+'</button>').join('')+'</div>'+
+        '<label class="pet-picker-order">Ordenar por <select data-pet-picker-sort>'+
+          [['power','Maior poder'],['level','Maior nível'],['damage','Mais dano'],['boss','Bônus Boss/dano'],['crit','Mais crítico'],['defense','Mais defesa'],['name','Nome A–Z']]
+            .map(([id,label])=>'<option value="'+id+'" '+(ui.petTeamPickerSort===id?'selected':'')+'>'+label+'</option>').join('')+
+        '</select></label></div>'+
+      '<div class="pet-picker-results" data-pet-picker-results>'+petTeamPickerRows()+'</div>'+
+      (slot!==1?'<button class="btn pet-picker-clear" type="button" data-pet-picker-clear>Deixar '+PET_TEAM_SLOT_LABELS[slot]+' vazio</button>':'')+
+    '</section></div>';
+}
+function petTeamPreviewMarkup(){
+  const draft=petTeamDraftIds();
+  const selected=draft.map(id=>collection().find(p=>Number(p.id)===Number(id))).filter(Boolean);
+  const styles=selected.map(p=>petTeamStyle(p));
+  const needsSave=petTeamHasChanges();
+  const missingMain=!draft[0],missingSupport=Boolean(draft[2]&&!draft[1]);
+  const dupSpecies=new Set(selected.map(p=>String(p.species))).size!==selected.length;
+  const invalid=missingMain||missingSupport||dupSpecies;
+  const complete=selected.length===3 && !invalid;
+  const tally=[...new Set(styles)].map(style=>'<span class="pet-team-style-pill">'+esc(style)+' '+styles.filter(x=>x===style).length+'/3</span>').join('');
+  const key=draft.join(',');
+  const server=needsSave ? (ui.petTeamPreviewKey===key?ui.petTeamPreview:null) : ui.data?.petTeamSynergy;
+  let detail;
+  if(invalid)detail=missingMain?'Selecione o pet Principal.':missingSupport?'Escolha o Suporte antes da Reserva.':'Espécie repetida: escolha pets de espécies diferentes.';
+  else if(needsSave&&ui.petTeamPreviewKey!==key) detail='Consultando a sinergia exata do servidor…';
+  else if(server?.text) detail='<strong>'+esc(server.label||'Bônus especial')+'</strong><span>'+esc(server.text)+'</span>';
+  else if(!complete) detail='Escolha até 3 espécies diferentes. Para a sinergia de estilo, combine três Voadores, Guardiões, Predadores ou Místicos.';
+  else detail='Sem sinergia de estilo nesta combinação. Cada pet mantém seus bônus individuais.';
+  return '<div class="pet-team-preview '+(server?.text&&!invalid?'activated':'')+'">'+
+    '<div class="pet-team-preview-header"><strong>✨ Sinergia do time</strong><span class="tag '+(needsSave?'':'good')+'">'+(needsSave?'PRÉVIA • NÃO SALVA':'TIME ATUAL')+'</span></div>'+
+    '<div class="pet-team-style-counts">'+tally+'</div><p>'+detail+'</p>'+
+    (needsSave?'<small>Esta é só uma prévia. Nada muda no RPG até tocar em Salvar time.</small>':'')+
+  '</div>';
+}
+async function requestPetTeamPreview(){
+  const draft=[...petTeamDraftIds()];
+  const key=draft.join(',');
+  const current=++ui.petTeamPreviewRequest;
+  const selected=draft.filter(Boolean);
+  ui.petTeamPreview=null;
+  ui.petTeamPreviewKey='';
+  if(!selected.length||!draft[0]||(draft[2]&&!draft[1]))return;
+  try{
+    const response=await api('/api/v1/me/pet-team-preview?ids='+encodeURIComponent(selected.join(',')));
+    if(current!==ui.petTeamPreviewRequest||petTeamDraftIds().join(',')!==key)return;
+    ui.petTeamPreview=response.data?.synergy||null;
+    ui.petTeamPreviewKey=key;
+  }catch(err){
+    if(current!==ui.petTeamPreviewRequest||petTeamDraftIds().join(',')!==key)return;
+    ui.petTeamPreview={label:'Prévia indisponível',text:'Não foi possível consultar a sinergia. O servidor validará a escolha ao salvar.'};
+    ui.petTeamPreviewKey=key;
+  }
+  if(ui.page==='pets'){
+    const scrollY=window.scrollY;
+    render();
+    window.scrollTo(0,scrollY);
+  }
+}
+
+
 function renderPets(){
   const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
   const raidCount=catalogPets().filter(x=>x.source==='raid').length;
@@ -1297,41 +1452,45 @@ function renderPets(){
   else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
   else rows=catalogPets().filter(x=>x.source==='raid').map(catalogPetCard);
 
-  const team=ui.data.petTeam||[], synergy=ui.data.petTeamSynergy||null, pets=collection();
-  const labels=['','Principal','Suporte','Reserva'];
-  const teamPet=slot=>team.find(x=>Number(x.slot)===slot)||null;
-  const selectedId=slot=>Number((teamPet(slot)||{}).id||0);
-  const optionsFor=slot=>{
-    const current=selectedId(slot);
-    return '<option value="">'+(slot===1?'Escolha o principal':'Vazio')+'</option>'+
-      pets.map(p=>'<option value="'+p.id+'" '+(Number(p.id)===current?'selected':'')+'>'+esc(p.name)+' • '+esc(petSpeciesName(p.species))+' • Lv.'+num(p.level)+'</option>').join('');
-  };
+  const draft=petTeamDraftIds(),pets=collection();
   const teamSlot=slot=>{
-    const p=teamPet(slot);
+    const p=pets.find(x=>Number(x.id)===Number(draft[slot-1]||0));
     const hp=p?Number(p.hp||0):0;
     const maxHp=p?Math.max(1,Number(p.max_hp||1)):1;
+    const cat=p?catalogPets().find(x=>x.species===p.species):null;
     const status=p
-      ? '<div class="team-pet-status"><div class="team-pet-head"><strong>'+esc(p.name||titleCase(p.species))+'</strong><small>Lv.'+num(p.level)+' • '+esc(petSpeciesName(p.species))+'</small></div>'+
-        '<div class="team-pet-hp"><span>❤️ '+num(hp)+'/'+num(maxHp)+'</span><div class="progress"><span style="width:'+pct(hp/maxHp*100)+'%"></span></div></div>'+
-        (hp<maxHp?'<button class="btn heal" data-team-pet-heal="'+p.id+'">❤️ Curar agora</button>':'<button class="btn" disabled>❤️ HP cheio</button>')+
+      ? '<div class="team-pet-status">'+
+          '<div class="team-pet-head"><strong>'+esc(p.name||petSpeciesName(p.species))+'</strong><small>Lv.'+num(p.level)+' • Poder '+num(p.power)+'</small></div>'+
+          '<div class="pet-team-style-line">'+esc(petTeamStyle(p))+' • '+esc(petSpeciesName(p.species))+'</div>'+
+          '<div class="pet-team-bonus-line">'+esc(specialtyText(cat)||'Sem bônus individual informado')+'</div>'+
+          '<div class="team-pet-hp"><span>❤️ '+num(hp)+'/'+num(maxHp)+' • ⚡ '+num(p.energy)+'/'+num(p.max_energy||100)+'</span><div class="progress"><span style="width:'+pct(hp/maxHp*100)+'%"></span></div></div>'+
+          (hp<maxHp?'<button class="btn heal" data-team-pet-heal="'+p.id+'">❤️ Curar agora</button>':'<button class="btn" disabled>❤️ HP cheio</button>')+
         '</div>'
-      : '<small class="team-empty">Nenhum pet neste slot.</small>';
-    return '<div class="team-slot"><span>'+labels[slot]+'</span><select data-team-slot="'+slot+'">'+optionsFor(slot)+'</select>'+status+'</div>';
+      : '<div class="pet-team-no-pet">Nenhum pet escolhido para esta posição.</div>';
+    return '<div class="team-slot pet-team-choice-slot">'+
+      '<span>'+PET_TEAM_SLOT_LABELS[slot]+'</span>'+
+      '<button class="pet-team-open" type="button" data-team-picker-open="'+slot+'">'+
+        (p?'<span class="pet-team-open-avatar">'+petVisualMarkup(p.species,'pet-team-open-art')+'</span>':'<span class="pet-team-open-empty">＋</span>')+
+        '<span class="pet-team-open-label"><strong>'+esc(p?.name||'Escolher pet')+'</strong><small>'+esc(p?petTeamStyle(p)+' • Lv.'+p.level:'Toque para comparar os pets')+'</small></span>'+
+        '<span class="pet-team-open-edit">Alterar ›</span>'+
+      '</button>'+status+'</div>';
   };
-  const synergyBox=synergy
-    ? '<div class="notice good"><strong>'+esc(synergy.label)+'</strong><br>'+esc(synergy.text)+'</div>'
-    : '<div class="notice">Monte 3 espécies diferentes do mesmo estilo para ativar uma sinergia de Time Pet.</div>';
-
+  const hasChanges=petTeamHasChanges();
+  const slots=[...draft];
+  const valid=Boolean(slots[0])&&(!slots[2]||Boolean(slots[1]))&&
+    new Set(slots.filter(Boolean)).size===slots.filter(Boolean).length &&
+    new Set(slots.filter(Boolean).map(id=>pets.find(p=>Number(p.id)===Number(id))?.species)).size===slots.filter(Boolean).length;
   return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo servidor do WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" data-pet-tab="adopt">🐾 Adotar novo pet</button><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div></div>'+
-    '<div class="card"><div class="section-title"><div><h3>Time Pet</h3><small>1 Principal • 2 Suporte • 3 Reserva</small></div><button class="btn primary" data-pet-team-save>Salvar time</button></div>'+
-      '<div class="grid three">'+[1,2,3].map(teamSlot).join('')+'</div>'+
-      '<div class="section">'+synergyBox+'</div>'+
+    '<div class="card pet-team-composer"><div class="section-title"><div><h3>🛡️ Montar Time Pet</h3><small>Escolha por estilo, bônus, poder e energia</small></div></div>'+
+      '<div class="pet-team-slots">'+[1,2,3].map(teamSlot).join('')+'</div>'+
+      '<div class="section">'+petTeamPreviewMarkup()+'</div>'+
+      '<div class="pet-team-save-bar"><button class="btn primary" type="button" data-pet-team-save '+(!hasChanges||!valid||ui.petTeamSaving?'disabled':'')+'>'+(ui.petTeamSaving?'Salvando…':'✓ Salvar time')+'</button>'+
+      (hasChanges?'<button class="btn" type="button" data-pet-team-reset>Desfazer escolhas</button>':'<small>Escolha os pets para comparar as sinergias antes de salvar.</small>')+'</div>'+
     '</div>'+
     '<div class="tabs section">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
     '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">Nenhum pet nesta seção.</div>')+'</div>'+
-    petAdoptModal();
+    petAdoptModal()+petTeamPickerModal();
 }
-
 function itemIcon(item){
   const map={weapon:'🗡️',armor:'🛡️',boots:'👢',consumable:'🧪',special:'💠'};
   if(String(item.item_id||item.id||'').includes('chave_raid')) return '🗝️';
@@ -2503,15 +2662,83 @@ function bind(){
   document.querySelectorAll('[data-contract-accept]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.accept',{number:Number(x.dataset.contractAccept)},{success:'📜 Contrato aceito.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-contract-claim]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.claim',{}, {success:'🎁 Contrato resgatado.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
-  document.querySelectorAll('[data-pet-team-save]').forEach(x=>x.onclick=()=>{
-    const selects=[...document.querySelectorAll('[data-team-slot]')].sort((a,b)=>Number(a.dataset.teamSlot)-Number(b.dataset.teamSlot));
-    const slots=selects.map(s=>Number(s.value||0));
-    const principal=slots[0]||0,suporte=slots[1]||0,reserva=slots[2]||0;
-    if(!principal) return toast('Escolha o pet Principal.');
-    if(reserva&&!suporte) return toast('Escolha o Suporte antes da Reserva.');
-    const petIds=[principal,suporte,reserva].filter(v=>Number.isInteger(v)&&v>0);
-    if(new Set(petIds).size!==petIds.length) return toast('Não use o mesmo pet em dois slots.');
-    doAction('pet.team',{petIds,replaceAll:true},{});
+  // A custom accessible picker replaces the native Android select menu.
+  document.querySelectorAll('[data-team-picker-open]').forEach(x=>x.onclick=()=>{
+    ui.petTeamPickerSlot=Number(x.dataset.teamPickerOpen);
+    ui.petTeamPickerQuery='';
+    ui.petTeamPickerFilter='all';
+    const y=window.scrollY;
+    render();window.scrollTo(0,y);
+    document.querySelector('[data-pet-picker-search]')?.focus();
+  });
+  const pickerOverlay=document.querySelector('[data-pet-picker-overlay]');
+  if(pickerOverlay){
+    const updateList=()=>{
+      const list=pickerOverlay.querySelector('[data-pet-picker-results]');
+      if(list) list.innerHTML=petTeamPickerRows();
+      pickerOverlay.querySelectorAll('[data-pet-picker-filter]').forEach(btn=>{
+        btn.classList.toggle('active',btn.dataset.petPickerFilter===ui.petTeamPickerFilter);
+      });
+    };
+    pickerOverlay.onclick=event=>{
+      const close=event.target.closest('[data-pet-picker-close]');
+      if(close||event.target===pickerOverlay){
+        ui.petTeamPickerSlot=0;render();return;
+      }
+      const filter=event.target.closest('[data-pet-picker-filter]');
+      if(filter){ui.petTeamPickerFilter=filter.dataset.petPickerFilter;updateList();return;}
+      const empty=event.target.closest('[data-pet-picker-clear]');
+      if(empty){
+        ui.petTeamDraft[ui.petTeamPickerSlot-1]=0;
+        ui.petTeamPickerSlot=0;
+        const y=window.scrollY;render();window.scrollTo(0,y);
+        void requestPetTeamPreview();
+        return;
+      }
+      const option=event.target.closest('[data-team-pick-id]');
+      if(option&&!option.disabled){
+        const petId=Number(option.dataset.teamPickId||0);
+        const chosen=collection().find(p=>Number(p.id)===petId);
+        const slot=ui.petTeamPickerSlot-1;
+        if(!chosen||slot<0||slot>2)return;
+        const others=petTeamDraftIds().filter((_,i)=>i!==slot).map(id=>collection().find(p=>Number(p.id)===Number(id))).filter(Boolean);
+        if(others.some(p=>Number(p.id)===petId||String(p.species)===String(chosen.species))){
+          toast('Não é possível repetir a mesma espécie ou pet no time.');
+          return;
+        }
+        ui.petTeamDraft[slot]=petId;
+        ui.petTeamPickerSlot=0;
+        const y=window.scrollY;render();window.scrollTo(0,y);
+        void requestPetTeamPreview();
+      }
+    };
+    const search=pickerOverlay.querySelector('[data-pet-picker-search]');
+    if(search)search.oninput=()=>{ui.petTeamPickerQuery=search.value;updateList();};
+    const sort=pickerOverlay.querySelector('[data-pet-picker-sort]');
+    if(sort)sort.onchange=()=>{ui.petTeamPickerSort=sort.value;updateList();};
+  }
+  document.querySelectorAll('[data-pet-team-reset]').forEach(x=>x.onclick=()=>{
+    ++ui.petTeamPreviewRequest;ui.petTeamDraft=null;ui.petTeamPreview=null;ui.petTeamPreviewKey='';
+    const y=window.scrollY;render();window.scrollTo(0,y);
+  });
+  document.querySelectorAll('[data-pet-team-save]').forEach(x=>x.onclick=async()=>{
+    if(ui.petTeamSaving||!petTeamHasChanges())return;
+    const slots=[...petTeamDraftIds()];
+    if(!slots[0])return toast('Escolha o pet Principal.');
+    if(slots[2]&&!slots[1])return toast('Escolha o Suporte antes da Reserva.');
+    const petIds=slots.filter(Boolean);
+    if(new Set(petIds).size!==petIds.length)return toast('Não repita um pet no time.');
+    ui.petTeamSaving=true;x.disabled=true;
+    try{
+      await doAction('pet.team',{petIds,replaceAll:true},{success:'🐾 Time Pet salvo com sucesso.'});
+      ++ui.petTeamPreviewRequest;
+      ui.petTeamDraft=null;ui.petTeamPreview=null;ui.petTeamPreviewKey='';
+      const y=window.scrollY;render();window.scrollTo(0,y);
+    }catch{
+      ui.petTeamSaving=false;render();
+      return;
+    }
+    ui.petTeamSaving=false;
   });
   document.querySelectorAll('[data-pet-select]').forEach(x=>x.onclick=()=>doAction('pet.select',{petId:Number(x.dataset.petSelect)},{}));
   document.querySelectorAll('[data-pet-rename]').forEach(x=>x.onclick=()=>{
