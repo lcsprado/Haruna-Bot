@@ -2260,7 +2260,7 @@ function bind(){
     e.preventDefault();
     const input=x.querySelector('[data-auction-amount]');
     const value=String(input?.value||'').trim();
-    if(!/^\\d+$/.test(value)||Number(value)<Number(ui.auction?.nextMinimum||0))return toast('Informe um lance igual ou superior ao mínimo.');
+    if(!/^\d+$/.test(value)||Number(value)<Number(ui.auction?.nextMinimum||0))return toast('Informe um lance igual ou superior ao mínimo.');
     auctionBid(value);
   });
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
