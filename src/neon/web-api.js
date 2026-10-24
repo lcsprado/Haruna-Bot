@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
+import {relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
@@ -11,7 +12,7 @@ import {
   setPetTeam, summonLegendaryPet, getCombatProfile, setPlayerClass, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
   transfer, battle, petDuel, dungeon, robPlayer,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
-  openLootBoxes, openLuckyBoxes, sellDuplicateEquipment,
+  openLootBoxes, openLuckyBoxes, sellDuplicateEquipment, sellItemsBatch,
   startPlayerSleep, wakePlayerEarly, getCarpinarPlans, startPlayerCarpinar, leavePlayerCarpinarEarly,
   petAdventure, startPetExpedition, resolvePetExpeditions,
   claimLevelRewards, getLevelRewardPreview, getClaimedLevelRewards, leaderboard, combatLeaderboard, petLeaderboard,
@@ -591,6 +592,7 @@ async function publicCatalog(){
     generatedAt:now(),
     pets:petCatalog(),
     raids:getRaidCatalog(),
+    relics:relicCatalog,
     shop,
     allItems,
     houses:HOUSES,
@@ -839,13 +841,14 @@ async function sendWebGroupActivity(session,actionName,body,result){
     text='💸 *TRANSFERÊNCIA*\n*'+meName+'* transferiu *'+brl(body.amount||0)+'* para *'+String(result.targetName||'outro jogador')+'*.'
     mentions=[me,result.targetJid].filter(Boolean)
   }else if(actionName==='rob'){
-    const success=Boolean(result.success||result.ok)
-    const amount=Number(result.amount||result.stolen||0)
+    const success=result.success===true
+    const amount=Number(result.amount??result.stolen??0)
     const fine=Number(result.fine||0)
     const targetJid=String(result.targetJid||result.target||'')
     const targetName=String(result.targetName||'Jogador')
-    text='🥷 *ROUBO*\n🥷 *'+meName+'* tentou roubar *'+targetName+'* e '+(success
-      ?'*CONSEGUIU*'+(amount>0?'\n💰 Valor roubado: *'+brl(amount)+'*':'')
+    if(result.ok===false){text=null}
+    else text='🥷 *ROUBO*\n🥷 *'+meName+'* tentou roubar *'+targetName+'* e '+(success
+      ?'*CONSEGUIU*\n💰 Valor roubado: *'+brl(amount)+'*'
       :'*FALHOU*'+(fine>0?'\n💸 Multa: *'+brl(fine)+'*':''))
     mentions=[me,targetJid].filter(Boolean)
   }else if(actionName==='dungeon'){
@@ -1073,6 +1076,58 @@ async function sendWebGroupActivity(session,actionName,body,result){
       (result.targetName?' *'+String(result.targetName)+'*':'')+
       (Number(body.amount||0)>0?'\n💰 Valor: *'+brl(body.amount)+'*':'')+'.'
     mentions=[me,result.targetJid].filter(Boolean)
+  }else if(actionName==='contract.accept'){
+    const c=result.contract||{}
+    text='📜 *CONTRATO ACEITO*\n👤 *'+meName+'* escolheu *'+String(c.title||result.contract_id||'Contrato Alpha')+'*.'+
+      '\n🎯 Objetivo: '+String(c.description||'Concluir a missão proposta')+
+      '\n📊 Progresso: *0/'+Number(result.target||c.target||1)+'*'+
+      '\n💰 Recompensa: *'+brl(result.reward_cash??c.cash??0)+'*'+
+      '\n✨ XP: *+'+Number(result.reward_xp??c.xp??0).toLocaleString('pt-BR')+'*'
+    mentions=[me]
+  }else if(actionName==='contract.claim'){
+    text='🎁 *CONTRATO RESGATADO*\n👤 *'+meName+'* concluiu *'+String(result.contract_id||'Contrato Alpha')+'*.'+
+      '\n💰 Recebeu: *'+brl(result.reward_cash||0)+'*'+
+      '\n✨ EXP: *+'+Number(result.reward_xp||0).toLocaleString('pt-BR')+'*'+
+      (result.reward_item?'\n🎁 Item: *'+String(await webItemName(result.reward_item,result.reward_item))+'*':'')
+    mentions=[me]
+  }else if(actionName==='game.rps'){
+    const labels={pedra:'🪨 Pedra',papel:'📄 Papel',tesoura:'✂️ Tesoura'}
+    const results={vitoria:'🏆 VITÓRIA',derrota:'❌ DERROTA',empate:'🤝 EMPATE'}
+    text='✊✋✌️ *PEDRA, PAPEL E TESOURA*\n👤 *'+meName+'*'+
+      '\n🎮 Escolheu: *'+String(labels[result.choice]||result.choice||'?')+'*'+
+      '\n🤖 Bot: *'+String(labels[result.bot]||result.bot||'?')+'*'+
+      '\n📌 Resultado: *'+String(results[result.result]||result.result||'Não informado')+'*'
+    mentions=[me]
+  }else if(actionName==='pet.expedition.start'){
+    text='🧭🐾 *EXPEDIÇÃO INICIADA*\n👤 *'+meName+'* enviou *'+String(result.pet_name||'um pet')+'*'+
+      '\n⏳ Duração: *'+Number(result.hours||body.hours||0)+'h*'+
+      '\n💰 Recompensa prevista: *'+brl(result.cash_reward||0)+'*'+
+      '\n✨ XP Pet previsto: *+'+Number(result.pet_xp||0).toLocaleString('pt-BR')+'*'
+    mentions=[me]
+  }else if(actionName==='pet.expedition.resolve'){
+    const rows=Array.isArray(result)?result:[]
+    if(!rows.length) text=null
+    else{
+      const cash=rows.reduce((n,x)=>n+Number(x.cash||0),0)
+      const xp=rows.reduce((n,x)=>n+Number(x.xp||0),0)
+      text='🏕️🐾 *EXPEDIÇÃO CONCLUÍDA*\n👤 *'+meName+'* resgatou *'+rows.length+' pet(s)*.'+
+        '\n💰 Dinheiro: *+'+brl(cash)+'*'+
+        '\n✨ XP Pet: *+'+xp.toLocaleString('pt-BR')+'*'+
+        '\n🐾 '+rows.slice(0,5).map(p=>String(p.name||'Pet')+' (Lv.'+Number(p.level||1)+')').join(' • ')
+    }
+    mentions=[me]
+  }else if(actionName==='relic.equip'){
+    const name=String(result?.name||'Insígnia')
+    text='⚜️ *INSÍGNIA ATIVA*\n👤 *'+meName+'* equipou *'+name+'*.'+
+      (result.effect?'\n✨ Bônus: '+String(result.effect):'')
+    mentions=[me]
+  }else if(actionName==='relic.unequip'){
+    text='⚜️ *INSÍGNIA DESEQUIPADA*\n👤 *'+meName+'* removeu sua insígnia ativa.'
+    mentions=[me]
+  }else if(actionName==='item.sellBatch'){
+    text='💰 *VENDA EM LOTE — '+meName+'*\n📦 Itens vendidos: *'+Number(result.totalUnits||0)+'*'+
+      '\n💵 Recebeu: *'+brl(result.total||0)+'*'
+    mentions=[me]
   }else if(actionName.startsWith('loan.')){
     const labels={'loan.offer':'ofereceu um empréstimo para','loan.accept':'aceitou um empréstimo','loan.reject':'recusou um empréstimo','loan.pay':'pagou um empréstimo'}
     text='💳 *EMPRÉSTIMO*\n*'+meName+'* '+String(labels[actionName]||'realizou uma ação de empréstimo')+
@@ -1170,6 +1225,17 @@ async function runAction(session,name,body={}){
     case 'npc.buy': return buyNpcShopItem(jid,String(body.npcId||''),positiveInt(body.number,'Oferta',99))
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
+    case 'item.sellBatch': {
+      const selections=body.selections
+      if(!Array.isArray(selections)||selections.length<1||selections.length>50)throw new Error('Lote de venda inválido.')
+      if(new Set(selections.map(x=>String(x?.itemId||''))).size!==selections.length)throw new Error('Não repita um item no mesmo lote.')
+      const itemIds=selections.map(x=>String(x?.itemId||''))
+      const {rows}=await db.query('SELECT id,rarity,sellable FROM items WHERE id=ANY($1::text[])',[itemIds])
+      if(rows.length!==itemIds.length || rows.some(item=>item.sellable===false || item.rarity==='legendary' || item.rarity==='event'))throw new Error('A venda em lote só aceita itens não lendários e vendáveis.')
+      return sellItemsBatch(jid,selections)
+    }
+    case 'relic.equip': return selectRelic(jid,String(body.itemId||''))
+    case 'relic.unequip': return selectRelic(jid,'nenhuma')
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
     case 'item.upgrade': return upgradeEquipment(jid,String(body.itemId||''),body.targetLevel==null?null:positiveInt(body.targetLevel,'Nível',10),body.sourceLevel==null?null:positiveInt(body.sourceLevel,'Nível de origem',9))
     case 'item.forge.list': return listStarForgeWeapons(jid)
@@ -1413,6 +1479,10 @@ export async function handleWebApi(req,res){
       return true
     }
 
+    if(req.method==='GET' && url.pathname==='/api/v1/me/relics'){
+      json(res,200,{ok:true,data:await relicStatus(session.jid)})
+      return true
+    }
     if(req.method==='GET' && url.pathname==='/api/v1/me/contracts'){
       json(res,200,{ok:true,data:await getAlphaContractBoard(session.jid)})
       return true
