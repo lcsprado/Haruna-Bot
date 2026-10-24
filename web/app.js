@@ -2306,7 +2306,7 @@ function lootRewardIsPotion(item){
 function lootSafeSellQty(item){
   // Only items from the current opening are candidates. Respect all existing
   // equipped, bound, forged and already upgraded copies in the inventory.
-  if(!item || !item.itemId || lootRewardIsPotion(item)) return 0;
+  if(!item || !item.itemId) return 0;
   if(['legendary','event'].includes(String(item.rarity||'').toLowerCase()) || String(item.itemId).startsWith('insignia_')) return 0;
   const inv=(ui.data?.inventory||[]).find(r=>r.item_id===item.itemId);
   if(!inv || inv.sellable===false || ['legendary','event'].includes(String(inv.rarity||'').toLowerCase()))return 0;
@@ -2374,7 +2374,7 @@ function lootRevealModal(){
     return '<div class="loot-reward '+rarityClass(it.rarity)+'">'+art+
       '<div class="loot-reward-copy"><div class="tag-row"><span class="tag '+esc(it.rarity)+'">'+esc(rarityLabel(it.rarity))+'</span><span class="tag">x'+num(it.qty||1)+'</span></div>'+
       '<h3>'+esc(it.name||it.itemId)+'</h3>'+
-      '<p>'+(potion?'🧪 Consumível protegido.':String(it.rarity)==='legendary'?'🌟 Lendário protegido.':qty>0?'📦 Recompensa creditada; escolha guardar ou vender.':'🔒 Item protegido ou indisponível para venda.')+'</p>'+
+      '<p>'+(String(it.rarity)==='legendary'?'🌟 Lendário protegido.':qty>0?'📦 Recompensa creditada; escolha guardar ou vender.':potion?'🧪 Consumível guardado no inventário.':'🔒 Item protegido ou indisponível para venda.')+'</p>'+
       '</div><div class="loot-actions">'+
       (qty>0?'<button class="btn danger" data-loot-sell="'+esc(it.itemId)+'" data-loot-sell-qty="'+qty+'"'+disabled+'>Vender '+qty+' • '+money(Number(it.sellUnit||0)*qty)+'</button>':'')+
       '<button class="btn good" data-loot-keep'+disabled+'>Guardar</button>'+
@@ -2389,8 +2389,8 @@ function lootRevealModal(){
       '<h2>Você ganhou!</h2>'+
       '<p class="muted">'+esc(r.boxName||'Caixa')+' • '+num(r.opened||1)+' aberta(s)</p>'+
       (utility.length?'<div class="loot-utility">'+utility.join('')+'</div>':'')+
-      '<div class="loot-batch-panel"><p>As recompensas já foram creditadas ao inventário. Você decide quais vender. Lendários, insígnias, consumíveis e cópias protegidas ficam guardados.</p>'+
-      (totalCandidates?'<button class="btn danger loot-batch-button" data-loot-sell-batch'+disabled+'>💰 Vender '+totalCandidates+' não lendário(s) • '+money(estimatedValue)+'</button>':'<span class="tag">Nenhuma recompensa elegível para venda em lote</span>')+
+      '<div class="loot-batch-panel"><p>As recompensas já foram creditadas ao inventário. Você decide quais vender. Lendários, insígnias e cópias protegidas ficam guardados. Consumíveis vendáveis também podem ser incluídos.</p>'+
+      (totalCandidates?'<button class="btn danger loot-batch-button" data-loot-sell-batch'+disabled+'>💰 Vender '+totalCandidates+' item(ns) exceto lendários • '+money(estimatedValue)+'</button>':'<span class="tag">Nenhuma recompensa elegível para venda em lote</span>')+
       '</div>'+
       '<div class="loot-rewards">'+rewards+'</div>'+empty+sale+
       '<button class="btn primary loot-close-main" data-loot-keep'+disabled+'>Guardar restantes e continuar</button>'+
@@ -2593,7 +2593,7 @@ function bind(){
     const entries=lootSellCandidates();
     if(!entries.length)return toast('Não há itens elegíveis para vender.');
     const units=entries.reduce((n,it)=>n+it.qty,0);
-    if(confirm('Vender '+units+' recompensa(s) não lendária(s)? Insígnias, lendários, consumíveis, itens equipados e melhorias ficam protegidos.')){
+    if(confirm('Vender '+units+' recompensa(s) não lendária(s)? Insígnias, lendários, itens equipados e melhorias ficam protegidos.')){
       await sellLootSelection(entries.map(it=>({itemId:it.itemId,qty:it.qty})));
     }
   });
