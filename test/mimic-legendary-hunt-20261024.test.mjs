@@ -4,17 +4,17 @@ import {readFileSync} from 'node:fs'
 import {MIMIC_EVENT,mimicOutcome} from '../src/neon/mimic-hunt.js'
 const code=readFileSync(new URL('../src/neon/mimic-hunt.js',import.meta.url),'utf8')
 const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
-test('15h–17h de 24/10/2026, 60 caçadas com cooldown de 2 minutos',()=>{
+test('15h–16h de 24/10/2026, 30 caçadas com cooldown de 2 minutos',()=>{
  assert.equal(new Date(MIMIC_EVENT.startsAt).toISOString(),'2026-10-24T18:00:00.000Z')
- assert.equal(new Date(MIMIC_EVENT.endsAt).toISOString(),'2026-10-24T20:00:00.000Z')
+ assert.equal(new Date(MIMIC_EVENT.endsAt).toISOString(),'2026-10-24T19:00:00.000Z')
  assert.equal(MIMIC_EVENT.cooldownMs,120000)
- assert.equal(MIMIC_EVENT.maxHunts,60)
+ assert.equal(MIMIC_EVENT.maxHunts,30)
 })
-test('maximum prize 1.49m before ranking; 1.79m for first',()=>{
+test('maximum prize 1.07m before ranking; 1.37m for first',()=>{
  assert.equal(MIMIC_EVENT.milestones.reduce((s,m)=>s+m.cash,0),650000)
- assert.equal(MIMIC_EVENT.maxHunts*6000+650000,1010000)
- assert.equal(MIMIC_EVENT.maxHunts*14000+650000,1490000)
- assert.equal(MIMIC_EVENT.maxHunts*14000+650000+MIMIC_EVENT.rankCash[0],1790000)
+ assert.equal(MIMIC_EVENT.maxHunts*6000+650000,830000)
+ assert.equal(MIMIC_EVENT.maxHunts*14000+650000,1070000)
+ assert.equal(MIMIC_EVENT.maxHunts*14000+650000+MIMIC_EVENT.rankCash[0],1370000)
  assert.deepEqual(MIMIC_EVENT.rankCash,[300000,200000,100000])
 })
 test('RNG distribution sums correctly and rarity point increases',()=>{
@@ -45,4 +45,27 @@ test('titles visible in textual profile and per-group announcements',()=>{
  assert.match(index,/\$\{mimicTitle\?/)
  assert.match(code,/await sock\.sendMessage\(group\.chat_jid,\{text:msg\}\)/)
  assert.match(code,/mimic_notice:/)
+})
+
+test('novos fragmentos: comum 5, raro 8, épico 14, dourado 30',()=>{
+ assert.equal(mimicOutcome(9999).fragments,5)
+ assert.equal(mimicOutcome(3199).fragments,8)
+ assert.equal(mimicOutcome(999).fragments,14)
+ assert.equal(mimicOutcome(0).fragments,30)
+})
+test('reconciliação única de jogadores anteriores e 40% de chance na lendária',()=>{
+ assert.match(code,/mimic_frag_rebalance_20261024_v2/)
+ assert.match(code,/WITH claim AS \(/)
+ assert.match(code,/FROM claim/)
+ assert.match(code,/GREATEST\(0,[\s\S]*?\*4\+/)
+ assert.match(code,/const success=randomInt\(100\)<40/)
+ assert.match(code,/s\.legendaryTries=Number\(old\.legendaryTries\|\|0\)\+1/)
+ assert.match(code,/await giveItem\(c,jid,'caixa_epica',2\)/)
+ assert.match(code,/cost=legendary\?120:epic\?25:10/)
+ assert.match(code,/if\(now<MIMIC_EVENT\.endsAt\)void announce\(sock,'update'\)/)
+})
+test('metas acessíveis antes das 16h e limite de 30 caçadas',()=>{
+ assert.deepEqual(MIMIC_EVENT.milestones.map(x=>x.hunts),[10,20,25,30])
+ assert.equal(MIMIC_EVENT.milestones.find(x=>x.hunts===20).box,'caixa_epica')
+ assert.equal(MIMIC_EVENT.milestones.find(x=>x.hunts===30).box,'titulo_cacador_mimics_20261024')
 })

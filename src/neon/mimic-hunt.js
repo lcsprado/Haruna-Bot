@@ -94,6 +94,36 @@ export async function initMimic(){
      ON CONFLICT(id) DO NOTHING
    `,[id,name,description])
   }
+  // Ajuste global, único e atômico: recompõe a diferença dos fragmentos
+  // ganhos antes da edição curta, inclusive se jogador já efetuou trocas.
+  // A marca no banco evita crédito em duplicidade após reconexões/deploys.
+  const adjusted=await db.query(`
+    WITH claim AS (
+     INSERT INTO trevo_settings(key,value,updated_at)
+     VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+     ON CONFLICT(key) DO NOTHING RETURNING key
+    ), changed AS (
+     UPDATE mimic_hunt_sessions s SET
+      state=jsonb_set(s.state,'{fragments}',to_jsonb(
+       GREATEST(0,COALESCE((s.state->>'fragments')::int,0))+
+       GREATEST(0,
+        COALESCE((s.state->>'hunts')::int,0)
+        -COALESCE((s.state->>'rare')::int,0)
+        -COALESCE((s.state->>'epic')::int,0)
+        -COALESCE((s.state->>'golden')::int,0)
+       )*4+
+       COALESCE((s.state->>'rare')::int,0)*6+
+       COALESCE((s.state->>'epic')::int,0)*9+
+       COALESCE((s.state->>'golden')::int,0)*20
+      ),true),
+      updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+     FROM claim
+     WHERE s.event_key=$3
+     RETURNING s.jid
+    )
+    SELECT COUNT(*)::int AS adjusted FROM changed
+  `,['mimic_frag_rebalance_20261024_v2',JSON.stringify({appliedAt:Date.now(),old:[1,2,5,10],new:[5,8,14,30]}),MIMIC_EVENT.id])
+  console.log('[MIMIC HUNT] fragmentos anteriores recompostos',JSON.stringify({players:Number(adjusted.rows[0]?.adjusted||0)}))
  })().catch(err=>{initPromise=null;throw err})
  await initPromise
 }
