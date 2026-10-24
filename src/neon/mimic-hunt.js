@@ -12,16 +12,21 @@ export const MIMIC_EVENT={
  rankCash:[300000,200000,100000],
  milestones:[
   {hunts:10,cash:100000,box:'caixa_rara',qty:2,label:'🎯 10 caçadas'},
-  {hunts:25,cash:200000,box:'caixa_epica',qty:2,label:'⚔️ 25 caçadas'},
-  {hunts:45,cash:350000,box:'caixa_lendaria',qty:1,label:'🌟 45 caçadas'},
-  {hunts:60,cash:0,box:'titulo_cacador_mimics_20261024',qty:1,label:'🏅 60 caçadas'}
+  {hunts:20,cash:200000,box:'caixa_epica',qty:2,label:'⚔️ 20 caçadas'},
+  {hunts:30,cash:0,box:'insignia_cacador_mimics_20261024',qty:1,label:'🏅 30 caçadas'},
+  {hunts:45,cash:0,box:'caixa_lendaria',qty:1,label:'🌟 45 caçadas'},
+  {hunts:60,cash:350000,box:'titulo_mimics_supremo_20261024',qty:1,label:'👑 60 caçadas'}
  ]
 }
 const FMT=n=>Number(n||0).toLocaleString('pt-BR')
 const prettyName=v=>String(v||'Caçador').replace(/[\r\n*_~]/g,' ').replace(/\s+/g,' ').trim().slice(0,40)||'Caçador'
 const remaining=ms=>Math.max(0,Math.ceil(ms/1000))
 const TITLES=[
- ['titulo_cacador_mimics_20261024','👹 Caçador Lendário de Mimics','Visual cosmético obtido ao concluir 60 caçadas no evento de 24/10/2026.'],
+ ['insignia_cacador_mimics_20261024','👹 Insígnia Caçador Lendário','Conquiste 30 caçadas para equipar em !reliquias: +2% dano Raid/Boss (sem PvP).'],
+ ['titulo_mimics_supremo_20261024','👑 Caçador Supremo dos Mimics','Título cosmético de prestígio exclusivo das 60 caçadas de 24/10/2026.'],
+ ['insignia_rei_mimics_20261024','👑 Insígnia Rei dos Mimics','Campeão global: +5% dano Raid/Boss, +2 p.p. CRIT Boss (sem PvP).'],
+ ['insignia_mestre_mimics_20261024','🥈 Insígnia Mestre dos Mimics','Vice-campeão global: +4% dano Raid/Boss, +1 p.p. CRIT Boss (sem PvP).'],
+ ['insignia_senhor_baus_mimics_20261024','🥉 Insígnia Senhor dos Baús','Terceiro colocado global: +3% dano Raid/Boss (sem PvP).'],
  ['titulo_mimic_campiao_20261024','👑 Rei dos Mimics','Título cosmético do primeiro colocado no ranking global da edição de 24/10/2026.'],
  ['titulo_mimic_vice_20261024','🥈 Mestre dos Mimics','Título cosmético do segundo colocado na edição de 24/10/2026.'],
  ['titulo_mimic_terceiro_20261024','🥉 Senhor dos Baús','Título cosmético do terceiro colocado na edição de 24/10/2026.']
@@ -29,32 +34,51 @@ const TITLES=[
 const INTRO='👹💰 *INVASÃO DOS MIMICS — CAÇADA LENDÁRIA!*\n'
  +'━━━━━━━━━━━━━━━━━━\n'
  +'⏰ *HOJE, 15h–17h* (Brasília)\n'
- +'🕹️ *!m* (atalho de !mimic) — caçar a cada *2 minutos* (máximo 60).\n'
- +'💰 *R$ 6.000–14.000 por caça* + ✨ *100–250 XP*.\n'
- +'🎯 *10 caçadas*: R$ 100 mil + 2 Caixas Raras\n'
- +'⚔️ *25 caçadas*: R$ 200 mil + 2 Caixas Épicas\n'
- +'🌟 *45 caçadas*: R$ 350 mil + 1 Caixa Lendária\n'
- +'🏅 *60 caçadas*: título cosmético no perfil\n'
- +'👑 *Ranking global*: R$ 300 mil / 200 mil / 100 mil para Top 3.\n'
- +'💎 Mimics raros dão fragmentos; Dourado pode dar Caixa Lendária extra (1 por jogador).\n'
- +'🧩 *!mimic trocar rara* (10 fragmentos) ou *epica* (25).\n'
- +'📊 *!mimic status* • *!mimic ranking*\n'
+ +'🕹️ *!m* — cace a cada 2 minutos (máx. 60).\n'
+ +'💰 *R$ 6–14 mil* e *100–250 XP* por caça.\n'
+ +'🎁 10: R$ 100 mil + 2 Caixas Raras\n'
+ +'🟣 20: R$ 200 mil + 2 Caixas Épicas\n'
+ +'⚜️ 30: Insígnia Caçador Lendário *+2% dano Boss/Raid*\n'
+ +'🌟 45: 1 Caixa Lendária garantida\n'
+ +'👑 60: R$ 350 mil + título Caçador Supremo\n'
+ +'🧩 Drops maiores: Comum 5 • Raro 8 • Épico 14 • Dourado 30 fragmentos.\n'
+ +'🎲 Mimic Dourado ainda pode sortear Caixa Lendária extra (1 por jogador).\n'
+ +'📦 Troque 10 fragmentos por Caixa Rara ou 25 por Caixa Épica (máx. 2 de cada).\n'
+ +'🏆 Ranking global: R$ 300 mil / 200 mil / 100 mil + insígnias exclusivas.\n'
+ +'⚔️ Apenas 1 insígnia equipada via *!reliquias*; sem PvP.\n'
+ +'📊 *!m status* • *!m ranking* • *!m trocar epica*\n'
  +'━━━━━━━━━━━━━━━━━━\n'
- +'🌐 *Os dois grupos disputam o mesmo ranking.*\n'
- +'⚠️ Sem bônus permanentes de atributos e sem risco de perder dinheiro.'
+ +'🌐 Todos os grupos competem no mesmo ranking.'
+const UPDATE='👹⚡ *MIMICS — PRÊMIOS ATUALIZADOS!*\n'
+ +'━━━━━━━━━━━━━━━━━━\n'
+ +'⏰ *MANTIDO ATÉ ÀS 17h* (Brasília).\n'
+ +'⚔️ *!m* a cada 2 minutos, limite 60.\n'
+ +'🧩 Fragmentos por Mimic: 🟤 *5* • 🔵 *8* • 🟣 *14* • 🌟 *30*.\n'
+ +'✅ As caçadas anteriores recebem a diferença de fragmentos, sem perder recompensas.\n'
+ +'🎁 *10 caçadas*: R$ 100 mil + 2 Raras\n'
+ +'🟣 *20 caçadas*: R$ 200 mil + 2 Épicas\n'
+ +'⚜️ *30 caçadas*: Insígnia Caçador Lendário *+2% Boss/Raid*\n'
+ +'🌟 *45 caçadas*: 1 Caixa Lendária garantida\n'
+ +'👑 *60 caçadas*: R$ 350 mil + título exclusivo de prestígio\n'
+ +'🏆 Ranking global: prêmios em dinheiro + insígnias de até *+5% dano Boss/Raid*.\n'
+ +'📦 Trocas: *!m trocar epica* (25 fragments) • *!m trocar rara* (10 fragments).\n'
+ +'⚙️ Insígnias equipáveis em *!reliquias*, uma por vez, sem PvP.\n'
+ +'━━━━━━━━━━━━━━━━━━\n'
+ +'✅ Caçadas e inventários já existentes preservados.'
 const END='🏁👹 *INVASÃO DOS MIMICS — ENCERRADA!*\n'
  +'⏰ A caçada terminou às *17h* (Brasília).\n'
- +'🎁 Prêmios e ranking finalizados pelo Aiven.\n'
- +'⚔️ Próximo evento: *Caçada de Sábado — 19h às 21h*, +50% XP em Raid 50/60/65/70.'
+ +'🎁 Ranking global liquidado; prêmio das metas creditado ao longo do evento.\n'
+ +'⚜️ Equipe sua insígnia conquistada usando *!reliquias*.\n'
+ +'⚔️ Próximo evento: Caçada de Sábado das 19h às 21h (+50% XP nas Raids 50/60/65/70).'
 const BOUND='━━━━━━━━━━━━━━━━━━'
 let initPromise=null,timers=[],closing=false
 export function mimicOutcome(roll){
  const r=Number(roll)
  if(!Number.isInteger(r)||r<0||r>9999)throw Error('Sorteio inválido')
- if(r<200)return {kind:'dourado',label:'🌟 MIMIC DOURADO',points:100,fragments:10}
- if(r<1000)return {kind:'epico',label:'🟣 MIMIC ÉPICO',points:45,fragments:5}
- if(r<3200)return {kind:'raro',label:'🔵 MIMIC RARO',points:20,fragments:2}
- return {kind:'comum',label:'🟤 MIMIC COMUM',points:10,fragments:1}
+ if(r<200)return {kind:'dourado',label:'🌟 MIMIC DOURADO',points:100,fragments:30}
+ if(r<1000)return {kind:'epico',label:'🟣 MIMIC ÉPICO',points:45,fragments:14}
+ if(r<3200)return {kind:'raro',label:'🔵 MIMIC RARO',points:20,fragments:8}
+ return {kind:'comum',label:'🟤 MIMIC COMUM',points:10,fragments:5}
 }
 export async function initMimic(){
  if(!initPromise)initPromise=(async()=>{
@@ -77,6 +101,32 @@ export async function initMimic(){
      ON CONFLICT(id) DO NOTHING
    `,[id,name,description])
   }
+  // Recalcula somente a diferença do drop antigo, uma única vez no banco.
+  // A marca da compensação e a atualização são parte da mesma instrução SQL.
+  const retro=await db.query(`
+    WITH claim AS (
+      INSERT INTO trevo_settings(key,value,updated_at)
+      VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+      ON CONFLICT(key) DO NOTHING RETURNING key
+    ), adjusted AS (
+      UPDATE mimic_hunt_sessions s SET
+      state=jsonb_set(s.state,'{fragments}',to_jsonb(
+        GREATEST(0,COALESCE((s.state->>'fragments')::int,0))+
+        GREATEST(0,
+          COALESCE((s.state->>'hunts')::int,0)-
+          COALESCE((s.state->>'rare')::int,0)-
+          COALESCE((s.state->>'epic')::int,0)-
+          COALESCE((s.state->>'golden')::int,0))*4+
+        COALESCE((s.state->>'rare')::int,0)*6+
+        COALESCE((s.state->>'epic')::int,0)*9+
+        COALESCE((s.state->>'golden')::int,0)*20
+      ),true),
+      updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+      FROM claim WHERE s.event_key=$3
+      RETURNING s.jid
+    ) SELECT COUNT(*)::int AS adjusted FROM adjusted
+  `,['mimic_frg_rebalance_20261024_final_v3',JSON.stringify({old:[1,2,5,10],new:[5,8,14,30]}),MIMIC_EVENT.id])
+  console.log('[MIMIC HUNT] fragmentos compensados',Number(retro.rows[0]?.adjusted||0))
  })().catch(err=>{initPromise=null;throw err})
  await initPromise
 }
@@ -104,14 +154,14 @@ function emptyState(name){return {
 function statusMsg(s,rank){
  const done=s.hunts>=MIMIC_EVENT.maxHunts
  const now=Date.now(),cool=Math.max(0,Number(s.nextAt||0)-now)
- const progress=[10,25,45,60].filter(n=>Number(s.hunts)>=n).length
+ const progress=[10,20,30,45,60].filter(n=>Number(s.hunts)>=n).length
  return '👹 *INVASÃO DOS MIMICS — SEU PROGRESSO*\n'+BOUND+'\n'
  +'🎯 Caçadas: *'+s.hunts+'/60*\n'
  +'🏆 Pontos: *'+FMT(s.points)+'*'+(rank?(' • Ranking: *'+rank+'º*'):'')+'\n'
  +'💰 Dinheiro ganho: *R$ '+FMT(s.cash)+'*\n'
  +'✨ XP ganho: *'+FMT(s.xp)+'*\n'
  +'🧩 Fragmentos: *'+FMT(s.fragments)+'*\n'
- +'🎁 Metas conquistadas: *'+progress+'/4*\n'
+ +'🎁 Metas conquistadas: *'+progress+'/5*\n'
  +'💎 Raros '+s.rare+' • Épicos '+s.epic+' • Dourados '+s.golden+'\n'
  +'📦 Trocas: Raras '+s.rareTrades+'/2 • Épicas '+s.epicTrades+'/2\n'
  +BOUND+'\n'
@@ -228,7 +278,7 @@ async function action(jid,name,args=[]){
    s.cash+=m.cash
    message+='\n🎯 *META CONCLUÍDA — '+m.hunts+'/60!*\n'
     +(m.cash?'💰 *+R$ '+FMT(m.cash)+'*\n':'')
-    +'🎁 *'+m.qty+'× '+(m.hunts===60?'Título Caçador Lendário':m.box==='caixa_rara'?'Caixa Rara':m.box==='caixa_epica'?'Caixa Épica':'Caixa Lendária')+'*\n'
+    +'🎁 *'+m.qty+'× '+(m.hunts===30?'Insígnia Caçador Lendário':m.hunts===60?'Título Caçador Supremo':m.box==='caixa_rara'?'Caixa Rara':m.box==='caixa_epica'?'Caixa Épica':'Caixa Lendária')+'*\n'
   }
   if(rarity.kind==='epico'&&s.epicDrops<2 && randomInt(100)<12){
    await giveItem(c,jid,'caixa_epica')
@@ -297,7 +347,7 @@ export async function finalizeMimics(){
     LIMIT 3
   `,[MIMIC_EVENT.id])
   const sorted=[...rows].sort(sortByScore)
-  const titles=['titulo_mimic_campiao_20261024','titulo_mimic_vice_20261024','titulo_mimic_terceiro_20261024']
+  const titles=['insignia_rei_mimics_20261024','insignia_mestre_mimics_20261024','insignia_senhor_baus_mimics_20261024']
   const winners=[]
   for(let i=0;i<sorted.length;i++){
    const p=sorted[i],amount=MIMIC_EVENT.rankCash[i]
@@ -334,7 +384,7 @@ async function announce(sock,phase){
   const board=winners.length?'\n\n🏆 *TOP 3 GLOBAL*\n'+winners.map(p=>
    (p.place===1?'🥇':p.place===2?'🥈':'🥉')+' *'+p.name+'* — '+FMT(p.points)
     +' pontos • R$ '+FMT(p.cash)).join('\n'):'\n\n🏆 Sem caçadas registradas.'
-  const msg=phase==='open'?INTRO:END+board
+  const msg=phase==='open'?INTRO:phase==='update'?UPDATE:END+board
   let sent=0,failed=0,already=0
   for(const group of groups){
    const key='mimic_notice:'+MIMIC_EVENT.id+':'+phase+':'+group.chat_jid
@@ -368,7 +418,8 @@ export async function scheduleMimics(sock){
   t.unref?.()
   timers.push(t)
  }
- if(now<MIMIC_EVENT.endsAt)later(MIMIC_EVENT.startsAt,'open')
+ if(now<MIMIC_EVENT.startsAt)later(MIMIC_EVENT.startsAt,'open')
+ else if(now<MIMIC_EVENT.endsAt)void announce(sock,'update')
  later(MIMIC_EVENT.endsAt+15000,'close')
  console.log('[MIMIC HUNT] agendado',JSON.stringify({start:'15:00',end:'17:00',levels:'livre'}))
 }

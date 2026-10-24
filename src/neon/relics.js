@@ -1,6 +1,11 @@
 import {db,ensureUser} from './db.js'
 import {weeklyInsigniaFromId} from './weekly-boss-insignias.js'
 const RELICS={
+  insignia_cacador_mimics_20261024:{name:'👹 Insígnia Caçador Lendário',effect:'👹 +2% dano contra Bosses e Raids (sem PvP)',boss:0.02,raidAttack:0.02},
+  insignia_senhor_baus_mimics_20261024:{name:'🥉 Insígnia Senhor dos Baús',effect:'🥉 +3% dano contra Bosses e Raids (sem PvP)',boss:0.03,raidAttack:0.03},
+  insignia_mestre_mimics_20261024:{name:'🥈 Insígnia Mestre dos Mimics',effect:'🥈 +4% dano Boss/Raid e +1 p.p. CRIT Boss (sem PvP)',boss:0.04,raidAttack:0.04,bossCrit:0.01},
+  insignia_rei_mimics_20261024:{name:'👑 Insígnia Rei dos Mimics',effect:'👑 +5% dano Boss/Raid e +2 p.p. CRIT Boss (sem PvP)',boss:0.05,raidAttack:0.05,bossCrit:0.02},
+
   insignia_nem_cirurgia_derrubou_lenda:{name:'Insígnia Nem a Cirurgia Derrubou a Lenda',effect:'🦶 +1% dano contra Bosses e Raids (sem PvP)',boss:0.01,raidAttack:0.01},
   insignia_matador_titas:{name:'Insígnia Matador de Titãs',effect:'⚔️ +1% dano Boss/Raid (sem PvP)',boss:0.01,raidAttack:0.01},
   insignia_eco_ancestral:{name:'Insígnia do Eco Ancestral',effect:'🪨 +1% dano contra Bosses e Raids (sem PvP)',boss:0.01,raidAttack:0.01},
