@@ -590,7 +590,8 @@ async function publicCatalog(){
   }))
   return {
     generatedAt:now(),
-    pets:petCatalog(),
+    // The style comes from the same server rules used by petTeamSynergy.
+    pets:petCatalog().map(p=>({...p,teamStyle:petStyleLabel(p.species)})),
     raids:getRaidCatalog(),
     relics:relicCatalog,
     shop,
@@ -1476,6 +1477,39 @@ export async function handleWebApi(req,res){
     if(req.method==='GET' && url.pathname==='/api/v1/me/bootstrap'){
       const data=await playerBootstrap(session)
       json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/pet-team-preview'){
+      // Read-only preview: no equipment, pet state, inventory or wallets changed.
+      const raw=String(url.searchParams.get('ids')||'')
+      const ids=raw?raw.split(',').map(Number):[]
+      if(ids.length>3||ids.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(ids).size!==ids.length){
+        json(res,400,{ok:false,error:'Seleção de pets inválida.'})
+        return true
+      }
+      if(!ids.length){
+        json(res,200,{ok:true,data:{synergy:null,styles:[],selected:0}})
+        return true
+      }
+      const {rows}=await db.query(
+        'SELECT id,species FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[])',
+        [session.jid,ids]
+      )
+      if(rows.length!==ids.length){
+        json(res,400,{ok:false,error:'Um dos pets não está na sua coleção.'})
+        return true
+      }
+      const ordered=ids.map(id=>rows.find(p=>Number(p.id)===id))
+      if(new Set(ordered.map(p=>String(p.species))).size!==ordered.length){
+        json(res,400,{ok:false,error:'Selecione espécies diferentes para a sinergia.'})
+        return true
+      }
+      json(res,200,{ok:true,data:{
+        synergy:petTeamSynergy(ordered),
+        styles:ordered.map(p=>petStyleLabel(p.species)),
+        selected:ordered.length
+      }})
       return true
     }
 
