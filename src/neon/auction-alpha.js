@@ -17,6 +17,8 @@ const AUCTION_PAUSED_FOR_AUDIT=false
 const START=Date.parse('2026-10-24T17:00:00-03:00')
 const END=Date.parse('2026-10-24T20:00:00-03:00')
 const DURATION=LOT_DURATION_MS
+// Exceção limitada a este evento; não modifica licenças nem libera outros comandos.
+const EVENT_GROUPS=new Set(['120363410230588690@g.us','120363429534634131@g.us'])
 const OPENING=100000
 const STEP=50000
 const SEAL_ITEM='selo_poder_5pct_alpha_20261019'
@@ -60,7 +62,7 @@ async function init(){
 }
 async function licensedGroups(){
   const groups=await listGroupLicenses(500)
-  return [...new Set(groups.filter(groupLicenseIsActive).map(g=>g.chat_jid).filter(j=>String(j).endsWith('@g.us')))]
+  return [...new Set([...groups.filter(groupLicenseIsActive).map(g=>g.chat_jid),...EVENT_GROUPS].filter(j=>String(j).endsWith('@g.us')))]
 }
 async function sendGroups(sock,msg,groups){
   for(const jid of groups){
@@ -171,9 +173,7 @@ async function tick(sock){
     if(now<START)return
     if(now>END+5*60*1000){if(timer){clearInterval(timer);timer=null};return}
     // Cria tabela de notificações e valida itens antes do primeiro acesso à fila.
-    console.log('[LEILAO SOMBRAS] primeiro tick', {now, start:START, end:END})
     await init()
-    console.log('[LEILAO SOMBRAS] inicializacao concluida')
     await flushAuctionBidNotices(db,sock,KEY,{limit:8})
     await warnAuctionDeliveryFailures(db,sock,KEY)
     if(now>END)return
@@ -228,7 +228,6 @@ async function tick(sock){
 export function startAuctionAlphaScheduler(sock){
   // Atualiza o socket após cada reconexão, sem criar um segundo polling.
   auctionSocket=sock
-  console.log('[LEILAO SOMBRAS] startAuctionAlphaScheduler', {now:Date.now(),start:START,end:END,paused:AUCTION_PAUSED_FOR_AUDIT})
   if(AUCTION_PAUSED_FOR_AUDIT){
     if(timer){clearInterval(timer);timer=null}
     console.log('[LEILAO OCULTO] pausado para auditoria — sem novos leiloes ou avisos')
@@ -261,7 +260,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     await reply('🔨 O Leilão Oculto acontece nos grupos.')
     return true
   }
-  if(!groupLicenseIsActive(await getGroupLicense(chat))){
+  if(!groupLicenseIsActive(await getGroupLicense(chat))&&!EVENT_GROUPS.has(chat)){
     await reply('🔒 É necessário ter licença ativa para participar.')
     return true
   }
