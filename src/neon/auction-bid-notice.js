@@ -18,5 +18,5 @@ export function crossGroupBidNotice({lot,totalLots,bidder,value,nextMinimum,ends
     '\n📈 Para superar: *'+fmt(nextMinimum)+'*'+
     '\n⏳ Encerra às *'+close+'* (Brasília)'+
     '\n📩 Dê seu lance: *!lance '+Number(nextMinimum)+'*'+
-    '\n🔒 O prêmio deste lote será revelado ao encerrar.'
+    '\n🔒 Prêmios continuam secretos até o fim do lote.'
 }
