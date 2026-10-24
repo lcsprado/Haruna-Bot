@@ -2300,40 +2300,88 @@ function renderLoans(){
 
 
 function lootRewardIsPotion(item){
-  const id=String(item&&item.itemId||'').toLowerCase();
+  const id=String(item?.itemId||'').toLowerCase();
   return id==='pocao_p'||id==='pocao_m'||id==='pocao_g'||id==='elixir_supremo'||id.startsWith('pocao_pet_')||id==='energetico_pet';
+}
+function lootSafeSellQty(item){
+  // Only items from the current opening are candidates. Respect all existing
+  // equipped, bound, forged and already upgraded copies in the inventory.
+  if(!item || !item.itemId || lootRewardIsPotion(item)) return 0;
+  if(['legendary','event'].includes(String(item.rarity||'').toLowerCase()) || String(item.itemId).startsWith('insignia_')) return 0;
+  const inv=(ui.data?.inventory||[]).find(r=>r.item_id===item.itemId);
+  if(!inv || inv.sellable===false || ['legendary','event'].includes(String(inv.rarity||'').toLowerCase()))return 0;
+  const stock=Math.max(0,Number(inv.quantity||0));
+  const reserved=Math.max(0,(inv.upgrade_distribution||[]).reduce((n,c)=>
+    n+((Number(c.level||1)>1||Number(c.stars||1)>1)?Number(c.quantity||0):0),0));
+  const keep=Math.max(reserved,inv.equipped?1:0,Math.max(0,stock-Number(inv.sellable_quantity??stock)));
+  return Math.max(0,Math.min(Number(item.qty||0),stock-keep,Number(inv.sellable_quantity??stock)));
+}
+function lootSellCandidates(){
+  const items=Array.isArray(ui.lootReveal?.items)?ui.lootReveal.items:[];
+  return items.map(it=>({...it,qty:lootSafeSellQty(it)})).filter(it=>it.qty>0);
+}
+function removeSoldLootEntries(sold){
+  const rows=Array.isArray(ui.lootReveal?.items)?ui.lootReveal.items:[];
+  for(const line of sold||[]){
+    const row=rows.find(x=>x.itemId===line.itemId);
+    if(!row)continue;
+    row.qty=Math.max(0,Number(row.qty||0)-Number(line.qty||0));
+  }
+  ui.lootReveal.items=rows.filter(x=>Number(x.qty||0)>0);
 }
 function setLootReveal(value){
   ui.lootReveal=value||null;
   document.body.classList.toggle('loot-open',Boolean(ui.lootReveal));
 }
 async function openLootBoxUI(boxId,qty){
+  if(ui.lootSaleBusy)return;
   toast('✨ Abrindo caixa...');
   const result=await doAction('item.box.open',{boxId,qty},{quiet:true});
   setLootReveal(result);
   render();
 }
+async function sellLootSelection(selections){
+  if(ui.lootSaleBusy || !ui.lootReveal || !selections.length)return;
+  ui.lootSaleBusy=true;
+  render();
+  try{
+    const result=await doAction('item.sellBatch',{selections},{quiet:true});
+    removeSoldLootEntries(result.sold);
+    ui.lootReveal.lastSale=result;
+    toast('💰 '+Number(result.totalUnits||0)+' item(ns) vendido(s) • '+money(result.total||0));
+  }catch(err){
+    toast('❌ Venda não concluída: '+err.message);
+  }finally{
+    ui.lootSaleBusy=false;
+    render();
+  }
+}
 function lootRevealModal(){
   const r=ui.lootReveal;
   if(!r) return '';
   const items=Array.isArray(r.items)?r.items:[];
+  const candidates=lootSellCandidates();
+  const totalCandidates=candidates.reduce((n,x)=>n+x.qty,0);
+  const estimatedValue=candidates.reduce((n,x)=>n+x.qty*Number(x.sellUnit||0),0);
+  const disabled=ui.lootSaleBusy?' disabled aria-disabled="true"':'';
   const utility=[];
   if(Number(r.cash||0)>0) utility.push('<div class="loot-auto"><span>💰 Dinheiro</span><strong>+'+money(r.cash)+'</strong><small>creditado automaticamente</small></div>');
   if(Number(r.exp||0)>0) utility.push('<div class="loot-auto"><span>⭐ EXP</span><strong>+'+num(r.exp)+'</strong><small>aplicado automaticamente</small></div>');
   const rewards=items.map(it=>{
     const potion=lootRewardIsPotion(it);
+    const qty=lootSafeSellQty(it);
     const art=itemArtMarkup({itemId:it.itemId,name:it.name,rarity:it.rarity,category:potion?'consumable':''});
     return '<div class="loot-reward '+rarityClass(it.rarity)+'">'+art+
-      '<div class="loot-reward-copy"><div class="tag-row"><span class="tag '+esc(it.rarity)+'">'+esc(it.rarity||'item')+'</span><span class="tag">x'+num(it.qty||1)+'</span></div>'+
+      '<div class="loot-reward-copy"><div class="tag-row"><span class="tag '+esc(it.rarity)+'">'+esc(rarityLabel(it.rarity))+'</span><span class="tag">x'+num(it.qty||1)+'</span></div>'+
       '<h3>'+esc(it.name||it.itemId)+'</h3>'+
-      (potion?'<p>🧪 Guardada automaticamente no inventário.</p>':'<p>O item já está no seu inventário. Você pode guardar ou vender agora.</p>')+
-      '</div>'+
-      '<div class="loot-actions">'+
-        (potion?'':'<button class="btn danger" data-loot-sell="'+esc(it.itemId)+'" data-loot-sell-qty="'+Number(it.qty||1)+'">Vender • '+money(Number(it.sellUnit||0)*Number(it.qty||1))+'</button>')+
-        '<button class="btn good" data-loot-keep>Guardar</button>'+
+      '<p>'+(potion?'🧪 Consumível protegido.':String(it.rarity)==='legendary'?'🌟 Lendário protegido.':qty>0?'📦 Recompensa creditada; escolha guardar ou vender.':'🔒 Item protegido ou indisponível para venda.')+'</p>'+
+      '</div><div class="loot-actions">'+
+      (qty>0?'<button class="btn danger" data-loot-sell="'+esc(it.itemId)+'" data-loot-sell-qty="'+qty+'"'+disabled+'>Vender '+qty+' • '+money(Number(it.sellUnit||0)*qty)+'</button>':'')+
+      '<button class="btn good" data-loot-keep'+disabled+'>Guardar</button>'+
       '</div></div>';
   }).join('');
-  const empty=!items.length&&!utility.length?'<div class="empty">A caixa foi aberta, mas não houve recompensa retornada pelo servidor.</div>':'';
+  const empty=!items.length&&!utility.length?'<div class="empty">Nenhum item pendente nesta abertura.</div>':'';
+  const sale=r.lastSale?'<div class="notice good loot-sale-summary">✅ Última venda desta abertura: '+num(r.lastSale.totalUnits||0)+' item(ns) • '+money(r.lastSale.total||0)+'</div>':'';
   return '<div class="loot-overlay" data-loot-close>'+
     '<section class="loot-modal" role="dialog" aria-modal="true" aria-label="Recompensa da caixa" onclick="event.stopPropagation()">'+
       '<div class="loot-burst">✨</div>'+
@@ -2341,8 +2389,11 @@ function lootRevealModal(){
       '<h2>Você ganhou!</h2>'+
       '<p class="muted">'+esc(r.boxName||'Caixa')+' • '+num(r.opened||1)+' aberta(s)</p>'+
       (utility.length?'<div class="loot-utility">'+utility.join('')+'</div>':'')+
-      '<div class="loot-rewards">'+rewards+'</div>'+empty+
-      '<button class="btn primary loot-close-main" data-loot-keep>Continuar</button>'+
+      '<div class="loot-batch-panel"><p>As recompensas já foram creditadas ao inventário. Você decide quais vender. Lendários, insígnias, consumíveis e cópias protegidas ficam guardados.</p>'+
+      (totalCandidates?'<button class="btn danger loot-batch-button" data-loot-sell-batch'+disabled+'>💰 Vender '+totalCandidates+' não lendário(s) • '+money(estimatedValue)+'</button>':'<span class="tag">Nenhuma recompensa elegível para venda em lote</span>')+
+      '</div>'+
+      '<div class="loot-rewards">'+rewards+'</div>'+empty+sale+
+      '<button class="btn primary loot-close-main" data-loot-keep'+disabled+'>Guardar restantes e continuar</button>'+
     '</section></div>';
 }
 
@@ -2530,12 +2581,21 @@ function bind(){
   document.querySelectorAll('[data-item-use]').forEach(x=>x.onclick=()=>doAction('item.use',{itemId:x.dataset.itemUse},{}));
   document.querySelectorAll('[data-box-open]').forEach(x=>x.onclick=()=>openLootBoxUI(x.dataset.boxOpen,1));
   document.querySelectorAll('[data-box-open-all]').forEach(x=>x.onclick=()=>openLootBoxUI(x.dataset.boxOpenAll,Number(x.dataset.boxQty||1)));
-  document.querySelectorAll('[data-loot-keep]').forEach(x=>x.onclick=()=>{setLootReveal(null);render();});
-  document.querySelectorAll('[data-loot-close]').forEach(x=>x.onclick=()=>{setLootReveal(null);render();});
+  document.querySelectorAll('[data-loot-keep]').forEach(x=>x.onclick=()=>{if(ui.lootSaleBusy)return;setLootReveal(null);render();});
+  document.querySelectorAll('[data-loot-close]').forEach(x=>x.onclick=()=>{if(ui.lootSaleBusy)return;setLootReveal(null);render();});
   document.querySelectorAll('[data-loot-sell]').forEach(x=>x.onclick=async()=>{
-    const itemId=x.dataset.lootSell,qty=Number(x.dataset.lootSellQty||1);
-    setLootReveal(null);
-    await doAction('item.sell',{itemId,qty},{success:'💰 Recompensa vendida.'});
+    const itemId=x.dataset.lootSell,qty=Number(x.dataset.lootSellQty||0);
+    if(qty>0 && confirm('Vender '+qty+' unidade(s) desta recompensa?')){
+      await sellLootSelection([{itemId,qty}]);
+    }
+  });
+  document.querySelectorAll('[data-loot-sell-batch]').forEach(x=>x.onclick=async()=>{
+    const entries=lootSellCandidates();
+    if(!entries.length)return toast('Não há itens elegíveis para vender.');
+    const units=entries.reduce((n,it)=>n+it.qty,0);
+    if(confirm('Vender '+units+' recompensa(s) não lendária(s)? Insígnias, lendários, consumíveis, itens equipados e melhorias ficam protegidos.')){
+      await sellLootSelection(entries.map(it=>({itemId:it.itemId,qty:it.qty})));
+    }
   });
   document.querySelectorAll('[data-lucky-open]').forEach(x=>x.onclick=()=>doAction('item.lucky.open',{qty:Number(x.dataset.luckyOpen||1)},{}));
   document.querySelectorAll('[data-sell-duplicates]').forEach(x=>x.onclick=()=>{
