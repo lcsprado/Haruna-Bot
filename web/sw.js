@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261024-relic-loot-activity-v1';
+const CACHE='alpha-rpg-pwa-20261024-pet-energy-v2';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
