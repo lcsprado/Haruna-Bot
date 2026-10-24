@@ -44,6 +44,7 @@ import {
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
+import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
@@ -1180,6 +1181,9 @@ async function startRaidServerRun(session,level){
 
 async function runAction(session,name,body={}){
   const jid=session.jid
+  if(name==='auction.bid')return placeAuctionWebBid({
+    chat:requireGroup(session),sender:jid,name:await playerDisplayName(jid),amount:body.amount
+  })
   await enforceWebActionPolicy(session,name)
   switch(name){
     case 'daily': return claimDaily(jid)
@@ -1482,6 +1486,12 @@ export async function handleWebApi(req,res){
       return true
     }
 
+    if(req.method==='GET' && url.pathname==='/api/v1/me/auction'){
+      const data=await getAuctionWebStatus({chat:requireGroup(session),sender:session.jid})
+      json(res,200,{ok:true,data})
+      return true
+    }
+
     if(req.method==='GET' && url.pathname==='/api/v1/me/bootstrap'){
       const data=await playerBootstrap(session)
       json(res,200,{ok:true,data:sanitizePrivateRefs(data,session)})
@@ -1547,7 +1557,7 @@ export async function handleWebApi(req,res){
       const actionName=decodeURIComponent(url.pathname.slice('/api/v1/action/'.length))
       const body=await readJson(req)
       const rawResult=await runAction(session,actionName,body)
-      await sendWebGroupActivity(session,actionName,body,rawResult).catch(err=>console.error('[Web Activity]',err?.message||err))
+      if(actionName!=='auction.bid')await sendWebGroupActivity(session,actionName,body,rawResult).catch(err=>console.error('[Web Activity]',err?.message||err))
       const result=sanitizePrivateRefs(sanitizeActionResult(actionName,rawResult),session)
       json(res,200,{ok:true,result})
       return true
