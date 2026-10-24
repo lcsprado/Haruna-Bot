@@ -3271,7 +3271,49 @@ function bind(){
   document.querySelectorAll('[data-level-claim]').forEach(x=>x.onclick=()=>doAction('level.claim',{},{}));
   document.querySelectorAll('[data-group-mission-claim]').forEach(x=>x.onclick=()=>doAction('groupMission.claim',{},{}));
   document.querySelectorAll('[data-group-event-claim]').forEach(x=>x.onclick=()=>doAction('groupEvent.claim',{},{}));
+  document.querySelectorAll('[data-event-center-refresh]').forEach(button=>button.onclick=async()=>{
+    if(ui.eventCenterLoading)return;
+    button.disabled=true;
+    button.textContent='Atualizando…';
+    await loadEventCenter(true);
+    await syncExtras(true).catch(()=>null);
+    if(Date.now()-ui.lastFullSyncAt>45000)await sync(true,true);
+    if(ui.page==='events')render();
+    if(ui.eventCenterError)toast(ui.eventCenterError);
+    else toast('🎉 Eventos e ranking atualizados.');
+  });
+  document.querySelectorAll('[data-event-copy]').forEach(button=>button.onclick=async()=>{
+    const command=String(button.dataset.eventCopy||'').trim();
+    if(!/^!mimic(?: (?:status|ranking|trocar (?:rara|epica)))?$/.test(command))return;
+    try{
+      if(!navigator.clipboard?.writeText)throw new Error('Área de transferência indisponível');
+      await navigator.clipboard.writeText(command);
+      toast('📋 '+command+' copiado. Envie no grupo do Alpha Bot.');
+    }catch{
+      window.prompt('Copie este comando e envie no grupo do WhatsApp:',command);
+    }
+  });
 }
+
+
+function updateEventCenterCountdowns(){
+  if(ui.page!=='events'||document.hidden)return;
+  const now=Date.now();
+  document.querySelectorAll('[data-event-countdown]').forEach(element=>{
+    const target=Number(element.dataset.eventCountdown||0);
+    const phase=String(element.dataset.eventStatus||'');
+    if(!target)return;
+    if(phase==='cooldown'){
+      element.textContent=target>now?'⏳ Próxima caça em '+eventCenterRemaining(target,now):'⚔️ Caçada disponível no WhatsApp';
+    }else if(phase==='upcoming'){
+      element.textContent=target>now?'Começa em '+eventCenterRemaining(target,now):'✅ Horário de início chegou • Atualize';
+    }else if(phase==='active'){
+      element.textContent=target>now?'Termina em '+eventCenterRemaining(target,now):'🏁 Horário encerrado • Atualize';
+    }else element.textContent='Encerrado';
+  });
+}
+// Client-only clock; does not query Render or Aiven in the background.
+setInterval(updateEventCenterCountdowns,15000);
 
 // Raid automática agora roda no servidor. Mantemos estes helpers apenas para
 // limpar timers antigos de sessões abertas antes desta versão.
