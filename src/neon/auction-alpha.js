@@ -1,6 +1,6 @@
-// Leilão Oculto Alpha — edição de 24/10/2026 com 5 lotes secretos e lances públicos.
+// Leilão de Consumíveis Alpha — 3 lotes reais, secretos e com lances públicos.
 // Conteúdo oculto até o encerramento. Duração: 2 minutos por lote.
-// Estado, lances reservados e entrega final são transacionais no Neon.
+// Estado, lances reservados e entrega final são transacionais no banco ativo.
 import {randomInt,randomBytes,createHash} from 'node:crypto'
 import {extendAuctionDeadline,LOT_DURATION_MS} from './auction-rules.js'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction,petMaxEnergy,petMaxHp} from './db.js'
@@ -8,30 +8,27 @@ import {initEnchantments} from './enchantments-alpha.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
 import {initAuctionNoticeOutbox,queueAuctionBidNotices,auctionNoticeSummary,flushAuctionBidNotices,warnAuctionDeliveryFailures} from './auction-notice-outbox.js'
 
-const KEY='leilao_sombras_cinco_lotes_20261024_v1'
+const KEY='leilao_consumiveis_tres_lotes_20261024_v1'
 // Edições anteriores permanecem canceladas e isoladas nas próprias chaves.
 // Esta é uma nova edição expressamente autorizada pelo organizador.
 const AUCTION_PAUSED_FOR_AUDIT=false
 // Temporary-recovery datasets must not broadcast or revive historical auctions.
 // Chave isolada: modo temporário não reativa leilões históricos.
-const START=Date.parse('2026-10-24T17:00:00-03:00')
-const END=Date.parse('2026-10-24T20:00:00-03:00')
+const START=Date.parse('2026-10-24T18:30:00-03:00')
+const END=Date.parse('2026-10-24T19:00:00-03:00')
 const DURATION=LOT_DURATION_MS
 // Exceção limitada a este evento; não modifica licenças nem libera outros comandos.
 const EVENT_GROUPS=new Set(['120363410230588690@g.us','120363429534634131@g.us'])
 const OPENING=100000
 const STEP=50000
-const SEAL_ITEM='selo_poder_5pct_alpha_20261019'
 const fmt=n=>'R$ '+Number(n).toLocaleString('pt-BR')
 const clean=n=>String(n||'Jogador').replace(/[\r\n*]/g,' ').slice(0,45)
 const clock=n=>new Date(Number(n)).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
-// Reedição exata dos pacotes da primeira edição, sem reaproveitar lances ou saldos antigos.
+// Nova edição: apenas consumíveis. Prêmios misturados de forma segura no início.
 const PACKAGES=[
-  [{id:'elmo_soberano_celestial_20261024',qty:1},{id:'pedra_precisao_alpha',qty:1}],
-  [{pet:'lince_astral',name:'Lince Astral',power:75},{id:'caixa_epica',qty:1}],
-  [{id:'bota_vortice_alpha_20261020',qty:1},{id:'pedra_agilidade_alpha',qty:1}],
-  [{id:'elixir_leilao_2h',qty:1},{id:'caixa_epica',qty:2}],
-  [{id:'caixa_lendaria',qty:1},{id:'elixir_leilao_1h_20261024',qty:1},{id:'pergaminho_leilao_10k',qty:1}]
+  [{id:'elixir_leilao_2h',qty:1},{id:'pergaminho_leilao_10k',qty:1}],
+  [{id:'pergaminho_reclassificacao',qty:1},{id:'caixa_epica',qty:2}],
+  [{id:'caixa_lendaria',qty:1},{id:'elixir_leilao_1h_20261024',qty:1}]
 ]
 let timer=null,busy=false,initPromise=null,auctionSocket=null
 
@@ -41,15 +38,12 @@ async function init(){
     await initEnchantments()
     await initAuctionNoticeOutbox(db)
     const definitions=[
-      [SEAL_ITEM,'Selo de Potência Alpha',
-        'Relíquia permanente: +5% de ATK total, inclusive equipamentos e encantamentos; ativo automaticamente enquanto estiver no inventário. Não acumula.','special',false],
       ['pergaminho_leilao_10k','Pergaminho de 10.000 XP',
         '+10.000 XP instantâneo; um pergaminho por dia.','consumable',true],
-      ['elixir_leilao_2h','Ampulheta Dourada XP 2x','Ative via buffxp por duas horas','consumable',true],
-      ['elixir_leilao_1h_20261024','Ampulheta Prateada XP 2x — 1 hora','Ative via buffxp por uma hora; não acumula','consumable',true],
-      ['elmo_soberano_celestial_20261024','Elmo do Soberano Celestial','112 DEF, 275 HP e 2,5% crítico; elmo lendário de leilão','helmet',false],
-      ['elmo_imperador_alpha_20261020','Elmo do Imperador Alpha','108 DEF, 260 HP e 2,5% critico','helmet',false],
-      ['bota_vortice_alpha_20261020','Botas do Vortice','14 VEL, 70 HP e 2,5% critico','boots',false]
+      ['elixir_leilao_2h','Ampulheta Dourada XP 2x',
+        'Ative via buffxp por duas horas','consumable',true],
+      ['elixir_leilao_1h_20261024','Ampulheta Prateada XP 2x — 1 hora',
+        'Ative via buffxp por uma hora; não acumula','consumable',true]
     ]
     for(const [id,name,description,category,stackable] of definitions){
       await db.query(
@@ -98,14 +92,14 @@ function shufflePackages(){
     const j=randomInt(i+1)
     ;[p[i],p[j]]=[p[j],p[i]]
   }
-  return p.map((prize,index)=>({label:'🎁 Lote Oculto '+(index+1),min:OPENING,step:STEP,prize}))
+  return p.map((prize,index)=>({label:'🎁 Lote Misterioso '+(index+1),min:OPENING,step:STEP,prize}))
 }
 function status(state){
   const lot=state.lots?.[state.lot]
-  if(state.phase==='completed')return '🏁 *LEILÃO DAS SOMBRAS ENCERRADO!* Os 5 lotes foram revelados.'
-  if(!lot)return '🔨 Leilão das Sombras em preparação.'
+  if(state.phase==='completed')return '🏁 *LEILÃO DE CONSUMÍVEIS ENCERRADO!* Os 3 lotes foram encerrados.'
+  if(!lot)return '🔨 Leilão de Consumíveis em preparação.'
   const minimum=state.high?Number(state.high.value)+lot.step:lot.min
-  return '🔨 *LEILÃO DAS SOMBRAS — LOTE '+(Number(state.lot)+1)+'/5*'+
+  return '🔨 *LEILÃO DE CONSUMÍVEIS — LOTE '+(Number(state.lot)+1)+'/'+PACKAGES.length+'*'+
     '\n🎁 *LOTE MISTERIOSO* — conteúdo secreto até o arremate!'+
     '\n💰 Lance inicial: '+fmt(lot.min)+
     '\n📈 Próximo lance mínimo: *'+fmt(minimum)+'*'+
@@ -151,13 +145,13 @@ function beginLot(state,now){
 async function finishLot(state,c){
   const lot=state.lots[state.lot]
   const high=state.high
-  let report='🔨 *LOTE '+(state.lot+1)+'/5 ENCERRADO*'
+  let report='🔨 *LOTE '+(state.lot+1)+'/'+PACKAGES.length+' ENCERRADO*'
   const entry={lot:state.lot,winner:high?{jid:high.jid,name:high.name,bid:high.value}:null}
   if(high){
     const received=await prize(c,high.jid,lot.prize)
     entry.rewards=received
     await c.query(
-      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_sombras_20261024',$3)",
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_consumiveis_20261024',$3)",
       [high.jid,high.value,KEY+':lot:'+state.lot]
     )
     report+='\n🏆 '+clean(high.name)+' — '+fmt(high.value)+'\n🎁 RECOMPENSAS REVELADAS:\n• '+received.join('\n• ')
@@ -200,9 +194,9 @@ async function tick(sock){
         state.seal=createHash('sha256').update(JSON.stringify(state.lots.map(x=>x.prize))+':'+state.salt).digest('hex')
         state.lot=0
         beginLot(state,now)
-        outgoing='🔨🎁 *LEILÃO DAS SOMBRAS COMEÇOU!*\n\n'+
-          '🎭 *5 lotes misteriosos*. Cada prêmio revelado após o arremate.'+
-          '\n👑 Um dos lotes contém o NOVO ELMO DO SOBERANO CELESTIAL: +112 DEF, +275 HP e +2,5% CRÍTICO!'+
+        outgoing='🔨🎁 *LEILÃO DE CONSUMÍVEIS COMEÇOU!*\n\n'+
+          '🎭 *3 lotes misteriosos, somente consumíveis*. Cada prêmio é revelado após o arremate.'+
+          '\n🎁 Prêmios possíveis: ampulhetas de XP, pergaminho de classe e caixas — até lendária.'+
           '\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
           '\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
           '\n⏱️ *2 minutos por lote*. Lance nos últimos 15s: +20s, até +2min.'+
@@ -214,7 +208,7 @@ async function tick(sock){
         if(state.lot===PACKAGES.length-1){
           state.phase='completed'
           state.finished=Date.now()
-          outgoing+='\n\n🏁 *LEILÃO DAS SOMBRAS CONCLUÍDO!* Todos os lotes encerrados.'
+          outgoing+='\n\n🏁 *LEILÃO DE CONSUMÍVEIS CONCLUÍDO!* Todos os lotes encerrados.'
         }else{
           state.lot++
           beginLot(state,now)
@@ -314,7 +308,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
       state.ends=overtime.ends
       state.extra=overtime.extra
       const result={
-        confirmation:'✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/5*\n💰 '+fmt(offered)+
+        confirmation:'✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/'+PACKAGES.length+'*\n💰 '+fmt(offered)+
           '\n🔒 Reservado até você vencer ou ser superado.'+
           '\n🎁 Conteúdo oculto até encerrar este lote.'+
           '\n📈 Próximo lance: '+fmt(offered+lot.step)+
@@ -355,7 +349,7 @@ export async function getAuctionWebStatus({chat,sender}){
   const groupAllowed=Array.isArray(state.groups)&&state.groups.includes(chat)
   const acceptingBids=!AUCTION_PAUSED_FOR_AUDIT&&state.phase==='running'&&groupAllowed&&now>=START&&now<END&&now<Number(state.ends||0)
   return {
-    title:'Leilão das Sombras',phase:now<START?'scheduled':(state.phase||'pending'),
+    title:'Leilão de Consumíveis',phase:now<START?'scheduled':(state.phase||'pending'),
     acceptingBids,serverTime:now,startsAt:START,lotNumber:lot?Number(state.lot)+1:null,
     totalLots:PACKAGES.length,step:lot?.step||STEP,opening:lot?.min||OPENING,
     nextMinimum:lot?(state.high?Number(state.high.value)+lot.step:lot.min):OPENING,
