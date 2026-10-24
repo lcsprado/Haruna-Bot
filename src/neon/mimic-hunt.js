@@ -29,7 +29,7 @@ const TITLES=[
 const INTRO='👹💰 *INVASÃO DOS MIMICS — CAÇADA LENDÁRIA!*\n'
  +'━━━━━━━━━━━━━━━━━━\n'
  +'⏰ *HOJE, 15h–17h* (Brasília)\n'
- +'🕹️ *!mimic* — caçar a cada *2 minutos* (máximo 60).\n'
+ +'🕹️ *!m* (atalho de !mimic) — caçar a cada *2 minutos* (máximo 60).\n'
  +'💰 *R$ 6.000–14.000 por caça* + ✨ *100–250 XP*.\n'
  +'🎯 *10 caçadas*: R$ 100 mil + 2 Caixas Raras\n'
  +'⚔️ *25 caçadas*: R$ 200 mil + 2 Caixas Épicas\n'
@@ -117,7 +117,7 @@ function statusMsg(s,rank){
  +BOUND+'\n'
  +(done?'🏁 *Você completou as 60 caçadas!*'
   :cool?'⏳ Próxima caça em *'+remaining(cool)+' segundos*.'
-  :'⚔️ Pronto! Use *!mimic* para caçar.')
+  :'⚔️ Pronto! Use *!m* para caçar.')
  +'\n📊 *!mimic ranking* • 🧩 *!mimic trocar rara/epica*'
 }
 async function ranking(){
@@ -253,7 +253,7 @@ async function action(jid,name,args=[]){
  })
 }
 export async function handleMimicCommand({cmd,args,sender,name,chat,reply}){
- if(!['mimic','mimics'].includes(cmd))return false
+ if(!['mimic','mimics','m'].includes(cmd))return false
  if(!String(chat||'').endsWith('@g.us')){await reply('👹 O evento acontece nos grupos do Alpha Bot.');return true}
  const lic=await getGroupLicense(chat)
  if(!lic||!groupLicenseIsActive(lic)){
