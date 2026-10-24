@@ -171,7 +171,9 @@ async function tick(sock){
     if(now<START)return
     if(now>END+5*60*1000){if(timer){clearInterval(timer);timer=null};return}
     // Cria tabela de notificações e valida itens antes do primeiro acesso à fila.
+    console.log('[LEILAO SOMBRAS] primeiro tick', {now, start:START, end:END})
     await init()
+    console.log('[LEILAO SOMBRAS] inicializacao concluida')
     await flushAuctionBidNotices(db,sock,KEY,{limit:8})
     await warnAuctionDeliveryFailures(db,sock,KEY)
     if(now>END)return
@@ -226,6 +228,7 @@ async function tick(sock){
 export function startAuctionAlphaScheduler(sock){
   // Atualiza o socket após cada reconexão, sem criar um segundo polling.
   auctionSocket=sock
+  console.log('[LEILAO SOMBRAS] startAuctionAlphaScheduler', {now:Date.now(),start:START,end:END,paused:AUCTION_PAUSED_FOR_AUDIT})
   if(AUCTION_PAUSED_FOR_AUDIT){
     if(timer){clearInterval(timer);timer=null}
     console.log('[LEILAO OCULTO] pausado para auditoria — sem novos leiloes ou avisos')
