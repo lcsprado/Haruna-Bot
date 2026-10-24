@@ -14,6 +14,7 @@ import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import {createKeyedAsyncQueue} from './chat-queue.js'
 import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
+import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
@@ -9235,11 +9236,16 @@ continue
 }catch(err){ console.error('[moderacao]',err?.message||err) }
 }
 timingMarks.preflight=Date.now()
-if(!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)&&!String(getQuickFlow(chat,sender)?.stage||'').startsWith('enchant_')){
-if(await quizHandleChoice(chat,body,reply))continue
+const possibleQuizChoice=!body.startsWith(prefix)&&/^[12]$/.test(body)&&quizPending.has(chat)
+// A resposta pertence primeiro ao menu individual (inclusive recuperado do banco).
+// O quiz é um prompt global e só pode consumi-la quando não há menu do jogador.
+const activeNumericMenu=possibleQuizChoice
+  ? (getQuickFlow(chat,sender)||await recoverQuickFlow(chat,sender)) : null
+if(shouldRouteQuizContinuation({body,hasPlayerMenu:Boolean(activeNumericMenu),quizPending:quizPending.has(chat),prefix})){
+  if(await quizHandleChoice(chat,body,reply))continue
 }
 if(!body.startsWith(prefix)){
-let flow=getQuickFlow(chat,sender)
+let flow=activeNumericMenu||getQuickFlow(chat,sender)
 if(!flow) flow=await recoverQuickFlow(chat,sender)
 if(!flow && /^[1-4]$/.test(body)){
 try{await quizAnswerRequested(chat,sender,Number(body),reply,isGroup);continue}
