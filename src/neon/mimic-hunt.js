@@ -1,5 +1,5 @@
 // Invasão dos Mimics — edição única, 24/10/2026. 15h–17h BRT.
-// Tudo por comando, sem polling, sem dano, sem cobrança, sem combate automático.
+// Caça manual e blocos automáticos opt-in por timer único, sem polling recorrente.
 // Cada caçada e premiação é uma transação atômica por usuário.
 import {randomInt,randomUUID} from 'node:crypto'
 import {db,ensureUser,grantExpInTransaction,listGroupLicenses,groupLicenseIsActive,getGroupLicense} from './db.js'
@@ -140,6 +140,7 @@ export async function initMimic(){
         GREATEST(0,COALESCE((s.state->>'fragments')::int,0))+
         GREATEST(0,
           COALESCE((s.state->>'hunts')::int,0)-
+          COALESCE((s.state->'delayCompensation20261024'->>'requestedHunts')::int,0)-
           COALESCE((s.state->>'rare')::int,0)-
           COALESCE((s.state->>'epic')::int,0)-
           COALESCE((s.state->>'golden')::int,0))*4+
@@ -154,6 +155,18 @@ export async function initMimic(){
   `,['mimic_frg_rebalance_20261024_final_v3',JSON.stringify({old:[1,2,5,10],new:[5,8,14,30]}),MIMIC_EVENT.id])
   console.log('[MIMIC HUNT] fragmentos compensados',Number(retro.rows[0]?.adjusted||0))
   await catchUpTwentyMilestone()
+  // Metas de 30 já atingidas antes da implantação recebem a insígnia.
+  // GREATEST preserva cópias existentes e impede qualquer crédito duplicado.
+  const restored=await db.query(`
+    INSERT INTO inventories(jid,item_id,quantity)
+    SELECT jid,'insignia_cacador_mimics_20261024',1
+    FROM mimic_hunt_sessions
+    WHERE event_key=$1 AND COALESCE((state->>'hunts')::int,0)>=30
+    ON CONFLICT(jid,item_id) DO UPDATE
+    SET quantity=GREATEST(inventories.quantity,EXCLUDED.quantity)
+    RETURNING jid
+  `,[MIMIC_EVENT.id])
+  console.log('[MIMIC HUNT] insígnia 30 sincronizada',restored.rowCount)
  })().catch(err=>{initPromise=null;throw err})
  await initPromise
 }
@@ -341,6 +354,7 @@ async function action(jid,name,args=[],chat=null,automatic=false){
   const achievements=MIMIC_EVENT.milestones.filter(x=>x.hunts===s.hunts)
   for(const m of achievements){
    if(m.hunts===20)s.milestone20=true
+   if(m.hunts===30)s.milestone30=true
    await giveCash(c,jid,m.cash)
    await giveItem(c,jid,m.box,m.qty)
    s.cash+=m.cash
@@ -411,7 +425,7 @@ function formatAutoSummary(a,reason='concluído'){
  const footer=reason==='interrompido'?'🛑 Bloco interrompido, prêmios preservados.'
   :reason==='encerrado'?'🏁 Encerrado às 17h. Todas as caçadas realizadas ficaram salvas.'
   :done===5?'✅ Bloco completo!':'✅ Limite de caçadas atingido.'
- return '🤖👹 *MIMICS — CAÇA AUTOMÁTICA '+String(reason).toUpperCase()+'*\n'
+ return '🤖👹 *MIMICS — CAÇA AUTOMÁTICA '+({concluído:'CONCLUÍDA',interrompido:'INTERROMPIDA',encerrado:'ENCERRADA'}[reason]||'FINALIZADA')+'*\n'
   +'━━━━━━━━━━━━━━━━━━\n'
   +'⚔️ Caçadas concluídas: *'+done+'/5*\n'
   +'💰 Dinheiro recebido: *R$ '+FMT(a.cash)+'*\n'
