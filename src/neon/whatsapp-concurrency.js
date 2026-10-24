@@ -5,8 +5,12 @@ import {createKeyedAsyncQueue} from './chat-queue.js'
 export function playerQueueKey(msg){
   const key=msg?.key||{}
   const chat=String(key.remoteJid||'__unknown__')
-  const participant=String(key.participant||key.participantAlt||key.remoteJidAlt||chat)
-    .replace(/:\d+(?=@)/,'')
+  // Baileys pode alternar @lid e @s.whatsapp.net para o mesmo jogador.
+  // Prefira o identificador telefônico dos aliases para manter uma única fila.
+  const candidates=[key.participantAlt,key.remoteJidAlt,key.participant,chat]
+  const stable=candidates.find(jid=>String(jid||'').endsWith('@s.whatsapp.net'))
+    ||candidates.find(Boolean)||chat
+  const participant=String(stable).replace(/:\d+(?=@)/,'')
   return chat+'|'+participant
 }
 
@@ -23,8 +27,9 @@ export function groupIncomingByPlayer(messages){
 export function outgoingLane(chat,options){
   const quoted=options?.quoted?.key
   if(!quoted)return String(chat)+'|__notices__'
-  const participant=String(quoted.participant||quoted.participantAlt||quoted.remoteJidAlt||chat)
-    .replace(/:\d+(?=@)/,'')
+  const candidates=[quoted.participantAlt,quoted.remoteJidAlt,quoted.participant,chat]
+  const participant=String(candidates.find(jid=>String(jid||'').endsWith('@s.whatsapp.net'))
+    ||candidates.find(Boolean)||chat).replace(/:\d+(?=@)/,'')
   return String(chat)+'|'+participant
 }
 
