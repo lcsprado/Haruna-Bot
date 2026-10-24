@@ -5013,7 +5013,7 @@ text+='1️⃣ *PRINCIPAL:* '+(p1?`${p1.name} — ${p1.species} • ${petStyleLa
 text+='2️⃣ *SUPORTE:* '+(p2?`${p2.name} — ${p2.species} • ${petStyleLabel(p2.species)} • Nv.${p2.level}`:'Vazio')+'\n'
 text+='3️⃣ *RESERVA:* '+(p3?`${p3.name} — ${p3.species} • ${petStyleLabel(p3.species)} • Nv.${p3.level}`:'Vazio')+'\n\n'
 if(synergy) text+=`✨ *SINERGIA ATIVA — ${synergy.label}*\n🎯 Bônus: *${synergy.text}*\n\n`
-else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa. Os 3 precisam ser espécies diferentes do mesmo estilo.\n\n'
+else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa. Use três espécies distintas do mesmo estilo ou o Lince Astral como coringa.\n\n'
 text+='💡 Principal luta; Reserva assume se ele cair; Suporte fortalece a sinergia.'
 await reply(text)
 return true
@@ -9951,7 +9951,7 @@ if(cmd==='sinergia'||cmd==='sinergias'){
 const team=await getPetTeam(sender)
 const active=petTeamSynergy(team)
 let text='🧬 *SINERGIAS DE TIME PET*\n\n'
-text+='Monte o time com *3 espécies diferentes do mesmo estilo*. Qualquer trio válido dentro da categoria ativa o bônus.\n\n'
+text+='Monte o time com *3 espécies diferentes do mesmo estilo*. 🃏 *Lince Astral* é coringa e funciona com qualquer dupla de espécies diferentes.\n\n'
 text+='🪽 *ESQUADRÃO AÉREO — Voador*\n🎯 *+8 VEL +2% ATK*\n'
 text+='Papagaio • Coruja • Águia • Gavião • Dragão • Corvo Abissal • Dragão Vulcânico • Fênix de Fogo • Fênix de Gelo • Grifo Celestial • Fênix Celestial • Dragão Corrompido • Fênix Alpha\n\n'
 text+='🛡️ *MURALHA VIVA — Guardião*\n🎯 *+4% DEF* no Boss/Raid\n'
@@ -9962,7 +9962,7 @@ text+='✨ *ELO ARCANO — Místico*\n🎯 *+2% DEF +2,5% CRIT* no Boss/Raid\n'
 text+='Coelho • Hamster • Gazela Mística • Cervo Místico • Unicórnio • Golfinho Celestial • Polvo Arcano • Salamandra Infernal • Imperador Abissal • Serpente Cósmica\n\n'
 if(active) text+='✅ *SUA SINERGIA ATUAL*\n'+active.label+' — *'+active.text+'*\n\n'
 else text+='⚪ *Seu time atual não possui sinergia ativa.*\n\n'
-text+='💡 A ordem de Principal / Suporte / Reserva não altera a sinergia.\n👉 Use *!equiparpet* para montar e *!timepet* para conferir.'
+text+='🃏 *LINCE ASTRAL — CORINGA DO LEILÃO*\n✅ Com dois pets do mesmo estilo: completa o bônus normal da categoria.\n🌈 Com dois estilos diferentes: Elo Universal (+1,5% ATK e +2% DEF no Boss/Raid).\n🔒 Só uma sinergia de categoria/universal por time; espécies repetidas não ativam.\n\n💡 A ordem de Principal / Suporte / Reserva não altera a sinergia.\n👉 Use *!equiparpet* para montar e *!timepet* para conferir.'
 return await reply(text)
 }
 if(cmd==='timepet'){
@@ -9975,7 +9975,7 @@ text+='2️⃣ *SUPORTE*\n'+(p2?`🐾 ${p2.name} — ${p2.species}\n🏷️ ${pe
 text+='3️⃣ *RESERVA*\n'+(p3?`🐾 ${p3.name} — ${p3.species}\n🏷️ ${petStyleLabel(p3.species)}\n⭐ Nv.${p3.level} • ❤️ ${p3.hp}/${petMaxHp(p3.level,p3.xp,p3.species)}`:'— Vazio')+'\n\n'
 const synergy=petTeamSynergy(team)
 if(synergy) text+=`✨ *SINERGIA — ${synergy.label}*\n${synergy.text}\n\n`
-else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa — combine 3 espécies diferentes do mesmo estilo.\n\n'
+else if(team.length===3) text+='🧩 *Sinergia:* nenhuma ativa — combine 3 espécies distintas do mesmo estilo ou use Lince Astral como coringa.\n\n'
 text+='⚔️ Se o Principal cair no Boss/Raid, o Reserva entra automaticamente.\n🛟 O Suporte participa das sinergias passivas.\n👉 Use *!equiparpet* para montar o time.'
 return await reply(text)
 }
