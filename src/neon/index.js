@@ -1188,6 +1188,11 @@ return {jid:phoneJid || canonicalPlayerJid(jid),aliases:[...aliases]}
 async function resolvePlayerJid(sock,chat,jid,msg=null) {
 return (await resolvePlayerIdentity(sock,chat,jid,msg)).jid
 }
+async function resolvePixRecipient(sock,chat,mention,msg){
+const identity=await resolvePlayerIdentity(sock,chat,mention,msg)
+// Never create a wallet under an opaque LID. A missing phone mapping must fail closed.
+return String(identity?.jid||'').endsWith('@s.whatsapp.net')?identity.jid:null
+}
 function unwrapMessageContent(message){
 let current=message
 for(let i=0;i<6;i++){
@@ -7041,9 +7046,14 @@ await reply('💰 Escolha de *1 a 7* ou *0* para sair.')
 return true
 }
 if(flow.stage==='pix_target'){
-const target=mentionsOf(msg)[0]
-if(!target){
+const mention=mentionsOf(msg)[0]
+if(!mention){
 await reply('💸 Marque a pessoa usando @.')
+return true
+}
+const target=await resolvePixRecipient(sock,chat,mention,msg)
+if(!target){
+await reply('⚠️ Não consegui identificar o número desta pessoa. Peça para ela enviar um comando e tente novamente. Nenhum valor foi debitado.')
 return true
 }
 setQuickFlow(chat,sender,'pix_amount',{target},90000)
@@ -10809,12 +10819,14 @@ return await reply(
 const r=await withdraw(sender,amount)
 await reply(`💵 Saque concluído.\n🪙 Carteira: R$ ${fmt(r.cash)}\n🏦 Banco: R$ ${fmt(r.bank)}`)
 } else if(['pix','transferir','transfer'].includes(cmd)){
-const target=mentionsOf(msg)[0]
+const mention=mentionsOf(msg)[0]
 const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
-if(!target){
+if(!mention){
 setQuickFlow(chat,sender,'pix_target',{},90000)
 return await reply('💸 Marque agora a pessoa que vai receber o PIX.')
 }
+const target=await resolvePixRecipient(sock,chat,mention,msg)
+if(!target) return await reply('⚠️ Não consegui identificar o número desta pessoa. Peça para ela enviar um comando e tente novamente. Nenhum valor foi debitado.')
 if(!amount){
 setQuickFlow(chat,sender,'pix_amount',{target},90000)
 return await reply(

@@ -1090,6 +1090,11 @@ return { cash:Number(w.cash)+amount, bank:Number(w.bank)-amount }
 })
 }
 export async function transfer(fromJid, toJid, amount) {
+// Fail closed: WhatsApp LID is not a canonical playable wallet identifier.
+// Prevents a debit to sender paired with credit to an inaccessible shadow account.
+if(!String(fromJid||'').endsWith('@s.whatsapp.net') || !String(toJid||'').endsWith('@s.whatsapp.net')){
+throw new Error('PIX bloqueado: não foi possível identificar o número do destinatário. Nenhum valor foi debitado.')
+}
 amount = Number(amount)
 checkPixLimits(amount)
 if (fromJid === toJid) throw new Error('Você não pode transferir para si mesmo.')
