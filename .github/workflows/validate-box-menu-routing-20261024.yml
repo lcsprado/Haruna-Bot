@@ -1,0 +1,20 @@
+name: Validate WhatsApp box menu routing
+on:
+  push:
+    branches: [fix/box-menu-priority-20261024]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          node --check src/neon/index.js
+          node --check src/neon/menu-routing.js
+          node --check src/neon/whatsapp-concurrency.js
+      - run: |
+          node --test test/box-menu-priority-20261024.test.mjs test/whatsapp-player-concurrency-20261022.test.mjs test/chat-queue-20261021.test.mjs
