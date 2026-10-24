@@ -12,11 +12,11 @@ export function crossGroupBidNotice({lot,totalLots,bidder,value,nextMinimum,ends
     timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'
   })
   return '📢 *LANCE DE OUTRO GRUPO!*'+
-    '\n🔨 *LEILÃO OCULTO — LOTE '+Number(lot)+'/'+Number(totalLots)+'*'+
+    '\n🔨 *LEILÃO DAS SOMBRAS — LOTE '+Number(lot)+'/'+Number(totalLots)+'*'+
     '\n👤 Jogador: *'+name+'*'+
     '\n💰 Novo maior lance: *'+fmt(value)+'*'+
     '\n📈 Para superar: *'+fmt(nextMinimum)+'*'+
     '\n⏳ Encerra às *'+close+'* (Brasília)'+
     '\n📩 Dê seu lance: *!lance '+Number(nextMinimum)+'*'+
-    '\n🔒 Prêmios continuam secretos até o fim do leilão.'
+    '\n🔒 O prêmio deste lote será revelado ao encerrar.'
 }
