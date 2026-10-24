@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
+import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship, getProfileAvatar,
@@ -721,8 +722,11 @@ async function webItemName(id,fallback='item'){
 
 async function sendWebGroupActivity(session,actionName,body,result){
   if(!session?.chatJid || !result) return
-  const send=globalThis.__alphaWebGroupLog
-  if(typeof send!=='function') return
+  // Web API runs in a separate Render process: persist the group notice for
+  // the single WhatsApp worker instead of silently discarding successful actions.
+  const send=typeof globalThis.__alphaWebGroupLog==='function'
+    ?globalThis.__alphaWebGroupLog
+    :(chat,text,mentions)=>enqueueWebAction(db,{chat,kind:'message',payload:{text,mentions}})
 
   const me=session.jid
   const meName=await playerDisplayName(me)
@@ -1106,7 +1110,12 @@ async function sendWebGroupActivity(session,actionName,body,result){
 
 async function startRaidServerRun(session,level){
   const starter=globalThis.__alphaStartRaidRun
-  if(typeof starter!=='function') throw new Error('Automação de Raid indisponível no servidor.')
+  if(typeof starter!=='function'){
+    // The WhatsApp process owns the automatic raid loop. Never start a second
+    // socket or runner in this isolated Web API.
+    await enqueueWebAction(db,{chat:requireGroup(session),kind:'raid_auto',payload:{level:Number(level)}})
+    return {ok:true,serverAuto:true,queued:true,level:Number(level)}
+  }
   const started=await starter(requireGroup(session),Number(level))
   return {ok:true,serverAuto:true,started:Boolean(started),level:Number(level)}
 }
@@ -1190,17 +1199,19 @@ async function runAction(session,name,body={}){
     case 'pet.team': return setPetTeam(jid,Array.isArray(body.petIds)?body.petIds:[],body.replaceAll!==false)
     case 'pet.summon': return summonLegendaryPet(jid,String(body.materialId||''))
 
-    case 'raid.create': return createRaid(requireGroup(session),jid,String(body.name||'Jogador'),positiveInt(body.level,'Nível',50))
-    case 'raid.join': return joinRaid(requireGroup(session),jid,String(body.name||'Jogador'),body.level==null?null:positiveInt(body.level,'Nível',50))
-    case 'raid.cancel': return cancelRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'raid.create': return createRaid(requireGroup(session),jid,String(body.name||'Jogador'),positiveInt(body.level,'Nível',70))
+    case 'raid.join': return joinRaid(requireGroup(session),jid,String(body.name||'Jogador'),body.level==null?null:positiveInt(body.level,'Nível',70))
+    case 'raid.cancel': return cancelRaid(requireGroup(session),jid,body.level==null?null:positiveInt(body.level,'Nível',70))
     case 'raid.start': {
-      const level=body.level==null?null:positiveInt(body.level,'Nível',50)
+      const level=body.level==null?null:positiveInt(body.level,'Nível',70)
+      // Prepare durable handoff before the transaction consumes raid keys.
+      await ensureWebActionOutbox(db)
       const started=await startRaid(requireGroup(session),jid,level)
-      await startRaidServerRun(session,started.level)
-      return {...started,serverAuto:true}
+      const auto=await startRaidServerRun(session,started.level)
+      return {...started,serverAuto:true,serverAutoQueued:Boolean(auto.queued)}
     }
-    case 'raid.auto': return startRaidServerRun(session,body.level==null?null:positiveInt(body.level,'Nível',50))
-    case 'raid.round': return raidRound(requireGroup(session),body.level==null?null:positiveInt(body.level,'Nível',50))
+    case 'raid.auto': return startRaidServerRun(session,body.level==null?null:positiveInt(body.level,'Nível',70))
+    case 'raid.round': return raidRound(requireGroup(session),body.level==null?null:positiveInt(body.level,'Nível',70))
     case 'boss.start': return startBoss(requireGroup(session))
     case 'boss.attack': return attackBoss(requireGroup(session),jid,String(body.name||'Jogador'),body.usePet!==false)
 
