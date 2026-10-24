@@ -2,6 +2,7 @@ import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
+import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {PECADOS_ESSENCES,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
@@ -624,12 +625,21 @@ const BOSS_BONUS_DROPS=[
   {id:'armadura_titan',name:'Armadura do Titã',weight:5,rarity:'Lendário'},
 ]
 const BOSS_PLACEMENT=[
+  // Edições a partir de 30/10/2026: prêmio maior por um Boss 55–90% mais resistente.
+  {cash:1000000,xp:12000,epicBoxes:15,bonusChance:.95,exclusiveChance:.40},
+  {cash:750000,xp:9000,epicBoxes:12,bonusChance:.85,exclusiveChance:.28},
+  {cash:525000,xp:6500,epicBoxes:9,bonusChance:.75,exclusiveChance:.20},
+  {cash:350000,xp:4500,epicBoxes:7,bonusChance:.65,exclusiveChance:.12},
+  {cash:225000,xp:3000,epicBoxes:5,bonusChance:.55,exclusiveChance:.08},
+]
+const OLD_BOSS_PLACEMENT=[
   {cash:650000,xp:4000,epicBoxes:12,bonusChance:.95,exclusiveChance:.40},
   {cash:450000,xp:3000,epicBoxes:9,bonusChance:.85,exclusiveChance:.28},
   {cash:300000,xp:2200,epicBoxes:7,bonusChance:.75,exclusiveChance:.20},
   {cash:200000,xp:1400,epicBoxes:5,bonusChance:.65,exclusiveChance:.12},
   {cash:125000,xp:900,epicBoxes:3,bonusChance:.55,exclusiveChance:.08},
 ]
+const upgradedWeeklyEdition=key=>String(key||'')>='2026-10-30'
 function petBossBonus(pet){
   if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,healPct:0,healCooldown:0}
   const base=petCombatSpecialty(pet.species)
@@ -1670,8 +1680,8 @@ async function maybeGrantReclassScroll(c,jid,mode){
   if(Math.random()>=chance) return null
   return grantBossItem(c,jid,RECLASS_SCROLL_DROP)
 }
-async function giveBossDrops(c,jid,position,extraChance=0,sourceKey=null){
-  const tier=BOSS_PLACEMENT[position-1]||{cash:0,xp:0,box:null,bonusChance:.18,exclusiveChance:.02}
+async function giveBossDrops(c,jid,position,extraChance=0,sourceKey=null,placement=null){
+  const tier=placement||BOSS_PLACEMENT[position-1]||{cash:0,xp:0,box:null,bonusChance:.18,exclusiveChance:.02}
   const drops=[]
   // Top 5 recebe caixa garantida; demais continuam com 40% de chance de Caixa da Sorte.
   if(Number(tier.epicBoxes||0)>0){
@@ -2365,7 +2375,7 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
            OR (state->>'mode' IS NULL AND COALESCE((state->>'maxHp')::numeric,0)>=25000))
   `,[GLOBAL_WEEKLY_BOSS_CHAT,weekend.weekendKey])).rows
   const bosses=rows.map(r=>r.state).filter(x=>Number(x.maxHp)>0)
-  const maxHp=bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):5000000+Math.floor(Math.random()*1500001)
+  const maxHp=bosses.length?Math.max(...bosses.map(x=>Number(x.maxHp))):8000000+Math.floor(Math.random()*1500001)
   const participants={}
   let totalDamage=0
   for(const boss of bosses){
@@ -2383,7 +2393,7 @@ async function loadWeeklyBoss(c,weekend,{create=false}={}){
   }
   const state={
     mode:'weekly',name:'Golem Ancestral do Alpha',
-    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:165,participants,
+    hp:Math.max(0,maxHp-totalDamage),maxHp,atk:200,participants,
     startedAt:bosses.length?Math.min(...bosses.map(x=>Number(x.startedAt||Date.now()))):Date.now(),
     weekendKey:weekend.weekendKey,weeklyCompleted:bosses.some(x=>x.weeklyCompleted),
     endsAt:weekend.endsAt,endsLabel:weekend.endsLabel
@@ -3032,7 +3042,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         const pb=petBossBonus(pp)
         const weekly=s.mode==='weekly'
         const eventMode=s.mode==='event'
-        const tier=weekly?(BOSS_PLACEMENT[i]||{cash:0,xp:0}):{cash:0,xp:0}
+        const tier=weekly?((upgradedWeeklyEdition(s.weekendKey)?BOSS_PLACEMENT:OLD_BOSS_PLACEMENT)[i]||{cash:0,xp:0}):{cash:0,xp:0}
         let cash=0,exp=0,petXp=0,petXpTeam=[],drops=[]
         if(eventMode){
           const night=s.eventId==='night_0303'
@@ -3108,15 +3118,35 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
               : Math.max(5,Math.round(12+35*share))
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
-          drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown')):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
+          drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown'),tier):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
         }
-        // Uma insígnia por participante com dano: campeão recebe versão superior.
-        // Não distribuir novamente o Elmo do Soberano Ancestral.
-        if(weekly&&Number(p.damage||0)>0){
-          const insignia=position===1
-            ?{id:'insignia_tita_ancestral',name:'Insígnia do Titã Ancestral (+3% dano / +1pp CRIT Boss e Raid)',rarity:'Lendário Exclusivo'}
-            :{id:'insignia_eco_ancestral',name:'Insígnia do Eco Ancestral (+1% dano Boss e Raid)',rarity:'Evento Único'}
-          drops.push(await grantBossItem(c,p.jid,insignia,'weekly-boss:'+String(s.weekendKey||'unknown')))
+        // A partir de 30/10, a insígnia é única POR EDIÇÃO, não um
+        // item repetido toda semana. A relíquia é equipável em !reliquias:
+        // apenas UMA insígnia equipada por jogador e nunca afeta PvP.
+        // Exige 10 mil de dano real para evitar prêmio de ataque único.
+        if(weekly&&Number(p.damage||0)>=(upgradedWeeklyEdition(s.weekendKey)?10000:1)){
+          if(upgradedWeeklyEdition(s.weekendKey)){
+            const insignia=weeklyInsignia(s.weekendKey,position===1)
+            if(!insignia)throw Error('Edição semanal inválida para prêmio de insígnia.')
+            await c.query(`
+              INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable)
+              VALUES($1,$2,$3,'special',0,'event',FALSE,FALSE)
+              ON CONFLICT(id) DO NOTHING
+            `,[insignia.id,insignia.name,
+               'Insígnia exclusiva do Superboss da semana '+String(s.weekendKey)+'. '+insignia.effect])
+            await c.query(`
+              INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+              ON CONFLICT(jid,item_id) DO UPDATE
+              SET quantity=GREATEST(inventories.quantity,1)
+            `,[p.jid,insignia.id])
+            drops.push({id:insignia.id,name:insignia.name+' ('+insignia.effect+')',rarity:insignia.rarity})
+          }else{
+            // Regra histórica: não altera resultados de semanas anteriores.
+            const insignia=position===1
+              ?{id:'insignia_tita_ancestral',name:'Insígnia do Titã Ancestral (+3% dano / +1pp CRIT Boss e Raid)',rarity:'Lendário Exclusivo'}
+              :{id:'insignia_eco_ancestral',name:'Insígnia do Eco Ancestral (+1% dano Boss e Raid)',rarity:'Evento Único'}
+            drops.push(await grantBossItem(c,p.jid,insignia,'weekly-boss:'+String(s.weekendKey||'unknown')))
+          }
         }
         // Reclassificação é recompensa de endgame: só entra no sorteio a partir do Nv.100.
         // Boss comum e Boss de evento: 1%. Superboss semanal: 3%.

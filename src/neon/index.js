@@ -4693,7 +4693,7 @@ const commandPages={
 *!boss* — inicia/mostra o Boss disponível; Boss de Evento tem prioridade
 *!atacar* — inicia uma sessão automática de até 5 min (1 ataque a cada 10s)
 👹 *Boss comum:* 9–12 mil HP
-🏆 *Superboss semanal:* sexta e sábado • 85–110 mil HP • 1 por fim de semana
+🏆 *Superboss semanal:* sexta 00:01 até sábado 23:59 • 8–9,5 milhões HP • ATK 200 • 1 Boss global por fim de semana
 💢 Bosses têm *5% de crítico* (1,5× dano); na Raid o crítico não acumula com Golpe Devastador
 ⚔️ *Raids:* HP foi reajustado e escala +12% por jogador adicional; o ATK não escala com o grupo
 🎁 *Drops do Boss:* Poção Grande, Elixir Supremo, Lâmina Abissal, Armadura Abissal, Excalibur e Armadura do Titã
@@ -11742,7 +11742,7 @@ if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: 
 await progressDailyMission(sender,'game')
 const rewardInfo=r.mode==='event'
 ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou 7 essências se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
-:(r.mode==='weekly'?'💰 Fundo semanal de *R$ 150.000*, bônus por colocação e drops exclusivos.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
+:(r.mode==='weekly'?'🏆 Top 1: *R$ 1 milhão, 12 mil XP, 15 Caixas Épicas*. Demais posições com prêmios melhores. ⚜️ Insígnia inédita por edição (mínimo 10 mil de dano), equipável em !reliquias; 1 ativa por vez. Fundo proporcional: *R$ 150 mil*.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
 await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 } else if(['pararatacar','pararboss'].includes(cmd)){
 const existing=bossSessions.get(sender)

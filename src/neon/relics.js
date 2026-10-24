@@ -1,4 +1,5 @@
 import {db,ensureUser} from './db.js'
+import {weeklyInsigniaFromId} from './weekly-boss-insignias.js'
 const RELICS={
   insignia_nem_cirurgia_derrubou_lenda:{name:'Insígnia Nem a Cirurgia Derrubou a Lenda',effect:'🦶 +1% dano contra Bosses e Raids (sem PvP)',boss:0.01,raidAttack:0.01},
   insignia_matador_titas:{name:'Insígnia Matador de Titãs',effect:'⚔️ +1% dano Boss/Raid (sem PvP)',boss:0.01,raidAttack:0.01},
@@ -19,15 +20,16 @@ export async function initRelics(){
 export async function activeRelic(queryable,jid){
   const r=await queryable.query('SELECT item_id FROM player_active_relics WHERE jid=$1',[jid])
   const id=r.rows[0]?.item_id
-  return RELICS[id]?{id,...RELICS[id]}:null
+  const relic=RELICS[id]||weeklyInsigniaFromId(id)
+  return relic?{id,...relic}:null
 }
 export async function relicStatus(jid){
   await ensureUser(jid)
   const [owned,active]=await Promise.all([
-    db.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0',[jid,Object.keys(RELICS)]),
+    db.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND (item_id=ANY($2::text[]) OR item_id LIKE 'insignia_semanal_%')",[jid,Object.keys(RELICS)]),
     activeRelic(db,jid)
   ])
-  return {active,items:owned.rows.map(r=>({id:r.item_id,...RELICS[r.item_id],qty:Number(r.quantity)}))}
+  return {active,items:owned.rows.map(r=>({id:r.item_id,...(RELICS[r.item_id]||weeklyInsigniaFromId(r.item_id)),qty:Number(r.quantity)})).filter(r=>r.name)}
 }
 export async function selectRelic(jid,itemId){
   await ensureUser(jid)
@@ -35,7 +37,8 @@ export async function selectRelic(jid,itemId){
     await db.query('DELETE FROM player_active_relics WHERE jid=$1',[jid])
     return null
   }
-  if(!RELICS[itemId])throw Error('Insígnia inválida. Use !reliquias.')
+  const relic=RELICS[itemId]||weeklyInsigniaFromId(itemId)
+  if(!relic)throw Error('Insígnia inválida. Use !reliquias.')
   const c=await db.connect()
   try{
     await c.query('BEGIN')
@@ -44,7 +47,7 @@ export async function selectRelic(jid,itemId){
     await c.query(`INSERT INTO player_active_relics(jid,item_id) VALUES($1,$2)
       ON CONFLICT(jid) DO UPDATE SET item_id=EXCLUDED.item_id,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT`,[jid,itemId])
     await c.query('COMMIT')
-    return {id:itemId,...RELICS[itemId]}
+    return {id:itemId,...relic}
   }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
 }
 export const relicCatalog=RELICS
