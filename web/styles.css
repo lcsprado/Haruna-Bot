@@ -1186,3 +1186,91 @@ body.loot-open{overflow:hidden!important}
   .pet-picker-filter{flex:0 0 auto}
   .pet-picker-order{margin-left:auto}
 }
+
+
+/* Central de Eventos 2026 */
+.event-home-link{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:15px 18px;margin:0 0 16px;border:1px solid #735d34;border-radius:16px;background:linear-gradient(120deg,#26211b,#121926 70%);}
+.event-home-link strong{display:block;color:#ffdb9f;font-size:14px;margin-bottom:4px}
+.event-home-link small{display:block;font-size:11px;color:#afbbc9;line-height:1.45}
+.event-home-link .btn{flex-shrink:0}
+.event-center-heading{align-items:center}
+.event-center-heading .eyebrow{color:#efbf78}
+.event-center-heading h2{font-size:26px}
+.event-center-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 25px}
+.event-center-summary>div{min-width:0;display:flex;flex-direction:column;gap:6px;padding:16px 18px;border:1px solid #30415a;border-radius:15px;background:linear-gradient(145deg,#141e2a,#0c131d)}
+.event-center-summary strong{font-size:25px;color:#f0f4fe}
+.event-center-summary span{font-size:11px;color:#98abc2}
+.event-center-section{margin:24px 0}
+.event-center-section .section-title h3{font-size:17px}
+.event-center-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.event-center-card{display:flex;flex-direction:column;min-width:0;gap:12px;padding:18px;overflow:hidden;border-color:#2c4058;box-shadow:0 14px 30px #0003}
+.event-center-card.event-center-active{border-color:#386d57;background:linear-gradient(150deg,#10231d,#0d1722 68%)}
+.event-center-card.event-center-upcoming{border-color:#6d5530;background:linear-gradient(150deg,#221b14,#111a27 72%)}
+.event-center-card.event-center-finished{opacity:.78}
+.event-center-card-top{display:flex;align-items:center;gap:11px;min-width:0}
+.event-center-art{display:grid;place-items:center;flex:0 0 52px;width:52px;height:52px;border:1px solid #435871;border-radius:15px;background:radial-gradient(circle at 45% 25%,#294058,#0a131e 80%);font-size:28px}
+.event-center-category{display:block;font-size:10px;color:#8ca9c9;letter-spacing:.04em;line-height:1.35}
+.event-center-card-title{flex:1;min-width:0}
+.event-center-card-title h3{font-size:17px;line-height:1.3;margin:4px 0 0;overflow-wrap:anywhere}
+.event-center-state{padding:6px 8px;border:1px solid #405371;border-radius:100px;white-space:nowrap;font-size:9px;font-weight:850;color:#9db1ca}
+.event-center-state.active{color:#83eeb5;border-color:#3e8763;background:#143124}
+.event-center-state.upcoming{color:#e9c27d;border-color:#775c31;background:#2d2417}
+.event-center-state.finished{color:#9ca7b6}
+.event-center-schedule{font-size:11px;color:#bccce2;line-height:1.5}
+.event-center-desc{margin:0;color:#a6bad1;font-size:11px;line-height:1.6}
+.event-center-reward{display:grid;gap:6px;padding:11px 13px;border:1px solid #3a4a3e;border-radius:12px;background:#1a211d}
+.event-center-reward>span{font-size:10px;color:#97bdaa}
+.event-center-reward strong{font-size:12px;line-height:1.55;color:#a7edba}
+.event-center-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:auto}
+.event-center-actions .btn{min-height:40px}
+.event-center-timer{color:#f2d29e;font-size:11px;margin-left:auto;font-weight:750}
+.event-center-player{padding:14px;border:1px solid #324a61;border-radius:13px;background:#101d2b;display:grid;gap:10px}
+.event-center-player-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.event-center-player-head strong{font-size:13px}
+.event-center-player-head span{font-size:11px;color:#f4d49c}
+.event-center-player .progress{height:8px}
+.event-center-player .progress>span{background:linear-gradient(90deg,#5aa7e9,#81ebbe)}
+.event-center-player small{font-size:10px;color:#b5c7dd;line-height:1.6}
+.event-center-pieces{display:flex;flex-wrap:wrap;gap:7px}
+.event-center-pieces span{font-size:10px;color:#bce0ff;padding:5px 7px;border-radius:7px;background:#1a3046}
+.event-center-player .event-center-cooldown{color:#e6bc79}
+.event-center-goals{display:grid;gap:7px}
+.event-center-goal{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #2f4154;border-radius:10px;padding:8px 10px;background:#0e1824}
+.event-center-goal>span{font-size:10px;color:#8fa5bd;white-space:nowrap}
+.event-center-goal strong{font-size:10px;color:#d7e1ef;text-align:right;line-height:1.4}
+.event-center-goal.done{border-color:#315d47;background:#12281c}
+.event-center-goal.done>span,.event-center-goal.done strong{color:#80dbab}
+.event-center-ranking{padding:10px 12px;border:1px solid #395071;border-radius:12px;background:#0b1725}
+.event-center-ranking summary{cursor:pointer;font-size:11px;font-weight:850;color:#bbd9f3;line-height:1.5}
+.event-center-ranking[open] summary{margin-bottom:10px}
+.event-center-ranking small{font-size:10px;color:#94a8be;display:block;margin-top:10px}
+.event-center-rank{display:flex;justify-content:space-between;gap:10px;padding:9px 4px;font-size:11px;border-bottom:1px solid #223145}
+.event-center-rank span{overflow-wrap:anywhere;min-width:0}
+.event-center-rank strong{color:#efcf95;white-space:nowrap}
+.event-center-trades{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:10px;color:#a3b4c8}
+.event-center-trades .btn{padding:7px 9px;font-size:10px}
+.event-center-whatsapp{padding:10px;border-radius:10px;background:#182022;font-size:10px;color:#9bd5b8;line-height:1.55}
+.event-center-boss-hp{display:grid;gap:7px;font-size:11px;color:#eed0cf}
+.event-center-boss-hp .progress>span{background:linear-gradient(90deg,#ed777c,#f4b2a9)}
+.event-center-footnote{color:#74899f;font-size:10px;line-height:1.7;margin:25px 0 4px;padding:13px;border-top:1px solid #26384a}
+@media(max-width:960px){.event-center-grid{grid-template-columns:1fr}}
+@media(max-width:600px){
+ .event-center-heading{align-items:flex-start}
+ .event-center-heading .btn{flex-shrink:0}
+ .event-center-heading h2{font-size:21px}
+ .event-center-heading p:not(.eyebrow){font-size:11px;line-height:1.5}
+ .event-center-heading .btn{font-size:10px;padding:9px}
+ .event-center-summary>div{padding:12px 9px}
+ .event-center-summary strong{font-size:21px}
+ .event-center-summary span{font-size:9px}
+ .event-center-card{padding:13px}
+ .event-center-art{flex-basis:42px;width:42px;height:42px;font-size:24px}
+ .event-center-card-title h3{font-size:15px}
+ .event-center-state{font-size:8px;padding:5px 6px}
+ .event-center-reward strong{font-size:11px}
+ .event-center-goal{gap:7px}
+ .event-center-goal>span{font-size:9px}
+ .event-center-goal strong{font-size:9px}
+ .event-home-link{padding:12px;align-items:flex-start;flex-direction:column;gap:10px}
+ .event-home-link .btn{width:100%}
+}
