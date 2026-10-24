@@ -693,6 +693,13 @@ body.loot-open{overflow:hidden!important}
 .loot-reward-copy p{margin:0;color:#8d9aad;font-size:10px;line-height:1.45}
 .loot-actions{grid-column:1/-1;display:flex;gap:10px;justify-content:flex-end}
 .loot-close-main{width:100%;margin-top:18px}
+.loot-batch-panel{display:grid;gap:12px;justify-items:stretch;margin:16px 0 8px;padding:15px;border:1px solid #365170;border-radius:16px;background:#0b1725;text-align:left}
+.loot-batch-panel p{margin:0;color:#b8c8dd;font-size:12px;line-height:1.5}
+.loot-batch-panel .tag{justify-self:start}
+.loot-batch-button{width:100%;min-height:46px;font-weight:800}
+.loot-sale-summary{text-align:left;margin:14px 0 0}
+.loot-actions .btn[disabled],.loot-batch-button[disabled]{opacity:.5;cursor:wait}
+
 @keyframes lootModalIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
 @keyframes lootBurst{from{transform:scale(.92) rotate(-4deg);filter:drop-shadow(0 0 8px #6ca9ff)}to{transform:scale(1.1) rotate(4deg);filter:drop-shadow(0 0 24px #c28bff)}}
 @media(max-width:520px){
