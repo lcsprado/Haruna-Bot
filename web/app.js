@@ -1904,9 +1904,9 @@ function renderAuction(){
   return '<div class="page-head"><div><h2>🔨 '+esc(a.title||'Leilão')+'</h2><p>Mesmo leilão do WhatsApp. Os lances são públicos; o conteúdo de cada lote permanece secreto até o arremate.</p></div><span class="tag '+(active?'good':'')+'">'+label+'</span></div>'+
     '<div class="grid stats">'+
     statCard('LOTE',a.lotNumber?num(a.lotNumber)+' / '+num(a.totalLots):'—','🎁 Prêmio misterioso')+
-    statCard('MAIOR LANCE',a.currentBid!=null?money(a.currentBid):'Nenhum',a.leader?esc(a.leader):'Sem líder')+
+    statCard('MAIOR LANCE',a.currentBid!=null?money(a.currentBid):'Nenhum',a.leader?a.leader:'Sem líder')+
     statCard('PRÓXIMO MÍNIMO',money(a.nextMinimum),'Incremento mínimo: '+money(a.step))+
-    statCard('TEMPO RESTANTE',timer,'Últimos 15s: +20s, até 2min extras')+'</div>'+
+    '<div class="card stat-card"><small>TEMPO RESTANTE</small><strong>'+timer+'</strong><span>Últimos 15s: +20s, até 2min extras</span></div>'+'</div>'+
     '<div class="grid two section">'+
     '<div class="card"><h3>Dar lance</h3><p>O valor é reservado da sua carteira e banco; se alguém superar seu lance, a reserva é devolvida.</p>'+
     (a.isLeading?'<p class="tag good">🏆 Você está vencendo este lote.</p>':'')+
