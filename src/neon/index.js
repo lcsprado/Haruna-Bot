@@ -1534,7 +1534,7 @@ normalizeItemText(i.item_id)===raw ||
 normalizeItemText(i.name)===raw
 ) || null
 }
-const XP_SPECIAL_ITEM_IDS=new Set(['elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido','elixir_leilao_30m','elixir_leilao_2h','pergaminho_leilao_10k'])
+const XP_SPECIAL_ITEM_IDS=new Set(['elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido','elixir_leilao_30m','elixir_leilao_2h','elixir_leilao_1h_20261024','pergaminho_leilao_10k'])
 function xpItemReceipt(r){
 if(r.type==='boost') return `🧪 *${r.name.toUpperCase()} ATIVADO!*\n✨ +${r.percent}% de XP pelos próximos *${r.durationMinutes} minutos*.\n🛡️ Limite de *${r.cap} XP extra*; elixires não acumulam.\n📊 Use *!buffxp* para acompanhar.`
 return `📜 *${r.name.toUpperCase()} UTILIZADO!*\n✨ +${r.xp.toLocaleString('pt-BR')} XP instantâneos\n⭐ Nível atual: *${r.level}*${r.levelUps?` • ${r.levelUps} nível(is) conquistado(s)!`:''}\n⏳ Limite: 1 tomo por dia.`
