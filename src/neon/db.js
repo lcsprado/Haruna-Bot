@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import {createRecentEnsureCache} from './recent-ensure.js'
+import {resolveAstralLynxWildcard} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
 import pg from 'pg'
@@ -4760,7 +4761,7 @@ tartaruga:{base:145,growth:13,type:'Tanque'},
 coruja:{base:100,growth:8,type:'Suporte'},
 raposa:{base:110,growth:9,type:'Ágil'},
 raposa_astral:{base:115,growth:10,type:'Neutro — Leilão Alpha'},
-lince_astral:{base:115,growth:10,type:'Neutro — Leilão das Sombras'},
+lince_astral:{base:115,growth:10,type:'Coringa — Leilão das Sombras'},
 lobo:{base:130,growth:11,type:'Ofensivo'},
 aguia:{base:115,growth:9,type:'Crítico'},
 gaviao:{base:120,growth:9,type:'Ágil Crítico'},
@@ -4875,6 +4876,11 @@ salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mist
 oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico',
 oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico'
 }
+const PET_TEAM_WILDCARD_BONUS={
+  styleLabel:'🃏 Coringa',label:'🃏 Elo Universal',
+  attack:.015,defense:.02,crit:0,speed:0,
+  text:'+1,5% ATK e +2% DEF no Boss/Raid'
+}
 const PET_TEAM_STYLE_BONUS={
 voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
 guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
@@ -4891,7 +4897,7 @@ styles[batIndex]=others[0]
 return styles
 }
 export function petStyleLabel(species){
-const style=['morcego_madrugada','camaleao_lendario'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+const style=['morcego_madrugada','camaleao_lendario','lince_astral'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
 return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
 export function petTeamSynergy(pets=[]){
@@ -4900,14 +4906,17 @@ const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
 const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
 const styles=resolveBatTeamStyles(species)
-const base=team.length===3&&unique&&styles[0]&&styles.every(s=>s===styles[0])
-?PET_TEAM_STYLE_BONUS[styles[0]]:null
+const wildcard=team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
+const base=team.length===3&&unique
+  ?(wildcard?(wildcard.universal?PET_TEAM_WILDCARD_BONUS:PET_TEAM_STYLE_BONUS[wildcard.style])
+    :(styles[0]&&styles.every(s=>s===styles[0])?PET_TEAM_STYLE_BONUS[styles[0]]:null))
+  :null
 if(!base&&!count)return null
 const attack=Number(base?.attack||0)+pecadosBonus(count)
 const crit=Number(base?.crit||0)+(count===3?.05:0)
 const collabText=count?'🌈 '+count+' Pecado(s): +'+Math.round(pecadosBonus(count)*100)+'% dano'+(count===3?' e +5 p.p. CRIT':''):''
 return {
-...(base||{}),style:base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
+...(base||{}),style:wildcard?.style||base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
 label:[base?.label, count?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
 text:[base?.text,collabText].filter(Boolean).join(' | '),
 attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
