@@ -2,6 +2,7 @@ import 'dotenv/config'
 import crypto from 'node:crypto'
 import {relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
+import {getWebEventCenter} from './web-event-center.js'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship, getProfileAvatar,
@@ -1432,6 +1433,13 @@ export async function handleWebApi(req,res){
     if(req.method==='POST' && url.pathname==='/api/v1/auth/logout'){
       await logoutSession(session)
       json(res,200,{ok:true})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/event-center'){
+      const center=await getWebEventCenter(db,session.jid)
+      res.setHeader('cache-control','no-store')
+      json(res,200,{ok:true,data:center})
       return true
     }
 
