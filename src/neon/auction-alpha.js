@@ -144,6 +144,7 @@ async function prize(c,jid,packageItems){
 function beginLot(state,now){
   state.phase='running'
   state.high=null
+  state.recentBids=[]
   state.ends=now+DURATION
   state.extra=0
 }
@@ -154,6 +155,7 @@ async function finishLot(state,c){
   const entry={lot:state.lot,winner:high?{jid:high.jid,name:high.name,bid:high.value}:null}
   if(high){
     const received=await prize(c,high.jid,lot.prize)
+    entry.rewards=received
     await c.query(
       "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_sombras_20261024',$3)",
       [high.jid,high.value,KEY+':lot:'+state.lot]
@@ -250,7 +252,7 @@ function parseAmount(raw){
   const value=Number(match[2])*mult
   return Number.isSafeInteger(value)&&value>0?{relative:Boolean(match[1]),value}:null
 }
-export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply}){
+export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply,web=false}){
   if(!['leilao','lance'].includes(cmd))return false
   if(AUCTION_PAUSED_FOR_AUDIT){
     await reply('🔒 Os leilões de hoje foram cancelados e estão pausados até a auditoria. Lances foram estornados; prêmios serão revisados. Nenhuma nova cobrança será feita.')
@@ -307,6 +309,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
         cash:cash+(old?.jid===sender?Number(old.cash):0),
         bank:bank+(old?.jid===sender?Number(old.bank):0)
       }
+      state.recentBids=[...(state.recentBids||[]),{name:clean(name),value:offered,at:Date.now()}].slice(-12)
       const overtime=extendAuctionDeadline(state.ends,state.extra,Date.now())
       state.ends=overtime.ends
       state.extra=overtime.extra
@@ -317,13 +320,14 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
           '\n📈 Próximo lance: '+fmt(offered+lot.step)+
           '\n⏳ Encerra: '+clock(state.ends),
         version:Number(state.bidNoticeVersion=(Number(state.bidNoticeVersion||0)+1)),
-        otherGroups:otherAuctionGroups(state.groups,chat),
+        otherGroups:web?[...new Set(state.groups)]:otherAuctionGroups(state.groups,chat),
         notice:crossGroupBidNotice({
           lot:state.lot+1,totalLots:state.lots.length,bidder:state.high.name,
           value:offered,nextMinimum:offered+lot.step,endsAt:state.ends
         })
       }
-      await queueAuctionBidNotices(c,{key:KEY,version:result.version,groups:result.otherGroups,origin:chat,message:result.notice})
+      if(web)result.notice=result.notice.replace('LANCE DE OUTRO GRUPO!','LANCE PELO WEB!')
+      await queueAuctionBidNotices(c,{key:KEY,version:result.version,groups:result.otherGroups,origin:web?'web':chat,message:result.notice})
       return result
     })
     // O lance já foi confirmado no Neon. Uma falha de envio não o desfaz.
@@ -338,4 +342,42 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     }
   }catch(err){await reply('❌ '+String(err?.message||err))}
   return true
+}
+
+// The Web API uses the same locked bidding path as WhatsApp; never a second auction.
+// These snapshots intentionally omit lots[].prize, salt, and all private player JIDs.
+export async function getAuctionWebStatus({chat,sender}){
+  if(!String(chat||'').endsWith('@g.us'))throw Error('Vincule seu Web a um grupo com !web no WhatsApp.')
+  if(!EVENT_GROUPS.has(chat)&&!groupLicenseIsActive(await getGroupLicense(chat)))throw Error('Grupo sem acesso a este leilão.')
+  const state=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value||stateDefault()
+  const now=Date.now()
+  const lot=state.lots?.[state.lot]
+  const groupAllowed=Array.isArray(state.groups)&&state.groups.includes(chat)
+  const acceptingBids=!AUCTION_PAUSED_FOR_AUDIT&&state.phase==='running'&&groupAllowed&&now>=START&&now<END&&now<Number(state.ends||0)
+  return {
+    title:'Leilão das Sombras',phase:now<START?'scheduled':(state.phase||'pending'),
+    acceptingBids,serverTime:now,startsAt:START,lotNumber:lot?Number(state.lot)+1:null,
+    totalLots:PACKAGES.length,step:lot?.step||STEP,opening:lot?.min||OPENING,
+    nextMinimum:lot?(state.high?Number(state.high.value)+lot.step:lot.min):OPENING,
+    currentBid:state.high?Number(state.high.value):null,
+    leader:state.high?clean(state.high.name):null,
+    isLeading:Boolean(state.high&&state.high.jid===sender),
+    endsAt:lot?Number(state.ends||0):null,
+    recentBids:(state.recentBids||[]).slice(-12).map(b=>({name:clean(b.name),value:Number(b.value),at:Number(b.at)})),
+    history:(state.history||[]).map(x=>({lotNumber:Number(x.lot)+1,
+      winner:x.winner?{name:clean(x.winner.name),bid:Number(x.winner.bid)}:null,
+      rewards:Array.isArray(x.rewards)?x.rewards.map(r=>String(r).slice(0,120)):[]
+    }))
+  }
+}
+
+export async function placeAuctionWebBid({chat,sender,name,amount}){
+  const raw=String(amount??'')
+  if(!/^\+?\d{1,10}$/.test(raw))throw Error('Informe um valor inteiro válido em reais.')
+  let confirmation=''
+  await handleAuctionAlphaCommand({cmd:'lance',args:[raw],chat,sender,name,web:true,
+    reply:async message=>{confirmation=String(message||'')}
+  })
+  if(!confirmation.startsWith('✅'))throw Error(confirmation.replace(/^❌\s*/, '')||'Lance não aceito.')
+  return {accepted:true,confirmation}
 }
