@@ -83,6 +83,7 @@ import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
+import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -721,6 +722,7 @@ let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*
 ❤️ Boss derrotado em *${r.round} rodadas*.
 📊 *RECOMPENSAS POR COLABORAÇÃO*
 `
+if(r.rewards.some(x=>x.saturdayHuntActive))text+='\n⚡ *CAÇADA DE SÁBADO: +50% XP DO JOGADOR* (já incluído abaixo).\n'
 r.rewards.forEach((x,n)=>{
 const pct=(x.share*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
 text+=`
@@ -8751,6 +8753,7 @@ console.log('[WhatsApp] ALPHA BOT CONECTADO')
 if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
 startAuctionAlphaScheduler(sock)
 startAuctionNotificationPilot(sock)
+scheduleSaturdayRaidHunt(sock)
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)

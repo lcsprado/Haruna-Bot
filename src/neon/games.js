@@ -2,6 +2,7 @@ import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
+import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
@@ -1141,7 +1142,10 @@ async function finishRaidRewards(c,s,cfg,chat){
   const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
     now<Date.parse('2026-10-18T22:00:00-03:00')
   const moneyMultiplier=raidGoldHour?2:(cacadaActive?1.25:1)
-  const xpMultiplier=raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1))
+  // Caçada de Sábado: aplica somente à EXP de jogador em Raids 50/60/65/70.
+  // MAX evita multiplicação indevida se outro evento de Raid coincidir.
+  const saturdayXp=saturdayRaidXpMultiplier(cfg.level,now)
+  const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp)
   const petXpMultiplier=raidEventActive?1.5:(cacadaActive?1.25:1)
   const gearEventBonus=raidEventActive?.015:0
   const rewards=[]
@@ -1321,7 +1325,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       playerClassId:p.classId,
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
