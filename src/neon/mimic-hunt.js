@@ -278,7 +278,8 @@ const sortByScore=(a,b)=>{
 }
 export async function finalizeMimics(){
  await initMimic()
- if(Date.now()<MIMIC_EVENT.endsAt)return {due:false}
+ // Aguarda 15 s após o fechamento para liquidar ações iniciadas antes das 17h.
+ if(Date.now()<MIMIC_EVENT.endsAt+15000)return {due:false}
  const c=await db.connect()
  try{
   await c.query('BEGIN')
@@ -319,7 +320,7 @@ export async function finalizeMimics(){
 async function announce(sock,phase){
  const now=Date.now()
  if(phase==='open'&&(now<MIMIC_EVENT.startsAt||now>=MIMIC_EVENT.endsAt))return
- if(phase==='close'&&now<MIMIC_EVENT.endsAt)return
+ if(phase==='close'&&now<MIMIC_EVENT.endsAt+15000)return
  if(closing)return
  closing=true
  try{
@@ -368,7 +369,6 @@ export async function scheduleMimics(sock){
   timers.push(t)
  }
  if(now<MIMIC_EVENT.endsAt)later(MIMIC_EVENT.startsAt,'open')
- if(now<MIMIC_EVENT.endsAt)later(MIMIC_EVENT.endsAt,'close')
- else later(MIMIC_EVENT.endsAt,'close')
+ later(MIMIC_EVENT.endsAt+15000,'close')
  console.log('[MIMIC HUNT] agendado',JSON.stringify({start:'15:00',end:'17:00',levels:'livre'}))
 }
