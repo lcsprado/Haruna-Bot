@@ -53,4 +53,11 @@ export const PECADOS_ENDS=Object.freeze(['2026-10-25T20:00:00-03:00','2026-11-01
 export const PECADOS_EDITIONS=Object.freeze(PECADOS_STARTS.map((start,i)=>Object.freeze({
   start:Date.parse(start),end:Date.parse(PECADOS_ENDS[i]),key:'sete-pecados-collab-'+(i===0?'20261025':'20261101')
 })))
+// Na estreia de 25/10, somente as 14 essências dos sete Pecados (2 baús).
+// A edição de 01/11 mantém, por enquanto, o bônus de 7 essências da conclusão.
+// Chaves desconhecidas não podem gerar bônus adicional acidentalmente.
+export function pecadosEditionCompletionBonus(scheduleKey){
+  const edition=PECADOS_EDITIONS.find(e=>e.key===String(scheduleKey||''))
+  return edition&&edition.key!==PECADOS_EDITIONS[0].key?PECADOS_FULL_CLEAR_BONUS_ESSENCES:0
+}
 export function pecadosBonus(count){return [0,.05,.10,.20][Math.max(0,Math.min(3,Number(count)||0))]}
