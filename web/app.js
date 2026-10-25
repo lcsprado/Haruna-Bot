@@ -2474,6 +2474,34 @@ function renderEvents(){
   const now=Date.now();
   const data=ui.eventCenter||{},group=currentGroup(),extras=ui.extras||{};
   const items=[];
+  // Cronograma oficial vindo do mesmo catálogo usado pelo Boss do WhatsApp.
+  // Exibe hoje e a próxima edição antes de começar, sem criar uma segunda batalha.
+  for(const edition of Array.isArray(data.sevenSins)?data.sevenSins:[]){
+    const actualDone=edition.boss?.active===false&&Boolean(edition.boss?.outcome);
+    const phase=actualDone?'finished':eventCenterPhase(edition.startsAt,edition.endsAt,now);
+    const completed=Number(edition.essencesTotal||28);
+    const phases=Array.isArray(edition.phases)?edition.phases:[];
+    const activeBoss=edition.boss?.active?edition.boss:null;
+    const live=activeBoss?
+      '<div class="event-center-boss-hp"><strong>👹 '+esc(activeBoss.name||'Boss atual')+' • ❤️ '+num(activeBoss.hp)+'/'+num(activeBoss.maxHp||1)+'</strong>'+
+      '<div class="progress"><span style="width:'+pct(Number(activeBoss.hp||0)/Math.max(1,Number(activeBoss.maxHp||1))*100)+'%"></span></div></div>':'';
+    const bossDetails='<details class="event-center-ranking"><summary>⚔️ Ver os oito Bosses e sua dificuldade</summary>'+
+      '<div class="event-center-goals">'+phases.map((p,i)=>'<div class="event-center-goal"><span>'+num(i+1)+'º '+esc(p.name)+'</span><strong>❤️ '+num(p.hp)+' HP • ⚔️ '+num(p.atk)+' ATK</strong></div>').join('')+'</div></details>';
+    const extra='<div class="event-center-player"><strong>🩸 '+num(edition.essencesPerSin||3)+' essências por Pecado • +'+num(edition.completionBonus||7)+' ao completar os 8</strong>'+
+      '<div class="event-center-pieces"><span>❤️ '+num(edition.totalHp||5400000)+' HP somados</span><span>🎯 '+num(edition.minimumDamage||10000)+' dano por Boss</span>'+
+      '<span>🎁 '+num(completed)+' essências = '+num(edition.maxCollabBoxes||4)+' invocações</span></div></div>'+
+      live+bossDetails+
+      '<p class="event-center-whatsapp">📱 Combate global pelo WhatsApp com <strong>!atacar</strong>. A Raid dos Sete Pecados para farmar Fragmentos da Ascensão é independente. Armas e armaduras repetidas ficam guardadas para futura forja.</p>';
+    const command=phase==='active'?'!atacar':'!7pecados';
+    items.push({id:edition.id,phase,from:Number(edition.startsAt||0),to:Number(edition.endsAt||0),html:eventCenterCard({
+      id:edition.id,icon:'🌈',category:'Collab global • Edição '+num(edition.edition||1),
+      title:'Boss dos Sete Pecados',phase,startsAt:edition.startsAt,endsAt:edition.endsAt,
+      description:'Sete Pecados + Azazel em sequência. Os jogadores que contribuírem recebem as mesmas essências, independentemente do ranking.',
+      reward:num(completed)+' essências e até '+num(edition.maxCollabBoxes||4)+' invocações por edição completa; dinheiro, XP, caixas e insígnia conforme regras.',
+      extra,
+      actions:'<button class="btn primary" data-event-copy="'+command+'">📋 Copiar '+command+'</button>'
+    })});
+  }
   if(data.mimic){
     const e=data.mimic;
     items.push({id:'mimic',phase:eventCenterPhase(e.startsAt,e.endsAt,now),from:Number(e.startsAt),to:Number(e.endsAt),html:eventCenterMimicCard(e)});
@@ -3377,7 +3405,7 @@ function bind(){
   });
   document.querySelectorAll('[data-event-copy]').forEach(button=>button.onclick=async()=>{
     const command=String(button.dataset.eventCopy||'').trim();
-    if(!/^!mimic(?: (?:status|ranking|trocar (?:rara|epica)))?$/.test(command))return;
+    if(!/^(?:!mimic(?: (?:status|ranking|trocar (?:rara|epica)))?|!7pecados|!atacar)$/.test(command))return;
     try{
       if(!navigator.clipboard?.writeText)throw new Error('Área de transferência indisponível');
       await navigator.clipboard.writeText(command);
