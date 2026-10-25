@@ -1,3 +1,5 @@
+import {PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,PECADOS_MIN_BOSS_DAMAGE} from './sete-pecados-catalog.js'
+
 // Vitrine de eventos do Web. Somente leitura: a lógica de caça e os prêmios
 // continuam exclusivamente no serviço WhatsApp (mimic-hunt.js).
 // Cronogramas de 24/10/2026 auditados nas fontes ativas do WhatsApp.
@@ -66,14 +68,57 @@ export function normalizeMimicSnapshot(row,now=Date.now()){
     prizesFinalized:Boolean(row?.finalized)
   }
 }
+export function buildSevenSinsSchedule(now=Date.now()){
+  const phases=PECADOS_BOSS_PHASES.map(({id,name,hp,atk})=>({id,name,hp,atk}))
+  const essencesTotal=(PECADOS_BOSS_PHASES.length-1)*PECADOS_ESSENCES_PER_PHASE+PECADOS_FULL_CLEAR_BONUS_ESSENCES
+  return PECADOS_EDITIONS.map((edition,index)=>({
+    id:edition.key,
+    edition:index+1,
+    startsAt:edition.start,
+    endsAt:edition.end,
+    phase:eventPhase({startsAt:edition.start,endsAt:edition.end},now),
+    phases,
+    totalHp:phases.reduce((sum,p)=>sum+p.hp,0),
+    minimumDamage:PECADOS_MIN_BOSS_DAMAGE,
+    essencesPerSin:PECADOS_ESSENCES_PER_PHASE,
+    completionBonus:PECADOS_FULL_CLEAR_BONUS_ESSENCES,
+    essencesTotal,
+    maxCollabBoxes:Math.floor(essencesTotal/7),
+    boss:null
+  }))
+}
+
 export async function getWebEventCenter(db,jid,now=Date.now()){
-  const event={mimic:normalizeMimicSnapshot(null,now),saturdayRaid:{
+  const event={sevenSins:buildSevenSinsSchedule(now),mimic:normalizeMimicSnapshot(null,now),saturdayRaid:{
     id:SATURDAY_WEB_EVENT.id,name:SATURDAY_WEB_EVENT.name,
     startsAt:SATURDAY_WEB_EVENT.startsAt,endsAt:SATURDAY_WEB_EVENT.endsAt,
     phase:eventPhase(SATURDAY_WEB_EVENT,now),
     levels:SATURDAY_WEB_EVENT.levels,
     xpMultiplier:SATURDAY_WEB_EVENT.xpMultiplier
   },generatedAt:now,readOnly:true}
+  // Uma consulta indexada somente se alguma edição já iniciou. Nunca carrega
+  // ledger, jogadores ou inventários; os agendamentos aparecem mesmo sem login no Boss.
+  if(now>=PECADOS_EDITIONS[0].start&&now<PECADOS_EDITIONS[PECADOS_EDITIONS.length-1].end){
+    try{
+      const {rows}=await db.query(
+        "SELECT state->>'scheduleKey' AS edition_key,state->>'name' AS boss_name,state->>'active' AS active,state->>'phaseIndex' AS phase_index,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'outcome' AS outcome FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'"
+      )
+      const state=rows?.[0]
+      const current=event.sevenSins.find(e=>e.id===state?.edition_key)
+      if(current){
+        current.boss={
+          active:state.active==='true',
+          phaseIndex:bounded(state.phase_index,7),
+          name:String(state.boss_name||'').slice(0,100),
+          hp:bounded(state.hp,100000000),
+          maxHp:bounded(state.max_hp,100000000),
+          outcome:String(state.outcome||'').slice(0,40)
+        }
+      }
+    }catch(err){
+      console.warn('[Web Event Center] Boss 7 Pecados indisponível',String(err?.code||err?.message||err).slice(0,130))
+    }
+  }
   // No tournament writes, no virtual inventory, no WhatsApp session.
   if(now<MIMIC_WEB_EVENT.startsAt)return event
   try{
