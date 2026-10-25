@@ -3388,13 +3388,13 @@ if(now<edition.start){
 const groups=await activeEventGroups()
 for(const group of groups){
 await sendScheduledGroupNotice(group.chat_jid,edition.key+'-aviso-1755',
-'🌈⚔️ *7 PECADOS CAPITAIS EM 5 MINUTOS!*\n\n⏰ 18h–20h (Brasília).\n👹 Oito Bosses em sequência • 5.400.000 HP totais.\n🩸 +3 essências por pecado vencido (10 mil de dano por Boss).\n🎁 +7 essências por completar as 8 fases: *28 essências = 4 invocações*.\n♻️ Armas e armaduras repetidas ficam no inventário.\n⚔️ Prepare-se para *!atacar*!')
+'🌈⚔️ *7 PECADOS CAPITAIS EM 5 MINUTOS!*\n\n⏰ 18h–20h (Brasília).\n👹 Oito Bosses em sequência • 5.400.000 HP totais.\n🩸 +2 essências por pecado vencido (10 mil de dano por Boss).\n🎁 +7 essências por completar as 8 fases: *21 essências = 3 invocações*.\n♻️ Armas e armaduras repetidas ficam no inventário.\n⚔️ Prepare-se para *!atacar*!')
 }
 return
 }
 const event=await tickSetePecados(now)
 if(event.spawned){
-await sendEventToGroups('🌈⚔️ *COLLAB DOS 7 PECADOS COMEÇOU!*\n\n⏰ 18h–20h (Brasília)\n👹 Sete Pecados + Azazel • oito Bosses sequenciais • 5.400.000 HP no total.\n🎯 10.000 de dano em cada Boss para receber os prêmios da fase.\n🩸 *+3 essências* por pecado (7 fases); *+7 essências* por vencer os oito: 28 no total = *4 invocações*.\n🎁 *!7pecados abrir*: 7 essências por baú (1/3 personagem, 1/3 arma, 1/3 armadura).\n♻️ Arma/armadura repetida: cópia guardada para futura forja; personagem repetido: 50 Fragmentos Universais.\n⚔️ Use *!atacar*!')
+await sendEventToGroups('🌈⚔️ *COLLAB DOS 7 PECADOS COMEÇOU!*\n\n⏰ 18h–20h (Brasília)\n👹 Sete Pecados + Azazel • oito Bosses sequenciais • 5.400.000 HP no total.\n🎯 10.000 de dano em cada Boss para receber os prêmios da fase.\n🩸 *+2 essências* por pecado (7 fases); *+7 essências* por vencer os oito: 21 no total = *3 invocações*.\n🎁 *!7pecados abrir*: 7 essências por baú (1/3 personagem, 1/3 arma, 1/3 armadura).\n♻️ Arma/armadura repetida: cópia guardada para futura forja; personagem repetido: 50 Fragmentos Universais.\n⚔️ Use *!atacar*!')
 }
 if(event.ended)await sendEventToGroups('🌈🏁 *COLLAB DOS 7 PECADOS ENCERRADA POR HOJE!*\n\n⏰ A janela de 18h–20h acabou.\n🩸 Essências conquistadas permanecem no inventário para o baú.\n🎁 Use *!7pecados* para ver sua coleção.')
 if(event.blocked)console.warn('[SETE PECADOS] Boss existente bloqueia início',event.blockingBoss)
