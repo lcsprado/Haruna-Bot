@@ -35,7 +35,7 @@ export const PECADOS_EQUIPMENT=Object.freeze([...PECADOS_WEAPONS,...PECADOS_ARMO
 export const PECADOS_HERO_IDS=Object.freeze(PECADOS_HEROES.map(p=>p.species))
 export const PECADOS_GEAR_IDS=Object.freeze(PECADOS_EQUIPMENT.map(p=>p.id))
 // Regras compartilhadas entre WhatsApp, recompensas e a Central de Eventos do Web.
-export const PECADOS_ESSENCES_PER_PHASE=3
+export const PECADOS_ESSENCES_PER_PHASE=2
 export const PECADOS_FULL_CLEAR_BONUS_ESSENCES=7
 export const PECADOS_MIN_BOSS_DAMAGE=10000
 export const PECADOS_BOSS_PHASES=Object.freeze([
