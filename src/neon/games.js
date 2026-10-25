@@ -7,6 +7,7 @@ import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {PECADOS_ESSENCES,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
+import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
 async function tx(fn){
@@ -1787,6 +1788,71 @@ export async function tickCalcanharBoss(now=Date.now()){
   })
 }
 
+// Farm cooperativo de fragmentos: quatro fases, HP compartilhado, sem Boss duplicado.
+function collabFarmState(phaseIndex,ledger,startedAt){
+  const phase=COLLAB_FARM_PHASES[phaseIndex]
+  return {mode:'event',eventId:COLLAB_FARM_ID,origin:'scheduled',scheduleKey:COLLAB_FARM_KEY,
+    active:true,phaseIndex,phaseCount:COLLAB_FARM_PHASES.length,name:phase.name,
+    hp:phase.hp,maxHp:phase.hp,baseHp:phase.hp,atk:phase.atk,
+    participants:{},ledger:ledger||{},startedAt,endsAt:COLLAB_FARM_END}
+}
+export async function tickCollabFragmentFarm(now=Date.now()){
+  if(now<COLLAB_FARM_START||now>COLLAB_FARM_END+120000)return {due:false}
+  return tx(async c=>{
+    const current=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
+    if(current?.eventId===COLLAB_FARM_ID){
+      if(now>=COLLAB_FARM_END&&current.active!==false){
+        const ended={...current,mode:'event_completed',active:false,completedAt:now,outcome:'time_limit'}
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',ended)
+        return {due:true,ended:true,phaseIndex:current.phaseIndex}
+      }
+      return {due:true,already:true,active:current.active!==false,hp:current.hp,phaseIndex:current.phaseIndex}
+    }
+    if(now>=COLLAB_FARM_END)return {due:false,expired:true}
+    if(current&&current.active!==false&&Number(current.hp)>0&&(!current.endsAt||Number(current.endsAt)>now)){
+      return {due:true,blocked:true,blockingBoss:current.name}
+    }
+    await c.query(
+      "INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,'Fragmento da Ascensão — 7 Pecados','Material para evoluir personagens e equipamentos da collab; não é essência para invocação.','special',0,'event',FALSE,TRUE) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,stackable=TRUE,sellable=FALSE",
+      [COLLAB_FRAGMENT_ITEM]
+    )
+    const state=collabFarmState(0,{},now)
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',state)
+    console.log('[COLLAB FRAGMENT FARM] spawned',JSON.stringify({phase:1,hp:state.maxHp,atk:state.atk}))
+    return {due:true,spawned:true,...state}
+  })
+}
+async function settleCollabFarmPhase(c,s){
+  const phaseIndex=Number(s.phaseIndex||0)
+  const ranked=Object.entries(s.participants||{})
+    .map(([jid,p])=>({jid,name:p.name||'Jogador',damage:Math.max(0,Number(p.damage||0))}))
+    .filter(p=>p.damage>0).sort((a,b)=>b.damage-a.damage)
+  const ledger={...(s.ledger||{})},rewards=[]
+  const total=ranked.reduce((a,p)=>a+p.damage,0)||1
+  for(let i=0;i<ranked.length;i++){
+    const p=ranked[i],eligible=collabEligibleForFragments(p.damage)
+    const old=ledger[p.jid]||{name:p.name,phases:[]}
+    ledger[p.jid]={...old,name:p.name,phases:[...new Set([...(old.phases||[]),phaseIndex+1])]}
+    const drops=[]
+    if(eligible){
+      await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",
+        [p.jid,COLLAB_FRAGMENT_ITEM,COLLAB_FRAGMENTS_PER_PHASE])
+      drops.push({id:COLLAB_FRAGMENT_ITEM,name:'Fragmento da Ascensão ×'+COLLAB_FRAGMENTS_PER_PHASE,rarity:'Collab'})
+    }
+    rewards.push({...p,position:i+1,share:p.damage/total,eligible,cash:0,exp:0,petXp:0,petXpTeam:[],drops})
+  }
+  const nextIndex=phaseIndex+1
+  if(nextIndex>=COLLAB_FARM_PHASES.length){
+    const ended={...s,active:false,mode:'event_completed',hp:0,participants:{},
+      ledger,completedAt:Date.now(),outcome:'defeated',result:{bossName:s.name,maxHp:s.maxHp,rewards}}
+    await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',ended)
+    return {completed:true,rewards,phaseIndex}
+  }
+  const next=collabFarmState(nextIndex,ledger,s.startedAt)
+  await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',next)
+  return {completed:false,rewards,phaseIndex,next:{name:next.name,hp:next.hp,atk:next.atk,phaseIndex:nextIndex}}
+}
+
 const PECADOS_PHASES=[
   {id:'preguica',name:'💤 Preguiça',hp:60000,atk:35,cash:[20000,15000,10000]},
   {id:'gula',name:'🍖 Gula',hp:75000,atk:45,cash:[25000,18000,12000]},
@@ -2741,6 +2807,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       }
     }
     const existingParticipant=s.participants[jid]||{}
+    if(s.eventId===COLLAB_FARM_ID && collabRemainingPersonalDamage(s.maxHp,existingParticipant.damage||0)<=0){
+      return {cooldown:true,remainingMs:15000,mode:'event',hp:Number(s.hp),maxHp:Number(s.maxHp),endsAt:s.endsAt}
+    }
     const bossCadenceMs=gameType==='boss_event'?8000:10000
     const bossLastAttackAt=Number(existingParticipant.lastAttackAt||0)
     const bossNow=Date.now()
@@ -2849,7 +2918,12 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const eclipseRelic=equippedRelic
     const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
     let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage+Math.round(rawBase*(crit?1.5:1)*Number(enchanted.damage||0))
-    if(s.eventId==='sete_pecados'||s.eventId===TITAN_EVENT_ID){
+    if(s.eventId===COLLAB_FARM_ID){
+      // Cada participante pode remover no máximo 60% do HP da fase, sem exceções.
+      // O cap vale para ataques manuais e automáticos, incluindo críticos e pets.
+      damage=Math.min(Math.max(0,damage),Math.max(0,Number(s.hp||0)),
+        collabRemainingPersonalDamage(s.maxHp,existingParticipant.damage||0))
+    }else if(s.eventId==='sete_pecados'||s.eventId===TITAN_EVENT_ID){
       damage=Math.min(Math.max(0,damage),Math.max(0,Number(s.hp||0)))
     }
 
@@ -2988,6 +3062,15 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       const result=await settleCalcanhar(c,s,true)
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,
         playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
+        autoHeal,autoPetHeal,petSkillHeal,petSwitch,autoPetEnergy,petUnavailable,
+        petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
+        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+    }
+    if(s.hp<=0&&s.eventId===COLLAB_FARM_ID){
+      const outcome=await settleCollabFarmPhase(c,s)
+      return {dead:true,mode:s.mode,eventId:s.eventId,damage,bossDamage,bossCritical,
+        playerHp:php,hp:0,maxHp:s.maxHp,players:outcome.rewards.length,rewards:outcome.rewards,
+        nextPhase:outcome.next||null,phaseIndex:outcome.phaseIndex,finalCompleted:outcome.completed,
         autoHeal,autoPetHeal,petSkillHeal,petSwitch,autoPetEnergy,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
         petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
