@@ -3,7 +3,7 @@ import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from '.
 import {activeRelic} from './relics.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
-import {PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES} from './sete-pecados-catalog.js'
+import {PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
@@ -1875,10 +1875,14 @@ async function settlePecadoPhase(c,s,chat){
       }
       const full=PECADOS_PHASES.every(x=>Number(old.phases[x.id]||0)>=PECADOS_MIN_DAMAGE)
       if(full){
-        // Bônus de conclusão concedido em TODA edição aos jogadores elegíveis.
-        // Não depende da insígnia antiga: 7×2 + 7 = 21 essências = 3 baús.
-        await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[p.jid,PECADOS_ESSENCES[0],PECADOS_FULL_CLEAR_BONUS_ESSENCES])
-        drops.push({id:'bonus_conclusao_pecados',name:'🩸 Oito Bosses concluídos: +'+PECADOS_FULL_CLEAR_BONUS_ESSENCES+' essências extras (3 baús no total)',rarity:'Evento'})
+        // O bônus de essências depende da edição. Em 25/10 não há bônus:
+        // sete Pecados × duas essências = 14, equivalentes a dois baús.
+        // A insígnia e o título de conclusão seguem independentes.
+        const extraEssences=pecadosEditionCompletionBonus(s.scheduleKey)
+        if(extraEssences>0){
+          await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[p.jid,PECADOS_ESSENCES[0],extraEssences])
+          drops.push({id:'bonus_conclusao_pecados',name:'🩸 Oito Bosses concluídos: +'+extraEssences+' essências extras',rarity:'Evento'})
+        }
         const oldRelic=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,PECADOS_RELIC])).rows[0]
         if(Number(oldRelic?.quantity||0)<1){
           await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,PECADOS_RELIC])
