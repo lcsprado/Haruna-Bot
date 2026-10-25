@@ -5,7 +5,8 @@ import {
   COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,
   COLLAB_FARM_END,COLLAB_FARM_START,COLLAB_FARM_ID,COLLAB_FRAGMENT_ITEM,
   collabRemainingPersonalDamage,collabEligibleForFragments,
-  COLLAB_PET_UPGRADE_FRAGMENTS,COLLAB_GEAR_UPGRADE_FRAGMENTS
+  COLLAB_PET_UPGRADE_FRAGMENTS,COLLAB_GEAR_UPGRADE_FRAGMENTS,
+  COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP,collabRaidPayout,collabRaidEligible,collabRaidBrazilDay
 } from '../src/neon/collab-fragment-rules.js'
 
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8')
@@ -37,8 +38,18 @@ test('Raid dos Sete Pecados substitui o Boss temporário sem forçar equipe',()=
  assert.match(games,/70:50,75:35/)
  assert.match(games,/const minPlayers=1/)
  assert.match(games,/if\(cfg\.collab\)\{/)
- assert.match(games,/Number\(p\.damage\|\|0\)>=25000 && share>=\.025/)
- assert.match(games,/const qty=eligible\?24:0/)
+ assert.equal(COLLAB_RAID_FRAGMENTS_PER_WIN,10)
+ assert.equal(COLLAB_RAID_DAILY_CAP,30)
+ assert.equal(collabRaidPayout(0,25000,.025),10)
+ assert.equal(collabRaidPayout(25,25000,.025),5)
+ assert.equal(collabRaidPayout(30,25000,.025),0)
+ assert.equal(collabRaidPayout(0,24999,.025),0)
+ assert.equal(collabRaidEligible(25000,.025),true)
+ assert.equal(collabRaidBrazilDay(Date.parse('2026-10-25T02:59:00Z')),'2026-10-24')
+ assert.equal(collabRaidBrazilDay(Date.parse('2026-10-25T03:01:00Z')),'2026-10-25')
+ assert.match(games,/collabRaidEligible\(p\.damage,share\)/)
+ assert.match(games,/const qty=collabRaidPayout\(creditedToday,p\.damage,share\)/)
+ assert.match(games,/SELECT value FROM trevo_settings WHERE key=\$1 FOR UPDATE/)
  assert.match(games,/if\(Number\(s\.hp\)<=0\)\{/)
  assert.match(games,/const rewards=await finishRaidRewards\(c,s,cfg,chat\)/)
  assert.match(index,/!raid pecados/)
