@@ -1961,9 +1961,9 @@ async function settlePecadoPhase(c,s,chat){
       const full=PECADOS_PHASES.every(x=>Number(old.phases[x.id]||0)>=PECADOS_MIN_DAMAGE)
       if(full){
         // Bônus de conclusão concedido em TODA edição aos jogadores elegíveis.
-        // Não depende da insígnia antiga: 7×3 + 7 = 28 essências = 4 baús.
+        // Não depende da insígnia antiga: 7×2 + 7 = 21 essências = 3 baús.
         await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[p.jid,PECADOS_ESSENCES[0],PECADOS_FULL_CLEAR_BONUS_ESSENCES])
-        drops.push({id:'bonus_conclusao_pecados',name:'🩸 Oito Bosses concluídos: +'+PECADOS_FULL_CLEAR_BONUS_ESSENCES+' essências extras (4 baús no total)',rarity:'Evento'})
+        drops.push({id:'bonus_conclusao_pecados',name:'🩸 Oito Bosses concluídos: +'+PECADOS_FULL_CLEAR_BONUS_ESSENCES+' essências extras (3 baús no total)',rarity:'Evento'})
         const oldRelic=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,PECADOS_RELIC])).rows[0]
         if(Number(oldRelic?.quantity||0)<1){
           await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,PECADOS_RELIC])
