@@ -1860,6 +1860,19 @@ function equipmentPanel(){
         '<span class="tag '+(item?'good':'')+'">'+(item?'🔒 Equipado':'Ver peças')+'</span></button>';
     }).join('')+'</div>'+equipmentBonusMarkup()+'</div>';
 }
+function inventoryLeveledStatsMarkup(item,equippedCopy=false){
+  const stats=item?.equipment_stats;
+  if(!stats||!['weapon','armor','boots','helmet'].includes(String(item?.category||''))) return '';
+  const parts=[];
+  if(Number(stats.atk)>0) parts.push('⚔️ +'+num(stats.atk)+' ATK');
+  if(Number(stats.def)>0) parts.push('🛡️ +'+num(stats.def)+' DEF');
+  if(Number(stats.hp)>0) parts.push('❤️ +'+num(stats.hp)+' HP');
+  if(Number(stats.spd)>0) parts.push('💨 +'+num(stats.spd)+' VEL');
+  if(Number(stats.crit)>0) parts.push('🎯 +'+new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(Number(stats.crit)*100)+'% CRIT');
+  if(!parts.length) return '';
+  return '<p class="item-bonus"><strong>Atributos reais no Lv.'+num(stats.level||item.equipment_level||1)+'</strong> • '+parts.join(' • ')+'</p>'+
+    (equippedCopy?'':'<p class="muted">Bônus ainda não ativos: toque em <strong>Equipar</strong> para aplicá-los ao personagem.</p>');
+}
 function inventoryCard(i,options={}){
   const id=i.item_id;
   const eq=['weapon','armor','boots','helmet'].includes(i.category);
@@ -1898,7 +1911,7 @@ function inventoryCard(i,options={}){
     : (eq?'<span class="tag">CÓPIA DISPONÍVEL</span>':'');
   return '<div class="card item-card '+rarityClass(i.rarity)+(equippedCopy?' equipped-item-card':'')+'">'+itemArtMarkup(i)+
     '<div class="tag-row">'+equippedTag+'<span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
-    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq&&i.equipment_level!=null?' • Lv.'+num(i.equipment_level):'')+(eq&&i.forged_level&&i.equipment_stars!=null?' • '+num(i.equipment_stars)+' ⭐':'')+'</p><p>'+esc(itemDisplayDescription(i))+'</p>'+
+    '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq&&i.equipment_level!=null?' • Lv.'+num(i.equipment_level):'')+(eq&&i.forged_level&&i.equipment_stars!=null?' • '+num(i.equipment_stars)+' ⭐':'')+'</p><p>'+(eq&&i.equipment_stats?'Descrição do item (atributos-base): ':'')+esc(itemDisplayDescription(i))+'</p>'+inventoryLeveledStatsMarkup(i,equippedCopy)+
     (!equippedCopy&&i.sellable!==false&&sellQty>0?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
     (equippedCopy?'<div class="notice good inventory-lock-note">🔒 Esta cópia está equipada e não pode ser vendida pelo inventário.</div>':'')+
     (!equippedCopy&&eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' somente quando a última cópia não equipada for vendida.</small>':'')+
