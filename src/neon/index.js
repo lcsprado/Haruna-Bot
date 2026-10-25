@@ -82,7 +82,7 @@ import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
-import {COLLAB_FARM_ID} from './collab-fragment-rules.js'
+import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP} from './collab-fragment-rules.js'
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
 const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
 
@@ -8800,7 +8800,9 @@ void (async()=>{
       '👹 Mais difícil que a Raid 70: *1.150.000 HP* e *285 ATK*.\n'+
       '⏱️ Até *35 minutos* para derrotar.\n'+
       '👤 Você pode tentar solo, mas sem redução de HP: reunir aliados ajuda bastante.\n'+
-      '🧩 A cada vitória: *24 Fragmentos da Ascensão* por jogador com contribuição real (mínimo 25.000 de dano e 2,5% do total).\n'+
+      '🧩 A cada vitória: *'+COLLAB_RAID_FRAGMENTS_PER_WIN+' Fragmentos da Ascensão* por jogador com contribuição real (mínimo 25.000 de dano e 2,5% do total).\n'+
+      '📅 Limite: *'+COLLAB_RAID_DAILY_CAP+' fragmentos por jogador/dia*, renovado à meia-noite (Brasília).\n'+
+      '🌈 A collab acontece *25/10* e *01/11*, com tempo para farmar aos poucos.\n'+
       '✨ Receba também XP e XP de pets.\n'+
       '⚔️ Use *!raid pecados* para abrir, *!entrar pecados* para participar e *!go pecados* para começar.\n'+
       '🔧 *!7pecados fragmentos* para consultar evolução da collab.')
