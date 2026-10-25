@@ -4,7 +4,7 @@ import {activeRelic} from './relics.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {PECADOS_ESSENCES,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
-import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
+import {COLLAB_FRAGMENT_ITEM,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
 async function tx(fn){
@@ -1156,14 +1156,31 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Top 3 precisa ter participação real (>= 2% do dano total); evita carona de 1 ataque.
     // O teto da faixa é propositalmente raro via pesos decrescentes.
     if(cfg.collab){
-      const eligible=Number(p.damage||0)>=25000 && share>=.025
-      const qty=eligible?24:0
-      if(qty>0){
+      if(collabRaidEligible(p.damage,share)){
+        // O mesmo registro diário do WhatsApp: impede dobrar o farm pelo Web.
+        const day=collabRaidBrazilDay(now)
+        const dailyKey='collab_raid_fragments_daily:'+day+':'+p.jid
         await c.query(
-          'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
-          [p.jid,COLLAB_FRAGMENT_ITEM,qty]
+          "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING",
+          [dailyKey,JSON.stringify({earned:0,day})]
         )
-        material={...cfg.material,qty}
+        const stored=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[dailyKey])).rows[0]?.value||{}
+        const creditedToday=Math.max(0,Math.floor(Number(stored.earned||0)))
+        const qty=collabRaidPayout(creditedToday,p.damage,share)
+        if(qty>0){
+          await c.query(
+            "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+            [dailyKey,JSON.stringify({...stored,earned:creditedToday+qty,day})]
+          )
+          await c.query(
+            'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
+            [p.jid,COLLAB_FRAGMENT_ITEM,qty]
+          )
+          material={...cfg.material,qty}
+        }
+        if(creditedToday>=COLLAB_RAID_DAILY_CAP){
+          console.info('[COLLAB RAID WEB] limite diário de fragmentos alcançado')
+        }
       }
     }else{
     const materialRanges={
