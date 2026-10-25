@@ -2365,7 +2365,7 @@ cost:level<10?equipmentUpgradeCost(m.rarity,level):0,targetCosts,targetStats}
 })
 })
 }
-export async function upgradeEquipment(jid,itemId,targetLevel=null,sourceLevel=null,sourceKind='normal'){
+export async function upgradeEquipment(jid,itemId,targetLevel=null,sourceLevel=null,sourceKind='normal',payment='cash'){
 await ensureUser(jid)
 if(!EQUIPMENT[itemId])throw new Error('Equipamento não aprimorável.')
 return transaction(async c=>{
@@ -2383,8 +2383,17 @@ const requested=targetLevel==null?current+1:Number(targetLevel)
 if(!Number.isInteger(requested)||requested<=current||requested>10)throw new Error('Nível destino inválido.')
 let cost=0
 for(let lv=current;lv<requested;lv++)cost+=equipmentUpgradeCost(inv.rarity,lv)
+// Material exclusivo da collab: substitui somente o custo monetário desta subida.
+const usingCollabFragments=payment==='collab_fragments'
+if(usingCollabFragments && (!PECADOS_GEAR_IDS.includes(itemId)||!['normal','star'].includes(sourceKind)))
+  throw new Error('Fragmentos da collab só aprimoram equipamentos dos Sete Pecados.')
+const fragmentCost=usingCollabFragments?(requested-current)*12:0
 const wallet=(await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-if(Number(wallet?.cash||0)<cost)throw new Error(`Saldo insuficiente: R$ ${cost.toLocaleString('pt-BR')}.`)
+if(usingCollabFragments){
+  const fragments=(await c.query("SELECT quantity FROM inventories WHERE jid=$1 AND item_id='fragmento_ascensao_pecados_20261024' FOR UPDATE",[jid])).rows[0]
+  if(Number(fragments?.quantity||0)<fragmentCost)
+    throw new Error('Fragmentos insuficientes: necessários '+fragmentCost+'; disponíveis '+Number(fragments?.quantity||0)+'.')
+}else if(Number(wallet?.cash||0)<cost)throw new Error(`Saldo insuficiente: R$ ${cost.toLocaleString('pt-BR')}.`)
 if(isStar){
 await c.query('UPDATE equipment_star_forges SET level=$3,updated_at='+nowSql+' WHERE jid=$1 AND item_id=$2 AND level=$4',[jid,itemId,requested,current])
 }else{
@@ -2397,12 +2406,18 @@ if(!moved.rowCount)throw new Error('Cópia selecionada mudou; nenhuma cobrança.
 }
 await c.query('INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity) VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,level) DO UPDATE SET quantity=equipment_upgrade_copies.quantity+1',[jid,itemId,requested])
 }
+if(usingCollabFragments){
+await c.query("UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id='fragmento_ascensao_pecados_20261024' AND quantity>=$1",[fragmentCost,jid])
+}else{
 await c.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
+}
 await syncEffectiveGear(c,jid,itemId)
-await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'upgrade',$2,'equipment_upgrade',$3)`,[jid,cost,`${itemId} ${isStar?'STAR':'COPY'} Lv.${current}->Lv.${requested}`])
+await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'upgrade',$2,$3,$4)`,
+[jid,usingCollabFragments?fragmentCost:cost,usingCollabFragments?'equipment_upgrade_collab_fragments':'equipment_upgrade',
+`${itemId} ${isStar?'STAR':'COPY'} Lv.${current}->Lv.${requested}`])
 const money=(await c.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]
 const stars=isStar?Number(sf.stars):1
-return {itemId,name:inv.name,rarity:inv.rarity,stars,fromLevel:current,level:requested,levelsGained:requested-current,cost,cash:Number(money?.cash||0),before:equipmentStatsAtLevel(itemId,current,stars),stats:equipmentStatsAtLevel(itemId,requested,stars)}
+return {itemId,name:inv.name,rarity:inv.rarity,stars,fromLevel:current,level:requested,levelsGained:requested-current,cost:usingCollabFragments?0:cost,fragmentCost,cash:Number(money?.cash||0),before:equipmentStatsAtLevel(itemId,current,stars),stats:equipmentStatsAtLevel(itemId,requested,stars)}
 })
 }
 export async function equipItem(jid, itemId) {
