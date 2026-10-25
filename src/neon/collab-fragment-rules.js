@@ -26,7 +26,7 @@ export function collabEligibleForFragments(damage){
 // Raid dos Sete Pecados: farm progressivo durante as duas edições (25/10 e 01/11).
 // As essências dos baús são outra moeda e não entram neste limite.
 export const COLLAB_RAID_FRAGMENTS_PER_WIN=10
-export const COLLAB_RAID_DAILY_CAP=30
+export const COLLAB_RAID_DAILY_CAP=60
 export const COLLAB_RAID_MIN_DAMAGE=25000
 export const COLLAB_RAID_MIN_SHARE=0.025
 export function collabRaidBrazilDay(now=Date.now()){
