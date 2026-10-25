@@ -80,7 +80,7 @@ import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
-import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
+import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
 import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP} from './collab-fragment-rules.js'
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
@@ -3382,19 +3382,22 @@ return
 }
 const edition=PECADOS_EDITIONS.find(e=>now>=e.start-300000&&now<=e.end+120000)
 if(!edition)return
+const editionBonusEssences=pecadosEditionCompletionBonus(edition.key)
+const editionTotalEssences=7*PECADOS_ESSENCES_PER_PHASE+editionBonusEssences
+const editionSummons=Math.floor(editionTotalEssences/7)
 setePecadosBusy=true
 try{
 if(now<edition.start){
 const groups=await activeEventGroups()
 for(const group of groups){
 await sendScheduledGroupNotice(group.chat_jid,edition.key+'-aviso-1755',
-'🌈⚔️ *7 PECADOS CAPITAIS EM 5 MINUTOS!*\n\n⏰ 18h–20h (Brasília).\n👹 Oito Bosses em sequência • 5.400.000 HP totais.\n🩸 +2 essências por pecado vencido (10 mil de dano por Boss).\n🎁 +7 essências por completar as 8 fases: *21 essências = 3 invocações*.\n♻️ Armas e armaduras repetidas ficam no inventário.\n⚔️ Prepare-se para *!atacar*!')
+'🌈⚔️ *7 PECADOS CAPITAIS EM 5 MINUTOS!*\n\n⏰ 18h–20h (Brasília).\n👹 Oito Bosses em sequência • 5.400.000 HP totais.\n🩸 +2 essências por pecado vencido (10 mil de dano por Boss).\n🎁 '+(editionBonusEssences>0?'+'+editionBonusEssences+' essências por completar as 8 fases.':'Sem essências extras ao completar as 8 fases hoje.')+'\n🩸 *'+editionTotalEssences+' essências = '+editionSummons+' invocações* nesta edição.\n♻️ Armas e armaduras repetidas ficam no inventário.\n⚔️ Prepare-se para *!atacar*!')
 }
 return
 }
 const event=await tickSetePecados(now)
 if(event.spawned){
-await sendEventToGroups('🌈⚔️ *COLLAB DOS 7 PECADOS COMEÇOU!*\n\n⏰ 18h–20h (Brasília)\n👹 Sete Pecados + Azazel • oito Bosses sequenciais • 5.400.000 HP no total.\n🎯 10.000 de dano em cada Boss para receber os prêmios da fase.\n🩸 *+2 essências* por pecado (7 fases); *+7 essências* por vencer os oito: 21 no total = *3 invocações*.\n🎁 *!7pecados abrir*: 7 essências por baú (1/3 personagem, 1/3 arma, 1/3 armadura).\n♻️ Arma/armadura repetida: cópia guardada para futura forja; personagem repetido: 50 Fragmentos Universais.\n⚔️ Use *!atacar*!')
+await sendEventToGroups('🌈⚔️ *COLLAB DOS 7 PECADOS COMEÇOU!*\n\n⏰ 18h–20h (Brasília)\n👹 Sete Pecados + Azazel • oito Bosses sequenciais • 5.400.000 HP no total.\n🎯 10.000 de dano em cada Boss para receber os prêmios da fase.\n🩸 *+2 essências* por pecado (7 fases); '+(editionBonusEssences>0?'*+'+editionBonusEssences+'* essências por concluir os oito.':'*sem bônus de essências* ao concluir os oito hoje.')+'\n🎁 *'+editionTotalEssences+' essências = '+editionSummons+' invocações* nesta edição.\n🎁 *!7pecados abrir*: 7 essências por baú (1/3 personagem, 1/3 arma, 1/3 armadura).\n♻️ Arma/armadura repetida: cópia guardada para futura forja; personagem repetido: 50 Fragmentos Universais.\n⚔️ Use *!atacar*!')
 }
 if(event.ended)await sendEventToGroups('🌈🏁 *COLLAB DOS 7 PECADOS ENCERRADA POR HOJE!*\n\n⏰ A janela de 18h–20h acabou.\n🩸 Essências conquistadas permanecem no inventário para o baú.\n🎁 Use *!7pecados* para ver sua coleção.')
 if(event.blocked)console.warn('[SETE PECADOS] Boss existente bloqueia início',event.blockingBoss)
