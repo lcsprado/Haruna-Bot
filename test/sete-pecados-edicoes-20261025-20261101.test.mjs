@@ -17,11 +17,11 @@ test('Boss dos Sete Pecados: duas edições, oito fases e dificuldade 5,4 milhõ
   assert.equal(PECADOS_MIN_BOSS_DAMAGE,10000)
   assert.match(games,/const PECADOS_PHASES=PECADOS_BOSS_PHASES/)
 })
-test('Prêmios: três essências por pecado e sete para conclusão completa',()=>{
+test('Prêmios: duas essências por pecado e sete para conclusão completa',()=>{
   assert.equal(PECADOS_ESSENCES.length,7)
-  assert.equal(PECADOS_ESSENCES_PER_PHASE,3)
+  assert.equal(PECADOS_ESSENCES_PER_PHASE,2)
   assert.equal(PECADOS_FULL_CLEAR_BONUS_ESSENCES,7)
-  assert.equal(PECADOS_ESSENCES.length*PECADOS_ESSENCES_PER_PHASE+PECADOS_FULL_CLEAR_BONUS_ESSENCES,28)
+  assert.equal(PECADOS_ESSENCES.length*PECADOS_ESSENCES_PER_PHASE+PECADOS_FULL_CLEAR_BONUS_ESSENCES,21)
   assert.match(games,/\[p\.jid,itemId,PECADOS_ESSENCES_PER_PHASE\]/)
   assert.match(games,/\[p\.jid,PECADOS_ESSENCES\[0\],PECADOS_FULL_CLEAR_BONUS_ESSENCES\]/)
   assert.match(games,/const full=PECADOS_PHASES\.every/)
