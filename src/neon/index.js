@@ -48,7 +48,7 @@ startHangman, hangmanLetter, hangmanWord,
 startQuiz, answerQuiz, expireQuiz,
 startNumberGame, guessNumber,
 startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
-tickSetePecados, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
+tickSetePecados, tickCollabFragmentFarm, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
 } from './games.js'
 import {
 initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
@@ -82,6 +82,7 @@ import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
+import {COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_FARM_ID} from './collab-fragment-rules.js'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
@@ -152,6 +153,7 @@ messagesSeen:0
 let connectionWatchdog=null
 let bossEventScheduler=null
 let setePecadosBroadcaster=null
+let collabFarmCloseTimer=null
 let bossProgressScheduler=null
 let reconnectTimer=null
 let reconnecting=false
@@ -341,7 +343,7 @@ if(r.oilConsumedNow) await reply('🗡️ *ÓLEO DAS SOMBRAS ATIVADO!* +6% de da
 if(r.autoHeal) heals.push(r.autoHeal.name)
 if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
 if(r.dead){
-const nextPecado= (r.eventId==='sete_pecados'||r.eventId==='invasao_titas_20261017') && Boolean(r.nextPhase)
+const nextPecado= (r.eventId==='sete_pecados'||r.eventId==='invasao_titas_20261017'||r.eventId===COLLAB_FARM_ID) && Boolean(r.nextPhase)
 completed=!nextPecado;
 for(const player of r.rewards||[]){
 if(Number(player.share||0)>=0.02){
@@ -368,6 +370,23 @@ await new Promise(resolve=>setTimeout(resolve,8000))
 continue
 }
 return
+}
+if(r.eventId===COLLAB_FARM_ID){
+ const participants=(r.rewards||[]).filter(x=>x.eligible)
+ const rank=participants.slice(0,3).map(x=>'🏅 '+x.name+' • '+Number(x.damage).toLocaleString('pt-BR')+' dano').join('\n')
+ await (setePecadosBroadcaster||reply)(
+   '🧩👹 *GUARDIÃO DOS SELOS DERROTADO!*\n\n'+(rank||'Ninguém alcançou o dano mínimo.')+
+   '\n🎁 *'+COLLAB_FRAGMENTS_PER_PHASE+' Fragmentos da Ascensão* para cada participante elegível.'+
+   (r.nextPhase?'\n\n⚔️ Próxima fase: *'+r.nextPhase.name+'* — '+Number(r.nextPhase.hp).toLocaleString('pt-BR')+' HP.':
+     '\n\n🏁 *AS QUATRO FASES FORAM CONCLUÍDAS!*'))
+ await reply(text)
+ if(nextPecado){
+   if(sessionEndsAt&&Date.now()>=sessionEndsAt){completed=true;return}
+   await reply('🧩 *Próxima fase ativa.* Seu combate automático continua; use *!pararatacar* para parar.')
+   await new Promise(resolve=>setTimeout(resolve,8000))
+   continue
+ }
+ return
 }
 if(r.eventId==='sete_pecados'){
 const rank=(r.rewards||[]).filter(x=>x.eligible).slice(0,3).map(x=>
@@ -8768,6 +8787,30 @@ reconnectAttempts=0
 setWhatsAppHealth('open')
 console.log('[WhatsApp] ALPHA BOT CONECTADO')
 if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
+// Boss cooperativo de farm exclusivo, janela de hoje, sem polling contínuo.
+if(collabFarmCloseTimer){clearTimeout(collabFarmCloseTimer);collabFarmCloseTimer=null}
+void tickCollabFragmentFarm().then(async result=>{
+  if(result?.spawned){
+    await sendEventToGroups(
+      '🧩⚔️ *BOSS DA COLLAB — GUARDIÃO DOS SETE SELOS!*\n\n'+
+      '👹 *4 fases cooperativas* — HP global 320 mil → 680 mil; ATK 220 → 400.\n'+
+      '🤝 Não pode ser derrotado por um único jogador: máximo 60% do HP por participante.\n'+
+      '🎯 Faça *10.000 de dano por fase* para ganhar *24 Fragmentos da Ascensão*.\n'+
+      '⚖️ Mesma recompensa para todos os elegíveis; sem vantagem de ranking.\n'+
+      '🕛 Termina *23h55* de hoje (Brasília).\n'+
+      '🧩 *!7pecados fragmentos* — consultar material e evolução.\n'+
+      '⚔️ *!boss* e *!atacar* — participar.'
+    )
+  }else if(result?.blocked){console.warn('[COLLAB FRAGMENT FARM] evento global ocupado',result.blockingBoss)}
+}).catch(err=>console.error('[COLLAB FRAGMENT FARM] início',err?.message||err))
+if(Date.now()<COLLAB_FARM_END){
+  collabFarmCloseTimer=setTimeout(()=>{
+    void tickCollabFragmentFarm(Date.now()).then(async result=>{
+      if(result?.ended)await sendEventToGroups('🏁🧩 *BOSS DOS SETE SELOS ENCERRADO!*\nFragmentos conquistados continuam no inventário. Use *!7pecados fragmentos* para evoluir a collab.')
+    }).catch(err=>console.error('[COLLAB FRAGMENT FARM] encerramento',err?.message||err))
+  },COLLAB_FARM_END-Date.now()+500)
+  collabFarmCloseTimer.unref?.()
+}
 startAuctionAlphaScheduler(sock)
 startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
