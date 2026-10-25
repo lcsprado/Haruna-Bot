@@ -7,7 +7,7 @@ import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {PECADOS_ESSENCES,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
-import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments} from './collab-fragment-rules.js'
+import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments},COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
 async function tx(fn){
@@ -1174,14 +1174,33 @@ async function finishRaidRewards(c,s,cfg,chat){
       // O material da collab é universal para todos os equipamentos/personagens.
       // Vitória e pagamento usam a mesma transação; não há saque em derrota.
       // O mínimo de dano impede receber fragmentos sem participar realmente.
-      const eligible=Number(p.damage||0)>=25000 && share>=.025
-      const qty=eligible?24:0
-      if(qty>0){
+      if(collabRaidEligible(p.damage,share)){
+        // Saldo acumulado por data local do Brasil, compartilhado por todos os grupos.
+        // A trava no mesmo registro garante teto mesmo se houver conclusão concorrente.
+        const day=collabRaidBrazilDay(now)
+        const dailyKey='collab_raid_fragments_daily:'+day+':'+p.jid
         await c.query(
-          'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
-          [p.jid,COLLAB_FRAGMENT_ITEM,qty]
+          "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING",
+          [dailyKey,JSON.stringify({earned:0,day})]
         )
-        material={...cfg.material,qty}
+        const stored=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[dailyKey])).rows[0]?.value||{}
+        const creditedToday=Math.max(0,Math.floor(Number(stored.earned||0)))
+        const qty=collabRaidPayout(creditedToday,p.damage,share)
+        if(qty>0){
+          await c.query(
+            "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+            [dailyKey,JSON.stringify({...stored,earned:creditedToday+qty,day})]
+          )
+          await c.query(
+            'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
+            [p.jid,COLLAB_FRAGMENT_ITEM,qty]
+          )
+          material={...cfg.material,qty}
+        }
+        // O limite afeta apenas os fragmentos; XP, XP de pet e dinheiro permanecem.
+        if(creditedToday>=COLLAB_RAID_DAILY_CAP){
+          console.info('[COLLAB RAID] limite diário de fragmentos alcançado')
+        }
       }
     }else{
     const materialRanges={
