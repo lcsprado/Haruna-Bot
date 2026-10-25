@@ -715,10 +715,11 @@ const RAID_CONFIGS=[
   {level:50,name:'Alpha Corrompido',hp:290000,atk:108,keyId:'chave_raid_50',keyPrice:160000,cashPool:350000,xpPool:11000,petXpPool:1100,material:{id:'nucleo_alpha_corrompido',name:'Núcleo Alpha Corrompido'},box:'caixa_epica',gear:['katana_divina','armadura_divina'],gearChance:.005},
   {level:60,name:'Titã do Caos',hp:410000,atk:135,keyId:'chave_raid_60',keyPrice:230000,cashPool:440000,xpPool:14500,petXpPool:1450,material:{id:'fragmento_caos',name:'Fragmento do Caos'},box:'caixa_epica',gear:['lamina_caos','machado_tita','couraca_caos','armadura_tita_ancestral'],gearChance:.005},
   {level:65,name:'Imperador Abissal',hp:540000,atk:165,keyId:'chave_raid_65',keyPrice:300000,cashPool:550000,xpPool:18500,petXpPool:1850,material:{id:'coroa_abissal',name:'Coroa Abissal'},box:'caixa_epica',gear:['foice_abismo','espada_aurora','manto_abismo_eterno','armadura_aurora'],gearChance:.004},
-  {level:70,name:'Deus do Eclipse',hp:710000,atk:200,keyId:'chave_raid_70',keyPrice:390000,cashPool:710000,xpPool:24000,petXpPool:2400,material:{id:'essencia_eclipse',name:'Essência do Eclipse'},box:'caixa_epica',gear:['exterminadora_eclipse','armadura_deus_eclipse'],gearChance:.003}
+  {level:70,name:'Deus do Eclipse',hp:710000,atk:200,keyId:'chave_raid_70',keyPrice:390000,cashPool:710000,xpPool:24000,petXpPool:2400,material:{id:'essencia_eclipse',name:'Essência do Eclipse'},box:'caixa_epica',gear:['exterminadora_eclipse','armadura_deus_eclipse'],gearChance:.003},
+  {level:75,name:'Raid dos Sete Pecados — Abismo Sagrado',collab:true,minLevel:70,hp:1150000,atk:285,keyId:'chave_raid_75',keyPrice:480000,cashPool:720000,xpPool:29000,petXpPool:2800,material:{id:COLLAB_FRAGMENT_ITEM,name:'Fragmento da Ascensão'},box:null,gear:null,gearChance:0}
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
-const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50}[Number(level)]||15)
+const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
 export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
@@ -773,7 +774,7 @@ export async function getRaidStatus(chat,level=null){
 
 export async function createRaid(chat,host,name='Jogador',level=10){
   const cfg=raidConfig(level)
-  if(!cfg) throw new Error('Raid inválida. Níveis: 10, 15, 20, 25, 30, 40, 50, 60, 65 e 70.')
+  if(!cfg) throw new Error('Raid inválida. Consulte !raid para ver os níveis e a Raid dos Sete Pecados.')
   const gameType=raidGameType(cfg.level)
   await ensureUser(host,name)
   return tx(async c=>{
@@ -783,7 +784,7 @@ export async function createRaid(chat,host,name='Jogador',level=10){
     const otherRoom=await resolveGlobalPlayerRaid(c,host)
     if(otherRoom) throw new Error(`🔒 RAID GLOBAL ATIVA\n\nVocê já está na *Raid Lv.${otherRoom.level}*. Cada personagem pode participar de apenas *1 Raid por vez*, mesmo em outro grupo ou pelo RPG Web.\nConclua ou encerre a Raid atual antes de entrar em outra.`)
     const u=(await c.query('SELECT level FROM users WHERE jid=$1 FOR UPDATE',[host])).rows[0]
-    if(Number(u?.level||1)<cfg.level) throw new Error(`Essa Raid exige nível ${cfg.level}. Seu nível atual: ${Number(u?.level||1)}.`)
+    if(Number(u?.level||1)<Number(cfg.minLevel||cfg.level)) throw new Error(`Essa Raid exige nível ${cfg.minLevel||cfg.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[host])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de abrir a Raid.')
     let autoKeyPurchased=false
@@ -829,7 +830,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const gameType=s.gameType
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(Number(u?.level||1)<Number(s.level)) throw new Error(`Essa Raid exige nível ${s.level}. Seu nível atual: ${Number(u?.level||1)}.`)
+    if(Number(u?.level||1)<Number(cfg.minLevel||cfg.level)) throw new Error(`Essa Raid exige nível ${cfg.minLevel||cfg.level}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT * FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
     const cfg=raidConfig(s.level)
@@ -1047,7 +1048,7 @@ export async function startRaid(chat,host,level=null){
 
     const users=(await c.query('SELECT jid,level,push_name FROM users WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
     const stats=(await c.query('SELECT * FROM stats WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
-    if(users.some(u=>Number(u.level)<cfg.level)) throw new Error('Um participante não atende mais ao nível mínimo.')
+    if(users.some(u=>Number(u.level)<Number(cfg.minLevel||cfg.level))) throw new Error('Um participante não atende mais ao nível mínimo.')
     if(stats.some(st=>Number(st.hp)<=0)) throw new Error('Um participante está sem HP.')
 
     const keys=(await c.query('SELECT jid,quantity FROM inventories WHERE jid=ANY($1::text[]) AND item_id=$2 FOR UPDATE',[ids,cfg.keyId])).rows
@@ -1168,6 +1169,20 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Fragmentos variam por colocação e escalam com a dificuldade/tempo da Raid.
     // Top 3 precisa ter participação real (>= 2% do dano total); evita carona de 1 ataque.
     // O teto da faixa é propositalmente raro via pesos decrescentes.
+    if(cfg.collab){
+      // O material da collab é universal para todos os equipamentos/personagens.
+      // Vitória e pagamento usam a mesma transação; não há saque em derrota.
+      // O mínimo de dano impede receber fragmentos sem participar realmente.
+      const eligible=Number(p.damage||0)>=25000 && share>=.025
+      const qty=eligible?24:0
+      if(qty>0){
+        await c.query(
+          'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
+          [p.jid,COLLAB_FRAGMENT_ITEM,qty]
+        )
+        material={...cfg.material,qty}
+      }
+    }else{
     const materialRanges={
       10:[[5,7],[1,3],[1,2]],
       15:[[3,5],[2,4],[1,2]],
@@ -1194,6 +1209,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
+    }
     }
     if(cfg.box){
       // Lv15-25: aproximadamente metade da chance antiga.
