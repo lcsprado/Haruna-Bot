@@ -34,6 +34,20 @@ export const PECADOS_ARMORS=Object.freeze([
 export const PECADOS_EQUIPMENT=Object.freeze([...PECADOS_WEAPONS,...PECADOS_ARMORS])
 export const PECADOS_HERO_IDS=Object.freeze(PECADOS_HEROES.map(p=>p.species))
 export const PECADOS_GEAR_IDS=Object.freeze(PECADOS_EQUIPMENT.map(p=>p.id))
+// Regras compartilhadas entre WhatsApp, recompensas e a Central de Eventos do Web.
+export const PECADOS_ESSENCES_PER_PHASE=3
+export const PECADOS_FULL_CLEAR_BONUS_ESSENCES=7
+export const PECADOS_MIN_BOSS_DAMAGE=10000
+export const PECADOS_BOSS_PHASES=Object.freeze([
+  {"id":"preguica","name":"💤 Preguiça","hp":300000,"atk":100,"cash":[20000,15000,10000]},
+  {"id":"gula","name":"🍖 Gula","hp":400000,"atk":120,"cash":[25000,18000,12000]},
+  {"id":"ganancia","name":"💰 Ganância","hp":500000,"atk":140,"cash":[30000,22000,15000]},
+  {"id":"inveja","name":"🐍 Inveja","hp":600000,"atk":160,"cash":[35000,25000,18000]},
+  {"id":"luxuria","name":"💋 Luxúria","hp":700000,"atk":180,"cash":[40000,30000,20000]},
+  {"id":"ira","name":"🔥 Ira","hp":800000,"atk":200,"cash":[50000,35000,25000]},
+  {"id":"soberba","name":"👑 Soberba","hp":900000,"atk":230,"cash":[60000,45000,30000]},
+  {"id":"azazel","name":"👹 Azazel, o Pecado Original","hp":1200000,"atk":260,"cash":[150000,100000,70000],"boxes":[10,6,4]},
+])
 export const PECADOS_STARTS=Object.freeze(['2026-10-25T18:00:00-03:00','2026-11-01T18:00:00-03:00'])
 export const PECADOS_ENDS=Object.freeze(['2026-10-25T20:00:00-03:00','2026-11-01T20:00:00-03:00'])
 export const PECADOS_EDITIONS=Object.freeze(PECADOS_STARTS.map((start,i)=>Object.freeze({
