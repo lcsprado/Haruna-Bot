@@ -48,7 +48,7 @@ startHangman, hangmanLetter, hangmanWord,
 startQuiz, answerQuiz, expireQuiz,
 startNumberGame, guessNumber,
 startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
-tickSetePecados, tickCollabFragmentFarm, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
+tickSetePecados, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
 } from './games.js'
 import {
 initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
@@ -82,7 +82,10 @@ import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
-import {COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_FARM_ID} from './collab-fragment-rules.js'
+import {COLLAB_FARM_ID} from './collab-fragment-rules.js'
+// O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
+const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
+
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
@@ -153,7 +156,6 @@ messagesSeen:0
 let connectionWatchdog=null
 let bossEventScheduler=null
 let setePecadosBroadcaster=null
-let collabFarmCloseTimer=null
 let bossProgressScheduler=null
 let reconnectTimer=null
 let reconnecting=false
@@ -8787,30 +8789,23 @@ reconnectAttempts=0
 setWhatsAppHealth('open')
 console.log('[WhatsApp] ALPHA BOT CONECTADO')
 if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
-// Boss cooperativo de farm exclusivo, janela de hoje, sem polling contínuo.
-if(collabFarmCloseTimer){clearTimeout(collabFarmCloseTimer);collabFarmCloseTimer=null}
-void tickCollabFragmentFarm().then(async result=>{
-  if(result?.spawned){
-    await sendEventToGroups(
-      '🧩⚔️ *BOSS DA COLLAB — GUARDIÃO DOS SETE SELOS!*\n\n'+
-      '👹 *4 fases cooperativas* — HP global 320 mil → 680 mil; ATK 220 → 400.\n'+
-      '🤝 Não pode ser derrotado por um único jogador: máximo 60% do HP por participante.\n'+
-      '🎯 Faça *10.000 de dano por fase* para ganhar *24 Fragmentos da Ascensão*.\n'+
-      '⚖️ Mesma recompensa para todos os elegíveis; sem vantagem de ranking.\n'+
-      '🕛 Termina *23h55* de hoje (Brasília).\n'+
-      '🧩 *!7pecados fragmentos* — consultar material e evolução.\n'+
-      '⚔️ *!boss* e *!atacar* — participar.'
-    )
-  }else if(result?.blocked){console.warn('[COLLAB FRAGMENT FARM] evento global ocupado',result.blockingBoss)}
-}).catch(err=>console.error('[COLLAB FRAGMENT FARM] início',err?.message||err))
-if(Date.now()<COLLAB_FARM_END){
-  collabFarmCloseTimer=setTimeout(()=>{
-    void tickCollabFragmentFarm(Date.now()).then(async result=>{
-      if(result?.ended)await sendEventToGroups('🏁🧩 *BOSS DOS SETE SELOS ENCERRADO!*\nFragmentos conquistados continuam no inventário. Use *!7pecados fragmentos* para evoluir a collab.')
-    }).catch(err=>console.error('[COLLAB FRAGMENT FARM] encerramento',err?.message||err))
-  },COLLAB_FARM_END-Date.now()+500)
-  collabFarmCloseTimer.unref?.()
-}
+// A Raid dos Sete Pecados substitui o antigo Boss temporário de fragmentos.
+// O spawn do Boss de farm não é chamado: não duplicar recompensas/eventos.
+void (async()=>{
+  try{
+    if(!getRaidCatalog().some(r=>r.collab))return
+    const groups=await activeEventGroups()
+    for(const group of groups) await sendScheduledGroupNotice(group.chat_jid,'raid-sete-pecados-20261024-v1',
+      '🌈⚔️ *RAID DOS SETE PECADOS — ABERTA!*\n\n'+
+      '👹 Mais difícil que a Raid 70: *1.150.000 HP* e *285 ATK*.\n'+
+      '⏱️ Até *35 minutos* para derrotar.\n'+
+      '👤 Você pode tentar solo, mas sem redução de HP: reunir aliados ajuda bastante.\n'+
+      '🧩 A cada vitória: *24 Fragmentos da Ascensão* por jogador com contribuição real (mínimo 25.000 de dano e 2,5% do total).\n'+
+      '✨ Receba também XP e XP de pets.\n'+
+      '⚔️ Use *!raid pecados* para abrir, *!entrar pecados* para participar e *!go pecados* para começar.\n'+
+      '🔧 *!7pecados fragmentos* para consultar evolução da collab.')
+  }catch(err){console.error('[COLLAB RAID] anúncio',err?.message||err)}
+})()
 startAuctionAlphaScheduler(sock)
 startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
@@ -11694,7 +11689,7 @@ await reply(
 ${r.owned>=50?'🔮 Você já tem fragmentos suficientes para usar *!invocarpet 1*.':'⚔️ Continue na Raid 1 ou compre mais caixas para completar o altar.'}`
 )
 } else if(['chaveraid'].includes(cmd)){
-const level=Number(args[0]||0)
+const level=collabRaidNumber(args[0])
 const cfg=getRaidCatalog().find(r=>r.level===level)
 if(!cfg) return await reply('🔑 Níveis de chave disponíveis: *10, 15, 20, 25, 30, 40 e 50*.\nEx.: *!chaveraid 20*')
 const p=await getProfile(sender)
@@ -11705,14 +11700,14 @@ await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.
 if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
 const raidCatalog=getRaidCatalog()
 const resolveRaidLevel=value=>{
-const n=Number(value||0)
+const n=collabRaidNumber(value)
 if(!n) return 0
 if(raidCatalog.some(r=>Number(r.level)===n)) return n
 if(n>=1&&n<=raidCatalog.length) return Number(raidCatalog[n-1].level)
 return 0
 }
 const requested=resolveRaidLevel(args[0])
-if(args[0]&&!requested) return await reply('⚔️ Raid inválida. Use *1 a 7* ou os níveis *10, 15, 20, 25, 30, 40, 50*.')
+if(args[0]&&!requested) return await reply('⚔️ Raid inválida. Use *!raid pecados* ou consulte *!raid* para ver a lista.')
 const rooms=await getRaidStatuses(chat)
 const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
 if(requestedRoom){
@@ -11753,28 +11748,28 @@ return await reply(text)
 const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
 await progressDailyMission(sender,'game')
 const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
+await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 } else if(['entrar','entrarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
 const catalog=getRaidCatalog()
-const raw=Number(args[0]||0)
+const raw=collabRaidNumber(args[0])
 const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
-if(raw&&!level) return await reply('⚔️ Escolha uma Raid válida: *1 a 7* ou nível *10, 15, 20, 25, 30, 40, 50*.')
+if(raw&&!level) return await reply('⚔️ Escolha uma Raid válida com *!raid*, incluindo *!entrar pecados*.')
 const r=await joinRaid(chat,sender,msg.pushName||'Jogador',level||null)
 const keyLine=r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n✅ O host já pode usar *!go ${r.level}*. Todas as Raids aceitam início solo.`))
+await reply(r.already?`⚔️ Você já está na *Raid ${raidNo} — Lv.${r.level}*.`:(r.lateJoin?`⚔️ *ENTROU NA RAID ${raidNo} EM ANDAMENTO!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 Sua chave foi consumida agora.\n📊 Seu dano começa em *0* daqui para frente.`:`✅ *ENTROU NA RAID ${raidNo}!*\n\n👹 ${r.name} — Lv.${r.level}\n👥 Jogadores: *${Object.keys(r.players||{}).length}/5*${keyLine}\n🔑 A chave só será consumida quando essa sala iniciar.\n\n✅ O host já pode usar *!go ${r.level}*. Todas as Raids aceitam início solo, mas a Raid dos Sete Pecados é difícil e recomenda equipe.`))
 } else if(['cancelarraide','cancelarraid','raidcancelar','raidcancel'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
 const catalog=getRaidCatalog()
-const raw=Number(args[0]||0)
+const raw=collabRaidNumber(args[0])
 const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
 const r=await cancelRaid(chat,sender,level||null)
 await reply(`✅ Raid Lv.${r.level} cancelada. Como a luta não começou, as chaves foram preservadas.`)
 } else if(['desistir','sairraid','abandonarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use *!desistir* dentro do grupo da Raid.')
 const catalog=getRaidCatalog()
-const raw=Number(args[0]||0)
+const raw=collabRaidNumber(args[0])
 const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):null
 if(raw&&!level) return await reply('⚠️ Nível de Raid inválido. Exemplo: *!desistir 70*.')
 const r=await withdrawRaid(chat,sender,level)
@@ -11782,7 +11777,7 @@ await reply(`🏳️ *DESISTÊNCIA DA RAID Lv.${r.level}*\n\n👤 *${r.playerNam
 } else if(['go','iniciarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Use dentro do grupo.')
 const catalog=getRaidCatalog()
-const raw=Number(args[0]||0)
+const raw=collabRaidNumber(args[0])
 const level=raw?(catalog.some(x=>Number(x.level)===raw)?raw:(raw>=1&&raw<=catalog.length?Number(catalog[raw-1].level):0)):0
 const r=await startRaid(chat,sender,level||null)
 const raidNo=catalog.findIndex(x=>Number(x.level)===Number(r.level))+1
