@@ -1,5 +1,5 @@
 import {db,ensureUser,petMaxHp,petMaxEnergy,upgradeEquipment} from './db.js'
-import {COLLAB_FRAGMENT_ITEM,COLLAB_PET_UPGRADE_FRAGMENTS,COLLAB_PET_UPGRADE_XP,COLLAB_GEAR_UPGRADE_FRAGMENTS} from './collab-fragment-rules.js'
+import {COLLAB_FRAGMENT_ITEM,COLLAB_PET_UPGRADE_FRAGMENTS,COLLAB_PET_UPGRADE_XP,COLLAB_GEAR_UPGRADE_FRAGMENTS,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay} from './collab-fragment-rules.js'
 import {PECADOS_ESSENCES,PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS,PECADOS_GEAR_IDS,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
@@ -146,8 +146,24 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
  const action=String(args[0]||'status').toLowerCase()
 
  if(['fragmentos','fragmento','farm'].includes(action)){
-  const balance=await collabFragmentBalance(sender)
-  await reply('🧩 *FRAGMENTOS DA ASCENSÃO — 7 PECADOS*\n\n📦 Saldo: *'+fmt(balance)+'*\n🐾 Upar personagem: *'+COLLAB_PET_UPGRADE_FRAGMENTS+' fragmentos* = 500 XP (até Nv.100).\n⚔️ Upar arma ou armadura: *'+COLLAB_GEAR_UPGRADE_FRAGMENTS+' fragmentos por nível* (Lv.1 a 10).\n\n👉 *!7pecados evoluir personagem 1* (Meliodas)\n👉 *!7pecados evoluir arma 1* (Lostvayne)\n👉 *!7pecados evoluir armadura 1*\n\nUse *!7pecados personagens*, *armas* ou *armaduras* para consultar os números.\n✅ Estes fragmentos não são essências de invocação.')
+  const [balance,used]=await Promise.all([
+    collabFragmentBalance(sender),
+    db.query("SELECT value FROM trevo_settings WHERE key=$1",['collab_raid_fragments_daily:'+collabRaidBrazilDay()+':'+sender])
+  ])
+  const earnedToday=Math.max(0,Math.floor(Number(used.rows[0]?.value?.earned||0)))
+  const remaining=Math.max(0,COLLAB_RAID_DAILY_CAP-earnedToday)
+  await reply('🧩 *FRAGMENTOS DA ASCENSÃO — 7 PECADOS*\n\n'+
+    '📦 Saldo atual: *'+fmt(balance)+'*\n'+
+    '⚔️ *Raid dos Sete Pecados*: +'+COLLAB_RAID_FRAGMENTS_PER_WIN+' por vitória elegível.\n'+
+    '📅 Farm de hoje: *'+earnedToday+'/'+COLLAB_RAID_DAILY_CAP+'* • pode ganhar mais *'+remaining+'*.\n'+
+    '🔄 O limite renova à meia-noite (Brasília).\n\n'+
+    '🐾 Upar personagem: *'+COLLAB_PET_UPGRADE_FRAGMENTS+' fragmentos* = 500 XP (até Nv.100).\n'+
+    '⚔️ Upar arma ou armadura: *'+COLLAB_GEAR_UPGRADE_FRAGMENTS+' fragmentos por nível* (Lv.1 a 10).\n\n'+
+    '👉 *!7pecados evoluir personagem 1* (Meliodas)\n'+
+    '👉 *!7pecados evoluir arma 1* (Lostvayne)\n'+
+    '👉 *!7pecados evoluir armadura 1*\n\n'+
+    '🌈 Edições da collab: *25/10 e 01/11*.\n'+
+    '✅ Fragmentos de evolução não são essências de invocação.')
   return true
  }
  if(['evoluir','upar','aprimorar'].includes(action)){
