@@ -3,7 +3,7 @@ import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from '.
 import {activeRelic} from './relics.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
-import {PECADOS_ESSENCES,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
+import {PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES} from './sete-pecados-catalog.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
@@ -1804,17 +1804,8 @@ export async function tickCalcanharBoss(now=Date.now()){
   })
 }
 
-const PECADOS_PHASES=[
-  {id:'preguica',name:'💤 Preguiça',hp:60000,atk:35,cash:[20000,15000,10000]},
-  {id:'gula',name:'🍖 Gula',hp:75000,atk:45,cash:[25000,18000,12000]},
-  {id:'ganancia',name:'💰 Ganância',hp:90000,atk:55,cash:[30000,22000,15000]},
-  {id:'inveja',name:'🐍 Inveja',hp:105000,atk:65,cash:[35000,25000,18000]},
-  {id:'luxuria',name:'💋 Luxúria',hp:120000,atk:75,cash:[40000,30000,20000]},
-  {id:'ira',name:'🔥 Ira',hp:140000,atk:90,cash:[50000,35000,25000]},
-  {id:'soberba',name:'👑 Soberba',hp:160000,atk:110,cash:[60000,45000,30000]},
-  {id:'azazel',name:'👹 Azazel, o Pecado Original',hp:200000,atk:135,cash:[150000,100000,70000],boxes:[10,6,4]}
-]
-const PECADOS_MIN_DAMAGE=10000
+const PECADOS_PHASES=PECADOS_BOSS_PHASES
+const PECADOS_MIN_DAMAGE=PECADOS_MIN_BOSS_DAMAGE
 const PECADOS_RELIC='insignia_sete_pecados'
 const PECADOS_TITLE='titulo_conquistador_pecados'
 function pecadosPhaseState(index,ledger,startedAt,edition){
@@ -1869,14 +1860,14 @@ async function settlePecadoPhase(c,s,chat){
       if(cash)await credit(c,p.jid,cash,'boss_event_sete_pecados')
       if(exp)await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
     }
-    if(eligible&&phaseIndex<7){
+    if(eligible&&phaseIndex<PECADOS_ESSENCES.length){
       const itemId=PECADOS_ESSENCES[phaseIndex]
       // A partir de 25/10 toda repetição acumula essência; nunca converte em dinheiro.
-      await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1",[p.jid,itemId])
-      drops.push({id:itemId,name:'Essência de '+phase.name,rarity:'Evento'})
+      await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[p.jid,itemId,PECADOS_ESSENCES_PER_PHASE])
+      drops.push({id:itemId,name:'Essência de '+phase.name+' ×'+PECADOS_ESSENCES_PER_PHASE,rarity:'Evento'})
 
     }
-    if(eligible&&phaseIndex===7){
+    if(eligible&&phaseIndex===PECADOS_ESSENCES.length){
       const boxQty=Number(phase.boxes?.[i]||0)
       if(boxQty){
         await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'caixa_epica',$2) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[p.jid,boxQty])
@@ -1884,15 +1875,17 @@ async function settlePecadoPhase(c,s,chat){
       }
       const full=PECADOS_PHASES.every(x=>Number(old.phases[x.id]||0)>=PECADOS_MIN_DAMAGE)
       if(full){
+        // Bônus de conclusão concedido em TODA edição aos jogadores elegíveis.
+        // Não depende da insígnia antiga: 7×3 + 7 = 28 essências = 4 baús.
+        await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity",[p.jid,PECADOS_ESSENCES[0],PECADOS_FULL_CLEAR_BONUS_ESSENCES])
+        drops.push({id:'bonus_conclusao_pecados',name:'🩸 Oito Bosses concluídos: +'+PECADOS_FULL_CLEAR_BONUS_ESSENCES+' essências extras (4 baús no total)',rarity:'Evento'})
         const oldRelic=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,PECADOS_RELIC])).rows[0]
         if(Number(oldRelic?.quantity||0)<1){
           await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,PECADOS_RELIC])
           drops.push({id:PECADOS_RELIC,name:'⚜️ Insígnia dos Sete Pecados (+2% Boss/Raid, +1pp CRIT)',rarity:'Evento Único'})
-        }else{
-          // A insígnia permanece única; compensação em essência em vez de dinheiro.
-          await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,7) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+7",[p.jid,PECADOS_ESSENCES[0]])
-          drops.push({id:'bonus_pecados_repetido',name:'🩸 Insígnia já obtida: +7 essências para o baú da collab',rarity:'Compensação'})
         }
+        // Insígnia existente permanece única; o bônus de 7 essências acima
+        // já recompensa igualmente quem a possui e quem a ganha hoje.
         const oldTitle=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[p.jid,PECADOS_TITLE])).rows[0]
         if(Number(oldTitle?.quantity||0)<1){
           await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)",[p.jid,PECADOS_TITLE])
