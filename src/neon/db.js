@@ -1918,6 +1918,7 @@ return rows
 const EQUIPMENT = {
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
+elmo_soberano_celestial_20261024: {category:'helmet',atk:0,def:112,hp:275,crit:.025,name:'Elmo do Soberano Celestial'},
 elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
 elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
 elmo_labirinto_alpha: {category:'helmet',atk:0,def:92,hp:240,crit:0,name:'Elmo do Labirinto Eterno'},
