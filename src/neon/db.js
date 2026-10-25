@@ -485,6 +485,7 @@ const starterItems = [
 ['chave_raid_60','Chave de Raid Lv.60','Abre a Raid Lv.60. Consumida ao iniciar.','special',230000,'legendary'],
 ['chave_raid_65','Chave de Raid Lv.65','Abre a Raid Lv.65. Consumida ao iniciar.','special',300000,'legendary'],
 ['chave_raid_70','Chave de Raid Lv.70','Abre a Raid Lv.70. Consumida ao iniciar.','special',390000,'legendary'],
+['chave_raid_75','Chave da Raid dos Sete Pecados','Abre a Raid dos Sete Pecados. Consumida somente ao começar a luta.','special',480000,'event'],
 ['nucleo_pedra','Fragmento do Núcleo de Pedra','Fragmento conquistado na Raid Lv.10 e usado no altar lendário.','special',0,'uncommon'],
 ['escama_vulcanica','Escama Vulcânica','Material conquistado na Raid Lv.15.','special',0,'rare'],
 ['olho_abissal','Olho Abissal','Material conquistado na Raid Lv.20.','special',0,'rare'],
@@ -520,6 +521,7 @@ const starterItems = [
 ]
 starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
 starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
+starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados para evoluir personagens e equipamentos da collab.','special',0,'event'])
 for (const item of starterItems) {
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)
@@ -534,6 +536,7 @@ await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['poc
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_universal_raid'")
+await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_ascensao_pecados_20261024'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
 await db.query(`
