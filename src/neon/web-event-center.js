@@ -1,4 +1,4 @@
-import {PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,PECADOS_MIN_BOSS_DAMAGE} from './sete-pecados-catalog.js'
+import {PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,PECADOS_MIN_BOSS_DAMAGE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 
 // Vitrine de eventos do Web. Somente leitura: a lógica de caça e os prêmios
 // continuam exclusivamente no serviço WhatsApp (mimic-hunt.js).
@@ -70,7 +70,6 @@ export function normalizeMimicSnapshot(row,now=Date.now()){
 }
 export function buildSevenSinsSchedule(now=Date.now()){
   const phases=PECADOS_BOSS_PHASES.map(({id,name,hp,atk})=>({id,name,hp,atk}))
-  const essencesTotal=(PECADOS_BOSS_PHASES.length-1)*PECADOS_ESSENCES_PER_PHASE+PECADOS_FULL_CLEAR_BONUS_ESSENCES
   return PECADOS_EDITIONS.map((edition,index)=>({
     id:edition.key,
     edition:index+1,
@@ -81,9 +80,9 @@ export function buildSevenSinsSchedule(now=Date.now()){
     totalHp:phases.reduce((sum,p)=>sum+p.hp,0),
     minimumDamage:PECADOS_MIN_BOSS_DAMAGE,
     essencesPerSin:PECADOS_ESSENCES_PER_PHASE,
-    completionBonus:PECADOS_FULL_CLEAR_BONUS_ESSENCES,
-    essencesTotal,
-    maxCollabBoxes:Math.floor(essencesTotal/7),
+    completionBonus:pecadosEditionCompletionBonus(edition.key),
+    essencesTotal:(PECADOS_BOSS_PHASES.length-1)*PECADOS_ESSENCES_PER_PHASE+pecadosEditionCompletionBonus(edition.key),
+    maxCollabBoxes:Math.floor(((PECADOS_BOSS_PHASES.length-1)*PECADOS_ESSENCES_PER_PHASE+pecadosEditionCompletionBonus(edition.key))/7),
     boss:null
   }))
 }
