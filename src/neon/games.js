@@ -1906,11 +1906,26 @@ export async function tickSetePecados(now=Date.now()){
   return tx(async c=>{
     const s=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(s?.scheduleKey===edition.key){
+      // 25/10: o evento foi encerrado pelo prazo antigo das 20h.
+      // Reabrir SOMENTE esse encerramento por tempo, mantendo fase, HP,
+      // participantes, ledger de dano e recompensas já contabilizadas.
+      if(s.active===false&&s.outcome==='time_limit'&&now<edition.end){
+        const resumed={...s,active:true,mode:'event',endsAt:edition.end,revivedAt:now}
+        delete resumed.completedAt
+        delete resumed.outcome
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',resumed)
+        console.log('[SETE PECADOS] prazo corrigido; evento reaberto',JSON.stringify({phase:resumed.phaseIndex,hp:resumed.hp,endsAt:resumed.endsAt}))
+        return {due:true,resumed:true,active:true,phaseIndex:resumed.phaseIndex}
+      }
       if(s.active!==false&&now>=edition.end){
         const ended={...s,active:false,mode:'event_completed',completedAt:now,outcome:'time_limit'}
         await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',ended)
         console.log('[SETE PECADOS] ended on time',JSON.stringify({phase:s.phaseIndex,hp:s.hp}))
         return {due:true,ended:true,phaseIndex:s.phaseIndex}
+      }
+      if(s.active!==false&&now<edition.end&&Number(s.endsAt||0)!==edition.end){
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',{...s,endsAt:edition.end})
+        return {due:true,already:true,active:true,extended:true,phaseIndex:s.phaseIndex}
       }
       return {due:true,already:true,active:s.active!==false,phaseIndex:s.phaseIndex}
     }
