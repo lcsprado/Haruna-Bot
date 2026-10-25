@@ -830,7 +830,8 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const gameType=s.gameType
     if(Object.keys(s.players||{}).length>=5) throw new Error('A Raid já está cheia (5 jogadores).')
     const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-    if(Number(u?.level||1)<Number(cfg.minLevel||cfg.level)) throw new Error(`Essa Raid exige nível ${cfg.minLevel||cfg.level}. Seu nível atual: ${Number(u?.level||1)}.`)
+    const requiredRaidLevel=Number(raidConfig(s.level)?.minLevel||s.level)
+    if(Number(u?.level||1)<requiredRaidLevel) throw new Error(`Essa Raid exige nível ${requiredRaidLevel}. Seu nível atual: ${Number(u?.level||1)}.`)
     const st=(await c.query('SELECT * FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
     const cfg=raidConfig(s.level)
