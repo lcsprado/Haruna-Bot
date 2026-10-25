@@ -1,4 +1,5 @@
-import {db,ensureUser,petMaxHp,petMaxEnergy} from './db.js'
+import {db,ensureUser,petMaxHp,petMaxEnergy,upgradeEquipment} from './db.js'
+import {COLLAB_FRAGMENT_ITEM,COLLAB_PET_UPGRADE_FRAGMENTS,COLLAB_PET_UPGRADE_XP,COLLAB_GEAR_UPGRADE_FRAGMENTS} from './collab-fragment-rules.js'
 import {PECADOS_ESSENCES,PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS,PECADOS_GEAR_IDS,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
@@ -110,10 +111,68 @@ export async function openBox(jid,requestId=null){
   return finish({category,reward:reward.name,duplicate,ownedAfter:owned-7})
  })
 }
+async function collabFragmentBalance(jid){
+ const {rows}=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,COLLAB_FRAGMENT_ITEM])
+ return Number(rows[0]?.quantity||0)
+}
+async function growCollabHero(jid,species){
+ return inTransaction(async c=>{
+  const pet=(await c.query('SELECT id,jid,species,name,level,xp,hp,max_hp,energy,power,active FROM pet_collection WHERE jid=$1 AND species=$2 ORDER BY id LIMIT 1 FOR UPDATE',[jid,species])).rows[0]
+  if(!pet)throw new Error('Você ainda não invocou este personagem da collab.')
+  const oldLevel=Number(pet.level||1),oldXp=Number(pet.xp||0)
+  if(oldLevel>=100||oldXp>=9900)throw new Error('Este personagem já está no Nv.100.')
+  const needed=COLLAB_PET_UPGRADE_FRAGMENTS
+  const inventory=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,COLLAB_FRAGMENT_ITEM])).rows[0]
+  if(Number(inventory?.quantity||0)<needed)throw new Error('Fragmentos insuficientes: precisa de '+needed+'; possui '+Number(inventory?.quantity||0)+'.')
+  const nextXp=Math.min(9900,oldXp+COLLAB_PET_UPGRADE_XP)
+  const nextLevel=Math.min(100,1+Math.floor(nextXp/100))
+  const delta=nextLevel-oldLevel
+  const maxHp=petMaxHp(nextLevel,nextXp,pet.species)
+  const previousMax=Math.max(1,Number(pet.max_hp||petMaxHp(oldLevel,oldXp,pet.species)))
+  const hp=Math.max(0,Math.min(maxHp,Number(pet.hp||0)+Math.max(0,maxHp-previousMax)))
+  const energy=Math.min(petMaxEnergy(nextLevel,pet.species),Number(pet.energy||0)+Math.max(0,delta)*3)
+  await c.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3 AND quantity>=$1',[needed,jid,COLLAB_FRAGMENT_ITEM])
+  await c.query('UPDATE pet_collection SET level=$1,xp=$2,hp=$3,max_hp=$4,energy=$5,power=power+$6 WHERE id=$7 AND jid=$8',[nextLevel,nextXp,hp,maxHp,energy,Math.max(0,delta)*2,pet.id,jid])
+  if(pet.active){
+    await c.query('UPDATE pets SET level=$1,xp=$2,hp=$3,max_hp=$4,energy=$5,power=power+$6 WHERE jid=$7 AND species=$8',
+    [nextLevel,nextXp,hp,maxHp,energy,Math.max(0,delta)*2,jid,pet.species])
+  }
+  return {name:pet.name,level:nextLevel,oldLevel,remaining:Number(inventory.quantity)-needed}
+ })
+}
 export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,messageId=null}){
  if(!['7pecados','setepecados','pecados7'].includes(cmd))return false
  await ensureUser(sender)
  const action=String(args[0]||'status').toLowerCase()
+
+ if(['fragmentos','fragmento','farm'].includes(action)){
+  const balance=await collabFragmentBalance(sender)
+  await reply('🧩 *FRAGMENTOS DA ASCENSÃO — 7 PECADOS*\n\n📦 Saldo: *'+fmt(balance)+'*\n🐾 Upar personagem: *'+COLLAB_PET_UPGRADE_FRAGMENTS+' fragmentos* = 500 XP (até Nv.100).\n⚔️ Upar arma ou armadura: *'+COLLAB_GEAR_UPGRADE_FRAGMENTS+' fragmentos por nível* (Lv.1 a 10).\n\n👉 *!7pecados evoluir personagem 1* (Meliodas)\n👉 *!7pecados evoluir arma 1* (Lostvayne)\n👉 *!7pecados evoluir armadura 1*\n\nUse *!7pecados personagens*, *armas* ou *armaduras* para consultar os números.\n✅ Estes fragmentos não são essências de invocação.')
+  return true
+ }
+ if(['evoluir','upar','aprimorar'].includes(action)){
+  const category=String(args[1]||'').toLowerCase()
+  const index=Number(args[2])
+  const pool=['personagem','personagens','pet'].includes(category)?PECADOS_HEROES:
+    ['arma','armas'].includes(category)?PECADOS_WEAPONS:
+    ['armadura','armaduras'].includes(category)?PECADOS_ARMORS:null
+  if(!pool||!Number.isInteger(index)||index<1||index>pool.length){
+    await reply('🧩 *COMO EVOLUIR A COLLAB*\n\n*!7pecados evoluir personagem 1*\n*!7pecados evoluir arma 1*\n*!7pecados evoluir armadura 1*\n\nConfira a numeração em *!7pecados personagens*, *armas* ou *armaduras*.')
+    return true
+  }
+  const target=pool[index-1]
+  try{
+   if(pool===PECADOS_HEROES){
+    const result=await growCollabHero(sender,target.species)
+    await reply('🧩🐾 *PERSONAGEM EVOLUÍDO!*\n\n*'+target.name+'* • Nv.'+result.oldLevel+' → *Nv.'+result.level+'*\n📉 -'+COLLAB_PET_UPGRADE_FRAGMENTS+' fragmentos\n🧩 Restantes: *'+fmt(result.remaining)+'*')
+   }else{
+    const result=await upgradeEquipment(sender,target.id,null,null,'normal','collab_fragments')
+    const balance=await collabFragmentBalance(sender)
+    await reply('🧩⚔️ *EQUIPAMENTO DA COLLAB EVOLUÍDO!*\n\n*'+target.name+'* • Lv.'+result.fromLevel+' → *Lv.'+result.level+'*\n📉 -'+result.fragmentCost+' fragmentos\n🧩 Restantes: *'+fmt(balance)+'*\n✅ Cópias, estrelas e aprimoramentos anteriores preservados.')
+   }
+  }catch(err){await reply('❌ '+String(err?.message||err))}
+  return true
+ }
 
  if(['personagens','personagem','herois','heróis'].includes(action)){
   const entries=PECADOS_HEROES.map((hero,i)=>
@@ -134,7 +193,7 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
   return true
  }
  if(action==='ajuda'){
-  await reply('🌈 *COLLAB DOS 7 PECADOS — COMANDOS*\n\n📋 *!7pecados* — Calendário, essências e coleção\n🐾 *!7pecados personagens* — Os 7 personagens e seus bônus\n⚔️ *!7pecados armas* — As 7 armas e seus atributos\n🛡️ *!7pecados armaduras* — As 7 armaduras e seus atributos\n🎁 *!7pecados abrir* — Abre um baú usando 7 essências\n👹 *!boss* — Boss global ativo\n⚔️ *!atacar* — Ataca o Boss\n\n🎲 Cada categoria tem chance de 1/3 no baú.\n🩸 Essências repetidas *ACUMULAM*, não viram dinheiro.\n♻️ Recompensa do baú repetida vira *50 Fragmentos Universais de Raid*.\n📅 25/10 e 01/11, das 18h às 20h (Brasília).\n✅ As consultas não gastam essências.')
+  await reply('🌈 *COLLAB DOS 7 PECADOS — COMANDOS*\n\n📋 *!7pecados* — Calendário, essências e coleção\n🐾 *!7pecados personagens* — Os 7 personagens e seus bônus\n⚔️ *!7pecados armas* — As 7 armas e seus atributos\n🛡️ *!7pecados armaduras* — As 7 armaduras e seus atributos\n🎁 *!7pecados abrir* — Abre um baú usando 7 essências\n🧩 *!7pecados fragmentos* — Saldo e custos do Boss de farm\n🔧 *!7pecados evoluir personagem 1* / *arma 1* — Evolução com fragmentos\n👹 *!boss* — Boss global ativo\n⚔️ *!atacar* — Ataca o Boss\n\n🎲 Cada categoria tem chance de 1/3 no baú.\n🩸 Essências repetidas *ACUMULAM*, não viram dinheiro.\n♻️ Recompensa do baú repetida vira *50 Fragmentos Universais de Raid*.\n📅 25/10 e 01/11, das 18h às 20h (Brasília).\n✅ As consultas não gastam essências.')
   return true
  }
 
