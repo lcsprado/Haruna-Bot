@@ -1470,6 +1470,13 @@ it.name
 return rows.map(r=>({
 ...r,
 equipped:Boolean(r.equipped),
+// Calculado pelas mesmas regras do combate; a descrição do catálogo continua sendo do Lv.1.
+equipment_stats:['weapon','armor','boots','helmet'].includes(r.category) ? (()=>{
+const level=Number(r.equipment_level||1)
+const stars=Number(r.forged_level||0)===level?Number(r.equipment_stars||1):1
+const stats=equipmentStatsAtLevel(r.item_id,level,stars)
+return stats?{level:stats.level,stars:stats.stars,atk:stats.atk,def:stats.def,hp:stats.hp,spd:stats.spd,crit:stats.crit}:null
+})():null,
 upgrade_distribution:(()=>{
 const paid=Array.isArray(r.upgraded_copies)?r.upgraded_copies.map(c=>({level:Number(c.level),quantity:Number(c.quantity)})):[]
 const basic=Math.max(0,Number(r.quantity||0)-paid.reduce((n,c)=>n+c.quantity,0)-(r.forged_level?1:0))
