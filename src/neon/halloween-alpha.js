@@ -1,6 +1,6 @@
 import {db,ensureUser,equipmentStatsAtLevel,getEquipmentStarLevels,petTeamSynergy,petMaxHp,petMaxEnergy,grantExpInTransaction} from './db.js'
 import {PET_STATUS_SPECIALTIES} from './game-catalog.js'
-import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog} from './halloween-rules.js'
+import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction} from './halloween-rules.js'
 
 const fmt=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
 const nowSec=()=>Math.floor(Date.now()/1000)
@@ -26,7 +26,7 @@ export async function initHalloweenAlpha(){
   day_damage BIGINT NOT NULL DEFAULT 0,all_damage BIGINT NOT NULL DEFAULT 0,
   round_damage BIGINT NOT NULL DEFAULT 0,hits BIGINT NOT NULL DEFAULT 0,
   character_xp BIGINT NOT NULL DEFAULT 0,pet_xp BIGINT NOT NULL DEFAULT 0,
-  power INTEGER NOT NULL DEFAULT 0,defense INTEGER NOT NULL DEFAULT 0,
+  power INTEGER NOT NULL DEFAULT 0,defense INTEGER NOT NULL DEFAULT 0,mystic_guard REAL NOT NULL DEFAULT 0,
   power_refreshed BIGINT NOT NULL DEFAULT 0,last_attack BIGINT NOT NULL DEFAULT 0,
   updated_at BIGINT NOT NULL DEFAULT 0)`)
  await db.query(`CREATE TABLE IF NOT EXISTS halloween_rewards_2026(
@@ -52,7 +52,7 @@ async function ensureDay(c,boss){
 }
 async function snapshotPower(c,jid){
  const st=(await c.query('SELECT hp,atk,def,weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])).rows[0]
- if(!st)return {power:0,defense:0}
+ if(!st)return {power:0,defense:0,mysticGuard:0}
  const ids=[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean)
  const upgrades=ids.length?(await c.query('SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])).rows:[]
  const levels=Object.fromEntries(upgrades.map(r=>[r.item_id,Number(r.level)||1]))
@@ -70,7 +70,7 @@ async function snapshotPower(c,jid){
  const petDamage=Math.min(.15,Number(petStats.damage||0)/100)+Math.min(.15,Number(petStats.bossDamage||0)/100)
  const petCrit=Math.min(.15,Number(petStats.crit||0)/100)
  const power=Math.max(1,Math.floor((atk*(1+Math.min(.3,petDamage)+Number(synergy.attack||0)))*(1+Math.min(.6,crit+petCrit+Number(synergy.crit||0))*.30)))
- return {power,defense:Math.max(0,Math.floor(defense))}
+ return {power,defense:Math.max(0,Math.floor(defense)),mysticGuard:halloweenMysticHelmetReduction({helmetId:st.helmet_id,teamStyle:synergy.style,teamCount:pets.length})}
 }
 async function credit(c,jid,item,quantity){
  if(quantity<=0)return
@@ -136,7 +136,7 @@ async function applyRetaliation(c,player,boss,phase){
  if(Number(player.hits)%12!==0)return
  const st=(await c.query('SELECT hp,max_hp FROM stats WHERE jid=$1 FOR UPDATE',[player.jid])).rows[0]
  if(!st||Number(st.hp)<=0)return
- const amount=Math.max(8,Math.floor((boss.atk*(phase===3?1.40:phase===2?1.20:1)-Number(player.defense||0)*.20)*.32))
+ const amount=Math.max(8,Math.floor((boss.atk*(phase===3?1.40:phase===2?1.20:1)-Number(player.defense||0)*.20)*.32*(1-Math.min(.015,Number(player.mystic_guard||0)))))
  let hp=Math.max(0,Number(st.hp)-amount)
  if(hp<=Math.max(20,Number(st.max_hp)*.23)){
   const potion=(await c.query(`SELECT quantity FROM inventories WHERE jid=$1 AND item_id='elixir_supremo' AND quantity>0 FOR UPDATE`,[player.jid])).rows[0]
@@ -207,8 +207,8 @@ async function tickHalloween(){
    if(sleeping?.sleeping||sleeping?.carpindo||Number(sleeping?.current_hp||0)<=0)continue
    if(now-Number(row.power_refreshed||0)>POWER_REFRESH_MS||Number(row.power||0)<=0){
     const snap=await snapshotPower(c,row.jid)
-    row.power=snap.power;row.defense=snap.defense
-    await c.query('UPDATE halloween_players_2026 SET power=$1,defense=$2,power_refreshed=$3 WHERE jid=$4',[snap.power,snap.defense,now,row.jid])
+    row.power=snap.power;row.defense=snap.defense;row.mystic_guard=snap.mysticGuard
+    await c.query('UPDATE halloween_players_2026 SET power=$1,defense=$2,mystic_guard=$5,power_refreshed=$3 WHERE jid=$4',[snap.power,snap.defense,now,row.jid,snap.mysticGuard])
    }
    const phase=halloweenPhases(hp,Number(state.max_hp))
    const critical=Math.random()<.12
@@ -305,11 +305,11 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
    const current=(await c.query('SELECT chat,active FROM halloween_players_2026 WHERE jid=$1 FOR UPDATE',[sender])).rows[0]
    if(current?.active&&current.chat!==chat)throw new Error('Você já está atacando em outro grupo. Use o grupo original ou !halloween sair.')
    const snap=await snapshotPower(c,sender)
-   await c.query(`INSERT INTO halloween_players_2026(jid,name,chat,day,power,defense,power_refreshed,updated_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$7)
+   await c.query(`INSERT INTO halloween_players_2026(jid,name,chat,day,power,defense,mystic_guard,power_refreshed,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$8,$7,$7)
     ON CONFLICT(jid) DO UPDATE SET name=EXCLUDED.name,chat=EXCLUDED.chat,active=TRUE,
-    power=EXCLUDED.power,defense=EXCLUDED.defense,power_refreshed=EXCLUDED.power_refreshed,updated_at=EXCLUDED.updated_at`,
-    [sender,name||'Jogador',chat,boss.day,snap.power,snap.defense,Date.now()])
+    power=EXCLUDED.power,defense=EXCLUDED.defense,mystic_guard=EXCLUDED.mystic_guard,power_refreshed=EXCLUDED.power_refreshed,updated_at=EXCLUDED.updated_at`,
+    [sender,name||'Jogador',chat,boss.day,snap.power,snap.defense,Date.now(),snap.mysticGuard])
    return snap
   })
   await reply('🎃⚔️ *ENTROU NO HALLOWEEN!*\n👹 '+boss.name+'\n⚔️ Ataques automáticos a cada 10s, inclusive após reconexão.\n💥 Poder de ataque estimado: '+fmt(saved.power)+'\n🧩 Farm ilimitado por participação real.\n🛡️ Personagem e pet sofrem dano; poções e energéticos disponíveis podem ser usados automaticamente.\nUse *!halloween status* para acompanhar.')
@@ -323,7 +323,7 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
  if(['atualizar','recalcular'].includes(action)){
   const r=await tx(async c=>{
    const snap=await snapshotPower(c,sender)
-   await c.query('UPDATE halloween_players_2026 SET power=$1,defense=$2,power_refreshed=$3 WHERE jid=$4',[snap.power,snap.defense,Date.now(),sender])
+   await c.query('UPDATE halloween_players_2026 SET power=$1,defense=$2,mystic_guard=$5,power_refreshed=$3 WHERE jid=$4',[snap.power,snap.defense,Date.now(),sender,snap.mysticGuard])
    return snap
   })
   await reply('⚔️ Atributos do Halloween atualizados: poder '+fmt(r.power)+'.')
@@ -375,8 +375,9 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
    if(!isConnected())return
    const boss=halloweenBoss(now)
    if(boss){
-    if(await claimNotice('halloween_day_20261026:'+boss.day)){
-     const groups=await listGroups()
+    const groupsOpening=await listGroups()
+    if(groupsOpening.length&&await claimNotice('halloween_day_20261026:'+boss.day)){
+     const groups=groupsOpening
      await broadcast(sock,groups,'🎃👹 *HALLOWEEN ALPHA — '+boss.name+'*\n⏰ Boss global até 23h59, ataques automáticos a cada 10 segundos!\n❤️ HP inicial: *'+fmt(boss.hp)+'*\n💀 3 fases e renascimento após derrota.\n🧩 Almas ilimitadas, 2× XP personagem/pet e quatro itens lendários raros.\n👉 Digite *!halloween entrar* para participar.\n🐎 Trocas pelo Corcel Espectral abrem sábado.')
     }
     const alerts=await tickHalloween()
