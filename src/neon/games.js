@@ -2999,7 +2999,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
     const teamPets=combatSnapshot?.team_pets||[]
     const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
-    const teamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
+    const baseTeamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
+    const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:st.helmet_id,teamStyle:baseTeamSynergy.style,teamCount:teamPets.length})}
     const upgradeRows=combatSnapshot?.upgrade_rows||[]
     const enchanted=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
