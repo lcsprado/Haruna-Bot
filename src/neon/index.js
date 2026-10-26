@@ -317,12 +317,12 @@ petFaintWarned=false
 // Mostra que a cura realmente ocorreu, sem disparar aviso a cada golpe.
 if(Date.now()-lastPetHealNoticeAt>=45000){
 lastPetHealNoticeAt=Date.now()
-await reply('🐾🧪 *AUTOCURA DO PET!*\\n\\n🐾 '+pet+
-'\\n💚 +'+Number(r.autoPetHeal.heal||0).toLocaleString('pt-BR')+' HP'+
-'\\n❤️ HP atual: *'+Number(r.autoPetHeal.hp).toLocaleString('pt-BR')+'/'+Number(r.autoPetHeal.maxHp).toLocaleString('pt-BR')+'*'+
-'\\n🧪 '+potion+
+await reply('🐾🧪 *AUTOCURA DO PET!*\n\n🐾 '+pet+
+'\n💚 +'+Number(r.autoPetHeal.heal||0).toLocaleString('pt-BR')+' HP'+
+'\n❤️ HP atual: *'+Number(r.autoPetHeal.hp).toLocaleString('pt-BR')+'/'+Number(r.autoPetHeal.maxHp).toLocaleString('pt-BR')+'*'+
+'\n🧪 '+potion+
 (Number.isFinite(Number(r.autoPetHeal.remaining))?' • Restam: '+r.autoPetHeal.remaining:'')+
-'\\n⚔️ Combate automático continua.')
+'\n⚔️ Combate automático continua.')
 }
 }
 if(r.autoPetEnergy){
