@@ -27,9 +27,9 @@ const clock=n=>new Date(Number(n)).toLocaleTimeString('pt-BR',{timeZone:'America
 // Os pacotes são embaralhados criptograficamente; o Web e os comandos mostram só os lances.
 // Todos os IDs existem no banco; uma transação reserva o maior lance e entrega o prêmio.
 const PACKAGES=[
-  [{pet:'lince_astral',name:'Lince Astral',power:75},{id:'caixa_lendaria',qty:1}],
-  [{id:'elmo_soberano_celestial_20261024',qty:1},{id:'pedra_precisao_alpha',qty:2},{id:'caixa_epica',qty:1}],
-  [{id:'bota_vortice_alpha_20261020',qty:1},{id:'pedra_agilidade_alpha',qty:2},{id:'pergaminho_leilao_10k',qty:1}],
+  [{pet:'onca_eclipse_20261026',name:'Onça do Eclipse',power:90},{id:'caixa_lendaria',qty:1}],
+  [{id:'elmo_guardiao_nebular_20261026',qty:1},{id:'pedra_precisao_alpha',qty:2},{id:'caixa_epica',qty:1}],
+  [{id:'botas_cometa_astral_20261026',qty:1},{id:'pedra_agilidade_alpha',qty:2},{id:'pergaminho_leilao_10k',qty:1}],
   [{id:'caixa_lendaria',qty:2},{id:'caixa_epica',qty:3},{id:'elixir_leilao_2h',qty:1}],
   [{id:'fragmento_universal_raid',qty:30},{id:'pergaminho_reclassificacao',qty:1},{id:'pedra_furia_alpha',qty:2},{id:'caixa_lendaria',qty:1}]
 ]
@@ -46,7 +46,12 @@ async function init(){
       ['elixir_leilao_2h','Ampulheta Dourada XP 2x',
         'Ative via buffxp por duas horas','consumable',true],
       ['elixir_leilao_1h_20261024','Ampulheta Prateada XP 2x — 1 hora',
-        'Ative via buffxp por uma hora; não acumula','consumable',true]
+        'Ative via buffxp por uma hora; não acumula','consumable',true],
+      // Premiações próprias de 26/10; não modifica equipamentos já entregues nas edições anteriores.
+      ['elmo_guardiao_nebular_20261026','Elmo do Guardião Nebular',
+        '100 DEF, 330 HP e 3,5% crítico; lendário exclusivo do Leilão 26/10','helmet',false],
+      ['botas_cometa_astral_20261026','Botas do Cometa Astral',
+        '17 VEL, 35 HP, 18 DEF e 1,5% crítico; lendárias exclusivas do Leilão 26/10','boots',false]
     ]
     for(const [id,name,description,category,stackable] of definitions){
       await db.query(
