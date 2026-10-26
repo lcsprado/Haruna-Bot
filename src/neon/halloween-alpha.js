@@ -129,7 +129,7 @@ async function maybeDrop(c,jid,boss,cycle){
 }
 function damageModifier(boss,phase){
  const i=HALLOWEEN_BOSSES.findIndex(b=>b.day===boss.day)
- return [0,.90,1.05,.88,.91,.93,1][i] * (phase===3?.95:1)
+ return [.90,1.05,.88,.91,.93,1][i] * (phase===3?.95:1)
 }
 async function applyRetaliation(c,player,boss,phase){
  // A retaliação ocorre a cada 12 golpes; o jogador pode continuar com cura.
@@ -233,7 +233,7 @@ async function tickHalloween(){
   const milestones=[.25,.50,.75,1]
   const crossed=milestones.filter(q=>oldHp>Number(state.max_hp)*(1-q)&&hp<=Number(state.max_hp)*(1-q))
   if(crossed.length || hp===0){
-   const rows=(await c.query('SELECT * FROM halloween_players_2026 WHERE active=TRUE AND round_damage>0 ORDER BY round_damage DESC FOR UPDATE')).rows
+   const rows=(await c.query('SELECT * FROM halloween_players_2026 WHERE active=TRUE AND day=$1 AND round_damage>0 ORDER BY round_damage DESC FOR UPDATE',[boss.day])).rows
    for(const m of crossed){
     for(const p of rows)await milestoneReward(c,boss.day,cycles,p,Math.round(m*100),boss,'quarter')
    }
