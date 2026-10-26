@@ -1,5 +1,6 @@
 import {db,ensureUser,petMaxHp,petMaxEnergy} from './db.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay} from './collab-fragment-rules.js'
+import {reconcileLegacyCompanionFragments} from './collab-fragment-refund-policy.js'
 import {PECADOS_ESSENCES,PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS,PECADOS_GEAR_IDS,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
 
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
@@ -146,19 +147,90 @@ export async function claimCollabGearFragmentRefund(jid){
   return {already:false,refunded:spent,uses:Number(audit.uses||0),remaining:Number(remaining?.quantity||0)}
  })
 }
+
+// Os companheiros da estreia consumiam 12 fragmentos sem lancamento na tabela
+// transactions. Reconciliacao conservadora por recompensas de Raids,
+// saldo atual, upgrades de equipamento com log e forjas com log.
+// Nunca extrapolar 12 fragmentos por bloco de cinco niveis de personagem.
+// Considerar apenas companheiros recebidos ANTES da mudanca de regra.
+export async function claimLegacyCompanionFragmentRefund(jid){
+ return inTransaction(async c=>{
+  const user=(await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+  if(!user)throw new Error('Jogador não localizado.')
+  const key='refund_collab_pet_fragments_20261026:'+jid
+  const previous=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[key])).rows[0]?.value
+  if(previous)return {already:true,refunded:0,previous:Number(previous.refunded||0)}
+  const inventory=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,COLLAB_FRAGMENT_ITEM])).rows[0]
+  const balance=Number(inventory?.quantity||0)
+  const earned=(await c.query(`SELECT COALESCE(SUM((value->>'earned')::bigint),0)::bigint AS total
+    FROM trevo_settings WHERE key LIKE 'collab_raid_fragments_daily:%:'||$1`,[jid])).rows[0]
+  const gear=(await c.query(`SELECT COALESCE(SUM(amount),0)::bigint AS total FROM transactions
+    WHERE from_jid=$1 AND to_jid='upgrade' AND type='equipment_upgrade_collab_fragments' AND amount>0`,[jid])).rows[0]
+  const gearRefund=(await c.query('SELECT value FROM trevo_settings WHERE key=$1',
+    ['refund_collab_gear_fragments_20261026:'+jid])).rows[0]?.value
+  const forged=(await c.query(`SELECT COALESCE(SUM(
+      COALESCE(substring(note FROM '-([0-9]+) fragmento_ascensao_pecados_20261024')::int,0)
+    ),0)::bigint AS total FROM transactions
+    WHERE from_jid=$1 AND type='equipment_star_forge_collab_fragments'`,[jid])).rows[0]
+  const pets=(await c.query(`SELECT COALESCE(SUM(
+      CASE WHEN level>70 THEN CEIL((level-70)/5.0)*12 ELSE 0 END
+    ),0)::int AS max_refund
+    FROM pet_collection WHERE jid=$1 AND species LIKE 'pecado_%'
+    AND created_at < EXTRACT(EPOCH FROM TIMESTAMPTZ '2026-10-26 11:27:17+00')::bigint`,[jid])).rows[0]
+  const policy=reconcileLegacyCompanionFragments({
+    raidEarned:Number(earned?.total||0),
+    currentBalance:balance,
+    gearSpent:Number(gear?.total||0),
+    gearPreviouslyRefunded:Number(gearRefund?.refunded||0),
+    collabForgeSpent:Number(forged?.total||0),
+    companionUpgradeCap:Number(pets?.max_refund||0)
+  })
+  if(!policy.verified){
+    return {already:false,refunded:0,pending:true,reason:policy.reason}
+  }
+  if(!policy.refund)return {already:false,refunded:0,verified:true}
+  const claimed=await c.query(`INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb)
+    ON CONFLICT(key) DO NOTHING RETURNING key`,[key,JSON.stringify({
+      refunded:policy.refund,uses:policy.uses,
+      source:'raid-ledger-minus-balance-and-documented-spends',
+      at:Date.now()
+    })])
+  if(!claimed.rowCount)return {already:true,refunded:0}
+  const paid=await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3)
+    ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
+    RETURNING quantity`,[jid,COLLAB_FRAGMENT_ITEM,policy.refund])
+  await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+    VALUES($1,'refund',$2,'collab_pet_fragment_refund_20261026',$3)`,
+    [jid,policy.refund,'companion x'+policy.uses+'; raid ledger reconciled; equipment preserved'])
+  return {already:false,refunded:policy.refund,uses:policy.uses,remaining:Number(paid.rows[0]?.quantity||0)}
+ })
+}
 export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,messageId=null}){
  if(!['7pecados','setepecados','pecados7'].includes(cmd))return false
  await ensureUser(sender)
  const action=String(args[0]||'status').toLowerCase()
 
  if(['reembolso','reembolsar','devolucao'].includes(action)){
-  const result=await claimCollabGearFragmentRefund(sender)
-  if(result.already){
-    await reply('✅ *REEMBOLSO JÁ PROCESSADO*\n\nA restituição foi registrada anteriormente: *'+fmt(result.previous||0)+' Fragmentos da Ascensão*. Nenhuma unidade foi creditada novamente.')
-  }else if(result.refunded>0){
-    await reply('🧩 *FRAGMENTOS DEVOLVIDOS!*\n\n⚔️ Upgrades de equipamento identificados: *'+result.uses+'*\n♻️ Fragmentos devolvidos: *+'+fmt(result.refunded)+'*\n📦 Saldo atual: *'+fmt(result.remaining)+'*\n✅ Seus níveis e equipamentos foram preservados. O reembolso só pode ocorrer uma vez.')
+  const equipment=await claimCollabGearFragmentRefund(sender)
+  const companion=await claimLegacyCompanionFragmentRefund(sender)
+  const refunded=Number(equipment.refunded||0)+Number(companion.refunded||0)
+  if(refunded>0){
+    const balance=await collabFragmentBalance(sender)
+    await reply('🧩 *FRAGMENTOS DEVOLVIDOS!*\n\n'+
+      '⚔️ Equipamentos: *+'+fmt(equipment.refunded||0)+'* fragmentos\n'+
+      '🐾 Companheiros antigos: *+'+fmt(companion.refunded||0)+'* fragmentos\n'+
+      '💰 *Total devolvido: +'+fmt(refunded)+' fragmentos*\n'+
+      '📦 Saldo atual: *'+fmt(balance)+'*\n'+
+      '✅ Níveis, estrelas e equipamentos preservados. Cada compensação é paga uma única vez.')
+  }else if(equipment.already||companion.already){
+    await reply('✅ *REEMBOLSO JÁ PROCESSADO*\n\n'+
+      '⚔️ Equipamentos: *'+fmt(equipment.previous||0)+'*\n'+
+      '🐾 Companheiros: *'+fmt(companion.previous||0)+'*\n'+
+      'Nenhum fragmento foi creditado novamente.')
+  }else if(companion.pending){
+    await reply('🔎 *AUDITORIA NECESSÁRIA*\n\nO saldo de fragmentos não corresponde integralmente ao histórico verificável. Não houve crédito automático para evitar duplicações. Os níveis permanecem preservados.')
   }else{
-    await reply('📋 *SEM GASTOS ELEGÍVEIS*\n\nNão encontrei no histórico deste jogador upgrades de armas ou armaduras pagos com Fragmentos da Ascensão. Nenhum saldo foi alterado.')
+    await reply('📋 *SEM GASTOS PENDENTES*\n\nNão foram identificados gastos antigos comprovados ainda sem restituição. Nenhum saldo foi alterado.')
   }
   return true
  }
