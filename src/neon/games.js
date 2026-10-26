@@ -1417,7 +1417,9 @@ export async function raidRound(chat,level){
 
     for(const p of alive){
       let pb={damage:0,crit:0}
-      const teamSynergy=p.teamSynergy||{attack:0,defense:0,crit:0}
+      const teamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
+        // Remove bônus legado armazenado na sala; mantém o time da Raid sem mexer nos jogadores.
+        p.teamSynergy=teamSynergy
 
       // Se o Principal foi curado fora da Raid enquanto o Reserva estava em campo,
       // a próxima rodada volta a priorizar automaticamente o Slot 1.
@@ -1522,7 +1524,9 @@ export async function raidRound(chat,level){
     const petPotionRows=(await c.query('SELECT jid,item_id,quantity FROM inventories WHERE jid=ANY($1::text[]) AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[alive.map(x=>x.jid),['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']])).rows
     for(const p of alive.filter(x=>x.alive)){
       const pb=p.pet?.roundActive?(p.pet.bonus||{defense:0,dodge:0}):{defense:0,dodge:0}
-      const teamSynergy=p.teamSynergy||{attack:0,defense:0,crit:0}
+      const teamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
+        // Remove bônus legado armazenado na sala; mantém o time da Raid sem mexer nos jogadores.
+        p.teamSynergy=teamSynergy
       const dodged=Number(pb.dodge||0)>0&&Math.random()<Number(pb.dodge||0)
       const raw=Math.max(1,Math.round((cfg.atk-Number(p.def||0)*.22)*(.82+Math.random()*.36)*(1-Number(pb.defense||0))*(1-Number(teamSynergy.defense||0))))
       // Crítico do Boss é raro e não acumula com Golpe Devastador/Ruptura.
