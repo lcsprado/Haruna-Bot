@@ -4167,8 +4167,8 @@ filtered.forEach((i,idx)=>{
 const levelLine=['weapon','armor','boots'].includes(i.category)&&Number(i.equipment_level||1)>1 ? ' • ⭐ Lv.'+Number(i.equipment_level) : ''
 text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+levelLine+'\n'
 text+='   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
-if(Number(i.regular_sellable_quantity||0)<Number(i.sellable_quantity||0))text+='   🔒 Avulsa: *'+Number(i.regular_sellable_quantity||0)+'* cópia(s) Lv.1; aprimoradas somente na venda integral.\n'
-if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Última cópia: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
+if(Number(i.sellable_quantity||0)>1&&Number(i.regular_sellable_quantity||0)<Number(i.sellable_quantity||0))text+='   🔒 Avulsa: *'+Number(i.regular_sellable_quantity||0)+'* cópia(s) Lv.1; aprimoradas somente na venda integral.\n'
+if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Venda integral: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
 })
 text+='\n🚀 *VENDA EM MASSA*\nDigite *T* — vender TODOS os itens desta lista\nDigite *R* — vender só os repetidos (mantém 1 de cada)\n'
 text+='\n👉 Um item: mande só o número.\n📦 Vários: *1,3,5*\n'
@@ -7495,7 +7495,7 @@ return true
 }
 setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable,quantity:Number(item.quantity),equipped,equipmentLevel:Number(item.equipment_level||1),upgradeRefund:Number(item.upgrade_refund||0),regularSellable:Number(item.regular_sellable_quantity||0),canSellAll:Boolean(item.can_sell_all)},90000)
 const upInfo=Number(item.upgrade_refund||0)>0&&!equipped ? '\n♻️ Vendendo todas as cópias: *+R$ '+fmt(item.upgrade_refund)+'* de recuperação dos upgrades.' : ''
-const saleRuleHint=Number(item.regular_sellable_quantity||0)<sellable?'\n🔒 Venda avulsa: '+Number(item.regular_sellable_quantity||0)+' cópia(s) Lv.1. Para vender as aprimoradas, escolha *Vender tudo*.':''
+const saleRuleHint=sellable>1&&Number(item.regular_sellable_quantity||0)<sellable?'\n🔒 Venda avulsa: '+Number(item.regular_sellable_quantity||0)+' cópia(s) Lv.1. Para vender as aprimoradas, escolha *Vender tudo*.':''
 await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*'+(Number(item.equipment_level||1)>1?'\n⭐ Nível do equipamento: *Lv.'+Number(item.equipment_level)+'*':'')+upInfo+saleRuleHint+'\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
 return true
 }
