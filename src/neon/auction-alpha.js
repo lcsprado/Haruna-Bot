@@ -285,7 +285,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     return true
   }
   if(Date.now()<START){
-    await reply('🔨 O Leilão Oculto ainda não começou.')
+    await reply('🔨💎 *LEILÃO DO TESOURO ALPHA AGENDADO*\n⏰ Começa às *14h10* (Brasília) de 26/10.\n🎁 Serão *5 lotes misteriosos*.\n💰 Lance inicial: *'+fmt(OPENING)+'* • incremento: *'+fmt(STEP)+'*.\n📢 Lances públicos e prêmios revelados só após cada lote.\n📋 Volte com *!leilao* às 14h10.')
     return true
   }
   if(cmd==='leilao'){
