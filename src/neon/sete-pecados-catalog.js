@@ -49,7 +49,7 @@ export const PECADOS_BOSS_PHASES=Object.freeze([
   {"id":"azazel","name":"👹 Azazel, o Pecado Original","hp":1200000,"atk":260,"cash":[150000,100000,70000],"boxes":[10,6,4]},
 ])
 export const PECADOS_STARTS=Object.freeze(['2026-10-25T18:00:00-03:00','2026-11-01T18:00:00-03:00'])
-export const PECADOS_ENDS=Object.freeze(['2026-10-25T21:30:00-03:00','2026-11-01T20:00:00-03:00'])
+export const PECADOS_ENDS=Object.freeze(['2026-10-25T22:00:00-03:00','2026-11-01T20:00:00-03:00'])
 export const PECADOS_EDITIONS=Object.freeze(PECADOS_STARTS.map((start,i)=>Object.freeze({
   start:Date.parse(start),end:Date.parse(PECADOS_ENDS[i]),key:'sete-pecados-collab-'+(i===0?'20261025':'20261101')
 })))
