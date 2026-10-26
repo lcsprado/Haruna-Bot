@@ -6409,8 +6409,8 @@ if(latest.stars>=5){clearQuickFlow(chat,sender);await reply('🌟 Esse equipamen
 const missing=[]
 if(latest.stars>1&&latest.forged_level<10)missing.push('⬆️ Aprimore a peça estrelada ao Lv.10.')
 if(latest.level10_copies<latest.requiredCopies)missing.push('⚔️ Aprimore '+(latest.requiredCopies-latest.level10_copies)+' cópia(s) comum(ns) ao Lv.10.')
-if(Number(latest.quantity)<2)missing.push('⚔️ Faltam '+Math.max(0,2-Number(latest.quantity))+' cópia(s) idêntica(s) no Lv.10.')
-if(Number(latest.free)<1)missing.push('🔒 Não há cópia livre para consumir (vinculadas são protegidas).')
+if(!latest.collab&&Number(latest.quantity)<2)missing.push('⚔️ Faltam '+Math.max(0,2-Number(latest.quantity))+' cópia(s) idêntica(s) no Lv.10.')
+if(!latest.collab&&Number(latest.free)<1)missing.push('🔒 Não há cópia livre para consumir (vinculadas são protegidas).')
 if(latest.materials<latest.needed)missing.push('🧩 Faltam '+(latest.needed-latest.materials)+'× '+latest.origin.materialName+'.')
 if(missing.length){
 clearQuickFlow(chat,sender)
@@ -6422,7 +6422,7 @@ await reply(
 '⚒️ *CONFIRMAR FORJA ESTELAR?*\n\n'+
 '*'+latest.name+'*\n'+
 '🌟 Estrelas: *'+latest.stars+' → '+(latest.stars+1)+'*\n⭐ A peça resultante volta ao *Lv.1*.\n'+
-'⚔️ Será consumida: *1 cópia extra Lv.10* (a principal permanece)\n'+
+(latest.collab?'⚔️ *Nenhuma cópia será consumida.* Fragmentos substituem a cópia extra.\n':'⚔️ Será consumida: *1 cópia extra Lv.10* (a principal permanece)\n')+
 '🧩 Fragmentos: *'+latest.needed+'× '+latest.origin.materialName+'* (Raid '+latest.origin.raidLevel+')\n'+
 '💰 Dinheiro: *R$ 0*\n'+
 '📈 A nova estrela já aplica *+4%* aos atributos desta peça desde o *Lv.1*.\n'+
@@ -11125,20 +11125,21 @@ text+='\n\n🛡️ 1 cópia de cada equipamento foi preservada.'
 await reply(text)
 } else if(['forjar','forja','forjaestelar'].includes(cmd)){
 const list=await listStarForgeEquipment(sender)
-if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê ainda não possui armas ou armaduras de drop das Raids elegíveis.\n🔎 A forja exige um equipamento Lv.10, 1 cópia extra idêntica e materiais da Raid de origem.')
+if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🔎 Sete Pecados: equipamento Lv.10 + Fragmentos da Ascensão, sem cópia extra. Outras Raids mantêm suas regras.')
 setQuickFlow(chat,sender,'starforge_select',{items:list.map(r=>r.item_id)},5*60*1000)
 let result='⚒️ *FORJA ESTELAR*\n\nEscolha o equipamento:\n\n'
 for(const [i,r] of list.entries()){
 const lvl=r.stars>1?r.forged_level:0,need=Math.max(0,r.requiredCopies-r.level10_copies),missing=[]
 if(r.stars>1&&lvl<10)missing.push('elevar a peça 🌟 ao Lv.10')
 if(need)missing.push('upar '+need+' cópia(s) comum(ns) ao Lv.10')
-if(r.quantity<2||r.free<1)missing.push('obter cópia extra livre')
+if(!r.collab&&(r.quantity<2||r.free<1))missing.push('obter cópia extra livre')
 if(r.materials<r.needed)missing.push('obter '+(r.needed-r.materials)+' fragmentos')
 result+='*'+(i+1)+'.* '+(r.category==='armor'?'🛡️':'⚔️')+' *'+r.name+'*\n'
 result+='   🌟 '+forgeStarsIcon(r.stars)+' • bônus '+forgeBonusText(r.stars)+(lvl?' • ⭐ Lv.'+lvl:'')+'\n'
 if(r.stars===5){result+='   🏆 Evolução máxima\n\n';continue}
-result+='   ⚔️ Cópias comuns Lv.10: '+r.level10_copies+'/'+r.requiredCopies+'\n'
+result+='   ⚔️ '+(r.collab?(r.stars===1?'Base comum Lv.10: '+r.level10_copies+'/1':'Base forjada: Lv.'+r.forged_level+'/10'):'Cópias comuns Lv.10: '+r.level10_copies+'/'+r.requiredCopies)+'\n'
 result+='   🧩 '+r.origin.materialName+': '+r.materials+'/'+r.needed+' (Raid '+r.origin.raidLevel+')\n'
+if(r.collab)result+='   ✨ Fragmentos substituem cópias extras; nenhuma será consumida.\n'
 result+='   '+(r.canForge?'✅ *PRONTO PARA FORJAR*':'🔒 Falta: '+missing.join('; '))+'\n\n'
 }
 result+='📌 Cada nova estrela começa no *Lv.1*, já com o bônus percentual.\n👉 Envie o número ou 0 para cancelar.\n'

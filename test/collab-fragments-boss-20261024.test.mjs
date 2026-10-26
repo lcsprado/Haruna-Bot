@@ -63,18 +63,16 @@ test('Raid dos Sete Pecados substitui o Boss temporário sem forçar equipe',()=
  assert.ok(COLLAB_FARM_ID,'O antigo ID continua isolado; não há spawn agendado')
 })
 
-test('Fragmentos exclusivos compram progressão real e não alteram armas comuns',()=>{
- assert.equal(COLLAB_PET_UPGRADE_FRAGMENTS,12)
- assert.equal(COLLAB_GEAR_UPGRADE_FRAGMENTS,12)
+test('Fragmentos da Ascensão agora são exclusivos da forja; upgrades de nível usam dinheiro',()=>{
  assert.notEqual(COLLAB_FRAGMENT_ITEM,'fragmento_universal_raid')
- assert.match(db,/payment='cash'/)
- assert.match(db,/usingCollabFragments=payment==='collab_fragments'/)
- assert.match(db,/!PECADOS_GEAR_IDS\.includes\(itemId\)/)
- assert.match(db,/equipment_upgrade_collab_fragments/)
- assert.match(db,/fragmentCost,cash:/)
- assert.match(collab,/await growCollabHero\(sender,target\.species\)/)
- assert.match(collab,/upgradeEquipment\(sender,target\.id,null,null,'normal','collab_fragments'\)/)
- assert.match(collab,/UPDATE pet_collection SET level=/)
- assert.match(collab,/UPDATE pets SET level=/)
- assert.match(collab,/fragmentos/)
+ assert.match(db,/if\(payment!=='cash'\)/)
+ assert.match(db,/const donors=collab\?sevenSinsForgePlan\(\{stars\}\)\.donorUpgradeRows/)
+ assert.match(db,/const units=collab\?/)
+ assert.match(db,/equipment_star_forge_collab_fragments/)
+ const upgrading=db.split('export async function upgradeEquipment(')[1].split('export async function equipItem(')[0]
+ assert.doesNotMatch(upgrading,/UPDATE inventories SET quantity=quantity-\$1.*fragmento_ascensao/)
+ assert.doesNotMatch(collab,/upgradeEquipment\(sender,target/)
+ assert.doesNotMatch(collab,/growCollabHero\(sender/)
+ assert.match(collab,/Uso exclusivo: Forja Estelar/)
 })
+
