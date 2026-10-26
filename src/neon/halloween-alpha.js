@@ -242,7 +242,7 @@ async function applyRetaliation(c,player,boss,phase){
  // Pet pode cair e usar poções próprias; não força gasto se esgotadas.
  const pet=(await c.query('SELECT hp,max_hp,energy FROM pets WHERE jid=$1 FOR UPDATE',[player.jid])).rows[0]
  if(!pet)return
- let petHp=Math.max(0,Number(pet.hp)-Math.round(amount*.5))
+ let petHp=Math.max(0,Number(pet.hp)-Math.round(damage*.5))
  let energy=Math.max(0,Number(pet.energy)-1)
  if(petHp<=Number(pet.max_hp)*.22){
   const potion=(await c.query(`SELECT item_id,quantity FROM inventories WHERE jid=$1
