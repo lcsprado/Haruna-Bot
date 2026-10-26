@@ -291,6 +291,16 @@ continue
 if(!sessionMode){
 sessionMode=r.mode||'common'
 sessionEndsAt=Number(r.endsAt||0)
+}else if((sessionMode==='event'||sessionMode==='weekly')&&Number(r.endsAt||0)>sessionEndsAt){
+  // Prazo do Boss prorrogado durante a sessão: atualiza o runner e sua
+  // persistência sem reiniciar ataques, alterar danos ou duplicar recompensas.
+  const newEndsAt=Number(r.endsAt)
+  const newBossId=String(sessionMode)+':'+String(newEndsAt)
+  await db.query("UPDATE boss_auto_sessions SET ends_at=$1,boss_id=$2,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$3 AND status='active' AND boss_id=$4",
+    [newEndsAt,newBossId,jid,bossId])
+  sessionEndsAt=newEndsAt
+  bossId=newBossId
+  console.log('[Boss Auto] prazo atualizado sem interromper sessão',JSON.stringify({jid,endsAt:sessionEndsAt}))
 }
 if(r.petSwitch){
 await reply(`🔄 *TROCA AUTOMÁTICA DE PET!*\n\n💔 *${r.petSwitch.from}* caiu.\n🐾 O Reserva *${r.petSwitch.to}* entrou no combate automaticamente.`)
