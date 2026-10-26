@@ -91,6 +91,7 @@ import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} fro
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
 import {scheduleMimics,handleMimicCommand} from './mimic-hunt.js'
+import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
@@ -1850,6 +1851,7 @@ await initDatabase()
 await initAwakening()
 await initRelics()
 await initEnchantments()
+await initHalloweenAlpha()
 {
 const key='raid_fragment_double_20261012_30min_v1'
 const startAt=Date.now()
@@ -8904,6 +8906,7 @@ startAuctionAlphaScheduler(sock)
 startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
+scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whatsapp==='open'})
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
@@ -9433,6 +9436,7 @@ if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushNam
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleEnchantCommand({cmd,args,sender,reply,
 setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
 clearFlow:()=>clearQuickFlow(chat,sender)})) continue
