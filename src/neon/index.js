@@ -92,7 +92,7 @@ import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
 import {scheduleMimics,handleMimicCommand} from './mimic-hunt.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
-import {initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
+import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
 function sleepOptionMessage(options){
@@ -4027,6 +4027,13 @@ const [emoji,label]=EQUIPMENT_BONUS_FIELDS[key]
 return emoji+' '+label+': '+gearStatValue(key,a)+' → *'+gearStatValue(key,b)+'*'
 }).filter(Boolean).join('\n')
 }
+// Exibe o bônus gravado no banco, não apenas os atributos-base da peça.
+// Forjar ou upar muda estrelas/nível, mas não consome pedras já aplicadas.
+const enchantmentsReceipt=rows=>{
+const lines=(rows||[]).filter(row=>STONES[row.stone_id]&&Number(row.quantity)>0)
+.map(row=>'💎 '+STONES[row.stone_id].name+' ×'+Number(row.quantity)+' — '+STONES[row.stone_id].label)
+return '\\n✨ *ENCANTAMENTOS DA PEÇA (PRESERVADOS)*\\n'+(lines.length?lines.join('\\n'):'Nenhum encantamento registrado neste modelo.')
+}
 // Uma estrela de forja (🌟) nao e o nivel da copia (⭐).
 const forgeStarsIcon=stars=>{
 const n=Math.max(1,Math.min(5,Math.trunc(Number(stars)||1)))
@@ -6443,8 +6450,8 @@ await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\n\n'+(result.category==='armor'?'�
 '🌟 *'+forgeStarsIcon(result.stars)+'* • bônus *'+forgeBonusText(result.stars)+'* • ⭐ *Lv.1*\n'+
 '💪 Atributos: '+gearStatsText(result.after,result.category)+'\n\n'+
 '🧩 Gasto: '+result.materialsSpent+'× '+result.origin.materialName+'\n'+
-'📦 Cópias: '+result.copies+' • Fragmentos: '+result.remainingMaterials+'\n\n'+
-'⬆️ Use *!uparitem* para levar a peça estrelada ao Lv.10.\n✅ Encantamentos preservados.')
+'📦 Cópias: '+result.copies+' • Fragmentos: '+result.remainingMaterials+enchantmentsReceipt(result.enchantments)+'\n\n'+
+'⬆️ Use *!uparitem* para levar a peça estrelada ao Lv.10.\n📋 Confira também em *!encantamentos*.')
 }catch(err){await reply('❌ '+(err?.message||'Não foi possível concluir a forja; confira os requisitos.'))}
 return true
 }
@@ -6590,7 +6597,7 @@ await reply(
 '⭐ Lv.'+r.fromLevel+' → *Lv.'+r.level+'* (+'+r.levelsGained+' níveis)\n'+
 '💪 Agora: *'+stat+'*\n'+
 '💸 Pago: *R$ '+fmt(r.cost)+'*\n'+
-'🪙 Carteira: *R$ '+fmt(r.cash)+'*\n\n'+
+'🪙 Carteira: *R$ '+fmt(r.cash)+'*'+enchantmentsReceipt(r.enchantments)+'\n\n'+
 (r.level>=10?'🏆 Equipamento no nível máximo.':'Use *!uparitem* para continuar evoluindo.')
 )
 return true
