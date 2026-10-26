@@ -4,6 +4,7 @@ import {resolveAstralLynxWildcard} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
+import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -522,7 +523,7 @@ const starterItems = [
 ]
 starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
 starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
-starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados para evoluir personagens e equipamentos da collab.','special',0,'event'])
+starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados; usado exclusivamente para forjar estrelas nas armas e armaduras da collab.','special',0,'event'])
 for (const item of starterItems) {
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)
@@ -2173,7 +2174,8 @@ manto_abismo_eterno:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa
 armadura_aurora:{raidLevel:65,materialId:'coroa_abissal',materialName:'Coroa Abissal'},
 armadura_deus_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'Essência do Eclipse'}
 })
-export const RAID_GEAR_FORGE_ORIGINS=Object.freeze({...RAID_WEAPON_FORGE_ORIGINS,...RAID_ARMOR_FORGE_ORIGINS})
+export const RAID_GEAR_FORGE_ORIGINS=Object.freeze({...RAID_WEAPON_FORGE_ORIGINS,...RAID_ARMOR_FORGE_ORIGINS,
+...Object.fromEntries(PECADOS_GEAR_IDS.map(id=>[id,Object.freeze({raidLevel:75,materialId:COLLAB_FRAGMENT_ITEM,materialName:'Fragmento da Ascensão',collab:true})]))})
 const UPGRADE_BASE_COST={common:1500,uncommon:3000,rare:7000,epic:16000,legendary:40000,event:50000}
 export function equipmentStatsAtLevel(itemId,level=1,stars=1){
 const eq=EQUIPMENT[itemId]
@@ -2254,17 +2256,34 @@ WHEN 'armadura_tita_ancestral' THEN 'fragmento_caos'
 WHEN 'manto_abismo_eterno' THEN 'coroa_abissal'
 WHEN 'armadura_aurora' THEN 'coroa_abissal'
 WHEN 'armadura_deus_eclipse' THEN 'essencia_eclipse'
+WHEN 'pecados_lostvayne' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_courechouse' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_rhitta' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_chastiefol' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_gideon' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_herritt' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_aldan' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_armadura_meliodas' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_armadura_ban' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_armadura_escanor' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_armadura_king' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_armadura_diane' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_armadura_gowther' THEN 'fragmento_ascensao_pecados_20261024'
+WHEN 'pecados_armadura_merlin' THEN 'fragmento_ascensao_pecados_20261024'
 END
 WHERE inv.jid=$1 AND inv.quantity>0 AND inv.item_id=ANY($2::text[])
 ORDER BY COALESCE(st.stars,1) DESC,i.name
 `,[jid,ids])
 return rows.map(r=>{
 const origin=RAID_GEAR_FORGE_ORIGINS[r.item_id]
+const collab=origin.collab===true
 const stars=Number(r.stars||1),needed=FORGE_STAR_MATERIALS[stars]||0
 const copies=Number(r.quantity||0)
 const free=Math.max(0,copies-Number(r.bound_quantity||0)-(r.equipped?1:0))
-const ready=stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1
-return {...r,origin,stars,needed,free,requiredCopies:stars===1?2:1,ready,canForge:stars<5&&ready&&copies>=2&&free>=1&&Number(r.materials)>=needed,
+const requiredCopies=collab?(stars===1?1:0):(stars===1?2:1)
+const ready=collab?(stars===1?Number(r.level10_copies)>=1:Number(r.forged_level)===10):(stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1)
+const enoughCopies=collab?copies>=1:copies>=2&&free>=1
+return {...r,origin,collab,stars,needed,free,requiredCopies,ready,canForge:stars<5&&ready&&enoughCopies&&Number(r.materials)>=needed,
 current:equipmentStatsAtLevel(r.item_id,stars>1?Number(r.forged_level):10,stars),
 next:stars<5?equipmentStatsAtLevel(r.item_id,1,stars+1):null}
 })
@@ -2273,37 +2292,46 @@ export async function forgeEquipmentStar(jid,itemId,expectedStars=null){
 await ensureUser(jid)
 const origin=RAID_GEAR_FORGE_ORIGINS[itemId]
 if(!origin)throw new Error('Equipamento não elegível à Forja Estelar.')
+const collab=origin.collab===true
 return transaction(async c=>{
 await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`equipment-forge:${jid}`])
 const item=(await c.query(`SELECT inv.quantity,i.name,i.category FROM inventories inv JOIN items i ON i.id=inv.item_id WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv`,[jid,itemId])).rows[0]
-if(!item||Number(item.quantity)<2)throw new Error('Faltam cópias idênticas.')
+if(!item||Number(item.quantity)<(collab?1:2))throw new Error(collab?'Você precisa possuir o equipamento da colaboração.':'Faltam cópias idênticas.')
 const sf=(await c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
 const stars=Number(sf?.stars||1),level=Number(sf?.level||10)
 if(expectedStars!==null&&Number(expectedStars)!==stars)throw new Error('Estrelas alteradas; reabra !forjar.')
 if(stars>=5)throw new Error('Máximo de cinco estrelas.')
 if(stars>1&&level!==10)throw new Error(`Primeiro aprimore a peça ★${stars} do Lv.${level} ao Lv.10.`)
-const donors=stars===1?2:1
+// No especial dos Sete Pecados os fragmentos substituem a cópia doadora.
+// A primeira estrela transforma uma cópia comum Lv.10; estrelas posteriores
+// avançam a peça já forjada, sem consumir novas cópias.
+const donors=collab?(stars===1?1:0):(stars===1?2:1)
 const paid=(await c.query('SELECT quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 FOR UPDATE',[jid,itemId])).rows[0]
 if(Number(paid?.quantity||0)<donors)throw new Error(`Precisa de ${donors} cópia(s) comum(ns) Lv.10; disponíveis: ${Number(paid?.quantity||0)}.`)
+if(!collab){
 const eq=(await c.query('SELECT weapon_id,armor_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 const equipped=eq?.weapon_id===itemId||eq?.armor_id===itemId
 const bound=(await c.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
 if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)throw new Error('A cópia equipada ou vinculada está protegida.')
+}
 const required=FORGE_STAR_MATERIALS[stars]
 const material=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
 if(Number(material?.quantity||0)<required)throw new Error(`Faltam ${required-Number(material?.quantity||0)} ${origin.materialName} (Raid ${origin.raidLevel}).`)
 // A coluna quantity exige >=1: deletar a última linha em vez de escrever zero.
+if(donors>0){
 const donor=Number(paid.quantity)===donors
 ?await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity=$3 RETURNING 1',[jid,itemId,donors])
 :await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND level=10 AND quantity>$3 RETURNING 1',[jid,itemId,donors])
 if(!donor.rowCount)throw new Error('Cópias Lv.10 indisponíveis.')
-const units=await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>=2 RETURNING quantity',[jid,itemId])
+}
+const units=collab?{rowCount:1,rows:[{quantity:Number(item.quantity)}]}
+:await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>=2 RETURNING quantity',[jid,itemId])
 const fragments=await c.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',[jid,origin.materialId,required])
 if(!units.rowCount||!fragments.rowCount)throw new Error('Reserva de materiais/cópia não concluída.')
 await c.query(`INSERT INTO equipment_star_forges(jid,item_id,stars,level,updated_at) VALUES($1,$2,$3,1,${nowSql}) ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,level=1,updated_at=EXCLUDED.updated_at`,[jid,itemId,stars+1])
 await syncEffectiveGear(c,jid,itemId)
-await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'forge',0,'equipment_star_forge',$2)`,[jid,`${itemId} ★${stars}->★${stars+1}; Lv.1; -1 cópia; -${required} ${origin.materialId}`])
-return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,origin,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
+await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'forge',0,$3,$2)`,[jid,`${itemId} ★${stars}->★${stars+1}; Lv.1; ${collab?'0 cópias consumidas':'-1 cópia'}; -${required} ${origin.materialId}`,collab?'equipment_star_forge_collab_fragments':'equipment_star_forge'])
+return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,collab,origin,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
 })
 }
 export const listStarForgeWeapons=listStarForgeEquipment
@@ -2398,16 +2426,10 @@ if(!Number.isInteger(requested)||requested<=current||requested>10)throw new Erro
 let cost=0
 for(let lv=current;lv<requested;lv++)cost+=equipmentUpgradeCost(inv.rarity,lv)
 // Material exclusivo da collab: substitui somente o custo monetário desta subida.
-const usingCollabFragments=payment==='collab_fragments'
-if(usingCollabFragments && (!PECADOS_GEAR_IDS.includes(itemId)||!['normal','star'].includes(sourceKind)))
-  throw new Error('Fragmentos da collab só aprimoram equipamentos dos Sete Pecados.')
-const fragmentCost=usingCollabFragments?(requested-current)*12:0
+if(payment!=='cash')throw new Error('Fragmentos da Ascensão são exclusivos da Forja Estelar. Use !forjar; upgrades usam dinheiro.')
+const fragmentCost=0
 const wallet=(await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-if(usingCollabFragments){
-  const fragments=(await c.query("SELECT quantity FROM inventories WHERE jid=$1 AND item_id='fragmento_ascensao_pecados_20261024' FOR UPDATE",[jid])).rows[0]
-  if(Number(fragments?.quantity||0)<fragmentCost)
-    throw new Error('Fragmentos insuficientes: necessários '+fragmentCost+'; disponíveis '+Number(fragments?.quantity||0)+'.')
-}else if(Number(wallet?.cash||0)<cost)throw new Error(`Saldo insuficiente: R$ ${cost.toLocaleString('pt-BR')}.`)
+if(Number(wallet?.cash||0)<cost)throw new Error(`Saldo insuficiente: R$ ${cost.toLocaleString('pt-BR')}.`)
 if(isStar){
 await c.query('UPDATE equipment_star_forges SET level=$3,updated_at='+nowSql+' WHERE jid=$1 AND item_id=$2 AND level=$4',[jid,itemId,requested,current])
 }else{
@@ -2420,18 +2442,14 @@ if(!moved.rowCount)throw new Error('Cópia selecionada mudou; nenhuma cobrança.
 }
 await c.query('INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity) VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,level) DO UPDATE SET quantity=equipment_upgrade_copies.quantity+1',[jid,itemId,requested])
 }
-if(usingCollabFragments){
-await c.query("UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id='fragmento_ascensao_pecados_20261024' AND quantity>=$1",[fragmentCost,jid])
-}else{
 await c.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
-}
 await syncEffectiveGear(c,jid,itemId)
 await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'upgrade',$2,$3,$4)`,
-[jid,usingCollabFragments?fragmentCost:cost,usingCollabFragments?'equipment_upgrade_collab_fragments':'equipment_upgrade',
+[jid,cost,'equipment_upgrade',
 `${itemId} ${isStar?'STAR':'COPY'} Lv.${current}->Lv.${requested}`])
 const money=(await c.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]
 const stars=isStar?Number(sf.stars):1
-return {itemId,name:inv.name,rarity:inv.rarity,stars,fromLevel:current,level:requested,levelsGained:requested-current,cost:usingCollabFragments?0:cost,fragmentCost,cash:Number(money?.cash||0),before:equipmentStatsAtLevel(itemId,current,stars),stats:equipmentStatsAtLevel(itemId,requested,stars)}
+return {itemId,name:inv.name,rarity:inv.rarity,stars,fromLevel:current,level:requested,levelsGained:requested-current,cost,fragmentCost,cash:Number(money?.cash||0),before:equipmentStatsAtLevel(itemId,current,stars),stats:equipmentStatsAtLevel(itemId,requested,stars)}
 })
 }
 export async function equipItem(jid, itemId) {
