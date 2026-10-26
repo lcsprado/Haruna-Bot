@@ -1,0 +1,38 @@
+name: Alpha Bot - Halloween turn fairness
+
+on:
+  push:
+    branches:
+      - fix/halloween-speed-dodge-fairness-20261026
+      - whatsapp-only
+    paths:
+      - 'src/neon/halloween-alpha.js'
+      - 'src/neon/halloween-combat.js'
+      - 'test/halloween-combat-fairness-20261026.test.mjs'
+      - 'test/halloween-alpha-20261026.test.mjs'
+      - '.github/workflows/halloween-combat-validation.yml'
+  pull_request:
+    paths:
+      - 'src/neon/halloween-alpha.js'
+      - 'src/neon/halloween-combat.js'
+      - 'test/halloween-combat-fairness-20261026.test.mjs'
+      - '.github/workflows/halloween-combat-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validar-halloween:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar sintaxe (nenhuma conexão com banco)
+        run: |
+          node --check src/neon/halloween-alpha.js
+          node --check src/neon/halloween-combat.js
+      - name: Testar regras e regressões sem atingir dados reais
+        run: node --test test/halloween-combat-fairness-20261026.test.mjs test/halloween-alpha-20261026.test.mjs
