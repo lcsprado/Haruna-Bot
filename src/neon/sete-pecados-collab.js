@@ -154,7 +154,7 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
  if(['personagens','personagem','herois','heróis'].includes(action)){
   const entries=PECADOS_HEROES.map((hero,i)=>
    '*'+(i+1)+'. '+hero.name+'* — '+(BONUS_STYLE[hero.style]||hero.style)+'\n   '+collabHeroBonus(hero)).join('\n')
-  await reply('🌈🐾 *PERSONAGENS — COLLAB 7 PECADOS*\n\n'+entries+'\n\n📦 Chance de personagem por baú: *33,33%* (1 entre 7 nesta categoria).\n🎁 *!7pecados abrir* — custa 7 essências.\n♻️ Repetido: 50 Fragmentos Universais de Raid.')
+  await reply('🌈🐾 *COMPANHEIROS DE AVENTURA — 7 PECADOS*\n\n'+entries+'\n\n📦 Chance de companheiro por baú: *33,33%* (1 entre 7 nesta categoria).\n🎁 *!7pecados abrir* — custa 7 essências.\n♻️ Repetido: 50 Fragmentos Universais de Raid.')
   return true
  }
  if(['armas','arma'].includes(action)){
@@ -170,7 +170,7 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
   return true
  }
  if(action==='ajuda'){
-  await reply('🌈 *COLLAB DOS 7 PECADOS — COMANDOS*\n\n📋 *!7pecados* — Calendário, essências e coleção\n🐾 *!7pecados personagens* — Os 7 personagens e seus bônus\n⚔️ *!7pecados armas* — As 7 armas e seus atributos\n🛡️ *!7pecados armaduras* — As 7 armaduras e seus atributos\n🎁 *!7pecados abrir* — Abre um baú usando 7 essências\n🧩 *!7pecados fragmentos* — Saldo e custos do Boss de farm\n🌟 *!forjar* — Forja especial com fragmentos, sem cópias extras\n👹 *!boss* — Boss global ativo\n⚔️ *!atacar* — Ataca o Boss\n\n🎲 Cada categoria tem chance de 1/3 no baú.\n🩸 Essências repetidas *ACUMULAM*, não viram dinheiro.\n♻️ Personagem repetido: *50 Fragmentos Universais de Raid*. Armas e armaduras repetidas: *cópias preservadas* para futura forja.\n📅 25/10 e 01/11, das 18h às 20h (Brasília).\n✅ As consultas não gastam essências.')
+  await reply('🌈 *COLLAB DOS 7 PECADOS — COMANDOS*\n\n📋 *!7pecados* — Calendário, essências e coleção\n🐾 *!7pecados personagens* — Os 7 companheiros de aventura e seus bônus\n⚔️ *!7pecados armas* — As 7 armas e seus atributos\n🛡️ *!7pecados armaduras* — As 7 armaduras e seus atributos\n🎁 *!7pecados abrir* — Abre um baú usando 7 essências\n🧩 *!7pecados fragmentos* — Saldo e custos do Boss de farm\n🌟 *!forjar* — Forja especial com fragmentos, sem cópias extras\n👹 *!boss* — Boss global ativo\n⚔️ *!atacar* — Ataca o Boss\n\n🎲 Cada categoria tem chance de 1/3 no baú.\n🩸 Essências repetidas *ACUMULAM*, não viram dinheiro.\n♻️ Companheiro repetido: *50 Fragmentos Universais de Raid*. Armas e armaduras repetidas: *cópias preservadas* para futura forja.\n📅 25/10 e 01/11, das 18h às 20h (Brasília).\n✅ As consultas não gastam essências.')
   return true
  }
 
@@ -179,7 +179,7 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
   if(r.unknown){await reply('⚠️ Esta mensagem já foi processada, mas o resultado não pôde ser recuperado. Nenhuma essência foi consumida novamente.');return true}
   const replayNotice=r.replay?'🔁 *Mensagem já processada.* Nenhuma essência foi cobrada novamente.\n\n':''
   if(r.insufficient)await reply(replayNotice+'🌈 *BAÚ DOS 7 PECADOS*\n\nSão necessárias *7 essências* de qualquer pecado. Você possui *'+fmt(r.owned)+'*.\nUse *!7pecados* para consultar o calendário.')
-  else await reply(replayNotice+'🌈🎁 *BAÚ DOS 7 PECADOS ABERTO!*\n\n'+(r.copyPreserved?'♻️ *EQUIPAMENTO REPETIDO:* '+r.reward+'\n📦 Nova cópia guardada no inventário para futura forja estelar.':r.duplicate?'♻️ *PERSONAGEM REPETIDO:* '+r.reward+'\n🎁 Recebeu *50 Fragmentos Universais de Raid*.':'✅ *'+r.category.toUpperCase()+':* '+r.reward+'\n🎉 Adicionado à sua coleção!')+'\n\n🩸 Essências restantes: *'+fmt(r.ownedAfter)+'*.')
+  else await reply(replayNotice+'🌈🎁 *BAÚ DOS 7 PECADOS ABERTO!*\n\n'+(r.copyPreserved?'♻️ *EQUIPAMENTO REPETIDO:* '+r.reward+'\n📦 Nova cópia guardada no inventário para futura forja estelar.':r.duplicate?'♻️ *COMPANHEIRO REPETIDO:* '+r.reward+'\n🎁 Recebeu *50 Fragmentos Universais de Raid*.':'✅ *'+(r.category==='personagem'?'COMPANHEIRO DE AVENTURA':r.category.toUpperCase())+':* '+r.reward+'\n🎉 Adicionado à sua coleção!')+'\n\n🩸 Essências restantes: *'+fmt(r.ownedAfter)+'*.')
   return true
  }
  if(action==='resgatar'||action==='compensacao'){
@@ -192,6 +192,6 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
  const h=(await db.query("SELECT COUNT(DISTINCT species)::int AS n FROM pet_collection WHERE jid=$1 AND species=ANY($2::text[])",[sender,PECADOS_HEROES.map(p=>p.species)])).rows[0]
  const g=(await db.query("SELECT COUNT(DISTINCT item_id)::int AS n FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>0",[sender,PECADOS_GEAR_IDS])).rows[0]
  const future=PECADOS_EDITIONS.filter(x=>Date.now()<x.end).map(x=>new Date(x.start).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'}))
- await reply('🌈 *COLLAB — 7 PECADOS CAPITAIS*\n\n🩸 Essências: *'+fmt(qty)+'* (*'+Math.floor(qty/7)+' baú(s)*)\n🐾 Personagens: *'+fmt(h?.n)+'/7*\n⚔️🛡️ Equipamentos: *'+fmt(g?.n)+'/14*\n🎁 Cada baú: *7 essências*\n🎲 Personagem 1/3 | Arma 1/3 | Armadura 1/3\n♻️ Personagem repetido: *50 Fragmentos Universais*. Equipamento repetido: *cópia preservada; fragmentos substituem cópias extras*\n📅 Domingos *25/10 e 01/11, 18h–20h* (Brasília).\n'+(future.length?'Próximas edições: '+future.join(' e '):'Distribuição encerrada; essências restantes continuam válidas.')+'\n\n👉 *!7pecados armas* • *personagens* • *armaduras*\n👉 *!7pecados abrir* — Abrir um baú\n👉 *!7pecados ajuda* — Ver todos os comandos')
+ await reply('🌈 *COLLAB — 7 PECADOS CAPITAIS*\n\n🩸 Essências: *'+fmt(qty)+'* (*'+Math.floor(qty/7)+' baú(s)*)\n🐾 Companheiros: *'+fmt(h?.n)+'/7*\n⚔️🛡️ Equipamentos: *'+fmt(g?.n)+'/14*\n🎁 Cada baú: *7 essências*\n🎲 Personagem 1/3 | Arma 1/3 | Armadura 1/3\n♻️ Companheiro repetido: *50 Fragmentos Universais*. Equipamento repetido: *cópia preservada; fragmentos substituem cópias extras*\n📅 Domingos *25/10 e 01/11, 18h–20h* (Brasília).\n'+(future.length?'Próximas edições: '+future.join(' e '):'Distribuição encerrada; essências restantes continuam válidas.')+'\n\n👉 *!7pecados armas* • *personagens* • *armaduras*\n👉 *!7pecados abrir* — Abrir um baú\n👉 *!7pecados ajuda* — Ver todos os comandos')
  return true
 }
