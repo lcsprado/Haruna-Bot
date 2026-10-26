@@ -83,3 +83,47 @@ test('migração aditiva preserva pontos, XP, inventário e prêmios históricos
  assert.match(tick,/await maybeDrop\(/)
  assert.match(tick,/round_damage=0 WHERE active=TRUE/)
 })
+
+test('retaliação real usa o dano definido e atualiza HP do pet sem erro de execução',async()=>{
+ const body=halloween.slice(halloween.indexOf('async function applyRetaliation('),halloween.indexOf('async function tickHalloween('))
+ assert.doesNotMatch(body,/\bamount\b/)
+ const math=Object.create(Math)
+ math.random=()=>.99
+ const calls=[]
+ const query=async (sql,params=[])=>{
+  calls.push({sql,params})
+  if(sql.includes('SELECT hp,max_hp FROM stats'))return {rows:[{hp:650,max_hp:1000}]}
+  if(sql.includes('SELECT hp,max_hp,energy FROM pets'))return {rows:[{hp:430,max_hp:600,energy:50}]}
+  return {rows:[],rowCount:0}
+ }
+ const defense=({damage,awakeningState})=>({damage,dodged:false,awakeningState})
+ const retaliate=new Function('classDefense','Math','return ('+body.trim()+')')(defense,math)
+ await retaliate({query},{
+  jid:'test-jid',hits:12,defense:100,mitigation:.03,mystic_guard:0,
+  dodge:0,awakening_state:{},effective_max_hp:1000,class_id:'paladin',
+  class_applied:true,awakening_stage:0
+ },{atk:255},1)
+ const petUpdate=calls.find(c=>c.sql.includes('UPDATE pets SET hp='))
+ assert.ok(petUpdate,'pet must receive an actual retaliation update')
+ assert.ok(petUpdate.params[0]<430)
+})
+test('esquiva de classe impede perda de HP e de energia do pet',async()=>{
+ const body=halloween.slice(halloween.indexOf('async function applyRetaliation('),halloween.indexOf('async function tickHalloween('))
+ const math=Object.create(Math)
+ math.random=()=>.99
+ const calls=[]
+ const query=async(sql,params=[])=>{
+  calls.push({sql,params})
+  if(sql.includes('SELECT hp,max_hp FROM stats'))return {rows:[{hp:650,max_hp:1000}]}
+  return {rows:[],rowCount:0}
+ }
+ const defense=({awakeningState})=>({damage:0,dodged:true,awakeningState})
+ const retaliate=new Function('classDefense','Math','return ('+body.trim()+')')(defense,math)
+ await retaliate({query},{
+  jid:'test-jid',hits:12,defense:100,dodge:0,mitigation:0,
+  awakening_state:{},effective_max_hp:1000,class_id:'monk',
+  class_applied:true,awakening_stage:1
+ },{atk:255},1)
+ assert.ok(calls.some(c=>c.sql.includes('player_evades=player_evades+1')))
+ assert.ok(!calls.some(c=>c.sql.includes('UPDATE pets SET hp=')))
+})
