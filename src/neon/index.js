@@ -80,6 +80,7 @@ import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
+import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
 import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP} from './collab-fragment-rules.js'
@@ -412,13 +413,21 @@ if(r.eventId===COLLAB_FARM_ID){
  return
 }
 if(r.eventId==='sete_pecados'){
-const rank=(r.rewards||[]).filter(x=>x.eligible).slice(0,3).map(x=>
-(x.position===1?'🥇':x.position===2?'🥈':'🥉')+' '+x.name+' — '+Number(x.damage).toLocaleString('pt-BR')+
-' dano • R$ '+Number(x.cash).toLocaleString('pt-BR')).join('\n')
-await (setePecadosBroadcaster||reply)('🌑 *PECADO DERROTADO!*\n\n'+(rank||'Nenhum jogador alcançou 10.000 de dano.')+
-'\n🎁 Recompensas creditadas após este Boss.'+
-(r.nextPhase?'\n\n🔔 O próximo pecado já está ativo. O anúncio será enviado separadamente a todos os grupos.':
-'\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia permanente para quem atingiu 10.000 de dano em todos os oito Bosses; quem já a possui recebe 7 essências.'))
+const faseNames=['Preguiça','Gula','Ganância','Inveja','Luxúria','Ira','Soberba','Azazel']
+const faseIndex=Number(r.phaseIndex||0)
+const players=(r.rewards||[]).filter(x=>Number(x.damage||0)>0)
+const totalPhaseDamage=players.reduce((sum,x)=>sum+Number(x.damage||0),0)
+const rank=players.map(x=>
+(x.position===1?'🥇':x.position===2?'🥈':x.position===3?'🥉':'🏅')+
+' '+Number(x.position)+'º '+x.name+' — '+Number(x.damage).toLocaleString('pt-BR')+
+' dano'+(x.eligible?' ✅':' (abaixo de 10.000)')).join('\n')
+await (setePecadosBroadcaster||reply)(
+'🌑 *PECADO DERROTADO — '+(faseIndex+1)+'/8: '+(faseNames[faseIndex]||'Boss')+'!*\n\n'+
+'💥 Dano registrado: *'+totalPhaseDamage.toLocaleString('pt-BR')+'*\n'+
+(rank||'Nenhum jogador causou dano.')+
+'\n\n🎁 Elegíveis receberam as recompensas da fase. *Todos os participantes estão listados.*'+
+(r.nextPhase?'\n🔔 O próximo pecado já está ativo.':
+'\n\n👑 *AZAZEL DERROTADO! EVENTO CONCLUÍDO!*\n⚜️ Insígnia e título segundo a conclusão das oito fases. As essências extras dependem da edição.'))
 await reply(text)
 if(nextPecado){
 if(sessionEndsAt && Date.now()>=sessionEndsAt){
@@ -3191,6 +3200,48 @@ await sendEventToGroups('🌑 *O INÍCIO DA MADRUGADA TERMINOU!*\n\n'+(rankings|
 finally{inicioMadrugadaBusy=false}
 },5000).unref?.()
 setePecadosBroadcaster=sendEventToGroups
+// Retificação retroativa: publicada UMA vez por grupo a partir do ledger
+// concluído, com marcador gravado somente APÓS confirmação do transporte.
+let setePecadosCorrectionBusy=false
+let setePecadosCorrectionDone=false
+async function resendCorrectedSetePecados25(){
+if(setePecadosCorrectionBusy||setePecadosCorrectionDone||trevoHealth.whatsapp!=='open')return
+setePecadosCorrectionBusy=true
+try{
+ const state=(await db.query("SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_boss_event__' AND game_type='boss_event'")).rows[0]?.state
+ const notice=formatSetePecados25Correction(state)
+ if(!notice)return
+ const groups=new Set((await activeEventGroups()).map(g=>String(g.chat_jid||'')).filter(j=>j.endsWith('@g.us')))
+ const historical=(await db.query(
+  "SELECT DISTINCT value->>'chat' AS chat FROM trevo_settings WHERE key LIKE 'global_boss_event_group:sete-pecados-collab-20261025:%'"
+ )).rows
+ for(const x of historical)if(String(x.chat||'').endsWith('@g.us'))groups.add(x.chat)
+ let sent=0,failed=0,already=0
+ for(const chat of groups){
+  const key='sete_pecados_correction_20261025_v1:'+chat
+  try{
+   const stored=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value
+   if(stored?.status==='sent'){already++;continue}
+   await sock.sendMessage(chat,{text:notice})
+   await db.query(
+    "INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at",
+    [key,JSON.stringify({status:'sent',sentAt:Date.now(),event:'sete-pecados-collab-20261025'})]
+   )
+   sent++
+   console.log('[SETE PECADOS CORRECAO 25/10] enviada',chat)
+  }catch(e){failed++;console.warn('[SETE PECADOS CORRECAO 25/10] falhou',chat,e?.message||e)}
+ }
+ if(groups.size>0&&failed===0&&sent+already===groups.size){
+  setePecadosCorrectionDone=true
+  clearInterval(setePecadosCorrectionTimer)
+  console.log('[SETE PECADOS CORRECAO 25/10] concluida',JSON.stringify({groups:groups.size,sent,already}))
+ }
+}catch(err){console.error('[SETE PECADOS CORRECAO 25/10]',err?.stack||err)}
+finally{setePecadosCorrectionBusy=false}
+}
+const setePecadosCorrectionTimer=setInterval(()=>{void resendCorrectedSetePecados25()},30000)
+setePecadosCorrectionTimer.unref?.()
+setTimeout(()=>{void resendCorrectedSetePecados25()},2500).unref?.()
 async function announceNextPecado(){
 if(trevoHealth.whatsapp!=='open') return
 const current=(await db.query(
