@@ -304,7 +304,7 @@ async function tickHalloween(){
    }
   }
   if(Number(state.hp)<=0){
-   if(now<Number(state.revive_at||0))return []
+   if(now<Number(state.revive_at||0))return alerts
    const cycle=Number(state.cycle)+1
    await c.query('UPDATE halloween_boss_days_2026 SET cycle=$2,hp=max_hp,revive_at=0,updated_at=$3 WHERE day=$1',[boss.day,cycle,now])
    await c.query('UPDATE halloween_players_2026 SET round_damage=0 WHERE active=TRUE')
@@ -312,7 +312,10 @@ async function tickHalloween(){
    alerts.push({type:'respawn',boss:boss.name,cycle})
   }
   // Sem LIMIT por JID: participantes ativos não podem ser excluídos por posição na tabela.
-  const players=(await c.query('SELECT * FROM halloween_players_2026 WHERE active=TRUE FOR UPDATE')).rows
+  const players=(await c.query(halloweenHourlyEnabled(now)
+    ? 'SELECT * FROM halloween_players_2026 WHERE active=TRUE AND lease_day=$1 AND lease_expires_at>$2 FOR UPDATE'
+    : 'SELECT * FROM halloween_players_2026 WHERE active=TRUE FOR UPDATE',
+    halloweenHourlyEnabled(now)?[boss.day,now]:[])).rows
   if(!players.length)return alerts
   for(const row of players){
    if(String(row.day)!==boss.day){
