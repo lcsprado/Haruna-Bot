@@ -3,7 +3,7 @@ import {petCombatSpecialty,classCritBonus,classAttack,classDefense} from './game
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {profileCombatPetBonuses} from './games.js'
 import {activeRelic} from './relics.js'
-import {HALLOWEEN_TICK_MS,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
+import {HALLOWEEN_TICK_MS,halloweenAttackInterval,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
 import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction} from './halloween-rules.js'
 
 const fmt=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
@@ -422,9 +422,15 @@ async function status(jid){
 function formatStatus(s){
  const active=s.player?.active?'✅ Combate automático ativado':'⏸️ Fora do combate'
  const state=s.state
+ const speed=Math.max(0,Number(s.player?.speed||0))
+ const interval=(halloweenAttackInterval(speed)/1000).toFixed(2).replace('.',',')
  return '🎃 *HALLOWEEN ALPHA — CAÇADA DAS ALMAS*\n'+
  (s.boss?'👹 *'+s.boss.name+'*\n🛡️ '+s.boss.mechanic+'\n❤️ HP: *'+fmt(state?.hp??s.boss.hp)+'/'+fmt(state?.max_hp??s.boss.hp)+'* • Ciclo '+Number(state?.cycle||1)+(Number(state?.revive_at)>Date.now()?' • Ressurge em breve':'')+'\n':'🏁 Bosses encerrados. A loja encerra domingo ao meio-dia.\n')+
- '⚔️ '+active+' • ataque a cada *10 segundos*\n'+
+ '⚔️ '+active+' • rodadas globais de *10 segundos*\n'+
+ '⚡ VEL: *'+fmt(speed)+'* • intervalo próprio: *'+interval+'s* (bônus limitado a +25% de frequência)\n'+
+ '🎯 CRIT: *'+(Number(s.player?.crit||0)*100).toFixed(1).replace('.',',')+'%* • 🌀 Esquiva de pet: *'+(Number(s.player?.dodge||0)*100).toFixed(1).replace('.',',')+'%*\n'+
+ '🥊 Golpes acertados: *'+fmt(s.player?.hits||0)+'* • Tentativas: *'+fmt(s.player?.attempts||0)+'*\n'+
+ '👻 Esquivas do Boss: *'+fmt(s.player?.boss_evades||0)+'* • 🛡️ Suas esquivas: *'+fmt(s.player?.player_evades||0)+'*\n'+
  '🧩 Suas Almas: *'+fmt(s.souls)+'* (sem limite diário)\n'+
  '✨ *2× XP* do personagem e do time pet nos marcos de vitória\n'+
  '📈 Seu dano total: *'+fmt(s.player?.all_damage||0)+'*\n'+
@@ -443,14 +449,19 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
    const current=(await c.query('SELECT chat,active FROM halloween_players_2026 WHERE jid=$1 FOR UPDATE',[sender])).rows[0]
    if(current?.active&&current.chat!==chat)throw new Error('Você já está atacando em outro grupo. Use o grupo original ou !halloween sair.')
    const snap=await snapshotPower(c,sender)
+   const stamp=Date.now()
    await c.query(`INSERT INTO halloween_players_2026(jid,name,chat,day,power,defense,mystic_guard,power_refreshed,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$8,$7,$7)
     ON CONFLICT(jid) DO UPDATE SET name=EXCLUDED.name,chat=EXCLUDED.chat,active=TRUE,
-    power=EXCLUDED.power,defense=EXCLUDED.defense,mystic_guard=EXCLUDED.mystic_guard,power_refreshed=EXCLUDED.power_refreshed,updated_at=EXCLUDED.updated_at`,
-    [sender,name||'Jogador',chat,boss.day,snap.power,snap.defense,Date.now(),snap.mysticGuard])
+    power=EXCLUDED.power,defense=EXCLUDED.defense,mystic_guard=EXCLUDED.mystic_guard,
+    power_refreshed=EXCLUDED.power_refreshed,updated_at=EXCLUDED.updated_at`,
+    [sender,name||'Jogador',chat,boss.day,snap.power,snap.defense,stamp,snap.mysticGuard])
+   await savePowerSnapshot(c,sender,snap,stamp)
+   // Retorno à caçada não recupera golpes durante o período inativo.
+   if(current&&!current.active)await c.query('UPDATE halloween_players_2026 SET last_attack=0 WHERE jid=$1',[sender])
    return snap
   })
-  await reply('🎃⚔️ *ENTROU NO HALLOWEEN!*\n👹 '+boss.name+'\n⚔️ Ataques automáticos a cada 10s, inclusive após reconexão.\n💥 Poder de ataque estimado: '+fmt(saved.power)+'\n🧩 Farm ilimitado por participação real.\n🛡️ Personagem e pet sofrem dano; poções e energéticos disponíveis podem ser usados automaticamente.\nUse *!halloween status* para acompanhar.')
+  await reply('🎃⚔️ *ENTROU NO HALLOWEEN!*\n👹 '+boss.name+'\n⚔️ Rodadas automáticas a cada 10s; VEL dá prioridade e pode adiantar turnos.\n💥 Poder de ataque estimado: '+fmt(saved.power)+'\n🧩 Farm ilimitado por participação real.\n🛡️ Personagem e pet sofrem dano; poções e energéticos disponíveis podem ser usados automaticamente.\nUse *!halloween status* para acompanhar.')
   return true
  }
  if(['sair','parar'].includes(action)){
@@ -461,10 +472,10 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
  if(['atualizar','recalcular'].includes(action)){
   const r=await tx(async c=>{
    const snap=await snapshotPower(c,sender)
-   await c.query('UPDATE halloween_players_2026 SET power=$1,defense=$2,mystic_guard=$5,power_refreshed=$3 WHERE jid=$4',[snap.power,snap.defense,Date.now(),sender,snap.mysticGuard])
+   await savePowerSnapshot(c,sender,snap,Date.now())
    return snap
   })
-  await reply('⚔️ Atributos do Halloween atualizados: poder '+fmt(r.power)+'.')
+  await reply('⚔️ *ATRIBUTOS DO HALLOWEEN ATUALIZADOS*\n💥 Poder: '+fmt(r.power)+'\n⚡ VEL: '+fmt(r.speed)+' • Intervalo: '+(halloweenAttackInterval(r.speed)/1000).toFixed(2).replace('.',',')+'s\n🎯 CRIT: '+(r.crit*100).toFixed(1).replace('.',',')+'%\n🌀 Esquiva do pet: '+(r.dodge*100).toFixed(1).replace('.',',')+'%')
   return true
  }
  if(['trocar','resgatar','comprar'].includes(action)){
@@ -479,8 +490,13 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
   return true
  }
  if(['ranking','top'].includes(action)){
-  const r=await db.query(`SELECT name,day_damage,all_damage,hits FROM halloween_players_2026 ORDER BY all_damage DESC LIMIT 10`)
-  await reply('🏆 *RANKING GLOBAL HALLOWEEN*\n\n'+(r.rows.length?r.rows.map((p,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':'🏅')+' '+p.name+' — '+fmt(p.all_damage)+' dano • '+fmt(p.hits)+' golpes').join('\n'):'Nenhum participante ainda.')+'\n\n🧩 As Almas são creditadas diretamente no inventário por participação.')
+  const r=await db.query(`SELECT name,day_damage,all_damage,hits,attempts,boss_evades,player_evades,speed
+   FROM halloween_players_2026 ORDER BY all_damage DESC LIMIT 10`)
+  await reply('🏆 *RANKING GLOBAL HALLOWEEN*\n\n'+
+   (r.rows.length?r.rows.map((p,i)=>(i===0?'🥇':i===1?'🥈':i===2?'🥉':'🏅')+' '+p.name+
+    ' — '+fmt(p.all_damage)+' dano • '+fmt(p.hits)+' acertos'+
+    '\n   ⚡ '+fmt(p.speed)+' VEL • '+fmt(p.attempts)+' tentativas • '+fmt(p.boss_evades)+' esquivas do Boss').join('\n'):'Nenhum participante ainda.')+
+   '\n\nℹ️ Acertos não incluem ataques esquivados. Mais VEL gera iniciativa e até 25% mais frequência.\n🧩 Almas creditadas diretamente no inventário por participação.')
   return true
  }
  await reply(formatStatus(await status(sender)))
