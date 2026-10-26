@@ -1958,6 +1958,7 @@ const EQUIPMENT = {
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
 elmo_soberano_celestial_20261024: {category:'helmet',atk:0,def:112,hp:275,crit:.025,name:'Elmo do Soberano Celestial'},
+elmo_guardiao_nebular_20261026: {category:'helmet',atk:0,def:100,hp:330,crit:.035,name:'Elmo do Guardião Nebular'},
 elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
 elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
 elmo_labirinto_alpha: {category:'helmet',atk:0,def:92,hp:240,crit:0,name:'Elmo do Labirinto Eterno'},
@@ -2017,6 +2018,7 @@ bota_cacador: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:6, name:'Bota 
 bota_relampago: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:8, name:'Bota do Relâmpago' },
 bota_celestial: { category:'boots', atk:0, def:0, hp:0, crit:0, spd:10, name:'Bota Celestial' },
 bota_vortice_alpha_20261020: {category:'boots',atk:0,def:0,hp:70,spd:14,crit:.025,name:'Botas do Vórtice'},
+botas_cometa_astral_20261026: {category:'boots',atk:0,def:18,hp:35,spd:17,crit:.015,name:'Botas do Cometa Astral'},
 bota_jp_aquiles: { category:'boots', atk:0, def:0, hp:0, crit:0.02, spd:12, name:'Bota do JP — Passo da Lenda' },
 }
 const POTIONS = {
@@ -4770,7 +4772,7 @@ serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,colosso_alpha:475,ora
 fera_caos:430,guardiao_caos:450,serafim_caotico:455,oraculo_caos:445,fenix_caos:470,
 pantera_profundezas:450,guardiao_abissal:465,dragao_trono:475,oraculo_coroa:465,esfinge_mares:480,
 lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520,
-morcego_madrugada:430,camaleao_lendario:425
+morcego_madrugada:430,camaleao_lendario:425,onca_eclipse_20261026:405
 }
 const PET_VITALS_LEGACY_FIX=Object.freeze([
 'oraculo_pedra','pantera_vulcanica','espectro_abissal',
@@ -4818,6 +4820,7 @@ coruja:{base:100,growth:8,type:'Suporte'},
 raposa:{base:110,growth:9,type:'Ágil'},
 raposa_astral:{base:115,growth:10,type:'Neutro — Leilão Alpha'},
 lince_astral:{base:115,growth:10,type:'Coringa — Leilão das Sombras'},
+onca_eclipse_20261026:{base:165,growth:13,type:'Coringa — Leilão do Tesouro Alpha 26/10'},
 lobo:{base:130,growth:11,type:'Ofensivo'},
 aguia:{base:115,growth:9,type:'Crítico'},
 gaviao:{base:120,growth:9,type:'Ágil Crítico'},
@@ -4953,7 +4956,7 @@ styles[batIndex]=others[0]
 return styles
 }
 export function petStyleLabel(species){
-const style=['morcego_madrugada','camaleao_lendario','lince_astral'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+const style=['morcego_madrugada','camaleao_lendario','lince_astral','onca_eclipse_20261026'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
 return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
 export function petTeamSynergy(pets=[]){
