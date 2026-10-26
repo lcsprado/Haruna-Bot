@@ -60,4 +60,6 @@ export function pecadosEditionCompletionBonus(scheduleKey){
   const edition=PECADOS_EDITIONS.find(e=>e.key===String(scheduleKey||''))
   return edition&&edition.key!==PECADOS_EDITIONS[0].key?PECADOS_FULL_CLEAR_BONUS_ESSENCES:0
 }
-export function pecadosBonus(count){return [0,.05,.10,.20][Math.max(0,Math.min(3,Number(count)||0))]}
+// Sinergia da collab é uma formação completa: 3 heróis diferentes equipados.
+// Um ou dois heróis nunca concedem bônus parcial de Pecados.
+export function pecadosBonus(count){return Number(count)===3?.20:0}
