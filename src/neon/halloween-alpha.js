@@ -16,6 +16,7 @@ const POWER_REFRESH_MS=10*60000
 let scheduler=null
 let running=false
 let latestNotices=[]
+let lastHourlyMaintenanceMinute=-1
 async function tx(fn){
  const c=await db.connect()
  try{await c.query('BEGIN');const out=await fn(c);await c.query('COMMIT');return out}
@@ -41,7 +42,9 @@ export async function initHalloweenAlpha(){
   awakening_stage INTEGER NOT NULL DEFAULT 0,awakening_state JSONB NOT NULL DEFAULT '{}'::jsonb,
   last_proc_attack BIGINT NOT NULL DEFAULT 0,attempts BIGINT NOT NULL DEFAULT 0,
   boss_evades BIGINT NOT NULL DEFAULT 0,player_evades BIGINT NOT NULL DEFAULT 0,
-  critical_hits BIGINT NOT NULL DEFAULT 0)`)
+  critical_hits BIGINT NOT NULL DEFAULT 0,
+  lease_day TEXT NOT NULL DEFAULT '',lease_expires_at BIGINT NOT NULL DEFAULT 0,
+  lease_notice_until BIGINT NOT NULL DEFAULT 0)
  // Migração aditiva: preserva golpes, dano, prêmios e pontuações do evento já iniciado.
  await db.query(`ALTER TABLE halloween_players_2026
   ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0,
@@ -58,7 +61,10 @@ export async function initHalloweenAlpha(){
   ADD COLUMN IF NOT EXISTS attempts BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS boss_evades BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS player_evades BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS critical_hits BIGINT NOT NULL DEFAULT 0`)
+  ADD COLUMN IF NOT EXISTS critical_hits BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS lease_day TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS lease_expires_at BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS lease_notice_until BIGINT NOT NULL DEFAULT 0
  await db.query('UPDATE halloween_players_2026 SET attempts=hits WHERE attempts<hits')
  await db.query(`CREATE TABLE IF NOT EXISTS halloween_rewards_2026(
   day TEXT NOT NULL,cycle INTEGER NOT NULL,jid TEXT NOT NULL,
