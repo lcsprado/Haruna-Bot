@@ -204,20 +204,41 @@ function damageModifier(boss,phase){
  return [.90,1.05,.88,.91,.93,1][i] * (phase===3?.95:1)
 }
 async function applyRetaliation(c,player,boss,phase){
- // A retaliação ocorre a cada 12 golpes; o jogador pode continuar com cura.
+ // Retaliação a cada 12 ACERTOS; esquivas do Boss não geram contra-ataque.
  if(Number(player.hits)%12!==0)return
  const st=(await c.query('SELECT hp,max_hp FROM stats WHERE jid=$1 FOR UPDATE',[player.jid])).rows[0]
  if(!st||Number(st.hp)<=0)return
- const amount=Math.max(8,Math.floor((boss.atk*(phase===3?1.40:phase===2?1.20:1)-Number(player.defense||0)*.20)*.32*(1-Math.min(.015,Number(player.mystic_guard||0)))))
- let hp=Math.max(0,Number(st.hp)-amount)
- if(hp<=Math.max(20,Number(st.max_hp)*.23)){
-  const potion=(await c.query(`SELECT quantity FROM inventories WHERE jid=$1 AND item_id='elixir_supremo' AND quantity>0 FOR UPDATE`,[player.jid])).rows[0]
+ const maxHp=Math.max(1,Number(player.effective_max_hp||st.max_hp||100))
+ const phaseAtk=Number(boss.atk)*(phase===3?1.40:phase===2?1.20:1)
+ const damage=Math.max(8,Math.floor((phaseAtk-Number(player.defense||0)*.20)*.32*
+  (1-Math.min(.50,Number(player.mitigation||0)))*
+  (1-Math.min(.015,Number(player.mystic_guard||0)))))
+ const petDodged=Math.random()<Math.min(.20,Math.max(0,Number(player.dodge||0)))
+ const defense=petDodged
+  ?{damage:0,dodged:true,awakeningState:player.awakening_state||{}}
+  :classDefense({
+   classId:player.class_id,applied:player.class_applied,damage,
+   context:'boss',hp:st.hp,maxHp,awakeningStage:player.awakening_stage,
+   awakeningState:player.awakening_state||{}
+  })
+ player.awakening_state=defense.awakeningState||{}
+ await c.query('UPDATE halloween_players_2026 SET awakening_state=$2::jsonb WHERE jid=$1',
+  [player.jid,JSON.stringify(player.awakening_state)])
+ if(petDodged||defense.dodged){
+  await c.query('UPDATE halloween_players_2026 SET player_evades=player_evades+1 WHERE jid=$1',[player.jid])
+  return
+ }
+ let hp=Math.max(0,Number(st.hp)-Number(defense.damage||0)+Number(defense.healAfter||0))
+ if(hp<=Math.max(20,maxHp*.23)){
+  const potion=(await c.query(`SELECT quantity FROM inventories
+   WHERE jid=$1 AND item_id='elixir_supremo' AND quantity>0 FOR UPDATE`,[player.jid])).rows[0]
   if(potion){
-   await c.query(`UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='elixir_supremo' AND quantity>0`,[player.jid])
-   hp=Math.min(Number(st.max_hp),hp+900)
+   await c.query(`UPDATE inventories SET quantity=quantity-1
+    WHERE jid=$1 AND item_id='elixir_supremo' AND quantity>0`,[player.jid])
+   hp=Math.min(maxHp,hp+900)
   }
  }
- await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[hp,player.jid])
+ await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[Math.min(hp,maxHp),player.jid])
  // Pet pode cair e usar poções próprias; não força gasto se esgotadas.
  const pet=(await c.query('SELECT hp,max_hp,energy FROM pets WHERE jid=$1 FOR UPDATE',[player.jid])).rows[0]
  if(!pet)return
