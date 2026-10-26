@@ -2327,7 +2327,7 @@ function renderAuction(){
     '<div class="grid two section">'+
     '<div class="card"><h3>Dar lance</h3><p>O valor é reservado da sua carteira e banco; se alguém superar seu lance, a reserva é devolvida.</p>'+
     (a.isLeading?'<p class="tag good">🏆 Você está vencendo este lote.</p>':'')+
-    '<div class="hero-actions"><button class="btn good" data-auction-increment'+(active&&!ui.auctionSubmitting?'':' disabled')+'>+ R$ 50.000</button></div>'+
+    '<div class="hero-actions"><button class="btn good" data-auction-increment'+(active&&!ui.auctionSubmitting?'':' disabled')+'>+'+money(a.step||100000)+'</button></div>'+
     custom+'<p class="muted">O lance personalizado representa o valor total, não um acréscimo.</p></div>'+
     '<div class="card"><div class="section-title"><h3>Lances públicos deste lote</h3><button class="btn" data-auction-refresh>Atualizar</button></div>'+
     (recent?'<div class="list">'+recent+'</div>':'<p class="muted">Ainda não há lances registrados neste lote.</p>')+'</div></div>'+
@@ -2937,7 +2937,7 @@ function render(){
 function bind(){
   document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
   document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
-  document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+50000'));
+  document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+'+String(ui.auction?.step||100000)));
   document.querySelectorAll('[data-auction-form]').forEach(x=>x.onsubmit=e=>{
     e.preventDefault();
     const value=String(x.querySelector('[data-auction-amount]')?.value||'').trim();
