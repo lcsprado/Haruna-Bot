@@ -4,6 +4,7 @@ import {resolveAstralLynxWildcard} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
+import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import pg from 'pg'
@@ -527,6 +528,8 @@ const starterItems = [
 starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
 starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
 starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados; usado exclusivamente para forjar estrelas nas armas e armaduras da collab.','special',0,'event'])
+starterItems.push([HALLOWEEN_SOUL_ID,'Alma Amaldiçoada — Halloween','Fragmento exclusivo do Halloween 26–31/10; trocas liberadas sábado.','special',0,'event'])
+starterItems.push(...HALLOWEEN_GEAR.map(g=>[g.id,g.name,'Lendário de Halloween; drop exclusivo de Boss global. Não comercializável.',g.category,0,'legendary']))
 for (const item of starterItems) {
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)
@@ -542,6 +545,8 @@ await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1:
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_universal_raid'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_ascensao_pecados_20261024'")
+await db.query('UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id=$1',[HALLOWEEN_SOUL_ID])
+await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_GEAR.map(g=>g.id)])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
 await db.query(`
@@ -1956,6 +1961,7 @@ return rows
 }
 const EQUIPMENT = {
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
+...Object.fromEntries(HALLOWEEN_GEAR.map(({id,...gear})=>[id,gear])),
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
 elmo_soberano_celestial_20261024: {category:'helmet',atk:0,def:112,hp:275,crit:.025,name:'Elmo do Soberano Celestial'},
 elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
@@ -4883,6 +4889,7 @@ sentinela_eclipse:{base:385,growth:27,type:'Tanque'},
 dragao_solar_eclipse:{base:365,growth:27,type:'Boss Hunter'},
 fenix_eclipse:{base:365,growth:26,type:'Suporte'},
 avatar_primordial:{base:390,growth:27,type:'Místico'},
+corcel_espectral_halloween:{base:310,growth:23,type:'Místico'},
 morcego_madrugada:{base:285,growth:22,type:'Coringa'},
 camaleao_lendario:{base:290,growth:22,type:'Coringa'}
 }
@@ -4930,7 +4937,7 @@ coelho:'mistico',hamster:'mistico',gazela_mistica:'mistico',cervo_mistico:'misti
 golfinho_celestial:'mistico',polvo_arcano:'mistico',
 salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico',
 oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico',
-oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico'
+oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico',corcel_espectral_halloween:'mistico'
 }
 const PET_TEAM_WILDCARD_BONUS={
   styleLabel:'🃏 Coringa',label:'🃏 Elo Universal',
