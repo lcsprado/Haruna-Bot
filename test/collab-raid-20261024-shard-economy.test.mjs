@@ -58,6 +58,7 @@ test('Comandos exibem limite real e evolução usa o mesmo material',()=>{
   assert.match(collab,/collabRaidBrazilDay/)
   assert.match(collab,/COLLAB_RAID_DAILY_CAP/)
   assert.match(collab,/collabFragmentBalance\(sender\)/)
-  assert.match(collab,/upgradeEquipment\(sender,target.id,null,null,'normal','collab_fragments'\)/)
+  assert.doesNotMatch(collab,/upgradeEquipment\(sender,target/)
+  assert.match(collab,/Uso exclusivo: Forja Estelar/)
   assert.equal(COLLAB_GEAR_UPGRADE_FRAGMENTS,12)
 })
