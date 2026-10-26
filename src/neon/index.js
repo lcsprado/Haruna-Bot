@@ -4032,7 +4032,7 @@ return emoji+' '+label+': '+gearStatValue(key,a)+' → *'+gearStatValue(key,b)+'
 const enchantmentsReceipt=rows=>{
 const lines=(rows||[]).filter(row=>STONES[row.stone_id]&&Number(row.quantity)>0)
 .map(row=>'💎 '+STONES[row.stone_id].name+' ×'+Number(row.quantity)+' — '+STONES[row.stone_id].label)
-return '\\n✨ *ENCANTAMENTOS DA PEÇA (PRESERVADOS)*\\n'+(lines.length?lines.join('\\n'):'Nenhum encantamento registrado neste modelo.')
+return '\n✨ *ENCANTAMENTOS DA PEÇA (PRESERVADOS)*\n'+(lines.length?lines.join('\n'):'Nenhum encantamento registrado neste modelo.')
 }
 // Uma estrela de forja (🌟) nao e o nivel da copia (⭐).
 const forgeStarsIcon=stars=>{
