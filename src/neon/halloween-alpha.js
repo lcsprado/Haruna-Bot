@@ -279,6 +279,30 @@ async function tickHalloween(){
   if(!locked.rows[0]?.locked)return []
   let state=await ensureDay(c,boss)
   const alerts=[]
+  // A sessão do jogador precisa ser renovada de hora em hora a partir de 27/10.
+  // Expiração é reforçada também no SELECT dos combatentes (imediata).
+  // Avisos e limpeza no banco são executados apenas uma vez por minuto.
+  if(halloweenHourlyEnabled(now)){
+   const minute=Math.floor(now/HALLOWEEN_MAINTENANCE_MS)
+   if(minute!==lastHourlyMaintenanceMinute){
+    const ended=(await c.query(`UPDATE halloween_players_2026
+     SET active=FALSE,last_attack=0,updated_at=$2
+     WHERE active=TRUE AND (lease_day<>$1 OR lease_expires_at<=$2)
+     RETURNING name,chat,lease_day,lease_expires_at`,[boss.day,now])).rows
+    const soon=(await c.query(`UPDATE halloween_players_2026
+     SET lease_notice_until=lease_expires_at
+     WHERE active=TRUE AND lease_day=$1
+       AND lease_expires_at>$2 AND lease_expires_at<=$2+$3
+       AND lease_notice_until<>lease_expires_at
+     RETURNING name,chat,lease_expires_at`,[boss.day,now,HALLOWEEN_SESSION_REMINDER_MS])).rows
+    // A abertura do novo Boss já avisa a turma para entrar.
+    for(const p of ended){
+     if(p.lease_day===boss.day)alerts.push({type:'session_expired',chat:p.chat,name:p.name})
+    }
+    for(const p of soon)alerts.push({type:'session_warning',chat:p.chat,name:p.name,expiresAt:Number(p.lease_expires_at)})
+    lastHourlyMaintenanceMinute=minute
+   }
+  }
   if(Number(state.hp)<=0){
    if(now<Number(state.revive_at||0))return []
    const cycle=Number(state.cycle)+1
