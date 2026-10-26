@@ -262,7 +262,7 @@ new Promise(resolve=>{const timer=setTimeout(resolve,2500);timer.unref?.()})
 ;(async()=>{
 let completed=false
 let pendingFirst=first
-let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false
+let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false,lastPetHealNoticeAt=0
 let sessionMode=null,sessionEndsAt=0
 const petHealTally=new Map()
 const petHealSummary=()=>[...petHealTally].map(([pet,v])=>`\n🐾 *${pet}*: caiu *${v.count}x* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')
@@ -313,6 +313,17 @@ const tally=petHealTally.get(pet)||{count:0,potions:new Map()}
 tally.count++
 tally.potions.set(potion,(tally.potions.get(potion)||0)+1)
 petHealTally.set(pet,tally)
+petFaintWarned=false
+// Mostra que a cura realmente ocorreu, sem disparar aviso a cada golpe.
+if(Date.now()-lastPetHealNoticeAt>=45000){
+lastPetHealNoticeAt=Date.now()
+await reply('🐾🧪 *AUTOCURA DO PET!*\\n\\n🐾 '+pet+
+'\\n💚 +'+Number(r.autoPetHeal.heal||0).toLocaleString('pt-BR')+' HP'+
+'\\n❤️ HP atual: *'+Number(r.autoPetHeal.hp).toLocaleString('pt-BR')+'/'+Number(r.autoPetHeal.maxHp).toLocaleString('pt-BR')+'*'+
+'\\n🧪 '+potion+
+(Number.isFinite(Number(r.autoPetHeal.remaining))?' • Restam: '+r.autoPetHeal.remaining:'')+
+'\\n⚔️ Combate automático continua.')
+}
 }
 if(r.autoPetEnergy){
 petExitWarned=false
