@@ -11,7 +11,8 @@ function take(start,end){
   assert.ok(a>=0&&b>a,'Bloco de cálculo da sinergia não localizado: '+start)
   return dbSource.slice(a,b)
 }
-const speciesStyles=new Function('PECADOS_HEROES',take('const PET_TEAM_STYLE_BY_SPECIES=','const PET_TEAM_WILDCARD_BONUS=')+'\nreturn PET_TEAM_STYLE_BY_SPECIES')(PECADOS_HEROES)
+const endOfStyles=dbSource.includes('const PET_TEAM_WILDCARD_BONUS=')?'const PET_TEAM_WILDCARD_BONUS=':'const PET_TEAM_STYLE_BONUS='
+const speciesStyles=new Function('PECADOS_HEROES',take('const PET_TEAM_STYLE_BY_SPECIES=',endOfStyles)+'\nreturn PET_TEAM_STYLE_BY_SPECIES')(PECADOS_HEROES)
 const styleBonuses=new Function(take('const PET_TEAM_STYLE_BONUS=','function resolveBatTeamStyles(')+'\nreturn PET_TEAM_STYLE_BONUS')()
 const resolveBatTeamStyles=new Function('PET_TEAM_STYLE_BY_SPECIES',take('function resolveBatTeamStyles(','export function petStyleLabel(')+'\nreturn resolveBatTeamStyles')(speciesStyles)
 const petTeamSynergy=new Function(
