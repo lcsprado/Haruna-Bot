@@ -117,11 +117,51 @@ async function collabFragmentBalance(jid){
  const {rows}=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,COLLAB_FRAGMENT_ITEM])
  return Number(rows[0]?.quantity||0)
 }
+// Reembolso opt-in e idempotente para upgrades de EQUIPAMENTO historicamente
+// pagos com fragmentos. Nao altera Lv., estrelas ou saldos de dinheiro.
+export async function claimCollabGearFragmentRefund(jid){
+ return inTransaction(async c=>{
+  const lock=await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  if(!lock.rowCount)throw new Error('Jogador não localizado.')
+  const key='refund_collab_gear_fragments_20261026:'+jid
+  const old=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[key])).rows[0]
+  if(old)return {already:true,refunded:0,previous:Number(old.value?.refunded||0)}
+  const audit=(await c.query(`SELECT COALESCE(SUM(amount),0)::bigint AS spent,COUNT(*)::int AS uses
+    FROM transactions
+    WHERE from_jid=$1 AND to_jid='upgrade' AND type='equipment_upgrade_collab_fragments' AND amount>0`,[jid])).rows[0]
+  const spent=Number(audit?.spent||0)
+  if(!Number.isSafeInteger(spent)||spent<0)throw new Error('Histórico inconsistente; nenhuma compensação efetuada.')
+  if(spent===0)return {already:false,refunded:0,uses:0}
+  const marker=await c.query('INSERT INTO trevo_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO NOTHING RETURNING key',[
+    key,JSON.stringify({refunded:spent,uses:Number(audit.uses||0),source:'equipment_upgrade_collab_fragments',at:Date.now()})
+  ])
+  if(!marker.rowCount)return {already:true,refunded:0}
+  await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3)
+    ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,
+    [jid,COLLAB_FRAGMENT_ITEM,spent])
+  await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+    VALUES('refund',$1,0,'collab_fragment_gear_refund_20261026',$2)`,
+    [jid,'refund:'+spent+' fragments, uses:'+Number(audit.uses||0)])
+  const remaining=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,COLLAB_FRAGMENT_ITEM])).rows[0]
+  return {already:false,refunded:spent,uses:Number(audit.uses||0),remaining:Number(remaining?.quantity||0)}
+ })
+}
 export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,messageId=null}){
  if(!['7pecados','setepecados','pecados7'].includes(cmd))return false
  await ensureUser(sender)
  const action=String(args[0]||'status').toLowerCase()
 
+ if(['reembolso','reembolsar','devolucao'].includes(action)){
+  const result=await claimCollabGearFragmentRefund(sender)
+  if(result.already){
+    await reply('✅ *REEMBOLSO JÁ PROCESSADO*\n\nA restituição foi registrada anteriormente: *'+fmt(result.previous||0)+' Fragmentos da Ascensão*. Nenhuma unidade foi creditada novamente.')
+  }else if(result.refunded>0){
+    await reply('🧩 *FRAGMENTOS DEVOLVIDOS!*\n\n⚔️ Upgrades de equipamento identificados: *'+result.uses+'*\n♻️ Fragmentos devolvidos: *+'+fmt(result.refunded)+'*\n📦 Saldo atual: *'+fmt(result.remaining)+'*\n✅ Seus níveis e equipamentos foram preservados. O reembolso só pode ocorrer uma vez.')
+  }else{
+    await reply('📋 *SEM GASTOS ELEGÍVEIS*\n\nNão encontrei no histórico deste jogador upgrades de armas ou armaduras pagos com Fragmentos da Ascensão. Nenhum saldo foi alterado.')
+  }
+  return true
+ }
  if(['fragmentos','fragmento','farm'].includes(action)){
   const [balance,used]=await Promise.all([
     collabFragmentBalance(sender),
@@ -139,7 +179,7 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
     '✅ Substituem a cópia extra; não são consumidas outras cópias de equipamentos.\n'+
     '⚔️ A primeira forja exige uma peça comum Lv.10; as próximas exigem a peça estrelada Lv.10.\n'+
     '🔒 Upgrades de nível são pagos com dinheiro; fragmentos não evoluem mais pets ou equipamentos.\n\n'+
-    '👉 Use *!forjar* para escolher a peça.\n'+
+    '👉 Use *!forjar* para escolher a peça.\n♻️ Quem gastou fragmentos em upgrades antigos pode usar *!7pecados reembolso*.\n'+
     '🌈 Edições da collab: *25/10 e 01/11*.')
   return true
  }
@@ -170,7 +210,7 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
   return true
  }
  if(action==='ajuda'){
-  await reply('🌈 *COLLAB DOS 7 PECADOS — COMANDOS*\n\n📋 *!7pecados* — Calendário, essências e coleção\n🐾 *!7pecados personagens* — Os 7 companheiros de aventura e seus bônus\n⚔️ *!7pecados armas* — As 7 armas e seus atributos\n🛡️ *!7pecados armaduras* — As 7 armaduras e seus atributos\n🎁 *!7pecados abrir* — Abre um baú usando 7 essências\n🧩 *!7pecados fragmentos* — Saldo e custos do Boss de farm\n🌟 *!forjar* — Forja especial com fragmentos, sem cópias extras\n👹 *!boss* — Boss global ativo\n⚔️ *!atacar* — Ataca o Boss\n\n🎲 Cada categoria tem chance de 1/3 no baú.\n🩸 Essências repetidas *ACUMULAM*, não viram dinheiro.\n♻️ Companheiro repetido: *50 Fragmentos Universais de Raid*. Armas e armaduras repetidas: *cópias preservadas* para futura forja.\n📅 25/10 e 01/11, das 18h às 20h (Brasília).\n✅ As consultas não gastam essências.')
+  await reply('🌈 *COLLAB DOS 7 PECADOS — COMANDOS*\n\n📋 *!7pecados* — Calendário, essências e coleção\n🐾 *!7pecados personagens* — Os 7 companheiros de aventura e seus bônus\n⚔️ *!7pecados armas* — As 7 armas e seus atributos\n🛡️ *!7pecados armaduras* — As 7 armaduras e seus atributos\n🎁 *!7pecados abrir* — Abre um baú usando 7 essências\n🧩 *!7pecados fragmentos* — Saldo e custos do Boss de farm\n🌟 *!forjar* — Forja especial com fragmentos, sem cópias extras\n♻️ *!7pecados reembolso* — Devolver gasto antigo de fragmentos em upgrades de equipamentos (uma vez)\n👹 *!boss* — Boss global ativo\n⚔️ *!atacar* — Ataca o Boss\n\n🎲 Cada categoria tem chance de 1/3 no baú.\n🩸 Essências repetidas *ACUMULAM*, não viram dinheiro.\n♻️ Companheiro repetido: *50 Fragmentos Universais de Raid*. Armas e armaduras repetidas: *cópias preservadas* para futura forja.\n📅 25/10 e 01/11, das 18h às 20h (Brasília).\n✅ As consultas não gastam essências.')
   return true
  }
 
