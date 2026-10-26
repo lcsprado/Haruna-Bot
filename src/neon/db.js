@@ -210,13 +210,6 @@ level INTEGER NOT NULL CHECK(level BETWEEN 2 AND 10),
 quantity INTEGER NOT NULL CHECK(quantity>=1),
 PRIMARY KEY(jid,item_id,level)
 );
--- Upgrade antigo por modelo corresponde a apenas uma cópia aprimorada.
-INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity)
-SELECT e.jid,e.item_id,e.level,1 FROM equipment_upgrades e
-JOIN inventories i ON i.jid=e.jid AND i.item_id=e.item_id AND i.quantity>0
-WHERE e.level>1 AND NOT EXISTS (SELECT 1 FROM equipment_upgrade_copies c
-WHERE c.jid=e.jid AND c.item_id=e.item_id)
-ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS equipment_star_forges(
 jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
 item_id TEXT NOT NULL REFERENCES items(id),
@@ -230,6 +223,15 @@ ALTER TABLE equipment_star_forges ADD COLUMN IF NOT EXISTS level INTEGER NOT NUL
 UPDATE equipment_star_forges SET level=1 WHERE level IS NULL;
 ALTER TABLE equipment_star_forges ALTER COLUMN level SET DEFAULT 1;
 ALTER TABLE equipment_star_forges ALTER COLUMN level SET NOT NULL;
+-- Nunca recrie uma copia comum a partir do nivel efetivo de uma peca forjada.
+-- Essa importacao legada so roda quando nao existe estrela nem copia aprimorada.
+INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity)
+SELECT e.jid,e.item_id,e.level,1 FROM equipment_upgrades e
+JOIN inventories i ON i.jid=e.jid AND i.item_id=e.item_id AND i.quantity>0
+WHERE e.level>1 AND NOT EXISTS (SELECT 1 FROM equipment_upgrade_copies c
+WHERE c.jid=e.jid AND c.item_id=e.item_id)
+AND NOT EXISTS (SELECT 1 FROM equipment_star_forges sf WHERE sf.jid=e.jid AND sf.item_id=e.item_id)
+ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS alpha_xp_boosts (
 jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
 bonus_percent INTEGER NOT NULL CHECK (bonus_percent BETWEEN 1 AND 30),
