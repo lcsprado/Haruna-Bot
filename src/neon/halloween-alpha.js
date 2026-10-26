@@ -1,11 +1,15 @@
 import {db,ensureUser,equipmentStatsAtLevel,getEquipmentStarLevels,petTeamSynergy,petMaxHp,petMaxEnergy,grantExpInTransaction} from './db.js'
-import {PET_STATUS_SPECIALTIES} from './game-catalog.js'
+import {petCombatSpecialty,classCritBonus,classAttack,classDefense} from './game-catalog.js'
+import {getEquippedEnchants} from './enchantments-alpha.js'
+import {profileCombatPetBonuses} from './games.js'
+import {activeRelic} from './relics.js'
+import {HALLOWEEN_TICK_MS,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
 import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction} from './halloween-rules.js'
 
 const fmt=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
 const nowSec=()=>Math.floor(Date.now()/1000)
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
-const ATTACK_MS=10000
+const ATTACK_MS=HALLOWEEN_TICK_MS
 const REVIVE_MS=120000
 const POWER_REFRESH_MS=10*60000
 let scheduler=null
@@ -28,7 +32,33 @@ export async function initHalloweenAlpha(){
   character_xp BIGINT NOT NULL DEFAULT 0,pet_xp BIGINT NOT NULL DEFAULT 0,
   power INTEGER NOT NULL DEFAULT 0,defense INTEGER NOT NULL DEFAULT 0,mystic_guard REAL NOT NULL DEFAULT 0,
   power_refreshed BIGINT NOT NULL DEFAULT 0,last_attack BIGINT NOT NULL DEFAULT 0,
-  updated_at BIGINT NOT NULL DEFAULT 0)`)
+  updated_at BIGINT NOT NULL DEFAULT 0,
+  speed INTEGER NOT NULL DEFAULT 0,crit REAL NOT NULL DEFAULT 0,dodge REAL NOT NULL DEFAULT 0,
+  mitigation REAL NOT NULL DEFAULT 0,effective_max_hp BIGINT NOT NULL DEFAULT 0,
+  pet_active BOOLEAN NOT NULL DEFAULT FALSE,
+  class_id TEXT NOT NULL DEFAULT 'warrior',class_applied BOOLEAN NOT NULL DEFAULT TRUE,
+  awakening_stage INTEGER NOT NULL DEFAULT 0,awakening_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+  last_proc_attack BIGINT NOT NULL DEFAULT 0,attempts BIGINT NOT NULL DEFAULT 0,
+  boss_evades BIGINT NOT NULL DEFAULT 0,player_evades BIGINT NOT NULL DEFAULT 0,
+  critical_hits BIGINT NOT NULL DEFAULT 0)`)
+ // Migração aditiva: preserva golpes, dano, prêmios e pontuações do evento já iniciado.
+ await db.query(`ALTER TABLE halloween_players_2026
+  ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS crit REAL NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS dodge REAL NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS mitigation REAL NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS effective_max_hp BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS pet_active BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS class_id TEXT NOT NULL DEFAULT 'warrior',
+  ADD COLUMN IF NOT EXISTS class_applied BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS awakening_stage INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS awakening_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS last_proc_attack BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS attempts BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS boss_evades BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS player_evades BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS critical_hits BIGINT NOT NULL DEFAULT 0`)
+ await db.query('UPDATE halloween_players_2026 SET attempts=hits WHERE attempts<hits')
  await db.query(`CREATE TABLE IF NOT EXISTS halloween_rewards_2026(
   day TEXT NOT NULL,cycle INTEGER NOT NULL,jid TEXT NOT NULL,
   milestone TEXT NOT NULL,item_id TEXT NOT NULL,amount INTEGER NOT NULL,
@@ -51,26 +81,68 @@ async function ensureDay(c,boss){
  return r.rows[0]
 }
 async function snapshotPower(c,jid){
- const st=(await c.query('SELECT hp,atk,def,weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])).rows[0]
- if(!st)return {power:0,defense:0,mysticGuard:0}
+ const st=(await c.query('SELECT hp,max_hp,atk,def,spd,class_id,class_applied,weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])).rows[0]
+ if(!st)return {power:0,defense:0,mysticGuard:0,speed:100,crit:.10,dodge:0,mitigation:0,effectiveMaxHp:100,petActive:false,classId:'warrior',classApplied:false,awakeningStage:0}
  const ids=[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean)
  const upgrades=ids.length?(await c.query('SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids])).rows:[]
  const levels=Object.fromEntries(upgrades.map(r=>[r.item_id,Number(r.level)||1]))
  const stars=await getEquipmentStarLevels(jid,ids,c)
- let atk=Number(st.atk||0),defense=Number(st.def||0),crit=0
+ const ench=await getEquippedEnchants(c,jid,ids)
+ let atk=Number(st.atk||0)+Number(ench.atk||0)
+ let defense=Number(st.def||0)+Number(ench.def||0)
+ let speed=Number(st.spd||0)+Number(ench.spd||0)
+ let equipmentHp=0,gearCrit=0
  for(const item of ids){
   const g=equipmentStatsAtLevel(item,levels[item]||1,stars[item]||1)
-  atk+=Number(g?.atk||0);defense+=Number(g?.def||0);crit+=Number(g?.crit||0)
+  atk+=Number(g?.atk||0)
+  defense+=Number(g?.def||0)
+  speed+=Number(g?.spd||0)
+  gearCrit+=Number(g?.crit||0)
+  if(item!==st.boot_id)equipmentHp+=Number(g?.hp||0)
  }
  const pets=(await c.query(`SELECT p.species,p.level,p.hp,p.energy,t.slot FROM pet_team t
  JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 AND t.slot IN (1,2,3) ORDER BY t.slot`,[jid])).rows
  const synergy=petTeamSynergy(pets)||{}
- const primary=pets.find(p=>Number(p.slot)===1&&Number(p.hp)>0&&Number(p.energy)>0)
- const petStats=primary?PET_STATUS_SPECIALTIES[primary.species]?.stats||{}:{}
- const petDamage=Math.min(.15,Number(petStats.damage||0)/100)+Math.min(.15,Number(petStats.bossDamage||0)/100)
- const petCrit=Math.min(.15,Number(petStats.crit||0)/100)
- const power=Math.max(1,Math.floor((atk*(1+Math.min(.3,petDamage)+Number(synergy.attack||0)))*(1+Math.min(.6,crit+petCrit+Number(synergy.crit||0))*.30)))
- return {power,defense:Math.max(0,Math.floor(defense)),mysticGuard:halloweenMysticHelmetReduction({helmetId:st.helmet_id,teamStyle:synergy.style,teamCount:pets.length})}
+ const primary=pets.find(p=>Number(p.slot)===1)||null
+ const petBonuses=profileCombatPetBonuses(primary,pets)
+ const activePet=pets.find(p=>Number(p.slot)===Number(petBonuses.activeSlot))||null
+ const petBonus=petBonuses.active||{}
+ speed+=Number(synergy.speed||0)+(activePet?Number(petCombatSpecialty(activePet.species).speed||0):0)
+ const awakening=(await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]
+ const awakeningStage=Math.max(0,Number(awakening?.stage||0))
+ const relic=await activeRelic(c,jid)
+ const crit=Math.max(0,Math.min(.45,.10+gearCrit+Number(ench.crit||0)+Number(petBonus.crit||0)+Number(synergy.crit||0)+classCritBonus(st.class_id,st.class_applied,awakeningStage,'boss')+Number(relic?.bossCrit||0)))
+ const atkWithSeal=Math.round(atk*(1+Number(ench.attackPct||0)))
+ const multiplier=1+Math.min(.30,Number(petBonus.damage||0))+Math.max(0,Number(synergy.attack||0))+Math.max(0,Number(ench.damage||0))+Math.max(0,Number(relic?.boss||0))
+ const power=Math.max(1,Math.round(atkWithSeal*multiplier))
+ return {
+  power,defense:Math.max(0,Math.floor(defense)),speed:Math.max(0,Math.floor(speed)),
+  crit,dodge:Math.min(.20,Math.max(0,Number(petBonus.dodge||0))),
+  mitigation:Math.min(.50,Math.max(0,Number(petBonus.defense||0)+Number(synergy.defense||0))),
+  effectiveMaxHp:Math.max(1,Number(st.max_hp||100)+equipmentHp),
+  petActive:Boolean(activePet),classId:String(st.class_id||'warrior'),
+  classApplied:Boolean(st.class_applied),awakeningStage,
+  mysticGuard:halloweenMysticHelmetReduction({helmetId:st.helmet_id,teamStyle:synergy.style,teamCount:pets.length})
+ }
+}
+async function savePowerSnapshot(c,jid,snap,now){
+ await c.query(`UPDATE halloween_players_2026 SET
+  power=$1,defense=$2,mystic_guard=$3,power_refreshed=$4,
+  speed=$5,crit=$6,dodge=$7,mitigation=$8,effective_max_hp=$9,pet_active=$10,
+  class_id=$11,class_applied=$12,awakening_stage=$13
+  WHERE jid=$14`,[
+  snap.power,snap.defense,snap.mysticGuard,now,
+  snap.speed,snap.crit,snap.dodge,snap.mitigation,snap.effectiveMaxHp,snap.petActive,
+  snap.classId,snap.classApplied,snap.awakeningStage,jid
+ ])
+}
+const reflectSnapshot=(row,snap,now)=>{
+ Object.assign(row,{
+  power:snap.power,defense:snap.defense,mystic_guard:snap.mysticGuard,
+  power_refreshed:now,speed:snap.speed,crit:snap.crit,dodge:snap.dodge,
+  mitigation:snap.mitigation,effective_max_hp:snap.effectiveMaxHp,pet_active:snap.petActive,
+  class_id:snap.classId,class_applied:snap.classApplied,awakening_stage:snap.awakeningStage
+ })
 }
 async function credit(c,jid,item,quantity){
  if(quantity<=0)return
