@@ -5,6 +5,7 @@ import {syncEffectiveGear} from './equipment-star-logic.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
+import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -2282,10 +2283,11 @@ const collab=origin.collab===true
 const stars=Number(r.stars||1),needed=FORGE_STAR_MATERIALS[stars]||0
 const copies=Number(r.quantity||0)
 const free=Math.max(0,copies-Number(r.bound_quantity||0)-(r.equipped?1:0))
-const requiredCopies=collab?(stars===1?1:0):(stars===1?2:1)
-const ready=collab?(stars===1?Number(r.level10_copies)>=1:Number(r.forged_level)===10):(stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1)
-const enoughCopies=collab?copies>=1:copies>=2&&free>=1
-return {...r,origin,collab,stars,needed,free,requiredCopies,ready,canForge:stars<5&&ready&&enoughCopies&&Number(r.materials)>=needed,
+const special=collab?sevenSinsForgePlan({stars,commonLv10Copies:r.level10_copies,forgedLevel:r.forged_level,owned:copies,fragments:r.materials,requiredFragments:needed}):null
+const requiredCopies=collab?special.requiredCopies:stars===1?2:1
+const ready=collab?special.ready:stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1
+const canForge=collab?special.canForge:stars<5&&ready&&copies>=2&&free>=1&&Number(r.materials)>=needed
+return {...r,origin,collab,stars,needed,free,requiredCopies,ready,canForge,
 current:equipmentStatsAtLevel(r.item_id,stars>1?Number(r.forged_level):10,stars),
 next:stars<5?equipmentStatsAtLevel(r.item_id,1,stars+1):null}
 })
@@ -2307,7 +2309,7 @@ if(stars>1&&level!==10)throw new Error(`Primeiro aprimore a peça ★${stars} do
 // No especial dos Sete Pecados os fragmentos substituem a cópia doadora.
 // A primeira estrela transforma uma cópia comum Lv.10; estrelas posteriores
 // avançam a peça já forjada, sem consumir novas cópias.
-const donors=collab?(stars===1?1:0):(stars===1?2:1)
+const donors=collab?sevenSinsForgePlan({stars}).donorUpgradeRows:(stars===1?2:1)
 const paid=(await c.query('SELECT quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=10 FOR UPDATE',[jid,itemId])).rows[0]
 if(Number(paid?.quantity||0)<donors)throw new Error(`Precisa de ${donors} cópia(s) comum(ns) Lv.10; disponíveis: ${Number(paid?.quantity||0)}.`)
 if(!collab){
