@@ -1891,15 +1891,32 @@ async function settleCollabFarmPhase(c,s){
 }
 
 const PECADOS_PHASES=PECADOS_BOSS_PHASES
+// Reequilíbrio emergencial autorizado em 25/10 após quatro horas de combate.
+// Só vale para as três fases finais de HOJE. 01/11 e fases já concluídas intactas.
+// Restaura os HP/ATK base do domingo anterior e suspende o +35% por ingresso
+// nas fases finais, sem apagar nenhum dano, ranking, ledger ou recompensa.
+const PECADOS_2510_KEY='sete-pecados-collab-20261025'
+const PECADOS_2510_BALANCE='20261025-finais-proporcionais-v1'
+const PECADOS_2510_FINAL_PHASES=Object.freeze({
+  5:Object.freeze({hp:140000,atk:90}),
+  6:Object.freeze({hp:160000,atk:110}),
+  7:Object.freeze({hp:200000,atk:135})
+})
+function pecadoPhaseForEdition(index,editionKey){
+  const phase=PECADOS_PHASES[index]
+  const override=editionKey===PECADOS_2510_KEY?PECADOS_2510_FINAL_PHASES[index]:null
+  return override?{...phase,...override}:phase
+}
 const PECADOS_MIN_DAMAGE=PECADOS_MIN_BOSS_DAMAGE
 const PECADOS_RELIC='insignia_sete_pecados'
 const PECADOS_TITLE='titulo_conquistador_pecados'
 function pecadosPhaseState(index,ledger,startedAt,edition){
-  const phase=PECADOS_PHASES[index]
+  const phase=pecadoPhaseForEdition(index,edition.key)
   return {mode:'event',eventId:'sete_pecados',origin:'scheduled',scheduleKey:edition.key,
     active:true,phaseIndex:index,phaseCount:PECADOS_PHASES.length,name:phase.name,
     hp:phase.hp,maxHp:phase.hp,baseHp:phase.hp,atk:phase.atk,
-    participants:{},ledger:ledger||{},startedAt,endsAt:edition.end}
+    participants:{},ledger:ledger||{},startedAt,endsAt:edition.end,
+    ...(edition.key===PECADOS_2510_KEY&&index>=5?{balanceVersion:PECADOS_2510_BALANCE}:{})}
 }
 export async function tickSetePecados(now=Date.now()){
   const edition=PECADOS_EDITIONS.find(e=>now>=e.start&&now<=e.end+120000)
@@ -1907,6 +1924,32 @@ export async function tickSetePecados(now=Date.now()){
   return tx(async c=>{
     const s=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(s?.scheduleKey===edition.key){
+      // Recalcular somente a fase ATIVA (Ira, Soberba ou Azazel) UMA VEZ.
+      // A diferença entre maxHp e hp é o dano total já registrado, incluindo
+      // aumentos anteriores de HP. Nunca recriar participantes nem ledger.
+      if(s.active!==false&&now<edition.end&&s.eventId==='sete_pecados'&&
+         edition.key===PECADOS_2510_KEY&&Number(s.phaseIndex)>=5&&
+         Number(s.phaseIndex)<=7&&s.balanceVersion!==PECADOS_2510_BALANCE){
+        const target=pecadoPhaseForEdition(Number(s.phaseIndex),edition.key)
+        const originalHp=Math.max(0,Number(s.hp)||0)
+        const originalMax=Math.max(originalHp,Number(s.maxHp)||0)
+        const damageAlreadyDone=Math.max(0,originalMax-originalHp)
+        const remaining=Math.max(1,Math.min(originalHp,Number(target.hp)-damageAlreadyDone))
+        // Não apagar dano histórico mesmo se ele superar o novo HP base:
+        // restará 1 HP para o próximo golpe legítimo finalizar e premiar.
+        const newMax=Math.max(Number(target.hp),damageAlreadyDone+remaining)
+        const adjusted={...s,hp:remaining,maxHp:newMax,baseHp:target.hp,atk:target.atk,
+          balanceVersion:PECADOS_2510_BALANCE,
+          balanceAudit:{at:now,oldHp:originalHp,oldMaxHp:originalMax,
+            oldAtk:Number(s.atk),damagePreserved:damageAlreadyDone}}
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',adjusted)
+        console.log('[SETE PECADOS] rebalance 25/10 aplicado',
+          JSON.stringify({phase:s.phaseIndex,oldHp:originalHp,newHp:remaining,
+            oldMaxHp:originalMax,newMaxHp:newMax,damagePreserved:damageAlreadyDone,
+            oldAtk:s.atk,newAtk:target.atk,endsAt:s.endsAt}))
+        return {due:true,rebalanced:true,active:true,phaseIndex:s.phaseIndex,
+          hp:remaining,maxHp:newMax}
+      }
       // 25/10: o evento foi encerrado pelo prazo antigo das 20h.
       // Reabrir SOMENTE esse encerramento por tempo, mantendo fase, HP,
       // participantes, ledger de dano e recompensas já contabilizadas.
@@ -2854,7 +2897,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
     // HP escala quando um NOVO participante causa seu primeiro ataque, inclusive após !go.
-    if((s.eventId==='sete_pecados'||s.eventId===CALCANHAR_ID)&&!s.participants[jid]){
+    if(((s.eventId==='sete_pecados'&&
+      !(s.scheduleKey===PECADOS_2510_KEY&&Number(s.phaseIndex)>=5))||
+      s.eventId===CALCANHAR_ID)&&!s.participants[jid]){
       const oldCount=Object.keys(s.participants).length
       if(oldCount>=1){
         const hpIncrease=Math.round(Number(s.baseHp||s.maxHp)*(s.eventId===CALCANHAR_ID?.12:.35))
