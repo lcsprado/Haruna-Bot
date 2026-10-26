@@ -33,7 +33,7 @@ function makeHarness(spent=24,uses=2){
   }
   const inTransaction=async fn=>fn(client)
   const factory=new Function('inTransaction','COLLAB_FRAGMENT_ITEM',
-    'return async function claimCollabGearFragmentRefund(jid){'+code)
+    'return async function claimCollabGearFragmentRefund('+code)
   const claim=factory(inTransaction,'fragmento_ascensao_pecados_20261024')
   return {claim,state:()=>({balance,credits,logs,markers:marks.size})}
 }
