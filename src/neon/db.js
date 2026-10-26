@@ -2310,6 +2310,8 @@ await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`equipment
 const item=(await c.query(`SELECT inv.quantity,i.name,i.category FROM inventories inv JOIN items i ON i.id=inv.item_id WHERE inv.jid=$1 AND inv.item_id=$2 FOR UPDATE OF inv`,[jid,itemId])).rows[0]
 if(!item||Number(item.quantity)<(collab?1:2))throw new Error(collab?'Você precisa possuir o equipamento da colaboração.':'Faltam cópias idênticas.')
 const sf=(await c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
+// Captura os encantamentos da arma antes da forja. Estrelas/nível não podem apagá-los.
+const enchantmentsBefore=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 ORDER BY stone_id FOR UPDATE',[jid,itemId])).rows
 const stars=Number(sf?.stars||1),level=Number(sf?.level||10)
 if(expectedStars!==null&&Number(expectedStars)!==stars)throw new Error('Estrelas alteradas; reabra !forjar.')
 if(stars>=5)throw new Error('Máximo de cinco estrelas.')
@@ -2342,8 +2344,10 @@ const fragments=await c.query('UPDATE inventories SET quantity=quantity-$3 WHERE
 if(!units.rowCount||!fragments.rowCount)throw new Error('Reserva de materiais/cópia não concluída.')
 await c.query(`INSERT INTO equipment_star_forges(jid,item_id,stars,level,updated_at) VALUES($1,$2,$3,1,${nowSql}) ON CONFLICT(jid,item_id) DO UPDATE SET stars=EXCLUDED.stars,level=1,updated_at=EXCLUDED.updated_at`,[jid,itemId,stars+1])
 await syncEffectiveGear(c,jid,itemId)
+const enchantments=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 ORDER BY stone_id',[jid,itemId])).rows
+if(JSON.stringify(enchantments)!==JSON.stringify(enchantmentsBefore))throw new Error('Encantamentos divergentes; forja cancelada sem consumir recursos.')
 await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'forge',0,$3,$2)`,[jid,`${itemId} ★${stars}->★${stars+1}; Lv.1; ${collab?'0 cópias consumidas':'-1 cópia'}; -${required} ${origin.materialId}`,collab?'equipment_star_forge_collab_fragments':'equipment_star_forge'])
-return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,collab,origin,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
+return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
 })
 }
 export const listStarForgeWeapons=listStarForgeEquipment
@@ -2456,12 +2460,14 @@ await c.query('INSERT INTO equipment_upgrade_copies(jid,item_id,level,quantity) 
 }
 await c.query('UPDATE wallets SET cash=cash-$1,updated_at='+nowSql+' WHERE jid=$2',[cost,jid])
 await syncEffectiveGear(c,jid,itemId)
+// Melhorar o nível não remove os encantamentos permanentes do modelo.
+const enchantments=(await c.query('SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=$2 ORDER BY stone_id',[jid,itemId])).rows
 await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'upgrade',$2,$3,$4)`,
 [jid,cost,'equipment_upgrade',
 `${itemId} ${isStar?'STAR':'COPY'} Lv.${current}->Lv.${requested}`])
 const money=(await c.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]
 const stars=isStar?Number(sf.stars):1
-return {itemId,name:inv.name,rarity:inv.rarity,stars,fromLevel:current,level:requested,levelsGained:requested-current,cost,fragmentCost,cash:Number(money?.cash||0),before:equipmentStatsAtLevel(itemId,current,stars),stats:equipmentStatsAtLevel(itemId,requested,stars)}
+return {itemId,name:inv.name,rarity:inv.rarity,stars,fromLevel:current,level:requested,levelsGained:requested-current,cost,fragmentCost,cash:Number(money?.cash||0),enchantments,before:equipmentStatsAtLevel(itemId,current,stars),stats:equipmentStatsAtLevel(itemId,requested,stars)}
 })
 }
 export async function equipItem(jid, itemId) {
