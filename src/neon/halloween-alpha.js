@@ -5,6 +5,7 @@ import {profileCombatPetBonuses} from './games.js'
 import {activeRelic} from './relics.js'
 import {HALLOWEEN_TICK_MS,halloweenAttackInterval,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
 import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction} from './halloween-rules.js'
+import {HALLOWEEN_SESSION_REMINDER_MS,HALLOWEEN_MAINTENANCE_MS,halloweenHourlyEnabled,halloweenSessionExpiry,halloweenSessionValid,halloweenSessionTime,halloweenSessionRemaining} from './halloween-session.js'
 
 const fmt=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
 const nowSec=()=>Math.floor(Date.now()/1000)
