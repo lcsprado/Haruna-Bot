@@ -1560,7 +1560,7 @@ const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,upgr
 if(sale.inconsistent)throw new Error('Divergência nos upgrades deste item. Nenhuma venda efetuada.')
 if(!equipmentSaleQuantityAllowed(sale,qty,owned))
 throw new Error('Só é possível vender cópias Lv.1 avulsas. Cópias aprimoradas exigem venda integral, sem equipamento equipado, vinculado ou forjado.')
-const upR=['weapon','armor','boots'].includes(item.category)
+const upR=['weapon','armor','boots','helmet'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 : {rows:[]}
 const equipmentLevel=Number(upR.rows[0]?.level||1)
@@ -1662,7 +1662,7 @@ const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,upgr
 if(sale.inconsistent)throw new Error('Divergência nos upgrades deste item. Nenhuma venda efetuada.')
 if(!equipmentSaleQuantityAllowed(sale,sel.qty,owned))
 throw new Error('Só é possível vender cópias Lv.1 avulsas. Cópias aprimoradas exigem venda integral, sem equipamento equipado, vinculado ou forjado.')
-const upR=['weapon','armor','boots'].includes(item.category)
+const upR=['weapon','armor','boots','helmet'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
 : {rows:[]}
 const equipmentLevel=Number(upR.rows[0]?.level||1)
