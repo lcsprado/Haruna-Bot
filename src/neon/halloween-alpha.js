@@ -268,7 +268,7 @@ async function tickHalloween(){
  const boss=halloweenBoss(now)
  if(!boss)return []
  return tx(async c=>{
-  const locked=await c.query(`SELECT pg_try_advisory_xact_lock(hashtext($1)) AS locked`,['halloween-global-20261026'])
+  const locked=await c.query('SELECT pg_try_advisory_xact_lock(hashtext($1)) AS locked',['halloween-global-20261026'])
   if(!locked.rows[0]?.locked)return []
   let state=await ensureDay(c,boss)
   const alerts=[]
@@ -280,65 +280,110 @@ async function tickHalloween(){
    state={...state,cycle,hp:state.max_hp,revive_at:0}
    alerts.push({type:'respawn',boss:boss.name,cycle})
   }
-  const players=(await c.query(`SELECT * FROM halloween_players_2026 WHERE active=TRUE ORDER BY jid LIMIT 30 FOR UPDATE`)).rows
+  // Sem LIMIT por JID: participantes ativos não podem ser excluídos por posição na tabela.
+  const players=(await c.query('SELECT * FROM halloween_players_2026 WHERE active=TRUE FOR UPDATE')).rows
   if(!players.length)return alerts
+  for(const row of players){
+   if(String(row.day)!==boss.day){
+    await c.query('UPDATE halloween_players_2026 SET day=$1,day_damage=0,round_damage=0,power_refreshed=0 WHERE jid=$2',[boss.day,row.jid])
+    row.day=boss.day;row.round_damage=0;row.day_damage=0;row.power_refreshed=0
+   }
+   if(now-Number(row.power_refreshed||0)>POWER_REFRESH_MS||Number(row.power||0)<=0||Number(row.speed||0)<=0){
+    const snap=await snapshotPower(c,row.jid)
+    await savePowerSnapshot(c,row.jid,snap,now)
+    reflectSnapshot(row,snap,now)
+   }
+  }
+  // Repartição em passes: uma oportunidade por jogador antes de qualquer golpe
+  // extra concedido pela VEL. A ordem obedece vencimento, VEL e rodízio dos empates.
+  const contenders=halloweenOrderedAttackers(players,now,Number(state.cycle))
+   .map(row=>({row,due:halloweenAttackDue(now,row.last_attack,row.speed)}))
+   .filter(e=>e.due.slots>0)
   let hp=Number(state.hp)
   const oldHp=hp
   let hitCount=0
-  for(const row of players){
-   if(hp<=0)break
-   if(now-Number(row.last_attack||0)<ATTACK_MS-200)continue
-   if(String(row.day)!==boss.day){
-    await c.query('UPDATE halloween_players_2026 SET day=$1,day_damage=0,round_damage=0,power_refreshed=0 WHERE jid=$2',[boss.day,row.jid])
-    row.round_damage=0;row.day_damage=0;row.power_refreshed=0
-   }
-   const sleeping=(await c.query(`SELECT
+  let attempts=0
+  for(let pass=0;pass<2&&hp>0;pass++){
+   for(const entry of contenders){
+    if(hp<=0)break
+    if(pass>=entry.due.slots)continue
+    const row=entry.row
+    // Condições são conferidas novamente para o segundo golpe no mesmo tick.
+    // Uma esquiva do Boss consome o turno, mas não gera dano ou retaliação.
+    const combat=(await c.query(`SELECT
      EXISTS(SELECT 1 FROM player_sleep WHERE jid=$1 AND ends_at>$2) AS sleeping,
      EXISTS(SELECT 1 FROM player_carpinar WHERE jid=$1 AND ends_at>$2) AS carpindo,
      (SELECT hp FROM stats WHERE jid=$1) AS current_hp,
      (SELECT hp FROM pets WHERE jid=$1) AS pet_hp`,[row.jid,nowSec()])).rows[0]
-   if(sleeping?.sleeping||sleeping?.carpindo||Number(sleeping?.current_hp||0)<=0)continue
-   if(now-Number(row.power_refreshed||0)>POWER_REFRESH_MS||Number(row.power||0)<=0){
-    const snap=await snapshotPower(c,row.jid)
-    row.power=snap.power;row.defense=snap.defense;row.mystic_guard=snap.mysticGuard
-    await c.query('UPDATE halloween_players_2026 SET power=$1,defense=$2,mystic_guard=$5,power_refreshed=$3 WHERE jid=$4',[snap.power,snap.defense,now,row.jid,snap.mysticGuard])
+    if(combat?.sleeping||combat?.carpindo||Number(combat?.current_hp||0)<=0)continue
+    const phase=halloweenPhases(hp,Number(state.max_hp))
+    const critical=Math.random()<Math.min(.45,Math.max(0,Number(row.crit||0)))
+    const evaded=boss.day==='2026-10-26'&&Math.random()<.07
+    const petMod=row.pet_active?1:.87
+    const raw=Math.max(1,Math.round(Number(row.power||1)*(critical?1.5:1)*
+     (.85+Math.random()*.3)*damageModifier(boss,phase)*petMod))
+    let hit=0,proc=Number(row.last_proc_attack||0)
+    if(!evaded){
+     const attack=classAttack({
+      classId:row.class_id,applied:row.class_applied,
+      damage:raw,critical,hp:combat.current_hp,maxHp:Number(row.effective_max_hp||100),
+      attackIndex:Number(row.attempts||0)+1,context:'boss',
+      lastProcAttack:proc,awakeningStage:row.awakening_stage,
+      awakeningState:row.awakening_state||{}
+     })
+     proc=Number(attack.lastProcAttack||0)
+     row.awakening_state=attack.awakeningState||{}
+     hit=Math.min(hp,Math.max(1,Number(attack.damage)||1))
+     if(Number(attack.heal||0)>0){
+      await c.query('UPDATE stats SET hp=LEAST($2,hp+$3) WHERE jid=$1 AND hp>0',
+       [row.jid,Number(row.effective_max_hp||100),Number(attack.heal)])
+     }
+    }
+    attempts++
+    row.attempts=Number(row.attempts||0)+1
+    row.hits=Number(row.hits||0)+(hit>0?1:0)
+    row.last_proc_attack=proc
+    row.last_attack=halloweenNextAttackAt(now,Number(row.last_attack||0),entry.due.interval)
+    if(hit>0){
+     hp-=hit;hitCount++
+     row.round_damage=Number(row.round_damage||0)+hit
+     row.day_damage=Number(row.day_damage||0)+hit
+    }
+    await c.query(`UPDATE halloween_players_2026 SET
+     attempts=attempts+1,boss_evades=boss_evades+$1,hits=hits+$2,
+     critical_hits=critical_hits+$3,round_damage=round_damage+$4,
+     day_damage=day_damage+$4,all_damage=all_damage+$4,
+     last_attack=$5,updated_at=$6,last_proc_attack=$7,awakening_state=$8::jsonb
+     WHERE jid=$9`,[
+     evaded?1:0,hit>0?1:0,critical&&hit>0?1:0,hit,
+     row.last_attack,now,proc,JSON.stringify(row.awakening_state||{}),row.jid
+    ])
+    if(hit>0)await applyRetaliation(c,row,boss,phase)
    }
-   const phase=halloweenPhases(hp,Number(state.max_hp))
-   const critical=Math.random()<.12
-   const evasion=boss.day==='2026-10-26' && Math.random()<.07
-   const petMod=Number(sleeping.pet_hp||0)>0?1:.87
-   const damage=evasion?0:Math.max(1,Math.round(Number(row.power||1)*(critical?1.5:1)*(.85+Math.random()*.3)*damageModifier(boss,phase)*petMod))
-   const hit=Math.min(hp,damage)
-   if(!hit)continue
-   hp-=hit;hitCount++
-   row.hits=Number(row.hits)+1;row.round_damage=Number(row.round_damage)+hit
-   row.day_damage=Number(row.day_damage)+hit
-   await c.query(`UPDATE halloween_players_2026 SET hits=$1,round_damage=round_damage+$2,
-   day_damage=day_damage+$2,all_damage=all_damage+$2,last_attack=$3,updated_at=$3 WHERE jid=$4`,
-   [row.hits,hit,now,row.jid])
-   await applyRetaliation(c,row,boss,phase)
   }
   if(!hitCount)return alerts
-  // O último golpe só muda o HP do ciclo que estava ativo; jamais amplia HP.
   await c.query('UPDATE halloween_boss_days_2026 SET hp=$2,updated_at=$3,revive_at=$4 WHERE day=$1',
    [boss.day,hp,now,hp===0?now+REVIVE_MS:0])
-  const cycles=Number(state.cycle)
+  const cycle=Number(state.cycle)
   const milestones=[.25,.50,.75,1]
   const crossed=milestones.filter(q=>oldHp>Number(state.max_hp)*(1-q)&&hp<=Number(state.max_hp)*(1-q))
-  if(crossed.length || hp===0){
+  if(crossed.length||hp===0){
    const rows=(await c.query('SELECT * FROM halloween_players_2026 WHERE active=TRUE AND day=$1 AND round_damage>0 ORDER BY round_damage DESC FOR UPDATE',[boss.day])).rows
    for(const m of crossed){
-    for(const p of rows)await milestoneReward(c,boss.day,cycles,p,Math.round(m*100),boss,'quarter')
+    for(const p of rows)await milestoneReward(c,boss.day,cycle,p,Math.round(m*100),boss,'quarter')
    }
    if(hp===0){
-    const ranking=[]
-    const drops=[]
+    const ranking=[],drops=[]
     for(const p of rows){
-     const win=await milestoneReward(c,boss.day,cycles,p,100,boss,'kill')
-     if(win){ranking.push({name:p.name,damage:Number(p.round_damage),souls:win.qty}); const items=await maybeDrop(c,p.jid,boss,cycles);if(items.length)drops.push({name:p.name,items})}
+     const win=await milestoneReward(c,boss.day,cycle,p,100,boss,'kill')
+     if(win){
+      ranking.push({name:p.name,damage:Number(p.round_damage),souls:win.qty})
+      const items=await maybeDrop(c,p.jid,boss,cycle)
+      if(items.length)drops.push({name:p.name,items})
+     }
     }
-    alerts.push({type:'defeated',boss:boss.name,cycle:cycles,ranking,drops})
-    console.log('[HALLOWEEN] boss derrotado',JSON.stringify({day:boss.day,cycle:cycles,eligible:ranking.length,drops:drops.length}))
+    alerts.push({type:'defeated',boss:boss.name,cycle,ranking,drops})
+    console.log('[HALLOWEEN] boss derrotado',JSON.stringify({day:boss.day,cycle,eligible:ranking.length,drops:drops.length,attempts}))
    }
   }
   return alerts
