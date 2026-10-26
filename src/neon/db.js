@@ -4890,19 +4890,20 @@ const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
 const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
 const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
+const collabActive=team.length===3&&unique&&count===3
 const styles=resolveBatTeamStyles(species)
 const base=team.length===3&&unique&&styles[0]&&styles.every(s=>s===styles[0])
 ?PET_TEAM_STYLE_BONUS[styles[0]]:null
-if(!base&&!count)return null
-const attack=Number(base?.attack||0)+pecadosBonus(count)
-const crit=Number(base?.crit||0)+(count===3?.05:0)
-const collabText=count?'🌈 '+count+' Pecado(s): +'+Math.round(pecadosBonus(count)*100)+'% dano'+(count===3?' e +5 p.p. CRIT':''):''
+if(!base&&!collabActive)return null
+const attack=Number(base?.attack||0)+(collabActive?pecadosBonus(count):0)
+const crit=Number(base?.crit||0)+(collabActive?.05:0)
+const collabText=collabActive?'🌈 3 Pecados: +'+Math.round(pecadosBonus(count)*100)+'% dano e +5 p.p. CRIT':''
 return {
 ...(base||{}),style:base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
-label:[base?.label, count?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
+label:[base?.label, collabActive?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
 text:[base?.text,collabText].filter(Boolean).join(' | '),
 attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
-collabCount:count,collabAttack:pecadosBonus(count),collabCrit:count===3?.05:0
+collabCount:collabActive?3:0,collabAttack:collabActive?pecadosBonus(count):0,collabCrit:collabActive?.05:0
 }
 }
 export const LEGENDARY_PET_SUMMONS=[
