@@ -6,6 +6,7 @@ import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
+import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 import {PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
@@ -2798,6 +2799,13 @@ async function persistBossCombatPet(c,jid,pet){
     await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE id=$3 AND jid=$4',[pet.hp,pet.energy,pet.collectionId,jid])
   }
 }
+function healBossCombatPet(c,jid,pet){
+  return autoHealBossCombatPet({
+    client:c,jid,pet,
+    maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),
+    choosePotion:raidPetPotion,persistPet:persistBossCombatPet
+  })
+}
 export async function attackBoss(chat,jid,name,usePet=true,options={}){
   // O runner já garantiu users/wallets/stats na primeira chamada desta sessão.
   // Chamadas diretas e sessões retomadas mantêm o cadastro inicial obrigatório.
@@ -2889,6 +2897,12 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         activePetSlot=3
         petRow=reserve
       }
+    }
+    // Pet do slot de combate já com 0 HP: usa poção antes de considerá-lo indisponível.
+    // Se havia Reserva saudável, a troca anterior continua tendo prioridade.
+    let autoPetHeal=null
+    if(usePet&&petRow&&Number(petRow.hp)<=0){
+      autoPetHeal=await healBossCombatPet(c,jid,petRow)
     }
     // Recarrega o pet automaticamente e consome um energético na mesma transação.
     let autoPetEnergy=null
@@ -2995,7 +3009,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       classLastProcAttack:passiveHit.lastProcAttack,
       awakeningState:passiveHit.awakeningState
     }
-    let php=Math.min(Number(st.hp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,autoPetHeal=null,petSkillHeal=null
+    let php=Math.min(Number(st.hp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,petSkillHeal=null
     if(s.hp>0){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossCritical=!dodged&&Math.random()<.05
@@ -3014,18 +3028,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         // suficiente. Em 0 HP, preserva a prioridade de troca para o Reserva.
         const maxPetHp=Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))
         if(!pet.petFainted && maxPetHp>0 && Number(pet.hp)/maxPetHp<.35){
-          const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']
-          const petPotionRows=(await c.query(
-            'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
-            [jid,petPotionIds]
-          )).rows
-          const missing=Math.max(1,maxPetHp-Number(pet.hp||0))
-          const chosenPet=raidPetPotion(petPotionRows,missing)
-          if(chosenPet){
-            pet.hp=Math.min(maxPetHp,Number(pet.hp||0)+Number(chosenPet.heal||0))
-            await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosenPet.item_id])
-            autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:Number(chosenPet.heal||0),hp:Number(pet.hp),maxHp:maxPetHp,petName:pet.name}
-          }
+          const healed=await healBossCombatPet(c,jid,pet)
+          if(healed)autoPetHeal=healed
         }
         await persistBossCombatPet(c,jid,pet)
         if(pet.petFainted){
@@ -3041,21 +3045,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           // Mesmo comportamento da Raid: sem Reserva disponível, o pet usa
           // automaticamente a menor poção suficiente quando chegar a 0 HP.
           if(!switched){
-            const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']
-            const petPotionRows=(await c.query(
-              'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',
-              [jid,petPotionIds]
-            )).rows
-            const missing=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))-Number(pet.hp||0))
-            const chosenPet=raidPetPotion(petPotionRows,missing)
-            if(chosenPet){
-              const maxPetHp=Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))
-              pet.hp=Math.min(maxPetHp,Number(pet.hp||0)+Number(chosenPet.heal||0))
-              pet.petFainted=false
-              await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosenPet.item_id])
-              await persistBossCombatPet(c,jid,pet)
-              autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:Number(chosenPet.heal||0),hp:Number(pet.hp),maxHp:maxPetHp,petName:pet.name}
-            }
+            const healed=await healBossCombatPet(c,jid,pet)
+            if(healed)autoPetHeal=healed
           }
         }
       }
