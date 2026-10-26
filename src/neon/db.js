@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
+import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
@@ -1491,7 +1492,12 @@ ELSE 1
 END DESC,
 it.name
 `,[jid])
-return rows.map(r=>({
+return rows.map(r=>{
+const upgradeRows=Array.isArray(r.upgraded_copies)?r.upgraded_copies:[]
+const upgradedQuantity=upgradeRows.reduce((n,c)=>n+Number(c.quantity||0),0)
+const sale=equipmentSalePolicy({quantity:r.quantity,equipped:r.equipped,boundQuantity:r.bound_quantity,upgradedQuantity,hasForge:Number(r.forged_level||0)>0,sellable:r.sellable!==false})
+const refundFromCopies=upgradeRows.reduce((n,c)=>n+equipmentUpgradeSellRefund(r.rarity,c.level)*Number(c.quantity||0),0)
+return ({
 ...r,
 equipped:Boolean(r.equipped),
 upgrade_distribution:(()=>{
@@ -1501,11 +1507,14 @@ return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{le
 })(),
 bound_quantity:Number(r.bound_quantity||0),
 nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
-sellable_quantity:Number(r.sellable_quantity||0),
-upgrade_refund:['weapon','armor','boots'].includes(r.category)
-? equipmentUpgradeSellRefund(r.rarity,r.equipment_level)
+sellable_quantity:sale.maxSellable,
+regular_sellable_quantity:sale.regularSellable,
+can_sell_all:sale.canSellAll,
+upgrade_refund:sale.canSellAll&&['weapon','armor','boots','helmet'].includes(r.category)
+? (upgradeRows.length?refundFromCopies:equipmentUpgradeSellRefund(r.rarity,r.equipment_level))
 : 0
-}))
+})
+})
 }
 export async function sellItem(jid, itemId, qty=1) {
 qty=Number(qty)
@@ -1545,18 +1554,18 @@ else if(item.rarity==='rare') unit=7500
 else if(item.rarity==='uncommon') unit=2500
 else unit=500
 const remaining=owned-qty
-const reserved=(await client.query('SELECT (SELECT COALESCE(SUM(quantity),0)::int FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2)+(SELECT COUNT(*)::int FROM equipment_star_forges WHERE jid=$1 AND item_id=$2) qty',[jid,itemId])).rows[0]
-if(remaining<Number(reserved?.qty||0))throw new Error('Não é permitido vender cópias aprimoradas; venda apenas cópias Lv.1.')
-if(remaining===0 && ['weapon','armor'].includes(item.category)){
-const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
-if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: mantenha pelo menos uma cópia para preservar suas estrelas.')
-}
-const upR=['weapon','armor','boots'].includes(item.category)
+const upgradeRows=(await client.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows
+const forged=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
+const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,upgradedQuantity:upgradeRows.reduce((n,r)=>n+Number(r.quantity||0),0),hasForge:Boolean(forged)})
+if(sale.inconsistent)throw new Error('Divergência nos upgrades deste item. Nenhuma venda efetuada.')
+if(!equipmentSaleQuantityAllowed(sale,qty,owned))
+throw new Error('Só é possível vender cópias Lv.1 avulsas. Cópias aprimoradas exigem venda integral, sem equipamento equipado, vinculado ou forjado.')
+const upR=['weapon','armor','boots','helmet'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 : {rows:[]}
 const equipmentLevel=Number(upR.rows[0]?.level||1)
-const upgradeRefund=(remaining===0 && equipmentLevel>1)
-? equipmentUpgradeSellRefund(item.rarity,equipmentLevel)
+const upgradeRefund=(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category))
+? (upgradeRows.length?upgradeRows.reduce((n,r)=>n+equipmentUpgradeSellRefund(item.rarity,r.level)*Number(r.quantity||0),0):equipmentUpgradeSellRefund(item.rarity,equipmentLevel))
 : 0
 const baseTotal=unit*qty
 const total=baseTotal+upgradeRefund
@@ -1564,7 +1573,8 @@ await client.query(
 'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
 [qty,jid,itemId]
 )
-if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
+if(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category)){
+await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,itemId])
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
 }
@@ -1646,18 +1656,18 @@ else if(item.rarity==='rare') unit=7500
 else if(item.rarity==='uncommon') unit=2500
 else unit=500
 const remaining=owned-sel.qty
-const reserved=(await client.query('SELECT (SELECT COALESCE(SUM(quantity),0)::int FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2)+(SELECT COUNT(*)::int FROM equipment_star_forges WHERE jid=$1 AND item_id=$2) qty',[jid,sel.itemId])).rows[0]
-if(remaining<Number(reserved?.qty||0))throw new Error('Não é permitido vender cópias aprimoradas; venda apenas cópias Lv.1.')
-if(remaining===0 && ['weapon','armor'].includes(item.category)){
-const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])).rows[0]
-if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: venda apenas cópias extras.')
-}
-const upR=['weapon','armor','boots'].includes(item.category)
+const upgradeRows=(await client.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])).rows
+const forged=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])).rows[0]
+const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,upgradedQuantity:upgradeRows.reduce((n,r)=>n+Number(r.quantity||0),0),hasForge:Boolean(forged)})
+if(sale.inconsistent)throw new Error('Divergência nos upgrades deste item. Nenhuma venda efetuada.')
+if(!equipmentSaleQuantityAllowed(sale,sel.qty,owned))
+throw new Error('Só é possível vender cópias Lv.1 avulsas. Cópias aprimoradas exigem venda integral, sem equipamento equipado, vinculado ou forjado.')
+const upR=['weapon','armor','boots','helmet'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
 : {rows:[]}
 const equipmentLevel=Number(upR.rows[0]?.level||1)
-const upgradeRefund=(remaining===0 && equipmentLevel>1)
-? equipmentUpgradeSellRefund(item.rarity,equipmentLevel)
+const upgradeRefund=(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category))
+? (upgradeRows.length?upgradeRows.reduce((n,r)=>n+equipmentUpgradeSellRefund(item.rarity,r.level)*Number(r.quantity||0),0):equipmentUpgradeSellRefund(item.rarity,equipmentLevel))
 : 0
 const baseTotal=unit*sel.qty
 const total=baseTotal+upgradeRefund
@@ -1665,7 +1675,8 @@ await client.query(
 'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
 [sel.qty,jid,sel.itemId]
 )
-if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
+if(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category)){
+await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
 }

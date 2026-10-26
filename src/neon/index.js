@@ -4167,7 +4167,8 @@ filtered.forEach((i,idx)=>{
 const levelLine=['weapon','armor','boots'].includes(i.category)&&Number(i.equipment_level||1)>1 ? ' • ⭐ Lv.'+Number(i.equipment_level) : ''
 text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+levelLine+'\n'
 text+='   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
-if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Última cópia: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
+if(Number(i.sellable_quantity||0)>1&&Number(i.regular_sellable_quantity||0)<Number(i.sellable_quantity||0))text+='   🔒 Avulsa: *'+Number(i.regular_sellable_quantity||0)+'* cópia(s) Lv.1; aprimoradas somente na venda integral.\n'
+if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Venda integral: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
 })
 text+='\n🚀 *VENDA EM MASSA*\nDigite *T* — vender TODOS os itens desta lista\nDigite *R* — vender só os repetidos (mantém 1 de cada)\n'
 text+='\n👉 Um item: mande só o número.\n📦 Vários: *1,3,5*\n'
@@ -4182,6 +4183,8 @@ for(const item of items||[]){
 const maxAll=Math.max(0,Number(item.maxAll||0))
 const qty=mode==='sell_duplicates'
 ? Math.min(maxAll,Math.max(0,Number(item.duplicates||0)))
+: mode==='discard_all'
+? (item.rarity==='legendary'?0:Math.min(maxAll,Math.max(0,Number(item.regularSellable||0))))
 : maxAll
 if(qty<1){
 skipped.push(item.name)
@@ -7437,7 +7440,8 @@ const protectedItems=[]
 for(const item of selected){
 const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id || p.helmet_id===item.item_id)
 const maxAll=Math.max(0,Number(item.sellable_quantity||0))
-const duplicates=Math.min(maxAll,Math.max(0,Number(item.quantity)-1))
+const regularSellable=Math.max(0,Number(item.regular_sellable_quantity||0))
+const duplicates=Math.min(maxAll,regularSellable,Math.max(0,Number(item.quantity)-1))
 if(maxAll<1){
 protectedItems.push(item.name+' (equipado/protegido)')
 continue
@@ -7452,6 +7456,7 @@ unit:Number(item.sell_unit),
 equipped,
 equipmentLevel:Number(item.equipment_level||1),
 upgradeRefund:Number(item.upgrade_refund||0),
+regularSellable,
 maxAll,
 duplicates
 })
@@ -7488,9 +7493,10 @@ if(sellable<1){
 await reply('🔒 Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
 return true
 }
-setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable,quantity:Number(item.quantity),equipped,equipmentLevel:Number(item.equipment_level||1),upgradeRefund:Number(item.upgrade_refund||0)},90000)
-const upInfo=Number(item.upgrade_refund||0)>0&&!equipped ? '\n♻️ Vendendo a última cópia: *+R$ '+fmt(item.upgrade_refund)+'* de recuperação dos upgrades.' : ''
-await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*'+(Number(item.equipment_level||1)>1?'\n⭐ Nível do equipamento: *Lv.'+Number(item.equipment_level)+'*':'')+upInfo+'\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
+setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable,quantity:Number(item.quantity),equipped,equipmentLevel:Number(item.equipment_level||1),upgradeRefund:Number(item.upgrade_refund||0),regularSellable:Number(item.regular_sellable_quantity||0),canSellAll:Boolean(item.can_sell_all)},90000)
+const upInfo=Number(item.upgrade_refund||0)>0&&!equipped ? '\n♻️ Vendendo todas as cópias: *+R$ '+fmt(item.upgrade_refund)+'* de recuperação dos upgrades.' : ''
+const saleRuleHint=sellable>1&&Number(item.regular_sellable_quantity||0)<sellable?'\n🔒 Venda avulsa: '+Number(item.regular_sellable_quantity||0)+' cópia(s) Lv.1. Para vender as aprimoradas, escolha *Vender tudo*.':''
+await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*'+(Number(item.equipment_level||1)>1?'\n⭐ Nível do equipamento: *Lv.'+Number(item.equipment_level)+'*':'')+upInfo+saleRuleHint+'\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
 return true
 }
 if(flow.stage==='inventory_batch_action'){
@@ -7547,6 +7553,10 @@ if(qty>Number(flow.data.sellable)){
 await reply('💰 Você pode vender no máximo *'+flow.data.sellable+'* unidade(s).')
 return true
 }
+if(qty>Number(flow.data.regularSellable||0) && !(flow.data.canSellAll&&qty===Number(flow.data.quantity))){
+await reply('🔒 Vendas parciais permitem apenas cópias Lv.1. Para vender as aprimoradas, escolha *4 Vender tudo*.')
+return true
+}
 const upgradeRefundApplied=(!flow.data.equipped&&qty===Number(flow.data.quantity))?Number(flow.data.upgradeRefund||0):0
 setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty,upgradeRefundApplied},90000)
 const warn=flow.data.rarity==='legendary'?'\n🌟 *ATENÇÃO: ESTE É UM ITEM LENDÁRIO!*\n':''
@@ -7558,6 +7568,10 @@ if(flow.stage==='inventory_sell_custom'){
 const qty=parseInt(input,10)
 if(!Number.isInteger(qty)||qty<1||qty>Number(flow.data.sellable)){
 await reply('💰 Digite uma quantidade de *1 a '+flow.data.sellable+'*.')
+return true
+}
+if(qty>Number(flow.data.regularSellable||0) && !(flow.data.canSellAll&&qty===Number(flow.data.quantity))){
+await reply('🔒 Vendas parciais permitem apenas cópias Lv.1. Para vender as aprimoradas, escolha *4 Vender tudo*.')
 return true
 }
 const upgradeRefundApplied=(!flow.data.equipped&&qty===Number(flow.data.quantity))?Number(flow.data.upgradeRefund||0):0
