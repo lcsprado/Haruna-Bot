@@ -72,9 +72,10 @@ test('heroi nunca e contabilizado como pet e nao ativa trio falso',()=>{
     {species:'pecado_ban',slot:3}
   ]
   const filtered=excludeActiveHeroPet(squad,'pecado_escanor')
-  assert.equal(filtered.length,2)
+  assert.equal(filtered.length,0)
   assert.deepEqual(squad.map(p=>p.species),['pecado_escanor','pecado_meliodas','pecado_ban'])
-  assert.equal(excludeActiveHeroPet(squad,null).length,3)
+  assert.equal(excludeActiveHeroPet(squad,null).length,0)
+  assert.deepEqual(excludeActiveHeroPet([...squad,{species:'fenix_celestial',slot:4}],null).map(p=>p.species),['fenix_celestial'])
 })
 
 test('skills automaticas sao finitas e limitadas em Raid e Boss',()=>{
