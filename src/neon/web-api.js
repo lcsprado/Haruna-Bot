@@ -40,7 +40,7 @@ import {
   getAlphaContractBoard, acceptAlphaContract, claimAlphaContract, changeAlphaReputation
 } from './progression.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
@@ -580,7 +580,7 @@ async function publicCatalog(){
     cars:CARS,
     motorcycles:MOTORCYCLES,
     businesses:BUSINESSES,
-    classes:Object.values(PLAYER_CLASSES),
+    classes:Object.values(SELECTABLE_PLAYER_CLASSES),
     cltUberTypes:CLT_UBER_TYPES,
     loanRules:LOAN_RULES
   }
