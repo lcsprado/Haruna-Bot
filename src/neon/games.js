@@ -10,7 +10,7 @@ import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
-import {PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
+import {PECADOS_HERO_IDS,PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
@@ -648,6 +648,7 @@ const OLD_BOSS_PLACEMENT=[
 ]
 const upgradedWeeklyEdition=key=>String(key||'')>='2026-10-30'
 function petBossBonus(pet){
+  if(pet&&PECADOS_HERO_IDS.includes(String(pet.species||'')))pet=null
   if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,healPct:0,healCooldown:0}
   const base=petCombatSpecialty(pet.species)
   // Progressão revisada:
@@ -959,7 +960,7 @@ async function raidPetXp(c,jid,gain){
   gain=Math.max(0,Math.floor(Number(gain)||0))
   if(!gain) return null
   const p=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-  if(!p) return null
+  if(!p||PECADOS_HERO_IDS.includes(String(p.species||'')))return null
   const rawXp=Number(p.xp||0)+gain
   const level=Math.min(100,1+Math.floor(rawXp/100))
   const xp=level>=100?9900:rawXp
@@ -985,6 +986,7 @@ async function grantTeamPetXp(c,jid,baseGain){
     WHERE t.jid=$1 AND t.slot IN (2,3) ORDER BY t.slot FOR UPDATE OF p`,[jid])).rows
   const weights={2:.60,3:.35}
   for(const pet of team){
+    if(PECADOS_HERO_IDS.includes(String(pet.species||'')))continue
     const slot=Number(pet.slot)
     const gain=Math.max(1,Math.floor(baseGain*Number(weights[slot]||0)))
     if(!gain) continue
@@ -1010,7 +1012,7 @@ function raidPotion(rows,maxHp){
 }
 
 function raidCombatPetState(pet,slot=1){
-  if(!pet) return null
+  if(!pet||PECADOS_HERO_IDS.includes(String(pet.species||'')))return null
   return {
     collectionId:Number(pet.id||0)||null,teamSlot:Number(slot)||1,
     name:pet.name,species:pet.species,level:Number(pet.level||1),xp:Number(pet.xp||0),
@@ -1023,7 +1025,7 @@ function raidCombatPetState(pet,slot=1){
 async function raidReservePet(c,jid){
   const r=(await c.query(`SELECT p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
     WHERE t.jid=$1 AND t.slot=3 FOR UPDATE OF p`,[jid])).rows[0]||null
-  if(!r||Number(r.hp)<=0||Number(r.energy)<=0) return null
+  if(!r||PECADOS_HERO_IDS.includes(String(r.species||''))||Number(r.hp)<=0||Number(r.energy)<=0) return null
   return raidCombatPetState(r,3)
 }
 
@@ -1465,6 +1467,11 @@ export async function raidRound(chat,level){
     }
 
     for(const p of alive){
+      // Quaisquer salas antigas são saneadas durante o próximo round.
+      // Nenhum Pecado pode manter dano, cura, energia ou sinergia pet.
+      p.teamPassives=(p.teamPassives||[]).filter(x=>!PECADOS_HERO_IDS.includes(String(x.species||'')))
+      if(PECADOS_HERO_IDS.includes(String(p.pet?.species||'')))p.pet=null
+      if(PECADOS_HERO_IDS.includes(String(p.reservePet?.species||'')))p.reservePet=null
       let pb={damage:0,crit:0}
       const baseTeamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
       const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length})}
@@ -2904,11 +2911,11 @@ async function loadBossCombatPet(c,jid,slot=1){
   slot=Number(slot)||1
   if(slot===1){
     const p=(await c.query('SELECT species,name,level,xp,energy,hp,max_hp FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
-    return p?{...p,teamSlot:1,collectionId:null}:null
+    return p&&!PECADOS_HERO_IDS.includes(String(p.species||''))?{...p,teamSlot:1,collectionId:null}:null
   }
   const p=(await c.query(`SELECT p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
     WHERE t.jid=$1 AND t.slot=$2 FOR UPDATE OF p`,[jid,slot])).rows[0]||null
-  return p?{...p,teamSlot:slot,collectionId:Number(p.id)}:null
+  return p&&!PECADOS_HERO_IDS.includes(String(p.species||''))?{...p,teamSlot:slot,collectionId:Number(p.id)}:null
 }
 
 async function persistBossCombatPet(c,jid,pet){
