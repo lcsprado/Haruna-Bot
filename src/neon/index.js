@@ -91,6 +91,10 @@ import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} fro
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
 import {scheduleMimics,handleMimicCommand} from './mimic-hunt.js'
+import {
+  OWNER_EVENT_TYPES,getOwnerEvent,setOwnerEvent,stopOwnerEvent,listOwnerEvents,
+  parseOwnerEventBrazilDate,ownerEventsStatusText,announceOwnerEventTransitions,ownerEventNextTransitions
+} from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
@@ -1081,6 +1085,7 @@ await reply(
 4️⃣ ⚙️ Configurações comerciais
 5️⃣ 🩺 Diagnóstico
 6️⃣ 🆘 Chamados de suporte
+7️⃣ 🎪 Central de Eventos (Owner)
 🌘 Boss de Evento: automático toda *sexta às 19:00* • controles: *!eventoboss desativar* / *status*
 🔥 Evento 2x: *!eventodobro* (20 min) • *!eventodobro 30* • *!eventodobro off*
 0️⃣ Sair
@@ -3839,6 +3844,23 @@ luckyBoxAnnouncementRunning=false
 }
 if(doubleRewardEventScheduler)clearInterval(doubleRewardEventScheduler)
 if(luckyBoxEventScheduler)clearInterval(luckyBoxEventScheduler)
+
+let ownerEventTimers=[]
+async function refreshOwnerEventTimers(){
+  for(const timer of ownerEventTimers)clearTimeout(timer)
+  ownerEventTimers=[]
+  if(trevoHealth.whatsapp!=='open')return
+  await announceOwnerEventTransitions(sendEventToGroups)
+  const events=await listOwnerEvents()
+  for(const timestamp of ownerEventNextTransitions(events)){
+    const timer=setTimeout(()=>{
+      void refreshOwnerEventTimers().catch(err=>console.error('[Eventos Owner] agendamento',err?.message||err))
+    },Math.min(2**31-1,Math.max(1000,timestamp-Date.now())))
+    timer.unref?.()
+    ownerEventTimers.push(timer)
+  }
+}
+
 async function refreshEcoScheduledEvents(){
 if(!neonEcoMode)return
 for(const t of globalThis.__alphaEcoNoticeTimers||[])clearTimeout(t)
@@ -4955,11 +4977,53 @@ await reply(
 4️⃣ ⚙️ Configurações comerciais
 5️⃣ 🩺 Diagnóstico
 6️⃣ 🆘 Chamados de suporte
+7️⃣ 🎪 Central de Eventos (Owner)
 🔥 Evento 2x: *!eventodobro* (20 min) • *!eventodobro off*
 0️⃣ Sair
 _Responda apenas com o número._`
 )
 }
+
+const ownerEventKeys=Object.keys(OWNER_EVENT_TYPES)
+const ownerEventAliases={
+  eventoxp:'xp',eventopet:'pet',eventodinheiro:'dinheiro',eventocorre:'corre',
+  eventosorte:'sorte',eventoraid:'raid',eventodrop:'drop',eventofragmentos:'fragmentos'
+}
+const adminEventsMenu=async()=>{
+  setQuickFlow(chat,sender,'admin_events',{},5*60*1000)
+  await reply('🎪 *ADMIN — CENTRAL DE EVENTOS*\n\n'+
+    ownerEventKeys.map((type,i)=>String(i+1)+'. '+OWNER_EVENT_TYPES[type].label).join('\n')+
+    '\n\n📅 Agende: *!eventoadm agendar xp 27/10 19:00 60 2*'+
+    '\n📊 Todos: *!eventoadm status*'+
+    '\n⚠️ Mimics históricos não podem ser reiniciados sem uma edição nova.'+
+    '\n\n9️⃣ Voltar\n0️⃣ Sair')
+}
+const adminEventDetailMenu=async(type)=>{
+  const d=OWNER_EVENT_TYPES[type]
+  const s=await getOwnerEvent(type)
+  setQuickFlow(chat,sender,'admin_event_detail',{type},5*60*1000)
+  const status=s.active?'🟢 ATIVO':s.scheduled?'📅 AGENDADO':'⚪ INATIVO'
+  await reply('🎪 *'+d.label+'*\n'+status+
+    '\n\n1️⃣ Ativar 20 minutos (2x)'+
+    '\n2️⃣ Ativar 60 minutos (2x)'+
+    '\n3️⃣ Consultar status'+
+    '\n4️⃣ Encerrar / cancelar'+
+    '\n5️⃣ Como agendar\n9️⃣ Voltar\n0️⃣ Sair')
+}
+const activateAdminEvent=async(type,minutes,multiplier=2,startsAt=Date.now())=>{
+  const event=await setOwnerEvent(type,{minutes,multiplier,startsAt,owner:sender})
+  await refreshOwnerEventTimers()
+  await reply('✅ *EVENTO '+(event.scheduled?'AGENDADO':'ATIVADO')+'*\n\n'+
+    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+
+    (event.scheduled?'📅 Agendado para '+new Date(event.startsAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'🌐 Bônus global para os grupos habilitados.')+
+    '\n🛑 Para cancelar: *!eventoadm off '+type+'*')
+}
+const cancelAdminEvent=async(type)=>{
+  const result=await stopOwnerEvent(type,sender)
+  await refreshOwnerEventTimers()
+  await reply(result.stopped?'🛑 *Evento cancelado:* '+OWNER_EVENT_TYPES[type].label:'⚪ Nenhum evento ativo/agendado deste tipo.')
+}
+
 const adminPlayersMenu=async()=>{
 setQuickFlow(chat,sender,'admin_players',{},5*60*1000)
 await reply(
@@ -5518,6 +5582,7 @@ if(input==='2') return await adminGroupsMenu(),true
 if(input==='3') return await adminOrdersMenu(),true
 if(input==='4') return await adminSettingsMenu(),true
 if(input==='6') return await adminSupportMenu(),true
+if(input==='7') return await adminEventsMenu(),true
 if(input==='5'){
 const age=(ts)=>ts?Math.max(0,Math.floor((Date.now()-ts)/1000)):null
 const lastUpsert=age(trevoHealth.lastUpsertAt)
@@ -5535,8 +5600,40 @@ Processo ativo há: *${Math.floor(process.uptime()/60)} min*
 setQuickFlow(chat,sender,'admin_diag',{},5*60*1000)
 return true
 }
-await reply('👑 Escolha uma opção de *1 a 6* ou *0* para sair.')
+await reply('👑 Escolha uma opção de *1 a 7* ou *0* para sair.')
 return true
+}
+
+if(flow.stage==='admin_events'){
+  if(input==='9')return await adminMainMenu(),true
+  const type=ownerEventKeys[Number(input)-1]
+  if(!type)return await reply('🎪 Escolha um evento de 1 a 8, 9 para voltar ou 0 para sair.'),true
+  await adminEventDetailMenu(type)
+  return true
+}
+if(flow.stage==='admin_event_detail'){
+  if(input==='9')return await adminEventsMenu(),true
+  const type=flow.data.type
+  if(!OWNER_EVENT_TYPES[type])return await adminEventsMenu(),true
+  if(input==='1'||input==='2'){
+    try{await activateAdminEvent(type,input==='1'?20:60,2)}
+    catch(err){await reply('⚠️ '+err.message)}
+    return await adminEventDetailMenu(type),true
+  }
+  if(input==='3'){
+    await reply(ownerEventsStatusText([await getOwnerEvent(type)]))
+    return await adminEventDetailMenu(type),true
+  }
+  if(input==='4'){
+    await cancelAdminEvent(type)
+    return await adminEventDetailMenu(type),true
+  }
+  if(input==='5'){
+    await reply('📅 Agendamento: *!eventoadm agendar '+type+' 27/10 19:00 60 2*\n(Dia/mês, horário de Brasília, duração em minutos e multiplicador.)')
+    return await adminEventDetailMenu(type),true
+  }
+  await reply('🎪 Escolha 1 a 5, 9 para voltar ou 0 para sair.')
+  return true
 }
 if(flow.stage==='admin_diag'){
 if(input==='9') return await adminMainMenu(),true
@@ -8889,6 +8986,7 @@ reconnecting=false
 reconnectAttempts=0
 setWhatsAppHealth('open')
 console.log('[WhatsApp] ALPHA BOT CONECTADO')
+void refreshOwnerEventTimers().catch(err=>console.error('[Eventos Owner] inicialização',err?.message||err))
 if(neonEcoMode)void flushRaidFinalNotices().catch(err=>console.warn('[Neon Eco] aviso final',err?.message||err))
 // A Raid dos Sete Pecados substitui o antigo Boss temporário de fragmentos.
 // O spawn do Boss de farm não é chamado: não duplicar recompensas/eventos.
@@ -12274,7 +12372,11 @@ if(!itemArg) return await reply(`Uso: *${prefix}daritem espada_ferro 1* ou *${pr
 const r=await ownerGrantItem(ownerTarget,itemArg.toLowerCase(),qty)
 await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 } else if(['evento','evento2x','bonus2x'].includes(cmd)){
-const [event,lucky]=await Promise.all([getDoubleRewardEvent(),getLuckyBoxEvent()])
+const [event,lucky,ownerEvents]=await Promise.all([getDoubleRewardEvent(),getLuckyBoxEvent(),listOwnerEvents()])
+if(ownerEvents.some(e=>e.active||e.scheduled)){
+  const legacy=event.active?'\n\n🔥 Bônus tradicional: *'+event.moneyMultiplier+'x dinheiro / '+event.xpMultiplier+'x XP*.':''
+  return await reply(ownerEventsStatusText(ownerEvents)+legacy)
+}
 if(event.active){
 const remaining=Math.max(1,Math.ceil(Number(event.remainingMs||0)/1000))
 return await reply(`🔥 *EVENTO x${eventMultLabel(event.moneyMultiplier)} ATIVO!*\n\n💰 Dinheiro de recompensas: *x${eventMultLabel(event.moneyMultiplier)}*\n✨ XP: *x${eventMultLabel(event.xpMultiplier)}*\n⏱️ Tempo restante: *${duration(remaining)}*\n\n🎯 Apostas, transferências, vendas, compras e compensações não são multiplicadas.`)
@@ -12300,6 +12402,34 @@ const ends=new Date(lucky.endsAt).toLocaleTimeString('pt-BR',{timeZone:'America/
 return await reply(`🍀 *PRÓXIMO EVENTO*\n\n${starts}–${ends} — *Double Lucky x${eventMultLabel(lucky.multiplier)} nas caixas*`)
 }
 return await reply('⏱️ *EVENTOS*\n\nNenhum evento de bônus está ativo agora.')
+
+} else if(['eventoadm',...Object.keys(ownerEventAliases)].includes(cmd)){
+  if(!isOwner)return await reply('⛔ Comando exclusivo do proprietário do Alpha Bot.')
+  if(cmd==='eventoadm'&&(!args[0]||['menu','ajuda'].includes(String(args[0]).toLowerCase()))){
+    return await adminEventsMenu()
+  }
+  const action=String(args[0]||'').toLowerCase()
+  if(cmd==='eventoadm'&&['status','lista','ativos'].includes(action)){
+    return await reply(ownerEventsStatusText(await listOwnerEvents()))
+  }
+  if(cmd==='eventoadm'&&action==='agendar'){
+    const [type,dateText,timeText,minutes,multiplier]=args.slice(1)
+    if(!OWNER_EVENT_TYPES[type])return await reply('⚠️ Tipo inválido. Use !eventoadm para consultar os eventos.')
+    const startsAt=parseOwnerEventBrazilDate(dateText,timeText)
+    return await activateAdminEvent(type,minutes,multiplier===undefined?2:multiplier,startsAt)
+  }
+  if(cmd==='eventoadm'&&['off','parar','cancelar'].includes(action)){
+    const type=String(args[1]||'').toLowerCase()
+    if(!OWNER_EVENT_TYPES[type])return await reply('⚠️ Informe o tipo. Exemplo: !eventoadm off corre')
+    return await cancelAdminEvent(type)
+  }
+  const type=ownerEventAliases[cmd]
+  if(!type)return await reply('🎪 Use *!eventoadm* para escolher um evento.')
+  if(['off','parar','cancelar'].includes(action))return await cancelAdminEvent(type)
+  if(action==='status')return await reply(ownerEventsStatusText([await getOwnerEvent(type)]))
+  const minutes=action?Number(action):OWNER_EVENT_TYPES[type].defaultMinutes
+  const multiplier=args[1]?Number(args[1]):2
+  return await activateAdminEvent(type,minutes,multiplier)
 } else if(['eventodobro','dobroevento','ativar2x'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
 const action=String(args[0]||'').toLowerCase()
