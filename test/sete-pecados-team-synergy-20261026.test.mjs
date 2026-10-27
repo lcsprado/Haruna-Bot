@@ -16,9 +16,9 @@ const speciesStyles=new Function('PECADOS_HEROES',take('const PET_TEAM_STYLE_BY_
 const styleBonuses=new Function(take('const PET_TEAM_STYLE_BONUS=','function resolveBatTeamStyles(')+'\nreturn PET_TEAM_STYLE_BONUS')()
 const resolveBatTeamStyles=new Function('PET_TEAM_STYLE_BY_SPECIES',take('function resolveBatTeamStyles(','export function petStyleLabel(')+'\nreturn resolveBatTeamStyles')(speciesStyles)
 const petTeamSynergy=new Function(
-  'PECADOS_HERO_IDS','pecadosBonus','PET_TEAM_STYLE_BY_SPECIES','PET_TEAM_STYLE_BONUS','PET_TEAM_WILDCARD_BONUS','resolveBatTeamStyles','resolveAstralLynxWildcard',
+  'PECADOS_HERO_IDS','pecadosBonus','PET_TEAM_STYLE_BY_SPECIES','PET_TEAM_STYLE_BONUS','PET_TEAM_WILDCARD_BONUS','resolveBatTeamStyles','resolveAstralLynxWildcard','resolveCollabWildcardTeam','PET_COLLAB_TEAM_GROUPS',
   take('export function petTeamSynergy(pets=[])','export const LEGENDARY_PET_SUMMONS=').replace(/^export /,'')+'\nreturn petTeamSynergy'
-)(PECADOS_HERO_IDS,pecadosBonus,speciesStyles,styleBonuses,{},resolveBatTeamStyles,()=>null)
+)(PECADOS_HERO_IDS,pecadosBonus,speciesStyles,styleBonuses,{},resolveBatTeamStyles,()=>null,()=>null,[])
 const pet=(species)=>({species})
 const team=(...species)=>species.map(pet)
 
