@@ -2285,7 +2285,16 @@ function bind(){
   });
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
   document.querySelectorAll('[data-character-select]').forEach(x=>x.onclick=async()=>{
-    ui.characterId=x.dataset.characterSelect;
+    const choice=String(x.dataset.characterSelect||'');
+    if(choice==='__class__'){
+      await doAction('hero.class',{},{success:'🧙 Classe original restaurada no combate.'});
+      return;
+    }
+    if(choice.startsWith('pecado_')){
+      await doAction('hero.select',{heroId:choice},{success:'🌈 Herói selecionado para o combate.'});
+      return;
+    }
+    ui.characterId=choice;
     localStorage.setItem(CHARACTER_KEY,ui.characterId);
     await doAction('character.select',{classId:ui.characterId},{success:'🧙 Classe aplicada aos seus atributos.'});
   });
