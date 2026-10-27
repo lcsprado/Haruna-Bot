@@ -1519,10 +1519,11 @@ export async function raidRound(chat,level){
       const mult=(1+Number(pb.damage||0)+Number(teamSynergy.attack||0))*3
       const oilBonus=p.raidOilActive?Math.max(1,Math.floor(baseline*.06)):0
       const baseDmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1))+oilBonus)
+      const heroAttackIndex=Number(p.heroAttacks||0)+1;
       const classHit=p.heroId
-        ?{...heroAttack({heroId:p.heroId,damage:baseDmg,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',state:p.heroState,masteryStage:p.heroMasteryStage}),lastProcAttack:p.classLastProcAttack,awakeningState:p.awakeningState}
+        ?{...heroAttack({heroId:p.heroId,damage:baseDmg,hp:p.hp,maxHp:p.maxHp,attackIndex:heroAttackIndex,context:'raid',state:p.heroState,masteryStage:p.heroMasteryStage}),lastProcAttack:p.classLastProcAttack,awakeningState:p.awakeningState}
         :classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
-      if(p.heroId)p.heroState=classHit.state
+      if(p.heroId){p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;}
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
       const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
@@ -1558,6 +1559,21 @@ export async function raidRound(chat,level){
     }
 
     if(Number(s.hp)<=0){
+      // Finalização antes da fase defensiva: persistir cura do último ataque
+      // e não perder a diferença fracionária quando o herói dá o golpe final.
+      for(const player of Object.values(s.players||{})){
+        if(!player.heroId)continue;
+        const settled=persistHeroHpDelta({
+          previousPersistentHp:player.heroStoredHp,
+          previousCombatHp:player.heroLastHp,currentCombatHp:player.hp,
+          combatMaxHp:player.maxHp,persistentMaxHp:player.heroPersistentMaxHp,
+          remainder:player.heroHpRemainder
+        });
+        player.heroStoredHp=settled.hp;
+        player.heroLastHp=player.hp;
+        player.heroHpRemainder=settled.remainder;
+        await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[settled.hp,player.jid]);
+      }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
       // Despertar V: somente Raids Lv.60+ vencidas com 2+ jogadores
