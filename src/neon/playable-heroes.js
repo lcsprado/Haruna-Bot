@@ -41,6 +41,13 @@ export async function getActivePlayableHero(client,jid){
   return playableHero(r.rows[0]?.hero_species)?.species||null
 }
 
+export async function getPlayableHeroMasteryStage(client,jid,heroId){
+  if(!playableHero(heroId))return 0
+  const {rows}=await (client||db).query(
+    'SELECT xp FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
+  return heroMasteryStage(Number(rows[0]?.xp||0))
+}
+
 export async function listPlayableHeroes(jid){
   await ensureUser(jid)
   const [owned,mode,mastery]=await Promise.all([
