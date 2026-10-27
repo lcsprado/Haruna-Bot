@@ -47,7 +47,7 @@ test('skills automaticas sao finitas e limitadas em Raid e Boss',()=>{
   for(const id of PLAYABLE_HERO_IDS){
     let state={}
     for(let index=1;index<=100;index++){
-      const hit=heroAttack({heroId:id,damage:1000,hp:800,maxHp:1000,attackIndex:index,state,context:'boss'})
+      const hit=heroAttack({heroId:id,damage:1000,hp:800,maxHp:1000,attackIndex:index,state,context:'boss',masteryStage:5})
       assert.ok(Number.isFinite(hit.damage) && hit.damage>=1 && hit.damage<=1300,id)
       assert.ok(hit.heal>=0&&hit.allyHeal>=0,id)
       const def=heroDefense({heroId:id,damage:1000,state:hit.state})
@@ -58,13 +58,23 @@ test('skills automaticas sao finitas e limitadas em Raid e Boss',()=>{
 })
 
 test('herois possuem identidades mecanicas diferentes',()=>{
-  assert.ok(heroAttack({heroId:'pecado_escanor',damage:1000,hp:100,maxHp:1000,attackIndex:25}).damage>1000)
-  assert.ok(heroAttack({heroId:'pecado_ban',damage:1000,maxHp:2000,attackIndex:8}).heal>0)
-  assert.ok(heroAttack({heroId:'pecado_king',damage:1000,maxHp:2000,attackIndex:8}).allyHeal>0)
+  assert.ok(heroAttack({heroId:'pecado_escanor',damage:1000,hp:100,maxHp:1000,attackIndex:25,masteryStage:5}).damage>1000)
+  assert.ok(heroAttack({heroId:'pecado_ban',damage:1000,maxHp:2000,attackIndex:8,masteryStage:5}).heal>0)
+  assert.ok(heroAttack({heroId:'pecado_king',damage:1000,maxHp:2000,attackIndex:8,masteryStage:5}).allyHeal>0)
   assert.ok(heroDefense({heroId:'pecado_diane',damage:1000,state:{guardCharges:1}}).damage<950)
   assert.ok(heroDefense({heroId:'pecado_merlin',damage:1000,state:{cubeCharges:1}}).damage<900)
   assert.equal(heroMasteryStage(0),1)
   assert.equal(heroMasteryStage(1300),5)
+})
+
+test('maestria libera habilidades no estagio correto, sem bonus prematuro',()=>{
+  const first=heroAttack({heroId:'pecado_escanor',damage:1000,hp:500,maxHp:1000,attackIndex:8,masteryStage:1});
+  const skilled=heroAttack({heroId:'pecado_escanor',damage:1000,hp:500,maxHp:1000,attackIndex:8,masteryStage:2});
+  const ultimate=heroAttack({heroId:'pecado_escanor',damage:1000,hp:500,maxHp:1000,attackIndex:25,masteryStage:3});
+  assert.equal(first.damage,1000);
+  assert.ok(skilled.damage>first.damage);
+  assert.ok(ultimate.damage>first.damage);
+  assert.equal(heroHpToPersistent(1,1200,1000),1);
 })
 
 test('integracao protege classe, pet, modo e progresso',()=>{
