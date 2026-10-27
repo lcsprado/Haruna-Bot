@@ -1,6 +1,7 @@
 import {db,ensureUser} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 import {playableHero,heroMasteryStage} from './playable-heroes-core.js'
+import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
 async function transaction(fn){
@@ -30,6 +31,8 @@ export async function initPlayableHeroes(){
     created_at BIGINT NOT NULL DEFAULT (${NOW}),
     PRIMARY KEY(jid,award_key)
   )`)
+  const conversion=await archiveSevenSinsPetAssignments()
+  if(conversion.migrated)console.info('[Heroes] converted legacy pet assignments:',conversion.migrated,'players; without eligible pet:',conversion.noEligiblePet)
 }
 
 export async function getActivePlayableHero(client,jid){
@@ -125,11 +128,11 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!action||action==='status'||action==='lista'||action==='maestria'){
     const list=await listPlayableHeroes(sender)
     const active=list.find(h=>h.active)
-    const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Pet Nv.${h.petLevel} • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}`)
+    const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Desbloqueado • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
       '👉 *!heroi usar escanor* • *!heroi classe*\n'+
-      '🐾 Seu pet permanece na coleção. O mesmo Pecado não participa como pet e herói no mesmo combate.')
+      '🗝️ Personagens conquistados preservados. Os Pecados não são mais pets; use outros pets em seu time.')
     return true
   }
   const raw=action==='usar'?String(args[1]||'').trim().toLowerCase():action
@@ -142,6 +145,6 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!hero){await reply('❌ Herói não encontrado. Use *!heroi* para consultar a coleção.');return true}
   const saved=await setPlayableHeroMode(sender,hero.species)
   await reply(saved.unchanged?'⚔️ '+hero.name+' já é seu combatente.':
-    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nEle substitui as habilidades da classe em Bosses/Raids, sem apagar seu Despertar ou seus pets.\nUse *!heroi classe* para voltar.')
+    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nEle substitui as habilidades da classe em Bosses/Raids, sem apagar seu Despertar nem os pets comuns.\nUse *!heroi classe* para voltar.')
   return true
 }
