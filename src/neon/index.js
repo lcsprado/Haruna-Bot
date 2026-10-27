@@ -4995,8 +4995,25 @@ const adminEventsMenu=async()=>{
     ownerEventKeys.map((type,i)=>String(i+1)+'. '+OWNER_EVENT_TYPES[type].label).join('\n')+
     '\n\n📅 Agende também pelo menu, escolhendo o evento e a opção 5.'+
     '\n📊 Todos: *!eventoadm status*'+
-    '\n⚠️ Mimics históricos não podem ser reiniciados sem uma edição nova.'+
-    '\n\n9️⃣ Voltar\n0️⃣ Sair')
+    '\n9️⃣ Outros: Boss Global / 2x Geral / Mimics'+
+    '\n\n0️⃣ Voltar ao Admin')
+}
+
+const adminMoreEventsMenu=async()=>{
+  setQuickFlow(chat,sender,'admin_more_events',{},5*60*1000)
+  await reply('🎪 *CENTRAL — OUTROS EVENTOS*\n\n'+
+    '1️⃣ 👹 Boss Global — ativar, consultar e encerrar\n'+
+    '2️⃣ 🔥 Evento 2x geral — dinheiro e XP\n'+
+    '3️⃣ 🟤 Mimics — evento histórico (somente consulta)\n'+
+    '9️⃣ Voltar\n0️⃣ Sair')
+}
+const adminBossEventMenu=async()=>{
+  setQuickFlow(chat,sender,'admin_event_boss',{},5*60*1000)
+  await reply('👹 *BOSS GLOBAL — OWNER*\n\n1️⃣ Ativar agora\n2️⃣ Consultar status\n3️⃣ Encerrar\n9️⃣ Voltar\n0️⃣ Sair\n\n📍 Para iniciar, use !admin dentro de um grupo.')
+}
+const adminDoubleEventMenu=async()=>{
+  setQuickFlow(chat,sender,'admin_event_double',{},5*60*1000)
+  await reply('🔥 *EVENTO 2X GERAL*\n\n1️⃣ Ativar por 20 minutos\n2️⃣ Consultar status\n3️⃣ Encerrar\n9️⃣ Voltar\n0️⃣ Sair')
 }
 const adminEventDetailMenu=async(type)=>{
   const d=OWNER_EVENT_TYPES[type]
@@ -5605,12 +5622,71 @@ return true
 }
 
 if(flow.stage==='admin_events'){
-  if(input==='9')return await adminMainMenu(),true
+  if(input==='9')return await adminMoreEventsMenu(),true
   const type=ownerEventKeys[Number(input)-1]
-  if(!type)return await reply('🎪 Escolha um evento de 1 a 8, 9 para voltar ou 0 para sair.'),true
+  if(!type)return await reply('🎪 Escolha um evento de 1 a 8, 9 para outros eventos ou 0 para sair.'),true
   await adminEventDetailMenu(type)
   return true
 }
+
+if(flow.stage==='admin_more_events'){
+  if(input==='9')return await adminEventsMenu(),true
+  if(input==='1')return await adminBossEventMenu(),true
+  if(input==='2')return await adminDoubleEventMenu(),true
+  if(input==='3'){
+    await reply('🟤 *MIMICS*\n\nA edição de 24/10 tem identificador, metas e premiações exclusivos; reativá-la poderia pagar novamente prêmios únicos.\nUma nova edição precisa de implementação separada.\n9️⃣ Voltar')
+    return true
+  }
+  await reply('🎪 Escolha 1, 2, 3 ou 9 para voltar.')
+  return true
+}
+if(flow.stage==='admin_event_boss'){
+  if(input==='9')return await adminMoreEventsMenu(),true
+  if(input==='2'){
+    const status=await getBossEventStatus(chat)
+    await reply(status?'👹 *BOSS GLOBAL ATIVO*\n\n'+status.name+'\n❤️ HP: '+fmt(status.hp)+'/'+fmt(status.maxHp):'👹 *BOSS GLOBAL INATIVO*')
+    return await adminBossEventMenu(),true
+  }
+  if(input==='1'||input==='3'){
+    if(!isGroup){
+      await reply('⚠️ Abra !admin no grupo onde deseja controlar o Boss Global.')
+      return await adminBossEventMenu(),true
+    }
+    const result=input==='1'?await activateBossEvent(chat):await deactivateBossEvent(chat)
+    if(!result.already){
+      await sendEventToGroups(input==='1'
+        ?'👹 *BOSS GLOBAL ATIVADO PELO OWNER*\n\n'+result.name+'\n❤️ HP global: '+fmt(result.maxHp)+'\n⚔️ Use !boss e !atacar.'
+        :'🛑 *BOSS GLOBAL ENCERRADO PELO OWNER*\n\n'+result.name+'\n🌐 Encerrado em todos os grupos.')
+    }
+    await reply(result.already?'ℹ️ Boss já estava nesse estado.':input==='1'?'✅ Boss Global ativado.':'🛑 Boss Global encerrado.')
+    return await adminBossEventMenu(),true
+  }
+  await reply('👹 Selecione 1, 2, 3 ou 9 para voltar.')
+  return true
+}
+if(flow.stage==='admin_event_double'){
+  if(input==='9')return await adminMoreEventsMenu(),true
+  if(input==='1'){
+    await startDoubleRewardEvent(20,sender)
+    if(neonEcoMode){void updateDoubleRewardAnnouncements();void refreshEcoScheduledEvents()}
+    await reply('🔥 Evento 2x de dinheiro e XP ativado por 20 minutos.')
+    return await adminDoubleEventMenu(),true
+  }
+  if(input==='2'){
+    const event=await getDoubleRewardEvent()
+    await reply(event.active?'🔥 *2X GERAL ATIVO*\n⏱️ '+Math.ceil(event.remainingMs/60000)+' min restantes.':'⚪ 2x geral inativo.')
+    return await adminDoubleEventMenu(),true
+  }
+  if(input==='3'){
+    await stopDoubleRewardEvent(sender)
+    if(neonEcoMode)void refreshEcoScheduledEvents()
+    await reply('🛑 Evento 2x geral encerrado.')
+    return await adminDoubleEventMenu(),true
+  }
+  await reply('🔥 Escolha 1, 2, 3 ou 9 para voltar.')
+  return true
+}
+
 if(flow.stage==='admin_event_detail'){
   if(input==='9')return await adminEventsMenu(),true
   const type=flow.data.type
