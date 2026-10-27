@@ -27,10 +27,12 @@ test('seis classes ocultas não são excluídas do catálogo nem perdem passivas
 test('WhatsApp e Web usam apenas lista pública filtrada',()=>{
   const bot=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
   const api=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8');
+  const web=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
   assert.match(bot,/const classes=Object.values\(SELECTABLE_PLAYER_CLASSES\)/);
   assert.match(api,/classes:Object.values\(SELECTABLE_PLAYER_CLASSES\)/);
   assert.ok(!bot.includes('const classes=Object.values(PLAYER_CLASSES)'));
   assert.ok(!api.includes('classes:Object.values(PLAYER_CLASSES)'));
+  assert.match(web,/CHARACTER_ART\.filter\(ch=>Boolean\(classRule\(ch\.id\)\)\|\|\(applied&&ch\.id===selected\.id\)\)/);
 });
 
 test('API de troca bloqueia escolha nova de classe oculta antes de consumir pergaminho',()=>{
