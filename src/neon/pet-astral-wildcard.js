@@ -4,7 +4,7 @@
 export function resolveAstralLynxWildcard(species=[],styles=[]){
   if(!Array.isArray(species)||!Array.isArray(styles)||species.length!==3||styles.length!==3)return null
   if(new Set(species).size!==3)return null
-  const index=species.findIndex(id=>['lince_astral','onca_eclipse_20261026'].includes(id))
+  const index=species.findIndex(id=>['lince_astral','onca_eclipse_20261026','guaxinim_errante_20261027'].includes(id))
   if(index<0)return null
   const others=styles.filter((_,i)=>i!==index)
   const sameStyle=others[0] && others[0]===others[1]
