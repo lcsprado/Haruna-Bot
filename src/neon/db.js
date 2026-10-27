@@ -1966,6 +1966,7 @@ const EQUIPMENT = {
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
 elmo_soberano_celestial_20261024: {category:'helmet',atk:0,def:112,hp:275,crit:.025,name:'Elmo do Soberano Celestial'},
 elmo_guardiao_nebular_20261026: {category:'helmet',atk:0,def:100,hp:330,crit:.035,name:'Elmo do Guardião Nebular'},
+armadura_vigia_crepusculo_20261027: {category:'armor',atk:0,def:88,hp:150,crit:.01,name:'Armadura do Vigia do Crepúsculo'},
 elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
 elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
 elmo_labirinto_alpha: {category:'helmet',atk:0,def:92,hp:240,crit:0,name:'Elmo do Labirinto Eterno'},
@@ -4979,7 +4980,7 @@ styles[batIndex]=others[0]
 return styles
 }
 export function petStyleLabel(species){
-const style=['morcego_madrugada','camaleao_lendario','lince_astral','onca_eclipse_20261026'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+const style=['morcego_madrugada','camaleao_lendario','lince_astral','onca_eclipse_20261026','guaxinim_errante_20261027'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
 return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
 export function petTeamSynergy(pets=[]){
