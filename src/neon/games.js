@@ -876,6 +876,8 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
     const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
+    const heroId=await getActivePlayableHero(c,jid)
+    const heroStats=heroCombatStats(st,heroId)
     const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
     let reservePet=await raidReservePet(c,jid)
     let combatPet=raidCombatPetState(pet,1)
@@ -886,8 +888,6 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       combatPet=reservePet
       reservePet=null
     }
-    const heroId=await getActivePlayableHero(c,jid)
-    const heroStats=heroCombatStats(st,heroId)
     const awakeningStage=heroId?0:Number((await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]?.stage||0)
     const teamPassives=excludeActiveHeroPet((await c.query('SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',[jid])).rows,heroId)
     s.players={...(s.players||{}),[jid]:{
@@ -1173,6 +1173,9 @@ async function finishRaidRewards(c,s,cfg,chat){
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
+    if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
+      await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey:'raid:'+String(s.startedAt)+':'+String(p.jid),xp:10})
+    }
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
     // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.
     // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.
@@ -1514,7 +1517,10 @@ export async function raidRound(chat,level){
       const mult=(1+Number(pb.damage||0)+Number(teamSynergy.attack||0))*3
       const oilBonus=p.raidOilActive?Math.max(1,Math.floor(baseline*.06)):0
       const baseDmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1))+oilBonus)
-      const classHit=classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      const classHit=p.heroId
+        ?{...heroAttack({heroId:p.heroId,damage:baseDmg,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',state:p.heroState}),lastProcAttack:p.classLastProcAttack,awakeningState:p.awakeningState}
+        :classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      if(p.heroId)p.heroState=classHit.state
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
       const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
@@ -1528,6 +1534,16 @@ export async function raidRound(chat,level){
         const healed=Math.max(0,Number(p.hp)-hpBefore)
         p.classHealing=Number(p.classHealing||0)+healed
         if(healed>0) p.classHealingActivations=Number(p.classHealingActivations||0)+1
+      }
+      if(p.heroId==='pecado_king'&&Number(classHit.allyHeal||0)>0){
+        const target=Object.values(s.players||{}).filter(x=>x.alive&&x.jid!==p.jid&&Number(x.hp)<Number(x.maxHp))
+          .sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0]
+        if(target){
+          const healed=Math.min(Number(classHit.allyHeal),Number(target.maxHp)-Number(target.hp))
+          target.hp+=healed
+          p.heroAllyHealing=Number(p.heroAllyHealing||0)+healed
+          events.push({type:'hero_heal',jid:p.jid,target:target.jid,name:p.name,healed})
+        }
       }
       const petExtra=p.pet?Math.max(0,baseDmg-baseline-oilBonus):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
@@ -1582,7 +1598,10 @@ export async function raidRound(chat,level){
         Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&
         Number(ally.awakeningStage||0)>=4)
       const protectedDamage=guardianAura?Math.max(0,Math.round(hitDamage*.98)):hitDamage
-      const passiveDefense=classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      const passiveDefense=p.heroId
+        ?{...heroDefense({heroId:p.heroId,damage:protectedDamage,state:p.heroState}),awakeningState:p.awakeningState}
+        :classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      if(p.heroId)p.heroState=passiveDefense.state
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
       p.hp=Math.max(0,Number(p.hp)-dmg+Number(passiveDefense.healAfter||0))
@@ -1703,7 +1722,7 @@ export async function raidRound(chat,level){
           }else p.alive=false
         }
       }
-      await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
+      await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.heroId?heroHpToPersistent(p.hp,p.maxHp,p.heroPersistentMaxHp):p.hp,p.jid])
       events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoRevive,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
