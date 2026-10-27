@@ -3201,7 +3201,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     if(Number(s.hp)<=0){
       // Só creditar maestria em Boss derrotado, para todos os colaboradores.
       // A chave por Boss/fase impede crédito duplicado em retries e replays.
-      const contributors=Object.values(s.participants||{})
+      const contributors=Object.entries(s.participants||{}).map(([playerJid,p])=>({...p,jid:playerJid}))
       const total=contributors.reduce((sum,p)=>sum+Math.max(0,Number(p.damage||0)),0)
       const phase=String(s.phaseIndex??s.phase??0)
       const runKey='boss:'+String(s.eventId||s.mode||'common')+':'+String(s.startedAt||s.endsAt||0)+':'+phase
