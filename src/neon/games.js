@@ -3198,6 +3198,22 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[heroId?heroHpToPersistent(php,effectiveMaxHp,st.max_hp):php,jid])
     }
     await recordPlayerDamage(c,jid,'boss',damage,crit)
+    if(Number(s.hp)<=0){
+      // Só creditar maestria em Boss derrotado, para todos os colaboradores.
+      // A chave por Boss/fase impede crédito duplicado em retries e replays.
+      const contributors=Object.values(s.participants||{})
+      const total=contributors.reduce((sum,p)=>sum+Math.max(0,Number(p.damage||0)),0)
+      const phase=String(s.phaseIndex??s.phase??0)
+      const runKey='boss:'+String(s.eventId||s.mode||'common')+':'+String(s.startedAt||s.endsAt||0)+':'+phase
+      if(total>0){
+        for(const contributor of contributors){
+          const dealt=Math.max(0,Number(contributor.damage||0))
+          if(!contributor.jid||!contributor.heroId||dealt<2500||dealt/total<.02)continue
+          await awardPlayableHeroMastery(c,{jid:contributor.jid,heroId:contributor.heroId,
+            awardKey:runKey+':'+contributor.jid,xp:10})
+        }
+      }
+    }
     if(s.hp<=0&&s.eventId===TITAN_EVENT_ID){
       const result=await defeatTitanPhase(c,s)
       return {dead:true,mode:s.mode,eventId:s.eventId,damage,bossDamage,bossCritical,
