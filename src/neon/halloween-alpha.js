@@ -78,6 +78,15 @@ export async function initHalloweenAlpha(){
  await db.query(`CREATE TABLE IF NOT EXISTS halloween_shop_2026(
   jid TEXT NOT NULL,reward_id TEXT NOT NULL,created_at BIGINT NOT NULL,
   PRIMARY KEY(jid,reward_id))`)
+ // Registrar apenas os quatro itens novos. Nada altera preços/raridades dos
+ // itens existentes nem publica o Altar antes de sábado.
+ for(const item of HALLOWEEN_ALTAR_ITEMS){
+  await db.query(`INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable)
+   VALUES($1,$2,$3,'special',0,$4,FALSE,FALSE)
+   ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,
+    description=EXCLUDED.description,rarity=EXCLUDED.rarity,
+    sellable=FALSE,stackable=FALSE`,[item.id,item.name,item.description,item.rarity])
+ }
  // Catalog initialization runs first. No additional schema modification to existing systems.
  console.log('[HALLOWEEN] schema ready; first day Oct 26, 6 global bosses, 4 drops')
 }
