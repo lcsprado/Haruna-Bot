@@ -12536,7 +12536,7 @@ return await reply('⏱️ *EVENTOS*\n\nNenhum evento de bônus está ativo agor
   }
   const type=ownerEventAliases[cmd]
   if(!type)return await reply('🎪 Use *!eventoadm* para escolher um evento.')
-  if(['off','parar','cancelar'].includes(action))return await cancelDirectOwnerEvent(type)
+  if(['off','parar','cancelar'].includes(action))return await stopOwnerEventAction({type,sender,reply,refreshOwnerEventTimers})
   if(action==='status')return await reply(ownerEventsStatusText([await getOwnerEvent(type)]))
   const minutes=action?Number(action):OWNER_EVENT_TYPES[type].defaultMinutes
   const multiplier=args[1]?Number(args[1]):2
