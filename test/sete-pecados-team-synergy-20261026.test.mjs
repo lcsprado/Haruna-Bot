@@ -33,30 +33,14 @@ test('Um ou dois heróis da collab não ativam nem dano nem rótulo especial',()
   assert.equal(petTeamSynergy(team('pecado_escanor')),null)
   assert.equal(petTeamSynergy(team('pecado_escanor','pecado_ban')),null)
 })
-test('Dois Pecados e predador comum têm apenas sinergia normal de estilo',()=>{
-  const result=petTeamSynergy(team('pecado_escanor','pecado_ban','leao_solar'))
-  assert.equal(result.label,'🐾 Caçada Coordenada')
-  assert.equal(result.attack,.02)
-  assert.equal(result.crit,.02)
-  assert.equal(result.collabAttack,0)
-  assert.equal(result.collabCrit,0)
-  assert.doesNotMatch(result.text,/Pecados/)
+test('dois Pecados e um pet comum não completam sinergia de pets',()=>{
+  assert.equal(petTeamSynergy(team('pecado_escanor','pecado_ban','leao_solar')),null)
 })
-test('Três Pecados predadores diferentes acumulam duas sinergias legítimas',()=>{
-  const result=petTeamSynergy(team('pecado_escanor','pecado_ban','pecado_meliodas'))
-  assert.match(result.label,/Caçada Coordenada/)
-  assert.match(result.label,/7 Pecados Capitais/)
-  assert.equal(result.attack,.22)
-  assert.equal(result.crit,.07)
-  assert.equal(result.collabCount,3)
-  assert.equal(result.collabAttack,.20)
-  assert.equal(result.collabCrit,.05)
+test('três Pecados não podem formar equipe pet nem receber bônus da collab',()=>{
+  assert.equal(petTeamSynergy(team('pecado_escanor','pecado_ban','pecado_meliodas')),null)
 })
-test('Três Pecados de estilos mistos ativam somente a sinergia especial',()=>{
-  const result=petTeamSynergy(team('pecado_escanor','pecado_king','pecado_merlin'))
-  assert.equal(result.label,'🌈 7 Pecados Capitais')
-  assert.equal(result.attack,.20)
-  assert.equal(result.crit,.05)
+test('três Pecados de estilos diferentes também não formam time pet',()=>{
+  assert.equal(petTeamSynergy(team('pecado_escanor','pecado_king','pecado_merlin')),null)
 })
 test('Três voadores comuns mantêm o bônus de estilo',()=>{
   const result=petTeamSynergy(team('fenix_eclipse','fenix_celestial','dragao_corrompido'))
@@ -68,7 +52,9 @@ test('Três voadores comuns mantêm o bônus de estilo',()=>{
 test('Nenhuma vantagem especial deve ser liberada para espécies duplicadas',()=>{
   assert.equal(petTeamSynergy(team('pecado_escanor','pecado_ban','pecado_ban')),null)
 })
-test('Raid recalcula a sinergia legada gravada na sala em ataque e defesa',()=>{
-  assert.equal((gamesSource.match(/const teamSynergy=petTeamSynergy\(p\.teamPassives\|\|\[\]\)/g)||[]).length,2)
+test('Raid filtra Pecados de partidas já abertas e recalcula sinergia somente de pets',()=>{
+  assert.match(gamesSource,/p\.teamPassives=\(p\.teamPassives\|\|\[\]\)\.filter/)
+  assert.match(gamesSource,/PECADOS_HERO_IDS\.includes\(String\(p\.pet\?\.species\|\|''\)\)/)
+  assert.match(gamesSource,/const baseTeamSynergy=petTeamSynergy\(p\.teamPassives\|\|\[\]\)/)
   assert.doesNotMatch(gamesSource,/const teamSynergy=p\.teamSynergy\|\|\{/)
 })

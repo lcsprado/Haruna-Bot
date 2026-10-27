@@ -11,6 +11,13 @@ export const PLAYER_CLASSES = Object.freeze({
   druid:Object.freeze({id:'druid',name:'Druida',role:'Sustentação',hp:110,atk:9,def:18,spd:8,description:'Alta sobrevivência e defesa, ideal para lutas longas e suporte.'}),
   samurai:Object.freeze({id:'samurai',name:'Samurai',role:'Duelista',hp:60,atk:18,def:10,spd:14,description:'Duelista ofensivo: ataque e velocidade altos com defesa sólida.'})
 });
+// Catálogo completo preservado para históricos, Despertares e jogadores legados.
+// Ocultação apenas na seleção de novas classes (WhatsApp + Web).
+export const SELECTABLE_PLAYER_CLASS_IDS=Object.freeze(['paladin','necromancer','samurai','berserker']);
+export const SELECTABLE_PLAYER_CLASSES=Object.freeze(SELECTABLE_PLAYER_CLASS_IDS.map(id=>PLAYER_CLASSES[id]));
+export function isSelectablePlayerClass(id){
+  return SELECTABLE_PLAYER_CLASS_IDS.includes(String(id||'').toLowerCase());
+}
 export function getPlayerClass(id){
   const key=String(id||'warrior').toLowerCase();
   return PLAYER_CLASSES[key] || PLAYER_CLASSES.warrior;
