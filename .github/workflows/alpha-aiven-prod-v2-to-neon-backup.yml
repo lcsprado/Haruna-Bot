@@ -1,0 +1,108 @@
+# Execução manual: cópia lógica integral Aiven alpha_prod_v2 -> Neon isolado.
+# Nunca faz deploy, nunca modifica o Aiven e nunca publica dump como artifact.
+name: "Alpha Bot | Backup Aiven para Neon (isolado)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: "Digite COPIAR_ALPHA_PROD_V2 para confirmar a cópia para a base vazia"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpha-aiven-to-neon-backup-20261027
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: "pg_dump e pg_restore sem sobrescrever produção"
+    if: ${{ inputs.confirmacao }} == 'COPIAR_ALPHA_PROD_V2'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    container:
+      image: postgres:18
+    env:
+      AIVEN_SOURCE_URL: ${{ secrets.ALPHA_AIVEN_PROD_V2_URL }}
+      NEON_TARGET_URL: ${{ secrets.ALPHA_NEON_BACKUP_URL }}
+      PGCONNECT_TIMEOUT: "20"
+      PGSSLMODE: require
+      PGOPTIONS: "-c statement_timeout=0"
+    steps:
+      - name: "Confirmar credenciais, bancos e destino vazio"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          if [[ -z "${AIVEN_SOURCE_URL:-}" || -z "${NEON_TARGET_URL:-}" ]]; then
+            echo "::error::Cadastre ALPHA_AIVEN_PROD_V2_URL e ALPHA_NEON_BACKUP_URL em Repository secrets."
+            exit 1
+          fi
+          # Allowlist exata de servidores e banco, impedindo inverter as conexões.
+          case "$AIVEN_SOURCE_URL" in
+            postgres://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2|postgres://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2\?*|postgresql://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2|postgresql://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2\?*) ;;
+            *) echo "::error::Origem não corresponde ao Aiven alphabot/alpha_prod_v2."; exit 1 ;;
+          esac
+          case "$NEON_TARGET_URL" in
+            postgres://*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/alpha_aiven_backup_20261027|postgres://*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/alpha_aiven_backup_20261027\?*|postgresql://*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/alpha_aiven_backup_20261027|postgresql://*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/alpha_aiven_backup_20261027\?*) ;;
+            *) echo "::error::Destino não corresponde à base isolada Neon alpha_aiven_backup_20261027 (conexão Direct)."; exit 1 ;;
+          esac
+          origem="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$AIVEN_SOURCE_URL" -c "SELECT current_database()")"
+          destino="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$NEON_TARGET_URL" -c "SELECT current_database()")"
+          [[ "$origem" == "alpha_prod_v2" && "$destino" == "alpha_aiven_backup_20261027" ]] || { echo "::error::Nome da base divergente."; exit 1; }
+          dst_count="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$NEON_TARGET_URL" -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
+          [[ "$dst_count" == "0" ]] || { echo "::error::Destino já contém tabelas. Não serão apagadas nem sobrescritas."; exit 1; }
+          src_count="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$AIVEN_SOURCE_URL" -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname='public'")"
+          (( src_count >= 70 )) || { echo "::error::Schema de origem não parece corresponder ao Alpha Bot."; exit 1; }
+          echo "Origem validada; $src_count tabelas públicas; destino isolado vazio."
+
+      - name: "Exportar snapshot consistente do Aiven (somente leitura)"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          mkdir -p /tmp/alpha-copy
+          pg_dump --dbname="$AIVEN_SOURCE_URL" \
+            --format=custom --blobs --no-owner --no-acl --file=/tmp/alpha-copy/alpha.dump
+          test -s /tmp/alpha-copy/alpha.dump
+          pg_restore --list /tmp/alpha-copy/alpha.dump > /tmp/alpha-copy/all.list
+          for tbl in users stats wallets pet_collection pets pet_team inventories trevo_games; do
+            grep -Eq " TABLE DATA public ${tbl} " /tmp/alpha-copy/all.list || { echo "::error::Tabela essencial ausente do dump: $tbl"; exit 1; }
+          done
+          sha256sum /tmp/alpha-copy/alpha.dump | awk '{ print "SHA-256 da cópia lógica (somente hash): " $1 }'
+          echo "Dump criado somente no container efêmero; não enviado aos artifacts do GitHub."
+
+      - name: "Restaurar sem sobrescrita e verificar tabelas"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          trap 'rm -rf /tmp/alpha-copy' EXIT
+          archive=/tmp/alpha-copy/alpha.dump
+          # Neon já cria o schema public, remover apenas esta entrada redundante do índice da cópia.
+          awk '!/ SCHEMA - public( |$)/ && !/ COMMENT - SCHEMA public( |$)/' /tmp/alpha-copy/all.list > /tmp/alpha-copy/restore.list
+          dst_count="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$NEON_TARGET_URL" -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
+          [[ "$dst_count" == "0" ]] || { echo "::error::Neon deixou de estar vazio: não executar restauração."; exit 1; }
+          pg_restore --dbname="$NEON_TARGET_URL" \
+            --use-list=/tmp/alpha-copy/restore.list \
+            --single-transaction --exit-on-error --no-owner --no-acl "$archive"
+          archive_tables="$(awk '$4=="TABLE" && $5=="public" {n++} END {print n+0}' /tmp/alpha-copy/all.list)"
+          restored_tables="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$NEON_TARGET_URL" -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname='public'")"
+          if (( archive_tables < 70 || restored_tables != archive_tables )); then
+            echo "::error::Tabelas divergem entre dump ($archive_tables) e destino ($restored_tables)."
+            exit 1
+          fi
+          psql -X -v ON_ERROR_STOP=1 --dbname="$NEON_TARGET_URL" -c "ANALYZE" >/dev/null
+          echo "Tabelas públicas restauradas: $restored_tables (iguais ao catálogo do dump)."
+          psql -X -v ON_ERROR_STOP=1 --dbname="$NEON_TARGET_URL" -c "
+            SELECT 'users' tabela, count(*) linhas FROM users
+            UNION ALL SELECT 'stats', count(*) FROM stats
+            UNION ALL SELECT 'pet_collection', count(*) FROM pet_collection
+            UNION ALL SELECT 'pets', count(*) FROM pets
+            UNION ALL SELECT 'pet_team', count(*) FROM pet_team
+            UNION ALL SELECT 'inventories', count(*) FROM inventories
+            UNION ALL SELECT 'trevo_games', count(*) FROM trevo_games ORDER BY tabela;"
+          echo "BACKUP RESTAURADO NO NEON. Aiven e Render não foram modificados."
