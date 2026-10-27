@@ -480,10 +480,11 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
   const boss=halloweenBoss()
   if(!boss){await reply('🎃 As batalhas de Halloween acontecem de 26/10 a 31/10. A loja abre sábado.');return true}
   const saved=await tx(async c=>{
-   const current=(await c.query('SELECT chat,active FROM halloween_players_2026 WHERE jid=$1 FOR UPDATE',[sender])).rows[0]
-   if(current?.active&&current.chat!==chat)throw new Error('Você já está atacando em outro grupo. Use o grupo original ou !halloween sair.')
-   const snap=await snapshotPower(c,sender)
+   const current=(await c.query('SELECT chat,active,lease_day,lease_expires_at FROM halloween_players_2026 WHERE jid=$1 FOR UPDATE',[sender])).rows[0]
    const stamp=Date.now()
+   const eligible=halloweenSessionValid(current,stamp,boss.day)
+   if(eligible&&current.chat!==chat)throw new Error('Você já está atacando em outro grupo. Use o grupo original ou !halloween sair.')
+   const snap=await snapshotPower(c,sender)
    await c.query(`INSERT INTO halloween_players_2026(jid,name,chat,day,power,defense,mystic_guard,power_refreshed,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$8,$7,$7)
     ON CONFLICT(jid) DO UPDATE SET name=EXCLUDED.name,chat=EXCLUDED.chat,active=TRUE,
@@ -491,11 +492,14 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
     power_refreshed=EXCLUDED.power_refreshed,updated_at=EXCLUDED.updated_at`,
     [sender,name||'Jogador',chat,boss.day,snap.power,snap.defense,stamp,snap.mysticGuard])
    await savePowerSnapshot(c,sender,snap,stamp)
-   // Retorno à caçada não recupera golpes durante o período inativo.
-   if(current&&!current.active)await c.query('UPDATE halloween_players_2026 SET last_attack=0 WHERE jid=$1',[sender])
-   return snap
+   const expiresAt=halloweenHourlyEnabled(stamp)?halloweenSessionExpiry(stamp):0
+   await c.query(`UPDATE halloween_players_2026
+    SET lease_day=$2,lease_expires_at=$3,lease_notice_until=0,
+        last_attack=CASE WHEN $4 THEN 0 ELSE last_attack END
+    WHERE jid=$1`,[sender,boss.day,expiresAt,!eligible])
+   return {...snap,expiresAt,renewed:eligible}
   })
-  await reply('🎃⚔️ *ENTROU NO HALLOWEEN!*\n👹 '+boss.name+'\n⚔️ Rodadas automáticas a cada 10s; VEL dá prioridade e pode adiantar turnos.\n💥 Poder de ataque estimado: '+fmt(saved.power)+'\n🧩 Farm ilimitado por participação real.\n🛡️ Personagem e pet sofrem dano; poções e energéticos disponíveis podem ser usados automaticamente.\nUse *!halloween status* para acompanhar.')
+  await reply('🎃⚔️ *'+(saved.renewed?'HORA RENOVADA':'ENTROU NO HALLOWEEN')+'!*\n👹 '+boss.name+'\n⚔️ Rodadas automáticas a cada 10s; VEL dá prioridade e pode adiantar turnos.\n💥 Poder de ataque estimado: '+fmt(saved.power)+(saved.expiresAt?'\n⏳ Participação válida por *60 minutos*, até *'+halloweenSessionTime(saved.expiresAt)+'* (São Paulo).\n🔁 Depois, use *!halloween entrar* novamente para continuar.':'\n📅 A partir de 27/10, cada participação exigirá renovação de hora em hora.')+'\n🧩 Farm ilimitado por participação real.\n🛡️ Personagem e pet sofrem dano; poções e energéticos disponíveis podem ser usados automaticamente.\nUse *!halloween status* para acompanhar.')
   return true
  }
  if(['sair','parar'].includes(action)){
