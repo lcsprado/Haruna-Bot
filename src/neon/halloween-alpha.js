@@ -5,6 +5,7 @@ import {profileCombatPetBonuses} from './games.js'
 import {activeRelic} from './relics.js'
 import {HALLOWEEN_TICK_MS,halloweenAttackInterval,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
 import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction} from './halloween-rules.js'
+import {HALLOWEEN_SESSION_REMINDER_MS,HALLOWEEN_MAINTENANCE_MS,halloweenHourlyEnabled,halloweenSessionExpiry,halloweenSessionValid,halloweenSessionTime,halloweenSessionRemaining} from './halloween-session.js'
 
 const fmt=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
 const nowSec=()=>Math.floor(Date.now()/1000)
@@ -15,6 +16,7 @@ const POWER_REFRESH_MS=10*60000
 let scheduler=null
 let running=false
 let latestNotices=[]
+let lastHourlyMaintenanceMinute=-1
 async function tx(fn){
  const c=await db.connect()
  try{await c.query('BEGIN');const out=await fn(c);await c.query('COMMIT');return out}
@@ -40,7 +42,9 @@ export async function initHalloweenAlpha(){
   awakening_stage INTEGER NOT NULL DEFAULT 0,awakening_state JSONB NOT NULL DEFAULT '{}'::jsonb,
   last_proc_attack BIGINT NOT NULL DEFAULT 0,attempts BIGINT NOT NULL DEFAULT 0,
   boss_evades BIGINT NOT NULL DEFAULT 0,player_evades BIGINT NOT NULL DEFAULT 0,
-  critical_hits BIGINT NOT NULL DEFAULT 0)`)
+  critical_hits BIGINT NOT NULL DEFAULT 0,
+  lease_day TEXT NOT NULL DEFAULT '',lease_expires_at BIGINT NOT NULL DEFAULT 0,
+  lease_notice_until BIGINT NOT NULL DEFAULT 0)`)
  // Migração aditiva: preserva golpes, dano, prêmios e pontuações do evento já iniciado.
  await db.query(`ALTER TABLE halloween_players_2026
   ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0,
@@ -57,7 +61,10 @@ export async function initHalloweenAlpha(){
   ADD COLUMN IF NOT EXISTS attempts BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS boss_evades BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS player_evades BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS critical_hits BIGINT NOT NULL DEFAULT 0`)
+  ADD COLUMN IF NOT EXISTS critical_hits BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS lease_day TEXT NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS lease_expires_at BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS lease_notice_until BIGINT NOT NULL DEFAULT 0`)
  await db.query('UPDATE halloween_players_2026 SET attempts=hits WHERE attempts<hits')
  await db.query(`CREATE TABLE IF NOT EXISTS halloween_rewards_2026(
   day TEXT NOT NULL,cycle INTEGER NOT NULL,jid TEXT NOT NULL,
@@ -272,8 +279,32 @@ async function tickHalloween(){
   if(!locked.rows[0]?.locked)return []
   let state=await ensureDay(c,boss)
   const alerts=[]
+  // A sessão do jogador precisa ser renovada de hora em hora a partir de 27/10.
+  // Expiração é reforçada também no SELECT dos combatentes (imediata).
+  // Avisos e limpeza no banco são executados apenas uma vez por minuto.
+  if(halloweenHourlyEnabled(now)){
+   const minute=Math.floor(now/HALLOWEEN_MAINTENANCE_MS)
+   if(minute!==lastHourlyMaintenanceMinute){
+    const ended=(await c.query(`UPDATE halloween_players_2026
+     SET active=FALSE,last_attack=0,updated_at=$2
+     WHERE active=TRUE AND (lease_day<>$1 OR lease_expires_at<=$2)
+     RETURNING name,chat,lease_day,lease_expires_at`,[boss.day,now])).rows
+    const soon=(await c.query(`UPDATE halloween_players_2026
+     SET lease_notice_until=lease_expires_at
+     WHERE active=TRUE AND lease_day=$1
+       AND lease_expires_at>$2 AND lease_expires_at<=$2+$3
+       AND lease_notice_until<>lease_expires_at
+     RETURNING name,chat,lease_expires_at`,[boss.day,now,HALLOWEEN_SESSION_REMINDER_MS])).rows
+    // A abertura do novo Boss já avisa a turma para entrar.
+    for(const p of ended){
+     if(p.lease_day===boss.day)alerts.push({type:'session_expired',chat:p.chat,name:p.name})
+    }
+    for(const p of soon)alerts.push({type:'session_warning',chat:p.chat,name:p.name,expiresAt:Number(p.lease_expires_at)})
+    lastHourlyMaintenanceMinute=minute
+   }
+  }
   if(Number(state.hp)<=0){
-   if(now<Number(state.revive_at||0))return []
+   if(now<Number(state.revive_at||0))return alerts
    const cycle=Number(state.cycle)+1
    await c.query('UPDATE halloween_boss_days_2026 SET cycle=$2,hp=max_hp,revive_at=0,updated_at=$3 WHERE day=$1',[boss.day,cycle,now])
    await c.query('UPDATE halloween_players_2026 SET round_damage=0 WHERE active=TRUE')
@@ -281,7 +312,10 @@ async function tickHalloween(){
    alerts.push({type:'respawn',boss:boss.name,cycle})
   }
   // Sem LIMIT por JID: participantes ativos não podem ser excluídos por posição na tabela.
-  const players=(await c.query('SELECT * FROM halloween_players_2026 WHERE active=TRUE FOR UPDATE')).rows
+  const players=(await c.query(halloweenHourlyEnabled(now)
+    ? 'SELECT * FROM halloween_players_2026 WHERE active=TRUE AND lease_day=$1 AND lease_expires_at>$2 FOR UPDATE'
+    : 'SELECT * FROM halloween_players_2026 WHERE active=TRUE FOR UPDATE',
+    halloweenHourlyEnabled(now)?[boss.day,now]:[])).rows
   if(!players.length)return alerts
   for(const row of players){
    if(String(row.day)!==boss.day){
@@ -420,13 +454,20 @@ async function status(jid){
  return {boss,player:p.rows[0],souls:Number(inv.rows[0]?.quantity||0),state:bs.rows[0]||null}
 }
 function formatStatus(s){
- const active=s.player?.active?'✅ Combate automático ativado':'⏸️ Fora do combate'
+ const now=Date.now()
+ const eligible=halloweenSessionValid(s.player,now,s.boss?.day)
+ const active=eligible?'✅ Combate automático ativado':'⏸️ Fora do combate'
  const state=s.state
  const speed=Math.max(0,Number(s.player?.speed||0))
  const interval=(halloweenAttackInterval(speed)/1000).toFixed(2).replace('.',',')
+ const lease=halloweenHourlyEnabled(now)
+  ?(eligible?'⏳ Sessão até *'+halloweenSessionTime(s.player?.lease_expires_at)+'* (faltam *'+halloweenSessionRemaining(s.player?.lease_expires_at,now)+' min*)'
+    :'🔁 *Sessão encerrada ou não iniciada*: use *!halloween entrar* para ativar 60 minutos')
+  :'📅 Amanhã (27/10), será necessário renovar com *!halloween entrar* a cada 1 hora.'
  return '🎃 *HALLOWEEN ALPHA — CAÇADA DAS ALMAS*\n'+
  (s.boss?'👹 *'+s.boss.name+'*\n🛡️ '+s.boss.mechanic+'\n❤️ HP: *'+fmt(state?.hp??s.boss.hp)+'/'+fmt(state?.max_hp??s.boss.hp)+'* • Ciclo '+Number(state?.cycle||1)+(Number(state?.revive_at)>Date.now()?' • Ressurge em breve':'')+'\n':'🏁 Bosses encerrados. A loja encerra domingo ao meio-dia.\n')+
  '⚔️ '+active+' • rodadas globais de *10 segundos*\n'+
+ '🕒 '+lease+'\n'+
  '⚡ VEL: *'+fmt(speed)+'* • intervalo próprio: *'+interval+'s* (bônus limitado a +25% de frequência)\n'+
  '🎯 CRIT: *'+(Number(s.player?.crit||0)*100).toFixed(1).replace('.',',')+'%* • 🌀 Esquiva de pet: *'+(Number(s.player?.dodge||0)*100).toFixed(1).replace('.',',')+'%*\n'+
  '🥊 Golpes acertados: *'+fmt(s.player?.hits||0)+'* • Tentativas: *'+fmt(s.player?.attempts||0)+'*\n'+
@@ -446,10 +487,11 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
   const boss=halloweenBoss()
   if(!boss){await reply('🎃 As batalhas de Halloween acontecem de 26/10 a 31/10. A loja abre sábado.');return true}
   const saved=await tx(async c=>{
-   const current=(await c.query('SELECT chat,active FROM halloween_players_2026 WHERE jid=$1 FOR UPDATE',[sender])).rows[0]
-   if(current?.active&&current.chat!==chat)throw new Error('Você já está atacando em outro grupo. Use o grupo original ou !halloween sair.')
-   const snap=await snapshotPower(c,sender)
+   const current=(await c.query('SELECT chat,active,lease_day,lease_expires_at FROM halloween_players_2026 WHERE jid=$1 FOR UPDATE',[sender])).rows[0]
    const stamp=Date.now()
+   const eligible=halloweenSessionValid(current,stamp,boss.day)
+   if(eligible&&current.chat!==chat)throw new Error('Você já está atacando em outro grupo. Use o grupo original ou !halloween sair.')
+   const snap=await snapshotPower(c,sender)
    await c.query(`INSERT INTO halloween_players_2026(jid,name,chat,day,power,defense,mystic_guard,power_refreshed,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$8,$7,$7)
     ON CONFLICT(jid) DO UPDATE SET name=EXCLUDED.name,chat=EXCLUDED.chat,active=TRUE,
@@ -457,15 +499,18 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
     power_refreshed=EXCLUDED.power_refreshed,updated_at=EXCLUDED.updated_at`,
     [sender,name||'Jogador',chat,boss.day,snap.power,snap.defense,stamp,snap.mysticGuard])
    await savePowerSnapshot(c,sender,snap,stamp)
-   // Retorno à caçada não recupera golpes durante o período inativo.
-   if(current&&!current.active)await c.query('UPDATE halloween_players_2026 SET last_attack=0 WHERE jid=$1',[sender])
-   return snap
+   const expiresAt=halloweenHourlyEnabled(stamp)?halloweenSessionExpiry(stamp):0
+   await c.query(`UPDATE halloween_players_2026
+    SET lease_day=$2,lease_expires_at=$3,lease_notice_until=0,
+        last_attack=CASE WHEN $4 THEN 0 ELSE last_attack END
+    WHERE jid=$1`,[sender,boss.day,expiresAt,!eligible])
+   return {...snap,expiresAt,renewed:eligible}
   })
-  await reply('🎃⚔️ *ENTROU NO HALLOWEEN!*\n👹 '+boss.name+'\n⚔️ Rodadas automáticas a cada 10s; VEL dá prioridade e pode adiantar turnos.\n💥 Poder de ataque estimado: '+fmt(saved.power)+'\n🧩 Farm ilimitado por participação real.\n🛡️ Personagem e pet sofrem dano; poções e energéticos disponíveis podem ser usados automaticamente.\nUse *!halloween status* para acompanhar.')
+  await reply('🎃⚔️ *'+(saved.renewed?'HORA RENOVADA':'ENTROU NO HALLOWEEN')+'!*\n👹 '+boss.name+'\n⚔️ Rodadas automáticas a cada 10s; VEL dá prioridade e pode adiantar turnos.\n💥 Poder de ataque estimado: '+fmt(saved.power)+(saved.expiresAt?'\n⏳ Participação válida por *60 minutos*, até *'+halloweenSessionTime(saved.expiresAt)+'* (São Paulo).\n🔁 Depois, use *!halloween entrar* novamente para continuar.':'\n📅 A partir de 27/10, cada participação exigirá renovação de hora em hora.')+'\n🧩 Farm ilimitado por participação real.\n🛡️ Personagem e pet sofrem dano; poções e energéticos disponíveis podem ser usados automaticamente.\nUse *!halloween status* para acompanhar.')
   return true
  }
  if(['sair','parar'].includes(action)){
-  await db.query('UPDATE halloween_players_2026 SET active=FALSE,updated_at=$2 WHERE jid=$1',[sender,Date.now()])
+  await db.query('UPDATE halloween_players_2026 SET active=FALSE,lease_expires_at=0,lease_notice_until=0,last_attack=0,updated_at=$2 WHERE jid=$1',[sender,Date.now()])
   await reply('⏸️ Combate automático do Halloween pausado. Seus fragmentos, XP e pontos foram preservados.')
   return true
  }
@@ -532,9 +577,37 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
     const groupsOpening=await listGroups()
     if(groupsOpening.length&&await claimNotice('halloween_day_20261026:'+boss.day)){
      const groups=groupsOpening
-     await broadcast(sock,groups,'🎃👹 *HALLOWEEN ALPHA — '+boss.name+'*\n⏰ Boss global até 23h59, ataques automáticos a cada 10 segundos!\n❤️ HP inicial: *'+fmt(boss.hp)+'*\n💀 3 fases e renascimento após derrota.\n🧩 Almas ilimitadas, 2× XP personagem/pet e quatro itens lendários raros.\n👉 Digite *!halloween entrar* para participar.\n🐎 Trocas pelo Corcel Espectral abrem sábado.')
+     await broadcast(sock,groups,'🎃👹 *HALLOWEEN ALPHA — '+boss.name+'*\n⏰ Boss global até 23h59!\n❤️ HP inicial: *'+fmt(boss.hp)+'*\n💀 3 fases e renascimento após derrota.\n🧩 Almas ilimitadas, 2× XP personagem/pet e quatro itens lendários raros.\n'+(halloweenHourlyEnabled(now)?'🔁 *NOVA REGRA: a cada 1 hora, confirme sua participação!*\n⚔️ Ataques automáticos só durante os 60 minutos após *!halloween entrar*.\n⌛ O bot avisa 5 minutos antes de acabar.':'⚔️ Hoje os ataques continuam automáticos; a renovação por hora começa amanhã.')+'\n👉 Digite *!halloween entrar* para participar.\n🐎 Trocas pelo Corcel Espectral abrem sábado.')
     }
     const alerts=await tickHalloween()
+    // Uma mensagem consolidada por grupo e por minuto evita flood.
+    const sessionGroups=new Map()
+    for(const alert of alerts){
+     if(!['session_warning','session_expired'].includes(alert.type))continue
+     if(!String(alert.chat||'').endsWith('@g.us'))continue
+     if(!sessionGroups.has(alert.chat))sessionGroups.set(alert.chat,{warning:[],expired:[]})
+     const list=sessionGroups.get(alert.chat)
+     if(alert.type==='session_warning')list.warning.push(alert)
+     else list.expired.push(alert)
+    }
+    for(const [groupChat,notices] of sessionGroups){
+     const warning=notices.warning.length?
+      '⏳ *HALLOWEEN — FALTAM ATÉ 5 MINUTOS*\n'+
+      notices.warning.map(p=>'• '+p.name+' — até '+halloweenSessionTime(p.expiresAt)).join('\n')+
+      '\n🔁 Renovem com *!halloween entrar*.':null
+     const expired=notices.expired.length?
+      '⌛ *SESSÃO DE HALLOWEEN ENCERRADA*\n'+
+      notices.expired.map(p=>'• '+p.name).join('\n')+
+      '\n⚔️ Ataques pausados até *!halloween entrar*.':null
+     const notice=[warning,expired].filter(Boolean).join('\n\n')
+     if(notice){
+      const ok=await Promise.race([
+       sock.sendMessage(groupChat,{text:notice}).then(()=>true).catch(()=>false),
+       delay(3000).then(()=>false)
+      ])
+      if(!ok)console.warn('[HALLOWEEN] aviso de sessão não confirmado',groupChat)
+     }
+    }
     for(const a of alerts){
      if(a.type==='defeated'){
       const key='halloween_win:'+boss.day+':'+a.cycle

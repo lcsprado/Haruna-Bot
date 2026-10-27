@@ -1,0 +1,36 @@
+name: Alpha Bot - Halloween hourly enrollment
+
+on:
+  push:
+    branches: [feat/halloween-hourly-reentry-20261027, whatsapp-only]
+    paths:
+      - 'src/neon/halloween-session.js'
+      - 'src/neon/halloween-alpha.js'
+      - 'test/halloween-session-hourly-20261027.test.mjs'
+      - '.github/workflows/halloween-session-validation.yml'
+  pull_request:
+    paths:
+      - 'src/neon/halloween-session.js'
+      - 'src/neon/halloween-alpha.js'
+      - 'test/halloween-session-hourly-20261027.test.mjs'
+      - '.github/workflows/halloween-session-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-hourly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate JavaScript syntax
+        run: |
+          node --check src/neon/halloween-alpha.js
+          node --check src/neon/halloween-session.js
+          node --check src/neon/halloween-combat.js
+      - name: Verify midnight cutover, expiry, notices and combat rules
+        run: node --test test/halloween-session-hourly-20261027.test.mjs test/halloween-combat-fairness-20261026.test.mjs test/halloween-alpha-20261026.test.mjs
