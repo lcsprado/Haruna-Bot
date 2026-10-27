@@ -49,7 +49,7 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
   const index=Math.max(1,Math.floor(Number(attackIndex)||1));
   const stage=Math.max(1,Math.min(5,Math.floor(Number(masteryStage)||1)));
   const special=index%8===0&&stage>=2,ultimate=index%25===0&&stage>=3;
-  let bonus=0,heal=0,allyHeal=0;
+  let bonus=(stage>=4?.01:0)+(stage>=5?.01:0),heal=0,allyHeal=0;
   if(id==='pecado_escanor'){
     bonus=Number(hp)/Math.max(1,Number(maxHp))>.7?.04:0;
     if(special)bonus+=.15;
