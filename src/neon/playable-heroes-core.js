@@ -51,7 +51,7 @@ export function persistHeroHpDelta({previousPersistentHp=0,previousCombatHp=0,
   let rest=exact-integral;
   if(after<=0){hp=0;rest=0;}
   else if(after>=cmax){hp=pmax;rest=0;}
-  else if(hp<=0||hp>=pmax)rest=0;
+  else {hp=Math.max(1,hp);if(hp>=pmax)rest=0;}
   return {hp,remainder:rest};
 }
 
