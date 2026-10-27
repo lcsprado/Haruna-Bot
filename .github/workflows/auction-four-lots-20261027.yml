@@ -1,0 +1,31 @@
+name: Auction four lots 27 Oct validation
+on:
+  push:
+    branches: ['feat/auction-four-lots-20261027-1430']
+  pull_request:
+    branches: ['whatsapp-only']
+    paths:
+      - 'src/neon/auction-alpha.js'
+      - 'src/neon/db.js'
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/pet-astral-wildcard.js'
+      - 'test/auction-four-lots-20261027.test.mjs'
+      - '.github/workflows/auction-four-lots-20261027.yml'
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check src/neon/auction-alpha.js
+          node --check src/neon/db.js
+          node --check src/neon/game-catalog.js
+          node --check src/neon/pet-astral-wildcard.js
+          node --check test/auction-four-lots-20261027.test.mjs
+      - name: Verify auction and wildcard
+        run: node --test test/auction-four-lots-20261027.test.mjs test/auction-cross-group-notices.test.mjs
