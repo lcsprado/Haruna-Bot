@@ -1,4 +1,5 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
+import {getOwnerEventMultiplier} from './owner-event-center.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
@@ -1142,6 +1143,11 @@ async function finishRaidRewards(c,s,cfg,chat){
     Number(fragmentEvent.multiplier||0)===2
   const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive || rewardEventActive
   const cacadaActive=cacadaAlphaActive()
+  const ownerRaid=await getOwnerEventMultiplier(c,'raid')
+  const ownerDrop=await getOwnerEventMultiplier(c,'drop')
+  const ownerFragments=await getOwnerEventMultiplier(c,'fragmentos')
+  const ownerGeneralXp=await getOwnerEventMultiplier(c,'xp')
+  const ownerGeneralPet=await getOwnerEventMultiplier(c,'pet')
   // 18/10: hora dourada de Raid, apenas dinheiro e EXP do jogador.
   // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
   const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
@@ -1150,8 +1156,8 @@ async function finishRaidRewards(c,s,cfg,chat){
   // Caçada de Sábado: aplica somente à EXP de jogador em Raids 50/60/65/70.
   // MAX evita multiplicação indevida se outro evento de Raid coincidir.
   const saturdayXp=saturdayRaidXpMultiplier(cfg.level,now)
-  const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp)
-  const petXpMultiplier=raidEventActive?1.5:(cacadaActive?1.25:1)
+  const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid/ownerGeneralXp)
+  const petXpMultiplier=Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid/ownerGeneralPet)
   const gearEventBonus=raidEventActive?.015:0
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
@@ -1227,7 +1233,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const baseQty=eligibleMaterial?weightedRange(range[0],range[1]):0
     // Invasão mantém 3x quando ativa; evento independente concede 2x apenas nos materiais.
     // Não acumula multiplicadores e não modifica as demais recompensas.
-    const qty=baseQty*(raidEventActive?3:(doubleRaidFragments?2:1))
+    const qty=baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments)
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
@@ -1245,6 +1251,7 @@ async function finishRaidRewards(c,s,cfg,chat){
         boxChance=Math.min(.35,.06+share*.325+Number(pb.drop||0)*.20)
       }
       if(cacadaActive) boxChance=Math.min(.70,boxChance*1.20)
+      boxChance=Math.min(.85,boxChance*ownerDrop)
       if(Math.random()<boxChance){
         await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
         drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
@@ -1257,7 +1264,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       const collaborationBonus=Math.min(.004,share*.008)
       const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
       const baseGearChance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
-      const chance=cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance
+      const chance=Math.min(.12,(cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance)*ownerDrop)
       // Acerto de recompensa individual e de uso único: segue o fluxo comum de drop.
       // A chave transacional impede repetição, inclusive após restart ou em grupos diferentes.
       let singleUseGear=null
