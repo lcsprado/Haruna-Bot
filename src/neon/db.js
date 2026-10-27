@@ -2544,6 +2544,7 @@ collectionId=active?Number(active.id):null
 }
 }
 if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
+if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados agora são personagens jogáveis, não recebem poções de pet.')
 const maxHp=petMaxHp(pet.level,pet.xp,pet.species)
 const before=Math.max(0,Number(pet.hp??maxHp))
 if(before>=maxHp) throw new Error(`O HP de ${pet.name} já está cheio (${maxHp}/${maxHp}).`)
@@ -5532,6 +5533,7 @@ collectionPet=(await client.query(
 const legacy=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 const pet=collectionPet||legacy
 if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
+if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados são personagens, e não podem ser renomeados como pet.')
 if(String(pet.name||'').toLocaleLowerCase('pt-BR')===newName.toLocaleLowerCase('pt-BR')) throw new Error('Esse já é o nome desse pet.')
 const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
