@@ -33,7 +33,7 @@ export function heroCombatStats(st,heroId){
 // os bônus do herói ou substitui a classe/Despertar no banco.
 export function heroHpToPersistent(hp,combatMaxHp,persistentMaxHp){
   const combat=Math.max(1,Number(combatMaxHp)||1),max=Math.max(1,Number(persistentMaxHp)||1);
-  return Math.max(0,Math.min(max,Math.floor(Math.max(0,Number(hp)||0)/combat*max)));
+  return Math.max(0,Math.min(max,Math.max(Number(hp)>0?1:0,Math.floor(Math.max(0,Number(hp)||0)/combat*max))));
 }
 export function excludeActiveHeroPet(team,heroId){
   if(!heroId)return [...(team||[])];
