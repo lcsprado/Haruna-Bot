@@ -4989,22 +4989,28 @@ const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
 const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
 const collabActive=team.length===3&&unique&&count===3
+// A collab exige três heróis para bônus pleno; o Guaxinim libera apenas o elo reduzido com dois heróis.
+const collabAssist=team.length===3&&unique&&count===2&&species.includes('guaxinim_errante_20261027')
+const assistDamage=collabAssist?.10:0
+const assistCrit=collabAssist?.02:0
 const styles=resolveBatTeamStyles(species)
 const wildcard=team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
 const base=team.length===3&&unique
   ?(wildcard?(wildcard.universal?PET_TEAM_WILDCARD_BONUS:PET_TEAM_STYLE_BONUS[wildcard.style])
     :(styles[0]&&styles.every(s=>s===styles[0])?PET_TEAM_STYLE_BONUS[styles[0]]:null))
   :null
-if(!base&&!collabActive)return null
-const attack=Number(base?.attack||0)+(collabActive?pecadosBonus(count):0)
-const crit=Number(base?.crit||0)+(collabActive?.05:0)
-const collabText=collabActive?'🌈 3 Pecados: +'+Math.round(pecadosBonus(count)*100)+'% dano e +5 p.p. CRIT':''
+if(!base&&!collabActive&&!collabAssist)return null
+const attack=Number(base?.attack||0)+(collabActive?pecadosBonus(count):assistDamage)
+const crit=Number(base?.crit||0)+(collabActive?.05:assistCrit)
+const collabText=collabActive?'🌈 3 Pecados: +'+Math.round(pecadosBonus(count)*100)+'% dano e +5 p.p. CRIT':
+  collabAssist?'🌈 2 Pecados + Guaxinim Coringa: +10% dano e +2 p.p. CRIT':''
 return {
 ...(base||{}),style:wildcard?.style||base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
-label:[base?.label, collabActive?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
+label:[base?.label, collabActive?'🌈 7 Pecados Capitais':collabAssist?'🌈 Elo de Collab — Coringa':null].filter(Boolean).join(' + '),
 text:[base?.text,collabText].filter(Boolean).join(' | '),
 attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
-collabCount:collabActive?3:0,collabAttack:collabActive?pecadosBonus(count):0,collabCrit:collabActive?.05:0
+collabCount:collabActive?3:0,collabAssist,
+collabAttack:collabActive?pecadosBonus(count):assistDamage,collabCrit:collabActive?.05:assistCrit
 }
 }
 export const LEGENDARY_PET_SUMMONS=[
