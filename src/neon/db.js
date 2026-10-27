@@ -3946,10 +3946,19 @@ startsInMs:Math.max(0,startsAt-now)
 export async function getDoubleRewardEvent(){
 return readDoubleRewardEvent(db)
 }
+// Bonus individuais da Central do Owner: nunca empilhar eventos da mesma categoria.
+async function readOwnerMultiplier(queryable,type){
+const row=(await queryable.query('SELECT value FROM trevo_settings WHERE key=$1',['owner_event_center:'+type])).rows[0]?.value||{}
+const now=Date.now()
+if(!(Number(row.startsAt||0)>0&&Number(row.startsAt)<=now&&now<Number(row.endsAt||0)))return 1
+const max=type==='xp'||type==='pet'?3:2
+return Math.min(max,Math.max(1,Number(row.multiplier||1)))
+}
 export async function getDoubleEventMultiplier(queryable=db,kind='money'){
 const event=await readDoubleRewardEvent(queryable)
-if(!event.active) return 1
-return kind==='xp' ? event.xpMultiplier : event.moneyMultiplier
+const legacy=event.active?(kind==='xp'?event.xpMultiplier:event.moneyMultiplier):1
+const owner=await readOwnerMultiplier(queryable,kind==='xp'?'xp':'dinheiro')
+return Math.max(legacy,owner)
 }
 export async function getPetXpEventMultiplier(queryable=db){
 const {rows}=await queryable.query("SELECT value FROM trevo_settings WHERE key='pet_care_event'")
@@ -3957,8 +3966,8 @@ const raw=rows[0]?.value||{}
 const now=Date.now()
 const startsAt=Number(raw.startsAt||0)
 const endsAt=Number(raw.endsAt||0)
-if(!startsAt||startsAt>now||endsAt<=now) return 1
-return Math.max(1,Number(raw.multiplier||2))
+const legacy=startsAt&&startsAt<=now&&endsAt>now?Math.max(1,Number(raw.multiplier||2)):1
+return Math.max(legacy,await readOwnerMultiplier(queryable,'pet'))
 }
 export async function startDoubleRewardEvent(minutes=20,activatedBy='owner',moneyMultiplier=2,xpMultiplier=2){
 minutes=Number(minutes)
@@ -4023,7 +4032,7 @@ return readLuckyBoxEvent(db)
 }
 export async function getLuckyBoxMultiplier(queryable=db){
 const event=await readLuckyBoxEvent(queryable)
-return event.active ? event.multiplier : 1
+return Math.max(event.active?event.multiplier:1,await readOwnerMultiplier(queryable,'sorte'))
 }
 export async function getLaunchPrice() {
 const { rows } = await db.query(
