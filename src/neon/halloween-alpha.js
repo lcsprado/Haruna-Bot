@@ -580,6 +580,34 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
      await broadcast(sock,groups,'🎃👹 *HALLOWEEN ALPHA — '+boss.name+'*\n⏰ Boss global até 23h59, ataques automáticos a cada 10 segundos!\n❤️ HP inicial: *'+fmt(boss.hp)+'*\n💀 3 fases e renascimento após derrota.\n🧩 Almas ilimitadas, 2× XP personagem/pet e quatro itens lendários raros.\n👉 Digite *!halloween entrar* para participar.\n🐎 Trocas pelo Corcel Espectral abrem sábado.')
     }
     const alerts=await tickHalloween()
+    // Uma mensagem consolidada por grupo e por minuto evita flood.
+    const sessionGroups=new Map()
+    for(const alert of alerts){
+     if(!['session_warning','session_expired'].includes(alert.type))continue
+     if(!String(alert.chat||'').endsWith('@g.us'))continue
+     if(!sessionGroups.has(alert.chat))sessionGroups.set(alert.chat,{warning:[],expired:[]})
+     const list=sessionGroups.get(alert.chat)
+     if(alert.type==='session_warning')list.warning.push(alert)
+     else list.expired.push(alert)
+    }
+    for(const [groupChat,notices] of sessionGroups){
+     const warning=notices.warning.length?
+      '⏳ *HALLOWEEN — FALTAM ATÉ 5 MINUTOS*\\n'+
+      notices.warning.map(p=>'• '+p.name+' — até '+halloweenSessionTime(p.expiresAt)).join('\\n')+
+      '\\n🔁 Renovem com *!halloween entrar*.':null
+     const expired=notices.expired.length?
+      '⌛ *SESSÃO DE HALLOWEEN ENCERRADA*\\n'+
+      notices.expired.map(p=>'• '+p.name).join('\\n')+
+      '\\n⚔️ Ataques pausados até *!halloween entrar*.':null
+     const notice=[warning,expired].filter(Boolean).join('\\n\\n')
+     if(notice){
+      const ok=await Promise.race([
+       sock.sendMessage(groupChat,{text:notice}).then(()=>true).catch(()=>false),
+       delay(3000).then(()=>false)
+      ])
+      if(!ok)console.warn('[HALLOWEEN] aviso de sessão não confirmado',groupChat)
+     }
+    }
     for(const a of alerts){
      if(a.type==='defeated'){
       const key='halloween_win:'+boss.day+':'+a.cycle
