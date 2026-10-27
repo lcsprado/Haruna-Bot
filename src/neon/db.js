@@ -4994,13 +4994,14 @@ const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
 const collab=team.length===3&&unique?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
 const styles=resolveBatTeamStyles(species)
-const wildcard=team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
-const base=team.length===3&&unique
+// Uma Collab ativa tem prioridade exclusiva: sem Elo Universal nem sinergia de estilo.
+const wildcard=!collab&&team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
+const base=!collab&&team.length===3&&unique
   ?(wildcard?(wildcard.universal?PET_TEAM_WILDCARD_BONUS:PET_TEAM_STYLE_BONUS[wildcard.style])
     :(styles[0]&&styles.every(s=>s===styles[0])?PET_TEAM_STYLE_BONUS[styles[0]]:null))
   :null
 if(!base&&!collab)return null
-// Preserva a sinergia de estilo preexistente. Bônus de Collab é sempre um só.
+// Estilo funciona sem Collab; quando ela ativa, somente seus próprios bônus se aplicam.
 const attack=Number(base?.attack||0)+Number(collab?.attack||0)
 const crit=Number(base?.crit||0)+Number(collab?.crit||0)
 const collabText=collab
