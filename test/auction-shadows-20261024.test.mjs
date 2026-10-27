@@ -24,32 +24,34 @@ test('2 minutos por lote e prorrogação no limite, sem ultrapassar 2 minutos',(
   assert.equal(extendAuctionDeadline(120000,0,120000).extended,false)
 })
 
-test('três lotes de consumíveis, uma edição nova, sem reutilizar dinheiro dos leilões passados',()=>{
-  assert.match(auction,/const KEY='leilao_consumiveis_tres_lotes_20261024_v1'/)
-  const packages=auction.split('const PACKAGES=[')[1]?.split('\n]\nlet timer=')[0]||''
-  assert.equal(packages.split("  [{").length-1,3)
-  assert.match(auction,/const START=Date\.parse\('2026-10-24T18:30:00-03:00'\)/)
-  assert.match(auction,/shufflePackages\(\)/)
-  assert.match(auction,/await finishLot\(state,c\)/)
-  assert.match(auction,/await prize\(c,high\.jid,lot\.prize\)/)
+test('eventos antigos não são reativados pelo leilão de 27/10',()=>{
+  assert.match(auction,/const KEY='leilao_quatro_destinos_20261027_1430_v1'/)
+  assert.doesNotMatch(auction,/const KEY='leilao_consumiveis_tres_lotes_20261024_v1'/)
+  assert.doesNotMatch(auction,/const KEY='leilao_oculto_alpha_20261020/)
+  const packages=auction.split('const PACKAGES=[')[1]?.split('\\n]\\nlet timer=')[0]||''
+  assert.equal(packages.split("  [{").length-1,4)
+  assert.match(auction,/const START=Date\\.parse\\('2026-10-27T14:30:00-03:00'\\)/)
+  assert.match(auction,/shufflePackages\\(\\)/)
+  assert.match(auction,/await finishLot\\(state,c\\)/)
+  assert.match(auction,/await prize\\(c,high\\.jid,lot\\.prize\\)/)
   assert.match(auction,/pg_advisory_xact_lock/)
-  assert.match(auction,/otherAuctionGroups\(state\.groups,chat\)/)
+  assert.match(auction,/otherAuctionGroups\\(state\\.groups,chat\\)/)
   assert.match(auction,/queueAuctionBidNotices/)
   assert.match(auction,/extendAuctionDeadline/)
-  assert.doesNotMatch(auction,/const KEY='leilao_oculto_alpha_20261020/)
 })
 
-test('prêmios são consumíveis utilizáveis e nenhum lote oferece equipamentos ou pets',()=>{
-  const packages=auction.split('const PACKAGES=[')[1]?.split('\n]\nlet timer=')[0]||''
-  assert.match(db,/elixir_leilao_1h_20261024:\{type:'boost'.*seconds:60\*60/)
+test('leilão atual mantém consumíveis e Coringa sem cancelar os itens históricos',()=>{
+  const packages=auction.split('const PACKAGES=[')[1]?.split('\\n]\\nlet timer=')[0]||''
+  assert.match(db,/elixir_leilao_1h_20261024:\\{type:'boost'.*seconds:60\\*60/)
   assert.match(db,/pergaminho_reclassificacao/)
   assert.match(index,/XP_SPECIAL_ITEM_IDS=.*elixir_leilao_1h_20261024/)
-  for(const id of ['elixir_leilao_2h','pergaminho_leilao_10k','pergaminho_reclassificacao','caixa_epica','caixa_lendaria','elixir_leilao_1h_20261024']){
+  for(const id of ['elixir_leilao_2h','pergaminho_leilao_10k','pergaminho_reclassificacao',
+    'caixa_epica','caixa_lendaria','guaxinim_errante_20261027',
+    'armadura_vigia_crepusculo_20261027','pocao_pet_full']){
     assert.ok(packages.includes(id),'prêmio ausente: '+id)
   }
-  assert.doesNotMatch(packages,/pet:|elmo_|bota_|espada_|armadura_/)
-  assert.match(auction,/3 lotes misteriosos, somente consumíveis/)
-  assert.match(auction,/totalLots:PACKAGES\.length/)
+  assert.match(catalog,/guaxinim_errante_20261027/)
+  assert.match(auction,/totalLots:PACKAGES\\.length/)
 })
 
 test('valor e líder aparecem entre grupos; os prêmios permanecem ocultos',()=>{
