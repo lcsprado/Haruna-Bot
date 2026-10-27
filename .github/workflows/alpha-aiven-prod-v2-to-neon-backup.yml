@@ -20,7 +20,7 @@ concurrency:
 jobs:
   backup:
     name: "pg_dump e pg_restore sem sobrescrever produção"
-    if: ${{ inputs.confirmacao }} == 'COPIAR_ALPHA_PROD_V2'
+    if: ${{ inputs.confirmacao == 'COPIAR_ALPHA_PROD_V2' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     container:
