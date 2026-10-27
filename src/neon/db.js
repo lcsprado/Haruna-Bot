@@ -13,6 +13,7 @@ import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
 import {checkPixLimits} from './pix-limits.js'
+import {careerGrossFromLevelCap} from './career-pay.js'
 const { Pool, Client } = pg
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
 // For Neon, keep the existing connection settings unchanged.
@@ -1047,13 +1048,13 @@ const newXp=oldXp+xpGain, newRank=careerRank(newXp)
 const playerRow=(await client.query('SELECT level FROM users WHERE jid=$1',[jid])).rows[0]
 const level=Math.max(1,Number(playerRow?.level)||1)
 const payCap=level<=20?1500:level<=50?3000:level<=100?5000:level<=150?7500:level<=200?10000:level<=250?12500:15000
-const base=Math.round(payCap/Math.max(1,newRank.mult))
+// Preserve o salário anterior dos cargos até Gerente; Diretor/CEO evoluem proporcionalmente.
 let event=null, factor=1
 const roll=Math.random()
 if(roll<.08){event='🌟 Excelente desempenho! Bônus de 50%.';factor=1.5}
 else if(roll<.15){event='⏰ Hora extra! Bônus de 25%.';factor=1.25}
 else if(roll<.19){event='😴 Dia complicado. Rendimento 15% menor.';factor=.85}
-const gross=Math.min(payCap,Math.max(1,Math.round(base*newRank.mult*factor*moneyMultiplier)))
+const gross=careerGrossFromLevelCap(payCap,newRank.mult,{performanceFactor:factor,eventMoneyMultiplier:moneyMultiplier})
 const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
 const tax=Math.floor(gross*(taxRate/100))
 const amount=gross-tax
