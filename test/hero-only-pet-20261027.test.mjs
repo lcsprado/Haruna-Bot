@@ -46,7 +46,7 @@ test('sinergia antiga, potes, duelos e expedições não reativam Pecados',()=>{
   assert.match(db,/Os Sete Pecados não podem integrar Time Pet/)
   assert.match(db,/não recebem poções de pet/)
   assert.match(db,/não participam de expedições de pets/)
-  assert.match(db,/personagens jogáveis, nunca pets/)
+  assert.match(db,/Os Sete Pecados são personagens jogáveis/)
   assert.match(games,/p\.teamPassives=\(p\.teamPassives\|\|\[\]\)\.filter/)
   assert.match(games,/function petBossBonus\(pet\)/)
   assert.match(games,/PECADOS_HERO_IDS\.includes\(String\(pet\.species\|\|''\)\)/)
