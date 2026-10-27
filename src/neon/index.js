@@ -80,6 +80,7 @@ import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
+import {initPlayableHeroes,handlePlayableHeroCommand} from './playable-heroes.js'
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
@@ -1887,6 +1888,7 @@ critPct:rawPct(Number(stats.crit||0))
 }
 async function start() {
 await initDatabase()
+await initPlayableHeroes()
 await initAwakening()
 await initRelics()
 await initEnchantments()
@@ -9647,6 +9649,7 @@ timingMarks.loans=Date.now()
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
+if(await handlePlayableHeroCommand({cmd,args,sender,reply})) continue
 if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.key?.id?chat+':'+msg.key.id:null})) continue
 if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
