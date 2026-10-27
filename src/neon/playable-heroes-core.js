@@ -42,12 +42,13 @@ export function excludeActiveHeroPet(team,heroId){
 
 // Efeitos pessoais e limitados, sem debuff global permanente de Boss.
 // Nao usam passivas da classe, bonus especiais do mesmo pet nem Despertar.
-export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},context='raid'}={}){
+export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},context='raid',masteryStage=1}={}){
   const id=String(heroId||''),n=Math.max(1,Math.floor(Number(damage)||1));
   if(!HERO_COMBAT_PROFILES[id])return {damage:n,heal:0,allyHeal:0,state:{...(state||{})},activated:false};
   const next={...(state||{})};
   const index=Math.max(1,Math.floor(Number(attackIndex)||1));
-  const special=index%8===0,ultimate=index%25===0;
+  const stage=Math.max(1,Math.min(5,Math.floor(Number(masteryStage)||1)));
+  const special=index%8===0&&stage>=2,ultimate=index%25===0&&stage>=3;
   let bonus=0,heal=0,allyHeal=0;
   if(id==='pecado_escanor'){
     bonus=Number(hp)/Math.max(1,Number(maxHp))>.7?.04:0;
