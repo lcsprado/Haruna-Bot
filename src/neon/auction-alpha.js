@@ -1,4 +1,4 @@
-// Leilão do Tesouro Alpha — 5 lotes reais, secretos e com lances públicos.
+// Leilão dos Quatro Destinos — 4 lotes reais, secretos e com lances públicos.
 // Conteúdo oculto até o encerramento. Duração: 2 minutos por lote.
 // Estado, lances reservados e entrega final são transacionais no banco ativo.
 import {randomInt,randomBytes,createHash} from 'node:crypto'
@@ -8,14 +8,14 @@ import {initEnchantments} from './enchantments-alpha.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
 import {initAuctionNoticeOutbox,queueAuctionBidNotices,auctionNoticeSummary,flushAuctionBidNotices,warnAuctionDeliveryFailures} from './auction-notice-outbox.js'
 
-const KEY='leilao_tesouro_alpha_cinco_lotes_20261026_v1'
+const KEY='leilao_quatro_destinos_20261027_1430_v1'
 // Edições anteriores permanecem canceladas e isoladas nas próprias chaves.
 // Esta é uma nova edição expressamente autorizada pelo organizador.
 const AUCTION_PAUSED_FOR_AUDIT=false
 // Temporary-recovery datasets must not broadcast or revive historical auctions.
 // Chave isolada: modo temporário não reativa leilões históricos.
-const START=Date.parse('2026-10-26T14:10:00-03:00')
-const END=Date.parse('2026-10-26T16:00:00-03:00')
+const START=Date.parse('2026-10-27T14:30:00-03:00')
+const END=Date.parse('2026-10-27T15:30:00-03:00')
 const DURATION=LOT_DURATION_MS
 // Exceção limitada a este evento; não modifica licenças nem libera outros comandos.
 const EVENT_GROUPS=new Set(['120363410230588690@g.us','120363429534634131@g.us'])
@@ -27,11 +27,10 @@ const clock=n=>new Date(Number(n)).toLocaleTimeString('pt-BR',{timeZone:'America
 // Os pacotes são embaralhados criptograficamente; o Web e os comandos mostram só os lances.
 // Todos os IDs existem no banco; uma transação reserva o maior lance e entrega o prêmio.
 const PACKAGES=[
-  [{pet:'onca_eclipse_20261026',name:'Onça do Eclipse',power:90},{id:'caixa_lendaria',qty:1}],
-  [{id:'elmo_guardiao_nebular_20261026',qty:1},{id:'pedra_precisao_alpha',qty:2},{id:'caixa_epica',qty:1}],
-  [{id:'botas_cometa_astral_20261026',qty:1},{id:'pedra_agilidade_alpha',qty:2},{id:'pergaminho_leilao_10k',qty:1}],
-  [{id:'caixa_lendaria',qty:2},{id:'caixa_epica',qty:3},{id:'elixir_leilao_2h',qty:1}],
-  [{id:'fragmento_universal_raid',qty:30},{id:'pergaminho_reclassificacao',qty:1},{id:'pedra_furia_alpha',qty:2},{id:'caixa_lendaria',qty:1}]
+  [{pet:'guaxinim_errante_20261027',name:'Guaxinim Errante',power:70},{id:'caixa_epica',qty:1}],
+  [{id:'armadura_vigia_crepusculo_20261027',qty:1},{id:'pedra_fortaleza_alpha',qty:2},{id:'caixa_epica',qty:1}],
+  [{id:'caixa_lendaria',qty:1},{id:'elixir_leilao_2h',qty:1},{id:'pergaminho_leilao_10k',qty:1}],
+  [{id:'fragmento_universal_raid',qty:30},{id:'pergaminho_reclassificacao',qty:1},{id:'pocao_pet_full',qty:3},{id:'pedra_precisao_alpha',qty:2}]
 ]
 let timer=null,busy=false,initPromise=null,auctionSocket=null
 
@@ -47,16 +46,18 @@ async function init(){
         'Ative via buffxp por duas horas','consumable',true],
       ['elixir_leilao_1h_20261024','Ampulheta Prateada XP 2x — 1 hora',
         'Ative via buffxp por uma hora; não acumula','consumable',true],
-      // Premiações próprias de 26/10; não modifica equipamentos já entregues nas edições anteriores.
+      // Premiações próprias de 27/10; não modifica equipamentos já entregues nas edições anteriores.
       ['elmo_guardiao_nebular_20261026','Elmo do Guardião Nebular',
         '100 DEF, 330 HP e 3,5% crítico; lendário exclusivo do Leilão 26/10','helmet',false],
       ['botas_cometa_astral_20261026','Botas do Cometa Astral',
-        '17 VEL, 35 HP, 18 DEF e 1,5% crítico; lendárias exclusivas do Leilão 26/10','boots',false]
+        '17 VEL, 35 HP, 18 DEF e 1,5% crítico; lendárias exclusivas do Leilão 26/10','boots',false],
+      ['armadura_vigia_crepusculo_20261027','Armadura do Vigia do Crepúsculo',
+        '88 DEF, 150 HP e 1% crítico; armadura intermediária abaixo dos equipamentos sagrados da collab','armor',false]
     ]
     for(const [id,name,description,category,stackable] of definitions){
       await db.query(
         'INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,$2,$3,$4,0,$5,FALSE,$6) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,category=EXCLUDED.category,sellable=FALSE,stackable=EXCLUDED.stackable',
-        [id,name,description,category,['helmet','boots'].includes(category)?'legendary':'event',stackable]
+        [id,name,description,category,id==='armadura_vigia_crepusculo_20261027'?'epic':(['helmet','boots'].includes(category)?'legendary':'event'),stackable]
       )
     }
   })()
@@ -104,10 +105,10 @@ function shufflePackages(){
 }
 function status(state){
   const lot=state.lots?.[state.lot]
-  if(state.phase==='completed')return '🏁 *LEILÃO DO TESOURO ALPHA ENCERRADO!* Os 5 lotes foram encerrados.'
-  if(!lot)return '🔨 Leilão do Tesouro Alpha em preparação.'
+  if(state.phase==='completed')return '🏁 *LEILÃO DOS QUATRO DESTINOS ENCERRADO!* Os 4 lotes foram encerrados.'
+  if(!lot)return '🔨 Leilão dos Quatro Destinos em preparação.'
   const minimum=state.high?Number(state.high.value)+lot.step:lot.min
-  return '🔨 *LEILÃO DO TESOURO ALPHA — LOTE '+(Number(state.lot)+1)+'/'+PACKAGES.length+'*'+
+  return '🔨 *LEILÃO DOS QUATRO DESTINOS — LOTE '+(Number(state.lot)+1)+'/'+PACKAGES.length+'*'+
     '\n🎁 *LOTE MISTERIOSO* — conteúdo secreto até o arremate!'+
     '\n💰 Lance inicial: '+fmt(lot.min)+
     '\n📈 Próximo lance mínimo: *'+fmt(minimum)+'*'+
@@ -159,7 +160,7 @@ async function finishLot(state,c){
     const received=await prize(c,high.jid,lot.prize)
     entry.rewards=received
     await c.query(
-      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_tesouro_alpha_20261026',$3)",
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_quatro_destinos_20261027',$3)",
       [high.jid,high.value,KEY+':lot:'+state.lot]
     )
     report+='\n🏆 '+clean(high.name)+' — '+fmt(high.value)+'\n🎁 RECOMPENSAS REVELADAS:\n• '+received.join('\n• ')
@@ -184,8 +185,8 @@ async function tick(sock){
         state.preAnnounced=true
         await queueAuctionBidNotices(c,{
           key:KEY,version:0,groups,origin:'system',
-          message:'🔨💎 *LEILÃO DO TESOURO ALPHA EM 10 MINUTOS!*\n\n'+
-            '⏰ Abertura *14h10* (Brasília).\n🎭 *5 lotes misteriosos*, com possíveis equipamentos lendários, pet coringa, caixas e encantamentos.\n'+
+          message:'🔨💎 *LEILÃO DOS QUATRO DESTINOS EM 10 MINUTOS!*\n\n'+
+            '⏰ Abertura *14h30* (Brasília).\n🎭 *4 lotes misteriosos*, com possíveis equipamentos lendários, pet coringa, armadura intermediária e consumíveis.\n'+
             '👀 Lances públicos nos grupos e no Web; conteúdo secreto até o arremate.\n'+
             '💰 Lance inicial *R$ 250.000* • incremento *R$ 100.000*.\n'+
             '⏱️ 2 minutos por lote, com prorrogação contra lances de último segundo.\n'+
@@ -223,9 +224,9 @@ async function tick(sock){
         state.seal=createHash('sha256').update(JSON.stringify(state.lots.map(x=>x.prize))+':'+state.salt).digest('hex')
         state.lot=0
         beginLot(state,now)
-        outgoing='🔨💎 *LEILÃO DO TESOURO ALPHA COMEÇOU!*\n\n'+
-          '🎭 *5 lotes misteriosos!* Cada prêmio é revelado somente após o arremate.'+
-          '\n🎁 Prêmios possíveis: pet coringa, equipamento lendário, caixas, encantamentos e consumíveis.'+
+        outgoing='🔨💎 *LEILÃO DOS QUATRO DESTINOS COMEÇOU!*\n\n'+
+          '🎭 *4 lotes misteriosos!* Cada prêmio é revelado somente após o arremate.'+
+          '\n🎁 Prêmios possíveis: pet coringa neutro, armadura intermediária, caixas, encantamentos e consumíveis.'+
           '\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
           '\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
           '\n⏱️ *2 minutos por lote*. Lance nos últimos 15s: +20s, até +2min.'+
@@ -237,7 +238,7 @@ async function tick(sock){
         if(state.lot===PACKAGES.length-1){
           state.phase='completed'
           state.finished=Date.now()
-          outgoing+='\n\n🏁 *LEILÃO DO TESOURO ALPHA CONCLUÍDO!* Todos os lotes encerrados.'
+          outgoing+='\n\n🏁 *LEILÃO DOS QUATRO DESTINOS CONCLUÍDO!* Todos os lotes encerrados.'
         }else{
           state.lot++
           beginLot(state,now)
@@ -290,7 +291,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     return true
   }
   if(Date.now()<START){
-    await reply('🔨💎 *LEILÃO DO TESOURO ALPHA AGENDADO*\n⏰ Começa às *14h10* (Brasília) de 26/10.\n🎁 Serão *5 lotes misteriosos*.\n💰 Lance inicial: *'+fmt(OPENING)+'* • incremento: *'+fmt(STEP)+'*.\n📢 Lances públicos e prêmios revelados só após cada lote.\n📋 Volte com *!leilao* às 14h10.')
+    await reply('🔨💎 *LEILÃO DOS QUATRO DESTINOS AGENDADO*\n⏰ Começa às *14h30* (Brasília) de 27/10.\n🎁 Serão *4 lotes misteriosos*.\n💰 Lance inicial: *'+fmt(OPENING)+'* • incremento: *'+fmt(STEP)+'*.\n📢 Lances públicos e prêmios revelados só após cada lote.\n📋 Volte com *!leilao* às 14h30.')
     return true
   }
   if(cmd==='leilao'){
@@ -349,7 +350,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
           value:offered,nextMinimum:offered+lot.step,endsAt:state.ends
         })
       }
-      result.notice=result.notice.replace('LEILÃO DAS SOMBRAS','LEILÃO DO TESOURO ALPHA')
+      result.notice=result.notice.replace('LEILÃO DAS SOMBRAS','LEILÃO DOS QUATRO DESTINOS')
       if(web)result.notice=result.notice.replace('LANCE DE OUTRO GRUPO!','LANCE PELO WEB!')
       await queueAuctionBidNotices(c,{key:KEY,version:result.version,groups:result.otherGroups,origin:web?'web':chat,message:result.notice})
       return result
@@ -379,7 +380,7 @@ export async function getAuctionWebStatus({chat,sender}){
   const groupAllowed=Array.isArray(state.groups)&&state.groups.includes(chat)
   const acceptingBids=!AUCTION_PAUSED_FOR_AUDIT&&state.phase==='running'&&groupAllowed&&now>=START&&now<END&&now<Number(state.ends||0)
   return {
-    title:'Leilão do Tesouro Alpha',phase:now<START?'scheduled':(state.phase||'pending'),
+    title:'Leilão dos Quatro Destinos',phase:now<START?'scheduled':(state.phase||'pending'),
     acceptingBids,serverTime:now,startsAt:START,lotNumber:lot?Number(state.lot)+1:null,
     totalLots:PACKAGES.length,step:lot?.step||STEP,opening:lot?.min||OPENING,
     nextMinimum:lot?(state.high?Number(state.high.value)+lot.step:lot.min):OPENING,
