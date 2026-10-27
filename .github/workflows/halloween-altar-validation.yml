@@ -1,0 +1,45 @@
+name: Alpha Bot - Halloween Altar rewards
+
+on:
+  push:
+    branches: [feat/halloween-altar-expanded-20261027, whatsapp-only]
+    paths:
+      - 'src/neon/halloween-alpha.js'
+      - 'src/neon/halloween-altar.js'
+      - 'src/neon/relics.js'
+      - 'src/neon/index.js'
+      - 'test/halloween-altar-shop-20261031.test.mjs'
+      - '.github/workflows/halloween-altar-validation.yml'
+  pull_request:
+    paths:
+      - 'src/neon/halloween-alpha.js'
+      - 'src/neon/halloween-altar.js'
+      - 'src/neon/relics.js'
+      - 'src/neon/index.js'
+      - 'test/halloween-altar-shop-20261031.test.mjs'
+      - '.github/workflows/halloween-altar-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-altar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify JavaScript syntax without touching production
+        run: |
+          node --check src/neon/halloween-alpha.js
+          node --check src/neon/halloween-altar.js
+          node --check src/neon/relics.js
+          node --check src/neon/index.js
+      - name: Test Altar, Halloween combat and hourly entry without a database
+        run: |
+          node --test test/halloween-altar-shop-20261031.test.mjs \
+            test/halloween-alpha-20261026.test.mjs \
+            test/halloween-combat-fairness-20261026.test.mjs \
+            test/halloween-session-hourly-20261027.test.mjs
