@@ -35,6 +35,26 @@ export function heroHpToPersistent(hp,combatMaxHp,persistentMaxHp){
   const combat=Math.max(1,Number(combatMaxHp)||1),max=Math.max(1,Number(persistentMaxHp)||1);
   return Math.max(0,Math.min(max,Math.max(Number(hp)>0?1:0,Math.floor(Math.max(0,Number(hp)||0)/combat*max))));
 }
+// Salva somente o DELTA de HP desde o ultimo golpe. O resto fracionario
+// permanece no estado da luta, evitando erosao de 1 HP por turno causada
+// por converter constantemente entre escalas da classe e do heroi.
+export function persistHeroHpDelta({previousPersistentHp=0,previousCombatHp=0,
+  currentCombatHp=0,combatMaxHp=1,persistentMaxHp=1,remainder=0}={}){
+  const pmax=Math.max(1,Number(persistentMaxHp)||1);
+  const cmax=Math.max(1,Number(combatMaxHp)||1);
+  const before=Math.max(0,Number(previousCombatHp)||0);
+  const after=Math.max(0,Number(currentCombatHp)||0);
+  const safeRemainder=Number.isFinite(Number(remainder))?Math.max(-1,Math.min(1,Number(remainder))):0;
+  const exact=(after-before)*pmax/cmax+safeRemainder;
+  const integral=Math.trunc(exact);
+  let hp=Math.max(0,Math.min(pmax,Math.round(Number(previousPersistentHp)||0)+integral));
+  let rest=exact-integral;
+  if(after<=0){hp=0;rest=0;}
+  else if(after>=cmax){hp=pmax;rest=0;}
+  else if(hp<=0||hp>=pmax)rest=0;
+  return {hp,remainder:rest};
+}
+
 export function excludeActiveHeroPet(team,heroId){
   if(!heroId)return [...(team||[])];
   return (team||[]).filter(p=>String(p?.species||'')!==heroId);
