@@ -57,6 +57,9 @@ test('HP fracionario acumula danos, cura, derrota e nunca gera vida gratuita',()
   const restored=persistHeroHpDelta({previousPersistentHp:pHp,previousCombatHp:cHp,
     currentCombatHp:cHp+150,combatMaxHp:955,persistentMaxHp:1000,remainder:rem});
   assert.ok(restored.hp<=849);
+  const barelyAlive=persistHeroHpDelta({previousPersistentHp:1,previousCombatHp:2,
+    currentCombatHp:1,combatMaxHp:955,persistentMaxHp:1000});
+  assert.equal(barelyAlive.hp,1,'um herói vivo não deve virar personagem morto no banco');
   const defeated=persistHeroHpDelta({previousPersistentHp:100,previousCombatHp:100,
     currentCombatHp:0,combatMaxHp:955,persistentMaxHp:1000});
   assert.equal(defeated.hp,0);
