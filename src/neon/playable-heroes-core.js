@@ -56,8 +56,9 @@ export function persistHeroHpDelta({previousPersistentHp=0,previousCombatHp=0,
 }
 
 export function excludeActiveHeroPet(team,heroId){
-  if(!heroId)return [...(team||[])];
-  return (team||[]).filter(p=>String(p?.species||'')!==heroId);
+  // Hero-only: nenhum dos sete pode servir como pet, independentemente
+  // de qual classe/heroi esta equipado no momento.
+  return (team||[]).filter(p=>p&&!PLAYABLE_HERO_IDS.includes(String(p.species||'')));
 }
 
 // Efeitos pessoais e limitados, sem debuff global permanente de Boss.
