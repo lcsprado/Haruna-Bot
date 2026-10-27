@@ -6,6 +6,7 @@ import {activeRelic} from './relics.js'
 import {HALLOWEEN_TICK_MS,halloweenAttackInterval,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
 import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {HALLOWEEN_SESSION_REMINDER_MS,HALLOWEEN_MAINTENANCE_MS,halloweenHourlyEnabled,halloweenSessionExpiry,halloweenSessionValid,halloweenSessionTime,halloweenSessionRemaining} from './halloween-session.js'
+import {HALLOWEEN_ALTAR_OFFERS,HALLOWEEN_ALTAR_ITEMS,HALLOWEEN_CHEST_ID,HALLOWEEN_CHEST_CONTENTS,halloweenAltarOffer,halloweenAltarOpen,halloweenAltarCatalogText} from './halloween-altar.js'
 
 const fmt=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
 const nowSec=()=>Math.floor(Date.now()/1000)
@@ -77,6 +78,15 @@ export async function initHalloweenAlpha(){
  await db.query(`CREATE TABLE IF NOT EXISTS halloween_shop_2026(
   jid TEXT NOT NULL,reward_id TEXT NOT NULL,created_at BIGINT NOT NULL,
   PRIMARY KEY(jid,reward_id))`)
+ // Registrar apenas os quatro itens novos. Nada altera preços/raridades dos
+ // itens existentes nem publica o Altar antes de sábado.
+ for(const item of HALLOWEEN_ALTAR_ITEMS){
+  await db.query(`INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable)
+   VALUES($1,$2,$3,'special',0,$4,FALSE,FALSE)
+   ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,
+    description=EXCLUDED.description,rarity=EXCLUDED.rarity,
+    sellable=FALSE,stackable=FALSE`,[item.id,item.name,item.description,item.rarity])
+ }
  // Catalog initialization runs first. No additional schema modification to existing systems.
  console.log('[HALLOWEEN] schema ready; first day Oct 26, 6 global bosses, 4 drops')
 }
@@ -423,6 +433,46 @@ async function tickHalloween(){
   return alerts
  })
 }
+// Resgates extras compartilham a mesma economia de Almas e são únicos
+// por jogador. Lock no usuário serializa dois comandos simultâneos.
+async function buyHalloweenAltarOffer(jid,offerId){
+ const offer=HALLOWEEN_ALTAR_OFFERS[offerId]
+ if(!offer)throw new Error('Recompensa inválida. Use !halloween loja.')
+ if(!halloweenAltarOpen())throw new Error('O Altar das Almas abre em 31/10 às 00h e fecha 01/11 ao meio-dia (São Paulo).')
+ return tx(async c=>{
+  await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  const rewardId='altar_'+offer.id+'_20261031'
+  const claimed=await c.query(`INSERT INTO halloween_shop_2026(jid,reward_id,created_at)
+    VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING reward_id`,[jid,rewardId,nowSec()])
+  if(!claimed.rowCount)throw new Error('Você já resgatou '+offer.name+'. Limite: uma vez por jogador.')
+  const spent=await c.query(`UPDATE inventories SET quantity=quantity-$3
+    WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity`,
+   [jid,HALLOWEEN_SOUL_ID,offer.cost])
+  if(!spent.rowCount)throw new Error('Almas insuficientes para '+offer.name+'. São necessárias '+offer.cost+' Almas.')
+  await credit(c,jid,offer.itemId,offer.quantity)
+  await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+   VALUES($1,'halloween',0,'halloween_altar_redeem',$2)`,
+   [jid,rewardId+'; '+offer.cost+' Almas; '+offer.itemId+' x'+offer.quantity])
+  return {offer,remaining:Number(spent.rows[0].quantity)}
+ })
+}
+
+// O baú comprado fica no inventário e pode ser aberto mesmo depois que a
+// loja fecha. Conteúdo fixo garante transparência, sem prêmio duplicado.
+async function openHalloweenSupremeChest(jid){
+ return tx(async c=>{
+  await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  const used=await c.query(`UPDATE inventories SET quantity=quantity-1
+   WHERE jid=$1 AND item_id=$2 AND quantity>0 RETURNING quantity`,[jid,HALLOWEEN_CHEST_ID])
+  if(!used.rowCount)throw new Error('Você não possui um Baú Supremo de Halloween. Resgate-o no Altar no sábado.')
+  for(const item of HALLOWEEN_CHEST_CONTENTS)await credit(c,jid,item.itemId,item.quantity)
+  await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+   VALUES($1,'halloween',0,'halloween_supreme_chest_open',$2)`,[
+    jid,'Halloween 2026; '+HALLOWEEN_CHEST_CONTENTS.map(item=>item.itemId+' x'+item.quantity).join('; ')
+   ])
+  return {contents:HALLOWEEN_CHEST_CONTENTS,remaining:Number(used.rows[0].quantity)}
+ })
+}
 async function buyCorcel(jid){
  if(Date.now()<Date.parse('2026-10-31T00:00:00-03:00')||Date.now()>=HALLOWEEN_SHOP_END)throw new Error('O Altar das Almas abre sábado (31/10) e fecha domingo ao meio-dia.')
  return tx(async c=>{
@@ -523,15 +573,51 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
   await reply('⚔️ *ATRIBUTOS DO HALLOWEEN ATUALIZADOS*\n💥 Poder: '+fmt(r.power)+'\n⚡ VEL: '+fmt(r.speed)+' • Intervalo: '+(halloweenAttackInterval(r.speed)/1000).toFixed(2).replace('.',',')+'s\n🎯 CRIT: '+(r.crit*100).toFixed(1).replace('.',',')+'%\n🌀 Esquiva do pet: '+(r.dodge*100).toFixed(1).replace('.',',')+'%')
   return true
  }
+ if(['abrir'].includes(action)){
+  if(!['bau','baú','supremo'].includes(String(args[1]||'').toLowerCase())){
+   await reply('🔮 Para abrir seu Baú Supremo de Halloween, use *!halloween abrir bau*.')
+   return true
+  }
+  const reward=await openHalloweenSupremeChest(sender)
+  await reply('🔮✨ *BAÚ SUPREMO DE HALLOWEEN ABERTO!*\n\n'+
+   reward.contents.map(item=>'🎁 '+item.quantity+'× '+item.name).join('\n')+
+   '\n\n🏆 Troféu exclusivo guardado no inventário!'+
+   '\n📦 Para abrir as Caixas Lendárias e Épicas, use *!caixas*.')
+  return true
+ }
  if(['trocar','resgatar','comprar'].includes(action)){
-  if(!['corcel','cavalo','pet','corcel-espectral'].includes(String(args[1]||'').toLowerCase())){await reply('🐎 Para resgatar o Corcel Espectral, use *!halloween trocar corcel* no sábado. Custa 100 Almas Amaldiçoadas.');return true}
-  const r=await buyCorcel(sender)
-  await reply('🐎✨ *CORCEL ESPECTRAL RESGATADO!*\n✅ Pet lendário Místico adicionado à coleção. ID: *'+r.petId+'*\n🧩 Almas restantes: *'+fmt(r.remaining)+'*\n📜 Use *!meuspets* para localizar e *!equiparpet* para equipá-lo.')
+  const requested=String(args[1]||'').toLowerCase()
+  if(['corcel','cavalo','pet','corcel-espectral'].includes(requested)){
+   const r=await buyCorcel(sender)
+   await reply('🐎✨ *CORCEL ESPECTRAL RESGATADO!*\n✅ Pet lendário Místico adicionado à coleção. ID: *'+r.petId+'*\n🧩 Almas restantes: *'+fmt(r.remaining)+'*\n📜 Use *!meuspets* para localizar e *!equiparpet* para equipá-lo.')
+   return true
+  }
+  const offer=halloweenAltarOffer(requested)
+  if(!offer){
+   await reply('🎃 Recompensa desconhecida. Confira as opções com *!halloween loja*.')
+   return true
+  }
+  const result=await buyHalloweenAltarOffer(sender,offer.id)
+  await reply('🎃✅ *RESGATE DO ALTAR CONCLUÍDO!*\n'+
+   result.offer.name+'\n🧩 Custo: *'+fmt(result.offer.cost)+' Almas*'+
+   '\n🧩 Saldo restante: *'+fmt(result.remaining)+'*'+
+   '\n\n'+(offer.id==='caixa'?'🎁 A Caixa Lendária está no inventário. Abra em *!caixas*.':
+    offer.id==='insignia'?'💀 Insígnia adquirida. Equipe em *!reliquias*; substitui a insígnia anterior, sem acumular.':
+    offer.id==='titulo'?'👑 Título permanente adquirido. Consulte em *!perfil*.':
+    '🔮 Baú guardado no inventário. Abra quando quiser com *!halloween abrir bau*.'))
   return true
  }
  if(['loja','altar'].includes(action)){
   const s=await status(sender)
-  await reply('🎃 *ALTAR DAS ALMAS — HALLOWEEN*\n🧩 Saldo: *'+fmt(s.souls)+'* Almas Amaldiçoadas\n\n🐎 *Corcel Espectral — 100 almas*\n✨ Lendário Místico, 1 por jogador\n🎁 Os 2 elmos e 2 pares de botas são DROPS dos Bosses, não itens da loja.\n⏰ Trocas: 31/10 00h até 01/11 12h.\n👉 *!halloween trocar corcel*')
+  const base='🎃 *ALTAR DAS ALMAS — HALLOWEEN*\n🧩 Saldo: *'+fmt(s.souls)+'* Almas Amaldiçoadas\n\n🐎 *Corcel Espectral — 100 Almas*\n✨ Lendário Místico, 1 por jogador\n👉 *!halloween trocar corcel*'
+  if(!halloweenAltarOpen()){
+   await reply(base+'\n\n🎁 Os 2 elmos e 2 pares de botas são DROPS dos Bosses, não itens da loja.\n⏰ *Altar fechado*: abre 31/10 às 00h e encerra 01/11 às 12h (São Paulo).')
+   return true
+  }
+  await reply(base+'\n\n'+halloweenAltarCatalogText()+
+   '\n\n🔒 Resgates únicos por jogador; Almas e compras anteriores preservadas.'+
+   '\n🎁 Os elmos e botas exclusivos continuam somente por DROP dos Bosses.'+
+   '\n⏰ Loja aberta até *01/11 às 12h* (São Paulo).')
   return true
  }
  if(['ranking','top'].includes(action)){
