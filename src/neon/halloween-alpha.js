@@ -454,13 +454,20 @@ async function status(jid){
  return {boss,player:p.rows[0],souls:Number(inv.rows[0]?.quantity||0),state:bs.rows[0]||null}
 }
 function formatStatus(s){
- const active=s.player?.active?'✅ Combate automático ativado':'⏸️ Fora do combate'
+ const now=Date.now()
+ const eligible=halloweenSessionValid(s.player,now,s.boss?.day)
+ const active=eligible?'✅ Combate automático ativado':'⏸️ Fora do combate'
  const state=s.state
  const speed=Math.max(0,Number(s.player?.speed||0))
  const interval=(halloweenAttackInterval(speed)/1000).toFixed(2).replace('.',',')
+ const lease=halloweenHourlyEnabled(now)
+  ?(eligible?'⏳ Sessão até *'+halloweenSessionTime(s.player?.lease_expires_at)+'* (faltam *'+halloweenSessionRemaining(s.player?.lease_expires_at,now)+' min*)'
+    :'🔁 *Sessão encerrada ou não iniciada*: use *!halloween entrar* para ativar 60 minutos')
+  :'📅 Amanhã (27/10), será necessário renovar com *!halloween entrar* a cada 1 hora.'
  return '🎃 *HALLOWEEN ALPHA — CAÇADA DAS ALMAS*\n'+
  (s.boss?'👹 *'+s.boss.name+'*\n🛡️ '+s.boss.mechanic+'\n❤️ HP: *'+fmt(state?.hp??s.boss.hp)+'/'+fmt(state?.max_hp??s.boss.hp)+'* • Ciclo '+Number(state?.cycle||1)+(Number(state?.revive_at)>Date.now()?' • Ressurge em breve':'')+'\n':'🏁 Bosses encerrados. A loja encerra domingo ao meio-dia.\n')+
  '⚔️ '+active+' • rodadas globais de *10 segundos*\n'+
+ '🕒 '+lease+'\n'+
  '⚡ VEL: *'+fmt(speed)+'* • intervalo próprio: *'+interval+'s* (bônus limitado a +25% de frequência)\n'+
  '🎯 CRIT: *'+(Number(s.player?.crit||0)*100).toFixed(1).replace('.',',')+'%* • 🌀 Esquiva de pet: *'+(Number(s.player?.dodge||0)*100).toFixed(1).replace('.',',')+'%*\n'+
  '🥊 Golpes acertados: *'+fmt(s.player?.hits||0)+'* • Tentativas: *'+fmt(s.player?.attempts||0)+'*\n'+
@@ -503,7 +510,7 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
   return true
  }
  if(['sair','parar'].includes(action)){
-  await db.query('UPDATE halloween_players_2026 SET active=FALSE,updated_at=$2 WHERE jid=$1',[sender,Date.now()])
+  await db.query('UPDATE halloween_players_2026 SET active=FALSE,lease_expires_at=0,lease_notice_until=0,last_attack=0,updated_at=$2 WHERE jid=$1',[sender,Date.now()])
   await reply('⏸️ Combate automático do Halloween pausado. Seus fragmentos, XP e pontos foram preservados.')
   return true
  }
