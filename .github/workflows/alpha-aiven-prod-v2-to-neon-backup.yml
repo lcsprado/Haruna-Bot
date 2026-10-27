@@ -50,13 +50,30 @@ jobs:
             esac
           fi
           if [[ -z "${NEON_TARGET_URL:-}" && -n "${PREVIOUS_NEON_URL:-}" ]]; then
+            # A URI antiga pode usar porta 5432 explícita; a validação final
+            # abaixo confirma host/porta/base, sem jamais exibir credenciais.
             case "$PREVIOUS_NEON_URL" in
-              *@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb|*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb\?*)
+              *@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb|*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb\?*|*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432/neondb|*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432/neondb\?*)
                 NEON_TARGET_URL="${PREVIOUS_NEON_URL/\/neondb/\/alpha_aiven_backup_20261027}" ;;
             esac
           fi
           if [[ -z "${AIVEN_SOURCE_URL:-}" || -z "${NEON_TARGET_URL:-}" ]]; then
             echo "::error::Cadastre ALPHA_AIVEN_PROD_V2_URL e ALPHA_NEON_BACKUP_URL em Repository secrets."
+            exit 1
+          fi
+          # Extrair somente host/porta e nome da base. Não imprimir a URI.
+          # A validação continua com allowlist exata, independente de ?sslmode.
+          db_location="${NEON_TARGET_URL##*@}"
+          db_host="${db_location%%/*}"
+          db_name_with_opts="${db_location#*/}"
+          db_name="${db_name_with_opts%%\?*}"
+          if [[ "$db_host" != "ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech" &&
+                "$db_host" != "ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432" ]]; then
+            echo "::error::Destino Neon não usa endpoint Direct esperado (host ou porta). Não divulgar URI."
+            exit 1
+          fi
+          if [[ "$db_name" != "alpha_aiven_backup_20261027" ]]; then
+            echo "::error::Destino Neon não está apontando para a base de backup isolada."
             exit 1
           fi
           # Allowlist exata de servidores e banco, impedindo inverter as conexões.
@@ -65,8 +82,8 @@ jobs:
             *) echo "::error::Origem não corresponde ao Aiven alphabot/alpha_prod_v2."; exit 1 ;;
           esac
           case "$NEON_TARGET_URL" in
-            postgres://*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/alpha_aiven_backup_20261027|postgres://*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/alpha_aiven_backup_20261027\?*|postgresql://*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/alpha_aiven_backup_20261027|postgresql://*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/alpha_aiven_backup_20261027\?*) ;;
-            *) echo "::error::Destino não corresponde à base isolada Neon alpha_aiven_backup_20261027 (conexão Direct)."; exit 1 ;;
+            postgres://*@*|postgresql://*@*) ;;
+            *) echo "::error::Conexão Neon não é uma URI PostgreSQL válida."; exit 1 ;;
           esac
           origem="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$AIVEN_SOURCE_URL" -c "SELECT current_database()")"
           destino="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$NEON_TARGET_URL" -c "SELECT current_database()")"
