@@ -10,7 +10,7 @@ import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
-import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
+import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, isSelectablePlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
 import {checkPixLimits} from './pix-limits.js'
 import {careerGrossFromLevelCap} from './career-pay.js'
@@ -896,6 +896,11 @@ if(applied&&String(st.class_id)===next.id){
 return {ok:true,unchanged:true,firstChoice:false,classId:next.id,classInfo:next,stats:{
 hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
 }}
+}
+// Jogadores de classes antigas mantêm os atributos, Despertares e o registro.
+// Não permitir escolher uma classe oculta, mas manter consultas/no-op da atual.
+if(!isSelectablePlayerClass(next.id)){
+  throw new Error('Essa classe não está disponível para novas escolhas. Classes antigas continuam preservadas.');
 }
 let consumedScroll=false
 let nextChangeAt=null

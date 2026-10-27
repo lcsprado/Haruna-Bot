@@ -1,0 +1,41 @@
+name: Active class selection safety
+
+on:
+  push:
+    branches: ['web-integration-*']
+    paths:
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'src/neon/web-api.js'
+      - 'web/app.js'
+      - 'test/class-visibility-20261027.test.mjs'
+      - '.github/workflows/active-class-selection.yml'
+  pull_request:
+    paths:
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'src/neon/web-api.js'
+      - 'web/app.js'
+      - 'test/class-visibility-20261027.test.mjs'
+      - '.github/workflows/active-class-selection.yml'
+
+jobs:
+  class-visibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate syntax without changing dependencies
+        run: |
+          node --check src/neon/game-catalog.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/web-api.js
+          node --check web/app.js
+          node --check test/class-visibility-20261027.test.mjs
+      - name: Test class selection and legacy preservation
+        run: node --test test/class-visibility-20261027.test.mjs
