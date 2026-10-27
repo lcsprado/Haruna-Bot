@@ -1,9 +1,9 @@
 import crypto from 'node:crypto'
 import {createRecentEnsureCache} from './recent-ensure.js'
-import {resolveAstralLynxWildcard} from './pet-astral-wildcard.js'
+import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
-import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
+import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
@@ -4980,41 +4980,43 @@ styles[batIndex]=others[0]
 return styles
 }
 export function petStyleLabel(species){
-const style=['morcego_madrugada','camaleao_lendario','lince_astral','onca_eclipse_20261026','guaxinim_errante_20261027'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+const style=PET_TEAM_WILDCARD_SPECIES.includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
 return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
+export function petTeamSynergy(pets=[]){
+con// Registro único de famílias de Collab reconhecidas na sinergia dos pets.
+// Novas colaborações exigem seu próprio catálogo: sem bônus cruzado automático.
+const PET_COLLAB_TEAM_GROUPS=Object.freeze([
+  {id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}
+])
 export function petTeamSynergy(pets=[]){
 const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
 const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
-const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
-const collabActive=team.length===3&&unique&&count===3
-// A collab exige três heróis para bônus pleno; o Guaxinim libera apenas o elo reduzido com dois heróis.
-const collabAssist=team.length===3&&unique&&count===2&&species.includes('guaxinim_errante_20261027')
-const assistDamage=collabAssist?.10:0
-const assistCrit=collabAssist?.02:0
+const collab=team.length===3&&unique?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
 const styles=resolveBatTeamStyles(species)
 const wildcard=team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
 const base=team.length===3&&unique
   ?(wildcard?(wildcard.universal?PET_TEAM_WILDCARD_BONUS:PET_TEAM_STYLE_BONUS[wildcard.style])
     :(styles[0]&&styles.every(s=>s===styles[0])?PET_TEAM_STYLE_BONUS[styles[0]]:null))
   :null
-if(!base&&!collabActive&&!collabAssist)return null
-const attack=Number(base?.attack||0)+(collabActive?pecadosBonus(count):assistDamage)
-const crit=Number(base?.crit||0)+(collabActive?.05:assistCrit)
-const collabText=collabActive?'🌈 3 Pecados: +'+Math.round(pecadosBonus(count)*100)+'% dano e +5 p.p. CRIT':
-  collabAssist?'🌈 2 Pecados + Guaxinim Coringa: +10% dano e +2 p.p. CRIT':''
+if(!base&&!collab)return null
+// Preserva a sinergia de estilo preexistente. Bônus de Collab é sempre um só.
+const attack=Number(base?.attack||0)+Number(collab?.attack||0)
+const crit=Number(base?.crit||0)+Number(collab?.crit||0)
+const collabText=collab
+  ?'🌈 '+collab.label+' — '+(collab.full?'Full Collab':collab.heroesCount+' originais + '+collab.wildcardCount+' Coringa(s)')+
+    ': +'+Math.round(collab.attack*100)+'% dano e +'+Math.round(collab.crit*100)+' p.p. CRIT'
+  :''
 return {
 ...(base||{}),style:wildcard?.style||base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
-label:[base?.label, collabActive?'🌈 7 Pecados Capitais':collabAssist?'🌈 Elo de Collab — Coringa':null].filter(Boolean).join(' + '),
+label:[base?.label,collab?(collab.full?'🌈 Full Collab — ':'🌈 Elo de Collab — ')+collab.label:null].filter(Boolean).join(' + '),
 text:[base?.text,collabText].filter(Boolean).join(' | '),
 attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
-collabCount:collabActive?3:0,collabAssist,
-collabAttack:collabActive?pecadosBonus(count):assistDamage,collabCrit:collabActive?.05:assistCrit
+collabCount:collab?.full?3:0,collabAssist:Boolean(collab&&!collab.full),
+collabAttack:Number(collab?.attack||0),collabCrit:Number(collab?.crit||0)
 }
-}
-export const LEGENDARY_PET_SUMMONS=[
-{materialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
+}ialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
 {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:45,power:150},
 {species:'urso_runico',name:'🐻 Urso Rúnico',chance:25,power:175},
 {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205},
