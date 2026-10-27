@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
-  heroHpToPersistent,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage
+  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage
 } from '../src/neon/playable-heroes-core.js'
 
 test('sete personagens unicos com perfis equilibrados',()=>{
@@ -30,6 +30,37 @@ test('estatisticas de classe viram heroi sem alterar dados persistentes',()=>{
   assert.equal(heroHpToPersistent(h.hp,h.maxHp,st.max_hp),st.hp)
   assert.equal(heroHpToPersistent(0,h.maxHp,st.max_hp),0)
 })
+
+test('HP nao se perde ao percorrer milhares de turnos sem dano',()=>{
+  let hp=2109,heroHp=2101,rem=0;
+  for(let i=0;i<5000;i++){
+    const after=persistHeroHpDelta({
+      previousPersistentHp:hp,previousCombatHp:heroHp,currentCombatHp:heroHp,
+      combatMaxHp:2451,persistentMaxHp:2496,remainder:rem
+    });
+    hp=after.hp;
+    rem=after.remainder;
+  }
+  assert.equal(hp,2109);
+  assert.equal(rem,0);
+});
+
+test('HP fracionario acumula danos, cura, derrota e nunca gera vida gratuita',()=>{
+  let pHp=900,cHp=859,rem=0;
+  // 200 impactos de um HP viram ~209 de perda persistida, em vez de 0 ou 200
+  for(let i=0;i<200;i++){
+    const next=persistHeroHpDelta({previousPersistentHp:pHp,previousCombatHp:cHp,
+      currentCombatHp:cHp-1,combatMaxHp:955,persistentMaxHp:1000,remainder:rem});
+    pHp=next.hp;cHp--;rem=next.remainder;
+  }
+  assert.ok(pHp>=690&&pHp<=692,'danos devem acompanhar a escala, sem erosao adicional');
+  const restored=persistHeroHpDelta({previousPersistentHp:pHp,previousCombatHp:cHp,
+    currentCombatHp:cHp+150,combatMaxHp:955,persistentMaxHp:1000,remainder:rem});
+  assert.ok(restored.hp<=849);
+  const defeated=persistHeroHpDelta({previousPersistentHp:100,previousCombatHp:100,
+    currentCombatHp:0,combatMaxHp:955,persistentMaxHp:1000});
+  assert.equal(defeated.hp,0);
+});
 
 test('heroi nunca e contabilizado como pet e nao ativa trio falso',()=>{
   const squad=[
@@ -89,7 +120,8 @@ test('integracao protege classe, pet, modo e progresso',()=>{
   assert.ok(db.includes('Você está em combate ativo'))
   assert.ok(games.includes('heroAttack({heroId:p.heroId'))
   assert.ok(games.includes('heroDefense({heroId:p.heroId'))
-  assert.ok(games.includes('heroHpToPersistent(php,effectiveMaxHp,st.max_hp)'))
+  assert.ok(games.includes('persistHeroHpDelta({'))
+  assert.ok(games.includes('heroHpRemainder'))
   assert.ok(games.includes('excludeActiveHeroPet(combatSnapshot?.team_pets||[],heroId)'))
   assert.ok(games.includes('awardPlayableHeroMastery(c'))
   assert.ok(whatsapp.includes('await initPlayableHeroes()'))
