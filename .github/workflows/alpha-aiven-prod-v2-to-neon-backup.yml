@@ -28,6 +28,10 @@ jobs:
     env:
       AIVEN_SOURCE_URL: ${{ secrets.ALPHA_AIVEN_PROD_V2_URL }}
       NEON_TARGET_URL: ${{ secrets.ALPHA_NEON_BACKUP_URL }}
+      # Reaproveita as URIs do antigo workflow de teste, se ainda estiverem válidas;
+      # sempre altera apenas o caminho do banco e verifica origem/destino.
+      PREVIOUS_AIVEN_URL: ${{ secrets.ALPHA_AIVEN_URI }}
+      PREVIOUS_NEON_URL: ${{ secrets.ALPHA_NEON_URI }}
       PGCONNECT_TIMEOUT: "20"
       PGSSLMODE: require
       PGOPTIONS: "-c statement_timeout=0"
@@ -37,6 +41,20 @@ jobs:
         run: |
           set -Eeuo pipefail
           umask 077
+          # Permite reaproveitar secrets legados sem copiar senhas para o chat:
+          # ALPHA_AIVEN_URI aponta para /defaultdb e ALPHA_NEON_URI para /neondb.
+          if [[ -z "${AIVEN_SOURCE_URL:-}" && -n "${PREVIOUS_AIVEN_URL:-}" ]]; then
+            case "$PREVIOUS_AIVEN_URL" in
+              *@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb|*@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb\?*)
+                AIVEN_SOURCE_URL="${PREVIOUS_AIVEN_URL/\/defaultdb/\/alpha_prod_v2}" ;;
+            esac
+          fi
+          if [[ -z "${NEON_TARGET_URL:-}" && -n "${PREVIOUS_NEON_URL:-}" ]]; then
+            case "$PREVIOUS_NEON_URL" in
+              *@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb|*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb\?*)
+                NEON_TARGET_URL="${PREVIOUS_NEON_URL/\/neondb/\/alpha_aiven_backup_20261027}" ;;
+            esac
+          fi
           if [[ -z "${AIVEN_SOURCE_URL:-}" || -z "${NEON_TARGET_URL:-}" ]]; then
             echo "::error::Cadastre ALPHA_AIVEN_PROD_V2_URL e ALPHA_NEON_BACKUP_URL em Repository secrets."
             exit 1
