@@ -4983,8 +4983,7 @@ export function petStyleLabel(species){
 const style=PET_TEAM_WILDCARD_SPECIES.includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
 return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
-export function petTeamSynergy(pets=[]){
-con// Registro único de famílias de Collab reconhecidas na sinergia dos pets.
+// Registro único de famílias de Collab reconhecidas na sinergia dos pets.
 // Novas colaborações exigem seu próprio catálogo: sem bônus cruzado automático.
 const PET_COLLAB_TEAM_GROUPS=Object.freeze([
   {id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}
@@ -5016,7 +5015,9 @@ attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
 collabCount:collab?.full?3:0,collabAssist:Boolean(collab&&!collab.full),
 collabAttack:Number(collab?.attack||0),collabCrit:Number(collab?.crit||0)
 }
-}ialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
+}
+export const LEGENDARY_PET_SUMMONS=[
+{materialId:'nucleo_pedra',materialName:'Fragmento do Núcleo de Pedra',raidLevel:10,summonCost:50,pets:[
 {species:'golem_ancestral',name:'🪨 Golem Ancestral',chance:45,power:150},
 {species:'urso_runico',name:'🐻 Urso Rúnico',chance:25,power:175},
 {species:'colosso_cristal',name:'💎 Colosso de Cristal',chance:10,power:205},
