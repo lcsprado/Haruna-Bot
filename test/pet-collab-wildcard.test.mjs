@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import {PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from '../src/neon/pet-astral-wildcard.js'
 import {PECADOS_HERO_IDS,pecadosBonus} from '../src/neon/sete-pecados-catalog.js'
+import {PET_STATUS_SPECIALTIES,petSpecialtyStats,petCombatSpecialty} from '../src/neon/game-catalog.js'
 
 const group={id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}
 const match=(ids,groups=[group])=>resolveCollabWildcardTeam(ids,groups)
@@ -59,4 +60,16 @@ test('integração está conectada à rotina de sinergia sem afetar inventário'
   assert.match(source,/collabAttack:Number\(collab\?\.attack\|\|0\)/)
   assert.match(source,/collabCrit:Number\(collab\?\.crit\|\|0\)/)
   assert.doesNotMatch(source,/species\.includes\('guaxinim_errante_20261027'\)/)
+})
+
+test('bônus próprios do Guaxinim Errante são ataque e crítico, sem defesa/esquiva',()=>{
+  const stats=petSpecialtyStats('guaxinim_errante_20261027')
+  assert.deepEqual(stats,{damage:5,crit:4})
+  const specialty=PET_STATUS_SPECIALTIES.guaxinim_errante_20261027
+  assert.equal(specialty.raid,true)
+  assert.match(specialty.label,/Coringa/)
+  assert.equal(petCombatSpecialty('guaxinim_errante_20261027').damage,.05)
+  assert.equal(petCombatSpecialty('guaxinim_errante_20261027').crit,.04)
+  assert.equal(petCombatSpecialty('guaxinim_errante_20261027').defense,0)
+  assert.equal(petCombatSpecialty('guaxinim_errante_20261027').dodge,0)
 })
