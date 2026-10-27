@@ -177,12 +177,17 @@ console.log('[WhatsApp] nova tentativa em',delayMs,'ms; tentativa',reconnectAtte
 reconnectTimer=setTimeout(async()=>{
 reconnectTimer=null
 reconnecting=true
+let failed=false
 try{ await start() }
 catch(err){
-reconnecting=false
+failed=true
 console.error('[WhatsApp] falha na reconexão',err)
-scheduleReconnect()
+}finally{
+reconnecting=false
 }
+// start() retorna antes do pareamento QR; liberar a trava para que um
+// timeout posterior (408) possa solicitar o próximo QR automaticamente.
+if(failed || trevoHealth.whatsapp==='closed')scheduleReconnect()
 },delayMs)
 reconnectTimer.unref?.()
 }
