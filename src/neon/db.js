@@ -1,9 +1,9 @@
 import crypto from 'node:crypto'
 import {createRecentEnsureCache} from './recent-ensure.js'
-import {resolveAstralLynxWildcard} from './pet-astral-wildcard.js'
+import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
-import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
+import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
@@ -1971,6 +1971,7 @@ const EQUIPMENT = {
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
 elmo_soberano_celestial_20261024: {category:'helmet',atk:0,def:112,hp:275,crit:.025,name:'Elmo do Soberano Celestial'},
 elmo_guardiao_nebular_20261026: {category:'helmet',atk:0,def:100,hp:330,crit:.035,name:'Elmo do Guardião Nebular'},
+armadura_vigia_crepusculo_20261027: {category:'armor',atk:0,def:88,hp:150,crit:.01,name:'Armadura do Vigia do Crepúsculo'},
 elmo_aurora: {category:'helmet',atk:0,def:40,hp:100,crit:0,name:'Elmo da Aurora'},
 elmo_soberano_golem: {category:'helmet',atk:0,def:85,hp:220,crit:0,name:'Elmo do Soberano Ancestral'},
 elmo_labirinto_alpha: {category:'helmet',atk:0,def:92,hp:240,crit:0,name:'Elmo do Labirinto Eterno'},
@@ -4986,32 +4987,42 @@ styles[batIndex]=others[0]
 return styles
 }
 export function petStyleLabel(species){
-const style=['morcego_madrugada','camaleao_lendario','lince_astral','onca_eclipse_20261026'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+const style=PET_TEAM_WILDCARD_SPECIES.includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
 return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
+// As regras de Collab continuam extensíveis, mas os 7 Pecados não podem participar
+// de times de pets após a conversão para heróis; filtros de espécie prevalecem.
+const PET_COLLAB_TEAM_GROUPS=Object.freeze([
+  {id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}
+])
 export function petTeamSynergy(pets=[]){
-// Sete Pecados foram convertidos em personagens jogaveis, nunca pets.
+// Hero-only: os Sete Pecados são personagens, jamais pets equipáveis.
 const team=(Array.isArray(pets)?pets:[]).filter(p=>p&&!PECADOS_HERO_IDS.includes(String(p.species||''))).slice(0,3)
 const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
-const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
-const collabActive=team.length===3&&unique&&count===3
+const collab=team.length===3&&unique?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
 const styles=resolveBatTeamStyles(species)
-const wildcard=team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
-const base=team.length===3&&unique
+// Uma Collab ativa tem prioridade exclusiva: sem Elo Universal nem sinergia de estilo.
+const wildcard=!collab&&team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
+const base=!collab&&team.length===3&&unique
   ?(wildcard?(wildcard.universal?PET_TEAM_WILDCARD_BONUS:PET_TEAM_STYLE_BONUS[wildcard.style])
     :(styles[0]&&styles.every(s=>s===styles[0])?PET_TEAM_STYLE_BONUS[styles[0]]:null))
   :null
-if(!base&&!collabActive)return null
-const attack=Number(base?.attack||0)+(collabActive?pecadosBonus(count):0)
-const crit=Number(base?.crit||0)+(collabActive?.05:0)
-const collabText=collabActive?'🌈 3 Pecados: +'+Math.round(pecadosBonus(count)*100)+'% dano e +5 p.p. CRIT':''
+if(!base&&!collab)return null
+// Estilo funciona sem Collab; quando ela ativa, somente seus próprios bônus se aplicam.
+const attack=Number(base?.attack||0)+Number(collab?.attack||0)
+const crit=Number(base?.crit||0)+Number(collab?.crit||0)
+const collabText=collab
+  ?'🌈 '+collab.label+' — '+(collab.full?'Full Collab':collab.heroesCount+' originais + '+collab.wildcardCount+' Coringa(s)')+
+    ': +'+Math.round(collab.attack*100)+'% dano e +'+Math.round(collab.crit*100)+' p.p. CRIT'
+  :''
 return {
 ...(base||{}),style:wildcard?.style||base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
-label:[base?.label, collabActive?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
+label:[base?.label,collab?(collab.full?'🌈 Full Collab — ':'🌈 Elo de Collab — ')+collab.label:null].filter(Boolean).join(' + '),
 text:[base?.text,collabText].filter(Boolean).join(' | '),
 attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
-collabCount:collabActive?3:0,collabAttack:collabActive?pecadosBonus(count):0,collabCrit:collabActive?.05:0
+collabCount:collab?.full?3:0,collabAssist:Boolean(collab&&!collab.full),
+collabAttack:Number(collab?.attack||0),collabCrit:Number(collab?.crit||0)
 }
 }
 export const LEGENDARY_PET_SUMMONS=[
