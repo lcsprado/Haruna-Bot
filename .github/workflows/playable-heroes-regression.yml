@@ -1,0 +1,29 @@
+name: Playable heroes extended regression
+
+on:
+  push:
+    branches: ['web-integration-playable-seven-sins-20261027']
+  pull_request:
+    paths:
+      - 'src/neon/playable-heroes*.js'
+      - 'src/neon/games.js'
+      - 'src/neon/web-api.js'
+      - 'web/app.js'
+      - 'test/playable-seven-sins-20261027.test.mjs'
+      - '.github/workflows/playable-heroes-regression.yml'
+
+jobs:
+  extended-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install for testing without modifying the repository lockfile
+        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+      - name: Validate syntax
+        run: npm run check
+      - name: Run repository test suite
+        run: npm test
