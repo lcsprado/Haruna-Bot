@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import {homeTrainingReward,homeRestCapacity} from './home-menu.js'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
+import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross} from './business-profit.js'
 
@@ -872,7 +873,7 @@ export async function deliverIfood(jid,taxMultiplier=1){
       const tip=Math.random()<.18?Math.max(10,Math.round(fare*(.05+Math.random()*.15))):0
       return {vehicle:v,category:tier.category,delivery:delivery.name,fare,tip,total:fare+tip}
     })
-    const moneyMultiplier=(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()*horaCorreMultiplier()
+    const moneyMultiplier=Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
     const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
@@ -908,7 +909,7 @@ export async function driveUber(jid,taxMultiplier=1){
       const tip=Math.random()<.22?Math.max(20,Math.round(fare*(.08+Math.random()*.17))):0
       return {car:v,category:tier.category,ride:ride.name,fare,tip,total:fare+tip}
     })
-    const moneyMultiplier=(await getDoubleEventMultiplier(client,'money'))*sundayRushMultiplier()*horaCorreMultiplier()
+    const moneyMultiplier=Math.max(await getDoubleEventMultiplier(client,'money'),horaCorreMultiplier(),await getOwnerEventMultiplier(client,'corre'))*sundayRushMultiplier()
     const gross=Math.round(details.reduce((n,x)=>n+x.total,0)*moneyMultiplier)
     const taxRate=Math.min(100,10*Math.max(1,Number(taxMultiplier)||1))
     const tax=Math.floor(gross*(taxRate/100)),total=gross-tax
