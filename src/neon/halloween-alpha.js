@@ -44,7 +44,7 @@ export async function initHalloweenAlpha(){
   boss_evades BIGINT NOT NULL DEFAULT 0,player_evades BIGINT NOT NULL DEFAULT 0,
   critical_hits BIGINT NOT NULL DEFAULT 0,
   lease_day TEXT NOT NULL DEFAULT '',lease_expires_at BIGINT NOT NULL DEFAULT 0,
-  lease_notice_until BIGINT NOT NULL DEFAULT 0)
+  lease_notice_until BIGINT NOT NULL DEFAULT 0)`)
  // Migração aditiva: preserva golpes, dano, prêmios e pontuações do evento já iniciado.
  await db.query(`ALTER TABLE halloween_players_2026
   ADD COLUMN IF NOT EXISTS speed INTEGER NOT NULL DEFAULT 0,
@@ -64,7 +64,7 @@ export async function initHalloweenAlpha(){
   ADD COLUMN IF NOT EXISTS critical_hits BIGINT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS lease_day TEXT NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS lease_expires_at BIGINT NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS lease_notice_until BIGINT NOT NULL DEFAULT 0
+  ADD COLUMN IF NOT EXISTS lease_notice_until BIGINT NOT NULL DEFAULT 0`)
  await db.query('UPDATE halloween_players_2026 SET attempts=hits WHERE attempts<hits')
  await db.query(`CREATE TABLE IF NOT EXISTS halloween_rewards_2026(
   day TEXT NOT NULL,cycle INTEGER NOT NULL,jid TEXT NOT NULL,
