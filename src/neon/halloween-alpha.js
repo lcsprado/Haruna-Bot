@@ -433,6 +433,46 @@ async function tickHalloween(){
   return alerts
  })
 }
+// Resgates extras compartilham a mesma economia de Almas e são únicos
+// por jogador. Lock no usuário serializa dois comandos simultâneos.
+async function buyHalloweenAltarOffer(jid,offerId){
+ const offer=HALLOWEEN_ALTAR_OFFERS[offerId]
+ if(!offer)throw new Error('Recompensa inválida. Use !halloween loja.')
+ if(!halloweenAltarOpen())throw new Error('O Altar das Almas abre em 31/10 às 00h e fecha 01/11 ao meio-dia (São Paulo).')
+ return tx(async c=>{
+  await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  const rewardId='altar_'+offer.id+'_20261031'
+  const claimed=await c.query(`INSERT INTO halloween_shop_2026(jid,reward_id,created_at)
+    VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING reward_id`,[jid,rewardId,nowSec()])
+  if(!claimed.rowCount)throw new Error('Você já resgatou '+offer.name+'. Limite: uma vez por jogador.')
+  const spent=await c.query(`UPDATE inventories SET quantity=quantity-$3
+    WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity`,
+   [jid,HALLOWEEN_SOUL_ID,offer.cost])
+  if(!spent.rowCount)throw new Error('Almas insuficientes para '+offer.name+'. São necessárias '+offer.cost+' Almas.')
+  await credit(c,jid,offer.itemId,offer.quantity)
+  await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+   VALUES($1,'halloween',0,'halloween_altar_redeem',$2)`,
+   [jid,rewardId+'; '+offer.cost+' Almas; '+offer.itemId+' x'+offer.quantity])
+  return {offer,remaining:Number(spent.rows[0].quantity)}
+ })
+}
+
+// O baú comprado fica no inventário e pode ser aberto mesmo depois que a
+// loja fecha. Conteúdo fixo garante transparência, sem prêmio duplicado.
+async function openHalloweenSupremeChest(jid){
+ return tx(async c=>{
+  await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  const used=await c.query(`UPDATE inventories SET quantity=quantity-1
+   WHERE jid=$1 AND item_id=$2 AND quantity>0 RETURNING quantity`,[jid,HALLOWEEN_CHEST_ID])
+  if(!used.rowCount)throw new Error('Você não possui um Baú Supremo de Halloween. Resgate-o no Altar no sábado.')
+  for(const item of HALLOWEEN_CHEST_CONTENTS)await credit(c,jid,item.itemId,item.quantity)
+  await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+   VALUES($1,'halloween',0,'halloween_supreme_chest_open',$2)`,[
+    jid,'Halloween 2026; '+HALLOWEEN_CHEST_CONTENTS.map(item=>item.itemId+' x'+item.quantity).join('; ')
+   ])
+  return {contents:HALLOWEEN_CHEST_CONTENTS,remaining:Number(used.rows[0].quantity)}
+ })
+}
 async function buyCorcel(jid){
  if(Date.now()<Date.parse('2026-10-31T00:00:00-03:00')||Date.now()>=HALLOWEEN_SHOP_END)throw new Error('O Altar das Almas abre sábado (31/10) e fecha domingo ao meio-dia.')
  return tx(async c=>{
