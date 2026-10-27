@@ -1133,7 +1133,7 @@ function renderPlayableHeroes(){
     const label=h.active?'ATIVO':h.owned?'Usar como herói':'Não obtido';
     return '<div class="card character-card">'+
       '<h3>🌈 '+esc(h.name)+'</h3>'+
-      '<p>Pet Nv.'+num(h.petLevel||0)+' • Maestria '+num(h.masteryStage||1)+'/5</p>'+
+      '<p>Personagem desbloqueado • Maestria '+num(h.masteryStage||1)+'/5</p>'+
       '<button class="btn" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
       '</div>';
   }).join('');
