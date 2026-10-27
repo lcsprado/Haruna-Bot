@@ -8,6 +8,12 @@ import {PECADOS_HERO_IDS} from './sete-pecados-catalog.js'
  * Only invoked after initDatabase has finished; safe to run more than once.
  */
 export async function archiveSevenSinsPetAssignments(){
+  await db.query(`CREATE TABLE IF NOT EXISTS hero_legacy_pet_audit(
+    jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+    previous_team JSONB NOT NULL,previous_primary JSONB,
+    replacement_pet_id BIGINT,created_at BIGINT NOT NULL
+      DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+  )`)
   const {rows:players}=await db.query(`
     SELECT DISTINCT jid FROM (
       SELECT c.jid FROM pet_collection c WHERE c.species=ANY($1::text[])
@@ -32,6 +38,18 @@ export async function archiveSevenSinsPetAssignments(){
         FOR UPDATE`,[jid,PECADOS_HERO_IDS])).rows[0]
       if(!sinTeam&&!sinLegacy&&!sinActive){await c.query('COMMIT');continue}
 
+      // Synchronize the existing active pet before switching any pointers.
+      // This preserves XP/HP which may be newer in the legacy pets table.
+      const activeCollection=(await c.query('SELECT id,species FROM pet_collection WHERE jid=$1 AND active=TRUE FOR UPDATE',[jid])).rows[0]
+      if(legacy&&activeCollection&&String(legacy.species||'')===String(activeCollection.species||'')&&!sinLegacy){
+        await c.query(`UPDATE pet_collection SET
+          level=$1,xp=$2,power=$3,energy=$4,hp=$5,max_hp=$6,
+          wins=$7,losses=$8,hunger=$9,hygiene=$10,last_action=$11,last_rest=$12
+          WHERE jid=$13 AND id=$14`,[
+          legacy.level,legacy.xp,legacy.power,legacy.energy,legacy.hp,legacy.max_hp,
+          legacy.wins,legacy.losses,legacy.hunger,legacy.hygiene,
+          legacy.last_action,legacy.last_rest,jid,activeCollection.id])
+      }
       // Synchronise the last active Sins snapshot back to its retained unlock.
       if(sinLegacy&&sinActive){
         await c.query(`UPDATE pet_collection SET
@@ -61,12 +79,6 @@ export async function archiveSevenSinsPetAssignments(){
       const teamIds=ids.slice(0,3)
       const primary=eligible.find(p=>Number(p.id)===teamIds[0])||null
 
-      await c.query(`CREATE TABLE IF NOT EXISTS hero_legacy_pet_audit(
-        jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-        previous_team JSONB NOT NULL,previous_primary JSONB,
-        replacement_pet_id BIGINT,created_at BIGINT NOT NULL
-          DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
-      )`)
       await c.query(`INSERT INTO hero_legacy_pet_audit(jid,previous_team,previous_primary,replacement_pet_id)
         VALUES($1,$2::jsonb,$3::jsonb,$4) ON CONFLICT(jid) DO NOTHING`,
         [jid,JSON.stringify(oldTeam),JSON.stringify(legacy),primary?.id||null])
