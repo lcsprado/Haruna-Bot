@@ -592,14 +592,14 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
     }
     for(const [groupChat,notices] of sessionGroups){
      const warning=notices.warning.length?
-      '⏳ *HALLOWEEN — FALTAM ATÉ 5 MINUTOS*\\n'+
-      notices.warning.map(p=>'• '+p.name+' — até '+halloweenSessionTime(p.expiresAt)).join('\\n')+
-      '\\n🔁 Renovem com *!halloween entrar*.':null
+      '⏳ *HALLOWEEN — FALTAM ATÉ 5 MINUTOS*\n'+
+      notices.warning.map(p=>'• '+p.name+' — até '+halloweenSessionTime(p.expiresAt)).join('\n')+
+      '\n🔁 Renovem com *!halloween entrar*.':null
      const expired=notices.expired.length?
-      '⌛ *SESSÃO DE HALLOWEEN ENCERRADA*\\n'+
-      notices.expired.map(p=>'• '+p.name).join('\\n')+
-      '\\n⚔️ Ataques pausados até *!halloween entrar*.':null
-     const notice=[warning,expired].filter(Boolean).join('\\n\\n')
+      '⌛ *SESSÃO DE HALLOWEEN ENCERRADA*\n'+
+      notices.expired.map(p=>'• '+p.name).join('\n')+
+      '\n⚔️ Ataques pausados até *!halloween entrar*.':null
+     const notice=[warning,expired].filter(Boolean).join('\n\n')
      if(notice){
       const ok=await Promise.race([
        sock.sendMessage(groupChat,{text:notice}).then(()=>true).catch(()=>false),
