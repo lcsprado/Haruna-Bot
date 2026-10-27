@@ -1,5 +1,6 @@
 import {db} from './db.js'
 import {PECADOS_HERO_IDS} from './sete-pecados-catalog.js'
+import {planHeroOnlyPetTeam} from './hero-only-pet-rules.js'
 
 /**
  * Converts legacy 7-Sins pets into hero-only unlocks without deleting any
@@ -36,7 +37,8 @@ export async function archiveSevenSinsPetAssignments(){
       const sinActive=(await c.query(`SELECT id FROM pet_collection
         WHERE jid=$1 AND active=TRUE AND species=ANY($2::text[])
         FOR UPDATE`,[jid,PECADOS_HERO_IDS])).rows[0]
-      if(!sinTeam&&!sinLegacy&&!sinActive){await c.query('COMMIT');continue}
+      const converted=(await c.query('SELECT 1 FROM hero_legacy_pet_audit WHERE jid=$1',[jid])).rowCount>0
+      if(!sinTeam&&!sinActive&&(!sinLegacy||converted)){await c.query('COMMIT');continue}
 
       // Synchronize the existing active pet before switching any pointers.
       // This preserves XP/HP which may be newer in the legacy pets table.
@@ -51,7 +53,7 @@ export async function archiveSevenSinsPetAssignments(){
           legacy.last_action,legacy.last_rest,jid,activeCollection.id])
       }
       // Synchronise the last active Sins snapshot back to its retained unlock.
-      if(sinLegacy&&sinActive){
+      if(sinLegacy&&sinActive&&String(activeCollection?.species||'')===String(legacy?.species||'')){
         await c.query(`UPDATE pet_collection SET
           level=$1,xp=$2,power=$3,energy=$4,hp=$5,max_hp=$6,
           wins=$7,losses=$8,hunger=$9,hygiene=$10,last_action=$11,last_rest=$12
@@ -69,15 +71,7 @@ export async function archiveSevenSinsPetAssignments(){
             WHERE e.pet_id=p.id AND e.resolved=FALSE)
         ORDER BY CASE WHEN p.active THEN 0 WHEN t.slot IS NOT NULL THEN 1 ELSE 2 END,
                  t.slot ASC NULLS LAST,p.id ASC FOR UPDATE OF p`,[jid,PECADOS_HERO_IDS])
-      const currentIds=oldTeam.filter(t=>!PECADOS_HERO_IDS.includes(String(t.species||'')))
-        .map(t=>Number(t.pet_id))
-      const validIds=new Set(eligible.map(p=>Number(p.id)))
-      const ids=currentIds.filter(id=>validIds.has(id))
-      const preferred=eligible.find(p=>p.active&&!PECADOS_HERO_IDS.includes(String(p.species||'')))
-      if(preferred&&!ids.includes(Number(preferred.id)))ids.unshift(Number(preferred.id))
-      if(!ids.length&&eligible.length)ids.push(Number(eligible[0].id))
-      const teamIds=ids.slice(0,3)
-      const primary=eligible.find(p=>Number(p.id)===teamIds[0])||null
+      const {teamIds,primary}=planHeroOnlyPetTeam(oldTeam,eligible)
 
       await c.query(`INSERT INTO hero_legacy_pet_audit(jid,previous_team,previous_primary,replacement_pet_id)
         VALUES($1,$2::jsonb,$3::jsonb,$4) ON CONFLICT(jid) DO NOTHING`,
