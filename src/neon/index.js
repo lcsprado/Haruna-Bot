@@ -69,7 +69,7 @@ getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
 import {petCollectionCategory,petCollectionCategoryPets,petCollectionMenuText,petCollectionListText,petCollectionDetailText,petCollectionSacrificeText} from './pet-collection-menu.js'
 import { createWebLinkCode } from './web-api.js'
@@ -9866,7 +9866,7 @@ await reply(msg)
 continue
 }
 if(cmd==='classe'||cmd==='class'){
-const classes=Object.values(PLAYER_CLASSES)
+const classes=Object.values(SELECTABLE_PLAYER_CLASSES)
 const raw=String(args[0]||'').trim().toLowerCase()
 if(!raw){
 const lines=classes.map((c,n)=>`${n+1}. ${c.name} — ${c.role} | HP ${c.hp>=0?'+':''}${c.hp} | ATK ${c.atk>=0?'+':''}${c.atk} | DEF ${c.def>=0?'+':''}${c.def} | SPD ${c.spd>=0?'+':''}${c.spd}\n⚜️ ${getClassPassive(c.id)?.name}: ${getClassPassive(c.id)?.description}`)
