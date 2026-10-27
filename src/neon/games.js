@@ -885,6 +885,8 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     // O mesmo Pecado nunca luta como personagem e pet.
     if(heroId&&combatPet?.species===heroId)combatPet=null
     if(heroId&&reservePet?.species===heroId)reservePet=null
+    // Mantem o time salvo: o reserva assume somente no snapshot de combate.
+    if(heroId&&!combatPet&&reservePet){combatPet=reservePet;reservePet=null}
     if(combatPet&&Number(combatPet.hp)<=0&&reservePet){
       combatPet=reservePet
       reservePet=null
@@ -1108,6 +1110,8 @@ export async function startRaid(chat,host,level=null){
       let combatPet=raidCombatPetState(pet,1)
       if(heroId&&combatPet?.species===heroId)combatPet=null
       if(heroId&&reservePet?.species===heroId)reservePet=null
+    // Mantem o time salvo: o reserva assume somente no snapshot de combate.
+    if(heroId&&!combatPet&&reservePet){combatPet=reservePet;reservePet=null}
       if(combatPet&&Number(combatPet.hp)<=0&&reservePet){
         combatPet=reservePet
         reservePet=null
@@ -1472,7 +1476,7 @@ export async function raidRound(chat,level){
       if(p.pet&&Number(p.pet.teamSlot)===3){
         const primaryRow=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[p.jid])).rows[0]||null
         const primary=raidCombatPetState(primaryRow,1)
-        if(primary&&Number(primary.hp)>0&&Number(primary.energy)>0){
+        if(primary&&primary.species!==p.heroId&&Number(primary.hp)>0&&Number(primary.energy)>0){
           await persistRaidCombatPet(c,p.jid,p.pet)
           p.reservePet=p.pet
           p.pet=primary
@@ -3023,6 +3027,12 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     let activePetSlot=Number(existingParticipant.activePetSlot||1)
     let petRow=usePet?await loadBossCombatPet(c,jid,activePetSlot):null
     if(heroId&&petRow?.species===heroId)petRow=null
+    if(usePet&&heroId&&!petRow&&activePetSlot===1){
+      const reserve=await loadBossCombatPet(c,jid,3)
+      if(reserve&&reserve.species!==heroId&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
+        petRow=reserve;activePetSlot=3;
+      }
+    }
     let petSwitch=null
     if(usePet&&activePetSlot===1&&petRow&&Number(petRow.hp)<=0){
       const reserve=await loadBossCombatPet(c,jid,3)
