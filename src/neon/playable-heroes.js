@@ -97,7 +97,17 @@ export async function setPlayableHeroMode(jid,heroId=null){
 
 export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10}={}){
   if(!client||!jid||!playableHero(heroId)||!awardKey)return false
-  const amount=Math.max(1,Math.min(100,Math.floor(Number(xp)||10)))
+  // Limite compartilhado entre Raids e Bosses: 100 XP de maestria/dia por herói.
+  // A trava no usuário serializa premiações simultâneas de grupos diferentes.
+  await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  const {rows:today}=await client.query(`SELECT COALESCE(SUM(xp),0)::int AS gained
+    FROM hero_mastery_awards
+    WHERE jid=$1 AND hero_species=$2
+      AND (to_timestamp(created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
+          (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,[jid,heroId])
+  const quota=Math.max(0,100-Number(today[0]?.gained||0))
+  if(!quota)return false
+  const amount=Math.min(quota,Math.max(1,Math.min(100,Math.floor(Number(xp)||10))))
   const saved=await client.query(`INSERT INTO hero_mastery_awards(jid,award_key,hero_species,xp)
     VALUES($1,$2,$3,$4) ON CONFLICT(jid,award_key) DO NOTHING RETURNING jid`,
     [jid,String(awardKey),heroId,amount])
@@ -110,7 +120,7 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10
 }
 
 export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
-  if(!['heroi','herois','heró i','heroes'].includes(String(cmd||'')))return false
+  if(!['heroi','herois','herói','heroes'].includes(String(cmd||'')))return false
   const action=String(args[0]||'').trim().toLowerCase()
   if(!action||action==='status'||action==='lista'||action==='maestria'){
     const list=await listPlayableHeroes(sender)
