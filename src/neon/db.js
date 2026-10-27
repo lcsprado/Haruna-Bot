@@ -5607,6 +5607,7 @@ export async function petAdventure(jid){
 return transaction(async client=>{
 const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
+if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados agora participam como heróis. Use !heroi; pets comuns continuam disponíveis para aventura.')
 const petHp=normalizedPetHp(pet)
 if(Number(petHp.hp)<=0) throw new Error('Seu pet está sem HP. Use !descansar antes de mandar para aventura.')
 const energy=Number(pet.energy||0)
