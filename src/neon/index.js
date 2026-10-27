@@ -4993,7 +4993,7 @@ const adminEventsMenu=async()=>{
   setQuickFlow(chat,sender,'admin_events',{},5*60*1000)
   await reply('🎪 *ADMIN — CENTRAL DE EVENTOS*\n\n'+
     ownerEventKeys.map((type,i)=>String(i+1)+'. '+OWNER_EVENT_TYPES[type].label).join('\n')+
-    '\n\n📅 Agende: *!eventoadm agendar xp 27/10 19:00 60 2*'+
+    '\n\n📅 Agende também pelo menu, escolhendo o evento e a opção 5.'+
     '\n📊 Todos: *!eventoadm status*'+
     '\n⚠️ Mimics históricos não podem ser reiniciados sem uma edição nova.'+
     '\n\n9️⃣ Voltar\n0️⃣ Sair')
@@ -5008,7 +5008,7 @@ const adminEventDetailMenu=async(type)=>{
     '\n2️⃣ Ativar 60 minutos (2x)'+
     '\n3️⃣ Consultar status'+
     '\n4️⃣ Encerrar / cancelar'+
-    '\n5️⃣ Como agendar\n9️⃣ Voltar\n0️⃣ Sair')
+    '\n5️⃣ Agendar data e hora\n9️⃣ Voltar\n0️⃣ Sair')
 }
 const activateAdminEvent=async(type,minutes,multiplier=2,startsAt=Date.now())=>{
   const event=await setOwnerEvent(type,{minutes,multiplier,startsAt,owner:sender})
@@ -5629,11 +5629,29 @@ if(flow.stage==='admin_event_detail'){
     return await adminEventDetailMenu(type),true
   }
   if(input==='5'){
-    await reply('📅 Agendamento: *!eventoadm agendar '+type+' 27/10 19:00 60 2*\n(Dia/mês, horário de Brasília, duração em minutos e multiplicador.)')
-    return await adminEventDetailMenu(type),true
+    setQuickFlow(chat,sender,'admin_event_schedule',{type},5*60*1000)
+    await reply('📅 *AGENDAR '+OWNER_EVENT_TYPES[type].label+'*\n\nDigite *data hora duração multiplicador*.\nExemplo: *27/10 19:00 60 2*\n⏱️ Até 180 min, em até 30 dias.\n9️⃣ Voltar')
+    return true
   }
   await reply('🎪 Escolha 1 a 5, 9 para voltar ou 0 para sair.')
   return true
+}
+if(flow.stage==='admin_event_schedule'){
+  const type=flow.data.type
+  if(input==='9')return await adminEventDetailMenu(type),true
+  const [dateText,timeText,minutes,multiplier,...extras]=input.split(/\s+/)
+  if(extras.length||!dateText||!timeText||!minutes){
+    await reply('📅 Informe: *27/10 19:00 60 2* ou digite 9 para voltar.')
+    return true
+  }
+  try{
+    const startsAt=parseOwnerEventBrazilDate(dateText,timeText)
+    await activateAdminEvent(type,minutes,multiplier===undefined?2:multiplier,startsAt)
+    return await adminEventDetailMenu(type),true
+  }catch(err){
+    await reply('⚠️ '+err.message+'\nTente novamente ou digite 9.')
+    return true
+  }
 }
 if(flow.stage==='admin_diag'){
 if(input==='9') return await adminMainMenu(),true
