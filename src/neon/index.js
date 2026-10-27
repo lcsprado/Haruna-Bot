@@ -1441,6 +1441,11 @@ const mimicTitleRows=await db.query(
   [jid,['titulo_mimic_campiao_20261024','titulo_mimic_vice_20261024','titulo_mimic_terceiro_20261024','titulo_cacador_mimics_20261024']]
 )
 const mimicTitle=mimicTitleRows.rows[0]?.name||''
+const halloweenTitleRows=await db.query(
+  "SELECT it.name FROM inventories inv JOIN items it ON it.id=inv.item_id WHERE inv.jid=$1 AND inv.item_id=$2 AND inv.quantity>0 LIMIT 1",
+  [jid,'titulo_soberano_almas_halloween_20261031']
+)
+const halloweenTitle=halloweenTitleRows.rows[0]?.name||''
 const badge=founderBadge(p)
 const xp=xpBar(p.exp,p.level)
 const achievements=[
@@ -1520,7 +1525,7 @@ ${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNo
 ${petDetail}${enchantDetail}`
 const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
-${title}${mimicTitle?' • '+mimicTitle:''}${badge?' • '+badge:''}
+${title}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
 ⭐ Nível: *${Number(p.level||1)}*
 🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}
