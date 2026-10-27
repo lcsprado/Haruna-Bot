@@ -76,6 +76,11 @@ jobs:
           src_count="$(psql -X -At -v ON_ERROR_STOP=1 --dbname="$AIVEN_SOURCE_URL" -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname='public'")"
           (( src_count >= 70 )) || { echo "::error::Schema de origem não parece corresponder ao Alpha Bot."; exit 1; }
           echo "Origem validada; $src_count tabelas públicas; destino isolado vazio."
+          # Banco final pode ter sido derivado de um secret legado; propagar aos
+          # próximos steps sem publicar URI ou senha nos logs.
+          echo "::add-mask::$AIVEN_SOURCE_URL"
+          echo "::add-mask::$NEON_TARGET_URL"
+          printf 'AIVEN_SOURCE_URL=%s\nNEON_TARGET_URL=%s\n' "$AIVEN_SOURCE_URL" "$NEON_TARGET_URL" >> "$GITHUB_ENV"
 
       - name: "Exportar snapshot consistente do Aiven (somente leitura)"
         shell: bash
