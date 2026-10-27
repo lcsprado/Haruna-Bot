@@ -4996,7 +4996,7 @@ const adminEventsMenu=async()=>{
     '\n\n📅 Agende também pelo menu, escolhendo o evento e a opção 5.'+
     '\n📊 Todos: *!eventoadm status*'+
     '\n9️⃣ Outros: Boss Global / 2x Geral / Mimics'+
-    '\n\n0️⃣ Voltar ao Admin')
+    '\n\n0️⃣ Sair')
 }
 
 const adminMoreEventsMenu=async()=>{
