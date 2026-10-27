@@ -69,7 +69,7 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
   const index=Math.max(1,Math.floor(Number(attackIndex)||1));
   const stage=Math.max(1,Math.min(5,Math.floor(Number(masteryStage)||1)));
   const special=index%8===0&&stage>=2,ultimate=index%25===0&&stage>=3;
-  let bonus=(stage>=4?.01:0)+(stage>=5?.01:0),heal=0,allyHeal=0;
+  let bonus=0,heal=0,allyHeal=0;
   if(id==='pecado_escanor'){
     bonus=Number(hp)/Math.max(1,Number(maxHp))>.7?.04:0;
     if(special)bonus+=.15;
@@ -81,7 +81,7 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
     if(Number(next.assaultCharges||0)>0){bonus+=.15;next.assaultCharges--;}
   }else if(id==='pecado_ban'){
     bonus=.02+(special?.10:0)+(ultimate?.15:0);
-    if(special)heal+=Math.ceil(Math.max(1,Number(maxHp))*.01);
+    if(index%8===0)heal+=Math.ceil(Math.max(1,Number(maxHp))*.01);
     if(ultimate)heal+=Math.ceil(Math.max(1,Number(maxHp))*.05);
   }else if(id==='pecado_diane'){
     bonus=special?.10:0;
@@ -98,6 +98,8 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
     bonus=(Number(next.weaknessCharges||0)>0?.04:0)+(ultimate?.15:0);
     if(Number(next.weaknessCharges||0)>0)next.weaknessCharges--;
   }
+  // Maestria IV/V concede +1% cada sem sobrescrever passivas especiais.
+  bonus+=(stage>=4?.01:0)+(stage>=5?.01:0);
   // Guardrail contra boosts multiplicativos descontrolados.
   const cap=context==='boss'?.30:.35;
   return {damage:Math.max(1,Math.floor(n*(1+Math.min(cap,bonus)))),heal,allyHeal,
