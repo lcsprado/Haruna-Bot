@@ -1,0 +1,65 @@
+name: Active class selection safety
+
+on:
+  push:
+    branches: ['web-integration-*']
+    paths:
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'src/neon/web-api.js'
+      - 'web/app.js'
+      - 'test/class-visibility-20261027.test.mjs'
+      - 'src/neon/playable-heroes.js'
+      - 'src/neon/playable-heroes-core.js'
+      - 'src/neon/games.js'
+      - 'test/playable-seven-sins-20261027.test.mjs'
+      - 'src/neon/hero-only-pet-rules.js'
+      - 'src/neon/hero-only-pet-migration.js'
+      - 'src/neon/sete-pecados-collab.js'
+      - 'test/hero-only-pet-20261027.test.mjs'
+      - 'test/sete-pecados-team-synergy-20261026.test.mjs'
+      - '.github/workflows/active-class-selection.yml'
+  pull_request:
+    paths:
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'src/neon/web-api.js'
+      - 'web/app.js'
+      - 'test/class-visibility-20261027.test.mjs'
+      - 'src/neon/playable-heroes.js'
+      - 'src/neon/playable-heroes-core.js'
+      - 'src/neon/games.js'
+      - 'test/playable-seven-sins-20261027.test.mjs'
+      - 'src/neon/hero-only-pet-rules.js'
+      - 'src/neon/hero-only-pet-migration.js'
+      - 'src/neon/sete-pecados-collab.js'
+      - 'test/hero-only-pet-20261027.test.mjs'
+      - 'test/sete-pecados-team-synergy-20261026.test.mjs'
+      - '.github/workflows/active-class-selection.yml'
+
+jobs:
+  class-visibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate syntax without changing dependencies
+        run: |
+          node --check src/neon/game-catalog.js
+          node --check src/neon/playable-heroes.js
+          node --check src/neon/playable-heroes-core.js
+          node --check src/neon/games.js
+          node --check src/neon/hero-only-pet-rules.js
+          node --check src/neon/hero-only-pet-migration.js
+          node --check src/neon/sete-pecados-collab.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/web-api.js
+          node --check web/app.js
+          node --check test/class-visibility-20261027.test.mjs
+      - name: Test class selection and legacy preservation
+        run: node --test test/class-visibility-20261027.test.mjs test/playable-seven-sins-20261027.test.mjs test/hero-only-pet-20261027.test.mjs test/sete-pecados-team-synergy-20261026.test.mjs

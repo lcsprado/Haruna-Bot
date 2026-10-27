@@ -1124,6 +1124,26 @@ function petAdoptModal(){
   '</div>';
 }
 
+function renderPlayableHeroes(){
+  const heroes=Array.isArray(ui.data?.heroes)?ui.data.heroes:[];
+  if(!heroes.length)return '';
+  const active=heroes.find(h=>h.active);
+  const items=heroes.map(h=>{
+    const disabled=!h.owned||h.active;
+    const label=h.active?'ATIVO':h.owned?'Usar como herói':'Não obtido';
+    return '<div class="card character-card">'+
+      '<h3>🌈 '+esc(h.name)+'</h3>'+
+      '<p>Personagem desbloqueado • Maestria '+num(h.masteryStage||1)+'/5</p>'+
+      '<button class="btn" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
+      '</div>';
+  }).join('');
+  return '<section class="card"><h3>⚔️ Heróis jogáveis — 7 Pecados</h3>'+
+    '<p>Escolha um Pecado desbloqueado sem perder classe, pets ou Despertares. O mesmo Pecado não combate simultaneamente como pet.</p>'+
+    '<div class="character-grid">'+items+'</div>'+
+    '<button class="btn" data-character-select="__class__" '+(active?'':'disabled')+'>Voltar à minha classe</button>'+
+    '</section>';
+}
+
 function renderCharacter(){
   const selected=selectedCharacter();
   const cp=profile();
@@ -1134,12 +1154,12 @@ function renderCharacter(){
     ? '<div class="notice good"><strong>Primeira classe grátis.</strong><br>Depois de confirmar, cada nova troca exige 1 Pergaminho de Reclassificação, sem tempo de espera.</div>'
     : '<div class="notice"><strong>Troca de classe disponível.</strong><br>Custa 1 Pergaminho de Reclassificação por troca, sem recarga • Pergaminhos: '+num(scrolls)+'</div>';
 
-  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Cada classe tem uma distribuição própria de HP, ATK, DEF e SPD. Não existem mais bônus negativos nem atributo zerado.</p></div><span class="tag '+(applied?'good':'')+'">'+esc(applied?selected.name+' ativo':'Escolha sua classe')+'</span></div>'+
+  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Cada classe tem uma distribuição própria de HP, ATK, DEF e SPD. Não existem mais bônus negativos nem atributo zerado.</p></div><span class="tag '+(applied?'good':'')+'">'+esc((ui.data?.heroes||[]).find(h=>h.active)?.name|| (applied?selected.name+' ativo':'Escolha sua classe'))+'</span></div>'+
     reclassNotice+
-    '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):'Sem classe aplicada')+'</small></div><button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+
+    '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):applied?esc(selected.role):'Sem classe aplicada')+'</small></div><button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+
       '<div class="stat-strip"><span>❤️ '+num(cp.effective_hp||cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
     '</div>'+
-    '<div class="character-grid">'+CHARACTER_ART.map(ch=>{
+    '<div class="character-grid">'+CHARACTER_ART.filter(ch=>Boolean(classRule(ch.id))||(applied&&ch.id===selected.id)).map(ch=>{
       const rule=classRule(ch.id)||{};
       const active=applied&&ch.id===selected.id;
       const locked=applied&&!active&&scrolls<1;
@@ -1160,7 +1180,7 @@ function renderCharacter(){
         '<div class="class-bonuses">'+stats.map(x=>'<span>'+x+'</span>').join('')+'</div>'+
         '<button class="btn '+(active?'good':'primary')+'" data-character-select="'+esc(ch.id)+'" '+(active||locked?'disabled':'')+'>'+esc(label)+'</button>'+
       '</div>';
-    }).join('')+'</div>';
+    }).join('')+'</div>'+renderPlayableHeroes();
 }
 function renderPets(){
   const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
@@ -2265,7 +2285,16 @@ function bind(){
   });
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false));
   document.querySelectorAll('[data-character-select]').forEach(x=>x.onclick=async()=>{
-    ui.characterId=x.dataset.characterSelect;
+    const choice=String(x.dataset.characterSelect||'');
+    if(choice==='__class__'){
+      await doAction('hero.class',{},{success:'🧙 Classe original restaurada no combate.'});
+      return;
+    }
+    if(choice.startsWith('pecado_')){
+      await doAction('hero.select',{heroId:choice},{success:'🌈 Herói selecionado para o combate.'});
+      return;
+    }
+    ui.characterId=choice;
     localStorage.setItem(CHARACTER_KEY,ui.characterId);
     await doAction('character.select',{classId:ui.characterId},{success:'🧙 Classe aplicada aos seus atributos.'});
   });
