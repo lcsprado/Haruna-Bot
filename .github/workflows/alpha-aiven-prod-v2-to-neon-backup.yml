@@ -54,7 +54,14 @@ jobs:
             # abaixo confirma host/porta/base, sem jamais exibir credenciais.
             case "$PREVIOUS_NEON_URL" in
               *@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb|*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech/neondb\?*|*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432/neondb|*@ep-patient-breeze-b4oyk4lq.c-6.us-east-2.aws.neon.tech:5432/neondb\?*)
-                NEON_TARGET_URL="${PREVIOUS_NEON_URL/\/neondb/\/alpha_aiven_backup_20261027}" ;;
+                # Montagem explícita: mantém host, porta e parâmetros SSL,
+                # mas SEMPRE substitui o último segmento por nossa base vazia.
+                previous_base="${PREVIOUS_NEON_URL%%\?*}"
+                NEON_TARGET_URL="${previous_base%/*}/alpha_aiven_backup_20261027"
+                if [[ "$PREVIOUS_NEON_URL" == *\?* ]]; then
+                  NEON_TARGET_URL+="?${PREVIOUS_NEON_URL#*\?}"
+                fi
+                ;;
             esac
           fi
           if [[ -z "${AIVEN_SOURCE_URL:-}" || -z "${NEON_TARGET_URL:-}" ]]; then
@@ -73,7 +80,7 @@ jobs:
             exit 1
           fi
           if [[ "$db_name" != "alpha_aiven_backup_20261027" ]]; then
-            echo "::error::Destino Neon não está apontando para a base de backup isolada."
+            echo "::error::Destino Neon não está apontando para a base de backup isolada (caminho de banco inválido)."
             exit 1
           fi
           # Allowlist exata de servidores e banco, impedindo inverter as conexões.
