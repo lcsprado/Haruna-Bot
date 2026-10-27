@@ -1124,6 +1124,26 @@ function petAdoptModal(){
   '</div>';
 }
 
+function renderPlayableHeroes(){
+  const heroes=Array.isArray(ui.data?.heroes)?ui.data.heroes:[];
+  if(!heroes.length)return '';
+  const active=heroes.find(h=>h.active);
+  const items=heroes.map(h=>{
+    const disabled=!h.owned||h.active;
+    const label=h.active?'ATIVO':h.owned?'Usar como herói':'Não obtido';
+    return '<div class="card character-card">'+
+      '<h3>🌈 '+esc(h.name)+'</h3>'+
+      '<p>Pet Nv.'+num(h.petLevel||0)+' • Maestria '+num(h.masteryStage||1)+'/5</p>'+
+      '<button class="btn" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
+      '</div>';
+  }).join('');
+  return '<section class="card"><h3>⚔️ Heróis jogáveis — 7 Pecados</h3>'+
+    '<p>Escolha um Pecado desbloqueado sem perder classe, pets ou Despertares. O mesmo Pecado não combate simultaneamente como pet.</p>'+
+    '<div class="character-grid">'+items+'</div>'+
+    '<button class="btn" data-character-select="__class__" '+(active?'':'disabled')+'>Voltar à minha classe</button>'+
+    '</section>';
+}
+
 function renderCharacter(){
   const selected=selectedCharacter();
   const cp=profile();
@@ -1160,7 +1180,7 @@ function renderCharacter(){
         '<div class="class-bonuses">'+stats.map(x=>'<span>'+x+'</span>').join('')+'</div>'+
         '<button class="btn '+(active?'good':'primary')+'" data-character-select="'+esc(ch.id)+'" '+(active||locked?'disabled':'')+'>'+esc(label)+'</button>'+
       '</div>';
-    }).join('')+'</div>';
+    }).join('')+'</div>'+renderPlayableHeroes();
 }
 function renderPets(){
   const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
