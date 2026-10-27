@@ -1092,6 +1092,35 @@ await reply(
 _Responda apenas com o número._`
 )
 }
+const ownerEventKeys=Object.keys(OWNER_EVENT_TYPES)
+const ownerEventAliases=Object.freeze({
+  eventoxp:'xp',eventopet:'pet',eventodinheiro:'dinheiro',eventocorre:'corre',
+  eventosorte:'sorte',eventoraid:'raid',eventodrop:'drop',eventofragmentos:'fragmentos'
+})
+async function showOwnerEventsMenu(chat,sender,reply){
+  setQuickFlow(chat,sender,'admin_events',{},5*60*1000)
+  await reply('🎪 *ADMIN — CENTRAL DE EVENTOS*\n\n'+
+    ownerEventKeys.map((type,i)=>String(i+1)+'. '+OWNER_EVENT_TYPES[type].label).join('\n')+
+    '\n\n📅 Agende também pelo menu, escolhendo o evento e a opção 5.'+
+    '\n📊 Todos: *!eventoadm status*'+
+    '\n9️⃣ Outros: Boss Global / 2x Geral / Mimics'+
+    '\n\n0️⃣ Sair')
+}
+
+async function runOwnerEventAction({type,minutes,multiplier=2,startsAt=Date.now(),sender,reply,refreshOwnerEventTimers}){
+  const event=await setOwnerEvent(type,{minutes,multiplier,startsAt,owner:sender})
+  await refreshOwnerEventTimers()
+  await reply('✅ *EVENTO '+(event.scheduled?'AGENDADO':'ATIVADO')+'*\n\n'+
+    event.label+' • *'+event.multiplier+'x*\n⏱️ '+minutes+' minuto(s)\n'+
+    (event.scheduled?'📅 Início: '+new Date(event.startsAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'🌐 Bônus global para os grupos habilitados.')+
+    '\n🛑 Para cancelar: *!eventoadm off '+type+'*')
+}
+async function stopOwnerEventAction({type,sender,reply,refreshOwnerEventTimers}){
+  const result=await stopOwnerEvent(type,sender)
+  await refreshOwnerEventTimers()
+  await reply(result.stopped?'🛑 *Evento cancelado:* '+OWNER_EVENT_TYPES[type].label:'⚪ Nenhum evento ativo/agendado deste tipo.')
+}
+
 async function alphaContractBoardMessage(jid){
 const board=await getAlphaContractBoard(jid)
 const remaining=Math.max(1,Math.ceil((board.nextAt-Date.now())/60000))
@@ -4984,20 +5013,7 @@ _Responda apenas com o número._`
 )
 }
 
-const ownerEventKeys=Object.keys(OWNER_EVENT_TYPES)
-const ownerEventAliases={
-  eventoxp:'xp',eventopet:'pet',eventodinheiro:'dinheiro',eventocorre:'corre',
-  eventosorte:'sorte',eventoraid:'raid',eventodrop:'drop',eventofragmentos:'fragmentos'
-}
-const adminEventsMenu=async()=>{
-  setQuickFlow(chat,sender,'admin_events',{},5*60*1000)
-  await reply('🎪 *ADMIN — CENTRAL DE EVENTOS*\n\n'+
-    ownerEventKeys.map((type,i)=>String(i+1)+'. '+OWNER_EVENT_TYPES[type].label).join('\n')+
-    '\n\n📅 Agende também pelo menu, escolhendo o evento e a opção 5.'+
-    '\n📊 Todos: *!eventoadm status*'+
-    '\n9️⃣ Outros: Boss Global / 2x Geral / Mimics'+
-    '\n\n0️⃣ Sair')
-}
+const adminEventsMenu=async()=>showOwnerEventsMenu(chat,sender,reply)
 
 const adminMoreEventsMenu=async()=>{
   setQuickFlow(chat,sender,'admin_more_events',{},5*60*1000)
@@ -5009,7 +5025,7 @@ const adminMoreEventsMenu=async()=>{
 }
 const adminBossEventMenu=async()=>{
   setQuickFlow(chat,sender,'admin_event_boss',{},5*60*1000)
-  await reply('👹 *BOSS GLOBAL — OWNER*\n\n1️⃣ Ativar agora\n2️⃣ Consultar status\n3️⃣ Encerrar\n9️⃣ Voltar\n0️⃣ Sair\n\n📍 Para iniciar, use !admin dentro de um grupo.')
+  await reply('👹 *BOSS GLOBAL — OWNER*\n\n1️⃣ Ativar agora\n2️⃣ Consultar status\n3️⃣ Encerrar\n9️⃣ Voltar\n0️⃣ Sair\n\n🌐 Controle global disponível também no privado.')
 }
 const adminDoubleEventMenu=async()=>{
   setQuickFlow(chat,sender,'admin_event_double',{},5*60*1000)
@@ -5648,10 +5664,6 @@ if(flow.stage==='admin_event_boss'){
     return await adminBossEventMenu(),true
   }
   if(input==='1'||input==='3'){
-    if(!isGroup){
-      await reply('⚠️ Abra !admin no grupo onde deseja controlar o Boss Global.')
-      return await adminBossEventMenu(),true
-    }
     const result=input==='1'?await activateBossEvent(chat):await deactivateBossEvent(chat)
     if(!result.already){
       await sendEventToGroups(input==='1'
@@ -9977,7 +9989,12 @@ if(!allowed) continue
 const sleep=await resolvePlayerSleep(sender)
 if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
 const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping','meupet','statuspet','credito','dividas','emprestimos','pagar','pagaremprestimo','aceitaremprestimo','recusaremprestimo'])
-if(sleep?.active&&!sleepAllowed.has(cmd)) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
+// Administração não é ação de RPG: Owner pode comandar eventos enquanto dorme,
+// exclusivamente no privado do Alpha; grupos e jogadores seguem bloqueados.
+const ownerPrivateAdmin= isOwner && !isGroup &&
+  (['admin','ownermenu','adminmenu','donocomandos','eventoadm','eventodobro','dobroevento','ativar2x','eventoboss','bossevento','superbossevento'].includes(cmd) ||
+   Object.hasOwn(ownerEventAliases,cmd))
+if(sleep?.active&&!sleepAllowed.has(cmd)&&!ownerPrivateAdmin) return await reply(`😴 Você está dormindo em *${sleep.place}*.\n⏳ Acorda em *${duration(sleep.remaining)}*.\n🛡️ Enquanto dorme, não pode jogar, ser roubado ou atacado.`)
 if(cmd==='acordar'){
 if(sleep?.woke) continue
 if(!sleep?.active){
@@ -12083,7 +12100,7 @@ await reply(`🚨 *RAID ${raidNo} INICIADA!*\n\n👹 *${r.name} — Lv.${r.level
 runRaidCombat(chat,Number(r.level),reply)
 } else if(['eventoboss','bossevento','superbossevento'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
-if(!isGroup) return await reply(`🌘 Use *${prefix}eventoboss* dentro do grupo onde quer controlar o evento.`)
+// O Boss é global; o Owner também pode controlá-lo pelo contato privado.
 const action=normalizeItemText(args[0]||'status')
 if(['ativar','on','iniciar','start'].includes(action)){
 const r=await activateBossEvent(chat)
@@ -12500,7 +12517,7 @@ return await reply('⏱️ *EVENTOS*\n\nNenhum evento de bônus está ativo agor
 } else if(['eventoadm',...Object.keys(ownerEventAliases)].includes(cmd)){
   if(!isOwner)return await reply('⛔ Comando exclusivo do proprietário do Alpha Bot.')
   if(cmd==='eventoadm'&&(!args[0]||['menu','ajuda'].includes(String(args[0]).toLowerCase()))){
-    return await adminEventsMenu()
+    return await showOwnerEventsMenu(chat,sender,reply)
   }
   const action=String(args[0]||'').toLowerCase()
   if(cmd==='eventoadm'&&['status','lista','ativos'].includes(action)){
@@ -12510,20 +12527,20 @@ return await reply('⏱️ *EVENTOS*\n\nNenhum evento de bônus está ativo agor
     const [type,dateText,timeText,minutes,multiplier]=args.slice(1)
     if(!OWNER_EVENT_TYPES[type])return await reply('⚠️ Tipo inválido. Use !eventoadm para consultar os eventos.')
     const startsAt=parseOwnerEventBrazilDate(dateText,timeText)
-    return await activateAdminEvent(type,minutes,multiplier===undefined?2:multiplier,startsAt)
+    return await runOwnerEventAction({type,minutes,multiplier:multiplier===undefined?2:multiplier,startsAt,sender,reply,refreshOwnerEventTimers})
   }
   if(cmd==='eventoadm'&&['off','parar','cancelar'].includes(action)){
     const type=String(args[1]||'').toLowerCase()
     if(!OWNER_EVENT_TYPES[type])return await reply('⚠️ Informe o tipo. Exemplo: !eventoadm off corre')
-    return await cancelAdminEvent(type)
+    return await stopOwnerEventAction({type,sender,reply,refreshOwnerEventTimers})
   }
   const type=ownerEventAliases[cmd]
   if(!type)return await reply('🎪 Use *!eventoadm* para escolher um evento.')
-  if(['off','parar','cancelar'].includes(action))return await cancelAdminEvent(type)
+  if(['off','parar','cancelar'].includes(action))return await stopOwnerEventAction({type,sender,reply,refreshOwnerEventTimers})
   if(action==='status')return await reply(ownerEventsStatusText([await getOwnerEvent(type)]))
   const minutes=action?Number(action):OWNER_EVENT_TYPES[type].defaultMinutes
   const multiplier=args[1]?Number(args[1]):2
-  return await activateAdminEvent(type,minutes,multiplier)
+  return await runOwnerEventAction({type,minutes,multiplier,sender,reply,refreshOwnerEventTimers})
 } else if(['eventodobro','dobroevento','ativar2x'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
 const action=String(args[0]||'').toLowerCase()
