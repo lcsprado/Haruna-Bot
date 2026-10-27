@@ -577,7 +577,7 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
     const groupsOpening=await listGroups()
     if(groupsOpening.length&&await claimNotice('halloween_day_20261026:'+boss.day)){
      const groups=groupsOpening
-     await broadcast(sock,groups,'🎃👹 *HALLOWEEN ALPHA — '+boss.name+'*\n⏰ Boss global até 23h59, ataques automáticos a cada 10 segundos!\n❤️ HP inicial: *'+fmt(boss.hp)+'*\n💀 3 fases e renascimento após derrota.\n🧩 Almas ilimitadas, 2× XP personagem/pet e quatro itens lendários raros.\n👉 Digite *!halloween entrar* para participar.\n🐎 Trocas pelo Corcel Espectral abrem sábado.')
+     await broadcast(sock,groups,'🎃👹 *HALLOWEEN ALPHA — '+boss.name+'*\n⏰ Boss global até 23h59!\n❤️ HP inicial: *'+fmt(boss.hp)+'*\n💀 3 fases e renascimento após derrota.\n🧩 Almas ilimitadas, 2× XP personagem/pet e quatro itens lendários raros.\n'+(halloweenHourlyEnabled(now)?'🔁 *NOVA REGRA: a cada 1 hora, confirme sua participação!*\n⚔️ Ataques automáticos só durante os 60 minutos após *!halloween entrar*.\n⌛ O bot avisa 5 minutos antes de acabar.':'⚔️ Hoje os ataques continuam automáticos; a renovação por hora começa amanhã.')+'\n👉 Digite *!halloween entrar* para participar.\n🐎 Trocas pelo Corcel Espectral abrem sábado.')
     }
     const alerts=await tickHalloween()
     // Uma mensagem consolidada por grupo e por minuto evita flood.
