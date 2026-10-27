@@ -1147,17 +1147,17 @@ async function finishRaidRewards(c,s,cfg,chat){
   const ownerDrop=await getOwnerEventMultiplier(c,'drop')
   const ownerFragments=await getOwnerEventMultiplier(c,'fragmentos')
   const ownerGeneralXp=await getOwnerEventMultiplier(c,'xp')
-  const ownerGeneralPet=await getOwnerEventMultiplier(c,'pet')
+  const effectivePetXp=await getPetXpEventMultiplier(c)
   // 18/10: hora dourada de Raid, apenas dinheiro e EXP do jogador.
   // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
   const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
     now<Date.parse('2026-10-18T22:00:00-03:00')
-  const moneyMultiplier=raidGoldHour?2:(cacadaActive?1.25:1)
+  const moneyMultiplier=Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro'))
   // Caçada de Sábado: aplica somente à EXP de jogador em Raids 50/60/65/70.
   // MAX evita multiplicação indevida se outro evento de Raid coincidir.
   const saturdayXp=saturdayRaidXpMultiplier(cfg.level,now)
-  const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid/ownerGeneralXp)
-  const petXpMultiplier=Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid/ownerGeneralPet)
+  const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
+  const petXpMultiplier=Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
   const gearEventBonus=raidEventActive?.015:0
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
