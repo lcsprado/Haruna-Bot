@@ -14,6 +14,11 @@ on:
       - 'src/neon/playable-heroes-core.js'
       - 'src/neon/games.js'
       - 'test/playable-seven-sins-20261027.test.mjs'
+      - 'src/neon/hero-only-pet-rules.js'
+      - 'src/neon/hero-only-pet-migration.js'
+      - 'src/neon/sete-pecados-collab.js'
+      - 'test/hero-only-pet-20261027.test.mjs'
+      - 'test/sete-pecados-team-synergy-20261026.test.mjs'
       - '.github/workflows/active-class-selection.yml'
   pull_request:
     paths:
@@ -27,6 +32,11 @@ on:
       - 'src/neon/playable-heroes-core.js'
       - 'src/neon/games.js'
       - 'test/playable-seven-sins-20261027.test.mjs'
+      - 'src/neon/hero-only-pet-rules.js'
+      - 'src/neon/hero-only-pet-migration.js'
+      - 'src/neon/sete-pecados-collab.js'
+      - 'test/hero-only-pet-20261027.test.mjs'
+      - 'test/sete-pecados-team-synergy-20261026.test.mjs'
       - '.github/workflows/active-class-selection.yml'
 
 jobs:
@@ -43,10 +53,13 @@ jobs:
           node --check src/neon/playable-heroes.js
           node --check src/neon/playable-heroes-core.js
           node --check src/neon/games.js
+          node --check src/neon/hero-only-pet-rules.js
+          node --check src/neon/hero-only-pet-migration.js
+          node --check src/neon/sete-pecados-collab.js
           node --check src/neon/db.js
           node --check src/neon/index.js
           node --check src/neon/web-api.js
           node --check web/app.js
           node --check test/class-visibility-20261027.test.mjs
       - name: Test class selection and legacy preservation
-        run: node --test test/class-visibility-20261027.test.mjs test/playable-seven-sins-20261027.test.mjs
+        run: node --test test/class-visibility-20261027.test.mjs test/playable-seven-sins-20261027.test.mjs test/hero-only-pet-20261027.test.mjs test/sete-pecados-team-synergy-20261026.test.mjs
