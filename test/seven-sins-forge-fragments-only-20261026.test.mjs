@@ -65,9 +65,8 @@ test('reiniciar nao recria copia Lv.10 fantasma de equipamento ja forjado',()=>{
   assert.ok(positionForgeTable<positionLegacyImport)
 })
 
-test('os Sete Pecados sao personagens jogaveis e nao pets da collab',()=>{
-  assert.match(collab,/PERSONAGENS JOGÁVEIS — 7 PECADOS/)
-  assert.match(collab,/HERÓI REPETIDO/)
-  assert.match(collab,/HERÓI JOGÁVEL/)
-  assert.doesNotMatch(collab,/COMPANHEIROS DE AVENTURA/)
+test('companheiros da collab nao recebem o rotulo publico de personagem',()=>{
+  assert.match(collab,/COMPANHEIROS DE AVENTURA/)
+  assert.match(collab,/COMPANHEIRO REPETIDO/)
+  assert.match(collab,/COMPANHEIRO DE AVENTURA/)
 })

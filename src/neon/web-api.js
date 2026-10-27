@@ -40,9 +40,7 @@ import {
   getAlphaContractBoard, acceptAlphaContract, claimAlphaContract, changeAlphaReputation
 } from './progression.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
-import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
-import {listPlayableHeroes,setPlayableHeroMode} from './playable-heroes.js'
-import {excludeActiveHeroPet} from './playable-heroes-core.js'
+import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
@@ -459,7 +457,7 @@ async function playerBootstrap(session){
   const [
     profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
-    doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar,recentTransactions,heroes
+    doubleRewardEvent,luckyBoxEvent,cooldowns,sleep,carpinar,recentTransactions
   ]=await Promise.all([
     getProfile(jid),
     getCombatProfile(jid),
@@ -500,13 +498,12 @@ async function playerBootstrap(session){
               LEFT JOIN users tu ON tu.jid=t.to_jid
               WHERE t.from_jid=$1 OR t.to_jid=$1
               ORDER BY t.created_at DESC,t.id DESC
-              LIMIT 20`,[jid]),
-    listPlayableHeroes(jid)
+              LIMIT 20`,[jid])
   ])
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,heroes.find(h=>h.active)?.id)),heroes,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(petTeam),petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
@@ -583,7 +580,7 @@ async function publicCatalog(){
     cars:CARS,
     motorcycles:MOTORCYCLES,
     businesses:BUSINESSES,
-    classes:Object.values(SELECTABLE_PLAYER_CLASSES),
+    classes:Object.values(PLAYER_CLASSES),
     cltUberTypes:CLT_UBER_TYPES,
     loanRules:LOAN_RULES
   }
@@ -1157,8 +1154,6 @@ async function runAction(session,name,body={}){
       return withTargetMeta(await createLoanOffer(jid,member.jid,positiveInt(body.amount,'Valor')),member)
     }
     case 'character.select': return setPlayerClass(jid,String(body.classId||''))
-    case 'hero.select': return setPlayableHeroMode(jid,String(body.heroId||''))
-    case 'hero.class': return setPlayableHeroMode(jid,null)
     case 'npc.buy': return buyNpcShopItem(jid,String(body.npcId||''),positiveInt(body.number,'Oferta',99))
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))

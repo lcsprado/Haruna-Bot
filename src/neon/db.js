@@ -10,7 +10,7 @@ import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
-import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, isSelectablePlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
+import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, getClassPassive, classAttack, classDefense, classCritBonus, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
 import {checkPixLimits} from './pix-limits.js'
 import {careerGrossFromLevelCap} from './career-pay.js'
@@ -896,11 +896,6 @@ if(applied&&String(st.class_id)===next.id){
 return {ok:true,unchanged:true,firstChoice:false,classId:next.id,classInfo:next,stats:{
 hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
 }}
-}
-// Jogadores de classes antigas mantêm os atributos, Despertares e o registro.
-// Não permitir escolher uma classe oculta, mas manter consultas/no-op da atual.
-if(!isSelectablePlayerClass(next.id)){
-  throw new Error('Essa classe não está disponível para novas escolhas. Classes antigas continuam preservadas.');
 }
 let consumedScroll=false
 let nextChangeAt=null
@@ -2545,7 +2540,6 @@ collectionId=active?Number(active.id):null
 }
 }
 if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados agora são personagens jogáveis, não recebem poções de pet.')
 const maxHp=petMaxHp(pet.level,pet.xp,pet.species)
 const before=Math.max(0,Number(pet.hp??maxHp))
 if(before>=maxHp) throw new Error(`O HP de ${pet.name} já está cheio (${maxHp}/${maxHp}).`)
@@ -2594,7 +2588,6 @@ const inv=(await client.query(
 if(!inv || Number(inv.quantity)<1) throw new Error('Você não possui Energético Pet.')
 const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados não precisam de energéticos de pet. Use !heroi.')
 const max=petMaxEnergy(pet.level,pet.species)
 const before=Number(pet.energy||0)
 if(before>=max) throw new Error(`A energia de ${pet.name} já está cheia (${max}/${max}).`)
@@ -4990,14 +4983,13 @@ export function petStyleLabel(species){
 const style=PET_TEAM_WILDCARD_SPECIES.includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
 return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
-// As regras de Collab continuam extensíveis, mas os 7 Pecados não podem participar
-// de times de pets após a conversão para heróis; filtros de espécie prevalecem.
+// Registro único de famílias de Collab reconhecidas na sinergia dos pets.
+// Novas colaborações exigem seu próprio catálogo: sem bônus cruzado automático.
 const PET_COLLAB_TEAM_GROUPS=Object.freeze([
   {id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}
 ])
 export function petTeamSynergy(pets=[]){
-// Hero-only: os Sete Pecados são personagens, jamais pets equipáveis.
-const team=(Array.isArray(pets)?pets:[]).filter(p=>p&&!PECADOS_HERO_IDS.includes(String(p.species||''))).slice(0,3)
+const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
 const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
 const collab=team.length===3&&unique?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
@@ -5195,9 +5187,7 @@ export async function adoptPet(){throw new Error('Adoção comum desativada; use
 export async function getPet(jid){
 const {rows}=await db.query('SELECT * FROM pets WHERE jid=$1',[jid])
 if(!rows[0]) return null
-const before=rows[0]
-if(PECADOS_HERO_IDS.includes(String(before.species||'')))return null
-const pet=normalizedPetHp(before)
+const before=rows[0], pet=normalizedPetHp(before)
 if(Number(before.hp)!==Number(pet.hp)||Number(before.max_hp)!==Number(pet.max_hp)){
 await db.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[pet.hp,pet.max_hp,jid])
 await db.query('UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.max_hp,jid])
@@ -5208,7 +5198,7 @@ export async function listPets(jid){
 const active=await getPet(jid)
 const {rows}=await db.query('SELECT * FROM pet_collection WHERE jid=$1 ORDER BY active DESC,id ASC',[jid])
 if(!rows.length&&active) return [{...active,id:null,active:true}]
-return rows.filter(p=>!PECADOS_HERO_IDS.includes(String(p.species||''))).map(normalizedPetHp)
+return rows.map(normalizedPetHp)
 }
 export async function sacrificePet(jid,petId){
 await ensureUser(jid)
@@ -5247,7 +5237,7 @@ return {name:pet.name,species:pet.species,level,exp,cash,originalPrice,shopRefun
 export async function getPetTeam(jid){
 await ensureUser(jid)
 const {rows}=await db.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot`,[jid])
-return rows.filter(p=>!PECADOS_HERO_IDS.includes(String(p.species||''))).map(normalizedPetHp)
+return rows.map(normalizedPetHp)
 }
 export async function equipPetTeam(jid,slot,petId){
 slot=Number(slot); petId=Number(petId)
@@ -5257,7 +5247,6 @@ await ensureUser(jid)
 return transaction(async client=>{
 const pet=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,petId])).rows[0]
 if(!pet) throw new Error('Pet não encontrado. Use !meuspets.')
-if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados são heróis jogáveis. Use !heroi, não !equiparpet.')
 const away=(await client.query('SELECT 1 FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[petId])).rows[0]
 if(away) throw new Error('Esse pet está em expedição e não pode entrar no time agora.')
 await client.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=$2 OR pet_id=$3)',[jid,slot,petId])
@@ -5280,7 +5269,6 @@ const pets=(await client.query(
 [jid,ids]
 )).rows
 if(pets.length!==ids.length) throw new Error('Um dos pets escolhidos não foi encontrado.')
-if(pets.some(p=>PECADOS_HERO_IDS.includes(String(p.species||''))))throw new Error('Os Sete Pecados são personagens jogáveis. Escolha outros pets para o time.')
 const away=(await client.query(
 'SELECT pet_id FROM pet_expeditions WHERE pet_id=ANY($1::bigint[]) AND resolved=FALSE',
 [ids]
@@ -5307,7 +5295,6 @@ const selectedPets=(await client.query(
 [jid,selectedIds]
 )).rows
 const selectedSpecies=selectedPets.map(p=>String(p.species||''))
-if(selectedSpecies.some(species=>PECADOS_HERO_IDS.includes(species)))throw new Error('Os Sete Pecados não podem integrar Time Pet.')
 if(new Set(selectedSpecies).size!==selectedSpecies.length){
 throw new Error('Não é permitido equipar duas cópias da mesma espécie no mesmo time. Use espécies diferentes para formar sinergias.')
 }
@@ -5345,8 +5332,6 @@ return team.map(normalizedPetHp)
 }
 export async function syncPetTeamPrimary(jid,petId){
 petId=Number(petId); if(!petId) return
-const {rows:syncPet}=await db.query('SELECT species FROM pet_collection WHERE jid=$1 AND id=$2',[jid,petId])
-if(PECADOS_HERO_IDS.includes(String(syncPet[0]?.species||'')))throw new Error('Os Sete Pecados não podem ser pets ativos.')
 await db.query('DELETE FROM pet_team WHERE jid=$1 AND (slot=1 OR pet_id=$2)',[jid,petId])
 await db.query('INSERT INTO pet_team(jid,slot,pet_id) VALUES($1,1,$2) ON CONFLICT(jid,slot) DO UPDATE SET pet_id=EXCLUDED.pet_id',[jid,petId])
 }
@@ -5409,7 +5394,6 @@ return transaction(async client=>{
 await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
 const pet=(await client.query('SELECT * FROM pet_collection WHERE id=$1 AND jid=$2 FOR UPDATE',[petId,jid])).rows[0]
 if(!pet) throw new Error('Pet não encontrado. Use !meuspets para ver o ID.')
-if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados não participam de expedições de pets.')
 const teamSlot=(await client.query('SELECT slot FROM pet_team WHERE jid=$1 AND pet_id=$2',[jid,petId])).rows[0]
 if(teamSlot) throw new Error(`Esse pet está no seu Time Pet (Slot ${teamSlot.slot}). Remova/troque o pet antes de mandar em expedição.`)
 if(pet.active) throw new Error('O pet ativo não pode sair em expedição. Escolha um pet reserva.')
@@ -5446,10 +5430,9 @@ if(availableSlots<=0) throw new Error(`Você já tem ${PET_EXPEDITION_MAX_CONCUR
 const pets=(await client.query(`SELECT p.id,p.name,p.species
 FROM pet_collection p
 WHERE p.jid=$1 AND p.active=FALSE
-AND p.species<>ALL($3::text[])
 AND NOT EXISTS(SELECT 1 FROM pet_team t WHERE t.jid=p.jid AND t.pet_id=p.id)
 AND NOT EXISTS(SELECT 1 FROM pet_expeditions e WHERE e.pet_id=p.id AND e.resolved=FALSE)
-ORDER BY p.id ASC LIMIT $2 FOR UPDATE OF p`,[jid,availableSlots+1,PECADOS_HERO_IDS])).rows
+ORDER BY p.id ASC LIMIT $2 FOR UPDATE OF p`,[jid,availableSlots+1])).rows
 if(!pets.length) throw new Error('Nenhum pet reserva livre para expedição. Pets do time e o pet ativo não podem ser enviados.')
 const started=[]
 const now=Math.floor(Date.now()/1000),ends=now+hours*3600
@@ -5503,7 +5486,6 @@ return transaction(async client=>{
 const current=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 const rawTarget=(await client.query('SELECT * FROM pet_collection WHERE jid=$1 AND id=$2 FOR UPDATE',[jid,id])).rows[0]
 if(!rawTarget) throw new Error('Pet não encontrado. Use !meuspets.')
-if(PECADOS_HERO_IDS.includes(String(rawTarget.species||'')))throw new Error('Esse Pecado é um personagem jogável. Use !heroi para selecioná-lo.')
 const away=(await client.query('SELECT ends_at FROM pet_expeditions WHERE pet_id=$1 AND resolved=FALSE',[id])).rows[0]
 if(away) throw new Error('Esse pet está em expedição e não pode ser equipado até retornar.')
 const target=normalizedPetHp(rawTarget)
@@ -5544,7 +5526,6 @@ collectionPet=(await client.query(
 const legacy=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 const pet=collectionPet||legacy
 if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados são personagens, e não podem ser renomeados como pet.')
 if(String(pet.name||'').toLocaleLowerCase('pt-BR')===newName.toLocaleLowerCase('pt-BR')) throw new Error('Esse já é o nome desse pet.')
 const wallet=(await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
@@ -5572,7 +5553,6 @@ const a=map[action]; if(!a) throw new Error('Ação de pet inválida.')
 return transaction(async client=>{
 const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Esse Pecado agora é um herói jogável, não recebe ações de pet.')
 const now=Math.floor(Date.now()/1000)
 const petHp=normalizedPetHp(pet)
 if(Number(petHp.hp)<=0 && !a.rest) throw new Error('Seu pet está sem HP. Use !descansar para recuperá-lo.')
@@ -5618,7 +5598,6 @@ export async function petAdventure(jid){
 return transaction(async client=>{
 const pet=(await client.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
 if(!pet) throw new Error('Você ainda não tem pet. Use !invocarpet para invocar um lendário.')
-if(PECADOS_HERO_IDS.includes(String(pet.species||'')))throw new Error('Os Sete Pecados agora participam como heróis. Use !heroi; pets comuns continuam disponíveis para aventura.')
 const petHp=normalizedPetHp(pet)
 if(Number(petHp.hp)<=0) throw new Error('Seu pet está sem HP. Use !descansar antes de mandar para aventura.')
 const energy=Number(pet.energy||0)
@@ -5753,8 +5732,8 @@ const carpindo=await db.query('SELECT ends_at FROM player_carpinar WHERE jid=$1 
 if(carpindo.rows.length) throw new Error('Essa pessoa está carpindo e não pode disputar duelo de pets agora.')
 return transaction(async client=>{
 const rows=(await client.query('SELECT * FROM pets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',[[challengerJid,targetJid]])).rows
-const a=normalizedPetHp(rows.find(p=>p.jid===challengerJid&&!PECADOS_HERO_IDS.includes(String(p.species||''))))
-const b=normalizedPetHp(rows.find(p=>p.jid===targetJid&&!PECADOS_HERO_IDS.includes(String(p.species||''))))
+const a=normalizedPetHp(rows.find(p=>p.jid===challengerJid))
+const b=normalizedPetHp(rows.find(p=>p.jid===targetJid))
 if(!a||!b) throw new Error('Os dois jogadores precisam ter um pet.')
 if(Number(a.hp)<=0) throw new Error(`${a.name} está sem HP. Use !descansar antes do duelo.`)
 if(Number(b.hp)<=0) throw new Error(`${b.name} está sem HP e não pode duelar agora.`)

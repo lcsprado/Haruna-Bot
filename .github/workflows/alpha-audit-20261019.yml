@@ -22,7 +22,7 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Instalar dependencias sem executar scripts nativos
-        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts
       - name: Validar sintaxe dos arquivos alterados
         run: |
           node --check src/neon/index.js

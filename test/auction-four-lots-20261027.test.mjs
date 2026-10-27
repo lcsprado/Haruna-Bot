@@ -28,7 +28,7 @@ test('pet neutro moderado, armadura menor que todas as armaduras da collab',()=>
  assert.deepEqual(pets.map(x=>x.pet),['guaxinim_errante_20261027'])
  assert.equal(pets[0].power,70)
  assert.match(catalog,/guaxinim_errante_20261027:\{label:/)
- assert.match(db,/PET_TEAM_WILDCARD_SPECIES/)
+ assert.match(db,/guaxinim_errante_20261027'\]/)
  const armor=packages.flat().filter(x=>x.id==='armadura_vigia_crepusculo_20261027')
  assert.equal(armor.length,1)
  assert.ok(PECADOS_ARMORS.every(x=>x.def>88&&x.hp>150))
