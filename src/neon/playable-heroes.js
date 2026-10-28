@@ -201,6 +201,27 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10
   return true
 }
 
+export async function evolvePlayableHeroMastery(jid,heroId){
+  await ensureUser(jid);
+  if(!playableHero(heroId))throw new Error('Escolha um herói desbloqueado.');
+  return transaction(async client=>{
+    await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid]);
+    const owned=await client.query('SELECT 1 FROM pet_collection WHERE jid=$1 AND species=$2 LIMIT 1',[jid,heroId]);
+    if(!owned.rowCount)throw new Error('Herói não obtido.');
+    await client.query('INSERT INTO player_hero_mastery(jid,hero_species,xp,stage) VALUES($1,$2,0,1) ON CONFLICT DO NOTHING',[jid,heroId]);
+    const row=(await client.query('SELECT xp,stage FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2 FOR UPDATE',[jid,heroId])).rows[0];
+    const next=heroNextMastery(row.stage);
+    if(!next)return {max:true,stage:5};
+    if(Number(row.xp)<next.xp)throw new Error('Faltam '+(next.xp-Number(row.xp))+' XP de Maestria.');
+    const charge=await client.query(
+      'UPDATE wallets SET bank=bank-$1 WHERE jid=$2 AND bank>=$1 RETURNING bank',
+      [next.cash,jid]);
+    if(!charge.rowCount)throw new Error('Você precisa de R$ '+next.cash.toLocaleString('pt-BR')+' no banco do jogo.');
+    await client.query('UPDATE player_hero_mastery SET stage=$1 WHERE jid=$2 AND hero_species=$3',[next.stage,jid,heroId]);
+    return {stage:next.stage,charged:next.cash};
+  });
+}
+
 export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!['heroi','herois','herói','heroes'].includes(String(cmd||'')))return false
   const action=String(args[0]||'').trim().toLowerCase()
