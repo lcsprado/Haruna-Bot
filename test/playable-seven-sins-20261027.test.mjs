@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
-  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage
+  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile
 } from '../src/neon/playable-heroes-core.js'
 
 test('sete personagens unicos com perfis equilibrados',()=>{
@@ -242,4 +242,34 @@ test('Revenge Counter, Sunflower e Exterminate deixam dois golpes residuais',()=
       state=next.state;
     }
   }
+});
+
+test('ficha do herói usa mesmos atributos de entrada da Raid, sem alterar o Paladino',()=>{
+  const original={
+    hp:900,max_hp:1000,atk:650,def:540,spd:200,
+    class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5,
+    equipment_hp:200,equipment_atk:400,equipment_def:200,equipment_spd:60,
+    attack_pct_bonus:0.05
+  };
+  const frozen=structuredClone(original);
+  const ban=heroCombatSheetFromProfile(original,'pecado_ban');
+  assert.deepEqual({hp:ban.hp,maxHp:ban.maxHp,atk:ban.atk,def:ban.def,spd:ban.spd},
+    {hp:873,maxHp:1170,atk:1110,def:729,spd:270});
+  assert.equal(ban.name,'Ban');
+  assert.deepEqual(original,frozen,'Leitura da ficha não deve alterar HP ou atributos');
+  assert.equal(heroCombatSheetFromProfile(original,'pecado_inexistente'),null);
+});
+
+test('perfil, status e comando de herói devem distinguir classe da ficha do combatente',()=>{
+  const ui=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+  const hero=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(ui,/const heroSheet=await getPlayableHeroCombatSheet\(jid,p\)/);
+  assert.match(ui,/const heroSheetStatus=await getPlayableHeroCombatSheet\(statusTarget,p\)/);
+  assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheet\)/);
+  assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheetStatus\)/);
+  assert.match(ui,/Classe original/);
+  assert.match(ui,/inativa em Boss\/Raid/);
+  assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
+  assert.match(hero,/\['atributos','ficha','stats','status'\]/);
+  assert.match(hero,/Atributos estimados na entrada de Boss\/Raid/);
 });

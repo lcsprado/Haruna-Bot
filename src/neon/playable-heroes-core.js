@@ -29,6 +29,25 @@ export function heroCombatStats(st,heroId){
     persistentMaxHp:sourceMax
   };
 }
+// Ficha de visualização com a MESMA fórmula inicial usada na entrada da Raid/Boss:
+// classe substituída pelo herói + equipamentos/encantos, sem alterar o banco.
+export function heroCombatSheetFromProfile(profile,heroId){
+  if(!profile||!HERO_COMBAT_PROFILES[heroId])return null;
+  const h=heroCombatStats(profile,heroId);
+  const number=v=>Number(v)||0;
+  return {
+    ...h,
+    name:playableHero(heroId)?.name||heroId,
+    role:HERO_COMBAT_PROFILES[heroId].role,
+    range:HERO_COMBAT_PROFILES[heroId].range,
+    skill:HERO_COMBAT_PROFILES[heroId].skill,
+    maxHp:h.maxHp+number(profile.equipment_hp),
+    hp:Math.min(h.hp,h.maxHp+number(profile.equipment_hp)),
+    atk:Math.round((h.atk+number(profile.equipment_atk))*(1+number(profile.attack_pct_bonus))),
+    def:h.def+number(profile.equipment_def),
+    spd:h.spd+number(profile.equipment_spd)
+  };
+}
 // Vida temporária do herói volta à escala do jogador original; nunca grava
 // os bônus do herói ou substitui a classe/Despertar no banco.
 export function heroHpToPersistent(hp,combatMaxHp,persistentMaxHp){

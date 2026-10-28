@@ -1,6 +1,6 @@
-import {db,ensureUser} from './db.js'
+import {db,ensureUser,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES} from './playable-heroes-core.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
@@ -49,6 +49,33 @@ export async function getPlayableHeroMasteryStage(client,jid,heroId){
   const {rows}=await (client||db).query(
     'SELECT xp FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
   return heroMasteryStage(Number(rows[0]?.xp||0))
+}
+
+// Somente leitura: o herói equipa o combatente de Boss/Raid sem alterar a classe.
+export async function getPlayableHeroCombatSheet(jid,knownProfile=null){
+  const heroId=await getActivePlayableHero(db,jid);
+  if(!heroId)return null;
+  const [profile,mastery]=await Promise.all([
+    knownProfile||getCombatProfile(jid),
+    db.query('SELECT xp FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
+  ]);
+  const combat=heroCombatSheetFromProfile(profile,heroId);
+  if(!combat)return null;
+  const xp=Math.max(0,Number(mastery.rows[0]?.xp||0));
+  return {...combat,masteryXp:xp,masteryStage:heroMasteryStage(xp)};
+}
+
+export function formatPlayableHeroCombatSheet(sheet){
+  if(!sheet)return '';
+  return '🌈⚔️ *COMBATENTE BOSS/RAID — '+sheet.name.toUpperCase()+'*\n'+
+    '🎭 '+sheet.role+' • '+sheet.range+'\n'+
+    '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)\n'+
+    '❤️ HP: *'+sheet.hp+'/'+sheet.maxHp+'*\n'+
+    '⚔️ ATK: *'+sheet.atk+'*\n'+
+    '🛡️ DEF: *'+sheet.def+'*\n'+
+    '👢 VEL: *'+sheet.spd+'*\n'+
+    '✨ Técnica: *'+sheet.skill+'*\n'+
+    '💡 Atributos estimados na entrada de Boss/Raid com equipamentos; buffs da luta podem variar. A classe original permanece para PvP.';
 }
 
 export async function listPlayableHeroes(jid){
@@ -127,6 +154,12 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   const action=String(args[0]||'').trim().toLowerCase()
   const findHero=raw=>PECADOS_HEROES.find(h=>
     h.name.toLowerCase()===raw||h.species===raw||h.species==='pecado_'+raw);
+  if(['atributos','ficha','stats','status'].includes(action)){
+    const sheet=await getPlayableHeroCombatSheet(sender);
+    await reply(sheet?formatPlayableHeroCombatSheet(sheet):
+      '🧙 Sua classe tradicional está ativa. Use *!heroi usar ban* ou outro herói desbloqueado; depois consulte *!heroi atributos*.');
+    return true;
+  }
   if(['habilidades','poderes','skills'].includes(action)){
     const requested=String(args[1]||'').trim().toLowerCase();
     if(!requested){
@@ -154,16 +187,16 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
       '5️⃣ *Maestria V (1.300 XP):* mais +1% de dano.\n\n'+
       (nextXp?'🎯 Próximo estágio: '+nextXp+' XP.\n':'🏆 Maestria máxima!\n')+
       '⚖️ Bônus ofensivo por golpe: até 30% no Boss e 35% na Raid.\n'+
-      '💡 Estes são efeitos adaptados do anime para Boss/Raid; suas classes e Despertares são preservados.');
+      '💡 Estes são efeitos adaptados do anime para Boss/Raid; suas classes e Despertares são preservados.\n📊 Use *!heroi atributos* para ver os atributos do herói equipado.');
     return true;
   }
-  if(!action||action==='status'||action==='lista'||action==='maestria'){
+  if(!action||action==='lista'||action==='maestria'){
     const list=await listPlayableHeroes(sender)
     const active=list.find(h=>h.active)
     const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Desbloqueado • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
-      '👉 *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
+      '👉 *!heroi atributos* • *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
       '🗝️ Personagens conquistados preservados. Os Pecados não são mais pets; use outros pets em seu time.')
     return true
   }
@@ -177,6 +210,6 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!hero){await reply('❌ Herói não encontrado. Use *!heroi* para consultar a coleção.');return true}
   const saved=await setPlayableHeroMode(sender,hero.species)
   await reply(saved.unchanged?'⚔️ '+hero.name+' já é seu combatente.':
-    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nEle substitui as habilidades da classe em Bosses/Raids, sem apagar seu Despertar nem os pets comuns.\nUse *!heroi classe* para voltar.')
+    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nEle substitui as habilidades da classe em Bosses/Raids, sem apagar seu Despertar nem os pets comuns.\nVeja o HP, ATK, DEF e VEL com *!heroi atributos*.\nUse *!heroi classe* para voltar.')
   return true
 }
