@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
-  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext
+  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,heroMasteryAwardPolicy
 } from '../src/neon/playable-heroes-core.js'
 
 test('sete personagens unicos com perfis equilibrados',()=>{
@@ -282,7 +282,9 @@ test('Maestria cara: XP acumulado, desbloqueio pago e limite diario',()=>{
   assert.equal(heroMasteryNext(5),null);
   const src=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   assert.match(src,/player_hero_mastery_unlocks/);
-  assert.match(src,/80-Number\(today\[0\]\?\.gained\|\|0\)/);
+  assert.match(src,/heroMasteryAwardPolicy\(/);
+  assert.match(src,/regular_gained/);
+  assert.match(src,/SUM\(xp\) FILTER/);
   assert.match(src,/LEAST\(7000,player_hero_mastery\.xp\+EXCLUDED\.xp\)/);
   assert.match(src,/SELECT cash,bank FROM wallets WHERE jid=\$1 FOR UPDATE/);
   assert.match(src,/if\(xp<next\.xp\)throw/);
@@ -349,4 +351,47 @@ test('Bonus da collab aplicado em Boss e Raid, sem alterar concessao de XP',()=>
   assert.match(games,/masteryStage:p\.heroMasteryStage,gear:p\.heroGear/);
   assert.match(games,/masteryStage:heroMasteryStage,gear:heroGear/);
   assert.equal(games.split('awardPlayableHeroMastery(c,').length-1,2);
+});
+
+test('Raid 75 dos Pecados: XP em dobro apenas na semana, nunca em Raid comum',()=>{
+  const at=t=>Date.parse(t);
+  assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-10-25T23:59:59-03:00')}),false);
+  assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-10-26T00:00:00-03:00')}),true);
+  assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-11-01T23:59:59-03:00')}),true);
+  assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-11-02T00:00:00-03:00')}),false);
+  assert.equal(raid75MasteryBonusActive({level:70,collab:true,nowMs:at('2026-10-28T12:00:00-03:00')}),false);
+  assert.equal(raid75MasteryBonusActive({level:75,collab:false,nowMs:at('2026-10-28T12:00:00-03:00')}),false);
+});
+test('Raid 75 da semana: +20 XP por vitória, teto total diário de 160 e padrão limitado a 80',()=>{
+  const q=heroMasteryAwardPolicy;
+  assert.deepEqual(q({specialRaid75:true,earnedToday:0,regularEarnedToday:0,xp:10}),
+    {special:true,dailyCap:160,amount:20});
+  assert.equal(q({specialRaid75:true,earnedToday:150,regularEarnedToday:70,xp:10}).amount,10);
+  assert.equal(q({specialRaid75:true,earnedToday:160,regularEarnedToday:70,xp:10}).amount,0);
+  assert.equal(q({specialRaid75:false,earnedToday:70,regularEarnedToday:70,xp:10}).amount,10);
+  assert.equal(q({specialRaid75:false,earnedToday:75,regularEarnedToday:75,xp:10}).amount,5);
+  assert.equal(q({specialRaid75:false,earnedToday:80,regularEarnedToday:80,xp:10}).amount,0);
+  assert.equal(q({specialRaid75:false,earnedToday:140,regularEarnedToday:60,xp:10}).amount,10);
+  assert.equal(q({specialRaid75:false,earnedToday:160,regularEarnedToday:60,xp:10}).amount,0);
+  assert.equal(q({specialRaid75:false,earnedToday:150,regularEarnedToday:80,xp:10}).amount,0);
+});
+test('Creditar Raid 75 somente após vitória elegível, sem reduzir chaves ou recompensas',()=>{
+  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
+  const heroes=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(games,/raid75MasteryBonusActive\(\{level:cfg\.level,collab:cfg\.collab,nowMs:now\}\)/);
+  assert.match(games,/p\.heroId&&share>=\.02&&Number\(p\.damage\|\|0\)>=2500/);
+  assert.match(games,/specialRaid75:specialRaid75Mastery/);
+  assert.match(games,/specialRaid75Mastery\?'raid:75:':'raid:'/);
+  assert.match(heroes,/String\(awardKey\)\.startsWith\('raid:75:'\)/);
+  assert.match(heroes,/if\(!amount\)return false/);
+  assert.match(heroes,/SELECT jid FROM users WHERE jid=\$1 FOR UPDATE/);
+});
+test('Ficha do herói passa a indicar arma correspondente e armadura com bônus de collab',()=>{
+  const h=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(h,/heroCollabGearBonus\(heroId,profile\.weapon_id,profile\.armor_id,'pvp'\)/);
+  assert.match(h,/BÔNUS EXCLUSIVO DA COLLAB/);
+  assert.match(h,/Arma do personagem/);
+  assert.match(h,/Armadura do personagem/);
+  const d=heroDefense({heroId:'pecado_diane',damage:1000,gear:{defense:.04}});
+  assert.equal(d.damage,920,'defesa de Heavy Metal deve acumular com armadura de Diane');
 });
