@@ -273,7 +273,8 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.doesNotMatch(ui,/preservada; ativa no PvP/);
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
-  assert.match(hero,/Atributos base de combate com equipamentos/);
+  assert.match(hero,/BÔNUS EXCLUSIVO DA COLLAB/);
+  assert.match(hero,/os atributos normais do equipamento já estão somados/);
 });
 
 test('Maestria cara: XP acumulado, desbloqueio pago e limite diario',()=>{
