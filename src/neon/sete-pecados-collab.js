@@ -288,7 +288,7 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
   if(r.unknown){await reply('⚠️ Esta mensagem já foi processada, mas o resultado não pôde ser recuperado. Nenhuma essência foi consumida novamente.');return true}
   const replayNotice=r.replay?'🔁 *Mensagem já processada.* Nenhuma essência foi cobrada novamente.\n\n':''
   if(r.insufficient)await reply(replayNotice+'🌈 *BAÚ DOS 7 PECADOS*\n\nSão necessárias *7 essências* de qualquer pecado. Você possui *'+fmt(r.owned)+'*.\nUse *!7pecados* para consultar o calendário.')
-  else await reply(replayNotice+'🌈🎁 *BAÚ DOS 7 PECADOS ABERTO!*\n\n'+(r.copyPreserved?'♻️ *EQUIPAMENTO REPETIDO:* '+r.reward+'\n📦 Nova cópia preservada no inventário. Na forja, fragmentos substituem a cópia extra.':r.duplicate?'♻️ *HERÓI REPETIDO:* '+r.reward+'\n🎁 Recebeu *50 Fragmentos Universais de Raid*.':'✅ *'+(r.category==='personagem'?'HERÓI JOGÁVEL':r.category.toUpperCase())+':* '+r.reward+'\n🎉 Adicionado à sua coleção!')+'\n\n🩸 Essências restantes: *'+fmt(r.ownedAfter)+'*.')
+  else await reply(replayNotice+'🌈🎁 *BAÚ DOS 7 PECADOS ABERTO!*\n\n'+(r.copyPreserved?'♻️ *EQUIPAMENTO REPETIDO:* '+r.reward+'\n📦 Nova cópia preservada no inventário. Na forja, fragmentos substituem a cópia extra.':r.duplicate?'♻️ *HERÓI REPETIDO:* '+r.reward+'\n🎁 Recebeu *50 Fragmentos Universais de Raid*.':'✅ *'+(r.category==='personagem'?'HERÓI JOGÁVEL':r.category.toUpperCase())+':* '+r.reward+'\n🎉 Adicionado à sua coleção!'+(r.category==='personagem'?'\n🌟 Novo herói: *Lv.1/100*. Ganhe XP de nível e maestria em Raids e Bosses.':''))+'\n\n🩸 Essências restantes: *'+fmt(r.ownedAfter)+'*.')
   return true
  }
  if(action==='resgatar'||action==='compensacao'){
