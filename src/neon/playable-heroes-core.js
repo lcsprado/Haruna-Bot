@@ -23,7 +23,8 @@ export function heroMasteryNext(stage){
 export function heroCollabGearBonus(heroId,weaponId=null,armorId=null,context='raid'){
   if(!playableHero(heroId))return {weapon:false,armor:false,attack:0,defense:0,heal:0};
   const suffix=String(heroId).replace(/^pecado_/,'');
-  const weapon=PECADOS_WEAPONS.some(w=>w.id===weaponId&&w.id.endsWith('_'+suffix));
+  const heroIndex=PECADOS_HEROES.findIndex(h=>h.species===heroId);
+  const weapon=heroIndex>=0&&PECADOS_WEAPONS[heroIndex]?.id===weaponId;
   const armor=PECADOS_ARMORS.some(a=>a.id===armorId&&a.id.endsWith('_'+suffix));
   // PvP: sinergia só desempata lutas próximas, jamais corrige dezenas de níveis.
   const pvp=context==='pvp';
@@ -47,7 +48,7 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
   }else if(id==='pecado_ban'){
     if(special){bonus+=.025;next.snatchBlocks=2;technique='Snatch';}
     if(index%6===0&&Number(next.healCount||0)<2){
-      heal=Math.ceil(Math.max(1,Number(maxHp))*(.006+Number(gear.heal||0)));
+      heal=Math.ceil(Math.max(1,Number(maxHp))*Math.min(.01,.006+Number(gear.heal||0)));
       next.healCount=Number(next.healCount||0)+1;
     }
     if(ultimate){bonus+=.035;technique='Hunter Fest';}
