@@ -2,13 +2,13 @@ import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 
 // Combatente jogavel ≠ companion/pet. A classe e seus Despertares continuam no banco.
 export const HERO_COMBAT_PROFILES=Object.freeze({
-  pecado_meliodas:{hp:70,atk:18,def:10,spd:13,role:'Contra-ataque',skill:'Full Counter'},
-  pecado_ban:{hp:100,atk:14,def:11,spd:15,role:'Regeneração',skill:'Snatch'},
-  pecado_escanor:{hp:85,atk:21,def:10,spd:7,role:'Explosão solar',skill:'The One'},
-  pecado_king:{hp:100,atk:11,def:17,spd:10,role:'Suporte',skill:'Chastiefol'},
-  pecado_diane:{hp:130,atk:12,def:22,spd:5,role:'Proteção',skill:'Gideon'},
-  pecado_gowther:{hp:60,atk:15,def:9,spd:14,role:'Controle',skill:'Rewrite Light'},
-  pecado_merlin:{hp:70,atk:18,def:9,spd:13,role:'Magia',skill:'Infinity'}
+  pecado_meliodas:{hp:70,atk:18,def:10,spd:13,role:'Atacante • contra-ataque',range:'Corpo a corpo',skill:'Full Counter'},
+  pecado_ban:{hp:100,atk:14,def:11,spd:15,role:'Lutador • sobrevivência',range:'Corpo a corpo',skill:'Snatch'},
+  pecado_escanor:{hp:85,atk:21,def:10,spd:7,role:'Atacante • explosão solar',range:'Corpo a corpo',skill:'The One'},
+  pecado_king:{hp:100,atk:11,def:17,spd:10,role:'Suporte • cura e proteção',range:'Longa distância',skill:'Chastiefol'},
+  pecado_diane:{hp:130,atk:12,def:22,spd:5,role:'Defensora • tanque',range:'Corpo a corpo',skill:'Gideon'},
+  pecado_gowther:{hp:60,atk:15,def:9,spd:14,role:'Controlador • debuff',range:'Longa distância',skill:'Rewrite Light'},
+  pecado_merlin:{hp:70,atk:18,def:9,spd:13,role:'Maga • dano e barreira',range:'Longa distância',skill:'Infinity'}
 });
 export const PLAYABLE_HERO_IDS=Object.freeze(PECADOS_HEROES.map(x=>x.species));
 export const playableHero=id=>PECADOS_HEROES.find(x=>x.species===String(id||''))||null;
@@ -113,7 +113,7 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
     if(special){next.fullCounterReady=true;technique=technique||'Full Counter preparado';}
     if(ultimate){
       bonus+=.12+Math.min(.10,Number(next.revengeStored||0)/n);
-      next.revengeStored=0;next.revengeCharges=2;technique='Revenge Counter';
+      next.revengeStored=0;next.revengeCharges=3;technique='Revenge Counter';
     }
     if(Number(next.revengeCharges||0)>0){bonus+=.08;next.revengeCharges--;}
   }else if(id==='pecado_ban'){
@@ -137,13 +137,13 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
       allyHeal=Math.ceil(Math.max(1,Number(maxHp))*.02);technique='Chastiefol — Guardian';
     }
     if(ultimate){
-      bonus+=.10;next.sunflowerCharges=2;
+      bonus+=.10;next.sunflowerCharges=3;
       allyHeal+=Math.ceil(Math.max(1,Number(maxHp))*.05);technique='Chastiefol — Sunflower';
     }
     if(Number(next.sunflowerCharges||0)>0){bonus+=.07;next.sunflowerCharges--;}
   }else if(id==='pecado_merlin'){
     bonus=.03;
-    if(special){bonus+=.15;next.infinityCharges=2;technique='Exterminate';}
+    if(special){bonus+=.15;next.infinityCharges=3;technique='Exterminate';}
     if(ultimate){bonus+=.10;next.cubeCharges=1;technique='Perfect Cube';}
     if(Number(next.infinityCharges||0)>0){bonus+=.06;next.infinityCharges--;}
   }else if(id==='pecado_gowther'){

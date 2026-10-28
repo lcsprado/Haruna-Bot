@@ -207,3 +207,39 @@ test('WhatsApp explica os poderes sem cobrar XP ou trocar de heroi para consulta
   assert.match(ui,/!heroi habilidades ban/);
   assert.ok(ui.indexOf("if(['habilidades','poderes','skills']")<ui.indexOf("const saved=await setPlayableHeroMode(sender,hero.species)"));
 });
+
+test('papeis de ataque e alcance dos sete Pecados sao distintos, sem alterar HP e XP',()=>{
+  const expected={
+    pecado_meliodas:'Corpo a corpo',
+    pecado_ban:'Corpo a corpo',
+    pecado_escanor:'Corpo a corpo',
+    pecado_diane:'Corpo a corpo',
+    pecado_king:'Longa distância',
+    pecado_gowther:'Longa distância',
+    pecado_merlin:'Longa distância'
+  };
+  for(const [id,range] of Object.entries(expected)){
+    assert.equal(HERO_COMBAT_PROFILES[id].range,range,id);
+    assert.ok(HERO_COMBAT_PROFILES[id].role,'Papel ausente: '+id);
+    assert.ok(HERO_COMBAT_PROFILES[id].skill,'Técnica ausente: '+id);
+  }
+  const view=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(view,/HERO_COMBAT_PROFILES\[hero\.species\]\.range/);
+  assert.match(view,/HERO_COMBAT_PROFILES\[h\.id\]\.range/);
+});
+
+test('Revenge Counter, Sunflower e Exterminate deixam dois golpes residuais',()=>{
+  for(const [id,attack,level] of [
+    ['pecado_meliodas',25,3],
+    ['pecado_king',25,3],
+    ['pecado_merlin',8,2]
+  ]){
+    let hit=heroAttack({heroId:id,damage:1000,attackIndex:attack,masteryStage:level});
+    let state=hit.state;
+    for(let j=1;j<=2;j++){
+      const next=heroAttack({heroId:id,damage:1000,attackIndex:attack+j,masteryStage:level,state});
+      assert.ok(next.damage>=1000,id+': ataque residual '+j);
+      state=next.state;
+    }
+  }
+});

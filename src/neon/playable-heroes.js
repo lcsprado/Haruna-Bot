@@ -132,7 +132,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     if(!requested){
       const overview=PECADOS_HEROES.map(h=>
         '• *'+h.name+'* — '+HERO_COMBAT_PROFILES[h.species].role+
-        ' • '+HERO_COMBAT_PROFILES[h.species].skill).join('\n');
+        ' • '+HERO_COMBAT_PROFILES[h.species].range+' • '+HERO_COMBAT_PROFILES[h.species].skill).join('\n');
       await reply('🌈⚔️ *HABILIDADES DOS 7 PECADOS*\n\n'+overview+
         '\n\n📖 Use *!heroi habilidades ban* (ou o nome de outro Pecado) para ver os efeitos e desbloqueios.');
       return true;
@@ -146,6 +146,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     await reply('🌈⚔️ *'+hero.name.toUpperCase()+' — HABILIDADES*\n'+
       (info?.owned?'✅ Desbloqueado • Maestria '+info.masteryStage+'/5 ('+info.masteryXp+' XP)':
         '🔒 Você ainda não desbloqueou este personagem.')+'\n\n'+
+      '🎭 *Estilo:* '+HERO_COMBAT_PROFILES[hero.species].role+' • '+HERO_COMBAT_PROFILES[hero.species].range+'\n\n'+
       '1️⃣ *Passiva — Maestria I:* '+guide.passive+'\n'+
       '2️⃣ *Especial — Maestria II (100 XP):* '+guide.special+'\n'+
       '3️⃣ *Suprema — Maestria III (300 XP):* '+guide.ultimate+'\n'+
@@ -159,7 +160,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!action||action==='status'||action==='lista'||action==='maestria'){
     const list=await listPlayableHeroes(sender)
     const active=list.find(h=>h.active)
-    const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Desbloqueado • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
+    const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Desbloqueado • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
       '👉 *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
