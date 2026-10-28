@@ -4789,7 +4789,7 @@ level
 const PET_BASE_ENERGY={
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,450])),
 cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
-tartaruga:130,coruja:140,raposa:150,lobo:165,aguia:180,gaviao:190,
+tartaruga:130,coruja:140,raposa:150,raposa_astral:150,lince_astral:150,guaxinim_errante_20261027:150,lobo:165,aguia:180,gaviao:190,
 panda:200,guepardo:220,tigre:225,gazela_mistica:235,leao:250,cervo_mistico:265,cavalo_guerra:275,unicornio:280,dragao:320,
 golfinho_celestial:160,moreia_sombria:175,tubarao_abissal:215,polvo_arcano:240,orca_guerra:270,baleia_colossal:310,
 golem_ancestral:340,urso_runico:345,colosso_cristal:360,oraculo_pedra:335,
@@ -4802,7 +4802,7 @@ serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,colosso_alpha:475,ora
 fera_caos:430,guardiao_caos:450,serafim_caotico:455,oraculo_caos:445,fenix_caos:470,
 pantera_profundezas:450,guardiao_abissal:465,dragao_trono:475,oraculo_coroa:465,esfinge_mares:480,
 lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520,
-morcego_madrugada:430,camaleao_lendario:425,onca_eclipse_20261026:405
+morcego_madrugada:430,camaleao_lendario:425,corcel_espectral_halloween:430,onca_eclipse_20261026:405
 }
 const PET_VITALS_LEGACY_FIX=Object.freeze([
 'oraculo_pedra','pantera_vulcanica','espectro_abissal',
@@ -4850,6 +4850,7 @@ coruja:{base:100,growth:8,type:'Suporte'},
 raposa:{base:110,growth:9,type:'Ágil'},
 raposa_astral:{base:115,growth:10,type:'Neutro — Leilão Alpha'},
 lince_astral:{base:115,growth:10,type:'Coringa — Leilão das Sombras'},
+guaxinim_errante_20261027:{base:115,growth:10,type:'Coringa — Leilão dos Quatro Destinos'},
 onca_eclipse_20261026:{base:165,growth:13,type:'Coringa — Leilão do Tesouro Alpha 26/10'},
 lobo:{base:130,growth:11,type:'Ofensivo'},
 aguia:{base:115,growth:9,type:'Crítico'},
