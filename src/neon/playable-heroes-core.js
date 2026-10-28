@@ -1,4 +1,4 @@
-import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+import {PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS} from './sete-pecados-catalog.js'
 
 // Combatente jogavel ≠ companion/pet. A classe e seus Despertares continuam no banco.
 export const HERO_COMBAT_PROFILES=Object.freeze({
@@ -12,7 +12,84 @@ export const HERO_COMBAT_PROFILES=Object.freeze({
 });
 export const PLAYABLE_HERO_IDS=Object.freeze(PECADOS_HEROES.map(x=>x.species));
 export const playableHero=id=>PECADOS_HEROES.find(x=>x.species===String(id||''))||null;
-export const heroMasteryStage=x=>Math.min(5,1+[100,300,700,1300].filter(t=>Number(x||0)>=t).length);
+export const HERO_MASTERY_XP=Object.freeze([0,500,1500,3500,7000]);
+export const HERO_MASTERY_COST=Object.freeze([0,2000000,5000000,12000000,25000000]);
+// XP acumulado não concede o estágio automaticamente: evolução paga é explícita.
+export const heroMasteryStage=x=>Math.min(5,1+HERO_MASTERY_XP.slice(1).filter(t=>Number(x||0)>=t).length);
+export function heroMasteryNext(stage){
+  const next=Math.min(5,Math.max(1,Math.floor(Number(stage)||1))+1);
+  return Number(stage)>=5?null:{stage:next,xp:HERO_MASTERY_XP[next-1],cost:HERO_MASTERY_COST[next-1]};
+}
+export function heroCollabGearBonus(heroId,weaponId=null,armorId=null,context='raid'){
+  if(!playableHero(heroId))return {weapon:false,armor:false,attack:0,defense:0,heal:0};
+  const suffix=String(heroId).replace(/^pecado_/,'');
+  const weapon=PECADOS_WEAPONS.some(w=>w.id===weaponId&&w.id.endsWith('_'+suffix));
+  const armor=PECADOS_ARMORS.some(a=>a.id===armorId&&a.id.endsWith('_'+suffix));
+  // PvP: sinergia só desempata lutas próximas, jamais corrige dezenas de níveis.
+  const pvp=context==='pvp';
+  return {weapon,armor,attack:weapon?(pvp?.015:.04):0,
+    defense:armor?(pvp?.02:.04):0,heal:heroId==='pecado_ban'&&weapon?(pvp?.005:.02):0};
+}
+// Técnica PvP própria, sem alterar a vantagem de níveis/equipamentos/Despertar.
+// No máximo +8% por ataque, -10% recebido e uma suprema por duelo.
+export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,state={},hp=1,maxHp=1,gear={}}={}){
+  const next={...(state||{})},stage=Math.min(5,Math.max(1,Math.floor(Number(masteryStage)||1)));
+  const base=Math.max(1,Math.round(Number(damage)||1)),index=Math.max(1,Math.floor(Number(attackIndex)||1));
+  let bonus=Number(gear.attack||0),heal=0,technique=null;
+  const special=stage>=2&&index%5===0,ultimate=stage>=3&&index>=12&&!next.ultimateUsed;
+  const id=String(heroId||'');
+  if(!HERO_COMBAT_PROFILES[id])return {damage:base,heal:0,state:next,technique:null};
+  if(id==='pecado_meliodas'){
+    bonus+=.015;
+    if(Number(next.counterCharge||0)>0){bonus+=.035;technique='Full Counter';next.counterCharge=0;}
+    if(special){next.counterReady=true;technique=technique||'Full Counter preparado';}
+    if(ultimate){bonus+=.035;technique='Revenge Counter';}
+  }else if(id==='pecado_ban'){
+    if(special){bonus+=.025;next.snatchBlocks=2;technique='Snatch';}
+    if(index%6===0&&Number(next.healCount||0)<2){
+      heal=Math.ceil(Math.max(1,Number(maxHp))*(.006+Number(gear.heal||0)));
+      next.healCount=Number(next.healCount||0)+1;
+    }
+    if(ultimate){bonus+=.035;technique='Hunter Fest';}
+  }else if(id==='pecado_escanor'){
+    if(Number(hp)/Math.max(1,Number(maxHp))>.70)bonus+=.015;
+    if(special){bonus+=.035;technique='Cruel Sun';}
+    if(ultimate){bonus+=.045;technique='The One';}
+  }else if(id==='pecado_diane'){
+    if(special){next.rockGuard=1;technique='Heavy Metal';}
+    if(ultimate){next.rockGuard=2;technique='Mother Catastrophe';}
+  }else if(id==='pecado_king'){
+    if(special){next.fairyGuard=1;technique='Chastiefol Guardian';}
+    if(ultimate){bonus+=.025;technique='Sunflower';}
+  }else if(id==='pecado_gowther'){
+    if(special){next.confuse=2;technique='Rewrite Light';}
+    if(ultimate){bonus+=.035;technique='Nightmare Teller';}
+  }else if(id==='pecado_merlin'){
+    if(special){bonus+=.025;technique='Exterminate';}
+    if(ultimate){next.cube=1;technique='Perfect Cube';}
+  }
+  if(ultimate)next.ultimateUsed=true;
+  if(stage>=4)bonus+=.005;
+  if(stage>=5)bonus+=.005;
+  return {damage:Math.max(1,Math.round(base*(1+Math.min(.08,Math.max(0,bonus))))),
+    heal:Math.max(0,heal),state:next,technique};
+}
+export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
+  const next={...(state||{})},incoming=Math.max(0,Math.round(Number(damage)||0));
+  let rate=Math.max(0,Number(gear.defense||0));
+  if(heroId==='pecado_meliodas'&&next.counterReady&&incoming>0){
+    next.counterCharge=1;next.counterReady=false;
+  }
+  if(heroId==='pecado_ban'&&Number(next.snatchBlocks||0)>0){rate+=.045;next.snatchBlocks--;}
+  if(heroId==='pecado_diane'){
+    rate+=.025;
+    if(Number(next.rockGuard||0)>0){rate+=.06;next.rockGuard--;}
+  }
+  if(heroId==='pecado_king'&&Number(next.fairyGuard||0)>0){rate+=.06;next.fairyGuard--;}
+  if(heroId==='pecado_gowther'&&Number(next.confuse||0)>0){rate+=.045;next.confuse--;}
+  if(heroId==='pecado_merlin'&&Number(next.cube||0)>0){rate+=.08;next.cube--;}
+  return {damage:Math.max(0,Math.round(incoming*(1-Math.min(.10,rate)))),state:next};
+}
 
 export function heroCombatStats(st,heroId){
   const hero=HERO_COMBAT_PROFILES[heroId];
@@ -109,7 +186,7 @@ export const HERO_SKILL_GUIDE=Object.freeze({
 });
 const HERO_SUN_HOUR=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'});
 
-export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},context='raid',masteryStage=1,nowMs=Date.now()}={}){
+export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},context='raid',masteryStage=1,nowMs=Date.now(),gear={}}={}){
   const id=String(heroId||''),n=Math.max(1,Math.floor(Number(damage)||1));
   if(!HERO_COMBAT_PROFILES[id])return {damage:n,heal:0,allyHeal:0,state:{...(state||{})},activated:false};
   const next={...(state||{})};
@@ -171,13 +248,14 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
     if(ultimate){bonus+=.15;next.nightmareBlocks=1;technique='Nightmare Teller';}
   }
   // Maestria IV e V concedem +1% cada; o bônus final nunca excede o teto.
-  bonus+=(stage>=4?.01:0)+(stage>=5?.01:0);
+  bonus+=Number(gear.attack||0)+(stage>=4?.01:0)+(stage>=5?.01:0);
+  if(id==='pecado_ban'&&Number(gear.heal||0)>0&&index%8===0)heal+=Math.ceil(Math.max(1,Number(maxHp))*Number(gear.heal));
   const cap=context==='boss'?.30:.35;
   return {damage:Math.max(1,Math.floor(n*(1+Math.min(cap,bonus)))),heal,allyHeal,
     technique,state:next,activated:special||ultimate};
 }
-export function heroDefense({heroId,damage=0,state={}}={}){
-  const next={...(state||{})};let rate=0;
+export function heroDefense({heroId,damage=0,state={},gear={}}={}){
+  const next={...(state||{})};let rate=Math.max(0,Number(gear.defense||0));
   const incoming=Math.max(0,Number(damage)||0);
   if(heroId==='pecado_diane'){
     rate=.04; // Heavy Metal, sempre.
