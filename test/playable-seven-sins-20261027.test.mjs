@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
-  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP
+  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP,HERO_START_LEVEL,heroStartingProgress
 } from '../src/neon/playable-heroes-core.js'
 
 test('sete personagens unicos com perfis equilibrados',()=>{
@@ -377,29 +377,40 @@ test('Maestria acelerada com 400 por dia e 600 na Raid 75',()=>{
   assert.equal(q({specialRaid75:false,earnedToday:500,regularEarnedToday:300,xp:90}).amount,90);
   assert.equal(q({specialRaid75:false,earnedToday:600,regularEarnedToday:300,xp:90}).amount,0);
 });
-test('Do nivel 70 ao 100: 12 dias no teto, sem ultrapassar 9900 XP',()=>{
+test('Novo personagem: nivel 1 ao 100 em 18 dias no teto, sem ultrapassar 9900 XP',()=>{
   const q=heroLevelAwardPolicy;
-  assert.equal(HERO_LEVEL_DAILY_CAP,250);
-  assert.deepEqual(q({earnedToday:0,currentXp:6900,xp:55}),{dailyCap:250,amount:55});
-  assert.equal(q({earnedToday:230,currentXp:6900,xp:55}).amount,20);
-  assert.equal(q({earnedToday:250,currentXp:6900,xp:55}).amount,0);
-  assert.equal(q({earnedToday:0,currentXp:9895,xp:55}).amount,5);
-  assert.equal(q({earnedToday:0,currentXp:9900,xp:55}).amount,0);
-  assert.equal(Math.ceil((9900-6900)/250),12);
+  assert.equal(HERO_LEVEL_DAILY_CAP,550);
+  assert.equal(HERO_START_LEVEL,1);
+  assert.deepEqual(heroStartingProgress(),{level:1,xp:0});
+  assert.deepEqual(q({earnedToday:0,currentXp:0,xp:125}),{dailyCap:550,amount:125});
+  assert.equal(q({earnedToday:530,currentXp:0,xp:125}).amount,20);
+  assert.equal(q({earnedToday:550,currentXp:0,xp:125}).amount,0);
+  assert.equal(q({earnedToday:0,currentXp:9895,xp:125}).amount,5);
+  assert.equal(q({earnedToday:0,currentXp:9900,xp:125}).amount,0);
+  assert.equal(Math.ceil((9900-0)/550),18);
   assert.equal(Math.ceil(7000/400),18);
   const st={hp:900,max_hp:1000,atk:650,def:540,spd:200,class_hp_bonus:130,
     class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5};
+  const initial=heroCombatStats(st,'pecado_ban',1);
   const low=heroCombatStats(st,'pecado_ban',70);
+  assert.ok(initial.maxHp<low.maxHp && initial.atk<low.atk,'Lv.1 deve evoluir sem herdar o poder de Lv.70');
+  assert.ok(initial.def<low.def && initial.spd<low.spd);
   const high=heroCombatStats(st,'pecado_ban',100);
   assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],[60,15,10,6]);
   const src=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
   assert.match(src,/hero_level_awards/);
+  assert.ok(src.includes('return Math.max(1,Math.min(100,Number(rows[0]?.level||1)))'));
+  const collab=readFileSync(new URL('../src/neon/sete-pecados-collab.js',import.meta.url),'utf8');
+  assert.match(collab,/const \{level,xp\}=heroStartingProgress\(\)/);
+  assert.match(collab,/if\(duplicate&&category==='personagem'\)/);
+  assert.match(collab,/INSERT INTO pet_collection\(jid,species,name,level,xp/);
+  assert.doesNotMatch(collab,/UPDATE pet_collection SET level=1/);
   assert.match(src,/ON CONFLICT\(jid,award_key\) DO NOTHING/);
   assert.match(src,/UPDATE pet_collection SET xp=\$1,level=\$2 WHERE id=\$3 AND jid=\$4/);
   assert.equal(games.split('awardPlayableHeroLevel(c,').length-1,2);
-  assert.match(games,/awardKey,xp:45/);
-  assert.match(games,/xp:specialRaid75Mastery\?80:55/);
+  assert.match(games,/awardKey,xp:115/);
+  assert.match(games,/xp:specialRaid75Mastery\?180:125/);
 });
 test('Creditar Raid 75 somente após vitória elegível, sem reduzir chaves ou recompensas',()=>{
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
