@@ -897,7 +897,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     s.players={...(s.players||{}),[jid]:{
       jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(heroStats?.hp??st.hp),Number(heroStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??st.max_hp)+gearHp,
       atk:Math.round((Number(heroStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
-      classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp),heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?.hp??null,heroHpRemainder:0,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
+      classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear:{weaponId:st.weapon_id,armorId:st.armor_id},heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp),heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?.hp??null,heroHpRemainder:0,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
       pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
@@ -1126,7 +1126,7 @@ export async function startRaid(chat,host,level=null){
       const teamPassives=teamPets
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(heroStats?.hp??st.hp),Number(heroStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp),heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?.hp??null,heroHpRemainder:0,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(heroStats?.hp??st.hp),Number(heroStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear:{weaponId:st.weapon_id,armorId:st.armor_id},heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp),heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?.hp??null,heroHpRemainder:0,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
@@ -1182,7 +1182,7 @@ async function finishRaidRewards(c,s,cfg,chat){
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
     if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
-      await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey:'raid:'+String(s.startedAt)+':'+String(p.jid),xp:10})
+      await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey:'raid:'+String(s.startedAt)+':'+String(p.jid),xp:8})
     }
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
     // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.
@@ -1532,7 +1532,7 @@ export async function raidRound(chat,level){
       const baseDmg=Math.max(5,Math.floor(raw*mult*(crit?1.5:1))+oilBonus)
       const heroAttackIndex=Number(p.heroAttacks||0)+1;
       const classHit=p.heroId
-        ?{...heroAttack({heroId:p.heroId,damage:baseDmg,hp:p.hp,maxHp:p.maxHp,attackIndex:heroAttackIndex,context:'raid',state:p.heroState,masteryStage:p.heroMasteryStage}),lastProcAttack:p.classLastProcAttack,awakeningState:p.awakeningState}
+        ?{...heroAttack({heroId:p.heroId,damage:baseDmg,hp:p.hp,maxHp:p.maxHp,attackIndex:heroAttackIndex,context:'raid',state:p.heroState,masteryStage:p.heroMasteryStage,gear:p.heroGear}),lastProcAttack:p.classLastProcAttack,awakeningState:p.awakeningState}
         :classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
       if(p.heroId){p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;}
       p.classLastProcAttack=classHit.lastProcAttack
@@ -1628,7 +1628,7 @@ export async function raidRound(chat,level){
         Number(ally.awakeningStage||0)>=4)
       const protectedDamage=guardianAura?Math.max(0,Math.round(hitDamage*.98)):hitDamage
       const passiveDefense=p.heroId
-        ?{...heroDefense({heroId:p.heroId,damage:protectedDamage,state:p.heroState}),awakeningState:p.awakeningState}
+        ?{...heroDefense({heroId:p.heroId,damage:protectedDamage,state:p.heroState,gear:p.heroGear,context:'raid'}),awakeningState:p.awakeningState}
         :classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
       if(p.heroId)p.heroState=passiveDefense.state
       p.awakeningState=passiveDefense.awakeningState
@@ -3128,7 +3128,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const baseDamage=Math.max(5,Math.floor(rawBase*petMultiplier*(crit?1.5:1))+oilBonus)
     const passiveHit=heroId
       ?{...heroAttack({heroId,damage:baseDamage,hp:heroCombatHp,maxHp:effectiveMaxHp,
-        attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',state:existingParticipant.heroState,masteryStage:heroMasteryStage}),
+        attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',state:existingParticipant.heroState,masteryStage:heroMasteryStage,gear:{weaponId:st.weapon_id,armorId:st.armor_id}}),
         lastProcAttack:existingParticipant.classLastProcAttack,awakeningState:existingParticipant.awakeningState}
       :classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
     const ruptura=gameType==='boss_event'&&s.eventId==='ruptura_estelar'
@@ -3172,7 +3172,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       bossCritical=!dodged&&Math.random()<.05
       const bossRawDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)*(ruptura?(faseAnterior===2?1.15:faseAnterior===3?1.20:1):1)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)*(1-Number(teamSynergy.defense||0))*(bossCritical?1.5:1)))
       const defResult=heroId
-        ?{...heroDefense({heroId,damage:bossRawDamage,state:s.participants[jid].heroState}),
+        ?{...heroDefense({heroId,damage:bossRawDamage,state:s.participants[jid].heroState,gear:{weaponId:st.weapon_id,armorId:st.armor_id},context:'boss'}),
           awakeningState:s.participants[jid].awakeningState}
         :classDefense({classId:st.class_id,applied:st.class_applied,damage:bossRawDamage,context:'boss',hp:php,maxHp:effectiveMaxHp,awakeningStage,awakeningState:s.participants[jid].awakeningState})
       if(heroId)s.participants[jid].heroState=defResult.state
@@ -3273,7 +3273,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           const dealt=Math.max(0,Number(contributor.damage||0))
           if(!contributor.jid||!contributor.heroId||dealt<2500||dealt/total<.02)continue
           await awardPlayableHeroMastery(c,{jid:contributor.jid,heroId:contributor.heroId,
-            awardKey:runKey+':'+contributor.jid,xp:10})
+            awardKey:runKey+':'+contributor.jid,xp:8})
         }
       }
     }
