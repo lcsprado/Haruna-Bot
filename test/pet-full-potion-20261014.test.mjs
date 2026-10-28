@@ -21,7 +21,8 @@ test('Poção Full cura até o máximo sem mexer na energia',()=>{
 
 test('Poção Full participa das curas automáticas das Raids e dos Bosses',()=>{
   const ids="['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']"
-  assert.equal(games.split(ids).length-1,3)
+  assert.ok(games.includes(ids),'Raid must load all five pet-potion types')
+  assert.match(games,/choosePotion:raidPetPotion,persistPet:persistBossCombatPet/,'Boss must reuse the same potion chooser, rather than duplicate its SQL')
   const start=games.indexOf('function raidPetPotion(rows,missingHp){')
   const end=games.indexOf('\n}',start)+2
   assert.ok(start>=0&&end>start)

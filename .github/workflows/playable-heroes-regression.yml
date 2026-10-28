@@ -16,13 +16,17 @@ jobs:
   extended-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Static/unit suite imports a DB-backed module without opening a database.
+      # Deliberately unreachable URL; actual SQL integration uses its own Postgres workflow.
+      DATABASE_URL: postgres://unit:unit@127.0.0.1:5432/unit
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install for testing without modifying the repository lockfile
-        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+        run: npm install --no-package-lock --no-audit --no-fund
       - name: Validate syntax
         run: npm run check
       - name: Run repository test suite

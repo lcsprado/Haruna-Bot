@@ -6,12 +6,13 @@ const src=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const duration=src.match(/const raidDurationMinutes=level=>\(\{([^}]+)\}/)
 assert.ok(duration,'tabela de duração')
 const pairs=Object.fromEntries(duration[1].split(',').map(p=>p.split(':').map(Number)))
-const expected={10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50}
+const expected={10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}
 
 test('Durações das Raids seguem a progressão acordada',()=>{
  assert.deepEqual(pairs,expected)
  const levels=Object.keys(expected).map(Number).sort((a,b)=>a-b)
  for(let i=1;i<levels.length;i++){
+  if(levels[i]===75)continue // A Raid de collab tem duração própria (35 min).
   assert.ok(pairs[levels[i]]>pairs[levels[i-1]],'Tempo deve aumentar com o nível da Raid')
  }
 })

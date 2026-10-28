@@ -13,10 +13,10 @@ const defense=(classId,stage,params={})=>classDefense({
   classId,awakeningStage:stage,context:'raid',damage:100,hp:350,maxHp:1000,
   roll:.999,...params
 })
-test('as dez classes têm tres habilidades e passivas anteriores preservadas',()=>{
+test('as dez classes têm cinco estágios de Despertar e passivas anteriores preservadas',()=>{
   assert.equal(Object.keys(PLAYER_CLASSES).length,10)
   for(const id of Object.keys(PLAYER_CLASSES)){
-    assert.equal(getAwakeningSkillDescriptions(id).length,3)
+    assert.equal(getAwakeningSkillDescriptions(id).length,5)
     assert.ok(AWAKENING_CLASS_SKILLS[id].every(Boolean))
   }
 })
@@ -41,7 +41,8 @@ test('Paladino cura apenas abaixo de 50% e somente a cada 8 golpes',()=>{
   assert.equal(boss('paladin',1,{hp:0}).heal,0)
   assert.equal(boss('paladin',1,{attackIndex:7}).heal,0)
   assert.equal(boss('paladin',2).damage,600)
-  assert.ok(defense('paladin',3).damage<defense('paladin',0).damage)
+  assert.equal(defense('paladin',3).damage,defense('paladin',0).damage,'Égide só absorve quando o escudo foi gerado')
+  assert.ok(defense('paladin',3,{awakeningState:{awakeningShield:80}}).damage<defense('paladin',0).damage,'Égide deve absorver um golpe quando há escudo')
   assert.equal(defense('paladin',3,{hp:900}).damage,defense('paladin',0,{hp:900}).damage)
 })
 test('Necromante não acumula roubo de vida e Druida regenera com teto',()=>{

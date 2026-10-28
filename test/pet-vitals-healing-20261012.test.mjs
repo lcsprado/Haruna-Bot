@@ -2,11 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {PET_STATUS_SPECIALTIES} from '../src/neon/game-catalog.js'
+import {PECADOS_HEROES} from '../src/neon/sete-pecados-catalog.js'
 
 const dbText=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const botText=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 const vitalsCode=dbText.slice(dbText.indexOf('const PET_BASE_ENERGY='),dbText.indexOf('function normalizedPetHp(')).replace(/^export /gm,'')
-const {PET_BASE_ENERGY,PET_HP_PROFILES,petMaxEnergy,petMaxHp}=new Function(vitalsCode+';return {PET_BASE_ENERGY,PET_HP_PROFILES,petMaxEnergy,petMaxHp}')()
+const {PET_BASE_ENERGY,PET_HP_PROFILES,petMaxEnergy,petMaxHp}=new Function('PECADOS_HEROES',vitalsCode+';return {PET_BASE_ENERGY,PET_HP_PROFILES,petMaxEnergy,petMaxHp}')(PECADOS_HEROES)
 const statusText=botText.slice(botText.indexOf('function petStatusBonus(p){'),botText.indexOf('async function start()'))
 const petStatusBonus=new Function('PET_STATUS_SPECIALTIES','petSpeedBonus',statusText+';return petStatusBonus')(PET_STATUS_SPECIALTIES,()=>0)
 
