@@ -2793,15 +2793,16 @@ const a=statFor(attackerJid)
 const b=statFor(defenderJid)
 // Somente herói desbloqueado participa. A classe tradicional continua intacta
 // e o herói não recebe o despertar da classe nem bônus extra por ter collab.
-const heroModes=(await client.query(`SELECT m.jid,m.hero_species,COALESCE(u.stage,1)::int AS mastery_stage
+const heroModes=(await client.query(`SELECT m.jid,m.hero_species,COALESCE(u.stage,1)::int AS mastery_stage,
+  COALESCE((SELECT MAX(p.level) FROM pet_collection p WHERE p.jid=m.jid AND p.species=m.hero_species),70)::int AS hero_level
   FROM player_hero_mode m
   LEFT JOIN player_hero_mastery_unlocks u ON u.jid=m.jid AND u.hero_species=m.hero_species
   WHERE m.jid=ANY($1::text[]) AND m.hero_species IS NOT NULL
     AND EXISTS(SELECT 1 FROM pet_collection p WHERE p.jid=m.jid AND p.species=m.hero_species)`,[ids])).rows;
 const activeHero=jid=>heroModes.find(row=>row.jid===jid)||null;
 const aHero=activeHero(attackerJid),bHero=activeHero(defenderJid);
-const aHeroStats=aHero?heroCombatStats(a,aHero.hero_species):null;
-const bHeroStats=bHero?heroCombatStats(b,bHero.hero_species):null;
+const aHeroStats=aHero?heroCombatStats(a,aHero.hero_species,aHero.hero_level):null;
+const bHeroStats=bHero?heroCombatStats(b,bHero.hero_species,bHero.hero_level):null;
 const au=userFor(attackerJid)
 const bu=userFor(defenderJid)
 if(Number(bu?.level||1)<=20){
