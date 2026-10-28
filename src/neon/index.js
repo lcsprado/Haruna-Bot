@@ -1534,14 +1534,11 @@ const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
 ${title}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
 ⭐ Nível: *${Number(p.level||1)}*
-${heroSheet?formatPlayableHeroCombatSheet(heroSheet)+'\n':''}🧙 ${heroSheet?'Classe original':'Classe'}: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}${heroSheet?' (preservada; ativa no PvP)':''}
-⚜️ ${heroSheet?'Passiva da classe':'Passiva'}: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}${heroSheet?' (inativa em Boss/Raid)':''}
+${heroSheet?formatPlayableHeroCombatSheet(heroSheet)+'\n':''}🧙 ${heroSheet?'Classe original (guardada)':'Classe'}: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}${heroSheet?' (inativa em PvP, Boss e Raid enquanto o herói estiver equipado)':''}
+⚜️ ${heroSheet?'Passiva da classe original':'Passiva'}: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}${heroSheet?' (guardada; inativa com herói equipado)':''}
 ✨ EXP: *${xp.current}/${xp.needed}*
 [${xp.bar}]
-❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*
-⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}
-🛡️ DEF: *${Number(p.effective_def||0)}*
-👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}
+${heroSheet?'':`❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
 ${bonusSummary}
 ${pvpPetLine}
 🏆 Vitórias: *${wins}*
@@ -11543,10 +11540,7 @@ await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
 ⭐ Nível: ${p.level}
 ✨ EXP: ${p.exp}/${p.level*100}
-❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)
-⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}
-🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)
-👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)
+${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus)+'\n🧙 Classe original guardada: '+(p.class_info?.name||'Sem classe')+' (inativa com herói equipado)':`❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)\n⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}\n🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)\n👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)`}
 🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
 👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
@@ -11554,7 +11548,7 @@ await reply(
 👢 Botas: ${p.boot_name||'Nenhuma'} *Lv.${p.boot_level||1}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
 🏆 Vitórias: ${p.win}
-💀 Derrotas: ${p.loss}${heroSheetStatus?'\n\n'+formatPlayableHeroCombatSheet(heroSheetStatus):''}`
+💀 Derrotas: ${p.loss}`
 )
 } else if(['batalhar','batalha','battle','duelo'].includes(cmd)){
 const targetMention=mentionsOf(msg)[0]
