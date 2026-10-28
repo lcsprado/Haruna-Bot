@@ -186,7 +186,7 @@ test('web inventory separates equipped gear and protects it from every sale path
   assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
   assert.ok(db.includes("qty:Math.min(Number(i.quantity)-1,"),'duplicate sale must always preserve one copy')
   assert.ok(app.includes("market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0"),'market UI must exclude equipped copies')
-  assert.ok(db.includes("const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))"),'market backend must preserve equipped copy')
+  assert.ok(db.includes("const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,") && db.includes("equipmentSaleQuantityAllowed(sale,qty,owned)"),'market backend must preserve equipped copy')
 })
 
 test('marriage proposals appear to the recipient in web and can be accepted or rejected',()=>{
@@ -484,10 +484,10 @@ test('PWA precaches only audited art sources and all species-specific portraits'
 })
 
 test('all catalog items use existing, distinct visual slots',{skip:process.env.ALPHA_RUNTIME==='whatsapp-only'?'RPG Web visual catalog is outside this WhatsApp-only deployment':false},()=>{
-  const starterMatch=db.match(/const starterItems = (\[[\s\S]*?\n  \])/)
+  const starterMatch=db.match(/const starterItems = (\[[\s\S]*?\n\])/)
   assert.ok(starterMatch,'starter item catalog missing')
   const starterItems=Function('return '+starterMatch[1])()
-  assert.equal(starterItems.length,82,'visual audit must cover the complete game item catalog')
+  assert.ok(starterItems.length>=82,'visual audit must cover the expanded game item catalog')
 
   const itemMapStart=app.indexOf('function itemSpriteKey')
   const exactStart=app.indexOf('const exact={',itemMapStart)

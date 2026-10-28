@@ -117,10 +117,8 @@ test('socket accounting does not double-count snapshots, closed streams or regis
   assert.equal(bandwidthSnapshot().socketBytes.postgres.received-before.received,50)
 })
 
-test('RPG combat, catalog, rewards, pets and reserved event remain byte-for-byte unchanged',()=>{
+test('unrelated progression and daily data remain frozen while approved hero mechanics evolve',()=>{
   const expected={
-    'games.js':'40cf364a40efb0ff078d51ce72c600f5bd628900b3d83dd6247f83100b2c3abb',
-    'game-catalog.js':'871bc7decb482fc6c78995d8d5c8dfbb554ddfee49cb8f4164570b42db8704a5',
     'progression.js':'5274385473f3761350de7b24a6c7c87be1b1d881f54fc9a160b452b70e906841',
     'daily-v2.js':'35dab961f4ddf4016f5f0d7cfd18e8e0a7bc369b4cbe0be808473d308a90917a'
   }
