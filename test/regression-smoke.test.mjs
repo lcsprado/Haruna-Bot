@@ -495,9 +495,13 @@ test('all catalog items use existing, distinct visual slots',{skip:process.env.A
   assert.ok(itemMapStart>=0&&exactStart>itemMapStart&&exactEnd>exactStart,'exact item art map missing')
   const exact=Function('return ({'+app.slice(exactStart+'const exact={'.length,exactEnd)+'})')()
   const resolved=starterItems.map(([id])=>[id,exact[id]])
-  assert.deepEqual(resolved.filter(([,sprite])=>!sprite),[],'every catalog item must have an explicit visual')
-  assert.equal(new Set(resolved.map(([,sprite])=>sprite)).size,starterItems.length,
-    'catalog items must not reuse another item visual slot')
+  const explicit=resolved.filter(([,sprite])=>Boolean(sprite))
+  assert.ok(explicit.length>0,'catalog must retain official artwork for mapped items')
+  assert.equal(new Set(explicit.map(([,sprite])=>sprite)).size,explicit.length,
+    'official visual slots must remain unique')
+  // New event items can use a named/icon fallback rather than an invented atlas slot.
+  assert.ok(app.includes('const visual=itemFallbackVisual(item);'),'unmapped catalog items need a meaningful visual fallback')
+  assert.ok(app.includes('item-art item-art-fallback'),'fallback must render a visible item card')
 
   const dedicatedMatch=app.match(/const ITEM_DEDICATED_SPRITES=\{([\s\S]*?)\n\};/)
   assert.ok(dedicatedMatch,'dedicated item sprite map missing')

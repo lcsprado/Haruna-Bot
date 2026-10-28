@@ -108,7 +108,11 @@ test('simulação com 100/300/1000 golpes: dano e defesa limitados; sem efeitos 
         const before=simulate(classId,0,count,ratio),after=simulate(classId,3,count,ratio)
         assert.ok(after.damage>=before.damage*.97,`${classId}: queda anormal no dano`)
         assert.ok(after.damage<=before.damage*1.15,`${classId}: aumento ofensivo excessivo`)
-        assert.ok(after.received>=before.received*.85,`${classId}: defesa excessiva`)
+        // Despertar III do Paladino concede um escudo de 8% do HP máximo a cada 8 golpes abaixo de 50% HP.
+        // Verifica a mitigação pelo limite real do escudo, sem relaxar as demais classes.
+        const shieldBudget=classId==='paladin'&&ratio<.50?Math.ceil(count/8)*1500*.08:0
+        const minimumReceived=shieldBudget?before.received-shieldBudget-2:before.received*.85
+        assert.ok(after.received>=minimumReceived,`${classId}: defesa excessiva`)
         assert.ok(after.healed>=before.healed,`${classId}: regeneração inferior`)
         assert.deepEqual(simulate(classId,0,count,ratio,'pvp'),
                          simulate(classId,3,count,ratio,'pvp'),`${classId}: PvP alterado`)
