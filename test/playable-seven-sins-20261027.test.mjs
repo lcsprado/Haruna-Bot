@@ -269,7 +269,8 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheet\)/);
   assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheetStatus\)/);
   assert.match(ui,/Classe original/);
-  assert.match(ui,/inativa em Boss\/Raid/);
+  assert.match(ui,/inativa em PvP, Boss e Raid/);
+  assert.doesNotMatch(ui,/preservada; ativa no PvP/);
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
   assert.match(hero,/Atributos base de combate com equipamentos/);
