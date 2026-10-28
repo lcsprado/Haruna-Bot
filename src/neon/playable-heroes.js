@@ -42,41 +42,7 @@ export async function initPlayableHeroes(){
         WHEN xp>=1300 THEN 5 WHEN xp>=700 THEN 4
         WHEN xp>=300 THEN 3 WHEN xp>=100 THEN 2 ELSE 1 END;
     END IF;
-  END $migrationimport {db,ensureUser,getCombatProfile} from './db.js'
-import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,heroGearSynergy,heroNextMastery,HERO_MASTERY_XP,HERO_MASTERY_COSTS} from './playable-heroes-core.js'
-import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
-
-const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
-async function transaction(fn){
-  const c=await db.connect()
-  try{await c.query('BEGIN');const result=await fn(c);await c.query('COMMIT');return result}
-  catch(err){await c.query('ROLLBACK');throw err}
-  finally{c.release()}
-}
-export async function initPlayableHeroes(){
-  await db.query(`CREATE TABLE IF NOT EXISTS player_hero_mode(
-    jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
-    hero_species TEXT,
-    updated_at BIGINT NOT NULL DEFAULT (${NOW})
-  );
-  CREATE TABLE IF NOT EXISTS player_hero_mastery(
-    jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-    hero_species TEXT NOT NULL,
-    xp INTEGER NOT NULL DEFAULT 0 CHECK(xp>=0),
-    stage SMALLINT NOT NULL DEFAULT 1 CHECK(stage BETWEEN 1 AND 5),
-    updated_at BIGINT NOT NULL DEFAULT (${NOW}),
-    PRIMARY KEY(jid,hero_species)
-  );
-  CREATE TABLE IF NOT EXISTS hero_mastery_awards(
-    jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
-    award_key TEXT NOT NULL,
-    hero_species TEXT NOT NULL,
-    xp INTEGER NOT NULL CHECK(xp>0),
-    created_at BIGINT NOT NULL DEFAULT (${NOW}),
-    PRIMARY KEY(jid,award_key)
-  )`)
-)
+  END $migration$`)
   const conversion=await archiveSevenSinsPetAssignments()
   if(conversion.migrated)console.info('[Heroes] converted legacy pet assignments:',conversion.migrated,'players; without eligible pet:',conversion.noEligiblePet)
 }
