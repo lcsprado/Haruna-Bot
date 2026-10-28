@@ -272,7 +272,7 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.match(ui,/inativa em Boss\/Raid/);
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
-  assert.match(hero,/Atributos estimados na entrada de Boss\/Raid/);
+  assert.match(hero,/Atributos base de combate com equipamentos/);
 });
 
 test('Maestria cara: XP acumulado, desbloqueio pago e limite diario',()=>{
