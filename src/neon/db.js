@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
+import {heroCombatStats,heroHpToPersistent,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
@@ -2787,6 +2788,17 @@ return Number(synergy?.speed||0)
 }
 const a=statFor(attackerJid)
 const b=statFor(defenderJid)
+const heroModes=(await client.query(`SELECT m.jid,m.hero_species,COALESCE(h.stage,1)::int AS stage
+  FROM player_hero_mode m LEFT JOIN player_hero_mastery h
+    ON h.jid=m.jid AND h.hero_species=m.hero_species
+  WHERE m.jid=ANY($1::text[]) AND m.hero_species IS NOT NULL
+    AND EXISTS (SELECT 1 FROM pet_collection c
+      WHERE c.jid=m.jid AND c.species=m.hero_species)`,
+  [[attackerJid,defenderJid]])).rows
+const aHero=heroModes.find(x=>x.jid===attackerJid)||null
+const bHero=heroModes.find(x=>x.jid===defenderJid)||null
+const aHeroStats=heroCombatStats(a,aHero?.hero_species)
+const bHeroStats=heroCombatStats(b,bHero?.hero_species)
 const au=userFor(attackerJid)
 const bu=userFor(defenderJid)
 if(Number(bu?.level||1)<=20){
@@ -2843,24 +2855,30 @@ const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_i
 const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const A={
 jid:attackerJid,name:au?.push_name||'Jogador',
-hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
-atk:Math.round((Number(a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
-def:Number(a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
-classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
-crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
-spd:Number(a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
+hp:Number(aHeroStats?.hp??a.hp),maxHp:Number(aHeroStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
+atk:Math.round((Number(aHeroStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
+def:Number(aHeroStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
+classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,attackIndex:0,lastProcAttack:0,
+heroId:aHero?.hero_species||null,heroStage:Number(aHero?.stage||1),heroState:{},
+heroGear:{weaponId:a.weapon_id,armorId:a.armor_id},
+heroOriginalMaxHp:Number(a.max_hp),pvpDebuffHits:0,
+crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied&&!aHero)),
+spd:Number(aHeroStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
 enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
 petSpeed:apSpd,teamSpeed:aSynergySpd,
 petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
 }
 const B={
 jid:defenderJid,name:bu?.push_name||'Jogador',
-hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
-atk:Math.round((Number(b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
-def:Number(b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
-classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
-crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
-spd:Number(b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
+hp:Number(bHeroStats?.hp??b.hp),maxHp:Number(bHeroStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
+atk:Math.round((Number(bHeroStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
+def:Number(bHeroStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
+classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,attackIndex:0,lastProcAttack:0,
+heroId:bHero?.hero_species||null,heroStage:Number(bHero?.stage||1),heroState:{},
+heroGear:{weaponId:b.weapon_id,armorId:b.armor_id},
+heroOriginalMaxHp:Number(b.max_hp),pvpDebuffHits:0,
+crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied&&!bHero)),
+spd:Number(bHeroStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
 enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
@@ -2870,6 +2888,7 @@ const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||
 const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
 return {
 jid:fighter.jid,name:fighter.name,hp:fighter.hp,maxHp:fighter.maxHp,
+heroId:fighter.heroId||null,heroStage:fighter.heroId?fighter.heroStage:0,
 atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
 petName:fighter.petName||null,petSpecies:fighter.petSpecies||null,
 petPvpBonus:fighter.petBonus?{
@@ -2898,22 +2917,33 @@ const petCrit=crit&&critRoll>=critWithoutPet
 const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
 const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
 const damageWithoutPet=1+Number(from.enchantDamage||0)+Number(from.collabDamage||0)
-const adjusted=Math.max(1,Math.round(raw*(damageWithoutPet+Number(from.petBonus?.damage||0))))
-const adjustedNoPet=Math.max(1,Math.round(raw*damageWithoutPet))
+const weakness=Number(from.pvpDebuffHits||0)>0?.92:1
+if(from.pvpDebuffHits>0)from.pvpDebuffHits--
+const adjusted=Math.max(1,Math.round(raw*(damageWithoutPet+Number(from.petBonus?.damage||0))*weakness))
+const adjustedNoPet=Math.max(1,Math.round(raw*damageWithoutPet*weakness))
 const classRoll=Math.random()
 const oldLastProcAttack=from.lastProcAttack
 const attackArgs={classId:from.classId,applied:from.classApplied,critical:crit,
 hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
 lastProcAttack:oldLastProcAttack,roll:classRoll}
-const attack=classAttack({...attackArgs,damage:crit?Math.round(adjusted*1.6):adjusted})
+const applyAttack=damage=>from.heroId
+  ?heroPvpAttack({heroId:from.heroId,damage,hp:from.hp,maxHp:from.maxHp,
+    attackIndex:from.attackIndex,masteryStage:from.heroStage,state:from.heroState,gear:from.heroGear})
+  :classAttack({...attackArgs,damage})
+const attack=applyAttack(crit?Math.round(adjusted*1.6):adjusted)
 const noPetAttack=Number(from.petBonus?.damage||0)>0
-?classAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet})
-:attack
-from.lastProcAttack=attack.lastProcAttack
+  ?applyAttack(crit?Math.round(adjustedNoPet*1.6):adjustedNoPet):attack
+if(from.heroId)from.heroState=attack.state
+else from.lastProcAttack=attack.lastProcAttack
 const defenseRoll=Math.random()
-const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage,roll:defenseRoll}).damage
-const withoutPetClassDamage=noPetAttack===attack?classDamage:
-classDefense({classId:to.classId,applied:to.classApplied,damage:noPetAttack.damage,roll:defenseRoll}).damage
+const applyDefense=damage=>to.heroId
+  ?heroPvpDefense({heroId:to.heroId,damage,state:to.heroState,gear:to.heroGear})
+  :classDefense({classId:to.classId,applied:to.classApplied,damage,roll:defenseRoll})
+const defenderResult=applyDefense(attack.damage)
+const classDamage=defenderResult.damage
+const withoutPetClassDamage=noPetAttack===attack?classDamage:applyDefense(noPetAttack.damage).damage
+if(to.heroId)to.heroState=defenderResult.state
+if(!dodged&&attack.debuffHits)to.pvpDebuffHits=Math.max(Number(to.pvpDebuffHits||0),attack.debuffHits)
 const petDefense=Number(to.petBonus?.defense||0)
 const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-petDefense)))
 const noPetDmg=dodged?0:Math.max(1,Math.round(withoutPetClassDamage*(1-petDefense)))
@@ -2952,17 +2982,20 @@ let loser=winner===A?B:A
 if(A.hp>0 && B.hp>0){
 loser.hp=0
 }
+const persistPvpHp=(fighter,hp)=>fighter.heroId
+  ?heroHpToPersistent(hp,fighter.maxHp,fighter.heroOriginalMaxHp)
+  :hp
 const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
 const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
 const petXpEventMultiplier=await getPetXpEventMultiplier(client)
 const reward=Math.round((600+Math.floor(Math.random()*601))*moneyMultiplier)
 await client.query(
 'UPDATE stats SET hp=$1,win=win+1,updated_at='+nowSql+' WHERE jid=$2',
-[Math.max(1,winner.hp),winner.jid]
+[Math.max(1,persistPvpHp(winner,winner.hp)),winner.jid]
 )
 await client.query(
 'UPDATE stats SET hp=$1,loss=loss+1,updated_at='+nowSql+' WHERE jid=$2',
-[Math.max(1,Math.floor(loser.maxHp*0.25)),loser.jid]
+[Math.max(1,persistPvpHp(loser,Math.floor(loser.maxHp*0.25))),loser.jid]
 )
 await client.query(
 'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
