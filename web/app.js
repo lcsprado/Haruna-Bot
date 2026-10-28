@@ -1168,7 +1168,7 @@ function renderPlayableHeroes(){
       '<div class="character-art collab-hero-card-art">'+(character?characterVisual(character,'character-official-art'):'')+'</div>'+
       '<div class="tag-row"><span class="tag">'+(h.owned?'Lv.'+num(h.petLevel||1)+'/100':'Bloqueado')+'</span>'+(h.active?'<span class="tag good">⚔️ ATIVO</span>':'')+'</div>'+
       '<h3>🌈 '+esc(h.name)+'</h3>'+
-      '<p>'+(h.owned?'Maestria '+num(h.masteryStage||1)+'/5 • '+num(h.masteryXp||0)+' XP':'Herói ainda não obtido')+'</p>'+
+      '<p>'+(h.owned?'Personagem desbloqueado • Maestria '+num(h.masteryStage||1)+'/5 • '+num(h.masteryXp||0)+' XP':'Herói ainda não obtido')+'</p>'+
       '<button class="btn '+(h.active?'good':'primary')+'" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
       '</div>';
   }).join('');
