@@ -93,19 +93,31 @@ export async function getPlayableHeroCombatSheet(jid,knownProfile=null){
 
 export function formatPlayableHeroCombatSheet(sheet){
   if(!sheet)return '';
-  return '🌈⚔️ *PERSONAGEM ATIVO — '+sheet.name.toUpperCase()+'*\n'+
-    '🎭 '+sheet.role+' • '+sheet.range+'\n'+
-    '🌟 Nível: *'+sheet.heroLevel+'/100*\n'+
-    '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)\n'+
-    '❤️ HP: *'+sheet.hp+'/'+sheet.maxHp+'*\n'+
-    '⚔️ ATK: *'+sheet.atk+'*\n'+
-    '🛡️ DEF: *'+sheet.def+'*\n'+
-    '👢 VEL: *'+sheet.spd+'*\n'+
-    '✨ Técnica: *'+sheet.skill+'*\n'+
-    '🌈 *BÔNUS EXCLUSIVO DA COLLAB*\n'+
-    (sheet.collabPvP?.weapon?'✅ Arma do personagem: *+1,5% dano PvP* e *+4% dano Boss/Raid*'+(sheet.heroId==='pecado_ban'?' • Ban recupera até 1% HP a cada 6 ataques PvP e +2% HP extra a cada 8 ataques Boss/Raid':''):'⬜ Arma da collab correspondente não equipada')+'\n'+
-    (sheet.collabPvP?.armor?'✅ Armadura do personagem: *-2% dano recebido PvP* e *-4% Boss/Raid*':'⬜ Armadura da collab correspondente não equipada')+'\n'+
-    '💡 Bônus especiais só funcionam com o personagem correspondente; os atributos normais do equipamento já estão somados acima. A classe e os Despertares seguem preservados.';
+  const gearBonuses=[
+    sheet.collabPvP?.weapon
+      ? '✅ Arma do personagem: *+1,5% dano PvP* e *+4% dano Boss/Raid*'+(sheet.heroId==='pecado_ban'?' • Ban recupera até 1% HP a cada 6 ataques PvP e +2% HP extra a cada 8 ataques Boss/Raid':'')
+      : null,
+    sheet.collabPvP?.armor
+      ? '✅ Armadura do personagem: *-2% dano recebido PvP* e *-4% Boss/Raid*'
+      : null
+  ].filter(Boolean);
+  const lines=[
+    '🌈⚔️ *PERSONAGEM ATIVO — '+sheet.name.toUpperCase()+'*',
+    '🎭 '+sheet.role+' • '+sheet.range,
+    '🌟 Nível: *'+sheet.heroLevel+'/100*',
+    '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)',
+    '❤️ HP: *'+sheet.hp+'/'+sheet.maxHp+'*',
+    '⚔️ ATK: *'+sheet.atk+'*',
+    '🛡️ DEF: *'+sheet.def+'*',
+    '👢 VEL: *'+sheet.spd+'*',
+    '✨ Técnica: *'+sheet.skill+'*'
+  ];
+  if(gearBonuses.length)lines.push(
+    '🌈 *BÔNUS EXCLUSIVO DA COLLAB*',
+    ...gearBonuses,
+    '💡 Bônus especiais só funcionam com o personagem correspondente; os atributos normais do equipamento já estão somados acima.'
+  );
+  return lines.join('\n');
 }
 
 export async function listPlayableHeroes(jid){
