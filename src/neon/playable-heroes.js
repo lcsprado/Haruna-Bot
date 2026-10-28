@@ -86,7 +86,7 @@ export function formatPlayableHeroCombatSheet(sheet){
     '👢 VEL: *'+sheet.spd+'*\n'+
     '✨ Técnica: *'+sheet.skill+'*\n'+
     '🌈 *BÔNUS EXCLUSIVO DA COLLAB*\n'+
-    (sheet.collabPvP?.weapon?'✅ Arma do personagem: *+1,5% dano PvP* e *+4% dano Boss/Raid*'+(sheet.heroId==='pecado_ban'? • Ban recupera até 1% HP a cada 6 ataques PvP e +2% HP extra a cada 8 ataques Boss/Raid':''):'⬜ Arma da collab correspondente não equipada')+'\n'+
+    (sheet.collabPvP?.weapon?'✅ Arma do personagem: *+1,5% dano PvP* e *+4% dano Boss/Raid*'+(sheet.heroId==='pecado_ban'?' • Ban recupera até 1% HP a cada 6 ataques PvP e +2% HP extra a cada 8 ataques Boss/Raid':''):'⬜ Arma da collab correspondente não equipada')+'\n'+
     (sheet.collabPvP?.armor?'✅ Armadura do personagem: *-2% dano recebido PvP* e *-4% Boss/Raid*':'⬜ Armadura da collab correspondente não equipada')+'\n'+
     '💡 Bônus especiais só funcionam com o personagem correspondente; os atributos normais do equipamento já estão somados acima. A classe e os Despertares seguem preservados.';
 }
