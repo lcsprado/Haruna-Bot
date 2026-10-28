@@ -148,7 +148,7 @@ test('Meliodas: Hellblaze, Full Counter de energia e Revenge Counter',()=>{
   assert.equal(reply.technique,'Full Counter');
   assert.ok(reply.damage>pre.damage);
   assert.equal(reply.state.counterStored,0);
-  const revenge=heroAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:25,masteryStage:3,state:{revengeStored:80}});
+  const revenge=heroAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:25,masteryStage:3,state:{revengeStored:80},context:'boss'});
   assert.equal(revenge.technique,'Revenge Counter');
   assert.ok(revenge.damage>1000&&revenge.damage<=1300);
 });
