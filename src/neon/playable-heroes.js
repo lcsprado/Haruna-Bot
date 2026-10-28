@@ -1,6 +1,6 @@
 import {db,ensureUser,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext} from './playable-heroes-core.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
@@ -70,7 +70,9 @@ export async function getPlayableHeroCombatSheet(jid,knownProfile=null){
   if(!combat)return null;
   const xp=Math.max(0,Number(mastery.rows[0]?.xp||0));
   const masteryStage=await getPlayableHeroMasteryStage(db,jid,heroId);
-  return {...combat,masteryXp:xp,masteryStage};
+  const collabPvP=heroCollabGearBonus(heroId,profile.weapon_id,profile.armor_id,'pvp');
+  const collabRaid=heroCollabGearBonus(heroId,profile.weapon_id,profile.armor_id,'raid');
+  return {...combat,masteryXp:xp,masteryStage,collabPvP,collabRaid};
 }
 
 export function formatPlayableHeroCombatSheet(sheet){
@@ -83,7 +85,10 @@ export function formatPlayableHeroCombatSheet(sheet){
     '🛡️ DEF: *'+sheet.def+'*\n'+
     '👢 VEL: *'+sheet.spd+'*\n'+
     '✨ Técnica: *'+sheet.skill+'*\n'+
-    '💡 Atributos base de combate com equipamentos; bônus de PvP são limitados. A classe original e seus Despertares seguem preservados.';
+    '🌈 *BÔNUS EXCLUSIVO DA COLLAB*\n'+
+    (sheet.collabPvP?.weapon?'✅ Arma do personagem: *+1,5% dano PvP* e *+4% dano Boss/Raid*'+(sheet.heroId==='pecado_ban?' • Ban recupera até 1% HP a cada 6 ataques PvP e +2% HP extra a cada 8 ataques Boss/Raid':''):'⬜ Arma da collab correspondente não equipada')+'\n'+
+    (sheet.collabPvP?.armor?'✅ Armadura do personagem: *-2% dano recebido PvP* e *-4% Boss/Raid*':'⬜ Armadura da collab correspondente não equipada')+'\n'+
+    '💡 Bônus especiais só funcionam com o personagem correspondente; os atributos normais do equipamento já estão somados acima. A classe e os Despertares seguem preservados.';
 }
 
 export async function listPlayableHeroes(jid){
