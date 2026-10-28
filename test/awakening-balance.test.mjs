@@ -13,10 +13,10 @@ const defense=(classId,stage,params={})=>classDefense({
   classId,awakeningStage:stage,context:'raid',damage:100,hp:350,maxHp:1000,
   roll:.999,...params
 })
-test('as dez classes têm tres habilidades e passivas anteriores preservadas',()=>{
+test('as dez classes têm cinco estágios de Despertar e passivas anteriores preservadas',()=>{
   assert.equal(Object.keys(PLAYER_CLASSES).length,10)
   for(const id of Object.keys(PLAYER_CLASSES)){
-    assert.equal(getAwakeningSkillDescriptions(id).length,3)
+    assert.equal(getAwakeningSkillDescriptions(id).length,5)
     assert.ok(AWAKENING_CLASS_SKILLS[id].every(Boolean))
   }
 })
@@ -41,7 +41,8 @@ test('Paladino cura apenas abaixo de 50% e somente a cada 8 golpes',()=>{
   assert.equal(boss('paladin',1,{hp:0}).heal,0)
   assert.equal(boss('paladin',1,{attackIndex:7}).heal,0)
   assert.equal(boss('paladin',2).damage,600)
-  assert.ok(defense('paladin',3).damage<defense('paladin',0).damage)
+  assert.equal(defense('paladin',3).damage,defense('paladin',0).damage,'Égide só absorve quando o escudo foi gerado')
+  assert.ok(defense('paladin',3,{awakeningState:{awakeningShield:80}}).damage<defense('paladin',0).damage,'Égide deve absorver um golpe quando há escudo')
   assert.equal(defense('paladin',3,{hp:900}).damage,defense('paladin',0,{hp:900}).damage)
 })
 test('Necromante não acumula roubo de vida e Druida regenera com teto',()=>{
@@ -107,7 +108,11 @@ test('simulação com 100/300/1000 golpes: dano e defesa limitados; sem efeitos 
         const before=simulate(classId,0,count,ratio),after=simulate(classId,3,count,ratio)
         assert.ok(after.damage>=before.damage*.97,`${classId}: queda anormal no dano`)
         assert.ok(after.damage<=before.damage*1.15,`${classId}: aumento ofensivo excessivo`)
-        assert.ok(after.received>=before.received*.85,`${classId}: defesa excessiva`)
+        // Despertar III do Paladino concede um escudo de 8% do HP máximo a cada 8 golpes abaixo de 50% HP.
+        // Verifica a mitigação pelo limite real do escudo, sem relaxar as demais classes.
+        const shieldBudget=classId==='paladin'&&ratio<.50?Math.ceil(count/8)*1500*.08:0
+        const minimumReceived=shieldBudget?before.received-shieldBudget-2:before.received*.85
+        assert.ok(after.received>=minimumReceived,`${classId}: defesa excessiva`)
         assert.ok(after.healed>=before.healed,`${classId}: regeneração inferior`)
         assert.deepEqual(simulate(classId,0,count,ratio,'pvp'),
                          simulate(classId,3,count,ratio,'pvp'),`${classId}: PvP alterado`)

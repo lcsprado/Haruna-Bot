@@ -59,11 +59,12 @@ test('Detalhe solicita comando explícito em vez de comprar ao selecionar númer
  assert.match(text,/9️⃣ Voltar/)
  assert.doesNotMatch(text,/PET ADOTADO/)
 })
-test('WhatsApp navega no fluxo por jogador e mantém adoção monetária apenas no comando explícito',()=>{
+test('WhatsApp mantém fluxo de consulta por jogador e bloqueia adoção comum desativada',()=>{
  const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
  for(const stage of ['pet_adopt_categories','pet_adopt_list','pet_adopt_detail'])
   assert.match(index,new RegExp("flow\\.stage==='"+stage+"'"))
- assert.match(index,/const pet=await adoptPet\(sender,args\[0\]/)
+ assert.match(index,/ADOÇÃO COMUM DESATIVADA/)
+ assert.doesNotMatch(index,/await adoptPet\(/,'nenhuma adoção comum deve ser cobrada enquanto a função está desligada')
  assert.match(index,/clearQuickFlow\(chat,sender\)/)
  assert.match(index,/petAdoptionMenuText\(\)/)
  assert.match(index,/petAdoptionListText\(category\.id/)

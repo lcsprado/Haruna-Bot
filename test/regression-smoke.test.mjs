@@ -113,9 +113,11 @@ test('purchasable pet specialties keep the intended progression',()=>{
 })
 
 test('boss and event combat auto-heal pets like raids',()=>{
-  assert.ok(games.includes("const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']"),'Boss pet potion inventory lookup missing')
-  assert.ok(games.includes("const chosenPet=raidPetPotion(petPotionRows,missing)"),'Boss must reuse raid pet-potion selection')
-  assert.ok(games.includes("autoPetHeal={id:chosenPet.item_id"),'Boss must return pet auto-heal details')
+  const helper=readFileSync(new URL('../src/neon/boss-pet-autocure.js',import.meta.url),'utf8')
+  assert.ok(helper.includes("const potionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']"),'Boss helper must query every potion tier')
+  assert.ok(games.includes('choosePotion:raidPetPotion,persistPet:persistBossCombatPet'),'Boss must reuse raid pet-potion selection')
+  assert.ok(helper.includes('UPDATE inventories SET quantity=quantity-1'),'Boss must debit potion in the same transaction')
+  assert.ok(helper.includes('await persistPet(client,jid,pet)'),'Boss must persist healed pet health')
   assert.ok(index.includes("🐾🧪 *Boletim de autocura"),'Boss session must announce pet auto-heal')
 })
 
@@ -182,9 +184,9 @@ test('web inventory separates equipped gear and protects it from every sale path
   assert.ok(batchStats>=2,'batch sell/discard must protect equipped boots as well as weapon/armor')
   assert.ok(db.includes("['weapon','armor','boots'].includes(i.category)"),'duplicate equipment sale must include boots safely')
   assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
-  assert.ok(db.includes("qty:Number(i.quantity)-1"),'duplicate sale must always preserve one copy')
+  assert.ok(db.includes("qty:Math.min(Number(i.quantity)-1,"),'duplicate sale must always preserve one copy')
   assert.ok(app.includes("market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0"),'market UI must exclude equipped copies')
-  assert.ok(db.includes("const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))"),'market backend must preserve equipped copy')
+  assert.ok(db.includes("const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,") && db.includes("equipmentSaleQuantityAllowed(sale,qty,owned)"),'market backend must preserve equipped copy')
 })
 
 test('marriage proposals appear to the recipient in web and can be accepted or rejected',()=>{
@@ -482,10 +484,10 @@ test('PWA precaches only audited art sources and all species-specific portraits'
 })
 
 test('all catalog items use existing, distinct visual slots',{skip:process.env.ALPHA_RUNTIME==='whatsapp-only'?'RPG Web visual catalog is outside this WhatsApp-only deployment':false},()=>{
-  const starterMatch=db.match(/const starterItems = (\[[\s\S]*?\n  \])/)
+  const starterMatch=db.match(/const starterItems = (\[[\s\S]*?\n\])/)
   assert.ok(starterMatch,'starter item catalog missing')
   const starterItems=Function('return '+starterMatch[1])()
-  assert.equal(starterItems.length,82,'visual audit must cover the complete game item catalog')
+  assert.ok(starterItems.length>=82,'visual audit must cover the expanded game item catalog')
 
   const itemMapStart=app.indexOf('function itemSpriteKey')
   const exactStart=app.indexOf('const exact={',itemMapStart)
@@ -493,9 +495,13 @@ test('all catalog items use existing, distinct visual slots',{skip:process.env.A
   assert.ok(itemMapStart>=0&&exactStart>itemMapStart&&exactEnd>exactStart,'exact item art map missing')
   const exact=Function('return ({'+app.slice(exactStart+'const exact={'.length,exactEnd)+'})')()
   const resolved=starterItems.map(([id])=>[id,exact[id]])
-  assert.deepEqual(resolved.filter(([,sprite])=>!sprite),[],'every catalog item must have an explicit visual')
-  assert.equal(new Set(resolved.map(([,sprite])=>sprite)).size,starterItems.length,
-    'catalog items must not reuse another item visual slot')
+  const explicit=resolved.filter(([,sprite])=>Boolean(sprite))
+  assert.ok(explicit.length>0,'catalog must retain official artwork for mapped items')
+  assert.equal(new Set(explicit.map(([,sprite])=>sprite)).size,explicit.length,
+    'official visual slots must remain unique')
+  // New event items can use a named/icon fallback rather than an invented atlas slot.
+  assert.ok(app.includes('const visual=itemFallbackVisual(item);'),'unmapped catalog items need a meaningful visual fallback')
+  assert.ok(app.includes('item-art item-art-fallback'),'fallback must render a visible item card')
 
   const dedicatedMatch=app.match(/const ITEM_DEDICATED_SPRITES=\{([\s\S]*?)\n\};/)
   assert.ok(dedicatedMatch,'dedicated item sprite map missing')

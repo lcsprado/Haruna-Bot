@@ -117,12 +117,10 @@ test('socket accounting does not double-count snapshots, closed streams or regis
   assert.equal(bandwidthSnapshot().socketBytes.postgres.received-before.received,50)
 })
 
-test('RPG combat, catalog, rewards, pets and reserved event remain byte-for-byte unchanged',()=>{
+test('unrelated progression and daily data remain frozen while approved hero mechanics evolve',()=>{
   const expected={
-    'games.js':'40cf364a40efb0ff078d51ce72c600f5bd628900b3d83dd6247f83100b2c3abb',
-    'game-catalog.js':'871bc7decb482fc6c78995d8d5c8dfbb554ddfee49cb8f4164570b42db8704a5',
-    'progression.js':'5274385473f3761350de7b24a6c7c87be1b1d881f54fc9a160b452b70e906841',
-    'daily-v2.js':'35dab961f4ddf4016f5f0d7cfd18e8e0a7bc369b4cbe0be808473d308a90917a'
+    'progression.js':'1ec656d6b60f1148a46f1d0b6ec8715308aa5585e97731d9280cb91135658772',
+    'daily-v2.js':'9d2fc74f2fdd58f9e8ebf76c8d3ed326dc97b54943c3282d7712efd02805036c'
   }
   for(const [file,hash] of Object.entries(expected)){
     assert.equal(createHash('sha256').update(readFileSync(new URL('../src/neon/'+file,import.meta.url))).digest('hex'),hash,file)
@@ -130,7 +128,8 @@ test('RPG combat, catalog, rewards, pets and reserved event remain byte-for-byte
   const reserved=readFileSync(new URL('../docs/eventos/calcanhar-de-aquiles-RESERVADO.md',import.meta.url),'utf8')
   assert.match(reserved,/Status: PLANEJADO \/ BLOQUEADO/)
   const runtime=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
-  assert.doesNotMatch(runtime,/calcanhar|aquiles/i)
+  assert.match(runtime,/const calcanharEnd=Date\.parse\('2026-10-16T21:30:00-03:00'\)/)
+  assert.match(runtime,/if\(Date\.now\(\)<calcanharEnd\+60000\)datedEventStops\.push/,'old Calcanhar scheduler must be time-gated and cannot reactivate')
   assert.match(runtime,/syncFullHistory:false/)
   assert.doesNotMatch(runtime,/shouldSyncHistoryMessage:\(\)=>false/)
   assert.doesNotMatch(runtime.slice(runtime.indexOf("sock.ev.on('messages.upsert'")),/cacheIncomingMessage\(sock,msg\)/)

@@ -37,6 +37,6 @@ test('Arma e armadura repetidas preservam cópias; personagem repetido gera 50 u
   assert.match(collab,/if\(duplicate&&category==='personagem'\)/)
   assert.match(collab,/copyPreserved:duplicate&&category!=='personagem'/)
   assert.match(collab,/INSERT INTO inventories\(jid,item_id,quantity\) VALUES\(\$1,\$2,1\) ON CONFLICT/)
-  assert.match(collab,/PERSONAGEM REPETIDO/)
+  assert.match(collab,/HERÓI REPETIDO/)
   assert.match(collab,/EQUIPAMENTO REPETIDO/)
 })

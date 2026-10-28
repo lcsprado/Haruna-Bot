@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 
 const source=readFileSync(new URL('../src/neon/sete-pecados-collab.js',import.meta.url),'utf8')
-const code=source.split('export async function claimCollabGearFragmentRefund(')[1]?.split('export async function handleSetePecadosCollabCommand(')[0]
+const code=source.split('export async function claimCollabGearFragmentRefund(')[1]?.split('\nexport async function ')[0]
 assert.ok(code,'reembolso deve ser exportado e protegido')
 
 function makeHarness(spent=24,uses=2){

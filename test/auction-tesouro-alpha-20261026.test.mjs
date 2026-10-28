@@ -4,21 +4,21 @@ import {readFileSync} from 'node:fs'
 const src=readFileSync(new URL('../src/neon/auction-alpha.js',import.meta.url),'utf8')
 const prizes=src.match(/const PACKAGES=(\[[\s\S]*?\])\nlet timer=/)?.[1]
 const packages=prizes?new Function('return '+prizes)():[]
-test('26 October auction has a unique key and opening at 14:10 Brazil time',()=>{
-  assert.match(src,/leilao_tesouro_alpha_cinco_lotes_20261026_v1/)
-  assert.match(src,/const START=Date.parse\('2026-10-26T14:10:00-03:00'\)/)
-  assert.match(src,/const END=Date.parse\('2026-10-26T16:00:00-03:00'\)/)
+test('27 October four-lot auction uses an isolated key and scheduled opening',()=>{
+  assert.match(src,/leilao_quatro_destinos_20261027_1430_v1/)
+  assert.match(src,/const START=Date.parse\('2026-10-27T14:30:00-03:00'\)/)
+  assert.match(src,/const END=Date.parse\('2026-10-27T15:30:00-03:00'\)/)
   assert.match(src,/const OPENING=250000/)
   assert.match(src,/const STEP=100000/)
-  assert.equal(packages.length,5)
+  assert.equal(packages.length,4)
   assert.ok(packages.every(lot=>lot.length>=2))
 })
-test('five sealed packages include meaningful existing rewards without restricted merch',()=>{
+test('four sealed packages preserve balanced rewards without restricted merch',()=>{
   assert.equal(packages.flat().filter(item=>item.pet).length,1)
-  assert.equal(packages.flat().filter(item=>item.pet).every(item=>item.pet==='lince_astral'),true)
-  assert.equal(packages.flat().filter(item=>item.id==='caixa_lendaria').reduce((total,item)=>total+item.qty,0),4)
-  assert.equal(packages.flat().filter(item=>item.id==='elmo_soberano_celestial_20261024').length,1)
-  assert.equal(packages.flat().filter(item=>item.id==='bota_vortice_alpha_20261020').length,1)
+  assert.equal(packages.flat().filter(item=>item.pet).every(item=>item.pet==='guaxinim_errante_20261027'),true)
+  assert.equal(packages.flat().filter(item=>item.id==='caixa_lendaria').reduce((total,item)=>total+item.qty,0),1)
+  assert.equal(packages.flat().filter(item=>item.id==='armadura_vigia_crepusculo_20261027').length,1)
+  assert.equal(packages.flat().filter(item=>item.id==='pocao_pet_full').length,1)
 })
 test('public bidding is backed by transactional reservations, refunds and sealed rewards',()=>{
   assert.match(src,/pg_advisory_xact_lock/)

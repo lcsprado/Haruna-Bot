@@ -24,5 +24,5 @@ test('Faixas das outras raids permanecem iguais',()=>{
 })
 test('Colocação exige participação real e respeita eventos sem somar múltiplos',()=>{
   assert.match(src,/share>=\.02/)
-  assert.match(src,/baseQty\*\(raidEventActive\?3:\(doubleRaidFragments\?2:1\)\)/)
+  assert.match(src,/baseQty\*Math\.max\(raidEventActive\?3:\(doubleRaidFragments\?2:1\),ownerFragments\)/)
 })

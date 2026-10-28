@@ -14,6 +14,6 @@ test('Elmos de evento são cadastrados na mesma evolução de armas e armaduras'
   assert.match(db,new RegExp(id+": \\{category:'helmet'"))
  assert.match(db,/i\.category IN \('weapon','armor','boots','helmet'\)/)
  assert.match(db,/const EQUIPMENT_MAX_LEVEL=10/)
- assert.match(db,/upgradeEquipment\(jid,itemId,targetLevel=null\)/)
- assert.match(db,/cost\+=equipmentUpgradeCost\(inv\.rows\[0\]\.rarity,lv\)/)
+ assert.match(db,/upgradeEquipment\(jid,itemId,targetLevel=null,sourceLevel=null,sourceKind='normal',payment='cash'\)/)
+ assert.match(db,/cost\+=equipmentUpgradeCost\(inv\.rarity,lv\)/)
 })
