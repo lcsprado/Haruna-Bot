@@ -1180,42 +1180,50 @@ function renderPlayableHeroes(){
 }
 
 function renderCharacter(){
-  const selected=selectedCharacter();
+  const selected=selectedClassCharacter();
+  const activeHero=activePlayableHero();
+  const activeVisual=selectedCharacter();
   const cp=profile();
   const applied=Boolean(cp.class_applied);
-  const currentRule=classRule(selected.id);
   const scrolls=Number(cp.class_scrolls||0);
-  const reclassNotice=!applied
-    ? '<div class="notice good"><strong>Primeira classe grátis.</strong><br>Depois de confirmar, cada nova troca exige 1 Pergaminho de Reclassificação, sem tempo de espera.</div>'
-    : '<div class="notice"><strong>Troca de classe disponível.</strong><br>Custa 1 Pergaminho de Reclassificação por troca, sem recarga • Pergaminhos: '+num(scrolls)+'</div>';
-
-  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Cada classe tem uma distribuição própria de HP, ATK, DEF e SPD. Não existem mais bônus negativos nem atributo zerado.</p></div><span class="tag '+(applied?'good':'')+'">'+esc((ui.data?.heroes||[]).find(h=>h.active)?.name|| (applied?selected.name+' ativo':'Escolha sua classe'))+'</span></div>'+
-    reclassNotice+
-    '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):applied?esc(selected.role):'Sem classe aplicada')+'</small></div><button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+
-      '<div class="stat-strip"><span>❤️ '+num(cp.effective_hp||cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
-    '</div>'+
-    '<div class="character-grid">'+CHARACTER_ART.filter(ch=>Boolean(classRule(ch.id))||(applied&&ch.id===selected.id)).map(ch=>{
-      const rule=classRule(ch.id)||{};
-      const active=applied&&ch.id===selected.id;
-      const locked=applied&&!active&&scrolls<1;
-      const stats=[
-        '❤️ +'+num(rule.hp||0)+' HP',
-        '⚔️ +'+num(rule.atk||0)+' ATK',
-        '🛡️ +'+num(rule.def||0)+' DEF',
-        '💨 +'+num(rule.spd||0)+' SPD'
-      ];
-      let label='Escolher classe';
-      if(active) label='Selecionado';
-      else if(applied&&scrolls<1) label='Precisa de Pergaminho';
-      else if(applied) label='Trocar classe';
-      return '<div class="card character-card '+(active?'selected':'')+'">'+
-        '<div class="character-art">'+artSprite(ch.sprite,'character-official-art',ch.name)+'</div>'+
-        '<div class="tag-row"><span class="tag">'+esc(rule.role||ch.role)+'</span>'+(active?'<span class="tag good">ATIVO</span>':'')+'</div>'+
-        '<h3>'+esc(ch.name)+'</h3><p>'+esc(rule.description||ch.desc)+'</p>'+
-        '<div class="class-bonuses">'+stats.map(x=>'<span>'+x+'</span>').join('')+'</div>'+
-        '<button class="btn '+(active?'good':'primary')+'" data-character-select="'+esc(ch.id)+'" '+(active||locked?'disabled':'')+'>'+esc(label)+'</button>'+
-      '</div>';
-    }).join('')+'</div>'+renderPlayableHeroes();
+  const activeStats='<div class="stat-strip"><span>❤️ '+num(cp.effective_hp??cp.hp)+'/'+num(cp.effective_max_hp??cp.max_hp)+'</span>'+
+    '<span>⚔️ '+num(cp.effective_atk??cp.atk)+'</span><span>🛡️ '+num(cp.effective_def??cp.def)+'</span><span>💨 '+num(cp.effective_spd??cp.spd)+'</span></div>';
+  const activePanel=activeHero
+    ?'<div class="card collab-current-hero"><div class="collab-current-art">'+characterVisual(activeVisual,'collab-current-portrait')+'</div>'+
+      '<div class="collab-current-content"><span class="tag good">⚔️ HERÓI ATIVO</span><h3>'+esc(activeHero.name)+'</h3>'+
+      '<p>🌟 Nível '+num(activeHero.petLevel||1)+'/100 • 🏅 Maestria '+num(activeHero.masteryStage||1)+'/5 ('+num(activeHero.masteryXp||0)+' XP)</p>'+
+      '<p>'+esc(activeVisual.role)+' • A classe '+esc(selected.name)+' e seus Despertares estão preservados.</p>'+
+      activeStats+'<div class="hero-actions"><button class="btn" data-character-select="__class__">↩ Voltar à classe '+esc(selected.name)+'</button></div></div></div>'
+    :'<div class="card class-current"><div class="section-title"><div><h3>Status da classe ativa</h3><small>'+esc(selected.name)+'</small></div>'+
+      '<button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+
+      (Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+activeStats+'</div>';
+  const notice=activeHero
+    ?'<div class="notice good"><strong>⚔️ '+esc(activeHero.name)+' está em combate.</strong> Sua classe '+esc(selected.name)+' fica salva. Volte a ela sem gastar pergaminhos.</div>'
+    :!applied
+      ?'<div class="notice good"><strong>Primeira classe grátis.</strong> Depois disso, a troca exige 1 Pergaminho de Reclassificação.</div>'
+      :'<div class="notice">Troca de classe: 1 Pergaminho de Reclassificação • Disponíveis: '+num(scrolls)+'</div>';
+  const classes=CHARACTER_ART.filter(ch=>Boolean(classRule(ch.id))||(applied&&ch.id===selected.id)).map(ch=>{
+    const rule=classRule(ch.id)||{};
+    const saved=Boolean(activeHero&&applied&&ch.id===selected.id);
+    const active=!activeHero&&applied&&ch.id===selected.id;
+    const locked=Boolean(activeHero)||(applied&&!active&&scrolls<1);
+    const stats=['❤️ +'+num(rule.hp||0)+' HP','⚔️ +'+num(rule.atk||0)+' ATK',
+      '🛡️ +'+num(rule.def||0)+' DEF','💨 +'+num(rule.spd||0)+' SPD'];
+    const label=saved?'Classe preservada':active?'Selecionado':activeHero?'Volte à classe para trocar':
+      applied&&scrolls<1?'Precisa de Pergaminho':applied?'Trocar classe':'Escolher classe';
+    return '<div class="card character-card '+(active?'selected':'')+'">'+
+      '<div class="character-art">'+artSprite(ch.sprite,'character-official-art',ch.name)+'</div>'+
+      '<div class="tag-row"><span class="tag">'+esc(rule.role||ch.role)+'</span>'+
+        (active?'<span class="tag good">ATIVO</span>':saved?'<span class="tag">SALVA</span>':'')+'</div>'+
+      '<h3>'+esc(ch.name)+'</h3><p>'+esc(rule.description||ch.desc)+'</p>'+
+      '<div class="class-bonuses">'+stats.map(t=>'<span>'+t+'</span>').join('')+'</div>'+
+      '<button class="btn '+(active?'good':'primary')+'" data-character-select="'+esc(ch.id)+'" '+(active||locked?'disabled':'')+'>'+esc(label)+'</button></div>';
+  }).join('');
+  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Heróis da collab e classes sincronizados com o WhatsApp.</p></div>'+
+    '<span class="tag '+(activeHero||applied?'good':'')+'">'+esc(activeHero?'⚔️ '+activeHero.name+' ativo':applied?selected.name+' ativo':'Escolha sua classe')+'</span></div>'+
+    notice+activePanel+
+    '<div class="section-title"><h3>🧙 Classes tradicionais</h3><small>'+(activeHero?'Classe salva enquanto o herói combate':'Sua classe')+'</small></div>'+
+    '<div class="character-grid">'+classes+'</div>'+renderPlayableHeroes();
 }
 function renderPets(){
   const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
