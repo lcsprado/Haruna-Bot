@@ -1,6 +1,6 @@
 import {db,ensureUser} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {playableHero,heroMasteryStage} from './playable-heroes-core.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
@@ -125,13 +125,45 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10
 export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!['heroi','herois','herói','heroes'].includes(String(cmd||'')))return false
   const action=String(args[0]||'').trim().toLowerCase()
+  const findHero=raw=>PECADOS_HEROES.find(h=>
+    h.name.toLowerCase()===raw||h.species===raw||h.species==='pecado_'+raw);
+  if(['habilidades','poderes','skills'].includes(action)){
+    const requested=String(args[1]||'').trim().toLowerCase();
+    if(!requested){
+      const overview=PECADOS_HEROES.map(h=>
+        '• *'+h.name+'* — '+HERO_COMBAT_PROFILES[h.species].role+
+        ' • '+HERO_COMBAT_PROFILES[h.species].range+' • '+HERO_COMBAT_PROFILES[h.species].skill).join('\n');
+      await reply('🌈⚔️ *HABILIDADES DOS 7 PECADOS*\n\n'+overview+
+        '\n\n📖 Use *!heroi habilidades ban* (ou o nome de outro Pecado) para ver os efeitos e desbloqueios.');
+      return true;
+    }
+    const hero=findHero(requested);
+    if(!hero){await reply('❌ Pecado desconhecido. Use *!heroi habilidades* para ver os sete.');return true;}
+    const guide=HERO_SKILL_GUIDE[hero.species];
+    const owned=await listPlayableHeroes(sender);
+    const info=owned.find(x=>x.id===hero.species);
+    const nextXp=[100,300,700,1300][Math.max(0,(info?.masteryStage||1)-1)];
+    await reply('🌈⚔️ *'+hero.name.toUpperCase()+' — HABILIDADES*\n'+
+      (info?.owned?'✅ Desbloqueado • Maestria '+info.masteryStage+'/5 ('+info.masteryXp+' XP)':
+        '🔒 Você ainda não desbloqueou este personagem.')+'\n\n'+
+      '🎭 *Estilo:* '+HERO_COMBAT_PROFILES[hero.species].role+' • '+HERO_COMBAT_PROFILES[hero.species].range+'\n\n'+
+      '1️⃣ *Passiva — Maestria I:* '+guide.passive+'\n'+
+      '2️⃣ *Especial — Maestria II (100 XP):* '+guide.special+'\n'+
+      '3️⃣ *Suprema — Maestria III (300 XP):* '+guide.ultimate+'\n'+
+      '4️⃣ *Maestria IV (700 XP):* +1% de dano.\n'+
+      '5️⃣ *Maestria V (1.300 XP):* mais +1% de dano.\n\n'+
+      (nextXp?'🎯 Próximo estágio: '+nextXp+' XP.\n':'🏆 Maestria máxima!\n')+
+      '⚖️ Bônus ofensivo por golpe: até 30% no Boss e 35% na Raid.\n'+
+      '💡 Estes são efeitos adaptados do anime para Boss/Raid; suas classes e Despertares são preservados.');
+    return true;
+  }
   if(!action||action==='status'||action==='lista'||action==='maestria'){
     const list=await listPlayableHeroes(sender)
     const active=list.find(h=>h.active)
-    const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Desbloqueado • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}`)
+    const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Desbloqueado • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
-      '👉 *!heroi usar escanor* • *!heroi classe*\n'+
+      '👉 *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
       '🗝️ Personagens conquistados preservados. Os Pecados não são mais pets; use outros pets em seu time.')
     return true
   }

@@ -136,3 +136,110 @@ test('integracao protege classe, pet, modo e progresso',()=>{
   assert.ok(api.includes("case 'hero.select'"))
   assert.ok(api.includes("case 'hero.class'"))
 })
+
+test('Meliodas: Hellblaze, Full Counter de energia e Revenge Counter',()=>{
+  const pre=heroAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:8,masteryStage:1});
+  const armed=heroAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:8,masteryStage:2});
+  assert.equal(pre.state.fullCounterReady,undefined);
+  assert.equal(armed.state.fullCounterReady,true);
+  const block=heroDefense({heroId:'pecado_meliodas',damage:300,state:armed.state});
+  assert.ok(block.state.counterStored>0);
+  const reply=heroAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:9,masteryStage:2,state:block.state});
+  assert.equal(reply.technique,'Full Counter');
+  assert.ok(reply.damage>pre.damage);
+  assert.equal(reply.state.counterStored,0);
+  const revenge=heroAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:25,masteryStage:3,state:{revengeStored:80},context:'boss'});
+  assert.equal(revenge.technique,'Revenge Counter');
+  assert.ok(revenge.damage>1000&&revenge.damage<=1300);
+});
+
+test('Ban: Snatch rouba força em golpes limitados e Hunter Fest cura',()=>{
+  const armed=heroAttack({heroId:'pecado_ban',damage:1000,maxHp:2000,attackIndex:8,masteryStage:2});
+  assert.equal(armed.state.snatchCharges,3);
+  let state=armed.state;
+  for(let i=0;i<3;i++){
+    const def=heroDefense({heroId:'pecado_ban',damage:1000,state});
+    assert.equal(def.damage,880);
+    state=def.state;
+  }
+  assert.equal(heroDefense({heroId:'pecado_ban',damage:1000,state}).damage,980);
+  const fest=heroAttack({heroId:'pecado_ban',damage:1000,maxHp:2000,attackIndex:25,masteryStage:3});
+  assert.equal(fest.technique,'Hunter Fest');
+  assert.equal(fest.heal,100);
+});
+
+test('Escanor: Sunshine depende do sol e The One dura tres golpes',()=>{
+  const noon=Date.parse('2026-10-27T12:00:00-03:00');
+  const night=Date.parse('2026-10-27T22:00:00-03:00');
+  const day=heroAttack({heroId:'pecado_escanor',damage:1000,hp:950,maxHp:1000,attackIndex:1,masteryStage:1,nowMs:noon});
+  const dark=heroAttack({heroId:'pecado_escanor',damage:1000,hp:950,maxHp:1000,attackIndex:1,masteryStage:1,nowMs:night});
+  assert.ok(day.damage>dark.damage);
+  const activated=heroAttack({heroId:'pecado_escanor',damage:1000,attackIndex:25,masteryStage:3,nowMs:night});
+  let state=activated.state;
+  assert.equal(activated.technique,'The One');
+  for(const index of [26,27]){
+    const hit=heroAttack({heroId:'pecado_escanor',damage:1000,attackIndex:index,state,masteryStage:3,nowMs:night});
+    assert.ok(hit.damage>1000);
+    state=hit.state;
+  }
+  assert.equal(heroAttack({heroId:'pecado_escanor',damage:1000,attackIndex:28,state,masteryStage:3,nowMs:night}).damage,1000);
+});
+
+test('Diane Heavy Metal, King Guardian, Merlin Perfect Cube e Gowther Invasion',()=>{
+  const d=heroAttack({heroId:'pecado_diane',damage:1000,attackIndex:25,masteryStage:3});
+  assert.equal(d.technique,'Mother Catastrophe');
+  assert.equal(heroDefense({heroId:'pecado_diane',damage:1000,state:d.state}).damage,760);
+  const k=heroAttack({heroId:'pecado_king',damage:1000,maxHp:2000,attackIndex:8,masteryStage:2});
+  assert.ok(k.allyHeal>0);
+  assert.equal(heroDefense({heroId:'pecado_king',damage:1000,state:k.state}).damage,850);
+  const m=heroAttack({heroId:'pecado_merlin',damage:1000,attackIndex:25,masteryStage:3});
+  assert.equal(m.technique,'Perfect Cube');
+  assert.equal(heroDefense({heroId:'pecado_merlin',damage:1000,state:m.state}).damage,800);
+  const g=heroAttack({heroId:'pecado_gowther',damage:1000,attackIndex:8,masteryStage:2});
+  assert.equal(g.technique,'Rewrite Light');
+  assert.equal(heroDefense({heroId:'pecado_gowther',damage:1000,state:g.state}).damage,890);
+});
+
+test('WhatsApp explica os poderes sem cobrar XP ou trocar de heroi para consultar',()=>{
+  const ui=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(ui,/\['habilidades','poderes','skills'\]/);
+  assert.match(ui,/HERO_SKILL_GUIDE\[hero\.species\]/);
+  assert.match(ui,/!heroi habilidades ban/);
+  assert.ok(ui.indexOf("if(['habilidades','poderes','skills']")<ui.indexOf("const saved=await setPlayableHeroMode(sender,hero.species)"));
+});
+
+test('papeis de ataque e alcance dos sete Pecados sao distintos, sem alterar HP e XP',()=>{
+  const expected={
+    pecado_meliodas:'Corpo a corpo',
+    pecado_ban:'Corpo a corpo',
+    pecado_escanor:'Corpo a corpo',
+    pecado_diane:'Corpo a corpo',
+    pecado_king:'Longa distância',
+    pecado_gowther:'Longa distância',
+    pecado_merlin:'Longa distância'
+  };
+  for(const [id,range] of Object.entries(expected)){
+    assert.equal(HERO_COMBAT_PROFILES[id].range,range,id);
+    assert.ok(HERO_COMBAT_PROFILES[id].role,'Papel ausente: '+id);
+    assert.ok(HERO_COMBAT_PROFILES[id].skill,'Técnica ausente: '+id);
+  }
+  const view=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(view,/HERO_COMBAT_PROFILES\[hero\.species\]\.range/);
+  assert.match(view,/HERO_COMBAT_PROFILES\[h\.id\]\.range/);
+});
+
+test('Revenge Counter, Sunflower e Exterminate deixam dois golpes residuais',()=>{
+  for(const [id,attack,level] of [
+    ['pecado_meliodas',25,3],
+    ['pecado_king',25,3],
+    ['pecado_merlin',8,2]
+  ]){
+    let hit=heroAttack({heroId:id,damage:1000,attackIndex:attack,masteryStage:level});
+    let state=hit.state;
+    for(let j=1;j<=2;j++){
+      const next=heroAttack({heroId:id,damage:1000,attackIndex:attack+j,masteryStage:level,state});
+      assert.ok(next.damage>=1000,id+': ataque residual '+j);
+      state=next.state;
+    }
+  }
+});
