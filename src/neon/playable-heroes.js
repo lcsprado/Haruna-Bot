@@ -1,6 +1,6 @@
 import {db,ensureUser,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus} from './playable-heroes-core.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
@@ -138,19 +138,23 @@ export async function setPlayableHeroMode(jid,heroId=null){
   })
 }
 
-export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10}={}){
+export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10,specialRaid75=false}={}){
   if(!client||!jid||!playableHero(heroId)||!awardKey)return false
-  // Limite compartilhado entre Raids e Bosses: 80 XP de maestria/dia por herói.
-  // A trava no usuário serializa premiações simultâneas de grupos diferentes.
+  // Padrão: 80 XP/dia em outras fontes; Raid 75 da semana permite 160 combinados.
+  // Uma única trava por usuário evita ultrapassar a cota com Raid e Boss simultâneos.
   await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
-  const {rows:today}=await client.query(`SELECT COALESCE(SUM(xp),0)::int AS gained
+  const {rows:today}=await client.query(`SELECT COALESCE(SUM(xp),0)::int AS gained,
+    COALESCE(SUM(xp) FILTER (WHERE award_key NOT LIKE 'raid:75:%'),0)::int AS regular_gained
     FROM hero_mastery_awards
     WHERE jid=$1 AND hero_species=$2
       AND (to_timestamp(created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
           (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,[jid,heroId])
-  const quota=Math.max(0,80-Number(today[0]?.gained||0))
-  if(!quota)return false
-  const amount=Math.min(quota,Math.max(1,Math.min(80,Math.floor(Number(xp)||10))))
+  const bonus=Boolean(specialRaid75)&&String(awardKey).startsWith('raid:75:')&&
+    raid75MasteryBonusActive({level:75,collab:true,nowMs:Date.now()})
+  const policy=heroMasteryAwardPolicy({specialRaid75:bonus,
+    earnedToday:today[0]?.gained,regularEarnedToday:today[0]?.regular_gained,xp})
+  const amount=policy.amount
+  if(!amount)return false
   const saved=await client.query(`INSERT INTO hero_mastery_awards(jid,award_key,hero_species,xp)
     VALUES($1,$2,$3,$4) ON CONFLICT(jid,award_key) DO NOTHING RETURNING jid`,
     [jid,String(awardKey),heroId,amount])
@@ -205,7 +209,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
           (next?' | Próximo: '+next.xp+' XP e R$ '+next.cost.toLocaleString('pt-BR'):' | Nível máximo');
       });
       await reply('🌈⚔️ *EVOLUÇÃO DE MAESTRIA*\n\n'+(lines.join('\n')||'Nenhum Pecado conquistado.')+
-        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Até 80 XP por dia por personagem em Boss/Raid elegíveis.');
+        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Normal: até 80 XP/dia por herói em Boss/Raid.\n🌈 De 26/10 a 01/11: a Raid 75 dos Pecados concede 20 XP por vitória elegível e permite até 160 XP/dia no total (incluindo outras fontes).');
       return true;
     }
     const selected=findHero(raw);
