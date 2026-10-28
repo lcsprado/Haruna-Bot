@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import {formatProfileCombatBonuses} from '../src/neon/profile-combat-summary.js'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
   heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP,HERO_START_LEVEL,heroStartingProgress
@@ -441,4 +442,56 @@ test('Ficha do herói passa a indicar arma correspondente e armadura com bônus 
   assert.match(h,/Armadura do personagem/);
   const d=heroDefense({heroId:'pecado_diane',damage:1000,gear:{defense:.04}});
   assert.equal(d.damage,920,'defesa de Heavy Metal deve acumular com armadura de Diane');
+});
+
+
+test('resumo de combate compacto mantém dano PvE separado do PvP e não repete zeros',()=>{
+  const text=formatProfileCombatBonuses({
+    raidDamagePct:32.8,bossDamagePct:32.8,
+    raidCritPct:49,bossCritPct:45,pvpCritPct:36.9,
+    petDamagePct:23.7,petPvp:{damage:0,defense:0,dodge:0,healPct:0},
+    teamSpeed:8,petSpeed:0,
+    enchantParts:['💥 +2 p.p. dano','🛡️ +5 DEF','👢 +2 VEL'],hasEnchantedDamage:true
+  });
+  assert.match(text,/Dano Boss\/Raid: \*\+32,8%\*/);
+  assert.match(text,/CRIT: PvP \*36,9%\* • Boss \*45%\* • Raid \*49%\*/);
+  assert.match(text,/Pets no Boss\/Raid: \*\+23,7% dano\* \(já incluído acima\)/);
+  assert.match(text,/Encantamentos: 💥 \+2 p\.p\. dano • 🛡️ \+5 DEF • 👢 \+2 VEL/);
+  assert.match(text,/sinergia \+8/);
+  assert.doesNotMatch(text,/Pet no PvP|Dano extra Raid|Dano extra Boss|0% esquiva|\+0% dano/);
+  assert.equal(text.split('Dano Boss/Raid').length-1,1);
+});
+test('resumo separa Boss e Raid quando taxas reais diferem, mesmo que arredondamento seja igual',()=>{
+  const text=formatProfileCombatBonuses({raidDamagePct:32.800001,bossDamagePct:32.8,pvpCritPct:30,raidCritPct:45,bossCritPct:40});
+  assert.match(text,/Dano Boss: \*\+32,8%\*/);
+  assert.match(text,/Dano Raid: \*\+32,8%\*/);
+  assert.doesNotMatch(text,/Dano Boss\/Raid/);
+});
+test('resumo de combate preserva efeitos exclusivos de pet PvP sem injetar dano PvE',()=>{
+  const text=formatProfileCombatBonuses({
+    raidDamagePct:28,bossDamagePct:31,petDamagePct:22,
+    petPvp:{damage:.012,defense:.009,dodge:.03,healPct:.04,healCooldown:5},
+    petSpeed:3,teamSpeed:8
+  });
+  assert.match(text,/Dano Boss: \*\+31%\*/);
+  assert.match(text,/Dano Raid: \*\+28%\*/);
+  assert.match(text,/Pets no Boss\/Raid: \*\+22% dano\*/);
+  assert.match(text,/Pet no PvP: 💥 \+1,2% dano • 🛡️ -0,9% recebido • 🌀 3% esquiva • 💚 4% HP a cada 5 ataques/);
+  assert.match(text,/VEL: pet \+3 • sinergia \+8/);
+});
+test('resumo preserva aviso de pet indisponível e o efeito condicional da classe',()=>{
+  const text=formatProfileCombatBonuses({
+    raidDamagePct:5,bossDamagePct:6,petStatus:'sem HP',
+    recoveredRaidDamagePct:22,recoveredBossDamagePct:21,
+    reserveActive:true,classEffect:'⚜️ Julgamento Divino: efeito condicional'
+  });
+  assert.match(text,/bônus suspensos. Após recuperação: Boss \*\+21%\* • Raid \*\+22%\*/);
+  assert.match(text,/Reserva apta contribuindo/);
+  assert.match(text,/Julgamento Divino/);
+});
+test('!perfil utiliza somente o formatador visual; !status e combate não são afetados',()=>{
+  const ui=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+  assert.match(ui,/import \{formatProfileCombatBonuses\} from '\.\/profile-combat-summary\.js'/);
+  assert.match(ui,/const bonusSummary=formatProfileCombatBonuses\(\{/);
+  assert.doesNotMatch(ui,/CONTRIBUIÇÃO DO PET NO PVP|DANO EXTRA RAID|DANO EXTRA BOSS/);
 });

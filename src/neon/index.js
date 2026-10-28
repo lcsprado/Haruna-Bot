@@ -81,6 +81,7 @@ import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet} from './playable-heroes.js'
+import {formatProfileCombatBonuses} from './profile-combat-summary.js'
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
@@ -1494,9 +1495,6 @@ const bossClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSh
 const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
 const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
 const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
-const raidCritNoPetsPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0))*100
-const bossCritNoPetsPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0))*100
-const critLine=(label,total,noPets)=>`🎯 ${label}: *${pct(total)}%* (🐾 +${pct(Math.max(0,total-noPets))} p.p. pets)`
 const primaryPetReady=Boolean(pet&&Number(pet.hp)>0&&Number(pet.energy)>0)
 const petStatus=pet&&!primaryPetReady
 ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
@@ -1504,13 +1502,6 @@ const petStatus=pet&&!primaryPetReady
 const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
 const pvpCritNoPet=Math.min(.40,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
 const pvpCritWithPet=Math.min(.40,pvpCritNoPet+Number(pvpPet?.crit||0))
-const pvpPct=n=>pct(Number(n||0)*100)
-const pvpPetLine=`🐾 *CONTRIBUIÇÃO DO PET NO PVP*
-${pet?`${pet.name} — Nv.${pet.level} ${primaryPetReady?'✅ ativo':'⚠️ bônus suspensos ('+petStatus+')'}`:'Nenhum pet principal'}
-💥 Dano adicional: *+${pvpPct(pvpPet?.damage)}%* • 🛡️ Dano reduzido: *${pvpPct(pvpPet?.defense)}%*
-🎯 CRIT do pet: *+${pvpPct(pvpCritWithPet-pvpCritNoPet)} p.p.* (total *${pvpPct(pvpCritWithPet)}%*)
-🌀 Esquiva: *${pvpPct(pvpPet?.dodge)}%*${Number(pvpPet?.healCooldown||0)>0&&Number(pvpPet?.healPct||0)>0?` • 💚 Cura: *${pvpPct(pvpPet.healPct)}% HP* a cada ${pvpPet.healCooldown} ataques, abaixo de 70% HP (até 3 vezes)`:''}
-👢 Velocidade do pet: *+${primaryPetReady?Number(petSpeedBonus(pet.species,pet.level)||0):0}* • Sinergia do time: *+${Number(synergy.speed||0)} VEL*`
 const en=p.enchant_breakdown||{}
 const enchantParts=[
 Number(en.damage||0)?'💥 +'+pct(en.damage*100)+' p.p. dano':null,
@@ -1519,17 +1510,17 @@ Number(en.def||0)?'🛡️ +'+en.def+' DEF':null,
 Number(en.spd||0)?'👢 +'+en.spd+' VEL':null,
 Number(en.crit||0)?'🎯 +'+pct(en.crit*100)+' p.p. CRIT':null
 ].filter(Boolean)
-const enchantDetail=enchantParts.length?'\n✨ ENCANTAMENTOS EQUIPADOS: *'+enchantParts.join(' • ')+'*':''
-const petDetail=`🐾 DANO DOS PETS ATIVOS: *+${pct(petDamage*100)}%* (principal e suportes)
-${combatPets.usingReserve?'🐾 Reserva apta: bônus do slot 3 considerados.\n':''}${petStatus?`⚠️ Pet principal ${petStatus}: bônus suspensos.
-🐾 Com ele recuperado: Raid *+${pct(recoveredRaidDamagePct)}%* / Boss *+${pct(recoveredBossDamagePct)}%*
-`:''}${!heroSheet&&classId==='paladin'&&awakeningStage>=2?'⚜️ Julgamento Divino: +20% a cada 8 ataques (efeito condicional).\n':''}`.trim()
-const bonusSummary=`💥 DANO EXTRA RAID: *+${pct(raidDamagePct)}%*
-👹 DANO EXTRA BOSS: *+${pct(bossDamagePct)}%*
-${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNoPetsPct)<.05
-?critLine('CRIT RAID/BOSS',raidCritPct,raidCritNoPetsPct)
-:critLine('CRIT RAID',raidCritPct,raidCritNoPetsPct)+'\n'+critLine('CRIT BOSS',bossCritPct,bossCritNoPetsPct)}
-${petDetail}${enchantDetail}`
+const bonusSummary=formatProfileCombatBonuses({
+raidDamagePct,bossDamagePct,raidCritPct,bossCritPct,pvpCritPct:pvpCritWithPet*100,
+petDamagePct:petDamage*100,petPvp:pvpPet,
+petSpeed:primaryPetReady?Number(petSpeedBonus(pet.species,pet.level)||0):0,
+teamSpeed:Number(synergy.speed||0),
+enchantParts,hasEnchantedDamage:Number(en.damage||0)>0,
+reserveActive:combatPets.usingReserve,petStatus,
+recoveredRaidDamagePct,recoveredBossDamagePct,
+classEffect:!heroSheet&&classId==='paladin'&&awakeningStage>=2
+?'⚜️ Julgamento Divino: +20% de dano a cada 8 ataques (efeito condicional)':''
+})
 const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
 ${title}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
@@ -1540,7 +1531,6 @@ ${heroSheet?formatPlayableHeroCombatSheet(heroSheet):`🧙 Classe: *${p.class_in
 [${xp.bar}]
 ${heroSheet?'':`❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
 ${bonusSummary}
-${pvpPetLine}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
 🥊 Ranking RPG: *#${Number(ranks.combatRank||0)||'-'}*
