@@ -894,6 +894,7 @@ const st=(await client.query(
 if(!st) throw new Error('Status do jogador não encontrado.')
 const applied=Boolean(st.class_applied)
 if(applied&&String(st.class_id)===next.id){
+await client.query('UPDATE player_hero_mode SET hero_species=NULL,updated_at='+nowSql+' WHERE jid=$1',[jid])
 return {ok:true,unchanged:true,firstChoice:false,classId:next.id,classInfo:next,stats:{
 hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
 }}
@@ -942,6 +943,8 @@ await client.query(
 )
 const {checkpointAwakeningAfterClassChange}=await import('./awakening.js')
 await checkpointAwakeningAfterClassChange(client,jid)
+// Escolher uma classe torna a classe o único combatente ativo, sem usar pergaminho extra.
+await client.query('UPDATE player_hero_mode SET hero_species=NULL,updated_at='+nowSql+' WHERE jid=$1',[jid])
 return {
 ok:true,firstChoice:!applied,consumedScroll,nextChangeAt,
 classId:next.id,classInfo:next,stats:{hp,maxHp,atk,def,spd}
@@ -2991,7 +2994,7 @@ await client.query(
 )
 await client.query(
 'UPDATE stats SET hp=$1,loss=loss+1,updated_at='+nowSql+' WHERE jid=$2',
-[Math.max(1,Math.floor(loser.heroPersistentMaxHp*0.25)),loser.jid]
+[Math.max(1,Math.floor((loser.heroId?loser.heroPersistentMaxHp:loser.maxHp)*0.25)),loser.jid]
 )
 await client.query(
 'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
@@ -3009,8 +3012,8 @@ return {
 ok:true,winner,loser,reward,log,opening,ending,roundCount,decidedByLimit,
 winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
 final:{
-attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor(A.heroPersistentMaxHp*0.25)),
-defenderHp: B.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor(B.heroPersistentMaxHp*0.25))
+attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((A.heroId?A.heroPersistentMaxHp:A.maxHp)*0.25)),
+defenderHp: B.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((B.heroId?B.heroPersistentMaxHp:B.maxHp)*0.25))
 }
 }
 })
