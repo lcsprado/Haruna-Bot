@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
-  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile
+  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext
 } from '../src/neon/playable-heroes-core.js'
 
 test('sete personagens unicos com perfis equilibrados',()=>{
@@ -99,7 +99,8 @@ test('herois possuem identidades mecanicas diferentes',()=>{
   assert.ok(heroDefense({heroId:'pecado_diane',damage:1000,state:{guardCharges:1}}).damage<950)
   assert.ok(heroDefense({heroId:'pecado_merlin',damage:1000,state:{cubeCharges:1}}).damage<900)
   assert.equal(heroMasteryStage(0),1)
-  assert.equal(heroMasteryStage(1300),5)
+  assert.equal(heroMasteryStage(1300),2)
+  assert.equal(heroMasteryStage(7000),5)
 })
 
 test('maestria libera habilidades no estagio correto, sem bonus prematuro',()=>{
@@ -271,5 +272,81 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.match(ui,/inativa em Boss\/Raid/);
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
-  assert.match(hero,/Atributos estimados na entrada de Boss\/Raid/);
+  assert.match(hero,/Atributos base de combate com equipamentos/);
+});
+
+test('Maestria cara: XP acumulado, desbloqueio pago e limite diario',()=>{
+  assert.deepEqual(HERO_MASTERY_XP,[0,500,1500,3500,7000]);
+  assert.deepEqual(HERO_MASTERY_COST,[0,2000000,5000000,12000000,25000000]);
+  assert.deepEqual(heroMasteryNext(1),{stage:2,xp:500,cost:2000000});
+  assert.equal(heroMasteryNext(5),null);
+  const src=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(src,/player_hero_mastery_unlocks/);
+  assert.match(src,/80-Number\(today\[0\]\?\.gained\|\|0\)/);
+  assert.match(src,/LEAST\(7000,player_hero_mastery\.xp\+EXCLUDED\.xp\)/);
+  assert.match(src,/SELECT cash,bank FROM wallets WHERE jid=\$1 FOR UPDATE/);
+  assert.match(src,/if\(xp<next\.xp\)throw/);
+  assert.match(src,/evolvePlayableHeroMastery\(sender,selected\.species\)/);
+  assert.ok(src.indexOf('UPDATE wallets SET cash=cash-$1,bank=bank-$2')>src.indexOf('if(xp<next.xp)throw'));
+});
+
+test('Equipamento sagrado corresponde exatamente a cada Pecado',()=>{
+  const catalog=[
+    ['pecado_meliodas','pecados_lostvayne','pecados_armadura_meliodas'],
+    ['pecado_ban','pecados_courechouse','pecados_armadura_ban'],
+    ['pecado_escanor','pecados_rhitta','pecados_armadura_escanor'],
+    ['pecado_king','pecados_chastiefol','pecados_armadura_king'],
+    ['pecado_diane','pecados_gideon','pecados_armadura_diane'],
+    ['pecado_gowther','pecados_herritt','pecados_armadura_gowther'],
+    ['pecado_merlin','pecados_aldan','pecados_armadura_merlin']
+  ];
+  for(const [hero,weapon,armor] of catalog){
+    const full=heroCollabGearBonus(hero,weapon,armor,'raid');
+    assert.equal(full.weapon,true,hero);assert.equal(full.armor,true,hero);
+    assert.equal(full.attack,.04);assert.equal(full.defense,.04);
+    const pvp=heroCollabGearBonus(hero,weapon,armor,'pvp');
+    assert.equal(pvp.attack,.015);assert.equal(pvp.defense,.02);
+    const wrong=heroCollabGearBonus(hero,weapon==='pecados_lostvayne'?'pecados_rhitta':'pecados_lostvayne',
+      armor==='pecados_armadura_merlin'?'pecados_armadura_ban':'pecados_armadura_merlin','pvp');
+    assert.equal(wrong.attack,0);assert.equal(wrong.defense,0);
+    assert.equal(heroCollabGearBonus(null,weapon,armor,'raid').attack,0);
+  }
+});
+
+test('PvP de herois da collab tem teto ofensivo, defensivo, cura e suprema',()=>{
+  for(const heroId of PLAYABLE_HERO_IDS){
+    let state={},heal=0;
+    for(let index=1;index<=20;index++){
+      const atk=heroPvpAttack({heroId,damage:1000,hp:800,maxHp:1000,attackIndex:index,masteryStage:5,state,gear:{attack:.015,defense:.02,heal:.005}});
+      assert.ok(atk.damage<=1080&&atk.damage>=1000,heroId+' PvP damage '+index);
+      heal+=atk.heal;
+      const defense=heroPvpDefense({heroId,damage:1000,state:atk.state,gear:{attack:.015,defense:.02,heal:.005}});
+      assert.ok(defense.damage>=900&&defense.damage<=1000,heroId+' PvP defense '+index);
+      state=defense.state;
+    }
+    assert.ok(heal<=20,heroId+' max heal');
+    assert.equal(state.ultimateUsed,true,heroId+' one supreme');
+  }
+});
+
+test('PvP preserva classAttack para nao-collab e normaliza HP dos herois',()=>{
+  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
+  const pvp=db.slice(db.indexOf('export async function battle('),db.indexOf('export async function combatLeaderboard('));
+  assert.match(pvp,/heroPvpAttack\(\{heroId:from\.heroId/);
+  assert.match(pvp,/heroPvpDefense\(\{heroId:to\.heroId/);
+  assert.match(pvp,/classAttack\(\{\.\.\.attackArgs/);
+  assert.match(pvp,/classDefense\(\{classId:to\.classId/);
+  assert.match(pvp,/Boolean\(a\.class_applied\)&&!aHero/);
+  assert.match(pvp,/heroHpToPersistent\(fighter\.hp,fighter\.maxHp,fighter\.heroPersistentMaxHp\)/);
+  assert.match(pvp,/loser\.heroId\?loser\.heroPersistentMaxHp:loser\.maxHp/);
+  assert.match(db,/pergaminho_reclassificacao/);
+});
+
+test('Bonus da collab aplicado em Boss e Raid, sem alterar concessao de XP',()=>{
+  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
+  assert.match(games,/heroCollabGearBonus\(heroId,st\.weapon_id,st\.armor_id,'raid'\)/);
+  assert.match(games,/heroCollabGearBonus\(heroId,st\.weapon_id,st\.armor_id,'boss'\)/);
+  assert.match(games,/masteryStage:p\.heroMasteryStage,gear:p\.heroGear/);
+  assert.match(games,/masteryStage:heroMasteryStage,gear:heroGear/);
+  assert.equal(games.split('awardPlayableHeroMastery(c,').length-1,2);
 });
