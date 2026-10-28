@@ -2,7 +2,7 @@ import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
-import {getActivePlayableHero,getPlayableHeroMasteryStage,awardPlayableHeroMastery} from './playable-heroes.js'
+import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {heroCombatStats,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive} from './playable-heroes-core.js'
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
@@ -878,7 +878,8 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
     const heroId=await getActivePlayableHero(c,jid)
-    const heroStats=heroCombatStats(st,heroId)
+    const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
+    const heroStats=heroCombatStats(st,heroId,heroLevel)
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'raid')
     const heroMasteryStage=heroId?await getPlayableHeroMasteryStage(c,jid,heroId):0
     const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
@@ -1091,7 +1092,8 @@ export async function startRaid(chat,host,level=null){
     for(const jid of ids){
       const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
       const heroId=await getActivePlayableHero(c,jid)
-      const heroStats=heroCombatStats(st,heroId)
+      const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
+      const heroStats=heroCombatStats(st,heroId,heroLevel)
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'raid')
     const heroMasteryStage=heroId?await getPlayableHeroMasteryStage(c,jid,heroId):0
       const awakeningStage=heroId?0:Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
@@ -1186,9 +1188,11 @@ async function finishRaidRewards(c,s,cfg,chat){
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
     if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
-      await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,
-        awardKey:(specialRaid75Mastery?'raid:75:':'raid:')+String(s.startedAt)+':'+String(p.jid),
-        xp:10,specialRaid75:specialRaid75Mastery})
+      const awardKey=(specialRaid75Mastery?'raid:75:':'raid:')+String(s.startedAt)+':'+String(p.jid)
+      await awardPlayableHeroLevel(c,{jid:p.jid,heroId:p.heroId,awardKey,
+        xp:specialRaid75Mastery?80:55})
+      await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey,
+        xp:specialRaid75Mastery?120:90,specialRaid75:specialRaid75Mastery})
     }
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
     // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.
@@ -3003,7 +3007,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     // ou reinicia cargas em ataques automáticos e reconexões.
     const heroId=Object.hasOwn(existingParticipant,'heroId')
       ?existingParticipant.heroId:await getActivePlayableHero(c,jid)
-    const heroStats=heroCombatStats(st,heroId)
+    const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
+    const heroStats=heroCombatStats(st,heroId,heroLevel)
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'boss')
     // O HP da luta não é reprojetado a cada ataque; isso evita perder
     // um ponto de vida por arredondamento nos ciclos automáticos.
@@ -3279,8 +3284,11 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         for(const contributor of contributors){
           const dealt=Math.max(0,Number(contributor.damage||0))
           if(!contributor.jid||!contributor.heroId||dealt<2500||dealt/total<.02)continue
+          const awardKey=runKey+':'+contributor.jid
+          await awardPlayableHeroLevel(c,{jid:contributor.jid,heroId:contributor.heroId,
+            awardKey,xp:45})
           await awardPlayableHeroMastery(c,{jid:contributor.jid,heroId:contributor.heroId,
-            awardKey:runKey+':'+contributor.jid,xp:10})
+            awardKey,xp:75})
         }
       }
     }
