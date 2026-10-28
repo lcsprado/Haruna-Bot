@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
-  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile
+  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroPvpAttack,heroPvpDefense,heroGearSynergy,HERO_MASTERY_XP,HERO_MASTERY_COSTS,heroNextMastery
 } from '../src/neon/playable-heroes-core.js'
 
 test('sete personagens unicos com perfis equilibrados',()=>{
@@ -99,7 +99,7 @@ test('herois possuem identidades mecanicas diferentes',()=>{
   assert.ok(heroDefense({heroId:'pecado_diane',damage:1000,state:{guardCharges:1}}).damage<950)
   assert.ok(heroDefense({heroId:'pecado_merlin',damage:1000,state:{cubeCharges:1}}).damage<900)
   assert.equal(heroMasteryStage(0),1)
-  assert.equal(heroMasteryStage(1300),5)
+  assert.equal(heroMasteryStage(3200),5)
 })
 
 test('maestria libera habilidades no estagio correto, sem bonus prematuro',()=>{
@@ -272,4 +272,83 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
   assert.match(hero,/Atributos estimados na entrada de Boss\/Raid/);
+});
+
+test('mesmo personagem da collab ativa arma, armadura e conjunto completo',()=>{
+  const ban=heroGearSynergy('pecado_ban','pecados_courechouse','pecados_armadura_ban','raid');
+  assert.equal(ban.full,true);
+  assert.equal(ban.attackBonus,.045);
+  assert.equal(ban.defenseBonus,.045);
+  const mixed=heroGearSynergy('pecado_ban','pecados_lostvayne','pecados_armadura_merlin','raid');
+  assert.equal(mixed.full,false);
+  assert.equal(mixed.attackBonus,0);
+  assert.equal(mixed.defenseBonus,0);
+  const raid=heroAttack({heroId:'pecado_ban',damage:1000,masteryStage:1,gear:{weaponId:'pecados_courechouse',armorId:'pecados_armadura_ban'}});
+  const plain=heroAttack({heroId:'pecado_ban',damage:1000,masteryStage:1});
+  assert.ok(raid.damage>plain.damage,'matching collab weapon must increase damage');
+  const def=heroDefense({heroId:'pecado_ban',damage:1000,gear:{weaponId:'pecados_courechouse',armorId:'pecados_armadura_ban'}});
+  assert.ok(def.damage<980,'matching collab armor must reduce damage');
+  assert.ok(heroGearSynergy('pecado_ban','pecados_courechouse','pecados_armadura_ban','pvp').attackBonus<
+    ban.attackBonus,'PvP bonus must be smaller than Raid bonus');
+});
+
+test('maestria exige XP de batalha e pagamento manual, sem liberar skill ao atingir XP',()=>{
+  assert.deepEqual(HERO_MASTERY_XP,[0,300,900,1800,3200]);
+  assert.deepEqual(HERO_MASTERY_COSTS,[0,500000,2000000,5000000,10000000]);
+  assert.deepEqual(heroNextMastery(1),{stage:2,xp:300,cash:500000});
+  assert.deepEqual(heroNextMastery(4),{stage:5,xp:3200,cash:10000000});
+  assert.equal(heroNextMastery(5),null);
+  const db=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(db,/SELECT xp,stage FROM player_hero_mastery WHERE jid=\$1 AND hero_species=\$2 FOR UPDATE/);
+  assert.match(db,/UPDATE wallets SET bank=bank-\$1 WHERE jid=\$2 AND bank>=\$1 RETURNING bank/);
+  assert.match(db,/UPDATE player_hero_mastery SET stage=\$1 WHERE jid=\$2 AND hero_species=\$3/);
+  assert.match(db,/IF NOT EXISTS \(SELECT 1 FROM information_schema.columns/);
+  assert.match(db,/WHEN xp>=1300 THEN 5 WHEN xp>=700 THEN 4/,'previous mastery stages must be preserved');
+  assert.match(db,/const quota=Math.max\(0,80-/);
+});
+
+test('PvP: todos os Pecados possuem técnicas distintas sem ultrapassar os tetos',()=>{
+  const noon=Date.parse('2026-10-27T12:00:00-03:00');
+  const night=Date.parse('2026-10-27T22:00:00-03:00');
+  const sword={weaponId:'pecados_courechouse',armorId:'pecados_armadura_ban'};
+  for(const id of PLAYABLE_HERO_IDS){
+    let state={},hp=1200;
+    for(let i=1;i<=20;i++){
+      const result=heroPvpAttack({heroId:id,damage:1000,hp,maxHp:1200,attackIndex:i,
+        masteryStage:5,state,nowMs:noon,gear:id==='pecado_ban'?sword:null});
+      assert.ok(result.damage>=920&&result.damage<=1180,'PVP damage cap '+id+' attack '+i);
+      assert.ok(result.heal>=0&&result.heal<=50,id);
+      const defense=heroPvpDefense({heroId:id,damage:1000,state:result.state,
+        gear:id==='pecado_ban'?sword:null});
+      assert.ok(defense.damage>=750&&defense.damage<=1000,id);
+      state=defense.state;
+    }
+  }
+  const escanorDay=heroPvpAttack({heroId:'pecado_escanor',damage:1000,hp:1000,maxHp:1100,
+    attackIndex:1,masteryStage:1,nowMs:noon});
+  const escanorNight=heroPvpAttack({heroId:'pecado_escanor',damage:1000,hp:1000,maxHp:1100,
+    attackIndex:1,masteryStage:1,nowMs:night});
+  assert.ok(escanorDay.damage>escanorNight.damage);
+  const gowther=heroPvpAttack({heroId:'pecado_gowther',damage:1000,
+    attackIndex:4,masteryStage:2});
+  assert.equal(gowther.debuffHits,2);
+  const king=heroPvpAttack({heroId:'pecado_king',damage:1000,maxHp:2000,attackIndex:4,masteryStage:2});
+  assert.ok(king.heal>0);
+  const diane=heroPvpDefense({heroId:'pecado_diane',damage:1000,state:{guardCharges:1}});
+  assert.ok(diane.damage<=800);
+  const banStage1=heroPvpAttack({heroId:'pecado_ban',damage:1000,attackIndex:4,masteryStage:1});
+  const banStage2=heroPvpAttack({heroId:'pecado_ban',damage:1000,attackIndex:4,masteryStage:2});
+  assert.ok(banStage2.damage>banStage1.damage);
+});
+
+test('motor PvP seleciona herói e não acumula passivas da classe e converte HP antes de salvar',()=>{
+  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
+  const b=db.slice(db.indexOf('export async function battle('));
+  assert.match(b,/heroModes=\(await client.query/);
+  assert.match(b,/heroPvpAttack\(\{heroId:from.heroId/);
+  assert.match(b,/heroPvpDefense\(\{heroId:to.heroId/);
+  assert.match(b,/classApplied:Boolean\(a.class_applied\)&&!aHero/);
+  assert.match(b,/classApplied:Boolean\(b.class_applied\)&&!bHero/);
+  assert.match(b,/heroHpToPersistent\(hp,fighter.maxHp,fighter.heroOriginalMaxHp\)/);
+  assert.match(db,/UPDATE player_hero_mode SET hero_species=NULL WHERE jid=\$1/);
 });
