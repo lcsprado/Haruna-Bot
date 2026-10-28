@@ -894,6 +894,7 @@ const st=(await client.query(
 if(!st) throw new Error('Status do jogador não encontrado.')
 const applied=Boolean(st.class_applied)
 if(applied&&String(st.class_id)===next.id){
+await client.query('UPDATE player_hero_mode SET hero_species=NULL WHERE jid=$1',[jid])
 return {ok:true,unchanged:true,firstChoice:false,classId:next.id,classInfo:next,stats:{
 hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
 }}
@@ -940,6 +941,7 @@ await client.query(
 'UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,class_hp_bonus=$7,class_atk_bonus=$8,class_def_bonus=$9,class_spd_bonus=$10,updated_at='+nowSql+' WHERE jid=$11',
 [hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
 )
+await client.query('UPDATE player_hero_mode SET hero_species=NULL WHERE jid=$1',[jid])
 const {checkpointAwakeningAfterClassChange}=await import('./awakening.js')
 await checkpointAwakeningAfterClassChange(client,jid)
 return {
