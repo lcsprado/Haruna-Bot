@@ -14,6 +14,16 @@ export const PLAYABLE_HERO_IDS=Object.freeze(PECADOS_HEROES.map(x=>x.species));
 export const playableHero=id=>PECADOS_HEROES.find(x=>x.species===String(id||''))||null;
 export const HERO_MASTERY_XP=Object.freeze([0,500,1500,3500,7000]);
 export const HERO_MASTERY_COST=Object.freeze([0,2000000,5000000,12000000,25000000]);
+// Progresso por heroi: 70 -> 100 em 12 dias ativos no teto; maestria V em 18 dias.
+export const HERO_LEVEL_DAILY_CAP=250;
+export const HERO_MASTERY_DAILY_CAP=400;
+export const HERO_MASTERY_SPECIAL_DAILY_CAP=600;
+export function heroLevelAwardPolicy({earnedToday=0,currentXp=6900,xp=55}={}){
+  const dailyRemaining=Math.max(0,HERO_LEVEL_DAILY_CAP-Math.max(0,Math.floor(Number(earnedToday)||0)));
+  const levelRemaining=Math.max(0,9900-Math.max(0,Math.floor(Number(currentXp)||0)));
+  return {dailyCap:HERO_LEVEL_DAILY_CAP,
+    amount:Math.min(dailyRemaining,levelRemaining,Math.max(0,Math.floor(Number(xp)||0)))};
+}
 // Exceção temporária: Raid 75 dos 7 Pecados, somente na semana de 26/10 a 01/11/2026 (São Paulo).
 export const RAID75_MASTERY_START=Date.parse('2026-10-26T00:00:00-03:00');
 export const RAID75_MASTERY_END=Date.parse('2026-11-02T00:00:00-03:00');
@@ -23,12 +33,14 @@ export function raid75MasteryBonusActive({level=0,collab=false,nowMs=Date.now()}
 export function heroMasteryAwardPolicy({specialRaid75=false,earnedToday=0,regularEarnedToday=0,xp=10}={}){
   const total=Math.max(0,Math.floor(Number(earnedToday)||0));
   const regular=Math.max(0,Math.floor(Number(regularEarnedToday)||0));
-  // XP diário combinado nunca supera 160. Outras fontes usam no máximo 80.
+  // Teto total 600 somente com Raid 75; fora dela, 400 XP/dia por heroi.
   const quota=Math.max(0,specialRaid75?
-    160-total:Math.min(80-regular,160-total));
-  const base=Math.max(1,Math.min(80,Math.floor(Number(xp)||10)));
-  return {special:Boolean(specialRaid75),dailyCap:specialRaid75?160:80,
-    amount:Math.min(quota,specialRaid75?Math.min(20,base*2):base)};
+    HERO_MASTERY_SPECIAL_DAILY_CAP-total:
+    Math.min(HERO_MASTERY_DAILY_CAP-regular,HERO_MASTERY_SPECIAL_DAILY_CAP-total));
+  const base=Math.max(0,Math.min(120,Math.floor(Number(xp)||0)));
+  return {special:Boolean(specialRaid75),
+    dailyCap:specialRaid75?HERO_MASTERY_SPECIAL_DAILY_CAP:HERO_MASTERY_DAILY_CAP,
+    amount:Math.min(quota,base)};
 }
 // XP acumulado não concede o estágio automaticamente: evolução paga é explícita.
 export const heroMasteryStage=x=>Math.min(5,1+HERO_MASTERY_XP.slice(1).filter(t=>Number(x||0)>=t).length);
@@ -108,26 +120,28 @@ export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
   return {damage:Math.max(0,Math.round(incoming*(1-Math.min(.10,rate)))),state:next};
 }
 
-export function heroCombatStats(st,heroId){
+export function heroCombatStats(st,heroId,heroLevel=70){
   const hero=HERO_COMBAT_PROFILES[heroId];
   if(!hero)return null;
   const n=(k,other=0)=>Number(st?.[k]??other)||0;
-  const maxHp=Math.max(1,n('max_hp',100)-n('class_hp_bonus')+hero.hp);
+  // Bônus modestos do nível 70-100: preserva a classe e evita power creep.
+  const trained=Math.max(0,Math.min(30,Math.floor(Number(heroLevel)||70)-70));
+  const maxHp=Math.max(1,n('max_hp',100)-n('class_hp_bonus')+hero.hp+trained*2);
   const sourceMax=Math.max(1,n('max_hp',100));
   return {
     heroId,hp:Math.max(0,Math.min(maxHp,Math.round(n('hp')/sourceMax*maxHp))),
     maxHp,
-    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk),
-    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def),
-    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd),
+    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk+Math.floor(trained/2)),
+    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def+Math.floor(trained/3)),
+    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd+Math.floor(trained/5)),
     persistentMaxHp:sourceMax
   };
 }
 // Ficha de visualização com a MESMA fórmula inicial usada na entrada da Raid/Boss:
 // classe substituída pelo herói + equipamentos/encantos, sem alterar o banco.
-export function heroCombatSheetFromProfile(profile,heroId){
+export function heroCombatSheetFromProfile(profile,heroId,heroLevel=70){
   if(!profile||!HERO_COMBAT_PROFILES[heroId])return null;
-  const h=heroCombatStats(profile,heroId);
+  const h=heroCombatStats(profile,heroId,heroLevel);
   const number=v=>Number(v)||0;
   return {
     ...h,
