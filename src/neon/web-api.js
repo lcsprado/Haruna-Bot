@@ -41,7 +41,7 @@ import {
 } from './progression.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
-import {listPlayableHeroes,setPlayableHeroMode} from './playable-heroes.js'
+import {listPlayableHeroes,setPlayableHeroMode,evolvePlayableHeroMastery} from './playable-heroes.js'
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
@@ -1159,6 +1159,7 @@ async function runAction(session,name,body={}){
     case 'character.select': return setPlayerClass(jid,String(body.classId||''))
     case 'hero.select': return setPlayableHeroMode(jid,String(body.heroId||''))
     case 'hero.class': return setPlayableHeroMode(jid,null)
+    case 'hero.mastery.evolve': return evolvePlayableHeroMastery(jid,String(body.heroId||''))
     case 'npc.buy': return buyNpcShopItem(jid,String(body.npcId||''),positiveInt(body.number,'Oferta',99))
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
