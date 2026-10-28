@@ -2884,7 +2884,7 @@ const snapshot=fighter=>{
 const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
 const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
 return {
-jid:fighter.jid,name:fighter.name,heroId:fighter.heroId,heroMasteryStage:fighter.heroId?fighter.heroMasteryStage:null,hp:fighter.hp,maxHp:fighter.maxHp,
+jid:fighter.jid,name:fighter.name,heroId:fighter.heroId,heroMasteryStage:fighter.heroId?fighter.heroMasteryStage:null,heroGear:fighter.heroId?fighter.heroGear:null,hp:fighter.hp,maxHp:fighter.maxHp,
 atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
 petName:fighter.petName||null,petSpecies:fighter.petSpecies||null,
 petPvpBonus:fighter.petBonus?{
