@@ -80,7 +80,7 @@ import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
-import {initPlayableHeroes,handlePlayableHeroCommand} from './playable-heroes.js'
+import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet} from './playable-heroes.js'
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-alpha.js'
@@ -1440,6 +1440,7 @@ WHERE pt.jid=$1),'[]'::json) AS team
 FROM (SELECT $1::text AS jid) u LEFT JOIN player_awakenings a ON a.jid=u.jid`,[jid])
 ])
 if(!p) throw new Error('Perfil não encontrado.')
+const heroSheet=await getPlayableHeroCombatSheet(jid,p)
 const wins=Number(p.win||0),loss=Number(p.loss||0)
 const title=alphaTitle(p,pat.total)
 const mimicTitleRows=await db.query(
@@ -1476,11 +1477,11 @@ const petCrit=Number(combatPets.active.crit||0)
 const baseAtk=Math.max(0,Number(p.base_atk||0))
 const gearAtk=Math.max(0,Math.round(Number(p.equipment_atk||0)))
 const sealAtk=Number(p.attack_pct_bonus||0)>0?`\n🔥 Selo de Potência Alpha: *+${Math.round(Number(p.attack_pct_bonus)*100)}% ATK*`:''
-const passive=getClassPassive(p.class_id,p.class_applied)||{}
+const passive=heroSheet?{}:(getClassPassive(p.class_id,p.class_applied)||{})
 const classId=String(p.class_id||'').toLowerCase()
 const fixedClassMult=(1+Number(passive.damage||0))*
-(1+(classId==='archer'&&awakeningStage>=1?.05:Number(passive.bossDamage||0)))*
-(classId==='warrior'&&awakeningStage>=1?1.02:1)
+(1+(classId==='archer'&&!heroSheet&&awakeningStage>=1?.05:Number(passive.bossDamage||0)))*
+(classId==='warrior'&&!heroSheet&&awakeningStage>=1?1.02:1)
 const fixedDamagePct=(relicRate,petRate=petDamage)=>
 ((1+petRate+Number(synergy.attack||0))*fixedClassMult*(1+Number(relicRate||0))-1)*100+Number(p.enchant_damage||0)*100
 const raidDamagePct=fixedDamagePct(relics.active?.raidAttack)
@@ -1488,8 +1489,8 @@ const bossDamagePct=fixedDamagePct(relics.active?.boss)
 const recoveredRaidDamagePct=fixedDamagePct(relics.active?.raidAttack,Number(combatPets.recovered.damage||0))
 const recoveredBossDamagePct=fixedDamagePct(relics.active?.boss,Number(combatPets.recovered.damage||0))
 const baseCrit=.10+Number(p.equipment_crit||0)
-const raidClassCrit=classCritBonus(p.class_id,p.class_applied,awakeningStage,'raid')
-const bossClassCrit=classCritBonus(p.class_id,p.class_applied,awakeningStage,'boss')
+const raidClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSheet?0:awakeningStage,'raid')
+const bossClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSheet?0:awakeningStage,'boss')
 const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
 const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
 const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
@@ -1522,7 +1523,7 @@ const enchantDetail=enchantParts.length?'\n✨ ENCANTAMENTOS EQUIPADOS: *'+encha
 const petDetail=`🐾 DANO DOS PETS ATIVOS: *+${pct(petDamage*100)}%* (principal e suportes)
 ${combatPets.usingReserve?'🐾 Reserva apta: bônus do slot 3 considerados.\n':''}${petStatus?`⚠️ Pet principal ${petStatus}: bônus suspensos.
 🐾 Com ele recuperado: Raid *+${pct(recoveredRaidDamagePct)}%* / Boss *+${pct(recoveredBossDamagePct)}%*
-`:''}${classId==='paladin'&&awakeningStage>=2?'⚜️ Julgamento Divino: +20% a cada 8 ataques (efeito condicional).\n':''}`.trim()
+`:''}${!heroSheet&&classId==='paladin'&&awakeningStage>=2?'⚜️ Julgamento Divino: +20% a cada 8 ataques (efeito condicional).\n':''}`.trim()
 const bonusSummary=`💥 DANO EXTRA RAID: *+${pct(raidDamagePct)}%*
 👹 DANO EXTRA BOSS: *+${pct(bossDamagePct)}%*
 ${Math.abs(raidCritPct-bossCritPct)<.05 && Math.abs(raidCritNoPetsPct-bossCritNoPetsPct)<.05
@@ -1533,8 +1534,8 @@ const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
 ${title}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
 ⭐ Nível: *${Number(p.level||1)}*
-🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
-⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}
+${heroSheet?formatPlayableHeroCombatSheet(heroSheet)+'\n':''}🧙 ${heroSheet?'Classe original':'Classe'}: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}${heroSheet?' (preservada; ativa no PvP)':''}
+⚜️ ${heroSheet?'Passiva da classe':'Passiva'}: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}${heroSheet?' (inativa em Boss/Raid)':''}
 ✨ EXP: *${xp.current}/${xp.needed}*
 [${xp.bar}]
 ❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*
@@ -11527,6 +11528,7 @@ const mentioned=mentionsOf(msg)[0]
 const statusTarget=await resolvePlayerJid(sock,chat,mentioned || sender,msg)
 const p=await getCombatProfile(statusTarget)
 if(!p) return await reply('❌ Perfil RPG não encontrado.')
+const heroSheetStatus=await getPlayableHeroCombatSheet(statusTarget,p)
 let statusPet=null
 try{
 statusPet=await getPet(statusTarget)
@@ -11552,7 +11554,7 @@ await reply(
 👢 Botas: ${p.boot_name||'Nenhuma'} *Lv.${p.boot_level||1}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
 🏆 Vitórias: ${p.win}
-💀 Derrotas: ${p.loss}`
+💀 Derrotas: ${p.loss}${heroSheetStatus?'\n\n'+formatPlayableHeroCombatSheet(heroSheetStatus):''}`
 )
 } else if(['batalhar','batalha','battle','duelo'].includes(cmd)){
 const targetMention=mentionsOf(msg)[0]
