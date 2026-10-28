@@ -227,17 +227,18 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     const guide=HERO_SKILL_GUIDE[hero.species];
     const owned=await listPlayableHeroes(sender);
     const info=owned.find(x=>x.id===hero.species);
-    const nextXp=[100,300,700,1300][Math.max(0,(info?.masteryStage||1)-1)];
+    const next=heroNextMastery(info?.masteryStage||1);
+    const nextXp=next?.xp;
     await reply('🌈⚔️ *'+hero.name.toUpperCase()+' — HABILIDADES*\n'+
       (info?.owned?'✅ Desbloqueado • Maestria '+info.masteryStage+'/5 ('+info.masteryXp+' XP)':
         '🔒 Você ainda não desbloqueou este personagem.')+'\n\n'+
       '🎭 *Estilo:* '+HERO_COMBAT_PROFILES[hero.species].role+' • '+HERO_COMBAT_PROFILES[hero.species].range+'\n\n'+
       '1️⃣ *Passiva — Maestria I:* '+guide.passive+'\n'+
-      '2️⃣ *Especial — Maestria II (100 XP):* '+guide.special+'\n'+
-      '3️⃣ *Suprema — Maestria III (300 XP):* '+guide.ultimate+'\n'+
-      '4️⃣ *Maestria IV (700 XP):* +1% de dano.\n'+
-      '5️⃣ *Maestria V (1.300 XP):* mais +1% de dano.\n\n'+
-      (nextXp?'🎯 Próximo estágio: '+nextXp+' XP.\n':'🏆 Maestria máxima!\n')+
+      '2️⃣ *Especial — Maestria II (300 XP + R$ 500 mil):* '+guide.special+'\n'+
+      '3️⃣ *Suprema — Maestria III (900 XP + R$ 2 milhões):* '+guide.ultimate+'\n'+
+      '4️⃣ *Maestria IV (1.800 XP + R$ 5 milhões):* +1% de dano.\n'+
+      '5️⃣ *Maestria V (3.200 XP + R$ 10 milhões):* mais +1% de dano.\n\n'+
+      (nextXp?'🎯 Próximo estágio: '+nextXp+' XP e R$ '+next.cash.toLocaleString('pt-BR')+'.\n':'🏆 Maestria máxima!\n')+
       '⚖️ Bônus ofensivo por golpe: até 30% no Boss e 35% na Raid.\n'+
       '💡 Estes são efeitos adaptados do anime para Boss/Raid; suas classes e Despertares são preservados.\n📊 Use *!heroi atributos* para ver os atributos do herói equipado.');
     return true;
