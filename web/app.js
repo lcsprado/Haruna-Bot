@@ -1201,7 +1201,7 @@ function renderCharacter(){
     ?'<div class="notice good"><strong>⚔️ '+esc(activeHero.name)+' está em combate.</strong> Sua classe '+esc(selected.name)+' fica salva. Volte a ela sem gastar pergaminhos.</div>'
     :!applied
       ?'<div class="notice good"><strong>Primeira classe grátis.</strong> Depois disso, a troca exige 1 Pergaminho de Reclassificação.</div>'
-      :'<div class="notice">Troca de classe: 1 Pergaminho de Reclassificação • Disponíveis: '+num(scrolls)+'</div>';
+      :'<div class="notice">Troca de classe sem tempo de espera: 1 Pergaminho de Reclassificação • Disponíveis: '+num(scrolls)+'</div>';
   const classes=CHARACTER_ART.filter(ch=>Boolean(classRule(ch.id))||(applied&&ch.id===selected.id)).map(ch=>{
     const rule=classRule(ch.id)||{};
     const saved=Boolean(activeHero&&applied&&ch.id===selected.id);
