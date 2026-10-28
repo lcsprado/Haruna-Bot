@@ -1190,7 +1190,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
       const awardKey=(specialRaid75Mastery?'raid:75:':'raid:')+String(s.startedAt)+':'+String(p.jid)
       await awardPlayableHeroLevel(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:specialRaid75Mastery?80:55})
+        xp:specialRaid75Mastery?180:125})
       await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey,
         xp:specialRaid75Mastery?120:90,specialRaid75:specialRaid75Mastery})
     }
@@ -3286,7 +3286,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           if(!contributor.jid||!contributor.heroId||dealt<2500||dealt/total<.02)continue
           const awardKey=runKey+':'+contributor.jid
           await awardPlayableHeroLevel(c,{jid:contributor.jid,heroId:contributor.heroId,
-            awardKey,xp:45})
+            awardKey,xp:115})
           await awardPlayableHeroMastery(c,{jid:contributor.jid,heroId:contributor.heroId,
             awardKey,xp:75})
         }

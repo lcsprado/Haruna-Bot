@@ -2,7 +2,7 @@ import {db,ensureUser,petMaxHp,petMaxEnergy} from './db.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay} from './collab-fragment-rules.js'
 import {reconcileLegacyCompanionFragments} from './collab-fragment-refund-policy.js'
 import {PECADOS_ESSENCES,PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS,PECADOS_GEAR_IDS,PECADOS_EDITIONS} from './sete-pecados-catalog.js'
-import {HERO_COMBAT_PROFILES} from './playable-heroes-core.js'
+import {HERO_COMBAT_PROFILES,heroStartingProgress} from './playable-heroes-core.js'
 
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
 const KEY_PREFIX='sete-pecados-retro-20261019:'
@@ -99,7 +99,10 @@ export async function openBox(jid,requestId=null){
   if(duplicate&&category==='personagem'){
     await c.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'fragmento_universal_raid',50) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+50",[jid])
   }else if(category==='personagem'){
-    const level=70,xp=(level-1)*100,maxHp=petMaxHp(level,xp,itemId),energy=petMaxEnergy(level,itemId)
+    // O primeiro exemplar sorteado de cada personagem nasce no Lv.1.
+    // Nenhum UPDATE em personagens já obtidos ou compensações históricas.
+    const {level,xp}=heroStartingProgress()
+    const maxHp=petMaxHp(level,xp,itemId),energy=petMaxEnergy(level,itemId)
     await c.query(`INSERT INTO pet_collection(jid,species,name,level,xp,energy,power,hp,max_hp,active,purchase_price)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE,0)`,[jid,itemId,reward.name,level,xp,energy,reward.power,maxHp])
   }else{
@@ -285,7 +288,7 @@ export async function handleSetePecadosCollabCommand({cmd,args=[],sender,reply,m
   if(r.unknown){await reply('⚠️ Esta mensagem já foi processada, mas o resultado não pôde ser recuperado. Nenhuma essência foi consumida novamente.');return true}
   const replayNotice=r.replay?'🔁 *Mensagem já processada.* Nenhuma essência foi cobrada novamente.\n\n':''
   if(r.insufficient)await reply(replayNotice+'🌈 *BAÚ DOS 7 PECADOS*\n\nSão necessárias *7 essências* de qualquer pecado. Você possui *'+fmt(r.owned)+'*.\nUse *!7pecados* para consultar o calendário.')
-  else await reply(replayNotice+'🌈🎁 *BAÚ DOS 7 PECADOS ABERTO!*\n\n'+(r.copyPreserved?'♻️ *EQUIPAMENTO REPETIDO:* '+r.reward+'\n📦 Nova cópia preservada no inventário. Na forja, fragmentos substituem a cópia extra.':r.duplicate?'♻️ *HERÓI REPETIDO:* '+r.reward+'\n🎁 Recebeu *50 Fragmentos Universais de Raid*.':'✅ *'+(r.category==='personagem'?'HERÓI JOGÁVEL':r.category.toUpperCase())+':* '+r.reward+'\n🎉 Adicionado à sua coleção!')+'\n\n🩸 Essências restantes: *'+fmt(r.ownedAfter)+'*.')
+  else await reply(replayNotice+'🌈🎁 *BAÚ DOS 7 PECADOS ABERTO!*\n\n'+(r.copyPreserved?'♻️ *EQUIPAMENTO REPETIDO:* '+r.reward+'\n📦 Nova cópia preservada no inventário. Na forja, fragmentos substituem a cópia extra.':r.duplicate?'♻️ *HERÓI REPETIDO:* '+r.reward+'\n🎁 Recebeu *50 Fragmentos Universais de Raid*.':'✅ *'+(r.category==='personagem'?'HERÓI JOGÁVEL':r.category.toUpperCase())+':* '+r.reward+'\n🎉 Adicionado à sua coleção!'+(r.category==='personagem'?'\n🌟 Novo herói: *Lv.1/100*. Ganhe XP de nível e maestria em Raids e Bosses.':''))+'\n\n🩸 Essências restantes: *'+fmt(r.ownedAfter)+'*.')
   return true
  }
  if(action==='resgatar'||action==='compensacao'){

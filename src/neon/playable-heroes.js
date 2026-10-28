@@ -60,10 +60,10 @@ export async function getActivePlayableHero(client,jid){
 }
 
 export async function getPlayableHeroLevel(client,jid,heroId){
-  if(!playableHero(heroId))return 70
+  if(!playableHero(heroId))return 1
   const {rows}=await (client||db).query(
     'SELECT MAX(level)::int AS level FROM pet_collection WHERE jid=$1 AND species=$2',[jid,heroId])
-  return Math.max(70,Math.min(100,Number(rows[0]?.level||70)))
+  return Math.max(1,Math.min(100,Number(rows[0]?.level||1)))
 }
 
 export async function getPlayableHeroMasteryStage(client,jid,heroId){
@@ -95,7 +95,7 @@ export function formatPlayableHeroCombatSheet(sheet){
   if(!sheet)return '';
   return '🌈⚔️ *PERSONAGEM ATIVO — '+sheet.name.toUpperCase()+'*\n'+
     '🎭 '+sheet.role+' • '+sheet.range+'\n'+
-    '🌟 Nível: *'+sheet.heroLevel+'/100*\\n'+
+    '🌟 Nível: *'+sheet.heroLevel+'/100*\n'+
     '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)\n'+
     '❤️ HP: *'+sheet.hp+'/'+sheet.maxHp+'*\n'+
     '⚔️ ATK: *'+sheet.atk+'*\n'+
@@ -256,7 +256,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
           (next?' | Próximo: '+next.xp+' XP e R$ '+next.cost.toLocaleString('pt-BR'):' | Nível máximo');
       });
       await reply('🌈⚔️ *EVOLUÇÃO DE MAESTRIA*\n\n'+(lines.join('\n')||'Nenhum Pecado conquistado.')+
-        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Normal: até 400 XP de maestria/dia e 250 XP de nível/dia por herói em Boss/Raid.\n🌈 De 26/10 a 01/11: a Raid 75 dos Pecados concede 120 XP de maestria por vitória elegível e permite até 600 XP/dia no total (incluindo outras fontes).');
+        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Normal: até 400 XP de maestria/dia e 550 XP de nível/dia por herói em Boss/Raid.\n🌈 De 26/10 a 01/11: a Raid 75 dos Pecados concede 120 XP de maestria por vitória elegível e permite até 600 XP/dia no total (incluindo outras fontes).');
       return true;
     }
     const selected=findHero(raw);
