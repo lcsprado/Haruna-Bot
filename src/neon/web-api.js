@@ -41,7 +41,7 @@ import {
 } from './progression.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
-import {listPlayableHeroes,setPlayableHeroMode} from './playable-heroes.js'
+import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from './playable-heroes.js'
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
@@ -503,10 +503,14 @@ async function playerBootstrap(session){
               LIMIT 20`,[jid]),
     listPlayableHeroes(jid)
   ])
+  // O herói equipado substitui a classe SOMENTE na apresentação/combate.
+  // A classe tradicional e o Despertar permanecem intactos no banco.
+  const activeHeroCombat=heroes.some(hero=>hero.active)
+    ?await getPlayableHeroCombatSheet(jid,combatProfile):null
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,heroes.find(h=>h.active)?.id)),heroes,petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,activeHeroCombat,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,heroes.find(h=>h.active)?.id)),heroes,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],

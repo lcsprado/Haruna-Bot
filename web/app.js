@@ -344,11 +344,37 @@ const PET_SPECIES_EMOJI={
   dragao_corrompido:'🐉',fenix_alpha:'🔥',colosso_alpha:'🗿',oraculo_alpha:'🔮',kitsune:'🦊'
 };
 
-function selectedCharacter(){
+// Retratos dos sete personagens: arte oficial da série (TV Tokyo).
+const COLLAB_HERO_ART={
+  pecado_meliodas:{name:'Meliodas',portrait:'chara01',symbol:'🐉',role:'Atacante'},
+  pecado_diane:{name:'Diane',portrait:'chara04',symbol:'🛡️',role:'Defensora'},
+  pecado_ban:{name:'Ban',portrait:'chara05',symbol:'🦊',role:'Lutador'},
+  pecado_king:{name:'King',portrait:'chara06',symbol:'🪽',role:'Suporte'},
+  pecado_gowther:{name:'Gowther',portrait:'chara07',symbol:'🎯',role:'Controlador'},
+  pecado_merlin:{name:'Merlin',portrait:'chara08',symbol:'🔮',role:'Maga'},
+  pecado_escanor:{name:'Escanor',portrait:'chara09',symbol:'☀️',role:'Atacante'}
+};
+function activePlayableHero(){
+  return (Array.isArray(ui.data?.heroes)?ui.data.heroes:[]).find(h=>h.active&&h.owned)||null;
+}
+function selectedClassCharacter(){
   const legacy={ 'rei-alpha':'warrior','guardiao-onix':'paladin','sentinela-azul':'mage' };
   const server=(ui.data&&ui.data.combatProfile&&ui.data.combatProfile.class_applied)?ui.data.combatProfile.class_id:'';
   const id=server || legacy[ui.characterId] || ui.characterId;
   return CHARACTER_ART.find(x=>x.id===id)||CHARACTER_ART[0];
+}
+function selectedCharacter(){
+  const active=activePlayableHero();
+  const art=active&&COLLAB_HERO_ART[active.id];
+  return art?{...art,id:active.id,name:active.name||art.name,isHero:true}:selectedClassCharacter();
+}
+function characterVisual(ch,className){
+  if(!ch?.isHero)return artSprite(ch.sprite,className,ch.name);
+  const art=COLLAB_HERO_ART[ch.id];
+  if(!art)return '';
+  const url='https://www.tv-tokyo.co.jp/anime/7-taizai_funnu/images/chara/'+art.portrait+'_illust.png';
+  return '<div class="collab-hero-portrait '+esc(className||'')+'" role="img" aria-label="'+esc(ch.name)+'" style="background-image:url('+url+')">'+
+    '<span class="collab-hero-symbol" aria-hidden="true">'+art.symbol+'</span></div>';
 }
 function classRule(id){
   return ((ui.catalog&&ui.catalog.classes)||[]).find(x=>x.id===id)||null;
@@ -483,7 +509,7 @@ function combatArenaMarkup(enemyName,kind,level,mode){
   const enemyKey=kind==='raid'?raidSpriteKey(level,enemyName):bossSpriteKey(enemyName,mode);
   const key=kind==='raid'?'raid-'+Number(level):'boss';
   return '<div class="combat-arena" data-combat-arena="'+key+'">'+
-    '<div class="combat-fighter player" data-combat-player>'+artSprite(ch.sprite,'combat-character-art',ch.name)+'<span>'+esc(ch.name)+'</span></div>'+
+    '<div class="combat-fighter player" data-combat-player>'+characterVisual(ch,'combat-character-art')+'<span>'+esc(ch.name)+'</span></div>'+
     '<div class="combat-vs">VS</div>'+
     '<div class="combat-fighter enemy" data-combat-enemy>'+artSprite(enemyKey,'combat-enemy-art',enemyName||'Inimigo')+'<span>'+esc(enemyName||'Inimigo')+'</span></div>'+
     '<div class="combat-fx" data-combat-fx></div>'+
@@ -823,7 +849,11 @@ function renderNav(){
 }
 
 function profile(){
-  return (ui.data&&ui.data.combatProfile) || (ui.data&&ui.data.profile) || {};
+  const base=(ui.data&&ui.data.combatProfile) || (ui.data&&ui.data.profile) || {};
+  const hero=activePlayableHero()&&ui.data?.activeHeroCombat;
+  if(!hero)return base;
+  return {...base,effective_hp:hero.hp,effective_max_hp:hero.maxHp,
+    effective_atk:hero.atk,effective_def:hero.def,effective_spd:hero.spd};
 }
 function currentGroup(){
   return ui.data&&ui.data.group;
@@ -842,7 +872,7 @@ function itemCount(id){
 function renderHeader(){
   const p=profile();
   const raw=(ui.data&&ui.data.profile)||p;
-  $('#miniProfile').innerHTML='<div class="mini-profile-row">'+(ui.avatarUrl?'<img class="mini-avatar" src="'+esc(ui.avatarUrl)+'" alt="">':'<div class="mini-avatar fallback">A</div>')+'<div><strong>'+esc(raw.push_name||'Jogador')+'</strong><small>Nível '+num(raw.level)+' • '+(ui.data&&ui.data.identity&&ui.data.identity.groupLinked?'grupo vinculado':'sem grupo vinculado')+'</small></div></div>';
+  $('#miniProfile').innerHTML='<div class="mini-profile-row">'+(ui.avatarUrl?'<img class="mini-avatar" src="'+esc(ui.avatarUrl)+'" alt="">':'<div class="mini-avatar fallback">A</div>')+'<div><strong>'+esc(raw.push_name||'Jogador')+'</strong><small>Nível '+num(raw.level)+(activePlayableHero()?' • ⚔️ '+esc(activePlayableHero().name)+' ativo':'')+' • '+(ui.data&&ui.data.identity&&ui.data.identity.groupLinked?'grupo vinculado':'sem grupo vinculado')+'</small></div></div>';
   $('#topStats').innerHTML=[
     '<span class="top-pill">❤️ '+num(p.effective_hp||p.hp)+'/'+num(p.effective_max_hp||p.max_hp)+'</span>',
     '<span class="top-pill">💵 '+money(raw.cash)+'</span>',
@@ -1004,6 +1034,7 @@ function renderHome(){
   return renderDoubleRewardEvent()+renderLuckyBoxEvent()+'<div class="hero card">'+
     '<div><p class="eyebrow">CONTA REAL DO WHATSAPP</p><h2>'+esc(raw.push_name||'Jogador')+'</h2>'+
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
+    (activePlayableHero()?'<div class="collab-home-active"><span>⚔️ HERÓI ATIVO</span> <strong>'+esc(activePlayableHero().name)+'</strong> • Lv.'+num(activePlayableHero().petLevel||1)+'/100 • Maestria '+num(activePlayableHero().masteryStage||1)+'/5</div>':'')+
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
     '<div class="home-exp"><div><span>⭐ EXP</span><strong>'+num(raw.exp||0)+'/'+num(Math.max(1,Number(raw.level||1)*100))+'</strong></div><div class="progress exp-progress"><span style="width:'+pct(Number(raw.exp||0)/Math.max(1,Number(raw.level||1)*100)*100)+'%"></span></div></div>'+
     '<div class="hero-actions"><button class="btn heal" data-player-heal '+(hp>=hpMax?'disabled':'')+'>'+(hp>=hpMax?'❤️ HP cheio':'❤️ Curar')+'</button><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ Rotina completa</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+' '+(workExpires?'data-work-cooldown="'+workExpires+'"':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div>'+
@@ -1127,60 +1158,72 @@ function petAdoptModal(){
 function renderPlayableHeroes(){
   const heroes=Array.isArray(ui.data?.heroes)?ui.data.heroes:[];
   if(!heroes.length)return '';
-  const active=heroes.find(h=>h.active);
+  const active=activePlayableHero();
   const items=heroes.map(h=>{
     const disabled=!h.owned||h.active;
     const label=h.active?'ATIVO':h.owned?'Usar como herói':'Não obtido';
-    return '<div class="card character-card">'+
+    const art=COLLAB_HERO_ART[h.id]||null;
+    const character=art?{...art,id:h.id,name:h.name||art.name,isHero:true}:null;
+    return '<div class="card character-card collab-hero-card '+(h.active?'selected':'')+(!h.owned?' collab-locked':'')+'">'+
+      '<div class="character-art collab-hero-card-art">'+(character?characterVisual(character,'character-official-art'):'')+'</div>'+
+      '<div class="tag-row"><span class="tag">'+(h.owned?'Lv.'+num(h.petLevel||1)+'/100':'Bloqueado')+'</span>'+(h.active?'<span class="tag good">⚔️ ATIVO</span>':'')+'</div>'+
       '<h3>🌈 '+esc(h.name)+'</h3>'+
-      '<p>Personagem desbloqueado • Maestria '+num(h.masteryStage||1)+'/5</p>'+
-      '<button class="btn" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
+      '<p>'+(h.owned?'Personagem desbloqueado • Maestria '+num(h.masteryStage||1)+'/5 • '+num(h.masteryXp||0)+' XP':'Herói ainda não obtido')+'</p>'+
+      '<button class="btn '+(h.active?'good':'primary')+'" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
       '</div>';
   }).join('');
   return '<section class="card"><h3>⚔️ Heróis jogáveis — 7 Pecados</h3>'+
-    '<p>Escolha um Pecado desbloqueado sem perder classe, pets ou Despertares. O mesmo Pecado não combate simultaneamente como pet.</p>'+
+    '<p>Seu herói ativo combate no lugar da classe. A classe e os Despertares ficam preservados. Retratos: arte oficial da série.</p>'+
     '<div class="character-grid">'+items+'</div>'+
-    '<button class="btn" data-character-select="__class__" '+(active?'':'disabled')+'>Voltar à minha classe</button>'+
+    '<div class="hero-actions"><button class="btn" data-character-select="__class__" '+(active?'':'disabled')+'>↩ Voltar à minha classe</button></div>'+
     '</section>';
 }
 
 function renderCharacter(){
-  const selected=selectedCharacter();
+  const selected=selectedClassCharacter();
+  const activeHero=activePlayableHero();
+  const activeVisual=selectedCharacter();
   const cp=profile();
   const applied=Boolean(cp.class_applied);
-  const currentRule=classRule(selected.id);
   const scrolls=Number(cp.class_scrolls||0);
-  const reclassNotice=!applied
-    ? '<div class="notice good"><strong>Primeira classe grátis.</strong><br>Depois de confirmar, cada nova troca exige 1 Pergaminho de Reclassificação, sem tempo de espera.</div>'
-    : '<div class="notice"><strong>Troca de classe disponível.</strong><br>Custa 1 Pergaminho de Reclassificação por troca, sem recarga • Pergaminhos: '+num(scrolls)+'</div>';
-
-  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Cada classe tem uma distribuição própria de HP, ATK, DEF e SPD. Não existem mais bônus negativos nem atributo zerado.</p></div><span class="tag '+(applied?'good':'')+'">'+esc((ui.data?.heroes||[]).find(h=>h.active)?.name|| (applied?selected.name+' ativo':'Escolha sua classe'))+'</span></div>'+
-    reclassNotice+
-    '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):applied?esc(selected.role):'Sem classe aplicada')+'</small></div><button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+
-      '<div class="stat-strip"><span>❤️ '+num(cp.effective_hp||cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
-    '</div>'+
-    '<div class="character-grid">'+CHARACTER_ART.filter(ch=>Boolean(classRule(ch.id))||(applied&&ch.id===selected.id)).map(ch=>{
-      const rule=classRule(ch.id)||{};
-      const active=applied&&ch.id===selected.id;
-      const locked=applied&&!active&&scrolls<1;
-      const stats=[
-        '❤️ +'+num(rule.hp||0)+' HP',
-        '⚔️ +'+num(rule.atk||0)+' ATK',
-        '🛡️ +'+num(rule.def||0)+' DEF',
-        '💨 +'+num(rule.spd||0)+' SPD'
-      ];
-      let label='Escolher classe';
-      if(active) label='Selecionado';
-      else if(applied&&scrolls<1) label='Precisa de Pergaminho';
-      else if(applied) label='Trocar classe';
-      return '<div class="card character-card '+(active?'selected':'')+'">'+
-        '<div class="character-art">'+artSprite(ch.sprite,'character-official-art',ch.name)+'</div>'+
-        '<div class="tag-row"><span class="tag">'+esc(rule.role||ch.role)+'</span>'+(active?'<span class="tag good">ATIVO</span>':'')+'</div>'+
-        '<h3>'+esc(ch.name)+'</h3><p>'+esc(rule.description||ch.desc)+'</p>'+
-        '<div class="class-bonuses">'+stats.map(x=>'<span>'+x+'</span>').join('')+'</div>'+
-        '<button class="btn '+(active?'good':'primary')+'" data-character-select="'+esc(ch.id)+'" '+(active||locked?'disabled':'')+'>'+esc(label)+'</button>'+
-      '</div>';
-    }).join('')+'</div>'+renderPlayableHeroes();
+  const activeStats='<div class="stat-strip"><span>❤️ '+num(cp.effective_hp??cp.hp)+'/'+num(cp.effective_max_hp??cp.max_hp)+'</span>'+
+    '<span>⚔️ '+num(cp.effective_atk??cp.atk)+'</span><span>🛡️ '+num(cp.effective_def??cp.def)+'</span><span>💨 '+num(cp.effective_spd??cp.spd)+'</span></div>';
+  const activePanel=activeHero
+    ?'<div class="card collab-current-hero"><div class="collab-current-art">'+characterVisual(activeVisual,'collab-current-portrait')+'</div>'+
+      '<div class="collab-current-content"><span class="tag good">⚔️ HERÓI ATIVO</span><h3>'+esc(activeHero.name)+'</h3>'+
+      '<p>🌟 Nível '+num(activeHero.petLevel||1)+'/100 • 🏅 Maestria '+num(activeHero.masteryStage||1)+'/5 ('+num(activeHero.masteryXp||0)+' XP)</p>'+
+      '<p>'+esc(activeVisual.role)+' • A classe '+esc(selected.name)+' e seus Despertares estão preservados.</p>'+
+      activeStats+'<div class="hero-actions"><button class="btn" data-character-select="__class__">↩ Voltar à classe '+esc(selected.name)+'</button></div></div></div>'
+    :'<div class="card class-current"><div class="section-title"><div><h3>Status da classe ativa</h3><small>'+esc(selected.name)+'</small></div>'+
+      '<button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+
+      (Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+activeStats+'</div>';
+  const notice=activeHero
+    ?'<div class="notice good"><strong>⚔️ '+esc(activeHero.name)+' está em combate.</strong> Sua classe '+esc(selected.name)+' fica salva. Volte a ela sem gastar pergaminhos.</div>'
+    :!applied
+      ?'<div class="notice good"><strong>Primeira classe grátis.</strong> Depois disso, a troca exige 1 Pergaminho de Reclassificação.</div>'
+      :'<div class="notice">Troca de classe sem tempo de espera: 1 Pergaminho de Reclassificação • Disponíveis: '+num(scrolls)+'</div>';
+  const classes=CHARACTER_ART.filter(ch=>Boolean(classRule(ch.id))||(applied&&ch.id===selected.id)).map(ch=>{
+    const rule=classRule(ch.id)||{};
+    const saved=Boolean(activeHero&&applied&&ch.id===selected.id);
+    const active=!activeHero&&applied&&ch.id===selected.id;
+    const locked=Boolean(activeHero)||(applied&&!active&&scrolls<1);
+    const stats=['❤️ +'+num(rule.hp||0)+' HP','⚔️ +'+num(rule.atk||0)+' ATK',
+      '🛡️ +'+num(rule.def||0)+' DEF','💨 +'+num(rule.spd||0)+' SPD'];
+    const label=saved?'Classe preservada':active?'Selecionado':activeHero?'Volte à classe para trocar':
+      applied&&scrolls<1?'Precisa de Pergaminho':applied?'Trocar classe':'Escolher classe';
+    return '<div class="card character-card '+(active?'selected':'')+'">'+
+      '<div class="character-art">'+artSprite(ch.sprite,'character-official-art',ch.name)+'</div>'+
+      '<div class="tag-row"><span class="tag">'+esc(rule.role||ch.role)+'</span>'+
+        (active?'<span class="tag good">ATIVO</span>':saved?'<span class="tag">SALVA</span>':'')+'</div>'+
+      '<h3>'+esc(ch.name)+'</h3><p>'+esc(rule.description||ch.desc)+'</p>'+
+      '<div class="class-bonuses">'+stats.map(t=>'<span>'+t+'</span>').join('')+'</div>'+
+      '<button class="btn '+(active?'good':'primary')+'" data-character-select="'+esc(ch.id)+'" '+(active||locked?'disabled':'')+'>'+esc(label)+'</button></div>';
+  }).join('');
+  return '<div class="page-head"><div><h2>Seu personagem</h2><p>Heróis da collab e classes sincronizados com o WhatsApp.</p></div>'+
+    '<span class="tag '+(activeHero||applied?'good':'')+'">'+esc(activeHero?'⚔️ '+activeHero.name+' ativo':applied?selected.name+' ativo':'Escolha sua classe')+'</span></div>'+
+    notice+activePanel+
+    '<div class="section-title"><h3>🧙 Classes tradicionais</h3><small>'+(activeHero?'Classe salva enquanto o herói combate':'Sua classe')+'</small></div>'+
+    '<div class="character-grid">'+classes+'</div>'+renderPlayableHeroes();
 }
 function renderPets(){
   const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
@@ -1809,7 +1852,7 @@ function renderDuelArena(members){
     '<div class="duel-picker"><label>Adversário</label><select data-duel-target>'+members.map(m=>'<option value="'+esc(m.jid)+'" '+(m.jid===target.jid?'selected':'')+'>'+esc(m.push_name||'Jogador')+' • Lv.'+num(m.level||1)+'</option>').join('')+'</select></div>'+
     '<div class="duel-stage-live">'+
       '<div class="duel-fighter me">'+
-        '<div class="duel-character-art">'+artSprite(mine.sprite,'duel-character-svg',mine.name)+'</div>'+
+        '<div class="duel-character-art">'+characterVisual(mine,'duel-character-svg')+'</div>'+
         '<strong>'+esc(me.push_name||'Você')+'</strong><small>'+esc(mine.name)+' • Lv.'+num(me.level||1)+'</small>'+
         '<div class="duel-hp"><span>❤️ '+num(myHp)+'/'+num(myMax)+'</span><div class="progress"><span style="width:'+pct(myHp/myMax*100)+'%"></span></div></div>'+
         '<div class="duel-stats"><span>⚔️ '+num(myCombat.effective_atk||myCombat.atk)+'</span><span>🛡️ '+num(myCombat.effective_def||myCombat.def)+'</span><span>💨 '+num(myCombat.effective_spd||myCombat.spd)+'</span></div>'+

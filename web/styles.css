@@ -1014,3 +1014,38 @@ body.loot-open{overflow:hidden!important}
   .item-card .item-art{height:158px!important;min-height:158px!important}
   .pet-portrait .pet-cropped-art{width:auto!important;height:92%!important;max-width:92%!important}
 }
+
+/* Collab 7 Pecados: retratos no perfil, seleção, Raid e PvP */
+.collab-hero-portrait{display:block;position:relative;overflow:hidden;width:100%;height:100%;min-height:0;flex:none;
+  background-position:center bottom;background-repeat:no-repeat;background-size:contain;
+  filter:drop-shadow(0 10px 15px rgba(0,0,0,.42));}
+.collab-hero-symbol{position:absolute;bottom:10%;left:50%;transform:translateX(-50%);font-size:52px;opacity:.13;
+  pointer-events:none;z-index:-1;}
+.collab-hero-card{position:relative;}
+.collab-hero-card.selected{border-color:#72d6b0;box-shadow:0 0 0 1px #72d6b077,0 12px 45px #0007;}
+.collab-hero-card.collab-locked .collab-hero-card-art{filter:saturate(.45) brightness(.6);}
+.collab-hero-card-art{min-height:260px!important;height:290px!important;position:relative;overflow:hidden;
+  background:radial-gradient(circle at 50% 42%,#26395e,#0c1220 74%);}
+.collab-hero-card .collab-hero-portrait.character-official-art{display:block;width:100%!important;height:100%!important;
+  max-width:100%;background-size:contain;}
+.collab-hero-card .tag-row{margin-bottom:6px;}
+.collab-current-hero{display:grid;grid-template-columns:minmax(180px,35%) 1fr;gap:20px;align-items:center;
+  border:1px solid #408c77;background:radial-gradient(circle at 20% 30%,#193744 0%,#0e1622 75%);}
+.collab-current-art{width:100%;height:310px;border-radius:15px;overflow:hidden;
+  background:radial-gradient(circle at 50% 45%,#34425e,#09131d 76%);}
+.collab-current-portrait{width:100%;height:100%;}
+.collab-current-content h3{font-size:28px;margin:12px 0 8px;}
+.collab-current-content p{color:#c4d5e4;margin:8px 0;}
+.collab-current-content .stat-strip{margin:15px 0;}
+.collab-home-active{margin:8px 0 15px;padding:11px 13px;border:1px solid #345f67;border-radius:12px;
+  background:#11252a;color:#d8f6ed;font-size:12px;}
+.collab-home-active span{font-size:10px;font-weight:800;letter-spacing:.08em;color:#79d9b6;}
+.combat-fighter.player .collab-hero-portrait.combat-character-art{width:100%;height:230px!important;max-height:230px!important;}
+.duel-character-art .collab-hero-portrait.duel-character-svg{width:100%;height:100%;max-width:210px;}
+@media(max-width:820px){.combat-fighter.player .collab-hero-portrait.combat-character-art{height:190px!important;max-height:190px!important;}}
+@media(max-width:560px){
+  .collab-current-hero{grid-template-columns:1fr;gap:12px;}
+  .collab-current-art{height:230px;}
+  .collab-hero-card-art{height:260px!important;min-height:260px!important;}
+  .combat-fighter.player .collab-hero-portrait.combat-character-art{height:148px!important;max-height:148px!important;}
+}
