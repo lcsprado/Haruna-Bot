@@ -1,4 +1,7 @@
 // Relatório detalhado do PvP: não altera dano, regras nem recompensas.
+import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+const heroName=id=>PECADOS_HEROES.find(h=>h.species===id)?.name||'Herói'
+
 const fmt=value=>Math.max(0,Number(value)||0).toLocaleString('pt-BR')
 const percent=value=>(Math.max(0,Number(value)||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%'
 const name=value=>String(value||'Jogador')
@@ -8,7 +11,12 @@ function openingLine(icon,p){
   const pet=p.petName
     ?`🐾 ${p.petName} — PvP: 💥 +${percent(bonus?.damage)} dano • 🛡️ -${percent(bonus?.defense)} recebido • 🎯 +${percent(bonus?.crit)} p.p. CRIT • 🌀 ${percent(bonus?.dodge)} esquiva${Number(bonus?.speed||0)>0?` • 👢 +${fmt(bonus.speed)} VEL`:''}`
     :'🐾 Sem pet apto para bônus individuais no PvP'
-  return `${icon} *${name(p.name)}*\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}`
+  const hero=p.heroId?'\n🌈⚔️ Personagem: *'+heroName(p.heroId)+'* • Maestria '+fmt(p.heroMasteryStage||1)+'/5':''
+  const gear=p.heroId&&p.heroGear
+    ?'\n🌈 Collab: '+(p.heroGear.weapon?'🗡️ Arma correspondente +'+percent(p.heroGear.attack)+' dano':'Arma correspondente não equipada')+
+      ' • '+(p.heroGear.armor?'🥋 Armadura correspondente -'+percent(p.heroGear.defense)+' dano recebido':'Armadura correspondente não equipada')
+    :''
+  return `${icon} *${name(p.name)}*${hero}${gear}\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}`
 }
 export function formatPvpBattleReport(r){
   if(!r?.ok||!r?.winner||!r?.loser)throw new Error('Resultado de PvP inválido.')
@@ -44,12 +52,20 @@ export function formatPvpBattleReport(r){
     if(e.petHeal){
       lines.push(`💚 Pet de ${name(e.from)} curou *+${fmt(e.heal)} HP* — ❤️ ${fmt(e.hp)}`)
     }else if(e.classHeal){
-      lines.push(`⚜️ ${name(e.from)} recuperou *+${fmt(e.heal)} HP* (habilidade da classe) — ❤️ ${fmt(e.hp)}`)
+      const who=[attacker,defender].find(p=>p&&(p.jid===e.fromJid||p.name===e.from))
+      lines.push(`⚜️ ${name(e.from)} recuperou *+${fmt(e.heal)} HP* (${who?.heroId?'habilidade de '+heroName(who.heroId):'habilidade da classe'}) — ❤️ ${fmt(e.hp)}`)
     }else if(e.dodged){
       lines.push(`🌀 ${name(e.to)} esquivou de ${name(e.from)} — ❤️ ${fmt(e.hp)}`)
     }else{
       const prefix=e.crit?'💥 CRÍTICO! ':'⚔️ '
       lines.push(`${prefix}${name(e.from)} → ${name(e.to)}: *${fmt(e.dmg)} dano* — ❤️ ${fmt(e.hp)}`)
+      if(e.heroTechnique)lines.push(`✨ Técnica: *${name(e.heroTechnique)}* — ${name(e.from)}`)
+    }
+  }
+  for(const p of [attacker,defender].filter(Boolean)){
+    if(p.heroId==='pecado_ban'){
+      const attacks=events.filter(e=>!e.petHeal&&!e.classHeal&&(e.fromJid||e.from)===(p.jid||p.name)).length
+      if(attacks<6)lines.push(`ℹ️ Ban (${name(p.name)}): cura periódica somente a partir do 6º ataque; nesta luta foram ${attacks}.`)
     }
   }
   lines.push('','📊 *RESUMO DO DUELO*')
