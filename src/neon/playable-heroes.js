@@ -1,6 +1,6 @@
 import {db,ensureUser,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile} from './playable-heroes-core.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,heroGearSynergy,heroNextMastery,HERO_MASTERY_XP,HERO_MASTERY_COSTS} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
@@ -20,6 +20,7 @@ export async function initPlayableHeroes(){
     jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
     hero_species TEXT NOT NULL,
     xp INTEGER NOT NULL DEFAULT 0 CHECK(xp>=0),
+    stage SMALLINT NOT NULL DEFAULT 1 CHECK(stage BETWEEN 1 AND 5),
     updated_at BIGINT NOT NULL DEFAULT (${NOW}),
     PRIMARY KEY(jid,hero_species)
   );
@@ -31,6 +32,51 @@ export async function initPlayableHeroes(){
     created_at BIGINT NOT NULL DEFAULT (${NOW}),
     PRIMARY KEY(jid,award_key)
   )`)
+  // Migração única: etapas anteriores por XP não são apagadas.
+  await db.query(`DO $migration$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='player_hero_mastery' AND column_name='stage') THEN
+      ALTER TABLE player_hero_mastery ADD COLUMN stage SMALLINT NOT NULL DEFAULT 1;
+      UPDATE player_hero_mastery SET stage=CASE
+        WHEN xp>=1300 THEN 5 WHEN xp>=700 THEN 4
+        WHEN xp>=300 THEN 3 WHEN xp>=100 THEN 2 ELSE 1 END;
+    END IF;
+  END $migrationimport {db,ensureUser,getCombatProfile} from './db.js'
+import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,heroGearSynergy,heroNextMastery,HERO_MASTERY_XP,HERO_MASTERY_COSTS} from './playable-heroes-core.js'
+import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
+
+const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
+async function transaction(fn){
+  const c=await db.connect()
+  try{await c.query('BEGIN');const result=await fn(c);await c.query('COMMIT');return result}
+  catch(err){await c.query('ROLLBACK');throw err}
+  finally{c.release()}
+}
+export async function initPlayableHeroes(){
+  await db.query(`CREATE TABLE IF NOT EXISTS player_hero_mode(
+    jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+    hero_species TEXT,
+    updated_at BIGINT NOT NULL DEFAULT (${NOW})
+  );
+  CREATE TABLE IF NOT EXISTS player_hero_mastery(
+    jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+    hero_species TEXT NOT NULL,
+    xp INTEGER NOT NULL DEFAULT 0 CHECK(xp>=0),
+    stage SMALLINT NOT NULL DEFAULT 1 CHECK(stage BETWEEN 1 AND 5),
+    updated_at BIGINT NOT NULL DEFAULT (${NOW}),
+    PRIMARY KEY(jid,hero_species)
+  );
+  CREATE TABLE IF NOT EXISTS hero_mastery_awards(
+    jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+    award_key TEXT NOT NULL,
+    hero_species TEXT NOT NULL,
+    xp INTEGER NOT NULL CHECK(xp>0),
+    created_at BIGINT NOT NULL DEFAULT (${NOW}),
+    PRIMARY KEY(jid,award_key)
+  )`)
+)
   const conversion=await archiveSevenSinsPetAssignments()
   if(conversion.migrated)console.info('[Heroes] converted legacy pet assignments:',conversion.migrated,'players; without eligible pet:',conversion.noEligiblePet)
 }
@@ -47,8 +93,8 @@ export async function getActivePlayableHero(client,jid){
 export async function getPlayableHeroMasteryStage(client,jid,heroId){
   if(!playableHero(heroId))return 0
   const {rows}=await (client||db).query(
-    'SELECT xp FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
-  return heroMasteryStage(Number(rows[0]?.xp||0))
+    'SELECT stage FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
+  return Math.max(1,Math.min(5,Number(rows[0]?.stage||1)))
 }
 
 // Somente leitura: o herói equipa o combatente de Boss/Raid sem alterar a classe.
@@ -57,17 +103,19 @@ export async function getPlayableHeroCombatSheet(jid,knownProfile=null){
   if(!heroId)return null;
   const [profile,mastery]=await Promise.all([
     knownProfile||getCombatProfile(jid),
-    db.query('SELECT xp FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
+    db.query('SELECT xp,stage FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
   ]);
   const combat=heroCombatSheetFromProfile(profile,heroId);
   if(!combat)return null;
   const xp=Math.max(0,Number(mastery.rows[0]?.xp||0));
-  return {...combat,masteryXp:xp,masteryStage:heroMasteryStage(xp)};
+  const stage=Math.max(1,Math.min(5,Number(mastery.rows[0]?.stage||1)));
+  const gear=heroGearSynergy(heroId,profile?.weapon_id,profile?.armor_id);
+  return {...combat,masteryXp:xp,masteryStage:stage,gear};
 }
 
 export function formatPlayableHeroCombatSheet(sheet){
   if(!sheet)return '';
-  return '🌈⚔️ *COMBATENTE BOSS/RAID — '+sheet.name.toUpperCase()+'*\n'+
+  return '🌈⚔️ *PERSONAGEM ATIVO — '+sheet.name.toUpperCase()+'*\n'+
     '🎭 '+sheet.role+' • '+sheet.range+'\n'+
     '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)\n'+
     '❤️ HP: *'+sheet.hp+'/'+sheet.maxHp+'*\n'+
@@ -75,7 +123,10 @@ export function formatPlayableHeroCombatSheet(sheet){
     '🛡️ DEF: *'+sheet.def+'*\n'+
     '👢 VEL: *'+sheet.spd+'*\n'+
     '✨ Técnica: *'+sheet.skill+'*\n'+
-    '💡 Atributos estimados na entrada de Boss/Raid com equipamentos; buffs da luta podem variar. A classe original permanece para PvP.';
+    '🗡️ Arma própria: '+(sheet.gear?.weapon?'✅ +3% dano':'❌ não equipada')+
+    ' • 🥋 Armadura própria: '+(sheet.gear?.armor?'✅ -3% dano recebido':'❌ não equipada')+
+    (sheet.gear?.full?' • 🌈 Conjunto completo ativo':'')+'\n'+
+    '💡 Atributos estimados com equipamentos para Boss/Raid/PvP; o desempenho muda conforme a modalidade. A classe original permanece guardada.';
 }
 
 export async function listPlayableHeroes(jid){
@@ -83,14 +134,15 @@ export async function listPlayableHeroes(jid){
   const [owned,mode,mastery]=await Promise.all([
     db.query('SELECT species,MAX(level)::int AS level,COUNT(*)::int AS copies FROM pet_collection WHERE jid=$1 AND species=ANY($2::text[]) GROUP BY species',[jid,PECADOS_HEROES.map(h=>h.species)]),
     db.query('SELECT hero_species FROM player_hero_mode WHERE jid=$1',[jid]),
-    db.query('SELECT hero_species,xp FROM player_hero_mastery WHERE jid=$1',[jid])
+    db.query('SELECT hero_species,xp,stage FROM player_hero_mastery WHERE jid=$1',[jid])
   ])
   const active=mode.rows[0]?.hero_species||null
   return PECADOS_HEROES.map(h=>{
     const pet=owned.rows.find(p=>p.species===h.species)
     const masteryXp=Number(mastery.rows.find(p=>p.hero_species===h.species)?.xp||0)
+    const masteryStage=Math.max(1,Math.min(5,Number(mastery.rows.find(p=>p.hero_species===h.species)?.stage||1)));
     return {id:h.species,name:h.name,owned:Boolean(pet),petLevel:Number(pet?.level||0),
-      copies:Number(pet?.copies||0),masteryXp,masteryStage:heroMasteryStage(masteryXp),
+      copies:Number(pet?.copies||0),masteryXp,masteryStage,
       active:h.species===active&&Boolean(pet)}
   })
 }
@@ -127,7 +179,7 @@ export async function setPlayableHeroMode(jid,heroId=null){
 
 export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10}={}){
   if(!client||!jid||!playableHero(heroId)||!awardKey)return false
-  // Limite compartilhado entre Raids e Bosses: 100 XP de maestria/dia por herói.
+  // Limite compartilhado entre Raids e Bosses: 80 XP de maestria/dia por herói.
   // A trava no usuário serializa premiações simultâneas de grupos diferentes.
   await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
   const {rows:today}=await client.query(`SELECT COALESCE(SUM(xp),0)::int AS gained
@@ -135,16 +187,16 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10
     WHERE jid=$1 AND hero_species=$2
       AND (to_timestamp(created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
           (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,[jid,heroId])
-  const quota=Math.max(0,100-Number(today[0]?.gained||0))
+  const quota=Math.max(0,80-Number(today[0]?.gained||0))
   if(!quota)return false
-  const amount=Math.min(quota,Math.max(1,Math.min(100,Math.floor(Number(xp)||10))))
+  const amount=Math.min(quota,Math.max(1,Math.min(8,Math.floor(Number(xp)||8))))
   const saved=await client.query(`INSERT INTO hero_mastery_awards(jid,award_key,hero_species,xp)
     VALUES($1,$2,$3,$4) ON CONFLICT(jid,award_key) DO NOTHING RETURNING jid`,
     [jid,String(awardKey),heroId,amount])
   if(!saved.rowCount)return false
   await client.query(`INSERT INTO player_hero_mastery(jid,hero_species,xp,updated_at)
     VALUES($1,$2,$3,${NOW}) ON CONFLICT(jid,hero_species) DO UPDATE
-    SET xp=LEAST(1300,player_hero_mastery.xp+EXCLUDED.xp),updated_at=EXCLUDED.updated_at`,
+    SET xp=LEAST(3200,player_hero_mastery.xp+EXCLUDED.xp),updated_at=EXCLUDED.updated_at`,
     [jid,heroId,amount])
   return true
 }
