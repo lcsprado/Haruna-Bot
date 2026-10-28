@@ -1534,8 +1534,8 @@ const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
 ${title}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
 ⭐ Nível: *${Number(p.level||1)}*
-${heroSheet?formatPlayableHeroCombatSheet(heroSheet)+'\n':''}🧙 ${heroSheet?'Classe original':'Classe'}: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}${heroSheet?' (preservada; ativa no PvP)':''}
-⚜️ ${heroSheet?'Passiva da classe':'Passiva'}: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}${heroSheet?' (inativa em Boss/Raid)':''}
+${heroSheet?formatPlayableHeroCombatSheet(heroSheet)+'\n':''}🧙 ${heroSheet?'Classe original':'Classe'}: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}${heroSheet?' (preservada; temporariamente inativa)':''}
+⚜️ ${heroSheet?'Passiva da classe':'Passiva'}: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}${heroSheet?' (inativa enquanto o herói estiver ativo)':''}
 ✨ EXP: *${xp.current}/${xp.needed}*
 [${xp.bar}]
 ❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*

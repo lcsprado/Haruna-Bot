@@ -1,6 +1,6 @@
 import {db,ensureUser,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile} from './playable-heroes-core.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,heroGearSynergy,heroNextMastery,HERO_MASTERY_XP,HERO_MASTERY_COSTS} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
@@ -20,6 +20,7 @@ export async function initPlayableHeroes(){
     jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
     hero_species TEXT NOT NULL,
     xp INTEGER NOT NULL DEFAULT 0 CHECK(xp>=0),
+    stage SMALLINT NOT NULL DEFAULT 1 CHECK(stage BETWEEN 1 AND 5),
     updated_at BIGINT NOT NULL DEFAULT (${NOW}),
     PRIMARY KEY(jid,hero_species)
   );
@@ -31,6 +32,17 @@ export async function initPlayableHeroes(){
     created_at BIGINT NOT NULL DEFAULT (${NOW}),
     PRIMARY KEY(jid,award_key)
   )`)
+  // Migração única: etapas anteriores por XP não são apagadas.
+  await db.query(`DO $migration$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='player_hero_mastery' AND column_name='stage') THEN
+      ALTER TABLE player_hero_mastery ADD COLUMN stage SMALLINT NOT NULL DEFAULT 1;
+      UPDATE player_hero_mastery SET stage=CASE
+        WHEN xp>=1300 THEN 5 WHEN xp>=700 THEN 4
+        WHEN xp>=300 THEN 3 WHEN xp>=100 THEN 2 ELSE 1 END;
+    END IF;
+  END $migration$`)
   const conversion=await archiveSevenSinsPetAssignments()
   if(conversion.migrated)console.info('[Heroes] converted legacy pet assignments:',conversion.migrated,'players; without eligible pet:',conversion.noEligiblePet)
 }
@@ -47,8 +59,8 @@ export async function getActivePlayableHero(client,jid){
 export async function getPlayableHeroMasteryStage(client,jid,heroId){
   if(!playableHero(heroId))return 0
   const {rows}=await (client||db).query(
-    'SELECT xp FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
-  return heroMasteryStage(Number(rows[0]?.xp||0))
+    'SELECT stage FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
+  return Math.max(1,Math.min(5,Number(rows[0]?.stage||1)))
 }
 
 // Somente leitura: o herói equipa o combatente de Boss/Raid sem alterar a classe.
@@ -57,17 +69,19 @@ export async function getPlayableHeroCombatSheet(jid,knownProfile=null){
   if(!heroId)return null;
   const [profile,mastery]=await Promise.all([
     knownProfile||getCombatProfile(jid),
-    db.query('SELECT xp FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
+    db.query('SELECT xp,stage FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2',[jid,heroId])
   ]);
   const combat=heroCombatSheetFromProfile(profile,heroId);
   if(!combat)return null;
   const xp=Math.max(0,Number(mastery.rows[0]?.xp||0));
-  return {...combat,masteryXp:xp,masteryStage:heroMasteryStage(xp)};
+  const stage=Math.max(1,Math.min(5,Number(mastery.rows[0]?.stage||1)));
+  const gear=heroGearSynergy(heroId,profile?.weapon_id,profile?.armor_id);
+  return {...combat,masteryXp:xp,masteryStage:stage,gear};
 }
 
 export function formatPlayableHeroCombatSheet(sheet){
   if(!sheet)return '';
-  return '🌈⚔️ *COMBATENTE BOSS/RAID — '+sheet.name.toUpperCase()+'*\n'+
+  return '🌈⚔️ *PERSONAGEM ATIVO — '+sheet.name.toUpperCase()+'*\n'+
     '🎭 '+sheet.role+' • '+sheet.range+'\n'+
     '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)\n'+
     '❤️ HP: *'+sheet.hp+'/'+sheet.maxHp+'*\n'+
@@ -75,7 +89,10 @@ export function formatPlayableHeroCombatSheet(sheet){
     '🛡️ DEF: *'+sheet.def+'*\n'+
     '👢 VEL: *'+sheet.spd+'*\n'+
     '✨ Técnica: *'+sheet.skill+'*\n'+
-    '💡 Atributos estimados na entrada de Boss/Raid com equipamentos; buffs da luta podem variar. A classe original permanece para PvP.';
+    '🗡️ Arma própria: '+(sheet.gear?.weapon?'✅ +3% dano':'❌ não equipada')+
+    ' • 🥋 Armadura própria: '+(sheet.gear?.armor?'✅ -3% dano recebido':'❌ não equipada')+
+    (sheet.gear?.full?' • 🌈 Conjunto completo ativo':'')+'\n'+
+    '💡 Atributos estimados com equipamentos para Boss/Raid/PvP; o desempenho muda conforme a modalidade. A classe original permanece guardada.';
 }
 
 export async function listPlayableHeroes(jid){
@@ -83,14 +100,15 @@ export async function listPlayableHeroes(jid){
   const [owned,mode,mastery]=await Promise.all([
     db.query('SELECT species,MAX(level)::int AS level,COUNT(*)::int AS copies FROM pet_collection WHERE jid=$1 AND species=ANY($2::text[]) GROUP BY species',[jid,PECADOS_HEROES.map(h=>h.species)]),
     db.query('SELECT hero_species FROM player_hero_mode WHERE jid=$1',[jid]),
-    db.query('SELECT hero_species,xp FROM player_hero_mastery WHERE jid=$1',[jid])
+    db.query('SELECT hero_species,xp,stage FROM player_hero_mastery WHERE jid=$1',[jid])
   ])
   const active=mode.rows[0]?.hero_species||null
   return PECADOS_HEROES.map(h=>{
     const pet=owned.rows.find(p=>p.species===h.species)
     const masteryXp=Number(mastery.rows.find(p=>p.hero_species===h.species)?.xp||0)
+    const masteryStage=Math.max(1,Math.min(5,Number(mastery.rows.find(p=>p.hero_species===h.species)?.stage||1)));
     return {id:h.species,name:h.name,owned:Boolean(pet),petLevel:Number(pet?.level||0),
-      copies:Number(pet?.copies||0),masteryXp,masteryStage:heroMasteryStage(masteryXp),
+      copies:Number(pet?.copies||0),masteryXp,masteryStage,
       active:h.species===active&&Boolean(pet)}
   })
 }
@@ -127,7 +145,7 @@ export async function setPlayableHeroMode(jid,heroId=null){
 
 export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10}={}){
   if(!client||!jid||!playableHero(heroId)||!awardKey)return false
-  // Limite compartilhado entre Raids e Bosses: 100 XP de maestria/dia por herói.
+  // Limite compartilhado entre Raids e Bosses: 80 XP de maestria/dia por herói.
   // A trava no usuário serializa premiações simultâneas de grupos diferentes.
   await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
   const {rows:today}=await client.query(`SELECT COALESCE(SUM(xp),0)::int AS gained
@@ -135,18 +153,39 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=10
     WHERE jid=$1 AND hero_species=$2
       AND (to_timestamp(created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
           (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,[jid,heroId])
-  const quota=Math.max(0,100-Number(today[0]?.gained||0))
+  const quota=Math.max(0,80-Number(today[0]?.gained||0))
   if(!quota)return false
-  const amount=Math.min(quota,Math.max(1,Math.min(100,Math.floor(Number(xp)||10))))
+  const amount=Math.min(quota,Math.max(1,Math.min(8,Math.floor(Number(xp)||8))))
   const saved=await client.query(`INSERT INTO hero_mastery_awards(jid,award_key,hero_species,xp)
     VALUES($1,$2,$3,$4) ON CONFLICT(jid,award_key) DO NOTHING RETURNING jid`,
     [jid,String(awardKey),heroId,amount])
   if(!saved.rowCount)return false
   await client.query(`INSERT INTO player_hero_mastery(jid,hero_species,xp,updated_at)
     VALUES($1,$2,$3,${NOW}) ON CONFLICT(jid,hero_species) DO UPDATE
-    SET xp=LEAST(1300,player_hero_mastery.xp+EXCLUDED.xp),updated_at=EXCLUDED.updated_at`,
+    SET xp=LEAST(3200,player_hero_mastery.xp+EXCLUDED.xp),updated_at=EXCLUDED.updated_at`,
     [jid,heroId,amount])
   return true
+}
+
+export async function evolvePlayableHeroMastery(jid,heroId){
+  await ensureUser(jid);
+  if(!playableHero(heroId))throw new Error('Escolha um herói desbloqueado.');
+  return transaction(async client=>{
+    await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid]);
+    const owned=await client.query('SELECT 1 FROM pet_collection WHERE jid=$1 AND species=$2 LIMIT 1',[jid,heroId]);
+    if(!owned.rowCount)throw new Error('Herói não obtido.');
+    await client.query('INSERT INTO player_hero_mastery(jid,hero_species,xp,stage) VALUES($1,$2,0,1) ON CONFLICT DO NOTHING',[jid,heroId]);
+    const row=(await client.query('SELECT xp,stage FROM player_hero_mastery WHERE jid=$1 AND hero_species=$2 FOR UPDATE',[jid,heroId])).rows[0];
+    const next=heroNextMastery(row.stage);
+    if(!next)return {max:true,stage:5};
+    if(Number(row.xp)<next.xp)throw new Error('Faltam '+(next.xp-Number(row.xp))+' XP de Maestria.');
+    const charge=await client.query(
+      'UPDATE wallets SET bank=bank-$1 WHERE jid=$2 AND bank>=$1 RETURNING bank',
+      [next.cash,jid]);
+    if(!charge.rowCount)throw new Error('Você precisa de R$ '+next.cash.toLocaleString('pt-BR')+' no banco do jogo.');
+    await client.query('UPDATE player_hero_mastery SET stage=$1 WHERE jid=$2 AND hero_species=$3',[next.stage,jid,heroId]);
+    return {stage:next.stage,charged:next.cash};
+  });
 }
 
 export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
@@ -154,6 +193,19 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   const action=String(args[0]||'').trim().toLowerCase()
   const findHero=raw=>PECADOS_HEROES.find(h=>
     h.name.toLowerCase()===raw||h.species===raw||h.species==='pecado_'+raw);
+  if(['evoluir','despertar','upar'].includes(action)){
+    const requested=String(args[1]||'').trim().toLowerCase();
+    const chosen=requested?findHero(requested):null;
+    if(requested&&!chosen){await reply('❌ Herói desconhecido. Use !heroi evoluir ban.');return true;}
+    const current=chosen?.species||await getActivePlayableHero(db,sender);
+    if(!current){await reply('❌ Selecione um herói antes de evoluir.');return true;}
+    const result=await evolvePlayableHeroMastery(sender,current);
+    await reply(result.max?'🏆 Maestria V já está no máximo.':
+      '🌈⚔️ *MAESTRIA EVOLUÍDA!* '+playableHero(current).name+
+      ' • Estágio '+result.stage+'/5\n🏦 Pago do banco do jogo: R$ '+
+      result.charged.toLocaleString('pt-BR')+'\n✅ O XP permanece guardado.');
+    return true;
+  }
   if(['atributos','ficha','stats','status'].includes(action)){
     const sheet=await getPlayableHeroCombatSheet(sender);
     await reply(sheet?formatPlayableHeroCombatSheet(sheet):
@@ -175,17 +227,18 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     const guide=HERO_SKILL_GUIDE[hero.species];
     const owned=await listPlayableHeroes(sender);
     const info=owned.find(x=>x.id===hero.species);
-    const nextXp=[100,300,700,1300][Math.max(0,(info?.masteryStage||1)-1)];
+    const next=heroNextMastery(info?.masteryStage||1);
+    const nextXp=next?.xp;
     await reply('🌈⚔️ *'+hero.name.toUpperCase()+' — HABILIDADES*\n'+
       (info?.owned?'✅ Desbloqueado • Maestria '+info.masteryStage+'/5 ('+info.masteryXp+' XP)':
         '🔒 Você ainda não desbloqueou este personagem.')+'\n\n'+
       '🎭 *Estilo:* '+HERO_COMBAT_PROFILES[hero.species].role+' • '+HERO_COMBAT_PROFILES[hero.species].range+'\n\n'+
       '1️⃣ *Passiva — Maestria I:* '+guide.passive+'\n'+
-      '2️⃣ *Especial — Maestria II (100 XP):* '+guide.special+'\n'+
-      '3️⃣ *Suprema — Maestria III (300 XP):* '+guide.ultimate+'\n'+
-      '4️⃣ *Maestria IV (700 XP):* +1% de dano.\n'+
-      '5️⃣ *Maestria V (1.300 XP):* mais +1% de dano.\n\n'+
-      (nextXp?'🎯 Próximo estágio: '+nextXp+' XP.\n':'🏆 Maestria máxima!\n')+
+      '2️⃣ *Especial — Maestria II (300 XP + R$ 500 mil):* '+guide.special+'\n'+
+      '3️⃣ *Suprema — Maestria III (900 XP + R$ 2 milhões):* '+guide.ultimate+'\n'+
+      '4️⃣ *Maestria IV (1.800 XP + R$ 5 milhões):* +1% de dano.\n'+
+      '5️⃣ *Maestria V (3.200 XP + R$ 10 milhões):* mais +1% de dano.\n\n'+
+      (nextXp?'🎯 Próximo estágio: '+nextXp+' XP e R$ '+next.cash.toLocaleString('pt-BR')+'.\n':'🏆 Maestria máxima!\n')+
       '⚖️ Bônus ofensivo por golpe: até 30% no Boss e 35% na Raid.\n'+
       '💡 Estes são efeitos adaptados do anime para Boss/Raid; suas classes e Despertares são preservados.\n📊 Use *!heroi atributos* para ver os atributos do herói equipado.');
     return true;
@@ -196,7 +249,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Desbloqueado • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
-      '👉 *!heroi atributos* • *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
+      '👉 *!heroi atributos* • *!heroi habilidades ban* • *!heroi evoluir ban* • *!heroi usar ban* • *!heroi classe*\n'+
       '🗝️ Personagens conquistados preservados. Os Pecados não são mais pets; use outros pets em seu time.')
     return true
   }
@@ -210,6 +263,6 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!hero){await reply('❌ Herói não encontrado. Use *!heroi* para consultar a coleção.');return true}
   const saved=await setPlayableHeroMode(sender,hero.species)
   await reply(saved.unchanged?'⚔️ '+hero.name+' já é seu combatente.':
-    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nEle substitui as habilidades da classe em Bosses/Raids, sem apagar seu Despertar nem os pets comuns.\nVeja o HP, ATK, DEF e VEL com *!heroi atributos*.\nUse *!heroi classe* para voltar.')
+    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nAgora é seu personagem principal no Perfil, Boss, Raid e PvP.\nClasse e Despertares anteriores preservados.\nVeja os atributos com *!heroi atributos*.\nUse *!heroi classe* para voltar.')
   return true
 }
