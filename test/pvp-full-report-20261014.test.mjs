@@ -65,3 +65,29 @@ test('comando direto e fluxo interativo usam mesmo relatório sem corte de seis 
   assert.equal(app.split('formatPvpBattleReport(r)').length-1,2)
   assert.doesNotMatch(app,/const last=r\.log\.slice\(-6\)/)
 })
+
+test('relatorio identifica Ban, arma correta e bônus real de collab no PvP',()=>{
+  const r=sample();
+  r.opening.attacker.heroId='pecado_ban';
+  r.opening.attacker.heroMasteryStage=1;
+  r.opening.attacker.heroGear={weapon:true,armor:false,attack:.015,defense:0,heal:.005};
+  const msg=formatPvpBattleReport(r);
+  assert.match(msg,/Personagem: \*Ban\* • Maestria 1\/5/);
+  assert.match(msg,/Arma correspondente \+1,5% dano/);
+  assert.match(msg,/Armadura correspondente não equipada/);
+  assert.match(msg,/cura periódica somente a partir do 6º ataque/);
+  assert.match(db,/heroGear:fighter\.heroId\?fighter\.heroGear:null/);
+});
+test('relatorio identifica habilidades dos heróis sem confundir cura com classe',()=>{
+  const r=sample();
+  r.opening.attacker.heroId='pecado_ban';
+  r.opening.attacker.heroMasteryStage=2;
+  r.opening.attacker.heroGear={weapon:true,armor:true,attack:.015,defense:.02,heal:.005};
+  r.log[1].heroTechnique='Snatch';
+  r.log.push({round:3,classHeal:true,from:'~LP🍀☘️',fromJid:'a',heal:50,hp:2204});
+  const msg=formatPvpBattleReport(r);
+  assert.match(msg,/Técnica: \*Snatch\*/);
+  assert.match(msg,/habilidade de Ban/);
+  assert.match(msg,/Armadura correspondente -2% dano recebido/);
+  assert.doesNotMatch(msg,/Ban.*habilidade da classe/);
+});

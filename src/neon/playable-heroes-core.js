@@ -14,6 +14,22 @@ export const PLAYABLE_HERO_IDS=Object.freeze(PECADOS_HEROES.map(x=>x.species));
 export const playableHero=id=>PECADOS_HEROES.find(x=>x.species===String(id||''))||null;
 export const HERO_MASTERY_XP=Object.freeze([0,500,1500,3500,7000]);
 export const HERO_MASTERY_COST=Object.freeze([0,2000000,5000000,12000000,25000000]);
+// Exceção temporária: Raid 75 dos 7 Pecados, somente na semana de 26/10 a 01/11/2026 (São Paulo).
+export const RAID75_MASTERY_START=Date.parse('2026-10-26T00:00:00-03:00');
+export const RAID75_MASTERY_END=Date.parse('2026-11-02T00:00:00-03:00');
+export function raid75MasteryBonusActive({level=0,collab=false,nowMs=Date.now()}={}){
+  return Number(level)===75&&Boolean(collab)&&Number(nowMs)>=RAID75_MASTERY_START&&Number(nowMs)<RAID75_MASTERY_END;
+}
+export function heroMasteryAwardPolicy({specialRaid75=false,earnedToday=0,regularEarnedToday=0,xp=10}={}){
+  const total=Math.max(0,Math.floor(Number(earnedToday)||0));
+  const regular=Math.max(0,Math.floor(Number(regularEarnedToday)||0));
+  // XP diário combinado nunca supera 160. Outras fontes usam no máximo 80.
+  const quota=Math.max(0,specialRaid75?
+    160-total:Math.min(80-regular,160-total));
+  const base=Math.max(1,Math.min(80,Math.floor(Number(xp)||10)));
+  return {special:Boolean(specialRaid75),dailyCap:specialRaid75?160:80,
+    amount:Math.min(quota,specialRaid75?Math.min(20,base*2):base)};
+}
 // XP acumulado não concede o estágio automaticamente: evolução paga é explícita.
 export const heroMasteryStage=x=>Math.min(5,1+HERO_MASTERY_XP.slice(1).filter(t=>Number(x||0)>=t).length);
 export function heroMasteryNext(stage){
@@ -259,7 +275,7 @@ export function heroDefense({heroId,damage=0,state={},gear={}}={}){
   const next={...(state||{})};let rate=Math.max(0,Number(gear.defense||0));
   const incoming=Math.max(0,Number(damage)||0);
   if(heroId==='pecado_diane'){
-    rate=.04; // Heavy Metal, sempre.
+    rate+=.04; // Heavy Metal soma à armadura exclusiva, sem sobrescrever.
     if(Number(next.heavyMetalCharges||0)>0){rate+=.08;next.heavyMetalCharges--;}
     if(Number(next.guardCharges||0)>0){rate+=.20;next.guardCharges--;}
   }
