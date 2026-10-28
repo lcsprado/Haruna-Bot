@@ -227,6 +227,19 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   const action=String(args[0]||'').trim().toLowerCase()
   const findHero=raw=>PECADOS_HEROES.find(h=>
     h.name.toLowerCase()===raw||h.species===raw||h.species==='pecado_'+raw);
+  if(['evoluir','despertar','upar'].includes(action)){
+    const requested=String(args[1]||'').trim().toLowerCase();
+    const chosen=requested?findHero(requested):null;
+    if(requested&&!chosen){await reply('❌ Herói desconhecido. Use !heroi evoluir ban.');return true;}
+    const current=chosen?.species||await getActivePlayableHero(db,sender);
+    if(!current){await reply('❌ Selecione um herói antes de evoluir.');return true;}
+    const result=await evolvePlayableHeroMastery(sender,current);
+    await reply(result.max?'🏆 Maestria V já está no máximo.':
+      '🌈⚔️ *MAESTRIA EVOLUÍDA!* '+playableHero(current).name+
+      ' • Estágio '+result.stage+'/5\n🏦 Pago do banco do jogo: R$ '+
+      result.charged.toLocaleString('pt-BR')+'\n✅ O XP permanece guardado.');
+    return true;
+  }
   if(['atributos','ficha','stats','status'].includes(action)){
     const sheet=await getPlayableHeroCombatSheet(sender);
     await reply(sheet?formatPlayableHeroCombatSheet(sheet):
@@ -270,7 +283,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Desbloqueado • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
-      '👉 *!heroi atributos* • *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
+      '👉 *!heroi atributos* • *!heroi habilidades ban* • *!heroi evoluir ban* • *!heroi usar ban* • *!heroi classe*\n'+
       '🗝️ Personagens conquistados preservados. Os Pecados não são mais pets; use outros pets em seu time.')
     return true
   }
@@ -284,6 +297,6 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   if(!hero){await reply('❌ Herói não encontrado. Use *!heroi* para consultar a coleção.');return true}
   const saved=await setPlayableHeroMode(sender,hero.species)
   await reply(saved.unchanged?'⚔️ '+hero.name+' já é seu combatente.':
-    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nEle substitui as habilidades da classe em Bosses/Raids, sem apagar seu Despertar nem os pets comuns.\nVeja o HP, ATK, DEF e VEL com *!heroi atributos*.\nUse *!heroi classe* para voltar.')
+    '🌈⚔️ *'+hero.name.toUpperCase()+' SELECIONADO!*\n\nAgora é seu personagem principal no Perfil, Boss, Raid e PvP.\nClasse e Despertares anteriores preservados.\nVeja os atributos com *!heroi atributos*.\nUse *!heroi classe* para voltar.')
   return true
 }
