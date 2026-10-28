@@ -113,9 +113,11 @@ test('purchasable pet specialties keep the intended progression',()=>{
 })
 
 test('boss and event combat auto-heal pets like raids',()=>{
-  assert.ok(games.includes("const petPotionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']"),'Boss pet potion inventory lookup missing')
-  assert.ok(games.includes("const chosenPet=raidPetPotion(petPotionRows,missing)"),'Boss must reuse raid pet-potion selection')
-  assert.ok(games.includes("autoPetHeal={id:chosenPet.item_id"),'Boss must return pet auto-heal details')
+  const helper=readFileSync(new URL('../src/neon/boss-pet-autocure.js',import.meta.url),'utf8')
+  assert.ok(helper.includes("const potionIds=['pocao_pet_comum','pocao_pet_rara','pocao_pet_epica','pocao_pet_suprema','pocao_pet_full']"),'Boss helper must query every potion tier')
+  assert.ok(games.includes('choosePotion:raidPetPotion,persistPet:persistBossCombatPet'),'Boss must reuse raid pet-potion selection')
+  assert.ok(helper.includes('UPDATE inventories SET quantity=quantity-1'),'Boss must debit potion in the same transaction')
+  assert.ok(helper.includes('await persistPet(client,jid,pet)'),'Boss must persist healed pet health')
   assert.ok(index.includes("🐾🧪 *Boletim de autocura"),'Boss session must announce pet auto-heal')
 })
 
@@ -182,7 +184,7 @@ test('web inventory separates equipped gear and protects it from every sale path
   assert.ok(batchStats>=2,'batch sell/discard must protect equipped boots as well as weapon/armor')
   assert.ok(db.includes("['weapon','armor','boots'].includes(i.category)"),'duplicate equipment sale must include boots safely')
   assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
-  assert.ok(db.includes("qty:Number(i.quantity)-1"),'duplicate sale must always preserve one copy')
+  assert.ok(db.includes("qty:Math.min(Number(i.quantity)-1,"),'duplicate sale must always preserve one copy')
   assert.ok(app.includes("market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0"),'market UI must exclude equipped copies')
   assert.ok(db.includes("const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))"),'market backend must preserve equipped copy')
 })

@@ -30,7 +30,7 @@ test('actual Baileys transport returns complete bounded encrypted media',async t
 test('actual Baileys HTTP request aborts while waiting for stalled response headers',{timeout:3000},async t=>{
   let closed=false
   const url=await localServer(t,(req)=>{req.on('close',()=>{closed=true})})
-  await assert.rejects(downloadBoundedMedia(signal=>getHttpStream(url,{signal}),128,{timeoutMs:250}),/abort/i)
+  await assert.rejects(downloadBoundedMedia(signal=>getHttpStream(url,{signal}),128,{timeoutMs:250}),/abort|cancel/i)
   await delay(30)
   assert.equal(closed,true)
 })

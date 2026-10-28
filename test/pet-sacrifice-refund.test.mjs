@@ -34,7 +34,7 @@ test('Pagamento, confirmação e migração usam a mesma função de reembolso',
  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
  const bot=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
  assert.match(db,/ALTER TABLE pet_collection ADD COLUMN IF NOT EXISTS purchase_price BIGINT/)
- assert.match(db,/active,purchase_price\)/)
+ assert.match(db,/purchase_price:\$\{originalPrice\}/)
  assert.match(db,/petSacrificeReward\(pet\.species,pet\.level,pet\.xp,pet\.purchase_price\)/)
  const menu=readFileSync(new URL('../src/neon/pet-collection-menu.js',import.meta.url),'utf8')
  assert.match(menu,/petSacrificeReward\(p\.species,p\.level,p\.xp,p\.purchase_price\)/)

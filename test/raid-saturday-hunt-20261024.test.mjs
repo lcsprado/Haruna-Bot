@@ -20,8 +20,8 @@ test('dinheiro, pets e drops intactos, sem acumular o XP',()=>{
   const game=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
   assert.match(game,/const saturdayXp=saturdayRaidXpMultiplier\(cfg.level,now\)/)
   assert.match(game,/const xpMultiplier=Math.max\(/)
-  assert.match(game,/const moneyMultiplier=raidGoldHour\?2:\(cacadaActive\?1\.25:1\)/)
-  assert.match(game,/const petXpMultiplier=raidEventActive\?1\.5:\(cacadaActive\?1\.25:1\)/)
+  assert.match(game,/const moneyMultiplier=Math\.max\(raidGoldHour\?2:\(cacadaActive\?1\.25:1\),await getOwnerEventMultiplier\(c,'dinheiro'\)\)/)
+  assert.match(game,/const petXpMultiplier=Math\.max\(raidEventActive\?1\.5:\(cacadaActive\?1\.25:1\),ownerRaid,effectivePetXp\)\/effectivePetXp/)
   assert.match(game,/saturdayHuntActive:saturdayXp>1/)
 })
 test('notificações sem polling e marcação persistente após sucesso',()=>{
