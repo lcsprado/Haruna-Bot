@@ -15,6 +15,7 @@ import { getAdoptablePetRule, PLAYER_CLASSES, getPlayerClass, isSelectablePlayer
 import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-safety.js'
 import {checkPixLimits} from './pix-limits.js'
 import {careerGrossFromLevelCap} from './career-pay.js'
+import {PLAYER_POTIONS,playerPotionHealAmount} from './player-potions.js'
 const { Pool, Client } = pg
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
 // For Neon, keep the existing connection settings unchanged.
@@ -407,10 +408,10 @@ WHERE key='pix_name' AND value='"Trevo"'::jsonb
 `)
 await db.query('UPDATE wallets SET bank_limit=9223372036854775807 WHERE bank_limit<9223372036854775807')
 const starterItems = [
-['pocao_p','Poção Pequena','Recupera 35 HP.','consumable',500,'common'],
-['pocao_m','Poção Média','Recupera 80 HP.','consumable',1200,'uncommon'],
-['pocao_g','Poção Grande','Recupera 160 HP.','consumable',3000,'rare'],
-['elixir_supremo','Elixir Supremo','Recupera uma grande quantidade de HP.','consumable',9000,'epic'],
+['pocao_p','Poção Pequena','Recupera 10% do HP máximo (mínimo de 35 HP).','consumable',500,'common'],
+['pocao_m','Poção Média','Recupera 20% do HP máximo (mínimo de 80 HP).','consumable',1200,'uncommon'],
+['pocao_g','Poção Grande','Recupera 40% do HP máximo (mínimo de 160 HP).','consumable',3000,'rare'],
+['elixir_supremo','Elixir Supremo','Recupera 100% do HP máximo do personagem.','consumable',9000,'epic'],
 ['pocao_pet_comum','Poção de Pet Comum','Recupera 60 HP do pet ativo.','consumable',500,'common'],
 ['pocao_pet_rara','Poção de Pet Rara','Recupera 160 HP do pet ativo.','consumable',1500,'rare'],
 ['pocao_pet_epica','Poção de Pet Épica','Recupera 320 HP do pet ativo.','consumable',3500,'epic'],
@@ -2038,12 +2039,7 @@ bota_vortice_alpha_20261020: {category:'boots',atk:0,def:0,hp:70,spd:14,crit:.02
 botas_cometa_astral_20261026: {category:'boots',atk:0,def:18,hp:35,spd:17,crit:.015,name:'Botas do Cometa Astral'},
 bota_jp_aquiles: { category:'boots', atk:0, def:0, hp:0, crit:0.02, spd:12, name:'Bota do JP — Passo da Lenda' },
 }
-const POTIONS = {
-pocao_p: { heal:35, name:'Poção Pequena' },
-pocao_m: { heal:80, name:'Poção Média' },
-pocao_g: { heal:160, name:'Poção Grande' },
-elixir_supremo: { heal:999999, name:'Elixir Supremo' },
-}
+const POTIONS = PLAYER_POTIONS
 const PET_POTIONS = {
 pocao_pet_comum: { heal:60, name:'Poção de Pet Comum' },
 pocao_pet_rara: { heal:160, name:'Poção de Pet Rara' },
@@ -2639,13 +2635,13 @@ const maxHp=Math.max(1,Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armo
 if(hp>=maxHp) throw new Error('Seu HP já está cheio.')
 const missing=maxHp-hp
 const available=rows
-.map(r=>({...r,...POTIONS[r.item_id]}))
+.map(r=>({...r,...POTIONS[r.item_id],heal:playerPotionHealAmount(r.item_id,maxHp)}))
 .sort((a,b)=>a.heal-b.heal)
 const chosen=itemId
 ? available.find(x=>x.item_id===itemId)
 : (available.find(x=>x.heal>=missing) || available[available.length-1])
 const potion=POTIONS[chosen.item_id]
-const newHp=Math.min(maxHp,hp+potion.heal)
+const newHp=Math.min(maxHp,hp+playerPotionHealAmount(chosen.item_id,maxHp))
 const healed=newHp-hp
 await client.query(
 'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
