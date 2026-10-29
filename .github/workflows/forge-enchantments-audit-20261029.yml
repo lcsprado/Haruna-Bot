@@ -59,6 +59,13 @@ jobs:
           WHERE COALESCE(i.quantity,0)=0 OR e.quantity<1 OR e.quantity>3 ORDER BY jogador LIMIT 40;
           SELECT 'PEDRAS_POR_MODELO' tipo,substr(md5(jid),1,12) jogador,item_id,sum(quantity) qtd
           FROM equipment_enchantments GROUP BY jid,item_id HAVING sum(quantity)>3 ORDER BY qtd DESC LIMIT 20;
+          SELECT 'SNAPSHOT_COLUNAS' tipo,column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='alpha_preheroes_full_data_20261027' AND column_name IN ('equipment_enchantments','transactions','snapshot_at','captured_at','created_at') ORDER BY column_name;
+          SELECT 'ENCANTAMENTO_POR_PECA' caso,substr(md5(e.jid),1,12) jogador,e.item_id,e.stone_id,e.quantity,
+            COALESCE(i.quantity,0) copias,CASE WHEN e.item_id IN (s.weapon_id,s.armor_id,s.boot_id,s.helmet_id) THEN 'EQUIPADO' ELSE 'NAO_EQUIPADO' END situacao,
+            COALESCE(sf.stars,1) estrelas,COALESCE(sf.level,0) nivel_forjado
+          FROM equipment_enchantments e LEFT JOIN inventories i ON i.jid=e.jid AND i.item_id=e.item_id
+          LEFT JOIN stats s ON s.jid=e.jid LEFT JOIN equipment_star_forges sf ON sf.jid=e.jid AND sf.item_id=e.item_id
+          ORDER BY jogador,item_id,stone_id LIMIT 60;
           COMMIT;
           SQL
           echo "== Fim da auditoria: nenhuma escrita foi executada =="
