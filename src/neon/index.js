@@ -4168,6 +4168,7 @@ const level=Number(i.equipment_level||1)
 text+='   ⚪ COMUM • ⭐ Lv.'+level+'\n'
 text+='      '+gearStatsText(gearStatsWithEnchants(equipmentStatsAtLevel(i.item_id,level)||getEquipmentInfo(i.item_id)||{},itemEnchants,STONES),category)+'\n'
 }
+if(itemEnchants.length)text+='   💎 Encantamentos aplicados: '+itemEnchants.filter(e=>STONES[e.stone_id]).map(e=>STONES[e.stone_id].label+' ×'+Number(e.quantity)).join(' • ')+'\n'
 if(active)text+='   ✅ *Em uso:* '+activeCopyLabel(isHelmet?{...p,helmet_level:Number(i.equipment_level||1)}:p,category)+'\n'
 text+='   🎒 Reservas: '+Math.max(0,Number(i.quantity||0)-(active?1:0))+'\n\n'
 })
