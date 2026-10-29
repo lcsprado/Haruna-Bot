@@ -4159,7 +4159,7 @@ for(const c of tiers){
 const forged=Number(c.stars||1)>1
 const level=Number(c.level||1)
 const stars=forged?Number(c.stars):1
-const stats=equipmentStatsAtLevel(i.item_id,level,stars)||getEquipmentInfo(i.item_id)||{}
+const stats=gearStatsWithEnchants(equipmentStatsAtLevel(i.item_id,level,stars)||getEquipmentInfo(i.item_id)||{},itemEnchants,STONES)
 text+='   '+(forged?'🌟 *FORJADA '+forgeStarsIcon(stars)+'* ('+forgeBonusText(stars)+')':'⚪ *COMUM* ×'+Number(c.quantity||1))+' • ⭐ Lv.'+level+'\n'
 text+='      '+gearStatsText(stats,category)+'\n'
 }
