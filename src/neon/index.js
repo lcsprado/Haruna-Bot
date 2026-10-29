@@ -82,6 +82,7 @@ import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet} from './playable-heroes.js'
 import {formatProfileCombatBonuses} from './profile-combat-summary.js'
+import {gearStatsWithEnchants} from './equipment-enchant-view.js'
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-reliquias-20261029.js'
@@ -6651,10 +6652,10 @@ try{
 const result=await forgeEquipmentStar(sender,chosen.itemId,chosen.stars)
 await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\n\n'+(result.category==='armor'?'🛡️':'⚔️')+' *'+result.name+'*\n'+
 '🌟 *'+forgeStarsIcon(result.stars)+'* • bônus *'+forgeBonusText(result.stars)+'* • ⭐ *Lv.1*\n'+
-'💪 Atributos: '+gearStatsText(result.after,result.category)+'\n\n'+
+'💪 Atributos (Lv.1 + pedras): '+gearStatsText(gearStatsWithEnchants(result.after,result.enchantments,STONES),result.category)+'\n\n'+
 '🧩 Gasto: '+result.materialsSpent+'× '+result.origin.materialName+'\n'+
 '📦 Cópias: '+result.copies+' • Fragmentos: '+result.remainingMaterials+enchantmentsReceipt(result.enchantments)+'\n\n'+
-'⬆️ Use *!uparitem* para levar a peça estrelada ao Lv.10.\n📋 Confira também em *!encantamentos*.')
+'📌 A forja reiniciou o nível BASE. As pedras foram mantidas e seus bônus continuam somando quando a peça estiver equipada.\n⬆️ Use *!uparitem* para voltar ao Lv.10.\n📋 Confira em *!encantamentos*.')
 }catch(err){await reply('❌ '+(err?.message||'Não foi possível concluir a forja; confira os requisitos.'))}
 return true
 }
@@ -6793,12 +6794,12 @@ return true
 }
 const r=await upgradeEquipment(sender,flow.data.itemId,flow.data.targetLevel,flow.data.sourceLevel,flow.data.sourceKind)
 clearQuickFlow(chat,sender)
-const stat=gearStatsText(r.stats,r.stats.category)
+const stat=gearStatsText(gearStatsWithEnchants(r.stats,r.enchantments,STONES),r.stats.category)
 await reply(
 '⬆️ *EQUIPAMENTO APRIMORADO!*\n\n'+
 '⚙️ *'+r.name+'*\n'+
 '⭐ Lv.'+r.fromLevel+' → *Lv.'+r.level+'* (+'+r.levelsGained+' níveis)\n'+
-'💪 Agora: *'+stat+'*\n'+
+'💪 Atributos (nível + pedras): *'+stat+'*\n'+
 '💸 Pago: *R$ '+fmt(r.cost)+'*\n'+
 '🪙 Carteira: *R$ '+fmt(r.cash)+'*'+enchantmentsReceipt(r.enchantments)+'\n\n'+
 (r.level>=10?'🏆 Equipamento no nível máximo.':'Use *!uparitem* para continuar evoluindo.')
