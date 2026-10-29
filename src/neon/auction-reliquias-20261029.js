@@ -1,7 +1,7 @@
-// Leilão das Quatro Relíquias (29/10, 19h) — 4 lotes reais, secretos e com lances públicos.
-// Conteúdo oculto até o encerramento. Duração: 2 minutos por lote.
+// Leilão das Quatro Relíquias (29/10, 19h) — 4 lotes com prêmios e lances públicos.
+// Premiações anunciadas antes e durante o leilão. Duração: 2 minutos por lote.
 // Estado, lances reservados e entrega final são transacionais no banco ativo.
-import {randomInt,randomBytes,createHash} from 'node:crypto'
+import {randomBytes,createHash} from 'node:crypto'
 import {extendAuctionDeadline,LOT_DURATION_MS} from './auction-rules.js'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction,petMaxEnergy,petMaxHp} from './db.js'
 import {initEnchantments} from './enchantments-alpha.js'
@@ -24,7 +24,7 @@ const STEP=100000
 const fmt=n=>'R$ '+Number(n).toLocaleString('pt-BR')
 const clean=n=>String(n||'Jogador').replace(/[\r\n*]/g,' ').slice(0,45)
 const clock=n=>new Date(Number(n)).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
-// Os pacotes são embaralhados criptograficamente; o Web e os comandos mostram só os lances.
+// Ordem fixa e premiação divulgada em WhatsApp e Web, conforme pedido do organizador.
 // Todos os IDs existem no banco; uma transação reserva o maior lance e entrega o prêmio.
 const PACKAGES=[
   // Uma única invocação oficial da collab: 7 essências = 1 baú aleatório.
@@ -72,7 +72,7 @@ async function licensedGroups(){
 async function sendGroups(sock,msg,groups){
   for(const jid of groups){
     try{await sock.sendMessage(jid,{text:msg})}
-    catch(err){console.warn('[LEILAO OCULTO] aviso falhou',jid,err?.message||err)}
+    catch(err){console.warn('[LEILAO RELIQUIAS] aviso falhou',jid,err?.message||err)}
     await new Promise(resolve=>setTimeout(resolve,250))
   }
 }
@@ -97,13 +97,22 @@ async function change(fn){
     throw err
   }finally{c.release()}
 }
-function shufflePackages(){
-  const p=PACKAGES.map(packageItems=>packageItems.map(item=>({...item})))
-  for(let i=p.length-1;i>0;i--){
-    const j=randomInt(i+1)
-    ;[p[i],p[j]]=[p[j],p[i]]
-  }
-  return p.map((prize,index)=>({label:'🎁 Lote Misterioso '+(index+1),min:OPENING,step:STEP,prize}))
+function publicPrize(prize){
+  const items=Array.isArray(prize)?prize:[]
+  if(items.some(x=>x.id==='essencia_pecado_preguica'))return '🌈 1 invocação oficial dos 7 Pecados (7 essências) + 1 Caixa Lendária'
+  if(items.some(x=>x.pet==='guaxinim_errante_20261027'))return '🃏 Pet Coringa Guaxinim Errante + 2 Caixas Épicas'
+  if(items.some(x=>x.id==='armadura_vigia_crepusculo_20261027'))return '🛡️ Armadura Épica do Vigia + 3 Caixas Lendárias + 2 Caixas Épicas + 3 Pedras de Fortaleza + 2 de Precisão'
+  if(items.some(x=>Number(x.xp)===100000))return '⚡ 100.000 XP diretos + 100 Fragmentos Universais + XP 2x (2h) + 1 Pergaminho de Reclassificação + 3 Poções Full de Pet'
+  return 'Prêmio não identificado — consulte o administrador'
+}
+function publicCatalog(lots){
+  return (lots||[]).map((lot,i)=>'• *Lote '+(i+1)+':* '+publicPrize(lot.prize)).join('\\n')
+}
+function createPublicLots(){
+  return PACKAGES.map((packageItems,index)=>({
+    label:'Lote '+(index+1)+' — '+publicPrize(packageItems),
+    min:OPENING,step:STEP,prize:packageItems.map(item=>({...item}))
+  }))
 }
 function status(state){
   const lot=state.lots?.[state.lot]
@@ -111,13 +120,14 @@ function status(state){
   if(!lot)return '🔨 Leilão das Quatro Relíquias em preparação.'
   const minimum=state.high?Number(state.high.value)+lot.step:lot.min
   return '🔨 *LEILÃO DAS QUATRO RELÍQUIAS — LOTE '+(Number(state.lot)+1)+'/'+PACKAGES.length+'*'+
-    '\n🎁 *LOTE MISTERIOSO* — conteúdo secreto até o arremate!'+
+    '\n🎁 *PRÊMIO:* '+publicPrize(lot.prize)+
     '\n💰 Lance inicial: '+fmt(lot.min)+
     '\n📈 Próximo lance mínimo: *'+fmt(minimum)+'*'+
     '\n🏆 Maior lance: '+(state.high?fmt(state.high.value)+' — '+clean(state.high.name):'Nenhum')+
     '\n⏳ Encerra às *'+clock(state.ends)+'* (Brasília)'+
     '\n⚡ Lance nos últimos 15s: +20s de prorrogação (máx. 2min extras)'+
-    '\n📩 *!lance 100000* ou *!lance +50000* • *!leilao*'
+    '\n📋 *Prêmios dos 4 lotes:*\n'+publicCatalog(state.lots)+
+    '\n📩 *!lance 250000* ou *!lance +100000* • *!leilao*'
 }
 async function prize(c,jid,packageItems){
   const received=[]
@@ -165,9 +175,9 @@ async function finishLot(state,c){
       "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_quatro_destinos_20261029',$3)",
       [high.jid,high.value,KEY+':lot:'+state.lot]
     )
-    report+='\n🏆 '+clean(high.name)+' — '+fmt(high.value)+'\n🎁 RECOMPENSAS REVELADAS:\n• '+received.join('\n• ')
+    report+='\n🏆 '+clean(high.name)+' — '+fmt(high.value)+'\n🎁 PRÊMIO ENTREGUE:\n• '+received.join('\n• ')
   }else{
-    report+='\n📭 Sem arremate. O conteúdo deste lote continua secreto.'
+    report+='\n📭 Sem arremate. Prêmio: '+publicPrize(lot.prize)
   }
   state.history.push(entry)
   return report
@@ -177,22 +187,22 @@ async function tick(sock){
   busy=true
   try{
     const now=Date.now()
-    // Anúncio único às 18h50, persistido na fila por grupo; não revela lotes.
+    // Aviso com prêmios públicos; corrige também eventual anúncio misterioso anterior.
     if(now>=START-10*60*1000 && now<START){
       await init()
       const groups=await licensedGroups()
       if(groups.length)await change(async(state,c)=>{
-        if(state.phase!=='pending'||state.preAnnounced)return
+        if(state.phase!=='pending'||state.publicPreAnnounced)return
         state.groups=groups
-        state.preAnnounced=true
+        state.publicPreAnnounced=true
         await queueAuctionBidNotices(c,{
-          key:KEY,version:0,groups,origin:'system',
-          message:'🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS EM 10 MINUTOS!*\n\n'+
-            '⏰ Abertura *19h00* (Brasília).\n🎭 *4 lotes misteriosos*, com 1 invocação dos 7 Pecados (7 essências), pet Coringa, 3 Caixas Lendárias, armadura Épica e 100 mil XP.\n'+
-            '👀 Lances públicos nos grupos e no Web; conteúdo secreto até o arremate.\n'+
-            '💰 Lance inicial *R$ 250.000* • incremento *R$ 100.000*.\n'+
-            '⏱️ 2 minutos por lote, com prorrogação contra lances de último segundo.\n'+
-            '📋 Digite *!leilao* ou abra a aba Leilão do Web.'
+          key:KEY,version:-1,groups,origin:'system',
+          message:'🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS — PRÊMIOS PÚBLICOS!*\\n\\n'+
+            '⏰ Começa às *19h00* (Brasília).\\n\\n'+
+            publicCatalog(createPublicLots())+'\\n\\n'+
+            '💰 Lance inicial *R$ 250.000* • incremento *R$ 100.000*.\\n'+
+            '⏱️ 2 minutos por lote, com prorrogação nos últimos segundos.\\n'+
+            '📋 *!leilao* no grupo ou aba Leilão do Web. *Não há lotes misteriosos.*'
         })
       })
       await flushAuctionBidNotices(db,sock,KEY,{limit:8})
@@ -217,7 +227,7 @@ async function tick(sock){
     await change(async(state,c)=>{
       if(state.phase==='completed')return
       if(state.phase==='pending'){
-        state.lots=shufflePackages()
+        state.lots=createPublicLots()
         const ids=[...new Set(state.lots.flatMap(x=>x.prize).map(x=>x.id).filter(Boolean))]
         const rows=(await c.query('SELECT id FROM items WHERE id=ANY($1::text[])',[ids])).rows
         for(const id of ids)if(!rows.some(x=>x.id===id))throw Error('Premiação ausente: '+id)
@@ -226,15 +236,14 @@ async function tick(sock){
         state.seal=createHash('sha256').update(JSON.stringify(state.lots.map(x=>x.prize))+':'+state.salt).digest('hex')
         state.lot=0
         beginLot(state,now)
-        outgoing='🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS COMEÇOU!*\n\n'+
-          '🎭 *4 lotes misteriosos!* Cada prêmio é revelado somente após o arremate.'+
-          '\n🎁 Prêmios possíveis: 1 invocação dos 7 Pecados (herói, arma ou armadura), pet Coringa, 3 Caixas Lendárias, armadura Épica e 100 mil XP.'+
-          '\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
-          '\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
-          '\n⏱️ *2 minutos por lote*. Lance nos últimos 15s: +20s, até +2min.'+
-          '\n👀 *Lances e líderes são públicos nos grupos*. Somente os prêmios são secretos.'+
-          '\n✅ O valor do maior lance é reservado; se superado, é devolvido.'+
-          '\n\n'+status(state)
+        outgoing='🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS COMEÇOU!*\\n\\n'+
+          '🎁 *PRÊMIOS DIVULGADOS — 4 LOTES:*\\n'+publicCatalog(state.lots)+
+          '\\n\\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
+          '\\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
+          '\\n⏱️ *2 minutos por lote*. Lance nos últimos 15s: +20s, até +2min.'+
+          '\\n👀 Prêmios, lances e líderes são públicos nos grupos e no Web.'+
+          '\\n✅ O maior lance é reservado; se superado, é devolvido.'+
+          '\\n\\n'+status(state)
       }else if(state.phase==='running' && now>=Number(state.ends||0)){
         outgoing=await finishLot(state,c)
         if(state.lot===PACKAGES.length-1){
@@ -250,7 +259,7 @@ async function tick(sock){
     })
     if(outgoing)await sendGroups(sock,outgoing,groups)
   }catch(err){
-    console.error('[LEILAO OCULTO]',err?.stack||err)
+    console.error('[LEILAO RELIQUIAS]',err?.stack||err)
   }finally{busy=false}
 }
 export function startAuctionAlphaScheduler(sock){
@@ -258,12 +267,12 @@ export function startAuctionAlphaScheduler(sock){
   auctionSocket=sock
   if(AUCTION_PAUSED_FOR_AUDIT){
     if(timer){clearInterval(timer);timer=null}
-    console.log('[LEILAO OCULTO] pausado para auditoria — sem novos leiloes ou avisos')
+    console.log('[LEILAO RELIQUIAS] pausado para auditoria — sem novos leiloes ou avisos')
     return
   }
   if(timer){clearInterval(timer);timer=null}
   if(Date.now()>END){
-    console.log('[LEILAO OCULTO] scheduler desativado: recuperação temporária ou evento histórico encerrado')
+    console.log('[LEILAO RELIQUIAS] scheduler desativado: recuperação temporária ou evento histórico encerrado')
     return
   }
   timer=setInterval(()=>tick(sock),5000)
@@ -285,7 +294,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     return true
   }
   if(!String(chat||'').endsWith('@g.us')){
-    await reply('🔨 O Leilão Oculto acontece nos grupos.')
+    await reply('🔨 O Leilão das Quatro Relíquias acontece nos grupos.')
     return true
   }
   if(!groupLicenseIsActive(await getGroupLicense(chat))&&!EVENT_GROUPS.has(chat)){
@@ -293,7 +302,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     return true
   }
   if(Date.now()<START){
-    await reply('🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS AGENDADO*\n⏰ Começa às *19h00* (Brasília) de 29/10.\n🎁 Serão *4 lotes misteriosos*.\n💰 Lance inicial: *'+fmt(OPENING)+'* • incremento: *'+fmt(STEP)+'*.\n📢 Lances públicos e prêmios revelados só após cada lote.\n📋 Volte com *!leilao* às 19h00.')
+    await reply('🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS AGENDADO*\n⏰ Começa às *19h00* (Brasília) de 29/10.\n🎁 *PRÊMIOS PÚBLICOS:*\n'+publicCatalog(createPublicLots())+'\n💰 Lance inicial: *'+fmt(OPENING)+'* • incremento: *'+fmt(STEP)+'*.\n📋 Volte com *!leilao* às 19h00.')
     return true
   }
   if(cmd==='leilao'){
@@ -301,13 +310,13 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     const sync=state?.phase==='running'?await auctionNoticeSummary(db,KEY,Number(state.bidNoticeVersion||0)):null
     const syncLine=sync?'\n📡 Avisos: '+sync.sent+' enviados, '+sync.pending+' pendentes, '+sync.failed+' falharam.':''
     await reply(state?.phase==='running'?status(state)+syncLine:
-      state?.phase==='completed'?'🏁 Leilão Oculto encerrado. Todos os prêmios foram revelados.':
-      '⏳ Leilão Oculto sendo aberto. Consulte novamente em instantes.')
+      state?.phase==='completed'?'🏁 Leilão das Quatro Relíquias encerrado. Consulte os prêmios divulgados antes do evento.':
+      '⏳ Leilão das Quatro Relíquias sendo aberto. Consulte novamente em instantes.')
     return true
   }
   const parsed=parseAmount(args?.[0])
   if(!parsed){
-    await reply('❌ Lance inválido. Envie *!lance 100000*, *!lance 150k* ou *!lance +50000*.')
+    await reply('❌ Lance inválido. Envie *!lance 250000*, *!lance 350k* ou *!lance +100000*.')
     return true
   }
   try{
@@ -342,7 +351,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
       const result={
         confirmation:'✅ *LANCE ACEITO — LOTE '+(state.lot+1)+'/'+PACKAGES.length+'*\n💰 '+fmt(offered)+
           '\n🔒 Reservado até você vencer ou ser superado.'+
-          '\n🎁 Conteúdo oculto até encerrar este lote.'+
+          '\n🎁 Prêmio: '+publicPrize(lot.prize)+
           '\n📈 Próximo lance: '+fmt(offered+lot.step)+
           '\n⏳ Encerra: '+clock(state.ends),
         version:Number(state.bidNoticeVersion=(Number(state.bidNoticeVersion||0)+1)),
@@ -354,25 +363,26 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
       }
       result.notice=result.notice.replace('LEILÃO DAS SOMBRAS','LEILÃO DAS QUATRO RELÍQUIAS')
       if(web)result.notice=result.notice.replace('LANCE DE OUTRO GRUPO!','LANCE PELO WEB!')
+      result.notice+='\n🎁 Prêmio do lote: '+publicPrize(lot.prize)
       await queueAuctionBidNotices(c,{key:KEY,version:result.version,groups:result.otherGroups,origin:web?'web':chat,message:result.notice})
       return result
     })
     // O lance já foi confirmado no Neon. Uma falha de envio não o desfaz.
     try{await reply(result.confirmation)}
-    catch(err){console.warn('[LEILAO OCULTO] lance gravado; confirmação local não enviada',err?.message||err)}
+    catch(err){console.warn('[LEILAO RELIQUIAS] lance gravado; confirmação local não enviada',err?.message||err)}
     if(result.otherGroups.length){
       if(auctionSocket?.sendMessage){
         // Delivery is durable: a failed transport does not discard the notice.
         void flushAuctionBidNotices(db,auctionSocket,KEY).then(()=>warnAuctionDeliveryFailures(db,auctionSocket,KEY))
-          .catch(err=>console.error('[LEILAO OCULTO] fila de avisos',err?.message||err))
-      }else console.warn('[LEILAO OCULTO] lance aceito, avisos pendentes até reconexão')
+          .catch(err=>console.error('[LEILAO RELIQUIAS] fila de avisos',err?.message||err))
+      }else console.warn('[LEILAO RELIQUIAS] lance aceito, avisos pendentes até reconexão')
     }
   }catch(err){await reply('❌ '+String(err?.message||err))}
   return true
 }
 
 // The Web API uses the same locked bidding path as WhatsApp; never a second auction.
-// These snapshots intentionally omit lots[].prize, salt, and all private player JIDs.
+// Exposição pública das descrições dos prêmios, sem salt nem dados privados dos jogadores.
 export async function getAuctionWebStatus({chat,sender}){
   if(!String(chat||'').endsWith('@g.us'))throw Error('Vincule seu Web a um grupo com !web no WhatsApp.')
   if(!EVENT_GROUPS.has(chat)&&!groupLicenseIsActive(await getGroupLicense(chat)))throw Error('Grupo sem acesso a este leilão.')
@@ -385,6 +395,8 @@ export async function getAuctionWebStatus({chat,sender}){
     title:'Leilão das Quatro Relíquias',phase:now<START?'scheduled':(state.phase||'pending'),
     acceptingBids,serverTime:now,startsAt:START,lotNumber:lot?Number(state.lot)+1:null,
     totalLots:PACKAGES.length,step:lot?.step||STEP,opening:lot?.min||OPENING,
+    prizesPublic:true,prize:lot?publicPrize(lot.prize):null,
+    lots:(state.lots?.length?state.lots:createPublicLots()).map((x,i)=>({lotNumber:i+1,description:publicPrize(x.prize)})),
     nextMinimum:lot?(state.high?Number(state.high.value)+lot.step:lot.min):OPENING,
     currentBid:state.high?Number(state.high.value):null,
     leader:state.high?clean(state.high.name):null,
