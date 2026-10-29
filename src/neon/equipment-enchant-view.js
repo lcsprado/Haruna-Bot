@@ -11,3 +11,23 @@ export function gearStatsWithEnchants(base={},rows=[],stones={}){
   }
   return out
 }
+
+/**
+ * Uma consulta para todos os modelos apresentados no menu.
+ * Encantamentos pertencem ao (jogador, modelo), nao a cada nivel/copia.
+ */
+export async function equipmentEnchantmentsByItem(queryable,jid,itemIds=[]){
+  const ids=[...new Set((itemIds||[]).filter(Boolean))]
+  const byItem=new Map()
+  if(!ids.length)return byItem
+  const {rows}=await queryable.query(
+    'SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',
+    [jid,ids]
+  )
+  for(const row of rows){
+    if(!ids.includes(row.item_id))continue
+    if(!byItem.has(row.item_id))byItem.set(row.item_id,[])
+    byItem.get(row.item_id).push(row)
+  }
+  return byItem
+}
