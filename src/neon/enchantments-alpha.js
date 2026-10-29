@@ -1,5 +1,5 @@
 // Encantamentos permanentes: pontos percentuais somados, sem multiplicacao.
-import {db, getEquipmentInfo, equipmentStatsAtLevel} from './db.js'
+import {db, getEquipmentInfo, equipmentStatsAtLevel, getEquipmentStarLevels} from './db.js'
 
 export const STONES=Object.freeze({
   pedra_furia_alpha:{name:'Pedra da Fúria',stat:'damage',value:.02,categories:['weapon'],label:'+2 p.p. dano'},
@@ -87,8 +87,8 @@ async function stoneChoices(jid){
 }
 // Prévia somente de leitura: nível do equipamento + encantamentos existentes.
 // A nova pedra é simulada, sem modificar atributos ou consumir inventário.
-export function previewEquipmentEnchantment(itemId,level,rows=[],stoneId){
-  const base=equipmentStatsAtLevel(itemId,level)
+export function previewEquipmentEnchantment(itemId,level,rows=[],stoneId,stars=1){
+  const base=equipmentStatsAtLevel(itemId,level,stars)
   const stone=STONES[stoneId]
   if(!base||!stone)return null
   const applied=sumEnchants(rows)
@@ -128,13 +128,18 @@ async function equipmentChoices(jid,stoneId){
   )).rows
   const eligible=rows.filter(r=>getEquipmentInfo(r.item_id)&&Number(r.used_slots)<3&&(!['damage','crit'].includes(stone.stat)||Number(r.used_percentage)<2))
   if(!eligible.length)return []
-  const enchanted=(await db.query('SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,eligible.map(r=>r.item_id)])).rows
+  const ids=eligible.map(r=>r.item_id)
+  const [enchantResult,starLevels]=await Promise.all([
+    db.query('SELECT item_id,stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])',[jid,ids]),
+    getEquipmentStarLevels(jid,ids)
+  ])
+  const enchanted=enchantResult.rows
   const enchantByItem=new Map()
   for(const row of enchanted){
     if(!enchantByItem.has(row.item_id))enchantByItem.set(row.item_id,[])
     enchantByItem.get(row.item_id).push(row)
   }
-  return eligible.map(r=>({...r,preview:previewEquipmentEnchantment(r.item_id,r.level,enchantByItem.get(r.item_id)||[],stoneId)}))
+  return eligible.map(r=>({...r,stars:starLevels[r.item_id]||1,preview:previewEquipmentEnchantment(r.item_id,r.level,enchantByItem.get(r.item_id)||[],stoneId,starLevels[r.item_id]||1)}))
 }
 async function stoneMenu(jid){
   const stones=await stoneChoices(jid)
@@ -153,7 +158,7 @@ async function gearMenu(jid,stoneId){
   let text='⚙️ *ESCOLHA O EQUIPAMENTO*\n\n💎 '+stone.name+' — *'+stone.label+'*\n\n'
   shown.forEach((g,i)=>{
     const icon=g.category==='weapon'?'⚔️':g.category==='armor'?'🛡️':g.category==='boots'?'👢':'🪖'
-    text+=(i+1)+'. '+icon+' *'+g.name+'* • ⭐ Lv.'+g.level+' • 🔒 '+g.used_slots+'/3\n'+
+    text+=(i+1)+'. '+icon+' *'+g.name+'* • ⭐ Lv.'+g.level+(g.stars>1?' • 🌟 '+'★'.repeat(g.stars):'')+' • 🔒 '+g.used_slots+'/3\n'+
       '   📊 Atual: '+equipmentStatLine(g.preview.before)+'\n'+
       '   💎 Com pedra: '+equipmentStatLine(g.preview.after)+'\n'
   })
