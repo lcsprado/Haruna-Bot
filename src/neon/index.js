@@ -4124,7 +4124,7 @@ await reply(
 `⚙️ *EQUIPAR*
 🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}* — ${gearStatsText(decorated(p.weapon_id,weaponStats),'weapon')}
 🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}* — ${gearStatsText(decorated(p.armor_id,armorStats),'armor')}
-👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(bootStats,'boots')}
+👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(decorated(p.boot_id,bootStats),'boots')}
 🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(p.helmet_level||1)}* — ${gearStatsText(helmetStats,'helmet')}
 O que deseja trocar?
 1️⃣ ⚔️ *Arma* — ${weapons.length} opção(ões)
