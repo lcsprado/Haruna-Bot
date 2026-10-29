@@ -4118,6 +4118,8 @@ const weaponStats=currentMap.get(p.weapon_id)||getEquipmentInfo(p.weapon_id)||{}
 const armorStats=currentMap.get(p.armor_id)||getEquipmentInfo(p.armor_id)||{}
 const bootStats=currentMap.get(p.boot_id)||getEquipmentInfo(p.boot_id)||{}
 const helmetStats=currentMap.get(p.helmet_id)||getEquipmentInfo(p.helmet_id)||{}
+const gearEnchants=await equipmentEnchantmentsByItem(db,sender,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
+const decorated=(itemId,stats)=>gearStatsWithEnchants(stats,gearEnchants.get(itemId)||[],STONES)
 await reply(
 `⚙️ *EQUIPAR*
 🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}* — ${gearStatsText(weaponStats,'weapon')}
