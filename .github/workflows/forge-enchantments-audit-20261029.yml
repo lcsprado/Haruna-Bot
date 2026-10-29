@@ -77,6 +77,21 @@ jobs:
           SELECT 'PERDA_DESDE_SNAPSHOT' caso,substr(md5(s.jid),1,12) jogador,s.item_id,s.stone_id,s.quantidade no_backup,COALESCE(e.quantity,0) atual
           FROM saved s LEFT JOIN equipment_enchantments e ON e.jid=s.jid AND e.item_id=s.item_id AND e.stone_id=s.stone_id
           WHERE COALESCE(e.quantity,0)<s.quantidade ORDER BY jogador,s.item_id LIMIT 40;
+          WITH previous AS (
+            SELECT x->>'jid' jid,x->>'item_id' item_id,(x->>'level')::int level
+            FROM alpha_preheroes_full_data_20261027 snapshot, LATERAL jsonb_array_elements(snapshot.equipment_upgrades) x
+          ) SELECT 'NIVEL_REDUZIDO' caso,substr(md5(prev.jid),1,12) jogador, prev.item_id,prev.level nivel_27,COALESCE(now.level,1) nivel_29,
+            COALESCE(f.stars,1) estrelas,COALESCE(f.level,0) nivel_forjado,
+            COALESCE(inv.quantity,0) qtd_atual
+          FROM previous prev LEFT JOIN equipment_upgrades now ON now.jid=prev.jid AND now.item_id=prev.item_id
+          LEFT JOIN equipment_star_forges f ON f.jid=prev.jid AND f.item_id=prev.item_id
+          LEFT JOIN inventories inv ON inv.jid=prev.jid AND inv.item_id=prev.item_id
+          WHERE COALESCE(now.level,1)<prev.level ORDER BY jogador,prev.item_id;
+          SELECT 'AUDIT_EQUIPADOS' caso,substr(md5(st.jid),1,12) jogador,
+          st.helmet_id elmo,COALESCE(uh.level,1) nivel_elmo,
+          COALESCE((SELECT SUM(e.quantity) FROM equipment_enchantments e WHERE e.jid=st.jid AND e.item_id=st.helmet_id AND e.stone_id='pedra_precisao_alpha'),0) pedras_crit
+          FROM stats st LEFT JOIN equipment_upgrades uh ON uh.jid=st.jid AND uh.item_id=st.helmet_id
+          WHERE st.helmet_id IS NOT NULL ORDER BY jogador;
           COMMIT;
           SQL
           echo "== Fim da auditoria: nenhuma escrita foi executada =="
