@@ -132,7 +132,7 @@ test('WhatsApp equip menu calculates each independent copy and labels the active
   assert.match(menu,/i\.upgrade_distribution/)
   assert.match(menu,/equipmentStatsAtLevel\(i\.item_id,level,stars\)/)
   assert.match(menu,/forgeStarsIcon\(stars\)/)
-  assert.match(menu,/activeCopyLabel\(p,category\)/)
+  assert.match(menu,/activeCopyLabel\(isHelmet\?\{\.\.\.p,helmet_level:Number\(i\.equipment_level\|\|1\)\}:p,category\)/)
   assert.match(menu,/COMUM/)
   assert.match(menu,/FORJADA/)
   assert.doesNotMatch(menu,/copySummary\|\|/)
