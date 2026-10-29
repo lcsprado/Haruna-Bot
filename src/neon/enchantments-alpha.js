@@ -158,7 +158,7 @@ async function gearMenu(jid,stoneId){
   let text='⚙️ *ESCOLHA O EQUIPAMENTO*\n\n💎 '+stone.name+' — *'+stone.label+'*\n\n'
   shown.forEach((g,i)=>{
     const icon=g.category==='weapon'?'⚔️':g.category==='armor'?'🛡️':g.category==='boots'?'👢':'🪖'
-    text+=(i+1)+'. '+icon+' *'+g.name+'* • ⭐ Lv.'+g.level+' • 🔒 '+g.used_slots+'/3\n'+
+    text+=(i+1)+'. '+icon+' *'+g.name+'* • ⭐ Lv.'+g.level+(g.stars>1?' • 🌟 '+'★'.repeat(g.stars):'')+' • 🔒 '+g.used_slots+'/3\n'+
       '   📊 Atual: '+equipmentStatLine(g.preview.before)+'\n'+
       '   💎 Com pedra: '+equipmentStatLine(g.preview.after)+'\n'
   })
