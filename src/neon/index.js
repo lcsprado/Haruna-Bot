@@ -4172,7 +4172,7 @@ if(itemEnchants.length)text+='   💎 Encantamentos aplicados: '+itemEnchants.fi
 if(active)text+='   ✅ *Em uso:* '+activeCopyLabel(isHelmet?{...p,helmet_level:Number(i.equipment_level||1)}:p,category)+'\n'
 text+='   🎒 Reservas: '+Math.max(0,Number(i.quantity||0)-(active?1:0))+'\n\n'
 })
-text+='📌 *⭐ Lv.* indica nível. *🌟 ★★* indica forja (+4% por estrela adicional).\n'
+text+='📌 Atributos apresentados incluem as pedras do modelo. *⭐ Lv.* indica nível. *🌟 ★★* indica forja (+4% por estrela adicional).\n'
 text+='🔎 Cada copia tem atributos proprios; o bot utiliza automaticamente a mais forte do mesmo modelo.\n\n'
 text+='👉 Responda apenas o número do modelo.\n9️⃣ Voltar\n0️⃣ Sair'
 await reply(text)
