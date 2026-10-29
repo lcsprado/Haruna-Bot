@@ -141,8 +141,6 @@ if(process.env.ALPHA_WHATSAPP_ENABLE==='0'){
   console.log('[WhatsApp] INSTÂNCIA EM ESPERA: ALPHA_WHATSAPP_ENABLE=0; sessão não iniciada')
 }else{
   await import('./index.js')
-  // Estorno privado validado em dry-run; idempotente, limitado ao lote 2.
-  void import('./auction-kaique-refund-20261029.js').then(m=>m.undoKaiqueGuaxinim20261029({apply:true})).catch(e=>console.error('[KAIQUE 47M REFUND] audit import failed',e?.message||e))
 
   // Auditoria agregada uma única vez; nenhuma migração, concessão ou evento antigo.
   setTimeout(async()=>{
