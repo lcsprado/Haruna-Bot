@@ -31,8 +31,8 @@ const PACKAGES=[
   [{id:'essencia_pecado_preguica',qty:7},{id:'caixa_lendaria',qty:1}],
   // Pet Coringa original; sua lógica já impede duas sinergias simultâneas.
   [{pet:'guaxinim_errante_20261027',name:'Guaxinim Errante',power:70},{id:'caixa_epica',qty:2}],
-  [{id:'armadura_vigia_crepusculo_20261027',qty:1},{id:'caixa_lendaria',qty:2},{id:'pedra_fortaleza_alpha',qty:2}],
-  [{id:'fragmento_universal_raid',qty:50},{id:'elixir_leilao_2h',qty:1},{id:'pergaminho_leilao_10k',qty:1},{id:'pergaminho_reclassificacao',qty:1},{id:'pocao_pet_full',qty:3}]
+  [{id:'armadura_vigia_crepusculo_20261027',qty:1},{id:'caixa_lendaria',qty:3},{id:'caixa_epica',qty:2},{id:'pedra_fortaleza_alpha',qty:3},{id:'pedra_precisao_alpha',qty:2}],
+  [{xp:100000},{id:'fragmento_universal_raid',qty:100},{id:'elixir_leilao_2h',qty:1},{id:'pergaminho_reclassificacao',qty:1},{id:'pocao_pet_full',qty:3}]
 ]
 let timer=null,busy=false,initPromise=null,auctionSocket=null
 
@@ -188,7 +188,7 @@ async function tick(sock){
         await queueAuctionBidNotices(c,{
           key:KEY,version:0,groups,origin:'system',
           message:'🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS EM 10 MINUTOS!*\n\n'+
-            '⏰ Abertura *19h00* (Brasília).\n🎭 *4 lotes misteriosos*, com 1 invocação dos 7 Pecados (7 essências), pet Coringa, armadura, caixas lendárias e itens de evolução.\n'+
+            '⏰ Abertura *19h00* (Brasília).\n🎭 *4 lotes misteriosos*, com 1 invocação dos 7 Pecados (7 essências), pet Coringa, 3 Caixas Lendárias, armadura Épica e 100 mil XP.\n'+
             '👀 Lances públicos nos grupos e no Web; conteúdo secreto até o arremate.\n'+
             '💰 Lance inicial *R$ 250.000* • incremento *R$ 100.000*.\n'+
             '⏱️ 2 minutos por lote, com prorrogação contra lances de último segundo.\n'+
@@ -228,7 +228,7 @@ async function tick(sock){
         beginLot(state,now)
         outgoing='🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS COMEÇOU!*\n\n'+
           '🎭 *4 lotes misteriosos!* Cada prêmio é revelado somente após o arremate.'+
-          '\n🎁 Prêmios possíveis: 1 invocação dos 7 Pecados (sorteio entre herói, arma ou armadura), pet Coringa, armadura, caixas lendárias, XP 2x e fragmentos.'+
+          '\n🎁 Prêmios possíveis: 1 invocação dos 7 Pecados (herói, arma ou armadura), pet Coringa, 3 Caixas Lendárias, armadura Épica e 100 mil XP.'+
           '\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
           '\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
           '\n⏱️ *2 minutos por lote*. Lance nos últimos 15s: +20s, até +2min.'+
