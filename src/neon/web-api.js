@@ -3,6 +3,8 @@ import crypto from 'node:crypto'
 import {relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {getWebEventCenter} from './web-event-center.js'
+import {webPlayableHeroesSnapshot,selectWebPlayableHero} from './web-playable-heroes-compat.js'
+import {excludeActiveHeroPet} from './playable-heroes-core.js'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
   listPets, getPetTeam, getPetExpeditions, getAchievements, getRelationship, getProfileAvatar,
@@ -520,10 +522,11 @@ async function playerBootstrap(session){
               ORDER BY t.created_at DESC,t.id DESC
               LIMIT 20`,[jid])
   ])
+  const {heroes,activeHeroCombat,activeHeroId}=await webPlayableHeroesSnapshot(jid,combatProfile)
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,combatProfile,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(petTeam),petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,activeHeroCombat,heroes,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,activeHeroId)),petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
@@ -1228,6 +1231,8 @@ async function runAction(session,name,body={}){
       return withTargetMeta(await createLoanOffer(jid,member.jid,positiveInt(body.amount,'Valor')),member)
     }
     case 'character.select': return setPlayerClass(jid,String(body.classId||''))
+    case 'hero.select': return selectWebPlayableHero(jid,String(body.heroId||''))
+    case 'hero.class': return selectWebPlayableHero(jid,null)
     case 'npc.buy': return buyNpcShopItem(jid,String(body.npcId||''),positiveInt(body.number,'Oferta',99))
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
@@ -1380,7 +1385,7 @@ export async function handleWebApi(req,res){
 
   try{
     if(req.method==='GET' && url.pathname==='/api/v1/health'){
-      json(res,200,{ok:true,service:'alpha-web-api',version:2})
+      json(res,200,{ok:true,service:'alpha-web-api',version:3,heroView:'synced'})
       return true
     }
 
