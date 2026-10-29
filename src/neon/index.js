@@ -11389,7 +11389,7 @@ setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.ite
 const gearEnchants=await equipmentEnchantmentsByItem(db,sender,available.map(i=>i.item_id))
 let text=helmetOnly?'🪖 *UPAR ELMO*\n\n':'⬆️ *UPAR EQUIPAMENTO*\n\n'
 available.forEach((i,n)=>{
-const stat=gearStatsChanges(i.current,i.next,i.category).replaceAll('\n',' • ')
+const stat=gearStatsChanges(gearStatsWithEnchants(i.current,gearEnchants.get(i.item_id)||[],STONES),gearStatsWithEnchants(i.next,gearEnchants.get(i.item_id)||[],STONES),i.category).replaceAll('\n',' • ')
 const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)||(i.category==='helmet'&&profile?.helmet_id===i.item_id)
 text+='*'+(n+1)+'.* '+(i.category==='armor'?'🛡️ ':i.category==='weapon'?'⚔️ ':i.category==='helmet'?'🪖 ':'👢 ')+rarityLabel(i.rarity)+' — *'+i.name+'*\n'
 text+='   '+equipmentCopyLabel(i)+(equipped?' • 📌 modelo equipado':'')+'\n'
