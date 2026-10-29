@@ -1,0 +1,29 @@
+name: Leilao Relíquias 29-10
+
+on:
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/auction-reliquias-20261029.js'
+      - 'src/neon/index.js'
+      - 'src/neon/web-api.js'
+      - 'test/auction-reliquias-20261029.test.mjs'
+      - '.github/workflows/leilao-reliquias-20261029.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: JavaScript syntax
+        run: |
+          node --check src/neon/auction-reliquias-20261029.js
+          node --check src/neon/index.js
+          node --check src/neon/web-api.js
+      - name: Auction safety tests
+        run: node --test test/auction-reliquias-20261029.test.mjs
