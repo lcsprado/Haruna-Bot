@@ -85,7 +85,6 @@ import {formatProfileCombatBonuses} from './profile-combat-summary.js'
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-reliquias-20261029.js'
-import {reconcileAuctionPetOct29} from './auction-pet-refund-20261029.js'
 import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP} from './collab-fragment-rules.js'
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
 const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
@@ -9115,7 +9114,6 @@ void (async()=>{
   }catch(err){console.error('[COLLAB RAID] anúncio',err?.message||err)}
 })()
 startAuctionAlphaScheduler(sock)
-void reconcileAuctionPetOct29()
 startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
