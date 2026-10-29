@@ -9114,6 +9114,27 @@ void (async()=>{
   }catch(err){console.error('[COLLAB RAID] anúncio',err?.message||err)}
 })()
 startAuctionAlphaScheduler(sock)
+void (async()=>{
+  try{
+    const key='leilao_quatro_destinos_20261029_1900_v1'
+    const state=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[key])).rows[0]?.value
+    if(!state){console.log('[AUCTION 2910 AUDIT] no-state');return}
+    const lots=(state.lots||[]).map((l,i)=>({index:i,pet:l.prize?.find(p=>p.pet)?.pet||null}))
+    const petLot=lots.find(x=>x.pet==='guaxinim_errante_20261027')
+    const entry=(state.history||[]).find(x=>x.lot===petLot?.index)
+    console.log('[AUCTION 2910 AUDIT] STATE',JSON.stringify({phase:state.phase,lot:state.lot,petLot,history:state.history,finished:state.finished}))
+    const notices=(await db.query("SELECT bid_version,created_at,message FROM auction_bid_notice_outbox WHERE auction_key=$1 AND (message ILIKE '%Kaique%' OR message ILIKE '%LP%' OR message ILIKE '%LANCE%') ORDER BY bid_version DESC LIMIT 90",[key])).rows
+    console.log('[AUCTION 2910 AUDIT] BIDS',JSON.stringify(notices.map(r=>({version:r.bid_version,at:r.created_at,msg:r.message}))))
+    if(!entry?.winner?.jid)return
+    const jid=entry.winner.jid
+    const pets=(await db.query("SELECT id,species,name,level,xp,created_at,active FROM pet_collection WHERE jid=$1 AND species='guaxinim_errante_20261027' ORDER BY id",[jid])).rows
+    const team=(await db.query('SELECT slot,pet_id FROM pet_team WHERE jid=$1',[jid])).rows
+    const wallet=(await db.query('SELECT cash,bank FROM wallets WHERE jid=$1',[jid])).rows
+    const items=(await db.query("SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id='caixa_epica'",[jid])).rows
+    const purchases=(await db.query("SELECT id,from_jid,amount,type,note,created_at FROM transactions WHERE type='leilao_quatro_destinos_20261029' ORDER BY id DESC LIMIT 8")).rows
+    console.log('[AUCTION 2910 AUDIT] WINNER',JSON.stringify({jid,pets,team,wallet,items,purchases}))
+  }catch(err){console.error('[AUCTION 2910 AUDIT] FAILED',err?.message||String(err))}
+})()
 startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
