@@ -1,7 +1,68 @@
 {
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/rpg", "destination": "/index.html" },
-    { "source": "/rpg/:path*", "destination": "/:path*" }
+    {
+      "source": "/api/v1/:path*",
+      "destination": "https://alpha-web-api-beta.onrender.com/api/v1/:path*"
+    },
+    {
+      "source": "/rpg",
+      "destination": "/"
+    },
+    {
+      "source": "/rpg/",
+      "destination": "/"
+    },
+    {
+      "source": "/rpg/:path*",
+      "destination": "/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/v1/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/assets/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=86400"
+        }
+      ]
+    },
+    {
+      "source": "/app.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/styles.css",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    }
   ]
 }
