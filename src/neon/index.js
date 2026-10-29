@@ -6850,7 +6850,8 @@ const currentName=isWeapon?p.weapon_name:isArmor?p.armor_name:isHelmet?p.helmet_
 const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
 const currentUp=upgradeables.find(i=>i.item_id===currentId)
 const oldStats=currentUp?.current||getEquipmentInfo(currentId)||{}
-const statLines=gearStatsChanges(oldStats,info,info.category)
+const enchantRows=await equipmentEnchantmentsByItem(db,sender,[currentId,itemId])
+const statLines=gearStatsChanges(gearStatsWithEnchants(oldStats,enchantRows.get(currentId)||[],STONES),gearStatsWithEnchants(info,enchantRows.get(itemId)||[],STONES),info.category)
 const selectedStars=Number(up?.forged_level||0)===Number(up?.level||1)?Number(up?.stars||1):1
 const selectedType=selectedStars>1?'🌟 FORJADA '+forgeStarsIcon(selectedStars)+' ('+forgeBonusText(selectedStars)+')':'⚪ COMUM'
 setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
