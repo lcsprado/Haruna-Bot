@@ -10,6 +10,7 @@ import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
+import {playerPotionHealAmount} from './player-potions.js'
 import {PECADOS_HERO_IDS,PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
@@ -1006,9 +1007,8 @@ async function grantTeamPetXp(c,jid,baseGain){
 }
 
 function raidPotion(rows,maxHp){
-  const heal={pocao_p:35,pocao_m:80,pocao_g:160,elixir_supremo:999999}
   const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
-  const a=(rows||[]).filter(x=>Number(x.quantity)>0).map(x=>({...x,heal:heal[x.item_id]||0})).sort((x,y)=>x.heal-y.heal)
+  const a=(rows||[]).filter(x=>Number(x.quantity)>0).map(x=>({...x,heal:playerPotionHealAmount(x.item_id,maxHp)})).sort((x,y)=>x.heal-y.heal)
   const p=a.find(x=>x.heal>=maxHp)||a[a.length-1]
   return p?{...p,name:names[p.item_id]}:null
 }
@@ -3251,10 +3251,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
 
       if(php<=0){
         const ids=['pocao_p','pocao_m','pocao_g','elixir_supremo']
-        const heals={pocao_p:35,pocao_m:80,pocao_g:160,elixir_supremo:999999}
         const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
         const inv=(await c.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[jid,ids])).rows
-        const available=inv.map(x=>({...x,heal:heals[x.item_id]})).sort((a,b)=>a.heal-b.heal)
+        const available=inv.map(x=>({...x,heal:playerPotionHealAmount(x.item_id,effectiveMaxHp)})).sort((a,b)=>a.heal-b.heal)
         const chosen=available.find(x=>x.heal>=effectiveMaxHp)||available[available.length-1]
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
