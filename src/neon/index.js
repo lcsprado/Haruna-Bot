@@ -82,7 +82,7 @@ import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet} from './playable-heroes.js'
 import {formatProfileCombatBonuses} from './profile-combat-summary.js'
-import {gearStatsWithEnchants} from './equipment-enchant-view.js'
+import {gearStatsWithEnchants,equipmentEnchantmentsByItem} from './equipment-enchant-view.js'
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-reliquias-20261029.js'
@@ -4118,12 +4118,14 @@ const weaponStats=currentMap.get(p.weapon_id)||getEquipmentInfo(p.weapon_id)||{}
 const armorStats=currentMap.get(p.armor_id)||getEquipmentInfo(p.armor_id)||{}
 const bootStats=currentMap.get(p.boot_id)||getEquipmentInfo(p.boot_id)||{}
 const helmetStats=currentMap.get(p.helmet_id)||getEquipmentInfo(p.helmet_id)||{}
+const gearEnchants=await equipmentEnchantmentsByItem(db,sender,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
+const decorated=(itemId,stats)=>gearStatsWithEnchants(stats,gearEnchants.get(itemId)||[],STONES)
 await reply(
 `⚙️ *EQUIPAR*
-🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}* — ${gearStatsText(weaponStats,'weapon')}
-🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}* — ${gearStatsText(armorStats,'armor')}
-👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(bootStats,'boots')}
-🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(p.helmet_level||1)}* — ${gearStatsText(helmetStats,'helmet')}
+🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}* — ${gearStatsText(decorated(p.weapon_id,weaponStats),'weapon')}
+🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}* — ${gearStatsText(decorated(p.armor_id,armorStats),'armor')}
+👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(decorated(p.boot_id,bootStats),'boots')}
+🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(upgradeables.find(i=>i.item_id===p.helmet_id)?.level||1)}* — ${gearStatsText(decorated(p.helmet_id,helmetStats),'helmet')}
 O que deseja trocar?
 1️⃣ ⚔️ *Arma* — ${weapons.length} opção(ões)
 2️⃣ 🛡️ *Armadura* — ${armors.length} opção(ões)
@@ -4146,30 +4148,33 @@ await reply(title+'\n\nVocê não possui itens desta categoria.\n\n9️⃣ Volta
 return
 }
 setQuickFlow(chat,sender,'equip_select',{items:filtered.map(i=>i.item_id),category},5*60*1000)
+const gearEnchants=await equipmentEnchantmentsByItem(db,sender,filtered.map(i=>i.item_id))
 const activeId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
 let text=title+'\n\n'
 filtered.forEach((i,idx)=>{
 const active=activeId===i.item_id
 const tiers=(i.upgrade_distribution||[]).filter(c=>Number(c.quantity)>0)
+const itemEnchants=gearEnchants.get(i.item_id)||[]
 text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'*\n'
 text+='   📦 *'+Number(i.quantity||0)+' unidade(s)*'+(active?' • ✅ EQUIPADO':'')+'\n'
 for(const c of tiers){
 const forged=Number(c.stars||1)>1
 const level=Number(c.level||1)
 const stars=forged?Number(c.stars):1
-const stats=equipmentStatsAtLevel(i.item_id,level,stars)||getEquipmentInfo(i.item_id)||{}
+const stats=gearStatsWithEnchants(equipmentStatsAtLevel(i.item_id,level,stars)||getEquipmentInfo(i.item_id)||{},itemEnchants,STONES)
 text+='   '+(forged?'🌟 *FORJADA '+forgeStarsIcon(stars)+'* ('+forgeBonusText(stars)+')':'⚪ *COMUM* ×'+Number(c.quantity||1))+' • ⭐ Lv.'+level+'\n'
 text+='      '+gearStatsText(stats,category)+'\n'
 }
 if(!tiers.length){
 const level=Number(i.equipment_level||1)
 text+='   ⚪ COMUM • ⭐ Lv.'+level+'\n'
-text+='      '+gearStatsText(equipmentStatsAtLevel(i.item_id,level)||getEquipmentInfo(i.item_id),category)+'\n'
+text+='      '+gearStatsText(gearStatsWithEnchants(equipmentStatsAtLevel(i.item_id,level)||getEquipmentInfo(i.item_id)||{},itemEnchants,STONES),category)+'\n'
 }
-if(active)text+='   ✅ *Em uso:* '+activeCopyLabel(p,category)+'\n'
+if(itemEnchants.length)text+='   💎 Encantamentos aplicados: '+itemEnchants.filter(e=>STONES[e.stone_id]).map(e=>STONES[e.stone_id].label+' ×'+Number(e.quantity)).join(' • ')+'\n'
+if(active)text+='   ✅ *Em uso:* '+activeCopyLabel(isHelmet?{...p,helmet_level:Number(i.equipment_level||1)}:p,category)+'\n'
 text+='   🎒 Reservas: '+Math.max(0,Number(i.quantity||0)-(active?1:0))+'\n\n'
 })
-text+='📌 *⭐ Lv.* indica nível. *🌟 ★★* indica forja (+4% por estrela adicional).\n'
+text+='📌 Atributos apresentados incluem as pedras do modelo. *⭐ Lv.* indica nível. *🌟 ★★* indica forja (+4% por estrela adicional).\n'
 text+='🔎 Cada copia tem atributos proprios; o bot utiliza automaticamente a mais forte do mesmo modelo.\n\n'
 text+='👉 Responda apenas o número do modelo.\n9️⃣ Voltar\n0️⃣ Sair'
 await reply(text)
@@ -6737,7 +6742,8 @@ clearQuickFlow(chat,sender)
 await reply('✅ Esse equipamento já está no nível máximo.')
 return true
 }
-const stat=gearStatsChanges(item.current,targetStats,item.category)
+const applied=(await equipmentEnchantmentsByItem(db,sender,[item.item_id])).get(item.item_id)||[]
+const stat=gearStatsChanges(gearStatsWithEnchants(item.current,applied,STONES),gearStatsWithEnchants(targetStats,applied,STONES),item.category)
 setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind,targetLevel:target},90000)
 await reply(
 '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
@@ -6770,7 +6776,8 @@ if(!targetStats){
 await reply('❌ Não consegui calcular esse nível. Tente novamente.')
 return true
 }
-const stat=gearStatsChanges(item.current,targetStats,item.category)
+const applied=(await equipmentEnchantmentsByItem(db,sender,[item.item_id])).get(item.item_id)||[]
+const stat=gearStatsChanges(gearStatsWithEnchants(item.current,applied,STONES),gearStatsWithEnchants(targetStats,applied,STONES),item.category)
 setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind,targetLevel:target},90000)
 await reply(
 '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
@@ -6845,7 +6852,8 @@ const currentName=isWeapon?p.weapon_name:isArmor?p.armor_name:isHelmet?p.helmet_
 const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
 const currentUp=upgradeables.find(i=>i.item_id===currentId)
 const oldStats=currentUp?.current||getEquipmentInfo(currentId)||{}
-const statLines=gearStatsChanges(oldStats,info,info.category)
+const enchantRows=await equipmentEnchantmentsByItem(db,sender,[currentId,itemId])
+const statLines=gearStatsChanges(gearStatsWithEnchants(oldStats,enchantRows.get(currentId)||[],STONES),gearStatsWithEnchants(info,enchantRows.get(itemId)||[],STONES),info.category)
 const selectedStars=Number(up?.forged_level||0)===Number(up?.level||1)?Number(up?.stars||1):1
 const selectedType=selectedStars>1?'🌟 FORJADA '+forgeStarsIcon(selectedStars)+' ('+forgeBonusText(selectedStars)+')':'⚪ COMUM'
 setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
@@ -11380,9 +11388,10 @@ return await reply(helmetOnly
 const available=filtered.filter(i=>i.next)
 if(!available.length) return await reply(helmetOnly?'🏆 Seus elmos já estão no *Lv.10*.':'🏆 Todos os seus equipamentos já estão no *Lv.10*.')
 setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id,sourceLevel:i.sourceLevel,sourceKind:i.sourceKind}))},5*60*1000)
+const gearEnchants=await equipmentEnchantmentsByItem(db,sender,available.map(i=>i.item_id))
 let text=helmetOnly?'🪖 *UPAR ELMO*\n\n':'⬆️ *UPAR EQUIPAMENTO*\n\n'
 available.forEach((i,n)=>{
-const stat=gearStatsChanges(i.current,i.next,i.category).replaceAll('\n',' • ')
+const stat=gearStatsChanges(gearStatsWithEnchants(i.current,gearEnchants.get(i.item_id)||[],STONES),gearStatsWithEnchants(i.next,gearEnchants.get(i.item_id)||[],STONES),i.category).replaceAll('\n',' • ')
 const equipped=(i.category==='weapon'&&profile?.weapon_id===i.item_id)||(i.category==='armor'&&profile?.armor_id===i.item_id)||(i.category==='boots'&&profile?.boot_id===i.item_id)||(i.category==='helmet'&&profile?.helmet_id===i.item_id)
 text+='*'+(n+1)+'.* '+(i.category==='armor'?'🛡️ ':i.category==='weapon'?'⚔️ ':i.category==='helmet'?'🪖 ':'👢 ')+rarityLabel(i.rarity)+' — *'+i.name+'*\n'
 text+='   '+equipmentCopyLabel(i)+(equipped?' • 📌 modelo equipado':'')+'\n'

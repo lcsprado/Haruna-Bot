@@ -112,7 +112,7 @@ test('level-up restores actual max HP including equipped armor, helmet and star 
 test('WhatsApp upgrade menu visibly separates common armor from starred armor with correct HP',()=>{
   const menu=index.split("} else if(['uparitem','upgradeitem','melhoraritem'")[1]?.split("} else if(['equipar','equip'].includes(cmd))")[0]||''
   assert.match(menu,/equipmentCopyLabel\(i\)/)
-  assert.match(menu,/gearStatsChanges\(i\.current,i\.next,i\.category\)/)
+  assert.match(menu,/gearStatsChanges\(gearStatsWithEnchants\(i\.current/)
   assert.match(index,/const forgeStarsIcon=stars=>/)
   assert.match(index,/const equipmentCopyLabel=i=>i\.sourceKind==='star'/)
   assert.match(index,/FORJADA/)
@@ -132,7 +132,7 @@ test('WhatsApp equip menu calculates each independent copy and labels the active
   assert.match(menu,/i\.upgrade_distribution/)
   assert.match(menu,/equipmentStatsAtLevel\(i\.item_id,level,stars\)/)
   assert.match(menu,/forgeStarsIcon\(stars\)/)
-  assert.match(menu,/activeCopyLabel\(p,category\)/)
+  assert.match(menu,/activeCopyLabel\(isHelmet\?\{\.\.\.p,helmet_level:Number\(i\.equipment_level\|\|1\)\}:p,category\)/)
   assert.match(menu,/COMUM/)
   assert.match(menu,/FORJADA/)
   assert.doesNotMatch(menu,/copySummary\|\|/)
