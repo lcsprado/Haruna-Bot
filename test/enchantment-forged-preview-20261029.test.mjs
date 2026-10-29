@@ -31,5 +31,6 @@ test('Courechouse 5 stars Lv.1 and Lv.10 retain precision with correct final sta
   const first=gearStatsWithEnchants(stats(1,5),onePrecision,stones)
   const final=gearStatsWithEnchants(stats(10,5),onePrecision,stones)
   assert.deepEqual(first,{atk:174,spd:19,crit:0.039})
-  assert.deepEqual(final,{atk:435,spd:46,crit:0.0825})
+  assert.deepEqual({atk:final.atk,spd:final.spd},{atk:435,spd:46})
+  assert.ok(Math.abs(final.crit-0.0825)<1e-10)
 })
