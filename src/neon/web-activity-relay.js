@@ -2,6 +2,9 @@
 // Durable status lives in PostgreSQL; LISTEN/NOTIFY is only the low-latency wakeup.
 const TABLE='alpha_web_action_outbox'
 const CHANNEL='alpha_web_action_wakeup_v1'
+// Um unico consumidor por pool: reconexoes do WhatsApp nao podem reservar
+// novos clientes LISTEN no PostgreSQL (o pool Aiven tem poucos slots).
+const ACTIVE_CONSUMERS=new WeakMap()
 const SCHEMA=new WeakMap()
 const ATTEMPT_LIMIT=4
 
@@ -94,7 +97,19 @@ export async function deliverWebActionsOnce(db,{sendMessage,startRaidRun,isConne
   return {processed:rows.length,delivered}
 }
 
-export async function startWebActionConsumer(db,{sendMessage,startRaidRun,isConnected=()=>true,log=console,pollMs=20000}){
+export function startWebActionConsumer(db,options){
+  const existing=ACTIVE_CONSUMERS.get(db)
+  if(existing)return existing
+  const startup=createWebActionConsumer(db,options)
+  ACTIVE_CONSUMERS.set(db,startup)
+  // Nao reter uma inicializacao falha; permitir recuperar numa proxima tentativa.
+  void startup.catch(()=>{
+    if(ACTIVE_CONSUMERS.get(db)===startup)ACTIVE_CONSUMERS.delete(db)
+  })
+  return startup
+}
+
+async function createWebActionConsumer(db,{sendMessage,startRaidRun,isConnected=()=>true,log=console,pollMs=20000}){
   await ensureWebActionOutbox(db)
   let closed=false,running=false,client=null,reconnectTimer=null
   async function drain(){
@@ -145,7 +160,10 @@ export async function startWebActionConsumer(db,{sendMessage,startRaidRun,isConn
   return {
     drain,
     close(){
-      closed=true;clearInterval(fallback);if(reconnectTimer)clearTimeout(reconnectTimer)
+      if(closed)return
+      closed=true
+      ACTIVE_CONSUMERS.delete(db)
+      clearInterval(fallback);if(reconnectTimer)clearTimeout(reconnectTimer)
       const previous=client;client=null
       if(previous)void previous.query('UNLISTEN '+CHANNEL).catch(()=>{}).finally(()=>previous.release())
     }
