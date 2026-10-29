@@ -6742,7 +6742,8 @@ clearQuickFlow(chat,sender)
 await reply('✅ Esse equipamento já está no nível máximo.')
 return true
 }
-const stat=gearStatsChanges(item.current,targetStats,item.category)
+const applied=(await equipmentEnchantmentsByItem(db,sender,[item.item_id])).get(item.item_id)||[]
+const stat=gearStatsChanges(gearStatsWithEnchants(item.current,applied,STONES),gearStatsWithEnchants(targetStats,applied,STONES),item.category)
 setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind,targetLevel:target},90000)
 await reply(
 '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
@@ -6775,7 +6776,8 @@ if(!targetStats){
 await reply('❌ Não consegui calcular esse nível. Tente novamente.')
 return true
 }
-const stat=gearStatsChanges(item.current,targetStats,item.category)
+const applied=(await equipmentEnchantmentsByItem(db,sender,[item.item_id])).get(item.item_id)||[]
+const stat=gearStatsChanges(gearStatsWithEnchants(item.current,applied,STONES),gearStatsWithEnchants(targetStats,applied,STONES),item.category)
 setQuickFlow(chat,sender,'upgrade_confirm',{itemId:item.item_id,sourceLevel:item.sourceLevel,sourceKind:item.sourceKind,targetLevel:target},90000)
 await reply(
 '⬆️ *CONFIRMAR UPGRADE?*\n\n'+
