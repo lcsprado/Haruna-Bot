@@ -2,7 +2,7 @@ name: "Auditoria somente leitura | forja e pedras 2026-10-29"
 on:
   push:
     branches: [audit/forge-enchantments-20261029]
-    paths: [.github/workflows/forge-enchantments-audit-20261029.yml]
+    paths: [.github/workflows/forge-enchantments-audit-20261029.yml, src/neon/index.js, src/neon/equipment-enchant-view.js, test/forge-enchantment-display-20261029.test.mjs]
 permissions:
   contents: read
 jobs:
@@ -80,3 +80,19 @@ jobs:
           COMMIT;
           SQL
           echo "== Fim da auditoria: nenhuma escrita foi executada =="
+
+  validate-code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate JS syntax
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/equipment-enchant-view.js
+          node --check src/neon/db.js
+      - name: Forge and enchantment regression
+        run: node --test test/forge-enchantment-display-20261029.test.mjs test/forge-enchantment-preservation-20261026.test.mjs test/star-forge-level-20261021.test.mjs
