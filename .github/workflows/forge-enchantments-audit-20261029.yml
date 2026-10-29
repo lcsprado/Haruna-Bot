@@ -1,0 +1,64 @@
+name: "Auditoria somente leitura | forja e pedras 2026-10-29"
+on:
+  push:
+    branches: [audit/forge-enchantments-20261029]
+    paths: [.github/workflows/forge-enchantments-audit-20261029.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    container:
+      image: postgres:18
+    env:
+      AIVEN_SOURCE_URL: ${{ secrets.ALPHA_AIVEN_PROD_V2_URL }}
+      AIVEN_LEGACY_URL: ${{ secrets.ALPHA_AIVEN_URI }}
+      PGCONNECT_TIMEOUT: "20"
+      PGSSLMODE: require
+    steps:
+      - name: "Auditar sem alterar dados, ocultando JIDs"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +x
+          if [[ -z "${AIVEN_SOURCE_URL:-}" && -n "${AIVEN_LEGACY_URL:-}" ]]; then
+            AIVEN_SOURCE_URL="${AIVEN_LEGACY_URL/\/defaultdb/\/alpha_prod_v2}"
+          fi
+          case "$AIVEN_SOURCE_URL" in
+            postgres://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2|postgres://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2\?*|postgresql://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2|postgresql://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2\?*) ;;
+            *) echo "Fonte nao validada: abortando sem consultas."; exit 1;;
+          esac
+          echo "== Auditoria READ ONLY iniciada =="
+          psql -X -v ON_ERROR_STOP=1 -P pager=off --dbname="$AIVEN_SOURCE_URL" <<'SQL'
+          BEGIN READ ONLY;
+          SELECT 'ORIGEM' label, current_database() nome, CURRENT_TIMESTAMP momento;
+          SELECT 'TABELAS' label, tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('equipment_enchantments','equipment_star_forges','transactions','inventories','alpha_preheroes_full_data_20261027') ORDER BY tablename;
+          SELECT 'RESUMO' label, (SELECT count(*) FROM users) usuarios, (SELECT count(*) FROM equipment_star_forges) pecas_forjadas, (SELECT count(*) FROM equipment_enchantments) linhas_encantamento, (SELECT COALESCE(sum(quantity),0) FROM equipment_enchantments) pedras_registradas, (SELECT count(*) FROM transactions WHERE type='equipment_enchant') pedras_consumidas_registradas, (SELECT count(*) FROM transactions WHERE type LIKE 'equipment_star_forge%') forjas_no_historico;
+          WITH used AS (
+            SELECT from_jid jid, split_part(note,':',1) pedra, split_part(note,':',2) item, count(*) consumidas, MIN(created_at) primeira, MAX(created_at) ultima
+            FROM transactions WHERE type='equipment_enchant' AND note LIKE 'pedra_%_alpha:%'
+            GROUP BY from_jid, split_part(note,':',1), split_part(note,':',2)
+          ), inventory AS (
+            SELECT jid,item_id,quantity FROM inventories WHERE quantity>0
+          ), findings AS (
+            SELECT u.jid,u.item,u.pedra,u.consumidas,COALESCE(e.quantity,0) restantes,
+              COALESCE(i.quantity,0) possui_copias,
+              EXISTS (SELECT 1 FROM equipment_star_forges f WHERE f.jid=u.jid AND f.item_id=u.item) como_forjado,
+              (SELECT count(*) FROM transactions t WHERE t.from_jid=u.jid AND t.type LIKE 'equipment_star_forge%' AND t.note LIKE u.item||' %' AND t.created_at>=u.primeira) total_forjas
+            FROM used u LEFT JOIN equipment_enchantments e ON e.jid=u.jid AND e.item_id=u.item AND e.stone_id=u.pedra
+            LEFT JOIN inventory i ON i.jid=u.jid AND i.item_id=u.item
+          )
+          SELECT 'DIVERGENCIA' caso, substr(md5(jid),1,12) jogador, item equipamento,pedra,consumidas,restantes,(consumidas-restantes) diferenca, possui_copias,como_forjado,total_forjas
+          FROM findings WHERE consumidas>restantes ORDER BY total_forjas DESC,diferenca DESC,jogador,item LIMIT 60;
+          SELECT 'FORJADO' caso,substr(md5(sf.jid),1,12) jogador,sf.item_id equipamento,sf.stars estrelas,sf.level nivel_forjado,
+          COALESCE(up.level,1) nivel_efetivo,COALESCE((SELECT sum(e.quantity) FROM equipment_enchantments e WHERE e.jid=sf.jid AND e.item_id=sf.item_id),0) encantamentos
+          FROM equipment_star_forges sf LEFT JOIN equipment_upgrades up ON up.jid=sf.jid AND up.item_id=sf.item_id ORDER BY jogador,equipamento LIMIT 80;
+          SELECT 'ANOMALIA' tipo,substr(md5(e.jid),1,12) jogador,e.item_id,e.stone_id,e.quantity
+          FROM equipment_enchantments e LEFT JOIN inventories i ON i.jid=e.jid AND i.item_id=e.item_id
+          WHERE COALESCE(i.quantity,0)=0 OR e.quantity<1 OR e.quantity>3 ORDER BY jogador LIMIT 40;
+          SELECT 'PEDRAS_POR_MODELO' tipo,substr(md5(jid),1,12) jogador,item_id,sum(quantity) qtd
+          FROM equipment_enchantments GROUP BY jid,item_id HAVING sum(quantity)>3 ORDER BY qtd DESC LIMIT 20;
+          COMMIT;
+          SQL
+          echo "== Fim da auditoria: nenhuma escrita foi executada =="
