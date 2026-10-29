@@ -4146,11 +4146,13 @@ await reply(title+'\n\nVocê não possui itens desta categoria.\n\n9️⃣ Volta
 return
 }
 setQuickFlow(chat,sender,'equip_select',{items:filtered.map(i=>i.item_id),category},5*60*1000)
+const gearEnchants=await equipmentEnchantmentsByItem(db,sender,filtered.map(i=>i.item_id))
 const activeId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
 let text=title+'\n\n'
 filtered.forEach((i,idx)=>{
 const active=activeId===i.item_id
 const tiers=(i.upgrade_distribution||[]).filter(c=>Number(c.quantity)>0)
+const itemEnchants=gearEnchants.get(i.item_id)||[]
 text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'*\n'
 text+='   📦 *'+Number(i.quantity||0)+' unidade(s)*'+(active?' • ✅ EQUIPADO':'')+'\n'
 for(const c of tiers){
