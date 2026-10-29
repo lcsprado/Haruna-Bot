@@ -31,10 +31,14 @@ test('lotes atrativos sem alteração de estatísticas e com prêmios existentes
   const rewards=packages.flat()
   assert.equal(rewards.filter(x=>x.pet).length,1)
   assert.equal(rewards.find(x=>x.pet)?.pet,'guaxinim_errante_20261027')
-  for(const id of ['caixa_lendaria','caixa_epica','armadura_vigia_crepusculo_20261027','elixir_leilao_2h','pergaminho_leilao_10k','fragmento_universal_raid','pergaminho_reclassificacao','pocao_pet_full','pedra_fortaleza_alpha']){
+  for(const id of ['caixa_lendaria','caixa_epica','armadura_vigia_crepusculo_20261027','elixir_leilao_2h','fragmento_universal_raid','pergaminho_reclassificacao','pocao_pet_full','pedra_fortaleza_alpha']){
     assert.ok(rewards.some(x=>x.id===id),id)
   }
-  assert.equal(rewards.find(x=>x.id==='fragmento_universal_raid')?.qty,50)
+  assert.equal(rewards.find(x=>x.id==='fragmento_universal_raid')?.qty,100)
+  assert.equal(rewards.find(x=>x.xp)?.xp,100000)
+  assert.equal(packages[2].find(x=>x.id==='caixa_lendaria')?.qty,3)
+  assert.equal(packages[2].find(x=>x.id==='caixa_epica')?.qty,2)
+  assert.equal(packages[3].some(x=>x.id==='pergaminho_leilao_10k'),false)
 })
 test('WhatsApp e Web usam a mesma edição, com reserva/reembolso e prêmios secretos',()=>{
   assert.match(entry,/from '\.\/auction-reliquias-20261029\.js'/)
