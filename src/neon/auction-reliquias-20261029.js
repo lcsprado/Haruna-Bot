@@ -99,7 +99,7 @@ async function change(fn){
 }
 function publicPrize(prize){
   const items=Array.isArray(prize)?prize:[]
-  if(items.some(x=>x.id==='essencia_pecado_preguica'))return '🌈 1 invocação oficial dos 7 Pecados (7 essências) + 1 Caixa Lendária'
+  if(items.some(x=>x.id==='essencia_pecado_preguica'))return '🌈 1 invocação oficial dos 7 Pecados (7 essências; sorteio de personagem, arma ou armadura) + 1 Caixa Lendária'
   if(items.some(x=>x.pet==='guaxinim_errante_20261027'))return '🃏 Pet Coringa Guaxinim Errante + 2 Caixas Épicas'
   if(items.some(x=>x.id==='armadura_vigia_crepusculo_20261027'))return '🛡️ Armadura Épica do Vigia + 3 Caixas Lendárias + 2 Caixas Épicas + 3 Pedras de Fortaleza + 2 de Precisão'
   if(items.some(x=>Number(x.xp)===100000))return '⚡ 100.000 XP diretos + 100 Fragmentos Universais + XP 2x (2h) + 1 Pergaminho de Reclassificação + 3 Poções Full de Pet'
