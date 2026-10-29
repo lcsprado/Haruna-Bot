@@ -11386,6 +11386,7 @@ return await reply(helmetOnly
 const available=filtered.filter(i=>i.next)
 if(!available.length) return await reply(helmetOnly?'🏆 Seus elmos já estão no *Lv.10*.':'🏆 Todos os seus equipamentos já estão no *Lv.10*.')
 setQuickFlow(chat,sender,'upgrade_select',{items:available.map(i=>({itemId:i.item_id,sourceLevel:i.sourceLevel,sourceKind:i.sourceKind}))},5*60*1000)
+const gearEnchants=await equipmentEnchantmentsByItem(db,sender,available.map(i=>i.item_id))
 let text=helmetOnly?'🪖 *UPAR ELMO*\n\n':'⬆️ *UPAR EQUIPAMENTO*\n\n'
 available.forEach((i,n)=>{
 const stat=gearStatsChanges(i.current,i.next,i.category).replaceAll('\n',' • ')
