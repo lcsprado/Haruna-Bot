@@ -4168,7 +4168,7 @@ const level=Number(i.equipment_level||1)
 text+='   ⚪ COMUM • ⭐ Lv.'+level+'\n'
 text+='      '+gearStatsText(gearStatsWithEnchants(equipmentStatsAtLevel(i.item_id,level)||getEquipmentInfo(i.item_id)||{},itemEnchants,STONES),category)+'\n'
 }
-if(active)text+='   ✅ *Em uso:* '+activeCopyLabel(p,category)+'\n'
+if(active)text+='   ✅ *Em uso:* '+activeCopyLabel(isHelmet?{...p,helmet_level:Number(i.equipment_level||1)}:p,category)+'\n'
 text+='   🎒 Reservas: '+Math.max(0,Number(i.quantity||0)-(active?1:0))+'\n\n'
 })
 text+='📌 *⭐ Lv.* indica nível. *🌟 ★★* indica forja (+4% por estrela adicional).\n'
