@@ -66,6 +66,17 @@ jobs:
           FROM equipment_enchantments e LEFT JOIN inventories i ON i.jid=e.jid AND i.item_id=e.item_id
           LEFT JOIN stats s ON s.jid=e.jid LEFT JOIN equipment_star_forges sf ON sf.jid=e.jid AND sf.item_id=e.item_id
           ORDER BY jogador,item_id,stone_id LIMIT 60;
+          SELECT 'BACKUP_TIPO' tipo,snapshot_at,jsonb_typeof(equipment_enchantments) formato,
+          CASE WHEN jsonb_typeof(equipment_enchantments)='array' THEN jsonb_array_length(equipment_enchantments) ELSE NULL END quantidade,
+          CASE WHEN jsonb_typeof(equipment_enchantments)='array' THEN (SELECT array_agg(k) FROM jsonb_object_keys(equipment_enchantments->0) k) ELSE NULL END campos
+          FROM alpha_preheroes_full_data_20261027 LIMIT 1;
+          WITH saved AS (
+            SELECT x->>'jid' jid,x->>'item_id' item_id,x->>'stone_id' stone_id,COALESCE((x->>'quantity')::int,0) quantidade
+            FROM alpha_preheroes_full_data_20261027 a CROSS JOIN LATERAL jsonb_array_elements(a.equipment_enchantments) x
+          )
+          SELECT 'PERDA_DESDE_SNAPSHOT' caso,substr(md5(s.jid),1,12) jogador,s.item_id,s.stone_id,s.quantidade no_backup,COALESCE(e.quantity,0) atual
+          FROM saved s LEFT JOIN equipment_enchantments e ON e.jid=s.jid AND e.item_id=s.item_id AND e.stone_id=s.stone_id
+          WHERE COALESCE(e.quantity,0)<s.quantidade ORDER BY jogador,s.item_id LIMIT 40;
           COMMIT;
           SQL
           echo "== Fim da auditoria: nenhuma escrita foi executada =="
