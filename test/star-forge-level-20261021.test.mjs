@@ -112,7 +112,7 @@ test('level-up restores actual max HP including equipped armor, helmet and star 
 test('WhatsApp upgrade menu visibly separates common armor from starred armor with correct HP',()=>{
   const menu=index.split("} else if(['uparitem','upgradeitem','melhoraritem'")[1]?.split("} else if(['equipar','equip'].includes(cmd))")[0]||''
   assert.match(menu,/equipmentCopyLabel\(i\)/)
-  assert.match(menu,/gearStatsChanges\(i\.current,i\.next,i\.category\)/)
+  assert.match(menu,/gearStatsChanges\(gearStatsWithEnchants\(i\.current/)
   assert.match(index,/const forgeStarsIcon=stars=>/)
   assert.match(index,/const equipmentCopyLabel=i=>i\.sourceKind==='star'/)
   assert.match(index,/FORJADA/)
