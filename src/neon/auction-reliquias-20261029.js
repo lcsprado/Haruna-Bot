@@ -106,7 +106,7 @@ function publicPrize(prize){
   return 'Prêmio não identificado — consulte o administrador'
 }
 function publicCatalog(lots){
-  return (lots||[]).map((lot,i)=>'• *Lote '+(i+1)+':* '+publicPrize(lot.prize)).join('\\n')
+  return (lots||[]).map((lot,i)=>'• *Lote '+(i+1)+':* '+publicPrize(lot.prize)).join('\n')
 }
 function createPublicLots(){
   return PACKAGES.map((packageItems,index)=>({
@@ -197,11 +197,11 @@ async function tick(sock){
         state.publicPreAnnounced=true
         await queueAuctionBidNotices(c,{
           key:KEY,version:-1,groups,origin:'system',
-          message:'🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS — PRÊMIOS PÚBLICOS!*\\n\\n'+
-            '⏰ Começa às *19h00* (Brasília).\\n\\n'+
-            publicCatalog(createPublicLots())+'\\n\\n'+
-            '💰 Lance inicial *R$ 250.000* • incremento *R$ 100.000*.\\n'+
-            '⏱️ 2 minutos por lote, com prorrogação nos últimos segundos.\\n'+
+          message:'🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS — PRÊMIOS PÚBLICOS!*\n\n'+
+            '⏰ Começa às *19h00* (Brasília).\n\n'+
+            publicCatalog(createPublicLots())+'\n\n'+
+            '💰 Lance inicial *R$ 250.000* • incremento *R$ 100.000*.\n'+
+            '⏱️ 2 minutos por lote, com prorrogação nos últimos segundos.\n'+
             '📋 *!leilao* no grupo ou aba Leilão do Web. *Não há lotes misteriosos.*'
         })
       })
@@ -236,14 +236,14 @@ async function tick(sock){
         state.seal=createHash('sha256').update(JSON.stringify(state.lots.map(x=>x.prize))+':'+state.salt).digest('hex')
         state.lot=0
         beginLot(state,now)
-        outgoing='🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS COMEÇOU!*\\n\\n'+
-          '🎁 *PRÊMIOS DIVULGADOS — 4 LOTES:*\\n'+publicCatalog(state.lots)+
-          '\\n\\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
-          '\\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
-          '\\n⏱️ *2 minutos por lote*. Lance nos últimos 15s: +20s, até +2min.'+
-          '\\n👀 Prêmios, lances e líderes são públicos nos grupos e no Web.'+
-          '\\n✅ O maior lance é reservado; se superado, é devolvido.'+
-          '\\n\\n'+status(state)
+        outgoing='🔨💎 *LEILÃO DAS QUATRO RELÍQUIAS COMEÇOU!*\n\n'+
+          '🎁 *PRÊMIOS DIVULGADOS — 4 LOTES:*\n'+publicCatalog(state.lots)+
+          '\n\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
+          '\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
+          '\n⏱️ *2 minutos por lote*. Lance nos últimos 15s: +20s, até +2min.'+
+          '\n👀 Prêmios, lances e líderes são públicos nos grupos e no Web.'+
+          '\n✅ O maior lance é reservado; se superado, é devolvido.'+
+          '\n\n'+status(state)
       }else if(state.phase==='running' && now>=Number(state.ends||0)){
         outgoing=await finishLot(state,c)
         if(state.lot===PACKAGES.length-1){
