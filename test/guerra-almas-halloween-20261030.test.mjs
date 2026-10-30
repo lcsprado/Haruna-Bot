@@ -108,3 +108,23 @@ test('2 contra 2: no máximo dois inscritos em cada facção e 4 jogadores totai
  assert.match(src,/counts.sombras\+'\/'\+GUERRA_TEAM_CAP/)
  assert.match(src,/counts.infernal\+'\/'\+GUERRA_TEAM_CAP/)
 })
+
+test('ambos os grupos usam a MESMA guerra, sem criar dois sorteios',()=>{
+ assert.match(src,/export const GUERRA_GROUPS=Object\.freeze\(\[GUERRA_GROUP,'120363429534634131@g\.us'\]\)/)
+ assert.match(src,/if\(!GUERRA_GROUPS\.includes\(chat\)\)/)
+ assert.match(src,/GUERRA_KEY='guerra_almas_halloween_20261030_v1'/)
+ assert.match(src,/for\(const group of n\.groups\)/)
+ assert.match(src,/socket\.sendMessage\(group,\{text:n\.text\}\)/)
+ assert.match(src,/found\.sentGroups=/)
+ assert.match(src,/found\.sent=GUERRA_GROUPS\.every/)
+ assert.match(src,/\.\.\.\(n\.sent\?\[GUERRA_GROUP\]:\[\]\)/)
+})
+
+test('preserva inscrições e prorroga prazo de forma idempotente quando só grupo 1 foi avisado',()=>{
+ assert.match(src,/if\(!state\.multiGroupSyncDone\)/)
+ assert.match(src,/oldNotice\?\.sent===true/)
+ assert.match(src,/Object\.values\(state\.players\|\|\{\}\)\.some/)
+ assert.match(src,/state\.joinEnd=now\+GUERRA_JOIN_MS/)
+ assert.match(src,/state\.multiGroupSyncDone=true/)
+ assert.match(src,/inscrições prorrogadas para sincronizar dois grupos/)
+})
