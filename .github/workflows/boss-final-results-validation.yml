@@ -1,0 +1,42 @@
+name: Alpha Bot - Boss final ranking e premios
+on:
+  push:
+    branches:
+      - fix/boss-final-results-20261030
+    paths:
+      - 'src/neon/boss-final-results.js'
+      - 'src/neon/index.js'
+      - 'src/neon/games.js'
+      - 'test/boss-final-results-20261030.test.mjs'
+      - '.github/workflows/boss-final-results-validation.yml'
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/boss-final-results.js'
+      - 'src/neon/index.js'
+      - 'src/neon/games.js'
+      - 'test/boss-final-results-20261030.test.mjs'
+      - '.github/workflows/boss-final-results-validation.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Checar sintaxe sem conectar ao banco
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/games.js
+          node --check src/neon/boss-final-results.js
+      - name: Testar resultados e concorrencia sem pagamentos
+        run: |
+          node --test test/boss-final-results-20261030.test.mjs test/boss-deadlock-retry.test.mjs
+      - name: Garantir nenhuma escrita em producao
+        run: |
+          test -z "${DATABASE_URL:-}"
+          echo "Testes isolados; sem conexao com o Aiven."
