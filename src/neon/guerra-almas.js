@@ -158,8 +158,31 @@ export async function tickGuerraAlmas(){
  try{
   await withState(async(c,state)=>{
    if(!state)return
+   const now=Date.now()
+   // Evento foi divulgado apenas no primeiro grupo na versão anterior.
+   // Se ainda não houve ações, reinicia o prazo de inscrição uma única vez,
+   // preservando inscrições feitas; o segundo grupo recebe 5 min completos.
+   if(!state.multiGroupSyncDone){
+    const oldNotice=state.notices?.find(n=>n.id==='start')
+    const oldOnlyFirst=oldNotice?.sent===true&&!oldNotice?.sentGroups?.length
+    const hasActions=Object.values(state.players||{}).some(p=>Object.keys(p.plays||{}).length>0)
+    if(oldOnlyFirst&&!state.final&&state.resolvedRound===0&&!hasActions&&now<state.joinEnd+GUERRA_ROUND_MS){
+     state.start=now
+     state.joinEnd=now+GUERRA_JOIN_MS
+     state.end=now+GUERRA_TOTAL_MS
+     state.phase='joining'
+     state.roundOpened=0
+     oldNotice.text=instructions()+'\n⏰ Inscrições até *'+clock(state.joinEnd)+'*.'
+     notice(state,'sync-two-groups','📢 *GUERRA DAS ALMAS — INSCRIÇÕES PRORROGADAS!*\n'+
+      '💜 Sombras × 🔥 Infernal • *2 vagas em cada facção*, 4 participantes no total.\n'+
+      '⏰ Novo prazo: *'+clock(state.joinEnd)+'*.\n'+
+      '✅ Inscrições anteriores preservadas. Entre com *!guerra sombras* ou *!guerra infernal*.')
+     console.log('[GUERRA ALMAS] inscrições prorrogadas para sincronizar dois grupos',state.joinEnd)
+    }
+    state.multiGroupSyncDone=true
+   }
    if(!state.notices.some(n=>n.id==='start'))notice(state,'start',instructions()+'\n⏰ Inscrições até *'+clock(state.joinEnd)+'*.')
-   await advance(c,state,Date.now())
+   await advance(c,state,now)
   },{create:true})
   await sendPending()
  }catch(err){console.error('[GUERRA ALMAS] tick',err?.message||err)}
