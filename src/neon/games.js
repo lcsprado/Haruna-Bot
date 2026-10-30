@@ -7,7 +7,7 @@ import {heroCombatStats,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveH
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
-import {weeklyGolemPayoutIncrease} from './weekly-golem-payouts.js'
+import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount} from './weekly-golem-payouts.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
@@ -3454,6 +3454,19 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
           drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown'),position<=5?tier:null):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
+          // Top 3 do Superboss: lendárias garantidas por vitória e dano real.
+          // Apenas um UPSERT de inventário por vencedor, sem timers ou consultas extra.
+          // A liquidação inteira permanece na transação existente do Boss.
+          const legendaryBoxes=weekly?weeklyGolemLegendaryBoxCount({
+            weekendKey:s.weekendKey,position,damage:p.damage
+          }):0
+          if(legendaryBoxes>0){
+            await c.query(`INSERT INTO inventories(jid,item_id,quantity)
+              VALUES($1,'caixa_lendaria',$2)
+              ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,
+              [p.jid,legendaryBoxes])
+            drops.push({id:'caixa_lendaria',name:'Caixa Lendária ×'+legendaryBoxes,rarity:'Lendário'})
+          }
         }
         // A partir de 30/10, a insígnia é única POR EDIÇÃO, não um
         // item repetido toda semana. A relíquia é equipável em !reliquias:
