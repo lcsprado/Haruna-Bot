@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {GUERRA_JOIN_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraScoreRound,guerraBuildAwards,GUERRA_ROUNDS,GUERRA_TEAM_CAP,guerraCanJoin} from '../src/neon/guerra-almas-rules.js'
+import {GUERRA_JOIN_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraScoreRound,guerraBuildAwards,GUERRA_ROUNDS,GUERRA_TEAM_CAP,guerraCanJoin,guerraSignupDeadline,guerraSignupOpen} from '../src/neon/guerra-almas-rules.js'
 const read=f=>readFileSync(new URL('../src/neon/'+f,import.meta.url),'utf8')
 const src=read('guerra-almas.js'),index=read('index.js')
 
@@ -127,4 +127,20 @@ test('preserva inscrições e prorroga prazo de forma idempotente quando só gru
  assert.match(src,/state\.joinEnd=now\+GUERRA_JOIN_MS/)
  assert.match(src,/state\.multiGroupSyncDone=true/)
  assert.match(src,/inscrições prorrogadas para sincronizar dois grupos/)
+})
+
+test('inscrições tardias até o fim da segunda rodada, não após a terceira',()=>{
+  const start=1000000
+  assert.equal(guerraSignupDeadline(start),start+15*60*1000)
+  assert.equal(guerraSignupOpen({start,now:start}),true)
+  assert.equal(guerraSignupOpen({start,now:start+5*60*1000}),true)
+  assert.equal(guerraSignupOpen({start,now:start+10*60*1000}),true)
+  assert.equal(guerraSignupOpen({start,now:start+15*60*1000-1}),true)
+  assert.equal(guerraSignupOpen({start,now:start+15*60*1000}),false)
+  assert.equal(guerraSignupOpen({start,now:start+16*60*1000}),false)
+  assert.equal(guerraSignupOpen({start,now:start+6*60*1000,final:true}),false)
+  assert.match(src,/if\(!guerraSignupOpen\(\{start:state\.start,now,final:Boolean\(state\.final\)\}\)\)return/)
+  assert.match(src,/Entrada tardia: você começa com \*0 pontos\*/)
+  assert.match(src,/late-join-round2/)
+  assert.match(src,/GUERRA_GROUPS\.every/)
 })
