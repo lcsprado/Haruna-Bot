@@ -10,6 +10,7 @@ on:
       - 'src/neon/index.js'
       - 'src/neon/web-api.js'
       - 'test/auction-eclipse-20261030.test.mjs'
+      - 'test/auction-reliquias-20261029.test.mjs'
       - '.github/workflows/leilao-eclipse-20261030.yml'
   push:
     branches: [feat/leilao-eclipse-20261030-1400]
@@ -33,4 +34,4 @@ jobs:
           node --check src/neon/web-api.js
           node --check test/auction-eclipse-20261030.test.mjs
       - name: Verify auction
-        run: node --test test/auction-eclipse-20261030.test.mjs
+        run: node --test test/auction-eclipse-20261030.test.mjs test/auction-reliquias-20261029.test.mjs
