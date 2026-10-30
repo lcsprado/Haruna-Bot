@@ -1,0 +1,30 @@
+name: Alpha Box - Legendary gear expansion
+
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/legendary-box-gear.js'
+      - 'test/legendary-box-gear-20261030.test.mjs'
+      - '.github/workflows/legendary-box-gear-20261030.yml'
+  push:
+    branches: [feat/caixa-lendaria-12-gears-20261030]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax validation
+        run: |
+          node --check src/neon/legendary-box-gear.js
+          node --check src/neon/db.js
+          node --check test/legendary-box-gear-20261030.test.mjs
+      - name: Legendary gear and weighted loot tests
+        run: node --test test/legendary-box-gear-20261030.test.mjs
