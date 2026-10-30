@@ -1,0 +1,47 @@
+name: Alpha Boss - auditoria somente leitura 30-10
+on:
+  push:
+    branches: [audit/boss-payout-live-20261030]
+    paths: ['.github/workflows/audit-boss-payout-20261030.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: postgres:18
+    env:
+      AIVEN_PROD: ${{ secrets.ALPHA_AIVEN_PROD_V2_URL }}
+      AIVEN_OLD: ${{ secrets.ALPHA_AIVEN_URI }}
+      PGCONNECT_TIMEOUT: '15'
+      PGSSLMODE: require
+      PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=30000'
+    steps:
+      - name: Inspecionar resultado e pagamentos sem modificar nada
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${AIVEN_PROD:-}" ]]; then
+            case "${AIVEN_OLD:-}" in
+              *@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb|*@alphabot-lcsh-3393.b.aivencloud.com:26343/defaultdb\?*)
+                AIVEN_PROD="${AIVEN_OLD/\/defaultdb/\/alpha_prod_v2}" ;;
+              *) echo 'Credencial de producao Aiven indisponivel'; exit 1 ;;
+            esac
+          fi
+          case "$AIVEN_PROD" in
+            postgres://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2|postgres://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2\?*|postgresql://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2|postgresql://*@alphabot-lcsh-3393.b.aivencloud.com:26343/alpha_prod_v2\?*) ;;
+            *) echo 'Banco nao permitido'; exit 1 ;;
+          esac
+          DB_NAME="$(psql -X -A -t -v ON_ERROR_STOP=1 -d "$AIVEN_PROD" -c 'SELECT current_database()')"
+          [[ "$DB_NAME" == 'alpha_prod_v2' ]] || { echo 'Base inesperada'; exit 1; }
+          echo 'BANCO_CONFIRMED alpha_prod_v2 READ_ONLY'
+          psql -X -A -F ' | ' -P pager=off -v ON_ERROR_STOP=1 -d "$AIVEN_PROD" <<'SQL'
+          SELECT 'TABELA' AS categoria, tablename FROM pg_tables WHERE schemaname='public' AND (tablename ~ '(boss|trevo|transaction|wallet|inventor)' ) ORDER BY tablename;
+          SELECT 'COLUNAS_TRANSACOES' AS categoria, column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='transactions' ORDER BY ordinal_position;
+          SELECT 'COLUNAS_CARTEIRAS' AS categoria, column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='wallets' ORDER BY ordinal_position;
+          SELECT 'COLUNAS_SESSOES' AS categoria, column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='boss_auto_sessions' ORDER BY ordinal_position;
+          SELECT chat_jid,game_type, state->>'mode' AS mode,state->>'name' AS boss, state->>'weekendKey' AS edition, state->>'hp' AS hp,state->>'maxHp' AS total_hp, state->>'weeklyCompleted' AS completed,state->>'completedAt' AS completed_at, state ? 'result' AS has_result,jsonb_array_length(CASE WHEN jsonb_typeof(state->'result'->'rewards')='array' THEN state->'result'->'rewards' ELSE '[]'::jsonb END) AS rewards_count, jsonb_object_length(CASE WHEN jsonb_typeof(state->'participants')='object' THEN state->'participants' ELSE '{}'::jsonb END) AS participants_count FROM (SELECT chat_jid,game_type,state FROM trevo_games WHERE chat_jid IN ('__alpha_global_weekly_boss__','__alpha_global_boss_event__')) t;
+          SELECT key, left(value::text,240) AS status FROM trevo_settings WHERE key LIKE 'boss_final_result:%' OR key LIKE 'boss_progress_30m:semanal-2026-10-30:%' ORDER BY key DESC LIMIT 20;
+          SQL
+          echo 'AUDITORIA_ENCERRADA_SEM_ESCRITA'
