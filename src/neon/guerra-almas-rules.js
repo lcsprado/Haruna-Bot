@@ -2,6 +2,7 @@
 export const GUERRA_TEAMS=Object.freeze({sombras:'💜 Legião das Sombras',infernal:'🔥 Ordem Infernal'})
 export const GUERRA_ACTIONS=Object.freeze({atacar:'⚔️ Atacar',defender:'🛡️ Defender',saquear:'💰 Saquear'})
 export const GUERRA_ROUND_MS=5*60*1000
+export const GUERRA_SECRET_ROUND_MS=2*60*1000
 export const GUERRA_ROUNDS=8
 export const GUERRA_JOIN_MS=5*60*1000
 export const GUERRA_TOTAL_MS=GUERRA_JOIN_MS+GUERRA_ROUNDS*GUERRA_ROUND_MS
@@ -14,12 +15,12 @@ export function guerraCanJoin(players,team){
 // Inscrição segue aberta durante as duas primeiras rodadas,
 // sem estender a duração das partidas nem recuperar ações perdidas.
 export const GUERRA_LATE_JOIN_ROUNDS=2
-export function guerraSignupDeadline(start){
- return Number(start)+GUERRA_JOIN_MS+GUERRA_LATE_JOIN_ROUNDS*GUERRA_ROUND_MS
+export function guerraSignupDeadline(start,{joinMs=GUERRA_JOIN_MS,roundMs=GUERRA_ROUND_MS}={}){
+ return Number(start)+joinMs+GUERRA_LATE_JOIN_ROUNDS*roundMs
 }
-export function guerraSignupOpen({start,now,final=false}={}){
+export function guerraSignupOpen({start,now,final=false,joinMs=GUERRA_JOIN_MS,roundMs=GUERRA_ROUND_MS}={}){
  return !final&&Number.isFinite(Number(start))&&Number.isFinite(Number(now))&&
-  Number(now)>=Number(start)&&Number(now)<guerraSignupDeadline(start)
+  Number(now)>=Number(start)&&Number(now)<guerraSignupDeadline(start,{joinMs,roundMs})
 }
 export const GUERRA_SOULS=Object.freeze({winner:15,loser:8})
 export const GUERRA_XP_PER_ACTION=80
@@ -32,12 +33,12 @@ export const GUERRA_OBJECTIVES=Object.freeze([
 ])
 export function guerraObjective(round){return GUERRA_OBJECTIVES[(Math.max(1,Number(round)||1)-1)%GUERRA_OBJECTIVES.length]}
 export const GUERRA_OBJECTIVE_POINTS=4
-export function guerraRoundAt(start,now){
+export function guerraRoundAt(start,now,{joinMs=GUERRA_JOIN_MS,roundMs=GUERRA_ROUND_MS}={}){
  const elapsed=Number(now)-Number(start)
- return elapsed<GUERRA_JOIN_MS?0:Math.min(GUERRA_ROUNDS,Math.floor((elapsed-GUERRA_JOIN_MS)/GUERRA_ROUND_MS)+1)
+ return elapsed<joinMs?0:Math.min(GUERRA_ROUNDS,Math.floor((elapsed-joinMs)/roundMs)+1)
 }
-export function guerraRoundEnd(start,round){
- return Number(start)+GUERRA_JOIN_MS+Number(round)*GUERRA_ROUND_MS
+export function guerraRoundEnd(start,round,{joinMs=GUERRA_JOIN_MS,roundMs=GUERRA_ROUND_MS}={}){
+ return Number(start)+joinMs+Number(round)*roundMs
 }
 const other=team=>team==='sombras'?'infernal':'sombras'
 export function guerraScoreRound(players,round,{objectiveBonus=false}={}){
