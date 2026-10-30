@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {GUERRA_JOIN_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraScoreRound,guerraBuildAwards,GUERRA_ROUNDS} from '../src/neon/guerra-almas-rules.js'
+import {GUERRA_JOIN_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraScoreRound,guerraBuildAwards,GUERRA_ROUNDS,GUERRA_TEAM_CAP,guerraCanJoin} from '../src/neon/guerra-almas-rules.js'
 const read=f=>readFileSync(new URL('../src/neon/'+f,import.meta.url),'utf8')
 const src=read('guerra-almas.js'),index=read('index.js')
 
@@ -83,4 +83,28 @@ test('recompensas transacionais e não duplicadas em reinícios',()=>{
   assert.match(src,/ROLLBACK/)
   assert.match(index,/startGuerraAlmasScheduler\(sock,\{isConnected:/)
   assert.match(index,/handleGuerraAlmasCommand\(\{cmd,args,sender/)
+})
+
+
+test('2 contra 2: no máximo dois inscritos em cada facção e 4 jogadores totais',()=>{
+ assert.equal(GUERRA_TEAM_CAP,2)
+ let players={}
+ assert.equal(guerraCanJoin(players,'sombras'),true)
+ players.a={team:'sombras'}
+ assert.equal(guerraCanJoin(players,'sombras'),false)
+ assert.equal(guerraCanJoin(players,'infernal'),true)
+ players.b={team:'infernal'}
+ assert.equal(guerraCanJoin(players,'sombras'),true)
+ players.c={team:'sombras'}
+ assert.equal(guerraCanJoin(players,'sombras'),false)
+ assert.equal(guerraCanJoin(players,'infernal'),true)
+ players.d={team:'infernal'}
+ assert.equal(guerraCanJoin(players,'sombras'),false)
+ assert.equal(guerraCanJoin(players,'infernal'),false)
+ assert.equal(guerraCanJoin(players,'other'),false)
+ assert.match(src,/if\(count>=GUERRA_TEAM_CAP\)return/)
+ assert.match(src,/if\(!guerraCanJoin\(state.players,team\)\)return/)
+ assert.match(src,/Apenas 2 jogadores por facção/)
+ assert.match(src,/counts.sombras\+'\/'\+GUERRA_TEAM_CAP/)
+ assert.match(src,/counts.infernal\+'\/'\+GUERRA_TEAM_CAP/)
 })
