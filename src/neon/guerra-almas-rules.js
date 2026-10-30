@@ -24,6 +24,14 @@ export function guerraSignupOpen({start,now,final=false}={}){
 export const GUERRA_SOULS=Object.freeze({winner:15,loser:8})
 export const GUERRA_XP_PER_ACTION=80
 const COUNTERS=Object.freeze({atacar:'saquear',defender:'atacar',saquear:'defender'})
+// A missão do turno é pública. Jogadas são privadas; bônus de objetivo é menor que um contra-ataque.
+export const GUERRA_OBJECTIVES=Object.freeze([
+ {action:'saquear',name:'💰 Cofre Amaldiçoado'},
+ {action:'defender',name:'🛡️ Fortaleza das Sombras'},
+ {action:'atacar',name:'⚔️ Invasão do Altar'}
+])
+export function guerraObjective(round){return GUERRA_OBJECTIVES[(Math.max(1,Number(round)||1)-1)%GUERRA_OBJECTIVES.length]}
+export const GUERRA_OBJECTIVE_POINTS=4
 export function guerraRoundAt(start,now){
  const elapsed=Number(now)-Number(start)
  return elapsed<GUERRA_JOIN_MS?0:Math.min(GUERRA_ROUNDS,Math.floor((elapsed-GUERRA_JOIN_MS)/GUERRA_ROUND_MS)+1)
@@ -32,7 +40,7 @@ export function guerraRoundEnd(start,round){
  return Number(start)+GUERRA_JOIN_MS+Number(round)*GUERRA_ROUND_MS
 }
 const other=team=>team==='sombras'?'infernal':'sombras'
-export function guerraScoreRound(players,round){
+export function guerraScoreRound(players,round,{objectiveBonus=false}={}){
  const participants=Object.entries(players||{}).filter(([,p])=>GUERRA_TEAMS[p.team]&&GUERRA_ACTIONS[p.plays?.[String(round)]])
  const majority={}
  for(const team of Object.keys(GUERRA_TEAMS)){
@@ -45,11 +53,12 @@ export function guerraScoreRound(players,round){
  for(const [jid,p] of participants){
   const action=p.plays[String(round)]
   const countered=majority[other(p.team)]===COUNTERS[action]
-  const points=10+(countered?8:0)
+  const objective=Boolean(objectiveBonus)&&action===guerraObjective(round).action
+  const points=10+(countered?8:0)+(objective?GUERRA_OBJECTIVE_POINTS:0)
   scores[p.team]+=points
-  awards[jid]={team:p.team,action,points,countered}
+  awards[jid]={team:p.team,action,points,countered,objective}
  }
- return {round,scores,awards,majority,totalActions:participants.length}
+ return {round,scores,awards,majority,totalActions:participants.length,objective:objectiveBonus?guerraObjective(round):null}
 }
 export function guerraBuildAwards(players,results){
  const stats=Object.fromEntries(Object.entries(players||{}).map(([jid,p])=>[jid,{jid,name:p.name,team:p.team,actions:0,points:0}]))
