@@ -101,7 +101,7 @@ import {
   parseOwnerEventBrazilDate,ownerEventsStatusText,announceOwnerEventTransitions,ownerEventNextTransitions
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
-import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas.js'
+import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
