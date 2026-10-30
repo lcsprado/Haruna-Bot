@@ -16,7 +16,7 @@ import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-
 import {checkPixLimits} from './pix-limits.js'
 import {careerGrossFromLevelCap} from './career-pay.js'
 import {PLAYER_POTIONS,playerPotionHealAmount} from './player-potions.js'
-import {ascensionPlayerMultiplier} from './ascension-week-20261102.js'
+import {ascensionAwardedPlayerXp} from './ascension-week-20261102.js'
 const { Pool, Client } = pg
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
 // For Neon, keep the existing connection settings unchanged.
@@ -2086,11 +2086,14 @@ if(!Number.isSafeInteger(numericGain) || numericGain<0) throw new Error('EXP inv
 const r = await client.query('SELECT level,exp FROM users WHERE jid=$1 FOR UPDATE',[jid])
 if (!r.rows[0]) return { level:1, exp:0, levels:0, baseGain:numericGain, awardedGain:numericGain, eventMultiplier:1 }
 const startingLevel=Math.min(MAX_LEVEL,Math.max(1,Number(r.rows[0].level)||1))
-const eventMultiplier=numericGain>0
-?Math.max(await getGroupProgressionEventMultiplier(client,jid,startingLevel,options),
-  options.ignoreGroupProgressionEvent?1:ascensionPlayerMultiplier(startingLevel))
+const groupMultiplier=numericGain>0
+?await getGroupProgressionEventMultiplier(client,jid,startingLevel,options)
 :1
-const eventGain=Math.max(0,Math.round(numericGain*eventMultiplier))
+const ascensionAward=ascensionAwardedPlayerXp({level:startingLevel,
+  currentExp:Number(r.rows[0].exp)||0,baseGain:numericGain,
+  groupMultiplier,disabled:Boolean(options.ignoreGroupProgressionEvent)})
+const eventMultiplier=ascensionAward.multiplier
+const eventGain=ascensionAward.amount
 let bonusXp=0
 let boostPercent=0
 if(eventGain>0 && !options.ignoreXpBoost && startingLevel<MAX_LEVEL){
