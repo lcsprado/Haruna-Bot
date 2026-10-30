@@ -505,7 +505,7 @@ await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\
       }
       if(sessionEndsAt&&Date.now()>=sessionEndsAt){
         completed=true
-        await reply('⏰ *BOSS ENCERRADO PELO PRAZO!*\\n\\nSua sessão automática terminou normalmente. O ranking com os prêmios só é publicado quando houver uma vitória e uma liquidação confirmada.')
+        await reply('⏰ *BOSS ENCERRADO PELO PRAZO!*\n\nSua sessão automática terminou normalmente. O ranking com os prêmios só é publicado quando houver uma vitória e uma liquidação confirmada.')
         return
       }
     }catch(readErr){
