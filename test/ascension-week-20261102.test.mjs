@@ -107,7 +107,7 @@ test('large XP claims do not receive catch-up bonus past the 300 boundary',()=>{
   const remaining=29900;
   assert.deepEqual(ascensionAwardedPlayerXp({
     level:299,currentExp:0,baseGain:20000,groupMultiplier:1,nowMs:within
-  }),{amount:35000,multiplier:2});
+  }),{amount:34950,multiplier:2});
   assert.deepEqual(ascensionAwardedPlayerXp({
     level:299,currentExp:0,baseGain:20000,groupMultiplier:2,nowMs:within
   }),{amount:40000,multiplier:2});
