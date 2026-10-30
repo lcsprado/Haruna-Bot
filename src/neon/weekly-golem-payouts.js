@@ -18,7 +18,7 @@ export function weeklyGolemPayoutIncrease({weekendKey,position,damage}={}){
   const key=String(weekendKey||'');
   const realDamage=Number(damage);
   const rank=Number(position);
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(key)||key<'2026-10-30'||
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(key)||key<'2026-10-30'||
     !Number.isFinite(realDamage)||realDamage<10_000||
     !Number.isInteger(rank)||rank<1)return NONE;
   if(rank<=5)return TOP_FIVE_BONUSES[rank-1];
