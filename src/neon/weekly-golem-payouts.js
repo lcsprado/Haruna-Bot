@@ -25,3 +25,15 @@ export function weeklyGolemPayoutIncrease({weekendKey,position,damage}={}){
   const band=CONTRIBUTOR_BONUSES.find(tier=>realDamage>=tier.threshold);
   return band?{cash:band.cash,xp:band.xp}:NONE;
 }
+
+/** Recompensa fixa do Top 3, só em edições novas e com dano válido.
+ * O ranking é definido pela liquidação transacional já existente do Boss. */
+export function weeklyGolemLegendaryBoxCount({weekendKey,position,damage}={}){
+  const key=String(weekendKey||'');
+  const rank=Number(position);
+  const realDamage=Number(damage);
+  if(!/^\d{4}-\\d{2}-\\d{2}$/.test(key)||key<'2026-10-30'||
+    !Number.isInteger(rank)||rank<1||rank>3||
+    !Number.isFinite(realDamage)||realDamage<10_000)return 0;
+  return [3,2,1][rank-1];
+}
