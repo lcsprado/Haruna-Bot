@@ -121,7 +121,8 @@ export const LEGENDARY_BOX_GEAR=Object.freeze([
     "crit": 0.02
   }
 ].map(item=>Object.freeze({...item,description:'Lendário superior exclusivo da Caixa Lendária.'})))
-export const LEGENDARY_BOX_WEIGHTS=Object.freeze({existing:10,new:8})
+// Probabilidade idêntica por equipamento: 5 antigos + 12 novos = 17 opções.
+export const LEGENDARY_BOX_WEIGHTS=Object.freeze({existing:1,new:1})
 
 export function pickLegendaryBoxGear(existingIds,random=Math.random){
   if(!Array.isArray(existingIds)||!existingIds.length)throw new Error('Pool lendário original ausente')
