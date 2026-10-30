@@ -1,0 +1,29 @@
+name: Guerra das Almas - Halloween 30 Oct
+on:
+  push:
+    branches: [feat/guerra-almas-halloween-20261030]
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/guerra-almas.js'
+      - 'src/neon/guerra-almas-rules.js'
+      - 'src/neon/index.js'
+      - 'test/guerra-almas-halloween-20261030.test.mjs'
+      - '.github/workflows/guerra-almas-halloween-20261030.yml'
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify syntax
+        run: |
+          node --check src/neon/guerra-almas.js
+          node --check src/neon/guerra-almas-rules.js
+          node --check src/neon/index.js
+      - name: Run event regression
+        run: node --test test/guerra-almas-halloween-20261030.test.mjs
