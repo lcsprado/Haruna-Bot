@@ -66,9 +66,9 @@ test('sem confronto válido, sem farm de caixas lendárias',()=>{
 test('1 ação por pessoa por rodada e equipe imutável durante a disputa',()=>{
   assert.match(src,/if\(prev\)return '✅ Você já entrou/)
   assert.match(src,/if\(p\.plays\[String\(round\)\]\)return/)
-  assert.match(src,/if\(count>rival\)return/)
+  assert.match(src,/if\(count>=GUERRA_TEAM_CAP\)return/)
   assert.match(src,/if\(!p\)return '⚠️ Você não está inscrito/)
-  assert.match(src,/if\(chat!==GUERRA_GROUP\)/)
+  assert.match(src,/if\(!GUERRA_GROUPS\.includes\(chat\)\)/)
   assert.match(src,/const LAST_START=Date\.parse\('2026-10-30T22:00:00-03:00'\)/)
 })
 
