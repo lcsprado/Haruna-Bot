@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ASCENSION_WEEK, ascensionWeekActive, ascensionPlayerMultiplier,
+  ASCENSION_WEEK, ascensionWeekActive, ascensionPlayerMultiplier, ascensionAwardedPlayerXp,
   ascensionHeroLevelDailyCap, ascensionVeteranTrial,
   ascensionTerritoryOpen, ascensionTerritoryPhase, ascensionTerritoryPoints,
   ascensionTerritoryTally, recordAscensionVeteranActivity,
@@ -101,4 +101,23 @@ test('veteran status shows durable trial counters and finished condition',async(
   const state=await getAscensionVeteranProgress(mock,'v');
   assert.equal(state.complete,true);
   assert.equal(state.boss.count,1);
+});
+
+test('large XP claims do not receive catch-up bonus past the 300 boundary',()=>{
+  const remaining=29900;
+  assert.deepEqual(ascensionAwardedPlayerXp({
+    level:299,currentExp:0,baseGain:20000,groupMultiplier:1,nowMs:within
+  }),{amount:35000,multiplier:2});
+  assert.deepEqual(ascensionAwardedPlayerXp({
+    level:299,currentExp:0,baseGain:20000,groupMultiplier:2,nowMs:within
+  }),{amount:40000,multiplier:2});
+  assert.deepEqual(ascensionAwardedPlayerXp({
+    level:299,currentExp:0,baseGain:20000,groupMultiplier:1,nowMs:before
+  }),{amount:20000,multiplier:1});
+  assert.equal(ascensionAwardedPlayerXp({
+    level:299,currentExp:remaining-100,baseGain:1000,nowMs:within
+  }).amount,1050);
+  assert.deepEqual(ascensionAwardedPlayerXp({
+    level:100,currentExp:0,baseGain:1000,disabled:true,nowMs:within
+  }),{amount:1000,multiplier:1});
 });
