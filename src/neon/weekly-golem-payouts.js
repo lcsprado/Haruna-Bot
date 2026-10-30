@@ -32,7 +32,7 @@ export function weeklyGolemLegendaryBoxCount({weekendKey,position,damage}={}){
   const key=String(weekendKey||'');
   const rank=Number(position);
   const realDamage=Number(damage);
-  if(!/^\d{4}-\\d{2}-\\d{2}$/.test(key)||key<'2026-10-30'||
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(key)||key<'2026-10-30'||
     !Number.isInteger(rank)||rank<1||rank>3||
     !Number.isFinite(realDamage)||realDamage<10_000)return 0;
   return [3,2,1][rank-1];
