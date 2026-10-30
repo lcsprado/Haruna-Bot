@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {GUERRA_JOIN_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraScoreRound,guerraBuildAwards,GUERRA_ROUNDS} from '../src/neon/guerra-almas-rules.js'
+import {GUERRA_JOIN_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraScoreRound,guerraBuildAwards,GUERRA_ROUNDS,GUERRA_TEAM_CAP,guerraCanJoin} from '../src/neon/guerra-almas-rules.js'
 const read=f=>readFileSync(new URL('../src/neon/'+f,import.meta.url),'utf8')
 const src=read('guerra-almas.js'),index=read('index.js')
 
@@ -66,9 +66,9 @@ test('sem confronto válido, sem farm de caixas lendárias',()=>{
 test('1 ação por pessoa por rodada e equipe imutável durante a disputa',()=>{
   assert.match(src,/if\(prev\)return '✅ Você já entrou/)
   assert.match(src,/if\(p\.plays\[String\(round\)\]\)return/)
-  assert.match(src,/if\(count>rival\)return/)
+  assert.match(src,/if\(count>=GUERRA_TEAM_CAP\)return/)
   assert.match(src,/if\(!p\)return '⚠️ Você não está inscrito/)
-  assert.match(src,/if\(chat!==GUERRA_GROUP\)/)
+  assert.match(src,/if\(!GUERRA_GROUPS\.includes\(chat\)\)/)
   assert.match(src,/const LAST_START=Date\.parse\('2026-10-30T22:00:00-03:00'\)/)
 })
 
@@ -83,4 +83,48 @@ test('recompensas transacionais e não duplicadas em reinícios',()=>{
   assert.match(src,/ROLLBACK/)
   assert.match(index,/startGuerraAlmasScheduler\(sock,\{isConnected:/)
   assert.match(index,/handleGuerraAlmasCommand\(\{cmd,args,sender/)
+})
+
+
+test('2 contra 2: no máximo dois inscritos em cada facção e 4 jogadores totais',()=>{
+ assert.equal(GUERRA_TEAM_CAP,2)
+ let players={}
+ assert.equal(guerraCanJoin(players,'sombras'),true)
+ players.a={team:'sombras'}
+ assert.equal(guerraCanJoin(players,'sombras'),false)
+ assert.equal(guerraCanJoin(players,'infernal'),true)
+ players.b={team:'infernal'}
+ assert.equal(guerraCanJoin(players,'sombras'),true)
+ players.c={team:'sombras'}
+ assert.equal(guerraCanJoin(players,'sombras'),false)
+ assert.equal(guerraCanJoin(players,'infernal'),true)
+ players.d={team:'infernal'}
+ assert.equal(guerraCanJoin(players,'sombras'),false)
+ assert.equal(guerraCanJoin(players,'infernal'),false)
+ assert.equal(guerraCanJoin(players,'other'),false)
+ assert.match(src,/if\(count>=GUERRA_TEAM_CAP\)return/)
+ assert.match(src,/if\(!guerraCanJoin\(state.players,team\)\)return/)
+ assert.match(src,/Apenas 2 jogadores por facção/)
+ assert.match(src,/counts.sombras\+'\/'\+GUERRA_TEAM_CAP/)
+ assert.match(src,/counts.infernal\+'\/'\+GUERRA_TEAM_CAP/)
+})
+
+test('ambos os grupos usam a MESMA guerra, sem criar dois sorteios',()=>{
+ assert.match(src,/export const GUERRA_GROUPS=Object\.freeze\(\[GUERRA_GROUP,'120363429534634131@g\.us'\]\)/)
+ assert.match(src,/if\(!GUERRA_GROUPS\.includes\(chat\)\)/)
+ assert.match(src,/GUERRA_KEY='guerra_almas_halloween_20261030_v1'/)
+ assert.match(src,/for\(const group of n\.groups\)/)
+ assert.match(src,/socket\.sendMessage\(group,\{text:n\.text\}\)/)
+ assert.match(src,/found\.sentGroups=/)
+ assert.match(src,/found\.sent=GUERRA_GROUPS\.every/)
+ assert.match(src,/\.\.\.\(n\.sent\?\[GUERRA_GROUP\]:\[\]\)/)
+})
+
+test('preserva inscrições e prorroga prazo de forma idempotente quando só grupo 1 foi avisado',()=>{
+ assert.match(src,/if\(!state\.multiGroupSyncDone\)/)
+ assert.match(src,/oldNotice\?\.sent===true/)
+ assert.match(src,/Object\.values\(state\.players\|\|\{\}\)\.some/)
+ assert.match(src,/state\.joinEnd=now\+GUERRA_JOIN_MS/)
+ assert.match(src,/state\.multiGroupSyncDone=true/)
+ assert.match(src,/inscrições prorrogadas para sincronizar dois grupos/)
 })

@@ -3,10 +3,11 @@
 // Sem usar níveis/equipamentos; resultados e premiação são transacionais e retomáveis.
 import {db,grantExpInTransaction} from './db.js'
 import {HALLOWEEN_SOUL_ID} from './halloween-rules.js'
-import {GUERRA_TEAMS,GUERRA_ACTIONS,GUERRA_ROUNDS,GUERRA_JOIN_MS,GUERRA_ROUND_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraRoundEnd,guerraScoreRound,guerraBuildAwards} from './guerra-almas-rules.js'
+import {GUERRA_TEAMS,GUERRA_ACTIONS,GUERRA_ROUNDS,GUERRA_JOIN_MS,GUERRA_ROUND_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraRoundEnd,guerraScoreRound,guerraBuildAwards,GUERRA_TEAM_CAP,guerraCanJoin} from './guerra-almas-rules.js'
 
 export const GUERRA_KEY='guerra_almas_halloween_20261030_v1'
 export const GUERRA_GROUP='120363410230588690@g.us'
+export const GUERRA_GROUPS=Object.freeze([GUERRA_GROUP,'120363429534634131@g.us'])
 const LAST_START=Date.parse('2026-10-30T22:00:00-03:00')
 const fmt=n=>Number(n).toLocaleString('pt-BR')
 const clock=ms=>new Date(ms).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
@@ -43,7 +44,7 @@ function instructions(){
  return '🎃⚔️ *GUERRA DAS ALMAS — HALLOWEEN*\n'+
  '💜 *Legião das Sombras* vs 🔥 *Ordem Infernal*\n'+
  '⏱️ 5 minutos para entrar + 8 rodadas de 5 minutos.\n'+
- '👥 *!guerra sombras* ou *!guerra infernal* para escolher sua facção. Equipes equilibradas.\n'+
+ '👥 *!guerra sombras* ou *!guerra infernal* para escolher sua facção. *Apenas 2 jogadores por facção* (4 vagas no total), equipes equilibradas.\n'+
  '⚔️ Cada rodada: *!guerra atacar*, *!guerra defender* ou *!guerra saquear*. Uma ação por pessoa e rodada.\n'+
  '🧠 Atacar vence Saquear • Defender vence Atacar • Saquear vence Defender. A maior escolha da facção adversária determina o contra-ataque (+8 pontos); todos os golpes dão pelo menos 10.\n'+
  '🏆 Equipe vencedora: *15 Almas* por participante ativo. Equipe derrotada: *8 Almas*.\n'+
@@ -63,8 +64,8 @@ function status(state,now=Date.now()){
  const time=state.final?'Encerrada':now<state.joinEnd?'Inscrições até '+clock(state.joinEnd):'Rodada '+round+'/'+GUERRA_ROUNDS+' • até '+clock(guerraRoundEnd(state.start,round))
  return '🎃⚔️ *GUERRA DAS ALMAS*\n'+
  '⏰ '+time+'\n'+
- '💜 Sombras: *'+fmt(totals.sombras)+' pts* ('+counts.sombras+' jogadores)\n'+
- '🔥 Infernal: *'+fmt(totals.infernal)+' pts* ('+counts.infernal+' jogadores)\n'+
+ '💜 Sombras: *'+fmt(totals.sombras)+' pts* ('+counts.sombras+'/'+GUERRA_TEAM_CAP+' vagas)\n'+
+ '🔥 Infernal: *'+fmt(totals.infernal)+' pts* ('+counts.infernal+'/'+GUERRA_TEAM_CAP+' vagas)\n'+
  (state.final?'🏆 '+(state.final.winner==='empate'?'Empate':state.final.winner?GUERRA_TEAMS[state.final.winner]:'Disputa sem dois times ativos')+'\n':'')+
  '📋 !guerra regras • !guerra atacar/defender/saquear'
 }
@@ -122,19 +123,32 @@ async function advance(c,state,now){
  }
  if(now>=state.end&&!state.final)await settle(c,state)
 }
+// Entrega por grupo: respeita confirmação antiga do grupo 1 sem impedir envio ao grupo 2.
+// A mesma edição e o mesmo estado do prêmio valem para todos os dois grupos.
 async function sendPending(){
  if(!socket)return
- const pending=await withState(async(_c,state)=>(state?.notices||[]).filter(n=>!n.sent).slice(0,4))
+ const pending=await withState(async(_c,state)=>(state?.notices||[])
+  .filter(n=>GUERRA_GROUPS.some(group=>!new Set([
+   ...(n.sentGroups||[]),...(n.sent?[GUERRA_GROUP]:[])
+  ]).has(group))).slice(0,5).map(n=>({
+   id:n.id,text:n.text,groups:GUERRA_GROUPS.filter(group=>!new Set([
+    ...(n.sentGroups||[]),...(n.sent?[GUERRA_GROUP]:[])
+   ]).has(group))
+  })))
  for(const n of pending){
-  try{
-   await socket.sendMessage(GUERRA_GROUP,{text:n.text})
-   await withState(async(_c,state)=>{
-    const found=state?.notices?.find(x=>x.id===n.id)
-    if(found)found.sent=true
-   })
-  }catch(err){
-   console.warn('[GUERRA ALMAS] envio pendente',n.id,err?.message||err)
-   break
+  for(const group of n.groups){
+   try{
+    await socket.sendMessage(group,{text:n.text})
+    await withState(async(_c,state)=>{
+     const found=state?.notices?.find(x=>x.id===n.id)
+     if(!found)return
+     found.sentGroups=[...new Set([...(found.sent?[GUERRA_GROUP]:[]),...(found.sentGroups||[]),group])]
+     found.sent=GUERRA_GROUPS.every(id=>found.sentGroups.includes(id))
+    })
+    console.log('[GUERRA ALMAS] aviso enviado',JSON.stringify({notice:n.id,group}))
+   }catch(err){
+    console.warn('[GUERRA ALMAS] envio pendente',n.id,group,err?.message||err)
+   }
   }
  }
 }
@@ -144,8 +158,31 @@ export async function tickGuerraAlmas(){
  try{
   await withState(async(c,state)=>{
    if(!state)return
+   const now=Date.now()
+   // Evento foi divulgado apenas no primeiro grupo na versão anterior.
+   // Se ainda não houve ações, reinicia o prazo de inscrição uma única vez,
+   // preservando inscrições feitas; o segundo grupo recebe 5 min completos.
+   if(!state.multiGroupSyncDone){
+    const oldNotice=state.notices?.find(n=>n.id==='start')
+    const oldOnlyFirst=oldNotice?.sent===true&&!oldNotice?.sentGroups?.length
+    const hasActions=Object.values(state.players||{}).some(p=>Object.keys(p.plays||{}).length>0)
+    if(oldOnlyFirst&&!state.final&&state.resolvedRound===0&&!hasActions&&now<state.joinEnd+GUERRA_ROUND_MS){
+     state.start=now
+     state.joinEnd=now+GUERRA_JOIN_MS
+     state.end=now+GUERRA_TOTAL_MS
+     state.phase='joining'
+     state.roundOpened=0
+     oldNotice.text=instructions()+'\n⏰ Inscrições até *'+clock(state.joinEnd)+'*.'
+     notice(state,'sync-two-groups','📢 *GUERRA DAS ALMAS — INSCRIÇÕES PRORROGADAS!*\n'+
+      '💜 Sombras × 🔥 Infernal • *2 vagas em cada facção*, 4 participantes no total.\n'+
+      '⏰ Novo prazo: *'+clock(state.joinEnd)+'*.\n'+
+      '✅ Inscrições anteriores preservadas. Entre com *!guerra sombras* ou *!guerra infernal*.')
+     console.log('[GUERRA ALMAS] inscrições prorrogadas para sincronizar dois grupos',state.joinEnd)
+    }
+    state.multiGroupSyncDone=true
+   }
    if(!state.notices.some(n=>n.id==='start'))notice(state,'start',instructions()+'\n⏰ Inscrições até *'+clock(state.joinEnd)+'*.')
-   await advance(c,state,Date.now())
+   await advance(c,state,now)
   },{create:true})
   await sendPending()
  }catch(err){console.error('[GUERRA ALMAS] tick',err?.message||err)}
@@ -157,11 +194,11 @@ export function startGuerraAlmasScheduler(sock,{isConnected=()=>true}={}){
  timer=setInterval(()=>{if(isConnected())void tickGuerraAlmas()},8000)
  timer.unref?.()
  if(isConnected())void tickGuerraAlmas()
- console.log('[GUERRA ALMAS] scheduler interativo ativo, grupo principal')
+ console.log('[GUERRA ALMAS] scheduler interativo ativo, dois grupos, uma disputa global')
 }
 export async function handleGuerraAlmasCommand({cmd,args=[],sender,name,chat,reply}){
  if(!['guerra','guerraalmas'].includes(cmd))return false
- if(chat!==GUERRA_GROUP){await reply('🎃 Guerra das Almas acontece apenas no grupo principal do Alpha Bot.');return true}
+ if(!GUERRA_GROUPS.includes(chat)){await reply('🎃 Guerra das Almas acontece apenas nos dois grupos oficiais do Alpha Bot.');return true}
  const chosen=String(args[0]||'status').toLowerCase()
  const sub=chosen==='entrar'?String(args[1]||'').toLowerCase():chosen
  if(sub==='regras'||sub==='ajuda'){await reply(instructions());return true}
@@ -177,7 +214,8 @@ export async function handleGuerraAlmasCommand({cmd,args=[],sender,name,chat,rep
    if(prev)return '✅ Você já entrou na '+GUERRA_TEAMS[prev.team]+'. Não é permitido trocar de facção.'
    const count=Object.values(state.players).filter(x=>x.team===team).length
    const rival=Object.values(state.players).filter(x=>x.team!==team).length
-   if(count>rival)return '⚖️ Essa facção já está à frente em inscrições. Entre na '+GUERRA_TEAMS[team==='sombras'?'infernal':'sombras']+'.'
+   if(count>=GUERRA_TEAM_CAP)return '🚫 Facção lotada: máximo de *2 jogadores* por equipe. Escolha outra facção que tenha vaga.\n'+status(state,now)
+   if(!guerraCanJoin(state.players,team))return '⚖️ Para manter 2×2 equilibrado, entre na '+GUERRA_TEAMS[team==='sombras'?'infernal':'sombras']+'.'
    state.players[sender]={name:safe(name),team,plays:{}}
    return '✅ *Inscrição confirmada!*\n'+safe(name)+' entrou na '+GUERRA_TEAMS[team]+'.\n⏰ Primeira rodada às '+clock(state.joinEnd)+'.'
   }
