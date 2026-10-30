@@ -7,6 +7,7 @@ import {heroCombatStats,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveH
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
+import {weeklyGolemPayoutIncrease} from './weekly-golem-payouts.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
@@ -3436,9 +3437,14 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             if(relic) drops.push(relic)
           }
         }else{
-          // Boss comum é atividade secundária: recompensa muito abaixo do Superboss semanal.
-          cash=(weekly?5000+Math.floor(150000*share)+tier.cash:150+Math.floor(2500*share))*moneyMultiplier
-          exp=Math.floor((weekly?150+1000*share+tier.xp:10+35*share)*(1+pb.xp))*xpMultiplier
+          // Boss comum permanece inalterado. No Superboss, usa apenas o dano
+          // real já registrado para liberar o bônus extra de dinheiro e XP.
+          // Nada é debitado do jogador, e os prêmios só são pagos na vitória.
+          const golemBonus=weekly?weeklyGolemPayoutIncrease({
+            weekendKey:s.weekendKey,position,damage:p.damage
+          }):{cash:0,xp:0}
+          cash=(weekly?5000+Math.floor(150000*share)+tier.cash+golemBonus.cash:150+Math.floor(2500*share))*moneyMultiplier
+          exp=Math.floor((weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
           await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
           if(pp){
