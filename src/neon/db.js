@@ -5,6 +5,7 @@ import {syncEffectiveGear} from './equipment-star-logic.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
+import {LEGENDARY_BOX_GEAR,pickLegendaryBoxGear} from './legendary-box-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
@@ -530,6 +531,7 @@ const starterItems = [
 ['caixa_lendaria','Caixa Lendária','Caixa de marco Daily: 1 equipamento Lendário garantido.','special',0,'legendary'],
 ]
 starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
+starterItems.push(...LEGENDARY_BOX_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'legendary']))
 starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
 starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados; usado exclusivamente para forjar estrelas nas armas e armaduras da collab.','special',0,'event'])
 starterItems.push([HALLOWEEN_SOUL_ID,'Alma Amaldiçoada — Halloween','Fragmento exclusivo do Halloween 26–31/10; trocas liberadas sábado.','special',0,'event'])
@@ -1973,6 +1975,7 @@ return rows
 }
 const EQUIPMENT = {
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
+...Object.fromEntries(LEGENDARY_BOX_GEAR.map(({id,description,...gear})=>[id,gear])),
 ...Object.fromEntries(HALLOWEEN_GEAR.map(({id,...gear})=>[id,gear])),
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
 elmo_soberano_celestial_20261024: {category:'helmet',atk:0,def:112,hp:275,crit:.025,name:'Elmo do Soberano Celestial'},
@@ -3733,7 +3736,9 @@ if(rarityOrder[rarity]<rarityOrder[config.minRarity]){
 rarity=config.minRarity
 }
 rarityCounts[rarity]++
-const itemId=pick(LOOT_POOLS[rarity])
+const itemId=boxId==='caixa_lendaria'&&rarity==='legendary'
+  ?pickLegendaryBoxGear(LOOT_POOLS.legendary)
+  :pick(LOOT_POOLS[rarity])
 rewards.set(itemId,(rewards.get(itemId)||0)+1)
 }
 if(cash>0){
