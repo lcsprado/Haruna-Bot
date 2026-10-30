@@ -3736,7 +3736,9 @@ if(rarityOrder[rarity]<rarityOrder[config.minRarity]){
 rarity=config.minRarity
 }
 rarityCounts[rarity]++
-const itemId=boxId==='caixa_lendaria'&&rarity==='legendary'
+// As caixas Lendária e Épica usam os mesmos 17 equipamentos equiprováveis
+// quando a raridade sorteada é lendária. A chance da raridade não muda.
+const itemId=rarity==='legendary'&&(boxId==='caixa_lendaria'||boxId==='caixa_epica')
   ?pickLegendaryBoxGear(LOOT_POOLS.legendary)
   :pick(LOOT_POOLS[rarity])
 rewards.set(itemId,(rewards.get(itemId)||0)+1)
