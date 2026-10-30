@@ -3,7 +3,7 @@
 // Sem usar níveis/equipamentos; resultados e premiação são transacionais e retomáveis.
 import {db,grantExpInTransaction} from './db.js'
 import {HALLOWEEN_SOUL_ID} from './halloween-rules.js'
-import {GUERRA_TEAMS,GUERRA_ACTIONS,GUERRA_ROUNDS,GUERRA_JOIN_MS,GUERRA_ROUND_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraRoundEnd,guerraScoreRound,guerraBuildAwards} from './guerra-almas-rules.js'
+import {GUERRA_TEAMS,GUERRA_ACTIONS,GUERRA_ROUNDS,GUERRA_JOIN_MS,GUERRA_ROUND_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraRoundEnd,guerraScoreRound,guerraBuildAwards,GUERRA_TEAM_CAP,guerraCanJoin} from './guerra-almas-rules.js'
 
 export const GUERRA_KEY='guerra_almas_halloween_20261030_v1'
 export const GUERRA_GROUP='120363410230588690@g.us'
@@ -43,7 +43,7 @@ function instructions(){
  return '🎃⚔️ *GUERRA DAS ALMAS — HALLOWEEN*\n'+
  '💜 *Legião das Sombras* vs 🔥 *Ordem Infernal*\n'+
  '⏱️ 5 minutos para entrar + 8 rodadas de 5 minutos.\n'+
- '👥 *!guerra sombras* ou *!guerra infernal* para escolher sua facção. Equipes equilibradas.\n'+
+ '👥 *!guerra sombras* ou *!guerra infernal* para escolher sua facção. *Apenas 2 jogadores por facção* (4 vagas no total), equipes equilibradas.\n'+
  '⚔️ Cada rodada: *!guerra atacar*, *!guerra defender* ou *!guerra saquear*. Uma ação por pessoa e rodada.\n'+
  '🧠 Atacar vence Saquear • Defender vence Atacar • Saquear vence Defender. A maior escolha da facção adversária determina o contra-ataque (+8 pontos); todos os golpes dão pelo menos 10.\n'+
  '🏆 Equipe vencedora: *15 Almas* por participante ativo. Equipe derrotada: *8 Almas*.\n'+
@@ -63,8 +63,8 @@ function status(state,now=Date.now()){
  const time=state.final?'Encerrada':now<state.joinEnd?'Inscrições até '+clock(state.joinEnd):'Rodada '+round+'/'+GUERRA_ROUNDS+' • até '+clock(guerraRoundEnd(state.start,round))
  return '🎃⚔️ *GUERRA DAS ALMAS*\n'+
  '⏰ '+time+'\n'+
- '💜 Sombras: *'+fmt(totals.sombras)+' pts* ('+counts.sombras+' jogadores)\n'+
- '🔥 Infernal: *'+fmt(totals.infernal)+' pts* ('+counts.infernal+' jogadores)\n'+
+ '💜 Sombras: *'+fmt(totals.sombras)+' pts* ('+counts.sombras+'/'+GUERRA_TEAM_CAP+' vagas)\n'+
+ '🔥 Infernal: *'+fmt(totals.infernal)+' pts* ('+counts.infernal+'/'+GUERRA_TEAM_CAP+' vagas)\n'+
  (state.final?'🏆 '+(state.final.winner==='empate'?'Empate':state.final.winner?GUERRA_TEAMS[state.final.winner]:'Disputa sem dois times ativos')+'\n':'')+
  '📋 !guerra regras • !guerra atacar/defender/saquear'
 }
@@ -177,7 +177,8 @@ export async function handleGuerraAlmasCommand({cmd,args=[],sender,name,chat,rep
    if(prev)return '✅ Você já entrou na '+GUERRA_TEAMS[prev.team]+'. Não é permitido trocar de facção.'
    const count=Object.values(state.players).filter(x=>x.team===team).length
    const rival=Object.values(state.players).filter(x=>x.team!==team).length
-   if(count>rival)return '⚖️ Essa facção já está à frente em inscrições. Entre na '+GUERRA_TEAMS[team==='sombras'?'infernal':'sombras']+'.'
+   if(count>=GUERRA_TEAM_CAP)return '🚫 Facção lotada: máximo de *2 jogadores* por equipe. Escolha outra facção que tenha vaga.\n'+status(state,now)
+   if(!guerraCanJoin(state.players,team))return '⚖️ Para manter 2×2 equilibrado, entre na '+GUERRA_TEAMS[team==='sombras'?'infernal':'sombras']+'.'
    state.players[sender]={name:safe(name),team,plays:{}}
    return '✅ *Inscrição confirmada!*\n'+safe(name)+' entrou na '+GUERRA_TEAMS[team]+'.\n⏰ Primeira rodada às '+clock(state.joinEnd)+'.'
   }
