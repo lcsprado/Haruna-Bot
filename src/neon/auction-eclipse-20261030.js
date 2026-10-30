@@ -1,5 +1,5 @@
-// Leilão Eclipse dos Pecados (30/10, 19h) — 4 lotes com prêmios e lances públicos.
-// Premiações anunciadas antes e durante o leilão. Duração: 2 minutos por lote.
+// Leilão Eclipse dos Pecados (30/10, 14h) — 4 lotes públicos e 2min por lote.
+// Sem anúncio prévio; catálogo visível em !leilao e no Web desde o agendamento.
 // Estado, lances reservados e entrega final são transacionais no banco ativo.
 import {randomBytes,createHash} from 'node:crypto'
 import {extendAuctionDeadline,LOT_DURATION_MS} from './auction-rules.js'
@@ -11,7 +11,7 @@ import {initAuctionNoticeOutbox,queueAuctionBidNotices,auctionNoticeSummary,flus
 
 const KEY='leilao_eclipse_pecados_20261030_1400_v1'
 // Edições anteriores mantêm seus dados e histórico em chaves próprias.
-// Edição de 30/10 às 19h, autorizada pelo organizador.
+// Edição de 30/10 às 14h, autorizada pelo organizador.
 const AUCTION_PAUSED_FOR_AUDIT=false
 // Temporary-recovery datasets must not broadcast or revive historical auctions.
 // Chave isolada: modo temporário não reativa leilões históricos.
@@ -289,7 +289,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     return true
   }
   if(Date.now()<START){
-    await reply('🔨💎 *LEILÃO ECLIPSE DOS PECADOS AGENDADO*\n⏰ Começa às *14h00* (Brasília) de 30/10.\n🎁 *PRÊMIOS PÚBLICOS:*\n'+publicCatalog(createPublicLots())+'\n💰 Lance inicial: *'+fmt(OPENING)+'* • incremento: *'+fmt(STEP)+'*.\n📋 Volte com *!leilao* às 14h00.')
+    await reply('🔨💎 *LEILÃO ECLIPSE DOS PECADOS AGENDADO*\n⏰ Começa às *14h00* (Brasília) de 30/10.\n🎁 *PRÊMIOS PÚBLICOS:*\n'+publicCatalog(createPublicLots())+'\n💰 Aberturas: *'+LOT_OPENINGS.map(fmt).join(' / ')+'* • incremento: *'+fmt(STEP)+'*.\n📋 Volte com *!leilao* às 14h00.')
     return true
   }
   if(cmd==='leilao'){
