@@ -1,0 +1,30 @@
+name: Kaique pet-only auction correction
+
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/auction-kaique-pet-only-20261030.js'
+      - 'src/neon/index.js'
+      - 'test/auction-kaique-pet-only-20261030.test.mjs'
+      - '.github/workflows/auction-kaique-pet-only-20261030.yml'
+  push:
+    branches: [fix/kaique-remove-guaxinim-id77-20261030]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check syntax
+        run: |
+          node --check src/neon/auction-kaique-pet-only-20261030.js
+          node --check src/neon/index.js
+          node --check test/auction-kaique-pet-only-20261030.test.mjs
+      - name: Verify correction guarantees
+        run: node --test test/auction-kaique-pet-only-20261030.test.mjs
