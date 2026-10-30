@@ -101,6 +101,7 @@ import {
   parseOwnerEventBrazilDate,ownerEventsStatusText,announceOwnerEventTransitions,ownerEventNextTransitions
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
+import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
@@ -9292,6 +9293,7 @@ startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
 scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whatsapp==='open'})
+startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
@@ -9823,6 +9825,7 @@ if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador'
 if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleEnchantCommand({cmd,args,sender,reply,
 setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
 clearFlow:()=>clearQuickFlow(chat,sender)})) continue
