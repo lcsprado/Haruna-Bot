@@ -5,7 +5,7 @@ import {HALLOWEEN_CORCEL_COST,HALLOWEEN_SOUL_ID} from '../src/neon/halloween-rul
 
 const code=readFileSync(new URL('../src/neon/halloween-alpha.js',import.meta.url),'utf8')
 
-test('Halloween distinguishes today's earned souls from inventory balance',()=>{
+test('Halloween separates daily earned souls from inventory balance',()=>{
  assert.match(code,/SELECT COALESCE\(SUM\(amount\),0\) AS earned_today FROM halloween_rewards_2026 WHERE day=\$1 AND jid=\$2 AND item_id=\$3/)
  assert.match(code,/soulsToday:Number\(earned\.rows\[0\]\?\.earned_today\|\|0\)/)
  assert.match(code,/Almas coletadas hoje/)
