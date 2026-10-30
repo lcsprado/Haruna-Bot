@@ -1,0 +1,24 @@
+name: Cancel Guerra das Almas 2026-10-30
+on:
+  push:
+    branches: [fix/cancel-guerra-almas-20261030]
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/guerra-almas-v2.js'
+      - 'test/guerra-almas-cancel-20261030.test.mjs'
+      - '.github/workflows/guerra-almas-cancel-20261030.yml'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax and cancellation regression
+        run: |
+          node --check src/neon/guerra-almas-v2.js
+          node --test test/guerra-almas-cancel-20261030.test.mjs
+          node --test test/guerra-almas-secret-restart-20261030.test.mjs
