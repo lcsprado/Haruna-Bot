@@ -5,6 +5,7 @@ import {randomBytes,createHash} from 'node:crypto'
 import {extendAuctionDeadline,LOT_DURATION_MS} from './auction-rules.js'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction,petMaxEnergy,petMaxHp} from './db.js'
 import {initEnchantments} from './enchantments-alpha.js'
+import {repairAuctionEssences} from './auction-essence-repair-20261030.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
 import {initAuctionNoticeOutbox,queueAuctionBidNotices,auctionNoticeSummary,flushAuctionBidNotices,warnAuctionDeliveryFailures} from './auction-notice-outbox.js'
 
@@ -272,6 +273,10 @@ export function startAuctionAlphaScheduler(sock){
   }
   if(timer){clearInterval(timer);timer=null}
   if(Date.now()>END){
+    // Correção pontual do lote 1 de 29/10; sem polling ou reabertura do leilão.
+    void repairAuctionEssences().then(result=>console.info(
+      '[LEILAO ESSENCIAS 29/10] correção:',result.status
+    )).catch(error=>console.error('[LEILAO ESSENCIAS 29/10]',error?.message||error))
     console.log('[LEILAO RELIQUIAS] scheduler desativado: recuperação temporária ou evento histórico encerrado')
     return
   }

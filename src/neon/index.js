@@ -7579,8 +7579,11 @@ if(!others.length){
 await reply('📦 Você não possui outros itens no momento.')
 return true
 }
-let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Insígnias seguem protegidas.\n\n'
+let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Essências dos Pecados e itens de evento não são vendidos.\n\n'
 others.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
+const collabEssences=others.filter(i=>String(i.item_id||'').startsWith('essencia_pecado_'))
+  .reduce((sum,i)=>sum+Number(i.quantity||0),0)
+if(collabEssences>0)text+='\n🌈 *7 PECADOS:* '+collabEssences+' essências = *'+Math.floor(collabEssences/7)+' invocação(ões) disponível(is)*.\n🎁 Use *!7pecados abrir* para sortear personagem, arma ou armadura.\n'
 text+='\n9️⃣ Voltar\n0️⃣ Sair'
 await reply(text)
 return true
