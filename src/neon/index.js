@@ -100,6 +100,7 @@ import {
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
+import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
 function sleepOptionMessage(options){
@@ -385,6 +386,8 @@ completed=!nextPecado;
 for(const player of r.rewards||[]){
 if(Number(player.share||0)>=0.02){
 await progressAlphaContract(player.jid,'boss').catch(err=>console.error('[Contratos] boss',err?.message||err))
+await recordAscensionVeteranActivity(db,player.jid,'boss')
+  .catch(err=>console.error('[ASCENSAO] prova Boss',err?.message||err))
 }
 }
 const bossTitle=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
@@ -782,6 +785,8 @@ if(r.victory){
 for(const player of r.rewards||[]){
 if(Number(player.share||0)>=0.02){
 await progressAlphaContract(player.jid,'raid',{raidLevel:Number(r.config.level||level)}).catch(err=>console.error('[Contratos] raid',err?.message||err))
+await recordAscensionVeteranActivity(db,player.jid,'raid',{raidLevel:Number(r.config.level||level)})
+  .catch(err=>console.error('[ASCENSAO] prova Raid',err?.message||err))
 }
 }
 let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*
@@ -7027,6 +7032,7 @@ await reply(
 5️⃣ Patrimônio
 6️⃣ Ranking de patrimônio
 7️⃣ 📜 Quadro de Contratos Alpha
+8️⃣ 🚀 Semana da Ascensão Alpha
 0️⃣ Sair`
 )
 return true
@@ -8446,7 +8452,11 @@ clearQuickFlow(chat,sender)
 if(!r.ok) await reply(`⏳ Nova dungeon em ${duration(r.remaining)}.`)
 else{
 if(r.won) await creditDailyActivity(sender,'dungeon',1,null,reply)
-if(r.won) await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
+if(r.won){
+  await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
+  await recordAscensionVeteranActivity(db,sender,'dungeon')
+    .catch(err=>console.error('[ASCENSAO] prova Dungeon',err?.message||err))
+}
 if(r.won) await reply(`🏆 Você venceu *${r.monster}*!\n💰 +R$ ${fmt(r.cash)}\n✨ +${r.exp} EXP\n❤️ HP: ${r.hp}/${r.maxHp}`)
 else await reply(`💀 Você perdeu para *${r.monster}*.\n❤️ Recuperou para ${r.hp}/${r.maxHp} HP.`)
 }
@@ -8560,7 +8570,30 @@ await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:
 }
 return true
 }
+if(flow.stage==='ascension_final_select'){
+  try{
+    const outcome=await chooseAscensionTerritoryAction(db,sender,Number(input))
+    clearQuickFlow(chat,sender)
+    await reply('🏙️ *AÇÃO REGISTRADA!*\n\n'+
+      (outcome.team==='veteranos'?'👑 Veteranos':'🌱 Ascendentes')+
+      ' • Fase '+(outcome.phase+1)+'/3\n'+
+      ['⚔️ Ataque','🥷 Infiltração','🛡️ Defesa'][outcome.action-1]+
+      '\n⭐ Pontos conquistados: *'+outcome.points+'*\n\n'+
+      '📋 Use *!progressao* → *8* para conferir a disputa e participar da próxima fase.')
+  }catch(err){
+    clearQuickFlow(chat,sender)
+    await reply('⚠️ '+(err?.message||'Não foi possível participar da disputa.'))
+  }
+  return true
+}
 if(flow.stage==='nav_progress'){
+if(input==='8'){
+  const status=await ascensionStatusText(db,sender)
+  if(ascensionTerritoryOpen()) setQuickFlow(chat,sender,'ascension_final_select',{},90000)
+  else clearQuickFlow(chat,sender)
+  await reply(status)
+  return true
+}
 if(input==='1'){
 const r=await getDailyMissions(sender)
 clearQuickFlow(chat,sender)
@@ -10703,6 +10736,7 @@ await reply(
 5️⃣ Patrimônio
 6️⃣ Ranking de patrimônio
 7️⃣ 📜 Quadro de Contratos Alpha
+8️⃣ 🚀 Semana da Ascensão Alpha
 0️⃣ Sair`
 )
 } else if(['grupo','assinatura'].includes(cmd)){
@@ -12178,7 +12212,11 @@ await reply(`⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n${usePet?'🐾 Pet partic
 const r=await dungeon(sender)
 if(!r.ok) return await reply(`⏳ Você poderá entrar novamente na dungeon em ${duration(r.remaining)}.`)
 if(r.won) await creditDailyActivity(sender,'dungeon',1,null,reply)
-if(r.won) await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
+if(r.won){
+  await progressAlphaContract(sender,'dungeon').catch(err=>console.error('[Contratos] dungeon',err?.message||err))
+  await recordAscensionVeteranActivity(db,sender,'dungeon')
+    .catch(err=>console.error('[ASCENSAO] prova Dungeon',err?.message||err))
+}
 if(r.won){
 let text=`🏰 *DUNGEON CONCLUÍDA!*\n\n👹 Inimigo: *${r.monster}*\n❤️ HP restante: ${r.hp}/${r.maxHp}\n💰 Recompensa: R$ ${fmt(r.cash)}\n✨ EXP: +${fmt(r.level?.awardedGain??r.exp)}`
 if(Number(r.level?.boostBonus||0)>0) text+=`\n⚡ Bônus pessoal de XP: +${fmt(r.level.boostBonus)} (incluído no total)`

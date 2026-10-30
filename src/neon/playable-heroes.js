@@ -171,7 +171,7 @@ export async function setPlayableHeroMode(jid,heroId=null){
 export async function awardPlayableHeroLevel(client,{jid,heroId,awardKey,xp=55}={}){
   if(!client||!jid||!playableHero(heroId)||!awardKey)return false
   // A trava serializa Boss e Raid concorrentes para o mesmo jogador.
-  await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  const player=(await client.query('SELECT jid,level FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
   const pet=(await client.query(
     'SELECT id,level,xp FROM pet_collection WHERE jid=$1 AND species=$2 ORDER BY level DESC,xp DESC,id ASC LIMIT 1 FOR UPDATE',
     [jid,heroId])).rows[0]
@@ -183,7 +183,8 @@ export async function awardPlayableHeroLevel(client,{jid,heroId,awardKey,xp=55}=
     FROM hero_level_awards WHERE jid=$1 AND hero_species=$2
       AND (to_timestamp(created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
           (NOW() AT TIME ZONE 'America/Sao_Paulo')::date`,[jid,heroId])
-  const policy=heroLevelAwardPolicy({earnedToday:today[0]?.gained,currentXp:effectiveXp,xp})
+  const policy=heroLevelAwardPolicy({earnedToday:today[0]?.gained,currentXp:effectiveXp,xp,
+    playerLevel:Number(player?.level||0),heroLevel:Number(pet.level||1)})
   const amount=policy.amount
   if(!amount)return false
   const saved=await client.query(`INSERT INTO hero_level_awards(jid,award_key,hero_species,xp)
@@ -268,7 +269,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
           (next?' | Próximo: '+next.xp+' XP e R$ '+next.cost.toLocaleString('pt-BR'):' | Nível máximo');
       });
       await reply('🌈⚔️ *EVOLUÇÃO DE MAESTRIA*\n\n'+(lines.join('\n')||'Nenhum Pecado conquistado.')+
-        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Normal: até 400 XP de maestria/dia e 550 XP de nível/dia por herói em Boss/Raid.\n🌈 De 26/10 a 01/11: a Raid 75 dos Pecados concede 120 XP de maestria por vitória elegível e permite até 600 XP/dia no total (incluindo outras fontes).');
+        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Normal: até 400 XP de maestria/dia e 550 XP de nível/dia por herói em Boss/Raid.\n🚀 02/11 a 08/11: jogadores abaixo do Lv.300 podem ganhar até 1.000 XP/dia em heróis abaixo do Lv.70.\n🌈 De 26/10 a 01/11: a Raid 75 dos Pecados concede 120 XP de maestria por vitória elegível e permite até 600 XP/dia no total (incluindo outras fontes).');
       return true;
     }
     const selected=findHero(raw);

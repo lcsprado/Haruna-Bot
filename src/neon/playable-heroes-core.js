@@ -1,4 +1,5 @@
 import {PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS} from './sete-pecados-catalog.js'
+import {ascensionHeroLevelDailyCap} from './ascension-week-20261102.js'
 
 // Combatente jogavel ≠ companion/pet. A classe e seus Despertares continuam no banco.
 export const HERO_COMBAT_PROFILES=Object.freeze({
@@ -23,10 +24,11 @@ export function heroStartingProgress(){
 export const HERO_LEVEL_DAILY_CAP=550;
 export const HERO_MASTERY_DAILY_CAP=400;
 export const HERO_MASTERY_SPECIAL_DAILY_CAP=600;
-export function heroLevelAwardPolicy({earnedToday=0,currentXp=0,xp=125}={}){
-  const dailyRemaining=Math.max(0,HERO_LEVEL_DAILY_CAP-Math.max(0,Math.floor(Number(earnedToday)||0)));
+export function heroLevelAwardPolicy({earnedToday=0,currentXp=0,xp=125,playerLevel=0,heroLevel=0,nowMs=Date.now()}={}){
+  const dailyCap=ascensionHeroLevelDailyCap({playerLevel,heroLevel,nowMs});
+  const dailyRemaining=Math.max(0,dailyCap-Math.max(0,Math.floor(Number(earnedToday)||0)));
   const levelRemaining=Math.max(0,9900-Math.max(0,Math.floor(Number(currentXp)||0)));
-  return {dailyCap:HERO_LEVEL_DAILY_CAP,
+  return {dailyCap,
     amount:Math.min(dailyRemaining,levelRemaining,Math.max(0,Math.floor(Number(xp)||0)))};
 }
 // Exceção temporária: Raid 75 dos 7 Pecados, somente na semana de 26/10 a 01/11/2026 (São Paulo).
