@@ -43,7 +43,7 @@ import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoa
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
 import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from './playable-heroes.js'
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
-import {getAuctionWebStatus,placeAuctionWebBid} from './auction-reliquias-20261029.js'
+import {getAuctionWebStatus,placeAuctionWebBid} from './auction-eclipse-20261030.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))

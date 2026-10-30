@@ -1,0 +1,37 @@
+name: Leilao Eclipse 30-10
+
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/auction-eclipse-20261030.js'
+      - 'src/neon/db.js'
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/index.js'
+      - 'src/neon/web-api.js'
+      - 'test/auction-eclipse-20261030.test.mjs'
+      - 'test/auction-reliquias-20261029.test.mjs'
+      - '.github/workflows/leilao-eclipse-20261030.yml'
+  push:
+    branches: [feat/leilao-eclipse-20261030-1400]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check syntax
+        run: |
+          node --check src/neon/auction-eclipse-20261030.js
+          node --check src/neon/game-catalog.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/web-api.js
+          node --check test/auction-eclipse-20261030.test.mjs
+      - name: Verify auction
+        run: node --test test/auction-eclipse-20261030.test.mjs test/auction-reliquias-20261029.test.mjs

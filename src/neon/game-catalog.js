@@ -39,6 +39,7 @@ export const PET_STATUS_SPECIALTIES = {
   lince_astral:{label:'🃏 Lince Astral — Coringa do Leilão das Sombras',stats:{damage:1.6,defense:2.4},raid:true},
   onca_eclipse_20261026:{label:'🃏 Onça do Eclipse — Coringa do Leilão do Tesouro',stats:{bossDamage:4,crit:3,dodge:2},raid:true},
   guaxinim_errante_20261027:{label:'🦝 Guaxinim Errante — Coringa de Ataque e Crítico',stats:{damage:5,crit:4},raid:true},
+  manticora_eclipse_20261030:{label:'🦂 Mantícora do Eclipse — Predador Místico',stats:{damage:10.5,crit:7,speed:5},raid:true},
   lobo:{label:'🐺 Caçador',stat:'damage',base:6},
   aguia:{label:'🦅 Precisão',stat:'crit',base:9},
   gaviao:{label:'🦅 Rasante',stats:{speed:4,crit:4}},
