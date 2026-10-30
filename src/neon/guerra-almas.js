@@ -7,6 +7,7 @@ import {GUERRA_TEAMS,GUERRA_ACTIONS,GUERRA_ROUNDS,GUERRA_JOIN_MS,GUERRA_ROUND_MS
 
 export const GUERRA_KEY='guerra_almas_halloween_20261030_v1'
 export const GUERRA_GROUP='120363410230588690@g.us'
+export const GUERRA_GROUPS=Object.freeze([GUERRA_GROUP,'120363429534634131@g.us'])
 const LAST_START=Date.parse('2026-10-30T22:00:00-03:00')
 const fmt=n=>Number(n).toLocaleString('pt-BR')
 const clock=ms=>new Date(ms).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
@@ -122,19 +123,32 @@ async function advance(c,state,now){
  }
  if(now>=state.end&&!state.final)await settle(c,state)
 }
+// Entrega por grupo: respeita confirmação antiga do grupo 1 sem impedir envio ao grupo 2.
+// A mesma edição e o mesmo estado do prêmio valem para todos os dois grupos.
 async function sendPending(){
  if(!socket)return
- const pending=await withState(async(_c,state)=>(state?.notices||[]).filter(n=>!n.sent).slice(0,4))
+ const pending=await withState(async(_c,state)=>(state?.notices||[])
+  .filter(n=>GUERRA_GROUPS.some(group=>!new Set([
+   ...(n.sentGroups||[]),...(n.sent?[GUERRA_GROUP]:[])
+  ]).has(group))).slice(0,5).map(n=>({
+   id:n.id,text:n.text,groups:GUERRA_GROUPS.filter(group=>!new Set([
+    ...(n.sentGroups||[]),...(n.sent?[GUERRA_GROUP]:[])
+   ]).has(group))
+  })))
  for(const n of pending){
-  try{
-   await socket.sendMessage(GUERRA_GROUP,{text:n.text})
-   await withState(async(_c,state)=>{
-    const found=state?.notices?.find(x=>x.id===n.id)
-    if(found)found.sent=true
-   })
-  }catch(err){
-   console.warn('[GUERRA ALMAS] envio pendente',n.id,err?.message||err)
-   break
+  for(const group of n.groups){
+   try{
+    await socket.sendMessage(group,{text:n.text})
+    await withState(async(_c,state)=>{
+     const found=state?.notices?.find(x=>x.id===n.id)
+     if(!found)return
+     found.sentGroups=[...new Set([...(found.sent?[GUERRA_GROUP]:[]),...(found.sentGroups||[]),group])]
+     found.sent=GUERRA_GROUPS.every(id=>found.sentGroups.includes(id))
+    })
+    console.log('[GUERRA ALMAS] aviso enviado',JSON.stringify({notice:n.id,group}))
+   }catch(err){
+    console.warn('[GUERRA ALMAS] envio pendente',n.id,group,err?.message||err)
+   }
   }
  }
 }
@@ -157,11 +171,11 @@ export function startGuerraAlmasScheduler(sock,{isConnected=()=>true}={}){
  timer=setInterval(()=>{if(isConnected())void tickGuerraAlmas()},8000)
  timer.unref?.()
  if(isConnected())void tickGuerraAlmas()
- console.log('[GUERRA ALMAS] scheduler interativo ativo, grupo principal')
+ console.log('[GUERRA ALMAS] scheduler interativo ativo, dois grupos, uma disputa global')
 }
 export async function handleGuerraAlmasCommand({cmd,args=[],sender,name,chat,reply}){
  if(!['guerra','guerraalmas'].includes(cmd))return false
- if(chat!==GUERRA_GROUP){await reply('🎃 Guerra das Almas acontece apenas no grupo principal do Alpha Bot.');return true}
+ if(!GUERRA_GROUPS.includes(chat)){await reply('🎃 Guerra das Almas acontece apenas nos dois grupos oficiais do Alpha Bot.');return true}
  const chosen=String(args[0]||'status').toLowerCase()
  const sub=chosen==='entrar'?String(args[1]||'').toLowerCase():chosen
  if(sub==='regras'||sub==='ajuda'){await reply(instructions());return true}
