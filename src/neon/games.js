@@ -1,4 +1,5 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
+import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
@@ -2904,7 +2905,7 @@ export async function startBoss(chat){
     if(event&&event.active!==false&&Number(event.hp)>0&&(!event.endsAt||Number(event.endsAt)>Date.now())) return {already:true,...event}
     if(weekend.open){
       const weekly=await loadWeeklyBoss(c,weekend,{create:true})
-      if(weekly) return {already:true,...weekly,endsLabel:weekend.endsLabel}
+      if(weekly) return {already:true,...weekly,endsLabel:weekend.endsLabel,finished:weekly.mode==='completed'&&weekly.weeklyCompleted===true&&Array.isArray(weekly.result?.rewards)}
     }
     const current=await loadGame(c,chat,'boss')
     if(current?.mode==='common'&&Number(current.hp)>0) return {already:true,...current}
@@ -3520,7 +3521,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         }
         await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',marker)
       }else{
-        const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0)}
+        const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0),completedAt:Date.now(),result:bossSettlementSnapshot(s,rewards)}
         await saveGame(c,s.mode==='weekly'?GLOBAL_WEEKLY_BOSS_CHAT:chat,'boss',marker)
       }
       return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
