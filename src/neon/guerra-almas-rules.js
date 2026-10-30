@@ -5,6 +5,12 @@ export const GUERRA_ROUND_MS=5*60*1000
 export const GUERRA_ROUNDS=8
 export const GUERRA_JOIN_MS=5*60*1000
 export const GUERRA_TOTAL_MS=GUERRA_JOIN_MS+GUERRA_ROUNDS*GUERRA_ROUND_MS
+export const GUERRA_TEAM_CAP=2
+export function guerraCanJoin(players,team){
+ if(!Object.hasOwn(GUERRA_TEAMS,team))return false
+ const counts=Object.fromEntries(Object.keys(GUERRA_TEAMS).map(t=>[t,Object.values(players||{}).filter(p=>p.team===t).length]))
+ return counts[team]<GUERRA_TEAM_CAP&&counts[team]<=counts[team==='sombras'?'infernal':'sombras']
+}
 export const GUERRA_SOULS=Object.freeze({winner:15,loser:8})
 export const GUERRA_XP_PER_ACTION=80
 const COUNTERS=Object.freeze({atacar:'saquear',defender:'atacar',saquear:'defender'})
