@@ -496,12 +496,19 @@ async function buyCorcel(jid){
 }
 async function status(jid){
  const boss=halloweenBoss()
- const [p,inv,bs]=await Promise.all([
+ const day=halloweenLocalDay()
+ const [p,inv,bs,earned,corcel]=await Promise.all([
  db.query('SELECT * FROM halloween_players_2026 WHERE jid=$1',[jid]),
  db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,HALLOWEEN_SOUL_ID]),
- boss?db.query('SELECT cycle,hp,max_hp,revive_at FROM halloween_boss_days_2026 WHERE day=$1',[boss.day]):Promise.resolve({rows:[]})
+ boss?db.query('SELECT cycle,hp,max_hp,revive_at FROM halloween_boss_days_2026 WHERE day=$1',[boss.day]):Promise.resolve({rows:[]}),
+ db.query('SELECT COALESCE(SUM(amount),0) AS earned_today FROM halloween_rewards_2026 WHERE day=$1 AND jid=$2 AND item_id=$3',[day,jid,HALLOWEEN_SOUL_ID]),
+ db.query('SELECT 1 FROM halloween_shop_2026 WHERE jid=$1 AND reward_id=$2',[jid,HALLOWEEN_CORCEL])
  ])
- return {boss,player:p.rows[0],souls:Number(inv.rows[0]?.quantity||0),state:bs.rows[0]||null}
+ return {
+  boss,player:p.rows[0],souls:Number(inv.rows[0]?.quantity||0),
+  soulsToday:Number(earned.rows[0]?.earned_today||0),
+  corcelClaimed:Boolean(corcel.rowCount),state:bs.rows[0]||null
+ }
 }
 function formatStatus(s){
  const now=Date.now()
@@ -522,10 +529,11 @@ function formatStatus(s){
  '🎯 CRIT: *'+(Number(s.player?.crit||0)*100).toFixed(1).replace('.',',')+'%* • 🌀 Esquiva de pet: *'+(Number(s.player?.dodge||0)*100).toFixed(1).replace('.',',')+'%*\n'+
  '🥊 Golpes acertados: *'+fmt(s.player?.hits||0)+'* • Tentativas: *'+fmt(s.player?.attempts||0)+'*\n'+
  '👻 Esquivas do Boss: *'+fmt(s.player?.boss_evades||0)+'* • 🛡️ Suas esquivas: *'+fmt(s.player?.player_evades||0)+'*\n'+
- '🧩 Suas Almas: *'+fmt(s.souls)+'* (sem limite diário)\n'+
+ '🧩 Almas coletadas hoje: *'+fmt(s.soulsToday)+'* • Restantes no dia: *ilimitadas*\n'+
+ '🎒 Seu saldo de Almas: *'+fmt(s.souls)+'*\n'+
  '✨ *2× XP* do personagem e do time pet nos marcos de vitória\n'+
  '📈 Seu dano total: *'+fmt(s.player?.all_damage||0)+'*\n'+
- '🐎 Corcel Espectral: *100 Almas* — trocas no sábado\n'+
+ '🐎 Corcel Espectral: '+(s.corcelClaimed?'✅ já resgatado':'faltam *'+fmt(Math.max(0,HALLOWEEN_CORCEL_COST-s.souls))+'* Almas ('+fmt(Math.min(s.souls,HALLOWEEN_CORCEL_COST))+'/'+fmt(HALLOWEEN_CORCEL_COST)+')')+' — trocas no sábado\n'+
  '🎁 2 elmos + 2 botas exclusivos por drop de Boss\n\n'+
  '👉 *!halloween entrar* • *!halloween sair* • *!halloween ranking* • *!halloween loja*'
 }
@@ -709,10 +717,17 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
     if(ticks%180===0){
      const key='halloween_progress:'+boss.day+':'+Math.floor(now/1800000)
      const st=(await db.query('SELECT hp,max_hp,cycle FROM halloween_boss_days_2026 WHERE day=$1',[boss.day])).rows[0]
-     const players=(await db.query('SELECT name,day_damage FROM halloween_players_2026 WHERE active=TRUE ORDER BY day_damage DESC LIMIT 5')).rows
+     const players=(await db.query(`SELECT p.name,p.day_damage,COALESCE(r.souls_today,0) AS souls_today
+      FROM halloween_players_2026 p
+      LEFT JOIN (
+       SELECT jid,SUM(amount) AS souls_today FROM halloween_rewards_2026
+       WHERE day=$1 AND item_id=$2 GROUP BY jid
+      ) r ON r.jid=p.jid
+      WHERE p.active=TRUE AND p.day=$1
+      ORDER BY p.day_damage DESC LIMIT 5`,[boss.day,HALLOWEEN_SOUL_ID])).rows
      if(st&&players.length&&await claimNotice(key)){
       const groups=await listGroups()
-      await broadcast(sock,groups,'🎃 *HALLOWEEN — BOLETIM 30 MIN*\n👹 '+boss.name+' • Ciclo '+st.cycle+'\n❤️ '+fmt(st.hp)+'/'+fmt(st.max_hp)+' HP\n'+players.map((p,i)=>(i+1)+'. '+p.name+' — '+fmt(p.day_damage)+' dano').join('\n')+'\n🧩 Sem limite de farm. *!halloween status*')
+      await broadcast(sock,groups,'🎃 *HALLOWEEN — BOLETIM 30 MIN*\n👹 '+boss.name+' • Ciclo '+st.cycle+'\n❤️ '+fmt(st.hp)+'/'+fmt(st.max_hp)+' HP\n'+players.map((p,i)=>(i+1)+'. '+p.name+' — '+fmt(p.day_damage)+' dano • 🧩 '+fmt(p.souls_today)+' Almas hoje').join('\n')+'\n🧩 Farm diário ilimitado. *!halloween status*')
      }
     }
    }
