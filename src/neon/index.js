@@ -68,6 +68,7 @@ getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 } from './loans.js'
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
+import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
@@ -460,6 +461,10 @@ continue
 }
 return
 }
+if(r.mode==='weekly'){
+  await announceCompletedWeeklyBoss()
+  return
+}
 await reply(text); return
 }
 const eventSession=sessionMode==='event'
@@ -473,7 +478,43 @@ await new Promise(resolve=>setTimeout(resolve,delayMs))
 }
 completed=true
 await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 *Boletim de autocura (${petHeals.length} uso(s))*:${petHealSummary()}`:''}\n\nUse *!boss* para ver a situação atual.`)
-}catch(err){console.error('[BossSession]',err);await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))}
+}catch(err){
+  // Outro jogador pode ter derrotado o Boss entre dois ataques automáticos.
+  // O resultado é lido do snapshot liquidado; nunca pagamos novamente aqui.
+  if(isNaturalBossEndError(err)&&sessionMode){
+    try{
+      const stateChat=sessionMode==='weekly'?'__alpha_global_weekly_boss__':
+        sessionMode==='event'?'__alpha_global_boss_event__':chat
+      const stateType=sessionMode==='event'?'boss_event':'boss'
+      const state=(await db.query(
+        'SELECT state FROM trevo_games WHERE chat_jid=$1 AND game_type=$2',
+        [stateChat,stateType]
+      )).rows[0]?.state
+      if(sessionMode==='weekly'&&state?.mode==='completed'&&Number(state.hp)<=0){
+        completed=true
+        await announceCompletedWeeklyBoss()
+        return
+      }
+      if(sessionMode==='common'&&state?.mode==='completed'&&Number(state.hp)<=0){
+        completed=true
+        return
+      }
+      if(sessionMode==='event'&&(state?.mode==='event_completed'||state?.mode==='event_stopped')){
+        completed=true
+        return
+      }
+      if(sessionEndsAt&&Date.now()>=sessionEndsAt){
+        completed=true
+        await reply('⏰ *BOSS ENCERRADO PELO PRAZO!*\n\nSua sessão automática terminou normalmente. O ranking com os prêmios só é publicado quando houver uma vitória e uma liquidação confirmada.')
+        return
+      }
+    }catch(readErr){
+      console.error('[Boss Auto] falha ao consultar conclusão',readErr?.message||readErr)
+    }
+  }
+  console.error('[BossSession]',err)
+  await reply('⚠️ Sua sessão de Boss foi interrompida: '+String(err?.message||err))
+}
 finally{
 if(completed&&bossSessions.get(key)===runner){
 await db.query("UPDATE boss_auto_sessions SET status='stopped',updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1 AND boss_id=$2",[jid,bossId])
@@ -2529,6 +2570,55 @@ if(knownScheduledNotices.size>=2048)knownScheduledNotices.delete(knownScheduledN
 knownScheduledNotices.add(settingKey)
 if(inserted.rowCount) await sock.sendMessage(chat,{text:formatEventNotice(text)}).catch(err=>console.error('[Eventos] aviso',chat,err?.message||err))
 }
+
+// Outbox de avisos: a premiação já foi concluída de forma transacional em games.js.
+// Cada grupo/parte recebe um aviso; falhas de envio podem ser repetidas sem novos pagamentos.
+let completedWeeklyBossNoticeBusy=false
+async function announceCompletedWeeklyBoss(){
+  if(trevoHealth.whatsapp!=='open'||completedWeeklyBossNoticeBusy) return
+  completedWeeklyBossNoticeBusy=true
+  try{
+    const state=(await db.query(
+      "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_weekly_boss__' AND game_type='boss'"
+    )).rows[0]?.state
+    if(state?.mode!=='completed'||!state.weeklyCompleted||
+       !Array.isArray(state.result?.rewards)||!state.result.rewards.length||
+       !state.weekendKey||!Number(state.completedAt)) return
+    if(Date.now()-Number(state.completedAt)>72*60*60*1000) return
+    const notices=weeklyBossResultMessages(state)
+    const groups=await activeEventGroups()
+    for(const group of groups){
+      for(let i=0;i<notices.length;i++){
+        const key='boss_final_result:weekly:'+state.weekendKey+':'+group.chat_jid+':'+(i+1)
+        const now=Date.now()
+        const claimed=await db.query(`
+          INSERT INTO trevo_settings(key,value,updated_at)
+          VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+          ON CONFLICT(key) DO UPDATE
+          SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+          WHERE trevo_settings.value->>'status'='sending'
+            AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<$3
+          RETURNING key
+        `,[key,JSON.stringify({status:'sending',claimedAt:now}),now-60000])
+        if(!claimed.rowCount) continue
+        try{
+          await sock.sendMessage(group.chat_jid,{text:notices[i]})
+          await db.query(
+            "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
+            [key,JSON.stringify({status:'sent',sentAt:Date.now(),weekendKey:state.weekendKey})]
+          )
+          console.log('[Boss Final] ranking e prêmios publicados',state.weekendKey,group.chat_jid,i+1)
+        }catch(sendError){
+          console.error('[Boss Final] falha ao avisar grupo',group.chat_jid,sendError?.message||sendError)
+          await db.query("DELETE FROM trevo_settings WHERE key=$1 AND value->>'status'='sending'",[key]).catch(()=>{})
+        }
+      }
+    }
+  }catch(err){
+    console.error('[Boss Final] falha ao publicar resultado',err?.message||err)
+  }finally{completedWeeklyBossNoticeBusy=false}
+}
+
 let eclipseResultBroadcastBusy=false
 async function announceCompletedEclipse(){
 if(trevoHealth.whatsapp!=='open'||eclipseResultBroadcastBusy) return
@@ -2964,7 +3054,7 @@ bossProgressBroadcastRunning=false
 }
 }
 if(bossProgressScheduler) clearInterval(bossProgressScheduler)
-bossProgressScheduler=setInterval(()=>{void broadcastBossProgressEvery30Minutes()},20*1000)
+bossProgressScheduler=setInterval(()=>{void broadcastBossProgressEvery30Minutes();void announceCompletedWeeklyBoss()},20*1000)
 bossProgressScheduler.unref?.()
 if(neonEcoMode)setTimeout(async()=>{
 try{
@@ -2976,7 +3066,7 @@ bossProgressKnownActiveUntil=Math.max(bossProgressKnownActiveUntil,Number(state.
 }
 }catch(err){console.warn('[Neon Eco] leitura de Boss ativo',err?.message||err)}
 },1000).unref?.()
-setTimeout(()=>{void broadcastBossProgressEvery30Minutes()},3000).unref?.()
+setTimeout(()=>{void broadcastBossProgressEvery30Minutes();void announceCompletedWeeklyBoss()},3000).unref?.()
 setTimeout(async()=>{
 try{
 const {rows}=await db.query(
@@ -6380,6 +6470,7 @@ return true
 }
 if(game==='boss'){
 const r=await startBoss(chat)
+if(r.finished){for(const part of weeklyBossResultMessages(r)) await reply(part);return true}
 if(!r.already) await progressDailyMission(sender,'game')
 setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
 const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento em andamento.*':'')
@@ -6453,6 +6544,7 @@ return true
 }
 if(input==='7'){
 const r=await startBoss(chat)
+if(r.finished){for(const part of weeklyBossResultMessages(r)) await reply(part);return true}
 if(!r.already) await progressDailyMission(sender,'game')
 setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
 const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento em andamento.*':'')
@@ -12167,6 +12259,10 @@ if(!r) return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO: INATIVO*\n\n⏰ Próx
 return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO: ATIVO*\n\n👹 *${r.name}*\n❤️ HP global: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\n🌐 Mesmo Boss e ranking em todos os grupos.\n🔒 Trocar de grupo não libera ataque extra.\n\nPara encerrar manualmente: *${prefix}eventoboss desativar*.`)
 } else if(['boss'].includes(cmd)){
 const r=await startBoss(chat)
+if(r.finished){
+  for(const part of weeklyBossResultMessages(r)) await reply(part)
+  return
+}
 if(r.cooldown) return await reply(`⏳ *BOSS COMUM EM COOLDOWN*\n\nO próximo Golem do Alpha poderá aparecer em aproximadamente *${r.remainingMinutes} min*.\n\n👹 O Superboss semanal continua sendo um evento separado, disponível apenas uma vez por fim de semana.`)
 const bossPet=await getPet(sender)
 const bossPetBonus=bossPet?petStatusBonus(bossPet):null
