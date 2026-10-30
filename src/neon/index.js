@@ -2165,6 +2165,12 @@ throw err
 await initCommunityPack()
 await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
 await initGames()
+// Correção idempotente de 30/10: apenas o pet do leilão antigo, sem mexer em dinheiro.
+{
+  const {removeKaiqueGuaxinimId77}=await import('./auction-kaique-pet-only-20261030.js')
+  const result=await removeKaiqueGuaxinimId77({apply:true})
+  console.log('[AUCTION KAIQUE PET 30/10]',JSON.stringify(result))
+}
 const bossCompensation=await compensateFrozenWeeklyBoss20261009().catch(err=>({status:'error',reason:String(err?.message||err)}))
 console.log('[Boss Compensation] resultado',JSON.stringify(bossCompensation))
 const shareCorrection=await rectifyFrozenWeeklyBossShare20261009()
