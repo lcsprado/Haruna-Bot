@@ -122,3 +122,20 @@ export const LEGENDARY_BOX_GEAR=Object.freeze([
   }
 ].map(item=>Object.freeze({...item,description:'Lendário superior exclusivo da Caixa Lendária.'})))
 export const LEGENDARY_BOX_WEIGHTS=Object.freeze({existing:10,new:8})
+
+export function pickLegendaryBoxGear(existingIds,random=Math.random){
+  if(!Array.isArray(existingIds)||!existingIds.length)throw new Error('Pool lendário original ausente')
+  const pool=[
+    ...existingIds.map(id=>({id,weight:LEGENDARY_BOX_WEIGHTS.existing})),
+    ...LEGENDARY_BOX_GEAR.map(item=>({id:item.id,weight:LEGENDARY_BOX_WEIGHTS.new}))
+  ]
+  const total=pool.reduce((sum,item)=>sum+item.weight,0)
+  const roll=Number(random())
+  if(!Number.isFinite(roll)||roll<0||roll>=1)throw new Error('Sorteio lendário inválido')
+  let ticket=roll*total
+  for(const item of pool){
+    ticket-=item.weight
+    if(ticket<0)return item.id
+  }
+  return pool[pool.length-1].id
+}
