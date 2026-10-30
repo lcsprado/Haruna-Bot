@@ -28,6 +28,25 @@ export function ascensionPlayerMultiplier(level, nowMs = Date.now()) {
   if (lv < 200) return 3;
   return 2;
 }
+// Ao atravessar o nível 300 numa recompensa grande, a parcela restante
+// volta ao multiplicador que já existia antes do evento. Sem overflow turbo.
+export function ascensionAwardedPlayerXp({
+  level, currentExp = 0, baseGain = 0, groupMultiplier = 1,
+  disabled = false, nowMs = Date.now()
+} = {}) {
+  const lv = Math.max(1, Math.floor(Number(level) || 1));
+  const original = Math.max(0, Math.floor(Number(baseGain) || 0));
+  const baseline = Math.max(1, Number(groupMultiplier) || 1);
+  const bonus = disabled ? 1 : ascensionPlayerMultiplier(lv, nowMs);
+  const multiplier = Math.max(baseline, bonus);
+  if (bonus <= baseline || lv >= 300 || original === 0)
+    return {amount: Math.round(original * multiplier), multiplier};
+  const remaining = Math.max(0, 50 * (lv + 299) * (300 - lv) -
+    Math.max(0, Math.floor(Number(currentExp) || 0)));
+  const before = Math.min(original, Math.ceil(remaining / multiplier));
+  const within = Math.min(remaining, Math.round(before * multiplier));
+  return {amount: within + Math.round((original - before) * baseline), multiplier};
+}
 export function ascensionHeroLevelDailyCap({playerLevel, heroLevel, nowMs = Date.now()} = {}) {
   return ascensionWeekActive(nowMs) && Number(playerLevel) >= 1 &&
     Number(playerLevel) < 300 && Number(heroLevel) >= 1 && Number(heroLevel) < 70
