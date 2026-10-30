@@ -835,6 +835,10 @@ let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*
 ❤️ Boss derrotado em *${r.round} rodadas*.
 📊 *RECOMPENSAS POR COLABORAÇÃO*
 `
+const raidXpEventMultiplier=Math.max(1,...(r.rewards||[]).map(x=>Number(x.ownerRaidMultiplier||1)))
+if(raidXpEventMultiplier>1){
+text+='\n🎪 *EVENTO ATIVO — '+raidXpEventMultiplier+'× XP DE RAID E PETS*\n✅ Bônus já aplicado ao XP de jogador e pets nas recompensas abaixo. Não altera dinheiro nem fragmentos.\n'
+}
 if(r.rewards.some(x=>x.saturdayHuntActive))text+='\n⚡ *CAÇADA DE SÁBADO: +50% XP DO JOGADOR* (já incluído abaixo).\n'
 r.rewards.forEach((x,n)=>{
 const pct=(x.share*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
