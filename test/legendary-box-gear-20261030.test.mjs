@@ -49,14 +49,19 @@ test('garantia lendária e chances de caixas não lendárias preservadas',()=>{
   for(const item of LEGENDARY_BOX_GEAR)assert.ok(!original.includes(item.id))
 })
 
-test('probabilidade de cada novo lendário é 20% inferior à de cada atual',()=>{
-  assert.deepEqual(LEGENDARY_BOX_WEIGHTS,{existing:10,new:8})
-  const total=original.length*10+LEGENDARY_BOX_GEAR.length*8
-  assert.equal(total,146)
-  assert.equal((8/total)/(10/total),.8)
-  assert.equal(pickLegendaryBoxGear(original,()=>0),original[0])
-  assert.equal(pickLegendaryBoxGear(original,()=>49.5/146),original[4])
-  assert.equal(pickLegendaryBoxGear(original,()=>50/146),LEGENDARY_BOX_GEAR[0].id)
-  assert.equal(pickLegendaryBoxGear(original,()=>.999999),LEGENDARY_BOX_GEAR[11].id)
+test('todos os 17 equipamentos têm a mesma chance individual por Caixa Lendária',()=>{
+  assert.deepEqual(LEGENDARY_BOX_WEIGHTS,{existing:1,new:1})
+  const all=[...original,...LEGENDARY_BOX_GEAR.map(item=>item.id)]
+  const total=all.length
+  assert.equal(total,17)
+  assert.equal(new Set(all).size,17)
+  assert.equal(LEGENDARY_BOX_WEIGHTS.existing/total,LEGENDARY_BOX_WEIGHTS.new/total)
+  assert.equal(1/total,1/17)
+  for(let i=0;i<total;i++){
+    assert.equal(pickLegendaryBoxGear(original,()=>(i+.5)/total),all[i],
+      'faixa equiprovável '+i+' corresponde ao equipamento '+all[i])
+  }
+  assert.equal(pickLegendaryBoxGear(original,()=>0),all[0])
+  assert.equal(pickLegendaryBoxGear(original,()=>.999999),all[16])
   assert.throws(()=>pickLegendaryBoxGear(original,()=>1))
 })
