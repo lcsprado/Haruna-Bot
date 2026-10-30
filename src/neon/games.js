@@ -967,6 +967,7 @@ async function raidPetXp(c,jid,gain){
   const p=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
   if(!p||PECADOS_HERO_IDS.includes(String(p.species||'')))return null
   const rawXp=Number(p.xp||0)+gain
+  const creditedXp=Math.max(0,Math.min(9900,rawXp)-Math.min(9900,Number(p.xp||0)))
   const level=Math.min(100,1+Math.floor(rawXp/100))
   const xp=level>=100?9900:rawXp
   const gained=Math.max(0,level-Math.min(100,Number(p.level||1)))
@@ -975,7 +976,7 @@ async function raidPetXp(c,jid,gain){
   const hp=Math.min(newMax,Math.max(0,Number(p.hp??oldMax)+Math.max(0,newMax-oldMax)))
   const r=(await c.query('UPDATE pets SET xp=$1,level=$2,power=power+$3,energy=energy+$4,hp=$5,max_hp=$6 WHERE jid=$7 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,jid])).rows[0]
   if(r) await c.query('UPDATE pet_collection SET level=$1,xp=$2,power=$3,energy=$4,hp=$5,max_hp=$6 WHERE jid=$7 AND active=TRUE',[r.level,r.xp,r.power,r.energy,r.hp,r.max_hp,jid])
-  return r?{name:r.name,xp:gain,level:Number(r.level),levels:gained,hp:Number(r.hp),maxHp:Number(r.max_hp)}:null
+  return r?{name:r.name,xp:gain,creditedXp,level:Number(r.level),levels:gained,hp:Number(r.hp),maxHp:Number(r.max_hp)}:null
 }
 
 async function grantTeamPetXp(c,jid,baseGain){
@@ -985,7 +986,7 @@ async function grantTeamPetXp(c,jid,baseGain){
   baseGain=Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0))))
   const awards=[]
   const primary=await raidPetXp(c,jid,baseGain)
-  if(primary) awards.push({slot:1,name:primary.name,xp:baseGain})
+  if(primary) awards.push({slot:1,name:primary.name,xp:baseGain,creditedXp:primary.creditedXp,level:primary.level})
 
   const team=(await c.query(`SELECT t.slot,p.* FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id
     WHERE t.jid=$1 AND t.slot IN (2,3) ORDER BY t.slot FOR UPDATE OF p`,[jid])).rows
@@ -996,6 +997,7 @@ async function grantTeamPetXp(c,jid,baseGain){
     const gain=Math.max(1,Math.floor(baseGain*Number(weights[slot]||0)))
     if(!gain) continue
     const rawXp=Number(pet.xp||0)+gain
+    const creditedXp=Math.max(0,Math.min(9900,rawXp)-Math.min(9900,Number(pet.xp||0)))
     const level=Math.min(100,1+Math.floor(rawXp/100))
     const xp=level>=100?9900:rawXp
     const gained=Math.max(0,level-Math.min(100,Number(pet.level||1)))
@@ -1003,7 +1005,7 @@ async function grantTeamPetXp(c,jid,baseGain){
     const oldMax=Math.max(1,Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)))
     const hp=Math.min(newMax,Math.max(0,Number(pet.hp??oldMax)+Math.max(0,newMax-oldMax)))
     const r=(await c.query('UPDATE pet_collection SET xp=$1,level=$2,power=power+$3,energy=energy+$4,hp=$5,max_hp=$6 WHERE id=$7 AND jid=$8 RETURNING *',[xp,level,gained*2,gained*3,hp,newMax,pet.id,jid])).rows[0]
-    if(r) awards.push({slot,name:r.name,xp:gain})
+    if(r) awards.push({slot,name:r.name,xp:gain,creditedXp,level:Number(r.level)})
   }
   return awards
 }
@@ -1202,10 +1204,12 @@ async function finishRaidRewards(c,s,cfg,chat){
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
     const cash=Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier
-    const exp=Math.round(Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))*xpMultiplier)
+    const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
+    const exp=Math.round(baseRaidExp*xpMultiplier)
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     const expCredit=await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
-    const petXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.round(Math.floor(cfg.petXpPool*(.15+.85*share))*petXpMultiplier)):0
+    const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
+    const petXp=baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0
     const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp):[]
 
     let material=null,drop=null,gearDrop=null
@@ -1405,7 +1409,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       playerClassId:p.classId,
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
