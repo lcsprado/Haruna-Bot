@@ -837,7 +837,7 @@ let text=`🏆 *RAID CONCLUÍDA — ${r.config.name}!*
 `
 const raidXpEventMultiplier=Math.max(1,...(r.rewards||[]).map(x=>Number(x.ownerRaidMultiplier||1)))
 if(raidXpEventMultiplier>1){
-text+='\n🎪 *EVENTO ATIVO — '+raidXpEventMultiplier+'× XP DE RAID E PETS*\n✅ Bônus já aplicado ao XP de jogador e pets nas recompensas abaixo. Não altera dinheiro nem fragmentos.\n'
+text+='\n🎪 *EVENTO ATIVO — '+raidXpEventMultiplier+'× XP DE RAID E PETS*\n✅ Bônus considerado no cálculo das recompensas. Pets Nv.100 não acumulam XP. Dinheiro e fragmentos inalterados.\n'
 }
 if(r.rewards.some(x=>x.saturdayHuntActive))text+='\n⚡ *CAÇADA DE SÁBADO: +50% XP DO JOGADOR* (já incluído abaixo).\n'
 r.rewards.forEach((x,n)=>{
@@ -845,7 +845,18 @@ const pct=(x.share*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
 text+=`
 ${n+1}º *${x.name}* — ${x.damage.toLocaleString('pt-BR')} dano (${pct}%)${Number(x.petBonusDamage||0)>0?` *(+${Number(x.petBonusDamage).toLocaleString('pt-BR')} bônus pet)*`:''}
 💰 R$ ${fmt(x.cash)} • ✨ +${fmt(x.awardedExp??x.exp)} XP`
-if(x.petXp) text+=` • 🐾 +${x.petXp} XP pet`
+if(x.petXp){
+ const mainPet=(x.petXpTeam||[]).find(p=>Number(p.slot)===1)
+ const actualPetXp=mainPet&&Number.isFinite(Number(mainPet.creditedXp))?Number(mainPet.creditedXp):Number(x.petXp)
+ text+=` • 🐾 +${fmt(actualPetXp)} XP pet`
+ if(mainPet&&actualPetXp===0)text+=' (Nv.100 — XP não acumulado)'
+}
+if(Number(x.ownerRaidMultiplier||1)>1&&Number(x.xpMultiplier||1)===Number(x.ownerRaidMultiplier||1)&&Number.isFinite(Number(x.baseRaidExp))){
+ text+='\n🎪 XP jogador: '+fmt(x.baseRaidExp)+' base + '+fmt(x.exp-x.baseRaidExp)+' bônus evento = '+fmt(x.exp)+' XP'
+}
+if(Number(x.ownerRaidMultiplier||1)>1&&Number(x.baseRaidPetXp||0)>0&&Number(x.petXp)===Number(x.baseRaidPetXp)*Number(x.ownerRaidMultiplier)){
+ text+='\n🐾 XP pet calculado: '+fmt(x.baseRaidPetXp)+' base ×'+Number(x.ownerRaidMultiplier)+' = '+fmt(x.petXp)+' XP (antes do teto Nv.100)'
+}
 if(Number(x.xpBoostBonus||0)>0){
 const boostName=Number(x.xpBoostPercent||0)===100?'⏳ *BÔNUS AMPULHETA XP 2×*':'⚡ *BÔNUS DE XP*'
 text+=`\n${boostName}: +${fmt(x.xpBoostBonus)} XP (já incluído no total)`
