@@ -10,6 +10,7 @@ import {guerraEnsureChoices,guerraPrivateMenu,guerraSecretChoice} from './guerra
 
 const KEY='guerra_almas_halloween_20261030_v1'
 const ARCHIVE=KEY+':cancelled-before-secret-restart'
+const CANCELLATION_SNAPSHOT=KEY+':cancelled_by_owner_20261030_snapshot'
 const EDITION='secret-numbered-two-minute-restart-20261030'
 const GROUPS=Object.freeze(['120363410230588690@g.us','120363429534634131@g.us'])
 const fmt=n=>Number(n).toLocaleString('pt-BR')
@@ -34,6 +35,17 @@ async function tx(handler){
   const row=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[KEY])).rows[0]
   if(!row){await c.query('ROLLBACK');return {missing:true}}
   const s=row.value
+  if(!s.cancelled&&s.secretEdition===EDITION&&!s.final){
+   const cancelledAt=Date.now()
+   await c.query('INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::bigint) ON CONFLICT(key) DO NOTHING',[CANCELLATION_SNAPSHOT,JSON.stringify(s)])
+   s.cancelled=true
+   s.cancelledAt=cancelledAt
+   s.phase='cancelled'
+   s.final={cancelled:true,cancelledAt,rewardsGranted:false}
+   s.notices=[]
+   queue(s,'cancel','🚫 *GUERRA DAS ALMAS CANCELADA*\nO evento foi encerrado por decisão da administração.\n❌ Rodadas e inscrições bloqueadas.\n🎁 Nenhuma Alma, XP ou Caixa Lendária será distribuída por esta edição.\n📋 O histórico foi preservado somente para auditoria.')
+   console.log('[GUERRA V2] CANCELADA PELO ADMINISTRADOR; RECOMPENSAS BLOQUEADAS',JSON.stringify({cancelledAt,archive:CANCELLATION_SNAPSHOT}))
+  }
   const out=await handler(c,s)
   await c.query('UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE key=$1',[KEY,JSON.stringify(s)])
   await c.query('COMMIT')
@@ -184,8 +196,10 @@ export async function tickGuerraAlmas(){
  if(ticking)return
  ticking=true
  try{
-  await tx(async(c,s)=>{await ensureRestart(c,s,Date.now());await advance(c,s,Date.now())})
+  await tx(async(c,s)=>{if(s.cancelled)return;await ensureRestart(c,s,Date.now());await advance(c,s,Date.now())})
   await sendNotices()
+  const finished=await tx(async(_c,s)=>Boolean(s.cancelled&&s.notices.every(n=>GROUPS.every(group=>(n.sentGroups||[]).includes(group)))))
+  if(finished===true&&timer){clearInterval(timer);timer=null;console.log('[GUERRA V2] scheduler encerrado após aviso de cancelamento em ambos os grupos')}
  }catch(err){console.error('[GUERRA V2] tick',err?.message||err)}
  finally{ticking=false}
 }
@@ -203,8 +217,9 @@ export async function handleGuerraAlmasCommand({cmd,args=[],sender,name,chat,rep
  if(!group&&!pv){await reply('🎃 Guerra das Almas disponível nos grupos oficiais e privado do Alpha Bot.');return true}
  const arg=String(args[0]||'status').toLowerCase()
  const sub=arg==='entrar'?String(args[1]||'').toLowerCase():arg
- if(sub==='regras'||sub==='ajuda'){await reply(rules());return true}
+ if(sub==='regras'||sub==='ajuda'){await reply('🚫 Guerra das Almas cancelada pela administração. Os comandos estão desativados.');return true}
  const outcome=await tx(async(c,s)=>{
+  if(s.cancelled)return '🚫 *GUERRA DAS ALMAS CANCELADA*\nA disputa foi encerrada sem premiação. Os comandos estão desativados.'
   await ensureRestart(c,s,Date.now())
   await advance(c,s,Date.now())
   if(s.secretEdition!==EDITION)return '⚠️ O evento anterior já foi premiado; reinício bloqueado para evitar duplicação.'
