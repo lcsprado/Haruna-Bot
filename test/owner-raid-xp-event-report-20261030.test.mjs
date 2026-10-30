@@ -28,7 +28,7 @@ test('Raid completion explicitly displays the event already applied',()=>{
  assert.match(index,/const raidXpEventMultiplier=Math\.max\(1,/)
  assert.match(index,/EVENTO ATIVO — /)
  assert.match(index,/Bônus considerado no cálculo das recompensas/)
- assert.match(index,/Não altera dinheiro nem fragmentos/)
+ assert.match(index,/Dinheiro e fragmentos inalterados/)
 })
 
 test('Guardião de Pedra Raid 10 confirms 1260 base XP and 120 pet XP before 2x',()=>{
