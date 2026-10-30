@@ -2002,6 +2002,7 @@ espada_guardiao: { category:'weapon', atk:50, def:0, hp:25, crit:0, name:'Espada
 lamina_caos: { category:'weapon', atk:102, def:0, hp:0, crit:0.035, name:'Lâmina do Caos' },
 machado_tita: { category:'weapon', atk:110, def:0, hp:35, crit:0.025, name:'Machado do Titã' },
 foice_abismo: { category:'weapon', atk:118, def:0, hp:0, crit:0.04, name:'Foice do Abismo' },
+foice_eclipse_mistico_20261030: {category:'weapon',atk:140,def:0,hp:0,spd:10,crit:.04,name:'Foice do Eclipse'},
 espada_aurora: { category:'weapon', atk:125, def:0, hp:45, crit:0.035, name:'Espada da Aurora' },
 exterminadora_eclipse: { category:'weapon', atk:135, def:0, hp:25, crit:0.045, name:'Exterminadora do Eclipse' },
 armadura_couro: { category:'armor', atk:0, def:5, name:'Armadura de Couro' },
@@ -4821,6 +4822,7 @@ level
 })
 }
 const PET_BASE_ENERGY={
+manticora_eclipse_20261030:350,
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,450])),
 cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
 tartaruga:130,coruja:140,raposa:150,raposa_astral:150,lince_astral:150,guaxinim_errante_20261027:150,lobo:165,aguia:180,gaviao:190,
@@ -4885,6 +4887,7 @@ raposa:{base:110,growth:9,type:'Ágil'},
 raposa_astral:{base:115,growth:10,type:'Neutro — Leilão Alpha'},
 lince_astral:{base:115,growth:10,type:'Coringa — Leilão das Sombras'},
 guaxinim_errante_20261027:{base:115,growth:10,type:'Coringa — Leilão dos Quatro Destinos'},
+manticora_eclipse_20261030:{base:310,growth:23,type:'Ofensivo — Lendário Místico'},
 onca_eclipse_20261026:{base:165,growth:13,type:'Coringa — Leilão do Tesouro Alpha 26/10'},
 lobo:{base:130,growth:11,type:'Ofensivo'},
 aguia:{base:115,growth:9,type:'Crítico'},
@@ -4973,7 +4976,7 @@ const hp=Math.min(desired,Math.max(0,oldHp+(desired-oldMax)))
 const max_energy=petMaxEnergy(p.level,p.species)
 return {...p,hp,max_hp:desired,max_energy}
 }
-const PET_SPEED_BASE={guepardo:5,gaviao:4,gazela_mistica:4,cavalo_guerra:3}
+const PET_SPEED_BASE={guepardo:5,gaviao:4,gazela_mistica:4,cavalo_guerra:3,manticora_eclipse_20261030:5}
 export function petSpeedBonus(species,level=1){
 const base=Number(PET_SPEED_BASE[String(species||'').toLowerCase()]||0)
 if(!base) return 0
@@ -4994,7 +4997,7 @@ gato:'predador',raposa:'predador',lobo:'predador',guepardo:'predador',tigre:'pre
 moreia_sombria:'predador',tubarao_abissal:'predador',
 urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
 pantera_vulcanica:'predador',quimera_abissal:'predador',lince_celestial:'predador',
-fera_caos:'predador',pantera_profundezas:'predador',lobo_eclipse:'predador',
+fera_caos:'predador',pantera_profundezas:'predador',lobo_eclipse:'predador',manticora_eclipse_20261030:'predador',
 coelho:'mistico',hamster:'mistico',gazela_mistica:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
 golfinho_celestial:'mistico',polvo_arcano:'mistico',
 salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico',
