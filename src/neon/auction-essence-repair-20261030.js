@@ -1,7 +1,6 @@
 // Correção única do lote 1 de 29/10: 7x Preguiça -> 1 de cada Pecado.
 // Não adiciona invocações, não altera outros lotes e não reabre o leilão.
 // Transação, trava por jogador e marcador idempotente.
-import {db} from './db.js'
 import {PECADOS_ESSENCES} from './sete-pecados-catalog.js'
 
 export const AUCTION_ESSENCE_REPAIR_KEY='auction_20261029_lot1_essence_split_20261030_v1'
@@ -26,7 +25,10 @@ export function eligibleAuctionEssenceWinner(state){
   return delivered?String(lot.winner.jid):null
 }
 
-export async function repairAuctionEssences({pool=db}={}){
+export async function repairAuctionEssences({pool}={}){
+  // O driver real só é importado em produção. Testes usam um pool simulado
+  // sem credenciais nem conexões de banco.
+  if(!pool)pool=(await import('./db.js')).db
   const c=await pool.connect()
   try{
     await c.query('BEGIN')
