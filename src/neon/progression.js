@@ -4,6 +4,7 @@ import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTran
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross} from './business-profit.js'
+import {recordAscensionVeteranActivity} from './ascension-week-20261102.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -1776,6 +1777,8 @@ export async function progressAlphaContract(jid,task,metadata={}){
       )
     RETURNING progress,target,contract_id
   `,[jid,period,now,String(task),Number(metadata.raidLevel||0)])
+  await recordAscensionVeteranActivity(db,jid,task,metadata)
+    .catch(err=>console.error('[ASCENSAO] prova veterano',err?.message||err))
   return r.rows[0]||null
 }
 export async function claimAlphaContract(jid){
