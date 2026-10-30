@@ -11,6 +11,16 @@ export function guerraCanJoin(players,team){
  const counts=Object.fromEntries(Object.keys(GUERRA_TEAMS).map(t=>[t,Object.values(players||{}).filter(p=>p.team===t).length]))
  return counts[team]<GUERRA_TEAM_CAP&&counts[team]<=counts[team==='sombras'?'infernal':'sombras']
 }
+// Inscrição segue aberta durante as duas primeiras rodadas,
+// sem estender a duração das partidas nem recuperar ações perdidas.
+export const GUERRA_LATE_JOIN_ROUNDS=2
+export function guerraSignupDeadline(start){
+ return Number(start)+GUERRA_JOIN_MS+GUERRA_LATE_JOIN_ROUNDS*GUERRA_ROUND_MS
+}
+export function guerraSignupOpen({start,now,final=false}={}){
+ return !final&&Number.isFinite(Number(start))&&Number.isFinite(Number(now))&&
+  Number(now)>=Number(start)&&Number(now)<guerraSignupDeadline(start)
+}
 export const GUERRA_SOULS=Object.freeze({winner:15,loser:8})
 export const GUERRA_XP_PER_ACTION=80
 const COUNTERS=Object.freeze({atacar:'saquear',defender:'atacar',saquear:'defender'})
