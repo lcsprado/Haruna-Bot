@@ -41,8 +41,9 @@ test('lotes atrativos sem alteração de estatísticas e com prêmios existentes
   assert.equal(packages[3].some(x=>x.id==='pergaminho_leilao_10k'),false)
 })
 test('WhatsApp e Web mostram premiações públicas sem dados privados, com reserva/reembolso',()=>{
-  assert.match(entry,/from '\.\/auction-reliquias-20261029\.js'/)
-  assert.match(web,/from '\.\/auction-reliquias-20261029\.js'/)
+  // O leilão histórico permanece imutável, porém a edição ativa deve mudar.
+  assert.match(entry,/from '\.\/auction-eclipse-20261030\.js'/)
+  assert.match(web,/from '\.\/auction-eclipse-20261030\.js'/)
   assert.match(next,/UPDATE wallets SET cash=cash\+\$1,bank=bank\+\$2/)
   assert.match(next,/UPDATE wallets SET cash=cash-\$1,bank=bank-\$2/)
   assert.match(next,/queueAuctionBidNotices\(c/)
