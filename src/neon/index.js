@@ -100,6 +100,7 @@ import {
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
+import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction} from './ascension-week-20261102.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
 const prefix=process.env.PREFIX || '!'
 function sleepOptionMessage(options){
@@ -7027,6 +7028,7 @@ await reply(
 5️⃣ Patrimônio
 6️⃣ Ranking de patrimônio
 7️⃣ 📜 Quadro de Contratos Alpha
+8️⃣ 🚀 Semana da Ascensão Alpha
 0️⃣ Sair`
 )
 return true
@@ -8560,7 +8562,30 @@ await reply(`🚔 Você falhou e pagou multa de *R$ ${fmt(r.fine)}*.`,{mentions:
 }
 return true
 }
+if(flow.stage==='ascension_final_select'){
+  try{
+    const outcome=await chooseAscensionTerritoryAction(db,sender,Number(input))
+    clearQuickFlow(chat,sender)
+    await reply('🏙️ *AÇÃO REGISTRADA!*\n\n'+
+      (outcome.team==='veteranos'?'👑 Veteranos':'🌱 Ascendentes')+
+      ' • Fase '+(outcome.phase+1)+'/3\n'+
+      ['⚔️ Ataque','🥷 Infiltração','🛡️ Defesa'][outcome.action-1]+
+      '\n⭐ Pontos conquistados: *'+outcome.points+'*\n\n'+
+      '📋 Use *!progressao* → *8* para conferir a disputa e participar da próxima fase.')
+  }catch(err){
+    clearQuickFlow(chat,sender)
+    await reply('⚠️ '+(err?.message||'Não foi possível participar da disputa.'))
+  }
+  return true
+}
 if(flow.stage==='nav_progress'){
+if(input==='8'){
+  const status=await ascensionStatusText(db,sender)
+  if(ascensionTerritoryOpen()) setQuickFlow(chat,sender,'ascension_final_select',{},90000)
+  else clearQuickFlow(chat,sender)
+  await reply(status)
+  return true
+}
 if(input==='1'){
 const r=await getDailyMissions(sender)
 clearQuickFlow(chat,sender)
@@ -10703,6 +10728,7 @@ await reply(
 5️⃣ Patrimônio
 6️⃣ Ranking de patrimônio
 7️⃣ 📜 Quadro de Contratos Alpha
+8️⃣ 🚀 Semana da Ascensão Alpha
 0️⃣ Sair`
 )
 } else if(['grupo','assinatura'].includes(cmd)){
