@@ -1,0 +1,24 @@
+name: Alpha Boss - aviso historico 30-10
+on:
+  push:
+    branches: [fix/boss-archive-notice-20261030]
+  pull_request:
+    branches: [whatsapp-only]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe da entrega e motor
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/games.js
+          node --check src/neon/boss-archive-20261030.js
+      - name: Regressao offline sem acesso ao Aiven nem WhatsApp
+        run: |
+          node --test test/boss-archive-20261030.test.mjs test/boss-final-results-20261030.test.mjs test/boss-deadlock-retry.test.mjs

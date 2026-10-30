@@ -69,6 +69,7 @@ getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
+import {isUnarchivedWeeklyBoss20261030,loadBossArchive20261030} from './boss-archive-20261030.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
@@ -2581,11 +2582,18 @@ async function announceCompletedWeeklyBoss(){
     const state=(await db.query(
       "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_weekly_boss__' AND game_type='boss'"
     )).rows[0]?.state
-    if(state?.mode!=='completed'||!state.weeklyCompleted||
-       !Array.isArray(state.result?.rewards)||!state.result.rewards.length||
-       !state.weekendKey||!Number(state.completedAt)) return
-    if(Date.now()-Number(state.completedAt)>72*60*60*1000) return
-    const notices=weeklyBossResultMessages(state)
+    if(state?.mode!=='completed'||!state.weeklyCompleted||!state.weekendKey) return
+    const archived=isUnarchivedWeeklyBoss20261030(state)
+    if(archived){
+      if(Date.now()>Date.parse('2026-11-02T12:37:32-03:00'))return
+    }else{
+      if(!Array.isArray(state.result?.rewards)||!state.result.rewards.length||
+         !Number(state.completedAt)||Date.now()-Number(state.completedAt)>72*60*60*1000)return
+    }
+    const notices=archived
+      ? await loadBossArchive20261030(db,state)
+      : weeklyBossResultMessages(state)
+    if(!notices.length)return
     const groups=await activeEventGroups()
     for(const group of groups){
       for(let i=0;i<notices.length;i++){
@@ -6471,6 +6479,10 @@ return true
 if(game==='boss'){
 const r=await startBoss(chat)
 if(r.finished){for(const part of weeklyBossResultMessages(r)) await reply(part);return true}
+if(isUnarchivedWeeklyBoss20261030(r)){
+  const archive=await loadBossArchive20261030(db,r)
+  if(archive.length){for(const part of archive)await reply(part);return true}
+}
 if(!r.already) await progressDailyMission(sender,'game')
 setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
 const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento em andamento.*':'')
@@ -6545,6 +6557,10 @@ return true
 if(input==='7'){
 const r=await startBoss(chat)
 if(r.finished){for(const part of weeklyBossResultMessages(r)) await reply(part);return true}
+if(isUnarchivedWeeklyBoss20261030(r)){
+  const archive=await loadBossArchive20261030(db,r)
+  if(archive.length){for(const part of archive)await reply(part);return true}
+}
 if(!r.already) await progressDailyMission(sender,'game')
 setQuickFlow(chat,sender,'boss_attack',{},10*60*1000)
 const schedule=r.mode==='weekly'?`\n📅 Disponível: *sexta 00:01 → sábado 23:59*\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 *Boss de Evento em andamento.*':'')
@@ -12262,6 +12278,10 @@ const r=await startBoss(chat)
 if(r.finished){
   for(const part of weeklyBossResultMessages(r)) await reply(part)
   return
+}
+if(isUnarchivedWeeklyBoss20261030(r)){
+  const archive=await loadBossArchive20261030(db,r)
+  if(archive.length){for(const part of archive)await reply(part);return}
 }
 if(r.cooldown) return await reply(`⏳ *BOSS COMUM EM COOLDOWN*\n\nO próximo Golem do Alpha poderá aparecer em aproximadamente *${r.remainingMinutes} min*.\n\n👹 O Superboss semanal continua sendo um evento separado, disponível apenas uma vez por fim de semana.`)
 const bossPet=await getPet(sender)
