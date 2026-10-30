@@ -3,7 +3,7 @@
 // Sem usar níveis/equipamentos; resultados e premiação são transacionais e retomáveis.
 import {db,grantExpInTransaction} from './db.js'
 import {HALLOWEEN_SOUL_ID} from './halloween-rules.js'
-import {GUERRA_TEAMS,GUERRA_ACTIONS,GUERRA_ROUNDS,GUERRA_JOIN_MS,GUERRA_ROUND_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraRoundEnd,guerraScoreRound,guerraBuildAwards,GUERRA_TEAM_CAP,guerraCanJoin} from './guerra-almas-rules.js'
+import {GUERRA_TEAMS,GUERRA_ACTIONS,GUERRA_ROUNDS,GUERRA_JOIN_MS,GUERRA_ROUND_MS,GUERRA_TOTAL_MS,guerraRoundAt,guerraRoundEnd,guerraScoreRound,guerraBuildAwards,GUERRA_TEAM_CAP,guerraCanJoin,guerraSignupDeadline,guerraSignupOpen} from './guerra-almas-rules.js'
 
 export const GUERRA_KEY='guerra_almas_halloween_20261030_v1'
 export const GUERRA_GROUP='120363410230588690@g.us'
@@ -43,14 +43,14 @@ async function withState(work,{create=false}={}){
 function instructions(){
  return '🎃⚔️ *GUERRA DAS ALMAS — HALLOWEEN*\n'+
  '💜 *Legião das Sombras* vs 🔥 *Ordem Infernal*\n'+
- '⏱️ 5 minutos para entrar + 8 rodadas de 5 minutos.\n'+
+ '⏱️ 5 minutos de inscrição inicial + 8 rodadas de 5 minutos. Entrada tardia até o FIM da rodada 2, se houver vaga.\n'+
  '👥 *!guerra sombras* ou *!guerra infernal* para escolher sua facção. *Apenas 2 jogadores por facção* (4 vagas no total), equipes equilibradas.\n'+
  '⚔️ Cada rodada: *!guerra atacar*, *!guerra defender* ou *!guerra saquear*. Uma ação por pessoa e rodada.\n'+
  '🧠 Atacar vence Saquear • Defender vence Atacar • Saquear vence Defender. A maior escolha da facção adversária determina o contra-ataque (+8 pontos); todos os golpes dão pelo menos 10.\n'+
  '🏆 Equipe vencedora: *15 Almas* por participante ativo. Equipe derrotada: *8 Almas*.\n'+
  '🌟 *MVP de CADA equipe: 1 CAIXA LENDÁRIA!*\n'+
  '✨ +80 XP por ação válida, pagos no encerramento.\n'+
- '📋 É preciso jogar pelo menos 2 rodadas para receber prêmios; as duas facções precisam ter participantes ativos para liberar os MVPs.\n'+
+ '📋 Entrada tardia começa com 0 pontos e não recupera rodadas. É preciso jogar pelo menos 2 rodadas para receber prêmios; as duas facções precisam ter participantes ativos para liberar os MVPs.\n'+
  '⚖️ O nível, o ATK e os pets não influenciam a pontuação.\n'+
  '👉 *!guerra status* mostra a disputa.'
 }
@@ -61,13 +61,15 @@ function status(state,now=Date.now()){
  const totals={sombras:0,infernal:0}
  for(const r of state.results)for(const t of Object.keys(totals))totals[t]+=Number(r.scores[t]||0)
  const round=guerraRoundAt(state.start,now)
- const time=state.final?'Encerrada':now<state.joinEnd?'Inscrições até '+clock(state.joinEnd):'Rodada '+round+'/'+GUERRA_ROUNDS+' • até '+clock(guerraRoundEnd(state.start,round))
+ const lateJoin=guerraSignupOpen({start:state.start,now,final:Boolean(state.final)})
+ const time=state.final?'Encerrada':now<state.joinEnd?'Inscrições iniciais até '+clock(state.joinEnd):'Rodada '+round+'/'+GUERRA_ROUNDS+' • até '+clock(guerraRoundEnd(state.start,round))
+ const signup=lateJoin?'\n👥 Entradas até o fim da 2ª rodada: *'+clock(guerraSignupDeadline(state.start))+'* (máx. 2 por facção)':'\n🔒 Inscrições encerradas'
  return '🎃⚔️ *GUERRA DAS ALMAS*\n'+
  '⏰ '+time+'\n'+
  '💜 Sombras: *'+fmt(totals.sombras)+' pts* ('+counts.sombras+'/'+GUERRA_TEAM_CAP+' vagas)\n'+
  '🔥 Infernal: *'+fmt(totals.infernal)+' pts* ('+counts.infernal+'/'+GUERRA_TEAM_CAP+' vagas)\n'+
  (state.final?'🏆 '+(state.final.winner==='empate'?'Empate':state.final.winner?GUERRA_TEAMS[state.final.winner]:'Disputa sem dois times ativos')+'\n':'')+
- '📋 !guerra regras • !guerra atacar/defender/saquear'
+ signup+'\n📋 !guerra regras • !guerra atacar/defender/saquear'
 }
 function roundNotice(result){
  const t=result.scores
@@ -182,6 +184,15 @@ export async function tickGuerraAlmas(){
     state.multiGroupSyncDone=true
    }
    if(!state.notices.some(n=>n.id==='start'))notice(state,'start',instructions()+'\n⏰ Inscrições até *'+clock(state.joinEnd)+'*.')
+   if(guerraSignupOpen({start:state.start,now,final:Boolean(state.final)})&&
+      !state.notices.some(n=>n.id==='late-join-round2')){
+    notice(state,'late-join-round2','🎃⚔️ *GUERRA DAS ALMAS — ENTRADA TARDIA LIBERADA!*\n'+
+     '👥 Até *2 por equipe*, compartilhadas entre os dois grupos.\n'+
+     '⏰ Pode entrar até o fim da *2ª rodada*: *'+clock(guerraSignupDeadline(state.start))+'*.\n'+
+     '⚔️ Entrou depois? Começa com *0 pontos* e não recupera rodadas.\n'+
+     '🏆 Recompensas exigem participação em *2 rodadas*.\n'+
+     '💜 !guerra sombras • 🔥 !guerra infernal • 📋 !guerra status')
+   }
    await advance(c,state,now)
   },{create:true})
   await sendPending()
@@ -209,7 +220,7 @@ export async function handleGuerraAlmasCommand({cmd,args=[],sender,name,chat,rep
   if(sub==='status'||sub==='placar')return status(state,now)
   const team=sub==='sombras'||sub==='sombra'?'sombras':sub==='infernal'||sub==='fogo'?'infernal':null
   if(team){
-   if(now>=state.joinEnd||state.final)return '⏰ Inscrições encerradas.\n'+status(state,now)
+   if(!guerraSignupOpen({start:state.start,now,final:Boolean(state.final)}))return '⏰ Inscrições encerradas após a 2ª rodada.\n'+status(state,now)
    const prev=state.players[sender]
    if(prev)return '✅ Você já entrou na '+GUERRA_TEAMS[prev.team]+'. Não é permitido trocar de facção.'
    const count=Object.values(state.players).filter(x=>x.team===team).length
@@ -217,7 +228,7 @@ export async function handleGuerraAlmasCommand({cmd,args=[],sender,name,chat,rep
    if(count>=GUERRA_TEAM_CAP)return '🚫 Facção lotada: máximo de *2 jogadores* por equipe. Escolha outra facção que tenha vaga.\n'+status(state,now)
    if(!guerraCanJoin(state.players,team))return '⚖️ Para manter 2×2 equilibrado, entre na '+GUERRA_TEAMS[team==='sombras'?'infernal':'sombras']+'.'
    state.players[sender]={name:safe(name),team,plays:{}}
-   return '✅ *Inscrição confirmada!*\n'+safe(name)+' entrou na '+GUERRA_TEAMS[team]+'.\n⏰ Primeira rodada às '+clock(state.joinEnd)+'.'
+   return '✅ *Inscrição confirmada!*\n'+safe(name)+' entrou na '+GUERRA_TEAMS[team]+'.\n'+(now>=state.joinEnd?'⚔️ Entrada tardia: você começa com *0 pontos*. Participe da rodada atual usando !guerra atacar, defender ou saquear. Não recebe pontos retroativos.':'⏰ Primeira rodada às '+clock(state.joinEnd)+'.')
   }
   if(Object.hasOwn(GUERRA_ACTIONS,sub)){
    if(state.final||now>=state.end)return '🏁 Evento encerrado.\n'+status(state,now)
