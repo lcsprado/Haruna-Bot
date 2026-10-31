@@ -69,7 +69,7 @@ test('persistent transactional safety, independent of Uber',()=>{
  assert.match(src,/CREATE UNIQUE INDEX IF NOT EXISTS racing_one_equipped_alpha/)
  assert.match(src,/CREATE UNIQUE INDEX IF NOT EXISTS racing_challenge_pending_alpha/)
  assert.match(src,/SELECT jid FROM users WHERE jid=ANY\(\$1::text\[\]\) ORDER BY jid FOR UPDATE/)
- assert.match(src,/pending_until<=$2 RETURNING id/)
+ assert.match(src,/pending_until<=\$2 RETURNING id/)
  assert.match(src,/if\(s\.cars\.some\(x=>x\.pending_part\)\)/)
  assert.match(src,/UPDATE wallets SET cash=cash-\$2 WHERE jid=\$1/)
  assert.match(src,/if\(Number\(w\?\.cash\|\|0\)<next\.price\)/)
