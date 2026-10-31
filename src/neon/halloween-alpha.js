@@ -4,9 +4,10 @@ import {getEquippedEnchants} from './enchantments-alpha.js'
 import {profileCombatPetBonuses} from './games.js'
 import {activeRelic} from './relics.js'
 import {HALLOWEEN_TICK_MS,halloweenAttackInterval,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
-import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction} from './halloween-rules.js'
+import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction,halloweenSoulMultiplier} from './halloween-rules.js'
 import {HALLOWEEN_SESSION_REMINDER_MS,HALLOWEEN_MAINTENANCE_MS,halloweenHourlyEnabled,halloweenSessionExpiry,halloweenSessionValid,halloweenSessionTime,halloweenSessionRemaining} from './halloween-session.js'
 import {HALLOWEEN_ALTAR_OFFERS,HALLOWEEN_ALTAR_ITEMS,HALLOWEEN_CHEST_ID,HALLOWEEN_CHEST_CONTENTS,halloweenAltarOffer,halloweenAltarOpen,halloweenAltarCatalogText,halloweenTitleBonusXp,ownsHalloweenTitle} from './halloween-altar.js'
+import {AFTERPARTY_ANNOUNCE,AFTERPARTY_START,AFTERPARTY_SHOP_START,AFTERPARTY_SHOP_END,AFTERPARTY_OFFERS,afterpartyOffer,afterpartyShopOpen,afterpartyShopCatalog,afterpartyAnnouncement,afterpartyStartAnnouncement,afterpartyOpenAnnouncement} from './halloween-afterparty.js'
 
 const fmt=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
 const nowSec=()=>Math.floor(Date.now()/1000)
@@ -188,7 +189,7 @@ async function petXp(c,jid,base){
 async function milestoneReward(c,day,cycle,player,part,boss,kind){
  const threshold=halloweenMinimumDamage(boss.hp)
  if(Number(player.round_damage)<threshold)return null
- const qty=kind==='kill'?8:4
+ const qty=(kind==='kill'?8:4)*halloweenSoulMultiplier()
  const marker=kind==='kill'?'kill':String(part)
  const inserted=await c.query(`INSERT INTO halloween_rewards_2026(day,cycle,jid,milestone,item_id,amount,created_at)
  VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING jid`,
@@ -219,7 +220,7 @@ async function maybeDrop(c,jid,boss,cycle){
 }
 function damageModifier(boss,phase){
  const i=HALLOWEEN_BOSSES.findIndex(b=>b.day===boss.day)
- return [.90,1.05,.88,.91,.93,1][i] * (phase===3?.95:1)
+ return ([.90,1.05,.88,.91,.93,1,1][i]??1) * (phase===3?.95:1)
 }
 async function applyRetaliation(c,player,boss,phase){
  // Retaliação a cada 12 ACERTOS; esquivas do Boss não geram contra-ataque.
@@ -458,6 +459,23 @@ async function buyHalloweenAltarOffer(jid,offerId){
  })
 }
 
+async function buyAfterpartyOffer(jid,offerId){
+ const offer=AFTERPARTY_OFFERS[offerId]
+ if(!offer)throw new Error('Oferta inválida. Use !halloween loja.')
+ if(!afterpartyShopOpen())throw new Error('A nova loja abre 01/11 às 18h (São Paulo).')
+ return tx(async c=>{
+  await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  const rewardId='afterparty_20261101_'+offer.id
+  const claimed=await c.query('INSERT INTO halloween_shop_2026(jid,reward_id,created_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING reward_id',[jid,rewardId,nowSec()])
+  if(!claimed.rowCount)throw new Error('Você já resgatou '+offer.name+'. Limite: uma vez.')
+  const spent=await c.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>=$3 RETURNING quantity',[jid,HALLOWEEN_SOUL_ID,offer.cost])
+  if(!spent.rowCount)throw new Error('Almas insuficientes. Necessárias '+offer.cost+' Almas.')
+  await credit(c,jid,offer.itemId,offer.quantity)
+  await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'halloween',0,'halloween_afterparty_shop',$2)",[jid,rewardId+'; '+offer.cost+' Almas; '+offer.itemId+' x'+offer.quantity])
+  return {offer,remaining:Number(spent.rows[0].quantity)}
+ })
+}
+
 // O baú comprado fica no inventário e pode ser aberto mesmo depois que a
 // loja fecha. Conteúdo fixo garante transparência, sem prêmio duplicado.
 async function openHalloweenSupremeChest(jid){
@@ -596,6 +614,16 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
  }
  if(['trocar','resgatar','comprar'].includes(action)){
   const requested=String(args[1]||'').toLowerCase()
+  if(afterpartyShopOpen()){
+   const offer=afterpartyOffer(requested)
+   if(!offer){await reply('🛍️ Nesta edição, escolha uma oferta de *!halloween loja*. O Altar anterior já encerrou.');return true}
+   const r=await buyAfterpartyOffer(sender,offer.id)
+   await reply('🛍️✅ *RESGATE DA NOVA LOJA!*\n'+r.offer.name+
+    '\n📦 '+r.offer.detail+'\n🧩 Custo: *'+fmt(r.offer.cost)+' Almas*'+
+    '\n🧩 Restantes: *'+fmt(r.remaining)+'*\n🔒 Uma compra de cada oferta por jogador.')
+   return true
+  }
+  if(!halloweenAltarOpen()){await reply('🔒 O Altar original encerrou. A nova loja abre domingo *01/11 às 18h* (São Paulo).');return true}
   if(['corcel','cavalo','pet','corcel-espectral'].includes(requested)){
    const r=await buyCorcel(sender)
    await reply('🐎✨ *CORCEL ESPECTRAL RESGATADO!*\n✅ Pet lendário Místico adicionado à coleção. ID: *'+r.petId+'*\n🧩 Almas restantes: *'+fmt(r.remaining)+'*\n📜 Use *!meuspets* para localizar e *!equiparpet* para equipá-lo.')
@@ -618,9 +646,15 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
  }
  if(['loja','altar'].includes(action)){
   const s=await status(sender)
+  if(afterpartyShopOpen()){
+   await reply('🛍️ *LOJA DAS ALMAS RENASCIDAS*\n🧩 Saldo: *'+fmt(s.souls)+'* Almas\n\n'+
+    afterpartyShopCatalog()+'\n\n🔒 Apenas uma compra por oferta. Compras anteriores e almas preservadas.'+
+    '\n⏰ Loja até *02/11 às 23h59* (São Paulo).')
+   return true
+  }
   const base='🎃 *ALTAR DAS ALMAS — HALLOWEEN*\n🧩 Saldo: *'+fmt(s.souls)+'* Almas Amaldiçoadas\n\n🐎 *Corcel Espectral — 100 Almas*\n✨ Lendário Místico, 1 por jogador\n👉 *!halloween trocar corcel*'
   if(!halloweenAltarOpen()){
-   await reply(base+'\n\n🎁 Os 2 elmos e 2 pares de botas são DROPS dos Bosses, não itens da loja.\n⏰ *Altar fechado*: abre 31/10 às 00h e encerra 01/11 às 12h (São Paulo).')
+   await reply(base+'\n\n🎁 Os 2 elmos e 2 pares de botas são DROPS dos Bosses, não itens da loja.\n⏰ Altar original encerrado. A próxima loja abre *01/11 às 18h* (São Paulo).')
    return true
   }
   await reply(base+'\n\n'+halloweenAltarCatalogText()+
