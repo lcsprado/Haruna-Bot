@@ -23,7 +23,7 @@ export const POKEMON_QUIZ_QUESTIONS = Object.freeze([
   {q:'Qual Pokemon pode evoluir diretamente para Kleavor?', a:['Scizor','Pinsir','Scyther','Heracross'],c:3},
   {q:'Qual Pokemon evolui para Dudunsparce?', a:['Dunsparce','Furret','Drampa','Dudunsparce'],c:1}
 ].map((x,i)=>Object.freeze({...x,prize:i<5?200000:i<10?400000:750000})))
-const LIMIT_MS=45000, BETWEEN_MS=8000
+const LIMIT_MS=45000, BETWEEN_MS=8000, QUESTION_PROPAGATION_MS=6000
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
 const clean=x=>String(x||'Jogador').replace(/[\r\n*_~]/g,' ').trim().slice(0,45)
 const isGroup=(chat,groups)=>groups.includes(String(chat||''))
@@ -32,7 +32,7 @@ function questionText(index){
   const level=index<5?'FACIL':index<10?'MEDIO':'DIFICIL'
   return '🧠⚡ *QUIZ POKEMON — '+(index+1)+'/15* • '+level+'\n\n'+p.q+'\n\n'+p.a.map((a,i)=>(i+1)+'. '+a).join('\n')+
     '\n\n💰 Premio: *R$ '+fmt(p.prize)+'*\n⏱️ *45 segundos* depois que os dois grupos receberem a pergunta.'+
-    '\n👉 Responda *!pk 1*, *!pk 2*, *!pk 3* ou *!pk 4*.'+
+    '\n👉 *RESPONDA A ESTA MENSAGEM* (deslize para responder) com *!pk 1*, *!pk 2*, *!pk 3* ou *!pk 4*.'+
     '\n⚖️ Duas tentativas por jogador. O primeiro acerto GLOBAL ganha.'
 }
 function resultText(index,winner){
@@ -58,7 +58,36 @@ function enqueueNotice(s,id,text){
   s.notices??=[]
   if(!s.notices.some(n=>n.id===id))s.notices.push({id,text,sentGroups:[]})
 }
+// Um envio aceito pelo Baileys NAO comprova que ficou visivel no WhatsApp.
+// Identificadores de mensagens sao necessarios para exigir resposta citando a pergunta.
 const fullyDelivered=(s,id,groups)=>s.notices?.some(n=>n.id===id && groups.every(g=>n.sentGroups.includes(g)))
+const questionReady=(s,groups,now)=>{
+  const notice=s.notices?.find(n=>n.id==='question:'+s.round)
+  if(!notice || !fullyDelivered(s,notice.id,groups))return false
+  const times=groups.map(g=>Number(notice.sentAtMs?.[g]||0))
+  if(times.some(t=>t<=0) || groups.some(g=>!notice.sentMessageIds?.[g]))return false
+  return now>=Math.max(...times)+QUESTION_PROPAGATION_MS
+}
+// Extrai o ID citado de texto normal e dos wrappers mais comuns do Baileys.
+// Nunca confie no texto que o usuario citou: compare apenas IDs gerados pelo bot.
+export function getPokemonQuotedMessageId(message){
+  let current=message?.message||message
+  for(let i=0;i<8 && current;i++){
+    const info=current.extendedTextMessage?.contextInfo ||
+      current.imageMessage?.contextInfo ||
+      current.videoMessage?.contextInfo ||
+      current.documentMessage?.contextInfo ||
+      current.buttonsResponseMessage?.contextInfo
+    if(info?.stanzaId)return String(info.stanzaId)
+    current=current.ephemeralMessage?.message||
+      current.viewOnceMessage?.message||
+      current.viewOnceMessageV2?.message||
+      current.viewOnceMessageV2Extension?.message||
+      current.documentWithCaptionMessage?.message||
+      current.editedMessage?.message
+  }
+  return ''
+}
 function fresh(now){
   return {status:'running',phase:'delivery',round:0,createdAt:now,expiresAt:0,
     nextAt:0,attempts:{},winners:[],notices:[]}
@@ -94,7 +123,7 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
     return transact(async(_c,s)=>{
       if(!s||s.status!=='running')return
       const now=clock()
-      if(s.phase==='delivery'&&fullyDelivered(s,'question:'+s.round,groups)){
+      if(s.phase==='delivery'&&questionReady(s,groups,now)){
         s.phase='answering';s.expiresAt=now+LIMIT_MS
       }else if(s.phase==='answering'&&now>=s.expiresAt){
         s.phase='result';s.nextAt=now+BETWEEN_MS
@@ -119,10 +148,22 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
         if(notice.sentGroups.includes(g))continue
         if(!isConnected())return
         try{
-          await sendMessage(g,notice.text)
+          const sent=await sendMessage(g,notice.text)
+          const question=notice.id.startsWith('question:')
+          const messageId=String(sent?.key?.id||'')
+          if(question && !messageId){
+            throw new Error('WhatsApp nao confirmou identificador da pergunta; rodada continua fechada')
+          }
           await transact(async(_c,latest)=>{
             const target=latest?.notices?.find(n=>n.id===notice.id)
-            if(target&&!target.sentGroups.includes(g))target.sentGroups.push(g)
+            if(!target || target.sentGroups.includes(g))return
+            if(question){
+              target.sentMessageIds??={}
+              target.sentAtMs??={}
+              target.sentMessageIds[g]=messageId
+              target.sentAtMs[g]=clock()
+            }
+            target.sentGroups.push(g)
           })
         }catch(err){
           logger.warn?.('[QUIZ POKEMON] aviso pendente em '+g+': '+String(err?.message||err))
@@ -140,12 +181,17 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
     }catch(err){logger.error?.('[QUIZ POKEMON] tick',err?.message||err)}
     finally{running=false}
   }
-  async function answer({chat,sender,name,choice}){
+  async function answer({chat,sender,name,choice,quotedMessageId}){
     if(!isGroup(chat,groups))return {kind:'other-group'}
     const raw=String(choice||'').trim()
     if(!/^[1-4]$/.test(raw))return {kind:'invalid'}
     return transact(async(c,s)=>{
       if(!s||s.status!=='running'||s.phase!=='answering')return {kind:'not-open'}
+      // Bloqueio transacional: sem citar a pergunta efetivamente enviada para
+      // este grupo, nem acerto por chute nem premio podem ser processados.
+      const question=s.notices?.find(n=>n.id==='question:'+s.round)
+      const expected=String(question?.sentMessageIds?.[chat]||'')
+      if(!expected || String(quotedMessageId||'')!==expected)return {kind:'unquoted'}
       const now=clock()
       if(now>=s.expiresAt){
         s.phase='result';s.nextAt=now+BETWEEN_MS
