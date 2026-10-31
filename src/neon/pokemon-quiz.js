@@ -152,6 +152,7 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
         enqueueNotice(s,'result:'+s.round,resultText(s.round,null))
         return {kind:'late'}
       }
+      if((s.winners||[]).some(w=>w.round===s.round+1))return {kind:'not-open'}
       const old=Number(s.attempts[sender]||0)
       if(old>=2)return {kind:'limit'}
       const n=old+1;s.attempts[sender]=n
@@ -189,9 +190,10 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
   async function pause(){
     return transact(async(_c,s)=>{
       if(!s||s.status!=='running')return false
+      s.pausedFrom=s.phase
       s.status='paused';s.phase='paused';s.expiresAt=0;s.nextAt=0
       s.notices=[]
-      enqueueNotice(s,'paused','⏸️ *QUIZ POKEMON PAUSADO PARA CORRECAO*\nAs respostas estao temporariamente bloqueadas.\n✅ Premios ja creditados permanecem validos.\nA rodada atual sera reiniciada com prazo integral quando retomada.')
+      enqueueNotice(s,'paused','⏸️ *QUIZ POKEMON PAUSADO PARA CORRECAO*\nAs respostas estao temporariamente bloqueadas.\n✅ Premios ja creditados permanecem validos.\nA rodada sem vencedor sera reiniciada. Resultados ja definidos nao serao pagos novamente.')
       return true
     })
   }
@@ -199,9 +201,17 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
     return transact(async(_c,s)=>{
       if(!s||s.status!=='paused')return false
       s.status='running';s.phase='delivery';s.expiresAt=0;s.nextAt=0
-      // A resposta da rodada interrompida nunca e aproveitada sem nova pergunta.
+      // Se a rodada ja pagou um premio, avancar sem permitir outro credito.
+      const winner=(s.winners||[]).find(w=>w.round===s.round+1)
       s.attempts={};s.notices=[]
-      enqueueNotice(s,'question:'+s.round,questionText(s.round))
+      if(winner){
+        s.phase='result';s.nextAt=clock()+BETWEEN_MS
+        enqueueNotice(s,'result:'+s.round,resultText(s.round,winner))
+      }else{
+        s.phase='delivery'
+        enqueueNotice(s,'question:'+s.round,questionText(s.round))
+      }
+      delete s.pausedFrom
       return true
     })
   }
