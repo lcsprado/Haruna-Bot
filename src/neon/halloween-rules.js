@@ -12,8 +12,8 @@ export const HALLOWEEN_BOSSES=Object.freeze([
   {day:'2026-10-28',name:'🐺 O Lobisomem Escarlate',hp:8500000,atk:310,mechanic:'Fúria crescente abaixo de 50% HP'},
   {day:'2026-10-29',name:'⚰️ O Guardião das Criptas',hp:9500000,atk:330,mechanic:'Armadura de ossos e contra-ataques'},
   {day:'2026-10-30',name:'🎃 O Rei das Abóboras',hp:11000000,atk:355,mechanic:'Servos explosivos e maldição flamejante'},
-  {day:'2026-10-31',name:'🐎 O Cavaleiro Sem Cabeça',hp:13500000,atk:390,mechanic:'3 fases; Corcel Espectral e chamas do apocalipse'},
-  {day:'2026-11-01',name:'💀 O Imperador das Almas Renascidas',hp:15000000,atk:400,mechanic:'Caçada final com Almas em dobro; abre às 13h'}
+  {day:'2026-10-31',name:'🐎 O Cavaleiro Sem Cabeça',hp:1800000,atk:390,mechanic:'3 fases; Corcel Espectral e chamas do apocalipse'},
+  {day:'2026-11-01',name:'💀 O Imperador das Almas Renascidas',hp:2100000,atk:400,mechanic:'Caçada final com Almas em dobro; abre às 13h'}
 ])
 export const HALLOWEEN_GEAR=Object.freeze([
   {id:'halloween_elmo_abobora_20261026',name:'🎃 Cabeça do Rei Abóbora',category:'helmet',def:116,hp:280,crit:.025,dropDay:'normal',chance:.01},
@@ -32,6 +32,15 @@ export function halloweenSoulMultiplier(now=Date.now()){
 }
 export function halloweenBoss(now=Date.now()){if(!halloweenActive(now))return null;return HALLOWEEN_BOSSES.find(b=>b.day===halloweenLocalDay(now))||null}
 export function halloweenDropCatalog(now=Date.now()){return HALLOWEEN_GEAR.filter(g=>g.dropDay===(halloweenLocalDay(now)>='2026-10-31'?'final':'normal'))}
+// Preserva a proporcao de HP ja perdida no ciclo sem reiniciar a luta ou recompensas.
+export function halloweenRebalanceBossState(state,targetMaxHp){
+ const oldMax=Number(state?.max_hp||0)
+ const oldHp=Number(state?.hp||0)
+ const target=Math.floor(Number(targetMaxHp||0))
+ if(oldMax<=0||target<=0||oldMax===target)return null
+ const hp=oldHp<=0?0:Math.max(1,Math.min(target,Math.ceil(oldHp*target/oldMax)))
+ return {hp,maxHp:target}
+}
 export function halloweenMinimumDamage(maxHp){return Math.max(15000,Math.ceil(maxHp*.006))}
 export function halloweenPhases(hp,maxHp){return hp<=maxHp/3?3:hp<=maxHp*2/3?2:1}
 // Um elmo com 3 pets Místicos diferentes concede apenas sustentação no Boss/Raid.
