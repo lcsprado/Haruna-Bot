@@ -79,7 +79,7 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
         s=fresh(clock())
         enqueueNotice(s,'question:0',questionText(0))
       }
-      const previous=s?JSON.stringify(s):null
+      const previous=r.rowCount?JSON.stringify(s):null
       const result=await fn(c,s)
       if(s&&JSON.stringify(s)!==previous)await c.query(
         'INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at',
