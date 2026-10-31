@@ -1,0 +1,24 @@
+name: Pokemon Quiz - regression and syntax
+on:
+  push:
+    branches:
+      - feat/pokemon-quiz-live-20261030
+  pull_request:
+    branches:
+      - whatsapp-only
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify syntax
+        run: |
+          node --check src/neon/pokemon-quiz.js
+          node --check src/neon/index.js
+      - name: Pokemon Quiz tests
+        run: node --test test/pokemon-quiz-20261030.test.mjs
