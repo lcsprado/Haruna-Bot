@@ -9317,8 +9317,16 @@ apostaEngine=createApostaEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
   isConnected:()=>trevoHealth.whatsapp==='open'
 })
-void apostaEngine.open().then(()=>apostaEngine.start())
-  .catch(err=>console.error('[APOSTO] inicializacao',err?.message||err))
+// Encerramento solicitado pelo proprietario em 30/10: usar cancel() transacional
+// para devolver reservas pendentes e impedir novas perguntas nos dois grupos.
+// A rotina e idempotente: no reinicio nao devolve nem paga duas vezes.
+void apostaEngine.open().then(async()=>{
+  const cancelled=await apostaEngine.cancel()
+  console.log('[APOSTO] cancelamento solicitado pelo proprietario:',cancelled?'aplicado; reservas pendentes devolvidas':'edicao ja encerrada')
+  // Enviar o aviso de cancelamento aos dois grupos, mesmo se a conexao
+  // WhatsApp ainda estiver abrindo. Avisos sao persistidos por grupo.
+  apostaEngine.start()
+}).catch(err=>console.error('[APOSTO] cancelamento automatico falhou',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
