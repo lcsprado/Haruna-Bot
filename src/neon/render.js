@@ -5,6 +5,10 @@ import { handleWebApi } from './web-api.js'
 const port = Number(process.env.PORT || 10000)
 // Railway can serve the game API without starting a second WhatsApp client.
 const apiOnly = String(process.env.ALPHA_RUNTIME || '').trim().toLowerCase() === 'web-api-only'
+if(apiOnly){
+  const {initRacingAlpha}=await import('./racing-alpha.js')
+  await initRacingAlpha()
+}
 const webFiles={
   '/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css',
   '/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js',
