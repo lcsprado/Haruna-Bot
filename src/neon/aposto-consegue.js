@@ -1,3 +1,4 @@
+import {randomInt} from 'node:crypto'
 // APOSTO QUE VOCE NAO CONSEGUE: quatro perguntas por inscrito, incluindo entrada tardia.
 // Banco controla todas as apostas, estornos e creditos em uma transacao por rodada.
 export const APOSTA_GROUP_JID='120363410230588690@g.us'
@@ -92,8 +93,15 @@ function finalText(s){const rank=s.order.map(id=>({name:nice(s.players[id].name)
  rank.map((p,i)=>(i+1)+'º '+p.name+' — '+(p.net>=0?'+':'-')+'R$ '+money(Math.abs(p.net))+' • '+p.done+'/4 perguntas').join('\n')+
  '\n\n📊 Rodadas: '+s.history.length+'. Cada jogador respondeu quatro desafios.\n💰 Creditos e descontos registrados no banco sem pagamentos duplicados.'
 }
+const shuffledIndices=count=>{
+ const cards=Array.from({length:count},(_,i)=>i)
+ for(let i=cards.length-1;i>0;i--){const j=randomInt(i+1);[cards[i],cards[j]]=[cards[j],cards[i]]}
+ return cards
+}
 const fresh=now=>({status:'running',phase:'lobby',createdAt:now,order:[],players:{},
- current:null,nextNumber:1,history:[],used:{medio:0,dificil:0},notices:[]})
+ current:null,nextNumber:1,history:[],used:{medio:0,dificil:0},
+ deck:{medio:shuffledIndices(APOSTA_QUESTIONS.medio.length),dificil:shuffledIndices(APOSTA_QUESTIONS.dificil.length)},
+ notices:[]})
 export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()=>Date.now(),
  group=APOSTA_GROUP_JID,logger=console}){
  if(!db?.connect||typeof sendMessage!=='function')throw Error('Banco e envio obrigatorios')
@@ -119,8 +127,8 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
   const id=first(s)
   if(!id){s.phase='completed';s.status='completed';notice(s,'final',finalText(s));return}
   const done=s.players[id].done,difficulty=done<2?'medio':'dificil'
-  const questionIndex=s.used[difficulty]++
-  if(questionIndex>=APOSTA_QUESTIONS[difficulty].length)throw Error('Banco de perguntas insuficiente')
+  const questionIndex=s.deck[difficulty][s.used[difficulty]++]
+  if(questionIndex===undefined)throw Error('Banco de perguntas insuficiente')
   const eligible=s.order.filter(x=>x!==id)
   s.current={number:s.nextNumber++,challenger:id,difficulty,category:APOSTA_QUESTIONS[difficulty][questionIndex][2],
    questionIndex,eligible,votes:{},deadline:now+BET_MS}
