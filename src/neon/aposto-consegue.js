@@ -92,7 +92,7 @@ function migrateBroadcast(s,groups,now){
   n.sentAtMs=primarySent?{[groups[0]]:Number(n.sentAt)}:{}
   n.messageIds=primarySent&&n.messageId?{[groups[0]]:n.messageId}:{}
   // Nao enviar historico antigo inteiro ao segundo grupo.
-  if(n.id!==currentNotice&&n.id!=='intro'){
+  if(n.id!==currentNotice&&!(s.status==='running'&&n.id==='intro')){
    n.sentGroups=[...groups]
    for(const g of groups)n.sentAtMs[g]??=now
   }
