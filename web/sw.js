@@ -1,6 +1,6 @@
-const CACHE='alpha-rpg-pwa-20261025-inventory-live-level-stats-v1';
+const CACHE='alpha-rpg-pwa-20261031-racing-beta-v1';
 const SHELL=[
-  '/rpg','/styles.css','/app.js','/manifest.webmanifest',
+  '/rpg','/styles.css','/app.js','/racing-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
   '/assets/official-art-sheet.jpg',
   '/assets/alpha-fixed-art.webp',
@@ -56,7 +56,11 @@ const SHELL=[
 ];
 
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then(async cache=>{
+    const core=['/rpg','/styles.css','/app.js','/racing-ui.js'];
+    await Promise.all(core.map(asset=>cache.add(asset)));
+    await Promise.allSettled(SHELL.filter(asset=>!core.includes(asset)).map(asset=>cache.add(asset)));
+  }).then(()=>self.skipWaiting()));
 });
 
 self.addEventListener('activate',event=>{
