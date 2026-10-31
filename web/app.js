@@ -1,3 +1,4 @@
+import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 const API_BASE = window.location.origin;
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
@@ -16,6 +17,16 @@ const ui = {
   lootReveal: null,
   page: 'home',
   auction: null,
+  racing: null,
+  racingFetchedAt: 0,
+  racingLoading: false,
+  racingBusy: false,
+  racingTab: 'garage',
+  racingTier: 'rua',
+  racingTrack: 'cidade',
+  racingStrategy: 'equilibrada',
+  racingTarget: '',
+  racingLast: null,
   auctionError: '',
   auctionLoading: false,
   auctionSubmitting: false,
@@ -56,6 +67,7 @@ const ui = {
 
 const navItems = [
   ['home','⌂','Início'],
+  ['racing','🏎️','Garagem Alpha'],
   ['character','🧙','Personagem'],
   ['pets','🐾','Pets'],
   ['inventory','🎒','Inventário'],
@@ -940,6 +952,7 @@ async function openWebPage(page){
     jobs.push(syncExtras(false).catch(()=>null));
   if(page==='events')jobs.push(loadEventCenter(false));
   if(page==='auction')jobs.push(loadAuction());
+  if(page==='racing')jobs.push(loadRacing(false));
   await Promise.all(jobs);
   render();
   window.scrollTo({top:0,left:0,behavior:'auto'});
@@ -952,6 +965,40 @@ function actionFeedback(name,result){
   if(name==='pet.energy'&&result) return '⚡ '+String(result.petName||'Pet')+' recuperou '+num(result.recovered||0)+' energia • '+num(result.energy||0)+'/'+num(result.max||0)+' • Energéticos restantes: '+num(result.remaining||0);
   if(name==='all'&&result) return '⚡ Rotina completa processada. Veja o resultado abaixo.';
   return 'Ação concluída no Alpha Bot.';
+}
+async function loadRacing(force=false){
+  if(!ui.token)return null;
+  if(ui.racingLoading)return ui.racing;
+  if(!force&&ui.racing&&Date.now()-ui.racingFetchedAt<30000)return ui.racing;
+  ui.racingLoading=true;
+  if(ui.page==='racing')render();
+  try{
+    const response=await api('/api/v1/me/racing');
+    ui.racing=response.data;
+    ui.racingFetchedAt=Date.now();
+    return ui.racing;
+  }catch(err){
+    toast('Garagem Alpha: '+err.message);
+    return null;
+  }finally{
+    ui.racingLoading=false;
+    if(ui.page==='racing')render();
+  }
+}
+async function racingAction(action,body,op){
+  if(ui.racingBusy)return;
+  ui.racingBusy=true;
+  try{
+    const feedback={buy:'🚘 Carro adquirido!',equip:'✅ Carro equipado!',upgrade:'🔧 Instalação iniciada!',repair:'🧰 Carro reparado!',solo:'🏁 Corrida realizada!',challenge:'⚔️ Desafio enviado!',accept:'🏆 Desafio concluído!',cancel:'🛑 Desafio cancelado!'};
+    const result=await doAction(action,body,{success:feedback[op]||'Ação concluída'});
+    if(op==='solo')ui.racingLast={type:'solo',value:result};
+    if(op==='accept')ui.racingLast={type:'pvp',value:result};
+    await loadRacing(true);
+  }catch(_error){
+    // Erros são exibidos em doAction; não repetir pagamentos ou corridas.
+  }finally{
+    ui.racingBusy=false;
+  }
 }
 async function doAction(name,body,options){
   options=options||{};
@@ -997,6 +1044,7 @@ async function logout(remote){
   if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
   ui.avatarUrl=''; ui.avatarFetchedAt=0;
   ui.token=''; ui.data=null; ui.catalog=null; ui.extras=null; ui.extrasFetchedAt=0;
+  ui.racing=null;ui.racingFetchedAt=0;ui.racingLast=null;
   localStorage.removeItem(TOKEN_KEY);
   showLogin();
 }
@@ -1200,7 +1248,8 @@ function renderHome(){
   const dailyText=dailyDone?'✅ Bônus diário feito':'🎁 Bônus diário';
   const workText=workRemain>0?'⏳ Trabalhar • '+formatRemaining(workRemain):'💼 Trabalhar';
   return renderDoubleRewardEvent()+renderLuckyBoxEvent()+
-    '<div class="event-home-link"><div><strong>🎉 Central de Eventos</strong><small>Eventos ativos, próximas caçadas e rankings do RPG</small></div><button class="btn primary" data-go-page="events">Ver eventos →</button></div>'+
+    '<div class="event-home-link"><div><strong>🎉 Central de Eventos</strong><small>Eventos ativos, próximas caçadas e rankings do RPG</small></div><button class="btn primary" data-go-page="events">Ver eventos →</button></div>'+ 
+    '<div class="event-home-link racing-home-link"><div><strong>🏎️ Garagem Alpha</strong><small>Quatro carros, oficina, corridas e ranking</small></div><button class="btn primary" data-go-page="racing">Abrir garagem →</button></div>'+
     '<div class="hero card">'+
     '<div><p class="eyebrow">CONTA REAL DO WHATSAPP</p><h2>'+esc(raw.push_name||'Jogador')+'</h2>'+
     '<p class="muted">Dados carregados diretamente do mesmo Neon usado pelo Alpha Bot.</p>'+
@@ -2923,7 +2972,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,contracts:renderContracts,raids:renderRaids,boss:renderBoss,events:renderEvents,auction:renderAuction,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,racing:()=>renderRacing(ui),character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,contracts:renderContracts,raids:renderRaids,boss:renderBoss,events:renderEvents,auction:renderAuction,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
   if(ui.page==='inventory' && Number(ui.inventoryTabsScrollLeft)>0){
@@ -2935,6 +2984,7 @@ function render(){
 }
 
 function bind(){
+  if(ui.page==='racing')bindRacing(ui,{action:racingAction,refresh:loadRacing,render});
   document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
   document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
   document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+'+String(ui.auction?.step||100000)));
@@ -3505,7 +3555,7 @@ setInterval(()=>{
 // During Boss/Raid views, use the small HP endpoint only.
 setInterval(()=>{void syncBossLive();},25000);
 setInterval(()=>{
-  if(!document.hidden && ui.token) refreshLiveCountdowns();
+  if(!document.hidden && ui.token){refreshLiveCountdowns();if(ui.page==='racing')updateRacingClocks();}
 },1000);
 
 (async function boot(){
