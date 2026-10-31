@@ -691,6 +691,33 @@ async function claimNotice(key){
    ON CONFLICT(key) DO NOTHING RETURNING key`,[key,JSON.stringify({sentAt:Date.now()})])
  return Boolean(r.rowCount)
 }
+// Exclusivo AlphaBot: nunca transmitir avisos do evento extra ao segundo grupo.
+const HALLOWEEN_EXTRA_GROUP='120363429534634131@g.us'
+async function sendAfterpartyNotice(sock,phase,text){
+ const key='halloween_afterparty_20261101_notice:'+phase
+ const now=Date.now()
+ const claim=await db.query(`INSERT INTO trevo_settings(key,value,updated_at)
+ VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+ ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
+ WHERE (trevo_settings.value->>'status'='failed' AND COALESCE((trevo_settings.value->>'retryAt')::bigint,0)<=$3)
+ OR (trevo_settings.value->>'status'='sending' AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<=$4)
+ RETURNING key`,[key,JSON.stringify({status:'sending',claimedAt:now}),now,now-60000])
+ if(!claim.rowCount)return false
+ try{
+  const result=await sock.sendMessage(HALLOWEEN_EXTRA_GROUP,{text})
+  if(!result?.key?.id)throw new Error('WhatsApp não confirmou a mensagem')
+  await db.query(`UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1`,
+   [key,JSON.stringify({status:'sent',sentAt:Date.now(),group:HALLOWEEN_EXTRA_GROUP,messageId:result.key.id})])
+  console.log('[HALLOWEEN AFTERPARTY] enviado somente AlphaBot:',phase,HALLOWEEN_EXTRA_GROUP)
+  return true
+ }catch(err){
+  console.error('[HALLOWEEN AFTERPARTY] falha '+phase,err?.message||err)
+  await db.query(`UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1`,
+   [key,JSON.stringify({status:'failed',claimedAt:now,retryAt:Date.now()+30000})])
+  return false
+ }
+}
+
 export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}){
  if(scheduler)return
  let ticks=0
@@ -699,12 +726,18 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
   running=true
   try{
    const now=Date.now()
-   if(now>=HALLOWEEN_SHOP_END){clearInterval(scheduler);scheduler=null;return}
+   if(now>=HALLOWEEN_END){clearInterval(scheduler);scheduler=null;return}
    if(!isConnected())return
+   if(now>=AFTERPARTY_ANNOUNCE&&now<AFTERPARTY_START)
+    await sendAfterpartyNotice(sock,'teaser',afterpartyAnnouncement())
+   if(now>=AFTERPARTY_START&&now<HALLOWEEN_END)
+    await sendAfterpartyNotice(sock,'double_souls_start',afterpartyStartAnnouncement())
+   if(now>=AFTERPARTY_SHOP_START&&now<HALLOWEEN_END)
+    await sendAfterpartyNotice(sock,'shop_open',afterpartyOpenAnnouncement())
    const boss=halloweenBoss(now)
    if(boss){
     const groupsOpening=await listGroups()
-    if(groupsOpening.length&&await claimNotice('halloween_day_20261026:'+boss.day)){
+    if(boss.day!=='2026-11-01'&&groupsOpening.length&&await claimNotice('halloween_day_20261026:'+boss.day)){
      const groups=groupsOpening
      await broadcast(sock,groups,'🎃👹 *HALLOWEEN ALPHA — '+boss.name+'*\n⏰ Boss global até 23h59!\n❤️ HP inicial: *'+fmt(boss.hp)+'*\n💀 3 fases e renascimento após derrota.\n🧩 Almas ilimitadas, 2× XP personagem/pet e quatro itens lendários raros.\n'+(halloweenHourlyEnabled(now)?'🔁 *NOVA REGRA: a cada 1 hora, confirme sua participação!*\n⚔️ Ataques automáticos só durante os 60 minutos após *!halloween entrar*.\n⌛ O bot avisa 5 minutos antes de acabar.':'⚔️ Hoje os ataques continuam automáticos; a renovação por hora começa amanhã.')+'\n👉 Digite *!halloween entrar* para participar.\n🐎 Trocas pelo Corcel Espectral abrem sábado.')
     }
@@ -714,6 +747,7 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
     for(const alert of alerts){
      if(!['session_warning','session_expired'].includes(alert.type))continue
      if(!String(alert.chat||'').endsWith('@g.us'))continue
+     if(boss.day==='2026-11-01'&&alert.chat!==HALLOWEEN_EXTRA_GROUP)continue
      if(!sessionGroups.has(alert.chat))sessionGroups.set(alert.chat,{warning:[],expired:[]})
      const list=sessionGroups.get(alert.chat)
      if(alert.type==='session_warning')list.warning.push(alert)
@@ -741,7 +775,7 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
      if(a.type==='defeated'){
       const key='halloween_win:'+boss.day+':'+a.cycle
       if(await claimNotice(key)){
-       const groups=await listGroups()
+       const groups=boss.day==='2026-11-01'?[{chat_jid:HALLOWEEN_EXTRA_GROUP}]:await listGroups()
        const ranking=a.ranking.slice(0,5).map((p,i)=>(i===0?'🥇':i===1?'🥈':'🏅')+' '+p.name+': '+fmt(p.damage)+' dano').join('\n')
        const drops=a.drops.map(p=>'🎁 '+p.name+': '+p.items.join(', ')).join('\n')
        await broadcast(sock,groups,'🎃⚔️ *'+boss.name+' DERROTADO!*\n🏆 Ciclo '+a.cycle+'\n'+(ranking||'Sem participantes elegíveis.')+'\n'+(drops?'\n🌟 *DROPS RAROS*\n'+drops:'')+'\n🧩 Almas e XP creditados aos elegíveis.\n👻 O Boss renasce em 2 minutos.')
@@ -761,7 +795,7 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
       WHERE p.active=TRUE AND p.day=$1
       ORDER BY p.day_damage DESC LIMIT 5`,[boss.day,HALLOWEEN_SOUL_ID])).rows
      if(st&&players.length&&await claimNotice(key)){
-      const groups=await listGroups()
+      const groups=boss.day==='2026-11-01'?[{chat_jid:HALLOWEEN_EXTRA_GROUP}]:await listGroups()
       await broadcast(sock,groups,'🎃 *HALLOWEEN — BOLETIM 30 MIN*\n👹 '+boss.name+' • Ciclo '+st.cycle+'\n❤️ '+fmt(st.hp)+'/'+fmt(st.max_hp)+' HP\n'+players.map((p,i)=>(i+1)+'. '+p.name+' — '+fmt(p.day_damage)+' dano • 🧩 '+fmt(p.souls_today)+' Almas hoje').join('\n')+'\n🧩 Farm diário ilimitado. *!halloween status*')
      }
     }
@@ -770,5 +804,5 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
   finally{running=false}
  },ATTACK_MS)
  scheduler.unref?.()
- void Promise.resolve().then(()=>console.log('[HALLOWEEN] scheduler 10s ativo; início 26/10 até 31/10'))
+ void Promise.resolve().then(()=>console.log('[HALLOWEEN] scheduler 10s ativo; evento extra 01/11 às 13h, loja às 18h; avisos apenas AlphaBot'))
 }
