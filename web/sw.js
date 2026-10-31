@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261029-hero-sync-v3';
+const CACHE='alpha-rpg-pwa-20261031-pet-expedition-all-v4';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
