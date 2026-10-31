@@ -7058,8 +7058,9 @@ await reply(xpItemReceipt(r))
 return true
 }
 const r=await usePotion(sender,itemId)
+const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
 clearQuickFlow(chat,sender)
-await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${heroAfterPotion?.hp??r.hp}/${heroAfterPotion?.maxHp??r.maxHp}`)
 return true
 }
 if(flow.stage==='commands_main'){
@@ -8486,8 +8487,9 @@ await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\n
 return true
 }
 const r=await usePotion(sender,itemId)
+const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
 clearQuickFlow(chat,sender)
-await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${heroAfterPotion?.hp??r.hp}/${heroAfterPotion?.maxHp??r.maxHp}`)
 return true
 }
 if(flow.stage==='inventory_boxes_select'){
@@ -11833,7 +11835,8 @@ const r=await usePetPotion(sender,item.item_id)
 await reply(`🐾🧪 *${r.name} usada!*\n❤️ ${r.petName}: +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 Restam: *${r.remaining}*`)
 }else{
 const r=await usePotion(sender,item.item_id)
-await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${r.hp}/${r.maxHp}`)
+const heroAfterPotion=await getPlayableHeroCombatSheet(sender)
+await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: ${heroAfterPotion?.hp??r.hp}/${heroAfterPotion?.maxHp??r.maxHp}`)
 }
 } else if(['curarpet','curapet','petcura'].includes(cmd)){
 const aliases={
@@ -12848,8 +12851,11 @@ if(!potions.length){
 return await reply(`🧪 Você não possui nenhuma poção no inventário.\nCompre uma em *${prefix}loja* para recuperar HP.`)
 }
 const profile=await getCombatProfile(sender)
+const heroHpView=await getPlayableHeroCombatSheet(sender,profile)
+const shownHp=heroHpView?.hp??profile.effective_hp
+const shownMaxHp=heroHpView?.maxHp??profile.effective_max_hp
 if(Number(profile.effective_hp)>=Number(profile.effective_max_hp)){
-return await reply(`❤️ Seu HP já está cheio: *${profile.effective_hp}/${profile.effective_max_hp}*.`)
+return await reply(`❤️ Seu HP já está cheio: *${shownHp}/${shownMaxHp}*.`)
 }
 const requested=args.join(' ').trim()
 let potion=null
@@ -12862,14 +12868,18 @@ if(potions.length===1){
 potion=potions[0]
 }else{
 setQuickFlow(chat,sender,'use_select',{items:potions.map(i=>i.item_id)},90000)
-let text=`🧪 *QUAL POÇÃO QUER USAR PARA SE CURAR?*\n\n❤️ HP atual: *${profile.effective_hp}/${profile.effective_max_hp}*\n\n`
+let text=`🧪 *QUAL POÇÃO QUER USAR PARA SE CURAR?*\n\n❤️ HP atual: *${shownHp}/${shownMaxHp}*\n\n`
 potions.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
 text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
 return await reply(text)
 }
 }
 const r=await usePotion(sender,potion.item_id)
-await reply(`🧪 *${r.name} usada!*\n❤️ +${r.healed} HP\nHP atual: *${r.hp}/${r.maxHp}*\n📦 1 poção consumida do inventário.`)
+const healedHero=await getPlayableHeroCombatSheet(sender)
+const finalHp=healedHero?.hp??r.hp
+const finalMaxHp=healedHero?.maxHp??r.maxHp
+const finalHeal=healedHero?Math.max(0,finalHp-Number(shownHp)):r.healed
+await reply(`🧪 *${r.name} usada!*\n❤️ +${finalHeal} HP\nHP atual: *${finalHp}/${finalMaxHp}*\n📦 1 poção consumida do inventário.`)
 } else if(['daritem'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
 const itemArg=args.find(a=>SHOP_IDS.includes(a.toLowerCase()))
