@@ -18,7 +18,7 @@ export const HALLOWEEN_ALTAR_OFFERS=Object.freeze({
  insignia:Object.freeze({
   id:'insignia',name:'💀 Insígnia da Noite Eterna',cost:250,
   itemId:HALLOWEEN_INSIGNIA_ID,quantity:1,
-  detail:'+4% de dano e +1 p.p. de CRIT em Boss/Raid. Equipe em !reliquias; sem PvP.'
+  detail:'+6% de dano e +2 p.p. de CRIT em Boss/Raid. Equipe em !reliquias; sem PvP.'
  }),
  titulo:Object.freeze({
   id:'titulo',name:'👑 Título Soberano das Almas',cost:400,
@@ -44,7 +44,7 @@ export const HALLOWEEN_CHEST_CONTENTS=Object.freeze([
 export const HALLOWEEN_ALTAR_ITEMS=Object.freeze([
  Object.freeze({
   id:HALLOWEEN_INSIGNIA_ID,name:'💀 Insígnia da Noite Eterna',
-  description:'Insígnia exclusiva do Halloween 2026. Equipável via !reliquias. +4% dano e +1 p.p. CRIT Boss/Raid; sem PvP e não acumula com outra insígnia.',
+  description:'Insígnia exclusiva do Halloween 2026. Equipável via !reliquias. +6% dano e +2 p.p. CRIT Boss/Raid; sem PvP e não acumula com outra insígnia.',
   rarity:'event'
  }),
  Object.freeze({
