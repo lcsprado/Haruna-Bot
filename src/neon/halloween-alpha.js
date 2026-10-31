@@ -88,8 +88,16 @@ export async function initHalloweenAlpha(){
     description=EXCLUDED.description,rarity=EXCLUDED.rarity,
     sellable=FALSE,stackable=FALSE`,[item.id,item.name,item.description,item.rarity])
  }
- // Catalog initialization runs first. No additional schema modification to existing systems.
- console.log('[HALLOWEEN] schema ready; first day Oct 26, 6 global bosses, 4 drops')
+ // Upgrade único dos Corcéis já resgatados. Idempotência garantida dentro
+ // da mesma transação que atualiza coleção e pet equipado.
+ await tx(async c=>{
+  const marker=await c.query("INSERT INTO trevo_settings(key,value,updated_at) VALUES('halloween_corcel_power_upgrade_20261101', $1::jsonb, EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO NOTHING RETURNING key",[JSON.stringify({powerBonus:40})])
+  if(marker.rowCount){
+   await c.query("UPDATE pet_collection SET power=power+40 WHERE species=$1",[HALLOWEEN_CORCEL])
+   await c.query("UPDATE pets SET power=power+40 WHERE species=$1",[HALLOWEEN_CORCEL])
+  }
+ })
+ console.log('[HALLOWEEN] catálogo e upgrade do Corcel prontos para 01/11 às 18h')
 }
 async function ensureDay(c,boss){
  const day=boss.day
@@ -506,7 +514,7 @@ async function buyCorcel(jid){
   await c.query('UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',[HALLOWEEN_CORCEL_COST,jid,HALLOWEEN_SOUL_ID])
   const level=70,xp=6900,hp=petMaxHp(level,xp,HALLOWEEN_CORCEL),energy=petMaxEnergy(level,HALLOWEEN_CORCEL)
   const pet=(await c.query(`INSERT INTO pet_collection(jid,species,name,level,xp,energy,power,hp,max_hp,active)
-  VALUES($1,$2,'Corcel Espectral', $3,$4,$5,315,$6,$6,FALSE) RETURNING id`,
+  VALUES($1,$2,'Corcel Espectral', $3,$4,$5,355,$6,$6,FALSE) RETURNING id`,
   [jid,HALLOWEEN_CORCEL,level,xp,energy,hp])).rows[0]
   await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
     VALUES($1,'halloween',0,'halloween_corcel_claim',$2)`,[jid,'100 Almas; pet ID '+pet.id])
