@@ -102,6 +102,7 @@ import {
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
+import {createPokemonQuizEngine} from './pokemon-quiz.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
@@ -167,6 +168,7 @@ lastInboundAt:0,
 messagesSeen:0
 })
 let connectionWatchdog=null
+let pokemonQuizEngine=null
 let bossEventScheduler=null
 let setePecadosBroadcaster=null
 let bossProgressScheduler=null
@@ -9294,6 +9296,13 @@ scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
 scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
+// Quiz unico em dois grupos; retomada transacional apos reconexao e deploy.
+pokemonQuizEngine?.stop()
+pokemonQuizEngine=createPokemonQuizEngine({db,
+  sendMessage:(group,text)=>sock.sendMessage(group,{text}),
+  isConnected:()=>trevoHealth.whatsapp==='open'
+})
+pokemonQuizEngine.start()
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
@@ -9826,6 +9835,37 @@ if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.se
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(['quizpokemon','pokemonquiz'].includes(cmd)){
+  const sub=String(args[0]||'').toLowerCase()
+  if(['off','cancelar','parar'].includes(sub)){
+    if(!isOwner){await reply('⛔ Apenas o proprietario pode cancelar o Quiz Pokemon.');continue}
+    const cancelled=await pokemonQuizEngine.cancel()
+    await reply(cancelled?'🛑 Quiz Pokemon cancelado; as proximas rodadas foram bloqueadas.':'⚪ Nenhum Quiz Pokemon em andamento.')
+    continue
+  }
+  await reply(await pokemonQuizEngine.status())
+  continue
+}
+if(['pk','respostapokemon'].includes(cmd)){
+  const result=await pokemonQuizEngine.answer({
+    chat,sender,name:msg.pushName||'Jogador',choice:args[0]
+  })
+  if(result.kind==='winner'){
+    // Um unico anuncio para os dois grupos, armazenado no banco.
+    void pokemonQuizEngine.tick()
+  }else if(result.kind==='wrong'){
+    await reply('❌ Nao foi dessa vez. Tentativa *'+result.attempt+'/2*. '+(result.remaining?'Voce ainda pode tentar.':'Suas tentativas terminaram nesta rodada.'))
+  }else if(result.kind==='limit'){
+    await reply('🚫 Voce ja usou suas duas tentativas nesta rodada.')
+  }else if(result.kind==='invalid'){
+    await reply('🧠 Responda *!pk 1*, *!pk 2*, *!pk 3* ou *!pk 4*.')
+  }else if(result.kind==='other-group'){
+    await reply('🧠 O Quiz Pokemon esta disponivel apenas nos dois grupos oficiais.')
+  }else{
+    await reply('⏳ As respostas ainda nao estao abertas ou a rodada ja terminou. Use *!quizpokemon* para ver o status.')
+  }
+  continue
+}
 if(await handleEnchantCommand({cmd,args,sender,reply,
 setFlow:(next,values,ttl)=>setQuickFlow(chat,sender,next,values,ttl),
 clearFlow:()=>clearQuickFlow(chat,sender)})) continue
