@@ -1,0 +1,38 @@
+name: Pokemon Quiz - pergunta visivel antes de resposta
+on:
+  push:
+    branches: [fix/pokemon-quiz-visible-question-20261030]
+    paths:
+      - src/neon/pokemon-quiz.js
+      - src/neon/index.js
+      - test/pokemon-quiz-20261030.test.mjs
+      - .github/workflows/pokemon-quiz-visible-question-ci.yml
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check src/neon/pokemon-quiz.js
+          node --check src/neon/index.js
+      - name: Testar perguntas, respostas, transacoes e prevencao de chute
+        run: node --test test/pokemon-quiz-20261030.test.mjs
+      - name: Comprovar integracao do ID citado no comando rapido e comum
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs'
+          import assert from 'node:assert/strict'
+          const src=fs.readFileSync('src/neon/index.js','utf8')
+          assert.equal((src.match(/quotedMessageId:getPokemonQuotedMessageId\(msg.message\)/g)||[]).length,2)
+          console.log('Ambos os caminhos do comando validam a pergunta citada.')
+          EOF

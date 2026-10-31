@@ -48,13 +48,19 @@ class FakeDB{
 }
 function make({send}={}){
   let now=1_000_000
+  let sequence=0
   const db=new FakeDB(),delivered=[]
   const sendMessage=async(group,text)=>{
     if(send)await send(group,text)
     delivered.push({group,text})
+    return {key:{id:'alpha-quiz-msg-'+(++sequence)}}
   }
   const engine=createPokemonQuizEngine({db,sendMessage,clock:()=>now,autoStart:true})
-  return {db,engine,delivered,advance:ms=>{now+=ms}}
+  const advance=ms=>{now+=ms}
+  const quote=chat=>db.store?.notices?.find(n=>n.id==='question:'+db.store.round)?.sentMessageIds?.[chat]
+  const answer=params=>engine.answer({...params,quotedMessageId:params.quotedMessageId??quote(params.chat)})
+  const prepare=async()=>{await engine.tick();advance(6000);await engine.tick()}
+  return {db,engine,delivered,advance,quote,answer,prepare}
 }
 test('15 perguntas, quatro alternativas validas, premios fixos totalizam 6,75 milhoes',()=>{
   assert.equal(POKEMON_QUIZ_QUESTIONS.length,15)
@@ -68,13 +74,13 @@ test('15 perguntas, quatro alternativas validas, premios fixos totalizam 6,75 mi
 })
 test('primeiro acerto em dois grupos recebe um unico pagamento',async()=>{
   const a=make()
-  await a.engine.tick()
+  await a.prepare()
   assert.equal(a.db.store.phase,'answering')
   assert.equal(a.delivered.length,2)
   const q=POKEMON_QUIZ_QUESTIONS[0]
   const results=await Promise.all([
-    a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',name:'Alice',choice:q.c}),
-    a.engine.answer({chat:POKEMON_QUIZ_GROUPS[1],sender:'bob',name:'Bob',choice:q.c})
+    a.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',name:'Alice',choice:q.c}),
+    a.answer({chat:POKEMON_QUIZ_GROUPS[1],sender:'bob',name:'Bob',choice:q.c})
   ])
   assert.deepEqual(results.map(r=>r.kind).sort(),['not-open','winner'])
   assert.equal(a.db.ledger.length,1)
@@ -85,9 +91,9 @@ test('primeiro acerto em dois grupos recebe um unico pagamento',async()=>{
 })
 test('erros nao fecham rodada e cada pessoa possui duas tentativas',async()=>{
   const a=make()
-  await a.engine.tick()
+  await a.prepare()
   const q=POKEMON_QUIZ_QUESTIONS[0],wrong=q.c===1?2:1
-  const ask=(sender,choice)=>a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender,name:sender,choice})
+  const ask=(sender,choice)=>a.answer({chat:POKEMON_QUIZ_GROUPS[0],sender,name:sender,choice})
   assert.equal((await ask('alice',wrong)).kind,'wrong')
   assert.equal((await ask('alice',wrong)).kind,'wrong')
   assert.equal((await ask('alice',q.c)).kind,'limit')
@@ -103,15 +109,18 @@ test('falha no segundo grupo impede abrir a pergunta ate ambos receberem',async(
   }})
   await a.engine.tick()
   assert.equal(a.db.store.phase,'delivery')
-  assert.equal((await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',choice:2})).kind,'not-open')
+  assert.equal((await a.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',choice:2})).kind,'not-open')
   blocked=false
   await a.engine.tick()
+  assert.equal(a.db.store.phase,'delivery')
+  a.advance(6000)
+  await a.prepare()
   assert.equal(a.db.store.phase,'answering')
   assert.equal(a.delivered.length,2)
 })
 test('timeout, reinicio e fim do evento nao duplicam rodadas nem premiacoes',async()=>{
   const a=make()
-  await a.engine.tick()
+  await a.prepare()
   a.advance(45001)
   await a.engine.tick()
   assert.equal(a.db.store.phase,'result')
@@ -125,6 +134,7 @@ test('timeout, reinicio e fim do evento nao duplicam rodadas nem premiacoes',asy
   assert.equal(a.db.store.round,1)
   // Completa as 14 rodadas restantes com timeout, sem credito.
   for(let i=1;i<15;i++){
+    a.advance(6000);await a.engine.tick()
     a.advance(45001);await a.engine.tick()
     a.advance(8001);await a.engine.tick()
   }
@@ -136,47 +146,47 @@ test('timeout, reinicio e fim do evento nao duplicam rodadas nem premiacoes',asy
 })
 test('cancelamento preserva premios ja pagos e bloqueia novas respostas',async()=>{
   const a=make()
-  await a.engine.tick()
-  const ans=await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[1],sender:'alice',name:'Alice',choice:POKEMON_QUIZ_QUESTIONS[0].c})
+  await a.prepare()
+  const ans=await a.answer({chat:POKEMON_QUIZ_GROUPS[1],sender:'alice',name:'Alice',choice:POKEMON_QUIZ_QUESTIONS[0].c})
   assert.equal(ans.kind,'winner')
   assert.equal(await a.engine.cancel(),true)
   assert.equal(a.db.store.status,'cancelled')
   assert.equal(a.db.ledger.length,1)
-  const late=await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'bob',name:'Bob',choice:2})
+  const late=await a.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'bob',name:'Bob',choice:2})
   assert.equal(late.kind,'not-open')
   assert.equal(a.db.ledger.length,1)
 })
 
 test('pausa de seguranca bloqueia resposta sem estornar premio ja pago; retoma rodada inteira',async()=>{
   const a=make()
-  await a.engine.tick()
-  const winning=await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',name:'Alice',choice:POKEMON_QUIZ_QUESTIONS[0].c})
+  await a.prepare()
+  const winning=await a.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',name:'Alice',choice:POKEMON_QUIZ_QUESTIONS[0].c})
   assert.equal(winning.kind,'winner')
   await a.engine.tick()
   assert.equal(await a.engine.pause(),true)
   assert.equal(a.db.store.status,'paused')
   assert.equal(a.db.store.winners.length,1)
   assert.equal(a.db.ledger.length,1)
-  assert.equal((await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'bob',choice:1})).kind,'not-open')
+  assert.equal((await a.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'bob',choice:1})).kind,'not-open')
   assert.equal(await a.engine.resume(),true)
   assert.equal(a.db.store.status,'running')
   assert.equal(a.db.store.phase,'result')
   assert.equal(a.db.ledger.length,1)
-  const replay=await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[1],sender:'bob',choice:POKEMON_QUIZ_QUESTIONS[0].c})
+  const replay=await a.answer({chat:POKEMON_QUIZ_GROUPS[1],sender:'bob',choice:POKEMON_QUIZ_QUESTIONS[0].c})
   assert.equal(replay.kind,'not-open')
   await a.engine.tick()
   assert.equal(a.db.ledger.length,1)
 })
 test('pausa antes de vencedor reinicia a pergunta com tentativas zeradas',async()=>{
   const a=make()
-  await a.engine.tick()
+  await a.prepare()
   const wrong=POKEMON_QUIZ_QUESTIONS[0].c===1?2:1
-  await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',choice:wrong})
+  await a.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',choice:wrong})
   assert.equal(await a.engine.pause(),true)
   assert.equal(await a.engine.resume(),true)
   assert.equal(a.db.store.phase,'delivery')
   assert.deepEqual(a.db.store.attempts,{})
-  await a.engine.tick()
+  await a.prepare()
   assert.equal(a.db.store.phase,'answering')
 })
 test('sem autoStart nao cria uma nova competicao depois de falha',async()=>{
@@ -187,4 +197,42 @@ test('sem autoStart nao cria uma nova competicao depois de falha',async()=>{
   assert.equal(freshDb.store,null)
   await a.engine.tick()
   assert.equal(a.db.store.status,'running')
+})
+
+test('nao aceita chute sem ter visto e citado a pergunta; sem premio',async()=>{
+  const a=make()
+  await a.prepare()
+  const chat=POKEMON_QUIZ_GROUPS[0],correct=POKEMON_QUIZ_QUESTIONS[0].c
+  assert.equal((await a.engine.answer({chat,sender:'alice',choice:correct})).kind,'unquoted')
+  assert.equal((await a.engine.answer({chat,sender:'alice',choice:correct,quotedMessageId:a.quote(POKEMON_QUIZ_GROUPS[1])})).kind,'unquoted')
+  assert.equal(a.db.ledger.length,0)
+  assert.deepEqual(a.db.store.attempts,{})
+  assert.equal((await a.answer({chat,sender:'alice',choice:correct})).kind,'winner')
+  assert.equal(a.db.ledger.length,1)
+})
+
+test('pergunta anunciada nao abre antes de 6 segundos de propagacao',async()=>{
+  const a=make()
+  await a.engine.tick()
+  assert.equal(a.delivered.length,2)
+  assert.equal(a.db.store.phase,'delivery')
+  const chat=POKEMON_QUIZ_GROUPS[0]
+  assert.equal((await a.answer({chat,sender:'alice',choice:POKEMON_QUIZ_QUESTIONS[0].c})).kind,'not-open')
+  a.advance(5999);await a.engine.tick()
+  assert.equal(a.db.store.phase,'delivery')
+  a.advance(1);await a.engine.tick()
+  assert.equal(a.db.store.phase,'answering')
+})
+
+test('falha ao obter ID da mensagem mantem perguntas bloqueadas, inclusive chutes',async()=>{
+  const db=new FakeDB()
+  let now=1_000_000
+  const engine=createPokemonQuizEngine({db,clock:()=>now,sendMessage:async()=>undefined,logger:{warn:()=>{},error:()=>{}}})
+  await engine.tick()
+  now+=30000
+  await engine.tick()
+  assert.equal(db.store.phase,'delivery')
+  assert.equal(db.store.winners.length,0)
+  assert.equal(db.ledger.length,0)
+  assert.equal((await engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',choice:2})).kind,'not-open')
 })
