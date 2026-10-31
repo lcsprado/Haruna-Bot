@@ -820,7 +820,7 @@ export async function sellCar(jid,input){
     const active=await client.query('SELECT 1 FROM clt_uber_drivers WHERE jid=$1 AND car_id=$2 AND shift_ends_at>$3 LIMIT 1',[jid,car.id,now])
     if(active.rowCount) throw new Error('Esse carro está trabalhando no CLT Uber. Espere o turno terminar.')
     await client.query('UPDATE clt_uber_drivers SET car_id=NULL WHERE jid=$1 AND car_id=$2',[jid,car.id])
-    const paid=Number(r.rows[0].price_paid||car.price)
+    const paid=Number(r.rows[0].price_paid??car.price)
     const resale=carTradeInCredit(paid)
     await client.query('DELETE FROM user_cars WHERE jid=$1 AND car_id=$2',[jid,car.id])
     await client.query('UPDATE wallets SET cash=cash+$1 WHERE jid=$2',[resale,jid])

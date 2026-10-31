@@ -30,3 +30,10 @@ test('Interface tem seleção, ação, carro novo, confirmação e cancelamento'
   assert.match(app,/\['vendercarro','trocarcarro'\]/)
   assert.match(app,/Revenda\/entrada/)
 })
+
+test('Carro promocional de custo zero nao se converte em credito pela revenda',()=>{
+  const sale=source.slice(source.indexOf('export async function sellCar('),source.indexOf('export async function sellMotorcycle('))
+  assert.match(sale,/price_paid\?\?car\.price/)
+  assert.doesNotMatch(sale,/price_paid\|\|car\.price/)
+  assert.equal(credit(0),0)
+})
