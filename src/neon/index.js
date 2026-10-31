@@ -169,6 +169,7 @@ messagesSeen:0
 })
 let connectionWatchdog=null
 let pokemonQuizEngine=null
+const pokemonQuizReplyThrottle=new Map()
 let bossEventScheduler=null
 let setePecadosBroadcaster=null
 let bossProgressScheduler=null
@@ -9300,9 +9301,12 @@ startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 pokemonQuizEngine?.stop()
 pokemonQuizEngine=createPokemonQuizEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
-  isConnected:()=>trevoHealth.whatsapp==='open'
+  isConnected:()=>trevoHealth.whatsapp==='open',
+  // Nunca reiniciar automaticamente uma edicao com falhas de entrega.
+  autoStart:false
 })
-pokemonQuizEngine.start()
+void pokemonQuizEngine.pause().then(()=>pokemonQuizEngine.start())
+  .catch(err=>console.error('[QUIZ POKEMON] pausa de seguranca falhou; quiz nao iniciado',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
@@ -9693,6 +9697,32 @@ if(sendMs>=1250) console.warn('[CommandLatency]',JSON.stringify({phase:'whatsapp
 }
 const isGroup=chat.endsWith('@g.us')
 setPlayerGroupContext(sender,isGroup?chat:null)
+// Caminho rapido do Quiz Pokemon: nenhuma consulta de missao, emprestimo,
+// licenca, menu ou perfil antes de registrar a resposta.
+// Respostas erradas nao geram spam no WhatsApp; resultado vai aos dois grupos.
+const pokemonAnswerTokens=body.startsWith(prefix)
+  ?body.slice(prefix.length).trim().toLowerCase().split(/\s+/):[]
+if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(chat)
+   && pokemonAnswerTokens[0]==='pk' && pokemonAnswerTokens.length===2
+   && /^[1-4]$/.test(pokemonAnswerTokens[1])){
+  const now=Date.now()
+  const last=Number(pokemonQuizReplyThrottle.get(sender)||0)
+  trevoHealth.quizAnswersSeen=Number(trevoHealth.quizAnswersSeen||0)+1
+  trevoHealth.quizLastAnswerAt=now
+  if(now-last>=600){
+    if(pokemonQuizReplyThrottle.size>5000)pokemonQuizReplyThrottle.clear()
+    pokemonQuizReplyThrottle.set(sender,now)
+    const result=await pokemonQuizEngine.answer({chat,sender,
+      name:msg.pushName||'Jogador',choice:pokemonAnswerTokens[1]})
+    const key='quiz'+result.kind.replace(/(^|-)([a-z])/g,(_m,_sep,ch)=>ch.toUpperCase())
+    trevoHealth[key]=Number(trevoHealth[key]||0)+1
+    if(result.kind==='winner')void pokemonQuizEngine.tick()
+    if(result.kind==='unregistered')await reply('⚠️ Carteira nao localizada. Use *!perfil* antes de participar.')
+  }else{
+    trevoHealth.quizThrottled=Number(trevoHealth.quizThrottled||0)+1
+  }
+  continue
+}
 if(isGroup && !temporaryRecoveryMode){
 const introState=await getBotGroupIntroState(chat)
 if(!introState?.sent){
@@ -9837,6 +9867,13 @@ if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',ch
 if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(['quizpokemon','pokemonquiz'].includes(cmd)){
   const sub=String(args[0]||'').toLowerCase()
+  if(['retomar','resume','continuar'].includes(sub)){
+    if(!isOwner){await reply('⛔ Apenas o proprietario pode retomar o Quiz Pokemon.');continue}
+    const resumed=await pokemonQuizEngine.resume()
+    await reply(resumed?'✅ Quiz Pokemon retomado. A pergunta da rodada pausada sera reenviada aos dois grupos.':'⚪ Nao ha rodada pausada para retomar.')
+    if(resumed)void pokemonQuizEngine.tick()
+    continue
+  }
   if(['off','cancelar','parar'].includes(sub)){
     if(!isOwner){await reply('⛔ Apenas o proprietario pode cancelar o Quiz Pokemon.');continue}
     const cancelled=await pokemonQuizEngine.cancel()
@@ -9851,12 +9888,9 @@ if(['pk','respostapokemon'].includes(cmd)){
     chat,sender,name:msg.pushName||'Jogador',choice:args[0]
   })
   if(result.kind==='winner'){
-    // Um unico anuncio para os dois grupos, armazenado no banco.
     void pokemonQuizEngine.tick()
-  }else if(result.kind==='wrong'){
-    await reply('❌ Nao foi dessa vez. Tentativa *'+result.attempt+'/2*. '+(result.remaining?'Voce ainda pode tentar.':'Suas tentativas terminaram nesta rodada.'))
-  }else if(result.kind==='limit'){
-    await reply('🚫 Voce ja usou suas duas tentativas nesta rodada.')
+  }else if(['wrong','limit','not-open','late'].includes(result.kind)){
+    // Sem respostas automaticas: o anti-spam pode afetar outras funcoes.
   }else if(result.kind==='invalid'){
     await reply('🧠 Responda *!pk 1*, *!pk 2*, *!pk 3* ou *!pk 4*.')
   }else if(result.kind==='other-group'){
