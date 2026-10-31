@@ -1,6 +1,6 @@
-const CACHE='alpha-rpg-pwa-20261031-pet-expedition-all-v4';
+const CACHE='alpha-rpg-pwa-20261031-racing-garage-v5';
 const SHELL=[
-  '/rpg','/styles.css','/app.js','/manifest.webmanifest',
+  '/rpg','/styles.css','/app.js','/racing-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
   '/assets/official-art-sheet.jpg',
   '/assets/alpha-fixed-art.webp',
