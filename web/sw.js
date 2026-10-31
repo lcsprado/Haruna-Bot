@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261031-racing-garage-v6';
+const CACHE='alpha-rpg-pwa-20261031-racing-garage-nav-v7';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/racing-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
@@ -57,7 +57,12 @@ const SHELL=[
 ];
 
 self.addEventListener('install',event=>{
-  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then(async cache=>{
+    // Um sprite ausente não pode bloquear a atualização de todo o app instalado.
+    const core=['/rpg','/styles.css','/app.js','/racing-ui.js'];
+    await Promise.all(core.map(asset=>cache.add(asset)));
+    await Promise.allSettled(SHELL.filter(asset=>!core.includes(asset)).map(asset=>cache.add(asset)));
+  }).then(()=>self.skipWaiting()));
 });
 
 self.addEventListener('activate',event=>{
