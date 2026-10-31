@@ -103,6 +103,7 @@ import {
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.js'
+import {createApostaEngine,APOSTA_GROUP_JID} from './aposto-consegue.js'
 import {createGlobalCommandAntispam,commandAntispamNotice} from './command-antispam.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
@@ -170,6 +171,7 @@ messagesSeen:0
 })
 let connectionWatchdog=null
 let pokemonQuizEngine=null
+let apostaEngine=null
 const pokemonQuizReplyThrottle=new Map()
 let bossEventScheduler=null
 let setePecadosBroadcaster=null
@@ -9309,6 +9311,14 @@ pokemonQuizEngine=createPokemonQuizEngine({db,
 })
 void pokemonQuizEngine.pause().then(()=>pokemonQuizEngine.start())
   .catch(err=>console.error('[QUIZ POKEMON] pausa de seguranca falhou; quiz nao iniciado',err?.message||err))
+// Desafio de confianca no grupo principal: abre apenas uma edicao persistida.
+apostaEngine?.stop()
+apostaEngine=createApostaEngine({db,
+  sendMessage:(group,text)=>sock.sendMessage(group,{text}),
+  isConnected:()=>trevoHealth.whatsapp==='open'
+})
+void apostaEngine.open().then(()=>apostaEngine.start())
+  .catch(err=>console.error('[APOSTO] inicializacao',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
@@ -9734,6 +9744,43 @@ if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(cha
   }
   continue
 }
+// Respostas e inscricoes do desafio precisam escapar do preflight custoso.
+// Um comando por acao: nenhuma mensagem automatica para repeticao ou voto invalido.
+const apostaTokens=body.startsWith(prefix)
+  ?body.slice(prefix.length).trim().split(/\s+/):[]
+const apostaCommand=String(apostaTokens[0]||'').toLowerCase()
+if(isGroup && chat===APOSTA_GROUP_JID &&
+   ['participar','confio','duvido','resposta'].includes(apostaCommand)){
+  if(!apostaEngine){await reply('⏳ Evento inicializando. Tente novamente.');continue}
+  if(apostaCommand==='participar'){
+    await ensureUser(sender,msg.pushName||'Jogador')
+    const out=await apostaEngine.join({chat,sender,name:msg.pushName||'Jogador'})
+    if(out.kind==='joined'){
+      await reply('✅ *INSCRICAO CONFIRMADA!* '+out.count+' jogador(es) inscritos. Voce tera *4 perguntas* (2 medias e 2 dificeis).'+
+        (out.late?' Entrou depois do inicio e continua com quatro perguntas.':''))
+      void apostaEngine.tick()
+    }else if(out.kind==='full')await reply('⚠️ O limite de 8 participantes foi atingido.')
+    else if(out.kind==='closed')await reply('⌛ Esta edicao ja foi encerrada.')
+    else if(out.kind==='already')await reply('✅ Sua inscricao ja esta confirmada. Progresso: '+out.done+'/4.')
+    continue
+  }
+  if(apostaCommand==='confio'||apostaCommand==='duvido'){
+    const out=await apostaEngine.vote({chat,sender,choice:apostaCommand})
+    if(out.kind==='insufficient')await reply('⚠️ Para duvidar, mantenha R$ 50.000 somados na carteira e no banco.')
+    else if(out.kind==='unregistered')await reply('⚠️ Cadastre seu jogador usando *!perfil*.')
+    else if(out.kind==='not-eligible')await reply('⚠️ Apenas os outros participantes inscritos antes desta rodada podem apostar.')
+    if(out.kind==='voted')void apostaEngine.tick()
+    continue
+  }
+  if(apostaCommand==='resposta'){
+    const answer=apostaTokens.slice(1).join(' ')
+    const out=await apostaEngine.answer({chat,sender,answer})
+    if(out.kind==='invalid')await reply('🧠 Use *!resposta* seguido da resposta completa.')
+    if(out.kind==='answered'||out.kind==='late')void apostaEngine.tick()
+    continue
+  }
+  continue
+}
 if(isGroup && !temporaryRecoveryMode){
 const introState=await getBotGroupIntroState(chat)
 if(!introState?.sent){
@@ -9876,6 +9923,18 @@ if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.se
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(['aposto','apostoq','apostoquenao'].includes(cmd)){
+  const option=String(args[0]||'').toLowerCase()
+  if(['cancelar','parar','off'].includes(option)){
+    if(!isOwner){await reply('⛔ Somente o proprietario pode cancelar este evento.');continue}
+    const cancelled=await apostaEngine.cancel()
+    await reply(cancelled?'🛑 Evento cancelado. Apostas pendentes devolvidas.':'⚪ Evento nao estava em andamento.')
+    if(cancelled)void apostaEngine.tick()
+    continue
+  }
+  await reply(await apostaEngine.status())
+  continue
+}
 if(['quizpokemon','pokemonquiz'].includes(cmd)){
   const sub=String(args[0]||'').toLowerCase()
   if(['retomar','resume','continuar'].includes(sub)){
