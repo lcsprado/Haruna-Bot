@@ -41,7 +41,7 @@ test('exclusive items exist and are permanently untradeable with no upgrades to 
  assert.match(code,/for\(const item of HALLOWEEN_ALTAR_ITEMS\)/)
  assert.match(code,/sellable=FALSE,stackable=FALSE/)
  assert.match(relics,/\[HALLOWEEN_INSIGNIA_ID\]/)
- assert.match(relics,/boss:0\.04,raidAttack:0\.04,bossCrit:0\.01,raidCrit:0\.01/)
+ assert.match(relics,/boss:0\.06,raidAttack:0\.06,bossCrit:0\.02,raidCrit:0\.02/)
  assert.ok(profile.includes(HALLOWEEN_TITLE_ID))
  assert.match(profile,/halloweenTitleRows/)
  assert.match(profile,/halloweenTitle\?' • '/)
