@@ -91,6 +91,25 @@ test('inscricao obrigatoria: 3 por jogador, apenas um grupo, anuncio de entrada'
  assert.deepEqual([...new Set(a.db.store.schedule.map(x=>x.jid))].sort(),['joao','kaique','lucas'])
  assert.equal(a.messages.every(x=>x.chat===ROUBA_GROUP_JID),true)
 })
+test('ordem dos tres jogadores alterna igualmente entre primeira, segunda e ultima posicao',async()=>{
+ const a=harness();await a.begin()
+ const cycles=[0,1,2].map(n=>a.db.store.schedule.filter(x=>x.cycle===n).map(x=>x.jid))
+ assert.equal(cycles[0].length,3)
+ assert.equal(cycles[1].length,3)
+ assert.equal(cycles[2].length,3)
+ for(const id of a.db.store.order){
+  const indices=cycles.map(order=>order.indexOf(id)).sort()
+  assert.deepEqual(indices,[0,1,2])
+ }
+})
+test('Porsche promocional tem preço pago zero para bloquear venda de 525 mil',async()=>{
+ const {readFileSync}=await import('node:fs')
+ const source=readFileSync(new URL('../src/neon/rouba-rouba-alpha.js',import.meta.url),'utf8')
+ assert.match(source,/\[id,p\.id,0\]/)
+ assert.doesNotMatch(source,/\[id,p\.id,ROUBA_CAR\.price\]/)
+ assert.match(source,/cash\+=45000/)
+})
+
 test('3 turnos por pessoa e um unico Porsche, pagamentos apenas ao final',async()=>{
  const a=harness();await a.begin()
  for(let i=0;i<9;i++){
@@ -185,5 +204,5 @@ test('ganhador com Porsche pré-existente recebe fallback limitado e nenhuma dup
  assert.equal(a.db.store.status,'completed')
  assert.equal(a.db.store.prizes.filter(x=>x.type==='car'&&x.replacementCash).length,1)
  assert.equal([...a.db.cars.values()].reduce((n,x)=>n+x.size,0),6)
- assert.equal(a.db.transactions.reduce((n,t)=>n+Number(t.p[2]),0)<=75000+35000*9,true)
+ assert.equal(a.db.transactions.reduce((n,t)=>n+Number(t.p[2]),0)<=45000+35000*9,true)
 })
