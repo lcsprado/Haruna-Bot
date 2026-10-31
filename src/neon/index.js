@@ -101,6 +101,7 @@ import {
   parseOwnerEventBrazilDate,ownerEventsStatusText,announceOwnerEventTransitions,ownerEventNextTransitions
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
+import {initMadrugada,scheduleMadrugada,handleMadrugadaCommand} from './madrugada-amaldicoada.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.js'
 import {createApostaEngine,APOSTA_GROUPS} from './aposto-consegue.js'
@@ -1959,6 +1960,7 @@ await initAwakening()
 await initRelics()
 await initEnchantments()
 await initHalloweenAlpha()
+await initMadrugada()
 {
 const key='raid_fragment_double_20261012_30min_v1'
 const startAt=Date.now()
@@ -9302,6 +9304,7 @@ startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
 scheduleHalloweenAlpha(sock,activeEventGroups,{isConnected:()=>trevoHealth.whatsapp==='open'})
+scheduleMadrugada(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 startGuerraAlmasScheduler(sock,{isConnected:()=>trevoHealth.whatsapp==='open'})
 // Quiz unico em dois grupos; retomada transacional apos reconexao e deploy.
 pokemonQuizEngine?.stop()
@@ -9968,6 +9971,7 @@ if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador'
 if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(await handleMadrugadaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){
   const option=String(args[0]||'').toLowerCase()
