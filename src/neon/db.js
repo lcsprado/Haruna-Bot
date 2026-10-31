@@ -537,7 +537,7 @@ starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Sub
 starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados; usado exclusivamente para forjar estrelas nas armas e armaduras da collab.','special',0,'event'])
 starterItems.push([HALLOWEEN_SOUL_ID,'Alma Amaldiçoada — Halloween','Fragmento exclusivo do Halloween 26–31/10; trocas liberadas sábado.','special',0,'event'])
 starterItems.push(...HALLOWEEN_GEAR.map(g=>[g.id,g.name,'Lendário de Halloween; drop exclusivo de Boss global. Não comercializável.',g.category,0,'legendary']))
-starterItems.push(...HALLOWEEN_ALTAR_NEW_GEAR.map(g=>[g.id,g.name,'Lendário do Altar das Almas, resgate único a partir de 01/11 18h. '+g.short,g.category,0,'legendary']))
+starterItems.push(...HALLOWEEN_ALTAR_NEW_GEAR.map(g=>[g.id,g.name,'Lendário do Altar das Almas, resgate único a partir de 31/10 18h. '+g.short,g.category,0,'legendary']))
 for (const item of starterItems) {
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)

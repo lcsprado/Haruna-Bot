@@ -17,7 +17,7 @@ test('Altar only opens on Saturday October 31st in Sao Paulo',()=>{
  assert.equal(halloweenAltarOpen(HALLOWEEN_ALTAR_START-1),false)
  assert.equal(halloweenAltarOpen(HALLOWEEN_ALTAR_START),true)
  assert.equal(halloweenAltarOpen(HALLOWEEN_SHOP_END-1),true)
- assert.equal(halloweenAltarOpen(HALLOWEEN_SHOP_END),false)
+ assert.equal(halloweenAltarOpen(HALLOWEEN_SHOP_END),true)
  assert.equal(HALLOWEEN_CORCEL_COST,100)
 })
 test('four new rewards preserve promised prices and boss-only exclusive drops',()=>{
@@ -61,7 +61,7 @@ test('no new WhatsApp group announcement; Altar is not revealed before Saturday'
  const shop=code.split("if(['loja','altar'].includes(action))")[1].split("if(['ranking','top'].includes(action))")[0]
  assert.match(shop,/if\(!halloweenAltarOpen\(\)\)/)
  assert.match(shop,/halloweenAltarCatalogText\(\)/)
- assert.match(shop,/Altar fechado das 12h às 18h/)
+ assert.match(shop,/Altar disponível de/)
 })
 
 function makeFakeInventory(initialSoul=1000){

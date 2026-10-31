@@ -1,6 +1,6 @@
-// Continuação Halloween: Altar original reabre às 18h com cinco equipamentos e quatro consumíveis/caixas.
+// Continuação Halloween: Altar original recebe novos itens em 31/10 às 18h com cinco equipamentos e quatro consumíveis/caixas.
 export const AFTERPARTY_START=Date.parse('2026-11-01T13:00:00-03:00')
-export const AFTERPARTY_SHOP_START=Date.parse('2026-11-01T18:00:00-03:00')
+export const AFTERPARTY_SHOP_START=Date.parse('2026-10-31T18:00:00-03:00')
 export const AFTERPARTY_SHOP_END=Date.parse('2026-11-03T00:00:00-03:00')
 export const AFTERPARTY_ANNOUNCE=Date.parse('2026-10-31T00:00:00-03:00')
 export const HALLOWEEN_ALTAR_NEW_GEAR=Object.freeze([
@@ -42,12 +42,12 @@ export const afterpartyAnnouncement=()=>[
  '👉 Participe com *!halloween entrar* (renovação por hora).',
  '',
  '💀 O evento de Almas em dobro continua amanhã, *01/11*, com Boss extra a partir das *13h*!',
- '🛍️ *18h de domingo*: o *ALTAR DAS ALMAS REABRE COM NOVOS ITENS*!',
+ '🛍️ *Hoje, sábado 31/10 às 18h*: o *ALTAR DAS ALMAS RECEBE NOVOS ITENS*!',
  '⚔️ 5 EQUIPAMENTOS NOVOS: Espada da Caveira, Foice do Ceifador, Armadura das Catacumbas, Elmo do Rei Morto e Botas do Arauto.',
  '🎁 Também entram kits de poções, elixires e caixas. Equipamentos próximos dos Sete Pecados!',
  '💀 Almas e compras anteriores preservadas. Os resgates únicos não reiniciam.',
  '📍 Avisos só no grupo AlphaBot.',
- '🎃 A loja atual continua até domingo às 12h.'
+ '🎃 O Altar fica aberto sem interrupção até 02/11 às 23h59.'
 ].join('\n')
 export const afterpartyStartAnnouncement=()=>[
  '⚔️🎃 *CAÇADA DAS ALMAS RENASCIDAS COMEÇOU!*',
@@ -55,13 +55,13 @@ export const afterpartyStartAnnouncement=()=>[
  '🔥 *TODAS AS ALMAS DROPADAS NOS MARCOS E VITÓRIAS ESTÃO EM DOBRO!*',
  '🧩 8 Almas por marco • 16 por vitória, respeitando a participação mínima.',
  '👉 Use *!halloween entrar* para participar. Renove a sessão a cada hora.',
- '🛍️ O mesmo *Altar das Almas* reabre com mais itens às *18h*. Saldo preservado.'
+ '🛍️ O mesmo *Altar das Almas* já recebeu novos itens em *31/10 às 18h*. Saldo preservado.'
 ].join('\n')
 export const afterpartyOpenAnnouncement=()=>[
- '🛍️🎃 *ALTAR DAS ALMAS REABERTO COM NOVOS ITENS!*',
- '⏰ Domingo 01/11, *18h*, até segunda 02/11 às 23h59 (São Paulo).',
+ '🛍️🎃 *ALTAR DAS ALMAS COM NOVOS ITENS!*',
+ '⏰ Sábado 31/10, *18h*, até segunda 02/11 às 23h59 (São Paulo).',
  '🧩 Mesma loja, com prêmios antigos e novos. Confira *!halloween loja*.',
  '⚔️ 5 equipamentos exclusivos novos, incluindo a Espada da Caveira!',
  '🎁 Novos kits e caixas. Consulte valores e atributos em *!halloween loja*.',
- '🔥 Boss de Almas em dobro continua até 23h59 de hoje. Compras anteriores não reiniciam.'
+ '🔥 Almas em dobro em 31/10 e na caçada extra de 01/11 às 13h–23h59. Compras anteriores não reiniciam.'
 ].join('\n')

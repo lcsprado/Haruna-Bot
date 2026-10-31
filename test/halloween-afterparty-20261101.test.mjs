@@ -6,10 +6,10 @@ import {halloweenSoulMultiplier,halloweenBoss,HALLOWEEN_SHOP_END} from '../src/n
 import {halloweenTitleBonusXp} from '../src/neon/halloween-altar.js'
 const source=readFileSync(new URL('../src/neon/halloween-alpha.js',import.meta.url),'utf8')
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
-test('horarios Sao Paulo: dobro 13h, loja 18h, altar antigo fecha 12h',()=>{
+test('horarios Sao Paulo: caçada extra 01/11 13h, novos itens 31/10 18h, altar contínuo',()=>{
  assert.equal(HALLOWEEN_SHOP_END,Date.parse('2026-11-01T12:00:00-03:00'))
  assert.equal(AFTERPARTY_START,Date.parse('2026-11-01T13:00:00-03:00'))
- assert.equal(AFTERPARTY_SHOP_START,Date.parse('2026-11-01T18:00:00-03:00'))
+ assert.equal(AFTERPARTY_SHOP_START,Date.parse('2026-10-31T18:00:00-03:00'))
  assert.equal(AFTERPARTY_SHOP_END,Date.parse('2026-11-03T00:00:00-03:00'))
  assert.equal(afterpartyShopOpen(AFTERPARTY_SHOP_START-1),false)
  assert.equal(afterpartyShopOpen(AFTERPARTY_SHOP_START),true)
@@ -66,8 +66,8 @@ test('bonus PvE permanentes de insignia equipada e titulo independente não afet
 test('mesmo Altar reabre com catalogo anterior preservado e ofertas adicionais',async()=>{
  const {halloweenAltarOpen,halloweenAltarCatalogText,HALLOWEEN_ALTAR_OFFERS}=await import('../src/neon/halloween-altar.js')
  assert.equal(halloweenAltarOpen(Date.parse('2026-11-01T11:59:59-03:00')),true)
- assert.equal(halloweenAltarOpen(Date.parse('2026-11-01T12:00:00-03:00')),false)
- assert.equal(halloweenAltarOpen(Date.parse('2026-11-01T17:59:59-03:00')),false)
+ assert.equal(halloweenAltarOpen(Date.parse('2026-11-01T12:00:00-03:00')),true)
+ assert.equal(halloweenAltarOpen(Date.parse('2026-11-01T17:59:59-03:00')),true)
  assert.equal(halloweenAltarOpen(AFTERPARTY_SHOP_START),true)
  assert.equal(halloweenAltarOpen(AFTERPARTY_SHOP_END),false)
  assert.deepEqual(Object.values(HALLOWEEN_ALTAR_OFFERS).map(x=>x.cost),[150,250,400,600])
@@ -77,8 +77,8 @@ test('mesmo Altar reabre com catalogo anterior preservado e ofertas adicionais',
  assert.match(source,/const rewardId='altar_'\+offer.id\+'_20261031'/)
  assert.match(source,/const rewardId='afterparty_20261101_'\+offer.id/)
  const intro=afterpartyAnnouncement(),reopen=afterpartyOpenAnnouncement()
- assert.match(intro,/ALTAR DAS ALMAS REABRE COM NOVOS ITENS/)
- assert.match(reopen,/ALTAR DAS ALMAS REABERTO COM NOVOS ITENS/)
+ assert.match(intro,/ALTAR DAS ALMAS RECEBE NOVOS ITENS/)
+ assert.match(reopen,/ALTAR DAS ALMAS COM NOVOS ITENS/)
  assert.doesNotMatch(reopen,/NOVA LOJA DAS ALMAS RENASCIDAS/)
  assert.match(halloweenAltarCatalogText(),/Insígnia da Noite Eterna/)
 })
@@ -122,4 +122,14 @@ test('Corcel old and new owners both upgraded, once only; title and insignia str
  assert.match(source,/ON CONFLICT\(key\) DO NOTHING RETURNING key/)
  const relics=readFileSync(new URL('../src/neon/relics.js',import.meta.url),'utf8')
  assert.match(relics,/boss:0\.06,raidAttack:0\.06,bossCrit:0\.02,raidCrit:0\.02/)
+})
+
+test('novos itens abrem no sábado em São Paulo e permanecem até o fim',()=>{
+ assert.equal(new Date(AFTERPARTY_SHOP_START).toISOString(),'2026-10-31T21:00:00.000Z')
+ for(const date of ['2026-11-01T12:00:00-03:00','2026-11-01T17:59:59-03:00','2026-11-02T23:59:59-03:00'])assert.equal(afterpartyShopOpen(Date.parse(date)),true)
+ assert.equal(afterpartyShopOpen(AFTERPARTY_SHOP_END-1),true)
+ assert.equal(Object.keys(AFTERPARTY_OFFERS).length,9)
+ assert.equal(new Set(Object.values(AFTERPARTY_OFFERS).map(o=>o.id)).size,9)
+ assert.match(afterpartyOpenAnnouncement(),/Sábado 31\/10/)
+ assert.doesNotMatch(source,/01\/11 às 18h|ITENS ADICIONADOS EM 01\/11|fecha das 12h às 18h|fechado das 12h às 18h/)
 })

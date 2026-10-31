@@ -97,7 +97,7 @@ export async function initHalloweenAlpha(){
    await c.query("UPDATE pets SET power=power+40 WHERE species=$1",[HALLOWEEN_CORCEL])
   }
  })
- console.log('[HALLOWEEN] catálogo e upgrade do Corcel prontos para 01/11 às 18h')
+ console.log('[HALLOWEEN] catálogo e upgrade do Corcel prontos para 31/10 às 18h')
 }
 async function ensureDay(c,boss){
  const day=boss.day
@@ -457,7 +457,7 @@ async function tickHalloween(){
 async function buyHalloweenAltarOffer(jid,offerId){
  const offer=HALLOWEEN_ALTAR_OFFERS[offerId]
  if(!offer)throw new Error('Recompensa inválida. Use !halloween loja.')
- if(!halloweenAltarOpen())throw new Error('O Altar das Almas abre até 01/11 às 12h e reabre às 18h com novos itens, até 02/11 às 23h59 (São Paulo).')
+ if(!halloweenAltarOpen())throw new Error('O Altar das Almas abre em 31/10 e fica disponível até 02/11 às 23h59, com novos itens a partir de 31/10 às 18h (São Paulo).')
  return tx(async c=>{
   await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
   const rewardId='altar_'+offer.id+'_20261031'
@@ -479,7 +479,7 @@ async function buyHalloweenAltarOffer(jid,offerId){
 async function buyAfterpartyOffer(jid,offerId){
  const offer=AFTERPARTY_OFFERS[offerId]
  if(!offer)throw new Error('Oferta inválida. Use !halloween loja.')
- if(!afterpartyShopOpen())throw new Error('Os novos itens do Altar das Almas chegam 01/11 às 18h (São Paulo).')
+ if(!afterpartyShopOpen())throw new Error('Os novos itens do Altar das Almas chegam 31/10 às 18h (São Paulo).')
  return tx(async c=>{
   await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
   const rewardId='afterparty_20261101_'+offer.id
@@ -510,7 +510,7 @@ async function openHalloweenSupremeChest(jid){
  })
 }
 async function buyCorcel(jid){
- if(!halloweenAltarOpen())throw new Error('O Altar das Almas fecha das 12h às 18h de domingo, mas reabre com os itens anteriores preservados.')
+ if(!halloweenAltarOpen())throw new Error('O Altar das Almas fica aberto de 31/10 até 02/11 às 23h59 (São Paulo).')
  return tx(async c=>{
   await c.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
   const owned=await c.query('SELECT 1 FROM pet_collection WHERE jid=$1 AND species=$2 LIMIT 1',[jid,HALLOWEEN_CORCEL])
@@ -632,7 +632,7 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
  if(['trocar','resgatar','comprar'].includes(action)){
   const requested=String(args[1]||'').toLowerCase()
   if(!halloweenAltarOpen()){
-   await reply('🔒 *ALTAR DAS ALMAS FECHADO*\nA loja atual encerra *01/11 às 12h* e reabre com novos itens às *18h* (São Paulo).')
+   await reply('🔒 *ALTAR DAS ALMAS FECHADO*\nO Altar abre em *31/10* e encerra *02/11 às 23h59* (São Paulo).')
    return true
   }
   if(['corcel','cavalo','pet','corcel-espectral'].includes(requested)){
@@ -667,15 +667,15 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
   const s=await status(sender)
   const base='🎃 *ALTAR DAS ALMAS — HALLOWEEN*\n🧩 Saldo: *'+fmt(s.souls)+'* Almas Amaldiçoadas\n\n🐎 *Corcel Espectral — 100 Almas*\n✨ Lendário Místico, 1 por jogador\n👉 *!halloween trocar corcel*'
   if(!halloweenAltarOpen()){
-   await reply(base+'\n\n🔒 Altar fechado das 12h às 18h de *01/11*. Reabre com o catálogo ampliado às *18h* (São Paulo).')
+   await reply(base+'\n\n🔒 Altar disponível de *31/10* até *02/11 às 23h59*, com novos itens em *31/10 às 18h* (São Paulo).')
    return true
   }
   await reply(base+'\n\n'+halloweenAltarCatalogText()+
-    (afterpartyShopOpen()?'\n\n🆕 *ITENS ADICIONADOS EM 01/11 ÀS 18H*\n\n'+afterpartyShopCatalog():'')+
+    (afterpartyShopOpen()?'\n\n🆕 *ITENS ADICIONADOS EM 31/10 ÀS 18H*\n\n'+afterpartyShopCatalog():'')+
     '\n\n🔒 Compras limitadas a uma por oferta. Almas e resgates anteriores preservados.'+
-    '\n🎁 Elmos e botas exclusivos continuam apenas por DROP dos Bosses.'+
-    (afterpartyShopOpen()?'\n⏰ Altar reaberto até *02/11 às 23h59* (São Paulo).':
-       '\n⏰ Altar atual aberto até *01/11 às 12h* (São Paulo).'))
+    '\n🎁 Os equipamentos exclusivos de DROP continuam nos Bosses; Elmo do Rei Morto e Botas do Arauto estão no Altar.'+
+    (afterpartyShopOpen()?'\n⏰ Altar aberto até *02/11 às 23h59* (São Paulo).':
+       '\n⏰ Novos itens em *31/10 às 18h*. Altar aberto até *02/11 às 23h59* (São Paulo).'))
   return true
  }
  if(['ranking','top'].includes(action)){
@@ -819,5 +819,5 @@ export function scheduleHalloweenAlpha(sock,listGroups,{isConnected=()=>true}={}
   finally{running=false}
  },ATTACK_MS)
  scheduler.unref?.()
- void Promise.resolve().then(()=>console.log('[HALLOWEEN] scheduler 10s ativo; evento extra 01/11 às 13h, loja às 18h; avisos apenas AlphaBot'))
+ void Promise.resolve().then(()=>console.log('[HALLOWEEN] scheduler 10s ativo; evento extra 01/11 às 13h, loja 31/10 às 18h; avisos apenas AlphaBot'))
 }
