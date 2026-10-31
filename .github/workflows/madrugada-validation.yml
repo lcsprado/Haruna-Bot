@@ -1,0 +1,39 @@
+name: Alpha Bot - Madrugada Amaldiçoada 03h33
+on:
+  pull_request:
+    paths:
+      - 'src/neon/madrugada-*.js'
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/db.js'
+      - 'src/neon/relics.js'
+      - 'src/neon/index.js'
+      - 'test/madrugada-20261031.test.mjs'
+      - '.github/workflows/madrugada-validation.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/madrugada-*.js'
+      - 'test/madrugada-20261031.test.mjs'
+      - '.github/workflows/madrugada-validation.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check src/neon/madrugada-rules.js
+          node --check src/neon/madrugada-power.js
+          node --check src/neon/madrugada-amaldicoada.js
+          node --check src/neon/game-catalog.js
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check src/neon/relics.js
+      - name: Test event rules and protection without production database
+        run: node --test test/madrugada-20261031.test.mjs
