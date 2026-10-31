@@ -7,7 +7,7 @@ import {
  raceCancel,raceRanking,raceHistory
 } from './racing-alpha.js'
 
-const names=new Set(['corridacarros','garagemcorrida','corridagaragem','comprarcorrida',
+const names=new Set(['corridas','corridacarros','garagemcorrida','corridagaragem','comprarcorrida',
  'equiparcorrida','oficina','melhorarcarro','repararcarro','corrida','rankcorrida',
  'pilotocorrida','desafiocorrida','aceitarcorrida','cancelarcorrida','historicocorrida'])
 
@@ -18,6 +18,10 @@ export async function handleRacingAlphaCommand({cmd,args=[],sender,name='Piloto'
  try{
   await ensureUser(sender,name)
   const send=(text,opts)=>reply(text,opts)
+  if(cmd==='corridas'){
+   await send("🏎️ *GARAGEM ALPHA — GUIA*\n\n1️⃣ *!corridacarros* — modelos e preços\n2️⃣ *!comprarcorrida gol* — comprar\n3️⃣ *!garagemcorrida* — status\n4️⃣ *!equiparcorrida ID* — carro ativo\n5️⃣ *!oficina* — peças e tempos\n6️⃣ *!melhorarcarro motor* — preparar\n7️⃣ *!repararcarro* — recuperar condição\n8️⃣ *!corrida rua cidade equilibrada* — corrida solo\n9️⃣ *!desafiocorrida @jogador reta* — PvP\n🔟 *!aceitarcorrida tecnica* — aceitar\n🏆 *!rankcorrida* • 📜 *!historicocorrida*\n\n🏁 Pistas: reta, cidade, serra\n🎯 Estratégias: equilibrada, agressiva, tecnica\n⭐ Ligas: rua, bairro, cidade, estadual, elite, lenda\n⏳ 10 min entre corridas; uma instalação por vez.\n💰 Carro competitivo exige peças caras, oficina e XP de piloto.");
+   return true
+  }
   if(cmd==='corridacarros'){
    await send(raceCarsText());return true
   }
@@ -83,7 +87,7 @@ export async function handleRacingAlphaCommand({cmd,args=[],sender,name='Piloto'
   }
   if(cmd==='desafiocorrida'){
    const target=mentions[0]
-   const r=await raceChallenge(sender,target,chat,args,name)
+   const r=await raceChallenge(sender,target,chat,args.filter(value=>!String(value).startsWith('@')),name)
    await send('🏁⚔️ *DESAFIO DE CORRIDA!*\n👨‍✈️ '+safeName(r.name)+' desafia @'+String(target).split('@')[0]+
     '\n🗺️ '+r.track.name+' • '+r.strategy.name+
     '\n⏳ 5 minutos para aceitar.\n👉 Adversário: *!aceitarcorrida equilibrada* (ou agressiva/tecnica).'+
