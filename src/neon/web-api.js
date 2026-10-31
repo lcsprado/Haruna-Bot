@@ -43,6 +43,8 @@ import {
   patrimonyLeaderboard, hireCltUberDriver,
   getAlphaContractBoard, acceptAlphaContract, claimAlphaContract, changeAlphaReputation
 } from './progression.js'
+import {raceState,raceBuy,raceEquip,raceUpgrade,raceRepair,raceSolo,raceChallenge,raceAccept,raceCancel,raceRanking,raceHistory} from './racing-alpha.js'
+import {RACING_CARS,RACING_PARTS,RACING_UPGRADES,RACING_TRACKS,RACING_STRATEGIES,RACING_TIERS,RACING_TOTAL_UPGRADE_COST} from './racing-rules.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
@@ -691,7 +693,7 @@ function webActionModule(name){
   const action=String(name||'')
   if(action.startsWith('game.')||action.startsWith('boss.')) return 'games_enabled'
   if(action.startsWith('clan.')||action.startsWith('groupMission.')||action.startsWith('groupEvent.')||
-     action.startsWith('house.')||action.startsWith('car.')||action.startsWith('motorcycle.')||
+     action.startsWith('house.')||action.startsWith('car.')||action.startsWith('racing.')||action.startsWith('motorcycle.')||
      action.startsWith('business.')||action.startsWith('cltUber.')||action.startsWith('sleep.')||
      action.startsWith('carpinar.')||action.startsWith('missions.')||action.startsWith('level.')) return 'progression_enabled'
   if(action==='daily'||action==='work'||action==='all'||action==='deposit'||action==='withdraw'||
@@ -741,7 +743,20 @@ async function sendWebGroupActivity(session,actionName,body,result){
   const meName=await playerDisplayName(me)
   let text='',mentions=[]
 
-  if(actionName==='battle'){
+  if(actionName.startsWith('racing.')){
+    // Não poluir o grupo com compras, upgrades ou corridas solo; apenas desafios entre jogadores.
+    if(actionName==='racing.challenge'){
+      text='🏁 *DESAFIO DE CORRIDA ALPHA*\n*'+meName+'* desafiou *'+String(result.targetName||'outro piloto')+'*!'+
+        '\n🗺️ Pista: *'+String(result.track?.name||'Circuito Urbano')+'*'+
+        '\n⏳ Você tem 5 minutos para aceitar no Web ou com *!aceitarcorrida*.'
+      mentions=[me,result.targetJid].filter(Boolean)
+    }else if(actionName==='racing.accept'){
+      text='🏁 *CORRIDA PvP ENCERRADA*\n🏆 Vencedor: @'+String(result.winner||'').split('@')[0]+
+        '\n🚘 '+String(result.aCar||'Carro A')+' '+Number(result.aScore||0).toFixed(1)+' pts'+
+        '\n🚘 '+String(result.bCar||'Carro B')+' '+Number(result.bScore||0).toFixed(1)+' pts'
+      mentions=[result.winner,result.challenger,result.challenged].filter(Boolean)
+    }else text=null
+  }else if(actionName==='battle'){
     if(result.ok===false){
       // Cooldown não é uma nova batalha e não deve poluir o grupo com "executou battle".
       text=null
@@ -1194,6 +1209,17 @@ async function runAction(session,name,body={}){
   })
   await enforceWebActionPolicy(session,name)
   switch(name){
+    case 'racing.buy': return raceBuy(jid,String(body.modelId||''))
+    case 'racing.equip': return raceEquip(jid,String(body.carId||''))
+    case 'racing.upgrade': return raceUpgrade(jid,String(body.partId||''))
+    case 'racing.repair': return raceRepair(jid)
+    case 'racing.solo': return raceSolo(jid,[String(body.tier||'rua'),String(body.track||'cidade'),String(body.strategy||'equilibrada')])
+    case 'racing.challenge': {
+      const member=await groupTarget(session,body.targetJid)
+      return withTargetMeta(await raceChallenge(jid,member.jid,requireGroup(session),[String(body.track||'cidade'),String(body.strategy||'equilibrada')],await playerDisplayName(jid)),member)
+    }
+    case 'racing.accept': return raceAccept(jid,requireGroup(session),String(body.strategy||'equilibrada'))
+    case 'racing.cancel': return raceCancel(jid)
     case 'daily': return claimDaily(jid)
     case 'missions.claim': return claimDailyMissions(jid)
     case 'level.claim': return claimLevelRewards(jid)
@@ -1555,6 +1581,18 @@ export async function handleWebApi(req,res){
       const listing=await listNpcShops(session.jid)
       const shops=await Promise.all(listing.merchants.map(n=>getNpcShop(session.jid,n.id)))
       json(res,200,{ok:true,data:{karma:listing.karma,title:listing.title,shops}})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/racing'){
+      // Endpoint sob demanda (apenas página de corridas): sem polling e sem imagens pesadas.
+      const [garage,ranking,history,challenges]=await Promise.all([
+        raceState(session.jid),raceRanking(),raceHistory(session.jid),
+        session.chatJid?db.query("SELECT c.id,c.challenger,c.challenged,c.track_id,c.strategy_id,c.created_at,c.expires_at, u.push_name AS challenger_name FROM racing_challenges_alpha c LEFT JOIN users u ON u.jid=c.challenger WHERE c.chat=$1 AND c.status='pending' AND c.expires_at>$2 AND (c.challenger=$3 OR c.challenged=$3) ORDER BY c.id DESC LIMIT 5",[session.chatJid,Math.floor(Date.now()/1000),session.jid]):Promise.resolve({rows:[]})
+      ])
+      res.setHeader('cache-control','private, no-store')
+      json(res,200,{ok:true,data:{garage,ranking,history,challenges:challenges.rows,
+        catalog:{cars:RACING_CARS,parts:RACING_PARTS,levels:RACING_UPGRADES,tracks:RACING_TRACKS,strategies:RACING_STRATEGIES,tiers:RACING_TIERS,totalUpgradeCost:RACING_TOTAL_UPGRADE_COST},serverTime:Date.now()}})
       return true
     }
 
