@@ -1,0 +1,34 @@
+name: Alpha Web - Garagem Alpha visual
+on:
+  push:
+    branches: ['release/alpha-web-ban-art-api-20261029']
+    paths:
+      - 'web/app.js'
+      - 'web/racing-ui.js'
+      - 'web/styles.css'
+      - 'web/sw.js'
+      - 'web/index.html'
+      - 'test/racing-web-ui-20261031.test.mjs'
+      - '.github/workflows/racing-web-validation.yml'
+  pull_request:
+    paths:
+      - 'web/app.js'
+      - 'web/racing-ui.js'
+      - 'test/racing-web-ui-20261031.test.mjs'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check web/app.js
+          node --check web/racing-ui.js
+      - name: Render web pages in test mode
+        run: node --test test/racing-web-ui-20261031.test.mjs
