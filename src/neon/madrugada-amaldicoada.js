@@ -1,6 +1,6 @@
 // Madrugada Amaldiçoada: edição global única, transacional e sem spam por ataque.
 import {db,ensureUser,petMaxEnergy,petMaxHp} from './db.js'
-import {snapshotPower} from './halloween-alpha.js'
+import {madrugadaPower} from './madrugada-power.js'
 import {halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
 import {
  MADRUGADA_EVENT_ID,MADRUGADA_GROUP,MADRUGADA_START,MADRUGADA_END,MADRUGADA_HP,
@@ -119,8 +119,8 @@ const messages={
 async function notifyOnce(sock,key,message){
  const settingKey='madrugada_20261031_notice:'+key+':'+MADRUGADA_GROUP
  const now=Date.now()
- const claim=await db.query("INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,$3) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at WHERE ((trevo_settings.value->>'status'='failed' AND COALESCE((trevo_settings.value->>'retryAt')::bigint,0)<=$3) OR (trevo_settings.value->>'status'='sending' AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<=$4)) RETURNING key",[
-  settingKey,JSON.stringify({status:'sending',claimedAt:now}),seconds(),now-60000
+ const claim=await db.query("INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,$3) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at WHERE ((trevo_settings.value->>'status'='failed' AND COALESCE((trevo_settings.value->>'retryAt')::bigint,0)<=$5) OR (trevo_settings.value->>'status'='sending' AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<=$4)) RETURNING key",[
+  settingKey,JSON.stringify({status:'sending',claimedAt:now}),seconds(),now-60000,now
  ])
  if(!claim.rowCount)return false
  try{
@@ -182,7 +182,7 @@ export async function handleMadrugadaCommand({cmd,args=[],sender,name,chat,reply
    const hpRow=(await c.query('SELECT hp FROM stats WHERE jid=$1',[sender])).rows[0]
    if(Number(hpRow?.hp||0)<=0)throw Error('Seu personagem está sem HP. Use !curar antes de entrar.')
    const existing=(await c.query('SELECT jid FROM madrugada_players_20261031 WHERE jid=$1',[sender])).rows[0]
-   const snap=await snapshotPower(c,sender)
+   const snap=await madrugadaPower(c,sender)
    await c.query('INSERT INTO madrugada_players_20261031(jid,name,chat,power,speed,crit,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(jid) DO UPDATE SET name=EXCLUDED.name,power=EXCLUDED.power,speed=EXCLUDED.speed,crit=EXCLUDED.crit,updated_at=EXCLUDED.updated_at',[sender,safeName(name),chat,snap.power,snap.speed,snap.crit,Date.now()])
    return {already:Boolean(existing),power:snap.power,speed:snap.speed}
   })
