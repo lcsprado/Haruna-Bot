@@ -27,7 +27,8 @@ export function halloweenActive(now=Date.now()){
  return now>=HALLOWEEN_START&&now<HALLOWEEN_END&&!(now>=Date.parse('2026-11-01T00:00:00-03:00')&&now<HALLOWEEN_EXTRA_START)
 }
 export function halloweenSoulMultiplier(now=Date.now()){
- return now>=HALLOWEEN_EXTRA_START&&now<HALLOWEEN_END?2:1
+ // Bônus antecipado por decisão do organizador: desde 31/10, enquanto houver Boss de Halloween ativo.
+ return halloweenActive(now)&&now>=Date.parse('2026-10-31T00:00:00-03:00')?2:1
 }
 export function halloweenBoss(now=Date.now()){if(!halloweenActive(now))return null;return HALLOWEEN_BOSSES.find(b=>b.day===halloweenLocalDay(now))||null}
 export function halloweenDropCatalog(now=Date.now()){return HALLOWEEN_GEAR.filter(g=>g.dropDay===(halloweenLocalDay(now)>='2026-10-31'?'final':'normal'))}
