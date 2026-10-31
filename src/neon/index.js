@@ -104,6 +104,7 @@ import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from '
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.js'
 import {createApostaEngine,APOSTA_GROUPS} from './aposto-consegue.js'
+import {createRoubaRoubaEngine,ROUBA_GROUP_JID} from './rouba-rouba-alpha.js'
 import {createGlobalCommandAntispam,commandAntispamNotice} from './command-antispam.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
@@ -172,6 +173,7 @@ messagesSeen:0
 let connectionWatchdog=null
 let pokemonQuizEngine=null
 let apostaEngine=null
+let roubaEngine=null
 const pokemonQuizReplyThrottle=new Map()
 let bossEventScheduler=null
 let setePecadosBroadcaster=null
@@ -9327,6 +9329,14 @@ void apostaEngine.open().then(async()=>{
   // WhatsApp ainda estiver abrindo. Avisos sao persistidos por grupo.
   apostaEngine.start()
 }).catch(err=>console.error('[APOSTO] cancelamento automatico falhou',err?.message||err))
+// Rouba-Rouba: grupo principal AlphaBot exclusivamente; nao reabre Quiz cancelado.
+roubaEngine?.stop()
+roubaEngine=createRoubaRoubaEngine({db,
+  sendMessage:(group,text)=>sock.sendMessage(group,{text}),
+  isConnected:()=>trevoHealth.whatsapp==='open'
+})
+void roubaEngine.open().then(()=>roubaEngine.start())
+  .catch(err=>console.error('[ROUBA] inicializacao',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
@@ -9752,6 +9762,34 @@ if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(cha
   }
   continue
 }
+// Rouba-Rouba: recepcao rapida no grupo AlphaBot. Impede o quiz antigo de
+// interceptar !participar e preserva !roubar normal fora do premio #N.
+const roubaWords=body.startsWith(prefix)?body.slice(prefix.length).trim().split(/\\s+/):[]
+const roubaCmd=String(roubaWords[0]||'').toLowerCase()
+const roubaNumbered=roubaCmd==='roubar' && /^#\\d+$/.test(String(roubaWords[1]||''))
+const roubaNamed=['participar','abrirpresente','roubarpremio'].includes(roubaCmd)
+const roubaOpen=roubaCmd==='abrir'&&roubaEngine&&await roubaEngine.isActive()
+if(isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
+  if(!roubaEngine){await reply('⏳ Evento inicializando.');continue}
+  if(roubaCmd==='participar'){
+    await ensureUser(sender,msg.pushName||'Jogador')
+    const out=await roubaEngine.join({chat,sender,name:msg.pushName||'Jogador'})
+    if(out.kind==='joined'){
+      await reply('✅ *ROUBA-ROUBA: INSCRITO!* '+out.count+' jogador(es). Voce tera *3 jogadas*.'+(out.late?' Entrada tardia aceita.':''))
+      void roubaEngine.tick()
+    }else if(out.kind==='full')await reply('⚠️ Inscricoes cheias (6 jogadores).')
+    else if(out.kind==='closed')await reply('⌛ Esta edicao ja terminou.')
+    continue
+  }
+  const kind=['roubar','roubarpremio'].includes(roubaCmd)?'steal':'open'
+  const target=roubaWords.slice(1).join(' ')
+  const out=await roubaEngine.act({chat,sender,action:kind,target})
+  if(out.kind==='accepted')void roubaEngine.tick()
+  else if(out.kind==='bad-target')await reply('🎁 Premio indisponivel. Escolha o numero #N da lista do turno, exemplo *!roubar #2*.')
+  else if(out.kind==='not-turn')await reply('⏳ Aguarde sua vez. O bot mostrara quem pode jogar.')
+  else if(out.kind==='late')await reply('⌛ Sua vez expirou. O bot abre o bau automaticamente.')
+  continue
+}
 // Respostas e inscricoes do desafio precisam escapar do preflight custoso.
 // Um comando por acao: nenhuma mensagem automatica para repeticao ou voto invalido.
 const apostaTokens=body.startsWith(prefix)
@@ -9931,6 +9969,16 @@ if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.se
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){
+  const option=String(args[0]||'').toLowerCase()
+  if(['cancelar','off','parar'].includes(option)){
+    if(!isOwner){await reply('⛔ Somente o proprietario pode cancelar esta edicao.');continue}
+    const cancelled=await roubaEngine.cancel()
+    await reply(cancelled?'🛑 Rouba-Rouba cancelado. Nenhum premio foi creditado.':'⚪ Edicao ja encerrada.')
+    if(cancelled)void roubaEngine.tick()
+  }else await reply(await roubaEngine.status())
+  continue
+}
 if(['aposto','apostoq','apostoquenao'].includes(cmd)){
   const option=String(args[0]||'').toLowerCase()
   if(['cancelar','parar','off'].includes(option)){
