@@ -62,5 +62,5 @@ test('the race page requests one endpoint only on navigation, not every 15s',()=
  assert.match(app,/racing:\(\)=>renderRacing\(ui\)/)
  assert.match(app,/data-page/)
  assert.match(read('web/sw.js'),/racing-ui\.js/)
- assert.match(read('web/index.html'),/20261031-racing-garage-v5/)
+ assert.match(read('web/index.html'),/20261031-racing-garage-v6/)
 })
