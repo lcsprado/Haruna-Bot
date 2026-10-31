@@ -72,25 +72,25 @@ const amountSplit=(total,ids)=>{const out={};if(!ids.length)return out
 const first=(s)=>s.order.filter(id=>s.players[id].done<APOSTA_QUESTIONS_PER_PLAYER)
  .sort((a,b)=>s.players[a].done-s.players[b].done||s.order.indexOf(a)-s.order.indexOf(b))[0]
 function notice(s,id,text){s.notices??=[];if(!s.notices.some(n=>n.id===id))s.notices.push({id,text,sentAt:0})}
-function intro(){return '🎲 *APOSTO QUE VOCE NAO CONSEGUE!*\\n\\n🧠 Perguntas medias e dificeis, de assuntos variados.\\n👥 Cada jogador deve enviar *!participar* neste grupo, mesmo que entre depois.\\n📚 *4 perguntas para cada inscrito* (2 medias e 2 dificeis).\\n💰 Rodada: R$ 100.000.\\n✅ *!confio*: divide o premio se o desafiado acertar.\\n❌ *!duvido*: ganha parte do premio se ele errar; se acertar, perde R$ 50.000 (carteira e depois banco).\\n🔒 O bot reserva R$ 50.000 ao escolher !duvido e devolve se o desafiado errar.\\n⏳ Comeca assim que 3 jogadores entrarem. A entrada tardia e permitida enquanto houver rodada ativa.'}
+function intro(){return '🎲 *APOSTO QUE VOCE NAO CONSEGUE!*\n\n🧠 Perguntas medias e dificeis, de assuntos variados.\n👥 Cada jogador deve enviar *!participar* neste grupo, mesmo que entre depois.\n📚 *4 perguntas para cada inscrito* (2 medias e 2 dificeis).\n💰 Rodada: R$ 100.000.\n✅ *!confio*: divide o premio se o desafiado acertar.\n❌ *!duvido*: ganha parte do premio se ele errar; se acertar, perde R$ 50.000 (carteira e depois banco).\n🔒 O bot reserva R$ 50.000 ao escolher !duvido e devolve se o desafiado errar.\n⏳ Comeca assim que 3 jogadores entrarem. A entrada tardia e permitida enquanto houver rodada ativa.'}
 const labels=s=>s.order.map(id=>nice(s.players[id].name)+' ('+s.players[id].done+'/4)').join(' • ')
 function betText(s){const r=s.current,p=s.players[r.challenger]
- return '🎲 *RODADA '+r.number+' / '+(s.order.length*4)+'* — *'+nice(p.name)+'*\\n🧠 Dificuldade: *'+(r.difficulty==='medio'?'MEDIA':'DIFICIL')+'* • Categoria: *'+r.category+'*\\n💰 Premio total: *R$ 100.000*\\n\\n👥 Os outros jogadores podem enviar *!confio* ou *!duvido* neste grupo.\\n❌ Duvidar exige R$ 50.000 disponiveis entre carteira e banco, reservados agora.\\n⏳ *35 segundos* para apostas.\\n📋 Progresso: '+labels(s)}
+ return '🎲 *RODADA '+r.number+' / '+(s.order.length*4)+'* — *'+nice(p.name)+'*\n🧠 Dificuldade: *'+(r.difficulty==='medio'?'MEDIA':'DIFICIL')+'* • Categoria: *'+r.category+'*\n💰 Premio total: *R$ 100.000*\n\n👥 Os outros jogadores podem enviar *!confio* ou *!duvido* neste grupo.\n❌ Duvidar exige R$ 50.000 disponiveis entre carteira e banco, reservados agora.\n⏳ *35 segundos* para apostas.\n📋 Progresso: '+labels(s)}
 function questionText(s){const r=s.current,q=APOSTA_QUESTIONS[r.difficulty][r.questionIndex]
  const votes=Object.entries(r.votes).map(([id,v])=>nice(s.players[id]?.name)+': '+v.action.toUpperCase())
- return '🔒 *APOSTAS ENCERRADAS!*\\n'+(votes.length?votes.join(' • '):'Sem apostas nesta rodada.')+
- '\\n\\n🎯 *PERGUNTA PARA '+nice(s.players[r.challenger].name).toUpperCase()+'*\\n'+
- '🧠 '+q[0]+'\\n\\n👉 Apenas o desafiado responde com *!resposta texto*. Uma tentativa.\\n⏱️ '+(r.difficulty==='medio'?'45':'60')+' segundos apos o envio da pergunta.'}
+ return '🔒 *APOSTAS ENCERRADAS!*\n'+(votes.length?votes.join(' • '):'Sem apostas nesta rodada.')+
+ '\n\n🎯 *PERGUNTA PARA '+nice(s.players[r.challenger].name).toUpperCase()+'*\n'+
+ '🧠 '+q[0]+'\n\n👉 Apenas o desafiado responde com *!resposta texto*. Uma tentativa.\n⏱️ '+(r.difficulty==='medio'?'45':'60')+' segundos apos o envio da pergunta.'}
 function resultText(s,entry){const sum=entry.movements.map(x=>nice(s.players[x.id]?.name)+': '+(x.delta>=0?'+':'-')+'R$ '+money(Math.abs(x.delta)))
- return (entry.correct?'✅ *ACERTOU!*':'❌ *ERROU!*')+'\\n🎯 '+nice(s.players[entry.challenger].name)+
- '\\n🧠 Resposta correta: *'+entry.answer+'*\\n💰 '+(sum.join('\\n')||'Nenhuma movimentacao.')+
- '\\n📚 '+s.players[entry.challenger].done+'/4 perguntas realizadas para '+nice(s.players[entry.challenger].name)+'.'
+ return (entry.correct?'✅ *ACERTOU!*':'❌ *ERROU!*')+'\n🎯 '+nice(s.players[entry.challenger].name)+
+ '\n🧠 Resposta correta: *'+entry.answer+'*\n💰 '+(sum.join('\n')||'Nenhuma movimentacao.')+
+ '\n📚 '+s.players[entry.challenger].done+'/4 perguntas realizadas para '+nice(s.players[entry.challenger].name)+'.'
 }
 function finalText(s){const rank=s.order.map(id=>({name:nice(s.players[id].name),net:s.players[id].net,done:s.players[id].done}))
  .sort((a,b)=>b.net-a.net)
- return '🏁🏆 *APOSTO QUE VOCE NAO CONSEGUE — FIM!*\\n\\n'+
- rank.map((p,i)=>(i+1)+'º '+p.name+' — '+(p.net>=0?'+':'-')+'R$ '+money(Math.abs(p.net))+' • '+p.done+'/4 perguntas').join('\\n')+
- '\\n\\n📊 Rodadas: '+s.history.length+'. Cada jogador respondeu quatro desafios.\\n💰 Creditos e descontos registrados no banco sem pagamentos duplicados.'
+ return '🏁🏆 *APOSTO QUE VOCE NAO CONSEGUE — FIM!*\n\n'+
+ rank.map((p,i)=>(i+1)+'º '+p.name+' — '+(p.net>=0?'+':'-')+'R$ '+money(Math.abs(p.net))+' • '+p.done+'/4 perguntas').join('\n')+
+ '\n\n📊 Rodadas: '+s.history.length+'. Cada jogador respondeu quatro desafios.\n💰 Creditos e descontos registrados no banco sem pagamentos duplicados.'
 }
 const fresh=now=>({status:'running',phase:'lobby',createdAt:now,order:[],players:{},
  current:null,nextNumber:1,history:[],used:{medio:0,dificil:0},notices:[]})
@@ -278,11 +278,11 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
   if(!s)return '🎲 Evento ainda nao configurado.'
   if(s.status==='completed')return finalText(s)
   if(s.status==='cancelled')return '🛑 Evento cancelado. Apostas pendentes foram devolvidas.'
-  return '🎲 *APOSTO QUE VOCE NAO CONSEGUE!*\\n'+
+  return '🎲 *APOSTO QUE VOCE NAO CONSEGUE!*\n'+
    '📋 Jogadores: '+s.order.length+'/'+APOSTA_MAX_PLAYERS+' • '+labels(s)+
-   '\\n🔔 Fase: *'+({lobby:'inscricoes',betting:'apostas','question-delivery':'enviando pergunta',answering:'resposta',result:'resultado'}[s.phase]||s.phase)+'*'+
-   '\\n🧠 Perguntas concluídas: '+s.history.length+' / '+(s.order.length*4)+
-   '\\n✅ Entre mesmo com o evento iniciado: *!participar*.'
+   '\n🔔 Fase: *'+({lobby:'inscricoes',betting:'apostas','question-delivery':'enviando pergunta',answering:'resposta',result:'resultado'}[s.phase]||s.phase)+'*'+
+   '\n🧠 Perguntas concluídas: '+s.history.length+' / '+(s.order.length*4)+
+   '\n✅ Entre mesmo com o evento iniciado: *!participar*.'
  }
  async function cancel(){
   return transact(async(c,s)=>{
@@ -291,7 +291,7 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
     await refund(c,s,s.current)
    }
    s.status='cancelled';s.phase='cancelled';s.notices=[]
-   notice(s,'cancel','🛑 *APOSTO QUE VOCE NAO CONSEGUE CANCELADO*\\nApostas reservadas e ainda pendentes foram devolvidas. Rodadas finalizadas permanecem registradas.')
+   notice(s,'cancel','🛑 *APOSTO QUE VOCE NAO CONSEGUE CANCELADO*\nApostas reservadas e ainda pendentes foram devolvidas. Rodadas finalizadas permanecem registradas.')
    return true
   })
  }
