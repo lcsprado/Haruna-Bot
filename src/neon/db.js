@@ -5,6 +5,7 @@ import {syncEffectiveGear} from './equipment-star-logic.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
+import {HALLOWEEN_ALTAR_NEW_GEAR,HALLOWEEN_ALTAR_GEAR_IDS} from './halloween-afterparty.js'
 import {LEGENDARY_BOX_GEAR,pickLegendaryBoxGear} from './legendary-box-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
@@ -536,6 +537,7 @@ starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Sub
 starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão — 7 Pecados','Obtido na Raid dos Sete Pecados; usado exclusivamente para forjar estrelas nas armas e armaduras da collab.','special',0,'event'])
 starterItems.push([HALLOWEEN_SOUL_ID,'Alma Amaldiçoada — Halloween','Fragmento exclusivo do Halloween 26–31/10; trocas liberadas sábado.','special',0,'event'])
 starterItems.push(...HALLOWEEN_GEAR.map(g=>[g.id,g.name,'Lendário de Halloween; drop exclusivo de Boss global. Não comercializável.',g.category,0,'legendary']))
+starterItems.push(...HALLOWEEN_ALTAR_NEW_GEAR.map(g=>[g.id,g.name,'Lendário do Altar das Almas, resgate único a partir de 01/11 18h. '+g.short,g.category,0,'legendary']))
 for (const item of starterItems) {
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)
@@ -553,6 +555,7 @@ await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmen
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_ascensao_pecados_20261024'")
 await db.query('UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id=$1',[HALLOWEEN_SOUL_ID])
 await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_GEAR.map(g=>g.id)])
+await db.query('UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])',[HALLOWEEN_ALTAR_GEAR_IDS])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id LIKE 'essencia_pecado_%'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id IN ('elmo_soberano_golem','elmo_labirinto_alpha','bota_jp_aquiles')")
 await db.query(`
@@ -1977,6 +1980,7 @@ const EQUIPMENT = {
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
 ...Object.fromEntries(LEGENDARY_BOX_GEAR.map(({id,description,...gear})=>[id,gear])),
 ...Object.fromEntries(HALLOWEEN_GEAR.map(({id,...gear})=>[id,gear])),
+...Object.fromEntries(HALLOWEEN_ALTAR_NEW_GEAR.map(({id,cost,short,...gear})=>[id,gear])),
 elmo_imperador_alpha_20261020: {category:'helmet',atk:0,def:108,hp:260,crit:.025,name:'Elmo do Imperador Alpha'},
 elmo_soberano_celestial_20261024: {category:'helmet',atk:0,def:112,hp:275,crit:.025,name:'Elmo do Soberano Celestial'},
 elmo_guardiao_nebular_20261026: {category:'helmet',atk:0,def:100,hp:330,crit:.035,name:'Elmo do Guardião Nebular'},
@@ -4845,12 +4849,13 @@ serpente_cosmica:420,dragao_corrompido:450,fenix_alpha:500,colosso_alpha:475,ora
 fera_caos:430,guardiao_caos:450,serafim_caotico:455,oraculo_caos:445,fenix_caos:470,
 pantera_profundezas:450,guardiao_abissal:465,dragao_trono:475,oraculo_coroa:465,esfinge_mares:480,
 lobo_eclipse:470,sentinela_eclipse:490,dragao_solar_eclipse:505,fenix_eclipse:510,avatar_primordial:520,
-morcego_madrugada:430,camaleao_lendario:425,corcel_espectral_halloween:430,onca_eclipse_20261026:405
+morcego_madrugada:430,camaleao_lendario:425,corcel_espectral_halloween:460,onca_eclipse_20261026:405
 }
 const PET_VITALS_LEGACY_FIX=Object.freeze([
 'oraculo_pedra','pantera_vulcanica','espectro_abissal',
 'kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral',
-'lince_celestial','arcanjo_eclipse','morcego_madrugada','camaleao_lendario'
+'lince_celestial','arcanjo_eclipse','morcego_madrugada','camaleao_lendario',
+'corcel_espectral_halloween'
 ])
 async function fixLegacyPetVitals(){
 const species=PET_VITALS_LEGACY_FIX
@@ -4961,7 +4966,7 @@ sentinela_eclipse:{base:385,growth:27,type:'Tanque'},
 dragao_solar_eclipse:{base:365,growth:27,type:'Boss Hunter'},
 fenix_eclipse:{base:365,growth:26,type:'Suporte'},
 avatar_primordial:{base:390,growth:27,type:'Místico'},
-corcel_espectral_halloween:{base:310,growth:23,type:'Místico'},
+corcel_espectral_halloween:{base:350,growth:25,type:'Místico Lendário — Halloween'},
 morcego_madrugada:{base:285,growth:22,type:'Coringa'},
 camaleao_lendario:{base:290,growth:22,type:'Coringa'}
 }
