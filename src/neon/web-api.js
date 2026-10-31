@@ -17,7 +17,7 @@ import {
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
   openLootBoxes, openLuckyBoxes, sellDuplicateEquipment, sellItemsBatch,
   startPlayerSleep, wakePlayerEarly, getCarpinarPlans, startPlayerCarpinar, leavePlayerCarpinarEarly,
-  petAdventure, startPetExpedition, resolvePetExpeditions,
+  petAdventure, startPetExpedition, startAllPetExpeditions, resolvePetExpeditions,
   claimLevelRewards, getLevelRewardPreview, getClaimedLevelRewards, leaderboard, combatLeaderboard, petLeaderboard,
   weeklyActivityLeaderboard, getPlayerRanks,
   proposeRelationship, getRelationshipProposals, acceptRelationship, rejectRelationship, divorceRelationship
@@ -1104,6 +1104,11 @@ async function sendWebGroupActivity(session,actionName,body,result){
       '\n🤖 Bot: *'+String(labels[result.bot]||result.bot||'?')+'*'+
       '\n📌 Resultado: *'+String(results[result.result]||result.result||'Não informado')+'*'
     mentions=[me]
+  }else if(actionName==='pet.expedition.all'){
+    const started=Array.isArray(result?.started)?result.started:[]
+    text='🧭🐾 *EXPEDIÇÕES EM LOTE*\n👤 *'+meName+'* enviou *'+started.length+' pet(s)* reservas livres por *'+Number(result.hours||body.hours||0)+'h*.'+
+      '\n🔒 Pets do time/ativo protegidos • '+Number(result.remaining||0)+' reserva(s) aguardando vaga.'
+    mentions=[me]
   }else if(actionName==='pet.expedition.start'){
     text='🧭🐾 *EXPEDIÇÃO INICIADA*\n👤 *'+meName+'* enviou *'+String(result.pet_name||'um pet')+'*'+
       '\n⏳ Duração: *'+Number(result.hours||body.hours||0)+'h*'+
@@ -1154,7 +1159,7 @@ async function sendWebGroupActivity(session,actionName,body,result){
       'game.groupRoulette.create':'Roleta coletiva','game.groupRoulette.join':'Entrada na roleta coletiva',
       'game.groupRoulette.spin':'Giro da roleta coletiva','game.tournament.create':'Torneio criado',
       'game.tournament.join':'Entrada no torneio','game.tournament.start':'Torneio iniciado',
-      'pet.adventure':'Aventura de Pet','pet.expedition.start':'Expedição de Pet','pet.expedition.resolve':'Retorno de Expedição',
+      'pet.adventure':'Aventura de Pet','pet.expedition.start':'Expedição de Pet','pet.expedition.all':'Expedições de Pets em Lote','pet.expedition.resolve':'Retorno de Expedição',
       'pet.energy':'Energia de Pet','player.heal':'Cura do personagem','item.use':'Uso de item',
       'item.sellDuplicates':'Venda de repetidos','groupMission.claim':'Missão coletiva',
       'groupEvent.claim':'Evento coletivo','cltUber.start':'Turno CLT Uber','cltUber.collect':'Coleta CLT Uber',
@@ -1266,6 +1271,7 @@ async function runAction(session,name,body={}){
     case 'carpinar.leave': return leavePlayerCarpinarEarly(jid)
     case 'pet.adventure': return petAdventure(jid)
     case 'pet.expedition.start': return startPetExpedition(jid,positiveInt(body.petId,'Pet'),positiveInt(body.hours||4,'Horas',24))
+    case 'pet.expedition.all': return startAllPetExpeditions(jid,positiveInt(body.hours||4,'Horas',8))
     case 'pet.expedition.resolve': return resolvePetExpeditions(jid)
 
     case 'pet.heal': return usePetPotion(jid,body.itemId?String(body.itemId):null,body.petId==null?null:positiveInt(body.petId,'Pet'))
