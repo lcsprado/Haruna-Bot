@@ -240,7 +240,7 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
     const n=s.notices.find(x=>x.id==='bet:'+r.number)
     const sentAt=deliveredAt(n,permittedGroups)
     if(!sentAt||now<sentAt+NOTICE_WAIT_MS)return
-    if(!r.deadline)r.deadline=now+BET_MS
+    if(!r.deadline||r.deadline<sentAt+BET_MS)r.deadline=sentAt+BET_MS
     if(now>=r.deadline||r.eligible.every(id=>r.votes[id])){
      s.phase='question-delivery';r.deadline=0
      r.questionNoticeId='question:'+r.number
