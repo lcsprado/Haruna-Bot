@@ -4833,7 +4833,7 @@ level
 })
 }
 const PET_BASE_ENERGY={
-manticora_eclipse_20261030:350,
+manticora_eclipse_20261030:350,cerbero_0333_20261031:480,
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,450])),
 cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
 tartaruga:130,coruja:140,raposa:150,raposa_astral:150,lince_astral:150,guaxinim_errante_20261027:150,lobo:165,aguia:180,gaviao:190,
@@ -4900,6 +4900,7 @@ raposa_astral:{base:115,growth:10,type:'Neutro — Leilão Alpha'},
 lince_astral:{base:115,growth:10,type:'Coringa — Leilão das Sombras'},
 guaxinim_errante_20261027:{base:115,growth:10,type:'Coringa — Leilão dos Quatro Destinos'},
 manticora_eclipse_20261030:{base:310,growth:23,type:'Ofensivo — Lendário Místico'},
+cerbero_0333_20261031:{base:400,growth:28,type:'Guardião Lendário — Halloween'},
 onca_eclipse_20261026:{base:165,growth:13,type:'Coringa — Leilão do Tesouro Alpha 26/10'},
 lobo:{base:130,growth:11,type:'Ofensivo'},
 aguia:{base:115,growth:9,type:'Crítico'},
@@ -4998,7 +4999,7 @@ return Math.round(base*scale)
 const PET_TEAM_STYLE_BY_SPECIES={
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,p.style])),
 cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
-golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
+cerbero_0333_20261031:'guardiao',golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
 kraken_aco:'guardiao',paladino_astral:'guardiao',colosso_alpha:'guardiao',
 guardiao_caos:'guardiao',guardiao_abissal:'guardiao',sentinela_eclipse:'guardiao',
 papagaio:'voador',coruja:'voador',aguia:'voador',gaviao:'voador',dragao:'voador',
