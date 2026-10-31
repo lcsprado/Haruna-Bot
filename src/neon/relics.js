@@ -3,6 +3,7 @@ import {weeklyInsigniaFromId} from './weekly-boss-insignias.js'
 import {HALLOWEEN_INSIGNIA_ID} from './halloween-altar.js'
 const RELICS={
   [HALLOWEEN_INSIGNIA_ID]:{name:'💀 Insígnia da Noite Eterna',effect:'🎃 +6% dano e +2 p.p. CRIT Boss/Raid (sem PvP)',boss:0.06,raidAttack:0.06,bossCrit:0.02,raidCrit:0.02},
+  insignia_ultima_vigilia_20261031:{name:'🏅 Insígnia da Última Vigília',effect:'🌑 +2,5% dano e -1,5% dano recebido em Boss/Raid (sem PvP)',boss:0.025,raidAttack:0.025,bossDefense:0.015,raid:0.015},
   insignia_cacador_mimics_20261024:{name:'👹 Insígnia Caçador Lendário',effect:'👹 +2% dano contra Bosses e Raids (sem PvP)',boss:0.02,raidAttack:0.02},
   insignia_senhor_baus_mimics_20261024:{name:'🥉 Insígnia Senhor dos Baús',effect:'🥉 +3% dano contra Bosses e Raids (sem PvP)',boss:0.03,raidAttack:0.03},
   insignia_mestre_mimics_20261024:{name:'🥈 Insígnia Mestre dos Mimics',effect:'🥈 +4% dano Boss/Raid e +1 p.p. CRIT Boss (sem PvP)',boss:0.04,raidAttack:0.04,bossCrit:0.01},
