@@ -27,6 +27,7 @@ export const PET_STATUS_SPECIALTIES = {
   ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{label:'🌈 '+p.name+' — 7 Pecados',stats:p.stats,raid:true}])),
   morcego_madrugada:{label:'🦇 Coringa da Madrugada',stats:{crit:6,dodge:5},raid:true},
   corcel_espectral_halloween:{label:'🐎 Corcel Espectral Ascendido — Halloween',stats:{bossDamage:11,crit:5,defense:4,dodge:4},raid:true},
+  cerbero_0333_20261031:{label:'🐺 Cérbero das 03:33 — Guardião da Hora Morta',stats:{defense:12,damage:8,crit:6,dodge:5},healPct:5,healCooldown:6,raid:true},
   cachorro:{label:'🐶 Guardião',stat:'defense',base:5},
   gato:{label:'🐱 Instinto',stat:'crit',base:4},
   coelho:{label:'🐰 Agilidade',stat:'dodge',base:4},
