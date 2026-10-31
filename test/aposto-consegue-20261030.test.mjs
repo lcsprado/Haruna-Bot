@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createApostaEngine,APOSTA_GROUP_JID,APOSTA_QUESTIONS,
+import {createApostaEngine,APOSTA_GROUP_JID,APOSTA_GROUPS,APOSTA_QUESTIONS,
  APOSTA_QUESTIONS_PER_PLAYER,APOSTA_PRIZE,APOSTA_RISK} from '../src/neon/aposto-consegue.js'
 class FakeDB{
  constructor(){this.store=null;this.wallets=new Map([
@@ -41,6 +41,8 @@ function harness({send,balances}={}){
  const sendMessage=async(chat,text)=>{if(send)await send(chat,text);delivered.push({chat,text})
   return {key:{id:'aposto-msg-'+(++seq)}}}
  const engine=createApostaEngine({db,sendMessage,clock:()=>now,logger:{warn:()=>{},error:(...a)=>{throw Error(a.join(' '))}}})
+ const originalTick=engine.tick
+ engine.tick=async()=>{for(let i=0;i<4;i++)await originalTick()}
  const advance=ms=>{now+=ms}
  const join=id=>engine.join({chat:APOSTA_GROUP_JID,sender:id,name:id})
  const vote=(id,choice)=>engine.vote({chat:APOSTA_GROUP_JID,sender:id,choice})
@@ -105,7 +107,7 @@ test('acerto paga 100 mil divididos para desafiado e confiante, duvidador perde 
  assert.equal((await a.vote('bob','duvido')).kind,'voted')
  assert.equal((await a.vote('bob','confio')).kind,'already')
  assert.equal((await a.vote('carol','confio')).kind,'voted')
- await a.engine.tick()
+ a.advance(4501);await a.engine.tick()
  a.advance(4501);await a.engine.tick()
  assert.equal(a.db.store.phase,'answering')
  const r=a.db.store.current,q=APOSTA_QUESTIONS[r.difficulty][r.questionIndex][1]
@@ -122,7 +124,7 @@ test('erro devolve reserva a duvidador e paga premio; confiante recebe zero',asy
  assert.equal((await a.vote('bob','duvido')).kind,'voted')
  assert.deepEqual(a.db.wallets.get('bob'),{cash:0,bank:70000})
  assert.equal((await a.vote('carol','confio')).kind,'voted')
- await a.engine.tick();a.advance(4501);await a.engine.tick()
+ a.advance(4501);await a.engine.tick();a.advance(4501);await a.engine.tick()
  assert.equal((await a.answer('alice','resposta errada')).correct,false)
  assert.deepEqual(a.db.wallets.get('bob'),{cash:120000,bank:100000})
  assert.equal(a.db.store.players.bob.net,100000)
@@ -162,4 +164,70 @@ test('estado recuperado em reinicio nao duplica inscricao nem distribuicao',asyn
  assert.equal(await second.open(),true)
  assert.equal((await second.join({chat:APOSTA_GROUP_JID,sender:'alice',name:'Alice'})).kind,'already')
  assert.equal(a.db.store.order.length,3)
+})
+
+test('avisos de inicio, apostas, pergunta e resultado chegam nos DOIS grupos',async()=>{
+ const a=harness();await a.start()
+ assert.equal(APOSTA_GROUPS.length,2)
+ for(const fragment of ['APOSTO QUE VOCE NAO CONSEGUE!','RODADA 1']){
+  const found=a.delivered.filter(x=>x.text.includes(fragment))
+  assert.deepEqual(new Set(found.map(x=>x.chat)),new Set(APOSTA_GROUPS))
+ }
+ await a.question()
+ assert.deepEqual(new Set(a.delivered.filter(x=>x.text.includes('PERGUNTA PARA')).map(x=>x.chat)),new Set(APOSTA_GROUPS))
+ const r=a.db.store.current,q=APOSTA_QUESTIONS[r.difficulty][r.questionIndex][1]
+ const out=await a.engine.answer({chat:APOSTA_GROUPS[1],sender:r.challenger,answer:q})
+ assert.equal(out.kind,'answered');assert.equal(out.correct,true)
+ await a.engine.tick()
+ assert.deepEqual(new Set(a.delivered.filter(x=>x.text.includes('ACERTOU!')).map(x=>x.chat)),new Set(APOSTA_GROUPS))
+ assert.equal(a.db.store.history.length,1)
+})
+test('inscricao e aposta entre grupos sao globais e nao duplicam por jogador',async()=>{
+ const a=harness();await a.start()
+ assert.equal((await a.engine.join({chat:APOSTA_GROUPS[1],sender:'dave',name:'Dave'})).kind,'joined')
+ assert.equal((await a.join('dave')).kind,'already')
+ assert.equal(a.db.store.order.length,4)
+ assert.equal((await a.engine.vote({chat:APOSTA_GROUPS[1],sender:'bob',choice:'duvido'})).kind,'voted')
+ assert.equal((await a.vote('bob','confio')).kind,'already')
+ assert.deepEqual(a.db.wallets.get('bob'),{cash:50000,bank:100000})
+ assert.equal(a.db.ledger.filter(x=>x.p[3]==='event_bet_hold').length,1)
+})
+test('falha no segundo grupo bloqueia pergunta e premio ate entrega confirmada',async()=>{
+ let fail=false
+ const a=harness({send:async(chat,text)=>{if(fail&&chat===APOSTA_GROUPS[1]&&text.includes('PERGUNTA PARA'))throw Error('grupo offline')}})
+ await a.start();fail=true;a.advance(35001);await a.engine.tick()
+ assert.equal(a.db.store.phase,'question-delivery')
+ assert.equal((await a.answer('alice','Ottawa')).kind,'not-open')
+ a.advance(65000);await a.engine.tick()
+ assert.equal(a.db.store.phase,'question-delivery')
+ assert.equal(a.db.store.history.length,0)
+ fail=false;await a.engine.tick()
+ a.advance(4501);await a.engine.tick()
+ assert.equal(a.db.store.phase,'answering')
+})
+test('migra rodada antiga em andamento sem perda de aposta, inscricao ou premio duplicado',async()=>{
+ const a=harness();await a.start()
+ assert.equal((await a.vote('bob','duvido')).kind,'voted')
+ await a.question()
+ delete a.db.store.broadcastVersion
+ for(const n of a.db.store.notices){
+  const sent=n.sentAtMs?.[APOSTA_GROUPS[0]]||0
+  delete n.sentGroups;delete n.sentAtMs;delete n.messageIds
+  n.sentAt=sent;n.messageId=sent?'old-id':''
+ }
+ const before=a.db.ledger.length,balance=structuredClone(a.db.wallets.get('bob'))
+ assert.equal(await a.engine.open(),true)
+ assert.equal(a.db.store.phase,'question-delivery')
+ assert.equal(a.db.store.current.deadline,0)
+ assert.deepEqual(a.db.wallets.get('bob'),balance)
+ assert.equal(a.db.ledger.length,before)
+ assert.equal((await a.answer('alice','qualquer')).kind,'not-open')
+ await a.engine.tick()
+ assert.deepEqual(new Set(a.delivered.filter(x=>x.text.includes('PERGUNTA PARA')).map(x=>x.chat)),new Set(APOSTA_GROUPS))
+ a.advance(4501);await a.engine.tick()
+ assert.equal(a.db.store.phase,'answering')
+ const r=a.db.store.current,q=APOSTA_QUESTIONS[r.difficulty][r.questionIndex][1]
+ assert.equal((await a.answer(r.challenger,q)).correct,true)
+ assert.equal(a.db.store.history.length,1)
+ assert.equal(a.db.ledger.filter(x=>x.p[3]==='event_penalty').length,1)
 })

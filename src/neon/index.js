@@ -103,7 +103,7 @@ import {
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.js'
-import {createApostaEngine,APOSTA_GROUP_JID} from './aposto-consegue.js'
+import {createApostaEngine,APOSTA_GROUPS} from './aposto-consegue.js'
 import {createGlobalCommandAntispam,commandAntispamNotice} from './command-antispam.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
@@ -9311,7 +9311,7 @@ pokemonQuizEngine=createPokemonQuizEngine({db,
 })
 void pokemonQuizEngine.pause().then(()=>pokemonQuizEngine.start())
   .catch(err=>console.error('[QUIZ POKEMON] pausa de seguranca falhou; quiz nao iniciado',err?.message||err))
-// Desafio de confianca no grupo principal: abre apenas uma edicao persistida.
+// Disputa unica nos dois grupos oficiais: estado e saldos compartilhados.
 apostaEngine?.stop()
 apostaEngine=createApostaEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
@@ -9749,7 +9749,7 @@ if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(cha
 const apostaTokens=body.startsWith(prefix)
   ?body.slice(prefix.length).trim().split(/\s+/):[]
 const apostaCommand=String(apostaTokens[0]||'').toLowerCase()
-if(isGroup && chat===APOSTA_GROUP_JID &&
+if(isGroup && APOSTA_GROUPS.includes(chat) &&
    ['participar','confio','duvido','resposta'].includes(apostaCommand)){
   if(!apostaEngine){await reply('⏳ Evento inicializando. Tente novamente.');continue}
   if(apostaCommand==='participar'){

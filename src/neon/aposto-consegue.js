@@ -2,6 +2,9 @@ import {randomInt} from 'node:crypto'
 // APOSTO QUE VOCE NAO CONSEGUE: quatro perguntas por inscrito, incluindo entrada tardia.
 // Banco controla todas as apostas, estornos e creditos em uma transacao por rodada.
 export const APOSTA_GROUP_JID='120363410230588690@g.us'
+export const APOSTA_GROUPS=Object.freeze([
+ APOSTA_GROUP_JID,'120363429534634131@g.us'
+])
 export const APOSTA_KEY='aposto_consegue_20261030_v1'
 export const APOSTA_QUESTIONS_PER_PLAYER=4
 export const APOSTA_PRIZE=100000
@@ -72,8 +75,48 @@ const amountSplit=(total,ids)=>{const out={};if(!ids.length)return out
  for(const id of ids){out[id]=share+(left-- >0?1:0)}return out}
 const first=(s)=>s.order.filter(id=>s.players[id].done<APOSTA_QUESTIONS_PER_PLAYER)
  .sort((a,b)=>s.players[a].done-s.players[b].done||s.order.indexOf(a)-s.order.indexOf(b))[0]
-function notice(s,id,text){s.notices??=[];if(!s.notices.some(n=>n.id===id))s.notices.push({id,text,sentAt:0})}
-function intro(){return '🎲 *APOSTO QUE VOCE NAO CONSEGUE!*\n\n🧠 Perguntas medias e dificeis, de assuntos variados.\n👥 Cada jogador deve enviar *!participar* neste grupo, mesmo que entre depois.\n📚 *4 perguntas para cada inscrito* (2 medias e 2 dificeis).\n💰 Rodada: R$ 100.000.\n✅ *!confio*: divide o premio se o desafiado acertar.\n❌ *!duvido*: ganha parte do premio se ele errar; se acertar, perde R$ 50.000 (carteira e depois banco).\n🔒 O bot reserva R$ 50.000 ao escolher !duvido e devolve se o desafiado errar.\n⏳ Comeca assim que 3 jogadores entrarem. A entrada tardia e permitida enquanto houver rodada ativa.'}
+function notice(s,id,text){s.notices??=[];if(!s.notices.some(n=>n.id===id))s.notices.push({id,text,sentGroups:[],sentAtMs:{},messageIds:{}})}
+const delivered=(n,groups)=>Boolean(n&&groups.every(g=>n.sentGroups?.includes(g)))
+const deliveredAt=(n,groups)=>delivered(n,groups)
+ ? Math.max(...groups.map(g=>Number(n.sentAtMs?.[g]||0))):0
+function migrateBroadcast(s,groups,now){
+ if(!s||s.broadcastVersion===2)return
+ const activeId=s.current?.number
+ const currentNotice=s.phase==='betting'?'bet:'+activeId:
+  ['question-delivery','answering'].includes(s.phase)?'question:'+activeId:
+  s.phase==='result'?'result:'+activeId:
+  s.status==='completed'?'final':s.status==='cancelled'?'cancel':'intro'
+ for(const n of s.notices||[]){
+  const primarySent=Number(n.sentAt||0)>0
+  n.sentGroups=primarySent?[groups[0]]:[]
+  n.sentAtMs=primarySent?{[groups[0]]:Number(n.sentAt)}:{}
+  n.messageIds=primarySent&&n.messageId?{[groups[0]]:n.messageId}:{}
+  // Nao enviar historico antigo inteiro ao segundo grupo.
+  if(n.id!==currentNotice&&!(s.status==='running'&&n.id==='intro')){
+   n.sentGroups=[...groups]
+   for(const g of groups)n.sentAtMs[g]??=now
+  }
+ }
+ if(s.status==='running'&&s.current){
+  if(s.phase==='betting'){
+   s.current.deadline=0
+  }else if(['question-delivery','answering'].includes(s.phase)){
+   // Sincronizar a pergunta sem desfazer apostas ou premios concluidos.
+   for(const n of s.notices||[]){
+    if(n.id==='question:'+s.current.number){
+     n.sentGroups=[...groups]
+     for(const g of groups)n.sentAtMs[g]??=now
+    }
+   }
+   s.current.deadline=0
+   s.phase='question-delivery'
+   s.current.questionNoticeId='question:'+s.current.number+':sync-two-groups'
+   notice(s,s.current.questionNoticeId,questionText(s))
+  }
+ }
+ s.broadcastVersion=2
+}
+function intro(){return '🎲 *APOSTO QUE VOCE NAO CONSEGUE!*\n\n🧠 Perguntas medias e dificeis, de assuntos variados.\n👥 Envie *!participar* em qualquer um dos dois grupos oficiais, inclusive depois do inicio.\n📚 *4 perguntas para cada inscrito* (2 medias e 2 dificeis).\n💰 Rodada: R$ 100.000.\n✅ *!confio*: divide o premio se o desafiado acertar.\n❌ *!duvido*: ganha parte do premio se ele errar; se acertar, perde R$ 50.000 (carteira e depois banco).\n🔒 O bot reserva R$ 50.000 ao escolher !duvido e devolve se o desafiado errar.\n⏳ Comeca assim que 3 jogadores entrarem. A entrada tardia e permitida enquanto houver rodada ativa.'}
 const labels=s=>s.order.map(id=>nice(s.players[id].name)+' ('+s.players[id].done+'/4)').join(' • ')
 function betText(s){const r=s.current,p=s.players[r.challenger]
  return '🎲 *RODADA '+r.number+' / '+(s.order.length*4)+'* — *'+nice(p.name)+'*\n🧠 Dificuldade: *'+(r.difficulty==='medio'?'MEDIA':'DIFICIL')+'* • Categoria: *'+r.category+'*\n💰 Premio total: *R$ 100.000*\n\n👥 Os outros jogadores podem enviar *!confio* ou *!duvido* neste grupo.\n❌ Duvidar exige R$ 50.000 disponiveis entre carteira e banco, reservados agora.\n⏳ *35 segundos* para apostas.\n📋 Progresso: '+labels(s)}
@@ -103,8 +146,10 @@ const fresh=now=>({status:'running',phase:'lobby',createdAt:now,order:[],players
  deck:{medio:shuffledIndices(APOSTA_QUESTIONS.medio.length),dificil:shuffledIndices(APOSTA_QUESTIONS.dificil.length)},
  notices:[]})
 export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()=>Date.now(),
- group=APOSTA_GROUP_JID,logger=console}){
+ groups=APOSTA_GROUPS,logger=console}){
  if(!db?.connect||typeof sendMessage!=='function')throw Error('Banco e envio obrigatorios')
+ const permittedGroups=[...new Set(groups)]
+ if(!permittedGroups.length)throw Error('Grupo de evento ausente')
  let timer=null,busy=false
  async function transact(fn,{create=false}={}){
   const c=await db.connect()
@@ -131,7 +176,7 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
   if(questionIndex===undefined)throw Error('Banco de perguntas insuficiente')
   const eligible=s.order.filter(x=>x!==id)
   s.current={number:s.nextNumber++,challenger:id,difficulty,category:APOSTA_QUESTIONS[difficulty][questionIndex][2],
-   questionIndex,eligible,votes:{},deadline:now+BET_MS}
+   questionIndex,eligible,votes:{},deadline:0}
   s.phase='betting'
   notice(s,'bet:'+s.current.number,betText(s))
  }
@@ -191,13 +236,22 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
    const now=clock()
    if(s.phase==='lobby'&&s.order.length>=3){nextRound(s,now);return}
    const r=s.current
-   if(s.phase==='betting'&&(now>=r.deadline||r.eligible.every(id=>r.votes[id]))){
-    s.phase='question-delivery';r.deadline=0
-    notice(s,'question:'+r.number,questionText(s));return
+   if(s.phase==='betting'){
+    const n=s.notices.find(x=>x.id==='bet:'+r.number)
+    const sentAt=deliveredAt(n,permittedGroups)
+    if(!sentAt||now<sentAt+NOTICE_WAIT_MS)return
+    if(!r.deadline||r.deadline<sentAt+BET_MS)r.deadline=sentAt+BET_MS
+    if(now>=r.deadline||r.eligible.every(id=>r.votes[id])){
+     s.phase='question-delivery';r.deadline=0
+     r.questionNoticeId='question:'+r.number
+     notice(s,r.questionNoticeId,questionText(s))
+    }
+    return
    }
    if(s.phase==='question-delivery'){
-    const n=s.notices.find(x=>x.id==='question:'+r.number)
-    if(n?.sentAt&&now>=n.sentAt+NOTICE_WAIT_MS){
+    const n=s.notices.find(x=>x.id===(r.questionNoticeId||'question:'+r.number))
+    const sentAt=deliveredAt(n,permittedGroups)
+    if(sentAt&&now>=sentAt+NOTICE_WAIT_MS){
      s.phase='answering';r.deadline=now+(r.difficulty==='medio'?45000:60000)
     }
     return
@@ -205,7 +259,8 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
    if(s.phase==='answering'&&now>=r.deadline){await settle(c,s,false,'tempo esgotado');return}
    if(s.phase==='result'){
     const n=s.notices.find(x=>x.id==='result:'+r.number)
-    if(n?.sentAt&&now>=n.sentAt+GAP_MS)nextRound(s,now)
+    const sentAt=deliveredAt(n,permittedGroups)
+    if(sentAt&&now>=sentAt+GAP_MS)nextRound(s,now)
    }
   })
  }
@@ -213,16 +268,25 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
   const r=await db.query('SELECT value FROM trevo_settings WHERE key=$1',[APOSTA_KEY])
   const s=r.rows[0]?.value
   if(!s||!isConnected())return
-  const n=s.notices.find(x=>!x.sentAt)
+  const n=s.notices.find(x=>!delivered(x,permittedGroups))
   if(!n)return
+  const group=permittedGroups.find(g=>!n.sentGroups?.includes(g))
+  if(!group)return
   try{
    const sent=await sendMessage(group,n.text)
    if(!sent?.key?.id)throw new Error('Envio sem ID do WhatsApp; aguardando')
    await transact(async(_c,current)=>{
     const target=current?.notices?.find(x=>x.id===n.id)
-    if(target&&!target.sentAt){target.sentAt=clock();target.messageId=String(sent.key.id)}
+    if(target&&!target.sentGroups?.includes(group)){
+     target.sentGroups??=[]
+     target.sentAtMs??={}
+     target.messageIds??={}
+     target.sentGroups.push(group)
+     target.sentAtMs[group]=clock()
+     target.messageIds[group]=String(sent.key.id)
+    }
    })
-  }catch(err){logger.warn?.('[APOSTO] aviso pendente: '+String(err?.message||err))}
+  }catch(err){logger.warn?.('[APOSTO] aviso pendente em '+group+': '+String(err?.message||err))}
  }
  async function tick(){
   if(busy||!isConnected())return
@@ -231,9 +295,9 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
   catch(err){logger.error?.('[APOSTO] tick: '+String(err?.message||err))}
   finally{busy=false}
  }
- async function open(){return transact(async(_c,s)=>Boolean(s),{create:true})}
+ async function open(){return transact(async(_c,s)=>{migrateBroadcast(s,permittedGroups,clock());return Boolean(s)},{create:true})}
  async function join({chat,sender,name}){
-  if(chat!==group)return {kind:'other-group'}
+  if(!permittedGroups.includes(chat))return {kind:'other-group'}
   return transact(async(_c,s)=>{
    if(!s||s.status!=='running')return {kind:'closed'}
    if(s.players[sender])return {kind:'already',done:s.players[sender].done}
@@ -243,7 +307,7 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
   })
  }
  async function vote({chat,sender,choice}){
-  if(chat!==group)return {kind:'other-group'}
+  if(!permittedGroups.includes(chat))return {kind:'other-group'}
   return transact(async(c,s)=>{
    const r=s?.current
    if(!s||s.status!=='running'||s.phase!=='betting')return {kind:'not-open'}
@@ -266,7 +330,7 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
   })
  }
  async function answer({chat,sender,answer}){
-  if(chat!==group)return {kind:'other-group'}
+  if(!permittedGroups.includes(chat))return {kind:'other-group'}
   return transact(async(c,s)=>{
    if(!s||s.status!=='running'||s.phase!=='answering')return {kind:'not-open'}
    const r=s.current
@@ -290,7 +354,7 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
    '📋 Jogadores: '+s.order.length+'/'+APOSTA_MAX_PLAYERS+' • '+labels(s)+
    '\n🔔 Fase: *'+({lobby:'inscricoes',betting:'apostas','question-delivery':'enviando pergunta',answering:'resposta',result:'resultado'}[s.phase]||s.phase)+'*'+
    '\n🧠 Perguntas concluídas: '+s.history.length+' / '+(s.order.length*4)+
-   '\n✅ Entre mesmo com o evento iniciado: *!participar*.'
+   '\n🌐 Disputa global nos dois grupos oficiais.\n✅ Entre mesmo com o evento iniciado: *!participar*.'
  }
  async function cancel(){
   return transact(async(c,s)=>{
