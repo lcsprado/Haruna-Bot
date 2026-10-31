@@ -9714,7 +9714,7 @@ if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(cha
     pokemonQuizReplyThrottle.set(sender,now)
     const result=await pokemonQuizEngine.answer({chat,sender,
       name:msg.pushName||'Jogador',choice:pokemonAnswerTokens[1]})
-    const key='quiz'+result.kind[0].toUpperCase()+result.kind.slice(1)
+    const key='quiz'+result.kind.replace(/(^|-)([a-z])/g,(_m,_sep,ch)=>ch.toUpperCase())
     trevoHealth[key]=Number(trevoHealth[key]||0)+1
     if(result.kind==='winner')void pokemonQuizEngine.tick()
     if(result.kind==='unregistered')await reply('⚠️ Carteira nao localizada. Use *!perfil* antes de participar.')
