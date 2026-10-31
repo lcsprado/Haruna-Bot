@@ -17,12 +17,12 @@ export const HALLOWEEN_ALTAR_OFFERS=Object.freeze({
  insignia:Object.freeze({
   id:'insignia',name:'💀 Insígnia da Noite Eterna',cost:250,
   itemId:HALLOWEEN_INSIGNIA_ID,quantity:1,
-  detail:'+1% de dano em Boss/Raid. Equipe em !reliquias; sem PvP.'
+  detail:'+4% de dano e +1 p.p. de CRIT em Boss/Raid. Equipe em !reliquias; sem PvP.'
  }),
  titulo:Object.freeze({
   id:'titulo',name:'👑 Título Soberano das Almas',cost:400,
   itemId:HALLOWEEN_TITLE_ID,quantity:1,
-  detail:'Título cosmético permanente exibido no perfil.'
+  detail:'Título permanente: +10% de EXP de jogador e pets em Boss/Raid. Passivo, sem equipar e sem PvP.'
  }),
  bau:Object.freeze({
   id:'bau',name:'🔮 Baú Supremo de Halloween',cost:600,
@@ -43,12 +43,12 @@ export const HALLOWEEN_CHEST_CONTENTS=Object.freeze([
 export const HALLOWEEN_ALTAR_ITEMS=Object.freeze([
  Object.freeze({
   id:HALLOWEEN_INSIGNIA_ID,name:'💀 Insígnia da Noite Eterna',
-  description:'Insígnia exclusiva do Halloween 2026. Equipável via !reliquias. +1% dano contra Boss/Raid; sem PvP e não acumula com outra insígnia.',
+  description:'Insígnia exclusiva do Halloween 2026. Equipável via !reliquias. +4% dano e +1 p.p. CRIT Boss/Raid; sem PvP e não acumula com outra insígnia.',
   rarity:'event'
  }),
  Object.freeze({
   id:HALLOWEEN_TITLE_ID,name:'👑 Soberano das Almas',
-  description:'Título cosmético permanente do Halloween 2026, visível no perfil; não altera atributos.',
+  description:'Título permanente do Halloween 2026, exibido no perfil. Passiva independente: +10% de EXP do jogador e time pet nas recompensas de Boss/Raid, sem PvP.',
   rarity:'event'
  }),
  Object.freeze({
@@ -80,4 +80,19 @@ export function halloweenAltarCatalogText(){
  return Object.values(HALLOWEEN_ALTAR_OFFERS).map(o=>
   o.name+' — *'+o.cost+' Almas*\n'+o.detail+'\n👉 *!halloween trocar '+o.id+'*'
  ).join('\n\n')
+}
+
+ // Título é uma passiva permanente, independente de !reliquias e sem PvP.
+ // Apenas EXP de recompensas PvE (Boss e Raid), jamais EXP de classe, PvP,
+ // profissão, trabalho, minigames ou de outros sistemas.
+export const HALLOWEEN_TITLE_XP_BONUS=0.10
+export function halloweenTitleBonusXp(amount,owned=false){
+ const base=Math.max(0,Math.floor(Number(amount)||0))
+ return owned?Math.round(base*(1+HALLOWEEN_TITLE_XP_BONUS)):base
+}
+export async function ownsHalloweenTitle(queryable,jid){
+ const result=await queryable.query(
+  'SELECT 1 FROM inventories WHERE jid=$1 AND item_id=$2 AND quantity>0 LIMIT 1',
+  [jid,HALLOWEEN_TITLE_ID])
+ return result.rowCount>0||Boolean(result.rows?.length)
 }
