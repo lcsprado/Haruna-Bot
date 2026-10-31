@@ -1,0 +1,29 @@
+name: Rouba-Rouba Alpha - safety regression
+on:
+  push:
+    branches:
+      - feat/rouba-rouba-alpha-20261030
+  pull_request:
+    branches: [whatsapp-only]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check src/neon/rouba-rouba-alpha.js
+          node --check src/neon/index.js
+          node --check test/rouba-rouba-alpha-20261030.test.mjs
+      - name: Rouba-Rouba tests
+        run: node --test test/rouba-rouba-alpha-20261030.test.mjs
+      - name: Related regressions
+        run: |
+          node --test test/aposto-consegue-20261030.test.mjs
+          node --test test/car-resale-tradein-20261013.test.mjs
+          node --test test/auction-cross-group-notices.test.mjs
