@@ -37,8 +37,11 @@ test('mystic helmet only grants 1.5% defense to three mystics',()=>{
  assert.equal(halloweenMysticHelmetReduction({helmetId:helm,teamStyle:'mistico',teamCount:2}),0)
  assert.equal(halloweenMysticHelmetReduction({helmetId:'halloween_elmo_abobora_20261026',teamStyle:'mistico',teamCount:3}),0)
 })
-test('bosses are progressively difficult with three phases',()=>{
- for(let i=1;i<HALLOWEEN_BOSSES.length;i++)assert.ok(HALLOWEEN_BOSSES[i].hp>HALLOWEEN_BOSSES[i-1].hp)
+test('boss HP increases until Oct 30, then balances for final weekend farm; phases preserved',()=>{
+ for(let i=1;i<=4;i++)assert.ok(HALLOWEEN_BOSSES[i].hp>HALLOWEEN_BOSSES[i-1].hp)
+ assert.equal(HALLOWEEN_BOSSES[5].hp,1800000)
+ assert.equal(HALLOWEEN_BOSSES[6].hp,2100000)
+ assert.ok(HALLOWEEN_BOSSES[6].hp>HALLOWEEN_BOSSES[5].hp)
  const hp=HALLOWEEN_BOSSES[0].hp
  assert.equal(halloweenPhases(hp,hp),1)
  assert.equal(halloweenPhases(hp*.5,hp),2)
