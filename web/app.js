@@ -49,6 +49,7 @@ const ui = {
 
 const navItems = [
   ['home','⌂','Início'],
+  ['racing','🏎️','Garagem Alpha'],
   ['character','🧙','Personagem'],
   ['pets','🐾','Pets'],
   ['inventory','🎒','Inventário'],
@@ -64,7 +65,6 @@ const navItems = [
   ['clan','🛡️','Clã'],
   ['games','🎮','Minigames'],
   ['activities','⏳','Atividades'],
-  ['racing','🏎️','Garagem Alpha'],
   ['progression','📈','Progressão'],
   ['rankings','🏆','Rankings'],
   ['economy','💰','Economia'],
@@ -1090,7 +1090,8 @@ function renderHome(){
     '<div class="home-hp"><div><span>❤️ HP</span><strong>'+num(hp)+'/'+num(hpMax)+'</strong></div><div class="progress"><span style="width:'+pct(hp/hpMax*100)+'%"></span></div></div>'+
     '<div class="home-exp"><div><span>⭐ EXP</span><strong>'+num(raw.exp||0)+'/'+num(Math.max(1,Number(raw.level||1)*100))+'</strong></div><div class="progress exp-progress"><span style="width:'+pct(Number(raw.exp||0)/Math.max(1,Number(raw.level||1)*100)*100)+'%"></span></div></div>'+
     '<div class="hero-actions"><button class="btn heal" data-player-heal '+(hp>=hpMax?'disabled':'')+'>'+(hp>=hpMax?'❤️ HP cheio':'❤️ Curar')+'</button><button class="btn primary" data-action="daily" '+(dailyDone?'disabled':'')+'>'+dailyText+'</button><button class="btn good" data-action="all">⚡ Rotina completa</button><button class="btn" data-action="work" '+(workRemain>0?'disabled':'')+' '+(workExpires?'data-work-cooldown="'+workExpires+'"':'')+'>'+workText+'</button><button class="btn" data-resync>↻ Sincronizar</button></div>'+
-    '<div class="home-action-status"><span>🎁 Bônus diário: <strong>'+(dailyDone?'feito hoje':'disponível')+'</strong> • sequência '+num(dailyStreak)+'</span><span>💼 Trabalho: <strong>'+(workRemain>0?'recarga '+esc(formatRemaining(workRemain)):'disponível')+'</strong></span></div></div>'+
+    '<div class="home-action-status"><span>🎁 Bônus diário: <strong>'+(dailyDone?'feito hoje':'disponível')+'</strong> • sequência '+num(dailyStreak)+'</span><span>💼 Trabalho: <strong>'+(workRemain>0?'recarga '+esc(formatRemaining(workRemain)):'disponível')+'</strong></span></div>'+ 
+    '<button class="btn home-racing-link" data-go-page="racing">🏎️ Garagem Alpha — carros, oficina e corridas</button></div>'+
     '<div class="hero-side"><div><small>CARTEIRA</small><strong>'+money(raw.cash)+'</strong></div><div><small>BANCO</small><strong>'+money(raw.bank)+'</strong></div><div><small>ARMA</small><strong>'+esc(p.weapon_name||'Nenhuma')+' Lv.'+num(p.weapon_level||1)+'</strong></div><div><small>ARMADURA</small><strong>'+esc(p.armor_name||'Nenhuma')+' Lv.'+num(p.armor_level||1)+'</strong></div></div>'+
   '</div>'+
   resultPanel()+
@@ -2406,6 +2407,7 @@ function bind(){
     setMenu(false);
     if(ui.page==='contracts') await loadContracts();
     if(ui.page==='auction') await loadAuction();
+    if(ui.page==='racing') await loadRacing(false);
     if(['social','market','clan','games','activities','progression','rankings','loans','contracts'].includes(ui.page)) await syncExtras(false).catch(()=>null);
     render();
     window.scrollTo({top:0,left:0,behavior:'auto'});
