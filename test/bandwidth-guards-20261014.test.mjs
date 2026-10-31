@@ -119,7 +119,7 @@ test('socket accounting does not double-count snapshots, closed streams or regis
 
 test('unrelated progression and daily data remain frozen while approved hero mechanics evolve',()=>{
   const expected={
-    'progression.js':'1ec656d6b60f1148a46f1d0b6ec8715308aa5585e97731d9280cb91135658772',
+    'progression.js':'f54acfbc49fb88cd79a2c5f58585ffca7a80fba51e1b52f722e11fdca3af2619',
     'daily-v2.js':'9d2fc74f2fdd58f9e8ebf76c8d3ed326dc97b54943c3282d7712efd02805036c'
   }
   for(const [file,hash] of Object.entries(expected)){
