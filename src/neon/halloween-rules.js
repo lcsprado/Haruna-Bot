@@ -13,7 +13,7 @@ export const HALLOWEEN_BOSSES=Object.freeze([
   {day:'2026-10-29',name:'⚰️ O Guardião das Criptas',hp:9500000,atk:330,mechanic:'Armadura de ossos e contra-ataques'},
   {day:'2026-10-30',name:'🎃 O Rei das Abóboras',hp:11000000,atk:355,mechanic:'Servos explosivos e maldição flamejante'},
   {day:'2026-10-31',name:'🐎 O Cavaleiro Sem Cabeça',hp:13500000,atk:390,mechanic:'3 fases; Corcel Espectral e chamas do apocalipse'},
-  {day:'2026-11-01',name:'💀 O Imperador das Almas Renascidas',hp:12000000,atk:375,mechanic:'Caçada final com Almas em dobro; abre às 13h'}
+  {day:'2026-11-01',name:'💀 O Imperador das Almas Renascidas',hp:15000000,atk:400,mechanic:'Caçada final com Almas em dobro; abre às 13h'}
 ])
 export const HALLOWEEN_GEAR=Object.freeze([
   {id:'halloween_elmo_abobora_20261026',name:'🎃 Cabeça do Rei Abóbora',category:'helmet',def:116,hp:280,crit:.025,dropDay:'normal',chance:.01},
