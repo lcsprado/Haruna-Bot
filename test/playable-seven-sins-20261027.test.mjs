@@ -254,7 +254,8 @@ test('ficha do herói usa mesmos atributos de entrada da Raid, sem alterar o Pal
     attack_pct_bonus:0.05
   };
   const frozen=structuredClone(original);
-  // A vida de combate inclui o HP de equipamento na mesma proporção da cura.\n  const ban=heroCombatSheetFromProfile(original,'pecado_ban');
+  // A vida de combate inclui o HP de equipamento na mesma proporção da cura.
+  const ban=heroCombatSheetFromProfile(original,'pecado_ban');
   assert.deepEqual({hp:ban.hp,maxHp:ban.maxHp,atk:ban.atk,def:ban.def,spd:ban.spd},
     {hp:878,maxHp:1170,atk:1110,def:729,spd:270});
   assert.equal(ban.name,'Ban');
