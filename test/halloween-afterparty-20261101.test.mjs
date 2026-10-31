@@ -1,0 +1,58 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {readFileSync} from 'node:fs'
+import {AFTERPARTY_START,AFTERPARTY_SHOP_START,AFTERPARTY_SHOP_END,afterpartyShopOpen,afterpartyOffer,AFTERPARTY_OFFERS,afterpartyAnnouncement,afterpartyStartAnnouncement,afterpartyOpenAnnouncement} from '../src/neon/halloween-afterparty.js'
+import {halloweenSoulMultiplier,halloweenBoss,HALLOWEEN_SHOP_END} from '../src/neon/halloween-rules.js'
+import {halloweenTitleBonusXp} from '../src/neon/halloween-altar.js'
+const source=readFileSync(new URL('../src/neon/halloween-alpha.js',import.meta.url),'utf8')
+const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
+test('horarios Sao Paulo: dobro 13h, loja 18h, altar antigo fecha 12h',()=>{
+ assert.equal(HALLOWEEN_SHOP_END,Date.parse('2026-11-01T12:00:00-03:00'))
+ assert.equal(AFTERPARTY_START,Date.parse('2026-11-01T13:00:00-03:00'))
+ assert.equal(AFTERPARTY_SHOP_START,Date.parse('2026-11-01T18:00:00-03:00'))
+ assert.equal(AFTERPARTY_SHOP_END,Date.parse('2026-11-03T00:00:00-03:00'))
+ assert.equal(afterpartyShopOpen(AFTERPARTY_SHOP_START-1),false)
+ assert.equal(afterpartyShopOpen(AFTERPARTY_SHOP_START),true)
+ assert.equal(afterpartyShopOpen(AFTERPARTY_SHOP_END),false)
+ assert.equal(halloweenBoss(AFTERPARTY_START-1),null)
+ assert.equal(halloweenBoss(AFTERPARTY_START)?.day,'2026-11-01')
+ assert.equal(halloweenSoulMultiplier(AFTERPARTY_START),2)
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-01T23:59:59-03:00')),2)
+ assert.equal(halloweenSoulMultiplier(AFTERPARTY_START-1),1)
+})
+test('mensagem exclusiva do AlphaBot fala 13h evento e 18h loja, sem periodos parciais',()=>{
+ const teaser=afterpartyAnnouncement()
+ assert.match(teaser,/13h/)
+ assert.match(teaser,/18h/)
+ assert.match(teaser,/dobro/i)
+ assert.match(teaser,/AlphaBot/)
+ assert.match(afterpartyStartAnnouncement(),/13h/)
+ assert.match(afterpartyOpenAnnouncement(),/18h/)
+ assert.doesNotMatch(teaser,/14h às 16h|20h às 22h/)
+ assert.match(source,/const HALLOWEEN_EXTRA_GROUP='120363429534634131@g.us'/)
+ assert.match(source,/sock.sendMessage\(HALLOWEEN_EXTRA_GROUP,\{text\}\)/)
+ assert.match(source,/sendAfterpartyNotice\(sock,'teaser',afterpartyAnnouncement\(\)\)/)
+ assert.match(source,/sendAfterpartyNotice\(sock,'double_souls_start',afterpartyStartAnnouncement\(\)\)/)
+ assert.match(source,/sendAfterpartyNotice\(sock,'shop_open',afterpartyOpenAnnouncement\(\)\)/)
+ assert.match(source,/boss.day!=='2026-11-01'/)
+})
+test('resgate da nova loja usa os mesmos saldos mas novas chaves e bloqueia duplicacao',()=>{
+ assert.deepEqual(Object.values(AFTERPARTY_OFFERS).map(x=>x.cost),[60,100,160,220])
+ assert.equal(afterpartyOffer('epicas')?.quantity,2)
+ assert.equal(afterpartyOffer('lendaria')?.itemId,'caixa_lendaria')
+ assert.equal(afterpartyOffer('invalido'),null)
+ assert.match(source,/const rewardId='afterparty_20261101_'\+offer.id/)
+ assert.match(source,/ON CONFLICT DO NOTHING RETURNING reward_id/)
+ assert.match(source,/UPDATE inventories SET quantity=quantity-\$3 WHERE jid=\$1 AND item_id=\$2 AND quantity>=\$3 RETURNING quantity/)
+ assert.match(source,/if\(!halloweenAltarOpen\(\)\)/)
+})
+test('bonus PvE permanentes de insignia equipada e titulo independente não afetam PvP',()=>{
+ const relics=readFileSync(new URL('../src/neon/relics.js',import.meta.url),'utf8')
+ assert.match(relics,/boss:0\.04,raidAttack:0\.04,bossCrit:0\.01,raidCrit:0\.01/)
+ assert.equal(halloweenTitleBonusXp(2000,true),2200)
+ assert.equal(halloweenTitleBonusXp(2000,false),2000)
+ assert.match(source,/halloweenTitleBonusXp\(kind==='kill'\?7000:2400,titleOwned\)/)
+ assert.match(games,/async function halloweenPveXp\(c,jid,xp\)/)
+ assert.match(games,/baseGain=await halloweenPveXp/)
+ assert.doesNotMatch(source,/if\(.*'pvp'.*halloweenTitleBonusXp/)
+})
