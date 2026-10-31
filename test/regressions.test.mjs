@@ -52,7 +52,7 @@ test('Boss distribui dinheiro, XP e drops por colocação na mesma transação',
   assert.match(dbSource,/martelo_golem.*Martelo do Golem Ancestral/)
   assert.match(gamesSource,/const BOSS_PLACEMENT=/)
   assert.match(gamesSource,/150000\*share/)
-  assert.match(gamesSource,/grantExpInTransaction\(c,p\.jid,exp\)/)
+  assert.match(gamesSource,/grantExpInTransaction\(c,p\.jid,await halloweenPveXp\(c,p\.jid,exp\)\)/)
   assert.match(gamesSource,/caixa_epica/)
   assert.match(gamesSource,/giveBossDrops\(c,p\.jid,position,pb\.drop,'weekly-boss:'/)
   assert.match(gamesSource,/mode:'weekly'/)

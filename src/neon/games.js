@@ -15,6 +15,10 @@ import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 import {playerPotionHealAmount} from './player-potions.js'
 import {PECADOS_HERO_IDS,PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {halloweenMysticHelmetReduction} from './halloween-rules.js'
+import {halloweenTitleBonusXp,ownsHalloweenTitle} from './halloween-altar.js'
+
+// Passiva de EXP exclusiva de Boss/Raid. Não interfere em PvP, carreira ou comércio.
+async function halloweenPveXp(c,jid,xp){return halloweenTitleBonusXp(xp,await ownsHalloweenTitle(c,jid))}
 import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
@@ -983,7 +987,7 @@ async function grantTeamPetXp(c,jid,baseGain){
   baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
   if(!baseGain) return []
   const petXpEventMultiplier=await getPetXpEventMultiplier(c)
-  baseGain=Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0))))
+  baseGain=await halloweenPveXp(c,jid,Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0)))))
   const awards=[]
   const primary=await raidPetXp(c,jid,baseGain)
   if(primary) awards.push({slot:1,name:primary.name,xp:baseGain,creditedXp:primary.creditedXp,level:primary.level})
@@ -1205,12 +1209,13 @@ async function finishRaidRewards(c,s,cfg,chat){
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
     const cash=Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
-    const exp=Math.round(baseRaidExp*xpMultiplier)
+    const exp=await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     const expCredit=await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
     const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     const petXp=baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0
     const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp):[]
+    const awardedPetXp=petXpTeam[0]?.xp??petXp
 
     let material=null,drop=null,gearDrop=null
     // Fragmentos variam por colocação e escalam com a dificuldade/tempo da Raid.
@@ -1409,7 +1414,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       playerClassId:p.classId,
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
@@ -1872,7 +1877,7 @@ async function settleCalcanhar(c,state,defeated){
     const cash=Math.round((position===1?100000:position===2?65000:position===3?40000:20000)+80000*share)
     const exp=Math.round((position===1?3500:position===2?2500:position===3?1700:900)+2500*share)
     await credit(c,p.jid,cash,'boss_event_calcanhar_20261016')
-    await grantExpInTransaction(c,p.jid,exp,{chatJid:state.originChat||null})
+    await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:state.originChat||null})
     const drops=[]
     if(defeated&&position===1){
       drops.push(await grantBossItem(c,p.jid,{id:'bota_jp_aquiles',name:'Bota do JP — Passo da Lenda (+12 VEL / +2% CRIT)',rarity:'Lendário Exclusivo'},'calcanhar-jp:2026-10-16'))
@@ -2103,7 +2108,7 @@ async function settlePecadoPhase(c,s,chat){
     ledger[p.jid]=old
     if(eligible){
       if(cash)await credit(c,p.jid,cash,'boss_event_sete_pecados')
-      if(exp)await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
+      if(exp)await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
     }
     if(eligible&&phaseIndex<PECADOS_ESSENCES.length){
       const itemId=PECADOS_ESSENCES[phaseIndex]
@@ -2240,7 +2245,7 @@ async function premiarRupturaEstelar(c,s,chat,outcome){
     const xp=baseExp*2
     const cash=Math.round(3000+12000*share)
     await credit(c,p.jid,cash,'boss_event_ruptura')
-    await grantExpInTransaction(c,p.jid,xp,{chatJid:chat})
+    await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,xp),{chatJid:chat})
     const petXp=pet?Math.round((200+1200*share+(i===0?300:i===1?150:0))*1.5):0
     const petXpTeam=pet?await grantTeamPetXp(c,p.jid,petXp):[]
     const drops=[]
@@ -2259,7 +2264,7 @@ async function premiarRupturaEstelar(c,s,chat,outcome){
     const phases=new Set(p.phases.map(Number))
     const missionXP=outcome==='defeated'&&p.attacks>=10&&phases.size>=2&&phases.has(3)?500:0
     if(missionXP){
-      await grantExpInTransaction(c,p.jid,missionXP,{chatJid:chat})
+      await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,missionXP),{chatJid:chat})
       drops.push({id:'desafio_ruptura',name:'Missões concluídas: +500 EXP',rarity:'Especial'})
     }
     rewards.push({...p,position,share,cash,exp:xp+missionXP,petXp,petXpTeam,drops})
@@ -2403,7 +2408,7 @@ async function finishCam(c,state,beaten){
  const eligible=ranking.filter(x=>x.damage>0),win=beaten,total=ranking.reduce((a,p)=>a+p.damage,0)||1,rewards=[]
  for(const p of ranking){
    const cash=Math.round(1000+18000*p.damage/total),exp=Math.round(150+2400*p.damage/total),drops=[]
-   await credit(c,p.jid,cash,'boss_camaleao');await grantExpInTransaction(c,p.jid,exp)
+   await credit(c,p.jid,cash,'boss_camaleao');await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp))
    if(win&&p.jid===eligible[0].jid){
      const got=await c.query("INSERT INTO pet_collection(jid,species,name,level,xp,hunger,hygiene,energy,power,hp,max_hp,active) VALUES($1,'camaleao_lendario','🦎 Camaleão Lendário',1,0,100,100,100,145,145,145,FALSE) RETURNING id",[p.jid])
      drops.push({id:'camaleao_lendario',name:'🦎 Camaleão Lendário #'+got.rows[0].id,rarity:'Lendário'})
@@ -2441,7 +2446,7 @@ async function settleAurora(c,s,defeated){
     const cash=Math.round(2500+45000*share)
     const exp=Math.round(350+4800*share)
     await credit(c,p.jid,cash,'boss_event_aurora_20261011')
-    await grantExpInTransaction(c,p.jid,exp)
+    await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp))
     const drops=[]
     if(p.damage>=AURORA_MIN_DAMAGE && eligibleRank<3){
       eligibleRank++
@@ -2495,7 +2500,7 @@ async function settleUnbeatenNightBoss(c,state){
     const cash=Math.round(1500+35000*share)
     const exp=Math.round(150+2400*share)
     await credit(c,p.jid,cash,'boss_event_night_0404_survived')
-    await grantExpInTransaction(c,p.jid,exp,{chatJid:state.originChat||null})
+    await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:state.originChat||null})
     const drops=[]
     if(p.damage>=NIGHT_EVENT_MIN_DAMAGE){
       drops.push(await grantBossItem(c,p.jid,{id:'bota_celestial',name:'Bota Celestial Lendária (+10 VEL)',rarity:'Lendário'},'night-0404:'+NIGHT_EVENT_KEY))
@@ -3388,7 +3393,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           cash=night0404?Math.round(2500+60000*share):siege?Math.round(3000+25000*share):Math.round((5000+Math.floor(80000*share))*moneyMultiplier*localMult)
           exp=night0404?Math.round((450+4500*share)*(1+pb.xp)):siege?Math.round(Math.floor((700+3500*share+positionXp)*(1+pb.xp))):Math.round(Math.floor((900+6000*share+positionXp)*(1+pb.xp))*xpMultiplier*localMult)
           await credit(c,p.jid,cash,siege?'boss_event_cerco':(night?'boss_event_night_0303':night0404?'boss_event_night_0404':'boss_event_eclipse'))
-          await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
+          await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
           if(pp){
             petXp=night0404?Math.round(100+500*share):siege?Math.round(180+700*share+(i===0?180:i===1?90:0)):Math.round(Math.floor(200+1200*share+(i===0?300:i===1?150:0))*xpMultiplier*localMult)
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
@@ -3451,7 +3456,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           cash=(weekly?5000+Math.floor(150000*share)+tier.cash+golemBonus.cash:150+Math.floor(2500*share))*moneyMultiplier
           exp=Math.floor((weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
-          await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
+          await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
           if(pp){
             petXp=weekly
               ? Math.round(80+260*share+(i===0?80:i===1?40:0))

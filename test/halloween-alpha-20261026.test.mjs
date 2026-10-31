@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
- HALLOWEEN_BOSSES,HALLOWEEN_GEAR,HALLOWEEN_START,HALLOWEEN_END,
+ HALLOWEEN_BOSSES,HALLOWEEN_GEAR,HALLOWEEN_START,HALLOWEEN_END,halloweenSoulMultiplier,
  HALLOWEEN_SHOP_END,HALLOWEEN_CORCEL_COST,HALLOWEEN_SOUL_ID,
  halloweenActive,halloweenBoss,halloweenDropCatalog,
  halloweenMinimumDamage,halloweenPhases,halloweenMysticHelmetReduction
@@ -12,12 +12,15 @@ test('Halloween starts on October 26 in Sao Paulo and expires before Seven Sins 
  assert.equal(halloweenActive(HALLOWEEN_START-1),false)
  assert.equal(halloweenActive(HALLOWEEN_END),false)
  assert.equal(HALLOWEEN_SHOP_END,Date.parse('2026-11-01T12:00:00-03:00'))
- assert.equal(HALLOWEEN_BOSSES.length,6)
+ assert.equal(HALLOWEEN_BOSSES.length,7)
  for(let i=0;i<6;i++){
   const at=Date.parse('2026-10-'+String(26+i)+'T18:00:00-03:00')
   assert.equal(halloweenBoss(at)?.day,HALLOWEEN_BOSSES[i].day)
  }
- assert.equal(halloweenBoss(Date.parse('2026-11-01T18:00:00-03:00')),null)
+ assert.equal(halloweenBoss(Date.parse('2026-11-01T12:59:59-03:00')),null)
+ assert.equal(halloweenBoss(Date.parse('2026-11-01T13:00:00-03:00'))?.day,'2026-11-01')
+ assert.equal(halloweenBoss(Date.parse('2026-11-01T18:00:00-03:00'))?.day,'2026-11-01')
+ assert.equal(halloweenBoss(Date.parse('2026-11-02T00:00:00-03:00')),null)
 })
 test('four rare exclusive items in two drop pools',()=>{
  assert.equal(HALLOWEEN_GEAR.length,4)
@@ -45,4 +48,13 @@ test('bosses are progressively difficult with three phases',()=>{
 test('pet altar is a fixed one-time-cost item with unique currency',()=>{
  assert.equal(HALLOWEEN_CORCEL_COST,100)
  assert.notEqual(HALLOWEEN_SOUL_ID,'fragmento_ascensao_pecados_20261024')
+})
+
+test('Halloween afterparty always doubles drops from Nov 1 13h to midnight',()=>{
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-01T12:59:59-03:00')),1)
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-10-31T00:00:00-03:00')),2)
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-10-30T23:59:59-03:00')),1)
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-01T13:00:00-03:00')),2)
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-01T23:59:59-03:00')),2)
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-02T00:00:00-03:00')),1)
 })

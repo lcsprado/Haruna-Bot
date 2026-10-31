@@ -41,7 +41,7 @@ test('exclusive items exist and are permanently untradeable with no upgrades to 
  assert.match(code,/for\(const item of HALLOWEEN_ALTAR_ITEMS\)/)
  assert.match(code,/sellable=FALSE,stackable=FALSE/)
  assert.match(relics,/\[HALLOWEEN_INSIGNIA_ID\]/)
- assert.match(relics,/boss:0\.01,raidAttack:0\.01/)
+ assert.match(relics,/boss:0\.06,raidAttack:0\.06,bossCrit:0\.02,raidCrit:0\.02/)
  assert.ok(profile.includes(HALLOWEEN_TITLE_ID))
  assert.match(profile,/halloweenTitleRows/)
  assert.match(profile,/halloweenTitle\?' • '/)
@@ -61,7 +61,7 @@ test('no new WhatsApp group announcement; Altar is not revealed before Saturday'
  const shop=code.split("if(['loja','altar'].includes(action))")[1].split("if(['ranking','top'].includes(action))")[0]
  assert.match(shop,/if\(!halloweenAltarOpen\(\)\)/)
  assert.match(shop,/halloweenAltarCatalogText\(\)/)
- assert.match(shop,/Altar fechado/)
+ assert.match(shop,/Altar fechado das 12h às 18h/)
 })
 
 function makeFakeInventory(initialSoul=1000){
@@ -135,4 +135,18 @@ test('opening Supreme Chest consumes exactly one, grants fixed loot, and cannot 
  for(const item of HALLOWEEN_CHEST_CONTENTS)assert.equal(fake.get().items[item.itemId],item.quantity)
  await assert.rejects(open('player'),/não possui/)
  assert.equal(fake.get().ledger.length,1)
+})
+
+test('Hallloween insignia and title actually provide PvE rewards',async()=>{
+ const {halloweenTitleBonusXp}=await import('../src/neon/halloween-altar.js')
+ assert.equal(halloweenTitleBonusXp(1000,true),1100)
+ assert.equal(halloweenTitleBonusXp(1000,false),1000)
+ assert.match(code,/halloweenSoulMultiplier\(\)/)
+ assert.match(code,/const titleOwned=await ownsHalloweenTitle\(c,player.jid\)/)
+ assert.match(code,/halloweenTitleBonusXp\(kind===/)
+ const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
+ assert.match(games,/async function halloweenPveXp\(c,jid,xp\)/)
+ assert.match(games,/baseGain=await halloweenPveXp\(/)
+ assert.match(games,/const exp=await halloweenPveXp\(c,p.jid,/)
+ assert.doesNotMatch(code,/\+1% de dano em Boss\/Raid/)
 })
