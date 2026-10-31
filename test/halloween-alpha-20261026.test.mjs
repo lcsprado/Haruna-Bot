@@ -52,6 +52,8 @@ test('pet altar is a fixed one-time-cost item with unique currency',()=>{
 
 test('Halloween afterparty always doubles drops from Nov 1 13h to midnight',()=>{
  assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-01T12:59:59-03:00')),1)
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-10-31T00:00:00-03:00')),2)
+ assert.equal(halloweenSoulMultiplier(Date.parse('2026-10-30T23:59:59-03:00')),1)
  assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-01T13:00:00-03:00')),2)
  assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-01T23:59:59-03:00')),2)
  assert.equal(halloweenSoulMultiplier(Date.parse('2026-11-02T00:00:00-03:00')),1)
