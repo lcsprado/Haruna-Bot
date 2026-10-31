@@ -1274,3 +1274,157 @@ body.loot-open{overflow:hidden!important}
  .event-home-link{padding:12px;align-items:flex-start;flex-direction:column;gap:10px}
  .event-home-link .btn{width:100%}
 }
+
+/* GARAGEM ALPHA — telas de corrida em SVG, mobile-first, sem imagens externas */
+.race-shell{--race-blue:#5faeff;--race-yellow:#f7ca68;--race-line:#2a3b53;--race-ink:#e6f2ff;max-width:1240px;margin:0 auto;color:var(--race-ink);font-size:13px}
+.race-hero{position:relative;isolation:isolate;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;border:1px solid #355276;border-radius:24px;padding:32px;background:radial-gradient(ellipse at 85% 50%,#1b3d64 0%,#101d30 47%,#090f19 88%);min-height:330px;box-shadow:0 26px 70px #0007}
+.race-hero:before{content:"";position:absolute;inset:0;z-index:-1;background:repeating-linear-gradient(103deg,transparent 0,transparent 34px,#94c4ff07 35px,#94c4ff07 36px);pointer-events:none}
+.race-hero-glow{position:absolute;width:380px;height:380px;border-radius:100%;right:-70px;top:-130px;background:#57a4ff22;filter:blur(65px);z-index:-1}
+.race-hero-copy{position:relative;z-index:2;display:flex;flex-direction:column;align-items:flex-start;justify-content:center}
+.race-hero-copy>small{letter-spacing:.25em;font-size:10px;font-weight:800;color:#8ab9f7}
+.race-hero-copy h2{font-size:clamp(30px,4.2vw,53px);letter-spacing:-.035em;line-height:.99;margin:17px 0 14px;font-weight:950;color:#eef8ff}
+.race-hero-copy h2 em{font-style:normal;color:#6ab4ff;text-shadow:0 0 42px #63aefb59}
+.race-hero-copy p{color:#a2b5cd;font-size:12px;line-height:1.65;max-width:360px;margin:0 0 24px}
+.race-hero-tags{display:flex;gap:7px;flex-wrap:wrap}
+.race-hero-tags span{font-size:9px;font-weight:850;letter-spacing:.05em;color:#c9e1ff;border:1px solid #365778;background:#122a41bb;padding:8px 10px;border-radius:8px}
+.race-hero-showroom{position:relative;display:flex;align-items:center;justify-content:center;min-width:0}
+.race-hero-track{position:absolute;inset:9% -40px 3%;background:radial-gradient(ellipse at 50% 80%,#72bfff26,transparent 60%);transform:perspective(140px) rotateX(10deg)}
+.race-car-svg{display:block;width:100%;height:auto;filter:drop-shadow(0 14px 18px #0009);overflow:visible}
+.race-hero-showroom>.race-car-svg{width:min(100%,550px);transform:translateY(-10px);animation:race-arrive .45s both}
+@keyframes race-arrive{from{opacity:.6;transform:translateX(15px) translateY(-10px)}to{opacity:1;transform:translateX(0) translateY(-10px)}}
+.race-hero-car-name{position:absolute;bottom:4px;left:0;right:0;text-align:center;font-size:20px;font-weight:950;letter-spacing:.05em;text-transform:uppercase;color:#e9f6ff;text-shadow:0 4px 16px #000}
+.race-hero-car-name span{display:block;font-size:9px;letter-spacing:.2em;color:#94afcd;font-weight:650;margin-top:3px}
+.race-tabs{display:flex;gap:5px;padding:7px;margin:18px 0 22px;overflow-x:auto;border-radius:14px;border:1px solid #263a53;background:#0c1622;scrollbar-width:thin}
+.race-tab{min-width:125px;flex:1;white-space:nowrap;text-align:center;padding:13px 12px;border:0;border-radius:10px;color:#a3b2c7;background:transparent;cursor:pointer;font-size:12px;font-weight:850;transition:all .15s}
+.race-tab.active{background:linear-gradient(135deg,#28629a,#173e6e);color:#f0f9ff;box-shadow:0 5px 14px #0004}
+.race-inner{display:grid;gap:14px}
+.race-section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:2px 0 5px}
+.race-section-heading small{font-size:9px;letter-spacing:.20em;font-weight:800;color:#70acfa}
+.race-section-heading h3{font-size:22px;line-height:1.2;margin:5px 0 0;letter-spacing:-.025em;color:#f0f6ff}
+.race-section-heading.race-gap{margin-top:22px}
+.race-subtle{font-size:11px;color:#9aabc2}
+.race-fleet,.race-model-grid,.race-part-grid{display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.race-fleet-card,.race-model-card,.race-part,.race-panel,.race-repair,.race-driver-card,.race-empty{min-width:0;border:1px solid #28384f;background:linear-gradient(155deg,#111d2b,#090f18 84%);border-radius:18px;padding:17px}
+.race-fleet-card.equipped{border-color:#3473a2;box-shadow:inset 0 0 0 1px #549fff29,0 18px 34px #0002}
+.race-fleet-top,.race-progress-line,.race-stat-heading,.race-tile-bottom,.race-part-action,.race-panel-header{display:flex;align-items:center;justify-content:space-between;gap:9px}
+.race-fleet-top b{font-size:16px;color:#e8f3ff}
+.race-fleet-top span,.race-model-badge{font-size:9px;font-weight:800;letter-spacing:.05em;color:#83bdf8}
+.race-fleet-visual{min-height:130px;max-height:240px;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 70%,#143a5a,#0a1522 60%,transparent 85%);margin:5px -9px 10px}
+.race-fleet-visual svg{width:100%;max-height:210px}
+.race-stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;margin:12px 0}
+.race-stat-heading{font-size:10px;color:#a6b9cb;margin-bottom:6px}
+.race-stat-heading b{color:#e5f4ff}
+.race-meter{height:7px;border-radius:30px;overflow:hidden;background:#07111c;border:1px solid #273a53;flex:1}
+.race-meter>span{display:block;height:100%;background:linear-gradient(90deg,#2872c6,#73c5ff);border-radius:30px;box-shadow:0 0 12px #56a5ed4d}
+.race-meter.upgrade>span{background:linear-gradient(90deg,#aa7a28,#ffce6d)}
+.race-meter.danger>span{background:linear-gradient(90deg,#9d2948,#ff7d96)}
+.race-progress-line{font-size:11px;color:#9aadc1;margin:9px 0 7px}
+.race-progress-line b{color:#d4e9f8}
+.race-fleet-actions{margin-top:13px;min-height:32px;display:flex;align-items:center;justify-content:flex-end}
+.race-green{color:#85dfb3;font-weight:850;font-size:11px}
+.race-warning{color:#ffd18b;font-weight:650;font-size:12px;line-height:1.6}
+.race-button{border:1px solid #3c5771;color:#dceafa;background:#122439;cursor:pointer;border-radius:10px;padding:9px 13px;font-size:11px;font-weight:850;transition:transform .12s,border .12s}
+.race-button.primary{border-color:#d9eaff;background:#e2f0ff;color:#122138}
+.race-button:hover:not(:disabled),.race-start:hover:not(:disabled){transform:translateY(-2px);filter:brightness(1.1)}
+.race-button:disabled,.race-start:disabled{cursor:not-allowed;opacity:.42}
+.race-model-card{padding:13px;position:relative;overflow:hidden}
+.race-model-card.selected{border-color:#64a9e8}
+.race-model-card.owned{background:linear-gradient(145deg,#0e2636,#0b121c)}
+.race-model-badge{padding:6px 3px}
+.race-car-preview{height:132px;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 52% 72%,#20496c 0%,transparent 70%);padding:3px}
+.race-car-preview svg{width:100%;max-height:138px}
+.race-model-card h4{font-size:15px;letter-spacing:-.02em;color:#edf6ff;margin:4px 0 8px}
+.race-model-spec{color:#9fb5c8;font-size:11px;margin-bottom:14px}
+.race-model-spec span{color:#4d6b82;margin:0 3px}
+.race-tile-bottom{border-top:1px solid #26374c;padding-top:12px;flex-wrap:wrap}
+.race-tile-bottom b{font-size:14px;color:#f0f5ff}
+.race-footnote{color:#8eabc4;font-size:11px;line-height:1.7;margin:6px 1px 10px}
+.race-empty{min-height:150px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#b6d0ec}
+.race-empty b{color:#ebf4ff}
+.race-empty p{margin:9px auto;max-width:380px;font-size:12px}
+.race-shop-hero{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center;border:1px solid #324a65;border-radius:18px;background:linear-gradient(135deg,#111f30,#0a121d);padding:10px 23px}
+.race-shop-hero svg{max-height:230px}
+.race-shop-details b{font-size:16px;color:#e4f1ff}
+.race-shop-details p{line-height:1.7;color:#adc0d5;font-size:12px}
+.race-build-status{background:#352515;border:1px solid #70522c;color:#ffd488;border-radius:10px;padding:12px;font-size:11px}
+.race-build-status strong{font-size:17px}
+.race-part-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.race-part-title{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.race-part-emoji{width:41px;height:41px;display:grid;place-items:center;background:#18283a;border:1px solid #293d57;border-radius:12px;font-size:19px;flex-shrink:0}
+.race-part-title>div{display:grid;gap:4px;flex:1}
+.race-part-title b{font-size:14px;color:#e5f3ff}
+.race-part-title small{font-size:11px;color:#a9bbce}
+.race-part-bonus{font-size:10px;color:#8ac4ed;text-align:right;max-width:125px}
+.race-part-action{margin-top:16px}
+.race-part-action>div{display:grid;gap:3px}
+.race-part-action strong{font-size:13px}
+.race-part-action small{font-size:10px;color:#a8bed3}
+.race-repair{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.race-repair>div{flex:1}
+.race-repair b{font-size:14px}
+.race-repair p{font-size:11px;color:#a4b9ce;line-height:1.6;margin:6px 0 10px}
+.race-panel{padding:19px;display:grid;gap:17px}
+.race-panel-header h4{font-size:17px;color:#edf6ff;margin:0}
+.race-panel-header span{font-size:11px;color:#a5bbd2}
+.race-panel>p{font-size:12px;color:#a6b9d1;line-height:1.7;margin:-3px 0 0}
+.race-mini-title{font-size:11px;font-weight:850;letter-spacing:.03em;color:#c7deef}
+.race-leagues{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.race-league{cursor:pointer;border:1px solid #2b425f;border-radius:12px;padding:12px;min-width:0;background:#0d1928;text-align:left;display:grid;gap:5px;transition:border .15s}
+.race-league.chosen{border-color:#75c2ff;background:linear-gradient(145deg,#183b5d,#101c2d)}
+.race-league span{font-size:12px;font-weight:850;color:#f0f8ff}
+.race-league b{font-size:13px;color:#8bd0ff}
+.race-league small{font-size:9px;color:#a6b7c9;line-height:1.6}
+.race-choice-grid{display:flex;gap:8px;flex-wrap:wrap}
+.race-choice{padding:11px 12px;border:1px solid #2f415b;border-radius:11px;background:#111d2c;color:#bed1e4;cursor:pointer;font-size:11px;font-weight:750}
+.race-choice.active{border-color:#69b6ff;background:#17456f;color:#fff}
+.race-start{width:100%;border:1px solid #b6d5ec;border-radius:14px;padding:18px;background:linear-gradient(120deg,#e9f5ff,#b5deff);color:#0c1b2b;text-align:center;font-size:15px;font-weight:950;letter-spacing:.04em;cursor:pointer}
+.race-start span{display:block;font-size:10px;margin-top:5px;font-weight:650;letter-spacing:0}
+.race-pvp{border-color:#513e68;background:linear-gradient(150deg,#221c33,#0c121e 85%)}
+.race-form-label{display:block;color:#bbd1e7;font-size:11px;font-weight:700;margin-top:4px}
+#race-target{width:100%;padding:13px;border:1px solid #3b526b;background:#0b1421;border-radius:10px;color:#fff;font-size:12px}
+.race-pending{display:grid;gap:10px;border-top:1px solid #34445a;padding-top:13px}
+.race-pending>b{font-size:12px}
+.race-pending>div{display:flex;justify-content:space-between;align-items:center;gap:10px;color:#b7cadc;font-size:11px}
+.race-result{border:1px solid #375e59;border-radius:18px;background:linear-gradient(145deg,#102c2b,#101b26);padding:22px;text-align:center}
+.race-result.loss{border-color:#665041;background:linear-gradient(145deg,#30231d,#14171e)}
+.race-result small{font-size:10px;letter-spacing:.15em;color:#a4c7c7}
+.race-result h3{font-size:28px;margin:6px 0 8px}
+.race-result p{font-size:12px;color:#b2c9cb}
+.race-result>div{font-weight:850;color:#8beac6}
+.race-driver-card{background:linear-gradient(120deg,#17406b,#0d1b32);border-color:#3970a4}
+.race-driver-card>span{font-size:10px;color:#9acaff;letter-spacing:.14em;font-weight:850}
+.race-driver-card h3{font-size:36px;margin:10px 0 3px;color:#fff}
+.race-driver-card p{font-size:12px;color:#c1d4e5}
+.race-driver-stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}
+.race-driver-stats>span{font-size:11px;border:1px solid #356b9a;background:#183857;padding:9px 12px;border-radius:10px}
+.race-leader-row{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #25344b;padding:11px 2px;gap:14px;font-size:11px}
+.race-leader-row:last-child{border-bottom:none}
+.race-leader-rank{font-size:18px;width:35px}
+.race-leader-row>div{display:grid;gap:3px;flex:1}
+.race-leader-row>div b{font-size:12px}
+.race-leader-row>div small{color:#8ea6bb}
+.race-leader-row>span:last-child{white-space:nowrap;color:#aed1f4}
+.race-bottom{border-top:1px solid #273d57;padding:18px 2px 10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px}
+.race-bottom>span{font-size:10px;letter-spacing:.12em;font-weight:900;color:#73b6ed}
+.race-bottom>small{font-size:10px;color:#7999b5;margin-left:auto}
+.race-text-link{border:0;background:none;color:#acd8ff;font-size:11px;cursor:pointer}
+.race-loading{border:1px solid #2e4561;border-radius:20px;padding:42px 20px;text-align:center;background:#101b28}
+.race-loading span{font-size:44px}
+.race-loading h3{font-size:19px;margin:12px 0}
+.race-loading p{font-size:12px;color:#9cb2c8}
+@media(min-width:1200px){.race-model-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:830px){.race-hero{grid-template-columns:1fr;min-height:0;padding:24px 20px 18px}.race-hero-showroom{min-height:190px}.race-hero-copy h2{font-size:38px}.race-hero-showroom>.race-car-svg{max-width:470px}.race-shop-hero{grid-template-columns:1fr}.race-shop-hero svg{max-height:190px}}
+@media(max-width:560px){.race-shell{font-size:12px}.race-hero{border-radius:17px;padding:22px 17px 17px}.race-hero-copy h2{font-size:36px}.race-hero-copy>small{font-size:9px}.race-hero-copy p{font-size:11px;margin-bottom:13px}.race-hero-tags span{font-size:8px;padding:7px 8px}.race-hero-showroom{min-height:163px}.race-hero-car-name{font-size:15px}.race-tabs{gap:2px;padding:5px}.race-tab{min-width:98px;font-size:10px;padding:10px 7px}.race-section-heading h3{font-size:18px}.race-fleet,.race-part-grid{grid-template-columns:1fr}.race-model-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.race-model-card{padding:10px}.race-model-card h4{font-size:12px}.race-model-spec{font-size:9px}.race-model-badge{font-size:8px}.race-car-preview{height:90px}.race-tile-bottom b{font-size:12px}.race-tile-bottom .race-button{width:100%;margin-top:4px}.race-leagues{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.race-league{padding:10px}.race-choice{flex:1}.race-repair{align-items:stretch;flex-direction:column}.race-panel{padding:14px}.race-bottom>small{margin-left:0;width:100%}.race-driver-stats{gap:6px}.race-driver-stats>span{font-size:10px;padding:8px}}
+@media(prefers-reduced-motion:reduce){.race-hero-showroom>.race-car-svg{animation:none}.race-button,.race-start{transition:none}}
+
+/* Garagem no primeiro bloco de navegação, com destaque visível. */
+.home-racing-link{display:block;width:100%;margin-top:13px;border-color:#3674b5;background:linear-gradient(90deg,#15345d,#183a65);color:#eaf6ff;min-height:44px;font-size:12px}
+#nav .nav-btn[data-page="racing"]{border:1px solid #37649c;background:linear-gradient(100deg,#112b49,#0a192c);color:#cce9ff;font-weight:850}
+#nav .nav-btn[data-page="racing"].active{border-color:#78c4ff;background:#17456c;color:#fff}
+
+
+/* Corridas em destaque no menu beta e acesso pela tela inicial. */
+#nav .nav-btn[data-page='racing']{border:1px solid #37649c;background:linear-gradient(100deg,#112b49,#0a192c);color:#cce9ff;font-weight:850}
+#nav .nav-btn[data-page='racing'].active{border-color:#78c4ff;background:#17456c;color:#fff}
+.event-home-link.racing-home-link{border-color:#386a9e;background:linear-gradient(110deg,#12375c,#12243a)}
+.event-home-link.racing-home-link strong{color:#e5f6ff}
