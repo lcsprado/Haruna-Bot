@@ -124,7 +124,7 @@ function questionText(s){const r=s.current,q=APOSTA_QUESTIONS[r.difficulty][r.qu
  const votes=Object.entries(r.votes).map(([id,v])=>nice(s.players[id]?.name)+': '+v.action.toUpperCase())
  return '🔒 *APOSTAS ENCERRADAS!*\n'+(votes.length?votes.join(' • '):'Sem apostas nesta rodada.')+
  '\n\n🎯 *PERGUNTA PARA '+nice(s.players[r.challenger].name).toUpperCase()+'*\n'+
- '🧠 '+q[0]+'\n\n👉 Apenas o desafiado responde com *!resposta texto*. Uma tentativa.\n⏱️ '+(r.difficulty==='medio'?'45':'60')+' segundos apos o envio da pergunta.'}
+ '🧠 '+q[0]+'\n\n👉 Apenas o desafiado responde com *!resposta texto*. Uma tentativa.\n⏱️ '+'10 segundos para responder apos o envio da pergunta.'}
 function resultText(s,entry){const sum=entry.movements.map(x=>nice(s.players[x.id]?.name)+': '+(x.delta>=0?'+':'-')+'R$ '+money(Math.abs(x.delta)))
  return (entry.correct?'✅ *ACERTOU!*':'❌ *ERROU!*')+'\n🎯 '+nice(s.players[entry.challenger].name)+
  '\n🧠 Resposta correta: *'+entry.answer+'*\n💰 '+(sum.join('\n')||'Nenhuma movimentacao.')+
@@ -252,7 +252,7 @@ export function createApostaEngine({db,sendMessage,isConnected=()=>true,clock=()
     const n=s.notices.find(x=>x.id===(r.questionNoticeId||'question:'+r.number))
     const sentAt=deliveredAt(n,permittedGroups)
     if(sentAt&&now>=sentAt+NOTICE_WAIT_MS){
-     s.phase='answering';r.deadline=now+(r.difficulty==='medio'?45000:60000)
+     s.phase='answering';r.deadline=now+10000
     }
     return
    }
