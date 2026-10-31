@@ -1,4 +1,5 @@
 import {HALLOWEEN_SHOP_END} from './halloween-rules.js'
+import {AFTERPARTY_SHOP_START,AFTERPARTY_SHOP_END} from './halloween-afterparty.js'
 
 export const HALLOWEEN_ALTAR_START=Date.parse('2026-10-31T00:00:00-03:00')
 export const HALLOWEEN_INSIGNIA_ID='insignia_noite_eterna_halloween_20261031'
@@ -74,7 +75,9 @@ export function halloweenAltarOffer(raw){
  return HALLOWEEN_ALTAR_OFFERS[ALIASES[String(raw||'').toLowerCase().trim()]]||null
 }
 export function halloweenAltarOpen(now=Date.now()){
- return Number(now)>=HALLOWEEN_ALTAR_START&&Number(now)<HALLOWEEN_SHOP_END
+ const at=Number(now)
+ return (at>=HALLOWEEN_ALTAR_START&&at<HALLOWEEN_SHOP_END)||
+  (at>=AFTERPARTY_SHOP_START&&at<AFTERPARTY_SHOP_END)
 }
 export function halloweenAltarCatalogText(){
  return Object.values(HALLOWEEN_ALTAR_OFFERS).map(o=>
