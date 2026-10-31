@@ -35,14 +35,14 @@ export function afterpartyShopCatalog(){
   '\n👉 *!halloween trocar '+(x.command||x.id)+'*').join('\n\n')
 }
 export const afterpartyAnnouncement=()=>[
- '🎃 *HALLOWEEN ALPHA — EVENTO EXTRA AMANHÃ!*',
- '📅 Domingo, *01/11* (horário de São Paulo).',
- '⚔️ *13h*: começa a CAÇADA DAS ALMAS RENASCIDAS!',
- '🔥 *ALMAS EM DOBRO* durante todo o Boss, até 23h59.',
- '🧩 Marcos: 8 Almas • Vitória: 16 Almas (para elegíveis).',
- '👉 Para entrar: *!halloween entrar* (renove a cada hora).',
+ '🎃🔥 *2× ALMAS DE HALLOWEEN ATIVADO AGORA!*',
+ '📅 Sábado, *31/10* (horário de São Paulo).',
+ '⚔️ A partir de agora, marcos e vitórias dos Bosses de Halloween rendem *Almas em dobro*!',
+ '🧩 Marcos: *8 Almas* • Vitória: *16 Almas* (para participantes elegíveis).',
+ '👉 Participe com *!halloween entrar* (renovação por hora).',
  '',
- '🛍️ *18h*: o *ALTAR DAS ALMAS REABRE COM NOVOS ITENS*!',
+ '💀 O evento de Almas em dobro continua amanhã, *01/11*, com Boss extra a partir das *13h*!',
+ '🛍️ *18h de domingo*: o *ALTAR DAS ALMAS REABRE COM NOVOS ITENS*!',
  '⚔️ 5 EQUIPAMENTOS NOVOS: Espada da Caveira, Foice do Ceifador, Armadura das Catacumbas, Elmo do Rei Morto e Botas do Arauto.',
  '🎁 Também entram kits de poções, elixires e caixas. Equipamentos próximos dos Sete Pecados!',
  '💀 Almas e compras anteriores preservadas. Os resgates únicos não reiniciam.',
