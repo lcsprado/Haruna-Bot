@@ -61,7 +61,7 @@ function finalText(s){
  const standings=s.order.map(jid=>{
   const items=owned(s,jid)
   return '👤 *'+name(s,jid)+'* — '+s.players[jid].done+'/3 jogadas\n'+
-   (items.length?items.map(p=>'• '+(p.replacementCash?'💰 R$ 75.000 (no lugar do Porsche)':p.label)).join('\n'):'• Sem prêmios')
+   (items.length?items.map(p=>'• '+(p.replacementCash?'💰 R$ 45.000 (no lugar do Porsche)':p.label)).join('\n'):'• Sem prêmios')
  })
  return '🏁 *ROUBA-ROUBA ALPHA ENCERRADO!*\n\n'+standings.join('\n\n')+
  '\n\n✅ Recompensas creditadas uma única vez. Edição encerrada.'
@@ -75,7 +75,10 @@ function addTurn(s){
 }
 function begin(s){
  s.status='active'
- s.schedule=Array.from({length:ROUBA_TURNS},(_,cycle)=>shuffle(s.order).map(jid=>({jid,cycle}))).flat()
+ const order=shuffle(s.order)
+ s.schedule=Array.from({length:ROUBA_TURNS},(_,cycle)=>
+  order.slice(cycle%order.length).concat(order.slice(0,cycle%order.length))
+   .map(jid=>({jid,cycle}))).flat()
  s.index=0;addTurn(s)
 }
 function prizeOpen(s,id){
@@ -128,9 +131,9 @@ async function reward(c,s){
     await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[id,p.id,p.qty]);continue
    }
    if(p.type==='car'){
-    if(cars.has(p.id)||cars.size>=5){cash+=75000;p.replacementCash=true}
+    if(cars.has(p.id)||cars.size>=5){cash+=45000;p.replacementCash=true}
     else{
-     const granted=await c.query('INSERT INTO user_cars(jid,car_id,price_paid) VALUES($1,$2,$3) ON CONFLICT(jid,car_id) DO NOTHING RETURNING car_id',[id,p.id,ROUBA_CAR.price])
+     const granted=await c.query('INSERT INTO user_cars(jid,car_id,price_paid) VALUES($1,$2,$3) ON CONFLICT(jid,car_id) DO NOTHING RETURNING car_id',[id,p.id,0])
      if(!granted.rowCount)throw Error('Carro não inserido')
      cars.add(p.id)
     }
