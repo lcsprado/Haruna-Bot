@@ -13,6 +13,7 @@ on:
       - 'src/neon/index.js'
       - 'test/halloween-altar-shop-20261031.test.mjs'
       - 'test/halloween-afterparty-20261101.test.mjs'
+      - 'test/halloween-hp-farm-balance-20261031.test.mjs'
       - '.github/workflows/halloween-altar-validation.yml'
   pull_request:
     paths:
@@ -25,6 +26,7 @@ on:
       - 'src/neon/index.js'
       - 'test/halloween-altar-shop-20261031.test.mjs'
       - 'test/halloween-afterparty-20261101.test.mjs'
+      - 'test/halloween-hp-farm-balance-20261031.test.mjs'
       - '.github/workflows/halloween-altar-validation.yml'
 
 permissions:
@@ -52,6 +54,7 @@ jobs:
         run: |
           node --test test/halloween-altar-shop-20261031.test.mjs \
             test/halloween-afterparty-20261101.test.mjs \
+            test/halloween-hp-farm-balance-20261031.test.mjs \
             test/halloween-alpha-20261026.test.mjs \
             test/halloween-combat-fairness-20261026.test.mjs \
             test/halloween-session-hourly-20261027.test.mjs
