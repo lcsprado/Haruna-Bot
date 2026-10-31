@@ -44,7 +44,7 @@ function harness({send,balances}={}){
  const advance=ms=>{now+=ms}
  const join=id=>engine.join({chat:APOSTA_GROUP_JID,sender:id,name:id})
  const vote=(id,choice)=>engine.vote({chat:APOSTA_GROUP_JID,sender:id,choice})
- const answer=(id,answer)=>engine.answer({chat:APOSTA_GROUP_JID,sender:id,answer})
+ const answer=async(id,answer)=>{const result=await engine.answer({chat:APOSTA_GROUP_JID,sender:id,answer});if(result.kind==='answered')await engine.tick();return result}
  async function start(){
   await engine.open();await engine.tick()
   await join('alice');await join('bob');await join('carol')
