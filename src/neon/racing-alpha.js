@@ -190,7 +190,7 @@ export async function raceChallenge(jid,targetJid,chat,args,name){
  await ensureUser(targetJid)
  return tx([jid,targetJid],async c=>{
   const s=await state(c,jid);checkRace(activeCar(s),s.profile)
-  await c.query("UPDATE racing_challenges_alpha SET status='expired' WHERE status='pending' AND expires_at<=$1",[nowSeconds()])
+  await c.query("UPDATE racing_challenges_alpha SET status='expired' WHERE status='pending' AND challenger=$1 AND expires_at<=$2",[jid,nowSeconds()])
   const existing=(await c.query("SELECT id FROM racing_challenges_alpha WHERE challenger=$1 AND status='pending'",[jid])).rows[0]
   if(existing)throw Error('Você já possui desafio aguardando resposta.')
   const createdAt=nowSeconds(),expires=createdAt+RACING_CHALLENGE_SECONDS
