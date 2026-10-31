@@ -231,3 +231,20 @@ test('migra rodada antiga em andamento sem perda de aposta, inscricao ou premio 
  assert.equal(a.db.store.history.length,1)
  assert.equal(a.db.ledger.filter(x=>x.p[3]==='event_penalty').length,1)
 })
+
+test('cancelamento global devolve reservas apenas uma vez e notifica ambos os grupos',async()=>{
+ const a=harness({balances:{bob:{cash:20000,bank:100000}}})
+ await a.start()
+ assert.equal((await a.vote('bob','duvido')).kind,'voted')
+ assert.deepEqual(a.db.wallets.get('bob'),{cash:0,bank:70000})
+ assert.equal(await a.engine.cancel(),true)
+ await a.engine.tick()
+ assert.deepEqual(a.db.wallets.get('bob'),{cash:20000,bank:100000})
+ assert.equal(a.db.store.status,'cancelled')
+ assert.deepEqual(new Set(a.delivered.filter(x=>x.text.includes('CANCELADO')).map(x=>x.chat)),new Set(APOSTA_GROUPS))
+ const entries=a.db.ledger.length
+ assert.equal(await a.engine.cancel(),false)
+ assert.equal(a.db.ledger.length,entries)
+ assert.equal((await a.engine.join({chat:APOSTA_GROUPS[1],sender:'dave',name:'Dave'})).kind,'closed')
+ assert.equal((await a.engine.answer({chat:APOSTA_GROUPS[0],sender:'alice',answer:'Ottawa'})).kind,'not-open')
+})
