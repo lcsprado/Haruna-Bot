@@ -32,7 +32,7 @@ const name=(s,id)=>nick(s.players[id]?.name||'Jogador')
 const introduction=()=>'🎁 *ROUBA-ROUBA ALPHA!*\n\n'+
  '👥 Inscreva-se com *!participar* no grupo *AlphaBot*.\n'+
  '🎮 *3 jogadas por inscrito*, inclusive quem entrar depois do começo.\n'+
- '📦 Na sua vez: *!abrir* ou *!roubar N* (número de um prêmio de outra pessoa).\n'+
+ '📦 Na sua vez: *!abrir* ou *!roubar #N* (número de um prêmio de outra pessoa).\n'+
  '😈 Quem for roubado recebe automaticamente um novo baú.\n'+
  '🔒 Cada prêmio pode ser roubado no máximo 2 vezes.\n'+
  '🚗 *Um Porsche 911 GT3 RS* escondido entre os baús!\n'+
@@ -45,7 +45,7 @@ function turnText(s){
  return '🎁 *ROUBA-ROUBA ALPHA — JOGADA '+(s.index+1)+'/'+s.schedule.length+'*\n'+
  '🎯 Vez de *'+nick(p.name)+'* • '+(p.done+1)+'/3\n'+
  '📦 *!abrir* — ganhar baú misterioso\n'+
- (list.length?'😈 *!roubar N* — tomar um prêmio revelado\n\n'+list.map(x=>'#'+x.serial+' '+x.label+' — '+name(s,x.owner)+' • '+x.steals+'/2 roubos').join('\n'):
+ (list.length?'😈 *!roubar #N* — tomar um prêmio revelado\n\n'+list.map(x=>'#'+x.serial+' '+x.label+' — '+name(s,x.owner)+' • '+x.steals+'/2 roubos').join('\n'):
  '🔒 Ainda não há prêmios de outros jogadores disponíveis para roubar.')+
  '\n⏳ *40 segundos* para agir depois do aviso. Sem resposta: baú automático.'
 }
