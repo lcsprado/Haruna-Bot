@@ -61,7 +61,7 @@ test('no new WhatsApp group announcement; Altar is not revealed before Saturday'
  const shop=code.split("if(['loja','altar'].includes(action))")[1].split("if(['ranking','top'].includes(action))")[0]
  assert.match(shop,/if\(!halloweenAltarOpen\(\)\)/)
  assert.match(shop,/halloweenAltarCatalogText\(\)/)
- assert.match(shop,/Altar original encerrado/)
+ assert.match(shop,/Altar fechado das 12h às 18h/)
 })
 
 function makeFakeInventory(initialSoul=1000){
