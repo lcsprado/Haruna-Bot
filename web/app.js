@@ -768,6 +768,10 @@ function actionFeedback(name,result){
   if(name==='daily'&&result&&result.ok) return '🎁 Bônus diário recebido • '+money(result.totalCash||result.amount||0)+' • sequência '+num(result.streak||1);
   if(name==='work'&&result&&result.ok) return '💼 Trabalho concluído • +'+money(result.amount||0)+' • recarga de 30 min';
   if(name==='all'&&result) return '⚡ Rotina completa processada. Veja o resultado abaixo.';
+  if(name==='pet.expedition.all'&&result){
+    const count=Array.isArray(result.started)?result.started.length:0;
+    return '🧭 '+num(count)+' pet(s) enviado(s) por '+num(result.hours||4)+'h'+(Number(result.remaining||0)>0?' • '+num(result.remaining)+' aguardando vaga':'')+'.';
+  }
   return 'Ação concluída no Alpha Bot.';
 }
 async function doAction(name,body,options){
@@ -2044,11 +2048,18 @@ function renderExpeditions(rows){
 function renderActivities(){
   const d=ui.data, ex=ui.extras||{}, sleep=d.activities&&d.activities.sleep, carp=d.activities&&d.activities.carpinar;
   const missions=d.dailyMissions||[], exp=d.petExpeditions||[], plans=ex.carpinarPlans||[];
+  const teamIds=new Set((d.petTeam||[]).map(p=>Number(p.id)));
+  const awayIds=new Set(exp.map(e=>Number(e.pet_id)));
+  const freePets=collection().filter(p=>Number(p.id)>0&&!p.active&&!teamIds.has(Number(p.id))&&!awayIds.has(Number(p.id)));
+  const freeSlots=Math.max(0,12-exp.length);
+  const bulkCount=Math.min(freePets.length,freeSlots);
   return renderDoubleRewardEvent()+'<div class="page-head"><div><h2>Atividades</h2><p>Missões, dormir, carpinar, aventura e expedições dos pets.</p></div></div>'+
     '<div class="grid three">'+
       '<div class="card"><h3>😴 Dormir</h3><p>'+(sleep?'Ativo até '+new Date(Number(sleep.ends_at)*1000).toLocaleString('pt-BR'):'Você está acordado.')+'</p><button class="btn '+(sleep?'danger':'primary')+'" data-sleep="'+(sleep?'wake':'start')+'">'+(sleep?'Acordar':'Dormir')+'</button></div>'+
       '<div class="card"><h3>🌱 Carpinar</h3><p>'+(carp?'Ativo • termina em '+Math.ceil((Number(carp.ends_at)-Date.now()/1000)/60)+' min':'Escolha um dos planos reais abaixo.')+'</p>'+(carp?'<button class="btn danger" data-carpinar="leave">Sair</button>':'<div class="choice-row">'+plans.map(p=>'<button class="btn" data-carpinar-hours="'+Number(p.hours)+'">'+num(p.hours)+'h</button>').join('')+'</div>')+'</div>'+
-      '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><div class="expedition-form"><select data-expedition-pet><option value="">Escolha o pet</option>'+collection().map(p=>'<option value="'+p.id+'">'+esc(p.name)+' • '+esc(petSpeciesName(p.species))+' • Lv.'+num(p.level)+'</option>').join('')+'</select><select data-expedition-hours><option value="2">2h</option><option value="4" selected>4h</option><option value="8">8h</option></select><button class="btn" data-pet-expedition>Enviar</button></div><button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
+      '<div class="card"><h3>🐾 Aventura Pet</h3><p>Usa o pet ativo e as regras reais.</p><button class="btn primary" data-pet-adventure>Aventura</button><div class="expedition-form"><select data-expedition-pet><option value="">Escolha o pet reserva</option>'+freePets.map(p=>'<option value="'+p.id+'">'+esc(p.name)+' • '+esc(petSpeciesName(p.species))+' • Lv.'+num(p.level)+'</option>').join('')+'</select><select data-expedition-hours><option value="2">2h</option><option value="4" selected>4h</option><option value="8">8h</option></select><button class="btn" data-pet-expedition>Enviar selecionado</button></div>'+
+      '<div class="expedition-bulk"><button class="btn primary" data-pet-expedition-all '+(bulkCount?'':'disabled')+'>🚀 Enviar todos os disponíveis'+(bulkCount?' ('+num(bulkCount)+')':'')+'</button><small>🐾 '+num(freePets.length)+' reserva(s) livres • '+num(freeSlots)+' vaga(s) restantes (máximo 12). Os pets ativo, do time e já enviados ficam protegidos. Usa a duração selecionada acima.</small></div>'+
+      '<button class="btn" data-pet-expedition-resolve>Verificar expedições</button></div>'+
     '</div>'+
     '<div class="section card"><div class="section-title"><h3>Missões diárias</h3><button class="btn good" data-missions-claim>Resgatar prontas</button></div>'+renderMissionList(missions)+'</div>'+
     '<div class="section card"><div class="section-title"><h3>Recompensas de nível</h3><button class="btn good" data-level-claim>Resgatar disponíveis</button></div>'+renderLevelRewards(ex.levelRewards,Number(d.profile&&d.profile.level||1),ex.claimedLevelRewards||[])+'</div>'+
@@ -2668,6 +2679,13 @@ function bind(){
     const hours=Number((document.querySelector('[data-expedition-hours]')||{}).value||0);
     if(!petId) return toast('Escolha o pet da expedição.');
     if(hours>0) doAction('pet.expedition.start',{petId,hours},{});
+  });
+  document.querySelectorAll('[data-pet-expedition-all]').forEach(x=>x.onclick=async()=>{
+    if(x.disabled) return;
+    const hours=Number((document.querySelector('[data-expedition-hours]')||{}).value||4);
+    if(![2,4,8].includes(hours)) return toast('Escolha 2, 4 ou 8 horas.');
+    x.disabled=true;
+    try{await doAction('pet.expedition.all',{hours},{})}catch(_){}finally{if(x.isConnected)x.disabled=false;}
   });
   document.querySelectorAll('[data-pet-expedition-resolve]').forEach(x=>x.onclick=()=>doAction('pet.expedition.resolve',{},{}));
   document.querySelectorAll('[data-missions-claim]').forEach(x=>x.onclick=()=>doAction('missions.claim',{},{}));
