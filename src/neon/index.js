@@ -102,6 +102,8 @@ import {
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {initMadrugada,scheduleMadrugada,handleMadrugadaCommand} from './madrugada-amaldicoada.js'
+import {initRacingAlpha} from './racing-alpha.js'
+import {handleRacingAlphaCommand} from './racing-commands.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.js'
 import {createApostaEngine,APOSTA_GROUPS} from './aposto-consegue.js'
@@ -1961,6 +1963,7 @@ await initRelics()
 await initEnchantments()
 await initHalloweenAlpha()
 await initMadrugada()
+await initRacingAlpha()
 {
 const key='raid_fragment_double_20261012_30min_v1'
 const startAt=Date.now()
@@ -9974,6 +9977,7 @@ if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.se
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleMadrugadaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(await handleRacingAlphaCommand({cmd,args,sender,name:msg.pushName||'Piloto',chat,mentions:cmd==='desafiocorrida'&&mentionsOf(msg)[0]?[await resolvePlayerJid(sock,chat,mentionsOf(msg)[0],msg)]:[],reply})) continue
 if(await handleGuerraAlmasCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(['roubarouba','roubaroubaalpha','roubapremios'].includes(cmd)){
   const option=String(args[0]||'').toLowerCase()

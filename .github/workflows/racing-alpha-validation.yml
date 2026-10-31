@@ -1,0 +1,32 @@
+name: Garagem Alpha - testes de corridas e economia
+on:
+  pull_request:
+    paths:
+      - 'src/neon/racing-*.js'
+      - 'src/neon/index.js'
+      - 'test/racing-alpha.test.mjs'
+      - '.github/workflows/racing-alpha-validation.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/racing-*.js'
+      - 'test/racing-alpha.test.mjs'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check src/neon/racing-rules.js
+          node --check src/neon/racing-alpha.js
+          node --check src/neon/racing-commands.js
+          node --check src/neon/index.js
+      - name: Balance, progression and safety
+        run: node --test test/racing-alpha.test.mjs
