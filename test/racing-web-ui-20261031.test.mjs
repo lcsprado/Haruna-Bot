@@ -53,9 +53,12 @@ test('races use only available server-backed tiers, tracks and strategies',()=>{
 })
 test('the race page requests one endpoint only on navigation, not every 15s',()=>{
  const app=read('web/app.js')
- assert.match(app,/import \{renderRacing,bindRacing\} from '.\/racing-ui\.js'/)
+ assert.match(app,/import \{renderRacing,bindRacing,updateRacingClocks\} from '.\/racing-ui\.js'/)
  assert.match(app,/if\(ui\.page==='racing'\) await loadRacing\(false\)/)
  assert.match(app,/api\('\/api\/v1\/me\/racing'\)/)
+ assert.match(app,/ui\.racingAmbientSyncAt/)
+ assert.match(app,/120000/)
+ assert.match(app,/updateRacingClocks\(\)/)
  assert.match(app,/racing:\(\)=>renderRacing\(ui\)/)
  assert.match(app,/data-page/)
  assert.match(read('web/sw.js'),/racing-ui\.js/)
