@@ -206,6 +206,10 @@ export function createRoubaRoubaEngine({db,sendMessage,clock=()=>Date.now(),logg
    return true
   })
  }
+ async function isActive(){
+  const row=await db.query('SELECT value FROM trevo_settings WHERE key=$1',[ROUBA_KEY])
+  return row.rows[0]?.value?.status==='active'
+ }
  async function status(){
   const row=await db.query('SELECT value FROM trevo_settings WHERE key=$1',[ROUBA_KEY])
   const s=row.rows[0]?.value
@@ -262,7 +266,7 @@ export function createRoubaRoubaEngine({db,sendMessage,clock=()=>Date.now(),logg
   catch(e){logger.error?.('[ROUBA] tick: '+String(e?.stack||e))}
   finally{busy=false}
  }
- return {open,join,act,cancel,status,tick,
+ return {open,join,act,cancel,status,isActive,tick,
   start(){if(timer)return;timer=setInterval(()=>{void tick()},2500);timer.unref?.();void tick()},
   stop(){if(timer)clearInterval(timer);timer=null}}
 }
