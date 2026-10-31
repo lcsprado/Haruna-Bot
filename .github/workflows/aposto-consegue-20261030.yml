@@ -1,0 +1,27 @@
+name: Aposto Que Voce Nao Consegue - safety regression
+on:
+  push:
+    branches:
+      - feat/aposto-consegue-4-per-player-20261030
+  pull_request:
+    branches:
+      - whatsapp-only
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check changed modules and WhatsApp runtime syntax
+        run: |
+          node --check src/neon/aposto-consegue.js
+          node --check src/neon/index.js
+          node --check test/aposto-consegue-20261030.test.mjs
+      - name: Challenge betting and escrow regression
+        run: node --test test/aposto-consegue-20261030.test.mjs
+      - name: Pokemon Quiz regression
+        run: node --test test/pokemon-quiz-20261030.test.mjs
