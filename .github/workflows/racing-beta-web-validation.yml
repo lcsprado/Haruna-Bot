@@ -1,0 +1,33 @@
+name: Alpha Beta - Garagem visivel e Eventos preservados
+on:
+  pull_request:
+    paths:
+      - 'web/app.js'
+      - 'web/racing-ui.js'
+      - 'web/styles.css'
+      - 'web/sw.js'
+      - 'web/index.html'
+      - 'web/vercel.json'
+      - 'test/racing-beta-web-20261031.test.mjs'
+  push:
+    branches: [feat/web-aiven-beta-protegido-20261021]
+    paths:
+      - 'web/racing-ui.js'
+      - 'test/racing-beta-web-20261031.test.mjs'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify JS syntax
+        run: |
+          node --check web/app.js
+          node --check web/racing-ui.js
+      - name: Test beta Events and racing coexistence
+        run: node --test test/racing-beta-web-20261031.test.mjs
