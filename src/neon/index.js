@@ -9329,7 +9329,7 @@ void apostaEngine.open().then(async()=>{
   // WhatsApp ainda estiver abrindo. Avisos sao persistidos por grupo.
   apostaEngine.start()
 }).catch(err=>console.error('[APOSTO] cancelamento automatico falhou',err?.message||err))
-// Rouba-Rouba: grupo principal AlphaBot exclusivamente; nao reabre Quiz cancelado.
+// Rouba-Rouba: somente o grupo AlphaBot correto; edição anterior no outro grupo não é reativada.
 roubaEngine?.stop()
 roubaEngine=createRoubaRoubaEngine({db,
   sendMessage:(group,text)=>sock.sendMessage(group,{text}),
@@ -9762,12 +9762,12 @@ if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(cha
   }
   continue
 }
-// Rouba-Rouba: recepcao rapida no grupo AlphaBot. Impede o quiz antigo de
-// interceptar !participar e preserva !roubar normal fora do premio #N.
+// Rouba-Rouba: SOMENTE grupo AlphaBot. !tomar N e !tomar #N são exclusivos do
+// evento, preservando !roubar normal do RPG sem qualquer interceptação.
 const roubaWords=body.startsWith(prefix)?body.slice(prefix.length).trim().split(/\s+/):[]
 const roubaCmd=String(roubaWords[0]||'').toLowerCase()
-const roubaNumbered=roubaCmd==='roubar' && /^#\d+$/.test(String(roubaWords[1]||''))
-const roubaNamed=['participar','abrirpresente','roubarpremio'].includes(roubaCmd)
+const roubaNumbered=roubaCmd==='tomar' && /^#?\d+$/.test(String(roubaWords[1]||''))
+const roubaNamed=['participar','abrirpresente','tomar','tomarpremio'].includes(roubaCmd)
 const roubaOpen=isGroup&&chat===ROUBA_GROUP_JID&&roubaCmd==='abrir'&&roubaEngine&&await roubaEngine.isActive()
 if(isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
   if(!roubaEngine){await reply('⏳ Evento inicializando.');continue}
@@ -9781,11 +9781,11 @@ if(isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
     else if(out.kind==='closed')await reply('⌛ Esta edicao ja terminou.')
     continue
   }
-  const kind=['roubar','roubarpremio'].includes(roubaCmd)?'steal':'open'
+  const kind=['tomar','tomarpremio'].includes(roubaCmd)?'steal':'open'
   const target=roubaWords.slice(1).join(' ')
   const out=await roubaEngine.act({chat,sender,action:kind,target})
   if(out.kind==='accepted')void roubaEngine.tick()
-  else if(out.kind==='bad-target')await reply('🎁 Premio indisponivel. Escolha o numero #N da lista do turno, exemplo *!roubar #2*.')
+  else if(out.kind==='bad-target')await reply('🎁 Premio indisponivel. Escolha o numero #N da lista do turno, exemplo *!tomar #2*.')
   else if(out.kind==='not-turn')await reply('⏳ Aguarde sua vez. O bot mostrara quem pode jogar.')
   else if(out.kind==='late')await reply('⌛ Sua vez expirou. O bot abre o bau automaticamente.')
   continue

@@ -1,9 +1,8 @@
 import {randomInt} from 'node:crypto'
-import {APOSTA_GROUPS} from './aposto-consegue.js'
-
 // Edição única no grupo AlphaBot; paga só no encerramento.
-export const ROUBA_KEY='rouba_rouba_alpha_20261030_v1'
-export const ROUBA_GROUP_JID=APOSTA_GROUPS[0]
+export const ROUBA_KEY='rouba_rouba_alpha_20261030_alphabot_v2'
+// Grupo AlphaBot correto. O grupo 120363410230588690@g.us recebeu o evento por engano e não deve receber novas mensagens.
+export const ROUBA_GROUP_JID='120363429534634131@g.us'
 export const ROUBA_MIN_PLAYERS=3
 export const ROUBA_MAX_PLAYERS=6
 export const ROUBA_TURNS=3
@@ -32,7 +31,7 @@ const name=(s,id)=>nick(s.players[id]?.name||'Jogador')
 const introduction=()=>'🎁 *ROUBA-ROUBA ALPHA!*\n\n'+
  '👥 Inscreva-se com *!participar* no grupo *AlphaBot*.\n'+
  '🎮 *3 jogadas por inscrito*, inclusive quem entrar depois do começo.\n'+
- '📦 Na sua vez: *!abrir* ou *!roubar #N* (número de um prêmio de outra pessoa).\n'+
+ '📦 Na sua vez: *!abrir* ou *!tomar #N* (número de um prêmio de outra pessoa).\n'+
  '😈 Quem for roubado recebe automaticamente um novo baú.\n'+
  '🔒 Cada prêmio pode ser roubado no máximo 2 vezes.\n'+
  '🚗 *Um Porsche 911 GT3 RS* escondido entre os baús!\n'+
@@ -45,13 +44,13 @@ function turnText(s){
  return '🎁 *ROUBA-ROUBA ALPHA — JOGADA '+(s.index+1)+'/'+s.schedule.length+'*\n'+
  '🎯 Vez de *'+nick(p.name)+'* • '+(p.done+1)+'/3\n'+
  '📦 *!abrir* — ganhar baú misterioso\n'+
- (list.length?'😈 *!roubar #N* — tomar um prêmio revelado\n\n'+list.map(x=>'#'+x.serial+' '+x.label+' — '+name(s,x.owner)+' • '+x.steals+'/2 roubos').join('\n'):
+ (list.length?'😈 *!tomar #N* — tomar um prêmio revelado\n\n'+list.map(x=>'#'+x.serial+' '+x.label+' — '+name(s,x.owner)+' • '+x.steals+'/2 tomadas').join('\n'):
  '🔒 Ainda não há prêmios de outros jogadores disponíveis para roubar.')+
  '\n⏳ *40 segundos* para agir depois do aviso. Sem resposta: baú automático.'
 }
 function recap(s,a){
- let out=(a.type==='steal'?'😈 *ROUBO CONCLUÍDO!*':'🎁 *BAÚ ABERTO!*')+
- '\n👤 '+name(s,a.player)+(a.type==='steal'?' roubou de '+name(s,a.victim)+': ':' ganhou: ')+a.prize.label+
+ let out=(a.type==='steal'?'😈 *PRÊMIO TOMADO!*':'🎁 *BAÚ ABERTO!*')+
+ '\n👤 '+name(s,a.player)+(a.type==='steal'?' tomou de '+name(s,a.victim)+': ':' ganhou: ')+a.prize.label+
  (a.type==='steal'?'\n🎁 '+name(s,a.victim)+' recebeu compensação: '+a.replacement.label:'')+
  (a.prize.steals>=2?'\n🔒 Este prêmio não pode mais ser roubado.':'')
  if(a.auto)out+='\n⌛ Jogada automática por tempo esgotado.'
