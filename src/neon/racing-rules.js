@@ -34,11 +34,11 @@ export const RACING_STRATEGIES=Object.freeze([
 ])
 export const RACING_TIERS=Object.freeze([
   {id:'rua',name:'Rua',minTuning:0,minDriver:1,npcPower:52,prize:3000,xp:95},
-  {id:'bairro',name:'Bairro',minTuning:6,minDriver:4,npcPower:75,prize:4500,xp:150},
-  {id:'cidade',name:'Cidade',minTuning:14,minDriver:10,npcPower:100,prize:6500,xp:215},
-  {id:'estadual',name:'Estadual',minTuning:22,minDriver:19,npcPower:127,prize:8000,xp:280},
-  {id:'elite',name:'Elite',minTuning:30,minDriver:29,npcPower:154,prize:10000,xp:340},
-  {id:'lenda',name:'Lenda',minTuning:39,minDriver:40,npcPower:180,prize:12500,xp:410}
+  {id:'bairro',name:'Bairro',minTuning:6,minDriver:4,npcPower:64,prize:4500,xp:150},
+  {id:'cidade',name:'Cidade',minTuning:14,minDriver:10,npcPower:84,prize:6500,xp:215},
+  {id:'estadual',name:'Estadual',minTuning:22,minDriver:19,npcPower:104,prize:8000,xp:280},
+  {id:'elite',name:'Elite',minTuning:30,minDriver:29,npcPower:128,prize:10000,xp:340},
+  {id:'lenda',name:'Lenda',minTuning:39,minDriver:40,npcPower:150,prize:12500,xp:410}
 ])
 export const RACING_COOLDOWN_SECONDS=10*60
 export const RACING_CHALLENGE_SECONDS=5*60
