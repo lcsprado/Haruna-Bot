@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {AFTERPARTY_START,AFTERPARTY_SHOP_START,AFTERPARTY_SHOP_END,afterpartyShopOpen,afterpartyOffer,AFTERPARTY_OFFERS,afterpartyAnnouncement,afterpartyStartAnnouncement,afterpartyOpenAnnouncement} from '../src/neon/halloween-afterparty.js'
+import {AFTERPARTY_START,AFTERPARTY_SHOP_START,AFTERPARTY_SHOP_END,afterpartyShopOpen,afterpartyOffer,AFTERPARTY_OFFERS,HALLOWEEN_ALTAR_NEW_GEAR,afterpartyAnnouncement,afterpartyStartAnnouncement,afterpartyOpenAnnouncement} from '../src/neon/halloween-afterparty.js'
 import {halloweenSoulMultiplier,halloweenBoss,HALLOWEEN_SHOP_END} from '../src/neon/halloween-rules.js'
 import {halloweenTitleBonusXp} from '../src/neon/halloween-altar.js'
 const source=readFileSync(new URL('../src/neon/halloween-alpha.js',import.meta.url),'utf8')
@@ -38,7 +38,7 @@ test('mensagem exclusiva do AlphaBot fala 13h evento e 18h loja, sem periodos pa
  assert.match(source,/boss.day!=='2026-11-01'/)
 })
 test('resgate da nova loja usa os mesmos saldos mas novas chaves e bloqueia duplicacao',()=>{
- assert.deepEqual(Object.values(AFTERPARTY_OFFERS).map(x=>x.cost),[60,100,160,220])
+ assert.deepEqual(Object.values(AFTERPARTY_OFFERS).map(x=>x.cost),[60,100,160,220,650,760,720,580,540])
  assert.equal(afterpartyOffer('epicas')?.quantity,2)
  assert.equal(afterpartyOffer('lendaria')?.itemId,'caixa_lendaria')
  assert.equal(afterpartyOffer('invalido'),null)
@@ -49,7 +49,7 @@ test('resgate da nova loja usa os mesmos saldos mas novas chaves e bloqueia dupl
 })
 test('bonus PvE permanentes de insignia equipada e titulo independente não afetam PvP',()=>{
  const relics=readFileSync(new URL('../src/neon/relics.js',import.meta.url),'utf8')
- assert.match(relics,/boss:0\.04,raidAttack:0\.04,bossCrit:0\.01,raidCrit:0\.01/)
+ assert.match(relics,/boss:0\.06,raidAttack:0\.06,bossCrit:0\.02,raidCrit:0\.02/)
  assert.equal(halloweenTitleBonusXp(2000,true),2200)
  assert.equal(halloweenTitleBonusXp(2000,false),2000)
  assert.match(source,/halloweenTitleBonusXp\(kind==='kill'\?7000:2400,titleOwned\)/)
@@ -76,4 +76,45 @@ test('mesmo Altar reabre com catalogo anterior preservado e ofertas adicionais',
  assert.match(reopen,/ALTAR DAS ALMAS REABERTO COM NOVOS ITENS/)
  assert.doesNotMatch(reopen,/NOVA LOJA DAS ALMAS RENASCIDAS/)
  assert.match(halloweenAltarCatalogText(),/Insígnia da Noite Eterna/)
+})
+
+test('five new altar equipment prices and actual stats near lower-end Sins gear',async()=>{
+ const {PECADOS_WEAPONS,PECADOS_ARMORS}=await import('../src/neon/sete-pecados-catalog.js')
+ const {readFileSync}=await import('node:fs')
+ const dbSource=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+ assert.equal(HALLOWEEN_ALTAR_NEW_GEAR.length,5)
+ assert.equal(new Set(HALLOWEEN_ALTAR_NEW_GEAR.map(g=>g.id)).size,5)
+ assert.deepEqual(HALLOWEEN_ALTAR_NEW_GEAR.map(g=>g.category),['weapon','weapon','armor','helmet','boots'])
+ assert.ok(HALLOWEEN_ALTAR_NEW_GEAR.every(g=>g.cost>=500&&g.cost<=800))
+ assert.ok(HALLOWEEN_ALTAR_NEW_GEAR.every(g=>g.crit>=0&&g.crit<=.05))
+ assert.equal(HALLOWEEN_ALTAR_NEW_GEAR[0].atk,155)
+ assert.ok(HALLOWEEN_ALTAR_NEW_GEAR[0].atk>=Math.min(...PECADOS_WEAPONS.map(g=>g.atk)))
+ assert.ok(HALLOWEEN_ALTAR_NEW_GEAR[1].atk<Math.max(...PECADOS_WEAPONS.map(g=>g.atk)))
+ assert.ok(HALLOWEEN_ALTAR_NEW_GEAR[2].def>=Math.min(...PECADOS_ARMORS.map(g=>g.def)))
+ assert.ok(HALLOWEEN_ALTAR_NEW_GEAR[2].def<Math.max(...PECADOS_ARMORS.map(g=>g.def)))
+ for(const [cmd,id] of [['espada','halloween_espada_caveira_20261101'],['foice','halloween_foice_ceifador_20261101'],['armadura','halloween_armadura_catacumbas_20261101'],['elmo','halloween_elmo_rei_morto_20261101'],['botas','halloween_botas_arauto_20261101']]){
+  assert.equal(afterpartyOffer(cmd)?.id,id)
+  assert.match(dbSource,new RegExp('HALLOWEEN_ALTAR_NEW_GEAR\\.map'))
+ }
+ assert.match(dbSource,/\.\.\.Object.fromEntries\(HALLOWEEN_ALTAR_NEW_GEAR\.map/)
+ assert.match(dbSource,/HALLOWEEN_ALTAR_GEAR_IDS/)
+ assert.doesNotMatch(dbSource,/HALLOWEEN_ALTAR_NEW_GEAR\.map\(g=>\[g.id,g.name,'Lendário de Halloween; drop exclusivo de Boss global/)
+})
+test('Corcel old and new owners both upgraded, once only; title and insignia stronger',async()=>{
+ const {petCombatSpecialty}=await import('../src/neon/game-catalog.js')
+ const dbSource=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+ const corcel=petCombatSpecialty('corcel_espectral_halloween')
+ assert.equal(corcel.bossDamage,.11)
+ assert.equal(corcel.crit,.05)
+ assert.equal(corcel.defense,.04)
+ assert.equal(corcel.dodge,.04)
+ assert.match(dbSource,/corcel_espectral_halloween:\{base:350,growth:25/)
+ assert.match(dbSource,/corcel_espectral_halloween:460/)
+ assert.match(source,/VALUES\(\$1,\$2,'Corcel Espectral', \$3,\$4,\$5,355,\$6,\$6,FALSE\)/)
+ assert.match(source,/halloween_corcel_power_upgrade_20261101/)
+ assert.match(source,/UPDATE pet_collection SET power=power\+40 WHERE species=\$1/)
+ assert.match(source,/UPDATE pets SET power=power\+40 WHERE species=\$1/)
+ assert.match(source,/ON CONFLICT\(key\) DO NOTHING RETURNING key/)
+ const relics=readFileSync(new URL('../src/neon/relics.js',import.meta.url),'utf8')
+ assert.match(relics,/boss:0\.06,raidAttack:0\.06,bossCrit:0\.02,raidCrit:0\.02/)
 })
