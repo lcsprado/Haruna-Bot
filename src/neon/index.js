@@ -9305,8 +9305,8 @@ pokemonQuizEngine=createPokemonQuizEngine({db,
   // Nunca reiniciar automaticamente uma edicao com falhas de entrega.
   autoStart:false
 })
-await pokemonQuizEngine.pause()
-pokemonQuizEngine.start()
+void pokemonQuizEngine.pause().then(()=>pokemonQuizEngine.start())
+  .catch(err=>console.error('[QUIZ POKEMON] pausa de seguranca falhou; quiz nao iniciado',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
