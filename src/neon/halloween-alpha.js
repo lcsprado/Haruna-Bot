@@ -4,7 +4,7 @@ import {getEquippedEnchants} from './enchantments-alpha.js'
 import {profileCombatPetBonuses} from './games.js'
 import {activeRelic} from './relics.js'
 import {HALLOWEEN_TICK_MS,halloweenAttackInterval,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
-import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction,halloweenSoulMultiplier} from './halloween-rules.js'
+import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction,halloweenSoulMultiplier,halloweenRebalanceBossState} from './halloween-rules.js'
 import {HALLOWEEN_SESSION_REMINDER_MS,HALLOWEEN_MAINTENANCE_MS,halloweenHourlyEnabled,halloweenSessionExpiry,halloweenSessionValid,halloweenSessionTime,halloweenSessionRemaining} from './halloween-session.js'
 import {HALLOWEEN_ALTAR_OFFERS,HALLOWEEN_ALTAR_ITEMS,HALLOWEEN_CHEST_ID,HALLOWEEN_CHEST_CONTENTS,halloweenAltarOffer,halloweenAltarOpen,halloweenAltarCatalogText,halloweenTitleBonusXp,ownsHalloweenTitle} from './halloween-altar.js'
 import {AFTERPARTY_ANNOUNCE,AFTERPARTY_START,AFTERPARTY_SHOP_START,AFTERPARTY_SHOP_END,AFTERPARTY_OFFERS,afterpartyOffer,afterpartyShopOpen,afterpartyShopCatalog,afterpartyAnnouncement,afterpartyStartAnnouncement,afterpartyOpenAnnouncement} from './halloween-afterparty.js'
@@ -104,7 +104,16 @@ async function ensureDay(c,boss){
  await c.query(`INSERT INTO halloween_boss_days_2026(day,hp,max_hp,started_at,updated_at)
   VALUES($1,$2,$2,$3,$3) ON CONFLICT(day) DO NOTHING`,[day,boss.hp,Date.now()])
  const r=await c.query('SELECT * FROM halloween_boss_days_2026 WHERE day=$1 FOR UPDATE',[day])
- return r.rows[0]
+ const saved=r.rows[0]
+ const resized=halloweenRebalanceBossState(saved,boss.hp)
+ if(!resized)return saved
+ // A linha esta bloqueada pela mesma transacao do tick. Preserva cycle, revive_at,
+ // round_damage, as recompensas e os resgates ja feitos. Reaplicar e idempotente.
+ const stamp=Date.now()
+ await c.query('UPDATE halloween_boss_days_2026 SET hp=$2,max_hp=$3,updated_at=$4 WHERE day=$1',
+  [day,resized.hp,resized.maxHp,stamp])
+ console.log('[HALLOWEEN] HP reequilibrado sem zerar ciclo',JSON.stringify({day,cycle:saved.cycle,oldHp:saved.hp,oldMaxHp:saved.max_hp,hp:resized.hp,maxHp:resized.maxHp}))
+ return {...saved,hp:resized.hp,max_hp:resized.maxHp,updated_at:stamp}
 }
 async function snapshotPower(c,jid){
  const st=(await c.query('SELECT hp,max_hp,atk,def,spd,class_id,class_applied,weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])).rows[0]
