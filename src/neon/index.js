@@ -103,6 +103,7 @@ import {
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
 import {createPokemonQuizEngine} from './pokemon-quiz.js'
+import {createGlobalCommandAntispam,commandAntispamNotice} from './command-antispam.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
 const logger=pino({level:process.env.LOG_LEVEL || 'info'})
@@ -177,6 +178,7 @@ let reconnectTimer=null
 let reconnecting=false
 let reconnectAttempts=0
 const acceptIncomingMessage=createMessageDeduplicator()
+const globalCommandAntispam=createGlobalCommandAntispam()
 function scheduleReconnect(){
 if(reconnectTimer || reconnecting) return
 const base=Math.min(30000,3000*2**Math.min(reconnectAttempts,4))
@@ -9658,6 +9660,15 @@ const senderIdentity=await resolvePlayerIdentity(sock,chat,rawSender,msg)
 timingMarks.identity=Date.now()
 const sender=senderIdentity.jid
 const body=textOf(msg).trim()
+// Aplicar ANTES de ensureUser, consolidacao de identidade, saldo e consultas de perfil.
+// Usa instante de recebimento para rejeitar rajadas que aguardaram na fila por jogador.
+const commandGuard=globalCommandAntispam.inspect({sender,body,prefix,receivedAt})
+if(!commandGuard.allowed){
+  const notice=commandAntispamNotice(commandGuard)
+  if(notice) void sock.sendMessage(chat,{text:notice},{quoted:msg})
+    .catch(err=>console.warn('[CommandAntiSpam] aviso nao enviado',err?.message||err))
+  continue
+}
 let firstReplyTimed=false
 const reply=(text,extra={})=>{
 const first=!firstReplyTimed
