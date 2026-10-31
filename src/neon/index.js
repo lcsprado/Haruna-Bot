@@ -9764,11 +9764,11 @@ if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(cha
 }
 // Rouba-Rouba: recepcao rapida no grupo AlphaBot. Impede o quiz antigo de
 // interceptar !participar e preserva !roubar normal fora do premio #N.
-const roubaWords=body.startsWith(prefix)?body.slice(prefix.length).trim().split(/\\s+/):[]
+const roubaWords=body.startsWith(prefix)?body.slice(prefix.length).trim().split(/\s+/):[]
 const roubaCmd=String(roubaWords[0]||'').toLowerCase()
-const roubaNumbered=roubaCmd==='roubar' && /^#\\d+$/.test(String(roubaWords[1]||''))
+const roubaNumbered=roubaCmd==='roubar' && /^#\d+$/.test(String(roubaWords[1]||''))
 const roubaNamed=['participar','abrirpresente','roubarpremio'].includes(roubaCmd)
-const roubaOpen=roubaCmd==='abrir'&&roubaEngine&&await roubaEngine.isActive()
+const roubaOpen=isGroup&&chat===ROUBA_GROUP_JID&&roubaCmd==='abrir'&&roubaEngine&&await roubaEngine.isActive()
 if(isGroup&&chat===ROUBA_GROUP_JID&&(roubaNumbered||roubaNamed||roubaOpen)){
   if(!roubaEngine){await reply('⏳ Evento inicializando.');continue}
   if(roubaCmd==='participar'){
