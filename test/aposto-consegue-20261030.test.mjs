@@ -231,3 +231,37 @@ test('migra rodada antiga em andamento sem perda de aposta, inscricao ou premio 
  assert.equal(a.db.store.history.length,1)
  assert.equal(a.db.ledger.filter(x=>x.p[3]==='event_penalty').length,1)
 })
+
+test('cancelamento global devolve reservas apenas uma vez e notifica ambos os grupos',async()=>{
+ const a=harness({balances:{bob:{cash:20000,bank:100000}}})
+ await a.start()
+ assert.equal((await a.vote('bob','duvido')).kind,'voted')
+ assert.deepEqual(a.db.wallets.get('bob'),{cash:0,bank:70000})
+ assert.equal(await a.engine.cancel(),true)
+ await a.engine.tick()
+ assert.deepEqual(a.db.wallets.get('bob'),{cash:20000,bank:100000})
+ assert.equal(a.db.store.status,'cancelled')
+ assert.deepEqual(new Set(a.delivered.filter(x=>x.text.includes('CANCELADO')).map(x=>x.chat)),new Set(APOSTA_GROUPS))
+ const entries=a.db.ledger.length
+ assert.equal(await a.engine.cancel(),false)
+ assert.equal(a.db.ledger.length,entries)
+ assert.equal((await a.engine.join({chat:APOSTA_GROUPS[1],sender:'dave',name:'Dave'})).kind,'closed')
+ assert.equal((await a.engine.answer({chat:APOSTA_GROUPS[0],sender:'alice',answer:'Ottawa'})).kind,'not-open')
+})
+
+test('prazo de resposta passa a ser 10 segundos para questoes medias e dificeis',async()=>{
+  const a=harness();await a.start()
+  await a.question()
+  assert.equal(a.db.store.phase,'answering')
+  const deadline=a.db.store.current.deadline
+  a.advance(9999);await a.engine.tick()
+  assert.equal(a.db.store.phase,'answering')
+  assert.equal(a.db.store.history.length,0)
+  a.advance(1);await a.engine.tick()
+  assert.equal(a.db.store.phase,'result')
+  assert.equal(a.db.store.history.length,1)
+  assert.equal(a.db.store.history[0].reason,'tempo esgotado')
+  // Regra independe da dificuldade: nenhuma janela de 45 ou 60s.
+  assert.ok(deadline > 0)
+  assert.equal(a.delivered.some(x=>x.text.includes('10 segundos para responder')),true)
+})
