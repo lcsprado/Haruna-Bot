@@ -1,4 +1,4 @@
-import {renderRacing,bindRacing} from './racing-ui.js';
+import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 const API_BASE = window.location.origin;
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
@@ -15,6 +15,7 @@ const ui = {
   auction: null,
   racing: null,
   racingFetchedAt: 0,
+  racingAmbientSyncAt: 0,
   racingLoading: false,
   racingBusy: false,
   racingTab: 'garage',
@@ -2789,10 +2790,20 @@ document.addEventListener('visibilitychange',()=>{
 });
 
 setInterval(()=>{
-  if(!document.hidden && ui.token && !ui.syncing) sync(true);
+  if(document.hidden||!ui.token||ui.syncing)return;
+  // Garagem visual não precisa reconsultar a API a cada 15 segundos.
+  // Toda compra, melhoria ou corrida já força sincronização imediata.
+  if(ui.page==='racing'){
+    if(Date.now()-(ui.racingAmbientSyncAt||0)<120000)return;
+    ui.racingAmbientSyncAt=Date.now();
+  }
+  sync(true);
 },15000);
 setInterval(()=>{
-  if(!document.hidden && ui.token) refreshLiveCountdowns();
+  if(!document.hidden && ui.token){
+    refreshLiveCountdowns();
+    if(ui.page==='racing')updateRacingClocks();
+  }
 },1000);
 // Small auction state request only while the auction view is open.
 setInterval(()=>{
