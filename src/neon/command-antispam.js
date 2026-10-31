@@ -34,7 +34,7 @@ function commandCooldown(command) {
   if (command === 'perfil') return 10_000
   if (HEAVY.has(command)) return 7_000
   if (FAST_EVENTS.has(command)) return 700
-  return 1_500
+  return 3_000
 }
 
 export function createGlobalCommandAntispam({clock = () => Date.now()} = {}) {
