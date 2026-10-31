@@ -53,7 +53,7 @@ function make({send}={}){
     if(send)await send(group,text)
     delivered.push({group,text})
   }
-  const engine=createPokemonQuizEngine({db,sendMessage,clock:()=>now})
+  const engine=createPokemonQuizEngine({db,sendMessage,clock:()=>now,autoStart:true})
   return {db,engine,delivered,advance:ms=>{now+=ms}}
 }
 test('15 perguntas, quatro alternativas validas, premios fixos totalizam 6,75 milhoes',()=>{
@@ -112,21 +112,21 @@ test('falha no segundo grupo impede abrir a pergunta ate ambos receberem',async(
 test('timeout, reinicio e fim do evento nao duplicam rodadas nem premiacoes',async()=>{
   const a=make()
   await a.engine.tick()
-  a.advance(25001)
+  a.advance(45001)
   await a.engine.tick()
   assert.equal(a.db.store.phase,'result')
   assert.equal(a.db.store.round,0)
-  a.advance(4501)
+  a.advance(8001)
   await a.engine.tick()
   assert.equal(a.db.store.round,1)
   // Nova instancia com o mesmo banco recupera o estado anterior.
-  const restart=createPokemonQuizEngine({db:a.db,sendMessage:async()=>{},clock:()=>1_029_502})
+  const restart=createPokemonQuizEngine({db:a.db,sendMessage:async()=>{},clock:()=>1_053_002})
   await restart.tick()
   assert.equal(a.db.store.round,1)
   // Completa as 14 rodadas restantes com timeout, sem credito.
   for(let i=1;i<15;i++){
-    a.advance(25001);await a.engine.tick()
-    a.advance(4501);await a.engine.tick()
+    a.advance(45001);await a.engine.tick()
+    a.advance(8001);await a.engine.tick()
   }
   assert.equal(a.db.store.status,'completed')
   assert.equal(a.db.ledger.length,0)
@@ -145,4 +145,32 @@ test('cancelamento preserva premios ja pagos e bloqueia novas respostas',async()
   const late=await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'bob',name:'Bob',choice:2})
   assert.equal(late.kind,'not-open')
   assert.equal(a.db.ledger.length,1)
+})
+
+test('pausa de seguranca bloqueia resposta sem estornar premio ja pago; retoma rodada inteira',async()=>{
+  const a=make()
+  await a.engine.tick()
+  const winning=await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'alice',name:'Alice',choice:POKEMON_QUIZ_QUESTIONS[0].c})
+  assert.equal(winning.kind,'winner')
+  await a.engine.tick()
+  assert.equal(await a.engine.pause(),true)
+  assert.equal(a.db.store.status,'paused')
+  assert.equal(a.db.store.winners.length,1)
+  assert.equal(a.db.ledger.length,1)
+  assert.equal((await a.engine.answer({chat:POKEMON_QUIZ_GROUPS[0],sender:'bob',choice:1})).kind,'not-open')
+  assert.equal(await a.engine.resume(),true)
+  assert.equal(a.db.store.status,'running')
+  assert.equal(a.db.store.phase,'delivery')
+  await a.engine.tick()
+  assert.equal(a.db.store.phase,'answering')
+  assert.equal(a.db.ledger.length,1)
+})
+test('sem autoStart nao cria uma nova competicao depois de falha',async()=>{
+  const a=make()
+  const freshDb=new FakeDB()
+  const engine=createPokemonQuizEngine({db:freshDb,sendMessage:async()=>{},clock:()=>123,autoStart:false})
+  await engine.tick()
+  assert.equal(freshDb.store,null)
+  await a.engine.tick()
+  assert.equal(a.db.store.status,'running')
 })
