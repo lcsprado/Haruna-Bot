@@ -102,7 +102,7 @@ import {
 } from './owner-event-center.js'
 import {initHalloweenAlpha,scheduleHalloweenAlpha,handleHalloweenCommand} from './halloween-alpha.js'
 import {startGuerraAlmasScheduler,handleGuerraAlmasCommand} from './guerra-almas-v2.js'
-import {createPokemonQuizEngine} from './pokemon-quiz.js'
+import {createPokemonQuizEngine,getPokemonQuotedMessageId} from './pokemon-quiz.js'
 import {createGlobalCommandAntispam,commandAntispamNotice} from './command-antispam.js'
 import {STONES,initEnchantments,handleEnchantCommand,handleEnchantFlow} from './enchantments-alpha.js'
 import {ascensionStatusText,ascensionTerritoryOpen,chooseAscensionTerritoryAction,recordAscensionVeteranActivity} from './ascension-week-20261102.js'
@@ -9724,7 +9724,7 @@ if(isGroup && ['120363410230588690@g.us','120363429534634131@g.us'].includes(cha
     if(pokemonQuizReplyThrottle.size>5000)pokemonQuizReplyThrottle.clear()
     pokemonQuizReplyThrottle.set(sender,now)
     const result=await pokemonQuizEngine.answer({chat,sender,
-      name:msg.pushName||'Jogador',choice:pokemonAnswerTokens[1]})
+      name:msg.pushName||'Jogador',choice:pokemonAnswerTokens[1],quotedMessageId:getPokemonQuotedMessageId(msg.message)})
     const key='quiz'+result.kind.replace(/(^|-)([a-z])/g,(_m,_sep,ch)=>ch.toUpperCase())
     trevoHealth[key]=Number(trevoHealth[key]||0)+1
     if(result.kind==='winner')void pokemonQuizEngine.tick()
@@ -9896,11 +9896,11 @@ if(['quizpokemon','pokemonquiz'].includes(cmd)){
 }
 if(['pk','respostapokemon'].includes(cmd)){
   const result=await pokemonQuizEngine.answer({
-    chat,sender,name:msg.pushName||'Jogador',choice:args[0]
+    chat,sender,name:msg.pushName||'Jogador',choice:args[0],quotedMessageId:getPokemonQuotedMessageId(msg.message)
   })
   if(result.kind==='winner'){
     void pokemonQuizEngine.tick()
-  }else if(['wrong','limit','not-open','late'].includes(result.kind)){
+  }else if(['wrong','limit','not-open','late','unquoted'].includes(result.kind)){
     // Sem respostas automaticas: o anti-spam pode afetar outras funcoes.
   }else if(result.kind==='invalid'){
     await reply('🧠 Responda *!pk 1*, *!pk 2*, *!pk 3* ou *!pk 4*.')
