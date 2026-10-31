@@ -1,3 +1,4 @@
+import {renderRacing,bindRacing} from './racing-ui.js';
 const API_BASE = window.location.origin;
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
@@ -12,6 +13,16 @@ const ui = {
   lootReveal: null,
   page: 'home',
   auction: null,
+  racing: null,
+  racingFetchedAt: 0,
+  racingLoading: false,
+  racingBusy: false,
+  racingTab: 'garage',
+  racingTier: 'rua',
+  racingTrack: 'cidade',
+  racingStrategy: 'equilibrada',
+  racingTarget: '',
+  racingLast: null,
   auctionError: '',
   auctionLoading: false,
   auctionSubmitting: false,
@@ -52,6 +63,7 @@ const navItems = [
   ['clan','🛡️','Clã'],
   ['games','🎮','Minigames'],
   ['activities','⏳','Atividades'],
+  ['racing','🏎️','Garagem Alpha'],
   ['progression','📈','Progressão'],
   ['rankings','🏆','Rankings'],
   ['economy','💰','Economia'],
@@ -774,6 +786,39 @@ function actionFeedback(name,result){
   }
   return 'Ação concluída no Alpha Bot.';
 }
+async function loadRacing(force=false){
+  if(!ui.token)return null;
+  if(ui.racingLoading)return ui.racing;
+  if(!force&&ui.racing&&Date.now()-ui.racingFetchedAt<20000)return ui.racing;
+  ui.racingLoading=true;
+  if(ui.page==='racing')render();
+  try{
+    const result=await api('/api/v1/me/racing');
+    ui.racing=result.data;
+    ui.racingFetchedAt=Date.now();
+    return ui.racing;
+  }catch(err){
+    toast('Não foi possível carregar a Garagem Alpha: '+err.message);
+    return null;
+  }finally{
+    ui.racingLoading=false;
+    if(ui.page==='racing')render();
+  }
+}
+async function racingAction(action,body,op){
+  if(ui.racingBusy)return;
+  ui.racingBusy=true;
+  try{
+    const labels={buy:'🚘 Carro adquirido!',equip:'✅ Carro equipado!',upgrade:'🔧 Instalação iniciada!',repair:'🧰 Carro reparado!',solo:'🏁 Corrida realizada!',challenge:'⚔️ Desafio enviado!',accept:'🏆 Desafio concluído!',cancel:'🛑 Desafio cancelado!'};
+    const result=await doAction(action,body,{success:labels[op]||'Ação concluída'});
+    if(op==='solo')ui.racingLast={type:'solo',value:result};
+    if(op==='accept')ui.racingLast={type:'pvp',value:result};
+    await loadRacing(true);
+  }catch(err){
+    // doAction já apresenta o erro; nenhuma transação adicional é tentada.
+  }finally{ui.racingBusy=false;}
+}
+
 async function doAction(name,body,options){
   options=options||{};
   try{
@@ -818,6 +863,7 @@ async function logout(remote){
   if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
   ui.avatarUrl=''; ui.avatarFetchedAt=0;
   ui.token=''; ui.data=null; ui.catalog=null; ui.extras=null; ui.extrasFetchedAt=0;
+  ui.racing=null;ui.racingFetchedAt=0;ui.racingLast=null;
   localStorage.removeItem(TOKEN_KEY);
   showLogin();
 }
@@ -844,6 +890,7 @@ function renderNav(){
     if(ui.page==='npcs') await loadNpcShops();
     if(ui.page==='contracts') await loadContracts();
     if(ui.page==='auction') await loadAuction();
+    if(ui.page==='racing') await loadRacing(false);
     if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
       await syncExtras(false).catch(()=>null);
     }
@@ -2315,7 +2362,7 @@ function pageScene(page){
 function render(){
   if(!ui.data || !ui.catalog) return;
   renderNav(); renderHeader();
-  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,npcs:renderNpcs,contracts:renderContracts,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,auction:renderAuction,activities:renderActivities,progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
+  const renderers={home:renderHome,character:renderCharacter,pets:renderPets,inventory:renderInventory,shop:renderShop,npcs:renderNpcs,contracts:renderContracts,raids:renderRaids,boss:renderBoss,duels:renderDuels,social:renderSocial,market:renderMarket,clan:renderClan,games:renderGames,auction:renderAuction,activities:renderActivities,racing:()=>renderRacing(ui),progression:renderProgression,rankings:renderRankings,economy:renderEconomy,loans:renderLoans};
   $('#content').innerHTML=pageScene(ui.page)+relationshipProposalPanel()+(renderers[ui.page]||renderHome)()+lootRevealModal();
   bind();
   if(ui.page==='inventory' && Number(ui.inventoryTabsScrollLeft)>0){
@@ -2327,6 +2374,7 @@ function render(){
 }
 
 function bind(){
+  if(ui.page==='racing')bindRacing(ui,{action:racingAction,refresh:loadRacing,render});
   document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
   document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
   document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+50000'));
