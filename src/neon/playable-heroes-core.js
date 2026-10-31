@@ -149,6 +149,16 @@ export function heroCombatStats(st,heroId,heroLevel=70){
     persistentMaxHp:sourceMax
   };
 }
+// O HP persistido já incorpora o equipamento: converter só pelo HP-base do
+// herói retira a vida do equipamento mesmo após uma cura completa.
+export function heroEffectiveCombatHp(st,heroStats,equipmentHp=0){
+  if(!heroStats)return Math.max(0,Number(st?.hp)||0);
+  const gear=Math.max(0,Number(equipmentHp)||0);
+  const storedMax=Math.max(1,(Number(st?.max_hp??st?.base_max_hp)||1)+gear);
+  const combatMax=Math.max(1,(Number(heroStats.maxHp)||1)+gear);
+  const storedHp=Math.max(0,Math.min(storedMax,Number(st?.hp)||0));
+  return Math.min(combatMax,Math.max(0,Math.round(storedHp/storedMax*combatMax)));
+}
 // Ficha de visualização com a MESMA fórmula inicial usada na entrada da Raid/Boss:
 // classe substituída pelo herói + equipamentos/encantos, sem alterar o banco.
 export function heroCombatSheetFromProfile(profile,heroId,heroLevel=70){
@@ -162,7 +172,7 @@ export function heroCombatSheetFromProfile(profile,heroId,heroLevel=70){
     range:HERO_COMBAT_PROFILES[heroId].range,
     skill:HERO_COMBAT_PROFILES[heroId].skill,
     maxHp:h.maxHp+number(profile.equipment_hp),
-    hp:Math.min(h.hp,h.maxHp+number(profile.equipment_hp)),
+    hp:heroEffectiveCombatHp(profile,h,profile.equipment_hp),
     atk:Math.round((h.atk+number(profile.equipment_atk))*(1+number(profile.attack_pct_bonus))),
     def:h.def+number(profile.equipment_def),
     spd:h.spd+number(profile.equipment_spd)
