@@ -154,8 +154,8 @@ export function createRoubaRoubaEngine({db,sendMessage,clock=()=>Date.now(),logg
    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[ROUBA_KEY])
    const read=await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[ROUBA_KEY])
    let s=read.rows[0]?.value
-   if(!s&&create){s=fresh(clock());logged(s,'intro',introduction())}
    const prior=s?JSON.stringify(s):null
+   if(!s&&create){s=fresh(clock());logged(s,'intro',introduction())}
    const value=await fn(c,s)
    if(s&&JSON.stringify(s)!==prior){
     await c.query('INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at',[ROUBA_KEY,JSON.stringify(s)])
