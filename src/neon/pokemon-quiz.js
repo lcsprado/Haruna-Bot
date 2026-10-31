@@ -23,7 +23,7 @@ export const POKEMON_QUIZ_QUESTIONS = Object.freeze([
   {q:'Qual Pokemon pode evoluir diretamente para Kleavor?', a:['Scizor','Pinsir','Scyther','Heracross'],c:3},
   {q:'Qual Pokemon evolui para Dudunsparce?', a:['Dunsparce','Furret','Drampa','Dudunsparce'],c:1}
 ].map((x,i)=>Object.freeze({...x,prize:i<5?200000:i<10?400000:750000})))
-const LIMIT_MS=25000, BETWEEN_MS=4500
+const LIMIT_MS=45000, BETWEEN_MS=8000
 const fmt=n=>Number(n||0).toLocaleString('pt-BR')
 const clean=x=>String(x||'Jogador').replace(/[\r\n*_~]/g,' ').trim().slice(0,45)
 const isGroup=(chat,groups)=>groups.includes(String(chat||''))
@@ -31,7 +31,7 @@ function questionText(index){
   const p=POKEMON_QUIZ_QUESTIONS[index]
   const level=index<5?'FACIL':index<10?'MEDIO':'DIFICIL'
   return '🧠⚡ *QUIZ POKEMON — '+(index+1)+'/15* • '+level+'\n\n'+p.q+'\n\n'+p.a.map((a,i)=>(i+1)+'. '+a).join('\n')+
-    '\n\n💰 Premio: *R$ '+fmt(p.prize)+'*\n⏱️ *25 segundos* depois que os dois grupos receberem a pergunta.'+
+    '\n\n💰 Premio: *R$ '+fmt(p.prize)+'*\n⏱️ *45 segundos* depois que os dois grupos receberem a pergunta.'+
     '\n👉 Responda *!pk 1*, *!pk 2*, *!pk 3* ou *!pk 4*.'+
     '\n⚖️ Duas tentativas por jogador. O primeiro acerto GLOBAL ganha.'
 }
@@ -79,8 +79,9 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
         s=fresh(clock())
         enqueueNotice(s,'question:0',questionText(0))
       }
+      const previous=s?JSON.stringify(s):null
       const result=await fn(c,s)
-      if(s)await c.query(
+      if(s&&JSON.stringify(s)!==previous)await c.query(
         'INSERT INTO trevo_settings(key,value,updated_at) VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at',
         [POKEMON_QUIZ_KEY,JSON.stringify(s)]
       )
@@ -160,7 +161,7 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
       // Pagamento e reserva do primeiro acerto dentro da MESMA transacao.
       // O bloqueio da linha do evento protege de corridas entre grupos/processos.
       const paid=await c.query('UPDATE wallets SET cash=cash+$1,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$2 RETURNING cash',[reward,sender])
-      if(!paid.rowCount)throw new Error('Carteira nao cadastrada; nenhum premio concedido')
+      if(!paid.rowCount)return {kind:'unregistered'}
       await c.query(
         "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('event',$1,$2,'event_reward',$3)",
         [sender,reward,'pokemon-quiz-20261030-r'+(s.round+1)]
@@ -177,14 +178,36 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
     const s=res.rows[0]?.value
     if(!s)return '🧠 Quiz Pokemon ainda nao iniciado.'
     if(s.status==='cancelled')return '🛑 Quiz Pokemon cancelado, sem novos premios.'
+    if(s.status==='paused')return '⏸️ *QUIZ POKEMON PAUSADO*\nRespostas bloqueadas para preservar a disputa.\n👑 Proprietario: *!quizpokemon retomar* para reiniciar a pergunta da rodada pausada.'
     if(s.status==='completed')return finalText(s)
     const phase=s.phase==='answering'?'respostas abertas':s.phase==='delivery'?'enviando pergunta':'preparando proxima rodada'
     return '🧠 *QUIZ POKEMON ATIVO*\nRodada: *'+(s.round+1)+'/15* • '+phase+
       '\n⏱️ Respostas: *!pk 1* ate *!pk 4*.\n🏆 Vencedores ate agora: '+(s.winners?.length||0)
   }
+  // Pausa de emergencia: invalida o prazo em curso, cancela avisos pendentes,
+  // mas preserva premiacoes ja liquidadas e a rodada atual.
+  async function pause(){
+    return transact(async(_c,s)=>{
+      if(!s||s.status!=='running')return false
+      s.status='paused';s.phase='paused';s.expiresAt=0;s.nextAt=0
+      s.notices=[]
+      enqueueNotice(s,'paused','⏸️ *QUIZ POKEMON PAUSADO PARA CORRECAO*\nAs respostas estao temporariamente bloqueadas.\n✅ Premios ja creditados permanecem validos.\nA rodada atual sera reiniciada com prazo integral quando retomada.')
+      return true
+    })
+  }
+  async function resume(){
+    return transact(async(_c,s)=>{
+      if(!s||s.status!=='paused')return false
+      s.status='running';s.phase='delivery';s.expiresAt=0;s.nextAt=0
+      // A resposta da rodada interrompida nunca e aproveitada sem nova pergunta.
+      s.attempts={};s.notices=[]
+      enqueueNotice(s,'question:'+s.round,questionText(s.round))
+      return true
+    })
+  }
   async function cancel(){
     const out=await transact(async(_c,s)=>{
-      if(!s||s.status!=='running')return false
+      if(!s||!['running','paused'].includes(s.status))return false
       s.status='cancelled';s.phase='cancelled'
       s.notices=[] // avisos antigos nao podem reaparecer
       enqueueNotice(s,'cancel','🛑 *QUIZ POKEMON CANCELADO*\nNenhuma nova resposta ou premiacao sera aceita.\nPremios de rodadas ja concluidas permanecem validos.')
@@ -194,10 +217,10 @@ export function createPokemonQuizEngine({db,sendMessage,isConnected=()=>true,
     return out
   }
   return {
-    tick,answer,status,cancel,
+    tick,answer,status,cancel,pause,resume,
     start(){
       if(timer)return
-      timer=setInterval(()=>{void tick()},1100)
+      timer=setInterval(()=>{void tick()},3000)
       timer.unref?.()
       void tick()
     },
