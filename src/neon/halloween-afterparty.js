@@ -1,4 +1,4 @@
-// Continuação Halloween. A nova loja usa as Almas existentes e abre às 18h.
+// Continuação Halloween. O mesmo Altar das Almas reabre às 18h e recebe quatro novos itens.
 export const AFTERPARTY_START=Date.parse('2026-11-01T13:00:00-03:00')
 export const AFTERPARTY_SHOP_START=Date.parse('2026-11-01T18:00:00-03:00')
 export const AFTERPARTY_SHOP_END=Date.parse('2026-11-03T00:00:00-03:00')
@@ -25,9 +25,9 @@ export const afterpartyAnnouncement=()=>[
  '🧩 Marcos: 8 Almas • Vitória: 16 Almas (para elegíveis).',
  '👉 Para entrar: *!halloween entrar* (renove a cada hora).',
  '',
- '🛍️ *18h*: abre a NOVA LOJA DAS ALMAS RENASCIDAS!',
- '🎁 Poções, elixires e Caixas Épicas/Lendárias.',
- '💀 Seu saldo antigo de Almas continua valendo. Compras não serão zeradas.',
+ '🛍️ *18h*: o *ALTAR DAS ALMAS REABRE COM NOVOS ITENS*!',
+ '🎁 Além dos prêmios atuais, chegam kits de poções, elixires e Caixas Épicas/Lendárias.',
+ '💀 Almas e compras anteriores preservadas. Os resgates únicos não reiniciam.',
  '📍 Avisos só no grupo AlphaBot.',
  '🎃 A loja atual continua até domingo às 12h.'
 ].join('\n')
@@ -37,12 +37,12 @@ export const afterpartyStartAnnouncement=()=>[
  '🔥 *TODAS AS ALMAS DROPADAS NOS MARCOS E VITÓRIAS ESTÃO EM DOBRO!*',
  '🧩 8 Almas por marco • 16 por vitória, respeitando a participação mínima.',
  '👉 Use *!halloween entrar* para participar. Renove a sessão a cada hora.',
- '🛍️ Nova loja de Almas abre às *18h*; o saldo anterior será preservado.'
+ '🛍️ O mesmo *Altar das Almas* reabre com mais itens às *18h*. Saldo preservado.'
 ].join('\n')
 export const afterpartyOpenAnnouncement=()=>[
- '🛍️🎃 *LOJA DAS ALMAS RENASCIDAS ABERTA!*',
+ '🛍️🎃 *ALTAR DAS ALMAS REABERTO COM NOVOS ITENS!*',
  '⏰ Domingo 01/11, *18h*, até segunda 02/11 às 23h59 (São Paulo).',
- '🧩 Saldo antigo preservado. Confira *!halloween loja*.',
- '🎁 Kits de poções, elixires e Caixas Épicas/Lendárias.',
- '🔥 Boss de Almas em dobro continua até 23h59 de hoje.'
+ '🧩 Mesma loja, com prêmios antigos e novos. Confira *!halloween loja*.',
+ '🎁 Adicionados: kits de poções, elixires e Caixas Épicas/Lendárias.',
+ '🔥 Boss de Almas em dobro continua até 23h59 de hoje. Compras anteriores não reiniciam.'
 ].join('\n')
