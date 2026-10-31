@@ -6,7 +6,7 @@ import {activeRelic} from './relics.js'
 import {HALLOWEEN_TICK_MS,halloweenAttackInterval,halloweenAttackDue,halloweenNextAttackAt,halloweenOrderedAttackers} from './halloween-combat.js'
 import {HALLOWEEN_START,HALLOWEEN_END,HALLOWEEN_SHOP_END,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL,HALLOWEEN_CORCEL_COST,HALLOWEEN_GEAR,HALLOWEEN_BOSSES,halloweenBoss,halloweenActive,halloweenLocalDay,halloweenMinimumDamage,halloweenPhases,halloweenDropCatalog,halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {HALLOWEEN_SESSION_REMINDER_MS,HALLOWEEN_MAINTENANCE_MS,halloweenHourlyEnabled,halloweenSessionExpiry,halloweenSessionValid,halloweenSessionTime,halloweenSessionRemaining} from './halloween-session.js'
-import {HALLOWEEN_ALTAR_OFFERS,HALLOWEEN_ALTAR_ITEMS,HALLOWEEN_CHEST_ID,HALLOWEEN_CHEST_CONTENTS,halloweenAltarOffer,halloweenAltarOpen,halloweenAltarCatalogText} from './halloween-altar.js'
+import {HALLOWEEN_ALTAR_OFFERS,HALLOWEEN_ALTAR_ITEMS,HALLOWEEN_CHEST_ID,HALLOWEEN_CHEST_CONTENTS,halloweenAltarOffer,halloweenAltarOpen,halloweenAltarCatalogText,halloweenTitleBonusXp,ownsHalloweenTitle} from './halloween-altar.js'
 
 const fmt=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
 const nowSec=()=>Math.floor(Date.now()/1000)
@@ -195,8 +195,9 @@ async function milestoneReward(c,day,cycle,player,part,boss,kind){
  [day,cycle,player.jid,marker,HALLOWEEN_SOUL_ID,qty,nowSec()])
  if(!inserted.rowCount)return null
  await credit(c,player.jid,HALLOWEEN_SOUL_ID,qty)
- const playerXp=kind==='kill'?7000:2400
- const petGain=kind==='kill'?1100:400
+ const titleOwned=await ownsHalloweenTitle(c,player.jid)
+ const playerXp=halloweenTitleBonusXp(kind==='kill'?7000:2400,titleOwned)
+ const petGain=halloweenTitleBonusXp(kind==='kill'?1100:400,titleOwned)
  await grantExpInTransaction(c,player.jid,playerXp,{ignoreXpBoost:true,ignoreGroupProgressionEvent:true})
  await petXp(c,player.jid,petGain)
  await c.query('UPDATE halloween_players_2026 SET character_xp=character_xp+$1,pet_xp=pet_xp+$2 WHERE jid=$3',[playerXp,petGain,player.jid])
@@ -611,7 +612,7 @@ export async function handleHalloweenCommand({cmd,args=[],sender,name,chat,reply
    '\n🧩 Saldo restante: *'+fmt(result.remaining)+'*'+
    '\n\n'+(offer.id==='caixa'?'🎁 A Caixa Lendária está no inventário. Abra em *!caixas*.':
     offer.id==='insignia'?'💀 Insígnia adquirida. Equipe em *!reliquias*; substitui a insígnia anterior, sem acumular.':
-    offer.id==='titulo'?'👑 Título permanente adquirido. Consulte em *!perfil*.':
+    offer.id==='titulo'?'👑 Título permanente adquirido: *+10% EXP em Boss/Raid para você e seus pets*, automaticamente. Consulte em *!perfil*.':
     '🔮 Baú guardado no inventário. Abra quando quiser com *!halloween abrir bau*.'))
   return true
  }
