@@ -1,0 +1,29 @@
+name: Alpha Web - Hero HP parity
+on:
+  pull_request:
+    paths:
+      - 'src/neon/playable-heroes-core.js'
+      - 'src/neon/web-playable-heroes-compat.js'
+      - 'test/web-hero-hp-parity.test.mjs'
+      - '.github/workflows/web-hero-hp-parity.yml'
+  push:
+    branches: ['feat/web-aiven-beta-protegido-20261021']
+    paths:
+      - 'src/neon/playable-heroes-core.js'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate syntax
+        run: |
+          node --check src/neon/playable-heroes-core.js
+          node --check src/neon/web-playable-heroes-compat.js
+      - name: Verify healed, injured and empty player HP with seven heroes
+        run: node --test test/web-hero-hp-parity.test.mjs
