@@ -2,10 +2,59 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {formatProfileCombatBonuses} from '../src/neon/profile-combat-summary.js'
+import {formatActiveClassBaseStatus,formatSavedAwakeningForActiveHero} from '../src/neon/character-base-status-format.js'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
   heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP,HERO_START_LEVEL,heroStartingProgress
 } from '../src/neon/playable-heroes-core.js'
+
+test('!personagem status usa base da classe atual com Despertar, sem itens',()=>{
+  const input={class_id:'paladin',class_applied:true,level:386,
+    max_hp:3180,atk:780,def:390,spd:395,
+    equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91};
+  const text=formatActiveClassBaseStatus(input,3);
+  assert.match(text,/STATUS BASE — PALADINO/);
+  assert.match(text,/HP: \*3\.180\*/);
+  assert.match(text,/ATK: \*780\*/);
+  assert.match(text,/DEF: \*390\*/);
+  assert.match(text,/VEL: \*395\*/);
+  assert.match(text,/Despertar: \*III\/V\*/);
+  assert.match(text,/Égide Celestial/);
+  assert.doesNotMatch(text,/5\.240|1\.215|1\.294|486|Courechouse|armadura/i);
+});
+
+test('classe Necromante revela despertar próprio e ignora itens/encantos',()=>{
+  const text=formatActiveClassBaseStatus({
+    class_id:'necromancer',class_applied:true,level:300,
+    max_hp:1200,atk:650,def:540,spd:220,
+    equipment_atk:999,attack_pct_bonus:1
+  },2);
+  assert.match(text,/STATUS BASE — NECROMANTE/);
+  assert.match(text,/Drenagem/);
+  assert.match(text,/Despertar: \*II\/V\*/);
+  assert.match(text,/Maldição/);
+  assert.match(text,/ATK: \*650\*/);
+  assert.doesNotMatch(text,/1\.649|999/);
+});
+
+test('Diane equipada continua inteira no perfil; personagem mostra base e despertar da classe salvo inativo',()=>{
+  const profile={hp:3180,max_hp:3180,atk:780,def:390,spd:395,
+    class_id:'paladin',class_applied:true,
+    class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5,
+    equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91,
+    attack_pct_bonus:0};
+  const full=heroCombatSheetFromProfile(profile,'pecado_diane',100);
+  assert.deepEqual([full.maxHp,full.atk,full.def,full.spd],[5940,1295,1394,511]);
+  assert.deepEqual(full.baseWithoutGear,{maxHp:3880,atk:860,def:490,spd:420});
+  const awakening=formatSavedAwakeningForActiveHero(profile,3);
+  assert.match(awakening,/Despertar da classe Paladino: \*III\/V\*/);
+  assert.match(awakening,/habilidades inativas enquanto o herói estiver ativo/);
+  const heroSource=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(heroSource,/formatPlayableHeroBaseSheet\(heroSheet\)/);
+  assert.match(heroSource,/formatSavedAwakeningForActiveHero\(profile,awakeningStage\)/);
+  assert.match(heroSource,/\['personagem','personagens'\]/);
+  assert.match(heroSource,/getCharacterBaseStatus\(sender\)/);
+});
 
 test('sete personagens unicos com perfis equilibrados',()=>{
   assert.equal(PLAYABLE_HERO_IDS.length,7)
@@ -291,7 +340,9 @@ test('perfil mostra totais equipados e !heroi status mostra os quatro atributos 
   const full=heroes.slice(heroes.indexOf('export function formatPlayableHeroCombatSheet('),formatterStart);
   assert.ok(formatterStart>0);
   assert.match(heroes,/if\(\['atributos','ficha','stats','status'\]\.includes\(action\)\)/);
-  assert.match(heroes,/await reply\(sheet\?formatPlayableHeroBaseSheet\(sheet\)/);
+  assert.match(heroes,/await reply\(text\|\|'❌ Personagem não encontrado\.'/);
+  assert.match(heroes,/formatPlayableHeroBaseSheet\(heroSheet\)/);
+  assert.match(heroes,/return formatActiveClassBaseStatus\(profile,awakeningStage\)/);
   assert.match(app,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\)/);
   assert.match(app,/heroSheetStatus\?formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\)/);
   assert.match(formatter,/baseWithoutGear/);
@@ -321,6 +372,8 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.doesNotMatch(ui,/preservada; ativa no PvP/);
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
+  assert.match(hero,/\['personagem','personagens'\]/);
+  assert.match(hero,/getCharacterBaseStatus\(sender\)/);
   const sheet=hero.slice(hero.indexOf('export function formatPlayableHeroCombatSheet('),
     hero.indexOf('export function formatPlayableHeroBaseSheet('));
   const baseSheet=hero.slice(hero.indexOf('export function formatPlayableHeroBaseSheet('),
