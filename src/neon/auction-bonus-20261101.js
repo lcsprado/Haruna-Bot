@@ -33,9 +33,12 @@ let timer=null,busy=false,initPromise=null,auctionSocket=null
 async function init(){
   if(initPromise)return initPromise
   initPromise=(async()=>{
+    console.info('[LEILAO BONUS] init antes da outbox')
     await initAuctionNoticeOutbox(db)
+    console.info('[LEILAO BONUS] init outbox pronta')
     if(PECADOS_ESSENCES.length!==7||new Set(PECADOS_ESSENCES).size!==7)throw Error('Sete essências distintas são obrigatórias')
     const rows=(await db.query('SELECT id FROM items WHERE id=ANY($1::text[])',[PECADOS_ESSENCES])).rows
+    console.info('[LEILAO BONUS] essencias verificadas',rows.length)
     if(rows.length!==7)throw Error('Essências indisponíveis no catálogo')
   })()
   try{await initPromise}catch(e){initPromise=null;throw e}
@@ -175,8 +178,10 @@ async function tick(sock){
     if(now>END+5*60*1000){if(timer){clearInterval(timer);timer=null};return}
     // Cria tabela de notificações e valida itens antes do primeiro acesso à fila.
     await init()
+    console.info('[LEILAO BONUS] tick init pronto')
     await flushAuctionBidNotices(db,sock,KEY,{limit:8})
     await warnAuctionDeliveryFailures(db,sock,KEY)
+    console.info('[LEILAO BONUS] tick outbox processada')
     if(now>END)return
     const current=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
     if(current?.phase==='completed'){
@@ -187,6 +192,7 @@ async function tick(sock){
     const groups=current?.groups?.length?current.groups:await licensedGroups()
     if(!groups.length)return
     let outgoing=''
+    console.info('[LEILAO BONUS] antes da transacao')
     await change(async(state,c)=>{
       if(state.phase==='completed')return
       if(state.phase==='pending'){
@@ -223,6 +229,7 @@ async function tick(sock){
         await queueAuctionBidNotices(c,{key:KEY,version:state.bidNoticeVersion,groups:state.groups,origin:'system',message:outgoing})
       }
     })
+    console.info('[LEILAO BONUS] apos transacao',Boolean(outgoing))
     if(outgoing)await flushAuctionBidNotices(db,sock,KEY,{limit:8})
   }catch(err){
     console.error('[LEILAO BONUS]',err?.stack||err)
