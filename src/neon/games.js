@@ -882,7 +882,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id),forgeStars[st.armor_id]||1):{atk:0,def:0,hp:0,crit:0}
     const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
-    const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
+    const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
     const heroId=await getActivePlayableHero(c,jid)
     const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
@@ -1118,7 +1118,7 @@ export async function startRaid(chat,host,level=null){
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id),armorStars):{atk:0,def:0,hp:0,crit:0}
       const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
       const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
-      const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
+      const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
       let reservePet=await raidReservePet(c,jid)
       let combatPet=raidCombatPetState(pet,1)
@@ -3132,7 +3132,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
     const atk=Math.round((Number(heroStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
     const def=Number(heroStats?.def??st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
-    const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0)
+    const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
     const effectiveMaxHp=Number(heroStats?.maxHp??st.max_hp)+gearHp
     // Versão 2: proporcional ao HP total, incluindo armas, armaduras e elmo.
     // Participantes antigos são reprojetados uma única vez após a atualização.
