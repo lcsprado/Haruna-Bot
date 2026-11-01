@@ -374,6 +374,8 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
   assert.match(hero,/\['personagem','personagens'\]/);
   assert.match(hero,/getCharacterBaseStatus\(sender\)/);
+  assert.match(hero,/import \{db,ensureUser,getProfile,getCombatProfile\} from '\.\/db\.js'/);
+  assert.match(hero,/const profile=await getProfile\(jid\)/);
   const sheet=hero.slice(hero.indexOf('export function formatPlayableHeroCombatSheet('),
     hero.indexOf('export function formatPlayableHeroBaseSheet('));
   const baseSheet=hero.slice(hero.indexOf('export function formatPlayableHeroBaseSheet('),
