@@ -13,26 +13,26 @@ const diane=st=>heroCombatStats(st,'pecado_diane',100)
 test('Diane totalmente curada mantém 100% da vida com os equipamentos no PvP',()=>{
   const st=stored()
   const h=diane(st)
-  assert.equal(h.maxHp,3131)
-  assert.equal(heroEffectiveCombatHp(st,h,2000),5131)
+  assert.equal(h.maxHp,3771)
+  assert.equal(heroEffectiveCombatHp(st,h,2000),5771)
   const sheet=heroCombatSheetFromProfile(st,'pecado_diane',100)
-  assert.equal(sheet.maxHp,5131)
-  assert.equal(sheet.hp,5131)
+  assert.equal(sheet.maxHp,5771)
+  assert.equal(sheet.hp,5771)
   assert.equal(heroHpToPersistent(sheet.hp,sheet.maxHp,5071),5071)
 })
 
 test('HP parcial, HP zero e limite superior usam a mesma proporção efetiva',()=>{
   const partial=stored({hp:2535}),h=diane(partial)
-  const expected=Math.round(2535/5071*5131)
+  const expected=Math.round(2535/5071*5771)
   assert.equal(heroEffectiveCombatHp(partial,h,2000),expected)
   assert.equal(heroCombatSheetFromProfile(partial,'pecado_diane',100).hp,expected)
   assert.equal(heroEffectiveCombatHp(stored({hp:0}),diane(stored({hp:0})),2000),0)
-  assert.equal(heroEffectiveCombatHp(stored({hp:9000}),diane(stored({hp:9000})),2000),5131)
+  assert.equal(heroEffectiveCombatHp(stored({hp:9000}),diane(stored({hp:9000})),2000),5771)
 })
 
 test('sem equipamento, cura e batalha continuam na mesma escala',()=>{
   const st={...stored({hp:3071}),equipment_hp:0}
-  assert.equal(heroEffectiveCombatHp(st,diane(st),0),3131)
+  assert.equal(heroEffectiveCombatHp(st,diane(st),0),3771)
   assert.equal(heroCombatSheetFromProfile(st,'pecado_diane',100).hp,3131)
 })
 
