@@ -148,7 +148,8 @@ export function classPvpDefense({
   const base=classDefense({classId:id,applied,damage:incoming,roll,
     hp,maxHp,awakeningStage:0,context:'pvp'})
   let n=base.damage,healAfter=0,technique=null,shieldAbsorbed=0
-  if(base.dodged){
+  const monkAwakenedDodge=id==='monk'&&stage>=1&&!base.dodged&&roll>=.03&&roll<.04
+  if(base.dodged||monkAwakenedDodge){
     if(id==='monk'&&stage>=2){state.counter=true
       if(stage>=3)state.chi=Math.min(2,Number(state.chi||0)+1)
       if(stage>=4)state.guard=true
