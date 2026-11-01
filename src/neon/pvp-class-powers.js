@@ -6,6 +6,17 @@ import {classAttack,classDefense,classCritBonus} from './game-catalog.js'
 const stageOf=(applied,stage)=>applied?Math.max(0,Math.min(5,Math.floor(Number(stage)||0))):0
 const clamp=(v,low,high)=>Math.max(low,Math.min(high,Number(v)||0))
 const rounded=(n)=>Math.max(0,Math.round(Number(n)||0))
+// Role-tailored PvP strength at Awakening V. Scale linearly for I–V.
+// Heroes gain +700 HP, +75 ATK, +100 DEF and +25 SPD at Lv.100;
+// without a controlled PvP bridge, no classic class can compete at full build.
+// Bonuses are combat-only and never touch stored character stats or PvE.
+export const PVP_AWAKENING_ROLES=Object.freeze({
+ warrior:{attack:.11,defense:.11},assassin:{attack:.16,defense:.06},
+ mage:{attack:.16,defense:.06},archer:{attack:.15,defense:.07},
+ paladin:{attack:.06,defense:.18},berserker:{attack:.20,defense:.06},
+ monk:{attack:.10,defense:.12},necromancer:{attack:.13,defense:.10},
+ druid:{attack:.08,defense:.17},samurai:{attack:.16,defense:.07}
+})
 const addShield=(s,maxHp,ratio)=>{
   if(Number(s.shieldsCreated||0)>=2)return
   const amount=Math.ceil(Math.max(1,Number(maxHp)||1)*ratio)
@@ -55,7 +66,7 @@ export function classPvpAttack({
   }else if(id==='mage'){
     if(base.proc&&stage>=1){bonus+=.02;trigger('Arcano Amplificado')}
     if(stage>=3&&(index%6===0||base.proc))state.charges=Math.min(2,Number(state.charges||0)+1)
-    if(stage>=2&&index%8===0){
+    if(stage>=2&&index%(stage>=5?6:8)===0){
       bonus+=.10
       if(stage>=3&&state.charges>0){bonus+=stage>=5?.09:.05;state.charges--}
       trigger('Explosão Arcana')
@@ -114,7 +125,7 @@ export function classPvpAttack({
       trigger(technique||'Drenagem Superior')
     }
   }else if(id==='druid'){
-    if(index%8===0&&hp>0){
+    if(index%(stage>=5?4:stage>=3?6:8)===0&&hp>0){
       const pct=stage>=5?(ratio<.35?.04:.03):stage>=3?.025:.02
       heal=Math.max(heal,Math.floor(maxHp*pct))
       if(stage>=3){addShield(state,maxHp,stage>=5?.03:.02);trigger('Semente Curativa')}
@@ -132,7 +143,9 @@ export function classPvpAttack({
     }else if(stage>=3){state.focus=Math.min(3,Number(state.focus||0)+1)}
   }
   // Additional PvP-only damage is bounded even when effects coincide.
-  const result=Math.max(1,Math.round(base.damage*(1+clamp(bonus,0,.22))))
+  const role=PVP_AWAKENING_ROLES[id]||{attack:0,defense:0}
+  const roleBonus=Number(role.attack||0)*stage/5
+  const result=Math.max(1,Math.round(base.damage*(1+clamp(bonus,0,.22))*(1+roleBonus)))
   return {damage:result,heal:Math.max(0,heal),proc:base.proc,
     lastProcAttack:base.lastProcAttack,awakeningState:state,technique,
     skillActivated:Boolean(technique)}
@@ -158,7 +171,8 @@ export function classPvpDefense({
       healAfter:0,technique:stage>=2?'Reflexos Supremos':null}
   }
   const ratio=clamp(Number(hp)/Math.max(1,Number(maxHp)||1),0,1)
-  let reduction=0
+  const role=PVP_AWAKENING_ROLES[id]||{attack:0,defense:0}
+  let reduction=Number(role.defense||0)*stage/5
   if(id==='warrior'){
     if(stage>=2&&ratio<.5)reduction+=.01
     if(stage>=4){
@@ -184,7 +198,7 @@ export function classPvpDefense({
   }else if(id==='samurai'&&stage>=4&&state.parry){
     reduction+=.08;state.parry=false;technique='Parada Perfeita'
   }
-  n=Math.max(0,Math.round(n*(1-Math.min(.12,reduction))))
+  n=Math.max(0,Math.round(n*(1-Math.min(.24,reduction))))
   if(stage>=3&&Number(state.shield||0)>0){
     shieldAbsorbed=Math.min(n,Number(state.shield)||0)
     n-=shieldAbsorbed
