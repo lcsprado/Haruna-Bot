@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {renderRacing} from '../web/racing-ui.js'
+import {RACING_COLORS,racingColor} from '../src/neon/racing-rules.js'
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8')
 const carNames=['Gol Quadrado','Uno Mille','Corsa Wind','Palio Fire']
 const catalog={
@@ -54,4 +55,13 @@ test('racing fetches only on page activation and actions, PWA invalidates old be
  assert.match(sw,/Promise\.allSettled\(SHELL\.filter/)
  assert.match(read('web/styles.css'),/GARAGEM ALPHA/)
  assert.match(read('web/vercel.json'),/racing-ui\.js/)
+})
+
+test('beta API exposes the same 12 cosmetic paints stored by the bot',()=>{
+ const api=read('src/neon/web-api.js'),racing=read('src/neon/racing-alpha.js')
+ assert.equal(RACING_COLORS.length,12)
+ assert.equal(racingColor('azul')?.hex,'#2979D6')
+ assert.match(api,/case 'racing\.paint': return racePaint/)
+ assert.match(api,/colors:RACING_COLORS/)
+ assert.match(racing,/UPDATE racing_cars_alpha SET color_id=\$3 WHERE jid=\$1 AND id=\$2/)
 })

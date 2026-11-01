@@ -5,6 +5,21 @@ export const RACING_CARS=Object.freeze([
   {id:'corsa',name:'Corsa Wind',price:150000,stats:{speed:50,accel:49,grip:65,brake:62,durability:54}},
   {id:'palio',name:'Palio Fire',price:150000,stats:{speed:66,accel:48,grip:47,brake:50,durability:55}}
 ])
+// Pinturas puramente visuais: não interferem na mecânica das corridas.
+export const RACING_COLORS=Object.freeze([
+  {id:'prata',name:'Prata',emoji:'🩶',hex:'#BFC4CC'},
+  {id:'branco',name:'Branco',emoji:'⚪',hex:'#F3F4F6'},
+  {id:'preto',name:'Preto',emoji:'⚫',hex:'#242A34'},
+  {id:'cinza',name:'Cinza',emoji:'🔘',hex:'#777E8A'},
+  {id:'vermelho',name:'Vermelho',emoji:'🔴',hex:'#D8333F'},
+  {id:'azul',name:'Azul',emoji:'🔵',hex:'#2979D6'},
+  {id:'verde',name:'Verde',emoji:'🟢',hex:'#3EAD6A'},
+  {id:'amarelo',name:'Amarelo',emoji:'🟡',hex:'#E8BD32'},
+  {id:'laranja',name:'Laranja',emoji:'🟠',hex:'#EF8732'},
+  {id:'roxo',name:'Roxo',emoji:'🟣',hex:'#8650C9'},
+  {id:'rosa',name:'Rosa',emoji:'🩷',hex:'#E888B7'},
+  {id:'dourado',name:'Dourado',emoji:'🏅',hex:'#CBA63A'}
+])
 export const RACING_PARTS=Object.freeze([
   {id:'motor',name:'🔧 Motor',benefit:{speed:7,accel:2}},
   {id:'cambio',name:'⚙️ Câmbio',benefit:{accel:7,speed:1}},
@@ -46,6 +61,10 @@ export const RACING_MIN_CONDITION=35
 export const RACING_MAX_CARS=4
 export const RACING_MAX_TUNING=RACING_PARTS.length*RACING_UPGRADES.length
 export const RACING_TOTAL_UPGRADE_COST=RACING_PARTS.length*RACING_UPGRADES.reduce((s,l)=>s+l.price,0)
+export function racingColor(input){
+ const id=String(input||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+ return RACING_COLORS.find(x=>x.id===id)||null
+}
 export function racingPart(input){return RACING_PARTS.find(x=>x.id===String(input||'').toLowerCase())||null}
 export function racingModel(input){return RACING_CARS.find(x=>x.id===String(input||'').toLowerCase())||null}
 export function racingTrack(input){return RACING_TRACKS.find(x=>x.id===String(input||'').toLowerCase())||null}

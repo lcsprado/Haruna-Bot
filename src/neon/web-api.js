@@ -44,8 +44,8 @@ import {
   patrimonyLeaderboard, hireCltUberDriver,
   getAlphaContractBoard, acceptAlphaContract, claimAlphaContract, changeAlphaReputation
 } from './progression.js'
-import {raceState,raceBuy,raceEquip,raceUpgrade,raceRepair,raceSolo,raceChallenge,raceAccept,raceCancel,raceRanking,raceHistory} from './racing-alpha.js'
-import {RACING_CARS,RACING_PARTS,RACING_UPGRADES,RACING_TRACKS,RACING_STRATEGIES,RACING_TIERS,RACING_TOTAL_UPGRADE_COST} from './racing-rules.js'
+import {raceState,raceBuy,raceEquip,racePaint,raceUpgrade,raceRepair,raceSolo,raceChallenge,raceAccept,raceCancel,raceRanking,raceHistory} from './racing-alpha.js'
+import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TRACKS,RACING_STRATEGIES,RACING_TIERS,RACING_TOTAL_UPGRADE_COST} from './racing-rules.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
@@ -1206,6 +1206,7 @@ async function runAction(session,name,body={}){
   switch(name){
     case 'racing.buy': return raceBuy(jid,String(body.modelId||''))
     case 'racing.equip': return raceEquip(jid,String(body.carId||''))
+    case 'racing.paint': return racePaint(jid,String(body.carId||''),String(body.colorId||''))
     case 'racing.upgrade': return raceUpgrade(jid,String(body.partId||''))
     case 'racing.repair': return raceRepair(jid)
     case 'racing.solo': return raceSolo(jid,[String(body.tier||'rua'),String(body.track||'cidade'),String(body.strategy||'equilibrada')])
@@ -1586,8 +1587,8 @@ export async function handleWebApi(req,res){
         session.chatJid?db.query("SELECT c.id,c.challenger,c.challenged,c.track_id,c.strategy_id,c.created_at,c.expires_at, u.push_name AS challenger_name FROM racing_challenges_alpha c LEFT JOIN users u ON u.jid=c.challenger WHERE c.chat=$1 AND c.status='pending' AND c.expires_at>$2 AND (c.challenger=$3 OR c.challenged=$3) ORDER BY c.id DESC LIMIT 5",[session.chatJid,Math.floor(Date.now()/1000),session.jid]):Promise.resolve({rows:[]})
       ])
       res.setHeader('cache-control','private, no-store')
-      json(res,200,{ok:true,data:{garage,ranking,history,challenges:challenges.rows,
-        catalog:{cars:RACING_CARS,parts:RACING_PARTS,levels:RACING_UPGRADES,tracks:RACING_TRACKS,strategies:RACING_STRATEGIES,tiers:RACING_TIERS,totalUpgradeCost:RACING_TOTAL_UPGRADE_COST},serverTime:Date.now()}})
+      json(res,200,{ok:true,data:sanitizePrivateRefs({garage,ranking,history,challenges:challenges.rows,
+        catalog:{cars:RACING_CARS,colors:RACING_COLORS,parts:RACING_PARTS,levels:RACING_UPGRADES,tracks:RACING_TRACKS,strategies:RACING_STRATEGIES,tiers:RACING_TIERS,totalUpgradeCost:RACING_TOTAL_UPGRADE_COST},serverTime:Date.now()},session)})
       return true
     }
 
