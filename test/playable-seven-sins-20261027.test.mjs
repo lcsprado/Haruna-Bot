@@ -274,8 +274,8 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   const hero=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   assert.match(ui,/const heroSheet=await getPlayableHeroCombatSheet\(jid,p\)/);
   assert.match(ui,/const heroSheetStatus=await getPlayableHeroCombatSheet\(statusTarget,p\)/);
-  assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheet\)/);
-  assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheetStatus\)/);
+  assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\)/);
+  assert.match(ui,/formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\)/);
   const profileStart=ui.indexOf('👤 *PERFIL —');
   const profileEnd=ui.indexOf('await sock.sendMessage(chat,{text}',profileStart);
   const profile=ui.slice(profileStart,profileEnd);
@@ -283,16 +283,16 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   const status=ui.slice(statusStart,ui.indexOf('🏆 Vitórias:',statusStart));
   assert.ok(profileStart>=0&&profileEnd>profileStart);
   assert.ok(statusStart>=0);
-  assert.match(profile,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet\):`🧙 Classe:/);
+  assert.match(profile,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\):`🧙 Classe:/);
   assert.match(profile,/⚜️ Passiva:/);
   assert.doesNotMatch(profile,/Classe original|Passiva da classe original|guardada|inativa em PvP/);
-  assert.match(status,/heroSheetStatus\?formatPlayableHeroCombatSheet\(heroSheetStatus\):`🧙 Classe:/);
+  assert.match(status,/heroSheetStatus\?formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\):`🧙 Classe:/);
   assert.doesNotMatch(status,/Classe original guardada/);
   assert.doesNotMatch(ui,/preservada; ativa no PvP/);
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
   assert.match(hero,/BÔNUS EXCLUSIVO DA COLLAB/);
-  assert.match(hero,/os atributos normais do equipamento já estão somados/);
+  assert.match(hero,/Equipamentos aplicam normalmente/);
 });
 
 test('Maestria cara: XP acumulado, desbloqueio pago e limite diario',()=>{
