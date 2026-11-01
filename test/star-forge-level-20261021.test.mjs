@@ -79,7 +79,7 @@ test('Raid HP uses stars only on real forged equipment level',()=>{
   assert.match(start,/Number\(forged\.level\)===lev\(itemId\)\?Number\(forged\.stars\):1/)
   assert.match(start,/const weaponStars=activeStars\(st\.weapon_id\)/)
   assert.match(start,/const armorStars=activeStars\(st\.armor_id\)/)
-  assert.match(start,/const gearHp=Number\(w\?\.hp\|\|0\)\+Number\(a\?\.hp\|\|0\)\+Number\(h\?\.hp\|\|0\)/)
+  assert.match(start,/const gearHp=Number\(w\?\.hp\|\|0\)\+Number\(a\?\.hp\|\|0\)\+Number\(b\?\.hp\|\|0\)\+Number\(h\?\.hp\|\|0\)/)
 })
 
 test('Titan armor HP preview follows real level rather than multiplying a maxed forged copy',()=>{
