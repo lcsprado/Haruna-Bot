@@ -162,8 +162,7 @@ export function formatCharacterBaseStatus({profile,heroSheet=null,awakeningStage
     '👢 VEL: *'+heroNumbers(profile.spd)+'*',
     ...(passive?['⚜️ Passiva: *'+passive.name+'*']:[]),
     '🌌 Despertar: *'+roman+'/V*',
-    ...(latestSkill?['✨ Habilidade do Despertar '+roman+': '+latestSkill]:[]),
-    '💡 Atributos atuais sem arma, armadura, botas, elmo, encantamentos ou pets.'
+    ...(latestSkill?['✨ Habilidade do Despertar '+roman+': '+latestSkill]:[])
   ].join('\n');
 }
 
