@@ -291,8 +291,17 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.doesNotMatch(ui,/preservada; ativa no PvP/);
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
-  assert.match(hero,/BÔNUS EXCLUSIVO DA COLLAB/);
-  assert.match(hero,/Equipamentos aplicam normalmente/);
+  const sheet=hero.slice(hero.indexOf('export function formatPlayableHeroCombatSheet('),
+    hero.indexOf('export async function listPlayableHeroes('));
+  for(const visible of ['PERSONAGEM ATIVO','Nível:','Maestria:','HP:','ATK:','DEF:','VEL:','Técnica:']){
+    assert.ok(sheet.includes(visible),visible+' deve aparecer na ficha');
+  }
+  for(const verbose of ['BASE FIXA DO HERÓI','EVOLUÇÃO DO HERÓI','BÔNUS PRÓPRIO',
+    'ATRIBUTOS PERMANENTES','EQUIPAMENTOS E ENCANTAMENTOS','TOTAL REAL DE COMBATE',
+    'VS. ','BÔNUS EXCLUSIVO DA COLLAB','Classe:','Diferença do herói',
+    '!heroi atributos','Arma do personagem','Armadura do personagem']){
+    assert.ok(!sheet.includes(verbose),verbose+' não deve poluir a ficha');
+  }
 });
 
 test('Maestria cara: XP acumulado, desbloqueio pago e limite diario',()=>{
@@ -464,12 +473,11 @@ test('Creditar Raid 75 somente após vitória elegível, sem reduzir chaves ou r
   assert.match(heroes,/if\(!amount\)return false/);
   assert.match(heroes,/SELECT jid FROM users WHERE jid=\$1 FOR UPDATE/);
 });
-test('Ficha do herói passa a indicar arma correspondente e armadura com bônus de collab',()=>{
+test('Bônus de arma e armadura permanecem no combate, mas não poluem a ficha do herói',()=>{
   const h=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   assert.match(h,/heroCollabGearBonus\(heroId,profile\.weapon_id,profile\.armor_id,'pvp'\)/);
-  assert.match(h,/BÔNUS EXCLUSIVO DA COLLAB/);
-  assert.match(h,/Arma do personagem/);
-  assert.match(h,/Armadura do personagem/);
+  const sheet=h.slice(h.indexOf('export function formatPlayableHeroCombatSheet('),h.indexOf('export async function listPlayableHeroes('));
+  assert.doesNotMatch(sheet,/BÔNUS EXCLUSIVO DA COLLAB|Arma do personagem|Armadura do personagem/);
   const d=heroDefense({heroId:'pecado_diane',damage:1000,gear:{defense:.04}});
   assert.equal(d.damage,920,'defesa de Heavy Metal deve acumular com armadura de Diane');
 });
