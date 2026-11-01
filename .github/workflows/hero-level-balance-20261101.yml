@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - name: PvP, Boss, Raid, HP, hero progression and hero ownership
         run: node --test test/playable-seven-sins-20261027.test.mjs test/hero-hp-cura-pvp-20261031.test.mjs
