@@ -322,7 +322,10 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
   const sheet=hero.slice(hero.indexOf('export function formatPlayableHeroCombatSheet('),
+    hero.indexOf('export function formatPlayableHeroBaseSheet('));
+  const baseSheet=hero.slice(hero.indexOf('export function formatPlayableHeroBaseSheet('),
     hero.indexOf('export async function listPlayableHeroes('));
+  assert.match(baseSheet,/baseWithoutGear/);
   for(const visible of ['PERSONAGEM ATIVO','Nível:','Maestria:','HP:','ATK:','DEF:','VEL:','Técnica:']){
     assert.ok(sheet.includes(visible),visible+' deve aparecer na ficha');
   }
