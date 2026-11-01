@@ -10,6 +10,7 @@ import {LEGENDARY_BOX_GEAR,pickLegendaryBoxGear} from './legendary-box-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
+import {classPvpAttack,classPvpDefense,classPvpCritBonus} from './pvp-class-powers.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -2814,6 +2815,8 @@ const heroModes=(await client.query(`SELECT m.jid,m.hero_species,COALESCE(u.stag
   WHERE m.jid=ANY($1::text[]) AND m.hero_species IS NOT NULL
     AND EXISTS(SELECT 1 FROM pet_collection p WHERE p.jid=m.jid AND p.species=m.hero_species)`,[ids])).rows;
 const activeHero=jid=>heroModes.find(row=>row.jid===jid)||null;
+const awakeningRows=(await client.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows;
+const pvpAwakeningStage=jid=>Math.max(0,Math.min(5,Number(awakeningRows.find(row=>row.jid===jid)?.stage||0)));
 const aHero=activeHero(attackerJid),bHero=activeHero(defenderJid);
 const aHeroStats=aHero?heroCombatStats(a,aHero.hero_species,aHero.hero_level):null;
 const bHeroStats=bHero?heroCombatStats(b,bHero.hero_species,bHero.hero_level):null;
@@ -2876,8 +2879,8 @@ jid:attackerJid,name:au?.push_name||'Jogador',
 hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)):Number(a.hp),maxHp:Number(aHeroStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),
 atk:Math.round((Number(aHeroStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
 def:Number(aHeroStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
-classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),attackIndex:0,lastProcAttack:0,
-crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied&&!aHero)),
+classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,awakeningStage:aHero?0:pvpAwakeningStage(attackerJid),awakeningState:{},heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),attackIndex:0,lastProcAttack:0,
+crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classPvpCritBonus(a.class_id,a.class_applied&&!aHero,aHero?0:pvpAwakeningStage(attackerJid))),
 spd:Number(aHeroStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
 enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
 petSpeed:apSpd,teamSpeed:aSynergySpd,
@@ -2888,8 +2891,8 @@ jid:defenderJid,name:bu?.push_name||'Jogador',
 hp:bHeroStats?heroEffectiveCombatHp(b,bHeroStats,Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0)):Number(b.hp),maxHp:Number(bHeroStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),
 atk:Math.round((Number(bHeroStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
 def:Number(bHeroStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
-classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),attackIndex:0,lastProcAttack:0,
-crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied&&!bHero)),
+classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,awakeningStage:bHero?0:pvpAwakeningStage(defenderJid),awakeningState:{},heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),attackIndex:0,lastProcAttack:0,
+crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classPvpCritBonus(b.class_id,b.class_applied&&!bHero,bHero?0:pvpAwakeningStage(defenderJid))),
 spd:Number(bHeroStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
 enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
@@ -2934,44 +2937,50 @@ const classRoll=Math.random()
 const oldLastProcAttack=from.lastProcAttack
 const attackArgs={classId:from.classId,applied:from.classApplied,critical:crit,
 hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
-lastProcAttack:oldLastProcAttack,roll:classRoll}
+lastProcAttack:oldLastProcAttack,roll:classRoll,awakeningStage:from.awakeningStage,awakeningState:from.awakeningState}
 const initialState=from.heroState;
 const attack=from.heroId
   ?heroPvpAttack({heroId:from.heroId,damage:crit?Math.round(adjusted*1.6):adjusted,
       hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
       masteryStage:from.heroMasteryStage,state:initialState,gear:from.heroGear})
-  :classAttack({...attackArgs,damage:crit?Math.round(adjusted*1.6):adjusted});
+  :classPvpAttack({...attackArgs,damage:crit?Math.round(adjusted*1.6):adjusted});
 const noPetAttack=Number(from.petBonus?.damage||0)>0
   ?(from.heroId?heroPvpAttack({heroId:from.heroId,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet,
       hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
       masteryStage:from.heroMasteryStage,state:initialState,gear:from.heroGear})
-    :classAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet}))
+    :classPvpAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet}))
   :attack;
 if(from.heroId)from.heroState=attack.state;
+else from.awakeningState=attack.awakeningState;
 from.lastProcAttack=attack.lastProcAttack;
 const defenseRoll=Math.random();
+const defenseStateBefore=to.awakeningState;
+const defenseArgs={classId:to.classId,applied:to.classApplied,damage:dodged?0:attack.damage,roll:defenseRoll,hp:to.hp,maxHp:to.maxHp,awakeningStage:to.awakeningStage,awakeningState:defenseStateBefore};
 const defense=to.heroId
   ?heroPvpDefense({heroId:to.heroId,damage:dodged?0:attack.damage,state:to.heroState,gear:to.heroGear})
-  :classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage,roll:defenseRoll});
+  :classPvpDefense(defenseArgs);
 const classDamage=defense.damage;
 const withoutPetClassDamage=noPetAttack===attack?classDamage:
   (to.heroId?heroPvpDefense({heroId:to.heroId,damage:dodged?0:noPetAttack.damage,state:to.heroState,gear:to.heroGear}).damage:
-    classDefense({classId:to.classId,applied:to.classApplied,damage:noPetAttack.damage,roll:defenseRoll}).damage);
+    classPvpDefense({...defenseArgs,damage:dodged?0:noPetAttack.damage}).damage);
 if(to.heroId)to.heroState=defense.state;
+else to.awakeningState=defense.awakeningState;
 const petDefense=Number(to.petBonus?.defense||0)
-const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-petDefense)))
-const noPetDmg=dodged?0:Math.max(1,Math.round(withoutPetClassDamage*(1-petDefense)))
+const dmg=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)))
+const noPetDmg=dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense)))
 const targetHpBefore=to.hp
 const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
 const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
+const defenseBlocked=dodged?0:Math.max(0,Number(attack.damage||0)-Number(classDamage||0))
 to.hp=Math.max(0,to.hp-dmg)
 const classHealBefore=from.hp
 if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
 const classHealed=Math.max(0,from.hp-classHealBefore)
 log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
 actualDamage:targetHpBefore-to.hp,crit:!dodged&&crit,dodged,hp:to.hp,
-petExtraDamage,petDamageBlocked,petCrit:!dodged&&petCrit,petDodge:dodged,
-  ...(attack.technique?{heroTechnique:attack.technique,heroId:from.heroId}:{} )})
+petExtraDamage,petDamageBlocked,defenseBlocked,shieldAbsorbed:Number(defense.shieldAbsorbed||0),petCrit:!dodged&&petCrit,petDodge:dodged||Boolean(defense.dodged),
+  ...(attack.technique?{heroTechnique:from.heroId?attack.technique:undefined,classTechnique:!from.heroId?attack.technique:undefined,heroId:from.heroId}:{} ),
+  ...(defense.technique?{defenseTechnique:defense.technique}:{} )})
 if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
 const cooldown=Number(from.petBonus?.healCooldown||0)
 if(from.hp>0&&cooldown>0&&from.petHealUses<3&&Number(from.petBonus?.healPct||0)>0&&
@@ -2992,6 +3001,20 @@ hit(second,first)
 const roundCount=Math.max(A.attackIndex,B.attackIndex)
 const decidedByLimit=A.hp>0&&B.hp>0
 const ending={attackerHp:A.hp,defenderHp:B.hp}
+const pvpMetrics=Object.fromEntries([A,B].map(fighter=>{
+ const outgoing=log.filter(x=>x.fromJid===fighter.jid&&!x.classHeal)
+ const incoming=log.filter(x=>x.toJid===fighter.jid&&!x.classHeal)
+ return [fighter.jid,{
+  damageDealt:outgoing.reduce((s,x)=>s+Number(x.actualDamage||0),0),
+  damageReceived:incoming.reduce((s,x)=>s+Number(x.actualDamage||0),0),
+  damageBlocked:incoming.reduce((s,x)=>s+Number(x.defenseBlocked||0)+Number(x.petDamageBlocked||0),0),
+  shieldAbsorbed:incoming.reduce((s,x)=>s+Number(x.shieldAbsorbed||0),0),
+  healed:log.filter(x=>x.fromJid===fighter.jid&&(x.classHeal||x.petHeal)).reduce((s,x)=>s+Number(x.heal||0),0),
+  criticalHits:outgoing.filter(x=>x.crit).length,
+  dodges:incoming.filter(x=>x.dodged||x.petDodge).length,
+  skillsUsed:outgoing.filter(x=>x.classTechnique||x.heroTechnique).length+incoming.filter(x=>x.defenseTechnique).length
+ }]
+}))
 const persistentPvpHp=fighter=>fighter.heroId
   ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp):fighter.hp;
 let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
@@ -3024,7 +3047,7 @@ const loseXpGain=Math.round(15*xpMultiplier)
 const winExp=await applyExp(client,winner.jid,winXpGain)
 const loseExp=await applyExp(client,loser.jid,loseXpGain)
 return {
-ok:true,winner,loser,reward,log,opening,ending,roundCount,decidedByLimit,
+ok:true,winner,loser,reward,log,opening,ending,pvpMetrics,roundCount,decidedByLimit,
 winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
 final:{
 attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((A.heroId?A.heroPersistentMaxHp:A.maxHp)*0.25)),

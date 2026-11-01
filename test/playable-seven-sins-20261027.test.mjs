@@ -448,13 +448,13 @@ test('PvP de herois da collab tem teto ofensivo, defensivo, cura e suprema',()=>
   }
 });
 
-test('PvP preserva classAttack para nao-collab e normaliza HP dos herois',()=>{
+test('PvP aplica Despertar limitado para classes e preserva HP dos herois',()=>{
   const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
   const pvp=db.slice(db.indexOf('export async function battle('),db.indexOf('export async function combatLeaderboard('));
   assert.match(pvp,/heroPvpAttack\(\{heroId:from\.heroId/);
   assert.match(pvp,/heroPvpDefense\(\{heroId:to\.heroId/);
-  assert.match(pvp,/classAttack\(\{\.\.\.attackArgs/);
-  assert.match(pvp,/classDefense\(\{classId:to\.classId/);
+  assert.match(pvp,/classPvpAttack\(\{\.\.\.attackArgs/);
+  assert.match(pvp,/classPvpDefense\(defenseArgs\)/);
   assert.match(pvp,/Boolean\(a\.class_applied\)&&!aHero/);
   assert.match(pvp,/heroHpToPersistent\(fighter\.hp,fighter\.maxHp,fighter\.heroPersistentMaxHp\)/);
   assert.match(pvp,/loser\.heroId\?loser\.heroPersistentMaxHp:loser\.maxHp/);
