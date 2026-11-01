@@ -9346,12 +9346,14 @@ roubaEngine=createRoubaRoubaEngine({db,
 void roubaEngine.open().then(()=>roubaEngine.start())
   .catch(err=>console.error('[ROUBA] inicializacao',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
+// A edição de Bingo de 31/10 usa chave isolada e pode rodar no dataset ativo
+// mesmo no modo de recuperação, sem ressuscitar os eventos históricos.
+startBingoRebootScheduler(sock)
 if(!temporaryRecoveryMode){
 startLabirintoScheduler(sock)
-startBingoRebootScheduler(sock)
 void announceBauGolpeEvent(sock).catch(err=>console.error('[BAU GOLPE] scheduler',err?.message||err))
 }else{
-console.log('[TEMPORARY] eventos históricos Bingo/Labirinto/Baú bloqueados; leilão isolado de 20/10 habilitado')
+console.log('[TEMPORARY] Labirinto/Baú históricos bloqueados; Bingo Halloween isolado habilitado')
 }
 ;(async()=>{
 try{
