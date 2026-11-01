@@ -85,7 +85,7 @@ test('TODOS contra TODOS: 136 pares nos dois lados, com e sem equipamento identi
   const equipped=auditSeventeen({duelsPerOrder:40,gear:true})
   for(const audit of [bare,equipped]){
     assert.equal(audit.combatants,17)
-    assert.equal(audit.pairs,136)
+    assert.equal(audit.pairs.length,136)
     assert.equal(audit.battles,10880)
     assert.equal(audit.ranking.length,17)
     assert.equal(audit.pairs.length,136)
