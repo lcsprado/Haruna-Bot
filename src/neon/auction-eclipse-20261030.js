@@ -130,7 +130,7 @@ function status(state){
     '\n🏆 Maior lance: '+(state.high?fmt(state.high.value)+' — '+clean(state.high.name):'Nenhum')+
     '\n⏳ Encerra às *'+clock(state.ends)+'* (Brasília)'+
     '\n⚡ Lance nos últimos 15s: +20s de prorrogação (máx. 2min extras)'+
-    '\n📋 *Prêmios dos 4 lotes:*\n'+publicCatalog(state.lots)+
+
     '\n📩 *!lance 8000000* ou *!lance +300000* • *!leilao*'
 }
 async function prize(c,jid,packageItems){
@@ -201,15 +201,17 @@ async function tick(sock){
           state.preAnnounced=true
           await queueAuctionBidNotices(c,{
             key:KEY,version:0,groups:state.groups,origin:'system',
-            message:'🔨🌈 *LEILÃO DOS SETE PECADOS — HOJE ÀS 12H!*\\n\\n'+
-              '🎁 *LOTE 1:* Invocação dos 7 Pecados (7 essências diferentes)\\n'+
-              '⏳ *LOTE 2:* Ampulheta Dourada XP 2× por 2h + Espada do Guardião\\n'+
-              '🔥 *LOTE 3:* Selo de Potência +5% ATK permanente + 150.000 XP\\n'+
-              '🌈 *LOTE 4:* Invocação dos 7 Pecados (7 essências diferentes)\\n\\n'+
-              '💰 Abertura de *R$ 8.000.000* em todos os lotes.\\n'+
-              '📈 Lances em incrementos de *R$ 300.000*.\\n'+
-              '⏱️ 2 minutos por lote, com prorrogação anti-último-segundo.\\n'+
-              '📢 *Somente no grupo AlphaBot*. Use *!leilao* para conferir.'
+            message:`🔨🌈 *LEILÃO DOS SETE PECADOS — HOJE ÀS 12H!*
+
+🎁 *4 LOTES SURPRESA*
+✨ Prêmios raros e recompensas especiais.
+🔒 O prêmio de cada lote será revelado somente na sua abertura.
+
+💰 Lance inicial: *R$ 8.000.000* por lote.
+📈 Incrementos de *R$ 300.000*.
+⏱️ 2 minutos por lote, com prorrogação nos últimos segundos.
+📢 Exclusivo do grupo AlphaBot.
+📋 Use *!leilao* para acompanhar.`
           })
         })
         await flushAuctionBidNotices(db,sock,KEY,{limit:8})
@@ -244,11 +246,11 @@ async function tick(sock){
         state.lot=0
         beginLot(state,now)
         outgoing='🔨💎 *LEILÃO DOS SETE PECADOS COMEÇOU!*\n\n'+
-          '🎁 *PRÊMIOS DIVULGADOS — 4 LOTES:*\n'+publicCatalog(state.lots)+
+           '🎁 *4 LOTES SURPRESA!* O prêmio de cada lote será revelado na sua abertura.'+
           '\n\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
           '\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
           '\n⏱️ *2 minutos por lote*. Lance nos últimos 15s: +20s, até +2min.'+
-          '\n👀 Prêmios, lances e líderes são públicos nos grupos e no Web.'+
+           '\n👀 Apenas o prêmio do lote em disputa é divulgado. Lances e líderes são públicos.'+
           '\n✅ O maior lance é reservado; se superado, é devolvido.'+
           '\n\n'+status(state)
       }else if(state.phase==='running' && now>=Number(state.ends||0)){
@@ -309,7 +311,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     return true
   }
   if(Date.now()<START){
-    await reply('🔨💎 *LEILÃO DOS SETE PECADOS AGENDADO*\n⏰ Começa às *12h00* (Brasília) de 01/11.\n🎁 *PRÊMIOS PÚBLICOS:*\n'+publicCatalog(createPublicLots())+'\n💰 Lance inicial de cada lote: *'+fmt(OPENING)+'* • incremento: *'+fmt(STEP)+'*.\n📋 Volte com *!leilao* às 12h00.')
+    await reply('🔨💎 *LEILÃO DOS SETE PECADOS AGENDADO*\n⏰ Começa às *12h00* (Brasília) de 01/11.\n🎁 *4 LOTES SURPRESA* — cada prêmio será revelado na abertura do respectivo lote.\n💰 Lance inicial: *'+fmt(OPENING)+'* por lote • incremento: *'+fmt(STEP)+'*.\n📋 Volte com *!leilao* às 12h00.')
     return true
   }
   if(cmd==='leilao'){
@@ -403,8 +405,13 @@ export async function getAuctionWebStatus({chat,sender}){
     title:'Leilão dos Sete Pecados',phase:now<START?'scheduled':(state.phase||'pending'),
     acceptingBids,serverTime:now,startsAt:START,lotNumber:lot?Number(state.lot)+1:null,
     totalLots:PACKAGES.length,step:lot?.step||STEP,opening:lot?.min||OPENING,
-    prizesPublic:true,prize:lot?publicPrize(lot.prize):null,
-    lots:(state.lots?.length?state.lots:createPublicLots()).map((x,i)=>({lotNumber:i+1,description:publicPrize(x.prize)})),
+    prizesPublic:state.phase==='running',prize:state.phase==='running'&&lot?publicPrize(lot.prize):null,
+    lots:(state.lots?.length?state.lots:createPublicLots()).map((x,i)=>({
+      lotNumber:i+1,
+      description:state.phase==='running'&&i===Number(state.lot)?publicPrize(x.prize):
+        state.phase==='completed'||i<Number(state.lot)?(state.history||[]).find(h=>Number(h.lot)===i)?.rewards?.join(', ')||'Lote encerrado':
+        '🎁 Lote surpresa — revelado somente na abertura'
+    })),
     nextMinimum:lot?(state.high?Number(state.high.value)+lot.step:lot.min):OPENING,
     currentBid:state.high?Number(state.high.value):null,
     leader:state.high?clean(state.high.name):null,
