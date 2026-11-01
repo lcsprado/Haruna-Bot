@@ -15,6 +15,7 @@ import {createKeyedAsyncQueue} from './chat-queue.js'
 import {groupFlashPolicy} from './group-flash-policy.js'
 import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
+import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
@@ -2360,6 +2361,8 @@ const { state, saveCreds }=await useNeonAuthState(sessionId)
 const { version }=await fetchLatestBaileysVersion()
 const groupMetadataCache=createTtlCache({ttlMs:5*60*1000,maxEntries:128})
 const whatsappMediaCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false,maxKeys:2048})
+const outboundRetryStore=createOutboundRetryStore()
+const msgRetryCounterCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false})
 let loadGroupMetadata
 const sock=makeWASocket({
 version,
@@ -2374,6 +2377,10 @@ markOnlineOnConnect:false,
 syncFullHistory:false,
 cachedGroupMetadata:jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid)),
 mediaCache:whatsappMediaCache,
+// Baileys usa o conteúdo ORIGINAL para refazer a criptografia quando o
+// destinatário recebe "Aguardando mensagem". Nunca retornar texto vazio.
+getMessage:async key=>outboundRetryStore.getMessage(key),
+msgRetryCounterCache,
 connectTimeoutMs:60000,
 defaultQueryTimeoutMs:60000,
 keepAliveIntervalMs:25000,
@@ -2387,17 +2394,22 @@ maxCommitRetries:3,
 delayBetweenTriesMs:500
 }
 })
-// Uma fila POR JOGADOR preserva a ordem das respostas. Até dois envios
-// podem ocorrer no grupo simultaneamente, sem bloqueio global dos jogadores.
+// A criptografia Signal dos grupos usa chaves mutáveis compartilhadas.
+// Serializar TODO envio por grupo (inclusive eventos automáticos) impede
+// disputas de sender-key que produzem mensagens impossíveis de ler.
 const sendWithoutQueue=sock.sendMessage.bind(sock)
 const scheduleOutbound=createBoundedOutboundScheduler({
-  maxConcurrentPerChat:2,
+  maxConcurrentPerChat:1,
   onTiming:({queueMs,transportMs,kind})=>{
     if(queueMs>=350||transportMs>=1250)
       console.warn('[OutboundLatency]',JSON.stringify({queueMs,transportMs,kind}))
   }
 })
-sock.sendMessage=(chat,content,options)=>scheduleOutbound(chat,options,()=>sendWithoutQueue(chat,content,options),content?.text?'text':'other')
+sock.sendMessage=(chat,content,options)=>scheduleOutbound(chat,options,async()=>{
+  const sent=await sendWithoutQueue(chat,content,options)
+  outboundRetryStore.remember(sent)
+  return sent
+},content?.text?'text':'other')
 const privateQrState=globalThis.__alphaPairingQr||(globalThis.__alphaPairingQr={value:null,updatedAt:0})
 if(!state.creds.registered){
 sock.ev.on('connection.update',update=>{
