@@ -3453,7 +3453,7 @@ const message='🌑⚔️ *PRÓXIMO PECADO LIBERADO! — FASE '+(index+1)+'/8*\n
 '👹 *'+String(current.name||'Boss de Evento')+'*\n'+
 '❤️ HP: *'+Number(current.maxHp||0).toLocaleString('pt-BR')+'*'+
 ' • ⚔️ ATK: *'+Number(current.atk||0)+'*\n'+
-'⏰ Evento até *20:40* (Brasília)\n'+
+'⏰ Evento até *20h* (Brasília)\n'+
 '🎯 Cause pelo menos *10.000 de dano* neste Boss para contar para a insígnia.\n'+
 '⚔️ Use *!atacar* para participar!'
 for(const chat of groupIds){
@@ -3653,17 +3653,26 @@ if(now<edition.start){
 const groups=await activeEventGroups()
 for(const group of groups){
 await sendScheduledGroupNotice(group.chat_jid,edition.key+'-aviso-1755',
-'🌈⚔️ *7 PECADOS CAPITAIS EM 5 MINUTOS!*\n\n⏰ 18h–20h (Brasília).\n👹 Oito Bosses em sequência • 5.400.000 HP totais.\n🩸 +2 essências por pecado vencido (10 mil de dano por Boss).\n🎁 '+(editionBonusEssences>0?'+'+editionBonusEssences+' essências por completar as 8 fases.':'Sem essências extras ao completar as 8 fases hoje.')+'\n🩸 *'+editionTotalEssences+' essências = '+editionSummons+' invocações* nesta edição.\n♻️ Armas e armaduras repetidas ficam no inventário.\n⚔️ Prepare-se para *!atacar*!')
+'🌈⚔️ *7 PECADOS CAPITAIS EM 5 MINUTOS!*\n\n⏰ 18h–20h (Brasília).\n👹 Oito Bosses em sequência • 1.920.000 HP totais (sem escalonamento por participante).\n🩸 +2 essências por pecado vencido (10 mil de dano por Boss).\n🎁 '+(editionBonusEssences>0?'+'+editionBonusEssences+' essências por completar as 8 fases.':'Sem essências extras ao completar as 8 fases hoje.')+'\n🩸 *'+editionTotalEssences+' essências = '+editionSummons+' invocações* nesta edição.\n♻️ Armas e armaduras repetidas ficam no inventário.\n⚔️ Prepare-se para *!atacar*!')
 }
 return
 }
 const event=await tickSetePecados(now)
 if(event.spawned){
-await sendEventToGroups('🌈⚔️ *COLLAB DOS 7 PECADOS COMEÇOU!*\n\n⏰ 18h–20h (Brasília)\n👹 Sete Pecados + Azazel • oito Bosses sequenciais • 5.400.000 HP no total.\n🎯 10.000 de dano em cada Boss para receber os prêmios da fase.\n🩸 *+2 essências* por pecado (7 fases); '+(editionBonusEssences>0?'*+'+editionBonusEssences+'* essências por concluir os oito.':'*sem bônus de essências* ao concluir os oito hoje.')+'\n🎁 *'+editionTotalEssences+' essências = '+editionSummons+' invocações* nesta edição.\n🎁 *!7pecados abrir*: 7 essências por baú (1/3 personagem, 1/3 arma, 1/3 armadura).\n♻️ Arma/armadura repetida: cópia guardada para futura forja; personagem repetido: 50 Fragmentos Universais.\n⚔️ Use *!atacar*!')
+await sendEventToGroups('🌈⚔️ *COLLAB DOS 7 PECADOS COMEÇOU!*\n\n⏰ 18h–20h (Brasília)\n👹 Sete Pecados + Azazel • oito Bosses sequenciais • 1.920.000 HP fixos no total.\n🎯 10.000 de dano em cada Boss para receber os prêmios da fase.\n🩸 *+2 essências* por pecado (7 fases); '+(editionBonusEssences>0?'*+'+editionBonusEssences+'* essências por concluir os oito.':'*sem bônus de essências* ao concluir os oito hoje.')+'\n🎁 *'+editionTotalEssences+' essências = '+editionSummons+' invocações* nesta edição.\n🎁 *!7pecados abrir*: 7 essências por baú (1/3 personagem, 1/3 arma, 1/3 armadura).\n♻️ Arma/armadura repetida: cópia guardada para futura forja; personagem repetido: 50 Fragmentos Universais.\n⚔️ Use *!atacar*!')
 }
 if(event.resumed)await sendEventToGroups('🌈⚔️ *7 PECADOS — EVENTO REABERTO!*\n\n⏰ Prazo corrigido: *até 21h30 de hoje* (Brasília).\n✅ HP, fase, ranking e recompensas já conquistadas foram preservados.\n⚔️ Se seu combate automático foi interrompido no encerramento prematuro, use *!atacar* novamente.\n🏆 O Boss atual continua de onde parou.')
 if(event.extended)await sendEventToGroups('🌈⚔️ *7 PECADOS — PRAZO PRORROGADO!*\n\n⏰ *Novo encerramento: hoje, às 22h (Brasília).*\n✅ Mesmo Boss: fase, HP, ranking e recompensas preservados.\n⚔️ Continue o combate normalmente; se seu ataque automático parar após o reinício, envie *!atacar*.')
-if(event.rebalanced)await sendEventToGroups('⚖️ *SETE PECADOS REEQUILIBRADO!*\n\n🔥 Ira: 140.000 HP base.\n👑 Soberba: 160.000 HP base.\n👹 Azazel: 200.000 HP base.\n✅ Ataques dos Bosses restaurados aos valores da semana anterior.\n✅ Sem HP extra por novos participantes nas tres fases finais.\n✅ Danos, ranking, essencias e recompensas anteriores preservados.\n⏰ Prazo mantido ate as 22h.\n⚔️ Continuem atacando normalmente.')
+if(event.rebalanced){
+  if(edition.key.endsWith('20261101')){
+    await sendEventToGroups('⚖️ *7 PECADOS — BALANCEAMENTO CORRIGIDO!*\n\n'+
+      '⏰ *Evento permanece até as 20h* (Brasília).\n'+
+      '👹 Oito Bosses: *1.920.000 HP fixos* ao todo.\n'+
+      '✅ Sem adicionar HP por novos participantes.\n'+
+      '✅ HP restante recalculado mantendo TODO o dano já causado, ranking, essências e prêmios.\n'+
+      '⚔️ Combates podem continuar normalmente. Se a sessão automática parar durante a atualização, envie *!atacar* novamente.')
+  }else await sendEventToGroups('⚖️ *SETE PECADOS REEQUILIBRADO!*\n\n🔥 Ira: 140.000 HP base.\n👑 Soberba: 160.000 HP base.\n👹 Azazel: 200.000 HP base.\n✅ Ataques dos Bosses restaurados aos valores da semana anterior.\n✅ Sem HP extra por novos participantes nas tres fases finais.\n✅ Danos, ranking, essencias e recompensas anteriores preservados.\n⏰ Prazo mantido ate as 22h.\n⚔️ Continuem atacando normalmente.')
+}
 if(event.ended)await sendEventToGroups('🌈🏁 *COLLAB DOS 7 PECADOS ENCERRADA POR HOJE!*\n\n⏰ A janela de 18h–'+(edition.key.endsWith('20261025')?'22h':'20h')+' acabou.\n🩸 Essências conquistadas permanecem no inventário para o baú.\n🎁 Use *!7pecados* para ver sua coleção.')
 if(event.blocked)console.warn('[SETE PECADOS] Boss existente bloqueia início',event.blockingBoss)
 if(event.active&&Number(event.phaseIndex||0)>=1)await announceNextPecado()
