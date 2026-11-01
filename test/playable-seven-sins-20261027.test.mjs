@@ -264,9 +264,39 @@ test('ficha do herói usa mesmos atributos de entrada da Raid, sem alterar o Pal
   assert.deepEqual(ban.breakdown.natural,{hp:100,atk:14,def:11,spd:15});
   assert.equal(ban.maxHp,ban.breakdown.neutral.hp+ban.breakdown.natural.hp+ban.equipment.hp);
   assert.equal(ban.atk,Math.round((ban.breakdown.neutral.atk+ban.breakdown.natural.atk+ban.equipment.atk)*1.05));
+  assert.deepEqual(ban.baseWithoutGear,{maxHp:970,atk:657,def:529,spd:210});
+  assert.equal(ban.maxHp,ban.baseWithoutGear.maxHp+ban.equipment.hp);
+  assert.equal(ban.def,ban.baseWithoutGear.def+ban.equipment.def);
+  assert.equal(ban.spd,ban.baseWithoutGear.spd+ban.equipment.spd);
   assert.equal(ban.name,'Ban');
   assert.deepEqual(original,frozen,'Leitura da ficha não deve alterar HP ou atributos');
   assert.equal(heroCombatSheetFromProfile(original,'pecado_inexistente'),null);
+});
+
+test('perfil mostra totais equipados e !heroi status mostra os quatro atributos sem itens',()=>{
+  const profile={
+    hp:3180,max_hp:3180,atk:780,def:390,spd:395,
+    class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5,
+    equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91,
+    attack_pct_bonus:0
+  };
+  const sheet=heroCombatSheetFromProfile(profile,'pecado_diane',100);
+  assert.deepEqual(sheet.baseWithoutGear,{maxHp:3880,atk:860,def:490,spd:420});
+  assert.deepEqual(
+    [sheet.maxHp,sheet.atk,sheet.def,sheet.spd],[5940,1295,1394,511]);
+  const heroes=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  const app=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+  const formatterStart=heroes.indexOf('export function formatPlayableHeroBaseSheet(');
+  const formatter=heroes.slice(formatterStart,heroes.indexOf('export async function listPlayableHeroes',formatterStart));
+  const full=heroes.slice(heroes.indexOf('export function formatPlayableHeroCombatSheet('),formatterStart);
+  assert.ok(formatterStart>0);
+  assert.match(heroes,/if\(\['atributos','ficha','stats','status'\]\.includes\(action\)\)/);
+  assert.match(heroes,/await reply\(sheet\?formatPlayableHeroBaseSheet\(sheet\)/);
+  assert.match(app,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\)/);
+  assert.match(app,/heroSheetStatus\?formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\)/);
+  assert.match(formatter,/baseWithoutGear/);
+  assert.doesNotMatch(formatter,/sheet\.maxHp|sheet\.atk|sheet\.def|sheet\.spd|equipment\.|weapon|armor|Arma|Armadura|Encantamentos|VS\./);
+  assert.match(full,/sheet\.maxHp/);
 });
 
 test('perfil, status e comando de herói devem distinguir classe da ficha do combatente',()=>{
