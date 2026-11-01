@@ -12,6 +12,7 @@ import NodeCache from 'node-cache'
 import {createTtlCache,createByteBudget,createMessageDeduplicator,declaredMediaBytes,downloadBoundedMedia,scheduleUntil} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
 import {createKeyedAsyncQueue} from './chat-queue.js'
+import {groupFlashPolicy} from './group-flash-policy.js'
 import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
@@ -9837,7 +9838,9 @@ if(isGroup && APOSTA_GROUPS.includes(chat) &&
   }
   continue
 }
-if(isGroup && !temporaryRecoveryMode){
+const flashPolicy=groupFlashPolicy({isGroup,temporaryRecoveryMode})
+if(flashPolicy.allowFlashEvent){
+if(flashPolicy.allowGroupIntro){
 const introState=await getBotGroupIntroState(chat)
 if(!introState?.sent){
 const license=await getGroupLicense(chat)
@@ -9846,7 +9849,8 @@ const trialStartedAt=Number(license?.trial_started_at||0)
 const recentGroup=!license || (trialStartedAt>0 && nowSec-trialStartedAt<=6*60*60)
 if(recentGroup) await sendBotGroupIntro(chat,{reason:'first-message-recovery'})
 }
-const spawned=temporaryRecoveryMode?null:await maybeSpawnGroupEvent(chat)
+}
+const spawned=await maybeSpawnGroupEvent(chat)
 if(spawned) await sock.sendMessage(chat,{text:`${spawned.text}\n\n💰 Dinheiro possível: *R$ ${fmt(spawned.reward)}*\n🎁 ${spawned.hint||'Pode haver recompensa extra.'}\n⚡ Primeiro a mandar *${prefix}pegar* leva!\n⏳ Some em 2 minutos.`}).catch(()=>{})
 }
 const ownerCanonical=canonicalPlayerJid(ownerJid)
