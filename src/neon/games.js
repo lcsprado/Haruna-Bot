@@ -2008,9 +2008,16 @@ const PECADOS_2510_FINAL_PHASES=Object.freeze({
   6:Object.freeze({hp:160000,atk:110}),
   7:Object.freeze({hp:200000,atk:135})
 })
+// 01/11 tem só duas horas: os 5,4M HP anteriores eram inviáveis.
+// Equilibrar TODAS as oito fases sem aumentar HP por novos participantes.
+// HP suficiente para 4+ pessoas alcançarem o mínimo de 10.000 dano por fase.
+const PECADOS_0111_KEY='sete-pecados-collab-20261101'
+const PECADOS_0111_BALANCE='20261101-two-hour-fixed-hp-v1'
+const PECADOS_0111_PHASE_HPS=Object.freeze([180000,200000,220000,240000,250000,260000,270000,300000])
 function pecadoPhaseForEdition(index,editionKey){
   const phase=PECADOS_PHASES[index]
-  const override=editionKey===PECADOS_2510_KEY?PECADOS_2510_FINAL_PHASES[index]:null
+  const override=editionKey===PECADOS_2510_KEY?PECADOS_2510_FINAL_PHASES[index]:
+    editionKey===PECADOS_0111_KEY?{hp:PECADOS_0111_PHASE_HPS[index]}:null
   return override?{...phase,...override}:phase
 }
 const PECADOS_MIN_DAMAGE=PECADOS_MIN_BOSS_DAMAGE
@@ -2022,7 +2029,8 @@ function pecadosPhaseState(index,ledger,startedAt,edition){
     active:true,phaseIndex:index,phaseCount:PECADOS_PHASES.length,name:phase.name,
     hp:phase.hp,maxHp:phase.hp,baseHp:phase.hp,atk:phase.atk,
     participants:{},ledger:ledger||{},startedAt,endsAt:edition.end,
-    ...(edition.key===PECADOS_2510_KEY&&index>=5?{balanceVersion:PECADOS_2510_BALANCE}:{})}
+    ...(edition.key===PECADOS_2510_KEY&&index>=5?{balanceVersion:PECADOS_2510_BALANCE}:{}),
+    ...(edition.key===PECADOS_0111_KEY?{balanceVersion:PECADOS_0111_BALANCE}:{})}
 }
 export async function tickSetePecados(now=Date.now()){
   const edition=PECADOS_EDITIONS.find(e=>now>=e.start&&now<=e.end+120000)
@@ -2030,6 +2038,28 @@ export async function tickSetePecados(now=Date.now()){
   return tx(async c=>{
     const s=await loadGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event')
     if(s?.scheduleKey===edition.key){
+      // Migração segura do evento AO VIVO de 01/11: conserva TODO dano causado,
+      // participantes, ranking por fase, ledger de essências e prazo original.
+      // Só recalcula HP restante da fase ativa, uma única vez.
+      if(s.active!==false&&now<edition.end&&s.eventId==='sete_pecados'&&
+        edition.key===PECADOS_0111_KEY&&s.balanceVersion!==PECADOS_0111_BALANCE){
+        const index=Math.max(0,Math.min(PECADOS_PHASES.length-1,Number(s.phaseIndex)||0))
+        const target=pecadoPhaseForEdition(index,edition.key)
+        const previousHp=Math.max(0,Number(s.hp)||0)
+        const previousMax=Math.max(previousHp,Number(s.maxHp)||0)
+        const dealt=Math.max(0,previousMax-previousHp)
+        const remaining=Math.max(1,target.hp-dealt)
+        const newMax=Math.max(target.hp,dealt+remaining)
+        const adjusted={...s,hp:remaining,maxHp:newMax,baseHp:target.hp,
+          endsAt:edition.end,balanceVersion:PECADOS_0111_BALANCE,
+          balanceAudit:{at:now,oldHp:previousHp,oldMaxHp:previousMax,
+            damagePreserved:dealt,stage:index,reason:'two_hour_fixed_hp'}}
+        await saveGame(c,GLOBAL_BOSS_EVENT_CHAT,'boss_event',adjusted)
+        console.log('[SETE PECADOS] reequilibrio 01/11 aplicado',
+          JSON.stringify({phase:index,oldMaxHp:previousMax,newMaxHp:newMax,damagePreserved:dealt,remaining,participants:Object.keys(s.participants||{}).length}))
+        return {due:true,rebalanced:true,active:true,phaseIndex:index,hp:remaining,
+          maxHp:newMax,balanceVersion:PECADOS_0111_BALANCE}
+      }
       // Recalcular somente a fase ATIVA (Ira, Soberba ou Azazel) UMA VEZ.
       // A diferença entre maxHp e hp é o dano total já registrado, incluindo
       // aumentos anteriores de HP. Nunca recriar participantes nem ledger.
@@ -3004,6 +3034,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     s.participants=s.participants||{}
     // HP escala quando um NOVO participante causa seu primeiro ataque, inclusive após !go.
     if(((s.eventId==='sete_pecados'&&
+      s.scheduleKey!==PECADOS_0111_KEY&&
       !(s.scheduleKey===PECADOS_2510_KEY&&Number(s.phaseIndex)>=5))||
       s.eventId===CALCANHAR_ID)&&!s.participants[jid]){
       const oldCount=Object.keys(s.participants).length
