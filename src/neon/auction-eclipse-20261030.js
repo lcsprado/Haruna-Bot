@@ -252,12 +252,12 @@ async function reopenFourthLotAfterDeliveryFailure(){
     state.bidNoticeVersion=Number(state.bidNoticeVersion||0)+1
     await queueAuctionBidNotices(c,{
       key:KEY,version:state.bidNoticeVersion,groups:state.groups,origin:'system',
-      message:'⚠️🔨 *LEILÃO DOS SETE PECADOS — 4º LOTE ANULADO*\\n\\n'+
-        'Devido a uma *falha técnica nas mensagens do WhatsApp*, o quarto lote será refeito para garantir igualdade de condições.\\n'+
-        '✅ *R$ 8.000.000 estornados integralmente* ao vencedor anterior.\\n'+
-        '↩️ O prêmio do arremate anulado foi revertido. Os lotes 1, 2 e 3 permanecem válidos.\\n\\n'+
-        '⏳ *Novo 4º lote em 1 minuto.* Lance inicial: *R$ 8.000.000*; incremento: *R$ 300.000*.\\n'+
-        '⚔️ A disputa durará 2 minutos, com prorrogação nos últimos segundos.\\n'+
+      message:'⚠️🔨 *LEILÃO DOS SETE PECADOS — 4º LOTE ANULADO*\n\n'+
+        'Devido a uma *falha técnica nas mensagens do WhatsApp*, o quarto lote será refeito para garantir igualdade de condições.\n'+
+        '✅ *R$ 8.000.000 estornados integralmente* ao vencedor anterior.\n'+
+        '↩️ O prêmio do arremate anulado foi revertido. Os lotes 1, 2 e 3 permanecem válidos.\n\n'+
+        '⏳ *Novo 4º lote em 1 minuto.* Lance inicial: *R$ 8.000.000*; incremento: *R$ 300.000*.\n'+
+        '⚔️ A disputa durará 2 minutos, com prorrogação nos últimos segundos.\n'+
         '📢 *Acompanhem pelo !leilao*.'
     })
     console.log('[LEILAO REPLAY 4] estorno aplicado',JSON.stringify({
@@ -326,8 +326,8 @@ async function tick(sock){
         state.bidNoticeVersion=Number(state.bidNoticeVersion||0)+1
         await queueAuctionBidNotices(c,{
           key:KEY,version:state.bidNoticeVersion,groups:state.groups,origin:'system',
-          message:'🔨🌈 *QUARTO LOTE REABERTO — NOVA DISPUTA!*\\n\\n'+
-            '⚠️ A disputa anterior foi anulada por falha técnica.\\n\\n'+
+          message:'🔨🌈 *QUARTO LOTE REABERTO — NOVA DISPUTA!*\n\n'+
+            '⚠️ A disputa anterior foi anulada por falha técnica.\n\n'+
             status(state)
         })
         console.log('[LEILAO REPLAY 4] lote reaberto',JSON.stringify({ends:state.ends}))
@@ -361,7 +361,7 @@ async function tick(sock){
             state.bidNoticeVersion=Number(state.bidNoticeVersion||0)+1
             await queueAuctionBidNotices(c,{
               key:KEY,version:state.bidNoticeVersion,groups:state.groups,origin:'system',
-              message:outgoing+'\\n\\n✅ *REEDIÇÃO DO 4º LOTE FINALIZADA.* Os demais lotes permaneceram intactos.'
+              message:outgoing+'\n\n✅ *REEDIÇÃO DO 4º LOTE FINALIZADA.* Os demais lotes permaneceram intactos.'
             })
             outgoing=''
           }else outgoing+='\n\n🏁 *LEILÃO DOS SETE PECADOS CONCLUÍDO!* Todos os lotes encerrados.'
@@ -429,7 +429,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     const sync=state?.phase==='running'?await auctionNoticeSummary(db,KEY,Number(state.bidNoticeVersion||0)):null
     const syncLine=sync?'\n📡 Avisos: '+sync.sent+' enviados, '+sync.pending+' pendentes, '+sync.failed+' falharam.':''
     await reply(state?.phase==='running'?status(state)+syncLine:
-      state?.phase==='replay_pending'?'⚠️ *REEDIÇÃO DO 4º LOTE*\\nA disputa anterior foi anulada por falha técnica e o valor foi estornado.\\n🔨 Abertura: *'+clock(state.replay.startAt)+'* (Brasília).\\n💰 Lance inicial: *'+fmt(OPENING)+'*.':
+      state?.phase==='replay_pending'?'⚠️ *REEDIÇÃO DO 4º LOTE*\nA disputa anterior foi anulada por falha técnica e o valor foi estornado.\n🔨 Abertura: *'+clock(state.replay.startAt)+'* (Brasília).\n💰 Lance inicial: *'+fmt(OPENING)+'*.':
       state?.phase==='completed'?'🏁 Leilão dos Sete Pecados encerrado. Consulte os prêmios divulgados antes do evento.':
       '⏳ Leilão dos Sete Pecados sendo aberto. Consulte novamente em instantes.')
     return true
