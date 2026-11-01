@@ -1,6 +1,7 @@
 import {db,ensureUser,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {PLAYER_CLASSES,getPlayerClass,getClassPassive,getAwakeningSkillDescriptions} from './game-catalog.js'
+import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
+import {formatActiveClassBaseStatus,formatSavedAwakeningForActiveHero} from './character-base-status-format.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
@@ -140,30 +141,11 @@ export function formatPlayableHeroBaseSheet(sheet){
 // Nunca adicioná-los novamente: para classes, stats é a base real sem equipamentos.
 export function formatCharacterBaseStatus({profile,heroSheet=null,awakeningStage=1}={}){
   if(!profile)return '';
-  const stage=Math.max(1,Math.min(5,Math.floor(Number(awakeningStage)||1)));
-  const roman=['I','II','III','IV','V'][stage-1];
-  const classId=String(profile.class_id||'warrior').toLowerCase();
-  const info=getPlayerClass(classId);
   if(heroSheet){
-    const heroBase=formatPlayableHeroBaseSheet(heroSheet);
-    return heroBase+
-      '\n🌌 Despertar da classe '+info.name+': *'+roman+'/V* (preservado; habilidades inativas enquanto o herói estiver ativo)';
+    return formatPlayableHeroBaseSheet(heroSheet)+'\n'+
+      formatSavedAwakeningForActiveHero(profile,awakeningStage);
   }
-  const passive=getClassPassive(classId,profile.class_applied);
-  const skills=getAwakeningSkillDescriptions(classId);
-  const latestSkill=Boolean(profile.class_applied)?skills[stage-1]||null:null;
-  return [
-    '🧙 *STATUS BASE — '+info.name.toUpperCase()+'*',
-    '🎭 '+info.role,
-    '⭐ Nível: *'+heroNumbers(profile.level||1)+'*',
-    '❤️ HP: *'+heroNumbers(profile.max_hp)+'*',
-    '⚔️ ATK: *'+heroNumbers(profile.atk)+'*',
-    '🛡️ DEF: *'+heroNumbers(profile.def)+'*',
-    '👢 VEL: *'+heroNumbers(profile.spd)+'*',
-    ...(passive?['⚜️ Passiva: *'+passive.name+'*']:[]),
-    '🌌 Despertar: *'+roman+'/V*',
-    ...(latestSkill?['✨ Habilidade do Despertar '+roman+': '+latestSkill]:[])
-  ].join('\n');
+  return formatActiveClassBaseStatus(profile,awakeningStage);
 }
 
 // Consulta somente leitura; serve aos dois atalhos, incluindo classes tradicionais.
