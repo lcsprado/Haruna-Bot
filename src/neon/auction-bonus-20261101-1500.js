@@ -160,7 +160,7 @@ async function tick(sock){
   try{
     const now=Date.now()
     if(!globalThis.__bonusAuctionTick1500Logged){globalThis.__bonusAuctionTickLogged=true;console.info('[LEILAO BONUS] tick primeiro ciclo',JSON.stringify({now,start:START,end:END}))}
-    if(now>=START-10*60*1000&&now<START){
+    if(now>=START-20*60*1000&&now<START){
       await init()
       const groups=await licensedGroups()
       if(groups.length)await change(async(state,c)=>{
@@ -168,7 +168,7 @@ async function tick(sock){
         state.groups=groups
         state.publicPreAnnounced=true
         await queueAuctionBidNotices(c,{key:KEY,version:-1,groups,origin:'system',
-          message:'🔨🌈 *LEILÃO BÔNUS — ÚLTIMO DIA DA COLLAB!*\n\n🎁 Três lotes de invocação dos Sete Pecados.\n💰 Lance inicial: *R$ 20.000.000* por lote.\n📈 Incrementos de *R$ 300.000*.\n⏱️ 2 minutos por lote.\n📢 Exclusivo do AlphaBot. Digite *!leilao*.'
+          message:'🔨🌈 *FALTAM 20 MINUTOS — LEILÃO BÔNUS ÀS 15H!*\n\n🎁 Três lotes de invocação dos Sete Pecados.\n💰 Lance inicial: *R$ 20.000.000* por lote.\n📈 Incrementos de *R$ 300.000*.\n⏱️ 2 minutos por lote.\n📢 Exclusivo do AlphaBot. Digite *!leilao*.'
         })
       })
       await flushAuctionBidNotices(db,sock,KEY,{limit:8})
