@@ -12,10 +12,10 @@ const rounded=(n)=>Math.max(0,Math.round(Number(n)||0))
 // Bonuses are combat-only and never touch stored character stats or PvE.
 export const PVP_AWAKENING_ROLES=Object.freeze({
  warrior:{attack:.11,defense:.11},assassin:{attack:.16,defense:.06},
- mage:{attack:.16,defense:.06},archer:{attack:.15,defense:.07},
- paladin:{attack:.06,defense:.18},berserker:{attack:.20,defense:.06},
+ mage:{attack:.21,defense:.09},archer:{attack:.15,defense:.07},
+ paladin:{attack:.06,defense:.18},berserker:{attack:.23,defense:.08},
  monk:{attack:.10,defense:.12},necromancer:{attack:.13,defense:.10},
- druid:{attack:.08,defense:.17},samurai:{attack:.16,defense:.07}
+ druid:{attack:.08,defense:.17},samurai:{attack:.18,defense:.08}
 })
 const addShield=(s,maxHp,ratio)=>{
   if(Number(s.shieldsCreated||0)>=2)return
@@ -26,7 +26,7 @@ const addShield=(s,maxHp,ratio)=>{
 
 export function classPvpCritBonus(classId,applied=true,awakeningStage=0){
   const id=String(classId||'').toLowerCase(),stage=stageOf(applied,awakeningStage)
-  return classCritBonus(id,applied,0,'pvp')+(stage>=1&&id==='assassin'?.01:0)+(stage>=2&&id==='samurai'?.01:0)
+  return classCritBonus(id,applied,0,'pvp')+(id==='assassin'?(stage>=5?.05:stage>=3?.03:stage>=1?.01:0):0)+(stage>=2&&id==='samurai'?.01:0)
 }
 
 export function classPvpAttack({
@@ -59,15 +59,15 @@ export function classPvpAttack({
         if(stage>=4)state.smoke=true
       }else if(critical){
         state.crits=Math.min(3,Number(state.crits||0)+1)
-        if(state.crits>=3)state.executionReady=true
+        if(state.crits>=(stage>=5?2:3))state.executionReady=true
       }
     }
     if(stage>=3&&Number(state.bleed||0)>0){bonus+=.02;state.bleed--;trigger(technique||'Ferida Sombria')}
   }else if(id==='mage'){
     if(base.proc&&stage>=1){bonus+=.02;trigger('Arcano Amplificado')}
     if(stage>=3&&(index%6===0||base.proc))state.charges=Math.min(2,Number(state.charges||0)+1)
-    if(stage>=2&&index%(stage>=5?6:8)===0){
-      bonus+=.10
+    if(stage>=2&&index%(stage>=5?4:8)===0){
+      bonus+=stage>=5?.12:.10
       if(stage>=3&&state.charges>0){bonus+=stage>=5?.09:.05;state.charges--}
       trigger('Explosão Arcana')
     }
@@ -93,6 +93,7 @@ export function classPvpAttack({
   }else if(id==='berserker'){
     if(ratio<.4)bonus+=.01
     if(stage>=2&&ratio<.25)bonus+=.03
+    if(stage>=5&&ratio<.60){bonus+=.04;trigger('Frenesi Mortal')}
     if(stage>=3){
       if(ratio>.5)state.fury=0
       else if(ratio<.4)state.fury=Math.min(3,Number(state.fury||0)+1)
@@ -114,12 +115,12 @@ export function classPvpAttack({
       }
     }
   }else if(id==='necromancer'){
-    if(stage>=1&&index%4===0&&hp>0)
-      heal=Math.max(heal,Math.min(Math.ceil(maxHp*.03),Math.floor(base.damage*.03)))
+    if(stage>=1&&index%(stage>=5?3:4)===0&&hp>0)
+      heal=Math.max(heal,Math.min(Math.ceil(maxHp*(stage>=5?.08:.03)),Math.floor(base.damage*(stage>=5?.10:.03))))
     if(stage>=2&&index%7===0){bonus+=.08;trigger('Maldição')}
     if(stage>=3)bonus+=.008*Number(state.souls||0)
     if(stage>=5&&index%4===0&&state.souls>=3){bonus+=.12;state.souls=0;trigger('Colheita Final')}
-    if(stage>=3&&index%4===0&&hp>0){
+    if(stage>=3&&index%(stage>=5?3:4)===0&&hp>0){
       state.souls=Math.min(3,Number(state.souls||0)+1)
       if(stage>=4)addShield(state,maxHp,.02)
       trigger(technique||'Drenagem Superior')
