@@ -115,7 +115,7 @@ export function formatPlayableHeroCombatSheet(sheet){
     '✨ Técnica: *'+sheet.skill+'*'
   ].join('\n');
 }
-// !heroi status / !heroi atributos mostram o herói SEM NENHUM EQUIPAMENTO.
+// Comandos da ficha base mostram o herói SEM NENHUM EQUIPAMENTO.
 // Base = progressão do jogador + bônus do herói atual, não bônus isolado
 // da classe e não ficha de combate equipada. Nunca soma arma/armadura/encantos.
 export function formatPlayableHeroBaseSheet(sheet){
