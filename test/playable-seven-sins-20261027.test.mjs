@@ -22,10 +22,10 @@ test('estatisticas de classe viram heroi sem alterar dados persistentes',()=>{
     class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5}
   const original=structuredClone(st)
   const h=heroCombatStats(st,'pecado_escanor')
-  assert.equal(h.atk,664)
-  assert.equal(h.def,528)
-  assert.equal(h.spd,202)
-  assert.equal(h.maxHp,955)
+  assert.equal(h.atk,692)
+  assert.equal(h.def,541)
+  assert.equal(h.spd,206)
+  assert.equal(h.maxHp,1070)
   assert.ok(Math.abs(h.hp/h.maxHp-.9)<.001)
   assert.deepEqual(st,original)
   assert.equal(heroHpToPersistent(h.hp,h.maxHp,st.max_hp),st.hp)
@@ -257,7 +257,7 @@ test('ficha do herói usa mesmos atributos de entrada da Raid, sem alterar o Pal
   // A vida de combate inclui o HP de equipamento na mesma proporção da cura.
   const ban=heroCombatSheetFromProfile(original,'pecado_ban');
   assert.deepEqual({hp:ban.hp,maxHp:ban.maxHp,atk:ban.atk,def:ban.def,spd:ban.spd},
-    {hp:878,maxHp:1170,atk:1110,def:729,spd:270});
+    {hp:977,maxHp:1302,atk:1130,def:746,spd:276});
   assert.equal(ban.name,'Ban');
   assert.deepEqual(original,frozen,'Leitura da ficha não deve alterar HP ou atributos');
   assert.equal(heroCombatSheetFromProfile(original,'pecado_inexistente'),null);
@@ -408,20 +408,30 @@ test('Novo personagem: nivel 1 ao 100 em 18 dias no teto, sem ultrapassar 9900 X
   assert.ok(initial.maxHp<low.maxHp && initial.atk<low.atk,'Lv.1 deve evoluir sem herdar o poder de Lv.70');
   assert.ok(initial.def<low.def && initial.spd<low.spd);
   const high=heroCombatStats(st,'pecado_ban',100);
-  assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],[700,75,100,25]);
+  assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],[57,8,7,3]);
   // Jogadores avançados com o mesmo herói precisam sentir os 99 níveis.
   const highBase={hp:4050,max_hp:4050,atk:906,def:606,spd:439,
     class_hp_bonus:60,class_atk_bonus:18,class_def_bonus:10,class_spd_bonus:14};
   const diane1=heroCombatStats(highBase,'pecado_diane',1);
   const diane100=heroCombatStats(highBase,'pecado_diane',100);
   assert.deepEqual([diane100.maxHp-diane1.maxHp,diane100.atk-diane1.atk,
-    diane100.def-diane1.def,diane100.spd-diane1.spd],[1150,150,185,40]);
+    diane100.def-diane1.def,diane100.spd-diane1.spd],[230,22,38,4]);
   // Não matar iniciantes de nível baixo com a penalidade do Lv.1.
   const newPlayer={hp:120,max_hp:120,atk:20,def:12,spd:15};
   const newDiane=heroCombatStats(newPlayer,'pecado_diane',1);
   assert.ok(newDiane.maxHp>=200 && newDiane.atk>=25 && newDiane.def>=20 && newDiane.spd>=16);
-  // Lv.70 mantém a compatibilidade histórica.
-  assert.equal(low.maxHp,st.max_hp-st.class_hp_bonus+HERO_COMBAT_PROFILES.pecado_ban.hp);
+  // Bônus próprio do Lv.1 equivale a uma classe, sem copiar o nível do jogador.
+  assert.deepEqual(diane1.breakdown.heroBase,{hp:130,atk:12,def:22,spd:5});
+  assert.deepEqual(diane1.breakdown.training,{hp:0,atk:0,def:0,spd:0});
+  assert.deepEqual(diane100.breakdown.training,{hp:230,atk:22,def:38,spd:4});
+  assert.equal(diane100.maxHp,diane100.breakdown.neutral.hp+diane100.breakdown.natural.hp);
+  assert.deepEqual(diane1.breakdown.neutral,diane100.breakdown.neutral);
+  assert.equal(low.maxHp,st.max_hp-st.class_hp_bonus+HERO_COMBAT_PROFILES.pecado_ban.hp+
+    low.breakdown.training.hp);
+  // Jogadores com progressões distintas recebem o MESMO bônus natural do herói.
+  const other=heroCombatStats({hp:1800,max_hp:1800,atk:800,def:900,spd:300,
+    class_hp_bonus:35,class_atk_bonus:18,class_def_bonus:6,class_spd_bonus:16},'pecado_diane',100);
+  assert.deepEqual(other.breakdown.natural,diane100.breakdown.natural);
   const src=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
   assert.match(src,/hero_level_awards/);
