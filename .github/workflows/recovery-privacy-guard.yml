@@ -1,0 +1,25 @@
+name: Prevent historical player snapshot exposure
+on:
+  pull_request:
+    paths:
+      - 'src/neon/temporary-recovery-20261019.js'
+      - 'src/neon/inventory-recovery-20261019.js'
+      - 'test/recovery-privacy-guard.test.mjs'
+      - '.github/workflows/recovery-privacy-guard.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax guard
+        run: |
+          node --check src/neon/temporary-recovery-20261019.js
+          node --check src/neon/inventory-recovery-20261019.js
+      - name: Assert personal data is absent
+        run: node --test test/recovery-privacy-guard.test.mjs
