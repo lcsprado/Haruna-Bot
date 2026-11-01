@@ -1,15 +1,15 @@
 import {randomInt} from 'node:crypto'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense} from './db.js'
 
-// Evento único de 19/10/2026. Inscrição aberta ao iniciar o serviço;
+// Edição de Halloween de 31/10/2026. Inscrição aberta ao iniciar o serviço;
 // horário do sorteio persistido para sobreviver a reinícios e deploys.
-const KEY='bingo_alpha_20261019_agora_v1'
-const ANNOUNCE=Date.parse('2026-10-19T13:00:00-03:00')
-const EVENT_END=Date.parse('2026-10-20T00:00:00-03:00')
+const KEY='bingo_alpha_halloween_20261031_v1'
+const ANNOUNCE=Date.parse('2026-10-31T00:00:00-03:00')
+const EVENT_END=Date.parse('2026-11-01T06:00:00-03:00')
 const REGISTRATION_MS=6*60*1000
 const BALL_INTERVAL_MS=25000
 const PRICE=5000
-const TROPHY='insignia_bingo_alpha_20261019'
+const TROPHY='insignia_bingo_alpha_halloween_20261031'
 const NUMBER_LIMIT=40
 const REWARD={row:40000,twoRows:80000,full:150000}
 let busy=false
@@ -35,8 +35,8 @@ async function ensureTrophy(){
       name=EXCLUDED.name,description=EXCLUDED.description,
       category=EXCLUDED.category,price=0,rarity='event',
       sellable=FALSE,stackable=FALSE`,[
-    TROPHY,'Insígnia do Bingo Alpha',
-    'Troféu visual exclusivo do Bingo Alpha de 19/10/2026, sem bônus de combate. Não pode ser vendido ou transferido.'
+    TROPHY,'Insígnia do Bingo Halloween',
+    'Troféu visual exclusivo do Bingo Alpha de Halloween de 31/10/2026, sem bônus de combate. Não pode ser vendido ou transferido.'
   ])
   registeredItem=true
 }
@@ -165,7 +165,7 @@ async function checkPrizes(s,c){
     if(m.id==='full')await giveTrophy(c,jid)
     s.prizes[m.id]={jid,name:player.name,amount:m.money,at:Date.now()}
     out+='\n'+m.label+': *'+player.name+'* — '+formatMoney(m.money)
-    if(m.id==='full')out+=' + 🏅 *Insígnia do Bingo Alpha*'
+    if(m.id==='full')out+=' + 🏅 *Insígnia do Bingo Halloween*'
   }
   return out
 }
@@ -206,7 +206,7 @@ async function processBall(s,c){
   line+=(await checkPrizes(s,c))
   return {message:line,finished:Boolean(s.prizes.full)}
 }
-const welcome=(count,startAt)=>'🎰 *BINGO ALPHA — NOVA EDIÇÃO!*\n\n'+
+const welcome=(count,startAt)=>'🎃 *BINGO ALPHA — EDIÇÃO HALLOWEEN!*\n\n'+
   '✅ Inscrições *ABERTAS AGORA*! Sorteio às *'+localClock(startAt)+'* (Brasília).\n'+
   '🎟️ Cartela: *'+formatMoney(PRICE)+'* (carteira/banco)\n'+
   '⚖️ Apenas *1 cartela por jogador*. Todos têm chances iguais.\n'+
@@ -215,7 +215,7 @@ const welcome=(count,startAt)=>'🎰 *BINGO ALPHA — NOVA EDIÇÃO!*\n\n'+
   '🔢 Uma bola global a cada *25 segundos*.\n\n'+
   '🥉 Primeira linha: *R$ 40.000*\n'+
   '🥈 Primeiras duas linhas: *R$ 80.000*\n'+
-  '🥇 Primeira cartela cheia: *R$ 150.000* + 🏅 Insígnia do Bingo Alpha.\n'+
+  '🥇 Primeira cartela cheia: *R$ 150.000* + 🏅 Insígnia do Bingo Halloween.\n'+
   '⚡ Bolas especiais: Reconexão, Pacote Recuperado e Sorte Alpha.\n'+
   '👥 Inscritos até agora: *'+count+'*\n'+
   '_Sem força, pets, nível ou equipamento._'
