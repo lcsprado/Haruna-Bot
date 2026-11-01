@@ -1,6 +1,6 @@
 import {db,ensureUser,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
+import {PLAYER_CLASSES,getPlayerClass,getClassPassive,getAwakeningSkillDescriptions} from './game-catalog.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
@@ -133,6 +133,52 @@ export function formatPlayableHeroBaseSheet(sheet){
     '👢 VEL: *'+heroNumbers(base.spd)+'*',
     '✨ Técnica: *'+sheet.skill+'*'
   ].join('\n');
+}
+
+
+// Os pontos de Despertar já foram persistidos em stats.max_hp/atk/def.
+// Nunca adicioná-los novamente: para classes, stats é a base real sem equipamentos.
+export function formatCharacterBaseStatus({profile,heroSheet=null,awakeningStage=1}={}){
+  if(!profile)return '';
+  const stage=Math.max(1,Math.min(5,Math.floor(Number(awakeningStage)||1)));
+  const roman=['I','II','III','IV','V'][stage-1];
+  const classId=String(profile.class_id||'warrior').toLowerCase();
+  const info=getPlayerClass(classId);
+  if(heroSheet){
+    const heroBase=formatPlayableHeroBaseSheet(heroSheet);
+    return heroBase+
+      '\n🌌 Despertar da classe '+info.name+': *'+roman+'/V* (preservado; habilidades inativas enquanto o herói estiver ativo)';
+  }
+  const passive=getClassPassive(classId,profile.class_applied);
+  const skills=getAwakeningSkillDescriptions(classId);
+  const latestSkill=Boolean(profile.class_applied)?skills[stage-1]||null:null;
+  return [
+    '🧙 *STATUS BASE — '+info.name.toUpperCase()+'*',
+    '🎭 '+info.role,
+    '⭐ Nível: *'+heroNumbers(profile.level||1)+'*',
+    '❤️ HP: *'+heroNumbers(profile.max_hp)+'*',
+    '⚔️ ATK: *'+heroNumbers(profile.atk)+'*',
+    '🛡️ DEF: *'+heroNumbers(profile.def)+'*',
+    '👢 VEL: *'+heroNumbers(profile.spd)+'*',
+    ...(passive?['⚜️ Passiva: *'+passive.name+'*']:[]),
+    '🌌 Despertar: *'+roman+'/V*',
+    ...(latestSkill?['✨ Habilidade do Despertar '+roman+': '+latestSkill]:[]),
+    '💡 Atributos atuais sem arma, armadura, botas, elmo, encantamentos ou pets.'
+  ].join('\n');
+}
+
+// Consulta somente leitura; serve aos dois atalhos, incluindo classes tradicionais.
+export async function getCharacterBaseStatus(jid){
+  const profile=await getProfile(jid);
+  if(!profile)return null;
+  const [activeHero,awakening]=await Promise.all([
+    getActivePlayableHero(db,jid),
+    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])
+  ]);
+  const heroSheet=activeHero?await getPlayableHeroCombatSheet(jid):null;
+  return formatCharacterBaseStatus({
+    profile,heroSheet,awakeningStage:Number(awakening.rows[0]?.stage??1)
+  });
 }
 
 export async function listPlayableHeroes(jid){
@@ -270,6 +316,16 @@ export async function evolvePlayableHeroMastery(jid,heroId){
 }
 
 export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
+  if(['personagem','personagens'].includes(String(cmd||''))){
+    const sub=String(args[0]||'status').trim().toLowerCase();
+    if(!['status','atributos','ficha','stats'].includes(sub)){
+      await reply('⚔️ Consulte a base do combatente ativo com *!personagem status*.');
+      return true;
+    }
+    const text=await getCharacterBaseStatus(sender);
+    await reply(text||'❌ Personagem não encontrado.');
+    return true;
+  }
   if(!['heroi','herois','herói','heroes'].includes(String(cmd||'')))return false
   const action=String(args[0]||'').trim().toLowerCase()
   const findHero=raw=>PECADOS_HEROES.find(h=>
@@ -309,13 +365,12 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
       '\n🔎 Comparação somente dos bônus do combatente, SEM jogador, equipamento, encantamento, pet ou sinergia.\n\n'+
       '🌈 Herói: '+heroBonusRow(own)+'\n🧙 Classe: '+heroBonusRow(cls)+'\n\n'+
       '📊 Diferença: ❤️ '+diff[0]+' HP • ⚔️ '+diff[1]+' ATK • 🛡️ '+diff[2]+' DEF • 👢 '+diff[3]+' VEL'+
-      '\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\nUse *!heroi status* para ver a base sem equipamentos ou *!perfil* para ver os atributos totais.');
+      '\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\nUse *!personagem status* para ver a base sem equipamentos ou *!perfil* para ver os atributos totais.');
     return true;
   }
   if(['atributos','ficha','stats','status'].includes(action)){
-    const sheet=await getPlayableHeroCombatSheet(sender);
-    await reply(sheet?formatPlayableHeroBaseSheet(sheet):
-      '🧙 Sua classe tradicional está ativa. Use *!heroi usar ban* ou outro herói desbloqueado; depois consulte *!heroi atributos*.');
+    const text=await getCharacterBaseStatus(sender);
+    await reply(text||'❌ Personagem não encontrado.');
     return true;
   }
   if(['habilidades','poderes','skills'].includes(action)){
