@@ -340,7 +340,9 @@ test('perfil mostra totais equipados e !heroi status mostra os quatro atributos 
   const full=heroes.slice(heroes.indexOf('export function formatPlayableHeroCombatSheet('),formatterStart);
   assert.ok(formatterStart>0);
   assert.match(heroes,/if\(\['atributos','ficha','stats','status'\]\.includes\(action\)\)/);
-  assert.match(heroes,/await reply\(sheet\?formatPlayableHeroBaseSheet\(sheet\)/);
+  assert.match(heroes,/await reply\(text\|\|'❌ Personagem não encontrado\.'/);
+  assert.match(heroes,/formatPlayableHeroBaseSheet\(heroSheet\)/);
+  assert.match(heroes,/return formatActiveClassBaseStatus\(profile,awakeningStage\)/);
   assert.match(app,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\)/);
   assert.match(app,/heroSheetStatus\?formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\)/);
   assert.match(formatter,/baseWithoutGear/);
