@@ -110,9 +110,27 @@ async function eligibleGroups(){
   return [...new Set(licenses.filter(groupLicenseIsActive).map(l=>l.chat_jid).filter(x=>String(x).endsWith('@g.us')))]
 }
 async function announce(sock,text,targets){
-  for(const jid of targets){
-    try{await sock.sendMessage(jid,{text})}
-    catch(e){console.error('[BINGO] anúncio falhou',jid,e?.message||e)}
+  // O grupo AlphaBot é o principal, e deve receber o aviso antes dos demais.
+  const primary='120363429534634131@g.us'
+  const ordered=[...new Set(targets)].sort((a,b)=>Number(b===primary)-Number(a===primary))
+  for(const jid of ordered){
+    let timeout
+    try{
+      const result=await Promise.race([
+        sock.sendMessage(jid,{text}),
+        new Promise((_,reject)=>{
+          timeout=setTimeout(()=>reject(new Error('timeout de 12 segundos no envio')),12000)
+          timeout.unref?.()
+        })
+      ])
+      console.log('[BINGO] aviso aceito pelo transporte',JSON.stringify({
+        group:jid,messageId:result?.key?.id||null,hasMessageId:Boolean(result?.key?.id)
+      }))
+    }catch(e){
+      console.error('[BINGO] anúncio falhou no grupo',jid,e?.message||e)
+    }finally{
+      if(timeout)clearTimeout(timeout)
+    }
     await new Promise(r=>setTimeout(r,300))
   }
 }
