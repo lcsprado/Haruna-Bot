@@ -2,9 +2,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {
- RACING_CARS,RACING_PARTS,RACING_UPGRADES,RACING_TIERS,
+ RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TIERS,
  RACING_MAX_TUNING,RACING_TOTAL_UPGRADE_COST,RACING_COOLDOWN_SECONDS,
- racingModel,racingPart,racingTuning,racingStats,racingDriverLevel,
+ racingModel,racingColor,racingPart,racingTuning,racingStats,racingDriverLevel,
  racingPower,racingNpcDuel,racingDuel,racingRepairCost,racingCashPrize,racingXpPrize
 } from '../src/neon/racing-rules.js'
 
@@ -21,6 +21,21 @@ test('four separate equal-price cars, different strengths, same tuning ceiling',
  assert.ok(racingStats('corsa').grip>racingStats('palio').grip)
  assert.ok(racingStats('palio').speed>racingStats('uno').speed)
  for(const c of RACING_CARS)assert.ok(racingPower({modelId:c.id},'cidade','equilibrada')>0)
+})
+test('paint colors persist, are per-car and purely cosmetic',()=>{
+ assert.equal(RACING_COLORS.length,12)
+ assert.equal(new Set(RACING_COLORS.map(x=>x.id)).size,12)
+ assert.equal(racingColor('AZUL').name,'Azul')
+ assert.equal(racingColor('roxo').hex,'#8650C9')
+ assert.equal(racingColor('nada'),null)
+ assert.equal(racingPower({modelId:'gol',colorId:'azul'}),racingPower({modelId:'gol',colorId:'vermelho'}))
+ const src=source('racing-alpha.js'),commands=source('racing-commands.js')
+ assert.match(src,/ALTER TABLE racing_cars_alpha ADD COLUMN IF NOT EXISTS color_id/)
+ assert.match(src,/UPDATE racing_cars_alpha SET color_id=\$3 WHERE jid=\$1 AND id=\$2/)
+ assert.match(src,/raceGarageText/)
+ assert.match(src,/racingColor\(car\.color_id\)/)
+ assert.match(commands,/cmd==='pintarcarro'/)
+ assert.match(commands,/!corescarro/)
 })
 test('long, expensive time-gated path to competitive racing',()=>{
  assert.equal(RACING_PARTS.length,6)

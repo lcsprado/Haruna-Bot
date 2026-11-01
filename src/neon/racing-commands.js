@@ -2,13 +2,13 @@
 import {ensureUser} from './db.js'
 import {racingTrack,racingDriverLevel} from './racing-rules.js'
 import {
- raceMoney,raceNum,raceState,raceGarageText,raceCarsText,raceWorkshopText,
- raceBuy,raceEquip,raceUpgrade,raceRepair,raceSolo,raceChallenge,raceAccept,
+ raceMoney,raceNum,raceState,raceGarageText,raceCarsText,raceColorsText,raceWorkshopText,
+ raceBuy,raceEquip,racePaint,raceUpgrade,raceRepair,raceSolo,raceChallenge,raceAccept,
  raceCancel,raceRanking,raceHistory
 } from './racing-alpha.js'
 
 const names=new Set(['corridas','corridacarros','garagemcorrida','corridagaragem','comprarcorrida',
- 'equiparcorrida','oficina','melhorarcarro','repararcarro','corrida','rankcorrida',
+ 'equiparcorrida','corescarro','pintarcarro','oficina','melhorarcarro','repararcarro','corrida','rankcorrida',
  'pilotocorrida','desafiocorrida','aceitarcorrida','cancelarcorrida','historicocorrida'])
 
 const safeName=name=>String(name||'Piloto').replace(/[\n\r*_~]/g,' ').slice(0,60)
@@ -19,7 +19,7 @@ export async function handleRacingAlphaCommand({cmd,args=[],sender,name='Piloto'
   await ensureUser(sender,name)
   const send=(text,opts)=>reply(text,opts)
   if(cmd==='corridas'){
-   await send("🏎️ *GARAGEM ALPHA — GUIA*\n\n1️⃣ *!corridacarros* — modelos e preços\n2️⃣ *!comprarcorrida gol* — comprar\n3️⃣ *!garagemcorrida* — status\n4️⃣ *!equiparcorrida ID* — carro ativo\n5️⃣ *!oficina* — peças e tempos\n6️⃣ *!melhorarcarro motor* — preparar\n7️⃣ *!repararcarro* — recuperar condição\n8️⃣ *!corrida rua cidade equilibrada* — corrida solo\n9️⃣ *!desafiocorrida @jogador reta* — PvP\n🔟 *!aceitarcorrida tecnica* — aceitar\n🏆 *!rankcorrida* • 📜 *!historicocorrida*\n\n🏁 Pistas: reta, cidade, serra\n🎯 Estratégias: equilibrada, agressiva, tecnica\n⭐ Ligas: rua, bairro, cidade, estadual, elite, lenda\n⏳ 10 min entre corridas; uma instalação por vez.\n💰 Carro competitivo exige peças caras, oficina e XP de piloto.");
+   await send("🏎️ *GARAGEM ALPHA — GUIA*\n\n1️⃣ *!corridacarros* — modelos e preços\n2️⃣ *!comprarcorrida gol* — comprar\n3️⃣ *!garagemcorrida* — status\n4️⃣ *!equiparcorrida ID* — carro ativo\n🎨 *!corescarro* — ver pinturas\n🖌️ *!pintarcarro ID azul* — personalizar (grátis)\n5️⃣ *!oficina* — peças e tempos\n6️⃣ *!melhorarcarro motor* — preparar\n7️⃣ *!repararcarro* — recuperar condição\n8️⃣ *!corrida rua cidade equilibrada* — corrida solo\n9️⃣ *!desafiocorrida @jogador reta* — PvP\n🔟 *!aceitarcorrida tecnica* — aceitar\n🏆 *!rankcorrida* • 📜 *!historicocorrida*\n\n🏁 Pistas: reta, cidade, serra\n🎯 Estratégias: equilibrada, agressiva, tecnica\n⭐ Ligas: rua, bairro, cidade, estadual, elite, lenda\n⏳ 10 min entre corridas; uma instalação por vez.\n💰 Carro competitivo exige peças caras, oficina e XP de piloto.");
    return true
   }
   if(cmd==='corridacarros'){
@@ -33,13 +33,22 @@ export async function handleRacingAlphaCommand({cmd,args=[],sender,name='Piloto'
    const r=await raceBuy(sender,args[0])
    await send('🏎️ *CARRO DE CORRIDA COMPRADO!*\n🚘 '+r.model.name+' • ID '+r.id+
     '\n💸 '+raceMoney(r.model.price)+(r.autoEquipped?'\n✅ Equipado automaticamente.':'\n👉 !equiparcorrida '+r.id)+
-    '\n🔧 Use !oficina para preparar. Não trabalha no Uber.')
+    '\n🎨 Pintura inicial: Prata. Personalize com !corescarro.'+'\n🔧 Use !oficina para preparar. Não trabalha no Uber.')
    return true
   }
   if(cmd==='equiparcorrida'){
    if(!args[0])throw Error('Use !garagemcorrida e depois !equiparcorrida ID.')
    const model=await raceEquip(sender,args[0])
    await send('✅ *CARRO EQUIPADO PARA CORRIDAS*\n🚘 '+model+'\n🏁 Use !corrida ou !oficina.');return true
+  }
+  if(cmd==='corescarro'){
+   await send(raceColorsText());return true
+  }
+  if(cmd==='pintarcarro'){
+   if(!args[0]||!args[1])throw Error('Use !pintarcarro ID cor. Ex.: !pintarcarro 12 azul. Veja !corescarro.')
+   const r=await racePaint(sender,args[0],args[1])
+   await send(r.changed?'🎨 *PINTURA ALTERADA!*\n🚘 '+r.model+' • ID '+r.carId+'\n'+r.color.emoji+' Cor: *'+r.color.name+'*\n✅ Salva na garagem, sem alterar desempenho.':'🎨 Seu '+r.model+' (ID '+r.carId+') já está na cor '+r.color.emoji+' *'+r.color.name+'*.')
+   return true
   }
   if(cmd==='oficina'){
    await send(raceWorkshopText(await raceState(sender)));return true

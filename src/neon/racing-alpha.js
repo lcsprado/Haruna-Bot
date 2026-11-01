@@ -1,5 +1,5 @@
 import {db,ensureUser} from './db.js'
-import {RACING_CARS,RACING_PARTS,RACING_UPGRADES,RACING_TIERS,RACING_COOLDOWN_SECONDS,RACING_CHALLENGE_SECONDS,RACING_MIN_CONDITION,RACING_MAX_CARS,RACING_TOTAL_UPGRADE_COST,racingModel,racingPart,racingTrack,racingStrategy,racingTier,racingTuning,racingStats,racingDriverLevel,racingPower,racingDuel,racingNpcDuel,racingRepairCost,racingCashPrize,racingXpPrize} from './racing-rules.js'
+import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TIERS,RACING_COOLDOWN_SECONDS,RACING_CHALLENGE_SECONDS,RACING_MIN_CONDITION,RACING_MAX_CARS,RACING_TOTAL_UPGRADE_COST,racingModel,racingColor,racingPart,racingTrack,racingStrategy,racingTier,racingTuning,racingStats,racingDriverLevel,racingPower,racingDuel,racingNpcDuel,racingRepairCost,racingCashPrize,racingXpPrize} from './racing-rules.js'
 
 export const raceMoney=n=>'R$ '+Math.max(0,Math.floor(Number(n)||0)).toLocaleString('pt-BR')
 export const raceNum=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
@@ -8,7 +8,8 @@ let initialized=false
 
 export async function initRacingAlpha(){
  await db.query("CREATE TABLE IF NOT EXISTS racing_profiles_alpha(jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,xp BIGINT NOT NULL DEFAULT 0 CHECK(xp>=0),races INTEGER NOT NULL DEFAULT 0,wins INTEGER NOT NULL DEFAULT 0,losses INTEGER NOT NULL DEFAULT 0,spent BIGINT NOT NULL DEFAULT 0,last_race_at BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0)")
- await db.query("CREATE TABLE IF NOT EXISTS racing_cars_alpha(id BIGSERIAL PRIMARY KEY,jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,model_id TEXT NOT NULL,equipped BOOLEAN NOT NULL DEFAULT FALSE,condition SMALLINT NOT NULL DEFAULT 100 CHECK(condition BETWEEN 0 AND 100),upgrades JSONB NOT NULL DEFAULT '{}'::jsonb,pending_part TEXT,pending_level INTEGER,pending_until BIGINT NOT NULL DEFAULT 0,races INTEGER NOT NULL DEFAULT 0,wins INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,UNIQUE(jid,model_id))")
+ await db.query("CREATE TABLE IF NOT EXISTS racing_cars_alpha(id BIGSERIAL PRIMARY KEY,jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,model_id TEXT NOT NULL,color_id TEXT NOT NULL DEFAULT 'prata',equipped BOOLEAN NOT NULL DEFAULT FALSE,condition SMALLINT NOT NULL DEFAULT 100 CHECK(condition BETWEEN 0 AND 100),upgrades JSONB NOT NULL DEFAULT '{}'::jsonb,pending_part TEXT,pending_level INTEGER,pending_until BIGINT NOT NULL DEFAULT 0,races INTEGER NOT NULL DEFAULT 0,wins INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,UNIQUE(jid,model_id))")
+ await db.query("ALTER TABLE racing_cars_alpha ADD COLUMN IF NOT EXISTS color_id TEXT NOT NULL DEFAULT 'prata'")
  await db.query("CREATE UNIQUE INDEX IF NOT EXISTS racing_one_equipped_alpha ON racing_cars_alpha(jid) WHERE equipped=TRUE")
  await db.query("CREATE INDEX IF NOT EXISTS racing_by_owner_alpha ON racing_cars_alpha(jid,id)")
  await db.query("CREATE TABLE IF NOT EXISTS racing_challenges_alpha(id BIGSERIAL PRIMARY KEY,chat TEXT NOT NULL,challenger TEXT NOT NULL REFERENCES users(jid),challenged TEXT NOT NULL REFERENCES users(jid),track_id TEXT NOT NULL,strategy_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at BIGINT NOT NULL,expires_at BIGINT NOT NULL,completed_at BIGINT NOT NULL DEFAULT 0,CHECK(challenger<>challenged))")
@@ -53,13 +54,14 @@ export function raceGarageText(s){
   '💸 Investido: '+raceMoney(p?.spent||0),'🚘 '+s.cars.length+'/'+RACING_MAX_CARS+' carros • 1 equipado','']
  if(!s.cars.length)arr.push('Garagem vazia. Veja *!corridacarros*.')
  for(const car of s.cars){
-  const st=racingStats(car.model_id,car.upgrades),n=racingTuning(car.upgrades)
+  const st=racingStats(car.model_id,car.upgrades),n=racingTuning(car.upgrades),color=racingColor(car.color_id)||racingColor('prata')
   arr.push('*ID '+car.id+' • '+modelName(car)+'*'+(car.equipped?' ✅ EQUIPADO':''),
     '⚡ Vel '+st.speed+' • 🚀 Arr '+st.accel+' • 🛞 Ader '+st.grip+' • 🛑 Fre '+st.brake,
+    '🎨 Pintura '+color.emoji+' '+color.name,
     '🛠️ Preparação '+n+'/42 • ❤️ Condição '+car.condition+'/100',
     car.pending_part?'🔧 '+racingPart(car.pending_part).name+' Lv.'+car.pending_level+' • ⏳ '+Math.max(0,Math.ceil((car.pending_until-nowSeconds())/60))+'min':'🔧 Oficina livre','')
  }
- arr.push('🔧 *!oficina* • 🏁 *!corrida* • 🧰 *!repararcarro*','Carros desta garagem não são usados no Uber.')
+ arr.push('🎨 *!corescarro* • *!pintarcarro ID azul*', '🔧 *!oficina* • 🏁 *!corrida* • 🧰 *!repararcarro*','Carros desta garagem não são usados no Uber.')
  return arr.join('\n')
 }
 export function raceCarsText(){
@@ -67,6 +69,10 @@ export function raceCarsText(){
  for(const c of RACING_CARS)s+='🚘 *'+c.id+'* — '+c.name+' • '+raceMoney(c.price)+'\n⚡ '+c.stats.speed+' Vel • 🚀 '+c.stats.accel+' Arr • 🛞 '+c.stats.grip+' Ader • 🛑 '+c.stats.brake+' Fre\n'
  return s+'\nMesma capacidade de preparação máxima (42 melhorias). A pista e as peças definem o vencedor.'+
  '\n🛒 *!comprarcorrida gol* • exclusivos desta modalidade, fora do Uber.'
+}
+export function raceColorsText(){
+ return '🎨 *PINTURAS — GARAGEM ALPHA*\n\n'+RACING_COLORS.map(c=>c.emoji+' *'+c.id+'* — '+c.name).join('\n')+
+ '\n\n🖌️ Para pintar: *!pintarcarro ID cor*\nEx.: *!pintarcarro 12 vermelho*\n✅ Gratuito, permanente e somente visual. Não altera atributos, condição ou melhorias.'
 }
 export function raceWorkshopText(s){
  const car=activeCar(s)
@@ -132,6 +138,22 @@ export async function raceEquip(jid,carId){
   await c.query('UPDATE racing_cars_alpha SET equipped=FALSE WHERE jid=$1 AND equipped=TRUE',[jid])
   await c.query('UPDATE racing_cars_alpha SET equipped=TRUE WHERE id=$1',[car.id])
   return modelName(car)
+ })
+}
+export async function racePaint(jid,carId,colorId){
+ const color=racingColor(colorId)
+ if(!color)throw Error('Cor inválida. Veja !corescarro.')
+ return tx(jid,async c=>{
+  const s=await state(c,jid)
+  const target=String(carId||'').trim().toLowerCase()
+  const car=s.cars.find(x=>String(x.id)===target||x.model_id===target)
+  if(!car)throw Error('Carro não está na sua garagem. Consulte !garagemcorrida.')
+  const previous=racingColor(car.color_id)||racingColor('prata')
+  if(previous.id!==color.id){
+   const out=await c.query('UPDATE racing_cars_alpha SET color_id=$3 WHERE jid=$1 AND id=$2 RETURNING id',[jid,car.id,color.id])
+   if(out.rowCount!==1)throw Error('Falha ao salvar a pintura. Tente novamente.')
+  }
+  return {carId:car.id,model:modelName(car),color,changed:previous.id!==color.id}
  })
 }
 export async function raceUpgrade(jid,partId){
