@@ -1,0 +1,31 @@
+name: PvP - 17 combatants and awakening validation
+
+on:
+  push:
+    paths:
+      - 'src/neon/pvp-class-powers.js'
+      - 'src/neon/pvp-balance-simulator.js'
+      - 'src/neon/db.js'
+      - 'test/pvp-all-17-awakenings-20261101.test.mjs'
+      - '.github/workflows/pvp-17-balance.yml'
+  pull_request:
+    paths:
+      - 'src/neon/pvp-class-powers.js'
+      - 'src/neon/pvp-balance-simulator.js'
+      - 'src/neon/db.js'
+      - 'test/pvp-all-17-awakenings-20261101.test.mjs'
+      - '.github/workflows/pvp-17-balance.yml'
+
+jobs:
+  pvp-fairness:
+    name: Class awakening and round-robin audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: node --test test/pvp-all-17-awakenings-20261101.test.mjs test/playable-seven-sins-20261027.test.mjs
+      - run: node scripts/check-syntax.mjs
