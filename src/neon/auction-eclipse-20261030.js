@@ -34,7 +34,9 @@ const PACKAGES=[
   PECADOS_ESSENCES.map(id=>({id,qty:1}))
 ]
 const LOT_OPENINGS=[OPENING,OPENING,OPENING,OPENING]
-let timer=null,busy=false,initPromise=null,auctionSocket=null
+let timer=null,busy=false,initPromise=null,auctionSocket=null,startupPromise=null
+const LOT4_REPLAY_ID='lot4_whatsapp_decryption_20261101_v1'
+const REPLAY_NOTICE_DELAY_MS=60_000
 
 async function init(){
   if(initPromise)return initPromise
@@ -177,7 +179,7 @@ async function finishLot(state,c){
     entry.rewards=received
     await c.query(
       "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_7_pecados_20261101',$3)",
-      [high.jid,high.value,KEY+':lot:'+state.lot]
+      [high.jid,high.value,KEY+':lot:'+state.lot+(state.lot===3&&state.replay?.id===LOT4_REPLAY_ID?':replay:'+LOT4_REPLAY_ID:'')]
     )
     report+='\n🏆 '+clean(high.name)+' — '+fmt(high.value)+'\n🎁 PRÊMIO ENTREGUE:\n• '+received.join('\n• ')
   }else{
@@ -186,6 +188,86 @@ async function finishLot(state,c){
   state.history.push(entry)
   return report
 }
+
+// Uma única reedição autorizada do 4º lote de 01/11.
+// Estorno, reversão de itens, auditoria e anúncio são uma transação atômica.
+// Nunca alterar os lotes 1–3 nem executar a compensação duas vezes.
+async function reopenFourthLotAfterDeliveryFailure(){
+  await init()
+  return change(async(state,c)=>{
+    if(state.replay?.id===LOT4_REPLAY_ID)
+      return {active:Boolean(state.replay.active),alreadyProcessed:true}
+    const history=Array.isArray(state.history)?state.history:[]
+    const old=history.find(x=>Number(x.lot)===3)
+    const high=state.high
+    if(state.phase!=='completed'||Number(state.lot)!==3||history.length!==4||
+       !old?.winner||!high||old.winner.jid!==high.jid||
+       Number(old.winner.bid)!==8000000||Number(high.value)!==8000000||
+       Number(high.cash)!==8000000||Number(high.bank)!==0)
+      throw Error('Reedição do lote 4: resultado original não corresponde à auditoria; nada alterado')
+    const prizeItems=state.lots?.[3]?.prize||[]
+    if(prizeItems.length!==7||prizeItems.some(x=>!x.id||Number(x.qty)!==1))
+      throw Error('Reedição lote 4: itens não correspondem às sete essências')
+    const ids=prizeItems.map(x=>x.id)
+    if(new Set(ids).size!==7)throw Error('Reedição lote 4: prêmio duplicado')
+    const original=(await c.query(
+      "SELECT id,amount,from_jid FROM transactions WHERE type='leilao_7_pecados_20261101' AND note=$1 FOR UPDATE",
+      [KEY+':lot:3']
+    )).rows
+    if(original.length!==1||Number(original[0].amount)!==8000000||original[0].from_jid!==high.jid)
+      throw Error('Reedição lote 4: transação de pagamento original não localizada')
+    const wallet=(await c.query('SELECT jid FROM wallets WHERE jid=$1 FOR UPDATE',[high.jid])).rows[0]
+    if(!wallet)throw Error('Reedição lote 4: carteira original ausente')
+    const inventory=(await c.query(
+      'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[]) FOR UPDATE',
+      [high.jid,ids]
+    )).rows
+    if(ids.some(id=>!inventory.some(x=>x.item_id===id&&Number(x.quantity)>=1)))
+      throw Error('Reedição lote 4: prêmio já utilizado; estorno automático interrompido')
+    const removed=await c.query(
+      'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=ANY($2::text[]) AND quantity>=1 RETURNING item_id',
+      [high.jid,ids]
+    )
+    if(removed.rowCount!==7)throw Error('Reedição lote 4: reversão de inventário incompleta')
+    await c.query(
+      'UPDATE wallets SET cash=cash+$1,bank=bank+$2,updated_at=EXTRACT(EPOCH FROM NOW())::bigint WHERE jid=$3',
+      [high.cash,high.bank,high.jid]
+    )
+    await c.query(
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'leilao_7_pecados_20261101_estorno',$3)",
+      [high.jid,high.value,KEY+':lot:3:estorno:'+LOT4_REPLAY_ID]
+    )
+    const now=Date.now()
+    state.replay={id:LOT4_REPLAY_ID,active:true,status:'pending',
+      startAt:now+REPLAY_NOTICE_DELAY_MS,original:old,originalTransactionId:original[0].id,
+      refunded:high.value,refundedCash:high.cash,refundedBank:high.bank,
+      revokedItems:ids,createdAt:now}
+    state.history=history.filter(x=>Number(x.lot)!==3)
+    state.phase='replay_pending'
+    state.high=null
+    state.recentBids=[]
+    state.ends=0
+    state.extra=0
+    delete state.finished
+    state.bidNoticeVersion=Number(state.bidNoticeVersion||0)+1
+    await queueAuctionBidNotices(c,{
+      key:KEY,version:state.bidNoticeVersion,groups:state.groups,origin:'system',
+      message:'⚠️🔨 *LEILÃO DOS SETE PECADOS — 4º LOTE ANULADO*\\n\\n'+
+        'Devido a uma *falha técnica nas mensagens do WhatsApp*, o quarto lote será refeito para garantir igualdade de condições.\\n'+
+        '✅ *R$ 8.000.000 estornados integralmente* ao vencedor anterior.\\n'+
+        '↩️ O prêmio do arremate anulado foi revertido. Os lotes 1, 2 e 3 permanecem válidos.\\n\\n'+
+        '⏳ *Novo 4º lote em 1 minuto.* Lance inicial: *R$ 8.000.000*; incremento: *R$ 300.000*.\\n'+
+        '⚔️ A disputa durará 2 minutos, com prorrogação nos últimos segundos.\\n'+
+        '📢 *Acompanhem pelo !leilao*.'
+    })
+    console.log('[LEILAO REPLAY 4] estorno aplicado',JSON.stringify({
+      originalTransactionId:original[0].id,refund:high.value,revoked:removed.rowCount,
+      opensAt:state.replay.startAt
+    }))
+    return {active:true,refunded:true}
+  })
+}
+
 async function tick(sock){
   if(busy)return
   busy=true
@@ -218,24 +300,38 @@ async function tick(sock){
       }
       return
     }
-    if(now>END+5*60*1000){if(timer){clearInterval(timer);timer=null};return}
-    // Cria tabela de notificações e valida itens antes do primeiro acesso à fila.
+    const current=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
+    const replayActive=current?.replay?.id===LOT4_REPLAY_ID&&current.replay.active===true
+    if(now>END+5*60*1000&&!replayActive){if(timer){clearInterval(timer);timer=null};return}
+    // Outbox durável: primeiro garante que o cancelamento seja anunciado.
     await init()
     await flushAuctionBidNotices(db,sock,KEY,{limit:8})
     await warnAuctionDeliveryFailures(db,sock,KEY)
-    if(now>END)return
-    const current=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value
+    if(now>END&&!replayActive)return
     if(current?.phase==='completed'){
       if(now>Number(current.finished||END)+5*60*1000){if(timer){clearInterval(timer);timer=null}}
       return
     }
+    if(current?.phase==='replay_pending' && now<Number(current.replay?.startAt||0))return
     if(current?.phase==='running' && now<Number(current.ends||0))return
     const groups=current?.groups?.length?current.groups:await licensedGroups()
     if(!groups.length)return
     let outgoing=''
     await change(async(state,c)=>{
       if(state.phase==='completed')return
-      if(state.phase==='pending'){
+      if(state.phase==='replay_pending'){
+        if(now<Number(state.replay?.startAt||0))return
+        beginLot(state,now)
+        state.replay.status='running'
+        state.bidNoticeVersion=Number(state.bidNoticeVersion||0)+1
+        await queueAuctionBidNotices(c,{
+          key:KEY,version:state.bidNoticeVersion,groups:state.groups,origin:'system',
+          message:'🔨🌈 *QUARTO LOTE REABERTO — NOVA DISPUTA!*\\n\\n'+
+            '⚠️ A disputa anterior foi anulada por falha técnica.\\n\\n'+
+            status(state)
+        })
+        console.log('[LEILAO REPLAY 4] lote reaberto',JSON.stringify({ends:state.ends}))
+      }else if(state.phase==='pending'){
         state.lots=createPublicLots()
         const ids=[...new Set(state.lots.flatMap(x=>x.prize).map(x=>x.id).filter(Boolean))]
         const rows=(await c.query('SELECT id FROM items WHERE id=ANY($1::text[])',[ids])).rows
@@ -258,7 +354,17 @@ async function tick(sock){
         if(state.lot===PACKAGES.length-1){
           state.phase='completed'
           state.finished=Date.now()
-          outgoing+='\n\n🏁 *LEILÃO DOS SETE PECADOS CONCLUÍDO!* Todos os lotes encerrados.'
+          if(state.replay?.id===LOT4_REPLAY_ID){
+            state.replay.active=false
+            state.replay.status='completed'
+            state.replay.finishedAt=state.finished
+            state.bidNoticeVersion=Number(state.bidNoticeVersion||0)+1
+            await queueAuctionBidNotices(c,{
+              key:KEY,version:state.bidNoticeVersion,groups:state.groups,origin:'system',
+              message:outgoing+'\\n\\n✅ *REEDIÇÃO DO 4º LOTE FINALIZADA.* Os demais lotes permaneceram intactos.'
+            })
+            outgoing=''
+          }else outgoing+='\n\n🏁 *LEILÃO DOS SETE PECADOS CONCLUÍDO!* Todos os lotes encerrados.'
         }else{
           state.lot++
           beginLot(state,now)
@@ -267,26 +373,30 @@ async function tick(sock){
       }
     })
     if(outgoing)await sendGroups(sock,outgoing,groups)
+    if(replayActive)await flushAuctionBidNotices(db,sock,KEY,{limit:8})
   }catch(err){
     console.error('[LEILAO 01NOV]',err?.stack||err)
   }finally{busy=false}
 }
 export function startAuctionAlphaScheduler(sock){
-  // Atualiza o socket após cada reconexão, sem criar um segundo polling.
+  // Socket mais recente, sem criar timers concorrentes nem repetir estornos.
   auctionSocket=sock
   if(AUCTION_PAUSED_FOR_AUDIT){
     if(timer){clearInterval(timer);timer=null}
-    console.log('[LEILAO 01NOV] pausado para auditoria — sem novos leiloes ou avisos')
     return
   }
-  if(timer){clearInterval(timer);timer=null}
-  if(Date.now()>END){
-    console.log('[LEILAO 01NOV] edição encerrada; scheduler desativado')
-    return
-  }
-  timer=setInterval(()=>tick(sock),5000)
-  timer.unref?.()
-  void tick(sock)
+  if(timer||startupPromise)return
+  startupPromise=(async()=>{
+    const replay=await reopenFourthLotAfterDeliveryFailure()
+    if(Date.now()>END&&!replay?.active){
+      console.log('[LEILAO 01NOV] edição concluída; replay não está ativo')
+      return
+    }
+    timer=setInterval(()=>{void tick(auctionSocket)},5000)
+    timer.unref?.()
+    await tick(auctionSocket)
+  })().catch(err=>console.error('[LEILAO REPLAY 4] inicialização cancelada com segurança',err?.stack||err))
+    .finally(()=>{startupPromise=null})
 }
 function parseAmount(raw){
   const text=String(raw||'').replace(/\./g,'').replace(/\s/g,'').toLowerCase()
@@ -319,6 +429,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     const sync=state?.phase==='running'?await auctionNoticeSummary(db,KEY,Number(state.bidNoticeVersion||0)):null
     const syncLine=sync?'\n📡 Avisos: '+sync.sent+' enviados, '+sync.pending+' pendentes, '+sync.failed+' falharam.':''
     await reply(state?.phase==='running'?status(state)+syncLine:
+      state?.phase==='replay_pending'?'⚠️ *REEDIÇÃO DO 4º LOTE*\\nA disputa anterior foi anulada por falha técnica e o valor foi estornado.\\n🔨 Abertura: *'+clock(state.replay.startAt)+'* (Brasília).\\n💰 Lance inicial: *'+fmt(OPENING)+'*.':
       state?.phase==='completed'?'🏁 Leilão dos Sete Pecados encerrado. Consulte os prêmios divulgados antes do evento.':
       '⏳ Leilão dos Sete Pecados sendo aberto. Consulte novamente em instantes.')
     return true
@@ -400,7 +511,7 @@ export async function getAuctionWebStatus({chat,sender}){
   const now=Date.now()
   const lot=state.lots?.[state.lot]
   const groupAllowed=Array.isArray(state.groups)&&state.groups.includes(chat)
-  const acceptingBids=!AUCTION_PAUSED_FOR_AUDIT&&state.phase==='running'&&groupAllowed&&now>=START&&now<END&&now<Number(state.ends||0)
+  const acceptingBids=!AUCTION_PAUSED_FOR_AUDIT&&state.phase==='running'&&groupAllowed&&now>=START&&(now<END||state.replay?.active===true)&&now<Number(state.ends||0)
   return {
     title:'Leilão dos Sete Pecados',phase:now<START?'scheduled':(state.phase||'pending'),
     acceptingBids,serverTime:now,startsAt:START,lotNumber:lot?Number(state.lot)+1:null,
