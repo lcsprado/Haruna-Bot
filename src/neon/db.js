@@ -2955,19 +2955,19 @@ else from.awakeningState=attack.awakeningState;
 from.lastProcAttack=attack.lastProcAttack;
 const defenseRoll=Math.random();
 const defenseStateBefore=to.awakeningState;
-const defenseArgs={classId:to.classId,applied:to.classApplied,damage:attack.damage,roll:defenseRoll,hp:to.hp,maxHp:to.maxHp,awakeningStage:to.awakeningStage,awakeningState:defenseStateBefore};
+const defenseArgs={classId:to.classId,applied:to.classApplied,damage:dodged?0:attack.damage,roll:defenseRoll,hp:to.hp,maxHp:to.maxHp,awakeningStage:to.awakeningStage,awakeningState:defenseStateBefore};
 const defense=to.heroId
   ?heroPvpDefense({heroId:to.heroId,damage:dodged?0:attack.damage,state:to.heroState,gear:to.heroGear})
   :classPvpDefense(defenseArgs);
 const classDamage=defense.damage;
 const withoutPetClassDamage=noPetAttack===attack?classDamage:
   (to.heroId?heroPvpDefense({heroId:to.heroId,damage:dodged?0:noPetAttack.damage,state:to.heroState,gear:to.heroGear}).damage:
-    classPvpDefense({...defenseArgs,damage:noPetAttack.damage}).damage);
+    classPvpDefense({...defenseArgs,damage:dodged?0:noPetAttack.damage}).damage);
 if(to.heroId)to.heroState=defense.state;
 else to.awakeningState=defense.awakeningState;
 const petDefense=Number(to.petBonus?.defense||0)
-const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-petDefense)))
-const noPetDmg=dodged?0:Math.max(1,Math.round(withoutPetClassDamage*(1-petDefense)))
+const dmg=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)))
+const noPetDmg=dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense)))
 const targetHpBefore=to.hp
 const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
 const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
@@ -3009,7 +3009,7 @@ const pvpMetrics=Object.fromEntries([A,B].map(fighter=>{
   damageReceived:incoming.reduce((s,x)=>s+Number(x.actualDamage||0),0),
   damageBlocked:incoming.reduce((s,x)=>s+Number(x.defenseBlocked||0)+Number(x.petDamageBlocked||0),0),
   shieldAbsorbed:incoming.reduce((s,x)=>s+Number(x.shieldAbsorbed||0),0),
-  healed:log.filter(x=>x.fromJid===fighter.jid&&x.classHeal).reduce((s,x)=>s+Number(x.heal||0),0),
+  healed:log.filter(x=>x.fromJid===fighter.jid&&(x.classHeal||x.petHeal)).reduce((s,x)=>s+Number(x.heal||0),0),
   criticalHits:outgoing.filter(x=>x.crit).length,
   dodges:incoming.filter(x=>x.dodged||x.petDodge).length,
   skillsUsed:outgoing.filter(x=>x.classTechnique||x.heroTechnique).length+incoming.filter(x=>x.defenseTechnique).length
