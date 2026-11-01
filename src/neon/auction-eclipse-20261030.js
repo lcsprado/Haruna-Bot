@@ -1,5 +1,5 @@
-// Leilão Eclipse dos Pecados (30/10, 14h) — 4 lotes públicos e 2min por lote.
-// Sem anúncio prévio; catálogo visível em !leilao e no Web desde o agendamento.
+// Leilão dos Sete Pecados (01/11, 12h BRT) — 4 lotes públicos de 2min cada.
+// Aviso antecipado restrito ao grupo AlphaBot; catálogo no !leilao e no Web.
 // Estado, lances reservados e entrega final são transacionais no banco ativo.
 import {randomBytes,createHash} from 'node:crypto'
 import {extendAuctionDeadline,LOT_DURATION_MS} from './auction-rules.js'
@@ -9,32 +9,31 @@ import {PECADOS_ESSENCES} from './sete-pecados-catalog.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
 import {initAuctionNoticeOutbox,queueAuctionBidNotices,auctionNoticeSummary,flushAuctionBidNotices,warnAuctionDeliveryFailures} from './auction-notice-outbox.js'
 
-const KEY='leilao_eclipse_pecados_20261030_1400_v1'
+const KEY='leilao_7_pecados_20261101_1200_v1'
 // Edições anteriores mantêm seus dados e histórico em chaves próprias.
-// Edição de 30/10 às 14h, autorizada pelo organizador.
+// Edição de 01/11 às 12h BRT, autorizada pelo organizador.
 const AUCTION_PAUSED_FOR_AUDIT=false
 // Temporary-recovery datasets must not broadcast or revive historical auctions.
 // Chave isolada: modo temporário não reativa leilões históricos.
-const START=Date.parse('2026-10-30T14:00:00-03:00')
-const END=Date.parse('2026-10-30T15:00:00-03:00')
+const START=Date.parse('2026-11-01T12:00:00-03:00')
+const END=Date.parse('2026-11-01T13:00:00-03:00')
 const DURATION=LOT_DURATION_MS
 // Exceção limitada a este evento; não modifica licenças nem libera outros comandos.
-const EVENT_GROUPS=new Set(['120363410230588690@g.us','120363429534634131@g.us'])
-const OPENING=10000000
-const STEP=500000
+const EVENT_GROUPS=new Set(['120363429534634131@g.us'])
+const OPENING=8000000
+const STEP=300000
 const fmt=n=>'R$ '+Number(n).toLocaleString('pt-BR')
 const clean=n=>String(n||'Jogador').replace(/[\r\n*]/g,' ').slice(0,45)
 const clock=n=>new Date(Number(n)).toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})
-// Ordem fixa e premiação divulgada em WhatsApp e Web, conforme pedido do organizador.
-// Todos os IDs existem no banco; uma transação reserva o maior lance e entrega o prêmio.
-// Ordem pública fixa: pet, cofre, arma, invocação; duração 2 min/lote.
+// 7 essências diferentes equivalem a uma invocação oficial, não a sete invocações.
+// Ordem fixa, premiação pública, entrega transacional.
 const PACKAGES=[
-  [{pet:'manticora_eclipse_20261030',name:'Mantícora do Eclipse',power:320}],
-  [{id:'caixa_lendaria',qty:4},{id:'caixa_epica',qty:3},{id:'pedra_fortaleza_alpha',qty:3},{id:'pedra_precisao_alpha',qty:3},{id:'pergaminho_reclassificacao',qty:1}],
-  [{id:'foice_eclipse_mistico_20261030',qty:1}],
+  PECADOS_ESSENCES.map(id=>({id,qty:1})),
+  [{id:'elixir_leilao_2h',qty:1},{id:'espada_guardiao',qty:1}],
+  [{id:'selo_poder_5pct_alpha_20261019',qty:1},{xp:150000}],
   PECADOS_ESSENCES.map(id=>({id,qty:1}))
 ]
-const LOT_OPENINGS=[10000000,6000000,12000000,8000000]
+const LOT_OPENINGS=[OPENING,OPENING,OPENING,OPENING]
 let timer=null,busy=false,initPromise=null,auctionSocket=null
 
 async function init(){
@@ -69,13 +68,13 @@ async function init(){
   try{await initPromise}catch(e){initPromise=null;throw e}
 }
 async function licensedGroups(){
-  const groups=await listGroupLicenses(500)
-  return [...new Set([...groups.filter(groupLicenseIsActive).map(g=>g.chat_jid),...EVENT_GROUPS].filter(j=>String(j).endsWith('@g.us')))]
+  // Nunca distribuir avisos ou lances a todos os grupos licenciados.
+  return [...EVENT_GROUPS]
 }
 async function sendGroups(sock,msg,groups){
   for(const jid of groups){
     try{await sock.sendMessage(jid,{text:msg})}
-    catch(err){console.warn('[LEILAO RELIQUIAS] aviso falhou',jid,err?.message||err)}
+    catch(err){console.warn('[LEILAO 01NOV] aviso falhou',jid,err?.message||err)}
     await new Promise(resolve=>setTimeout(resolve,250))
   }
 }
@@ -102,14 +101,12 @@ async function change(fn){
 }
 function publicPrize(prize){
   const items=Array.isArray(prize)?prize:[]
-  if(items.some(x=>x.pet==='manticora_eclipse_20261030'))
-    return '🦂 Mantícora do Eclipse — Pet Lendário Místico, sinergia 🐾 Predador (dano, crítico e velocidade)'
-  if(items.some(x=>x.id==='foice_eclipse_mistico_20261030'))
-    return '⚔️ Foice do Eclipse — arma Lendária Mística exclusiva (+140 ATK, +10 VEL, +4% CRIT no Nv.1)'
   if(items.length===PECADOS_ESSENCES.length&&PECADOS_ESSENCES.every(id=>items.some(x=>x.id===id&&x.qty===1)))
-    return '🌈 Invocação dos 7 Pecados: 1 essência de cada Pecado (7 diferentes, 1 abertura oficial)'
-  if(items.some(x=>x.id==='caixa_lendaria'&&x.qty===4))
-    return '👑 Cofre do Imperador: 4 Caixas Lendárias + 3 Épicas + 3 Pedras de Fortaleza + 3 de Precisão + 1 Pergaminho de Reclassificação'
+    return '🌈 Invocação oficial dos 7 Pecados: 7 essências diferentes, uma abertura aleatória'
+  if(items.some(x=>x.id==='elixir_leilao_2h')&&items.some(x=>x.id==='espada_guardiao'))
+    return '⏳ Ampulheta Dourada (XP 2× por 2h) + ⚔️ Espada do Guardião (Épica, +50 ATK e +25 HP)'
+  if(items.some(x=>x.id==='selo_poder_5pct_alpha_20261019')&&items.some(x=>x.xp===150000))
+    return '🔥 Selo de Potência Alpha (+5% ATK total permanente, ativo no inventário, não acumula) + ✨ 150.000 XP instantâneos'
   return 'Prêmio não identificado — consulte o administrador'
 }
 function publicCatalog(lots){
@@ -123,10 +120,10 @@ function createPublicLots(){
 }
 function status(state){
   const lot=state.lots?.[state.lot]
-  if(state.phase==='completed')return '🏁 *LEILÃO ECLIPSE DOS PECADOS ENCERRADO!* Os 4 lotes foram encerrados.'
-  if(!lot)return '🔨 Leilão Eclipse dos Pecados em preparação.'
+  if(state.phase==='completed')return '🏁 *LEILÃO DOS SETE PECADOS ENCERRADO!* Os 4 lotes foram encerrados.'
+  if(!lot)return '🔨 Leilão dos Sete Pecados em preparação.'
   const minimum=state.high?Number(state.high.value)+lot.step:lot.min
-  return '🔨 *LEILÃO ECLIPSE DOS PECADOS — LOTE '+(Number(state.lot)+1)+'/'+PACKAGES.length+'*'+
+  return '🔨 *LEILÃO DOS SETE PECADOS — LOTE '+(Number(state.lot)+1)+'/'+PACKAGES.length+'*'+
     '\n🎁 *PRÊMIO:* '+publicPrize(lot.prize)+
     '\n💰 Lance inicial: '+fmt(lot.min)+
     '\n📈 Próximo lance mínimo: *'+fmt(minimum)+'*'+
@@ -134,7 +131,7 @@ function status(state){
     '\n⏳ Encerra às *'+clock(state.ends)+'* (Brasília)'+
     '\n⚡ Lance nos últimos 15s: +20s de prorrogação (máx. 2min extras)'+
     '\n📋 *Prêmios dos 4 lotes:*\n'+publicCatalog(state.lots)+
-    '\n📩 *!lance 10000000* ou *!lance +500000* • *!leilao*'
+    '\n📩 *!lance 8000000* ou *!lance +300000* • *!leilao*'
 }
 async function prize(c,jid,packageItems){
   const received=[]
@@ -179,7 +176,7 @@ async function finishLot(state,c){
     const received=await prize(c,high.jid,lot.prize)
     entry.rewards=received
     await c.query(
-      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_eclipse_pecados_20261030',$3)",
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'leilao_7_pecados_20261101',$3)",
       [high.jid,high.value,KEY+':lot:'+state.lot]
     )
     report+='\n🏆 '+clean(high.name)+' — '+fmt(high.value)+'\n🎁 PRÊMIO ENTREGUE:\n• '+received.join('\n• ')
@@ -194,8 +191,31 @@ async function tick(sock){
   busy=true
   try{
     const now=Date.now()
-    // Sem anúncio antecipado: prêmios continuam públicos no !leilao/Web.
-    if(now<START)return
+    // Aviso único no grupo AlphaBot; grava na outbox para reenvio em caso de falha.
+    if(now<START){
+      if(now>=START-3*60*60*1000){
+        await init()
+        await change(async(state,c)=>{
+          if(state.phase!=='pending'||state.preAnnounced)return
+          state.groups=await licensedGroups()
+          state.preAnnounced=true
+          await queueAuctionBidNotices(c,{
+            key:KEY,version:0,groups:state.groups,origin:'system',
+            message:'🔨🌈 *LEILÃO DOS SETE PECADOS — HOJE ÀS 12H!*\\n\\n'+
+              '🎁 *LOTE 1:* Invocação dos 7 Pecados (7 essências diferentes)\\n'+
+              '⏳ *LOTE 2:* Ampulheta Dourada XP 2× por 2h + Espada do Guardião\\n'+
+              '🔥 *LOTE 3:* Selo de Potência +5% ATK permanente + 150.000 XP\\n'+
+              '🌈 *LOTE 4:* Invocação dos 7 Pecados (7 essências diferentes)\\n\\n'+
+              '💰 Abertura de *R$ 8.000.000* em todos os lotes.\\n'+
+              '📈 Lances em incrementos de *R$ 300.000*.\\n'+
+              '⏱️ 2 minutos por lote, com prorrogação anti-último-segundo.\\n'+
+              '📢 *Somente no grupo AlphaBot*. Use *!leilao* para conferir.'
+          })
+        })
+        await flushAuctionBidNotices(db,sock,KEY,{limit:8})
+      }
+      return
+    }
     if(now>END+5*60*1000){if(timer){clearInterval(timer);timer=null};return}
     // Cria tabela de notificações e valida itens antes do primeiro acesso à fila.
     await init()
@@ -223,7 +243,7 @@ async function tick(sock){
         state.seal=createHash('sha256').update(JSON.stringify(state.lots.map(x=>x.prize))+':'+state.salt).digest('hex')
         state.lot=0
         beginLot(state,now)
-        outgoing='🔨💎 *LEILÃO ECLIPSE DOS PECADOS COMEÇOU!*\n\n'+
+        outgoing='🔨💎 *LEILÃO DOS SETE PECADOS COMEÇOU!*\n\n'+
           '🎁 *PRÊMIOS DIVULGADOS — 4 LOTES:*\n'+publicCatalog(state.lots)+
           '\n\n💰 Lance inicial: *'+fmt(OPENING)+'*'+
           '\n📈 Incremento mínimo: *'+fmt(STEP)+'*'+
@@ -236,7 +256,7 @@ async function tick(sock){
         if(state.lot===PACKAGES.length-1){
           state.phase='completed'
           state.finished=Date.now()
-          outgoing+='\n\n🏁 *LEILÃO ECLIPSE DOS PECADOS CONCLUÍDO!* Todos os lotes encerrados.'
+          outgoing+='\n\n🏁 *LEILÃO DOS SETE PECADOS CONCLUÍDO!* Todos os lotes encerrados.'
         }else{
           state.lot++
           beginLot(state,now)
@@ -246,7 +266,7 @@ async function tick(sock){
     })
     if(outgoing)await sendGroups(sock,outgoing,groups)
   }catch(err){
-    console.error('[LEILAO RELIQUIAS]',err?.stack||err)
+    console.error('[LEILAO 01NOV]',err?.stack||err)
   }finally{busy=false}
 }
 export function startAuctionAlphaScheduler(sock){
@@ -254,12 +274,12 @@ export function startAuctionAlphaScheduler(sock){
   auctionSocket=sock
   if(AUCTION_PAUSED_FOR_AUDIT){
     if(timer){clearInterval(timer);timer=null}
-    console.log('[LEILAO RELIQUIAS] pausado para auditoria — sem novos leiloes ou avisos')
+    console.log('[LEILAO 01NOV] pausado para auditoria — sem novos leiloes ou avisos')
     return
   }
   if(timer){clearInterval(timer);timer=null}
   if(Date.now()>END){
-    console.log('[LEILAO ECLIPSE] edição encerrada; scheduler desativado')
+    console.log('[LEILAO 01NOV] edição encerrada; scheduler desativado')
     return
   }
   timer=setInterval(()=>tick(sock),5000)
@@ -281,15 +301,15 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     return true
   }
   if(!String(chat||'').endsWith('@g.us')){
-    await reply('🔨 O Leilão Eclipse dos Pecados acontece nos grupos.')
+    await reply('🔨 O Leilão dos Sete Pecados acontece somente no grupo AlphaBot.')
     return true
   }
-  if(!groupLicenseIsActive(await getGroupLicense(chat))&&!EVENT_GROUPS.has(chat)){
-    await reply('🔒 É necessário ter licença ativa para participar.')
+  if(!EVENT_GROUPS.has(chat)){
+    await reply('🔒 Esta edição é exclusiva do grupo AlphaBot.')
     return true
   }
   if(Date.now()<START){
-    await reply('🔨💎 *LEILÃO ECLIPSE DOS PECADOS AGENDADO*\n⏰ Começa às *14h00* (Brasília) de 30/10.\n🎁 *PRÊMIOS PÚBLICOS:*\n'+publicCatalog(createPublicLots())+'\n💰 Aberturas: *'+LOT_OPENINGS.map(fmt).join(' / ')+'* • incremento: *'+fmt(STEP)+'*.\n📋 Volte com *!leilao* às 14h00.')
+    await reply('🔨💎 *LEILÃO DOS SETE PECADOS AGENDADO*\n⏰ Começa às *12h00* (Brasília) de 01/11.\n🎁 *PRÊMIOS PÚBLICOS:*\n'+publicCatalog(createPublicLots())+'\n💰 Lance inicial de cada lote: *'+fmt(OPENING)+'* • incremento: *'+fmt(STEP)+'*.\n📋 Volte com *!leilao* às 12h00.')
     return true
   }
   if(cmd==='leilao'){
@@ -297,13 +317,13 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     const sync=state?.phase==='running'?await auctionNoticeSummary(db,KEY,Number(state.bidNoticeVersion||0)):null
     const syncLine=sync?'\n📡 Avisos: '+sync.sent+' enviados, '+sync.pending+' pendentes, '+sync.failed+' falharam.':''
     await reply(state?.phase==='running'?status(state)+syncLine:
-      state?.phase==='completed'?'🏁 Leilão Eclipse dos Pecados encerrado. Consulte os prêmios divulgados antes do evento.':
-      '⏳ Leilão Eclipse dos Pecados sendo aberto. Consulte novamente em instantes.')
+      state?.phase==='completed'?'🏁 Leilão dos Sete Pecados encerrado. Consulte os prêmios divulgados antes do evento.':
+      '⏳ Leilão dos Sete Pecados sendo aberto. Consulte novamente em instantes.')
     return true
   }
   const parsed=parseAmount(args?.[0])
   if(!parsed){
-    await reply('❌ Lance inválido. Envie *!lance 10000000*, *!lance 10500k* ou *!lance +500000*.')
+    await reply('❌ Lance inválido. Envie *!lance 8000000*, *!lance 8300000* ou *!lance +300000*.')
     return true
   }
   try{
@@ -315,6 +335,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
       const minimum=old?Number(old.value)+lot.step:lot.min
       const offered=parsed.relative?(old?Number(old.value):lot.min-lot.step)+parsed.value:parsed.value
       if(!Number.isSafeInteger(offered)||offered>2000000000||offered<minimum)throw Error('Próximo lance mínimo: '+fmt(minimum))
+    if((offered-lot.min)%lot.step!==0)throw Error('Lances em incrementos de '+fmt(lot.step)+'.')
       const incremental=old?.jid===sender?offered-Number(old.value):offered
       if(old&&old.jid!==sender){
         await c.query('UPDATE wallets SET cash=cash+$1,bank=bank+$2 WHERE jid=$3',[old.cash,old.bank,old.jid])
@@ -348,7 +369,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
           value:offered,nextMinimum:offered+lot.step,endsAt:state.ends
         })
       }
-      result.notice=result.notice.replace('LEILÃO DAS SOMBRAS','LEILÃO ECLIPSE DOS PECADOS')
+      result.notice=result.notice.replace('LEILÃO DAS SOMBRAS','LEILÃO DOS SETE PECADOS')
       if(web)result.notice=result.notice.replace('LANCE DE OUTRO GRUPO!','LANCE PELO WEB!')
       result.notice+='\n🎁 Prêmio do lote: '+publicPrize(lot.prize)
       await queueAuctionBidNotices(c,{key:KEY,version:result.version,groups:result.otherGroups,origin:web?'web':chat,message:result.notice})
@@ -356,13 +377,13 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     })
     // O lance já foi confirmado no Neon. Uma falha de envio não o desfaz.
     try{await reply(result.confirmation)}
-    catch(err){console.warn('[LEILAO RELIQUIAS] lance gravado; confirmação local não enviada',err?.message||err)}
+    catch(err){console.warn('[LEILAO 01NOV] lance gravado; confirmação local não enviada',err?.message||err)}
     if(result.otherGroups.length){
       if(auctionSocket?.sendMessage){
         // Delivery is durable: a failed transport does not discard the notice.
         void flushAuctionBidNotices(db,auctionSocket,KEY).then(()=>warnAuctionDeliveryFailures(db,auctionSocket,KEY))
-          .catch(err=>console.error('[LEILAO RELIQUIAS] fila de avisos',err?.message||err))
-      }else console.warn('[LEILAO RELIQUIAS] lance aceito, avisos pendentes até reconexão')
+          .catch(err=>console.error('[LEILAO 01NOV] fila de avisos',err?.message||err))
+      }else console.warn('[LEILAO 01NOV] lance aceito, avisos pendentes até reconexão')
     }
   }catch(err){await reply('❌ '+String(err?.message||err))}
   return true
@@ -372,14 +393,14 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
 // Exposição pública das descrições dos prêmios, sem salt nem dados privados dos jogadores.
 export async function getAuctionWebStatus({chat,sender}){
   if(!String(chat||'').endsWith('@g.us'))throw Error('Vincule seu Web a um grupo com !web no WhatsApp.')
-  if(!EVENT_GROUPS.has(chat)&&!groupLicenseIsActive(await getGroupLicense(chat)))throw Error('Grupo sem acesso a este leilão.')
+  if(!EVENT_GROUPS.has(chat))throw Error('Esta edição é exclusiva do grupo AlphaBot.')
   const state=(await db.query('SELECT value FROM trevo_settings WHERE key=$1',[KEY])).rows[0]?.value||stateDefault()
   const now=Date.now()
   const lot=state.lots?.[state.lot]
   const groupAllowed=Array.isArray(state.groups)&&state.groups.includes(chat)
   const acceptingBids=!AUCTION_PAUSED_FOR_AUDIT&&state.phase==='running'&&groupAllowed&&now>=START&&now<END&&now<Number(state.ends||0)
   return {
-    title:'Leilão Eclipse dos Pecados',phase:now<START?'scheduled':(state.phase||'pending'),
+    title:'Leilão dos Sete Pecados',phase:now<START?'scheduled':(state.phase||'pending'),
     acceptingBids,serverTime:now,startsAt:START,lotNumber:lot?Number(state.lot)+1:null,
     totalLots:PACKAGES.length,step:lot?.step||STEP,opening:lot?.min||OPENING,
     prizesPublic:true,prize:lot?publicPrize(lot.prize):null,
