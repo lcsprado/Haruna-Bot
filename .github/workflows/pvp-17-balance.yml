@@ -26,6 +26,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm ci --ignore-scripts
+      # Pure combat tests require only Node builtins; repository lockfile has an unrelated mismatch.
       - run: node --test test/pvp-all-17-awakenings-20261101.test.mjs test/playable-seven-sins-20261027.test.mjs
       - run: node scripts/check-syntax.mjs
