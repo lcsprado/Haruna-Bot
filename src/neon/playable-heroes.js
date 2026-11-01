@@ -1,5 +1,6 @@
 import {db,ensureUser,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
@@ -88,11 +89,24 @@ export async function getPlayableHeroCombatSheet(jid,knownProfile=null){
   const masteryStage=await getPlayableHeroMasteryStage(db,jid,heroId);
   const collabPvP=heroCollabGearBonus(heroId,profile.weapon_id,profile.armor_id,'pvp');
   const collabRaid=heroCollabGearBonus(heroId,profile.weapon_id,profile.armor_id,'raid');
-  return {...combat,heroLevel,masteryXp:xp,masteryStage,collabPvP,collabRaid};
+  return {...combat,heroLevel,masteryXp:xp,masteryStage,collabPvP,collabRaid,
+    savedClass:profile.class_applied?getPlayerClass(profile.class_id):null};
 }
 
-export function formatPlayableHeroCombatSheet(sheet){
+const heroNumbers=v=>Number(v||0).toLocaleString('pt-BR');
+const heroBonusRow=values=>'❤️ +'+heroNumbers(values?.hp)+' HP • ⚔️ +'+heroNumbers(values?.atk)+' ATK • 🛡️ +'+heroNumbers(values?.def)+' DEF • 👢 +'+heroNumbers(values?.spd)+' VEL';
+const heroDifference=(a,b)=>['hp','atk','def','spd'].map(key=>{
+  const value=Number(a?.[key]||0)-Number(b?.[key]||0);
+  return (value>=0?'+':'')+heroNumbers(value);
+});
+export function formatPlayableHeroCombatSheet(sheet,{compact=false}={}){
   if(!sheet)return '';
+  const breakdown=sheet.breakdown||{};
+  const base=breakdown.heroBase||HERO_COMBAT_PROFILES[sheet.heroId]||{};
+  const training=breakdown.training||{hp:0,atk:0,def:0,spd:0};
+  const natural=breakdown.natural||Object.fromEntries(['hp','atk','def','spd'].map(k=>[k,Number(base[k]||0)+Number(training[k]||0)]));
+  const neutral=breakdown.neutral||{};
+  const gear=sheet.equipment||{hp:0,atk:0,def:0,spd:0};
   const gearBonuses=[
     sheet.collabPvP?.weapon
       ? '✅ Arma do personagem: *+1,5% dano PvP* e *+4% dano Boss/Raid*'+(sheet.heroId==='pecado_ban'?' • Ban recupera até 1% HP a cada 6 ataques PvP e +2% HP extra a cada 8 ataques Boss/Raid':'')
@@ -105,18 +119,45 @@ export function formatPlayableHeroCombatSheet(sheet){
     '🌈⚔️ *PERSONAGEM ATIVO — '+sheet.name.toUpperCase()+'*',
     '🎭 '+sheet.role+' • '+sheet.range,
     '🌟 Nível: *'+sheet.heroLevel+'/100*',
-    '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)',
-    '❤️ HP: *'+sheet.hp+'/'+sheet.maxHp+'*',
-    '⚔️ ATK: *'+sheet.atk+'*',
-    '🛡️ DEF: *'+sheet.def+'*',
-    '👢 VEL: *'+sheet.spd+'*',
-    '✨ Técnica: *'+sheet.skill+'*'
+    '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)'
   ];
-  if(gearBonuses.length)lines.push(
-    '🌈 *BÔNUS EXCLUSIVO DA COLLAB*',
-    ...gearBonuses,
-    '💡 Bônus especiais só funcionam com o personagem correspondente; os atributos normais do equipamento já estão somados acima.'
+  if(!compact)lines.push(
+    '',
+    '⚖️ *BASE FIXA DO HERÓI (Lv.1, sem itens)*',
+    heroBonusRow(base),
+    '📈 *EVOLUÇÃO DO HERÓI (Lv.'+sheet.heroLevel+')*',
+    heroBonusRow(training),
+    '🌈 *BÔNUS PRÓPRIO TOTAL DO HERÓI*',
+    heroBonusRow(natural),
+    '',
+    '👤 *ATRIBUTOS PERMANENTES DO JOGADOR*',
+    '❤️ '+heroNumbers(neutral.hp)+' HP • ⚔️ '+heroNumbers(neutral.atk)+' ATK • 🛡️ '+heroNumbers(neutral.def)+' DEF • 👢 '+heroNumbers(neutral.spd)+' VEL',
+    '🗡️ *EQUIPAMENTOS E ENCANTAMENTOS*',
+    heroBonusRow(gear),
+    ...(sheet.attackPctBonus>0?['🔥 Multiplicador adicional: +'+heroNumbers(Math.round(sheet.attackPctBonus*100))+'% ATK sobre base + itens']:[]),
+    '',
+    '🥊 *TOTAL REAL DE COMBATE*'
   );
+  lines.push(
+    '❤️ HP: *'+heroNumbers(sheet.hp)+'/'+heroNumbers(sheet.maxHp)+'*',
+    '⚔️ ATK: *'+heroNumbers(sheet.atk)+'*',
+    '🛡️ DEF: *'+heroNumbers(sheet.def)+'*',
+    '👢 VEL: *'+heroNumbers(sheet.spd)+'*',
+    '✨ Técnica: *'+sheet.skill+'*'
+  );
+  if(compact){
+    lines.push('🔎 *!heroi atributos* — veja base do herói, evolução, equipamentos e comparação com classes.');
+    return lines.join('\n');
+  }
+  if(sheet.savedClass){
+    const diff=heroDifference(natural,sheet.savedClass);
+    lines.push('','🧙 *VS. '+sheet.savedClass.name.toUpperCase()+' — SEM EQUIPAMENTOS*',
+      'Classe: '+heroBonusRow(sheet.savedClass),
+      'Diferença do herói: ❤️ '+diff[0]+' HP • ⚔️ '+diff[1]+' ATK • 🛡️ '+diff[2]+' DEF • 👢 '+diff[3]+' VEL',
+      '💡 Passivas e técnicas são diferentes; não entram nesta comparação numérica.');
+  }
+  if(gearBonuses.length)lines.push('', '🌈 *BÔNUS EXCLUSIVO DA COLLAB*',...gearBonuses);
+  lines.push('ℹ️ Atributos fixos do herói substituem a classe. Equipamentos aplicam normalmente; bônus especiais só com a peça correspondente. Pet, crítico, sinergias e efeitos condicionais aparecem no perfil.');
   return lines.join('\n');
 }
 
@@ -280,6 +321,23 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
       '\n✨ XP preservado: '+result.xp+'\n✅ Habilidade do estágio disponível.');
     return true;
   }
+  if(['comparar','comparacao','comparação'].includes(action)){
+    const sheet=await getPlayableHeroCombatSheet(sender);
+    if(!sheet){await reply('🧙 Ative um herói com *!heroi usar ban* antes de comparar.');return true;}
+    const requested=String(args[1]||sheet.savedClass?.id||'paladin').trim().toLowerCase();
+    if(!PLAYER_CLASSES[requested]){
+      await reply('❌ Classe inválida. Compare com *paladin*, *assassin*, *samurai*, *berserker*, *warrior*, *mage*, *archer*, *monk*, *necromancer* ou *druid*.');
+      return true;
+    }
+    const cls=PLAYER_CLASSES[requested],own=sheet.breakdown?.natural||{};
+    const diff=heroDifference(own,cls);
+    await reply('⚖️ *'+sheet.name.toUpperCase()+' Lv.'+sheet.heroLevel+' × '+cls.name.toUpperCase()+'*'+
+      '\n🔎 Comparação somente dos bônus do combatente, SEM jogador, equipamento, encantamento, pet ou sinergia.\n\n'+
+      '🌈 Herói: '+heroBonusRow(own)+'\n🧙 Classe: '+heroBonusRow(cls)+'\n\n'+
+      '📊 Diferença: ❤️ '+diff[0]+' HP • ⚔️ '+diff[1]+' ATK • 🛡️ '+diff[2]+' DEF • 👢 '+diff[3]+' VEL'+
+      '\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\nUse *!heroi atributos* para ver a ficha completa.');
+    return true;
+  }
   if(['atributos','ficha','stats','status'].includes(action)){
     const sheet=await getPlayableHeroCombatSheet(sender);
     await reply(sheet?formatPlayableHeroCombatSheet(sheet):
@@ -323,7 +381,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Nv.${h.petLevel}/100 • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
-      '👉 *!heroi atributos* • *!heroi evoluir* • *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
+      '👉 *!heroi atributos* • *!heroi comparar paladin* • *!heroi evoluir* • *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
       '🗝️ Personagens conquistados preservados. Os Pecados não são mais pets; use outros pets em seu time.')
     return true
   }
