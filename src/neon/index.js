@@ -90,6 +90,7 @@ import {gearStatsWithEnchants,equipmentEnchantmentsByItem} from './equipment-enc
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {startAuctionAlphaScheduler,handleAuctionAlphaCommand} from './auction-bonus-20261101.js'
+import {startAuctionAlphaScheduler as startAuctionAlphaScheduler1500,handleAuctionAlphaCommand as handleAuctionAlphaCommand1500} from './auction-bonus-20261101-1500.js'
 import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,COLLAB_RAID_DAILY_CAP} from './collab-fragment-rules.js'
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
 const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
@@ -9318,6 +9319,7 @@ void (async()=>{
   }catch(err){console.error('[COLLAB RAID] anúncio',err?.message||err)}
 })()
 startAuctionAlphaScheduler(sock)
+startAuctionAlphaScheduler1500(sock)
 startAuctionNotificationPilot(sock)
 scheduleSaturdayRaidHunt(sock)
 void scheduleMimics(sock).catch(err=>console.error('[MIMIC HUNT] inicializacao',err?.message||err))
@@ -9990,6 +9992,7 @@ if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
 if(await handlePlayableHeroCommand({cmd,args,sender,reply})) continue
 if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.key?.id?chat+':'+msg.key.id:null})) continue
 if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
+if(await handleAuctionAlphaCommand1500({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
