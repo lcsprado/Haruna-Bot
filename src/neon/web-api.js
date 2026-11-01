@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
 import {relicStatus,selectRelic,relicCatalog} from './relics.js'
+import {resolveAlphaWebAllowedOrigin} from './web-canonical-origins.js'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {getWebEventCenter} from './web-event-center.js'
 import {webPlayableHeroesSnapshot,selectWebPlayableHero} from './web-playable-heroes-compat.js'
@@ -296,13 +297,7 @@ async function logoutSession(session){
 }
 
 function allowedOrigin(req){
-  const configured=String(process.env.WEB_ALLOWED_ORIGINS||'*').trim()
-  const origin=String(req.headers.origin||'')
-  // Same-origin/browser GETs and server-to-server health checks may legitimately omit Origin.
-  if(!origin) return null
-  if(configured==='*') return '*'
-  const allowed=configured.split(',').map(x=>x.trim()).filter(Boolean)
-  return allowed.includes(origin) ? origin : (allowed.includes('null')&&origin==='null'?'null':'')
+  return resolveAlphaWebAllowedOrigin(req.headers.origin,process.env.WEB_ALLOWED_ORIGINS||'*')
 }
 
 function setCors(req,res){

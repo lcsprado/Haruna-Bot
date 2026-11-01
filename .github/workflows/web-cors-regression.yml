@@ -1,0 +1,30 @@
+name: Alpha Web - CORS canonical origins
+on:
+  pull_request:
+    paths:
+      - 'src/neon/web-api.js'
+      - 'src/neon/web-canonical-origins.js'
+      - 'test/web-canonical-origins.test.mjs'
+      - '.github/workflows/web-cors-regression.yml'
+  push:
+    branches: ['feat/web-aiven-beta-protegido-20261021']
+    paths:
+      - 'src/neon/web-api.js'
+      - 'src/neon/web-canonical-origins.js'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check src/neon/web-api.js
+          node --check src/neon/web-canonical-origins.js
+      - name: Exact origin access regression
+        run: node --test test/web-canonical-origins.test.mjs
