@@ -362,15 +362,15 @@ export function heroDefense({heroId,damage=0,state={},gear={}}={}){
     next.revengeStored=Math.max(0,Math.min(500,Number(next.revengeStored||0)+incoming*.05));
   }
   if(heroId==='pecado_ban'){
-    rate=.02;
+    rate+=.02;
     if(Number(next.snatchCharges||0)>0){rate+=.10;next.snatchCharges--;}
   }
   if(heroId==='pecado_king'){
-    rate=.03;
+    rate+=.03;
     if(Number(next.guardianCharges||0)>0){rate+=.12;next.guardianCharges--;}
   }
   if(heroId==='pecado_gowther'){
-    rate=.03;
+    rate+=.03;
     if(Number(next.confusionBlocks||0)>0){rate+=.08;next.confusionBlocks--;}
     if(Number(next.nightmareBlocks||0)>0){rate+=.10;next.nightmareBlocks--;}
   }
