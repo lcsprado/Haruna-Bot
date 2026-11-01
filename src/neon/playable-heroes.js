@@ -1,4 +1,4 @@
-import {db,ensureUser,getCombatProfile} from './db.js'
+import {db,ensureUser,getProfile,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
 import {formatActiveClassBaseStatus,formatSavedAwakeningForActiveHero} from './character-base-status-format.js'
