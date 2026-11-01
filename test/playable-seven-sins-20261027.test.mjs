@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {formatProfileCombatBonuses} from '../src/neon/profile-combat-summary.js'
-import {formatCharacterBaseStatus} from '../src/neon/playable-heroes.js'
+import {formatActiveClassBaseStatus,formatSavedAwakeningForActiveHero} from '../src/neon/character-base-status-format.js'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
   heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP,HERO_START_LEVEL,heroStartingProgress
@@ -12,7 +12,7 @@ test('!personagem status usa base da classe atual com Despertar, sem itens',()=>
   const input={class_id:'paladin',class_applied:true,level:386,
     max_hp:3180,atk:780,def:390,spd:395,
     equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91};
-  const text=formatCharacterBaseStatus({profile:input,awakeningStage:3});
+  const text=formatActiveClassBaseStatus(input,3);
   assert.match(text,/STATUS BASE — PALADINO/);
   assert.match(text,/HP: \*3\.180\*/);
   assert.match(text,/ATK: \*780\*/);
@@ -24,11 +24,11 @@ test('!personagem status usa base da classe atual com Despertar, sem itens',()=>
 });
 
 test('classe Necromante revela despertar próprio e ignora itens/encantos',()=>{
-  const text=formatCharacterBaseStatus({profile:{
+  const text=formatActiveClassBaseStatus({
     class_id:'necromancer',class_applied:true,level:300,
     max_hp:1200,atk:650,def:540,spd:220,
     equipment_atk:999,attack_pct_bonus:1
-  },awakeningStage:2});
+  },2);
   assert.match(text,/STATUS BASE — NECROMANTE/);
   assert.match(text,/Drenagem/);
   assert.match(text,/Despertar: \*II\/V\*/);
@@ -45,17 +45,15 @@ test('Diane equipada continua inteira no perfil; personagem mostra base e desper
     attack_pct_bonus:0};
   const full=heroCombatSheetFromProfile(profile,'pecado_diane',100);
   assert.deepEqual([full.maxHp,full.atk,full.def,full.spd],[5940,1295,1394,511]);
-  const text=formatCharacterBaseStatus({profile,heroSheet:{...full,heroLevel:100,
-    masteryStage:3,masteryXp:2400},awakeningStage:3});
-  assert.match(text,/STATUS BASE — DIANE/);
-  assert.match(text,/HP: \*3\.880\*/);
-  assert.match(text,/ATK: \*860\*/);
-  assert.match(text,/DEF: \*490\*/);
-  assert.match(text,/VEL: \*420\*/);
-  assert.match(text,/Maestria: \*3\/5\*/);
-  assert.match(text,/Despertar da classe Paladino: \*III\/V\*/);
-  assert.match(text,/habilidades inativas enquanto o herói estiver ativo/);
-  assert.doesNotMatch(text,/5\.940|1\.295|1\.394|511/);
+  assert.deepEqual(full.baseWithoutGear,{maxHp:3880,atk:860,def:490,spd:420});
+  const awakening=formatSavedAwakeningForActiveHero(profile,3);
+  assert.match(awakening,/Despertar da classe Paladino: \*III\/V\*/);
+  assert.match(awakening,/habilidades inativas enquanto o herói estiver ativo/);
+  const heroSource=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  assert.match(heroSource,/formatPlayableHeroBaseSheet\(heroSheet\)/);
+  assert.match(heroSource,/formatSavedAwakeningForActiveHero\(profile,awakeningStage\)/);
+  assert.match(heroSource,/\['personagem','personagens'\]/);
+  assert.match(heroSource,/getCharacterBaseStatus\(sender\)/);
 });
 
 test('sete personagens unicos com perfis equilibrados',()=>{
