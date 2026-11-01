@@ -18,12 +18,13 @@ const catalog={
  strategies:[{id:'equilibrada',name:'⚖️ Equilibrada'},{id:'agressiva',name:'🔥 Agressiva'},{id:'tecnica',name:'🎯 Técnica'}],
  totalUpgradeCost:25530000
 }
+catalog.colors=['prata','branco','preto','cinza','vermelho','azul','verde','amarelo','laranja','roxo','rosa','dourado'].map((id,i)=>({id,name:id,hex:['#BFC4CC','#F3F4F6','#242A34','#777E8A','#D8333F','#2979D6','#3EAD6A','#E8BD32','#EF8732','#8650C9','#E888B7','#CBA63A'][i]}))
 const base={racing:{garage:{profile:{xp:220,races:3,wins:2,spent:150000},cars:[]},catalog,ranking:[],history:[],challenges:[]},racingTab:'garage',racingTrack:'cidade',racingTier:'rua',racingStrategy:'equilibrada',racingTarget:'',data:{identity:{jid:'user@g.us',groupLinked:true},group:{roster:[]}}}
-test('renders four illustrated distinct cars without paid imagery or remote images',()=>{
+test('renders four distinct locally hosted car photos',()=>{
  const html=renderRacing(base)
  assert.ok(html.includes('Gol Quadrado')&&html.includes('Uno Mille')&&html.includes('Corsa Wind')&&html.includes('Palio Fire'))
- assert.ok((html.match(/class="race-car-svg"/g)||[]).length>=5)
- assert.ok(!html.includes('<img'))
+ assert.ok((html.match(/class="race-car-photo"/g)||[]).length>=5)
+ assert.match(html,/\/assets\/racing\/gol-prata\.webp/)
  assert.ok(!html.includes('https://images'))
  assert.match(html,/data-race-act="buy"/)
 })
@@ -38,6 +39,20 @@ test('mobile workshop has six paid parts and blocks upgrades with pending instal
  assert.ok((html.match(/data-race-act="upgrade"/g)||[]).length===6)
  assert.match(html,/disabled/)
  assert.match(html,/25\.680\.000/)
+ assert.equal((html.match(/class="race-part-image"/g)||[]).length,6)
+ assert.match(html,/race-part-gains/)
+})
+
+test('paint preview uses all 12 stored colors while race actions remain available',()=>{
+ const car={id:1,model_id:'gol',color_id:'prata',equipped:true,condition:90,upgrades:{}}
+ const state={...base,racingTab:'paint',racingPaintCarId:1,racingPreviewColor:'azul',racing:{...base.racing,garage:{...base.racing.garage,cars:[car]}}}
+ const html=renderRacing(state)
+ assert.equal((html.match(/data-race-color=/g)||[]).length,12)
+ assert.match(html,/Prévia antes de salvar/)
+ assert.match(html,/data-race-act="paint"/)
+ assert.match(html,/#2979D6/)
+ assert.match(html,/\/assets\/racing\/gol-azul\.webp/)
+ assert.match(html,/data-race-tab="races"/)
 })
 test('races use only available server-backed tiers, tracks and strategies',()=>{
  const ui={...base,racingTab:'races',racing:{...base.racing,garage:{...base.racing.garage,cars:[{
@@ -66,5 +81,5 @@ test('the race page requests one endpoint only on navigation, not every 15s',()=
  assert.match(read('web/styles.css'),/#nav\{display:flex;flex:1 1 auto;min-height:0;overflow-y:auto/)
  assert.match(read('web/sw.js'),/Promise\.allSettled\(SHELL\.filter/)
  assert.match(read('web/sw.js'),/racing-ui\.js/)
- assert.match(read('web/index.html'),/20261031-racing-garage-nav-v7/)
+ assert.match(read('web/index.html'),/20261101-racing-visual-v2/)
 })

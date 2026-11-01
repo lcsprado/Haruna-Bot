@@ -24,6 +24,8 @@ const ui = {
   racingStrategy: 'equilibrada',
   racingTarget: '',
   racingLast: null,
+  racingPaintCarId: null,
+  racingPreviewColor: '',
   auctionError: '',
   auctionLoading: false,
   auctionSubmitting: false,
@@ -810,7 +812,7 @@ async function racingAction(action,body,op){
   if(ui.racingBusy)return;
   ui.racingBusy=true;
   try{
-    const labels={buy:'🚘 Carro adquirido!',equip:'✅ Carro equipado!',upgrade:'🔧 Instalação iniciada!',repair:'🧰 Carro reparado!',solo:'🏁 Corrida realizada!',challenge:'⚔️ Desafio enviado!',accept:'🏆 Desafio concluído!',cancel:'🛑 Desafio cancelado!'};
+    const labels={buy:'🚘 Carro adquirido!',equip:'✅ Carro equipado!',paint:'🎨 Pintura salva!',upgrade:'🔧 Instalação iniciada!',repair:'🧰 Carro reparado!',solo:'🏁 Corrida realizada!',challenge:'⚔️ Desafio enviado!',accept:'🏆 Desafio concluído!',cancel:'🛑 Desafio cancelado!'};
     const result=await doAction(action,body,{success:labels[op]||'Ação concluída'});
     if(op==='solo')ui.racingLast={type:'solo',value:result};
     if(op==='accept')ui.racingLast={type:'pvp',value:result};

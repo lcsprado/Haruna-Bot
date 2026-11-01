@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261031-racing-garage-nav-v7';
+const CACHE='alpha-rpg-pwa-20261101-racing-visual-v2';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/racing-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',

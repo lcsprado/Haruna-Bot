@@ -1165,3 +1165,21 @@ body.loot-open{overflow:hidden!important}
 .home-racing-link{display:block;width:100%;margin-top:13px;border-color:#3674b5;background:linear-gradient(90deg,#15345d,#183a65);color:#eaf6ff;min-height:44px;font-size:12px}
 #nav .nav-btn[data-page="racing"]{border:1px solid #37649c;background:linear-gradient(100deg,#112b49,#0a192c);color:#cce9ff;font-weight:850}
 #nav .nav-btn[data-page="racing"].active{border-color:#78c4ff;background:#17456c;color:#fff}
+
+/* Pintura e peças ilustradas da Garagem Alpha. */
+.race-shell{min-width:0;max-width:100%;box-sizing:border-box}
+.race-car-svg{max-width:100%;filter:drop-shadow(0 12px 14px #0008)}
+.race-car-photo{display:block;width:100%;max-width:620px;aspect-ratio:3/2;object-fit:contain;filter:drop-shadow(0 12px 15px #0006)}
+.race-hero-showroom>.race-car-photo{width:min(100%,550px);transform:translateY(-10px)}
+.race-car-preview .race-car-photo,.race-fleet-visual .race-car-photo,.race-shop-hero .race-car-photo{margin:auto}
+.race-paint-stage .race-car-photo{margin:auto}
+.race-hero-showroom .race-car-svg text{display:none}
+.race-fleet-actions{gap:8px;flex-wrap:wrap}.race-fleet-actions .race-button{min-height:42px}
+.race-part-image{width:48px;height:48px;flex:none;border-radius:12px}
+.race-part-gains{display:flex;flex-wrap:wrap;gap:7px;margin:11px 0}.race-part-gains span{border:1px solid #345674;background:#12293a;border-radius:8px;padding:6px 8px;color:#b8d3e7;font-size:10px}.race-part-gains b{color:#8de2d0}
+.race-paint-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:16px}
+.race-paint-stage,.race-paint-controls{min-width:0;border:1px solid #334c68;border-radius:18px;padding:20px;background:radial-gradient(ellipse at 50% 45%,#224a60,#101b2b 70%)}
+.race-paint-stage{display:flex;flex-direction:column;justify-content:center;text-align:center;min-height:310px}.race-paint-stage svg{width:100%}.race-paint-stage strong{font-size:22px}.race-paint-stage small,.race-paint-controls p{color:#adc8d8}.race-paint-controls{background:#101d2c}.race-paint-controls h4{margin:0 0 10px}.race-paint-controls h4:not(:first-child){margin-top:18px}
+.race-paint-cars,.race-swatches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.race-paint-car,.race-swatch{border:1px solid #3a5670;background:#192d3c;color:#d7e8f3;border-radius:9px;padding:9px;min-height:45px;cursor:pointer}.race-paint-car.active,.race-swatch.active{border-color:#9ce4da;box-shadow:0 0 0 1px #9ce4da88}.race-swatches{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:15px}.race-swatch{font-size:10px;min-height:60px}.race-swatch i{display:block;width:23px;height:23px;margin:0 auto 4px;border:2px solid #ffffff77;border-radius:50%}.race-paint-controls>.race-button{width:100%;min-height:44px}
+@media(max-width:830px){.race-paint-layout{grid-template-columns:1fr}.race-paint-stage{min-height:220px}}
+@media(max-width:560px){.race-swatches{grid-template-columns:repeat(3,minmax(0,1fr))}.race-paint-stage{padding:10px}.race-paint-controls{padding:15px}.race-part-image{width:42px;height:42px}.race-fleet-actions{justify-content:space-between}}
