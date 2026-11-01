@@ -11,18 +11,6 @@ export const HERO_COMBAT_PROFILES=Object.freeze({
   pecado_gowther:{hp:60,atk:15,def:9,spd:14,role:'Controlador • debuff',range:'Longa distância',skill:'Rewrite Light'},
   pecado_merlin:{hp:70,atk:18,def:9,spd:13,role:'Maga • dano e barreira',range:'Longa distância',skill:'Infinity'}
 });
-// Bônus obtidos ENTRE Lv.1 e Lv.100, por função. Não substituem a base
-// permanente do jogador nem recebem atributos de arma, armadura ou pet.
-// A referência Lv.1 é a mesma estrutura de bônus das classes tradicionais.
-export const HERO_LEVEL_GROWTH=Object.freeze({
-  pecado_meliodas:Object.freeze({hp:150,atk:36,def:18,spd:10}),
-  pecado_ban:Object.freeze({hp:190,atk:27,def:24,spd:9}),
-  pecado_escanor:Object.freeze({hp:165,atk:40,def:18,spd:6}),
-  pecado_king:Object.freeze({hp:195,atk:25,def:32,spd:7}),
-  pecado_diane:Object.freeze({hp:230,atk:22,def:38,spd:4}),
-  pecado_gowther:Object.freeze({hp:135,atk:29,def:17,spd:11}),
-  pecado_merlin:Object.freeze({hp:150,atk:34,def:18,spd:10})
-});
 export const PLAYABLE_HERO_IDS=Object.freeze(PECADOS_HEROES.map(x=>x.species));
 export const playableHero=id=>PECADOS_HEROES.find(x=>x.species===String(id||''))||null;
 export const HERO_MASTERY_XP=Object.freeze([0,500,1500,3500,7000]);
@@ -142,29 +130,52 @@ export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
 export function heroCombatStats(st,heroId,heroLevel=70){
   const hero=HERO_COMBAT_PROFILES[heroId];
   if(!hero)return null;
-  const number=(key,fallback=0)=>Number(st?.[key]??fallback)||0;
-  const level=Math.max(1,Math.min(100,Math.floor(Number(heroLevel)||1)));
-  const fraction=(level-1)/99;
-  const neutral={
-    hp:Math.max(1,number('max_hp',100)-number('class_hp_bonus')),
-    atk:Math.max(1,number('atk',10)-number('class_atk_bonus')),
-    def:Math.max(1,number('def',5)-number('class_def_bonus')),
-    spd:Math.max(1,number('spd',10)-number('class_spd_bonus'))
+  const n=(k,other=0)=>Number(st?.[k]??other)||0;
+  // Lv.70 preserva o legado. Antes dele existe uma penalidade de treinamento,
+  // limitada a 20% do atributo-base para heróis novos não ficarem inviáveis.
+  // Lv.100 exige investimento e supera a diferença de apenas ~100 HP da regra antiga.
+  const progress=Math.max(-69,Math.min(30,Math.floor(Number(heroLevel) || 1)-70));
+  const base={
+    hp:Math.max(1,n('max_hp',100)-n('class_hp_bonus')+hero.hp),
+    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk),
+    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def),
+    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd)
   };
-  const heroBase={hp:hero.hp,atk:hero.atk,def:hero.def,spd:hero.spd};
-  const growth=HERO_LEVEL_GROWTH[heroId]||{hp:0,atk:0,def:0,spd:0};
-  const training=Object.fromEntries(['hp','atk','def','spd'].map(k=>[k,Math.round(Number(growth[k]||0)*fraction)]));
-  const natural=Object.fromEntries(['hp','atk','def','spd'].map(k=>[k,Number(heroBase[k])+training[k]]));
-  const maxHp=neutral.hp+natural.hp,sourceMax=Math.max(1,number('max_hp',100));
+  const training=(earlyPenalty,maxBonus,baseline)=>progress>=0
+    ?Math.round(maxBonus*progress/30)
+    :-Math.min(Math.round(earlyPenalty*(-progress)/69),Math.floor(Math.max(0,baseline)*.20));
+  const hpTraining=training(450,700,base.hp);
+  const atkTraining=training(75,75,base.atk);
+  const defTraining=training(85,100,base.def);
+  const spdTraining=training(15,25,base.spd);
+  const maxHp=Math.max(1,base.hp+hpTraining);
+  const sourceMax=Math.max(1,n('max_hp',100));
   return {
-    heroId,hp:Math.max(0,Math.min(maxHp,Math.round(number('hp')/sourceMax*maxHp))),
+    heroId,hp:Math.max(0,Math.min(maxHp,Math.round(n('hp')/sourceMax*maxHp))),
     maxHp,
-    atk:neutral.atk+natural.atk,
-    def:neutral.def+natural.def,
-    spd:neutral.spd+natural.spd,
+    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk+atkTraining),
+    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def+defTraining),
+    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd+spdTraining),
     persistentMaxHp:sourceMax,
-    // O detalhamento aparece na ficha; o motor PvP/Boss/Raid usa os mesmos totais.
-    breakdown:{neutral,heroBase,training,natural,level}
+    // Diagnostic-only fields for the standalone !heroi comparar command.
+    // Not displayed in !perfil, !status, or !heroi atributos.
+    breakdown:{
+      neutral:{
+        hp:n('max_hp',100)-n('class_hp_bonus'),
+        atk:n('atk')-n('class_atk_bonus'),
+        def:n('def')-n('class_def_bonus'),
+        spd:n('spd')-n('class_spd_bonus')
+      },
+      heroBase:{hp:hero.hp,atk:hero.atk,def:hero.def,spd:hero.spd},
+      training:{hp:hpTraining,atk:atkTraining,def:defTraining,spd:spdTraining},
+      natural:{
+        hp:hero.hp+hpTraining,
+        atk:hero.atk+atkTraining,
+        def:hero.def+defTraining,
+        spd:hero.spd+spdTraining
+      },
+      level:Math.max(1,Math.min(100,Math.floor(Number(heroLevel)||1)))
+    }
   };
 }
 // O HP persistido já incorpora o equipamento: converter só pelo HP-base do
