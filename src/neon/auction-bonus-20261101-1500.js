@@ -159,7 +159,7 @@ async function tick(sock){
   busy=true
   try{
     const now=Date.now()
-    if(!globalThis.__bonusAuctionTick1500Logged){globalThis.__bonusAuctionTickLogged=true;console.info('[LEILAO BONUS] tick primeiro ciclo',JSON.stringify({now,start:START,end:END}))}
+    if(!globalThis.__bonusAuctionTick1500Logged){globalThis.__bonusAuctionTick1500Logged=true;console.info('[LEILAO BONUS] tick primeiro ciclo',JSON.stringify({now,start:START,end:END}))}
     if(now>=START-20*60*1000&&now<START){
       await init()
       const groups=await licensedGroups()
@@ -254,7 +254,7 @@ function parseAmount(raw){
 export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply,web=false}){
   if(!['leilao','lance'].includes(cmd))return false
   // Até às 15h, manter o leilão anterior no comando !lance/!leilao.
-  if(Date.now()<START)return false
+  if(Date.now()<START-20*60*1000)return false
   if(AUCTION_PAUSED_FOR_AUDIT){
     await reply('🔒 Os leilões de hoje foram cancelados e estão pausados até a auditoria. Lances foram estornados; prêmios serão revisados. Nenhuma nova cobrança será feita.')
     return true
