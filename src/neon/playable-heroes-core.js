@@ -131,14 +131,24 @@ export function heroCombatStats(st,heroId,heroLevel=70){
   const hero=HERO_COMBAT_PROFILES[heroId];
   if(!hero)return null;
   const n=(k,other=0)=>Number(st?.[k]??other)||0;
-  // Lv.70 legado mantém os atributos históricos. Lv.1 inicia um pouco
-  // abaixo disso, evoluindo até o bônus atual do Lv.100 sem afetar a classe.
+  // Lv.70 preserva o legado. Antes dele existe uma penalidade de treinamento,
+  // limitada a 20% do atributo-base para heróis novos não ficarem inviáveis.
+  // Lv.100 exige investimento e supera a diferença de apenas ~100 HP da regra antiga.
   const progress=Math.max(-69,Math.min(30,Math.floor(Number(heroLevel) || 1)-70));
-  const hpTraining=progress>=0?progress*2:Math.ceil(progress/2);
-  const atkTraining=progress>=0?Math.floor(progress/2):Math.ceil(progress/4);
-  const defTraining=progress>=0?Math.floor(progress/3):Math.ceil(progress/6);
-  const spdTraining=progress>=0?Math.floor(progress/5):Math.ceil(progress/12);
-  const maxHp=Math.max(1,n('max_hp',100)-n('class_hp_bonus')+hero.hp+hpTraining);
+  const base={
+    hp:Math.max(1,n('max_hp',100)-n('class_hp_bonus')+hero.hp),
+    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk),
+    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def),
+    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd)
+  };
+  const training=(earlyPenalty,maxBonus,baseline)=>progress>=0
+    ?Math.round(maxBonus*progress/30)
+    :-Math.min(Math.round(earlyPenalty*(-progress)/69),Math.floor(Math.max(0,baseline)*.20));
+  const hpTraining=training(450,700,base.hp);
+  const atkTraining=training(75,75,base.atk);
+  const defTraining=training(85,100,base.def);
+  const spdTraining=training(15,25,base.spd);
+  const maxHp=Math.max(1,base.hp+hpTraining);
   const sourceMax=Math.max(1,n('max_hp',100));
   return {
     heroId,hp:Math.max(0,Math.min(maxHp,Math.round(n('hp')/sourceMax*maxHp))),

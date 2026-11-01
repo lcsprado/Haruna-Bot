@@ -408,7 +408,20 @@ test('Novo personagem: nivel 1 ao 100 em 18 dias no teto, sem ultrapassar 9900 X
   assert.ok(initial.maxHp<low.maxHp && initial.atk<low.atk,'Lv.1 deve evoluir sem herdar o poder de Lv.70');
   assert.ok(initial.def<low.def && initial.spd<low.spd);
   const high=heroCombatStats(st,'pecado_ban',100);
-  assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],[60,15,10,6]);
+  assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],[700,75,100,25]);
+  // Jogadores avançados com o mesmo herói precisam sentir os 99 níveis.
+  const highBase={hp:4050,max_hp:4050,atk:906,def:606,spd:439,
+    class_hp_bonus:60,class_atk_bonus:18,class_def_bonus:10,class_spd_bonus:14};
+  const diane1=heroCombatStats(highBase,'pecado_diane',1);
+  const diane100=heroCombatStats(highBase,'pecado_diane',100);
+  assert.deepEqual([diane100.maxHp-diane1.maxHp,diane100.atk-diane1.atk,
+    diane100.def-diane1.def,diane100.spd-diane1.spd],[1150,150,185,40]);
+  // Não matar iniciantes de nível baixo com a penalidade do Lv.1.
+  const newPlayer={hp:120,max_hp:120,atk:20,def:12,spd:15};
+  const newDiane=heroCombatStats(newPlayer,'pecado_diane',1);
+  assert.ok(newDiane.maxHp>=200 && newDiane.atk>=25 && newDiane.def>=20 && newDiane.spd>=16);
+  // Lv.70 mantém a compatibilidade histórica.
+  assert.equal(low.maxHp,st.max_hp-st.class_hp_bonus+HERO_COMBAT_PROFILES.pecado_ban.hp);
   const src=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
   assert.match(src,/hero_level_awards/);
