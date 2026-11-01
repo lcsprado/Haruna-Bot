@@ -4969,7 +4969,9 @@ const commandPages={
 '4':`⚔️ *RPG, COMBATE & PETS*
 *!rpg* — abre o menu de RPG
 *!web* — conecta o mesmo personagem ao RPG visual no navegador
-*!status* — mostra seus atributos
+*!status* — mostra seus atributos com equipamentos
+*!personagem status* — base sem equipamentos e Despertar da classe atual
+*!heroi status* — mesma consulta da base do combatente ativo
 *!nível* — progresso e resgata recompensas a cada 5 níveis
 *!despertar* — missões permanentes de Despertar
 *!reliquias* — equipar 1 insígnia de evento por vez
