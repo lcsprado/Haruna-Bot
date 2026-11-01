@@ -154,7 +154,7 @@ export function classPvpDefense({
       if(stage>=3)state.chi=Math.min(2,Number(state.chi||0)+1)
       if(stage>=4)state.guard=true
     }
-    return {...base,awakeningState:state,blocked:incoming,shieldAbsorbed:0,
+    return {...base,damage:0,dodged:true,awakeningState:state,blocked:incoming,shieldAbsorbed:0,
       healAfter:0,technique:stage>=2?'Reflexos Supremos':null}
   }
   const ratio=clamp(Number(hp)/Math.max(1,Number(maxHp)||1),0,1)
