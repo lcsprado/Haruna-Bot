@@ -33,7 +33,7 @@ test('HP parcial, HP zero e limite superior usam a mesma proporção efetiva',()
 test('sem equipamento, cura e batalha continuam na mesma escala',()=>{
   const st={...stored({hp:3071}),equipment_hp:0}
   assert.equal(heroEffectiveCombatHp(st,diane(st),0),3771)
-  assert.equal(heroCombatSheetFromProfile(st,'pecado_diane',100).hp,3131)
+  assert.equal(heroCombatSheetFromProfile(st,'pecado_diane',100).hp,3771)
 })
 
 test('PvP, Boss/Raid e comando curar usam conversão efetiva da Diane',()=>{
