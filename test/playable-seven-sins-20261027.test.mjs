@@ -258,6 +258,12 @@ test('ficha do herói usa mesmos atributos de entrada da Raid, sem alterar o Pal
   const ban=heroCombatSheetFromProfile(original,'pecado_ban');
   assert.deepEqual({hp:ban.hp,maxHp:ban.maxHp,atk:ban.atk,def:ban.def,spd:ban.spd},
     {hp:977,maxHp:1302,atk:1130,def:746,spd:276});
+  assert.deepEqual(ban.equipment,{hp:200,atk:400,def:200,spd:60});
+  assert.deepEqual(ban.breakdown.heroBase,{hp:100,atk:14,def:11,spd:15});
+  assert.deepEqual(ban.breakdown.neutral,{hp:870,atk:643,def:518,spd:195});
+  assert.deepEqual(ban.breakdown.natural,{hp:232,atk:33,def:28,spd:21});
+  assert.equal(ban.maxHp,ban.breakdown.neutral.hp+ban.breakdown.natural.hp+ban.equipment.hp);
+  assert.equal(ban.atk,Math.round((ban.breakdown.neutral.atk+ban.breakdown.natural.atk+ban.equipment.atk)*1.05));
   assert.equal(ban.name,'Ban');
   assert.deepEqual(original,frozen,'Leitura da ficha não deve alterar HP ou atributos');
   assert.equal(heroCombatSheetFromProfile(original,'pecado_inexistente'),null);
@@ -408,7 +414,7 @@ test('Novo personagem: nivel 1 ao 100 em 18 dias no teto, sem ultrapassar 9900 X
   assert.ok(initial.maxHp<low.maxHp && initial.atk<low.atk,'Lv.1 deve evoluir sem herdar o poder de Lv.70');
   assert.ok(initial.def<low.def && initial.spd<low.spd);
   const high=heroCombatStats(st,'pecado_ban',100);
-  assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],[57,8,7,3]);
+  assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],[58,8,7,3]);
   // Jogadores avançados com o mesmo herói precisam sentir os 99 níveis.
   const highBase={hp:4050,max_hp:4050,atk:906,def:606,spd:439,
     class_hp_bonus:60,class_atk_bonus:18,class_def_bonus:10,class_spd_bonus:14};
