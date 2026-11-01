@@ -139,7 +139,16 @@ http.createServer((req,res)=>{
   res.end('Not found')
 }).listen(port,'0.0.0.0',()=>console.log('[HTTP] Alpha Bot WhatsApp-only listening on port '+port))
 
-if(process.env.ALPHA_WHATSAPP_ENABLE==='0'){
+// Evita dois dispositivos Baileys responderem simultaneamente no mesmo grupo.
+// O conector no Render summoner 7 está redundante; o de Doido15 processa
+// os comandos do jogo. Mantenha o endpoint HTTP vivo para diagnóstico.
+// Reativação deliberada requer ALPHA_WHATSAPP_FORCE_PRIMARY=1 e desligar o outro.
+const REDUNDANT_WHATSAPP_RENDER_SERVICE_ID='srv-db34ae942hec738hkrr0'
+const standbyByService=process.env.RENDER_SERVICE_ID===REDUNDANT_WHATSAPP_RENDER_SERVICE_ID
+  && process.env.ALPHA_WHATSAPP_FORCE_PRIMARY!=='1'
+if(standbyByService) console.warn('[WhatsApp] Instância redundante no Render em espera para evitar duas sessões ativas')
+
+if(process.env.ALPHA_WHATSAPP_ENABLE==='0' || standbyByService){
   // Safe migration cutover: keep HTTP diagnostics up without opening another
   // Baileys socket or running automatic RPG jobs. Unset preserves old behavior.
   health.whatsapp='standby'
