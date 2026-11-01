@@ -200,6 +200,10 @@ export function heroCombatSheetFromProfile(profile,heroId,heroLevel=70){
     role:HERO_COMBAT_PROFILES[heroId].role,
     range:HERO_COMBAT_PROFILES[heroId].range,
     skill:HERO_COMBAT_PROFILES[heroId].skill,
+    // Atributos efetivos do herói sem arma, armadura, botas, elmo, encantos
+    // ou bônus de pet. Inclui a progressão permanente do jogador, tal como
+    // ocorre ao selecionar uma classe normal, e a evolução do próprio herói.
+    baseWithoutGear:{maxHp:h.maxHp,atk:h.atk,def:h.def,spd:h.spd},
     maxHp:h.maxHp+number(profile.equipment_hp),
     hp:heroEffectiveCombatHp(profile,h,profile.equipment_hp),
     atk:Math.round((h.atk+number(profile.equipment_atk))*(1+number(profile.attack_pct_bonus))),
