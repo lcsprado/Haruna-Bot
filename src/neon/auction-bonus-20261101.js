@@ -9,7 +9,7 @@ import {PECADOS_ESSENCES} from './sete-pecados-catalog.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
 import {initAuctionNoticeOutbox,queueAuctionBidNotices,auctionNoticeSummary,flushAuctionBidNotices,warnAuctionDeliveryFailures} from './auction-notice-outbox.js'
 
-const KEY='leilao_bonus_7_pecados_20261101_1900_v1'
+const KEY='leilao_bonus_7_pecados_20261101_1400_v1'
 // Edições anteriores mantêm seus dados e histórico em chaves próprias.
 // Edição de 29/10 às 19h, autorizada pelo organizador.
 const AUCTION_PAUSED_FOR_AUDIT=false
@@ -156,6 +156,7 @@ async function tick(sock){
   busy=true
   try{
     const now=Date.now()
+    if(!globalThis.__bonusAuctionTickLogged){globalThis.__bonusAuctionTickLogged=true;console.info('[LEILAO BONUS] tick primeiro ciclo',JSON.stringify({now,start:START,end:END}))}
     if(now>=START-10*60*1000&&now<START){
       await init()
       const groups=await licensedGroups()
@@ -228,6 +229,7 @@ async function tick(sock){
   }finally{busy=false}
 }
 export function startAuctionAlphaScheduler(sock){
+  console.info('[LEILAO BONUS] scheduler chamado',JSON.stringify({now:Date.now(),start:START,end:END,socket:!!sock?.sendMessage}))
   auctionSocket=sock
   if(AUCTION_PAUSED_FOR_AUDIT||timer||Date.now()>END)return
   timer=setInterval(()=>{void tick(auctionSocket)},5000)
