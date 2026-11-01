@@ -99,9 +99,8 @@ const heroDifference=(a,b)=>['hp','atk','def','spd'].map(key=>{
   const value=Number(a?.[key]||0)-Number(b?.[key]||0);
   return (value>=0?'+':'')+heroNumbers(value);
 });
-// Exibição curta compartilhada por !perfil, !status e !heroi atributos.
-// A fórmula continua incorporando a progressão, equipamentos e encantamentos;
-// nunca exibir a decomposição no comando de status do personagem.
+// !perfil e !status mostram o combatente COMPLETO: evolução, equipamentos
+// e encantamentos, exatamente como no combate real (sem detalhar a fórmula).
 export function formatPlayableHeroCombatSheet(sheet){
   if(!sheet)return '';
   return [
@@ -113,6 +112,25 @@ export function formatPlayableHeroCombatSheet(sheet){
     '⚔️ ATK: *'+heroNumbers(sheet.atk)+'*',
     '🛡️ DEF: *'+heroNumbers(sheet.def)+'*',
     '👢 VEL: *'+heroNumbers(sheet.spd)+'*',
+    '✨ Técnica: *'+sheet.skill+'*'
+  ].join('\n');
+}
+// !heroi status / !heroi atributos mostram o herói SEM NENHUM EQUIPAMENTO.
+// Base = progressão do jogador + bônus do herói atual, não bônus isolado
+// da classe e não ficha de combate equipada. Nunca soma arma/armadura/encantos.
+export function formatPlayableHeroBaseSheet(sheet){
+  if(!sheet)return '';
+  const base=sheet.baseWithoutGear;
+  if(!base)return '';
+  return [
+    '🌈⚔️ *STATUS BASE — '+sheet.name.toUpperCase()+'*',
+    '🎭 '+sheet.role+' • '+sheet.range,
+    '🌟 Nível: *'+sheet.heroLevel+'/100*',
+    '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)',
+    '❤️ HP: *'+heroNumbers(base.maxHp)+'*',
+    '⚔️ ATK: *'+heroNumbers(base.atk)+'*',
+    '🛡️ DEF: *'+heroNumbers(base.def)+'*',
+    '👢 VEL: *'+heroNumbers(base.spd)+'*',
     '✨ Técnica: *'+sheet.skill+'*'
   ].join('\n');
 }
@@ -291,12 +309,12 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
       '\n🔎 Comparação somente dos bônus do combatente, SEM jogador, equipamento, encantamento, pet ou sinergia.\n\n'+
       '🌈 Herói: '+heroBonusRow(own)+'\n🧙 Classe: '+heroBonusRow(cls)+'\n\n'+
       '📊 Diferença: ❤️ '+diff[0]+' HP • ⚔️ '+diff[1]+' ATK • 🛡️ '+diff[2]+' DEF • 👢 '+diff[3]+' VEL'+
-      '\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\nUse *!heroi atributos* para ver a ficha completa.');
+      '\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\nUse *!heroi status* para ver a base sem equipamentos ou *!perfil* para ver os atributos totais.');
     return true;
   }
   if(['atributos','ficha','stats','status'].includes(action)){
     const sheet=await getPlayableHeroCombatSheet(sender);
-    await reply(sheet?formatPlayableHeroCombatSheet(sheet):
+    await reply(sheet?formatPlayableHeroBaseSheet(sheet):
       '🧙 Sua classe tradicional está ativa. Use *!heroi usar ban* ou outro herói desbloqueado; depois consulte *!heroi atributos*.');
     return true;
   }
