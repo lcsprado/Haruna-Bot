@@ -2,10 +2,61 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {formatProfileCombatBonuses} from '../src/neon/profile-combat-summary.js'
+import {formatCharacterBaseStatus} from '../src/neon/playable-heroes.js'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
   heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP,HERO_START_LEVEL,heroStartingProgress
 } from '../src/neon/playable-heroes-core.js'
+
+test('!personagem status usa base da classe atual com Despertar, sem itens',()=>{
+  const input={class_id:'paladin',class_applied:true,level:386,
+    max_hp:3180,atk:780,def:390,spd:395,
+    equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91};
+  const text=formatCharacterBaseStatus({profile:input,awakeningStage:3});
+  assert.match(text,/STATUS BASE — PALADINO/);
+  assert.match(text,/HP: \*3\.180\*/);
+  assert.match(text,/ATK: \*780\*/);
+  assert.match(text,/DEF: \*390\*/);
+  assert.match(text,/VEL: \*395\*/);
+  assert.match(text,/Despertar: \*III\/V\*/);
+  assert.match(text,/Égide Celestial/);
+  assert.doesNotMatch(text,/5\.240|1\.215|1\.294|486|Courechouse|armadura/i);
+});
+
+test('classe Necromante revela despertar próprio e ignora itens/encantos',()=>{
+  const text=formatCharacterBaseStatus({profile:{
+    class_id:'necromancer',class_applied:true,level:300,
+    max_hp:1200,atk:650,def:540,spd:220,
+    equipment_atk:999,attack_pct_bonus:1
+  },awakeningStage:2});
+  assert.match(text,/STATUS BASE — NECROMANTE/);
+  assert.match(text,/Drenagem/);
+  assert.match(text,/Despertar: \*II\/V\*/);
+  assert.match(text,/Maldição/);
+  assert.match(text,/ATK: \*650\*/);
+  assert.doesNotMatch(text,/1\.649|999/);
+});
+
+test('Diane equipada continua inteira no perfil; personagem mostra base e despertar da classe salvo inativo',()=>{
+  const profile={hp:3180,max_hp:3180,atk:780,def:390,spd:395,
+    class_id:'paladin',class_applied:true,
+    class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5,
+    equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91,
+    attack_pct_bonus:0};
+  const full=heroCombatSheetFromProfile(profile,'pecado_diane',100);
+  assert.deepEqual([full.maxHp,full.atk,full.def,full.spd],[5940,1295,1394,511]);
+  const text=formatCharacterBaseStatus({profile,heroSheet:{...full,heroLevel:100,
+    masteryStage:3,masteryXp:2400},awakeningStage:3});
+  assert.match(text,/STATUS BASE — DIANE/);
+  assert.match(text,/HP: \*3\.880\*/);
+  assert.match(text,/ATK: \*860\*/);
+  assert.match(text,/DEF: \*490\*/);
+  assert.match(text,/VEL: \*420\*/);
+  assert.match(text,/Maestria: \*3\/5\*/);
+  assert.match(text,/Despertar da classe Paladino: \*III\/V\*/);
+  assert.match(text,/habilidades inativas enquanto o herói estiver ativo/);
+  assert.doesNotMatch(text,/5\.940|1\.295|1\.394|511/);
+});
 
 test('sete personagens unicos com perfis equilibrados',()=>{
   assert.equal(PLAYABLE_HERO_IDS.length,7)
@@ -321,6 +372,8 @@ test('perfil, status e comando de herói devem distinguir classe da ficha do com
   assert.doesNotMatch(ui,/preservada; ativa no PvP/);
   assert.match(ui,/!heroi atributos|formatPlayableHeroCombatSheet/);
   assert.match(hero,/\['atributos','ficha','stats','status'\]/);
+  assert.match(hero,/\['personagem','personagens'\]/);
+  assert.match(hero,/getCharacterBaseStatus\(sender\)/);
   const sheet=hero.slice(hero.indexOf('export function formatPlayableHeroCombatSheet('),
     hero.indexOf('export function formatPlayableHeroBaseSheet('));
   const baseSheet=hero.slice(hero.indexOf('export function formatPlayableHeroBaseSheet('),
