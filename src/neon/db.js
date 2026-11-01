@@ -2133,15 +2133,17 @@ if(levels>0){
 // A cura por level-up precisa incluir o HP dos equipamentos realmente equipados.
 // Sem isto, o jogador perde temporariamente todo o HP extra de armadura/elmo.
 const st=(await client.query(`
-SELECT s.max_hp,s.weapon_id,s.armor_id,s.helmet_id,
+SELECT s.max_hp,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,
 COALESCE(uw.level,1)::int AS weapon_level,
 COALESCE(ua.level,1)::int AS armor_level,
+COALESCE(ub.level,1)::int AS boot_level,
 COALESCE(uh.level,1)::int AS helmet_level,
 CASE WHEN fw.level=COALESCE(uw.level,1) THEN fw.stars ELSE 1 END AS weapon_stars,
 CASE WHEN fa.level=COALESCE(ua.level,1) THEN fa.stars ELSE 1 END AS armor_stars
 FROM stats s
 LEFT JOIN equipment_upgrades uw ON uw.jid=s.jid AND uw.item_id=s.weapon_id
 LEFT JOIN equipment_upgrades ua ON ua.jid=s.jid AND ua.item_id=s.armor_id
+LEFT JOIN equipment_upgrades ub ON ub.jid=s.jid AND ub.item_id=s.boot_id
 LEFT JOIN equipment_upgrades uh ON uh.jid=s.jid AND uh.item_id=s.helmet_id
 LEFT JOIN equipment_star_forges fw ON fw.jid=s.jid AND fw.item_id=s.weapon_id
 LEFT JOIN equipment_star_forges fa ON fa.jid=s.jid AND fa.item_id=s.armor_id
@@ -2149,8 +2151,9 @@ WHERE s.jid=$1 FOR UPDATE OF s
 `,[jid])).rows[0]
 const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,st.weapon_level,st.weapon_stars):null
 const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,st.armor_level,st.armor_stars):null
+const boots=st?.boot_id?equipmentStatsAtLevel(st.boot_id,st.boot_level):null
 const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,st.helmet_level):null
-const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0)
+const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
 const restoredHp=Math.max(1,Number(st?.max_hp||100)+levels*8+gearHp)
 await client.query(`
 UPDATE stats
@@ -2498,9 +2501,9 @@ const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND 
 if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
 const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : eq.category==='helmet' ? 'helmet_id' : 'boot_id'
 await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
-if(field==='weapon_id'||field==='armor_id'||field==='helmet_id'){
-const st=(await client.query('SELECT hp,max_hp,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
-const ids=[st?.weapon_id,st?.armor_id,st?.helmet_id].filter(Boolean)
+if(['weapon_id','armor_id','boot_id','helmet_id'].includes(field)){
+const st=(await client.query('SELECT hp,max_hp,weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+const ids=[st?.weapon_id,st?.armor_id,st?.boot_id,st?.helmet_id].filter(Boolean)
 const ups=ids.length?(await client.query(
 'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
 [jid,ids]
@@ -2509,8 +2512,9 @@ const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
 const starLv=await getEquipmentStarLevels(jid,[st?.weapon_id,st?.armor_id],client)
 const weapon=st?.weapon_id?equipmentStatsAtLevel(st.weapon_id,lvl(st.weapon_id),starLv[st.weapon_id]||1):{hp:0}
 const armor=st?.armor_id?equipmentStatsAtLevel(st.armor_id,lvl(st.armor_id),starLv[st.armor_id]||1):{hp:0}
+const boots=st?.boot_id?equipmentStatsAtLevel(st.boot_id,lvl(st.boot_id)):{hp:0}
 const helmet=st?.helmet_id?equipmentStatsAtLevel(st.helmet_id,lvl(st.helmet_id)):{hp:0}
-const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
+const effectiveMax=Math.max(1,Number(st?.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0))
 if(Number(st?.hp||0)>effectiveMax){
 await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[effectiveMax,jid])
 }
@@ -2629,11 +2633,11 @@ if(itemId && !POTIONS[itemId]) throw new Error('Esse item não é uma poção ut
 if(itemId && !rows.some(r=>r.item_id===itemId)) throw new Error('Você não possui essa poção.')
 if(!itemId && !rows.length) throw new Error('Você não possui nenhuma poção de cura.')
 const st=await client.query(
-'SELECT hp,max_hp,weapon_id,armor_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
+'SELECT hp,max_hp,weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
 [jid]
 )
 const row=st.rows[0]||{}
-const idsEq=[row.weapon_id,row.armor_id,row.helmet_id].filter(Boolean)
+const idsEq=[row.weapon_id,row.armor_id,row.boot_id,row.helmet_id].filter(Boolean)
 const levels=idsEq.length?(await client.query(
 'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
 [jid,idsEq]
@@ -2642,9 +2646,10 @@ const lvl=id=>Number(levels.find(x=>x.item_id===id)?.level||1)
 const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id],client)
 const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{hp:0}
 const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{hp:0}
+const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id)):{hp:0}
 const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{hp:0}
 const hp=Number(row.hp||0)
-const maxHp=Math.max(1,Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(helmet?.hp||0))
+const maxHp=Math.max(1,Number(row.max_hp||100)+Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0))
 if(hp>=maxHp) throw new Error('Seu HP já está cheio.')
 const missing=maxHp-hp
 const available=rows
@@ -2709,7 +2714,7 @@ const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
 const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao'])
 const classScrolls=Number(scrollR.rows[0]?.quantity||0)
 const classChangeRemaining=0
-const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0))
+const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0))
 const effectiveHp=Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
 if(Number(p.hp||0)>effectiveMaxHp){
 await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,effectiveMaxHp])
@@ -2723,7 +2728,7 @@ weapon_atk:Number(w.atk||0)+ench.atk,
 armor_def:Number(a.def||0)+ench.def,
 equipment_atk:Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk,
 equipment_def:Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
-equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
+equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0),
 equipment_spd:Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
 effective_spd:Number(p.spd)+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
 equipment_crit:Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit,
@@ -2868,10 +2873,10 @@ const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_i
 const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const A={
 jid:attackerJid,name:au?.push_name||'Jogador',
-hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0)):Number(a.hp),maxHp:Number(aHeroStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
+hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)):Number(a.hp),maxHp:Number(aHeroStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),
 atk:Math.round((Number(aHeroStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
 def:Number(aHeroStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
-classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),attackIndex:0,lastProcAttack:0,
+classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),attackIndex:0,lastProcAttack:0,
 crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied&&!aHero)),
 spd:Number(aHeroStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
 enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
@@ -2880,10 +2885,10 @@ petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.
 }
 const B={
 jid:defenderJid,name:bu?.push_name||'Jogador',
-hp:bHeroStats?heroEffectiveCombatHp(b,bHeroStats,Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0)):Number(b.hp),maxHp:Number(bHeroStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
+hp:bHeroStats?heroEffectiveCombatHp(b,bHeroStats,Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0)):Number(b.hp),maxHp:Number(bHeroStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),
 atk:Math.round((Number(bHeroStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
 def:Number(bHeroStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
-classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),attackIndex:0,lastProcAttack:0,
+classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),attackIndex:0,lastProcAttack:0,
 crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied&&!bHero)),
 spd:Number(bHeroStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
 enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
@@ -3857,7 +3862,7 @@ const cd=await claimCooldown(client,`dungeon:${jid}`,20*60)
 if(!cd.ok) return cd
 const moneyMultiplier=await getDoubleEventMultiplier(client,'money')
 const xpMultiplier=await getDoubleEventMultiplier(client,'xp')
-const eqIds=[row.weapon_id,row.armor_id,row.helmet_id].filter(Boolean)
+const eqIds=[row.weapon_id,row.armor_id,row.boot_id,row.helmet_id].filter(Boolean)
 const ups=eqIds.length?(await client.query(
 'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
 [jid,eqIds]
@@ -3866,10 +3871,11 @@ const lvl=id=>Number(ups.find(x=>x.item_id===id)?.level||1)
 const starLv=await getEquipmentStarLevels(jid,[row.weapon_id,row.armor_id],client)
 const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id),starLv[row.weapon_id]||1):{atk:0,def:0,hp:0}
 const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{atk:0,def:0,hp:0}
+const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id)):{atk:0,def:0,hp:0}
 const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{atk:0,def:0,hp:0}
-const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)
-const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)+Number(helmet.def||0)
-const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)+Number(helmet.hp||0)
+const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)+Number(boots.atk||0)+Number(helmet.atk||0)
+const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)+Number(boots.def||0)+Number(helmet.def||0)
+const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)+Number(boots.hp||0)+Number(helmet.hp||0)
 const level=Number(row.level)
 const monsters=[
 {name:'Slime Sombrio',hp:45,atk:8,def:2,mult:1},
