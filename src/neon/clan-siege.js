@@ -212,7 +212,9 @@ export async function clanSiegeStatus(session){
   const mine=(await db.query('SELECT clan_id,role FROM clan_members WHERE jid=$1',[session.jid])).rows[0];
   let match=await openMatch(db,chat);
   if(!match)match=(await db.query("SELECT * FROM alpha_siege_matches WHERE chat_jid=$1 AND status='completed' AND ended_at>$2 ORDER BY id DESC LIMIT 1",[chat,now()-24*60*60*1000])).rows[0]||null;
+  const firstReward=(await db.query('SELECT match_id FROM alpha_siege_first_victory WHERE chat_jid=$1',[chat])).rows[0];
   return {
+    firstWarPrizeMatchId:firstReward?String(firstReward.match_id):null,
     enabled:true,myClanId:mine?String(mine.clan_id):null,isLeader:mine?.role==='leader',
     clans:teams.map(({id,name,members,linked})=>({id,name,members,linked})),
     match:await viewMatch(match,session.jid)
