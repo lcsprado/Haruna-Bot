@@ -490,7 +490,7 @@ test('Raid 75 em 02/11: 2x maestria real sem afetar outras raids nem outros dias
   assert.equal(raid75MasteryAwardXp({level:70,collab:true,nowMs:data('2026-11-02T12:00:00-03:00')}),90);
   assert.equal(raid75MasteryAwardXp({level:75,collab:false,nowMs:data('2026-11-02T12:00:00-03:00')}),90);
   const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
-  assert.match(games,/xp:raid75MasteryAwardXp\\(/);
+  assert.match(games,/xp:raid75MasteryAwardXp\(/);
 });
 test('Maestria acelerada com 400 por dia e 600 na Raid 75',()=>{
   const q=heroMasteryAwardPolicy;
