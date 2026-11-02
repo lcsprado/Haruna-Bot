@@ -540,6 +540,7 @@ starterItems.push(['fragmento_ascensao_pecados_20261024','Fragmento da Ascensão
 starterItems.push([HALLOWEEN_SOUL_ID,'Alma Amaldiçoada — Halloween','Fragmento exclusivo do Halloween 26–31/10; trocas liberadas sábado.','special',0,'event'])
 starterItems.push(...HALLOWEEN_GEAR.map(g=>[g.id,g.name,'Lendário de Halloween; drop exclusivo de Boss global. Não comercializável.',g.category,0,'legendary']))
 starterItems.push(...HALLOWEEN_ALTAR_NEW_GEAR.map(g=>[g.id,g.name,'Lendário do Altar das Almas, resgate único a partir de 31/10 18h. '+g.short,g.category,0,'legendary']))
+starterItems.push(['insignia_primeiros_conquistadores_20261102','👑 Insígnia dos Primeiros Conquistadores','Relíquia da primeira Guerra de Clãs. +7% dano Boss/Raid, +3 p.p. CRIT Boss/Raid, -2% dano recebido Raid. Sem PvP.','special',0,'event'])
 for (const item of starterItems) {
 await db.query(`
 INSERT INTO items (id,name,description,category,price,rarity)
@@ -552,6 +553,7 @@ category=EXCLUDED.category, price=EXCLUDED.price, rarity=EXCLUDED.rarity
 await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_MATERIAL_IDS])
 await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
+await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id='insignia_primeiros_conquistadores_20261102'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_universal_raid'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_ascensao_pecados_20261024'")

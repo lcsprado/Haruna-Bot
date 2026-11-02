@@ -1,0 +1,26 @@
+name: Alpha Bot - Insignia Primeira Guerra de Clas
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/relics.js'
+      - 'src/neon/db.js'
+      - 'test/clan-siege-first-insignia-whatsapp-20261102.test.mjs'
+      - '.github/workflows/alpha-first-siege-insignia.yml'
+permissions:
+  contents: read
+jobs:
+  relic-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate syntax
+        run: |
+          node --check src/neon/relics.js
+          node --check src/neon/db.js
+      - name: Validate event prize catalog and market protection
+        run: node --test test/clan-siege-first-insignia-whatsapp-20261102.test.mjs
