@@ -1,4 +1,5 @@
 import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
+import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
@@ -12,6 +13,11 @@ const ui = {
   lastResult: null,
   lootReveal: null,
   page: 'home',
+  siegePreviewAction: 'defend',
+  siege: null,
+  siegeBusy: false,
+  siegeFetchedAt: 0,
+  siegeError: '',
   auction: null,
   racing: null,
   racingFetchedAt: 0,
@@ -822,6 +828,33 @@ async function racingAction(action,body,op){
   }finally{ui.racingBusy=false;}
 }
 
+async function loadSiege(force=false){
+  if(!ui.token)return;
+  if(!force&&ui.siegeFetchedAt&&Date.now()-ui.siegeFetchedAt<10000)return;
+  try{
+    const response=await api('/api/v1/me/clan-siege');
+    ui.siege=response.data;
+    ui.siegeError='';
+  }catch(err){
+    ui.siege={enabled:false};
+    ui.siegeError=/HTTP 404/i.test(err.message)?'API de guerra ainda não publicada no servidor. Esta tela é apenas uma prévia.':err.message;
+  }
+  ui.siegeFetchedAt=Date.now();
+  if(ui.page==='clan')render();
+}
+async function submitSiege(command,body){
+  if(ui.siegeBusy)return;
+  ui.siegeBusy=true;
+  try{
+    const response=await api('/api/v1/me/clan-siege/'+command,{method:'POST',body:JSON.stringify(body||{})});
+    if(response.ok===false)throw new Error(response.reason||'Falha na guerra.');
+    toast(command==='move'?'Ação secreta registrada.':'Guerra atualizada.');
+    ui.siegePreviewAction='defend';
+    await loadSiege(true);
+  }catch(err){toast(err.message);ui.siegeError=err.message;render();}
+  finally{ui.siegeBusy=false;}
+}
+
 async function doAction(name,body,options){
   options=options||{};
   try{
@@ -894,6 +927,7 @@ function renderNav(){
     if(ui.page==='contracts') await loadContracts();
     if(ui.page==='auction') await loadAuction();
     if(ui.page==='racing') await loadRacing(false);
+    if(ui.page==='clan') await loadSiege(true);
     if(['social','market','clan','games','activities','rankings','loans'].includes(ui.page)){
       await syncExtras(false).catch(()=>null);
     }
@@ -1977,7 +2011,7 @@ function renderClan(){
     ? '<button class="btn good" data-clan-donate>Doar</button><button class="btn danger" data-clan-leave>Sair do clã</button>'
     : '<button class="btn primary" data-clan-create>Criar clã</button><button class="btn good" data-clan-accept>Aceitar convite</button>';
   return '<div class="page-head"><div><h2>Clã</h2><p>Mesma estrutura dos comandos !cla / !criarcla / !claconvidar.</p></div></div>'+
-    '<div class="card"><div class="section-title"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+
+    '<div class="card"><div class="section-title"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+renderClanSiegePreview(ui)+
     (clan?'<div class="section"><div class="section-title"><h3>Convidar / administrar jogadores</h3><small>Ações respeitam sua função no clã</small></div><div class="grid three">'+members.map(m=>'<div class="card"><h3>'+esc(m.push_name)+'</h3><div class="pet-actions"><button class="btn" data-clan-invite="'+esc(m.jid)+'">Convidar</button><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button><button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div></div>').join('')+'</div></div>':'')+
     '<div class="section card"><div class="section-title"><h3>Ranking de clãs</h3><small>'+clans.length+' listados</small></div>'+renderClanList(clans)+'</div>'+resultPanel();
 }
@@ -2379,6 +2413,7 @@ function render(){
 
 function bind(){
   if(ui.page==='racing')bindRacing(ui,{action:racingAction,refresh:loadRacing,render});
+  if(ui.page==='clan')bindClanSiegePreview(ui,{render,submit:submitSiege,refresh:loadSiege});
   document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
   document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
   document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+50000'));
@@ -2797,6 +2832,7 @@ setInterval(()=>{
   if(document.hidden||!ui.token||ui.syncing)return;
   // Garagem visual não precisa reconsultar a API a cada 15 segundos.
   // Toda compra, melhoria ou corrida já força sincronização imediata.
+  if(ui.page==='clan'&&Date.now()-(ui.siegeFetchedAt||0)>12000)void loadSiege(true);
   if(ui.page==='racing'){
     if(Date.now()-(ui.racingAmbientSyncAt||0)<120000)return;
     ui.racingAmbientSyncAt=Date.now();
