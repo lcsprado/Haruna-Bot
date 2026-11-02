@@ -34,7 +34,7 @@ export function renderClanSiegePreview(ui){
     !(mine?.id!=null&&clan.id!=null&&String(mine.id)===String(clan.id)) &&
     !(mine?.name&&clan.name&&mine.name===clan.name)
   )||null;
-  const pairReady=eligible.length===2&&Boolean(mine)&&Boolean(enemy);
+  const pairReady=eligible.length===2&&eligible.some(clan=>clan.id!=null&&mine?.id!=null?String(clan.id)===String(mine.id):Boolean(clan.name&&mine?.name&&clan.name===mine.name))&&Boolean(enemy);
   const selected=String(ui.siegePreviewAction||'defend');
   const action=ACTIONS.find(item=>item.id===selected)||ACTIONS[1];
   const status=pairReady
