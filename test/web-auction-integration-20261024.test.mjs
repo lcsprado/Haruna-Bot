@@ -9,9 +9,9 @@ const api=read('../src/neon/web-api.js')
 const app=read('../web/app.js')
 
 test('interface de leilão web contém incremento rápido de 50 mil e valor direto',()=>{
-  assert.doesNotThrow(()=>new Script(app))
+  assert.doesNotThrow(()=>new Script(app.replace(/^import .*$/gm,''))) // ES module imports are validated separately by node --check
   assert.match(app,/\['auction','🔨','Leilão'\]/)
-  assert.match(app,/auctionBid\('\+50000'\)/)
+  assert.match(app,/auctionBid\('\+'\+String\(ui\.auction\?\.step\|\|100000\)\)/) // step follows live auction rules
   assert.match(app,/data-auction-form/)
   assert.match(app,/data-auction-amount/)
   assert.match(app,/\/api\/v1\/me\/auction/)

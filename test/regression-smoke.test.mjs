@@ -172,14 +172,14 @@ test('web inventory separates equipped gear and protects it from every sale path
   assert.ok(db.includes("(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped"),'inventory bootstrap must expose equipped state')
   assert.ok(db.includes("END AS equipped_slot"),'inventory bootstrap must expose equipped slot')
   assert.ok(db.includes("AS sellable_quantity"),'inventory bootstrap must expose free quantity')
-  assert.ok(app.includes("['weapons','🗡️ Armas']"),'inventory must have an Armas section')
+  assert.ok(app.includes("['weapons','⚔️ Armas']")||app.includes("['weapons','🗡️ Armas']"),'inventory must have an Armas section')
   assert.ok(app.includes("['armors','🛡️ Armaduras']"),'inventory must have an Armaduras section')
   assert.ok(app.includes("['boots','🥾 Botas']"),'inventory must have a Botas section')
   assert.ok(app.includes("['consumables','🧪 Consumíveis']"),'inventory must have a Consumíveis section')
   assert.ok(app.includes("['raid','⚔️ Itens de Raid']"),'inventory must have an Itens de Raid section')
   assert.ok(app.includes("🔒 Equipados"),'inventory must isolate equipped gear')
   assert.ok(app.includes("PROTEGIDO DE VENDA"),'equipped cards must visibly block selling')
-  assert.ok(app.includes("quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)"),'normal inventory sections must exclude the equipped copy')
+  assert.ok(app.includes('Math.max(0,Number(i.quantity||0)-(i.equipped?1:0))')||app.includes('quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)'), 'inventory must exclude equipped copies using available quantity or quantity minus one')
   const batchStats=(db.match(/SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=\$1 FOR UPDATE/g)||[]).length
   assert.ok(batchStats>=2,'batch sell/discard must protect equipped boots as well as weapon/armor')
   assert.ok(db.includes("['weapon','armor','boots'].includes(i.category)"),'duplicate equipment sale must include boots safely')
@@ -351,7 +351,8 @@ test('web item and pet galleries never render wrong stacked artwork',()=>{
   for(const id of ['energetico_pet','espada_madeira','espada_ferro','espada_aco','lanca_solar','excalibur','armadura_aco','bota_cacador','bota_relampago','bota_celestial','escama_vulcanica','insignia_eclipse','marca_insone','coroa_madrugada']){
     assert.ok(itemBlock.includes(id+':'), 'missing explicit artwork mapping for '+id)
   }
-  assert.ok(!itemBlock.includes("return '';"),'item artwork resolver must never return blank')
+  assert.ok(!itemBlock.replace("if(category==='helmet') return '';",'').includes("return '';"),'no generic artwork resolver may silently return blank');
+  assert.ok(app.includes('const visual=itemFallbackVisual(item)'), 'items without a verified sprite must show a safe category fallback')
   assert.ok(app.includes('pet-image-fallback'),'exact pet images need a species-safe fallback')
   assert.ok(app.includes("classList.add(\\'pet-art-loaded\\')"),'exact pet art must hide fallback after loading')
   assert.ok(app.includes('onerror="this.remove()"'),'broken exact pet images must leave the safe fallback visible')

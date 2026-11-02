@@ -56,15 +56,6 @@
       ]
     },
     {
-      "source": "/clan-siege-ui.js",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache, must-revalidate"
-        }
-      ]
-    },
-    {
       "source": "/styles.css",
       "headers": [
         {
@@ -79,6 +70,15 @@
         {
           "key": "Cache-Control",
           "value": "no-store"
+        }
+      ]
+    },
+    {
+      "source": "/clan-siege-ui.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
         }
       ]
     }
