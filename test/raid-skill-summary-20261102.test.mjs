@@ -73,4 +73,5 @@ test('boletim tem exatamente uma linha por jogador e máximo 3 técnicas',()=>{
   assert.match(formatRaidSkillLine({playerClassId:'berserker',playerClassApplied:true}),/Berserker:.*nenhum gatilho especial/)
   assert.match(formatRaidSkillLine({activeHeroId:'pecado_king'}),/King:.*nenhum gatilho especial/)
   assert.equal(incrementRaidSkillCounts({Imortalidade:2},['Imortalidade','Snatch']).Imortalidade,3)
+  assert.match(formatRaidSkillLine({activeHeroId:'pecado_ban',skillActivations:{Snatch:2},skillTrackingPartial:true}),/contagem parcial/)
 })
