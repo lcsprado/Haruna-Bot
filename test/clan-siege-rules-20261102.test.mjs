@@ -61,15 +61,24 @@ test('cerco: encerra no round 6 e admite empate sem prêmio',()=>{
   assert.equal(win.winner,'1');
 });
 
-test('cerco: ativação somente com flag explícita 1',()=>{
-  const prev=process.env.ALPHA_CLAN_SIEGE_ENABLED;
+test('cerco: exige chave e JID exato do grupo AlphaBot',()=>{
+  const priorFlag=process.env.ALPHA_CLAN_SIEGE_ENABLED;
+  const priorGroup=process.env.ALPHA_CLAN_SIEGE_GROUP_JID;
   try{
     process.env.ALPHA_CLAN_SIEGE_ENABLED='0';
+    process.env.ALPHA_CLAN_SIEGE_GROUP_JID='120363012345678900@g.us';
     assert.equal(isClanSiegeEnabled(),false);
     process.env.ALPHA_CLAN_SIEGE_ENABLED='1';
+    delete process.env.ALPHA_CLAN_SIEGE_GROUP_JID;
+    assert.equal(isClanSiegeEnabled(),false);
+    process.env.ALPHA_CLAN_SIEGE_GROUP_JID='outro-grupo';
+    assert.equal(isClanSiegeEnabled(),false);
+    process.env.ALPHA_CLAN_SIEGE_GROUP_JID='120363012345678900@g.us';
     assert.equal(isClanSiegeEnabled(),true);
   }finally{
-    if(prev===undefined)delete process.env.ALPHA_CLAN_SIEGE_ENABLED;
-    else process.env.ALPHA_CLAN_SIEGE_ENABLED=prev;
+    if(priorFlag===undefined)delete process.env.ALPHA_CLAN_SIEGE_ENABLED;
+    else process.env.ALPHA_CLAN_SIEGE_ENABLED=priorFlag;
+    if(priorGroup===undefined)delete process.env.ALPHA_CLAN_SIEGE_GROUP_JID;
+    else process.env.ALPHA_CLAN_SIEGE_GROUP_JID=priorGroup;
   }
 });
