@@ -1,10 +1,10 @@
-// One-person, group-bound Web beta access for the missing founding Siege player.
-// No phone number is hardcoded or logged; membership is verified in PostgreSQL.
+// Acesso restrito ao único membro fundador de clã ainda fora da allowlist do Web beta.
+// Sem expor JID, sem armazenar privilégios e sem abrir acesso a terceiros.
 const groupJid=()=>String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||'').trim();
 const guestEnabled=()=>process.env.ALPHA_CLAN_SIEGE_BETA_GUEST==='1';
 const clanIds=()=>{
-  const tokens=String(process.env.ALPHA_CLAN_SIEGE_CLAN_IDS||'').split(',').map(x=>x.trim());
-  return tokens.length===2&&tokens.every(x=>/^[1-9][0-9]*$/.test(x))&&tokens[0]!==tokens[1]?tokens:[];
+  const ids=String(process.env.ALPHA_CLAN_SIEGE_CLAN_IDS||'').split(',').map(x=>x.trim());
+  return ids.length===2&&ids.every(x=>/^[1-9][0-9]*$/.test(x))&&ids[0]!==ids[1]?ids:[];
 };
 export const siegeBetaGuestConfigured=()=>
   guestEnabled()&&/^[0-9-]+@g\.us$/.test(groupJid())&&clanIds().length===2;
@@ -25,49 +25,25 @@ export function isOnlyMissingSiegeMember(rows,ids,allow,jid){
   const missing=rows.map(x=>String(x.jid)).filter(x=>!allow.has(x));
   return missing.length===1&&missing[0]===String(jid);
 }
-
-async function currentRoster(conn,ids){
+async function roster(conn,ids){
   return (await conn.query(
     'SELECT jid,clan_id FROM clan_members WHERE clan_id=ANY($1::bigint[]) ORDER BY clan_id,jid',
     [ids]
   )).rows;
 }
-async function boundGuest(conn,chat,jid=null){
-  try{
-    return (await conn.query(
-      'SELECT jid FROM alpha_siege_beta_guest WHERE chat_jid=$1'+(jid?' AND jid=$2':''),
-      jid?[chat,jid]:[chat]
-    )).rows;
-  }catch(err){
-    if(err?.code==='42P01')return []; // No guest has linked a session yet.
-    throw err;
-  }
-}
-export async function siegeBetaGuestAccess(conn,{jid,chat,register=false}){
+export async function siegeBetaGuestAccess(conn,{jid,chat}){
   if(!siegeBetaGuestConfigured()||String(chat)!==groupJid()||!String(jid||''))return false;
-  const ids=clanIds(),allowed=configuredBetaJids();
+  const allowed=configuredBetaJids();
   if(allowed.has(String(jid)))return true;
-  const roster=await currentRoster(conn,ids);
-  if(!isOnlyMissingSiegeMember(roster,ids,allowed,jid))return false;
-  if(register){
-    await conn.query([
-      'CREATE TABLE IF NOT EXISTS alpha_siege_beta_guest(',
-      'chat_jid TEXT PRIMARY KEY,jid TEXT NOT NULL UNIQUE,',
-      'clan_id BIGINT NOT NULL,created_at BIGINT NOT NULL);'
-    ].join(' '));
-    const member=roster.find(x=>String(x.jid)===String(jid));
-    await conn.query(
-      'INSERT INTO alpha_siege_beta_guest(chat_jid,jid,clan_id,created_at) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',
-      [chat,jid,member.clan_id,Date.now()]
-    );
-  }
-  const recorded=await boundGuest(conn,chat,jid);
-  return recorded.length===1&&String(recorded[0].jid)===String(jid);
+  return isOnlyMissingSiegeMember(await roster(conn,clanIds()),clanIds(),allowed,jid);
 }
 export async function siegeBetaAuthorizedSet(conn){
-  const allow=configuredBetaJids();
-  if(!siegeBetaGuestConfigured())return allow;
-  const guests=await boundGuest(conn,groupJid());
-  for(const x of guests)if(x.jid)allow.add(String(x.jid));
-  return allow;
+  const allowed=configuredBetaJids();
+  if(!siegeBetaGuestConfigured())return allowed;
+  const members=await roster(conn,clanIds());
+  const missing=members.filter(x=>!allowed.has(String(x.jid)));
+  if(missing.length===1&&isOnlyMissingSiegeMember(members,clanIds(),allowed,missing[0].jid)){
+    allowed.add(String(missing[0].jid));
+  }
+  return allowed;
 }
