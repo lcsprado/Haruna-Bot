@@ -20,10 +20,10 @@ test('start and end use Brasilia local time and do not affect today', () => {
   assert.equal(ascensionPlayerMultiplier(50, before), 1);
   assert.equal(ascensionPlayerMultiplier(50, after), 1);
 });
-test('Semana da Ascensão dá 3x até 299, 2x de 300 até 340 e normal depois', () => {
+test('Semana da Ascensão dá 3x até 300 inclusive, 2x de 301 a 340 e normal depois', () => {
   for(const [lv,expected] of [
     [1,3],[99,3],[100,3],[199,3],[200,3],[299,3],
-    [300,2],[301,2],[339,2],[340,2],[341,1],[342,1],[600,1]
+    [300,3],[301,2],[339,2],[340,2],[341,1],[342,1],[600,1]
   ]) {
     assert.equal(ascensionPlayerMultiplier(lv,within),expected,'level '+lv);
   }
@@ -106,18 +106,24 @@ test('veteran status shows durable trial counters and finished condition',async(
   assert.equal(state.boss.count,1);
 });
 
-test('XP não mantém o multiplicador depois de atravessar os níveis 300 e 340',()=>{
+test('XP não mantém o multiplicador depois de atravessar os níveis 300, 301 e 340',()=>{
   assert.deepEqual(ascensionAwardedPlayerXp({
     level:299,currentExp:0,baseGain:20000,groupMultiplier:1,nowMs:within
-  }),{amount:49966,multiplier:3});
+  }),{amount:59966,multiplier:3});
   assert.deepEqual(ascensionAwardedPlayerXp({
     level:299,currentExp:0,baseGain:20000,groupMultiplier:2,nowMs:within
-  }),{amount:49966,multiplier:3});
+  }),{amount:59966,multiplier:3});
   assert.equal(ascensionAwardedPlayerXp({
     level:299,currentExp:29800,baseGain:1000,nowMs:within
-  }).amount,2032);
+  }).amount,3000);
   assert.deepEqual(ascensionAwardedPlayerXp({
     level:300,currentExp:0,baseGain:20000,nowMs:within
+  }),{amount:50000,multiplier:3});
+  assert.equal(ascensionAwardedPlayerXp({
+    level:300,currentExp:29900,baseGain:1000,nowMs:within
+  }).amount,2032);
+  assert.deepEqual(ascensionAwardedPlayerXp({
+    level:301,currentExp:0,baseGain:20000,nowMs:within
   }),{amount:40000,multiplier:2});
   assert.deepEqual(ascensionAwardedPlayerXp({
     level:340,currentExp:0,baseGain:20000,nowMs:within
@@ -135,13 +141,15 @@ test('XP não mantém o multiplicador depois de atravessar os níveis 300 e 340'
     level:100,currentExp:0,baseGain:1000,disabled:true,nowMs:within
   }),{amount:1000,multiplier:1});
 });
-test('trilha veterana mantém desafios e mostra multiplicador correto de 300 a 340',async()=>{
+test('trilha veterana mostra 3x em 300, 2x entre 301 e 340 e normal a partir de 341',async()=>{
   const makeDb=level=>({query:async sql=>sql.startsWith('SELECT level')
     ?{rows:[{level}]}:{rows:[]}});
   const text300=await ascensionStatusText(makeDb(300),'user',within);
+  const text301=await ascensionStatusText(makeDb(301),'user',within);
   const text340=await ascensionStatusText(makeDb(340),'user',within);
   const text341=await ascensionStatusText(makeDb(341),'user',within);
-  assert.match(text300,/XP do jogador: \*2×\*/);
+  assert.match(text300,/XP do jogador: \*3×\* até o Lv\.300/);
+  assert.match(text301,/XP do jogador: \*2×\* até o Lv\.340/);
   assert.match(text340,/XP do jogador: \*2×\*/);
   assert.match(text341,/XP normal/);
   assert.match(text300,/TRILHA DOS VETERANOS/);
