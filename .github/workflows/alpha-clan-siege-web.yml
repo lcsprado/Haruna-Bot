@@ -9,6 +9,9 @@ on:
       - 'web/styles.css'
       - 'web/index.html'
       - 'web/sw.js'
+      - 'web/racing-ui.js'
+      - 'web/assets/**'
+      - 'test/web-modern-cerco-integration-20261102.test.mjs'
       - 'test/web-clan-siege-preview-20261102.test.mjs'
       - '.github/workflows/alpha-clan-siege-web.yml'
   push:
@@ -29,5 +32,6 @@ jobs:
         run: |
           node --check web/app.js
           node --check web/clan-siege-ui.js
+          node --check web/racing-ui.js
       - name: Web siege preview and live-state tests
-        run: node --test test/web-clan-siege-preview-20261102.test.mjs
+        run: node --test test/web-clan-siege-preview-20261102.test.mjs test/web-modern-cerco-integration-20261102.test.mjs
