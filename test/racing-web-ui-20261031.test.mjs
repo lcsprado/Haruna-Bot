@@ -81,5 +81,6 @@ test('the race page requests one endpoint only on navigation, not every 15s',()=
  assert.match(read('web/styles.css'),/#nav\{display:flex;flex:1 1 auto;min-height:0;overflow-y:auto/)
  assert.match(read('web/sw.js'),/Promise\.allSettled\(SHELL\.filter/)
  assert.match(read('web/sw.js'),/racing-ui\.js/)
- assert.match(read('web/index.html'),/20261101-racing-visual-v2/)
+ assert.match(read('web/index.html'),/\/racing-ui\.js|\/app\.js\?v=20261102-cerco-engine-v2/)
+ assert.match(read('web/index.html'),/20261102-cerco-engine-v2/)
 })
