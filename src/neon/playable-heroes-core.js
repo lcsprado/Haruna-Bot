@@ -117,8 +117,9 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
 export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
   const next={...(state||{})},incoming=Math.max(0,Math.round(Number(damage)||0));
   let rate=Math.max(0,Number(gear.defense||0));
-  if(heroId==='pecado_meliodas'&&next.counterReady&&incoming>0){
-    next.counterCharge=1;next.counterReady=false;
+  if(heroId==='pecado_meliodas'){
+    rate+=.02; // Demonic endurance. Full Counter absorbs a little while reflecting.
+    if(next.counterReady&&incoming>0){rate+=.03;next.counterCharge=1;next.counterReady=false;}
   }
   if(heroId==='pecado_ban'&&Number(next.snatchBlocks||0)>0){rate+=.045;next.snatchBlocks--;}
   if(heroId==='pecado_diane'){
