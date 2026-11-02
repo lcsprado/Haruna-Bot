@@ -70,6 +70,27 @@ async function eligible(conn,chat){
   ].join(' ');
   return (await conn.query(q,[chat,now()])).rows.map(r=>({...r,id:String(r.id),jids:r.jids||[]}));
 }
+// Read-only readiness: no personal JIDs leave the server. Shared with status and logs.
+export function analyzeSiegeEligibility(teams,authorizedJids=[]){
+  const allowed=authorizedJids instanceof Set?authorizedJids:new Set(authorizedJids);
+  const overview=(Array.isArray(teams)?teams:[]).map(team=>({
+    id:String(team.id),name:String(team.name||'Clã'),
+    members:Number(team.members)||0,linked:Number(team.linked)||0,
+    betaAuthorized:(Array.isArray(team.jids)?team.jids:[]).filter(jid=>allowed.has(String(jid))).length
+  }));
+  const ready=overview.length===2 && overview.every(t=>
+    t.members===2&&t.linked===2&&t.betaAuthorized===2
+  );
+  return {ready,teams:overview,eligibleClans:overview.length,linkedPlayers:overview.reduce((n,t)=>n+t.linked,0),authorizedPlayers:overview.reduce((n,t)=>n+t.betaAuthorized,0)};
+}
+export async function clanSiegePreflight(){
+  const chat=siegeGroup();
+  if(!/^[0-9-]+@g\.us$/.test(chat))return {configured:false,ready:false,teams:[]};
+  const teams=await eligible(db,chat);
+  const authorized=new Set(String(process.env.ALPHA_WEB_BETA_JIDS||'').split(',').map(x=>x.trim()).filter(Boolean));
+  return {configured:true,...analyzeSiegeEligibility(teams,authorized)};
+}
+
 async function openMatch(conn,chat,locked=false){
   const q=[
     "SELECT * FROM alpha_siege_matches WHERE chat_jid=$1",
@@ -204,7 +225,14 @@ async function viewMatch(match,jid){
   };
 }
 export async function clanSiegeStatus(session){
-  if(!ON())return {enabled:false,reason:'Partidas reais ainda não foram ativadas no servidor.'};
+  if(!ON()){
+    const reason='Partidas reais ainda não foram ativadas no servidor.';
+    if(session?.chatJid===siegeGroup()&&/^[0-9-]+@g\.us$/.test(siegeGroup())){
+      try{return {enabled:false,reason,preflight:await clanSiegePreflight()};}
+      catch(err){console.warn('[Cerco] Preflight indisponível:',String(err?.message||err).slice(0,130));}
+    }
+    return {enabled:false,reason};
+  }
   if(!session?.chatJid)return {enabled:false,reason:'Vincule o Web ao grupo AlphaBot pelo !web.'};
   const chat=group(session);
   await ensureClanSiegeSchema();await settleClanSiege(chat);
