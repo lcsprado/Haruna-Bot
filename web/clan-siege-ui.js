@@ -21,6 +21,19 @@ function renderCastle(clan,side){
     '</article>';
 }
 
+function siegeFirstPrizePanel(match=null,awardedId=null){
+  const earned=Boolean(match?.status==='completed'&&awardedId!=null&&String(match.id)===String(awardedId));
+  const taken=Boolean(awardedId);
+  const message=earned?'🎉 Insígnia entregue aos dois integrantes do clã campeão. Use !reliquias para equipar.':
+    taken?'Premiação histórica já conquistada em uma guerra anterior.':
+    'Reserva exclusiva para os dois membros do primeiro clã que vencer. Empate não consome o prêmio.';
+  return '<aside class="siege-prize"><div class="siege-prize-symbol" aria-hidden="true">👑</div>'+
+    '<div><small>PRIMEIRA GUERRA DE CLÃS · EVENTO ÚNICO</small>'+
+    '<h4>Insígnia dos Primeiros Conquistadores</h4>'+
+    '<p>⚔️ +7% dano Boss/Raid • 🎯 +3 p.p. CRIT Boss/Raid • 🛡️ −2% dano recebido em Raid</p>'+
+    '<p>'+ESCAPE(message)+'</p>'+
+    '<small>Relíquia permanente, não vendável, vinculada ao vencedor e sem bônus PvP.</small></div></aside>';
+}
 function renderLiveSiege(ui){
   const data=ui.siege,match=data.match,clans=data.clans||[];
   const mine=clans.find(c=>String(c.id)===String(data.myClanId));
@@ -80,6 +93,7 @@ function renderLiveSiege(ui){
     (latest.length?'<div class="siege-selected section"><strong>📜 Histórico</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
         ' HP • 🔴 '+Number(x.redHp)+' HP</p>').join('')+'</div>':'')+
+    siegeFirstPrizePanel(match,data.firstWarPrizeMatchId)+
     '<div class="siege-footer">Ações exclusivas por jogador e rodada. O jogo não utiliza dinheiro, XP ou HP real nesta versão.</div></section>';
 }
 
@@ -123,6 +137,7 @@ export function renderClanSiegePreview(ui){
       '<small>Esta escolha é apenas visual: não foi enviada nem salva. Não há ações de guerra habilitadas no servidor.</small></div>'+
     '</div>'+
     '<div class="siege-steps"><span>1 · Selecionar em segredo</span><span>2 · Aguardar a rodada fechar</span><span>3 · Resultado público no WhatsApp</span></div>'+
+    siegeFirstPrizePanel()+
     '<div class="siege-footer">🔒 O evento só será liberado depois de autenticação por jogador, ações persistidas, bloqueio de duplicidade, resolução simultânea e testes de integração. Nenhum saldo, XP, HP ou cofre real é alterado nesta prévia.</div>'+
   '</section>';
 }
