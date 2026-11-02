@@ -4,7 +4,7 @@ import {getOwnerEventMultiplier} from './owner-event-center.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
-import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive} from './playable-heroes-core.js'
+import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
@@ -1190,7 +1190,7 @@ async function finishRaidRewards(c,s,cfg,chat){
   const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
   const petXpMultiplier=Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
   const gearEventBonus=raidEventActive?.015:0
-  // A Raid 75 da collab recebe maestria x2 apenas durante a semana do evento.
+  // Raid 75 da collab: bônus semanal preservado e 240 XP de maestria em 02/11.
   const specialRaid75Mastery=raid75MasteryBonusActive({level:cfg.level,collab:cfg.collab,nowMs:now})
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
@@ -1200,7 +1200,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       await awardPlayableHeroLevel(c,{jid:p.jid,heroId:p.heroId,awardKey,
         xp:specialRaid75Mastery?180:125})
       await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:specialRaid75Mastery?120:90,specialRaid75:specialRaid75Mastery})
+        xp:raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),specialRaid75:specialRaid75Mastery})
     }
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
     // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.
