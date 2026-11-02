@@ -23,13 +23,13 @@ export function ascensionWeekActive(nowMs = Date.now()) {
 export function ascensionPlayerMultiplier(level, nowMs = Date.now()) {
   if (!ascensionWeekActive(nowMs)) return 1;
   const lv = Number(level);
-  if (!Number.isFinite(lv) || lv < 1 || lv >= 300) return 1;
-  if (lv < 100) return 4;
-  if (lv < 200) return 3;
-  return 2;
+  if (!Number.isFinite(lv) || lv < 1) return 1;
+  if (lv < 300) return 3;
+  if (lv <= 340) return 2;
+  return 1;
 }
-// Ao atravessar o nível 300 numa recompensa grande, a parcela restante
-// volta ao multiplicador que já existia antes do evento. Sem overflow turbo.
+// Não aplicar 3x depois do nível 299, nem 2x depois do nível 340,
+// mesmo quando uma única recompensa faz o jogador atravessar a faixa.
 export function ascensionAwardedPlayerXp({
   level, currentExp = 0, baseGain = 0, groupMultiplier = 1,
   disabled = false, nowMs = Date.now()
@@ -39,13 +39,26 @@ export function ascensionAwardedPlayerXp({
   const baseline = Math.max(1, Number(groupMultiplier) || 1);
   const bonus = disabled ? 1 : ascensionPlayerMultiplier(lv, nowMs);
   const multiplier = Math.max(baseline, bonus);
-  if (bonus <= baseline || lv >= 300 || original === 0)
+  if (bonus <= baseline || original === 0)
     return {amount: Math.round(original * multiplier), multiplier};
-  const remaining = Math.max(0, 50 * (lv + 299) * (300 - lv) -
-    Math.max(0, Math.floor(Number(currentExp) || 0)));
-  const before = Math.min(original, Math.ceil(remaining / multiplier));
-  const within = Math.min(remaining, Math.round(before * multiplier));
-  return {amount: within + Math.round((original - before) * baseline), multiplier};
+
+  let remainingBase = original;
+  let awarded = 0;
+  let currentLevel = lv;
+  let exp = Math.max(0, Math.floor(Number(currentExp) || 0));
+  for (const tier of [{until: 300, rate: 3}, {until: 341, rate: 2}]) {
+    if (currentLevel >= tier.until) continue;
+    if (tier.rate <= baseline) break;
+    const needed = Math.max(0, 50 * (currentLevel + tier.until - 1) *
+      (tier.until - currentLevel) - exp);
+    const baseInTier = Math.min(remainingBase, Math.ceil(needed / tier.rate));
+    awarded += Math.min(needed, Math.round(baseInTier * tier.rate));
+    remainingBase -= baseInTier;
+    if (remainingBase <= 0) return {amount: awarded, multiplier};
+    currentLevel = tier.until;
+    exp = 0;
+  }
+  return {amount: awarded + Math.round(remainingBase * baseline), multiplier};
 }
 export function ascensionHeroLevelDailyCap({playerLevel, heroLevel, nowMs = Date.now()} = {}) {
   return ascensionWeekActive(nowMs) && Number(playerLevel) >= 1 &&
@@ -169,9 +182,11 @@ export async function ascensionStatusText(queryable, jid, nowMs = Date.now()) {
     const multiplier = ascensionPlayerMultiplier(level, nowMs);
     lines.push('🌱 Bônus de XP do jogador: *' + multiplier + '×*');
     lines.push('🌈 Heróis abaixo do Lv.70: até *1.000 XP/dia* durante a semana.');
-    lines.push('🎯 Ao chegar ao Lv.300, termina a alavancagem.');
+    lines.push('🎯 No Lv.300, o bônus cai para 2×; acima do Lv.340, volta ao normal.');
   } else {
-    lines.push('👑 *TRILHA DOS VETERANOS* — XP normal.');
+    const multiplier = ascensionPlayerMultiplier(level, nowMs);
+    lines.push('👑 *TRILHA DOS VETERANOS* — ' +
+      (multiplier > 1 ? 'XP do jogador: *' + multiplier + '×* até o Lv.340.' : 'XP normal.'));
     const progress = await getAscensionVeteranProgress(queryable, jid);
     for (const type of ['boss', 'raid', 'dungeon'])
       lines.push((progress[type].count >= progress[type].goal ? '✅ ' : '⬜ ') +
