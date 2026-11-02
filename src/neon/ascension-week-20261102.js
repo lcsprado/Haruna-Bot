@@ -24,11 +24,11 @@ export function ascensionPlayerMultiplier(level, nowMs = Date.now()) {
   if (!ascensionWeekActive(nowMs)) return 1;
   const lv = Number(level);
   if (!Number.isFinite(lv) || lv < 1) return 1;
-  if (lv < 300) return 3;
+  if (lv <= 300) return 3;
   if (lv <= 340) return 2;
   return 1;
 }
-// Não aplicar 3x depois do nível 299, nem 2x depois do nível 340,
+// Não aplicar 3x depois do nível 300, nem 2x depois do nível 340,
 // mesmo quando uma única recompensa faz o jogador atravessar a faixa.
 export function ascensionAwardedPlayerXp({
   level, currentExp = 0, baseGain = 0, groupMultiplier = 1,
@@ -46,7 +46,7 @@ export function ascensionAwardedPlayerXp({
   let awarded = 0;
   let currentLevel = lv;
   let exp = Math.max(0, Math.floor(Number(currentExp) || 0));
-  for (const tier of [{until: 300, rate: 3}, {until: 341, rate: 2}]) {
+  for (const tier of [{until: 301, rate: 3}, {until: 341, rate: 2}]) {
     if (currentLevel >= tier.until) continue;
     if (tier.rate <= baseline) break;
     const needed = Math.max(0, 50 * (currentLevel + tier.until - 1) *
@@ -182,11 +182,12 @@ export async function ascensionStatusText(queryable, jid, nowMs = Date.now()) {
     const multiplier = ascensionPlayerMultiplier(level, nowMs);
     lines.push('🌱 Bônus de XP do jogador: *' + multiplier + '×*');
     lines.push('🌈 Heróis abaixo do Lv.70: até *1.000 XP/dia* durante a semana.');
-    lines.push('🎯 No Lv.300, o bônus cai para 2×; acima do Lv.340, volta ao normal.');
+    lines.push('🎯 Até o Lv.300: 3× XP; do Lv.301 ao Lv.340: 2×; acima disso, normal.');
   } else {
     const multiplier = ascensionPlayerMultiplier(level, nowMs);
     lines.push('👑 *TRILHA DOS VETERANOS* — ' +
-      (multiplier > 1 ? 'XP do jogador: *' + multiplier + '×* até o Lv.340.' : 'XP normal.'));
+      (multiplier > 1 ? 'XP do jogador: *' + multiplier + '×* ' +
+      (level === 300 ? 'até o Lv.300; depois, 2× até o Lv.340.' : 'até o Lv.340.') : 'XP normal.'));
     const progress = await getAscensionVeteranProgress(queryable, jid);
     for (const type of ['boss', 'raid', 'dungeon'])
       lines.push((progress[type].count >= progress[type].goal ? '✅ ' : '⬜ ') +
