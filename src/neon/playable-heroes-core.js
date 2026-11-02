@@ -72,11 +72,14 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
   const next={...(state||{})},stage=Math.min(5,Math.max(1,Math.floor(Number(masteryStage)||1)));
   const base=Math.max(1,Math.round(Number(damage)||1)),index=Math.max(1,Math.floor(Number(attackIndex)||1));
   let bonus=Number(gear.attack||0),heal=0,technique=null;
-  const special=stage>=2&&index%5===0,ultimate=stage>=3&&index>=12&&!next.ultimateUsed;
   const id=String(heroId||'');
+  // Duels frequently end before attack 12: iconic techniques must actually trigger.
+  const apex=id==='pecado_meliodas'||id==='pecado_escanor';
+  const special=stage>=2&&index%(apex?3:5)===0,
+    ultimate=stage>=3&&index>=(apex?4:12)&&!next.ultimateUsed;
   if(!HERO_COMBAT_PROFILES[id])return {damage:base,heal:0,state:next,technique:null};
   if(id==='pecado_meliodas'){
-    bonus+=.025;
+    bonus+=.04;
     if(Number(next.counterCharge||0)>0){bonus+=.045;technique='Full Counter';next.counterCharge=0;}
     if(special){next.counterReady=true;technique=technique||'Full Counter preparado';}
     if(ultimate){bonus+=.055;technique='Revenge Counter';}
@@ -88,9 +91,10 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
     }
     if(ultimate){bonus+=.035;technique='Hunter Fest';}
   }else if(id==='pecado_escanor'){
-    if(Number(hp)/Math.max(1,Number(maxHp))>.70)bonus+=.025;
+    if(Number(hp)/Math.max(1,Number(maxHp))>.70)bonus+=.04;
     if(special){bonus+=.05;technique='Cruel Sun';}
-    if(ultimate){bonus+=.065;technique='The One';}
+    if(ultimate){next.solarCharges=3;technique='The One';}
+    if(Number(next.solarCharges||0)>0){bonus+=.065;next.solarCharges--;technique=technique||'The One';}
   }else if(id==='pecado_diane'){
     if(special){next.rockGuard=1;technique='Heavy Metal';}
     if(ultimate){next.rockGuard=2;technique='Mother Catastrophe';}
