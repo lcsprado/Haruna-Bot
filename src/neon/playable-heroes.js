@@ -1,7 +1,8 @@
 import {db,ensureUser,getProfile,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
-import {formatActiveClassBaseStatus,formatSavedAwakeningForActiveHero} from './character-base-status-format.js'
+import {formatActiveClassBaseStatus} from './character-base-status-format.js'
+import {formatPlayableHeroMasteryEffects} from './hero-mastery-format.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
@@ -90,7 +91,7 @@ export async function getPlayableHeroCombatSheet(jid,knownProfile=null){
   const masteryStage=await getPlayableHeroMasteryStage(db,jid,heroId);
   const collabPvP=heroCollabGearBonus(heroId,profile.weapon_id,profile.armor_id,'pvp');
   const collabRaid=heroCollabGearBonus(heroId,profile.weapon_id,profile.armor_id,'raid');
-  return {...combat,heroLevel,masteryXp:xp,masteryStage,collabPvP,collabRaid,
+  return {...combat,heroId,heroLevel,masteryXp:xp,masteryStage,collabPvP,collabRaid,
     savedClass:profile.class_applied?getPlayerClass(profile.class_id):null};
 }
 
@@ -132,7 +133,8 @@ export function formatPlayableHeroBaseSheet(sheet){
     '⚔️ ATK: *'+heroNumbers(base.atk)+'*',
     '🛡️ DEF: *'+heroNumbers(base.def)+'*',
     '👢 VEL: *'+heroNumbers(base.spd)+'*',
-    '✨ Técnica: *'+sheet.skill+'*'
+    '✨ Técnica: *'+sheet.skill+'*',
+    ...formatPlayableHeroMasteryEffects(sheet)
   ].join('\n');
 }
 
@@ -142,8 +144,7 @@ export function formatPlayableHeroBaseSheet(sheet){
 export function formatCharacterBaseStatus({profile,heroSheet=null,awakeningStage=1}={}){
   if(!profile)return '';
   if(heroSheet){
-    return formatPlayableHeroBaseSheet(heroSheet)+'\n'+
-      formatSavedAwakeningForActiveHero(profile,awakeningStage);
+    return formatPlayableHeroBaseSheet(heroSheet);
   }
   return formatActiveClassBaseStatus(profile,awakeningStage);
 }

@@ -37,7 +37,7 @@ test('classe Necromante revela despertar próprio e ignora itens/encantos',()=>{
   assert.doesNotMatch(text,/1\.649|999/);
 });
 
-test('Diane equipada continua inteira no perfil; personagem mostra base e despertar da classe salvo inativo',()=>{
+test('Diane equipada continua inteira no perfil; consulta de herói não expõe Despertar da classe salvo',()=>{
   const profile={hp:3180,max_hp:3180,atk:780,def:390,spd:395,
     class_id:'paladin',class_applied:true,
     class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5,
@@ -51,7 +51,7 @@ test('Diane equipada continua inteira no perfil; personagem mostra base e desper
   assert.match(awakening,/habilidades inativas enquanto o herói estiver ativo/);
   const heroSource=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   assert.match(heroSource,/formatPlayableHeroBaseSheet\(heroSheet\)/);
-  assert.match(heroSource,/formatSavedAwakeningForActiveHero\(profile,awakeningStage\)/);
+  assert.doesNotMatch(heroSource,/formatSavedAwakeningForActiveHero\(profile,awakeningStage\)/);
   assert.match(heroSource,/\['personagem','personagens'\]/);
   assert.match(heroSource,/getCharacterBaseStatus\(sender\)/);
 });
@@ -646,4 +646,48 @@ test('!perfil utiliza somente o formatador visual; !status e combate não são a
   assert.match(ui,/import \{formatProfileCombatBonuses\} from '\.\/profile-combat-summary\.js'/);
   assert.match(ui,/const bonusSummary=formatProfileCombatBonuses\(\{/);
   assert.doesNotMatch(ui,/CONTRIBUIÇÃO DO PET NO PVP|DANO EXTRA RAID|DANO EXTRA BOSS/);
+});
+
+test('!heroi atributos exibe maestria liberada sem mostrar Paladino',async()=>{
+  const {formatPlayableHeroMasteryEffects}=await import('../src/neon/hero-mastery-format.js');
+  const heroSource=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
+  const sheet={
+    heroId:'pecado_ban',name:'Ban',role:'Lutador • sobrevivência',range:'Corpo a corpo',
+    heroLevel:100,masteryStage:3,masteryXp:2040,skill:'Snatch',
+    baseWithoutGear:{maxHp:3958,atk:886,def:497,spd:436}
+  };
+  // O formatador da ficha-base usa a mesma ficha sem equipamentos e acrescenta poderes ativos.
+  assert.match(heroSource,/return formatPlayableHeroBaseSheet\(heroSheet\);/);
+  assert.match(heroSource,/\.\.\.formatPlayableHeroMasteryEffects\(sheet\)/);
+  assert.doesNotMatch(heroSource,/formatSavedAwakeningForActiveHero\(profile,awakeningStage\)/);
+  assert.match(heroSource,/STATUS BASE — /);
+  const message=formatPlayableHeroMasteryEffects(sheet).join('\n');
+  assert.match(message,/MAESTRIA III — PODERES LIBERADOS/);
+  for(const power of ['Imortalidade','Snatch','Hunter Fest','Boss/Raid','PvP','Próxima maestria IV']){
+    assert.ok(message.includes(power),'poder ou seção ausente: '+power);
+  }
+  assert.doesNotMatch(message,/Paladino|Despertar|✅ IV|✅ V/);
+  assert.match(message,/faltam 1\.460 XP/);
+  const stage1=formatPlayableHeroMasteryEffects({...sheet,masteryStage:1}).join('\n');
+  assert.match(stage1,/Imortalidade/);
+  assert.doesNotMatch(stage1,/Snatch|Hunter Fest/);
+  const stage2=formatPlayableHeroMasteryEffects({...sheet,masteryStage:2}).join('\n');
+  assert.match(stage2,/Snatch/);
+  assert.doesNotMatch(stage2,/Hunter Fest/);
+  const stage5=formatPlayableHeroMasteryEffects({...sheet,masteryStage:5,masteryXp:7000}).join('\n');
+  assert.match(stage5,/Maestria máxima liberada/);
+  assert.match(stage5,/IV — \+1%/);
+  assert.match(stage5,/V — \+0,5% adicional/);
+});
+
+test('todos os sete heróis descrevem as habilidades efetivamente desbloqueadas',async()=>{
+  const {formatPlayableHeroMasteryEffects}=await import('../src/neon/hero-mastery-format.js');
+  for(const heroId of PLAYABLE_HERO_IDS){
+    for(const masteryStage of [1,2,3,4,5]){
+      const message=formatPlayableHeroMasteryEffects({heroId,masteryStage,masteryXp:7000}).join('\n');
+      assert.match(message,/Boss\/Raid/);
+      assert.match(message,/PvP/);
+      assert.equal((message.match(/✅ /g)||[]).length,2*masteryStage,heroId+' stage '+masteryStage);
+    }
+  }
 });

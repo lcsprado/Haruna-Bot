@@ -286,6 +286,38 @@ export const HERO_SKILL_GUIDE=Object.freeze({
     special:'Exterminate: a cada 8 ataques, +15% de dano e magia residual nos 2 golpes seguintes.',
     ultimate:'Perfect Cube: a cada 25 ataques, +10% de dano e uma barreira que reduz o próximo golpe em 20%.'}
 });
+// Texto do PvP alinhado às regras de heroPvpAttack/heroPvpDefense.
+// Esta tabela descreve apenas os estágios liberados; não concede efeitos.
+export const HERO_PVP_SKILL_GUIDE=Object.freeze({
+  pecado_meliodas:{
+    passive:'Hellblaze: +4% de dano e -2% de dano recebido.',
+    special:'Full Counter: a cada 3 ataques prepara defesa (-3% no próximo golpe) e contra-ataca com até +4,5% de dano.',
+    ultimate:'Revenge Counter: uma vez por duelo, a partir do 4º ataque, +5,5% de dano.'},
+  pecado_ban:{
+    passive:'Imortalidade: cura de 0,6% a 1% do HP máximo a cada 6 ataques (até 2 vezes).',
+    special:'Snatch: a cada 5 ataques, +2,5% de dano e -4,5% de dano recebido nos próximos 2 golpes.',
+    ultimate:'Hunter Fest: uma vez por duelo, a partir do 12º ataque, +3,5% de dano.'},
+  pecado_escanor:{
+    passive:'Sunshine: +4% de dano quando o HP está acima de 70%.',
+    special:'Cruel Sun: a cada 3 ataques, +5% de dano.',
+    ultimate:'The One: uma vez por duelo, a partir do 4º ataque, ativa 3 golpes solares com +6,5% de dano.'},
+  pecado_diane:{
+    passive:'Heavy Metal: -2,5% de dano recebido.',
+    special:'Heavy Metal: a cada 5 ataques, protege o próximo golpe (-6% de dano recebido).',
+    ultimate:'Mother Catastrophe: uma vez por duelo, a partir do 12º ataque, protege até 2 golpes (-6% de dano recebido).'},
+  pecado_king:{
+    passive:'Chastiefol: sem bônus passivo adicional no PvP; seus efeitos de suporte são próprios de Boss/Raid.',
+    special:'Guardian: a cada 5 ataques, protege o próximo golpe (-6% de dano recebido).',
+    ultimate:'Sunflower: uma vez por duelo, a partir do 12º ataque, +2,5% de dano.'},
+  pecado_gowther:{
+    passive:'Invasion: sem redução passiva adicional de dano no PvP.',
+    special:'Rewrite Light: a cada 5 ataques, reduz em 4,5% o dano recebido pelos próximos 2 golpes.',
+    ultimate:'Nightmare Teller: uma vez por duelo, a partir do 12º ataque, +3,5% de dano.'},
+  pecado_merlin:{
+    passive:'Infinity: sem bônus passivo adicional de dano no PvP.',
+    special:'Exterminate: a cada 5 ataques, +2,5% de dano.',
+    ultimate:'Perfect Cube: uma vez por duelo, a partir do 12º ataque, reduz em 8% o próximo golpe recebido.'}
+});
 const HERO_SUN_HOUR=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'});
 
 export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},context='raid',masteryStage=1,nowMs=Date.now(),gear={}}={}){
