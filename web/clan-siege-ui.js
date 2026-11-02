@@ -35,7 +35,7 @@ function renderLiveSiege(ui){
   const label=active?'⚔️ GUERRA ATIVA':stage==='pending'?'⏳ DESAFIO PENDENTE':stage==='completed'?'🏆 CONCLUÍDA':'🏰 DISPONÍVEL';
   const ready=clans.length===2&&clans.every(c=>Number(c.members)===2&&Number(c.linked)===2);
   let controls='';
-  if(stage==='idle'&&ready&&data.isLeader)controls='<button class="btn primary" data-siege-command="challenge">🏰 Desafiar clã rival</button>';
+  if((stage==='idle'||stage==='completed')&&ready&&data.isLeader)controls='<button class="btn primary" data-siege-command="challenge">🏰 Desafiar clã rival</button>';
   if(stage==='pending'&&data.isLeader&&String(data.myClanId)===String(match.redClanId))controls='<button class="btn good" data-siege-command="accept">⚔️ Aceitar e iniciar</button>';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio</button>';
   const notice=stage==='pending'?'O líder adversário deve aceitar em até 30 minutos.':
