@@ -1,3 +1,4 @@
+import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import 'dotenv/config'
 import makeWASocket, {
 Browsers,
@@ -877,22 +878,13 @@ if(Number(x.xpBoostBonus||0)>0){
 const boostName=Number(x.xpBoostPercent||0)===100?'⏳ *BÔNUS AMPULHETA XP 2×*':'⚡ *BÔNUS DE XP*'
 text+=`\n${boostName}: +${fmt(x.xpBoostBonus)} XP (já incluído no total)`
 }
-const skillHealing=Math.max(0,Number(x.petSkillHealing||0))
-const classHealing=Math.max(0,Number(x.classHealing||0))
-const potionHealing=Math.max(0,Number(x.potionHealing||0))
-const healedTotal=skillHealing+classHealing+potionHealing
-if(healedTotal>0){
-text+='\n💚 *Cura recebida: +'+fmt(healedTotal)+' HP*'
-if(skillHealing>0) text+='\n   🐾 Skill do pet: +'+fmt(skillHealing)+' HP'
-if(classHealing>0) text+='\n   ⚜️ Passiva da classe: +'+fmt(classHealing)+' HP'
-if(potionHealing>0) text+='\n   🧪 Poções: +'+fmt(potionHealing)+' HP ('+Number(x.potionUses||0)+' uso(s))'
-}else{
-text+='\n💚 Cura recebida: *0 HP* (nenhuma cura ativada)'
-}
-if(String(x.playerClassId||'')==='paladin'){
-const activations=Math.max(0,Number(x.classHealingActivations||0))
-const opportunities=Math.max(0,Number(x.classHealingOpportunities||0))
-text+='\n🛡️ Bênção Restauradora: *'+activations+' ativação(ões)* / '+opportunities+' oportunidade(s) • *+'+fmt(classHealing)+' HP*'
+text+=formatRaidPlayerHealing(x,fmt)
+if(x.activeHeroId==='pecado_ban'&&x.heroSkillActivations){
+ const procs=x.heroSkillActivations
+ text+='\n🌈⚔️ *PODERES DO BAN* ('+fmt(x.heroAttacks||0)+' ataques)'
+ text+='\n♾️ Imortalidade: *'+fmt(procs.Imortalidade||0)+' gatilho(s)*'
+ text+='\n🫳 Snatch: *'+fmt(procs.Snatch||0)+' gatilho(s)*'
+ text+='\n🔥 Hunter Fest: *'+fmt(procs['Hunter Fest']||0)+' gatilho(s)*'
 }
 const petPotionHealing=Math.max(0,Number(x.petPotionHealing||0))
 if(petPotionHealing>0)text+='\n🐾🧪 Cura do pet combatente: +'+fmt(petPotionHealing)+' HP ('+Number(x.petPotionUses||0)+' poção(ões))'

@@ -329,6 +329,8 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
   const special=index%8===0&&stage>=2,ultimate=index%25===0&&stage>=3;
   const healthRatio=Math.max(0,Math.min(1,Number(hp)/Math.max(1,Number(maxHp))));
   let bonus=0,heal=0,allyHeal=0,technique=null,solarBurst=false;
+  // Gatilhos reais do Ban, extraídos da execução da habilidade e não inferidos pelo boletim.
+  const banActivations=[];
   if(id==='pecado_meliodas'){
     // Hellblaze, Full Counter (próximo golpe recebido), Revenge Counter.
     bonus=.065;
@@ -348,9 +350,9 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
     if(Number(next.revengeCharges||0)>0){bonus+=.08;next.revengeCharges--;}
   }else if(id==='pecado_ban'){
     bonus=.02;
-    if(special){bonus+=.10;next.snatchCharges=3;technique='Snatch';}
-    if(index%8===0)heal+=Math.ceil(Math.max(1,Number(maxHp))*.01);
-    if(ultimate){bonus+=.15;heal+=Math.ceil(Math.max(1,Number(maxHp))*.05);technique='Hunter Fest';}
+    if(special){bonus+=.10;next.snatchCharges=3;technique='Snatch';banActivations.push('Snatch');}
+    if(index%8===0){heal+=Math.ceil(Math.max(1,Number(maxHp))*.01);banActivations.push('Imortalidade');}
+    if(ultimate){bonus+=.15;heal+=Math.ceil(Math.max(1,Number(maxHp))*.05);technique='Hunter Fest';banActivations.push('Hunter Fest');}
   }else if(id==='pecado_escanor'){
     const hour=Number(HERO_SUN_HOUR.format(new Date(Number(nowMs)||Date.now())));
     if(hour>=6&&hour<18&&healthRatio>.7)bonus+=hour>=11&&hour<13?.10:.07;
@@ -387,7 +389,8 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
   // The One tem explosao superior, mas somente nos tres ataques da janela solar.
   const cap=solarBurst?(context==='boss'?.36:.40):(context==='boss'?.30:.35);
   return {damage:Math.max(1,Math.floor(n*(1+Math.min(cap,bonus)))),heal,allyHeal,
-    technique,state:next,activated:special||ultimate};
+    technique,state:next,activated:special||ultimate,
+    ...(id==='pecado_ban'?{banActivations}: {})};
 }
 export function heroDefense({heroId,damage=0,state={},gear={}}={}){
   const next={...(state||{})};let rate=Math.max(0,Number(gear.defense||0));
