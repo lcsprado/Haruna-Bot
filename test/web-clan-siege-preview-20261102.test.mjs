@@ -52,3 +52,34 @@ test('cerco: módulo web não envia comandos, dinheiro ou estado de jogo',()=>{
   assert.match(app,/renderClanSiegePreview\(ui\)/);
   assert.match(app,/bindClanSiegePreview\(ui,\{render,submit:submitSiege,refresh:loadSiege\}\)/);
 });
+
+test('cerco: modo ativo exibe placar real e comando protegido',()=>{
+  const html=renderClanSiegePreview({
+    extras:{clan:{id:10,name:'Guardas da Lua'},clans:[]},
+    siege:{
+      enabled:true,myClanId:'10',isLeader:false,
+      clans:[{id:'10',name:'Guardas da Lua',members:2,linked:2},{id:'11',name:'Os Entrosas',members:2,linked:2}],
+      match:{id:'123',status:'active',round:2,roundEndsAt:Date.now()+60000,
+        blueClanId:'10',redClanId:'11',blueHp:1600,redHp:1830,mySide:'blue',
+        myMove:null,submitted:3,history:[]}
+    },
+    siegePreviewAction:'attack'
+  });
+  assert.match(html,/GUERRA ATIVA/);
+  assert.match(html,/1600 \/ 2.000/);
+  assert.match(html,/1830 \/ 2.000/);
+  assert.match(html,/data-siege-command="move"/);
+  assert.match(html,/3\/4 ações enviadas/);
+});
+test('cerco: não permite confirmar duas vezes a mesma rodada',()=>{
+  const html=renderClanSiegePreview({
+    siege:{enabled:true,myClanId:'10',isLeader:false,
+      clans:[{id:'10',name:'A',members:2,linked:2},{id:'11',name:'B',members:2,linked:2}],
+      match:{status:'active',round:1,roundEndsAt:Date.now()+10000,
+        blueClanId:'10',redClanId:'11',mySide:'blue',myMove:'defend',submitted:2,
+        blueHp:2000,redHp:2000,history:[]}},
+    siegePreviewAction:'attack'
+  });
+  assert.doesNotMatch(html,/data-siege-command="move"/);
+  assert.match(html,/Ação confirmada/);
+});
