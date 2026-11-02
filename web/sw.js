@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261102-cerco-preview-v1';
+const CACHE='alpha-rpg-pwa-20261102-cerco-engine-v2';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
