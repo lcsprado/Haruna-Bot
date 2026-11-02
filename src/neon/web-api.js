@@ -50,6 +50,7 @@ import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoa
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
+import {clanSiegeStatus,clanSiegeChallenge,clanSiegeAccept,clanSiegeMove,clanSiegeCancel} from './clan-siege.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
@@ -1589,6 +1590,30 @@ export async function handleWebApi(req,res){
       res.setHeader('cache-control','private, no-store')
       json(res,200,{ok:true,data:sanitizePrivateRefs({garage,ranking,history,challenges:challenges.rows,
         catalog:{cars:RACING_CARS,colors:RACING_COLORS,parts:RACING_PARTS,levels:RACING_UPGRADES,tracks:RACING_TRACKS,strategies:RACING_STRATEGIES,tiers:RACING_TIERS,totalUpgradeCost:RACING_TOTAL_UPGRADE_COST},serverTime:Date.now()},session)})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/clan-siege'){
+      const result=await clanSiegeStatus(session)
+      json(res,200,{ok:true,data:result})
+      return true
+    }
+
+    if(req.method==='POST' && url.pathname.startsWith('/api/v1/me/clan-siege/')){
+      const command=url.pathname.slice('/api/v1/me/clan-siege/'.length)
+      const body=await readJson(req,1024)
+      const handlers={
+        challenge:()=>clanSiegeChallenge(session),
+        accept:()=>clanSiegeAccept(session),
+        move:()=>clanSiegeMove(session,String(body.action||'')),
+        cancel:()=>clanSiegeCancel(session)
+      }
+      if(!Object.hasOwn(handlers,command)){
+        json(res,404,{ok:false,error:'Comando de guerra inexistente.'})
+        return true
+      }
+      const result=await handlers[command]()
+      json(res,result.ok===false?409:200,{ok:result.ok!==false,...result})
       return true
     }
 
