@@ -122,20 +122,20 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
 }
 export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
   const next={...(state||{})},incoming=Math.max(0,Math.round(Number(damage)||0));
-  let rate=Math.max(0,Number(gear.defense||0));
+  let rate=Math.max(0,Number(gear.defense||0)),technique=null;
   if(heroId==='pecado_meliodas'){
     rate+=.02; // Demonic endurance. Full Counter absorbs a little while reflecting.
-    if(next.counterReady&&incoming>0){rate+=.03;next.counterCharge=1;next.counterReady=false;}
+    if(next.counterReady&&incoming>0){rate+=.03;next.counterCharge=1;next.counterReady=false;technique='Full Counter';}
   }
-  if(heroId==='pecado_ban'&&Number(next.snatchBlocks||0)>0){rate+=.045;next.snatchBlocks--;}
+  if(heroId==='pecado_ban'&&Number(next.snatchBlocks||0)>0){rate+=.045;next.snatchBlocks--;technique='Snatch';}
   if(heroId==='pecado_diane'){
     rate+=.025;
-    if(Number(next.rockGuard||0)>0){rate+=.06;next.rockGuard--;}
+    if(Number(next.rockGuard||0)>0){rate+=.06;next.rockGuard--;technique='Heavy Metal';}
   }
-  if(heroId==='pecado_king'&&Number(next.fairyGuard||0)>0){rate+=.06;next.fairyGuard--;}
-  if(heroId==='pecado_gowther'&&Number(next.confuse||0)>0){rate+=.045;next.confuse--;}
-  if(heroId==='pecado_merlin'&&Number(next.cube||0)>0){rate+=.08;next.cube--;}
-  return {damage:Math.max(0,Math.round(incoming*(1-Math.min(.10,rate)))),state:next};
+  if(heroId==='pecado_king'&&Number(next.fairyGuard||0)>0){rate+=.06;next.fairyGuard--;technique='Chastiefol Guardian';}
+  if(heroId==='pecado_gowther'&&Number(next.confuse||0)>0){rate+=.045;next.confuse--;technique='Rewrite Light';}
+  if(heroId==='pecado_merlin'&&Number(next.cube||0)>0){rate+=.08;next.cube--;technique='Perfect Cube';}
+  return {damage:Math.max(0,Math.round(incoming*(1-Math.min(.10,rate)))),state:next,technique};
 }
 
 export function heroCombatStats(st,heroId,heroLevel=70){
