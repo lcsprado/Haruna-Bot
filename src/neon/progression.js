@@ -414,19 +414,23 @@ export async function inviteToClan(jid,targetJid){
   return {clan,expires}
 }
 
-export async function acceptClanInvite(jid){
+export async function acceptClanInvite(jid,verifiedAliases=[]){
   if(await getClanForUser(jid)) throw new Error('Você já pertence a um clã.')
+  // Aceitar convites legados criados sob o LID vinculado ao próprio remetente.
+  const inviteeJids=[...new Set([jid,...verifiedAliases].filter(
+    value=>typeof value==='string' && (value.endsWith('@s.whatsapp.net')||value.endsWith('@lid'))
+  ))]
   const now=Math.floor(Date.now()/1000)
   return tx(async c=>{
     const r=await c.query(`
       SELECT ci.*,c.name
       FROM clan_invites ci
       JOIN clans c ON c.id=ci.clan_id
-      WHERE ci.invitee_jid=$1 AND ci.expires_at>$2
+      WHERE ci.invitee_jid=ANY($1::text[]) AND ci.expires_at>$2
       ORDER BY ci.created_at DESC
       LIMIT 1
       FOR UPDATE OF ci
-    `,[jid,now])
+    `,[inviteeJids,now])
     const inv=r.rows[0]
     if(!inv) throw new Error('Você não tem convite de clã válido.')
 
@@ -434,7 +438,7 @@ export async function acceptClanInvite(jid){
       "INSERT INTO clan_members(jid,clan_id,role) VALUES($1,$2,'member')",
       [jid,inv.clan_id]
     )
-    await c.query('DELETE FROM clan_invites WHERE invitee_jid=$1',[jid])
+    await c.query('DELETE FROM clan_invites WHERE invitee_jid=ANY($1::text[])',[inviteeJids])
     return {clanId:inv.clan_id,name:inv.name}
   })
 }
