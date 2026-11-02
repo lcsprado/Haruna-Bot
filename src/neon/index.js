@@ -869,6 +869,19 @@ if(x.petXp){
  text+=` • 🐾 +${fmt(actualPetXp)} XP pet`
  if(mainPet&&actualPetXp===0)text+=' (Nv.100 — XP não acumulado)'
 }
+if(x.masteryReport){
+ const mr=x.masteryReport
+ const heroName=String(mr.heroId||'').replace(/^pecado_/,'').toUpperCase()
+ text+='\n🌈 Maestria '+heroName+': *+'+fmt(mr.earned||0)+' XP*'
+ if(mr.reason==='participacao_insuficiente')text+=' • participação insuficiente (mín. 2% e 2.500 dano)'
+ else if(mr.reason==='duplicado')text+=' • recompensa já processada'
+ else {
+  text+=' • hoje *'+fmt(mr.today||0)+'/'+fmt(mr.limit||400)+' XP*'
+  if(mr.reason==='limite_diario'||Number(mr.today)>=Number(mr.limit)){
+   text+='\n🔒 Limite de maestria atingido nesta categoria • reinicia à 00h (Brasília)'
+  }
+ }
+}
 if(Number(x.ownerRaidMultiplier||1)>1&&Number(x.xpMultiplier||1)===Number(x.ownerRaidMultiplier||1)&&Number.isFinite(Number(x.baseRaidExp))){
  text+='\n🎪 XP jogador: '+fmt(x.baseRaidExp)+' base + '+fmt(x.exp-x.baseRaidExp)+' bônus evento = '+fmt(x.exp)+' XP'
 }
@@ -1499,7 +1512,8 @@ function xpBar(exp,level){
 const needed=Math.max(100,Number(level||1)*100)
 const current=Math.max(0,Math.min(needed,Number(exp||0)))
 const filled=Math.max(0,Math.min(10,Math.floor((current/needed)*10)))
-return {bar:'█'.repeat(filled)+'░'.repeat(10-filled),current,needed}
+return {bar:'█'.repeat(filled)+'░'.repeat(10-filled),current,needed,
+  remaining:Math.max(0,needed-current),percentage:(current/needed*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}
 }
 async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
 const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,relics,combatContext]=await Promise.all([
@@ -1600,7 +1614,7 @@ ${title}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTit
 ⭐ Nível: *${Number(p.level||1)}*
 ${heroSheet?formatPlayableHeroCombatSheet(heroSheet,{compact:true}):`🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}`}
-✨ EXP: *${xp.current}/${xp.needed}*
+✨ EXP: *${xp.current}/${xp.needed}* • faltam *${xp.remaining} XP* (${xp.percentage}%)
 [${xp.bar}]
 ${heroSheet?'':`❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
 ${bonusSummary}
