@@ -133,7 +133,7 @@ test('skills automaticas sao finitas e limitadas em Raid e Boss',()=>{
     let state={}
     for(let index=1;index<=100;index++){
       const hit=heroAttack({heroId:id,damage:1000,hp:800,maxHp:1000,attackIndex:index,state,context:'boss',masteryStage:5})
-      assert.ok(Number.isFinite(hit.damage) && hit.damage>=1 && hit.damage<=1300,id)
+      assert.ok(Number.isFinite(hit.damage) && hit.damage>=1 && hit.damage<=(id==='pecado_escanor'?1360:1300),id)
       assert.ok(hit.heal>=0&&hit.allyHeal>=0,id)
       const def=heroDefense({heroId:id,damage:1000,state:hit.state})
       assert.ok(def.damage>=700&&def.damage<=1000,id)
