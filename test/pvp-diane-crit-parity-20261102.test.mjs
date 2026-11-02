@@ -24,20 +24,23 @@ test('Heavy Metal protege proximo golpe e informa ativacao',()=>{
  const attack=heroPvpAttack({heroId:'pecado_diane',damage:600,attackIndex:5,masteryStage:3,state:{}})
  assert.equal(attack.technique,'Heavy Metal')
  const first=heroPvpDefense({heroId:'pecado_diane',damage:1000,state:attack.state,gear:{defense:.02}})
- assert.equal(first.damage,895)
+ assert.equal(first.damage,900)
  assert.equal(first.technique,'Heavy Metal')
  const second=heroPvpDefense({heroId:'pecado_diane',damage:1000,state:first.state,gear:{defense:.02}})
  assert.equal(second.damage,955)
  assert.equal(second.technique,null)
+ const miss=heroPvpDefense({heroId:'pecado_diane',damage:0,state:attack.state,gear:{defense:.02}})
+ assert.equal(miss.state.rockGuard,1)
+ assert.equal(miss.technique,null)
  const report=formatPvpBattleReport({
   ok:true,opening:{attacker:{jid:'a',name:'Diane',hp:1000,maxHp:1000,spd:200},
    defender:{jid:'b',name:'Joao',hp:1000,maxHp:1000,spd:190}},
-  log:[{round:1,from:'Joao',fromJid:'b',to:'Diane',toJid:'a',dmg:895,actualDamage:895,
-   hp:105,defenseTechnique:'Heavy Metal',defenseBlocked:105}],
+  log:[{round:1,from:'Joao',fromJid:'b',to:'Diane',toJid:'a',dmg:900,actualDamage:900,
+   hp:100,defenseTechnique:'Heavy Metal',defenseBlocked:100}],
   winner:{jid:'b',name:'Joao',hp:100},loser:{jid:'a',name:'Diane',hp:0},roundCount:1,reward:1
  })
  assert.match(report,/Diane ativou \*Heavy Metal\*/)
- assert.match(report,/105 dano/)
+ assert.match(report,/100 dano/)
 })
 
 test('atribuicao de esquiva separa pet de classe e calcula bonus sobre mesmo estado defensivo',()=>{
