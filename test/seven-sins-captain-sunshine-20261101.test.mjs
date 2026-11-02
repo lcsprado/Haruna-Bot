@@ -67,23 +67,33 @@ test('7 papeis preservados: Diane defende mais; King cura aliados; Ban regenera'
 })
 
 test('PvP conta contra-ataque Meliodas e explosao Escanor, sem ultrapassar 8%',()=>{
-  const prepared=heroPvpAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:5,
-    masteryStage:3})
+  const prepared=heroPvpAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:3,
+    masteryStage:2})
   assert.equal(prepared.state.counterReady,true)
   const struck=heroPvpDefense({heroId:'pecado_meliodas',damage:350,state:prepared.state})
-  const counter=heroPvpAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:6,
-    masteryStage:3,state:struck.state})
+  const counter=heroPvpAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:4,
+    masteryStage:2,state:struck.state})
   assert.equal(counter.technique,'Full Counter')
   assert.ok(counter.damage>prepared.damage)
   assert.ok(counter.damage<=1080)
-  const solar=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:5,
+  const solar=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:3,
     hp:900,maxHp:1000,masteryStage:3})
-  const weak=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:5,
+  const weak=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:3,
     hp:500,maxHp:1000,masteryStage:3})
   assert.ok(solar.damage>weak.damage)
-  const ultimate=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:12,
+  const ultimate=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:4,
     hp:900,maxHp:1000,masteryStage:3,gear:{attack:.015}})
   assert.equal(ultimate.damage,1080)
+  assert.equal(ultimate.state.solarCharges,2,'The One lasts exactly three attacks')
+  const solar2=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:5,
+    hp:900,maxHp:1000,masteryStage:3,gear:{attack:.015},state:ultimate.state})
+  const solar3=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:6,
+    hp:900,maxHp:1000,masteryStage:3,gear:{attack:.015},state:solar2.state})
+  const after=heroPvpAttack({heroId:'pecado_escanor',damage:1000,attackIndex:7,
+    hp:900,maxHp:1000,masteryStage:3,gear:{attack:.015},state:solar3.state})
+  assert.equal(solar2.damage,1080)
+  assert.equal(solar3.damage,1080)
+  assert.ok(after.damage<1080,'The One must expire')
   for(const heroId of PLAYABLE_HERO_IDS){
     for(const masteryStage of [1,3,5]){
       let state={}
