@@ -45,6 +45,7 @@ import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from 
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
+import {clanSiegeStatus,clanSiegeChallenge,clanSiegeAccept,clanSiegeMove,clanSiegeCancel} from './clan-siege.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
@@ -1394,6 +1395,24 @@ export async function handleWebApi(req,res){
       const listing=await listNpcShops(session.jid)
       const shops=await Promise.all(listing.merchants.map(n=>getNpcShop(session.jid,n.id)))
       json(res,200,{ok:true,data:{karma:listing.karma,title:listing.title,shops}})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/clan-siege'){
+      json(res,200,{ok:true,data:await clanSiegeStatus(session)})
+      return true
+    }
+
+    if(req.method==='POST' && url.pathname.startsWith('/api/v1/me/clan-siege/')){
+      const command=url.pathname.slice('/api/v1/me/clan-siege/'.length)
+      const body=await readJson(req,1024)
+      const handlers={challenge:()=>clanSiegeChallenge(session),accept:()=>clanSiegeAccept(session),move:()=>clanSiegeMove(session,String(body.action||'')),cancel:()=>clanSiegeCancel(session)}
+      if(!Object.hasOwn(handlers,command)){
+        json(res,404,{ok:false,error:'Comando de guerra inexistente.'})
+        return true
+      }
+      const data=await handlers[command]()
+      json(res,data?.ok===false?409:200,{ok:data?.ok!==false,...data})
       return true
     }
 
