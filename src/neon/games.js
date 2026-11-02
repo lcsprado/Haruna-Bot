@@ -1196,12 +1196,14 @@ async function finishRaidRewards(c,s,cfg,chat){
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
+    const masteryReport=p.heroId?{heroId:p.heroId,earned:0,reason:'participacao_insuficiente'}:null
     if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
       const awardKey=(specialRaid75Mastery?'raid:75:':'raid:')+String(s.startedAt)+':'+String(p.jid)
       await awardPlayableHeroLevel(c,{jid:p.jid,heroId:p.heroId,awardKey,
         xp:specialRaid75Mastery?180:125})
       await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),specialRaid75:specialRaid75Mastery})
+        xp:raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),specialRaid75:specialRaid75Mastery,
+        progressReport:masteryReport})
     }
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
     // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.
@@ -1413,6 +1415,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       classHealingActivations:Number(p.classHealingActivations||0),
       classHealingOpportunities:Number(p.classHealingOpportunities||0),
       playerClassId:p.classId,playerClassApplied:Boolean(p.classApplied),activeHeroId:p.heroId||null,
+      masteryReport,
       skillActivations:{...(p.skillActivations||{})},skillTrackingPartial:Boolean(p.skillTrackingPartial),
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),

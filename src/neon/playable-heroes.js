@@ -105,16 +105,35 @@ const heroDifference=(a,b)=>['hp','atk','def','spd'].map(key=>{
 // e encantamentos, exatamente como no combate real (sem detalhar a fórmula).
 export function formatPlayableHeroCombatSheet(sheet){
   if(!sheet)return '';
+  const raid=sheet.collabRaid||{};
+  const pvp=sheet.collabPvP||{};
+  const pct=n=>(Math.max(0,Number(n)||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
+  const origin=(baseKey,gearKey)=>sheet.baseWithoutGear&&sheet.equipment
+    ?' ('+heroNumbers(sheet.baseWithoutGear[baseKey])+' base + '+heroNumbers(sheet.equipment[gearKey])+' equipamento)'
+    :'';
+  const bonus=[
+    '🌈 *SINERGIA DOS SETE PECADOS*',
+    raid.weapon
+      ?'🗡️ Arma vinculada: *ATIVA* • +'+pct(raid.attack)+' dano Boss/Raid • +'+pct(pvp.attack)+' dano PvP'
+      :'🗡️ Arma vinculada: *não equipada*',
+    raid.armor
+      ?'🥋 Armadura vinculada: *ATIVA* • -'+pct(raid.defense)+' dano recebido Boss/Raid • -'+pct(pvp.defense)+' dano recebido PvP'
+      :'🥋 Armadura vinculada: *não equipada*'
+  ];
+  if(sheet.heroId==='pecado_ban'&&raid.weapon&&Number(raid.heal)>0){
+    bonus.push('💚 Arma do Ban: cura adicional de '+pct(raid.heal)+' do HP a cada 8 ataques Boss/Raid');
+  }
   return [
     '🌈⚔️ *PERSONAGEM ATIVO — '+sheet.name.toUpperCase()+'*',
     '🎭 '+sheet.role+' • '+sheet.range,
     '🌟 Nível: *'+sheet.heroLevel+'/100*',
     '🏅 Maestria: *'+sheet.masteryStage+'/5* ('+sheet.masteryXp+' XP)',
-    '❤️ HP: *'+heroNumbers(sheet.hp)+'/'+heroNumbers(sheet.maxHp)+'*',
-    '⚔️ ATK: *'+heroNumbers(sheet.atk)+'*',
-    '🛡️ DEF: *'+heroNumbers(sheet.def)+'*',
-    '👢 VEL: *'+heroNumbers(sheet.spd)+'*',
-    '✨ Técnica: *'+sheet.skill+'*'
+    '❤️ HP: *'+heroNumbers(sheet.hp)+'/'+heroNumbers(sheet.maxHp)+'*'+origin('maxHp','hp'),
+    '⚔️ ATK: *'+heroNumbers(sheet.atk)+'*'+origin('atk','atk')+(Number(sheet.attackPctBonus||0)>0?' • selo +'+pct(sheet.attackPctBonus):''),
+    '🛡️ DEF: *'+heroNumbers(sheet.def)+'*'+origin('def','def'),
+    '👢 VEL: *'+heroNumbers(sheet.spd)+'*'+origin('spd','spd'),
+    '✨ Técnica: *'+sheet.skill+'*',
+    ...bonus
   ].join('\n');
 }
 // Comandos da ficha base mostram o herói SEM NENHUM EQUIPAMENTO.
@@ -241,7 +260,7 @@ export async function awardPlayableHeroLevel(client,{jid,heroId,awardKey,xp=55}=
   return true
 }
 
-export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=90,specialRaid75=false}={}){
+export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=90,specialRaid75=false,progressReport=null}={}){
   if(!client||!jid||!playableHero(heroId)||!awardKey)return false
   // 400 XP/dia normal; até 600 combinados na semana especial da Raid 75.
   // Uma única trava por usuário evita ultrapassar a cota com Raid e Boss simultâneos.
@@ -257,15 +276,31 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=90
   const policy=heroMasteryAwardPolicy({specialRaid75:bonus,
     earnedToday:today[0]?.gained,regularEarnedToday:today[0]?.regular_gained,xp})
   const amount=policy.amount
+  if(progressReport){
+    progressReport.earned=0
+    progressReport.today=Number(today[0]?.gained||0)
+    progressReport.limit=bonus||progressReport.today>400?600:400
+    progressReport.reason='limite_diario'
+  }
   if(!amount)return false
   const saved=await client.query(`INSERT INTO hero_mastery_awards(jid,award_key,hero_species,xp)
     VALUES($1,$2,$3,$4) ON CONFLICT(jid,award_key) DO NOTHING RETURNING jid`,
     [jid,String(awardKey),heroId,amount])
-  if(!saved.rowCount)return false
-  await client.query(`INSERT INTO player_hero_mastery(jid,hero_species,xp,updated_at)
+  if(!saved.rowCount){
+    if(progressReport)progressReport.reason='duplicado'
+    return false
+  }
+  const updated=await client.query(`INSERT INTO player_hero_mastery(jid,hero_species,xp,updated_at)
     VALUES($1,$2,$3,${NOW}) ON CONFLICT(jid,hero_species) DO UPDATE
-    SET xp=LEAST(7000,player_hero_mastery.xp+EXCLUDED.xp),updated_at=EXCLUDED.updated_at`,
-    [jid,heroId,amount])
+    SET xp=LEAST(7000,player_hero_mastery.xp+EXCLUDED.xp),updated_at=EXCLUDED.updated_at
+    RETURNING xp`,[jid,heroId,amount])
+  if(progressReport){
+    progressReport.earned=amount
+    progressReport.today+=amount
+    progressReport.limit=bonus||progressReport.today>400?600:400
+    progressReport.total=Number(updated.rows[0]?.xp||0)
+    progressReport.reason='creditado'
+  }
   return true
 }
 
