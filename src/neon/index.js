@@ -868,27 +868,12 @@ if(x.petXp){
  text+=` • 🐾 +${fmt(actualPetXp)} XP pet`
  if(mainPet&&actualPetXp===0)text+=' (Nv.100 — XP não acumulado)'
 }
-if(Number(x.ownerRaidMultiplier||1)>1&&Number(x.xpMultiplier||1)===Number(x.ownerRaidMultiplier||1)&&Number.isFinite(Number(x.baseRaidExp))){
- text+='\n🎪 XP jogador: '+fmt(x.baseRaidExp)+' base + '+fmt(x.exp-x.baseRaidExp)+' bônus evento = '+fmt(x.exp)+' XP'
+// Resultado público compacto: os poderes de todos os heróis e classes são auditados
+// no estado da Raid, sem privilegiar um único personagem no WhatsApp.
+if(Number(x.classHealing||0)>0||Number(x.petSkillHealing||0)>0||Number(x.potionHealing||0)>0){
+ const recovered=Math.max(0,Number(x.classHealing||0))+Math.max(0,Number(x.petSkillHealing||0))+Math.max(0,Number(x.potionHealing||0))
+ text+=' • 💚 +'+fmt(recovered)+' HP'
 }
-if(Number(x.ownerRaidMultiplier||1)>1&&Number(x.baseRaidPetXp||0)>0&&Number(x.petXp)===Number(x.baseRaidPetXp)*Number(x.ownerRaidMultiplier)){
- text+='\n🐾 XP pet calculado: '+fmt(x.baseRaidPetXp)+' base ×'+Number(x.ownerRaidMultiplier)+' = '+fmt(x.petXp)+' XP (antes do teto Nv.100)'
-}
-if(Number(x.xpBoostBonus||0)>0){
-const boostName=Number(x.xpBoostPercent||0)===100?'⏳ *BÔNUS AMPULHETA XP 2×*':'⚡ *BÔNUS DE XP*'
-text+=`\n${boostName}: +${fmt(x.xpBoostBonus)} XP (já incluído no total)`
-}
-text+=formatRaidPlayerHealing(x,fmt)
-if(x.activeHeroId==='pecado_ban'&&x.heroSkillActivations){
- const procs=x.heroSkillActivations
- text+='\n🌈⚔️ *PODERES DO BAN* ('+fmt(x.heroAttacks||0)+' ataques)'
- text+='\n♾️ Imortalidade: *'+fmt(procs.Imortalidade||0)+' gatilho(s)*'
- text+='\n🫳 Snatch: *'+fmt(procs.Snatch||0)+' gatilho(s)*'
- text+='\n🔥 Hunter Fest: *'+fmt(procs['Hunter Fest']||0)+' gatilho(s)*'
-}
-const petPotionHealing=Math.max(0,Number(x.petPotionHealing||0))
-if(petPotionHealing>0)text+='\n🐾🧪 Cura do pet combatente: +'+fmt(petPotionHealing)+' HP ('+Number(x.petPotionUses||0)+' poção(ões))'
-if(x.autoPetEnergy) text+='\n⚡ Energético Pet automático: '+x.autoPetEnergy.petName+' • energia '+x.autoPetEnergy.before+' → '+x.autoPetEnergy.max+' • restantes: '+x.autoPetEnergy.remaining
 if(x.material) text+=`
 🧩 ${x.material.name} ×${x.material.qty}`
 if(x.drop) text+=`
@@ -899,7 +884,7 @@ if(x.gearDrop) text+=x.gearDrop.rarity==='Lendário'&&!x.gearDrop.normalPresenta
 • 🟠 Lendário — *${x.gearDrop.name}* ×1`:`
 ⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
 })
-if(raidPetHealTally.size)text+='\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals()
+// Autocura de pets permanece registrada na sessão; omitida do resumo público.
 void persistRaidFinalNotice(chat,level,reply,text)
 return
 }
