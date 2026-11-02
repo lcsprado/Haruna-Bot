@@ -1229,3 +1229,12 @@ body.loot-open{overflow:hidden!important}
 .siege-footer{font-size:10px;color:#a8bfd6;line-height:1.6;margin-top:14px}
 @media(max-width:860px){.siege-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.siege-preview{padding:15px}.siege-planning{padding:13px}}
 @media(max-width:580px){.siege-head,.siege-planning-head{flex-direction:column;gap:8px}.siege-stage{grid-template-columns:minmax(0,1fr) 38px minmax(0,1fr);gap:6px}.siege-castle{padding:10px 8px}.siege-castle-art{font-size:45px}.siege-versus strong{font-size:19px}.siege-versus small{font-size:8px;white-space:normal}.siege-castle-kicker{font-size:7px;letter-spacing:0}.siege-castle-hp{flex-direction:column;align-items:center;gap:3px}.siege-steps{grid-template-columns:1fr;gap:6px}.siege-steps span{padding:9px}.siege-action{padding:11px}.siege-action small{font-size:9px}}
+
+/* Première Guerre de Clãs: cartão do prêmio histórico — apenas apresentação. */
+.siege-prize{display:flex;align-items:center;gap:16px;margin-top:18px;padding:17px;border:1px solid #a98542;border-radius:15px;background:linear-gradient(115deg,#3a2b18,#1e1a21 55%,#111b27);box-shadow:inset 0 1px 0 #ffe7ae20}
+.siege-prize-symbol{flex:0 0 73px;width:73px;height:73px;display:grid;place-items:center;font-size:38px;border-radius:19px;background:radial-gradient(circle at 45% 38%,#ba8b4380,#342418);border:1px solid #b89458}
+.siege-prize small{display:block;font-size:9px;font-weight:800;letter-spacing:.12em;color:#e6c996}
+.siege-prize h4{font-family:Georgia,serif;font-size:20px;line-height:1.2;color:#fff0c8;margin:5px 0 8px}
+.siege-prize p{font-size:11px;line-height:1.55;color:#e0d0b0;margin:0 0 7px}
+.siege-prize p:last-of-type{color:#d8e0eb}
+@media(max-width:580px){.siege-prize{align-items:flex-start;padding:13px;gap:10px}.siege-prize-symbol{flex-basis:44px;width:44px;height:44px;border-radius:12px;font-size:25px}.siege-prize h4{font-size:16px}.siege-prize p{font-size:10px}}
