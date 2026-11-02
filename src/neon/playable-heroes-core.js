@@ -76,10 +76,10 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
   const id=String(heroId||'');
   if(!HERO_COMBAT_PROFILES[id])return {damage:base,heal:0,state:next,technique:null};
   if(id==='pecado_meliodas'){
-    bonus+=.015;
-    if(Number(next.counterCharge||0)>0){bonus+=.035;technique='Full Counter';next.counterCharge=0;}
+    bonus+=.025;
+    if(Number(next.counterCharge||0)>0){bonus+=.045;technique='Full Counter';next.counterCharge=0;}
     if(special){next.counterReady=true;technique=technique||'Full Counter preparado';}
-    if(ultimate){bonus+=.035;technique='Revenge Counter';}
+    if(ultimate){bonus+=.055;technique='Revenge Counter';}
   }else if(id==='pecado_ban'){
     if(special){bonus+=.025;next.snatchBlocks=2;technique='Snatch';}
     if(index%6===0&&Number(next.healCount||0)<2){
@@ -88,9 +88,9 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
     }
     if(ultimate){bonus+=.035;technique='Hunter Fest';}
   }else if(id==='pecado_escanor'){
-    if(Number(hp)/Math.max(1,Number(maxHp))>.70)bonus+=.015;
-    if(special){bonus+=.035;technique='Cruel Sun';}
-    if(ultimate){bonus+=.045;technique='The One';}
+    if(Number(hp)/Math.max(1,Number(maxHp))>.70)bonus+=.025;
+    if(special){bonus+=.05;technique='Cruel Sun';}
+    if(ultimate){bonus+=.065;technique='The One';}
   }else if(id==='pecado_diane'){
     if(special){next.rockGuard=1;technique='Heavy Metal';}
     if(ultimate){next.rockGuard=2;technique='Mother Catastrophe';}
@@ -253,15 +253,15 @@ export function excludeActiveHeroPet(team,heroId){
 
 /** Técnica e efeito de jogo: adaptações limitadas dos poderes oficiais do anime. */
 export const HERO_SKILL_GUIDE=Object.freeze({
-  pecado_meliodas:{passive:'Hellblaze: +3% de dano com chamas negras.',
+  pecado_meliodas:{passive:'Hellblaze: +6,5% de dano com chamas negras.',
     special:'Full Counter: a cada 8 ataques prepara contra-ataque; parte do próximo golpe recebido volta no ataque seguinte.',
     ultimate:'Revenge Counter: a cada 25 ataques converte dano sofrido em explosão e mantém fogo demoníaco por 2 ataques.'},
   pecado_ban:{passive:'Imortalidade: regenera 1% do HP máximo a cada 8 ataques; -2% do dano recebido.',
     special:'Snatch: a cada 8 ataques rouba força; +10% de dano e reduz golpes recebidos por até 3 impactos.',
     ultimate:'Hunter Fest: a cada 25 ataques, +15% de dano e recupera 5% do HP máximo.'},
-  pecado_escanor:{passive:'Sunshine: o sol fortalece os ataques enquanto houver luz do dia e HP acima de 70%.',
-    special:'Cruel Sun: ataque solar com +15% de dano a cada 8 ataques.',
-    ultimate:'The One: a cada 25 ataques entra no estado solar por 3 golpes (+25% de dano).'},
+  pecado_escanor:{passive:'Sunshine: +7% de dano durante o dia, +10% entre 11h e 13h (Brasília), se HP estiver acima de 70%.',
+    special:'Cruel Sun: ataque solar com +18% de dano a cada 8 ataques.',
+    ultimate:'The One: a cada 25 ataques, 3 golpes solares (+30% de dano antes dos limites; teto 36% Boss e 40% Raid).'},
   pecado_king:{passive:'Disaster/Chastiefol: +2% de dano e -3% de dano recebido.',
     special:'Guardian: a cada 8 ataques, protege o próximo golpe e cura um aliado ferido em Raid.',
     ultimate:'Sunflower: a cada 25 ataques, explosão solar e cura reforçada de um aliado em Raid.'},
@@ -285,15 +285,15 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
   const stage=Math.max(1,Math.min(5,Math.floor(Number(masteryStage)||1)));
   const special=index%8===0&&stage>=2,ultimate=index%25===0&&stage>=3;
   const healthRatio=Math.max(0,Math.min(1,Number(hp)/Math.max(1,Number(maxHp))));
-  let bonus=0,heal=0,allyHeal=0,technique=null;
+  let bonus=0,heal=0,allyHeal=0,technique=null,solarBurst=false;
   if(id==='pecado_meliodas'){
     // Hellblaze, Full Counter (próximo golpe recebido), Revenge Counter.
-    bonus=.03;
+    bonus=.065;
     if(stage>=3){
       next.revengeStored=Math.max(0,Math.min(n*.10,Number(next.revengeStored||0)));
     }
     if(Number(next.counterStored||0)>0){
-      bonus+=Math.min(.16,Number(next.counterStored)/n);
+      bonus+=Math.min(.18,Number(next.counterStored)/n);
       next.counterStored=0;
       technique='Full Counter';
     }
@@ -310,10 +310,10 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
     if(ultimate){bonus+=.15;heal+=Math.ceil(Math.max(1,Number(maxHp))*.05);technique='Hunter Fest';}
   }else if(id==='pecado_escanor'){
     const hour=Number(HERO_SUN_HOUR.format(new Date(Number(nowMs)||Date.now())));
-    if(hour>=6&&hour<18&&healthRatio>.7)bonus+=hour>=11&&hour<13?.06:.04;
-    if(special){bonus+=.15;technique='Cruel Sun';}
+    if(hour>=6&&hour<18&&healthRatio>.7)bonus+=hour>=11&&hour<13?.10:.07;
+    if(special){bonus+=.18;technique='Cruel Sun';}
     if(ultimate){next.sunCharges=3;technique='The One';}
-    if(Number(next.sunCharges||0)>0){bonus+=.25;next.sunCharges--;}
+    if(Number(next.sunCharges||0)>0){bonus+=.30;next.sunCharges--;solarBurst=true;}
   }else if(id==='pecado_diane'){
     if(special){bonus+=.10;next.heavyMetalCharges=1;technique='Creation';}
     if(ultimate){bonus+=.15;next.guardCharges=1;technique='Mother Catastrophe';}
@@ -341,7 +341,8 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
   // Maestria IV e V concedem +1% cada; o bônus final nunca excede o teto.
   bonus+=Number(gear.attack||0)+(stage>=4?.01:0)+(stage>=5?.01:0);
   if(id==='pecado_ban'&&Number(gear.heal||0)>0&&index%8===0)heal+=Math.ceil(Math.max(1,Number(maxHp))*Number(gear.heal));
-  const cap=context==='boss'?.30:.35;
+  // The One tem explosao superior, mas somente nos tres ataques da janela solar.
+  const cap=solarBurst?(context==='boss'?.36:.40):(context==='boss'?.30:.35);
   return {damage:Math.max(1,Math.floor(n*(1+Math.min(cap,bonus)))),heal,allyHeal,
     technique,state:next,activated:special||ultimate};
 }
