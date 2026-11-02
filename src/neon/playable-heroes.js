@@ -321,7 +321,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
           (next?' | Próximo: '+next.xp+' XP e R$ '+next.cost.toLocaleString('pt-BR'):' | Nível máximo');
       });
       await reply('🌈⚔️ *EVOLUÇÃO DE MAESTRIA*\n\n'+(lines.join('\n')||'Nenhum Pecado conquistado.')+
-        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Normal: até 400 XP de maestria/dia e 550 XP de nível/dia por herói em Boss/Raid.\n🚀 02/11 a 08/11: jogadores abaixo do Lv.300 podem ganhar até 1.000 XP/dia em heróis abaixo do Lv.70.\n🌈 De 26/10 a 01/11: a Raid 75 dos Pecados concede 120 XP de maestria por vitória elegível e permite até 600 XP/dia no total (incluindo outras fontes).');
+        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Normal: até 400 XP de maestria/dia e 550 XP de nível/dia por herói em Boss/Raid.\n🚀 02/11 a 08/11: jogadores abaixo do Lv.300 podem ganhar até 1.000 XP/dia em heróis abaixo do Lv.70.\n🌈 De 26/10 a 01/11: Raid 75 concede 120 XP de maestria por vitória elegível.\n🌈 Em 02/11: Raid 75 concede *240 XP de maestria por vitória elegível* (2x), até 600 XP/dia no total (incluindo outras fontes).');
       return true;
     }
     const selected=findHero(raw);
