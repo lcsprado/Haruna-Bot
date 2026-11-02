@@ -28,3 +28,10 @@ jobs:
           node --check src/neon/web-canonical-origins.js
       - name: Exact origin access regression
         run: node --test test/web-canonical-origins.test.mjs
+      - name: Cerco ao Castelo rules (when present)
+        run: |
+          if [ -f src/neon/clan-siege.js ] && [ -f test/clan-siege-rules-20261102.test.mjs ]; then
+            node --check src/neon/clan-siege.js
+            node --test test/clan-siege-rules-20261102.test.mjs
+          fi
+
