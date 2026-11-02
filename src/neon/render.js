@@ -1,14 +1,15 @@
 import http from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { handleWebApi } from './web-api.js'
+import {settleClanSiege,isClanSiegeEnabled} from './clan-siege.js'
 
 const port = Number(process.env.PORT || 10000)
 const webFiles={
   '/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css',
-  '/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js',
+  '/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/clan-siege-ui.js':'clan-siege-ui.js',
   '/rpg':'index.html','/rpg/':'index.html','/rpg/index.html':'index.html',
   '/pet-art-audit.html':'pet-art-audit.html','/rpg/pet-art-audit.html':'pet-art-audit.html',
-  '/rpg/app.js':'app.js','/rpg/styles.css':'styles.css',
+  '/rpg/app.js':'app.js','/rpg/styles.css':'styles.css','/rpg/clan-siege-ui.js':'clan-siege-ui.js',
   '/rpg/manifest.webmanifest':'manifest.webmanifest','/rpg/sw.js':'sw.js'
 }
 const webTypes={
@@ -83,5 +84,11 @@ http.createServer(async (req, res) => {
 }).listen(port, '0.0.0.0', () => {
   console.log('[HTTP] Alpha Bot listening on port ' + port)
 })
+
+// Finaliza rodadas mesmo com todos os navegadores fechados; não há geração de spam se desativado.
+const siegeSweep=setInterval(()=>{
+  if(isClanSiegeEnabled())void settleClanSiege().catch(err=>console.warn('[Cerco] Falha ao encerrar rodadas:',String(err?.message||err).slice(0,160)))
+},15000)
+siegeSweep.unref?.()
 
 await import('./index.js')
