@@ -5,7 +5,8 @@ import {ensureWebActionOutbox} from './web-activity-relay.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const ACTIONS=new Set(['attack','defend','repair','spy']);
-const ON=()=>process.env.ALPHA_CLAN_SIEGE_ENABLED==='1';
+const siegeGroup=()=>String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||'').trim();
+const ON=()=>process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\.us$/.test(siegeGroup());
 const now=()=>Date.now();
 let schemaPromise=null;
 
@@ -44,6 +45,7 @@ export async function ensureClanSiegeSchema(){
 function group(session){
   const value=String(session?.chatJid||'');
   if(!value.endsWith('@g.us'))throw new Error('Vincule sua sessão ao grupo usando !web.');
+  if(ON()&&value!==siegeGroup())throw new Error('Cerco ao Castelo disponível apenas no grupo AlphaBot.');
   return value;
 }
 function gate(){if(!ON())throw new Error('Cerco ao Castelo ainda está em preparação.');}
@@ -61,7 +63,7 @@ async function eligible(conn,chat){
     "FROM clans c JOIN clan_members cm ON cm.clan_id=c.id",
     "LEFT JOIN (SELECT DISTINCT jid FROM web_sessions",
     "WHERE chat_jid=$1 AND expires_at>$2) ws ON ws.jid=cm.jid",
-    "GROUP BY c.id,c.name HAVING COUNT(cm.jid)=2 ORDER BY c.id"
+    "GROUP BY c.id,c.name HAVING COUNT(cm.jid)=2 AND COUNT(DISTINCT ws.jid)>0 ORDER BY c.id"
   ].join(' ');
   return (await conn.query(q,[chat,now()])).rows.map(r=>({...r,id:String(r.id),jids:r.jids||[]}));
 }
