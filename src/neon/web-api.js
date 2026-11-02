@@ -51,6 +51,7 @@ import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-c
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import {clanSiegeStatus,clanSiegeChallenge,clanSiegeAccept,clanSiegeMove,clanSiegeCancel} from './clan-siege.js'
+import {siegeBetaGuestAccess} from './clan-siege-beta-access.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
@@ -58,10 +59,12 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const SESSION_TOUCH_MS = 5 * 60 * 1000
 // During isolated testing, no user is allowed unless explicitly admitted.
 // Without an allowlist, the Web API remains closed even if somebody discovers its URL.
-function betaWebAccess(jid){
-  if(String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()!=='web-api-only') return true
+async function betaWebAccess(jid,chatJid,client=db){
+  if(String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()!=='web-api-only')return true
   const allowed=String(process.env.ALPHA_WEB_BETA_JIDS||'').split(',').map(s=>s.trim()).filter(Boolean)
-  return allowed.includes(String(jid||''))
+  if(allowed.includes(String(jid||'')))return true
+  if(!chatJid)return false
+  return siegeBetaGuestAccess(client,{jid,chat:chatJid})
 }
 let webTablesReady = false
 let webTablesPromise = null
@@ -211,7 +214,7 @@ async function exchangeWebLinkCode(code){
       [codeHash]
     )).rows[0]
     if(!row || row.used_at || Number(row.expires_at)<now()) throw new Error('Código inválido ou expirado.')
-    if(!betaWebAccess(row.jid)) throw new Error('Alpha RPG Web ainda está fechado para testes. Aguarde a liberação.')
+    if(!await betaWebAccess(row.jid,row.chat_jid,client)) throw new Error('Alpha RPG Web ainda está fechado para testes. Aguarde a liberação.')
 
     const token=crypto.randomBytes(32).toString('base64url')
     const tokenHash=sha256(token)
@@ -280,7 +283,7 @@ async function authSession(req){
     if(row) await db.query('DELETE FROM web_sessions WHERE token_hash=$1',[tokenHash]).catch(()=>{})
     return null
   }
-  if(!betaWebAccess(row.jid)) return null
+  if(!await betaWebAccess(row.jid,row.chat_jid)) return null
   // Revalidate the token on every read, but persist activity at most once / 5 min.
   const checkedAt=now()
   if(checkedAt-Number(row.last_seen_at||0)>=SESSION_TOUCH_MS){
