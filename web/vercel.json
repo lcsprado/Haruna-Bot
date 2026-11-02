@@ -56,6 +56,15 @@
       ]
     },
     {
+      "source": "/clan-siege-ui.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, must-revalidate"
+        }
+      ]
+    },
+    {
       "source": "/styles.css",
       "headers": [
         {
