@@ -1412,6 +1412,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       classHealingActivations:Number(p.classHealingActivations||0),
       classHealingOpportunities:Number(p.classHealingOpportunities||0),
       playerClassId:p.classId,activeHeroId:p.heroId||null,
+      heroAttacks:Number(p.heroAttacks||0),heroSkillActivations:p.heroId==='pecado_ban'?{...(p.banSkillActivations||{})}:null,
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
       share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
@@ -1555,7 +1556,14 @@ export async function raidRound(chat,level){
       const classHit=p.heroId
         ?{...heroAttack({heroId:p.heroId,damage:baseDmg,hp:p.hp,maxHp:p.maxHp,attackIndex:heroAttackIndex,context:'raid',state:p.heroState,masteryStage:p.heroMasteryStage,gear:p.heroGear}),lastProcAttack:p.classLastProcAttack,awakeningState:p.awakeningState}
         :classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
-      if(p.heroId){p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;}
+      if(p.heroId){
+        p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;
+        if(p.heroId==='pecado_ban'){
+          const counters=p.banSkillActivations||{};
+          for(const skill of classHit.banActivations||[])counters[skill]=Number(counters[skill]||0)+1;
+          p.banSkillActivations=counters;
+        }
+      }
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
       const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
