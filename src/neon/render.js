@@ -1,7 +1,7 @@
 import http from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { handleWebApi } from './web-api.js'
-import {settleClanSiege,isClanSiegeEnabled} from './clan-siege.js'
+import {settleClanSiege,isClanSiegeEnabled,clanSiegePreflight} from './clan-siege.js'
 
 const port = Number(process.env.PORT || 10000)
 // Railway can serve the game API without starting a second WhatsApp client.
@@ -104,5 +104,14 @@ if(apiOnly){
   sweep.unref?.()
 }
 
+// Uma verificação na partida do serviço beta. Não inicia guerra nem escreve no banco.
+if(apiOnly&&process.env.ALPHA_CLAN_SIEGE_GROUP_JID){
+  const check=setTimeout(()=>{
+    void clanSiegePreflight().then(status=>{
+      console.log('[Cerco Preflight]',JSON.stringify(status))
+    }).catch(err=>console.warn('[Cerco Preflight] consulta indisponível:',String(err?.message||err).slice(0,130)))
+  },8000);
+  check.unref?.();
+}
 if(!apiOnly) await import('./index.js')
 else console.log('[Runtime] Web API isolada: conexão WhatsApp desativada.')
