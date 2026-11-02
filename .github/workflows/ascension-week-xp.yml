@@ -1,0 +1,32 @@
+name: Semana da Ascensão - limites de XP
+
+on:
+  pull_request:
+    paths:
+      - 'src/neon/ascension-week-20261102.js'
+      - 'src/neon/playable-heroes-core.js'
+      - 'test/ascension-week-20261102.test.mjs'
+      - '.github/workflows/ascension-week-xp.yml'
+  push:
+    branches: ['whatsapp-only']
+    paths:
+      - 'src/neon/ascension-week-20261102.js'
+      - 'src/neon/playable-heroes-core.js'
+      - 'test/ascension-week-20261102.test.mjs'
+      - '.github/workflows/ascension-week-xp.yml'
+
+jobs:
+  xp-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate syntax
+        run: |
+          node --check src/neon/ascension-week-20261102.js
+          node --check test/ascension-week-20261102.test.mjs
+      - name: Test XP tiers, crossings and veteran status
+        run: node --test test/ascension-week-20261102.test.mjs
