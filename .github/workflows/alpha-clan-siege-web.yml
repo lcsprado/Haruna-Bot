@@ -1,0 +1,33 @@
+name: Alpha Web - Cerco UI
+on:
+  pull_request:
+    branches:
+      - release/alpha-web-ban-art-api-20261029
+    paths:
+      - 'web/app.js'
+      - 'web/clan-siege-ui.js'
+      - 'web/styles.css'
+      - 'web/index.html'
+      - 'web/sw.js'
+      - 'test/web-clan-siege-preview-20261102.test.mjs'
+      - '.github/workflows/alpha-clan-siege-web.yml'
+  push:
+    branches:
+      - feat/web-cerco-clas-preview-20261102
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check web/app.js
+          node --check web/clan-siege-ui.js
+      - name: Web siege preview and live-state tests
+        run: node --test test/web-clan-siege-preview-20261102.test.mjs
