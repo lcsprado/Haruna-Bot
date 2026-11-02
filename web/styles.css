@@ -1513,3 +1513,17 @@ body.loot-open{overflow:hidden!important}
 .clan-invite-section select{background:#0d1e31;border:1px solid #415a76;color:#e8f2ff;border-radius:10px;min-height:42px;min-width:min(100%,250px);padding:8px}
 .clan-invite-section p{font-size:11px;color:#9fb2ca}
 .collab-modern-portrait{width:100%;height:100%;background-repeat:no-repeat}
+
+/* Heróis 7 Pecados: arte WebP do Work, sem voltar aos retratos externos antigos. */
+.collab-current-hero{display:grid;grid-template-columns:minmax(150px,215px) minmax(0,1fr);gap:18px;align-items:center;border:1px solid #5c5a83;background:linear-gradient(135deg,#20234a,#141b2b 75%)}
+.collab-current-art{min-width:0;border:1px solid #515b87;border-radius:17px;overflow:hidden;background:radial-gradient(circle at center,#343f70,#0d1228)}
+.collab-current-art .pet-cropped-art{height:230px!important;min-height:230px;max-height:230px;width:100%!important;aspect-ratio:auto!important}
+.collab-current-content h3{font-size:24px;color:#f2e7ff;margin:8px 0}
+.collab-current-content p{font-size:12px;color:#bcc8e5;line-height:1.7}
+.collab-current-content .btn{margin-top:12px}
+.collab-hero-card{border-color:#4c5884!important;background:linear-gradient(155deg,#1b2340,#111927)}
+.collab-hero-card.selected{border-color:#e0bf78!important}
+.collab-hero-card-art{overflow:hidden;border-radius:14px;background:#101c2f}
+.collab-hero-card-art .pet-cropped-art{height:100%!important;min-height:215px;width:100%!important;aspect-ratio:auto!important}
+.collab-hero-card.collab-locked{opacity:.58}
+@media(max-width:610px){.collab-current-hero{grid-template-columns:1fr;gap:12px}.collab-current-art{max-width:245px;margin:auto;width:100%}.collab-current-art .pet-cropped-art{height:215px!important;min-height:215px}.collab-current-content h3{font-size:20px}}
