@@ -837,6 +837,17 @@ await client.query('UPDATE transactions SET to_jid=$1 WHERE to_jid=$2',[targetJi
 await client.query('UPDATE subscription_orders SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
 await client.query('UPDATE support_tickets SET requester_jid=$1 WHERE requester_jid=$2',[targetJid,sourceJid])
 await client.query('UPDATE snipe_messages SET sender_jid=$1 WHERE sender_jid=$2',[targetJid,sourceJid])
+// Preservar convites quando uma identidade WhatsApp @lid é consolidada no número.
+await client.query(`
+INSERT INTO clan_invites(clan_id,invitee_jid,inviter_jid,expires_at,created_at)
+SELECT clan_id,$1,inviter_jid,expires_at,created_at
+FROM clan_invites WHERE invitee_jid=$2
+ON CONFLICT(clan_id,invitee_jid) DO UPDATE SET
+inviter_jid=CASE WHEN EXCLUDED.created_at>=clan_invites.created_at
+  THEN EXCLUDED.inviter_jid ELSE clan_invites.inviter_jid END,
+expires_at=GREATEST(clan_invites.expires_at,EXCLUDED.expires_at),
+created_at=GREATEST(clan_invites.created_at,EXCLUDED.created_at)
+`,[targetJid,sourceJid])
 await client.query('UPDATE clan_invites SET inviter_jid=$1 WHERE inviter_jid=$2',[targetJid,sourceJid])
 await client.query('UPDATE market_listings SET seller_jid=$1 WHERE seller_jid=$2',[targetJid,sourceJid])
 await client.query('UPDATE market_listings SET buyer_jid=$1 WHERE buyer_jid=$2',[targetJid,sourceJid])
