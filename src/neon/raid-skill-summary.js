@@ -90,13 +90,14 @@ export function incrementRaidSkillCounts(existing={},events=[]){
 
 // UMA linha por jogador, cobrindo todos os sete heróis e todas as classes (inclusive legadas).
 export function formatRaidSkillLine({activeHeroId=null,playerClassId='',playerClassApplied=true,
-  heroSkillActivations=null,skillActivations=null}={},fmt=x=>safeNumber(x).toLocaleString('pt-BR')){
+  heroSkillActivations=null,skillActivations=null,skillTrackingPartial=false}={},fmt=x=>safeNumber(x).toLocaleString('pt-BR')){
   const character=activeHeroId?HERO_NAMES[activeHeroId]||'Herói':PLAYER_CLASSES[playerClassId]?.name||'Classe'
   const counts=skillActivations||heroSkillActivations||{}
   const entries=Object.entries(counts).filter(([name,n])=>name&&safeNumber(n)>0)
   if(!activeHeroId&&!playerClassApplied)return '\n⚡ *Sem classe ativa*'
-  if(!entries.length)return '\n⚡ *'+character+':* nenhum gatilho especial'
+  const partial=skillTrackingPartial?'(contagem parcial) ':'' 
+  if(!entries.length)return '\n⚡ *'+character+':* '+partial+'nenhum gatilho especial'
   const selected=entries.slice(0,3).map(([name,n])=>name+' '+fmt(n)+'×')
   if(entries.length>3)selected.push('+'+(entries.length-3)+' outros')
-  return '\n⚡ *'+character+':* '+selected.join(' · ')
+  return '\n⚡ *'+character+':* '+partial+selected.join(' · ')
 }
