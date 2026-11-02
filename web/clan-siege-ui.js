@@ -21,7 +21,70 @@ function renderCastle(clan,side){
     '</article>';
 }
 
+function renderLiveSiege(ui){
+  const data=ui.siege,match=data.match,clans=data.clans||[];
+  const mine=clans.find(c=>String(c.id)===String(data.myClanId));
+  const blue=match?clans.find(c=>String(c.id)===String(match.blueClanId)):mine;
+  const red=match?clans.find(c=>String(c.id)===String(match.redClanId)):clans.find(c=>String(c.id)!==String(data.myClanId));
+  const stage=match?.status||'idle';
+  const active=stage==='active';
+  const canMove=active&&Boolean(match.mySide)&&!match.myMove;
+  const selected=ACTIONS.find(x=>x.id===ui.siegePreviewAction)||ACTIONS[1];
+  const duration=active?Math.max(0,Math.ceil((Number(match.roundEndsAt)-Date.now())/1000)):0;
+  const countdown=active?' • '+Math.floor(duration/60)+'m '+String(duration%60).padStart(2,'0')+'s':'';
+  const label=active?'⚔️ GUERRA ATIVA':stage==='pending'?'⏳ DESAFIO PENDENTE':stage==='completed'?'🏆 CONCLUÍDA':'🏰 DISPONÍVEL';
+  const ready=clans.length===2&&clans.every(c=>Number(c.members)===2&&Number(c.linked)===2);
+  let controls='';
+  if(stage==='idle'&&ready&&data.isLeader)controls='<button class="btn primary" data-siege-command="challenge">🏰 Desafiar clã rival</button>';
+  if(stage==='pending'&&data.isLeader&&String(data.myClanId)===String(match.redClanId))controls='<button class="btn good" data-siege-command="accept">⚔️ Aceitar e iniciar</button>';
+  if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio</button>';
+  const notice=stage==='pending'?'O líder adversário deve aceitar em até 30 minutos.':
+    stage==='completed'?'Último resultado disponível por até 24 horas.':
+    !ready?'Cada clã precisa ter dois membros que usaram !web neste mesmo grupo.':
+    active?'Ações são sigilosas e somente aparecem no fechamento da rodada.':'Clãs prontos para um desafio 2 × 2.';
+  const pct=hp=>Math.min(100,Math.max(0,Number(hp||0)/20)).toFixed(1);
+  function fortress(c,side){
+    const hp=Number(match?.[side+'Hp']??2000);
+    return '<article class="siege-castle siege-'+(side==='blue'?'home':'enemy')+'">'+
+      '<span class="siege-castle-kicker">'+(side==='blue'?'🔵 CASTELO AZUL':'🔴 CASTELO VERMELHO')+'</span>'+
+      '<div class="siege-castle-art" aria-hidden="true">🏰</div><h4>'+ESCAPE(c?.name||'Clã a confirmar')+'</h4>'+
+      '<p>'+Number(c?.members||0)+' membros • '+Number(c?.linked||0)+'/2 Web vinculados</p>'+
+      '<div class="siege-castle-hp"><span>HP</span><strong>'+hp+' / 2.000</strong></div>'+
+      '<div class="siege-hp-track"><span style="width:'+pct(hp)+'%"></span></div></article>';
+  }
+  const latest=Array.isArray(match?.history)?match.history.slice(-3):[];
+  return '<section class="siege-preview section">'+
+    '<div class="siege-head"><div><p class="siege-eyebrow">ALPHA BOT · GUERRA DE CLÃS</p>'+
+    '<h3>🏰 Cerco ao Castelo</h3><p>Dois clãs, quatro jogadores, ações secretas e resultado no WhatsApp.</p></div>'+
+    '<span class="siege-status">'+label+'</span></div>'+
+    '<div class="siege-stage">'+fortress(blue,'blue')+
+    '<div class="siege-versus"><strong>VS</strong><small>6 rodadas</small><small>5 min cada</small></div>'+
+    fortress(red,'red')+'</div>'+
+    '<div class="siege-data-note">'+ESCAPE(notice)+
+    (active?' • Rodada '+Number(match.round)+'/6'+countdown+' • '+Number(match.submitted)+'/4 ações enviadas':'')+'</div>'+
+    '<div class="hero-actions">'+controls+'<button class="btn" data-siege-refresh>🔄 Atualizar</button></div>'+
+    (ui.siegeError?'<div class="notice warn section">'+ESCAPE(ui.siegeError)+'</div>':'')+
+    '<div class="siege-planning"><div class="siege-planning-head"><h4>'+(
+      match?.myMove?'✅ Ação confirmada':'Escolha sua estratégia')+'</h4>'+
+      '<span class="siege-status">'+(active?'RODADA '+Number(match.round)+'/6':'AGUARDANDO GUERRA')+'</span></div>'+
+    '<div class="siege-action-grid">'+ACTIONS.map(item=>'<button type="button" class="siege-action '+
+      (item.id===(match?.myMove||selected.id)?'selected':'')+'" data-siege-preview="'+item.id+'" '+
+      (!canMove?'disabled':'')+'><span class="siege-action-icon">'+item.icon+'</span>'+
+      '<strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>').join('')+'</div>'+
+    '<div class="siege-selected"><span>ESTRATÉGIA</span><strong>'+
+      ESCAPE(ACTIONS.find(a=>a.id===(match?.myMove||selected.id))?.label||selected.label)+'</strong>'+
+      '<p>'+(active?'A escolha adversária permanece oculta até o fim da rodada.':
+        'Nenhuma ação é enviada antes de a guerra começar.')+'</p>'+
+      (canMove?'<button class="btn good" data-siege-command="move">🔒 Confirmar ação secreta</button>':
+        '<small>'+(match?.myMove?'Sua jogada foi salva e não pode ser modificada.':'Aguarde a partida.')+'</small>')+'</div></div>'+
+    (latest.length?'<div class="siege-selected section"><strong>📜 Histórico</strong>'+
+      latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
+        ' HP • 🔴 '+Number(x.redHp)+' HP</p>').join('')+'</div>':'')+
+    '<div class="siege-footer">Ações exclusivas por jogador e rodada. O jogo não utiliza dinheiro, XP ou HP real nesta versão.</div></section>';
+}
+
 export function renderClanSiegePreview(ui){
+  if(ui.siege?.enabled===true)return renderLiveSiege(ui);
   const extras=ui.extras||{};
   const clans=Array.isArray(extras.clans)?extras.clans:[];
   const eligible=clans.filter(clan=>Number(clan?.members)===2);
@@ -64,13 +127,22 @@ export function renderClanSiegePreview(ui){
   '</section>';
 }
 
-export function bindClanSiegePreview(ui,render){
-  document.querySelectorAll('[data-siege-preview]').forEach(button=>{
-    button.addEventListener('click',()=>{
-      const next=button.dataset.siegePreview;
-      if(!ACTIONS.some(item=>item.id===next))return;
-      ui.siegePreviewAction=next;
-      render();
-    });
-  });
+export function bindClanSiegePreview(ui,{render,submit,refresh}){
+  document.querySelectorAll('[data-siege-preview]').forEach(button=>button.addEventListener('click',()=>{
+    if(ui.siege?.match?.myMove)return;
+    const next=button.dataset.siegePreview;
+    if(!ACTIONS.some(item=>item.id===next))return;
+    ui.siegePreviewAction=next;
+    render();
+  }));
+  document.querySelectorAll('[data-siege-command]').forEach(button=>button.addEventListener('click',()=>{
+    const command=button.dataset.siegeCommand;
+    if(!['challenge','accept','cancel','move'].includes(command))return;
+    const message=command==='move'?'Confirmar ação? Ela não poderá ser alterada.':
+      command==='accept'?'Aceitar e iniciar a guerra?':'Confirmar esta operação?';
+    if(!confirm(message))return;
+    void submit(command,command==='move'?{action:ui.siegePreviewAction||'defend'}:{});
+  }));
+  document.querySelectorAll('[data-siege-refresh]').forEach(button=>
+    button.addEventListener('click',()=>void refresh(true)));
 }
