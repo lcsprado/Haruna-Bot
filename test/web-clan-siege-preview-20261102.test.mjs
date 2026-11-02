@@ -50,5 +50,5 @@ test('cerco: módulo web não envia comandos, dinheiro ou estado de jogo',()=>{
   assert.doesNotMatch(code,/localStorage\./);
   const app=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
   assert.match(app,/renderClanSiegePreview\(ui\)/);
-  assert.match(app,/bindClanSiegePreview\(ui,render\)/);
+  assert.match(app,/bindClanSiegePreview\(ui,\{render,submit:submitSiege,refresh:loadSiege\}\)/);
 });
