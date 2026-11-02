@@ -198,8 +198,9 @@ async function viewMatch(match,jid){
   };
 }
 export async function clanSiegeStatus(session){
-  const chat=group(session);
   if(!ON())return {enabled:false,reason:'Partidas reais ainda não foram ativadas no servidor.'};
+  if(!session?.chatJid)return {enabled:false,reason:'Vincule o Web ao grupo AlphaBot pelo !web.'};
+  const chat=group(session);
   await ensureClanSiegeSchema();await settleClanSiege(chat);
   const teams=await eligible(db,chat);
   const mine=(await db.query('SELECT clan_id,role FROM clan_members WHERE jid=$1',[session.jid])).rows[0];
