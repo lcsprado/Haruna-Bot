@@ -72,6 +72,7 @@ getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 } from './loans.js'
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
+import {pvpCritChance} from './pvp-crit.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
 import {isUnarchivedWeeklyBoss20261030,loadBossArchive20261030} from './boss-archive-20261030.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
@@ -1587,8 +1588,10 @@ const petStatus=pet&&!primaryPetReady
 ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
 :null
 const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
-const pvpCritNoPet=Math.min(.40,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
-const pvpCritWithPet=Math.min(.40,pvpCritNoPet+Number(pvpPet?.crit||0))
+// Mesma regra de critico do duelo; heroi ativo desativa a passiva da classe.
+const pvpCritWithPet=pvpCritChance({equipmentCrit:p.equipment_crit,
+ classId:p.class_id,classApplied:p.class_applied,awakeningStage,
+ heroActive:Boolean(heroSheet),collabCrit:synergy.collabCrit,petCrit:pvpPet?.crit})
 const en=p.enchant_breakdown||{}
 const enchantParts=[
 Number(en.damage||0)?'💥 +'+pct(en.damage*100)+' p.p. dano':null,
@@ -11955,7 +11958,18 @@ console.warn('[status] falha ao carregar pet; exibindo status sem bônus de pet'
 }
 const statusPetBonus=statusPet?petStatusBonus(statusPet):{critPct:0}
 const gearCritPct=Number(p.equipment_crit||0)*100
-const pvpCritPct=Number(p.effective_crit||0)*100
+const statusContext=(await db.query(`SELECT COALESCE(a.stage,0)::int AS awakening_stage,
+ COALESCE((SELECT json_agg(json_build_object('slot',pt.slot,'species',pc.species,
+ 'level',pc.level,'hp',pc.hp,'energy',pc.energy) ORDER BY pt.slot)
+ FROM pet_team pt JOIN pet_collection pc ON pc.id=pt.pet_id
+ WHERE pt.jid=$1),'[]'::json) AS team
+ FROM (SELECT $1::text AS jid) u LEFT JOIN player_awakenings a ON a.jid=u.jid`,[statusTarget])).rows[0]||{}
+const statusSynergy=petTeamSynergy(statusContext.team||[])||{}
+const statusPetCrit=statusPet&&Number(statusPet.hp)>0&&Number(statusPet.energy)>0
+ ?Number(petPvpSpecialty(statusPet.species,statusPet.level).crit||0):0
+const pvpCritPct=pvpCritChance({equipmentCrit:p.equipment_crit,classId:p.class_id,
+ classApplied:p.class_applied,awakeningStage:Number(statusContext.awakening_stage||0),
+ heroActive:Boolean(heroSheetStatus),collabCrit:statusSynergy.collabCrit,petCrit:statusPetCrit})*100
 const bossCritPct=Math.min(50,gearCritPct+Number(statusPetBonus.critPct||0))
 await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
@@ -11964,7 +11978,7 @@ await reply(
 ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):`🧙 Classe: ${p.class_info?.name||'Sem classe'}
 ⚜️ Passiva: ${p.class_passive?.name||'Ainda não selecionada'}${p.class_passive?' — '+p.class_passive.description:''}
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)\n⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}\n🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)\n👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)`}
-🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
+🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (base + equipamento + classe/herói ativo + sinergia + pet apto; teto 40%)
 👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
