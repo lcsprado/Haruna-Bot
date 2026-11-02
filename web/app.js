@@ -2359,7 +2359,7 @@ function renderMarket(){
 function renderClan(){
   const ex=ui.extras||{}, clan=ex.clan, clans=ex.clans||[];
   // Dados autoritativos do PostgreSQL: jamais trate membros do grupo como membros do clã.
-  const members=(Array.isArray(ex.clanRoster)?ex.clanRoster:[]).filter(x=>String(x.jid)!==String(ui.data.identity.jid));
+  const members=(Array.isArray(ex.clanMembers)?ex.clanMembers:[]).filter(x=>String(x.jid)!==String(ui.data.identity.jid));
   let actions=clan
     ? '<button class="btn good" data-clan-donate>Doar</button><button class="btn danger" data-clan-leave>Sair do clã</button>'
     : '<button class="btn primary" data-clan-create>Criar clã</button><button class="btn good" data-clan-accept>Aceitar convite</button>';
