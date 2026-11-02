@@ -3,6 +3,8 @@ name: PvP - 17 combatants and awakening validation
 on:
   push:
     paths:
+      - 'src/neon/playable-heroes-core.js'
+      - 'test/seven-sins-captain-sunshine-20261101.test.mjs'
       - 'src/neon/pvp-class-powers.js'
       - 'src/neon/pvp-balance-simulator.js'
       - 'src/neon/db.js'
@@ -10,6 +12,8 @@ on:
       - '.github/workflows/pvp-17-balance.yml'
   pull_request:
     paths:
+      - 'src/neon/playable-heroes-core.js'
+      - 'test/seven-sins-captain-sunshine-20261101.test.mjs'
       - 'src/neon/pvp-class-powers.js'
       - 'src/neon/pvp-balance-simulator.js'
       - 'src/neon/db.js'
@@ -27,5 +31,5 @@ jobs:
         with:
           node-version: '22'
       # Pure combat tests require only Node builtins; repository lockfile has an unrelated mismatch.
-      - run: node --test test/pvp-all-17-awakenings-20261101.test.mjs test/playable-seven-sins-20261027.test.mjs
+      - run: node --test test/seven-sins-captain-sunshine-20261101.test.mjs test/pvp-all-17-awakenings-20261101.test.mjs test/playable-seven-sins-20261027.test.mjs test/hero-class-fairness-20261101.test.mjs
       - run: node scripts/check-syntax.mjs
