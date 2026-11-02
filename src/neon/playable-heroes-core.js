@@ -31,11 +31,17 @@ export function heroLevelAwardPolicy({earnedToday=0,currentXp=0,xp=125,playerLev
   return {dailyCap,
     amount:Math.min(dailyRemaining,levelRemaining,Math.max(0,Math.floor(Number(xp)||0)))};
 }
-// Exceção temporária: Raid 75 dos 7 Pecados, somente na semana de 26/10 a 01/11/2026 (São Paulo).
+// Raid 75 dos 7 Pecados: bônus original 26/10–01/11 e 2x de maestria em 02/11/2026 (São Paulo).
 export const RAID75_MASTERY_START=Date.parse('2026-10-26T00:00:00-03:00');
-export const RAID75_MASTERY_END=Date.parse('2026-11-02T00:00:00-03:00');
+export const RAID75_MASTERY_END=Date.parse('2026-11-03T00:00:00-03:00');
+export const RAID75_MASTERY_DOUBLE_START=Date.parse('2026-11-02T00:00:00-03:00');
 export function raid75MasteryBonusActive({level=0,collab=false,nowMs=Date.now()}={}){
   return Number(level)===75&&Boolean(collab)&&Number(nowMs)>=RAID75_MASTERY_START&&Number(nowMs)<RAID75_MASTERY_END;
+}
+// Apenas no dia 02/11 o bônus da Raid 75 sobe de 120 para 240 XP reais.
+export function raid75MasteryAwardXp({level=0,collab=false,nowMs=Date.now()}={}){
+  if(!raid75MasteryBonusActive({level,collab,nowMs}))return 90;
+  return Number(nowMs)>=RAID75_MASTERY_DOUBLE_START?240:120;
 }
 export function heroMasteryAwardPolicy({specialRaid75=false,earnedToday=0,regularEarnedToday=0,xp=10}={}){
   const total=Math.max(0,Math.floor(Number(earnedToday)||0));
@@ -44,7 +50,7 @@ export function heroMasteryAwardPolicy({specialRaid75=false,earnedToday=0,regula
   const quota=Math.max(0,specialRaid75?
     HERO_MASTERY_SPECIAL_DAILY_CAP-total:
     Math.min(HERO_MASTERY_DAILY_CAP-regular,HERO_MASTERY_SPECIAL_DAILY_CAP-total));
-  const base=Math.max(0,Math.min(120,Math.floor(Number(xp)||0)));
+  const base=Math.max(0,Math.min(specialRaid75?240:120,Math.floor(Number(xp)||0)));
   return {special:Boolean(specialRaid75),
     dailyCap:specialRaid75?HERO_MASTERY_SPECIAL_DAILY_CAP:HERO_MASTERY_DAILY_CAP,
     amount:Math.min(quota,base)};

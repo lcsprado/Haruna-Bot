@@ -5,7 +5,7 @@ import {formatProfileCombatBonuses} from '../src/neon/profile-combat-summary.js'
 import {formatActiveClassBaseStatus,formatSavedAwakeningForActiveHero} from '../src/neon/character-base-status-format.js'
 import {
   HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
-  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP,HERO_START_LEVEL,heroStartingProgress
+  heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,raid75MasteryAwardXp,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP,HERO_START_LEVEL,heroStartingProgress
 } from '../src/neon/playable-heroes-core.js'
 
 test('!personagem status usa base da classe atual com Despertar, sem itens',()=>{
@@ -475,9 +475,22 @@ test('Raid 75 dos Pecados: XP em dobro apenas na semana, nunca em Raid comum',()
   assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-10-25T23:59:59-03:00')}),false);
   assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-10-26T00:00:00-03:00')}),true);
   assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-11-01T23:59:59-03:00')}),true);
-  assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-11-02T00:00:00-03:00')}),false);
+  assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-11-02T00:00:00-03:00')}),true);
+  assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-11-02T23:59:59-03:00')}),true);
+  assert.equal(raid75MasteryBonusActive({level:75,collab:true,nowMs:at('2026-11-03T00:00:00-03:00')}),false);
   assert.equal(raid75MasteryBonusActive({level:70,collab:true,nowMs:at('2026-10-28T12:00:00-03:00')}),false);
   assert.equal(raid75MasteryBonusActive({level:75,collab:false,nowMs:at('2026-10-28T12:00:00-03:00')}),false);
+});
+test('Raid 75 em 02/11: 2x maestria real sem afetar outras raids nem outros dias',()=>{
+  const data=t=>Date.parse(t);
+  assert.equal(raid75MasteryAwardXp({level:75,collab:true,nowMs:data('2026-11-01T23:59:59-03:00')}),120);
+  assert.equal(raid75MasteryAwardXp({level:75,collab:true,nowMs:data('2026-11-02T00:00:00-03:00')}),240);
+  assert.equal(raid75MasteryAwardXp({level:75,collab:true,nowMs:data('2026-11-02T23:59:59-03:00')}),240);
+  assert.equal(raid75MasteryAwardXp({level:75,collab:true,nowMs:data('2026-11-03T00:00:00-03:00')}),90);
+  assert.equal(raid75MasteryAwardXp({level:70,collab:true,nowMs:data('2026-11-02T12:00:00-03:00')}),90);
+  assert.equal(raid75MasteryAwardXp({level:75,collab:false,nowMs:data('2026-11-02T12:00:00-03:00')}),90);
+  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
+  assert.match(games,/xp:raid75MasteryAwardXp\(/);
 });
 test('Maestria acelerada com 400 por dia e 600 na Raid 75',()=>{
   const q=heroMasteryAwardPolicy;
@@ -485,6 +498,9 @@ test('Maestria acelerada com 400 por dia e 600 na Raid 75',()=>{
   assert.deepEqual(q({specialRaid75:true,earnedToday:0,regularEarnedToday:0,xp:120}),
     {special:true,dailyCap:600,amount:120});
   assert.equal(q({specialRaid75:true,earnedToday:570,regularEarnedToday:400,xp:120}).amount,30);
+  assert.equal(q({specialRaid75:true,earnedToday:0,regularEarnedToday:0,xp:240}).amount,240);
+  assert.equal(q({specialRaid75:true,earnedToday:480,regularEarnedToday:400,xp:240}).amount,120);
+  assert.equal(q({specialRaid75:false,earnedToday:0,regularEarnedToday:0,xp:240}).amount,120);
   assert.equal(q({specialRaid75:true,earnedToday:600,regularEarnedToday:400,xp:120}).amount,0);
   assert.equal(q({specialRaid75:false,earnedToday:310,regularEarnedToday:310,xp:90}).amount,90);
   assert.equal(q({specialRaid75:false,earnedToday:370,regularEarnedToday:370,xp:90}).amount,30);
