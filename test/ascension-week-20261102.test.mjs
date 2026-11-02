@@ -141,8 +141,8 @@ test('trilha veterana mantém desafios e mostra multiplicador correto de 300 a 3
   const text300=await ascensionStatusText(makeDb(300),'user',within);
   const text340=await ascensionStatusText(makeDb(340),'user',within);
   const text341=await ascensionStatusText(makeDb(341),'user',within);
-  assert.match(text300,/XP do jogador: \\*2×\\*/);
-  assert.match(text340,/XP do jogador: \\*2×\\*/);
+  assert.match(text300,/XP do jogador: \*2×\*/);
+  assert.match(text340,/XP do jogador: \*2×\*/);
   assert.match(text341,/XP normal/);
   assert.match(text300,/TRILHA DOS VETERANOS/);
 });
