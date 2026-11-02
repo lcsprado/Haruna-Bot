@@ -5,6 +5,8 @@ on:
       - feat/web-aiven-beta-protegido-20261021
     paths:
       - 'src/neon/clan-siege.js'
+      - 'src/neon/clan-siege-beta-access.js'
+      - 'test/clan-siege-single-guest-20261102.test.mjs'
       - 'src/neon/clan-siege-first-prize.js'
       - 'src/neon/relics.js'
       - 'test/clan-siege-first-prize-20261102.test.mjs'
@@ -17,6 +19,8 @@ on:
       - feat/alpha-web-api-cerco-protegido-20261102
     paths:
       - 'src/neon/clan-siege.js'
+      - 'src/neon/clan-siege-beta-access.js'
+      - 'test/clan-siege-single-guest-20261102.test.mjs'
       - 'src/neon/clan-siege-first-prize.js'
       - 'src/neon/relics.js'
       - 'test/clan-siege-first-prize-20261102.test.mjs'
@@ -38,9 +42,10 @@ jobs:
       - name: Validate syntax
         run: |
           node --check src/neon/clan-siege.js
+          node --check src/neon/clan-siege-beta-access.js
           node --check src/neon/clan-siege-first-prize.js
           node --check src/neon/relics.js
           node --check src/neon/web-api.js
           node --check src/neon/render.js
       - name: Test combat and disabled-by-default policy
-        run: node --test test/clan-siege-rules-20261102.test.mjs test/clan-siege-first-prize-20261102.test.mjs
+        run: node --test test/clan-siege-rules-20261102.test.mjs test/clan-siege-first-prize-20261102.test.mjs test/clan-siege-single-guest-20261102.test.mjs
