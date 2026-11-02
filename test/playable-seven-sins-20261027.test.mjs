@@ -659,24 +659,24 @@ test('!heroi atributos exibe os poderes da maestria liberada e nunca o Paladino'
   };
   const message=formatCharacterBaseStatus({profile,heroSheet:sheet,awakeningStage:4});
   assert.match(message,/STATUS BASE — BAN/);
-  assert.match(message,/Maestria: \\*3\\/5\\* \\(2040 XP\\)/);
+  assert.match(message,/Maestria: \*3\/5\* \(2040 XP\)/);
   for(const power of ['Imortalidade','Snatch','Hunter Fest','Boss/Raid','PvP','Próxima maestria IV']){
     assert.ok(message.includes(power),'poder ou seção ausente: '+power);
   }
   for(const excluded of ['Paladino','Despertar','Maestria IV —','Maestria V —','equipamento equipado']){
     assert.ok(!message.includes(excluded),'informação indevida: '+excluded);
   }
-  assert.match(message,/faltam 1\\.460 XP/);
-  const stage1=formatPlayableHeroMasteryEffects({...sheet,masteryStage:1}).join('\\n');
+  assert.match(message,/faltam 1\.460 XP/);
+  const stage1=formatPlayableHeroMasteryEffects({...sheet,masteryStage:1}).join('\n');
   assert.match(stage1,/Imortalidade/);
   assert.doesNotMatch(stage1,/Snatch|Hunter Fest/);
-  const stage2=formatPlayableHeroMasteryEffects({...sheet,masteryStage:2}).join('\\n');
+  const stage2=formatPlayableHeroMasteryEffects({...sheet,masteryStage:2}).join('\n');
   assert.match(stage2,/Snatch/);
   assert.doesNotMatch(stage2,/Hunter Fest/);
-  const stage5=formatPlayableHeroMasteryEffects({...sheet,masteryStage:5,masteryXp:7000}).join('\\n');
+  const stage5=formatPlayableHeroMasteryEffects({...sheet,masteryStage:5,masteryXp:7000}).join('\n');
   assert.match(stage5,/Maestria máxima liberada/);
-  assert.match(stage5,/IV — \\+1%/);
-  assert.match(stage5,/V — \\+0,5% adicional/);
+  assert.match(stage5,/IV — \+1%/);
+  assert.match(stage5,/V — \+0,5% adicional/);
 });
 
 test('todos os sete heróis descrevem as habilidades efetivamente desbloqueadas',async()=>{
@@ -685,8 +685,8 @@ test('todos os sete heróis descrevem as habilidades efetivamente desbloqueadas'
   const {PLAYABLE_HERO_IDS}=await import('../src/neon/playable-heroes-core.js');
   for(const heroId of PLAYABLE_HERO_IDS){
     for(const masteryStage of [1,2,3,4,5]){
-      const text=formatPlayableHeroMasteryEffects({heroId,masteryStage,masteryXp:7000}).join('\\n');
-      assert.match(text,/Boss\\/Raid/);
+      const text=formatPlayableHeroMasteryEffects({heroId,masteryStage,masteryXp:7000}).join('\n');
+      assert.match(text,/Boss\/Raid/);
       assert.match(text,/PvP/);
       assert.equal((text.match(/✅ /g)||[]).length,2*masteryStage,heroId+' stage '+masteryStage);
     }
