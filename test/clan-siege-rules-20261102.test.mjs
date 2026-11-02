@@ -92,7 +92,8 @@ test('cerco: preflight exige 2 clãs com exatamente 2 jogadores vinculados e aut
   assert.equal(good.ready,true);
   assert.equal(good.authorizedPlayers,4);
   assert.equal(good.linkedPlayers,4);
-  assert.equal(JSON.stringify(good).includes('lp'),false);
+  assert.equal(Object.hasOwn(good.teams[0],'jids'),false);
+  assert.equal(JSON.stringify(good).includes('"lp"'),false);
   const missing=analyzeSiegeEligibility(rows,new Set(['lp','joao','kaique']));
   assert.equal(missing.ready,false);
   assert.equal(missing.authorizedPlayers,3);
