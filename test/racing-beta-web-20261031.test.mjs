@@ -28,12 +28,13 @@ test('beta keeps Events while making Garagem Alpha the second menu option',()=>{
   assert.match(app,/if\(page==='racing'\)jobs\.push\(loadRacing\(false\)\)/)
   assert.match(app,/bindRacing\(ui/)
 })
-test('four illustrated cars render in responsive beta garage without external image downloads',()=>{
+test('four locally hosted car photos render in responsive beta garage without external image downloads',()=>{
   const html=renderRacing(ui)
   carNames.forEach(name=>assert.ok(html.includes(name)))
-  assert.ok((html.match(/class="race-car-svg"/g)||[]).length>=5)
+  assert.ok((html.match(/class="race-car-photo"/g)||[]).length>=5)
+  assert.ok((html.match(/<img class="race-car-photo" src="\/assets\/racing\//g)||[]).length>=5)
   assert.match(html,/data-race-act="buy"/)
-  assert.ok(!html.includes('<img'))
+  assert.ok(!/<img[^>]+src="https?:\/\//i.test(html))
 })
 test('workshop respects active installation, six upgrade types and paid progression',()=>{
   const working={...ui,racingTab:'workshop',racing:{...ui.racing,garage:{...ui.racing.garage,cars:[{id:7,model_id:'gol',equipped:true,condition:90,upgrades:{motor:1},pending_part:'turbo',pending_level:2,pending_until:Math.floor(Date.now()/1000)+300}]}}}
@@ -49,8 +50,8 @@ test('racing fetches only on page activation and actions, PWA invalidates old be
  assert.match(app,/api\('\/api\/v1\/me\/racing'\)/)
  assert.match(app,/async function racingAction/)
  assert.match(app,/updateRacingClocks\(\)/)
- assert.match(html,/20261031-racing-beta-v1/)
- assert.match(sw,/alpha-rpg-pwa-20261031-racing-beta-v1/)
+ assert.match(html,/20261102-work-art-carphotos-siege-v1/)
+ assert.match(sw,/alpha-rpg-pwa-20261102-work-art-carphotos-siege-v1/)
  assert.match(sw,/\/racing-ui\.js/)
  assert.match(sw,/Promise\.allSettled\(SHELL\.filter/)
  assert.match(read('web/styles.css'),/GARAGEM ALPHA/)
