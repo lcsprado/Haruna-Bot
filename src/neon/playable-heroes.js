@@ -90,7 +90,7 @@ export async function getPlayableHeroCombatSheet(jid,knownProfile=null){
   const masteryStage=await getPlayableHeroMasteryStage(db,jid,heroId);
   const collabPvP=heroCollabGearBonus(heroId,profile.weapon_id,profile.armor_id,'pvp');
   const collabRaid=heroCollabGearBonus(heroId,profile.weapon_id,profile.armor_id,'raid');
-  return {...combat,heroLevel,masteryXp:xp,masteryStage,collabPvP,collabRaid,
+  return {...combat,heroId,heroLevel,masteryXp:xp,masteryStage,collabPvP,collabRaid,
     savedClass:profile.class_applied?getPlayerClass(profile.class_id):null};
 }
 
@@ -104,7 +104,7 @@ const heroDifference=(a,b)=>['hp','atk','def','spd'].map(key=>{
 // Os detalhes de Boss/Raid e PvP são distintos; não somar bônus a atributos base.
 export function formatPlayableHeroMasteryEffects(sheet){
   if(!sheet)return [];
-  const guide=HERO_SKILL_GUIDE[sheet.id],pvp=HERO_PVP_SKILL_GUIDE[sheet.id];
+  const guide=HERO_SKILL_GUIDE[sheet.heroId],pvp=HERO_PVP_SKILL_GUIDE[sheet.heroId];
   if(!guide||!pvp)return [];
   const stage=Math.max(1,Math.min(5,Math.floor(Number(sheet.masteryStage)||1)));
   const roman=['I','II','III','IV','V'],keys=['passive','special','ultimate'];
