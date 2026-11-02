@@ -1,4 +1,5 @@
 import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
+import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
@@ -12,6 +13,7 @@ const ui = {
   lastResult: null,
   lootReveal: null,
   page: 'home',
+  siegePreviewAction: 'defend',
   auction: null,
   racing: null,
   racingFetchedAt: 0,
@@ -1977,7 +1979,7 @@ function renderClan(){
     ? '<button class="btn good" data-clan-donate>Doar</button><button class="btn danger" data-clan-leave>Sair do clã</button>'
     : '<button class="btn primary" data-clan-create>Criar clã</button><button class="btn good" data-clan-accept>Aceitar convite</button>';
   return '<div class="page-head"><div><h2>Clã</h2><p>Mesma estrutura dos comandos !cla / !criarcla / !claconvidar.</p></div></div>'+
-    '<div class="card"><div class="section-title"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+
+    '<div class="card"><div class="section-title"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+renderClanSiegePreview(ui)+
     (clan?'<div class="section"><div class="section-title"><h3>Convidar / administrar jogadores</h3><small>Ações respeitam sua função no clã</small></div><div class="grid three">'+members.map(m=>'<div class="card"><h3>'+esc(m.push_name)+'</h3><div class="pet-actions"><button class="btn" data-clan-invite="'+esc(m.jid)+'">Convidar</button><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button><button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div></div>').join('')+'</div></div>':'')+
     '<div class="section card"><div class="section-title"><h3>Ranking de clãs</h3><small>'+clans.length+' listados</small></div>'+renderClanList(clans)+'</div>'+resultPanel();
 }
@@ -2379,6 +2381,7 @@ function render(){
 
 function bind(){
   if(ui.page==='racing')bindRacing(ui,{action:racingAction,refresh:loadRacing,render});
+  if(ui.page==='clan')bindClanSiegePreview(ui,render);
   document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
   document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
   document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+50000'));
