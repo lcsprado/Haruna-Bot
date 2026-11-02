@@ -123,7 +123,7 @@ async function advance(conn,match){
     const oldHistory=Array.isArray(match.history)?match.history:JSON.parse(match.history||'[]');
     const history=[...oldHistory,r.result];
     const status=r.finished?'completed':'active';
-    const deadline=r.finished?0:Number(match.round_ends_at)+ROUND_MS;
+    const deadline=r.finished?0:(moves.length===4?now()+ROUND_MS:Number(match.round_ends_at)+ROUND_MS);
     const updated=(await conn.query([
       "UPDATE alpha_siege_matches SET status=$2,round=$3,round_ends_at=$4,",
       "blue_hp=$5,red_hp=$6,blue_repairs=$7,red_repairs=$8,",
