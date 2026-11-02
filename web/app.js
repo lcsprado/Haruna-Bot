@@ -1,4 +1,5 @@
 import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
+import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
@@ -27,6 +28,11 @@ const ui = {
   racingStrategy: 'equilibrada',
   racingTarget: '',
   racingLast: null,
+  siegePreviewAction: 'defend',
+  siege: null,
+  siegeFetchedAt: 0,
+  siegeError: '',
+  siegeBusy: false,
   auctionError: '',
   auctionLoading: false,
   auctionSubmitting: false,
@@ -942,6 +948,35 @@ async function loadEventCenter(force=false){
   }finally{ui.eventCenterLoading=false;}
   return ui.eventCenter;
 }
+async function loadSiege(force=false){
+  if(!ui.token)return;
+  if(!force&&ui.siegeFetchedAt&&Date.now()-ui.siegeFetchedAt<10000)return;
+  try{
+    const response=await api('/api/v1/me/clan-siege');
+    ui.siege=response.data;
+    ui.siegeError='';
+  }catch(err){
+    ui.siege={enabled:false};
+    ui.siegeError=/HTTP 404/i.test(err.message)?'A API da Guerra de Clãs ainda não está disponível.':String(err.message||'Falha ao carregar a guerra.');
+  }
+  ui.siegeFetchedAt=Date.now();
+  if(ui.page==='clan')render();
+}
+async function submitSiege(command,body){
+  if(ui.siegeBusy)return;
+  ui.siegeBusy=true;
+  try{
+    const response=await api('/api/v1/me/clan-siege/'+command,{method:'POST',body:JSON.stringify(body||{})});
+    if(response.ok===false)throw new Error(response.reason||'Falha na guerra.');
+    toast(command==='move'?'Ação secreta registrada.':'Guerra atualizada.');
+    ui.siegePreviewAction='defend';
+    await loadSiege(true);
+  }catch(err){
+    ui.siegeError=String(err.message||'Falha na guerra');
+    toast(ui.siegeError);
+    render();
+  }finally{ui.siegeBusy=false;}
+}
 async function openWebPage(page){
   ui.page=page;
   setMenu(false);
@@ -953,6 +988,7 @@ async function openWebPage(page){
   if(page==='events')jobs.push(loadEventCenter(false));
   if(page==='auction')jobs.push(loadAuction());
   if(page==='racing')jobs.push(loadRacing(false));
+  if(page==='clan')jobs.push(loadSiege(true));
   await Promise.all(jobs);
   render();
   window.scrollTo({top:0,left:0,behavior:'auto'});
@@ -1045,6 +1081,7 @@ async function logout(remote){
   ui.avatarUrl=''; ui.avatarFetchedAt=0;
   ui.token=''; ui.data=null; ui.catalog=null; ui.extras=null; ui.extrasFetchedAt=0;
   ui.racing=null;ui.racingFetchedAt=0;ui.racingLast=null;
+  ui.siege=null;ui.siegeFetchedAt=0;ui.siegeError='';ui.siegeBusy=false;
   localStorage.removeItem(TOKEN_KEY);
   showLogin();
 }
@@ -2320,13 +2357,18 @@ function renderMarket(){
 }
 
 function renderClan(){
-  const ex=ui.extras||{}, clan=ex.clan, clans=ex.clans||[], members=roster().filter(x=>x.jid!==ui.data.identity.jid);
+  const ex=ui.extras||{}, clan=ex.clan, clans=ex.clans||[];
+  // Dados autoritativos do PostgreSQL: jamais trate membros do grupo como membros do clã.
+  const members=(Array.isArray(ex.clanMembers)?ex.clanMembers:[]).filter(x=>String(x.jid)!==String(ui.data.identity.jid));
   let actions=clan
     ? '<button class="btn good" data-clan-donate>Doar</button><button class="btn danger" data-clan-leave>Sair do clã</button>'
     : '<button class="btn primary" data-clan-create>Criar clã</button><button class="btn good" data-clan-accept>Aceitar convite</button>';
   return '<div class="page-head"><div><h2>Clã</h2><p>Mesma estrutura dos comandos !cla / !criarcla / !claconvidar.</p></div></div>'+
-    '<div class="card"><div class="section-title"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+
-    (clan?'<div class="section"><div class="section-title"><h3>Convidar / administrar jogadores</h3><small>Ações respeitam sua função no clã</small></div><div class="grid three">'+members.map(m=>'<div class="card"><h3>'+esc(m.push_name)+'</h3><div class="pet-actions"><button class="btn" data-clan-invite="'+esc(m.jid)+'">Convidar</button><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button><button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div></div>').join('')+'</div></div>':'')+
+    '<div class="card"><div class="section-title"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+renderClanSiegePreview(ui)+
+    (clan?'<div class="section"><div class="section-title"><h3>Integrantes do meu clã</h3><small>Apenas membros cadastrados no clã</small></div><div class="grid three">'+
+      (members.length?members.map(m=>'<div class="card"><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+esc(m.role==='leader'?'Líder':'Membro')+'</p>'+
+        (clan.role==='leader'?'<div class="pet-actions"><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button><button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div>':'')+'</div>').join(''):'<div class="empty">Nenhum outro membro do clã na lista.</div>')+
+      '</div><p class="hint">Para convidar novos jogadores, use o comando de convite no grupo AlphaBot.</p></div>':'')+
     '<div class="section card"><div class="section-title"><h3>Ranking de clãs</h3><small>'+clans.length+' listados</small></div>'+renderClanList(clans)+'</div>'+resultPanel();
 }
 
@@ -2985,6 +3027,7 @@ function render(){
 
 function bind(){
   if(ui.page==='racing')bindRacing(ui,{action:racingAction,refresh:loadRacing,render});
+  if(ui.page==='clan')bindClanSiegePreview(ui,{render,submit:submitSiege,refresh:loadSiege});
   document.querySelectorAll('[data-auction-refresh]').forEach(x=>x.onclick=()=>loadAuction());
   document.querySelectorAll('[data-auction-amount]').forEach(x=>x.oninput=()=>{ui.auctionAmount=x.value;});
   document.querySelectorAll('[data-auction-increment]').forEach(x=>x.onclick=()=>auctionBid('+'+String(ui.auction?.step||100000)));

@@ -1,6 +1,6 @@
-const CACHE='alpha-rpg-pwa-20261031-racing-beta-v1';
+const CACHE='alpha-rpg-pwa-20261102-work-art-carphotos-siege-v1';
 const SHELL=[
-  '/rpg','/styles.css','/app.js','/racing-ui.js','/manifest.webmanifest',
+  '/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
   '/assets/official-art-sheet.jpg',
   '/assets/alpha-fixed-art.webp',
@@ -95,7 +95,7 @@ self.addEventListener('fetch',event=>{
     return;
   }
 
-  if(['/app.js','/styles.css','/manifest.webmanifest','/sw.js'].includes(url.pathname)){
+  if(['/app.js','/styles.css','/racing-ui.js','/clan-siege-ui.js','/manifest.webmanifest','/sw.js'].includes(url.pathname)){
     event.respondWith(networkFirst(request));
     return;
   }

@@ -1,0 +1,29 @@
+name: Alpha Web - Cerco moderno e garagem preservada
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'test/web-modern-siege-guard-20261102.test.mjs'
+      - '.github/workflows/alpha-web-modern-cerco.yml'
+  push:
+    branches:
+      - 'feat/web-cerco-modern-garagem-20261102'
+      - 'feat/web-aiven-beta-protegido-20261021'
+permissions:
+  contents: read
+jobs:
+  regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check web/app.js
+          node --check web/racing-ui.js
+          node --check web/clan-siege-ui.js
+      - name: Verify modern art, garage and clan
+        run: node --test test/web-modern-siege-guard-20261102.test.mjs

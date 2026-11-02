@@ -1,4 +1,4 @@
-// Garagem Alpha visual: ilustrações SVG leves, acessíveis, sem pacotes ou requisições de imagem.
+// Garagem Alpha visual: fotos compactas com pinturas pré-renderizadas.
 const models={gol:{name:'Gol Quadrado',tone:'#4caaff',shadow:'#193f92',roof:'M131 105 L174 60 L323 60 L379 105Z',window:'M155 102 L183 71 L318 71 L352 102Z',tag:'CLÁSSICO'},uno:{name:'Uno Mille',tone:'#ffce5c',shadow:'#ae5b21',roof:'M143 105 L161 48 L297 48 L344 105Z',window:'M162 102 L179 62 L292 62 L324 102Z',tag:'ARRANCADA'},corsa:{name:'Corsa Wind',tone:'#92e7ce',shadow:'#146e73',roof:'M118 106 Q165 60 214 59 L321 64 Q345 71 378 106Z',window:'M156 102 Q187 73 222 72 L308 77 L347 102Z',tag:'CURVAS'},palio:{name:'Palio Fire',tone:'#f58da4',shadow:'#9d365d',roof:'M120 107 Q158 59 208 55 L296 59 Q344 70 382 107Z',window:'M154 103 Q183 72 219 70 L297 76 Q318 85 350 103Z',tag:'VELOCIDADE'}}
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 const brl=x=>Number(x||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
@@ -8,29 +8,15 @@ const partIcons={motor:'🔧',cambio:'⚙️',pneus:'🛞',suspensao:'🛠️',f
 const statLabels={speed:'Velocidade',accel:'Arrancada',grip:'Aderência',brake:'Frenagem'}
 const statIcons={speed:'⚡',accel:'🚀',grip:'🛞',brake:'🛑'}
 const colors=['#4caaff','#ffce5c','#92e7ce','#f58da4']
+function paintColor(r,car){return r.catalog.colors?.find(c=>c.id===(car?.color_id||'prata'))?.hex||null}
 const clockEnd=seconds=>{const m=Math.max(0,Math.ceil((Number(seconds||0)-Date.now()/1000)/60));return m>=60?Math.floor(m/60)+'h '+m%60+'min':m+'min'}
 const clockNode=seconds=>'<span data-race-timer="'+Math.floor(Number(seconds)||0)+'">'+clockEnd(seconds)+'</span>'
 export function updateRacingClocks(){if(typeof document==='undefined')return;document.querySelectorAll('[data-race-timer]').forEach(el=>{el.textContent=clockEnd(el.dataset.raceTimer)})}
-function carArt(model,upgrades={},large=false){
+function carArt(model,upgrades={},large=false,colorHex=null){
  const d=models[model]||models.gol
- const power=Number(upgrades.motor||0)+Number(upgrades.turbo||0)
- const spoiler=power>=6?'<path d="M396 103 L416 80 L432 80 L411 115" stroke="#e9f7ff" stroke-width="5" fill="none"/>':''
- const id='race-'+model+'-'+(large?'big':'small')
- return '<svg viewBox="0 0 520 215" class="race-car-svg" role="img" aria-label="Ilustração do '+esc(d.name)+'" xmlns="http://www.w3.org/2000/svg">'+
- '<defs><linearGradient id="'+id+'-body" x1="0" x2="0" y1="0" y2="1"><stop stop-color="'+d.tone+'"/><stop offset=".65" stop-color="'+d.tone+'"/><stop offset="1" stop-color="'+d.shadow+'"/></linearGradient><linearGradient id="'+id+'-glass" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e2f8ff" stop-opacity=".92"/><stop offset="1" stop-color="#10243c" stop-opacity=".95"/></linearGradient></defs>'+
- '<path d="M62 167 H456" stroke="'+d.tone+'" stroke-opacity=".24" stroke-width="3" stroke-dasharray="22 15"/>'+
- '<ellipse cx="263" cy="180" rx="209" ry="20" fill="#000" opacity=".36"/>'+
- '<path d="'+d.roof+'" fill="url(#'+id+'-body)" stroke="#d9efff" stroke-opacity=".6" stroke-width="2"/>'+
- '<path d="'+d.window+'" fill="url(#'+id+'-glass)" stroke="#a8d9f2" stroke-width="2" opacity=".92"/>'+
- '<path d="M252 77 L252 105" stroke="#1d3a52" stroke-width="5"/>'+
- '<path d="M88 106 Q75 106 69 126 L60 152 Q58 163 72 165 H452 Q467 165 463 151 L443 121 Q437 108 411 106Z" fill="url(#'+id+'-body)" stroke="#e4f4ff" stroke-opacity=".65" stroke-width="2"/>'+
- '<path d="M90 131 H431" stroke="#fff" stroke-opacity=".19" stroke-width="3"/>'+
- '<path d="M106 142 H418" stroke="#07131f" stroke-opacity=".45" stroke-width="8"/>'+
- '<path d="M363 113 L414 113" stroke="#fff" stroke-opacity=".55" stroke-width="3"/>'+
- '<path d="M78 120 L100 125 L103 139 L67 139Z" fill="#ebf8ff"/><path d="M439 126 L455 132 L463 145 L430 143Z" fill="#ff6f74"/>'+
- '<path d="M76 163 L451 163" stroke="#0d2131" stroke-width="7"/>'+
- '<circle cx="148" cy="162" r="38" fill="#080d15"/><circle cx="148" cy="162" r="27" fill="#29374a" stroke="#a1b5c8" stroke-width="4"/><circle cx="148" cy="162" r="11" fill="#d1ebf4"/><circle cx="385" cy="162" r="38" fill="#080d15"/><circle cx="385" cy="162" r="27" fill="#29374a" stroke="#a1b5c8" stroke-width="4"/><circle cx="385" cy="162" r="11" fill="#d1ebf4"/>'+
- '<path d="M148 139 V185 M125 162 H171 M385 139 V185 M362 162 H408" stroke="#8293a7" stroke-width="3" opacity=".8"/>'+spoiler+'</svg>'
+ const colorId=Object.entries({prata:'#BFC4CC',branco:'#F3F4F6',preto:'#242A34',cinza:'#777E8A',vermelho:'#D8333F',azul:'#2979D6',verde:'#3EAD6A',amarelo:'#E8BD32',laranja:'#EF8732',roxo:'#8650C9',rosa:'#E888B7',dourado:'#CBA63A'}).find(([,hex])=>hex.toLowerCase()===String(colorHex).toLowerCase())?.[0]||'prata'
+ const asset='/assets/racing/'+(models[model]?model:'gol')+'-'+colorId+'.webp'
+ return '<img class="race-car-photo" src="'+asset+'" alt="'+esc(d.name)+' na cor selecionada" loading="'+(large?'eager':'lazy')+'" decoding="async">'
 }
 function statValues(car,catalog){
  const base=(catalog.cars||[]).find(m=>m.id===car.model_id)
@@ -58,14 +44,14 @@ function carStats(car,catalog){
 function button(label,action,payload='',disabled=false,primary=false){
  return '<button type="button" class="race-button'+(primary?' primary':'')+'" data-race-act="'+esc(action)+'" data-race-value="'+esc(payload)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'
 }
-function carTile(model,owned,equipped){
+function carTile(model,owned,equipped,catalog){
  const d=models[model.id]||models.gol
  return '<div class="race-model-card '+(owned?'owned ':'')+(equipped?'selected':'')+'">'+
  '<div class="race-model-badge">'+esc(d.tag)+' '+(equipped?'• EM USO':owned?'• NA GARAGEM':'')+'</div>'+
- '<div class="race-car-preview">'+carArt(model.id)+'</div><h4>'+esc(model.name)+'</h4>'+
+ '<div class="race-car-preview">'+carArt(model.id,owned?.upgrades||{},false,paintColor({catalog},owned))+'</div><h4>'+esc(model.name)+'</h4>'+
  '<div class="race-model-spec">⚡ '+model.stats.speed+' <span>•</span> 🚀 '+model.stats.accel+' <span>•</span> 🛞 '+model.stats.grip+'</div>'+
  '<div class="race-tile-bottom"><b>'+brl(model.price)+'</b>'+
- (owned?(equipped?'<span class="race-green">✓ Equipado</span>':button('Equipar','equip',owned.id)):button('Comprar','buy',model.id,false,true))+
+ (owned?(equipped?'<span class="race-green">✓ Equipado</span>':button('Equipar','equip',owned.id))+button('Pintura','openPaint',owned.id):button('Comprar','buy',model.id,false,true))+
  '</div></div>'
 }
 function formatTab(ui,tab,label){return '<button class="race-tab '+(ui.racingTab===tab?'active':'')+'" data-race-tab="'+tab+'">'+label+'</button>'}
@@ -76,15 +62,15 @@ function garagePage(ui,r){
  (cars.length?'<div class="race-fleet">'+cars.map(car=>{
   const st=racingTuning(car),p=models[car.model_id]||models.gol
   return '<article class="race-fleet-card '+(car.equipped?'equipped':'')+'"><div class="race-fleet-top"><b>'+esc(p.name)+'</b><span>'+(car.equipped?'● CARRO ATIVO':'ID #'+esc(car.id))+'</span></div>'+
-  '<div class="race-fleet-visual">'+carArt(car.model_id,car.upgrades)+'</div>'+carStats(car,catalog)+
+  '<div class="race-fleet-visual">'+carArt(car.model_id,car.upgrades,false,paintColor(r,car))+'</div>'+carStats(car,catalog)+
   '<div class="race-progress-line"><span>🔧 Preparação <b>'+st+'/42</b></span><span>❤️ Condição <b>'+car.condition+'%</b></span></div>'+
   bar(st,42,'upgrade')+'<div class="race-fleet-actions">'+(car.pending_part?
     '<span class="race-warning">⏳ '+esc(partNames[car.pending_part]||car.pending_part)+' Nv.'+car.pending_level+' · '+clockNode(car.pending_until)+'</span>':
     car.equipped?'<span class="race-green">✓ Pronto para correr</span>':button('Equipar carro','equip',car.id,false,true))+
-  '</div></article>'
+  button('Personalizar','openPaint',car.id)+'</div></article>'
  }).join('')+'</div>':'<div class="race-empty">🏁 <b>Sua garagem está vazia.</b><p>Escolha o primeiro carro. O dinheiro investido na preparação faz a diferença nas pistas.</p></div>')+
  '<div class="race-section-heading race-gap"><div><small>02 / CONCESSIONÁRIA</small><h3>Escolha seu projeto</h3></div></div>'+
- '<div class="race-model-grid">'+(catalog.cars||[]).map(m=>carTile(m,cars.find(c=>c.model_id===m.id),equipped?.model_id===m.id)).join('')+'</div>'+
+ '<div class="race-model-grid">'+(catalog.cars||[]).map(m=>carTile(m,cars.find(c=>c.model_id===m.id),equipped?.model_id===m.id,catalog)).join('')+'</div>'+
  '<p class="race-footnote">Os quatro custam o mesmo e podem receber as 42 melhorias. Carros do Uber não participam dessas corridas.</p>'
 }
 function racingTuning(car){return Object.values(car?.upgrades||{}).reduce((s,l)=>s+Number(l||0),0)}
@@ -94,19 +80,30 @@ function workshopPage(ui,r){
  const tuning=racingTuning(car),pending=cars.some(c=>c.pending_part)
  const pendingCar=cars.find(c=>c.pending_part)
  return '<div class="race-section-heading"><div><small>OFICINA DE PREPARAÇÃO</small><h3>'+esc((models[car.model_id]||models.gol).name)+'</h3></div><span class="race-subtle">'+tuning+'/42 upgrades</span></div>'+
- '<div class="race-shop-hero"><div>'+carArt(car.model_id,car.upgrades,true)+'</div><div class="race-shop-details"><b>Investimento que vira desempenho</b>'+
+ '<div class="race-shop-hero"><div>'+carArt(car.model_id,car.upgrades,true,paintColor(r,car))+'</div><div class="race-shop-details"><b>Investimento que vira desempenho</b>'+
  '<p>Cada peça possui sete níveis. Somente uma instalação pode estar em andamento na garagem inteira.</p>'+
  (pendingCar?'<div class="race-build-status">🔧 Instalando '+esc(partNames[pendingCar.pending_part]||pendingCar.pending_part)+' Nv.'+Number(pendingCar.pending_level)+'<br><strong>⏳ '+clockNode(pendingCar.pending_until)+'</strong></div>':
  '<div class="race-green">● Oficina disponível</div>')+'</div></div>'+
  '<div class="race-part-grid">'+(r.catalog.parts||[]).map(p=>{
  const lv=Number(car.upgrades?.[p.id]||0),next=levels[lv],max=lv>=7
- return '<article class="race-part"><div class="race-part-title"><span class="race-part-emoji">'+(partIcons[p.id]||'🔧')+'</span><div><b>'+esc(partNames[p.id]||p.id)+'</b><small>Nível '+lv+' / 7</small></div><span class="race-part-bonus">'+Object.entries(p.benefit||{}).map(([k,v])=>'+'+v+' '+(statLabels[k]||k)).join(' • ')+'</span></div>'+
+ return '<article class="race-part"><div class="race-part-title"><img class="race-part-image" src="/assets/racing/'+esc(p.id)+'.svg" alt="" loading="lazy"><div><b>'+esc(partNames[p.id]||p.id)+'</b><small>Nível '+lv+' / 7</small></div><span class="race-part-bonus">'+Object.entries(p.benefit||{}).map(([k,v])=>'+'+v+' '+(statLabels[k]||k)).join(' • ')+'</span></div>'+
  bar(lv,7,'upgrade')+
+ (!max?'<div class="race-part-gains">'+Object.entries(p.benefit||{}).map(([k,v])=>'<span>'+esc(statLabels[k]||k)+' <b>'+num(statValues(car,r.catalog)[k])+' → '+num(statValues(car,r.catalog)[k]+Number(v))+'</b></span>').join('')+'</div>':'')+
  '<div class="race-part-action"><div>'+(max?'<span class="race-green">✓ MÁXIMO</span>':'<strong>'+brl(next?.price)+'</strong><small>⏳ '+(next?.seconds>=3600?num(next.seconds/3600)+' h':next?.seconds/60+' min')+'</small>')+'</div>'+
  (max?'':button('Melhorar','upgrade',p.id,Boolean(pending),true))+'</div></article>'
  }).join('')+'</div>'+
  '<div class="race-repair"><div><b>🧰 Revisão e reparo</b><p>Condição atual: '+car.condition+'/100. Desgaste reduz a performance e pode impedir corridas.</p>'+bar(car.condition,100,car.condition<50?'danger':'')+'</div>'+button('Reparar agora','repair','',Boolean(pending)||car.condition>=100)+'</div>'+
  '<p class="race-footnote">Preparação completa de um carro: '+brl(r.catalog.totalUpgradeCost+150000)+' (incluindo aquisição). O tempo continua passando mesmo com o aplicativo fechado.</p>'
+}
+function paintPage(ui,r){
+ const cars=r.garage.cars||[],car=cars.find(c=>String(c.id)===String(ui.racingPaintCarId))||cars.find(c=>c.equipped)||cars[0]
+ if(!car)return '<div class="race-empty"><h3>🎨 Escolha seu primeiro carro</h3><p>A pintura fica disponível após a compra.</p></div>'
+ const colors=r.catalog.colors||[],selected=colors.find(c=>c.id===ui.racingPreviewColor)||colors.find(c=>c.id===car.color_id)||colors[0]
+ return '<div class="race-section-heading"><div><small>PINTURA E PERSONALIZAÇÃO</small><h3>'+esc(models[car.model_id]?.name||'Carro')+'</h3></div><span class="race-subtle">ID #'+esc(car.id)+'</span></div>'+
+ '<div class="race-paint-layout"><div class="race-paint-stage">'+carArt(car.model_id,car.upgrades,true,selected?.hex||paintColor(r,car))+'<strong>'+esc(selected?.name||'Prata')+'</strong><small>Prévia antes de salvar • desempenho inalterado</small></div>'+
+ '<div class="race-paint-controls"><h4>Escolha seu carro</h4><div class="race-paint-cars">'+cars.map(c=>'<button type="button" class="race-paint-car '+(String(c.id)===String(car.id)?'active':'')+'" data-race-paint-car="'+esc(c.id)+'">'+esc(models[c.model_id]?.name||c.model_id)+'</button>').join('')+'</div>'+
+ '<h4>12 pinturas disponíveis</h4><div class="race-swatches">'+colors.map(c=>'<button type="button" class="race-swatch '+(selected?.id===c.id?'active':'')+'" data-race-color="'+esc(c.id)+'" aria-label="'+esc(c.name)+'"><i style="background:'+esc(c.hex)+'"></i>'+esc(c.name)+'</button>').join('')+'</div>'+
+ button('Salvar pintura','paint',car.id,!selected||selected.id===car.color_id||ui.racingBusy,true)+'<p>A pintura é gratuita e aparece também no WhatsApp.</p></div></div>'
 }
 function raceLeagues(ui,r,level,tuning){
  return '<div class="race-leagues">'+(r.catalog.tiers||[]).map(t=>{
@@ -169,17 +166,19 @@ export function renderRacing(ui){
  return '<div class="race-shell">'+
  '<header class="race-hero"><div class="race-hero-glow"></div><div class="race-hero-copy"><small>ALPHA RACING · GARAGEM OFICIAL</small><h2>CONSTRUA.<br><em>PREPARE.</em><br>VENÇA.</h2><p>Quatro carros, 42 melhorias e uma regra: desempenho de verdade custa investimento.</p>'+
  '<div class="race-hero-tags"><span>👨‍✈️ PILOTO NV.'+level+'</span><span>🔧 '+tuning+'/42</span><span>🏆 '+num(r.garage.profile?.wins||0)+' VITÓRIAS</span></div></div>'+
- '<div class="race-hero-showroom"><div class="race-hero-track"></div>'+carArt(model,equipped?.upgrades,true)+'<div class="race-hero-car-name">'+esc(display)+'<span>'+(equipped?'SEU CARRO EQUIPADO':'COMECE SUA GARAGEM')+'</span></div></div></header>'+
+ '<div class="race-hero-showroom"><div class="race-hero-track"></div>'+carArt(model,equipped?.upgrades,true,paintColor(r,equipped))+'<div class="race-hero-car-name">'+esc(display)+'<span>'+(equipped?'SEU CARRO EQUIPADO':'COMECE SUA GARAGEM')+'</span></div></div></header>'+
  '<nav class="race-tabs" aria-label="Seções da Garagem Alpha">'+
- formatTab(ui,'garage','🚗 Garagem')+formatTab(ui,'workshop','🔧 Oficina')+
- formatTab(ui,'races','🏁 Corridas')+formatTab(ui,'rank','🏆 Ranking')+'</nav>'+
- '<div class="race-inner">'+(ui.racingTab==='workshop'?workshopPage(ui,r):ui.racingTab==='races'?racesPage(ui,r):ui.racingTab==='rank'?rankPage(ui,r):garagePage(ui,r))+
+ formatTab(ui,'garage','🚗 Meus Carros')+formatTab(ui,'workshop','🔧 Oficina')+formatTab(ui,'paint','🎨 Pintura')+
+ formatTab(ui,'races','🏁 Corridas')+formatTab(ui,'rank','📜 Histórico / Ranking')+'</nav>'+
+ '<div class="race-inner">'+(ui.racingTab==='workshop'?workshopPage(ui,r):ui.racingTab==='paint'?paintPage(ui,r):ui.racingTab==='races'?racesPage(ui,r):ui.racingTab==='rank'?rankPage(ui,r):garagePage(ui,r))+
  '<div class="race-bottom"><span>🏎️ ALPHA RACING</span><button class="race-text-link" type="button" data-race-act="refresh">↻ Atualizar garagem</button><small>Sincronizado com o WhatsApp • Sem corridas automáticas no navegador</small></div></div></div>'
 }
 export function bindRacing(ui,{action,refresh,render}){
  document.querySelectorAll('[data-race-tab]').forEach(e=>e.onclick=()=>{
   ui.racingTab=e.dataset.raceTab;render()
  })
+ document.querySelectorAll('[data-race-paint-car]').forEach(e=>e.onclick=()=>{ui.racingPaintCarId=e.dataset.racePaintCar;ui.racingPreviewColor='';render()})
+ document.querySelectorAll('[data-race-color]').forEach(e=>e.onclick=()=>{ui.racingPreviewColor=e.dataset.raceColor;render()})
  document.querySelectorAll('[data-race-choice]').forEach(e=>e.onclick=()=>{
   const key=e.dataset.raceChoice
   if(key==='tier')ui.racingTier=e.dataset.raceValue
@@ -195,7 +194,9 @@ export function bindRacing(ui,{action,refresh,render}){
   if(ui.racingBusy)return
   const op=e.dataset.raceAct,arg=e.dataset.raceValue
   if(op==='refresh')return refresh(true)
+  if(op==='openPaint'){ui.racingPaintCarId=arg;ui.racingPreviewColor='';ui.racingTab='paint';render();return}
   const cfg={buy:['racing.buy',{modelId:arg}],equip:['racing.equip',{carId:arg}],upgrade:['racing.upgrade',{partId:arg}],
+   paint:['racing.paint',{carId:arg,colorId:ui.racingPreviewColor}],
    repair:['racing.repair',{}],solo:['racing.solo',{tier:ui.racingTier,track:ui.racingTrack,strategy:ui.racingStrategy}],
    challenge:['racing.challenge',{targetJid:ui.racingTarget,track:ui.racingTrack,strategy:ui.racingStrategy}],
    accept:['racing.accept',{strategy:ui.racingStrategy}],cancel:['racing.cancel',{}]}
