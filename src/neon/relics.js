@@ -1,5 +1,6 @@
 import {db,ensureUser} from './db.js'
 const RELICS={
+  insignia_primeiros_conquistadores_20261102:{name:'👑 Insígnia dos Primeiros Conquistadores',effect:'👑 +7% dano e +3 p.p. CRIT Boss/Raid; -2% dano recebido em Raid (sem PvP)',boss:0.07,raidAttack:0.07,bossCrit:0.03,raidCrit:0.03,raid:0.02},
   insignia_nem_cirurgia_derrubou_lenda:{name:'Insígnia Nem a Cirurgia Derrubou a Lenda',effect:'🦶 +1% dano contra Bosses e Raids (sem PvP)',boss:0.01,raidAttack:0.01},
   insignia_matador_titas:{name:'Insígnia Matador de Titãs',effect:'⚔️ +1% dano Boss/Raid (sem PvP)',boss:0.01,raidAttack:0.01},
   insignia_eco_ancestral:{name:'Insígnia do Eco Ancestral',effect:'🪨 +1% dano contra Bosses e Raids (sem PvP)',boss:0.01,raidAttack:0.01},

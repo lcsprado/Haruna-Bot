@@ -2,6 +2,7 @@
 // Recursos reais (dinheiro, HP do jogador e XP) não são alterados.
 import {db} from './db.js';
 import {ensureWebActionOutbox} from './web-activity-relay.js';
+import {grantFirstSiegeInsignias} from './clan-siege-first-prize.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const ACTIONS=new Set(['attack','defend','repair','spy']);
@@ -36,7 +37,9 @@ export async function ensureClanSiegeSchema(){
       "round INTEGER NOT NULL,jid TEXT NOT NULL,",
       "clan_id BIGINT NOT NULL REFERENCES clans(id) ON DELETE CASCADE,",
       "action TEXT NOT NULL CHECK(action IN ('attack','defend','repair','spy')),",
-      "submitted_at BIGINT NOT NULL,PRIMARY KEY(match_id,round,jid));"
+      "submitted_at BIGINT NOT NULL,PRIMARY KEY(match_id,round,jid));",
+      "CREATE TABLE IF NOT EXISTS alpha_siege_first_victory(",
+      "chat_jid TEXT PRIMARY KEY,match_id BIGINT NOT NULL,winner_clan_id BIGINT NOT NULL,awarded_at BIGINT NOT NULL);"
     ].join(' '));
     await ensureWebActionOutbox(db);
   })().catch(e=>{schemaPromise=null;throw e});
@@ -137,6 +140,7 @@ async function advance(conn,match){
       r.hp.blue,r.hp.red,r.repairs.blue,r.repairs.red,
       r.spy.blue,r.spy.red,r.winner,JSON.stringify(history),now(),r.finished?now():null
     ])).rows[0];
+    const prize=r.finished&&r.winner?await grantFirstSiegeInsignias(conn,updated):null;
     const winner=r.winner===null?'Empate':r.winner===String(match.blue_clan_id)?'Clã Azul':'Clã Vermelho';
     await notice(conn,match.chat_jid,[
       '🏰 *CERCO AO CASTELO — RODADA '+match.round+'/'+MAX_ROUNDS+'*',
@@ -144,7 +148,9 @@ async function advance(conn,match){
       '⚔️ Dano: azul '+r.result.blueDamage+' • vermelho '+r.result.redDamage,
       '🛡️ Defesas: '+r.result.blueDefends+' / '+r.result.redDefends,
       '🔨 Reparos: '+r.result.blueRepairs+' / '+r.result.redRepairs,
-      r.finished?'🏆 *Resultado: '+winner+'*':'⏳ Próxima rodada aberta no Web.'
+      r.finished?'🏆 *Resultado: '+winner+'*':'⏳ Próxima rodada aberta no Web.',
+      prize?'👑 *PREMIAÇÃO HISTÓRICA:* '+prize.name+' entregue aos 2 campeões. Ative em *!reliquias*.':'',
+      r.finished&&!r.winner?'🤝 Empate: a insígnia histórica permanece para a próxima guerra com vencedor.':''
     ].join('\n'));
     match=updated;
   }
@@ -206,7 +212,9 @@ export async function clanSiegeStatus(session){
   const mine=(await db.query('SELECT clan_id,role FROM clan_members WHERE jid=$1',[session.jid])).rows[0];
   let match=await openMatch(db,chat);
   if(!match)match=(await db.query("SELECT * FROM alpha_siege_matches WHERE chat_jid=$1 AND status='completed' AND ended_at>$2 ORDER BY id DESC LIMIT 1",[chat,now()-24*60*60*1000])).rows[0]||null;
+  const firstReward=(await db.query('SELECT match_id FROM alpha_siege_first_victory WHERE chat_jid=$1',[chat])).rows[0];
   return {
+    firstWarPrizeMatchId:firstReward?String(firstReward.match_id):null,
     enabled:true,myClanId:mine?String(mine.clan_id):null,isLeader:mine?.role==='leader',
     clans:teams.map(({id,name,members,linked})=>({id,name,members,linked})),
     match:await viewMatch(match,session.jid)
