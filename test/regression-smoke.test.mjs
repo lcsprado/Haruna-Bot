@@ -351,7 +351,7 @@ test('web item and pet galleries never render wrong stacked artwork',()=>{
   for(const id of ['energetico_pet','espada_madeira','espada_ferro','espada_aco','lanca_solar','excalibur','armadura_aco','bota_cacador','bota_relampago','bota_celestial','escama_vulcanica','insignia_eclipse','marca_insone','coroa_madrugada']){
     assert.ok(itemBlock.includes(id+':'), 'missing explicit artwork mapping for '+id)
   }
-  assert.ok(itemBlock.replace("if(category==='helmet') return '';",'').indexOf("return ''; ")<0,'no generic artwork resolver may silently return blank');
+  assert.ok(!itemBlock.replace("if(category==='helmet') return '';",'').includes("return '';"),'no generic artwork resolver may silently return blank');
   assert.ok(app.includes('const visual=itemFallbackVisual(item)'), 'items without a verified sprite must show a safe category fallback')
   assert.ok(app.includes('pet-image-fallback'),'exact pet images need a species-safe fallback')
   assert.ok(app.includes("classList.add(\\'pet-art-loaded\\')"),'exact pet art must hide fallback after loading')
