@@ -1461,7 +1461,7 @@ function renderCharacter(){
       '<div class="stat-strip"><span>❤️ '+num(cp.effective_hp||cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
       '<div class="character-equipment-summary">'+INVENTORY_GROUPS.filter(([key])=>EQUIPMENT_GROUP_KEYS.has(key)).map(([key,label])=>'<span>'+label+': <strong>'+equipmentSlotText(key)+'</strong></span>').join('')+'</div>'+
     '</div>'+
-    '<div class="character-grid">'+CHARACTER_ART.map(ch=>{
+    '<div class="character-grid">'+CHARACTER_ART.filter(ch=>Boolean(classRule(ch.id))||(applied&&ch.id===selected.id)).map(ch=>{
       const rule=classRule(ch.id)||{};
       const active=applied&&ch.id===selected.id;
       const locked=Boolean(activeHero)||(applied&&!active&&scrolls<1);
@@ -1498,7 +1498,7 @@ function renderPlayableHeroes(){
       '<div class="character-art collab-hero-card-art">'+(character?characterVisual(character,'character-official-art'):'')+'</div>'+
       '<div class="tag-row"><span class="tag">'+(h.owned?'Lv.'+num(h.petLevel||1)+'/100':'Bloqueado')+'</span>'+(h.active?'<span class="tag good">⚔️ ATIVO</span>':'')+'</div>'+
       '<h3>🌈 '+esc(h.name)+'</h3>'+
-      '<p>'+(h.owned?'Maestria '+num(h.masteryStage||1)+'/5 • '+num(h.masteryXp||0)+' XP':'Herói ainda não obtido')+'</p>'+
+      '<p>'+(h.owned?'✅ Personagem desbloqueado • Maestria '+num(h.masteryStage||1)+'/5 • '+num(h.masteryXp||0)+' XP':'Herói ainda não obtido')+'</p>'+
       '<button class="btn '+(h.active?'good':'primary')+'" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
       '</div>';
   }).join('');
