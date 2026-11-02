@@ -1,6 +1,6 @@
-const CACHE='alpha-rpg-pwa-20261101-racing-visual-v2';
+const CACHE='alpha-rpg-pwa-20261102-cerco-preview-v1';
 const SHELL=[
-  '/rpg','/styles.css','/app.js','/racing-ui.js','/manifest.webmanifest',
+  '/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
   '/assets/official-art-sheet.jpg',
   '/assets/alpha-fixed-art.webp',
@@ -59,7 +59,7 @@ const SHELL=[
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(async cache=>{
     // Um sprite ausente não pode bloquear a atualização de todo o app instalado.
-    const core=['/rpg','/styles.css','/app.js','/racing-ui.js'];
+    const core=['/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js'];
     await Promise.all(core.map(asset=>cache.add(asset)));
     await Promise.allSettled(SHELL.filter(asset=>!core.includes(asset)).map(asset=>cache.add(asset)));
   }).then(()=>self.skipWaiting()));
@@ -97,7 +97,7 @@ self.addEventListener('fetch',event=>{
     return;
   }
 
-  if(['/app.js','/styles.css','/manifest.webmanifest','/sw.js'].includes(url.pathname)){
+  if(['/app.js','/clan-siege-ui.js','/styles.css','/manifest.webmanifest','/sw.js'].includes(url.pathname)){
     event.respondWith(networkFirst(request));
     return;
   }
