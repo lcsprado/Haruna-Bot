@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {heroAttack,heroDefense} from '../src/neon/playable-heroes-core.js';
+import {raidAttackSkillEvents,formatRaidSkillLine} from '../src/neon/raid-skill-summary.js';
 
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
 const messages=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
@@ -14,7 +15,7 @@ test('151 ataques Ban na maestria III disparam Imortalidade 18x, Snatch 18x e Hu
     const r=heroAttack({heroId:'pecado_ban',damage:1000,hp:3900,maxHp:5982,attackIndex:n,masteryStage:3,state,
       gear:{attack:.04,defense:.04,heal:.02}});
     state=r.state;
-    for(const skill of r.banActivations||[])counts[skill]++;
+    for(const skill of raidAttackSkillEvents({heroId:'pecado_ban',attackIndex:n,masteryStage:3,result:r}))counts[skill]++;
     if(r.heal>0)positiveHeal++;
     // O bônus temporário de Snatch é limitado a 3 golpes recebidos.
     const d=heroDefense({heroId:'pecado_ban',damage:1000,state,gear:{defense:.04}});
@@ -41,11 +42,10 @@ test('na coincidência dos ataques 8 e 25 registra os três poderes sem perder n
   assert.deepEqual(x.banActivations,['Snatch','Imortalidade','Hunter Fest']);
 });
 
-test('boletim de Raid mostra somente gatilhos contados do Ban ativo',()=>{
-  assert.match(games,/for\(const skill of classHit\.banActivations\|\|\[\]\)/);
-  assert.match(games,/heroSkillActivations:p\.heroId==='pecado_ban'/);
-  assert.match(messages,/x\.activeHeroId==='pecado_ban'&&x\.heroSkillActivations/);
-  for(const name of ['Imortalidade','Snatch','Hunter Fest']){
-    assert.ok(messages.includes(name));
-  }
+test('boletim conta poderes do Ban e também de outros heróis e classes',()=>{
+  assert.match(games,/incrementRaidSkillCounts\(p\.skillActivations,raidAttackSkillEvents/);
+  assert.match(games,/incrementRaidSkillCounts\(p\.skillActivations,raidDefenseSkillEvents/);
+  assert.match(messages,/formatRaidSkillLine\(x,fmt\)/);
+  const line=formatRaidSkillLine({activeHeroId:'pecado_ban',skillActivations:{Imortalidade:18,Snatch:18,'Hunter Fest':6}});
+  assert.match(line,/Imortalidade 18× · Snatch 18× · Hunter Fest 6×/);
 });
