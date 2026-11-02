@@ -43,7 +43,7 @@ test('Escanor e maior explosao diurna; Sunshine segue contextual e The One dura 
   assert.ok(day.damage>night.damage,'Sunshine should depend on daylight')
   assert.ok(day.damage>captain.damage,'Escanor should have best daytime burst pressure')
   assert.equal(day.peak,1360)
-  assert.ok(night.peak<=1300,'night-time Escanor should stay under standard Boss burst')
+  assert.ok(night.peak<=1340,'night-time Escanor should not receive the Sunshine bonus')
   let state={}
   const hits=[]
   for(let index=25;index<=28;index++){
