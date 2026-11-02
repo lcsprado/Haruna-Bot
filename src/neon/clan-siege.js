@@ -16,7 +16,7 @@ export async function ensureClanSiegeSchema(){
     await db.query([
       "CREATE TABLE IF NOT EXISTS alpha_siege_matches(",
       "id BIGSERIAL PRIMARY KEY,chat_jid TEXT NOT NULL,",
-      "blue_clan_id BIGINT NOT NULL REFERENCES clans(id),red_clan_id BIGINT NOT NULL REFERENCES clans(id),",
+      "blue_clan_id BIGINT NOT NULL REFERENCES clans(id) ON DELETE CASCADE,red_clan_id BIGINT NOT NULL REFERENCES clans(id) ON DELETE CASCADE,",
       "created_by TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending'",
       "CHECK(status IN ('pending','active','completed','cancelled')),",
       "round INTEGER NOT NULL DEFAULT 1 CHECK(round BETWEEN 1 AND 6),round_ends_at BIGINT NOT NULL DEFAULT 0,",
@@ -30,11 +30,11 @@ export async function ensureClanSiegeSchema(){
       "ON alpha_siege_matches(chat_jid) WHERE status IN ('pending','active');",
       "CREATE TABLE IF NOT EXISTS alpha_siege_roster(",
       "match_id BIGINT NOT NULL REFERENCES alpha_siege_matches(id) ON DELETE CASCADE,",
-      "jid TEXT NOT NULL,clan_id BIGINT NOT NULL REFERENCES clans(id),PRIMARY KEY(match_id,jid));",
+      "jid TEXT NOT NULL,clan_id BIGINT NOT NULL REFERENCES clans(id) ON DELETE CASCADE,PRIMARY KEY(match_id,jid));",
       "CREATE TABLE IF NOT EXISTS alpha_siege_moves(",
       "match_id BIGINT NOT NULL REFERENCES alpha_siege_matches(id) ON DELETE CASCADE,",
       "round INTEGER NOT NULL,jid TEXT NOT NULL,",
-      "clan_id BIGINT NOT NULL REFERENCES clans(id),",
+      "clan_id BIGINT NOT NULL REFERENCES clans(id) ON DELETE CASCADE,",
       "action TEXT NOT NULL CHECK(action IN ('attack','defend','repair','spy')),",
       "submitted_at BIGINT NOT NULL,PRIMARY KEY(match_id,round,jid));"
     ].join(' '));
