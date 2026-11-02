@@ -648,24 +648,25 @@ test('!perfil utiliza somente o formatador visual; !status e combate não são a
   assert.doesNotMatch(ui,/CONTRIBUIÇÃO DO PET NO PVP|DANO EXTRA RAID|DANO EXTRA BOSS/);
 });
 
-test('!heroi atributos exibe os poderes da maestria liberada e nunca o Paladino',async()=>{
-  process.env.DATABASE_URL ||= 'postgres://unit:unit@127.0.0.1:5432/unit';
-  const {formatCharacterBaseStatus,formatPlayableHeroMasteryEffects}=await import('../src/neon/playable-heroes.js');
-  const profile={class_id:'paladin',class_applied:true};
+test('!heroi atributos exibe maestria liberada sem mostrar Paladino',async()=>{
+  const {formatPlayableHeroMasteryEffects}=await import('../src/neon/hero-mastery-format.js');
+  const heroSource=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   const sheet={
     heroId:'pecado_ban',name:'Ban',role:'Lutador • sobrevivência',range:'Corpo a corpo',
     heroLevel:100,masteryStage:3,masteryXp:2040,skill:'Snatch',
     baseWithoutGear:{maxHp:3958,atk:886,def:497,spd:436}
   };
-  const message=formatCharacterBaseStatus({profile,heroSheet:sheet,awakeningStage:4});
-  assert.match(message,/STATUS BASE — BAN/);
-  assert.match(message,/Maestria: \*3\/5\* \(2040 XP\)/);
+  // O formatador da ficha-base usa a mesma ficha sem equipamentos e acrescenta poderes ativos.
+  assert.match(heroSource,/return formatPlayableHeroBaseSheet\(heroSheet\);/);
+  assert.match(heroSource,/\.\.\.formatPlayableHeroMasteryEffects\(sheet\)/);
+  assert.doesNotMatch(heroSource,/formatSavedAwakeningForActiveHero\(profile,awakeningStage\)/);
+  assert.match(heroSource,/STATUS BASE — /);
+  const message=formatPlayableHeroMasteryEffects(sheet).join('\n');
+  assert.match(message,/MAESTRIA III — PODERES LIBERADOS/);
   for(const power of ['Imortalidade','Snatch','Hunter Fest','Boss/Raid','PvP','Próxima maestria IV']){
     assert.ok(message.includes(power),'poder ou seção ausente: '+power);
   }
-  for(const excluded of ['Paladino','Despertar','Maestria IV —','Maestria V —','equipamento equipado']){
-    assert.ok(!message.includes(excluded),'informação indevida: '+excluded);
-  }
+  assert.doesNotMatch(message,/Paladino|Despertar|✅ IV|✅ V/);
   assert.match(message,/faltam 1\.460 XP/);
   const stage1=formatPlayableHeroMasteryEffects({...sheet,masteryStage:1}).join('\n');
   assert.match(stage1,/Imortalidade/);
@@ -680,15 +681,13 @@ test('!heroi atributos exibe os poderes da maestria liberada e nunca o Paladino'
 });
 
 test('todos os sete heróis descrevem as habilidades efetivamente desbloqueadas',async()=>{
-  process.env.DATABASE_URL ||= 'postgres://unit:unit@127.0.0.1:5432/unit';
-  const {formatPlayableHeroMasteryEffects}=await import('../src/neon/playable-heroes.js');
-  const {PLAYABLE_HERO_IDS}=await import('../src/neon/playable-heroes-core.js');
+  const {formatPlayableHeroMasteryEffects}=await import('../src/neon/hero-mastery-format.js');
   for(const heroId of PLAYABLE_HERO_IDS){
     for(const masteryStage of [1,2,3,4,5]){
-      const text=formatPlayableHeroMasteryEffects({heroId,masteryStage,masteryXp:7000}).join('\n');
-      assert.match(text,/Boss\/Raid/);
-      assert.match(text,/PvP/);
-      assert.equal((text.match(/✅ /g)||[]).length,2*masteryStage,heroId+' stage '+masteryStage);
+      const message=formatPlayableHeroMasteryEffects({heroId,masteryStage,masteryXp:7000}).join('\n');
+      assert.match(message,/Boss\/Raid/);
+      assert.match(message,/PvP/);
+      assert.equal((message.match(/✅ /g)||[]).length,2*masteryStage,heroId+' stage '+masteryStage);
     }
   }
 });
