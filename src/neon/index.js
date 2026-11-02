@@ -1347,6 +1347,13 @@ return {jid:phoneJid || canonicalPlayerJid(jid),aliases:[...aliases]}
 async function resolvePlayerJid(sock,chat,jid,msg=null) {
 return (await resolvePlayerIdentity(sock,chat,jid,msg)).jid
 }
+async function resolveClanInviteTarget(sock,chat,mention,msg){
+const identity=await resolvePlayerIdentity(sock,chat,mention,msg)
+if(!String(identity?.jid||'').endsWith('@s.whatsapp.net')){
+throw new Error('Não consegui identificar a conta da pessoa marcada. Peça que ela envie !perfil no grupo e tente novamente.')
+}
+return identity.jid
+}
 async function resolvePixRecipient(sock,chat,mention,msg){
 const identity=await resolvePlayerIdentity(sock,chat,mention,msg)
 // Never create a wallet under an opaque LID. A missing phone mapping must fail closed.
@@ -8942,7 +8949,7 @@ await reply('🏴 Digite agora o *nome do clã* que deseja criar.\n💰 Custo: R
 return true
 }
 if(input==='2'){
-const r=await acceptClanInvite(sender)
+const r=await acceptClanInvite(sender,senderIdentity.aliases)
 clearQuickFlow(chat,sender)
 await reply(`🏴 Você entrou no clã *${r.name}*!`)
 return true
@@ -9053,7 +9060,8 @@ if(!target){
 await reply('🏴 Marque alguém usando @.')
 return true
 }
-const r=await inviteToClan(sender,target)
+const resolvedTarget=await resolveClanInviteTarget(sock,chat,target,msg)
+const r=await inviteToClan(sender,resolvedTarget)
 clearQuickFlow(chat,sender)
 await reply(`🏴 Convite enviado para entrar no clã *${r.clan.name}*.`,{mentions:[target]})
 return true
@@ -12048,13 +12056,14 @@ if(!target){
 setQuickFlow(chat,sender,'clan_invite_target',{},90000)
 return await reply('🏴 Marque agora a pessoa que deseja convidar.')
 }
-const r=await inviteToClan(sender,target)
+const resolvedTarget=await resolveClanInviteTarget(sock,chat,target,msg)
+const r=await inviteToClan(sender,resolvedTarget)
 await reply(
 `🏴 Convite enviado para entrar no clã *${r.clan.name}*.\nA pessoa deve usar *${prefix}claaceitar* em até 24h.`,
 {mentions:[target]}
 )
 } else if(['claaceitar','clãaceitar','aceitarcla'].includes(cmd)){
-const r=await acceptClanInvite(sender)
+const r=await acceptClanInvite(sender,senderIdentity.aliases)
 await reply(`🏴 Você entrou no clã *${r.name}*!`)
 } else if(['clapromover','clãpromover'].includes(cmd)){
 const target=mentionsOf(msg)[0]
