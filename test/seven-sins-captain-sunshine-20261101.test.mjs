@@ -71,6 +71,7 @@ test('PvP conta contra-ataque Meliodas e explosao Escanor, sem ultrapassar 8%',(
     masteryStage:2})
   assert.equal(prepared.state.counterReady,true)
   const struck=heroPvpDefense({heroId:'pecado_meliodas',damage:350,state:prepared.state})
+  assert.ok(struck.damage<350&&struck.damage>=315,'Full Counter mitigation must be positive and bounded')
   const counter=heroPvpAttack({heroId:'pecado_meliodas',damage:1000,attackIndex:4,
     masteryStage:2,state:struck.state})
   assert.equal(counter.technique,'Full Counter')
