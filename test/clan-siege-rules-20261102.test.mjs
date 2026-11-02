@@ -106,6 +106,6 @@ test('cerco: preflight exige 2 clãs com exatamente 2 jogadores vinculados e aut
 test('cerco: desafio e aceite exigem os quatro JIDs autorizados no beta',()=>{
   const challenge=source.split('export async function clanSiegeChallenge(session)')[1]?.split('export async function clanSiegeAccept(session)')[0]||'';
   const accept=source.split('export async function clanSiegeAccept(session)')[1]?.split('export async function clanSiegeMove(session,action)')[0]||'';
-  assert.match(challenge,/analyzeSiegeEligibility\(teams,betaAuthorizedJids\(\)\)\.ready/);
-  assert.match(accept,/analyzeSiegeEligibility\(teams,betaAuthorizedJids\(\)\)\.ready/);
+  assert.match(challenge,/analyzeSiegeEligibility\(teams,await siegeBetaAuthorizedSet\(conn\)\)\.ready/);
+  assert.match(accept,/analyzeSiegeEligibility\(teams,await siegeBetaAuthorizedSet\(conn\)\)\.ready/);
 });
