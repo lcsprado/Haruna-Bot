@@ -3,6 +3,7 @@
 import {db} from './db.js';
 import {ensureWebActionOutbox} from './web-activity-relay.js';
 import {grantFirstSiegeInsignias} from './clan-siege-first-prize.js';
+import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const ACTIONS=new Set(['attack','defend','repair','spy']);
@@ -71,7 +72,7 @@ async function eligible(conn,chat){
   return (await conn.query(q,[chat,now()])).rows.map(r=>({...r,id:String(r.id),jids:r.jids||[]}));
 }
 // Read-only readiness: no personal JIDs leave the server. Shared with status and logs.
-const betaAuthorizedJids=()=>new Set(String(process.env.ALPHA_WEB_BETA_JIDS||'').split(',').map(x=>x.trim()).filter(Boolean));
+
 export function analyzeSiegeEligibility(teams,authorizedJids=[]){
   const allowed=authorizedJids instanceof Set?authorizedJids:new Set(authorizedJids);
   const overview=(Array.isArray(teams)?teams:[]).map(team=>({
@@ -88,7 +89,7 @@ export async function clanSiegePreflight(){
   const chat=siegeGroup();
   if(!/^[0-9-]+@g\.us$/.test(chat))return {configured:false,ready:false,teams:[]};
   const teams=await eligible(db,chat);
-  return {configured:true,...analyzeSiegeEligibility(teams,betaAuthorizedJids())};
+  return {configured:true,...analyzeSiegeEligibility(teams,await siegeBetaAuthorizedSet(db))};
 }
 
 async function openMatch(conn,chat,locked=false){
@@ -254,7 +255,7 @@ export async function clanSiegeChallenge(session){
     const existing=await openMatch(conn,chat,true);
     if(existing)throw new Error('Já existe uma guerra pendente ou ativa.');
     const teams=await eligible(conn,chat);
-    if(!analyzeSiegeEligibility(teams,betaAuthorizedJids()).ready)
+    if(!analyzeSiegeEligibility(teams,await siegeBetaAuthorizedSet(conn)).ready)
       throw new Error('Antes de desafiar: os quatro membros precisam usar !web no AlphaBot e ter autorização no Web beta.');
     const mine=teams.find(x=>x.jids.includes(session.jid));
     const opponent=teams.find(x=>x.id!==mine?.id);
@@ -281,7 +282,7 @@ export async function clanSiegeAccept(session){
       throw new Error('Somente o líder do clã desafiado pode aceitar.');
     const teams=await eligible(conn,chat);
     const roster=(await conn.query('SELECT jid,clan_id FROM alpha_siege_roster WHERE match_id=$1',[match.id])).rows;
-    if(!analyzeSiegeEligibility(teams,betaAuthorizedJids()).ready||roster.length!==4||
+    if(!analyzeSiegeEligibility(teams,await siegeBetaAuthorizedSet(conn)).ready||roster.length!==4||
        roster.some(r=>!teams.some(t=>t.id===String(r.clan_id)&&t.jids.includes(r.jid))))
       throw new Error('Escalação modificada. Todos devem renovar !web antes de iniciar.');
     await conn.query("UPDATE alpha_siege_matches SET status='active',round_ends_at=$2,updated_at=$3 WHERE id=$1",[match.id,now()+ROUND_MS,now()]);
