@@ -1,8 +1,9 @@
 import {db,ensureUser,getProfile,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
-import {formatActiveClassBaseStatus,formatSavedAwakeningForActiveHero} from './character-base-status-format.js'
-import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_PVP_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
+import {formatActiveClassBaseStatus} from './character-base-status-format.js'
+import {formatPlayableHeroMasteryEffects} from './hero-mastery-format.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
@@ -100,30 +101,6 @@ const heroDifference=(a,b)=>['hp','atk','def','spd'].map(key=>{
   const value=Number(a?.[key]||0)-Number(b?.[key]||0);
   return (value>=0?'+':'')+heroNumbers(value);
 });
-// Exibe SOMENTE poderes de maestria efetivamente liberados (não por XP acumulado).
-// Os detalhes de Boss/Raid e PvP são distintos; não somar bônus a atributos base.
-export function formatPlayableHeroMasteryEffects(sheet){
-  if(!sheet)return [];
-  const guide=HERO_SKILL_GUIDE[sheet.heroId],pvp=HERO_PVP_SKILL_GUIDE[sheet.heroId];
-  if(!guide||!pvp)return [];
-  const stage=Math.max(1,Math.min(5,Math.floor(Number(sheet.masteryStage)||1)));
-  const roman=['I','II','III','IV','V'],keys=['passive','special','ultimate'];
-  const lines=['','🌟 *MAESTRIA '+roman[stage-1]+' — PODERES LIBERADOS*','⚔️ *Boss/Raid*'];
-  for(let i=0;i<Math.min(stage,3);i++)lines.push('✅ '+roman[i]+' — '+guide[keys[i]]);
-  if(stage>=4)lines.push('✅ IV — +1% de dano (respeitando o teto de combate).');
-  if(stage>=5)lines.push('✅ V — +1% adicional de dano (respeitando o teto de combate).');
-  lines.push('','🏟️ *PvP — versões limitadas*');
-  for(let i=0;i<Math.min(stage,3);i++)lines.push('✅ '+roman[i]+' — '+pvp[keys[i]]);
-  if(stage>=4)lines.push('✅ IV — +0,5% de dano (respeitando o limite por ataque).');
-  if(stage>=5)lines.push('✅ V — +0,5% adicional de dano (respeitando o limite por ataque).');
-  const next=heroMasteryNext(stage);
-  if(next)lines.push('','🔓 *Próxima maestria '+roman[next.stage-1]+':* '+
-    heroNumbers(next.xp)+' XP + R$ '+heroNumbers(next.cost)+
-    ' • faltam '+heroNumbers(Math.max(0,next.xp-Number(sheet.masteryXp||0)))+' XP.');
-  else lines.push('','🏆 Maestria máxima liberada.');
-  return lines;
-}
-
 // !perfil e !status mostram o combatente COMPLETO: evolução, equipamentos
 // e encantamentos, exatamente como no combate real (sem detalhar a fórmula).
 export function formatPlayableHeroCombatSheet(sheet){
