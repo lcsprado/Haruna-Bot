@@ -5,6 +5,7 @@ import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExp
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
+import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
@@ -1411,8 +1412,8 @@ async function finishRaidRewards(c,s,cfg,chat){
     rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),petBonusDamage:Number(p.petBonusDamage||0),petSkillHealing:Number(p.petSkillHealing||0),classHealing:Number(p.classHealing||0),
       classHealingActivations:Number(p.classHealingActivations||0),
       classHealingOpportunities:Number(p.classHealingOpportunities||0),
-      playerClassId:p.classId,activeHeroId:p.heroId||null,
-      heroAttacks:Number(p.heroAttacks||0),heroSkillActivations:p.heroId==='pecado_ban'?{...(p.banSkillActivations||{})}:null,
+      playerClassId:p.classId,playerClassApplied:Boolean(p.classApplied),activeHeroId:p.heroId||null,
+      skillActivations:{...(p.skillActivations||{})},skillTrackingPartial:Boolean(p.skillTrackingPartial),
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
       share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
@@ -1556,14 +1557,21 @@ export async function raidRound(chat,level){
       const classHit=p.heroId
         ?{...heroAttack({heroId:p.heroId,damage:baseDmg,hp:p.hp,maxHp:p.maxHp,attackIndex:heroAttackIndex,context:'raid',state:p.heroState,masteryStage:p.heroMasteryStage,gear:p.heroGear}),lastProcAttack:p.classLastProcAttack,awakeningState:p.awakeningState}
         :classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
-      if(p.heroId){
-        p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;
-        if(p.heroId==='pecado_ban'){
-          const counters=p.banSkillActivations||{};
-          for(const skill of classHit.banActivations||[])counters[skill]=Number(counters[skill]||0)+1;
-          p.banSkillActivations=counters;
-        }
+      // Sala iniciada antes da atualização: preservar contadores anteriores do Ban
+      // e avisar sobre contagem parcial quando houve ataques sem telemetria.
+      if(!p.skillActivations){
+        const oldBan=p.heroId==='pecado_ban'&&p.banSkillActivations
+        p.skillActivations=oldBan?{...p.banSkillActivations}:{}
+        p.skillTrackingPartial=!oldBan&&Number(p.damage||0)>0
       }
+      // Gatilhos realmente executados pelo motor, tanto de heróis quanto de classes.
+      p.skillActivations=incrementRaidSkillCounts(p.skillActivations,raidAttackSkillEvents({
+        heroId:p.heroId,classId:p.classId,classApplied:p.classApplied,
+        masteryStage:p.heroMasteryStage,awakeningStage:p.awakeningStage,
+        attackIndex:p.heroId?heroAttackIndex:s.round,critical:crit,hp:p.hp,maxHp:p.maxHp,
+        previousState:p.awakeningState,result:classHit
+      }))
+      if(p.heroId){p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;}
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
       const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
@@ -1659,6 +1667,10 @@ export async function raidRound(chat,level){
       const passiveDefense=p.heroId
         ?{...heroDefense({heroId:p.heroId,damage:protectedDamage,state:p.heroState,gear:p.heroGear}),awakeningState:p.awakeningState}
         :classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      p.skillActivations=incrementRaidSkillCounts(p.skillActivations,raidDefenseSkillEvents({
+        heroId:p.heroId,classId:p.classId,classApplied:p.classApplied,
+        awakeningStage:p.awakeningStage,previousState:p.awakeningState,result:passiveDefense
+      }))
       if(p.heroId)p.heroState=passiveDefense.state
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
