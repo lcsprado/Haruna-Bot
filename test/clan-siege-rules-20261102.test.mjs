@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 // Inspeciona o módulo de regras sem inicializar pg.Pool nem exigir DATABASE_URL no CI.
 const source=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
 const pure=source.replace(/^import .*;\s*$/gm,'');
-const {resolveSiegeRound,isClanSiegeEnabled}=await import('data:text/javascript;charset=utf-8,'+encodeURIComponent(pure));
+const {resolveSiegeRound,isClanSiegeEnabled,analyzeSiegeEligibility}=await import('data:text/javascript;charset=utf-8,'+encodeURIComponent(pure));
 
 function match(overrides={}){
   return {blue_clan_id:'1',red_clan_id:'2',blue_hp:2000,red_hp:2000,
@@ -81,4 +81,23 @@ test('cerco: exige chave e JID exato do grupo AlphaBot',()=>{
     if(priorGroup===undefined)delete process.env.ALPHA_CLAN_SIEGE_GROUP_JID;
     else process.env.ALPHA_CLAN_SIEGE_GROUP_JID=priorGroup;
   }
+});
+
+test('cerco: preflight exige 2 clãs com exatamente 2 jogadores vinculados e autorizados',()=>{
+  const rows=[
+    {id:1,name:'Alpha',members:2,linked:2,jids:['lp','augusto']},
+    {id:2,name:'Rivais',members:2,linked:2,jids:['joao','kaique']}
+  ];
+  const good=analyzeSiegeEligibility(rows,new Set(['lp','augusto','joao','kaique']));
+  assert.equal(good.ready,true);
+  assert.equal(good.authorizedPlayers,4);
+  assert.equal(good.linkedPlayers,4);
+  assert.equal(JSON.stringify(good).includes('lp'),false);
+  const missing=analyzeSiegeEligibility(rows,new Set(['lp','joao','kaique']));
+  assert.equal(missing.ready,false);
+  assert.equal(missing.authorizedPlayers,3);
+  const disconnected=analyzeSiegeEligibility([{...rows[0],linked:1},rows[1]],new Set(['lp','augusto','joao','kaique']));
+  assert.equal(disconnected.ready,false);
+  const extra=analyzeSiegeEligibility([...rows,{id:3,name:'Terceiro',members:2,linked:2,jids:['x','y']}],new Set(['lp','augusto','joao','kaique','x','y']));
+  assert.equal(extra.ready,false);
 });
