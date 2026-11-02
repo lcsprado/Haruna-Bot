@@ -561,9 +561,26 @@ async function playerBootstrap(session){
                        WHERE ge.chat_jid=$1`,[chatJid]).then(r=>r.rows?.[0]||null):Promise.resolve(null),
     getClaimedLevelRewards(jid)
   ])
+  // Só os integrantes do próprio clã entram na lista de administração.
+  // Convites mostram exclusivamente jogadores recentes que ainda não possuem clã.
+  const clanMembers=clan?(await db.query(`
+    SELECT cm.jid,cm.role,COALESCE(NULLIF(u.push_name,''),'Jogador') AS push_name
+    FROM clan_members cm LEFT JOIN users u ON u.jid=cm.jid
+    WHERE cm.clan_id=$1
+    ORDER BY CASE WHEN cm.role='leader' THEN 0 ELSE 1 END,u.push_name,cm.jid
+  `,[clan.id])).rows:[]
+  let clanInvitable=[]
+  if(clan?.role==='leader' && chatJid){
+    const recent=(await weeklyActivityLeaderboard(chatJid,20)).filter(r=>r.jid&&r.jid!==jid)
+    if(recent.length){
+      const claimed=(await db.query('SELECT jid FROM clan_members WHERE jid=ANY($1::text[])',[recent.map(r=>r.jid)])).rows
+      const occupied=new Set(claimed.map(r=>r.jid))
+      clanInvitable=recent.filter(r=>!occupied.has(r.jid)).map(r=>({jid:r.jid,push_name:r.push_name||'Jogador'}))
+    }
+  }
   return {
     syncedAt:now(),
-    market,clan,clans,ranks,loanCredit,carpinarPlans,
+    market,clan,clans,clanMembers,clanInvitable,ranks,loanCredit,carpinarPlans,
     leaderboards:{
       economy:economyRank,
       combat:combatRank,
