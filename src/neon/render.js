@@ -1,6 +1,7 @@
 import http from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { handleWebApi } from './web-api.js'
+import {settleClanSiege,isClanSiegeEnabled} from './clan-siege.js'
 
 const port = Number(process.env.PORT || 10000)
 // Railway can serve the game API without starting a second WhatsApp client.
@@ -93,6 +94,15 @@ http.createServer(async (req, res) => {
 }).listen(port, '0.0.0.0', () => {
   console.log('[HTTP] ' + (apiOnly ? 'Alpha Web API' : 'Alpha Bot') + ' listening on port ' + port)
 })
+
+// Server-side timeout: rounds finish with every player's browser closed.
+if(apiOnly){
+  const sweep=setInterval(()=>{
+    if(!isClanSiegeEnabled())return
+    void settleClanSiege().catch(err=>console.warn('[Cerco] Rodada pendente:',String(err?.message||err).slice(0,160)))
+  },15000)
+  sweep.unref?.()
+}
 
 if(!apiOnly) await import('./index.js')
 else console.log('[Runtime] Web API isolada: conexão WhatsApp desativada.')

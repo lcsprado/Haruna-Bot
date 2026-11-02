@@ -1,0 +1,38 @@
+name: Alpha Web - Cerco ao Castelo
+on:
+  pull_request:
+    branches:
+      - feat/web-aiven-beta-protegido-20261021
+    paths:
+      - 'src/neon/clan-siege.js'
+      - 'src/neon/web-api.js'
+      - 'src/neon/render.js'
+      - 'test/clan-siege-rules-20261102.test.mjs'
+      - '.github/workflows/alpha-clan-siege.yml'
+  push:
+    branches:
+      - feat/alpha-web-api-cerco-protegido-20261102
+    paths:
+      - 'src/neon/clan-siege.js'
+      - 'src/neon/web-api.js'
+      - 'src/neon/render.js'
+      - 'test/clan-siege-rules-20261102.test.mjs'
+      - '.github/workflows/alpha-clan-siege.yml'
+permissions:
+  contents: read
+jobs:
+  siege-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate syntax
+        run: |
+          node --check src/neon/clan-siege.js
+          node --check src/neon/web-api.js
+          node --check src/neon/render.js
+      - name: Test combat and disabled-by-default policy
+        run: node --test test/clan-siege-rules-20261102.test.mjs
