@@ -2973,6 +2973,7 @@ const defense=to.heroId
   ?heroPvpDefense({heroId:to.heroId,damage:dodged?0:attack.damage,state:heroDefenseStateBefore,gear:to.heroGear})
   :classPvpDefense(defenseArgs);
 const classDamage=defense.damage;
+const fullyDodged=dodged||Boolean(defense.dodged);
 const withoutPetClassDamage=noPetAttack===attack?classDamage:
   (to.heroId?heroPvpDefense({heroId:to.heroId,damage:dodged?0:noPetAttack.damage,state:heroDefenseStateBefore,gear:to.heroGear}).damage:
     classPvpDefense({...defenseArgs,damage:dodged?0:noPetAttack.damage}).damage);
@@ -2990,8 +2991,8 @@ const classHealBefore=from.hp
 if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
 const classHealed=Math.max(0,from.hp-classHealBefore)
 log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
-actualDamage:targetHpBefore-to.hp,crit:!dodged&&crit,dodged,hp:to.hp,
-petExtraDamage,petDamageBlocked,defenseBlocked,shieldAbsorbed:Number(defense.shieldAbsorbed||0),petCrit:!dodged&&petCrit,petDodge:dodged,
+actualDamage:targetHpBefore-to.hp,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:to.hp,
+petExtraDamage,petDamageBlocked,defenseBlocked,shieldAbsorbed:Number(defense.shieldAbsorbed||0),petCrit:!fullyDodged&&petCrit,petDodge:dodged,
   ...(attack.technique?{heroTechnique:from.heroId?attack.technique:undefined,classTechnique:!from.heroId?attack.technique:undefined,heroId:from.heroId}:{} ),
   ...(defense.technique?{defenseTechnique:defense.technique}:{} )})
 if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
