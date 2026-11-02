@@ -1413,7 +1413,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       classHealingActivations:Number(p.classHealingActivations||0),
       classHealingOpportunities:Number(p.classHealingOpportunities||0),
       playerClassId:p.classId,playerClassApplied:Boolean(p.classApplied),activeHeroId:p.heroId||null,
-      skillActivations:{...(p.skillActivations||{})},
+      skillActivations:{...(p.skillActivations||{})},skillTrackingPartial:Boolean(p.skillTrackingPartial),
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
       share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
@@ -1557,6 +1557,13 @@ export async function raidRound(chat,level){
       const classHit=p.heroId
         ?{...heroAttack({heroId:p.heroId,damage:baseDmg,hp:p.hp,maxHp:p.maxHp,attackIndex:heroAttackIndex,context:'raid',state:p.heroState,masteryStage:p.heroMasteryStage,gear:p.heroGear}),lastProcAttack:p.classLastProcAttack,awakeningState:p.awakeningState}
         :classAttack({classId:p.classId,applied:p.classApplied,damage:baseDmg,critical:crit,hp:p.hp,maxHp:p.maxHp,attackIndex:s.round,context:'raid',lastProcAttack:p.classLastProcAttack||0,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      // Sala iniciada antes da atualização: preservar contadores anteriores do Ban
+      // e avisar sobre contagem parcial quando houve ataques sem telemetria.
+      if(!p.skillActivations){
+        const oldBan=p.heroId==='pecado_ban'&&p.banSkillActivations
+        p.skillActivations=oldBan?{...p.banSkillActivations}:{}
+        p.skillTrackingPartial=!oldBan&&Number(p.damage||0)>0
+      }
       // Gatilhos realmente executados pelo motor, tanto de heróis quanto de classes.
       p.skillActivations=incrementRaidSkillCounts(p.skillActivations,raidAttackSkillEvents({
         heroId:p.heroId,classId:p.classId,classApplied:p.classApplied,
