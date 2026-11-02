@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveSiegeRound,isClanSiegeEnabled} from '../src/neon/clan-siege.js';
+import {readFileSync} from 'node:fs';
+// Inspeciona o módulo de regras sem inicializar pg.Pool nem exigir DATABASE_URL no CI.
+const source=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
+const pure=source.replace(/^import .*;\s*$/gm,'');
+const {resolveSiegeRound,isClanSiegeEnabled}=await import('data:text/javascript;charset=utf-8,'+encodeURIComponent(pure));
 
 function match(overrides={}){
   return {blue_clan_id:'1',red_clan_id:'2',blue_hp:2000,red_hp:2000,
