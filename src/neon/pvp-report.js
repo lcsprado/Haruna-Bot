@@ -61,6 +61,7 @@ export function formatPvpBattleReport(r){
       lines.push(`${prefix}${name(e.from)} → ${name(e.to)}: *${fmt(e.dmg)} dano* — ❤️ ${fmt(e.hp)}`)
       if(e.heroTechnique)lines.push(`✨ Técnica: *${name(e.heroTechnique)}* — ${name(e.from)}`)
     }
+    if(e.defenseTechnique)lines.push(`🛡️ ${name(e.to)} ativou *${name(e.defenseTechnique)}* • mitigação defensiva total no golpe: ${fmt(e.defenseBlocked)} dano`)
   }
   for(const p of [attacker,defender].filter(Boolean)){
     if(p.heroId==='pecado_ban'){
