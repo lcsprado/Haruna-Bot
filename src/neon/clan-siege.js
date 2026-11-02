@@ -201,7 +201,8 @@ export async function clanSiegeStatus(session){
   await ensureClanSiegeSchema();await settleClanSiege(chat);
   const teams=await eligible(db,chat);
   const mine=(await db.query('SELECT clan_id,role FROM clan_members WHERE jid=$1',[session.jid])).rows[0];
-  const match=await openMatch(db,chat);
+  let match=await openMatch(db,chat);
+  if(!match)match=(await db.query("SELECT * FROM alpha_siege_matches WHERE chat_jid=$1 AND status='completed' AND ended_at>$2 ORDER BY id DESC LIMIT 1",[chat,now()-24*60*60*1000])).rows[0]||null;
   return {
     enabled:true,myClanId:mine?String(mine.clan_id):null,isLeader:mine?.role==='leader',
     clans:teams.map(({id,name,members,linked})=>({id,name,members,linked})),
@@ -271,8 +272,8 @@ export async function clanSiegeMove(session,action){
     if(action==='repair'){
       const side=String(player.clan_id)===String(match.blue_clan_id)?'blue':'red';
       const already=(await conn.query(
-        "SELECT COUNT(*)::int AS n FROM alpha_siege_moves WHERE match_id=$1 AND clan_id=$2 AND action='repair'",
-        [match.id,player.clan_id])).rows[0];
+        "SELECT COUNT(*)::int AS n FROM alpha_siege_moves WHERE match_id=$1 AND round=$3 AND clan_id=$2 AND action='repair'",
+        [match.id,player.clan_id,match.round])).rows[0];
       if(Number(match[side+'_repairs'])+Number(already.n)>=MAX_REPAIR)
         throw new Error('O clã já atingiu o limite de reparos.');
     }
