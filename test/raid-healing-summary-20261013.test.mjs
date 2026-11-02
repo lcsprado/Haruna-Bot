@@ -11,12 +11,12 @@ test('Cura na Raid registra HP recuperado efetivamente, sem excesso',()=>{
   assert.match(raid,/p\.petPotionHealing=Number\(p\.petPotionHealing\|\|0\)\+Math\.max\(0,Number\(p\.pet\.hp\)-beforePetHeal\)/)
   assert.match(raid,/p\.petSkillHealing=Number\(p\.petSkillHealing\|\|0\)\+healed/)
 })
-test('Relatório inclui todas as fontes de cura e informa zero',()=>{
+test('Relatório inclui todas as fontes de cura e omite bloco vazio',()=>{
   for(const field of ['petSkillHealing','classHealing','potionHealing','potionUses','petPotionHealing','petPotionUses']){
     assert.ok(raid.includes(field+':Number(p.'),'sem recompensa: '+field)
     assert.ok((index+healing).includes('x.'+field),'sem visualização: '+field)
   }
-  assert.match(healing,/Cura recebida: \*0 HP\* \(nenhuma cura ativada\)/)
+  assert.match(healing,/if\(total<=0\)return ''/)
   assert.match(index,/formatRaidPlayerHealing\(x,fmt\)/)
 })
 test('Não altera fórmulas de XP, dinheiro, drops ou condição de ativação da cura',()=>{
