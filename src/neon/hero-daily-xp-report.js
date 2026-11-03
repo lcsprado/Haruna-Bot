@@ -34,10 +34,10 @@ export function formatHeroDailyXpReport({heroes=[],awards=[],playerLevel=1,nowMs
     if(hero.active)activeFinished=finished
     lines.push('',(hero.active?'⚔️ ':'🌈 ')+ '*' +hero.name.toUpperCase()+'*'+
       (hero.active?' — ATIVO':'')+' • Nv.'+heroLevel+'/100 • Maestria '+whole(hero.masteryStage)+'/5')
-    lines.push('⭐ Nível hoje: *'+(levelMax?fmt(earnedLevel)+' XP (nível máximo)':
-      fmt(earnedLevel)+'/'+fmt(policy.dailyCap)+' XP* • faltam *'+fmt(remainingLevel)+' XP'))
-    lines.push('🏅 Maestria hoje: *'+(masteryMax?fmt(earnedMastery)+' XP (XP máximo)':
-      fmt(earnedMastery)+'/'+fmt(masteryCap)+' XP* • faltam *'+fmt(remainingMastery)+' XP'))
+    lines.push('⭐ Nível hoje: '+(levelMax?'*'+fmt(earnedLevel)+' XP* • nível máximo':
+      '*'+fmt(earnedLevel)+'/'+fmt(policy.dailyCap)+' XP* • faltam *'+fmt(remainingLevel)+' XP*'))
+    lines.push('🏅 Maestria hoje: '+(masteryMax?'*'+fmt(earnedMastery)+' XP* • XP máximo':
+      '*'+fmt(earnedMastery)+'/'+fmt(masteryCap)+' XP* • faltam *'+fmt(remainingMastery)+' XP*'))
     const last=Math.max(whole(levelRow?.last_award),whole(masteryRow?.last_award))
     if(last)lines.push('🕐 Último XP creditado hoje: '+timeBR(last))
     lines.push(finished?'✅ Sem XP adicional para farmar hoje':'🟢 Ainda pode farmar XP')
