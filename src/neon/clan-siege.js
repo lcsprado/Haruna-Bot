@@ -4,6 +4,7 @@ import {db} from './db.js';
 import {ensureWebActionOutbox} from './web-activity-relay.js';
 import {grantFirstSiegeInsignias} from './clan-siege-first-prize.js';
 import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
+import {ensureClanFortressSchema,clanFortressCombatSnapshot,clanFortressStatus,clanFortressUpgrade} from './clan-fortress.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const TEAM_TACTICS_VERSION=2; // novas guerras apenas; partidas antigas preservam regras v1
@@ -57,6 +58,16 @@ export async function ensureClanSiegeSchema(){
     ].join(' '));
     // Migração idempotente: partidas existentes permanecem na regra antiga.
     await db.query('ALTER TABLE alpha_siege_matches ADD COLUMN IF NOT EXISTS rules_version INTEGER NOT NULL DEFAULT 1');
+    await db.query("ALTER TABLE alpha_siege_matches ADD COLUMN IF NOT EXISTS blue_fortress JSONB, ADD COLUMN IF NOT EXISTS red_fortress JSONB");
+    // Alarga apenas o teto do HP da fortaleza (não altera HP de personagens).
+    await db.query([
+      'BEGIN;',
+      'ALTER TABLE alpha_siege_matches DROP CONSTRAINT IF EXISTS alpha_siege_matches_blue_hp_check;',
+      'ALTER TABLE alpha_siege_matches DROP CONSTRAINT IF EXISTS alpha_siege_matches_red_hp_check;',
+      'ALTER TABLE alpha_siege_matches ADD CONSTRAINT alpha_siege_matches_blue_hp_check CHECK(blue_hp BETWEEN 0 AND 2250);',
+      'ALTER TABLE alpha_siege_matches ADD CONSTRAINT alpha_siege_matches_red_hp_check CHECK(red_hp BETWEEN 0 AND 2250);',
+      'COMMIT;'
+    ].join(' '));
     await ensureWebActionOutbox(db);
   })().catch(e=>{schemaPromise=null;throw e});
   return schemaPromise;
@@ -122,6 +133,7 @@ export async function startDailyClanSiege(nowMs=now()){
   const schedule=siegeDailySchedule(nowMs);
   if(!schedule.opening)return {started:false,reason:'outside_window'};
   await ensureClanSiegeSchema();
+  await ensureClanFortressSchema();
   const chat=siegeGroup();
   return tx(async conn=>{
     // Protege contra chamadas simultaneas de status + cron e redeploys.
@@ -139,9 +151,13 @@ export async function startDailyClanSiege(nowMs=now()){
       t.jids.some(jid=>!approved.has(String(jid)))))
       return {started:false,reason:'roster_not_ready'};
     const created=now();
+    // Snapshot imutável: obras concluídas até o início valem nesta guerra;
+    // upgrades comprados durante o Cerco só afetam guerras posteriores.
+    const blueFortress=await clanFortressCombatSnapshot(conn,teams[0].id,created);
+    const redFortress=await clanFortressCombatSnapshot(conn,teams[1].id,created);
     const match=(await conn.query(
-      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',2,$5,$6,$6) RETURNING id",
-      [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,created+ROUND_MS,created]
+      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',3,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id",
+      [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,blueFortress.maxHp,redFortress.maxHp,JSON.stringify(blueFortress),JSON.stringify(redFortress),created+ROUND_MS,created]
     )).rows[0];
     for(const team of teams)for(const jid of team.jids)
       await conn.query('INSERT INTO alpha_siege_roster(match_id,jid,clan_id) VALUES($1,$2,$3)',
@@ -150,6 +166,7 @@ export async function startDailyClanSiege(nowMs=now()){
       '🏰 *CERCO AO CASTELO — GUERRA DIÁRIA INICIADA!*',
       '⏰ Início programado: *20h*, horário de Brasília.',
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
+      '🏰 Fortalezas: Azul '+blueFortress.maxHp+' HP / +'+Math.round(blueFortress.attackPct*100)+'% ATK / -'+(blueFortress.defensePct*100).toFixed(1)+'% dano; Vermelho '+redFortress.maxHp+' HP / +'+Math.round(redFortress.attackPct*100)+'% ATK / -'+(redFortress.defensePct*100).toFixed(1)+'% dano.',
       '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
       '🤝 Táticas em dupla: Atacar + Atacar ganha +10% de dano; Atacar + Defender protege e contra-ataca; Atacar + Reparar recupera até 220 HP; Atacar + Espionar marca alvo (+30%) e prepara +60% para a próxima rodada.',
       '🛡️ Defender reduz 50% do dano por defensor (máx. 75%) e devolve 80 de dano se sofrer ataque. 🔨 Só 2 reparos por guerra/clã. 🕵️ Espiões fortalecem os ataques da rodada seguinte (+60% cada).',
@@ -238,13 +255,16 @@ function resolveSiegeRoundV2(match,moves){
     // Bônus coordenados: dois ataques +10%; espião junto de atacante +30%.
     // Reconhecimento da rodada anterior: +60% por espião, limitado a 2.
     raw[side]=Math.round(180*attacks*(attacks===2?1.1:1)*
-      (attacks&&spies?1.3:1)*(1+0.6*priorSpies));
+      (attacks&&spies?1.3:1)*(1+0.6*priorSpies)*
+      (Number(match.rules_version||1)>=3?1+Math.max(0,Math.min(.10,Number(match[side+'_fortress']?.attackPct)||0)):1));
   }
   for(const side of ['blue','red']){
     const rival=enemy(side);
     // Defesa por colega protege o CASTELO inteiro: 50% por defensor,
     // até 75% de redução para que atacar nunca cause dano zero.
-    direct[side]=Math.round(raw[side]*Math.max(.25,1-.5*n(rival,'defend')));
+    const castleDefense=Number(match.rules_version||1)>=3?
+      Math.max(0,Math.min(.075,Number(match[rival+'_fortress']?.defensePct)||0)):0;
+    direct[side]=Math.round(raw[side]*Math.max(.25,1-.5*n(rival,'defend'))*(1-castleDefense));
     blocked[side]=raw[side]-direct[side];
     // O contra-ataque é uma retaliação, e só acontece se o rival atacou.
     counter[side]=n(side,'defend')*(n(rival,'attack')>0?80:0);
@@ -256,14 +276,16 @@ function resolveSiegeRoundV2(match,moves){
   for(const side of ['blue','red']){
     const available=Math.max(0,MAX_REPAIR-repairs[side]);
     const used=Math.min(available,n(side,'repair'));
-    hp[side]=Math.min(LIMIT_HP,hp[side]+used*220);
+    const maxHp=Number(match.rules_version||1)>=3?
+      Math.max(LIMIT_HP,Math.min(2250,Number(match[side+'_fortress']?.maxHp)||LIMIT_HP)):LIMIT_HP;
+    hp[side]=Math.min(maxHp,hp[side]+used*220);
     repairs[side]+=used;
   }
   const finished=hp.blue===0||hp.red===0||Number(match.round)>=MAX_ROUNDS;
   const winner=finished&&hp.blue!==hp.red?
     (hp.blue>hp.red?String(match.blue_clan_id):String(match.red_clan_id)):null;
   const result={
-    rulesVersion:TEAM_TACTICS_VERSION,round:Number(match.round),
+    rulesVersion:Number(match.rules_version||TEAM_TACTICS_VERSION),round:Number(match.round),
     blueHp:hp.blue,redHp:hp.red,
     blueDamage:damage.blue,redDamage:damage.red,
     blueBlocked:blocked.red,redBlocked:blocked.blue,
@@ -306,7 +328,7 @@ async function advance(conn,match){
     const winner=r.winner===null?'Empate':r.winner===String(match.blue_clan_id)?'Clã Azul':'Clã Vermelho';
     await notice(conn,match.chat_jid,[
       '🏰 *CERCO AO CASTELO — RODADA '+match.round+'/'+MAX_ROUNDS+'*',
-      '🔵 Azul: '+r.hp.blue+'/'+LIMIT_HP+' HP • 🔴 Vermelho: '+r.hp.red+'/'+LIMIT_HP+' HP',
+      '🔵 Azul: '+r.hp.blue+'/'+(Number(match.rules_version||1)>=3?Number(match.blue_fortress?.maxHp||LIMIT_HP):LIMIT_HP)+' HP • 🔴 Vermelho: '+r.hp.red+'/'+(Number(match.rules_version||1)>=3?Number(match.red_fortress?.maxHp||LIMIT_HP):LIMIT_HP)+' HP',
       '⚔️ Dano: azul '+r.result.blueDamage+' • vermelho '+r.result.redDamage,
       '🛡️ Defesas: '+r.result.blueDefends+' / '+r.result.redDefends,
       Number(match.rules_version||1)>=TEAM_TACTICS_VERSION?
@@ -363,6 +385,10 @@ async function viewMatch(match,jid){
     roundEndsAt:Number(match.round_ends_at),
     blueClanId:String(match.blue_clan_id),redClanId:String(match.red_clan_id),
     blueHp:Number(match.blue_hp),redHp:Number(match.red_hp),
+    blueMaxHp:Number(match.rules_version||1)>=3?Number(match.blue_fortress?.maxHp||LIMIT_HP):LIMIT_HP,
+    redMaxHp:Number(match.rules_version||1)>=3?Number(match.red_fortress?.maxHp||LIMIT_HP):LIMIT_HP,
+    blueFortress:Number(match.rules_version||1)>=3?match.blue_fortress:null,
+    redFortress:Number(match.rules_version||1)>=3?match.red_fortress:null,
     blueRepairs:Number(match.blue_repairs),redRepairs:Number(match.red_repairs),
     rulesVersion:Number(match.rules_version||1),
     mySide:mine?(String(mine.clan_id)===String(match.blue_clan_id)?'blue':'red'):null,
@@ -392,8 +418,13 @@ export async function clanSiegeStatus(session){
     firstWarPrizeMatchId:firstReward?String(firstReward.match_id):null,
     enabled:true,myClanId:mine?String(mine.clan_id):null,isLeader:mine?.role==='leader',
     clans:teams.map(({id,name,members,linked})=>({id,name,members,linked})),
-    match:await viewMatch(match,session.jid)
+    match:await viewMatch(match,session.jid),
+    fortress:mine?await clanFortressStatus(session.jid):null
   };
+}
+export async function clanSiegeFortressUpgrade(session,stat){
+  gate();group(session);
+  return clanFortressUpgrade(session.jid,stat);
 }
 export async function clanSiegeChallenge(session){
   gate();group(session);
