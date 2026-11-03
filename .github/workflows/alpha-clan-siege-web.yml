@@ -34,4 +34,4 @@ jobs:
           node --check web/clan-siege-ui.js
           node --check web/racing-ui.js
       - name: Web siege preview and live-state tests
-        run: node --test test/web-clan-siege-preview-20261102.test.mjs test/web-modern-cerco-integration-20261102.test.mjs
+        run: node --test test/web-clan-siege-preview-20261102.test.mjs test/web-modern-cerco-integration-20261102.test.mjs test/web-siege-daily-20h-20261103.test.mjs
