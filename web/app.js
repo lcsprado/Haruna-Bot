@@ -1034,6 +1034,7 @@ async function loadSiege(force=false){
   ui.siegeLoading=true;
   try{
     const previous=ui.siege?.match;
+    const result=await api('/api/v1/me/clan-siege');
     const next=result.data||{enabled:false};
     const current=next.match;
     if(current?.status==='active'&&(
