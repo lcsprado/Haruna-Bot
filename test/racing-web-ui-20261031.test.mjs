@@ -82,5 +82,5 @@ test('the race page requests one endpoint only on navigation, not every 15s',()=
  assert.match(read('web/sw.js'),/Promise\.allSettled\(SHELL\.filter/)
  assert.match(read('web/sw.js'),/racing-ui\.js/)
  assert.match(read('web/index.html'),/\/app\.js\?v=20261103-siege-preview-actions-v5/)
- assert.match(read('web/index.html'),/20261102-modern-work-cerco-v3/)
+ assert.match(read('web/index.html'),/20261103-garage-photo-fit-v6/)
 })
