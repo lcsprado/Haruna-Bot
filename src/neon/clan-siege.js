@@ -151,7 +151,7 @@ export async function startDailyClanSiege(nowMs=now()){
       '🎮 Abra o Alpha Web > Clã e escolha *Atacar, Defender, Reparar ou Espionar*.',
       '🔒 Ação secreta. Quem não jogar a rodada fica sem ação.',
       '🏆 A primeira vitória válida ainda concede a insígnia especial aos 2 campeões.'
-    ].join('\\n'));
+    ].join('\n'));
     return {started:true,matchId:String(match.id)};
   });
 }
