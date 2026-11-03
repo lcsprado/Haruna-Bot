@@ -50,7 +50,7 @@ test('Cerco automatico: preserva artwork Work e garagem, muda somente tela do Ce
  const sw=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8');
  const app=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
  const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8');
- assert.match(sw,/20261103-siege-preview-actions-v5/);
+ assert.match(sw,/20261103-garage-photo-fit-v6/);
  assert.match(sw,/alpha-fixed-art.webp/);
  assert.match(sw,/alpha-item-weapons.webp/);
  assert.match(app,/racing/);

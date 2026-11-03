@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261103-siege-preview-actions-v5';
+const CACHE='alpha-rpg-pwa-20261103-garage-photo-fit-v6';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
