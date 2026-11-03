@@ -103,9 +103,14 @@ test('cerco: preflight exige 2 clãs com exatamente 2 jogadores vinculados e aut
   assert.equal(extra.ready,false);
 });
 
-test('cerco: desafio e aceite exigem os quatro JIDs autorizados no beta',()=>{
+test('cerco: novos convites manuais sao desativados; kickoff usa os quatro membros autorizados',()=>{
+  const daily=source.split('export async function startDailyClanSiege(nowMs=now())')[1]?.split('async function openMatch(conn,chat,locked=false)')[0]||'';
   const challenge=source.split('export async function clanSiegeChallenge(session)')[1]?.split('export async function clanSiegeAccept(session)')[0]||'';
   const accept=source.split('export async function clanSiegeAccept(session)')[1]?.split('export async function clanSiegeMove(session,action)')[0]||'';
-  assert.match(challenge,/analyzeSiegeEligibility\(teams,await siegeBetaAuthorizedSet\(conn\)\)\.ready/);
-  assert.match(accept,/analyzeSiegeEligibility\(teams,await siegeBetaAuthorizedSet\(conn\)\)\.ready/);
+  assert.match(daily,/dailySiegeTeams\(conn\)/);
+  assert.match(daily,/siegeBetaAuthorizedSet\(conn\)/);
+  assert.match(daily,/pg_advisory_xact_lock/);
+  assert.match(daily,/created_by=\$2 AND created_at>=\$3/);
+  assert.match(challenge,/automaticamente às 20h/);
+  assert.match(accept,/automaticamente às 20h/);
 });
