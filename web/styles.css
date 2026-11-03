@@ -1435,8 +1435,24 @@ body.loot-open{overflow:hidden!important}
 .race-shell{min-width:0;max-width:100%;box-sizing:border-box}
 .race-car-svg{max-width:100%;filter:drop-shadow(0 12px 14px #0008)}
 .race-car-photo{display:block;width:100%;max-width:620px;aspect-ratio:3/2;object-fit:contain;filter:drop-shadow(0 12px 15px #0006)}
-.race-hero-showroom>.race-car-photo{width:min(100%,550px);transform:translateY(-10px)}
+/* Fotos reais: conter a imagem ao quadro em vez de deixar a largura impor altura
+   e sobrepor nomes, barras de desempenho e botoes em monitores desktop. */
+.race-fleet-visual{height:clamp(160px,17vw,220px);min-height:0;max-height:none;overflow:hidden;min-width:0}
+.race-car-preview{min-width:0;overflow:hidden}
+.race-fleet-visual .race-car-photo,
+.race-car-preview .race-car-photo{
+  display:block;width:100%;height:100%;max-width:100%;max-height:100%;
+  aspect-ratio:auto;object-fit:contain;object-position:center
+}
+.race-hero-showroom>.race-car-photo{width:min(100%,550px);height:auto;max-height:285px;aspect-ratio:auto;transform:translateY(-10px)}
+.race-shop-hero .race-car-photo{height:auto;max-height:230px;aspect-ratio:auto}
+.race-paint-stage .race-car-photo{height:auto;max-height:280px;aspect-ratio:auto}
 .race-car-preview .race-car-photo,.race-fleet-visual .race-car-photo,.race-shop-hero .race-car-photo{margin:auto}
+@media(max-width:560px){
+  .race-fleet-visual{height:155px}
+  .race-car-preview .race-car-photo{height:100%;max-height:100%}
+  .race-hero-showroom>.race-car-photo{max-height:190px}
+}
 .race-paint-stage .race-car-photo{margin:auto}
 .race-hero-showroom .race-car-svg text{display:none}
 .race-fleet-actions{gap:8px;flex-wrap:wrap}.race-fleet-actions .race-button{min-height:42px}
