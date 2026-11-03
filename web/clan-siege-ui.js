@@ -2,11 +2,38 @@
 const ESCAPE = (value) => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 const ACTIONS = Object.freeze([
-  {id:'attack',icon:'⚔️',label:'Atacar',effect:'Pressiona as muralhas rivais. Melhor quando o outro clã não está defendendo.'},
-  {id:'defend',icon:'🛡️',label:'Defender',effect:'Reduz o dano sofrido pelo castelo na rodada.'},
-  {id:'repair',icon:'🔨',label:'Reparar',effect:'Recupera HP da fortaleza, respeitando um limite por guerra.'},
-  {id:'spy',icon:'🕵️',label:'Espionar',effect:'Prepara vantagem estratégica para a próxima rodada, sem revelar a ação adversária antes do fechamento.'}
+  {id:'attack',icon:'⚔️',label:'Atacar',effect:'180 de dano. Em dupla com outro atacante, +10% nos ataques; com Espionar, +30%.'},
+  {id:'defend',icon:'🛡️',label:'Defender',effect:'Reduz 50% do dano ao castelo e devolve 80 se o rival atacar. Dois defensores bloqueiam 75%.'},
+  {id:'repair',icon:'🔨',label:'Reparar',effect:'Recupera até 220 HP depois do ataque. Máximo de 2 reparos por guerra e por clã.'},
+  {id:'spy',icon:'🕵️',label:'Espionar',effect:'Com um atacante, +30% agora. Na próxima rodada, +60% de ataque por espião.'}
 ]);
+const LEGACY_ACTIONS = Object.freeze([
+  {id:'attack',icon:'⚔️',label:'Atacar',effect:'180 de dano por jogador, antes da defesa rival.'},
+  {id:'defend',icon:'🛡️',label:'Defender',effect:'Reduz 35% por defensor, até o máximo de 60%, sem contra-ataque.'},
+  {id:'repair',icon:'🔨',label:'Reparar',effect:'Recupera até 140 HP, com dois usos por guerra.'},
+  {id:'spy',icon:'🕵️',label:'Espionar',effect:'Aumenta em 20% o dano do clã na próxima rodada.'}
+]);
+function renderTacticsGuide(version,round,repairsLeft){
+  if(version<2)return '<aside class="siege-selected section" aria-label="Regras preservadas desta guerra">'+
+    '<strong>📜 Guerra na regra antiga</strong><p>Esta partida segue com ataque 180, defesa -35% por defensor, reparo 140 e espionagem +20% na próxima rodada. As novas combinações só valem para partidas futuras.</p>'+
+    '<p>🏆 Vence quem terminar com mais HP; HP igual é empate sem insígnia.</p></aside>';
+  return '<aside class="siege-selected section" aria-label="Guia de táticas da dupla">'+
+    '<strong>🤝 Estratégia em conjunto — dois jogadores</strong>'+
+    '<p>Converse com seu parceiro antes de confirmar. Cada jogador escolhe UMA ação. As escolhas permanecem secretas até o fim da rodada.</p>'+
+    '<p>⚔️ + ⚔️ <b>Assalto coordenado:</b> 396 de dano antes da defesa rival (+10% nos dois ataques).</p>'+
+    '<p>⚔️ + 🛡️ <b>Avanço protegido:</b> 180 de dano + 50% de proteção e 80 de contra-ataque quando atingido.</p>'+
+    '<p>⚔️ + 🔨 <b>Ofensiva de suporte:</b> 180 de dano + até 220 HP restaurados.</p>'+
+    '<p>⚔️ + 🕵️ <b>Ataque marcado:</b> 234 de dano agora e +60% de ataque na rodada seguinte.</p>'+
+    '<p>🛡️ + 🛡️ <b>Muralha conjunta:</b> bloqueia 75% e devolve até 160 de dano se for atacada.</p>'+
+    '<p>🛡️ + 🔨 <b>Bastião:</b> 50% de proteção + até 220 HP de reparo.</p>'+
+    '<p>🕵️ + 🕵️ <b>Inteligência total:</b> prepara +120% de dano na rodada seguinte, sem ataque agora.</p>'+
+    '<p>🔨 + 🔨 <b>Reconstrução:</b> recupera até 440 HP, mas consome os dois reparos da guerra.</p>'+
+    '<p>🛡️ + 🕵️ protege e prepara ofensiva; 🔨 + 🕵️ recupera e prepara ofensiva.</p>'+
+    '<p>🔨 Reparos restantes do seu clã: <b>'+ESCAPE(repairsLeft)+'/2</b>. '+
+    (round===6?'⚠️ Na última rodada Espionar não gera bônus, porque não haverá próxima rodada.':
+    'Espionar ajuda na rodada seguinte: combine quando atacar com seu parceiro.')+'</p>'+
+    '<p>🏆 Após 6 rodadas ganha quem tiver mais HP; HP igual dá empate e a insígnia continua disponível.</p></aside>';
+}
 
 function renderCastle(clan,side){
   const name=ESCAPE(clan?.name|| (side==='home'?'Seu clã':'Clã rival'));
@@ -41,8 +68,11 @@ function renderLiveSiege(ui){
   const red=match?clans.find(c=>String(c.id)===String(match.redClanId)):clans.find(c=>String(c.id)!==String(data.myClanId));
   const stage=match?.status||'idle';
   const active=stage==='active';
+  const rulesVersion=match?Number(match.rulesVersion||1):2;
+  const availableActions=rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
+  const remainingRepairs=Math.max(0,2-Number(match?.[match?.mySide+'Repairs']||0));
   const canMove=active&&Boolean(match.mySide)&&!match.myMove;
-  const selected=ACTIONS.find(x=>x.id===ui.siegePreviewAction)||null;
+  const selected=availableActions.find(x=>x.id===ui.siegePreviewAction)||null;
   const selectedActionId=match?.myMove||selected?.id||null;
   // Antes das 20h: seleção apenas visual, sem transação.
   // Na rodada ativa: precisa confirmar uma escolha; jamais usar Defender como padrão oculto.
@@ -83,12 +113,12 @@ function renderLiveSiege(ui){
     '<div class="siege-planning"><div class="siege-planning-head"><h4>'+(
       match?.myMove?'✅ Ação confirmada':'Escolha sua estratégia')+'</h4>'+
       '<span class="siege-status">'+(active?'RODADA '+Number(match.round)+'/6':'AGUARDANDO GUERRA')+'</span></div>'+
-    '<div class="siege-action-grid">'+ACTIONS.map(item=>'<button type="button" class="siege-action '+
+    '<div class="siege-action-grid">'+availableActions.map(item=>'<button type="button" class="siege-action '+
       (item.id===selectedActionId?'selected':'')+'" data-siege-preview="'+item.id+'" '+
       (!canPreview?'disabled':'')+'><span class="siege-action-icon">'+item.icon+'</span>'+
       '<strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>').join('')+'</div>'+
     '<div class="siege-selected"><span>ESTRATÉGIA '+(active?'DA RODADA':'PRÉVIA — NÃO ENVIADA')+'</span><strong>'+
-      ESCAPE(ACTIONS.find(a=>a.id===selectedActionId)?.label||'Nenhuma ação selecionada')+'</strong>'+
+      ESCAPE(availableActions.find(a=>a.id===selectedActionId)?.label||'Nenhuma ação selecionada')+'</strong>'+
       '<p>'+(active?'As escolhas rivais ficam secretas. Só a confirmação registra sua ação nesta rodada.':
         'Explore Atacar, Defender, Reparar ou Espionar. A escolha agora é apenas visual; nada será enviado antes das 20h.')+'</p>'+
       (canConfirm?'<button class="btn good" data-siege-command="move">🔒 Confirmar ação secreta</button>':
@@ -96,9 +126,12 @@ function renderLiveSiege(ui){
           canMove?'Selecione uma das quatro estratégias acima para habilitar a confirmação.':
           active?'Você não pode enviar ação nesta rodada.':
           'Prévia sem registro. A confirmação só estará disponível durante a guerra às 20h.')+'</small>')+'</div></div>'+
+    renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs)+
     (latest.length?'<div class="siege-selected section"><strong>📜 Histórico</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
-        ' HP • 🔴 '+Number(x.redHp)+' HP</p>').join('')+'</div>':'')+
+        ' HP • 🔴 '+Number(x.redHp)+' HP'+
+        (Number(x.rulesVersion)>=2?' • Dano 🔵 '+Number(x.blueDamage)+' / 🔴 '+Number(x.redDamage)+
+          ' • 🤝 '+ESCAPE(x.blueTactic)+' / '+ESCAPE(x.redTactic):'')+'</p>').join('')+'</div>':'')+
     siegeFirstPrizePanel(match,data.firstWarPrizeMatchId)+
     '<div class="siege-footer">Ações exclusivas por jogador e rodada. O jogo não utiliza dinheiro, XP ou HP real nesta versão.</div></section>';
 }
