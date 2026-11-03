@@ -42,17 +42,22 @@ function renderLiveSiege(ui){
   const stage=match?.status||'idle';
   const active=stage==='active';
   const canMove=active&&Boolean(match.mySide)&&!match.myMove;
-  const selected=ACTIONS.find(x=>x.id===ui.siegePreviewAction)||ACTIONS[1];
+  const selected=ACTIONS.find(x=>x.id===ui.siegePreviewAction)||null;
+  const selectedActionId=match?.myMove||selected?.id||null;
+  // Antes das 20h: seleção apenas visual, sem transação.
+  // Na rodada ativa: precisa confirmar uma escolha; jamais usar Defender como padrão oculto.
+  const canPreview=!match?.myMove&&(!active||canMove);
+  const canConfirm=canMove&&Boolean(selected);
   const duration=active?Math.max(0,Math.ceil((Number(match.roundEndsAt)-Date.now())/1000)):0;
   const countdown=active?' • '+Math.floor(duration/60)+'m '+String(duration%60).padStart(2,'0')+'s':'';
   const label=active?'⚔️ GUERRA ATIVA':stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':stage==='completed'?'🏆 CONCLUÍDA':'⏰ CERCO ÀS 20H';
   // A guerra começa às 20h, sem convite ou aceite manual.
   let controls='';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio antigo</button>';
-  const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. A nova guerra começa automaticamente às 20h.':
-    stage==='completed'?'Último resultado disponível por até 24h. Próxima guerra programada para as 20h.':
-    active?'Ações são secretas. Selecione e CONFIRME uma ação por rodada; sem confirmação, nenhuma ação será executada.':
-    'Abertura automática todos os dias às 20h de Brasília. Quatro jogadores, 2 × 2, seis rodadas de cinco minutos. Todos devem acessar o Web para agir.';
+  const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. A guerra diária começa às 20h. Você já pode testar as quatro estratégias, sem enviar ações.':
+    stage==='completed'?'Último resultado disponível por até 24h. Próxima guerra às 20h. As estratégias abaixo são apenas uma prévia.':
+    active?'Ações são secretas. Escolha uma estratégia e CONFIRME por rodada. Sem confirmação, nenhuma ação será executada.':
+    'A guerra começa diariamente às 20h de Brasília. Você pode explorar as quatro estratégias agora, mas só enviar ações durante a partida.';
   const pct=hp=>Math.min(100,Math.max(0,Number(hp||0)/20)).toFixed(1);
   function fortress(c,side){
     const hp=Number(match?.[side+'Hp']??2000);
@@ -79,15 +84,18 @@ function renderLiveSiege(ui){
       match?.myMove?'✅ Ação confirmada':'Escolha sua estratégia')+'</h4>'+
       '<span class="siege-status">'+(active?'RODADA '+Number(match.round)+'/6':'AGUARDANDO GUERRA')+'</span></div>'+
     '<div class="siege-action-grid">'+ACTIONS.map(item=>'<button type="button" class="siege-action '+
-      (item.id===(match?.myMove||(canMove?selected.id:null))?'selected':'')+'" data-siege-preview="'+item.id+'" '+
-      (!canMove?'disabled':'')+'><span class="siege-action-icon">'+item.icon+'</span>'+
+      (item.id===selectedActionId?'selected':'')+'" data-siege-preview="'+item.id+'" '+
+      (!canPreview?'disabled':'')+'><span class="siege-action-icon">'+item.icon+'</span>'+
       '<strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>').join('')+'</div>'+
-    '<div class="siege-selected"><span>ESTRATÉGIA '+(active?'DA RODADA':'AGUARDANDO AS 20H')+'</span><strong>'+
-      ESCAPE(ACTIONS.find(a=>a.id===(match?.myMove||selected.id))?.label||selected.label)+'</strong>'+
-      '<p>'+(active?'A escolha adversária permanece oculta até o fim da rodada. Apenas CONFIRMAR envia sua ação.':
-        'Você não precisa defender agora: a guerra é aberta automaticamente às 20h.')+'</p>'+
-      (canMove?'<button class="btn good" data-siege-command="move">🔒 Confirmar ação secreta</button>':
-        '<small>'+(match?.myMove?'Sua jogada foi salva e não pode ser modificada.':'Aguarde a abertura automática às 20h.')+'</small>')+'</div></div>'+
+    '<div class="siege-selected"><span>ESTRATÉGIA '+(active?'DA RODADA':'PRÉVIA — NÃO ENVIADA')+'</span><strong>'+
+      ESCAPE(ACTIONS.find(a=>a.id===selectedActionId)?.label||'Nenhuma ação selecionada')+'</strong>'+
+      '<p>'+(active?'As escolhas rivais ficam secretas. Só a confirmação registra sua ação nesta rodada.':
+        'Explore Atacar, Defender, Reparar ou Espionar. A escolha agora é apenas visual; nada será enviado antes das 20h.')+'</p>'+
+      (canConfirm?'<button class="btn good" data-siege-command="move">🔒 Confirmar ação secreta</button>':
+        '<small>'+(match?.myMove?'✅ Ação registrada nesta rodada; não pode ser alterada.':
+          canMove?'Selecione uma das quatro estratégias acima para habilitar a confirmação.':
+          active?'Você não pode enviar ação nesta rodada.':
+          'Prévia sem registro. A confirmação só estará disponível durante a guerra às 20h.')+'</small>')+'</div></div>'+
     (latest.length?'<div class="siege-selected section"><strong>📜 Histórico</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
         ' HP • 🔴 '+Number(x.redHp)+' HP</p>').join('')+'</div>':'')+
@@ -110,8 +118,8 @@ export function renderClanSiegePreview(ui){
     !(mine?.name&&clan.name&&mine.name===clan.name)
   )||null;
   const pairReady=eligible.length===2&&eligible.some(clan=>clan.id!=null&&mine?.id!=null?String(clan.id)===String(mine.id):Boolean(clan.name&&mine?.name&&clan.name===mine.name))&&Boolean(enemy);
-  const selected=String(ui.siegePreviewAction||'defend');
-  const action=ACTIONS.find(item=>item.id===selected)||ACTIONS[1];
+  const selected=String(ui.siegePreviewAction||'');
+  const action=ACTIONS.find(item=>item.id===selected)||null;
   const status=pairReady
     ? 'Os dados atuais indicam dois clãs com dois jogadores. A escalação individual ainda precisa ser conferida.'
     : 'Aguardando a confirmação dos dois clãs com dois membros no servidor. Sem escalação fictícia.';
@@ -131,7 +139,7 @@ export function renderClanSiegePreview(ui){
         '<button type="button" class="siege-action '+(item.id===selected?'selected':'')+'" data-siege-preview="'+item.id+'" aria-pressed="'+(item.id===selected?'true':'false')+'">'+
           '<span class="siege-action-icon">'+item.icon+'</span><strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>'
       ).join('')+'</div>'+
-      '<div class="siege-selected" aria-live="polite"><span>Estratégia em prévia</span><strong>'+action.icon+' '+action.label+'</strong><p>'+ESCAPE(action.effect)+'</p>'+
+      '<div class="siege-selected" aria-live="polite"><span>Estratégia em prévia</span><strong>'+(action?action.icon+' '+action.label:'Nenhuma ação selecionada')+'</strong><p>'+ESCAPE(action?.effect||'Selecione uma das quatro estratégias para conhecer seu efeito.')+'</p>'+
       '<small>Esta escolha é apenas visual: não foi enviada nem salva. Não há ações de guerra habilitadas no servidor.</small></div>'+
     '</div>'+
     '<div class="siege-steps"><span>1 · Selecionar em segredo</span><span>2 · Aguardar a rodada fechar</span><span>3 · Resultado público no WhatsApp</span></div>'+
@@ -153,7 +161,8 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
     if(!['cancel','move'].includes(command))return;
     const message=command==='move'?'Confirmar ação? Ela não poderá ser alterada.':'Cancelar desafio antigo?';
     if(!confirm(message))return;
-    void submit(command,command==='move'?{action:ui.siegePreviewAction||'defend'}:{});
+    if(command==='move'&&!ACTIONS.some(item=>item.id===ui.siegePreviewAction))return;
+    void submit(command,command==='move'?{action:ui.siegePreviewAction}:{});
   }));
   document.querySelectorAll('[data-siege-refresh]').forEach(button=>
     button.addEventListener('click',()=>void refresh(true)));
