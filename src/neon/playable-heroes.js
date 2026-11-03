@@ -5,6 +5,7 @@ import {formatActiveClassBaseStatus} from './character-base-status-format.js'
 import {formatPlayableHeroMasteryEffects} from './hero-mastery-format.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
+import {formatHeroDailyXpReport} from './hero-daily-xp-report.js'
 
 const NOW='EXTRACT(EPOCH FROM NOW())::BIGINT'
 async function transaction(fn){
@@ -199,6 +200,37 @@ export async function listPlayableHeroes(jid){
   })
 }
 
+// Consulta historico diario de XP, sem modificar o personagem ou seus limites.
+// Usa a mesma virada de dia em America/Sao_Paulo dos creditos de XP.
+export async function getPlayableHeroDailyXp(jid,heroId=null){
+  const [all,history,player]=await Promise.all([
+    listPlayableHeroes(jid),
+    db.query(`SELECT hero_species,'nivel'::text AS kind,SUM(xp)::int AS gained,
+      MAX(created_at)::bigint AS last_award
+      FROM hero_level_awards
+      WHERE jid=$1 AND
+        (to_timestamp(created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
+        (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      GROUP BY hero_species
+      UNION ALL
+      SELECT hero_species,'maestria'::text AS kind,SUM(xp)::int AS gained,
+      MAX(created_at)::bigint AS last_award
+      FROM hero_mastery_awards
+      WHERE jid=$1 AND
+        (to_timestamp(created_at) AT TIME ZONE 'America/Sao_Paulo')::date =
+        (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+      GROUP BY hero_species`,[jid]),
+    db.query('SELECT level FROM users WHERE jid=$1',[jid])
+  ]);
+  const heroes=heroId?all.filter(h=>h.id===heroId&&h.owned):all;
+  if(heroId&&!heroes.length){
+    return '❌ Você não possui esse herói. Use *!heroi xp* para ver os desbloqueados.';
+  }
+  return formatHeroDailyXpReport({
+    heroes,awards:history.rows,playerLevel:Number(player.rows[0]?.level||1)
+  });
+}
+
 export async function setPlayableHeroMode(jid,heroId=null){
   await ensureUser(jid)
   const species=heroId==null||heroId==='class'?null:String(heroId||'').trim().toLowerCase()
@@ -347,6 +379,13 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
   const action=String(args[0]||'').trim().toLowerCase()
   const findHero=raw=>PECADOS_HEROES.find(h=>
     h.name.toLowerCase()===raw||h.species===raw||h.species==='pecado_'+raw);
+  if(action==='xp'){
+    const raw=String(args[1]||'').trim().toLowerCase();
+    const selected=raw?findHero(raw):null;
+    if(raw&&!selected){await reply('❌ Herói não encontrado. Use *!heroi xp* para ver todos.');return true;}
+    await reply(await getPlayableHeroDailyXp(sender,selected?.species||null));
+    return true;
+  }
   if(['evoluir','upar','evolucao'].includes(action)){
     const raw=String(args[1]||'').trim().toLowerCase();
     if(!raw){
@@ -427,7 +466,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
     const rows=list.map(h=>`${h.owned?'✅':'🔒'} *${h.name}* — ${h.owned?`Nv.${h.petLevel}/100 • Maestria ${h.masteryStage}/5 (${h.masteryXp} XP)`:'não obtido'}${h.active?' • ⚔️ ATIVO':''}\n   ↳ ${HERO_COMBAT_PROFILES[h.id].role} • ${HERO_COMBAT_PROFILES[h.id].range} • ${HERO_COMBAT_PROFILES[h.id].skill}`)
     await reply('🌈⚔️ *HERÓIS JOGÁVEIS — 7 PECADOS*\n\n'+rows.join('\n')+
       '\n\n🧙 Classe tradicional preservada.\n⚔️ Combatente: *'+(active?.name||'sua classe')+'*\n'+
-      '👉 *!heroi atributos* • *!heroi comparar paladin* • *!heroi evoluir* • *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
+      '👉 *!heroi xp* (farm de hoje) • *!heroi atributos* • *!heroi comparar paladin* • *!heroi evoluir* • *!heroi habilidades ban* • *!heroi usar ban* • *!heroi classe*\n'+
       '🗝️ Personagens conquistados preservados. Os Pecados não são mais pets; use outros pets em seu time.')
     return true
   }
