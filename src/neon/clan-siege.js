@@ -6,6 +6,7 @@ import {grantFirstSiegeInsignias} from './clan-siege-first-prize.js';
 import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
+const TEAM_TACTICS_VERSION=2; // novas guerras apenas; partidas antigas preservam regras v1
 const DAILY_CREATED_BY='system:siege-daily-20h';
 const DAILY_OPEN_GRACE_MS=15*60*1000; // Free Render can wake after 20h; never start after 20h15.
 const ACTIONS=new Set(['attack','defend','repair','spy']);
@@ -54,6 +55,8 @@ export async function ensureClanSiegeSchema(){
       "CREATE TABLE IF NOT EXISTS alpha_siege_first_victory(",
       "chat_jid TEXT PRIMARY KEY,match_id BIGINT NOT NULL,winner_clan_id BIGINT NOT NULL,awarded_at BIGINT NOT NULL);"
     ].join(' '));
+    // Migração idempotente: partidas existentes permanecem na regra antiga.
+    await db.query('ALTER TABLE alpha_siege_matches ADD COLUMN IF NOT EXISTS rules_version INTEGER NOT NULL DEFAULT 1');
     await ensureWebActionOutbox(db);
   })().catch(e=>{schemaPromise=null;throw e});
   return schemaPromise;
@@ -137,7 +140,7 @@ export async function startDailyClanSiege(nowMs=now()){
       return {started:false,reason:'roster_not_ready'};
     const created=now();
     const match=(await conn.query(
-      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',$5,$6,$6) RETURNING id",
+      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',2,$5,$6,$6) RETURNING id",
       [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,created+ROUND_MS,created]
     )).rows[0];
     for(const team of teams)for(const jid of team.jids)
@@ -148,6 +151,9 @@ export async function startDailyClanSiege(nowMs=now()){
       '⏰ Início programado: *20h*, horário de Brasília.',
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
       '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
+      '🤝 Táticas em dupla: Atacar + Atacar ganha +10% de dano; Atacar + Defender protege e contra-ataca; Atacar + Reparar recupera até 220 HP; Atacar + Espionar marca alvo (+30%) e prepara +60% para a próxima rodada.',
+      '🛡️ Defender reduz 50% do dano por defensor (máx. 75%) e devolve 80 de dano se sofrer ataque. 🔨 Só 2 reparos por guerra/clã. 🕵️ Espiões fortalecem os ataques da rodada seguinte (+60% cada).',
+      '🏆 Vence quem deixar a fortaleza rival com menos HP após seis rodadas; HP igual = empate.',
       '🎮 Abra o Alpha Web > Clã e escolha *Atacar, Defender, Reparar ou Espionar*.',
       '🔒 Ação secreta. Quem não jogar a rodada fica sem ação.',
       '🏆 A primeira vitória válida ainda concede a insígnia especial aos 2 campeões.'
@@ -171,6 +177,7 @@ async function notice(conn,chat,message){
   await conn.query("SELECT pg_notify('alpha_web_action_wakeup_v1',$1)",[String(r.rows[0].id)]);
 }
 export function resolveSiegeRound(match,moves){
+  if(Number(match.rules_version||1)>=TEAM_TACTICS_VERSION)return resolveSiegeRoundV2(match,moves);
   const sides={blue:[],red:[]};
   for(const m of moves){
     const side=String(m.clan_id)===String(match.blue_clan_id)?'blue':'red';
@@ -202,6 +209,76 @@ export function resolveSiegeRound(match,moves){
   };
   return {hp,repairs,spy:{blue:Number(n('blue','spy')>0),red:Number(n('red','spy')>0)},finished,winner,result};
 }
+function resolveSiegeRoundV2(match,moves){
+  const sides={blue:[],red:[]};
+  for(const m of moves){
+    const side=String(m.clan_id)===String(match.blue_clan_id)?'blue':'red';
+    sides[side].push(m.action);
+  }
+  const n=(side,action)=>sides[side].filter(x=>x===action).length;
+  const enemy=side=>side==='blue'?'red':'blue';
+  const labels={
+    'attack+attack':'Assalto coordenado',
+    'attack+defend':'Avanço protegido',
+    'attack+repair':'Ofensiva de suporte',
+    'attack+spy':'Ataque marcado',
+    'defend+defend':'Muralha conjunta',
+    'defend+repair':'Bastião reforçado',
+    'defend+spy':'Vigilância estratégica',
+    'repair+repair':'Reconstrução total',
+    'repair+spy':'Preparar a virada',
+    'spy+spy':'Inteligência total'
+  };
+  const tactic=side=>labels[sides[side].slice().sort().join('+')]||
+    (sides[side].length?'Ação individual':'Sem ação');
+  const raw={},direct={},blocked={},counter={},damage={};
+  for(const side of ['blue','red']){
+    const attacks=n(side,'attack'),spies=n(side,'spy');
+    const priorSpies=Math.max(0,Math.min(2,Number(match[side+'_spy'])||0));
+    // Bônus coordenados: dois ataques +10%; espião junto de atacante +30%.
+    // Reconhecimento da rodada anterior: +60% por espião, limitado a 2.
+    raw[side]=Math.round(180*attacks*(attacks===2?1.1:1)*
+      (attacks&&spies?1.3:1)*(1+0.6*priorSpies));
+  }
+  for(const side of ['blue','red']){
+    const rival=enemy(side);
+    // Defesa por colega protege o CASTELO inteiro: 50% por defensor,
+    // até 75% de redução para que atacar nunca cause dano zero.
+    direct[side]=Math.round(raw[side]*Math.max(.25,1-.5*n(rival,'defend')));
+    blocked[side]=raw[side]-direct[side];
+    // O contra-ataque é uma retaliação, e só acontece se o rival atacou.
+    counter[side]=n(side,'defend')*(n(rival,'attack')>0?80:0);
+    damage[side]=direct[side]+counter[side];
+  }
+  const hp={blue:Math.max(0,Number(match.blue_hp)-damage.red),
+    red:Math.max(0,Number(match.red_hp)-damage.blue)};
+  const repairs={blue:Number(match.blue_repairs),red:Number(match.red_repairs)};
+  for(const side of ['blue','red']){
+    const available=Math.max(0,MAX_REPAIR-repairs[side]);
+    const used=Math.min(available,n(side,'repair'));
+    hp[side]=Math.min(LIMIT_HP,hp[side]+used*220);
+    repairs[side]+=used;
+  }
+  const finished=hp.blue===0||hp.red===0||Number(match.round)>=MAX_ROUNDS;
+  const winner=finished&&hp.blue!==hp.red?
+    (hp.blue>hp.red?String(match.blue_clan_id):String(match.red_clan_id)):null;
+  const result={
+    rulesVersion:TEAM_TACTICS_VERSION,round:Number(match.round),
+    blueHp:hp.blue,redHp:hp.red,
+    blueDamage:damage.blue,redDamage:damage.red,
+    blueBlocked:blocked.red,redBlocked:blocked.blue,
+    blueCounter:counter.blue,redCounter:counter.red,
+    blueTactic:tactic('blue'),redTactic:tactic('red'),
+    blueDefends:n('blue','defend'),redDefends:n('red','defend'),
+    blueRepairs:repairs.blue-Number(match.blue_repairs),
+    redRepairs:repairs.red-Number(match.red_repairs),
+    blueSpies:n('blue','spy'),redSpies:n('red','spy'),
+    blueSubmitted:sides.blue.length,redSubmitted:sides.red.length
+  };
+  return {hp,repairs,spy:{blue:n('blue','spy'),red:n('red','spy')},
+    finished,winner,result};
+}
+
 async function advance(conn,match){
   if(!match||match.status!=='active')return match;
   for(let i=0;i<MAX_ROUNDS&&match.status==='active';i++){
@@ -232,6 +309,11 @@ async function advance(conn,match){
       '🔵 Azul: '+r.hp.blue+'/'+LIMIT_HP+' HP • 🔴 Vermelho: '+r.hp.red+'/'+LIMIT_HP+' HP',
       '⚔️ Dano: azul '+r.result.blueDamage+' • vermelho '+r.result.redDamage,
       '🛡️ Defesas: '+r.result.blueDefends+' / '+r.result.redDefends,
+      Number(match.rules_version||1)>=TEAM_TACTICS_VERSION?
+        '🤝 Táticas: 🔵 '+r.result.blueTactic+' • 🔴 '+r.result.redTactic:'',
+      Number(match.rules_version||1)>=TEAM_TACTICS_VERSION?
+        '🛡️ Dano bloqueado: 🔵 '+r.result.blueBlocked+' • 🔴 '+r.result.redBlocked+
+        ' | ⚔️ Contra-ataque: 🔵 '+r.result.blueCounter+' • 🔴 '+r.result.redCounter:'',
       '🔨 Reparos: '+r.result.blueRepairs+' / '+r.result.redRepairs,
       r.finished?'🏆 *Resultado: '+winner+'*':'⏳ Próxima rodada aberta no Web.',
       prize?'👑 *PREMIAÇÃO HISTÓRICA:* '+prize.name+' entregue aos 2 campeões. Ative em *!reliquias*.':'',
@@ -282,6 +364,7 @@ async function viewMatch(match,jid){
     blueClanId:String(match.blue_clan_id),redClanId:String(match.red_clan_id),
     blueHp:Number(match.blue_hp),redHp:Number(match.red_hp),
     blueRepairs:Number(match.blue_repairs),redRepairs:Number(match.red_repairs),
+    rulesVersion:Number(match.rules_version||1),
     mySide:mine?(String(mine.clan_id)===String(match.blue_clan_id)?'blue':'red'):null,
     myMove:ownAction,submitted:Number(submitted),history:match.history,
     winnerClanId:match.winner_clan_id?String(match.winner_clan_id):null,
