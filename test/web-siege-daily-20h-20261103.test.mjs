@@ -12,14 +12,15 @@ const base={
 };
 
 test('Cerco automatico: nao oferece desafiar/aceitar quando parado',()=>{
- const html=renderClanSiegePreview({siege:{...base,match:null},siegePreviewAction:'defend'});
+ const html=renderClanSiegePreview({siege:{...base,match:null},siegePreviewAction:null});
  assert.match(html,/CERCO ÀS 20H/);
- assert.match(html,/Abertura automática todos os dias às 20h/);
+ assert.match(html,/A guerra começa diariamente às 20h de Brasília/);
  assert.doesNotMatch(html,/data-siege-command="challenge"/);
  assert.doesNotMatch(html,/data-siege-command="accept"/);
  assert.doesNotMatch(html,/data-siege-command="move"/);
  assert.doesNotMatch(html,/siege-action selected/);
- assert.match(html,/não precisa defender agora/);
+ assert.match(html,/Prévia sem registro/);
+ assert.match(html,/Nenhuma ação selecionada/);
 });
 
 test('Cerco automatico: partida ativa exige confirmacao de cada acao',()=>{
@@ -30,7 +31,7 @@ test('Cerco automatico: partida ativa exige confirmacao de cada acao',()=>{
  }},siegePreviewAction:'attack'});
  assert.match(html,/GUERRA ATIVA/);
  assert.match(html,/data-siege-command="move"/);
- assert.match(html,/Apenas CONFIRMAR envia sua ação/);
+ assert.match(html,/Só a confirmação registra sua ação/);
  assert.doesNotMatch(html,/data-siege-command="challenge"/);
 });
 
@@ -49,9 +50,9 @@ test('Cerco automatico: preserva artwork Work e garagem, muda somente tela do Ce
  const sw=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8');
  const app=readFileSync(new URL('../web/app.js',import.meta.url),'utf8');
  const html=readFileSync(new URL('../web/index.html',import.meta.url),'utf8');
- assert.match(sw,/20261103-daily-siege-20h-v4/);
+ assert.match(sw,/20261103-siege-preview-actions-v5/);
  assert.match(sw,/alpha-fixed-art.webp/);
  assert.match(sw,/alpha-item-weapons.webp/);
  assert.match(app,/racing/);
- assert.match(html,/app.js\?v=20261103-daily-siege-20h-v4/);
+ assert.match(html,/app.js\?v=20261103-siege-preview-actions-v5/);
 });
