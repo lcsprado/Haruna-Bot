@@ -35,6 +35,40 @@ function renderTacticsGuide(version,round,repairsLeft){
     '<p>🏆 Após 6 rodadas ganha quem tiver mais HP; HP igual dá empate e a insígnia continua disponível.</p></aside>';
 }
 
+function renderFortressPanel(fortress){
+  if(!fortress)return '';
+  const statNames={hp:'❤️ Muralhas',attack:'⚔️ Arsenal',defense:'🛡️ Defesas'};
+  const levels=fortress.levels||{},offers=fortress.offers||{},stats=fortress.stats||{};
+  const currency=v=>'R$ '+Math.max(0,Number(v)||0).toLocaleString('pt-BR');
+  const active=fortress.pending;
+  const rest=active?Math.max(0,Number(active.readyAt||0)-Date.now()):0;
+  const time=rest?Math.ceil(rest/3600000)+'h restantes':'Aguardando finalização e atualização';
+  return '<section class="card section" aria-label="Evolução permanente da fortaleza">'+
+    '<div class="section-title"><h3>🏰 Fortaleza do clã</h3><small>Melhorias permanentes • separadas dos personagens</small></div>'+
+    '<p>💰 Tesouro: <strong>'+currency(fortress.treasury)+'</strong> • ⭐ Nível do clã: '+
+      Number(fortress.clanLevel||1)+'</p>'+
+    '<p>❤️ HP: <b>'+Number(stats.maxHp||2000)+'</b> / 2.250 • '+
+      '⚔️ Bônus ATK: <b>+'+(Number(stats.attackPct||0)*100).toFixed(1)+'%</b> • '+
+      '🛡️ Redução de dano: <b>'+(Number(stats.defensePct||0)*100).toFixed(1)+'%</b></p>'+
+    (active?'<p class="notice">⏳ Obra em andamento: '+ESCAPE(statNames[active.stat]||active.stat)+
+      ' → nível '+Number(active.to)+' • '+time+'. Benefício somente na próxima guerra iniciada após a conclusão.</p>':
+      '<p>O líder pode iniciar UMA obra por vez. Cada investimento desconta o tesouro do clã. Doações continuam gerando XP do clã, mas não dão bônus de combate por si mesmas.</p>')+
+    '<div class="siege-action-grid">'+['hp','attack','defense'].map(stat=>{
+      const offer=offers[stat],level=Number(levels[stat]||0),price=Number(offer?.cost||0);
+      const hours=Math.round(Number(offer?.durationMs||0)/3600000);
+      const permitted=fortress.isLeader&&!active&&offer&&Number(fortress.treasury)>=price;
+      return '<div class="siege-action"><strong>'+statNames[stat]+' • Nível '+level+'/5</strong>'+
+        '<small>'+(stat==='hp'?'+50 HP por nível (máximo +250)':stat==='attack'?
+          '+2% de dano por nível (máximo +10%)':'+1,5% de redução por nível (máximo 7,5%)')+'</small>'+
+        '<small>'+(offer?'Próximo nível: '+currency(price)+' • '+hours+'h de obra':'Nível máximo alcançado')+'</small>'+
+        (offer?'<button type="button" class="btn" data-siege-upgrade="'+stat+'"'+
+          (permitted?'':' disabled')+'>'+ (fortress.isLeader?'Construir':'Somente líder')+'</button>':'')+
+        '</div>';
+    }).join('')+'</div>'+
+    '<p class="muted">A evolução é exclusiva do castelo: não aumenta HP, ATK ou DEF dos heróis. A força da fortaleza fica congelada no início de cada guerra.</p>'+
+    '</section>';
+}
+
 function renderCastle(clan,side){
   const name=ESCAPE(clan?.name|| (side==='home'?'Seu clã':'Clã rival'));
   const count=Number(clan?.members||0);
@@ -88,15 +122,16 @@ function renderLiveSiege(ui){
     stage==='completed'?'Último resultado disponível por até 24h. Próxima guerra às 20h. As estratégias abaixo são apenas uma prévia.':
     active?'Ações são secretas. Escolha uma estratégia e CONFIRME por rodada. Sem confirmação, nenhuma ação será executada.':
     'A guerra começa diariamente às 20h de Brasília. Você pode explorar as quatro estratégias agora, mas só enviar ações durante a partida.';
-  const pct=hp=>Math.min(100,Math.max(0,Number(hp||0)/20)).toFixed(1);
+  const pct=(hp,max)=>Math.min(100,Math.max(0,Number(hp||0)/Number(max||2000)*100)).toFixed(1);
   function fortress(c,side){
     const hp=Number(match?.[side+'Hp']??2000);
+    const maxHp=Number(match?.[side+'MaxHp']??2000);
     return '<article class="siege-castle siege-'+(side==='blue'?'home':'enemy')+'">'+
       '<span class="siege-castle-kicker">'+(side==='blue'?'🔵 CASTELO AZUL':'🔴 CASTELO VERMELHO')+'</span>'+
       '<div class="siege-castle-art" aria-hidden="true">🏰</div><h4>'+ESCAPE(c?.name||'Clã a confirmar')+'</h4>'+
       '<p>'+Number(c?.members||0)+' membros • '+Number(c?.linked||0)+'/2 Web vinculados</p>'+
-      '<div class="siege-castle-hp"><span>HP</span><strong>'+hp+' / 2.000</strong></div>'+
-      '<div class="siege-hp-track"><span style="width:'+pct(hp)+'%"></span></div></article>';
+      '<div class="siege-castle-hp"><span>HP</span><strong>'+hp+' / '+maxHp.toLocaleString('pt-BR')+'</strong></div>'+
+      '<div class="siege-hp-track"><span style="width:'+pct(hp,maxHp)+'%"></span></div></article>';
   }
   const latest=Array.isArray(match?.history)?match.history.slice(-3):[];
   return '<section class="siege-preview section">'+
@@ -110,6 +145,7 @@ function renderLiveSiege(ui){
     (active?' • Rodada '+Number(match.round)+'/6'+countdown+' • '+Number(match.submitted)+'/4 ações enviadas':'')+'</div>'+
     '<div class="hero-actions">'+controls+'<button class="btn" data-siege-refresh>🔄 Atualizar</button></div>'+
     (ui.siegeError?'<div class="notice warn section">'+ESCAPE(ui.siegeError)+'</div>':'')+
+    renderFortressPanel(data.fortress)+
     '<div class="siege-planning"><div class="siege-planning-head"><h4>'+(
       match?.myMove?'✅ Ação confirmada':'Escolha sua estratégia')+'</h4>'+
       '<span class="siege-status">'+(active?'RODADA '+Number(match.round)+'/6':'AGUARDANDO GUERRA')+'</span></div>'+
@@ -133,7 +169,7 @@ function renderLiveSiege(ui){
         (Number(x.rulesVersion)>=2?' • Dano 🔵 '+Number(x.blueDamage)+' / 🔴 '+Number(x.redDamage)+
           ' • 🤝 '+ESCAPE(x.blueTactic)+' / '+ESCAPE(x.redTactic):'')+'</p>').join('')+'</div>':'')+
     siegeFirstPrizePanel(match,data.firstWarPrizeMatchId)+
-    '<div class="siege-footer">Ações exclusivas por jogador e rodada. O jogo não utiliza dinheiro, XP ou HP real nesta versão.</div></section>';
+    '<div class="siege-footer">Ações de guerra não gastam dinheiro, XP ou HP do herói. Obras são financiadas somente pelo tesouro virtual do clã.</div></section>';
 }
 
 export function renderClanSiegePreview(ui){
@@ -196,6 +232,16 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
     if(!confirm(message))return;
     if(command==='move'&&!ACTIONS.some(item=>item.id===ui.siegePreviewAction))return;
     void submit(command,command==='move'?{action:ui.siegePreviewAction}:{});
+  }));
+  document.querySelectorAll('[data-siege-upgrade]').forEach(button=>button.addEventListener('click',()=>{
+    const stat=button.dataset.siegeUpgrade;
+    const fortress=ui.siege?.fortress;
+    const offer=fortress?.offers?.[stat];
+    if(!fortress?.isLeader||fortress.pending||!offer)return;
+    const value=Number(offer.cost||0);
+    if(!confirm('Investir R$ '+value.toLocaleString('pt-BR')+' do TESOURO do clã nesta melhoria? A obra leva '+Math.round(Number(offer.durationMs)/3600000)+'h e só valerá nas próximas guerras.'))return;
+    button.disabled=true;
+    void submit('fortress-upgrade',{stat});
   }));
   document.querySelectorAll('[data-siege-refresh]').forEach(button=>
     button.addEventListener('click',()=>void refresh(true)));
