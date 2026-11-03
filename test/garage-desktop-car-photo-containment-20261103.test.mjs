@@ -31,8 +31,8 @@ test('Mobile e telas intermediarias: a foto acompanha o tamanho do card',()=>{
 });
 
 test('Mantem fotos originais, PWA e versao de estilo nova',()=>{
-  assert.match(load('web/index.html'),/styles\.css\?v=20261103-garage-photo-fit-v6/);
-  assert.match(load('web/sw.js'),/alpha-rpg-pwa-20261103-garage-photo-fit-v6/);
+  assert.match(load('web/index.html'),/styles\.css\?v=20261103-garage-alpha2-v1/);
+  assert.match(load('web/sw.js'),/alpha-rpg-pwa-20261104-garage-alpha2-v1/);
   assert.match(load('web/sw.js'),/alpha-fixed-art\.webp/);
   assert.match(load('web/sw.js'),/racing-ui\.js/);
 });

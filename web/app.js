@@ -3677,7 +3677,7 @@ setInterval(()=>{
 // During Boss/Raid views, use the small HP endpoint only.
 setInterval(()=>{void syncBossLive();},25000);
 setInterval(()=>{
-  if(!document.hidden && ui.token){refreshLiveCountdowns();if(ui.page==='racing')updateRacingClocks();}
+  if(!document.hidden && ui.token){refreshLiveCountdowns();if(ui.page==='racing'&&updateRacingClocks()&&Date.now()>=(ui.racingNextCompletionRefreshAt||0)){ui.racingNextCompletionRefreshAt=Date.now()+30000;void loadRacing(true);}}
 },1000);
 
 (async function boot(){
