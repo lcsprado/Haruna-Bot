@@ -1058,7 +1058,7 @@ async function submitSiege(command,body){
   try{
     const result=await api('/api/v1/me/clan-siege/'+command,{method:'POST',body:JSON.stringify(body||{})});
     if(result.ok===false)throw Error(result.reason||'Não foi possível executar.');
-    toast(command==='move'?'Ação secreta registrada.':'Guerra atualizada.');
+    toast(command==='move'?'Ação secreta registrada.':command==='fortress-upgrade'?'🏰 Obra da fortaleza iniciada com dinheiro do tesouro!':'Guerra atualizada.');
     ui.siegePreviewAction=null;
     await loadSiege(true);
   }catch(err){ui.siegeError=String(err.message||err);toast(ui.siegeError);render();}
@@ -1072,6 +1072,7 @@ async function doAction(name,body,options){
     const response=await api('/api/v1/action/'+encodeURIComponent(name),{method:'POST',body:JSON.stringify(body||{})});
     ui.lastResult=response.result;
     if(options.afterSync!==false) await sync(true,true);
+    if(name==='clan.donate'&&ui.page==='clan')await loadSiege(true).catch(()=>null);
     if(['social','market','clan','games','activities','progression','rankings','loans','contracts'].includes(ui.page)){
       await syncExtras(true).catch(()=>null);
       render();
