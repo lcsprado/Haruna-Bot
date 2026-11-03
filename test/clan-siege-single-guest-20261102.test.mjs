@@ -53,5 +53,6 @@ test('beta convidado: sessão e troca de código verificam JID E grupo',()=>{
   assert.match(api,/await betaWebAccess\(row\.jid,row\.chat_jid\)/);
   assert.match(api,/if\(!chatJid\)return false/);
   const siege=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
-  assert.match(siege,/analyzeSiegeEligibility\(teams,await siegeBetaAuthorizedSet\(conn\)\)\.ready/);
+  assert.match(siege,/const approved=await siegeBetaAuthorizedSet\(conn\)/);
+  assert.match(siege,/t\.jids\.some\(jid=>!approved\.has\(String\(jid\)\)\)/);
 });

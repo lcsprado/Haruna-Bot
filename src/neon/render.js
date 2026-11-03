@@ -1,7 +1,7 @@
 import http from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { handleWebApi } from './web-api.js'
-import {settleClanSiege,isClanSiegeEnabled,clanSiegePreflight} from './clan-siege.js'
+import {settleClanSiege,startDailyClanSiege,isClanSiegeEnabled,clanSiegePreflight} from './clan-siege.js'
 
 const port = Number(process.env.PORT || 10000)
 // Railway can serve the game API without starting a second WhatsApp client.
@@ -99,7 +99,10 @@ http.createServer(async (req, res) => {
 if(apiOnly){
   const sweep=setInterval(()=>{
     if(!isClanSiegeEnabled())return
-    void settleClanSiege().catch(err=>console.warn('[Cerco] Rodada pendente:',String(err?.message||err).slice(0,160)))
+    void settleClanSiege()
+      .then(()=>startDailyClanSiege())
+      .then(result=>{if(result?.started)console.info('[Cerco] Partida diária criada:',result.matchId)})
+      .catch(err=>console.warn('[Cerco] Agendamento/rodada indisponível:',String(err?.message||err).slice(0,160)))
   },15000)
   sweep.unref?.()
 }
