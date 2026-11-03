@@ -50,7 +50,7 @@ import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoa
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
-import {clanSiegeStatus,clanSiegeChallenge,clanSiegeAccept,clanSiegeMove,clanSiegeCancel} from './clan-siege.js'
+import {clanSiegeStatus,clanSiegeChallenge,clanSiegeAccept,clanSiegeMove,clanSiegeCancel,clanSiegeFortressUpgrade} from './clan-siege.js'
 import {siegeBetaGuestAccess} from './clan-siege-beta-access.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
@@ -1626,6 +1626,7 @@ export async function handleWebApi(req,res){
         challenge:()=>clanSiegeChallenge(session),
         accept:()=>clanSiegeAccept(session),
         move:()=>clanSiegeMove(session,String(body.action||'')),
+        'fortress-upgrade':()=>clanSiegeFortressUpgrade(session,String(body.stat||'')),
         cancel:()=>clanSiegeCancel(session)
       }
       if(!Object.hasOwn(handlers,command)){
