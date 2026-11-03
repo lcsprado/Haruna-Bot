@@ -6,6 +6,8 @@ import {grantFirstSiegeInsignias} from './clan-siege-first-prize.js';
 import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
+const DAILY_CREATED_BY='system:siege-daily-20h';
+const DAILY_OPEN_GRACE_MS=15*60*1000; // Free Render can wake after 20h; never start after 20h15.
 const ACTIONS=new Set(['attack','defend','repair','spy']);
 const siegeGroup=()=>String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||'').trim();
 const ON=()=>process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\.us$/.test(siegeGroup());
@@ -13,6 +15,16 @@ const now=()=>Date.now();
 let schemaPromise=null;
 
 export const isClanSiegeEnabled=()=>ON();
+// Data na mesma zona do bot, sem depender da TZ do container (Render pode estar em UTC).
+export function siegeDailySchedule(nowMs=now()){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{
+    timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(new Date(nowMs)).map(p=>[p.type,p.value]));
+  const day=[parts.year,parts.month,parts.day].join('-');
+  const startsAt=Date.parse(day+'T20:00:00-03:00');
+  return {day,startsAt,endsAt:startsAt+24*60*60*1000,
+    opening:nowMs>=startsAt&&nowMs<startsAt+DAILY_OPEN_GRACE_MS};
+}
 export async function ensureClanSiegeSchema(){
   if(!schemaPromise)schemaPromise=(async()=>{
     await db.query([
@@ -92,6 +104,57 @@ export async function clanSiegePreflight(){
   return {configured:true,...analyzeSiegeEligibility(teams,await siegeBetaAuthorizedSet(db))};
 }
 
+async function dailySiegeTeams(conn){
+  // A abertura nao exige navegador aberto: ausencia na partida significa
+  // que o jogador nao executa ação naquela rodada.
+  const result=await conn.query([
+    'SELECT c.id,c.name,ARRAY_AGG(cm.jid ORDER BY cm.jid) AS jids,COUNT(cm.jid)::int AS members',
+    'FROM clans c JOIN clan_members cm ON cm.clan_id=c.id',
+    'GROUP BY c.id,c.name HAVING COUNT(cm.jid)=2 ORDER BY c.id'
+  ].join(' '));
+  return result.rows.map(r=>({...r,id:String(r.id),jids:r.jids||[]}));
+}
+export async function startDailyClanSiege(nowMs=now()){
+  if(!ON())return {started:false,reason:'disabled'};
+  const schedule=siegeDailySchedule(nowMs);
+  if(!schedule.opening)return {started:false,reason:'outside_window'};
+  await ensureClanSiegeSchema();
+  const chat=siegeGroup();
+  return tx(async conn=>{
+    // Protege contra chamadas simultaneas de status + cron e redeploys.
+    await conn.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+      [chat+':siege:'+schedule.day]);
+    const alreadyPlayed=await conn.query(
+      'SELECT 1 FROM alpha_siege_matches WHERE chat_jid=$1 AND created_by=$2 AND created_at>=$3 AND created_at<$4 LIMIT 1',
+      [chat,DAILY_CREATED_BY,schedule.startsAt,schedule.endsAt]);
+    if(alreadyPlayed.rowCount)return {started:false,reason:'already_today'};
+    const existing=await openMatch(conn,chat,true);
+    if(existing)return {started:false,reason:'match_open'};
+    const teams=await dailySiegeTeams(conn);
+    const approved=await siegeBetaAuthorizedSet(conn);
+    if(teams.length!==2||teams.some(t=>t.members!==2||t.jids.length!==2||
+      t.jids.some(jid=>!approved.has(String(jid)))))
+      return {started:false,reason:'roster_not_ready'};
+    const created=now();
+    const match=(await conn.query(
+      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',$5,$6,$6) RETURNING id",
+      [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,created+ROUND_MS,created]
+    )).rows[0];
+    for(const team of teams)for(const jid of team.jids)
+      await conn.query('INSERT INTO alpha_siege_roster(match_id,jid,clan_id) VALUES($1,$2,$3)',
+        [match.id,jid,team.id]);
+    await notice(conn,chat,[
+      '🏰 *CERCO AO CASTELO — GUERRA DIÁRIA INICIADA!*',
+      '⏰ Início programado: *20h*, horário de Brasília.',
+      '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
+      '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
+      '🎮 Abra o Alpha Web > Clã e escolha *Atacar, Defender, Reparar ou Espionar*.',
+      '🔒 Ação secreta. Quem não jogar a rodada fica sem ação.',
+      '🏆 A primeira vitória válida ainda concede a insígnia especial aos 2 campeões.'
+    ].join('\\n'));
+    return {started:true,matchId:String(match.id)};
+  });
+}
 async function openMatch(conn,chat,locked=false){
   const q=[
     "SELECT * FROM alpha_siege_matches WHERE chat_jid=$1",
@@ -145,12 +208,12 @@ async function advance(conn,match){
     const moves=(await conn.query(
       'SELECT clan_id,action FROM alpha_siege_moves WHERE match_id=$1 AND round=$2',
       [match.id,match.round])).rows;
-    if(moves.length<4&&Number(match.round_ends_at)>now())break;
+    if(Number(match.round_ends_at)>now()&&(match.created_by===DAILY_CREATED_BY||moves.length<4))break;
     const r=resolveSiegeRound(match,moves);
     const oldHistory=Array.isArray(match.history)?match.history:JSON.parse(match.history||'[]');
     const history=[...oldHistory,r.result];
     const status=r.finished?'completed':'active';
-    const deadline=r.finished?0:(moves.length===4?now()+ROUND_MS:Number(match.round_ends_at)+ROUND_MS);
+    const deadline=r.finished?0:(match.created_by===DAILY_CREATED_BY?Number(match.round_ends_at)+ROUND_MS:(moves.length===4?now()+ROUND_MS:Number(match.round_ends_at)+ROUND_MS));
     const updated=(await conn.query([
       "UPDATE alpha_siege_matches SET status=$2,round=$3,round_ends_at=$4,",
       "blue_hp=$5,red_hp=$6,blue_repairs=$7,red_repairs=$8,",
@@ -236,7 +299,7 @@ export async function clanSiegeStatus(session){
   }
   if(!session?.chatJid)return {enabled:false,reason:'Vincule o Web ao grupo AlphaBot pelo !web.'};
   const chat=group(session);
-  await ensureClanSiegeSchema();await settleClanSiege(chat);
+  await ensureClanSiegeSchema();await settleClanSiege(chat);await startDailyClanSiege();
   const teams=await eligible(db,chat);
   const mine=(await db.query('SELECT clan_id,role FROM clan_members WHERE jid=$1',[session.jid])).rows[0];
   let match=await openMatch(db,chat);
@@ -250,50 +313,12 @@ export async function clanSiegeStatus(session){
   };
 }
 export async function clanSiegeChallenge(session){
-  gate();const chat=group(session);await ensureClanSiegeSchema();
-  return tx(async conn=>{
-    const existing=await openMatch(conn,chat,true);
-    if(existing)throw new Error('Já existe uma guerra pendente ou ativa.');
-    const teams=await eligible(conn,chat);
-    if(!analyzeSiegeEligibility(teams,await siegeBetaAuthorizedSet(conn)).ready)
-      throw new Error('Antes de desafiar: os quatro membros precisam usar !web no AlphaBot e ter autorização no Web beta.');
-    const mine=teams.find(x=>x.jids.includes(session.jid));
-    const opponent=teams.find(x=>x.id!==mine?.id);
-    if(!mine||!opponent)throw new Error('Seu clã não está entre os dois participantes.');
-    const member=(await conn.query('SELECT role FROM clan_members WHERE jid=$1 AND clan_id=$2',[session.jid,mine.id])).rows[0];
-    if(member?.role!=='leader')throw new Error('Somente o líder pode abrir o desafio.');
-    const m=(await conn.query(
-      'INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$5) RETURNING id',
-      [chat,mine.id,opponent.id,session.jid,now()])).rows[0];
-    for(const team of teams)for(const jid of team.jids){
-      await conn.query('INSERT INTO alpha_siege_roster(match_id,jid,clan_id) VALUES($1,$2,$3)',[m.id,jid,team.id]);
-    }
-    return {ok:true,status:'pending'};
-  });
+  gate();group(session);
+  throw new Error('O Cerco agora começa automaticamente às 20h de Brasília. Não é preciso desafiar.');
 }
 export async function clanSiegeAccept(session){
-  gate();const chat=group(session);await ensureClanSiegeSchema();
-  return tx(async conn=>{
-    const match=await openMatch(conn,chat,true);
-    if(!match||match.status!=='pending')throw new Error('Não há desafio pendente.');
-    if(now()>Number(match.created_at)+30*60*1000)throw new Error('Desafio expirado.');
-    const member=(await conn.query('SELECT clan_id,role FROM clan_members WHERE jid=$1',[session.jid])).rows[0];
-    if(member?.role!=='leader'||String(member.clan_id)!==String(match.red_clan_id))
-      throw new Error('Somente o líder do clã desafiado pode aceitar.');
-    const teams=await eligible(conn,chat);
-    const roster=(await conn.query('SELECT jid,clan_id FROM alpha_siege_roster WHERE match_id=$1',[match.id])).rows;
-    if(!analyzeSiegeEligibility(teams,await siegeBetaAuthorizedSet(conn)).ready||roster.length!==4||
-       roster.some(r=>!teams.some(t=>t.id===String(r.clan_id)&&t.jids.includes(r.jid))))
-      throw new Error('Escalação modificada. Todos devem renovar !web antes de iniciar.');
-    await conn.query("UPDATE alpha_siege_matches SET status='active',round_ends_at=$2,updated_at=$3 WHERE id=$1",[match.id,now()+ROUND_MS,now()]);
-    await notice(conn,chat,[
-      '🏰 *CERCO AO CASTELO INICIADO!*',
-      '🔵 Azul × 🔴 Vermelho',
-      '⏳ Rodada 1/'+MAX_ROUNDS+' — 5 minutos',
-      '🔒 Escolha sua ação secreta na aba Clã do Alpha Web.'
-    ].join('\n'));
-    return {ok:true,status:'active'};
-  });
+  gate();group(session);
+  throw new Error('Aceitação manual desativada. A guerra começa automaticamente às 20h de Brasília.');
 }
 export async function clanSiegeMove(session,action){
   gate();const chat=group(session);await ensureClanSiegeSchema();
