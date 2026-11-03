@@ -44,8 +44,8 @@ import {
   patrimonyLeaderboard, hireCltUberDriver,
   getAlphaContractBoard, acceptAlphaContract, claimAlphaContract, changeAlphaReputation
 } from './progression.js'
-import {raceState,raceBuy,raceEquip,racePaint,raceUpgrade,raceRepair,raceSolo,raceChallenge,raceAccept,raceCancel,raceRanking,raceHistory} from './racing-alpha.js'
-import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TRACKS,RACING_STRATEGIES,RACING_TIERS,RACING_TOTAL_UPGRADE_COST} from './racing-rules.js'
+import {raceState,raceBuy,raceEquip,racePaint,raceVisualStyle,raceUpgrade,raceRepair,raceSolo,raceChallenge,raceAccept,raceCancel,raceRanking,raceHistory} from './racing-alpha.js'
+import {RACING_CARS,RACING_COLORS,RACING_VISUAL_CATEGORIES,RACING_PARTS,RACING_UPGRADES,RACING_TRACKS,RACING_STRATEGIES,RACING_TIERS,RACING_TOTAL_UPGRADE_COST} from './racing-rules.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
@@ -1228,6 +1228,7 @@ async function runAction(session,name,body={}){
     case 'racing.buy': return raceBuy(jid,String(body.modelId||''))
     case 'racing.equip': return raceEquip(jid,String(body.carId||''))
     case 'racing.paint': return racePaint(jid,String(body.carId||''),String(body.colorId||''))
+    case 'racing.visual': return raceVisualStyle(jid,String(body.carId||''),String(body.categoryId||''),String(body.optionId||''))
     case 'racing.upgrade': return raceUpgrade(jid,String(body.partId||''))
     case 'racing.repair': return raceRepair(jid)
     case 'racing.solo': return raceSolo(jid,[String(body.tier||'rua'),String(body.track||'cidade'),String(body.strategy||'equilibrada')])
@@ -1609,7 +1610,7 @@ export async function handleWebApi(req,res){
       ])
       res.setHeader('cache-control','private, no-store')
       json(res,200,{ok:true,data:sanitizePrivateRefs({garage,ranking,history,challenges:challenges.rows,
-        catalog:{cars:RACING_CARS,colors:RACING_COLORS,parts:RACING_PARTS,levels:RACING_UPGRADES,tracks:RACING_TRACKS,strategies:RACING_STRATEGIES,tiers:RACING_TIERS,totalUpgradeCost:RACING_TOTAL_UPGRADE_COST},serverTime:Date.now()},session)})
+        catalog:{cars:RACING_CARS,colors:RACING_COLORS,visualCategories:RACING_VISUAL_CATEGORIES,parts:RACING_PARTS,levels:RACING_UPGRADES,tracks:RACING_TRACKS,strategies:RACING_STRATEGIES,tiers:RACING_TIERS,totalUpgradeCost:RACING_TOTAL_UPGRADE_COST},serverTime:Date.now()},session)})
       return true
     }
 
