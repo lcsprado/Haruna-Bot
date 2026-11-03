@@ -29,7 +29,7 @@ const ui = {
   racingTarget: '',
   racingLast: null,
   siege: null,
-  siegePreviewAction: 'defend',
+  siegePreviewAction: null,
   siegeFetchedAt: 0,
   siegeLoading: false,
   siegeBusy: false,
@@ -1033,8 +1033,13 @@ async function loadSiege(force=false){
   if(!force&&ui.siegeFetchedAt&&Date.now()-ui.siegeFetchedAt<10000)return ui.siege;
   ui.siegeLoading=true;
   try{
-    const result=await api('/api/v1/me/clan-siege');
-    ui.siege=result.data||{enabled:false};
+    const previous=ui.siege?.match;
+    const next=result.data||{enabled:false};
+    const current=next.match;
+    if(current?.status==='active'&&(
+      previous?.status!=='active'||previous?.id!==current.id||previous?.round!==current.round
+    ))ui.siegePreviewAction=null; // nova partida/rodada: exigir nova escolha confirmada
+    ui.siege=next;
     ui.siegeError='';
   }catch(err){
     ui.siege={enabled:false};
@@ -1053,7 +1058,7 @@ async function submitSiege(command,body){
     const result=await api('/api/v1/me/clan-siege/'+command,{method:'POST',body:JSON.stringify(body||{})});
     if(result.ok===false)throw Error(result.reason||'Não foi possível executar.');
     toast(command==='move'?'Ação secreta registrada.':'Guerra atualizada.');
-    ui.siegePreviewAction='defend';
+    ui.siegePreviewAction=null;
     await loadSiege(true);
   }catch(err){ui.siegeError=String(err.message||err);toast(ui.siegeError);render();}
   finally{ui.siegeBusy=false;}
