@@ -2563,10 +2563,15 @@ const chosen=itemId
 const potion=PET_POTIONS[chosen.item_id]
 const hp=Math.min(maxHp,before+potion.heal)
 const healed=hp-before
-await client.query(
-'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',
+const debit=await client.query(
+'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>0 RETURNING quantity',
 [jid,chosen.item_id]
 )
+if(debit.rowCount!==1) throw new Error('Saldo insuficiente da poção.')
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES($1,'pet_manual',0,'pet_manual_potion',$2)
+`,[jid,`${chosen.item_id}|${String(pet.name||'Pet').slice(0,100)}|${before}->${hp}`])
 if(collectionId){
 await client.query(
 'UPDATE pet_collection SET hp=$1,max_hp=$2 WHERE jid=$3 AND id=$4',
@@ -2583,7 +2588,7 @@ await client.query('UPDATE pets SET hp=$1,max_hp=$2 WHERE jid=$3',[hp,maxHp,jid]
 }
 return {
 petId:collectionId,itemId:chosen.item_id,name:potion.name,petName:pet.name,
-before,hp,maxHp,healed,remaining:Number(chosen.quantity)-1
+before,hp,maxHp,healed,remaining:Number(debit.rows[0].quantity)
 }
 })
 }
@@ -3362,13 +3367,19 @@ return transaction(async client=>{
 const itemR=await client.query('SELECT id,name FROM items WHERE id=$1',[itemId])
 const item=itemR.rows[0]
 if(!item) throw new Error('Item não encontrado.')
-await client.query(`
+const granted=await client.query(`
 INSERT INTO inventories(jid,item_id,quantity)
 VALUES($1,$2,$3)
 ON CONFLICT(jid,item_id)
 DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity
+RETURNING quantity
 `,[jid,itemId,qty])
-return { item, qty }
+const total=Number(granted.rows[0]?.quantity||0)
+await client.query(`
+INSERT INTO transactions(from_jid,to_jid,amount,type,note)
+VALUES('admin',$1,0,'admin_item_grant',$2)
+`,[jid,`${itemId}|qty:${qty}|balance:${total}`])
+return { item, qty, total }
 })
 }
 const XP_ITEM_EFFECTS=Object.freeze({
