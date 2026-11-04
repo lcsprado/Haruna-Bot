@@ -69,3 +69,65 @@ test('assets do Work, PWA e garagem não são substituídos',()=>{
   assert.match(sw,/alpha-item-weapons.webp/);
   assert.match(sw,/racing-ui.js/);
 });
+
+
+test('V5 revela capacidade real de reparo e custo antes de confirmar',()=>{
+ const html=renderClanSiegePreview(ui(5,'repair','castle'));
+ assert.match(html,/280 HP/);
+ assert.match(html,/recuperação máxima seria 280 HP/);
+ assert.match(html,/Reparar não garante vitória/);
+ assert.match(html,/Aviso estratégico antes da confirmação/);
+ assert.match(html,/1\/2/);
+ const old=renderClanSiegePreview(ui(4,'repair','castle'));
+ assert.match(old,/até 220 HP/);
+ assert.doesNotMatch(old,/pode recuperar até 280 HP/);
+});
+test('V5 alerta se não há suprimento, há 2 reparos ou portão intacto',()=>{
+ const missing=ui(5,'repair');
+ missing.siege.match.blueSupplies=0;
+ assert.match(renderClanSiegePreview(missing),/Sem suprimentos agora/);
+ assert.match(renderClanSiegePreview(missing),/Reabastecer nesta rodada/);
+ const noMore=ui(5,'repair');
+ noMore.siege.match.blueRepairs=2;
+ const html=renderClanSiegePreview(noMore);
+ assert.match(html,/já usou os 2 reparos/);
+ assert.doesNotMatch(html,/data-siege-command="move"/);
+ const gateFull=ui(5,'repair','gate');
+ gateFull.siege.match.blueGate=2;
+ assert.match(renderClanSiegePreview(gateFull),/Portão intacto/);
+});
+test('V5 orienta espionagem final e não desperdiçar suprimento cheio',()=>{
+ const spy=ui(5,'spy','gate');
+ spy.siege.match.round=6;
+ assert.match(renderClanSiegePreview(spy),/Última rodada/);
+ assert.match(renderClanSiegePreview(spy),/não haverá próxima rodada/);
+ const full=ui(5,'supply','depot');
+ full.siege.match.blueSupplies=3;
+ assert.match(renderClanSiegePreview(full),/Estoque já cheio/);
+});
+test('após uma partida antiga concluída, prévia é V5 mas resultado histórico permanece',()=>{
+ const old=ui(1);
+ old.siege.match.status='completed';
+ old.siege.match.myMove=null;
+ const html=renderClanSiegePreview(old);
+ assert.match(html,/Resultado anterior preservado na regra V1/);
+ assert.match(html,/próxima guerra usará V5/);
+ assert.match(html,/data-siege-preview="supply"/);
+ assert.match(html,/V5/);
+ assert.doesNotMatch(html,/data-siege-command="move"/);
+});
+test('o histórico V5 diferencia dano e HP recuperado de fato',()=>{
+ const x=ui(5);
+ x.siege.match.history=[{round:2,rulesVersion:5,blueHp:1500,redHp:1400,
+ blueDamage:180,redDamage:220,blueTactic:'Suporte',redTactic:'Ofensiva',
+ blueHeal:280,redHeal:0}];
+ const html=renderClanSiegePreview(x);
+ assert.match(html,/HP realmente recuperado/);
+ assert.match(html,/🔵 \+280/);
+});
+test('confirmação no Web mostra custo e riscos específicos de reparo e espião',()=>{
+ const src=readFileSync(new URL('../web/clan-siege-ui.js',import.meta.url),'utf8');
+ assert.match(src,/REPARAR não garante vitória/);
+ assert.match(src,/não poderá ser alterada/);
+ assert.match(src,/Espionar na última rodada/);
+});
