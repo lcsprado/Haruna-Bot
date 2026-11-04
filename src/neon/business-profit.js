@@ -28,6 +28,7 @@ export function businessCollectionElapsedSeconds(nowSeconds,lastClaimSeconds,bus
 }
 
 export function formatBusinessCollectionElapsed(seconds){
+  if(seconds===null||seconds===undefined) return null
   const duration=Number(seconds)
   if(!Number.isFinite(duration)||duration<0) return null
   const totalMinutes=Math.floor(duration/60)
