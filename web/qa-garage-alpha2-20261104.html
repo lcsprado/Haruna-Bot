@@ -53,6 +53,10 @@ for(const tc of cases){
  const title=document.createElement('h3');title.textContent=tc.model.toUpperCase()+' • '+tc.label;
  const sub=document.createElement('p');sub.className='qa-sub';sub.textContent=tc.n+'/42 concluídos • pintura '+tc.color;
  wrapper.append(title,sub,art.cloneNode(true));gallery.appendChild(wrapper);
+ // A página de QA verifica TODAS as composições, inclusive fora da viewport:
+ // imagens da interface real usam loading=lazy para otimizar a navegação normal.
+ // Forçar eager somente neste teste impede tratar lazy loading como arquivo 404.
+ wrapper.querySelectorAll('img').forEach(img=>{img.loading='eager';img.decoding='sync';img.fetchPriority='high';});
  const expected=tc.n<8?null:tc.n<24?'street':'tunado';
  const overlays=wrapper.querySelectorAll('.race-car-overlay');
  if(overlays.length!==(expected?1:0))errors.push(tc.model+' '+tc.n+': sobreposição incoerente');
