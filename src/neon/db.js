@@ -3006,20 +3006,23 @@ const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBe
 const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
 const defenseBlocked=dodged?0:Math.max(0,Number(attack.damage||0)-Number(classDamage||0))
 to.hp=Math.max(0,to.hp-dmg)
+const hpAfterHit=to.hp
+let heartEvent=null
 const heart=vitalPulseHeal(to.hp,to.maxHp,to.vitalPulseUsed,to.vitalPulseRate)
 if(heart.used&&!to.vitalPulseUsed){
   to.hp=heart.hp
   to.vitalPulseUsed=true
-  log.push({round:from.attackIndex,vitalPulse:true,petHeal:true,from:to.name,fromJid:to.jid,to:to.name,toJid:to.jid,heal:heart.heal,hp:to.hp})
+  heartEvent={round:from.attackIndex,vitalPulse:true,petHeal:true,from:to.name,fromJid:to.jid,to:to.name,toJid:to.jid,heal:heart.heal,hp:to.hp}
 }
 const classHealBefore=from.hp
 if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
 const classHealed=Math.max(0,from.hp-classHealBefore)
 log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
-actualDamage:targetHpBefore-to.hp,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:to.hp,
+actualDamage:targetHpBefore-hpAfterHit,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:hpAfterHit,
 petExtraDamage,petDamageBlocked,defenseBlocked,shieldAbsorbed:Number(defense.shieldAbsorbed||0),petCrit:!fullyDodged&&petCrit,petDodge:dodged,
   ...(attack.technique?{heroTechnique:from.heroId?attack.technique:undefined,classTechnique:!from.heroId?attack.technique:undefined,heroId:from.heroId}:{} ),
   ...(defense.technique?{defenseTechnique:defense.technique}:{} )})
+if(heartEvent)log.push(heartEvent)
 if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
 const cooldown=Number(from.petBonus?.healCooldown||0)
 if(from.hp>0&&cooldown>0&&from.petHealUses<3&&Number(from.petBonus?.healPct||0)>0&&
