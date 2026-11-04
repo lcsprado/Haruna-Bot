@@ -6,7 +6,8 @@ on:
     paths:
       - 'web/app.js'
       - 'web/clan-siege-ui.js'
-      - 'test/web-clan-fortress-20261103.test.mjs'
+      - 'test/web-siege-fronts-v4-20261103.test.mjs'
+      - 'test/web-clan-fortress-20261103.test.mjs test/web-siege-fronts-v4-20261103.test.mjs'
       - 'web/styles.css'
       - 'web/index.html'
       - 'web/sw.js'
