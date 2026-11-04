@@ -179,7 +179,7 @@ export async function startDailyClanSiege(nowMs=now()){
     const blueFortress=await clanFortressCombatSnapshot(conn,teams[0].id,created);
     const redFortress=await clanFortressCombatSnapshot(conn,teams[1].id,created);
     const match=(await conn.query(
-      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id",
+      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',5,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id",
       [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,blueFortress.maxHp,redFortress.maxHp,JSON.stringify(blueFortress),JSON.stringify(redFortress),created+ROUND_MS,created]
     )).rows[0];
     for(const team of teams)for(const jid of team.jids)
@@ -191,8 +191,8 @@ export async function startDailyClanSiege(nowMs=now()){
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
       '🏰 Fortalezas: Azul '+blueFortress.maxHp+' HP / +'+Math.round(blueFortress.attackPct*100)+'% ATK / -'+(blueFortress.defensePct*100).toFixed(1)+'% dano; Vermelho '+redFortress.maxHp+' HP / +'+Math.round(redFortress.attackPct*100)+'% ATK / -'+(redFortress.defensePct*100).toFixed(1)+'% dano.',
       '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
-      '🗺️ NOVO CERCO: cada jogador escolhe sua ação e a frente: 🏰 Castelo, 🚪 Portão ou 📦 Depósito.',
-      '🚪 Duas investidas rompem o portão (+25% dano futuro ao castelo). 📦 Saquear o depósito rouba suprimento, e reabastecer gera 1. Reparar consome 1 suprimento do CERCO (não é dinheiro).',
+      '🗺️ CERCO V5: cada jogador escolhe UMA ação e uma frente: 🏰 Castelo, 🚪 Portão ou 📦 Depósito.',
+      '🚪 Duas investidas rompem o portão (+25% dano futuro ao castelo). 📦 Saquear o depósito rouba suprimento; reabastecer gera 1. Reparar consome 1 suprimento de CERCO e pode restaurar até 280 HP ou 1 ponto do Portão (máximo 2 reparos por clã).',
       '🛡️ Defender a frente certa bloqueia mais dano e pode contra-atacar. Espionar prepara o ataque NA MESMA FRENTE na rodada seguinte.',
       '🏆 Após 6 rodadas vence quem tiver mais HP; empate no HP desempata por objetivos, depois portão e suprimentos. Totalmente igual continua empate.',
       '🤝 Táticas em dupla: Atacar + Atacar ganha +10% de dano; Atacar + Defender protege e contra-ataca; Atacar + Reparar recupera até 220 HP; Atacar + Espionar marca alvo (+30%) e prepara +60% para a próxima rodada.',
@@ -374,7 +374,8 @@ async function advance(conn,match){
       Number(match.rules_version||1)>=TEAM_TACTICS_VERSION?
         '🛡️ Dano bloqueado: 🔵 '+r.result.blueBlocked+' • 🔴 '+r.result.redBlocked+
         ' | ⚔️ Contra-ataque: 🔵 '+r.result.blueCounter+' • 🔴 '+r.result.redCounter:'',
-      '🔨 Reparos: '+r.result.blueRepairs+' / '+r.result.redRepairs,
+      '🔨 Reparos usados nesta rodada: 🔵 '+r.result.blueRepairs+' • 🔴 '+r.result.redRepairs,
+      r.v4?'💚 Recuperação REAL de HP: 🔵 +'+r.result.blueHeal+' • 🔴 +'+r.result.redHeal+' | 🚪 Portões reconstruídos: 🔵 +'+r.result.blueGateRebuilt+' • 🔴 +'+r.result.redGateRebuilt:'',
       r.v4?'🚪 Portões: 🔵 '+r.v4.gate.blue+'/2 • 🔴 '+r.v4.gate.red+'/2 | 📦 Suprimentos: 🔵 '+r.v4.supplies.blue+'/3 • 🔴 '+r.v4.supplies.red+'/3':'',
       r.v4?'🎯 Pontos por objetivos: 🔵 '+r.v4.score.blue+' • 🔴 '+r.v4.score.red:'',
       r.finished?'🏆 *Resultado: '+winner+'*'+(r.v4?' • critério: '+r.result.victoryRule:''):'⏳ Próxima rodada aberta no Web.',
