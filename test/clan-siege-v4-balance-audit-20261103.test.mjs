@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {resolveSiegeRoundV4} from '../src/neon/clan-siege-v4.js';
 
 // Deterministic policy tournament using the exact deployed V4 engine.
