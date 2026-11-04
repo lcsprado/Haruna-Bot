@@ -195,3 +195,58 @@ test('identificar quem vence a estratégia de atacar duas vezes e depois defende
   }
   console.log('BALANCE_AUDIT_EARLY_ATTACK_THEN_GUARD='+JSON.stringify(table));
 });
+
+test('V5: Reparar recupera até 280 HP, V4 preserva 220 e V3 permanece 220',()=>{
+  const blueRepair=[{action:'repair',target:'castle',clan_id:'5'}];
+  const old=resolveSiegeRoundV4(initial({rules_version:4,blue_hp:1000}),blueRepair);
+  const balanced=resolveSiegeRoundV4(initial({rules_version:5,blue_hp:1000}),blueRepair);
+  assert.equal(old.hp.blue,1220);
+  assert.equal(balanced.hp.blue,1280);
+  assert.equal(old.result.blueHeal,220);
+  assert.equal(balanced.result.blueHeal,280);
+  assert.equal(balanced.repairs.blue,1);
+  assert.equal(balanced.v4.supplies.blue,0);
+  // Sem suprimento e sem parceria, o Reparo NÃO tem efeito.
+  const empty=resolveSiegeRoundV4(initial({rules_version:5,blue_hp:1000,blue_supplies:0}),blueRepair);
+  assert.equal(empty.hp.blue,1000);
+  assert.equal(empty.repairs.blue,0);
+});
+
+test('V5: melhora o valor de reparos sem tornar cura permanente ou gratuita',()=>{
+  const old={},current={};
+  for(const [name,blue] of policiesList){
+    old[name]={wins:0,losses:0,ties:0};
+    current[name]={wins:0,losses:0,ties:0};
+    for(const [,red] of policiesList){
+      for(const [version,tally] of [[4,old[name]],[5,current[name]]]){
+        const game=match(blue,red,{rules_version:version});
+        tally[game.winner==='blue'?'wins':game.winner==='red'?'losses':'ties']++;
+      }
+    }
+  }
+  console.log('BALANCE_AUDIT_V5_VS_V4='+JSON.stringify({
+    previousRepairAttack:old.repair_attack,newRepairAttack:current.repair_attack,
+    previousRepairGuard:old.repair_guard,newRepairGuard:current.repair_guard,
+    attackAlways:current.rush_castle,gateSiege:current.gate_siege,
+    attackThenGuard:current.attack_then_guard,
+    newAll:current
+  }));
+  assert.ok(current.repair_attack.wins>=old.repair_attack.wins,
+    'Reparo em dupla deve recuperar competitividade');
+  assert.ok(current.repair_guard.wins>=old.repair_guard.wins);
+  assert.ok(current.rush_castle.losses>0,'Atacar sempre continua tendo contra-estratégia');
+  assert.ok(current.repair_attack.losses>0,'Reparar não pode vencer todos os adversários');
+  assert.ok(current.attack_then_guard.losses>0,
+    'Estratégia de atacar e defender não pode dominar todas as opções');
+});
+test('V5: regra de início/encerramento mantém máximo de seis rodadas e dinheiro intocado',()=>{
+  const attack=()=>both(A());
+  const repair=(m,side,round)=>round===2?both(R()):both(A());
+  const g=match(attack,repair,{rules_version:5});
+  assert.ok(g.rounds<=6);
+  assert.ok(g.blueHp>=0&&g.redHp>=0);
+  const server=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
+  assert.match(server,/VALUES\(\$1,\$2,\$3,\$4,'active',5/);
+  assert.match(server,/Recuperação REAL de HP/);
+  assert.doesNotMatch(server,/UPDATE users SET/);
+});
