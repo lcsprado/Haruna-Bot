@@ -27,6 +27,6 @@ export async function autoHealBossCombatPet({client,jid,pet,maxHp,choosePotion,p
   await persistPet(client,jid,pet)
   return {
     id:chosen.item_id,name:chosen.name,heal:hp-before,before,hp,maxHp:capacity,
-    petName:pet.name,remaining:Number(debit.rows[0].quantity)
+    petName:pet.name,remaining:debit.remaining
   }
 }
