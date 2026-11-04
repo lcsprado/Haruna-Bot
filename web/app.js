@@ -3703,15 +3703,27 @@ setInterval(()=>{
   const linked=hashParams.get('code') || params.get('link');
   const tokenFromLink=params.get('token');
 
+  // Tokens em URL podem vazar por histórico, compartilhamento e previews.
+  // Somente o código de uso único gerado pelo !web pode iniciar uma nova sessão.
   if(tokenFromLink){
-    ui.token=tokenFromLink;
-    localStorage.setItem(TOKEN_KEY,ui.token);
     history.replaceState({},document.title,'/rpg');
+    ui.token='';
+    ui.data=null;
+    ui.catalog=null;
+    localStorage.removeItem(TOKEN_KEY);
+    showLogin('Link antigo com token não é aceito. Gere um novo !web no WhatsApp.');
+    return;
   }
 
   // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
   // Só o navegador executa o POST que consome o código.
   if(linked){
+    // Um novo link sempre substitui a identidade local anterior.
+    // Código expirado, usado ou incorreto NUNCA reabre a sessão de outra pessoa.
+    ui.token='';
+    ui.data=null;
+    ui.catalog=null;
+    localStorage.removeItem(TOKEN_KEY);
     $('#linkCode').value=linked;
     try{
       await exchange(linked);
@@ -3719,13 +3731,11 @@ setInterval(()=>{
       await sync(false);
       return;
     }catch(err){
-      // Se o aparelho já tem sessão válida, um código antigo/consumido não deve derrubá-la.
-      if(ui.token){
-        history.replaceState({},document.title,'/rpg');
-        showApp();
-        await sync(true);
-        if(ui.token) return;
-      }
+      ui.token='';
+      ui.data=null;
+      ui.catalog=null;
+      localStorage.removeItem(TOKEN_KEY);
+      history.replaceState({},document.title,'/rpg');
       showLogin(err.message+' Gere um novo !web e toque no novo link. O código vale por 30 minutos.');
       return;
     }
