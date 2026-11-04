@@ -1454,6 +1454,23 @@ body.loot-open{overflow:hidden!important}
   .race-hero-showroom>.race-car-photo{max-height:190px}
 }
 .race-paint-stage .race-car-photo{margin:auto}
+.race-car-art{display:block;position:relative;width:100%;max-width:620px;aspect-ratio:800/533;flex:0 1 auto;margin:auto}
+.race-car-art>.race-car-photo,.race-car-art>.race-car-overlay{position:absolute;inset:0;display:block;width:100%;height:100%;max-width:none;max-height:none;object-fit:contain;aspect-ratio:auto;transform:none;animation:none}
+.race-car-overlay{pointer-events:none;filter:drop-shadow(0 2px 2px #0005)}
+.race-hero-showroom>.race-car-art{width:min(100%,550px);max-height:285px;transform:translateY(-10px)}
+.race-hero-showroom>.race-car-art>.race-car-photo{transform:none}
+.race-fleet-visual>.race-car-art{max-height:100%;width:auto;height:100%}
+.race-car-preview>.race-car-art{max-height:100%;width:auto;height:100%}
+.race-shop-hero .race-car-art{max-height:230px}
+.race-paint-stage .race-car-art{max-height:280px}
+.race-visual-progress{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;color:#a9bfd4;font-size:11px;flex-wrap:wrap}
+.race-stage-name{color:#e2f2ff;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.race-stage-name b{display:inline-block;margin-left:7px;padding:3px 7px;border:1px solid #e5c766;border-radius:6px;color:#f6dc88;font-size:9px}
+.race-visual-milestones{display:block;color:#8fc5df;line-height:1.5}
+.race-visual-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.race-visual-choice{min-height:52px;border:1px solid #3a5670;background:#192d3c;color:#d7e8f3;border-radius:9px;cursor:pointer;font:inherit;font-weight:800}
+.race-visual-choice.active{border-color:#9ce4da;box-shadow:0 0 0 1px #9ce4da88}
+.race-visual-choice small{display:block;margin-top:3px;color:#9fb6c9;font-weight:600}
 .race-hero-showroom .race-car-svg text{display:none}
 .race-fleet-actions{gap:8px;flex-wrap:wrap}.race-fleet-actions .race-button{min-height:42px}
 .race-part-image{width:48px;height:48px;flex:none;border-radius:12px}
@@ -1464,6 +1481,7 @@ body.loot-open{overflow:hidden!important}
 .race-paint-cars,.race-swatches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.race-paint-car,.race-swatch{border:1px solid #3a5670;background:#192d3c;color:#d7e8f3;border-radius:9px;padding:9px;min-height:45px;cursor:pointer}.race-paint-car.active,.race-swatch.active{border-color:#9ce4da;box-shadow:0 0 0 1px #9ce4da88}.race-swatches{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:15px}.race-swatch{font-size:10px;min-height:60px}.race-swatch i{display:block;width:23px;height:23px;margin:0 auto 4px;border:2px solid #ffffff77;border-radius:50%}.race-paint-controls>.race-button{width:100%;min-height:44px}
 @media(max-width:830px){.race-paint-layout{grid-template-columns:1fr}.race-paint-stage{min-height:220px}}
 @media(max-width:560px){.race-swatches{grid-template-columns:repeat(3,minmax(0,1fr))}.race-paint-stage{padding:10px}.race-paint-controls{padding:15px}.race-part-image{width:42px;height:42px}.race-fleet-actions{justify-content:space-between}}
+@media(max-width:560px){.race-hero-showroom>.race-car-art{max-height:190px}.race-visual-progress{justify-content:center}.race-fleet-card .race-visual-progress{justify-content:space-between}.race-visual-choice{font-size:10px}}
 
 
 

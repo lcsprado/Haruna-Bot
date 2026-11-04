@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {readFileSync} from 'node:fs'
+import {readFileSync,statSync} from 'node:fs'
 import {renderRacing} from '../web/racing-ui.js'
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8')
 const catalog={
@@ -54,6 +54,37 @@ test('paint preview uses all 12 stored colors while race actions remain availabl
  assert.match(html,/\/assets\/racing\/gol-azul\.webp/)
  assert.match(html,/data-race-tab="races"/)
 })
+
+test('visual milestones use completed levels, exclude pending installs, and keep all paints',()=>{
+ let assetBytes=0
+ for(const model of catalog.cars.map(c=>c.id))for(const stage of ['street','tunado']){
+  const file=new URL(`../web/assets/racing/${model}-${stage}.svg`,import.meta.url)
+  const svg=readFileSync(file,'utf8')
+  assert.match(svg,/viewBox="0 0 800 533"/)
+  assetBytes+=statSync(file).size
+ }
+ assert.ok(assetBytes<5_000_000)
+ const levels=n=>Object.fromEntries(catalog.parts.map((p,i)=>[p.id,Math.max(0,Math.min(7,n-7*i))]))
+ for(const model of catalog.cars.map(c=>c.id)){
+  for(const [count,stage] of [[0,'original'],[7,'original'],[8,'street'],[23,'street'],[24,'tunado'],[42,'tunado']]){
+   const car={id:1,model_id:model,color_id:'azul',equipped:true,condition:100,upgrades:levels(count),pending_part:'motor',pending_level:7}
+   const ui={...base,racing:{...base.racing,garage:{...base.racing.garage,cars:[car]}}}
+   const html=renderRacing(ui)
+   assert.match(html,new RegExp(`/assets/racing/${model}-azul\\.webp`))
+   assert.match(html,new RegExp(`Preparação <b>${count}/42`))
+   if(stage==='original')assert.doesNotMatch(html,new RegExp(`/assets/racing/${model}-(street|tunado)\\.svg`))
+   else assert.match(html,new RegExp(`/assets/racing/${model}-${stage}\\.svg`))
+   assert.equal(html.includes('FULL BUILD'),count===42)
+  }
+ }
+ const car={id:1,model_id:'gol',color_id:'prata',equipped:true,condition:100,upgrades:levels(0)}
+ const paint={...base,racingTab:'paint',racingPreviewStage:'tunado',racing:{...base.racing,garage:{...base.racing.garage,cars:[car]}}}
+ const html=renderRacing(paint)
+ assert.match(html,/visual bloqueado até 24\/42/)
+ assert.match(html,/gol-tunado\.svg/)
+ assert.equal((html.match(/data-race-color=/g)||[]).length,12)
+ assert.match(html,/data-race-act="paint"/)
+})
 test('races use only available server-backed tiers, tracks and strategies',()=>{
  const ui={...base,racingTab:'races',racing:{...base.racing,garage:{...base.racing.garage,cars:[{
   id:1,model_id:'corsa',equipped:true,condition:100,upgrades:{},pending_part:null
@@ -74,6 +105,7 @@ test('the race page requests one endpoint only on navigation, not every 15s',()=
  assert.doesNotMatch(app,/setInterval\([^)]*loadRacing\(/)
  assert.match(app,/120000/)
  assert.match(app,/updateRacingClocks\(\)/)
+ assert.match(app,/racingNextCompletionRefreshAt/)
  assert.match(app,/racing:\(\)=>renderRacing\(ui\)/)
  assert.match(app,/data-page/)
  assert.ok(app.indexOf("['racing','🏎️','Garagem Alpha']")<app.indexOf("['pets','🐾','Pets']"))
@@ -82,5 +114,5 @@ test('the race page requests one endpoint only on navigation, not every 15s',()=
  assert.match(read('web/sw.js'),/Promise\.allSettled\(SHELL\.filter/)
  assert.match(read('web/sw.js'),/racing-ui\.js/)
  assert.match(read('web/index.html'),/\/app\.js\?v=20261103-siege-preview-actions-v5/)
- assert.match(read('web/index.html'),/20261103-garage-photo-fit-v6/)
+ assert.match(read('web/index.html'),/20261103-garage-alpha2-v1/)
 })
