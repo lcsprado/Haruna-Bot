@@ -41,7 +41,7 @@ export function applyVitalCombatHp(currentHp,maxHp,petHpRate=0,teamHpRate=0,{pvp
   const baseHp=Math.max(0,Math.min(baseMax,Number(currentHp)||0))
   const petRate=Math.max(0,Number(petHpRate)||0)
   const teamRate=Math.max(0,Number(teamHpRate)||0)*(pvp?.5:1)
-  const rate=Math.min(pvp?.10:.25,petRate+teamRate)
+  const rate=Math.min(pvp?.12:.32,petRate+teamRate)
   const boostedMax=Math.max(1,Math.round(baseMax*(1+rate)))
   const boostedHp=Math.max(0,Math.min(boostedMax,Math.round(baseHp*boostedMax/baseMax)))
   return {hp:boostedHp,maxHp:boostedMax,rate,baseMaxHp:baseMax}
