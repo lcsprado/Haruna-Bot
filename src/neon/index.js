@@ -90,6 +90,7 @@ import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet} from './playable-heroes.js'
 import {formatProfileCombatBonuses} from './profile-combat-summary.js'
+import {applyVitalCombatHp} from './vital-pets.js'
 import {gearStatsWithEnchants,equipmentEnchantmentsByItem} from './equipment-enchant-view.js'
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
 import {PECADOS_EDITIONS,PECADOS_ESSENCES_PER_PHASE,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
@@ -1589,6 +1590,9 @@ const petStatus=pet&&!primaryPetReady
 ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
 :null
 const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
+const baseCombatMaxHp=Math.max(1,Number((heroSheet?.maxHp??p.effective_max_hp)||1))
+const vitalPve=applyVitalCombatHp(baseCombatMaxHp,baseCombatMaxHp,Number(combatPets.active.hp||0),Number(synergy.hp||0))
+const vitalPvp=applyVitalCombatHp(baseCombatMaxHp,baseCombatMaxHp,Number(pvpPet?.hp||0),Number(synergy.hp||0),{pvp:true})
 // Mesma regra de critico do duelo; heroi ativo desativa a passiva da classe.
 const pvpCritWithPet=pvpCritChance({equipmentCrit:p.equipment_crit,
  classId:p.class_id,classApplied:p.class_applied,awakeningStage,
@@ -1604,6 +1608,8 @@ Number(en.crit||0)?'🎯 +'+pct(en.crit*100)+' p.p. CRIT':null
 const bonusSummary=formatProfileCombatBonuses({
 raidDamagePct,bossDamagePct,raidCritPct,bossCritPct,pvpCritPct:pvpCritWithPet*100,
 petDamagePct:petDamage*100,petPvp:pvpPet,
+petHpPvePct:vitalPve.rate*100,petHpPvpPct:vitalPvp.rate*100,
+combatMaxHpPve:vitalPve.maxHp,combatMaxHpPvp:vitalPvp.maxHp,vitalSynergy:Number(synergy.vitalPulse||0)>0,
 petSpeed:primaryPetReady?Number(petSpeedBonus(pet.species,pet.level)||0):0,
 teamSpeed:Number(synergy.speed||0),
 enchantParts,hasEnchantedDamage:Number(en.damage||0)>0,
@@ -1953,6 +1959,7 @@ bossDamage:'dano contra Boss',
 defense:'defesa',
 crit:'chance de crítico',
 dodge:'🌀 esquiva',
+hp:'❤️ HP máximo',
 speed:'👢 VEL',
 xp:'XP recebido',
 drop:'Lucky/drop'
