@@ -1,4 +1,5 @@
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+import {VITAL_PETS} from './vital-pets.js'
 export const PLAYER_CLASSES = Object.freeze({
   warrior:Object.freeze({id:'warrior',name:'Guerreiro',role:'Equilibrado',hp:70,atk:12,def:11,spd:6,description:'Equilibrado para qualquer conteúdo: boa vida, ataque, defesa e mobilidade.'}),
   assassin:Object.freeze({id:'assassin',name:'Assassino',role:'Dano veloz',hp:35,atk:18,def:6,spd:16,description:'Especialista em velocidade e dano rápido, com resistência menor que as classes defensivas.'}),
@@ -25,6 +26,7 @@ export function getPlayerClass(id){
 
 export const PET_STATUS_SPECIALTIES = {
   ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{label:'🌈 '+p.name+' — 7 Pecados',stats:p.stats,raid:true}])),
+  ...Object.fromEntries(VITAL_PETS.map(p=>[p.species,{label:p.name+' — Vínculo Vital',stats:p.stats,healPct:p.healPct||0,healCooldown:p.healCooldown||0,raid:true}])),
   morcego_madrugada:{label:'🦇 Coringa da Madrugada',stats:{crit:6,dodge:5},raid:true},
   corcel_espectral_halloween:{label:'🐎 Corcel Espectral Ascendido — Halloween',stats:{bossDamage:11,crit:5,defense:4,dodge:4},raid:true},
   cerbero_0333_20261031:{label:'🐺 Cérbero das 03:33 — Guardião da Hora Morta',stats:{defense:12,damage:8,crit:6,dodge:5},healPct:5,healCooldown:6,raid:true},
@@ -190,6 +192,7 @@ export function petCombatSpecialty(species) {
     label: spec.label || String(species || ''),
     damage: pct('damage'),
     bossDamage: pct('bossDamage'),
+    hp: pct('hp'),
     defense: pct('defense'),
     crit: pct('crit'),
     dodge: pct('dodge'),
@@ -212,6 +215,7 @@ export function petPvpSpecialty(species, level=1) {
   const scaled=k=>Math.min(cap,Math.max(0,Number(base[k]||0)*scale))
   return {
     damage:scaled('damage')*.30,
+    hp:scaled('hp')*.30,
     defense:scaled('defense')*.30,
     crit:scaled('crit')*.30,
     dodge:Math.min(.05,scaled('dodge')*.30),
