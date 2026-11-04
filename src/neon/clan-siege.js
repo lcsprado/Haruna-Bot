@@ -1,8 +1,9 @@
 // Cerco ao Castelo: batalhas e escolhas autoritativas no banco, nunca no cliente.
-// Recursos reais (dinheiro, HP do jogador e XP) não são alterados.
+// Só a premiação específica de 04/11 concede dinheiro VIRTUAL; não altera XP ou HP do jogador.
 import {db} from './db.js';
 import {ensureWebActionOutbox} from './web-activity-relay.js';
 import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
+import {ensureSiegeEventRewardsSchema,grantSiegeEventRewards,brtSiegeDay,SIEGE_EVENT_DATE} from './clan-siege-event-rewards-20261104.js';
 import {ensureClanFortressSchema,clanFortressCombatSnapshot,clanFortressStatus,clanFortressUpgrade} from './clan-fortress.js';
 import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
 
@@ -89,6 +90,8 @@ export async function ensureClanSiegeSchema(){
       'COMMIT;'
     ].join(' '));
     await ensureWebActionOutbox(db);
+    // Prêmio único, com chave idempotente para evitar pagamento duplicado.
+    await ensureSiegeEventRewardsSchema(db);
     // Prepara a tabela de upgrades na inicialização, mesmo sem alguém abrir o Web.
     await ensureClanFortressSchema();
   })().catch(e=>{schemaPromise=null;throw e});
@@ -198,7 +201,9 @@ export async function startDailyClanSiege(nowMs=now()){
       '🛡️ Defender reduz 50% do dano por defensor (máx. 75%) e devolve 80 de dano se sofrer ataque. 🔨 Só 2 reparos por guerra/clã. 🕵️ Espiões fortalecem os ataques da rodada seguinte (+60% cada).',
       '🎮 Abra o Alpha Web > Clã e escolha *Atacar, Defender, Reparar, Espionar ou Reabastecer*. A escolha inclui a frente da ação.',
       '🔒 Ação secreta. Quem não jogar a rodada fica sem ação.',
-      '🏆 A insígnia histórica foi encerrada e não será concedida nas próximas guerras.'
+      '🏆 A insígnia histórica foi encerrada e não será concedida nas próximas guerras.',
+      brtSiegeDay(created)===SIEGE_EVENT_DATE?
+        '🎁 *PRÊMIOS SOMENTE DA GUERRA DE HOJE:* cada campeão recebe R$ 5.000.000 + Troféu do Cerco V5 (cosmético, sem atributos); cada vice recebe R$ 1.000.000. Se empatar, cada jogador recebe R$ 1.500.000. Valores virtuais, pagos automaticamente uma única vez ao final.':' '
     ].join('\n'));
     return {started:true,matchId:String(match.id)};
   });
@@ -360,6 +365,7 @@ async function advance(conn,match){
       r.v4?JSON.stringify(r.v4.spyState.blue):null,
       r.v4?JSON.stringify(r.v4.spyState.red):null
     ])).rows[0];
+    const eventPrize=r.finished?await grantSiegeEventRewards(conn,updated):null;
     const winner=r.winner===null?'Empate':r.winner===String(match.blue_clan_id)?'Clã Azul':'Clã Vermelho';
     await notice(conn,match.chat_jid,[
       '🏰 *CERCO AO CASTELO — RODADA '+match.round+'/'+MAX_ROUNDS+'*',
@@ -378,7 +384,12 @@ async function advance(conn,match){
       r.v4?'🚪 Portões: 🔵 '+r.v4.gate.blue+'/2 • 🔴 '+r.v4.gate.red+'/2 | 📦 Suprimentos: 🔵 '+r.v4.supplies.blue+'/3 • 🔴 '+r.v4.supplies.red+'/3':'',
       r.v4?'🎯 Pontos por objetivos: 🔵 '+r.v4.score.blue+' • 🔴 '+r.v4.score.red:'',
       r.finished?'🏆 *Resultado: '+winner+'*'+(r.v4?' • critério: '+r.result.victoryRule:''):'⏳ Próxima rodada aberta no Web.',
-      r.finished?'🏆 Recompensas do Cerco serão divulgadas no anúncio oficial do evento. Não haverá nova insígnia automática.':''
+      eventPrize?('🎁 *PRÊMIOS CREDITADOS:* '+
+        (eventPrize.draws?'empate: '+eventPrize.draws+' × R$ 1.500.000.':
+          eventPrize.winners+' campeões × R$ 5.000.000 + '+eventPrize.trophies+
+          ' Troféus do Cerco V5; '+eventPrize.losers+' vices × R$ 1.000.000.')+
+        ' Nenhuma insígnia foi entregue.'):
+        r.finished?'🏆 Cerco concluído. Sem insígnia automática.':''
     ].join('\n'));
     match=updated;
   }
