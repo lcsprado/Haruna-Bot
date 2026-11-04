@@ -143,3 +143,34 @@ test('V5 exibe motivo no histórico quando reparo ficou sem efeito',()=>{
  assert.match(html,/Reparos sem efeito/);
  assert.match(html,/sem suprimentos nesta rodada/);
 });
+
+test('guerra histórica V1 não trava escolhas da nova V5 nem fixa Defesa',()=>{
+ const old=ui(1);
+ old.siege.match.status='completed';
+ old.siege.match.myMove='defend'; // estado residual da última partida
+ old.siege.match.blueHp=740;old.siege.match.redHp=700;
+ old.siegePreviewAction=null;
+ const html=renderClanSiegePreview(old);
+ for(const id of ['attack','defend','repair','spy','supply'])
+   assert.match(html,new RegExp('data-siege-preview="'+id+'"'));
+ assert.match(html,/data-siege-preview="supply"/);
+ assert.match(html,/data-siege-target="castle"/);
+ assert.match(html,/CERCO V5/);
+ assert.match(html,/2000 \/ 2.000/);
+ assert.match(html,/ÚLTIMA GUERRA — REGRA V1 \(HISTÓRICO\)/);
+ assert.doesNotMatch(html,/siege-action selected" data-siege-preview="defend"/);
+ assert.doesNotMatch(html,/data-siege-command="move"/);
+ assert.doesNotMatch(html,/Insígnia dos Primeiros Conquistadores/);
+});
+test('na prévia de hoje V5 Defender não é obrigatório e pode escolher outro alvo',()=>{
+ const m=ui(1,'defend','castle');m.siege.match.status='completed';m.siege.match.myMove=null;
+ const defend=renderClanSiegePreview(m);
+ assert.match(defend,/siege-action selected" data-siege-preview="defend"/);
+ m.siegePreviewAction='spy';m.siegePreviewTarget='gate';
+ const spy=renderClanSiegePreview(m);
+ assert.match(spy,/siege-action selected" data-siege-preview="spy"/);
+ assert.match(spy,/data-siege-target="gate"/);
+ assert.doesNotMatch(spy,/siege-action selected" data-siege-preview="defend"/);
+ const src=readFileSync(new URL('../web/clan-siege-ui.js',import.meta.url),'utf8');
+ assert.match(src,/status==='active'\?Number\(ui\.siege\.match\.rulesVersion\|\|1\):5/);
+});
