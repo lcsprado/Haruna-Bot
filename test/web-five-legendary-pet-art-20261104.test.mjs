@@ -25,10 +25,11 @@ test('os cinco IDs usam o renderizador comum e o cache da Web',()=>{
  for(const id of ids){
   assert.ok(app.includes(`${id}:'/assets/pets/${id}.webp'`));
   assert.ok(sw.includes(`/assets/pets/${id}.webp`));
-  assert.ok(audit.includes(`"${id}"`));
+  assert.ok(audit.includes(`'${id}'`));
  }
  assert.match(app,/function petVisualMarkup\(species/);
  assert.match(app,/petVisualMarkup\(p\.species,'pet-picker-portrait-art'\)/);
  assert.match(app,/petVisualMarkup\(p\.species,'pet-team-open-art'\)/);
- assert.match(audit,/rasterNames\.has\(name\)/);
+ assert.match(audit,/alphaPetArtAudit\?\.render/);
+ assert.match(audit,/portrait\.innerHTML=render\(name/);
 });

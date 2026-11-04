@@ -567,7 +567,13 @@ const PET_IMAGE_ASSETS={
   guardiao_nucleo_vital:'/assets/pets/guardiao_nucleo_vital.webp',
   quimera_rubra:'/assets/pets/quimera_rubra.webp',
   serafim_vida_abissal:'/assets/pets/serafim_vida_abissal.webp',
-  leviata_eternidade:'/assets/pets/leviata_eternidade.webp'
+  leviata_eternidade:'/assets/pets/leviata_eternidade.webp',
+  corcel_espectral_halloween:'/assets/pets/corcel_espectral_halloween.webp',
+  manticora_eclipse_20261030:'/assets/pets/manticora_eclipse_20261030.webp',
+  guaxinim_errante_20261027:'/assets/pets/guaxinim_errante_20261027.webp',
+  onca_eclipse_20261026:'/assets/pets/onca_eclipse_20261026.webp',
+  lince_astral:'/assets/pets/lince_astral.webp',
+  raposa_astral:'/assets/pets/raposa_astral.webp'
 };
 
 function petExactImage(species){
@@ -628,17 +634,16 @@ function petVisualMarkup(species,className='pet-official-art'){
     return petCroppedSprite(exclusive,className+' pet-primary-art',label);
   }
   if(COLLECTION_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
-  if(RAID_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
-
   // Artes individuais verificadas têm preferência sobre desenhos substitutos.
   // Os dois webps rotulados como Corvo e Tubarão foram removidos após auditoria.
   const img=petExactImage(s);
   if(img){
     return '<div class="pet-art-stack">'+
       petSpeciesFallback(s,className+' pet-image-fallback',label)+
-      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=legendary-pets-20261104-1" alt="'+esc(label)+'" loading="lazy" '+
+      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=pet-exclusives-20261104-1" alt="'+esc(label)+'" loading="lazy" '+
       'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
+  if(RAID_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
 
   // Para espécies comuns sem retrato fotográfico verificado, usa o SVG próprio.
   if(PET_VERIFIED_VECTOR_ASSETS.has(s)){
@@ -655,6 +660,8 @@ function petVisualMarkup(species,className='pet-official-art'){
   // Último recurso para espécies futuras que ainda não possuem assets.
   return petSpeciesFallback(s,className,label);
 }
+// A página de QA chama exatamente o renderizador usado pela coleção e pelo Time Pet.
+window.alphaPetArtAudit=Object.freeze({render:petVisualMarkup});
 function raidSpriteKey(level,name){
   const lv=Number(level||0);
   return RAID_BOSS_LEVELS.has(lv)?'raid-'+lv:'';
@@ -1147,10 +1154,10 @@ function currentGroup(){
   return ui.data&&ui.data.group;
 }
 function collection(){
-  return (ui.data&&ui.data.pets)||[];
+  return ((ui.data&&ui.data.pets)||[]).filter(p=>!COLLAB_HERO_ART[p.species]);
 }
 function catalogPets(){
-  return (ui.catalog&&ui.catalog.pets)||[];
+  return ((ui.catalog&&ui.catalog.pets)||[]).filter(p=>!COLLAB_HERO_ART[p.species]);
 }
 function itemCount(id){
   const row=((ui.data&&ui.data.inventory)||[]).find(x=>x.item_id===id);
