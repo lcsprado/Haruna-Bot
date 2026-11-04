@@ -114,19 +114,6 @@ function renderCastle(clan,side){
     '</article>';
 }
 
-function siegeFirstPrizePanel(match=null,awardedId=null){
-  const earned=Boolean(match?.status==='completed'&&awardedId!=null&&String(match.id)===String(awardedId));
-  const taken=Boolean(awardedId);
-  const message=earned?'🎉 Insígnia entregue aos dois integrantes do clã campeão. Use !reliquias para equipar.':
-    taken?'Premiação histórica já conquistada em uma guerra anterior.':
-    'Reserva exclusiva para os dois membros do primeiro clã que vencer. Empate não consome o prêmio.';
-  return '<aside class="siege-prize"><div class="siege-prize-symbol" aria-hidden="true">👑</div>'+
-    '<div><small>PRIMEIRA GUERRA DE CLÃS · EVENTO ÚNICO</small>'+
-    '<h4>Insígnia dos Primeiros Conquistadores</h4>'+
-    '<p>⚔️ +7% dano Boss/Raid • 🎯 +3 p.p. CRIT Boss/Raid • 🛡️ −2% dano recebido em Raid</p>'+
-    '<p>'+ESCAPE(message)+'</p>'+
-    '<small>Relíquia permanente, não vendável, vinculada ao vencedor e sem bônus PvP.</small></div></aside>';
-}
 function siegeActionRisk(match,selectedAction,target,remainingRepairs){
   const version=Number(match?.rulesVersion||1);
   if(version<4||!selectedAction||match?.status!=='active'||match?.myMove)return '';
@@ -168,37 +155,40 @@ function renderLiveSiege(ui){
   const red=match?clans.find(c=>String(c.id)===String(match.redClanId)):clans.find(c=>String(c.id)!==String(data.myClanId));
   const stage=match?.status||'idle';
   const active=stage==='active';
+  const previous=stage==='completed';
+  // Uma guerra concluída é histórico. Seu HP, sua seleção V1 e o botão de
+  // Defesa não podem controlar a prévia independente da próxima Guerra V5.
   // Fora de uma partida ativa, os botões demonstram a PRÓXIMA guerra (V5),
   // mas o histórico/placar continuam mostrando a versão em que foram jogados.
   const rulesVersion=active?Number(match.rulesVersion||1):5;
   const availableActions=rulesVersion>=4?TACTICAL_ACTIONS.map(a=>a.id==='repair'&&rulesVersion>=5?
     {...a,effect:a.effect.replace('220 HP','280 HP')}:a):rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
-  const remainingRepairs=Math.max(0,2-Number(match?.[match?.mySide+'Repairs']||0));
+  const remainingRepairs=active?Math.max(0,2-Number(match?.[match?.mySide+'Repairs']||0)):2;
   const canMove=active&&Boolean(match.mySide)&&!match.myMove;
   const selected=availableActions.find(x=>x.id===ui.siegePreviewAction)||null;
-  const selectedActionId=match?.myMove||selected?.id||null;
-  const selectedTarget=match?.myTarget||(
+  const selectedActionId=(active?match?.myMove:null)||selected?.id||null;
+  const selectedTarget=(active?match?.myTarget:null)||(
     selectedActionId==='supply'?'depot':ui.siegePreviewTarget||'castle');
   const permittedTargets=selectedActionId==='repair'?FRONTS_V4.filter(front=>front.id!=='depot'):
     selectedActionId==='supply'?FRONTS_V4.filter(front=>front.id==='depot'):FRONTS_V4;
   // Antes das 20h: seleção apenas visual, sem transação.
   // Na rodada ativa: precisa confirmar uma escolha; jamais usar Defender como padrão oculto.
-  const canPreview=!match?.myMove&&(!active||canMove);
+  const canPreview=!active||(canMove&&!match?.myMove);
   const canConfirm=canMove&&Boolean(selected)&&!(selected?.id==='repair'&&remainingRepairs<=0);
   const duration=active?Math.max(0,Math.ceil((Number(match.roundEndsAt)-Date.now())/1000)):0;
   const countdown=active?' • '+Math.floor(duration/60)+'m '+String(duration%60).padStart(2,'0')+'s':'';
-  const label=active?'⚔️ GUERRA ATIVA':stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':stage==='completed'?'🏆 CONCLUÍDA':'⏰ CERCO ÀS 20H';
+  const label=active?'⚔️ GUERRA V'+rulesVersion+' ATIVA':stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO V5 · HOJE ÀS 20H';
   // A guerra começa às 20h, sem convite ou aceite manual.
   let controls='';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio antigo</button>';
   const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. A guerra diária começa às 20h. Você já pode explorar as ações, sem enviar escolhas.':
-    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. A próxima guerra usará V5. Os botões abaixo são prévia da V5 e não enviam ações.':
+    stage==='completed'?'A guerra anterior (V'+Number(match?.rulesVersion||1)+') terminou. Abaixo está a NOVA GUERRA V5 com cinco ações e três frentes. Faça uma prévia livre; escolhas só poderão ser confirmadas a partir das 20h.':
     active?'Ações são secretas. Escolha uma estratégia e CONFIRME por rodada. Sem confirmação, nenhuma ação será executada.':
     'A guerra começa diariamente às 20h de Brasília. Você pode explorar as cinco ações da próxima guerra agora, mas só confirmar durante a partida.';
   const pct=(hp,max)=>Math.min(100,Math.max(0,Number(hp||0)/Number(max||2000)*100)).toFixed(1);
   function fortress(c,side){
-    const hp=Number(match?.[side+'Hp']??2000);
-    const maxHp=Number(match?.[side+'MaxHp']??2000);
+    const hp=Number((active?match:null)?.[side+'Hp']??2000);
+    const maxHp=Number((active?match:null)?.[side+'MaxHp']??2000);
     return '<article class="siege-castle siege-'+(side==='blue'?'home':'enemy')+'">'+
       '<span class="siege-castle-kicker">'+(side==='blue'?'🔵 CASTELO AZUL':'🔴 CASTELO VERMELHO')+'</span>'+
       '<div class="siege-castle-art" aria-hidden="true">🏰</div><h4>'+ESCAPE(c?.name||'Clã a confirmar')+'</h4>'+
@@ -238,14 +228,14 @@ function renderLiveSiege(ui){
     '<div class="siege-selected"><span>ESTRATÉGIA '+(active?'DA RODADA':'PRÉVIA — NÃO ENVIADA')+'</span><strong>'+
       ESCAPE(availableActions.find(a=>a.id===selectedActionId)?.label||'Nenhuma ação selecionada')+'</strong>'+
       '<p>'+(active?'As escolhas rivais ficam secretas. Só a confirmação registra sua ação nesta rodada.':
-        'Explore Atacar, Defender, Reparar ou Espionar. A escolha agora é apenas visual; nada será enviado antes das 20h.')+'</p>'+
+        'Explore Atacar, Defender, Reparar, Espionar ou Reabastecer. A prévia não seleciona Defesa automaticamente e não envia ações antes das 20h.')+'</p>'+
       (canConfirm?'<button class="btn good" data-siege-command="move">🔒 Confirmar ação secreta</button>':
         '<small>'+(match?.myMove?'✅ Ação registrada nesta rodada; não pode ser alterada.':
-          canMove?'Selecione uma das quatro estratégias acima para habilitar a confirmação.':
+          canMove?'Selecione uma das cinco ações e uma frente acima para habilitar a confirmação.':
           active?'Você não pode enviar ação nesta rodada.':
           'Prévia sem registro. A confirmação só estará disponível durante a guerra às 20h.')+'</small>')+'</div></div>'+
     (rulesVersion>=4?objectivesGuide(active?match:{rulesVersion:5}):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
-    (latest.length?'<div class="siege-selected section"><strong>📜 Histórico</strong>'+
+    (latest.length?'<div class="siege-selected section"><strong>📜 '+(previous?'ÚLTIMA GUERRA — REGRA V'+Number(match.rulesVersion||1)+' (HISTÓRICO)':'Histórico das rodadas')+'</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
         ' HP • 🔴 '+Number(x.redHp)+' HP'+
         (Number(x.rulesVersion)>=2?' • Dano 🔵 '+Number(x.blueDamage)+' / 🔴 '+Number(x.redDamage)+
@@ -254,7 +244,6 @@ function renderLiveSiege(ui){
         (Number(x.rulesVersion)>=5&&((x.blueRepairWithoutEffect||[]).length||(x.redRepairWithoutEffect||[]).length)?
           ' • ⚠️ Reparos sem efeito: 🔵 '+ESCAPE((x.blueRepairWithoutEffect||[]).join(', ')||'nenhum')+
           ' / 🔴 '+ESCAPE((x.redRepairWithoutEffect||[]).join(', ')||'nenhum'):'')+'</p>').join('')+'</div>':'')+
-    siegeFirstPrizePanel(match,data.firstWarPrizeMatchId)+
     '<div class="siege-footer">Ações de guerra não gastam dinheiro, XP ou HP do herói. Obras são financiadas somente pelo tesouro virtual do clã.</div></section>';
 }
 
@@ -298,16 +287,15 @@ export function renderClanSiegePreview(ui){
       '<small>Esta escolha é apenas visual: não foi enviada nem salva. Não há ações de guerra habilitadas no servidor.</small></div>'+
     '</div>'+
     '<div class="siege-steps"><span>1 · Selecionar em segredo</span><span>2 · Aguardar a rodada fechar</span><span>3 · Resultado público no WhatsApp</span></div>'+
-    siegeFirstPrizePanel()+
     '<div class="siege-footer">🔒 O evento só será liberado depois de autenticação por jogador, ações persistidas, bloqueio de duplicidade, resolução simultânea e testes de integração. Nenhum saldo, XP, HP ou cofre real é alterado nesta prévia.</div>'+
   '</section>';
 }
 
 export function bindClanSiegePreview(ui,{render,submit,refresh}){
   document.querySelectorAll('[data-siege-preview]').forEach(button=>button.addEventListener('click',()=>{
-    if(ui.siege?.match?.myMove)return;
+    if(ui.siege?.match?.status==='active'&&ui.siege.match.myMove)return;
     const next=button.dataset.siegePreview;
-    const variant=ui.siege?.match?Number(ui.siege.match.rulesVersion||1):4;
+    const variant=ui.siege?.match?.status==='active'?Number(ui.siege.match.rulesVersion||1):5;
     const catalog=variant>=4?TACTICAL_ACTIONS:variant>=2?ACTIONS:LEGACY_ACTIONS;
     if(!catalog.some(item=>item.id===next))return;
     ui.siegePreviewAction=next;
@@ -315,7 +303,7 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
     render();
   }));
   document.querySelectorAll('[data-siege-target]').forEach(button=>button.addEventListener('click',()=>{
-    if(ui.siege?.match?.myMove)return;
+    if(ui.siege?.match?.status==='active'&&ui.siege.match.myMove)return;
     if(!ui.siegePreviewAction)return;
     const target=button.dataset.siegeTarget;
     const valid=ui.siegePreviewAction==='supply'?target==='depot':
