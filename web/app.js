@@ -1039,7 +1039,7 @@ async function loadSiege(force=false){
     const current=next.match;
     if(current?.status==='active'&&(
       previous?.status!=='active'||previous?.id!==current.id||previous?.round!==current.round
-    ))ui.siegePreviewAction=null; // nova partida/rodada: exigir nova escolha confirmada
+    )){ui.siegePreviewAction=null;ui.siegePreviewTarget=null;} // nova rodada: exigir nova escolha e alvo
     ui.siege=next;
     ui.siegeError='';
   }catch(err){
@@ -1059,7 +1059,7 @@ async function submitSiege(command,body){
     const result=await api('/api/v1/me/clan-siege/'+command,{method:'POST',body:JSON.stringify(body||{})});
     if(result.ok===false)throw Error(result.reason||'Não foi possível executar.');
     toast(command==='move'?'Ação secreta registrada.':command==='fortress-upgrade'?'🏰 Obra da fortaleza iniciada com dinheiro do tesouro!':'Guerra atualizada.');
-    ui.siegePreviewAction=null;
+    ui.siegePreviewAction=null;ui.siegePreviewTarget=null;
     await loadSiege(true);
   }catch(err){ui.siegeError=String(err.message||err);toast(ui.siegeError);render();}
   finally{ui.siegeBusy=false;}
