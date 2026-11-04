@@ -131,3 +131,15 @@ test('confirmação no Web mostra custo e riscos específicos de reparo e espiã
  assert.match(src,/não poderá ser alterada/);
  assert.match(src,/Espionar na última rodada/);
 });
+
+
+test('V5 exibe motivo no histórico quando reparo ficou sem efeito',()=>{
+ const x=ui(5);
+ x.siege.match.history=[{round:2,rulesVersion:5,blueHp:1800,redHp:1750,
+   blueDamage:180,redDamage:0,blueTactic:'🔨 Castelo',
+   redTactic:'⚔️ Castelo',blueHeal:0,redHeal:0,
+   blueRepairWithoutEffect:['sem suprimentos nesta rodada'],redRepairWithoutEffect:[]}];
+ const html=renderClanSiegePreview(x);
+ assert.match(html,/Reparos sem efeito/);
+ assert.match(html,/sem suprimentos nesta rodada/);
+});
