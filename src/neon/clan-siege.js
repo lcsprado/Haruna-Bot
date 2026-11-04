@@ -5,6 +5,7 @@ import {ensureWebActionOutbox} from './web-activity-relay.js';
 import {grantFirstSiegeInsignias} from './clan-siege-first-prize.js';
 import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
 import {ensureClanFortressSchema,clanFortressCombatSnapshot,clanFortressStatus,clanFortressUpgrade} from './clan-fortress.js';
+import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const TEAM_TACTICS_VERSION=2; // novas guerras apenas; partidas antigas preservam regras v1
@@ -66,6 +67,26 @@ export async function ensureClanSiegeSchema(){
       'ALTER TABLE alpha_siege_matches DROP CONSTRAINT IF EXISTS alpha_siege_matches_red_hp_check;',
       'ALTER TABLE alpha_siege_matches ADD CONSTRAINT alpha_siege_matches_blue_hp_check CHECK(blue_hp BETWEEN 0 AND 2250);',
       'ALTER TABLE alpha_siege_matches ADD CONSTRAINT alpha_siege_matches_red_hp_check CHECK(red_hp BETWEEN 0 AND 2250);',
+      'COMMIT;'
+    ].join(' '));
+    // V4: objetivos de cercos, suprimentos virtuais e alvo de cada ação.
+    // Valores padrão preservam as guerras V1-V3 sem mudar seu histórico.
+    await db.query([
+      "ALTER TABLE alpha_siege_matches",
+      "ADD COLUMN IF NOT EXISTS blue_gate INTEGER NOT NULL DEFAULT 2,",
+      "ADD COLUMN IF NOT EXISTS red_gate INTEGER NOT NULL DEFAULT 2,",
+      "ADD COLUMN IF NOT EXISTS blue_supplies INTEGER NOT NULL DEFAULT 1,",
+      "ADD COLUMN IF NOT EXISTS red_supplies INTEGER NOT NULL DEFAULT 1,",
+      "ADD COLUMN IF NOT EXISTS blue_score INTEGER NOT NULL DEFAULT 0,",
+      "ADD COLUMN IF NOT EXISTS red_score INTEGER NOT NULL DEFAULT 0,",
+      "ADD COLUMN IF NOT EXISTS blue_spy_state JSONB NOT NULL DEFAULT '{}'::jsonb,",
+      "ADD COLUMN IF NOT EXISTS red_spy_state JSONB NOT NULL DEFAULT '{}'::jsonb;"
+    ].join(' '));
+    await db.query("ALTER TABLE alpha_siege_moves ADD COLUMN IF NOT EXISTS target TEXT NOT NULL DEFAULT 'castle' CHECK(target IN ('castle','gate','depot'))");
+    await db.query([
+      'BEGIN;',
+      'ALTER TABLE alpha_siege_moves DROP CONSTRAINT IF EXISTS alpha_siege_moves_action_check;',
+      "ALTER TABLE alpha_siege_moves ADD CONSTRAINT alpha_siege_moves_action_check CHECK(action IN ('attack','defend','repair','spy','supply'));",
       'COMMIT;'
     ].join(' '));
     await ensureWebActionOutbox(db);
@@ -158,7 +179,7 @@ export async function startDailyClanSiege(nowMs=now()){
     const blueFortress=await clanFortressCombatSnapshot(conn,teams[0].id,created);
     const redFortress=await clanFortressCombatSnapshot(conn,teams[1].id,created);
     const match=(await conn.query(
-      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',3,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id",
+      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id",
       [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,blueFortress.maxHp,redFortress.maxHp,JSON.stringify(blueFortress),JSON.stringify(redFortress),created+ROUND_MS,created]
     )).rows[0];
     for(const team of teams)for(const jid of team.jids)
@@ -170,6 +191,10 @@ export async function startDailyClanSiege(nowMs=now()){
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
       '🏰 Fortalezas: Azul '+blueFortress.maxHp+' HP / +'+Math.round(blueFortress.attackPct*100)+'% ATK / -'+(blueFortress.defensePct*100).toFixed(1)+'% dano; Vermelho '+redFortress.maxHp+' HP / +'+Math.round(redFortress.attackPct*100)+'% ATK / -'+(redFortress.defensePct*100).toFixed(1)+'% dano.',
       '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
+      '🗺️ NOVO CERCO: cada jogador escolhe sua ação e a frente: 🏰 Castelo, 🚪 Portão ou 📦 Depósito.',
+      '🚪 Duas investidas rompem o portão (+25% dano futuro ao castelo). 📦 Saquear o depósito rouba suprimento, e reabastecer gera 1. Reparar consome 1 suprimento do CERCO (não é dinheiro).',
+      '🛡️ Defender a frente certa bloqueia mais dano e pode contra-atacar. Espionar prepara o ataque NA MESMA FRENTE na rodada seguinte.',
+      '🏆 Após 6 rodadas vence quem tiver mais HP; empate no HP desempata por objetivos, depois portão e suprimentos. Totalmente igual continua empate.',
       '🤝 Táticas em dupla: Atacar + Atacar ganha +10% de dano; Atacar + Defender protege e contra-ataca; Atacar + Reparar recupera até 220 HP; Atacar + Espionar marca alvo (+30%) e prepara +60% para a próxima rodada.',
       '🛡️ Defender reduz 50% do dano por defensor (máx. 75%) e devolve 80 de dano se sofrer ataque. 🔨 Só 2 reparos por guerra/clã. 🕵️ Espiões fortalecem os ataques da rodada seguinte (+60% cada).',
       '🏆 Vence quem deixar a fortaleza rival com menos HP após seis rodadas; HP igual = empate.',
@@ -196,6 +221,7 @@ async function notice(conn,chat,message){
   await conn.query("SELECT pg_notify('alpha_web_action_wakeup_v1',$1)",[String(r.rows[0].id)]);
 }
 export function resolveSiegeRound(match,moves){
+  if(Number(match.rules_version||1)>=4)return resolveSiegeRoundV4(match,moves);
   if(Number(match.rules_version||1)>=TEAM_TACTICS_VERSION)return resolveSiegeRoundV2(match,moves);
   const sides={blue:[],red:[]};
   for(const m of moves){
@@ -307,7 +333,7 @@ async function advance(conn,match){
   if(!match||match.status!=='active')return match;
   for(let i=0;i<MAX_ROUNDS&&match.status==='active';i++){
     const moves=(await conn.query(
-      'SELECT clan_id,action FROM alpha_siege_moves WHERE match_id=$1 AND round=$2',
+      'SELECT clan_id,action,target FROM alpha_siege_moves WHERE match_id=$1 AND round=$2',
       [match.id,match.round])).rows;
     if(Number(match.round_ends_at)>now()&&(match.created_by===DAILY_CREATED_BY||moves.length<4))break;
     const r=resolveSiegeRound(match,moves);
@@ -319,12 +345,22 @@ async function advance(conn,match){
       "UPDATE alpha_siege_matches SET status=$2,round=$3,round_ends_at=$4,",
       "blue_hp=$5,red_hp=$6,blue_repairs=$7,red_repairs=$8,",
       "blue_spy=$9,red_spy=$10,winner_clan_id=$11,",
-      "history=$12::jsonb,updated_at=$13,ended_at=$14",
+      "history=$12::jsonb,updated_at=$13,ended_at=$14,",
+      "blue_gate=COALESCE($15::int,blue_gate),red_gate=COALESCE($16::int,red_gate),",
+      "blue_supplies=COALESCE($17::int,blue_supplies),red_supplies=COALESCE($18::int,red_supplies),",
+      "blue_score=COALESCE($19::int,blue_score),red_score=COALESCE($20::int,red_score),",
+      "blue_spy_state=COALESCE($21::jsonb,blue_spy_state),",
+      "red_spy_state=COALESCE($22::jsonb,red_spy_state)",
       "WHERE id=$1 RETURNING *"
     ].join(' '),[
       match.id,status,r.finished?Number(match.round):Number(match.round)+1,deadline,
       r.hp.blue,r.hp.red,r.repairs.blue,r.repairs.red,
-      r.spy.blue,r.spy.red,r.winner,JSON.stringify(history),now(),r.finished?now():null
+      r.spy.blue,r.spy.red,r.winner,JSON.stringify(history),now(),r.finished?now():null,
+      r.v4?.gate.blue??null,r.v4?.gate.red??null,
+      r.v4?.supplies.blue??null,r.v4?.supplies.red??null,
+      r.v4?.score.blue??null,r.v4?.score.red??null,
+      r.v4?JSON.stringify(r.v4.spyState.blue):null,
+      r.v4?JSON.stringify(r.v4.spyState.red):null
     ])).rows[0];
     const prize=r.finished&&r.winner?await grantFirstSiegeInsignias(conn,updated):null;
     const winner=r.winner===null?'Empate':r.winner===String(match.blue_clan_id)?'Clã Azul':'Clã Vermelho';
@@ -339,7 +375,9 @@ async function advance(conn,match){
         '🛡️ Dano bloqueado: 🔵 '+r.result.blueBlocked+' • 🔴 '+r.result.redBlocked+
         ' | ⚔️ Contra-ataque: 🔵 '+r.result.blueCounter+' • 🔴 '+r.result.redCounter:'',
       '🔨 Reparos: '+r.result.blueRepairs+' / '+r.result.redRepairs,
-      r.finished?'🏆 *Resultado: '+winner+'*':'⏳ Próxima rodada aberta no Web.',
+      r.v4?'🚪 Portões: 🔵 '+r.v4.gate.blue+'/2 • 🔴 '+r.v4.gate.red+'/2 | 📦 Suprimentos: 🔵 '+r.v4.supplies.blue+'/3 • 🔴 '+r.v4.supplies.red+'/3':'',
+      r.v4?'🎯 Pontos por objetivos: 🔵 '+r.v4.score.blue+' • 🔴 '+r.v4.score.red:'',
+      r.finished?'🏆 *Resultado: '+winner+'*'+(r.v4?' • critério: '+r.result.victoryRule:''):'⏳ Próxima rodada aberta no Web.',
       prize?'👑 *PREMIAÇÃO HISTÓRICA:* '+prize.name+' entregue aos 2 campeões. Ative em *!reliquias*.':'',
       r.finished&&!r.winner?'🤝 Empate: a insígnia histórica permanece para a próxima guerra com vencedor.':''
     ].join('\n'));
@@ -376,9 +414,9 @@ async function viewMatch(match,jid){
     'SELECT jid,clan_id FROM alpha_siege_roster WHERE match_id=$1',[match.id]
   )).rows;
   const mine=participants.find(x=>x.jid===jid);
-  const ownAction=match.status==='active'?(await db.query(
-    'SELECT action FROM alpha_siege_moves WHERE match_id=$1 AND round=$2 AND jid=$3',
-    [match.id,match.round,jid])).rows[0]?.action||null:null;
+  const ownMove=match.status==='active'?(await db.query(
+    'SELECT action,target FROM alpha_siege_moves WHERE match_id=$1 AND round=$2 AND jid=$3',
+    [match.id,match.round,jid])).rows[0]||null:null;
   const submitted=match.status==='active'?(await db.query(
     'SELECT COUNT(*)::int AS n FROM alpha_siege_moves WHERE match_id=$1 AND round=$2',
     [match.id,match.round])).rows[0]?.n||0:0;
@@ -392,9 +430,15 @@ async function viewMatch(match,jid){
     blueFortress:Number(match.rules_version||1)>=3?match.blue_fortress:null,
     redFortress:Number(match.rules_version||1)>=3?match.red_fortress:null,
     blueRepairs:Number(match.blue_repairs),redRepairs:Number(match.red_repairs),
+    blueGate:Number(match.rules_version||1)>=4?Number(match.blue_gate):null,
+    redGate:Number(match.rules_version||1)>=4?Number(match.red_gate):null,
+    blueSupplies:Number(match.rules_version||1)>=4?Number(match.blue_supplies):null,
+    redSupplies:Number(match.rules_version||1)>=4?Number(match.red_supplies):null,
+    blueScore:Number(match.rules_version||1)>=4?Number(match.blue_score):null,
+    redScore:Number(match.rules_version||1)>=4?Number(match.red_score):null,
     rulesVersion:Number(match.rules_version||1),
     mySide:mine?(String(mine.clan_id)===String(match.blue_clan_id)?'blue':'red'):null,
-    myMove:ownAction,submitted:Number(submitted),history:match.history,
+    myMove:ownMove?.action||null,myTarget:ownMove?.target||null,submitted:Number(submitted),history:match.history,
     winnerClanId:match.winner_clan_id?String(match.winner_clan_id):null,
     createdByMe:match.created_by===jid
   };
@@ -436,12 +480,14 @@ export async function clanSiegeAccept(session){
   gate();group(session);
   throw new Error('Aceitação manual desativada. A guerra começa automaticamente às 20h de Brasília.');
 }
-export async function clanSiegeMove(session,action){
+export async function clanSiegeMove(session,action,target='castle'){
   gate();const chat=group(session);await ensureClanSiegeSchema();
-  if(!ACTIONS.has(action))throw new Error('Ação de guerra inválida.');
   return tx(async conn=>{
     const match=await openMatch(conn,chat,true);
     if(!match||match.status!=='active')throw new Error('Nenhuma guerra ativa.');
+    if(Number(match.rules_version||1)>=4)validateSiegeV4Move(action,target);
+    else if(!ACTIONS.has(action)||target!=='castle')
+      throw new Error('Esta guerra utiliza as ações da versão anterior.');
     if(now()>=Number(match.round_ends_at)){
       await advance(conn,match);
       return {ok:false,reason:'Rodada encerrada. Atualize a tela.'};
@@ -459,11 +505,11 @@ export async function clanSiegeMove(session,action){
         throw new Error('O clã já atingiu o limite de reparos.');
     }
     const inserted=await conn.query(
-      'INSERT INTO alpha_siege_moves(match_id,round,jid,clan_id,action,submitted_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(match_id,round,jid) DO NOTHING RETURNING action',
-      [match.id,match.round,session.jid,player.clan_id,action,now()]);
+      'INSERT INTO alpha_siege_moves(match_id,round,jid,clan_id,action,target,submitted_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(match_id,round,jid) DO NOTHING RETURNING action',
+      [match.id,match.round,session.jid,player.clan_id,action,target,now()]);
     if(!inserted.rowCount)throw new Error('Ação já registrada. Não é possível alterar nesta rodada.');
     await advance(conn,match);
-    return {ok:true,registered:true,action};
+    return {ok:true,registered:true,action,target};
   });
 }
 export async function clanSiegeCancel(session){
