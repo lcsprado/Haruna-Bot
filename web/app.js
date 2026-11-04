@@ -562,7 +562,12 @@ const PET_IMAGE_ASSETS={
   grifo_celestial:'/assets/pets/grifo-celestial-v2.webp',
   // A versão anterior estava desfocada. A Fênix de Gelo usa o sprite oficial com paleta de gelo.
   fenix_celestial:'/assets/pets/fenix-celestial-v2.webp',
-  serpente_cosmica:'/assets/pets/serpente-cosmica.webp'
+  serpente_cosmica:'/assets/pets/serpente-cosmica.webp',
+  cervo_aurora_viva:'/assets/pets/cervo_aurora_viva.webp',
+  guardiao_nucleo_vital:'/assets/pets/guardiao_nucleo_vital.webp',
+  quimera_rubra:'/assets/pets/quimera_rubra.webp',
+  serafim_vida_abissal:'/assets/pets/serafim_vida_abissal.webp',
+  leviata_eternidade:'/assets/pets/leviata_eternidade.webp'
 };
 
 function petExactImage(species){
@@ -631,7 +636,7 @@ function petVisualMarkup(species,className='pet-official-art'){
   if(img){
     return '<div class="pet-art-stack">'+
       petSpeciesFallback(s,className+' pet-image-fallback',label)+
-      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=alpha-pets-audit-20261006-2" alt="'+esc(label)+'" loading="lazy" '+
+      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=legendary-pets-20261104-1" alt="'+esc(label)+'" loading="lazy" '+
       'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
 
