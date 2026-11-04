@@ -1,3 +1,5 @@
+import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
+
 // Autocura transacional de pet em Boss. Recebe o pet do slot real de combate
 // (principal ou reserva), nunca procura outro pet por nome ou por slot implícito.
 export async function autoHealBossCombatPet({client,jid,pet,maxHp,choosePotion,persistPet}) {
@@ -14,12 +16,9 @@ export async function autoHealBossCombatPet({client,jid,pet,maxHp,choosePotion,p
   const chosen=choosePotion(inventory,capacity-before)
   if(!chosen) return null
 
-  // A mesma transação protege a quantidade: jamais curar sem debitar a poção.
-  const debit=await client.query(
-    'UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>0 RETURNING quantity',
-    [jid,chosen.item_id]
-  )
-  if(debit.rowCount!==1) return null
+  // Limite diário e auditoria são transacionais com o débito e a cura.
+  const debit=await spendAutoPetPotion(client,{jid,itemId:chosen.item_id,context:'boss',petName:pet.name})
+  if(!debit.spent) return null
 
   const hp=Math.min(capacity,before+Math.max(0,Number(chosen.heal)||0))
   if(hp<=before) throw new Error('Poção de pet inválida: cura não positiva.')
