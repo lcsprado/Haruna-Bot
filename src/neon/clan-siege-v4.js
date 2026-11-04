@@ -59,6 +59,7 @@ export function resolveSiegeRoundV4(match,moves){
   const gateBreak={blue:0,red:0},raided={blue:0,red:0};
   const spent={blue:0,red:0},healed={blue:0,red:0},supplied={blue:0,red:0};
   const gateRestored={blue:0,red:0};
+  const repairWithoutEffect={blue:[],red:[]};
   const strike={blue:{castle:0,gate:0,depot:0},red:{castle:0,gate:0,depot:0}};
 
   // Todos os ataques são simultâneos; muralha rompida só amplifica
@@ -107,13 +108,23 @@ export function resolveSiegeRoundV4(match,moves){
   // o rival não consegue invalidar um reparo já confirmado no mesmo turno.
   for(const side of ['blue','red']){
     for(const move of sides[side].filter(m=>m.action==='repair')){
-      if(repairs[side]>=repairMax||supplies[side]<=0)continue;
+      if(repairs[side]>=repairMax){
+        repairWithoutEffect[side].push('limite de 2 reparos atingido');continue;
+      }
+      if(supplies[side]<=0){
+        repairWithoutEffect[side].push('sem suprimentos nesta rodada');continue;
+      }
       if(move.target==='castle'&&hp[side]<maxHp[side]){
         const restored=Math.min(siegeRepairHp(match.rules_version),maxHp[side]-hp[side]);
         healed[side]+=restored;hp[side]+=restored;
       }else if(move.target==='gate'&&gate[side]<gateMax){
         gate[side]++;gateRestored[side]++;
-      }else continue; // não consome recurso com estrutura cheia
+      }else {
+        repairWithoutEffect[side].push(move.target==='castle'?
+          'Castelo já estava no HP máximo após os ataques':
+          'Portão já estava intacto após os ataques');
+        continue; // não consome recurso com estrutura cheia
+      }
       supplies[side]--;repairs[side]++;spent[side]++;
     }
   }
@@ -161,6 +172,8 @@ export function resolveSiegeRoundV4(match,moves){
     blueLoot:loot.blue,redLoot:loot.red,
     blueSupplyGained:supplied.blue,redSupplyGained:supplied.red,
     blueHeal:healed.blue,redHeal:healed.red,
+    blueRepairWithoutEffect:repairWithoutEffect.blue,
+    redRepairWithoutEffect:repairWithoutEffect.red,
     blueGateRebuilt:gateRestored.blue,redGateRebuilt:gateRestored.red,
     blueTactic:tactics(sides.blue),redTactic:tactics(sides.red),
     blueSubmitted:sides.blue.length,redSubmitted:sides.red.length,
