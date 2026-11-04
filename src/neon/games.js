@@ -1,4 +1,5 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
+import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
@@ -657,7 +658,7 @@ const OLD_BOSS_PLACEMENT=[
 const upgradedWeeklyEdition=key=>String(key||'')>='2026-10-30'
 function petBossBonus(pet){
   if(pet&&PECADOS_HERO_IDS.includes(String(pet.species||'')))pet=null
-  if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,healPct:0,healCooldown:0}
+  if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,hp:0,xp:0,drop:0,healPct:0,healCooldown:0}
   const base=petCombatSpecialty(pet.species)
   // Progressão revisada:
   // - pets comuns: até +50% sobre a especialidade base no Nv.100;
@@ -671,6 +672,7 @@ function petBossBonus(pet){
     label:base.label||pet.species,
     damage:scaled('damage')+scaled('bossDamage'),
     defense:scaled('defense'),
+    hp:scaled('hp'),
     crit:scaled('crit'),
     dodge:scaled('dodge'),
     xp:scaled('xp'),
@@ -686,7 +688,7 @@ function petBossBonus(pet){
 // bônus econômicos de XP/drop continuam exclusivos do pet combatente.
 function squadCombatBonus(activeBonus,activeSlot,team=[]){
   const total={...activeBonus}
-  for(const key of ['damage','defense','crit','dodge']){
+  for(const key of ['damage','defense','crit','dodge','hp']){
     let value=Number(activeBonus?.[key]||0)
     for(const row of team){
       const slot=Number(row.slot)
@@ -695,9 +697,21 @@ function squadCombatBonus(activeBonus,activeSlot,team=[]){
       const weight=slot===1 ? 1 : slot===2 ? 0.5 : 0.25
       value+=Number(petBossBonus(row)[key]||0)*weight
     }
-    total[key]=Math.min(({damage:.30,defense:.25,crit:.20,dodge:.20})[key],Math.max(0,value))
+    total[key]=Math.min(({damage:.30,defense:.25,crit:.20,dodge:.20,hp:.30})[key],Math.max(0,value))
   }
   return total
+}
+// Aplica HP temporário no snapshot de combate; não altera stats.hp.
+// Principal: 100%, suporte: 50%, reserva: 25%, conforme os demais atributos.
+function vitalRaidOpening(p){
+  const active=p?.pet&&Number(p.pet.hp)>0&&Number(p.pet.energy)>0?p.pet:null
+  const bonus=active?squadCombatBonus(active.bonus||petBossBonus(active),active.teamSlot,p.teamPassives||[]):{hp:0}
+  const vitality=applyVitalCombatHp(p.hp,p.maxHp,Number(bonus.hp||0),Number(p.teamSynergy?.hp||0))
+  p.hp=vitality.hp
+  p.maxHp=vitality.maxHp
+  p.vitalHpRate=vitality.rate
+  p.vitalPulseUsed=false
+  return p
 }
 
 // Mesmo cálculo de bônus fixos que a Raid/Boss usa: principal (100%),
@@ -910,6 +924,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
       pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
+    vitalRaidOpening(s.players[jid])
     // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
     // O maxHp persistido impede que desistir e reentrar infle o mesmo Boss.
     // Somente um novo pico acrescenta HP; o dano causado não é restaurado.
@@ -1140,6 +1155,7 @@ export async function startRaid(chat,host,level=null){
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
       s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      vitalRaidOpening(s.players[jid])
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
@@ -1678,6 +1694,13 @@ export async function raidRound(chat,level){
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
       p.hp=Math.max(0,Number(p.hp)-dmg+Number(passiveDefense.healAfter||0))
+      const heart=vitalPulseHeal(p.hp,p.maxHp,p.vitalPulseUsed,Number(p.teamSynergy?.vitalPulse||0))
+      if(heart.used&&!p.vitalPulseUsed){
+        p.hp=heart.hp
+        p.vitalPulseUsed=true
+        p.petSkillHealing=Number(p.petSkillHealing||0)+heart.heal
+        events.push({type:'vital_pulse',jid:p.jid,name:p.name,heal:heart.heal,hp:p.hp})
+      }
       let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
@@ -1795,7 +1818,7 @@ export async function raidRound(chat,level){
           }else p.alive=false
         }
       }
-      let recordedHp=Number(p.hp);
+      let recordedHp=restoreVitalPersistentHp(p.hp,p.maxHp,p.heroPersistentMaxHp||p.maxHp);
       if(p.heroId){
         const settled=persistHeroHpDelta({
           previousPersistentHp:p.heroStoredHp,previousCombatHp:p.heroLastHp,
@@ -3187,13 +3210,19 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const atk=Math.round((Number(heroStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
     const def=Number(heroStats?.def??st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
     const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
-    const effectiveMaxHp=Number(heroStats?.maxHp??st.max_hp)+gearHp
+    const baseMaxHp=Number(heroStats?.maxHp??st.max_hp)+gearHp
+    const vital=applyVitalCombatHp(heroCombatHp,baseMaxHp,Number(petBonus.hp||0),Number(teamSynergy.hp||0))
+    const effectiveMaxHp=vital.maxHp
+    // Versão 3: HP percentual temporário incluído na projeção do herói.
+    // A fonte persistida continua sem bônus do pet, para evitar duplicação.
     // Versão 2: proporcional ao HP total, incluindo armas, armaduras e elmo.
     // Participantes antigos são reprojetados uma única vez após a atualização.
-    if(heroId && (Number(existingParticipant.heroHpProjectionVersion||0)!==2
-      || !heroSameSourceHp || !Number.isFinite(Number(existingParticipant.heroLastHp)))){
-      heroCombatHp=heroEffectiveCombatHp(st,heroStats,gearHp)
+    if(heroId && (Number(existingParticipant.heroHpProjectionVersion||0)!==3
+      || !heroSameSourceHp || Number(existingParticipant.vitalCombatMaxHp)!==effectiveMaxHp
+      || !Number.isFinite(Number(existingParticipant.heroLastHp)))){
+      heroCombatHp=applyVitalCombatHp(heroEffectiveCombatHp(st,heroStats,gearHp),baseMaxHp,Number(petBonus.hp||0),Number(teamSynergy.hp||0)).hp
     }
+    if(!heroId)heroCombatHp=vital.hp
     const petCritChance=Math.max(0,Number(petBonus.crit||0)+Number(teamSynergy.crit||0))
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0)+Number(boots?.crit||0)+Number(helmet?.crit||0))
     const baseCritChance=.10
@@ -3247,7 +3276,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       usePet:Boolean(usePet),
       classLastProcAttack:passiveHit.lastProcAttack,
       awakeningState:passiveHit.awakeningState,
-      heroId,heroMasteryStage,heroHpProjectionVersion:heroId?2:undefined,heroState:heroId?passiveHit.state:existingParticipant.heroState
+      heroId,heroMasteryStage,heroHpProjectionVersion:heroId?3:undefined,vitalCombatMaxHp:effectiveMaxHp,heroState:heroId?passiveHit.state:existingParticipant.heroState
     }
     let php=Math.min(Number(heroCombatHp)+passiveHit.heal,effectiveMaxHp),bossDamage=0,bossCritical=false,autoHeal=null,petSkillHeal=null
     if(s.hp>0){
@@ -3328,7 +3357,14 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         const chosen=available.find(x=>x.heal>=effectiveMaxHp)||available[available.length-1]
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
-      let recordedHp=php;
+      const heart=vitalPulseHeal(php,effectiveMaxHp,Boolean(s.participants[jid].vitalPulseUsed),Number(teamSynergy.vitalPulse||0))
+      if(heart.used&&!s.participants[jid].vitalPulseUsed){
+        php=heart.hp
+        s.participants[jid].vitalPulseUsed=true
+        s.participants[jid].petHealing=Number(s.participants[jid].petHealing||0)+heart.heal
+        petSkillHeal={name:'Coração Eterno',species:'vinculo_vital',heal:heart.heal,hp:php,maxHp:effectiveMaxHp,cooldown:0}
+      }
+      let recordedHp=restoreVitalPersistentHp(php,effectiveMaxHp,Number(st.max_hp)+gearHp);
       if(heroId){
         const settled=persistHeroHpDelta({
           previousPersistentHp:st.hp,previousCombatHp:heroCombatHp,
