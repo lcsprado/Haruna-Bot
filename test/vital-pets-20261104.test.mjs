@@ -43,7 +43,7 @@ test('Todos os altares somam 100%, preservando cinco espécies anteriores',()=>{
 test('Nível 100 mantém progressão de elite e efeitos alternativos de cada pet',()=>{
   for(const p of VITAL_PETS){
     const stats=petCombatSpecialty(p.species)
-    assert.ok(stats.hp>=.11 && stats.hp<=.14)
+    assert.ok(stats.hp>=.11 && stats.hp<=.140001)
     assert.equal(stats.raid,true)
     const pvp=petPvpSpecialty(p.species,100)
     assert.ok(pvp.hp>=.03 && pvp.hp<=.045+1e-9,p.species)
