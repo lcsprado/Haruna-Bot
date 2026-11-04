@@ -10,7 +10,7 @@ import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const TEAM_TACTICS_VERSION=2; // novas guerras apenas; partidas antigas preservam regras v1
 const DAILY_CREATED_BY='system:siege-daily-20h';
-const DAILY_OPEN_GRACE_MS=15*60*1000; // Free Render can wake after 20h; never start after 20h15.
+const DAILY_OPEN_GRACE_MS=15*60*1000; // Free Render can wake after 21h; never start after 21h15.
 const ACTIONS=new Set(['attack','defend','repair','spy']);
 const siegeGroup=()=>String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||'').trim();
 const ON=()=>process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\.us$/.test(siegeGroup());
@@ -24,7 +24,7 @@ export function siegeDailySchedule(nowMs=now()){
     timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
   }).formatToParts(new Date(nowMs)).map(p=>[p.type,p.value]));
   const day=[parts.year,parts.month,parts.day].join('-');
-  const startsAt=Date.parse(day+'T20:00:00-03:00');
+  const startsAt=Date.parse(day+'T21:00:00-03:00');
   return {day,startsAt,endsAt:startsAt+24*60*60*1000,
     opening:nowMs>=startsAt&&nowMs<startsAt+DAILY_OPEN_GRACE_MS};
 }
@@ -189,7 +189,7 @@ export async function startDailyClanSiege(nowMs=now()){
         [match.id,jid,team.id]);
     await notice(conn,chat,[
       '🏰 *CERCO AO CASTELO — GUERRA DIÁRIA INICIADA!*',
-      '⏰ Início programado: *20h*, horário de Brasília.',
+      '⏰ Início programado: *21h*, horário de Brasília.',
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
       '🏰 Fortalezas: Azul '+blueFortress.maxHp+' HP / +'+Math.round(blueFortress.attackPct*100)+'% ATK / -'+(blueFortress.defensePct*100).toFixed(1)+'% dano; Vermelho '+redFortress.maxHp+' HP / +'+Math.round(redFortress.attackPct*100)+'% ATK / -'+(redFortress.defensePct*100).toFixed(1)+'% dano.',
       '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
