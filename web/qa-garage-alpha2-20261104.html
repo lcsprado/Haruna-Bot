@@ -20,6 +20,7 @@ header.qa{padding:14px;margin-bottom:16px;border:1px solid #36536c;border-radius
 <p class="qa-note">Matriz: Gol, Uno, Corsa, Palio × Original (0/42), Street (8/42), Tunado (24/42), Full Build (42/42); 12 pinturas no Gol Tunado. Conferir sobreposição das rodas, spoilers e pintura em desktop e celular.</p></header>
 <section id="status" role="status">Carregando imagens reais da prévia...</section>
 <main id="gallery" class="qa-grid"></main>
+<section id="mobile-proof" style="padding:12px;margin-top:28px;border:1px solid #36536c;border-radius:14px" hidden><h2>Simulação de viewport móvel real — 390px</h2><p id="mobile-status">Carregando viewport móvel...</p><iframe id="mobile-frame" title="QA da garagem em 390 pixels" style="width:390px;max-width:100%;height:620px;border:2px solid #6687a3;border-radius:13px;background:#08111d"></iframe></section>
 <script type="module">
 import {renderRacing} from '/racing-ui.js';
 const cars=[
@@ -39,10 +40,10 @@ const data=(model,n,color)=>({racing:{garage:{profile:{xp:200,races:5,wins:1,spe
  racingTab:'garage',racingTrack:'cidade',racingTier:'rua',racingStrategy:'equilibrada',
  data:{identity:{jid:'qa@example.invalid',groupLinked:false},group:{roster:[]}}});
 const gallery=document.querySelector('#gallery'),status=document.querySelector('#status');
-const cases=[];
+const cases=[];const isMobileMode=new URLSearchParams(location.search).get('device')==='mobile';
 for(const model of cars)for(const step of [{n:0,label:'Original'},{n:8,label:'Street'},{n:24,label:'Tunado'},{n:42,label:'Full Build'}])
  cases.push({model:model.id,n:step.n,label:step.label,color:'azul'});
-for(const color of colors)cases.push({model:'gol',n:24,label:'Tunado / 12 pinturas',color});
+if(!isMobileMode)for(const color of colors)cases.push({model:'gol',n:24,label:'Tunado / 12 pinturas',color});
 const errors=[];
 for(const tc of cases){
  const wrapper=document.createElement('article');wrapper.className='qa-cell';
@@ -83,7 +84,29 @@ for(const card of gallery.querySelectorAll('.qa-cell')){
    errors.push('desalinhamento de caixas: '+card.dataset.car+' '+card.dataset.count);
  }
 }
-const results={pass:errors.length===0,checks:cases.length,photos:cases.length,images:images.length,loaded,errors};
+if(document.documentElement.scrollWidth>window.innerWidth+2)
+ errors.push('Página excede viewport: '+document.documentElement.scrollWidth+' > '+window.innerWidth);
+const results={pass:errors.length===0,checks:cases.length,photos:cases.length,images:images.length,loaded,viewport:window.innerWidth,mobileMediaQuery:window.matchMedia('(max-width:700px)').matches,errors};
 status.textContent='TESTE '+(results.pass?'PASSOU':'FALHOU')+' — '+results.checks+' composições, '+loaded+'/'+images.length+' imagens carregadas. '+(errors.length?errors.join(' | '):'Sem erros de recurso ou geometria DOM detectados. Inspeção óptica humana ainda necessária.');
 status.dataset.qaStatus=results.pass?'pass':'fail';window.__garageQaResults=results;console.log('GARAGE_QA_RESULT',JSON.stringify(results));
+if(!isMobileMode){
+ const section=document.querySelector('#mobile-proof'),frame=document.querySelector('#mobile-frame');
+ section.hidden=false;frame.src=location.pathname+'?device=mobile';
+ let attempts=0;
+ const poll=setInterval(()=>{
+  let report=null;
+  try{report=frame.contentWindow?.__garageQaResults}catch{}
+  if(report){
+   clearInterval(poll);
+   document.querySelector('#mobile-status').textContent='QA MOBILE '+(report.pass?'PASSOU':'FALHOU')+
+     ' — viewport='+report.viewport+'px, media-query='+report.mobileMediaQuery+
+     ', '+report.loaded+'/'+report.images.length+' imagens, '+report.checks+' composições. '+
+     (report.errors.length?report.errors.join(' | '):'Sem clipping ou overflow.');
+   window.__garageQaMobileResults=report;
+  }else if(++attempts>120){
+   clearInterval(poll);
+   document.querySelector('#mobile-status').textContent='QA MOBILE EXPIRADO: sem resultado.';
+  }
+ },500);
+}
 </script></body></html>
