@@ -5,7 +5,7 @@ import {SIEGE_EVENT_CASH,SIEGE_EVENT_TROPHY_ID,brtSiegeDay,isSiegeEvent20261104,
   grantSiegeEventRewards,ensureSiegeEventRewardsSchema}
   from '../src/neon/clan-siege-event-rewards-20261104.js';
 
-const eventStart=Date.parse('2026-11-04T20:00:00-03:00');
+const eventStart=Date.parse('2026-11-04T21:00:00-03:00');
 const base={id:9,status:'completed',rules_version:5,created_by:'system:siege-daily-20h',
   created_at:eventStart,blue_clan_id:5,red_clan_id:7,winner_clan_id:5};
 function fake({members=[
