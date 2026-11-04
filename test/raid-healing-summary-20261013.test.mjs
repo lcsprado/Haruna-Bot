@@ -8,7 +8,8 @@ test('Cura na Raid registra HP recuperado efetivamente, sem excesso',()=>{
   assert.match(raid,/const healed=Math\.max\(0,Number\(p\.hp\)-hpBefore\)/)
   assert.match(raid,/p\.classHealing=Number\(p\.classHealing\|\|0\)\+healed/)
   assert.match(raid,/p\.potionHealing=Number\(p\.potionHealing\|\|0\)\+Math\.max\(0,Number\(p\.hp\)-beforePotionHeal\)/)
-  assert.match(raid,/p\.petPotionHealing=Number\(p\.petPotionHealing\|\|0\)\+Math\.max\(0,Number\(p\.pet\.hp\)-beforePetHeal\)/)
+  assert.match(raid,/p\.petPotionHealing=Number\(p\.petPotionHealing\|\|0\)\+healed/)
+  assert.match(raid,/const healed=Math\.max\(0,Number\(p\.pet\.hp\)-beforePetHeal\)/)
   assert.match(raid,/p\.petSkillHealing=Number\(p\.petSkillHealing\|\|0\)\+healed/)
 })
 test('Relatório inclui todas as fontes de cura e omite bloco vazio',()=>{
