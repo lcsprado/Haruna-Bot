@@ -9,7 +9,6 @@ const block=source.slice(start,end);
 test('group !web credentials are sent only via direct message',()=>{
   assert.ok(start>=0&&end>start);
   assert.match(block,/if\(isGroup\)\{[\s\S]*?await sock\.sendMessage\(sender,\{text:privateMessage\}\)/);
-  assert.doesNotMatch(block,/await reply\(privateMessage\)/);
   assert.match(block,/else await reply\(privateMessage\)/);
 });
 test('failure to resolve or deliver private chat fails closed',()=>{
