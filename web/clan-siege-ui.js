@@ -36,7 +36,7 @@ function objectivesGuide(match){
     '<p>🏆 <b>Vitória:</b> mais HP ao terminar seis rodadas. Se houver igualdade, pontos de objetivos; depois integridade do Portão; depois suprimentos. Persistindo igualdade, empate.</p>'+
     '<div class="grid two"><div class="siege-selected"><strong>🔵 Fortaleza azul</strong><p>🚪 '+ESCAPE(gate('blue'))+'/2 • 📦 '+ESCAPE(supplies('blue'))+'/3 • 🎯 '+ESCAPE(score('blue'))+' pontos</p></div>'+
     '<div class="siege-selected"><strong>🔴 Fortaleza vermelha</strong><p>🚪 '+ESCAPE(gate('red'))+'/2 • 📦 '+ESCAPE(supplies('red'))+'/3 • 🎯 '+ESCAPE(score('red'))+' pontos</p></div></div>'+
-    '<small>Suprimentos do Cerco são virtuais, não movimentam dinheiro, XP, HP ou itens dos personagens. As frentes anteriores permanecem privadas até fechar cada rodada.</small></section>';
+    '<small>Suprimentos do Cerco são virtuais, não movimentam dinheiro, XP, HP ou itens dos personagens. Valores com traço são prévia, ainda sem uma partida ativa. As ações rivais permanecem privadas até fechar cada rodada.</small></section>';
 }
 const LEGACY_ACTIONS = Object.freeze([
   {id:'attack',icon:'⚔️',label:'Atacar',effect:'180 de dano por jogador, antes da defesa rival.'},
@@ -168,7 +168,9 @@ function renderLiveSiege(ui){
   const red=match?clans.find(c=>String(c.id)===String(match.redClanId)):clans.find(c=>String(c.id)!==String(data.myClanId));
   const stage=match?.status||'idle';
   const active=stage==='active';
-  const rulesVersion=match?Number(match.rulesVersion||1):5;
+  // Fora de uma partida ativa, os botões demonstram a PRÓXIMA guerra (V5),
+  // mas o histórico/placar continuam mostrando a versão em que foram jogados.
+  const rulesVersion=active?Number(match.rulesVersion||1):5;
   const availableActions=rulesVersion>=4?TACTICAL_ACTIONS.map(a=>a.id==='repair'&&rulesVersion>=5?
     {...a,effect:a.effect.replace('220 HP','280 HP')}:a):rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
   const remainingRepairs=Math.max(0,2-Number(match?.[match?.mySide+'Repairs']||0));
@@ -190,7 +192,7 @@ function renderLiveSiege(ui){
   let controls='';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio antigo</button>';
   const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. A guerra diária começa às 20h. Você já pode explorar as ações, sem enviar escolhas.':
-    stage==='completed'?'Último resultado disponível por até 24h. Próxima guerra às 20h. As estratégias abaixo são apenas uma prévia.':
+    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. A próxima guerra usará V5. Os botões abaixo são prévia da V5 e não enviam ações.':
     active?'Ações são secretas. Escolha uma estratégia e CONFIRME por rodada. Sem confirmação, nenhuma ação será executada.':
     'A guerra começa diariamente às 20h de Brasília. Você pode explorar as cinco ações da próxima guerra agora, mas só confirmar durante a partida.';
   const pct=(hp,max)=>Math.min(100,Math.max(0,Number(hp||0)/Number(max||2000)*100)).toFixed(1);
@@ -242,7 +244,7 @@ function renderLiveSiege(ui){
           canMove?'Selecione uma das quatro estratégias acima para habilitar a confirmação.':
           active?'Você não pode enviar ação nesta rodada.':
           'Prévia sem registro. A confirmação só estará disponível durante a guerra às 20h.')+'</small>')+'</div></div>'+
-    (rulesVersion>=4?objectivesGuide(match):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
+    (rulesVersion>=4?objectivesGuide(active?match:{rulesVersion:5}):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
     (latest.length?'<div class="siege-selected section"><strong>📜 Histórico</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
         ' HP • 🔴 '+Number(x.redHp)+' HP'+
