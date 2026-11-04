@@ -250,7 +250,10 @@ function renderLiveSiege(ui){
         ' HP • 🔴 '+Number(x.redHp)+' HP'+
         (Number(x.rulesVersion)>=2?' • Dano 🔵 '+Number(x.blueDamage)+' / 🔴 '+Number(x.redDamage)+
           ' • 🤝 '+ESCAPE(x.blueTactic)+' / '+ESCAPE(x.redTactic):'')+
-        (Number(x.rulesVersion)>=4?' • 💚 HP realmente recuperado: 🔵 +'+Number(x.blueHeal||0)+' / 🔴 +'+Number(x.redHeal||0):'')+'</p>').join('')+'</div>':'')+
+        (Number(x.rulesVersion)>=4?' • 💚 HP realmente recuperado: 🔵 +'+Number(x.blueHeal||0)+' / 🔴 +'+Number(x.redHeal||0):'')+
+        (Number(x.rulesVersion)>=5&&((x.blueRepairWithoutEffect||[]).length||(x.redRepairWithoutEffect||[]).length)?
+          ' • ⚠️ Reparos sem efeito: 🔵 '+ESCAPE((x.blueRepairWithoutEffect||[]).join(', ')||'nenhum')+
+          ' / 🔴 '+ESCAPE((x.redRepairWithoutEffect||[]).join(', ')||'nenhum'):'')+'</p>').join('')+'</div>':'')+
     siegeFirstPrizePanel(match,data.firstWarPrizeMatchId)+
     '<div class="siege-footer">Ações de guerra não gastam dinheiro, XP ou HP do herói. Obras são financiadas somente pelo tesouro virtual do clã.</div></section>';
 }
