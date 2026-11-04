@@ -8,7 +8,8 @@ on:
       - 'src/neon/clan-siege-v4.js'
       - 'test/clan-siege-fronts-v4-20261103.test.mjs'
       - 'src/neon/clan-fortress.js'
-      - 'test/clan-fortress-economy-20261103.test.mjs test/clan-siege-fronts-v4-20261103.test.mjs'
+      - 'test/clan-fortress-economy-20261103.test.mjs'
+      - 'test/clan-siege-fronts-v4-20261103.test.mjs'
       - 'src/neon/clan-siege-beta-access.js'
       - 'test/clan-siege-single-guest-20261102.test.mjs'
       - 'src/neon/clan-siege-first-prize.js'
@@ -54,4 +55,4 @@ jobs:
           node --check src/neon/web-api.js
           node --check src/neon/render.js
       - name: Test combat and disabled-by-default policy
-        run: node --test test/clan-siege-rules-20261102.test.mjs test/clan-siege-first-prize-20261102.test.mjs test/clan-siege-single-guest-20261102.test.mjs test/clan-siege-tactics-v2-20261103.test.mjs test/clan-fortress-economy-20261103.test.mjs
+        run: node --test test/clan-siege-rules-20261102.test.mjs test/clan-siege-first-prize-20261102.test.mjs test/clan-siege-single-guest-20261102.test.mjs test/clan-siege-tactics-v2-20261103.test.mjs test/clan-fortress-economy-20261103.test.mjs test/clan-siege-fronts-v4-20261103.test.mjs
