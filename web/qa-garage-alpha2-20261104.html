@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QA isolado Garagem Alpha 2.0 — dados fictícios</title><link rel="stylesheet" href="/styles.css?v=20261103-garage-alpha2-v1">
+<style>
+html{background:#08111d;color:#dceaf9} body{max-width:1320px;margin:auto;padding:18px;font-family:system-ui,Arial,sans-serif;background:#08111d;color:#dceaf9}
+header.qa{padding:14px;margin-bottom:16px;border:1px solid #36536c;border-radius:12px} .qa-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+.qa-cell{overflow:hidden;background:#101f30;border:1px solid #31516c;border-radius:12px;padding:10px;min-width:0}
+.qa-cell h3{font-size:14px;margin:0 0 5px}.qa-sub{font-size:12px;color:#a0b7c6;margin:0 0 5px}
+.qa-cell .race-car-art{max-width:100%;width:100%;height:auto;max-height:none}
+.qa-cell .race-car-art>.race-car-photo,.qa-cell .race-car-art>.race-car-overlay{width:100%;height:100%;object-fit:contain}
+.qa-issue{border-color:#ff6666!important}.qa-issue::before{content:"ERRO DE CARREGAMENTO";color:#ff6666;font-size:11px;font-weight:800}
+#status{white-space:pre-wrap;padding:12px;border-radius:10px;background:#172839;color:#cde5ed;margin:10px 0 18px}
+.qa-note{color:#9fb2c3;font-size:12px}
+@media(max-width:700px){body{padding:8px}.qa-grid{grid-template-columns:1fr}.qa-cell{padding:8px}}
+@media(min-width:701px) and (max-width:1000px){.qa-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style></head>
+<body>
+<header class="qa"><h1>Garagem Alpha 2.0 — inspeção visual</h1>
+<p>Dados inteiramente fictícios. Nenhuma sessão, API, transferência, economia ou corrida. Esta página existe somente na branch de QA e deverá ser retirada antes do merge.</p>
+<p class="qa-note">Matriz: Gol, Uno, Corsa, Palio × Original (0/42), Street (8/42), Tunado (24/42), Full Build (42/42); 12 pinturas no Gol Tunado. Conferir sobreposição das rodas, spoilers e pintura em desktop e celular.</p></header>
+<section id="status" role="status">Carregando imagens reais da prévia...</section>
+<main id="gallery" class="qa-grid"></main>
+<script type="module">
+import {renderRacing} from '/racing-ui.js';
+const cars=[
+ {id:'gol',name:'Gol Quadrado',price:150000,stats:{speed:54,accel:54,grip:53,brake:53}},
+ {id:'uno',name:'Uno Mille',price:150000,stats:{speed:47,accel:65,grip:58,brake:48}},
+ {id:'corsa',name:'Corsa Wind',price:150000,stats:{speed:50,accel:49,grip:65,brake:62}},
+ {id:'palio',name:'Palio Fire',price:150000,stats:{speed:66,accel:48,grip:47,brake:50}}
+];
+const ids=['motor','cambio','pneus','suspensao','freios','turbo'];
+const parts=ids.map(id=>({id,name:id,benefit:{speed:2,accel:2}}));
+const colors=['prata','branco','preto','cinza','vermelho','azul','verde','amarelo','laranja','roxo','rosa','dourado'];
+const hex=['#BFC4CC','#F3F4F6','#242A34','#777E8A','#D8333F','#2979D6','#3EAD6A','#E8BD32','#EF8732','#8650C9','#E888B7','#CBA63A'];
+const catalog={cars,parts,colors:colors.map((id,i)=>({id,name:id,hex:hex[i]})),levels:[],tracks:[],tiers:[],strategies:[],totalUpgradeCost:25530000};
+const levels=n=>Object.fromEntries(ids.map((id,i)=>[id,Math.max(0,Math.min(7,n-7*i))]));
+const data=(model,n,color)=>({racing:{garage:{profile:{xp:200,races:5,wins:1,spent:100000},cars:[
+ {id:1,model_id:model,color_id:color,equipped:true,condition:100,upgrades:levels(n),pending_part:null}]},catalog,ranking:[],history:[],challenges:[]},
+ racingTab:'garage',racingTrack:'cidade',racingTier:'rua',racingStrategy:'equilibrada',
+ data:{identity:{jid:'qa@example.invalid',groupLinked:false},group:{roster:[]}}});
+const gallery=document.querySelector('#gallery'),status=document.querySelector('#status');
+const cases=[];
+for(const model of cars)for(const step of [{n:0,label:'Original'},{n:8,label:'Street'},{n:24,label:'Tunado'},{n:42,label:'Full Build'}])
+ cases.push({model:model.id,n:step.n,label:step.label,color:'azul'});
+for(const color of colors)cases.push({model:'gol',n:24,label:'Tunado / 12 pinturas',color});
+const errors=[];
+for(const tc of cases){
+ const wrapper=document.createElement('article');wrapper.className='qa-cell';
+ wrapper.dataset.car=tc.model;wrapper.dataset.count=tc.n;wrapper.dataset.paint=tc.color;
+ const inner=document.createElement('div');inner.innerHTML=renderRacing(data(tc.model,tc.n,tc.color));
+ const art=inner.querySelector('.race-fleet-visual .race-car-art');
+ if(!art){errors.push(tc.model+' '+tc.label+': falta race-car-art');continue;}
+ const title=document.createElement('h3');title.textContent=tc.model.toUpperCase()+' • '+tc.label;
+ const sub=document.createElement('p');sub.className='qa-sub';sub.textContent=tc.n+'/42 concluídos • pintura '+tc.color;
+ wrapper.append(title,sub,art.cloneNode(true));gallery.appendChild(wrapper);
+ const expected=tc.n<8?null:tc.n<24?'street':'tunado';
+ const overlays=wrapper.querySelectorAll('.race-car-overlay');
+ if(overlays.length!==(expected?1:0))errors.push(tc.model+' '+tc.n+': sobreposição incoerente');
+ if(expected&&overlays[0]&&!overlays[0].src.endsWith(tc.model+'-'+expected+'.svg'))
+  errors.push(tc.model+' '+tc.n+': SVG incorreto');
+}
+const images=[...gallery.querySelectorAll('img')];await Promise.all(images.map(img=>new Promise(resolve=>{
+ if(img.complete)return resolve();
+ img.onload=resolve;img.onerror=resolve;setTimeout(resolve,18000);
+})));
+let loaded=0;
+for(const img of images){
+ if(img.complete&&img.naturalWidth>0&&img.naturalHeight>0)loaded++;
+ else{errors.push('asset ausente: '+img.getAttribute('src'));img.closest('.qa-cell')?.classList.add('qa-issue')}
+}
+for(const card of gallery.querySelectorAll('.qa-cell')){
+ const base=card.querySelector('.race-car-photo'),overlay=card.querySelector('.race-car-overlay');
+ if(!base||!base.complete||!base.naturalWidth)continue;
+ const r=base.getBoundingClientRect(),c=card.getBoundingClientRect();
+ if(r.width<120||r.height<50||r.left<c.left-2||r.right>c.right+2)errors.push('clipping: '+card.dataset.car+' '+card.dataset.count);
+ if(overlay){
+  const a=overlay.getBoundingClientRect();
+  if(Math.abs(a.left-r.left)>2||Math.abs(a.width-r.width)>2||Math.abs(a.height-r.height)>2)
+   errors.push('desalinhamento de caixas: '+card.dataset.car+' '+card.dataset.count);
+ }
+}
+const results={pass:errors.length===0,checks:cases.length,photos:cases.length,images:images.length,loaded,errors};
+status.textContent='TESTE '+(results.pass?'PASSOU':'FALHOU')+' — '+results.checks+' composições, '+loaded+'/'+images.length+' imagens carregadas. '+(errors.length?errors.join(' | '):'Sem erros de recurso ou geometria DOM detectados. Inspeção óptica humana ainda necessária.');
+status.dataset.qaStatus=results.pass?'pass':'fail';window.__garageQaResults=results;console.log('GARAGE_QA_RESULT',JSON.stringify(results));
+</script></body></html>
