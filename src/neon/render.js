@@ -1,7 +1,7 @@
 import http from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { handleWebApi } from './web-api.js'
-import {settleClanSiege,startDailyClanSiege,isClanSiegeEnabled,clanSiegePreflight} from './clan-siege.js'
+import {settleClanSiege,startDailyClanSiege,isClanSiegeEnabled,clanSiegePreflight,ensureClanSiegeSchema} from './clan-siege.js'
 
 const port = Number(process.env.PORT || 10000)
 // Railway can serve the game API without starting a second WhatsApp client.
@@ -9,6 +9,9 @@ const apiOnly = String(process.env.ALPHA_RUNTIME || '').trim().toLowerCase() ===
 if(apiOnly){
   const {initRacingAlpha}=await import('./racing-alpha.js')
   await initRacingAlpha()
+  // Garante migrações seguras do Cerco ANTES de aceitar comandos do Web.
+  // Não inicia guerra nem altera o histórico de partidas em andamento.
+  await ensureClanSiegeSchema()
 }
 const webFiles={
   '/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css',
