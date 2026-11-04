@@ -263,7 +263,9 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
   document.querySelectorAll('[data-siege-preview]').forEach(button=>button.addEventListener('click',()=>{
     if(ui.siege?.match?.myMove)return;
     const next=button.dataset.siegePreview;
-    if(!ACTIONS.some(item=>item.id===next))return;
+    const variant=ui.siege?.match?Number(ui.siege.match.rulesVersion||1):4;
+    const catalog=variant>=4?TACTICAL_ACTIONS:variant>=2?ACTIONS:LEGACY_ACTIONS;
+    if(!catalog.some(item=>item.id===next))return;
     ui.siegePreviewAction=next;
     ui.siegePreviewTarget=next==='supply'?'depot':'castle';
     render();
