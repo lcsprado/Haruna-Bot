@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
+import {buildOfficialWebLoginUrl} from './web-official-link.js'
 import {relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {resolveAlphaWebAllowedOrigin} from './web-canonical-origins.js'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
@@ -184,15 +185,11 @@ export async function createWebLinkCode(jid,chatJid=null){
           OFFSET 3
         )
       `,[jid]).catch(()=>{})
-      const renderBase=String(process.env.RENDER_EXTERNAL_URL||'').trim().replace(/\/$/,'')
-      const configured=String(process.env.WEB_APP_URL||(renderBase?renderBase+'/rpg':'')).trim()
-      let origin=''
-      try{ origin=configured?new URL(configured).origin:renderBase }catch{ origin=renderBase }
       return {
         code,
         expiresAt,
         chatJid:group,
-        url:origin ? `${origin}/rpg#code=${encodeURIComponent(code)}` : null
+        url:buildOfficialWebLoginUrl(code)
       }
     }catch(err){
       if(err?.code!=='23505') throw err
