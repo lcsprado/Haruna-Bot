@@ -69,6 +69,8 @@ export async function ensureClanSiegeSchema(){
       'COMMIT;'
     ].join(' '));
     await ensureWebActionOutbox(db);
+    // Prepara a tabela de upgrades na inicialização, mesmo sem alguém abrir o Web.
+    await ensureClanFortressSchema();
   })().catch(e=>{schemaPromise=null;throw e});
   return schemaPromise;
 }
