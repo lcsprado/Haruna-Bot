@@ -171,20 +171,20 @@ function renderLiveSiege(ui){
     selectedActionId==='supply'?'depot':ui.siegePreviewTarget||'castle');
   const permittedTargets=selectedActionId==='repair'?FRONTS_V4.filter(front=>front.id!=='depot'):
     selectedActionId==='supply'?FRONTS_V4.filter(front=>front.id==='depot'):FRONTS_V4;
-  // Antes das 20h: seleção apenas visual, sem transação.
+  // Antes das 21h: seleção apenas visual, sem transação.
   // Na rodada ativa: precisa confirmar uma escolha; jamais usar Defender como padrão oculto.
   const canPreview=!active||(canMove&&!match?.myMove);
   const canConfirm=canMove&&Boolean(selected)&&!(selected?.id==='repair'&&remainingRepairs<=0);
   const duration=active?Math.max(0,Math.ceil((Number(match.roundEndsAt)-Date.now())/1000)):0;
   const countdown=active?' • '+Math.floor(duration/60)+'m '+String(duration%60).padStart(2,'0')+'s':'';
-  const label=active?'⚔️ GUERRA ATIVA · V'+rulesVersion:stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO ÀS 20H · V5 HOJE';
-  // A guerra começa às 20h, sem convite ou aceite manual.
+  const label=active?'⚔️ GUERRA ATIVA · V'+rulesVersion:stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO ÀS 21H · V5 HOJE';
+  // A guerra começa às 21h, sem convite ou aceite manual.
   let controls='';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio antigo</button>';
-  const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. A guerra diária começa às 20h. Você já pode explorar as ações, sem enviar escolhas.':
-    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. A próxima guerra usará V5. Abaixo está a NOVA GUERRA V5 com cinco ações e três frentes. Faça uma prévia livre; escolhas só poderão ser confirmadas a partir das 20h.':
+  const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. A guerra diária começa às 21h. Você já pode explorar as ações, sem enviar escolhas.':
+    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. A próxima guerra usará V5. Abaixo está a NOVA GUERRA V5 com cinco ações e três frentes. Faça uma prévia livre; escolhas só poderão ser confirmadas a partir das 21h.':
     active?'Ações são secretas. Escolha uma estratégia e CONFIRME por rodada. Sem confirmação, nenhuma ação será executada.':
-    'A guerra começa diariamente às 20h de Brasília. Você pode explorar as cinco ações da próxima guerra agora, mas só confirmar durante a partida.';
+    'A guerra começa diariamente às 21h de Brasília. Você pode explorar as cinco ações da próxima guerra agora, mas só confirmar durante a partida.';
   const pct=(hp,max)=>Math.min(100,Math.max(0,Number(hp||0)/Number(max||2000)*100)).toFixed(1);
   function fortress(c,side){
     const hp=Number((active?match:null)?.[side+'Hp']??2000);
@@ -202,7 +202,7 @@ function renderLiveSiege(ui){
     '<h3>🏰 Cerco ao Castelo</h3><p>Dois clãs, quatro jogadores, ações secretas e resultado no WhatsApp.</p></div>'+
     '<span class="siege-status">'+label+'</span></div>'+
     '<div class="siege-stage">'+fortress(blue,'blue')+
-    '<div class="siege-versus"><strong>VS</strong><small>⏰ 20h</small><small>6 rodadas</small><small>5 min cada</small></div>'+
+    '<div class="siege-versus"><strong>VS</strong><small>⏰ 21h</small><small>6 rodadas</small><small>5 min cada</small></div>'+
     fortress(red,'red')+'</div>'+
     '<div class="siege-data-note">'+ESCAPE(notice)+
     (active?' • Rodada '+Number(match.round)+'/6'+countdown+' • '+Number(match.submitted)+'/4 ações enviadas':'')+'</div>'+
@@ -228,12 +228,12 @@ function renderLiveSiege(ui){
     '<div class="siege-selected"><span>ESTRATÉGIA '+(active?'DA RODADA':'PRÉVIA — NÃO ENVIADA')+'</span><strong>'+
       ESCAPE(availableActions.find(a=>a.id===selectedActionId)?.label||'Nenhuma ação selecionada')+'</strong>'+
       '<p>'+(active?'As escolhas rivais ficam secretas. Só a confirmação registra sua ação nesta rodada.':
-        'Explore Atacar, Defender, Reparar, Espionar ou Reabastecer. A prévia não seleciona Defesa automaticamente e não envia ações antes das 20h.')+'</p>'+
+        'Explore Atacar, Defender, Reparar, Espionar ou Reabastecer. A prévia não seleciona Defesa automaticamente e não envia ações antes das 21h.')+'</p>'+
       (canConfirm?'<button class="btn good" data-siege-command="move">🔒 Confirmar ação secreta</button>':
         '<small>'+(match?.myMove?'✅ Ação registrada nesta rodada; não pode ser alterada.':
           canMove?(rulesVersion>=4?'Selecione uma das cinco ações e uma frente acima para habilitar a confirmação.':'Selecione uma das quatro estratégias acima para habilitar a confirmação.'):
           active?'Você não pode enviar ação nesta rodada.':
-          'Prévia sem registro. A confirmação só estará disponível durante a guerra às 20h.')+'</small>')+'</div></div>'+
+          'Prévia sem registro. A confirmação só estará disponível durante a guerra às 21h.')+'</small>')+'</div></div>'+
     renderFortressPanel(data.fortress)+
     (latest.length?'<div class="siege-selected section"><strong>📜 '+(previous?'ÚLTIMA GUERRA — REGRA V'+Number(match.rulesVersion||1)+' (HISTÓRICO)':'Histórico das rodadas')+'</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
