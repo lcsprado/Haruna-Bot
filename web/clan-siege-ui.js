@@ -20,21 +20,23 @@ const FRONTS_V4=Object.freeze([
   {id:'depot',icon:'📦',label:'Depósito',tip:'Proteção ou saque de suprimentos de reparo'}
 ]);
 function objectivesGuide(match){
+  const version=Number(match?.rulesVersion||5);
+  const repairHp=version>=5?280:220;
   const empty='—';
   const gate=side=>match?.[side+'Gate']??empty;
   const supplies=side=>match?.[side+'Supplies']??empty;
   const score=side=>match?.[side+'Score']??empty;
   return '<section class="siege-selected section" aria-label="Três frentes do Cerco">'+
-    '<strong>🗺️ GUERRA POR OBJETIVOS — V4</strong>'+
+    '<strong>🗺️ GUERRA POR OBJETIVOS — V'+version+'</strong>'+
     '<p>⚔️ <b>Castelo:</b> ataque básico 180. Quando o Portão inimigo está rompido, ataques ao Castelo ganham +25% a partir da rodada seguinte.</p>'+
     '<p>🚪 <b>Portão:</b> cada ataque causa 105 ao HP e 1 ponto de pressão. Duas investidas rompem o Portão; Defender o Portão bloqueia uma investida por guarda.</p>'+
     '<p>📦 <b>Depósito:</b> cada ataque causa 110 ao HP e pode saquear 1 suprimento. Defender o Depósito impede um saque por guarda.</p>'+
-    '<p>📦 <b>Reabastecer:</b> recebe 1 suprimento de Cerco (máximo 3); o jogo começa com 1. Reparar exige 1 suprimento e só pode ser realizado duas vezes por clã.</p>'+
+    '<p>📦 <b>Reabastecer:</b> recebe 1 suprimento de Cerco (máximo 3); o jogo começa com 1. Reparar exige 1 suprimento, restaura até '+repairHp+' HP do Castelo ou 1 ponto do Portão e só pode ser realizado duas vezes por clã.</p>'+
     '<p>🤝 <b>Combine os alvos com seu parceiro:</b> duas ofensivas na mesma frente recebem +10%; espionagem só melhora ataques direcionados à frente escolhida.</p>'+
     '<p>🏆 <b>Vitória:</b> mais HP ao terminar seis rodadas. Se houver igualdade, pontos de objetivos; depois integridade do Portão; depois suprimentos. Persistindo igualdade, empate.</p>'+
     '<div class="grid two"><div class="siege-selected"><strong>🔵 Fortaleza azul</strong><p>🚪 '+ESCAPE(gate('blue'))+'/2 • 📦 '+ESCAPE(supplies('blue'))+'/3 • 🎯 '+ESCAPE(score('blue'))+' pontos</p></div>'+
     '<div class="siege-selected"><strong>🔴 Fortaleza vermelha</strong><p>🚪 '+ESCAPE(gate('red'))+'/2 • 📦 '+ESCAPE(supplies('red'))+'/3 • 🎯 '+ESCAPE(score('red'))+' pontos</p></div></div>'+
-    '<small>Suprimentos do Cerco são virtuais, não movimentam dinheiro, XP, HP ou itens dos personagens. As frentes anteriores permanecem privadas até fechar cada rodada.</small></section>';
+    '<small>Suprimentos do Cerco são virtuais, não movimentam dinheiro, XP, HP ou itens dos personagens. Valores com traço são prévia, ainda sem uma partida ativa. As ações rivais permanecem privadas até fechar cada rodada.</small></section>';
 }
 const LEGACY_ACTIONS = Object.freeze([
   {id:'attack',icon:'⚔️',label:'Atacar',effect:'180 de dano por jogador, antes da defesa rival.'},
@@ -125,6 +127,40 @@ function siegeFirstPrizePanel(match=null,awardedId=null){
     '<p>'+ESCAPE(message)+'</p>'+
     '<small>Relíquia permanente, não vendável, vinculada ao vencedor e sem bônus PvP.</small></div></aside>';
 }
+function siegeActionRisk(match,selectedAction,target,remainingRepairs){
+  const version=Number(match?.rulesVersion||1);
+  if(version<4||!selectedAction||match?.status!=='active'||match?.myMove)return '';
+  const side=match?.mySide;
+  if(!side)return '';
+  const hp=Number(match?.[side+'Hp']||0);
+  const maxHp=Number(match?.[side+'MaxHp']||2000);
+  const supplies=Number(match?.[side+'Supplies']||0);
+  const gate=Number(match?.[side+'Gate']||0);
+  const heal=version>=5?280:220;
+  const warnings=[];
+  if(selectedAction==='repair'){
+    if(remainingRepairs<=0)warnings.push('❌ Você já usou os 2 reparos do clã. Escolha outra ação.');
+    else {
+      if(supplies===0)warnings.push('⚠️ Sem suprimentos agora: o reparo só será possível se seu parceiro usar Reabastecer nesta rodada. Caso contrário, essa ação não terá efeito.');
+      if(target==='castle'){
+        if(hp>=maxHp)warnings.push('⚠️ HP cheio neste momento: reparar só terá efeito se o Castelo sofrer dano nesta rodada.');
+        else warnings.push('💚 Sem novos ataques, a recuperação máxima seria '+Math.min(heal,maxHp-hp)+' HP. Se receber dano nesta rodada, pode recuperar até '+heal+' HP, limitado ao máximo do Castelo.');
+      }
+      if(target==='gate'&&gate>=2)warnings.push('⚠️ Portão intacto: reparar só terá efeito se o Portão receber uma investida nesta rodada.');
+      else if(target==='gate')warnings.push('🚪 O reparo recupera 1 ponto de Portão (máximo 2); NÃO recupera HP do Castelo.');
+      warnings.push('⚖️ Reparar não garante vitória: na resolução, prevalece o HP final do Castelo.');
+    }
+  }
+  if(selectedAction==='spy'&&Number(match.round)>=6)
+    warnings.push('⚠️ Última rodada: não haverá próxima rodada para usar o bônus de +60%. O bônus imediato de +30% exige que seu parceiro ataque a mesma frente agora.');
+  if(selectedAction==='supply'&&supplies>=3)
+    warnings.push('⚠️ Estoque já cheio (3/3). Reabastecer agora não gera suprimento nem recupera HP.');
+  if(selectedAction==='attack'&&target==='gate'&&Number(match?.[otherSide(side)+'Gate'])===0)
+    warnings.push('ℹ️ Portão adversário já rompido: atacar o Castelo agora permite aproveitar +25% de dano; atacar o Portão novamente não reduz mais sua integridade.');
+  return warnings.length?'<div class="notice warn section" aria-label="Aviso estratégico antes da confirmação">'+warnings.map(x=>'<p>'+ESCAPE(x)+'</p>').join('')+'</div>':'';
+}
+const otherSide=side=>side==='blue'?'red':'blue';
+
 function renderLiveSiege(ui){
   const data=ui.siege,match=data.match,clans=data.clans||[];
   const mine=clans.find(c=>String(c.id)===String(data.myClanId));
@@ -132,8 +168,11 @@ function renderLiveSiege(ui){
   const red=match?clans.find(c=>String(c.id)===String(match.redClanId)):clans.find(c=>String(c.id)!==String(data.myClanId));
   const stage=match?.status||'idle';
   const active=stage==='active';
-  const rulesVersion=match?Number(match.rulesVersion||1):4;
-  const availableActions=rulesVersion>=4?TACTICAL_ACTIONS:rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
+  // Fora de uma partida ativa, os botões demonstram a PRÓXIMA guerra (V5),
+  // mas o histórico/placar continuam mostrando a versão em que foram jogados.
+  const rulesVersion=active?Number(match.rulesVersion||1):5;
+  const availableActions=rulesVersion>=4?TACTICAL_ACTIONS.map(a=>a.id==='repair'&&rulesVersion>=5?
+    {...a,effect:a.effect.replace('220 HP','280 HP')}:a):rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
   const remainingRepairs=Math.max(0,2-Number(match?.[match?.mySide+'Repairs']||0));
   const canMove=active&&Boolean(match.mySide)&&!match.myMove;
   const selected=availableActions.find(x=>x.id===ui.siegePreviewAction)||null;
@@ -145,17 +184,17 @@ function renderLiveSiege(ui){
   // Antes das 20h: seleção apenas visual, sem transação.
   // Na rodada ativa: precisa confirmar uma escolha; jamais usar Defender como padrão oculto.
   const canPreview=!match?.myMove&&(!active||canMove);
-  const canConfirm=canMove&&Boolean(selected);
+  const canConfirm=canMove&&Boolean(selected)&&!(selected?.id==='repair'&&remainingRepairs<=0);
   const duration=active?Math.max(0,Math.ceil((Number(match.roundEndsAt)-Date.now())/1000)):0;
   const countdown=active?' • '+Math.floor(duration/60)+'m '+String(duration%60).padStart(2,'0')+'s':'';
   const label=active?'⚔️ GUERRA ATIVA':stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':stage==='completed'?'🏆 CONCLUÍDA':'⏰ CERCO ÀS 20H';
   // A guerra começa às 20h, sem convite ou aceite manual.
   let controls='';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio antigo</button>';
-  const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. A guerra diária começa às 20h. Você já pode testar as quatro estratégias, sem enviar ações.':
-    stage==='completed'?'Último resultado disponível por até 24h. Próxima guerra às 20h. As estratégias abaixo são apenas uma prévia.':
+  const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. A guerra diária começa às 20h. Você já pode explorar as ações, sem enviar escolhas.':
+    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. A próxima guerra usará V5. Os botões abaixo são prévia da V5 e não enviam ações.':
     active?'Ações são secretas. Escolha uma estratégia e CONFIRME por rodada. Sem confirmação, nenhuma ação será executada.':
-    'A guerra começa diariamente às 20h de Brasília. Você pode explorar as quatro estratégias agora, mas só enviar ações durante a partida.';
+    'A guerra começa diariamente às 20h de Brasília. Você pode explorar as cinco ações da próxima guerra agora, mas só confirmar durante a partida.';
   const pct=(hp,max)=>Math.min(100,Math.max(0,Number(hp||0)/Number(max||2000)*100)).toFixed(1);
   function fortress(c,side){
     const hp=Number(match?.[side+'Hp']??2000);
@@ -195,6 +234,7 @@ function renderLiveSiege(ui){
         '<span class="siege-action-icon">'+front.icon+'</span><strong>'+front.label+
         '</strong><small>'+ESCAPE(front.tip)+'</small></button>').join('')+'</div>'+
       '<p>Objetivo escolhido: <b>'+ESCAPE(FRONTS_V4.find(f=>f.id===selectedTarget)?.label||'Castelo')+'</b></p></div>':'')+
+    (rulesVersion>=4?siegeActionRisk(match,selectedActionId,selectedTarget,remainingRepairs):'')+
     '<div class="siege-selected"><span>ESTRATÉGIA '+(active?'DA RODADA':'PRÉVIA — NÃO ENVIADA')+'</span><strong>'+
       ESCAPE(availableActions.find(a=>a.id===selectedActionId)?.label||'Nenhuma ação selecionada')+'</strong>'+
       '<p>'+(active?'As escolhas rivais ficam secretas. Só a confirmação registra sua ação nesta rodada.':
@@ -204,12 +244,16 @@ function renderLiveSiege(ui){
           canMove?'Selecione uma das quatro estratégias acima para habilitar a confirmação.':
           active?'Você não pode enviar ação nesta rodada.':
           'Prévia sem registro. A confirmação só estará disponível durante a guerra às 20h.')+'</small>')+'</div></div>'+
-    (rulesVersion>=4?objectivesGuide(match):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
+    (rulesVersion>=4?objectivesGuide(active?match:{rulesVersion:5}):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
     (latest.length?'<div class="siege-selected section"><strong>📜 Histórico</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
         ' HP • 🔴 '+Number(x.redHp)+' HP'+
         (Number(x.rulesVersion)>=2?' • Dano 🔵 '+Number(x.blueDamage)+' / 🔴 '+Number(x.redDamage)+
-          ' • 🤝 '+ESCAPE(x.blueTactic)+' / '+ESCAPE(x.redTactic):'')+'</p>').join('')+'</div>':'')+
+          ' • 🤝 '+ESCAPE(x.blueTactic)+' / '+ESCAPE(x.redTactic):'')+
+        (Number(x.rulesVersion)>=4?' • 💚 HP realmente recuperado: 🔵 +'+Number(x.blueHeal||0)+' / 🔴 +'+Number(x.redHeal||0):'')+
+        (Number(x.rulesVersion)>=5&&((x.blueRepairWithoutEffect||[]).length||(x.redRepairWithoutEffect||[]).length)?
+          ' • ⚠️ Reparos sem efeito: 🔵 '+ESCAPE((x.blueRepairWithoutEffect||[]).join(', ')||'nenhum')+
+          ' / 🔴 '+ESCAPE((x.redRepairWithoutEffect||[]).join(', ')||'nenhum'):'')+'</p>').join('')+'</div>':'')+
     siegeFirstPrizePanel(match,data.firstWarPrizeMatchId)+
     '<div class="siege-footer">Ações de guerra não gastam dinheiro, XP ou HP do herói. Obras são financiadas somente pelo tesouro virtual do clã.</div></section>';
 }
@@ -283,7 +327,14 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
   document.querySelectorAll('[data-siege-command]').forEach(button=>button.addEventListener('click',()=>{
     const command=button.dataset.siegeCommand;
     if(!['cancel','move'].includes(command))return;
-    const message=command==='move'?'Confirmar ação? Ela não poderá ser alterada.':'Cancelar desafio antigo?';
+    const pendingTarget=ui.siegePreviewAction==='supply'?'depot':ui.siegePreviewTarget||'castle';
+    const version=Number(ui.siege?.match?.rulesVersion||1);
+    const label=ui.siegePreviewAction==='repair'?
+      '⚠️ REPARAR não garante vitória. Só será aplicado no fim da rodada se o alvo precisar de reparo e houver suprimento; consome 1 suprimento e um dos 2 usos. Pode recuperar até '+
+      (version>=5?'280':'220')+' HP ou 1 ponto de Portão.':ui.siegePreviewAction==='spy'&&Number(ui.siege?.match?.round)>=6?
+      '⚠️ Espionar na última rodada só ajuda se o parceiro atacar a MESMA frente agora; não há rodada seguinte.':'';
+    const message=command==='move'?(label+' Confirma '+ui.siegePreviewAction+' em '+pendingTarget+'? A escolha não poderá ser alterada.').trim():
+      'Cancelar desafio antigo?';
     if(!confirm(message))return;
     const currentVersion=ui.siege?.match?Number(ui.siege.match.rulesVersion||1):4;
     // Regras antigas aceitam só 4 ações; Reabastecer é exclusivo da V4.
