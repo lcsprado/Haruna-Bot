@@ -251,3 +251,27 @@ test('V5: regra de início/encerramento mantém máximo de seis rodadas e dinhei
   assert.match(server,/Recuperação REAL de HP/);
   assert.doesNotMatch(server,/UPDATE users SET/);
 });
+
+
+test('V5: cada reparo frustrado informa a causa, sem consumir recurso nem inventar recuperação',()=>{
+ const empty=resolveSiegeRoundV4(initial({rules_version:5,blue_hp:1000,blue_supplies:0}),[
+  {clan_id:'5',action:'repair',target:'castle'}
+ ]);
+ assert.deepEqual(empty.result.blueRepairWithoutEffect,['sem suprimentos nesta rodada']);
+ assert.equal(empty.result.blueHeal,0);
+ assert.equal(empty.repairs.blue,0);
+ const fullHp=resolveSiegeRoundV4(initial({rules_version:5}),[
+  {clan_id:'5',action:'repair',target:'castle'}
+ ]);
+ assert.deepEqual(fullHp.result.blueRepairWithoutEffect,['Castelo já estava no HP máximo após os ataques']);
+ assert.equal(fullHp.v4.supplies.blue,1);
+ const gateFull=resolveSiegeRoundV4(initial({rules_version:5}),[
+  {clan_id:'5',action:'repair',target:'gate'}
+ ]);
+ assert.deepEqual(gateFull.result.blueRepairWithoutEffect,['Portão já estava intacto após os ataques']);
+ assert.equal(gateFull.repairs.blue,0);
+ const exhausted=resolveSiegeRoundV4(initial({rules_version:5,blue_repairs:2,blue_hp:1000}),[
+  {clan_id:'5',action:'repair',target:'castle'}
+ ]);
+ assert.deepEqual(exhausted.result.blueRepairWithoutEffect,['limite de 2 reparos atingido']);
+});
