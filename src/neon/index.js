@@ -10318,15 +10318,29 @@ await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp
 continue
 }
 if(cmd==='web'){
+// Códigos de acesso são credenciais: NUNCA enviar no grupo.
+if(isGroup && !String(sender||'').endsWith('@s.whatsapp.net')){
+  await reply('🔐 Por segurança, não consegui confirmar seu contato privado. Envie *!web* diretamente ao bot. Nenhum código foi publicado no grupo.')
+  continue
+}
 const link=await createWebLinkCode(sender,isGroup?chat:null)
 const expiresMin=Math.max(1,Math.ceil((Number(link.expiresAt)-Date.now())/60000))
 const groupLine=isGroup
-? '🔗 Este código já está vinculado a *este grupo*, então Raids e Bosses do Web usarão a mesma sessão do WhatsApp.'
-: 'ℹ️ Código gerado no privado. Para vincular também Raids/Bosses do grupo, use *!web* dentro do grupo onde vocês jogam.'
+? '🔗 Seu acesso foi vinculado ao grupo onde você solicitou o link.'
+: 'ℹ️ Código gerado no privado. Para vincular Bosses/Raids do grupo, use *!web* no grupo.'
 const urlLine=link.url
 ? `\n🌐 *TOQUE AQUI PARA ENTRAR DIRETO:*\n${link.url}`
 : '\n🌐 Abra o RPG Web e informe este código na tela de conexão.'
-await reply(`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ O link acima faz a conexão automaticamente.\n⚠️ O código é de uso único. Não envie para outras pessoas.`)
+const privateMessage=`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ O link acima faz a conexão automaticamente.\n⚠️ O código é de uso único. Não envie para outras pessoas.`
+if(isGroup){
+  try{
+    await sock.sendMessage(sender,{text:privateMessage})
+    await reply('🔐 Seu código de acesso ao Alpha RPG foi enviado no privado. Por segurança, o grupo nunca recebe códigos ou links de login.')
+  }catch(err){
+    console.warn('[Web Auth] falha ao entregar código no privado:',String(err?.message||err))
+    await reply('❌ Não consegui enviar o código no privado. Envie *!web* diretamente ao bot. Nenhum código foi publicado no grupo.')
+  }
+}else await reply(privateMessage)
 continue
 }
 const carp=await resolvePlayerCarpinar(sender)
