@@ -5,7 +5,10 @@ import {autoHealBossCombatPet} from '../src/neon/boss-pet-autocure.js'
 function scenario({hp=0,maxHp=3013,slot=3,quantities={pocao_pet_suprema:38}}={}){
   const stock=new Map(Object.entries(quantities))
   const writes=[]
+  const audits=[]
   const client={async query(sql,params){
+    if(sql.includes('SELECT COUNT(*)::integer AS used'))return {rows:[{used:0}]}
+    if(sql.includes('INSERT INTO transactions')){audits.push(params);return {rowCount:1,rows:[]}}
     if(sql.startsWith('SELECT item_id,quantity FROM inventories')){
       return {rows:[...stock].filter(([,qty])=>qty>0).map(([item_id,quantity])=>({item_id,quantity}))}
     }
@@ -25,7 +28,7 @@ function scenario({hp=0,maxHp=3013,slot=3,quantities={pocao_pet_suprema:38}}={})
     return possible.find(x=>x.heal>=missing)||possible.at(-1)||null
   }
   const persistPet=async(c,jid,p)=>writes.push({jid,hp:p.hp,slot:p.teamSlot})
-  return {pet,stock,writes,run:()=>autoHealBossCombatPet({
+  return {pet,stock,writes,audits,run:()=>autoHealBossCombatPet({
     client,jid:'test-jid',pet,maxHp,choosePotion,persistPet
   })}
 }
