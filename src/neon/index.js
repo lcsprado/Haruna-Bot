@@ -9562,46 +9562,21 @@ const {rows}=await db.query(
 WHERE (game_type='raid' OR game_type LIKE 'raid:%') AND state->>'status'='active'
 ORDER BY updated_at DESC`
 )
-for(let raidIndex=0;raidIndex<rows.length;raidIndex++){
-const row=rows[raidIndex]
+// Retomar Raids existentes apos reconexao nao e evidencia de deadlock.
+// NUNCA pagar compensacao aqui: a rotina pode rodar em cada reconexao do WhatsApp.
+for(const row of rows){
 const raid=row.state||{}
-if(raidIndex===0 && !raid.deadlockEpicCompensated){
-const participantIds=Object.keys(raid.players||{}).sort()
-if(participantIds.length){
-await db.query('BEGIN')
-try{
-for(const jid of participantIds){
-await db.query(
-`UPDATE wallets SET cash=cash+10000,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE jid=$1`,
-[jid]
-)
-await db.query(
-`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
-VALUES('system',$1,10000,'raid_interruption_compensation','Compensação por interrupção da Raid')`,
-[jid]
-)
-}
-raid.deadlockEpicCompensated=Date.now()
-raid.expiresAt=Date.now()+10*60*1000
-await db.query(
-`UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
-WHERE chat_jid=$2 AND game_type=$3`,
-[JSON.stringify(raid),row.chat_jid,row.game_type]
-)
-await db.query('COMMIT')
-await sock.sendMessage(row.chat_jid,{text:`💰 *COMPENSAÇÃO DA RAID*\n\nO banco interrompeu a luta por deadlock. Cada participante recebeu *R$ 10.000*.\n🔄 A Raid será retomada do estado salvo, sem cobrar nova chave.`}).catch(()=>{})
-}catch(compErr){
-await db.query('ROLLBACK').catch(()=>{})
-console.error('[RaidCompensation]',compErr?.message||compErr)
-}
-}
-}
 if(Number(raid.expiresAt||0)<=now){
-raid.expiresAt=now+5*60*1000
+const graceUntil=now+5*60*1000
+// Alterar apenas expiresAt: sobrescrever o JSON salvo pode reverter rodadas
+// ou marcadores escritos em paralelo pelo runner da Raid.
 await db.query(
-`UPDATE trevo_games SET state=$1::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
-WHERE chat_jid=$2 AND game_type=$3`,
-[JSON.stringify(raid),row.chat_jid,row.game_type]
+`UPDATE trevo_games
+SET state=jsonb_set(state,'{expiresAt}',to_jsonb($1::bigint),true),
+    updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+WHERE chat_jid=$2 AND game_type=$3 AND state->>'status'='active'
+  AND COALESCE((state->>'expiresAt')::bigint,0)<=$4`,
+[graceUntil,row.chat_jid,row.game_type,now]
 )
 }
 const raidReply=(text)=>sock.sendMessage(row.chat_jid,{text})
