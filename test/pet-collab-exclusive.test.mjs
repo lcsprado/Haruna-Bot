@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import {runInNewContext} from 'node:vm'
 import {PECADOS_HERO_IDS} from '../src/neon/sete-pecados-catalog.js'
 import {resolveCollabWildcardTeam,resolveAstralLynxWildcard} from '../src/neon/pet-astral-wildcard.js'
+import {resolveVitalTeam} from '../src/neon/vital-pets.js'
 
 const src=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const first=src.indexOf('export function petTeamSynergy(pets=[]){')
@@ -14,7 +15,7 @@ const styles={fenix_celestial:'voador',grifo_celestial:'voador',dragao_corrompid
 const synergy=runInNewContext(js+'\npetTeamSynergy',{
   PECADOS_HERO_IDS,
   PET_COLLAB_TEAM_GROUPS:[{id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}],
-  resolveCollabWildcardTeam,resolveAstralLynxWildcard,
+  resolveCollabWildcardTeam,resolveAstralLynxWildcard,resolveVitalTeam,
   resolveBatTeamStyles:species=>species.map(s=>styles[s]||null),
   PET_TEAM_WILDCARD_BONUS:{attack:.015,defense:.02,crit:0,speed:0,label:'Elo Universal',text:'Elo Universal'},
   PET_TEAM_STYLE_BONUS:{voador:{attack:.02,defense:0,crit:0,speed:8,label:'Esquadrão Aéreo',text:'Voador'},guardiao:{attack:0,defense:.04,crit:0,speed:0,label:'Muralha Viva',text:'Guardião'}}
