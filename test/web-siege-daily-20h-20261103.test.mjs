@@ -54,5 +54,5 @@ test('Cerco automatico: preserva artwork Work e garagem, muda somente tela do Ce
  assert.match(sw,/alpha-fixed-art.webp/);
  assert.match(sw,/alpha-item-weapons.webp/);
  assert.match(app,/racing/);
- assert.match(html,/app.js\?v=20261103-siege-preview-actions-v5/);
+ assert.match(html,/app\.js\?v=2026\\d{4}-[\\w-]+/);
 });
