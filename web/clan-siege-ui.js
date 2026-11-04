@@ -208,7 +208,7 @@ function renderLiveSiege(ui){
     (active?' • Rodada '+Number(match.round)+'/6'+countdown+' • '+Number(match.submitted)+'/4 ações enviadas':'')+'</div>'+
     '<div class="hero-actions">'+controls+'<button class="btn" data-siege-refresh>🔄 Atualizar</button></div>'+
     (ui.siegeError?'<div class="notice warn section">'+ESCAPE(ui.siegeError)+'</div>':'')+
-    renderFortressPanel(data.fortress)+
+    (rulesVersion>=4?objectivesGuide(active?match:{rulesVersion:5}):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
     '<div class="siege-planning"><div class="siege-planning-head"><h4>'+(
       match?.myMove?'✅ Ação confirmada':'Escolha sua estratégia')+'</h4>'+
       '<span class="siege-status">'+(active?'RODADA '+Number(match.round)+'/6':'AGUARDANDO GUERRA')+'</span></div>'+
@@ -234,7 +234,7 @@ function renderLiveSiege(ui){
           canMove?'Selecione uma das cinco ações e uma frente acima para habilitar a confirmação.':
           active?'Você não pode enviar ação nesta rodada.':
           'Prévia sem registro. A confirmação só estará disponível durante a guerra às 20h.')+'</small>')+'</div></div>'+
-    (rulesVersion>=4?objectivesGuide(active?match:{rulesVersion:5}):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
+    renderFortressPanel(data.fortress)+
     (latest.length?'<div class="siege-selected section"><strong>📜 '+(previous?'ÚLTIMA GUERRA — REGRA V'+Number(match.rulesVersion||1)+' (HISTÓRICO)':'Histórico das rodadas')+'</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
         ' HP • 🔴 '+Number(x.redHp)+' HP'+
