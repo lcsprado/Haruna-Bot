@@ -7,6 +7,35 @@ const ACTIONS = Object.freeze([
   {id:'repair',icon:'🔨',label:'Reparar',effect:'Recupera até 220 HP depois do ataque. Máximo de 2 reparos por guerra e por clã.'},
   {id:'spy',icon:'🕵️',label:'Espionar',effect:'Com um atacante, +30% agora. Na próxima rodada, +60% de ataque por espião.'}
 ]);
+const TACTICAL_ACTIONS = Object.freeze([
+  {id:'attack',icon:'⚔️',label:'Atacar',effect:'Castelo: 180 de dano; Portão: 105 e pressão para rompê-lo; Depósito: 110 e saque de suprimento.'},
+  {id:'defend',icon:'🛡️',label:'Defender',effect:'Proteja uma frente: bloqueia 50% por defensor no alvo certo (até 75%) e contra-ataca. Alvo errado protege só 10%.'},
+  {id:'repair',icon:'🔨',label:'Reparar',effect:'Consome 1 suprimento de guerra: restaura até 220 HP do Castelo OU 1 ponto do Portão. Dois reparos por guerra.'},
+  {id:'spy',icon:'🕵️',label:'Espionar',effect:'Escolha uma frente: +30% no ataque aliado à mesma frente agora e +60% na próxima rodada.'},
+  {id:'supply',icon:'📦',label:'Reabastecer',effect:'Ganha 1 suprimento de guerra (máximo 3). Não é dinheiro do tesouro do clã.'}
+]);
+const FRONTS_V4=Object.freeze([
+  {id:'castle',icon:'🏰',label:'Castelo',tip:'Dano direto ao HP da fortaleza'},
+  {id:'gate',icon:'🚪',label:'Portão',tip:'Rompimento expõe o castelo a +25% de dano futuro'},
+  {id:'depot',icon:'📦',label:'Depósito',tip:'Proteção ou saque de suprimentos de reparo'}
+]);
+function objectivesGuide(match){
+  const empty='—';
+  const gate=side=>match?.[side+'Gate']??empty;
+  const supplies=side=>match?.[side+'Supplies']??empty;
+  const score=side=>match?.[side+'Score']??empty;
+  return '<section class="siege-selected section" aria-label="Três frentes do Cerco">'+
+    '<strong>🗺️ GUERRA POR OBJETIVOS — V4</strong>'+
+    '<p>⚔️ <b>Castelo:</b> ataque básico 180. Quando o Portão inimigo está rompido, ataques ao Castelo ganham +25% a partir da rodada seguinte.</p>'+
+    '<p>🚪 <b>Portão:</b> cada ataque causa 105 ao HP e 1 ponto de pressão. Duas investidas rompem o Portão; Defender o Portão bloqueia uma investida por guarda.</p>'+
+    '<p>📦 <b>Depósito:</b> cada ataque causa 110 ao HP e pode saquear 1 suprimento. Defender o Depósito impede um saque por guarda.</p>'+
+    '<p>📦 <b>Reabastecer:</b> recebe 1 suprimento de Cerco (máximo 3); o jogo começa com 1. Reparar exige 1 suprimento e só pode ser realizado duas vezes por clã.</p>'+
+    '<p>🤝 <b>Combine os alvos com seu parceiro:</b> duas ofensivas na mesma frente recebem +10%; espionagem só melhora ataques direcionados à frente escolhida.</p>'+
+    '<p>🏆 <b>Vitória:</b> mais HP ao terminar seis rodadas. Se houver igualdade, pontos de objetivos; depois integridade do Portão; depois suprimentos. Persistindo igualdade, empate.</p>'+
+    '<div class="grid two"><div class="siege-selected"><strong>🔵 Fortaleza azul</strong><p>🚪 '+ESCAPE(gate('blue'))+'/2 • 📦 '+ESCAPE(supplies('blue'))+'/3 • 🎯 '+ESCAPE(score('blue'))+' pontos</p></div>'+
+    '<div class="siege-selected"><strong>🔴 Fortaleza vermelha</strong><p>🚪 '+ESCAPE(gate('red'))+'/2 • 📦 '+ESCAPE(supplies('red'))+'/3 • 🎯 '+ESCAPE(score('red'))+' pontos</p></div></div>'+
+    '<small>Suprimentos do Cerco são virtuais, não movimentam dinheiro, XP, HP ou itens dos personagens. As frentes anteriores permanecem privadas até fechar cada rodada.</small></section>';
+}
 const LEGACY_ACTIONS = Object.freeze([
   {id:'attack',icon:'⚔️',label:'Atacar',effect:'180 de dano por jogador, antes da defesa rival.'},
   {id:'defend',icon:'🛡️',label:'Defender',effect:'Reduz 35% por defensor, até o máximo de 60%, sem contra-ataque.'},
@@ -14,6 +43,7 @@ const LEGACY_ACTIONS = Object.freeze([
   {id:'spy',icon:'🕵️',label:'Espionar',effect:'Aumenta em 20% o dano do clã na próxima rodada.'}
 ]);
 function renderTacticsGuide(version,round,repairsLeft){
+  if(version>=4)return '';
   if(version<2)return '<aside class="siege-selected section" aria-label="Regras preservadas desta guerra">'+
     '<strong>📜 Guerra na regra antiga</strong><p>Esta partida segue com ataque 180, defesa -35% por defensor, reparo 140 e espionagem +20% na próxima rodada. As novas combinações só valem para partidas futuras.</p>'+
     '<p>🏆 Vence quem terminar com mais HP; HP igual é empate sem insígnia.</p></aside>';
@@ -102,12 +132,16 @@ function renderLiveSiege(ui){
   const red=match?clans.find(c=>String(c.id)===String(match.redClanId)):clans.find(c=>String(c.id)!==String(data.myClanId));
   const stage=match?.status||'idle';
   const active=stage==='active';
-  const rulesVersion=match?Number(match.rulesVersion||1):2;
-  const availableActions=rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
+  const rulesVersion=match?Number(match.rulesVersion||1):4;
+  const availableActions=rulesVersion>=4?TACTICAL_ACTIONS:rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
   const remainingRepairs=Math.max(0,2-Number(match?.[match?.mySide+'Repairs']||0));
   const canMove=active&&Boolean(match.mySide)&&!match.myMove;
   const selected=availableActions.find(x=>x.id===ui.siegePreviewAction)||null;
   const selectedActionId=match?.myMove||selected?.id||null;
+  const selectedTarget=match?.myTarget||(
+    selectedActionId==='supply'?'depot':ui.siegePreviewTarget||'castle');
+  const permittedTargets=selectedActionId==='repair'?FRONTS_V4.filter(front=>front.id!=='depot'):
+    selectedActionId==='supply'?FRONTS_V4.filter(front=>front.id==='depot'):FRONTS_V4;
   // Antes das 20h: seleção apenas visual, sem transação.
   // Na rodada ativa: precisa confirmar uma escolha; jamais usar Defender como padrão oculto.
   const canPreview=!match?.myMove&&(!active||canMove);
@@ -153,6 +187,14 @@ function renderLiveSiege(ui){
       (item.id===selectedActionId?'selected':'')+'" data-siege-preview="'+item.id+'" '+
       (!canPreview?'disabled':'')+'><span class="siege-action-icon">'+item.icon+'</span>'+
       '<strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>').join('')+'</div>'+
+    (rulesVersion>=4?'<div class="siege-selected section"><strong>🎯 Escolha o objetivo desta ação</strong>'+
+      '<p>Cada jogador escolhe sua própria frente. Coordene antes de confirmar: as ações só aparecem para o rival depois da rodada.</p>'+
+      '<div class="siege-action-grid">'+permittedTargets.map(front=>'<button type="button" class="siege-action '+
+        (front.id===selectedTarget?'selected':'')+'" data-siege-target="'+front.id+'" aria-pressed="'+
+        (front.id===selectedTarget?'true':'false')+'" '+(!canPreview||!selectedActionId?'disabled':'')+'>'+
+        '<span class="siege-action-icon">'+front.icon+'</span><strong>'+front.label+
+        '</strong><small>'+ESCAPE(front.tip)+'</small></button>').join('')+'</div>'+
+      '<p>Objetivo escolhido: <b>'+ESCAPE(FRONTS_V4.find(f=>f.id===selectedTarget)?.label||'Castelo')+'</b></p></div>':'')+
     '<div class="siege-selected"><span>ESTRATÉGIA '+(active?'DA RODADA':'PRÉVIA — NÃO ENVIADA')+'</span><strong>'+
       ESCAPE(availableActions.find(a=>a.id===selectedActionId)?.label||'Nenhuma ação selecionada')+'</strong>'+
       '<p>'+(active?'As escolhas rivais ficam secretas. Só a confirmação registra sua ação nesta rodada.':
@@ -162,7 +204,7 @@ function renderLiveSiege(ui){
           canMove?'Selecione uma das quatro estratégias acima para habilitar a confirmação.':
           active?'Você não pode enviar ação nesta rodada.':
           'Prévia sem registro. A confirmação só estará disponível durante a guerra às 20h.')+'</small>')+'</div></div>'+
-    renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs)+
+    (rulesVersion>=4?objectivesGuide(match):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
     (latest.length?'<div class="siege-selected section"><strong>📜 Histórico</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
         ' HP • 🔴 '+Number(x.redHp)+' HP'+
@@ -223,15 +265,29 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
     const next=button.dataset.siegePreview;
     if(!ACTIONS.some(item=>item.id===next))return;
     ui.siegePreviewAction=next;
+    ui.siegePreviewTarget=next==='supply'?'depot':'castle';
     render();
+  }));
+  document.querySelectorAll('[data-siege-target]').forEach(button=>button.addEventListener('click',()=>{
+    if(ui.siege?.match?.myMove)return;
+    if(!ui.siegePreviewAction)return;
+    const target=button.dataset.siegeTarget;
+    const valid=ui.siegePreviewAction==='supply'?target==='depot':
+      ui.siegePreviewAction==='repair'?['castle','gate'].includes(target):
+      ['castle','gate','depot'].includes(target);
+    if(!valid)return;
+    ui.siegePreviewTarget=target;render();
   }));
   document.querySelectorAll('[data-siege-command]').forEach(button=>button.addEventListener('click',()=>{
     const command=button.dataset.siegeCommand;
     if(!['cancel','move'].includes(command))return;
     const message=command==='move'?'Confirmar ação? Ela não poderá ser alterada.':'Cancelar desafio antigo?';
     if(!confirm(message))return;
-    if(command==='move'&&!ACTIONS.some(item=>item.id===ui.siegePreviewAction))return;
-    void submit(command,command==='move'?{action:ui.siegePreviewAction}:{});
+    const currentVersion=ui.siege?.match?Number(ui.siege.match.rulesVersion||1):4;
+    const list=currentVersion>=4?TACTICAL_ACTIONS:currentVersion>=2?ACTIONS:LEGACY_ACTIONS;
+    if(command==='move'&&!list.some(item=>item.id===ui.siegePreviewAction))return;
+    const target=ui.siegePreviewAction==='supply'?'depot':ui.siegePreviewTarget||'castle';
+    void submit(command,command==='move'?{action:ui.siegePreviewAction,target}:{});
   }));
   document.querySelectorAll('[data-siege-upgrade]').forEach(button=>button.addEventListener('click',()=>{
     const stat=button.dataset.siegeUpgrade;
