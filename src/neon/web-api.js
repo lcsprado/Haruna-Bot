@@ -1625,7 +1625,7 @@ export async function handleWebApi(req,res){
       const handlers={
         challenge:()=>clanSiegeChallenge(session),
         accept:()=>clanSiegeAccept(session),
-        move:()=>clanSiegeMove(session,String(body.action||'')),
+        move:()=>clanSiegeMove(session,String(body.action||''),String(body.target||'castle')),
         'fortress-upgrade':()=>clanSiegeFortressUpgrade(session,String(body.stat||'')),
         cancel:()=>clanSiegeCancel(session)
       }
