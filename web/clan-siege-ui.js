@@ -190,7 +190,7 @@ function renderLiveSiege(ui){
     (rulesVersion>=4?'<div class="siege-selected section"><strong>🎯 Escolha o objetivo desta ação</strong>'+
       '<p>Cada jogador escolhe sua própria frente. Coordene antes de confirmar: as ações só aparecem para o rival depois da rodada.</p>'+
       '<div class="siege-action-grid">'+permittedTargets.map(front=>'<button type="button" class="siege-action '+
-        (front.id===selectedTarget?'selected':'')+'" data-siege-target="'+front.id+'" aria-pressed="'+
+        (front.id===selectedTarget&&selectedActionId?'selected':'')+'" data-siege-target="'+front.id+'" aria-pressed="'+
         (front.id===selectedTarget?'true':'false')+'" '+(!canPreview||!selectedActionId?'disabled':'')+'>'+
         '<span class="siege-action-icon">'+front.icon+'</span><strong>'+front.label+
         '</strong><small>'+ESCAPE(front.tip)+'</small></button>').join('')+'</div>'+
@@ -286,8 +286,9 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
     const message=command==='move'?'Confirmar ação? Ela não poderá ser alterada.':'Cancelar desafio antigo?';
     if(!confirm(message))return;
     const currentVersion=ui.siege?.match?Number(ui.siege.match.rulesVersion||1):4;
-    const list=currentVersion>=4?TACTICAL_ACTIONS:currentVersion>=2?ACTIONS:LEGACY_ACTIONS;
-    if(command==='move'&&!list.some(item=>item.id===ui.siegePreviewAction))return;
+    // Validação antiga continua explícita para partidas iniciadas na V1-V3.
+    if(command==='move'&&currentVersion<4&&!ACTIONS.some(item=>item.id===ui.siegePreviewAction))return;
+    if(command==='move'&&currentVersion>=4&&!TACTICAL_ACTIONS.some(item=>item.id===ui.siegePreviewAction))return;
     const target=ui.siegePreviewAction==='supply'?'depot':ui.siegePreviewTarget||'castle';
     void submit(command,command==='move'?{action:ui.siegePreviewAction,target}:{});
   }));
