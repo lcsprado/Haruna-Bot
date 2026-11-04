@@ -1,11 +1,11 @@
 // Cinco lendários permanentes do Vínculo Vital.
 // Distribuídos somente entre Raids já existentes: 40, 50, 60, 65 e 70.
 export const VITAL_PETS = Object.freeze([
-  Object.freeze({species:'cervo_aurora_viva',name:'🦌 Cervo da Aurora Viva',raidLevel:40,materialId:'fragmento_celestial',power:315,chance:8,hpBase:295,hpGrowth:22,stats:Object.freeze({hp:8,defense:5}),type:'Vital — Protetor'}),
-  Object.freeze({species:'guardiao_nucleo_vital',name:'🗿 Guardião do Núcleo Vital',raidLevel:50,materialId:'nucleo_alpha_corrompido',power:385,chance:8,hpBase:360,hpGrowth:26,stats:Object.freeze({hp:9,defense:7,dodge:3}),type:'Vital — Bastião'}),
-  Object.freeze({species:'quimera_rubra',name:'🐲 Quimera Rubra',raidLevel:60,materialId:'fragmento_caos',power:365,chance:8,hpBase:345,hpGrowth:25,stats:Object.freeze({hp:9,damage:7,crit:4}),type:'Vital — Lutador'}),
-  Object.freeze({species:'serafim_vida_abissal',name:'🪽 Serafim da Vida Abissal',raidLevel:65,materialId:'coroa_abissal',power:395,chance:8,hpBase:375,hpGrowth:27,stats:Object.freeze({hp:10,defense:5}),healPct:6,healCooldown:6,type:'Vital — Restaurador'}),
-  Object.freeze({species:'leviata_eternidade',name:'🌊 Leviatã da Eternidade',raidLevel:70,materialId:'essencia_eclipse',power:430,chance:8,hpBase:395,hpGrowth:28,stats:Object.freeze({hp:11,defense:7,bossDamage:5}),type:'Vital — Colosso'})
+  Object.freeze({species:'cervo_aurora_viva',name:'🦌 Cervo da Aurora Viva',raidLevel:40,materialId:'fragmento_celestial',power:315,chance:8,hpBase:295,hpGrowth:22,stats:Object.freeze({hp:11,defense:8}),healPct:6,healCooldown:6,type:'Vital — Protetor'}),
+  Object.freeze({species:'guardiao_nucleo_vital',name:'🗿 Guardião do Núcleo Vital',raidLevel:50,materialId:'nucleo_alpha_corrompido',power:385,chance:8,hpBase:360,hpGrowth:26,stats:Object.freeze({hp:12,defense:9,dodge:5}),type:'Vital — Bastião'}),
+  Object.freeze({species:'quimera_rubra',name:'🐲 Quimera Rubra',raidLevel:60,materialId:'fragmento_caos',power:365,chance:8,hpBase:345,hpGrowth:25,stats:Object.freeze({hp:12,damage:10,crit:6}),type:'Vital — Lutador'}),
+  Object.freeze({species:'serafim_vida_abissal',name:'🪽 Serafim da Vida Abissal',raidLevel:65,materialId:'coroa_abissal',power:395,chance:8,hpBase:375,hpGrowth:27,stats:Object.freeze({hp:13,defense:8}),healPct:8,healCooldown:5,type:'Vital — Restaurador'}),
+  Object.freeze({species:'leviata_eternidade',name:'🌊 Leviatã da Eternidade',raidLevel:70,materialId:'essencia_eclipse',power:430,chance:8,hpBase:395,hpGrowth:28,stats:Object.freeze({hp:14,defense:9,bossDamage:8}),type:'Vital — Colosso'})
 ])
 export const VITAL_PET_SPECIES=Object.freeze(VITAL_PETS.map(p=>p.species))
 export const VITAL_PET_SPECIES_SET=new Set(VITAL_PET_SPECIES)
