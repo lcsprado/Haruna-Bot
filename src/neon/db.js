@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import {VITAL_PETS,resolveVitalTeam} from './vital-pets.js'
+import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal,VITAL_TEAM_BONUS} from './vital-pets.js'
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
@@ -2913,6 +2913,21 @@ enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCri
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
 }
+// HP exclusivo de combate: mantém as mesmas regras de outras passivas de pet.
+const applyPvpVital=(fighter,synergy)=>{
+  const baseHp=fighter.hp,baseMax=fighter.maxHp
+  const temporary=applyVitalCombatHp(baseHp,baseMax,Number(fighter.petBonus?.hp||0),Number(synergy?.hp||0),{pvp:true})
+  fighter.hp=temporary.hp
+  fighter.maxHp=temporary.maxHp
+  fighter.vitalBaseMaxHp=temporary.baseMaxHp
+  fighter.vitalHpRate=temporary.rate
+  fighter.vitalPulseRate=Number(synergy?.vitalPulse||0)*.5
+  fighter.vitalPulseUsed=false
+  const reduction=Number(synergy?.vitalPulse||0)>0?Number(synergy.defense||0)*.5:0
+  if(reduction>0)fighter.petBonus={...(fighter.petBonus||{}),defense:Math.min(.10,Number(fighter.petBonus?.defense||0)+reduction)}
+}
+applyPvpVital(A,aSynergy)
+applyPvpVital(B,bSynergy)
 const snapshot=fighter=>{
 const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
 const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
@@ -2929,7 +2944,8 @@ healPct:Number(fighter.petBonus.healPct||0),
 healCooldown:Number(fighter.petBonus.healCooldown||0),
 speed:Number(fighter.petSpeed||0)
 }:null,
-teamSpeed:Number(fighter.teamSpeed||0)
+teamSpeed:Number(fighter.teamSpeed||0),vitalHpRate:Number(fighter.vitalHpRate||0),
+vitalPulseRate:Number(fighter.vitalPulseRate||0)
 }
 }
 const opening={attacker:snapshot(A),defender:snapshot(B)}
@@ -2990,6 +3006,12 @@ const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBe
 const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
 const defenseBlocked=dodged?0:Math.max(0,Number(attack.damage||0)-Number(classDamage||0))
 to.hp=Math.max(0,to.hp-dmg)
+const heart=vitalPulseHeal(to.hp,to.maxHp,to.vitalPulseUsed,to.vitalPulseRate)
+if(heart.used&&!to.vitalPulseUsed){
+  to.hp=heart.hp
+  to.vitalPulseUsed=true
+  log.push({round:from.attackIndex,vitalPulse:true,petHeal:true,from:to.name,fromJid:to.jid,to:to.name,toJid:to.jid,heal:heart.heal,hp:to.hp})
+}
 const classHealBefore=from.hp
 if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
 const classHealed=Math.max(0,from.hp-classHealBefore)
@@ -3033,7 +3055,8 @@ const pvpMetrics=Object.fromEntries([A,B].map(fighter=>{
  }]
 }))
 const persistentPvpHp=fighter=>fighter.heroId
-  ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp):fighter.hp;
+  ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp)
+  :restoreVitalPersistentHp(fighter.hp,fighter.maxHp,fighter.vitalBaseMaxHp||fighter.maxHp);
 let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
 let loser=winner===A?B:A
 if(A.hp>0 && B.hp>0){
@@ -5076,7 +5099,7 @@ voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defen
 guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
 predador:{styleLabel:'🐾 Predador',label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
 mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'},
-vital:{styleLabel:'🧬 Vital',label:'💚 Vínculo Vital — Coração Eterno',attack:0,defense:.02,crit:0,hp:.08,vitalPulse:.05,text:'+8% HP máximo • -2% dano recebido • Coração Eterno: cura 5% HP 1 vez por combate abaixo de 35%'}
+vital:VITAL_TEAM_BONUS
 }
 function resolveBatTeamStyles(species){
 const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
