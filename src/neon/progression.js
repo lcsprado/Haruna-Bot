@@ -3,7 +3,7 @@ import {homeTrainingReward,homeRestCapacity} from './home-menu.js'
 import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTransaction, petMaxHp, petMaxEnergy } from './db.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
-import {businessIntervalGross} from './business-profit.js'
+import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -1431,6 +1431,7 @@ export async function collectBusinesses(jid){
       [jid]
     )
     const lastClaim=Number(latest.rows[0]?.last_claim||0)
+    const collectionElapsedSeconds=businessCollectionElapsedSeconds(now,lastClaim,rows)
     const cooldownRemaining=Math.max(0,300-Math.max(0,now-lastClaim))
     if(lastClaim>0 && cooldownRemaining>0) {
       return {total:0,gross:0,tax:0,taxRate:10,details:[],cooldownRemaining}
@@ -1483,7 +1484,7 @@ export async function collectBusinesses(jid){
     await client.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('system',$1,$2,'business_profit','lucro bruto dos negócios')",[jid,gross])
     if(tax>0) await client.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note)
       VALUES($1,'system',$2,'income_tax','TAXADE te pegou 10% | negócios')`,[jid,tax])
-    return {total:creditedNet,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled}
+    return {total:creditedNet,gross,tax,taxRate:10,details,eventMultiplier:moneyMultiplier,recoveryRetained:retained,recoveryRemaining:remainingToRecover-retained,recoveryCashSettled:cashSettled,collectionElapsedSeconds,firstBusinessCollection:lastClaim<=0}
   })
 }
 
