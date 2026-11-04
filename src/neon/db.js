@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal,VITAL_TEAM_BONUS} from './vital-pets.js'
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
@@ -2912,6 +2913,21 @@ enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCri
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
 }
+// HP exclusivo de combate: mantém as mesmas regras de outras passivas de pet.
+const applyPvpVital=(fighter,synergy)=>{
+  const baseHp=fighter.hp,baseMax=fighter.maxHp
+  const temporary=applyVitalCombatHp(baseHp,baseMax,Number(fighter.petBonus?.hp||0),Number(synergy?.hp||0),{pvp:true})
+  fighter.hp=temporary.hp
+  fighter.maxHp=temporary.maxHp
+  fighter.vitalBaseMaxHp=temporary.baseMaxHp
+  fighter.vitalHpRate=temporary.rate
+  fighter.vitalPulseRate=Number(synergy?.vitalPulse||0)*.5
+  fighter.vitalPulseUsed=false
+  const reduction=Number(synergy?.vitalPulse||0)>0?Number(synergy.defense||0)*.5:0
+  if(reduction>0)fighter.petBonus={...(fighter.petBonus||{}),defense:Math.min(.10,Number(fighter.petBonus?.defense||0)+reduction)}
+}
+applyPvpVital(A,aSynergy)
+applyPvpVital(B,bSynergy)
 const snapshot=fighter=>{
 const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
 const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
@@ -2928,7 +2944,8 @@ healPct:Number(fighter.petBonus.healPct||0),
 healCooldown:Number(fighter.petBonus.healCooldown||0),
 speed:Number(fighter.petSpeed||0)
 }:null,
-teamSpeed:Number(fighter.teamSpeed||0)
+teamSpeed:Number(fighter.teamSpeed||0),vitalHpRate:Number(fighter.vitalHpRate||0),
+vitalPulseRate:Number(fighter.vitalPulseRate||0)
 }
 }
 const opening={attacker:snapshot(A),defender:snapshot(B)}
@@ -2989,14 +3006,23 @@ const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBe
 const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
 const defenseBlocked=dodged?0:Math.max(0,Number(attack.damage||0)-Number(classDamage||0))
 to.hp=Math.max(0,to.hp-dmg)
+const hpAfterHit=to.hp
+let heartEvent=null
+const heart=vitalPulseHeal(to.hp,to.maxHp,to.vitalPulseUsed,to.vitalPulseRate)
+if(heart.used&&!to.vitalPulseUsed){
+  to.hp=heart.hp
+  to.vitalPulseUsed=true
+  heartEvent={round:from.attackIndex,vitalPulse:true,petHeal:true,from:to.name,fromJid:to.jid,to:to.name,toJid:to.jid,heal:heart.heal,hp:to.hp}
+}
 const classHealBefore=from.hp
 if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
 const classHealed=Math.max(0,from.hp-classHealBefore)
 log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
-actualDamage:targetHpBefore-to.hp,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:to.hp,
+actualDamage:targetHpBefore-hpAfterHit,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:hpAfterHit,
 petExtraDamage,petDamageBlocked,defenseBlocked,shieldAbsorbed:Number(defense.shieldAbsorbed||0),petCrit:!fullyDodged&&petCrit,petDodge:dodged,
   ...(attack.technique?{heroTechnique:from.heroId?attack.technique:undefined,classTechnique:!from.heroId?attack.technique:undefined,heroId:from.heroId}:{} ),
   ...(defense.technique?{defenseTechnique:defense.technique}:{} )})
+if(heartEvent)log.push(heartEvent)
 if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
 const cooldown=Number(from.petBonus?.healCooldown||0)
 if(from.hp>0&&cooldown>0&&from.petHealUses<3&&Number(from.petBonus?.healPct||0)>0&&
@@ -3032,7 +3058,8 @@ const pvpMetrics=Object.fromEntries([A,B].map(fighter=>{
  }]
 }))
 const persistentPvpHp=fighter=>fighter.heroId
-  ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp):fighter.hp;
+  ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp)
+  :restoreVitalPersistentHp(fighter.hp,fighter.maxHp,fighter.vitalBaseMaxHp||fighter.maxHp);
 let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
 let loser=winner===A?B:A
 if(A.hp>0 && B.hp>0){
@@ -4880,6 +4907,7 @@ level
 const PET_BASE_ENERGY={
 manticora_eclipse_20261030:350,cerbero_0333_20261031:480,
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,450])),
+...Object.fromEntries(VITAL_PETS.map(p=>[p.species,{40:425,50:485,60:470,65:495,70:525}[p.raidLevel]])),
 cachorro:100,gato:105,coelho:110,papagaio:115,hamster:120,
 tartaruga:130,coruja:140,raposa:150,raposa_astral:150,lince_astral:150,guaxinim_errante_20261027:150,lobo:165,aguia:180,gaviao:190,
 panda:200,guepardo:220,tigre:225,gazela_mistica:235,leao:250,cervo_mistico:265,cavalo_guerra:275,unicornio:280,dragao:320,
@@ -4933,6 +4961,7 @@ return base+Math.max(0,Number(level||1)-1)*2
 }
 export const PET_HP_PROFILES={
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{base:350,growth:p.style==='guardiao'?26:23,type:'Sagrado'}])),
+...Object.fromEntries(VITAL_PETS.map(p=>[p.species,{base:p.hpBase,growth:p.hpGrowth,type:p.type}])),
 cachorro:{base:105,growth:9,type:'Equilibrado'},
 gato:{base:90,growth:7,type:'Ágil'},
 coelho:{base:85,growth:7,type:'Ágil'},
@@ -5043,6 +5072,7 @@ return Math.round(base*scale)
 }
 const PET_TEAM_STYLE_BY_SPECIES={
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,p.style])),
+...Object.fromEntries(VITAL_PETS.map(p=>[p.species,'vital'])),
 cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
 cerbero_0333_20261031:'guardiao',golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
 kraken_aco:'guardiao',paladino_astral:'guardiao',colosso_alpha:'guardiao',
@@ -5071,7 +5101,8 @@ const PET_TEAM_STYLE_BONUS={
 voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
 guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
 predador:{styleLabel:'🐾 Predador',label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
-mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
+mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'},
+vital:VITAL_TEAM_BONUS
 }
 function resolveBatTeamStyles(species){
 const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
@@ -5096,14 +5127,15 @@ export function petTeamSynergy(pets=[]){
 const team=(Array.isArray(pets)?pets:[]).filter(p=>p&&!PECADOS_HERO_IDS.includes(String(p.species||''))).slice(0,3)
 const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
-const collab=team.length===3&&unique?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
+const vital=team.length===3&&unique?resolveVitalTeam(species):null
+const collab=!vital&&team.length===3&&unique?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
 const styles=resolveBatTeamStyles(species)
 // Uma Collab ativa tem prioridade exclusiva: sem Elo Universal nem sinergia de estilo.
-const wildcard=!collab&&team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
-const base=!collab&&team.length===3&&unique
+const wildcard=!vital&&!collab&&team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
+const base=vital||(!collab&&team.length===3&&unique
   ?(wildcard?(wildcard.universal?PET_TEAM_WILDCARD_BONUS:PET_TEAM_STYLE_BONUS[wildcard.style])
     :(styles[0]&&styles.every(s=>s===styles[0])?PET_TEAM_STYLE_BONUS[styles[0]]:null))
-  :null
+  :null)
 if(!base&&!collab)return null
 // Estilo funciona sem Collab; quando ela ativa, somente seus próprios bônus se aplicam.
 const attack=Number(base?.attack||0)+Number(collab?.attack||0)
@@ -5117,6 +5149,7 @@ return {
 label:[base?.label,collab?(collab.full?'🌈 Full Collab — ':'🌈 Elo de Collab — ')+collab.label:null].filter(Boolean).join(' + '),
 text:[base?.text,collabText].filter(Boolean).join(' | '),
 attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
+hp:Number(base?.hp||0),vitalPulse:Number(base?.vitalPulse||0),
 collabCount:collab?.full?3:0,collabAssist:Boolean(collab&&!collab.full),
 collabAttack:Number(collab?.attack||0),collabCrit:Number(collab?.crit||0)
 }
@@ -5155,39 +5188,44 @@ export const LEGENDARY_PET_SUMMONS=[
 {species:'paladino_astral',name:'🛡️ Paladino Astral',chance:10,power:280}
 ]},
 {materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,summonCost:100,pets:[
-{species:'leao_solar',name:'☀️ Leão Solar',chance:35,power:245},
-{species:'grifo_celestial',name:'✨ Grifo Celestial',chance:25,power:290},
-{species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:345},
-{species:'lince_celestial',name:'🐆 Lince Celestial',chance:15,power:320},
-{species:'arcanjo_eclipse',name:'🪽 Arcanjo do Eclipse',chance:10,power:335}
+{species:'leao_solar',name:'☀️ Leão Solar',chance:32,power:245},
+{species:'grifo_celestial',name:'✨ Grifo Celestial',chance:23,power:290},
+{species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:14,power:345},
+{species:'lince_celestial',name:'🐆 Lince Celestial',chance:14,power:320},
+{species:'arcanjo_eclipse',name:'🪽 Arcanjo do Eclipse',chance:9,power:335},
+{species:'cervo_aurora_viva',name:'🦌 Cervo da Aurora Viva',chance:8,power:315}
 ]},
 {materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,summonCost:100,pets:[
-{species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:35,power:280},
-{species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:25,power:335},
-{species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400},
-{species:'colosso_alpha',name:'🗿 Colosso Alpha',chance:15,power:360},
-{species:'oraculo_alpha',name:'🔮 Oráculo Alpha',chance:15,power:370}
+{species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:32,power:280},
+{species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:23,power:335},
+{species:'fenix_alpha',name:'👑 Fênix Alpha',chance:9,power:400},
+{species:'colosso_alpha',name:'🗿 Colosso Alpha',chance:14,power:360},
+{species:'oraculo_alpha',name:'🔮 Oráculo Alpha',chance:14,power:370},
+{species:'guardiao_nucleo_vital',name:'🗿 Guardião do Núcleo Vital',chance:8,power:385}
 ]},
 {materialId:'fragmento_caos',materialName:'Fragmento do Caos',raidLevel:60,summonCost:100,pets:[
-{species:'fera_caos',name:'🐺 Fera do Caos',chance:35,power:305},
-{species:'guardiao_caos',name:'🛡️ Guardião do Caos',chance:25,power:320},
-{species:'serafim_caotico',name:'🪽 Serafim Caótico',chance:15,power:345},
-{species:'oraculo_caos',name:'🔮 Oráculo do Caos',chance:15,power:350},
-{species:'fenix_caos',name:'🔥 Fênix do Caos',chance:10,power:370}
+{species:'fera_caos',name:'🐺 Fera do Caos',chance:32,power:305},
+{species:'guardiao_caos',name:'🛡️ Guardião do Caos',chance:23,power:320},
+{species:'serafim_caotico',name:'🪽 Serafim Caótico',chance:14,power:345},
+{species:'oraculo_caos',name:'🔮 Oráculo do Caos',chance:14,power:350},
+{species:'fenix_caos',name:'🔥 Fênix do Caos',chance:9,power:370},
+{species:'quimera_rubra',name:'🐲 Quimera Rubra',chance:8,power:365}
 ]},
 {materialId:'coroa_abissal',materialName:'Coroa Abissal',raidLevel:65,summonCost:100,pets:[
-{species:'pantera_profundezas',name:'🐈‍⬛ Pantera das Profundezas',chance:35,power:330},
-{species:'guardiao_abissal',name:'🗿 Guardião Abissal',chance:25,power:355},
-{species:'dragao_trono',name:'🐉 Dragão do Trono Abissal',chance:15,power:375},
-{species:'oraculo_coroa',name:'👑 Oráculo da Coroa',chance:15,power:390},
-{species:'esfinge_mares',name:'🌊 Esfinge das Marés',chance:10,power:400}
+{species:'pantera_profundezas',name:'🐈‍⬛ Pantera das Profundezas',chance:32,power:330},
+{species:'guardiao_abissal',name:'🗿 Guardião Abissal',chance:23,power:355},
+{species:'dragao_trono',name:'🐉 Dragão do Trono Abissal',chance:14,power:375},
+{species:'oraculo_coroa',name:'👑 Oráculo da Coroa',chance:14,power:390},
+{species:'esfinge_mares',name:'🌊 Esfinge das Marés',chance:9,power:400},
+{species:'serafim_vida_abissal',name:'🪽 Serafim da Vida Abissal',chance:8,power:395}
 ]},
 {materialId:'essencia_eclipse',materialName:'Essência do Eclipse',raidLevel:70,summonCost:100,pets:[
-{species:'lobo_eclipse',name:'🌘 Lobo do Eclipse',chance:35,power:355},
-{species:'sentinela_eclipse',name:'🛡️ Sentinela do Eclipse',chance:25,power:380},
-{species:'dragao_solar_eclipse',name:'🐉 Dragão Solar do Eclipse',chance:15,power:405},
-{species:'fenix_eclipse',name:'🌗 Fênix do Eclipse',chance:15,power:420},
-{species:'avatar_primordial',name:'🌌 Avatar Primordial',chance:10,power:435}
+{species:'lobo_eclipse',name:'🌘 Lobo do Eclipse',chance:32,power:355},
+{species:'sentinela_eclipse',name:'🛡️ Sentinela do Eclipse',chance:23,power:380},
+{species:'dragao_solar_eclipse',name:'🐉 Dragão Solar do Eclipse',chance:14,power:405},
+{species:'fenix_eclipse',name:'🌗 Fênix do Eclipse',chance:14,power:420},
+{species:'avatar_primordial',name:'🌌 Avatar Primordial',chance:9,power:435},
+{species:'leviata_eternidade',name:'🌊 Leviatã da Eternidade',chance:8,power:430}
 ]}
 ]
 export async function raid50DragonGuaranteeStatus(jid){

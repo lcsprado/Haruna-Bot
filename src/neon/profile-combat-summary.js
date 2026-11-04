@@ -10,7 +10,8 @@ export function formatProfileCombatBonuses({
   petDamagePct=0,petPvp=null,petSpeed=0,teamSpeed=0,
   enchantParts=[],hasEnchantedDamage=false,reserveActive=false,
   petStatus=null,recoveredRaidDamagePct=0,recoveredBossDamagePct=0,
-  classEffect=''
+  classEffect='',petHpPvePct=0,petHpPvpPct=0,
+  combatMaxHpPve=0,combatMaxHpPvp=0,vitalSynergy=false
 }={}){
   const rows=['⚔️ *BÔNUS DE COMBATE*']
   if(same(raidDamagePct,bossDamagePct)){
@@ -32,6 +33,14 @@ export function formatProfileCombatBonuses({
     pvp.push('💚 '+fmt(n(petPvp.healPct)*100)+'% HP a cada '+Math.floor(n(petPvp.healCooldown))+' ataques (abaixo de 70% HP; até 3 vezes)')
   }
   if(pvp.length)rows.push('🐾 Pet no PvP: '+pvp.join(' • '))
+  if(positive(petHpPvePct)||positive(petHpPvpPct)){
+    rows.push('❤️ HP de combate: Boss/Raid *+'+fmt(petHpPvePct)+'%*'+
+      (positive(combatMaxHpPve)?' (*'+Math.round(combatMaxHpPve).toLocaleString('pt-BR')+' HP máximo*)':'')+
+      ' • PvP *+'+fmt(petHpPvpPct)+'%*'+
+      (positive(combatMaxHpPvp)?' (*'+Math.round(combatMaxHpPvp).toLocaleString('pt-BR')+' HP máximo*)':''))
+    rows.push('ℹ️ HP adicional de pet é temporário: não aumenta vida permanente nem cura ao equipar.')
+  }
+  if(vitalSynergy)rows.push('🧬 Vínculo Vital ativo: -2% dano recebido no PvE, -1% no PvP e Coração Eterno (cura 1 vez por combate).')
 
   if(enchantParts.length){
     rows.push('✨ Encantamentos: '+enchantParts.join(' • ')+(hasEnchantedDamage?' (dano já incluído no total PvE)':''))

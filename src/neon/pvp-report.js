@@ -16,7 +16,10 @@ function openingLine(icon,p){
     ?'\n🌈 Collab: '+(p.heroGear.weapon?'🗡️ Arma correspondente +'+percent(p.heroGear.attack)+' dano':'Arma correspondente não equipada')+
       ' • '+(p.heroGear.armor?'🥋 Armadura correspondente -'+percent(p.heroGear.defense)+' dano recebido':'Armadura correspondente não equipada')
     :''
-  return `${icon} *${name(p.name)}*${hero}${gear}\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}`
+  const vital=Number(p.vitalHpRate||0)>0
+    ?'\n🧬 HP de combate +'+percent(p.vitalHpRate)+' • Coração Eterno: '+(Number(p.vitalPulseRate||0)>0?'cura uma vez abaixo de 35%':'inativo')
+    :''
+  return `${icon} *${name(p.name)}*${hero}${gear}\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}${vital}`
 }
 export function formatPvpBattleReport(r){
   if(!r?.ok||!r?.winner||!r?.loser)throw new Error('Resultado de PvP inválido.')
@@ -50,7 +53,7 @@ export function formatPvpBattleReport(r){
     const round=Number(e.round)||1
     if(round!==previousRound){lines.push('',`🔹 *Rodada ${round}*`);previousRound=round}
     if(e.petHeal){
-      lines.push(`💚 Pet de ${name(e.from)} curou *+${fmt(e.heal)} HP* — ❤️ ${fmt(e.hp)}`)
+      lines.push(e.vitalPulse?`💚 Coração Eterno de ${name(e.from)} restaurou *+${fmt(e.heal)} HP* — ❤️ ${fmt(e.hp)}`:`💚 Pet de ${name(e.from)} curou *+${fmt(e.heal)} HP* — ❤️ ${fmt(e.hp)}`)
     }else if(e.classHeal){
       const who=[attacker,defender].find(p=>p&&(p.jid===e.fromJid||p.name===e.from))
       lines.push(`⚜️ ${name(e.from)} recuperou *+${fmt(e.heal)} HP* (${who?.heroId?'habilidade de '+heroName(who.heroId):'habilidade da classe'}) — ❤️ ${fmt(e.hp)}`)

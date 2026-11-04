@@ -56,7 +56,7 @@ test('quando o duelo chega ao limite, informa decisão por HP restante',()=>{
 })
 test('o resultado usa os valores de início do combate, não o recorte final',()=>{
   assert.match(db,/const opening=\{attacker:snapshot\(A\),defender:snapshot\(B\)\}/)
-  assert.match(db,/actualDamage:targetHpBefore-to\.hp/)
+  assert.match(db,/actualDamage:targetHpBefore-hpAfterHit/)
   assert.match(db,/round:from\.attackIndex/)
   assert.match(db,/const decidedByLimit=A\.hp>0&&B\.hp>0/)
   assert.match(db,/ok:true,winner,loser,reward,log,opening,ending,pvpMetrics,roundCount,decidedByLimit/)
