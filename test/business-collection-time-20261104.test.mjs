@@ -23,7 +23,7 @@ test('menos de uma hora, horario futuro e registros incompletos',()=>{
   assert.equal(formatBusinessCollectionElapsed(17*60+30),'17min')
   assert.equal(businessCollectionElapsedSeconds(1_800_000_000,1_800_000_010),0)
   assert.equal(businessCollectionElapsedSeconds(1_800_000_000,0,[]),null)
-  assert.equal(formatBusinessCollectionElapsed(null),'0min')
+  assert.equal(formatBusinessCollectionElapsed(null),null)
   assert.equal(formatBusinessCollectionElapsed(Number.NaN),null)
 })
 test('comando de coleta exibe tempo sem alterar valores e usa timestamp da transacao',()=>{
