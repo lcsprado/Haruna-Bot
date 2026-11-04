@@ -832,6 +832,11 @@ async function syncAvatar(force=false){
 async function exchange(code){
   const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(!clean) throw new Error('Informe o código gerado pelo !web.');
+  // Não enviar token do jogador anterior ao trocar de conta, nem mantê-lo se falhar.
+  ui.token='';
+  ui.data=null;
+  ui.catalog=null;
+  localStorage.removeItem(TOKEN_KEY);
   const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
   ui.token=body.token;
   localStorage.setItem(TOKEN_KEY,ui.token);
