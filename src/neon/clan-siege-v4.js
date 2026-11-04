@@ -9,6 +9,8 @@ const full=(v,low,high)=>Math.min(high,Math.max(low,Number(v)||0));
 const name={castle:'Castelo',gate:'Portão',depot:'Suprimentos'};
 const symbols={attack:'⚔️',defend:'🛡️',repair:'🔨',spy:'🕵️',supply:'📦'};
 const cap=3, gateMax=2, repairMax=2;
+export const SIEGE_REPAIR_HP_V5=280; // somente novas partidas com rules_version >= 5
+export const siegeRepairHp=rulesVersion=>Number(rulesVersion||4)>=5?SIEGE_REPAIR_HP_V5:220;
 
 export function validateSiegeV4Move(action,target){
   if(!SIEGE_V4_ACTIONS.includes(action))throw new Error('Ação do Cerco inválida.');
@@ -107,7 +109,7 @@ export function resolveSiegeRoundV4(match,moves){
     for(const move of sides[side].filter(m=>m.action==='repair')){
       if(repairs[side]>=repairMax||supplies[side]<=0)continue;
       if(move.target==='castle'&&hp[side]<maxHp[side]){
-        const restored=Math.min(220,maxHp[side]-hp[side]);
+        const restored=Math.min(siegeRepairHp(match.rules_version),maxHp[side]-hp[side]);
         healed[side]+=restored;hp[side]+=restored;
       }else if(move.target==='gate'&&gate[side]<gateMax){
         gate[side]++;gateRestored[side]++;
