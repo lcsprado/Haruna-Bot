@@ -300,7 +300,7 @@ new Promise(resolve=>{const timer=setTimeout(resolve,2500);timer.unref?.()})
 ;(async()=>{
 let completed=false
 let pendingFirst=first
-let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false,lastPetHealNoticeAt=0
+let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,vitalHealing=0,vitalUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false,lastPetHealNoticeAt=0
 let sessionMode=null,sessionEndsAt=0
 const petHealTally=new Map()
 const petHealSummary=()=>[...petHealTally].map(([pet,v])=>`\n🐾 *${pet}*: caiu *${v.count}x* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')
@@ -403,6 +403,7 @@ attacks++; totalDamage+=Number(r.damage||0); petDamage+=Number(r.pet?.damage||0)
 if(r.oilConsumedNow) await reply('🗡️ *ÓLEO DAS SOMBRAS ATIVADO!* +6% de dano do jogador neste Boss (consumido 1 Óleo; pet não recebe bônus).')
 if(r.autoHeal) heals.push(r.autoHeal.name)
 if(r.petSkillHeal){petSkillUses++;petSkillHealing+=Number(r.petSkillHeal.heal||0)}
+if(r.vitalPulseEvent){vitalUses++;vitalHealing+=Number(r.vitalPulseEvent.heal||0)}
 if(r.dead){
 const nextPecado= (r.eventId==='sete_pecados'||r.eventId==='invasao_titas_20261017'||r.eventId===COLLAB_FARM_ID) && Boolean(r.nextPhase)
 completed=!nextPecado;
@@ -499,7 +500,7 @@ return
 await new Promise(resolve=>setTimeout(resolve,delayMs))
 }
 completed=true
-await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 *Boletim de autocura (${petHeals.length} uso(s))*:${petHealSummary()}`:''}\n\nUse *!boss* para ver a situação atual.`)
+await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\n💥 Dano causado: *${totalDamage.toLocaleString('pt-BR')}*${petName?`\n🐾 Bônus de ${petName}: *(+${petDamage.toLocaleString('pt-BR')} bônus pet)* — ${petBonus}`:''}${petExitWarned?'\n⚡ O pet saiu ao ficar sem energia; o combate continuou sem bônus.':''}${petFaintWarned?'\n💔 O pet ficou sem HP; o combate continuou sem ele.':''}${petSkillUses?`\n💚 Skill de cura do pet: *${petSkillUses}x* • *+${petSkillHealing.toLocaleString('pt-BR')} HP*`:''}${vitalUses?`\n🧬 Coração Eterno: *${vitalUses}x* • *+${vitalHealing.toLocaleString('pt-BR')} HP*`:''}${bossCrits?`\n💢 Críticos recebidos do Boss: *${bossCrits}*`:''}${heals.length?`\n🧪 Curas automáticas usadas: *${heals.length}*`:''}${petHeals.length?`\n🐾🧪 *Boletim de autocura (${petHeals.length} uso(s))*:${petHealSummary()}`:''}\n\nUse *!boss* para ver a situação atual.`)
 }catch(err){
   // Outro jogador pode ter derrotado o Boss entre dois ataques automáticos.
   // O resultado é lido do snapshot liquidado; nunca pagamos novamente aqui.
@@ -929,10 +930,11 @@ const heals=bossEvents.filter(e=>e.autoHeal)
 const revives=bossEvents.filter(e=>e.autoRevive)
 const petHeals=bossEvents.filter(e=>e.autoPetHeal)
 const petSkillHeals=bossEvents.filter(e=>e.petSkillHeal)
+const vitalHeals=(r.events||[]).filter(e=>e.type==='vital_pulse')
 const petSwitches=bossEvents.filter(e=>e.petSwitch)
 const deaths=bossEvents.filter(e=>!e.alive)
 const petFalls=bossEvents.filter(e=>e.petFainted)
-if(r.round===1 || r.round%10===0 || deaths.length || revives.length || petSwitches.length){
+if(r.round===1 || r.round%10===0 || deaths.length || revives.length || petSwitches.length || vitalHeals.length){
 const groupDamage=hitEvents.reduce((a,e)=>a+Number(e.damage||0),0)
 const bossDamage=bossEvents.reduce((a,e)=>a+Number(e.damage||0),0)
 let text=`⚔️ *RAID — RODADA ${r.round}*
@@ -955,6 +957,7 @@ for(const e of revives) text+=`
 ✨ ${e.name} foi *RESSUSCITADO* pela Poção da Ressurreição com *${e.autoRevive.hp}/${e.autoRevive.maxHp} HP*! (1 uso por Raid)`
 for(const e of petSkillHeals) text+=`
 💚 *${e.petSkillHeal.name}* ativou a skill de cura em ${e.name}: *+${Number(e.petSkillHeal.heal||0).toLocaleString('pt-BR')} HP* (${Number(e.petSkillHeal.hp||0).toLocaleString('pt-BR')}/${Number(e.petSkillHeal.maxHp||0).toLocaleString('pt-BR')}).`
+for(const e of vitalHeals) text+=`\n🧬 *Coração Eterno* ativou em ${e.name}: *+${Number(e.heal||0).toLocaleString('pt-BR')} HP* (uma vez por Raid).`
 for(const e of petSwitches) text+=`
 🔄 *${e.petSwitch.from}* caiu! O Reserva *${e.petSwitch.to}* entrou automaticamente.`
 for(const e of deaths) text+=`
