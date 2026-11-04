@@ -9,17 +9,18 @@ const {siegeDailySchedule,resolveSiegeRound}=await import('data:text/javascript;
 const ms=iso=>Date.parse(iso);
 
 test('cerco diario: hora exata de Brasilia, tolerancia de wakeup e exclusao antes/apos janela',()=>{
-  const before=siegeDailySchedule(ms('2026-11-03T19:59:59-03:00'));
-  const onTime=siegeDailySchedule(ms('2026-11-03T20:00:00-03:00'));
-  const grace=siegeDailySchedule(ms('2026-11-03T20:14:59-03:00'));
-  const tooLate=siegeDailySchedule(ms('2026-11-03T20:15:00-03:00'));
+  const before=siegeDailySchedule(ms('2026-11-03T20:59:59-03:00'));
+  const onTime=siegeDailySchedule(ms('2026-11-03T21:00:00-03:00'));
+  const grace=siegeDailySchedule(ms('2026-11-03T21:14:59-03:00'));
+  const tooLate=siegeDailySchedule(ms('2026-11-03T21:15:00-03:00'));
+  assert.equal(siegeDailySchedule(ms('2026-11-04T20:00:00-03:00')).opening,false);
   assert.equal(before.opening,false);
   assert.equal(onTime.opening,true);
   assert.equal(grace.opening,true);
   assert.equal(tooLate.opening,false);
   assert.equal(onTime.day,'2026-11-03');
-  assert.equal(onTime.startsAt,ms('2026-11-03T20:00:00-03:00'));
-  assert.equal(siegeDailySchedule(ms('2026-11-04T20:00:00-03:00')).opening,true);
+  assert.equal(onTime.startsAt,ms('2026-11-03T21:00:00-03:00'));
+  assert.equal(siegeDailySchedule(ms('2026-11-04T21:00:00-03:00')).opening,true);
 });
 
 test('cerco diario: 6 rodadas de 5 min, sem acelerar se todos agirem e sem mudar premio',()=>{
