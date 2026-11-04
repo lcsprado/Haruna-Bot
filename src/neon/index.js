@@ -6256,7 +6256,7 @@ const r=await ownerHeal(data.target)
 await reply(`✅ Cura completa: ❤️ *${r.hp}/${r.max_hp}*.`,{mentions:data.target===sender?[]:[data.target]})
 }else if(data.action==='daritem'){
 const r=await ownerGrantItem(data.target,data.itemId,data.qty)
-await reply(`✅ Item entregue: *${r.item.name} ×${r.qty}*.`,{mentions:data.target===sender?[]:[data.target]})
+await reply(`✅ Item entregue: *${r.item.name} ×${r.qty}*.\n📦 Saldo no inventário após entrega: *${r.total}*.`,{mentions:data.target===sender?[]:[data.target]})
 }else if(data.action==='activategroup'){
 const lic=await activateGroupLicense(chat,data.days,sender,'basic')
 await reply(`✅ Grupo ativado por *${data.days} dias*.\n📅 Validade: *${fmtDate(lic.paid_until)}*`)
@@ -12490,7 +12490,7 @@ const qtyArg=args.find(a=>/^\d+$/.test(a))
 const qty=parseInt(qtyArg||'1',10)
 if(!itemArg) return await reply(`Uso: *${prefix}daritem espada_ferro 1* ou *${prefix}daritem @pessoa espada_ferro 1*`)
 const r=await ownerGrantItem(ownerTarget,itemArg.toLowerCase(),qty)
-await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+await reply(`👑 Item entregue: ${r.item.name} ×${r.qty}\n📦 Saldo no inventário após entrega: ${r.total}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 } else if(['evento','evento2x','bonus2x'].includes(cmd)){
 const [event,lucky,ownerEvents]=await Promise.all([getDoubleRewardEvent(),getLuckyBoxEvent(),listOwnerEvents()])
 if(ownerEvents.some(e=>e.active||e.scheduled)){

@@ -10,6 +10,7 @@ import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
+import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 import {PECADOS_HERO_IDS,PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
 import {halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_FARM_ID,COLLAB_FARM_KEY,COLLAB_FARM_START,COLLAB_FARM_END,COLLAB_FARM_PHASES,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_MIN_DAMAGE,collabRemainingPersonalDamage,collabEligibleForFragments,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
@@ -1658,15 +1659,17 @@ export async function raidRound(chat,level){
           const missing=Math.max(1,maxPetHp-Number(p.pet.hp))
           const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
           if(chosenPet){
-            const beforePetHeal=Math.max(0,Number(p.pet.hp))
-            p.pet.hp=Math.min(maxPetHp,beforePetHeal+Number(chosenPet.heal||0))
-            const healed=Math.max(0,Number(p.pet.hp)-beforePetHeal)
-            p.petPotionHealing=Number(p.petPotionHealing||0)+healed
-            p.petPotionUses=Number(p.petPotionUses||0)+1
-            const row=petPotionRows.find(x=>x.jid===p.jid&&x.item_id===chosenPet.item_id)
-            if(row) row.quantity=Number(row.quantity)-1
-            await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2 AND quantity>0',[p.jid,chosenPet.item_id])
-            autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:healed,hp:Number(p.pet.hp),maxHp:maxPetHp,petName:p.pet.name}
+            const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-preventive',petName:p.pet.name})
+            if(spent.spent){
+              const beforePetHeal=Math.max(0,Number(p.pet.hp))
+              p.pet.hp=Math.min(maxPetHp,beforePetHeal+Number(chosenPet.heal||0))
+              const healed=Math.max(0,Number(p.pet.hp)-beforePetHeal)
+              p.petPotionHealing=Number(p.petPotionHealing||0)+healed
+              p.petPotionUses=Number(p.petPotionUses||0)+1
+              const row=petPotionRows.find(x=>x.jid===p.jid&&x.item_id===chosenPet.item_id)
+              if(row) row.quantity=Number(row.quantity)-1
+              autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:healed,hp:Number(p.pet.hp),maxHp:maxPetHp,petName:p.pet.name,remaining:spent.remaining}
+            }
           }
         }
         if(petFainted){
@@ -1684,16 +1687,19 @@ export async function raidRound(chat,level){
             const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
             const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
             if(chosenPet){
-              const beforePetHeal=Math.max(0,Number(p.pet.hp||0))
-              p.pet.hp=Math.min(Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),beforePetHeal+Number(chosenPet.heal||0))
-              p.petPotionHealing=Number(p.petPotionHealing||0)+Math.max(0,Number(p.pet.hp)-beforePetHeal)
-              p.petPotionUses=Number(p.petPotionUses||0)+1
-              const row=petPotionRows.find(x=>x.jid===p.jid&&x.item_id===chosenPet.item_id)
-              if(row) row.quantity=Number(row.quantity)-1
-              await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[p.jid,chosenPet.item_id])
-              autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:Number(chosenPet.heal||0),hp:Number(p.pet.hp)}
-              petFainted=false
-              await persistRaidCombatPet(c,p.jid,p.pet)
+              const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-fainted',petName:p.pet.name})
+              if(spent.spent){
+                const beforePetHeal=Math.max(0,Number(p.pet.hp||0))
+                p.pet.hp=Math.min(Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),beforePetHeal+Number(chosenPet.heal||0))
+                const healed=Math.max(0,Number(p.pet.hp)-beforePetHeal)
+                p.petPotionHealing=Number(p.petPotionHealing||0)+healed
+                p.petPotionUses=Number(p.petPotionUses||0)+1
+                const row=petPotionRows.find(x=>x.jid===p.jid&&x.item_id===chosenPet.item_id)
+                if(row) row.quantity=Number(row.quantity)-1
+                autoPetHeal={id:chosenPet.item_id,name:chosenPet.name,heal:healed,hp:Number(p.pet.hp),maxHp:Number(p.pet.maxHp),petName:p.pet.name,remaining:spent.remaining}
+                petFainted=false
+                await persistRaidCombatPet(c,p.jid,p.pet)
+              }
             }
           }
         }else{
