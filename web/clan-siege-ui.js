@@ -177,7 +177,7 @@ function renderLiveSiege(ui){
   const canConfirm=canMove&&Boolean(selected)&&!(selected?.id==='repair'&&remainingRepairs<=0);
   const duration=active?Math.max(0,Math.ceil((Number(match.roundEndsAt)-Date.now())/1000)):0;
   const countdown=active?' • '+Math.floor(duration/60)+'m '+String(duration%60).padStart(2,'0')+'s':'';
-  const label=active?'⚔️ GUERRA V'+rulesVersion+' ATIVA':stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO V5 · HOJE ÀS 20H';
+  const label=active?'⚔️ GUERRA ATIVA · V'+rulesVersion:stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO V5 · HOJE ÀS 20H';
   // A guerra começa às 20h, sem convite ou aceite manual.
   let controls='';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio antigo</button>';
