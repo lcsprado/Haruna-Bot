@@ -376,6 +376,8 @@ async function advance(conn,match){
         ' | ⚔️ Contra-ataque: 🔵 '+r.result.blueCounter+' • 🔴 '+r.result.redCounter:'',
       '🔨 Reparos usados nesta rodada: 🔵 '+r.result.blueRepairs+' • 🔴 '+r.result.redRepairs,
       r.v4?'💚 Recuperação REAL de HP: 🔵 +'+r.result.blueHeal+' • 🔴 +'+r.result.redHeal+' | 🚪 Portões reconstruídos: 🔵 +'+r.result.blueGateRebuilt+' • 🔴 +'+r.result.redGateRebuilt:'',
+      r.v4&&(r.result.blueRepairWithoutEffect?.length||r.result.redRepairWithoutEffect?.length)?
+        '⚠️ Reparos sem efeito: 🔵 '+(r.result.blueRepairWithoutEffect||[]).join(', ')+' • 🔴 '+(r.result.redRepairWithoutEffect||[]).join(', '):'',
       r.v4?'🚪 Portões: 🔵 '+r.v4.gate.blue+'/2 • 🔴 '+r.v4.gate.red+'/2 | 📦 Suprimentos: 🔵 '+r.v4.supplies.blue+'/3 • 🔴 '+r.v4.supplies.red+'/3':'',
       r.v4?'🎯 Pontos por objetivos: 🔵 '+r.v4.score.blue+' • 🔴 '+r.v4.score.red:'',
       r.finished?'🏆 *Resultado: '+winner+'*'+(r.v4?' • critério: '+r.result.victoryRule:''):'⏳ Próxima rodada aberta no Web.',
