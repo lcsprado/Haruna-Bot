@@ -5,8 +5,10 @@ on:
       - feat/web-aiven-beta-protegido-20261021
     paths:
       - 'src/neon/clan-siege.js'
+      - 'src/neon/clan-siege-v4.js'
+      - 'test/clan-siege-fronts-v4-20261103.test.mjs'
       - 'src/neon/clan-fortress.js'
-      - 'test/clan-fortress-economy-20261103.test.mjs'
+      - 'test/clan-fortress-economy-20261103.test.mjs test/clan-siege-fronts-v4-20261103.test.mjs'
       - 'src/neon/clan-siege-beta-access.js'
       - 'test/clan-siege-single-guest-20261102.test.mjs'
       - 'src/neon/clan-siege-first-prize.js'
@@ -44,6 +46,7 @@ jobs:
       - name: Validate syntax
         run: |
           node --check src/neon/clan-siege.js
+          node --check src/neon/clan-siege-v4.js
           node --check src/neon/clan-fortress.js
           node --check src/neon/clan-siege-beta-access.js
           node --check src/neon/clan-siege-first-prize.js
