@@ -126,7 +126,7 @@ test('invariantes de 1500 confrontos: limite de HP, portão e suprimentos',()=>{
 test('a API e o motor mantêm V1/V2/V3 e criam V4 apenas para novas guerras',()=>{
   const server=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
   assert.match(server,/if\(Number\(match\.rules_version\|\|1\)>=4\)return resolveSiegeRoundV4/);
-  assert.match(server,/VALUES\(\$1,\$2,\$3,\$4,'active',4/);
+  assert.match(server,/VALUES\(\$1,\$2,\$3,\$4,'active',5/); // próximas guerras V5
   assert.match(server,/alpha_siege_moves.*ADD COLUMN IF NOT EXISTS target/);
   assert.match(server,/blue_spy_state=COALESCE/);
   assert.doesNotMatch(server,/UPDATE wallets SET/);
