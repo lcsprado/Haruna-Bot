@@ -60,7 +60,7 @@ test('formulário mantém evento de seleção, validação e envio do alvo',()=>
   const src=readFileSync(new URL('../web/clan-siege-ui.js',import.meta.url),'utf8');
   assert.match(src,/data-siege-target/);
   assert.match(src,/ui\.siegePreviewTarget=target/);
-  assert.match(src,/target:ui\.siegePreviewTarget/); // confirmacao usa alvo escolhido
+  assert.match(src,/\{action:ui\.siegePreviewAction,target\}/); // confirmação envia ação e alvo
 });
 test('assets do Work, PWA e garagem não são substituídos',()=>{
   const sw=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8');
