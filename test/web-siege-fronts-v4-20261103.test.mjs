@@ -149,6 +149,7 @@ test('guerra histórica V1 não trava escolhas da nova V5 nem fixa Defesa',()=>{
  old.siege.match.status='completed';
  old.siege.match.myMove='defend'; // estado residual da última partida
  old.siege.match.blueHp=740;old.siege.match.redHp=700;
+ old.siege.match.history=[{round:6,blueHp:740,redHp:700,rulesVersion:1}];
  old.siegePreviewAction=null;
  const html=renderClanSiegePreview(old);
  for(const id of ['attack','defend','repair','spy','supply'])
