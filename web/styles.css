@@ -897,6 +897,26 @@ body.loot-open{overflow:hidden!important}
 .duel-fighter{position:relative;z-index:2;min-width:0;text-align:center}
 .duel-character-art{height:210px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:8px}
 .duel-character-art .duel-character-svg{width:100%;height:100%;max-width:190px;display:block}
+/* Uma única célula 2x2 por lutador; nenhum conteúdo da folha vizinha vaza. */
+.duel-character-art .duel-class-portrait{
+  display:block;
+  flex:0 1 auto;
+  height:100%;
+  width:auto;
+  max-width:100%;
+  aspect-ratio:2 / 3;
+  background-size:200% 200%;
+  background-repeat:no-repeat;
+  background-color:transparent;
+}
+.duel-character-art .duel-hero-portrait{
+  flex:0 1 auto;
+  height:100%;
+  width:auto;
+  max-width:100%;
+  aspect-ratio:306 / 500;
+  background-repeat:no-repeat;
+}
 .duel-fighter strong{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .duel-fighter small{display:block;color:var(--muted);font-size:10px;margin:3px 0 8px}
 .duel-hp{display:grid;gap:4px;text-align:left}

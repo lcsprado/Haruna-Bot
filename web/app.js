@@ -2329,13 +2329,29 @@ function characterForClass(id){
   return CHARACTER_ART.find(x=>x.id===String(id||''))||CHARACTER_ART[0];
 }
 
+// Em Duelos, usar o recorte CSS da célula da folha (2x2) em vez de SVG.
+// SVG <image> pode vazar a célula vizinha em alguns WebViews Android.
+function duelClassPortrait(ch){
+  const crop=CLASS_PORTRAITS[ch?.sprite];
+  if(!crop)return '';
+  const sheet=CLASS_ART_SHEETS[crop[0]];
+  const x=crop[1]===0?0:100;
+  const y=crop[2]===0?0:100;
+  return '<div class="duel-class-portrait" role="img" aria-label="'+esc(ch.name)+
+    '" style="background-image:url(\''+esc(sheet)+'\');background-position:'+x+'% '+y+'%"></div>';
+}
+function duelFighterPortrait(ch){
+  return ch?.isHero?characterVisual(ch,'duel-hero-portrait'):duelClassPortrait(ch);
+}
+
 function renderDuelArena(members){
   if(!members.length) return '<div class="card duel-arena-card"><div class="empty">Nenhum adversário recente disponível para duelo.</div></div>';
   const target=members.find(x=>x.jid===ui.duelTarget)||members[0];
   ui.duelTarget=target.jid;
   const me=(ui.data&&ui.data.profile)||{};
   const myCombat=profile();
-  const mine=selectedCharacter();
+  const hero=activePlayableHero();
+  const mine=hero&&COLLAB_PET_SPRITES[hero.id]?{id:hero.id,name:hero.name,isHero:true}:selectedCharacter();
   const enemy=characterForClass(target.class_id);
   const myHp=Number(myCombat.effective_hp||myCombat.hp||0),myMax=Math.max(1,Number(myCombat.effective_max_hp||myCombat.max_hp||1));
   const enemyHp=Number(target.effective_hp??target.hp??0),enemyMax=Math.max(1,Number(target.effective_max_hp??target.max_hp??1));
@@ -2349,14 +2365,14 @@ function renderDuelArena(members){
     '<div class="duel-picker"><label>Adversário</label><select data-duel-target>'+members.map(m=>'<option value="'+esc(m.jid)+'" '+(m.jid===target.jid?'selected':'')+'>'+esc(m.push_name||'Jogador')+' • Lv.'+num(m.level||1)+'</option>').join('')+'</select></div>'+
     '<div class="duel-stage-live">'+
       '<div class="duel-fighter me">'+
-        '<div class="duel-character-art">'+artSprite(mine.sprite,'duel-character-svg',mine.name)+'</div>'+
+        '<div class="duel-character-art">'+duelFighterPortrait(mine)+'</div>'+
         '<strong>'+esc(me.push_name||'Você')+'</strong><small>'+esc(mine.name)+' • Lv.'+num(me.level||1)+'</small>'+
         '<div class="duel-hp"><span>❤️ '+num(myHp)+'/'+num(myMax)+'</span><div class="progress"><span style="width:'+pct(myHp/myMax*100)+'%"></span></div></div>'+
         '<div class="duel-stats"><span>⚔️ '+num(myCombat.effective_atk||myCombat.atk)+'</span><span>🛡️ '+num(myCombat.effective_def||myCombat.def)+'</span><span>💨 '+num(myCombat.effective_spd||myCombat.spd)+'</span></div>'+
       '</div>'+
       '<div class="duel-versus">VS</div>'+
       '<div class="duel-fighter enemy">'+
-        '<div class="duel-character-art">'+artSprite(enemy.sprite,'duel-character-svg',enemy.name)+'</div>'+
+        '<div class="duel-character-art">'+duelFighterPortrait(enemy)+'</div>'+
         '<strong>'+esc(target.push_name||'Jogador')+'</strong><small>'+esc(enemy.name)+' • Lv.'+num(target.level||1)+'</small>'+
         '<div class="duel-hp"><span>❤️ '+num(enemyHp)+'/'+num(enemyMax)+'</span><div class="progress"><span style="width:'+pct(enemyHp/enemyMax*100)+'%"></span></div></div>'+
         '<div class="duel-stats"><span>⚔️ '+num(target.effective_atk??target.atk??0)+'</span><span>🛡️ '+num(target.effective_def??target.def??0)+'</span><span>💨 '+num(target.effective_spd??target.spd??0)+'</span></div>'+
