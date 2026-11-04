@@ -286,9 +286,9 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
     const message=command==='move'?'Confirmar ação? Ela não poderá ser alterada.':'Cancelar desafio antigo?';
     if(!confirm(message))return;
     const currentVersion=ui.siege?.match?Number(ui.siege.match.rulesVersion||1):4;
-    // Validação antiga continua explícita para partidas iniciadas na V1-V3.
-    if(command==='move'&&currentVersion<4&&!ACTIONS.some(item=>item.id===ui.siegePreviewAction))return;
-    if(command==='move'&&currentVersion>=4&&!TACTICAL_ACTIONS.some(item=>item.id===ui.siegePreviewAction))return;
+    // Regras antigas aceitam só 4 ações; Reabastecer é exclusivo da V4.
+    if(command==='move'&&!ACTIONS.some(item=>item.id===ui.siegePreviewAction)&&
+      !(currentVersion>=4&&TACTICAL_ACTIONS.some(item=>item.id===ui.siegePreviewAction)))return;
     const target=ui.siegePreviewAction==='supply'?'depot':ui.siegePreviewTarget||'castle';
     void submit(command,command==='move'?{action:ui.siegePreviewAction,target}:{});
   }));
