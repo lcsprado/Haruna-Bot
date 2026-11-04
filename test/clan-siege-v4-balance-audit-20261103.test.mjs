@@ -141,3 +141,57 @@ test('dano bruto versus defesa exata: um round',()=>{
   assert.equal(result.result.blueBlocked,0);
   assert.equal(result.result.redBlocked,297);
 });
+
+
+test('avaliar retorno de cada primeiro upgrade nos 361 confrontos',()=>{
+  const scenarios={
+    base:{maxHp:2000,attackPct:0,defensePct:0},
+    walls1:{maxHp:2050,attackPct:0,defensePct:0},
+    arsenal1:{maxHp:2000,attackPct:.02,defensePct:0},
+    defense1:{maxHp:2000,attackPct:0,defensePct:.015},
+    all5:{maxHp:2250,attackPct:.10,defensePct:.075}
+  };
+  const totals={};
+  for(const [label,upgrade] of Object.entries(scenarios)){
+    const x={wins:0,losses:0,ties:0,hpAdvantageTotal:0};
+    for(const [,blue] of policiesList)for(const [,red] of policiesList){
+      const g=match(blue,red,{
+        blue_hp:upgrade.maxHp,
+        blue_fortress:upgrade
+      });
+      if(g.winner==='blue')x.wins++;
+      else if(g.winner==='red')x.losses++;
+      else x.ties++;
+      x.hpAdvantageTotal+=g.blueHp-g.redHp;
+    }
+    totals[label]={...x,averageHpAdvantage:Math.round(x.hpAdvantageTotal/361)};
+  }
+  console.log('BALANCE_AUDIT_UPGRADE_TOURNAMENT='+JSON.stringify(totals));
+  assert.equal(totals.base.wins+totals.base.losses+totals.base.ties,361);
+  assert.ok(totals.walls1.wins>=totals.base.wins);
+});
+test('atacar sempre versus ações aleatórias sem coordenação',()=>{
+  let seed=24681357;
+  const random=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return (seed>>>0)/4294967296;};
+  const candidates=[A(),A('gate'),A('depot'),D(),D('gate'),D('depot'),
+    R(),R('gate'),S(),S('gate'),S('depot'),U()];
+  const reckless=()=>two(candidates[Math.floor(random()*candidates.length)],
+    candidates[Math.floor(random()*candidates.length)]);
+  const total={wins:0,losses:0,ties:0};
+  for(let i=0;i<3000;i++){
+    const g=match(policies.rush_castle,reckless);
+    if(g.winner==='blue')total.wins++;
+    else if(g.winner==='red')total.losses++;
+    else total.ties++;
+  }
+  console.log('BALANCE_AUDIT_RUSH_VS_RANDOM='+JSON.stringify(total));
+  assert.equal(total.wins+total.losses+total.ties,3000);
+});
+test('identificar quem vence a estratégia de atacar duas vezes e depois defender',()=>{
+  const table=[];
+  for(const [name,policy] of policiesList){
+    const g=match(policies.attack_then_guard,policy);
+    table.push({enemy:name,winner:g.winner,blueHp:g.blueHp,redHp:g.redHp});
+  }
+  console.log('BALANCE_AUDIT_EARLY_ATTACK_THEN_GUARD='+JSON.stringify(table));
+});
