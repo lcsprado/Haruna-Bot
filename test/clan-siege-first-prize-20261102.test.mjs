@@ -59,10 +59,12 @@ test('primeira guerra: catálogo mais forte e restrito a PvE',()=>{
   assert.equal(FIRST_SIEGE_INSIGNIA.pvp,undefined);
   assert.match(FIRST_SIEGE_INSIGNIA.effect,/sem PvP/);
 });
-test('primeira guerra: premiação dispara somente ao terminar com vencedor',()=>{
+test('o código histórico da insígnia fica preservado, mas o Cerco não emite novas entregas',()=>{
   const siege=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
-  assert.match(siege,/r\.finished&&r\.winner\?await grantFirstSiegeInsignias\(conn,updated\):null/);
-  assert.match(siege,/alpha_siege_first_victory/);
+  assert.doesNotMatch(siege,/grantFirstSiegeInsignias/);
+  assert.doesNotMatch(siege,/firstWarPrizeMatchId/);
+  assert.match(siege,/A insígnia histórica foi encerrada/);
+  assert.match(siege,/não será concedida nas próximas guerras/);
 });
 test('primeira guerra: item é não vendável, não empilhável e individual',()=>{
   const client=fakeClient();

@@ -2,7 +2,6 @@
 // Recursos reais (dinheiro, HP do jogador e XP) não são alterados.
 import {db} from './db.js';
 import {ensureWebActionOutbox} from './web-activity-relay.js';
-import {grantFirstSiegeInsignias} from './clan-siege-first-prize.js';
 import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
 import {ensureClanFortressSchema,clanFortressCombatSnapshot,clanFortressStatus,clanFortressUpgrade} from './clan-fortress.js';
 import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
@@ -195,12 +194,11 @@ export async function startDailyClanSiege(nowMs=now()){
       '🚪 Duas investidas rompem o portão (+25% dano futuro ao castelo). 📦 Saquear o depósito rouba suprimento; reabastecer gera 1. Reparar consome 1 suprimento de CERCO e pode restaurar até 280 HP ou 1 ponto do Portão (máximo 2 reparos por clã).',
       '🛡️ Defender a frente certa bloqueia mais dano e pode contra-atacar. Espionar prepara o ataque NA MESMA FRENTE na rodada seguinte.',
       '🏆 Após 6 rodadas vence quem tiver mais HP; empate no HP desempata por objetivos, depois portão e suprimentos. Totalmente igual continua empate.',
-      '🤝 Táticas em dupla: Atacar + Atacar ganha +10% de dano; Atacar + Defender protege e contra-ataca; Atacar + Reparar recupera até 220 HP; Atacar + Espionar marca alvo (+30%) e prepara +60% para a próxima rodada.',
+      '🤝 Táticas em dupla: Atacar + Atacar gera +10% de dano na mesma frente; Atacar + Defender protege e contra-ataca; Atacar + Reparar recupera até 280 HP; Atacar + Espionar na mesma frente aplica +30% agora e prepara +60% para a próxima rodada.',
       '🛡️ Defender reduz 50% do dano por defensor (máx. 75%) e devolve 80 de dano se sofrer ataque. 🔨 Só 2 reparos por guerra/clã. 🕵️ Espiões fortalecem os ataques da rodada seguinte (+60% cada).',
-      '🏆 Vence quem deixar a fortaleza rival com menos HP após seis rodadas; HP igual = empate.',
-      '🎮 Abra o Alpha Web > Clã e escolha *Atacar, Defender, Reparar ou Espionar*.',
+      '🎮 Abra o Alpha Web > Clã e escolha *Atacar, Defender, Reparar, Espionar ou Reabastecer*. A escolha inclui a frente da ação.',
       '🔒 Ação secreta. Quem não jogar a rodada fica sem ação.',
-      '🏆 A primeira vitória válida ainda concede a insígnia especial aos 2 campeões.'
+      '🏆 A insígnia histórica foi encerrada e não será concedida nas próximas guerras.'
     ].join('\n'));
     return {started:true,matchId:String(match.id)};
   });
@@ -362,7 +360,6 @@ async function advance(conn,match){
       r.v4?JSON.stringify(r.v4.spyState.blue):null,
       r.v4?JSON.stringify(r.v4.spyState.red):null
     ])).rows[0];
-    const prize=r.finished&&r.winner?await grantFirstSiegeInsignias(conn,updated):null;
     const winner=r.winner===null?'Empate':r.winner===String(match.blue_clan_id)?'Clã Azul':'Clã Vermelho';
     await notice(conn,match.chat_jid,[
       '🏰 *CERCO AO CASTELO — RODADA '+match.round+'/'+MAX_ROUNDS+'*',
@@ -381,8 +378,7 @@ async function advance(conn,match){
       r.v4?'🚪 Portões: 🔵 '+r.v4.gate.blue+'/2 • 🔴 '+r.v4.gate.red+'/2 | 📦 Suprimentos: 🔵 '+r.v4.supplies.blue+'/3 • 🔴 '+r.v4.supplies.red+'/3':'',
       r.v4?'🎯 Pontos por objetivos: 🔵 '+r.v4.score.blue+' • 🔴 '+r.v4.score.red:'',
       r.finished?'🏆 *Resultado: '+winner+'*'+(r.v4?' • critério: '+r.result.victoryRule:''):'⏳ Próxima rodada aberta no Web.',
-      prize?'👑 *PREMIAÇÃO HISTÓRICA:* '+prize.name+' entregue aos 2 campeões. Ative em *!reliquias*.':'',
-      r.finished&&!r.winner?'🤝 Empate: a insígnia histórica permanece para a próxima guerra com vencedor.':''
+      r.finished?'🏆 Recompensas do Cerco serão divulgadas no anúncio oficial do evento. Não haverá nova insígnia automática.':''
     ].join('\n'));
     match=updated;
   }
@@ -462,9 +458,7 @@ export async function clanSiegeStatus(session){
   const mine=(await db.query('SELECT clan_id,role FROM clan_members WHERE jid=$1',[session.jid])).rows[0];
   let match=await openMatch(db,chat);
   if(!match)match=(await db.query("SELECT * FROM alpha_siege_matches WHERE chat_jid=$1 AND status='completed' AND ended_at>$2 ORDER BY id DESC LIMIT 1",[chat,now()-24*60*60*1000])).rows[0]||null;
-  const firstReward=(await db.query('SELECT match_id FROM alpha_siege_first_victory WHERE chat_jid=$1',[chat])).rows[0];
   return {
-    firstWarPrizeMatchId:firstReward?String(firstReward.match_id):null,
     enabled:true,myClanId:mine?String(mine.clan_id):null,isLeader:mine?.role==='leader',
     clans:teams.map(({id,name,members,linked})=>({id,name,members,linked})),
     match:await viewMatch(match,session.jid),
