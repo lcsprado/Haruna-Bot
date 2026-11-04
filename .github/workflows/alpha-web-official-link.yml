@@ -1,0 +1,35 @@
+name: Alpha RPG - Link oficial !web
+on:
+  pull_request:
+    branches:
+      - whatsapp-only
+      - feat/web-aiven-beta-protegido-20261021
+    paths:
+      - 'src/neon/web-api.js'
+      - 'src/neon/web-official-link.js'
+      - 'test/web-official-link-20261104.test.mjs'
+      - '.github/workflows/alpha-web-official-link.yml'
+  push:
+    branches:
+      - whatsapp-only
+    paths:
+      - 'src/neon/web-api.js'
+      - 'src/neon/web-official-link.js'
+      - 'test/web-official-link-20261104.test.mjs'
+permissions:
+  contents: read
+jobs:
+  official-link:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe
+        run: |
+          node --check src/neon/web-official-link.js
+          node --check src/neon/web-api.js
+      - name: Testar endereco oficial e protecao contra previews
+        run: node --test test/web-official-link-20261104.test.mjs
