@@ -43,7 +43,7 @@ test('defender o portão anula uma investida e contra-ataca no alvo certo',()=>{
     m('blue','attack','gate'),m('red','defend','castle')]);
   assert.equal(wrong.result.blueCounter,0);
   assert.equal(wrong.v4.gate.red,1);
-  assert.equal(wrong.hp.red,1906); // 105-10% = 94
+  assert.equal(wrong.hp.red,1905); // Math.round(105 × 90%) = 95
 });
 test('depósito dá suprimento, saque priva rival e não altera tesouro',()=>{
   const gain=resolveSiegeRoundV4(base(),[m('blue','supply','depot')]);
