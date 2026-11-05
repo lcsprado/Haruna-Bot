@@ -6,7 +6,7 @@ import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 // O débito, o HP e os contadores fazem parte da mesma transação da rodada.
 export async function autoHealRaidEntryCombatPet({client,player,choosePotion,persistPet}){
   const pet=player?.pet
-  if(!pet || Number(pet.hp)>0 || Number(pet.energy)<=0) return null
+  if(!pet || Number(pet.hp)>0) return null
   const result=await autoHealBossCombatPet({
     client,jid:player.jid,pet,maxHp:Number(pet.maxHp),
     choosePotion,persistPet
