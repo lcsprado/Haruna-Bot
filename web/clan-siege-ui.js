@@ -171,20 +171,20 @@ function renderLiveSiege(ui){
     selectedActionId==='supply'?'depot':ui.siegePreviewTarget||'castle');
   const permittedTargets=selectedActionId==='repair'?FRONTS_V4.filter(front=>front.id!=='depot'):
     selectedActionId==='supply'?FRONTS_V4.filter(front=>front.id==='depot'):FRONTS_V4;
-  // Fora da guerra semanal de quarta-feira às 21h: seleção apenas visual, sem transação.
+  // Fora da guerra semanal de sábado às 21h30: seleção apenas visual, sem transação.
   // Na rodada ativa: precisa confirmar uma escolha; jamais usar Defender como padrão oculto.
   const canPreview=!active||(canMove&&!match?.myMove);
   const canConfirm=canMove&&Boolean(selected)&&!(selected?.id==='repair'&&remainingRepairs<=0);
   const duration=active?Math.max(0,Math.ceil((Number(match.roundEndsAt)-Date.now())/1000)):0;
   const countdown=active?' • '+Math.floor(duration/60)+'m '+String(duration%60).padStart(2,'0')+'s':'';
-  const label=active?'⚔️ GUERRA ATIVA · V'+rulesVersion:stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO · QUARTA ÀS 21H · V5';
-  // A guerra acontece somente às quartas-feiras às 21h, sem convite ou aceite manual.
+  const label=active?'⚔️ GUERRA ATIVA · V'+rulesVersion:stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO · SÁBADO ÀS 21H30 · V5';
+  // A guerra acontece somente aos sábados às 21h30, sem convite ou aceite manual.
   let controls='';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio antigo</button>';
-  const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. O Cerco semanal acontece quarta-feira às 21h. Você já pode explorar as ações, sem enviar escolhas.':
-    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. A próxima guerra, na quarta-feira às 21h, usará V5. Abaixo está a prévia da guerra com cinco ações e três frentes. As escolhas só poderão ser confirmadas durante a partida.':
+  const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. O Cerco semanal acontece sábado às 21h30. Você já pode explorar as ações, sem enviar escolhas.':
+    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. A próxima guerra, no sábado às 21h30, usará V5. Abaixo está a prévia da guerra com cinco ações e três frentes. As escolhas só poderão ser confirmadas durante a partida.':
     active?'Ações são secretas. Escolha uma estratégia e CONFIRME por rodada. Sem confirmação, nenhuma ação será executada.':
-    'A guerra acontece somente às quartas-feiras, às 21h de Brasília. Explore as cinco ações agora; confirme apenas durante a partida.';
+    'A guerra acontece somente aos sábados, às 21h30 de Brasília. Explore as cinco ações agora; confirme apenas durante a partida.';
   const pct=(hp,max)=>Math.min(100,Math.max(0,Number(hp||0)/Number(max||2000)*100)).toFixed(1);
   function fortress(c,side){
     const hp=Number((active?match:null)?.[side+'Hp']??2000);
@@ -202,7 +202,7 @@ function renderLiveSiege(ui){
     '<h3>🏰 Cerco ao Castelo</h3><p>Dois clãs, quatro jogadores, ações secretas e resultado no WhatsApp.</p></div>'+
     '<span class="siege-status">'+label+'</span></div>'+
     '<div class="siege-stage">'+fortress(blue,'blue')+
-    '<div class="siege-versus"><strong>VS</strong><small>⏰ Quarta 21h</small><small>6 rodadas</small><small>5 min cada</small></div>'+
+    '<div class="siege-versus"><strong>VS</strong><small>⏰ Sábado 21h30</small><small>6 rodadas</small><small>5 min cada</small></div>'+
     fortress(red,'red')+'</div>'+
     '<div class="siege-data-note">'+ESCAPE(notice)+
     (active?' • Rodada '+Number(match.round)+'/6'+countdown+' • '+Number(match.submitted)+'/4 ações enviadas':'')+'</div>'+
@@ -233,7 +233,7 @@ function renderLiveSiege(ui){
         '<small>'+(match?.myMove?'✅ Ação registrada nesta rodada; não pode ser alterada.':
           canMove?(rulesVersion>=4?'Selecione uma das cinco ações e uma frente acima para habilitar a confirmação.':'Selecione uma das quatro estratégias acima para habilitar a confirmação.'):
           active?'Você não pode enviar ação nesta rodada.':
-          'Prévia sem registro. A confirmação só estará disponível durante o Cerco de quarta-feira às 21h.')+'</small>')+'</div></div>'+
+          'Prévia sem registro. A confirmação só estará disponível durante o Cerco de sábado às 21h30.')+'</small>')+'</div></div>'+
     renderFortressPanel(data.fortress)+
     (latest.length?'<div class="siege-selected section"><strong>📜 '+(previous?'ÚLTIMA GUERRA — REGRA V'+Number(match.rulesVersion||1)+' (HISTÓRICO)':'Histórico das rodadas')+'</strong>'+
       latest.map(x=>'<p>Rodada '+Number(x.round)+': 🔵 '+Number(x.blueHp)+
