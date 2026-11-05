@@ -20,6 +20,7 @@ import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
 import {routePrivateReply} from './private-reply-routing.js'
+import {createVerifiedLidDirectory,canonicalLid,canonicalPhone,pairFromGroupMember} from './verified-lid-directory.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
@@ -1314,10 +1315,12 @@ return jid
 function normalizedAddressJid(jid){
 return String(jid||'').replace(/:\d+(?=@)/,'')
 }
+const verifiedLidDirectory=createVerifiedLidDirectory(db)
 async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
 if(!jid) return {jid,aliases:[]}
 const aliases=new Set([jid])
 let phoneJid=jid.endsWith('@s.whatsapp.net') ? canonicalPlayerJid(jid) : null
+let identityConflict=false
 const key=msg?.key||{}
 const jidIsMessageSender=jid===key.participant || jid===key.remoteJid
 if(jidIsMessageSender){
@@ -1336,10 +1339,13 @@ const part=(meta?.participants||[]).find(p=>
 [p?.id,p?.lid,p?.phoneNumber,p?.pn,p?.jid]
 .some(value=>normalizedAddressJid(value)===wanted)
 )
-for(const value of [part?.phoneNumber,part?.pn,part?.jid,part?.id,part?.lid]){
-if(!value) continue
-aliases.add(value)
-if(value.endsWith('@s.whatsapp.net')) phoneJid=canonicalPlayerJid(value)
+const pair=pairFromGroupMember(part)
+if(pair && (pair.lid===canonicalLid(jid) || pair.phone===canonicalPhone(jid))){
+  if(await verifiedLidDirectory.record(pair.lid,pair.phone,'group-member-metadata')){
+    aliases.add(pair.lid)
+    aliases.add(pair.phone)
+    phoneJid=pair.phone
+  }else identityConflict=true
 }
 }
 }catch{}
@@ -1356,6 +1362,22 @@ break
 }catch{}
 }
 }
+if(phoneJid){
+  for(const alias of aliases){
+    if(!canonicalLid(alias))continue
+    try {
+      const accepted=await verifiedLidDirectory.record(alias,phoneJid,'baileys-lid-mapping')
+      if(!accepted){identityConflict=true;if(canonicalLid(jid)===canonicalLid(alias))phoneJid=null}
+    }catch(err){
+      console.warn('[Identity] trusted alias persistence unavailable',String(err?.message||err).slice(0,100))
+      if(canonicalLid(jid)===canonicalLid(alias))phoneJid=null
+    }
+  }
+}
+if(!phoneJid && canonicalLid(jid) && !identityConflict){
+try{phoneJid=await verifiedLidDirectory.lookup(jid) || await verifiedLidDirectory.recoverFromActiveGroups(jid,sock);if(phoneJid)aliases.add(phoneJid)}catch(err){console.warn('[Identity] verified lookup unavailable',String(err?.message||err).slice(0,100))}
+}
+if(identityConflict){for(const alias of [...aliases])if(canonicalLid(alias))aliases.delete(alias);if(canonicalLid(jid))phoneJid=null}
 if(ownerLid && ownerNumber && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
 const canonicalOwner=ownerNumber+'@s.whatsapp.net'
 aliases.add(ownerLid)
@@ -2403,7 +2425,16 @@ cachedGroupMetadata:jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid)),
 mediaCache:whatsappMediaCache,
 // Baileys usa o conteúdo ORIGINAL para refazer a criptografia quando o
 // destinatário recebe "Aguardando mensagem". Nunca retornar texto vazio.
-getMessage:async key=>outboundRetryStore.getMessage(key),
+getMessage:async key=>{
+  const original=outboundRetryStore.getMessage(key)
+  // Somente estado do reenvio; jamais registrar mensagem, código !web, ID ou contato.
+  console.warn('[WhatsApp Retry] lookup',JSON.stringify({
+    found:Boolean(original),
+    channel:String(key?.remoteJid||'').endsWith('@lid')?'lid':
+      String(key?.remoteJid||'').endsWith('@g.us')?'group':'phone'
+  }))
+  return original
+},
 msgRetryCounterCache,
 connectTimeoutMs:60000,
 defaultQueryTimeoutMs:60000,
@@ -2503,6 +2534,10 @@ trevoHealth.forceFlushCount=Number(trevoHealth.forceFlushCount||0)+1
 }catch(e){console.error('[WhatsApp Sync] recuperação do buffer falhou',e?.message)}
 },40000)
 forceFlushTimer.unref?.()
+sock.ws?.on?.('CB:receipt',node=>{
+  if(String(node?.attrs?.type||'')==='retry')
+    console.warn('[WhatsApp Retry] retry receipt received')
+})
 sock.ws?.on?.('CB:message',()=>{
 trevoHealth.lastRawMessageAt=Date.now()
 trevoHealth.rawMessagesSeen=Number(trevoHealth.rawMessagesSeen||0)+1
@@ -9797,6 +9832,11 @@ if(sendMs>=1250) console.warn('[CommandLatency]',JSON.stringify({phase:'whatsapp
 })
 }
 const isGroup=chat.endsWith('@g.us')
+if(canonicalLid(sender)){
+console.warn('[Identity] unresolved LID blocked')
+await reply('🔐 Não consegui confirmar sua identidade WhatsApp. Nenhuma conta nova será criada. Envie *!perfil* no grupo AlphaBot e tente novamente no privado.')
+continue
+}
 setPlayerGroupContext(sender,isGroup?chat:null)
 // Caminho rapido do Quiz Pokemon: nenhuma consulta de missao, emprestimo,
 // licenca, menu ou perfil antes de registrar a resposta.
