@@ -49,9 +49,11 @@ test('beta convidado: apenas no grupo oficial e com configuração exata',()=>wi
 }));
 test('beta convidado: sessão e troca de código verificam JID E grupo',()=>{
   const api=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8');
-  assert.match(api,/await betaWebAccess\(row\.jid,row\.chat_jid,client\)/);
-  assert.match(api,/await betaWebAccess\(row\.jid,row\.chat_jid\)/);
-  assert.match(api,/if\(!chatJid\)return false/);
+  assert.match(api,/const auth=await betaWebAuthorization\(row\.jid,row\.chat_jid,client\)/);
+  assert.match(api,/if\(!await betaWebAccess\(row\.jid,row\.chat_jid\)\) return null/);
+  assert.match(api,/if\(group\)return \{allowed:await siegeBetaGuestAccess\(client,\{jid,chat:group\}\),group\}/);
+  assert.match(api,/recoverAuthorizedBetaGroup\(client,jid,/);
+  assert.match(api,/return \{allowed:Boolean\(previous\),group:previous\}/);
   const siege=readFileSync(new URL('../src/neon/clan-siege.js',import.meta.url),'utf8');
   assert.match(siege,/const approved=await siegeBetaAuthorizedSet\(conn\)/);
   assert.match(siege,/t\.jids\.some\(jid=>!approved\.has\(String\(jid\)\)\)/);
