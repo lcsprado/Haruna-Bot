@@ -1536,6 +1536,15 @@ export async function raidRound(chat,level){
         }
       }
 
+      // Recuperar pet que entrou com 0 HP, antes de roundActive barrar todo o fluxo.
+      // Consumo e cura permanecem transacionais, com limite diário já existente.
+      const entryPetHeal=await autoHealRaidEntryCombatPet({
+        client:c,player:p,choosePotion:raidPetPotion,persistPet:persistRaidCombatPet
+      })
+      if(entryPetHeal){
+        events.push({type:'pet_auto_heal',jid:p.jid,name:p.name,
+          petName:p.pet.name,autoPetHeal:entryPetHeal})
+      }
       let raidAutoPetEnergy=null
       if(p.pet&&Number(p.pet.hp)>0&&Number(p.pet.energy)<1){
         // Recarrega apenas ao esgotar; debita exatamente um energético sob lock.
@@ -1551,15 +1560,6 @@ export async function raidRound(chat,level){
         }
       }
       if(raidAutoPetEnergy) events.push({type:'pet_energy_auto',jid:p.jid,name:p.name,...raidAutoPetEnergy})
-      // Recuperar pet que entrou com 0 HP, antes de roundActive barrar todo o fluxo.
-      // Consumo e cura permanecem transacionais, com limite diário já existente.
-      const entryPetHeal=await autoHealRaidEntryCombatPet({
-        client:c,player:p,choosePotion:raidPetPotion,persistPet:persistRaidCombatPet
-      })
-      if(entryPetHeal){
-        events.push({type:'pet_auto_heal',jid:p.jid,name:p.name,
-          petName:p.pet.name,autoPetHeal:entryPetHeal})
-      }
       if(p.pet){
         p.pet.roundActive=Number(p.pet.energy)>0&&Number(p.pet.hp)>0
         if(p.pet.roundActive){
