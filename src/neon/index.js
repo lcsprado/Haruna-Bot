@@ -1320,6 +1320,7 @@ async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
 if(!jid) return {jid,aliases:[]}
 const aliases=new Set([jid])
 let phoneJid=jid.endsWith('@s.whatsapp.net') ? canonicalPlayerJid(jid) : null
+let identityConflict=false
 const key=msg?.key||{}
 const jidIsMessageSender=jid===key.participant || jid===key.remoteJid
 if(jidIsMessageSender){
@@ -1344,7 +1345,7 @@ if(pair && (pair.lid===canonicalLid(jid) || pair.phone===canonicalPhone(jid))){
     aliases.add(pair.lid)
     aliases.add(pair.phone)
     phoneJid=pair.phone
-  }
+  }else identityConflict=true
 }
 }
 }catch{}
@@ -1366,16 +1367,17 @@ if(phoneJid){
     if(!canonicalLid(alias))continue
     try {
       const accepted=await verifiedLidDirectory.record(alias,phoneJid,'baileys-lid-mapping')
-      if(!accepted && canonicalLid(jid)===canonicalLid(alias))phoneJid=null
+      if(!accepted){identityConflict=true;if(canonicalLid(jid)===canonicalLid(alias))phoneJid=null}
     }catch(err){
       console.warn('[Identity] trusted alias persistence unavailable',String(err?.message||err).slice(0,100))
       if(canonicalLid(jid)===canonicalLid(alias))phoneJid=null
     }
   }
 }
-if(!phoneJid && canonicalLid(jid)){
+if(!phoneJid && canonicalLid(jid) && !identityConflict){
 try{phoneJid=await verifiedLidDirectory.lookup(jid) || await verifiedLidDirectory.recoverFromActiveGroups(jid,sock);if(phoneJid)aliases.add(phoneJid)}catch(err){console.warn('[Identity] verified lookup unavailable',String(err?.message||err).slice(0,100))}
 }
+if(identityConflict){for(const alias of [...aliases])if(canonicalLid(alias))aliases.delete(alias);if(canonicalLid(jid))phoneJid=null}
 if(ownerLid && ownerNumber && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
 const canonicalOwner=ownerNumber+'@s.whatsapp.net'
 aliases.add(ownerLid)
