@@ -19,6 +19,7 @@ import {groupFlashPolicy} from './group-flash-policy.js'
 import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
+import {routePrivateReply} from './private-reply-routing.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
@@ -9776,7 +9777,9 @@ if(preSendMs>=1250){
 }
 }
 const sentAt=Date.now()
-return Promise.resolve().then(()=>sock.sendMessage(chat,{text,...extra},{quoted:msg}))
+const destination=routePrivateReply(chat,sender)
+if(destination.normalized) console.warn('[WhatsApp Reply] LID privado normalizado para PN; sem quoted cruzado')
+return Promise.resolve().then(()=>sock.sendMessage(destination.jid,{text,...extra},destination.quoted?{quoted:msg}:undefined))
 .catch(err=>{
   // A venda ou ação pode JÁ TER sido confirmada pelo banco: nunca dizer
   // "operação falhou" por causa de transporte nem executá-la uma segunda vez.
