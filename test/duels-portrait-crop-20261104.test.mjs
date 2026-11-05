@@ -49,7 +49,8 @@ test('personagem ativo da colaboração usa retrato próprio e classe continua d
 });
 
 test('PWA usa nova versão de CSS, JS e cache após a correção',()=>{
-  assert.match(html,/styles\.css\?v=20261104-duel-portrait-v1/);
-  assert.match(html,/app\.js\?v=20261104-duel-portrait-v1/);
+  assert.match(html,/styles\.css\?v=20261105-siege-controls-v1/);
+  assert.match(html,/app\.js\?v=20261105-session-reentry-v1/);
   assert.match(sw,/duel-portrait-v1/);
+  assert.match(sw,/session-reentry-v1/);
 });
