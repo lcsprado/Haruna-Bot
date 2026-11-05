@@ -1,0 +1,36 @@
+name: Alpha Bot - retirada coletiva de expedicoes pet
+
+on:
+  pull_request:
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/pet-expedition-exit-20261105.test.mjs'
+      - 'test/pet-expedition-exit-all-20261105.test.mjs'
+      - '.github/workflows/pet-expedition-exit-all.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/pet-expedition-exit-20261105.test.mjs'
+      - 'test/pet-expedition-exit-all-20261105.test.mjs'
+      - '.github/workflows/pet-expedition-exit-all.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar sintaxe dos arquivos modificados
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check test/pet-expedition-exit-all-20261105.test.mjs
+      - name: Testar retirada individual e coletiva
+        run: node --test test/pet-expedition-exit-20261105.test.mjs test/pet-expedition-exit-all-20261105.test.mjs
