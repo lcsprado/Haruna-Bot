@@ -10328,7 +10328,7 @@ if(isGroup){
   }
   const pending=await prepareWebGroupLink(sender,chat)
   const remainingMinutes=Math.max(1,Math.ceil((Number(pending.expiresAt)-Date.now())/60000))
-  await reply('🔐 Para receber o código do Alpha RPG, abra a conversa privada com o Alpha Bot e envie *!web*.\\n✅ O vínculo com este grupo foi reservado por *'+remainingMinutes+' minutos*.\\n🔒 Nenhum código ou link de acesso será mostrado no grupo.')
+  await reply('🔐 Para receber o código do Alpha RPG, abra a conversa privada com o Alpha Bot e envie *!web*.\n✅ O vínculo com este grupo foi reservado por *'+remainingMinutes+' minutos*.\n🔒 Nenhum código ou link de acesso será mostrado no grupo.')
   continue
 }
 const linkedGroup=await consumePendingWebGroupLink(sender)
@@ -10338,9 +10338,9 @@ const groupLine=link.chatJid
 ? '🔗 Seu acesso foi vinculado ao grupo onde você solicitou o link.'
 : 'ℹ️ Código gerado no privado. Para vincular Bosses/Raids do grupo, use *!web* no grupo e depois *!web* aqui no privado.'
 const urlLine=link.url
-? `\\n🌐 *TOQUE AQUI PARA ENTRAR DIRETO:*\\n${link.url}`
-: '\\n🌐 Abra o RPG Web e informe este código na tela de conexão.'
-const privateMessage=`🌐 *CONECTAR ALPHA RPG WEB*\\n\\n🔐 Código: *${link.code}*\\n⏳ Expira em: *${expiresMin} min*\\n\\n${groupLine}${urlLine}\\n\\n✅ O link acima faz a conexão automaticamente.\\n⚠️ O código é de uso único. Não envie para outras pessoas.`
+? `\n🌐 *TOQUE AQUI PARA ENTRAR DIRETO:*\n${link.url}`
+: '\n🌐 Abra o RPG Web e informe este código na tela de conexão.'
+const privateMessage=`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ O link acima faz a conexão automaticamente.\n⚠️ O código é de uso único. Não envie para outras pessoas.`
 await reply(privateMessage)
 continue
 }
