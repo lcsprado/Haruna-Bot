@@ -1,0 +1,21 @@
+name: Web Adoption Removal API
+on:
+  push:
+    branches:
+      - fix/web-api-disable-common-pet-adoption-20261105
+  pull_request:
+    paths:
+      - 'src/neon/web-api.js'
+      - 'test/web-api-common-adoption-disabled-20261105.test.mjs'
+permissions:
+  contents: read
+jobs:
+  verify-adoption-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --check src/neon/web-api.js
+      - run: node --test test/web-api-common-adoption-disabled-20261105.test.mjs
