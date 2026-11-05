@@ -9,8 +9,8 @@ import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const TEAM_TACTICS_VERSION=2; // novas guerras apenas; partidas antigas preservam regras v1
-const DAILY_CREATED_BY='system:siege-daily-20h';
-const DAILY_OPEN_GRACE_MS=15*60*1000; // Free Render can wake after 21h; never start after 21h15.
+const DAILY_CREATED_BY='system:siege-daily-20h'; // Identificador histórico preservado para idempotência e premiações antigas.
+const DAILY_OPEN_GRACE_MS=15*60*1000; // Janela da quarta-feira 21h-21h15; tolera despertar do Render.
 const ACTIONS=new Set(['attack','defend','repair','spy']);
 const siegeGroup=()=>String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||'').trim();
 const ON=()=>process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\.us$/.test(siegeGroup());
@@ -21,12 +21,15 @@ export const isClanSiegeEnabled=()=>ON();
 // Data na mesma zona do bot, sem depender da TZ do container (Render pode estar em UTC).
 export function siegeDailySchedule(nowMs=now()){
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{
-    timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+    timeZone:'America/Sao_Paulo',weekday:'short',year:'numeric',month:'2-digit',day:'2-digit'
   }).formatToParts(new Date(nowMs)).map(p=>[p.type,p.value]));
   const day=[parts.year,parts.month,parts.day].join('-');
   const startsAt=Date.parse(day+'T21:00:00-03:00');
-  return {day,startsAt,endsAt:startsAt+24*60*60*1000,
-    opening:nowMs>=startsAt&&nowMs<startsAt+DAILY_OPEN_GRACE_MS};
+  // Abertura exclusiva de quarta-feira (dia local do Brasil): nenhuma guerra diária.
+  // Nunca use getUTCDay() no instante das 21h: em UTC já é quinta-feira.
+  const isWednesday=parts.weekday==='Wed';
+  return {day,isWednesday,startsAt,endsAt:startsAt+24*60*60*1000,
+    opening:isWednesday&&nowMs>=startsAt&&nowMs<startsAt+DAILY_OPEN_GRACE_MS};
 }
 export async function ensureClanSiegeSchema(){
   if(!schemaPromise)schemaPromise=(async()=>{
@@ -482,11 +485,11 @@ export async function clanSiegeFortressUpgrade(session,stat){
 }
 export async function clanSiegeChallenge(session){
   gate();group(session);
-  throw new Error('O Cerco agora começa automaticamente às 20h de Brasília. Não é preciso desafiar.');
+  throw new Error('O Cerco começa automaticamente somente às quartas-feiras, 21h de Brasília. Não é preciso desafiar.');
 }
 export async function clanSiegeAccept(session){
   gate();group(session);
-  throw new Error('Aceitação manual desativada. A guerra começa automaticamente às 20h de Brasília.');
+  throw new Error('Aceitação manual desativada. A guerra acontece somente às quartas-feiras, 21h de Brasília.');
 }
 export async function clanSiegeMove(session,action,target='castle'){
   gate();const chat=group(session);await ensureClanSiegeSchema();
