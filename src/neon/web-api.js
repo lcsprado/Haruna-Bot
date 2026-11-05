@@ -49,6 +49,7 @@ import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
+const PENDING_WEB_GROUP_TTL_MS = 10 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 let webTablesReady = false
 let webTablesPromise = null
@@ -112,6 +113,15 @@ async function ensureWebTables(){
 
       CREATE INDEX IF NOT EXISTS web_sessions_jid_idx
         ON web_sessions(jid,expires_at DESC);
+
+      CREATE TABLE IF NOT EXISTS web_pending_group_links(
+        jid TEXT PRIMARY KEY,
+        chat_jid TEXT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        created_at BIGINT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS web_pending_group_links_expiry_idx
+        ON web_pending_group_links(expires_at);
     `)
     webTablesReady=true
   })().finally(()=>{ webTablesPromise=null })
@@ -129,6 +139,37 @@ function makeLinkCode(){
   let code=''
   for(let i=0;i<8;i++) code+=alphabet[bytes[i]%alphabet.length]
   return code
+}
+
+// !web no grupo somente armazena um contexto temporário. A credencial Web
+// é criada exclusivamente em resposta a uma mensagem recebida no privado,
+// evitando o envio proativo que alguns aparelhos exibem como "Aguardando".
+export async function prepareWebGroupLink(jid,chatJid){
+  const player=String(jid||'').trim()
+  const group=cleanChatJid(chatJid)
+  if(!player.endsWith('@s.whatsapp.net') || !group) throw new Error('Não foi possível confirmar o vínculo privado com o grupo.')
+  await ensureWebTables()
+  const issuedAt=now()
+  await db.query(`
+    INSERT INTO web_pending_group_links(jid,chat_jid,expires_at,created_at)
+    VALUES($1,$2,$3,$4)
+    ON CONFLICT(jid) DO UPDATE
+      SET chat_jid=EXCLUDED.chat_jid,
+          expires_at=EXCLUDED.expires_at,
+          created_at=EXCLUDED.created_at
+  `,[player,group,issuedAt+PENDING_WEB_GROUP_TTL_MS,issuedAt])
+  return {expiresAt:issuedAt+PENDING_WEB_GROUP_TTL_MS}
+}
+
+export async function consumePendingWebGroupLink(jid){
+  const player=String(jid||'').trim()
+  if(!player.endsWith('@s.whatsapp.net')) return null
+  await ensureWebTables()
+  const result=await db.query(
+    'DELETE FROM web_pending_group_links WHERE jid=$1 AND expires_at>$2 RETURNING chat_jid',
+    [player,now()]
+  )
+  return cleanChatJid(result.rows[0]?.chat_jid)
 }
 
 export async function createWebLinkCode(jid,chatJid=null){
