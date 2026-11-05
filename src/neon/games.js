@@ -1541,8 +1541,9 @@ export async function raidRound(chat,level){
       // de avaliar roundActive. A versão anterior ignorava permanentemente HP=0.
       // Não gasta poção se também não houver energia para participar.
       if(p.pet&&Number(p.pet.hp)<=0){
+        // Sonda sem lock para não inverter a ordem de travas de poções/energéticos.
         const canFight=Number(p.pet.energy)>0||Boolean((await c.query(
-          "SELECT 1 FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0 FOR UPDATE",
+          "SELECT 1 FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0",
           [p.jid]
         )).rows[0])
         if(canFight){
@@ -3184,7 +3185,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     let autoPetHeal=null
     if(usePet&&petRow&&Number(petRow.hp)<=0){
       const canFight=Number(petRow.energy)>=2||Boolean((await c.query(
-        "SELECT 1 FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0 FOR UPDATE",
+        "SELECT 1 FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0",
         [jid]
       )).rows[0])
       if(canFight)autoPetHeal=await healBossCombatPet(c,jid,petRow)
