@@ -4,6 +4,7 @@ import { db, ensureUser, claimCooldown, getDoubleEventMultiplier, grantExpInTran
 import {getOwnerEventMultiplier} from './owner-event-center.js'
 import {initDailyV2,getDailyMissionsV2,progressDailyMissionV2,claimDailyMissionsV2} from './daily-v2.js'
 import {businessIntervalGross,businessCollectionElapsedSeconds} from './business-profit.js'
+import {groupWeeklyChoice} from './group-weekly-mission-policy.js'
 
 const nowSql='(EXTRACT(EPOCH FROM NOW())::BIGINT)'
 
@@ -1542,15 +1543,19 @@ function groupWeekKey(){
 
 export async function getGroupMission(chatJid){
   const week=groupWeekKey()
-  const choices=[
-    {type:'work',title:'Trabalhar juntos',target:40,reward:50000},
-    {type:'battle',title:'Batalhar juntos',target:25,reward:60000},
-    {type:'quiz',title:'Acertar quizzes juntos',target:30,reward:55000}
-  ]
-  const seed=[...chatJid+week].reduce((a,x)=>a+x.charCodeAt(0),0)
-  const m=choices[seed%choices.length]
+  const m=groupWeeklyChoice(chatJid,week)
+  // Missões de quiz abertas são convertidas sem apagar progresso, membros ou
+  // resgates. Missões concluídas e semanas anteriores são preservadas.
+  // Se o progresso legado superar a nova meta, falta uma ação válida para fechar.
   await db.query(`INSERT INTO group_missions(chat_jid,week_key,mission_type,title,target,reward_cash)
-    VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(chat_jid,week_key) DO NOTHING`,
+    VALUES($1,$2,$3,$4,$5,$6)
+    ON CONFLICT(chat_jid,week_key) DO UPDATE SET
+      mission_type=EXCLUDED.mission_type,
+      title=EXCLUDED.title,
+      target=GREATEST(EXCLUDED.target,group_missions.progress+1),
+      reward_cash=EXCLUDED.reward_cash
+    WHERE group_missions.mission_type='quiz'
+      AND group_missions.completed=FALSE`,
     [chatJid,week,m.type,m.title,m.target,m.reward])
   const {rows}=await db.query('SELECT * FROM group_missions WHERE chat_jid=$1 AND week_key=$2',[chatJid,week])
   return rows[0]
