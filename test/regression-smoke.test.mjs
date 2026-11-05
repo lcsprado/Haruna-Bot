@@ -339,8 +339,10 @@ test('web pet gallery covers every catalog species with framed art',()=>{
   for(const species of ['oraculo_pedra','pantera_vulcanica','espectro_abissal','kraken_aco','esfinge_titanica','quimera_abissal','paladino_astral','lince_celestial','arcanjo_eclipse','colosso_alpha','oraculo_alpha']){
     assert.ok(app.includes("'pet-special-"+species+"'"),'missing exclusive special art for '+species)
   }
-  assert.ok(app.includes('data-pet-adopt-direct'),'adoption cards must have a direct adoption action')
-  assert.ok(app.includes('data-pet-adopt-name'),'adoption cards must allow naming before adoption')
+  // A adoção comum foi encerrada; somente coleção adquirida e invocação de Raid permanecem.
+  assert.ok(!app.includes('data-pet-adopt-direct'),'adoption cards must not return to the Web')
+  assert.ok(!app.includes('data-pet-adopt-name'),'pet adoption naming must not return')
+  assert.ok(app.includes("['raid','✨ Raid / especiais"),'Raid catalog must remain available')
   assert.ok(app.includes('data-pet-rename='),'every owned pet card must expose rename by collection id')
   assert.ok(webApi.includes("renamePet(jid,String(body.name||''),body.petId==null?null:positiveInt(body.petId,'Pet'))"),'web rename must target the selected pet id')
   assert.ok(db.includes('export async function renamePet(jid,name,petId=null)'),'backend must support renaming any collection pet')
