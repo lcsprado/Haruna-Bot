@@ -25,3 +25,10 @@ test('mantém mensagens privadas que já usam PN',()=>{
     jid:'5511999998888@s.whatsapp.net',quoted:true,normalized:false
   })
 })
+
+
+test('normaliza sufixo de aparelho em PN resolvido',()=>{
+  assert.deepEqual(routePrivateReply('12345@lid','5511999998888:8@s.whatsapp.net'),{
+    jid:'5511999998888@s.whatsapp.net',quoted:false,normalized:true
+  })
+})
