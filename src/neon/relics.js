@@ -26,6 +26,13 @@ export async function initRelics(){
     item_id TEXT NOT NULL,
     updated_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
   )`)
+  // Mantém o catálogo persistido em sincronia com o efeito real da relíquia.
+  // Não altera inventários, titularidade nem a insígnia ativa dos jogadores.
+  await db.query(
+    'UPDATE items SET description=$1 WHERE id=$2',
+    ['+6% dano Boss/Raid; +2,5 p.p. de crítico Boss/Raid; -1,5% de dano recebido em Raid. Equipe em !reliquias. Não acumula com outra insígnia; sem PvP.',
+      'reliquia_mercado_negro_20261105']
+  )
 }
 export async function activeRelic(queryable,jid){
   const r=await queryable.query('SELECT item_id FROM player_active_relics WHERE jid=$1',[jid])
