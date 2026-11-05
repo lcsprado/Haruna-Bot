@@ -39,7 +39,8 @@ test('cerco diario: 6 rodadas de 5 min, sem acelerar se todos agirem e sem mudar
   assert.match(source,/const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5\*60\*1000, MAX_REPAIR=2/);
   assert.match(source,/match\.created_by===DAILY_CREATED_BY\|\|moves\.length<4/);
   assert.match(source,/match\.created_by===DAILY_CREATED_BY\?Number\(match\.round_ends_at\)\+ROUND_MS/);
-  assert.match(source,/grantFirstSiegeInsignias\(conn,updated\)/);
+  assert.doesNotMatch(source,/grantFirstSiegeInsignias\(conn,updated\)/);
+  assert.match(source,/grantSiegeEventRewards\(conn,updated\)/);
   const round=resolveSiegeRound({blue_clan_id:'5',red_clan_id:'7',
     blue_hp:2000,red_hp:2000,blue_repairs:0,red_repairs:0,blue_spy:0,red_spy:0,round:1},[]);
   assert.equal(round.finished,false);
