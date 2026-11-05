@@ -14,6 +14,7 @@ import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount} from './weekly-g
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
+import {autoHealRaidEntryCombatPet} from './raid-entry-pet-heal.js'
 import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 import {playerPotionHealAmount} from './player-potions.js'
 import {PECADOS_HERO_IDS,PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
@@ -1550,6 +1551,15 @@ export async function raidRound(chat,level){
         }
       }
       if(raidAutoPetEnergy) events.push({type:'pet_energy_auto',jid:p.jid,name:p.name,...raidAutoPetEnergy})
+      // Recuperar pet que entrou com 0 HP, antes de roundActive barrar todo o fluxo.
+      // Consumo e cura permanecem transacionais, com limite diário já existente.
+      const entryPetHeal=await autoHealRaidEntryCombatPet({
+        client:c,player:p,choosePotion:raidPetPotion,persistPet:persistRaidCombatPet
+      })
+      if(entryPetHeal){
+        events.push({type:'pet_auto_heal',jid:p.jid,name:p.name,
+          petName:p.pet.name,autoPetHeal:entryPetHeal})
+      }
       if(p.pet){
         p.pet.roundActive=Number(p.pet.energy)>0&&Number(p.pet.hp)>0
         if(p.pet.roundActive){
