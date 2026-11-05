@@ -1689,15 +1689,16 @@ function renderPets(){
   const valid=Boolean(slots[0])&&(!slots[2]||Boolean(slots[1]))&&
     new Set(slots.filter(Boolean)).size===slots.filter(Boolean).length &&
     new Set(slots.filter(Boolean).map(id=>pets.find(p=>Number(p.id)===Number(id))?.species)).size===slots.filter(Boolean).length;
-  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo servidor do WhatsApp.</p></div><div class="hero-actions"><span class="tag good">'+raidCount+' pets de Raid / invocação</span></div></div>'+
-    '<div class="card pet-team-composer"><div class="section-title"><div><h3>🛡️ Montar Time Pet</h3><small>Escolha por estilo, bônus, poder e energia</small></div></div>'+
+  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>Coleção e invocações sincronizadas com o WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" type="button" data-pet-tab="raid">✨ Invocar pets de Raid</button><span class="tag good">'+raidCount+' pets de Raid</span></div></div>'+
+    '<div class="tabs section pet-navigation-tabs" role="tablist" aria-label="Coleção e invocações">'+tabs.map(t=>'<button role="tab" aria-selected="'+(ui.petTab===t[0]?'true':'false')+'" class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
+    (ui.petTab==='owned' ? '<div class="card pet-team-composer"><div class="section-title"><div><h3>🛡️ Montar Time Pet</h3><small>Escolha por estilo, bônus, poder e energia</small></div></div>'+
       '<div class="pet-team-slots">'+[1,2,3].map(teamSlot).join('')+'</div>'+
       '<div class="section">'+petTeamPreviewMarkup()+'</div>'+
       '<div class="pet-team-save-bar"><button class="btn primary" type="button" data-pet-team-save '+(!hasChanges||!valid||ui.petTeamSaving?'disabled':'')+'>'+(ui.petTeamSaving?'Salvando…':'✓ Salvar time')+'</button>'+
       (hasChanges?'<button class="btn" type="button" data-pet-team-reset>Desfazer escolhas</button>':'<small>Escolha os pets para comparar as sinergias antes de salvar.</small>')+'</div>'+
-    '</div>'+
-    '<div class="tabs section">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
-    '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">Nenhum pet nesta seção.</div>')+'</div>'+
+    '</div>' : '')+
+    (ui.petTab==='raid'?'<div class="section-title pet-raid-title"><h3>✨ Invocações lendárias de Raid</h3><small>Raids 10–70 • materiais e chances exibidos em cada pet</small></div>':'')+
+    '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">'+(ui.petTab==='raid'?'Catálogo de Raids indisponível. Atualize a Web ou tente novamente.':'Nenhum pet na sua coleção.')+'</div>')+'</div>'+
     petTeamPickerModal();
 }
 function itemIcon(item){
@@ -3172,7 +3173,11 @@ function bind(){
   document.querySelectorAll('.inventory-tabs').forEach(tabs=>tabs.addEventListener('scroll',()=>{ui.inventoryTabsScrollLeft=tabs.scrollLeft;},{passive:true}));
   document.querySelectorAll('[data-contract-accept]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.accept',{number:Number(x.dataset.contractAccept)},{success:'📜 Contrato aceito.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-contract-claim]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.claim',{}, {success:'🎁 Contrato resgatado.'});await loadContracts();render();}catch{render();}});
-  document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
+  document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{
+    ui.petTab=x.dataset.petTab==='raid'?'raid':'owned';
+    render();
+    window.scrollTo({top:0,behavior:'auto'});
+  });
   // A custom accessible picker replaces the native Android select menu.
   document.querySelectorAll('[data-team-picker-open]').forEach(x=>x.onclick=()=>{
     ui.petTeamPickerSlot=Number(x.dataset.teamPickerOpen);
