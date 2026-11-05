@@ -13,7 +13,7 @@ import {
   listMyMarketListings, getGroupLicense, LEGENDARY_PET_SUMMONS, PET_HP_PROFILES,
   petStyleLabel, getEquipmentInfo, equipmentStatsAtLevel, getDoubleRewardEvent, getLuckyBoxEvent,
   claimDaily, work, deposit, withdraw, buyItem, sellItem, equipItem, upgradeEquipment, listStarForgeWeapons, forgeWeaponStar,
-  usePotion, usePetPotion, usePetEnergyItem, adoptPet, selectPet, renamePet, petAction,
+  usePotion, usePetPotion, usePetEnergyItem, selectPet, renamePet, petAction,
   setPetTeam, summonLegendaryPet, getCombatProfile, setPlayerClass, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
   transfer, battle, petDuel, dungeon, robPlayer,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
@@ -1319,7 +1319,7 @@ async function runAction(session,name,body={}){
 
     case 'pet.heal': return usePetPotion(jid,body.itemId?String(body.itemId):null,body.petId==null?null:positiveInt(body.petId,'Pet'))
     case 'pet.energy': return usePetEnergyItem(jid,String(body.itemId||'energetico_pet'))
-    case 'pet.adopt': return adoptPet(jid,String(body.species||''),String(body.name||'Alpha'))
+    case 'pet.adopt': throw new Error('Adoção comum foi encerrada. Use invocações de Raid ou eventos para obter pets.')
     case 'pet.select': return selectPet(jid,positiveInt(body.petId,'Pet'))
     case 'pet.rename': return renamePet(jid,String(body.name||''),body.petId==null?null:positiveInt(body.petId,'Pet'))
     case 'pet.action': return petAction(jid,String(body.action||''))
