@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261103-garage-photo-fit-v6-siege-tactics-v2-fortress-v1-fronts-v4-repair-v5-guidance-garage-alpha2-v1-siege-v5-war-selection-20261104-duel-portrait-v1-auth-isolation-v1-siege-2130-weekly-saturday-v1';
+const CACHE='alpha-rpg-pwa-20261103-garage-photo-fit-v6-siege-tactics-v2-fortress-v1-fronts-v4-repair-v5-guidance-garage-alpha2-v1-siege-v5-war-selection-20261104-duel-portrait-v1-auth-isolation-v1-siege-2130-weekly-saturday-v1-pet-exclusives-20261105-v1';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
@@ -8,10 +8,12 @@ const SHELL=[
   '/assets/alpha-item-armors.webp',
   '/assets/alpha-item-specials.webp',
   '/assets/alpha-special-pets.webp',
+  '/assets/event-pets.webp',
   '/assets/pets/aguia.webp',
   '/assets/pets/baleia-colossal.webp',
   '/assets/pets/dragao.webp',
-  '/assets/pets/fenix-celestial.webp',
+  '/assets/pets/fenix-celestial-v2.webp',
+  '/assets/pets/grifo-celestial-v2.webp',
   '/assets/pets/gato.webp',
   '/assets/pets/kitsune.webp',
   '/assets/pets/leao.webp',
@@ -20,6 +22,17 @@ const SHELL=[
   '/assets/pets/raposa.webp',
   '/assets/pets/serpente-cosmica.webp',
   '/assets/pets/tigre.webp',
+  '/assets/pets/cervo_aurora_viva.webp',
+  '/assets/pets/guardiao_nucleo_vital.webp',
+  '/assets/pets/quimera_rubra.webp',
+  '/assets/pets/serafim_vida_abissal.webp',
+  '/assets/pets/leviata_eternidade.webp',
+  '/assets/pets/corcel_espectral_halloween.webp',
+  '/assets/pets/manticora_eclipse_20261030.webp',
+  '/assets/pets/guaxinim_errante_20261027.webp',
+  '/assets/pets/onca_eclipse_20261026.webp',
+  '/assets/pets/lince_astral.webp',
+  '/assets/pets/raposa_astral.webp'
   '/assets/pet-portraits/coelho.svg',
   '/assets/pet-portraits/papagaio.svg',
   '/assets/pet-portraits/hamster.svg',

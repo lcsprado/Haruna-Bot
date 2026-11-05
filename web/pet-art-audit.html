@@ -1,15 +1,71 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>QA — Artes dos Pets Alpha RPG</title><style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{font-family:system-ui,sans-serif;background:#060b12;color:#e5efff;margin:0;padding:22px}header{max-width:1400px;margin:auto auto 20px}h1{font-size:22px;margin:0 0 6px}p{color:#9bb0c7;font-size:13px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:15px;max-width:1400px;margin:auto}.card{min-width:0;padding:10px;border:1px solid #2a3e59;border-radius:17px;background:linear-gradient(165deg,#111d2d,#080d15);box-shadow:0 12px 24px #0004}.card img{display:block;width:100%;aspect-ratio:1/1;object-fit:contain;border-radius:12px;outline:1px solid #263a54}h2{font-size:13px;margin:12px 3px 5px}small{font-size:11px;color:#82a0bb;margin:0 3px}.bad{border-color:#e66c62}button{border:1px solid #405675;color:white;background:#17283c;border-radius:10px;padding:8px 12px}</style></head><body>
-<header><h1>Alpha RPG — auditoria visual de pets</h1><p>Os 34 retratos do pacote de correção. Cada card mostra o arquivo final em tamanho de uso mobile.</p><button onclick="location.reload()">Recarregar artes</button></header><div class="grid" id="grid"></div>
-<script>
-const names=["coelho","papagaio","hamster","coruja","golfinho_celestial","moreia_sombria","gaviao","guepardo","gazela_mistica","cervo_mistico","cavalo_guerra","unicornio","colosso_cristal","salamandra_infernal","rinoceronte_titanico","guardiao_obsidiana","cerbero_carmesim","fenix_gelo","fenix_alpha","dragao_corrompido","imperador_abissal","leviata_gelo","lobo_abismo","urso_runico","golem_ancestral","corvo_abissal","tubarao_abissal","tigre_lunar","leao_solar","fenix_fogo","dragao_vulcanico","rinoceronte","colosso_alpha","serpente_cosmica"];
-const grid=document.getElementById('grid');
-for(const name of names){
- const card=document.createElement('article');card.className='card';
- const img=document.createElement('img');img.src='/assets/pet-portraits/'+name+'.svg?v=20261006-qa1';img.alt=name;img.loading='lazy';
- img.onerror=()=>{card.classList.add('bad');card.insertAdjacentHTML('beforeend','<small>❌ Falha ao carregar</small>')};
- const title=document.createElement('h2');title.textContent=name.replaceAll('_',' ').replace(/\b\w/g,x=>x.toUpperCase());
- const caption=document.createElement('small');caption.textContent=name;
- card.append(img,title,caption);grid.append(card);
-}
-</script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>QA — Artes dos Pets Alpha RPG</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body{background:#060b12;color:#e5efff;margin:0;padding:22px;font-family:system-ui,sans-serif}
+    header{max-width:1400px;margin:0 auto 20px}h1{font-size:22px;margin:0 0 6px}
+    header p{color:#9bb0c7;font-size:13px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:15px;max-width:1400px;margin:auto}
+    .card{min-width:0;padding:10px;border:1px solid #2a3e59;border-radius:17px;background:linear-gradient(165deg,#111d2d,#080d15);box-shadow:0 12px 24px #0004}
+    .card .pet-portrait{height:180px!important;min-height:180px!important;margin:0!important}
+    .card h2{font-size:13px;margin:12px 3px 5px;color:#e5efff}.card small{font-size:11px;color:#82a0bb;margin:0 3px}
+    .card.bad{border-color:#e66c62}.card.good{border-color:#3b765e}
+    button{border:1px solid #405675;color:white;background:#17283c;border-radius:10px;padding:8px 12px}
+    #renderer{display:none}
+    @media(max-width:610px){body{padding:12px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.card{padding:7px}.card .pet-portrait{height:150px!important;min-height:150px!important}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Alpha RPG — auditoria visual de pets</h1>
+    <p>Retratos exibidos pelo renderizador real da coleção e do Time Pet nesta versão da Web.</p>
+    <button onclick="location.reload()">Recarregar artes</button>
+    <p id="status">Carregando o renderizador atual…</p>
+  </header>
+  <div class="grid" id="grid"></div>
+  <iframe id="renderer" src="/index.html?pet-art-audit=1" title="Renderizador atual dos pets"></iframe>
+  <script>
+    const names=[
+      'cervo_aurora_viva','guardiao_nucleo_vital','quimera_rubra','serafim_vida_abissal','leviata_eternidade',
+      'corcel_espectral_halloween','manticora_eclipse_20261030','guaxinim_errante_20261027',
+      'onca_eclipse_20261026','lince_astral','raposa_astral',
+      'morcego_madrugada','camaleao_lendario','urso_runico',
+      'grifo_celestial','fenix_celestial','gato','coelho','raposa','dragao'
+    ];
+    const grid=document.getElementById('grid');
+    const status=document.getElementById('status');
+    document.getElementById('renderer').addEventListener('load',async event=>{
+      const render=event.currentTarget.contentWindow.alphaPetArtAudit?.render;
+      if(typeof render!=='function'){
+        status.textContent='Falha ao abrir o renderizador atual da Web.';
+        return;
+      }
+      let failed=0;
+      for(const name of names){
+        const card=document.createElement('article');card.className='card';
+        const portrait=document.createElement('div');portrait.className='pet-portrait';
+        portrait.innerHTML=render(name,'pet-official-art');
+        const title=document.createElement('h2');title.textContent=name.replaceAll('_',' ').replace(/\b\w/g,x=>x.toUpperCase());
+        const caption=document.createElement('small');caption.textContent=name;
+        card.append(portrait,title,caption);grid.append(card);
+        const urls=[...portrait.querySelectorAll('img')].filter(img=>!img.classList.contains('pet-image-fallback')).map(img=>img.src);
+        for(const art of portrait.querySelectorAll('.pet-cropped-art')){
+          const match=art.style.backgroundImage.match(/url\(["']?([^"')]+)/);
+          if(match)urls.push(new URL(match[1],location.href).href);
+        }
+        if(!urls.length){card.classList.add('bad');failed++;continue}
+        const loaded=await Promise.all(urls.map(url=>new Promise(resolve=>{
+          const image=new Image();image.onload=()=>resolve(true);image.onerror=()=>resolve(false);image.src=url;
+        })));
+        card.classList.add(loaded.every(Boolean)?'good':'bad');
+        if(!loaded.every(Boolean))failed++;
+      }
+      status.textContent=names.length+' retratos verificados pelo renderizador atual; '+failed+' falha(s) de carregamento.';
+    });
+  </script>
+</body>
+</html>

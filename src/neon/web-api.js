@@ -41,6 +41,7 @@ import {
 } from './progression.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES } from './game-catalog.js'
+import {PECADOS_HERO_IDS} from './sete-pecados-catalog.js'
 import {listPlayableHeroes,setPlayableHeroMode,getPlayableHeroCombatSheet} from './playable-heroes.js'
 import {excludeActiveHeroPet} from './playable-heroes-core.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
@@ -326,7 +327,7 @@ function petCatalog(){
     }))
   )
   const adoptable=ADOPTABLE_PETS.map(p=>({...p,source:'adoption'}))
-  const all=[...adoptable,...legendary]
+  const all=[...adoptable,...legendary].filter(p=>!PECADOS_HERO_IDS.includes(p.species))
   return all.map(p=>({
     ...p,
     style:petStyleLabel(p.species),

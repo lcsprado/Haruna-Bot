@@ -1,4 +1,3 @@
-import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 export const PLAYER_CLASSES = Object.freeze({
   warrior:Object.freeze({id:'warrior',name:'Guerreiro',role:'Equilibrado',hp:70,atk:12,def:11,spd:6,description:'Equilibrado para qualquer conteúdo: boa vida, ataque, defesa e mobilidade.'}),
   assassin:Object.freeze({id:'assassin',name:'Assassino',role:'Dano veloz',hp:35,atk:18,def:6,spd:16,description:'Especialista em velocidade e dano rápido, com resistência menor que as classes defensivas.'}),
@@ -24,7 +23,6 @@ export function getPlayerClass(id){
 }
 
 export const PET_STATUS_SPECIALTIES = {
-  ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{label:'🌈 '+p.name+' — 7 Pecados',stats:p.stats,raid:true}])),
   morcego_madrugada:{label:'🦇 Coringa da Madrugada',stats:{crit:6,dodge:5},raid:true},
   corcel_espectral_halloween:{label:'🐎 Corcel Espectral — Halloween',stats:{bossDamage:8,defense:3,dodge:4},raid:true},
   cachorro:{label:'🐶 Guardião',stat:'defense',base:5},
