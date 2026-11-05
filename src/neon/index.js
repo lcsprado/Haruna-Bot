@@ -830,7 +830,7 @@ await new Promise(resolve=>setTimeout(resolve,Math.max(250,Number(r.remainingMs|
 continue
 }
 for(const e of (r.events||[])){
-if(e.type!=='boss'||!e.autoPetHeal)continue
+if(!['boss','pet_auto_heal'].includes(e.type)||!e.autoPetHeal)continue
 const player=String(e.name||'Jogador'),pet=String(e.petName||e.autoPetHeal.petName||'Pet'),potion=String(e.autoPetHeal.name||'Poção')
 const pets=raidPetHealTally.get(player)||new Map()
 const v=pets.get(pet)||{count:0,potions:new Map()}
