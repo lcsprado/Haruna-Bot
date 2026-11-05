@@ -42,7 +42,7 @@ openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
 initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
 addGroupWarning, getGroupWarnings, clearGroupWarnings,
 resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, getSleepOptions, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
-adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, raid50DragonGuaranteeStatus, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
+adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, raid50DragonGuaranteeStatus, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, cancelPetExpedition, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
 proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
 createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
 listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
@@ -5076,7 +5076,7 @@ const commandPages={
 *!passear* — passeia
 *!treinarpet* — treina
 *!aventurapet* — manda para aventura
-*!petaventura* — gasta toda a energia e retorna com dinheiro e XP\n*!expedicaopet ID 2|4|8* — manda um pet reserva em expedição\n*!expedicaopet todos 2|4|8* — envia todos os reservas livres\n*!expedicoespet* — acompanha e recebe pets que retornaram
+*!petaventura* — gasta toda a energia e retorna com dinheiro e XP\n*!expedicaopet ID 2|4|8* — manda um pet reserva em expedição\n*!expedicaopet todos 2|4|8* — envia todos os reservas livres\n*!expedicoespet* — acompanha e recebe pets que retornaram\n*!expedicaopetsair* — escolher um pet e retirar antes do prazo (sem recompensas)
 *!rankpet* — ranking de pets
 *!duelopet @pessoa* — duelo entre pets
 9️⃣ Voltar • 0️⃣ Fechar`,
@@ -5527,6 +5527,24 @@ text+='3️⃣ Reserva: *'+(nowBySlot(3)?.name||'Vazio')+'*\n'
 if(synergy) text+=`\n✨ *SINERGIA ATIVA — ${synergy.label}*\n🎯 Bônus: *${synergy.text}*`
 else if(team.length===3) text+='\n\n🧩 Sem sinergia ativa.'
 await reply(text)
+return true
+}
+if(flow.stage==='pet_expedition_exit_select'){
+const petIds=Array.isArray(flow.data?.petIds)?flow.data.petIds:[]
+const choice=Number(input)
+if(!/^[0-9]+$/.test(input)||!Number.isSafeInteger(choice)||choice<1||choice>petIds.length){
+await reply(`🐾 Escolha um pet de *1 a ${petIds.length}* ou *0 para cancelar*. Nenhuma expedição foi alterada.`)
+return true
+}
+const petId=Number(petIds[choice-1])
+try{
+const out=await cancelPetExpedition(sender,petId)
+clearQuickFlow(chat,sender)
+await reply(`✅ *PET RETIRADO DA EXPEDIÇÃO*\n\n🐾 *${out.petName}* (ID ${out.petId}) está disponível novamente.\n⏱️ Restavam *${duration(out.secondsRemaining)}*.\n⚠️ A viagem foi cancelada sem XP, dinheiro ou itens.\n🧭 Os outros pets continuam em suas expedições.`)
+}catch(err){
+clearQuickFlow(chat,sender)
+await reply('❌ '+(err?.message||'Não foi possível retirar o pet. Use !expedicoespet para conferir.'))
+}
 return true
 }
 if(flow.stage==='pet_select'){
@@ -10712,7 +10730,7 @@ try{
 await sock.groupSettingUpdate(chat,cmd==='fechargrupo'?'announcement':'not_announcement')
 await reply(cmd==='fechargrupo'?'🔒 Grupo fechado. Apenas administradores podem enviar mensagens.':'🔓 Grupo aberto para mensagens.')
 }catch{ await reply('🤖 Preciso ser administrador para alterar essa configuração.') }
-} else if(['pet','pets','adotar','nomepet','petnome','meupet','meuspets','usarpet','equiparpet','timepet','sinergia','sinergias','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet'].includes(cmd)){
+} else if(['pet','pets','adotar','nomepet','petnome','meupet','meuspets','usarpet','equiparpet','timepet','sinergia','sinergias','statuspet','alimentar','banho','descansar','passear','treinarpet','aventurapet','petaventura','rankpet','duelopet','expedicaopet','expedicoespet','expedicaopetsair'].includes(cmd)){
 try{
 const expeditionTraitText=t=>{
 const itemNames={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_p:'Poção Pequena',caixa_sorte:'Caixa da Sorte',caixa_rara:'Caixa Rara'}
@@ -10721,6 +10739,27 @@ if(Number(t?.xp||0)>0) parts.push(`+${Math.round(Number(t.xp)*100)}% XP`)
 if(Number(t?.cash||0)>0) parts.push(`+${Math.round(Number(t.cash)*100)}% dinheiro`)
 if(t?.item&&Number(t?.itemChance||0)>0) parts.push(`${Math.round(Number(t.itemChance)*100)}% chance de ${itemNames[t.item]||t.item}`)
 return parts.length?parts.join(' • '):'sem bônus extra'
+}
+if(cmd==='expedicaopetsair'){
+const requested=String(args[0]||'').trim()
+if(requested){
+if(!/^[0-9]+$/.test(requested))return await reply('🐾 Use *!expedicaopetsair* para escolher um pet na lista ou *!expedicaopetsair ID* para retirada direta.')
+const out=await cancelPetExpedition(sender,Number(requested))
+return await reply(`✅ *PET RETIRADO DA EXPEDIÇÃO*\n\n🐾 *${out.petName}* (ID ${out.petId}) está disponível novamente.\n⏱️ Restavam *${duration(out.secondsRemaining)}*.\n⚠️ A viagem foi cancelada sem XP, dinheiro ou itens.\n🧭 Os outros pets continuam em suas expedições.`)
+}
+const nowSec=Math.floor(Date.now()/1000)
+const all=await getPetExpeditions(sender)
+const active=all.filter(x=>Number(x.ends_at)>nowSec)
+const finished=all.length-active.length
+if(!active.length){
+return await reply(finished?'🧭 Nenhuma expedição em andamento para interromper. Há expedição(ões) concluída(s): use *!expedicoespet* para coletar os prêmios.':'🧭 Você não tem pets em expedição. Use *!expedicaopet* para enviar suas reservas.')
+}
+setQuickFlow(chat,sender,'pet_expedition_exit_select',{petIds:active.map(x=>Number(x.pet_id))},5*60*1000)
+let text='🧭 *RETIRAR PET DA EXPEDIÇÃO*\n\n'
+active.forEach((x,i)=>{text+=`${i+1}️⃣ *${x.pet_name}* — ID ${x.pet_id}\n   ⏱️ Restam *${duration(Math.max(0,Number(x.ends_at)-nowSec))}*\n`})
+text+='\n⚠️ Retirar antes do prazo libera o pet, mas *cancela XP, dinheiro e itens* desta viagem. Outros pets não são afetados.\n\n👉 *Responda somente o número* do pet que deseja retirar.\n0️⃣ Cancelar • Menu válido por 5 minutos.'
+if(finished)text+='\n\n🎁 Você também tem retorno(s) concluído(s). Use *!expedicoespet* para receber.'
+return await reply(text)
 }
 if(cmd==='expedicoespet'){
 const done=await resolvePetExpeditions(sender)
@@ -10736,7 +10775,7 @@ for(const x of active){
 text+=`\n• ID *${x.pet_id}* — *${x.pet_name}* — ${x.trait.label}\n  ⏱️ ${duration(Math.max(0,Number(x.ends_at)-Math.floor(Date.now()/1000)))} restantes\n  🎯 Garantido: *+${Number(x.pet_xp||0)} XP* • *R$ ${fmt(x.cash_reward)}*\n  🎁 Extra: ${expeditionTraitText(x.trait)}\n`
 }
 }else text+='\nNenhum pet está fora agora.'
-text+='\n\n📌 Quando o tempo acabar, use *!expedicoespet* para receber e ver o resultado.\n💡 Enviar reservas: *!expedicaopet todos 8* (ou *!expedicaopet ID 8*).'
+text+='\n\n📌 Quando o tempo acabar, use *!expedicoespet* para receber e ver o resultado.\n💡 Enviar reservas: *!expedicaopet todos 8* (ou *!expedicaopet ID 8*).\n🧭 Retirar um pet antes do prazo: *!expedicaopetsair*.'
 return await reply(text)
 }
 if(cmd==='expedicaopet'){
