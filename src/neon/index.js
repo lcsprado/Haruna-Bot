@@ -20,6 +20,7 @@ import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
 import {routePrivateReply} from './private-reply-routing.js'
+import {createVerifiedLidDirectory,canonicalLid,canonicalPhone,pairFromGroupMember} from './verified-lid-directory.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
@@ -1314,6 +1315,7 @@ return jid
 function normalizedAddressJid(jid){
 return String(jid||'').replace(/:\d+(?=@)/,'')
 }
+const verifiedLidDirectory=createVerifiedLidDirectory(db)
 async function resolvePlayerIdentity(sock,chat,jid,msg=null) {
 if(!jid) return {jid,aliases:[]}
 const aliases=new Set([jid])
@@ -1336,6 +1338,8 @@ const part=(meta?.participants||[]).find(p=>
 [p?.id,p?.lid,p?.phoneNumber,p?.pn,p?.jid]
 .some(value=>normalizedAddressJid(value)===wanted)
 )
+const pair=pairFromGroupMember(part)
+if(pair){await verifiedLidDirectory.record(pair.lid,pair.phone,'group-member-metadata');aliases.add(pair.lid);aliases.add(pair.phone);phoneJid=pair.phone}
 for(const value of [part?.phoneNumber,part?.pn,part?.jid,part?.id,part?.lid]){
 if(!value) continue
 aliases.add(value)
@@ -1355,6 +1359,10 @@ break
 }
 }catch{}
 }
+}
+if(phoneJid){for(const alias of aliases){if(canonicalLid(alias))await verifiedLidDirectory.record(alias,phoneJid,'baileys-lid-mapping')}}
+if(!phoneJid && canonicalLid(jid)){
+try{phoneJid=await verifiedLidDirectory.lookup(jid) || await verifiedLidDirectory.recoverFromActiveGroups(jid,sock);if(phoneJid)aliases.add(phoneJid)}catch(err){console.warn('[Identity] verified lookup unavailable',String(err?.message||err).slice(0,100))}
 }
 if(ownerLid && ownerNumber && [...aliases].some(a=>normalizedAddressJid(a)===ownerLid)){
 const canonicalOwner=ownerNumber+'@s.whatsapp.net'
@@ -9797,6 +9805,11 @@ if(sendMs>=1250) console.warn('[CommandLatency]',JSON.stringify({phase:'whatsapp
 })
 }
 const isGroup=chat.endsWith('@g.us')
+if(canonicalLid(sender)){
+console.warn('[Identity] unresolved LID blocked')
+await reply('🔐 Não consegui confirmar sua identidade WhatsApp. Nenhuma conta nova será criada. Envie *!perfil* no grupo AlphaBot e tente novamente no privado.')
+continue
+}
 setPlayerGroupContext(sender,isGroup?chat:null)
 // Caminho rapido do Quiz Pokemon: nenhuma consulta de missao, emprestimo,
 // licenca, menu ou perfil antes de registrar a resposta.
