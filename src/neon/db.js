@@ -633,6 +633,26 @@ const sourceR=await client.query('SELECT * FROM users WHERE jid=$1 FOR UPDATE',[
 if(!sourceR.rows[0]) continue
 changed=true
 const source=sourceR.rows[0]
+// Preserva os dois perfis e seus ativos ANTES de mesclar e excluir o alias.
+// O snapshot é inserido na mesma transação; sem logs de dados privados.
+await client.query(`
+INSERT INTO trevo_settings(key,value,updated_at)
+SELECT 'lid_identity_merge_backup_v1:'||$2,
+jsonb_build_object(
+  'source_user',to_jsonb(u),
+  'target_user',(SELECT to_jsonb(t) FROM users t WHERE t.jid=$1),
+  'source_wallet',(SELECT to_jsonb(w) FROM wallets w WHERE w.jid=$2),
+  'target_wallet',(SELECT to_jsonb(w) FROM wallets w WHERE w.jid=$1),
+  'source_stats',(SELECT to_jsonb(s) FROM stats s WHERE s.jid=$2),
+  'target_stats',(SELECT to_jsonb(s) FROM stats s WHERE s.jid=$1),
+  'source_inventory',(SELECT COALESCE(jsonb_agg(to_jsonb(i)),'[]'::jsonb) FROM inventories i WHERE i.jid=$2),
+  'target_inventory',(SELECT COALESCE(jsonb_agg(to_jsonb(i)),'[]'::jsonb) FROM inventories i WHERE i.jid=$1),
+  'source_pets',(SELECT COALESCE(jsonb_agg(to_jsonb(p)),'[]'::jsonb) FROM pet_collection p WHERE p.jid=$2),
+  'target_pets',(SELECT COALESCE(jsonb_agg(to_jsonb(p)),'[]'::jsonb) FROM pet_collection p WHERE p.jid=$1)
+),EXTRACT(EPOCH FROM NOW())::BIGINT
+FROM users u WHERE u.jid=$2
+ON CONFLICT(key) DO NOTHING
+`,[targetJid,sourceJid])
 await client.query(`
 UPDATE users SET
 push_name=COALESCE(NULLIF($2,''),NULLIF(push_name,''),$3),
