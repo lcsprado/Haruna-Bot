@@ -5407,6 +5407,22 @@ return adminMainMenu()
 const shopCategoryMenu=async()=>showShopCategoryMenu(chat,sender,reply)
 const boxQuantityMenu=async(box)=>showBoxQuantityMenu(chat,sender,reply,box)
 const inventoryMenu=async()=>showInventoryMenu(chat,sender,reply)
+const materialsMenu=async()=>{
+const items=await getInventory(sender)
+const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
+if(!others.length){
+await reply('📦 Você não possui outros itens no momento.')
+return
+}
+setQuickFlow(chat,sender,'inventory_materials_select',{itemIds:others.map(i=>i.item_id)},90000)
+let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Essências dos Pecados e itens de evento não são vendidos.\n\n'
+others.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
+const collabEssences=others.filter(i=>String(i.item_id||'').startsWith('essencia_pecado_'))
+.reduce((sum,i)=>sum+Number(i.quantity||0),0)
+if(collabEssences>0)text+='\n🌈 *7 PECADOS:* '+collabEssences+' essências = *'+Math.floor(collabEssences/7)+' invocação(ões) disponível(is)*.\n🎁 Use *!7pecados abrir* para sortear personagem, arma ou armadura.\n'
+text+='\n👉 Digite o número para consultar o item (sem consumir ou vender).\n99️⃣ Voltar ao inventário\n0️⃣ Sair'
+await reply(text)
+}
 const equipmentMenu=async()=>showEquipmentMenu(chat,sender,reply)
 const equipmentTypeMenu=async(category)=>showEquipmentTypeMenu(chat,sender,reply,category)
 const sellMenu=async()=>showSellMenu(chat,sender,reply)
@@ -7872,18 +7888,7 @@ await reply(text)
 return true
 }
 if(input==='7'){
-const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
-if(!others.length){
-await reply('📦 Você não possui outros itens no momento.')
-return true
-}
-let text='🧩 *MATERIAIS DE RAID / OUTROS ITENS*\n\n💰 Materiais de Raid: venda apenas para o bot por *R$ 100/unidade*. Essências dos Pecados e itens de evento não são vendidos.\n\n'
-others.forEach((i,idx)=>text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+'\n')
-const collabEssences=others.filter(i=>String(i.item_id||'').startsWith('essencia_pecado_'))
-  .reduce((sum,i)=>sum+Number(i.quantity||0),0)
-if(collabEssences>0)text+='\n🌈 *7 PECADOS:* '+collabEssences+' essências = *'+Math.floor(collabEssences/7)+' invocação(ões) disponível(is)*.\n🎁 Use *!7pecados abrir* para sortear personagem, arma ou armadura.\n'
-text+='\n9️⃣ Voltar\n0️⃣ Sair'
-await reply(text)
+await materialsMenu()
 return true
 }
 if(input==='8'){
@@ -7925,6 +7930,41 @@ await reply(lines.join('\n'))
 return true
 }
 await reply('🎒 Escolha uma opção de *1 a 9* ou *11* para Encantamentos.')
+return true
+}
+if(flow.stage==='inventory_materials_select'){
+if(input==='99'||input==='voltar'){
+await inventoryMenu()
+return true
+}
+const itemIds=Array.isArray(flow.data?.itemIds)?flow.data.itemIds:[]
+const choice=Number(input)
+if(!/^[1-9]\d*$/.test(input)||!Number.isSafeInteger(choice)||choice>itemIds.length){
+await reply('🧩 Escolha um item de *1 a '+itemIds.length+'*, *99* para voltar ou *0* para sair.')
+return true
+}
+const item=(await getInventory(sender)).find(i=>i.item_id===itemIds[choice-1])
+if(!item||Number(item.quantity||0)<1){
+await reply('⌛ Este item não está mais no seu inventário. Atualizando a lista.')
+await materialsMenu()
+return true
+}
+setQuickFlow(chat,sender,'inventory_materials_detail',{itemId:item.item_id},90000)
+const voucherNote=/vale arsenal proibido/i.test(String(item.name||''))
+?'\n🎟️ Este vale ainda não tem resgate automático definido no bot. Ele permanece no seu inventário.':''
+await reply('🧩 *DETALHES DO ITEM*\n\n'+rarityLabel(item.rarity)+' — *'+item.name+'*\n📦 Quantidade: *'+item.quantity+'*'+voucherNote+'\n\nℹ️ Consulta apenas: nenhum item será consumido, vendido ou ativado aqui.\n\n9️⃣ Voltar à lista\n99️⃣ Voltar ao inventário\n0️⃣ Sair')
+return true
+}
+if(flow.stage==='inventory_materials_detail'){
+if(input==='9'){
+await materialsMenu()
+return true
+}
+if(input==='99'||input==='voltar'){
+await inventoryMenu()
+return true
+}
+await reply('🧩 Use *9* para voltar à lista, *99* para o inventário ou *0* para sair. Nenhum item foi consumido.')
 return true
 }
 if(flow.stage==='inventory_relic_view'){
