@@ -5269,11 +5269,8 @@ db.query("SELECT 1 FROM pet_collection WHERE jid=$1 AND species='dragao_corrompi
 ])
 return {active:used.rowCount===0,alreadyOwned:existing.rowCount>0}
 }
-export async function summonLegendaryPet(jid,materialId){
-await ensureUser(jid)
-const altar=LEGENDARY_PET_SUMMONS.find(x=>x.materialId===String(materialId||''))
-if(!altar) throw new Error('Material de invocação inválido.')
-return transaction(async client=>{
+
+async function summonLegendaryPetTx(client,jid,altar){
 const inv=(await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,altar.materialId])).rows[0]
 const owned=Number(inv?.quantity||0)
 const summonCost=Math.max(1,Number(altar.summonCost||100))
@@ -5355,6 +5352,67 @@ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE) RETURNING *`,
 [jid,chosen.species,petName,startLevel,startXp,energy,chosen.power,maxHp]
 )).rows[0]
 return {altar:{...altar,summonCost},pet:chosen,collectionId:collected.id,remaining:Math.max(0,owned-summonCost)}
+}
+
+// This keeps one source of truth for drops, duplicate refunds and one-off
+// guarantees. Both one-at-a-time and bulk use the same transactional roll.
+export async function summonLegendaryPet(jid,materialId){
+await ensureUser(jid)
+const altar=LEGENDARY_PET_SUMMONS.find(x=>x.materialId===String(materialId||''))
+if(!altar) throw new Error('Material de invocação inválido.')
+return transaction(async client=>{
+await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+return summonLegendaryPetTx(client,jid,altar)
+})
+}
+
+export const LEGENDARY_PET_BULK_LIMIT=30
+export async function summonLegendaryPetsBulk(jid,materialId,requested='todos'){
+await ensureUser(jid)
+const altar=LEGENDARY_PET_SUMMONS.find(x=>x.materialId===String(materialId||''))
+if(!altar)throw new Error('Altar de Raid inválido.')
+const all=String(requested).toLowerCase()==='todos'
+const amount=all?LEGENDARY_PET_BULK_LIMIT:Number(requested)
+if(!all&&(!Number.isSafeInteger(amount)||amount<1||amount>LEGENDARY_PET_BULK_LIMIT))
+  throw new Error('Quantidade inválida. Use de 1 a '+LEGENDARY_PET_BULK_LIMIT+' invocações ou todos.')
+const cost=Math.max(1,Number(altar.summonCost||100))
+return transaction(async client=>{
+  // Serialize all summoning actions for this specific player.
+  await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+  const balances=async()=>{
+    const {rows}=await client.query(
+      'SELECT item_id,quantity FROM inventories WHERE jid=$1 AND item_id=ANY($2::text[])',
+      [jid,[altar.materialId,'fragmento_universal_raid']]
+    )
+    return {
+      material:Number(rows.find(r=>r.item_id===altar.materialId)?.quantity||0),
+      universal:Number(rows.find(r=>r.item_id==='fragmento_universal_raid')?.quantity||0)
+    }
+  }
+  const before=await balances()
+  if(before.material+before.universal<cost)
+    throw new Error('Materiais insuficientes: '+before.material+' '+altar.materialName+' e '+before.universal+' Fragmentos Universais (necessários '+cost+').')
+  let current=before
+  const rolls=[]
+  while(rolls.length<amount && current.material+current.universal>=cost){
+    const result=await summonLegendaryPetTx(client,jid,altar)
+    rolls.push(result)
+    // Re-evaluate after every roll: duplicates refund original fragments.
+    // This preserves normal single-invocation economics and probabilities.
+    current=await balances()
+  }
+  const newPets=rolls.filter(r=>!r.duplicate).map(r=>({
+    id:Number(r.collectionId),name:r.pet.name,species:r.pet.species,chance:Number(r.pet.chance||0)
+  }))
+  const duplicateCount=rolls.length-newPets.length
+  const cashRefund=rolls.reduce((sum,r)=>sum+Number(r.cashRefund||0),0)
+  const fragmentRefund=rolls.reduce((sum,r)=>sum+Number(r.fragmentRefund||0),0)
+  return {
+    altar:{materialId:altar.materialId,materialName:altar.materialName,raidLevel:altar.raidLevel,summonCost:cost},
+    attempts:rolls.length,newPets,duplicateCount,cashRefund,fragmentRefund,
+    before,remaining:current,
+    hitLimit:rolls.length===LEGENDARY_PET_BULK_LIMIT && current.material+current.universal>=cost
+  }
 })
 }
 export async function adoptPet(){throw new Error('Adoção comum desativada; use !invocarpet.')}
