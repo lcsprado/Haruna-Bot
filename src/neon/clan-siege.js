@@ -10,7 +10,7 @@ import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const TEAM_TACTICS_VERSION=2; // novas guerras apenas; partidas antigas preservam regras v1
 const DAILY_CREATED_BY='system:siege-daily-20h'; // Identificador histórico preservado para idempotência e premiações antigas.
-const DAILY_OPEN_GRACE_MS=15*60*1000; // Janela da quarta-feira 21h-21h15; tolera despertar do Render.
+const DAILY_OPEN_GRACE_MS=15*60*1000; // Janela do sábado 21h30-21h45; tolera despertar do Render.
 const ACTIONS=new Set(['attack','defend','repair','spy']);
 const siegeGroup=()=>String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||'').trim();
 const ON=()=>process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\.us$/.test(siegeGroup());
@@ -24,12 +24,12 @@ export function siegeDailySchedule(nowMs=now()){
     timeZone:'America/Sao_Paulo',weekday:'short',year:'numeric',month:'2-digit',day:'2-digit'
   }).formatToParts(new Date(nowMs)).map(p=>[p.type,p.value]));
   const day=[parts.year,parts.month,parts.day].join('-');
-  const startsAt=Date.parse(day+'T21:00:00-03:00');
-  // Abertura exclusiva de quarta-feira (dia local do Brasil): nenhuma guerra diária.
-  // Nunca use getUTCDay() no instante das 21h: em UTC já é quinta-feira.
-  const isWednesday=parts.weekday==='Wed';
-  return {day,isWednesday,startsAt,endsAt:startsAt+24*60*60*1000,
-    opening:isWednesday&&nowMs>=startsAt&&nowMs<startsAt+DAILY_OPEN_GRACE_MS};
+  const startsAt=Date.parse(day+'T21:30:00-03:00');
+  // Abertura exclusiva de sábado (dia local do Brasil): nenhuma guerra diária.
+  // Nunca use getUTCDay() no instante das 21h30: em UTC já é domingo.
+  const isSaturday=parts.weekday==='Sat';
+  return {day,isSaturday,startsAt,endsAt:startsAt+24*60*60*1000,
+    opening:isSaturday&&nowMs>=startsAt&&nowMs<startsAt+DAILY_OPEN_GRACE_MS};
 }
 export async function ensureClanSiegeSchema(){
   if(!schemaPromise)schemaPromise=(async()=>{
@@ -192,7 +192,7 @@ export async function startDailyClanSiege(nowMs=now()){
         [match.id,jid,team.id]);
     await notice(conn,chat,[
       '🏰 *CERCO AO CASTELO — GUERRA DIÁRIA INICIADA!*',
-      '⏰ Início programado: *21h*, horário de Brasília.',
+      '⏰ Início programado: *sábado às 21h30*, horário de Brasília.',
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
       '🏰 Fortalezas: Azul '+blueFortress.maxHp+' HP / +'+Math.round(blueFortress.attackPct*100)+'% ATK / -'+(blueFortress.defensePct*100).toFixed(1)+'% dano; Vermelho '+redFortress.maxHp+' HP / +'+Math.round(redFortress.attackPct*100)+'% ATK / -'+(redFortress.defensePct*100).toFixed(1)+'% dano.',
       '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
@@ -485,7 +485,7 @@ export async function clanSiegeFortressUpgrade(session,stat){
 }
 export async function clanSiegeChallenge(session){
   gate();group(session);
-  throw new Error('O Cerco começa automaticamente somente às quartas-feiras, 21h de Brasília. Não é preciso desafiar.');
+  throw new Error('O Cerco começa automaticamente somente aos sábados, 21h30 de Brasília. Não é preciso desafiar.');
 }
 export async function clanSiegeAccept(session){
   gate();group(session);
