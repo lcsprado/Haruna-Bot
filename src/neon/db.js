@@ -5688,6 +5688,27 @@ started.push({...row,pet_name:pet.name,species:pet.species,trait})
 return {started,hours,limit:PET_EXPEDITION_MAX_CONCURRENT,remaining:pets.length-started.length}
 })
 }
+// Retirada em lote: apenas expedições ainda em andamento do próprio jogador.
+// Usa a mesma transação para liberar todos os pets, mantendo o histórico e
+// preservando expedições já finalizadas para coleta normal.
+export async function cancelAllPetExpeditions(jid){
+await ensureUser(jid)
+return transaction(async client=>{
+await client.query('SELECT jid FROM users WHERE jid=$1 FOR UPDATE',[jid])
+const now=Math.floor(Date.now()/1000)
+const {rows}=await client.query(`UPDATE pet_expeditions AS e
+SET resolved=TRUE,cancelled_at=$2
+FROM pet_collection AS p
+WHERE e.pet_id=p.id AND e.jid=p.jid AND e.jid=$1
+AND e.resolved=FALSE AND e.ends_at>$2
+RETURNING e.pet_id,p.name AS pet_name`,[jid,now])
+const completedPending=Number((await client.query(
+'SELECT COUNT(*) AS n FROM pet_expeditions WHERE jid=$1 AND resolved=FALSE AND ends_at<=$2',[jid,now]
+)).rows[0]?.n||0)
+return {cancelled:rows.map(x=>({petId:Number(x.pet_id),petName:x.pet_name})),completedPending}
+})
+}
+
 // Retirada voluntária antes do fim: nenhum XP, dinheiro ou item é concedido.
 // Mantém histórico com cancelled_at, sem liberar recompensas no coletor.
 export async function cancelPetExpedition(jid,petId){
