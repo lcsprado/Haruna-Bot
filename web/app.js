@@ -57,7 +57,6 @@ const ui = {
   contractLoading: false,
   relicStatus: null,
   lootSaleBusy: false,
-  petAdoptSpecies: '',
   duelTarget: '',
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
   raidTimer: null,
@@ -1426,44 +1425,18 @@ function ownedPetCard(p){
   '</div>';
 }
 function catalogPetCard(p){
+  // Somente invocações especiais: adoção comum não é uma ação da Web.
+  if(p.source!=='raid')return '';
   const owned=collection().some(x=>x.species===p.species);
-  const level=Number(profile().level||ui.data.profile&&ui.data.profile.level||1);
-  const special=p.source==='raid';
-  const cost=special?Number(p.summonCost||100):Number(p.price||0);
-  const materialQty=special?itemCount(p.materialId):0;
-  const can=special ? materialQty>=cost : level>=Number(p.level||1);
+  const cost=Number(p.summonCost||100);
+  const materialQty=itemCount(p.materialId);
+  const can=materialQty>=cost;
   return '<div class="card catalog-card">'+petPortrait(p.species)+
-    '<div class="tag-row"><span class="tag '+(special?'legendary':'')+'">'+(special?'RAID / INVOCAÇÃO':'ADOTÁVEL')+'</span><span class="tag">'+esc(p.style||'')+'</span>'+(owned?'<span class="tag good">NA COLEÇÃO</span>':'')+'</div>'+
+    '<div class="tag-row"><span class="tag legendary">RAID / INVOCAÇÃO</span><span class="tag">'+esc(p.style||'')+'</span>'+(owned?'<span class="tag good">NA COLEÇÃO</span>':'')+'</div>'+
     '<h3>'+esc(p.label||p.name||titleCase(p.species))+'</h3>'+
     '<p>'+esc(specialtyText(p))+'</p>'+
-    (special?'<p>Raid Lv.'+num(p.raidLevel)+' • Chance '+num(p.chance)+'% • '+esc(p.materialName)+' '+materialQty+'/'+cost+'</p>':'<p>Nível mínimo '+num(p.level)+' • '+money(p.price)+'</p>')+
-    '<div class="pet-actions">'+(special
-      ? '<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button>'
-      : (can
-        ? '<div class="pet-adopt-inline"><input data-pet-adopt-name="'+esc(p.species)+'" maxlength="24" value="'+esc(String(p.label||titleCase(p.species)).replace(/^[^\p{L}\p{N}]+/u,'').trim()||'Alpha')+'" placeholder="Nome do pet"><button class="btn primary" type="button" data-pet-adopt-direct="'+esc(p.species)+'">🐾 Adotar • '+money(p.price)+'</button></div>'
-        : '<button class="btn" disabled>Nível '+num(p.level)+' necessário</button>'))+
-    '</div>'+
-  '</div>';
-}
-
-function petAdoptModal(){
-  const species=String(ui.petAdoptSpecies||'');
-  if(!species) return '';
-  const p=catalogPets().find(x=>x.species===species&&x.source==='adoption');
-  if(!p) return '';
-  const suggested=String(p.label||titleCase(p.species)).replace(/^[^\p{L}\p{N}]+/u,'').trim();
-  return '<div class="pet-adopt-overlay" data-pet-adopt-close>'+
-    '<div class="pet-adopt-modal" role="dialog" aria-modal="true" aria-label="Adotar pet" onclick="event.stopPropagation()">'+
-      '<button class="pet-adopt-x" data-pet-adopt-close type="button">×</button>'+
-      '<div class="pet-adopt-preview">'+petPortrait(p.species)+'</div>'+
-      '<div class="tag-row"><span class="tag good">ADOÇÃO</span><span class="tag">'+esc(p.style||'Pet')+'</span></div>'+
-      '<h2>'+esc(p.label||titleCase(p.species))+'</h2>'+
-      '<p>'+esc(specialtyText(p))+'</p>'+
-      '<div class="pet-adopt-cost"><span>Nível mínimo <strong>'+num(p.level)+'</strong></span><span>Custo <strong>'+money(p.price)+'</strong></span></div>'+
-      '<label>Nome do pet</label>'+
-      '<input data-pet-adopt-modal-name maxlength="24" value="'+esc(suggested||'Alpha')+'" placeholder="Digite o nome do pet">'+
-      '<div class="pet-adopt-actions"><button class="btn" data-pet-adopt-close type="button">Cancelar</button><button class="btn primary" data-pet-adopt-confirm="'+esc(p.species)+'" type="button">🐾 Confirmar adoção</button></div>'+
-    '</div>'+
+    '<p>Raid Lv.'+num(p.raidLevel)+' • Chance '+num(p.chance)+'% • '+esc(p.materialName)+' '+materialQty+'/'+cost+'</p>'+
+    '<div class="pet-actions"><button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button></div>'+
   '</div>';
 }
 
@@ -1680,13 +1653,13 @@ async function requestPetTeamPreview(){
 
 
 function renderPets(){
-  const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
+  // Adoção comum foi desativada. Mesmo estados legados da aba "adopt" não a reabrem.
+  if(ui.petTab!=='owned' && ui.petTab!=='raid') ui.petTab='owned';
   const raidCount=catalogPets().filter(x=>x.source==='raid').length;
-  const tabs=[['owned','Minha coleção ('+collection().length+')'],['adopt','🐾 Adotar pet ('+adoptCount+')'],['raid','✨ Raid / especiais ('+raidCount+')']];
-  let rows=[];
-  if(ui.petTab==='owned') rows=collection().map(ownedPetCard);
-  else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
-  else rows=catalogPets().filter(x=>x.source==='raid').map(catalogPetCard);
+  const tabs=[['owned','Minha coleção ('+collection().length+')'],['raid','✨ Raid / especiais ('+raidCount+')']];
+  const rows=ui.petTab==='owned'
+    ? collection().map(ownedPetCard)
+    : catalogPets().filter(x=>x.source==='raid').map(catalogPetCard);
 
   const draft=petTeamDraftIds(),pets=collection();
   const teamSlot=slot=>{
@@ -1716,7 +1689,7 @@ function renderPets(){
   const valid=Boolean(slots[0])&&(!slots[2]||Boolean(slots[1]))&&
     new Set(slots.filter(Boolean)).size===slots.filter(Boolean).length &&
     new Set(slots.filter(Boolean).map(id=>pets.find(p=>Number(p.id)===Number(id))?.species)).size===slots.filter(Boolean).length;
-  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo servidor do WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" data-pet-tab="adopt">🐾 Adotar novo pet</button><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div></div>'+
+  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo servidor do WhatsApp.</p></div><div class="hero-actions"><span class="tag good">'+raidCount+' pets de Raid / invocação</span></div></div>'+
     '<div class="card pet-team-composer"><div class="section-title"><div><h3>🛡️ Montar Time Pet</h3><small>Escolha por estilo, bônus, poder e energia</small></div></div>'+
       '<div class="pet-team-slots">'+[1,2,3].map(teamSlot).join('')+'</div>'+
       '<div class="section">'+petTeamPreviewMarkup()+'</div>'+
@@ -1725,7 +1698,7 @@ function renderPets(){
     '</div>'+
     '<div class="tabs section">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
     '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">Nenhum pet nesta seção.</div>')+'</div>'+
-    petAdoptModal()+petTeamPickerModal();
+    petTeamPickerModal();
 }
 function itemIcon(item){
   const map={weapon:'🗡️',armor:'🛡️',boots:'👢',consumable:'🧪',special:'💠'};
@@ -3299,47 +3272,6 @@ function bind(){
     x.disabled=true;
     try{await doAction('pet.energy',{itemId:'energetico_pet'},{});}
     catch{ x.disabled=false; }
-  });
-  document.querySelectorAll('[data-pet-adopt-direct]').forEach(x=>x.onclick=async()=>{
-    const species=String(x.dataset.petAdoptDirect||'');
-    const input=x.parentElement&&x.parentElement.querySelector('[data-pet-adopt-name]');
-    const name=String(input&&input.value||'').trim();
-    if(!species) return toast('Pet inválido.');
-    if(name.length<2) return toast('Digite um nome com pelo menos 2 caracteres.');
-    x.disabled=true;
-    try{
-      await doAction('pet.adopt',{species,name},{success:'🐾 Pet adotado e equipado.'});
-      ui.petTab='owned';
-      render();
-    }catch{
-      x.disabled=false;
-    }
-  });
-  document.querySelectorAll('[data-pet-adopt-open]').forEach(x=>x.onclick=()=>{
-    ui.petAdoptSpecies=x.dataset.petAdoptOpen;
-    render();
-    window.setTimeout(()=>document.querySelector('[data-pet-adopt-modal-name]')?.focus(),0);
-  });
-  document.querySelectorAll('[data-pet-adopt-close]').forEach(x=>x.onclick=event=>{
-    const overlay=event.currentTarget;
-    if(overlay.classList.contains('pet-adopt-overlay') && event.target!==overlay) return;
-    ui.petAdoptSpecies='';
-    render();
-  });
-  document.querySelectorAll('[data-pet-adopt-confirm]').forEach(x=>x.onclick=async()=>{
-    const input=document.querySelector('[data-pet-adopt-modal-name]');
-    const name=String(input&&input.value||'').trim();
-    if(name.length<2) return toast('Digite um nome com pelo menos 2 caracteres.');
-    const species=x.dataset.petAdoptConfirm;
-    x.disabled=true;
-    try{
-      await doAction('pet.adopt',{species,name},{success:'🐾 Pet adotado e equipado.'});
-      ui.petAdoptSpecies='';
-      ui.petTab='owned';
-      render();
-    }catch{
-      x.disabled=false;
-    }
   });
   document.querySelectorAll('[data-pet-summon]').forEach(x=>x.onclick=()=>doAction('pet.summon',{materialId:x.dataset.petSummon},{}));
   document.querySelectorAll('[data-player-heal]').forEach(x=>x.onclick=()=>doAction('player.heal',{}, {success:'❤️ Personagem curado.'}));
