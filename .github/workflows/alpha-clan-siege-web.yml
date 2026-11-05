@@ -20,6 +20,13 @@ on:
   push:
     branches:
       - feat/web-cerco-clas-preview-20261102
+      - release/alpha-web-ban-art-api-20261029
+    paths:
+      - 'web/clan-siege-ui.js'
+      - 'web/index.html'
+      - 'web/sw.js'
+      - 'test/web-siege-daily-20h-20261103.test.mjs'
+      - '.github/workflows/alpha-clan-siege-web.yml'
 permissions:
   contents: read
 jobs:
