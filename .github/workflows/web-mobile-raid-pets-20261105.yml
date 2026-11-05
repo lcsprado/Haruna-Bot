@@ -1,0 +1,25 @@
+name: Mobile Raid Pet Navigation
+on:
+  push:
+    branches:
+      - fix/web-raid-pets-visible-mobile-20261105
+  pull_request:
+    paths:
+      - 'web/app.js'
+      - 'web/index.html'
+      - 'web/styles.css'
+      - 'web/sw.js'
+      - 'test/web-raid-pet-tab-mobile-20261105.test.mjs'
+permissions:
+  contents: read
+jobs:
+  verify-mobile-raid:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --check web/app.js
+      - run: node --test test/web-raid-pet-tab-mobile-20261105.test.mjs
+      - run: node --test test/web-no-common-pet-adoption-20261105.test.mjs
