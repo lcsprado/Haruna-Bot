@@ -2425,7 +2425,16 @@ cachedGroupMetadata:jid=>groupMetadataCache.get(jid,()=>loadGroupMetadata(jid)),
 mediaCache:whatsappMediaCache,
 // Baileys usa o conteúdo ORIGINAL para refazer a criptografia quando o
 // destinatário recebe "Aguardando mensagem". Nunca retornar texto vazio.
-getMessage:async key=>outboundRetryStore.getMessage(key),
+getMessage:async key=>{
+  const original=outboundRetryStore.getMessage(key)
+  // Somente estado do reenvio; jamais registrar mensagem, código !web, ID ou contato.
+  console.warn('[WhatsApp Retry] lookup',JSON.stringify({
+    found:Boolean(original),
+    channel:String(key?.remoteJid||'').endsWith('@lid')?'lid':
+      String(key?.remoteJid||'').endsWith('@g.us')?'group':'phone'
+  }))
+  return original
+},
 msgRetryCounterCache,
 connectTimeoutMs:60000,
 defaultQueryTimeoutMs:60000,
@@ -2525,6 +2534,10 @@ trevoHealth.forceFlushCount=Number(trevoHealth.forceFlushCount||0)+1
 }catch(e){console.error('[WhatsApp Sync] recuperação do buffer falhou',e?.message)}
 },40000)
 forceFlushTimer.unref?.()
+sock.ws?.on?.('CB:receipt',node=>{
+  if(String(node?.attrs?.type||'')==='retry')
+    console.warn('[WhatsApp Retry] retry receipt received')
+})
 sock.ws?.on?.('CB:message',()=>{
 trevoHealth.lastRawMessageAt=Date.now()
 trevoHealth.rawMessagesSeen=Number(trevoHealth.rawMessagesSeen||0)+1
