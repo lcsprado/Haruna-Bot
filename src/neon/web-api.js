@@ -54,6 +54,7 @@ import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import {clanSiegeStatus,clanSiegeChallenge,clanSiegeAccept,clanSiegeMove,clanSiegeCancel,clanSiegeFortressUpgrade} from './clan-siege.js'
 import {siegeBetaGuestAccess} from './clan-siege-beta-access.js'
+import {additionalBetaJidAllowed} from './web-beta-extra-allowlist.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
@@ -64,7 +65,7 @@ const SESSION_TOUCH_MS = 5 * 60 * 1000
 async function betaWebAccess(jid,chatJid,client=db){
   if(String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()!=='web-api-only')return true
   const allowed=String(process.env.ALPHA_WEB_BETA_JIDS||'').split(',').map(s=>s.trim()).filter(Boolean)
-  if(allowed.includes(String(jid||'')))return true
+  if(allowed.includes(String(jid||'')) || additionalBetaJidAllowed(jid,process.env.ALPHA_WEB_BETA_EXTRA_JIDS))return true
   if(!chatJid)return false
   return siegeBetaGuestAccess(client,{jid,chat:chatJid})
 }
