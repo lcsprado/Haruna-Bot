@@ -42,7 +42,7 @@ openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
 initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
 addGroupWarning, getGroupWarnings, clearGroupWarnings,
 resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, getSleepOptions, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
-adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, raid50DragonGuaranteeStatus, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, cancelPetExpedition, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
+adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, summonLegendaryPetsBulk, LEGENDARY_PET_BULK_LIMIT, raid50DragonGuaranteeStatus, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, cancelPetExpedition, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
 proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
 createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
 listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
@@ -4516,6 +4516,24 @@ text+='\n🔒 Equipados/vinculados permanecem protegidos.'
 text+='\n\n1️⃣ Confirmar venda\n2️⃣ Cancelar'
 setQuickFlow(chat,sender,'inventory_sell_batch_confirm',{batch},90000)
 await reply(text)
+}
+function legendaryPetBulkReceipt(result){
+let text='🔮 *INVOCAÇÃO DE PETS EM LOTE CONCLUÍDA!*\\n\\n'
+text+='🏰 Raid Lv.'+result.altar.raidLevel+' — '+result.altar.materialName+'\\n'
+text+='🎲 Invocações realizadas: *'+result.attempts+'*\\n'
+text+='✨ Pets novos: *'+result.newPets.length+'*\\n'
+text+='♻️ Repetidos convertidos: *'+result.duplicateCount+'*\\n'
+if(result.newPets.length){
+text+='\\n🐾 *NOVOS PETS*\\n'
+for(const p of result.newPets)text+='• '+p.name+' — ID '+p.id+' ('+p.chance+'%)\\n'
+}
+text+='\\n💰 Devolução por repetidos: *R$ '+fmt(result.cashRefund)+'*'
+text+='\\n🧩 Fragmentos devolvidos por repetidos: *+'+result.fragmentRefund+'*'
+text+='\\n📦 '+result.altar.materialName+' restantes: *'+result.remaining.material+'*'
+text+='\\n🧩 Universais restantes: *'+result.remaining.universal+'*'
+if(result.hitLimit)text+='\\n⚠️ Limite de 30 invocações por operação. Ainda há materiais: use *!invocarpet '+String(LEGENDARY_PET_SUMMONS.findIndex(a=>a.materialId===result.altar.materialId)+1)+' todos* novamente.'
+text+='\\n\\n✅ Pets novos adicionados à coleção. *!meuspets* para consultar.'
+return text
 }
 async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
 let flow=getQuickFlow(chat,sender)
