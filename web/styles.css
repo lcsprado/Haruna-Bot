@@ -1534,6 +1534,8 @@ body.loot-open{overflow:hidden!important}
 .siege-planning{margin-top:19px;background:#090f19b3;border:1px solid #2b3c56;border-radius:16px;padding:17px}
 .siege-planning-head h4{font-size:20px;margin:0 0 15px}
 .siege-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.siege-quick-guide{color:#d3e8ff;font-size:12px;line-height:1.5;margin:0 0 12px;padding:10px;border:1px solid #3b6186;border-radius:10px;background:#112236}
+#siege-target-options{scroll-margin-top:96px}
 .siege-action{min-width:0;border:1px solid #354862;text-align:left;padding:14px;border-radius:13px;background:linear-gradient(150deg,#15243a,#101824);color:#deeaf9;cursor:pointer;display:flex;flex-direction:column;gap:7px;transition:border-color .12s,background .12s}
 .siege-action:hover,.siege-action:focus-visible{border-color:#b2c9e9}
 .siege-action.selected{border-color:#e3c07c;background:linear-gradient(155deg,#473620,#1b2434);box-shadow:inset 0 0 0 1px #b89057}
@@ -1549,6 +1551,7 @@ body.loot-open{overflow:hidden!important}
 .siege-steps span{background:#121b28;border:1px solid #30415c;border-radius:10px;padding:12px;font-size:10px;color:#d1dfef}
 .siege-footer{font-size:10px;color:#a8bfd6;line-height:1.6;margin-top:14px}
 @media(max-width:860px){.siege-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.siege-preview{padding:15px}.siege-planning{padding:13px}}
+@media(max-width:600px){.siege-choices-grid .siege-action{min-height:52px;padding:10px;gap:3px}.siege-choices-grid .siege-action small{display:none}.siege-choices-grid .siege-action strong{font-size:14px}.siege-quick-guide{font-size:11px}}
 @media(max-width:580px){.siege-head,.siege-planning-head{flex-direction:column;gap:8px}.siege-stage{grid-template-columns:minmax(0,1fr) 38px minmax(0,1fr);gap:6px}.siege-castle{padding:10px 8px}.siege-castle-art{font-size:45px}.siege-versus strong{font-size:19px}.siege-versus small{font-size:8px;white-space:normal}.siege-castle-kicker{font-size:7px;letter-spacing:0}.siege-castle-hp{flex-direction:column;align-items:center;gap:3px}.siege-steps{grid-template-columns:1fr;gap:6px}.siege-steps span{padding:9px}.siege-action{padding:11px}.siege-action small{font-size:9px}}
 
 /* Première Guerre de Clãs: cartão do prêmio histórico — apenas apresentação. */
