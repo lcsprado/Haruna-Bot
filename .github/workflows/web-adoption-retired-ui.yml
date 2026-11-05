@@ -1,0 +1,23 @@
+name: Web Adoption Removal UI
+on:
+  push:
+    branches:
+      - fix/web-remove-common-pet-adoption-20261105
+  pull_request:
+    paths:
+      - 'web/app.js'
+      - 'web/index.html'
+      - 'web/sw.js'
+      - 'test/web-no-common-pet-adoption-20261105.test.mjs'
+permissions:
+  contents: read
+jobs:
+  verify-adoption-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --check web/app.js
+      - run: node --test test/web-no-common-pet-adoption-20261105.test.mjs
