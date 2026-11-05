@@ -1,0 +1,34 @@
+name: Alpha Bot - Raid pet bulk summons
+
+on:
+  pull_request:
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/bulk-raid-pet-summons-20261105.test.mjs'
+      - '.github/workflows/raid-pet-bulk-validation.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/bulk-raid-pet-summons-20261105.test.mjs'
+      - '.github/workflows/raid-pet-bulk-validation.yml'
+permissions:
+  contents: read
+jobs:
+  verify-bulk-pet-summons:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Node syntax
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+          node --check test/bulk-raid-pet-summons-20261105.test.mjs
+      - name: Verify bulk summon transaction and reward invariants
+        run: node --test test/bulk-raid-pet-summons-20261105.test.mjs

@@ -42,7 +42,7 @@ openLuckyBox, openLuckyBoxes, openLootBoxes, dungeon, robPlayer,
 initCommunityPack, getCommunitySettings, setCommunitySetting, setGroupRules,
 addGroupWarning, getGroupWarnings, clearGroupWarnings,
 resolvePlayerSleep, startPlayerSleep, wakePlayerEarly, getSleepOptions, resolvePlayerCarpinar, startPlayerCarpinar, leavePlayerCarpinarEarly, petMaxEnergy, petMaxHp, petHpType, petSpeedBonus,
-adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, raid50DragonGuaranteeStatus, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, cancelPetExpedition, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
+adoptPet, getPet, listPets, selectPet, sacrificePet, getPetTeam, setPetTeam, petTeamSynergy, petStyleLabel, renamePet, petAction, petAdventure, petLeaderboard, LEGENDARY_PET_SUMMONS, summonLegendaryPet, summonLegendaryPetsBulk, LEGENDARY_PET_BULK_LIMIT, raid50DragonGuaranteeStatus, petExpeditionTrait, getPetExpeditions, startPetExpedition, startAllPetExpeditions, cancelPetExpedition, PET_EXPEDITION_MAX_CONCURRENT, resolvePetExpeditions,
 proposeRelationship, acceptRelationship, divorceRelationship, getRelationship,
 createMarketListing, listMarket, listMyMarketListings, buyMarketListing, cancelMarketListing,
 listTradeableItems, createItemTradeOffer, getLatestPendingTradeOffer, acceptItemTradeOffer, rejectItemTradeOffer,
@@ -4517,6 +4517,24 @@ text+='\n\n1️⃣ Confirmar venda\n2️⃣ Cancelar'
 setQuickFlow(chat,sender,'inventory_sell_batch_confirm',{batch},90000)
 await reply(text)
 }
+function legendaryPetBulkReceipt(result){
+let text='🔮 *INVOCAÇÃO DE PETS EM LOTE CONCLUÍDA!*\n\n'
+text+='🏰 Raid Lv.'+result.altar.raidLevel+' — '+result.altar.materialName+'\n'
+text+='🎲 Invocações realizadas: *'+result.attempts+'*\n'
+text+='✨ Pets novos: *'+result.newPets.length+'*\n'
+text+='♻️ Repetidos convertidos: *'+result.duplicateCount+'*\n'
+if(result.newPets.length){
+text+='\n🐾 *NOVOS PETS*\n'
+for(const p of result.newPets)text+='• '+p.name+' — ID '+p.id+' ('+p.chance+'%)\n'
+}
+text+='\n💰 Devolução por repetidos: *R$ '+fmt(result.cashRefund)+'*'
+text+='\n🧩 Fragmentos devolvidos por repetidos: *+'+result.fragmentRefund+'*'
+text+='\n📦 '+result.altar.materialName+' restantes: *'+result.remaining.material+'*'
+text+='\n🧩 Universais restantes: *'+result.remaining.universal+'*'
+if(result.hitLimit)text+='\n⚠️ Limite de 30 invocações por operação. Ainda há materiais: use *!invocarpet '+String(LEGENDARY_PET_SUMMONS.findIndex(a=>a.materialId===result.altar.materialId)+1)+' todos* novamente.'
+text+='\n\n✅ Pets novos adicionados à coleção. *!meuspets* para consultar.'
+return text
+}
 async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
 let flow=getQuickFlow(chat,sender)
 if(!flow){
@@ -5738,6 +5756,7 @@ return true
 const altar=LEGENDARY_PET_SUMMONS[choice-1]
 const inv=await getInventory(sender)
 const owned=Number(inv.find(i=>i.item_id===altar.materialId)?.quantity||0)
+const universal=Number(inv.find(i=>i.item_id==='fragmento_universal_raid')?.quantity||0)
 const summonCost=Math.max(1,Number(altar.summonCost||100))
 let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/${summonCost}*\n💠 Custo: *${summonCost}*\n\n🎲 *CHANCES*\n`
 altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
@@ -5747,13 +5766,35 @@ text+='\n🎯 *GARANTIA ATIVA: DRAGÃO CORROMPIDO 100% nesta invocação!*\n'
 if(guarantee.alreadyOwned)text+='⚠️ Você JÁ POSSUI Dragão Corrompido: o pet repetido vira dinheiro + fragmentos. Não receberá uma segunda cópia.\n'
 text+='\n'
 }
-if(owned<summonCost){
+if(owned+universal<summonCost){
 clearQuickFlow(chat,sender)
-await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
+await reply(text+'\n❌ Faltam *'+(summonCost-owned-universal)+'* materiais para invocar.')
 return true
 }
 setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
-await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
+await reply(text+'\n🧩 Universais disponíveis: *'+universal+'* (usados se o material desta Raid acabar).'+
+  '\n⚠️ No modo tudo, pets repetidos devolvem fragmentos e o lote continua até acabar o saldo ou atingir '+LEGENDARY_PET_BULK_LIMIT+' invocações.'+
+  '\n\n1️⃣ *Invocar 1 pet*\n3️⃣ *Invocar tudo*\n2️⃣ Cancelar')
+return true
+}
+if(flow.stage==='legendary_pet_bulk_confirm'){
+if(input==='2'){
+clearQuickFlow(chat,sender)
+await reply('✅ Invocação em lote cancelada. Nenhum fragmento foi consumido.')
+return true
+}
+if(input!=='1'){
+await reply('🔮 Confirme com *1* para invocar em lote ou *2* para cancelar.')
+return true
+}
+try{
+const r=await summonLegendaryPetsBulk(sender,flow.data.materialId,flow.data.amount||'todos')
+clearQuickFlow(chat,sender)
+await reply(legendaryPetBulkReceipt(r))
+}catch(err){
+clearQuickFlow(chat,sender)
+await reply('❌ '+(err?.message||'Não foi possível invocar em lote. Nenhum resultado parcial foi aplicado.'))
+}
 return true
 }
 if(flow.stage==='legendary_pet_summon_confirm'){
@@ -5762,8 +5803,19 @@ clearQuickFlow(chat,sender)
 await reply('✅ Invocação cancelada.')
 return true
 }
+if(input==='3'){
+try{
+const r=await summonLegendaryPetsBulk(sender,flow.data.materialId,'todos')
+clearQuickFlow(chat,sender)
+await reply(legendaryPetBulkReceipt(r))
+}catch(err){
+clearQuickFlow(chat,sender)
+await reply('❌ '+(err?.message||'Não foi possível invocar em lote.'))
+}
+return true
+}
 if(input!=='1'){
-await reply('🔮 Escolha *1 para invocar* ou *2 para cancelar*.')
+await reply('🔮 Escolha *1 para invocar 1 pet*, *3 para invocar tudo* ou *2 para cancelar*.')
 return true
 }
 try{
@@ -12511,7 +12563,7 @@ text+=`   Você possui: *${materialQty(a.materialId)}/${cost}*\n`
 a.pets.forEach(p=>{ text+=`   • ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
 text+='\n'
 }
-text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Responda só com o *número do altar* ou use *!invocarpet N*. Ex.: *2* ou *!invocarpet 2*.'
+text+='💠 Raid Lv.10 custa *50 materiais*; as demais custam *100*. Cada invocação entrega *1 pet lendário*.\n♻️ Espécie de Raid repetida vira *dinheiro + parte dos fragmentos de volta*.\n\n👉 Responda só com o *número do altar* ou use *!invocarpet N*.\n🚀 Para invocar em lote: *!invocarpet 10 todos* (Raid 70) ou *!invocarpet 10 5* (cinco invocações).'
 pages.push(text)
 setQuickFlow(chat,sender,'legendary_pet_altar_select',{},5*60*1000)
 for(const page of pages) await reply(page)
@@ -12520,6 +12572,7 @@ continue
 const altar=LEGENDARY_PET_SUMMONS[choice-1]
 if(!altar) return await reply(`🔮 Escolha um altar de *1 a ${LEGENDARY_PET_SUMMONS.length}*.`)
 const owned=materialQty(altar.materialId)
+const universal=materialQty('fragmento_universal_raid')
 const summonCost=Math.max(1,Number(altar.summonCost||100))
 let text=`🔮 *ALTAR — RAID Lv.${altar.raidLevel}*\n\n🧩 Material: *${altar.materialName}*\n📦 Você possui: *${owned}/${summonCost}*\n💠 Custo: *${summonCost}*\n\n🎲 *CHANCES*\n`
 altar.pets.forEach(p=>{ text+=`• ${p.name} — *${p.chance}%* • ${petStyleLabel(p.species)}\n` })
@@ -12529,9 +12582,24 @@ text+='\n🎯 *GARANTIA ATIVA: DRAGÃO CORROMPIDO 100% nesta invocação!*\n'
 if(guarantee.alreadyOwned)text+='⚠️ Você JÁ POSSUI Dragão Corrompido: o pet repetido vira dinheiro + fragmentos. Não receberá uma segunda cópia.\n'
 text+='\n'
 }
-if(owned<summonCost) return await reply(text+`\n❌ Faltam *${summonCost-owned}* materiais para invocar.`)
+if(owned+universal<summonCost) return await reply(text+'\n❌ Faltam *'+(summonCost-owned-universal)+'* materiais para invocar.')
+const request=String(args[1]||'').trim().toLowerCase()
+if(request){
+const requestedCount=request==='todos'?LEGENDARY_PET_BULK_LIMIT:Number(request)
+if(request!=='todos' && (!/^[0-9]+$/.test(request)||!Number.isSafeInteger(requestedCount)||requestedCount<1||requestedCount>LEGENDARY_PET_BULK_LIMIT))
+  return await reply('🔮 Quantidade inválida. Use *!invocarpet '+choice+' todos* ou um número de *1 a '+LEGENDARY_PET_BULK_LIMIT+'*.')
+setQuickFlow(chat,sender,'legendary_pet_bulk_confirm',{materialId:altar.materialId,amount:request},90000)
+const basePossible=Math.floor((owned+universal)/summonCost)
+return await reply(text+'\n📦 '+altar.materialName+': *'+owned+'* • Universais: *'+universal+'*'+
+  '\n🎲 Invocações possíveis sem contar devoluções: *'+Math.min(requestedCount,basePossible)+'*.'+
+  '\n♻️ Espécies repetidas devolvem dinheiro e fragmentos e podem aumentar o número de tentativas.'+
+  '\n⚠️ O lote usa primeiro o material desta Raid e depois os Fragmentos Universais, se necessário.'+
+  '\n🛡️ Limite por operação: *'+LEGENDARY_PET_BULK_LIMIT+'*. Nenhum material será consumido antes de confirmar.'+
+  '\n\n1️⃣ *Confirmar invocações em lote*\n2️⃣ Cancelar')
+}
 setQuickFlow(chat,sender,'legendary_pet_summon_confirm',{materialId:altar.materialId},90000)
-return await reply(text+'\n1️⃣ *Invocar agora*\n2️⃣ Cancelar')
+return await reply(text+'\n🧩 Universais: *'+universal+'* (usados caso os fragmentos desta Raid acabem).'+
+  '\n\n1️⃣ *Invocar 1 pet*\n3️⃣ *Invocar tudo* (até '+LEGENDARY_PET_BULK_LIMIT+')\n2️⃣ Cancelar')
 } else if(cmd==='lojaraid'){
 const choice=Number(args[0]||0)
 const qty=Number(args[1]||1)
