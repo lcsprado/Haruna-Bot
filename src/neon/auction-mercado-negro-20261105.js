@@ -34,7 +34,7 @@ async function init(){
   for(const [id,name,description] of [
    ['voucher_mercado_negro_equip_20261105','Vale Arsenal Proibido','Permite escolher uma arma ou armadura lendária do catálogo (exceto collab); entrega mediante conferência do administrador.'],
    ['voucher_mercado_negro_petraid_20261105','Vale Domador de Lendas','Permite escolher um pet lendário de Raid lançado e disponível; entrega mediante conferência do administrador.'],
-   ['reliquia_mercado_negro_20261105','Relíquia do Mercado Negro','Colecionável exclusivo sem bônus de combate e sem insígnia.']
+   ['reliquia_mercado_negro_20261105','Relíquia do Mercado Negro','Relíquia equipável em !reliquias: +6% dano Boss/Raid, +2,5 p.p. CRIT Boss/Raid, -1,5% dano recebido em Raid; sem PvP, não acumula com outra insígnia.']
   ])await db.query("INSERT INTO items(id,name,description,category,price,rarity,sellable,stackable) VALUES($1,$2,$3,'special',0,'event',FALSE,TRUE) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,description=EXCLUDED.description,sellable=FALSE,stackable=TRUE",[id,name,description])
  })()
  try{await initPromise}catch(e){initPromise=null;throw e}
