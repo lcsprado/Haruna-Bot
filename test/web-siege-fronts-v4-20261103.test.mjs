@@ -156,7 +156,7 @@ test('guerra histórica V1 não trava escolhas da nova V5 nem fixa Defesa',()=>{
    assert.match(html,new RegExp('data-siege-preview="'+id+'"'));
  assert.match(html,/data-siege-preview="supply"/);
  assert.match(html,/data-siege-target="castle"/);
- assert.match(html,/CERCO ÀS 20H · V5 HOJE/);
+ assert.match(html,/CERCO ÀS 21H · V5 HOJE/);
  assert.match(html,/2000 \/ 2.000/);
  assert.match(html,/ÚLTIMA GUERRA — REGRA V1 \(HISTÓRICO\)/);
  assert.doesNotMatch(html,/siege-action selected" data-siege-preview="defend"/);
