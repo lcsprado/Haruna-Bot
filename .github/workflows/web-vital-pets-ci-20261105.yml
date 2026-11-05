@@ -1,0 +1,27 @@
+name: Alpha Web API Vital Pets
+on:
+  push:
+    branches:
+      - fix/web-api-vital-pets-catalog-20261105
+  pull_request:
+    paths:
+      - 'src/neon/vital-pets.js'
+      - 'src/neon/db.js'
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/web-api.js'
+      - 'test/web-api-vital-pet-catalog-20261105.test.mjs'
+permissions:
+  contents: read
+jobs:
+  verify-vital-pets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --check src/neon/vital-pets.js
+      - run: node --check src/neon/game-catalog.js
+      - run: node --check src/neon/db.js
+      - run: node --check src/neon/web-api.js
+      - run: node --test test/web-api-vital-pet-catalog-20261105.test.mjs
