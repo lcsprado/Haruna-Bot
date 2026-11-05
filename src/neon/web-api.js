@@ -49,6 +49,7 @@ import {raceState,raceBuy,raceEquip,racePaint,raceUpgrade,raceRepair,raceSolo,ra
 import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TRACKS,RACING_STRATEGIES,RACING_TIERS,RACING_TOTAL_UPGRADE_COST} from './racing-rules.js'
 import { getLoanOverview, LOAN_RULES, acceptLoan, rejectLoan, payLoan, createLoanOffer, getLoanCredit } from './loans.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, PLAYER_CLASSES } from './game-catalog.js'
+import {PECADOS_HERO_IDS} from './sete-pecados-catalog.js'
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import {clanSiegeStatus,clanSiegeChallenge,clanSiegeAccept,clanSiegeMove,clanSiegeCancel,clanSiegeFortressUpgrade} from './clan-siege.js'
@@ -344,7 +345,7 @@ function petCatalog(){
     }))
   )
   const adoptable=ADOPTABLE_PETS.map(p=>({...p,source:'adoption'}))
-  const all=[...adoptable,...legendary]
+  const all=[...adoptable,...legendary].filter(p=>!PECADOS_HERO_IDS.includes(String(p.species||'')))
   return all.map(p=>({
     ...p,
     style:petStyleLabel(p.species),
@@ -521,10 +522,12 @@ async function playerBootstrap(session){
               LIMIT 20`,[jid])
   ])
   const {heroes,activeHeroCombat,activeHeroId}=await webPlayableHeroesSnapshot(jid,combatProfile)
+  const visiblePets=(Array.isArray(pets)?pets:[]).filter(p=>!PECADOS_HERO_IDS.includes(String(p.species||'')))
+  const visibleTeam=(Array.isArray(petTeam)?petTeam:[]).filter(p=>!PECADOS_HERO_IDS.includes(String(p.species||'')))
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,combatProfile,activeHeroCombat,heroes,inventory,pets,petTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(petTeam,activeHeroId)),petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,activeHeroCombat,heroes,inventory,pets:visiblePets,petTeam:visibleTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(visibleTeam,activeHeroId)),petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
