@@ -26,6 +26,7 @@ on:
       - 'web/index.html'
       - 'web/sw.js'
       - 'test/web-siege-daily-20h-20261103.test.mjs'
+      - 'test/web-siege-fronts-v4-20261103.test.mjs'
       - '.github/workflows/alpha-clan-siege-web.yml'
 permissions:
   contents: read
