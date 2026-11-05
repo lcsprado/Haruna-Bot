@@ -65,6 +65,7 @@ const ui = {
   selectedRaidLevel: null,
   bossTimer: null,
   syncing: false,
+  syncingToken: '',
   bossPolling: false,
   bossLiveVersion: '',
   lastFullSyncAt: 0,
@@ -844,9 +845,13 @@ async function exchange(code){
 }
 
 async function sync(silent,force=false){
-  if(!ui.token || ui.syncing) return;
+  if(!ui.token) return;
+  const activeToken=ui.token;
+  // A sessão anterior não pode bloquear o login novo nem atualizar o perfil de outro jogador.
+  if(ui.syncing && ui.syncingToken===activeToken) return;
   if(!force && ui.data && Date.now()-ui.lastFullSyncAt<45000) return;
   ui.syncing=true;
+  ui.syncingToken=activeToken;
   setSync(false);
   try{
     const jobs=[];
@@ -854,6 +859,7 @@ async function sync(silent,force=false){
     else jobs.push(Promise.resolve(null));
     jobs.push(api('/api/v1/me/bootstrap'));
     const values=await Promise.all(jobs);
+    if(ui.token!==activeToken) return; // Resposta de uma identidade já substituída.
     if(values[0]) ui.catalog=values[0].data;
     const previousIncoming=new Set(incomingRelationshipProposals(ui.data).map(p=>String(p.from_jid||'')));
     const nextData=values[1].data;
@@ -862,12 +868,14 @@ async function sync(silent,force=false){
     ui.lastFullSyncAt=Date.now();
     ui.bossLiveVersion='';
     await syncAvatar(false);
+    if(ui.token!==activeToken) return;
     showApp();
     render();
     setSync(true);
     if(freshProposal) toast('💍 '+String(freshProposal.from_name||'Alguém')+' te pediu em casamento.');
     else if(!silent) toast('Dados sincronizados com o Alpha Bot.');
   }catch(err){
+    if(ui.token!==activeToken) return; // Não desconectar uma nova sessão por um 401 antigo.
     if(/sessão web inválida|expirada/i.test(err.message)){
       logout(false);
       showLogin(err.message);
@@ -875,7 +883,12 @@ async function sync(silent,force=false){
       setSync(false);
       if(!silent) toast(err.message);
     }
-  }finally{ ui.syncing=false; }
+  }finally{
+    if(ui.syncingToken===activeToken){
+      ui.syncing=false;
+      ui.syncingToken='';
+    }
+  }
 }
 
 // Lightweight HP/status delta: never downloads full inventories or wallets.
@@ -3723,6 +3736,8 @@ setInterval(()=>{
   // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
   // Só o navegador executa o POST que consome o código.
   if(linked){
+    // Consuma o fragmento ANTES do pedido HTTP para que recarga/PWA não repita o código de uso único.
+    history.replaceState({},document.title,'/rpg');
     // Um novo link sempre substitui a identidade local anterior.
     // Código expirado, usado ou incorreto NUNCA reabre a sessão de outra pessoa.
     ui.token='';
