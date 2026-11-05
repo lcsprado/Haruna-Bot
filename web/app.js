@@ -802,21 +802,33 @@ function toast(message){
 
 async function api(path, options){
   options=options||{};
+  const requestToken=ui.token;
   const headers=Object.assign({'content-type':'application/json'},options.headers||{});
-  if(ui.token) headers.authorization='Bearer '+ui.token;
+  if(requestToken) headers.authorization='Bearer '+requestToken;
   const res=await fetch(API_BASE+path,Object.assign({},options,{headers}));
   let body={};
   try{ body=await res.json(); }catch{}
+  if(requestToken && ui.token!==requestToken){
+    const stale=new Error('Resposta de sessão anterior descartada.');
+    stale.staleSession=true;
+    throw stale;
+  }
+  if(res.status===401 && requestToken){
+    // Um 401 da identidade atual não pode deixar dados antigos na tela.
+    void logout(false);
+  }
   if(!res.ok || body.ok===false) throw new Error(body.error||('HTTP '+res.status));
   return body;
 }
 
 async function syncAvatar(force=false){
   if(!ui.token) return;
+  const requestToken=ui.token;
   if(!force && ui.avatarFetchedAt && Date.now()-ui.avatarFetchedAt<60000) return;
   ui.avatarFetchedAt=Date.now();
   try{
-    const res=await fetch(API_BASE+'/api/v1/me/avatar',{headers:{authorization:'Bearer '+ui.token},cache:'no-store'});
+    const res=await fetch(API_BASE+'/api/v1/me/avatar',{headers:{authorization:'Bearer '+requestToken},cache:'no-store'});
+    if(ui.token!==requestToken) return;
     if(res.status===404){
       if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
       ui.avatarUrl='';
@@ -824,6 +836,7 @@ async function syncAvatar(force=false){
     }
     if(!res.ok) return;
     const blob=await res.blob();
+    if(ui.token!==requestToken) return;
     const next=URL.createObjectURL(blob);
     if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
     ui.avatarUrl=next;
@@ -833,10 +846,21 @@ async function syncAvatar(force=false){
 async function exchange(code){
   const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(!clean) throw new Error('Informe o código gerado pelo !web.');
-  // Não enviar token do jogador anterior ao trocar de conta, nem mantê-lo se falhar.
+  // Nunca preservar informações do jogador anterior ao trocar a identidade.
+  stopRaidAuto();
+  stopBossAuto();
+  if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
+  ui.avatarUrl=''; ui.avatarFetchedAt=0;
   ui.token='';
-  ui.data=null;
-  ui.catalog=null;
+  ui.data=null; ui.catalog=null;
+  ui.extras=null; ui.extrasFetchedAt=0;
+  ui.auction=null; ui.auctionError='';
+  ui.racing=null; ui.racingFetchedAt=0; ui.racingLast=null;
+  ui.siege=null; ui.siegeFetchedAt=0; ui.siegeError='';
+  ui.eventCenter=null; ui.eventCenterFetchedAt=0; ui.eventCenterError='';
+  ui.contractData=null; ui.relicStatus=null; ui.lastResult=null;
+  ui.petTeamDraft=null; ui.petTeamPreview=null;
+  ui.lastFullSyncAt=0;
   localStorage.removeItem(TOKEN_KEY);
   const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
   ui.token=body.token;
