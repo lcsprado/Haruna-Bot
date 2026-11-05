@@ -10317,7 +10317,10 @@ continue
 let chosen=/^\d+$/.test(raw)?classes[Number(raw)-1]:classes.find(c=>c.id===raw||c.name.toLowerCase()===raw)
 if(!chosen){await reply('❌ Classe inválida. Use *!classe*.');continue}
 const result=await setPlayerClass(sender,chosen.id)
-await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP • ⚔️ ${result.stats.atk} ATK • 🛡️ ${result.stats.def} DEF • 💨 ${result.stats.spd} SPD\n⚜️ *${getClassPassive(chosen.id)?.name}* — ${getClif(cmd==='web'){
+await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP • ⚔️ ${result.stats.atk} ATK • 🛡️ ${result.stats.def} DEF • 💨 ${result.stats.spd} SPD\n⚜️ *${getClassPassive(chosen.id)?.name}* — ${getClassPassive(chosen.id)?.description}`)
+continue
+}
+if(cmd==='web'){
 // O pedido no grupo vincula o contexto, mas não dispara DM proativa:
 // somente responder a !web recebido no privado, que usa o fluxo de resposta
 // já confirmado funcional e evita mensagens com "Aguardando mensagem".
