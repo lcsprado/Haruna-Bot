@@ -212,11 +212,12 @@ function renderLiveSiege(ui){
     '<div class="siege-planning"><div class="siege-planning-head"><h4>'+(
       match?.myMove?'✅ Ação confirmada':'Escolha sua estratégia')+'</h4>'+
       '<span class="siege-status">'+(active?'RODADA '+Number(match.round)+'/6':'AGUARDANDO GUERRA')+'</span></div>'+
-    '<div class="siege-action-grid">'+availableActions.map(item=>'<button type="button" class="siege-action '+
+    (rulesVersion>=4?'<p class="siege-quick-guide">⚔️ 1. Escolha uma das cinco ações. 🎯 2. Selecione o alvo logo abaixo: Castelo, Portão ou Depósito. Para atacar ou defender o Portão, selecione a ação e depois Portão.</p>':'')+
+    '<div class="siege-action-grid siege-choices-grid">'+availableActions.map(item=>'<button type="button" class="siege-action '+
       (item.id===selectedActionId?'selected':'')+'" data-siege-preview="'+item.id+'" '+
-      (!canPreview?'disabled':'')+'><span class="siege-action-icon">'+item.icon+'</span>'+
+      (!canPreview?'disabled':'')+' aria-pressed="'+(item.id===selectedActionId?'true':'false')+'"><span class="siege-action-icon">'+item.icon+'</span>'+
       '<strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>').join('')+'</div>'+
-    (rulesVersion>=4?'<div class="siege-selected section"><strong>🎯 Escolha o objetivo desta ação</strong>'+
+    (rulesVersion>=4?'<div id="siege-target-options" class="siege-selected section"><strong>🎯 Escolha o objetivo desta ação</strong>'+
       '<p>Cada jogador escolhe sua própria frente. Coordene antes de confirmar: as ações só aparecem para o rival depois da rodada.</p>'+
       '<div class="siege-action-grid">'+permittedTargets.map(front=>'<button type="button" class="siege-action '+
         (front.id===selectedTarget&&selectedActionId?'selected':'')+'" data-siege-target="'+front.id+'" aria-pressed="'+
@@ -301,6 +302,8 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
     ui.siegePreviewAction=next;
     ui.siegePreviewTarget=next==='supply'?'depot':'castle';
     render();
+    // O jogador vê o Portão/Depósito imediatamente após escolher a ação no celular.
+    if(variant>=4)document.getElementById('siege-target-options')?.scrollIntoView({behavior:'smooth',block:'center'});
   }));
   document.querySelectorAll('[data-siege-target]').forEach(button=>button.addEventListener('click',()=>{
     if(ui.siege?.match?.status==='active'&&ui.siege.match.myMove)return;
