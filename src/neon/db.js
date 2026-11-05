@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
+import {VITAL_PETS} from './vital-pets.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -4745,6 +4746,7 @@ return base+Math.max(0,Number(level||1)-1)*2
 }
 export const PET_HP_PROFILES={
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,{base:350,growth:p.style==='guardiao'?26:23,type:'Sagrado'}])),
+...Object.fromEntries(VITAL_PETS.map(p=>[p.species,{base:p.hpBase,growth:p.hpGrowth,type:p.type}])),
 cachorro:{base:105,growth:9,type:'Equilibrado'},
 gato:{base:90,growth:7,type:'Ágil'},
 coelho:{base:85,growth:7,type:'Ágil'},
@@ -4943,39 +4945,44 @@ export const LEGENDARY_PET_SUMMONS=[
 {species:'paladino_astral',name:'🛡️ Paladino Astral',chance:10,power:280}
 ]},
 {materialId:'fragmento_celestial',materialName:'Fragmento Celestial',raidLevel:40,summonCost:100,pets:[
-{species:'leao_solar',name:'☀️ Leão Solar',chance:35,power:245},
-{species:'grifo_celestial',name:'✨ Grifo Celestial',chance:25,power:290},
-{species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:15,power:345},
-{species:'lince_celestial',name:'🐆 Lince Celestial',chance:15,power:320},
-{species:'arcanjo_eclipse',name:'🪽 Arcanjo do Eclipse',chance:10,power:335}
+{species:'leao_solar',name:'☀️ Leão Solar',chance:32,power:245},
+{species:'grifo_celestial',name:'✨ Grifo Celestial',chance:23,power:290},
+{species:'fenix_celestial',name:'🌟 Fênix Celestial',chance:14,power:345},
+{species:'lince_celestial',name:'🐆 Lince Celestial',chance:14,power:320},
+{species:'arcanjo_eclipse',name:'🪽 Arcanjo do Eclipse',chance:9,power:335},
+{species:'cervo_aurora_viva',name:'🦌 Cervo da Aurora Viva',chance:8,power:315}
 ]},
 {materialId:'nucleo_alpha_corrompido',materialName:'Núcleo Alpha Corrompido',raidLevel:50,summonCost:100,pets:[
-{species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:35,power:280},
-{species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:25,power:335},
-{species:'fenix_alpha',name:'👑 Fênix Alpha',chance:10,power:400},
-{species:'colosso_alpha',name:'🗿 Colosso Alpha',chance:15,power:360},
-{species:'oraculo_alpha',name:'🔮 Oráculo Alpha',chance:15,power:370}
+{species:'serpente_cosmica',name:'🌌 Serpente Cósmica',chance:32,power:280},
+{species:'dragao_corrompido',name:'☠️ Dragão Corrompido',chance:23,power:335},
+{species:'fenix_alpha',name:'👑 Fênix Alpha',chance:9,power:400},
+{species:'colosso_alpha',name:'🗿 Colosso Alpha',chance:14,power:360},
+{species:'oraculo_alpha',name:'🔮 Oráculo Alpha',chance:14,power:370},
+{species:'guardiao_nucleo_vital',name:'🗿 Guardião do Núcleo Vital',chance:8,power:385}
 ]},
 {materialId:'fragmento_caos',materialName:'Fragmento do Caos',raidLevel:60,summonCost:100,pets:[
-{species:'fera_caos',name:'🐺 Fera do Caos',chance:35,power:305},
-{species:'guardiao_caos',name:'🛡️ Guardião do Caos',chance:25,power:320},
-{species:'serafim_caotico',name:'🪽 Serafim Caótico',chance:15,power:345},
-{species:'oraculo_caos',name:'🔮 Oráculo do Caos',chance:15,power:350},
-{species:'fenix_caos',name:'🔥 Fênix do Caos',chance:10,power:370}
+{species:'fera_caos',name:'🐺 Fera do Caos',chance:32,power:305},
+{species:'guardiao_caos',name:'🛡️ Guardião do Caos',chance:23,power:320},
+{species:'serafim_caotico',name:'🪽 Serafim Caótico',chance:14,power:345},
+{species:'oraculo_caos',name:'🔮 Oráculo do Caos',chance:14,power:350},
+{species:'fenix_caos',name:'🔥 Fênix do Caos',chance:9,power:370},
+{species:'quimera_rubra',name:'🐲 Quimera Rubra',chance:8,power:365}
 ]},
 {materialId:'coroa_abissal',materialName:'Coroa Abissal',raidLevel:65,summonCost:100,pets:[
-{species:'pantera_profundezas',name:'🐈‍⬛ Pantera das Profundezas',chance:35,power:330},
-{species:'guardiao_abissal',name:'🗿 Guardião Abissal',chance:25,power:355},
-{species:'dragao_trono',name:'🐉 Dragão do Trono Abissal',chance:15,power:375},
-{species:'oraculo_coroa',name:'👑 Oráculo da Coroa',chance:15,power:390},
-{species:'esfinge_mares',name:'🌊 Esfinge das Marés',chance:10,power:400}
+{species:'pantera_profundezas',name:'🐈‍⬛ Pantera das Profundezas',chance:32,power:330},
+{species:'guardiao_abissal',name:'🗿 Guardião Abissal',chance:23,power:355},
+{species:'dragao_trono',name:'🐉 Dragão do Trono Abissal',chance:14,power:375},
+{species:'oraculo_coroa',name:'👑 Oráculo da Coroa',chance:14,power:390},
+{species:'esfinge_mares',name:'🌊 Esfinge das Marés',chance:9,power:400},
+{species:'serafim_vida_abissal',name:'🪽 Serafim da Vida Abissal',chance:8,power:395}
 ]},
 {materialId:'essencia_eclipse',materialName:'Essência do Eclipse',raidLevel:70,summonCost:100,pets:[
-{species:'lobo_eclipse',name:'🌘 Lobo do Eclipse',chance:35,power:355},
-{species:'sentinela_eclipse',name:'🛡️ Sentinela do Eclipse',chance:25,power:380},
-{species:'dragao_solar_eclipse',name:'🐉 Dragão Solar do Eclipse',chance:15,power:405},
-{species:'fenix_eclipse',name:'🌗 Fênix do Eclipse',chance:15,power:420},
-{species:'avatar_primordial',name:'🌌 Avatar Primordial',chance:10,power:435}
+{species:'lobo_eclipse',name:'🌘 Lobo do Eclipse',chance:32,power:355},
+{species:'sentinela_eclipse',name:'🛡️ Sentinela do Eclipse',chance:23,power:380},
+{species:'dragao_solar_eclipse',name:'🐉 Dragão Solar do Eclipse',chance:14,power:405},
+{species:'fenix_eclipse',name:'🌗 Fênix do Eclipse',chance:14,power:420},
+{species:'avatar_primordial',name:'🌌 Avatar Primordial',chance:9,power:435},
+{species:'leviata_eternidade',name:'🌊 Leviatã da Eternidade',chance:8,power:430}
 ]}
 ]
 export async function raid50DragonGuaranteeStatus(jid){
