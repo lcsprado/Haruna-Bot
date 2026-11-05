@@ -43,6 +43,8 @@ test('o gerador real de !web chama o helper canônico (sem fallback de ambiente)
   assert.doesNotMatch(snippet,/WEB_APP_URL|RENDER_EXTERNAL_URL|url:origin/);
   const bot=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
   assert.match(bot,/if\(cmd==='web'\)/);
-  assert.match(bot,/createWebLinkCode\(sender,isGroup\?chat:null\)/);
+  assert.match(bot,/prepareWebGroupLink\(sender,chat\)/);
+  assert.match(bot,/consumePendingWebGroupLink\(sender\)/);
+  assert.match(bot,/createWebLinkCode\(sender,linkedGroup\)/);
   assert.match(bot,/link\.url/);
 });
