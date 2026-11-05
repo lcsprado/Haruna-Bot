@@ -1503,6 +1503,8 @@ export async function raidRound(chat,level){
     s.activeElapsedMs=elapsedMs+8000
     s.expiresAt=Date.now()+Math.max(0,durationMs-s.activeElapsedMs)
     const events=[]
+    // Mantém apenas um débito automático por pet por rodada (inclusive reanimação prévia).
+    const preRoundPetHeals=new Map()
     const alive=Object.values(s.players||{}).filter(p=>p.alive)
     if(!alive.length){
       s.status='failed';s.failReason='party_wipe';await saveGame(c,chat,gameType,s)
@@ -1535,6 +1537,29 @@ export async function raidRound(chat,level){
         }
       }
 
+      // Após desmaiar numa rodada anterior, o pet precisa ser reanimado ANTES
+      // de avaliar roundActive. A versão anterior ignorava permanentemente HP=0.
+      // Não gasta poção se também não houver energia para participar.
+      if(p.pet&&Number(p.pet.hp)<=0){
+        // Sonda sem lock para não inverter a ordem de travas de poções/energéticos.
+        const canFight=Number(p.pet.energy)>0||Boolean((await c.query(
+          "SELECT 1 FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0",
+          [p.jid]
+        )).rows[0])
+        if(canFight){
+          const healed=await autoHealBossCombatPet({
+            client:c,jid:p.jid,pet:p.pet,
+            maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),
+            choosePotion:raidPetPotion,persistPet:persistRaidCombatPet,
+            context:'raid-revive'
+          })
+          if(healed){
+            p.petPotionHealing=Number(p.petPotionHealing||0)+Number(healed.heal)
+            p.petPotionUses=Number(p.petPotionUses||0)+1
+            preRoundPetHeals.set(p.jid,healed)
+          }
+        }
+      }
       let raidAutoPetEnergy=null
       if(p.pet&&Number(p.pet.hp)>0&&Number(p.pet.energy)<1){
         // Recarrega apenas ao esgotar; debita exatamente um energético sob lock.
@@ -1702,7 +1727,7 @@ export async function raidRound(chat,level){
         p.petSkillHealing=Number(p.petSkillHealing||0)+heart.heal
         events.push({type:'vital_pulse',jid:p.jid,name:p.name,heal:heart.heal,hp:p.hp})
       }
-      let petDamage=0,petFainted=false,autoPetHeal=null,petSwitch=null,fallenPetName=null
+      let petDamage=0,petFainted=false,autoPetHeal=preRoundPetHeals.get(p.jid)||null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
         petDamage=Math.max(1,Math.round(cfg.atk*(.28+Math.random()*.20)*(special?1.25:1)*(1-petDefense)))
@@ -1712,7 +1737,7 @@ export async function raidRound(chat,level){
         // antes de desmaiar, usa a menor poção disponível para o HP perdido.
         // O inventário já está bloqueado FOR UPDATE na mesma transação.
         const maxPetHp=Math.max(1,Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)))
-        if(!petFainted&&Number(p.pet.hp)/maxPetHp<.35){
+        if(!petFainted&&!autoPetHeal&&Number(p.pet.hp)/maxPetHp<.35){
           const missing=Math.max(1,maxPetHp-Number(p.pet.hp))
           const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
           if(chosenPet){
@@ -1740,7 +1765,7 @@ export async function raidRound(chat,level){
             p.reservePet=null
             p.pet.roundActive=false
             petFainted=false
-          }else{
+          }else if(!autoPetHeal){
             const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
             const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
             if(chosenPet){
@@ -3159,7 +3184,11 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     // Se havia Reserva saudável, a troca anterior continua tendo prioridade.
     let autoPetHeal=null
     if(usePet&&petRow&&Number(petRow.hp)<=0){
-      autoPetHeal=await healBossCombatPet(c,jid,petRow)
+      const canFight=Number(petRow.energy)>=2||Boolean((await c.query(
+        "SELECT 1 FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0",
+        [jid]
+      )).rows[0])
+      if(canFight)autoPetHeal=await healBossCombatPet(c,jid,petRow)
     }
     // Recarrega o pet automaticamente e consome um energético na mesma transação.
     let autoPetEnergy=null
@@ -3306,7 +3335,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         // abaixo de 35% de HP, usa automaticamente a menor poção de pet
         // suficiente. Em 0 HP, preserva a prioridade de troca para o Reserva.
         const maxPetHp=Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))
-        if(!pet.petFainted && maxPetHp>0 && Number(pet.hp)/maxPetHp<.35){
+        if(!pet.petFainted && !autoPetHeal && maxPetHp>0 && Number(pet.hp)/maxPetHp<.35){
           const healed=await healBossCombatPet(c,jid,pet)
           if(healed)autoPetHeal=healed
         }
@@ -3323,7 +3352,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           }
           // Mesmo comportamento da Raid: sem Reserva disponível, o pet usa
           // automaticamente a menor poção suficiente quando chegar a 0 HP.
-          if(!switched){
+          if(!switched&&!autoPetHeal){
             const healed=await healBossCombatPet(c,jid,pet)
             if(healed)autoPetHeal=healed
           }
@@ -3411,7 +3440,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         nextPhase:result.next||null,finalCompleted:result.completed,
         autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
-        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+        petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     if(s.hp<=0&&s.eventId===CALCANHAR_ID){
       const result=await settleCalcanhar(c,s,true)
@@ -3419,7 +3448,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
         autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
-        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+        petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     if(s.hp<=0&&s.eventId===COLLAB_FARM_ID){
       const outcome=await settleCollabFarmPhase(c,s)
@@ -3428,7 +3457,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         nextPhase:outcome.next||null,phaseIndex:outcome.phaseIndex,finalCompleted:outcome.completed,
         autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
-        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+        petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     if(s.hp<=0&&s.eventId==='sete_pecados'){
       const outcome=await settlePecadoPhase(c,s,chat)
@@ -3437,7 +3466,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         nextPhase:outcome.next||null,phaseIndex:outcome.phaseIndex,finalCompleted:outcome.completed,
         autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
-        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+        petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     if(s.hp<=0&&s.eventId===INICIO_MADRUGADA_ID){
       const result=await settleInicioMadrugada(c,s,true)
@@ -3445,11 +3474,11 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
         autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
-        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+        petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     if(s.hp<=0&&s.eventId===CAM_ID){
       const result=await finishCam(c,s,true)
-      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,phaseChanged,playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,phaseChanged,playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     if(s.hp<=0&&s.eventId===AURORA_ID){
       const result=await settleAurora(c,s,true)
@@ -3457,7 +3486,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
         autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
-        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+        petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     if(s.hp<=0&&ruptura){
       const result=await premiarRupturaEstelar(c,s,chat,'defeated')
@@ -3465,7 +3494,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         playerHp:php,hp:0,maxHp:s.maxHp,players:result.rewards.length,rewards:result.rewards,
         autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,
         petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),
-        petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+        petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     if(s.hp<=0){
       const entries=Object.entries(s.participants).map(([pjid,v])=>({
@@ -3635,9 +3664,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         const marker={mode:'completed',name:s.name,hp:0,maxHp:s.maxHp,participants:{},weekendKey:s.weekendKey,weeklyCompleted:s.mode==='weekly'||Boolean(s.weeklyCompleted),endsAt:s.endsAt||0,lastCommonEndedAt:s.mode==='common'?Date.now():Number(s.lastCommonEndedAt||0),completedAt:Date.now(),result:bossSettlementSnapshot(s,rewards)}
         await saveGame(c,s.mode==='weekly'?GLOBAL_WEEKLY_BOSS_CHAT:chat,'boss',marker)
       }
-      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal)}
+      return {dead:true,mode:s.mode,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,hp:0,maxHp:s.maxHp,players:entries.length,rewards,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch)}
     }
     await saveBossAttackProgress(c,eventActive?GLOBAL_BOSS_EVENT_CHAT:bossChat,gameType,s,jid)
-    return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),phase:s.phase||0,phaseChanged,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch&&!autoPetHeal),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
+    return {dead:false,mode:s.mode||'common',endsAt:Number(s.endsAt||0),phase:s.phase||0,phaseChanged,damage,bossDamage,bossCritical,oilConsumedNow,oilActive:Boolean(existingParticipant.oilActive),playerHp:php,playerMaxHp:effectiveMaxHp,playerDead:php<=0,hp:s.hp,maxHp:s.maxHp,autoHeal,autoPetHeal,petSkillHeal,vitalPulseEvent,petSwitch,autoPetEnergy,petUnavailable,petUnavailableReason:petNoHp?'hp':(petNoEnergy?'energy':null),petFainted:Boolean(pet?.petFainted&&!petSwitch),pet:pet?{name:pet.name,species:pet.species,bonus:petBonus.label,damage:petDamage,crit,energy:pet.energy,hp:Number(pet.hp),maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),damageTaken:Number(pet.petDamageTaken||0),fainted:Boolean(pet.petFainted)}:null}
   }),{onRetry:({attempt,waitMs})=>console.warn('[Boss] deadlock SQL 40P01; transação revertida, nova tentativa',attempt,'em',waitMs,'ms')})
 }

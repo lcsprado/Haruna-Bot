@@ -2,7 +2,7 @@ import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 
 // Autocura transacional de pet em Boss. Recebe o pet do slot real de combate
 // (principal ou reserva), nunca procura outro pet por nome ou por slot implícito.
-export async function autoHealBossCombatPet({client,jid,pet,maxHp,choosePotion,persistPet}) {
+export async function autoHealBossCombatPet({client,jid,pet,maxHp,choosePotion,persistPet,context='boss'}) {
   if (!pet) return null
   const capacity=Math.max(1,Number(maxHp)||1)
   const before=Math.max(0,Number(pet.hp)||0)
@@ -14,10 +14,10 @@ export async function autoHealBossCombatPet({client,jid,pet,maxHp,choosePotion,p
     [jid,potionIds]
   )).rows
   const chosen=choosePotion(inventory,capacity-before)
-  if(!chosen) return null
+  if(!chosen||!Number.isFinite(Number(chosen.heal))||Number(chosen.heal)<=0) return null
 
-  // Limite diário e auditoria são transacionais com o débito e a cura.
-  const debit=await spendAutoPetPotion(client,{jid,itemId:chosen.item_id,context:'boss',petName:pet.name})
+  // Débito e auditoria ocorrem na transação da cura.
+  const debit=await spendAutoPetPotion(client,{jid,itemId:chosen.item_id,context,petName:pet.name})
   if(!debit.spent) return null
 
   const hp=Math.min(capacity,before+Math.max(0,Number(chosen.heal)||0))
