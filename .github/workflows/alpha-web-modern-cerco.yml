@@ -27,3 +27,7 @@ jobs:
           node --check web/clan-siege-ui.js
       - name: Verify modern art, garage and clan
         run: node --test test/web-modern-siege-guard-20261102.test.mjs
+      - name: Validate weekly Wednesday 21h siege schedule
+        run: |
+          node --check src/neon/clan-siege.js
+          node --test test/clan-siege-daily-20h-20261103.test.mjs
