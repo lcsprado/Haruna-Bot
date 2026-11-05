@@ -81,7 +81,7 @@ import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeam
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
 import {petCollectionCategory,petCollectionCategoryPets,petCollectionMenuText,petCollectionListText,petCollectionDetailText,petCollectionSacrificeText} from './pet-collection-menu.js'
-import { createWebLinkCode } from './web-api.js'
+import { createWebLinkCode, prepareWebGroupLink, consumePendingWebGroupLink } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {homeCatalogText,homeBenefitsText,homeRestDescription} from './home-menu.js'
@@ -10317,33 +10317,31 @@ continue
 let chosen=/^\d+$/.test(raw)?classes[Number(raw)-1]:classes.find(c=>c.id===raw||c.name.toLowerCase()===raw)
 if(!chosen){await reply('❌ Classe inválida. Use *!classe*.');continue}
 const result=await setPlayerClass(sender,chosen.id)
-await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP • ⚔️ ${result.stats.atk} ATK • 🛡️ ${result.stats.def} DEF • 💨 ${result.stats.spd} SPD\n⚜️ *${getClassPassive(chosen.id)?.name}* — ${getClassPassive(chosen.id)?.description}`)
-continue
-}
-if(cmd==='web'){
-// Códigos de acesso são credenciais: NUNCA enviar no grupo.
-if(isGroup && !String(sender||'').endsWith('@s.whatsapp.net')){
-  await reply('🔐 Por segurança, não consegui confirmar seu contato privado. Envie *!web* diretamente ao bot. Nenhum código foi publicado no grupo.')
+await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP • ⚔️ ${result.stats.atk} ATK • 🛡️ ${result.stats.def} DEF • 💨 ${result.stats.spd} SPD\n⚜️ *${getClassPassive(chosen.id)?.name}* — ${getClif(cmd==='web'){
+// O pedido no grupo vincula o contexto, mas não dispara DM proativa:
+// somente responder a !web recebido no privado, que usa o fluxo de resposta
+// já confirmado funcional e evita mensagens com "Aguardando mensagem".
+if(isGroup){
+  if(!String(sender||'').endsWith('@s.whatsapp.net')){
+    await reply('🔐 Por segurança, não consegui confirmar seu contato privado. Envie *!web* diretamente ao bot. Nenhum código foi publicado no grupo.')
+    continue
+  }
+  const pending=await prepareWebGroupLink(sender,chat)
+  const remainingMinutes=Math.max(1,Math.ceil((Number(pending.expiresAt)-Date.now())/60000))
+  await reply('🔐 Para receber o código do Alpha RPG, abra a conversa privada com o Alpha Bot e envie *!web*.\\n✅ O vínculo com este grupo foi reservado por *'+remainingMinutes+' minutos*.\\n🔒 Nenhum código ou link de acesso será mostrado no grupo.')
   continue
 }
-const link=await createWebLinkCode(sender,isGroup?chat:null)
+const linkedGroup=await consumePendingWebGroupLink(sender)
+const link=await createWebLinkCode(sender,linkedGroup)
 const expiresMin=Math.max(1,Math.ceil((Number(link.expiresAt)-Date.now())/60000))
-const groupLine=isGroup
+const groupLine=link.chatJid
 ? '🔗 Seu acesso foi vinculado ao grupo onde você solicitou o link.'
-: 'ℹ️ Código gerado no privado. Para vincular Bosses/Raids do grupo, use *!web* no grupo.'
+: 'ℹ️ Código gerado no privado. Para vincular Bosses/Raids do grupo, use *!web* no grupo e depois *!web* aqui no privado.'
 const urlLine=link.url
-? `\n🌐 *TOQUE AQUI PARA ENTRAR DIRETO:*\n${link.url}`
-: '\n🌐 Abra o RPG Web e informe este código na tela de conexão.'
-const privateMessage=`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ O link acima faz a conexão automaticamente.\n⚠️ O código é de uso único. Não envie para outras pessoas.`
-if(isGroup){
-  try{
-    await sock.sendMessage(sender,{text:privateMessage})
-    await reply('🔐 Seu código de acesso ao Alpha RPG foi enviado no privado. Por segurança, o grupo nunca recebe códigos ou links de login.')
-  }catch(err){
-    console.warn('[Web Auth] falha ao entregar código no privado:',String(err?.message||err))
-    await reply('❌ Não consegui enviar o código no privado. Envie *!web* diretamente ao bot. Nenhum código foi publicado no grupo.')
-  }
-}else await reply(privateMessage)
+? `\\n🌐 *TOQUE AQUI PARA ENTRAR DIRETO:*\\n${link.url}`
+: '\\n🌐 Abra o RPG Web e informe este código na tela de conexão.'
+const privateMessage=`🌐 *CONECTAR ALPHA RPG WEB*\\n\\n🔐 Código: *${link.code}*\\n⏳ Expira em: *${expiresMin} min*\\n\\n${groupLine}${urlLine}\\n\\n✅ O link acima faz a conexão automaticamente.\\n⚠️ O código é de uso único. Não envie para outras pessoas.`
+await reply(privateMessage)
 continue
 }
 const carp=await resolvePlayerCarpinar(sender)
