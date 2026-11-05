@@ -13,12 +13,13 @@ const base={
 
 test('Cerco automatico: nao oferece desafiar/aceitar quando parado',()=>{
  const html=renderClanSiegePreview({siege:{...base,match:null},siegePreviewAction:null});
- assert.match(html,/CERCO · QUARTA ÀS 21H/);
- assert.match(html,/A guerra acontece somente às quartas-feiras, às 21h de Brasília/);
+ assert.match(html,/CERCO · SÁBADO ÀS 21H30/);
+ assert.match(html,/A guerra acontece somente aos sábados, às 21h30 de Brasília/);
  assert.doesNotMatch(html,/V5 HOJE/);
  assert.doesNotMatch(html,/diariamente às 21h/);
+ assert.doesNotMatch(html,/QUARTA ÀS 21H/);
  assert.doesNotMatch(html,/CERCO ÀS 20H/);
- assert.match(html,/Quarta 21h/);
+ assert.match(html,/Sábado 21h30/);
  assert.doesNotMatch(html,/data-siege-command="challenge"/);
  assert.doesNotMatch(html,/data-siege-command="accept"/);
  assert.doesNotMatch(html,/data-siege-command="move"/);
