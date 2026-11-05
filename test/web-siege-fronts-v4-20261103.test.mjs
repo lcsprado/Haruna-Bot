@@ -111,7 +111,7 @@ test('após uma partida antiga concluída, prévia é V5 mas resultado históric
  old.siege.match.myMove=null;
  const html=renderClanSiegePreview(old);
  assert.match(html,/Resultado anterior preservado na regra V1/);
- assert.match(html,/próxima guerra, na quarta-feira às 21h, usará V5/);
+ assert.match(html,/próxima guerra, no sábado às 21h30, usará V5/);
  assert.match(html,/data-siege-preview="supply"/);
  assert.match(html,/V5/);
  assert.doesNotMatch(html,/data-siege-command="move"/);
@@ -156,7 +156,7 @@ test('guerra histórica V1 não trava escolhas da nova V5 nem fixa Defesa',()=>{
    assert.match(html,new RegExp('data-siege-preview="'+id+'"'));
  assert.match(html,/data-siege-preview="supply"/);
  assert.match(html,/data-siege-target="castle"/);
- assert.match(html,/CERCO · QUARTA ÀS 21H · V5/);
+ assert.match(html,/CERCO · SÁBADO ÀS 21H30 · V5/);
  assert.match(html,/2000 \/ 2.000/);
  assert.match(html,/ÚLTIMA GUERRA — REGRA V1 \(HISTÓRICO\)/);
  assert.doesNotMatch(html,/siege-action selected" data-siege-preview="defend"/);
