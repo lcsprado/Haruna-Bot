@@ -54,6 +54,7 @@ import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 import {getAuctionWebStatus,placeAuctionWebBid} from './auction-alpha.js'
 import {clanSiegeStatus,clanSiegeChallenge,clanSiegeAccept,clanSiegeMove,clanSiegeCancel,clanSiegeFortressUpgrade} from './clan-siege.js'
 import {siegeBetaGuestAccess} from './clan-siege-beta-access.js'
+import {recoverAuthorizedBetaGroup} from './web-beta-session-recovery.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
 const CODE_TTL_MS = 30 * 60 * 1000
@@ -61,12 +62,21 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 const SESSION_TOUCH_MS = 5 * 60 * 1000
 // During isolated testing, no user is allowed unless explicitly admitted.
 // Without an allowlist, the Web API remains closed even if somebody discovers its URL.
-async function betaWebAccess(jid,chatJid,client=db){
-  if(String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()!=='web-api-only')return true
+// The beta gate must also cover private codes from an already approved
+// player. Revalidate his OWN prior group session and current clan membership.
+async function betaWebAuthorization(jid,chatJid,client=db){
+  const group=cleanChatJid(chatJid)
+  if(String(process.env.ALPHA_RUNTIME||'').trim().toLowerCase()!=='web-api-only')
+    return {allowed:true,group}
   const allowed=String(process.env.ALPHA_WEB_BETA_JIDS||'').split(',').map(s=>s.trim()).filter(Boolean)
-  if(allowed.includes(String(jid||'')))return true
-  if(!chatJid)return false
-  return siegeBetaGuestAccess(client,{jid,chat:chatJid})
+  if(allowed.includes(String(jid||'')))return {allowed:true,group}
+  if(group)return {allowed:await siegeBetaGuestAccess(client,{jid,chat:group}),group}
+  const previous=await recoverAuthorizedBetaGroup(client,jid,
+    (player,chat)=>siegeBetaGuestAccess(client,{jid:player,chat}),now())
+  return {allowed:Boolean(previous),group:previous}
+}
+async function betaWebAccess(jid,chatJid,client=db){
+  return (await betaWebAuthorization(jid,chatJid,client)).allowed
 }
 let webTablesReady = false
 let webTablesPromise = null
@@ -212,7 +222,9 @@ async function exchangeWebLinkCode(code){
       [codeHash]
     )).rows[0]
     if(!row || row.used_at || Number(row.expires_at)<now()) throw new Error('Código inválido ou expirado.')
-    if(!await betaWebAccess(row.jid,row.chat_jid,client)) throw new Error('Alpha RPG Web ainda está fechado para testes. Aguarde a liberação.')
+    const auth=await betaWebAuthorization(row.jid,row.chat_jid,client)
+    if(!auth.allowed) throw new Error('Alpha RPG Web ainda está fechado para testes. Aguarde a liberação.')
+    const sessionGroup=auth.group
 
     const token=crypto.randomBytes(32).toString('base64url')
     const tokenHash=sha256(token)
@@ -220,18 +232,18 @@ async function exchangeWebLinkCode(code){
     await client.query('UPDATE web_link_codes SET used_at=$1 WHERE code_hash=$2',[now(),codeHash])
     await client.query(
       'INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at) VALUES($1,$2,$3,$4,$5,$5)',
-      [tokenHash,row.jid,row.chat_jid||null,expiresAt,now()]
+      [tokenHash,row.jid,sessionGroup||null,expiresAt,now()]
     )
-    if(row.chat_jid){
+    if(sessionGroup){
       // Vincular pelo grupo atualiza também tokens antigos do mesmo jogador/aparelho.
       // Isso elimina o estado "entrei pelo link do grupo, mas Boss/Raid continuam privados".
       await client.query(
         'UPDATE web_sessions SET chat_jid=$1,last_seen_at=$2 WHERE jid=$3 AND expires_at>$2',
-        [row.chat_jid,now(),row.jid]
+        [sessionGroup,now(),row.jid]
       )
     }
     await client.query('COMMIT')
-    return {token,expiresAt,groupLinked:Boolean(row.chat_jid)}
+    return {token,expiresAt,groupLinked:Boolean(sessionGroup)}
   }catch(err){
     await client.query('ROLLBACK')
     throw err
