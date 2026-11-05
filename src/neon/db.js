@@ -4504,6 +4504,7 @@ pet_xp INTEGER NOT NULL,
 cash_reward BIGINT NOT NULL,
 resolved BOOLEAN NOT NULL DEFAULT FALSE
 );
+ALTER TABLE pet_expeditions ADD COLUMN IF NOT EXISTS cancelled_at BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS pet_expeditions_active_pet_idx ON pet_expeditions(pet_id) WHERE resolved=FALSE;
 CREATE INDEX IF NOT EXISTS pet_expeditions_owner_idx ON pet_expeditions(jid,resolved,ends_at);
 CREATE TABLE IF NOT EXISTS player_sleep(
@@ -5629,6 +5630,29 @@ started.push({...row,pet_name:pet.name,species:pet.species,trait})
 return {started,hours,limit:PET_EXPEDITION_MAX_CONCURRENT,remaining:pets.length-started.length}
 })
 }
+// Retirada voluntária antes do fim: nenhum XP, dinheiro ou item é concedido.
+// Mantém histórico com cancelled_at, sem liberar recompensas no coletor.
+export async function cancelPetExpedition(jid,petId){
+await ensureUser(jid)
+const id=Number(petId)
+if(!Number.isSafeInteger(id)||id<=0) throw new Error('Informe o ID do pet. Ex.: !expedicaopetsair 12')
+return transaction(async client=>{
+const trip=(await client.query(`SELECT e.id,e.pet_id,e.ends_at,e.hours,p.name pet_name
+FROM pet_expeditions e JOIN pet_collection p ON p.id=e.pet_id AND p.jid=e.jid
+WHERE e.jid=$1 AND e.pet_id=$2 AND e.resolved=FALSE
+FOR UPDATE OF e,p`,[jid,id])).rows[0]
+if(!trip) throw new Error('Esse pet não está em expedição ativa na sua conta. Use !expedicoespet para conferir.')
+const now=Math.floor(Date.now()/1000)
+if(Number(trip.ends_at)<=now) throw new Error('A expedição já terminou. Use !expedicoespet para receber as recompensas antes de usar o pet.')
+const changed=await client.query(`UPDATE pet_expeditions
+SET resolved=TRUE,cancelled_at=$3
+WHERE id=$1 AND jid=$2 AND resolved=FALSE AND ends_at>$3
+RETURNING id,pet_id`,[trip.id,jid,now])
+if(changed.rowCount!==1) throw new Error('A expedição já terminou ou foi alterada. Consulte !expedicoespet.')
+return {petId:Number(trip.pet_id),petName:trip.pet_name,hours:Number(trip.hours),secondsRemaining:Math.max(0,Number(trip.ends_at)-now)}
+})
+}
+
 export async function resolvePetExpeditions(jid){
 await ensureUser(jid)
 return transaction(async client=>{
