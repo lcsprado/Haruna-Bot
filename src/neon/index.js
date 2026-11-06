@@ -90,7 +90,8 @@ import {startLabirintoScheduler,handleLabirintoCommand} from './labirinto-alpha.
 import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot.js'
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
-import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet} from './playable-heroes.js'
+import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet,getActivePlayableHero} from './playable-heroes.js'
+import {DAMAGE_SAMPLE_LIMIT,combineDamageStats} from './damage-hero-stats.js'
 import {formatProfileCombatBonuses} from './profile-combat-summary.js'
 import {applyVitalCombatHp} from './vital-pets.js'
 import {gearStatsWithEnchants,equipmentEnchantmentsByItem} from './equipment-enchant-view.js'
@@ -11396,32 +11397,34 @@ await reply('🍀 Pong! Alpha Bot online e conectado ao Neon.')
 const p=await getProfile(sender)
 await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}\n📊 Total: R$ ${fmt(Number(p.cash)+Number(p.bank))}`)
 } else if(cmd==='dano'){
-const mentioned=mentionsOf(msg)[0]
-const identity=mentioned?await resolvePlayerIdentity(sock,chat,mentioned,msg):{jid:sender}
-const target=identity.jid||sender
-const profile=await getProfile(target)
-const stats=await getPlayerDamageStats(target)
-const boss=stats.boss||null,raid=stats.raid||null
-const n=(boss?.count||0)+(raid?.count||0)
-if(!n){
-await reply('⚔️ *ANÁLISE DE DANO*\n\nAinda não há ataques registrados para este jogador.\n📊 As estatísticas começam a contar a partir da ativação do comando.')
-}else{
-const total=(boss?.average||0)*(boss?.count||0)+(raid?.average||0)*(raid?.count||0)
-const critTotal=(boss?.critAverage||0)*(boss?.critCount||0)+(raid?.critAverage||0)*(raid?.critCount||0)
-const critCount=(boss?.critCount||0)+(raid?.critCount||0)
-const normalCount=n-critCount
-const normalTotal=total-critTotal
-const label=String(profile?.push_name||profile?.name||'Jogador').replace(/[\r\n*_~]/g,' ').slice(0,60)
-await reply('⚔️ *ANÁLISE DE DANO — '+label+'*\n\n'+
-'💥 Média por ataque: *'+fmt(Math.round(total/n))+'*\n'+
-'⚔️ Média normal: *'+(normalCount?fmt(Math.round(normalTotal/normalCount)):'—')+'*\n'+
-'🎯 Média crítica: *'+(critCount?fmt(Math.round(critTotal/critCount)):'—')+'*\n'+
-'🔥 Maior dano: *'+fmt(Math.max(boss?.max||0,raid?.max||0))+'*\n'+
-'📊 Ataques analisados: *'+n+'* (até 100 Boss + 100 Raid)\n\n'+
-'👹 Boss: *'+(boss?fmt(boss.average)+' ('+boss.count+' ataques)':'sem registros')+'*\n'+
-'🐉 Raid: *'+(raid?fmt(raid.average)+' ('+raid.count+' ataques)':'sem registros')+'*\n\n'+
-'_Médias reais dos ataques recentes, sem PvP. Contagem iniciada após a atualização._')
-}
+  const mentioned=mentionsOf(msg)[0];
+  const identity=mentioned?await resolvePlayerIdentity(sock,chat,mentioned,msg):{jid:sender};
+  const target=identity.jid||sender;
+  const historical=args.some(x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()==='historico');
+  const profile=await getProfile(target);
+  const heroId=historical?null:await getActivePlayableHero(db,target);
+  const combatant=historical?'HISTÓRICO LEGADO':heroId?heroId.replace(/^pecado_/,'').toUpperCase():'CLASSE';
+  const stats=await getPlayerDamageStats(target,heroId,{historical});
+  const boss=stats.boss||null,raid=stats.raid||null;
+  const combined=combineDamageStats(boss,raid);
+  const label=String(profile?.push_name||profile?.name||'Jogador').replace(/[\r\n*_~]/g,' ').slice(0,60);
+  if(!combined.count){
+    await reply('⚔️ *ANÁLISE DE DANO — '+label+'*\n\n🎭 Combatente: *'+combatant+'*\n\nAinda não há ataques de Boss ou Raid registrados para este combatente na janela atual.\n📚 Os registros anteriores continuam disponíveis em *!dano historico*.');
+  }else{
+    const windowSize=historical?100:DAMAGE_SAMPLE_LIMIT;
+    const footer=historical
+      ?'_Dados anteriores sem identificação de herói, preservados para consulta; não representam o personagem atual._'
+      :'_Apenas golpes deste combatente após a atualização. Os dados anteriores estão preservados em !dano historico._';
+    await reply('⚔️ *ANÁLISE DE DANO — '+label+'*\n\n'+
+      '🎭 Combatente: *'+combatant+'*\n'+
+      '💥 Média por ataque: *'+fmt(combined.average)+'*\n'+
+      '⚔️ Média normal: *'+(combined.count>combined.critCount?fmt(combined.normalAverage):'—')+'*\n'+
+      '🎯 Média crítica: *'+(combined.critCount?fmt(combined.critAverage):'—')+'*\n'+
+      '🔥 Maior dano: *'+fmt(combined.max)+'*\n'+
+      '📊 Ataques analisados: *'+combined.count+'* (até '+windowSize+' Boss + '+windowSize+' Raid)\n\n'+
+      '👹 Boss: *'+(boss?fmt(boss.average)+' ('+boss.count+' ataques)':'sem registros')+'*\n'+
+      '🐉 Raid: *'+(raid?fmt(raid.average)+' ('+raid.count+' ataques)':'sem registros')+'*\n\n'+footer);
+  }
 } else if(['perfil','profile'].includes(cmd)){
 const mentioned=mentionsOf(msg)[0]
 const profileIdentity=await resolvePlayerIdentity(sock,chat,mentioned || sender,msg)

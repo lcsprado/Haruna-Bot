@@ -1,0 +1,27 @@
+name: Alpha Bot | Dano recente por heroi
+on:
+  pull_request:
+    paths:
+      - 'src/neon/games.js'
+      - 'src/neon/index.js'
+      - 'src/neon/damage-hero-stats.js'
+      - 'test/hero-damage-window-20261106.test.mjs'
+      - '.github/workflows/hero-damage-window-20261106.yml'
+  workflow_dispatch:
+jobs:
+  regressao:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Conferir sintaxe
+        run: |
+          node --check src/neon/games.js
+          node --check src/neon/index.js
+          node --check src/neon/damage-hero-stats.js
+      - name: Testar historico e janela por heroi
+        run: node --test test/hero-damage-window-20261106.test.mjs
