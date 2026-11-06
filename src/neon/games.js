@@ -1,4 +1,5 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
+import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
@@ -48,6 +49,23 @@ export async function initGames(){
       samples JSONB NOT NULL DEFAULT '[]'::jsonb,
       PRIMARY KEY(jid,category)
     )
+  `)
+  // A tabela antiga permanece intocada e consultavel via !dano historico.
+  // Os golpes novos ficam em um registro append-only com identidade do heroi.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS player_damage_hits(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('boss','raid')),
+      hero_species TEXT NOT NULL,
+      damage INTEGER NOT NULL CHECK(damage>0),
+      critical BOOLEAN NOT NULL,
+      occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS player_damage_hits_recent_idx
+    ON player_damage_hits(jid,hero_species,category,id DESC)
   `)
   await db.query(`
     CREATE TABLE IF NOT EXISTS trevo_games(
@@ -1441,38 +1459,46 @@ async function finishRaidRewards(c,s,cfg,chat){
   return rewards
 }
 
-async function recordPlayerDamage(client,jid,category,damage,critical){
-  if(!jid||!['boss','raid'].includes(category)||!Number.isFinite(Number(damage))||Number(damage)<=0)return
+async function recordPlayerDamage(client,jid,category,damage,critical,heroId=null){
+  const amount=Math.round(Number(damage));
+  if(!jid||!['boss','raid'].includes(category)||!Number.isSafeInteger(amount)||amount<=0)return;
+  // O golpe pertence ao heroi ativo nesta luta, nao ao heroi equipado numa consulta futura.
+  // Nao atualiza player_damage_stats: o historico legado fica preservado sem perda.
   await client.query(`
-    INSERT INTO player_damage_stats(jid,category,samples)
-    VALUES($1,$2,jsonb_build_array(jsonb_build_array($3::integer,$4::boolean)))
-    ON CONFLICT(jid,category) DO UPDATE
-    SET samples=(
-      SELECT COALESCE(jsonb_agg(value ORDER BY ord),'[]'::jsonb)
-      FROM (
-        SELECT value,ord FROM jsonb_array_elements(
-          player_damage_stats.samples || jsonb_build_array(jsonb_build_array($3::integer,$4::boolean))
-        ) WITH ORDINALITY AS t(value,ord)
-        ORDER BY ord DESC LIMIT 100
-      ) last100
-    )
-  `,[jid,category,Math.max(0,Math.round(Number(damage))),Boolean(critical)])
+    INSERT INTO player_damage_hits(jid,category,hero_species,damage,critical)
+    VALUES($1,$2,$3,$4,$5)
+  `,[jid,category,damageHeroKey(heroId),amount,Boolean(critical)]);
 }
-export async function getPlayerDamageStats(jid){
- const result=await db.query('SELECT category,samples FROM player_damage_stats WHERE jid=$1',[jid])
- const out={}
- for(const row of result.rows){
-   const samples=Array.isArray(row.samples)?row.samples:[]
-   const total=samples.reduce((n,x)=>n+Number(x[0]||0),0)
-   const critical=samples.filter(x=>Boolean(x[1]))
-   const critTotal=critical.reduce((n,x)=>n+Number(x[0]||0),0)
-   out[row.category]={count:samples.length,average:samples.length?Math.round(total/samples.length):0,
-     max:samples.reduce((n,x)=>Math.max(n,Number(x[0]||0)),0),
-     critCount:critical.length,critAverage:critical.length?Math.round(critTotal/critical.length):0,
-     normalCount:samples.length-critical.length,
-     normalAverage:samples.length>critical.length?Math.round((total-critTotal)/(samples.length-critical.length)):0}
- }
- return out
+export async function getPlayerDamageStats(jid,heroId=null,{historical=false}={}){
+  const out={};
+  if(historical){
+    // Registros antigos nao possuem heroi: nunca atribui-los retroativamente a um personagem.
+    const result=await db.query('SELECT category,samples FROM player_damage_stats WHERE jid=$1',[jid]);
+    for(const row of result.rows){
+      const summary=summarizeDamageSamples(row.samples);
+      if(summary.count)out[row.category]=summary;
+    }
+    return out;
+  }
+  // Limite por modalidade E por heroi, nao por jogador: maximo de 60 golpes.
+  const result=await db.query(`
+    SELECT category,damage,critical FROM (
+      SELECT category,damage,critical FROM player_damage_hits
+      WHERE jid=$1 AND hero_species=$2 AND category='boss'
+      ORDER BY id DESC LIMIT $3
+    ) boss_hits
+    UNION ALL
+    SELECT category,damage,critical FROM (
+      SELECT category,damage,critical FROM player_damage_hits
+      WHERE jid=$1 AND hero_species=$2 AND category='raid'
+      ORDER BY id DESC LIMIT $3
+    ) raid_hits
+  `,[jid,damageHeroKey(heroId),DAMAGE_SAMPLE_LIMIT]);
+  for(const category of ['boss','raid']){
+    const samples=result.rows.filter(r=>r.category===category).map(r=>[Number(r.damage),r.critical===true]);
+    if(samples.length)out[category]=summarizeDamageSamples(samples);
+  }
+  return out;
 }
 
 export async function raidRound(chat,level){
@@ -1646,7 +1672,7 @@ export async function raidRound(chat,level){
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
       p.damage=Number(p.damage||0)+dmg
       s.hp=Math.max(0,Number(s.hp)-dmg)
-      await recordPlayerDamage(c,p.jid,'raid',actualDamage,crit)
+      await recordPlayerDamage(c,p.jid,'raid',actualDamage,crit,p.heroId)
       events.push({type:'hit',jid:p.jid,name:p.name,damage:dmg,actualDamage,crit})
       if(Number(s.hp)<=0) break
     }
@@ -3413,7 +3439,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[recordedHp,jid])
     }
-    await recordPlayerDamage(c,jid,'boss',damage,crit)
+    await recordPlayerDamage(c,jid,'boss',damage,crit,heroId)
     if(Number(s.hp)<=0){
       // Só creditar maestria em Boss derrotado, para todos os colaboradores.
       // A chave por Boss/fase impede crédito duplicado em retries e replays.
