@@ -32,7 +32,7 @@ const SHELL=[
   '/assets/pets/guaxinim_errante_20261027.webp',
   '/assets/pets/onca_eclipse_20261026.webp',
   '/assets/pets/lince_astral.webp',
-  '/assets/pets/raposa_astral.webp'
+  '/assets/pets/raposa_astral.webp',
   '/assets/pet-portraits/coelho.svg',
   '/assets/pet-portraits/papagaio.svg',
   '/assets/pet-portraits/hamster.svg',
