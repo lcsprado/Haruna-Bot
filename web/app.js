@@ -64,6 +64,7 @@ const ui = {
   selectedRaidLevel: null,
   bossTimer: null,
   syncing: false,
+  syncingToken: '',
   bossPolling: false,
   bossLiveVersion: '',
   lastFullSyncAt: 0,
@@ -813,21 +814,33 @@ function toast(message){
 
 async function api(path, options){
   options=options||{};
+  const requestToken=ui.token;
   const headers=Object.assign({'content-type':'application/json'},options.headers||{});
-  if(ui.token) headers.authorization='Bearer '+ui.token;
+  if(requestToken) headers.authorization='Bearer '+requestToken;
   const res=await fetch(API_BASE+path,Object.assign({},options,{headers}));
   let body={};
   try{ body=await res.json(); }catch{}
+  if(requestToken && ui.token!==requestToken){
+    const stale=new Error('Resposta de sessão anterior descartada.');
+    stale.staleSession=true;
+    throw stale;
+  }
+  if(res.status===401 && requestToken){
+    // Um 401 da identidade atual não pode deixar dados antigos na tela.
+    void logout(false);
+  }
   if(!res.ok || body.ok===false) throw new Error(body.error||('HTTP '+res.status));
   return body;
 }
 
 async function syncAvatar(force=false){
   if(!ui.token) return;
+  const requestToken=ui.token;
   if(!force && ui.avatarFetchedAt && Date.now()-ui.avatarFetchedAt<60000) return;
   ui.avatarFetchedAt=Date.now();
   try{
-    const res=await fetch(API_BASE+'/api/v1/me/avatar',{headers:{authorization:'Bearer '+ui.token},cache:'no-store'});
+    const res=await fetch(API_BASE+'/api/v1/me/avatar',{headers:{authorization:'Bearer '+requestToken},cache:'no-store'});
+    if(ui.token!==requestToken) return;
     if(res.status===404){
       if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
       ui.avatarUrl='';
@@ -835,6 +848,7 @@ async function syncAvatar(force=false){
     }
     if(!res.ok) return;
     const blob=await res.blob();
+    if(ui.token!==requestToken) return;
     const next=URL.createObjectURL(blob);
     if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
     ui.avatarUrl=next;
@@ -844,10 +858,21 @@ async function syncAvatar(force=false){
 async function exchange(code){
   const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(!clean) throw new Error('Informe o código gerado pelo !web.');
-  // Não enviar token do jogador anterior ao trocar de conta, nem mantê-lo se falhar.
+  // Nunca preservar informações do jogador anterior ao trocar a identidade.
+  stopRaidAuto();
+  stopBossAuto();
+  if(ui.avatarUrl) URL.revokeObjectURL(ui.avatarUrl);
+  ui.avatarUrl=''; ui.avatarFetchedAt=0;
   ui.token='';
-  ui.data=null;
-  ui.catalog=null;
+  ui.data=null; ui.catalog=null;
+  ui.extras=null; ui.extrasFetchedAt=0;
+  ui.auction=null; ui.auctionError='';
+  ui.racing=null; ui.racingFetchedAt=0; ui.racingLast=null;
+  ui.siege=null; ui.siegeFetchedAt=0; ui.siegeError='';
+  ui.eventCenter=null; ui.eventCenterFetchedAt=0; ui.eventCenterError='';
+  ui.contractData=null; ui.relicStatus=null; ui.lastResult=null;
+  ui.petTeamDraft=null; ui.petTeamPreview=null;
+  ui.lastFullSyncAt=0;
   localStorage.removeItem(TOKEN_KEY);
   const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
   ui.token=body.token;
@@ -856,9 +881,13 @@ async function exchange(code){
 }
 
 async function sync(silent,force=false){
-  if(!ui.token || ui.syncing) return;
+  if(!ui.token) return;
+  const activeToken=ui.token;
+  // A sessão anterior não pode bloquear o login novo nem atualizar o perfil de outro jogador.
+  if(ui.syncing && ui.syncingToken===activeToken) return;
   if(!force && ui.data && Date.now()-ui.lastFullSyncAt<45000) return;
   ui.syncing=true;
+  ui.syncingToken=activeToken;
   setSync(false);
   try{
     const jobs=[];
@@ -866,6 +895,7 @@ async function sync(silent,force=false){
     else jobs.push(Promise.resolve(null));
     jobs.push(api('/api/v1/me/bootstrap'));
     const values=await Promise.all(jobs);
+    if(ui.token!==activeToken) return; // Resposta de uma identidade já substituída.
     if(values[0]) ui.catalog=values[0].data;
     const previousIncoming=new Set(incomingRelationshipProposals(ui.data).map(p=>String(p.from_jid||'')));
     const nextData=values[1].data;
@@ -874,12 +904,14 @@ async function sync(silent,force=false){
     ui.lastFullSyncAt=Date.now();
     ui.bossLiveVersion='';
     await syncAvatar(false);
+    if(ui.token!==activeToken) return;
     showApp();
     render();
     setSync(true);
     if(freshProposal) toast('💍 '+String(freshProposal.from_name||'Alguém')+' te pediu em casamento.');
     else if(!silent) toast('Dados sincronizados com o Alpha Bot.');
   }catch(err){
+    if(ui.token!==activeToken) return; // Não desconectar uma nova sessão por um 401 antigo.
     if(/sessão web inválida|expirada/i.test(err.message)){
       logout(false);
       showLogin(err.message);
@@ -887,7 +919,12 @@ async function sync(silent,force=false){
       setSync(false);
       if(!silent) toast(err.message);
     }
-  }finally{ ui.syncing=false; }
+  }finally{
+    if(ui.syncingToken===activeToken){
+      ui.syncing=false;
+      ui.syncingToken='';
+    }
+  }
 }
 
 // Lightweight HP/status delta: never downloads full inventories or wallets.
@@ -3673,6 +3710,8 @@ setInterval(()=>{
   // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
   // Só o navegador executa o POST que consome o código.
   if(linked){
+    // Evitar que refresh/PWA consuma novamente um código de uso único.
+    history.replaceState({},document.title,'/rpg');
     // Um novo link sempre substitui a identidade local anterior.
     // Código expirado, usado ou incorreto NUNCA reabre a sessão de outra pessoa.
     ui.token='';

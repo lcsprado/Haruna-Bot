@@ -1,0 +1,37 @@
+name: Alpha Web - Session Identity Regression
+
+on:
+  pull_request:
+    paths:
+      - 'web/app.js'
+      - 'web/index.html'
+      - 'web/sw.js'
+      - 'test/web-auth-session-reentry-20261105.test.mjs'
+      - 'test/web-auth-strict-identity-20261104.test.mjs'
+      - '.github/workflows/alpha-web-session-isolation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-session-isolation:
+    name: Session identity and one-time link safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout reviewed commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check Node.js runtime
+        run: node --version
+      - name: Check frontend and regression test syntax
+        run: |
+          node --check web/app.js
+          node --check web/sw.js
+          node --check test/web-auth-session-reentry-20261105.test.mjs
+          node --check test/web-auth-strict-identity-20261104.test.mjs
+      - name: Validate one-time links and isolation of session state
+        run: |
+          node --test test/web-auth-session-reentry-20261105.test.mjs test/web-auth-strict-identity-20261104.test.mjs
