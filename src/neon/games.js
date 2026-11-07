@@ -880,7 +880,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const u=(await c.query('SELECT level,push_name FROM users WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const requiredRaidLevel=Number(raidConfig(s.level)?.minLevel||s.level)
     if(Number(u?.level||1)<requiredRaidLevel) throw new Error(`Essa Raid exige nível ${requiredRaidLevel}. Seu nível atual: ${Number(u?.level||1)}.`)
-    const st=(await c.query('SELECT * FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
+    const st=(await c.query('SELECT s.*,COALESCE(cl.level,1)::int AS class_level FROM stats s LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id WHERE s.jid=$1 FOR UPDATE OF s',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) throw new Error('Você está sem HP. Cure-se antes de entrar.')
     const cfg=raidConfig(s.level)
     if(!cfg) throw new Error('Configuração da Raid não encontrada.')
@@ -922,7 +922,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const heroId=await getActivePlayableHero(c,jid)
     const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
     const heroStats=heroCombatStats(st,heroId,heroLevel)
-    const classStats=heroId?null:classCombatStats(st,st.class_id,u.level,Boolean(st.class_applied))
+    const classStats=heroId?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'raid')
     const heroMasteryStage=heroId?await getPlayableHeroMasteryStage(c,jid,heroId):0
     const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
@@ -1110,7 +1110,7 @@ export async function startRaid(chat,host,level=null){
     if(ids.length<minPlayers) throw new Error(`A Raid Lv.${cfg.level} precisa de pelo menos 1 jogador.`)
 
     const users=(await c.query('SELECT jid,level,push_name FROM users WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
-    const stats=(await c.query('SELECT * FROM stats WHERE jid=ANY($1::text[]) FOR UPDATE',[ids])).rows
+    const stats=(await c.query('SELECT s.*,COALESCE(cl.level,1)::int AS class_level FROM stats s LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id WHERE s.jid=ANY($1::text[]) FOR UPDATE OF s',[ids])).rows
     if(users.some(u=>Number(u.level)<Number(cfg.minLevel||cfg.level))) throw new Error('Um participante não atende mais ao nível mínimo.')
     if(stats.some(st=>Number(st.hp)<=0)) throw new Error('Um participante está sem HP.')
 
@@ -1139,7 +1139,7 @@ export async function startRaid(chat,host,level=null){
       const heroId=await getActivePlayableHero(c,jid)
       const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
       const heroStats=heroCombatStats(st,heroId,heroLevel)
-    const classStats=heroId?null:classCombatStats(st,st.class_id,u.level,Boolean(st.class_applied))
+    const classStats=heroId?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'raid')
     const heroMasteryStage=heroId?await getPlayableHeroMasteryStage(c,jid,heroId):0
       const awakeningStage=heroId?0:Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
@@ -3135,7 +3135,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         throw new Error('⚠️ Você já está participando deste Boss em outro grupo. Continue no grupo original; ataques em grupos diferentes não são autorizados.')
       }
     }
-    const st=(await c.query('SELECT s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,u.level AS player_level FROM stats s JOIN users u ON u.jid=s.jid WHERE s.jid=$1 FOR UPDATE OF s',[jid])).rows[0]
+    const st=(await c.query('SELECT s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,u.level AS player_level,COALESCE((SELECT pcl.level FROM player_class_levels pcl WHERE pcl.jid=s.jid AND pcl.class_id=s.class_id),1)::int AS class_level FROM stats s JOIN users u ON u.jid=s.jid WHERE s.jid=$1 FOR UPDATE OF s',[jid])).rows[0]
     if(Number(st?.hp||0)<=0) return {playerDead:true,hp:Number(s.hp),maxHp:Number(s.maxHp)}
     s.participants=s.participants||{}
     // HP escala quando um NOVO participante causa seu primeiro ataque, inclusive após !go.
@@ -3157,7 +3157,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       ?existingParticipant.heroId:await getActivePlayableHero(c,jid)
     const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
     const heroStats=heroCombatStats(st,heroId,heroLevel)
-    const classStats=heroId?null:classCombatStats(st,st.class_id,st.player_level,Boolean(st.class_applied))
+    const classStats=heroId?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'boss')
     // O HP da luta não é reprojetado a cada ataque; isso evita perder
     // um ponto de vida por arredondamento nos ciclos automáticos.
