@@ -23,7 +23,10 @@ test('quatro snapshots reais: HP das botas entra sem alterar DEF ou ATK',()=>{
     class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5,
     equipment_hp:2148,equipment_atk:435,equipment_def:904,equipment_spd:91
   },'pecado_diane',100)
-  const base=heroCombatStats({hp:3188,max_hp:3188,atk:782,def:391,spd:396,\n    class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5},'pecado_diane',100)\n  assert.deepEqual([sheet.maxHp,sheet.atk,sheet.def,sheet.spd],\n    [base.maxHp+2148,base.atk+435,base.def+904,base.spd+91])
+  const base=heroCombatStats({hp:3188,max_hp:3188,atk:782,def:391,spd:396,
+    class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5},'pecado_diane',100)
+  assert.deepEqual([sheet.maxHp,sheet.atk,sheet.def,sheet.spd],
+    [base.maxHp+2148,base.atk+435,base.def+904,base.spd+91])
 })
 
 test('Diane e Samurai comparados no MESMO jogador: +112 DEF natural para Diane',()=>{
@@ -52,7 +55,7 @@ test('HP das botas computado em todas as rotinas do perfil e das batalhas',()=>{
   assert.match(healing,/boots\?\.hp/)
   const profile=section(db,'export async function getCombatProfile(','export async function battle(')
   assert.match(profile,/equipment_hp:[^\n]*Number\(b\.hp/)
-  assert.match(profile,/effectiveMaxHp=[^\n]*Number\(b\.hp/)
+  assert.match(profile,/const gearHp=Number\\(w.hp[^\\n]*Number\\(b.hp/)\n  assert.match(profile,/const effectiveMaxHp=Math\\.max\\(1,Number\\(cls\\.maxHp\\)\\+gearHp\\)/)
   const pvp=section(db,'export async function battle(','const snapshot=fighter=>')
   assert.match(pvp,/Number\(aeB\.hp/)
   assert.match(pvp,/Number\(beB\.hp/)
