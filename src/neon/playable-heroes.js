@@ -435,7 +435,7 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
       return true;
     }
     const requestedLevel=String(args[2]||'').trim();
-    if(requestedLevel&&(!/^\\d+$/.test(requestedLevel)||Number(requestedLevel)<1||Number(requestedLevel)>100)){
+    if(requestedLevel&&(!/^\d+$/.test(requestedLevel)||Number(requestedLevel)<1||Number(requestedLevel)>100)){
       await reply('❌ Nível inválido. Use *!heroi comparar samurai 100* (1 a 100).');
       return true;
     }
@@ -458,12 +458,12 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
         ?'🧪 Nível escolhido para simulação; não altera a classe do jogador.'
         :'📋 Nível registrado da classe, mesmo quando inativa.';
     await reply('⚖️ *'+sheet.name.toUpperCase()+' Lv.'+sheet.heroLevel+' × '+cls.name.toUpperCase()+' Lv.'+matched.level+'*'+
-      '\\n🔎 Comparação somente dos bônus do combatente, SEM jogador, equipamento, encantamento, pet ou sinergia.\\n\\n'+
-      '🌈 Herói: '+heroBonusRow(own)+'\\n🧙 Classe: '+heroBonusRow(classBonuses)+'\\n\\n'+
+      '\n🔎 Comparação somente dos bônus do combatente, SEM jogador, equipamento, encantamento, pet ou sinergia.\n\n'+
+      '🌈 Herói: '+heroBonusRow(own)+'\n🧙 Classe: '+heroBonusRow(classBonuses)+'\n\n'+
       '📊 Diferença: ❤️ '+diff[0]+' HP • ⚔️ '+diff[1]+' ATK • 🛡️ '+diff[2]+' DEF • 👢 '+diff[3]+' VEL'+
-      '\\n📈 Classe = bônus original + progressão do balanceamento até o Lv.100.'+
-      '\\n'+source+
-      '\\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\\nUse *!personagem status* para ver a base sem equipamentos ou *!perfil* para ver os atributos totais.');
+      '\n📈 Classe = bônus original + progressão do balanceamento até o Lv.100.'+
+      '\n'+source+
+      '\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\nUse *!personagem status* para ver a base sem equipamentos ou *!perfil* para ver os atributos totais.');
     return true;
   }
   if(['atributos','ficha','stats','status'].includes(action)){
