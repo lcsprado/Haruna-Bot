@@ -13,6 +13,7 @@ import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
+import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
@@ -154,6 +155,19 @@ class_def_bonus=CASE class_id WHEN 'warrior' THEN 4 WHEN 'assassin' THEN -2 WHEN
 class_spd_bonus=CASE class_id WHEN 'warrior' THEN 0 WHEN 'assassin' THEN 8 WHEN 'mage' THEN 3 WHEN 'archer' THEN 7 WHEN 'paladin' THEN -3 WHEN 'berserker' THEN 2 WHEN 'monk' THEN 6 WHEN 'necromancer' THEN 2 WHEN 'druid' THEN 1 WHEN 'samurai' THEN 5 ELSE 0 END
 WHERE class_applied=TRUE
 AND class_hp_bonus=0 AND class_atk_bonus=0 AND class_def_bonus=0 AND class_spd_bonus=0;
+-- Cada jogador evolui cada classe separadamente. Migração idempotente dos
+-- usuários antigos: mantém sua progressão existente, sem alterar stats.
+CREATE TABLE IF NOT EXISTS player_class_levels (
+ jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+ class_id TEXT NOT NULL,
+ level INTEGER NOT NULL DEFAULT 1 CHECK(level BETWEEN 1 AND 100),
+ xp INTEGER NOT NULL DEFAULT 0 CHECK(xp>=0),
+ PRIMARY KEY(jid,class_id)
+);
+INSERT INTO player_class_levels(jid,class_id,level,xp)
+SELECT s.jid,s.class_id,LEAST(100,GREATEST(1,u.level)),0
+FROM stats s JOIN users u ON u.jid=s.jid WHERE s.class_applied=TRUE
+ON CONFLICT(jid,class_id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS items (
 id TEXT PRIMARY KEY,
 name TEXT NOT NULL,
@@ -918,10 +932,12 @@ const { rows } = await db.query(`
 SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
 w.cash,w.bank,w.bank_limit,
 s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,
-s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss
+s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss,
+COALESCE(cl.level,1)::int AS class_level,COALESCE(cl.xp,0)::int AS class_xp
 FROM users u
 JOIN wallets w ON w.jid=u.jid
 JOIN stats s ON s.jid=u.jid
+LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id
 WHERE u.jid=$1
 `, [jid])
 return rows[0] ?? null
@@ -987,6 +1003,7 @@ await client.query(
 'UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,class_hp_bonus=$7,class_atk_bonus=$8,class_def_bonus=$9,class_spd_bonus=$10,updated_at='+nowSql+' WHERE jid=$11',
 [hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
 )
+await client.query('INSERT INTO player_class_levels(jid,class_id,level,xp) VALUES($1,$2,1,0) ON CONFLICT(jid,class_id) DO NOTHING',[jid,next.id])
 const {checkpointAwakeningAfterClassChange}=await import('./awakening.js')
 await checkpointAwakeningAfterClassChange(client,jid)
 // Escolher uma classe torna a classe o único combatente ativo, sem usar pergaminho extra.
@@ -2168,6 +2185,22 @@ await client.query(
 'UPDATE users SET level=$1,exp=$2,updated_at='+nowSql+' WHERE jid=$3',
 [level,exp,jid]
 )
+// XP próprio da classe ativa, separado da progressão geral e da Maestria
+// do herói. A classe preservada não sobe enquanto a collab está ativa.
+if(eventGain+bonusXp>0){
+ const cr=(await client.query(`SELECT p.class_id,p.level,p.xp FROM player_class_levels p
+   JOIN stats s ON s.jid=p.jid AND s.class_id=p.class_id AND s.class_applied=TRUE
+   WHERE p.jid=$1 AND NOT EXISTS (
+    SELECT 1 FROM player_hero_mode m WHERE m.jid=p.jid AND m.hero_species IS NOT NULL
+    AND EXISTS(SELECT 1 FROM pet_collection h WHERE h.jid=p.jid AND h.species=m.hero_species)
+   ) FOR UPDATE OF p`,[jid])).rows[0];
+ if(cr){
+  const next=classLevelAdvance(cr.level,cr.xp,eventGain+bonusXp);
+  if(next.level!==Number(cr.level)||next.xp!==Number(cr.xp))
+   await client.query('UPDATE player_class_levels SET level=$1,xp=$2 WHERE jid=$3 AND class_id=$4',
+     [next.level,next.xp,jid,cr.class_id]);
+ }
+}
 if(levels>0){
 // A cura por level-up precisa incluir o HP dos equipamentos realmente equipados.
 // Sem isto, o jogador perde temporariamente todo o HP extra de armadura/elmo.
@@ -2761,31 +2794,38 @@ const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
 const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao'])
 const classScrolls=Number(scrollR.rows[0]?.quantity||0)
 const classChangeRemaining=0
-const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0))
-const effectiveHp=Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
-if(Number(p.hp||0)>effectiveMaxHp){
-await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,effectiveMaxHp])
+const gearHp=Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0)
+const activeHeroMode=await db.query(`SELECT 1 FROM player_hero_mode m WHERE m.jid=$1 AND m.hero_species IS NOT NULL
+  AND EXISTS(SELECT 1 FROM pet_collection c WHERE c.jid=m.jid AND c.species=m.hero_species) LIMIT 1`,[jid])
+const classActive=Boolean(p.class_applied)&&activeHeroMode.rows.length===0
+const cls=classCombatStats(p,p.class_id,p.class_level,classActive)
+const persistentMaxHp=Math.max(1,Number(p.max_hp||0)+gearHp)
+const effectiveMaxHp=Math.max(1,Number(cls.maxHp)+gearHp)
+const effectiveHp=classCombatHp(p.hp,persistentMaxHp,effectiveMaxHp)
+if(Number(p.hp||0)>persistentMaxHp){
+await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,persistentMaxHp])
 }
 return {
 ...p,
-base_atk:Number(p.atk),
-base_def:Number(p.def),
-base_max_hp:Number(p.max_hp),
+base_atk:cls.atk,
+base_def:cls.def,
+base_max_hp:cls.maxHp,
+class_growth:cls.bonus,
 weapon_atk:Number(w.atk||0)+ench.atk,
 armor_def:Number(a.def||0)+ench.def,
 equipment_atk:Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk,
 equipment_def:Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
 equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0),
 equipment_spd:Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
-effective_spd:Number(p.spd)+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
+effective_spd:cls.spd+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
 equipment_crit:Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit,
 base_crit:0.10,
-effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
+effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,classActive)),
 effective_max_hp:effectiveMaxHp,
 effective_hp:effectiveHp,
-effective_atk:Math.round((Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
+effective_atk:Math.round((cls.atk+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
 attack_pct_bonus:ench.attackPct,
-effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
+effective_def:cls.def+Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
 enchant_damage:Number(ench.damage||0),
 enchant_breakdown:ench,
 weapon_name:w.name,
@@ -2797,7 +2837,7 @@ helmet_name:h.name,
 class_id:String(p.class_id||'warrior'),
 class_applied:Boolean(p.class_applied),
 class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
-class_passive:getClassPassive(p.class_id,p.class_applied),
+class_passive:getClassPassive(p.class_id,classActive),
 class_scrolls:classScrolls,
 class_change_remaining:classChangeRemaining,
 class_change_days:classChangeRemaining>0?Math.ceil(classChangeRemaining/86400):0,
@@ -2866,6 +2906,10 @@ const pvpAwakeningStage=jid=>Math.max(0,Math.min(5,Number(awakeningRows.find(row
 const aHero=activeHero(attackerJid),bHero=activeHero(defenderJid);
 const aHeroStats=aHero?heroCombatStats(a,aHero.hero_species,aHero.hero_level):null;
 const bHeroStats=bHero?heroCombatStats(b,bHero.hero_species,bHero.hero_level):null;
+const classProgress=(await client.query('SELECT jid,class_id,level FROM player_class_levels WHERE jid=ANY($1::text[])',[ids])).rows;
+const classLevel=st=>Number(classProgress.find(p=>p.jid===st.jid&&p.class_id===st.class_id)?.level||1);
+const aClassStats=!aHero?classCombatStats(a,a.class_id,classLevel(a),Boolean(a.class_applied)):null;
+const bClassStats=!bHero?classCombatStats(b,b.class_id,classLevel(b),Boolean(b.class_applied)):null;
 const au=userFor(attackerJid)
 const bu=userFor(defenderJid)
 if(Number(bu?.level||1)<=20){
@@ -2922,24 +2966,24 @@ const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_i
 const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const A={
 jid:attackerJid,name:au?.push_name||'Jogador',
-hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)):Number(a.hp),maxHp:Number(aHeroStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),
-atk:Math.round((Number(aHeroStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
-def:Number(aHeroStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
+hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)):classCombatHp(a.hp,Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),Number(aClassStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)),maxHp:Number(aHeroStats?.maxHp??aClassStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),
+atk:Math.round((Number(aHeroStats?.atk??aClassStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
+def:Number(aHeroStats?.def??aClassStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
 classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,awakeningStage:aHero?0:pvpAwakeningStage(attackerJid),awakeningState:{},heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),attackIndex:0,lastProcAttack:0,
 crit:pvpCritChance({equipmentCrit:Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit,classId:a.class_id,classApplied:a.class_applied,heroActive:Boolean(aHero),awakeningStage:pvpAwakeningStage(attackerJid)}),
-spd:Number(aHeroStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
+spd:Number(aHeroStats?.spd??aClassStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
 enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
 petSpeed:apSpd,teamSpeed:aSynergySpd,
 petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
 }
 const B={
 jid:defenderJid,name:bu?.push_name||'Jogador',
-hp:bHeroStats?heroEffectiveCombatHp(b,bHeroStats,Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0)):Number(b.hp),maxHp:Number(bHeroStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),
-atk:Math.round((Number(bHeroStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
-def:Number(bHeroStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
+hp:bHeroStats?heroEffectiveCombatHp(b,bHeroStats,Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0)):classCombatHp(b.hp,Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),Number(bClassStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0)),maxHp:Number(bHeroStats?.maxHp??bClassStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),
+atk:Math.round((Number(bHeroStats?.atk??bClassStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
+def:Number(bHeroStats?.def??bClassStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
 classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,awakeningStage:bHero?0:pvpAwakeningStage(defenderJid),awakeningState:{},heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),attackIndex:0,lastProcAttack:0,
 crit:pvpCritChance({equipmentCrit:Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit,classId:b.class_id,classApplied:b.class_applied,heroActive:Boolean(bHero),awakeningStage:pvpAwakeningStage(defenderJid)}),
-spd:Number(bHeroStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
+spd:Number(bHeroStats?.spd??bClassStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
 enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
@@ -3090,7 +3134,7 @@ const pvpMetrics=Object.fromEntries([A,B].map(fighter=>{
 }))
 const persistentPvpHp=fighter=>fighter.heroId
   ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp)
-  :restoreVitalPersistentHp(fighter.hp,fighter.maxHp,fighter.vitalBaseMaxHp||fighter.maxHp);
+  :classPersistentHp(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp);
 let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
 let loser=winner===A?B:A
 if(A.hp>0 && B.hp>0){
@@ -3106,7 +3150,7 @@ await client.query(
 )
 await client.query(
 'UPDATE stats SET hp=$1,loss=loss+1,updated_at='+nowSql+' WHERE jid=$2',
-[Math.max(1,Math.floor((loser.heroId?loser.heroPersistentMaxHp:loser.maxHp)*0.25)),loser.jid]
+[Math.max(1,Math.floor(loser.heroPersistentMaxHp*0.25)),loser.jid]
 )
 await client.query(
 'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
@@ -3124,8 +3168,8 @@ return {
 ok:true,winner,loser,reward,log,opening,ending,pvpMetrics,roundCount,decidedByLimit,
 winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
 final:{
-attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((A.heroId?A.heroPersistentMaxHp:A.maxHp)*0.25)),
-defenderHp: B.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((B.heroId?B.heroPersistentMaxHp:B.maxHp)*0.25))
+attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor(A.heroPersistentMaxHp*0.25)),
+defenderHp: B.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor(B.heroPersistentMaxHp*0.25))
 }
 }
 })
@@ -3954,7 +3998,7 @@ export async function dungeon(jid) {
 await ensureUser(jid)
 return transaction(async client=>{
 const p=await client.query(`
-SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id,s.helmet_id,s.class_id,s.class_applied
+SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied
 FROM users u JOIN stats s ON s.jid=u.jid
 WHERE u.jid=$1
 FOR UPDATE OF u,s
@@ -3977,9 +4021,11 @@ const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id
 const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{atk:0,def:0,hp:0}
 const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id)):{atk:0,def:0,hp:0}
 const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{atk:0,def:0,hp:0}
-const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)+Number(boots.atk||0)+Number(helmet.atk||0)
-const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)+Number(boots.def||0)+Number(helmet.def||0)
-const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)+Number(boots.hp||0)+Number(helmet.hp||0)
+const classBase=classCombatStats(row,row.class_id,row.level,row.class_applied)
+const gearHp=Number(weapon.hp||0)+Number(armor.hp||0)+Number(boots.hp||0)+Number(helmet.hp||0)
+const atk=classBase.atk+Number(weapon.atk||0)+Number(armor.atk||0)+Number(boots.atk||0)+Number(helmet.atk||0)
+const def=classBase.def+Number(weapon.def||0)+Number(armor.def||0)+Number(boots.def||0)+Number(helmet.def||0)
+const effectiveMaxHp=classBase.maxHp+gearHp
 const level=Number(row.level)
 const monsters=[
 {name:'Slime Sombrio',hp:45,atk:8,def:2,mult:1},
@@ -3992,7 +4038,7 @@ const m={...monsters[Math.min(idx,monsters.length-1)]}
 m.hp+=level*6
 m.atk+=Math.floor(level*1.3)
 m.def+=Math.floor(level*.7)
-let php=Math.min(Number(row.hp),effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0
+let php=classCombatHp(row.hp,Number(row.max_hp)+gearHp,effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0
 while(php>0&&mhp>0&&rounds<25){
 rounds++
 const crit=Math.random()<(.10+classCritBonus(row.class_id,row.class_applied))
@@ -4008,14 +4054,14 @@ php=Math.max(0,php-blocked.damage)
 }
 if(php<=0){
 const recover=Math.max(1,Math.floor(effectiveMaxHp*.30))
-await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[recover,jid])
+await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[classPersistentHp(recover,effectiveMaxHp,Number(row.max_hp)+gearHp),jid])
 const lossExp=Math.round(10*xpMultiplier)
 const expRes=await applyExp(client,jid,lossExp)
 return {ok:true,won:false,monster:m.name,hp:recover,maxHp:effectiveMaxHp,exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
 }
 const cash=Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
 const exp=Math.round(Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier)
-await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
+await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,classPersistentHp(php,effectiveMaxHp,Number(row.max_hp)+gearHp)),jid])
 await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
 await client.query(`
 INSERT INTO transactions(from_jid,to_jid,amount,type,note)

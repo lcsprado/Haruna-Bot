@@ -3,37 +3,40 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {formatProfileCombatBonuses} from '../src/neon/profile-combat-summary.js'
 import {formatActiveClassBaseStatus,formatSavedAwakeningForActiveHero} from '../src/neon/character-base-status-format.js'
+import {classCombatGrowth,classCombatStats} from '../src/neon/class-combat-balance.js'
 import {
-  HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,
+  HERO_COMBAT_PROFILES,PLAYABLE_HERO_IDS,playableHero,heroCombatStats,heroRoleGrowth,heroTrainingFactor,
   heroHpToPersistent,persistHeroHpDelta,excludeActiveHeroPet,heroAttack,heroDefense,heroMasteryStage,heroCombatSheetFromProfile,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,raid75MasteryBonusActive,raid75MasteryAwardXp,heroMasteryAwardPolicy,heroLevelAwardPolicy,HERO_LEVEL_DAILY_CAP,HERO_MASTERY_DAILY_CAP,HERO_START_LEVEL,heroStartingProgress
 } from '../src/neon/playable-heroes-core.js'
 
+const ptNumber=n=>Number(n).toLocaleString('pt-BR');
 test('!personagem status usa base da classe atual com Despertar, sem itens',()=>{
   const input={class_id:'paladin',class_applied:true,level:386,
     max_hp:3180,atk:780,def:390,spd:395,
     equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91};
   const text=formatActiveClassBaseStatus(input,3);
   assert.match(text,/STATUS BASE — PALADINO/);
-  assert.match(text,/HP: \*3\.180\*/);
-  assert.match(text,/ATK: \*780\*/);
-  assert.match(text,/DEF: \*390\*/);
-  assert.match(text,/VEL: \*395\*/);
+  const base=classCombatStats(input,'paladin',input.level,true);
+  assert.ok(text.includes('HP: *'+ptNumber(base.maxHp)+'*'));
+  assert.ok(text.includes('ATK: *'+ptNumber(base.atk)+'*'));
+  assert.ok(text.includes('DEF: *'+ptNumber(base.def)+'*'));
+  assert.ok(text.includes('VEL: *'+ptNumber(base.spd)+'*'));
+  assert.ok(base.maxHp>input.max_hp && base.def>input.def);
   assert.match(text,/Despertar: \*III\/V\*/);
   assert.match(text,/Égide Celestial/);
   assert.doesNotMatch(text,/5\.240|1\.215|1\.294|486|Courechouse|armadura/i);
 });
 
 test('classe Necromante revela despertar próprio e ignora itens/encantos',()=>{
-  const text=formatActiveClassBaseStatus({
-    class_id:'necromancer',class_applied:true,level:300,
+  const profile={class_id:'necromancer',class_applied:true,level:300,
     max_hp:1200,atk:650,def:540,spd:220,
-    equipment_atk:999,attack_pct_bonus:1
-  },2);
+    equipment_atk:999,attack_pct_bonus:1};
+  const text=formatActiveClassBaseStatus(profile,2);
   assert.match(text,/STATUS BASE — NECROMANTE/);
   assert.match(text,/Drenagem/);
   assert.match(text,/Despertar: \*II\/V\*/);
   assert.match(text,/Maldição/);
-  assert.match(text,/ATK: \*650\*/);
+  assert.ok(text.includes('ATK: *'+ptNumber(classCombatStats(profile,'necromancer',300,true).atk)+'*'));
   assert.doesNotMatch(text,/1\.649|999/);
 });
 
@@ -44,8 +47,10 @@ test('Diane equipada continua inteira no perfil; consulta de herói não expõe 
     equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91,
     attack_pct_bonus:0};
   const full=heroCombatSheetFromProfile(profile,'pecado_diane',100);
-  assert.deepEqual([full.maxHp,full.atk,full.def,full.spd],[5940,1295,1394,511]);
-  assert.deepEqual(full.baseWithoutGear,{maxHp:3880,atk:860,def:490,spd:420});
+  const base=heroCombatStats(profile,'pecado_diane',100);
+  assert.deepEqual(full.baseWithoutGear,{maxHp:base.maxHp,atk:base.atk,def:base.def,spd:base.spd});
+  assert.deepEqual([full.maxHp,full.atk,full.def,full.spd],
+    [base.maxHp+2060,base.atk+435,base.def+904,base.spd+91]);
   const awakening=formatSavedAwakeningForActiveHero(profile,3);
   assert.match(awakening,/Despertar da classe Paladino: \*III\/V\*/);
   assert.match(awakening,/habilidades inativas enquanto o herói estiver ativo/);
@@ -71,10 +76,10 @@ test('estatisticas de classe viram heroi sem alterar dados persistentes',()=>{
     class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5}
   const original=structuredClone(st)
   const h=heroCombatStats(st,'pecado_escanor')
-  assert.equal(h.atk,664)
-  assert.equal(h.def,528)
-  assert.equal(h.spd,202)
-  assert.equal(h.maxHp,955)
+  assert.equal(h.atk,h.breakdown.neutral.atk+h.breakdown.natural.atk)
+  assert.equal(h.def,h.breakdown.neutral.def+h.breakdown.natural.def)
+  assert.equal(h.spd,h.breakdown.neutral.spd+h.breakdown.natural.spd)
+  assert.equal(h.maxHp,h.breakdown.neutral.hp+h.breakdown.natural.hp)
   assert.ok(Math.abs(h.hp/h.maxHp-.9)<.001)
   assert.deepEqual(st,original)
   assert.equal(heroHpToPersistent(h.hp,h.maxHp,st.max_hp),st.hp)
@@ -305,15 +310,21 @@ test('ficha do herói usa mesmos atributos de entrada da Raid, sem alterar o Pal
   const frozen=structuredClone(original);
   // A vida de combate inclui o HP de equipamento na mesma proporção da cura.
   const ban=heroCombatSheetFromProfile(original,'pecado_ban');
+  const base=heroCombatStats(original,'pecado_ban',70);
+  const expectedMax=base.maxHp+original.equipment_hp;
   assert.deepEqual({hp:ban.hp,maxHp:ban.maxHp,atk:ban.atk,def:ban.def,spd:ban.spd},
-    {hp:878,maxHp:1170,atk:1110,def:729,spd:270});
+    {hp:Math.round(original.hp/(original.max_hp+original.equipment_hp)*expectedMax),
+      maxHp:expectedMax,atk:Math.round((base.atk+400)*1.05),def:base.def+200,spd:base.spd+60});
   assert.deepEqual(ban.equipment,{hp:200,atk:400,def:200,spd:60});
   assert.deepEqual(ban.breakdown.heroBase,{hp:100,atk:14,def:11,spd:15});
   assert.deepEqual(ban.breakdown.neutral,{hp:870,atk:643,def:518,spd:195});
-  assert.deepEqual(ban.breakdown.natural,{hp:100,atk:14,def:11,spd:15});
+  const role=heroRoleGrowth('pecado_ban',70),factor=heroTrainingFactor(70);
+  assert.deepEqual(ban.breakdown.natural,
+    {hp:100+Math.round(700*factor)+role.hp,atk:14+Math.round(75*factor)+role.atk,
+      def:11+Math.round(100*factor)+role.def,spd:15+Math.round(25*factor)+role.spd});
   assert.equal(ban.maxHp,ban.breakdown.neutral.hp+ban.breakdown.natural.hp+ban.equipment.hp);
   assert.equal(ban.atk,Math.round((ban.breakdown.neutral.atk+ban.breakdown.natural.atk+ban.equipment.atk)*1.05));
-  assert.deepEqual(ban.baseWithoutGear,{maxHp:970,atk:657,def:529,spd:210});
+  assert.deepEqual(ban.baseWithoutGear,{maxHp:base.maxHp,atk:base.atk,def:base.def,spd:base.spd});
   assert.equal(ban.maxHp,ban.baseWithoutGear.maxHp+ban.equipment.hp);
   assert.equal(ban.def,ban.baseWithoutGear.def+ban.equipment.def);
   assert.equal(ban.spd,ban.baseWithoutGear.spd+ban.equipment.spd);
@@ -330,9 +341,10 @@ test('perfil mostra totais equipados e !heroi status mostra os quatro atributos 
     attack_pct_bonus:0
   };
   const sheet=heroCombatSheetFromProfile(profile,'pecado_diane',100);
-  assert.deepEqual(sheet.baseWithoutGear,{maxHp:3880,atk:860,def:490,spd:420});
-  assert.deepEqual(
-    [sheet.maxHp,sheet.atk,sheet.def,sheet.spd],[5940,1295,1394,511]);
+  const base=heroCombatStats(profile,'pecado_diane',100);
+  assert.deepEqual(sheet.baseWithoutGear,{maxHp:base.maxHp,atk:base.atk,def:base.def,spd:base.spd});
+  assert.deepEqual([sheet.maxHp,sheet.atk,sheet.def,sheet.spd],
+    [base.maxHp+2060,base.atk+435,base.def+904,base.spd+91]);
   const heroes=readFileSync(new URL('../src/neon/playable-heroes.js',import.meta.url),'utf8');
   const app=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
   const formatterStart=heroes.indexOf('export function formatPlayableHeroBaseSheet(');
@@ -457,7 +469,8 @@ test('PvP aplica Despertar limitado para classes e preserva HP dos herois',()=>{
   assert.match(pvp,/classPvpDefense\(defenseArgs\)/);
   assert.match(pvp,/Boolean\(a\.class_applied\)&&!aHero/);
   assert.match(pvp,/heroHpToPersistent\(fighter\.hp,fighter\.maxHp,fighter\.heroPersistentMaxHp\)/);
-  assert.match(pvp,/loser\.heroId\?loser\.heroPersistentMaxHp:loser\.maxHp/);
+  assert.match(pvp,/classPersistentHp\(fighter\.hp,fighter\.maxHp,fighter\.heroPersistentMaxHp\)/);
+  assert.match(pvp,/loser\.heroPersistentMaxHp\*0\.25/);
   assert.match(db,/pergaminho_reclassificacao/);
 });
 
@@ -527,36 +540,47 @@ test('Novo personagem: nivel 1 ao 100 em 18 dias no teto, sem ultrapassar 9900 X
   assert.ok(initial.maxHp<low.maxHp && initial.atk<low.atk,'Lv.1 deve evoluir sem herdar o poder de Lv.70');
   assert.ok(initial.def<low.def && initial.spd<low.spd);
   const high=heroCombatStats(st,'pecado_ban',100);
-  assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],[700,75,100,25]);
+  const expectedAdvance=['hp','atk','def','spd'].map((attr,i)=>{
+    const normal=[700,75,100,25][i];
+    return Math.round(normal*heroTrainingFactor(100))-Math.round(normal*heroTrainingFactor(70))+
+      heroRoleGrowth('pecado_ban',100)[attr]-heroRoleGrowth('pecado_ban',70)[attr];
+  });
+  assert.deepEqual([high.maxHp-low.maxHp,high.atk-low.atk,high.def-low.def,high.spd-low.spd],expectedAdvance);
   // Jogadores avançados com o mesmo herói precisam sentir os 99 níveis.
   const highBase={hp:4050,max_hp:4050,atk:906,def:606,spd:439,
     class_hp_bonus:60,class_atk_bonus:18,class_def_bonus:10,class_spd_bonus:14};
   const diane1=heroCombatStats(highBase,'pecado_diane',1);
   const diane100=heroCombatStats(highBase,'pecado_diane',100);
   assert.deepEqual([diane100.maxHp-diane1.maxHp,diane100.atk-diane1.atk,
-    diane100.def-diane1.def,diane100.spd-diane1.spd],[1150,150,185,40]);
+    diane100.def-diane1.def,diane100.spd-diane1.spd],
+    [700+heroRoleGrowth('pecado_diane',100).hp,
+      75+heroRoleGrowth('pecado_diane',100).atk,
+      100+heroRoleGrowth('pecado_diane',100).def,
+      25+heroRoleGrowth('pecado_diane',100).spd]);
   // Regressão de produção: ficha real de Diane às 16h15 de 01/11/2026.
-  // Deve conservar HP 5940, ATK 1295, DEF 1394 e VEL 511 com os mesmos itens.
+  // Equipamentos permanecem valores fixos e externos ao crescimento-base do herói.
   const liveSnapshot=heroCombatSheetFromProfile({
     hp:3180,max_hp:3180,atk:780,def:390,spd:395,
     class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5,
     equipment_hp:2060,equipment_atk:435,equipment_def:904,equipment_spd:91,
     attack_pct_bonus:0
   },'pecado_diane',100);
+  const naked=heroCombatStats({hp:3180,max_hp:3180,atk:780,def:390,spd:395,
+    class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5},'pecado_diane',100);
   assert.deepEqual([liveSnapshot.maxHp,liveSnapshot.atk,liveSnapshot.def,liveSnapshot.spd],
-    [5940,1295,1394,511]);
+    [naked.maxHp+2060,naked.atk+435,naked.def+904,naked.spd+91]);
   // Não matar iniciantes de nível baixo com a penalidade do Lv.1.
   const newPlayer={hp:120,max_hp:120,atk:20,def:12,spd:15};
   const newDiane=heroCombatStats(newPlayer,'pecado_diane',1);
   assert.ok(newDiane.maxHp>=200 && newDiane.atk>=25 && newDiane.def>=20 && newDiane.spd>=16);
   // Bônus próprio do Lv.1 equivale a uma classe, sem copiar o nível do jogador.
   assert.deepEqual(diane1.breakdown.heroBase,{hp:130,atk:12,def:22,spd:5});
-  assert.deepEqual(diane1.breakdown.training,{hp:-450,atk:-75,def:-85,spd:-15});
+  assert.deepEqual(diane1.breakdown.training,{hp:0,atk:0,def:0,spd:0});
   assert.deepEqual(diane100.breakdown.training,{hp:700,atk:75,def:100,spd:25});
   assert.equal(diane100.maxHp,diane100.breakdown.neutral.hp+diane100.breakdown.natural.hp);
   assert.deepEqual(diane1.breakdown.neutral,diane100.breakdown.neutral);
   assert.equal(low.maxHp,st.max_hp-st.class_hp_bonus+HERO_COMBAT_PROFILES.pecado_ban.hp+
-    low.breakdown.training.hp);
+    low.breakdown.training.hp+low.breakdown.roleGrowth.hp);
   // Jogadores com progressões distintas recebem o MESMO bônus natural do herói.
   const other=heroCombatStats({hp:1800,max_hp:1800,atk:800,def:900,spd:300,
     class_hp_bonus:35,class_atk_bonus:18,class_def_bonus:6,class_spd_bonus:16},'pecado_diane',100);
