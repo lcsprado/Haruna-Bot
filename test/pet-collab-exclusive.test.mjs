@@ -17,7 +17,7 @@ const synergy=runInNewContext(js+'\npetTeamSynergy',{
   PET_COLLAB_TEAM_GROUPS:[{id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}],
   resolveCollabWildcardTeam,resolveAstralLynxWildcard,resolveVitalTeam,
   resolveBatTeamStyles:species=>species.map(s=>styles[s]||null),
-  PET_TEAM_WILDCARD_BONUS:{attack:.015,defense:.02,crit:0,speed:0,label:'Elo Universal',text:'Elo Universal'},
+  PET_TEAM_WILDCARD_BONUS:{teamSlots:3},
   PET_TEAM_STYLE_BONUS:{voador:{attack:.02,defense:0,crit:0,speed:8,label:'Esquadrão Aéreo',text:'Voador'},guardiao:{attack:0,defense:.04,crit:0,speed:0,label:'Muralha Viva',text:'Guardião'}}
 })
 const team=(...ids)=>synergy(ids.map(species=>({species})))
@@ -30,22 +30,41 @@ test('Pecados migrados nunca reativam bônus como pets',()=>{
 
 test('Guaxinim preserva sinergia comum sem bônus duplo',()=>{
   const x=team('fenix_celestial','grifo_celestial','guaxinim_errante_20261027')
-  assert.equal(x.attack,.02)
-  assert.equal(x.speed,8)
+  assert.ok(Math.abs(x.attack-.02*2/3)<1e-10)
+  assert.ok(Math.abs(x.speed-8*2/3)<1e-10)
   assert.equal(x.collabAttack,0)
   assert.equal(x.collabCrit,0)
   assert.match(x.label,/Esquadrão Aéreo/)
   assert.doesNotMatch(x.label,/Collab|Universal/)
 })
 
-test('Elo Universal substitui e não acumula sinergias incompatíveis',()=>{
+test('Estilos incompatíveis não ativam bônus mesmo com Coringa',()=>{
   const x=team('fenix_celestial','golem_ancestral','guaxinim_errante_20261027')
-  assert.equal(x.attack,.015)
-  assert.equal(x.defense,.02)
-  assert.equal(x.collabAttack,0)
-  assert.match(x.label,/Elo Universal/)
+  assert.equal(x,null)
 })
-
+test('Dois Coringas de uma só categoria concedem 1/3, sem bonus de Collab',()=>{
+  const x=team('fenix_celestial','guaxinim_errante_20261027','lince_astral')
+  assert.ok(Math.abs(x.attack-.02/3)<1e-10)
+  assert.ok(Math.abs(x.speed-8/3)<1e-10)
+  assert.equal(x.collabAttack,0)
+  assert.equal(x.collabCrit,0)
+  assert.doesNotMatch(x.label,/Collab|Universal/)
+})
+test('Raposa Astral pode ocupar qualquer slot de Coringa sem alterar os bônus individuais',()=>{
+  const combinations=[
+    ['fenix_celestial','guaxinim_errante_20261027','raposa_astral'],
+    ['raposa_astral','fenix_celestial','guaxinim_errante_20261027'],
+    ['guaxinim_errante_20261027','raposa_astral','fenix_celestial']
+  ]
+  for(const pets of combinations){
+    const s=team(...pets)
+    assert.equal(s.style,'voador')
+    assert.ok(Math.abs(s.attack-.02/3)<1e-10)
+    assert.ok(Math.abs(s.speed-8/3)<1e-10)
+    assert.equal(s.collabAttack,0)
+    assert.doesNotMatch(s.label,/Universal|Collab/)
+  }
+})
 test('Não concede bônus para espécies duplicadas',()=>{
   assert.equal(team('fenix_celestial','fenix_celestial','guaxinim_errante_20261027'),null)
 })

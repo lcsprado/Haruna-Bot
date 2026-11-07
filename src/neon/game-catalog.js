@@ -38,7 +38,7 @@ export const PET_STATUS_SPECIALTIES = {
   tartaruga:{label:'🐢 Casco',stat:'defense',base:7},
   coruja:{label:'🦉 Sabedoria',stat:'xp',base:8},
   raposa:{label:'🦊 Astúcia',stat:'crit',base:6},
-  raposa_astral:{label:'🦊 Guardiã Astral — Segunda Chance',stats:{damage:1.6,defense:2.4},raid:true},
+  raposa_astral:{label:'🦊 Raposa Astral — Coringa • Segunda Chance',stats:{damage:1.6,defense:2.4},raid:true},
   lince_astral:{label:'🃏 Lince Astral — Coringa do Leilão das Sombras',stats:{damage:1.6,defense:2.4},raid:true},
   onca_eclipse_20261026:{label:'🃏 Onça do Eclipse — Coringa do Leilão do Tesouro',stats:{bossDamage:4,crit:3,dodge:2},raid:true},
   guaxinim_errante_20261027:{label:'🦝 Guaxinim Errante — Coringa de Ataque e Crítico',stats:{damage:5,crit:4},raid:true},

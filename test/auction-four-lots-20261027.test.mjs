@@ -36,19 +36,28 @@ test('pet neutro moderado, armadura menor que todas as armaduras da collab',()=>
  assert.match(auction,/88 DEF, 150 HP e 1% crítico/)
 })
 
-test('coringa cabe em qualquer sinergia e não concede duas ao mesmo tempo',()=>{
- for(const [otherStyles,expectedStyle,universal] of [
-   [['voador','voador'],'voador',false],
-   [['mistico','mistico'],'mistico',false],
-   [['guardiao','guardiao'],'guardiao',false],
-   [['predador','predador'],'predador',false],
-   [['mistico','predador'],'coringa',true]
- ]){
-  const x=resolveAstralLynxWildcard(['fenix_celestial','golem_ancestral','guaxinim_errante_20261027'],[...otherStyles,null])
-  assert.equal(x?.style,expectedStyle)
-  assert.equal(x?.universal,universal)
+test('Coringa só completa espécies do mesmo estilo e concede sinergia parcial',()=>{
+ for(const style of ['voador','mistico','guardiao','predador','vital']){
+  const result=resolveAstralLynxWildcard(
+   ['especie_a','especie_b','guaxinim_errante_20261027'],[style,style,null])
+  assert.equal(result?.style,style)
+  assert.equal(result?.universal,false)
+  assert.equal(result?.originalCount,2)
+  assert.equal(result?.wildcardCount,1)
  }
- assert.equal(resolveAstralLynxWildcard(['guaxinim_errante_20261027','guaxinim_errante_20261027','fenix_celestial'],[null,null,'voador']),null)
+ const mixed=resolveAstralLynxWildcard(
+  ['fenix_celestial','golem_ancestral','guaxinim_errante_20261027'],
+  ['voador','guardiao',null])
+ assert.equal(mixed,null)
+ const one=resolveAstralLynxWildcard(
+  ['fenix_celestial','raposa_astral','guaxinim_errante_20261027'],
+  ['voador',null,null])
+ assert.equal(one?.style,'voador')
+ assert.equal(one?.originalCount,1)
+ assert.equal(one?.wildcardCount,2)
+ assert.equal(resolveAstralLynxWildcard(
+  ['guaxinim_errante_20261027','guaxinim_errante_20261027','fenix_celestial'],
+  [null,null,'voador']),null)
 })
 
 test('quatro lotes têm consumíveis e materiais úteis além de pergaminho',()=>{
