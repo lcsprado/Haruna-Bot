@@ -4005,13 +4005,19 @@ export async function dungeon(jid) {
 await ensureUser(jid)
 return transaction(async client=>{
 const p=await client.query(`
-SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id,s.helmet_id,s.class_id,s.class_applied
+SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied
 FROM users u JOIN stats s ON s.jid=u.jid
 WHERE u.jid=$1
 FOR UPDATE OF u,s
 `,[jid])
 const row=p.rows[0]
 if(!row) throw new Error('Perfil não encontrado.')
+const classRow=(await client.query(`SELECT cp.level, EXISTS(SELECT 1 FROM player_hero_mode h WHERE h.jid=$1
+  AND h.hero_species IS NOT NULL AND EXISTS(SELECT 1 FROM pet_collection pc
+  WHERE pc.jid=h.jid AND pc.species=h.hero_species)) AS hero_active
+  FROM (SELECT 1) source LEFT JOIN player_class_progress cp
+  ON cp.jid=$1 AND cp.class_id=$2`,[jid,row.class_id])).rows[0]||{}
+const classTrain=row.class_applied&&!classRow.hero_active?classLevelBonus(row.class_id,Number(classRow.level||1)):{hp:0,atk:0,def:0,spd:0}
 if(Number(row.hp)<=0) throw new Error('Você está sem HP. Use uma poção antes.')
 const cd=await claimCooldown(client,`dungeon:${jid}`,20*60)
 if(!cd.ok) return cd
@@ -4028,9 +4034,10 @@ const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,lvl(row.weapon_id
 const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,lvl(row.armor_id),starLv[row.armor_id]||1):{atk:0,def:0,hp:0}
 const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,lvl(row.boot_id)):{atk:0,def:0,hp:0}
 const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,lvl(row.helmet_id)):{atk:0,def:0,hp:0}
-const atk=Number(row.atk)+Number(weapon.atk||0)+Number(armor.atk||0)+Number(boots.atk||0)+Number(helmet.atk||0)
-const def=Number(row.def)+Number(weapon.def||0)+Number(armor.def||0)+Number(boots.def||0)+Number(helmet.def||0)
-const effectiveMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)+Number(boots.hp||0)+Number(helmet.hp||0)
+const atk=Number(row.atk)+classTrain.atk+Number(weapon.atk||0)+Number(armor.atk||0)+Number(boots.atk||0)+Number(helmet.atk||0)
+const def=Number(row.def)+classTrain.def+Number(weapon.def||0)+Number(armor.def||0)+Number(boots.def||0)+Number(helmet.def||0)
+const persistentMaxHp=Number(row.max_hp)+Number(weapon.hp||0)+Number(armor.hp||0)+Number(boots.hp||0)+Number(helmet.hp||0)
+const effectiveMaxHp=persistentMaxHp+classTrain.hp
 const level=Number(row.level)
 const monsters=[
 {name:'Slime Sombrio',hp:45,atk:8,def:2,mult:1},
@@ -4043,7 +4050,7 @@ const m={...monsters[Math.min(idx,monsters.length-1)]}
 m.hp+=level*6
 m.atk+=Math.floor(level*1.3)
 m.def+=Math.floor(level*.7)
-let php=Math.min(Number(row.hp),effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0
+let php=classLevelCombatHp(row.hp,persistentMaxHp,effectiveMaxHp),mhp=m.hp,rounds=0,lastProcAttack=0
 while(php>0&&mhp>0&&rounds<25){
 rounds++
 const crit=Math.random()<(.10+classCritBonus(row.class_id,row.class_applied))
@@ -4059,14 +4066,14 @@ php=Math.max(0,php-blocked.damage)
 }
 if(php<=0){
 const recover=Math.max(1,Math.floor(effectiveMaxHp*.30))
-await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[recover,jid])
+await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,classLevelHpToPersistent(recover,effectiveMaxHp,persistentMaxHp)),jid])
 const lossExp=Math.round(10*xpMultiplier)
 const expRes=await applyExp(client,jid,lossExp)
 return {ok:true,won:false,monster:m.name,hp:recover,maxHp:effectiveMaxHp,exp:lossExp,level:expRes,eventMultiplier:xpMultiplier}
 }
 const cash=Math.round(Math.floor((700+Math.random()*801)*m.mult)*moneyMultiplier)
 const exp=Math.round(Math.floor((35+Math.random()*31)*m.mult)*xpMultiplier)
-await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,php),jid])
+await client.query('UPDATE stats SET hp=$1,updated_at='+nowSql+' WHERE jid=$2',[Math.max(1,classLevelHpToPersistent(php,effectiveMaxHp,persistentMaxHp)),jid])
 await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[cash,jid])
 await client.query(`
 INSERT INTO transactions(from_jid,to_jid,amount,type,note)
