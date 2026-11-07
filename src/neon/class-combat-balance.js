@@ -3,10 +3,10 @@
 // A hero's full build must remain superior on average at equal gear/mastery.
 export const CLASS_LEVEL_CAP=100;
 export const CLASS_ROLE_GROWTH=Object.freeze({
-  paladin:Object.freeze({hp:35,atk:2,def:6,spd:1}),
-  berserker:Object.freeze({hp:140,atk:20,def:14,spd:5}),
-  samurai:Object.freeze({hp:150,atk:18,def:14,spd:5}),
-  necromancer:Object.freeze({hp:220,atk:26,def:20,spd:7})
+  paladin:Object.freeze({hp:300,atk:5,def:25,spd:4}),
+  berserker:Object.freeze({hp:190,atk:35,def:18,spd:8}),
+  samurai:Object.freeze({hp:275,atk:33,def:30,spd:20}),
+  necromancer:Object.freeze({hp:335,atk:36,def:33,spd:8})
 });
 export const classLevelFromGeneralLevel=value=>Math.max(1,Math.min(CLASS_LEVEL_CAP,Math.floor(Number(value)||1)));
 export function classCombatGrowth(classId,level){
