@@ -12,6 +12,7 @@ import {LEGENDARY_BOX_GEAR,pickLegendaryBoxGear} from './legendary-box-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
+import {classLevelBonus,classLevelCombatHp,classLevelHpToPersistent,CLASS_LEVEL_XP_MAX,CLASS_LEVEL_ROLES} from './class-level-progression.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {pvpCritChance} from './pvp-crit.js'
 import pg from 'pg'
@@ -2168,6 +2169,28 @@ await client.query(
 'UPDATE users SET level=$1,exp=$2,updated_at='+nowSql+' WHERE jid=$3',
 [level,exp,jid]
 )
+// A classe só recebe EXP enquanto ela é o combatente ativo; nunca
+// concede EXP da classe ao jogar com herói da collab. Transação única
+// com a EXP geral, teto de 9.900 XP e atualização atômica/idempotente
+// pelo evento de EXP já controlado pela origem da recompensa.
+const classAward=eventGain+bonusXp
+if(classAward>0){
+await client.query(`
+INSERT INTO player_class_progress(jid,class_id,level,xp,updated_at)
+SELECT s.jid,s.class_id,LEAST(100,1+LEAST(${CLASS_LEVEL_XP_MAX},$2::int)/100),
+  LEAST(${CLASS_LEVEL_XP_MAX},$2::int),${nowSql}
+FROM stats s WHERE s.jid=$1 AND s.class_applied=TRUE
+  AND s.class_id=ANY($3::text[])
+  AND NOT EXISTS(SELECT 1 FROM player_hero_mode m WHERE m.jid=s.jid
+    AND m.hero_species IS NOT NULL AND EXISTS(SELECT 1 FROM pet_collection p
+      WHERE p.jid=m.jid AND p.species=m.hero_species))
+ON CONFLICT(jid,class_id) DO UPDATE SET
+  xp=LEAST(${CLASS_LEVEL_XP_MAX},player_class_progress.xp+EXCLUDED.xp),
+  level=LEAST(100,1+LEAST(${CLASS_LEVEL_XP_MAX},player_class_progress.xp+EXCLUDED.xp)/100),
+  updated_at=${nowSql}
+WHERE player_class_progress.xp<${CLASS_LEVEL_XP_MAX}
+`,[jid,classAward,Object.keys(CLASS_LEVEL_ROLES)])
+}
 if(levels>0){
 // A cura por level-up precisa incluir o HP dos equipamentos realmente equipados.
 // Sem isto, o jogador perde temporariamente todo o HP extra de armadura/elmo.
