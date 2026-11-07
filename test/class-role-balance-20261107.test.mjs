@@ -57,6 +57,11 @@ test('all seven heroes win 55-65% of role-class duels on un-geared equal base',(
  const games=pairs.reduce((n,x)=>n+x.fights,0)
  const winPct=wins/games*100
  assert.ok(winPct>=55&&winPct<=65,'hero average '+winPct.toFixed(2)+'%')
+ const sortedHeroes=r.ranking.filter(x=>x.id.startsWith('pecado_'))
+ const sortedClasses=r.ranking.filter(x=>CLASS_IDS.includes(x.id))
+ assert.equal(sortedHeroes.length,7)
+ assert.ok(Math.min(...sortedHeroes.map(x=>x.winRate))>Math.max(...sortedClasses.map(x=>x.winRate)),
+   'all seven heroes must rank ahead of all four selectable classes with no equipment')
  const byClass=Object.fromEntries(CLASS_IDS.map(id=>[id,pairs.filter(x=>x.b===id)]))
  for(const [id,duels] of Object.entries(byClass)){
    const clsWinPct=duels.reduce((n,x)=>n+x.bWins,0)/duels.reduce((n,x)=>n+x.fights,0)*100
@@ -64,5 +69,5 @@ test('all seven heroes win 55-65% of role-class duels on un-geared equal base',(
  }
  // Hero progress and class awakening are both capped; gear is deliberately ignored.
  assert.equal(r.combatants,17)
- assert.equal(r.pairs,136)
+ assert.equal(r.pairs.length,136)
 })
