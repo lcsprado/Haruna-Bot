@@ -1,7 +1,8 @@
+import {readFileSync} from 'node:fs'
 import {heroTrainingFactor} from '../src/neon/playable-heroes-core.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {classCombatGrowth,classCombatStats,classCombatHp,classPersistentHp,CLASS_ROLE_GROWTH} from '../src/neon/class-combat-balance.js'
+import {classCombatGrowth,classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,CLASS_ROLE_GROWTH} from '../src/neon/class-combat-balance.js'
 import {auditSeventeen,buildFairFighter,PVP_EQUAL_GEAR} from '../src/neon/pvp-balance-simulator.js'
 import {heroRoleGrowth,HERO_ROLE_GROWTH,heroCombatStats} from '../src/neon/playable-heroes-core.js'
 
@@ -11,10 +12,11 @@ test('class progression is bounded, without mutating permanent user stats',()=>{
  const st={max_hp:4000,atk:900,def:500,spd:480}
  const original={...st}
  for(const id of CLASS_IDS){
-   assert.deepEqual(classCombatGrowth(id,1),{hp:0,atk:0,def:0,spd:0})
+   assert.deepEqual(classCombatGrowth(id,1),Object.fromEntries(['hp','atk','def','spd'].map(k=>[k,Math.round(CLASS_ROLE_GROWTH[id][k]/100)])))
+   assert.deepEqual(classCombatGrowth(id,50),Object.fromEntries(['hp','atk','def','spd'].map(k=>[k,Math.round(CLASS_ROLE_GROWTH[id][k]/2)])))
    assert.deepEqual(classCombatGrowth(id,100),CLASS_ROLE_GROWTH[id])
    assert.deepEqual(classCombatGrowth(id,9999),CLASS_ROLE_GROWTH[id])
-   assert.deepEqual(classCombatGrowth(id,-20),{hp:0,atk:0,def:0,spd:0})
+   assert.deepEqual(classCombatGrowth(id,-20),classCombatGrowth(id,1))
    assert.deepEqual(classCombatStats(st,id,100,false).bonus,{hp:0,atk:0,def:0,spd:0})
  }
  assert.deepEqual(st,original)
@@ -130,3 +132,24 @@ test('intermediate progression keeps heroes competitive without equipment',()=>{
  assert.equal(heroTrainingFactor(1),0)
  assert.equal(heroTrainingFactor(100),1)
 })
+
+
+test('100 levels are earned independently, level-100 cap preserves XP and never rewrites stored player stats',()=>{
+  assert.deepEqual(classLevelAdvance(1,0,100),{level:2,xp:0,levels:1});
+  assert.deepEqual(classLevelAdvance(1,0,150),{level:2,xp:50,levels:1});
+  assert.deepEqual(classLevelAdvance(2,50,150),{level:3,xp:0,levels:1});
+  assert.deepEqual(classLevelAdvance(99,0,9900),{level:100,xp:0,levels:1});
+  assert.deepEqual(classLevelAdvance(100,0,1000000),{level:100,xp:0,levels:0});
+  assert.deepEqual(classLevelAdvance(1,0,495000),{level:100,xp:0,levels:99});
+  assert.equal(classCombatGrowth('paladin',1).hp,4);
+  assert.equal(classCombatGrowth('paladin',50).hp,200);
+  assert.equal(classCombatGrowth('paladin',100).hp,400);
+});
+test('Raid, Boss, PvP and profile must read the independent class level',()=>{
+  const fs={db:readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8'),games:readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8'),status:readFileSync(new URL('../src/neon/character-base-status-format.js',import.meta.url),'utf8')};
+  assert.ok(fs.db.includes('CREATE TABLE IF NOT EXISTS player_class_levels'));
+  assert.ok(fs.db.includes('classLevelAdvance('));
+  assert.ok(fs.db.includes('classCombatStats(p,p.class_id,p.class_level,classActive)'));
+  assert.ok(fs.games.includes('st.class_level'));
+  assert.ok(fs.status.includes('profile.class_level??profile.level'));
+});
