@@ -1502,8 +1502,8 @@ const petStatus=pet&&!primaryPetReady
 ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
 :null
 const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
-const pvpCritNoPet=Math.min(.60,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
-const pvpCritWithPet=Math.min(.60,pvpCritNoPet+Number(pvpPet?.crit||0))
+const pvpCritNoPet=Math.min(.50,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
+const pvpCritWithPet=Math.min(.50,pvpCritNoPet+Number(pvpPet?.crit||0))
 const pvpPct=n=>pct(Number(n||0)*100)
 const pvpPetLine=`🐾 *CONTRIBUIÇÃO DO PET NO PVP*
 ${pet?`${pet.name} — Nv.${pet.level} ${primaryPetReady?'✅ ativo':'⚠️ bônus suspensos ('+petStatus+')'}`:'Nenhum pet principal'}
