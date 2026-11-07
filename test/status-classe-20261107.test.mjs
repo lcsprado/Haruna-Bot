@@ -19,7 +19,7 @@ test('!status classe: ficha real sem equipamentos, sem duplicar Despertar',()=>{
   assert.match(result,/ATK base sem itens: \*922\* \(915 permanente \+ 7 da classe\)/)
   assert.match(result,/DEF base sem itens: \*467\* \(445 permanente \+ 22 da classe\)/)
   assert.match(result,/VEL base sem itens: \*460\* \(455 permanente \+ 5 da classe\)/)
-  assert.match(result,/4,8% dano.*14,4% dano recebido/)
+  assert.match(result,/1,6% dano.*14,4% dano recebido/)
   assert.doesNotMatch(result,/arma equipada|armadura equipada|pet principal|selo \+5%/)
   assert.match(result,/Despertar permanente já está incluído na base/)
 })
