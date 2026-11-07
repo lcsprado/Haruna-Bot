@@ -3251,6 +3251,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const combatSnapshot=(await c.query(`
       SELECT
         COALESCE((SELECT stage FROM player_awakenings WHERE jid=$1),0) AS awakening_stage,
+        COALESCE((SELECT level FROM player_class_progress WHERE jid=$1 AND class_id=$5),1) AS class_level,
         COALESCE((SELECT jsonb_agg(jsonb_build_object(
           'slot',t.slot,'species',p.species,'level',p.level,'hp',p.hp,'energy',p.energy
         ) ORDER BY t.slot)
@@ -3261,8 +3262,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           WHERE u.jid=$1 AND u.item_id=ANY($2::text[])),'[]'::jsonb) AS upgrade_rows,
         COALESCE((SELECT sf.stars FROM equipment_star_forges sf WHERE sf.jid=$1 AND sf.item_id=$3 AND sf.level=COALESCE((SELECT u.level FROM equipment_upgrades u WHERE u.jid=sf.jid AND u.item_id=sf.item_id),1)),1) AS weapon_stars,
         COALESCE((SELECT sf.stars FROM equipment_star_forges sf WHERE sf.jid=$1 AND sf.item_id=$4 AND sf.level=COALESCE((SELECT u.level FROM equipment_upgrades u WHERE u.jid=sf.jid AND u.item_id=sf.item_id),1)),1) AS armor_stars
-    `,[jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean),st.weapon_id,st.armor_id])).rows[0]
+    `,[jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean),st.weapon_id,st.armor_id,st.class_id])).rows[0]
     const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
+    const classTrain=!heroId&&st.class_applied?classLevelBonus(st.class_id,Number(combatSnapshot?.class_level||1)):{hp:0,atk:0,def:0,spd:0}
     const teamPets=excludeActiveHeroPet(combatSnapshot?.team_pets||[],heroId)
     const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
     const baseTeamSynergy=petTeamSynergy(teamPets)||{attack:0,defense:0,crit:0}
@@ -3274,10 +3276,11 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id),Number(combatSnapshot?.armor_stars||1)):{atk:0,def:0,hp:0,crit:0}
     const boots=st.boot_id?equipmentStatsAtLevel(st.boot_id,itemLevel(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
-    const atk=Math.round((Number(heroStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
-    const def=Number(heroStats?.def??st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
+    const atk=Math.round((Number(heroStats?.atk??st.atk)+classTrain.atk+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
+    const def=Number(heroStats?.def??st.def)+classTrain.def+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
     const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
-    const baseMaxHp=Number(heroStats?.maxHp??st.max_hp)+gearHp
+    const baseMaxHp=Number(heroStats?.maxHp??st.max_hp)+gearHp+classTrain.hp
+    if(!heroId)heroCombatHp=classLevelCombatHp(st.hp,Number(st.max_hp)+gearHp,baseMaxHp)
     const vital=applyVitalCombatHp(heroCombatHp,baseMaxHp,Number(petBonus.hp||0),Number(teamSynergy.hp||0))
     const effectiveMaxHp=vital.maxHp
     // Versão 3: HP percentual temporário incluído na projeção do herói.
@@ -3309,7 +3312,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       ?{...heroAttack({heroId,damage:baseDamage,hp:heroCombatHp,maxHp:effectiveMaxHp,
         attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',state:existingParticipant.heroState,masteryStage:heroMasteryStage,gear:heroGear}),
         lastProcAttack:existingParticipant.classLastProcAttack,awakeningState:existingParticipant.awakeningState}
-      :classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
+      :classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:heroCombatHp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
     const ruptura=gameType==='boss_event'&&s.eventId==='ruptura_estelar'
     const faseAnterior=ruptura?Math.max(1,Number(s.phase||1)):1
     const eclipseRelic=equippedRelic
