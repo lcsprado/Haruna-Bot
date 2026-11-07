@@ -125,7 +125,7 @@ test('Regras de PvP, Boss, Raid, perfil e pets usam o bônus real, sem alterá-l
   assert.match(dbSource,/applyPvpVital\(A,aSynergy\)/)
   assert.match(dbSource,/applyPvpVital\(B,bSynergy\)/)
   assert.match(dbSource,/vitalPulseHeal\(to.hp,to.maxHp/)
-  assert.match(dbSource,/classPersistentHp\\(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp\\)/)
+  assert.ok(dbSource.includes('classPersistentHp(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp)'))
   assert.match(gameSource,/vitalRaidOpening\(s.players\[jid\]\)/)
   assert.match(gameSource,/vitalPulseHeal\(p.hp,p.maxHp/)
   assert.match(gameSource,/vitalPulseHeal\(php,effectiveMaxHp/)
