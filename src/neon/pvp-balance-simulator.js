@@ -15,12 +15,12 @@ function rng(seed){
   return ()=>{x=(x+0x6d2b79f5)>>>0;let y=Math.imul(x^(x>>>15),1|x);
     y^=y+Math.imul(y^(y>>>7),61|y);return ((y^(y>>>14))>>>0)/4294967296}
 }
-export function buildFairFighter(id,{gear=false,awakening=5,mastery=5}={}){
+export function buildFairFighter(id,{gear=false,awakening=5,mastery=5,level=100}={}){
   const hero=HERO_COMBAT_PROFILES[id]||null,cl=PLAYER_CLASSES[id]||null
   if(!hero&&!cl)throw new Error('Unknown PvP combatant '+id)
-  const stats=hero?heroCombatStats(PVP_AUDIT_BASELINE,id,100):{
-    maxHp:PVP_AUDIT_BASELINE.max_hp+cl.hp+classCombatGrowth(id,100).hp,atk:PVP_AUDIT_BASELINE.atk+cl.atk+classCombatGrowth(id,100).atk,
-    def:PVP_AUDIT_BASELINE.def+cl.def+classCombatGrowth(id,100).def,spd:PVP_AUDIT_BASELINE.spd+cl.spd+classCombatGrowth(id,100).spd}
+  const stats=hero?heroCombatStats(PVP_AUDIT_BASELINE,id,level):{
+    maxHp:PVP_AUDIT_BASELINE.max_hp+cl.hp+classCombatGrowth(id,level).hp,atk:PVP_AUDIT_BASELINE.atk+cl.atk+classCombatGrowth(id,level).atk,
+    def:PVP_AUDIT_BASELINE.def+cl.def+classCombatGrowth(id,level).def,spd:PVP_AUDIT_BASELINE.spd+cl.spd+classCombatGrowth(id,level).spd}
   const g=gear?PVP_EQUAL_GEAR:{hp:0,atk:0,def:0,spd:0,crit:0}
   return {id,hero:Boolean(hero),awakening:hero?0:awakening,mastery:hero?mastery:0,
     maxHp:stats.maxHp+g.hp,hp:stats.maxHp+g.hp,atk:stats.atk+g.atk,def:stats.def+g.def,
@@ -28,10 +28,10 @@ export function buildFairFighter(id,{gear=false,awakening=5,mastery=5}={}){
     hits:0,lastProcAttack:0,heroState:{},awakeningState:{},metrics:{damage:0,received:0,blocked:0,
       healed:0,criticals:0,dodges:0,shield:0,abilities:0}}
 }
-export function simulateFairDuel(idA,idB,{seed=1,gear=false,awakening=5,mastery=5}={}){
+export function simulateFairDuel(idA,idB,{seed=1,gear=false,awakening=5,mastery=5,level=100}={}){
   if(idA===idB)throw new Error('use two different combatants')
-  const random=rng(seed),a=buildFairFighter(idA,{gear,awakening,mastery}),
-    b=buildFairFighter(idB,{gear,awakening,mastery})
+  const random=rng(seed),a=buildFairFighter(idA,{gear,awakening,mastery,level}),
+    b=buildFairFighter(idB,{gear,awakening,mastery,level})
   const first=a.spd>=b.spd?a:b,second=first===a?b:a
   const hit=(from,to)=>{
     from.hits++
@@ -75,7 +75,7 @@ export function simulateFairDuel(idA,idB,{seed=1,gear=false,awakening=5,mastery=
   const winner=a.hp===b.hp?(random()<.5?a:b):(a.hp>b.hp?a:b)
   return {winner:winner.id,a,b,rounds:Math.max(a.hits,b.hits)}
 }
-export function auditSeventeen({duelsPerOrder=50,gear=false,awakening=5,mastery=5}={}){
+export function auditSeventeen({duelsPerOrder=50,gear=false,awakening=5,mastery=5,level=100}={}){
   const names=PVP_COMBATANTS,records=Object.fromEntries(names.map(id=>[id,{id,wins:0,fights:0,
     damage:0,blocked:0,healed:0,criticals:0,shield:0,dodges:0,abilities:0}]))
   const pairs=[]
@@ -84,7 +84,7 @@ export function auditSeventeen({duelsPerOrder=50,gear=false,awakening=5,mastery=
     let aWins=0
     for(let n=0;n<Math.floor(count/2);n++)for(const flip of [false,true]){
       // Swap attacker side, same deterministic seed for both orientations.
-      const d=simulateFairDuel(flip?b:a,flip?a:b,{seed:20261101+i*10000+j*300+n,gear,awakening,mastery})
+      const d=simulateFairDuel(flip?b:a,flip?a:b,{seed:20261101+i*10000+j*300+n,gear,awakening,mastery,level})
       if(d.winner===a)aWins++
       for(const fighter of [d.a,d.b]){
         const rec=records[fighter.id];rec.fights++
@@ -105,6 +105,6 @@ export function auditSeventeen({duelsPerOrder=50,gear=false,awakening=5,mastery=
     criticalsPerFight:Math.round(x.criticals/x.fights*100)/100,
     abilitiesPerFight:Math.round(x.abilities/x.fights*100)/100
   })).sort((a,b)=>b.winRate-a.winRate||a.id.localeCompare(b.id))
-  return {scenario:gear?'equal-generic-gear':'no-gear',duelsPerOrder,combatants:names.length,
+  return {scenario:gear?'equal-generic-gear':'no-gear',level,duelsPerOrder,combatants:names.length,
     pairs:pairs.length,battles:pairs.reduce((s,x)=>s+x.fights,0),ranking,pairs}
 }
