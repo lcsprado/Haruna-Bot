@@ -1,14 +1,16 @@
 // Evolucao independente das quatro classes selecionaveis.
+// Balanceamento validado na BASE sem equipamento: progressao, Despertar e papel.
+// Equipamento e pet sao camadas independentes, calculadas DEPOIS.
 // Todos os bonus sao SOMENTE de combate. Nunca gravar nos atributos de stats.
 export const CLASS_LEVEL_MAX=100;
 export const CLASS_LEVEL_DAILY_XP_CAP=500;
 export const CLASS_LEVEL_XP_PER_LEVEL=100;
 export const CLASS_LEVEL_MAX_XP=(CLASS_LEVEL_MAX-1)*CLASS_LEVEL_XP_PER_LEVEL;
 export const CLASS_LEVEL_GROWTH=Object.freeze({
-  paladin:Object.freeze({hp:105,atk:5,def:17,spd:1}),
-  berserker:Object.freeze({hp:110,atk:15,def:9,spd:4}),
-  samurai:Object.freeze({hp:110,atk:15,def:10,spd:5}),
-  necromancer:Object.freeze({hp:150,atk:14,def:16,spd:6})
+  paladin:Object.freeze({hp:185,atk:11,def:28,spd:2}),
+  berserker:Object.freeze({hp:150,atk:30,def:14,spd:5}),
+  samurai:Object.freeze({hp:135,atk:26,def:14,spd:14}),
+  necromancer:Object.freeze({hp:170,atk:28,def:18,spd:8})
 });
 const ZERO=Object.freeze({hp:0,atk:0,def:0,spd:0});
 export const classLevelFromXp=xp=>Math.min(CLASS_LEVEL_MAX,1+
