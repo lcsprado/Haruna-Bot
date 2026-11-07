@@ -78,6 +78,7 @@ import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
+import {bossFinalNoticeIsRecent,bossFinalNoticeFailureState,BOSS_FINAL_NOTICE_MAX_ATTEMPTS} from './boss-final-outbox-policy.js'
 import {isUnarchivedWeeklyBoss20261030,loadBossArchive20261030} from './boss-archive-20261030.js'
 import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeamFixture } from './football.js'
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
@@ -2683,27 +2684,28 @@ knownScheduledNotices.add(settingKey)
 if(inserted.rowCount) await sock.sendMessage(chat,{text:formatEventNotice(text)}).catch(err=>console.error('[Eventos] aviso',chat,err?.message||err))
 }
 
-// Outbox de avisos: a premiação já foi concluída de forma transacional em games.js.
-// Cada grupo/parte recebe um aviso; falhas de envio podem ser repetidas sem novos pagamentos.
+// O pagamento ja ocorreu transacionalmente em games.js. Aqui apenas enviamos
+// o resultado. Erros permanentes de grupo nao devem ser repetidos indefinidamente.
 let completedWeeklyBossNoticeBusy=false
 async function announceCompletedWeeklyBoss(){
-  if(trevoHealth.whatsapp!=='open'||completedWeeklyBossNoticeBusy) return
+  if(trevoHealth.whatsapp!=='open'||completedWeeklyBossNoticeBusy)return
   completedWeeklyBossNoticeBusy=true
   try{
     const state=(await db.query(
       "SELECT state FROM trevo_games WHERE chat_jid='__alpha_global_weekly_boss__' AND game_type='boss'"
     )).rows[0]?.state
-    if(state?.mode!=='completed'||!state.weeklyCompleted||!state.weekendKey) return
+    if(state?.mode!=='completed'||!state.weeklyCompleted||!state.weekendKey)return
     const archived=isUnarchivedWeeklyBoss20261030(state)
     if(archived){
       if(Date.now()>Date.parse('2026-11-02T12:37:32-03:00'))return
     }else{
+      // Nao anunciar resultados de eventos encerrados ha dias.
       if(!Array.isArray(state.result?.rewards)||!state.result.rewards.length||
-         !Number(state.completedAt)||Date.now()-Number(state.completedAt)>72*60*60*1000)return
+         !bossFinalNoticeIsRecent(state.completedAt))return
     }
     const notices=archived
-      ? await loadBossArchive20261030(db,state)
-      : weeklyBossResultMessages(state)
+      ?await loadBossArchive20261030(db,state)
+      :weeklyBossResultMessages(state)
     if(!notices.length)return
     const groups=await activeEventGroups()
     for(const group of groups){
@@ -2713,23 +2715,44 @@ async function announceCompletedWeeklyBoss(){
         const claimed=await db.query(`
           INSERT INTO trevo_settings(key,value,updated_at)
           VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
-          ON CONFLICT(key) DO UPDATE
-          SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at
-          WHERE trevo_settings.value->>'status'='sending'
-            AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<$3
-          RETURNING key
-        `,[key,JSON.stringify({status:'sending',claimedAt:now}),now-60000])
-        if(!claimed.rowCount) continue
+          ON CONFLICT(key) DO UPDATE SET
+            value=jsonb_build_object('status','sending','claimedAt',$3,
+              'attempts',COALESCE((trevo_settings.value->>'attempts')::int,1)+1),
+            updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
+          WHERE COALESCE((trevo_settings.value->>'attempts')::int,1)<$4
+            AND (
+              (trevo_settings.value->>'status'='retry'
+                AND COALESCE((trevo_settings.value->>'nextRetryAt')::bigint,0)<=$3)
+              OR
+              (trevo_settings.value->>'status'='sending'
+                AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<$5)
+            )
+          RETURNING (value->>'attempts')::int AS attempts
+        `,[key,JSON.stringify({status:'sending',claimedAt:now,attempts:1}),
+          now,BOSS_FINAL_NOTICE_MAX_ATTEMPTS,now-60000])
+        if(!claimed.rowCount)continue
+        const attempts=Number(claimed.rows[0]?.attempts||1)
         try{
           await sock.sendMessage(group.chat_jid,{text:notices[i]})
           await db.query(
             "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
-            [key,JSON.stringify({status:'sent',sentAt:Date.now(),weekendKey:state.weekendKey})]
+            [key,JSON.stringify({status:'sent',sentAt:Date.now(),
+              attempts,weekendKey:state.weekendKey})]
           )
-          console.log('[Boss Final] ranking e prêmios publicados',state.weekendKey,group.chat_jid,i+1)
+          console.log('[Boss Final] resultado publicado',state.weekendKey,group.chat_jid,i+1)
         }catch(sendError){
-          console.error('[Boss Final] falha ao avisar grupo',group.chat_jid,sendError?.message||sendError)
-          await db.query("DELETE FROM trevo_settings WHERE key=$1 AND value->>'status'='sending'",[key]).catch(()=>{})
+          const failure=bossFinalNoticeFailureState(sendError,attempts)
+          // Preservar o marcador: apagar aqui provoca um novo envio a cada 20s.
+          await db.query(
+            "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1 AND value->>'status'='sending'",
+            [key,JSON.stringify({...failure,weekendKey:state.weekendKey})]
+          )
+          if(failure.status==='undeliverable'||failure.status==='abandoned')
+            console.warn('[Boss Final] aviso encerrado para grupo',group.chat_jid,
+              failure.status,sendError?.message||String(sendError))
+          else
+            console.warn('[Boss Final] aviso temporariamente indisponivel; proxima tentativa agendada',
+              group.chat_jid,attempts)
         }
       }
     }
