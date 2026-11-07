@@ -1,14 +1,16 @@
-// Regras puras para o coringa exclusivo do Leilão das Sombras.
-// Mantém o bônus normal de um estilo único, ou fornece só um bônus universal
-// quando a dupla possui estilos diferentes ou não classificados.
+// Coringas só completam sinergias de um único estilo já presente.
+// Cada pet real contribui com 1/3 do bônus; Coringas não geram bônus
+// universal, não misturam estilos e não funcionam sozinhos.
 export function resolveAstralLynxWildcard(species=[],styles=[]){
   if(!Array.isArray(species)||!Array.isArray(styles)||species.length!==3||styles.length!==3)return null
   if(new Set(species).size!==3)return null
-  const index=species.findIndex(id=>['lince_astral','onca_eclipse_20261026','guaxinim_errante_20261027'].includes(id))
-  if(index<0)return null
-  const others=styles.filter((_,i)=>i!==index)
-  const sameStyle=others[0] && others[0]===others[1]
-  return sameStyle?{style:others[0],universal:false}:{style:'coringa',universal:true}
+  const wildcards=new Set(PET_TEAM_WILDCARD_SPECIES)
+  const originals=species.map((id,i)=>({id,style:styles[i]})).filter(p=>!wildcards.has(p.id))
+  const wildcardCount=3-originals.length
+  if(wildcardCount<1||wildcardCount>2||!originals.length)return null
+  const style=originals[0].style
+  if(!style||!originals.every(p=>p.style===style))return null
+  return {style,universal:false,originalCount:originals.length,wildcardCount}
 }
 
 // Coringas registrados: nenhuma recompensa antiga passa a ser Coringa por engano.
