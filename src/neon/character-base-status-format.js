@@ -1,6 +1,6 @@
 import {getPlayerClass,getClassPassive,getAwakeningSkillDescriptions} from './game-catalog.js'
 import {PVP_AWAKENING_ROLES} from './pvp-class-powers.js'
-import {classCombatGrowth,classLevelFromGeneralLevel} from './class-combat-balance.js'
+import {classCombatGrowth,classCombatStats,classLevelFromGeneralLevel} from './class-combat-balance.js'
 
 const formatNumber=value=>Number(value||0).toLocaleString('pt-BR')
 const stageNumber=value=>Math.max(1,Math.min(5,Math.floor(Number(value)||1)))
@@ -11,6 +11,7 @@ export function formatActiveClassBaseStatus(profile,awakeningStage=1){
   if(!profile)return '';
   const id=String(profile.class_id||'warrior').toLowerCase()
   const cls=getPlayerClass(id),roman=romanStage(awakeningStage)
+  const base=classCombatStats(profile,id,profile.level,Boolean(profile.class_applied))
   const passive=getClassPassive(id,profile.class_applied)
   const currentSkill=profile.class_applied?
     getAwakeningSkillDescriptions(id)[stageNumber(awakeningStage)-1]||null:null
@@ -18,10 +19,10 @@ export function formatActiveClassBaseStatus(profile,awakeningStage=1){
     '🧙 *STATUS BASE — '+cls.name.toUpperCase()+'*',
     '🎭 '+cls.role,
     '⭐ Nível: *'+formatNumber(profile.level||1)+'*',
-    '❤️ HP: *'+formatNumber(profile.max_hp)+'*',
-    '⚔️ ATK: *'+formatNumber(profile.atk)+'*',
-    '🛡️ DEF: *'+formatNumber(profile.def)+'*',
-    '👢 VEL: *'+formatNumber(profile.spd)+'*',
+    '❤️ HP: *'+formatNumber(base.maxHp)+'*',
+    '⚔️ ATK: *'+formatNumber(base.atk)+'*',
+    '🛡️ DEF: *'+formatNumber(base.def)+'*',
+    '👢 VEL: *'+formatNumber(base.spd)+'*',
     ...(passive?['⚜️ Passiva: *'+passive.name+'*']:[]),
     '🌌 Despertar: *'+roman+'/V*',
     ...(currentSkill?['✨ Habilidade do Despertar '+roman+': '+currentSkill]:[])
@@ -44,6 +45,7 @@ export function formatSavedClassStatus(profile,awakeningStage=1,heroActive=false
   if(!profile.class_applied)return '🧙 Você ainda não escolheu uma classe. Use *!classe* para começar.';
   const id=String(profile.class_id||'warrior').toLowerCase();
   const cls=getPlayerClass(id);
+  const classSheet=classCombatStats(profile,id,profile.level,true);
   const stage=stageNumber(awakeningStage);
   const passive=getClassPassive(id,true);
   const skillDescriptions=getAwakeningSkillDescriptions(id).slice(0,stage);
@@ -65,10 +67,14 @@ export function formatSavedClassStatus(profile,awakeningStage=1,heroActive=false
     '🌌 Despertar: *'+romanStage(stage)+'/V*',
     '📈 Progressão da classe: *'+classLevelFromGeneralLevel(profile.level)+'/100* (por nível geral; bônus de combate não permanente).',
     '🎯 Bônus de classe em combate: +'+formatNumber(classCombatGrowth(id,profile.level).hp)+' HP, +'+formatNumber(classCombatGrowth(id,profile.level).atk)+' ATK, +'+formatNumber(classCombatGrowth(id,profile.level).def)+' DEF, +'+formatNumber(classCombatGrowth(id,profile.level).spd)+' VEL.',
-    attr('❤️','HP base sem itens','hp',Number(profile.max_hp||0)),
-    attr('⚔️','ATK base sem itens','atk',Number(profile.atk||0)),
-    attr('🛡️','DEF base sem itens','def',Number(profile.def||0)),
-    attr('👢','VEL base sem itens','spd',Number(profile.spd||0)),
+    attr('❤️','HP base persistente','hp',Number(profile.max_hp||0)),
+    '❤️ HP base de combate sem itens: *'+formatNumber(classSheet.maxHp)+'*',
+    attr('⚔️','ATK base persistente','atk',Number(profile.atk||0)),
+    '⚔️ ATK base de combate sem itens: *'+formatNumber(classSheet.atk)+'*',
+    attr('🛡️','DEF base persistente','def',Number(profile.def||0)),
+    '🛡️ DEF base de combate sem itens: *'+formatNumber(classSheet.def)+'*',
+    attr('👢','VEL base persistente','spd',Number(profile.spd||0)),
+    '👢 VEL base de combate sem itens: *'+formatNumber(classSheet.spd)+'*',
     ...(passive?['⚜️ Passiva: *'+passive.name+'* — '+passive.description]:[]),
     '⚔️ *DESPERTAR NO PVP*',
     '💥 Bônus de função atual: +'+pct(Number(role.attack||0)*stage/5)+' dano • -'+pct(Number(role.defense||0)*stage/5)+' dano recebido.',
