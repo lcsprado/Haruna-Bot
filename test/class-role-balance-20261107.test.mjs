@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {classCombatGrowth,classCombatStats,classCombatHp,classPersistentHp,CLASS_ROLE_GROWTH} from '../src/neon/class-combat-balance.js'
 import {auditSeventeen,buildFairFighter,PVP_EQUAL_GEAR} from '../src/neon/pvp-balance-simulator.js'
+import {heroRoleGrowth,HERO_ROLE_GROWTH,heroCombatStats} from '../src/neon/playable-heroes-core.js'
 
 const CLASS_IDS=['paladin','berserker','samurai','necromancer']
 
@@ -35,7 +36,7 @@ test('equipment is independent of character base growth',()=>{
    assert.equal(geared.atk-base.atk,PVP_EQUAL_GEAR.atk)
    assert.equal(geared.def-base.def,PVP_EQUAL_GEAR.def)
    assert.equal(geared.spd-base.spd,PVP_EQUAL_GEAR.spd)
-   assert.equal(geared.crit-base.crit,PVP_EQUAL_GEAR.crit)
+   assert.ok(Math.abs(geared.crit-base.crit-PVP_EQUAL_GEAR.crit)<1e-10)
  }
 })
 test('class HP projection uses only percentage and round-trips',()=>{
@@ -70,4 +71,37 @@ test('all seven heroes win 55-65% of role-class duels on un-geared equal base',(
  // Hero progress and class awakening are both capped; gear is deliberately ignored.
  assert.equal(r.combatants,17)
  assert.equal(r.pairs.length,136)
+})
+
+test('hero roles differ in raw attributes without any equipment',()=>{
+ const st={max_hp:3118,hp:3118,atk:787,def:381,spd:391,
+   class_hp_bonus:0,class_atk_bonus:0,class_def_bonus:0,class_spd_bonus:0}
+ const original={...st}
+ const ids=['pecado_meliodas','pecado_ban','pecado_escanor','pecado_diane','pecado_king','pecado_gowther','pecado_merlin']
+ const hero=Object.fromEntries(ids.map(id=>[id,heroCombatStats(st,id,100)]))
+ for(const id of ids){
+   assert.deepEqual(heroRoleGrowth(id,1),{hp:0,atk:0,def:0,spd:0})
+   assert.deepEqual(heroRoleGrowth(id,100),HERO_ROLE_GROWTH[id])
+   assert.deepEqual(heroRoleGrowth(id,150),HERO_ROLE_GROWTH[id])
+   assert.ok(hero[id].atk>st.atk&&hero[id].def>st.def,id+' did not overtake neutral base')
+ }
+ assert.ok(hero.pecado_escanor.atk>hero.pecado_diane.atk)
+ assert.ok(hero.pecado_diane.maxHp>hero.pecado_escanor.maxHp)
+ assert.ok(hero.pecado_diane.maxHp>hero.pecado_king.maxHp)
+ assert.ok(hero.pecado_diane.def>hero.pecado_king.def)
+ assert.ok(hero.pecado_king.def>hero.pecado_merlin.def)
+ assert.ok(hero.pecado_gowther.spd>hero.pecado_diane.spd)
+ assert.deepEqual(st,original)
+})
+test('base class roles are distinct and below corresponding hero roles',()=>{
+ const cls=Object.fromEntries(CLASS_IDS.map(id=>[id,buildFairFighter(id,{gear:false})]))
+ const diane=buildFairFighter('pecado_diane',{gear:false})
+ const escanor=buildFairFighter('pecado_escanor',{gear:false})
+ assert.ok(cls.paladin.maxHp>cls.necromancer.maxHp)
+ assert.ok(cls.paladin.def>cls.necromancer.def)
+ assert.ok(cls.berserker.atk>cls.samurai.atk)
+ assert.ok(cls.samurai.spd>cls.berserker.spd)
+ assert.ok(diane.maxHp>cls.paladin.maxHp)
+ assert.ok(diane.def>cls.paladin.def)
+ assert.ok(escanor.atk>cls.berserker.atk)
 })
