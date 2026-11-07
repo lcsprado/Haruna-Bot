@@ -62,7 +62,7 @@ export function formatSavedClassStatus(profile,awakeningStage=1,heroActive=false
     spd:Number(profile.class_spd_bonus||0)
   };
   const attr=(icon,label,key,value)=>icon+' '+label+': *'+formatNumber(value+training[key])+'* ('
-    +formatNumber(value-bonus[key])+' permanente + '+formatNumber(bonus[key])+' classe'
+    +formatNumber(value-bonus[key])+' permanente + '+formatNumber(bonus[key])+' da classe'
     +(training[key]?' + '+formatNumber(training[key])+' evolução':'')+')';
   return [
     '🧙 *STATUS DA CLASSE — '+cls.name.toUpperCase()+'*',
