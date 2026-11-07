@@ -1652,10 +1652,11 @@ const text=
 ${title}${isFirst500Champion?' • '+FIRST_500_TITLE:''}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
 ⭐ Nível: *${Number(p.level||1)}*
 ${heroSheet?formatPlayableHeroCombatSheet(heroSheet,{compact:true}):`🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
+🌟 Nível da classe: *${Number(p.class_level||1)}/100*
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}`}
 ✨ EXP: *${xp.current}/${xp.needed}* • faltam *${xp.remaining} XP* (${xp.percentage}%)
 [${xp.bar}]
-${heroSheet?'':`❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
+${heroSheet?'':`❤️ HP: *${Number(p.effective_hp||0)}/${Number(p.effective_max_hp||0)}*\n⚔️ ATK: *${Number(p.effective_atk||0)}* (${baseAtk} base + ${gearAtk} equipamento)${sealAtk}\n🛡️ DEF: *${Number(p.effective_def||0)}*\n👢 VEL: *${Number(p.effective_spd||p.spd||0)}*${Number(p.equipment_spd||0)?` (${Number(p.spd||0)+Number(p.class_training?.spd||0)} base + ${Number(p.equipment_spd||0)} equipamento)`:''}`}
 ${bonusSummary}
 🏆 Vitórias: *${wins}*
 💀 Derrotas: *${loss}*
@@ -5058,6 +5059,7 @@ const commandPages={
 *!rpg* — abre o menu de RPG
 *!web* — conecta o mesmo personagem ao RPG visual no navegador
 *!status* — mostra seus atributos com equipamentos
+*!status classe* — nível e atributos base da classe, Despertar e habilidades
 *!personagem status* — base sem equipamentos e Despertar da classe atual
 *!heroi status* — mesma consulta da base do combatente ativo
 *!nível* — progresso e resgata recompensas a cada 5 níveis
@@ -12199,8 +12201,9 @@ await reply(
 ⭐ Nível: ${p.level}
 ✨ EXP: ${p.exp}/${p.level*100}
 ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):`🧙 Classe: ${p.class_info?.name||'Sem classe'}
+🌟 Nível da classe: ${Number(p.class_level||1)}/100
 ⚜️ Passiva: ${p.class_passive?.name||'Ainda não selecionada'}${p.class_passive?' — '+p.class_passive.description:''}
-❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)\n⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}\n🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)\n👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)`}
+❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)\n⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}\n🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)\n👢 VEL: ${p.effective_spd||p.spd} (${Number(p.spd||0)+Number(p.class_training?.spd||0)} base + ${p.equipment_spd||0} equipamento)`}
 🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (base + equipamento + classe/herói ativo + sinergia + pet apto; teto 40%)
 👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*

@@ -161,37 +161,42 @@ export function formatPlayableHeroBaseSheet(sheet){
 
 // Os pontos de Despertar já foram persistidos em stats.max_hp/atk/def.
 // Nunca adicioná-los novamente: para classes, stats é a base real sem equipamentos.
-export function formatCharacterBaseStatus({profile,heroSheet=null,awakeningStage=1}={}){
+export function formatCharacterBaseStatus({profile,heroSheet=null,awakeningStage=1,classLevel=1}={}){
   if(!profile)return '';
   if(heroSheet){
     return formatPlayableHeroBaseSheet(heroSheet);
   }
-  return formatActiveClassBaseStatus(profile,awakeningStage);
+  return formatActiveClassBaseStatus(profile,awakeningStage,classLevel);
 }
 
 // Exibe a classe preservada independentemente do herói ativo. Não evolui,
 // equipa, cura, nem altera qualquer atributo persistido.
 export async function getSavedClassStatus(jid){
-  const [profile,awakening,activeHero]=await Promise.all([
-    getProfile(jid),
-    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid]),
-    getActivePlayableHero(db,jid)
-  ]);
+  const profile=await getProfile(jid);
   if(!profile)return null;
-  return formatSavedClassStatus(profile,Number(awakening.rows[0]?.stage??1),Boolean(activeHero));
+  const [awakening,activeHero,classProgress]=await Promise.all([
+    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid]),
+    getActivePlayableHero(db,jid),
+    db.query('SELECT level,xp FROM player_class_progress WHERE jid=$1 AND class_id=$2',
+      [jid,profile.class_id])
+  ]);
+  const cp=classProgress.rows[0]||{};
+  return formatSavedClassStatus(profile,Number(awakening.rows[0]?.stage??1),
+    Boolean(activeHero),Number(cp.level||1),Number(cp.xp||0));
 }
 
 // Consulta somente leitura; serve aos dois atalhos, incluindo classes tradicionais.
 export async function getCharacterBaseStatus(jid){
   const profile=await getProfile(jid);
   if(!profile)return null;
-  const [activeHero,awakening]=await Promise.all([
+  const [activeHero,awakening,classProgress]=await Promise.all([
     getActivePlayableHero(db,jid),
-    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])
+    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid]),
+    db.query('SELECT level FROM player_class_progress WHERE jid=$1 AND class_id=$2',[jid,profile.class_id])
   ]);
   const heroSheet=activeHero?await getPlayableHeroCombatSheet(jid):null;
   return formatCharacterBaseStatus({
-    profile,heroSheet,awakeningStage:Number(awakening.rows[0]?.stage??1)
+    profile,heroSheet,awakeningStage:Number(awakening.rows[0]?.stage??1),classLevel:Number(classProgress.rows[0]?.level||1)
   });
 }
 

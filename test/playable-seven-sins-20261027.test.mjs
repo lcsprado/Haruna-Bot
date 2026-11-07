@@ -342,7 +342,7 @@ test('perfil mostra totais equipados e !heroi status mostra os quatro atributos 
   assert.match(heroes,/if\(\['atributos','ficha','stats','status'\]\.includes\(action\)\)/);
   assert.match(heroes,/await reply\(text\|\|'❌ Personagem não encontrado\.'/);
   assert.match(heroes,/formatPlayableHeroBaseSheet\(heroSheet\)/);
-  assert.match(heroes,/return formatActiveClassBaseStatus\(profile,awakeningStage\)/);
+  assert.match(heroes,/return formatActiveClassBaseStatus\(profile,awakeningStage,classLevel\)/);
   assert.match(app,/heroSheet\?formatPlayableHeroCombatSheet\(heroSheet,\{compact:true\}\)/);
   assert.match(app,/heroSheetStatus\?formatPlayableHeroCombatSheet\(heroSheetStatus,\{compact:true\}\)/);
   assert.match(formatter,/baseWithoutGear/);
@@ -457,7 +457,8 @@ test('PvP aplica Despertar limitado para classes e preserva HP dos herois',()=>{
   assert.match(pvp,/classPvpDefense\(defenseArgs\)/);
   assert.match(pvp,/Boolean\(a\.class_applied\)&&!aHero/);
   assert.match(pvp,/heroHpToPersistent\(fighter\.hp,fighter\.maxHp,fighter\.heroPersistentMaxHp\)/);
-  assert.match(pvp,/loser\.heroId\?loser\.heroPersistentMaxHp:loser\.maxHp/);
+  assert.match(pvp,/loser\.heroId\?loser\.heroPersistentMaxHp:loser\.classPersistentMaxHp\|\|loser\.maxHp/);
+  assert.match(pvp,/classHpToPersistent\(withoutPet/);
   assert.match(db,/pergaminho_reclassificacao/);
 });
 
