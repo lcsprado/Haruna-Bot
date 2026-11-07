@@ -7,13 +7,13 @@ const stageOf=(applied,stage)=>applied?Math.max(0,Math.min(5,Math.floor(Number(s
 const clamp=(v,low,high)=>Math.max(low,Math.min(high,Number(v)||0))
 const rounded=(n)=>Math.max(0,Math.round(Number(n)||0))
 // Role-tailored PvP strength at Awakening V. Scale linearly for I–V.
-// Heroes gain +700 HP, +75 ATK, +100 DEF and +25 SPD at Lv.100;
-// without a controlled PvP bridge, no classic class can compete at full build.
+// Heróis preservam vantagem geral. A progressão Lv.1–100 da classe
+// acrescenta atributos por função, sem acumular com herói ativo.
 // Bonuses are combat-only and never touch stored character stats or PvE.
 export const PVP_AWAKENING_ROLES=Object.freeze({
  warrior:{attack:.11,defense:.11},assassin:{attack:.16,defense:.06},
  mage:{attack:.21,defense:.09},archer:{attack:.15,defense:.07},
- paladin:{attack:.06,defense:.18},berserker:{attack:.23,defense:.08},
+ paladin:{attack:.02,defense:.18},berserker:{attack:.23,defense:.08},
  monk:{attack:.10,defense:.12},necromancer:{attack:.13,defense:.10},
  druid:{attack:.08,defense:.17},samurai:{attack:.18,defense:.08}
 })
