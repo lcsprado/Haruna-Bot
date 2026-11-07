@@ -2716,16 +2716,16 @@ async function announceCompletedWeeklyBoss(){
           INSERT INTO trevo_settings(key,value,updated_at)
           VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
           ON CONFLICT(key) DO UPDATE SET
-            value=jsonb_build_object('status','sending','claimedAt',$3,
+            value=jsonb_build_object('status','sending','claimedAt',$3::bigint,
               'attempts',COALESCE((trevo_settings.value->>'attempts')::int,1)+1),
             updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT
-          WHERE COALESCE((trevo_settings.value->>'attempts')::int,1)<$4
+          WHERE COALESCE((trevo_settings.value->>'attempts')::int,1)<$4::int
             AND (
               (trevo_settings.value->>'status'='retry'
-                AND COALESCE((trevo_settings.value->>'nextRetryAt')::bigint,0)<=$3)
+                AND COALESCE((trevo_settings.value->>'nextRetryAt')::bigint,0)<=$3::bigint)
               OR
               (trevo_settings.value->>'status'='sending'
-                AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<$5)
+                AND COALESCE((trevo_settings.value->>'claimedAt')::bigint,0)<$5::bigint)
             )
           RETURNING (value->>'attempts')::int AS attempts
         `,[key,JSON.stringify({status:'sending',claimedAt:now,attempts:1}),
