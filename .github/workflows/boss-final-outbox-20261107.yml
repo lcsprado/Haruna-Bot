@@ -1,0 +1,27 @@
+name: Boss Final - terminal forbidden notice guard
+on:
+  pull_request:
+    paths:
+      - 'src/neon/index.js'
+      - 'src/neon/boss-final-outbox-policy.js'
+      - 'test/boss-final-outbox-20261107.test.mjs'
+      - '.github/workflows/boss-final-outbox-20261107.yml'
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/index.js'
+      - 'src/neon/boss-final-outbox-policy.js'
+      - 'test/boss-final-outbox-20261107.test.mjs'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check source syntax and result outbox behavior
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/boss-final-outbox-policy.js
+          node --test test/boss-final-outbox-20261107.test.mjs
