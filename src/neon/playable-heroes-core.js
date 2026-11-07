@@ -11,6 +11,23 @@ export const HERO_COMBAT_PROFILES=Object.freeze({
   pecado_gowther:{hp:60,atk:15,def:9,spd:14,role:'Controlador • debuff',range:'Longa distância',skill:'Rewrite Light'},
   pecado_merlin:{hp:70,atk:18,def:9,spd:13,role:'Maga • dano e barreira',range:'Longa distância',skill:'Infinity'}
 });
+// Pequena diferenciação ADITIVA de papéis no atributo-base, sem tocar em equipamentos.
+// Todas as entradas são >= 0: não reduz atributos já conquistados.
+// Escala exclusivamente com o nível do herói (1–100), e nunca com forja/itens.
+export const HERO_ROLE_GROWTH=Object.freeze({
+  pecado_meliodas:Object.freeze({hp:0,atk:13,def:0,spd:4}),
+  pecado_ban:Object.freeze({hp:75,atk:6,def:5,spd:0}),
+  pecado_escanor:Object.freeze({hp:0,atk:17,def:0,spd:1}),
+  pecado_king:Object.freeze({hp:90,atk:0,def:14,spd:0}),
+  pecado_diane:Object.freeze({hp:130,atk:0,def:20,spd:0}),
+  pecado_gowther:Object.freeze({hp:0,atk:8,def:0,spd:7}),
+  pecado_merlin:Object.freeze({hp:0,atk:12,def:0,spd:4})
+});
+export function heroRoleGrowth(heroId,heroLevel=1){
+  const role=HERO_ROLE_GROWTH[heroId]||{};
+  const factor=(Math.max(1,Math.min(100,Math.floor(Number(heroLevel)||1)))-1)/99;
+  return Object.fromEntries(['hp','atk','def','spd'].map(key=>[key,Math.round(Number(role[key]||0)*factor)]));
+}
 export const PLAYABLE_HERO_IDS=Object.freeze(PECADOS_HEROES.map(x=>x.species));
 export const playableHero=id=>PECADOS_HEROES.find(x=>x.species===String(id||''))||null;
 export const HERO_MASTERY_XP=Object.freeze([0,500,1500,3500,7000]);
@@ -159,14 +176,15 @@ export function heroCombatStats(st,heroId,heroLevel=70){
   const atkTraining=training(75,75,base.atk);
   const defTraining=training(85,100,base.def);
   const spdTraining=training(15,25,base.spd);
-  const maxHp=Math.max(1,base.hp+hpTraining);
+  const roleGrowth=heroRoleGrowth(heroId,heroLevel);
+  const maxHp=Math.max(1,base.hp+hpTraining+roleGrowth.hp);
   const sourceMax=Math.max(1,n('max_hp',100));
   return {
     heroId,hp:Math.max(0,Math.min(maxHp,Math.round(n('hp')/sourceMax*maxHp))),
     maxHp,
-    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk+atkTraining),
-    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def+defTraining),
-    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd+spdTraining),
+    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk+atkTraining+roleGrowth.atk),
+    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def+defTraining+roleGrowth.def),
+    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd+spdTraining+roleGrowth.spd),
     persistentMaxHp:sourceMax,
     // Diagnostic-only fields for the standalone !heroi comparar command.
     // Not displayed in !perfil, !status, or !heroi atributos.
@@ -179,11 +197,12 @@ export function heroCombatStats(st,heroId,heroLevel=70){
       },
       heroBase:{hp:hero.hp,atk:hero.atk,def:hero.def,spd:hero.spd},
       training:{hp:hpTraining,atk:atkTraining,def:defTraining,spd:spdTraining},
+      roleGrowth,
       natural:{
-        hp:hero.hp+hpTraining,
-        atk:hero.atk+atkTraining,
-        def:hero.def+defTraining,
-        spd:hero.spd+spdTraining
+        hp:hero.hp+hpTraining+roleGrowth.hp,
+        atk:hero.atk+atkTraining+roleGrowth.atk,
+        def:hero.def+defTraining+roleGrowth.def,
+        spd:hero.spd+spdTraining+roleGrowth.spd
       },
       level:Math.max(1,Math.min(100,Math.floor(Number(heroLevel)||1)))
     }
