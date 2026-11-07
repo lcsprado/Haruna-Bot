@@ -909,6 +909,15 @@ await client.query('DELETE FROM clan_invites WHERE invitee_jid=$1',[sourceJid])
 await client.query('DELETE FROM user_homes WHERE jid=$1',[sourceJid])
 await client.query('DELETE FROM user_cars WHERE jid=$1',[sourceJid])
 await client.query('DELETE FROM quick_flows WHERE sender_jid=$1',[sourceJid])
+// Une progressão de cada classe pelo maior XP, sem associar uma conta a outra.
+await client.query(`
+INSERT INTO player_class_progress(jid,class_id,level,xp,updated_at)
+SELECT $1,class_id,level,xp,${nowSql} FROM player_class_progress WHERE jid=$2
+ON CONFLICT(jid,class_id) DO UPDATE SET
+ xp=GREATEST(player_class_progress.xp,EXCLUDED.xp),
+ level=GREATEST(player_class_progress.level,EXCLUDED.level),
+ updated_at=${nowSql}
+`,[targetJid,sourceJid])
 await client.query('DELETE FROM users WHERE jid=$1',[sourceJid])
 }
 return changed
