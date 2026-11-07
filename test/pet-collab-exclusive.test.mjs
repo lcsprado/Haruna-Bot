@@ -30,22 +30,26 @@ test('Pecados migrados nunca reativam bônus como pets',()=>{
 
 test('Guaxinim preserva sinergia comum sem bônus duplo',()=>{
   const x=team('fenix_celestial','grifo_celestial','guaxinim_errante_20261027')
-  assert.equal(x.attack,.02)
-  assert.equal(x.speed,8)
+  assert.equal(x.attack,.02*2/3)
+  assert.equal(x.speed,8*2/3)
   assert.equal(x.collabAttack,0)
   assert.equal(x.collabCrit,0)
   assert.match(x.label,/Esquadrão Aéreo/)
   assert.doesNotMatch(x.label,/Collab|Universal/)
 })
 
-test('Elo Universal substitui e não acumula sinergias incompatíveis',()=>{
+test('Estilos incompatíveis não ativam bônus mesmo com Coringa',()=>{
   const x=team('fenix_celestial','golem_ancestral','guaxinim_errante_20261027')
-  assert.equal(x.attack,.015)
-  assert.equal(x.defense,.02)
-  assert.equal(x.collabAttack,0)
-  assert.match(x.label,/Elo Universal/)
+  assert.equal(x,null)
 })
-
+test('Dois Coringas de uma só categoria concedem 1/3, sem bonus de Collab',()=>{
+  const x=team('fenix_celestial','guaxinim_errante_20261027','lince_astral')
+  assert.equal(x.attack,.02/3)
+  assert.equal(x.speed,8/3)
+  assert.equal(x.collabAttack,0)
+  assert.equal(x.collabCrit,0)
+  assert.doesNotMatch(x.label,/Collab|Universal/)
+})
 test('Não concede bônus para espécies duplicadas',()=>{
   assert.equal(team('fenix_celestial','fenix_celestial','guaxinim_errante_20261027'),null)
 })
