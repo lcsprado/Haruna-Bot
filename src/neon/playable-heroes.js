@@ -1,7 +1,7 @@
 import {db,ensureUser,getProfile,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
-import {formatActiveClassBaseStatus} from './character-base-status-format.js'
+import {formatActiveClassBaseStatus,formatSavedClassStatus} from './character-base-status-format.js'
 import {formatPlayableHeroMasteryEffects} from './hero-mastery-format.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
@@ -167,6 +167,18 @@ export function formatCharacterBaseStatus({profile,heroSheet=null,awakeningStage
     return formatPlayableHeroBaseSheet(heroSheet);
   }
   return formatActiveClassBaseStatus(profile,awakeningStage);
+}
+
+// Exibe a classe preservada independentemente do herói ativo. Não evolui,
+// equipa, cura, nem altera qualquer atributo persistido.
+export async function getSavedClassStatus(jid){
+  const [profile,awakening,activeHero]=await Promise.all([
+    getProfile(jid),
+    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid]),
+    getActivePlayableHero(db,jid)
+  ]);
+  if(!profile)return null;
+  return formatSavedClassStatus(profile,Number(awakening.rows[0]?.stage??1),Boolean(activeHero));
 }
 
 // Consulta somente leitura; serve aos dois atalhos, incluindo classes tradicionais.
@@ -365,6 +377,12 @@ export async function evolvePlayableHeroMastery(jid,heroId){
 }
 
 export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
+  // Interceptado antes do !status geral pelo roteador WhatsApp.
+  if(String(cmd||'').toLowerCase()==='status'&&['classe','class'].includes(String(args[0]||'').toLowerCase())){
+    const output=await getSavedClassStatus(sender);
+    await reply(output||'❌ Personagem não encontrado.');
+    return true;
+  }
   if(['personagem','personagens'].includes(String(cmd||''))){
     const sub=String(args[0]||'status').trim().toLowerCase();
     if(!['status','atributos','ficha','stats'].includes(sub)){

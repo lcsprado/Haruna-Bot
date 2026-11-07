@@ -1,4 +1,5 @@
 import {getPlayerClass,getClassPassive,getAwakeningSkillDescriptions} from './game-catalog.js'
+import {PVP_AWAKENING_ROLES} from './pvp-class-powers.js'
 
 const formatNumber=value=>Number(value||0).toLocaleString('pt-BR')
 const stageNumber=value=>Math.max(1,Math.min(5,Math.floor(Number(value)||1)))
@@ -31,4 +32,47 @@ export function formatSavedAwakeningForActiveHero(profile,awakeningStage=1){
   const cls=getPlayerClass(String(profile.class_id||'warrior').toLowerCase())
   return '🌌 Despertar da classe '+cls.name+': *'+romanStage(awakeningStage)+
     '/V* (preservado; habilidades inativas enquanto o herói estiver ativo)'
+}
+
+
+// Leitura da classe registrada mesmo quando o usuário está usando herói.
+// stats já contém todos os ganhos permanentes de nível e Despertar: não
+// adicionar AWAKENING_TIERS ou o bônus da classe novamente.
+export function formatSavedClassStatus(profile,awakeningStage=1,heroActive=false){
+  if(!profile)return '';
+  if(!profile.class_applied)return '🧙 Você ainda não escolheu uma classe. Use *!classe* para começar.';
+  const id=String(profile.class_id||'warrior').toLowerCase();
+  const cls=getPlayerClass(id);
+  const stage=stageNumber(awakeningStage);
+  const passive=getClassPassive(id,true);
+  const skillDescriptions=getAwakeningSkillDescriptions(id).slice(0,stage);
+  const role=PVP_AWAKENING_ROLES[id]||{attack:0,defense:0};
+  const pct=n=>(Number(n||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
+  const bonus={
+    hp:Number(profile.class_hp_bonus||0),
+    atk:Number(profile.class_atk_bonus||0),
+    def:Number(profile.class_def_bonus||0),
+    spd:Number(profile.class_spd_bonus||0)
+  };
+  const attr=(icon,label,key,value)=>icon+' '+label+': *'+formatNumber(value)+'* ('
+    +formatNumber(value-bonus[key])+' permanente + '+formatNumber(bonus[key])+' da classe)';
+  return [
+    '🧙 *STATUS DA CLASSE — '+cls.name.toUpperCase()+'*',
+    '🎭 '+cls.role,
+    heroActive?'⚠️ *CLASSE PRESERVADA — INATIVA* (herói da collab equipado)':'✅ *CLASSE ATIVA*',
+    '⭐ Nível geral do jogador: *'+formatNumber(profile.level||1)+'*',
+    '🌌 Despertar: *'+romanStage(stage)+'/V*',
+    '📈 Classe não tem nível separado: evolui com o jogador e o Despertar.',
+    attr('❤️','HP base sem itens','hp',Number(profile.max_hp||0)),
+    attr('⚔️','ATK base sem itens','atk',Number(profile.atk||0)),
+    attr('🛡️','DEF base sem itens','def',Number(profile.def||0)),
+    attr('👢','VEL base sem itens','spd',Number(profile.spd||0)),
+    ...(passive?['⚜️ Passiva: *'+passive.name+'* — '+passive.description]:[]),
+    '⚔️ *DESPERTAR NO PVP*',
+    '💥 Bônus de função atual: +'+pct(Number(role.attack||0)*stage/5)+' dano • -'+pct(Number(role.defense||0)*stage/5)+' dano recebido.',
+    '✨ Passiva e técnicas da classe funcionam no PvP conforme seus requisitos e limites.',
+    '🐉 *HABILIDADES DE DESPERTAR EM BOSS/RAID*',
+    ...skillDescriptions.map((skill,i)=>'• '+romanStage(i+1)+': '+skill),
+    'ℹ️ Bônus de equipamentos, pets, encantamentos e sinergias não foram incluídos. O Despertar permanente já está nos atributos acima.'
+  ].join('\n');
 }
