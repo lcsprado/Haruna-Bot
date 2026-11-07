@@ -3,6 +3,7 @@
 import {PLAYER_CLASSES,classCritBonus} from './game-catalog.js'
 import {HERO_COMBAT_PROFILES,heroCombatStats,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {classPvpAttack,classPvpDefense,classPvpCritBonus} from './pvp-class-powers.js'
+import {classCombatGrowth} from './class-combat-balance.js'
 
 export const PVP_AUDIT_BASELINE=Object.freeze({max_hp:3118,hp:3118,atk:787,def:381,spd:391,
   class_hp_bonus:0,class_atk_bonus:0,class_def_bonus:0,class_spd_bonus:0})
@@ -18,8 +19,8 @@ export function buildFairFighter(id,{gear=false,awakening=5,mastery=5}={}){
   const hero=HERO_COMBAT_PROFILES[id]||null,cl=PLAYER_CLASSES[id]||null
   if(!hero&&!cl)throw new Error('Unknown PvP combatant '+id)
   const stats=hero?heroCombatStats(PVP_AUDIT_BASELINE,id,100):{
-    maxHp:PVP_AUDIT_BASELINE.max_hp+cl.hp,atk:PVP_AUDIT_BASELINE.atk+cl.atk,
-    def:PVP_AUDIT_BASELINE.def+cl.def,spd:PVP_AUDIT_BASELINE.spd+cl.spd}
+    maxHp:PVP_AUDIT_BASELINE.max_hp+cl.hp+classCombatGrowth(id,100).hp,atk:PVP_AUDIT_BASELINE.atk+cl.atk+classCombatGrowth(id,100).atk,
+    def:PVP_AUDIT_BASELINE.def+cl.def+classCombatGrowth(id,100).def,spd:PVP_AUDIT_BASELINE.spd+cl.spd+classCombatGrowth(id,100).spd}
   const g=gear?PVP_EQUAL_GEAR:{hp:0,atk:0,def:0,spd:0,crit:0}
   return {id,hero:Boolean(hero),awakening:hero?0:awakening,mastery:hero?mastery:0,
     maxHp:stats.maxHp+g.hp,hp:stats.maxHp+g.hp,atk:stats.atk+g.atk,def:stats.def+g.def,
