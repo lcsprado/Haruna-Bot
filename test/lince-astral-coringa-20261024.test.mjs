@@ -14,6 +14,8 @@ const near=(a,b)=>assert.ok(Math.abs(a-b)<eps,`Expected ${b}, got ${a}`)
 test('Lince é anunciado coringa e conserva os bônus individuais de Raposa Astral',()=>{
   assert.equal(petStyleLabel('lince_astral'),'🃏 Coringa')
   assert.match(petHpType('lince_astral'),/Coringa/)
+  assert.equal(petStyleLabel('raposa_astral'),'🃏 Coringa')
+  assert.match(petHpType('raposa_astral'),/Coringa/)
   const {label:lx,...lince}=petCombatSpecialty('lince_astral')
   const {label:fx,...fox}=petCombatSpecialty('raposa_astral')
   assert.deepEqual(lince,fox)
@@ -71,12 +73,11 @@ test('Estilos misturados não recebem Elo Universal nem qualquer sinergia',()=>{
     team('fenix_alpha','leao_solar','lince_astral'),
     team('leao_solar','lince_astral','fenix_alpha'),
     team('lince_astral','leviata_eternidade','fenix_alpha'),
-    team('lince_astral','raposa_astral','oraculo_alpha'),
     team('lince_astral','guaxinim_errante_20261027','camaleao_lendario')
   ])assert.equal(petTeamSynergy(pets),null)
 })
 test('Todos os Coringas registrados completam dois originais ou formam pares com um',()=>{
-  const coringas=['morcego_madrugada','camaleao_lendario','lince_astral','onca_eclipse_20261026','guaxinim_errante_20261027']
+  const coringas=['morcego_madrugada','camaleao_lendario','lince_astral','raposa_astral','onca_eclipse_20261026','guaxinim_errante_20261027']
   for(const coringa of coringas){
     const x=petTeamSynergy(team('fenix_alpha','grifo_celestial',coringa))
     near(x.attack,.02*2/3)
@@ -87,6 +88,27 @@ test('Todos os Coringas registrados completam dois originais ou formam pares com
     near(x.attack,.02/3)
     assert.match(x.label,/1\/3/)
   }
+})
+test('Raposa Astral e Onça do Eclipse completam exatamente 1/3 do Voador',()=>{
+  const formation=team('fenix_alpha','onca_eclipse_20261026','raposa_astral')
+  const synergy=petTeamSynergy(formation)
+  assert.equal(synergy.style,'voador')
+  assert.match(synergy.label,/Esquadrão Aéreo.*1\/3/)
+  assert.doesNotMatch(synergy.label,/Elo Universal/)
+  near(synergy.attack,.02/3)
+  near(synergy.speed,8/3)
+  near(synergy.defense,0)
+  near(synergy.crit,0)
+  assert.match(synergy.text,/Sinergia parcial 1\/3/)
+})
+test('Raposa Astral respeita categorias mistas e não concede sinergia extra',()=>{
+  assert.equal(petTeamSynergy(team('raposa_astral','fenix_alpha','leviata_eternidade')),null)
+  const x=petTeamSynergy(team('raposa_astral','lince_astral','oraculo_alpha'))
+  assert.equal(x.style,'mistico')
+  near(x.defense,.02/3)
+  near(x.crit,.025/3)
+  assert.match(x.label,/1\/3/)
+  assert.equal(petTeamSynergy(team('raposa_astral','lince_astral','onca_eclipse_20261026')),null)
 })
 test('Sem sinergia de equipe com 1/2 pets ou espécies repetidas',()=>{
   assert.equal(petTeamSynergy(team('lince_astral')),null)
