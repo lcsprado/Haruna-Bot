@@ -1,3 +1,4 @@
+import {heroTrainingFactor} from '../src/neon/playable-heroes-core.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {classCombatGrowth,classCombatStats,classCombatHp,classPersistentHp,CLASS_ROLE_GROWTH} from '../src/neon/class-combat-balance.js'
@@ -104,4 +105,28 @@ test('base class roles are distinct and below corresponding hero roles',()=>{
  assert.ok(diane.maxHp>cls.paladin.maxHp)
  assert.ok(diane.def>cls.paladin.def)
  assert.ok(escanor.atk>cls.berserker.atk)
+})
+
+test('intermediate progression keeps heroes competitive without equipment',()=>{
+ const stages=[
+   {level:1,awakening:0,mastery:1},
+   {level:25,awakening:1,mastery:1},
+   {level:50,awakening:2,mastery:2},
+   {level:70,awakening:3,mastery:3},
+   {level:85,awakening:4,mastery:4},
+   {level:100,awakening:5,mastery:5}
+ ]
+ let previous=0
+ for(const {level,awakening,mastery} of stages){
+   const factor=heroTrainingFactor(level)
+   assert.ok(factor>=previous && factor<=1,'hero training not monotonic at '+level)
+   previous=factor
+   const r=auditSeventeen({duelsPerOrder:80,gear:false,level,awakening,mastery})
+   const pairs=r.pairs.filter(x=>x.a.startsWith('pecado_')&&CLASS_IDS.includes(x.b))
+   const heroWinRate=pairs.reduce((s,x)=>s+x.aWins,0)/pairs.reduce((s,x)=>s+x.fights,0)
+   assert.ok(heroWinRate>=.50 && heroWinRate<=.80,
+     'level '+level+': hero win rate '+heroWinRate+' out of target 50%-80%')
+ }
+ assert.equal(heroTrainingFactor(1),0)
+ assert.equal(heroTrainingFactor(100),1)
 })
