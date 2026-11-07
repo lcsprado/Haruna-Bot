@@ -59,8 +59,9 @@ export function formatSavedClassStatus(profile,awakeningStage=1,heroActive=false
     def:Number(profile.class_def_bonus||0)+training.def,
     spd:Number(profile.class_spd_bonus||0)+training.spd
   };
+  const trainedAtAll=Object.values(training).some(n=>n>0);
   const attr=(icon,label,key,value)=>icon+' '+label+': *'+formatNumber(value)+'* ('
-    +formatNumber(value-bonus[key])+' permanente + '+formatNumber(bonus[key])+' classe/treino)';
+    +formatNumber(value-bonus[key])+' permanente + '+formatNumber(bonus[key])+(trainedAtAll?' classe/treino)':' da classe)');
   return [
     '🧙 *STATUS DA CLASSE — '+cls.name.toUpperCase()+'*',
     '🎭 '+cls.role,
