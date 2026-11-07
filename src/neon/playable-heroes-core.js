@@ -18,7 +18,7 @@ export const HERO_ROLE_GROWTH=Object.freeze({
   pecado_meliodas:Object.freeze({hp:0,atk:13,def:0,spd:4}),
   pecado_ban:Object.freeze({hp:75,atk:6,def:5,spd:0}),
   pecado_escanor:Object.freeze({hp:0,atk:17,def:0,spd:1}),
-  pecado_king:Object.freeze({hp:90,atk:0,def:14,spd:0}),
+  pecado_king:Object.freeze({hp:125,atk:0,def:17,spd:0}),
   pecado_diane:Object.freeze({hp:130,atk:0,def:20,spd:0}),
   pecado_gowther:Object.freeze({hp:0,atk:8,def:0,spd:7}),
   pecado_merlin:Object.freeze({hp:0,atk:12,def:0,spd:4})
