@@ -17,7 +17,7 @@ const synergy=runInNewContext(js+'\npetTeamSynergy',{
   PET_COLLAB_TEAM_GROUPS:[{id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}],
   resolveCollabWildcardTeam,resolveAstralLynxWildcard,resolveVitalTeam,
   resolveBatTeamStyles:species=>species.map(s=>styles[s]||null),
-  PET_TEAM_WILDCARD_BONUS:{attack:.015,defense:.02,crit:0,speed:0,label:'Elo Universal',text:'Elo Universal'},
+  PET_TEAM_WILDCARD_BONUS:{teamSlots:3},
   PET_TEAM_STYLE_BONUS:{voador:{attack:.02,defense:0,crit:0,speed:8,label:'Esquadrão Aéreo',text:'Voador'},guardiao:{attack:0,defense:.04,crit:0,speed:0,label:'Muralha Viva',text:'Guardião'}}
 })
 const team=(...ids)=>synergy(ids.map(species=>({species})))
