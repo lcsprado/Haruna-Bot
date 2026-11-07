@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import {CRIT_CAPS} from './critical-chance-policy.js'
 import makeWASocket, {
 Browsers,
 DisconnectReason,
@@ -1491,19 +1492,19 @@ const recoveredBossDamagePct=fixedDamagePct(relics.active?.boss,Number(combatPet
 const baseCrit=.10+Number(p.equipment_crit||0)
 const raidClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSheet?0:awakeningStage,'raid')
 const bossClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSheet?0:awakeningStage,'boss')
-const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
-const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
+const raidCritPct=Math.min(CRIT_CAPS.raid,baseCrit+raidClassCrit+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
+const bossCritPct=Math.min(CRIT_CAPS.boss,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
 const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
-const raidCritNoPetsPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0))*100
-const bossCritNoPetsPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0))*100
+const raidCritNoPetsPct=Math.min(CRIT_CAPS.raid,baseCrit+raidClassCrit+Number(relics.active?.raidCrit||0))*100
+const bossCritNoPetsPct=Math.min(CRIT_CAPS.boss,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0))*100
 const critLine=(label,total,noPets)=>`🎯 ${label}: *${pct(total)}%* (🐾 +${pct(Math.max(0,total-noPets))} p.p. pets)`
 const primaryPetReady=Boolean(pet&&Number(pet.hp)>0&&Number(pet.energy)>0)
 const petStatus=pet&&!primaryPetReady
 ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
 :null
 const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
-const pvpCritNoPet=Math.min(.40,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
-const pvpCritWithPet=Math.min(.40,pvpCritNoPet+Number(pvpPet?.crit||0))
+const pvpCritNoPet=Math.min(CRIT_CAPS.pvp,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
+const pvpCritWithPet=Math.min(CRIT_CAPS.pvp,pvpCritNoPet+Number(pvpPet?.crit||0))
 const pvpPct=n=>pct(Number(n||0)*100)
 const pvpPetLine=`🐾 *CONTRIBUIÇÃO DO PET NO PVP*
 ${pet?`${pet.name} — Nv.${pet.level} ${primaryPetReady?'✅ ativo':'⚠️ bônus suspensos ('+petStatus+')'}`:'Nenhum pet principal'}
@@ -11532,17 +11533,34 @@ statusPet=await getPet(statusTarget)
 }catch(err){
 console.warn('[status] falha ao carregar pet; exibindo status sem bônus de pet',err?.message||err)
 }
-const statusPetBonus=statusPet?petStatusBonus(statusPet):{critPct:0}
-const gearCritPct=Number(p.equipment_crit||0)*100
-const pvpCritPct=Number(p.effective_crit||0)*100
-const bossCritPct=Math.min(50,gearCritPct+Number(statusPetBonus.critPct||0))
+// Os mesmos bônus usados no combate e no !perfil, com tetos separados.
+const statusTeam=await getPetTeam(statusTarget)
+const statusSynergy=petTeamSynergy(statusTeam)||{}
+const statusPets=profileCombatPetBonuses(statusPet,statusTeam).active
+const statusRelic=(await relicStatus(statusTarget)).active||{}
+const statusAwakeningRow=!heroSheetStatus&&p.class_applied
+  ?(await db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[statusTarget])).rows[0]
+  :null
+const statusAwakening=Number(statusAwakeningRow?.stage||0)
+const statusBaseCrit=Number(p.base_crit||0)+Number(p.equipment_crit||0)
+const pvpCritPct=Math.min(CRIT_CAPS.pvp,
+  Number(p.effective_crit||0)+Number(statusSynergy.collabCrit||0)+
+  (statusPet&&Number(statusPet.hp)>0&&Number(statusPet.energy)>0
+    ?Number(petPvpSpecialty(statusPet.species,statusPet.level).crit||0):0))*100
+const bossCritPct=Math.min(CRIT_CAPS.boss,statusBaseCrit+
+  classCritBonus(p.class_id,p.class_applied&&!heroSheetStatus,statusAwakening,'boss')+
+  Number(statusRelic.bossCrit||0)+Number(statusPets.crit||0)+Number(statusSynergy.crit||0))*100
+const raidCritPct=Math.min(CRIT_CAPS.raid,statusBaseCrit+
+  classCritBonus(p.class_id,p.class_applied&&!heroSheetStatus,statusAwakening,'raid')+
+  Number(statusRelic.raidCrit||0)+Number(statusPets.crit||0)+Number(statusSynergy.crit||0))*100
 await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
 ⭐ Nível: ${p.level}
 ✨ EXP: ${p.exp}/${p.level*100}
 ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus)+'\n🧙 Classe original guardada: '+(p.class_info?.name||'Sem classe')+' (inativa com herói equipado)':`❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)\n⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}\n🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)\n👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)`}
-🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${(Number(p.base_crit||0)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% base + ${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento)
-👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
+🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}%
+👹 CRIT Boss: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}%
+🐉 CRIT Raid: ${raidCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}%
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
 👢 Botas: ${p.boot_name||'Nenhuma'} *Lv.${p.boot_level||1}*
