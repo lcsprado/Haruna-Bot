@@ -1491,19 +1491,19 @@ const recoveredBossDamagePct=fixedDamagePct(relics.active?.boss,Number(combatPet
 const baseCrit=.10+Number(p.equipment_crit||0)
 const raidClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSheet?0:awakeningStage,'raid')
 const bossClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSheet?0:awakeningStage,'boss')
-const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
-const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
+const raidCritPct=Math.min(.60,Math.min(.55,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
+const bossCritPct=Math.min(.55,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
 const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
-const raidCritNoPetsPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0))*100
-const bossCritNoPetsPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0))*100
+const raidCritNoPetsPct=Math.min(.60,Math.min(.55,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0))*100
+const bossCritNoPetsPct=Math.min(.55,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0))*100
 const critLine=(label,total,noPets)=>`🎯 ${label}: *${pct(total)}%* (🐾 +${pct(Math.max(0,total-noPets))} p.p. pets)`
 const primaryPetReady=Boolean(pet&&Number(pet.hp)>0&&Number(pet.energy)>0)
 const petStatus=pet&&!primaryPetReady
 ?(Number(pet.hp)<=0?'sem HP':Number(pet.energy)<=0?'sem energia':'indisponível')
 :null
 const pvpPet=primaryPetReady?petPvpSpecialty(pet.species,pet.level):null
-const pvpCritNoPet=Math.min(.40,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
-const pvpCritWithPet=Math.min(.40,pvpCritNoPet+Number(pvpPet?.crit||0))
+const pvpCritNoPet=Math.min(.60,Number(p.effective_crit||0)+Number(synergy.collabCrit||0))
+const pvpCritWithPet=Math.min(.60,pvpCritNoPet+Number(pvpPet?.crit||0))
 const pvpPct=n=>pct(Number(n||0)*100)
 const pvpPetLine=`🐾 *CONTRIBUIÇÃO DO PET NO PVP*
 ${pet?`${pet.name} — Nv.${pet.level} ${primaryPetReady?'✅ ativo':'⚠️ bônus suspensos ('+petStatus+')'}`:'Nenhum pet principal'}
