@@ -5124,11 +5124,9 @@ salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mist
 oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico',
 oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico',corcel_espectral_halloween:'mistico'
 }
-const PET_TEAM_WILDCARD_BONUS={
-  styleLabel:'🃏 Coringa',label:'🃏 Elo Universal',
-  attack:.015,defense:.02,crit:0,speed:0,
-  text:'+1,5% ATK e +2% DEF no Boss/Raid'
-}
+// Coringas não têm bônus independente: apenas preenchem os 3 slots.
+// Mantém a constante para os testes legados que extraem o catálogo por marcador.
+const PET_TEAM_WILDCARD_BONUS={teamSlots:3}
 const PET_TEAM_STYLE_BONUS={
 voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
 guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
@@ -5164,10 +5162,30 @@ const collab=!vital&&team.length===3&&unique?resolveCollabWildcardTeam(species,P
 const styles=resolveBatTeamStyles(species)
 // Uma Collab ativa tem prioridade exclusiva: sem Elo Universal nem sinergia de estilo.
 const wildcard=!vital&&!collab&&team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
-const base=vital||(!collab&&team.length===3&&unique
-  ?(wildcard?(wildcard.universal?PET_TEAM_WILDCARD_BONUS:PET_TEAM_STYLE_BONUS[wildcard.style])
+let base=vital||(!collab&&team.length===3&&unique
+  ?(wildcard?PET_TEAM_STYLE_BONUS[wildcard.style]
     :(styles[0]&&styles.every(s=>s===styles[0])?PET_TEAM_STYLE_BONUS[styles[0]]:null))
   :null)
+// Sinergia parcial usa atributos numéricos efetivos, sem reaproveitar
+// os valores exibidos da versão completa nem alterar bônus próprios dos pets.
+if(wildcard&&base){
+  const scale=wildcard.originalCount/PET_TEAM_WILDCARD_BONUS.teamSlots
+  const attrs={}
+  for(const key of ['attack','defense','crit','speed','hp','vitalPulse']){
+    attrs[key]=Number(base[key]||0)*scale
+  }
+  const pct=n=>Number((n*100).toFixed(2)).toString().replace('.',',')+'%'
+  const val=n=>Number(n.toFixed(2)).toString().replace('.',',')
+  const effects=[]
+  if(attrs.hp)effects.push('+'+pct(attrs.hp)+' HP máximo')
+  if(attrs.attack)effects.push('+'+pct(attrs.attack)+' ATK')
+  if(attrs.defense)effects.push((wildcard.style==='vital'?'-':'+' )+pct(attrs.defense)+(wildcard.style==='vital'?' dano recebido':' DEF'))
+  if(attrs.crit)effects.push('+'+pct(attrs.crit)+' CRIT')
+  if(attrs.speed)effects.push('+'+val(attrs.speed)+' VEL')
+  if(attrs.vitalPulse)effects.push('Coração Eterno: cura '+pct(attrs.vitalPulse)+' HP (1 vez/combate)')
+  base={...base,...attrs,label:base.label+' ('+wildcard.originalCount+'/3)',
+    text:'Sinergia parcial '+wildcard.originalCount+'/3: '+effects.join(' • ')}
+}
 if(!base&&!collab)return null
 // Estilo funciona sem Collab; quando ela ativa, somente seus próprios bônus se aplicam.
 const attack=Number(base?.attack||0)+Number(collab?.attack||0)
