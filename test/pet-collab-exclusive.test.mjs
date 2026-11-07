@@ -50,6 +50,21 @@ test('Dois Coringas de uma só categoria concedem 1/3, sem bonus de Collab',()=>
   assert.equal(x.collabCrit,0)
   assert.doesNotMatch(x.label,/Collab|Universal/)
 })
+test('Raposa Astral pode ocupar qualquer slot de Coringa sem alterar os bônus individuais',()=>{
+  const combinations=[
+    team('fenix_celestial','guaxinim_errante_20261027','raposa_astral'),
+    team('raposa_astral','fenix_celestial','guaxinim_errante_20261027'),
+    team('guaxinim_errante_20261027','raposa_astral','fenix_celestial')
+  ]
+  for(const pets of combinations){
+    const s=synergy(pets)
+    assert.equal(s.style,'voador')
+    assert.equal(s.attack,.02/3)
+    assert.equal(s.speed,8/3)
+    assert.equal(s.collabAttack,0)
+    assert.doesNotMatch(s.label,/Universal|Collab/)
+  }
+})
 test('Não concede bônus para espécies duplicadas',()=>{
   assert.equal(team('fenix_celestial','fenix_celestial','guaxinim_errante_20261027'),null)
 })
