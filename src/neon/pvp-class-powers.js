@@ -1,4 +1,5 @@
 // PvP Awakening: bounded adaptations of the existing Boss/Raid class skills.
+// Critical chance and life drain are native abilities; no equipment stats are consulted.
 // Isolated from classAttack/classDefense so PvE tuning cannot accidentally change.
 // All state lives inside ONE duel; no progression, consumables or DB changes.
 import {classAttack,classDefense,classCritBonus} from './game-catalog.js'
@@ -26,7 +27,7 @@ const addShield=(s,maxHp,ratio)=>{
 
 export function classPvpCritBonus(classId,applied=true,awakeningStage=0){
   const id=String(classId||'').toLowerCase(),stage=stageOf(applied,awakeningStage)
-  return classCritBonus(id,applied,0,'pvp')+(id==='assassin'?(stage>=5?.05:stage>=3?.03:stage>=1?.01:0):0)+(stage>=2&&id==='samurai'?.01:0)
+  return classCritBonus(id,applied,0,'pvp')+(id==='assassin'?(stage>=5?.05:stage>=3?.03:stage>=1?.01:0):0)+(stage>=2&&id==='samurai'?(stage>=5?.06:stage>=3?.03:.01):0)
 }
 
 export function classPvpAttack({
@@ -116,7 +117,7 @@ export function classPvpAttack({
     }
   }else if(id==='necromancer'){
     if(stage>=1&&index%(stage>=5?3:4)===0&&hp>0)
-      heal=Math.max(heal,Math.min(Math.ceil(maxHp*(stage>=5?.08:.03)),Math.floor(base.damage*(stage>=5?.22:.03))))
+      heal=Math.max(heal,Math.min(Math.ceil(maxHp*(stage>=5?.08:.03)),Math.floor(base.damage*(stage>=5?.50:.03))))
     if(stage>=2&&index%7===0){bonus+=.08;trigger('Maldição')}
     if(stage>=3)bonus+=.008*Number(state.souls||0)
     if(stage>=5&&index%4===0&&state.souls>=3){bonus+=.12;state.souls=0;trigger('Colheita Final')}
