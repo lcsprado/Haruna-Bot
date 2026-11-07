@@ -1,6 +1,7 @@
 import {db,ensureUser,getProfile,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
 import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
+import {classComparisonBonuses,classComparisonLevel} from './hero-class-comparison.js'
 import {formatActiveClassBaseStatus,formatSavedClassStatus} from './character-base-status-format.js'
 import {formatPlayableHeroMasteryEffects} from './hero-mastery-format.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
@@ -433,13 +434,36 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
       await reply('❌ Classe inválida. Compare com *paladin*, *assassin*, *samurai*, *berserker*, *warrior*, *mage*, *archer*, *monk*, *necromancer* ou *druid*.');
       return true;
     }
+    const requestedLevel=String(args[2]||'').trim();
+    if(requestedLevel&&(!/^\\d+$/.test(requestedLevel)||Number(requestedLevel)<1||Number(requestedLevel)>100)){
+      await reply('❌ Nível inválido. Use *!heroi comparar samurai 100* (1 a 100).');
+      return true;
+    }
+    // Consulte a progressão da classe selecionada, inclusive se estiver inativa.
+    // Para uma classe ainda não possuída, compare no nível do herói (referência).
+    const progress=await db.query(
+      'SELECT level FROM player_class_levels WHERE jid=$1 AND class_id=$2',
+      [sender,requested]);
+    const matched=classComparisonLevel({
+      heroLevel:sheet.heroLevel,
+      recordedClassLevel:progress.rows[0]?.level??null,
+      overrideLevel:requestedLevel?Number(requestedLevel):null
+    });
     const cls=PLAYER_CLASSES[requested],own=sheet.breakdown?.natural||{};
-    const diff=heroDifference(own,cls);
-    await reply('⚖️ *'+sheet.name.toUpperCase()+' Lv.'+sheet.heroLevel+' × '+cls.name.toUpperCase()+'*'+
-      '\n🔎 Comparação somente dos bônus do combatente, SEM jogador, equipamento, encantamento, pet ou sinergia.\n\n'+
-      '🌈 Herói: '+heroBonusRow(own)+'\n🧙 Classe: '+heroBonusRow(cls)+'\n\n'+
+    const classBonuses=classComparisonBonuses(requested,matched.level);
+    const diff=heroDifference(own,classBonuses);
+    const source=matched.source==='referencia'
+      ?'🧪 Classe não registrada: referência teórica no nível do herói.'
+      :matched.source==='selecionado'
+        ?'🧪 Nível escolhido para simulação; não altera a classe do jogador.'
+        :'📋 Nível registrado da classe, mesmo quando inativa.';
+    await reply('⚖️ *'+sheet.name.toUpperCase()+' Lv.'+sheet.heroLevel+' × '+cls.name.toUpperCase()+' Lv.'+matched.level+'*'+
+      '\\n🔎 Comparação somente dos bônus do combatente, SEM jogador, equipamento, encantamento, pet ou sinergia.\\n\\n'+
+      '🌈 Herói: '+heroBonusRow(own)+'\\n🧙 Classe: '+heroBonusRow(classBonuses)+'\\n\\n'+
       '📊 Diferença: ❤️ '+diff[0]+' HP • ⚔️ '+diff[1]+' ATK • 🛡️ '+diff[2]+' DEF • 👢 '+diff[3]+' VEL'+
-      '\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\nUse *!personagem status* para ver a base sem equipamentos ou *!perfil* para ver os atributos totais.');
+      '\\n📈 Classe = bônus original + progressão do balanceamento até o Lv.100.'+
+      '\\n'+source+
+      '\\n💡 Habilidades, passivas, maestria e bônus exclusivos precisam ser avaliados separadamente.\\nUse *!personagem status* para ver a base sem equipamentos ou *!perfil* para ver os atributos totais.');
     return true;
   }
   if(['atributos','ficha','stats','status'].includes(action)){
