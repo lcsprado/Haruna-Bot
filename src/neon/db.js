@@ -2791,6 +2791,15 @@ remaining:Number(chosen.quantity)-1
 export async function getCombatProfile(jid) {
 const p=await getProfile(jid)
 if(!p) return null
+const mode=(await db.query(`SELECT h.hero_species,cp.level AS class_level,cp.xp AS class_xp
+  FROM (SELECT $1::text AS jid) q
+  LEFT JOIN player_hero_mode h ON h.jid=q.jid
+  LEFT JOIN player_class_progress cp ON cp.jid=q.jid AND cp.class_id=$2`,
+  [jid,p.class_id])).rows[0]||{};
+const activeClass=Boolean(p.class_applied)&&!mode.hero_species;
+const classLevel=Math.max(1,Math.min(100,Number(mode.class_level||1)));
+const classStats=classCombatStats({...p,class_applied:activeClass},classLevel);
+const growth=classStats.growth;
 const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
 const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id])
 const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
@@ -2822,31 +2831,37 @@ const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
 const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao'])
 const classScrolls=Number(scrollR.rows[0]?.quantity||0)
 const classChangeRemaining=0
-const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0))
-const effectiveHp=Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
+const gearHp=Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0);
+const effectiveMaxHp=Math.max(1,classStats.maxHp+gearHp);
+const effectiveHp=activeClass?classEffectiveCombatHp(p,classStats,gearHp):
+  Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
 if(Number(p.hp||0)>effectiveMaxHp){
 await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,effectiveMaxHp])
 }
 return {
 ...p,
-base_atk:Number(p.atk),
-base_def:Number(p.def),
-base_max_hp:Number(p.max_hp),
+class_level:classLevel,
+class_xp:Number(mode.class_xp||0),
+class_training:growth,
+class_training_active:activeClass,
+base_atk:classStats.atk,
+base_def:classStats.def,
+base_max_hp:classStats.maxHp,
 weapon_atk:Number(w.atk||0)+ench.atk,
 armor_def:Number(a.def||0)+ench.def,
 equipment_atk:Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk,
 equipment_def:Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
 equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0),
 equipment_spd:Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
-effective_spd:Number(p.spd)+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
+effective_spd:classStats.spd+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
 equipment_crit:Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit,
 base_crit:0.10,
 effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
 effective_max_hp:effectiveMaxHp,
 effective_hp:effectiveHp,
-effective_atk:Math.round((Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
+effective_atk:Math.round((classStats.atk+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
 attack_pct_bonus:ench.attackPct,
-effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
+effective_def:classStats.def+Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
 enchant_damage:Number(ench.damage||0),
 enchant_breakdown:ench,
 weapon_name:w.name,
