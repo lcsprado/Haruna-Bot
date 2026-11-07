@@ -8,7 +8,7 @@ export const CLASS_LEVEL_XP_PER_LEVEL=100;
 export const CLASS_LEVEL_MAX_XP=(CLASS_LEVEL_MAX-1)*CLASS_LEVEL_XP_PER_LEVEL;
 export const CLASS_LEVEL_GROWTH=Object.freeze({
   paladin:Object.freeze({hp:185,atk:11,def:28,spd:2}),
-  berserker:Object.freeze({hp:150,atk:30,def:14,spd:5}),
+  berserker:Object.freeze({hp:120,atk:30,def:10,spd:5}),
   samurai:Object.freeze({hp:135,atk:26,def:14,spd:14}),
   necromancer:Object.freeze({hp:170,atk:28,def:18,spd:8})
 });
