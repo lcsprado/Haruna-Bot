@@ -17,7 +17,7 @@ test('full collab permanece mais forte que os times com coringa',()=>{
 })
 
 test('cada pet Coringa cadastrado completa 2 heróis da mesma collab',()=>{
-  assert.equal(PET_TEAM_WILDCARD_SPECIES.length,5)
+  assert.equal(PET_TEAM_WILDCARD_SPECIES.length,6)
   for(const wildcard of PET_TEAM_WILDCARD_SPECIES){
     const result=match([PECADOS_HERO_IDS[0],PECADOS_HERO_IDS[1],wildcard])
     assert.equal(result?.attack,.12,wildcard)
@@ -44,7 +44,8 @@ test('não concede collab só com Coringas ou quando há pets duplicados',()=>{
   assert.equal(match(PET_TEAM_WILDCARD_SPECIES.slice(0,3)),null)
   assert.equal(match([PECADOS_HERO_IDS[0],PECADOS_HERO_IDS[0],PET_TEAM_WILDCARD_SPECIES[0]]),null)
   assert.equal(match([PECADOS_HERO_IDS[0],PET_TEAM_WILDCARD_SPECIES[0],PET_TEAM_WILDCARD_SPECIES[0]]),null)
-  assert.equal(match([PECADOS_HERO_IDS[0],PECADOS_HERO_IDS[1],'raposa_astral']),null)
+  assert.equal(match([PECADOS_HERO_IDS[0],PECADOS_HERO_IDS[1],'raposa_astral'])?.attack,.12)
+  assert.equal(match([PECADOS_HERO_IDS[0],PECADOS_HERO_IDS[1],'raposa_astral'])?.crit,.03)
 })
 
 test('não mistura heróis de collabs diferentes nem empilha grupos ambíguos',()=>{
