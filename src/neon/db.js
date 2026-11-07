@@ -2942,6 +2942,13 @@ const pvpAwakeningStage=jid=>Math.max(0,Math.min(5,Number(awakeningRows.find(row
 const aHero=activeHero(attackerJid),bHero=activeHero(defenderJid);
 const aHeroStats=aHero?heroCombatStats(a,aHero.hero_species,aHero.hero_level):null;
 const bHeroStats=bHero?heroCombatStats(b,bHero.hero_species,bHero.hero_level):null;
+// Nivel proprio salvo por classe; heroi ativo desliga os bonus de classe.
+const classLevelRows=(await client.query(
+  'SELECT jid,class_id,level FROM player_class_progress WHERE jid=ANY($1::text[])',[ids]
+)).rows;
+const classStatsOf=(jid,st,hero)=>!hero&&st.class_applied?
+  classCombatStats(st,Number(classLevelRows.find(r=>r.jid===jid&&r.class_id===st.class_id)?.level||1)):null;
+const aClassStats=classStatsOf(attackerJid,a,aHero),bClassStats=classStatsOf(defenderJid,b,bHero);
 const au=userFor(attackerJid)
 const bu=userFor(defenderJid)
 if(Number(bu?.level||1)<=20){
@@ -2996,26 +3003,28 @@ const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.we
 const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id),starLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const aGearHp=Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0);
+const bGearHp=Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0);
 const A={
 jid:attackerJid,name:au?.push_name||'Jogador',
-hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)):Number(a.hp),maxHp:Number(aHeroStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),
-atk:Math.round((Number(aHeroStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
-def:Number(aHeroStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
-classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,awakeningStage:aHero?0:pvpAwakeningStage(attackerJid),awakeningState:{},heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),attackIndex:0,lastProcAttack:0,
+hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,aGearHp):aClassStats?classEffectiveCombatHp(a,aClassStats,aGearHp):Number(a.hp),maxHp:Number(aHeroStats?.maxHp??aClassStats?.maxHp??a.max_hp)+aGearHp,
+atk:Math.round((Number(aHeroStats?.atk??aClassStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
+def:Number(aHeroStats?.def??aClassStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
+classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,awakeningStage:aHero?0:pvpAwakeningStage(attackerJid),awakeningState:{},heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp)+aGearHp,classCombatMaxHp:aClassStats?aClassStats.maxHp+aGearHp:null,classPersistentMaxHp:aClassStats?Number(a.max_hp)+aGearHp:null,attackIndex:0,lastProcAttack:0,
 crit:pvpCritChance({equipmentCrit:Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit,classId:a.class_id,classApplied:a.class_applied,heroActive:Boolean(aHero),awakeningStage:pvpAwakeningStage(attackerJid)}),
-spd:Number(aHeroStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
+spd:Number(aHeroStats?.spd??aClassStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
 enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
 petSpeed:apSpd,teamSpeed:aSynergySpd,
 petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
 }
 const B={
 jid:defenderJid,name:bu?.push_name||'Jogador',
-hp:bHeroStats?heroEffectiveCombatHp(b,bHeroStats,Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0)):Number(b.hp),maxHp:Number(bHeroStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),
-atk:Math.round((Number(bHeroStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
-def:Number(bHeroStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
-classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,awakeningStage:bHero?0:pvpAwakeningStage(defenderJid),awakeningState:{},heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),attackIndex:0,lastProcAttack:0,
+hp:bHeroStats?heroEffectiveCombatHp(b,bHeroStats,bGearHp):bClassStats?classEffectiveCombatHp(b,bClassStats,bGearHp):Number(b.hp),maxHp:Number(bHeroStats?.maxHp??bClassStats?.maxHp??b.max_hp)+bGearHp,
+atk:Math.round((Number(bHeroStats?.atk??bClassStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
+def:Number(bHeroStats?.def??bClassStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
+classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,awakeningStage:bHero?0:pvpAwakeningStage(defenderJid),awakeningState:{},heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp)+bGearHp,classCombatMaxHp:bClassStats?bClassStats.maxHp+bGearHp:null,classPersistentMaxHp:bClassStats?Number(b.max_hp)+bGearHp:null,attackIndex:0,lastProcAttack:0,
 crit:pvpCritChance({equipmentCrit:Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit,classId:b.class_id,classApplied:b.class_applied,heroActive:Boolean(bHero),awakeningStage:pvpAwakeningStage(defenderJid)}),
-spd:Number(bHeroStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
+spd:Number(bHeroStats?.spd??bClassStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
 enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
@@ -3164,9 +3173,12 @@ const pvpMetrics=Object.fromEntries([A,B].map(fighter=>{
   skillsUsed:outgoing.filter(x=>x.classTechnique||x.heroTechnique).length+incoming.filter(x=>x.defenseTechnique).length
  }]
 }))
-const persistentPvpHp=fighter=>fighter.heroId
-  ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp)
-  :restoreVitalPersistentHp(fighter.hp,fighter.maxHp,fighter.vitalBaseMaxHp||fighter.maxHp);
+const persistentPvpHp=fighter=>{
+  if(fighter.heroId)return heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp);
+  const withoutPet=restoreVitalPersistentHp(fighter.hp,fighter.maxHp,fighter.vitalBaseMaxHp||fighter.maxHp);
+  return fighter.classCombatMaxHp?
+    classHpToPersistent(withoutPet,fighter.classCombatMaxHp,fighter.classPersistentMaxHp):withoutPet;
+};
 let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
 let loser=winner===A?B:A
 if(A.hp>0 && B.hp>0){
@@ -3182,7 +3194,7 @@ await client.query(
 )
 await client.query(
 'UPDATE stats SET hp=$1,loss=loss+1,updated_at='+nowSql+' WHERE jid=$2',
-[Math.max(1,Math.floor((loser.heroId?loser.heroPersistentMaxHp:loser.maxHp)*0.25)),loser.jid]
+[Math.max(1,Math.floor((loser.heroId?loser.heroPersistentMaxHp:loser.classPersistentMaxHp||loser.maxHp)*0.25)),loser.jid]
 )
 await client.query(
 'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
@@ -3200,8 +3212,8 @@ return {
 ok:true,winner,loser,reward,log,opening,ending,pvpMetrics,roundCount,decidedByLimit,
 winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
 final:{
-attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((A.heroId?A.heroPersistentMaxHp:A.maxHp)*0.25)),
-defenderHp: B.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((B.heroId?B.heroPersistentMaxHp:B.maxHp)*0.25))
+attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((A.heroId?A.heroPersistentMaxHp:A.classPersistentMaxHp||A.maxHp)*0.25)),
+defenderHp: B.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor((B.heroId?B.heroPersistentMaxHp:B.classPersistentMaxHp||B.maxHp)*0.25))
 }
 }
 })
