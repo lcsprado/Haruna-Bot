@@ -8,6 +8,14 @@ export const CLASS_ROLE_GROWTH=Object.freeze({
   samurai:Object.freeze({hp:275,atk:33,def:30,spd:20}),
   necromancer:Object.freeze({hp:335,atk:36,def:33,spd:8})
 });
+// HP escalonado só na luta, proporcional ao HP persistido e sem cura gratuita.
+export const classCombatHp=(persistentHp,persistentMaxHp,combatMaxHp)=>{
+  const source=Math.max(1,Number(persistentMaxHp)||1),target=Math.max(1,Number(combatMaxHp)||1);
+  const hp=Math.max(0,Math.min(source,Number(persistentHp)||0));
+  return Math.max(0,Math.min(target,Math.round(hp/source*target)));
+};
+export const classPersistentHp=(combatHp,combatMaxHp,persistentMaxHp)=>
+  classCombatHp(combatHp,combatMaxHp,persistentMaxHp);
 export const classLevelFromGeneralLevel=value=>Math.max(1,Math.min(CLASS_LEVEL_CAP,Math.floor(Number(value)||1)));
 export function classCombatGrowth(classId,level){
   const target=CLASS_ROLE_GROWTH[String(classId||'').toLowerCase()];
