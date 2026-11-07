@@ -11,14 +11,15 @@ export function formatActiveClassBaseStatus(profile,awakeningStage=1){
   if(!profile)return '';
   const id=String(profile.class_id||'warrior').toLowerCase()
   const cls=getPlayerClass(id),roman=romanStage(awakeningStage)
-  const base=classCombatStats(profile,id,profile.level,Boolean(profile.class_applied))
+  const base=classCombatStats(profile,id,profile.class_level??profile.level,Boolean(profile.class_applied))
   const passive=getClassPassive(id,profile.class_applied)
   const currentSkill=profile.class_applied?
     getAwakeningSkillDescriptions(id)[stageNumber(awakeningStage)-1]||null:null
   return [
     '🧙 *STATUS BASE — '+cls.name.toUpperCase()+'*',
     '🎭 '+cls.role,
-    '⭐ Nível: *'+formatNumber(profile.level||1)+'*',
+    '⭐ Nível geral: *'+formatNumber(profile.level||1)+'*',
+    '📈 Nível da classe: *'+classLevelFromGeneralLevel(profile.class_level??profile.level)+'/100*',
     '❤️ HP: *'+formatNumber(base.maxHp)+'*',
     '⚔️ ATK: *'+formatNumber(base.atk)+'*',
     '🛡️ DEF: *'+formatNumber(base.def)+'*',
@@ -45,7 +46,8 @@ export function formatSavedClassStatus(profile,awakeningStage=1,heroActive=false
   if(!profile.class_applied)return '🧙 Você ainda não escolheu uma classe. Use *!classe* para começar.';
   const id=String(profile.class_id||'warrior').toLowerCase();
   const cls=getPlayerClass(id);
-  const classSheet=classCombatStats(profile,id,profile.level,true);
+  const classLevel=classLevelFromGeneralLevel(profile.class_level??profile.level);
+  const classSheet=classCombatStats(profile,id,classLevel,true);
   const stage=stageNumber(awakeningStage);
   const passive=getClassPassive(id,true);
   const skillDescriptions=getAwakeningSkillDescriptions(id).slice(0,stage);
@@ -65,8 +67,8 @@ export function formatSavedClassStatus(profile,awakeningStage=1,heroActive=false
     heroActive?'⚠️ *CLASSE PRESERVADA — INATIVA* (herói da collab equipado)':'✅ *CLASSE ATIVA*',
     '⭐ Nível geral do jogador: *'+formatNumber(profile.level||1)+'*',
     '🌌 Despertar: *'+romanStage(stage)+'/V*',
-    '📈 Progressão da classe: *'+classLevelFromGeneralLevel(profile.level)+'/100* (por nível geral; bônus de combate não permanente).',
-    '🎯 Bônus de classe em combate: +'+formatNumber(classCombatGrowth(id,profile.level).hp)+' HP, +'+formatNumber(classCombatGrowth(id,profile.level).atk)+' ATK, +'+formatNumber(classCombatGrowth(id,profile.level).def)+' DEF, +'+formatNumber(classCombatGrowth(id,profile.level).spd)+' VEL.',
+    '📈 Progressão da classe: *'+classLevel+'/100* • independente do nível geral do jogador.',
+    '🎯 Bônus de classe em combate: +'+formatNumber(classCombatGrowth(id,classLevel).hp)+' HP, +'+formatNumber(classCombatGrowth(id,classLevel).atk)+' ATK, +'+formatNumber(classCombatGrowth(id,classLevel).def)+' DEF, +'+formatNumber(classCombatGrowth(id,classLevel).spd)+' VEL.',
     attr('❤️','HP base persistente','hp',Number(profile.max_hp||0)),
     '❤️ HP base de combate sem itens: *'+formatNumber(classSheet.maxHp)+'*',
     attr('⚔️','ATK base persistente','atk',Number(profile.atk||0)),
