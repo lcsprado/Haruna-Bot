@@ -52,12 +52,12 @@ test('Dois Coringas de uma só categoria concedem 1/3, sem bonus de Collab',()=>
 })
 test('Raposa Astral pode ocupar qualquer slot de Coringa sem alterar os bônus individuais',()=>{
   const combinations=[
-    team('fenix_celestial','guaxinim_errante_20261027','raposa_astral'),
-    team('raposa_astral','fenix_celestial','guaxinim_errante_20261027'),
-    team('guaxinim_errante_20261027','raposa_astral','fenix_celestial')
+    ['fenix_celestial','guaxinim_errante_20261027','raposa_astral'],
+    ['raposa_astral','fenix_celestial','guaxinim_errante_20261027'],
+    ['guaxinim_errante_20261027','raposa_astral','fenix_celestial']
   ]
   for(const pets of combinations){
-    const s=synergy(pets)
+    const s=team(...pets)
     assert.equal(s.style,'voador')
     assert.ok(Math.abs(s.attack-.02/3)<1e-10)
     assert.ok(Math.abs(s.speed-8/3)<1e-10)
