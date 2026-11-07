@@ -2724,7 +2724,7 @@ equipment_spd:Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0
 effective_spd:Number(p.spd)+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
 equipment_crit:Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit,
 base_crit:0.10,
-effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
+effective_crit:Math.min(.50,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
 effective_max_hp:effectiveMaxHp,
 effective_hp:effectiveHp,
 effective_atk:Math.round((Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
@@ -2868,7 +2868,7 @@ hp:Number(aHeroStats?.hp??a.hp),maxHp:Number(aHeroStats?.maxHp??a.max_hp)+Number
 atk:Math.round((Number(aHeroStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
 def:Number(aHeroStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
 classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp),attackIndex:0,lastProcAttack:0,
-crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied&&!aHero)),
+crit:Math.min(.50,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied&&!aHero)),
 spd:Number(aHeroStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
 enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
 petSpeed:apSpd,teamSpeed:aSynergySpd,
@@ -2880,15 +2880,15 @@ hp:Number(bHeroStats?.hp??b.hp),maxHp:Number(bHeroStats?.maxHp??b.max_hp)+Number
 atk:Math.round((Number(bHeroStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
 def:Number(bHeroStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
 classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp),attackIndex:0,lastProcAttack:0,
-crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied&&!bHero)),
+crit:Math.min(.50,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied&&!bHero)),
 spd:Number(bHeroStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
 enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
 }
 const snapshot=fighter=>{
-const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
-const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
+const critNoPet=Math.min(.50,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
+const critWithPet=Math.min(.50,critNoPet+Number(fighter.petBonus?.crit||0))
 return {
 jid:fighter.jid,name:fighter.name,heroId:fighter.heroId,heroMasteryStage:fighter.heroId?fighter.heroMasteryStage:null,heroGear:fighter.heroId?fighter.heroGear:null,hp:fighter.hp,maxHp:fighter.maxHp,
 atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
@@ -2913,8 +2913,8 @@ const hit=(from,to)=>{
 from.attackIndex++
 const variance=0.85+Math.random()*0.30
 const critRoll=Math.random()
-const critWithoutPet=Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0))
-const crit=critRoll<Math.min(.40,critWithoutPet+Number(from.petBonus?.crit||0))
+const critWithoutPet=Math.min(.50,Number(from.crit||.10)+Number(from.collabCrit||0))
+const crit=critRoll<Math.min(.50,critWithoutPet+Number(from.petBonus?.crit||0))
 const petCrit=crit&&critRoll>=critWithoutPet
 const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
 const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
