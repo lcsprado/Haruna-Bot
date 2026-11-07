@@ -21,7 +21,7 @@ test('!status classe: ficha real sem equipamentos, sem duplicar Despertar',()=>{
   assert.match(result,/VEL base sem itens: \*460\* \(455 permanente \+ 5 da classe\)/)
   assert.match(result,/4,8% dano.*14,4% dano recebido/)
   assert.doesNotMatch(result,/arma equipada|armadura equipada|pet principal|selo \+5%/)
-  assert.match(result,/O Despertar permanente já está nos atributos acima/)
+  assert.match(result,/Despertar permanente já está incluído na base/)
 })
 
 test('classe preservada: ficha pode ser consultada quando herói ativo',()=>{
