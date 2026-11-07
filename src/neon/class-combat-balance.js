@@ -3,10 +3,10 @@
 // A hero's full build must remain superior on average at equal gear/mastery.
 export const CLASS_LEVEL_CAP=100;
 export const CLASS_ROLE_GROWTH=Object.freeze({
-  paladin:Object.freeze({hp:300,atk:5,def:25,spd:4}),
-  berserker:Object.freeze({hp:190,atk:35,def:18,spd:8}),
-  samurai:Object.freeze({hp:275,atk:33,def:30,spd:20}),
-  necromancer:Object.freeze({hp:335,atk:36,def:33,spd:8})
+  paladin:Object.freeze({hp:400,atk:0,def:35,spd:0}),
+  berserker:Object.freeze({hp:180,atk:35,def:8,spd:4}),
+  samurai:Object.freeze({hp:220,atk:30,def:12,spd:18}),
+  necromancer:Object.freeze({hp:250,atk:24,def:15,spd:6})
 });
 // HP escalonado só na luta, proporcional ao HP persistido e sem cura gratuita.
 export const classCombatHp=(persistentHp,persistentMaxHp,combatMaxHp)=>{
