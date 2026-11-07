@@ -21,7 +21,8 @@ export const classPersistentHp=(combatHp,combatMaxHp,persistentMaxHp)=>
 export const classLevelFromGeneralLevel=value=>Math.max(1,Math.min(CLASS_LEVEL_CAP,Math.floor(Number(value)||1)));
 export function classCombatGrowth(classId,level){
   const target=CLASS_ROLE_GROWTH[String(classId||'').toLowerCase()];
-  // O bônus final da classe é dividido em 100 parcelas; Lv.N = N/100.\n  const factor=classLevelFromGeneralLevel(level)/CLASS_LEVEL_CAP;
+  // O bônus final da classe é dividido em 100 parcelas; Lv.N = N/100.
+  const factor=classLevelFromGeneralLevel(level)/CLASS_LEVEL_CAP;
   return Object.fromEntries(['hp','atk','def','spd'].map(key=>[key,Math.round(Number(target?.[key]||0)*factor)]));
 }
 export function classCombatStats(stats,classId,level,active=true){
