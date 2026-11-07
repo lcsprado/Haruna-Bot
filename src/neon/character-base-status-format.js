@@ -1,5 +1,6 @@
 import {getPlayerClass,getClassPassive,getAwakeningSkillDescriptions} from './game-catalog.js'
 import {PVP_AWAKENING_ROLES} from './pvp-class-powers.js'
+import {classCombatGrowth,classLevelFromGeneralLevel} from './class-combat-balance.js'
 
 const formatNumber=value=>Number(value||0).toLocaleString('pt-BR')
 const stageNumber=value=>Math.max(1,Math.min(5,Math.floor(Number(value)||1)))
@@ -62,7 +63,8 @@ export function formatSavedClassStatus(profile,awakeningStage=1,heroActive=false
     heroActive?'⚠️ *CLASSE PRESERVADA — INATIVA* (herói da collab equipado)':'✅ *CLASSE ATIVA*',
     '⭐ Nível geral do jogador: *'+formatNumber(profile.level||1)+'*',
     '🌌 Despertar: *'+romanStage(stage)+'/V*',
-    '📈 Classe não tem nível separado: evolui com o jogador e o Despertar.',
+    '📈 Progressão da classe: *'+classLevelFromGeneralLevel(profile.level)+'/100* (por nível geral; bônus de combate não permanente).',
+    '🎯 Bônus de classe em combate: +'+formatNumber(classCombatGrowth(id,profile.level).hp)+' HP, +'+formatNumber(classCombatGrowth(id,profile.level).atk)+' ATK, +'+formatNumber(classCombatGrowth(id,profile.level).def)+' DEF, +'+formatNumber(classCombatGrowth(id,profile.level).spd)+' VEL.',
     attr('❤️','HP base sem itens','hp',Number(profile.max_hp||0)),
     attr('⚔️','ATK base sem itens','atk',Number(profile.atk||0)),
     attr('🛡️','DEF base sem itens','def',Number(profile.def||0)),
