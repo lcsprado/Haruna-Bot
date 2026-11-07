@@ -1,6 +1,7 @@
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
+import {FIRST_500_TITLE,isFirst500TitleHolder} from './first-level-500-title.js'
 import 'dotenv/config'
 import makeWASocket, {
 Browsers,
@@ -1546,7 +1547,7 @@ return {bar:'█'.repeat(filled)+'░'.repeat(10-filled),current,needed,
   remaining:Math.max(0,needed-current),percentage:(current/needed*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}
 }
 async function sendAlphaProfile(sock,chat,jid,msg,identityAliases=[]){
-const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,relics,combatContext]=await Promise.all([
+const [p,clan,home,cars,motorcycles,businesses,career,pet,pat,streak,ranks,relics,combatContext,isFirst500Champion]=await Promise.all([
 getCombatProfile(jid),getClanForUser(jid),getHome(jid),getGarage(jid),
 getMotorcycleGarage(jid),getBusinesses(jid),getCareer(jid),getPet(jid),
 getPatrimony(jid),getDailyStreak(jid),getPlayerRanks(jid),relicStatus(jid),
@@ -1555,7 +1556,8 @@ COALESCE((SELECT json_agg(json_build_object('slot',pt.slot,'species',pc.species,
 'level',pc.level,'hp',pc.hp,'energy',pc.energy) ORDER BY pt.slot)
 FROM pet_team pt JOIN pet_collection pc ON pc.id=pt.pet_id
 WHERE pt.jid=$1),'[]'::json) AS team
-FROM (SELECT $1::text AS jid) u LEFT JOIN player_awakenings a ON a.jid=u.jid`,[jid])
+FROM (SELECT $1::text AS jid) u LEFT JOIN player_awakenings a ON a.jid=u.jid`,[jid]),
+isFirst500TitleHolder(db,jid)
 ])
 if(!p) throw new Error('Perfil não encontrado.')
 const heroSheet=await getPlayableHeroCombatSheet(jid,p)
@@ -1647,7 +1649,7 @@ classEffect:!heroSheet&&classId==='paladin'&&awakeningStage>=2
 })
 const text=
 `👤 *PERFIL — ${p.push_name||'Jogador'}*
-${title}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
+${title}${isFirst500Champion?' • '+FIRST_500_TITLE:''}${mimicTitle?' • '+mimicTitle:''}${halloweenTitle?' • '+halloweenTitle:''}${badge?' • '+badge:''}
 ⭐ Nível: *${Number(p.level||1)}*
 ${heroSheet?formatPlayableHeroCombatSheet(heroSheet,{compact:true}):`🧙 Classe: *${p.class_info?.name||'Sem classe'}*${p.class_info?.role?' — '+p.class_info.role:''}
 ⚜️ Passiva: *${p.class_passive?.name||'Ainda não selecionada'}*${p.class_passive?' — '+p.class_passive.description:''}`}

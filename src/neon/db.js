@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {claimFirst500Title,transferFirst500Title} from './first-level-500-title.js'
 import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal,VITAL_TEAM_BONUS} from './vital-pets.js'
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
@@ -666,6 +667,8 @@ pn=$1,
 updated_at=${nowSql}
 WHERE jid=$1
 `,[targetJid,pushName,source.push_name,Number(source.level||1),Number(source.exp||0),Boolean(source.premium),Number(source.premium_exp||0),Boolean(source.banned),Number(source.created_at||Math.floor(Date.now()/1000))])
+// Título pertence à identidade consolidada, nunca ao JID descartado.
+await transferFirst500Title(client,targetJid,sourceJid)
 await client.query(`
 UPDATE wallets t SET
 cash=t.cash+COALESCE(s.cash,0),
@@ -2202,6 +2205,9 @@ updated_at=${nowSql}
 WHERE jid=$6
 `,[levels*8,levels*2,levels,levels,restoredHp,jid])
 }
+// A primeira passagem legítima de Nv. 499 para 500+ recebe o título.
+// A constraint de trevo_settings assegura apenas um vencedor em todos os grupos.
+if(!options.ignoreFirst500Title)await claimFirst500Title(client,jid,startingLevel,level)
 return {
 level,exp,levels,
 baseGain:numericGain,
@@ -3424,7 +3430,8 @@ if(!Number.isSafeInteger(amount) || amount<=0 || amount>MAX_ADMIN_EXP) {
 throw new Error('EXP inválida. Use no máximo 50.000.000 por ação.')
 }
 await ensureUser(jid)
-return transaction(async client=>applyExp(client,jid,amount))
+// Alterações administrativas não contam como o primeiro jogador a evoluir.
+return transaction(async client=>applyExp(client,jid,amount,{ignoreFirst500Title:true}))
 }
 export async function ownerSetLevel(jid, level) {
 level=Number(level)
