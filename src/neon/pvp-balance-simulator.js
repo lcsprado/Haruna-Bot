@@ -1,3 +1,5 @@
+// Balance approval runs EXCLUSIVELY without equipment. Optional gear scenarios
+// explore item builds later and MUST NOT be used to tune innate class stats.
 // Deterministic, read-only PvP balance model using the SAME combat skill functions
 // as production. Does not load a database, mutate player data or award rewards.
 import {PLAYER_CLASSES,classCritBonus} from './game-catalog.js'
@@ -108,4 +110,24 @@ export function auditSeventeen({duelsPerOrder=50,gear=false,awakening=5,mastery=
   })).sort((a,b)=>b.winRate-a.winRate||a.id.localeCompare(b.id))
   return {scenario:gear?'equal-generic-gear':'no-gear',duelsPerOrder,classLevel,combatants:names.length,
     pairs:pairs.length,battles:pairs.reduce((s,x)=>s+x.fights,0),ranking,pairs}
+}
+
+
+// Porta de aprovacao: todos os itens desligados, sem pets, forja ou encantamentos.
+// O combate com equipamentos e apenas um diagnostico independente de builds.
+export function auditClassHeroBase({duelsPerOrder=200,awakening=5,mastery=5,classLevel=100}={}){
+  const report=auditSeventeen({duelsPerOrder,gear:false,awakening,mastery,classLevel});
+  const heroes=report.ranking.filter(f=>f.id.startsWith('pecado_'));
+  const selected=['paladin','berserker','samurai','necromancer'];
+  const classes=report.ranking.filter(f=>selected.includes(f.id));
+  const pairs=report.pairs.filter(p=>p.a.startsWith('pecado_')&&selected.includes(p.b));
+  const classesVsHeroes=Object.fromEntries(selected.map(id=>{
+    const matches=pairs.filter(p=>p.b===id);
+    const classWinRate=matches.reduce((sum,p)=>sum+(100-p.winRateA),0)/Math.max(1,matches.length);
+    return [id,Math.round(classWinRate*10)/10];
+  }));
+  return {...report,gearIncluded:false,weakestHeroRate:Math.min(...heroes.map(f=>f.winRate)),
+    strongestClassRate:Math.max(...classes.map(f=>f.winRate)),
+    weakestHeroMatchupRate:Math.min(...pairs.map(p=>p.winRateA)),
+    classesVsHeroes,selectedClasses:selected.length,heroCount:heroes.length};
 }
