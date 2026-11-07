@@ -18,6 +18,7 @@ export const PET_TEAM_WILDCARD_SPECIES=Object.freeze([
   'morcego_madrugada',
   'camaleao_lendario',
   'lince_astral',
+  'raposa_astral',
   'onca_eclipse_20261026',
   'guaxinim_errante_20261027'
 ])
