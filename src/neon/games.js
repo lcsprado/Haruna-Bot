@@ -1279,7 +1279,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       if(cfg.level>=30 && i===0){
         boxChance=Math.min(.65,.55+Number(pb.drop||0)*.50)
       }else if(cfg.level>=30){
-        boxChance=Math.min(.55,.08+share*.45+Number(pb.drop||0)*.25)
+        boxChance=Math.min(.45,.08+share*.45+Number(pb.drop||0)*.25)
       }else{
         boxChance=Math.min(.35,.06+share*.325+Number(pb.drop||0)*.20)
       }
@@ -2562,7 +2562,7 @@ async function createBossEventState(c,chat,{scheduleKey=null,origin='manual'}={}
 
 async function maybeGrantEventRelic(c,jid,chance){
   const owned=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'insignia_eclipse'])).rows[0]
-  if(Number(owned?.quantity||0)>0 || Math.random()>=Math.max(0,Math.min(.60,Number(chance)||0))) return null
+  if(Number(owned?.quantity||0)>0 || Math.random()>=Math.max(0,Math.min(.50,Number(chance)||0))) return null
   await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
     ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)`,[jid,'insignia_eclipse'])
   return {id:'insignia_eclipse',name:'Insígnia do Eclipse',rarity:'Evento Único'}
