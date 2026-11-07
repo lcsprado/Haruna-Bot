@@ -3166,6 +3166,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       ?existingParticipant.heroId:await getActivePlayableHero(c,jid)
     const heroLevel=heroId?await getPlayableHeroLevel(c,jid,heroId):70
     const heroStats=heroCombatStats(st,heroId,heroLevel)
+    const classStats=await activeClassCombatStats(c,jid,st,heroId)
     const heroGear=heroCollabGearBonus(heroId,st.weapon_id,st.armor_id,'boss')
     // O HP da luta não é reprojetado a cada ataque; isso evita perder
     // um ponto de vida por arredondamento nos ciclos automáticos.
@@ -3280,10 +3281,11 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id),Number(combatSnapshot?.armor_stars||1)):{atk:0,def:0,hp:0,crit:0}
     const boots=st.boot_id?equipmentStatsAtLevel(st.boot_id,itemLevel(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
-    const atk=Math.round((Number(heroStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
-    const def=Number(heroStats?.def??st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
+    const atk=Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
+    const def=Number(heroStats?.def??classStats?.def??st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
     const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
-    const baseMaxHp=Number(heroStats?.maxHp??st.max_hp)+gearHp
+    const baseMaxHp=Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp
+    if(!heroId&&classStats)heroCombatHp=classEffectiveCombatHp(st,classStats,gearHp)
     const vital=applyVitalCombatHp(heroCombatHp,baseMaxHp,Number(petBonus.hp||0),Number(teamSynergy.hp||0))
     const effectiveMaxHp=vital.maxHp
     // Versão 3: HP percentual temporário incluído na projeção do herói.
@@ -3295,7 +3297,13 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       || !Number.isFinite(Number(existingParticipant.heroLastHp)))){
       heroCombatHp=applyVitalCombatHp(heroEffectiveCombatHp(st,heroStats,gearHp),baseMaxHp,Number(petBonus.hp||0),Number(teamSynergy.hp||0)).hp
     }
-    if(!heroId)heroCombatHp=vital.hp
+    if(!heroId){
+      const cached=classStats&&Number(existingParticipant.classStoredHp)===Number(st.hp)
+        &&Number(existingParticipant.classCombatMaxHp)===baseMaxHp
+        &&Number(existingParticipant.classVitalCombatMaxHp)===effectiveMaxHp
+        &&Number.isFinite(Number(existingParticipant.classLastHp));
+      heroCombatHp=cached?Number(existingParticipant.classLastHp):vital.hp;
+    }
     const petCritChance=Math.max(0,Number(petBonus.crit||0)+Number(teamSynergy.crit||0))
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0)+Number(boots?.crit||0)+Number(helmet?.crit||0))
     const baseCritChance=.10
@@ -3315,7 +3323,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       ?{...heroAttack({heroId,damage:baseDamage,hp:heroCombatHp,maxHp:effectiveMaxHp,
         attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',state:existingParticipant.heroState,masteryStage:heroMasteryStage,gear:heroGear}),
         lastProcAttack:existingParticipant.classLastProcAttack,awakeningState:existingParticipant.awakeningState}
-      :classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:st.hp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
+      : classAttack({classId:st.class_id,applied:st.class_applied,damage:baseDamage,critical:crit,hp:heroCombatHp,maxHp:effectiveMaxHp,attackIndex:Number(existingParticipant.attacks||0)+1,context:'boss',lastProcAttack:Number(existingParticipant.classLastProcAttack||0),awakeningStage,awakeningState:existingParticipant.awakeningState})
     const ruptura=gameType==='boss_event'&&s.eventId==='ruptura_estelar'
     const faseAnterior=ruptura?Math.max(1,Number(s.phase||1)):1
     const eclipseRelic=equippedRelic
@@ -3447,7 +3455,14 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         recordedHp=settled.hp;
         s.participants[jid].heroStoredHp=recordedHp;
         s.participants[jid].heroLastHp=php;
-        s.participants[jid].heroHpRemainder=settled.remainder;
+         s.participants[jid].heroHpRemainder=settled.remainder;
+      }else if(classStats){
+        // O estado salvo pertence a stats.hp. O extra de Nv.100 so existe
+        // durante a luta, sem acumular em cada tick do Boss.
+        s.participants[jid].classStoredHp=recordedHp;
+        s.participants[jid].classLastHp=php;
+        s.participants[jid].classCombatMaxHp=baseMaxHp;
+        s.participants[jid].classVitalCombatMaxHp=effectiveMaxHp;
       }
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[recordedHp,jid])
     }
