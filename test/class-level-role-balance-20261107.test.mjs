@@ -6,7 +6,7 @@ import {
   CLASS_LEVEL_DAILY_XP_CAP,CLASS_LEVEL_MAX_XP,classLevelFromXp,
   classTraining,classCombatStats,classEffectiveCombatHp,classHpToPersistent
 } from '../src/neon/class-level-progression.js'
-import {buildFairFighter,auditSeventeen} from '../src/neon/pvp-balance-simulator.js'
+import {buildFairFighter,auditClassHeroBase,PVP_EQUAL_GEAR} from '../src/neon/pvp-balance-simulator.js'
 
 const four=['paladin','berserker','samurai','necromancer']
 
@@ -41,29 +41,43 @@ test('papeis: Paladino e tanque; Berserker e atacante; Samurai e duelista rapido
 test('HP de classe escala durante combate e retorna a base permanente sem inflar banco',()=>{
   const saved={class_applied:true,class_id:'paladin',max_hp:3700,hp:4900,atk:910,def:455,spd:460}
   const sheet=classCombatStats(saved,100),gear=2157
-  assert.equal(sheet.maxHp,3805)
-  assert.equal(sheet.atk,915)
-  assert.equal(sheet.def,472)
-  assert.equal(sheet.spd,461)
+  assert.equal(sheet.maxHp,3885)
+  assert.equal(sheet.atk,921)
+  assert.equal(sheet.def,483)
+  assert.equal(sheet.spd,462)
   const combatHp=classEffectiveCombatHp(saved,sheet,gear)
   assert.ok(combatHp>saved.hp)
   assert.equal(classHpToPersistent(combatHp,sheet.maxHp+gear,saved.max_hp+gear),saved.hp)
   assert.equal(classCombatStats({...saved,class_applied:false},100).maxHp,saved.max_hp)
 })
 
-test('PvP todos os herois ficam acima das quatro classes em gear igual e sem gear',()=>{
-  for(const gear of [false,true]){
-    const audit=auditSeventeen({duelsPerOrder:140,gear,awakening:5,mastery:5,classLevel:100})
-    const heroes=audit.ranking.filter(f=>f.id.startsWith('pecado_'))
-    const classes=audit.ranking.filter(f=>four.includes(f.id))
-    assert.equal(heroes.length,7)
-    assert.equal(classes.length,4)
-    const weakestHero=Math.min(...heroes.map(f=>f.winRate))
-    const strongestClass=Math.max(...classes.map(f=>f.winRate))
-    assert.ok(weakestHero>strongestClass,`gear=${gear}: heroi minimo ${weakestHero} vs classe maximo ${strongestClass}`)
-    // Cada classe e competitiva sem virar o tipo superior do jogo.
-    assert.ok(classes.every(f=>f.winRate>35&&f.winRate<60))
+test('balanco aprovado EXCLUSIVAMENTE na base: herois superiores a quatro classes Lv100',()=>{
+  const audit=auditClassHeroBase({duelsPerOrder:200,awakening:5,mastery:5,classLevel:100})
+  assert.equal(audit.scenario,'no-gear')
+  assert.equal(audit.gearIncluded,false)
+  assert.equal(audit.combatants,17)
+  assert.equal(audit.heroCount,7)
+  assert.equal(audit.selectedClasses,4)
+  assert.ok(audit.weakestHeroRate>audit.strongestClassRate,
+    'Todos os sete herois devem ficar acima das quatro classes sem itens')
+  assert.ok(audit.weakestHeroMatchupRate>50,
+    'Cada heroi ainda precisa ter vantagem no confronto individual igualado')
+  assert.ok(Object.values(audit.classesVsHeroes).every(rate=>rate>=20&&rate<50),
+    'Classes devem ter chances reais, mas os herois continuam superiores')
+})
+
+test('equipamentos sao uma camada adicional separada, nunca criterio do balanceamento base',()=>{
+  for(const id of ['paladin','berserker','samurai','necromancer','pecado_meliodas']){
+    const base=buildFairFighter(id,{gear:false,classLevel:100})
+    const equipped=buildFairFighter(id,{gear:true,classLevel:100})
+    assert.equal(equipped.maxHp-base.maxHp,PVP_EQUAL_GEAR.hp)
+    assert.equal(equipped.atk-base.atk,PVP_EQUAL_GEAR.atk)
+    assert.equal(equipped.def-base.def,PVP_EQUAL_GEAR.def)
+    assert.equal(equipped.spd-base.spd,PVP_EQUAL_GEAR.spd)
   }
+  const progression=readFileSync(new URL('../src/neon/class-level-progression.js',import.meta.url),'utf8')
+  assert.doesNotMatch(progression,/equipmentStatsAtLevel|weapon_id|armor_id|helmet_id|boot_id|PVP_EQUAL_GEAR/)
+  // Nenhum ganho extra de classe deve ser atribuido diretamente a armas/armaduras.
 })
 
 test('bonus nao antecipados no Nv.1 e nao herdados pelo heroi da collab',()=>{
