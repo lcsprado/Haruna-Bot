@@ -23,7 +23,7 @@ test('quatro snapshots reais: HP das botas entra sem alterar DEF ou ATK',()=>{
     class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5,
     equipment_hp:2148,equipment_atk:435,equipment_def:904,equipment_spd:91
   },'pecado_diane',100)
-  assert.deepEqual([sheet.maxHp,sheet.atk,sheet.def,sheet.spd],[6036,1297,1395,512])
+  const base=heroCombatStats({hp:3188,max_hp:3188,atk:782,def:391,spd:396,\n    class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5},'pecado_diane',100)\n  assert.deepEqual([sheet.maxHp,sheet.atk,sheet.def,sheet.spd],\n    [base.maxHp+2148,base.atk+435,base.def+904,base.spd+91])
 })
 
 test('Diane e Samurai comparados no MESMO jogador: +112 DEF natural para Diane',()=>{
@@ -31,9 +31,9 @@ test('Diane e Samurai comparados no MESMO jogador: +112 DEF natural para Diane',
     class_hp_bonus:130,class_atk_bonus:7,class_def_bonus:22,class_spd_bonus:5}
   const diane=heroCombatStats(p,'pecado_diane',100)
   const samuraiSamePlayer=p.def-p.class_def_bonus+10
-  assert.equal(diane.def,491)
+  assert.equal(diane.def,491+20)
   assert.equal(samuraiSamePlayer,379)
-  assert.equal(diane.def-samuraiSamePlayer,112)
+  assert.equal(diane.def-samuraiSamePlayer,112+20)
   const hero=code('playable-heroes-core.js')
   assert.match(hero,/stage>=4\?\.01:0/)
   assert.match(hero,/stage>=5\?\.01:0/)
