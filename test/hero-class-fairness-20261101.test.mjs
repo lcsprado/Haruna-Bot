@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {PLAYER_CLASSES,SELECTABLE_PLAYER_CLASS_IDS,classCritBonus,classAttack,classDefense} from '../src/neon/game-catalog.js'
-import {HERO_COMBAT_PROFILES,heroCombatStats,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,heroAttack,heroDefense,PLAYABLE_HERO_IDS} from '../src/neon/playable-heroes-core.js'
+import {HERO_COMBAT_PROFILES,heroCombatStats,heroRoleGrowth,heroCollabGearBonus,heroPvpAttack,heroPvpDefense,heroAttack,heroDefense,PLAYABLE_HERO_IDS} from '../src/neon/playable-heroes-core.js'
 import {PECADOS_EQUIPMENT,PECADOS_WEAPONS,PECADOS_ARMORS} from '../src/neon/sete-pecados-catalog.js'
 
 const heroBasics={
@@ -10,7 +10,7 @@ const heroBasics={
   pecado_diane:[830,87,122,30],pecado_gowther:[760,90,109,39],
   pecado_merlin:[770,93,109,38]
 }
-test('todos os heróis Nv.100 usam a MESMA progressão, sem vantagens extras no nível',()=>{
+test('todos os heróis Nv.100 preservam treinamento comum e diferenciação de papéis sem itens',()=>{
   const sample={hp:3000,max_hp:3000,atk:600,def:400,spd:300,
     class_hp_bonus:0,class_atk_bonus:0,class_def_bonus:0,class_spd_bonus:0}
   assert.equal(PLAYABLE_HERO_IDS.length,7)
@@ -18,8 +18,13 @@ test('todos os heróis Nv.100 usam a MESMA progressão, sem vantagens extras no 
     const h=heroCombatStats(sample,id,100),p=HERO_COMBAT_PROFILES[id],b=heroBasics[id]
     assert.ok(b,id+' precisa de um baseline revisado')
     assert.deepEqual(h.breakdown.training,{hp:700,atk:75,def:100,spd:25})
-    assert.deepEqual([h.maxHp-3000,h.atk-600,h.def-400,h.spd-300],b)
+    const role=heroRoleGrowth(id,100);
+    assert.deepEqual([h.maxHp-3000,h.atk-600,h.def-400,h.spd-300],
+      b.map((value,index)=>value+[role.hp,role.atk,role.def,role.spd][index]))
     assert.deepEqual([b[0]-700,b[1]-75,b[2]-100,b[3]-25],[p.hp,p.atk,p.def,p.spd])
+    assert.deepEqual(h.breakdown.roleGrowth,role)
+    assert.deepEqual([h.breakdown.natural.hp,h.breakdown.natural.atk,h.breakdown.natural.def,h.breakdown.natural.spd],
+      [b[0]+role.hp,b[1]+role.atk,b[2]+role.def,b[3]+role.spd])
   }
 })
 test('4 classes selecionáveis têm bônus-base únicos e não recebem maestria de colaboração',()=>{
