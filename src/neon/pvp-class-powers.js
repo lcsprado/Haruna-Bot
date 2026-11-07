@@ -13,9 +13,9 @@ const rounded=(n)=>Math.max(0,Math.round(Number(n)||0))
 export const PVP_AWAKENING_ROLES=Object.freeze({
  warrior:{attack:.11,defense:.11},assassin:{attack:.16,defense:.06},
  mage:{attack:.21,defense:.09},archer:{attack:.15,defense:.07},
- paladin:{attack:.06,defense:.18},berserker:{attack:.23,defense:.08},
- monk:{attack:.10,defense:.12},necromancer:{attack:.13,defense:.10},
- druid:{attack:.08,defense:.17},samurai:{attack:.18,defense:.08}
+ paladin:{attack:.06,defense:.12},berserker:{attack:.23,defense:.08},
+ monk:{attack:.10,defense:.12},necromancer:{attack:.18,defense:.10},
+ druid:{attack:.08,defense:.17},samurai:{attack:.20,defense:.08}
 })
 const addShield=(s,maxHp,ratio)=>{
   if(Number(s.shieldsCreated||0)>=2)return
@@ -116,7 +116,7 @@ export function classPvpAttack({
     }
   }else if(id==='necromancer'){
     if(stage>=1&&index%(stage>=5?3:4)===0&&hp>0)
-      heal=Math.max(heal,Math.min(Math.ceil(maxHp*(stage>=5?.08:.03)),Math.floor(base.damage*(stage>=5?.10:.03))))
+      heal=Math.max(heal,Math.min(Math.ceil(maxHp*(stage>=5?.08:.03)),Math.floor(base.damage*(stage>=5?.18:.03))))
     if(stage>=2&&index%7===0){bonus+=.08;trigger('Maldição')}
     if(stage>=3)bonus+=.008*Number(state.souls||0)
     if(stage>=5&&index%4===0&&state.souls>=3){bonus+=.12;state.souls=0;trigger('Colheita Final')}
