@@ -12,6 +12,7 @@ import {LEGENDARY_BOX_GEAR,pickLegendaryBoxGear} from './legendary-box-gear.js'
 import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
+import {classTraining,classCombatStats,classEffectiveCombatHp,classHpToPersistent,CLASS_LEVEL_MAX_XP,CLASS_LEVEL_DAILY_XP_CAP,classLevelFromXp} from './class-level-progression.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {pvpCritChance} from './pvp-crit.js'
 import pg from 'pg'
@@ -586,6 +587,27 @@ await client.query('DELETE FROM equipment_fusions WHERE quantity>0')
 await client.query('UPDATE stats SET weapon_tier=1,armor_tier=1 WHERE weapon_tier<>1 OR armor_tier<>1')
 })
 await fixLegacyPetVitals()
+// Progresso separado por classe. Snapshot inicial so para classes atualmente
+// selecionadas: preservar veteranos sem conceder nivel em futuras trocas.
+await db.query(`
+CREATE TABLE IF NOT EXISTS player_class_progress(
+  jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+  class_id TEXT NOT NULL,
+  level INTEGER NOT NULL DEFAULT 1 CHECK(level BETWEEN 1 AND 100),
+  xp INTEGER NOT NULL DEFAULT 0 CHECK(xp BETWEEN 0 AND 9900),
+  daily_xp INTEGER NOT NULL DEFAULT 0 CHECK(daily_xp BETWEEN 0 AND 500),
+  daily_day DATE,
+  updated_at BIGINT NOT NULL DEFAULT ${nowSql},
+  PRIMARY KEY(jid,class_id)
+);
+INSERT INTO player_class_progress(jid,class_id,level,xp)
+SELECT s.jid,s.class_id,LEAST(100,GREATEST(1,u.level)),
+       (LEAST(100,GREATEST(1,u.level))-1)*100
+FROM stats s JOIN users u ON u.jid=s.jid
+WHERE s.class_applied=TRUE
+  AND s.class_id IN ('paladin','berserker','samurai','necromancer')
+ON CONFLICT(jid,class_id) DO NOTHING;
+`)
 }
 const recentEnsureUsers=createRecentEnsureCache()
 export async function ensureUser(jid, pushName='') {
@@ -913,6 +935,12 @@ await client.query('DELETE FROM users WHERE jid=$1',[sourceJid])
 return changed
 })
 }
+export async function getClassProgress(jid,classId=null){
+  const selected=classId||((await db.query('SELECT class_id FROM stats WHERE jid=$1',[jid])).rows[0]?.class_id);
+  if(!selected)return null;
+  const row=(await db.query('SELECT class_id,level,xp,daily_xp,daily_day FROM player_class_progress WHERE jid=$1 AND class_id=$2',[jid,selected])).rows[0];
+  return row||{class_id:selected,level:1,xp:0,daily_xp:0,daily_day:null};
+}
 export async function getProfile(jid) {
 const { rows } = await db.query(`
 SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
@@ -987,6 +1015,9 @@ await client.query(
 'UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,class_hp_bonus=$7,class_atk_bonus=$8,class_def_bonus=$9,class_spd_bonus=$10,updated_at='+nowSql+' WHERE jid=$11',
 [hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
 )
+// A primeira escolha futura comeca no Nv.1. Uma classe ja treinada recupera
+// seu proprio progresso ao ser reescolhida, sem sobrescrever outra classe.
+await client.query('INSERT INTO player_class_progress(jid,class_id) VALUES($1,$2) ON CONFLICT(jid,class_id) DO NOTHING',[jid,next.id])
 const {checkpointAwakeningAfterClassChange}=await import('./awakening.js')
 await checkpointAwakeningAfterClassChange(client,jid)
 // Escolher uma classe torna a classe o único combatente ativo, sem usar pergaminho extra.
@@ -2127,6 +2158,35 @@ return Number(level||1)<=maxLow?low:high
 function expNeeded(level) {
 return Math.max(100, Number(level) * 100)
 }
+// Credita XP de classe a partir de atividade real, respeitando o teto diario
+// e sem conceder progresso da classe enquanto uma collab estiver ativa.
+// O lock da linha users em applyExp serializa premios concorrentes.
+async function awardActiveClassXp(client,jid,amount){
+  if(!Number.isFinite(Number(amount))||Number(amount)<=0)return 0;
+  const row=(await client.query(`
+    SELECT pc.class_id,pc.xp,pc.daily_xp,
+      pc.daily_day=(NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS same_day,
+      (NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS local_day
+    FROM player_class_progress pc
+    JOIN stats s ON s.jid=pc.jid AND s.class_id=pc.class_id
+    LEFT JOIN player_hero_mode hm ON hm.jid=pc.jid
+    WHERE pc.jid=$1 AND s.class_applied=TRUE AND hm.hero_species IS NULL
+      AND pc.class_id IN ('paladin','berserker','samurai','necromancer')
+    FOR UPDATE OF pc
+  `,[jid])).rows[0];
+  if(!row)return 0;
+  const today=Number(row.same_day?row.daily_xp:0);
+  const earned=Math.max(0,Math.min(
+    Math.floor(Number(amount)),CLASS_LEVEL_DAILY_XP_CAP-today,
+    CLASS_LEVEL_MAX_XP-Number(row.xp||0)));
+  if(!earned)return 0;
+  const xp=Number(row.xp||0)+earned;
+  await client.query(`UPDATE player_class_progress
+    SET xp=$1,level=$2,daily_xp=$3,daily_day=$4,updated_at=${nowSql}
+    WHERE jid=$5 AND class_id=$6`,
+    [xp,classLevelFromXp(xp),today+earned,row.local_day,jid,row.class_id]);
+  return earned;
+}
 async function applyExp(client, jid, gain, options={}) {
 const numericGain=Number(gain)
 if(!Number.isSafeInteger(numericGain) || numericGain<0) throw new Error('EXP inválida.')
@@ -2168,6 +2228,7 @@ await client.query(
 'UPDATE users SET level=$1,exp=$2,updated_at='+nowSql+' WHERE jid=$3',
 [level,exp,jid]
 )
+if(eventGain+bonusXp>0)await awardActiveClassXp(client,jid,eventGain+bonusXp)
 if(levels>0){
 // A cura por level-up precisa incluir o HP dos equipamentos realmente equipados.
 // Sem isto, o jogador perde temporariamente todo o HP extra de armadura/elmo.
