@@ -13,7 +13,7 @@ import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
-import {classCombatStats,classCombatHp,classPersistentHp} from './class-combat-balance.js'
+import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
@@ -155,6 +155,19 @@ class_def_bonus=CASE class_id WHEN 'warrior' THEN 4 WHEN 'assassin' THEN -2 WHEN
 class_spd_bonus=CASE class_id WHEN 'warrior' THEN 0 WHEN 'assassin' THEN 8 WHEN 'mage' THEN 3 WHEN 'archer' THEN 7 WHEN 'paladin' THEN -3 WHEN 'berserker' THEN 2 WHEN 'monk' THEN 6 WHEN 'necromancer' THEN 2 WHEN 'druid' THEN 1 WHEN 'samurai' THEN 5 ELSE 0 END
 WHERE class_applied=TRUE
 AND class_hp_bonus=0 AND class_atk_bonus=0 AND class_def_bonus=0 AND class_spd_bonus=0;
+-- Cada jogador evolui cada classe separadamente. Migração idempotente dos
+-- usuários antigos: mantém sua progressão existente, sem alterar stats.
+CREATE TABLE IF NOT EXISTS player_class_levels (
+ jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+ class_id TEXT NOT NULL,
+ level INTEGER NOT NULL DEFAULT 1 CHECK(level BETWEEN 1 AND 100),
+ xp INTEGER NOT NULL DEFAULT 0 CHECK(xp>=0),
+ PRIMARY KEY(jid,class_id)
+);
+INSERT INTO player_class_levels(jid,class_id,level,xp)
+SELECT s.jid,s.class_id,LEAST(100,GREATEST(1,u.level)),0
+FROM stats s JOIN users u ON u.jid=s.jid WHERE s.class_applied=TRUE
+ON CONFLICT(jid,class_id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS items (
 id TEXT PRIMARY KEY,
 name TEXT NOT NULL,
@@ -919,10 +932,12 @@ const { rows } = await db.query(`
 SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
 w.cash,w.bank,w.bank_limit,
 s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,
-s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss
+s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss,
+COALESCE(cl.level,1)::int AS class_level,COALESCE(cl.xp,0)::int AS class_xp
 FROM users u
 JOIN wallets w ON w.jid=u.jid
 JOIN stats s ON s.jid=u.jid
+LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id
 WHERE u.jid=$1
 `, [jid])
 return rows[0] ?? null
@@ -988,6 +1003,7 @@ await client.query(
 'UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,class_hp_bonus=$7,class_atk_bonus=$8,class_def_bonus=$9,class_spd_bonus=$10,updated_at='+nowSql+' WHERE jid=$11',
 [hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
 )
+await client.query('INSERT INTO player_class_levels(jid,class_id,level,xp) VALUES($1,$2,1,0) ON CONFLICT(jid,class_id) DO NOTHING',[jid,next.id])
 const {checkpointAwakeningAfterClassChange}=await import('./awakening.js')
 await checkpointAwakeningAfterClassChange(client,jid)
 // Escolher uma classe torna a classe o único combatente ativo, sem usar pergaminho extra.
@@ -2169,6 +2185,22 @@ await client.query(
 'UPDATE users SET level=$1,exp=$2,updated_at='+nowSql+' WHERE jid=$3',
 [level,exp,jid]
 )
+// XP próprio da classe ativa, separado da progressão geral e da Maestria
+// do herói. A classe preservada não sobe enquanto a collab está ativa.
+if(eventGain+bonusXp>0){
+ const cr=(await client.query(`SELECT p.class_id,p.level,p.xp FROM player_class_levels p
+   JOIN stats s ON s.jid=p.jid AND s.class_id=p.class_id AND s.class_applied=TRUE
+   WHERE p.jid=$1 AND NOT EXISTS (
+    SELECT 1 FROM player_hero_mode m WHERE m.jid=p.jid AND m.hero_species IS NOT NULL
+    AND EXISTS(SELECT 1 FROM pet_collection h WHERE h.jid=p.jid AND h.species=m.hero_species)
+   ) FOR UPDATE OF p`,[jid])).rows[0];
+ if(cr){
+  const next=classLevelAdvance(cr.level,cr.xp,eventGain+bonusXp);
+  if(next.level!==Number(cr.level)||next.xp!==Number(cr.xp))
+   await client.query('UPDATE player_class_levels SET level=$1,xp=$2 WHERE jid=$3 AND class_id=$4',
+     [next.level,next.xp,jid,cr.class_id]);
+ }
+}
 if(levels>0){
 // A cura por level-up precisa incluir o HP dos equipamentos realmente equipados.
 // Sem isto, o jogador perde temporariamente todo o HP extra de armadura/elmo.
@@ -2766,7 +2798,7 @@ const gearHp=Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0)
 const activeHeroMode=await db.query(`SELECT 1 FROM player_hero_mode m WHERE m.jid=$1 AND m.hero_species IS NOT NULL
   AND EXISTS(SELECT 1 FROM pet_collection c WHERE c.jid=m.jid AND c.species=m.hero_species) LIMIT 1`,[jid])
 const classActive=Boolean(p.class_applied)&&activeHeroMode.rows.length===0
-const cls=classCombatStats(p,p.class_id,p.level,classActive)
+const cls=classCombatStats(p,p.class_id,p.class_level,classActive)
 const persistentMaxHp=Math.max(1,Number(p.max_hp||0)+gearHp)
 const effectiveMaxHp=Math.max(1,Number(cls.maxHp)+gearHp)
 const effectiveHp=classCombatHp(p.hp,persistentMaxHp,effectiveMaxHp)
@@ -2874,8 +2906,10 @@ const pvpAwakeningStage=jid=>Math.max(0,Math.min(5,Number(awakeningRows.find(row
 const aHero=activeHero(attackerJid),bHero=activeHero(defenderJid);
 const aHeroStats=aHero?heroCombatStats(a,aHero.hero_species,aHero.hero_level):null;
 const bHeroStats=bHero?heroCombatStats(b,bHero.hero_species,bHero.hero_level):null;
-const aClassStats=!aHero?classCombatStats(a,a.class_id,userFor(attackerJid)?.level,Boolean(a.class_applied)):null;
-const bClassStats=!bHero?classCombatStats(b,b.class_id,userFor(defenderJid)?.level,Boolean(b.class_applied)):null;
+const classProgress=(await client.query('SELECT jid,class_id,level FROM player_class_levels WHERE jid=ANY($1::text[])',[ids])).rows;
+const classLevel=st=>Number(classProgress.find(p=>p.jid===st.jid&&p.class_id===st.class_id)?.level||1);
+const aClassStats=!aHero?classCombatStats(a,a.class_id,classLevel(a),Boolean(a.class_applied)):null;
+const bClassStats=!bHero?classCombatStats(b,b.class_id,classLevel(b),Boolean(b.class_applied)):null;
 const au=userFor(attackerJid)
 const bu=userFor(defenderJid)
 if(Number(bu?.level||1)<=20){
