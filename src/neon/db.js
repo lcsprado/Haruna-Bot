@@ -668,6 +668,8 @@ jsonb_build_object(
   'target_wallet',(SELECT to_jsonb(w) FROM wallets w WHERE w.jid=$1),
   'source_stats',(SELECT to_jsonb(s) FROM stats s WHERE s.jid=$2),
   'target_stats',(SELECT to_jsonb(s) FROM stats s WHERE s.jid=$1),
+  'source_class_progress',(SELECT COALESCE(jsonb_agg(to_jsonb(cp)),'[]'::jsonb) FROM player_class_progress cp WHERE cp.jid=$2),
+  'target_class_progress',(SELECT COALESCE(jsonb_agg(to_jsonb(cp)),'[]'::jsonb) FROM player_class_progress cp WHERE cp.jid=$1),
   'source_inventory',(SELECT COALESCE(jsonb_agg(to_jsonb(i)),'[]'::jsonb) FROM inventories i WHERE i.jid=$2),
   'target_inventory',(SELECT COALESCE(jsonb_agg(to_jsonb(i)),'[]'::jsonb) FROM inventories i WHERE i.jid=$1),
   'source_pets',(SELECT COALESCE(jsonb_agg(to_jsonb(p)),'[]'::jsonb) FROM pet_collection p WHERE p.jid=$2),
@@ -724,6 +726,22 @@ win=t.win+COALESCE(s.win,0),
 loss=t.loss+COALESCE(s.loss,0),
 updated_at=${nowSql}
 FROM stats s WHERE t.jid=$1 AND s.jid=$2
+`,[targetJid,sourceJid])
+// Progressao individual preservada ao unificar o JID LID/numero verificado.
+// Reconciliacao usa maior XP (nao soma os aliases) para evitar duplicidade.
+await client.query(`
+INSERT INTO player_class_progress(jid,class_id,level,xp,daily_xp,daily_day)
+SELECT $1,class_id,level,xp,daily_xp,daily_day FROM player_class_progress WHERE jid=$2
+ON CONFLICT(jid,class_id) DO UPDATE SET
+  xp=GREATEST(player_class_progress.xp,EXCLUDED.xp),
+  level=GREATEST(player_class_progress.level,EXCLUDED.level),
+  daily_xp=CASE
+    WHEN player_class_progress.daily_day IS NOT DISTINCT FROM EXCLUDED.daily_day
+    THEN GREATEST(player_class_progress.daily_xp,EXCLUDED.daily_xp)
+    WHEN COALESCE(EXCLUDED.daily_day,DATE '1900-01-01')>COALESCE(player_class_progress.daily_day,DATE '1900-01-01')
+    THEN EXCLUDED.daily_xp ELSE player_class_progress.daily_xp END,
+  daily_day=GREATEST(player_class_progress.daily_day,EXCLUDED.daily_day),
+  updated_at=${nowSql}
 `,[targetJid,sourceJid])
 await client.query(`
 INSERT INTO inventories(jid,item_id,quantity,data,created_at)
