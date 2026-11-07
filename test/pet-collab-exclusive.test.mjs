@@ -30,8 +30,8 @@ test('Pecados migrados nunca reativam bônus como pets',()=>{
 
 test('Guaxinim preserva sinergia comum sem bônus duplo',()=>{
   const x=team('fenix_celestial','grifo_celestial','guaxinim_errante_20261027')
-  assert.equal(x.attack,.02*2/3)
-  assert.equal(x.speed,8*2/3)
+  assert.ok(Math.abs(x.attack-.02*2/3)<1e-10)
+  assert.ok(Math.abs(x.speed-8*2/3)<1e-10)
   assert.equal(x.collabAttack,0)
   assert.equal(x.collabCrit,0)
   assert.match(x.label,/Esquadrão Aéreo/)
@@ -44,8 +44,8 @@ test('Estilos incompatíveis não ativam bônus mesmo com Coringa',()=>{
 })
 test('Dois Coringas de uma só categoria concedem 1/3, sem bonus de Collab',()=>{
   const x=team('fenix_celestial','guaxinim_errante_20261027','lince_astral')
-  assert.equal(x.attack,.02/3)
-  assert.equal(x.speed,8/3)
+  assert.ok(Math.abs(x.attack-.02/3)<1e-10)
+  assert.ok(Math.abs(x.speed-8/3)<1e-10)
   assert.equal(x.collabAttack,0)
   assert.equal(x.collabCrit,0)
   assert.doesNotMatch(x.label,/Collab|Universal/)
@@ -59,8 +59,8 @@ test('Raposa Astral pode ocupar qualquer slot de Coringa sem alterar os bônus i
   for(const pets of combinations){
     const s=synergy(pets)
     assert.equal(s.style,'voador')
-    assert.equal(s.attack,.02/3)
-    assert.equal(s.speed,8/3)
+    assert.ok(Math.abs(s.attack-.02/3)<1e-10)
+    assert.ok(Math.abs(s.speed-8/3)<1e-10)
     assert.equal(s.collabAttack,0)
     assert.doesNotMatch(s.label,/Universal|Collab/)
   }
