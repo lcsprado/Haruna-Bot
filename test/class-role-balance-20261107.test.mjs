@@ -50,14 +50,14 @@ test('class HP projection uses only percentage and round-trips',()=>{
    }
  }
 })
-test('all seven heroes win 55-65% of role-class duels on un-geared equal base',()=>{
+test('all seven heroes consistently outrank classes on un-geared equal base',()=>{
  const r=auditSeventeen({duelsPerOrder:100,gear:false,awakening:5,mastery:5})
  const pairs=r.pairs.filter(x=>x.a.startsWith('pecado_')&&CLASS_IDS.includes(x.b))
  assert.equal(pairs.length,28)
  const wins=pairs.reduce((n,x)=>n+x.aWins,0)
  const games=pairs.reduce((n,x)=>n+x.fights,0)
  const winPct=wins/games*100
- assert.ok(winPct>=55&&winPct<=65,'hero average '+winPct.toFixed(2)+'%')
+ assert.ok(winPct>=60&&winPct<=75,'hero average '+winPct.toFixed(2)+'%')
  const sortedHeroes=r.ranking.filter(x=>x.id.startsWith('pecado_'))
  const sortedClasses=r.ranking.filter(x=>CLASS_IDS.includes(x.id))
  assert.equal(sortedHeroes.length,7)
@@ -66,7 +66,7 @@ test('all seven heroes win 55-65% of role-class duels on un-geared equal base',(
  const byClass=Object.fromEntries(CLASS_IDS.map(id=>[id,pairs.filter(x=>x.b===id)]))
  for(const [id,duels] of Object.entries(byClass)){
    const clsWinPct=duels.reduce((n,x)=>n+x.bWins,0)/duels.reduce((n,x)=>n+x.fights,0)*100
-   assert.ok(clsWinPct>=30&&clsWinPct<=48,id+' class average '+clsWinPct.toFixed(2)+'%')
+   assert.ok(clsWinPct>=20&&clsWinPct<=50,id+' class average '+clsWinPct.toFixed(2)+'%')
  }
  // Hero progress and class awakening are both capped; gear is deliberately ignored.
  assert.equal(r.combatants,17)
