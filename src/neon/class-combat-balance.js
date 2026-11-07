@@ -5,10 +5,10 @@ export const CLASS_LEVEL_CAP=100;
 // Papel de combate: classes nunca recebem o bônus do herói nem somam equipamentos aqui.
 // Progressão capada no nível 100, sem alterar stats, Despertar, inventário ou XP.
 export const CLASS_ROLE_GROWTH=Object.freeze({
-  paladin:Object.freeze({hp:350,atk:5,def:33,spd:4}),      // tanque
-  berserker:Object.freeze({hp:190,atk:39,def:17,spd:9}),    // dano bruto
-  samurai:Object.freeze({hp:260,atk:35,def:27,spd:21}),     // duelista veloz
-  necromancer:Object.freeze({hp:310,atk:40,def:30,spd:9})  // dano + drenagem
+  paladin:Object.freeze({hp:400,atk:0,def:35,spd:0}),      // HP + DEF, menor ataque
+  berserker:Object.freeze({hp:180,atk:35,def:8,spd:4}),    // maior ataque; defesa menor
+  samurai:Object.freeze({hp:220,atk:30,def:12,spd:18}),    // dano + iniciativa
+  necromancer:Object.freeze({hp:250,atk:24,def:15,spd:6})  // dreno e sustentação pelas técnicas
 });
 // HP escalonado só na luta, proporcional ao HP persistido e sem cura gratuita.
 export const classCombatHp=(persistentHp,persistentMaxHp,combatMaxHp)=>{
