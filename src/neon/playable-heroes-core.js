@@ -155,23 +155,35 @@ export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
   return {damage:Math.max(0,Math.round(incoming*(1-Math.min(.10,rate)))),state:next,technique};
 }
 
+// Curva monotônica de atributos do HERÓI. Não depende de forja ou equipamentos.
+// Lv100 preserva exatamente o teto anterior; nos níveis 1–99 elimina o
+// degrau abrupto do antigo Lv70, que tornava o herói pior que a classe.
+export const HERO_TRAINING_ANCHORS=Object.freeze([[1,0],[25,.12],[50,.27],[70,.45],[85,.65],[100,1]].map(row=>Object.freeze(row)));
+export function heroTrainingFactor(heroLevel=1){
+  const lv=Math.max(1,Math.min(100,Math.floor(Number(heroLevel)||1)));
+  for(let i=1;i<HERO_TRAINING_ANCHORS.length;i++){
+    const [rightLv,right]=HERO_TRAINING_ANCHORS[i];
+    if(lv<=rightLv){
+      const [leftLv,left]=HERO_TRAINING_ANCHORS[i-1];
+      return left+(right-left)*(lv-leftLv)/(rightLv-leftLv);
+    }
+  }
+  return 1;
+}
+
 export function heroCombatStats(st,heroId,heroLevel=70){
   const hero=HERO_COMBAT_PROFILES[heroId];
   if(!hero)return null;
   const n=(k,other=0)=>Number(st?.[k]??other)||0;
-  // Lv.70 preserva o legado. Antes dele existe uma penalidade de treinamento,
-  // limitada a 20% do atributo-base para heróis novos não ficarem inviáveis.
-  // Lv.100 exige investimento e supera a diferença de apenas ~100 HP da regra antiga.
-  const progress=Math.max(-69,Math.min(30,Math.floor(Number(heroLevel) || 1)-70));
+  // O treinamento cresce desde o Lv1 até o Lv100, sem penalidade no início.
+  // Nenhuma bonificação é gravada em stats e a classe não recebe esse efeito.
   const base={
     hp:Math.max(1,n('max_hp',100)-n('class_hp_bonus')+hero.hp),
     atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk),
     def:Math.max(1,n('def')-n('class_def_bonus')+hero.def),
     spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd)
   };
-  const training=(earlyPenalty,maxBonus,baseline)=>progress>=0
-    ?Math.round(maxBonus*progress/30)
-    :-Math.min(Math.round(earlyPenalty*(-progress)/69),Math.floor(Math.max(0,baseline)*.20));
+  const training=(earlyPenalty,maxBonus,baseline)=>Math.round(maxBonus*heroTrainingFactor(heroLevel));
   const hpTraining=training(450,700,base.hp);
   const atkTraining=training(75,75,base.atk);
   const defTraining=training(85,100,base.def);
