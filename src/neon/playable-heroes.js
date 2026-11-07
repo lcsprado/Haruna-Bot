@@ -1,6 +1,6 @@
 import {db,ensureUser,getProfile,getCombatProfile} from './db.js'
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
-import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
+import {PLAYER_CLASSES,getPlayerClass,SELECTABLE_PLAYER_CLASS_IDS} from './game-catalog.js'
 import {formatActiveClassBaseStatus,formatSavedClassStatus} from './character-base-status-format.js'
 import {formatPlayableHeroMasteryEffects} from './hero-mastery-format.js'
 import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
@@ -52,6 +52,30 @@ export async function initPlayableHeroes(){
   )`)
   const conversion=await archiveSevenSinsPetAssignments()
   if(conversion.migrated)console.info('[Heroes] converted legacy pet assignments:',conversion.migrated,'players; without eligible pet:',conversion.noEligiblePet)
+  // Níveis de classe são separados dos heróis e por classe; nunca gravamos bônus em stats.
+  await db.query(`CREATE TABLE IF NOT EXISTS player_class_progress(
+    jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+    class_id TEXT NOT NULL,
+    level INTEGER NOT NULL DEFAULT 1 CHECK(level BETWEEN 1 AND 100),
+    xp INTEGER NOT NULL DEFAULT 0 CHECK(xp BETWEEN 0 AND 9900),
+    updated_at BIGINT NOT NULL DEFAULT (${NOW}),
+    PRIMARY KEY(jid,class_id)
+  );
+  CREATE TABLE IF NOT EXISTS class_progress_migrations(id TEXT PRIMARY KEY)`)
+  // Bootstrap UMA vez: veteranos recebem o nível da classe equivalente ao
+  // nível geral já conquistado (teto 100), inclusive com herói ativo.
+  // Após isso, novas classes começam em Lv.1, e trocas preservam cada progresso.
+  await db.query(`WITH once AS (
+    INSERT INTO class_progress_migrations(id)
+    VALUES('legacy-class-level-bootstrap-20261107-v1')
+    ON CONFLICT DO NOTHING RETURNING id
+  )
+  INSERT INTO player_class_progress(jid,class_id,level,xp)
+  SELECT u.jid,s.class_id,LEAST(100,GREATEST(1,u.level)),
+    (LEAST(100,GREATEST(1,u.level))-1)*100
+  FROM once CROSS JOIN users u JOIN stats s ON s.jid=u.jid
+  WHERE s.class_applied=TRUE AND s.class_id=ANY($1::text[])
+  ON CONFLICT(jid,class_id) DO NOTHING`,[SELECTABLE_PLAYER_CLASS_IDS])
 }
 
 export async function getActivePlayableHero(client,jid){
@@ -172,26 +196,30 @@ export function formatCharacterBaseStatus({profile,heroSheet=null,awakeningStage
 // Exibe a classe preservada independentemente do herói ativo. Não evolui,
 // equipa, cura, nem altera qualquer atributo persistido.
 export async function getSavedClassStatus(jid){
-  const [profile,awakening,activeHero]=await Promise.all([
-    getProfile(jid),
-    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid]),
-    getActivePlayableHero(db,jid)
-  ]);
+  const profile=await getProfile(jid);
   if(!profile)return null;
-  return formatSavedClassStatus(profile,Number(awakening.rows[0]?.stage??1),Boolean(activeHero));
+  const [awakening,activeHero,progress]=await Promise.all([
+    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid]),
+    getActivePlayableHero(db,jid),
+    db.query('SELECT level,xp FROM player_class_progress WHERE jid=$1 AND class_id=$2',[jid,profile.class_id])
+  ]);
+  const enriched={...profile,class_level:Number(progress.rows[0]?.level||1),class_xp:Number(progress.rows[0]?.xp||0)};
+  return formatSavedClassStatus(enriched,Number(awakening.rows[0]?.stage??1),Boolean(activeHero));
 }
 
 // Consulta somente leitura; serve aos dois atalhos, incluindo classes tradicionais.
 export async function getCharacterBaseStatus(jid){
   const profile=await getProfile(jid);
   if(!profile)return null;
-  const [activeHero,awakening]=await Promise.all([
+  const [activeHero,awakening,progress]=await Promise.all([
     getActivePlayableHero(db,jid),
-    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])
+    db.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid]),
+    db.query('SELECT level,xp FROM player_class_progress WHERE jid=$1 AND class_id=$2',[jid,profile.class_id])
   ]);
   const heroSheet=activeHero?await getPlayableHeroCombatSheet(jid):null;
   return formatCharacterBaseStatus({
-    profile,heroSheet,awakeningStage:Number(awakening.rows[0]?.stage??1)
+    profile:{...profile,class_level:Number(progress.rows[0]?.level||1),class_xp:Number(progress.rows[0]?.xp||0)},
+    heroSheet,awakeningStage:Number(awakening.rows[0]?.stage??1)
   });
 }
 
