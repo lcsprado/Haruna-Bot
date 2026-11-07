@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import {CRIT_CAPS} from './critical-chance-policy.js'
 import crypto from 'node:crypto'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
@@ -430,7 +431,7 @@ async function groupSnapshot(chatJid){
         effective_atk:Number(row.atk||0)+Number(weapon?.atk||0)+Number(armor?.atk||0),
         effective_def:Number(row.def||0)+Number(weapon?.def||0)+Number(armor?.def||0),
         effective_spd:Number(row.spd||0)+Number(boots?.spd||0),
-        effective_crit:Math.min(.40,.10+Number(weapon?.crit||0)+Number(armor?.crit||0)),
+        effective_crit:Math.min(CRIT_CAPS.pvp,.10+Number(weapon?.crit||0)+Number(armor?.crit||0)),
         weapon_name:weapon?.name||null,
         armor_name:armor?.name||null,
         boot_name:boots?.name||null,
