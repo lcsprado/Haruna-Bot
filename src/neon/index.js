@@ -10969,7 +10969,7 @@ text+='🐾 *CAÇADA COORDENADA — Predador*\n🎯 *+2% ATK +2% CRIT* no Boss/R
 text+='Gato • Raposa • Lobo • Guepardo • Tigre • Leão • Moreia Sombria • Tubarão Abissal • *Urso Rúnico* • Lobo do Abismo • Cérbero Carmesim • Tigre Lunar • Leão Solar\n\n'
 text+='✨ *ELO ARCANO — Místico*\n🎯 *+2% DEF +2,5% CRIT* no Boss/Raid\n'
 text+='Coelho • Hamster • Gazela Mística • Cervo Místico • Unicórnio • Golfinho Celestial • Polvo Arcano • Salamandra Infernal • Imperador Abissal • Serpente Cósmica\n\n'
-text+='💚 *VÍNCULO VITAL — Vital*\\n🎯 *+8% HP máximo, -2% dano recebido e Coração Eterno (cura 5% HP uma vez por combate)*\\n'\ntext+='Cervo da Aurora Viva • Guardião do Núcleo Vital • Quimera Rubra • Serafim da Vida Abissal • Leviatã da Eternidade\\n\\n'\nif(active) text+='✅ *SUA SINERGIA ATUAL*\n'+active.label+' — *'+active.text+'*\n\n'
+text+='💚 *VÍNCULO VITAL — Vital*\n🎯 *+8% HP máximo, -2% dano recebido e Coração Eterno (cura 5% HP uma vez por combate)*\n'\ntext+='Cervo da Aurora Viva • Guardião do Núcleo Vital • Quimera Rubra • Serafim da Vida Abissal • Leviatã da Eternidade\n\n'\nif(active) text+='✅ *SUA SINERGIA ATUAL*\n'+active.label+' — *'+active.text+'*\n\n'
 else text+='⚪ *Seu time atual não possui sinergia ativa.*\n\n'
 text+='🃏 *LINCE ASTRAL — CORINGA DO LEILÃO*\n✅ Dois pets do mesmo estilo + Coringa: 2/3 do bônus da categoria.\n✅ Um pet de um estilo + dois Coringas: 1/3 do bônus daquela categoria.\n❌ Estilos diferentes, três Coringas ou espécies repetidas não ativam sinergia.\n\n💡 A ordem de Principal / Suporte / Reserva não altera a sinergia.\n👉 Use *!equiparpet* para montar e *!timepet* para conferir.'
 return await reply(text)
