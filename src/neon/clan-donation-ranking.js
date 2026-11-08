@@ -5,17 +5,20 @@ const money=value=>Math.max(0,Number(value)||0).toLocaleString('pt-BR',{maximumF
 const podium=position=>['🥇','🥈','🥉'][position]||String(position+1)+'.';
 const safeName=value=>String(value||'Jogador').replace(/[\r\n\t*_`~]/g,' ').trim().slice(0,40)||'Jogador';
 
-export function formatClanDonors(rows,{clanName=null}={}){
+export function formatClanDonors(rows,{clanName=null,clans=[]}={}){
   const list=Array.isArray(rows)?rows:[];
   const specific=Boolean(clanName);
+  // Não retornar ranking global vazio quando há doações históricas por clã.
+  // Mesmo !topdoadores e !rankdoacoes jogadores devem oferecer informação útil.
+  if(!specific && list.length===0)return formatClanDonationOverview(clans,[]);
   const title=specific?'🏴 *RANKING DE DOADORES — '+safeName(clanName).toUpperCase()+'*':'🏆 *RANKING DE DOADORES — TODOS OS CLÃS*';
   const lines=list.map((r,i)=>{
     const n=Math.max(0,Number(r.donations)||0);
     return podium(i)+' *'+safeName(r.donor_name)+'* — R$ '+money(r.total)+' ('+n+' '+(n===1?'doação':'doações')+')';
   });
-  return [title,'',...(lines.length?lines:['Nenhuma doação individual registrada ainda.']),
-    '','📌 Ranking acumulado das doações registradas desde a ativação deste recurso.',
-    '💡 As doações anteriores não tinham identificação de doador; por isso não entram no ranking individual.'].join('\n');
+  return [title,'',...(lines.length?lines:['Nenhuma doação individual registrada desde a atualização.']),
+    '','📌 Ranking individual das doações realizadas após a criação do histórico de doadores.',
+    '💡 Para consultar todas as doações históricas por clã, use *!rankdoacoes*.'].join('\n');
 }
 
 export function formatClanDonationTotals(rows){
