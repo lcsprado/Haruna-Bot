@@ -48,3 +48,25 @@ test('ranking interno mostra histórico arrecadado distinto do saldo atual',()=>
   assert.match(result,/Saldo atual do cofre: \*R\$ 2\.000\.000/);
   assert.match(result,/Nenhuma doação individual registrada desde a atualização/);
 });
+
+test('ranking individual vazio exibe o histórico dos clãs como alternativa',()=>{
+  const result=formatClanDonors([],{clans:[
+    {name:'METEDORES DE PLANTÃO',xp:71202000},
+    {name:'os entrosas',xp:36000000}
+  ]});
+  assert.match(result,/RANKING DE DOAÇÕES — CLÃS/);
+  assert.match(result,/R\$ 71\.202\.000 doados/);
+  assert.match(result,/R\$ 36\.000\.000 doados/);
+  assert.match(result,/Total histórico: R\$ 107\.202\.000/);
+  assert.doesNotMatch(result,/RANKING DE DOADORES — TODOS OS CLÃS/);
+  assert.doesNotMatch(result,/Nenhuma doação individual registrada ainda/);
+});
+
+test('ranking com doadores continua mostrando apenas dados individuais',()=>{
+  const result=formatClanDonors([{donor_name:'Jogador',total:'12000',donations:2}],{
+    clans:[{name:'Alpha',xp:5000000}]
+  });
+  assert.match(result,/RANKING DE DOADORES — TODOS OS CLÃS/);
+  assert.match(result,/R\$ 12\.000 \(2 doações\)/);
+  assert.doesNotMatch(result,/R\$ 5\.000\.000/);
+});
