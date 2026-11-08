@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {formatClanDonors,formatClanDonationTotals} from '../src/neon/clan-donation-ranking.js';
+import {formatClanDonors,formatClanDonationTotals,formatClanDonationOverview,formatOwnClanDonations} from '../src/neon/clan-donation-ranking.js';
 
 test('ranking global de doadores soma totais retornados e conta contribuições',()=>{
   const result=formatClanDonors([
@@ -27,4 +27,24 @@ test('ranking histórico dos clãs usa XP, não cofre ou doações rastreadas',(
   assert.match(result,/Alpha.*R\$ 150\.000 doados • Nv\.7/);
   assert.match(result,/Beta.*R\$ 25\.000 doados • Nv\.2/);
   assert.doesNotMatch(result,/R\$ 100 doados/);
+});
+
+test('comando principal mostra totais históricos mesmo com zero doadores identificados',()=>{
+  const result=formatClanDonationOverview([
+    {name:'METEDORES DE PLANTÃO',xp:'71202000',treasury:'18202000',level:2849},
+    {name:'os entrosas',xp:'36000000',treasury:'16000000',level:1441}
+  ],[]);
+  assert.match(result,/RANKING DE DOAÇÕES — CLÃS/);
+  assert.match(result,/71\.202\.000 doados/);
+  assert.match(result,/36\.000\.000 doados/);
+  assert.match(result,/Total histórico: R\$ 107\.202\.000/);
+  assert.match(result,/não há doações individuais registradas/);
+  assert.doesNotMatch(result,/R\$ 18\.202\.000 doados/);
+});
+
+test('ranking interno mostra histórico arrecadado distinto do saldo atual',()=>{
+  const result=formatOwnClanDonations({name:'Guerreiros',xp:40000000,treasury:2000000},[]);
+  assert.match(result,/Total histórico doado: \*R\$ 40\.000\.000/);
+  assert.match(result,/Saldo atual do cofre: \*R\$ 2\.000\.000/);
+  assert.match(result,/Nenhuma doação individual registrada desde a atualização/);
 });
