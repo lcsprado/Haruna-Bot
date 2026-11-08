@@ -62,7 +62,7 @@ import {
 initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
 getDailyMissions, progressDailyMission, claimDailyMissions,
 getClanForUser, createClan, inviteToClan, acceptClanInvite, transferClanLeadership,
-kickClanMember, leaveClan, donateClan, listClans,
+kickClanMember, leaveClan, donateClan, listClans, listClanDonors,
 getHome, buyHouse, getHomeActivities, trainAtHome, restTeamPetsAtHome, getGarage, buyCar, tradeCar, carTradeInCredit, driveUber, getMotorcycleGarage, buyMotorcycle, deliverIfood,
 hireCltUberDriver, getCltUberStatus, sellCltUberDriver, tradeCltUberDriver, startCltUberShift, startCltUberShiftsAuto, collectCltUber,
 hireCltIfoodDriver, getCltIfoodStatus, startCltIfoodShifts, collectCltIfood,
@@ -76,6 +76,7 @@ getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 } from './loans.js'
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
+import {formatClanDonors,formatClanDonationTotals} from './clan-donation-ranking.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
 import {bossFinalNoticeIsRecent,bossFinalNoticeFailureState,BOSS_FINAL_NOTICE_MAX_ATTEMPTS} from './boss-final-outbox-policy.js'
@@ -7391,6 +7392,7 @@ await reply(
 1️⃣ Criar um clã
 2️⃣ Aceitar convite
 3️⃣ Ranking de clãs
+4️⃣ Ranking de doações
 0️⃣ Sair`
 )
 }else{
@@ -7401,7 +7403,7 @@ await reply(
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
-${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'5️⃣ Sair do clã'}
+${leader?'8️⃣ Ranking de doações\n5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'6️⃣ Ranking de doações\n5️⃣ Sair do clã'}
 0️⃣ Sair`
 )
 }
@@ -9162,7 +9164,13 @@ rows.forEach((c,i)=>text+=`${i+1}. *${c.name}* — Nv.${c.level} | ${c.members} 
 await reply(text.trim())
 return true
 }
-await reply('🏴 Escolha *1, 2 ou 3*.')
+if(input==='4'){
+const rows=await listClanDonors({limit:10})
+clearQuickFlow(chat,sender)
+await reply(formatClanDonors(rows)+'\\n\\n📌 *!rankdoacoes cla* — doadores do seu clã.\\n🏴 *!rankdoacoes clas* — total histórico por clã.')
+return true
+}
+await reply('🏴 Escolha *1, 2, 3 ou 4*.')
 return true
 }
 const leader=clan.role==='leader'
@@ -9195,6 +9203,12 @@ clearQuickFlow(chat,sender)
 let text='🏴 *RANKING DE CLÃS*\n\n'
 rows.forEach((c,i)=>text+=`${i+1}. *${c.name}* — Nv.${c.level} | ${c.members} membros\n`)
 await reply(text.trim())
+return true
+}
+if((leader && input==='8') || (!leader && input==='6')){
+const rows=await listClanDonors({limit:10})
+clearQuickFlow(chat,sender)
+await reply(formatClanDonors(rows)+'\\n\\n📌 *!rankdoacoes cla* — doadores do seu clã.\\n🏴 *!rankdoacoes clas* — total histórico por clã.')
 return true
 }
 if(leader && input==='5'){
@@ -10694,7 +10708,7 @@ if(isGroup && !isOwner){
 const ECONOMY_CMDS=new Set(['economia','eco','saldo','balance','bal','daily','diario','streak','sequencia','sequência','trabalhar','work','trampo','all','tudo','uber','ifood','ifoodbike','depositar','deposit','dep','sacar','withdraw','saque','pix','transferir','transfer','ranking','rank','top','loja','shop','comprar','buy','vender','sell','troca','aceitartroca','recusartroca','piada','joke','horoscopo','horóscopo','npcs','mercadores','comerciantes','mercadoalpha','lojanpc','npc','falarnpc','comprarnpc','npccomprar'])
 const RPG_CMDS=new Set(['dano','perfil','profile','fazol','fazol','setfoto','fotoperfil','avatar','removerfoto','resetfoto','fotowpp','rpg','status','nivel','nível','batalhar','batalha','battle','duelo','rankingrpg','rankrpg','toprpg','dungeon','masmorra','roubar','roubo','raid','raidstatus','chaveraid','lojaraid','entrar','go','entrarraide','iniciarraide','cancelarraide','cancelarraid','raidcancelar','raidcancel'])
 const GAME_CMDS=new Set(['games','jogos','minigames','minigame','roleta','cara','coroa','ppt','forca','letra','palavra','quiz','resposta','numero','adivinhar','chute','boss','atacar'])
-const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação','buffxp','bonusxp','expbuff','experiencia','usarxp','ativarxp'])
+const PROGRESS_CMDS=new Set(['progressao','progressão','progresso','missoes','missões','missions','resgatarmissoes','resgatarmissao','claimmissions','cla','clã','clacofre','claajuda','clãajuda','criarcla','criarclã','claconvidar','clãconvidar','convidarcla','claaceitar','clãaceitar','aceitarcla','clapromover','clãpromover','claexpulsar','clãexpulsar','cladoar','clãdoar','doarcla','saircla','sairclã','clas','clãs','rankingclas','topclas','rankdoacoes','rankingdoacoes','topdoadores','cladoadores','rankdoacoesclas','casas','imoveis','imóveis','comprarcasa','minhacasa','casa','carros','concessionaria','concessionária','comprarcarro','garagem','meuscarros','motos','motocicletas','comprarmoto','minhasmotos','garagemmotos','negocios','negócios','comprarnegocio','comprarnegócio','meusnegocios','meusnegócios','coletar','vendercarro','vendermoto','venderbike','venderbicicleta','patrimonio','patrimônio','rankingpatrimonio','rankingpatrimônio','toppatrimonio','carpinar','carpinarsair','contratos','quadro','quadrocontratos','missoeshora','missoesdahora','aceitarcontrato','contratoaceitar','resgatarcontrato','contratoresgatar','karma','honra','reputacao','reputação','buffxp','bonusxp','expbuff','experiencia','usarxp','ativarxp'])
 let key=null,label=null
 if(ECONOMY_CMDS.has(cmd)){ key='economy_enabled'; label='Economia' }
 else if(RPG_CMDS.has(cmd)){ key='rpg_enabled'; label='RPG' }
@@ -11389,6 +11403,7 @@ await reply(
 1️⃣ Criar um clã
 2️⃣ Aceitar convite
 3️⃣ Ranking de clãs
+4️⃣ Ranking de doações
 0️⃣ Sair`
 )
 }else{
@@ -11399,7 +11414,7 @@ await reply(
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
-${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'5️⃣ Sair do clã'}
+${leader?'8️⃣ Ranking de doações\n5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'6️⃣ Ranking de doações\n5️⃣ Sair do clã'}
 0️⃣ Sair`
 )
 }
@@ -12290,6 +12305,7 @@ return await reply(
 1️⃣ Criar um clã
 2️⃣ Aceitar convite
 3️⃣ Ranking de clãs
+4️⃣ Ranking de doações
 0️⃣ Sair`
 )
 }
@@ -12300,7 +12316,7 @@ await reply(
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
-${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'5️⃣ Sair do clã'}
+${leader?'8️⃣ Ranking de doações\n5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'6️⃣ Ranking de doações\n5️⃣ Sair do clã'}
 0️⃣ Sair`
 )
 } else if(['claajuda','clãajuda'].includes(cmd)){
@@ -12314,7 +12330,10 @@ ${prefix}cladoar 1000 — doar ao cofre
 ${prefix}clapromover @pessoa — transferir liderança
 ${prefix}claexpulsar @pessoa — expulsar membro
 ${prefix}saircla — sair do clã
-${prefix}clas — ranking de clãs`
+${prefix}clas — ranking de clãs
+${prefix}rankdoacoes — principais jogadores doadores
+${prefix}rankdoacoes cla — doadores do seu clã
+${prefix}rankdoacoes clas — clãs por total histórico doado
 )
 } else if(['criarcla','criarclã'].includes(cmd)){
 const name=args.join(' ')
@@ -12380,6 +12399,20 @@ await reply(
 const r=await leaveClan(sender)
 if(r.dissolved) await reply(`🏴 O clã *${r.name}* foi encerrado porque você era o único membro.`)
 else await reply(`🏴 Você saiu do clã *${r.name}*.`)
+} else if(['rankdoacoes','rankingdoacoes','topdoadores','cladoadores','rankdoacoesclas'].includes(cmd)){
+const mode=cmd==='cladoadores'?'cla':cmd==='rankdoacoesclas'?'clas':String(args[0]||'').trim().toLowerCase()
+if(['clas','clãs','todosclas','geralclas'].includes(mode)){
+const rows=await listClans(10)
+await reply(formatClanDonationTotals(rows))
+}else if(['cla','clã','meu','meucla'].includes(mode)){
+const clan=await getClanForUser(sender)
+if(!clan) return await reply('🏴 Você precisa pertencer a um clã para ver os doadores dele. Use *!rankdoacoes* para o ranking geral.')
+const rows=await listClanDonors({clanId:clan.id,limit:10})
+await reply(formatClanDonors(rows,{clanName:clan.name}))
+}else{
+const rows=await listClanDonors({limit:10})
+await reply(formatClanDonors(rows)+'\\n\\n📌 *!rankdoacoes cla* — seu clã.\\n🏴 *!rankdoacoes clas* — totais dos clãs.')
+}
 } else if(['clas','clãs','rankingclas','topclas'].includes(cmd)){
 const rows=await listClans(10)
 if(!rows.length) return await reply('🏴 Ainda não existem clãs.')
