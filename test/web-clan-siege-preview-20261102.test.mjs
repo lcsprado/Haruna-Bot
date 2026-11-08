@@ -18,7 +18,7 @@ test('cerco: renderiza os dois clãs reais sem começar batalha',()=>{
   assert.match(html,/2.000 \/ 2.000/);
   assert.match(html,/PRÉVIA · NÃO INICIADO/);
   assert.match(html,/não foi enviada nem salva/);
-  assert.equal((html.match(/data-siege-preview=/g)||[]).length,4);
+  assert.equal((html.match(/data-siege-preview=/g)||[]).length,5);
 });
 
 test('cerco: seleção visual altera apenas a descrição, não o servidor',()=>{
