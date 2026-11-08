@@ -7403,7 +7403,7 @@ await reply(
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
-${leader?'8️⃣ Ranking de doações\n5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'6️⃣ Ranking de doações\n5️⃣ Sair do clã'}
+${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã\n8️⃣ Ranking de doações':'5️⃣ Sair do clã\n6️⃣ Ranking de doações'}
 0️⃣ Sair`
 )
 }
@@ -9167,7 +9167,7 @@ return true
 if(input==='4'){
 const rows=await listClanDonors({limit:10})
 clearQuickFlow(chat,sender)
-await reply(formatClanDonors(rows)+'\\n\\n📌 *!rankdoacoes cla* — doadores do seu clã.\\n🏴 *!rankdoacoes clas* — total histórico por clã.')
+await reply(formatClanDonors(rows)+'\n\n📌 *!rankdoacoes cla* — doadores do seu clã.\n🏴 *!rankdoacoes clas* — total histórico por clã.')
 return true
 }
 await reply('🏴 Escolha *1, 2, 3 ou 4*.')
@@ -9206,9 +9206,9 @@ await reply(text.trim())
 return true
 }
 if((leader && input==='8') || (!leader && input==='6')){
-const rows=await listClanDonors({limit:10})
+const rows=await listClanDonors({clanId:clan.id,limit:10})
 clearQuickFlow(chat,sender)
-await reply(formatClanDonors(rows)+'\\n\\n📌 *!rankdoacoes cla* — doadores do seu clã.\\n🏴 *!rankdoacoes clas* — total histórico por clã.')
+await reply(formatClanDonors(rows,{clanName:clan.name})+'\n\n📌 *!rankdoacoes* — ranking geral de jogadores.\n🏴 *!rankdoacoes clas* — totais dos clãs.')
 return true
 }
 if(leader && input==='5'){
@@ -11414,7 +11414,7 @@ await reply(
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
-${leader?'8️⃣ Ranking de doações\n5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'6️⃣ Ranking de doações\n5️⃣ Sair do clã'}
+${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã\n8️⃣ Ranking de doações':'5️⃣ Sair do clã\n6️⃣ Ranking de doações'}
 0️⃣ Sair`
 )
 }
@@ -12316,7 +12316,7 @@ await reply(
 2️⃣ Doar ao cofre
 3️⃣ Convidar pessoa
 4️⃣ Ranking de clãs
-${leader?'8️⃣ Ranking de doações\n5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã':'6️⃣ Ranking de doações\n5️⃣ Sair do clã'}
+${leader?'5️⃣ Transferir liderança\n6️⃣ Expulsar membro\n7️⃣ Sair do clã\n8️⃣ Ranking de doações':'5️⃣ Sair do clã\n6️⃣ Ranking de doações'}
 0️⃣ Sair`
 )
 } else if(['claajuda','clãajuda'].includes(cmd)){
@@ -12411,7 +12411,7 @@ const rows=await listClanDonors({clanId:clan.id,limit:10})
 await reply(formatClanDonors(rows,{clanName:clan.name}))
 }else{
 const rows=await listClanDonors({limit:10})
-await reply(formatClanDonors(rows)+'\\n\\n📌 *!rankdoacoes cla* — seu clã.\\n🏴 *!rankdoacoes clas* — totais dos clãs.')
+await reply(formatClanDonors(rows)+'\n\n📌 *!rankdoacoes cla* — seu clã.\n🏴 *!rankdoacoes clas* — totais dos clãs.')
 }
 } else if(['clas','clãs','rankingclas','topclas'].includes(cmd)){
 const rows=await listClans(10)
