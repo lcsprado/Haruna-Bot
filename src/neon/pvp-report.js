@@ -19,7 +19,8 @@ function openingLine(icon,p){
   const vital=Number(p.vitalHpRate||0)>0
     ?'\n🧬 HP de combate +'+percent(p.vitalHpRate)+' • Coração Eterno: '+(Number(p.vitalPulseRate||0)>0?'cura uma vez abaixo de 35%':'inativo')
     :''
-  return `${icon} *${name(p.name)}*${hero}${gear}\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}${vital}`
+  const shield=p.shieldName?'\n🛡️ Escudo: *'+p.shieldName+'* • -'+percent(p.shieldCritResist).replace('%',' p.p.')+' chance CRIT adversária • -'+percent(p.shieldCritGuard)+' bônus de dano CRIT':''
+  return `${icon} *${name(p.name)}*${hero}${gear}\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}${vital}${shield}`
 }
 export function formatPvpBattleReport(r){
   if(!r?.ok||!r?.winner||!r?.loser)throw new Error('Resultado de PvP inválido.')
