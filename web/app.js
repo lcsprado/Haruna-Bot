@@ -1,6 +1,8 @@
 import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
+const WEB_BUILD_ID='alpha-siege-v5-20261108';
+// O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
 
@@ -813,7 +815,7 @@ function toast(message){
 
 async function api(path, options){
   options=options||{};
-  const headers=Object.assign({'content-type':'application/json'},options.headers||{});
+  const headers=Object.assign({'content-type':'application/json','x-alpha-web-version':WEB_BUILD_ID},options.headers||{});
   if(ui.token) headers.authorization='Bearer '+ui.token;
   const res=await fetch(API_BASE+path,Object.assign({},options,{headers}));
   let body={};
@@ -996,7 +998,7 @@ async function openWebPage(page){
   if(page==='events')jobs.push(loadEventCenter(false));
   if(page==='auction')jobs.push(loadAuction());
   if(page==='racing')jobs.push(loadRacing(false));
-  if(page==='clan')jobs.push(loadSiege(true));
+  if(page==='clan'){jobs.push(loadSiege(true));jobs.push(checkWebBuild());}
   await Promise.all(jobs);
   render();
   window.scrollTo({top:0,left:0,behavior:'auto'});
@@ -1053,6 +1055,8 @@ async function loadSiege(force=false){
     const previous=ui.siege?.match;
     const result=await api('/api/v1/me/clan-siege');
     const next=result.data||{enabled:false};
+    if(next.requiredWebVersion&&next.requiredWebVersion!==WEB_BUILD_ID)
+      throw Error('Atualização obrigatória do Alpha Web V5. Recarregue a página antes do Cerco.');
     const current=next.match;
     if(current?.status==='active'&&(
       previous?.status!=='active'||previous?.id!==current.id||previous?.round!==current.round
@@ -1071,6 +1075,9 @@ async function loadSiege(force=false){
 }
 async function submitSiege(command,body){
   if(ui.siegeBusy)return;
+  if(command==='move'&&ui.siege?.requiredWebVersion&&ui.siege.requiredWebVersion!==WEB_BUILD_ID){
+    toast('Versão do Cerco desatualizada: recarregue a página.');return;
+  }
   ui.siegeBusy=true;
   try{
     const result=await api('/api/v1/me/clan-siege/'+command,{method:'POST',body:JSON.stringify(body||{})});
@@ -3636,9 +3643,24 @@ $('#menuBackdrop').onclick=()=>setMenu(false);
 $('#menuBackdrop').addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 document.addEventListener('keydown',e=>{if(e.key==='Escape') setMenu(false);});
 
+async function checkWebBuild(){
+  if(document.hidden)return;
+  try{
+    const res=await fetch('/version.json?ts='+Date.now(),{cache:'no-store'});
+    if(!res.ok)return;
+    const latest=await res.json();
+    if(latest.buildId&&latest.buildId!==WEB_BUILD_ID){
+      toast('Nova versão Alpha Web disponível. Atualizando...');
+      const registration=await navigator.serviceWorker?.getRegistration('/');
+      await registration?.update().catch(()=>null);
+      window.location.reload();
+    }
+  }catch{} // Falha de rede não autoriza nenhuma ação antiga: o servidor valida a versão.
+}
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden && ui.token && Date.now()-ui.lastFullSyncAt>60000) sync(true);
+  if(!document.hidden){void checkWebBuild();if(ui.token&&Date.now()-ui.lastFullSyncAt>60000)sync(true);}
 });
+setInterval(()=>{if(!document.hidden)void checkWebBuild();},60000);
 
 // Full bootstrap no more often than 2 minutes, plus explicit actions/refresh.
 setInterval(()=>{
