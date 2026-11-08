@@ -12333,7 +12333,7 @@ ${prefix}saircla — sair do clã
 ${prefix}clas — ranking de clãs
 ${prefix}rankdoacoes — principais jogadores doadores
 ${prefix}rankdoacoes cla — doadores do seu clã
-${prefix}rankdoacoes clas — clãs por total histórico doado
+${prefix}rankdoacoes clas — clãs por total histórico doado`
 )
 } else if(['criarcla','criarclã'].includes(cmd)){
 const name=args.join(' ')
