@@ -288,7 +288,7 @@ export function renderClanSiegePreview(ui){
           '<span class="siege-action-icon">'+item.icon+'</span><strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>'
       ).join('')+'</div>'+
       '<div class="siege-selected" aria-live="polite"><span>Estratégia em prévia</span><strong>'+(action?action.icon+' '+action.label:'Nenhuma ação selecionada')+'</strong><p>'+ESCAPE(action?.effect||'Selecione uma das cinco estratégias para conhecer seu efeito.')+'</p>'+
-      '<small>Esta prévia não registra ações. Na partida ativa V5, escolha a ação e uma frente: Castelo, Portão ou Depósito.</small></div>'+
+      '<small>Esta escolha é apenas visual: não foi enviada nem salva. Não há ações de guerra habilitadas no servidor. Na partida ativa V5, escolha a ação e a frente.</small></div>'+
     '</div>'+
     '<div class="siege-steps"><span>1 · Selecionar em segredo</span><span>2 · Aguardar a rodada fechar</span><span>3 · Resultado público no WhatsApp</span></div>'+
     '<div class="siege-footer">🔒 O evento só será liberado depois de autenticação por jogador, ações persistidas, bloqueio de duplicidade, resolução simultânea e testes de integração. Nenhum saldo, XP, HP ou cofre real é alterado nesta prévia.</div>'+
