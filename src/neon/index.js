@@ -76,7 +76,7 @@ getLoanCredit, getLoanOverview, collectOverdueLoansForBorrower
 } from './loans.js'
 import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
-import {formatClanDonors,formatClanDonationTotals} from './clan-donation-ranking.js'
+import {formatClanDonors,formatClanDonationTotals,formatClanDonationOverview,formatOwnClanDonations} from './clan-donation-ranking.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
 import {bossFinalNoticeIsRecent,bossFinalNoticeFailureState,BOSS_FINAL_NOTICE_MAX_ATTEMPTS} from './boss-final-outbox-policy.js'
@@ -9165,9 +9165,9 @@ await reply(text.trim())
 return true
 }
 if(input==='4'){
-const rows=await listClanDonors({limit:10})
+const [clans,donors]=await Promise.all([listClans(10),listClanDonors({limit:10})])
 clearQuickFlow(chat,sender)
-await reply(formatClanDonors(rows)+'\n\n📌 *!rankdoacoes cla* — doadores do seu clã.\n🏴 *!rankdoacoes clas* — total histórico por clã.')
+await reply(formatClanDonationOverview(clans,donors))
 return true
 }
 await reply('🏴 Escolha *1, 2, 3 ou 4*.')
@@ -9208,7 +9208,7 @@ return true
 if((leader && input==='8') || (!leader && input==='6')){
 const rows=await listClanDonors({clanId:clan.id,limit:10})
 clearQuickFlow(chat,sender)
-await reply(formatClanDonors(rows,{clanName:clan.name})+'\n\n📌 *!rankdoacoes* — ranking geral de jogadores.\n🏴 *!rankdoacoes clas* — totais dos clãs.')
+await reply(formatOwnClanDonations(clan,rows))
 return true
 }
 if(leader && input==='5'){
@@ -12331,9 +12331,10 @@ ${prefix}clapromover @pessoa — transferir liderança
 ${prefix}claexpulsar @pessoa — expulsar membro
 ${prefix}saircla — sair do clã
 ${prefix}clas — ranking de clãs
-${prefix}rankdoacoes — principais jogadores doadores
-${prefix}rankdoacoes cla — doadores do seu clã
-${prefix}rankdoacoes clas — clãs por total histórico doado`
+${prefix}rankdoacoes — ranking histórico dos clãs + doadores recentes
+${prefix}rankdoacoes cla — doações do seu clã
+${prefix}rankdoacoes clas — histórico por clã
+${prefix}rankdoacoes jogadores — top doadores individuais`
 )
 } else if(['criarcla','criarclã'].includes(cmd)){
 const name=args.join(' ')
@@ -12400,18 +12401,21 @@ const r=await leaveClan(sender)
 if(r.dissolved) await reply(`🏴 O clã *${r.name}* foi encerrado porque você era o único membro.`)
 else await reply(`🏴 Você saiu do clã *${r.name}*.`)
 } else if(['rankdoacoes','rankingdoacoes','topdoadores','cladoadores','rankdoacoesclas'].includes(cmd)){
-const mode=cmd==='cladoadores'?'cla':cmd==='rankdoacoesclas'?'clas':String(args[0]||'').trim().toLowerCase()
+const mode=cmd==='cladoadores'?'cla':cmd==='rankdoacoesclas'?'clas':cmd==='topdoadores'?'jogadores':String(args[0]||'').trim().toLowerCase()
 if(['clas','clãs','todosclas','geralclas'].includes(mode)){
 const rows=await listClans(10)
 await reply(formatClanDonationTotals(rows))
 }else if(['cla','clã','meu','meucla'].includes(mode)){
 const clan=await getClanForUser(sender)
-if(!clan) return await reply('🏴 Você precisa pertencer a um clã para ver os doadores dele. Use *!rankdoacoes* para o ranking geral.')
+if(!clan) return await reply('🏴 Você precisa pertencer a um clã para consultar os doadores dele. Use *!rankdoacoes* para o ranking dos clãs.')
 const rows=await listClanDonors({clanId:clan.id,limit:10})
-await reply(formatClanDonors(rows,{clanName:clan.name}))
-}else{
+await reply(formatOwnClanDonations(clan,rows))
+}else if(['jogadores','doadores','individual','pessoas'].includes(mode)){
 const rows=await listClanDonors({limit:10})
-await reply(formatClanDonors(rows)+'\n\n📌 *!rankdoacoes cla* — seu clã.\n🏴 *!rankdoacoes clas* — totais dos clãs.')
+await reply(formatClanDonors(rows))
+}else{
+const [clans,donors]=await Promise.all([listClans(10),listClanDonors({limit:10})])
+await reply(formatClanDonationOverview(clans,donors))
 }
 } else if(['clas','clãs','rankingclas','topclas'].includes(cmd)){
 const rows=await listClans(10)
