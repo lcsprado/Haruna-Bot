@@ -12,7 +12,7 @@ test('Comando específico do elmo está disponível e isolado',()=>{
 test('Elmos de evento são cadastrados na mesma evolução de armas e armaduras',()=>{
  for(const id of ['elmo_aurora','elmo_soberano_golem','elmo_labirinto_alpha'])
   assert.match(db,new RegExp(id+": \\{category:'helmet'"))
- assert.match(db,/i\.category IN \('weapon','armor','boots','helmet'\)/)
+ assert.match(db,/i\.category IN \('weapon','armor','boots','helmet','shield'\)/)
  assert.match(db,/const EQUIPMENT_MAX_LEVEL=10/)
  assert.match(db,/upgradeEquipment\(jid,itemId,targetLevel=null,sourceLevel=null,sourceKind='normal',payment='cash'\)/)
  assert.match(db,/cost\+=equipmentUpgradeCost\(inv\.rarity,lv\)/)
