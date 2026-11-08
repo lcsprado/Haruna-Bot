@@ -112,6 +112,21 @@ function group(session){
   return value;
 }
 function gate(){if(!ON())throw new Error('Cerco ao Castelo ainda está em preparação.');}
+// Uma sessão Web privada só acessa o Cerco se o próprio jogador
+// estiver no elenco de uma partida ativa. Outros modos permanecem privados.
+async function authorizedSiegeSession(session){
+  if(!ON()||!session?.jid||session.chatJid)return session;
+  const current=siegeGroup();
+  if(!current.endsWith('@g.us'))return session;
+  const linked=await db.query([
+    "SELECT m.chat_jid FROM alpha_siege_matches m",
+    "JOIN alpha_siege_roster r ON r.match_id=m.id AND r.jid=$1",
+    "JOIN clan_members cm ON cm.jid=r.jid AND cm.clan_id=r.clan_id",
+    "WHERE m.chat_jid=$2 AND m.status='active' ORDER BY m.id DESC LIMIT 1"
+  ].join(' '),[session.jid,current]);
+  return linked.rowCount===1?{...session,chatJid:current}:session;
+}
+
 async function tx(cb){
   const conn=await db.connect();
   try{await conn.query('BEGIN');const result=await cb(conn);await conn.query('COMMIT');return result;}
@@ -476,6 +491,7 @@ export async function clanSiegeStatus(session){
     }
     return {enabled:false,reason};
   }
+  session=await authorizedSiegeSession(session);
   if(!session?.chatJid)return {enabled:false,reason:'Vincule o Web ao grupo AlphaBot pelo !web.'};
   const chat=group(session);
   await ensureClanSiegeSchema();await settleClanSiege(chat);await startDailyClanSiege();
@@ -503,7 +519,7 @@ export async function clanSiegeAccept(session){
   throw new Error('Aceitação manual desativada. A guerra acontece somente às quartas-feiras, 21h de Brasília.');
 }
 export async function clanSiegeMove(session,action,target='castle'){
-  gate();const chat=group(session);await ensureClanSiegeSchema();
+  gate();session=await authorizedSiegeSession(session);const chat=group(session);await ensureClanSiegeSchema();
   return tx(async conn=>{
     const match=await openMatch(conn,chat,true);
     if(!match||match.status!=='active')throw new Error('Nenhuma guerra ativa.');
