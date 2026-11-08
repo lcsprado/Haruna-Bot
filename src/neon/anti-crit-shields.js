@@ -5,8 +5,8 @@ export const ANTI_CRIT_SHIELDS=Object.freeze([
   Object.freeze({id:'escudo_madeira',name:'Escudo de Madeira',category:'shield',rarity:'common',price:4000,critResist:.02,critGuard:.04,description:'Anti-crítico básico: -2 p.p. de chance de crítico inimigo e -4% do bônus crítico recebido.'}),
   Object.freeze({id:'escudo_ferro',name:'Escudo de Ferro',category:'shield',rarity:'uncommon',price:15000,critResist:.04,critGuard:.07,description:'-4 p.p. de chance de crítico inimigo e -7% do bônus crítico recebido.'}),
   Object.freeze({id:'escudo_runico',name:'Escudo Rúnico',category:'shield',rarity:'rare',price:45000,critResist:.06,critGuard:.10,description:'-6 p.p. de chance de crítico inimigo e -10% do bônus crítico recebido.'}),
-  Object.freeze({id:'egide_celestial',name:'Égide Celestial',category:'shield',rarity:'epic',price:110000,critResist:.09,critGuard:.14,description:'-9 p.p. de chance de crítico inimigo e -14% do bônus crítico recebido.'}),
-  Object.freeze({id:'bastiao_eclipse',name:'Bastião do Eclipse',category:'shield',rarity:'legendary',price:0,critResist:.12,critGuard:.18,description:'Escudo lendário de evento: -12 p.p. de chance de crítico inimigo e -18% do bônus crítico recebido. Não vendido na loja.'})
+  Object.freeze({id:'egide_celestial',name:'Égide Celestial',category:'shield',rarity:'epic',price:0,critResist:.09,critGuard:.14,description:'Drop raro da Raid 70: -9 p.p. de chance de crítico inimigo e -14% do bônus crítico recebido.'}),
+  Object.freeze({id:'bastiao_eclipse',name:'Bastião do Eclipse',category:'shield',rarity:'legendary',price:0,critResist:.12,critGuard:.18,description:'Recompensa exclusiva do Cerco ao Castelo de 14/11/2026: -12 p.p. de chance de crítico inimigo e -18% do bônus crítico recebido. Não vendido na loja.'})
 ]);
 const SHIELDS_BY_ID=Object.freeze(Object.fromEntries(ANTI_CRIT_SHIELDS.map(shield=>[shield.id,shield])));
 // +50% de eficácia no Lv.10. Este crescimento especial evita os 2,5x
