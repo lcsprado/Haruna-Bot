@@ -28,7 +28,7 @@ test('anti-crítico reduz chance em pontos percentuais preservando mínimo resid
 
 test('guarda reduz somente o bônus de dano crítico, não o ataque comum',()=>{
  assert.equal(shieldedCriticalMultiplier(1.6,0),1.6);
- assert.equal(shieldedCriticalMultiplier(1.6,.25),1.45);
+ assert.ok(Math.abs(shieldedCriticalMultiplier(1.6,.25)-1.45)<1e-10);
  assert.equal(shieldedCriticalMultiplier(1,.30),1);
 });
 
