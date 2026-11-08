@@ -11,7 +11,9 @@ import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const TEAM_TACTICS_VERSION=2; // novas guerras apenas; partidas antigas preservam regras v1
 const DAILY_CREATED_BY='system:siege-daily-20h'; // Identificador histórico preservado para idempotência e premiações antigas.
-const DAILY_OPEN_GRACE_MS=15*60*1000; // Janela do sábado 21h30-21h45; tolera despertar do Render.
+const DAILY_OPEN_GRACE_MS=15*60*1000; // Janela de tolerância para despertar do Render.
+const SIEGE_RESCHEDULED_DAY='2026-11-07'; // Cerco anterior foi cancelado por divergência entre clientes V5.
+const SIEGE_RESCHEDULED_TIME='22:20:00'; // Exceção única; sábados seguintes continuam 21h30.
 const ACTIONS=new Set(['attack','defend','repair','spy']);
 const siegeGroup=()=>String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||'').trim();
 const ON=()=>process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\.us$/.test(siegeGroup());
@@ -25,7 +27,7 @@ export function siegeDailySchedule(nowMs=now()){
     timeZone:'America/Sao_Paulo',weekday:'short',year:'numeric',month:'2-digit',day:'2-digit'
   }).formatToParts(new Date(nowMs)).map(p=>[p.type,p.value]));
   const day=[parts.year,parts.month,parts.day].join('-');
-  const startsAt=Date.parse(day+'T21:30:00-03:00');
+  const startsAt=Date.parse(day+'T'+(day===SIEGE_RESCHEDULED_DAY?SIEGE_RESCHEDULED_TIME:'21:30:00')+'-03:00');
   // Abertura exclusiva de sábado (dia local do Brasil): nenhuma guerra diária.
   // Nunca use getUTCDay() no instante das 21h30: em UTC já é domingo.
   const isSaturday=parts.weekday==='Sat';
@@ -194,7 +196,7 @@ export async function startDailyClanSiege(nowMs=now()){
         [match.id,jid,team.id]);
     await notice(conn,chat,[
       '🏰 *CERCO AO CASTELO — GUERRA DIÁRIA INICIADA!*',
-      '⏰ Início programado: *sábado às 21h30*, horário de Brasília.',
+      '⏰ Início programado: *'+(schedule.day===SIEGE_RESCHEDULED_DAY?'sábado às 22h20 (reabertura V5)':'sábado às 21h30')+'*, horário de Brasília.',
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
       '🏰 Fortalezas: Azul '+blueFortress.maxHp+' HP / +'+Math.round(blueFortress.attackPct*100)+'% ATK / -'+(blueFortress.defensePct*100).toFixed(1)+'% dano; Vermelho '+redFortress.maxHp+' HP / +'+Math.round(redFortress.attackPct*100)+'% ATK / -'+(redFortress.defensePct*100).toFixed(1)+'% dano.',
       '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
