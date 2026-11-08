@@ -300,6 +300,10 @@ async function logoutSession(session){
 }
 
 function allowedOrigin(req){
+  // Permite somente a origem própria do fallback público V5 no Render.
+  const origin=String(req.headers.origin||'')
+  if(origin==='https://alpha-web-api-beta.onrender.com' &&
+      String(req.headers.host||'').toLowerCase()==='alpha-web-api-beta.onrender.com')return origin
   return resolveAlphaWebAllowedOrigin(req.headers.origin,process.env.WEB_ALLOWED_ORIGINS||'*')
 }
 
