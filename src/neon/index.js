@@ -1669,6 +1669,7 @@ ${bonusSummary}
 🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}*
 👢 Botas: *${p.boot_name||'Sem botas'} Lv.${Number(p.boot_level||1)}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
+🛡️ Escudo: *${p.shield_name||'Nenhum'}*${p.shield_id?' Lv.'+p.shield_level+' • -'+pct(p.shield_crit_resist*100)+' p.p. chance CRIT inimigo • -'+pct(p.shield_crit_guard*100)+'% bônus dano CRIT':''}
 ⚜️ Insígnia: *${relics.active?.name||'Nenhuma ativa'}*
 ${relics.active?'✨ Efeito: '+relics.active.effect+'\n':''}${petLine}
 💼 Carreira: *${career?.rank?.name||'Ajudante'}*
@@ -1764,6 +1765,7 @@ const SHOP_IDS=[
 'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
 'armadura_bastiao','armadura_dragao','manto_runico','armadura_abissal','couraca_guardiao','armadura_celestial',
 'bota_leve','bota_vento','bota_cacador','bota_relampago',
+'escudo_madeira','escudo_ferro','escudo_runico','egide_celestial',
 'caixa_sorte','caixa_rara','caixa_epica'
 ]
 const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica','caixa_lendaria']
@@ -1802,10 +1804,11 @@ if(category==='consumable') return '🧪 CONSUMÍVEIS'
 if(category==='weapon') return '⚔️ ARMAS'
 if(category==='armor') return '🛡️ ARMADURAS'
 if(category==='boots') return '👢 BOTAS'
+if(category==='shield') return '🛡️ ESCUDOS ANTI-CRÍTICO'
 return '🎁 CAIXAS'
 }
 function shopCategoryItems(items,choice){
-const category={1:'consumable',2:'weapon',3:'armor',4:'boots',5:'special'}[choice]
+const category={1:'consumable',2:'weapon',3:'armor',4:'boots',5:'special',12:'shield'}[choice]
 if(!category) return []
 return items.filter(i=>i.category===category && SHOP_IDS.includes(i.id))
 }
@@ -4239,6 +4242,7 @@ await reply(
 7️⃣ 🚗 Carros
 8️⃣ 🚲🏍️ Bicicletas e motos
 9️⃣ 🔑 Chaves de Raid
+12️⃣ 🛡️ Escudos Anti-Crítico
 0️⃣ Sair
 _Responda só com o número._`
 )
@@ -4278,7 +4282,7 @@ return
 const count=category=>items.filter(i=>i.category===category).length
 const potions=items.filter(isUsableConsumable)
 const boxes=items.filter(i=>BOX_IDS.includes(i.item_id))
-const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
+const others=items.filter(i=>!['weapon','armor','helmet','boots','shield','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
 const relicItems=items.filter(isEventInsignia)
 setQuickFlow(chat,sender,'inventory_category',{},5*60*1000)
 await reply(
@@ -4292,20 +4296,21 @@ await reply(
 '7️⃣ 🧩 Materiais de Raid / Outros — '+others.length+' tipos\n'+
 '8️⃣ 💰 Vender / descartar itens\n'+
 '9️⃣ ⚜️ Insígnias — '+relicItems.length+' tipos\n'+
-'11️⃣ ✨ Encantamentos — '+items.filter(isEnchantStone).reduce((a,i)=>a+Number(i.quantity),0)+' pedra(s)\n\n'+
+'11️⃣ ✨ Encantamentos — '+items.filter(isEnchantStone).reduce((a,i)=>a+Number(i.quantity),0)+' pedra(s)\n'+
+'12️⃣ 🛡️ Escudos — '+count('shield')+' tipos\n\n'+
 '🔟 Voltar\n0️⃣ Sair'
 )
 }
 const EQUIPMENT_BONUS_FIELDS={
-atk:['⚔️','ATK'],def:['🛡️','DEF'],hp:['❤️','HP'],spd:['💨','VEL'],crit:['🎯','CRIT']
+atk:['⚔️','ATK'],def:['🛡️','DEF'],hp:['❤️','HP'],spd:['💨','VEL'],crit:['🎯','CRIT'],critResist:['🛡️','RESIST. CRIT (p.p.)'],critGuard:['🧱','PROTEÇÃO DO BÔNUS CRÍTICO']
 }
 const gearStatKeys=category=>{
-const primary=category==='weapon'?'atk':category==='boots'?'spd':'def'
+const primary=category==='weapon'?'atk':category==='boots'?'spd':category==='shield'?'critResist':'def'
 return [primary,...Object.keys(EQUIPMENT_BONUS_FIELDS).filter(key=>key!==primary)]
 }
 const gearStatValue=(key,value)=>{
 const n=Number(value||0)
-return key==='crit'?(n*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%':fmt(n)
+return ['crit','critResist','critGuard'].includes(key)?(n*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+(key==='critResist'?' p.p.':'%'):fmt(n)
 }
 const gearStatsText=(stats,category)=>{
 const keys=gearStatKeys(category)
@@ -4343,7 +4348,7 @@ const equipmentCopyLabel=i=>i.sourceKind==='star'
 :'⚪ *COMUM* • ×'+Number(i.tierQuantity||1)+' cópia(s)'
 const activeCopyLabel=(p,category)=>{
 const stars=Number(category==='weapon'?p?.weapon_stars:category==='armor'?p?.armor_stars:1)
-const level=Number(category==='weapon'?p?.weapon_level:category==='armor'?p?.armor_level:category==='helmet'?p?.helmet_level:p?.boot_level)||1
+const level=Number(category==='weapon'?p?.weapon_level:category==='armor'?p?.armor_level:category==='helmet'?p?.helmet_level:category==='shield'?p?.shield_level:p?.boot_level)||1
 return (stars>1?'🌟 FORJADA '+forgeStarsIcon(stars)+' ('+forgeBonusText(stars)+')':'⚪ COMUM')+' • ⭐ Lv.'+level
 }
 async function showEquipmentMenu(chat,sender,reply){
@@ -4352,9 +4357,10 @@ const weapons=items.filter(i=>i.category==='weapon')
 const armors=items.filter(i=>i.category==='armor')
 const boots=items.filter(i=>i.category==='boots')
 const helmets=items.filter(i=>i.category==='helmet')
-if(!weapons.length&&!armors.length&&!boots.length&&!helmets.length){
+const shields=items.filter(i=>i.category==='shield')
+if(!weapons.length&&!armors.length&&!boots.length&&!helmets.length&&!shields.length){
 clearQuickFlow(chat,sender)
-await reply('⚙️ Você não possui armas, armaduras, elmos ou botas para equipar.')
+await reply('⚙️ Você não possui armas, armaduras, elmos, botas ou escudos para equipar.')
 return
 }
 setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
@@ -4364,6 +4370,7 @@ const weaponStats=currentMap.get(p.weapon_id)||getEquipmentInfo(p.weapon_id)||{}
 const armorStats=currentMap.get(p.armor_id)||getEquipmentInfo(p.armor_id)||{}
 const bootStats=currentMap.get(p.boot_id)||getEquipmentInfo(p.boot_id)||{}
 const helmetStats=currentMap.get(p.helmet_id)||getEquipmentInfo(p.helmet_id)||{}
+const shieldStats=currentMap.get(p.shield_id)||getEquipmentInfo(p.shield_id)||{}
 const gearEnchants=await equipmentEnchantmentsByItem(db,sender,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
 const decorated=(itemId,stats)=>gearStatsWithEnchants(stats,gearEnchants.get(itemId)||[],STONES)
 await reply(
@@ -4372,11 +4379,13 @@ await reply(
 🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}* — ${gearStatsText(decorated(p.armor_id,armorStats),'armor')}
 👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(decorated(p.boot_id,bootStats),'boots')}
 🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(upgradeables.find(i=>i.item_id===p.helmet_id)?.level||1)}* — ${gearStatsText(decorated(p.helmet_id,helmetStats),'helmet')}
+🛡️ Escudo atual: *${p.shield_name||'Nenhum'} Lv.${Number(p.shield_level||1)}* — ${p.shield_id?gearStatsText(shieldStats,'shield'):'Nenhum'}
 O que deseja trocar?
 1️⃣ ⚔️ *Arma* — ${weapons.length} opção(ões)
 2️⃣ 🛡️ *Armadura* — ${armors.length} opção(ões)
 3️⃣ 👢 *Botas* — ${boots.length} opção(ões)
 4️⃣ 🪖 *Elmo* — ${helmets.length} opção(ões)
+5️⃣ 🛡️ *Escudo* — ${shields.length} opção(ões)
 9️⃣ Voltar ao inventário
 0️⃣ Sair`
 )
@@ -4387,7 +4396,8 @@ const filtered=items.filter(i=>i.category===category)
 const isWeapon=category==='weapon'
 const isArmor=category==='armor'
 const isHelmet=category==='helmet'
-const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':isArmor?'🛡️ *ESCOLHA UMA ARMADURA*':isHelmet?'🪖 *ESCOLHA UM ELMO*':'👢 *ESCOLHA UMA BOTA*'
+const isShield=category==='shield'
+const title=isWeapon?'⚔️ *ESCOLHA UMA ARMA*':isArmor?'🛡️ *ESCOLHA UMA ARMADURA*':isHelmet?'🪖 *ESCOLHA UM ELMO*':isShield?'🛡️ *ESCOLHA UM ESCUDO*':'👢 *ESCOLHA UMA BOTA*'
 if(!filtered.length){
 setQuickFlow(chat,sender,'equip_category',{},5*60*1000)
 await reply(title+'\n\nVocê não possui itens desta categoria.\n\n9️⃣ Voltar\n0️⃣ Sair')
@@ -4395,7 +4405,7 @@ return
 }
 setQuickFlow(chat,sender,'equip_select',{items:filtered.map(i=>i.item_id),category},5*60*1000)
 const gearEnchants=await equipmentEnchantmentsByItem(db,sender,filtered.map(i=>i.item_id))
-const activeId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
+const activeId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:isShield?p.shield_id:p.boot_id
 let text=title+'\n\n'
 filtered.forEach((i,idx)=>{
 const active=activeId===i.item_id
@@ -4428,8 +4438,8 @@ await reply(text)
 async function showSellMenu(chat,sender,reply){
 const items=(await getInventory(sender)).filter(i=>i.sellable!==false)
 const p=await getCombatProfile(sender)
-const equippedIds=new Set([p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean))
-const equipment=items.filter(i=>['weapon','armor','boots','helmet'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
+const equippedIds=new Set([p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id].filter(Boolean))
+const equipment=items.filter(i=>['weapon','armor','boots','helmet','shield'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
 const potions=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
 const raid=items.filter(i=>RAID_SELL_IDS.includes(i.item_id))
 if(!equipment.length&&!potions.length&&!raid.length){
@@ -4453,12 +4463,12 @@ Escolha o que deseja vender:
 async function showSellItemsMenu(chat,sender,reply,category){
 const items=(await getInventory(sender)).filter(i=>i.sellable!==false)
 const p=await getCombatProfile(sender)
-const equippedIds=new Set([p.weapon_id,p.armor_id,p.boot_id].filter(Boolean))
+const equippedIds=new Set([p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id].filter(Boolean))
 let filtered=[]
 let title=''
 if(category==='equipment'){
 title='⚔️ *VENDER EQUIPAMENTOS*'
-filtered=items.filter(i=>['weapon','armor','boots','helmet'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
+filtered=items.filter(i=>['weapon','armor','boots','helmet','shield'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
 }else if(category==='potions'){
 title='🧪 *VENDER POÇÕES E CURA*'
 filtered=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
@@ -5435,7 +5445,7 @@ const boxQuantityMenu=async(box)=>showBoxQuantityMenu(chat,sender,reply,box)
 const inventoryMenu=async()=>showInventoryMenu(chat,sender,reply)
 const materialsMenu=async()=>{
 const items=await getInventory(sender)
-const others=items.filter(i=>!['weapon','armor','helmet','boots','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
+const others=items.filter(i=>!['weapon','armor','helmet','boots','shield','consumable'].includes(i.category) && !BOX_IDS.includes(i.item_id) && !isEventInsignia(i))
 if(!others.length){
 await reply('📦 Você não possui outros itens no momento.')
 return
@@ -7162,9 +7172,9 @@ if(input==='9'){
 await inventoryMenu()
 return true
 }
-const category=input==='1'?'weapon':input==='2'?'armor':input==='3'?'boots':input==='4'?'helmet':null
+const category=input==='1'?'weapon':input==='2'?'armor':input==='3'?'boots':input==='4'?'helmet':input==='5'?'shield':null
 if(!category){
-await reply('⚙️ Escolha *1 Arma*, *2 Armadura*, *3 Botas* ou *4 Elmos*.')
+await reply('⚙️ Escolha *1 Arma*, *2 Armadura*, *3 Botas*, *4 Elmos* ou *5 Escudos*.')
 return true
 }
 await equipmentTypeMenu(category)
@@ -7192,8 +7202,9 @@ return true
 const isWeapon=info.category==='weapon'
 const isArmor=info.category==='armor'
 const isHelmet=info.category==='helmet'
-const currentName=isWeapon?p.weapon_name:isArmor?p.armor_name:isHelmet?p.helmet_name:p.boot_name
-const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:p.boot_id
+const isShield=info.category==='shield'
+const currentName=isWeapon?p.weapon_name:isArmor?p.armor_name:isHelmet?p.helmet_name:isShield?p.shield_name:p.boot_name
+const currentId=isWeapon?p.weapon_id:isArmor?p.armor_id:isHelmet?p.helmet_id:isShield?p.shield_id:p.boot_id
 const currentUp=upgradeables.find(i=>i.item_id===currentId)
 const oldStats=currentUp?.current||getEquipmentInfo(currentId)||{}
 const enchantRows=await equipmentEnchantmentsByItem(db,sender,[currentId,itemId])
@@ -7203,7 +7214,7 @@ const selectedType=selectedStars>1?'🌟 FORJADA '+forgeStarsIcon(selectedStars)
 setQuickFlow(chat,sender,'equip_compare_confirm',{itemId,category:flow.data.category||info.category},90000)
 await reply(
 '⚙️ *TROCAR EQUIPAMENTO?*\n\n'+
-(isWeapon?'🗡️':isArmor?'🛡️':isHelmet?'🪖':'👢')+' Atual: *'+currentName+'*\n'+
+(isWeapon?'🗡️':isArmor?'🛡️':isHelmet?'🪖':isShield?'🛡️':'👢')+' Atual: *'+currentName+'*\n'+
 '➡️ Novo: '+rarityLabel(item.rarity)+' — *'+item.name+'*\n'+
 '   '+selectedType+' • ⭐ Lv.'+Number(up?.level||1)+'\n\n'+
 '📊 *ATRIBUTOS (atual → novo):*\n'+statLines+'\n\n'+
@@ -7222,7 +7233,7 @@ return true
 }
 const r=await equipItem(sender,flow.data.itemId)
 const p=await getCombatProfile(sender)
-await reply('✅ *EQUIPADO!*\n\n'+r.name+' agora é '+(r.category==='weapon'?'sua arma':r.category==='armor'?'sua armadura':r.category==='helmet'?'seu elmo':'sua bota')+' ativo(a).\n\n⚔️ ATK atual: *'+p.effective_atk+'*\n🛡️ DEF atual: *'+p.effective_def+'*')
+await reply('✅ *EQUIPADO!*\n\n'+r.name+' agora é '+(r.category==='weapon'?'sua arma':r.category==='armor'?'sua armadura':r.category==='helmet'?'seu elmo':r.category==='shield'?'seu escudo':'sua bota')+' ativo(a).\n\n⚔️ ATK atual: *'+p.effective_atk+'*\n🛡️ DEF atual: *'+p.effective_def+'*')
 await equipmentTypeMenu(r.category)
 return true
 }
@@ -7878,7 +7889,7 @@ await reply('🛒 *ITENS E INVENTÁRIO*\n\n1️⃣ Loja\n2️⃣ Inventário\n3�
 return true
 }
 const items=await getInventory(sender)
-const equipmentCategory={1:'weapon',2:'armor',3:'helmet',4:'boots'}[input]
+const equipmentCategory={1:'weapon',2:'armor',3:'helmet',4:'boots',12:'shield'}[input]
 if(equipmentCategory){
 await equipmentTypeMenu(equipmentCategory)
 return true
@@ -8336,8 +8347,8 @@ text+='\n👉 Responda só com o número para comprar.\n9️⃣ Voltar\n0️⃣ 
 await reply(text)
 return true
 }
-if(!['1','2','3','4','5'].includes(input)){
-await reply('🍀 Escolha uma opção de *1 a 7*.')
+if(!['1','2','3','4','5','12'].includes(input)){
+await reply('🍀 Escolha uma opção válida do menu, incluindo *12 Escudos*.')
 return true
 }
 const items=await getShop()
@@ -12074,26 +12085,26 @@ if(!helmetOnly) text+='\n\n🪖 Para ver apenas os elmos: *!uparelmo*'
 await reply(text)
 } else if(['equipar','equip'].includes(cmd)){
 const items=await getInventory(sender)
-const equipables=items.filter(i=>['weapon','armor','boots','helmet'].includes(i.category))
-if(!equipables.length) return await reply('⚙️ Você não possui armas, armaduras, elmos ou botas para equipar.')
+const equipables=items.filter(i=>['weapon','armor','boots','helmet','shield'].includes(i.category))
+if(!equipables.length) return await reply('⚙️ Você não possui armas, armaduras, elmos, botas ou escudos para equipar.')
 const query=args.join(' ').trim()
 if(!query){
 await showEquipmentMenu(chat,sender,reply)
 return
 }
 const anyItem=resolveOwnedItem(items,query)
-if(anyItem && !['weapon','armor','boots','helmet'].includes(anyItem.category)){
+if(anyItem && !['weapon','armor','boots','helmet','shield'].includes(anyItem.category)){
 if(BOX_IDS.includes(anyItem.item_id)){
 return await reply(`🎁 *${anyItem.name}* não é equipamento.\nAbra pelo *${prefix}inventario*.`)
 }
 return await reply(`❌ *${anyItem.name}* não pode ser equipado.`)
 }
-const item=resolveOwnedItem(items,query,['weapon','armor','boots','helmet'])
+const item=resolveOwnedItem(items,query,['weapon','armor','boots','helmet','shield'])
 if(!item){
 return await reply(`❌ Não encontrei esse equipamento no seu inventário.\nUse *${prefix}equipar* para escolher pela lista.`)
 }
 const r=await equipItem(sender,item.item_id)
-const tipo=r.category==='weapon'?'arma':r.category==='armor'?'armadura':r.category==='helmet'?'elmo':'bota'
+const tipo=r.category==='weapon'?'arma':r.category==='armor'?'armadura':r.category==='helmet'?'elmo':r.category==='shield'?'escudo':'bota'
 await reply(`✅ *EQUIPADO!*\n\n${r.name} agora é sua ${tipo} ativa.`)
 } else if(['usar','use'].includes(cmd)){
 const items=await getInventory(sender)
