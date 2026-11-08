@@ -1,10 +1,11 @@
 // Cerco ao Castelo: batalhas e escolhas autoritativas no banco, nunca no cliente.
-// Só a premiação específica de 04/11 concede dinheiro VIRTUAL; não altera XP ou HP do jogador.
+// Prêmios são transacionais: 04/11 cosmético/dinheiro, 07/11+ XP e 14/11 escudo.
 import {db} from './db.js';
 import {ensureWebActionOutbox} from './web-activity-relay.js';
 import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
 import {ensureSiegeEventRewardsSchema,grantSiegeEventRewards,brtSiegeDay,SIEGE_EVENT_DATE} from './clan-siege-event-rewards-20261104.js';
 import {ensureSiegeWeeklyXpSchema,grantSiegeWeeklyXp,SIEGE_WEEKLY_XP} from './clan-siege-weekly-xp.js';
+import {ensureSiegeShieldRewardSchema,grantSiegeShieldReward,SIEGE_SHIELD_REWARD_DATE} from './clan-siege-shield-reward-20261114.js';
 import {ensureClanFortressSchema,clanFortressCombatSnapshot,clanFortressStatus,clanFortressUpgrade} from './clan-fortress.js';
 import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
 
@@ -97,6 +98,7 @@ export async function ensureClanSiegeSchema(){
     // Prêmio único, com chave idempotente para evitar pagamento duplicado.
     await ensureSiegeEventRewardsSchema(db);
     await ensureSiegeWeeklyXpSchema(db);
+    await ensureSiegeShieldRewardSchema(db);
     // Prepara a tabela de upgrades na inicialização, mesmo sem alguém abrir o Web.
     await ensureClanFortressSchema();
   })().catch(e=>{schemaPromise=null;throw e});
@@ -207,6 +209,8 @@ export async function startDailyClanSiege(nowMs=now()){
       '🎮 Abra o Alpha Web > Clã e escolha *Atacar, Defender, Reparar, Espionar ou Reabastecer*. A escolha inclui a frente da ação.',
       '🔒 Ação secreta. Quem não jogar a rodada fica sem ação.',
       '🏆 A insígnia histórica foi encerrada e não será concedida nas próximas guerras.',
+      brtSiegeDay(created)===SIEGE_SHIELD_REWARD_DATE?
+        '🎁 *PRÊMIO ESPECIAL 14/11:* cada jogador do clã vencedor que fizer pelo menos 2 rodadas recebe 1 Bastião do Eclipse, escudo lendário anti-crítico. Empate não entrega escudo. XP semanal permanece normalmente.':'',
       brtSiegeDay(created)===SIEGE_EVENT_DATE?
         '🎁 *PRÊMIOS SOMENTE DA GUERRA DE HOJE:* cada campeão recebe R$ 5.000.000 + Troféu do Cerco V5 (cosmético, sem atributos); cada vice recebe R$ 1.000.000. Se empatar, cada jogador recebe R$ 1.500.000. Valores virtuais, pagos automaticamente uma única vez ao final.':' '
     ].join('\n'));
@@ -372,6 +376,7 @@ async function advance(conn,match){
     ])).rows[0];
     const eventPrize=r.finished?await grantSiegeEventRewards(conn,updated):null;
     const weeklyXp=r.finished?await grantSiegeWeeklyXp(conn,updated):null;
+    const shieldPrize=r.finished?await grantSiegeShieldReward(conn,updated):null;
     const winner=r.winner===null?'Empate':r.winner===String(match.blue_clan_id)?'Clã Azul':'Clã Vermelho';
     await notice(conn,match.chat_jid,[
       '🏰 *CERCO AO CASTELO — RODADA '+match.round+'/'+MAX_ROUNDS+'*',
@@ -401,6 +406,11 @@ async function advance(conn,match){
         weeklyXp.losers+' vices × '+SIEGE_WEEKLY_XP.loser.toLocaleString('pt-BR')+' XP; '+
         weeklyXp.draws+' empates × '+SIEGE_WEEKLY_XP.draw.toLocaleString('pt-BR')+' XP. Mínimo 2 rodadas jogadas por pessoa.':
         '🌟 XP semanal: ninguém atingiu as 2 rodadas mínimas para premiação.'):'',
+      shieldPrize?(shieldPrize.draw?
+        '🛡️ *BASTIÃO DO ECLIPSE:* empate — não há entrega de escudos.':
+        shieldPrize.delivered?
+          '🛡️ *PRÊMIO ESPECIAL ENTREGUE:* '+shieldPrize.delivered+' escudo(s) Bastião do Eclipse para campeões com no mínimo 2 rodadas.':
+          '🛡️ *BASTIÃO DO ECLIPSE:* nenhum campeão cumpriu as 2 rodadas mínimas.'):'',
     ].join('\n'));
     match=updated;
   }
