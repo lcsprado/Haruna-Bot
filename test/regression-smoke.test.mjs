@@ -171,7 +171,7 @@ test('inventory and shop labels are localized',()=>{
 })
 
 test('web inventory separates equipped gear and protects it from every sale path',()=>{
-  assert.ok(db.includes("(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped"),'inventory bootstrap must expose equipped state')
+  assert.ok(db.includes("(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) AS equipped"),'inventory bootstrap must expose equipped state')
   assert.ok(db.includes("END AS equipped_slot"),'inventory bootstrap must expose equipped slot')
   assert.ok(db.includes("AS sellable_quantity"),'inventory bootstrap must expose free quantity')
   assert.ok(app.includes("['weapons','🗡️ Armas']"),'inventory must have an Armas section')
@@ -182,7 +182,7 @@ test('web inventory separates equipped gear and protects it from every sale path
   assert.ok(app.includes("🔒 Equipados"),'inventory must isolate equipped gear')
   assert.ok(app.includes("PROTEGIDO DE VENDA"),'equipped cards must visibly block selling')
   assert.ok(app.includes("quantity:i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0)"),'normal inventory sections must exclude the equipped copy')
-  const batchStats=(db.match(/SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=\$1 FOR UPDATE/g)||[]).length
+  const batchStats=(db.match(/SELECT weapon_id,armor_id,boot_id,helmet_id,shield_id FROM stats WHERE jid=\$1 FOR UPDATE/g)||[]).length
   assert.ok(batchStats>=2,'batch sell/discard must protect equipped boots as well as weapon/armor')
   assert.ok(db.includes("['weapon','armor','boots'].includes(i.category)"),'duplicate equipment sale must include boots safely')
   assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
