@@ -311,7 +311,7 @@ function setCors(req,res){
     res.setHeader('Access-Control-Allow-Origin',origin)
     res.setHeader('Vary','Origin')
   }
-  res.setHeader('Access-Control-Allow-Headers','authorization, content-type')
+  res.setHeader('Access-Control-Allow-Headers','authorization, content-type, x-alpha-web-version')
   res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS')
   res.setHeader('Access-Control-Max-Age','600')
   return true
@@ -1616,12 +1616,16 @@ export async function handleWebApi(req,res){
 
     if(req.method==='GET' && url.pathname==='/api/v1/me/clan-siege'){
       const result=await clanSiegeStatus(session)
-      json(res,200,{ok:true,data:result})
+      json(res,200,{ok:true,data:{...result,requiredWebVersion:'alpha-siege-v5-20261108'}})
       return true
     }
 
     if(req.method==='POST' && url.pathname.startsWith('/api/v1/me/clan-siege/')){
       const command=url.pathname.slice('/api/v1/me/clan-siege/'.length)
+      if(command==='move'&&req.headers['x-alpha-web-version']!=='alpha-siege-v5-20261108'){
+        json(res,409,{ok:false,error:'Atualização obrigatória do Alpha Web V5: feche o aplicativo, reabra a versão atual e tente novamente. Ações antigas estão bloqueadas para garantir igualdade.'})
+        return true
+      }
       const body=await readJson(req,1024)
       const handlers={
         challenge:()=>clanSiegeChallenge(session),
