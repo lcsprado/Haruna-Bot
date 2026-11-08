@@ -221,6 +221,18 @@ export async function initProgression(){
       created_at BIGINT NOT NULL DEFAULT ${nowSql},
       PRIMARY KEY(clan_id,invitee_jid)
     );
+    CREATE TABLE IF NOT EXISTS clan_donations(
+      id BIGSERIAL PRIMARY KEY,
+      clan_id BIGINT NOT NULL,
+      clan_name TEXT NOT NULL,
+      donor_jid TEXT NOT NULL,
+      donor_name TEXT NOT NULL,
+      amount BIGINT NOT NULL CHECK(amount>=100),
+      created_at BIGINT NOT NULL DEFAULT ${nowSql}
+    );
+    CREATE INDEX IF NOT EXISTS clan_donations_by_clan_idx ON clan_donations(clan_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS clan_donations_by_donor_idx ON clan_donations(donor_jid);
+
 
     CREATE TABLE IF NOT EXISTS user_homes(
       jid TEXT PRIMARY KEY,
@@ -499,11 +511,13 @@ export async function leaveClan(jid){
 
 export async function donateClan(jid,amount){
   amount=Number(amount)
-  if(!Number.isInteger(amount)||amount<100) throw new Error('Doação mínima: R$ 100.')
+  if(!Number.isSafeInteger(amount)||amount<100) throw new Error('Doação mínima: R$ 100.')
   const clan=await getClanForUser(jid)
   if(!clan) throw new Error('Você não pertence a um clã.')
 
   return tx(async c=>{
+    const membership=await c.query('SELECT 1 FROM clan_members WHERE jid=$1 AND clan_id=$2 FOR UPDATE',[jid,clan.id])
+    if(!membership.rowCount) throw new Error('Você não pertence mais a esse clã.')
     const w=await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
     if(Number(w.rows[0]?.cash||0)<amount) throw new Error('Saldo insuficiente na carteira.')
 
@@ -515,6 +529,13 @@ export async function donateClan(jid,amount){
       RETURNING treasury,xp
     `,[amount,clan.id])
     const row=r.rows[0]
+    if(!row)throw new Error('Clã não encontrado. A doação foi cancelada.')
+    // Mesma transação: ou carteira + cofre + histórico são gravados,
+    // ou tudo é revertido. Nunca dar crédito de ranking sem débito real.
+    await c.query(`
+      INSERT INTO clan_donations(clan_id,clan_name,donor_jid,donor_name,amount)
+      VALUES($1,$2,$3,COALESCE((SELECT NULLIF(TRIM(push_name),'') FROM users WHERE jid=$3),'Jogador'),$4)
+    `,[clan.id,clan.name,jid,amount])
     return {
       amount,
       treasury:Number(row.treasury),
@@ -522,6 +543,25 @@ export async function donateClan(jid,amount){
       level:1+Math.floor(Number(row.xp)/25000)
     }
   })
+}
+
+// Ranking individual auditável: não atribui retroativamente a ninguém
+// as doações anteriores à criação da tabela clan_donations.
+export async function listClanDonors({clanId=null,limit=10}={}){
+  const n=Math.max(1,Math.min(20,Math.floor(Number(limit)||10)))
+  const {rows}=await db.query(`
+    SELECT d.donor_jid,
+      COALESCE(NULLIF(TRIM(u.push_name),''),MAX(d.donor_name),'Jogador') AS donor_name,
+      SUM(d.amount)::bigint AS total,
+      COUNT(*)::int AS donations
+    FROM clan_donations d
+    LEFT JOIN users u ON u.jid=d.donor_jid
+    WHERE ($1::bigint IS NULL OR d.clan_id=$1::bigint)
+    GROUP BY d.donor_jid,u.push_name
+    ORDER BY total DESC,donations DESC,d.donor_jid ASC
+    LIMIT $2
+  `,[clanId,n])
+  return rows
 }
 
 export async function listClans(limit=10){
