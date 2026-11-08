@@ -268,30 +268,42 @@ export function renderClanSiegePreview(ui){
   const pairReady=eligible.length===2&&eligible.some(clan=>clan.id!=null&&mine?.id!=null?String(clan.id)===String(mine.id):Boolean(clan.name&&mine?.name&&clan.name===mine.name))&&Boolean(enemy);
   const selected=String(ui.siegePreviewAction||'');
   const action=TACTICAL_ACTIONS.find(item=>item.id===selected)||null;
+  const selectedTarget=selected==='supply'?'depot':String(ui.siegePreviewTarget||'castle');
+  const permittedTargets=selected==='supply'?FRONTS_V4.filter(item=>item.id==='depot'):
+    selected==='repair'?FRONTS_V4.filter(item=>item.id==='castle'||item.id==='gate'):FRONTS_V4;
+  const serverReason=String(ui.siege?.reason||'').trim();
   const status=pairReady
     ? 'Os dados atuais indicam dois clãs com dois jogadores. A escalação individual ainda precisa ser conferida.'
     : 'Aguardando a confirmação dos dois clãs com dois membros no servidor. Sem escalação fictícia.';
   return '<section class="siege-preview section" aria-label="Prévia do Cerco ao Castelo">'+
     '<div class="siege-head">'+
       '<div><p class="siege-eyebrow">ALPHA BOT · GUERRA DE CLÃS</p><h3>🏰 Cerco ao Castelo</h3><p>Uma guerra 2 × 2 com decisões secretas pelo Web e resultados narrados no grupo.</p></div>'+
-      '<span class="siege-status">🧪 PRÉVIA · NÃO INICIADO</span>'+
+      '<span class="siege-status">🏰 V5 · GUERRA ADIADA</span>'+
     '</div>'+
     '<div class="siege-stage">'+renderCastle(mine,'home')+
       '<div class="siege-versus"><strong>VS</strong><small>6 rodadas</small><small>5 min cada</small></div>'+
       renderCastle(enemy,'enemy')+
     '</div>'+
     '<div class="siege-data-note">🔎 '+ESCAPE(status)+' Os HP exibidos são valores iniciais propostos, não dados de uma batalha ativa.</div>'+
+    (serverReason?'<div class="notice warn section">⚠️ '+ESCAPE(serverReason)+' Para vincular sua sessão, envie <b>!web</b> dentro do grupo Alpha Bot e use seu código individual.</div>':'')+
     '<div class="siege-planning">'+
-      '<div class="siege-planning-head"><div><p class="siege-eyebrow">CENTRAL DE COMANDO</p><h4>Escolha sua estratégia</h4></div><span class="siege-status">MODO DE TESTE VISUAL</span></div>'+
+      '<div class="siege-planning-head"><div><p class="siege-eyebrow">CENTRAL DE COMANDO</p><h4>Escolha sua estratégia</h4></div><span class="siege-status">PRÉVIA V5 · SEM REGISTRO</span></div>'+
       '<div class="siege-action-grid">'+TACTICAL_ACTIONS.map(item=>
         '<button type="button" class="siege-action '+(item.id===selected?'selected':'')+'" data-siege-preview="'+item.id+'" aria-pressed="'+(item.id===selected?'true':'false')+'">'+
           '<span class="siege-action-icon">'+item.icon+'</span><strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>'
       ).join('')+'</div>'+
+      '<div class="siege-selected section"><strong>🎯 Escolha a frente (prévia)</strong>'+
+        '<p>As três frentes da V5 estão disponíveis para conhecer a mecânica. Nada será enviado ao servidor enquanto o Cerco estiver adiado.</p>'+
+        '<div class="siege-action-grid">'+permittedTargets.map(item=>
+          '<button type="button" class="siege-action '+(item.id===selectedTarget&&selected?'selected':'')+'" data-siege-target="'+item.id+'" aria-pressed="'+(item.id===selectedTarget&&Boolean(selected)?'true':'false')+'" '+(!selected?'disabled':'')+'>'+
+          '<span class="siege-action-icon">'+item.icon+'</span><strong>'+item.label+'</strong><small>'+ESCAPE(item.tip)+'</small></button>'
+        ).join('')+'</div>'+
+        '<p>Frente escolhida: <b>'+ESCAPE(FRONTS_V4.find(item=>item.id===selectedTarget)?.label||'Selecione uma ação')+'</b></p></div>'+
       '<div class="siege-selected" aria-live="polite"><span>Estratégia em prévia</span><strong>'+(action?action.icon+' '+action.label:'Nenhuma ação selecionada')+'</strong><p>'+ESCAPE(action?.effect||'Selecione uma das cinco estratégias para conhecer seu efeito.')+'</p>'+
-      '<small>Esta escolha é apenas visual: não foi enviada nem salva. Não há ações de guerra habilitadas no servidor. Na partida ativa V5, escolha a ação e a frente.</small></div>'+
+      '<small>Esta escolha é apenas visual: não foi enviada nem salva. A confirmação só aparece quando o Cerco V5 começar. Escolha a ação e a frente para testar a interface.</small></div>'+
     '</div>'+
     '<div class="siege-steps"><span>1 · Selecionar em segredo</span><span>2 · Aguardar a rodada fechar</span><span>3 · Resultado público no WhatsApp</span></div>'+
-    '<div class="siege-footer">🔒 O evento só será liberado depois de autenticação por jogador, ações persistidas, bloqueio de duplicidade, resolução simultânea e testes de integração. Nenhum saldo, XP, HP ou cofre real é alterado nesta prévia.</div>'+
+    '<div class="siege-footer">🔒 Próximo Cerco: '+NEXT_SIEGE_LABEL+' (Brasília). A prévia não registra jogadas e não altera saldo, XP ou HP. Cada jogador precisa de sessão vinculada ao grupo e sua própria identidade.</div>'+
   '</section>';
 }
 
