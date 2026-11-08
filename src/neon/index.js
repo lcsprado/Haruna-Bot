@@ -12411,8 +12411,10 @@ if(!clan) return await reply('🏴 Você precisa pertencer a um clã para consul
 const rows=await listClanDonors({clanId:clan.id,limit:10})
 await reply(formatOwnClanDonations(clan,rows))
 }else if(['jogadores','doadores','individual','pessoas'].includes(mode)){
-const rows=await listClanDonors({limit:10})
-await reply(formatClanDonors(rows))
+// Mesmo o ranking individual deve exibir o histórico dos clãs se não houver
+// doações identificadas. Inclui os atalhos !topdoadores e !rankdoacoes jogadores.
+const [rows,clans]=await Promise.all([listClanDonors({limit:10}),listClans(10)])
+await reply(formatClanDonors(rows,{clans}))
 }else{
 const [clans,donors]=await Promise.all([listClans(10),listClanDonors({limit:10})])
 await reply(formatClanDonationOverview(clans,donors))
