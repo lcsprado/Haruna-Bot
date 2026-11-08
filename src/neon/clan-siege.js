@@ -507,7 +507,7 @@ export async function clanSiegeChallenge(session){
 }
 export async function clanSiegeAccept(session){
   gate();group(session);
-  throw new Error('Aceitação manual desativada. A guerra acontece somente às quartas-feiras, 21h de Brasília.');
+  throw new Error('Aceitação manual desativada. A guerra começa automaticamente somente aos sábados, 21h30 de Brasília.');
 }
 export async function clanSiegeMove(session,action,target='castle'){
   gate();const chat=group(session);await ensureClanSiegeSchema();
