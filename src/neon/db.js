@@ -4,6 +4,7 @@ import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
+import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
 import {HALLOWEEN_GEAR,HALLOWEEN_SOUL_ID,HALLOWEEN_CORCEL} from './halloween-rules.js'
@@ -126,6 +127,7 @@ weapon_id TEXT,
 armor_id TEXT,
 boot_id TEXT,
 helmet_id TEXT,
+shield_id TEXT,
 class_id TEXT NOT NULL DEFAULT 'warrior',
 class_applied BOOLEAN NOT NULL DEFAULT FALSE,
 class_hp_bonus INTEGER NOT NULL DEFAULT 0,
@@ -142,6 +144,7 @@ ALTER TABLE stats ADD COLUMN IF NOT EXISTS weapon_tier INTEGER NOT NULL DEFAULT 
 ALTER TABLE stats ADD COLUMN IF NOT EXISTS armor_tier INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE stats ADD COLUMN IF NOT EXISTS boot_id TEXT;
 ALTER TABLE stats ADD COLUMN IF NOT EXISTS helmet_id TEXT;
+ALTER TABLE stats ADD COLUMN IF NOT EXISTS shield_id TEXT;
 ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_id TEXT NOT NULL DEFAULT 'warrior';
 ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_applied BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE stats ADD COLUMN IF NOT EXISTS class_hp_bonus INTEGER NOT NULL DEFAULT 0;
@@ -549,6 +552,7 @@ const starterItems = [
 ['caixa_epica','Caixa Épica','Item garantido no mínimo Raro. Chance de Lendário: 1%.','special',35000,'epic'],
 ['caixa_lendaria','Caixa Lendária','Caixa de marco Daily: 1 equipamento Lendário garantido.','special',0,'legendary'],
 ]
+starterItems.push(...ANTI_CRIT_SHIELDS.map(g=>[g.id,g.name,g.description,'shield',g.price,g.rarity]))
 starterItems.push(...PECADOS_EQUIPMENT.map(g=>[g.id,g.name,'Equipamento Sagrado da collab 7 Pecados, exclusivo de baú.',g.category,0,'event']))
 starterItems.push(...LEGENDARY_BOX_GEAR.map(g=>[g.id,g.name,g.description,g.category,0,'legendary']))
 starterItems.push(['fragmento_universal_raid','Fragmento Universal de Raid','Substitui um material de qualquer altar de pet de Raid na proporção 1:1.','special',0,'event'])
@@ -570,6 +574,7 @@ await db.query("UPDATE items SET sellable=TRUE WHERE id=ANY($1::text[])",[RAID_M
 await db.query("UPDATE items SET sellable=FALSE WHERE id=ANY($1::text[])",[['pocao_ressurreicao','selo_guardiao','oleo_sombras','elixir_disciplina','elixir_sombras','pergaminho_experiencia','pergaminho_virtude','tomo_proibido']])
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[['insignia_eclipse','insignia_guardiao_ruptura','marca_insone','coroa_madrugada','armadura_colosso','insignia_sete_pecados','insignia_matador_titas','insignia_nem_cirurgia_derrubou_lenda','titulo_conquistador_pecados','essencia_pecado_preguica','essencia_pecado_gula','essencia_pecado_ganancia','essencia_pecado_inveja','essencia_pecado_luxuria','essencia_pecado_ira','essencia_pecado_soberba']])
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id='insignia_primeiros_conquistadores_20261102'")
+await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE,price=0 WHERE id='bastiao_eclipse'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=FALSE WHERE id=ANY($1::text[])",[PECADOS_GEAR_IDS])
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_universal_raid'")
 await db.query("UPDATE items SET sellable=FALSE,stackable=TRUE WHERE id='fragmento_ascensao_pecados_20261024'")
@@ -931,7 +936,7 @@ export async function getProfile(jid) {
 const { rows } = await db.query(`
 SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
 w.cash,w.bank,w.bank_limit,
-s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,
+s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,s.class_id,s.class_applied,
 s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss,
 COALESCE(cl.level,1)::int AS class_level,COALESCE(cl.xp,0)::int AS class_xp
 FROM users u
@@ -1237,7 +1242,7 @@ VALUES($1,'shop',$2,'service',$3)
 return { serviceId, price, cash:cash-fromCash, bank:bank-fromBank }
 })
 }
-const REGULAR_SHOP_IDS = new Set(["pocao_p","pocao_m","pocao_g","elixir_supremo","pocao_pet_comum","pocao_pet_rara","pocao_pet_epica","pocao_pet_suprema","pocao_pet_full","energetico_pet","espada_madeira","espada_ferro","espada_aco","machado_guerra","katana_sombria","espada_flamas","tridente_tempestade","lamina_abissal","sabre_runico","lamina_cacador","espada_guardiao","foice_carmesim","lanca_solar","garras_vazio","espada_eclipse","armadura_couro","armadura_ferro","armadura_aco","armadura_samurai","armadura_cavaleiro","armadura_dragao","armadura_abissal","armadura_celestial","armadura_bastiao","manto_runico","couraca_guardiao","manto_fenix","couraca_vulcanica","armadura_vazio","armadura_eclipse","bota_leve","bota_vento","bota_cacador","bota_relampago","chave_raid_10","chave_raid_15","chave_raid_20","chave_raid_25","chave_raid_30","chave_raid_40","chave_raid_50","caixa_sorte","caixa_rara","caixa_epica"]);
+const REGULAR_SHOP_IDS = new Set(["pocao_p","pocao_m","pocao_g","elixir_supremo","pocao_pet_comum","pocao_pet_rara","pocao_pet_epica","pocao_pet_suprema","pocao_pet_full","energetico_pet","espada_madeira","espada_ferro","espada_aco","machado_guerra","katana_sombria","espada_flamas","tridente_tempestade","lamina_abissal","sabre_runico","lamina_cacador","espada_guardiao","foice_carmesim","lanca_solar","garras_vazio","espada_eclipse","armadura_couro","armadura_ferro","armadura_aco","armadura_samurai","armadura_cavaleiro","armadura_dragao","armadura_abissal","armadura_celestial","armadura_bastiao","manto_runico","couraca_guardiao","manto_fenix","couraca_vulcanica","armadura_vazio","armadura_eclipse","bota_leve","bota_vento","bota_cacador","bota_relampago","chave_raid_10","chave_raid_15","chave_raid_20","chave_raid_25","chave_raid_30","chave_raid_40","chave_raid_50","escudo_madeira","escudo_ferro","escudo_runico","caixa_sorte","caixa_rara","caixa_epica"]);
 export const isRegularShopItem = item => Boolean(item && Number(item.price)>0 && REGULAR_SHOP_IDS.has(String(item.id)));
 export async function getShop() {
 const { rows } = await db.query(`
@@ -1499,18 +1504,19 @@ COALESCE(eu.level,1)::int AS equipment_level,
 COALESCE(cu.levels,'[]'::jsonb) AS upgraded_copies,
 COALESCE(sf.stars,1)::int AS equipment_stars,
 COALESCE(sf.level,0)::int AS forged_level,
-(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) AS equipped,
+(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) AS equipped,
 CASE
 WHEN s.weapon_id=i.item_id THEN 'weapon'
 WHEN s.armor_id=i.item_id THEN 'armor'
 WHEN s.boot_id=i.item_id THEN 'boots'
 WHEN s.helmet_id=i.item_id THEN 'helmet'
+WHEN s.shield_id=i.item_id THEN 'shield'
 ELSE NULL
 END AS equipped_slot,
 CASE WHEN it.sellable=FALSE THEN 0 ELSE GREATEST(
 0,
 i.quantity-GREATEST(COALESCE(bi.quantity,0),
-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 1 ELSE 0 END)
+CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) THEN 1 ELSE 0 END)
 ) END::int AS sellable_quantity,
 CASE
 WHEN it.sellable=FALSE THEN 0
@@ -1554,7 +1560,7 @@ FROM bound_inventory_items b WHERE b.jid=i.jid AND b.item_id=i.item_id
 ) bi ON TRUE
 WHERE i.jid=$1 AND i.quantity>0
 ORDER BY
-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id) THEN 0 ELSE 1 END,
+CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) THEN 0 ELSE 1 END,
 CASE it.category
 WHEN 'weapon' THEN 1
 WHEN 'armor' THEN 2
@@ -1614,11 +1620,11 @@ const item=itemR.rows[0]
 if(!item) throw new Error('Item não encontrado.')
 if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
 const statsR=await client.query(
-'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
+'SELECT weapon_id,armor_id,boot_id,helmet_id,shield_id FROM stats WHERE jid=$1 FOR UPDATE',
 [jid]
 )
 const stats=statsR.rows[0]||{}
-const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId) ? 1 : 0
+const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId || stats.shield_id===itemId) ? 1 : 0
 const bound=await boundItemQuantity(client,jid,itemId)
 const sellable=Math.max(0,owned-Math.max(equipped,bound))
 if(sellable<1){
@@ -1702,7 +1708,7 @@ throw new Error('Quantidade inválida na venda em lote.')
 await ensureUser(jid)
 return transaction(async client=>{
 const statsR=await client.query(
-'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
+'SELECT weapon_id,armor_id,boot_id,helmet_id,shield_id FROM stats WHERE jid=$1 FOR UPDATE',
 [jid]
 )
 const stats=statsR.rows[0]||{}
@@ -1720,7 +1726,7 @@ const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
 const item=itemR.rows[0]
 if(!item) throw new Error('Item não encontrado.')
 if(item.sellable===false) throw new Error('Um dos itens selecionados não pode ser vendido.')
-const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
+const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId || stats.shield_id===sel.itemId)
 const bound=await boundItemQuantity(client,jid,sel.itemId)
 const minimumKeep=Math.max(equipped?1:0,bound)
 const maxBatch=Math.max(0,owned-minimumKeep)
@@ -1812,7 +1818,7 @@ throw new Error('Quantidade inválida no descarte em lote.')
 await ensureUser(jid)
 return transaction(async client=>{
 const statsR=await client.query(
-'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
+'SELECT weapon_id,armor_id,boot_id,helmet_id,shield_id FROM stats WHERE jid=$1 FOR UPDATE',
 [jid]
 )
 const stats=statsR.rows[0]||{}
@@ -1830,7 +1836,7 @@ const item=itemR.rows[0]
 if(!item) throw new Error('Item não encontrado.')
 if(item.sellable===false) throw new Error('Um dos itens selecionados é protegido e não pode ser descartado.')
 if(item.rarity==='legendary') throw new Error('Itens lendários não podem ser descartados em lote.')
-const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId)
+const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId || stats.shield_id===sel.itemId)
 const bound=await boundItemQuantity(client,jid,sel.itemId)
 const maxDiscard=Math.max(0,owned-Math.max(equipped?1:0,bound))
 if(sel.qty>maxDiscard){
@@ -2033,6 +2039,7 @@ LIMIT $1
 return rows
 }
 const EQUIPMENT = {
+...Object.fromEntries(ANTI_CRIT_SHIELDS.map(({id,rarity,price,description,...gear})=>[id,gear])),
 ...Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear])),
 ...Object.fromEntries(LEGENDARY_BOX_GEAR.map(({id,description,...gear})=>[id,gear])),
 ...Object.fromEntries(HALLOWEEN_GEAR.map(({id,...gear})=>[id,gear])),
@@ -2300,7 +2307,8 @@ atk:Math.round(Number(eq.atk||0)*mult*starMult),
 def:Math.round(Number(eq.def||0)*mult*starMult),
 hp:Math.round(Number(eq.hp||0)*mult*starMult),
 spd:Math.round(Number(eq.spd||0)*mult*starMult),
-crit:Number((Number(eq.crit||0)*mult*starMult).toFixed(6))
+crit:Number((Number(eq.crit||0)*mult*starMult).toFixed(6)),
+...antiCritShieldStats(itemId,level)
 }
 }
 function equipmentUpgradeCost(rarity,currentLevel){
@@ -2468,7 +2476,7 @@ FROM inventories inv
 JOIN items i ON i.id=inv.item_id
 LEFT JOIN equipment_upgrades u ON u.jid=inv.jid AND u.item_id=inv.item_id
 LEFT JOIN equipment_star_forges sf ON sf.jid=inv.jid AND sf.item_id=inv.item_id
-WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor','boots','helmet')
+WHERE inv.jid=$1 AND inv.quantity>0 AND i.category IN ('weapon','armor','boots','helmet','shield')
 ORDER BY CASE i.category WHEN 'weapon' THEN 1 WHEN 'armor' THEN 2 WHEN 'helmet' THEN 3 ELSE 4 END,
 CASE i.rarity WHEN 'legendary' THEN 5 WHEN 'epic' THEN 4 WHEN 'rare' THEN 3 WHEN 'uncommon' THEN 2 ELSE 1 END DESC,
 i.name
@@ -2574,7 +2582,7 @@ if(!eq) throw new Error('Esse item não pode ser equipado.')
 return transaction(async client=>{
 const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 if(!inv.rows[0] || Number(inv.rows[0].quantity)<1) throw new Error('Você não possui esse item.')
-const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : eq.category==='helmet' ? 'helmet_id' : 'boot_id'
+const field=eq.category==='weapon' ? 'weapon_id' : eq.category==='armor' ? 'armor_id' : eq.category==='helmet' ? 'helmet_id' : eq.category==='shield' ? 'shield_id' : 'boot_id'
 await client.query(`UPDATE stats SET ${field}=$1,updated_at=${nowSql} WHERE jid=$2`,[itemId,jid])
 if(['weapon_id','armor_id','boot_id','helmet_id'].includes(field)){
 const st=(await client.query('SELECT hp,max_hp,weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
@@ -2763,12 +2771,13 @@ remaining:Number(chosen.quantity)-1
 export async function getCombatProfile(jid) {
 const p=await getProfile(jid)
 if(!p) return null
-const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
+const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id])
 const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id])
 const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
 const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1,stars[p.armor_id]||1):null
 const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
 const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
+const shield=p.shield_id?equipmentStatsAtLevel(p.shield_id,levels[p.shield_id]||1):null
 const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
 const enchantRows=(await db.query(`
 SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])
@@ -2791,6 +2800,7 @@ const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
 const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
 const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
 const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
+const sh=shield||{name:'Nenhum',level:1,critResist:0,critGuard:0}
 const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao'])
 const classScrolls=Number(scrollR.rows[0]?.quantity||0)
 const classChangeRemaining=0
@@ -2834,6 +2844,10 @@ armor_stars:Number(a.stars||1),
 armor_name:a.name,
 boot_name:b.name,
 helmet_name:h.name,
+shield_name:sh.name,
+shield_level:Number(sh.level||1),
+shield_crit_resist:Number(sh.critResist||0),
+shield_crit_guard:Number(sh.critGuard||0),
 class_id:String(p.class_id||'warrior'),
 class_applied:Boolean(p.class_applied),
 class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
@@ -2964,6 +2978,8 @@ const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.we
 const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id),starLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+const aeS=a.shield_id?equipmentStatsAtLevel(a.shield_id,eqLevel(attackerJid,a.shield_id)):{critResist:0,critGuard:0}
+const beS=b.shield_id?equipmentStatsAtLevel(b.shield_id,eqLevel(defenderJid,b.shield_id)):{critResist:0,critGuard:0}
 const A={
 jid:attackerJid,name:au?.push_name||'Jogador',
 hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)):classCombatHp(a.hp,Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),Number(aClassStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)),maxHp:Number(aHeroStats?.maxHp??aClassStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),
@@ -2974,6 +2990,7 @@ crit:pvpCritChance({equipmentCrit:Number(aeW.crit||0)+Number(aeA.crit||0)+Number
 spd:Number(aHeroStats?.spd??aClassStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
 enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
 petSpeed:apSpd,teamSpeed:aSynergySpd,
+shieldName:aeS.name||null,shieldCritResist:Number(aeS.critResist||0),shieldCritGuard:Number(aeS.critGuard||0),
 petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
 }
 const B={
@@ -2986,6 +3003,7 @@ crit:pvpCritChance({equipmentCrit:Number(beW.crit||0)+Number(beA.crit||0)+Number
 spd:Number(bHeroStats?.spd??bClassStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
 enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
+shieldName:beS.name||null,shieldCritResist:Number(beS.critResist||0),shieldCritGuard:Number(beS.critGuard||0),
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
 }
 // HP exclusivo de combate: mantém as mesmas regras de outras passivas de pet.
@@ -3009,6 +3027,7 @@ const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
 return {
 jid:fighter.jid,name:fighter.name,heroId:fighter.heroId,heroMasteryStage:fighter.heroId?fighter.heroMasteryStage:null,heroGear:fighter.heroId?fighter.heroGear:null,hp:fighter.hp,maxHp:fighter.maxHp,
 atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
+shieldName:fighter.shieldName||null,shieldCritResist:Number(fighter.shieldCritResist||0),shieldCritGuard:Number(fighter.shieldCritGuard||0),
 petName:fighter.petName||null,petSpecies:fighter.petSpecies||null,
 petPvpBonus:fighter.petBonus?{
 damage:Number(fighter.petBonus.damage||0),
@@ -3031,9 +3050,10 @@ const hit=(from,to)=>{
 from.attackIndex++
 const variance=0.85+Math.random()*0.30
 const critRoll=Math.random()
-const critWithoutPet=Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0))
-const crit=critRoll<Math.min(.40,critWithoutPet+Number(from.petBonus?.crit||0))
+const critWithoutPet=effectiveShieldedCritChance(Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0)),to.shieldCritResist)
+const crit=critRoll<effectiveShieldedCritChance(Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0)+Number(from.petBonus?.crit||0)),to.shieldCritResist)
 const petCrit=crit&&critRoll>=critWithoutPet
+const critMultiplier=shieldedCriticalMultiplier(1.6,to.shieldCritGuard)
 const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
 const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
 const damageWithoutPet=1+Number(from.enchantDamage||0)+Number(from.collabDamage||0)
@@ -3046,15 +3066,15 @@ hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
 lastProcAttack:oldLastProcAttack,roll:classRoll,awakeningStage:from.awakeningStage,awakeningState:from.awakeningState}
 const initialState=from.heroState;
 const attack=from.heroId
-  ?heroPvpAttack({heroId:from.heroId,damage:crit?Math.round(adjusted*1.6):adjusted,
+  ?heroPvpAttack({heroId:from.heroId,damage:crit?Math.round(adjusted*critMultiplier):adjusted,
       hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
       masteryStage:from.heroMasteryStage,state:initialState,gear:from.heroGear})
-  :classPvpAttack({...attackArgs,damage:crit?Math.round(adjusted*1.6):adjusted});
+  :classPvpAttack({...attackArgs,damage:crit?Math.round(adjusted*critMultiplier):adjusted});
 const noPetAttack=Number(from.petBonus?.damage||0)>0
-  ?(from.heroId?heroPvpAttack({heroId:from.heroId,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet,
+  ?(from.heroId?heroPvpAttack({heroId:from.heroId,damage:crit?Math.round(adjustedNoPet*critMultiplier):adjustedNoPet,
       hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
       masteryStage:from.heroMasteryStage,state:initialState,gear:from.heroGear})
-    :classPvpAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet}))
+    :classPvpAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*critMultiplier):adjustedNoPet}))
   :attack;
 if(from.heroId)from.heroState=attack.state;
 else from.awakeningState=attack.awakeningState;
@@ -3998,7 +4018,7 @@ export async function dungeon(jid) {
 await ensureUser(jid)
 return transaction(async client=>{
 const p=await client.query(`
-SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied
+SELECT u.level,s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,s.class_id,s.class_applied
 FROM users u JOIN stats s ON s.jid=u.jid
 WHERE u.jid=$1
 FOR UPDATE OF u,s
@@ -6230,8 +6250,8 @@ if(!itemRow || itemRow.sellable!==true || raidMaterialId(itemId) || itemRow.rari
 throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
 const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
-const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])
-const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id].includes(itemId)?1:0
+const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id,shield_id FROM stats WHERE jid=$1',[jid])
+const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id,stats.rows[0]?.shield_id].includes(itemId)?1:0
 const bound=await boundItemQuantity(client,jid,itemId)
 const paid=(await client.query('SELECT (SELECT COALESCE(SUM(quantity),0)::int FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2)+(SELECT COUNT(*)::int FROM equipment_star_forges WHERE jid=$1 AND item_id=$2) qty',[jid,itemId])).rows[0]
 const owned=Number(inv.rows[0]?.quantity||0)
