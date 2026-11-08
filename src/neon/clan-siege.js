@@ -197,7 +197,7 @@ export async function startDailyClanSiege(nowMs=now()){
         [match.id,jid,team.id]);
     await notice(conn,chat,[
       '🏰 *CERCO AO CASTELO — GUERRA SEMANAL INICIADA!*',
-      '⏰ Início programado: *'+(schedule.day===EXTRA_SIEGE_DATE?'domingo 08/11 às 19h':'sábado às 21h30')+'*, horário de Brasília.'
+      '⏰ Início programado: *'+(schedule.day===EXTRA_SIEGE_DATE?'domingo 08/11 às 19h':'sábado às 21h30')+'*, horário de Brasília.',
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
       '🏰 Fortalezas: Azul '+blueFortress.maxHp+' HP / +'+Math.round(blueFortress.attackPct*100)+'% ATK / -'+(blueFortress.defensePct*100).toFixed(1)+'% dano; Vermelho '+redFortress.maxHp+' HP / +'+Math.round(redFortress.attackPct*100)+'% ATK / -'+(redFortress.defensePct*100).toFixed(1)+'% dano.',
       '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
