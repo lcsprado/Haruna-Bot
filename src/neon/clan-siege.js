@@ -4,6 +4,7 @@ import {db} from './db.js';
 import {ensureWebActionOutbox} from './web-activity-relay.js';
 import {siegeBetaAuthorizedSet} from './clan-siege-beta-access.js';
 import {ensureSiegeEventRewardsSchema,grantSiegeEventRewards,brtSiegeDay,SIEGE_EVENT_DATE} from './clan-siege-event-rewards-20261104.js';
+import {ensureSiegeWeeklyXpSchema,grantSiegeWeeklyXp,SIEGE_WEEKLY_XP} from './clan-siege-weekly-xp.js';
 import {ensureClanFortressSchema,clanFortressCombatSnapshot,clanFortressStatus,clanFortressUpgrade} from './clan-fortress.js';
 import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
 
@@ -95,6 +96,7 @@ export async function ensureClanSiegeSchema(){
     await ensureWebActionOutbox(db);
     // Prêmio único, com chave idempotente para evitar pagamento duplicado.
     await ensureSiegeEventRewardsSchema(db);
+    await ensureSiegeWeeklyXpSchema(db);
     // Prepara a tabela de upgrades na inicialização, mesmo sem alguém abrir o Web.
     await ensureClanFortressSchema();
   })().catch(e=>{schemaPromise=null;throw e});
@@ -369,6 +371,7 @@ async function advance(conn,match){
       r.v4?JSON.stringify(r.v4.spyState.red):null
     ])).rows[0];
     const eventPrize=r.finished?await grantSiegeEventRewards(conn,updated):null;
+    const weeklyXp=r.finished?await grantSiegeWeeklyXp(conn,updated):null;
     const winner=r.winner===null?'Empate':r.winner===String(match.blue_clan_id)?'Clã Azul':'Clã Vermelho';
     await notice(conn,match.chat_jid,[
       '🏰 *CERCO AO CASTELO — RODADA '+match.round+'/'+MAX_ROUNDS+'*',
@@ -392,7 +395,12 @@ async function advance(conn,match){
           eventPrize.winners+' campeões × R$ 5.000.000 + '+eventPrize.trophies+
           ' Troféus do Cerco V5; '+eventPrize.losers+' vices × R$ 1.000.000.')+
         ' Nenhuma insígnia foi entregue.'):
-        r.finished?'🏆 Cerco concluído. Sem insígnia automática.':''
+        r.finished?'🏆 Cerco concluído. Sem insígnia automática.':'',
+      weeklyXp?(weeklyXp.paid?
+        '🌟 *XP SEMANAL CREDITADO:* '+weeklyXp.winners+' campeões × '+SIEGE_WEEKLY_XP.winner.toLocaleString('pt-BR')+' XP; '+
+        weeklyXp.losers+' vices × '+SIEGE_WEEKLY_XP.loser.toLocaleString('pt-BR')+' XP; '+
+        weeklyXp.draws+' empates × '+SIEGE_WEEKLY_XP.draw.toLocaleString('pt-BR')+' XP. Mínimo 2 rodadas jogadas por pessoa.':
+        '🌟 XP semanal: ninguém atingiu as 2 rodadas mínimas para premiação.'):'',
     ].join('\n'));
     match=updated;
   }
