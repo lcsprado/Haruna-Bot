@@ -1,6 +1,8 @@
 import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
+const WEB_BUILD_ID='alpha-siege-v5-20261108';
+// O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
 
@@ -28,11 +30,12 @@ const ui = {
   racingStrategy: 'equilibrada',
   racingTarget: '',
   racingLast: null,
-  siegePreviewAction: 'defend',
   siege: null,
+  siegePreviewAction: null,
   siegeFetchedAt: 0,
-  siegeError: '',
+  siegeLoading: false,
   siegeBusy: false,
+  siegeError: '',
   auctionError: '',
   auctionLoading: false,
   auctionSubmitting: false,
@@ -56,7 +59,6 @@ const ui = {
   contractLoading: false,
   relicStatus: null,
   lootSaleBusy: false,
-  petAdoptSpecies: '',
   duelTarget: '',
   characterId: localStorage.getItem(CHARACTER_KEY) || 'rei-alpha',
   raidTimer: null,
@@ -485,6 +487,25 @@ const CHARACTER_ART=[
   {id:'samurai',name:'Samurai',role:'Samurai',sprite:'char-samurai',desc:'Precisão, disciplina e lâmina oriental.'}
 ];
 
+
+const COLLAB_HERO_ART={
+  pecado_meliodas:{name:'Meliodas',portrait:'chara01',symbol:'🐉',role:'Atacante'},
+  pecado_diane:{name:'Diane',portrait:'chara04',symbol:'🛡️',role:'Defensora'},
+  pecado_ban:{name:'Ban',portrait:'chara05',symbol:'🦊',role:'Lutador'},
+  pecado_king:{name:'King',portrait:'chara06',symbol:'🪽',role:'Suporte'},
+  pecado_gowther:{name:'Gowther',portrait:'chara07',symbol:'🎯',role:'Controlador'},
+  pecado_merlin:{name:'Merlin',portrait:'chara08',symbol:'🔮',role:'Maga'},
+  pecado_escanor:{name:'Escanor',portrait:'chara09',symbol:'☀️',role:'Atacante'}
+};
+function activePlayableHero(){
+  return (Array.isArray(ui.data?.heroes)?ui.data.heroes:[]).find(h=>h.active&&h.owned)||null;
+}
+// Retratos da collab usam a folha WebP moderna do Work; não retomamos links externos antigos.
+function characterVisual(ch,className){
+  if(!ch?.isHero)return artSprite(ch.sprite,className,ch.name);
+  return petCroppedSprite(ch.id,(className||'')+' collab-modern-portrait',ch.name);
+}
+
 const PET_NATIVE_SPRITES={
   cachorro:'pet-dog',
   tartaruga:'pet-turtle',
@@ -542,7 +563,18 @@ const PET_IMAGE_ASSETS={
   grifo_celestial:'/assets/pets/grifo-celestial-v2.webp',
   // A versão anterior estava desfocada. A Fênix de Gelo usa o sprite oficial com paleta de gelo.
   fenix_celestial:'/assets/pets/fenix-celestial-v2.webp',
-  serpente_cosmica:'/assets/pets/serpente-cosmica.webp'
+  serpente_cosmica:'/assets/pets/serpente-cosmica.webp',
+  cervo_aurora_viva:'/assets/pets/cervo_aurora_viva.webp',
+  guardiao_nucleo_vital:'/assets/pets/guardiao_nucleo_vital.webp',
+  quimera_rubra:'/assets/pets/quimera_rubra.webp',
+  serafim_vida_abissal:'/assets/pets/serafim_vida_abissal.webp',
+  leviata_eternidade:'/assets/pets/leviata_eternidade.webp',
+  corcel_espectral_halloween:'/assets/pets/corcel_espectral_halloween.webp',
+  manticora_eclipse_20261030:'/assets/pets/manticora_eclipse_20261030.webp',
+  guaxinim_errante_20261027:'/assets/pets/guaxinim_errante_20261027.webp',
+  onca_eclipse_20261026:'/assets/pets/onca_eclipse_20261026.webp',
+  lince_astral:'/assets/pets/lince_astral.webp',
+  raposa_astral:'/assets/pets/raposa_astral.webp'
 };
 
 function petExactImage(species){
@@ -603,17 +635,17 @@ function petVisualMarkup(species,className='pet-official-art'){
     return petCroppedSprite(exclusive,className+' pet-primary-art',label);
   }
   if(COLLECTION_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
-  if(RAID_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
-
   // Artes individuais verificadas têm preferência sobre desenhos substitutos.
   // Os dois webps rotulados como Corvo e Tubarão foram removidos após auditoria.
   const img=petExactImage(s);
   if(img){
     return '<div class="pet-art-stack">'+
       petSpeciesFallback(s,className+' pet-image-fallback',label)+
-      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=alpha-pets-audit-20261006-2" alt="'+esc(label)+'" loading="lazy" '+
+      '<img class="pet-exact-art '+esc(className)+' pet-primary-art" src="'+esc(img)+'?v=pet-exclusives-20261105-1" alt="'+esc(label)+'" loading="lazy" '+
       'onload="this.parentElement.classList.add(\'pet-art-loaded\')" onerror="this.remove()"></div>';
   }
+
+  if(RAID_PET_SPRITES[s]) return petCroppedSprite(s,className+' pet-primary-art',label);
 
   // Para espécies comuns sem retrato fotográfico verificado, usa o SVG próprio.
   if(PET_VERIFIED_VECTOR_ASSETS.has(s)){
@@ -630,6 +662,8 @@ function petVisualMarkup(species,className='pet-official-art'){
   // Último recurso para espécies futuras que ainda não possuem assets.
   return petSpeciesFallback(s,className,label);
 }
+// QA usa o mesmo renderizador da coleção e do Time Pet.
+window.alphaPetArtAudit=Object.freeze({render:petVisualMarkup});
 function raidSpriteKey(level,name){
   const lv=Number(level||0);
   return RAID_BOSS_LEVELS.has(lv)?'raid-'+lv:'';
@@ -781,7 +815,7 @@ function toast(message){
 
 async function api(path, options){
   options=options||{};
-  const headers=Object.assign({'content-type':'application/json'},options.headers||{});
+  const headers=Object.assign({'content-type':'application/json','x-alpha-web-version':WEB_BUILD_ID},options.headers||{});
   if(ui.token) headers.authorization='Bearer '+ui.token;
   const res=await fetch(API_BASE+path,Object.assign({},options,{headers}));
   let body={};
@@ -812,6 +846,11 @@ async function syncAvatar(force=false){
 async function exchange(code){
   const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(!clean) throw new Error('Informe o código gerado pelo !web.');
+  // Não enviar token do jogador anterior ao trocar de conta, nem mantê-lo se falhar.
+  ui.token='';
+  ui.data=null;
+  ui.catalog=null;
+  localStorage.removeItem(TOKEN_KEY);
   const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
   ui.token=body.token;
   localStorage.setItem(TOKEN_KEY,ui.token);
@@ -948,35 +987,6 @@ async function loadEventCenter(force=false){
   }finally{ui.eventCenterLoading=false;}
   return ui.eventCenter;
 }
-async function loadSiege(force=false){
-  if(!ui.token)return;
-  if(!force&&ui.siegeFetchedAt&&Date.now()-ui.siegeFetchedAt<10000)return;
-  try{
-    const response=await api('/api/v1/me/clan-siege');
-    ui.siege=response.data;
-    ui.siegeError='';
-  }catch(err){
-    ui.siege={enabled:false};
-    ui.siegeError=/HTTP 404/i.test(err.message)?'A API da Guerra de Clãs ainda não está disponível.':String(err.message||'Falha ao carregar a guerra.');
-  }
-  ui.siegeFetchedAt=Date.now();
-  if(ui.page==='clan')render();
-}
-async function submitSiege(command,body){
-  if(ui.siegeBusy)return;
-  ui.siegeBusy=true;
-  try{
-    const response=await api('/api/v1/me/clan-siege/'+command,{method:'POST',body:JSON.stringify(body||{})});
-    if(response.ok===false)throw new Error(response.reason||'Falha na guerra.');
-    toast(command==='move'?'Ação secreta registrada.':'Guerra atualizada.');
-    ui.siegePreviewAction='defend';
-    await loadSiege(true);
-  }catch(err){
-    ui.siegeError=String(err.message||'Falha na guerra');
-    toast(ui.siegeError);
-    render();
-  }finally{ui.siegeBusy=false;}
-}
 async function openWebPage(page){
   ui.page=page;
   setMenu(false);
@@ -988,7 +998,7 @@ async function openWebPage(page){
   if(page==='events')jobs.push(loadEventCenter(false));
   if(page==='auction')jobs.push(loadAuction());
   if(page==='racing')jobs.push(loadRacing(false));
-  if(page==='clan')jobs.push(loadSiege(true));
+  if(page==='clan'){jobs.push(loadSiege(true));jobs.push(checkWebBuild());}
   await Promise.all(jobs);
   render();
   window.scrollTo({top:0,left:0,behavior:'auto'});
@@ -1036,6 +1046,49 @@ async function racingAction(action,body,op){
     ui.racingBusy=false;
   }
 }
+
+async function loadSiege(force=false){
+  if(!ui.token||ui.siegeLoading)return ui.siege;
+  if(!force&&ui.siegeFetchedAt&&Date.now()-ui.siegeFetchedAt<10000)return ui.siege;
+  ui.siegeLoading=true;
+  try{
+    const previous=ui.siege?.match;
+    const result=await api('/api/v1/me/clan-siege');
+    const next=result.data||{enabled:false};
+    if(next.requiredWebVersion&&next.requiredWebVersion!==WEB_BUILD_ID)
+      throw Error('Atualização obrigatória do Alpha Web V5. Recarregue a página antes do Cerco.');
+    const current=next.match;
+    if(current?.status==='active'&&(
+      previous?.status!=='active'||previous?.id!==current.id||previous?.round!==current.round
+    )){ui.siegePreviewAction=null;ui.siegePreviewTarget=null;} // nova rodada: exigir nova escolha e alvo
+    ui.siege=next;
+    ui.siegeError='';
+  }catch(err){
+    ui.siege={enabled:false};
+    ui.siegeError=/HTTP 404/i.test(err.message)?'API de guerra ainda não disponível.':String(err.message||err);
+  }finally{
+    ui.siegeLoading=false;
+    ui.siegeFetchedAt=Date.now();
+  }
+  if(ui.page==='clan')render();
+  return ui.siege;
+}
+async function submitSiege(command,body){
+  if(ui.siegeBusy)return;
+  if(command==='move'&&ui.siege?.requiredWebVersion&&ui.siege.requiredWebVersion!==WEB_BUILD_ID){
+    toast('Versão do Cerco desatualizada: recarregue a página.');return;
+  }
+  ui.siegeBusy=true;
+  try{
+    const result=await api('/api/v1/me/clan-siege/'+command,{method:'POST',body:JSON.stringify(body||{})});
+    if(result.ok===false)throw Error(result.reason||'Não foi possível executar.');
+    toast(command==='move'?'Ação secreta registrada.':command==='fortress-upgrade'?'🏰 Obra da fortaleza iniciada com dinheiro do tesouro!':'Guerra atualizada.');
+    ui.siegePreviewAction=null;ui.siegePreviewTarget=null;
+    await loadSiege(true);
+  }catch(err){ui.siegeError=String(err.message||err);toast(ui.siegeError);render();}
+  finally{ui.siegeBusy=false;}
+}
+
 async function doAction(name,body,options){
   options=options||{};
   try{
@@ -1043,6 +1096,7 @@ async function doAction(name,body,options){
     const response=await api('/api/v1/action/'+encodeURIComponent(name),{method:'POST',body:JSON.stringify(body||{})});
     ui.lastResult=response.result;
     if(options.afterSync!==false) await sync(true,true);
+    if(name==='clan.donate'&&ui.page==='clan')await loadSiege(true).catch(()=>null);
     if(['social','market','clan','games','activities','progression','rankings','loans','contracts'].includes(ui.page)){
       await syncExtras(true).catch(()=>null);
       render();
@@ -1081,7 +1135,7 @@ async function logout(remote){
   ui.avatarUrl=''; ui.avatarFetchedAt=0;
   ui.token=''; ui.data=null; ui.catalog=null; ui.extras=null; ui.extrasFetchedAt=0;
   ui.racing=null;ui.racingFetchedAt=0;ui.racingLast=null;
-  ui.siege=null;ui.siegeFetchedAt=0;ui.siegeError='';ui.siegeBusy=false;
+  ui.siege=null;ui.siegeFetchedAt=0;ui.siegeError='';
   localStorage.removeItem(TOKEN_KEY);
   showLogin();
 }
@@ -1112,10 +1166,10 @@ function currentGroup(){
   return ui.data&&ui.data.group;
 }
 function collection(){
-  return (ui.data&&ui.data.pets)||[];
+  return ((ui.data&&ui.data.pets)||[]).filter(p=>!COLLAB_HERO_ART[p.species]);
 }
 function catalogPets(){
-  return (ui.catalog&&ui.catalog.pets)||[];
+  return ((ui.catalog&&ui.catalog.pets)||[]).filter(p=>!COLLAB_HERO_ART[p.species]);
 }
 function itemCount(id){
   const row=((ui.data&&ui.data.inventory)||[]).find(x=>x.item_id===id);
@@ -1378,49 +1432,26 @@ function ownedPetCard(p){
   '</div>';
 }
 function catalogPetCard(p){
+  // Somente invocações especiais: adoção comum não é uma ação da Web.
+  if(p.source!=='raid')return '';
   const owned=collection().some(x=>x.species===p.species);
-  const level=Number(profile().level||ui.data.profile&&ui.data.profile.level||1);
-  const special=p.source==='raid';
-  const cost=special?Number(p.summonCost||100):Number(p.price||0);
-  const materialQty=special?itemCount(p.materialId):0;
-  const can=special ? materialQty>=cost : level>=Number(p.level||1);
+  const cost=Number(p.summonCost||100);
+  const materialQty=itemCount(p.materialId);
+  const can=materialQty>=cost;
   return '<div class="card catalog-card">'+petPortrait(p.species)+
-    '<div class="tag-row"><span class="tag '+(special?'legendary':'')+'">'+(special?'RAID / INVOCAÇÃO':'ADOTÁVEL')+'</span><span class="tag">'+esc(p.style||'')+'</span>'+(owned?'<span class="tag good">NA COLEÇÃO</span>':'')+'</div>'+
+    '<div class="tag-row"><span class="tag legendary">RAID / INVOCAÇÃO</span><span class="tag">'+esc(p.style||'')+'</span>'+(owned?'<span class="tag good">NA COLEÇÃO</span>':'')+'</div>'+
     '<h3>'+esc(p.label||p.name||titleCase(p.species))+'</h3>'+
     '<p>'+esc(specialtyText(p))+'</p>'+
-    (special?'<p>Raid Lv.'+num(p.raidLevel)+' • Chance '+num(p.chance)+'% • '+esc(p.materialName)+' '+materialQty+'/'+cost+'</p>':'<p>Nível mínimo '+num(p.level)+' • '+money(p.price)+'</p>')+
-    '<div class="pet-actions">'+(special
-      ? '<button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button>'
-      : (can
-        ? '<div class="pet-adopt-inline"><input data-pet-adopt-name="'+esc(p.species)+'" maxlength="24" value="'+esc(String(p.label||titleCase(p.species)).replace(/^[^\p{L}\p{N}]+/u,'').trim()||'Alpha')+'" placeholder="Nome do pet"><button class="btn primary" type="button" data-pet-adopt-direct="'+esc(p.species)+'">🐾 Adotar • '+money(p.price)+'</button></div>'
-        : '<button class="btn" disabled>Nível '+num(p.level)+' necessário</button>'))+
-    '</div>'+
-  '</div>';
-}
-
-function petAdoptModal(){
-  const species=String(ui.petAdoptSpecies||'');
-  if(!species) return '';
-  const p=catalogPets().find(x=>x.species===species&&x.source==='adoption');
-  if(!p) return '';
-  const suggested=String(p.label||titleCase(p.species)).replace(/^[^\p{L}\p{N}]+/u,'').trim();
-  return '<div class="pet-adopt-overlay" data-pet-adopt-close>'+
-    '<div class="pet-adopt-modal" role="dialog" aria-modal="true" aria-label="Adotar pet" onclick="event.stopPropagation()">'+
-      '<button class="pet-adopt-x" data-pet-adopt-close type="button">×</button>'+
-      '<div class="pet-adopt-preview">'+petPortrait(p.species)+'</div>'+
-      '<div class="tag-row"><span class="tag good">ADOÇÃO</span><span class="tag">'+esc(p.style||'Pet')+'</span></div>'+
-      '<h2>'+esc(p.label||titleCase(p.species))+'</h2>'+
-      '<p>'+esc(specialtyText(p))+'</p>'+
-      '<div class="pet-adopt-cost"><span>Nível mínimo <strong>'+num(p.level)+'</strong></span><span>Custo <strong>'+money(p.price)+'</strong></span></div>'+
-      '<label>Nome do pet</label>'+
-      '<input data-pet-adopt-modal-name maxlength="24" value="'+esc(suggested||'Alpha')+'" placeholder="Digite o nome do pet">'+
-      '<div class="pet-adopt-actions"><button class="btn" data-pet-adopt-close type="button">Cancelar</button><button class="btn primary" data-pet-adopt-confirm="'+esc(p.species)+'" type="button">🐾 Confirmar adoção</button></div>'+
-    '</div>'+
+    '<p>Raid Lv.'+num(p.raidLevel)+' • Chance '+num(p.chance)+'% • '+esc(p.materialName)+' '+materialQty+'/'+cost+'</p>'+
+    '<div class="pet-actions"><button class="btn '+(can?'primary':'')+'" '+(can?'':'disabled')+' data-pet-summon="'+esc(p.materialId)+'">Invocar</button></div>'+
   '</div>';
 }
 
 function renderCharacter(){
   const selected=selectedCharacter();
+  const activeHero=activePlayableHero();
+  const heroVisual=activeHero?{id:activeHero.id,name:activeHero.name,isHero:true}:null;
+  const heroBanner=activeHero?'<section class="card collab-current-hero"><div class="collab-current-art">'+characterVisual(heroVisual,'collab-current-portrait')+'</div><div class="collab-current-content"><span class="tag good">⚔️ HERÓI ATIVO</span><h3>'+esc(activeHero.name)+'</h3><p>🌟 Nível '+num(activeHero.petLevel||1)+'/100 • Maestria '+num(activeHero.masteryStage||1)+'/5</p><p>Classe '+esc(selected.name)+' preservada enquanto o herói combate.</p><button class="btn" data-character-select="__class__">↩ Voltar à classe</button></div></section>':'';
   const cp=profile();
   const applied=Boolean(cp.class_applied);
   const currentRule=classRule(selected.id);
@@ -1430,15 +1461,15 @@ function renderCharacter(){
     : '<div class="notice"><strong>Troca de classe disponível.</strong><br>Custa 1 Pergaminho de Reclassificação por troca, sem recarga • Pergaminhos: '+num(scrolls)+'</div>';
 
   return '<div class="page-head"><div><h2>Seu personagem</h2><p>Cada classe tem uma distribuição própria de HP, ATK, DEF e SPD. Não existem mais bônus negativos nem atributo zerado.</p></div><span class="tag '+(applied?'good':'')+'">'+esc(applied?selected.name+' ativo':'Escolha sua classe')+'</span></div>'+
-    reclassNotice+
+    reclassNotice+heroBanner+
     '<div class="card class-current"><div class="section-title"><div><h3>Status atual</h3><small>'+(currentRule?esc(currentRule.role):'Sem classe aplicada')+'</small></div><button class="btn heal" data-player-heal '+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'disabled':'')+'>'+(Number(cp.effective_hp||cp.hp)>=Number(cp.effective_max_hp||cp.max_hp)?'❤️ HP cheio':'❤️ Curar personagem')+'</button></div>'+
       '<div class="stat-strip"><span>❤️ '+num(cp.effective_hp||cp.hp)+'/'+num(cp.effective_max_hp||cp.max_hp)+'</span><span>⚔️ '+num(cp.effective_atk||cp.atk)+'</span><span>🛡️ '+num(cp.effective_def||cp.def)+'</span><span>💨 '+num(cp.effective_spd||cp.spd)+'</span></div>'+
       '<div class="character-equipment-summary">'+INVENTORY_GROUPS.filter(([key])=>EQUIPMENT_GROUP_KEYS.has(key)).map(([key,label])=>'<span>'+label+': <strong>'+equipmentSlotText(key)+'</strong></span>').join('')+'</div>'+
     '</div>'+
-    '<div class="character-grid">'+CHARACTER_ART.map(ch=>{
+    '<div class="character-grid">'+CHARACTER_ART.filter(ch=>Boolean(classRule(ch.id))||(applied&&ch.id===selected.id)).map(ch=>{
       const rule=classRule(ch.id)||{};
       const active=applied&&ch.id===selected.id;
-      const locked=applied&&!active&&scrolls<1;
+      const locked=Boolean(activeHero)||(applied&&!active&&scrolls<1);
       const stats=[
         '❤️ +'+num(rule.hp||0)+' HP',
         '⚔️ +'+num(rule.atk||0)+' ATK',
@@ -1456,7 +1487,31 @@ function renderCharacter(){
         '<div class="class-bonuses">'+stats.map(x=>'<span>'+x+'</span>').join('')+'</div>'+
         '<button class="btn '+(active?'good':'primary')+'" data-character-select="'+esc(ch.id)+'" '+(active||locked?'disabled':'')+'>'+esc(label)+'</button>'+
       '</div>';
-    }).join('')+'</div>';
+    }).join('')+'</div>'+renderPlayableHeroes();
+}
+
+function renderPlayableHeroes(){
+  const heroes=Array.isArray(ui.data?.heroes)?ui.data.heroes:[];
+  if(!heroes.length)return '';
+  const active=activePlayableHero();
+  const items=heroes.map(h=>{
+    const disabled=!h.owned||h.active;
+    const label=h.active?'ATIVO':h.owned?'Usar como herói':'Não obtido';
+    const art=COLLAB_HERO_ART[h.id]||null;
+    const character=art?{...art,id:h.id,name:h.name||art.name,isHero:true}:null;
+    return '<div class="card character-card collab-hero-card '+(h.active?'selected':'')+(!h.owned?' collab-locked':'')+'">'+
+      '<div class="character-art collab-hero-card-art">'+(character?characterVisual(character,'character-official-art'):'')+'</div>'+
+      '<div class="tag-row"><span class="tag">'+(h.owned?'Lv.'+num(h.petLevel||1)+'/100':'Bloqueado')+'</span>'+(h.active?'<span class="tag good">⚔️ ATIVO</span>':'')+'</div>'+
+      '<h3>🌈 '+esc(h.name)+'</h3>'+
+      '<p>'+(h.owned?'✅ Personagem desbloqueado • Maestria '+num(h.masteryStage||1)+'/5 • '+num(h.masteryXp||0)+' XP':'Herói ainda não obtido')+'</p>'+
+      '<button class="btn '+(h.active?'good':'primary')+'" data-character-select="'+esc(h.id)+'" '+(disabled?'disabled':'')+'>'+label+'</button>'+
+      '</div>';
+  }).join('');
+  return '<section class="card"><h3>⚔️ Heróis jogáveis — 7 Pecados</h3>'+
+    '<p>Seu herói ativo combate no lugar da classe. A classe e os Despertares ficam preservados. Retratos: arte oficial da série.</p>'+
+    '<div class="character-grid">'+items+'</div>'+
+    '<div class="hero-actions"><button class="btn" data-character-select="__class__" '+(active?'':'disabled')+'>↩ Voltar à minha classe</button></div>'+
+    '</section>';
 }
 
 const PET_TEAM_SLOT_LABELS=['','Principal','Suporte','Reserva'];
@@ -1605,13 +1660,13 @@ async function requestPetTeamPreview(){
 
 
 function renderPets(){
-  const adoptCount=catalogPets().filter(x=>x.source==='adoption').length;
+  // Adoção comum foi desativada. Mesmo estados legados da aba "adopt" não a reabrem.
+  if(ui.petTab!=='owned' && ui.petTab!=='raid') ui.petTab='owned';
   const raidCount=catalogPets().filter(x=>x.source==='raid').length;
-  const tabs=[['owned','Minha coleção ('+collection().length+')'],['adopt','🐾 Adotar pet ('+adoptCount+')'],['raid','✨ Raid / especiais ('+raidCount+')']];
-  let rows=[];
-  if(ui.petTab==='owned') rows=collection().map(ownedPetCard);
-  else if(ui.petTab==='adopt') rows=catalogPets().filter(x=>x.source==='adoption').map(catalogPetCard);
-  else rows=catalogPets().filter(x=>x.source==='raid').map(catalogPetCard);
+  const tabs=[['owned','Minha coleção ('+collection().length+')'],['raid','✨ Raid / especiais ('+raidCount+')']];
+  const rows=ui.petTab==='owned'
+    ? collection().map(ownedPetCard)
+    : catalogPets().filter(x=>x.source==='raid').map(catalogPetCard);
 
   const draft=petTeamDraftIds(),pets=collection();
   const teamSlot=slot=>{
@@ -1641,16 +1696,17 @@ function renderPets(){
   const valid=Boolean(slots[0])&&(!slots[2]||Boolean(slots[1]))&&
     new Set(slots.filter(Boolean)).size===slots.filter(Boolean).length &&
     new Set(slots.filter(Boolean).map(id=>pets.find(p=>Number(p.id)===Number(id))?.species)).size===slots.filter(Boolean).length;
-  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>O catálogo, coleção e Time Pet vêm do mesmo servidor do WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" data-pet-tab="adopt">🐾 Adotar novo pet</button><span class="tag good">'+catalogPets().length+' espécies/recompensas</span></div></div>'+
-    '<div class="card pet-team-composer"><div class="section-title"><div><h3>🛡️ Montar Time Pet</h3><small>Escolha por estilo, bônus, poder e energia</small></div></div>'+
+  return '<div class="page-head"><div><h2>Pets sincronizados</h2><p>Coleção e invocações sincronizadas com o WhatsApp.</p></div><div class="hero-actions"><button class="btn primary" type="button" data-pet-tab="raid">✨ Invocar pets de Raid</button><span class="tag good">'+raidCount+' pets de Raid</span></div></div>'+
+    '<div class="tabs section pet-navigation-tabs" role="tablist" aria-label="Coleção e invocações">'+tabs.map(t=>'<button role="tab" aria-selected="'+(ui.petTab===t[0]?'true':'false')+'" class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
+    (ui.petTab==='owned' ? '<div class="card pet-team-composer"><div class="section-title"><div><h3>🛡️ Montar Time Pet</h3><small>Escolha por estilo, bônus, poder e energia</small></div></div>'+
       '<div class="pet-team-slots">'+[1,2,3].map(teamSlot).join('')+'</div>'+
       '<div class="section">'+petTeamPreviewMarkup()+'</div>'+
       '<div class="pet-team-save-bar"><button class="btn primary" type="button" data-pet-team-save '+(!hasChanges||!valid||ui.petTeamSaving?'disabled':'')+'>'+(ui.petTeamSaving?'Salvando…':'✓ Salvar time')+'</button>'+
       (hasChanges?'<button class="btn" type="button" data-pet-team-reset>Desfazer escolhas</button>':'<small>Escolha os pets para comparar as sinergias antes de salvar.</small>')+'</div>'+
-    '</div>'+
-    '<div class="tabs section">'+tabs.map(t=>'<button class="tab '+(ui.petTab===t[0]?'active':'')+'" data-pet-tab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'+
-    '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">Nenhum pet nesta seção.</div>')+'</div>'+
-    petAdoptModal()+petTeamPickerModal();
+    '</div>' : '')+
+    (ui.petTab==='raid'?'<div class="section-title pet-raid-title"><h3>✨ Invocações lendárias de Raid</h3><small>Raids 10–70 • materiais e chances exibidos em cada pet</small></div>':'')+
+    '<div class="grid cards">'+(rows.length?rows.join(''):'<div class="empty">'+(ui.petTab==='raid'?'Catálogo de Raids indisponível. Atualize a Web ou tente novamente.':'Nenhum pet na sua coleção.')+'</div>')+'</div>'+
+    petTeamPickerModal();
 }
 function itemIcon(item){
   const map={weapon:'🗡️',armor:'🛡️',boots:'👢',consumable:'🧪',special:'💠'};
@@ -2272,13 +2328,29 @@ function characterForClass(id){
   return CHARACTER_ART.find(x=>x.id===String(id||''))||CHARACTER_ART[0];
 }
 
+// Em Duelos, usar o recorte CSS da célula da folha (2x2) em vez de SVG.
+// SVG <image> pode vazar a célula vizinha em alguns WebViews Android.
+function duelClassPortrait(ch){
+  const crop=CLASS_PORTRAITS[ch?.sprite];
+  if(!crop)return '';
+  const sheet=CLASS_ART_SHEETS[crop[0]];
+  const x=crop[1]===0?0:100;
+  const y=crop[2]===0?0:100;
+  return '<div class="duel-class-portrait" role="img" aria-label="'+esc(ch.name)+
+    '" style="background-image:url(\''+esc(sheet)+'\');background-position:'+x+'% '+y+'%"></div>';
+}
+function duelFighterPortrait(ch){
+  return ch?.isHero?characterVisual(ch,'duel-hero-portrait'):duelClassPortrait(ch);
+}
+
 function renderDuelArena(members){
   if(!members.length) return '<div class="card duel-arena-card"><div class="empty">Nenhum adversário recente disponível para duelo.</div></div>';
   const target=members.find(x=>x.jid===ui.duelTarget)||members[0];
   ui.duelTarget=target.jid;
   const me=(ui.data&&ui.data.profile)||{};
   const myCombat=profile();
-  const mine=selectedCharacter();
+  const hero=activePlayableHero();
+  const mine=hero&&COLLAB_PET_SPRITES[hero.id]?{id:hero.id,name:hero.name,isHero:true}:selectedCharacter();
   const enemy=characterForClass(target.class_id);
   const myHp=Number(myCombat.effective_hp||myCombat.hp||0),myMax=Math.max(1,Number(myCombat.effective_max_hp||myCombat.max_hp||1));
   const enemyHp=Number(target.effective_hp??target.hp??0),enemyMax=Math.max(1,Number(target.effective_max_hp??target.max_hp??1));
@@ -2292,14 +2364,14 @@ function renderDuelArena(members){
     '<div class="duel-picker"><label>Adversário</label><select data-duel-target>'+members.map(m=>'<option value="'+esc(m.jid)+'" '+(m.jid===target.jid?'selected':'')+'>'+esc(m.push_name||'Jogador')+' • Lv.'+num(m.level||1)+'</option>').join('')+'</select></div>'+
     '<div class="duel-stage-live">'+
       '<div class="duel-fighter me">'+
-        '<div class="duel-character-art">'+artSprite(mine.sprite,'duel-character-svg',mine.name)+'</div>'+
+        '<div class="duel-character-art">'+duelFighterPortrait(mine)+'</div>'+
         '<strong>'+esc(me.push_name||'Você')+'</strong><small>'+esc(mine.name)+' • Lv.'+num(me.level||1)+'</small>'+
         '<div class="duel-hp"><span>❤️ '+num(myHp)+'/'+num(myMax)+'</span><div class="progress"><span style="width:'+pct(myHp/myMax*100)+'%"></span></div></div>'+
         '<div class="duel-stats"><span>⚔️ '+num(myCombat.effective_atk||myCombat.atk)+'</span><span>🛡️ '+num(myCombat.effective_def||myCombat.def)+'</span><span>💨 '+num(myCombat.effective_spd||myCombat.spd)+'</span></div>'+
       '</div>'+
       '<div class="duel-versus">VS</div>'+
       '<div class="duel-fighter enemy">'+
-        '<div class="duel-character-art">'+artSprite(enemy.sprite,'duel-character-svg',enemy.name)+'</div>'+
+        '<div class="duel-character-art">'+duelFighterPortrait(enemy)+'</div>'+
         '<strong>'+esc(target.push_name||'Jogador')+'</strong><small>'+esc(enemy.name)+' • Lv.'+num(target.level||1)+'</small>'+
         '<div class="duel-hp"><span>❤️ '+num(enemyHp)+'/'+num(enemyMax)+'</span><div class="progress"><span style="width:'+pct(enemyHp/enemyMax*100)+'%"></span></div></div>'+
         '<div class="duel-stats"><span>⚔️ '+num(target.effective_atk??target.atk??0)+'</span><span>🛡️ '+num(target.effective_def??target.def??0)+'</span><span>💨 '+num(target.effective_spd??target.spd??0)+'</span></div>'+
@@ -2357,19 +2429,34 @@ function renderMarket(){
 }
 
 function renderClan(){
-  const ex=ui.extras||{}, clan=ex.clan, clans=ex.clans||[];
-  // Dados autoritativos do PostgreSQL: jamais trate membros do grupo como membros do clã.
-  const members=(Array.isArray(ex.clanMembers)?ex.clanMembers:[]).filter(x=>String(x.jid)!==String(ui.data.identity.jid));
-  let actions=clan
+  const ex=ui.extras||{},clan=ex.clan,clans=ex.clans||[];
+  const members=Array.isArray(ex.clanMembers)?ex.clanMembers:[];
+  const invitees=Array.isArray(ex.clanInvitable)?ex.clanInvitable:[];
+  const leader=clan?.role==='leader';
+  const actions=clan
     ? '<button class="btn good" data-clan-donate>Doar</button><button class="btn danger" data-clan-leave>Sair do clã</button>'
     : '<button class="btn primary" data-clan-create>Criar clã</button><button class="btn good" data-clan-accept>Aceitar convite</button>';
-  return '<div class="page-head"><div><h2>Clã</h2><p>Mesma estrutura dos comandos !cla / !criarcla / !claconvidar.</p></div></div>'+
-    '<div class="card"><div class="section-title"><h3>'+esc(clan&&clan.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+renderClanSiegePreview(ui)+
-    (clan?'<div class="section"><div class="section-title"><h3>Integrantes do meu clã</h3><small>Apenas membros cadastrados no clã</small></div><div class="grid three">'+
-      (members.length?members.map(m=>'<div class="card"><h3>'+esc(m.push_name||'Jogador')+'</h3><p>'+esc(m.role==='leader'?'Líder':'Membro')+'</p>'+
-        (clan.role==='leader'?'<div class="pet-actions"><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button><button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div>':'')+'</div>').join(''):'<div class="empty">Nenhum outro membro do clã na lista.</div>')+
-      '</div><p class="hint">Para convidar novos jogadores, use o comando de convite no grupo AlphaBot.</p></div>':'')+
-    '<div class="section card"><div class="section-title"><h3>Ranking de clãs</h3><small>'+clans.length+' listados</small></div>'+renderClanList(clans)+'</div>'+resultPanel();
+  const rows=members.map(m=>{
+    const self=m.jid===ui.data?.identity?.jid;
+    const canManage=leader&&!self&&m.role!=='leader';
+    return '<div class="card clan-member-only"><h3>'+esc(self?'Você · '+(m.push_name||'Jogador'):m.push_name||'Jogador')+'</h3>'+
+      '<p class="muted">'+(m.role==='leader'?'👑 Líder':'🛡️ Integrante')+'</p>'+
+      (canManage?'<div class="pet-actions"><button class="btn danger" data-clan-kick="'+esc(m.jid)+'">Expulsar</button>'+
+      '<button class="btn" data-clan-transfer="'+esc(m.jid)+'">Promover líder</button></div>':'')+'</div>';
+  }).join('');
+  const invite=clan&&leader?'<details class="clan-invite-section"><summary>➕ Convidar jogador sem clã</summary>'+
+    (invitees.length?'<div class="hero-actions section"><select data-clan-invite-select aria-label="Jogador disponível">'+
+      '<option value="">Selecione um jogador</option>'+invitees.map(m=>'<option value="'+esc(m.jid)+'">'+esc(m.push_name||'Jogador')+'</option>').join('')+'</select>'+
+      '<button class="btn" data-clan-invite-selected>Enviar convite</button></div>':
+      '<p>Não há jogadores recentes sem clã disponíveis para convite.</p>')+'</details>':'';
+  return '<div class="page-head"><div><h2>Clã</h2><p>Gerencie os integrantes reais do seu clã e participe da Guerra de Clãs.</p></div></div>'+
+    '<div class="card"><div class="section-title"><h3>'+esc(clan?.name||'Sem clã')+'</h3><small>'+(clan?'Clã sincronizado':'Entre ou crie um clã')+'</small></div>'+
+      renderClanSummary(clan)+'<div class="hero-actions section">'+actions+'</div></div>'+
+    renderClanSiegePreview(ui)+
+    (clan?'<div class="section"><div class="section-title"><h3>Membros do meu clã</h3><small>'+members.length+' registrado(s)</small></div>'+
+      '<div class="grid three">'+(members.length?rows:'<div class="empty">Sincronizando integrantes do clã...</div>')+'</div>'+invite+'</div>':'')+
+    '<div class="section card"><div class="section-title"><h3>Ranking de clãs</h3><small>'+clans.length+' listados</small></div>'+
+      renderClanList(clans)+'</div>'+resultPanel();
 }
 
 function gameStatePanel(type,state){
@@ -3039,9 +3126,12 @@ function bind(){
   });
   document.querySelectorAll('[data-resync]').forEach(x=>x.onclick=()=>sync(false,true));
   document.querySelectorAll('[data-character-select]').forEach(x=>x.onclick=async()=>{
-    ui.characterId=x.dataset.characterSelect;
-    localStorage.setItem(CHARACTER_KEY,ui.characterId);
-    await doAction('character.select',{classId:ui.characterId},{success:'🧙 Classe aplicada aos seus atributos.'});
+    const choice=String(x.dataset.characterSelect||'');
+    if(choice==='__class__'){await doAction('hero.class',{},{success:'🧙 Classe original restaurada.'});return;}
+    if(choice.startsWith('pecado_')){await doAction('hero.select',{heroId:choice},{success:'🌈 Herói selecionado.'});return;}
+    ui.characterId=choice;
+    localStorage.setItem(CHARACTER_KEY,choice);
+    await doAction('character.select',{classId:choice},{success:'🧙 Classe aplicada.'});
   });
   document.querySelectorAll('[data-go-page]').forEach(x=>x.onclick=()=>openWebPage(x.dataset.goPage));
   document.querySelectorAll('[data-action]').forEach(x=>x.onclick=()=>doAction(x.dataset.action,{},{}));
@@ -3090,7 +3180,11 @@ function bind(){
   document.querySelectorAll('.inventory-tabs').forEach(tabs=>tabs.addEventListener('scroll',()=>{ui.inventoryTabsScrollLeft=tabs.scrollLeft;},{passive:true}));
   document.querySelectorAll('[data-contract-accept]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.accept',{number:Number(x.dataset.contractAccept)},{success:'📜 Contrato aceito.'});await loadContracts();render();}catch{render();}});
   document.querySelectorAll('[data-contract-claim]').forEach(x=>x.onclick=async()=>{x.disabled=true;try{await doAction('contract.claim',{}, {success:'🎁 Contrato resgatado.'});await loadContracts();render();}catch{render();}});
-  document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{ui.petTab=x.dataset.petTab;render();});
+  document.querySelectorAll('[data-pet-tab]').forEach(x=>x.onclick=()=>{
+    ui.petTab=x.dataset.petTab==='raid'?'raid':'owned';
+    render();
+    window.scrollTo({top:0,behavior:'auto'});
+  });
   // A custom accessible picker replaces the native Android select menu.
   document.querySelectorAll('[data-team-picker-open]').forEach(x=>x.onclick=()=>{
     ui.petTeamPickerSlot=Number(x.dataset.teamPickerOpen);
@@ -3190,47 +3284,6 @@ function bind(){
     x.disabled=true;
     try{await doAction('pet.energy',{itemId:'energetico_pet'},{});}
     catch{ x.disabled=false; }
-  });
-  document.querySelectorAll('[data-pet-adopt-direct]').forEach(x=>x.onclick=async()=>{
-    const species=String(x.dataset.petAdoptDirect||'');
-    const input=x.parentElement&&x.parentElement.querySelector('[data-pet-adopt-name]');
-    const name=String(input&&input.value||'').trim();
-    if(!species) return toast('Pet inválido.');
-    if(name.length<2) return toast('Digite um nome com pelo menos 2 caracteres.');
-    x.disabled=true;
-    try{
-      await doAction('pet.adopt',{species,name},{success:'🐾 Pet adotado e equipado.'});
-      ui.petTab='owned';
-      render();
-    }catch{
-      x.disabled=false;
-    }
-  });
-  document.querySelectorAll('[data-pet-adopt-open]').forEach(x=>x.onclick=()=>{
-    ui.petAdoptSpecies=x.dataset.petAdoptOpen;
-    render();
-    window.setTimeout(()=>document.querySelector('[data-pet-adopt-modal-name]')?.focus(),0);
-  });
-  document.querySelectorAll('[data-pet-adopt-close]').forEach(x=>x.onclick=event=>{
-    const overlay=event.currentTarget;
-    if(overlay.classList.contains('pet-adopt-overlay') && event.target!==overlay) return;
-    ui.petAdoptSpecies='';
-    render();
-  });
-  document.querySelectorAll('[data-pet-adopt-confirm]').forEach(x=>x.onclick=async()=>{
-    const input=document.querySelector('[data-pet-adopt-modal-name]');
-    const name=String(input&&input.value||'').trim();
-    if(name.length<2) return toast('Digite um nome com pelo menos 2 caracteres.');
-    const species=x.dataset.petAdoptConfirm;
-    x.disabled=true;
-    try{
-      await doAction('pet.adopt',{species,name},{success:'🐾 Pet adotado e equipado.'});
-      ui.petAdoptSpecies='';
-      ui.petTab='owned';
-      render();
-    }catch{
-      x.disabled=false;
-    }
   });
   document.querySelectorAll('[data-pet-summon]').forEach(x=>x.onclick=()=>doAction('pet.summon',{materialId:x.dataset.petSummon},{}));
   document.querySelectorAll('[data-player-heal]').forEach(x=>x.onclick=()=>doAction('player.heal',{}, {success:'❤️ Personagem curado.'}));
@@ -3438,7 +3491,11 @@ function bind(){
     const amount=Number(prompt('Valor da doação ao clã:','1000'));
     if(amount>0) doAction('clan.donate',{amount},{});
   });
-  document.querySelectorAll('[data-clan-invite]').forEach(x=>x.onclick=()=>doAction('clan.invite',{targetJid:x.dataset.clanInvite},{}));
+  document.querySelectorAll('[data-clan-invite-selected]').forEach(x=>x.onclick=()=>{
+    const ref=document.querySelector('[data-clan-invite-select]')?.value||'';
+    if(!ref){toast('Escolha um jogador sem clã.');return;}
+    void doAction('clan.invite',{targetJid:ref},{});
+  });
   document.querySelectorAll('[data-clan-kick]').forEach(x=>x.onclick=()=>doAction('clan.kick',{targetJid:x.dataset.clanKick},{}));
   document.querySelectorAll('[data-clan-transfer]').forEach(x=>x.onclick=()=>doAction('clan.transfer',{targetJid:x.dataset.clanTransfer},{}));
 
@@ -3586,9 +3643,24 @@ $('#menuBackdrop').onclick=()=>setMenu(false);
 $('#menuBackdrop').addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 document.addEventListener('keydown',e=>{if(e.key==='Escape') setMenu(false);});
 
+async function checkWebBuild(){
+  if(document.hidden)return;
+  try{
+    const res=await fetch('/version.json?ts='+Date.now(),{cache:'no-store'});
+    if(!res.ok)return;
+    const latest=await res.json();
+    if(latest.buildId&&latest.buildId!==WEB_BUILD_ID){
+      toast('Nova versão Alpha Web disponível. Atualizando...');
+      const registration=await navigator.serviceWorker?.getRegistration('/');
+      await registration?.update().catch(()=>null);
+      window.location.reload();
+    }
+  }catch{} // Falha de rede não autoriza nenhuma ação antiga: o servidor valida a versão.
+}
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden && ui.token && Date.now()-ui.lastFullSyncAt>60000) sync(true);
+  if(!document.hidden){void checkWebBuild();if(ui.token&&Date.now()-ui.lastFullSyncAt>60000)sync(true);}
 });
+setInterval(()=>{if(!document.hidden)void checkWebBuild();},60000);
 
 // Full bootstrap no more often than 2 minutes, plus explicit actions/refresh.
 setInterval(()=>{
@@ -3598,7 +3670,7 @@ setInterval(()=>{
 // During Boss/Raid views, use the small HP endpoint only.
 setInterval(()=>{void syncBossLive();},25000);
 setInterval(()=>{
-  if(!document.hidden && ui.token){refreshLiveCountdowns();if(ui.page==='racing')updateRacingClocks();}
+  if(!document.hidden && ui.token){refreshLiveCountdowns();if(ui.page==='racing'&&updateRacingClocks()&&Date.now()>=(ui.racingNextCompletionRefreshAt||0)){ui.racingNextCompletionRefreshAt=Date.now()+30000;void loadRacing(true);}}
 },1000);
 
 (async function boot(){
@@ -3608,15 +3680,27 @@ setInterval(()=>{
   const linked=hashParams.get('code') || params.get('link');
   const tokenFromLink=params.get('token');
 
+  // Tokens em URL podem vazar por histórico, compartilhamento e previews.
+  // Somente o código de uso único gerado pelo !web pode iniciar uma nova sessão.
   if(tokenFromLink){
-    ui.token=tokenFromLink;
-    localStorage.setItem(TOKEN_KEY,ui.token);
     history.replaceState({},document.title,'/rpg');
+    ui.token='';
+    ui.data=null;
+    ui.catalog=null;
+    localStorage.removeItem(TOKEN_KEY);
+    showLogin('Link antigo com token não é aceito. Gere um novo !web no WhatsApp.');
+    return;
   }
 
   // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
   // Só o navegador executa o POST que consome o código.
   if(linked){
+    // Um novo link sempre substitui a identidade local anterior.
+    // Código expirado, usado ou incorreto NUNCA reabre a sessão de outra pessoa.
+    ui.token='';
+    ui.data=null;
+    ui.catalog=null;
+    localStorage.removeItem(TOKEN_KEY);
     $('#linkCode').value=linked;
     try{
       await exchange(linked);
@@ -3624,13 +3708,11 @@ setInterval(()=>{
       await sync(false);
       return;
     }catch(err){
-      // Se o aparelho já tem sessão válida, um código antigo/consumido não deve derrubá-la.
-      if(ui.token){
-        history.replaceState({},document.title,'/rpg');
-        showApp();
-        await sync(true);
-        if(ui.token) return;
-      }
+      ui.token='';
+      ui.data=null;
+      ui.catalog=null;
+      localStorage.removeItem(TOKEN_KEY);
+      history.replaceState({},document.title,'/rpg');
       showLogin(err.message+' Gere um novo !web e toque no novo link. O código vale por 30 minutos.');
       return;
     }
@@ -3647,3 +3729,6 @@ setInterval(()=>{
 
 // Auction-only updates: never poll inventory, pets, or economy while viewing other pages.
 setInterval(()=>{if(ui.page==='auction'&&ui.token&&!ui.auctionLoading&&!ui.auctionSubmitting)void loadAuction()},8000);
+
+// Cerco: atualização somente na aba Clã; sem polling do resto do RPG.
+setInterval(()=>{if(ui.page==='clan'&&ui.token&&!document.hidden&&!ui.siegeLoading&&!ui.siegeBusy)void loadSiege(false)},15000);

@@ -44,11 +44,11 @@ test('Cerco: integridade do painel, API e da premiação',()=>{
   assert.match(app,/bindClanSiegePreview\(ui,\{render,submit:submitSiege,refresh:loadSiege\}\)/);
   assert.match(app,/api\/v1\/me\/clan-siege/);
   assert.match(siege,/renderLiveSiege/);
-  assert.match(siege,/Insígnia dos Primeiros Conquistadores/);
+  assert.match(siege,/GUERRA POR OBJETIVOS/);
   assert.match(css,/\.siege-preview/);
   assert.match(css,/\.siege-prize/);
   assert.ok(sw.includes("'/clan-siege-ui.js'"));
-  assert.ok(html.includes('20261102-work-art-carphotos-siege-v1'));
+  assert.ok(html.includes('alpha-siege-v5-20261108'));
   assert.ok(cfg.headers.some(x=>x.source==='/clan-siege-ui.js'));
 });
 
@@ -70,7 +70,7 @@ test('Clã: exibe só integrantes reais, jamais todos os jogadores do grupo',()=
   const render=factory(mock,()=>{throw new Error('Não consultar roster global');},esc,()=>'',()=>'<section>Cerco ao Castelo</section>',()=>'',()=> '');
   const output=render();
   assert.match(output,/Augusto/);
-  assert.match(output,/Integrantes do meu clã/);
+  assert.match(output,/Membros do meu clã/);
   assert.match(output,/Cerco ao Castelo/);
   assert.doesNotMatch(output,/João Pedro|Kaique Rodrigues|Convidar \/ administrar jogadores/);
   assert.match(output,/data-clan-kick="AUG"/);

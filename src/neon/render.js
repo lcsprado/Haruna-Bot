@@ -15,6 +15,7 @@ if(apiOnly){
 }
 const webFiles={
   '/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css',
+  '/clan-siege-ui.js':'clan-siege-ui.js','/racing-ui.js':'racing-ui.js','/version.json':'version.json',
   '/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js',
   '/rpg':'index.html','/rpg/':'index.html','/rpg/index.html':'index.html',
   '/pet-art-audit.html':'pet-art-audit.html','/rpg/pet-art-audit.html':'pet-art-audit.html',
@@ -67,7 +68,9 @@ const health=globalThis.__trevoHealth || (globalThis.__trevoHealth={
 })
 
 http.createServer(async (req, res) => {
-  if(!apiOnly && await serveWeb(req,res)) return
+  // Fallback temporário V5: expõe apenas os assets públicos do Web, sem alterar API/auth.
+  // O domínio Vercel pode continuar desatualizado quando a cota diária de builds está esgotada.
+  if(await serveWeb(req,res)) return
 
   try{
     if(await handleWebApi(req,res)) return
