@@ -12241,6 +12241,7 @@ ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
 👢 Botas: ${p.boot_name||'Nenhuma'} *Lv.${p.boot_level||1}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
+🛡️ Escudo: *${p.shield_name||'Nenhum'}*${p.shield_id?' Lv.'+p.shield_level+' • -'+Number(p.shield_crit_resist*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+' p.p. CRIT adversário':''}
 🏆 Vitórias: ${p.win}
 💀 Derrotas: ${p.loss}`
 )
