@@ -111,6 +111,6 @@ test('cerco: novos convites manuais sao desativados; kickoff usa os quatro membr
   assert.match(daily,/siegeBetaAuthorizedSet\(conn\)/);
   assert.match(daily,/pg_advisory_xact_lock/);
   assert.match(daily,/created_by=\$2 AND created_at>=\$3/);
-  assert.match(challenge,/automaticamente às 20h/);
-  assert.match(accept,/automaticamente às 20h/);
+  assert.match(challenge,/somente aos sábados, 21h30/);
+  assert.match(accept,/somente aos sábados, 21h30/);
 });
