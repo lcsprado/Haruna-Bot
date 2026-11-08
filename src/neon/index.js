@@ -1765,7 +1765,7 @@ const SHOP_IDS=[
 'armadura_couro','armadura_ferro','armadura_aco','armadura_samurai','armadura_cavaleiro',
 'armadura_bastiao','armadura_dragao','manto_runico','armadura_abissal','couraca_guardiao','armadura_celestial',
 'bota_leve','bota_vento','bota_cacador','bota_relampago',
-'escudo_madeira','escudo_ferro','escudo_runico','egide_celestial',
+'escudo_madeira','escudo_ferro','escudo_runico',
 'caixa_sorte','caixa_rara','caixa_epica'
 ]
 const BOX_IDS=['caixa_sorte','caixa_rara','caixa_epica','caixa_lendaria']
