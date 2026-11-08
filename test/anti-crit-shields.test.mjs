@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from '../src/neon/anti-crit-shields.js';
 
 test('cinco escudos com progressão exclusiva, sem ATK ou DEF',()=>{
@@ -36,4 +37,19 @@ test('níveis inválidos e escudos desconhecidos não geram poder',()=>{
  assert.equal(antiCritShieldStats('qualquer',10),null);
  assert.deepEqual(antiCritShieldStats('escudo_madeira',0),antiCritShieldStats('escudo_madeira',1));
  assert.deepEqual(antiCritShieldStats('escudo_madeira',500),antiCritShieldStats('escudo_madeira',10));
+});
+
+
+test('apenas os três escudos iniciais ficam na loja; Égide é drop da Raid 70',()=>{
+  const sale=ANTI_CRIT_SHIELDS.filter(x=>x.price>0).map(x=>x.id);
+  assert.deepEqual(sale,['escudo_madeira','escudo_ferro','escudo_runico']);
+  assert.equal(ANTI_CRIT_SHIELDS.find(x=>x.id==='egide_celestial')?.price,0);
+  assert.equal(ANTI_CRIT_SHIELDS.find(x=>x.id==='bastiao_eclipse')?.price,0);
+  const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8');
+  assert.match(games,/level:70,[^\n]*gear:\[[^\n]*'egide_celestial'/);
+  const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8');
+  assert.match(index,/'escudo_madeira','escudo_ferro','escudo_runico',\s*'caixa_sorte'/);
+  assert.doesNotMatch(index,/'escudo_madeira','escudo_ferro','escudo_runico','egide_celestial'/);
+  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
+  assert.match(db,/"escudo_madeira","escudo_ferro","escudo_runico","caixa_sorte"/);
 });
