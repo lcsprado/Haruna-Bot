@@ -1,5 +1,5 @@
 import {db,ensureUser} from './db.js'
-import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TIERS,RACING_COOLDOWN_SECONDS,RACING_CHALLENGE_SECONDS,RACING_MIN_CONDITION,RACING_MAX_CARS,RACING_TOTAL_UPGRADE_COST,racingModel,racingColor,racingPart,racingTrack,racingStrategy,racingTier,racingTuning,racingStats,racingDriverLevel,racingPower,racingDuel,racingNpcDuel,racingRepairCost,racingCashPrize,racingXpPrize} from './racing-rules.js'
+import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TIERS,RACING_COOLDOWN_SECONDS,RACING_CHALLENGE_SECONDS,RACING_MIN_CONDITION,RACING_MAX_CARS,RACING_TOTAL_UPGRADE_COST,racingVisualOption,racingModel,racingColor,racingPart,racingTrack,racingStrategy,racingTier,racingTuning,racingStats,racingDriverLevel,racingPower,racingDuel,racingNpcDuel,racingRepairCost,racingCashPrize,racingXpPrize} from './racing-rules.js'
 
 export const raceMoney=n=>'R$ '+Math.max(0,Math.floor(Number(n)||0)).toLocaleString('pt-BR')
 export const raceNum=n=>Math.floor(Number(n)||0).toLocaleString('pt-BR')
@@ -10,6 +10,8 @@ export async function initRacingAlpha(){
  await db.query("CREATE TABLE IF NOT EXISTS racing_profiles_alpha(jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,xp BIGINT NOT NULL DEFAULT 0 CHECK(xp>=0),races INTEGER NOT NULL DEFAULT 0,wins INTEGER NOT NULL DEFAULT 0,losses INTEGER NOT NULL DEFAULT 0,spent BIGINT NOT NULL DEFAULT 0,last_race_at BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0)")
  await db.query("CREATE TABLE IF NOT EXISTS racing_cars_alpha(id BIGSERIAL PRIMARY KEY,jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,model_id TEXT NOT NULL,color_id TEXT NOT NULL DEFAULT 'prata',equipped BOOLEAN NOT NULL DEFAULT FALSE,condition SMALLINT NOT NULL DEFAULT 100 CHECK(condition BETWEEN 0 AND 100),upgrades JSONB NOT NULL DEFAULT '{}'::jsonb,pending_part TEXT,pending_level INTEGER,pending_until BIGINT NOT NULL DEFAULT 0,races INTEGER NOT NULL DEFAULT 0,wins INTEGER NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,UNIQUE(jid,model_id))")
  await db.query("ALTER TABLE racing_cars_alpha ADD COLUMN IF NOT EXISTS color_id TEXT NOT NULL DEFAULT 'prata'")
+ await db.query("ALTER TABLE racing_cars_alpha ADD COLUMN IF NOT EXISTS visual_style JSONB NOT NULL DEFAULT '{}'::jsonb")
+ await db.query("ALTER TABLE racing_cars_alpha ADD COLUMN IF NOT EXISTS visual_unlocks JSONB NOT NULL DEFAULT '[]'::jsonb")
  await db.query("CREATE UNIQUE INDEX IF NOT EXISTS racing_one_equipped_alpha ON racing_cars_alpha(jid) WHERE equipped=TRUE")
  await db.query("CREATE INDEX IF NOT EXISTS racing_by_owner_alpha ON racing_cars_alpha(jid,id)")
  await db.query("CREATE TABLE IF NOT EXISTS racing_challenges_alpha(id BIGSERIAL PRIMARY KEY,chat TEXT NOT NULL,challenger TEXT NOT NULL REFERENCES users(jid),challenged TEXT NOT NULL REFERENCES users(jid),track_id TEXT NOT NULL,strategy_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',created_at BIGINT NOT NULL,expires_at BIGINT NOT NULL,completed_at BIGINT NOT NULL DEFAULT 0,CHECK(challenger<>challenged))")
@@ -156,6 +158,44 @@ export async function racePaint(jid,carId,colorId){
   return {carId:car.id,model:modelName(car),color,changed:previous.id!==color.id}
  })
 }
+// A compra da peça visual e a seleção são uma única transação. O mesmo acabamento
+// pode ser re-equipado sem custo, mas pertence apenas ao carro comprado.
+export async function raceVisualStyle(jid,carId,categoryId,optionId){
+ const found=racingVisualOption(categoryId,optionId)
+ if(!found)throw Error('Personalização inválida. Abra o Studio Alpha para conferir as opções.')
+ const {category,option}=found
+ return tx(jid,async c=>{
+  const s=await state(c,jid)
+  const target=String(carId||'').trim()
+  const car=s.cars.find(x=>String(x.id)===target||x.model_id===target)
+  if(!car)throw Error('Carro não encontrado na sua garagem.')
+  const token=category.id+':'+option.id
+  const owned=option.price===0||Array.isArray(car.visual_unlocks)&&car.visual_unlocks.includes(token)
+  const price=owned?0:option.price
+  if(price>0){
+   // Carteira e carro são bloqueados na transação, impedindo cobrança dupla
+   // em comandos repetidos e concorrentes.
+   const wallet=await c.query('SELECT cash FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
+   if(Number(wallet.rows[0]?.cash||0)<price)
+    throw Error('Saldo insuficiente. Custa '+raceMoney(price)+'.')
+   const charged=await c.query('UPDATE wallets SET cash=cash-$2 WHERE jid=$1 AND cash>=$2 RETURNING cash',[jid,price])
+   if(charged.rowCount!==1)throw Error('Saldo insuficiente para personalizar.')
+   await c.query('UPDATE racing_profiles_alpha SET spent=spent+$2 WHERE jid=$1',[jid,price])
+   await c.query("INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,'system',$2,'racing_visual_purchase',$3)",
+     [jid,price,modelName(car)+' • '+category.id+' • '+option.id])
+  }
+  // Opcoes originais nao sao compradas; ao trocar por uma ja adquirida
+  // nao ha nova movimentacao de dinheiro nem duplicacao de desbloqueio.
+  await c.query(`UPDATE racing_cars_alpha
+    SET visual_style=jsonb_set(COALESCE(visual_style,'{}'::jsonb),ARRAY[$3]::text[],to_jsonb($4::text),true),
+    visual_unlocks=CASE WHEN $5::boolean THEN COALESCE(visual_unlocks,'[]'::jsonb)
+      ELSE COALESCE(visual_unlocks,'[]'::jsonb)||to_jsonb($6::text) END
+    WHERE jid=$1 AND id=$2`,[jid,car.id,category.id,option.id,owned,token])
+  return {carId:car.id,model:modelName(car),category:{id:category.id,name:category.name},
+    option,price,alreadyOwned:owned,changed:String(car.visual_style?.[category.id]||'stock')!==option.id}
+ })
+}
+
 export async function raceUpgrade(jid,partId){
  const part=racingPart(partId)
  if(!part)throw Error('Peça inválida. Use !oficina.')

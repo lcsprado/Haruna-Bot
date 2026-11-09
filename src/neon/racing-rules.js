@@ -20,6 +20,43 @@ export const RACING_COLORS=Object.freeze([
   {id:'rosa',name:'Rosa',emoji:'🩷',hex:'#E888B7'},
   {id:'dourado',name:'Dourado',emoji:'🏅',hex:'#CBA63A'}
 ])
+// Personalizacao visual independente das 42 melhorias mecanicas.
+export const RACING_VISUAL_CATEGORIES=Object.freeze([
+ {id:'wheels',name:'🛞 Rodas',options:[
+  {id:'stock',name:'Originais',price:0},
+  {id:'sport',name:'Esportivas',price:80000},
+  {id:'multi',name:'Multirraios',price:210000},
+  {id:'track',name:'Competição',price:480000}]},
+ {id:'stripes',name:'🏁 Listras',options:[
+  {id:'stock',name:'Sem listras',price:0},
+  {id:'double',name:'Listras duplas',price:18000},
+  {id:'side',name:'Faixas laterais',price:35000},
+  {id:'race',name:'Adesivagem de corrida',price:90000}]},
+ {id:'decals',name:'🔢 Adesivos',options:[
+  {id:'stock',name:'Sem adesivo',price:0},
+  {id:'number',name:'Número de competição',price:12000},
+  {id:'team',name:'Adesivo de equipe',price:45000},
+  {id:'elite',name:'Adesivagem exclusiva',price:140000}]},
+ {id:'spoiler',name:'🪽 Aerofólio',options:[
+  {id:'stock',name:'Sem aerofólio',price:0},
+  {id:'subtle',name:'Discreto',price:90000},
+  {id:'sport',name:'Esportivo',price:180000},
+  {id:'track',name:'Competição',price:350000}]},
+ {id:'bodykit',name:'🚘 Carroceria',options:[
+  {id:'stock',name:'Original',price:0},
+  {id:'street',name:'Kit Street',price:230000},
+  {id:'sport',name:'Kit Sport',price:480000},
+  {id:'alpha',name:'Kit Alpha',price:990000}]},
+ {id:'stance',name:'🛠️ Altura visual',options:[
+  {id:'stock',name:'Original',price:0},
+  {id:'lowered',name:'Rebaixada',price:65000},
+  {id:'track',name:'Altura de pista',price:140000}]}
+]);
+export function racingVisualOption(categoryId,optionId){
+ const category=RACING_VISUAL_CATEGORIES.find(c=>c.id===String(categoryId||''));
+ const option=category?.options.find(o=>o.id===String(optionId||''));
+ return option?{category,option}:null
+}
 export const RACING_PARTS=Object.freeze([
   {id:'motor',name:'🔧 Motor',benefit:{speed:7,accel:2}},
   {id:'cambio',name:'⚙️ Câmbio',benefit:{accel:7,speed:1}},

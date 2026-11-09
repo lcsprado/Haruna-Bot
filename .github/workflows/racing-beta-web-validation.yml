@@ -9,6 +9,10 @@ on:
       - 'web/index.html'
       - 'web/vercel.json'
       - 'test/racing-beta-web-20261031.test.mjs'
+      - 'test/racing-visual-prices-20261103.test.mjs'
+      - 'src/neon/racing-rules.js'
+      - 'src/neon/racing-alpha.js'
+      - 'src/neon/web-api.js'
   push:
     branches: [feat/web-aiven-beta-protegido-20261021]
     paths:
@@ -30,4 +34,4 @@ jobs:
           node --check web/app.js
           node --check web/racing-ui.js
       - name: Test beta Events and racing coexistence
-        run: node --test test/racing-beta-web-20261031.test.mjs
+        run: node --test test/racing-beta-web-20261031.test.mjs test/racing-visual-prices-20261103.test.mjs
