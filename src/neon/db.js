@@ -2442,12 +2442,13 @@ const eq=(await c.query('SELECT weapon_id,armor_id,shield_id FROM stats WHERE ji
 const equipped=eq?.weapon_id===itemId||eq?.armor_id===itemId||eq?.shield_id===itemId
 const bound=(await c.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM bound_inventory_items WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
 if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)throw new Error('A cópia equipada ou vinculada está protegida.')
-}
+// Escudos usam bound/equipped da mesma transacao; manter esta validacao no escopo.
 if(shieldForge){
   const upgraded=(await c.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
   const common=Number(item.quantity)-Number(upgraded?.qty||0)-(sf?1:0)
   const donorCopies=common-Number(bound?.qty||0)-(equipped&&!sf?1:0)
   if(common<(sf?1:2)||donorCopies<1)throw new Error('Forja exige 2 escudos idênticos (1 principal e 1 doador comum Lv.1 livre). Escudos equipados, vinculados, aprimorados e forjados não podem ser consumidos como doadores.')
+}
 }
 const required=shieldForge?0:FORGE_STAR_MATERIALS[stars]
 const material=shieldForge?{quantity:0}:(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
