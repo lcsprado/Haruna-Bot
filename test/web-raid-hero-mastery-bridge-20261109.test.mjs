@@ -124,13 +124,13 @@ test('Heroi e classe seguem caminhos distintos no inicio, entrada tardia e turno
 
 
 test('Raid: HP do heroi converte dano por delta entre rodadas e preserva restos fracionarios',()=>{
- const p={jid:'fake-a',heroId:'pecado_ban',hp:7000,maxHp:7000,heroStoredHp:2600,heroLastHp:7000,heroHpRemainder:0,heroPersistentMaxHp:5200}
- assert.equal(settleRaidHeroHp(p),2600)
+ const p={jid:'fake-a',heroId:'pecado_ban',hp:7000,maxHp:7000,heroStoredHp:5200,heroLastHp:7000,heroHpRemainder:0,heroPersistentMaxHp:5200}
+ assert.equal(settleRaidHeroHp(p),5200)
  for(let i=0;i<10;i++){
   p.hp-=1
   settleRaidHeroHp(p)
  }
- assert.equal(p.heroStoredHp,2593,'10 de dano em escala 7000 -> 5200 devem custar 7 HP')
+ assert.equal(p.heroStoredHp,5193,'10 de dano em escala 7000 -> 5200 devem custar 7 HP')
  assert.ok(Math.abs(p.heroHpRemainder)<1)
  p.hp=0
  assert.equal(settleRaidHeroHp(p),0)
