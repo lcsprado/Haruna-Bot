@@ -160,7 +160,7 @@ test('Raid: King cura somente o aliado vivo mais ferido, sem ultrapassar o maxim
  assert.equal(applyRaidKingAllyHeal({king,a:ally},{...king,heroId:null},200),null)
 })
 
-test.todo('Raid: premiar XP/maestria de herois uma vez no encerramento, sem alterar recompensas antigas')
+// XP/maestria idempotentes exercitados por test/web-raid-hero-xp-master-awards-20261109.test.mjs
 test.todo('Boss Web: alinhar criacao de estado e golpes dos herois, preservando o motor atual de premios')
 
 test('Raid real aplica defesa do heroi e grava HP persistente na derrota e vitoria',()=>{
