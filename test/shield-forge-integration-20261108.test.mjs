@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
+import vm from 'node:vm'
 import {ANTI_CRIT_SHIELDS,shieldForgeCost,antiCritShieldStats} from '../src/neon/anti-crit-shields.js'
 
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8')
@@ -60,4 +61,76 @@ test('perfil e duelo PvP usam estrelas de escudo e bônus efetivos',()=>{
   assert.match(app,/latest\.shieldForge/)
   assert.match(app,/r\.shieldForge/)
   assert.match(app,/result\.cashSpent/)
+})
+
+
+test('forja de escudo executa em transação isolada sem ReferenceError, consumindo um doador e taxa',async()=>{
+  // Executa a função real extraída do db.js contra um cliente SQL simulado.
+  // Não conecta ao banco nem toca inventários de jogadores.
+  const source=db.split('export async function forgeEquipmentStar(')[1]?.split('export const listStarForgeWeapons=')[0]
+  assert.ok(source,'função de forja deve existir')
+  const sqls=[]
+  const client={async query(sql){
+    const q=String(sql).replace(/\s+/g,' ').trim()
+    sqls.push(q)
+    if(q.includes('pg_advisory_xact_lock'))return {rows:[]}
+    if(q.includes('FROM inventories inv JOIN items i'))return {rows:[{quantity:5,name:'Escudo Rúnico',category:'shield'}]}
+    if(q.startsWith('SELECT stars,level FROM equipment_star_forges'))return {rows:[]}
+    if(q.includes('FROM equipment_enchantments'))return {rows:[]}
+    if(q.startsWith('SELECT quantity FROM equipment_upgrade_copies'))return {rows:[{quantity:0}]}
+    if(q.startsWith('SELECT weapon_id,armor_id,shield_id FROM stats'))return {rows:[{shield_id:'escudo_runico'}]}
+    if(q.includes('FROM bound_inventory_items'))return {rows:[{qty:0}]}
+    if(q.includes('SUM(quantity)')&&q.includes('FROM equipment_upgrade_copies'))return {rows:[{qty:0}]}
+    if(q.startsWith('SELECT cash FROM wallets'))return {rows:[{cash:100000}]}
+    if(q.startsWith('UPDATE inventories SET quantity=quantity-1'))return {rowCount:1,rows:[{quantity:4}]}
+    if(q.startsWith('UPDATE wallets SET cash='))return {rowCount:1,rows:[]}
+    if(q.startsWith('INSERT INTO equipment_star_forges'))return {rowCount:1,rows:[]}
+    if(q.startsWith('INSERT INTO transactions'))return {rowCount:1,rows:[]}
+    throw new Error('SQL não simulado: '+q.slice(0,150))
+  }}
+  const sandbox={
+    ANTI_CRIT_SHIELDS,RAID_GEAR_FORGE_ORIGINS:{},FORGE_STAR_MATERIALS:[],
+    ensureUser:async()=>{},transaction:async action=>action(client),
+    sevenSinsForgePlan:()=>{throw new Error('collab inesperado')},
+    shieldForgeCost,equipmentStatsAtLevel:()=>({}),syncEffectiveGear:async()=>{},
+    nowSql:'EXTRACT(EPOCH FROM NOW())::BIGINT'
+  }
+  const forge=vm.runInNewContext('async function forgeEquipmentStar('+source+'\nforgeEquipmentStar',sandbox)
+  const result=await forge('fixture-player','escudo_runico',1)
+  assert.equal(result.stars,2)
+  assert.equal(result.copies,4)
+  assert.equal(result.cashSpent,22500)
+  assert.equal(result.shieldForge,true)
+  assert.ok(sqls.some(sql=>sql.startsWith('UPDATE inventories SET quantity=quantity-1')))
+  assert.ok(sqls.some(sql=>sql.startsWith('UPDATE wallets SET cash=')))
+  assert.ok(sqls.some(sql=>sql.startsWith('INSERT INTO equipment_star_forges')))
+  assert.ok(sqls.some(sql=>sql.startsWith('INSERT INTO transactions')))
+})
+
+test('forja de escudo protege equipamento vinculado/equipado sem cobrar taxa',async()=>{
+  const source=db.split('export async function forgeEquipmentStar(')[1]?.split('export const listStarForgeWeapons=')[0]
+  assert.ok(source)
+  const sqls=[]
+  const client={async query(sql){
+    const q=String(sql).replace(/\s+/g,' ').trim()
+    sqls.push(q)
+    if(q.includes('pg_advisory_xact_lock'))return {rows:[]}
+    if(q.includes('FROM inventories inv JOIN items i'))return {rows:[{quantity:5,name:'Escudo Rúnico',category:'shield'}]}
+    if(q.startsWith('SELECT stars,level FROM equipment_star_forges'))return {rows:[]}
+    if(q.includes('FROM equipment_enchantments'))return {rows:[]}
+    if(q.startsWith('SELECT quantity FROM equipment_upgrade_copies'))return {rows:[{quantity:0}]}
+    if(q.startsWith('SELECT weapon_id,armor_id,shield_id FROM stats'))return {rows:[{shield_id:'escudo_runico'}]}
+    if(q.includes('FROM bound_inventory_items'))return {rows:[{qty:4}]}
+    throw new Error('SQL não simulado: '+q.slice(0,150))
+  }}
+  const sandbox={
+    ANTI_CRIT_SHIELDS,RAID_GEAR_FORGE_ORIGINS:{},FORGE_STAR_MATERIALS:[],
+    ensureUser:async()=>{},transaction:async action=>action(client),
+    sevenSinsForgePlan:()=>{throw new Error('collab inesperado')},
+    shieldForgeCost,equipmentStatsAtLevel:()=>({}),syncEffectiveGear:async()=>{},
+    nowSql:'EXTRACT(EPOCH FROM NOW())::BIGINT'
+  }
+  const forge=vm.runInNewContext('async function forgeEquipmentStar('+source+'\nforgeEquipmentStar',sandbox)
+  await assert.rejects(forge('fixture-player','escudo_runico',1),/protegida/)
+  assert.ok(!sqls.some(q=>/UPDATE (wallets|inventories)|INSERT INTO equipment_star_forges/.test(q)))
 })
