@@ -6983,7 +6983,8 @@ const missing=[]
 if(latest.stars>1&&latest.forged_level<10)missing.push('⬆️ Aprimore a peça estrelada ao Lv.10.')
 if(latest.shieldForge){
   if(latest.basicCopies<latest.requiredCopies)missing.push('🛡️ Faltam '+(latest.requiredCopies-latest.basicCopies)+' cópia(s) idêntica(s) comum(ns) Lv.1.')
-  if(Number(latest.quantity)<2||Number(latest.free)<1)missing.push('🔒 É preciso ter uma cópia extra não equipada nem vinculada.')
+  if(latest.shieldDonorCopies<1)missing.push('🔒 Falta 1 escudo comum Lv.1 livre para consumir (não equipado, vinculado ou aprimorado).')
+  if(Number(latest.quantity)<2)missing.push('🔒 São necessários ao menos 2 escudos idênticos no inventário.')
   if(Number(latest.cash)<latest.fee)missing.push('💰 Faltam R$ '+fmt(latest.fee-Number(latest.cash))+' em carteira.')
 }else{
   if(latest.level10_copies<latest.requiredCopies)missing.push('⚔️ Aprimore '+(latest.requiredCopies-latest.level10_copies)+' cópia(s) comum(ns) ao Lv.10.')
@@ -12063,6 +12064,7 @@ for(const [i,r] of list.entries()){
 const lvl=r.stars>1?r.forged_level:0,need=Math.max(0,r.requiredCopies-(r.shieldForge?r.basicCopies:r.level10_copies)),missing=[]
 if(r.stars>1&&lvl<10)missing.push('elevar a peça 🌟 ao Lv.10')
 if(need)missing.push(r.shieldForge?'obter '+need+' escudo(s) idêntico(s) comum(ns) Lv.1':'upar '+need+' cópia(s) comum(ns) ao Lv.10')
+  if(r.shieldForge&&r.shieldDonorCopies<1)missing.push('ter 1 escudo comum Lv.1 livre como doador')
 if(!r.collab&&(r.quantity<2||r.free<1))missing.push('obter cópia extra livre')
 if(r.shieldForge&&Number(r.cash)<r.fee)missing.push('R$ '+fmt(r.fee-Number(r.cash))+' em carteira')
 if(!r.shieldForge&&r.materials<r.needed)missing.push('obter '+(r.needed-r.materials)+' fragmentos')
@@ -12070,7 +12072,7 @@ result+='*'+(i+1)+'.* '+(['armor','shield'].includes(r.category)?'🛡️':'⚔�
 result+='   🌟 '+forgeStarsIcon(r.stars)+' • bônus '+forgeBonusText(r.stars)+(lvl?' • ⭐ Lv.'+lvl:'')+'\n'
 if(r.stars===5){result+='   🏆 Evolução máxima\n\n';continue}
 if(r.shieldForge){
-  result+='   🛡️ Escudos idênticos comuns Lv.1: '+r.basicCopies+'/'+r.requiredCopies+'\n'
+  result+='   🛡️ Escudos idênticos comuns Lv.1: '+r.basicCopies+'/'+r.requiredCopies+' • doadores livres: '+r.shieldDonorCopies+'\n'
   result+='   💰 Custo da forja: R$ '+fmt(r.fee)+' (carteira: R$ '+fmt(r.cash)+')\n'
   result+='   📌 A partir de ★★, a peça forjada precisa estar no Lv.10.\n'
 }else{
