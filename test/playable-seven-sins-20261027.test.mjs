@@ -506,7 +506,7 @@ test('Raid 75 em 02/11: 2x maestria real sem afetar outras raids nem outros dias
   assert.match(games,/xp:raid75MasteryAwardXp\(/);
 });
 test('Maestria acelerada com 400 por dia e 600 na Raid 75',()=>{
-  const q=heroMasteryAwardPolicy;
+  const q=opts=>heroMasteryAwardPolicy({...opts,nowMs:Date.parse('2026-11-08T12:00:00-03:00')});
   assert.equal(HERO_MASTERY_DAILY_CAP,400);
   assert.deepEqual(q({specialRaid75:true,earnedToday:0,regularEarnedToday:0,xp:120}),
     {special:true,dailyCap:600,amount:120});
@@ -522,7 +522,7 @@ test('Maestria acelerada com 400 por dia e 600 na Raid 75',()=>{
   assert.equal(q({specialRaid75:false,earnedToday:600,regularEarnedToday:300,xp:90}).amount,0);
 });
 test('Novo personagem: nivel 1 ao 100 em 18 dias no teto, sem ultrapassar 9900 XP',()=>{
-  const q=heroLevelAwardPolicy;
+  const q=opts=>heroLevelAwardPolicy({...opts,nowMs:Date.parse('2026-11-08T12:00:00-03:00')});
   assert.equal(HERO_LEVEL_DAILY_CAP,550);
   assert.equal(HERO_START_LEVEL,1);
   assert.deepEqual(heroStartingProgress(),{level:1,xp:0});
