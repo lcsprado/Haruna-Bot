@@ -886,8 +886,9 @@ if(x.masteryReport){
  if(mr.reason==='participacao_insuficiente')text+=' • participação insuficiente (mín. 2% e 2.500 dano)'
  else if(mr.reason==='duplicado')text+=' • recompensa já processada'
  else {
-  text+=' • hoje *'+fmt(mr.today||0)+'/'+fmt(mr.limit||400)+' XP*'
-  if(mr.reason==='limite_diario'||Number(mr.today)>=Number(mr.limit)){
+  if(mr.limit===null)text+=' • hoje *'+fmt(mr.today||0)+' XP* • sem limite diário até 15/11'
+  else text+=' • hoje *'+fmt(mr.today||0)+'/'+fmt(mr.limit||400)+' XP*'
+  if(mr.limit!==null&&(mr.reason==='limite_diario'||Number(mr.today)>=Number(mr.limit))){
    text+='\n🔒 Limite de maestria atingido nesta categoria • reinicia à 00h (Brasília)'
   }
  }
