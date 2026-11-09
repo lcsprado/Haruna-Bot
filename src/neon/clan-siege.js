@@ -262,11 +262,7 @@ async function notice(conn,chat,message){
   await conn.query("SELECT pg_notify('alpha_web_action_wakeup_v1',$1)",[String(r.rows[0].id)]);
 }
 export function resolveSiegeRound(match,moves){
-  if(Number(match.rules_version||1)>=4){
-    const resolved=resolveSiegeRoundV4(match,moves);
-    if(Number(match.rules_version)>=6)resolved.result.rulesVersion=Number(match.rules_version);
-    return resolved;
-  }
+  if(Number(match.rules_version||1)>=4)return resolveSiegeRoundV4(match,moves);
   if(Number(match.rules_version||1)>=TEAM_TACTICS_VERSION)return resolveSiegeRoundV2(match,moves);
   const sides={blue:[],red:[]};
   for(const m of moves){
@@ -382,6 +378,7 @@ async function advance(conn,match){
       [match.id,match.round])).rows;
     if(Number(match.round_ends_at)>now()&&(match.created_by===DAILY_CREATED_BY||moves.length<4))break;
     const r=resolveSiegeRound(match,moves);
+    if(Number(match.rules_version)>=6)r.result.rulesVersion=Number(match.rules_version);
     const oldHistory=Array.isArray(match.history)?match.history:JSON.parse(match.history||'[]');
     const history=[...oldHistory,r.result];
     const status=r.finished?'completed':'active';
