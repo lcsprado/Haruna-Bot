@@ -1,0 +1,21 @@
+name: Web PvP - hero parity deployment gate (expected red until fixed)
+on:
+  pull_request:
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/playable-heroes-core.js'
+      - 'test/web-pvp-hero-parity-gate.test.mjs'
+      - '.github/workflows/web-pvp-parity-gate.yml'
+permissions:
+  contents: read
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run synthetic hero tests and block Web PvP until mode integration is present
+        run: node --test test/web-pvp-hero-parity-gate.test.mjs
