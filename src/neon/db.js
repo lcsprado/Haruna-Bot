@@ -858,11 +858,13 @@ export async function getProfile(jid) {
 const { rows } = await db.query(`
 SELECT u.jid,u.push_name,u.level,u.exp,u.premium,u.created_at,
 w.cash,w.bank,w.bank_limit,
-s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.class_id,s.class_applied,
-s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss
+s.hp,s.max_hp,s.atk,s.def,s.spd,s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,s.class_id,s.class_applied,
+s.class_hp_bonus,s.class_atk_bonus,s.class_def_bonus,s.class_spd_bonus,s.win,s.loss,
+COALESCE(cl.level,1)::int AS class_level,COALESCE(cl.xp,0)::int AS class_xp
 FROM users u
 JOIN wallets w ON w.jid=u.jid
 JOIN stats s ON s.jid=u.jid
+LEFT JOIN player_class_levels cl ON cl.jid=s.jid AND cl.class_id=s.class_id
 WHERE u.jid=$1
 `, [jid])
 return rows[0] ?? null
@@ -2585,12 +2587,14 @@ remaining:Number(chosen.quantity)-1
 export async function getCombatProfile(jid) {
 const p=await getProfile(jid)
 if(!p) return null
-const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id])
-const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id])
+const levels=await getEquipmentLevels(jid,[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id])
+const stars=await getEquipmentStarLevels(jid,[p.weapon_id,p.armor_id,p.shield_id])
 const weapon=p.weapon_id?equipmentStatsAtLevel(p.weapon_id,levels[p.weapon_id]||1,stars[p.weapon_id]||1):null
 const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1,stars[p.armor_id]||1):null
 const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
 const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
+const shieldBase=ANTI_CRIT_SHIELDS.find(item=>item.id===p.shield_id)
+const shield=shieldBase?{...shieldBase,...antiCritShieldStats(p.shield_id,levels[p.shield_id]||1,stars[p.shield_id]||1)}:null
 const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
 const enchantRows=(await db.query(`
 SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])
@@ -2613,34 +2617,42 @@ const w=weapon||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
 const a=armor||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
 const b=boots||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhuma',level:1}
 const h=helmet||{atk:0,def:0,hp:0,spd:0,crit:0,name:'Nenhum',level:1}
+const sh=shield||{name:'Nenhum',level:1,critResist:0,critGuard:0}
 const scrollR=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,'pergaminho_reclassificacao'])
 const classScrolls=Number(scrollR.rows[0]?.quantity||0)
 const classChangeRemaining=0
-const effectiveMaxHp=Math.max(1,Number(p.max_hp||0)+Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0))
-const effectiveHp=Math.max(0,Math.min(Number(p.hp||0),effectiveMaxHp))
-if(Number(p.hp||0)>effectiveMaxHp){
-await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,effectiveMaxHp])
+const gearHp=Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0)
+const activeHeroMode=await db.query(`SELECT 1 FROM player_hero_mode m WHERE m.jid=$1 AND m.hero_species IS NOT NULL
+  AND EXISTS(SELECT 1 FROM pet_collection c WHERE c.jid=m.jid AND c.species=m.hero_species) LIMIT 1`,[jid])
+const classActive=Boolean(p.class_applied)&&activeHeroMode.rows.length===0
+const cls=classCombatStats(p,p.class_id,p.class_level,classActive)
+const persistentMaxHp=Math.max(1,Number(p.max_hp||0)+gearHp)
+const effectiveMaxHp=Math.max(1,Number(cls.maxHp)+gearHp)
+const effectiveHp=classCombatHp(p.hp,persistentMaxHp,effectiveMaxHp)
+if(Number(p.hp||0)>persistentMaxHp){
+await db.query('UPDATE stats SET hp=LEAST(hp,$2),updated_at='+nowSql+' WHERE jid=$1 AND hp>$2',[jid,persistentMaxHp])
 }
 return {
 ...p,
-base_atk:Number(p.atk),
-base_def:Number(p.def),
-base_max_hp:Number(p.max_hp),
+base_atk:cls.atk,
+base_def:cls.def,
+base_max_hp:cls.maxHp,
+class_growth:cls.bonus,
 weapon_atk:Number(w.atk||0)+ench.atk,
 armor_def:Number(a.def||0)+ench.def,
 equipment_atk:Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk,
 equipment_def:Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
-equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(h.hp||0),
+equipment_hp:Number(w.hp||0)+Number(a.hp||0)+Number(b.hp||0)+Number(h.hp||0),
 equipment_spd:Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
-effective_spd:Number(p.spd)+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
+effective_spd:cls.spd+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
 equipment_crit:Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit,
 base_crit:0.10,
-effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,p.class_applied)),
+effective_crit:Math.max(0,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,classActive)),
 effective_max_hp:effectiveMaxHp,
 effective_hp:effectiveHp,
-effective_atk:Math.round((Number(p.atk)+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
+effective_atk:Math.round((cls.atk+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
 attack_pct_bonus:ench.attackPct,
-effective_def:Number(p.def)+Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
+effective_def:cls.def+Number(w.def||0)+Number(a.def||0)+Number(b.def||0)+Number(h.def||0)+ench.def,
 enchant_damage:Number(ench.damage||0),
 enchant_breakdown:ench,
 weapon_name:w.name,
@@ -2649,10 +2661,15 @@ armor_stars:Number(a.stars||1),
 armor_name:a.name,
 boot_name:b.name,
 helmet_name:h.name,
+shield_name:sh.name,
+shield_level:Number(sh.level||1),
+shield_stars:Number(sh.stars||1),
+shield_crit_resist:Number(sh.critResist||0),
+shield_crit_guard:Number(sh.critGuard||0),
 class_id:String(p.class_id||'warrior'),
 class_applied:Boolean(p.class_applied),
 class_info:Boolean(p.class_applied)?getPlayerClass(p.class_id):null,
-class_passive:getClassPassive(p.class_id,p.class_applied),
+class_passive:getClassPassive(p.class_id,classActive),
 class_scrolls:classScrolls,
 class_change_remaining:classChangeRemaining,
 class_change_days:classChangeRemaining>0?Math.ceil(classChangeRemaining/86400):0,
