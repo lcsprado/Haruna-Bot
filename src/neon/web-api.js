@@ -1,6 +1,6 @@
-import {pvpCritChance} from './pvp-crit.js'
 import 'dotenv/config'
 import crypto from 'node:crypto'
+import {pvpCritChance} from './pvp-crit.js'
 import {buildOfficialWebLoginUrl} from './web-official-link.js'
 import {relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {resolveAlphaWebAllowedOrigin} from './web-canonical-origins.js'
