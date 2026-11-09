@@ -1440,6 +1440,21 @@ async function finishRaidRewards(c,s,cfg,chat){
           }
         }
       }
+      // Recompensa de uso unico para Augusto: proxima vitoria da Raid Lv.65.
+      // Sem anuncio administrativo: permanece no relatorio normal de drop da Raid.
+      // Chave transacional impede duplicacao em novas raids, reinicios e outros grupos.
+      if(!singleUseGear && cfg.level===65 && Number(p.damage||0)>0 &&
+        p.jid==='5511982964423@s.whatsapp.net'){
+        const oneOff=await c.query(
+          `INSERT INTO trevo_settings(key,value,updated_at)
+           VALUES($1,$2::jsonb,EXTRACT(EPOCH FROM NOW())::BIGINT)
+           ON CONFLICT(key) DO NOTHING
+           RETURNING key`,
+          ['raid65_aurora_augusto_next_victory_20261108_v1',
+           JSON.stringify({jid:p.jid,raidId:s.startedAt,at:Date.now(),item:'armadura_aurora'})]
+        )
+        if(oneOff.rowCount) singleUseGear='armadura_aurora'
+      }
       if(singleUseGear || Math.random()<chance){
         const gearId=singleUseGear || cfg.gear[Math.floor(Math.random()*cfg.gear.length)]
         const item=(await c.query('SELECT id,name,rarity FROM items WHERE id=$1',[gearId])).rows[0]
