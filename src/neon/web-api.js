@@ -1,3 +1,4 @@
+import {createOptionalBootstrapLoader} from './web-bootstrap-optional.js'
 import 'dotenv/config'
 import crypto from 'node:crypto'
 import {buildOfficialWebLoginUrl} from './web-official-link.js'
@@ -480,6 +481,9 @@ async function groupSnapshot(chatJid){
 }
 async function playerBootstrap(session){
   const jid=session.jid
+  const {optional,unavailableSections}=createOptionalBootstrapLoader(
+    ({section,code})=>console.warn('[Web Bootstrap] seção secundária indisponível',{section,code})
+  )
   const [
     profile,combatProfile,inventory,pets,petTeam,petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
@@ -490,28 +494,28 @@ async function playerBootstrap(session){
     getInventory(jid),
     listPets(jid),
     getPetTeam(jid),
-    getPetExpeditions(jid),
-    getDailyMissions(jid),
-    getDailyStreak(jid),
-    getCareer(jid),
+    optional('petExpeditions',()=>getPetExpeditions(jid),[]),
+    optional('dailyMissions',()=>getDailyMissions(jid),[]),
+    optional('streak',()=>getDailyStreak(jid),null),
+    optional('career',()=>getCareer(jid),null),
     getHome(jid),
     getGarage(jid),
     getMotorcycleGarage(jid),
     getBusinesses(jid),
     getPatrimony(jid),
-    getCltUberStatus(jid),
+    optional('cltUber',()=>getCltUberStatus(jid),null),
     getLoanOverview(jid),
     listMyMarketListings(jid),
-    getAchievements(jid),
+    optional('achievements',()=>getAchievements(jid),[]),
     getRelationship(jid),
-    getRelationshipProposals(jid),
+    optional('relationshipProposals',()=>getRelationshipProposals(jid),{incoming:[],outgoing:[]}),
     groupSnapshot(session.chatJid),
-    getDoubleRewardEvent(),
-    getLuckyBoxEvent(),
-    db.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1 AND expires_at>$2 ORDER BY expires_at',[`%${jid}%`,Math.floor(Date.now()/1000)]),
-    db.query('SELECT * FROM player_sleep WHERE jid=$1',[jid]),
-    db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid]),
-    db.query(`SELECT t.id,t.amount,t.type,t.note,t.created_at,
+    optional('doubleRewardEvent',()=>getDoubleRewardEvent(),null),
+    optional('luckyBoxEvent',()=>getLuckyBoxEvent(),null),
+    optional('cooldowns',()=>db.query('SELECT key,expires_at FROM cooldowns WHERE key LIKE $1 AND expires_at>$2 ORDER BY expires_at',[`%${jid}%`,Math.floor(Date.now()/1000)]),{rows:[]}),
+    optional('sleep',()=>db.query('SELECT * FROM player_sleep WHERE jid=$1',[jid]),{rows:[]}),
+    optional('carpinar',()=>db.query('SELECT * FROM player_carpinar WHERE jid=$1',[jid]),{rows:[]}),
+    optional('recentTransactions',()=>db.query(`SELECT t.id,t.amount,t.type,t.note,t.created_at,
                      CASE WHEN t.from_jid=$1 AND t.to_jid<>$1 THEN 'out'
                           WHEN t.to_jid=$1 AND t.from_jid<>$1 THEN 'in'
                           ELSE 'self' END AS direction,
@@ -524,13 +528,14 @@ async function playerBootstrap(session){
               LEFT JOIN users tu ON tu.jid=t.to_jid
               WHERE t.from_jid=$1 OR t.to_jid=$1
               ORDER BY t.created_at DESC,t.id DESC
-              LIMIT 20`,[jid])
+              LIMIT 20`,[jid]),{rows:[]})
   ])
   const {heroes,activeHeroCombat,activeHeroId}=await webPlayableHeroesSnapshot(jid,combatProfile)
   const visiblePets=(Array.isArray(pets)?pets:[]).filter(p=>!PECADOS_HERO_IDS.includes(String(p.species||'')))
   const visibleTeam=(Array.isArray(petTeam)?petTeam:[]).filter(p=>!PECADOS_HERO_IDS.includes(String(p.species||'')))
   return {
     syncedAt:now(),
+    unavailableSections,
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
     profile,combatProfile,activeHeroCombat,heroes,inventory,pets:visiblePets,petTeam:visibleTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(visibleTeam,activeHeroId)),petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
