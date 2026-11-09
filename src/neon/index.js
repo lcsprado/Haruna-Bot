@@ -78,6 +78,7 @@ import { toStickerBuffer } from './sticker.js'
 import {formatPvpBattleReport} from './pvp-report.js'
 import {formatClanDonors,formatClanDonationTotals,formatClanDonationOverview,formatOwnClanDonations} from './clan-donation-ranking.js'
 import {pvpCritChance} from './pvp-crit.js'
+import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,critResistancePercent} from './boss-crit-resistance.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
 import {bossFinalNoticeIsRecent,bossFinalNoticeFailureState,BOSS_FINAL_NOTICE_MAX_ATTEMPTS} from './boss-final-outbox-policy.js'
 import {isUnarchivedWeeklyBoss20261030,loadBossArchive20261030} from './boss-archive-20261030.js'
@@ -8874,7 +8875,7 @@ const active=await getRaidStatus(chat)
 if(active && ['lobby','active'].includes(active.status) && Number(active.expiresAt||0)>Date.now()){
 clearQuickFlow(chat,sender)
 const players=Object.values(active.players||{})
-let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n👥 Jogadores: *${players.length}/5*`
+let text=`⚔️ *RAID ${active.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${active.name} — Lv.${active.level}*\n❤️ HP: *${Number(active.hp).toLocaleString('pt-BR')}/${Number(active.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${active.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(active.level))} p.p.*\n👥 Jogadores: *${players.length}/5*`
 if(active.status==='lobby') text+='\n\n✅ O host pode iniciar solo com *!go*.\n👥 Quem quiser participar usa *!entrar* antes do início.'
 else text+='\n\nUse *!raid* para acompanhar o combate.'
 await reply(text)
@@ -8883,7 +8884,7 @@ return true
 const raids=getRaidCatalog()
 setQuickFlow(chat,sender,'raid_select',{levels:raids.map(r=>r.level)},5*60*1000)
 let text='⚔️ *RAIDS DO RPG*\n\n'
-raids.forEach((r,i)=>{text+=`*${i+1}️⃣ Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🧩 Drop: *${r.material?.name||'Material de Raid'}*\n🔑 Chave: R$ ${fmt(r.keyPrice)}\n\n`})
+raids.forEach((r,i)=>{text+=`*${i+1}️⃣ Lv.${r.level} — ${r.name}*\n❤️ ${r.hp.toLocaleString('pt-BR')} HP • ⚔️ ${r.atk} ATK\n🛡️ Resistência CRIT: ${critResistancePercent(r.critResistance)} p.p.\n🧩 Drop: *${r.material?.name||'Material de Raid'}*\n🔑 Chave: R$ ${fmt(r.keyPrice)}\n\n`})
 text+='👉 Responda apenas com o *número da Raid*.\n🔑 Chaves: *!loja → Chaves de Raid*\n0️⃣ Sair'
 await reply(text)
 return true
@@ -8903,7 +8904,7 @@ try{
 const r=await createRaid(chat,sender,msg.pushName||'Jogador',level)
 await progressDailyMission(sender,'game')
 clearQuickFlow(chat,sender)
-await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n👥 Participantes: *1/5*\n\n✅ Você já pode iniciar *solo* com *!go*.\n👥 Se quiser, outros jogadores ainda podem entrar antes de começar.\n🚀 Quando estiver pronto, use *!go*.`)
+await reply(`⚔️ *SALA DE RAID ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${Number(r.maxHp||r.hp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n👥 Participantes: *1/5*\n\n✅ Você já pode iniciar *solo* com *!go*.\n👥 Se quiser, outros jogadores ainda podem entrar antes de começar.\n🚀 Quando estiver pronto, use *!go*.`)
 }catch(err){
 await reply('❌ '+(err?.message||'Não foi possível abrir essa Raid.'))
 }
@@ -12803,7 +12804,7 @@ const rooms=await getRaidStatuses(chat)
 const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
 if(requestedRoom){
 const players=Object.values(requestedRoom.players||{})
-let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n👥 Jogadores: *${players.length}/5*\n`
+let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(requestedRoom.level))} p.p.*\n👥 Jogadores: *${players.length}/5*\n`
 if(requestedRoom.status==='lobby'){
 text+='\n✅ O host pode iniciar solo com *!go '+requestedRoom.level+'*.\n👥 Outros jogadores ainda podem entrar com *!entrar '+requestedRoom.level+'*.'
 }else{
@@ -12828,7 +12829,7 @@ raidCatalog.forEach((r,i)=>{
 const alreadyOpen=rooms.some(room=>Number(room.level)===Number(r.level))
 if(alreadyOpen) return
 available++
-text+=`• *${i+1}.* Lv.${r.level} — ${r.name}\n  🧩 *${r.material?.name||'Material de Raid'}*\n  🔑 R$ ${fmt(r.keyPrice)} • ⏱️ ${r.durationMinutes} min\n`
+text+=`• *${i+1}.* Lv.${r.level} — ${r.name}\n  🧩 *${r.material?.name||'Material de Raid'}*\n  🔑 R$ ${fmt(r.keyPrice)} • ⏱️ ${r.durationMinutes} min • 🛡️ CRIT -${critResistancePercent(r.critResistance)} p.p.\n`
 })
 if(!available) text+='Nenhuma — já existe uma sala de cada Raid neste grupo.\n'
 text+='\n👉 *Abrir:* !raid NÚMERO ou !raid NÍVEL\nEx.: *!raid 2* ou *!raid 15*\n'
@@ -12839,7 +12840,7 @@ return await reply(text)
 const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
 await progressDailyMission(sender,'game')
 const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
+await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 } else if(['entrar','entrarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
 const catalog=getRaidCatalog()
@@ -12911,18 +12912,19 @@ const bossSynergy=petTeamSynergy(bossTeam)
 const synergyLine=bossSynergy?`\n🧬 Sinergia do time: *${bossSynergy.label}*\n🎯 ${bossSynergy.text}`:''
 const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus.label}\n✨ ${bossPetBonus.text}${synergyLine}`:'\n🐾 Você está sem pet. Use *!pets* para ver os companheiros disponíveis.'
 const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
+const bossCritLine='\n🛡️ Resistência CRIT: *'+critResistancePercent(BOSS_CRIT_RESISTANCE)+' p.p.*'
 const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial em andamento.':'')
 const displayedSchedule=r.eventId==='sete_pecados'
 ?'\n🌑 *INVASÃO DOS SETE PECADOS* • Fase '+(Number(r.phaseIndex||0)+1)+'/8\n⏰ Até 20:00 (Brasília)\n🎯 10.000 de dano em cada um dos 8 Bosses para obter a insígnia.\n⚜️ +2% dano e +1pp crítico Boss/Raid.'
 :r.eventId==='ruptura_estelar'
 ?'\n🌌 *RUPTURA ESTELAR ATÉ 21H* • Fase '+Number(r.phase||1)+'/3\n🥇 20 Caixas Épicas ao 1º; 5 ao 2º; 3 ao 3º.\n🏅 Insígnia Guardião da Ruptura.'
 :schedule
-if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
+if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${bossCritLine}${displayedSchedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
 await progressDailyMission(sender,'game')
 const rewardInfo=r.mode==='event'
 ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou 7 essências se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
 :(r.mode==='weekly'?'🏆 Top 1: *R$ 1 milhão, 12 mil XP, 15 Caixas Épicas*. Demais posições com prêmios melhores. ⚜️ Insígnia inédita por edição (mínimo 10 mil de dano), equipável em !reliquias; 1 ativa por vez. Fundo proporcional: *R$ 150 mil*.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
-await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${displayedSchedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
+await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${bossCritLine}${displayedSchedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 } else if(['pararatacar','pararboss'].includes(cmd)){
 const existing=bossSessions.get(sender)
 if(existing&&existing.chat!==chat) return await reply('⚠️ Você deve controlar o combate pelo grupo em que começou.')
