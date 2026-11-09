@@ -79,7 +79,7 @@ test('Premiação V6 aceita 3+5 sem pagar inativos; V5 preserva bloqueio de elen
 })
 test('Cerco V6 cria versão nova somente com toggle; check de turnos é no servidor antes de registrar ação',()=>{
  assert.match(source,/ALPHA_SIEGE_V6_ROSTER_ENABLED==='1'/)
- assert.match(source,/expanded\?6:5/)
+ assert.match(source,/expanded\?insertV6Sql:insertV5Sql/)
  assert.match(source,/const roster=\(await conn.query\(/)
  assert.match(source,/siegeV6ActivePlayers\(roster,Number\(match.round\)\)/)
  assert.match(source,/Sua vez ainda não chegou/)
