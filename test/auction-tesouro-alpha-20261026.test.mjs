@@ -15,10 +15,10 @@ test('26 October auction has a unique key and opening at 14:10 Brazil time',()=>
 })
 test('five sealed packages include meaningful existing rewards without restricted merch',()=>{
   assert.equal(packages.flat().filter(item=>item.pet).length,1)
-  assert.equal(packages.flat().filter(item=>item.pet).every(item=>item.pet==='lince_astral'),true)
+  assert.equal(packages.flat().filter(item=>item.pet).every(item=>item.pet==='onca_eclipse_20261026'),true)
   assert.equal(packages.flat().filter(item=>item.id==='caixa_lendaria').reduce((total,item)=>total+item.qty,0),4)
-  assert.equal(packages.flat().filter(item=>item.id==='elmo_soberano_celestial_20261024').length,1)
-  assert.equal(packages.flat().filter(item=>item.id==='bota_vortice_alpha_20261020').length,1)
+  assert.equal(packages.flat().filter(item=>item.id==='elmo_guardiao_nebular_20261026').length,1)
+  assert.equal(packages.flat().filter(item=>item.id==='botas_cometa_astral_20261026').length,1)
 })
 test('public bidding is backed by transactional reservations, refunds and sealed rewards',()=>{
   assert.match(src,/pg_advisory_xact_lock/)

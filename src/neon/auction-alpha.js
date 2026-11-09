@@ -276,6 +276,12 @@ function parseAmount(raw){
 }
 export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply,web=false}){
   if(!['leilao','lance'].includes(cmd))return false
+  // Um lote histórico não volta a cobrar depois do encerramento oficial,
+  // mesmo se um registro antigo permanecer marcado como ativo.
+  if(cmd==='lance'&&Date.now()>=END){
+    await reply('🏁 Este leilão foi encerrado. Nenhum novo lance será cobrado.')
+    return true
+  }
   if(AUCTION_PAUSED_FOR_AUDIT){
     await reply('🔒 Os leilões de hoje foram cancelados e estão pausados até a auditoria. Lances foram estornados; prêmios serão revisados. Nenhuma nova cobrança será feita.')
     return true
@@ -308,7 +314,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
   }
   try{
     const result=await change(async(state,c)=>{
-      if(state.phase!=='running'||Date.now()>=Number(state.ends||0))throw Error('Lote não está recebendo lances. Consulte !leilao.')
+      if(Date.now()>=END||state.phase!=='running'||Date.now()>=Number(state.ends||0))throw Error('Lote não está recebendo lances. Consulte !leilao.')
       if(!Array.isArray(state.groups)||!state.groups.includes(chat))throw Error('Este grupo não participa desta edição do leilão.')
       const lot=state.lots[state.lot]
       const old=state.high
