@@ -2403,12 +2403,13 @@ const stars=Number(r.stars||1),needed=shieldForge?0:FORGE_STAR_MATERIALS[stars]|
 const copies=Number(r.quantity||0)
 const free=Math.max(0,copies-Number(r.bound_quantity||0)-(r.equipped?1:0))
 const basicCopies=Math.max(0,copies-Number(r.upgraded_quantity||0)-(Number(r.forged_level)>0?1:0))
+const shieldDonorCopies=Math.max(0,basicCopies-Number(r.bound_quantity||0)-(r.equipped&&Number(r.forged_level||0)===0?1:0))
 const fee=shieldForge?shieldForgeCost(r.item_id,stars)||0:0
 const special=collab?sevenSinsForgePlan({stars,commonLv10Copies:r.level10_copies,forgedLevel:r.forged_level,owned:copies,fragments:r.materials,requiredFragments:needed}):null
 const requiredCopies=shieldForge?(stars===1?2:1):collab?special.requiredCopies:stars===1?2:1
-const ready=shieldForge?(stars===1?basicCopies>=2:Number(r.forged_level)===10&&basicCopies>=1):collab?special.ready:stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1
-const canForge=shieldForge?stars<5&&ready&&copies>=2&&free>=1&&Number(r.cash)>=fee:collab?special.canForge:stars<5&&ready&&copies>=2&&free>=1&&Number(r.materials)>=needed
-return {...r,origin,collab,shieldForge,fee,basicCopies,stars,needed,free,requiredCopies,ready,canForge,
+const ready=shieldForge?(stars===1?basicCopies>=2&&shieldDonorCopies>=1:Number(r.forged_level)===10&&shieldDonorCopies>=1):collab?special.ready:stars===1?Number(r.level10_copies)>=2:Number(r.forged_level)===10&&Number(r.level10_copies)>=1
+const canForge=shieldForge?stars<5&&ready&&copies>=2&&Number(r.cash)>=fee:collab?special.canForge:stars<5&&ready&&copies>=2&&free>=1&&Number(r.materials)>=needed
+return {...r,origin,collab,shieldForge,fee,basicCopies,shieldDonorCopies,stars,needed,free,requiredCopies,ready,canForge,
 current:equipmentStatsAtLevel(r.item_id,stars>1?Number(r.forged_level):10,stars),
 next:stars<5?equipmentStatsAtLevel(r.item_id,1,stars+1):null}
 })
@@ -2445,7 +2446,8 @@ if(Number(item.quantity)-Number(bound?.qty||0)-(equipped?1:0)<1)throw new Error(
 if(shieldForge){
   const upgraded=(await c.query('SELECT COALESCE(SUM(quantity),0)::int qty FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
   const common=Number(item.quantity)-Number(upgraded?.qty||0)-(sf?1:0)
-  if(common<(sf?1:2))throw new Error('Precisa de escudos idênticos comuns Lv.1 livres; cópias aprimoradas e forjadas estão protegidas.')
+  const donorCopies=common-Number(bound?.qty||0)-(equipped&&!sf?1:0)
+  if(common<2||donorCopies<1)throw new Error('Forja exige 2 escudos idênticos (1 principal e 1 doador comum Lv.1 livre). Escudos equipados, vinculados, aprimorados e forjados não podem ser consumidos como doadores.')
 }
 const required=shieldForge?0:FORGE_STAR_MATERIALS[stars]
 const material=shieldForge?{quantity:0}:(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,origin.materialId])).rows[0]
