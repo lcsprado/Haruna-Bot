@@ -3,6 +3,7 @@
 // Cada jogador precisa participar de ao menos 2 rodadas para ganhar XP.
 import {grantExpInTransaction} from './db.js';
 import {brtSiegeDay} from './clan-siege-event-rewards-20261104.js';
+import {siegeV6RosterValid} from './clan-siege-v6-roster.js';
 
 export const SIEGE_WEEKLY_XP_START='2026-11-07';
 export const SIEGE_WEEKLY_XP=Object.freeze({winner:150000,loser:70000,draw:100000});
@@ -52,8 +53,14 @@ export async function grantSiegeWeeklyXp(conn,match){
     if(!(String(p.clan_id) in counts))throw new Error('Cerco XP: clã inválido.');
     counts[String(p.clan_id)]++;
   }
-  if(players.length!==4||new Set(roster).size!==4||counts[blue]!==2||counts[red]!==2)
-    throw new Error('Cerco XP: é preciso haver 2 clãs de 2 jogadores.');
+  const v6=Number(match.rules_version)>=6;
+  const rosterValid=v6
+    ?siegeV6RosterValid(players,blue,red)
+    :players.length===4&&new Set(roster).size===4&&counts[blue]===2&&counts[red]===2;
+  if(!rosterValid)
+    throw new Error(v6
+      ?'Cerco V6 XP: é preciso ter 2 a 6 jogadores distintos por clã.'
+      :'Cerco XP: é preciso haver 2 clãs de 2 jogadores.');
 
   const turns=(await conn.query(
     'SELECT jid,COUNT(DISTINCT round)::int AS turns FROM alpha_siege_moves '+
