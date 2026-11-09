@@ -1,4 +1,4 @@
-import {readRaidActiveHero,applyRaidHeroSnapshot,raidHeroPetSnapshot,raidHeroRoundHit} from './pve-raid-hero-bridge.js'
+import {readRaidActiveHero,applyRaidHeroSnapshot,raidHeroPetSnapshot,raidHeroRoundHit,raidHeroDefend,settleRaidHeroHp,applyRaidKingAllyHeal} from './pve-raid-hero-bridge.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
@@ -1507,6 +1507,8 @@ export async function raidRound(chat,level){
         p.classHealing=Number(p.classHealing||0)+healed
         if(healed>0) p.classHealingActivations=Number(p.classHealingActivations||0)+1
       }
+      const heroAllyHeal=applyRaidKingAllyHeal(s.players,p,classHit.allyHeal)
+      if(heroAllyHeal)events.push({type:'hero_heal',jid:p.jid,target:heroAllyHeal.target,name:p.name,healed:heroAllyHeal.healed})
       const petExtra=p.pet?Math.max(0,baseDmg-baseline-oilBonus):0
       if(p.pet) p.pet.extraDamage=Number(p.pet.extraDamage||0)+petExtra
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
@@ -1518,6 +1520,13 @@ export async function raidRound(chat,level){
     }
 
     if(Number(s.hp)<=0){
+      // Na vitoria, os herois devem persistir a cura do ultimo golpe.
+      // A escrita ocorre dentro da mesma transacao que finaliza a Raid.
+      for(const participant of Object.values(s.players||{})){
+        if(!participant?.heroId)continue
+        const persistentHp=settleRaidHeroHp(participant)
+        await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[persistentHp,participant.jid])
+      }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
       // Despertar V: somente Raids Lv.60+ vencidas com 2+ jogadores
@@ -1559,7 +1568,11 @@ export async function raidRound(chat,level){
         Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&
         Number(ally.awakeningStage||0)>=4)
       const protectedDamage=guardianAura?Math.max(0,Math.round(hitDamage*.98)):hitDamage
-      const passiveDefense=classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      const heroDefenseHit=raidHeroDefend(p,protectedDamage)
+      const passiveDefense=heroDefenseHit
+        ?{...heroDefenseHit,awakeningState:p.awakeningState}
+        :classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+      if(heroDefenseHit)p.heroState=heroDefenseHit.state
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
       p.hp=Math.max(0,Number(p.hp)-dmg+Number(passiveDefense.healAfter||0))
@@ -1680,7 +1693,8 @@ export async function raidRound(chat,level){
           }else p.alive=false
         }
       }
-      await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[p.hp,p.jid])
+      const storedHp=p.heroId?settleRaidHeroHp(p):p.hp
+      await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[storedHp,p.jid])
       events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoRevive,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
 
