@@ -41,7 +41,7 @@ test('estrela seguinte usa a propria peca forjada Lv.10; nenhuma copia comum adi
 })
 
 test('forja especial nao altera a mecanica de doadores das Raids normais',()=>{
-  assert.match(forge,/const donors=shieldForge\\?0:collab\?sevenSinsForgePlan\(\{stars\}\)\.donorUpgradeRows:\(stars===1\?2:1\)/)
+  assert.match(forge,/const donors=shieldForge\?0:collab\?sevenSinsForgePlan\(\{stars\}\)\.donorUpgradeRows:\(stars===1\?2:1\)/)
   assert.match(forge,/const units=collab\?\{rowCount:1/)
   assert.match(forge,/await syncEffectiveGear\(c,jid,itemId\)/)
   assert.match(forge,/equipment_star_forge_collab_fragments/)
