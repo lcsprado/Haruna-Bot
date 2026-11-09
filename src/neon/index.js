@@ -1670,7 +1670,7 @@ ${bonusSummary}
 🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}*
 👢 Botas: *${p.boot_name||'Sem botas'} Lv.${Number(p.boot_level||1)}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
-🛡️ Escudo: *${p.shield_name||'Nenhum'}*${p.shield_id?' Lv.'+p.shield_level+' • -'+pct(p.shield_crit_resist*100)+' p.p. chance CRIT inimigo • -'+pct(p.shield_crit_guard*100)+'% bônus dano CRIT':''}
+🛡️ Escudo: *${p.shield_name||'Nenhum'}*${p.shield_id?' Lv.'+p.shield_level+' • 🌟 '+forgeStarsIcon(p.shield_stars||1)+' • -'+pct(p.shield_crit_resist*100)+' p.p. chance CRIT inimigo • -'+pct(p.shield_crit_guard*100)+'% bônus dano CRIT':''}
 ⚜️ Insígnia: *${relics.active?.name||'Nenhuma ativa'}*
 ${relics.active?'✨ Efeito: '+relics.active.effect+'\n':''}${petLine}
 💼 Carreira: *${career?.rank?.name||'Ajudante'}*
@@ -4348,7 +4348,7 @@ const equipmentCopyLabel=i=>i.sourceKind==='star'
 ?'🌟 *FORJADA '+forgeStarsIcon(i.stars)+'* • bônus *'+forgeBonusText(i.stars)+'*'
 :'⚪ *COMUM* • ×'+Number(i.tierQuantity||1)+' cópia(s)'
 const activeCopyLabel=(p,category)=>{
-const stars=Number(category==='weapon'?p?.weapon_stars:category==='armor'?p?.armor_stars:1)
+const stars=Number(category==='weapon'?p?.weapon_stars:category==='armor'?p?.armor_stars:category==='shield'?p?.shield_stars:1)
 const level=Number(category==='weapon'?p?.weapon_level:category==='armor'?p?.armor_level:category==='helmet'?p?.helmet_level:category==='shield'?p?.shield_level:p?.boot_level)||1
 return (stars>1?'🌟 FORJADA '+forgeStarsIcon(stars)+' ('+forgeBonusText(stars)+')':'⚪ COMUM')+' • ⭐ Lv.'+level
 }
@@ -5071,7 +5071,7 @@ const commandPages={
 *!venderrepetidos* — vende equipamentos repetidos e mantém 1 de cada
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
-*!forjar* — Forja Estelar de armas e armaduras de Raid no Lv.10 (até 5 estrelas)
+*!forjar* — Forja Estelar de armas, armaduras e escudos (até 5 estrelas)
 *!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
 *!usarxp NOME* — ativa elixir ou tomo de experiência
@@ -6981,10 +6981,16 @@ if(!latest){clearQuickFlow(chat,sender);await reply('⚠️ Esse equipamento nã
 if(latest.stars>=5){clearQuickFlow(chat,sender);await reply('🌟 Esse equipamento já está em ★★★★★.');return true}
 const missing=[]
 if(latest.stars>1&&latest.forged_level<10)missing.push('⬆️ Aprimore a peça estrelada ao Lv.10.')
-if(latest.level10_copies<latest.requiredCopies)missing.push('⚔️ Aprimore '+(latest.requiredCopies-latest.level10_copies)+' cópia(s) comum(ns) ao Lv.10.')
-if(!latest.collab&&Number(latest.quantity)<2)missing.push('⚔️ Faltam '+Math.max(0,2-Number(latest.quantity))+' cópia(s) idêntica(s) no Lv.10.')
-if(!latest.collab&&Number(latest.free)<1)missing.push('🔒 Não há cópia livre para consumir (vinculadas são protegidas).')
-if(latest.materials<latest.needed)missing.push('🧩 Faltam '+(latest.needed-latest.materials)+'× '+latest.origin.materialName+'.')
+if(latest.shieldForge){
+  if(latest.basicCopies<latest.requiredCopies)missing.push('🛡️ Faltam '+(latest.requiredCopies-latest.basicCopies)+' cópia(s) idêntica(s) comum(ns) Lv.1.')
+  if(Number(latest.quantity)<2||Number(latest.free)<1)missing.push('🔒 É preciso ter uma cópia extra não equipada nem vinculada.')
+  if(Number(latest.cash)<latest.fee)missing.push('💰 Faltam R$ '+fmt(latest.fee-Number(latest.cash))+' em carteira.')
+}else{
+  if(latest.level10_copies<latest.requiredCopies)missing.push('⚔️ Aprimore '+(latest.requiredCopies-latest.level10_copies)+' cópia(s) comum(ns) ao Lv.10.')
+  if(!latest.collab&&Number(latest.quantity)<2)missing.push('⚔️ Faltam '+Math.max(0,2-Number(latest.quantity))+' cópia(s) idêntica(s) no Lv.10.')
+  if(!latest.collab&&Number(latest.free)<1)missing.push('🔒 Não há cópia livre para consumir (vinculadas são protegidas).')
+  if(latest.materials<latest.needed)missing.push('🧩 Faltam '+(latest.needed-latest.materials)+'× '+latest.origin.materialName+'.')
+}
 if(missing.length){
 clearQuickFlow(chat,sender)
 await reply('⚒️ *REQUISITOS PARA FORJAR*\n\n*'+latest.name+'*\n'+missing.join('\n')+'\n\nUse *!forjar* para consultar novamente.')
@@ -6995,10 +7001,10 @@ await reply(
 '⚒️ *CONFIRMAR FORJA ESTELAR?*\n\n'+
 '*'+latest.name+'*\n'+
 '🌟 Estrelas: *'+latest.stars+' → '+(latest.stars+1)+'*\n⭐ A peça resultante volta ao *Lv.1*.\n'+
-(latest.collab?'⚔️ *Nenhuma cópia será consumida.* Fragmentos substituem a cópia extra.\n':'⚔️ Será consumida: *1 cópia extra Lv.10* (a principal permanece)\n')+
-'🧩 Fragmentos: *'+latest.needed+'× '+latest.origin.materialName+'* (Raid '+latest.origin.raidLevel+')\n'+
-'💰 Dinheiro: *R$ 0*\n'+
-'📈 A nova estrela já aplica *+4%* aos atributos desta peça desde o *Lv.1*.\n'+
+(latest.shieldForge?'🛡️ Será consumido *1 escudo idêntico comum Lv.1*; a peça principal permanece.\n':latest.collab?'⚔️ *Nenhuma cópia será consumida.* Fragmentos substituem a cópia extra.\n':'⚔️ Será consumida: *1 cópia extra Lv.10* (a principal permanece)\n')+
+(latest.shieldForge?'':'🧩 Fragmentos: *'+latest.needed+'× '+latest.origin.materialName+'* (Raid '+latest.origin.raidLevel+')\n')+
+'💰 Dinheiro: *R$ '+fmt(latest.fee||0)+'*\n'+
+(latest.shieldForge?'🛡️ Cada estrela aumenta a eficácia anti-crítico do escudo em *4%* (respeitando os limites de resistência).\n':'📈 A nova estrela já aplica *+4%* aos atributos desta peça desde o *Lv.1*.\n')+
 '📌 O nível da peça recomeça; não é perda das estrelas nem dos upgrades das cópias comuns.\n\n'+
 '1️⃣ Confirmar forja\n2️⃣ Cancelar')
 return true
@@ -7010,11 +7016,11 @@ const chosen=flow.data
 clearQuickFlow(chat,sender)
 try{
 const result=await forgeEquipmentStar(sender,chosen.itemId,chosen.stars)
-await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\n\n'+(result.category==='armor'?'🛡️':'⚔️')+' *'+result.name+'*\n'+
+await reply('🌟 *FORJA ESTELAR CONCLUÍDA!*\n\n'+(['armor','shield'].includes(result.category)?'🛡️':'⚔️')+' *'+result.name+'*\n'+
 '🌟 *'+forgeStarsIcon(result.stars)+'* • bônus *'+forgeBonusText(result.stars)+'* • ⭐ *Lv.1*\n'+
 '💪 Atributos (Lv.1 + pedras): '+gearStatsText(gearStatsWithEnchants(result.after,result.enchantments,STONES),result.category)+'\n\n'+
-'🧩 Gasto: '+result.materialsSpent+'× '+result.origin.materialName+'\n'+
-'📦 Cópias: '+result.copies+' • Fragmentos: '+result.remainingMaterials+enchantmentsReceipt(result.enchantments)+'\n\n'+
+(result.shieldForge?'💰 Gasto: R$ '+fmt(result.cashSpent)+'\n':'🧩 Gasto: '+result.materialsSpent+'× '+result.origin.materialName+'\n')+
+'📦 Cópias: '+result.copies+(result.shieldForge?'':' • Fragmentos: '+result.remainingMaterials)+enchantmentsReceipt(result.enchantments)+'\n\n'+
 '📌 A forja reiniciou o nível BASE. As pedras foram mantidas e seus bônus continuam somando quando a peça estiver equipada.\n⬆️ Use *!uparitem* para voltar ao Lv.10.\n📋 Confira em *!encantamentos*.')
 }catch(err){await reply('❌ '+(err?.message||'Não foi possível concluir a forja; confira os requisitos.'))}
 return true
@@ -12050,21 +12056,28 @@ text+='\n\n🛡️ 1 cópia de cada equipamento foi preservada.'
 await reply(text)
 } else if(['forjar','forja','forjaestelar'].includes(cmd)){
 const list=await listStarForgeEquipment(sender)
-if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🔎 Sete Pecados: equipamento Lv.10 + Fragmentos da Ascensão, sem cópia extra. Outras Raids mantêm suas regras.')
+if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🛡️ Escudos exigem cópias idênticas. Sete Pecados usam Fragmentos da Ascensão; outras Raids mantêm suas regras.')
 setQuickFlow(chat,sender,'starforge_select',{items:list.map(r=>r.item_id)},5*60*1000)
 let result='⚒️ *FORJA ESTELAR*\n\nEscolha o equipamento:\n\n'
 for(const [i,r] of list.entries()){
-const lvl=r.stars>1?r.forged_level:0,need=Math.max(0,r.requiredCopies-r.level10_copies),missing=[]
+const lvl=r.stars>1?r.forged_level:0,need=Math.max(0,r.requiredCopies-(r.shieldForge?r.basicCopies:r.level10_copies)),missing=[]
 if(r.stars>1&&lvl<10)missing.push('elevar a peça 🌟 ao Lv.10')
-if(need)missing.push('upar '+need+' cópia(s) comum(ns) ao Lv.10')
+if(need)missing.push(r.shieldForge?'obter '+need+' escudo(s) idêntico(s) comum(ns) Lv.1':'upar '+need+' cópia(s) comum(ns) ao Lv.10')
 if(!r.collab&&(r.quantity<2||r.free<1))missing.push('obter cópia extra livre')
-if(r.materials<r.needed)missing.push('obter '+(r.needed-r.materials)+' fragmentos')
-result+='*'+(i+1)+'.* '+(r.category==='armor'?'🛡️':'⚔️')+' *'+r.name+'*\n'
+if(r.shieldForge&&Number(r.cash)<r.fee)missing.push('R$ '+fmt(r.fee-Number(r.cash))+' em carteira')
+if(!r.shieldForge&&r.materials<r.needed)missing.push('obter '+(r.needed-r.materials)+' fragmentos')
+result+='*'+(i+1)+'.* '+(['armor','shield'].includes(r.category)?'🛡️':'⚔️')+' *'+r.name+'*\n'
 result+='   🌟 '+forgeStarsIcon(r.stars)+' • bônus '+forgeBonusText(r.stars)+(lvl?' • ⭐ Lv.'+lvl:'')+'\n'
 if(r.stars===5){result+='   🏆 Evolução máxima\n\n';continue}
-result+='   ⚔️ '+(r.collab?(r.stars===1?'Base comum Lv.10: '+r.level10_copies+'/1':'Base forjada: Lv.'+r.forged_level+'/10'):'Cópias comuns Lv.10: '+r.level10_copies+'/'+r.requiredCopies)+'\n'
-result+='   🧩 '+r.origin.materialName+': '+r.materials+'/'+r.needed+' (Raid '+r.origin.raidLevel+')\n'
-if(r.collab)result+='   ✨ Fragmentos substituem cópias extras; nenhuma será consumida.\n'
+if(r.shieldForge){
+  result+='   🛡️ Escudos idênticos comuns Lv.1: '+r.basicCopies+'/'+r.requiredCopies+'\n'
+  result+='   💰 Custo da forja: R$ '+fmt(r.fee)+' (carteira: R$ '+fmt(r.cash)+')\n'
+  result+='   📌 A partir de ★★, a peça forjada precisa estar no Lv.10.\n'
+}else{
+  result+='   ⚔️ '+(r.collab?(r.stars===1?'Base comum Lv.10: '+r.level10_copies+'/1':'Base forjada: Lv.'+r.forged_level+'/10'):'Cópias comuns Lv.10: '+r.level10_copies+'/'+r.requiredCopies)+'\n'
+  result+='   🧩 '+r.origin.materialName+': '+r.materials+'/'+r.needed+' (Raid '+r.origin.raidLevel+')\n'
+  if(r.collab)result+='   ✨ Fragmentos substituem cópias extras; nenhuma será consumida.\n'
+}
 result+='   '+(r.canForge?'✅ *PRONTO PARA FORJAR*':'🔒 Falta: '+missing.join('; '))+'\n\n'
 }
 result+='📌 Cada nova estrela começa no *Lv.1*, já com o bônus percentual.\n👉 Envie o número ou 0 para cancelar.\n'

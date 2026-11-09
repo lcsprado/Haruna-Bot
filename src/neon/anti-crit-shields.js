@@ -11,11 +11,20 @@ export const ANTI_CRIT_SHIELDS=Object.freeze([
 const SHIELDS_BY_ID=Object.freeze(Object.fromEntries(ANTI_CRIT_SHIELDS.map(shield=>[shield.id,shield])));
 // +50% de eficácia no Lv.10. Este crescimento especial evita os 2,5x
 // aplicados aos atributos de armas e armaduras.
-export function antiCritShieldStats(itemId,level=1){
+// Quatro evoluções (+4% de eficácia por estrela) sem modificar a classe/base.
+export function shieldForgeCost(itemId,currentStars=1){
+  const shield=SHIELDS_BY_ID[String(itemId||'')];
+  const stars=Math.trunc(Number(currentStars)||0);
+  if(!shield||stars<1||stars>=5)return null;
+  const reference=Number(shield.price||({egide_celestial:100000,bastiao_eclipse:250000}[shield.id]||100000));
+  return Math.ceil(reference*stars*.5);
+}
+export function antiCritShieldStats(itemId,level=1,stars=1){
   const shield=SHIELDS_BY_ID[String(itemId||'')];
   if(!shield)return null;
   const lv=Math.max(1,Math.min(10,Math.trunc(Number(level)||1)));
-  const growth=1+.5*((lv-1)/9);
+  const starLevel=Math.max(1,Math.min(5,Math.trunc(Number(stars)||1)));
+  const growth=(1+.5*((lv-1)/9))*(1+.04*(starLevel-1));
   return {
     critResist:Number(Math.min(.20,shield.critResist*growth).toFixed(6)),
     critGuard:Number(Math.min(.30,shield.critGuard*growth).toFixed(6))
