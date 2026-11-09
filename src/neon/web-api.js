@@ -1,4 +1,5 @@
 import {createOptionalBootstrapLoader} from './web-bootstrap-optional.js'
+import {consumeWebAuthAttempt} from './web-auth-throttle.js'
 import 'dotenv/config'
 import crypto from 'node:crypto'
 import {pvpCritChance} from './pvp-crit.js'
@@ -133,6 +134,13 @@ async function ensureWebTables(){
 
       CREATE INDEX IF NOT EXISTS web_sessions_jid_idx
         ON web_sessions(jid,expires_at DESC);
+
+      -- Rate limit is shared across API processes. Identifiers are HMACs, not IPs.
+      CREATE TABLE IF NOT EXISTS web_auth_rate_limits(
+        scope_hash TEXT PRIMARY KEY,
+        window_started_at BIGINT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0
+      );
     `)
     webTablesReady=true
   })().finally(()=>{ webTablesPromise=null })
@@ -1492,6 +1500,15 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='POST' && url.pathname==='/api/v1/auth/exchange'){
+      await ensureWebTables()
+      try{
+        await consumeWebAuthAttempt(db,req)
+      }catch(err){
+        if(err?.code!=='WEB_AUTH_RATE_LIMITED')throw err
+        res.setHeader('Retry-After',String(err.retryAfterSeconds||60))
+        json(res,429,{ok:false,error:err.message})
+        return true
+      }
       const body=await readJson(req)
       const session=await exchangeWebLinkCode(body.code)
       console.info('[Web Auth] code exchange success',session.groupLinked?'group':'private')
