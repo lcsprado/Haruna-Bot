@@ -184,7 +184,7 @@ test('web inventory separates equipped gear and protects it from every sale path
   assert.ok(db.includes("Number(i.quantity)>1"),'duplicate sale must only target real duplicates')
   assert.ok(db.includes('qty:Math.min(Number(i.quantity)-1,'),'duplicate sale must always preserve one copy')
   assert.ok(app.includes("market_quantity:Number(i.equipped?i.sellable_quantity:i.quantity)||0"),'market UI must exclude equipped copies')
-  assert.ok(db.includes("const available=Math.max(0,Number(inv.rows[0]?.quantity||0)-Math.max(equipped,bound))"),'market backend must preserve equipped copy')
+  assert.ok(db.includes('const available=Math.min(Math.max(0,owned-Math.max(equipped,bound)),Math.max(0,owned-Number(paid?.qty||0)))'),'market backend must preserve equipped copy')
 })
 
 test('marriage proposals appear to the recipient in web and can be accepted or rejected',()=>{
