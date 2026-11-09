@@ -4,7 +4,7 @@ import {PLAYER_CLASSES,getPlayerClass} from './game-catalog.js'
 import {classComparisonBonuses,classComparisonLevel} from './hero-class-comparison.js'
 import {formatActiveClassBaseStatus,formatSavedClassStatus} from './character-base-status-format.js'
 import {formatPlayableHeroMasteryEffects} from './hero-mastery-format.js'
-import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy} from './playable-heroes-core.js'
+import {playableHero,heroMasteryStage,HERO_SKILL_GUIDE,HERO_COMBAT_PROFILES,heroCombatSheetFromProfile,HERO_MASTERY_XP,HERO_MASTERY_COST,heroMasteryNext,heroCollabGearBonus,raid75MasteryBonusActive,heroMasteryAwardPolicy,heroLevelAwardPolicy,sevenSinsProgressWeekActive} from './playable-heroes-core.js'
 import {archiveSevenSinsPetAssignments} from './hero-only-pet-migration.js'
 import {formatHeroDailyXpReport} from './hero-daily-xp-report.js'
 
@@ -324,7 +324,7 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=90
   if(progressReport){
     progressReport.earned=0
     progressReport.today=Number(today[0]?.gained||0)
-    progressReport.limit=bonus||progressReport.today>400?600:400
+    progressReport.limit=policy.dailyCap
     progressReport.reason='limite_diario'
   }
   if(!amount)return false
@@ -342,7 +342,7 @@ export async function awardPlayableHeroMastery(client,{jid,heroId,awardKey,xp=90
   if(progressReport){
     progressReport.earned=amount
     progressReport.today+=amount
-    progressReport.limit=bonus||progressReport.today>400?600:400
+    progressReport.limit=policy.dailyCap
     progressReport.total=Number(updated.rows[0]?.xp||0)
     progressReport.reason='creditado'
   }
@@ -415,7 +415,11 @@ export async function handlePlayableHeroCommand({cmd,args=[],sender,reply}={}){
           (next?' | Próximo: '+next.xp+' XP e R$ '+next.cost.toLocaleString('pt-BR'):' | Nível máximo');
       });
       await reply('🌈⚔️ *EVOLUÇÃO DE MAESTRIA*\n\n'+(lines.join('\n')||'Nenhum Pecado conquistado.')+
-        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.\n📈 Normal: até 400 XP de maestria/dia e 550 XP de nível/dia por herói em Boss/Raid.\n🚀 02/11 a 08/11: jogadores abaixo do Lv.300 podem ganhar até 1.000 XP/dia em heróis abaixo do Lv.70.\n🌈 De 26/10 a 01/11: Raid 75 concede 120 XP de maestria por vitória elegível.\n🌈 Em 02/11: Raid 75 concede *240 XP de maestria por vitória elegível* (2x), até 600 XP/dia no total (incluindo outras fontes).');
+        '\n\n🔒 Ganhar XP não ativa o estágio automaticamente.\n💰 Use *!heroi evoluir ban* para pagar e liberar o próximo estágio.'+
+        (sevenSinsProgressWeekActive()
+          ?'\n🔥 09 a 15/11: sem limite diário de XP de nível ou maestria dos Sete Pecados.\n⏳ Retorno dos limites em 16/11 à 00h (Brasília).'
+          :'\n📈 Normal: 400 XP de maestria/dia e 550 XP de nível/dia por herói em Boss/Raid.')+
+        '\n🏅 Nv.100 e maestria V (7.000 XP) continuam como limites finais.');
       return true;
     }
     const selected=findHero(raw);
