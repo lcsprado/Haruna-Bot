@@ -7,6 +7,7 @@ import {ensureSiegeEventRewardsSchema,grantSiegeEventRewards,brtSiegeDay,SIEGE_E
 import {ensureSiegeWeeklyXpSchema,grantSiegeWeeklyXp,SIEGE_WEEKLY_XP} from './clan-siege-weekly-xp.js';
 import {ensureClanFortressSchema,clanFortressCombatSnapshot,clanFortressStatus,clanFortressUpgrade} from './clan-fortress.js';
 import {resolveSiegeRoundV4,validateSiegeV4Move} from './clan-siege-v4.js';
+import {siegeV6ActivePlayers,siegeV6NextTurns,SIEGE_V6_MIN_PLAYERS,SIEGE_V6_MAX_PLAYERS} from './clan-siege-v6-roster.js';
 
 const LIMIT_HP=2000, MAX_ROUNDS=6, ROUND_MS=5*60*1000, MAX_REPAIR=2;
 const TEAM_TACTICS_VERSION=2; // novas guerras apenas; partidas antigas preservam regras v1
@@ -17,6 +18,7 @@ const CANCELLED_SIEGE_DATE='2026-11-07'; // Não reabrir a partida cancelada.
 const ACTIONS=new Set(['attack','defend','repair','spy']);
 const siegeGroup=()=>String(process.env.ALPHA_CLAN_SIEGE_GROUP_JID||'').trim();
 const ON=()=>process.env.ALPHA_CLAN_SIEGE_ENABLED==='1'&&/^[0-9-]+@g\.us$/.test(siegeGroup());
+const V6_ON=()=>process.env.ALPHA_SIEGE_V6_ROSTER_ENABLED==='1'; // desativado ate a PWA V6 ser homologada
 const now=()=>Date.now();
 let schemaPromise=null;
 
@@ -141,13 +143,13 @@ async function eligible(conn,chat){
     "FROM clans c JOIN clan_members cm ON cm.clan_id=c.id",
     "LEFT JOIN (SELECT DISTINCT jid FROM web_sessions",
     "WHERE chat_jid=$1 AND expires_at>$2) ws ON ws.jid=cm.jid",
-    "GROUP BY c.id,c.name HAVING COUNT(cm.jid)=2 AND COUNT(DISTINCT ws.jid)>0 ORDER BY c.id"
+    "GROUP BY c.id,c.name HAVING COUNT(cm.jid)"+(V6_ON()?" BETWEEN 2 AND 6":"=2")+" AND COUNT(DISTINCT ws.jid)>0 ORDER BY c.id"
   ].join(' ');
   return (await conn.query(q,[chat,now()])).rows.map(r=>({...r,id:String(r.id),jids:r.jids||[]}));
 }
 // Read-only readiness: no personal JIDs leave the server. Shared with status and logs.
 
-export function analyzeSiegeEligibility(teams,authorizedJids=[]){
+export function analyzeSiegeEligibility(teams,authorizedJids=[],{expanded=false}={}){
   const allowed=authorizedJids instanceof Set?authorizedJids:new Set(authorizedJids);
   const overview=(Array.isArray(teams)?teams:[]).map(team=>({
     id:String(team.id),name:String(team.name||'Clã'),
@@ -155,7 +157,7 @@ export function analyzeSiegeEligibility(teams,authorizedJids=[]){
     betaAuthorized:(Array.isArray(team.jids)?team.jids:[]).filter(jid=>allowed.has(String(jid))).length
   }));
   const ready=overview.length===2 && overview.every(t=>
-    t.members===2&&t.linked===2&&t.betaAuthorized===2
+    t.members>=SIEGE_V6_MIN_PLAYERS && t.members<=(expanded?SIEGE_V6_MAX_PLAYERS:2) && t.linked===t.members && t.betaAuthorized===t.members
   );
   return {ready,teams:overview,eligibleClans:overview.length,linkedPlayers:overview.reduce((n,t)=>n+t.linked,0),authorizedPlayers:overview.reduce((n,t)=>n+t.betaAuthorized,0)};
 }
@@ -163,7 +165,7 @@ export async function clanSiegePreflight(){
   const chat=siegeGroup();
   if(!/^[0-9-]+@g\.us$/.test(chat))return {configured:false,ready:false,teams:[]};
   const teams=await eligible(db,chat);
-  return {configured:true,...analyzeSiegeEligibility(teams,await siegeBetaAuthorizedSet(db))};
+  return {configured:true,...analyzeSiegeEligibility(teams,await siegeBetaAuthorizedSet(db),{expanded:V6_ON()})};
 }
 
 async function dailySiegeTeams(conn){
@@ -172,7 +174,7 @@ async function dailySiegeTeams(conn){
   const result=await conn.query([
     'SELECT c.id,c.name,ARRAY_AGG(cm.jid ORDER BY cm.jid) AS jids,COUNT(cm.jid)::int AS members',
     'FROM clans c JOIN clan_members cm ON cm.clan_id=c.id',
-    'GROUP BY c.id,c.name HAVING COUNT(cm.jid)=2 ORDER BY c.id'
+    'GROUP BY c.id,c.name HAVING COUNT(cm.jid)'+(V6_ON()?' BETWEEN 2 AND 6':'=2')+' ORDER BY c.id'
   ].join(' '));
   return result.rows.map(r=>({...r,id:String(r.id),jids:r.jids||[]}));
 }
@@ -195,7 +197,9 @@ export async function startDailyClanSiege(nowMs=now()){
     if(existing)return {started:false,reason:'match_open'};
     const teams=await dailySiegeTeams(conn);
     const approved=await siegeBetaAuthorizedSet(conn);
-    if(teams.length!==2||teams.some(t=>t.members!==2||t.jids.length!==2||
+    const expanded=V6_ON();
+    if(teams.length!==2||teams.some(t=>t.members<SIEGE_V6_MIN_PLAYERS||
+      t.members>(expanded?SIEGE_V6_MAX_PLAYERS:2)||t.jids.length!==t.members||
       t.jids.some(jid=>!approved.has(String(jid)))))
       return {started:false,reason:'roster_not_ready'};
     const created=now();
@@ -204,8 +208,8 @@ export async function startDailyClanSiege(nowMs=now()){
     const blueFortress=await clanFortressCombatSnapshot(conn,teams[0].id,created);
     const redFortress=await clanFortressCombatSnapshot(conn,teams[1].id,created);
     const match=(await conn.query(
-      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',5,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id",
-      [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,blueFortress.maxHp,redFortress.maxHp,JSON.stringify(blueFortress),JSON.stringify(redFortress),created+ROUND_MS,created]
+      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',$11,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id",
+      [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,blueFortress.maxHp,redFortress.maxHp,JSON.stringify(blueFortress),JSON.stringify(redFortress),created+ROUND_MS,created,expanded?6:5]
     )).rows[0];
     for(const team of teams)for(const jid of team.jids)
       await conn.query('INSERT INTO alpha_siege_roster(match_id,jid,clan_id) VALUES($1,$2,$3)',
@@ -215,7 +219,9 @@ export async function startDailyClanSiege(nowMs=now()){
       '⏰ Início programado: *'+(schedule.day===EXTRA_SIEGE_DATE?'domingo 08/11 às 19h':'sábado às 21h30')+'*, horário de Brasília.',
       '🔵 '+teams[0].name+' × 🔴 '+teams[1].name,
       '🏰 Fortalezas: Azul '+blueFortress.maxHp+' HP / +'+Math.round(blueFortress.attackPct*100)+'% ATK / -'+(blueFortress.defensePct*100).toFixed(1)+'% dano; Vermelho '+redFortress.maxHp+' HP / +'+Math.round(redFortress.attackPct*100)+'% ATK / -'+(redFortress.defensePct*100).toFixed(1)+'% dano.',
-      '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
+      expanded
+        ? '⚔️ 6 rodadas de 5 minutos. Até 6 jogadores por clã; a cada rodada 2 por clã atuam em rodízio justo. Cada participante recebe pelo menos 2 turnos.'
+        : '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
       '🗺️ CERCO V5: cada jogador escolhe UMA ação e uma frente: 🏰 Castelo, 🚪 Portão ou 📦 Depósito.',
       '🚪 Duas investidas rompem o portão (+25% dano futuro ao castelo). 📦 Saquear o depósito rouba suprimento; reabastecer gera 1. Reparar consome 1 suprimento de CERCO e pode restaurar até 280 HP ou 1 ponto do Portão (máximo 2 reparos por clã).',
       '🛡️ Defender a frente certa bloqueia mais dano e pode contra-atacar. Espionar prepara o ataque NA MESMA FRENTE na rodada seguinte.',
@@ -456,6 +462,11 @@ async function viewMatch(match,jid){
   const ownMove=match.status==='active'?(await db.query(
     'SELECT action,target FROM alpha_siege_moves WHERE match_id=$1 AND round=$2 AND jid=$3',
     [match.id,match.round,jid])).rows[0]||null:null;
+  const myV6Team=Number(match.rules_version||1)>=6&&mine?
+    participants.filter(p=>String(p.clan_id)===String(mine.clan_id)).map(p=>p.jid):null;
+  const currentTurn=match.status==='active'&&!!mine&&
+    (!myV6Team||siegeV6ActivePlayers(myV6Team,Number(match.round)).includes(String(jid)));
+  const nextTurns=myV6Team?siegeV6NextTurns(myV6Team,Number(match.round),jid):[];
   const submitted=match.status==='active'?(await db.query(
     'SELECT COUNT(*)::int AS n FROM alpha_siege_moves WHERE match_id=$1 AND round=$2',
     [match.id,match.round])).rows[0]?.n||0:0;
@@ -478,6 +489,7 @@ async function viewMatch(match,jid){
     rulesVersion:Number(match.rules_version||1),
     mySide:mine?(String(mine.clan_id)===String(match.blue_clan_id)?'blue':'red'):null,
     myMove:ownMove?.action||null,myTarget:ownMove?.target||null,submitted:Number(submitted),history:match.history,
+    myTurn:currentTurn,nextTurns,activePerClan:2,teamSize:myV6Team?.length||null,
     winnerClanId:match.winner_clan_id?String(match.winner_clan_id):null,
     createdByMe:match.created_by===jid
   };
@@ -534,6 +546,13 @@ export async function clanSiegeMove(session,action,target='castle'){
     if(!player)throw new Error('Você não pertence a esta guerra.');
     const actual=(await conn.query('SELECT clan_id FROM clan_members WHERE jid=$1',[session.jid])).rows[0];
     if(String(actual?.clan_id)!==String(player.clan_id))throw new Error('Você mudou de clã durante a guerra.');
+    if(Number(match.rules_version||1)>=6){
+      const roster=(await conn.query(
+        'SELECT jid FROM alpha_siege_roster WHERE match_id=$1 AND clan_id=$2 ORDER BY jid',
+        [match.id,player.clan_id])).rows.map(p=>p.jid);
+      if(!siegeV6ActivePlayers(roster,Number(match.round)).includes(String(session.jid)))
+        throw new Error('Sua vez ainda não chegou no Cerco. Consulte os próximos turnos na tela.');
+    }
     if(action==='repair'){
       const side=String(player.clan_id)===String(match.blue_clan_id)?'blue':'red';
       const already=(await conn.query(
