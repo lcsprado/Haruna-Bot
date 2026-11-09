@@ -1,6 +1,6 @@
 import {
  playableHero,heroCombatStats,heroEffectiveCombatHp,heroCollabGearBonus,
- heroAttack,excludeActiveHeroPet
+ heroAttack,heroDefense,persistHeroHpDelta,excludeActiveHeroPet
 } from './playable-heroes-core.js'
 
 // Consulta estritamente transacional do herói selecionado. A identidade é
@@ -75,4 +75,43 @@ export function raidHeroRoundHit(participant,damage){
   masteryStage:participant.heroMasteryStage,gear:participant.heroGear
  })
  return {...hit,attackIndex}
+}
+
+export function raidHeroDefend(participant,damage){
+ if(!participant?.heroId)return null
+ return heroDefense({
+  heroId:participant.heroId,damage,state:participant.heroState,
+  gear:participant.heroGear
+ })
+}
+
+// O HP da ficha persistente pode ter escala diferente da ficha do herói.
+// Arredondamento fracionário acumulado evita perder HP a cada rodada.
+export function settleRaidHeroHp(participant){
+ if(!participant?.heroId)return null
+ const settled=persistHeroHpDelta({
+  previousPersistentHp:participant.heroStoredHp,
+  previousCombatHp:participant.heroLastHp,
+  currentCombatHp:participant.hp,combatMaxHp:participant.maxHp,
+  persistentMaxHp:participant.heroPersistentMaxHp,
+  remainder:participant.heroHpRemainder
+ })
+ participant.heroStoredHp=settled.hp
+ participant.heroLastHp=participant.hp
+ participant.heroHpRemainder=settled.remainder
+ return settled.hp
+}
+
+// Cura do King: elege somente um aliado vivo e ferido; não cura o próprio King.
+// Pura quanto a banco e inventário; altera apenas o snapshot da Raid.
+export function applyRaidKingAllyHeal(players,healer,allyHeal){
+ if(healer?.heroId!=='pecado_king'||!(Number(allyHeal)>0))return null
+ const target=Object.values(players||{}).filter(x=>x&&x.alive&&x.jid!==healer.jid&&Number(x.hp)<Number(x.maxHp))
+  .sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0]
+ if(!target)return null
+ const healed=Math.min(Number(allyHeal),Math.max(0,Number(target.maxHp)-Number(target.hp)))
+ if(!(healed>0))return null
+ target.hp+=healed
+ healer.heroAllyHealing=Number(healer.heroAllyHealing||0)+healed
+ return {target:target.jid,healed}
 }
