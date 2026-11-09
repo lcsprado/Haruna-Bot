@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {readRaidActiveHero,applyRaidHeroSnapshot,raidHeroPetSnapshot,raidHeroRoundHit} from '../src/neon/pve-raid-hero-bridge.js'
+import {readRaidActiveHero,applyRaidHeroSnapshot,raidHeroPetSnapshot,raidHeroRoundHit,raidHeroDefend,settleRaidHeroHp,applyRaidKingAllyHeal} from '../src/neon/pve-raid-hero-bridge.js'
 
 const games=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
 const region=name=>{
@@ -122,7 +122,53 @@ test('Heroi e classe seguem caminhos distintos no inicio, entrada tardia e turno
  assert.match(round,/await saveGame\(/)
 })
 
-test.todo('Raid: persistir delta de HP do heroi entre rodadas sem erosao de pontos de vida')
-test.todo('Raid: aplicar defesa ativa dos herois e cura de aliados do King')
+
+test('Raid: HP do heroi converte dano por delta entre rodadas e preserva restos fracionarios',()=>{
+ const p={jid:'fake-a',heroId:'pecado_ban',hp:7000,maxHp:7000,heroStoredHp:2600,heroLastHp:7000,heroHpRemainder:0,heroPersistentMaxHp:5200}
+ assert.equal(settleRaidHeroHp(p),2600)
+ for(let i=0;i<10;i++){
+  p.hp-=1
+  settleRaidHeroHp(p)
+ }
+ assert.equal(p.heroStoredHp,2593,'10 de dano em escala 7000 -> 5200 devem custar 7 HP')
+ assert.ok(Math.abs(p.heroHpRemainder)<1)
+ p.hp=0
+ assert.equal(settleRaidHeroHp(p),0)
+ assert.equal(p.heroHpRemainder,0)
+})
+
+
+test('Raid: defesa do heroi usa estado proprio e a classe permanece separada',()=>{
+ const p={jid:'fake-a',heroId:'pecado_diane',heroState:{heavyMetalCharges:1},heroGear:{defense:0}}
+ const r=raidHeroDefend(p,1000)
+ assert.ok(r.damage<1000)
+ assert.ok(r.state&&typeof r.state==='object')
+ assert.equal(raidHeroDefend({classId:'paladin'},1000),null)
+ assert.equal(p.heroState.heavyMetalCharges,1,'helper nao deve modificar o estado da origem')
+})
+test('Raid: King cura somente o aliado vivo mais ferido, sem ultrapassar o maximo',()=>{
+ const king={jid:'king',heroId:'pecado_king',hp:3000,maxHp:5000,alive:true}
+ const ally={jid:'a',hp:1000,maxHp:5000,alive:true}
+ const other={jid:'b',hp:4500,maxHp:5000,alive:true}
+ const result=applyRaidKingAllyHeal({king,a:ally,b:other},king,700)
+ assert.deepEqual(result,{target:'a',healed:700})
+ assert.equal(ally.hp,1700)
+ assert.equal(king.hp,3000)
+ assert.equal(other.hp,4500)
+ assert.equal(king.heroAllyHealing,700)
+ assert.equal(applyRaidKingAllyHeal({king},king,1000),null)
+ assert.equal(applyRaidKingAllyHeal({king,a:ally},{...king,heroId:null},200),null)
+})
+
 test.todo('Raid: premiar XP/maestria de herois uma vez no encerramento, sem alterar recompensas antigas')
 test.todo('Boss Web: alinhar criacao de estado e golpes dos herois, preservando o motor atual de premios')
+
+test('Raid real aplica defesa do heroi e grava HP persistente na derrota e vitoria',()=>{
+ const r=region('raidRound')
+ assert.match(r,/const heroDefenseHit=raidHeroDefend\(p,protectedDamage\)/)
+ assert.match(r,/if\(heroDefenseHit\)p\.heroState=heroDefenseHit\.state/)
+ assert.match(r,/const storedHp=p\.heroId\?settleRaidHeroHp\(p\):p\.hp/)
+ assert.match(r,/const persistentHp=settleRaidHeroHp\(participant\)/)
+ assert.match(r,/UPDATE stats SET hp=\$1 WHERE jid=\$2/)
+ assert.match(r,/applyRaidKingAllyHeal\(s\.players,p,classHit\.allyHeal\)/)
+})
