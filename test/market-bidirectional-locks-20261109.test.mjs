@@ -19,7 +19,7 @@ function fixture({price=600,buyerCash=450,buyerBank=250,hasSeller=true,expired=f
   if(q.startsWith('SELECT m.*,i.name,i.sellable FROM market_listings'))return {rows:[{...listing}]}
   if(q.startsWith('SELECT jid,cash,bank FROM wallets WHERE jid=ANY')){
    assert.match(q,/ORDER BY jid FOR UPDATE/)
-   const ids=params[0];assert.deepEqual(ids,['A','B'])
+   const ids=params[0];assert.deepEqual(Array.from(ids),['A','B'])
    return {rows:ids.filter(jid=>wallet.has(jid)).sort().map(jid=>({...wallet.get(jid)}))}
   }
   if(q.startsWith('UPDATE wallets SET cash=cash-$1,bank=bank-$2')){
@@ -64,7 +64,7 @@ test('vendedor sem carteira não pode receber crédito invisível',async()=>{
  await assert.rejects(f.buy(),/Carteira do comprador ou vendedor indisponível/)
  assert.equal(f.accountMutations.length,0)
 })
-test('não permite comprar anúncio próprio, expirado nem preço impossível',async()=>{
+test('não permite comprar anúncio expirado nem com preço impossível',async()=>{
  const expired=fixture({expired:true})
  await assert.rejects(expired.buy(),/anúncio expirou/)
  assert.equal(expired.accountMutations.length,0)
