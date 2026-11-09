@@ -157,7 +157,7 @@ export function analyzeSiegeEligibility(teams,authorizedJids=[],{expanded=false}
     betaAuthorized:(Array.isArray(team.jids)?team.jids:[]).filter(jid=>allowed.has(String(jid))).length
   }));
   const ready=overview.length===2 && overview.every(t=>
-    t.members>=SIEGE_V6_MIN_PLAYERS && t.members<=(expanded?SIEGE_V6_MAX_PLAYERS:2) && t.linked===t.members && t.betaAuthorized===t.members
+    t.members>=2 && t.members<=(expanded?6:2) && t.linked===t.members && t.betaAuthorized===t.members
   );
   return {ready,teams:overview,eligibleClans:overview.length,linkedPlayers:overview.reduce((n,t)=>n+t.linked,0),authorizedPlayers:overview.reduce((n,t)=>n+t.betaAuthorized,0)};
 }
@@ -207,9 +207,13 @@ export async function startDailyClanSiege(nowMs=now()){
     // upgrades comprados durante o Cerco só afetam guerras posteriores.
     const blueFortress=await clanFortressCombatSnapshot(conn,teams[0].id,created);
     const redFortress=await clanFortressCombatSnapshot(conn,teams[1].id,created);
+    // SQL separado para preservar literalmente a versao V5 em partidas legadas.
+    // V6 somente se opt-in do servidor estiver ativo antes da abertura.
+    const insertV5Sql="INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',5,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id";
+    const insertV6Sql="INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',6,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id";
     const match=(await conn.query(
-      "INSERT INTO alpha_siege_matches(chat_jid,blue_clan_id,red_clan_id,created_by,status,rules_version,blue_hp,red_hp,blue_fortress,red_fortress,round_ends_at,created_at,updated_at) VALUES($1,$2,$3,$4,'active',$11,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$10) RETURNING id",
-      [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,blueFortress.maxHp,redFortress.maxHp,JSON.stringify(blueFortress),JSON.stringify(redFortress),created+ROUND_MS,created,expanded?6:5]
+      expanded?insertV6Sql:insertV5Sql,
+      [chat,teams[0].id,teams[1].id,DAILY_CREATED_BY,blueFortress.maxHp,redFortress.maxHp,JSON.stringify(blueFortress),JSON.stringify(redFortress),created+ROUND_MS,created]
     )).rows[0];
     for(const team of teams)for(const jid of team.jids)
       await conn.query('INSERT INTO alpha_siege_roster(match_id,jid,clan_id) VALUES($1,$2,$3)',
