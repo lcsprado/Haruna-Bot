@@ -70,5 +70,5 @@ test('battle() real da API integra herois, Despertar, maestria e escudos',()=>{
  assert.match(battle,/shieldedCriticalMultiplier\(/)
  assert.match(battle,/pvpShieldStats\(/)
 })
-test.todo('validar battle() do WhatsApp e Web com fixtures deterministicas identicas')
+// Paridade verificada por test/pvp-web-vs-whatsapp-fixture-20261109.test.mjs (5 cenarios comparando ambas as funcoes reais).
 test.todo('preservar Cerco V5 e perfil Web com estatisticas equivalentes')
