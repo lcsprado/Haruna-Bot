@@ -41,9 +41,22 @@ export function heroStartingProgress(){
 export const HERO_LEVEL_DAILY_CAP=550;
 export const HERO_MASTERY_DAILY_CAP=400;
 export const HERO_MASTERY_SPECIAL_DAILY_CAP=600;
+// Semana dos Sete Pecados: sem cotas diarias de XP para nivel e maestria.
+// Limites finais de Nv.100 e maestria V (7.000 XP) permanecem inalterados.
+// A regra termina por data de Brasilia, sem cron e sem exigir novo deploy.
+export const SEVEN_SINS_PROGRESS_WEEK=Object.freeze({
+  startsAt:Date.parse('2026-11-09T00:00:00-03:00'),
+  endsAt:Date.parse('2026-11-16T00:00:00-03:00')
+});
+export function sevenSinsProgressWeekActive(nowMs=Date.now()){
+  const at=Number(nowMs);
+  return Number.isFinite(at)&&at>=SEVEN_SINS_PROGRESS_WEEK.startsAt&&
+    at<SEVEN_SINS_PROGRESS_WEEK.endsAt;
+}
 export function heroLevelAwardPolicy({earnedToday=0,currentXp=0,xp=125,playerLevel=0,heroLevel=0,nowMs=Date.now()}={}){
-  const dailyCap=ascensionHeroLevelDailyCap({playerLevel,heroLevel,nowMs});
-  const dailyRemaining=Math.max(0,dailyCap-Math.max(0,Math.floor(Number(earnedToday)||0)));
+  const uncapped=sevenSinsProgressWeekActive(nowMs);
+  const dailyCap=uncapped?null:ascensionHeroLevelDailyCap({playerLevel,heroLevel,nowMs});
+  const dailyRemaining=uncapped?Infinity:Math.max(0,dailyCap-Math.max(0,Math.floor(Number(earnedToday)||0)));
   const levelRemaining=Math.max(0,9900-Math.max(0,Math.floor(Number(currentXp)||0)));
   return {dailyCap,
     amount:Math.min(dailyRemaining,levelRemaining,Math.max(0,Math.floor(Number(xp)||0)))};
@@ -60,16 +73,17 @@ export function raid75MasteryAwardXp({level=0,collab=false,nowMs=Date.now()}={})
   if(!raid75MasteryBonusActive({level,collab,nowMs}))return 90;
   return Number(nowMs)>=RAID75_MASTERY_DOUBLE_START?240:120;
 }
-export function heroMasteryAwardPolicy({specialRaid75=false,earnedToday=0,regularEarnedToday=0,xp=10}={}){
+export function heroMasteryAwardPolicy({specialRaid75=false,earnedToday=0,regularEarnedToday=0,xp=10,nowMs=Date.now()}={}){
   const total=Math.max(0,Math.floor(Number(earnedToday)||0));
   const regular=Math.max(0,Math.floor(Number(regularEarnedToday)||0));
   // Teto total 600 somente com Raid 75; fora dela, 400 XP/dia por heroi.
-  const quota=Math.max(0,specialRaid75?
+  const uncapped=sevenSinsProgressWeekActive(nowMs);
+  const quota=uncapped?Infinity:Math.max(0,specialRaid75?
     HERO_MASTERY_SPECIAL_DAILY_CAP-total:
     Math.min(HERO_MASTERY_DAILY_CAP-regular,HERO_MASTERY_SPECIAL_DAILY_CAP-total));
   const base=Math.max(0,Math.min(specialRaid75?240:120,Math.floor(Number(xp)||0)));
   return {special:Boolean(specialRaid75),
-    dailyCap:specialRaid75?HERO_MASTERY_SPECIAL_DAILY_CAP:HERO_MASTERY_DAILY_CAP,
+    dailyCap:uncapped?null:(specialRaid75?HERO_MASTERY_SPECIAL_DAILY_CAP:HERO_MASTERY_DAILY_CAP),
     amount:Math.min(quota,base)};
 }
 // XP acumulado não concede o estágio automaticamente: evolução paga é explícita.
