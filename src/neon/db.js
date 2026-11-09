@@ -1,7 +1,12 @@
 import crypto from 'node:crypto'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
-import {VITAL_PETS} from './vital-pets.js'
+import {VITAL_PETS,applyVitalCombatHp,vitalPulseHeal} from './vital-pets.js'
+import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
+import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
+import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
+import {classCombatStats,classCombatHp,classPersistentHp} from './class-combat-balance.js'
+import {pvpCritChance} from './pvp-crit.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -2702,6 +2707,24 @@ return Number(synergy?.speed||0)
 }
 const a=statFor(attackerJid)
 const b=statFor(defenderJid)
+// Somente herói desbloqueado participa. A classe tradicional continua intacta
+// e o herói não recebe o despertar da classe nem bônus extra por ter collab.
+const heroModes=(await client.query(`SELECT m.jid,m.hero_species,COALESCE(u.stage,1)::int AS mastery_stage,
+  COALESCE((SELECT MAX(p.level) FROM pet_collection p WHERE p.jid=m.jid AND p.species=m.hero_species),70)::int AS hero_level
+  FROM player_hero_mode m
+  LEFT JOIN player_hero_mastery_unlocks u ON u.jid=m.jid AND u.hero_species=m.hero_species
+  WHERE m.jid=ANY($1::text[]) AND m.hero_species IS NOT NULL
+    AND EXISTS(SELECT 1 FROM pet_collection p WHERE p.jid=m.jid AND p.species=m.hero_species)`,[ids])).rows;
+const activeHero=jid=>heroModes.find(row=>row.jid===jid)||null;
+const awakeningRows=(await client.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows;
+const pvpAwakeningStage=jid=>Math.max(0,Math.min(5,Number(awakeningRows.find(row=>row.jid===jid)?.stage||0)));
+const aHero=activeHero(attackerJid),bHero=activeHero(defenderJid);
+const aHeroStats=aHero?heroCombatStats(a,aHero.hero_species,aHero.hero_level):null;
+const bHeroStats=bHero?heroCombatStats(b,bHero.hero_species,bHero.hero_level):null;
+const classProgress=(await client.query('SELECT jid,class_id,level FROM player_class_levels WHERE jid=ANY($1::text[])',[ids])).rows;
+const classLevel=st=>Number(classProgress.find(p=>p.jid===st.jid&&p.class_id===st.class_id)?.level||1);
+const aClassStats=!aHero?classCombatStats(a,a.class_id,classLevel(a),Boolean(a.class_applied)):null;
+const bClassStats=!bHero?classCombatStats(b,b.class_id,classLevel(b),Boolean(b.class_applied)):null;
 const au=userFor(attackerJid)
 const bu=userFor(defenderJid)
 if(Number(bu?.level||1)<=20){
@@ -2756,36 +2779,61 @@ const beW=b.weapon_id?equipmentStatsAtLevel(b.weapon_id,eqLevel(defenderJid,b.we
 const beA=b.armor_id?equipmentStatsAtLevel(b.armor_id,eqLevel(defenderJid,b.armor_id),starLevel(defenderJid,b.armor_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beB=b.boot_id?equipmentStatsAtLevel(b.boot_id,eqLevel(defenderJid,b.boot_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
 const beH=b.helmet_id?equipmentStatsAtLevel(b.helmet_id,eqLevel(defenderJid,b.helmet_id)):{atk:0,def:0,hp:0,spd:0,crit:0}
+// Escudos têm curva própria: não dependem do catálogo antigo de armas da Web.
+const pvpShieldStats=(jid,itemId)=>{
+ const shield=ANTI_CRIT_SHIELDS.find(item=>item.id===itemId)
+ return shield?{...shield,...antiCritShieldStats(itemId,eqLevel(jid,itemId),starLevel(jid,itemId))}:{critResist:0,critGuard:0}
+}
+const aeS=pvpShieldStats(attackerJid,a.shield_id)
+const beS=pvpShieldStats(defenderJid,b.shield_id)
 const A={
 jid:attackerJid,name:au?.push_name||'Jogador',
-hp:Number(a.hp),maxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeH.hp||0),
-atk:Math.round((Number(a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
-def:Number(a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
-classId:a.class_id,classApplied:Boolean(a.class_applied),attackIndex:0,lastProcAttack:0,
-crit:Math.min(.40,.10+Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit+classCritBonus(a.class_id,a.class_applied)),
-spd:Number(a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
+hp:aHeroStats?heroEffectiveCombatHp(a,aHeroStats,Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)):classCombatHp(a.hp,Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),Number(aClassStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0)),maxHp:Number(aHeroStats?.maxHp??aClassStats?.maxHp??a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),
+atk:Math.round((Number(aHeroStats?.atk??aClassStats?.atk??a.atk)+Number(aeW.atk||0)+Number(aeA.atk||0)+Number(aeB.atk||0)+Number(aeH.atk||0)+aEn.atk)*(1+aEn.attackPct)),
+def:Number(aHeroStats?.def??aClassStats?.def??a.def)+Number(aeW.def||0)+Number(aeA.def||0)+Number(aeB.def||0)+Number(aeH.def||0)+aEn.def,
+classId:a.class_id,classApplied:Boolean(a.class_applied)&&!aHero,awakeningStage:aHero?0:pvpAwakeningStage(attackerJid),awakeningState:{},heroId:aHero?.hero_species||null,heroMasteryStage:Number(aHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(aHero?.hero_species,a.weapon_id,a.armor_id,'pvp'),heroCombatMaxHp:aHeroStats?.maxHp||null,heroPersistentMaxHp:Number(a.max_hp)+Number(aeW.hp||0)+Number(aeA.hp||0)+Number(aeB.hp||0)+Number(aeH.hp||0),attackIndex:0,lastProcAttack:0,
+crit:pvpCritChance({equipmentCrit:Number(aeW.crit||0)+Number(aeA.crit||0)+Number(aeB.crit||0)+Number(aeH.crit||0)+aEn.crit,classId:a.class_id,classApplied:a.class_applied,heroActive:Boolean(aHero),awakeningStage:pvpAwakeningStage(attackerJid)}),
+spd:Number(aHeroStats?.spd??aClassStats?.spd??a.spd)+Number(aeW.spd||0)+Number(aeA.spd||0)+Number(aeB.spd||0)+Number(aeH.spd||0)+apSpd+aSynergySpd+aEn.spd,
 enchantDamage:aEn.damage,collabDamage:Number(aSynergy.collabAttack||0),collabCrit:Number(aSynergy.collabCrit||0),
 petSpeed:apSpd,teamSpeed:aSynergySpd,
+shieldName:aeS.name||null,shieldCritResist:Number(aeS.critResist||0),shieldCritGuard:Number(aeS.critGuard||0),
 petBonus:aPetBonus,petSpecies:ap?.species||null,petName:aPetBonus?ap?.name||ap?.species:null,petHealUses:0
 }
 const B={
 jid:defenderJid,name:bu?.push_name||'Jogador',
-hp:Number(b.hp),maxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beH.hp||0),
-atk:Math.round((Number(b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
-def:Number(b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
-classId:b.class_id,classApplied:Boolean(b.class_applied),attackIndex:0,lastProcAttack:0,
-crit:Math.min(.40,.10+Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit+classCritBonus(b.class_id,b.class_applied)),
-spd:Number(b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
+hp:bHeroStats?heroEffectiveCombatHp(b,bHeroStats,Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0)):classCombatHp(b.hp,Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),Number(bClassStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0)),maxHp:Number(bHeroStats?.maxHp??bClassStats?.maxHp??b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),
+atk:Math.round((Number(bHeroStats?.atk??bClassStats?.atk??b.atk)+Number(beW.atk||0)+Number(beA.atk||0)+Number(beB.atk||0)+Number(beH.atk||0)+bEn.atk)*(1+bEn.attackPct)),
+def:Number(bHeroStats?.def??bClassStats?.def??b.def)+Number(beW.def||0)+Number(beA.def||0)+Number(beB.def||0)+Number(beH.def||0)+bEn.def,
+classId:b.class_id,classApplied:Boolean(b.class_applied)&&!bHero,awakeningStage:bHero?0:pvpAwakeningStage(defenderJid),awakeningState:{},heroId:bHero?.hero_species||null,heroMasteryStage:Number(bHero?.mastery_stage||1),heroState:{},heroGear:heroCollabGearBonus(bHero?.hero_species,b.weapon_id,b.armor_id,'pvp'),heroCombatMaxHp:bHeroStats?.maxHp||null,heroPersistentMaxHp:Number(b.max_hp)+Number(beW.hp||0)+Number(beA.hp||0)+Number(beB.hp||0)+Number(beH.hp||0),attackIndex:0,lastProcAttack:0,
+crit:pvpCritChance({equipmentCrit:Number(beW.crit||0)+Number(beA.crit||0)+Number(beB.crit||0)+Number(beH.crit||0)+bEn.crit,classId:b.class_id,classApplied:b.class_applied,heroActive:Boolean(bHero),awakeningStage:pvpAwakeningStage(defenderJid)}),
+spd:Number(bHeroStats?.spd??bClassStats?.spd??b.spd)+Number(beW.spd||0)+Number(beA.spd||0)+Number(beB.spd||0)+Number(beH.spd||0)+bpSpd+bSynergySpd+bEn.spd,
 enchantDamage:bEn.damage,collabDamage:Number(bSynergy.collabAttack||0),collabCrit:Number(bSynergy.collabCrit||0),
 petSpeed:bpSpd,teamSpeed:bSynergySpd,
+shieldName:beS.name||null,shieldCritResist:Number(beS.critResist||0),shieldCritGuard:Number(beS.critGuard||0),
 petBonus:bPetBonus,petSpecies:bp?.species||null,petName:bPetBonus?bp?.name||bp?.species:null,petHealUses:0
 }
+// HP exclusivo de combate: mantém as mesmas regras de outras passivas de pet.
+const applyPvpVital=(fighter,synergy)=>{
+  const baseHp=fighter.hp,baseMax=fighter.maxHp
+  const temporary=applyVitalCombatHp(baseHp,baseMax,Number(fighter.petBonus?.hp||0),Number(synergy?.hp||0),{pvp:true})
+  fighter.hp=temporary.hp
+  fighter.maxHp=temporary.maxHp
+  fighter.vitalBaseMaxHp=temporary.baseMaxHp
+  fighter.vitalHpRate=temporary.rate
+  fighter.vitalPulseRate=Number(synergy?.vitalPulse||0)*.5
+  fighter.vitalPulseUsed=false
+  const reduction=Number(synergy?.vitalPulse||0)>0?Number(synergy.defense||0)*.5:0
+  if(reduction>0)fighter.petBonus={...(fighter.petBonus||{}),defense:Math.min(.10,Number(fighter.petBonus?.defense||0)+reduction)}
+}
+applyPvpVital(A,aSynergy)
+applyPvpVital(B,bSynergy)
 const snapshot=fighter=>{
-const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
-const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
+const critNoPet=Math.max(0,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
+const critWithPet=Math.max(0,critNoPet+Number(fighter.petBonus?.crit||0))
 return {
-jid:fighter.jid,name:fighter.name,hp:fighter.hp,maxHp:fighter.maxHp,
+jid:fighter.jid,name:fighter.name,heroId:fighter.heroId,heroMasteryStage:fighter.heroId?fighter.heroMasteryStage:null,heroGear:fighter.heroId?fighter.heroGear:null,hp:fighter.hp,maxHp:fighter.maxHp,
 atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
+shieldName:fighter.shieldName||null,shieldCritResist:Number(fighter.shieldCritResist||0),shieldCritGuard:Number(fighter.shieldCritGuard||0),
 petName:fighter.petName||null,petSpecies:fighter.petSpecies||null,
 petPvpBonus:fighter.petBonus?{
 damage:Number(fighter.petBonus.damage||0),
@@ -2796,7 +2844,8 @@ healPct:Number(fighter.petBonus.healPct||0),
 healCooldown:Number(fighter.petBonus.healCooldown||0),
 speed:Number(fighter.petSpeed||0)
 }:null,
-teamSpeed:Number(fighter.teamSpeed||0)
+teamSpeed:Number(fighter.teamSpeed||0),vitalHpRate:Number(fighter.vitalHpRate||0),
+vitalPulseRate:Number(fighter.vitalPulseRate||0)
 }
 }
 const opening={attacker:snapshot(A),defender:snapshot(B)}
@@ -2807,9 +2856,10 @@ const hit=(from,to)=>{
 from.attackIndex++
 const variance=0.85+Math.random()*0.30
 const critRoll=Math.random()
-const critWithoutPet=Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0))
-const crit=critRoll<Math.min(.40,critWithoutPet+Number(from.petBonus?.crit||0))
+const critWithoutPet=effectiveShieldedCritChance(Math.max(0,Number(from.crit||.10)+Number(from.collabCrit||0)),to.shieldCritResist)
+const crit=critRoll<effectiveShieldedCritChance(Math.max(0,Number(from.crit||.10)+Number(from.collabCrit||0)+Number(from.petBonus?.crit||0)),to.shieldCritResist)
 const petCrit=crit&&critRoll>=critWithoutPet
+const critMultiplier=shieldedCriticalMultiplier(1.6,to.shieldCritGuard)
 const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)
 const raw=Math.max(1,Math.round((from.atk-(to.def*0.45))*variance))
 const damageWithoutPet=1+Number(from.enchantDamage||0)+Number(from.collabDamage||0)
@@ -2819,29 +2869,61 @@ const classRoll=Math.random()
 const oldLastProcAttack=from.lastProcAttack
 const attackArgs={classId:from.classId,applied:from.classApplied,critical:crit,
 hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
-lastProcAttack:oldLastProcAttack,roll:classRoll}
-const attack=classAttack({...attackArgs,damage:crit?Math.round(adjusted*1.6):adjusted})
+lastProcAttack:oldLastProcAttack,roll:classRoll,awakeningStage:from.awakeningStage,awakeningState:from.awakeningState}
+const initialState=from.heroState;
+const attack=from.heroId
+  ?heroPvpAttack({heroId:from.heroId,damage:crit?Math.round(adjusted*critMultiplier):adjusted,
+      hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
+      masteryStage:from.heroMasteryStage,state:initialState,gear:from.heroGear})
+  :classPvpAttack({...attackArgs,damage:crit?Math.round(adjusted*critMultiplier):adjusted});
 const noPetAttack=Number(from.petBonus?.damage||0)>0
-?classAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*1.6):adjustedNoPet})
-:attack
-from.lastProcAttack=attack.lastProcAttack
-const defenseRoll=Math.random()
-const classDamage=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage,roll:defenseRoll}).damage
+  ?(from.heroId?heroPvpAttack({heroId:from.heroId,damage:crit?Math.round(adjustedNoPet*critMultiplier):adjustedNoPet,
+      hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,
+      masteryStage:from.heroMasteryStage,state:initialState,gear:from.heroGear})
+    :classPvpAttack({...attackArgs,damage:crit?Math.round(adjustedNoPet*critMultiplier):adjustedNoPet}))
+  :attack;
+if(from.heroId)from.heroState=attack.state;
+else from.awakeningState=attack.awakeningState;
+from.lastProcAttack=attack.lastProcAttack;
+const defenseRoll=Math.random();
+const defenseStateBefore=to.awakeningState;
+const heroDefenseStateBefore=to.heroState;
+const defenseArgs={classId:to.classId,applied:to.classApplied,damage:dodged?0:attack.damage,roll:defenseRoll,hp:to.hp,maxHp:to.maxHp,awakeningStage:to.awakeningStage,awakeningState:defenseStateBefore};
+const defense=to.heroId
+  ?heroPvpDefense({heroId:to.heroId,damage:dodged?0:attack.damage,state:heroDefenseStateBefore,gear:to.heroGear})
+  :classPvpDefense(defenseArgs);
+const classDamage=defense.damage;
+const fullyDodged=dodged||Boolean(defense.dodged);
 const withoutPetClassDamage=noPetAttack===attack?classDamage:
-classDefense({classId:to.classId,applied:to.classApplied,damage:noPetAttack.damage,roll:defenseRoll}).damage
+  (to.heroId?heroPvpDefense({heroId:to.heroId,damage:dodged?0:noPetAttack.damage,state:heroDefenseStateBefore,gear:to.heroGear}).damage:
+    classPvpDefense({...defenseArgs,damage:dodged?0:noPetAttack.damage}).damage);
+if(to.heroId)to.heroState=defense.state;
+else to.awakeningState=defense.awakeningState;
 const petDefense=Number(to.petBonus?.defense||0)
-const dmg=dodged?0:Math.max(1,Math.round(classDamage*(1-petDefense)))
-const noPetDmg=dodged?0:Math.max(1,Math.round(withoutPetClassDamage*(1-petDefense)))
+const dmg=dodged||defense.dodged?0:Math.max(0,Math.round(classDamage*(1-petDefense)))
+const noPetDmg=dodged||defense.dodged?0:Math.max(0,Math.round(withoutPetClassDamage*(1-petDefense)))
 const targetHpBefore=to.hp
 const petExtraDamage=Math.max(0,Math.min(targetHpBefore,dmg)-Math.min(targetHpBefore,noPetDmg))
 const petDamageBlocked=dodged?0:Math.max(0,Math.round(classDamage)-dmg)
+const defenseBlocked=dodged?0:Math.max(0,Number(attack.damage||0)-Number(classDamage||0))
 to.hp=Math.max(0,to.hp-dmg)
+const hpAfterHit=to.hp
+let heartEvent=null
+const heart=vitalPulseHeal(to.hp,to.maxHp,to.vitalPulseUsed,to.vitalPulseRate)
+if(heart.used&&!to.vitalPulseUsed){
+  to.hp=heart.hp
+  to.vitalPulseUsed=true
+  heartEvent={round:from.attackIndex,vitalPulse:true,petHeal:true,from:to.name,fromJid:to.jid,to:to.name,toJid:to.jid,heal:heart.heal,hp:to.hp}
+}
 const classHealBefore=from.hp
 if(from.hp>0&&attack.heal>0) from.hp=Math.min(from.maxHp,from.hp+attack.heal)
 const classHealed=Math.max(0,from.hp-classHealBefore)
 log.push({round:from.attackIndex,from:from.name,fromJid:from.jid,to:to.name,toJid:to.jid,dmg,
-actualDamage:targetHpBefore-to.hp,crit:!dodged&&crit,dodged,hp:to.hp,
-petExtraDamage,petDamageBlocked,petCrit:!dodged&&petCrit,petDodge:dodged})
+actualDamage:targetHpBefore-hpAfterHit,crit:!fullyDodged&&crit,dodged:fullyDodged,hp:hpAfterHit,
+petExtraDamage,petDamageBlocked,defenseBlocked,shieldAbsorbed:Number(defense.shieldAbsorbed||0),petCrit:!fullyDodged&&petCrit,petDodge:dodged,
+  ...(attack.technique?{heroTechnique:from.heroId?attack.technique:undefined,classTechnique:!from.heroId?attack.technique:undefined,heroId:from.heroId}:{} ),
+  ...(defense.technique?{defenseTechnique:defense.technique}:{} )})
+if(heartEvent)log.push(heartEvent)
 if(classHealed>0)log.push({round:from.attackIndex,classHeal:true,from:from.name,fromJid:from.jid,heal:classHealed,hp:from.hp})
 const cooldown=Number(from.petBonus?.healCooldown||0)
 if(from.hp>0&&cooldown>0&&from.petHealUses<3&&Number(from.petBonus?.healPct||0)>0&&
@@ -2862,6 +2944,23 @@ hit(second,first)
 const roundCount=Math.max(A.attackIndex,B.attackIndex)
 const decidedByLimit=A.hp>0&&B.hp>0
 const ending={attackerHp:A.hp,defenderHp:B.hp}
+const pvpMetrics=Object.fromEntries([A,B].map(fighter=>{
+ const outgoing=log.filter(x=>x.fromJid===fighter.jid&&!x.classHeal)
+ const incoming=log.filter(x=>x.toJid===fighter.jid&&!x.classHeal)
+ return [fighter.jid,{
+  damageDealt:outgoing.reduce((s,x)=>s+Number(x.actualDamage||0),0),
+  damageReceived:incoming.reduce((s,x)=>s+Number(x.actualDamage||0),0),
+  damageBlocked:incoming.reduce((s,x)=>s+Number(x.defenseBlocked||0)+Number(x.petDamageBlocked||0),0),
+  shieldAbsorbed:incoming.reduce((s,x)=>s+Number(x.shieldAbsorbed||0),0),
+  healed:log.filter(x=>x.fromJid===fighter.jid&&(x.classHeal||x.petHeal)).reduce((s,x)=>s+Number(x.heal||0),0),
+  criticalHits:outgoing.filter(x=>x.crit).length,
+  dodges:incoming.filter(x=>x.dodged||x.petDodge).length,
+  skillsUsed:outgoing.filter(x=>x.classTechnique||x.heroTechnique).length+incoming.filter(x=>x.defenseTechnique).length
+ }]
+}))
+const persistentPvpHp=fighter=>fighter.heroId
+  ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp)
+  :classPersistentHp(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp);
 let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
 let loser=winner===A?B:A
 if(A.hp>0 && B.hp>0){
@@ -2873,11 +2972,11 @@ const petXpEventMultiplier=await getPetXpEventMultiplier(client)
 const reward=Math.round((600+Math.floor(Math.random()*601))*moneyMultiplier)
 await client.query(
 'UPDATE stats SET hp=$1,win=win+1,updated_at='+nowSql+' WHERE jid=$2',
-[Math.max(1,winner.hp),winner.jid]
+[Math.max(1,persistentPvpHp(winner)),winner.jid]
 )
 await client.query(
 'UPDATE stats SET hp=$1,loss=loss+1,updated_at='+nowSql+' WHERE jid=$2',
-[Math.max(1,Math.floor(loser.maxHp*0.25)),loser.jid]
+[Math.max(1,Math.floor(loser.heroPersistentMaxHp*0.25)),loser.jid]
 )
 await client.query(
 'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
@@ -2892,11 +2991,11 @@ const loseXpGain=Math.round(15*xpMultiplier)
 const winExp=await applyExp(client,winner.jid,winXpGain)
 const loseExp=await applyExp(client,loser.jid,loseXpGain)
 return {
-ok:true,winner,loser,reward,log,opening,ending,roundCount,decidedByLimit,
+ok:true,winner,loser,reward,log,opening,ending,pvpMetrics,roundCount,decidedByLimit,
 winExp,loseExp,winXpGain,loseXpGain,eventMultiplier:Math.max(moneyMultiplier,xpMultiplier),
 final:{
-attackerHp: A.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(A.maxHp*0.25)),
-defenderHp: B.jid===winner.jid ? Math.max(1,winner.hp) : Math.max(1,Math.floor(B.maxHp*0.25))
+attackerHp: A.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor(A.heroPersistentMaxHp*0.25)),
+defenderHp: B.jid===winner.jid ? Math.max(1,persistentPvpHp(winner)) : Math.max(1,Math.floor(B.heroPersistentMaxHp*0.25))
 }
 }
 })
