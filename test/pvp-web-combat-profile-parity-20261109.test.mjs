@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import vm from 'node:vm'
 import {classCombatStats,classCombatHp} from '../src/neon/class-combat-balance.js'
 import {antiCritShieldStats,ANTI_CRIT_SHIELDS} from '../src/neon/anti-crit-shields.js'
-import {getClassPassive,getPlayerClass} from '../src/neon/game-catalog.js'
+import {getClassPassive,getPlayerClass,classCritBonus} from '../src/neon/game-catalog.js'
 
 const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const web=readFileSync(new URL('../src/neon/web-api.js',import.meta.url),'utf8')
@@ -34,7 +34,7 @@ async function combatProfile(heroActive=false){
   getEquipmentStarLevels:async()=>({test_weapon:1,escudo_runico:5}),
   equipmentStatsAtLevel:(id,level,stars)=>id==='test_weapon'?{atk:20,def:0,hp:0,spd:0,crit:.35,name:'Arma Teste',level,stars}:null,
   classCombatStats,classCombatHp,antiCritShieldStats,ANTI_CRIT_SHIELDS,getClassPassive,getPlayerClass,
-  db:fakeDb,nowSql:'(EXTRACT(EPOCH FROM NOW())::BIGINT)'
+  classCritBonus,db:fakeDb,nowSql:'(EXTRACT(EPOCH FROM NOW())::BIGINT)'
  }
  const fn=vm.runInNewContext('async function getCombatProfile('+body+'\ngetCombatProfile',dependencies)
  return {profile:await fn(p.jid),queries}
