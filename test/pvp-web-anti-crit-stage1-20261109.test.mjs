@@ -1,4 +1,5 @@
 import test from 'node:test'
+import {readFileSync} from 'node:fs'
 import assert from 'node:assert/strict'
 import {runPvpCombat} from '../src/neon/pvp-combat.js'
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from '../src/neon/anti-crit-shields.js'
@@ -57,6 +58,17 @@ test('simulador: guarda reduz dano critico sem reduzir ataque normal',()=>{
 
 // Contrato P0 incompleto: nunca marcar a API como equivalente por passar
 // apenas nos testes de simulacao. battle() no db.js opera independentemente.
-test.todo('integrar herois ativos, Despertar, maestria e escudos na battle() real da API')
+test('battle() real da API integra herois, Despertar, maestria e escudos',()=>{
+ const dbSource=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
+ const battle=dbSource.split('export async function battle(')[1]?.split('export async function ')[0]||''
+ assert.match(battle,/FROM player_hero_mode m/)
+ assert.match(battle,/FROM player_awakenings/)
+ assert.match(battle,/heroMasteryStage:/)
+ assert.match(battle,/classPvpAttack\(/)
+ assert.match(battle,/heroPvpAttack\(/)
+ assert.match(battle,/effectiveShieldedCritChance\(/)
+ assert.match(battle,/shieldedCriticalMultiplier\(/)
+ assert.match(battle,/pvpShieldStats\(/)
+})
 test.todo('validar battle() do WhatsApp e Web com fixtures deterministicas identicas')
 test.todo('preservar Cerco V5 e perfil Web com estatisticas equivalentes')
