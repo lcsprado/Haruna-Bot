@@ -6,6 +6,9 @@ on:
       - 'src/neon/playable-heroes-core.js'
       - 'test/playable-seven-sins-20261027.test.mjs'
       - 'test/hero-hp-cura-pvp-20261031.test.mjs'
+      - 'src/neon/playable-heroes.js'
+      - 'src/neon/hero-daily-xp-report.js'
+      - 'test/hero-daily-xp-command-20261103.test.mjs'
       - '.github/workflows/hero-level-balance-20261101.yml'
   push:
     branches: ['whatsapp-only']
@@ -13,6 +16,9 @@ on:
       - 'src/neon/playable-heroes-core.js'
       - 'test/playable-seven-sins-20261027.test.mjs'
       - 'test/hero-hp-cura-pvp-20261031.test.mjs'
+      - 'src/neon/playable-heroes.js'
+      - 'src/neon/hero-daily-xp-report.js'
+      - 'test/hero-daily-xp-command-20261103.test.mjs'
       - '.github/workflows/hero-level-balance-20261101.yml'
 
 jobs:
@@ -29,4 +35,4 @@ jobs:
       - run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - name: PvP, Boss, Raid, HP, hero progression and hero ownership
-        run: node --test test/playable-seven-sins-20261027.test.mjs test/hero-hp-cura-pvp-20261031.test.mjs
+        run: node --test test/playable-seven-sins-20261027.test.mjs test/hero-hp-cura-pvp-20261031.test.mjs test/hero-daily-xp-command-20261103.test.mjs
