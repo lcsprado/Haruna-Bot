@@ -1,4 +1,5 @@
 import {PECADOS_HEROES,PECADOS_WEAPONS,PECADOS_ARMORS} from './sete-pecados-catalog.js'
+import {ascensionHeroLevelDailyCap} from './ascension-week-20261102.js'
 
 // Combatente jogavel ≠ companion/pet. A classe e seus Despertares continuam no banco.
 export const HERO_COMBAT_PROFILES=Object.freeze({
@@ -10,6 +11,23 @@ export const HERO_COMBAT_PROFILES=Object.freeze({
   pecado_gowther:{hp:60,atk:15,def:9,spd:14,role:'Controlador • debuff',range:'Longa distância',skill:'Rewrite Light'},
   pecado_merlin:{hp:70,atk:18,def:9,spd:13,role:'Maga • dano e barreira',range:'Longa distância',skill:'Infinity'}
 });
+// Pequena diferenciação ADITIVA de papéis no atributo-base, sem tocar em equipamentos.
+// Todas as entradas são >= 0: não reduz atributos já conquistados.
+// Escala exclusivamente com o nível do herói (1–100), e nunca com forja/itens.
+export const HERO_ROLE_GROWTH=Object.freeze({
+  pecado_meliodas:Object.freeze({hp:0,atk:13,def:0,spd:4}),
+  pecado_ban:Object.freeze({hp:75,atk:6,def:5,spd:0}),
+  pecado_escanor:Object.freeze({hp:0,atk:17,def:0,spd:1}),
+  pecado_king:Object.freeze({hp:125,atk:0,def:17,spd:0}),
+  pecado_diane:Object.freeze({hp:130,atk:0,def:20,spd:0}),
+  pecado_gowther:Object.freeze({hp:0,atk:8,def:0,spd:7}),
+  pecado_merlin:Object.freeze({hp:0,atk:12,def:0,spd:4})
+});
+export function heroRoleGrowth(heroId,heroLevel=1){
+  const role=HERO_ROLE_GROWTH[heroId]||{};
+  const factor=(Math.max(1,Math.min(100,Math.floor(Number(heroLevel)||1)))-1)/99;
+  return Object.fromEntries(['hp','atk','def','spd'].map(key=>[key,Math.round(Number(role[key]||0)*factor)]));
+}
 export const PLAYABLE_HERO_IDS=Object.freeze(PECADOS_HEROES.map(x=>x.species));
 export const playableHero=id=>PECADOS_HEROES.find(x=>x.species===String(id||''))||null;
 export const HERO_MASTERY_XP=Object.freeze([0,500,1500,3500,7000]);
@@ -23,28 +41,49 @@ export function heroStartingProgress(){
 export const HERO_LEVEL_DAILY_CAP=550;
 export const HERO_MASTERY_DAILY_CAP=400;
 export const HERO_MASTERY_SPECIAL_DAILY_CAP=600;
-export function heroLevelAwardPolicy({earnedToday=0,currentXp=0,xp=125}={}){
-  const dailyRemaining=Math.max(0,HERO_LEVEL_DAILY_CAP-Math.max(0,Math.floor(Number(earnedToday)||0)));
+// Semana dos Sete Pecados: sem cotas diarias de XP para nivel e maestria.
+// Limites finais de Nv.100 e maestria V (7.000 XP) permanecem inalterados.
+// A regra termina por data de Brasilia, sem cron e sem exigir novo deploy.
+export const SEVEN_SINS_PROGRESS_WEEK=Object.freeze({
+  startsAt:Date.parse('2026-11-09T00:00:00-03:00'),
+  endsAt:Date.parse('2026-11-16T00:00:00-03:00')
+});
+export function sevenSinsProgressWeekActive(nowMs=Date.now()){
+  const at=Number(nowMs);
+  return Number.isFinite(at)&&at>=SEVEN_SINS_PROGRESS_WEEK.startsAt&&
+    at<SEVEN_SINS_PROGRESS_WEEK.endsAt;
+}
+export function heroLevelAwardPolicy({earnedToday=0,currentXp=0,xp=125,playerLevel=0,heroLevel=0,nowMs=Date.now()}={}){
+  const uncapped=sevenSinsProgressWeekActive(nowMs);
+  const dailyCap=uncapped?null:ascensionHeroLevelDailyCap({playerLevel,heroLevel,nowMs});
+  const dailyRemaining=uncapped?Infinity:Math.max(0,dailyCap-Math.max(0,Math.floor(Number(earnedToday)||0)));
   const levelRemaining=Math.max(0,9900-Math.max(0,Math.floor(Number(currentXp)||0)));
-  return {dailyCap:HERO_LEVEL_DAILY_CAP,
+  return {dailyCap,
     amount:Math.min(dailyRemaining,levelRemaining,Math.max(0,Math.floor(Number(xp)||0)))};
 }
-// Exceção temporária: Raid 75 dos 7 Pecados, somente na semana de 26/10 a 01/11/2026 (São Paulo).
+// Raid 75 dos 7 Pecados: bônus original 26/10–01/11 e 2x de maestria em 02/11/2026 (São Paulo).
 export const RAID75_MASTERY_START=Date.parse('2026-10-26T00:00:00-03:00');
-export const RAID75_MASTERY_END=Date.parse('2026-11-02T00:00:00-03:00');
+export const RAID75_MASTERY_END=Date.parse('2026-11-03T00:00:00-03:00');
+export const RAID75_MASTERY_DOUBLE_START=Date.parse('2026-11-02T00:00:00-03:00');
 export function raid75MasteryBonusActive({level=0,collab=false,nowMs=Date.now()}={}){
   return Number(level)===75&&Boolean(collab)&&Number(nowMs)>=RAID75_MASTERY_START&&Number(nowMs)<RAID75_MASTERY_END;
 }
-export function heroMasteryAwardPolicy({specialRaid75=false,earnedToday=0,regularEarnedToday=0,xp=10}={}){
+// Apenas no dia 02/11 o bônus da Raid 75 sobe de 120 para 240 XP reais.
+export function raid75MasteryAwardXp({level=0,collab=false,nowMs=Date.now()}={}){
+  if(!raid75MasteryBonusActive({level,collab,nowMs}))return 90;
+  return Number(nowMs)>=RAID75_MASTERY_DOUBLE_START?240:120;
+}
+export function heroMasteryAwardPolicy({specialRaid75=false,earnedToday=0,regularEarnedToday=0,xp=10,nowMs=Date.now()}={}){
   const total=Math.max(0,Math.floor(Number(earnedToday)||0));
   const regular=Math.max(0,Math.floor(Number(regularEarnedToday)||0));
   // Teto total 600 somente com Raid 75; fora dela, 400 XP/dia por heroi.
-  const quota=Math.max(0,specialRaid75?
+  const uncapped=sevenSinsProgressWeekActive(nowMs);
+  const quota=uncapped?Infinity:Math.max(0,specialRaid75?
     HERO_MASTERY_SPECIAL_DAILY_CAP-total:
     Math.min(HERO_MASTERY_DAILY_CAP-regular,HERO_MASTERY_SPECIAL_DAILY_CAP-total));
-  const base=Math.max(0,Math.min(120,Math.floor(Number(xp)||0)));
+  const base=Math.max(0,Math.min(specialRaid75?240:120,Math.floor(Number(xp)||0)));
   return {special:Boolean(specialRaid75),
-    dailyCap:specialRaid75?HERO_MASTERY_SPECIAL_DAILY_CAP:HERO_MASTERY_DAILY_CAP,
+    dailyCap:uncapped?null:(specialRaid75?HERO_MASTERY_SPECIAL_DAILY_CAP:HERO_MASTERY_DAILY_CAP),
     amount:Math.min(quota,base)};
 }
 // XP acumulado não concede o estágio automaticamente: evolução paga é explícita.
@@ -70,14 +109,17 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
   const next={...(state||{})},stage=Math.min(5,Math.max(1,Math.floor(Number(masteryStage)||1)));
   const base=Math.max(1,Math.round(Number(damage)||1)),index=Math.max(1,Math.floor(Number(attackIndex)||1));
   let bonus=Number(gear.attack||0),heal=0,technique=null;
-  const special=stage>=2&&index%5===0,ultimate=stage>=3&&index>=12&&!next.ultimateUsed;
   const id=String(heroId||'');
+  // Duels frequently end before attack 12: iconic techniques must actually trigger.
+  const apex=id==='pecado_meliodas'||id==='pecado_escanor';
+  const special=stage>=2&&index%(apex?3:5)===0,
+    ultimate=stage>=3&&index>=(apex?4:12)&&!next.ultimateUsed;
   if(!HERO_COMBAT_PROFILES[id])return {damage:base,heal:0,state:next,technique:null};
   if(id==='pecado_meliodas'){
-    bonus+=.015;
-    if(Number(next.counterCharge||0)>0){bonus+=.035;technique='Full Counter';next.counterCharge=0;}
+    bonus+=.04;
+    if(Number(next.counterCharge||0)>0){bonus+=.045;technique='Full Counter';next.counterCharge=0;}
     if(special){next.counterReady=true;technique=technique||'Full Counter preparado';}
-    if(ultimate){bonus+=.035;technique='Revenge Counter';}
+    if(ultimate){bonus+=.055;technique='Revenge Counter';}
   }else if(id==='pecado_ban'){
     if(special){bonus+=.025;next.snatchBlocks=2;technique='Snatch';}
     if(index%6===0&&Number(next.healCount||0)<2){
@@ -86,9 +128,10 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
     }
     if(ultimate){bonus+=.035;technique='Hunter Fest';}
   }else if(id==='pecado_escanor'){
-    if(Number(hp)/Math.max(1,Number(maxHp))>.70)bonus+=.015;
-    if(special){bonus+=.035;technique='Cruel Sun';}
-    if(ultimate){bonus+=.045;technique='The One';}
+    if(Number(hp)/Math.max(1,Number(maxHp))>.70)bonus+=.04;
+    if(special){bonus+=.05;technique='Cruel Sun';}
+    if(ultimate){next.solarCharges=3;technique='The One';}
+    if(Number(next.solarCharges||0)>0){bonus+=.065;next.solarCharges--;technique=technique||'The One';}
   }else if(id==='pecado_diane'){
     if(special){next.rockGuard=1;technique='Heavy Metal';}
     if(ultimate){next.rockGuard=2;technique='Mother Catastrophe';}
@@ -110,43 +153,89 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
 }
 export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
   const next={...(state||{})},incoming=Math.max(0,Math.round(Number(damage)||0));
-  let rate=Math.max(0,Number(gear.defense||0));
-  if(heroId==='pecado_meliodas'&&next.counterReady&&incoming>0){
-    next.counterCharge=1;next.counterReady=false;
+  let rate=Math.max(0,Number(gear.defense||0)),technique=null;
+  if(heroId==='pecado_meliodas'){
+    rate+=.02; // Demonic endurance. Full Counter absorbs a little while reflecting.
+    if(next.counterReady&&incoming>0){rate+=.03;next.counterCharge=1;next.counterReady=false;technique='Full Counter';}
   }
-  if(heroId==='pecado_ban'&&Number(next.snatchBlocks||0)>0){rate+=.045;next.snatchBlocks--;}
+  if(incoming>0&&heroId==='pecado_ban'&&Number(next.snatchBlocks||0)>0){rate+=.045;next.snatchBlocks--;technique='Snatch';}
   if(heroId==='pecado_diane'){
     rate+=.025;
-    if(Number(next.rockGuard||0)>0){rate+=.06;next.rockGuard--;}
+    if(incoming>0&&Number(next.rockGuard||0)>0){rate+=.06;next.rockGuard--;technique='Heavy Metal';}
   }
-  if(heroId==='pecado_king'&&Number(next.fairyGuard||0)>0){rate+=.06;next.fairyGuard--;}
-  if(heroId==='pecado_gowther'&&Number(next.confuse||0)>0){rate+=.045;next.confuse--;}
-  if(heroId==='pecado_merlin'&&Number(next.cube||0)>0){rate+=.08;next.cube--;}
-  return {damage:Math.max(0,Math.round(incoming*(1-Math.min(.10,rate)))),state:next};
+  if(incoming>0&&heroId==='pecado_king'&&Number(next.fairyGuard||0)>0){rate+=.06;next.fairyGuard--;technique='Chastiefol Guardian';}
+  if(incoming>0&&heroId==='pecado_gowther'&&Number(next.confuse||0)>0){rate+=.045;next.confuse--;technique='Rewrite Light';}
+  if(incoming>0&&heroId==='pecado_merlin'&&Number(next.cube||0)>0){rate+=.08;next.cube--;technique='Perfect Cube';}
+  return {damage:Math.max(0,Math.round(incoming*(1-Math.min(.10,rate)))),state:next,technique};
+}
+
+// Curva monotônica de atributos do HERÓI. Não depende de forja ou equipamentos.
+// Lv100 preserva exatamente o teto anterior; nos níveis 1–99 elimina o
+// degrau abrupto do antigo Lv70, que tornava o herói pior que a classe.
+export const HERO_TRAINING_ANCHORS=Object.freeze([[1,0],[25,.12],[50,.27],[70,.45],[85,.65],[100,1]].map(row=>Object.freeze(row)));
+export function heroTrainingFactor(heroLevel=1){
+  const lv=Math.max(1,Math.min(100,Math.floor(Number(heroLevel)||1)));
+  for(let i=1;i<HERO_TRAINING_ANCHORS.length;i++){
+    const [rightLv,right]=HERO_TRAINING_ANCHORS[i];
+    if(lv<=rightLv){
+      const [leftLv,left]=HERO_TRAINING_ANCHORS[i-1];
+      return left+(right-left)*(lv-leftLv)/(rightLv-leftLv);
+    }
+  }
+  return 1;
 }
 
 export function heroCombatStats(st,heroId,heroLevel=70){
   const hero=HERO_COMBAT_PROFILES[heroId];
   if(!hero)return null;
   const n=(k,other=0)=>Number(st?.[k]??other)||0;
-  // Lv.70 legado mantém os atributos históricos. Lv.1 inicia um pouco
-  // abaixo disso, evoluindo até o bônus atual do Lv.100 sem afetar a classe.
-  const progress=Math.max(-69,Math.min(30,Math.floor(Number(heroLevel) || 1)-70));
-  const hpTraining=progress>=0?progress*2:Math.ceil(progress/2);
-  const atkTraining=progress>=0?Math.floor(progress/2):Math.ceil(progress/4);
-  const defTraining=progress>=0?Math.floor(progress/3):Math.ceil(progress/6);
-  const spdTraining=progress>=0?Math.floor(progress/5):Math.ceil(progress/12);
-  const maxHp=Math.max(1,n('max_hp',100)-n('class_hp_bonus')+hero.hp+hpTraining);
+  // O treinamento cresce desde o Lv1 até o Lv100, sem penalidade no início.
+  // Nenhuma bonificação é gravada em stats e a classe não recebe esse efeito.
+  const base={
+    hp:Math.max(1,n('max_hp',100)-n('class_hp_bonus')+hero.hp),
+    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk),
+    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def),
+    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd)
+  };
+  const training=(earlyPenalty,maxBonus,baseline)=>Math.round(maxBonus*heroTrainingFactor(heroLevel));
+  const hpTraining=training(450,700,base.hp);
+  const atkTraining=training(75,75,base.atk);
+  const defTraining=training(85,100,base.def);
+  const spdTraining=training(15,25,base.spd);
+  const roleGrowth=heroRoleGrowth(heroId,heroLevel);
+  const maxHp=Math.max(1,base.hp+hpTraining+roleGrowth.hp);
   const sourceMax=Math.max(1,n('max_hp',100));
   return {
     heroId,hp:Math.max(0,Math.min(maxHp,Math.round(n('hp')/sourceMax*maxHp))),
     maxHp,
-    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk+atkTraining),
-    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def+defTraining),
-    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd+spdTraining),
-    persistentMaxHp:sourceMax
+    atk:Math.max(1,n('atk')-n('class_atk_bonus')+hero.atk+atkTraining+roleGrowth.atk),
+    def:Math.max(1,n('def')-n('class_def_bonus')+hero.def+defTraining+roleGrowth.def),
+    spd:Math.max(1,n('spd')-n('class_spd_bonus')+hero.spd+spdTraining+roleGrowth.spd),
+    persistentMaxHp:sourceMax,
+    // Diagnostic-only fields for the standalone !heroi comparar command.
+    // Not displayed in !perfil, !status, or !heroi atributos.
+    breakdown:{
+      neutral:{
+        hp:n('max_hp',100)-n('class_hp_bonus'),
+        atk:n('atk')-n('class_atk_bonus'),
+        def:n('def')-n('class_def_bonus'),
+        spd:n('spd')-n('class_spd_bonus')
+      },
+      heroBase:{hp:hero.hp,atk:hero.atk,def:hero.def,spd:hero.spd},
+      training:{hp:hpTraining,atk:atkTraining,def:defTraining,spd:spdTraining},
+      roleGrowth,
+      natural:{
+        hp:hero.hp+hpTraining+roleGrowth.hp,
+        atk:hero.atk+atkTraining+roleGrowth.atk,
+        def:hero.def+defTraining+roleGrowth.def,
+        spd:hero.spd+spdTraining+roleGrowth.spd
+      },
+      level:Math.max(1,Math.min(100,Math.floor(Number(heroLevel)||1)))
+    }
   };
 }
+// O HP persistido já incorpora o equipamento: converter só pelo HP-base do
+// herói retira a vida do equipamento mesmo após uma cura completa.
 export function heroEffectiveCombatHp(st,heroStats,equipmentHp=0){
   if(!heroStats)return Math.max(0,Number(st?.hp)||0);
   const gear=Math.max(0,Number(equipmentHp)||0);
@@ -167,11 +256,20 @@ export function heroCombatSheetFromProfile(profile,heroId,heroLevel=70){
     role:HERO_COMBAT_PROFILES[heroId].role,
     range:HERO_COMBAT_PROFILES[heroId].range,
     skill:HERO_COMBAT_PROFILES[heroId].skill,
+    // Atributos efetivos do herói sem arma, armadura, botas, elmo, encantos
+    // ou bônus de pet. Inclui a progressão permanente do jogador, tal como
+    // ocorre ao selecionar uma classe normal, e a evolução do próprio herói.
+    baseWithoutGear:{maxHp:h.maxHp,atk:h.atk,def:h.def,spd:h.spd},
     maxHp:h.maxHp+number(profile.equipment_hp),
     hp:heroEffectiveCombatHp(profile,h,profile.equipment_hp),
     atk:Math.round((h.atk+number(profile.equipment_atk))*(1+number(profile.attack_pct_bonus))),
     def:h.def+number(profile.equipment_def),
-    spd:h.spd+number(profile.equipment_spd)
+    spd:h.spd+number(profile.equipment_spd),
+    equipment:{
+      hp:number(profile.equipment_hp),atk:number(profile.equipment_atk),
+      def:number(profile.equipment_def),spd:number(profile.equipment_spd)
+    },
+    attackPctBonus:number(profile.attack_pct_bonus)
   };
 }
 // Vida temporária do herói volta à escala do jogador original; nunca grava
@@ -196,7 +294,13 @@ export function persistHeroHpDelta({previousPersistentHp=0,previousCombatHp=0,
   let rest=exact-integral;
   if(after<=0){hp=0;rest=0;}
   else if(after>=cmax){hp=pmax;rest=0;}
-  else {hp=Math.max(1,hp);if(hp>=pmax)rest=0;}
+  else {
+    hp=Math.max(1,hp);
+    // Negative fractional damage must survive even when persistent HP is
+    // still capped at max; otherwise repeated 1-point hits become free.
+    // Discard only positive overflow caused by healing at full HP.
+    if(hp>=pmax&&exact>0)rest=0;
+  }
   return {hp,remainder:rest};
 }
 
@@ -211,15 +315,15 @@ export function excludeActiveHeroPet(team,heroId){
 
 /** Técnica e efeito de jogo: adaptações limitadas dos poderes oficiais do anime. */
 export const HERO_SKILL_GUIDE=Object.freeze({
-  pecado_meliodas:{passive:'Hellblaze: +3% de dano com chamas negras.',
+  pecado_meliodas:{passive:'Hellblaze: +6,5% de dano com chamas negras.',
     special:'Full Counter: a cada 8 ataques prepara contra-ataque; parte do próximo golpe recebido volta no ataque seguinte.',
     ultimate:'Revenge Counter: a cada 25 ataques converte dano sofrido em explosão e mantém fogo demoníaco por 2 ataques.'},
   pecado_ban:{passive:'Imortalidade: regenera 1% do HP máximo a cada 8 ataques; -2% do dano recebido.',
     special:'Snatch: a cada 8 ataques rouba força; +10% de dano e reduz golpes recebidos por até 3 impactos.',
     ultimate:'Hunter Fest: a cada 25 ataques, +15% de dano e recupera 5% do HP máximo.'},
-  pecado_escanor:{passive:'Sunshine: o sol fortalece os ataques enquanto houver luz do dia e HP acima de 70%.',
-    special:'Cruel Sun: ataque solar com +15% de dano a cada 8 ataques.',
-    ultimate:'The One: a cada 25 ataques entra no estado solar por 3 golpes (+25% de dano).'},
+  pecado_escanor:{passive:'Sunshine: +7% de dano durante o dia, +10% entre 11h e 13h (Brasília), se HP estiver acima de 70%.',
+    special:'Cruel Sun: ataque solar com +18% de dano a cada 8 ataques.',
+    ultimate:'The One: a cada 25 ataques, 3 golpes solares (+30% de dano antes dos limites; teto 36% Boss e 40% Raid).'},
   pecado_king:{passive:'Disaster/Chastiefol: +2% de dano e -3% de dano recebido.',
     special:'Guardian: a cada 8 ataques, protege o próximo golpe e cura um aliado ferido em Raid.',
     ultimate:'Sunflower: a cada 25 ataques, explosão solar e cura reforçada de um aliado em Raid.'},
@@ -233,6 +337,38 @@ export const HERO_SKILL_GUIDE=Object.freeze({
     special:'Exterminate: a cada 8 ataques, +15% de dano e magia residual nos 2 golpes seguintes.',
     ultimate:'Perfect Cube: a cada 25 ataques, +10% de dano e uma barreira que reduz o próximo golpe em 20%.'}
 });
+// Texto do PvP alinhado às regras de heroPvpAttack/heroPvpDefense.
+// Esta tabela descreve apenas os estágios liberados; não concede efeitos.
+export const HERO_PVP_SKILL_GUIDE=Object.freeze({
+  pecado_meliodas:{
+    passive:'Hellblaze: +4% de dano e -2% de dano recebido.',
+    special:'Full Counter: a cada 3 ataques prepara defesa (-3% no próximo golpe) e contra-ataca com até +4,5% de dano.',
+    ultimate:'Revenge Counter: uma vez por duelo, a partir do 4º ataque, +5,5% de dano.'},
+  pecado_ban:{
+    passive:'Imortalidade: cura de 0,6% a 1% do HP máximo a cada 6 ataques (até 2 vezes).',
+    special:'Snatch: a cada 5 ataques, +2,5% de dano e -4,5% de dano recebido nos próximos 2 golpes.',
+    ultimate:'Hunter Fest: uma vez por duelo, a partir do 12º ataque, +3,5% de dano.'},
+  pecado_escanor:{
+    passive:'Sunshine: +4% de dano quando o HP está acima de 70%.',
+    special:'Cruel Sun: a cada 3 ataques, +5% de dano.',
+    ultimate:'The One: uma vez por duelo, a partir do 4º ataque, ativa 3 golpes solares com +6,5% de dano.'},
+  pecado_diane:{
+    passive:'Heavy Metal: -2,5% de dano recebido.',
+    special:'Heavy Metal: a cada 5 ataques, protege o próximo golpe (-6% de dano recebido).',
+    ultimate:'Mother Catastrophe: uma vez por duelo, a partir do 12º ataque, protege até 2 golpes (-6% de dano recebido).'},
+  pecado_king:{
+    passive:'Chastiefol: sem bônus passivo adicional no PvP; seus efeitos de suporte são próprios de Boss/Raid.',
+    special:'Guardian: a cada 5 ataques, protege o próximo golpe (-6% de dano recebido).',
+    ultimate:'Sunflower: uma vez por duelo, a partir do 12º ataque, +2,5% de dano.'},
+  pecado_gowther:{
+    passive:'Invasion: sem redução passiva adicional de dano no PvP.',
+    special:'Rewrite Light: a cada 5 ataques, reduz em 4,5% o dano recebido pelos próximos 2 golpes.',
+    ultimate:'Nightmare Teller: uma vez por duelo, a partir do 12º ataque, +3,5% de dano.'},
+  pecado_merlin:{
+    passive:'Infinity: sem bônus passivo adicional de dano no PvP.',
+    special:'Exterminate: a cada 5 ataques, +2,5% de dano.',
+    ultimate:'Perfect Cube: uma vez por duelo, a partir do 12º ataque, reduz em 8% o próximo golpe recebido.'}
+});
 const HERO_SUN_HOUR=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',hourCycle:'h23'});
 
 export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},context='raid',masteryStage=1,nowMs=Date.now(),gear={}}={}){
@@ -243,15 +379,17 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
   const stage=Math.max(1,Math.min(5,Math.floor(Number(masteryStage)||1)));
   const special=index%8===0&&stage>=2,ultimate=index%25===0&&stage>=3;
   const healthRatio=Math.max(0,Math.min(1,Number(hp)/Math.max(1,Number(maxHp))));
-  let bonus=0,heal=0,allyHeal=0,technique=null;
+  let bonus=0,heal=0,allyHeal=0,technique=null,solarBurst=false;
+  // Gatilhos reais do Ban, extraídos da execução da habilidade e não inferidos pelo boletim.
+  const banActivations=[];
   if(id==='pecado_meliodas'){
     // Hellblaze, Full Counter (próximo golpe recebido), Revenge Counter.
-    bonus=.03;
+    bonus=.065;
     if(stage>=3){
       next.revengeStored=Math.max(0,Math.min(n*.10,Number(next.revengeStored||0)));
     }
     if(Number(next.counterStored||0)>0){
-      bonus+=Math.min(.16,Number(next.counterStored)/n);
+      bonus+=Math.min(.18,Number(next.counterStored)/n);
       next.counterStored=0;
       technique='Full Counter';
     }
@@ -263,15 +401,15 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
     if(Number(next.revengeCharges||0)>0){bonus+=.08;next.revengeCharges--;}
   }else if(id==='pecado_ban'){
     bonus=.02;
-    if(special){bonus+=.10;next.snatchCharges=3;technique='Snatch';}
-    if(index%8===0)heal+=Math.ceil(Math.max(1,Number(maxHp))*.01);
-    if(ultimate){bonus+=.15;heal+=Math.ceil(Math.max(1,Number(maxHp))*.05);technique='Hunter Fest';}
+    if(special){bonus+=.10;next.snatchCharges=3;technique='Snatch';banActivations.push('Snatch');}
+    if(index%8===0){heal+=Math.ceil(Math.max(1,Number(maxHp))*.01);banActivations.push('Imortalidade');}
+    if(ultimate){bonus+=.15;heal+=Math.ceil(Math.max(1,Number(maxHp))*.05);technique='Hunter Fest';banActivations.push('Hunter Fest');}
   }else if(id==='pecado_escanor'){
     const hour=Number(HERO_SUN_HOUR.format(new Date(Number(nowMs)||Date.now())));
-    if(hour>=6&&hour<18&&healthRatio>.7)bonus+=hour>=11&&hour<13?.06:.04;
-    if(special){bonus+=.15;technique='Cruel Sun';}
+    if(hour>=6&&hour<18&&healthRatio>.7)bonus+=hour>=11&&hour<13?.10:.07;
+    if(special){bonus+=.18;technique='Cruel Sun';}
     if(ultimate){next.sunCharges=3;technique='The One';}
-    if(Number(next.sunCharges||0)>0){bonus+=.25;next.sunCharges--;}
+    if(Number(next.sunCharges||0)>0){bonus+=.30;next.sunCharges--;solarBurst=true;}
   }else if(id==='pecado_diane'){
     if(special){bonus+=.10;next.heavyMetalCharges=1;technique='Creation';}
     if(ultimate){bonus+=.15;next.guardCharges=1;technique='Mother Catastrophe';}
@@ -299,9 +437,11 @@ export function heroAttack({heroId,damage=0,hp=1,maxHp=1,attackIndex=1,state={},
   // Maestria IV e V concedem +1% cada; o bônus final nunca excede o teto.
   bonus+=Number(gear.attack||0)+(stage>=4?.01:0)+(stage>=5?.01:0);
   if(id==='pecado_ban'&&Number(gear.heal||0)>0&&index%8===0)heal+=Math.ceil(Math.max(1,Number(maxHp))*Number(gear.heal));
-  const cap=context==='boss'?.30:.35;
+  // The One tem explosao superior, mas somente nos tres ataques da janela solar.
+  const cap=solarBurst?(context==='boss'?.36:.40):(context==='boss'?.30:.35);
   return {damage:Math.max(1,Math.floor(n*(1+Math.min(cap,bonus)))),heal,allyHeal,
-    technique,state:next,activated:special||ultimate};
+    technique,state:next,activated:special||ultimate,
+    ...(id==='pecado_ban'?{banActivations}: {})};
 }
 export function heroDefense({heroId,damage=0,state={},gear={}}={}){
   const next={...(state||{})};let rate=Math.max(0,Number(gear.defense||0));
@@ -320,15 +460,15 @@ export function heroDefense({heroId,damage=0,state={},gear={}}={}){
     next.revengeStored=Math.max(0,Math.min(500,Number(next.revengeStored||0)+incoming*.05));
   }
   if(heroId==='pecado_ban'){
-    rate=.02;
+    rate+=.02;
     if(Number(next.snatchCharges||0)>0){rate+=.10;next.snatchCharges--;}
   }
   if(heroId==='pecado_king'){
-    rate=.03;
+    rate+=.03;
     if(Number(next.guardianCharges||0)>0){rate+=.12;next.guardianCharges--;}
   }
   if(heroId==='pecado_gowther'){
-    rate=.03;
+    rate+=.03;
     if(Number(next.confusionBlocks||0)>0){rate+=.08;next.confusionBlocks--;}
     if(Number(next.nightmareBlocks||0)>0){rate+=.10;next.nightmareBlocks--;}
   }

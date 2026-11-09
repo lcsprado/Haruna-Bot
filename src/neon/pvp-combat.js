@@ -1,16 +1,17 @@
 import {classAttack,classDefense} from './game-catalog.js'
+import {effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
 export function runPvpCombat(A,B,random=Math.random,maxRounds=20){
  const log=[]
  const [first,second]=A.spd>=B.spd?[A,B]:[B,A]
  const hit=(from,to)=>{
   from.attackIndex++
   const variance=.85+random()*.30
-  const crit=random()<Math.min(.40,Number(from.crit||.10)+Number(from.petBonus?.crit||0))
+  const crit=random()<effectiveShieldedCritChance(Number(from.crit||.10)+Number(from.petBonus?.crit||0),Number(to.shieldCritResist||0))
   const dodgeChance=Math.min(.05,Math.max(0,Number(to.petBonus?.dodge||0)))
   const dodged=dodgeChance>0&&random()<dodgeChance
   const raw=Math.max(1,Math.round((from.atk-to.def*.45)*variance))
   const adjusted=Math.max(1,Math.round(raw*(1+Number(from.petBonus?.damage||0))))
-  const attack=classAttack({classId:from.classId,applied:from.classApplied,damage:crit?Math.round(adjusted*1.6):adjusted,critical:crit,hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,lastProcAttack:from.lastProcAttack})
+  const attack=classAttack({classId:from.classId,applied:from.classApplied,damage:crit?Math.round(adjusted*shieldedCriticalMultiplier(1.6,Number(to.shieldCritGuard||0))):adjusted,critical:crit,hp:from.hp,maxHp:from.maxHp,attackIndex:from.attackIndex,lastProcAttack:from.lastProcAttack})
   from.lastProcAttack=attack.lastProcAttack
   const dealt=classDefense({classId:to.classId,applied:to.classApplied,damage:attack.damage}).damage
   const dmg=dodged?0:Math.max(1,Math.round(dealt*(1-Math.min(.045,Math.max(0,Number(to.petBonus?.defense||0))))))

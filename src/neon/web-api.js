@@ -1,6 +1,7 @@
 import {createOptionalBootstrapLoader} from './web-bootstrap-optional.js'
 import 'dotenv/config'
 import crypto from 'node:crypto'
+import {pvpCritChance} from './pvp-crit.js'
 import {buildOfficialWebLoginUrl} from './web-official-link.js'
 import {relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {resolveAlphaWebAllowedOrigin} from './web-canonical-origins.js'
@@ -423,12 +424,16 @@ async function groupSnapshot(chatJid){
       db.query(`
         SELECT u.jid,u.level,
                s.class_id,s.class_applied,s.hp,s.max_hp,s.atk,s.def,s.spd,
-               s.weapon_id,s.armor_id,s.boot_id,
+               s.weapon_id,s.armor_id,s.boot_id,s.helmet_id,s.shield_id,
+                COALESCE(aw.stage,0)::int AS awakening_stage,
+                (hm.hero_species IS NOT NULL AND EXISTS(SELECT 1 FROM pet_collection pc WHERE pc.jid=u.jid AND pc.species=hm.hero_species)) AS hero_active,
                p.name AS pet_name,p.species AS pet_species,p.level AS pet_level,
                p.hp AS pet_hp,p.max_hp AS pet_max_hp
         FROM users u
         LEFT JOIN stats s ON s.jid=u.jid
         LEFT JOIN pets p ON p.jid=u.jid
+         LEFT JOIN player_hero_mode hm ON hm.jid=u.jid
+         LEFT JOIN player_awakenings aw ON aw.jid=u.jid
         WHERE u.jid=ANY($1::text[])
       `,[rosterJids]),
       db.query(
@@ -445,6 +450,7 @@ async function groupSnapshot(chatJid){
       const zero={atk:0,def:0,hp:0,spd:0,crit:0}
       const weapon=row.weapon_id?equipmentStatsAtLevel(row.weapon_id,levelFor(row.jid,row.weapon_id),starFor(row.jid,row.weapon_id)):zero
       const armor=row.armor_id?equipmentStatsAtLevel(row.armor_id,levelFor(row.jid,row.armor_id),starFor(row.jid,row.armor_id)):zero
+      const helmet=row.helmet_id?equipmentStatsAtLevel(row.helmet_id,levelFor(row.jid,row.helmet_id)):zero
       const boots=row.boot_id?equipmentStatsAtLevel(row.boot_id,levelFor(row.jid,row.boot_id)):zero
       const effectiveMaxHp=Number(row.max_hp||0)+Number(weapon?.hp||0)+Number(armor?.hp||0)
       return {
@@ -454,7 +460,8 @@ async function groupSnapshot(chatJid){
         effective_atk:Number(row.atk||0)+Number(weapon?.atk||0)+Number(armor?.atk||0),
         effective_def:Number(row.def||0)+Number(weapon?.def||0)+Number(armor?.def||0),
         effective_spd:Number(row.spd||0)+Number(boots?.spd||0),
-        effective_crit:Math.min(.40,.10+Number(weapon?.crit||0)+Number(armor?.crit||0)),
+        // Sem pet ou encantamentos: indicador da ficha do clã, não o crítico final do duelo.
+         effective_crit:pvpCritChance({equipmentCrit:Number(weapon?.crit||0)+Number(armor?.crit||0)+Number(boots?.crit||0)+Number(helmet?.crit||0),classId:row.class_id,classApplied:Boolean(row.class_applied),awakeningStage:Number(row.awakening_stage||0),heroActive:Boolean(row.hero_active)}),
         weapon_name:weapon?.name||null,
         armor_name:armor?.name||null,
         boot_name:boots?.name||null,
