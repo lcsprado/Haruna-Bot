@@ -1,3 +1,4 @@
+import {awardWebRaidHeroProgress} from './pve-raid-hero-awards.js'
 import {readRaidActiveHero,applyRaidHeroSnapshot,raidHeroPetSnapshot,raidHeroRoundHit,raidHeroDefend,settleRaidHeroHp,applyRaidKingAllyHeal} from './pve-raid-hero-bridge.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
@@ -1153,6 +1154,7 @@ async function finishRaidRewards(c,s,cfg,chat){
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
     const p=ranked[i],share=Number(p.damage||0)/total,pb=p.pet?.bonus||{xp:0,drop:0}
+    const masteryReport=await awardWebRaidHeroProgress(c,{participant:p,share,level:cfg.level,collab:cfg.collab,startedAt:s.startedAt,nowMs:now})
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
     // A base devolve 108% da chave e o bônus adicional continua proporcional à colaboração.
     // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.
@@ -1353,7 +1355,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     rewards.push({jid:p.jid,name:p.name,damage:Number(p.damage||0),petBonusDamage:Number(p.petBonusDamage||0),petSkillHealing:Number(p.petSkillHealing||0),classHealing:Number(p.classHealing||0),
       classHealingActivations:Number(p.classHealingActivations||0),
       classHealingOpportunities:Number(p.classHealingOpportunities||0),
-      playerClassId:p.classId,
+      playerClassId:p.classId,masteryReport,activeHeroId:p.heroId||null,
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
       share,cash,exp,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp,petXpTeam,material,drop,gearDrop})
