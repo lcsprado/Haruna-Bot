@@ -1,4 +1,5 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
+import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
@@ -768,7 +769,7 @@ const RAID_CONFIGS=[
 ]
 const raidConfig=level=>RAID_CONFIGS.find(r=>r.level===Number(level))||null
 const raidDurationMinutes=level=>({10:12,15:15,20:18,25:22,30:25,40:30,50:35,60:40,65:45,70:50,75:35}[Number(level)]||15)
-export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level)})) }
+export function getRaidCatalog(){ return RAID_CONFIGS.map(r=>({...r,durationMinutes:raidDurationMinutes(r.level),critResistance:raidBossCritResistance(r.level)})) }
 
 const raidGameType=level=>`raid:${Number(level)}`
 const raidIsOpen=s=>Boolean(s&&['lobby','active'].includes(s.status)&&(s.status==='active'||Number(s.expiresAt||0)>Date.now()))
@@ -1632,9 +1633,10 @@ export async function raidRound(chat,level){
       const equippedRaidRelic=await activeRelic(c,p.jid)
       const petCritChance=Math.max(0,Number(pb.crit||0)+Number(teamSynergy.crit||0))
       const gearCritChance=Math.max(0,Number(p.crit||0)+Number(equippedRaidRelic?.raidCrit||0))
+      const effectiveCritChance=effectivePveCritChance(petCritChance+gearCritChance,raidBossCritResistance(s.level))
       const roll=Math.random()
-      const petCrit=petCritChance>0&&roll<petCritChance
-      const gearCrit=!petCrit&&gearCritChance>0&&roll<Math.max(0,petCritChance+gearCritChance)
+      const petCrit=petCritChance>0&&roll<Math.min(petCritChance,effectiveCritChance)
+      const gearCrit=!petCrit&&gearCritChance>0&&roll<effectiveCritChance
       const crit=petCrit||gearCrit
       const variance=.82+Math.random()*.38
       const raw=Math.max(5,Math.floor(Number(p.atk||1)*variance))
@@ -3310,8 +3312,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const roll=Math.random()
     const equippedRelic=await activeRelic(c,jid)
     const totalCritChance=Math.max(0,baseCritChance+gearCritChance+petCritChance+enchanted.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,heroId?0:awakeningStage,'boss')+Number(equippedRelic?.bossCrit||0))
-    const crit=roll<totalCritChance
-    const petCrit=crit&&roll>=Math.min(totalCritChance,baseCritChance+gearCritChance)
+    const effectiveCritChance=effectivePveCritChance(totalCritChance,BOSS_CRIT_RESISTANCE)
+    const crit=roll<effectiveCritChance
+    const petCrit=crit&&roll>=Math.min(effectiveCritChance,baseCritChance+gearCritChance)
     const gearCrit=crit&&!petCrit
     const petMultiplier=1+petBonus.damage+Number(teamSynergy.attack||0)
     const variance=.85+Math.random()*.45
