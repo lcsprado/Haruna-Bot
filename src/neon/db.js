@@ -6326,10 +6326,20 @@ if(x.sellable!==true||x.item_id==='elmo_soberano_golem')
 throw new Error('🔒 Prêmio exclusivo do campeão não pode ser comprado nem transferido.')
 if(Number(x.expires_at||Number(x.created_at)+3600)<=Math.floor(Date.now()/1000)) throw new Error('Esse anúncio expirou.')
 if(x.seller_jid===buyerJid) throw new Error('Você não pode comprar seu próprio anúncio.')
-const w=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[buyerJid])
-const cash=Number(w.rows[0]?.cash||0),bank=Number(w.rows[0]?.bank||0),price=Number(x.price)
+// Locks determinísticos de ambas as carteiras previnem ciclos em compras
+// cruzadas (A compra de B enquanto B compra de A), como já faz o PIX.
+const wallets=await client.query(
+'SELECT jid,cash,bank FROM wallets WHERE jid=ANY($1::text[]) ORDER BY jid FOR UPDATE',
+[[buyerJid,x.seller_jid]]
+)
+const buyer=wallets.rows.find(row=>row.jid===buyerJid)
+const seller=wallets.rows.find(row=>row.jid===x.seller_jid)
+if(!buyer||!seller) throw new Error('Carteira do comprador ou vendedor indisponível.')
+const cash=Number(buyer.cash||0),bank=Number(buyer.bank||0),price=Number(x.price)
+if(!Number.isSafeInteger(price)||price<1) throw new Error('Preço inválido.')
 if(cash+bank<price) throw new Error('Saldo insuficiente.')
-const fromCash=Math.min(cash,price),fromBank=price-fromCash
+const fromCash=Math.min(Math.max(0,cash),price),fromBank=price-fromCash
+if(fromBank>Math.max(0,bank)) throw new Error('Saldo bancário insuficiente.')
 await client.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3',[fromCash,fromBank,buyerJid])
 await client.query('UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',[price,x.seller_jid])
 await client.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity`,[buyerJid,x.item_id,x.quantity])
