@@ -4,6 +4,7 @@ const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
+const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
 
 const ui = {
@@ -846,14 +847,24 @@ async function syncAvatar(force=false){
 async function exchange(code){
   const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(!clean) throw new Error('Informe o código gerado pelo !web.');
-  // Não enviar token do jogador anterior ao trocar de conta, nem mantê-lo se falhar.
+  // Preserva o token antigo no armazenamento, mas nunca o utiliza durante
+  // uma tentativa de trocar de identidade.
+  if(localStorage.getItem(TOKEN_KEY))localStorage.setItem(SWITCH_PENDING_KEY,'1');
   ui.token='';
-  ui.data=null;
-  ui.catalog=null;
-  localStorage.removeItem(TOKEN_KEY);
   const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
+  if(typeof body?.token!=='string'||!body.token.trim())throw new Error('O servidor não retornou uma sessão válida.');
+  stopRaidAuto();
+  stopBossAuto();
+  if(ui.avatarUrl)URL.revokeObjectURL(ui.avatarUrl);
+  ui.avatarUrl='';ui.avatarFetchedAt=0;
   ui.token=body.token;
-  localStorage.setItem(TOKEN_KEY,ui.token);
+  ui.data=null;ui.catalog=null;ui.extras=null;ui.extrasFetchedAt=0;
+  ui.eventCenter=null;ui.eventCenterFetchedAt=0;
+  ui.siege=null;ui.siegeFetchedAt=0;ui.siegeError='';
+  ui.racing=null;ui.racingFetchedAt=0;ui.racingLast=null;
+  ui.lastFullSyncAt=0;ui.syncing=false;
+  localStorage.setItem(TOKEN_KEY,body.token);
+  localStorage.removeItem(SWITCH_PENDING_KEY);
   return body;
 }
 
@@ -861,6 +872,7 @@ async function sync(silent,force=false){
   if(!ui.token || ui.syncing) return;
   if(!force && ui.data && Date.now()-ui.lastFullSyncAt<45000) return;
   ui.syncing=true;
+  const syncToken=ui.token;
   setSync(false);
   try{
     const jobs=[];
@@ -868,6 +880,7 @@ async function sync(silent,force=false){
     else jobs.push(Promise.resolve(null));
     jobs.push(api('/api/v1/me/bootstrap'));
     const values=await Promise.all(jobs);
+    if(ui.token!==syncToken)return; // Rejeita resposta de outra identidade em trânsito.
     if(values[0]) ui.catalog=values[0].data;
     const previousIncoming=new Set(incomingRelationshipProposals(ui.data).map(p=>String(p.from_jid||'')));
     const nextData=values[1].data;
@@ -876,12 +889,14 @@ async function sync(silent,force=false){
     ui.lastFullSyncAt=Date.now();
     ui.bossLiveVersion='';
     await syncAvatar(false);
+    if(ui.token!==syncToken)return;
     showApp();
     render();
     setSync(true);
     if(freshProposal) toast('💍 '+String(freshProposal.from_name||'Alguém')+' te pediu em casamento.');
     else if(!silent) toast('Dados sincronizados com o Alpha Bot.');
   }catch(err){
+    if(ui.token!==syncToken)return;
     if(/sessão web inválida|expirada/i.test(err.message)){
       logout(false);
       showLogin(err.message);
@@ -1124,6 +1139,8 @@ function showLogin(error){
   $('#app').classList.add('hidden');
   $('#loginOverlay').classList.remove('hidden');
   $('#linkError').textContent=error||'';
+  const previous=$('#resumeSessionBtn');
+  if(previous)previous.hidden=!localStorage.getItem(TOKEN_KEY);
 }
 async function logout(remote){
   stopRaidAuto();
@@ -1137,6 +1154,7 @@ async function logout(remote){
   ui.racing=null;ui.racingFetchedAt=0;ui.racingLast=null;
   ui.siege=null;ui.siegeFetchedAt=0;ui.siegeError='';
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(SWITCH_PENDING_KEY);
   showLogin();
 }
 
@@ -3635,8 +3653,24 @@ $('#linkForm').addEventListener('submit',async e=>{
     await exchange($('#linkCode').value);
     history.replaceState({},document.title,'/rpg');
     await sync(false);
-  }catch(err){ $('#linkError').textContent=err.message; }
+  }catch(err){showLogin(err.message+' Gere um novo !web se o código expirou.');}
 });
+$('#resumeSessionBtn').onclick=async()=>{
+  const saved=localStorage.getItem(TOKEN_KEY)||'';
+  if(!saved){showLogin('Não existe sessão anterior neste aparelho. Gere um novo !web.');return;}
+  ui.token=saved;
+  ui.data=null;
+  ui.lastFullSyncAt=0;
+  showLogin('Validando a sessão anterior neste aparelho...');
+  await sync(true,true);
+  if(ui.token&&ui.data){
+    localStorage.removeItem(SWITCH_PENDING_KEY);
+    showApp();
+  }else{
+    ui.token='';
+    showLogin('Não foi possível validar a sessão anterior. Tente novamente ou gere um novo !web.');
+  }
+};
 $('#logoutBtn').onclick=()=>logout(true);
 $('#menuBtn').onclick=()=>setMenu(!$('#sidebar').classList.contains('open'));
 $('#menuBackdrop').onclick=()=>setMenu(false);
@@ -3684,10 +3718,8 @@ setInterval(()=>{
   // Somente o código de uso único gerado pelo !web pode iniciar uma nova sessão.
   if(tokenFromLink){
     history.replaceState({},document.title,'/rpg');
+    if(localStorage.getItem(TOKEN_KEY))localStorage.setItem(SWITCH_PENDING_KEY,'1');
     ui.token='';
-    ui.data=null;
-    ui.catalog=null;
-    localStorage.removeItem(TOKEN_KEY);
     showLogin('Link antigo com token não é aceito. Gere um novo !web no WhatsApp.');
     return;
   }
@@ -3695,27 +3727,24 @@ setInterval(()=>{
   // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
   // Só o navegador executa o POST que consome o código.
   if(linked){
-    // Um novo link sempre substitui a identidade local anterior.
-    // Código expirado, usado ou incorreto NUNCA reabre a sessão de outra pessoa.
-    ui.token='';
-    ui.data=null;
-    ui.catalog=null;
-    localStorage.removeItem(TOKEN_KEY);
     $('#linkCode').value=linked;
     try{
       await exchange(linked);
       history.replaceState({},document.title,'/rpg');
-      await sync(false);
+      await sync(false,true);
       return;
     }catch(err){
+      // Nunca expõe automaticamente a sessão anterior ao tentar outra conta.
       ui.token='';
-      ui.data=null;
-      ui.catalog=null;
-      localStorage.removeItem(TOKEN_KEY);
       history.replaceState({},document.title,'/rpg');
-      showLogin(err.message+' Gere um novo !web e toque no novo link. O código vale por 30 minutos.');
+      showLogin(err.message+' Gere um novo !web ou escolha explicitamente voltar à sessão anterior.');
       return;
     }
+  }
+  if(localStorage.getItem(SWITCH_PENDING_KEY)){
+    ui.token='';
+    showLogin('Há uma sessão anterior salva neste aparelho. Se quiser usá-la, selecione a opção abaixo.');
+    return;
   }
 
   if(ui.token){
