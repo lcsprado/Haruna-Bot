@@ -97,6 +97,7 @@ import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet,getActivePlayableHero} from './playable-heroes.js'
 import {DAMAGE_SAMPLE_LIMIT,combineDamageStats} from './damage-hero-stats.js'
 import {formatProfileCombatBonuses} from './profile-combat-summary.js'
+import {formatProfileShieldStars} from './profile-shield-stars.js'
 import {applyVitalCombatHp} from './vital-pets.js'
 import {gearStatsWithEnchants,equipmentEnchantmentsByItem} from './equipment-enchant-view.js'
 import {formatSetePecados25Correction} from './sete-pecados-correction-20261025.js'
@@ -1672,7 +1673,7 @@ ${bonusSummary}
 🥋 Armadura: *${p.armor_name||'Sem armadura'} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}*
 👢 Botas: *${p.boot_name||'Sem botas'} Lv.${Number(p.boot_level||1)}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
-🛡️ Escudo: *${p.shield_name||'Nenhum'}*${p.shield_id?' Lv.'+p.shield_level+' • 🌟 '+forgeStarsIcon(p.shield_stars||1)+' • -'+pct(p.shield_crit_resist*100)+' p.p. chance CRIT inimigo • -'+pct(p.shield_crit_guard*100)+'% bônus dano CRIT':''}
+🛡️ Escudo: *${p.shield_name||'Nenhum'}*${p.shield_id?' Lv.'+p.shield_level+' • 🌟 '+formatProfileShieldStars(p.shield_stars||1)+' • -'+pct(p.shield_crit_resist*100)+' p.p. chance CRIT inimigo • -'+pct(p.shield_crit_guard*100)+'% bônus dano CRIT':''}
 ⚜️ Insígnia: *${relics.active?.name||'Nenhuma ativa'}*
 ${relics.active?'✨ Efeito: '+relics.active.effect+'\n':''}${petLine}
 💼 Carreira: *${career?.rank?.name||'Ajudante'}*
