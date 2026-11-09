@@ -121,3 +121,8 @@ test('Heroi e classe seguem caminhos distintos no inicio, entrada tardia e turno
  assert.match(round,/p\.heroAttacks=heroHit\.attackIndex/)
  assert.match(round,/await saveGame\(/)
 })
+
+test.todo('Raid: persistir delta de HP do heroi entre rodadas sem erosao de pontos de vida')
+test.todo('Raid: aplicar defesa ativa dos herois e cura de aliados do King')
+test.todo('Raid: premiar XP/maestria de herois uma vez no encerramento, sem alterar recompensas antigas')
+test.todo('Boss Web: alinhar criacao de estado e golpes dos herois, preservando o motor atual de premios')
