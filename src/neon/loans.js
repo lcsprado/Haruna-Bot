@@ -75,10 +75,12 @@ async function applyPayment(client,loan,amount,mode='manual'){
     [[loan.borrower_jid,loan.lender_jid]]
   )
   const borrower=walletRows.rows.find(r=>r.jid===loan.borrower_jid)
-  const available=Math.max(0,Number(borrower?.cash||0))+Math.max(0,Number(borrower?.bank||0))
+  // Cobrança automática não é autorização para criar saldo bancário negativo.
+  // Uma dívida parcialmente paga permanece ativa para cobranças futuras;
+  // a insuficiência de fundos não pode virar dinheiro novo para o credor.
+  const available=Math.max(0,Number(borrower?.cash||0)+Number(borrower?.bank||0))
   const due=totalDue(loan)
-  const forceDebit=mode==='automatic'
-  const paid=Math.min(amount,due,forceDebit?Number.MAX_SAFE_INTEGER:available)
+  const paid=Math.min(amount,due,available)
   if(paid<1) return {paid:0,loan}
 
   const fromCash=Math.min(Math.max(0,Number(borrower.cash||0)),paid)
