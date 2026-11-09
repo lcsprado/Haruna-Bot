@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {selectEffectiveGear} from '../src/neon/equipment-star-logic.js';
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from '../src/neon/anti-crit-shields.js';
 
 test('cinco escudos com progressão exclusiva, sem ATK ou DEF',()=>{
@@ -52,4 +53,29 @@ test('apenas os três escudos iniciais ficam na loja; Égide é drop da Raid 70'
   assert.doesNotMatch(index,/'escudo_madeira','escudo_ferro','escudo_runico','egide_celestial'/);
   const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
   assert.match(db,/"escudo_madeira","escudo_ferro","escudo_runico","caixa_sorte"/);
+});
+
+
+test('seleção efetiva dos escudos usa resistência e guarda reais, sem curva de armas',()=>{
+  const plain=antiCritShieldStats('escudo_runico',2,1);
+  const forged=antiCritShieldStats('escudo_runico',1,3);
+  assert.ok(forged.critResist>plain.critResist);
+  assert.deepEqual(selectEffectiveGear(2,1,3,'escudo_runico'),{level:1,stars:3});
+  assert.deepEqual(selectEffectiveGear(10,1,3,'escudo_runico'),{level:10,stars:1});
+  // Armas e armaduras não mudam a regra histórica de seleção.
+  assert.deepEqual(selectEffectiveGear(2,1,3,'espada_aurora'),{level:2,stars:1});
+  // Até 5 estrelas/nível 10: sempre escolher a peça superior pelos atributos efetivos.
+  for(const shield of ANTI_CRIT_SHIELDS){
+    for(let normal=1;normal<=10;normal++){
+      for(let level=1;level<=10;level++){
+        for(let stars=2;stars<=5;stars++){
+          const best=selectEffectiveGear(normal,level,stars,shield.id);
+          const selected=antiCritShieldStats(shield.id,best.level,best.stars);
+          const a=antiCritShieldStats(shield.id,normal,1);
+          const b=antiCritShieldStats(shield.id,level,stars);
+          assert.ok(selected.critResist>=Math.max(a.critResist,b.critResist),shield.id+' '+normal+'/'+level+'/'+stars);
+        }
+      }
+    }
+  }
 });
