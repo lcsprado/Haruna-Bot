@@ -168,7 +168,17 @@ function renderLiveSiege(ui){
   const availableActions=rulesVersion>=4?TACTICAL_ACTIONS.map(a=>a.id==='repair'&&rulesVersion>=5?
     {...a,effect:a.effect.replace('220 HP','280 HP')}:a):rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
   const remainingRepairs=active?Math.max(0,2-Number(match?.[match?.mySide+'Repairs']||0)):2;
-  const canMove=active&&Boolean(match.mySide)&&!match.myMove;
+  const rotationActive=active&&rulesVersion>=6;
+  const isMyTurn=!rotationActive||match.myTurn===true;
+  const nextTurns=rotationActive&&Array.isArray(match.nextTurns)
+    ?match.nextTurns.filter(x=>Number.isInteger(Number(x))&&Number(x)>=Number(match.round)).map(Number):[];
+  const rotationNotice=rotationActive
+    ?match.myTurn===true
+      ?'🎮 Sua vez nesta rodada do Cerco V6. Apenas 2 combatentes por clã podem agir.'
+      :'⏳ Sua equipe está no rodízio. Você está na reserva nesta rodada. Próximos turnos: '+
+        (nextTurns.length?nextTurns.join(', '):'nenhum restante')+'.'
+    :'';
+  const canMove=active&&Boolean(match.mySide)&&!match.myMove&&isMyTurn;
   const selected=availableActions.find(x=>x.id===ui.siegePreviewAction)||null;
   const selectedActionId=(active?match?.myMove:null)||selected?.id||null;
   const selectedTarget=(active?match?.myTarget:null)||(
@@ -203,18 +213,19 @@ function renderLiveSiege(ui){
   const latest=Array.isArray(match?.history)?match.history.slice(-3):[];
   return '<section class="siege-preview section">'+
     '<div class="siege-head"><div><p class="siege-eyebrow">ALPHA BOT · GUERRA DE CLÃS</p>'+
-    '<h3>🏰 Cerco ao Castelo</h3><p>Dois clãs, quatro jogadores, ações secretas e resultado no WhatsApp.</p></div>'+
+    '<h3>🏰 Cerco ao Castelo</h3><p>'+(rotationActive?'Dois clãs, até seis jogadores por lado, com dois turnos ativos por equipe a cada rodada.':'Dois clãs, quatro jogadores, ações secretas e resultado no WhatsApp.')+'</p></div>'+
     '<span class="siege-status">'+label+'</span></div>'+
     '<div class="siege-stage">'+fortress(blue,'blue')+
     '<div class="siege-versus"><strong>VS</strong><small>⏰ '+NEXT_SIEGE_LABEL+'</small><small>6 rodadas</small><small>5 min cada</small></div>'+
     fortress(red,'red')+'</div>'+
     '<div class="siege-data-note">'+ESCAPE(notice)+
     (active?' • Rodada '+Number(match.round)+'/6'+countdown+' • '+Number(match.submitted)+'/4 ações enviadas':'')+'</div>'+
+    (rotationActive?'<div class="siege-data-note" role="status">'+ESCAPE(rotationNotice)+'</div>':'')+
     '<div class="hero-actions">'+controls+'<button class="btn" data-siege-refresh>🔄 Atualizar</button></div>'+
     (ui.siegeError?'<div class="notice warn section">'+ESCAPE(ui.siegeError)+'</div>':'')+
     (rulesVersion>=4?objectivesGuide(active?match:{rulesVersion:5}):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
     '<div class="siege-planning"><div class="siege-planning-head"><h4>'+(
-      match?.myMove?'✅ Ação confirmada':'Escolha sua estratégia')+'</h4>'+
+      match?.myMove?'✅ Ação confirmada':rotationActive&&!isMyTurn?'⏳ Aguardando seu turno':'Escolha sua estratégia')+'</h4>'+
       '<span class="siege-status">'+(active?'RODADA '+Number(match.round)+'/6':'AGUARDANDO GUERRA')+'</span></div>'+
     '<div class="siege-action-grid">'+availableActions.map(item=>'<button type="button" class="siege-action '+
       (item.id===selectedActionId?'selected':'')+'" data-siege-preview="'+item.id+'" '+
@@ -236,6 +247,7 @@ function renderLiveSiege(ui){
       (canConfirm?'<button class="btn good" data-siege-command="move">🔒 Confirmar ação secreta</button>':
         '<small>'+(match?.myMove?'✅ Ação registrada nesta rodada; não pode ser alterada.':
           canMove?(rulesVersion>=4?'Selecione uma das cinco ações e uma frente acima para habilitar a confirmação.':'Selecione uma das quatro estratégias acima para habilitar a confirmação.'):
+          rotationActive&&!isMyTurn?'Aguarde o rodízio da sua equipe. Seus próximos turnos aparecem acima.':
           active?'Você não pode enviar ação nesta rodada.':
           'Prévia sem registro. A confirmação só estará disponível durante o Cerco de sábado às 21h30.')+'</small>')+'</div></div>'+
     renderFortressPanel(data.fortress)+
