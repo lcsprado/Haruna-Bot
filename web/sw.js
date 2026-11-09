@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261103-garage-photo-fit-v6-siege-tactics-v2-fortress-v1-fronts-v4-repair-v5-guidance-garage-alpha2-v1-siege-v5-war-selection-20261104-duel-portrait-v1-auth-isolation-v1-siege-2130-weekly-saturday-v1-pet-exclusives-20261105-v1-adoption-disabled-v1-raid-tabs-top-v1-20261108-unified-v5';
+const CACHE='alpha-rpg-pwa-20261103-garage-photo-fit-v6-siege-tactics-v2-fortress-v1-fronts-v4-repair-v5-guidance-garage-alpha2-v1-siege-v5-war-selection-20261104-duel-portrait-v1-auth-isolation-v1-siege-2130-weekly-saturday-v1-pet-exclusives-20261105-v1-adoption-disabled-v1-raid-tabs-top-v1-20261108-unified-v5-auth-explicit-restore-20261109';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
