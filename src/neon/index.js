@@ -1613,8 +1613,8 @@ const recoveredBossDamagePct=fixedDamagePct(relics.active?.boss,Number(combatPet
 const baseCrit=.10+Number(p.equipment_crit||0)
 const raidClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSheet?0:awakeningStage,'raid')
 const bossClassCrit=classCritBonus(p.class_id,p.class_applied&&!heroSheet,heroSheet?0:awakeningStage,'boss')
-const raidCritPct=Math.min(.50,Math.min(.45,baseCrit+raidClassCrit)+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
-const bossCritPct=Math.min(.45,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
+const raidCritPct=Math.max(0,baseCrit+raidClassCrit+Number(relics.active?.raidCrit||0)+petCrit+Number(synergy.crit||0))*100
+const bossCritPct=Math.max(0,baseCrit+bossClassCrit+Number(relics.active?.bossCrit||0)+petCrit+Number(synergy.crit||0))*100
 const pct=n=>Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:1})
 const primaryPetReady=Boolean(pet&&Number(pet.hp)>0&&Number(pet.energy)>0)
 const petStatus=pet&&!primaryPetReady
@@ -12242,7 +12242,7 @@ const statusPetCrit=statusPet&&Number(statusPet.hp)>0&&Number(statusPet.energy)>
 const pvpCritPct=pvpCritChance({equipmentCrit:p.equipment_crit,classId:p.class_id,
  classApplied:p.class_applied,awakeningStage:Number(statusContext.awakening_stage||0),
  heroActive:Boolean(heroSheetStatus),collabCrit:statusSynergy.collabCrit,petCrit:statusPetCrit})*100
-const bossCritPct=Math.min(50,gearCritPct+Number(statusPetBonus.critPct||0))
+const bossCritPct=Math.max(0,10+gearCritPct+Number(statusPetBonus.critPct||0))
 await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
 ⭐ Nível: ${p.level}
@@ -12250,7 +12250,7 @@ await reply(
 ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):`🧙 Classe: ${p.class_info?.name||'Sem classe'}
 ⚜️ Passiva: ${p.class_passive?.name||'Ainda não selecionada'}${p.class_passive?' — '+p.class_passive.description:''}
 ❤️ HP: ${p.effective_hp}/${p.effective_max_hp} (${p.base_max_hp} base + ${p.equipment_hp} equipamento)\n⚔️ ATK: ${p.effective_atk} (${p.base_atk} base + ${p.equipment_atk||0} equipamentos)${Number(p.attack_pct_bonus||0)>0?'\n🔥 Selo de Potência Alpha: +5% ATK':''}\n🛡️ DEF: ${p.effective_def} (${p.base_def} base + ${p.equipment_def||0} equipamentos)\n👢 VEL: ${p.effective_spd||p.spd} (${p.spd} base + ${p.equipment_spd||0} equipamento)`}
-🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (base + equipamento + classe/herói ativo + sinergia + pet apto; teto 40%)
+🎯 CRIT PvP: ${pvpCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (base + equipamento + classe/herói ativo + sinergia + pet apto; sem teto artificial)
 👹 CRIT Boss/Raid: ${bossCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% (${gearCritPct.toLocaleString('pt-BR',{maximumFractionDigits:1})}% equipamento + ${Number(statusPetBonus.critPct||0).toLocaleString('pt-BR',{maximumFractionDigits:1})}% pet)
 🗡️ Arma: ${p.weapon_name} *Lv.${p.weapon_level||1}*
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*

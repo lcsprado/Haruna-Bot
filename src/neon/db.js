@@ -2830,7 +2830,7 @@ equipment_spd:Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0
 effective_spd:cls.spd+Number(b.spd||0)+Number(w.spd||0)+Number(a.spd||0)+Number(h.spd||0)+ench.spd,
 equipment_crit:Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit,
 base_crit:0.10,
-effective_crit:Math.min(.40,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,classActive)),
+effective_crit:Math.max(0,.10+Number(w.crit||0)+Number(a.crit||0)+Number(b.crit||0)+Number(h.crit||0)+ench.crit+classCritBonus(p.class_id,classActive)),
 effective_max_hp:effectiveMaxHp,
 effective_hp:effectiveHp,
 effective_atk:Math.round((cls.atk+Number(w.atk||0)+Number(a.atk||0)+Number(b.atk||0)+Number(h.atk||0)+ench.atk)*(1+ench.attackPct)),
@@ -3022,8 +3022,8 @@ const applyPvpVital=(fighter,synergy)=>{
 applyPvpVital(A,aSynergy)
 applyPvpVital(B,bSynergy)
 const snapshot=fighter=>{
-const critNoPet=Math.min(.40,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
-const critWithPet=Math.min(.40,critNoPet+Number(fighter.petBonus?.crit||0))
+const critNoPet=Math.max(0,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
+const critWithPet=Math.max(0,critNoPet+Number(fighter.petBonus?.crit||0))
 return {
 jid:fighter.jid,name:fighter.name,heroId:fighter.heroId,heroMasteryStage:fighter.heroId?fighter.heroMasteryStage:null,heroGear:fighter.heroId?fighter.heroGear:null,hp:fighter.hp,maxHp:fighter.maxHp,
 atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
@@ -3050,8 +3050,8 @@ const hit=(from,to)=>{
 from.attackIndex++
 const variance=0.85+Math.random()*0.30
 const critRoll=Math.random()
-const critWithoutPet=effectiveShieldedCritChance(Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0)),to.shieldCritResist)
-const crit=critRoll<effectiveShieldedCritChance(Math.min(.40,Number(from.crit||.10)+Number(from.collabCrit||0)+Number(from.petBonus?.crit||0)),to.shieldCritResist)
+const critWithoutPet=effectiveShieldedCritChance(Math.max(0,Number(from.crit||.10)+Number(from.collabCrit||0)),to.shieldCritResist)
+const crit=critRoll<effectiveShieldedCritChance(Math.max(0,Number(from.crit||.10)+Number(from.collabCrit||0)+Number(from.petBonus?.crit||0)),to.shieldCritResist)
 const petCrit=crit&&critRoll>=critWithoutPet
 const critMultiplier=shieldedCriticalMultiplier(1.6,to.shieldCritGuard)
 const dodged=Number(to.petBonus?.dodge||0)>0&&Math.random()<Number(to.petBonus.dodge)

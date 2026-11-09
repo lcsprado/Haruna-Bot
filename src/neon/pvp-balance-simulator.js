@@ -24,7 +24,7 @@ export function buildFairFighter(id,{gear=false,awakening=5,mastery=5,level=100}
   const g=gear?PVP_EQUAL_GEAR:{hp:0,atk:0,def:0,spd:0,crit:0}
   return {id,hero:Boolean(hero),awakening:hero?0:awakening,mastery:hero?mastery:0,
     maxHp:stats.maxHp+g.hp,hp:stats.maxHp+g.hp,atk:stats.atk+g.atk,def:stats.def+g.def,
-    spd:stats.spd+g.spd,crit:Math.min(.40,.10+g.crit+(hero?0:classPvpCritBonus(id,true,awakening))),
+    spd:stats.spd+g.spd,crit:Math.max(0,.10+g.crit+(hero?0:classPvpCritBonus(id,true,awakening))),
     hits:0,lastProcAttack:0,heroState:{},awakeningState:{},metrics:{damage:0,received:0,blocked:0,
       healed:0,criticals:0,dodges:0,shield:0,abilities:0}}
 }

@@ -6,6 +6,6 @@ export function pvpCritChance({equipmentCrit=0,classId='warrior',classApplied=fa
  awakeningStage=0,heroActive=false,collabCrit=0,petCrit=0}={}){
  const classBonus=classPvpCritBonus(classId,Boolean(classApplied)&&!heroActive,
   heroActive?0:awakeningStage)
- return Math.max(0,Math.min(.40,.10+valid(equipmentCrit)+classBonus+
-  valid(collabCrit)+valid(petCrit)))
+ return Math.max(0,.10+valid(equipmentCrit)+classBonus+
+  valid(collabCrit)+valid(petCrit))
 }

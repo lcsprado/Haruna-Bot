@@ -5,14 +5,14 @@ import {pvpCritChance} from '../src/neon/pvp-crit.js'
 import {heroPvpAttack,heroPvpDefense} from '../src/neon/playable-heroes-core.js'
 import {formatPvpBattleReport} from '../src/neon/pvp-report.js'
 
-test('critico de heroi ignora passiva de classe e respeita teto PvP',()=>{
+test('critico de heroi ignora passiva de classe e soma bônus sem teto artificial',()=>{
  const hero=pvpCritChance({equipmentCrit:.10,classId:'assassin',classApplied:true,
   awakeningStage:5,heroActive:true,collabCrit:.02,petCrit:.04})
  assert.ok(Math.abs(hero-.26)<1e-9)
  const classic=pvpCritChance({equipmentCrit:.10,classId:'assassin',classApplied:true,
   awakeningStage:5,collabCrit:.02,petCrit:.04})
  assert.ok(classic>hero)
- assert.equal(pvpCritChance({equipmentCrit:.5,petCrit:.1}),.40)
+ assert.ok(Math.abs(pvpCritChance({equipmentCrit:.5,petCrit:.1})-.7)<1e-9)
  const app=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
  const db=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
  assert.match(app,/const pvpCritWithPet=pvpCritChance\(/)
