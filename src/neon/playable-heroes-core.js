@@ -294,7 +294,13 @@ export function persistHeroHpDelta({previousPersistentHp=0,previousCombatHp=0,
   let rest=exact-integral;
   if(after<=0){hp=0;rest=0;}
   else if(after>=cmax){hp=pmax;rest=0;}
-  else {hp=Math.max(1,hp);if(hp>=pmax)rest=0;}
+  else {
+    hp=Math.max(1,hp);
+    // Negative fractional damage must survive even when persistent HP is
+    // still capped at max; otherwise repeated 1-point hits become free.
+    // Discard only positive overflow caused by healing at full HP.
+    if(hp>=pmax&&exact>0)rest=0;
+  }
   return {hp,remainder:rest};
 }
 
