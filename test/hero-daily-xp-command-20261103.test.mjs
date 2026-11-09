@@ -100,11 +100,11 @@ test('!heroi xp mostra sem limite durante a semana e os tetos totais permanecem'
   {hero_species:hero.id,kind:'maestria',gained:500}
  ]
  const output=formatHeroDailyXpReport({heroes:[hero],awards,playerLevel:400,nowMs:on})
- assert.match(output,/Nível hoje: \\*700 XP\\* • sem limite diário/)
- assert.match(output,/Maestria hoje: \\*500 XP\\* • sem limite diário/)
- assert.match(output,/Limites diários normais voltam em 16\\/11/)
+ assert.match(output,/Nível hoje: \*700 XP\* • sem limite diário/)
+ assert.match(output,/Maestria hoje: \*500 XP\* • sem limite diário/)
+ assert.match(output,/Limites diários normais voltam em 16\/11/)
  assert.doesNotMatch(output,/Sem XP adicional para farmar hoje/)
  const after=formatHeroDailyXpReport({heroes:[hero],awards,playerLevel:400,nowMs:date('2026-11-16T00:00:00-03:00')})
- assert.match(after,/Maestria hoje: \\*500\\/400 XP\\*/)
- assert.match(after,/Nível hoje: \\*700\\/550 XP\\*/)
+ assert.match(after,/Maestria hoje: \*500\/400 XP\*/)
+ assert.match(after,/Nível hoje: \*700\/550 XP\*/)
 })
