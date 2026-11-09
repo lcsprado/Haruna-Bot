@@ -154,7 +154,9 @@ export function analyzeSiegeEligibility(teams,authorizedJids=[],{expanded=false}
   const overview=(Array.isArray(teams)?teams:[]).map(team=>({
     id:String(team.id),name:String(team.name||'Clã'),
     members:Number(team.members)||0,linked:Number(team.linked)||0,
-    betaAuthorized:(Array.isArray(team.jids)?team.jids:[]).filter(jid=>allowed.has(String(jid))).length
+    // V6 usa vínculo Web/grupo real, sem lista beta restrita aos 4 originais.
+    // V5 continua exigindo a autorização beta para preservar guerras antigas.
+    betaAuthorized:expanded?Number(team.linked||0):(Array.isArray(team.jids)?team.jids:[]).filter(jid=>allowed.has(String(jid))).length
   }));
   const ready=overview.length===2 && overview.every(t=>
     t.members>=2 && t.members<=(expanded?6:2) && t.linked===t.members && t.betaAuthorized===t.members
@@ -169,6 +171,9 @@ export async function clanSiegePreflight(){
 }
 
 async function dailySiegeTeams(conn){
+  // V6: so inclui jogadores com Web valido e vinculado ao grupo real.
+  // Nunca usa a whitelist beta de quatro jogadores legados.
+  if(V6_ON())return eligible(conn,siegeGroup());
   // A abertura nao exige navegador aberto: ausencia na partida significa
   // que o jogador nao executa ação naquela rodada.
   const result=await conn.query([
@@ -200,7 +205,7 @@ export async function startDailyClanSiege(nowMs=now()){
     const expanded=V6_ON();
     if(teams.length!==2||teams.some(t=>t.members<SIEGE_V6_MIN_PLAYERS||
       t.members>(expanded?SIEGE_V6_MAX_PLAYERS:2)||t.jids.length!==t.members||
-      t.jids.some(jid=>!approved.has(String(jid)))))
+      (expanded?t.linked!==t.members:t.jids.some(jid=>!approved.has(String(jid))))))
       return {started:false,reason:'roster_not_ready'};
     const created=now();
     // Snapshot imutável: obras concluídas até o início valem nesta guerra;
