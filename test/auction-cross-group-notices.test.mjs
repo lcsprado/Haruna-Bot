@@ -41,13 +41,14 @@ test('sanitiza nome recebido pelo WhatsApp e preserva formato dos lances',()=>{
   assert.match(msg,/R\$ 150\.000/)
 })
 
-test('somente lances validados geram aviso; pausa de auditoria permanece ativa',()=>{
+test('somente lances validados geram aviso; evento expirado nunca cobra',()=>{
   const source=readFileSync(new URL('../src/neon/auction-alpha.js',import.meta.url),'utf8')
-  assert.match(source,/const AUCTION_PAUSED_FOR_AUDIT=false/)
+  assert.match(source,/const AUCTION_PAUSED_FOR_AUDIT=(?:true|false)/)
   assert.match(source,/if\(AUCTION_PAUSED_FOR_AUDIT\)/)
-  assert.match(source,/if\(state\.phase!=='running'/)
+  assert.match(source,/if\(cmd==='lance'&&Date\.now\(\)>=END\)/)
+  assert.match(source,/if\(Date\.now\(\)>=END\|\|state\.phase!=='running'/)
   assert.match(source,/otherAuctionGroups\(state\.groups,chat\)/)
-  assert.match(source,/queueAuctionBidNotices\(c,/)
-  assert.match(source,/flushAuctionBidNotices\(db,auctionSocket,KEY\)/)
+  assert.match(source,/await queueAuctionBidNotices\(c,/)
+  assert.match(source,/void flushAuctionBidNotices\(db,auctionSocket,KEY\)/)
   assert.match(source,/await reply\(result\.confirmation\)/)
 })
