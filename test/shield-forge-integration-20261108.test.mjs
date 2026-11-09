@@ -39,7 +39,7 @@ test('os escudos entram na lista e a forja debita uma cópia e dinheiro atomicam
   assert.match(listing,/ANTI_CRIT_SHIELDS\.map\(g=>g\.id\)/)
   assert.match(listing,/shieldForge\?stars<5/)
   assert.match(listing,/basicCopies>=2/)
-  assert.match(listing,/basicCopies>=1/)
+  assert.match(listing,/Number\(r\.forged_level\)===10&&shieldDonorCopies>=1/)
   assert.match(listing,/Number\(r\.cash\)>=fee/)
   assert.match(forge,/return transaction\(async c=>/)
   assert.match(forge,/pg_advisory_xact_lock/)
