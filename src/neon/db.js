@@ -2594,7 +2594,7 @@ const armor=p.armor_id?equipmentStatsAtLevel(p.armor_id,levels[p.armor_id]||1,st
 const boots=p.boot_id?equipmentStatsAtLevel(p.boot_id,levels[p.boot_id]||1):null
 const helmet=p.helmet_id?equipmentStatsAtLevel(p.helmet_id,levels[p.helmet_id]||1):null
 const shieldBase=ANTI_CRIT_SHIELDS.find(item=>item.id===p.shield_id)
-const shield=shieldBase?{...shieldBase,...antiCritShieldStats(p.shield_id,levels[p.shield_id]||1,stars[p.shield_id]||1)}:null
+const shield=shieldBase?{...shieldBase,level:Number(levels[p.shield_id]||1),stars:Number(stars[p.shield_id]||1),...antiCritShieldStats(p.shield_id,levels[p.shield_id]||1,stars[p.shield_id]||1)}:null
 const enchantedIds=[p.weapon_id,p.armor_id,p.boot_id,p.helmet_id].filter(Boolean)
 const enchantRows=(await db.query(`
 SELECT stone_id,quantity FROM equipment_enchantments WHERE jid=$1 AND item_id=ANY($2::text[])
