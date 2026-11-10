@@ -44,8 +44,8 @@ test('copias vinculadas e equipadas extras nunca sao usadas como doadoras',()=>{
 test('escudo usa doadoras comuns Lv1 e preserva custos de estrelas existentes',()=>{
  const p=plan({itemId:'escudo_runico',category:'shield',rarity:'rare',upgradeBase:7000,
    quantity:5,tiers:[{level:5,quantity:2}],shieldFees:{1:22500,2:45000,3:67500,4:90000}})
- assert.equal(p.donorLevels.length,2)
- assert.equal(p.buyCopies,2)
+ assert.equal(p.donorLevels.length,3)
+ assert.equal(p.buyCopies,1)
  assert.equal(p.upgrades,180*7000)
  assert.equal(p.forgeFees,225000)
 })
