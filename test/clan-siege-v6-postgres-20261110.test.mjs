@@ -28,6 +28,22 @@ async function schema(){
  );
  CREATE TABLE IF NOT EXISTS equipment_upgrades(jid TEXT,item_id TEXT,level INT);
  CREATE TABLE IF NOT EXISTS equipment_star_forges(jid TEXT,item_id TEXT,level INT,stars INT);
+ CREATE TABLE IF NOT EXISTS items(
+   id TEXT PRIMARY KEY,name TEXT,description TEXT,category TEXT,
+   price BIGINT NOT NULL DEFAULT 0,rarity TEXT,sellable BOOLEAN NOT NULL DEFAULT false,
+   stackable BOOLEAN NOT NULL DEFAULT true
+ );
+ CREATE TABLE IF NOT EXISTS inventories(
+   jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+   item_id TEXT NOT NULL REFERENCES items(id),quantity INT NOT NULL DEFAULT 0,
+   PRIMARY KEY(jid,item_id)
+ );
+ CREATE TABLE IF NOT EXISTS bound_inventory_items(
+   jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,
+   item_id TEXT NOT NULL REFERENCES items(id),
+   source_key TEXT NOT NULL,quantity INT NOT NULL DEFAULT 1,
+   PRIMARY KEY(jid,item_id,source_key)
+ );
 
  `)
  await ensureClanSiegeSchema()
@@ -137,7 +153,8 @@ test('AB-07: PostgreSQL real credita XP por 2 turnos e não duplica pagamento em
   for(let round=1;round<=6;round++){
    const active=[...siegeV6ActivePlayers(teams.blue,round),...siegeV6ActivePlayers(teams.red,round)]
    const sent=await Promise.all(active.map(jid=>clanSiegeMove(
-    {jid,chatJid:GROUP},jid.startsWith('blue')?'supply':'spy',jid.startsWith('blue')?'depot':'castle'
+    {jid,chatJid:GROUP},jid.startsWith('blue')?(round===6?'attack':'supply'):'spy',
+    jid.startsWith('blue')?(round===6?'castle':'depot'):'castle'
    )))
    assert.equal(sent.filter(x=>x.registered).length,4)
    tick+=300001
@@ -146,6 +163,16 @@ test('AB-07: PostgreSQL real credita XP por 2 turnos e não duplica pagamento em
   const match=(await db.query('SELECT id,status,round,history,winner_clan_id,blue_clan_id,red_clan_id FROM alpha_siege_matches')).rows[0]
   assert.equal(match.status,'completed')
   assert.equal(match.history.length,6)
+  assert.notEqual(match.winner_clan_id,null,'última rodada cria vencedor para testar escudo exclusivo')
+  const shieldClaims=(await db.query('SELECT jid,match_id,item_id FROM alpha_siege_shield_rewards_20261114 ORDER BY jid')).rows
+  assert.equal(shieldClaims.length,6,'cada um dos seis campeões V6 recebe um Bastião')
+  assert.ok(shieldClaims.every(x=>x.item_id==='bastiao_eclipse'&&String(x.match_id)===String(match.id)))
+  const shieldItems=(await db.query("SELECT jid,quantity FROM inventories WHERE item_id='bastiao_eclipse'")).rows
+  const shieldBound=(await db.query("SELECT jid,source_key,quantity FROM bound_inventory_items WHERE item_id='bastiao_eclipse'")).rows
+  assert.equal(shieldItems.length,6)
+  assert.ok(shieldItems.every(x=>Number(x.quantity)===1))
+  assert.equal(shieldBound.length,6)
+  assert.ok(shieldBound.every(x=>x.source_key.includes('v6:20261114')))
   const actions=(await db.query('SELECT jid,COUNT(DISTINCT round)::int AS n FROM alpha_siege_moves GROUP BY jid')).rows
   assert.equal(actions.length,12)
   assert.ok(actions.every(x=>x.n===2),'cada um dos 12 jogadores atua duas vezes')
@@ -169,6 +196,8 @@ test('AB-07: PostgreSQL real credita XP por 2 turnos e não duplica pagamento em
   await Promise.all([settleClanSiege(GROUP),settleClanSiege(GROUP)])
   const post=(await db.query('SELECT COUNT(*)::int AS n FROM alpha_siege_weekly_xp')).rows[0]
   assert.equal(Number(post.n),12,'encerramento repetido não paga XP novamente')
+  assert.equal(Number((await db.query('SELECT COUNT(*)::int AS n FROM alpha_siege_shield_rewards_20261114')).rows[0].n),6,
+    'encerramento concorrente não entrega um segundo Bastião')
   const outboxAfter=Number((await db.query('SELECT COUNT(*)::int AS n FROM alpha_web_action_outbox')).rows[0].n)
   assert.equal(outboxBefore,outboxAfter,'resultado não é publicado duas vezes')
   assert.equal(outboxAfter,7,'somente aviso inicial + seis rodadas')
