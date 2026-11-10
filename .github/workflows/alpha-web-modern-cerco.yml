@@ -5,6 +5,8 @@ on:
       - 'web/**'
       - 'test/web-modern-siege-guard-20261102.test.mjs'
       - 'test/web-siege-preflight-group-binding-20261107.test.mjs'
+      - 'test/web-siege-v6-rotation-ui-20261109.test.mjs'
+      - 'test/web-siege-v6-roster-slots-20261110.test.mjs'
       - '.github/workflows/alpha-web-modern-cerco.yml'
   push:
     branches:
@@ -30,6 +32,8 @@ jobs:
         run: |
           node --test test/web-modern-siege-guard-20261102.test.mjs
           node --test test/web-siege-preflight-group-binding-20261107.test.mjs
+          node --test test/web-siege-v6-rotation-ui-20261109.test.mjs
+          node --test test/web-siege-v6-roster-slots-20261110.test.mjs
       - name: Validate Sunday exceptional 19h siege schedule
         run: |
           node --check src/neon/clan-siege.js
