@@ -45,8 +45,8 @@ test('AB-07: V5 mantém quatro ações, dois membros por clã e nenhuma rotaçã
  assert.doesNotMatch(html,/vagas ativas usadas/)
 })
 test('AB-07: PWA instalada atualiza cache sem alterar protocolo da API V5',()=>{
- const sw=readFileSync(new URL('../web/sw.js',import.meta.url'),'utf8')
- const app=readFileSync(new URL('../web/app.js',import.meta.url'),'utf8')
+ const sw=readFileSync(new URL('../web/sw.js',import.meta.url),'utf8')
+ const app=readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
  assert.match(sw,/roster-slots-20261110/)
  assert.match(app,/WEB_BUILD_ID='alpha-siege-v5-20261108'/)
 })
