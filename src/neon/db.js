@@ -2565,7 +2565,11 @@ export async function completeShopForge5(jid,itemId,expectedQuoteKey){
   }
   await c.query('INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,$3,$4,$5)',
    [jid,'forge',plan.total,'equipment_shop_forge5',
-    itemId+' 5star Lv10 | compra '+plan.buyCopies+' | aprimoramento '+plan.upgrades+' | forja '+plan.forgeFees+' | servico '+plan.serviceFee])
+    itemId+' 5star Lv10 | estoque_inicial '+plan.quantityBefore+' | principal_Lv '+plan.principalLevel+
+    ' | doadoras_Lv '+(plan.donorLevels.join(',')||'nenhuma')+
+    ' | compra '+plan.buyCopies+' | aprimoramento '+plan.upgrades+
+    ' (principal '+plan.principalUpgrade+',doadoras '+plan.donorUpgrade+',fusoes '+plan.forgedResetsUpgrade+')'+
+    ' | forja '+plan.forgeFees+' | servico '+plan.serviceFee])
   return {...plan,remainingCopies:Number(remaining.quantity),cash:Number(charged.rows[0].cash),bank:Number(charged.rows[0].bank)}
  })
 }

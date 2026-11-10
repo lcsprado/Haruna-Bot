@@ -41,14 +41,52 @@ test('copias vinculadas e equipadas extras nunca sao usadas como doadoras',()=>{
  assert.equal(p.buyCopies,3)
  assert.equal(p.donorLevels.length,1)
 })
-test('escudo usa doadoras comuns Lv1 e preserva custos de estrelas existentes',()=>{
+test('escudo considera copias de qualquer nivel e cobra a subida de cada uma ate Lv10',()=>{
  const p=plan({itemId:'escudo_runico',category:'shield',rarity:'rare',upgradeBase:7000,
    quantity:5,tiers:[{level:5,quantity:2}],shieldFees:{1:22500,2:45000,3:67500,4:90000}})
- assert.equal(p.donorLevels.length,3)
- assert.equal(p.buyCopies,1)
- assert.equal(p.upgrades,180*7000)
+ assert.deepEqual(p.donorLevels,[5,1,1,1])
+ assert.equal(p.buyCopies,0)
+ assert.equal(p.principalUpgrade,35*7000)
+ assert.equal(p.donorUpgrade,(35+3*45)*7000)
+ assert.equal(p.forgedResetsUpgrade,4*45*7000)
+ assert.equal(p.upgrades,385*7000)
+ assert.deepEqual(p.consumedTiers,[{level:5,count:2}])
  assert.equal(p.forgeFees,225000)
 })
+test('quatro escudos Lv10 e dois Lv1: aproveita todos os melhores, compra zero',()=>{
+ const p=plan({itemId:'escudo_runico',category:'shield',rarity:'rare',upgradeBase:7000,
+  quantity:6,tiers:[{level:10,quantity:4}],shieldFees:{1:22500,2:45000,3:67500,4:90000}})
+ assert.equal(p.principalLevel,10)
+ assert.deepEqual(p.donorLevels,[10,10,10,1])
+ assert.equal(p.buyCopies,0)
+ assert.equal(p.principalUpgrade,0)
+ assert.equal(p.donorUpgrade,45*7000)
+ assert.equal(p.forgedResetsUpgrade,180*7000)
+ assert.equal(p.upgrades,225*7000)
+ assert.deepEqual(p.consumedTiers,[{level:10,count:4}])
+})
+test('escudo ja ★4 Lv10 com doadora Lv10: cobra so reaprimorar a ★5',()=>{
+ const p=plan({itemId:'escudo_runico',category:'shield',rarity:'rare',upgradeBase:7000,
+  quantity:2,tiers:[{level:10,quantity:1}],forged:{stars:4,level:10},
+  shieldFees:{1:22500,2:45000,3:67500,4:90000}})
+ assert.equal(p.buyCopies,0)
+ assert.deepEqual(p.donorLevels,[10])
+ assert.equal(p.principalUpgrade,0)
+ assert.equal(p.donorUpgrade,0)
+ assert.equal(p.forgedResetsUpgrade,45*7000)
+ assert.equal(p.forgeFees,90000)
+})
+test('peça ★5 Lv8 sobe apenas niveis restantes, sem consumir outras copias',()=>{
+ const p=plan({itemId:'escudo_runico',category:'shield',rarity:'rare',upgradeBase:7000,
+  quantity:3,tiers:[{level:10,quantity:2}],forged:{stars:5,level:8}})
+ assert.equal(p.buyCopies,0)
+ assert.equal(p.donorsRequired,0)
+ assert.equal(p.principalUpgrade,17*7000)
+ assert.equal(p.donorUpgrade,0)
+ assert.equal(p.forgedResetsUpgrade,0)
+ assert.deepEqual(p.consumedTiers,[])
+})
+
 test('sem saldo so informa o valor faltante, e concluido nao cobra novamente',()=>{
  const a=plan({cash:100,bank:200})
  assert.equal(a.canExecute,false)

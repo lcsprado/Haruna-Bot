@@ -6998,9 +6998,13 @@ if(flow.stage==='shopforge5_select'){
   +'🌟 Situacao atual: *'+p.stars+' estrela(s)*'+(p.forgedLevel?' • Lv.'+p.forgedLevel:'')+'\n'
   +'🏆 Destino: *★★★★★ Lv.10*\n\n'
   +'📦 Copias doadoras necessarias: *'+p.donorsRequired+'*\n'
-  +'✅ Copias doadoras aproveitadas: *'+p.donorLevels.length+'*\n'
+  +'⭐ Principal: *Lv.'+p.principalLevel+' → Lv.10*\n'
+  +'✅ Doadoras existentes: *'+(p.donorLevels.length?p.donorLevels.map(level=>'Lv.'+level).join(', '):'nenhuma')+'*\n'
   +'🛒 Copias a comprar: *'+p.buyCopies+'*\n'
-  +'⬆️ Dinheiro em upgrades pendentes: *'+priceText(p.upgrades)+'*\n\n'
+  +'⬆️ Principal ate Lv.10: *'+priceText(p.principalUpgrade)+'*\n'
+  +'⬆️ Doadoras ate Lv.10: *'+priceText(p.donorUpgrade)+'*\n'
+  +'🌟 Reaprimorar apos '+p.donorsRequired+' fusao(oes): *'+priceText(p.forgedResetsUpgrade)+'*\n'
+  +'⬆️ *TOTAL DE UPGRADES: '+priceText(p.upgrades)+'*\n\n'
   +'💰 Compra de copias: *'+priceText(p.purchases)+'*\n'
   +'🛡️ Forjas de escudo: *'+priceText(p.forgeFees)+'*\n'
   +'⚙️ Taxa de automacao: *'+priceText(p.serviceFee)+'*\n'
@@ -7012,7 +7016,7 @@ if(flow.stage==='shopforge5_select'){
   return true
  }
  setQuickFlow(chat,sender,'shopforge5_confirm',{itemId,quoteKey:p.quoteKey},90000)
- await reply(summary+'\n⚠️ Esta operacao compra as copias faltantes, aprimora o necessario e conclui as 5 estrelas em uma transacao. Nao existe forja parcial.\n\n1️⃣ Confirmar e pagar\n2️⃣ Cancelar')
+ await reply(summary+'\n📌 Todas as doadoras chegam ao Lv.10 antes da fusao. A cada nova estrela, a principal reinicia no Lv.1 e e reaprimorada ate o Lv.10.\n⚠️ Compra, aprimoramentos e forja acontecem juntos: se falhar, nada e cobrado.\n\n1️⃣ Confirmar e pagar\n2️⃣ Cancelar')
  return true
 }
 if(flow.stage==='shopforge5_confirm'){
@@ -7025,6 +7029,8 @@ if(flow.stage==='shopforge5_confirm'){
   await reply('🌟 *FORJA5 CONCLUIDA!*\n\n'
    +'⚔️ *'+r.name+'* — *★★★★★ Lv.10*\n'
    +'🛒 Copias compradas: '+r.buyCopies+'\n'
+   +'⭐ Principal: Lv.'+r.principalLevel+' → Lv.10\n'
+   +'✅ Doadoras aproveitadas: '+r.donorLevels.map(n=>'Lv.'+n).join(', ')+'\n'
    +'⬆️ Upgrades: R$ '+fmt(r.upgrades)+'\n'
    +'⚒️ Forjas de escudo: R$ '+fmt(r.forgeFees)+'\n'
    +'💰 Taxa automatica: R$ '+fmt(r.serviceFee)+'\n'
