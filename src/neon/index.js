@@ -5072,6 +5072,7 @@ const commandPages={
 *!itens* — abre o menu de itens
 *!loja* — loja completa (itens, carros, bike e motos)
 *!comprar item quantidade* — compra da loja
+*!atalhos* — exemplos de comandos rápidos com explicações\n*!atalhos loja* — lista dos números fixos para !comprar
 *!inventario* — abre seu inventário
 *!vender* — abre a venda por categoria\n*!venderequipamentos* — armas/armaduras não equipadas\n*!venderpocoes* — poções e cura\n*!venderraid* — materiais e chaves de Raid
 *!venderrepetidos* — vende equipamentos repetidos e mantém 1 de cada
@@ -10704,7 +10705,7 @@ if(!allowed) continue
 }
 const sleep=await resolvePlayerSleep(sender)
 if(sleep?.woke) await reply(`☀️ *VOCÊ ACORDOU!*\n🏠 Descanso: *${sleep.place}*\n✨ XP recebido: *+${sleep.xp_reward}*`)
-const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','ping','meupet','statuspet','credito','dividas','emprestimos','pagar','pagaremprestimo','aceitaremprestimo','recusaremprestimo'])
+const sleepAllowed=new Set(['dormir','sono','acordar','saldo','balance','bal','perfil','profile','menu','comandos','commands','atalhos','atalho','ping','meupet','statuspet','credito','dividas','emprestimos','pagar','pagaremprestimo','aceitaremprestimo','recusaremprestimo'])
 // Administração não é ação de RPG: Owner pode comandar eventos enquanto dorme,
 // exclusivamente no privado do Alpha; grupos e jogadores seguem bloqueados.
 const ownerPrivateAdmin= isOwner && !isGroup &&
@@ -12048,6 +12049,56 @@ const item=resolveOwnedItem(owned,args.join(' '),['consumable'])
 if(!item||!XP_SPECIAL_ITEM_IDS.has(item.item_id)) return await reply('❌ Item de XP não localizado. Use *!buffxp* para conferir.')
 const result=await useXpConsumable(sender,item.item_id)
 await reply(xpItemReceipt(result))
+} else if(['atalhos','atalho'].includes(cmd)){
+const shop=await getShop()
+const available=new Map(shop.filter(item=>SHOP_IDS.includes(item.id)).map(item=>[item.id,item]))
+const shopCommand=(number,quantity)=>{
+ const id=SHOP_IDS[number-1]
+ const item=id?available.get(id):null
+ return item
+  ? '*!comprar '+number+' '+quantity+'* — compra *'+quantity+'× '+item.name+'* (R$ '+fmt(Number(item.price)*quantity)+').'
+  : '*!comprar '+number+' '+quantity+'* — item indisponível na loja atual; consulte *!atalhos loja*.'
+}
+if(['loja','compras','comprar','itens'].includes(String(args[0]||'').toLowerCase())){
+ let text='🛒 *ATALHOS DA LOJA — NÚMEROS FIXOS*\n\n'
+ let lastCategory=''
+ let listed=0
+ SHOP_IDS.forEach((id,index)=>{
+  const item=available.get(id)
+  if(!item) return
+  const label=shopCategoryLabel(item.category)
+  if(label!==lastCategory){
+   text+='\n'+label+'\n'
+   lastCategory=label
+  }
+  text+='*'+(index+1)+'.* '+item.name+' — R$ '+fmt(item.price)+'\n'
+  listed++
+ })
+ if(!listed) return await reply('🛒 Nenhum item da loja comum está disponível para compra agora.')
+ text+='\n📌 Esses números são os do comando *!comprar*, não os números do menu por categoria.\n'
+ text+='✍️ Exemplo: *!comprar 9 99* — número do item + quantidade (1 a 99).\n'
+ text+='⚠️ Enviar *!comprar* efetua a compra imediatamente, se houver saldo. Esta lista não compra nada.'
+ return await reply(text)
+}
+return await reply(
+ '⚡ *ATALHOS — ALPHA BOT*\n\n'
+ +'💼 *AÇÕES EM LOTE*\n'
+ +'*!all* — executa Trabalho, Uber e iFood disponíveis em uma única mensagem; respeita os cooldowns.\n'
+ +'*!centraluber todos* — inicia turnos de todos os motoristas elegíveis com os carros livres.\n'
+ +'*!coletar* — recebe a renda acumulada dos seus negócios.\n'
+ +'*!coletauber* — recolhe a renda dos motoristas da Central Uber.\n\n'
+ +'🛒 *COMPRAS RÁPIDAS*\n'
+ +shopCommand(9,99)+'\n'
+ +shopCommand(35,99)+'\n'
+ +'*!comprar N Q* — compra Q unidades do item N na loja. Limite de 99 por compra.\n'
+ +'*!atalhos loja* — mostra todos os números, nomes e preços dos itens vendidos.\n\n'
+ +'🎒 *INVENTÁRIO E EQUIPAMENTOS*\n'
+ +'*!curarpet* — usa automaticamente a poção adequada para curar o pet.\n'
+ +'*!forja5* — calcula e confirma a forja automática da loja até ★5 Lv.10.\n'
+ +'*!venderrepetidos* — vende equipamentos duplicados elegíveis, mantendo uma cópia de cada; executa a venda ao enviar o comando.\n\n'
+ +'⚠️ Os atalhos de compra e venda fazem transações reais. Este guia é apenas informativo.\n'
+ +'📖 Use *!comandos* para consultar todas as funções.'
+)
 } else if(['loja','shop'].includes(cmd)){
 await showShopCategoryMenu(chat,sender,reply)
 } else if(['comprar','buy'].includes(cmd)){
