@@ -67,6 +67,7 @@ test('AB-07: PostgreSQL descartável aceita 2x6, 3x5, 6x6, rodízio, disputa e i
    const reserve=teams.red.find(jid=>!redTurn.includes(jid))
    const view=await clanSiegeStatus({jid:reserve,chatJid:GROUP})
    assert.equal(view.match.rulesVersion,6)
+   assert.equal(view.nextRulesVersion,6,'a prévia da PWA precisa refletir a regra da próxima guerra')
    assert.equal(view.match.myTurn,false)
    assert.ok(view.match.nextTurns.length>=2,'todos recebem pelo menos 2 turnos')
    await assert.rejects(
