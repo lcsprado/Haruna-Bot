@@ -694,6 +694,9 @@ const raidAutoRetryAt=new Map()
 const raidAutoLastErrorNotice=new Map()
 const RAID_RUN_STALE_MS=25000
 const RAID_NOTIFY_TIMEOUT_MS=2500
+// Somente avisos finais aguardam a confirmação de rede sem falso timeout
+// de 2,5s; avisos de rodadas continuam rápidos e sem bloquear a Raid.
+const RAID_FINAL_NOTIFY_TIMEOUT_MS=12000
 function raidRunCurrent(runKey,token){
 return raidRuns.get(runKey)?.token===token
 }
@@ -701,7 +704,7 @@ function touchRaidRun(runKey,token){
 const run=raidRuns.get(runKey)
 if(run?.token===token) run.lastProgressAt=Date.now()
 }
-async function safeRaidNotify(reply,text){
+async function safeRaidNotify(reply,text,timeoutMs=RAID_NOTIFY_TIMEOUT_MS){
 if(!text || typeof reply!=='function') return false
 let timer
 try{
@@ -711,9 +714,9 @@ console.error('[Raid Auto] aviso falhou; combate continua',err?.message||err)
 return false
 }),
 new Promise(resolve=>{timer=setTimeout(()=>{
-console.warn('[Raid Auto] aviso excedeu '+RAID_NOTIFY_TIMEOUT_MS+'ms; combate continua')
+console.warn('[Raid Auto] aviso excedeu '+timeoutMs+'ms; combate continua')
 resolve(false)
-},RAID_NOTIFY_TIMEOUT_MS);timer.unref?.()})
+},timeoutMs);timer.unref?.()})
 ])
 }catch(err){
 console.error('[Raid Auto] aviso falhou; combate continua',err?.message||err)
@@ -738,7 +741,7 @@ const claimed=await db.query(
 [row.key,JSON.stringify(msg)]
 )
 if(!claimed.rowCount) continue
-const delivered=await safeRaidNotify(text=>raidAutoReply(msg.chat,text),msg.text)
+const delivered=await safeRaidNotify(text=>raidAutoReply(msg.chat,text),msg.text,RAID_FINAL_NOTIFY_TIMEOUT_MS)
 if(delivered){
 await db.query(
 "DELETE FROM trevo_settings WHERE key=$1 AND value->>'deliveryAttempted'='true'",
@@ -762,7 +765,7 @@ await db.query(
 await flushRaidFinalNotices()
 }catch(err){
 console.error('[Raid Final Notice] persistência falhou',err?.message||err)
-await safeRaidNotify(reply,text)
+await safeRaidNotify(reply,text,RAID_FINAL_NOTIFY_TIMEOUT_MS)
 }
 }
 let raidAutoWatchdogBusy=false
