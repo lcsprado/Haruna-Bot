@@ -1,0 +1,31 @@
+name: AB-01 PWA full duel report
+on:
+  pull_request:
+    paths:
+      - 'web/app.js'
+      - 'web/styles.css'
+      - 'web/sw.js'
+      - 'test/web-pwa-duel-history-20261110.test.mjs'
+      - '.github/workflows/alpha-pwa-duel-report-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  duel-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check web/app.js
+          node --check web/sw.js
+          node --check test/web-pwa-duel-history-20261110.test.mjs
+      - name: PWA full timeline and XSS regression
+        run: node --test test/web-pwa-duel-history-20261110.test.mjs
+      - name: Existing Cerco V6 PWA checks
+        run: |
+          node --test test/web-siege-v6-roster-slots-20261110.test.mjs
+          node --test test/web-siege-v6-rotation-ui-20261109.test.mjs
