@@ -5927,8 +5927,8 @@ if(!itemRow || itemRow.sellable!==true || raidMaterialId(itemId) || itemRow.rari
 throw new Error('🔒 Item exclusivo vinculado ao ganhador: não pode ser anunciado, doado nem vendido.')
 const inv=await client.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 if(Number(inv.rows[0]?.quantity||0)<qty) throw new Error('Você não possui essa quantidade.')
-const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1',[jid])
-const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id].includes(itemId)?1:0
+const stats=await client.query('SELECT weapon_id,armor_id,boot_id,helmet_id,shield_id FROM stats WHERE jid=$1',[jid])
+const equipped=[stats.rows[0]?.weapon_id,stats.rows[0]?.armor_id,stats.rows[0]?.boot_id,stats.rows[0]?.helmet_id,stats.rows[0]?.shield_id].includes(itemId)?1:0
 const bound=await boundItemQuantity(client,jid,itemId)
 const paid=(await client.query('SELECT (SELECT COALESCE(SUM(quantity),0)::int FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2)+(SELECT COUNT(*)::int FROM equipment_star_forges WHERE jid=$1 AND item_id=$2) qty',[jid,itemId])).rows[0]
 const owned=Number(inv.rows[0]?.quantity||0)
