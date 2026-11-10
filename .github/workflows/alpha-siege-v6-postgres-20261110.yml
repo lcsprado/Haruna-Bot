@@ -1,0 +1,40 @@
+name: AB-07 Cerco V6 - PostgreSQL descartável
+on:
+  pull_request:
+    paths:
+      - 'test/clan-siege-v6-postgres-20261110.test.mjs'
+      - '.github/workflows/alpha-siege-v6-postgres-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  siege-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_siege_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d alpha_siege_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/alpha_siege_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --legacy-peer-deps --package-lock=false --no-audit --no-fund
+      - name: Confirm isolated target and test syntax
+        run: |
+          node --check test/clan-siege-v6-postgres-20261110.test.mjs
+          node --check src/neon/clan-siege.js
+      - name: Execute real PostgreSQL V6 scenarios
+        run: node --test test/clan-siege-v6-postgres-20261110.test.mjs
