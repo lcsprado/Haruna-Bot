@@ -231,7 +231,7 @@ export async function startDailyClanSiege(nowMs=now()){
       expanded
         ? '⚔️ 6 rodadas de 5 minutos. Até 6 jogadores por clã; a cada rodada 2 por clã atuam em rodízio justo. Cada participante recebe pelo menos 2 turnos.'
         : '⚔️ 6 rodadas de 5 minutos, 1 ação por pessoa a cada rodada.',
-      '🗺️ CERCO V5: cada jogador escolhe UMA ação e uma frente: 🏰 Castelo, 🚪 Portão ou 📦 Depósito.',
+      '🗺️ CERCO '+(expanded?'V6':'V5')+': cada participante da rodada escolhe UMA ação e uma frente: 🏰 Castelo, 🚪 Portão ou 📦 Depósito.',
       '🚪 Duas investidas rompem o portão (+25% dano futuro ao castelo). 📦 Saquear o depósito rouba suprimento; reabastecer gera 1. Reparar consome 1 suprimento de CERCO e pode restaurar até 280 HP ou 1 ponto do Portão (máximo 2 reparos por clã).',
       '🛡️ Defender a frente certa bloqueia mais dano e pode contra-atacar. Espionar prepara o ataque NA MESMA FRENTE na rodada seguinte.',
       '🏆 Após 6 rodadas vence quem tiver mais HP; empate no HP desempata por objetivos, depois portão e suprimentos. Totalmente igual continua empate.',
@@ -240,6 +240,7 @@ export async function startDailyClanSiege(nowMs=now()){
       '🎮 Abra o Alpha Web > Clã e escolha *Atacar, Defender, Reparar, Espionar ou Reabastecer*. A escolha inclui a frente da ação.',
       '🔒 Ação secreta. Quem não jogar a rodada fica sem ação.',
       '🏆 A insígnia histórica foi encerrada e não será concedida nas próximas guerras.',
+      expanded?'🌟 XP semanal: 150.000 para vencedores, 70.000 para vices, 100.000 por empate, somente a quem registrar ações em pelo menos 2 rodadas.':'',
       brtSiegeDay(created)===SIEGE_EVENT_DATE?
         '🎁 *PRÊMIOS SOMENTE DA GUERRA DE HOJE:* cada campeão recebe R$ 5.000.000 + Troféu do Cerco V5 (cosmético, sem atributos); cada vice recebe R$ 1.000.000. Se empatar, cada jogador recebe R$ 1.500.000. Valores virtuais, pagos automaticamente uma única vez ao final.':' '
     ].join('\n'));
@@ -538,7 +539,7 @@ export async function clanSiegeChallenge(session){
 }
 export async function clanSiegeAccept(session){
   gate();group(session);
-  throw new Error('Aceitação manual desativada. A guerra acontece somente às quartas-feiras, 21h de Brasília.');
+  throw new Error('Aceitação manual desativada. O Cerco começa automaticamente aos sábados, 21h30, horário de Brasília.');
 }
 export async function clanSiegeMove(session,action,target='castle'){
   gate();session=await authorizedSiegeSession(session);const chat=group(session);await ensureClanSiegeSchema();
