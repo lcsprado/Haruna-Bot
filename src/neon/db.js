@@ -4,6 +4,7 @@ import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,
 import {createRecentEnsureCache} from './recent-ensure.js'
 import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
+import {planShopForge5} from './shop-forge5-plan.js'
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,shieldForgeCost,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
 import {equipmentSalePolicy,equipmentSaleQuantityAllowed} from './equipment-sale-policy.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS} from './sete-pecados-catalog.js'
@@ -2292,13 +2293,15 @@ armadura_deus_eclipse:{raidLevel:70,materialId:'essencia_eclipse',materialName:'
 })
 export const RAID_GEAR_FORGE_ORIGINS=Object.freeze({...RAID_WEAPON_FORGE_ORIGINS,...RAID_ARMOR_FORGE_ORIGINS,
 ...Object.fromEntries(PECADOS_GEAR_IDS.map(id=>[id,Object.freeze({raidLevel:75,materialId:COLLAB_FRAGMENT_ITEM,materialName:'Fragmento da Ascensão',collab:true})]))})
+// As estrelas de itens comuns da loja usam o mesmo multiplicador das armas de Raid.
+const SHOP_FORGE5_STATS_IDS=new Set([...REGULAR_SHOP_IDS].filter(id=>['weapon','armor'].includes(EQUIPMENT[id]?.category)&&!RAID_GEAR_FORGE_ORIGINS[id]))
 const UPGRADE_BASE_COST={common:1500,uncommon:3000,rare:7000,epic:16000,legendary:40000,event:50000}
 export function equipmentStatsAtLevel(itemId,level=1,stars=1){
 const eq=EQUIPMENT[itemId]
 if(!eq) return null
 level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
 const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
-const starLevel=(['weapon','armor'].includes(eq.category)&&RAID_GEAR_FORGE_ORIGINS[itemId]||eq.category==='shield'&&ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
+const starLevel=(['weapon','armor'].includes(eq.category)&&(RAID_GEAR_FORGE_ORIGINS[itemId]||SHOP_FORGE5_STATS_IDS.has(itemId))||eq.category==='shield'&&ANTI_CRIT_SHIELDS.some(g=>g.id===itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
 const starMult=1+.04*(starLevel-1)
 const mult=multipliers[level-1]
 return {
@@ -2478,6 +2481,93 @@ await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES
 return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,cashSpent:fee,shieldForge,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
 })
 }
+// !forja5 e separado da forja tradicional. So itens permanentes da loja comum.
+export async function listShopForge5Equipment(){
+ const shop=await getShop()
+ return shop.filter(item=>['weapon','armor','shield'].includes(item.category)
+  && Boolean(EQUIPMENT[item.id]) && !RAID_GEAR_FORGE_ORIGINS[item.id]
+  && (item.category!=='shield'||ANTI_CRIT_SHIELDS.some(s=>s.id===item.id)))
+}
+async function shopForge5QuoteClient(c,jid,itemId,lock=false){
+ const item=(await c.query('SELECT id,name,category,rarity,price FROM items WHERE id=$1',[itemId])).rows[0]
+ if(!item || !isRegularShopItem(item) || !['weapon','armor','shield'].includes(item.category)
+  || !EQUIPMENT[itemId] || Boolean(RAID_GEAR_FORGE_ORIGINS[itemId])
+  || item.category==='shield'&&!ANTI_CRIT_SHIELDS.some(s=>s.id===itemId)){
+  throw new Error('!forja5 aceita somente armas, armaduras e escudos da loja comum. Raids, collab e eventos nao entram.')
+ }
+ const lockTail=lock?' FOR UPDATE':''
+ const inv=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2'+lockTail,[jid,itemId])).rows[0]
+ const tiers=(await c.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 ORDER BY level'+lockTail,[jid,itemId])).rows
+ const forged=(await c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2'+lockTail,[jid,itemId])).rows[0]
+ const bound=(await c.query('SELECT quantity FROM bound_inventory_items WHERE jid=$1 AND item_id=$2'+lockTail,[jid,itemId])).rows
+ const equipment=(await c.query('SELECT weapon_id,armor_id,shield_id FROM stats WHERE jid=$1'+lockTail,[jid])).rows[0]
+ const wallet=(await c.query('SELECT cash,bank FROM wallets WHERE jid=$1'+lockTail,[jid])).rows[0]
+ const equipped=[equipment?.weapon_id,equipment?.armor_id,equipment?.shield_id].includes(itemId)
+ const shieldFees={}
+ if(item.category==='shield')for(let n=1;n<5;n++)shieldFees[n]=shieldForgeCost(itemId,n)
+ return planShopForge5({
+  itemId,name:item.name,category:item.category,rarity:item.rarity,
+  price:Number(item.price),quantity:Number(inv?.quantity||0),
+  tiers:tiers.map(t=>({level:Number(t.level),quantity:Number(t.quantity)})),
+  forged:forged?{stars:Number(forged.stars),level:Number(forged.level)}:null,
+  protectedCount:bound.reduce((n,b)=>n+Number(b.quantity||0),0)+(equipped?1:0),
+  equipped,cash:Number(wallet?.cash||0),bank:Number(wallet?.bank||0),
+  upgradeBase:UPGRADE_BASE_COST[String(item.rarity||'common')]||2500,shieldFees
+ })
+}
+export async function getShopForge5Quote(jid,itemId){
+ await ensureUser(jid)
+ return shopForge5QuoteClient(db,jid,itemId)
+}
+export async function completeShopForge5(jid,itemId,expectedQuoteKey){
+ await ensureUser(jid)
+ return transaction(async c=>{
+  await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['equipment-forge:'+jid])
+  const plan=await shopForge5QuoteClient(c,jid,itemId,true)
+  if(plan.quoteKey!==expectedQuoteKey)throw new Error('Inventario, precos ou saldo mudaram. Execute !forja5 novamente para atualizar a proposta.')
+  if(plan.alreadyFull)throw new Error('O equipamento ja esta em cinco estrelas e nivel 10.')
+  if(!plan.canExecute)throw new Error('Saldo insuficiente: faltam R$ '+plan.shortage.toLocaleString('pt-BR')+'. Nenhuma cobranca realizada.')
+  // Toda mutacao e atomica: na falha, compra, upgrades, forja e taxa sao revertidos.
+  const fromCash=Math.min(plan.cash,plan.total)
+  const fromBank=plan.total-fromCash
+  const charged=await c.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2,updated_at='+nowSql+' WHERE jid=$3 AND cash>=$1 AND bank>=$2 RETURNING cash,bank',
+    [fromCash,fromBank,jid])
+  if(!charged.rowCount)throw new Error('Saldo mudou antes da cobranca. Nenhuma forja concluida.')
+  if(plan.buyCopies){
+   await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
+     [jid,itemId,plan.buyCopies])
+  }
+  // As copias ja pagas e evoluidas que viram forja saem do inventario de upgrades.
+  for(const tier of plan.consumedTiers){
+   const previous=(await c.query('SELECT quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 FOR UPDATE',
+     [jid,itemId,tier.level])).rows[0]
+   if(Number(previous?.quantity||0)<tier.count)throw new Error('Copia aprimorada indisponivel. Operacao revertida.')
+   const result=Number(previous.quantity)===tier.count
+    ?await c.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity=$4 RETURNING 1',
+      [jid,itemId,tier.level,tier.count])
+    :await c.query('UPDATE equipment_upgrade_copies SET quantity=quantity-$4 WHERE jid=$1 AND item_id=$2 AND level=$3 AND quantity>$4 RETURNING 1',
+      [jid,itemId,tier.level,tier.count])
+   if(!result.rowCount)throw new Error('Copia mudou durante a forja. Operacao revertida.')
+  }
+  if(plan.donorsRequired){
+   const consumed=await c.query('UPDATE inventories SET quantity=quantity-$3 WHERE jid=$1 AND item_id=$2 AND quantity>$3 RETURNING quantity',
+     [jid,itemId,plan.donorsRequired])
+   if(!consumed.rowCount)throw new Error('Copias doadoras insuficientes. Operacao revertida.')
+  }
+  await c.query('INSERT INTO equipment_star_forges(jid,item_id,stars,level,updated_at) VALUES($1,$2,5,10,'+nowSql+') ON CONFLICT(jid,item_id) DO UPDATE SET stars=5,level=10,updated_at=EXCLUDED.updated_at',[jid,itemId])
+  await syncEffectiveGear(c,jid,itemId)
+  const remaining=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
+  const after=(await c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
+  if(Number(after?.stars)!==5||Number(after?.level)!==10||Number(remaining?.quantity||0)<1){
+   throw new Error('Falha na validacao final. Operacao revertida.')
+  }
+  await c.query('INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES($1,$2,$3,$4,$5)',
+   [jid,'forge',plan.total,'equipment_shop_forge5',
+    itemId+' 5star Lv10 | compra '+plan.buyCopies+' | aprimoramento '+plan.upgrades+' | forja '+plan.forgeFees+' | servico '+plan.serviceFee])
+  return {...plan,remainingCopies:Number(remaining.quantity),cash:Number(charged.rows[0].cash),bank:Number(charged.rows[0].bank)}
+ })
+}
+
 export const listStarForgeWeapons=listStarForgeEquipment
 export const forgeWeaponStar=forgeEquipmentStar
 export async function getEquipmentLevels(jid,itemIds=[]){
