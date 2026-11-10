@@ -26,7 +26,7 @@ import {shouldRouteQuizContinuation} from './menu-routing.js'
 import {
 db, initDatabase, ensureUser, consolidateUserIdentity, getProfile, getDailyStreak, claimDaily, work, getCareer,
 deposit, withdraw, transfer, getShop, buyItem, buyRaidFragmentBoxes, purchaseService, getInventory, sellItem, sellItemsBatch, discardItemsBatch, leaderboard, getPlayerRanks, getProfileAvatar, setProfileAvatar, removeProfileAvatar,
-equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
+equipItem, getEquipmentInfo, equipmentStatsAtLevel, sellDuplicateEquipment, listUpgradeableEquipment, listUpgradeableCopies, upgradeEquipment, listStarForgeEquipment, forgeEquipmentStar, listShopForge5Equipment, getShopForge5Quote, completeShopForge5, usePotion, usePetPotion, usePetEnergyItem, useXpConsumable, getXpBuffStatus, getCombatProfile, setPlayerClass, battle, combatLeaderboard, claimLevelRewards,
 acquireRuntimeLock, ownerAddBalance, ownerRemoveBalance, ownerAddExp,
 ownerSetBalance, ownerResetBalance, ownerResetExp, ownerResetInventory, ownerResetTotal,
 ownerSetLevel, ownerHeal, ownerGrantItem,
@@ -5078,6 +5078,7 @@ const commandPages={
 *!equipar* — equipa arma ou armadura
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
 *!forjar* — Forja Estelar de armas, armaduras e escudos (até 5 estrelas)
+*!forja5* — compra e evolui automaticamente equipamento da loja até ★5 Lv.10 (taxa R$ 500 mil)
 *!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
 *!usarxp NOME* — ativa elixir ou tomo de experiência
@@ -6974,6 +6975,65 @@ const started=await runBossSession(chat,sender,msg.pushName||'Jogador',reply)
 if(!started) return await reply('⚔️ Você já está em uma sessão automática contra o Boss.')
 await reply('⚔️ *COMBATE AUTOMÁTICO INICIADO!*\n\n⏱️ Até *5 minutos* • 🥊 ataque a cada *10 segundos*\n🧪 Cura automática quando possível.\n📅 O Boss encerra *sábado às 23:59* (São Paulo).\n\nUse *!boss* para acompanhar o HP.')
 return true
+}
+if(flow.stage==='shopforge5_select'){
+ const ids=flow.data?.items||[]
+ const selected=Number(input)
+ if(!Number.isSafeInteger(selected)||selected<1||selected>ids.length){
+  await reply('⚒️ Escolha o numero de uma arma, armadura ou escudo da loja.')
+  return true
+ }
+ const itemId=ids[selected-1]
+ let p
+ try{p=await getShopForge5Quote(sender,itemId)}
+ catch(err){clearQuickFlow(chat,sender);await reply('❌ '+(err?.message||'Nao foi possivel calcular a forja.'));return true}
+ if(p.alreadyFull){
+  clearQuickFlow(chat,sender)
+  await reply('🏆 '+p.name+' ja esta em ★★★★★ Lv.10. Nada sera cobrado.')
+  return true
+ }
+ const priceText = n=>'R$ '+fmt(n)
+ const summary = '⚒️ *FORJA5 — PROPOSTA COMPLETA*\n\n'
+  +'🎯 *'+p.name+'*\n'
+  +'🌟 Situacao atual: *'+p.stars+' estrela(s)*'+(p.forgedLevel?' • Lv.'+p.forgedLevel:'')+'\n'
+  +'🏆 Destino: *★★★★★ Lv.10*\n\n'
+  +'📦 Copias doadoras necessarias: *'+p.donorsRequired+'*\n'
+  +'✅ Copias doadoras aproveitadas: *'+p.donorLevels.length+'*\n'
+  +'🛒 Copias a comprar: *'+p.buyCopies+'*\n'
+  +'⬆️ Dinheiro em upgrades pendentes: *'+priceText(p.upgrades)+'*\n\n'
+  +'💰 Compra de copias: *'+priceText(p.purchases)+'*\n'
+  +'🛡️ Forjas de escudo: *'+priceText(p.forgeFees)+'*\n'
+  +'⚙️ Taxa de automacao: *'+priceText(p.serviceFee)+'*\n'
+  +'💵 *TOTAL: '+priceText(p.total)+'*\n'
+  +'🏦 Disponivel: '+priceText(p.cash+p.bank)+' (carteira + banco)\n'
+ if(!p.canExecute){
+  clearQuickFlow(chat,sender)
+  await reply(summary+'\n🔒 *Faltam '+priceText(p.shortage)+'*. Nenhum item ou dinheiro foi consumido.')
+  return true
+ }
+ setQuickFlow(chat,sender,'shopforge5_confirm',{itemId,quoteKey:p.quoteKey},90000)
+ await reply(summary+'\n⚠️ Esta operacao compra as copias faltantes, aprimora o necessario e conclui as 5 estrelas em uma transacao. Nao existe forja parcial.\n\n1️⃣ Confirmar e pagar\n2️⃣ Cancelar')
+ return true
+}
+if(flow.stage==='shopforge5_confirm'){
+ if(input==='2'){clearQuickFlow(chat,sender);await reply('✅ Forja automatica cancelada. Nenhum valor cobrado.');return true}
+ if(input!=='1'){await reply('⚒️ Responda 1 para executar ou 2 para cancelar.');return true}
+ const chosen=flow.data
+ clearQuickFlow(chat,sender)
+ try{
+  const r=await completeShopForge5(sender,chosen.itemId,chosen.quoteKey)
+  await reply('🌟 *FORJA5 CONCLUIDA!*\n\n'
+   +'⚔️ *'+r.name+'* — *★★★★★ Lv.10*\n'
+   +'🛒 Copias compradas: '+r.buyCopies+'\n'
+   +'⬆️ Upgrades: R$ '+fmt(r.upgrades)+'\n'
+   +'⚒️ Forjas de escudo: R$ '+fmt(r.forgeFees)+'\n'
+   +'💰 Taxa automatica: R$ '+fmt(r.serviceFee)+'\n'
+   +'💵 *Total cobrado: R$ '+fmt(r.total)+'*\n'
+   +'📦 Copias restantes: '+r.remainingCopies+'\n'
+   +'🏦 Saldo: R$ '+fmt(r.cash+r.bank)+'\n\n'
+   +'✅ Encantamentos e pecas protegidas preservados.')
+ }catch(err){await reply('❌ '+(err?.message||'Falha na forja automatica; operacao revertida.')+'\nUse !forja5 para consultar novamente.')}
+ return true
 }
 if(flow.stage==='starforge_select'){
 const items=flow.data?.items||[]
@@ -12061,6 +12121,19 @@ text+='\n💵 Total recebido: *R$ '+fmt(r.total)+'*'
 text+='\n🪙 Carteira: *R$ '+fmt(r.cash)+'*'
 text+='\n\n🛡️ 1 cópia de cada equipamento foi preservada.'
 await reply(text)
+} else if(cmd==='forja5'){
+ const choices=await listShopForge5Equipment()
+ if(!choices.length)return await reply('⚒️ Nenhuma arma, armadura ou escudo elegivel na loja comum.')
+ setQuickFlow(chat,sender,'shopforge5_select',{items:choices.map(i=>i.id)},5*60*1000)
+ let text='⚒️ *FORJA5 — FORJA AUTOMATICA*\n\nEscolha um equipamento da loja para finalizar em *★★★★★ Lv.10*:\n\n'
+ choices.forEach((i,n)=>{
+  text+='*'+(n+1)+'.* '+(i.category==='shield'?'🛡️':i.category==='armor'?'🛡️':'⚔️')
+   +' '+i.name+' • R$ '+fmt(i.price)+'/copia\n'
+ })
+ text+='\n💰 O bot calcula as copias e upgrades que faltam, compra o necessario e cobra *R$ 500.000* pela automacao.\n'
+ text+='🛑 Raids, eventos, collab e botas nao fazem parte desta forja.\n'
+ text+='📋 Escolha um numero para ver a proposta. *Nenhuma cobranca sem confirmar.*\n0️⃣ Cancelar'
+ return await reply(text)
 } else if(['forjar','forja','forjaestelar'].includes(cmd)){
 const list=await listStarForgeEquipment(sender)
 if(!list.length)return await reply('⚒️ *FORJA ESTELAR*\n\nVocê não possui equipamentos elegíveis.\n🛡️ Escudos exigem cópias idênticas. Sete Pecados usam Fragmentos da Ascensão; outras Raids mantêm suas regras.')
