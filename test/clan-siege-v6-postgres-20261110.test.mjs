@@ -16,10 +16,19 @@ after(async()=>{await db.end()})
 
 async function schema(){
  await db.query(`
- CREATE TABLE IF NOT EXISTS users(jid TEXT PRIMARY KEY,push_name TEXT NOT NULL DEFAULT 'Teste',level INT NOT NULL DEFAULT 1,exp INT NOT NULL DEFAULT 0);
+ CREATE TABLE IF NOT EXISTS users(jid TEXT PRIMARY KEY,push_name TEXT NOT NULL DEFAULT 'Teste',level INT NOT NULL DEFAULT 1,exp INT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS clans(id BIGINT PRIMARY KEY,name TEXT NOT NULL,owner_jid TEXT,treasury BIGINT NOT NULL DEFAULT 0,xp BIGINT NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS clan_members(jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,clan_id BIGINT NOT NULL REFERENCES clans(id) ON DELETE CASCADE,role TEXT NOT NULL DEFAULT 'member');
  CREATE TABLE IF NOT EXISTS web_sessions(token_hash TEXT PRIMARY KEY,jid TEXT NOT NULL REFERENCES users(jid) ON DELETE CASCADE,chat_jid TEXT,expires_at BIGINT NOT NULL);
+ CREATE TABLE IF NOT EXISTS stats(
+  jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+  max_hp INT NOT NULL DEFAULT 100,hp INT NOT NULL DEFAULT 100,
+  atk INT NOT NULL DEFAULT 10,def INT NOT NULL DEFAULT 10,spd INT NOT NULL DEFAULT 10,
+  weapon_id TEXT,armor_id TEXT,helmet_id TEXT,updated_at BIGINT NOT NULL DEFAULT 0
+ );
+ CREATE TABLE IF NOT EXISTS equipment_upgrades(jid TEXT,item_id TEXT,level INT);
+ CREATE TABLE IF NOT EXISTS equipment_star_forges(jid TEXT,item_id TEXT,level INT,stars INT);
+
  `)
  await ensureClanSiegeSchema()
 }
@@ -60,6 +69,10 @@ test('AB-07: PostgreSQL descartável aceita 2x6, 3x5, 6x6, rodízio, disputa e i
    assert.equal(rows.length,1)
    assert.equal(Number(rows[0].rules_version),6)
    assert.equal(rows[0].status,'active')
+   const opened=(await db.query("SELECT payload->>'text' AS notice FROM alpha_web_action_outbox WHERE kind='message' ORDER BY id ASC LIMIT 1")).rows[0]?.notice||''
+   assert.match(opened,/CERCO V6:/,'V6 anunciado corretamente no grupo')
+   assert.doesNotMatch(opened,/CERCO V5:/,'não anunciar regras V5 após criar V6')
+   assert.match(opened,/150\.000 para vencedores/,'XP declarado somente no novo V6')
    const roster=(await db.query('SELECT jid,clan_id FROM alpha_siege_roster ORDER BY jid')).rows
    assert.equal(roster.length,blueCount+redCount)
    const blueTurn=siegeV6ActivePlayers(teams.blue,1)
@@ -104,5 +117,60 @@ test('AB-07: PostgreSQL descartável aceita 2x6, 3x5, 6x6, rodízio, disputa e i
    const outbox=(await db.query('SELECT count(*)::int AS n FROM alpha_web_action_outbox')).rows[0].n
    assert.equal(Number(outbox),7,'1 aviso de abertura + 6 avisos de rodada, sem envio externo')
   }
+ }finally{Date.now=originalNow}
+})
+
+test('AB-07: PostgreSQL real credita XP por 2 turnos e não duplica pagamento em novas leituras ou concorrência',async()=>{
+ const originalNow=Date.now
+ try{
+  await schema()
+  await reset()
+  const teams=await seed(6,6)
+  await db.query('UPDATE users SET level=500,exp=0')
+  const t0=opening
+  let tick=t0
+  Date.now=()=>tick
+  const opened=await startDailyClanSiege(t0)
+  assert.equal(opened.started,true)
+  const bad=await Promise.all([startDailyClanSiege(t0),startDailyClanSiege(t0)])
+  assert.equal(bad.filter(x=>x.started).length,0,'abertura concorrente nunca duplica partida')
+  for(let round=1;round<=6;round++){
+   const active=[...siegeV6ActivePlayers(teams.blue,round),...siegeV6ActivePlayers(teams.red,round)]
+   const sent=await Promise.all(active.map(jid=>clanSiegeMove(
+    {jid,chatJid:GROUP},jid.startsWith('blue')?'supply':'spy',jid.startsWith('blue')?'depot':'castle'
+   )))
+   assert.equal(sent.filter(x=>x.registered).length,4)
+   tick+=300001
+   await Promise.all([settleClanSiege(GROUP),settleClanSiege(GROUP)])
+  }
+  const match=(await db.query('SELECT id,status,round,history,winner_clan_id,blue_clan_id,red_clan_id FROM alpha_siege_matches')).rows[0]
+  assert.equal(match.status,'completed')
+  assert.equal(match.history.length,6)
+  const actions=(await db.query('SELECT jid,COUNT(DISTINCT round)::int AS n FROM alpha_siege_moves GROUP BY jid')).rows
+  assert.equal(actions.length,12)
+  assert.ok(actions.every(x=>x.n===2),'cada um dos 12 jogadores atua duas vezes')
+  const awards=(await db.query('SELECT jid,xp FROM alpha_siege_weekly_xp ORDER BY jid')).rows
+  assert.equal(awards.length,12,'todos os participantes elegíveis recebem apenas uma linha')
+  for(const award of awards){
+   const side=award.jid.startsWith('blue')?'blue':'red'
+   const winner=match.winner_clan_id===null?null:String(match.winner_clan_id)
+   const expected=winner===null?100000:winner===String(side==='blue'?match.blue_clan_id:match.red_clan_id)?150000:70000
+   assert.equal(Number(award.xp),expected)
+  }
+  const people=(await db.query('SELECT jid,level,exp FROM users ORDER BY jid')).rows
+  assert.equal(people.length,12)
+  for(const person of people){
+   const xp=Number(awards.find(x=>x.jid===person.jid).xp)
+   const after500=xp-50000
+   const expected=after500>=50100?{level:502,exp:after500-50100}:{level:501,exp:after500}
+   assert.deepEqual({level:Number(person.level),exp:Number(person.exp)},expected)
+  }
+  const outboxBefore=Number((await db.query('SELECT COUNT(*)::int AS n FROM alpha_web_action_outbox')).rows[0].n)
+  await Promise.all([settleClanSiege(GROUP),settleClanSiege(GROUP)])
+  const post=(await db.query('SELECT COUNT(*)::int AS n FROM alpha_siege_weekly_xp')).rows[0]
+  assert.equal(Number(post.n),12,'encerramento repetido não paga XP novamente')
+  const outboxAfter=Number((await db.query('SELECT COUNT(*)::int AS n FROM alpha_web_action_outbox')).rows[0].n)
+  assert.equal(outboxBefore,outboxAfter,'resultado não é publicado duas vezes')
+  assert.equal(outboxAfter,7,'somente aviso inicial + seis rodadas')
  }finally{Date.now=originalNow}
 })
