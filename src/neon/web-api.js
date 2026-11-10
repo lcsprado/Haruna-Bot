@@ -3,6 +3,7 @@ import {consumeWebAuthAttempt} from './web-auth-throttle.js'
 import 'dotenv/config'
 import crypto from 'node:crypto'
 import {pvpCritChance} from './pvp-crit.js'
+import {formatPvpBattleReport} from './pvp-report.js'
 import {buildOfficialWebLoginUrl} from './web-official-link.js'
 import {relicStatus,selectRelic,relicCatalog} from './relics.js'
 import {resolveAlphaWebAllowedOrigin} from './web-canonical-origins.js'
@@ -802,18 +803,11 @@ async function sendWebGroupActivity(session,actionName,body,result){
       // Cooldown não é uma nova batalha e não deve poluir o grupo com "executou battle".
       text=null
     }else if(result.winner && result.loser){
-      const winnerName=String(result.winner.name||'Jogador')
-      const loserName=String(result.loser.name||'Jogador')
-      const targetName=String(result.targetName||((String(result.winner.jid)===String(me))?loserName:winnerName)||'Jogador')
-      const hits=Array.isArray(result.log)?result.log.length:0
-      const crits=Array.isArray(result.log)?result.log.filter(x=>x&&x.crit).length:0
-      text='⚔️ *DUELO RPG*\n*'+meName+'* enfrentou *'+targetName+'*.'+
-        '\n🏆 Vencedor: *'+winnerName+'*'+
-        '\n💀 Derrotado: *'+loserName+'*'+
-        (hits?'\n💥 Combate: *'+hits+' golpes* • *'+crits+' crítico'+(crits===1?'':'s')+'*':'')+
-        (Number(result.reward||0)>0?'\n💰 Prêmio: *'+brl(result.reward)+'*':'')+
-        (Number(result.winXpGain||0)>0?'\n✨ XP: *+'+Number(result.winXpGain)+'* vencedor • *+'+Number(result.loseXpGain||0)+'* derrotado':'')
-      mentions=[me,result.targetJid,result.winner.jid,result.loser.jid].filter(Boolean)
+      // Mesmo relatório detalhado do WhatsApp, incluindo habilidades,
+      // Coração Eterno, escudos e dano real. A luta já está concluída;
+      // somente a notificação pelo outbox usa o resultado persistido.
+      text=formatPvpBattleReport(result)
+            mentions=[me,result.targetJid,result.winner.jid,result.loser.jid].filter(Boolean)
     }else{
       text='⚔️ *DUELO RPG*\n*'+meName+'* enfrentou *'+String(result.targetName||'outro jogador')+'*.'
       mentions=[me,result.targetJid].filter(Boolean)
