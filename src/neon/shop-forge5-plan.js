@@ -115,7 +115,7 @@ export function planShopForge5(input) {
   ])
   return {
     itemId:input.itemId,name:input.name,category:input.category,rarity:input.rarity,
-    stars,forgedLevel,principalLevel,principalBought,donorsRequired,
+    quantityBefore:quantity,stars,forgedLevel,principalLevel,principalBought,donorsRequired,
     donorLevels,donorPurchases,consumedTiers,buyCopies,price,
     purchases,upgrades,principalUpgrade,donorUpgrade,forgedResetsUpgrade,
     forgeFees,serviceFee,total,alreadyFull,
