@@ -65,8 +65,10 @@ export function planShopForge5(input) {
   const donorsRequired = MAX_STARS-stars
   const donorLevels=[]
   for (let i=0;i<donorsRequired;i++) {
-    // A forja original de escudos aceita apenas doadores comuns Lv.1.
-    const level=take(isShield?lv=>lv===1:()=>true)
+    // No !forja5, TODAS as doadoras devem chegar ao Lv.10. A forja
+    // manual dos escudos continua com a sua regra propria (doadora Lv.1).
+    // Priorizar Lv.10 evita recomprar uma copia quando ja existe outra evoluida.
+    const level=take()
     if (level===null) break
     donorLevels.push(level)
   }
@@ -74,18 +76,14 @@ export function planShopForge5(input) {
   const buyCopies = (principalBought?1:0)+donorPurchases
   const purchases = buyCopies*price
   const lv10cost = sumUpgrade(base,1)
-  let upgrades = 0
-  if (forged) {
-    upgrades = sumUpgrade(base,forgedLevel)+donorsRequired*lv10cost
-  } else if (isShield) {
-    // Primeira fusao do escudo nao exige Lv.10; cada estrela nova reinicia em Lv.1.
-    upgrades = donorsRequired*lv10cost
-  } else {
-    upgrades = sumUpgrade(base,principalBought?1:principalLevel)
-      + donorLevels.reduce((n,level)=>n+sumUpgrade(base,level),0)
-      + donorPurchases*lv10cost
-      + donorsRequired*lv10cost
-  }
+  // Etapas: levar principal ao Lv.10, levar cada doadora ao Lv.10,
+  // forjar uma estrela (reinicia principal no Lv.1), leva-la ao Lv.10,
+  // repetir ate ★5. Sempre cobra apenas os niveis ainda nao pagos.
+  const principalUpgrade = sumUpgrade(base,principalBought?1:principalLevel)
+  const donorUpgrade = donorLevels.reduce((n,level)=>n+sumUpgrade(base,level),0)
+    + donorPurchases*lv10cost
+  const forgedResetsUpgrade = donorsRequired*lv10cost
+  const upgrades = principalUpgrade+donorUpgrade+forgedResetsUpgrade
   let forgeFees = 0
   if (isShield) {
     for (let star=stars;star<MAX_STARS;star++) {
@@ -116,7 +114,8 @@ export function planShopForge5(input) {
     itemId:input.itemId,name:input.name,category:input.category,rarity:input.rarity,
     stars,forgedLevel,principalLevel,principalBought,donorsRequired,
     donorLevels,donorPurchases,consumedTiers,buyCopies,price,
-    purchases,upgrades,forgeFees,serviceFee,total,alreadyFull,
+    purchases,upgrades,principalUpgrade,donorUpgrade,forgedResetsUpgrade,
+    forgeFees,serviceFee,total,alreadyFull,
     cash,bank,shortage:Math.max(0,total-cash-bank),
     canExecute:!alreadyFull && cash+bank>=total,quoteKey
   }
