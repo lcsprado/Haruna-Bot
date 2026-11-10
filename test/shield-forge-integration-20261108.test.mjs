@@ -57,7 +57,7 @@ test('perfil e duelo PvP usam estrelas de escudo e bônus efetivos',()=>{
   assert.match(db,/shield_stars:Number\(sh\.stars\|\|1\)/)
   assert.match(db,/starLevel\(attackerJid,a\.shield_id\)/)
   assert.match(db,/starLevel\(defenderJid,b\.shield_id\)/)
-  assert.match(app,/forgeStarsIcon\(p\.shield_stars\|\|1\)/)
+  assert.match(app,/formatProfileShieldStars\(p\.shield_stars\|\|1\)/)
   assert.match(app,/latest\.shieldForge/)
   assert.match(app,/r\.shieldForge/)
   assert.match(app,/result\.cashSpent/)
