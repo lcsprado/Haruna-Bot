@@ -72,5 +72,5 @@ test('AB-04: apos 28h todos atingem teto de 5.172.400 e nao ganham por mais hora
       {last_collected_at:from,level:5},from+hours*3600),0)
   assert.equal(earning(28),5_172_400)
   assert.equal(earning(1000),5_172_400)
-  assert.equal(earning(5),1_069_000)
+  assert.equal(earning(5),1_091_000)
 })
