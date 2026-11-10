@@ -1,5 +1,6 @@
 import {formatRaidSkillLine} from './raid-skill-summary.js'
 import {formatRaidPlayerHealing} from './raid-healing-summary.js'
+import {raidLoteEnabled,initRaidLoteTables,startRaidLoteScheduler,describeRaidLoteRules,startRaidLote,stopRaidLote,getRaidLoteStatus,raidLoteStatusText} from './raid-lote.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
 import {FIRST_500_TITLE,isFirst500TitleHolder} from './first-level-500-title.js'
 import 'dotenv/config'
@@ -687,6 +688,7 @@ await db.query("UPDATE boss_auto_sessions SET status='stopped' WHERE jid=$1 AND 
 }catch(err){console.error('[Boss Auto] watchdog falhou',err?.message||err)}
 finally{bossAutoWatchdogBusy=false}
 }
+const isRaidLoteChat=chat=>String(chat||'').startsWith('raidlote:')
 const raidRuns=new Map()
 let raidAutoWatchdog=null
 let raidAutoReply=null
@@ -851,13 +853,13 @@ pets.set(pet,v);raidPetHealTally.set(player,pets)
 }
 for(const hit of (r.events||[])){
 if(hit.type==='hit'&&Number(hit.actualDamage??hit.damage)>0){
-await creditDailyActivity(hit.jid,'raid_damage',Number(hit.actualDamage??hit.damage),
+if(!isRaidLoteChat(chat))await creditDailyActivity(hit.jid,'raid_damage',Number(hit.actualDamage??hit.damage),
 'raid:'+chat+':'+Number(r.config?.level||level)+':'+Number(r.raidId||0)+':'+Number(r.round)+':'+hit.jid)
 .catch(err=>console.error('[MISSIONS V2 RAID]',err?.message||err))
 }
 }
 if(r.victory){
-for(const player of r.rewards||[]){
+if(!isRaidLoteChat(chat))for(const player of r.rewards||[]){
 if(Number(player.share||0)>=0.02){
 await progressAlphaContract(player.jid,'raid',{raidLevel:Number(r.config.level||level)}).catch(err=>console.error('[Contratos] raid',err?.message||err))
 await recordAscensionVeteranActivity(db,player.jid,'raid',{raidLevel:Number(r.config.level||level)})
@@ -924,12 +926,12 @@ if(x.gearDrop) text+=x.gearDrop.rarity==='Lendário'&&!x.gearDrop.normalPresenta
 ⚔️ *DROP DE RAID:* ${x.gearDrop.name} (${x.gearDrop.rarity})`
 })
 if(raidPetHealTally.size)text+='\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals()
-void persistRaidFinalNotice(chat,level,reply,text)
+if(!isRaidLoteChat(chat))void persistRaidFinalNotice(chat,level,reply,text)
 return
 }
 if(r.failed){
 const why=r.reason==='party_wipe'?'todos os jogadores caíram':'o tempo acabou'
-void persistRaidFinalNotice(chat,level,reply,`💀 *RAID FRACASSADA — ${r.config.name}*
+if(!isRaidLoteChat(chat))void persistRaidFinalNotice(chat,level,reply,`💀 *RAID FRACASSADA — ${r.config.name}*
 ❤️ Boss restante: *${Number(r.hp||0).toLocaleString('pt-BR')}/${Number(r.maxHp||0).toLocaleString('pt-BR')}*
 ⚠️ Motivo: *${why}*.
 🔑 A chave foi consumida. Não há recompensa em caso de derrota.${raidPetHealTally.size?'\n\n🐾🧪 *BOLETIM DE AUTOCURA DOS PETS*'+tallyRaidPetHeals():''}`)
@@ -2242,6 +2244,7 @@ throw err
 await initCommunityPack()
 await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
 await initGames()
+if(raidLoteEnabled())await initRaidLoteTables(db)
 // Correção idempotente de 30/10: apenas o pet do leilão antigo, sem mexer em dinheiro.
 {
   const {removeKaiqueGuaxinimId77}=await import('./auction-kaique-pet-only-20261030.js')
@@ -2661,6 +2664,14 @@ void startWebActionConsumer(db,{
 }).then(()=>console.info('[Web Relay] consumer ativo')).catch(err=>console.error('[Web Relay] inicialização falhou',err?.message||err))
 void ensureActiveRaidRuns()
 void flushRaidFinalNotices()
+if(raidLoteEnabled())startRaidLoteScheduler({
+  runRaid:(virtualChat,level)=>runRaidCombat(virtualChat,level,()=>false),
+  sendPrivate:async(jid,text)=>{
+    if(trevoHealth.whatsapp!=='open')throw new Error('WhatsApp temporariamente desconectado')
+    await sock.sendMessage(jid,{text})
+    return true
+  }
+})
 bossAutoReply=(chat,text)=>sock.sendMessage(chat,{text})
 if(!bossAutoWatchdog){
 bossAutoWatchdog=setInterval(()=>{
@@ -12897,6 +12908,31 @@ const p=await getProfile(sender)
 if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *nível ${level}* para comprar essa chave.`)
 const r=await buyItem(sender,cfg.keyId,1)
 await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
+} else if(['raidlote','raidlotes'].includes(cmd)){
+if(isGroup)return await reply('📩 O *!raidlote* funciona somente no privado do Alpha Bot. Sem mensagens automáticas no grupo.')
+const action=String(args[0]||'').toLowerCase()
+if(['status','ver','resumo'].includes(action)){
+  return await reply(raidLoteStatusText(await getRaidLoteStatus(sender)))
+}
+if(['parar','cancelar','stop'].includes(action)){
+  const result=await stopRaidLote(sender)
+  return await reply(!result.active?'⚔️ Não há lote em andamento.':
+    (result.stopAfterCurrent?'🛑 Parada solicitada. A Raid atual continua até o resultado; nenhuma nova tentativa começará.':
+      '🛑 Parada solicitada antes da próxima tentativa. Nenhuma chave adicional será consumida.'))
+}
+if(!action)return await reply(describeRaidLoteRules())
+const level=collabRaidNumber(action)
+const count=Number(args[1])
+if(!Number.isSafeInteger(count))return await reply('⚔️ Use *!raidlote 75 10*, *!raidlote status* ou *!raidlote parar*.')
+const batch=await startRaidLote(sender,msg.pushName||'Jogador',level,count)
+return await reply('⚔️ *LOTE DE RAIDS INICIADO*\n\n'+
+  '👹 Raid Lv.'+batch.level+' • '+batch.requested+' tentativa(s)\n'+
+  '🔑 Chave: R$ '+fmt(batch.keyPrice)+' • 🏛️ Serviço: R$ '+fmt(batch.fee)+' por tentativa iniciada\n'+
+  '💰 Não há cobrança antecipada pelas tentativas futuras.\n'+
+  '📊 Acompanhe em *!raidlote status*.\n'+
+  '💀 O lote para na primeira derrota ou caso faltem recursos.\n'+
+  '🛑 *!raidlote parar* interrompe após a luta atual.\n'+
+  '📩 O resumo final será enviado neste privado.')
 } else if(['raid','raidstatus'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
 const raidCatalog=getRaidCatalog()
