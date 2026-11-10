@@ -9,13 +9,13 @@ import {heroPvpAttack,heroPvpDefense} from '../src/neon/playable-heroes-core.js'
 const dbSource=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const functionBody=dbSource.split('export function equipmentStatsAtLevel(')[1]?.split('function equipmentUpgradeCost(')[0]
 assert.ok(functionBody&&functionBody.includes('const starMult=1+.04*(starLevel-1)'))
-assert.match(dbSource,/PECADOS_GEAR_IDS\.map\(id=>\[id,Object\.freeze\(/)
+assert.ok(dbSource.includes('PECADOS_GEAR_IDS.map(')||dbSource.includes('PECADOS_GEAR_IDS.includes(itemId)'))
 const equipment=Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear]))
 const forging=Object.fromEntries(PECADOS_GEAR_IDS.map(id=>[id,{collab:true}]))
 const equipmentStatsAtLevel=new Function(
-  'EQUIPMENT','RAID_GEAR_FORGE_ORIGINS','SHOP_FORGE5_STATS_IDS','ANTI_CRIT_SHIELDS','antiCritShieldStats',
+  'EQUIPMENT','RAID_GEAR_FORGE_ORIGINS','SHOP_FORGE5_STATS_IDS','ANTI_CRIT_SHIELDS','antiCritShieldStats','PECADOS_GEAR_IDS',
   "const EQUIPMENT_MAX_LEVEL=10;\nfunction equipmentStatsAtLevel("+functionBody+"\nreturn equipmentStatsAtLevel"
-)(equipment,forging,new Set(),[],()=>({}))
+)(equipment,forging,new Set(),[],()=>({}),PECADOS_GEAR_IDS)
 
 test('Lostvayne ★★★★★ Lv.10: 464 → 493 ATK, CRIT permanece 14,5%',()=>{
   const weapon=PECADOS_WEAPONS.find(w=>w.id==='pecados_lostvayne')
