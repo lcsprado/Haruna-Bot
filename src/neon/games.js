@@ -1025,10 +1025,10 @@ async function raidPetXp(c,jid,gain){
   return r?{name:r.name,xp:gain,creditedXp,level:Number(r.level),levels:gained,hp:Number(r.hp),maxHp:Number(r.max_hp)}:null
 }
 
-async function grantTeamPetXp(c,jid,baseGain){
+async function grantTeamPetXp(c,jid,baseGain,{ignoreEventBonuses=false}={}){
   baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
   if(!baseGain) return []
-  const petXpEventMultiplier=await getPetXpEventMultiplier(c)
+  const petXpEventMultiplier=ignoreEventBonuses?1:await getPetXpEventMultiplier(c)
   baseGain=await halloweenPveXp(c,jid,Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0)))))
   const awards=[]
   const primary=await raidPetXp(c,jid,baseGain)
@@ -1270,7 +1270,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     const normalPetXp=baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0
     const petXp=lote?raidLoteAmount(normalPetXp,RAID_LOTE_RULES.petXp):normalPetXp
-    const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp):[]
+    const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp,{ignoreEventBonuses:lote}):[]
     const awardedPetXp=petXpTeam[0]?.xp??petXp
 
     let material=null,drop=null,gearDrop=null
@@ -1491,7 +1491,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       skillActivations:{...(p.skillActivations||{})},skillTrackingPartial:Boolean(p.skillTrackingPartial),
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:!lote&&saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
