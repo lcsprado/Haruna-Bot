@@ -40,3 +40,37 @@ test('AB-04: legacy businesses keep their yields; new hour after cutover uses ne
     assert.equal(businessIntervalGross(b,{last_collected_at:cutover+60,level:1},cutover+3660),profitHour)
   }
 })
+
+
+test('AB-04: coleta real das 09:54 de 10/11 reconcilia centavo a centavo com legado limitado',()=>{
+  // Dados anonimizados: 9 negocios Lv5, coleta anterior 09/11 e
+  // timestamp registrado no banco (ultimo update antes do ledger).
+  // Nunca inclui identificador de jogador, carteira ou historico privado.
+  const previousCollectedAt=1794248342
+  const collectedAt=1794315251
+  const expected=catalog.reduce((total,[id,profitHour,capacityHours])=>
+    total+businessIntervalGross({id,profitHour,capacityHours},
+      {last_collected_at:previousCollectedAt,level:5},collectedAt),0)
+  assert.equal(expected,20_029_477)
+  assert.equal(Math.floor(expected*.10),2_002_947)
+  assert.equal(expected-Math.floor(expected*.10),18_026_530)
+})
+
+test('AB-04: rendimento integral 24h sem legado = 4.732.400, sem multiplicador de evento',()=>{
+  const after=cutover+24*3600
+  const gross=catalog.reduce((sum,[id,profitHour,capacityHours])=>
+    sum+businessIntervalGross({id,profitHour,capacityHours},
+      {last_collected_at:cutover,level:5},after),0)
+  assert.equal(gross,4_732_400)
+  assert.equal(gross-Math.floor(gross*.10),4_259_160)
+})
+
+test('AB-04: apos 28h todos atingem teto de 5.172.400 e nao ganham por mais horas inativas',()=>{
+  const from=cutover+3600
+  const earning=hours=>catalog.reduce((sum,[id,profitHour,capacityHours])=>
+    sum+businessIntervalGross({id,profitHour,capacityHours},
+      {last_collected_at:from,level:5},from+hours*3600),0)
+  assert.equal(earning(28),5_172_400)
+  assert.equal(earning(1000),5_172_400)
+  assert.equal(earning(5),1_091_000)
+})
