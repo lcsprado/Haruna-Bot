@@ -27,5 +27,6 @@ jobs:
       - name: Existing PvP parity and Web catalog suites
         run: |
           node --test test/web-api-vital-pet-catalog-20261105.test.mjs
+          node --test test/sete-pecados-team-synergy-20261026.test.mjs
           node --test test/pvp-web-real-battle-parity-20261109.test.mjs
           node --test test/pvp-web-combat-profile-parity-20261109.test.mjs
