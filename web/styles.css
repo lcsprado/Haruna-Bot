@@ -1583,3 +1583,16 @@ body.loot-open{overflow:hidden!important}
 .collab-hero-card-art .pet-cropped-art{height:100%!important;min-height:215px;width:100%!important;aspect-ratio:auto!important}
 .collab-hero-card.collab-locked{opacity:.58}
 @media(max-width:610px){.collab-current-hero{grid-template-columns:1fr;gap:12px}.collab-current-art{max-width:245px;margin:auto;width:100%}.collab-current-art .pet-cropped-art{height:215px!important;min-height:215px}.collab-current-content h3{font-size:20px}}
+
+
+/* AB-01 — histórico PvP completo, scroll sem cortes de rodadas. */
+.combat-fighters-opening{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.combat-fighter-opening{background:#09111a;border:1px solid #283a52;border-radius:10px;padding:10px;font-size:12px}
+.combat-fighter-opening strong,.combat-fighter-opening span{display:block}
+.combat-fighter-opening span{color:#b0c3da;margin-top:5px;line-height:1.6}
+.combat-history-label{margin:14px 0 4px;font-weight:700;font-size:12px}
+.combat-result .combat-log{max-height:360px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+.combat-round{padding:7px 3px;border-bottom:1px solid #30455f;margin-top:9px;font-weight:700;color:#a9c7ea}
+.combat-techniques{display:block;font-size:10px;margin-top:4px;color:#b5d5f2;line-height:1.55}
+.combat-techniques small{display:block}
+@media(max-width:620px){.combat-fighters-opening{grid-template-columns:1fr}}
