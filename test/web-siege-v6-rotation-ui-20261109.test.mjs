@@ -27,7 +27,7 @@ test('V6 combatente ativo: pode confirmar sua ação e vê orientação da próp
  const html=renderClanSiegePreview(uiFor({myTurn:true,nextTurns:[1,4]}))
  assert.match(html,/Sua vez nesta rodada do Cerco V6/)
  assert.match(html,/data-siege-command="move"/)
- assert.match(html,/até seis jogadores por lado/)
+ assert.match(html,/de 2 a 6 jogadores por lado/)
 })
 test('V5 antigo ignora myTurn ausente e preserva ações e versão visual do Cerco',()=>{
  const html=renderClanSiegePreview(uiFor({rulesVersion:5,myTurn:false,nextTurns:[]}))
