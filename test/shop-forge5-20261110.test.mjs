@@ -62,7 +62,7 @@ test('integra somente loja regular; nao modifica forja das raids',()=>{
  const app=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
  assert.match(db,/export async function completeShopForge5\(/)
  assert.match(db,/isRegularShopItem\(item\)/)
- assert.match(db,/!RAID_GEAR_FORGE_ORIGINS\[itemId\]/)
+ assert.match(db,/Boolean\(RAID_GEAR_FORGE_ORIGINS\[itemId\]\)/)
  assert.match(db,/pg_advisory_xact_lock/)
  assert.match(db,/await syncEffectiveGear\(c,jid,itemId\)/)
  assert.match(db,/equipment_shop_forge5/)
