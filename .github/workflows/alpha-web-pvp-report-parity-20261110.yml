@@ -1,0 +1,32 @@
+name: AB-01 WhatsApp/Web Duel Report parity
+on:
+  pull_request:
+    paths:
+      - 'src/neon/web-api.js'
+      - 'src/neon/pvp-report.js'
+      - 'test/web-pvp-group-report-parity-20261110.test.mjs'
+      - '.github/workflows/alpha-web-pvp-report-parity-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  report-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and report tests
+        run: |
+          node --check src/neon/web-api.js
+          node --check src/neon/pvp-report.js
+          node --test test/web-pvp-group-report-parity-20261110.test.mjs
+      - name: Regressions for old reports, relay and battle engine
+        run: |
+          node --test test/pvp-full-report-20261014.test.mjs
+          node --test test/web-activity-relay-20261024.test.mjs
+          node --test test/pvp-web-real-battle-parity-20261109.test.mjs
+          node --test test/pvp-web-vs-whatsapp-fixture-20261109.test.mjs
