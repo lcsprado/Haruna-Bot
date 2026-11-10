@@ -24,8 +24,10 @@ test('AB-01: quatro classes usam a mesma progressao (sem somar gear) e HP conver
  assert.match(source,/const classStats=raidHero\?null:classCombatStats\(st,st\.class_id,st\.class_level,Boolean\(st\.class_applied\)\)/)
  assert.equal((source.match(/const classStats=raidHero\?null:classCombatStats\(/g)||[]).length,2)
  assert.match(source,/const classStats=heroId\?null:classCombatStats\(/)
- assert.match(source,/const heroCombatHp=hero\?\.hp\?\?classCombatHp\(/)
- assert.match(source,/:classCombatHp\(php,effectiveMaxHp,Number\(st\.max_hp\)\+gearHp\)/)
+ assert.match(source,/const baseCombatHp=hero\?\.hp\?\?classCombatHp\(/)
+ assert.match(source,/const vital=projectBossVitalCombatHp\(\{/)
+ assert.match(source,/const effectiveMaxHp=vital\.maxHp/)
+ assert.match(source,/:restoreVitalPersistentHp\(php,effectiveMaxHp,Number\(st\.max_hp\)\+gearHp\)/)
 })
 test('AB-01: equipar bota com HP entra na projeção do HP (classe/heroi) em ambas entradas Raid',()=>{
  assert.equal((source.match(/const gearHp=Number\(w\?\.hp\|\|0\)\+Number\(a\?\.hp\|\|0\)\+Number\(b\?\.hp\|\|0\)\+Number\(h\?\.hp\|\|0\)/g)||[]).length,2)
