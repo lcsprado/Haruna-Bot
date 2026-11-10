@@ -1006,7 +1006,7 @@ async function grantTeamPetXp(c,jid,baseGain){
   baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
   if(!baseGain) return []
   const petXpEventMultiplier=await getPetXpEventMultiplier(c)
-  baseGain=Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0))))
+  baseGain=await halloweenPveXp(c,jid,Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0)))))
   const awards=[]
   const primary=await raidPetXp(c,jid,baseGain)
   if(primary) awards.push({slot:1,name:primary.name,xp:baseGain})
