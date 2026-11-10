@@ -31,5 +31,8 @@
   },
   "engines": {
     "node": "22.x"
+  },
+  "overrides": {
+    "follow-redirects": "1.16.3"
   }
 }
