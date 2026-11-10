@@ -13,7 +13,7 @@ export const PECADOS_HEROES=Object.freeze([
   {species:'pecado_merlin',name:'Merlin',style:'mistico',power:350,stats:{damage:14,crit:12,defense:8}}
 ])
 export const PECADOS_WEAPONS=Object.freeze([
-  {id:'pecados_lostvayne',name:'Lostvayne — Meliodas',category:'weapon',atk:160,crit:0.05},
+  {id:'pecados_lostvayne',name:'Lostvayne — Meliodas',category:'weapon',atk:170,crit:0.05},
   {id:'pecados_courechouse',name:'Courechouse — Ban',category:'weapon',atk:150,spd:16,crit:0.025},
   {id:'pecados_rhitta',name:'Rhitta — Escanor',category:'weapon',atk:170,crit:0.06},
   {id:'pecados_chastiefol',name:'Chastiefol — King',category:'weapon',atk:155,def:50,crit:0.01},
