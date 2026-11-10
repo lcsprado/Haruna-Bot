@@ -5129,6 +5129,8 @@ const commandPages={
 *!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar 1* / *!entrar 10* — escolhe a sala e compra a chave automaticamente se faltar
 *!go NÚMERO/NÍVEL* — host inicia sua sala; *todas as Raids podem ser feitas solo*
+*!raidlote 75 10* — até 10 Raids individuais automáticas, pagando chave e taxa por tentativa (somente privado)
+*!raidlote status* / *!raidlote parar* — acompanhar ou encerrar após a tentativa atual
 *!cancelarraide NÚMERO/NÍVEL* — host cancela sua sala antes de começar
 🔑 As chaves também ficam em *!loja → Chaves de Raid*
 🏆 Recompensas são proporcionais ao dano: dinheiro, XP, XP de pet e drops específicos
