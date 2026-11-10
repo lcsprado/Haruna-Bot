@@ -10,7 +10,8 @@ export function activeOwnerMultiplier(type,value,now=Date.now()){
   const starts=Number(state.startsAt||0),ends=Number(state.endsAt||0)
   if(!Number.isFinite(starts)||!Number.isFinite(ends)||
      starts<=0||ends<=starts||now<starts||now>=ends)return 1
-  return Math.min(max,Math.max(1,Number(state.multiplier||1)))
+  const mult=Number(state.multiplier||1)
+  return Number.isFinite(mult)?Math.min(max,Math.max(1,mult)):1
 }
 export async function readOwnerRewardMultipliers(client,types,now=Date.now()){
   if(!Array.isArray(types)||types.some(type=>!Object.hasOwn(ALLOWED,type))){
