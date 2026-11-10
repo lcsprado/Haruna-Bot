@@ -31,7 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - run: npm install --legacy-peer-deps --package-lock=false --no-audit --no-fund
       - name: Confirm isolated target and test syntax
         run: |
           node --check test/clan-siege-v6-postgres-20261110.test.mjs
