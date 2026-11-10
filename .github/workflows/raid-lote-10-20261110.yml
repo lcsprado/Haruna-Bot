@@ -1,0 +1,68 @@
+name: Alpha Bot — Raid Lote 10 safety and economics
+on:
+  pull_request:
+    paths:
+      - 'src/neon/raid-lote-policy.js'
+      - 'src/neon/raid-lote-ledger.js'
+      - 'src/neon/raid-lote.js'
+      - 'src/neon/games.js'
+      - 'src/neon/index.js'
+      - 'test/raid-lote-10-20261110.test.mjs'
+      - 'test/raid-lote-postgres-20261110.test.mjs'
+      - '.github/workflows/raid-lote-10-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  unit-and-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check src/neon/games.js
+          node --check src/neon/index.js
+          node --check src/neon/raid-lote-policy.js
+          node --check src/neon/raid-lote-ledger.js
+          node --check src/neon/raid-lote.js
+      - name: Regressions
+        run: |
+          node --test test/raid-lote-10-20261110.test.mjs
+          node --test test/raid-reconnect-no-false-compensation-20261104.test.mjs
+          node --test test/raid-final-notice-confirmation-20261110.test.mjs
+          node --test test/raid-hero-powers-activation-20261102.test.mjs
+  sql-billing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d alpha_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/alpha_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund --package-lock=false
+      - name: Atomic debit, receipt and rollback checks in disposable Postgres
+        run: node --test test/raid-lote-postgres-20261110.test.mjs

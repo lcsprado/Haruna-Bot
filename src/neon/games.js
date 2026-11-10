@@ -10,6 +10,8 @@ import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,a
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
+import {RAID_LOTE_RULES,isRaidLoteState,raidLoteAmount,raidLoteChance,raidLoteRoom} from './raid-lote-policy.js'
+import {chargeRaidLoteStart} from './raid-lote-ledger.js'
 import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
@@ -821,7 +823,8 @@ export async function getRaidStatus(chat,level=null){
   })
 }
 
-export async function createRaid(chat,host,name='Jogador',level=10){
+export async function createRaid(chat,host,name='Jogador',level=10,options={}){
+  if(options.loteBatchId && (chat!==raidLoteRoom(host)||String(options.loteBatchId).length<10))throw new Error('Identificação de lote inválida.')
   const cfg=raidConfig(level)
   if(!cfg) throw new Error('Raid inválida. Consulte !raid para ver os níveis e a Raid dos Sete Pecados.')
   const gameType=raidGameType(cfg.level)
@@ -853,7 +856,8 @@ export async function createRaid(chat,host,name='Jogador',level=10){
         VALUES($1,'raid_shop',$2,'raid_key_auto',$3)`,[host,cfg.keyPrice,`Compra automática — Raid Lv.${cfg.level}`])
       autoKeyPurchased=true
     }
-    const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+5*60*1000}
+    const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+5*60*1000,
+      ...(options.loteBatchId?{loteMode:true,loteBatchId:String(options.loteBatchId),loteChat:chat}:{})}
     await saveGame(c,chat,gameType,state)
     return {...state,gameType,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
@@ -1021,10 +1025,10 @@ async function raidPetXp(c,jid,gain){
   return r?{name:r.name,xp:gain,creditedXp,level:Number(r.level),levels:gained,hp:Number(r.hp),maxHp:Number(r.max_hp)}:null
 }
 
-async function grantTeamPetXp(c,jid,baseGain){
+async function grantTeamPetXp(c,jid,baseGain,{ignoreEventBonuses=false}={}){
   baseGain=Math.max(0,Math.floor(Number(baseGain)||0))
   if(!baseGain) return []
-  const petXpEventMultiplier=await getPetXpEventMultiplier(c)
+  const petXpEventMultiplier=ignoreEventBonuses?1:await getPetXpEventMultiplier(c)
   baseGain=await halloweenPveXp(c,jid,Math.max(0,Math.round(baseGain*petXpEventMultiplier*(1+Number((await activeRelic(c,jid))?.petXp||0)))))
   const awards=[]
   const primary=await raidPetXp(c,jid,baseGain)
@@ -1122,6 +1126,13 @@ export async function startRaid(chat,host,level=null){
       throw new Error(`🔑 Todos precisam da Chave de Raid Lv.${cfg.level}. Sem chave: ${names.join(', ')}.`)
     }
 
+    // Taxa do lote e compra da chave são independentes: ambos somente na tentativa iniciada.
+    // O débito de taxa é atômico com a chave e a mudança de sala para active.
+    const raidStartedAt=Date.now()
+    if(isRaidLoteState(s)){
+      if(ids.length!==1||ids[0]!==host)throw new Error('Lote precisa ser individual.')
+      await chargeRaidLoteStart(c,s,host,cfg.keyPrice,raidStartedAt)
+    }
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=ANY($1::text[]) AND item_id=$2',[ids,cfg.keyId])
     // Selo e óleo ativam e são consumidos UMA vez ao iniciar a Raid.
     // A ressurreição não é consumida até ocorrer morte sem nenhuma cura comum.
@@ -1186,7 +1197,7 @@ export async function startRaid(chat,host,level=null){
     // jogador extra), mantendo o ATK previsível e evitando consumo explosivo de poções.
     const partyHpMultiplier=1+Math.max(0,ids.length-1)*.12
     const raidMaxHp=Math.round(cfg.hp*partyHpMultiplier)
-    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;s.startedAt=Date.now();s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.lastRoundAt=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
+    s.status='active';s.round=0;s.hp=raidMaxHp;s.maxHp=raidMaxHp;s.atk=cfg.atk;s.startedAt=raidStartedAt;s.durationMinutes=raidDurationMinutes(cfg.level);s.activeElapsedMs=0;s.lastRoundAt=0;s.expiresAt=Date.now()+s.durationMinutes*60*1000
     await saveGame(c,chat,gameType,s)
     return s
   })
@@ -1195,6 +1206,7 @@ export async function startRaid(chat,host,level=null){
 async function finishRaidRewards(c,s,cfg,chat){
   const ranked=Object.values(s.players||{}).sort((a,b)=>Number(b.damage||0)-Number(a.damage||0))
   const total=ranked.reduce((n,p)=>n+Number(p.damage||0),0)||1
+  const lote=isRaidLoteState(s)
   // Invasão das Raids — 04/10/2026, 14:00–15:30 America/Sao_Paulo.
   // A compensação por desconexões usa uma janela dinâmica persistida no Neon.
   const now=Date.now()
@@ -1214,22 +1226,22 @@ async function finishRaidRewards(c,s,cfg,chat){
     Number(fragmentEvent.multiplier||0)===2
   const raidEventActive=(now>=Date.parse('2026-10-04T14:00:00-03:00') && now<Date.parse('2026-10-04T15:30:00-03:00')) || compensationActive || rewardEventActive
   const cacadaActive=cacadaAlphaActive()
-  const ownerRaid=await getOwnerEventMultiplier(c,'raid')
-  const ownerDrop=await getOwnerEventMultiplier(c,'drop')
-  const ownerFragments=await getOwnerEventMultiplier(c,'fragmentos')
-  const ownerGeneralXp=await getOwnerEventMultiplier(c,'xp')
-  const effectivePetXp=await getPetXpEventMultiplier(c)
+  const ownerRaid=lote?1:await getOwnerEventMultiplier(c,'raid')
+  const ownerDrop=lote?1:await getOwnerEventMultiplier(c,'drop')
+  const ownerFragments=lote?1:await getOwnerEventMultiplier(c,'fragmentos')
+  const ownerGeneralXp=lote?1:await getOwnerEventMultiplier(c,'xp')
+  const effectivePetXp=lote?1:await getPetXpEventMultiplier(c)
   // 18/10: hora dourada de Raid, apenas dinheiro e EXP do jogador.
   // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
   const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
     now<Date.parse('2026-10-18T22:00:00-03:00')
-  const moneyMultiplier=Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro'))
+  const moneyMultiplier=lote?1:Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro'))
   // Caçada de Sábado: aplica somente à EXP de jogador em Raids 50/60/65/70.
   // MAX evita multiplicação indevida se outro evento de Raid coincidir.
   const saturdayXp=saturdayRaidXpMultiplier(cfg.level,now)
-  const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
-  const petXpMultiplier=Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
-  const gearEventBonus=raidEventActive?.015:0
+  const xpMultiplier=lote?1:Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
+  const petXpMultiplier=lote?1:Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
+  const gearEventBonus=lote?0:(raidEventActive?.015:0)
   // Raid 75 da collab: bônus semanal preservado e 240 XP de maestria em 02/11.
   const specialRaid75Mastery=raid75MasteryBonusActive({level:cfg.level,collab:cfg.collab,nowMs:now})
   const rewards=[]
@@ -1239,9 +1251,9 @@ async function finishRaidRewards(c,s,cfg,chat){
     if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
       const awardKey=(specialRaid75Mastery?'raid:75:':'raid:')+String(s.startedAt)+':'+String(p.jid)
       await awardPlayableHeroLevel(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:specialRaid75Mastery?180:125})
+        xp:lote?raidLoteAmount(specialRaid75Mastery?180:125,RAID_LOTE_RULES.heroXp):(specialRaid75Mastery?180:125)})
       await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),specialRaid75:specialRaid75Mastery,
+        xp:raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now})*(lote?RAID_LOTE_RULES.masteryXp:1),specialRaid75:specialRaid75Mastery,
         progressReport:masteryReport})
     }
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
@@ -1249,14 +1261,16 @@ async function finishRaidRewards(c,s,cfg,chat){
     // Em grupos equilibrados, isso gera ~20-30% de margem bruta antes de poções/consumíveis.
     const keyReturn=Math.floor(cfg.keyPrice*1.08)
     const collaborationBonus=Math.floor(cfg.cashPool*(.04+.12*share))
-    const cash=Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier
+    const normalCash=Math.max(250,keyReturn+collaborationBonus)*moneyMultiplier
+    const cash=lote?raidLoteAmount(normalCash,RAID_LOTE_RULES.cash):normalCash
     const baseRaidExp=Math.max(20,Math.floor(cfg.xpPool*(.10+.90*share)*(1+Number(pb.xp||0))))
-    const exp=await halloweenPveXp(c,p.jid,Math.round(baseRaidExp*xpMultiplier))
+    const exp=await halloweenPveXp(c,p.jid,lote?raidLoteAmount(Math.round(baseRaidExp*xpMultiplier),RAID_LOTE_RULES.xp):Math.round(baseRaidExp*xpMultiplier))
     await credit(c,p.jid,cash,`raid_${cfg.level}`)
     const expCredit=await grantExpInTransaction(c,p.jid,exp,{chatJid:chat})
     const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
-    const petXp=baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0
-    const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp):[]
+    const normalPetXp=baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0
+    const petXp=lote?raidLoteAmount(normalPetXp,RAID_LOTE_RULES.petXp):normalPetXp
+    const petXpTeam=petXp?await grantTeamPetXp(c,p.jid,petXp,{ignoreEventBonuses:lote}):[]
     const awardedPetXp=petXpTeam[0]?.xp??petXp
 
     let material=null,drop=null,gearDrop=null
@@ -1278,7 +1292,8 @@ async function finishRaidRewards(c,s,cfg,chat){
         )
         const stored=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[dailyKey])).rows[0]?.value||{}
         const creditedToday=Math.max(0,Math.floor(Number(stored.earned||0)))
-        const qty=collabRaidPayout(creditedToday,p.damage,share)
+        const normalQty=collabRaidPayout(creditedToday,p.damage,share)
+        const qty=lote?raidLoteAmount(normalQty,RAID_LOTE_RULES.fragments):normalQty
         if(qty>0){
           await c.query(
             "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
@@ -1318,7 +1333,8 @@ async function finishRaidRewards(c,s,cfg,chat){
     const baseQty=eligibleMaterial?weightedRange(range[0],range[1]):0
     // Invasão mantém 3x quando ativa; evento independente concede 2x apenas nos materiais.
     // Não acumula multiplicadores e não modifica as demais recompensas.
-    const qty=baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments)
+    const normalQty=baseQty*(lote?1:Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerFragments))
+    const qty=lote?raidLoteAmount(normalQty,RAID_LOTE_RULES.fragments):normalQty
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
@@ -1335,8 +1351,9 @@ async function finishRaidRewards(c,s,cfg,chat){
       }else{
         boxChance=Math.min(.35,.06+share*.325+Number(pb.drop||0)*.20)
       }
-      if(cacadaActive) boxChance=Math.min(.70,boxChance*1.20)
+      if(!lote&&cacadaActive) boxChance=Math.min(.70,boxChance*1.20)
       boxChance=Math.min(.85,boxChance*ownerDrop)
+      if(lote)boxChance=raidLoteChance(boxChance,RAID_LOTE_RULES.boxChance)
       if(Math.random()<boxChance){
         await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
         drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
@@ -1349,11 +1366,12 @@ async function finishRaidRewards(c,s,cfg,chat){
       const collaborationBonus=Math.min(.004,share*.008)
       const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
       const baseGearChance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
-      const chance=Math.min(.12,(cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance)*ownerDrop)
+      const normalChance=Math.min(.12,(!lote&&cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance)*ownerDrop)
+      const chance=lote?raidLoteChance(normalChance,RAID_LOTE_RULES.gearChance):normalChance
       // Acerto de recompensa individual e de uso único: segue o fluxo comum de drop.
       // A chave transacional impede repetição, inclusive após restart ou em grupos diferentes.
       let singleUseGear=null
-      if(cfg.level===60 && Number(p.damage||0)>0){
+      if(!lote && cfg.level===60 && Number(p.damage||0)>0){
         const playerDigits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const isPlayer=playerDigits.endsWith('11948523167') ||
           (await c.query(
@@ -1373,7 +1391,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Concessão única e individual na Raid 50, somente após vitória com dano real.
       // Mantém a apresentação habitual do drop; não altera chances de outros jogadores.
-      if(!singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
+      if(!lote && !singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
         const phone='11939089695'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const ownerMatch=digits.endsWith(phone) ||
@@ -1394,7 +1412,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Concessão individual, transacional e única para a próxima vitória na Raid 50.
       // Usa o mesmo resultado habitual da Raid, sem anúncio administrativo.
-      if(!singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
+      if(!lote && !singleUseGear && cfg.level===50 && Number(p.damage||0)>0){
         const phone='11987308687'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const ownerMatch=digits.endsWith(phone) ||
@@ -1415,7 +1433,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       }
       // Pendência individual da Raid 70: conceder uma única vez na próxima vitória,
       // com participação real, pelo fluxo habitual de drop (sem aviso separado).
-      if(!singleUseGear && cfg.level===70 && Number(p.damage||0)>0){
+      if(!lote && !singleUseGear && cfg.level===70 && Number(p.damage||0)>0){
         const phone='11948523167'
         const digits=String(p.jid||'').split('@')[0].replace(/\D/g,'')
         const playerMatch=digits.endsWith(phone) ||
@@ -1444,7 +1462,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       // Recompensa de uso unico para Augusto: proxima vitoria da Raid Lv.65.
       // Sem anuncio administrativo: permanece no relatorio normal de drop da Raid.
       // Chave transacional impede duplicacao em novas raids, reinicios e outros grupos.
-      if(!singleUseGear && cfg.level===65 && Number(p.damage||0)>0 &&
+      if(!lote && !singleUseGear && cfg.level===65 && Number(p.damage||0)>0 &&
         p.jid==='5511982964423@s.whatsapp.net'){
         const oneOff=await c.query(
           `INSERT INTO trevo_settings(key,value,updated_at)
@@ -1473,7 +1491,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       skillActivations:{...(p.skillActivations||{})},skillTrackingPartial:Boolean(p.skillTrackingPartial),
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:!lote&&saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
@@ -1715,6 +1733,16 @@ export async function raidRound(chat,level){
       }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
+      if(isRaidLoteState(s)){
+        // Snapshot da premiação dentro da mesma transação; recuperável após restart.
+        const own=rewards.find(x=>x.jid===s.host)||{}
+        s.loteRewards={
+          cash:Number(own.cash||0),xp:Number(own.awardedExp??own.exp??0),
+          petXp:Number(own.petXp||0),masteryXp:Number(own.masteryReport?.earned||0),
+          material:own.material?{id:own.material.id,qty:Number(own.material.qty||0)}:null,
+          box:own.drop?.id||null,gear:own.gearDrop?.id||null
+        }
+      }
       // Despertar V: somente Raids Lv.60+ vencidas com 2+ jogadores
       // distintos causando pelo menos 2% do dano cada. Não altera drops.
       if(Number(cfg.level)>=60){
