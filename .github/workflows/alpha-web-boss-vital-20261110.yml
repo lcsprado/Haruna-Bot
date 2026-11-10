@@ -1,0 +1,30 @@
+name: AB-01 Vital Boss projection and one-time pulse
+on:
+  pull_request:
+    paths:
+      - 'src/neon/games.js'
+      - 'src/neon/pve-vital-boss-projection.js'
+      - 'test/web-boss-vital-hp-20261110.test.mjs'
+      - '.github/workflows/alpha-web-boss-vital-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  boss-vital:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and Vital Boss regression
+        run: |
+          node --check src/neon/games.js
+          node --check src/neon/pve-vital-boss-projection.js
+          node --test test/web-boss-vital-hp-20261110.test.mjs
+      - name: Existing Web PvE regressions
+        run: |
+          node --test test/web-combat-parity-20261110.test.mjs
+          node --test test/web-boss-hero-parity-20261109.test.mjs
+          node --test test/web-pet-autoheal-parity-20261110.test.mjs
+          node --test test/web-raid-vital-hp-20261110.test.mjs
