@@ -1,7 +1,8 @@
 import crypto from 'node:crypto'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {PECADOS_HEROES,PECADOS_HERO_IDS,PECADOS_EQUIPMENT,PECADOS_GEAR_IDS,pecadosBonus} from './sete-pecados-catalog.js'
-import {VITAL_PETS,applyVitalCombatHp,vitalPulseHeal} from './vital-pets.js'
+import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,vitalPulseHeal,VITAL_TEAM_BONUS} from './vital-pets.js'
+import {resolveAstralLynxWildcard,PET_TEAM_WILDCARD_SPECIES,resolveCollabWildcardTeam} from './pet-astral-wildcard.js'
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from './anti-crit-shields.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
@@ -4968,8 +4969,9 @@ return Math.round(base*scale)
 }
 const PET_TEAM_STYLE_BY_SPECIES={
 ...Object.fromEntries(PECADOS_HEROES.map(p=>[p.species,p.style])),
+...Object.fromEntries(VITAL_PETS.map(p=>[p.species,'vital'])),
 cachorro:'guardiao',tartaruga:'guardiao',panda:'guardiao',cavalo_guerra:'guardiao',orca_guerra:'guardiao',baleia_colossal:'guardiao',
-golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
+cerbero_0333_20261031:'guardiao',golem_ancestral:'guardiao',colosso_cristal:'guardiao',rinoceronte_titanico:'guardiao',guardiao_obsidiana:'guardiao',leviata_gelo:'guardiao',
 kraken_aco:'guardiao',paladino_astral:'guardiao',colosso_alpha:'guardiao',
 guardiao_caos:'guardiao',guardiao_abissal:'guardiao',sentinela_eclipse:'guardiao',
 papagaio:'voador',coruja:'voador',aguia:'voador',gaviao:'voador',dragao:'voador',
@@ -4980,18 +4982,22 @@ gato:'predador',raposa:'predador',lobo:'predador',guepardo:'predador',tigre:'pre
 moreia_sombria:'predador',tubarao_abissal:'predador',
 urso_runico:'predador',lobo_abismo:'predador',cerbero_carmesim:'predador',tigre_lunar:'predador',leao_solar:'predador',
 pantera_vulcanica:'predador',quimera_abissal:'predador',lince_celestial:'predador',
-fera_caos:'predador',pantera_profundezas:'predador',lobo_eclipse:'predador',
+fera_caos:'predador',pantera_profundezas:'predador',lobo_eclipse:'predador',manticora_eclipse_20261030:'predador',
 coelho:'mistico',hamster:'mistico',gazela_mistica:'mistico',cervo_mistico:'mistico',unicornio:'mistico',
 golfinho_celestial:'mistico',polvo_arcano:'mistico',
 salamandra_infernal:'mistico',imperador_abissal:'mistico',serpente_cosmica:'mistico',
 oraculo_pedra:'mistico',espectro_abissal:'mistico',esfinge_titanica:'mistico',arcanjo_eclipse:'mistico',oraculo_alpha:'mistico',
-oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico'
+oraculo_caos:'mistico',oraculo_coroa:'mistico',esfinge_mares:'mistico',avatar_primordial:'mistico',corcel_espectral_halloween:'mistico'
 }
+// Coringas não têm bônus independente: apenas preenchem os 3 slots.
+// Mantém a constante para os testes legados que extraem o catálogo por marcador.
+const PET_TEAM_WILDCARD_BONUS={teamSlots:3}
 const PET_TEAM_STYLE_BONUS={
 voador:{styleLabel:'🪽 Voador',label:'🪽 Esquadrão Aéreo',attack:.02,defense:0,crit:0,speed:8,text:'+8 VEL e +2% ATK'},
 guardiao:{styleLabel:'🛡️ Guardião',label:'🛡️ Muralha Viva',attack:0,defense:.04,crit:0,text:'+4% DEF no Boss/Raid'},
 predador:{styleLabel:'🐾 Predador',label:'🐾 Caçada Coordenada',attack:.02,defense:0,crit:.02,text:'+2% ATK e +2% CRIT no Boss/Raid'},
-mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'}
+mistico:{styleLabel:'✨ Místico',label:'✨ Elo Arcano',attack:0,defense:.02,crit:.025,text:'+2% DEF e +2,5% CRIT no Boss/Raid'},
+vital:VITAL_TEAM_BONUS
 }
 function resolveBatTeamStyles(species){
 const styles=species.map(x=>PET_TEAM_STYLE_BY_SPECIES[x]||null)
@@ -5003,28 +5009,64 @@ styles[batIndex]=others[0]
 return styles
 }
 export function petStyleLabel(species){
-const style=['morcego_madrugada','camaleao_lendario','lince_astral','onca_eclipse_20261026'].includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
+const style=PET_TEAM_WILDCARD_SPECIES.includes(String(species||''))?'coringa':PET_TEAM_STYLE_BY_SPECIES[String(species||'')]
 return style==='coringa'?'🃏 Coringa':PET_TEAM_STYLE_BONUS[style]?.styleLabel||'⚪ Sem estilo'
 }
+// As regras de Collab continuam extensíveis, mas os 7 Pecados não podem participar
+// de times de pets após a conversão para heróis; filtros de espécie prevalecem.
+const PET_COLLAB_TEAM_GROUPS=Object.freeze([
+  {id:'sete-pecados',label:'7 Pecados Capitais',species:PECADOS_HERO_IDS}
+])
 export function petTeamSynergy(pets=[]){
-const team=(Array.isArray(pets)?pets:[]).filter(Boolean).slice(0,3)
+// Hero-only: os Sete Pecados são personagens, jamais pets equipáveis.
+const team=(Array.isArray(pets)?pets:[]).filter(p=>p&&!PECADOS_HERO_IDS.includes(String(p.species||''))).slice(0,3)
 const species=team.map(p=>String(p.species||''))
 const unique=new Set(species).size===species.length
-const count=unique?species.filter(s=>PECADOS_HERO_IDS.includes(s)).length:0
-const collabActive=team.length===3&&unique&&count===3
+const vital=team.length===3&&unique?resolveVitalTeam(species):null
+const collab=!vital&&team.length===3&&unique?resolveCollabWildcardTeam(species,PET_COLLAB_TEAM_GROUPS):null
 const styles=resolveBatTeamStyles(species)
-const base=team.length===3&&unique&&styles[0]&&styles.every(s=>s===styles[0])
-?PET_TEAM_STYLE_BONUS[styles[0]]:null
-if(!base&&!collabActive)return null
-const attack=Number(base?.attack||0)+(collabActive?pecadosBonus(count):0)
-const crit=Number(base?.crit||0)+(collabActive?.05:0)
-const collabText=collabActive?'🌈 3 Pecados: +'+Math.round(pecadosBonus(count)*100)+'% dano e +5 p.p. CRIT':''
+// Uma Collab ativa tem prioridade exclusiva: sem Elo Universal nem sinergia de estilo.
+const wildcard=!vital&&!collab&&team.length===3&&unique?resolveAstralLynxWildcard(species,styles):null
+let base=vital||(!collab&&team.length===3&&unique
+  ?(wildcard?PET_TEAM_STYLE_BONUS[wildcard.style]
+    :(styles[0]&&styles.every(s=>s===styles[0])?PET_TEAM_STYLE_BONUS[styles[0]]:null))
+  :null)
+// Sinergia parcial usa atributos numéricos efetivos, sem reaproveitar
+// os valores exibidos da versão completa nem alterar bônus próprios dos pets.
+if(wildcard&&base){
+  const scale=wildcard.originalCount/PET_TEAM_WILDCARD_BONUS.teamSlots
+  const attrs={}
+  for(const key of ['attack','defense','crit','speed','hp','vitalPulse']){
+    attrs[key]=Number(base[key]||0)*scale
+  }
+  const pct=n=>Number((n*100).toFixed(2)).toString().replace('.',',')+'%'
+  const val=n=>Number(n.toFixed(2)).toString().replace('.',',')
+  const effects=[]
+  if(attrs.hp)effects.push('+'+pct(attrs.hp)+' HP máximo')
+  if(attrs.attack)effects.push('+'+pct(attrs.attack)+' ATK')
+  if(attrs.defense)effects.push((wildcard.style==='vital'?'-':'+' )+pct(attrs.defense)+(wildcard.style==='vital'?' dano recebido':' DEF'))
+  if(attrs.crit)effects.push('+'+pct(attrs.crit)+' CRIT')
+  if(attrs.speed)effects.push('+'+val(attrs.speed)+' VEL')
+  if(attrs.vitalPulse)effects.push('Coração Eterno: cura '+pct(attrs.vitalPulse)+' HP (1 vez/combate)')
+  base={...base,...attrs,label:base.label+' ('+wildcard.originalCount+'/3)',
+    text:'Sinergia parcial '+wildcard.originalCount+'/3: '+effects.join(' • ')}
+}
+if(!base&&!collab)return null
+// Estilo funciona sem Collab; quando ela ativa, somente seus próprios bônus se aplicam.
+const attack=Number(base?.attack||0)+Number(collab?.attack||0)
+const crit=Number(base?.crit||0)+Number(collab?.crit||0)
+const collabText=collab
+  ?'🌈 '+collab.label+' — '+(collab.full?'Full Collab':collab.heroesCount+' originais + '+collab.wildcardCount+' Coringa(s)')+
+    ': +'+Math.round(collab.attack*100)+'% dano e +'+Math.round(collab.crit*100)+' p.p. CRIT'
+  :''
 return {
-...(base||{}),style:base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
-label:[base?.label, collabActive?'🌈 7 Pecados Capitais':null].filter(Boolean).join(' + '),
+...(base||{}),style:wildcard?.style||base?.style||((team.length===3&&styles.every(s=>s===styles[0]))?styles[0]:null),
+label:[base?.label,collab?(collab.full?'🌈 Full Collab — ':'🌈 Elo de Collab — ')+collab.label:null].filter(Boolean).join(' + '),
 text:[base?.text,collabText].filter(Boolean).join(' | '),
 attack,defense:Number(base?.defense||0),crit,speed:Number(base?.speed||0),
-collabCount:collabActive?3:0,collabAttack:collabActive?pecadosBonus(count):0,collabCrit:collabActive?.05:0
+hp:Number(base?.hp||0),vitalPulse:Number(base?.vitalPulse||0),
+collabCount:collab?.full?3:0,collabAssist:Boolean(collab&&!collab.full),
+collabAttack:Number(collab?.attack||0),collabCrit:Number(collab?.crit||0)
 }
 }
 export const LEGENDARY_PET_SUMMONS=[

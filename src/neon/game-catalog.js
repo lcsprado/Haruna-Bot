@@ -178,6 +178,7 @@ export function petCombatSpecialty(species) {
     label: spec.label || String(species || ''),
     damage: pct('damage'),
     bossDamage: pct('bossDamage'),
+    hp: pct('hp'),
     defense: pct('defense'),
     crit: pct('crit'),
     dodge: pct('dodge'),
@@ -200,6 +201,7 @@ export function petPvpSpecialty(species, level=1) {
   const scaled=k=>Math.min(cap,Math.max(0,Number(base[k]||0)*scale))
   return {
     damage:scaled('damage')*.30,
+    hp:scaled('hp')*.30,
     defense:scaled('defense')*.30,
     crit:scaled('crit')*.30,
     dodge:Math.min(.05,scaled('dodge')*.30),
