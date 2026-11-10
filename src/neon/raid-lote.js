@@ -157,7 +157,9 @@ async function tickOne(s){
   if(launchCombat)await launchCombat(chat,s.level)
   return
  }
- if(state?.loteBatchId===s.batch_id&&['completed','failed'].includes(state.status)){
+ if(state?.loteBatchId===s.batch_id&&['completed','failed'].includes(state.status)
+    && Number(s.current_started_at_ms)>0
+    && Number(state.startedAt)===Number(s.current_started_at_ms)){
   await finishAttempt(s,state)
   return
  }
