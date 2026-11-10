@@ -2481,6 +2481,8 @@ await c.query(`INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES
 return {itemId,name:item.name,category:item.category,fromStars:stars,stars:stars+1,level:1,copies:units.rows[0].quantity,remainingMaterials:fragments.rows[0].quantity,materialsSpent:required,cashSpent:fee,shieldForge,collab,origin,enchantments,before:equipmentStatsAtLevel(itemId,10,stars),after:equipmentStatsAtLevel(itemId,1,stars+1)}
 })
 }
+export const listStarForgeWeapons=listStarForgeEquipment
+export const forgeWeaponStar=forgeEquipmentStar
 // !forja5 e separado da forja tradicional. So itens permanentes da loja comum.
 export async function listShopForge5Equipment(){
  const shop=await getShop()
@@ -2568,8 +2570,7 @@ export async function completeShopForge5(jid,itemId,expectedQuoteKey){
  })
 }
 
-export const listStarForgeWeapons=listStarForgeEquipment
-export const forgeWeaponStar=forgeEquipmentStar
+
 export async function getEquipmentLevels(jid,itemIds=[]){
 const ids=[...new Set((itemIds||[]).filter(Boolean))]
 if(!ids.length) return {}
