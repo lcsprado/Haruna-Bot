@@ -4,6 +4,7 @@ import {readRaidActiveHero,applyRaidHeroSnapshot,raidHeroPetSnapshot,raidHeroRou
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
+import {readOwnerRewardMultipliers} from './owner-event-readonly.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
 import {halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
@@ -1192,9 +1193,14 @@ async function finishRaidRewards(c,s,cfg,chat){
   // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
   const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
     now<Date.parse('2026-10-18T22:00:00-03:00')
-  const moneyMultiplier=raidGoldHour?2:(cacadaActive?1.25:1)
-  const xpMultiplier=raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1))
-  const petXpMultiplier=raidEventActive?1.5:(cacadaActive?1.25:1)
+  // Mesmos eventos administrativos do WhatsApp; acesso exclusivo de leitura.
+  // MAX impede acumular multiplicadores que já se sobrepõem.
+  const ownerEvents=await readOwnerRewardMultipliers(
+    c,['raid','drop','fragmentos','xp','dinheiro'],now)
+  const effectivePetXp=Math.max(1,Number(await getPetXpEventMultiplier(c)||1))
+  const moneyMultiplier=Math.max(raidGoldHour?2:(cacadaActive?1.25:1),ownerEvents.dinheiro)
+  const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),ownerEvents.raid,ownerEvents.xp)
+  const petXpMultiplier=Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerEvents.raid,effectivePetXp)/effectivePetXp
   const gearEventBonus=raidEventActive?.015:0
   const rewards=[]
   for(let i=0;i<ranked.length;i++){
@@ -1266,7 +1272,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const baseQty=eligibleMaterial?weightedRange(range[0],range[1]):0
     // Invasão mantém 3x quando ativa; evento independente concede 2x apenas nos materiais.
     // Não acumula multiplicadores e não modifica as demais recompensas.
-    const qty=baseQty*(raidEventActive?3:(doubleRaidFragments?2:1))
+    const qty=baseQty*Math.max(raidEventActive?3:(doubleRaidFragments?2:1),ownerEvents.fragmentos)
     if(qty>0){
       await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',[p.jid,cfg.material.id,qty])
       material={...cfg.material,qty}
@@ -1284,6 +1290,7 @@ async function finishRaidRewards(c,s,cfg,chat){
         boxChance=Math.min(.35,.06+share*.325+Number(pb.drop||0)*.20)
       }
       if(cacadaActive) boxChance=Math.min(.70,boxChance*1.20)
+      boxChance=Math.min(.85,boxChance*ownerEvents.drop)
       if(Math.random()<boxChance){
         await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
         drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
@@ -1296,7 +1303,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       const collaborationBonus=Math.min(.004,share*.008)
       const petDropBonus=Math.min(.008,Number(pb.drop||0)*.10)
       const baseGearChance=Math.min(.08,Number(cfg.gearChance||0)+rankBonus+collaborationBonus+petDropBonus+gearEventBonus)
-      const chance=cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance
+      const chance=Math.min(.12,(cacadaActive?Math.min(.08,baseGearChance*1.20):baseGearChance)*ownerEvents.drop)
       // Acerto de recompensa individual e de uso único: segue o fluxo comum de drop.
       // A chave transacional impede repetição, inclusive após restart ou em grupos diferentes.
       let singleUseGear=null
