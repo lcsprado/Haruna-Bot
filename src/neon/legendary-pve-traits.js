@@ -26,7 +26,7 @@ export function legendaryPveTrait(itemId,level=1,stars=1,mode='raid'){
   const rule=LEGENDARY_PVE_RULES[String(itemId||'')]
   const lv=Number(level),star=Number(stars)
   const eligible=rule&&lv===10&&Number.isInteger(star)&&star>=3&&star<=5
-  const rate=eligible?Math.min(LEGENDARY_TRAIT_MAX,rule[mode==='boss'?'boss':'raid'])*(star-2)/3:0
+  const rate=eligible?Number((Math.min(LEGENDARY_TRAIT_MAX,rule[mode==='boss'?'boss':'raid'])*(star-2)/3).toFixed(6)):0
   return Object.freeze({
     itemId:String(itemId||''),
     category:rule?.category||null,
