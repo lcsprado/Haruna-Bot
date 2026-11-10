@@ -1253,7 +1253,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       await awardPlayableHeroLevel(c,{jid:p.jid,heroId:p.heroId,awardKey,
         xp:lote?raidLoteAmount(specialRaid75Mastery?180:125,RAID_LOTE_RULES.heroXp):(specialRaid75Mastery?180:125)})
       await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:lote?raidLoteAmount(raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),RAID_LOTE_RULES.masteryXp):raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),specialRaid75:specialRaid75Mastery,
+        xp:raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now})*(lote?RAID_LOTE_RULES.masteryXp:1),specialRaid75:specialRaid75Mastery,
         progressReport:masteryReport})
     }
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
