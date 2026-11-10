@@ -2318,16 +2318,61 @@ function prettyResult(value){
   }
   return '<div class="result-message">✅ Operação processada. Os dados da sua conta foram atualizados.</div>';
 }
+function renderPvpDuelOpening(p,marker){
+  if(!p) return '';
+  const hero=p.heroId?' • 🌈 '+esc(String(p.heroId).replace(/^pecado_/,'').replaceAll('_',' '))+' • Maestria '+num(p.heroMasteryStage||1)+'/5':'';
+  const shield=p.shieldName?' • 🛡️ '+esc(p.shieldName)+' (-'+num(Number(p.shieldCritResist||0)*100)+' p.p. CRIT)':'';
+  const vital=Number(p.vitalHpRate||0)>0?' • 🧬 HP Vital +'+num(Number(p.vitalHpRate)*100)+'%':'';
+  const pet=p.petName?' • 🐾 '+esc(p.petName):'';
+  return '<div class="combat-fighter-opening"><strong>'+marker+' '+esc(p.name||'Jogador')+hero+'</strong>'+
+    '<span>❤️ '+num(p.hp)+'/'+num(p.maxHp)+' • ⚔️ '+num(p.atk)+' • 🛡️ '+num(p.def)+' • 🎯 '+num(Number(p.crit||0)*100)+'% CRIT'+shield+vital+pet+'</span></div>';
+}
 function renderCombatResult(value){
   if(!value||typeof value!=='object') return '';
   if(Array.isArray(value.log)&&value.winner&&value.loser){
-    const crits=value.log.filter(x=>x&&x.crit).length;
-    const total=value.log.reduce((s,x)=>s+Number(x&&x.dmg||0),0);
-    const recent=value.log.slice(-8);
+    const attacks=value.log.filter(x=>x&&!x.petHeal&&!x.classHeal);
+    const crits=attacks.filter(x=>x.crit).length;
+    const total=attacks.reduce((sum,x)=>sum+Math.max(0,Number(x.actualDamage??x.dmg)||0),0);
+    let previousRound=0;
+    const timeline=value.log.map(x=>{
+      if(!x)return '';
+      const round=Math.max(1,Number(x.round)||1);
+      const heading=round!==previousRound?'<div class="combat-round">🔹 Rodada '+num(round)+'</div>':'';
+      previousRound=round;
+      const person=esc(x.from||'Jogador'),target=esc(x.to||'Alvo');
+      let label='',detail='';
+      if(x.petHeal){
+        label=(x.vitalPulse?'💚 Coração Eterno de ':'💚 Pet de ')+person;
+        detail='+'+num(x.heal||0)+' HP • ❤️ '+num(x.hp);
+      }else if(x.classHeal){
+        label='⚜️ Cura de '+person;
+        detail='+'+num(x.heal||0)+' HP • ❤️ '+num(x.hp);
+      }else if(x.dodged){
+        label='🌀 '+target+' esquivou de '+person;
+        detail='❤️ '+num(x.hp);
+      }else{
+        label=(x.crit?'💥 CRÍTICO • ':'⚔️ ')+person+' → '+target;
+        detail=num(Math.max(0,Number(x.actualDamage??x.dmg)||0))+' dano efetivo'+
+          ((x.actualDamage!=null&&Number(x.actualDamage)!==Number(x.dmg))?' (golpe '+num(x.dmg)+')':'')+
+          ' • ❤️ '+num(x.hp);
+      }
+      const technique=x.heroTechnique?'<small>✨ '+esc(x.heroTechnique)+'</small>':'';
+      const defense=x.defenseTechnique?'<small>🛡️ '+esc(x.defenseTechnique)+' • '+num(x.defenseBlocked||0)+' bloqueado</small>':'';
+      return heading+'<div class="combat-hit '+(x.crit?'critical':'')+'"><span>'+label+
+        (technique||defense?'<span class="combat-techniques">'+technique+defense+'</span>':'')+
+        '</span><strong>'+detail+'</strong></div>';
+    }).join('');
+    const opening=value.opening?
+      '<div class="combat-fighters-opening">'+renderPvpDuelOpening(value.opening.attacker,'🟢')+
+       renderPvpDuelOpening(value.opening.defender,'🔴')+'</div>':'';
     return '<div class="combat-result">'+
       '<div class="combat-result-head"><div><small>VENCEDOR</small><strong>🏆 '+esc(value.winner.name||'Jogador')+'</strong></div><div><small>RECOMPENSA</small><strong>'+money(value.reward||0)+'</strong></div></div>'+
-      '<div class="result-metrics">'+resultMetric('Golpes',value.log.length,'num')+resultMetric('Críticos',crits,'num')+resultMetric('Dano total',total,'num')+'</div>'+
-      '<div class="combat-log">'+recent.map(x=>'<div class="combat-hit '+(x.crit?'critical':'')+'"><span>'+esc(x.from||'Jogador')+' → '+esc(x.to||'Alvo')+'</span><strong>'+(x.crit?'💥 CRÍTICO ':'')+num(x.dmg)+' dano</strong></div>').join('')+'</div>'+
+      opening+
+      '<div class="result-metrics">'+resultMetric('Golpes',attacks.length,'num')+resultMetric('Críticos',crits,'num')+
+       resultMetric('Dano efetivo',total,'num')+resultMetric('Rodadas',value.roundCount||0,'num')+'</div>'+
+      '<div class="combat-history-label">📜 Histórico completo do combate'+
+        (value.decidedByLimit?' • ⚖️ Vitória por HP após limite de rodadas':'')+'</div>'+
+      '<div class="combat-log" role="region" tabindex="0" aria-label="Histórico completo do duelo">'+timeline+'</div>'+
     '</div>';
   }
   if(value.winner&&value.loser&&value.rounds!=null&&value.winner.species){
