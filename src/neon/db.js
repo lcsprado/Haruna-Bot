@@ -2163,7 +2163,10 @@ const eq=EQUIPMENT[itemId]
 if(!eq) return null
 level=Math.max(1,Math.min(EQUIPMENT_MAX_LEVEL,Number(level)||1))
 const multipliers=[1,1.10,1.22,1.36,1.52,1.70,1.90,2.10,2.30,2.50]
-const starLevel=['weapon','armor'].includes(eq.category)&&RAID_GEAR_FORGE_ORIGINS[itemId] ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
+// Somente leitura dos atributos: armas/armaduras da collab usam a forja
+// existente do WhatsApp. Não amplia RAID_GEAR_FORGE_ORIGINS nem permite
+// gastar fragmentos/cópias na API Web por caminhos de forja antigos.
+const starLevel=['weapon','armor'].includes(eq.category)&&(RAID_GEAR_FORGE_ORIGINS[itemId]||PECADOS_GEAR_IDS.includes(itemId)) ?Math.max(1,Math.min(5,Math.trunc(Number(stars)||1))):1
 const starMult=1+.04*(starLevel-1)
 const mult=multipliers[level-1]
 return {

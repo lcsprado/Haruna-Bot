@@ -1,0 +1,31 @@
+name: Meliodas Lostvayne 170 ATK PvP Boss Raid parity
+on:
+  pull_request:
+    paths:
+      - 'src/neon/sete-pecados-catalog.js'
+      - 'test/lostvayne-atk170-diane-parity-20261110.test.mjs'
+      - '.github/workflows/lostvayne-atk170-parity-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  lostvayne:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check src/neon/sete-pecados-catalog.js
+          node --check src/neon/db.js
+          node --check test/lostvayne-atk170-diane-parity-20261110.test.mjs
+      - name: Weapon forge, defensive role and hero PvP regression
+        run: |
+          node --test test/lostvayne-atk170-diane-parity-20261110.test.mjs
+          node --test test/hero-hp-fractional-damage-20261109.test.mjs
+          node --test test/web-combat-parity-20261110.test.mjs
+          node --test test/pvp-full-report-20261014.test.mjs
