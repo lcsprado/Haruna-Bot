@@ -4,6 +4,8 @@ import {readRaidActiveHero,applyRaidHeroSnapshot,raidHeroPetSnapshot,raidHeroRou
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
+import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
+import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {activeRelic} from './relics.js'
@@ -36,6 +38,22 @@ export async function initGames(){
       samples JSONB NOT NULL DEFAULT '[]'::jsonb,
       PRIMARY KEY(jid,category)
     )
+  `)
+  // Compartilha o histórico append-only usado pelo WhatsApp. O legado permanece inalterado.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS player_damage_hits(
+      id BIGSERIAL PRIMARY KEY,
+      jid TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('boss','raid')),
+      hero_species TEXT NOT NULL,
+      damage INTEGER NOT NULL CHECK(damage>0),
+      critical BOOLEAN NOT NULL,
+      occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS player_damage_hits_recent_idx
+    ON player_damage_hits(jid,hero_species,category,id DESC)
   `)
   await db.query(`
     CREATE TABLE IF NOT EXISTS trevo_games(
@@ -863,10 +881,11 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id),forgeStars[st.armor_id]||1):{atk:0,def:0,hp:0,crit:0}
     const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
-    const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
+    const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
-    const heroGearHp=gearHp+Number(b?.hp||0)
+    const heroGearHp=gearHp
     const raidHero=await readRaidActiveHero(c,jid,st,heroGearHp)
+    const classStats=raidHero?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
     const pet=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]||null
     let reservePet=await raidReservePet(c,jid)
     let combatPet=raidCombatPetState(pet,1)
@@ -874,14 +893,14 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       combatPet=reservePet
       reservePet=null
     }
-    const awakeningStage=Number((await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]?.stage||0)
+    const awakeningStage=raidHero?0:Number((await c.query('SELECT stage FROM player_awakenings WHERE jid=$1',[jid])).rows[0]?.stage||0)
     let teamPassives=(await c.query('SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',[jid])).rows
     const heroPets=raidHeroPetSnapshot(raidHero,combatPet,reservePet,teamPassives)
     combatPet=heroPets.primary;reservePet=heroPets.reserve;teamPassives=heroPets.team
     s.players={...(s.players||{}),[jid]:{
-      jid,name:name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,
-      atk:Math.round((Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
-      classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
+      jid,name:name||u?.push_name||'Jogador',hp:classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(classStats?.maxHp??st.max_hp)+gearHp,
+      atk:Math.round((Number(classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
+      classId:st.class_id,classApplied:Boolean(st.class_applied)&&!raidHero,awakeningStage,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!raidHero,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
       pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     s.players[jid]=applyRaidHeroSnapshot(s.players[jid],raidHero,st,{weapon:w,armor:a,boot:b,helmet:h},ench,heroGearHp)
@@ -1073,7 +1092,7 @@ export async function startRaid(chat,host,level=null){
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
     for(const jid of ids){
       const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
-      const awakeningStage=Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
+      const awakeningStage=raidHero?0:Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
       // Só usar as estrelas quando o nível efetivo corresponder à peça estrelada real.
       // Uma cópia comum Lv.10 não herda as estrelas de outra cópia forjada Lv.1.
@@ -1087,10 +1106,11 @@ export async function startRaid(chat,host,level=null){
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id),armorStars):{atk:0,def:0,hp:0,crit:0}
       const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
       const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
-      const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(h?.hp||0)
+      const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
-      const heroGearHp=gearHp+Number(b?.hp||0)
+      const heroGearHp=gearHp
       const raidHero=await readRaidActiveHero(c,jid,st,heroGearHp)
+    const classStats=raidHero?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
       let reservePet=await raidReservePet(c,jid)
       let combatPet=raidCombatPetState(pet,1)
       if(combatPet&&Number(combatPet.hp)<=0&&reservePet){
@@ -1107,7 +1127,7 @@ export async function startRaid(chat,host,level=null){
       const teamPassives=heroPets.team
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:Math.min(Number(st.hp),Number(st.max_hp)+gearHp),maxHp:Number(st.max_hp)+gearHp,atk:Math.round((Number(st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied),awakeningStage,crit:Math.min(.45,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!raidHero,awakeningStage,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!raidHero,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
       s.players[jid]=applyRaidHeroSnapshot(s.players[jid],raidHero,st,{weapon:w,armor:a,boot:b,helmet:h},ench,heroGearHp)
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
@@ -1364,38 +1384,46 @@ async function finishRaidRewards(c,s,cfg,chat){
   return rewards
 }
 
-async function recordPlayerDamage(client,jid,category,damage,critical){
-  if(!jid||!['boss','raid'].includes(category)||!Number.isFinite(Number(damage))||Number(damage)<=0)return
+async function recordPlayerDamage(client,jid,category,damage,critical,heroId=null){
+  const amount=Math.round(Number(damage));
+  if(!jid||!['boss','raid'].includes(category)||!Number.isSafeInteger(amount)||amount<=0)return;
+  // O golpe pertence ao heroi ativo nesta luta, nao ao heroi equipado numa consulta futura.
+  // Nao atualiza player_damage_stats: o historico legado fica preservado sem perda.
   await client.query(`
-    INSERT INTO player_damage_stats(jid,category,samples)
-    VALUES($1,$2,jsonb_build_array(jsonb_build_array($3::integer,$4::boolean)))
-    ON CONFLICT(jid,category) DO UPDATE
-    SET samples=(
-      SELECT COALESCE(jsonb_agg(value ORDER BY ord),'[]'::jsonb)
-      FROM (
-        SELECT value,ord FROM jsonb_array_elements(
-          player_damage_stats.samples || jsonb_build_array(jsonb_build_array($3::integer,$4::boolean))
-        ) WITH ORDINALITY AS t(value,ord)
-        ORDER BY ord DESC LIMIT 100
-      ) last100
-    )
-  `,[jid,category,Math.max(0,Math.round(Number(damage))),Boolean(critical)])
+    INSERT INTO player_damage_hits(jid,category,hero_species,damage,critical)
+    VALUES($1,$2,$3,$4,$5)
+  `,[jid,category,damageHeroKey(heroId),amount,Boolean(critical)]);
 }
-export async function getPlayerDamageStats(jid){
- const result=await db.query('SELECT category,samples FROM player_damage_stats WHERE jid=$1',[jid])
- const out={}
- for(const row of result.rows){
-   const samples=Array.isArray(row.samples)?row.samples:[]
-   const total=samples.reduce((n,x)=>n+Number(x[0]||0),0)
-   const critical=samples.filter(x=>Boolean(x[1]))
-   const critTotal=critical.reduce((n,x)=>n+Number(x[0]||0),0)
-   out[row.category]={count:samples.length,average:samples.length?Math.round(total/samples.length):0,
-     max:samples.reduce((n,x)=>Math.max(n,Number(x[0]||0)),0),
-     critCount:critical.length,critAverage:critical.length?Math.round(critTotal/critical.length):0,
-     normalCount:samples.length-critical.length,
-     normalAverage:samples.length>critical.length?Math.round((total-critTotal)/(samples.length-critical.length)):0}
- }
- return out
+export async function getPlayerDamageStats(jid,heroId=null,{historical=false}={}){
+  const out={};
+  if(historical){
+    // Registros antigos nao possuem heroi: nunca atribui-los retroativamente a um personagem.
+    const result=await db.query('SELECT category,samples FROM player_damage_stats WHERE jid=$1',[jid]);
+    for(const row of result.rows){
+      const summary=summarizeDamageSamples(row.samples);
+      if(summary.count)out[row.category]=summary;
+    }
+    return out;
+  }
+  // Limite por modalidade E por heroi, nao por jogador: maximo de 60 golpes.
+  const result=await db.query(`
+    SELECT category,damage,critical FROM (
+      SELECT category,damage,critical FROM player_damage_hits
+      WHERE jid=$1 AND hero_species=$2 AND category='boss'
+      ORDER BY id DESC LIMIT $3
+    ) boss_hits
+    UNION ALL
+    SELECT category,damage,critical FROM (
+      SELECT category,damage,critical FROM player_damage_hits
+      WHERE jid=$1 AND hero_species=$2 AND category='raid'
+      ORDER BY id DESC LIMIT $3
+    ) raid_hits
+  `,[jid,damageHeroKey(heroId),DAMAGE_SAMPLE_LIMIT]);
+  for(const category of ['boss','raid']){
+    const samples=result.rows.filter(r=>r.category===category).map(r=>[Number(r.damage),r.critical===true]);
+    if(samples.length)out[category]=summarizeDamageSamples(samples);
+  }
+  return out;
 }
 
 export async function raidRound(chat,level){
@@ -1517,7 +1545,7 @@ export async function raidRound(chat,level){
       p.petBonusDamage=Number(p.petBonusDamage||0)+petExtra
       p.damage=Number(p.damage||0)+dmg
       s.hp=Math.max(0,Number(s.hp)-dmg)
-      await recordPlayerDamage(c,p.jid,'raid',actualDamage,crit)
+      await recordPlayerDamage(c,p.jid,'raid',actualDamage,crit,p.heroId)
       events.push({type:'hit',jid:p.jid,name:p.name,damage:dmg,actualDamage,crit})
       if(Number(s.hp)<=0) break
     }
@@ -2892,10 +2920,12 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
     const hero=await readBossCombatHero(c,jid,st,{...existingParticipant,heroId:activeHeroId},gearHp)
     const heroId=hero?.heroId||null
-    const heroCombatHp=hero?.hp??Number(st.hp)
-    const atk=Math.round((Number(hero?.heroStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
-    const def=Number(hero?.heroStats?.def??st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
-    const effectiveMaxHp=hero?.maxHp??(Number(st.max_hp)+gearHp)
+    const classStats=heroId?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
+    const classMaxHp=Number(classStats?.maxHp??st.max_hp)+gearHp
+    const heroCombatHp=hero?.hp??classCombatHp(st.hp,Number(st.max_hp)+gearHp,classMaxHp)
+    const atk=Math.round((Number(hero?.heroStats?.atk??classStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
+    const def=Number(hero?.heroStats?.def??classStats?.def??st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
+    const effectiveMaxHp=hero?.maxHp??classMaxHp
     const petCritChance=Math.max(0,Number(petBonus.crit||0)+Number(teamSynergy.crit||0))
     const gearCritChance=Math.max(0,Number(weapon?.crit||0)+Number(armor?.crit||0)+Number(boots?.crit||0)+Number(helmet?.crit||0))
     const baseCritChance=.10
@@ -3055,14 +3085,15 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         const chosen=available.find(x=>x.heal>=effectiveMaxHp)||available[available.length-1]
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
-      const storedHp=hero?settleBossHeroHp(hero,s.participants[jid],php):php
+      const storedHp=hero?settleBossHeroHp(hero,s.participants[jid],php)
+        :classCombatHp(php,effectiveMaxHp,Number(st.max_hp)+gearHp)
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[storedHp,jid])
     }
     if(s.hp<=0&&hero){
       const storedHp=settleBossHeroHp(hero,s.participants[jid],php)
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[storedHp,jid])
     }
-    await recordPlayerDamage(c,jid,'boss',damage,crit)
+    await recordPlayerDamage(c,jid,'boss',damage,crit,heroId)
     if(s.hp<=0&&s.eventId===TITAN_EVENT_ID){
       const result=await defeatTitanPhase(c,s)
       return {dead:true,mode:s.mode,eventId:s.eventId,damage,bossDamage,bossCritical,
