@@ -203,11 +203,16 @@ async function notifyClosedSessions(){
   const status=await getRaidLoteStatus(row.jid)
   if(!status||status.batch_id!==row.batch_id)continue
   const marked=await db.query(`UPDATE raid_lote_sessions SET notified_at_ms=$3
-   WHERE jid=$1 AND batch_id=$2 AND notified_at_ms=0 RETURNING jid`,
+   WHERE jid=$1 AND batch_id=$2 AND notified_at_ms=0 RETURNING jid,notified_at_ms`,
    [row.jid,row.batch_id,now()])
   if(!marked.rowCount)continue
   try{await notifyUser(row.jid,raidLoteStatusText(status))}
-  catch(e){console.warn('[Raid Lote] resumo não entregue; disponível em !raidlote status:',String(e?.message||e).slice(0,130))}
+  catch(e){
+    // Entrega não confirmada: restaura a pendência, mantendo no máximo um aviso por tick.
+    await db.query('UPDATE raid_lote_sessions SET notified_at_ms=0 WHERE jid=$1 AND batch_id=$2 AND notified_at_ms=$3',
+      [row.jid,row.batch_id,Number(marked.rows[0]?.notified_at_ms||0)])
+    console.warn('[Raid Lote] resumo pendente:',String(e?.message||e).slice(0,130))
+  }
  }
 }
 async function tickRaidLote(){
