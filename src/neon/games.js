@@ -9,6 +9,7 @@ import {halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {projectBossVitalCombatHp} from './pve-vital-boss-projection.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
+import {playerPotionHealAmount} from './player-potions.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
@@ -17,7 +18,7 @@ import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from '.
 import {activeRelic} from './relics.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
-import {PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
+import {PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus,PECADOS_HERO_IDS} from './sete-pecados-catalog.js'
 import {COLLAB_FRAGMENT_ITEM,COLLAB_RAID_DAILY_CAP,collabRaidBrazilDay,collabRaidPayout,collabRaidEligible} from './collab-fragment-rules.js'
 import {TITAN_EVENT_ID,TITAN_EVENT_KEY,TITAN_START,TITAN_END,TITAN_PHASES,createTitanState,rollupTitanDamage,rankTitanPlayers,titanRewards} from './titan-invasion.js'
 
@@ -1029,9 +1030,8 @@ async function grantTeamPetXp(c,jid,baseGain){
 }
 
 function raidPotion(rows,maxHp){
-  const heal={pocao_p:35,pocao_m:80,pocao_g:160,elixir_supremo:999999}
   const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
-  const a=(rows||[]).filter(x=>Number(x.quantity)>0).map(x=>({...x,heal:heal[x.item_id]||0})).sort((x,y)=>x.heal-y.heal)
+  const a=(rows||[]).filter(x=>Number(x.quantity)>0).map(x=>({...x,heal:playerPotionHealAmount(x.item_id,maxHp)})).sort((x,y)=>x.heal-y.heal)
   const p=a.find(x=>x.heal>=maxHp)||a[a.length-1]
   return p?{...p,name:names[p.item_id]}:null
 }
@@ -1488,6 +1488,11 @@ export async function raidRound(chat,level){
     }
 
     for(const p of alive){
+      // Um Pecado jogável não pode conceder bônus, dano ou curas como pet
+      // em snapshots antigos ou depois de uma troca de herói.
+      p.teamPassives=(p.teamPassives||[]).filter(x=>!PECADOS_HERO_IDS.includes(String(x.species||'')))
+      if(PECADOS_HERO_IDS.includes(String(p.pet?.species||'')))p.pet=null
+      if(PECADOS_HERO_IDS.includes(String(p.reservePet?.species||'')))p.reservePet=null
       let pb={damage:0,crit:0}
       const baseTeamSynergy=petTeamSynergy(p.teamPassives||[])||{attack:0,defense:0,crit:0}
       const teamSynergy={...baseTeamSynergy,defense:Number(baseTeamSynergy.defense||0)+halloweenMysticHelmetReduction({helmetId:p.halloweenHelmetId,teamStyle:baseTeamSynergy.style,teamCount:(p.teamPassives||[]).length})}
@@ -1499,7 +1504,7 @@ export async function raidRound(chat,level){
       if(p.pet&&Number(p.pet.teamSlot)===3){
         const primaryRow=(await c.query('SELECT * FROM pets WHERE jid=$1 FOR UPDATE',[p.jid])).rows[0]||null
         const primary=raidCombatPetState(primaryRow,1)
-        if(primary&&Number(primary.hp)>0&&Number(primary.energy)>0){
+        if(primary&&!PECADOS_HERO_IDS.includes(String(primary.species||''))&&primary.species!==p.heroId&&Number(primary.hp)>0&&Number(primary.energy)>0){
           await persistRaidCombatPet(c,p.jid,p.pet)
           p.reservePet=p.pet
           p.pet=primary
@@ -2961,7 +2966,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     let petSwitch=null
     if(usePet&&activePetSlot===1&&petRow&&Number(petRow.hp)<=0){
       const reserve=await loadBossCombatPet(c,jid,3)
-      if(reserve&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
+      if(reserve&&reserve.species!==activeHeroId&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
         petSwitch={from:petRow.name,to:reserve.name}
         activePetSlot=3
         petRow=reserve
@@ -3138,7 +3143,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           let switched=false
           if(Number(pet.teamSlot||1)===1){
             const reserve=await loadBossCombatPet(c,jid,3)
-            if(reserve&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
+            if(reserve&&reserve.species!==heroId&&Number(reserve.hp)>0&&Number(reserve.energy)>=2){
               petSwitch={from:pet.name,to:reserve.name}
               s.participants[jid].activePetSlot=3
               switched=true
@@ -3179,10 +3184,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
 
       if(php<=0){
         const ids=['pocao_p','pocao_m','pocao_g','elixir_supremo']
-        const heals={pocao_p:35,pocao_m:80,pocao_g:160,elixir_supremo:999999}
         const names={pocao_p:'Poção Pequena',pocao_m:'Poção Média',pocao_g:'Poção Grande',elixir_supremo:'Elixir Supremo'}
         const inv=(await c.query('SELECT item_id,quantity FROM inventories WHERE jid=$1 AND quantity>0 AND item_id=ANY($2::text[]) FOR UPDATE',[jid,ids])).rows
-        const available=inv.map(x=>({...x,heal:heals[x.item_id]})).sort((a,b)=>a.heal-b.heal)
+        const available=inv.map(x=>({...x,heal:playerPotionHealAmount(x.item_id,effectiveMaxHp)})).sort((a,b)=>a.heal-b.heal)
         const chosen=available.find(x=>x.heal>=effectiveMaxHp)||available[available.length-1]
         if(chosen){php=Math.min(effectiveMaxHp,chosen.heal);await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,chosen.item_id]);autoHeal={name:names[chosen.item_id],hp:php}}
       }
