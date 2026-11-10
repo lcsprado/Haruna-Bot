@@ -21,7 +21,7 @@ test('AB-07: V6 exibe membros vinculados reais (2 a 6) sem confundir elenco com 
   const html=renderClanSiegePreview(makeUi({members,linked:members}))
   assert.match(html,new RegExp(members+'/'+members+' Web vinculados'))
   assert.match(html,/1\/4 vagas ativas usadas \(2 por clã\)/)
-  assert.doesNotMatch(html,/\d+\/2 Web vinculados/)
+  if(members>2)assert.doesNotMatch(html,/\d+\/2 Web vinculados/)
  }
 })
 test('AB-07: jogador reserva vê os próximos turnos e não pode confirmar',()=>{
