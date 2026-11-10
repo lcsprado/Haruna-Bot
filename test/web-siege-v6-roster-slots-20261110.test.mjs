@@ -50,3 +50,19 @@ test('AB-07: PWA instalada atualiza cache sem alterar protocolo da API V5',()=>{
  assert.match(sw,/roster-slots-20261110/)
  assert.match(app,/WEB_BUILD_ID='alpha-siege-v5-20261108'/)
 })
+
+test('AB-07: PWA pré-guerra exibe versão V6 comunicada pelo servidor e preserva histórico V5',()=>{
+ const ui=makeUi({rulesVersion:5,members:4,linked:4})
+ ui.siege.match.status='completed'
+ ui.siege.nextRulesVersion=6
+ const html=renderClanSiegePreview(ui)
+ assert.match(html,/CERCO · SÁBADO ÀS 21H30 · V6/)
+ assert.match(html,/Dois clãs, de 2 a 6 jogadores por lado/)
+ assert.match(html,/4\/4 Web vinculados/)
+ assert.match(html,/Resultado anterior preservado na regra V5/)
+ assert.doesNotMatch(html,/data-siege-command="move"/)
+ delete ui.siege.nextRulesVersion
+ const legacy=renderClanSiegePreview(ui)
+ assert.match(legacy,/CERCO · SÁBADO ÀS 21H30 · V5/)
+ assert.match(legacy,/Dois clãs, quatro jogadores/)
+})
