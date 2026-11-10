@@ -1614,9 +1614,17 @@ export async function raidRound(chat,level){
       // Na vitoria, os herois devem persistir a cura do ultimo golpe.
       // A escrita ocorre dentro da mesma transacao que finaliza a Raid.
       for(const participant of Object.values(s.players||{})){
-        if(!participant?.heroId)continue
-        const persistentHp=settleRaidHeroHp(participant)
-        await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[persistentHp,participant.jid])
+        if(!participant)continue
+        // Em novos snapshots, converte HP de combate de herói/classe para
+        // escala persistente, inclusive quando o último ataque curou HP.
+        const persistentHp=participant.heroId
+          ?settleRaidHeroHp(participant)
+          :(Object.hasOwn(participant,'vitalHpRate')
+            ?restoreVitalPersistentHp(participant.hp,participant.maxHp,participant.persistentMaxHp)
+            :null)
+        if(persistentHp!==null){
+          await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[persistentHp,participant.jid])
+        }
       }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
@@ -1672,6 +1680,17 @@ export async function raidRound(chat,level){
       p.awakeningState=passiveDefense.awakeningState
       const dmg=passiveDefense.damage
       p.hp=Math.max(0,Number(p.hp)-dmg+Number(passiveDefense.healAfter||0))
+      // Somente participantes com snapshot de HP Vital são elegíveis:
+      // preservar salas Web antigas sem reprojeção surpresa no meio da luta.
+      const heart=Object.hasOwn(p,'vitalHpRate')
+        ?vitalPulseHeal(p.hp,p.maxHp,p.vitalPulseUsed,Number(p.teamSynergy?.vitalPulse||0))
+        :null
+      if(heart?.used&&!p.vitalPulseUsed){
+        p.hp=heart.hp
+        p.vitalPulseUsed=true
+        p.petSkillHealing=Number(p.petSkillHealing||0)+heart.heal
+        events.push({type:'vital_pulse',jid:p.jid,name:p.name,heal:heart.heal,hp:p.hp})
+      }
       let petDamage=0,petFainted=false,autoPetHeal=preRoundPetHeals.get(p.jid)||null,petSwitch=null,fallenPetName=null
       if(p.pet?.roundActive&&Number(p.pet.hp)>0){
         const petDefense=Math.max(0,Math.min(.75,Number(p.pet.bonus?.defense||0)))
@@ -1794,7 +1813,10 @@ export async function raidRound(chat,level){
           }else p.alive=false
         }
       }
-      const storedHp=p.heroId?settleRaidHeroHp(p):p.hp
+      const storedHp=p.heroId?settleRaidHeroHp(p)
+        :(Object.hasOwn(p,'vitalHpRate')
+          ?restoreVitalPersistentHp(p.hp,p.maxHp,p.persistentMaxHp)
+          :p.hp)
       await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[storedHp,p.jid])
       events.push({type:'boss',jid:p.jid,name:p.name,damage:dmg,hp:p.hp,dodged,critical:bossCritical,autoHeal,autoRevive,autoPetHeal,petSkillHeal,petSwitch,fallenPetName,alive:p.alive,petDamage,petHp:p.pet?.hp??null,petMaxHp:p.pet?.maxHp??null,petName:p.pet?.name||null,petFainted})
     }
