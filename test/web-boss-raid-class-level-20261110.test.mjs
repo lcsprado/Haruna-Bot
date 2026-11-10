@@ -73,7 +73,7 @@ test('AB-01: live data level join returns class level rather than general player
     const levels=Object.fromEntries(r.rows.map(p=>[p.jid,p.class_level]))
     if(key==='start')assert.deepEqual(levels,{a:100,b:15,c:1})
     if(key==='join')assert.equal(levels.a,100)
-    if(key==='boss')assert.equal(levels.b,15)
+    if(key==='boss')assert.equal(r.rows[0].class_level,15,'Boss selects stats columns and the joined level, without jid')
   }
   const fromBoss=(await client.query(bossQuery,['a'])).rows[0]
   const s=classCombatStats(fromBoss,fromBoss.class_id,fromBoss.class_level,fromBoss.class_applied)
