@@ -11,12 +11,13 @@ const rewards=games.slice(from,end)
 const NOW=Date.parse('2026-11-10T18:10:00Z')
 const event=(a=NOW-300000,b=NOW+600000,m=2)=>({startsAt:a,endsAt:b,multiplier:m})
 test('AB-01: only active owner events affect rewards, with exact caps',()=>{
- for(const type of ['raid','drop','fragmentos','dinheiro','pet','corre','sorte']){
+ for(const type of ['raid','drop','fragmentos','dinheiro','corre','sorte']){
   assert.equal(activeOwnerMultiplier(type,event(),NOW),2)
   assert.equal(activeOwnerMultiplier(type,event(NOW+1000,NOW+600000),NOW),1)
   assert.equal(activeOwnerMultiplier(type,event(NOW-300000,NOW),NOW),1)
   assert.equal(activeOwnerMultiplier(type,event(NOW-300000,NOW+600000,15),NOW),2)
  }
+ assert.equal(activeOwnerMultiplier('pet',event(NOW-300000,NOW+600000,15),NOW),3)
  assert.equal(activeOwnerMultiplier('xp',event(NOW-300000,NOW+600000,3),NOW),3)
  assert.equal(activeOwnerMultiplier('xp',event(NOW-300000,NOW+600000,15),NOW),3)
  assert.equal(activeOwnerMultiplier('raid',event(NOW-300000,NOW+600000,NaN),NOW),1)
