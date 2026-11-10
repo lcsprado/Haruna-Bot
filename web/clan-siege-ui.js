@@ -164,7 +164,9 @@ function renderLiveSiege(ui){
   // Defesa não podem controlar a prévia independente da próxima Guerra V5.
   // Fora de uma partida ativa, os botões demonstram a PRÓXIMA guerra (V5),
   // mas o histórico/placar continuam mostrando a versão em que foram jogados.
-  const rulesVersion=active?Number(match.rulesVersion||1):5;
+  const nextRulesVersion=Number(data.nextRulesVersion)===6?6:5;
+  const rulesVersion=active?Number(match.rulesVersion||1):nextRulesVersion;
+  const expandedRoster=rulesVersion>=6;
   const availableActions=rulesVersion>=4?TACTICAL_ACTIONS.map(a=>a.id==='repair'&&rulesVersion>=5?
     {...a,effect:a.effect.replace('220 HP','280 HP')}:a):rulesVersion>=2?ACTIONS:LEGACY_ACTIONS;
   const remainingRepairs=active?Math.max(0,2-Number(match?.[match?.mySide+'Repairs']||0)):2;
@@ -194,12 +196,12 @@ function renderLiveSiege(ui){
   const canConfirm=canMove&&Boolean(selected)&&!(selected?.id==='repair'&&remainingRepairs<=0);
   const duration=active?Math.max(0,Math.ceil((Number(match.roundEndsAt)-Date.now())/1000)):0;
   const countdown=active?' • '+Math.floor(duration/60)+'m '+String(duration%60).padStart(2,'0')+'s':'';
-  const label=active?'⚔️ GUERRA ATIVA · V'+rulesVersion:stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO · '+NEXT_SIEGE_LABEL+' · V5';
+  const label=active?'⚔️ GUERRA ATIVA · V'+rulesVersion:stage==='pending'?'⏳ DESAFIO ANTIGO PENDENTE':'⏰ CERCO · '+NEXT_SIEGE_LABEL+' · V'+nextRulesVersion;
   // A guerra acontece somente aos sábados às 21h30, sem convite ou aceite manual.
   let controls='';
   if(stage==='pending'&&match.createdByMe)controls='<button class="btn danger" data-siege-command="cancel">Cancelar desafio antigo</button>';
   const notice=stage==='pending'?'Desafio anterior: expira em 30 minutos sem aceite. Próximo Cerco: '+NEXT_SIEGE_LABEL+'. Explore as ações sem enviar escolhas.':
-    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. Próximo Cerco: '+NEXT_SIEGE_LABEL+'. A V5 tem cinco ações e três frentes. Confirme apenas durante a partida.':
+    stage==='completed'?'Resultado anterior preservado na regra V'+Number(match?.rulesVersion||1)+'. Próximo Cerco: '+NEXT_SIEGE_LABEL+'. A V'+nextRulesVersion+' tem cinco ações e três frentes. Confirme apenas durante a partida.':
     active?'Ações são secretas. Escolha uma estratégia e CONFIRME por rodada. Sem confirmação, nenhuma ação será executada.':
     'Próximo Cerco: '+NEXT_SIEGE_LABEL+' (Brasília). Explore as cinco ações agora; confirme apenas durante a partida.';
   const pct=(hp,max)=>Math.min(100,Math.max(0,Number(hp||0)/Number(max||2000)*100)).toFixed(1);
@@ -210,14 +212,14 @@ function renderLiveSiege(ui){
       '<span class="siege-castle-kicker">'+(side==='blue'?'🔵 CASTELO AZUL':'🔴 CASTELO VERMELHO')+'</span>'+
       '<div class="siege-castle-art" aria-hidden="true">🏰</div><h4>'+ESCAPE(c?.name||'Clã a confirmar')+'</h4>'+
       '<p>'+Number(c?.members||0)+' membros • '+Number(c?.linked||0)+'/'+
-      (rotationActive?Number(c?.members||0):2)+' Web vinculados</p>'+
+      (expandedRoster?Number(c?.members||0):2)+' Web vinculados</p>'+
       '<div class="siege-castle-hp"><span>HP</span><strong>'+hp+' / '+maxHp.toLocaleString('pt-BR')+'</strong></div>'+
       '<div class="siege-hp-track"><span style="width:'+pct(hp,maxHp)+'%"></span></div></article>';
   }
   const latest=Array.isArray(match?.history)?match.history.slice(-3):[];
   return '<section class="siege-preview section">'+
     '<div class="siege-head"><div><p class="siege-eyebrow">ALPHA BOT · GUERRA DE CLÃS</p>'+
-    '<h3>🏰 Cerco ao Castelo</h3><p>'+(rotationActive?'Dois clãs, até seis jogadores por lado, com dois turnos ativos por equipe a cada rodada.':'Dois clãs, quatro jogadores, ações secretas e resultado no WhatsApp.')+'</p></div>'+
+    '<h3>🏰 Cerco ao Castelo</h3><p>'+(expandedRoster?'Dois clãs, de 2 a 6 jogadores por lado, com duas vagas ativas por equipe a cada rodada.':'Dois clãs, quatro jogadores, ações secretas e resultado no WhatsApp.')+'</p></div>'+
     '<span class="siege-status">'+label+'</span></div>'+
     '<div class="siege-stage">'+fortress(blue,'blue')+
     '<div class="siege-versus"><strong>VS</strong><small>⏰ '+NEXT_SIEGE_LABEL+'</small><small>6 rodadas</small><small>5 min cada</small></div>'+
@@ -228,7 +230,7 @@ function renderLiveSiege(ui){
     (rotationActive?'<div class="siege-data-note" role="status">'+ESCAPE(rotationNotice)+'</div>':'')+
     '<div class="hero-actions">'+controls+'<button class="btn" data-siege-refresh>🔄 Atualizar</button></div>'+
     (ui.siegeError?'<div class="notice warn section">'+ESCAPE(ui.siegeError)+'</div>':'')+
-    (rulesVersion>=4?objectivesGuide(active?match:{rulesVersion:5}):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
+    (rulesVersion>=4?objectivesGuide(active?match:{rulesVersion}):renderTacticsGuide(rulesVersion,Number(match?.round||0),remainingRepairs))+
     '<div class="siege-planning"><div class="siege-planning-head"><h4>'+(
       match?.myMove?'✅ Ação confirmada':rotationActive&&!isMyTurn?'⏳ Aguardando seu turno':'Escolha sua estratégia')+'</h4>'+
       '<span class="siege-status">'+(active?'RODADA '+Number(match.round)+'/6':'AGUARDANDO GUERRA')+'</span></div>'+
