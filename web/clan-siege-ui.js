@@ -173,12 +173,15 @@ function renderLiveSiege(ui){
   const nextTurns=rotationActive&&Array.isArray(match.nextTurns)
     ?match.nextTurns.filter(x=>Number.isInteger(Number(x))&&Number(x)>=Number(match.round)).map(Number):[];
   const rotationNotice=rotationActive
-    ?match.myTurn===true
+    ?!match.mySide
+      ?'🔒 Você não participa desta partida do Cerco V6.'
+      :match.myTurn===true
       ?'🎮 Sua vez nesta rodada do Cerco V6. Apenas 2 combatentes por clã podem agir.'
       :'⏳ Sua equipe está no rodízio. Você está na reserva nesta rodada. Próximos turnos: '+
         (nextTurns.length?nextTurns.join(', '):'nenhum restante')+'.'
     :'';
   const canMove=active&&Boolean(match.mySide)&&!match.myMove&&isMyTurn;
+  const eligibleSlots=rotationActive?Math.max(0,Math.min(4,Number(match.activePerClan||2)*2)):4;
   const selected=availableActions.find(x=>x.id===ui.siegePreviewAction)||null;
   const selectedActionId=(active?match?.myMove:null)||selected?.id||null;
   const selectedTarget=(active?match?.myTarget:null)||(
@@ -206,7 +209,8 @@ function renderLiveSiege(ui){
     return '<article class="siege-castle siege-'+(side==='blue'?'home':'enemy')+'">'+
       '<span class="siege-castle-kicker">'+(side==='blue'?'🔵 CASTELO AZUL':'🔴 CASTELO VERMELHO')+'</span>'+
       '<div class="siege-castle-art" aria-hidden="true">🏰</div><h4>'+ESCAPE(c?.name||'Clã a confirmar')+'</h4>'+
-      '<p>'+Number(c?.members||0)+' membros • '+Number(c?.linked||0)+'/2 Web vinculados</p>'+
+      '<p>'+Number(c?.members||0)+' membros • '+Number(c?.linked||0)+'/'+
+      (rotationActive?Number(c?.members||0):2)+' Web vinculados</p>'+
       '<div class="siege-castle-hp"><span>HP</span><strong>'+hp+' / '+maxHp.toLocaleString('pt-BR')+'</strong></div>'+
       '<div class="siege-hp-track"><span style="width:'+pct(hp,maxHp)+'%"></span></div></article>';
   }
@@ -219,7 +223,8 @@ function renderLiveSiege(ui){
     '<div class="siege-versus"><strong>VS</strong><small>⏰ '+NEXT_SIEGE_LABEL+'</small><small>6 rodadas</small><small>5 min cada</small></div>'+
     fortress(red,'red')+'</div>'+
     '<div class="siege-data-note">'+ESCAPE(notice)+
-    (active?' • Rodada '+Number(match.round)+'/6'+countdown+' • '+Number(match.submitted)+'/4 ações enviadas':'')+'</div>'+
+    (active?' • Rodada '+Number(match.round)+'/6'+countdown+' • '+Number(match.submitted)+'/'+eligibleSlots+
+      (rotationActive?' vagas ativas usadas (2 por clã)':' ações enviadas'):'')+'</div>'+
     (rotationActive?'<div class="siege-data-note" role="status">'+ESCAPE(rotationNotice)+'</div>':'')+
     '<div class="hero-actions">'+controls+'<button class="btn" data-siege-refresh>🔄 Atualizar</button></div>'+
     (ui.siegeError?'<div class="notice warn section">'+ESCAPE(ui.siegeError)+'</div>':'')+
