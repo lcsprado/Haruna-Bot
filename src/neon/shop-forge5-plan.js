@@ -1,5 +1,6 @@
 // Planejamento puro do !forja5. Nenhuma alteracao de banco ocorre nesta etapa.
 export const FORJA5_SERVICE_FEE = 500000
+const FORJA5_PLAN_VERSION = 'v2-lv10-all-donors'
 const MAX_STARS = 5
 const MAX_LEVEL = 10
 
@@ -105,10 +106,12 @@ export function planShopForge5(input) {
     paidConsumption.set(level,(paidConsumption.get(level)||0)+1)
   }
   const consumedTiers = [...paidConsumption].map(([level,count])=>({level,count}))
+  // Impede confirmar uma proposta anterior ao ajuste de custos depois do deploy.
   const quoteKey = JSON.stringify([
-    input.itemId,input.category,input.rarity,price,base,quantity,
+    FORJA5_PLAN_VERSION,input.itemId,input.category,input.rarity,price,base,quantity,
     tiers.map(t=>[t.level,t.quantity]).sort((a,b)=>a[0]-b[0]),
-    stars,forgedLevel,protectedCount,Boolean(input.equipped),cash,bank
+    stars,forgedLevel,protectedCount,Boolean(input.equipped),cash,bank,
+    principalLevel,donorLevels,buyCopies,total
   ])
   return {
     itemId:input.itemId,name:input.name,category:input.category,rarity:input.rarity,
