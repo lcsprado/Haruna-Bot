@@ -1,0 +1,58 @@
+name: AB-01 Boss Raid real class level parity
+on:
+  pull_request:
+    paths:
+      - 'src/neon/games.js'
+      - 'test/web-boss-raid-class-level-20261110.test.mjs'
+      - '.github/workflows/ab01-boss-raid-class-level-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  parity-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and direct combat regression
+        run: |
+          node --check src/neon/games.js
+          node --test test/web-boss-raid-class-level-20261110.test.mjs
+          node --test test/web-combat-parity-20261110.test.mjs
+          node --test test/web-boss-hero-parity-20261109.test.mjs
+          node --test test/web-raid-hero-start-tdz-20261110.test.mjs
+          node --test test/web-raid-vital-hp-20261110.test.mjs
+  class-level-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_class_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d alpha_class_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/alpha_class_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install PostgreSQL client
+        run: npm install --legacy-peer-deps --package-lock=false --no-audit --no-fund
+      - name: Execute actual Boss and Raid class-level lookups in PostgreSQL
+        run: node --test test/web-boss-raid-class-level-20261110.test.mjs
