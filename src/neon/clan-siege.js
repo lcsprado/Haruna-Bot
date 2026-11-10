@@ -522,7 +522,7 @@ export async function clanSiegeStatus(session){
   let match=await openMatch(db,chat);
   if(!match)match=(await db.query("SELECT * FROM alpha_siege_matches WHERE chat_jid=$1 AND status='completed' AND ended_at>$2 ORDER BY id DESC LIMIT 1",[chat,now()-24*60*60*1000])).rows[0]||null;
   return {
-    enabled:true,myClanId:mine?String(mine.clan_id):null,isLeader:mine?.role==='leader',
+    enabled:true,nextRulesVersion:V6_ON()?6:5,myClanId:mine?String(mine.clan_id):null,isLeader:mine?.role==='leader',
     clans:teams.map(({id,name,members,linked})=>({id,name,members,linked})),
     match:await viewMatch(match,session.jid),
     fortress:mine?await clanFortressStatus(session.jid):null
