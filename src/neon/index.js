@@ -12912,6 +12912,7 @@ const r=await buyItem(sender,cfg.keyId,1)
 await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
 } else if(['raidlote','raidlotes'].includes(cmd)){
 if(isGroup)return await reply('📩 O *!raidlote* funciona somente no privado do Alpha Bot. Sem mensagens automáticas no grupo.')
+if(!raidLoteEnabled())return await reply('⚔️ *Raid Lote em homologação.* As regras estão preparadas, mas o modo automático ainda não foi liberado em produção.')
 const action=String(args[0]||'').toLowerCase()
 if(['status','ver','resumo'].includes(action)){
   return await reply(raidLoteStatusText(await getRaidLoteStatus(sender)))
