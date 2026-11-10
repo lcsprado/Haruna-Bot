@@ -1114,7 +1114,6 @@ export async function startRaid(chat,host,level=null){
     const awakeningRows=(await c.query('SELECT jid,stage FROM player_awakenings WHERE jid=ANY($1::text[])',[ids])).rows
     for(const jid of ids){
       const st=stats.find(x=>x.jid===jid),u=users.find(x=>x.jid===jid),pet=pets.find(x=>x.jid===jid)||null
-      const awakeningStage=raidHero?0:Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
       const lev=itemId=>Number(ups.find(x=>x.jid===jid&&x.item_id===itemId)?.level||1)
       // Só usar as estrelas quando o nível efetivo corresponder à peça estrelada real.
       // Uma cópia comum Lv.10 não herda as estrelas de outra cópia forjada Lv.1.
@@ -1132,6 +1131,7 @@ export async function startRaid(chat,host,level=null){
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
       const heroGearHp=gearHp
       const raidHero=await readRaidActiveHero(c,jid,st,heroGearHp)
+      const awakeningStage=raidHero?0:Number(awakeningRows.find(x=>x.jid===jid)?.stage||0)
     const classStats=raidHero?null:classCombatStats(st,st.class_id,st.class_level,Boolean(st.class_applied))
       let reservePet=await raidReservePet(c,jid)
       let combatPet=raidCombatPetState(pet,1)
@@ -1143,10 +1143,11 @@ export async function startRaid(chat,host,level=null){
         'SELECT t.slot,p.species,p.level,p.hp,p.energy FROM pet_team t JOIN pet_collection p ON p.id=t.pet_id WHERE t.jid=$1 ORDER BY t.slot',
         [jid]
       )).rows
-      const teamSynergy=petTeamSynergy(teamPets)
       const heroPets=raidHeroPetSnapshot(raidHero,combatPet,reservePet,teamPets)
       combatPet=heroPets.primary;reservePet=heroPets.reserve
       const teamPassives=heroPets.team
+      // Um herói ativo não concede também sinergia na posição de pet.
+      const teamSynergy=petTeamSynergy(teamPassives)
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
       s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!raidHero,awakeningStage,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!raidHero,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,persistentMaxHp:Number(st.max_hp)+gearHp,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
