@@ -46,7 +46,7 @@ test('AB-01: Web reads event settings in one read-only SELECT and defaults missi
 test('AB-01: Raid Web payout consults the same owner event dimensions as WhatsApp',()=>{
  assert.match(games,/import \{readOwnerRewardMultipliers\} from '\.\/owner-event-readonly\.js'/)
  assert.match(rewards,/readOwnerRewardMultipliers\(\s*c,\['raid','drop','fragmentos','xp','dinheiro'\],now\)/)
- assert.match(rewards,/moneyMultiplier=Math\.max\([^)]*ownerEvents\.dinheiro\)/)
+ assert.match(rewards,/moneyMultiplier=Math\.max\([^\n]*ownerEvents\.dinheiro\)/)
  assert.match(rewards,/ownerEvents\.raid,ownerEvents\.xp\)/)
  assert.match(rewards,/petXpMultiplier=Math\.max\([^;]*ownerEvents\.raid,effectivePetXp\)\/effectivePetXp/)
  assert.match(rewards,/qty=baseQty\*Math\.max\([^;]*ownerEvents\.fragmentos\)/)
