@@ -73,7 +73,7 @@ test('Boss Web integra heroi e conserva rollback na transacao de origem',()=>{
  assert.match(segment,/const hero=await readBossCombatHero\(c,jid,st,/)
  assert.match(segment,/const heroHit=bossHeroAttack\(hero,baseDamage/)
  assert.match(segment,/const heroDefenseHit=bossHeroDefense\(hero,bossRawDamage/)
- assert.match(segment,/const storedHp=hero\?settleBossHeroHp\(hero,s\.participants\[jid\],php\)\s*:classCombatHp\(php,effectiveMaxHp,Number\(st\.max_hp\)\+gearHp\)/)
+ assert.match(segment,/const storedHp=hero\?settleBossHeroHp\(hero,s\.participants\[jid\],php\)\s*:restoreVitalPersistentHp\(php,effectiveMaxHp,Number\(st\.max_hp\)\+gearHp\)/)
  assert.match(segment,/if\(s\.hp<=0&&hero\)/)
  assert.match(segment,/return retryBossDeadlock\(\(\)=>tx\(async c=>\{/)
 })
