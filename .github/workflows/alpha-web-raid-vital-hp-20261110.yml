@@ -1,0 +1,29 @@
+name: AB-01 Web Vital Raid HP projection
+on:
+  pull_request:
+    paths:
+      - 'src/neon/games.js'
+      - 'test/web-raid-vital-hp-20261110.test.mjs'
+      - '.github/workflows/alpha-web-raid-vital-hp-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  raid-hp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and Vital regression
+        run: |
+          node --check src/neon/games.js
+          node --check test/web-raid-vital-hp-20261110.test.mjs
+          node --test test/web-raid-vital-hp-20261110.test.mjs
+      - name: Preserve existing PvE, hero and pet behavior
+        run: |
+          node --test test/web-raid-skill-helmet-parity-20261110.test.mjs
+          node --test test/web-raid-hero-mastery-bridge-20261109.test.mjs
+          node --test test/web-pet-autoheal-parity-20261110.test.mjs
+          node --test test/web-combat-parity-20261110.test.mjs
