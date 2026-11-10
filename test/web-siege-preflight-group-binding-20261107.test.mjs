@@ -8,7 +8,7 @@ const extras={clan:{id:5,name:'Clã A',members:2},clans:[
 test('sessao nao vinculada mostra aviso e todas as frentes da V5 sem registrar jogada',()=>{
   const html=renderClanSiegePreview({
     extras,
-    siege:{enabled:false,reason:'Vincule o Web ao grupo AlphaBot pelo !web.'},
+    siege:{enabled:false,nextRulesVersion:5,reason:'Vincule o Web ao grupo AlphaBot pelo !web.'},
     siegePreviewAction:'attack',siegePreviewTarget:'gate'
   });
   assert.match(html,/Vincule o Web ao grupo/);
