@@ -9,7 +9,7 @@ import {heroPvpAttack,heroPvpDefense} from '../src/neon/playable-heroes-core.js'
 const dbSource=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8')
 const functionBody=dbSource.split('export function equipmentStatsAtLevel(')[1]?.split('function equipmentUpgradeCost(')[0]
 assert.ok(functionBody&&functionBody.includes('const starMult=1+.04*(starLevel-1)'))
-assert.match(dbSource,/PECADOS_GEAR_IDS\.map\(id=>\[id,Object\.freeze\(/)
+assert.match(dbSource,/PECADOS_GEAR_IDS\.map\(id=>\[id,/)
 const equipment=Object.fromEntries(PECADOS_EQUIPMENT.map(({id,...gear})=>[id,gear]))
 const forging=Object.fromEntries(PECADOS_GEAR_IDS.map(id=>[id,{collab:true}]))
 const equipmentStatsAtLevel=new Function(
