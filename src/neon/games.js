@@ -6,6 +6,7 @@ import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
 import {halloweenMysticHelmetReduction} from './halloween-rules.js'
+import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
@@ -659,7 +660,7 @@ const BOSS_PLACEMENT=[
   {cash:125000,xp:900,epicBoxes:3,bonusChance:.55,exclusiveChance:.08},
 ]
 function petBossBonus(pet){
-  if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,xp:0,drop:0,healPct:0,healCooldown:0}
+  if(!pet) return {label:null,damage:0,defense:0,crit:0,dodge:0,hp:0,xp:0,drop:0,healPct:0,healCooldown:0}
   const base=petCombatSpecialty(pet.species)
   // Progressão revisada:
   // - pets comuns: até +50% sobre a especialidade base no Nv.100;
@@ -673,6 +674,7 @@ function petBossBonus(pet){
     label:base.label||pet.species,
     damage:scaled('damage')+scaled('bossDamage'),
     defense:scaled('defense'),
+    hp:scaled('hp'),
     crit:scaled('crit'),
     dodge:scaled('dodge'),
     xp:scaled('xp'),
@@ -688,7 +690,7 @@ function petBossBonus(pet){
 // bônus econômicos de XP/drop continuam exclusivos do pet combatente.
 function squadCombatBonus(activeBonus,activeSlot,team=[]){
   const total={...activeBonus}
-  for(const key of ['damage','defense','crit','dodge']){
+  for(const key of ['damage','defense','crit','dodge','hp']){
     let value=Number(activeBonus?.[key]||0)
     for(const row of team){
       const slot=Number(row.slot)
@@ -697,9 +699,23 @@ function squadCombatBonus(activeBonus,activeSlot,team=[]){
       const weight=slot===1 ? 1 : slot===2 ? 0.5 : 0.25
       value+=Number(petBossBonus(row)[key]||0)*weight
     }
-    total[key]=Math.min(({damage:.30,defense:.25,crit:.20,dodge:.20})[key],Math.max(0,value))
+    total[key]=Math.min(({damage:.30,defense:.25,crit:.20,dodge:.20,hp:.30})[key],Math.max(0,value))
   }
   return total
+}
+
+function vitalRaidOpening(p){
+  // HP Vital é apenas snapshot temporário; stats.hp não recebe o bônus.
+  const active=p?.pet&&Number(p.pet.hp)>0&&Number(p.pet.energy)>0?p.pet:null
+  const bonus=active?squadCombatBonus(active.bonus||petBossBonus(active),active.teamSlot,p.teamPassives||[]):{hp:0}
+  const vitality=applyVitalCombatHp(p.hp,p.maxHp,Number(bonus.hp||0),Number(p.teamSynergy?.hp||0))
+  p.hp=vitality.hp
+  p.maxHp=vitality.maxHp
+  p.vitalHpRate=vitality.rate
+  p.vitalPulseUsed=false
+  // Delta do herói parte da vida projetada, evitando falsa cura no primeiro tick.
+  if(p.heroId)p.heroLastHp=p.hp
+  return p
 }
 
 // Mesmo cálculo de bônus fixos que a Raid/Boss usa: principal (100%),
@@ -905,9 +921,10 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       jid,name:name||u?.push_name||'Jogador',hp:classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(classStats?.maxHp??st.max_hp)+gearHp,
       atk:Math.round((Number(classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
       classId:st.class_id,classApplied:Boolean(st.class_applied)&&!raidHero,awakeningStage,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!raidHero,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
-      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
+      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),halloweenHelmetId:st.helmet_id,persistentMaxHp:Number(st.max_hp)+gearHp,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     s.players[jid]=applyRaidHeroSnapshot(s.players[jid],raidHero,st,{weapon:w,armor:a,boot:b,helmet:h},ench,heroGearHp)
+      vitalRaidOpening(s.players[jid])
     // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
     // O maxHp persistido impede que desistir e reentrar infle o mesmo Boss.
     // Somente um novo pico acrescenta HP; o dano causado não é restaurado.
@@ -1131,8 +1148,9 @@ export async function startRaid(chat,host,level=null){
       const teamPassives=heroPets.team
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!raidHero,awakeningStage,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!raidHero,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!raidHero,awakeningStage,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!raidHero,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,persistentMaxHp:Number(st.max_hp)+gearHp,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
       s.players[jid]=applyRaidHeroSnapshot(s.players[jid],raidHero,st,{weapon:w,armor:a,boot:b,helmet:h},ench,heroGearHp)
+      vitalRaidOpening(s.players[jid])
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
     }
