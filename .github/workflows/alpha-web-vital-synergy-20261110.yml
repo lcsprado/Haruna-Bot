@@ -1,0 +1,31 @@
+name: AB-01 Web Vital, wildcard and hero-only synergy
+on:
+  pull_request:
+    paths:
+      - 'src/neon/db.js'
+      - 'src/neon/game-catalog.js'
+      - 'src/neon/pet-astral-wildcard.js'
+      - 'test/web-vital-team-synergy-20261110.test.mjs'
+      - '.github/workflows/alpha-web-vital-synergy-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  vital-synergy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and pure source checks
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/game-catalog.js
+          node --check src/neon/pet-astral-wildcard.js
+          node --test test/web-vital-team-synergy-20261110.test.mjs
+      - name: Existing PvP parity and Web catalog suites
+        run: |
+          node --test test/web-api-vital-pet-catalog-20261105.test.mjs
+          node --test test/pvp-web-real-battle-parity-20261109.test.mjs
+          node --test test/pvp-web-combat-profile-parity-20261109.test.mjs
