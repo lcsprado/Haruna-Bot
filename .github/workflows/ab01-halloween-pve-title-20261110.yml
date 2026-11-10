@@ -1,0 +1,32 @@
+name: AB-01 Halloween PvE title XP parity
+on:
+  pull_request:
+    paths:
+      - 'src/neon/games.js'
+      - 'src/neon/halloween-title-pve.js'
+      - 'test/web-halloween-title-pve-xp-20261110.test.mjs'
+      - '.github/workflows/ab01-halloween-pve-title-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  title-xp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check src/neon/games.js
+          node --check src/neon/halloween-title-pve.js
+          node --check test/web-halloween-title-pve-xp-20261110.test.mjs
+      - name: PvE XP/title, Boss/Raid parity and no retroactive effects
+        run: |
+          node --test test/web-halloween-title-pve-xp-20261110.test.mjs
+          node --test test/web-raid-owner-event-parity-20261110.test.mjs
+          node --test test/web-boss-raid-potion-hero-pet-20261110.test.mjs
+          node --test test/web-combat-parity-20261110.test.mjs
