@@ -1,0 +1,57 @@
+name: AB-07 Cerco V6 Bastião 14 Nov - atomic award
+on:
+  pull_request:
+    paths:
+      - 'src/neon/clan-siege.js'
+      - 'src/neon/clan-siege-shield-reward-20261114.js'
+      - 'test/clan-siege-shield-reward-20261114.test.mjs'
+      - 'test/clan-siege-v6-postgres-20261110.test.mjs'
+      - '.github/workflows/alpha-siege-v6-bastiao-20261110.yml'
+permissions:
+  contents: read
+jobs:
+  pure-award:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and award safety
+        run: |
+          node --check src/neon/clan-siege.js
+          node --check src/neon/clan-siege-shield-reward-20261114.js
+          node --test test/clan-siege-shield-reward-20261114.test.mjs
+  postgres-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: alpha_siege_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d alpha_siege_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/alpha_siege_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install postgres test dependencies
+        run: npm install --legacy-peer-deps --package-lock=false --no-audit --no-fund
+      - name: Isolated V6 2x6, 3x5, 6x6 with shield payouts
+        run: node --test test/clan-siege-v6-postgres-20261110.test.mjs
