@@ -177,6 +177,17 @@ async function tickOne(s){
   return
  }
  try{
+  // Evita comprar uma chave no lobby e descobrir depois que falta dinheiro
+  // para a taxa: verifica valor conjunto ANTES da primeira cobrança.
+  const cfg=getRaidCatalog().find(x=>Number(x.level)===Number(s.level))
+  if(!cfg)throw new Error('Configuração da Raid não encontrada.')
+  const key=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',
+    [s.jid,cfg.keyId])).rows[0]
+  const funds=(await db.query('SELECT cash,bank FROM wallets WHERE jid=$1',[s.jid])).rows[0]
+  const needed=raidLoteFee(cfg.keyPrice)+(Number(key?.quantity||0)>0?0:Number(cfg.keyPrice))
+  if(Number(funds?.cash||0)+Number(funds?.bank||0)<needed){
+    throw new Error('Saldo insuficiente para a próxima chave e taxa: R$ '+fmt(needed))
+  }
   if(state?.status==='lobby'&&state?.loteBatchId!==s.batch_id){
    await cancelRaid(chat,s.jid,s.level)
   }
