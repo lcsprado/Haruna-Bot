@@ -273,8 +273,17 @@ function renderLiveSiege(ui){
 export function renderClanSiegePreview(ui){
   if(ui.siege?.enabled===true)return renderLiveSiege(ui);
   const extras=ui.extras||{};
-  const clans=Array.isArray(extras.clans)?extras.clans:[];
-  const eligible=clans.filter(clan=>Number(clan?.members)===2);
+  // Contingência é somente prévia, não prova versão nem adiamento.
+  // Mostra o preflight fornecido pelo servidor quando houver.
+  const reported=Number(ui.siege?.nextRulesVersion);
+  const previewVersion=[5,6].includes(reported)?reported:null;
+  const versionLabel=previewVersion?'V'+previewVersion:'VERSÃO A CONFIRMAR';
+  const maxRoster=previewVersion===5?2:6;
+  const observed=ui.siege?.preflight?.teams;
+  const clans=Array.isArray(observed)&&observed.length?observed:
+    Array.isArray(extras.clans)?extras.clans:[];
+  const eligible=clans.filter(clan=>
+    Number(clan?.members)>=2&&Number(clan?.members)<=maxRoster);
   const myClan=extras.clan||null;
   const mine=eligible.find(clan=>
     (myClan?.id!=null&&clan.id!=null&&String(myClan.id)===String(clan.id)) ||
@@ -291,13 +300,15 @@ export function renderClanSiegePreview(ui){
   const permittedTargets=selected==='supply'?FRONTS_V4.filter(item=>item.id==='depot'):
     selected==='repair'?FRONTS_V4.filter(item=>item.id==='castle'||item.id==='gate'):FRONTS_V4;
   const serverReason=String(ui.siege?.reason||'').trim();
-  const status=pairReady
-    ? 'Os dados atuais indicam dois clãs com dois jogadores. A escalação individual ainda precisa ser conferida.'
-    : 'Aguardando a confirmação dos dois clãs com dois membros no servidor. Sem escalação fictícia.';
+  const status=ui.siege?.preflight?.ready===true
+    ? 'O servidor confirmou dois clãs com todos os jogadores vinculados. Confirme a liberação do Cerco antes de agir.'
+    : pairReady
+      ? 'Os dados disponíveis indicam dois clãs elegíveis. A escalação e o acesso ainda precisam ser confirmados pelo servidor.'
+      : 'Aguardando confirmação dos clãs e vínculos pelo servidor. Sem escalação fictícia.';
   return '<section class="siege-preview section" aria-label="Prévia do Cerco ao Castelo">'+
     '<div class="siege-head">'+
-      '<div><p class="siege-eyebrow">ALPHA BOT · GUERRA DE CLÃS</p><h3>🏰 Cerco ao Castelo</h3><p>Uma guerra 2 × 2 com decisões secretas pelo Web e resultados narrados no grupo.</p></div>'+
-      '<span class="siege-status">🏰 V5 · GUERRA ADIADA</span>'+
+      '<div><p class="siege-eyebrow">ALPHA BOT · GUERRA DE CLÃS</p><h3>🏰 Cerco ao Castelo</h3><p>Uma guerra '+(previewVersion===5?'2 × 2':'com 2 a 6 jogadores por clã')+' com decisões secretas pela Web e resultados narrados no grupo.</p></div>'+
+      '<span class="siege-status">🏰 '+versionLabel+' · ACESSO A CONFIRMAR</span>'+
     '</div>'+
     '<div class="siege-stage">'+renderCastle(mine,'home')+
       '<div class="siege-versus"><strong>VS</strong><small>6 rodadas</small><small>5 min cada</small></div>'+
@@ -306,20 +317,20 @@ export function renderClanSiegePreview(ui){
     '<div class="siege-data-note">🔎 '+ESCAPE(status)+' Os HP exibidos são valores iniciais propostos, não dados de uma batalha ativa.</div>'+
     (serverReason?'<div class="notice warn section">⚠️ '+ESCAPE(serverReason)+' Para vincular sua sessão, envie <b>!web</b> dentro do grupo Alpha Bot e use seu código individual.</div>':'')+
     '<div class="siege-planning">'+
-      '<div class="siege-planning-head"><div><p class="siege-eyebrow">CENTRAL DE COMANDO</p><h4>Escolha sua estratégia</h4></div><span class="siege-status">PRÉVIA V5 · SEM REGISTRO</span></div>'+
+      '<div class="siege-planning-head"><div><p class="siege-eyebrow">CENTRAL DE COMANDO</p><h4>Escolha sua estratégia</h4></div><span class="siege-status">PRÉVIA '+versionLabel+' · SEM REGISTRO</span></div>'+
       '<div class="siege-action-grid">'+TACTICAL_ACTIONS.map(item=>
         '<button type="button" class="siege-action '+(item.id===selected?'selected':'')+'" data-siege-preview="'+item.id+'" aria-pressed="'+(item.id===selected?'true':'false')+'">'+
           '<span class="siege-action-icon">'+item.icon+'</span><strong>'+item.label+'</strong><small>'+ESCAPE(item.effect)+'</small></button>'
       ).join('')+'</div>'+
       '<div class="siege-selected section"><strong>🎯 Escolha a frente (prévia)</strong>'+
-        '<p>As três frentes da V5 estão disponíveis para conhecer a mecânica. Nada será enviado ao servidor enquanto o Cerco estiver adiado.</p>'+
+        '<p>As três frentes do Cerco estão disponíveis para conhecer a mecânica. Nada é enviado ao servidor nesta prévia sem acesso confirmado.</p>'+
         '<div class="siege-action-grid">'+permittedTargets.map(item=>
           '<button type="button" class="siege-action '+(item.id===selectedTarget&&selected?'selected':'')+'" data-siege-target="'+item.id+'" aria-pressed="'+(item.id===selectedTarget&&Boolean(selected)?'true':'false')+'" '+(!selected?'disabled':'')+'>'+
           '<span class="siege-action-icon">'+item.icon+'</span><strong>'+item.label+'</strong><small>'+ESCAPE(item.tip)+'</small></button>'
         ).join('')+'</div>'+
         '<p>Frente escolhida: <b>'+ESCAPE(FRONTS_V4.find(item=>item.id===selectedTarget)?.label||'Selecione uma ação')+'</b></p></div>'+
       '<div class="siege-selected" aria-live="polite"><span>Estratégia em prévia</span><strong>'+(action?action.icon+' '+action.label:'Nenhuma ação selecionada')+'</strong><p>'+ESCAPE(action?.effect||'Selecione uma das cinco estratégias para conhecer seu efeito.')+'</p>'+
-      '<small>Esta escolha é apenas visual: não foi enviada nem salva. A confirmação só aparece quando o Cerco V5 começar. Escolha a ação e a frente para testar a interface.</small></div>'+
+      '<small>Esta escolha é apenas visual: não foi enviada nem salva. A confirmação só aparece em uma partida ativa, para o jogador autorizado. Escolha a ação e a frente para testar a interface.</small></div>'+
     '</div>'+
     '<div class="siege-steps"><span>1 · Selecionar em segredo</span><span>2 · Aguardar a rodada fechar</span><span>3 · Resultado público no WhatsApp</span></div>'+
     '<div class="siege-footer">🔒 Próximo Cerco: '+NEXT_SIEGE_LABEL+' (Brasília). A prévia não registra jogadas e não altera saldo, XP ou HP. Cada jogador precisa de sessão vinculada ao grupo e sua própria identidade.</div>'+
@@ -330,7 +341,8 @@ export function bindClanSiegePreview(ui,{render,submit,refresh}){
   document.querySelectorAll('[data-siege-preview]').forEach(button=>button.addEventListener('click',()=>{
     if(ui.siege?.match?.status==='active'&&ui.siege.match.myMove)return;
     const next=button.dataset.siegePreview;
-    const variant=ui.siege?.match?.status==='active'?Number(ui.siege.match.rulesVersion||1):5;
+    const variant=ui.siege?.match?.status==='active'?Number(ui.siege.match.rulesVersion||1):
+      Number(ui.siege?.nextRulesVersion)===6?6:5;
     const catalog=variant>=4?TACTICAL_ACTIONS:variant>=2?ACTIONS:LEGACY_ACTIONS;
     if(!catalog.some(item=>item.id===next))return;
     ui.siegePreviewAction=next;
