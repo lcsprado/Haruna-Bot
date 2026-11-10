@@ -5,6 +5,8 @@ on:
     branches: [whatsapp-only]
     paths:
       - 'src/neon/db.js'
+      - 'src/neon/shop-forge5-plan.js'
+      - 'test/shop-forge5-20261110.test.mjs'
       - 'src/neon/games.js'
       - 'src/neon/index.js'
       - 'src/neon/equipment-star-logic.js'
@@ -41,13 +43,14 @@ jobs:
       - name: Validar sintaxe
         run: |
           node --check src/neon/db.js
+          node --check src/neon/shop-forge5-plan.js
           node --check src/neon/index.js
           node --check src/neon/equipment-star-logic.js
           node --check src/neon/anti-crit-shields.js
           node --check src/neon/web-api.js
           node --check src/neon/games.js
       - name: Testar regras da forja (sem banco e sem mutacoes)
-        run: node --test test/star-forge-level-20261021.test.mjs test/seven-sins-forge-fragments-only-20261026.test.mjs test/shield-forge-integration-20261108.test.mjs test/anti-crit-shields.test.mjs
+        run: node --test test/shop-forge5-20261110.test.mjs test/star-forge-level-20261021.test.mjs test/seven-sins-forge-fragments-only-20261026.test.mjs test/shield-forge-integration-20261108.test.mjs test/anti-crit-shields.test.mjs
       - name: Instalar dependencias para regressao
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Verificar regressao existente
