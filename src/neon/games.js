@@ -795,6 +795,18 @@ async function resolveRaidRoom(c,chat,level=null,{host=null,jid=null,lobbyOnly=f
   if(jid) rooms=rooms.filter(r=>Boolean(r.players?.[jid]))
   return rooms
 }
+// Bloqueio valido entre tentativas do pacote: evita abrir Raid manual no intervalo
+// entre a conclusao de uma tentativa e o inicio da proxima.
+// to_regclass garante compatibilidade enquanto a migration permanece desligada.
+async function assertNoActiveRaidLote(c,jid){
+  const hasTable=(await c.query("SELECT to_regclass('public.raid_lote_jobs') AS table_name")).rows[0]?.table_name
+  if(!hasTable)return
+  const active=(await c.query(
+    "SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status IN ('queued','running') LIMIT 1",
+    [jid]
+  )).rows[0]
+  if(active)throw new Error('🔒 Pacote !raidlote em andamento. Aguarde o encerramento antes de abrir outra Raid.')
+}
 async function resolveGlobalPlayerRaid(c,jid){
   const {rows}=await c.query(
     `SELECT chat_jid,game_type,state,updated_at
@@ -829,6 +841,7 @@ export async function createRaid(chat,host,name='Jogador',level=10){
   await ensureUser(host,name)
   return tx(async c=>{
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${host}`])
+    await assertNoActiveRaidLote(c,host)
     const sameRoom=(await resolveRaidRoom(c,chat,cfg.level))[0]
     if(sameRoom) throw new Error(`Já existe uma sala da Raid Lv.${cfg.level} neste grupo.`)
     const otherRoom=await resolveGlobalPlayerRaid(c,host)
@@ -864,6 +877,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
   await ensureUser(jid,name)
   return tx(async c=>{
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`raid-membership:${jid}`])
+    await assertNoActiveRaidLote(c,jid)
     const joinedHere=(await resolveRaidRoom(c,chat,null,{jid}))[0]
     if(joinedHere){
       if(!level || Number(joinedHere.level)===Number(level)) return {already:true,lateJoin:joinedHere.status==='active',...joinedHere}
