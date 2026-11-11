@@ -2033,12 +2033,35 @@ function inventoryLeveledStatsMarkup(item,equippedCopy=false){
   return '<p class="item-bonus"><strong>Atributos reais no Lv.'+num(stats.level||item.equipment_level||1)+'</strong> • '+parts.join(' • ')+'</p>'+
     (equippedCopy?'':'<p class="muted">Bônus ainda não ativos: toque em <strong>Equipar</strong> para aplicá-los ao personagem.</p>');
 }
+function inventorySaleLimit(item){
+  const available=Math.max(0,Math.trunc(Number(item?.quantity||0)));
+  const activeRelic=ui.relicStatus?.active?.id===item?.item_id;
+  return Math.min(9999,Math.max(0,available-(item?.equipped||activeRelic?1:0)));
+}
+function sellInventoryItem(itemId,qty){
+  const item=(ui.data?.inventory||[]).find(i=>String(i.item_id)===String(itemId));
+  const limit=item?inventorySaleLimit(item):0;
+  if(!item||limit===0)return toast('Nenhuma cópia livre para venda. Desequipe antes de vender.');
+  if(!Number.isSafeInteger(qty)||qty<1||qty>limit)
+    return toast('Quantidade inválida. Escolha de 1 a '+limit+'.');
+  const name=itemDisplayName(item);
+  const special=['legendary','event'].includes(String(item.rarity||'').toLowerCase())||
+    /collab|colab|evento/i.test(String(item.item_id||'')+' '+name)||
+    item.sellable===false||Number(item.bound_quantity||0)>0;
+  const upgraded=Number(item.equipment_level||1)>1||Number(item.forged_level||0)>0||
+    (Array.isArray(item.upgraded_copies)&&item.upgraded_copies.length>0);
+  const warning=special?'\n⚠️ Este item é especial, de collab, vinculado ou de evento.':'';
+  const upgradeWarning=upgraded?'\n⚠️ A venda pode consumir cópias melhoradas/forjadas que não estejam equipadas.':'';
+  const estimate=Number(item.sell_unit||0)*qty;
+  if(!confirm('Confirmar venda de '+qty+'× '+name+'?\nValor base estimado: '+money(estimate)+'.'+warning+upgradeWarning+'\nEsta operação não pode ser desfeita.'))return;
+  doAction('item.sell',{itemId,qty},{}).catch(()=>{});
+}
 function inventoryCard(i,options={}){
   const id=i.item_id;
   const eq=['weapon','armor','boots','helmet'].includes(i.category);
   const equippedCopy=Boolean(options.equippedCopy);
   const qty=Math.max(0,Number(options.quantity??i.quantity??0));
-  const sellQty=Math.min(qty,Math.max(0,Number(i.sellable_quantity??qty)));
+  const sellQty=Math.min(9999,qty);
   const petPotion=id.startsWith('pocao_pet_');
   const energy=id==='energetico_pet';
   const box=String(id).includes('caixa_') || id==='lootbox_std' || i.category==='box';
@@ -2060,9 +2083,12 @@ function inventoryCard(i,options={}){
     else if(box) actions='<button class="btn good" data-box-open="'+esc(id)+'">Abrir 1</button>'+(qty>1?'<button class="btn" data-box-open-all="'+esc(id)+'" data-box-qty="'+qty+'">Abrir '+qty+'</button>':'');
     else if(usable) actions='<button class="btn good" data-item-use="'+esc(id)+'">Usar</button>';
 
-    if(inventoryBucket(i)!=='relics' && i.sellable!==false && !['legendary','event'].includes(String(i.rarity)) && sellQty>0){
-      actions+='<button class="btn" data-item-sell="'+esc(id)+'">Vender 1</button>';
-      if(sellQty>1) actions+='<button class="btn danger-soft" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+sellQty+'">Vender '+sellQty+'</button>';
+    if(sellQty>0){
+      actions+='<button class="btn" data-item-sell="'+esc(id)+'">💰 Vender 1</button>';
+      if(sellQty>1){
+        actions+='<button class="btn" data-item-sell-custom="'+esc(id)+'">Vender quantidade</button>';
+        actions+='<button class="btn danger-soft" data-item-sell-all="'+esc(id)+'" data-item-sell-qty="'+sellQty+'">Vender '+(sellQty===qty?'todos ('+sellQty+')':sellQty)+'</button>';
+      }
     }
   }
 
@@ -2072,7 +2098,7 @@ function inventoryCard(i,options={}){
   return '<div class="card item-card '+rarityClass(i.rarity)+(equippedCopy?' equipped-item-card':'')+'">'+itemArtMarkup(i)+
     '<div class="tag-row">'+equippedTag+'<span class="tag '+esc(i.rarity)+'">'+esc(rarityLabel(i.rarity))+'</span><span class="tag">'+esc(categoryLabel(i.category))+'</span></div>'+
     '<h3>'+esc(itemDisplayName(i))+'</h3><p>x'+num(qty)+(eq&&i.equipment_level!=null?' • Lv.'+num(i.equipment_level):'')+(eq&&i.forged_level&&i.equipment_stars!=null?' • '+num(i.equipment_stars)+' ⭐':'')+'</p><p>'+(eq&&i.equipment_stats?'Descrição do item (atributos-base): ':'')+esc(itemDisplayDescription(i))+'</p>'+inventoryLeveledStatsMarkup(i,equippedCopy)+
-    (!equippedCopy&&i.sellable!==false&&sellQty>0?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
+    (!equippedCopy&&sellQty>0?'<div class="inventory-value"><span>Venda unitária</span><strong>'+money(i.sell_unit||0)+'</strong></div>':'')+
     (equippedCopy?'<div class="notice good inventory-lock-note">🔒 Esta cópia está equipada e não pode ser vendida pelo inventário.</div>':'')+
     (!equippedCopy&&eq&&Number(i.upgrade_refund)>0?'<small class="refund-note">Melhoria devolve '+money(i.upgrade_refund)+' somente quando a última cópia não equipada for vendida.</small>':'')+
     '<div class="item-actions">'+actions+'</div></div>';
@@ -2081,9 +2107,10 @@ function renderInventory(){
   const inv=ui.data.inventory||[];
   const query=String(ui.inventorySearch||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const groups=INVENTORY_GROUPS.map(([key,label])=>{
-    const all=inv.filter(i=>inventoryBucket(i)===key&&(!query||String(i.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(query)));
+    const all=inv.filter(i=>inventoryBucket(i)===key&&(!query||String(i.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(query)))
+      .map(i=>({...i,equipped:Boolean(i.equipped||ui.relicStatus?.active?.id===i.item_id)}));
     const equipped=all.filter(i=>i.equipped).map(i=>({...i,quantity:1}));
-    const available=all.map(i=>({...i,quantity:EQUIPMENT_GROUP_KEYS.has(key)?Math.max(0,Number(i.quantity||0)-(i.equipped?1:0)):(i.equipped?Number(i.sellable_quantity||0):Number(i.quantity||0))}))
+    const available=all.map(i=>({...i,quantity:Math.max(0,Number(i.quantity||0)-(i.equipped?1:0))}))
       .filter(i=>Number(i.quantity)>0);
     return {key,label,all,equipped,available};
   });
@@ -3393,13 +3420,18 @@ function bind(){
   document.querySelectorAll('[data-sell-duplicates]').forEach(x=>x.onclick=()=>{
     if(confirm('Vender somente as cópias repetidas de equipamentos? Itens atualmente equipados serão preservados.')) doAction('item.sellDuplicates',{},{}); 
   });
-  document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>{
-    if(confirm('Vender 1 unidade deste item?')) doAction('item.sell',{itemId:x.dataset.itemSell,qty:1},{});
+  document.querySelectorAll('[data-item-sell]').forEach(x=>x.onclick=()=>sellInventoryItem(x.dataset.itemSell,1));
+  document.querySelectorAll('[data-item-sell-custom]').forEach(x=>x.onclick=()=>{
+    const item=(ui.data?.inventory||[]).find(i=>String(i.item_id)===x.dataset.itemSellCustom);
+    const limit=item?inventorySaleLimit(item):0;
+    if(limit<1)return toast('Este item não possui unidades disponíveis para venda.');
+    const value=prompt('Quantidade de '+itemDisplayName(item)+' para vender (1 a '+limit+'):',String(Math.min(2,limit)));
+    if(value===null)return;
+    const clean=value.trim();
+    const qty=/^[0-9]+$/.test(clean)?Number(clean):NaN;
+    sellInventoryItem(x.dataset.itemSellCustom,qty);
   });
-  document.querySelectorAll('[data-item-sell-all]').forEach(x=>x.onclick=()=>{
-    const qty=Number(x.dataset.itemSellQty||1);
-    if(confirm('Vender '+qty+' unidade(s) deste item? Equipamentos em uso não entram nesta quantidade.')) doAction('item.sell',{itemId:x.dataset.itemSellAll,qty},{});
-  });
+  document.querySelectorAll('[data-item-sell-all]').forEach(x=>x.onclick=()=>sellInventoryItem(x.dataset.itemSellAll,Number(x.dataset.itemSellQty)));
   document.querySelectorAll('[data-shop-buy]').forEach(x=>x.onclick=()=>doAction('item.buy',{itemId:x.dataset.shopBuy,qty:1},{}));
   document.querySelectorAll('[data-shop-buy-qty]').forEach(x=>x.onclick=()=>{
     const qty=Math.max(1,Math.min(9999,Number(prompt('Quantidade para comprar:','2'))||0));
