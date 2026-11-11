@@ -1,38 +1,31 @@
-# RAIDLOTE V1 — contrato de implementação (NÃO PUBLICAR)
+# RAIDLOTE V1 — pacote antecipado e sem reembolso
 
-Status: especificação e política pura preparadas. O comando, a fila, o motor e os pagamentos NÃO estão conectados. Feature flag deve nascer desligada.
+Status: construção do PR #290, rascunho. NÃO PUBLICAR. Flag RAID_LOTE_V1_ENABLED deve permanecer desligada.
 
-## Regras
-- !raidlote <nivel> <quantidade 1..10>, !raidlote status, !raidlote cancelar, !raidlote historico
-- Até 10 tentativas por janela móvel de 24 horas, por jogador, inclusive tentativas fracassadas.
-- Exigir 3 vitórias manuais anteriores naquela Raid; conferir origem em histórico confiável, não confiar em contagem informada pelo cliente.
-- Combate real completo por rodada com o motor existente, HP, escudos, equipamentos, técnicas, pets, efeitos, cura e ressuscitação normais.
-- Execução individual e isolada, sem ocupar sala pública nem alterar o combate de terceiros.
-- Chave normal por tentativa + taxa de serviço de 10% do preço da chave. Se chave existe, consumir, não recomprar.
-- Cobrança no início da tentativa, dentro da MESMA transação que cria o combate. Nunca cobrar tentativas futuras.
-- Vitória: dinheiro 80%, XP jogador/herói/pet 60%, maestria 50%, fragmentos 40% arredondados para baixo, chance de equipamento 25% da normal. Outros drops e recompensas exclusivas devem ser explicitamente classificados antes de habilitar.
-- Recompensas de eventos temporários não multiplicam ganhos automáticos. Fragmentos compartilham limite diário com Raid manual; aplicar redutor antes de limite, não depois.
-- Derrota/morte: encerrar lote; sem recompensa de vitória, sem devolução de chave/taxa daquela tentativa. Consumíveis disponíveis podem ser usados; compras automáticas de consumíveis proibidas.
-- Cancelamento: concluir somente a rodada atual, não iniciar outra; não cobrar as não iniciadas. Ao concluir, relatório PRIVADO.
+## Regra econômica corrigida pelo dono em 10/11/2026
+- O jogador COMPRA o pacote integral antes do início. Ex.: !raidlote 75 10 = 10 chaves (R$ 4.800.000) + taxa 10% (R$ 480.000) = R$ 5.280.000 debitados uma só vez, na confirmação.
+- O pacote compra dez DIREITOS DE TENTATIVA, não dez chaves transferíveis; não adiciona chaves ao inventário nem reaproveita chaves existentes para desconto. O motor da Raid lote não pode consumir outra chave normal.
+- A cobrança é atômica e idempotente, com identificação única da compra. Divide saldo entre dinheiro em mãos e banco, sem permitir saldo negativo. Taxa da automação vai para o cofre municipal segregado.
+- Nenhuma devolução, mesmo por derrota, morte, cancelamento voluntário ou saldo de tentativas não utilizado. Se não puder executar por ERRO INTERNO do serviço, registrar incidente e NÃO declarar como derrota nem descartar direitos sem reconciliação; abrir incidente administrativo.
+- Derrota ou morte encerra o lote e perde as tentativas restantes. Nenhuma recompensa de vitória para tentativas derrotadas.
+- Limite de 10 direitos de tentativa adquiridos por jogador por janela móvel de 24h. Exigir 3 vitórias MANUAIS anteriores na mesma Raid. Nível mínimo normal.
+- Combate completo real por rodada, aproximadamente 8s entre rodadas, isolamento por identificador privado, sem tomar salas públicas. Utilizar mesmas habilidades, pets, equipamentos, consumíveis existentes, morte, cura e limite de duração.
+- Dinheiro 80%; XP de jogador/herói/pet 60%; maestria 50%; fragmentos 40% (floor); equipamento raro 25% da probabilidade. Eventos temporários não aumentam recompensa. Para caixa/insígnias/drop especial ainda é preciso política explícita antes de ligar a flag. Limite diário de fragmentos compartilhado com manual, com redutor antes do teto.
+- Proibir compras automáticas de poções e energéticos. Consumíveis do inventário são permitidos e descontados normalmente.
 
-## Esquema sugerido (migration separada, reversível)
-raid_lote_jobs(id uuid PK, jid text, level int, requested int, completed int, status text, cancel_requested bool, created_at timestamptz, updated_at timestamptz, lease_until timestamptz, current_attempt_id uuid)
-raid_lote_attempts(id uuid PK, job_id uuid FK, seq int, raid_instance_id uuid UNIQUE, status text, key_consumed bool, key_purchased bool, fee_paid bigint, reward_committed bool, started_at timestamptz, finished_at timestamptz, UNIQUE(job_id,seq))
-raid_lote_reward_ledger(attempt_id uuid, reward_type text, item_id text, amount bigint, PRIMARY KEY(attempt_id,reward_type,item_id))
-Criar indice parcial de job ativo por jid e índice por janela 24h. Usar chave idempotente por tentativa e evento; lock por jid e raid_instance_id; garantir que falha/timeout reinicie a MESMA tentativa, jamais outra.
+## Segurança de implantação
+- Nenhuma função no módulo de loja roda no boot ou em import. Migração só quando chamada explicitamente em homologação.
+- Não ativar comando, worker, migração ou troca de saldo em PRODUÇÃO enquanto houver pendência em testes.
+- A idempotência depende de request_key de origem confiável (ID da mensagem/ação), UNIQUE(jid,request_key).
+- Cobrança, crédito municipal e logs financeiros devem ser COMMITADOS na mesma transação; erro deve ROLLBACKAR tudo.
+- A tentativa deve ter ID único e persistido antes de se iniciar; o worker deve retomar essa MESMA tentativa após restart sem consumir o próximo direito.
+- O adaptador interno de Raid deve ignorar o consumo de chave manual. Guardas de 1 Raid por personagem precisam bloquear iniciar manual e automático simultaneamente em ambos os canais.
+- Recompensas reduzidas são calculadas antes do crédito, dentro da transação de conclusão. Não conceder 100% para depois estornar. História de vitórias do pacote não é vitória manual para o pré-requisito.
+- O fim de cada tentativa encerra uma única vez; depois de 10 vitórias, status won. Qualquer derrota/morte termina status lost, sem reembolso; cancelamento tem status cancelled e permanece pago.
+- Relatório de encerramento privado; não anunciar automaticamente no grupo.
 
-## Sequência de integração
-1. Testes unitários da política pura.
-2. Migration e testes transacionais de chave, carteira, Prefeitura, rollback e concorrência.
-3. Adaptador de batalha: reutilizar raidRound e inicialização real sem simular vitória; preservar snapshot, tempo de rodadas e potions.
-4. Aplicar redutores ANTES de cada crédito, não debitar recompensas depois; auditar cada recompensa (inclusive XP, maestria, materiais, itens, pets e colab).
-5. Worker com lease e retomada idempotente após restart, 1 job ativo por jogador, pausa por manutenção.
-6. Comandos e mensagens privadas; esconder em !comandos até homologação.
-7. Testar 1/10/75, derrota, morte, falta de chave/saldo, interrupção, deploy/restart, dois workers, 10 tentativas, limite 24h, cancelamento, teto diário colab, auditoria financeira.
-8. Liberar manualmente flag RAID_LOTE_V1_ENABLED somente após CI + homologação em TESTE. Sem deploy automático.
-
-## Atenções
-- raidRound é acoplado a salas por chat; não apontar o worker para grupo público.
-- A recompensa normal da Raid 75 pode incluir retorno financeiro maior que o preço da chave. Monitorar saldo líquido e limite de fragmentos.
-- A transação financeira da taxa precisa creditar a Prefeitura em vez de sumir do sistema.
-- Não usar o resultado de HP=0 como prova de premiação: conferir transação, XP, inventário e ledger.
+## Plano de homologação
+1. Testes unitários do orçamento, redutores e limites.
+2. Testes de transação com saldo insuficiente, dinheiro+saldo bancário, duas compras simultâneas, repetição do mesmo request_key, rollback, integridade cofre, e 24h.
+3. Testar com sala isolada e combate real, vitória e derrota, consumíveis, herói/pet, Raid 75, reinício do Render a meio da rodada, execução concorrente de worker, reconciliação de recompensas.
+4. Bloquear o deploy até verificar manualmente nenhuma cobrança dobrada, nenhum ganho de Raid não concluída, nenhuma interferência nas Raids do grupo.
