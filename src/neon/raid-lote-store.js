@@ -47,6 +47,8 @@ export async function initRaidLoteStore(db){
       keys_total BIGINT NOT NULL CHECK(keys_total>=0),
       fee_total BIGINT NOT NULL CHECK(fee_total>=0),
       total_paid BIGINT NOT NULL CHECK(total_paid>=0),
+      owned_keys_spent INTEGER NOT NULL DEFAULT 0 CHECK(owned_keys_spent BETWEEN 0 AND 10),
+      keys_bought INTEGER NOT NULL DEFAULT 0 CHECK(keys_bought BETWEEN 0 AND 10),
       cash_paid BIGINT NOT NULL CHECK(cash_paid>=0),
       bank_paid BIGINT NOT NULL CHECK(bank_paid>=0),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -94,7 +96,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
   const catalog=await getCatalog()
   const cfg=catalog.find(r=>Number(r.level)===Number(level))
   if(!cfg)throw new Error('Raid indisponivel para compra')
-  const quote=raidLoteQuote(cfg.keyPrice,attempts)
+  const initialQuote=raidLoteQuote(cfg.keyPrice,attempts)
   return inTransaction(db,async c=>{
     await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+jid])
     const prior=(await c.query(
@@ -103,12 +105,15 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
     )).rows[0]
     // Replay da mesma mensagem NAO gasta novamente, ainda que a luta ja tenha terminado.
     if(prior){
-      if(Number(prior.level)!==Number(cfg.level)||Number(prior.requested)!==quote.attempts)
+      if(Number(prior.level)!==Number(cfg.level)||Number(prior.requested)!==initialQuote.attempts)
         throw new Error('Repeticao de pedido com nivel ou quantidade divergente')
       const originalQuote={
         attempts:Number(prior.requested),keyPrice:Number(prior.key_price),
+        ownedKeysUsed:Number(prior.owned_keys_spent),keysToBuy:Number(prior.keys_bought),
         keysTotal:Number(prior.keys_total),serviceTotal:Number(prior.fee_total),
-        totalPrice:Number(prior.total_paid),prepaid:true,refundable:false
+        totalPrice:Number(prior.total_paid),
+        fullPackageValue:Number(prior.key_price)*Number(prior.requested)+Number(prior.fee_total),
+        prepaid:true,refundable:false
       }
       return {job:prior,quote:originalQuote,alreadyPurchased:true}
     }
@@ -121,7 +126,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       SELECT COALESCE(SUM(requested),0)::bigint AS purchased
       FROM raid_lote_jobs WHERE jid=$1 AND created_at>NOW()-INTERVAL '24 hours'
     `,[jid])).rows[0]
-    if(Number(last24h?.purchased||0)+quote.attempts>RAID_LOTE_V1.maxAttempts)
+    if(Number(last24h?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
       throw new Error('Limite de 10 tentativas compradas em 24 horas')
     const publicRaid=(await c.query(`
       SELECT 1 FROM trevo_games
@@ -143,6 +148,13 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
     `,[jid,'raid_'+cfg.level])).rows[0]
     if(Number(wins?.n||0)<RAID_LOTE_V1.minimumManualWins)
       throw new Error('Necessarias 3 vitorias manuais anteriores nesta Raid')
+    // Chaves existentes sao consumidas NA COMPRA, e jamais cobradas de novo.
+    const inventory=(await c.query(
+      'SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+      [jid,cfg.keyId]
+    )).rows[0]
+    const ownedKeys=Number(inventory?.quantity||0)
+    const quote=raidLoteQuote(cfg.keyPrice,attempts,ownedKeys)
     const wallet=(await c.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])).rows[0]
     const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
     if(!Number.isSafeInteger(cash)||!Number.isSafeInteger(bank)||cash<0||bank<0)
@@ -152,14 +164,21 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
     const fromCash=Math.min(cash,quote.totalPrice)
     const fromBank=quote.totalPrice-fromCash
     const id=crypto.randomUUID()
+    if(quote.ownedKeysUsed>0){
+      const spent=await c.query(
+        'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3 AND quantity >= $1 RETURNING quantity',
+        [quote.ownedKeysUsed,jid,cfg.keyId]
+      )
+      if(spent.rowCount!==1)throw new Error('Chaves mudaram durante a compra; tente novamente')
+    }
     await c.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2 WHERE jid=$3',[fromCash,fromBank,jid])
     await c.query(`
       INSERT INTO raid_lote_jobs(
         id,jid,request_key,level,requested,key_price,keys_total,fee_total,
-        total_paid,cash_paid,bank_paid
-      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        total_paid,cash_paid,bank_paid,owned_keys_spent,keys_bought
+      ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     `,[id,jid,requestKey,cfg.level,quote.attempts,quote.keyPrice,quote.keysTotal,
-      quote.serviceTotal,quote.totalPrice,fromCash,fromBank])
+      quote.serviceTotal,quote.totalPrice,fromCash,fromBank,quote.ownedKeysUsed,quote.keysToBuy])
     // Credito da taxa na Prefeitura na MESMA transacao do pagamento.
     await c.query('UPDATE raid_lote_municipality SET balance=balance+$1 WHERE id=1',[quote.serviceTotal])
     await c.query(`
@@ -167,14 +186,14 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       VALUES
         ($1,'raid_shop',$2,'raid_lote_keys',$4),
         ($1,'alpha_prefeitura',$3,'raid_lote_service',$4)
-    `,[jid,quote.keysTotal,quote.serviceTotal,'Pacote Raid Lv.'+cfg.level+' #'+id])
+    `,[jid,quote.keysTotal,quote.serviceTotal,'Pacote Raid Lv.'+cfg.level+' #'+id+' (chaves proprias '+quote.ownedKeysUsed+')'])
     return {job:{id,jid,level:cfg.level,requested:quote.attempts,started:0,won_count:0,status:'queued'},quote,alreadyPurchased:false}
   })
 }
 export async function getRaidLoteJob(db,jid){
   const {rows}=await db.query(`
     SELECT id,level,requested,started,won_count,status,cancel_requested,
-      current_attempt_id,keys_total,fee_total,total_paid,created_at,updated_at,finished_at
+      current_attempt_id,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,created_at,updated_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT 1
   `,[jid])
   return rows[0]||null
@@ -182,7 +201,7 @@ export async function getRaidLoteJob(db,jid){
 export async function getRaidLoteHistory(db,jid,limit=5){
   const n=Math.max(1,Math.min(10,Math.floor(Number(limit)||5)))
   const {rows}=await db.query(`
-    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,created_at,finished_at
+    SELECT id,level,requested,started,won_count,status,keys_total,fee_total,total_paid,owned_keys_spent,keys_bought,created_at,finished_at
     FROM raid_lote_jobs WHERE jid=$1 ORDER BY created_at DESC LIMIT $2
   `,[jid,n])
   return rows
