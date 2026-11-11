@@ -14,16 +14,20 @@ export const RAID_LOTE_V1=Object.freeze({
   sequential:true
 })
 const integer=n=>typeof n!=='boolean'&&Number.isSafeInteger(Number(n))&&Number(n)>=0
-export function raidLoteQuote(keyPrice,attempts){
+export function raidLoteQuote(keyPrice,attempts,ownedKeys=0){
   if(!integer(keyPrice)||Number(keyPrice)<1)throw new RangeError('Preco de chave invalido')
   if(!integer(attempts)||Number(attempts)<1||Number(attempts)>RAID_LOTE_V1.maxAttempts)throw new RangeError('Quantidade de tentativas invalida')
+  if(!integer(ownedKeys))throw new RangeError('Chaves existentes invalidas')
   const price=Number(keyPrice),n=Number(attempts)
   const feePerAttempt=Math.ceil(price*RAID_LOTE_V1.feeBasisPoints/10000)
-  const keysTotal=price*n, serviceTotal=feePerAttempt*n
-  if(!Number.isSafeInteger(keysTotal+serviceTotal))throw new RangeError('Valor total fora do limite')
+  const ownedKeysUsed=Math.min(n,Number(ownedKeys)),keysToBuy=n-ownedKeysUsed
+  const keysTotal=price*keysToBuy,serviceTotal=feePerAttempt*n
+  const fullPackageValue=price*n+serviceTotal
+  if(!Number.isSafeInteger(keysTotal+serviceTotal)||!Number.isSafeInteger(fullPackageValue))
+    throw new RangeError('Valor total fora do limite')
   return Object.freeze({attempts:n,keyPrice:price,feePerAttempt,
-    keysTotal,serviceTotal,totalPrice:keysTotal+serviceTotal,
-    prepaid:true,refundable:false})
+    ownedKeysUsed,keysToBuy,keysTotal,serviceTotal,totalPrice:keysTotal+serviceTotal,
+    fullPackageValue,prepaid:true,refundable:false})
 }
 export function raidLoteReward(base,kind){
   const rate={
