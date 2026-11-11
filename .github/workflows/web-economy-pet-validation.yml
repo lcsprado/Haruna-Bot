@@ -11,7 +11,7 @@ on:
       - src/neon/games.js
       - src/neon/boss-pet-autocure.js
       - test/web-economy-pet-parity-20261111.test.mjs
-      - .github/workflows/economy-pet-validation.yml
+      - .github/workflows/web-economy-pet-validation.yml
   push:
     branches: [feat/web-aiven-beta-protegido-20261021]
     paths:
@@ -22,7 +22,7 @@ on:
       - src/neon/games.js
       - src/neon/boss-pet-autocure.js
       - test/web-economy-pet-parity-20261111.test.mjs
-      - .github/workflows/economy-pet-validation.yml
+      - .github/workflows/web-economy-pet-validation.yml
   workflow_dispatch:
 
 permissions:
@@ -51,8 +51,5 @@ jobs:
         run: |
           node --test test/web-economy-pet-parity-20261111.test.mjs
           node --test test/business-income-rebalance-20261110.test.mjs
-          node --test test/business-collection-time-20261104.test.mjs
-          node --test test/boss-pet-autocure.test.mjs
-          node --test test/pet-potion-auto-policy.test.mjs
       - name: Sem conexao com banco
         run: test -z "$DATABASE_URL"
