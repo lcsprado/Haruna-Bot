@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {Pool} from 'pg'
+import pg from 'pg'
+const {Pool}=pg
 import {initRaidLoteStore,purchaseRaidLote,cancelRaidLote} from '../src/neon/raid-lote-store.js'
 
 test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembolso',async t=>{
