@@ -17,7 +17,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
   const {initAwakening}=await import('../src/neon/awakening.js')
   const {initRelics}=await import('../src/neon/relics.js')
   const {initEnchantments}=await import('../src/neon/enchantments-alpha.js')
-  const {initGames,getRaidCatalog,startRaid,raidRound}=await import('../src/neon/games.js')
+  const {initGames,getRaidCatalog,createRaid,startRaid,raidRound}=await import('../src/neon/games.js')
   const {initRaidLoteStore,purchaseRaidLote,reserveNextRaidLoteAttempt,settleRaidLoteAttempt}=await import('../src/neon/raid-lote-store.js')
   const {createRaidLoteWorker}=await import('../src/neon/raid-lote-worker.js')
   try{
@@ -228,6 +228,38 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
         highJid,high.material.id])).rows[0]
       assert.equal(Number(collabInv?.quantity),4)
       assert.equal((await settleRaidLoteAttempt(db,collabAttempt.id)).jobStatus,'won')
+
+      // Regressão da Raid manual: continua comprando uma única chave,
+      // lutando com o mesmo motor e recebendo a recompensa INTEGRAL.
+      const manualJid='raid-manual-regression-006@s.whatsapp.net'
+      const manualChat='alpha-manual-raid-ci@g.us'
+      await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Raid Manual')",[manualJid])
+      await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,500000,0)',[manualJid])
+      await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8000,8000,1200000,1500,1000)',[manualJid])
+      const manualLobby=await createRaid(manualChat,manualJid,'Teste Raid Manual',cfg.level)
+      assert.equal(manualLobby.autoKeyPurchased,true)
+      const manualKey=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[
+        manualJid,cfg.keyId])
+      assert.equal(Number(manualKey.rows[0].quantity),1)
+      const manualStart=await startRaid(manualChat,manualJid,cfg.level)
+      assert.equal(manualStart.status,'active')
+      assert.notEqual(manualStart.mode,'lote')
+      const consumed=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[
+        manualJid,cfg.keyId])
+      assert.equal(Number(consumed.rows[0].quantity),0)
+      clock+=9000
+      const manualWin=await raidRound(manualChat,cfg.level)
+      assert.equal(manualWin.victory,true)
+      const manualCash=Number(manualWin.rewards[0]?.cash||0)
+      assert.ok(manualCash>cashExpected,
+        'A Raid manual deve preservar a recompensa normal, maior que a do lote')
+      const manualBalance=(await db.query('SELECT cash FROM wallets WHERE jid=$1',[manualJid])).rows[0]
+      assert.equal(Number(manualBalance.cash),500000-cfg.keyPrice+manualCash)
+      const manualTransactions=await db.query(
+        "SELECT COUNT(*)::int AS n FROM transactions WHERE from_jid=$1 AND type='raid_key_auto'",
+        [manualJid])
+      assert.equal(manualTransactions.rows[0].n,1)
+
     }finally{
       Date.now=originalNow
       Math.random=originalRandom
