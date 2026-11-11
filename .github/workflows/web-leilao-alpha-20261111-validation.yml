@@ -1,0 +1,44 @@
+name: Alpha Web - leilao 12h30 segredo por lote
+
+on:
+  pull_request:
+    branches: [feat/web-aiven-beta-protegido-20261021]
+    paths:
+      - src/neon/auction-20261111-1230.js
+      - src/neon/anti-crit-shields.js
+      - src/neon/web-api.js
+      - test/auction-progressive-reveal-20261111.test.mjs
+      - .github/workflows/web-leilao-alpha-20261111-validation.yml
+  push:
+    branches: [feat/web-aiven-beta-protegido-20261021]
+    paths:
+      - src/neon/auction-20261111-1230.js
+      - src/neon/anti-crit-shields.js
+      - src/neon/web-api.js
+      - test/auction-progressive-reveal-20261111.test.mjs
+      - .github/workflows/web-leilao-alpha-20261111-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar-segredo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe
+        run: |
+          node --check src/neon/auction-20261111-1230.js
+          node --check src/neon/web-api.js
+          node --check src/neon/anti-crit-shields.js
+      - name: Teste de revelacao por lote
+        run: node --test test/auction-progressive-reveal-20261111.test.mjs
+      - name: Sem conexao com producao
+        run: test -z "$DATABASE_URL"
