@@ -87,6 +87,8 @@ import { footballToday, brazilStandings, teamSummary, formatFixtures, formatTeam
 import { ADOPTABLE_PETS, PET_STATUS_SPECIALTIES, SELECTABLE_PLAYER_CLASSES, getClassPassive, classCritBonus, getAwakeningSkillDescriptions, petPvpSpecialty, petSacrificeReward } from './game-catalog.js'
 import {petAdoptionCategory,petAdoptionCategoryPets,petAdoptionMenuText,petAdoptionListText,petAdoptionDetailText} from './pet-adoption-menu.js'
 import {petCollectionCategory,petCollectionCategoryPets,petCollectionMenuText,petCollectionListText,petCollectionDetailText,petCollectionSacrificeText} from './pet-collection-menu.js'
+import {RAID_PET_VOUCHER_ID} from './raid-pet-voucher.js'
+import {startRaidPetVoucherFlow,handleRaidPetVoucherFlow} from './raid-pet-voucher-flow.js'
 import { createWebLinkCode, prepareWebGroupLink, consumePendingWebGroupLink } from './web-api.js'
 import { initAwakening, getAwakeningStatus, awakenCharacter } from './awakening.js'
 import {initRelics,relicStatus,selectRelic,relicCatalog} from './relics.js'
@@ -4610,6 +4612,23 @@ if(result.hitLimit)text+='\n⚠️ Limite de 30 invocações por operação. Ain
 text+='\n\n✅ Pets novos adicionados à coleção. *!meuspets* para consultar.'
 return text
 }
+// O uso do Vale Domador abre um menu; só a confirmação debita o item.
+const voucherPetFlowDeps=()=>({
+  pool:db,altars:LEGENDARY_PET_SUMMONS,petMaxHp,petMaxEnergy,
+  styleLabel:petStyleLabel,getInventory,listPets
+})
+function voucherPetFlowTools(chat,sender){
+  return {
+    setFlow:(stage,data,ttl)=>setQuickFlow(chat,sender,stage,data,ttl),
+    clearFlow:()=>clearQuickFlow(chat,sender)
+  }
+}
+async function openRaidPetVoucherMenu(chat,sender,reply,raidLevel=null){
+  return startRaidPetVoucherFlow({
+    sender,reply,requestedRaid:raidLevel,
+    ...voucherPetFlowTools(chat,sender),...voucherPetFlowDeps()
+  })
+}
 async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
 let flow=getQuickFlow(chat,sender)
 if(!flow){
@@ -4641,6 +4660,10 @@ if(['0','sair','cancelar','cancel'].includes(input)){
 clearQuickFlow(chat,sender)
 await reply(String(flow.stage||'').startsWith('pet_adopt_')?'✅ Adoção encerrada. Use *!adotar* para abrir novamente.':String(flow.stage||'').startsWith('pet_collection_')?'✅ Coleção encerrada. Use *!meuspets* para abrir novamente.':String(flow.stage||'').startsWith('enchant_')?'✅ Encantamento cancelado. Nenhuma pedra consumida. Use *!encantar* para voltar.':'✅ Menu encerrado. Use *!menu* ou *!games* quando quiser abrir novamente.')
 return true
+}
+if(String(flow.stage||'').startsWith('voucher_')){
+  return handleRaidPetVoucherFlow({flow,input,sender,reply,
+    ...voucherPetFlowTools(chat,sender),...voucherPetFlowDeps()})
 }
 if(String(flow.stage||'').startsWith('enchant_')){
 return await handleEnchantFlow({stage:flow.stage,data:flow.data,input,sender,reply,
@@ -7361,6 +7384,10 @@ if(!itemId){
 await reply('🧪 Escolha um dos números da lista ou digite *0* para cancelar.')
 return true
 }
+if(itemId===RAID_PET_VOUCHER_ID){
+  await openRaidPetVoucherMenu(chat,sender,reply)
+  return true
+}
 if(itemId==='energetico_pet'){
 const r=await usePetEnergyItem(sender,itemId)
 clearQuickFlow(chat,sender)
@@ -8103,10 +8130,14 @@ return true
 setQuickFlow(chat,sender,'inventory_materials_detail',{itemId:item.item_id},90000)
 const voucherNote=/vale arsenal proibido/i.test(String(item.name||''))
 ?'\n🎟️ Este vale ainda não tem resgate automático definido no bot. Ele permanece no seu inventário.':''
-await reply('🧩 *DETALHES DO ITEM*\n\n'+rarityLabel(item.rarity)+' — *'+item.name+'*\n📦 Quantidade: *'+item.quantity+'*'+voucherNote+'\n\nℹ️ Consulta apenas: nenhum item será consumido, vendido ou ativado aqui.\n\n9️⃣ Voltar à lista\n99️⃣ Voltar ao inventário\n0️⃣ Sair')
+await reply('🧩 *DETALHES DO ITEM*\n\n'+rarityLabel(item.rarity)+' — *'+item.name+'*\n📦 Quantidade: *'+item.quantity+'*'+voucherNote+'\n\n'+(item.item_id===RAID_PET_VOUCHER_ID?'1️⃣ 🎟️ *USAR VALE — escolher pet de Raid*\n\n':'ℹ️ Consulta apenas: nenhum item será consumido, vendido ou ativado aqui.\n\n')+'9️⃣ Voltar à lista\n99️⃣ Voltar ao inventário\n0️⃣ Sair')
 return true
 }
 if(flow.stage==='inventory_materials_detail'){
+if(input==='1'&&flow.data?.itemId===RAID_PET_VOUCHER_ID){
+  await openRaidPetVoucherMenu(chat,sender,reply)
+  return true
+}
 if(input==='9'){
 await materialsMenu()
 return true
@@ -8821,6 +8852,10 @@ await reply('Escolha *1 Sim* ou *2 Não*.')
 return true
 }
 const itemId=flow.data.itemId
+if(itemId===RAID_PET_VOUCHER_ID){
+  await openRaidPetVoucherMenu(chat,sender,reply)
+  return true
+}
 if(itemId==='energetico_pet'){
 const r=await usePetEnergyItem(sender,itemId)
 clearQuickFlow(chat,sender)
@@ -10311,6 +10346,10 @@ const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
 const ownerTarget=mentionsOf(msg)[0] || sender
 await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
 timingMarks.loans=Date.now()
+if(['escolherpet','resgatarvale','usardomador'].includes(cmd)){
+  await openRaidPetVoucherMenu(chat,sender,reply,args[0]??null)
+  continue
+}
 if(await handleLabirintoCommand({cmd,args,sender,name:msg.pushName||'Jogador',reply})) continue
 if(await handleBingoRebootCommand({cmd,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleBauGolpeCommand({cmd,sender,chat,reply})) continue
@@ -12281,7 +12320,7 @@ const tipo=r.category==='weapon'?'arma':r.category==='armor'?'armadura':r.catego
 await reply(`✅ *EQUIPADO!*\n\n${r.name} agora é sua ${tipo} ativa.`)
 } else if(['usar','use'].includes(cmd)){
 const items=await getInventory(sender)
-const usable=items.filter(isUsableConsumable)
+const usable=[...items.filter(isUsableConsumable),...items.filter(i=>i.item_id===RAID_PET_VOUCHER_ID)]
 const query=args.join(' ').trim()
 if(!query){
 if(!usable.length) return await reply('🧪 Você não possui poções utilizáveis no momento.')
@@ -12291,7 +12330,7 @@ usable.forEach((i,idx)=>text+=`*${idx+1}.* ${i.name} ×${i.quantity}\n`)
 text+='\n👉 Responda apenas com o número.\n0️⃣ Cancelar'
 return await reply(text)
 }
-const item=resolveOwnedItem(usable,query,['consumable'])
+const item=resolveOwnedItem(usable,query)
 if(!item){
 const anyItem=resolveOwnedItem(items,query)
 if(anyItem?.item_id==='caixa_sorte'){
@@ -12302,7 +12341,9 @@ return await reply(`💎 *${anyItem.name}* é um encantamento, não uma poção.
 }
 return await reply(`❌ Não encontrei uma poção com esse nome.\nUse *${prefix}usar* para ver as opções.`)
 }
-if(XP_SPECIAL_ITEM_IDS.has(item.item_id)){
+if(item.item_id===RAID_PET_VOUCHER_ID){
+  await openRaidPetVoucherMenu(chat,sender,reply)
+}else if(XP_SPECIAL_ITEM_IDS.has(item.item_id)){
 const r=await useXpConsumable(sender,item.item_id)
 await reply(xpItemReceipt(r))
 }else if(item.item_id==='energetico_pet'){
