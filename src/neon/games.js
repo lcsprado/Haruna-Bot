@@ -1284,8 +1284,10 @@ async function finishRaidRewards(c,s,cfg,chat){
     const masteryReport=p.heroId?{heroId:p.heroId,earned:0,reason:'participacao_insuficiente'}:null
     if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
       const awardKey=(specialRaid75Mastery?'raid:75:':'raid:')+String(s.startedAt)+':'+String(p.jid)
-      await awardPlayableHeroLevel(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:lote?raidLoteReward(125,'heroXp'):(specialRaid75Mastery?180:125)})
+      const levelAward={jid:p.jid,heroId:p.heroId,awardKey,
+        xp:specialRaid75Mastery?180:125}
+      if(lote)levelAward.xp=raidLoteReward(levelAward.xp,'heroXp')
+      await awardPlayableHeroLevel(c,levelAward)
       await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey,
         xp:lote?raidLoteReward(raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),'masteryXp'):raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),specialRaid75:specialRaid75Mastery,
         progressReport:masteryReport})
@@ -1768,6 +1770,16 @@ export async function raidRound(chat,level){
       }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
+      if(s.mode==='lote'){
+        const report={level:cfg.level,round:s.round,raidStartedAt:s.startedAt,
+          rewards:rewards.map(p=>({damage:p.damage,cash:p.cash,exp:p.awardedExp,
+            hero:p.activeHeroId,masteryXp:p.masteryReport?.earned||0,petXp:p.petXp,
+            material:p.material,box:p.drop,gear:p.gearDrop,potionUses:p.potionUses,
+            petPotionUses:p.petPotionUses}))}
+        await c.query(`
+          UPDATE raid_lote_attempts SET reward_summary=$2::jsonb WHERE id=$1 AND status='active'
+        `,[s.loteAttemptId,JSON.stringify(report)])
+      }
       // Despertar V: somente Raids Lv.60+ vencidas com 2+ jogadores
       // distintos causando pelo menos 2% do dano cada. Não altera drops.
       if(Number(cfg.level)>=60){
