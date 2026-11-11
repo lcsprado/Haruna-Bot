@@ -156,6 +156,7 @@ try{
  // Simulate the 22:00 scheduler tick, then retry to verify prize idempotence.
  now=COFRE_DESTINO_END+1000
  await tick()
+ await new Promise(resolve=>setTimeout(resolve,30)) // interval wrapper schedules async tick
  assert.equal(settings.size,1)
  assert.equal(settings.get(COFRE_DESTINO_KEY+':podium_done').winners[0].jid,'p2')
  assert.equal(settings.get(COFRE_DESTINO_KEY+':podium_done').winners[1].jid,'p1')
@@ -166,6 +167,7 @@ try{
  assert.equal(inventory.has('p3'),false)
  assert.equal(notices.length,2)
  await tick()
+ await new Promise(resolve=>setTimeout(resolve,30))
  assert.equal(notices.length,2)
  assert.equal(wallets.get('p2').cash,2250000)
  assert.equal(wallets.get('p1').cash,1110000)
