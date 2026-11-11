@@ -1,0 +1,58 @@
+name: Alpha Bot - renda e curas economicas
+
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - src/neon/business-profit.js
+      - src/neon/progression.js
+      - src/neon/pet-potion-economy.js
+      - src/neon/db.js
+      - src/neon/games.js
+      - src/neon/boss-pet-autocure.js
+      - test/economy-business-pet-20261111.test.mjs
+      - .github/workflows/economy-pet-validation.yml
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - src/neon/business-profit.js
+      - src/neon/progression.js
+      - src/neon/pet-potion-economy.js
+      - src/neon/db.js
+      - src/neon/games.js
+      - src/neon/boss-pet-autocure.js
+      - test/economy-business-pet-20261111.test.mjs
+      - .github/workflows/economy-pet-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  economia-pets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe
+        run: |
+          node --check src/neon/business-profit.js
+          node --check src/neon/pet-potion-economy.js
+          node --check src/neon/boss-pet-autocure.js
+          node --check src/neon/progression.js
+          node --check src/neon/games.js
+          node --check src/neon/db.js
+      - name: Economia, autocura, limites e integridade
+        run: |
+          node --test test/economy-business-pet-20261111.test.mjs
+          node --test test/business-income-rebalance-20261110.test.mjs
+          node --test test/business-collection-time-20261104.test.mjs
+          node --test test/boss-pet-autocure.test.mjs
+          node --test test/pet-potion-auto-policy.test.mjs
+      - name: Sem conexao com banco
+        run: test -z "$DATABASE_URL"

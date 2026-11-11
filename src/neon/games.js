@@ -17,6 +17,7 @@ import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount} from './weekly-g
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
+import {chooseEconomicPetPotion} from './pet-potion-economy.js'
 import {spendAutoPetPotion} from './pet-potion-auto-policy.js'
 import {playerPotionHealAmount} from './player-potions.js'
 import {PECADOS_HERO_IDS,PECADOS_ESSENCES,PECADOS_EDITIONS,PECADOS_BOSS_PHASES,PECADOS_MIN_BOSS_DAMAGE,PECADOS_ESSENCES_PER_PHASE,PECADOS_FULL_CLEAR_BONUS_ESSENCES,pecadosEditionCompletionBonus} from './sete-pecados-catalog.js'
@@ -1086,12 +1087,8 @@ async function persistRaidCombatPet(c,jid,pet){
     await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.energy,jid])
   }
 }
-function raidPetPotion(rows,missingHp){
-  const heal={pocao_pet_comum:60,pocao_pet_rara:160,pocao_pet_epica:320,pocao_pet_suprema:800,pocao_pet_full:Number.MAX_SAFE_INTEGER}
-  const names={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_pet_epica:'Poção de Pet Épica',pocao_pet_suprema:'Poção de Pet Suprema',pocao_pet_full:'Poção Full de Pet'}
-  const a=(rows||[]).filter(x=>Number(x.quantity)>0&&heal[x.item_id]).map(x=>({...x,heal:heal[x.item_id]})).sort((x,y)=>x.heal-y.heal)
-  const p=a.find(x=>x.heal>=Math.max(1,Number(missingHp)||1))||a[a.length-1]
-  return p?{...p,name:names[p.item_id]}:null
+function raidPetPotion(rows,missingHp,context={}){
+  return chooseEconomicPetPotion(rows,missingHp,context)
 }
 
 export async function startRaid(chat,host,level=null){
@@ -1596,7 +1593,7 @@ export async function raidRound(chat,level){
             client:c,jid:p.jid,pet:p.pet,
             maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),
             choosePotion:raidPetPotion,persistPet:persistRaidCombatPet,
-            context:'raid-revive'
+            context:'raid-revive',imminentDamage:Math.ceil(Number(cfg.atk||0)*.60)
           })
           if(healed){
             p.petPotionHealing=Number(p.petPotionHealing||0)+Number(healed.heal)
@@ -1785,7 +1782,8 @@ export async function raidRound(chat,level){
         const maxPetHp=Math.max(1,Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)))
         if(!petFainted&&!autoPetHeal&&Number(p.pet.hp)/maxPetHp<.35){
           const missing=Math.max(1,maxPetHp-Number(p.pet.hp))
-          const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
+          const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing,
+            {currentHp:Number(p.pet.hp),maxHp:maxPetHp,imminentDamage:Math.ceil(Number(cfg.atk||0)*.60),context:'raid-preventive'})
           if(chosenPet){
             const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-preventive',petName:p.pet.name})
             if(spent.spent){
@@ -1813,7 +1811,8 @@ export async function raidRound(chat,level){
             petFainted=false
           }else if(!autoPetHeal){
             const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
-            const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
+            const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing,
+              {currentHp:Number(p.pet.hp),maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),imminentDamage:Math.ceil(Number(cfg.atk||0)*.60),context:'raid-fainted'})
             if(chosenPet){
               const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-fainted',petName:p.pet.name})
               if(spent.spent){
@@ -3101,11 +3100,12 @@ async function persistBossCombatPet(c,jid,pet){
     await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE id=$3 AND jid=$4',[pet.hp,pet.energy,pet.collectionId,jid])
   }
 }
-function healBossCombatPet(c,jid,pet){
+function healBossCombatPet(c,jid,pet,bossAtk=0){
   return autoHealBossCombatPet({
     client:c,jid,pet,
     maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),
-    choosePotion:raidPetPotion,persistPet:persistBossCombatPet
+    choosePotion:raidPetPotion,persistPet:persistBossCombatPet,
+    imminentDamage:Math.ceil(Number(bossAtk||0)*.52)
   })
 }
 export async function attackBoss(chat,jid,name,usePet=true,options={}){
@@ -3235,7 +3235,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         "SELECT 1 FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0",
         [jid]
       )).rows[0])
-      if(canFight)autoPetHeal=await healBossCombatPet(c,jid,petRow)
+      if(canFight)autoPetHeal=await healBossCombatPet(c,jid,petRow,Number(s.atk||18))
     }
     // Recarrega o pet automaticamente e consome um energético na mesma transação.
     let autoPetEnergy=null
@@ -3385,7 +3385,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         // suficiente. Em 0 HP, preserva a prioridade de troca para o Reserva.
         const maxPetHp=Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))
         if(!pet.petFainted && !autoPetHeal && maxPetHp>0 && Number(pet.hp)/maxPetHp<.35){
-          const healed=await healBossCombatPet(c,jid,pet)
+          const healed=await healBossCombatPet(c,jid,pet,Number(s.atk||18))
           if(healed)autoPetHeal=healed
         }
         await persistBossCombatPet(c,jid,pet)
@@ -3402,7 +3402,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           // Mesmo comportamento da Raid: sem Reserva disponível, o pet usa
           // automaticamente a menor poção suficiente quando chegar a 0 HP.
           if(!switched&&!autoPetHeal){
-            const healed=await healBossCombatPet(c,jid,pet)
+            const healed=await healBossCombatPet(c,jid,pet,Number(s.atk||18))
             if(healed)autoPetHeal=healed
           }
         }
