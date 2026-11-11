@@ -116,6 +116,7 @@ import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,get
 import {createRaidLoteWorker} from './raid-lote-worker.js'
 import {getRaidLotePublicBoard,getRaidLoteCurrentProgress,formatRaidLoteProgress,formatRaidLotePublicBoard} from './raid-lote-public.js'
 import {formatRaidLoteMaterials} from './raid-lote-material-summary.js'
+import {summarizeRaidLoteXp} from './raid-lote-xp-summary.js'
 const raidLoteV1Enabled=process.env.RAID_LOTE_V1_ENABLED==='true'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
@@ -2482,7 +2483,7 @@ if(raidLoteV1Enabled){
       if(!job||String(job.id)!==String(jobId))return
       const records=await getRaidLoteAttemptReports(db,jid,jobId)
       const totalCash=records.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((sum,v)=>sum+Number(v.cash||0),0),0)
-      const totalExp=records.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((sum,v)=>sum+Number(v.exp||0),0),0)
+      const {totalXp:totalExp,bonusXp:totalBoostXp}=summarizeRaidLoteXp(records)
       const completed=records.filter(x=>x.status==='won').length
       const statusText=job.status==='won'?'Pacote concluido':job.status==='lost'?'Pacote perdido':'Pacote cancelado'
       const report='⚔️ *RAIDLOTE V1 — '+statusText+'*'
@@ -2490,6 +2491,7 @@ if(raidLoteV1Enabled){
         +'\n🔑 Tentativas iniciadas: '+job.started
         +'\n💰 Premio recebido: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
         +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
+        +(totalBoostXp>0?'\n⏳ Ampulheta/Elixir — bônus XP: +'+Math.floor(totalBoostXp).toLocaleString('pt-BR')+' (já incluído no XP acima)':'')
         +formatRaidLoteMaterials(records)
         +'\n💳 Pacote pago: R$ '+Number(job.total_paid).toLocaleString('pt-BR')
         +'\n📌 Nao ha reembolso de tentativas nao utilizadas.'

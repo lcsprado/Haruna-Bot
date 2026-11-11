@@ -1,5 +1,5 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
-import {raidLoteReward,raidLoteGearChance} from './raid-lote-policy.js'
+import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance} from './raid-lote-policy.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
@@ -1316,7 +1316,7 @@ async function finishRaidRewards(c,s,cfg,chat){
     const exp=lote?raidLoteReward(normalExp,'playerXp'):normalExp
     await credit(c,p.jid,cash,lote?`raid_lote_${cfg.level}`:`raid_${cfg.level}`)
     const expCredit=await grantExpInTransaction(c,p.jid,exp,lote
-      ?{ignoreGroupProgressionEvent:true,ignoreXpBoost:true}
+      ?{ignoreGroupProgressionEvent:true,ignoreXpBoost:!RAID_LOTE_V1.applyActivatedXpItems}
       :{chatJid:chat})
     const baseRaidPetXp=p.pet&&Number(p.pet.turns||0)>0?Math.max(5,Math.floor(cfg.petXpPool*(.15+.85*share))):0
     const petXp=lote?raidLoteReward(baseRaidPetXp,'petXp'):(baseRaidPetXp?Math.max(5,Math.round(baseRaidPetXp*petXpMultiplier)):0)
@@ -1785,6 +1785,7 @@ export async function raidRound(chat,level){
       if(s.mode==='lote'){
         const report={level:cfg.level,round:s.round,raidStartedAt:s.startedAt,
           rewards:rewards.map(p=>({damage:p.damage,cash:p.cash,exp:p.awardedExp,
+            baseExp:p.exp,xpBoostBonus:p.xpBoostBonus,
             hero:p.activeHeroId,masteryXp:p.masteryReport?.earned||0,petXp:p.petXp,
             material:p.material,box:p.drop,gear:p.gearDrop,potionUses:p.potionUses,
             petPotionUses:p.petPotionUses}))}
