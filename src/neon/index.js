@@ -3,6 +3,7 @@ import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
 import {FIRST_500_TITLE,isFirst500TitleHolder} from './first-level-500-title.js'
 import 'dotenv/config'
+import {createHash} from 'node:crypto'
 import makeWASocket, {
 Browsers,
 DisconnectReason,
@@ -108,6 +109,10 @@ import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
 const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
 
+import {RAID_LOTE_V1,raidLoteQuote} from './raid-lote-policy.js'
+import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote} from './raid-lote-store.js'
+import {createRaidLoteWorker} from './raid-lote-worker.js'
+const raidLoteV1Enabled=process.env.RAID_LOTE_V1_ENABLED==='true'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
@@ -2242,6 +2247,7 @@ throw err
 await initCommunityPack()
 await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
 await initGames()
+if(raidLoteV1Enabled)await initRaidLoteStore(db)
 // Correção idempotente de 30/10: apenas o pet do leilão antigo, sem mexer em dinheiro.
 {
   const {removeKaiqueGuaxinimId77}=await import('./auction-kaique-pet-only-20261030.js')
