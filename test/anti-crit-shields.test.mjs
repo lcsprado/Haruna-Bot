@@ -4,8 +4,8 @@ import {readFileSync} from 'node:fs';
 import {selectEffectiveGear} from '../src/neon/equipment-star-logic.js';
 import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shieldedCriticalMultiplier} from '../src/neon/anti-crit-shields.js';
 
-test('cinco escudos com progressão exclusiva, sem ATK ou DEF',()=>{
- assert.equal(ANTI_CRIT_SHIELDS.length,5);
+test('seis escudos com progressão exclusiva, sem ATK ou DEF',()=>{
+ assert.equal(ANTI_CRIT_SHIELDS.length,6);
  assert.deepEqual(ANTI_CRIT_SHIELDS.map(x=>x.critResist),[.02,.04,.06,.09,.12]);
  for (const x of ANTI_CRIT_SHIELDS) {
   assert.equal(x.category,'shield');
