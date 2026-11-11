@@ -14,7 +14,7 @@ const lots=[
 ]
 function getExports(state){
  const script=source.replace(/^import .*$/gm,'').replace(/^export (async )?/gm,'$1')
- const context={db:{query:async()=>({rows:[{value:state}]})},Date,console}
+ const context={LOT_DURATION_MS:120000,db:{query:async()=>({rows:[{value:state}]})},Date,console}
  return vm.runInNewContext(script+';({getAuctionWebStatus,status})',context,{timeout:1500})
 }
 test('evento 11/11 12h30, lotes, lances e valores autorizados',()=>{
