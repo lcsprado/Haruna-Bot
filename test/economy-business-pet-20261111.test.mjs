@@ -72,13 +72,38 @@ test('HP 35% em pet grande prioriza Suprema quando cura é segura',()=>{
  assert.equal(chosen.item_id,s)
  assert.equal(chosen.heal,800)
 })
-test('HP de pet crítico ou zero reserva Full, respeitando o estoque',()=>{
- for(const hp of [0,200,380]){
-  const chosen=chooseEconomicPetPotion(potionRows([s,f]),3300-hp,{currentHp:hp,maxHp:3300,imminentDamage:300})
-  assert.equal(chosen.item_id,f)
- }
- const fallback=chooseEconomicPetPotion(potionRows([s]),3300,{currentHp:0,maxHp:3300})
- assert.equal(fallback.item_id,s)
+test('Full fica para nocaute ou emergência sem cura parcial segura',()=>{
+  const stock=potionRows([s,f])
+  assert.equal(chooseEconomicPetPotion(stock,3300,{currentHp:0,maxHp:3300,imminentDamage:300}).item_id,f)
+  assert.equal(chooseEconomicPetPotion(stock,3100,{currentHp:200,maxHp:3300,imminentDamage:300}).item_id,s)
+  assert.equal(chooseEconomicPetPotion(stock,2920,{currentHp:380,maxHp:3300,imminentDamage:300}).item_id,s)
+  assert.equal(chooseEconomicPetPotion(stock,3220,{currentHp:80,maxHp:3300,imminentDamage:500}).item_id,f)
+  assert.equal(chooseEconomicPetPotion(potionRows([s]),3300,{currentHp:0,maxHp:3300}).item_id,s)
+})
+test('dano leve escolhe poção pequena; dano maior evita gastos repetidos',()=>{
+  const rows=potionRows(['pocao_pet_rara','pocao_pet_epica',s,f])
+  const pick=damage=>chooseEconomicPetPotion(rows,2200,{currentHp:1100,maxHp:3300,imminentDamage:damage}).item_id
+  assert.equal(pick(50),'pocao_pet_rara')
+  assert.equal(pick(90),'pocao_pet_epica')
+  assert.equal(pick(350),s)
+})
+test('cinco rodadas de dano leve não desperdiçam Suprema nem Full',()=>{
+  const rows=potionRows(['pocao_pet_rara',s,f])
+  let hp=1150,cost=0
+  const used=[]
+  for(let round=0;round<5;round++){
+    hp=Math.max(0,hp-50)
+    if(hp>0&&hp/3300<.35){
+      const potion=chooseEconomicPetPotion(rows,3300-hp,{currentHp:hp,maxHp:3300,imminentDamage:50})
+      assert.ok(potion)
+      hp=Math.min(3300,hp+potion.heal)
+      cost+=potion.price
+      used.push(potion.item_id)
+    }
+  }
+  assert.deepEqual(used,['pocao_pet_rara','pocao_pet_rara'])
+  assert.equal(cost,3000)
+  assert.ok(hp>0)
 })
 test('sem Full usa melhor cura, nunca debita quando falta estoque',()=>{
  assert.equal(chooseEconomicPetPotion([],2000,{currentHp:1000,maxHp:3300}),null)
