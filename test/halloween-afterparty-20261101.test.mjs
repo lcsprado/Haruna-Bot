@@ -59,7 +59,8 @@ test('bonus PvE permanentes de insignia equipada e titulo independente não afet
  assert.equal(halloweenTitleBonusXp(2000,false),2000)
  assert.match(source,/halloweenTitleBonusXp\(kind==='kill'\?7000:2400,titleOwned\)/)
  assert.match(games,/async function halloweenPveXp\(c,jid,xp\)/)
- assert.match(games,/baseGain=await halloweenPveXp/)
+ assert.match(games,/const normalExp=lote\?baseRaidExp:await halloweenPveXp\(/)
+ assert.match(games,/const exp=lote\?raidLoteReward\(normalExp,'playerXp'\):normalExp/)
  assert.doesNotMatch(source,/if\(.*'pvp'.*halloweenTitleBonusXp/)
 })
 
