@@ -91,8 +91,16 @@ export async function cancelRaidBatch(jid){
  status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,
  updated_at_ms=$2,finish_reason='cancelamento_pedido'
  WHERE jid=$1 AND status IN ('queued','running')
- RETURNING id,status,started_count,requested_count`,[jid,Date.now()])
- return rows[0]||null
+ RETURNING id,level,status,started_count,requested_count`,[jid,Date.now()])
+ const job=rows[0]||null
+ // Se cancelado antes de iniciar, liberar a sala privada sem consumir chave.
+ if(job?.status==='cancelled'){
+  const chat=batchChatJid(jid)
+  const room=await getRaidStatus(chat,job.level).catch(()=>null)
+  if(room?.status==='lobby')await cancelRaid(chat,jid,Number(job.level))
+    .catch(err=>console.warn('[RaidLote] liberar lobby',String(err?.message||err).slice(0,100)))
+ }
+ return job
 }
 export async function raidBatchStatus(jid){
  if(!raidBatchEnabled())throw new Error('!raidlote ainda está em homologação.')
