@@ -1,0 +1,35 @@
+name: Alpha Bot - boletim autocura sem falsas quedas
+
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - src/neon/index.js
+      - test/raid-pet-autocura-report-20261111.test.mjs
+      - .github/workflows/pet-autocura-boletim-validation.yml
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - src/neon/index.js
+      - test/raid-pet-autocura-report-20261111.test.mjs
+      - .github/workflows/pet-autocura-boletim-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  boletim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe e regressao da mensagem
+        run: |
+          node --check src/neon/index.js
+          node --test test/raid-pet-autocura-report-20261111.test.mjs

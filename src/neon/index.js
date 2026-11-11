@@ -311,7 +311,7 @@ let pendingFirst=first
 let totalDamage=0,petDamage=0,petSkillHealing=0,petSkillUses=0,vitalHealing=0,vitalUses=0,bossCrits=0,attacks=0,heals=[],petHeals=[],petName=null,petBonus=null,petExitWarned=false,petFaintWarned=false,lastPetHealNoticeAt=0
 let sessionMode=null,sessionEndsAt=0
 const petHealTally=new Map()
-const petHealSummary=()=>[...petHealTally].map(([pet,v])=>`\n🐾 *${pet}*: caiu *${v.count}x* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')
+const petHealSummary=()=>[...petHealTally].map(([pet,v])=>`\n🐾 *${pet}*: autocuras: *${v.count}* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')
 try{
 for(let i=0;;i++){
 if(!runner.active||bossSessions.get(key)!==runner){completed=true;return}
@@ -814,7 +814,7 @@ const token=crypto.randomUUID()
 raidRuns.set(runKey,{token,startedAt:Date.now(),lastProgressAt:Date.now()})
 ;(async()=>{
 const raidPetHealTally=new Map()
-const tallyRaidPetHeals=()=>[...raidPetHealTally].map(([player,pets])=>[...pets].map(([pet,v])=>`\n🐾 ${player} — *${pet}*: caiu *${v.count}x* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')).join('')
+const tallyRaidPetHeals=()=>[...raidPetHealTally].map(([player,pets])=>[...pets].map(([pet,v])=>`\n🐾 ${player} — *${pet}*: autocuras: *${v.count}* • ${[...v.potions].map(([p,n])=>`${p} ×${n}`).join(', ')}`).join('')).join('')
 try{
 for(let i=0;;i++){
 if(!raidRunCurrent(runKey,token)) return
