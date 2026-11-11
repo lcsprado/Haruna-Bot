@@ -7,9 +7,9 @@ const index=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
 
 test('Owner raid 2x multiplier affects XP of players and pets on raid completion',()=>{
  assert.match(games,/const ownerRaid=await getOwnerEventMultiplier\(c,'raid'\)/)
- assert.match(games,/const xpMultiplier=Math\.max\([^\n]*ownerRaid,ownerGeneralXp\)/)
- assert.match(games,/const petXpMultiplier=Math\.max\([^\n]*ownerRaid,effectivePetXp\)\/effectivePetXp/)
- assert.match(games,/ownerRaidMultiplier:ownerRaid/)
+ assert.match(games,/const xpMultiplier=lote\?1:Math\.max\([^\n]*ownerRaid,ownerGeneralXp\)/)
+ assert.match(games,/const petXpMultiplier=lote\?1:Math\.max\([^\n]*ownerRaid,effectivePetXp\)\/effectivePetXp/)
+ assert.match(games,/ownerRaidMultiplier:lote\?1:ownerRaid/)
 })
 
 test('30 Oct Raid 75 XP numbers already reflect 2x multiplier, avoiding double payment',()=>{

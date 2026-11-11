@@ -3,6 +3,7 @@ import {formatRaidPlayerHealing} from './raid-healing-summary.js'
 import {formatBusinessCollectionElapsed} from './business-profit.js'
 import {FIRST_500_TITLE,isFirst500TitleHolder} from './first-level-500-title.js'
 import 'dotenv/config'
+import {createHash} from 'node:crypto'
 import makeWASocket, {
 Browsers,
 DisconnectReason,
@@ -108,6 +109,10 @@ import {COLLAB_FARM_ID,COLLAB_FRAGMENTS_PER_PHASE,COLLAB_RAID_FRAGMENTS_PER_WIN,
 // O nome público da Raid é "Sete Pecados"; 75 é apenas seu identificador interno.
 const collabRaidNumber=value=>/^(?:pecados|7pecados|setepecados|collab)$/i.test(String(value||'').trim())?75:Number(value||0)
 
+import {RAID_LOTE_V1,raidLoteQuote} from './raid-lote-policy.js'
+import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote} from './raid-lote-store.js'
+import {createRaidLoteWorker} from './raid-lote-worker.js'
+const raidLoteV1Enabled=process.env.RAID_LOTE_V1_ENABLED==='true'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
@@ -2242,6 +2247,7 @@ throw err
 await initCommunityPack()
 await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
 await initGames()
+if(raidLoteV1Enabled)await initRaidLoteStore(db)
 // Correção idempotente de 30/10: apenas o pet do leilão antigo, sem mexer em dinheiro.
 {
   const {removeKaiqueGuaxinimId77}=await import('./auction-kaique-pet-only-20261030.js')
@@ -2463,6 +2469,31 @@ maxCommitRetries:3,
 delayBetweenTriesMs:500
 }
 })
+// O runner V1 so nasce com flag explicita; desativado por padrao.
+if(raidLoteV1Enabled){
+  const raidLoteWorker=createRaidLoteWorker({
+    db,startRaid,raidRound,
+    onFinished:async(jid,jobId,result)=>{
+      const job=await getRaidLoteJob(db,jid)
+      if(!job||String(job.id)!==String(jobId))return
+      const records=await getRaidLoteAttemptReports(db,jid,jobId)
+      const totalCash=records.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((sum,v)=>sum+Number(v.cash||0),0),0)
+      const totalExp=records.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((sum,v)=>sum+Number(v.exp||0),0),0)
+      const completed=records.filter(x=>x.status==='won').length
+      const statusText=job.status==='won'?'Pacote concluido':job.status==='lost'?'Pacote perdido':'Pacote cancelado'
+      const report='⚔️ *RAIDLOTE V1 — '+statusText+'*'
+        +'\n🎯 Raid Lv.'+job.level+' • '+completed+'/'+job.requested+' vitorias'
+        +'\n🔑 Tentativas iniciadas: '+job.started
+        +'\n💰 Premio recebido: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
+        +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
+        +'\n💳 Pacote pago: R$ '+Number(job.total_paid).toLocaleString('pt-BR')
+        +'\n📌 Nao ha reembolso de tentativas nao utilizadas.'
+      await sock.sendMessage(jid,{text:report})
+    },
+    onError:(jobId,error)=>console.error('[RAIDLOTE V1]',jobId,error?.message||error)
+  })
+  raidLoteWorker.start({enabled:true,intervalMs:8000})
+}
 // A criptografia Signal dos grupos usa chaves mutáveis compartilhadas.
 // Serializar TODO envio por grupo (inclusive eventos automáticos) impede
 // disputas de sender-key que produzem mensagens impossíveis de ler.
@@ -12897,6 +12928,69 @@ const p=await getProfile(sender)
 if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *nível ${level}* para comprar essa chave.`)
 const r=await buyItem(sender,cfg.keyId,1)
 await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
+} else if(['raidlote'].includes(cmd)){
+if(!raidLoteV1Enabled)return await reply('⚔️ *RAIDLOTE V1 EM HOMOLOGAÇÃO*\nA compra está indisponível até a certificação do sistema.')
+if(isGroup)return await reply('🔒 O pacote !raidlote é comprado e acompanhado somente no privado.')
+const action=String(args[0]||'').toLowerCase()
+if(action==='status'){
+  const job=await getRaidLoteJob(db,sender)
+  if(!job)return await reply('⚔️ Você ainda não comprou nenhum pacote de Raids.')
+  const reports=await getRaidLoteAttemptReports(db,sender,job.id)
+  const totalCash=reports.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((m,p)=>m+Number(p.cash||0),0),0)
+  return await reply('⚔️ *RAIDLOTE — STATUS*\n🎯 Lv.'+job.level
+    +' • '+job.status.toUpperCase()+'\n🏆 Vitórias: '+job.won_count+'/'+job.requested
+    +'\n⚔️ Tentativas iniciadas: '+job.started
+    +'\n💰 Prêmios: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
+    +'\n💳 Pago antecipadamente: R$ '+Number(job.total_paid).toLocaleString('pt-BR')
+    +'\n🔑 Chaves próprias usadas: '+Number(job.owned_keys_spent||0)
+    +'\n\n!raidlote historico • !raidlote cancelar')
+}
+if(action==='historico'){
+  const rows=await getRaidLoteHistory(db,sender,5)
+  if(!rows.length)return await reply('📜 Nenhum pacote registrado.')
+  return await reply('📜 *RAIDLOTE — HISTÓRICO*\n\n'+rows.map((x,i)=>(
+    (i+1)+'. Lv.'+x.level+' • '+x.status+'\n'
+    +'🏆 '+x.won_count+'/'+x.requested+' • 💳 R$ '+Number(x.total_paid).toLocaleString('pt-BR')
+  )).join('\n\n'))
+}
+if(action==='cancelar'){
+  const cancelled=await cancelRaidLote(db,sender)
+  return await reply(cancelled
+    ?'🛑 Cancelamento solicitado. A tentativa já iniciada poderá concluir; nenhuma próxima tentativa começará. O valor pago não é devolvido.'
+    :'ℹ️ Você não possui pacote ativo para cancelar.')
+}
+const confirmation=action==='confirmar'
+const level=collabRaidNumber(confirmation?args[1]:args[0])
+const count=Number(confirmation?args[2]:args[1])
+const cfg=getRaidCatalog().find(x=>Number(x.level)===level)
+if(!cfg||!Number.isInteger(count)||count<1||count>RAID_LOTE_V1.maxAttempts)
+  return await reply('⚔️ *RAIDLOTE V1*\nUso: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nConsultar: !raidlote status')
+if(confirmation){
+  const messageId=String(msg?.key?.id||'')
+  if(!messageId)throw new Error('Identificador da mensagem indisponível; compra bloqueada para evitar duplicidade.')
+  const requestKey='wa:'+createHash('sha256').update(sender+':'+chat+':'+messageId).digest('hex')
+  const bought=await purchaseRaidLote(db,{jid:sender,level,attempts:count,requestKey,confirmed:true},{getCatalog:getRaidCatalog})
+  return await reply((bought.alreadyPurchased?'✅ *COMPRA JÁ PROCESSADA*':'✅ *PACOTE RAIDLOTE COMPRADO*')
+    +'\n⚔️ Raid Lv.'+level+' • '+count+' tentativas'
+    +'\n🔑 Chaves próprias consumidas: '+bought.quote.ownedKeysUsed
+    +'\n🛒 Chaves compradas: '+bought.quote.keysToBuy
+    +'\n💳 Total debitado: R$ '+bought.quote.totalPrice.toLocaleString('pt-BR')
+    +'\n🏛️ Taxa Prefeitura: R$ '+bought.quote.serviceTotal.toLocaleString('pt-BR')
+    +'\n⚠️ Se morrer/perder, o pacote acaba sem reembolso.'
+    +'\n📊 Acompanhe: !raidlote status')
+}
+const owned=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[sender,cfg.keyId])).rows[0]
+const quote=raidLoteQuote(cfg.keyPrice,count,Math.max(0,Number(owned?.quantity||0)))
+return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
+  +'\n👹 '+cfg.name+' • '+count+' tentativas'
+  +'\n🔑 Chaves próprias: '+quote.ownedKeysUsed+' (serão consumidas na compra)'
+  +'\n🛒 Chaves a comprar: '+quote.keysToBuy
+  +'\n💰 Custo das chaves: R$ '+quote.keysTotal.toLocaleString('pt-BR')
+  +'\n🏛️ Automação 10%: R$ '+quote.serviceTotal.toLocaleString('pt-BR')
+  +'\n💳 *TOTAL A DEBITAR: R$ '+quote.totalPrice.toLocaleString('pt-BR')+'*'
+  +'\n\n🏆 80% dinheiro • 60% XP • 50% maestria • 40% fragmentos • 25% chance equipamentos'
+  +'\n💀 Derrota/morte encerra o lote; não há devolução das tentativas restantes.'
+  +'\n\n✅ Para autorizar a compra definitiva: *!raidlote confirmar '+level+' '+count+'*')
 } else if(['raid','raidstatus'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
 const raidCatalog=getRaidCatalog()
