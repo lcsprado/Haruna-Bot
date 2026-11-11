@@ -7,7 +7,8 @@ export const RAID_LOTE_V1=Object.freeze({
   playerXpBasisPoints:6000,heroXpBasisPoints:6000,petXpBasisPoints:6000,
   masteryXpBasisPoints:5000,fragmentBasisPoints:4000,
   gearChanceBasisPoints:2500,
-  applyTemporaryRewardMultipliers:false,
+  applyTemporaryRewardMultipliers:false, // eventos globais nao amplificam premio automatico
+  applyActivatedXpItems:true, // ampulheta/elixir do jogador aplica-se APOS XP reduzido
   stopOnDeath:true,stopOnLoss:true,stopOnCancellation:true,
   refundUnusedAttempts:false,
   allowAutomaticConsumablePurchases:false,
