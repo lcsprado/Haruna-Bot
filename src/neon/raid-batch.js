@@ -22,6 +22,7 @@ export async function initRaidBatch(){
  notification_attempted BOOLEAN NOT NULL DEFAULT FALSE,
  created_at_ms BIGINT NOT NULL,updated_at_ms BIGINT NOT NULL,last_start_ms BIGINT,last_end_ms BIGINT,
  fee_per_attempt INTEGER NOT NULL,key_price INTEGER NOT NULL,
+ total_fee_spend BIGINT NOT NULL DEFAULT 0,total_key_spend BIGINT NOT NULL DEFAULT 0,
  total_cash BIGINT NOT NULL DEFAULT 0,total_xp BIGINT NOT NULL DEFAULT 0,
  total_pet_xp BIGINT NOT NULL DEFAULT 0,total_mastery_xp BIGINT NOT NULL DEFAULT 0,
  total_fragments BIGINT NOT NULL DEFAULT 0,finish_reason TEXT)`)
@@ -31,7 +32,7 @@ export async function initRaidBatch(){
  ordinal INTEGER NOT NULL CHECK(ordinal BETWEEN 1 AND 10),
  status TEXT NOT NULL CHECK(status IN ('running','won','lost')),
  started_at_ms BIGINT NOT NULL,finished_at_ms BIGINT,
- fee_paid INTEGER NOT NULL,key_price INTEGER NOT NULL,
+ fee_paid INTEGER NOT NULL,key_price INTEGER NOT NULL,key_bought BOOLEAN NOT NULL DEFAULT FALSE,
  cash BIGINT NOT NULL DEFAULT 0,xp BIGINT NOT NULL DEFAULT 0,
  pet_xp BIGINT NOT NULL DEFAULT 0,mastery_xp BIGINT NOT NULL DEFAULT 0,
  fragments BIGINT NOT NULL DEFAULT 0,reason TEXT,rounds INTEGER,
@@ -109,7 +110,7 @@ export async function raidBatchStatus(jid){
 export async function raidBatchHistory(jid){
  if(!raidBatchEnabled())throw new Error('!raidlote ainda está em homologação.')
  return (await db.query(`SELECT id,level,status,requested_count,started_count,completed_count,
- total_cash,total_xp,total_pet_xp,total_mastery_xp,total_fragments,finish_reason
+ total_cash,total_xp,total_pet_xp,total_mastery_xp,total_fragments,total_fee_spend,total_key_spend,finish_reason
  FROM raid_batch_jobs WHERE jid=$1 ORDER BY id DESC LIMIT 8`,[jid])).rows
 }
 export function formatRaidBatchStatus(job){
@@ -121,7 +122,8 @@ export function formatRaidBatchStatus(job){
  '⚔️ *RAIDLOTE #'+job.id+' — Lv.'+job.level+'*',
  statuses[job.status]||job.status+(job.cancel_requested?' • cancelamento solicitado':''),
  'Tentativas: '+fmt(job.started_count)+'/'+fmt(job.requested_count)+' • vitórias: '+fmt(job.completed_count),
- '💰 Dinheiro: R$ '+fmt(job.total_cash)+' • ✨ XP: '+fmt(job.total_xp),
+ '💰 Dinheiro recebido: R$ '+fmt(job.total_cash)+' • ✨ XP: '+fmt(job.total_xp),
+ '💸 Gastos: R$ '+fmt(job.total_fee_spend)+' taxas + R$ '+fmt(job.total_key_spend)+' chaves compradas',
  '🐾 Pet: '+fmt(job.total_pet_xp)+' XP • 🌈 Maestria: '+fmt(job.total_mastery_xp)+' XP',
  '🧩 Fragmentos: '+fmt(job.total_fragments),
  '🔑 Chave normal por tentativa • ⚙️ taxa: R$ '+fmt(job.fee_per_attempt),
