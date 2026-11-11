@@ -99,14 +99,14 @@
 
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('controllerchange', () => {
-          const reloadKey='alpha-siege-v5-20261108-controller-reload';
+          const reloadKey='alpha-inventory-sale-20261111-controller-reload';
           if(sessionStorage.getItem(reloadKey))return;
           sessionStorage.setItem(reloadKey,'1');
           window.location.reload();
         });
         window.addEventListener('load', async () => {
           try {
-            const registration = await navigator.serviceWorker.register('/sw.js?v=alpha-siege-v5-20261108', { scope: '/' });
+            const registration = await navigator.serviceWorker.register('/sw.js?v=alpha-inventory-sale-20261111-v1', { scope: '/' });
             registration.update().catch(() => {});
             setInterval(() => registration.update().catch(() => {}), 10 * 60 * 1000);
             document.addEventListener('visibilitychange', () => {
@@ -120,6 +120,6 @@
       refreshInstallButtons();
     })();
   </script>
-  <script type="module" src="/app.js?v=20261104-duel-portrait-v1-auth-isolation-v1-siege-2130-weekly-saturday-v1-pet-exclusives-20261105-v1-adoption-disabled-v1-raid-tabs-top-v1-alpha-siege-v5-20261108-unified-1"></script>
+  <script type="module" src="/app.js?v=20261104-duel-portrait-v1-auth-isolation-v1-siege-2130-weekly-saturday-v1-pet-exclusives-20261105-v1-adoption-disabled-v1-raid-tabs-top-v1-alpha-siege-v5-20261108-unified-1-inventory-sale-20261111-v1"></script>
 </body>
 </html>
