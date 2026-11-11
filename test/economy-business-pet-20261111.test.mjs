@@ -110,7 +110,8 @@ test('sem Full usa melhor cura, nunca debita quando falta estoque',()=>{
  const fallback=chooseEconomicPetPotion(potionRows(['pocao_pet_rara',s]),2600,{currentHp:700,maxHp:3300})
  assert.equal(fallback.item_id,s)
  const noFull=chooseEconomicPetPotion(potionRows([s,'pocao_pet_epica']),2200,{currentHp:1100,maxHp:3300})
- assert.equal(noFull.item_id,s)
+ // Sem dano iminente, a Épica já supera o limiar de 35% por menor custo.
+ assert.equal(noFull.item_id,'pocao_pet_epica')
 })
 test('Raid preventiva, revival e Boss usam a mesma regra com HP real',()=>{
  assert.match(games,/import \{chooseEconomicPetPotion\} from '\.\/pet-potion-economy\.js'/)
