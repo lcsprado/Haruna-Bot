@@ -1,27 +1,29 @@
-// RAIDLOTE V1 — regras puras. Sem I/O, sem ativacao automatica e sem alteracao da Raid publica.
+// RAIDLOTE V1 — politica pura, sem I/O, sempre desligada ate homologacao.
 export const RAID_LOTE_V1=Object.freeze({
   maxAttempts:10,rollingWindowHours:24,minimumManualWins:3,
-  feeBasisPoints:1000, // 10% do preco da chave
+  paymentMode:'prepaid_no_refund', // compra pacote INTEIRO antes da primeira rodada
+  feeBasisPoints:1000,
   cashBasisPoints:8000,
   playerXpBasisPoints:6000,heroXpBasisPoints:6000,petXpBasisPoints:6000,
   masteryXpBasisPoints:5000,fragmentBasisPoints:4000,
   gearChanceBasisPoints:2500,
   applyTemporaryRewardMultipliers:false,
   stopOnDeath:true,stopOnLoss:true,stopOnCancellation:true,
+  refundUnusedAttempts:false,
   allowAutomaticConsumablePurchases:false,
   sequential:true
 })
-const integer=n=>Number.isSafeInteger(Number(n))&&Number(n)>=0
-export function raidLoteQuote(keyPrice,attempts,ownedKeys=0){
+const integer=n=>typeof n!=='boolean'&&Number.isSafeInteger(Number(n))&&Number(n)>=0
+export function raidLoteQuote(keyPrice,attempts){
   if(!integer(keyPrice)||Number(keyPrice)<1)throw new RangeError('Preco de chave invalido')
   if(!integer(attempts)||Number(attempts)<1||Number(attempts)>RAID_LOTE_V1.maxAttempts)throw new RangeError('Quantidade de tentativas invalida')
-  if(!integer(ownedKeys))throw new RangeError('Quantidade de chaves invalida')
   const price=Number(keyPrice),n=Number(attempts)
   const feePerAttempt=Math.ceil(price*RAID_LOTE_V1.feeBasisPoints/10000)
-  const keysToBuy=Math.max(0,n-Number(ownedKeys))
-  return Object.freeze({attempts:n,keyPrice:price,feePerAttempt,keysToBuy,
-    maxKeySpend:keysToBuy*price,maxServiceSpend:n*feePerAttempt,
-    maxTotalSpend:keysToBuy*price+n*feePerAttempt})
+  const keysTotal=price*n, serviceTotal=feePerAttempt*n
+  if(!Number.isSafeInteger(keysTotal+serviceTotal))throw new RangeError('Valor total fora do limite')
+  return Object.freeze({attempts:n,keyPrice:price,feePerAttempt,
+    keysTotal,serviceTotal,totalPrice:keysTotal+serviceTotal,
+    prepaid:true,refundable:false})
 }
 export function raidLoteReward(base,kind){
   const rate={
