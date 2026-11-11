@@ -120,6 +120,7 @@ import {summarizeRaidLoteXp} from './raid-lote-xp-summary.js'
 const raidLoteV1Enabled=process.env.RAID_LOTE_V1_ENABLED==='true'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
+import {startCofreDestinoScheduler,handleCofreDestinoCommand} from './cofre-destino-20261111.js'
 import {scheduleSaturdayRaidHunt} from './raid-saturday-hunt.js'
 import {scheduleMimics,handleMimicCommand} from './mimic-hunt.js'
 import {
@@ -9743,6 +9744,7 @@ roubaEngine=createRoubaRoubaEngine({db,
 void roubaEngine.open().then(()=>roubaEngine.start())
   .catch(err=>console.error('[ROUBA] inicializacao',err?.message||err))
 void startCofreEvent(sock).catch(err=>console.error('[COFRE] inicializacao',err?.message||err))
+void startCofreDestinoScheduler(sock).catch(err=>console.error('[COFRE DESTINO] inicializacao',err?.message||err))
 // A edição de Bingo de 31/10 usa chave isolada e pode rodar no dataset ativo
 // mesmo no modo de recuperação, sem ressuscitar os eventos históricos.
 startBingoRebootScheduler(sock)
@@ -10362,6 +10364,7 @@ if(await handleSetePecadosCollabCommand({cmd,args,sender,reply,messageId:msg?.ke
 if(await handleAuctionNotificationPilotCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleAuctionAlphaCommand1500({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
 if(await handleAuctionAlphaCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
+if(await handleCofreDestinoCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleCofreCommand({cmd,args,sender,chat,isGroup,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleMimicCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply:message=>sock.sendMessage(chat,{text:message})})) continue
 if(await handleHalloweenCommand({cmd,args,sender,name:msg.pushName||'Jogador',chat,reply})) continue
