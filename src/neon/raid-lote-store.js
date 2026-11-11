@@ -75,11 +75,13 @@ export async function initRaidLoteStore(db){
       raid_started_at_ms BIGINT,
       status TEXT NOT NULL DEFAULT 'reserved'
         CHECK(status IN ('reserved','active','won','lost')),
+      reward_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
       started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       finished_at TIMESTAMPTZ,
       UNIQUE(job_id,seq)
     )
   `)
+  await db.query("ALTER TABLE raid_lote_attempts ADD COLUMN IF NOT EXISTS reward_summary JSONB NOT NULL DEFAULT '{}'::jsonb")
   await db.query(`
     CREATE TABLE IF NOT EXISTS raid_lote_municipality(
       id SMALLINT PRIMARY KEY CHECK(id=1),
@@ -198,6 +200,14 @@ export async function getRaidLoteJob(db,jid){
   `,[jid])
   return rows[0]||null
 }
+export async function getRaidLoteAttemptReports(db,jid,jobId){
+  const {rows}=await db.query(`
+    SELECT a.seq,a.status,a.reward_summary,a.started_at,a.finished_at
+    FROM raid_lote_attempts a JOIN raid_lote_jobs j ON j.id=a.job_id
+    WHERE a.job_id=$1 AND j.jid=$2 ORDER BY a.seq
+  `,[jobId,jid])
+  return rows
+}
 export async function getRaidLoteHistory(db,jid,limit=5){
   const n=Math.max(1,Math.min(10,Math.floor(Number(limit)||5)))
   const {rows}=await db.query(`
@@ -295,6 +305,10 @@ export async function settleRaidLoteAttempt(db,attemptId){
     if(!raid||Number(raid.startedAt)!==Number(attempt.raid_started_at_ms))
       throw new Error('Estado de combate ausente ou divergiu; nao consumir nova tentativa')
     if(!['completed','failed'].includes(raid.status))return {status:'in_progress'}
+    if(raid.mode!=='lote'||raid.loteAttemptId!==String(attempt.id))
+      throw new Error('Combate nao pertence a esta tentativa de pacote')
+    if(raid.status==='completed'&&(!attempt.reward_summary||!Array.isArray(attempt.reward_summary.rewards)))
+      throw new Error('Vitória sem recibo transacional de recompensa; reconciliar antes de prosseguir')
     const won=raid.status==='completed'
     const finishedStatus=won?'won':'lost'
     await c.query('UPDATE raid_lote_attempts SET status=$2,finished_at=NOW() WHERE id=$1',[attemptId,finishedStatus])
