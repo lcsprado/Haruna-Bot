@@ -318,18 +318,18 @@ async function tick(){
  if(now>=Date.parse('2026-11-11T17:00:00-03:00') && now<COFRE_DESTINO_START){
   for(const group of e.groups){
    await sendOnce(sock,e,group,'preview:'+group,
-    '🗝️🌑 *HOJE TEM EVENTO NO ALPHA BOT!*\\n'
-    +'━━━━━━━━━━━━━━━━━━\\n'
-    +'🎭 *AS 3 PORTAS DO DESTINO*\\n'
-    +'🕗 *HOJE — 20h às 22h (Brasília)*\\n'
-    +'🚪 *5 rodadas*, com *3 portas* para escolher a cada uma.\\n'
-    +'🛡️ Segurança — prêmio certo e recuperação de HP.\\n'
-    +'💎 Tesouro Instável — risco moderado, recompensa maior.\\n'
-    +'☠️ Abismo Proibido — jackpot de até *R$ 2 milhões* por escolha, mas você pode perder dinheiro do jogo e HP.\\n'
-    +'🏆 Pódio especial com dinheiro e *Fragmentos da Ascensão*.\\n'
-    +'🎟️ Entrada gratuita, uma tentativa por jogador.\\n'
-    +'⏳ 5 minutos entre rodadas.\\n'
-    +'⚠️ *Ainda não começou.* Às 20h, envie *!cofre* no grupo para entrar.\\n'
+    '🗝️🌑 *HOJE TEM EVENTO NO ALPHA BOT!*\n'
+    +'━━━━━━━━━━━━━━━━━━\n'
+    +'🎭 *AS 3 PORTAS DO DESTINO*\n'
+    +'🕗 *HOJE — 20h às 22h (Brasília)*\n'
+    +'🚪 *5 rodadas*, com *3 portas* para escolher a cada uma.\n'
+    +'🛡️ Segurança — prêmio certo e recuperação de HP.\n'
+    +'💎 Tesouro Instável — risco moderado, recompensa maior.\n'
+    +'☠️ Abismo Proibido — jackpot de até *R$ 2 milhões* por escolha, mas você pode perder dinheiro do jogo e HP.\n'
+    +'🏆 Pódio especial com dinheiro e *Fragmentos da Ascensão*.\n'
+    +'🎟️ Entrada gratuita, uma tentativa por jogador.\n'
+    +'⏳ 5 minutos entre rodadas.\n'
+    +'⚠️ *Ainda não começou.* Às 20h, envie *!cofre* no grupo para entrar.\n'
     +'━━━━━━━━━━━━━━━━━━')
   }
   return
