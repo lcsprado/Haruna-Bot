@@ -14,6 +14,7 @@ const {initRelics}=await import('../src/neon/relics.js')
 const {initEnchantments}=await import('../src/neon/enchantments-alpha.js')
 const {initGames,getRaidCatalog,startRaid,raidRound}=await import('../src/neon/games.js')
 const {initRaidLoteStore,purchaseRaidLote,reserveNextRaidLoteAttempt,settleRaidLoteAttempt}=await import('../src/neon/raid-lote-store.js')
+const {createRaidLoteWorker}=await import('../src/neon/raid-lote-worker.js')
 
 test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao em PostgreSQL',async()=>{
   try{
@@ -140,6 +141,62 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
       const attemptsUsed=(await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_attempts WHERE job_id=$1',[
         deadPurchase.job.id])).rows[0]
       assert.equal(Number(attemptsUsed.n),1,'4 tentativas restantes são perdidas; não executam nem reembolsam')
+
+      // Dez combates reais, um por vez, gerenciados pelo worker verdadeiro.
+      // Uma nova instância assume o mesmo pacote na metade, sem novo débito.
+      const seriesJid='raid-real-ten-004@s.whatsapp.net'
+      await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Dez Raids')",[seriesJid])
+      await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,5000000,0)',[seriesJid])
+      await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8000,8000,1200000,1500,1000)',[seriesJid])
+      for(let i=0;i<3;i++)await db.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('raid_bot',$1,1,'minigame',$2)",
+        [seriesJid,'raid_'+cfg.level])
+      const series=await purchaseRaidLote(db,{
+        jid:seriesJid,level:cfg.level,attempts:10,requestKey:'real-ten-engine-004',confirmed:true
+      },{getCatalog:()=>catalog})
+      assert.equal(series.quote.ownedKeysUsed,0)
+      let finished=0,workerErrors=[]
+      const deps={
+        db,startRaid,raidRound,
+        onFinished:async(jid,jobId,outcome)=>{
+          assert.equal(jid,seriesJid)
+          assert.equal(String(jobId),String(series.job.id))
+          assert.equal(outcome.jobStatus,'won')
+          finished++
+        },
+        onError:async(jobId,error)=>workerErrors.push({jobId,error:String(error?.message||error)})
+      }
+      let worker=createRaidLoteWorker(deps)
+      for(let tick=0;tick<26;tick++){
+        if(tick===11)worker=createRaidLoteWorker(deps)
+        clock+=9000
+        const progress=await worker.tickOnce()
+        assert.equal(progress.errors,0,'Worker real nao pode falhar: '+JSON.stringify(workerErrors))
+        const status=(await db.query('SELECT status FROM raid_lote_jobs WHERE id=$1',[series.job.id])).rows[0].status
+        if(status==='won')break
+      }
+      const complete=(await db.query('SELECT status,started,won_count FROM raid_lote_jobs WHERE id=$1',[series.job.id])).rows[0]
+      assert.equal(complete.status,'won','O pacote precisa encerrar depois da décima vitória real')
+      assert.equal(Number(complete.started),10)
+      assert.equal(Number(complete.won_count),10)
+      assert.equal(finished,1)
+      assert.deepEqual(workerErrors,[])
+      const ten=(await db.query('SELECT seq,status,reward_summary FROM raid_lote_attempts WHERE job_id=$1 ORDER BY seq',[
+        series.job.id])).rows
+      assert.equal(ten.length,10)
+      assert.deepEqual(ten.map(x=>Number(x.seq)),[1,2,3,4,5,6,7,8,9,10])
+      assert.ok(ten.every(x=>x.status==='won'))
+      assert.ok(ten.every(x=>x.reward_summary?.rewards?.length===1))
+      const cashExpected=Math.floor((
+        Math.floor(cfg.keyPrice*1.08)+Math.floor(cfg.cashPool*.16)
+      )*.8)
+      assert.ok(ten.every(x=>Number(x.reward_summary.rewards[0].cash)===cashExpected),
+        'Cada recompensa real deve ser reduzida a 80% sem bônus de evento')
+      const xpExpected=Math.floor(cfg.xpPool*.6)
+      assert.ok(ten.every(x=>Number(x.reward_summary.rewards[0].exp)===xpExpected),
+        'Cada XP real deve ser reduzida a 60% sem bônus de evento')
+      const balance=(await db.query('SELECT cash FROM wallets WHERE jid=$1',[seriesJid])).rows[0]
+      assert.equal(Number(balance.cash),5000000-series.quote.totalPrice+10*cashExpected)
     }finally{
       Date.now=originalNow
       Math.random=originalRandom
