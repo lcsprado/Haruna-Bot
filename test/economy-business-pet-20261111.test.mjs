@@ -120,5 +120,5 @@ test('Raid preventiva, revival e Boss usam a mesma regra com HP real',()=>{
  assert.match(games,/context:'raid-fainted'/)
  assert.match(games,/context:'raid-revive'/)
  assert.match(games,/imminentDamage:Math\.ceil\(Number\(bossAtk\|\|0\)\*\.52\)/)
- assert.match(games,/Math\.ceil\(Number\(cfg\.atk\|\|0\)\*\.60\)/)
+ assert.equal(games.split('estimatedRaidPetHit(cfg.level,cfg.atk)').length-1,3)
 })
