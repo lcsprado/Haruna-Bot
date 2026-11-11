@@ -69,6 +69,81 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
     assert.equal((await settleRaidLoteAttempt(db,next.attempt.id)).status,'already_settled')
     const wallet=(await db.query('SELECT cash FROM wallets WHERE jid=$1',[jid])).rows[0]
     assert.equal(Number(wallet.cash),5000000-purchased.quote.totalPrice+reward.rewards[0].cash)
+
+    // A partir daqui, testar rounds reais múltiplos, itens e pets.
+    // Data virtual avança só no runner isolado para dispensar 8s de espera.
+    const originalNow=Date.now,originalRandom=Math.random
+    let clock=originalNow()+30000
+    Date.now=()=>clock
+    Math.random=()=>0.75
+    try{
+      const petJid='raid-real-pet-002@s.whatsapp.net'
+      await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Real de Pet')",[petJid])
+      await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,500000,0)',[petJid])
+      await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8,100,2500,0,100)',[petJid])
+      for(let i=0;i<3;i++)await db.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('raid_bot',$1,1,'minigame',$2)",
+        [petJid,'raid_'+cfg.level])
+      await db.query("INSERT INTO pets(jid,species,name,level,xp,hp,max_hp,energy) VALUES($1,'cachorro','Pet real de teste',20,1900,20,300,30)",[petJid])
+      await db.query("INSERT INTO pet_collection(jid,species,name,level,xp,hp,max_hp,energy,active) VALUES($1,'cachorro','Pet real de teste',20,1900,20,300,30,TRUE)",[petJid])
+      await db.query("INSERT INTO inventories(jid,item_id,quantity) VALUES($1,'pocao_p',1),($1,'pocao_pet_suprema',1)",[petJid])
+      const petPurchase=await purchaseRaidLote(db,{
+        jid:petJid,level:cfg.level,attempts:1,requestKey:'real-multi-pet-002',confirmed:true
+      },{getCatalog:()=>catalog})
+      const petAttempt=(await reserveNextRaidLoteAttempt(db,petPurchase.job.id)).attempt
+      const petRaid=await startRaid(petAttempt.raid_chat,petJid,cfg.level,{loteAttemptId:petAttempt.id})
+      assert.equal(petRaid.status,'active')
+      let petOutcome,rounds=0
+      while(rounds<15){
+        clock+=9000
+        petOutcome=await raidRound(petAttempt.raid_chat,cfg.level)
+        rounds++
+        if(petOutcome.victory||petOutcome.failed)break
+      }
+      assert.equal(petOutcome?.victory,true,'Pet + poções devem permitir vitória após várias rodadas')
+      assert.ok(rounds>=2,'A Raid precisa avançar por ao menos duas rodadas reais')
+      const afterPet=(await db.query('SELECT quantity,item_id FROM inventories WHERE jid=$1 AND item_id IN ($2,$3)',[
+        petJid,'pocao_p','pocao_pet_suprema'])).rows
+      const qty=id=>Number(afterPet.find(x=>x.item_id===id)?.quantity||0)
+      assert.equal(qty('pocao_p'),0,'Auto cura do jogador consome uma poção existente')
+      assert.equal(qty('pocao_pet_suprema'),0,'Auto cura do pet consome uma poção existente')
+      const petFinal=(await db.query('SELECT hp,energy,xp FROM pets WHERE jid=$1',[petJid])).rows[0]
+      assert.ok(Number(petFinal.energy)<30,'Pet real gastou energia por rodada')
+      const petReceipt=(await db.query('SELECT reward_summary FROM raid_lote_attempts WHERE id=$1',[petAttempt.id])).rows[0].reward_summary
+      assert.ok(Number(petReceipt.rewards[0].petXp)>0,'O pet recebe XP reduzido pelo modo lote')
+      assert.ok(Number(petReceipt.rewards[0].potionUses)>=1,'Relatório precisa incluir cura do jogador')
+      assert.ok(Number(petReceipt.rewards[0].petPotionUses)>=1,'Relatório precisa incluir cura do pet')
+      assert.equal((await settleRaidLoteAttempt(db,petAttempt.id)).jobStatus,'won')
+
+      // Derrota real sem consumíveis deve encerrar todo o lote não utilizado.
+      const deadJid='raid-real-death-003@s.whatsapp.net'
+      await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Derrota Real')",[deadJid])
+      await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,500000,0)',[deadJid])
+      await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,1,50,1,0,5)',[deadJid])
+      for(let i=0;i<3;i++)await db.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('raid_bot',$1,1,'minigame',$2)",
+        [deadJid,'raid_'+cfg.level])
+      const deadPurchase=await purchaseRaidLote(db,{
+        jid:deadJid,level:cfg.level,attempts:5,requestKey:'real-failure-003',confirmed:true
+      },{getCatalog:()=>catalog})
+      const deathAttempt=(await reserveNextRaidLoteAttempt(db,deadPurchase.job.id)).attempt
+      await startRaid(deathAttempt.raid_chat,deadJid,cfg.level,{loteAttemptId:deathAttempt.id})
+      clock+=9000
+      const deathOutcome=await raidRound(deathAttempt.raid_chat,cfg.level)
+      assert.equal(deathOutcome.failed,true,'O motor real deve registrar derrota ao perder todo HP')
+      assert.equal(deathOutcome.reason,'party_wipe')
+      const deathSettled=await settleRaidLoteAttempt(db,deathAttempt.id)
+      assert.equal(deathSettled.jobStatus,'lost')
+      assert.equal((await reserveNextRaidLoteAttempt(db,deadPurchase.job.id)).status,'inactive')
+      const deathFunds=(await db.query('SELECT cash FROM wallets WHERE jid=$1',[deadJid])).rows[0]
+      assert.equal(Number(deathFunds.cash),500000-deadPurchase.quote.totalPrice)
+      const attemptsUsed=(await db.query('SELECT COUNT(*)::int AS n FROM raid_lote_attempts WHERE job_id=$1',[
+        deadPurchase.job.id])).rows[0]
+      assert.equal(Number(attemptsUsed.n),1,'4 tentativas restantes são perdidas; não executam nem reembolsam')
+    }finally{
+      Date.now=originalNow
+      Math.random=originalRandom
+    }
   }finally{
     await db.end()
   }
