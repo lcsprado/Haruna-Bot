@@ -871,7 +871,7 @@ export async function createRaid(chat,host,name='Jogador',level=10,options={}){
       autoKeyPurchased=true
     }
     const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+5*60*1000,
-      ...(batchJob?{raidBatch:{jobId:Number(batchJob.id),ordinal:Number(batchJob.started_count)+1,version:1}}:{})}
+      ...(batchJob?{raidBatch:{jobId:Number(batchJob.id),ordinal:Number(batchJob.started_count)+1,version:1,keyPurchased:autoKeyPurchased}}:{})}
     await saveGame(c,chat,gameType,state)
     return {...state,gameType,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
