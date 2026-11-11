@@ -61,7 +61,7 @@ test('Ranking inclui somente finalistas vivos, ordena lucro liquido e HP',()=>{
   mk('r1',5,'finished',500000,0,500),mk('r2',5,'finished',600000,200000,900),
   mk('r3',5,'finished',400000,0,800),mk('r4',4,'left',4000000,0,900),
   mk('r5',5,'dead',5000000,0,0)])
- assert.deepEqual(r.map(x=>x.jid),['r1','r3','r2'])
+ assert.deepEqual(r.map(x=>x.jid),['r1','r2','r3'])
  assert.equal(r[0].net,500000)
 })
 test('Premiacao adicional de podium limitada a tres finalistas',()=>{
