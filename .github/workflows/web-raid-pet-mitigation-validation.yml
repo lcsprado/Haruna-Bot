@@ -1,0 +1,44 @@
+name: Raid 70-75 - mitigacao segura de dano dos pets (Web)
+
+on:
+  pull_request:
+    branches: [feat/web-aiven-beta-protegido-20261021]
+    paths:
+      - src/neon/raid-pet-mitigation.js
+      - src/neon/games.js
+      - test/raid-pet-mitigation-70-75-20261111.test.mjs
+      - .github/workflows/web-raid-pet-mitigation-validation.yml
+  push:
+    branches: [feat/web-aiven-beta-protegido-20261021]
+    paths:
+      - src/neon/raid-pet-mitigation.js
+      - src/neon/games.js
+      - test/raid-pet-mitigation-70-75-20261111.test.mjs
+      - .github/workflows/web-raid-pet-mitigation-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  raid-pets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe
+        run: |
+          node --check src/neon/games.js
+          node --check src/neon/raid-pet-mitigation.js
+          node --check src/neon/pet-potion-economy.js
+      - name: Simulacao e regressao economica
+        run: |
+          node --test test/raid-pet-mitigation-70-75-20261111.test.mjs
+          node --test test/web-economy-pet-parity-20261111.test.mjs
+      - name: Sem acesso a banco de producao
+        run: test -z "$DATABASE_URL"
