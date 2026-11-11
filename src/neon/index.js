@@ -58,6 +58,7 @@ startNumberGame, guessNumber,
 startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
 tickSetePecados, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
 } from './games.js'
+import {initRaidBatch,queueRaidBatch,cancelRaidBatch,raidBatchStatus,raidBatchHistory,formatRaidBatchStatus,startRaidBatchScheduler} from './raid-batch.js'
 import {
 initProgression, HOUSES, CARS, MOTORCYCLES, BUSINESSES, CLT_UBER_TYPES, CLT_IFOOD_TYPES,
 getDailyMissions, progressDailyMission, claimDailyMissions,
@@ -2242,6 +2243,7 @@ throw err
 await initCommunityPack()
 await cleanupQuickFlows().catch(err=>console.error('[flow] limpeza inicial falhou',err?.message||err))
 await initGames()
+await initRaidBatch()
 // Correção idempotente de 30/10: apenas o pet do leilão antigo, sem mexer em dinheiro.
 {
   const {removeKaiqueGuaxinimId77}=await import('./auction-kaique-pet-only-20261030.js')
@@ -2648,6 +2650,7 @@ console.error('[Raid Auto] falha ao publicar aviso; combate continua',chat,err?.
 return false
 }
 }
+startRaidBatchScheduler((jid,text)=>sock.sendMessage(jid,{text}))
 globalThis.__alphaStartRaidRun=async(chat,level)=>{
 if(!chat?.endsWith('@g.us')) return false
 return runRaidCombat(chat,Number(level),text=>raidAutoReply?raidAutoReply(chat,text):false)
@@ -5114,6 +5117,7 @@ const commandPages={
 ⚔️ *Raids cooperativas*
 *!raid* — lista as Raids e mostra a Raid ativa
 *!raid 20* — abre a Raid Lv.20; se faltar chave, compra automaticamente
+*!raidlote 75 10* — agenda até 10 Raids automáticas individuais (disponível após homologação)
 *!chaveraid 20* — compra a chave manualmente
 *!lojaraid* — loja especial de fragmentos e itens de Raid
 *!entrar 1* / *!entrar 10* — escolhe a sala e compra a chave automaticamente se faltar
@@ -12897,6 +12901,29 @@ const p=await getProfile(sender)
 if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *nível ${level}* para comprar essa chave.`)
 const r=await buyItem(sender,cfg.keyId,1)
 await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
+} else if(['raidlote'].includes(cmd)){
+// Execução e relatórios somente no privado: evita divulgar saldo e ganhos no grupo.
+if(isGroup)return await reply('⚔️ *!raidlote é privado.* Abra a conversa com o Alpha Bot e use !raidlote ajuda.')
+// Feature gate no módulo garante que nenhuma fila inicia antes da ativação oficial.
+const action=String(args[0]||'ajuda').toLowerCase()
+if(['status','ver'].includes(action)){
+ const job=await raidBatchStatus(sender)
+ return await reply(formatRaidBatchStatus(job))
+}
+if(['cancelar','parar'].includes(action)){
+ const job=await cancelRaidBatch(sender)
+ return await reply(job?'🛑 Solicitação registrada. Se uma Raid já começou, ela termina normalmente; as próximas não serão cobradas.':'Nenhum lote ativo para cancelar.')
+}
+if(['historico','histórico'].includes(action)){
+ const rows=await raidBatchHistory(sender)
+ return await reply(rows.length?rows.map(x=>formatRaidBatchStatus(x)).join('\n\n'):'Nenhum lote anterior.')
+}
+if(action==='ajuda' || !args.length){
+ return await reply('⚔️ *RAIDLOTE V1*\n\nAté 10 Raids completas, uma de cada vez, no mesmo motor de combate.\n🔑 Chave normal por tentativa + ⚙️ taxa de 10% para a Prefeitura.\n💰 80% dinheiro • ✨ 60% XP • 🌈 50% maestria • 🧩 40% fragmentos.\n🎁 25% das chances normais de caixa/equipamento.\n💀 Derrota encerra. Poções só do inventário.\n🔒 3 vitórias manuais prévias na dificuldade escolhida.\n\nComandos: *!raidlote 75 10*, *!raidlote status*, *!raidlote cancelar*, *!raidlote historico*.')
+}
+const level=Number(args[0]),amount=Number(args[1])
+const result=await queueRaidBatch(sender,level,amount)
+return await reply('⚔️ *LOTE PROGRAMADO #'+result.id+'*\n\nRaid Lv.'+result.level+' — '+result.name+'\nTentativas: '+result.plan.count+'\n🔑 Chaves a comprar (se faltar): '+result.plan.buyKeys+'\n💸 Custo máximo (incluindo taxas e chaves): R$ '+fmt(result.plan.maximumSpend)+'\n⚙️ Taxa por tentativa: R$ '+fmt(result.plan.feeEach)+'\n\n✅ Nada é cobrado antecipadamente; cada chave é consumida quando a luta começa.\n📌 !raidlote status — acompanhe em privado.')
 } else if(['raid','raidstatus'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
 const raidCatalog=getRaidCatalog()
