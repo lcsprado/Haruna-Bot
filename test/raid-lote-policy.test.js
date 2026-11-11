@@ -44,3 +44,11 @@ test('nunca compra consumiveis nem amplifica eventos',()=>{
   assert.equal(RAID_LOTE_V1.allowAutomaticConsumablePurchases,false)
   assert.equal(RAID_LOTE_V1.applyTemporaryRewardMultipliers,false)
 })
+
+// Protege a integração real: a probabilidade de caixa também deve ser reduzida.
+test('caixas no combate real usam apenas 25% da chance manual',async()=>{
+  const {readFileSync}=await import('node:fs')
+  const src=readFileSync(new URL('../src/neon/games.js',import.meta.url),'utf8')
+  assert.match(src,/boxChance=Math\.min\(\.85,lote\?raidLoteGearChance\(boxChance\):boxChance\*ownerDrop\)/)
+  assert.equal(raidLoteGearChance(.55),.1375)
+})
