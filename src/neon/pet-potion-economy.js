@@ -16,9 +16,9 @@ const POTIONS=Object.freeze({
   pocao_pet_full:{heal:Number.MAX_SAFE_INTEGER,name:'Poção Full de Pet'}
 })
 
-// Mantém uma poção por pet por rodada, sem alterar o consumo nem o risco de desmaio.
-// Com HP crítico ou revival, Full tem prioridade; durante a prevenção usamos
-// a menor poção que devolve uma margem de vida útil ao pet (55% do HP máximo).
+// Uma poção por pet por rodada, respeitando o estoque e a transação do combate.
+// Em vez de obrigar o pet a atingir 55% do HP, considera o dano estimado de
+// duas rodadas e evita curas pequenas que levariam a outro gasto imediato.
 export function chooseEconomicPetPotion(rows,missingHp,{currentHp,maxHp,imminentDamage=0}={}){
   const available=(Array.isArray(rows)?rows:[]).filter(row=>
     Number(row?.quantity)>0&&Boolean(POTIONS[row.item_id]))
@@ -31,26 +31,38 @@ export function chooseEconomicPetPotion(rows,missingHp,{currentHp,maxHp,imminent
   const amount=Math.max(1,Math.floor(Number(missingHp)||1))
   const full=available.find(item=>item.item_id==='pocao_pet_full')
   const partial=available.filter(item=>item.item_id!=='pocao_pet_full')
-  // Compatibilidade com consumidores antigos que informam somente o HP faltante.
   const capacity=Number(maxHp)
   const current=Number(currentHp)
+  // Mantém compatibilidade com consumidores que não fornecem HP atual.
   if(!Number.isFinite(capacity)||capacity<=0||!Number.isFinite(current)){
     const byHeal=available.sort((a,b)=>a.heal-b.heal)
     return byHeal.find(item=>item.heal>=amount)||byHeal.at(-1)
   }
 
   const hp=Math.max(0,Math.min(capacity,current))
-  const danger=hp===0||hp/capacity<=.12||hp<=Math.max(0,Number(imminentDamage)||0)*1.5
-  if(danger&&full)return full
+  const expectedHit=Number(imminentDamage)
+  const hit=Math.max(0,Number.isFinite(expectedHit)?Math.ceil(expectedHit):0)
+  if(hp===0&&full)return full
 
-  // Só usamos cura parcial se ela realmente tira o pet da zona preventiva.
-  const safeHp=Math.max(capacity*.55,Math.max(0,Number(imminentDamage)||0)*2)
-  const viable=partial.filter(item=>hp+item.heal>=safeHp)
-  if(viable.length){
-    viable.sort((a,b)=>a.price-b.price||a.heal-b.heal)
-    return viable[0]
+  const after=item=>Math.min(capacity,hp+item.heal)
+  // A próxima rodada verifica a autocura novamente abaixo de 35%.
+  // Objetivo: cruzar esse limite com margem para dois golpes prováveis.
+  const target=Math.min(capacity,Math.ceil(capacity*.35)+2*hit)
+  const survivable=partial.filter(item=>after(item)>2*hit)
+  const sustainable=survivable.filter(item=>after(item)>=target)
+  if(sustainable.length){
+    // A mais barata que atende ao horizonte, sem obrigar uma Suprema.
+    sustainable.sort((a,b)=>a.price-b.price||after(a)-after(b))
+    return sustainable[0]
   }
-  if(full)return full
-  // Sem Full: salvar com a melhor cura disponível, sem deixar desmaiar por preço.
-  return partial.sort((a,b)=>b.heal-a.heal||a.price-b.price)[0]||null
+  // Full fica para pet nocauteado ou sem cura parcial capaz de sustentar
+  // dois ataques estimados. Não forçamos Full só porque não chegou à meta.
+  if(!survivable.length&&full)return full
+  if(survivable.length){
+    // Sem alcançar a meta, a maior cura parcial adia a próxima compra.
+    survivable.sort((a,b)=>after(b)-after(a)||a.price-b.price)
+    return survivable[0]
+  }
+  // Sem Full em estoque, ainda tentamos evitar a perda do pet.
+  return partial.sort((a,b)=>after(b)-after(a)||a.price-b.price)[0]||null
 }
