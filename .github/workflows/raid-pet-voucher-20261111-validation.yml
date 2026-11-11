@@ -1,0 +1,44 @@
+name: Vale Domador - escolha de pet por numero
+
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - src/neon/raid-pet-voucher.js
+      - src/neon/raid-pet-voucher-flow.js
+      - src/neon/index.js
+      - test/raid-pet-voucher-20261111.test.mjs
+      - .github/workflows/raid-pet-voucher-20261111-validation.yml
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - src/neon/raid-pet-voucher.js
+      - src/neon/raid-pet-voucher-flow.js
+      - src/neon/index.js
+      - test/raid-pet-voucher-20261111.test.mjs
+      - .github/workflows/raid-pet-voucher-20261111-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vale-domador:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validar sintaxe
+        run: |
+          node --check src/neon/index.js
+          node --check src/neon/raid-pet-voucher.js
+          node --check src/neon/raid-pet-voucher-flow.js
+      - name: Resgate simulado sem acessar producao
+        run: node --test test/raid-pet-voucher-20261111.test.mjs
+      - name: Proibir banco de producao nos testes
+        run: test -z "$DATABASE_URL"
