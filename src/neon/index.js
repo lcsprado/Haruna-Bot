@@ -115,6 +115,7 @@ import {RAID_LOTE_V1,raidLoteQuote} from './raid-lote-policy.js'
 import {initRaidLoteStore,purchaseRaidLote,getRaidLoteJob,getRaidLoteHistory,getRaidLoteAttemptReports,cancelRaidLote} from './raid-lote-store.js'
 import {createRaidLoteWorker} from './raid-lote-worker.js'
 import {getRaidLotePublicBoard,getRaidLoteCurrentProgress,formatRaidLoteProgress,formatRaidLotePublicBoard} from './raid-lote-public.js'
+import {formatRaidLoteMaterials} from './raid-lote-material-summary.js'
 const raidLoteV1Enabled=process.env.RAID_LOTE_V1_ENABLED==='true'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
@@ -2489,6 +2490,7 @@ if(raidLoteV1Enabled){
         +'\n🔑 Tentativas iniciadas: '+job.started
         +'\n💰 Premio recebido: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
         +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
+        +formatRaidLoteMaterials(records)
         +'\n💳 Pacote pago: R$ '+Number(job.total_paid).toLocaleString('pt-BR')
         +'\n📌 Nao ha reembolso de tentativas nao utilizadas.'
       await sock.sendMessage(jid,{text:report})
