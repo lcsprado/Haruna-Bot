@@ -197,6 +197,34 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
         'Cada XP real deve ser reduzida a 60% sem bônus de evento')
       const balance=(await db.query('SELECT cash FROM wallets WHERE jid=$1',[seriesJid])).rows[0]
       assert.equal(Number(balance.cash),5000000-series.quote.totalPrice+10*cashExpected)
+
+      // Raid 75 da collab em motor real: fragmentos precisam cair a 40%,
+      // sem bônus temporários. Esse drop não é coberto pela Raid Lv10.
+      const high= catalog.find(x=>x.level===75)
+      assert.ok(high?.collab)
+      const highJid='raid-real-75-005@s.whatsapp.net'
+      await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Raid 75')",[highJid])
+      await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,5000000,0)',[highJid])
+      await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8000,8000,1200000,1500,1000)',[highJid])
+      for(let i=0;i<3;i++)await db.query(
+        "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('raid_bot',$1,1,'minigame',$2)",
+        [highJid,'raid_'+high.level])
+      const collabBuy=await purchaseRaidLote(db,{
+        jid:highJid,level:high.level,attempts:1,requestKey:'real-raid75-005',confirmed:true
+      },{getCatalog:()=>catalog})
+      const collabAttempt=(await reserveNextRaidLoteAttempt(db,collabBuy.job.id)).attempt
+      clock+=9000
+      await startRaid(collabAttempt.raid_chat,highJid,high.level,{loteAttemptId:collabAttempt.id})
+      clock+=9000
+      const collabWin=await raidRound(collabAttempt.raid_chat,high.level)
+      assert.equal(collabWin.victory,true)
+      const collabReport=(await db.query('SELECT reward_summary FROM raid_lote_attempts WHERE id=$1',[collabAttempt.id])).rows[0].reward_summary
+      assert.equal(collabReport.rewards.length,1)
+      assert.equal(collabReport.rewards[0].material?.qty,4,'10 fragmentos normais x 40% = 4')
+      const collabInv=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[
+        highJid,high.material.id])).rows[0]
+      assert.equal(Number(collabInv?.quantity),4)
+      assert.equal((await settleRaidLoteAttempt(db,collabAttempt.id)).jobStatus,'won')
     }finally{
       Date.now=originalNow
       Math.random=originalRandom
