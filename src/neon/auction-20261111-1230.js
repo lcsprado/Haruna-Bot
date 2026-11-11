@@ -162,7 +162,7 @@ async function tick(sock){
         state.groups=groups
         state.publicPreAnnounced=true
         await queueAuctionBidNotices(c,{key:KEY,version:-1,groups,origin:'system',
-          message:'🔨 *LEILÃO ALPHA — HOJE ÀS 12H30!*\\n\\n🎁 3 lotes, prêmios revelados um por vez na abertura de cada lote.\\n📈 Incremento: R$ 500 mil.\\n⏱️ 2 minutos por lote, com prorrogação.\\n📢 !leilao no grupo.'
+          message:'🔨 *LEILÃO ALPHA — HOJE ÀS 12H30!*\n\n🎁 3 lotes, prêmios revelados um por vez na abertura de cada lote.\n📈 Incremento: R$ 500 mil.\n⏱️ 2 minutos por lote, com prorrogação.\n📢 !leilao no grupo.'
         })
       })
       await flushAuctionBidNotices(db,sock,KEY,{limit:8})
@@ -199,11 +199,11 @@ async function tick(sock){
         state.seal=createHash('sha256').update(JSON.stringify(state.lots.map(x=>x.prize))+':'+state.salt).digest('hex')
         state.lot=0
         beginLot(state,now)
-        outgoing='🔨 *LEILÃO ALPHA ABERTO — 12H30!*\\n\\n'+
- '🎁 3 lotes; prêmio do lote seguinte só será revelado depois do atual.\\n'+
- '📈 Incremento: R$ 500 mil.\\n'+
- '⏱️ 2 minutos por lote; +20s em lances nos últimos 15s.\\n'+
- '✅ O lance fica reservado e é devolvido ao ser superado.\\n\\n'+status(state)
+        outgoing='🔨 *LEILÃO ALPHA ABERTO — 12H30!*\n\n'+
+ '🎁 3 lotes; prêmio do lote seguinte só será revelado depois do atual.\n'+
+ '📈 Incremento: R$ 500 mil.\n'+
+ '⏱️ 2 minutos por lote; +20s em lances nos últimos 15s.\n'+
+ '✅ O lance fica reservado e é devolvido ao ser superado.\n\n'+status(state)
       }else if(state.phase==='running' && now>=Number(state.ends||0)){
         outgoing=await finishLot(state,c)
         if(state.lot===PACKAGES.length-1){
@@ -260,7 +260,7 @@ export async function handleAuctionAlphaCommand({cmd,args,sender,name,chat,reply
     return true
   }
   if(Date.now()<START){
- await reply('🔨 *LEILÃO ALPHA — 11/11 às 12h30 (Brasília)*\\n🎁 3 lotes, revelados um por vez na abertura.\\n📈 Incremento R$ 500 mil.\\n⏱️ 2 minutos por lote.\\nUse !leilao às 12h30.')
+ await reply('🔨 *LEILÃO ALPHA — 11/11 às 12h30 (Brasília)*\n🎁 3 lotes, revelados um por vez na abertura.\n📈 Incremento R$ 500 mil.\n⏱️ 2 minutos por lote.\nUse !leilao às 12h30.')
  return true
  }
  if(cmd==='leilao'){
