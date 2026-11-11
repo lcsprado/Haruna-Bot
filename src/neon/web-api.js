@@ -532,7 +532,7 @@ async function playerBootstrap(session){
   return {
     syncedAt:now(),
     identity:{jid,groupLinked:Boolean(session.chatJid),sessionExpiresAt:session.expiresAt},
-    profile,combatProfile,activeHeroCombat,heroes,inventory,pets:visiblePets,petTeam:visibleTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(visibleTeam,activeHeroId)),petExpeditions,dailyMissions,streak,career,
+    profile,combatProfile,activeHeroCombat,heroes,inventory:inventory.map(item=>({...item,sellable_quantity:Math.max(0,Number(item.quantity||0)-(item.equipped?1:0))})),pets:visiblePets,petTeam:visibleTeam,petTeamSynergy:petTeamSynergy(excludeActiveHeroPet(visibleTeam,activeHeroId)),petExpeditions,dailyMissions,streak,career,
     home,cars,motorcycles,businesses,patrimony,cltUber,loans,market,achievements,relationship,relationshipProposals,group,
     events:{doubleReward:doubleRewardEvent,luckyBox:luckyBoxEvent},
     cooldowns:cooldowns.rows||[],
@@ -1288,7 +1288,7 @@ async function runAction(session,name,body={}){
     case 'hero.class': return selectWebPlayableHero(jid,null)
     case 'npc.buy': return buyNpcShopItem(jid,String(body.npcId||''),positiveInt(body.number,'Oferta',99))
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
-    case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
+    case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999),{allowAnyUnequipped:true})
     case 'item.sellBatch': {
       const selections=body.selections
       if(!Array.isArray(selections)||selections.length<1||selections.length>50)throw new Error('Lote de venda inválido.')
