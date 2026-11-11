@@ -12902,7 +12902,8 @@ if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *n
 const r=await buyItem(sender,cfg.keyId,1)
 await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
 } else if(['raidlote'].includes(cmd)){
-// Privado ou grupo: resultado detalhado do lote é enviado somente ao jogador.
+// Execução e relatórios somente no privado: evita divulgar saldo e ganhos no grupo.
+if(isGroup)return await reply('⚔️ *!raidlote é privado.* Abra a conversa com o Alpha Bot e use !raidlote ajuda.')
 // Feature gate no módulo garante que nenhuma fila inicia antes da ativação oficial.
 const action=String(args[0]||'ajuda').toLowerCase()
 if(['status','ver'].includes(action)){
