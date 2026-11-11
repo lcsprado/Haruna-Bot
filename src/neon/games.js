@@ -11,6 +11,7 @@ import {halloweenMysticHelmetReduction} from './halloween-rules.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {projectBossVitalCombatHp} from './pve-vital-boss-projection.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
+import {chooseEconomicPetPotion} from './pet-potion-economy.js'
 import {playerPotionHealAmount} from './player-potions.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
@@ -1065,12 +1066,8 @@ async function persistRaidCombatPet(c,jid,pet){
     await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE jid=$3 AND active=TRUE',[pet.hp,pet.energy,jid])
   }
 }
-function raidPetPotion(rows,missingHp){
-  const heal={pocao_pet_comum:60,pocao_pet_rara:160,pocao_pet_epica:320,pocao_pet_suprema:800,pocao_pet_full:Number.MAX_SAFE_INTEGER}
-  const names={pocao_pet_comum:'Poção de Pet Comum',pocao_pet_rara:'Poção de Pet Rara',pocao_pet_epica:'Poção de Pet Épica',pocao_pet_suprema:'Poção de Pet Suprema',pocao_pet_full:'Poção Full de Pet'}
-  const a=(rows||[]).filter(x=>Number(x.quantity)>0&&heal[x.item_id]).map(x=>({...x,heal:heal[x.item_id]})).sort((x,y)=>x.heal-y.heal)
-  const p=a.find(x=>x.heal>=Math.max(1,Number(missingHp)||1))||a[a.length-1]
-  return p?{...p,name:names[p.item_id]}:null
+function raidPetPotion(rows,missingHp,context={}){
+  return chooseEconomicPetPotion(rows,missingHp,context)
 }
 
 export async function startRaid(chat,host,level=null){
@@ -1533,7 +1530,7 @@ export async function raidRound(chat,level){
             client:c,jid:p.jid,pet:p.pet,
             maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),
             choosePotion:raidPetPotion,persistPet:persistRaidCombatPet,
-            context:'raid-revive'
+            context:'raid-revive',imminentDamage:Math.ceil(Number(cfg.atk||0)*.60)
           })
           if(healed){
             p.petPotionHealing=Number(p.petPotionHealing||0)+Number(healed.heal)
@@ -1718,7 +1715,8 @@ export async function raidRound(chat,level){
         const maxPetHp=Math.max(1,Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)))
         if(!petFainted&&!autoPetHeal&&Number(p.pet.hp)/maxPetHp<.35){
           const missing=Math.max(1,maxPetHp-Number(p.pet.hp))
-          const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
+          const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing,
+            {currentHp:Number(p.pet.hp),maxHp:maxPetHp,imminentDamage:Math.ceil(Number(cfg.atk||0)*.60),context:'raid-preventive'})
           if(chosenPet){
             const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-preventive',petName:p.pet.name})
             if(spent.spent){
@@ -1746,7 +1744,8 @@ export async function raidRound(chat,level){
             petFainted=false
           }else if(!autoPetHeal){
             const missing=Math.max(1,Number(p.pet.maxHp||0)-Number(p.pet.hp||0))
-            const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing)
+            const chosenPet=raidPetPotion(petPotionRows.filter(x=>x.jid===p.jid&&Number(x.quantity)>0),missing,
+              {currentHp:Number(p.pet.hp),maxHp:Number(p.pet.maxHp||petMaxHp(p.pet.level,p.pet.xp,p.pet.species)),imminentDamage:Math.ceil(Number(cfg.atk||0)*.60),context:'raid-fainted'})
             if(chosenPet){
               const spent=await spendAutoPetPotion(c,{jid:p.jid,itemId:chosenPet.item_id,context:'raid-fainted',petName:p.pet.name})
               if(spent.spent){
@@ -2873,11 +2872,12 @@ async function persistBossCombatPet(c,jid,pet){
     await c.query('UPDATE pet_collection SET hp=$1,energy=$2 WHERE id=$3 AND jid=$4',[pet.hp,pet.energy,pet.collectionId,jid])
   }
 }
-function healBossCombatPet(c,jid,pet){
+function healBossCombatPet(c,jid,pet,bossAtk=0){
   return autoHealBossCombatPet({
     client:c,jid,pet,
     maxHp:Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species)),
-    choosePotion:raidPetPotion,persistPet:persistBossCombatPet
+    choosePotion:raidPetPotion,persistPet:persistBossCombatPet,
+    imminentDamage:Math.ceil(Number(bossAtk||0)*.52)
   })
 }
 export async function attackBoss(chat,jid,name,usePet=true,options={}){
@@ -2988,7 +2988,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         "SELECT 1 FROM inventories WHERE jid=$1 AND item_id='energetico_pet' AND quantity>0",
         [jid]
       )).rows[0])
-      if(canFight)autoPetHeal=await healBossCombatPet(c,jid,petRow)
+      if(canFight)autoPetHeal=await healBossCombatPet(c,jid,petRow,Number(s.atk||18))
     }
     // Recarrega o pet automaticamente e consome um energético na mesma transação.
     let autoPetEnergy=null
@@ -3143,7 +3143,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
         // Igual ao WhatsApp: até 1 poção automática por golpe, com auditoria.
         const maxPetHp=Number(pet.max_hp||petMaxHp(pet.level,pet.xp,pet.species))
         if(!pet.petFainted&&!autoPetHeal&&maxPetHp>0&&Number(pet.hp)/maxPetHp<.35){
-          const healed=await healBossCombatPet(c,jid,pet)
+          const healed=await healBossCombatPet(c,jid,pet,Number(s.atk||18))
           if(healed)autoPetHeal=healed
         }
         await persistBossCombatPet(c,jid,pet)
@@ -3159,7 +3159,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           }
           // Sem reserva, ressuscita somente se ainda não houve poção neste golpe.
           if(!switched&&!autoPetHeal){
-            const healed=await healBossCombatPet(c,jid,pet)
+            const healed=await healBossCombatPet(c,jid,pet,Number(s.atk||18))
             if(healed)autoPetHeal=healed
           }
         }
