@@ -65,5 +65,7 @@ jobs:
         run: npm install --legacy-peer-deps --package-lock=false --no-audit --no-fund
       - name: Check runtime module imports and database wiring
         run: node --input-type=module -e "await import('./src/neon/raid-batch.js'); await import('./src/neon/games.js'); await import('./src/neon/raid-batch-ledger.js'); console.log('All runtime imports resolved')"
-      - name: Database atomic payment and crash safety
-        run: node --test test/raid-batch-v1-postgres-20261110.test.mjs
+      - name: Database schema, eligibility, fees, victory, loss and crash-safety
+        run: |
+          node --test test/raid-batch-v1-postgres-20261110.test.mjs
+          node --test test/raid-batch-v1-schema-20261110.test.mjs
