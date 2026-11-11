@@ -1,9 +1,10 @@
 // Traduz ausencia de sala do próprio host em diagnóstico útil, sem mudar a autorização.
 // Uma Raid visível no grupo não implica que o autor do !go seja o host.
 const safeName=value=>String(value||'outro jogador').replace(/[\r\n*_`~]/g,' ').trim().slice(0,60)||'outro jogador'
-export function raidGoUnavailableMessage({rooms=[],level=null,sender='' }={}){
+export function raidGoUnavailableMessage({rooms=[],level=null,sender='',now=Date.now()}={}){
  const requested=Number(level)||null
- const open=Array.isArray(rooms)?rooms.filter(r=>r&&['lobby','active'].includes(r.status)&&(!requested||Number(r.level)===requested)):[]
+ const matching=Array.isArray(rooms)?rooms.filter(r=>r&&['lobby','active'].includes(r.status)&&(!requested||Number(r.level)===requested)):[]
+ const open=matching.filter(r=>r.status==='active'||Number(r.expiresAt||0)>now||!Number(r.expiresAt||0))
  const lobby=open.filter(r=>r.status==='lobby')
  if(!lobby.length){
   const active=open.filter(r=>r.status==='active')
@@ -12,6 +13,12 @@ export function raidGoUnavailableMessage({rooms=[],level=null,sender='' }={}){
    return '⚔️ A Raid Lv.'+raidLevel+' já está em andamento. Consulte *!raid '+raidLevel+'*. Não é necessário usar !go novamente.'
   }
   if(active.length>1)return '⚔️ Há Raids em andamento neste grupo. Consulte *!raid* para acompanhar. Nenhuma sala aguarda início.'
+  const expired=matching.filter(r=>r.status==='lobby'&&Number(r.expiresAt||0)>0&&Number(r.expiresAt)<=now)
+   .sort((a,b)=>Number(b.expiresAt||0)-Number(a.expiresAt||0))
+  if(expired.length){
+   const room=expired[0]
+   return '⌛ A Raid Lv.'+Number(room.level)+' de *'+safeName(room.hostName)+'* expirou antes do !go. O host precisa abrir outra sala com *!raid '+Number(room.level)+'*.'
+  }
   return requested
    ?'❌ Não existe sala aguardando início da Raid Lv.'+requested+' neste grupo. Consulte *!raid '+requested+'* ou abra uma nova sala quando estiver disponível.'
    :'❌ Você não possui Raid aguardando início neste grupo. Use *!raid* para ver as salas e *!entrar NÍVEL* para participar.'
