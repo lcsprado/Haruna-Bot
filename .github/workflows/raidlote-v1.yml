@@ -52,6 +52,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci --ignore-scripts
+      - name: Instalar somente pg isolado do lockfile do bot
+        run: |
+          mkdir -p "$RUNNER_TEMP/raidlote-pg"
+          npm install --prefix "$RUNNER_TEMP/raidlote-pg" --no-save --no-package-lock --ignore-scripts pg@8.13.0
+          ln -s "$RUNNER_TEMP/raidlote-pg/node_modules" "$GITHUB_WORKSPACE/node_modules"
       - name: Teste de compra antecipada, idempotencia e sem reembolso em PostgreSQL descartavel
         run: node --test test/raid-lote-postgres-integration.test.js
