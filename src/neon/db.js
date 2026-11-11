@@ -25,6 +25,7 @@ import {unlockedLevelMilestones,levelRewardHistoryProblem} from './level-reward-
 import {checkPixLimits} from './pix-limits.js'
 import {careerGrossFromLevelCap} from './career-pay.js'
 import {PLAYER_POTIONS,playerPotionHealAmount} from './player-potions.js'
+import {PET_POTION_ECONOMY_PRICES} from './pet-potion-economy.js'
 import {ascensionAwardedPlayerXp} from './ascension-week-20261102.js'
 const { Pool, Client } = pg
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL não configurada')
@@ -440,8 +441,8 @@ const starterItems = [
 ['pocao_pet_comum','Poção de Pet Comum','Recupera 60 HP do pet ativo.','consumable',500,'common'],
 ['pocao_pet_rara','Poção de Pet Rara','Recupera 160 HP do pet ativo.','consumable',1500,'rare'],
 ['pocao_pet_epica','Poção de Pet Épica','Recupera 320 HP do pet ativo.','consumable',3500,'epic'],
-['pocao_pet_suprema','Poção de Pet Suprema','Recupera 800 HP do pet ativo.','consumable',9000,'legendary'],
-['pocao_pet_full','Poção Full de Pet','Restaura 100% do HP do pet escolhido. Não recupera energia.','consumable',40000,'legendary'],
+['pocao_pet_suprema','Poção de Pet Suprema','Recupera 800 HP do pet ativo.','consumable',PET_POTION_ECONOMY_PRICES.pocao_pet_suprema,'legendary'],
+['pocao_pet_full','Poção Full de Pet','Restaura 100% do HP do pet escolhido. Não recupera energia.','consumable',PET_POTION_ECONOMY_PRICES.pocao_pet_full,'legendary'],
 ['energetico_pet','Energético Pet','Restaura instantaneamente 100% da energia do pet ativo.','consumable',12000,'rare'],
 ['pocao_ressurreicao','Poção da Ressurreição','Na Raid, se o HP zerar e não restar cura comum, revive com 30% do HP. Máximo de uma vez por Raid.','consumable',0,'epic'],
 ['selo_guardiao','Selo do Guardião','Consumido automaticamente no início da Raid; reduz 12% do dano recebido nessa Raid.','consumable',0,'rare'],
