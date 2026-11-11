@@ -1,5 +1,6 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance} from './raid-lote-policy.js'
+import {raidGoUnavailableMessage} from './raid-go-diagnostics.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
@@ -1145,7 +1146,11 @@ export async function startRaid(chat,host,level=null,options={}){
         round:0,createdAt:now,expiresAt:now+5*60*1000}
     }else{
       const rooms=await resolveRaidRoom(c,chat,level||null,{host,lobbyOnly:true})
-      if(!rooms.length) throw new Error(level?`Você não possui sala pronta da Raid Lv.${level}.`:'Não existe Raid pronta para iniciar.')
+      if(!rooms.length){
+        // A sala pode existir, mas pertencer a outro host. Não fingir que não há Raid.
+        const visible=await resolveRaidRoom(c,chat,level||null)
+        throw new Error(raidGoUnavailableMessage({rooms:visible,level,sender:host}))
+      }
       if(!level&&rooms.length>1) throw new Error('Você possui mais de uma sala. Informe qual Raid deseja iniciar.')
       s=rooms[0]
       gameType=s.gameType
