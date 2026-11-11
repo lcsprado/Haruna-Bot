@@ -54,9 +54,13 @@ export async function initRaidLoteStore(db){
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       finished_at TIMESTAMPTZ,
+      lease_token TEXT,
+      lease_until TIMESTAMPTZ,
       UNIQUE(jid,request_key)
     )
   `)
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS lease_token TEXT")
+  await db.query("ALTER TABLE raid_lote_jobs ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ")
   await db.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS raid_lote_one_open_job_per_player
     ON raid_lote_jobs(jid) WHERE status IN ('queued','running')
