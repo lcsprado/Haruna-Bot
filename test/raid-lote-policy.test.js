@@ -5,12 +5,17 @@ import {RAID_LOTE_V1,raidLoteQuote,raidLoteReward,raidLoteGearChance,raidLoteSho
 test('pacote 10 raids 75 cobrado integralmente antes de iniciar',()=>{
   assert.deepEqual(raidLoteQuote(480000,10),{
     attempts:10,keyPrice:480000,feePerAttempt:48000,
+    ownedKeysUsed:0,keysToBuy:10,
     keysTotal:4800000,serviceTotal:480000,totalPrice:5280000,
+    fullPackageValue:5280000,
     prepaid:true,refundable:false
   })
 })
-test('chaves existentes nao reduzem o preco do pacote fechado',()=>{
-  assert.equal(raidLoteQuote(480000,10).totalPrice,5280000)
+test('chaves existentes sao gastas no pacote sem cobrar duas vezes',()=>{
+  assert.equal(raidLoteQuote(480000,10,3).ownedKeysUsed,3)
+  assert.equal(raidLoteQuote(480000,10,3).keysToBuy,7)
+  assert.equal(raidLoteQuote(480000,10,3).totalPrice,3840000)
+  assert.equal(raidLoteQuote(480000,10,3).fullPackageValue,5280000)
   assert.equal(RAID_LOTE_V1.paymentMode,'prepaid_no_refund')
   assert.equal(RAID_LOTE_V1.refundUnusedAttempts,false)
 })
