@@ -1491,7 +1491,58 @@ upgrade_refund:['weapon','armor','boots'].includes(r.category)
 : 0
 }))
 }
-export async function sellItem(jid, itemId, qty=1) {
+// Exclusivo da venda voluntária no inventário Web: preserva a peça equipada,
+// vende primeiro cópias Lv.1 e depois atualiza as cópias aprimoradas/forjadas.
+async function reconcileWebSaleCopies(client,jid,itemId,owned,qty,equipped){
+const tiers=(await client.query(
+  'SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 ORDER BY level ASC FOR UPDATE',[jid,itemId]
+)).rows
+const forge=(await client.query(
+  'SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId]
+)).rows[0]
+const tierCount=tiers.reduce((sum,row)=>sum+Number(row.quantity||0),0)
+const basic=owned-tierCount-(forge?1:0)
+if(basic<0)throw new Error('Cópias de equipamento inconsistentes; venda cancelada.')
+const keepForge=Boolean(equipped&&forge)
+const keepTier=equipped&&!keepForge&&tiers.length?Number(tiers[tiers.length-1].level):null
+const keepBasic=equipped&&!keepForge&&keepTier===null?1:0
+let pending=qty
+pending-=Math.min(pending,Math.max(0,basic-keepBasic))
+for(const tier of tiers){
+  const level=Number(tier.level),count=Number(tier.quantity)
+  const limit=Math.max(0,count-(keepTier===level?1:0))
+  const take=Math.min(pending,limit)
+  if(take>0){
+    if(take===count)await client.query(
+      'DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3',[jid,itemId,level])
+    else await client.query(
+      'UPDATE equipment_upgrade_copies SET quantity=quantity-$4 WHERE jid=$1 AND item_id=$2 AND level=$3',[jid,itemId,level,take])
+    pending-=take
+  }
+}
+if(pending>0&&forge&&!keepForge){
+  await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
+  pending--
+}
+if(pending!==0)throw new Error('Não foi possível separar as cópias livres; venda cancelada.')
+// Itens vinculados podem ser vendidos, mas vínculos antigos não podem exceder
+// a quantidade restante: caso contrário futuras cópias ficariam bloqueadas.
+const binds=(await client.query(
+  'SELECT source_key,quantity FROM bound_inventory_items WHERE jid=$1 AND item_id=$2 ORDER BY created_at DESC,source_key DESC FOR UPDATE',[jid,itemId]
+)).rows
+let excess=Math.max(0,binds.reduce((n,b)=>n+Number(b.quantity),0)-(owned-qty))
+for(const row of binds){
+  if(excess===0)break
+  const take=Math.min(excess,Number(row.quantity))
+  if(take===Number(row.quantity))await client.query(
+    'DELETE FROM bound_inventory_items WHERE jid=$1 AND item_id=$2 AND source_key=$3',[jid,itemId,row.source_key])
+  else await client.query(
+    'UPDATE bound_inventory_items SET quantity=quantity-$4 WHERE jid=$1 AND item_id=$2 AND source_key=$3',[jid,itemId,row.source_key,take])
+  excess-=take
+}
+}
+export async function sellItem(jid, itemId, qty=1, options={}) {
+const webSale=options?.allowAnyUnequipped===true
 qty=Number(qty)
 if(!Number.isInteger(qty) || qty<1 || qty>9999) throw new Error('Quantidade inválida.')
 await ensureUser(jid)
@@ -1505,20 +1556,21 @@ if(owned<1) throw new Error('Você não possui esse item.')
 const itemR=await client.query('SELECT * FROM items WHERE id=$1',[itemId])
 const item=itemR.rows[0]
 if(!item) throw new Error('Item não encontrado.')
-if(item.sellable===false) throw new Error('Esse item não pode ser vendido.')
+if(item.sellable===false&&!webSale) throw new Error('Esse item não pode ser vendido.')
 const statsR=await client.query(
 'SELECT weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
 [jid]
 )
 const stats=statsR.rows[0]||{}
-const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId) ? 1 : 0
-const bound=await boundItemQuantity(client,jid,itemId)
+const activeRelic=webSale?(await client.query('SELECT item_id FROM player_active_relics WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.item_id:null
+const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId || activeRelic===itemId) ? 1 : 0
+const bound=webSale?0:await boundItemQuantity(client,jid,itemId)
 const sellable=Math.max(0,owned-Math.max(equipped,bound))
 if(sellable<1){
-throw new Error('Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
+throw new Error('Nenhuma cópia livre para venda. Desequipe o item para vender.')
 }
 if(qty>sellable){
-throw new Error(`Você pode vender no máximo ${sellable} unidade(s); 1 cópia está equipada.`)
+throw new Error(`Você pode vender no máximo ${sellable} unidade(s) sem vender o item equipado.`)
 }
 let unit
 if(raidMaterialId(itemId)) unit=RAID_MATERIAL_SELL_VALUE
@@ -1529,11 +1581,13 @@ else if(item.rarity==='rare') unit=7500
 else if(item.rarity==='uncommon') unit=2500
 else unit=500
 const remaining=owned-qty
+if(!webSale){
 const reserved=(await client.query('SELECT (SELECT COALESCE(SUM(quantity),0)::int FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2)+(SELECT COUNT(*)::int FROM equipment_star_forges WHERE jid=$1 AND item_id=$2) qty',[jid,itemId])).rows[0]
 if(remaining<Number(reserved?.qty||0))throw new Error('Não é permitido vender cópias aprimoradas; venda apenas cópias Lv.1.')
 if(remaining===0 && ['weapon','armor'].includes(item.category)){
 const star=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]
 if(Number(star?.stars||1)>1)throw new Error('Equipamento forjado protegido: mantenha pelo menos uma cópia para preservar suas estrelas.')
+}
 }
 const upR=['weapon','armor','boots'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
@@ -1544,11 +1598,20 @@ const upgradeRefund=(remaining===0 && equipmentLevel>1)
 : 0
 const baseTotal=unit*qty
 const total=baseTotal+upgradeRefund
+if(webSale)await reconcileWebSaleCopies(client,jid,itemId,owned,qty,equipped)
 await client.query(
 'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
 [qty,jid,itemId]
 )
-if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
+if(webSale){
+if(remaining===0){
+await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,itemId])
+await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
+await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
+}else if(['weapon','armor','boots','helmet'].includes(item.category)){
+await syncEffectiveGear(client,jid,itemId)
+}
+}else if(remaining===0 && ['weapon','armor','boots'].includes(item.category)){
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
 }
