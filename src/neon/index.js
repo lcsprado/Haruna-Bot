@@ -13073,9 +13073,9 @@ const rooms=await getRaidStatuses(chat)
 const requestedRoom=requested?rooms.find(r=>Number(r.level)===requested):null
 if(requestedRoom){
 const players=Object.values(requestedRoom.players||{})
-let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(requestedRoom.level))} p.p.*\n👥 Jogadores: *${players.length}/5*\n`
+let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(requestedRoom.level))} p.p.*\n👥 Jogadores: *${players.length}/5*\n👑 Host: *${String(requestedRoom.hostName||'Jogador').replace(/[\\r\\n*]/g,' ').slice(0,60)}*\n`
 if(requestedRoom.status==='lobby'){
-text+='\n✅ O host pode iniciar solo com *!go '+requestedRoom.level+'*.\n👥 Outros jogadores ainda podem entrar com *!entrar '+requestedRoom.level+'*.'
+text+='\n✅ Somente o host pode iniciar com *!go '+requestedRoom.level+'*.\n👥 Se você não está na sala, use *!entrar '+requestedRoom.level+'* e aguarde o host.'
 }else{
 text+='\n📊 Dano atual:\n'+players.sort((a,b)=>Number(b.damage||0)-Number(a.damage||0)).map(p=>`• ${p.alive?'🟢':'💀'} *${p.name}* — ${Number(p.damage||0).toLocaleString('pt-BR')}`).join('\n')
 runRaidCombat(chat,Number(requestedRoom.level),reply)
