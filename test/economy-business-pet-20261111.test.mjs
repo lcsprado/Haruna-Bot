@@ -63,8 +63,8 @@ test('preço da Suprema e Full é único e a Suprema passa a valer a pena por HP
  assert.equal(PET_POTION_ECONOMY_PRICES.pocao_pet_full,20_000)
  assert.equal(PET_POTION_ECONOMY_PRICES.pocao_pet_suprema,6_000)
  assert.ok(3*PET_POTION_ECONOMY_PRICES[s]<PET_POTION_ECONOMY_PRICES[f])
- assert.match(db,/PET_POTION_ECONOMY_PRICES\.pocao_pet_full/)
- assert.match(db,/PET_POTION_ECONOMY_PRICES\.pocao_pet_suprema/)
+ assert.match(db,/\['pocao_pet_full'[^\n]*'consumable',20000,'legendary'\]/)
+ assert.match(db,/\['pocao_pet_suprema'[^\n]*'consumable',6000,'legendary'\]/)
 })
 test('HP 35% em pet grande prioriza Suprema quando cura é segura',()=>{
  const chosen=chooseEconomicPetPotion(potionRows([f,s,'pocao_pet_epica']),2200,
