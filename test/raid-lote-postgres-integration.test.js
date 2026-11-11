@@ -143,6 +143,36 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
     const completed=(await db.query('SELECT seq,status FROM raid_lote_attempts WHERE job_id=$1 ORDER BY seq',[queued.job.id])).rows
     assert.deepEqual(completed.map(x=>x.status),['won','won'])
 
+    // Derrota após a primeira tentativa: proíbe nova reserva e qualquer estorno.
+    const deadJid='raid-lote-death@s.whatsapp.net'
+    await db.query('INSERT INTO users VALUES($1,600)',[deadJid])
+    await db.query('INSERT INTO stats VALUES($1,8000)',[deadJid])
+    await db.query('INSERT INTO wallets VALUES($1,3000000,0)',[deadJid])
+    for(let n=0;n<3;n++)await db.query(
+      "INSERT INTO transactions(from_jid,to_jid,amount,type,note) VALUES('raid_bot',$1,1000,'minigame','raid_75')",[deadJid])
+    const doomed=await purchaseRaidLote(db,{
+      jid:deadJid,level:75,attempts:5,requestKey:'postgres-no-refund-death-0004',confirmed:true
+    },{getCatalog:catalog})
+    const death=await reserveNextRaidLoteAttempt(db,doomed.job.id)
+    assert.equal(death.status,'reserved')
+    await db.query("UPDATE raid_lote_attempts SET status='active',raid_started_at_ms=$2 WHERE id=$1",[
+      death.attempt.id,456789
+    ])
+    await db.query('INSERT INTO trevo_games(chat_jid,game_type,state) VALUES($1,$2,$3::jsonb)',[
+      death.attempt.raid_chat,'raid:75',JSON.stringify({
+        status:'failed',failReason:'party_wipe',mode:'lote',
+        loteAttemptId:death.attempt.id,startedAt:456789
+      })
+    ])
+    const defeated=await settleRaidLoteAttempt(db,death.attempt.id)
+    assert.equal(defeated.status,'lost')
+    assert.equal(defeated.jobStatus,'lost')
+    assert.equal((await reserveNextRaidLoteAttempt(db,doomed.job.id)).status,'inactive')
+    assert.equal(Number((await db.query('SELECT COUNT(*) AS n FROM raid_lote_attempts WHERE job_id=$1',[doomed.job.id])).rows[0].n),1)
+    assert.equal(Number((await db.query('SELECT cash FROM wallets WHERE jid=$1',[deadJid])).rows[0].cash),360000)
+    assert.equal((await settleRaidLoteAttempt(db,death.attempt.id)).status,'already_settled')
+
+
 
   }finally{await db.end()}
 })
