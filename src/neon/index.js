@@ -12928,6 +12928,69 @@ const p=await getProfile(sender)
 if(Number(p?.level||1)<level) return await reply(`🔒 Você precisa estar no *nível ${level}* para comprar essa chave.`)
 const r=await buyItem(sender,cfg.keyId,1)
 await reply(`🔑 *CHAVE DE RAID COMPRADA!*\n\n⚔️ Raid: *${cfg.name} — Lv.${level}*\n💸 Pago: *R$ ${fmt(r.total)}*\n\nUse *!raid ${level}* para abrir uma sala.`)
+} else if(['raidlote'].includes(cmd)){
+if(!raidLoteV1Enabled)return await reply('⚔️ *RAIDLOTE V1 EM HOMOLOGAÇÃO*\nA compra está indisponível até a certificação do sistema.')
+if(isGroup)return await reply('🔒 O pacote !raidlote é comprado e acompanhado somente no privado.')
+const action=String(args[0]||'').toLowerCase()
+if(action==='status'){
+  const job=await getRaidLoteJob(db,sender)
+  if(!job)return await reply('⚔️ Você ainda não comprou nenhum pacote de Raids.')
+  const reports=await getRaidLoteAttemptReports(db,sender,job.id)
+  const totalCash=reports.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((m,p)=>m+Number(p.cash||0),0),0)
+  return await reply('⚔️ *RAIDLOTE — STATUS*\n🎯 Lv.'+job.level
+    +' • '+job.status.toUpperCase()+'\n🏆 Vitórias: '+job.won_count+'/'+job.requested
+    +'\n⚔️ Tentativas iniciadas: '+job.started
+    +'\n💰 Prêmios: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
+    +'\n💳 Pago antecipadamente: R$ '+Number(job.total_paid).toLocaleString('pt-BR')
+    +'\n🔑 Chaves próprias usadas: '+Number(job.owned_keys_spent||0)
+    +'\n\n!raidlote historico • !raidlote cancelar')
+}
+if(action==='historico'){
+  const rows=await getRaidLoteHistory(db,sender,5)
+  if(!rows.length)return await reply('📜 Nenhum pacote registrado.')
+  return await reply('📜 *RAIDLOTE — HISTÓRICO*\n\n'+rows.map((x,i)=>(
+    (i+1)+'. Lv.'+x.level+' • '+x.status+'\n'
+    +'🏆 '+x.won_count+'/'+x.requested+' • 💳 R$ '+Number(x.total_paid).toLocaleString('pt-BR')
+  )).join('\n\n'))
+}
+if(action==='cancelar'){
+  const cancelled=await cancelRaidLote(db,sender)
+  return await reply(cancelled
+    ?'🛑 Cancelamento solicitado. A tentativa já iniciada poderá concluir; nenhuma próxima tentativa começará. O valor pago não é devolvido.'
+    :'ℹ️ Você não possui pacote ativo para cancelar.')
+}
+const confirmation=action==='confirmar'
+const level=collabRaidNumber(confirmation?args[1]:args[0])
+const count=Number(confirmation?args[2]:args[1])
+const cfg=getRaidCatalog().find(x=>Number(x.level)===level)
+if(!cfg||!Number.isInteger(count)||count<1||count>RAID_LOTE_V1.maxAttempts)
+  return await reply('⚔️ *RAIDLOTE V1*\nUso: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nConsultar: !raidlote status')
+if(confirmation){
+  const messageId=String(msg?.key?.id||'')
+  if(!messageId)throw new Error('Identificador da mensagem indisponível; compra bloqueada para evitar duplicidade.')
+  const requestKey='wa:'+createHash('sha256').update(sender+':'+chat+':'+messageId).digest('hex')
+  const bought=await purchaseRaidLote(db,{jid:sender,level,attempts:count,requestKey,confirmed:true},{getCatalog:getRaidCatalog})
+  return await reply((bought.alreadyPurchased?'✅ *COMPRA JÁ PROCESSADA*':'✅ *PACOTE RAIDLOTE COMPRADO*')
+    +'\n⚔️ Raid Lv.'+level+' • '+count+' tentativas'
+    +'\n🔑 Chaves próprias consumidas: '+bought.quote.ownedKeysUsed
+    +'\n🛒 Chaves compradas: '+bought.quote.keysToBuy
+    +'\n💳 Total debitado: R$ '+bought.quote.totalPrice.toLocaleString('pt-BR')
+    +'\n🏛️ Taxa Prefeitura: R$ '+bought.quote.serviceTotal.toLocaleString('pt-BR')
+    +'\n⚠️ Se morrer/perder, o pacote acaba sem reembolso.'
+    +'\n📊 Acompanhe: !raidlote status')
+}
+const owned=(await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[sender,cfg.keyId])).rows[0]
+const quote=raidLoteQuote(cfg.keyPrice,count,Math.max(0,Number(owned?.quantity||0)))
+return await reply('⚔️ *RAIDLOTE V1 — RESUMO DA COMPRA*'
+  +'\n👹 '+cfg.name+' • '+count+' tentativas'
+  +'\n🔑 Chaves próprias: '+quote.ownedKeysUsed+' (serão consumidas na compra)'
+  +'\n🛒 Chaves a comprar: '+quote.keysToBuy
+  +'\n💰 Custo das chaves: R$ '+quote.keysTotal.toLocaleString('pt-BR')
+  +'\n🏛️ Automação 10%: R$ '+quote.serviceTotal.toLocaleString('pt-BR')
+  +'\n💳 *TOTAL A DEBITAR: R$ '+quote.totalPrice.toLocaleString('pt-BR')+'*'
+  +'\n\n🏆 80% dinheiro • 60% XP • 50% maestria • 40% fragmentos • 25% chance equipamentos'
+  +'\n💀 Derrota/morte encerra o lote; não há devolução das tentativas restantes.'
+  +'\n\n✅ Para autorizar a compra definitiva: *!raidlote confirmar '+level+' '+count+'*')
 } else if(['raid','raidstatus'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ As Raids funcionam dentro de grupos.')
 const raidCatalog=getRaidCatalog()
