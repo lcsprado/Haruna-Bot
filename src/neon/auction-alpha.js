@@ -3,6 +3,7 @@
 // Estado, lances reservados e entrega final são transacionais no banco ativo.
 import {randomInt,randomBytes,createHash} from 'node:crypto'
 import {extendAuctionDeadline,LOT_DURATION_MS} from './auction-rules.js'
+import {grantAuctionInventoryItem} from './auction-forged-rewards.js'
 import {db,listGroupLicenses,groupLicenseIsActive,getGroupLicense,grantExpInTransaction,petMaxEnergy,petMaxHp} from './db.js'
 import {initEnchantments} from './enchantments-alpha.js'
 import {otherAuctionGroups,crossGroupBidNotice} from './auction-bid-notice.js'
@@ -133,13 +134,8 @@ async function prize(c,jid,packageItems){
       )
       received.push('🐾 '+String(item.name)+' Nv.1')
     }else{
-      const metadata=(await c.query('SELECT name FROM items WHERE id=$1',[item.id])).rows[0]
-      if(!metadata)throw Error('Item de prêmio não encontrado: '+item.id)
-      await c.query(
-        'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
-        [jid,item.id,item.qty]
-      )
-      received.push(metadata.name+' ×'+item.qty)
+      const awarded=await grantAuctionInventoryItem(c,jid,item.id,item.qty)
+      received.push(awarded.description)
     }
   }
   return received
