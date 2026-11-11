@@ -2469,6 +2469,31 @@ maxCommitRetries:3,
 delayBetweenTriesMs:500
 }
 })
+// O runner V1 so nasce com flag explicita; desativado por padrao.
+if(raidLoteV1Enabled){
+  const raidLoteWorker=createRaidLoteWorker({
+    db,startRaid,raidRound,
+    onFinished:async(jid,jobId,result)=>{
+      const job=await getRaidLoteJob(db,jid)
+      if(!job||String(job.id)!==String(jobId))return
+      const records=await getRaidLoteAttemptReports(db,jid,jobId)
+      const totalCash=records.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((sum,v)=>sum+Number(v.cash||0),0),0)
+      const totalExp=records.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((sum,v)=>sum+Number(v.exp||0),0),0)
+      const completed=records.filter(x=>x.status==='won').length
+      const statusText=job.status==='won'?'Pacote concluido':job.status==='lost'?'Pacote perdido':'Pacote cancelado'
+      const report='⚔️ *RAIDLOTE V1 — '+statusText+'*'
+        +'\n🎯 Raid Lv.'+job.level+' • '+completed+'/'+job.requested+' vitorias'
+        +'\n🔑 Tentativas iniciadas: '+job.started
+        +'\n💰 Premio recebido: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
+        +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
+        +'\n💳 Pacote pago: R$ '+Number(job.total_paid).toLocaleString('pt-BR')
+        +'\n📌 Nao ha reembolso de tentativas nao utilizadas.'
+      await sock.sendMessage(jid,{text:report})
+    },
+    onError:(jobId,error)=>console.error('[RAIDLOTE V1]',jobId,error?.message||error)
+  })
+  raidLoteWorker.start({enabled:true,intervalMs:8000})
+}
 // A criptografia Signal dos grupos usa chaves mutáveis compartilhadas.
 // Serializar TODO envio por grupo (inclusive eventos automáticos) impede
 // disputas de sender-key que produzem mensagens impossíveis de ler.
