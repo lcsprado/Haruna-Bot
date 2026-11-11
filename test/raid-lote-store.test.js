@@ -6,7 +6,7 @@ import {
 
 const catalog=()=>[{level:75,minLevel:70,keyPrice:480000}]
 const order={jid:'test-player@s.whatsapp.net',level:75,attempts:10,requestKey:'wamsg-unique-0001',confirmed:true}
-function dbForPurchase({cash=2000000,bank=4000000,purchased=0,wins=3,prior=null,active=false,publicRaid=false,failOnLog=false}={}){
+function dbForPurchase({cash=2000000,bank=4000000,ownedKeys=0,purchased=0,wins=3,prior=null,active=false,publicRaid=false,failOnLog=false}={}){
   const statements=[],amounts={wallet:null,city:null,keys:null,service:null},events=[]
   let tx=false
   const db={connect:async()=>({
@@ -24,6 +24,10 @@ function dbForPurchase({cash=2000000,bank=4000000,purchased=0,wins=3,prior=null,
       if(sql.includes('SELECT level FROM users'))return {rows:[{level:500}]}
       if(sql.includes('SELECT hp FROM stats'))return {rows:[{hp:5000}]}
       if(sql.includes('COUNT(*)::int AS n FROM transactions'))return {rows:[{n:wins}]}
+      if(sql.includes('SELECT quantity FROM inventories'))return {rows:ownedKeys?[{quantity:ownedKeys}]:[]}
+      if(sql.includes('UPDATE inventories SET quantity=quantity-')){
+        amounts.consumedKeys=params[0];return {rows:[{quantity:ownedKeys-params[0]}],rowCount:1}
+      }
       if(sql.includes('SELECT cash,bank FROM wallets'))return {rows:[{cash,bank}]}
       if(sql.includes('UPDATE wallets SET cash=')){amounts.wallet=params;return {rows:[]}}
       if(sql.includes('INSERT INTO raid_lote_jobs')){amounts.job=params;return {rows:[]}}
@@ -52,9 +56,21 @@ test('compra antecipada debita tudo uma vez e credita taxa na Prefeitura',async(
   assert.equal(f.inTransaction,false)
   assert.equal(f.statements.filter(x=>x.sql.includes('UPDATE wallets SET cash=')).length,1)
 })
+test('chaves proprias sao consumidas de uma vez e nao recompradas',async()=>{
+  const f=dbForPurchase({cash:1500000,bank:3500000,ownedKeys:3})
+  const r=await purchaseRaidLote(f.db,order,{getCatalog:catalog})
+  assert.equal(r.quote.keysToBuy,7)
+  assert.equal(r.quote.totalPrice,3840000)
+  assert.equal(f.amounts.consumedKeys,3)
+  assert.deepEqual(f.amounts.wallet,[1500000,2340000,order.jid])
+  assert.equal(f.amounts.keys,3360000)
+  assert.equal(f.amounts.service,480000)
+  assert.deepEqual(f.events,['BEGIN','COMMIT','RELEASE'])
+})
 test('mesmo ID de compra nao debita novamente apos retry',async()=>{
   const f=dbForPurchase({prior:{id:'job-1',jid:order.jid,level:75,requested:10,
-    key_price:480000,keys_total:4800000,fee_total:480000,total_paid:5280000,status:'lost'}})
+    key_price:480000,keys_total:4800000,fee_total:480000,total_paid:5280000,
+    owned_keys_spent:0,keys_bought:10,status:'lost'}})
   const r=await purchaseRaidLote(f.db,order,{getCatalog:catalog})
   assert.equal(r.alreadyPurchased,true)
   assert.equal(r.quote.totalPrice,5280000)
