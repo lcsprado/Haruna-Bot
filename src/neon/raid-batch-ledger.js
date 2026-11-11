@@ -29,10 +29,10 @@ export async function startRaidBatchAttempt(c,s,cfg){
  const cash=Number(wallet?.cash||0),bank=Number(wallet?.bank||0)
  if(!wallet||cash+bank<fee)throw new Error('Saldo insuficiente para taxa da automação de R$ '+fee.toLocaleString('pt-BR')+'.')
  const inserted=await c.query(`
-  INSERT INTO raid_batch_attempts(job_id,ordinal,status,started_at_ms,fee_paid,key_price)
-  VALUES($1,$2,'running',$3,$4,$5)
+  INSERT INTO raid_batch_attempts(job_id,ordinal,status,started_at_ms,fee_paid,key_price,key_bought)
+  VALUES($1,$2,'running',$3,$4,$5,$6)
   ON CONFLICT(job_id,ordinal) DO NOTHING RETURNING ordinal
- `,[job.id,ordinal,Date.now(),fee,cfg.keyPrice])
+ `,[job.id,ordinal,Date.now(),fee,cfg.keyPrice,Boolean(batch.keyPurchased)])
  if(inserted.rowCount!==1)throw new Error('Tentativa já faturada; nenhum débito repetido.')
  const fromCash=Math.min(cash,fee)
  await c.query('UPDATE wallets SET cash=cash-$1,bank=bank-$2 WHERE jid=$3',[fromCash,fee-fromCash,jid])
@@ -42,7 +42,8 @@ export async function startRaidBatchAttempt(c,s,cfg){
  await c.query(`INSERT INTO raid_batch_treasury(job_id,ordinal,amount,recorded_at_ms)
   VALUES($1,$2,$3,$4)`,[job.id,ordinal,fee,Date.now()])
  await c.query(`UPDATE raid_batch_jobs SET started_count=started_count+1,status='running',
-  updated_at_ms=$2,last_start_ms=$2 WHERE id=$1`,[job.id,Date.now()])
+  updated_at_ms=$2,last_start_ms=$2,total_fee_spend=total_fee_spend+$3,
+  total_key_spend=total_key_spend+$4 WHERE id=$1`,[job.id,Date.now(),fee,batch.keyPurchased?cfg.keyPrice:0])
  return {jobId:job.id,ordinal,fee}
 }
 export async function settleRaidBatchAttempt(c,s,won,reason='none',rewards=[]){
@@ -52,7 +53,7 @@ export async function settleRaidBatchAttempt(c,s,won,reason='none',rewards=[]){
  const total={
   cash:won?Math.floor(Number(r.cash)||0):0,
   xp:won?Math.floor(Number(r.awardedExp??r.exp)||0):0,
-  petXp:won?Math.floor(Number(r.petXp)||0):0,
+  petXp:won?(Array.isArray(r.petXpTeam)?r.petXpTeam.reduce((n,p)=>n+Math.max(0,Number(p.creditedXp??p.xp)||0),0):Math.floor(Number(r.petXp)||0)):0,
   masteryXp:won?Math.floor(Number(r.masteryReport?.earned)||0):0,
   fragments:won?Math.floor(Number(r.material?.qty)||0):0
  }
