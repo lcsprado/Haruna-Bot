@@ -1752,7 +1752,7 @@ export async function raidRound(chat,level){
             FROM player_awakenings WHERE stage=4 AND jid=ANY($1::text[])`,[distinct])
         }
       }
-      if(isBatch)await settleRaidBatchAttempt(c,s,true,'victory',rewards)
+      if(s.raidBatch)await settleRaidBatchAttempt(c,s,true,'victory',rewards)
       await saveGame(c,chat,gameType,s)
       return {victory:true,config:cfg,raidId:s.startedAt,round:s.round,hp:0,maxHp:s.maxHp,rewards,events}
     }
