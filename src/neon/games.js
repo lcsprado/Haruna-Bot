@@ -1148,8 +1148,8 @@ export async function startRaid(chat,host,level=null,options={}){
       const rooms=await resolveRaidRoom(c,chat,level||null,{host,lobbyOnly:true})
       if(!rooms.length){
         // A sala pode existir, mas pertencer a outro host. Não fingir que não há Raid.
-        const visible=await resolveRaidRoom(c,chat,level||null)
-        throw new Error(raidGoUnavailableMessage({rooms:visible,level,sender:host}))
+        const visible=await raidRows(c,chat,true)
+        throw new Error(raidGoUnavailableMessage({rooms:visible,level,sender:host,now:Date.now()}))
       }
       if(!level&&rooms.length>1) throw new Error('Você possui mais de uma sala. Informe qual Raid deseja iniciar.')
       s=rooms[0]
