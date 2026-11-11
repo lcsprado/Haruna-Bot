@@ -1245,12 +1245,12 @@ async function finishRaidRewards(c,s,cfg,chat){
   // Avaliada no encerramento da Raid; não altera XP dos pets, materiais nem drops.
   const raidGoldHour=now>=Date.parse('2026-10-18T21:00:00-03:00') &&
     now<Date.parse('2026-10-18T22:00:00-03:00')
-  const moneyMultiplier=isBatch?1:Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro'))
+  const moneyMultiplier=Math.max(raidGoldHour?2:(cacadaActive?1.25:1),await getOwnerEventMultiplier(c,'dinheiro'))
   // Caçada de Sábado: aplica somente à EXP de jogador em Raids 50/60/65/70.
   // MAX evita multiplicação indevida se outro evento de Raid coincidir.
   const saturdayXp=saturdayRaidXpMultiplier(cfg.level,now)
-  const xpMultiplier=isBatch?1:Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
-  const petXpMultiplier=isBatch?1:Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
+  const xpMultiplier=Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
+  const petXpMultiplier=Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
   const gearEventBonus=raidEventActive?.015:0
   // Raid 75 da collab: bônus semanal preservado e 240 XP de maestria em 02/11.
   const specialRaid75Mastery=!isBatch&&raid75MasteryBonusActive({level:cfg.level,collab:cfg.collab,nowMs:now})
@@ -1261,9 +1261,12 @@ async function finishRaidRewards(c,s,cfg,chat){
     if(p.heroId&&share>=.02&&Number(p.damage||0)>=2500){
       const awardKey=(specialRaid75Mastery?'raid:75:':'raid:')+String(s.startedAt)+':'+String(p.jid)
       await awardPlayableHeroLevel(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:isBatch?batchReducedAmount(125,'heroXp'):(specialRaid75Mastery?180:125)})
+        xp:specialRaid75Mastery?180:125,
+        ...(isBatch?{xp:batchReducedAmount(125,'heroXp')}: {})})
       await awardPlayableHeroMastery(c,{jid:p.jid,heroId:p.heroId,awardKey,
-        xp:isBatch?batchReducedAmount(raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),'masteryXp'):raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),specialRaid75:specialRaid75Mastery,
+        xp:raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),
+        ...(isBatch?{xp:batchReducedAmount(raid75MasteryAwardXp({level:cfg.level,collab:cfg.collab,nowMs:now}),'masteryXp')}: {}),
+        specialRaid75:specialRaid75Mastery,
         progressReport:masteryReport})
     }
     // Vitória precisa pagar a própria chave sem transformar Raid em farm de dinheiro.
@@ -1497,7 +1500,7 @@ async function finishRaidRewards(c,s,cfg,chat){
       skillActivations:{...(p.skillActivations||{})},skillTrackingPartial:Boolean(p.skillTrackingPartial),
       potionHealing:Number(p.potionHealing||0),potionUses:Number(p.heals||0),
       petPotionHealing:Number(p.petPotionHealing||0),petPotionUses:Number(p.petPotionUses||0),
-      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier:isBatch?1:xpMultiplier,ownerRaidMultiplier:isBatch?1:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
+      share,cash,exp,baseRaidExp,baseRaidPetXp,xpMultiplier:isBatch?1:xpMultiplier,ownerRaidMultiplier:ownerRaid,saturdayHuntActive:saturdayXp>1,awardedExp:Number(expCredit?.awardedGain??exp),xpBoostBonus:Number(expCredit?.boostBonus||0),xpBoostPercent:Number(expCredit?.boostPercent||0),petXp:awardedPetXp,petXpTeam,material,drop,gearDrop})
   }
   return rewards
 }
