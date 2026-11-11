@@ -1303,18 +1303,18 @@ async function finishRaidRewards(c,s,cfg,chat){
         )
         const stored=(await c.query('SELECT value FROM trevo_settings WHERE key=$1 FOR UPDATE',[dailyKey])).rows[0]?.value||{}
         const creditedToday=Math.max(0,Math.floor(Number(stored.earned||0)))
-        const baseQty=collabRaidPayout(creditedToday,p.damage,share)
-        const qty=isBatch?batchReducedAmount(baseQty,'fragments'):baseQty
-        if(qty>0){
+        const qty=collabRaidPayout(creditedToday,p.damage,share)
+        const creditedQty=isBatch?batchReducedAmount(qty,'fragments'):qty
+        if(creditedQty>0){
           await c.query(
             "UPDATE trevo_settings SET value=$2::jsonb,updated_at=EXTRACT(EPOCH FROM NOW())::BIGINT WHERE key=$1",
-            [dailyKey,JSON.stringify({...stored,earned:creditedToday+qty,day})]
+            [dailyKey,JSON.stringify({...stored,earned:creditedToday+creditedQty,day})]
           )
           await c.query(
             'INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,$3) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+EXCLUDED.quantity',
-            [p.jid,COLLAB_FRAGMENT_ITEM,qty]
+            [p.jid,COLLAB_FRAGMENT_ITEM,creditedQty]
           )
-          material={...cfg.material,qty}
+          material={...cfg.material,qty:creditedQty}
         }
         // O limite afeta apenas os fragmentos; XP, XP de pet e dinheiro permanecem.
         if(creditedToday>=COLLAB_RAID_DAILY_CAP){
