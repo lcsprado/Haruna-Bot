@@ -13075,7 +13075,11 @@ if(requestedRoom){
 const players=Object.values(requestedRoom.players||{})
 let text=`⚔️ *RAID ${requestedRoom.status==='lobby'?'AGUARDANDO':'EM ANDAMENTO'}*\n\n👹 *${requestedRoom.name} — Lv.${requestedRoom.level}*\n❤️ HP: *${Number(requestedRoom.hp).toLocaleString('pt-BR')}/${Number(requestedRoom.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${requestedRoom.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(requestedRoom.level))} p.p.*\n👥 Jogadores: *${players.length}/5*\n👑 Host: *${String(requestedRoom.hostName||'Jogador').replace(/[\r\n*]/g,' ').slice(0,60)}*\n`
 if(requestedRoom.status==='lobby'){
-text+='\n✅ Somente o host pode iniciar com *!go '+requestedRoom.level+'*.\n👥 Se você não está na sala, use *!entrar '+requestedRoom.level+'* e aguarde o host.'
+const remaining=Math.max(1,Math.ceil((Number(requestedRoom.expiresAt||0)-Date.now())/60000))
+text+='\n⏳ Sala expira em aproximadamente *'+remaining+' min* se não iniciar.'
+text+=requestedRoom.host===sender
+ ?'\n✅ Você é o host desta sala. Inicie com *!go '+requestedRoom.level+'*.'
+ :'\n👥 Esta sala já foi aberta por '+String(requestedRoom.hostName||'outro jogador').replace(/[\r\n*]/g,' ').slice(0,60)+'. Use *!entrar '+requestedRoom.level+'* para participar; somente o host pode iniciar.'
 }else{
 text+='\n📊 Dano atual:\n'+players.sort((a,b)=>Number(b.damage||0)-Number(a.damage||0)).map(p=>`• ${p.alive?'🟢':'💀'} *${p.name}* — ${Number(p.damage||0).toLocaleString('pt-BR')}`).join('\n')
 runRaidCombat(chat,Number(requestedRoom.level),reply)
@@ -13088,7 +13092,7 @@ if(rooms.length){
 text+='🏠 *SALAS ABERTAS*\n'
 for(const room of rooms.sort((a,b)=>Number(a.level)-Number(b.level))){
 const n=raidCatalog.findIndex(r=>Number(r.level)===Number(room.level))+1
-text+=`• *Raid ${n} — Lv.${room.level}* • ${room.status==='lobby'?'⏳ aguardando':'⚔️ em andamento'} • ${Object.keys(room.players||{}).length}/5 jogadores\n`
+text+=`• *Raid ${n} — Lv.${room.level}* • ${room.status==='lobby'?'⏳ aguardando':'⚔️ em andamento'} • ${Object.keys(room.players||{}).length}/5 jogadores • Host: ${String(room.hostName||'Jogador').replace(/[\r\n*]/g,' ').slice(0,40)}\n`
 }
 text+='\n'
 }
@@ -13109,7 +13113,7 @@ return await reply(text)
 const r=await createRaid(chat,sender,msg.pushName||'Jogador',requested)
 await progressDailyMission(sender,'game')
 const raidNo=raidCatalog.findIndex(x=>Number(x.level)===Number(r.level))+1
-await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *5 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
+await reply(`⚔️ *SALA DA RAID ${raidNo} ABERTA!*\n\n👹 *${r.name} — Lv.${r.level}*\n❤️ HP: *${r.maxHp.toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n🛡️ Resistência CRIT: *${critResistancePercent(raidBossCritResistance(r.level))} p.p.*\n🧩 Drop: *${raidCatalog.find(x=>Number(x.level)===Number(r.level))?.material?.name||'Material de Raid'}*${r.autoKeyPurchased?`\n🔑 Chave comprada automaticamente: *R$ ${fmt(r.keyPrice)}*`:''}\n🔑 A chave só será consumida quando essa sala iniciar.\n👥 Participantes: *1/5*\n⏳ Sala aberta por *15 minutos*.\n\n✅ Pode iniciar solo com *!go ${r.level}*, embora formar equipe seja recomendado para a collab.\n👥 Outros jogadores podem entrar com *!entrar ${r.level}* se quiserem.\n📌 Outras Raids podem ter salas próprias ao mesmo tempo.`)
 } else if(['entrar','entrarraide'].includes(cmd)){
 if(!isGroup) return await reply('⚔️ Entre em uma Raid dentro do grupo.')
 const catalog=getRaidCatalog()

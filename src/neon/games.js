@@ -1,6 +1,6 @@
 import {retryBossDeadlock} from './boss-deadlock-retry.js'
 import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance} from './raid-lote-policy.js'
-import {raidGoUnavailableMessage} from './raid-go-diagnostics.js'
+import {raidGoUnavailableMessage,raidJoinUnavailableMessage,RAID_LOBBY_TTL_MS} from './raid-go-diagnostics.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
@@ -870,7 +870,7 @@ export async function createRaid(chat,host,name='Jogador',level=10){
         VALUES($1,'raid_shop',$2,'raid_key_auto',$3)`,[host,cfg.keyPrice,`Compra automática — Raid Lv.${cfg.level}`])
       autoKeyPurchased=true
     }
-    const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+5*60*1000}
+    const state={status:'lobby',level:cfg.level,name:cfg.name,host,hostName:name||'Jogador',hp:cfg.hp,maxHp:cfg.hp,atk:cfg.atk,players:{[host]:{jid:host,name:name||'Jogador',damage:0,alive:true}},round:0,createdAt:Date.now(),expiresAt:Date.now()+RAID_LOBBY_TTL_MS}
     await saveGame(c,chat,gameType,state)
     return {...state,gameType,autoKeyPurchased,keyPrice:cfg.keyPrice}
   })
@@ -891,7 +891,7 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       throw new Error(`🔒 RAID GLOBAL ATIVA\n\nVocê já está na *Raid Lv.${globalRaid.level}* em outro grupo.\n⚔️ Um personagem só pode participar de *1 Raid por vez* em todo o Alpha Bot, incluindo o RPG Web.\nConclua a Raid atual antes de entrar nesta.`)
     }
     const rooms=await resolveRaidRoom(c,chat,level||null)
-    if(!rooms.length) throw new Error(level?`Não existe sala aberta da Raid Lv.${level}.`:'Não existe Raid disponível para entrar.')
+    if(!rooms.length) throw new Error(raidJoinUnavailableMessage({rooms:await raidRows(c,chat,true),level,now:Date.now()}))
     if(!level&&rooms.length>1) throw new Error('Há mais de uma Raid aberta. Escolha uma: '+rooms.map(r=>`!entrar ${r.level}`).join(' • '))
     const s=rooms[0]
     const gameType=s.gameType
@@ -1148,8 +1148,8 @@ export async function startRaid(chat,host,level=null,options={}){
       const rooms=await resolveRaidRoom(c,chat,level||null,{host,lobbyOnly:true})
       if(!rooms.length){
         // A sala pode existir, mas pertencer a outro host. Não fingir que não há Raid.
-        const visible=await resolveRaidRoom(c,chat,level||null)
-        throw new Error(raidGoUnavailableMessage({rooms:visible,level,sender:host}))
+        const visible=await raidRows(c,chat,true)
+        throw new Error(raidGoUnavailableMessage({rooms:visible,level,sender:host,now:Date.now()}))
       }
       if(!level&&rooms.length>1) throw new Error('Você possui mais de uma sala. Informe qual Raid deseja iniciar.')
       s=rooms[0]
