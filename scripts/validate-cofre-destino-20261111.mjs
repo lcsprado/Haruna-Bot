@@ -7,7 +7,7 @@ import {COFRE_DESTINO_START,COFRE_DESTINO_END,COFRE_DESTINO_KEY} from '../src/ne
 const root=path.dirname(fileURLToPath(import.meta.url))
 const file=path.join(root,'../src/neon/cofre-destino-20261111.js')
 const policyUrl=pathToFileURL(path.join(root,'../src/neon/cofre-destino-policy.js')).href
-let now=COFRE_DESTINO_START+1000
+let now=Date.parse('2026-11-11T17:30:00-03:00')
 const realNow=Date.now
 Date.now=()=>now
 let tick=null
@@ -104,7 +104,17 @@ try{
  await app.startCofreDestinoScheduler(sock)
  assert.equal(event.starts_at,COFRE_DESTINO_START)
  assert.equal(event.ends_at,COFRE_DESTINO_END)
- assert.equal(notices.length,1,'one start notice')
+ assert.equal(notices.length,1,'one early preview per group')
+ assert.match(notices[0].message,/HOJE TEM EVENTO/)
+ assert.match(notices[0].message,/Ainda não começou/)
+ assert.ok(notices[0].message.includes('\n'),'real WhatsApp line breaks')
+ await tick()
+ await new Promise(resolve=>setTimeout(resolve,30))
+ assert.equal(notices.length,1,'teaser is idempotent')
+ now=COFRE_DESTINO_START+1000
+ await tick()
+ await new Promise(resolve=>setTimeout(resolve,30))
+ assert.equal(notices.length,2,'opening notice delivered on time')
  await send('p1','cofre')
  assert.equal(sessions.get(COFRE_DESTINO_KEY+':p1').round,0)
  await send('p1','explorar',['1'])
@@ -165,10 +175,10 @@ try{
  assert.equal(inventory.get('p2'),15)
  assert.equal(inventory.get('p1'),10)
  assert.equal(inventory.has('p3'),false)
- assert.equal(notices.length,2)
+ assert.equal(notices.length,3)
  await tick()
  await new Promise(resolve=>setTimeout(resolve,30))
- assert.equal(notices.length,2)
+ assert.equal(notices.length,3)
  assert.equal(wallets.get('p2').cash,2250000)
  assert.equal(wallets.get('p1').cash,1110000)
  assert.equal(inventory.get('p2'),15)
