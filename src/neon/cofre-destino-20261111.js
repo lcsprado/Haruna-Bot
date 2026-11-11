@@ -299,7 +299,14 @@ async function sendOnce(sock,e,group,key,message){
  `,[COFRE_DESTINO_KEY,key])
  if(!claim.rowCount)return
  try{await sock.sendMessage(group,{text:message})}
- catch(err){console.warn('[COFRE DESTINO] envio falhou',String(err?.message||err).slice(0,160))}
+ catch(err){
+  console.warn('[COFRE DESTINO] envio falhou; liberando para tentativa posterior',String(err?.message||err).slice(0,160))
+  // Falha conhecida de envio nao pode suprimir o aviso ao grupo para sempre.
+  await db.query(`
+    UPDATE cofre_sombras_events SET announced=announced - $2::text
+    WHERE event_key=$1 AND announced ? $2
+  `,[COFRE_DESTINO_KEY,key]).catch(e=>console.warn('[COFRE DESTINO] remarcacao de aviso',String(e?.message||e).slice(0,130)))
+ }
 }
 async function tick(){
  const sock=activeSocket
