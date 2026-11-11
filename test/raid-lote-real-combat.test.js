@@ -4,19 +4,22 @@ import assert from 'node:assert/strict'
 // Usa EXCLUSIVAMENTE o PostgreSQL descartável provisionado pelo GitHub Actions.
 // Não importar ou inicializar o motor sem a URL específica do CI.
 const dsn=process.env.RAID_LOTE_TEST_DATABASE_URL
-if(!dsn||!dsn.includes('alpha_raid_lote_real_ci')||process.env.DATABASE_URL!==dsn)
-  throw new Error('Homologação de motor real EXIGE banco descartável isolado alpha_raid_lote_real_ci')
 
-const {db,initDatabase,initCommunityPack}=await import('../src/neon/db.js')
-const {initPlayableHeroes}=await import('../src/neon/playable-heroes.js')
-const {initAwakening}=await import('../src/neon/awakening.js')
-const {initRelics}=await import('../src/neon/relics.js')
-const {initEnchantments}=await import('../src/neon/enchantments-alpha.js')
-const {initGames,getRaidCatalog,startRaid,raidRound}=await import('../src/neon/games.js')
-const {initRaidLoteStore,purchaseRaidLote,reserveNextRaidLoteAttempt,settleRaidLoteAttempt}=await import('../src/neon/raid-lote-store.js')
-const {createRaidLoteWorker}=await import('../src/neon/raid-lote-worker.js')
-
-test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao em PostgreSQL',async()=>{
+test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao em PostgreSQL',async t=>{
+  if(!dsn){
+    t.skip('Motor real exige PostgreSQL descartavel exclusivo do CI');
+    return
+  }
+  if(!dsn.includes('alpha_raid_lote_real_ci')||process.env.DATABASE_URL!==dsn)
+    throw new Error('Homologacao do motor real bloqueada: banco nao isolado')
+  const {db,initDatabase,initCommunityPack}=await import('../src/neon/db.js')
+  const {initPlayableHeroes}=await import('../src/neon/playable-heroes.js')
+  const {initAwakening}=await import('../src/neon/awakening.js')
+  const {initRelics}=await import('../src/neon/relics.js')
+  const {initEnchantments}=await import('../src/neon/enchantments-alpha.js')
+  const {initGames,getRaidCatalog,startRaid,raidRound}=await import('../src/neon/games.js')
+  const {initRaidLoteStore,purchaseRaidLote,reserveNextRaidLoteAttempt,settleRaidLoteAttempt}=await import('../src/neon/raid-lote-store.js')
+  const {createRaidLoteWorker}=await import('../src/neon/raid-lote-worker.js')
   try{
     // Primeiro init prepara users/group_settings e catálogo; a migração antiga
     // exige pets/pet_collection criados pelo initCommunityPack no fim do boot.
