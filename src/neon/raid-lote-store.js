@@ -102,7 +102,16 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       [jid,requestKey]
     )).rows[0]
     // Replay da mesma mensagem NAO gasta novamente, ainda que a luta ja tenha terminado.
-    if(prior)return {job:prior,quote,alreadyPurchased:true}
+    if(prior){
+      if(Number(prior.level)!==Number(cfg.level)||Number(prior.requested)!==quote.attempts)
+        throw new Error('Repeticao de pedido com nivel ou quantidade divergente')
+      const originalQuote={
+        attempts:Number(prior.requested),keyPrice:Number(prior.key_price),
+        keysTotal:Number(prior.keys_total),serviceTotal:Number(prior.fee_total),
+        totalPrice:Number(prior.total_paid),prepaid:true,refundable:false
+      }
+      return {job:prior,quote:originalQuote,alreadyPurchased:true}
+    }
     const active=(await c.query(
       "SELECT 1 FROM raid_lote_jobs WHERE jid=$1 AND status=ANY($2::text[]) FOR UPDATE",
       [jid,openStatuses]
@@ -194,10 +203,11 @@ export async function cancelRaidLote(db,jid){
 }
 export async function reserveNextRaidLoteAttempt(db,jobId){
   return inTransaction(db,async c=>{
-    const {rows}=await c.query('SELECT * FROM raid_lote_jobs WHERE id=$1 FOR UPDATE',[jobId])
-    const job=rows[0]
+    const info=(await c.query('SELECT jid FROM raid_lote_jobs WHERE id=$1',[jobId])).rows[0]
+    if(!info)return {status:'inactive'}
+    await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+info.jid])
+    const job=(await c.query('SELECT * FROM raid_lote_jobs WHERE id=$1 FOR UPDATE',[jobId])).rows[0]
     if(!job||!openStatuses.includes(job.status))return {status:'inactive'}
-    await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+job.jid])
     if(job.current_attempt_id){
       const {rows:existing}=await c.query('SELECT * FROM raid_lote_attempts WHERE id=$1 FOR UPDATE',[job.current_attempt_id])
       if(existing[0]&&!['won','lost'].includes(existing[0].status))return {status:'resume',attempt:existing[0],job}
@@ -249,18 +259,23 @@ export async function attachRaidLoteAttempt(db,attemptId,startedAtMs){
 }
 export async function settleRaidLoteAttempt(db,attemptId){
   return inTransaction(db,async c=>{
+    const info=(await c.query(`
+      SELECT a.job_id,j.jid FROM raid_lote_attempts a
+      JOIN raid_lote_jobs j ON j.id=a.job_id WHERE a.id=$1
+    `,[attemptId])).rows[0]
+    if(!info)throw new Error('Tentativa nao encontrada')
+    await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",['raid-membership:'+info.jid])
+    const job=(await c.query('SELECT * FROM raid_lote_jobs WHERE id=$1 FOR UPDATE',[info.job_id])).rows[0]
     const attempt=(await c.query('SELECT * FROM raid_lote_attempts WHERE id=$1 FOR UPDATE',[attemptId])).rows[0]
-    if(!attempt)throw new Error('Tentativa nao encontrada')
     if(attempt.status==='won'||attempt.status==='lost')return {status:'already_settled',result:attempt.status}
     if(!attempt.raid_started_at_ms)return {status:'waiting_for_combat'}
+    if(!job||String(job.current_attempt_id)!==String(attempt.id))
+      throw new Error('Job aponta para outra tentativa; bloquear acerto')
     const raid=(await c.query('SELECT state FROM trevo_games WHERE chat_jid=$1 AND game_type=$2 FOR UPDATE',
       [attempt.raid_chat,'raid:'+attempt.level])).rows[0]?.state
     if(!raid||Number(raid.startedAt)!==Number(attempt.raid_started_at_ms))
       throw new Error('Estado de combate ausente ou divergiu; nao consumir nova tentativa')
     if(!['completed','failed'].includes(raid.status))return {status:'in_progress'}
-    const job=(await c.query('SELECT * FROM raid_lote_jobs WHERE id=$1 FOR UPDATE',[attempt.job_id])).rows[0]
-    if(!job||String(job.current_attempt_id)!==String(attempt.id))
-      throw new Error('Job aponta para outra tentativa; bloquear acerto')
     const won=raid.status==='completed'
     const finishedStatus=won?'won':'lost'
     await c.query('UPDATE raid_lote_attempts SET status=$2,finished_at=NOW() WHERE id=$1',[attemptId,finishedStatus])
