@@ -1,0 +1,21 @@
+name: Raid Lote V1 - safety unit tests
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - 'src/neon/raid-lote-*.js'
+      - 'test/raid-lote-*.test.js'
+      - '.github/workflows/raidlote-v1.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Teste de politica e cobranca (sem banco real)
+        run: node --test test/raid-lote-policy.test.js test/raid-lote-store.test.js
