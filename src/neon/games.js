@@ -1404,7 +1404,7 @@ async function finishRaidRewards(c,s,cfg,chat){
         boxChance=Math.min(.35,.06+share*.325+Number(pb.drop||0)*.20)
       }
       if(!lote&&cacadaActive) boxChance=Math.min(.70,boxChance*1.20)
-      boxChance=Math.min(.85,boxChance*(lote?1:ownerDrop))
+      boxChance=Math.min(.85,lote?raidLoteGearChance(boxChance):boxChance*ownerDrop)
       if(Math.random()<boxChance){
         await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1) ON CONFLICT(jid,item_id) DO UPDATE SET quantity=inventories.quantity+1',[p.jid,cfg.box])
         drop={id:cfg.box,name:cfg.box==='caixa_epica'?'Caixa Épica':cfg.box==='caixa_rara'?'Caixa Rara':'Caixa da Sorte',rarity:cfg.box==='caixa_epica'?'Épico':cfg.box==='caixa_rara'?'Raro':'Comum'}
