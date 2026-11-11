@@ -1156,7 +1156,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const keys=(await c.query('SELECT jid,quantity FROM inventories WHERE jid=ANY($1::text[]) AND item_id=$2 FOR UPDATE',[ids,cfg.keyId])).rows
       const missing=ids.filter(jid=>Number(keys.find(k=>k.jid===jid)?.quantity||0)<1)
       if(missing.length){
-        const names=missing.map(jid=>users.find(u=>u.jid)?.push_name||s.players?.[jid]?.name||'Jogador')
+        const names=missing.map(jid=>users.find(u=>u.jid===jid)?.push_name||s.players?.[jid]?.name||'Jogador')
         throw new Error(`🔑 Todos precisam da Chave de Raid Lv.${cfg.level}. Sem chave: ${names.join(', ')}.`)
       }
       await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=ANY($1::text[]) AND item_id=$2',[ids,cfg.keyId])
@@ -1275,7 +1275,7 @@ async function finishRaidRewards(c,s,cfg,chat){
   const saturdayXp=saturdayRaidXpMultiplier(cfg.level,now)
   const xpMultiplier=lote?1:Math.max(raidGoldHour?2:(raidEventActive?1.5:(cacadaActive?1.5:1)),saturdayXp,ownerRaid,ownerGeneralXp)
   const petXpMultiplier=lote?1:Math.max(raidEventActive?1.5:(cacadaActive?1.25:1),ownerRaid,effectivePetXp)/effectivePetXp
-  const gearEventBonus=!lote&&raidEventActive?.015||0
+  const gearEventBonus=!lote&&raidEventActive?0.015:0
   // Raid 75 da collab: bônus semanal preservado e 240 XP de maestria em 02/11.
   const specialRaid75Mastery=!lote&&raid75MasteryBonusActive({level:cfg.level,collab:cfg.collab,nowMs:now})
   const rewards=[]
