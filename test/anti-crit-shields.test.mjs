@@ -6,7 +6,7 @@ import {ANTI_CRIT_SHIELDS,antiCritShieldStats,effectiveShieldedCritChance,shield
 
 test('seis escudos com progressão exclusiva, sem ATK ou DEF',()=>{
  assert.equal(ANTI_CRIT_SHIELDS.length,6);
- assert.deepEqual(ANTI_CRIT_SHIELDS.map(x=>x.critResist),[.02,.04,.06,.09,.12]);
+ assert.deepEqual(ANTI_CRIT_SHIELDS.map(x=>x.critResist),[.02,.04,.06,.09,.11,.12]);
  for (const x of ANTI_CRIT_SHIELDS) {
   assert.equal(x.category,'shield');
   assert.equal(x.atk,undefined);
