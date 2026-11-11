@@ -87,7 +87,7 @@ test('V1: XP, prêmio, fragmentos, baús, equipamento e maestria só são reduzi
  assert.match(rewardRegion,/ignoreGroupProgressionEvent:isBatch,ignoreXpBoost:isBatch/)
  assert.match(rewardRegion,/skipTemporaryEvents:isBatch/)
  assert.match(rewardRegion,/collabRaidPayout\(creditedToday,p.damage,share\)/)
- assert.match(rewardRegion,/isBatch\?batchReducedAmount\(baseQty,'fragments'\)/)
+ assert.match(rewardRegion,/creditedQty=isBatch\?batchReducedAmount\(qty,'fragments'\)/)
  assert.match(rewardRegion,/isBatch\)boxChance=batchDropChance\(boxChance,'box'\)/)
  assert.match(rewardRegion,/chance=isBatch\?batchDropChance\(baseGearChance,'gear'\)/)
  assert.match(rewardRegion,/!isBatch&&cfg.level===60/)
