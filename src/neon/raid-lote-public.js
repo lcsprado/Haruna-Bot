@@ -25,11 +25,23 @@ export async function getRaidLotePublicBoard(db,limit=12){
       g.state->>'round' AS battle_round,
       g.state->>'hp' AS boss_hp,
       g.state->>'maxHp' AS boss_max_hp,
-      g.state->>'lastRoundAt' AS last_round_at
+      g.state->>'lastRoundAt' AS last_round_at,
+      earned.xp AS earned_xp,earned.pet_xp AS earned_pet_xp,
+      earned.fragments AS earned_fragments,earned.cash AS earned_cash
     FROM latest l
     LEFT JOIN users u ON u.jid=l.jid
     LEFT JOIN raid_lote_attempts a ON a.id=l.current_attempt_id
     LEFT JOIN trevo_games g ON g.chat_jid=a.raid_chat AND g.game_type=('raid:'||l.level::text)
+    LEFT JOIN LATERAL (
+      SELECT
+        COALESCE(SUM((rw.v->>'exp')::bigint),0) AS xp,
+        COALESCE(SUM((rw.v->>'petXp')::bigint),0) AS pet_xp,
+        COALESCE(SUM((rw.v->'material'->>'qty')::bigint),0) AS fragments,
+        COALESCE(SUM((rw.v->>'cash')::bigint),0) AS cash
+      FROM raid_lote_attempts won
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(won.reward_summary->'rewards','[]'::jsonb)) AS rw(v)
+      WHERE won.job_id=l.id AND won.status='won'
+    ) earned ON true
     ORDER BY CASE WHEN l.status IN ('queued','running') THEN 0 ELSE 1 END,
       l.created_at DESC
     LIMIT $1
@@ -80,6 +92,11 @@ export function formatRaidLotePublicBoard(rows,nowMs=Date.now()){
     const status=publicStatus[row.status]||'INDEFINIDO'
     const lines=[(i+1)+'. *'+safeName(row.player_name)+'* • Lv.'+integer(row.level)+' • '+status,
       '🏆 '+integer(row.won_count)+'/'+integer(row.requested)+' vitórias • '+integer(row.started)+' iniciada(s)']
+    if(integer(row.won_count)>0){
+      lines.push('✨ XP +'+integer(row.earned_xp).toLocaleString('pt-BR')+
+        ' • 🧩 Frag +'+integer(row.earned_fragments).toLocaleString('pt-BR')+
+        ' • 🐾 Pet XP +'+integer(row.earned_pet_xp).toLocaleString('pt-BR'))
+    }
     if(row.status==='running'||row.status==='queued'){
       const detail=formatRaidLoteProgress(row,nowMs)
       if(detail)lines.push(detail)
