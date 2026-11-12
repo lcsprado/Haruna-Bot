@@ -38,7 +38,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
     const catalog=getRaidCatalog()
     const cfg=catalog.find(x=>x.level===10)
     assert.ok(cfg?.keyId&&cfg?.keyPrice>0,'A Raid Lv10 precisa constar no catálogo real')
-    const jid='raid-real-ci-001@s.whatsapp.net'
+    const jid='5511999000011@s.whatsapp.net'
     await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Motor Real')",[jid])
     await db.query("INSERT INTO wallets(jid,cash,bank) VALUES($1,5000000,0)",[jid])
     await db.query("INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,9000,9000,1200000,1500,1200)",[jid])
@@ -81,7 +81,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
     Date.now=()=>clock
     Math.random=()=>0.75
     try{
-      const petJid='raid-real-pet-002@s.whatsapp.net'
+      const petJid='5511999000012@s.whatsapp.net'
       await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Real de Pet')",[petJid])
       await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,500000,0)',[petJid])
       await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8,100,2500,0,100)',[petJid])
@@ -120,7 +120,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
       assert.equal((await settleRaidLoteAttempt(db,petAttempt.id)).jobStatus,'won')
 
       // Derrota real sem consumíveis deve encerrar todo o lote não utilizado.
-      const deadJid='raid-real-death-003@s.whatsapp.net'
+      const deadJid='5511999000013@s.whatsapp.net'
       await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Derrota Real')",[deadJid])
       await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,500000,0)',[deadJid])
       await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,1,50,1,0,5)',[deadJid])
@@ -147,7 +147,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
 
       // Dez combates reais, um por vez, gerenciados pelo worker verdadeiro.
       // Uma nova instância assume o mesmo pacote na metade, sem novo débito.
-      const seriesJid='raid-real-ten-004@s.whatsapp.net'
+      const seriesJid='5511999000014@s.whatsapp.net'
       await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Dez Raids')",[seriesJid])
       await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,5000000,0)',[seriesJid])
       await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8000,8000,1200000,1500,1000)',[seriesJid])
@@ -205,7 +205,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
       // sem bônus temporários. Esse drop não é coberto pela Raid Lv10.
       const high= catalog.find(x=>x.level===75)
       assert.ok(high?.collab)
-      const highJid='raid-real-75-005@s.whatsapp.net'
+      const highJid='5511999000015@s.whatsapp.net'
       await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Raid 75')",[highJid])
       await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,5000000,0)',[highJid])
       await db.query('INSERT INTO stats(jid,hp,max_hp,atk,def,spd) VALUES($1,8000,8000,1200000,1500,1000)',[highJid])
@@ -231,7 +231,7 @@ test('motor games.js real: compra, inicio, uma rodada, recompensa e liquidacao e
 
       // Regressão da Raid manual: continua comprando uma única chave,
       // lutando com o mesmo motor e recebendo a recompensa INTEGRAL.
-      const manualJid='raid-manual-regression-006@s.whatsapp.net'
+      const manualJid='5511999000016@s.whatsapp.net'
       const manualChat='alpha-manual-raid-ci@g.us'
       await db.query("INSERT INTO users(jid,level,push_name) VALUES($1,250,'Teste Raid Manual')",[manualJid])
       await db.query('INSERT INTO wallets(jid,cash,bank) VALUES($1,500000,0)',[manualJid])
