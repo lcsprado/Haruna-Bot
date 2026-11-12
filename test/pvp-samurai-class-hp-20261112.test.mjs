@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {classHpWithEquipment} from '../src/neon/class-combat-balance.js';
 import {classPvpAttack,classPvpDefense,PVP_AWAKENING_ROLES} from '../src/neon/pvp-class-powers.js';
 import {formatPvpBattleReport} from '../src/neon/pvp-report.js';
+import {auditSeventeen} from '../src/neon/pvp-balance-simulator.js';
 
 test('class selection with gear never displays stored HP above max HP',()=>{
   assert.deepEqual(classHpWithEquipment(5213,4316,4316,2234),{hp:5213,maxHp:6550});
@@ -54,4 +55,14 @@ test('PvP report identifies active class and equipment separately from collab sy
   assert.match(msg,/Arma em uso: \*Katana Divina\*/);
   assert.match(msg,/Arma correspondente não equipada/);
   assert.match(msg,/Arma em uso: \*Outra arma\*/);
+});
+
+test('round-robin regression: report Samurai versus Ban, Meliodas and Diane without player data',()=>{
+  const result=auditSeventeen({duelsPerOrder:100,gear:false,awakening:5,mastery:5});
+  const pairs=result.pairs.filter(x=>x.a.startsWith('pecado_')&&['paladin','berserker','samurai','necromancer'].includes(x.b));
+  const wins=pairs.reduce((sum,p)=>sum+p.aWins,0),total=pairs.reduce((sum,p)=>sum+p.fights,0);
+  const heroWins=100*wins/total;
+  const samurai=pairs.filter(p=>p.b==='samurai').map(p=>({hero:p.a,winPct:p.winRateA}));
+  console.log('ALPHA_PVP_SAMURAI_HERO_AUDIT '+JSON.stringify({heroWins,samurai}));
+  assert.ok(heroWins>=60,'heroes too weak against four awakened classes');
 });
