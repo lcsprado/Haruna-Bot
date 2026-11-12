@@ -1,0 +1,29 @@
+name: Admin wallet recipient identity regression
+
+on:
+  push:
+    paths:
+      - 'src/neon/admin-wallet-identity.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/admin-wallet-recipient-20261112.test.mjs'
+      - '.github/workflows/admin-wallet-recipient.yml'
+  pull_request:
+    paths:
+      - 'src/neon/admin-wallet-identity.js'
+      - 'src/neon/db.js'
+      - 'src/neon/index.js'
+      - 'test/admin-wallet-recipient-20261112.test.mjs'
+      - '.github/workflows/admin-wallet-recipient.yml'
+
+jobs:
+  verified-recipient:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/admin-wallet-recipient-20261112.test.mjs
+      - run: node --check src/neon/index.js && node --check src/neon/db.js && node --check src/neon/admin-wallet-identity.js
