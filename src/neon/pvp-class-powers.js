@@ -15,7 +15,7 @@ export const PVP_AWAKENING_ROLES=Object.freeze({
  mage:{attack:.21,defense:.09},archer:{attack:.15,defense:.07},
  paladin:{attack:.06,defense:.12},berserker:{attack:.23,defense:.08},
  monk:{attack:.10,defense:.12},necromancer:{attack:.18,defense:.10},
- druid:{attack:.08,defense:.17},samurai:{attack:.12,defense:.06}
+ druid:{attack:.08,defense:.17},samurai:{attack:.17,defense:.07}
 })
 const addShield=(s,maxHp,ratio)=>{
   if(Number(s.shieldsCreated||0)>=2)return
@@ -136,7 +136,7 @@ export function classPvpAttack({
     if(critical){if(stage>=1)bonus+=.02
       if(stage>=3&&state.focus>0){
         const count=Number(state.focus)
-        bonus+=stage>=5&&count>=3?.10:.025*count
+        bonus+=stage>=5&&count>=3?.15:.028*count
         if(stage>=4)state.parry=true
         trigger(stage>=5&&count>=3?'Corte da Lua':'Postura Iai')
       }
