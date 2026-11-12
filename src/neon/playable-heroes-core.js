@@ -108,7 +108,7 @@ export function heroCollabGearBonus(heroId,weaponId=null,armorId=null,context='r
   // Mesmo conjunto-base para todos os sete; nenhuma ativação por item emprestado.
   const weaponDamage=weapon?.04:0,setDamage=set?.02:0;
   return {weapon,armor,set,attack:0,defense:0,
-    heal:heroId==='pecado_ban'&&weapon?(set?.014:.009):0,
+    heal:heroId==='pecado_ban'&&weapon?(set?.05:.03):0,
     weaponDamage,setDamage,finalDamage:weaponDamage+setDamage,
     finalReduction:armor?.04:0,crit:set?.015:0};
 }
@@ -132,9 +132,11 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
     if(ultimate){bonus+=.055;technique='Revenge Counter';}
   }else if(id==='pecado_ban'){
     if(special){bonus+=.025;next.snatchBlocks=2;technique='Snatch';}
-    if(index%6===0&&Number(next.healCount||0)<2){
-      const healCap=gear.set?.02:gear.weapon?.015:.01;
-      heal=Math.ceil(Math.max(1,Number(maxHp))*Math.min(healCap,.006+Number(gear.heal||0)));
+    // Two short-duel procs only: 3rd and 6th attacks, independent of Snatch.
+    // Exact PvP rates: naked 1%, Courechouse 3%, full sacred set 5%.
+    if((index===3||index===6)&&Number(next.healCount||0)<2){
+      const healRate=gear.set?.05:gear.weapon?.03:.01;
+      heal=Math.ceil(Math.max(1,Number(maxHp))*healRate);
       next.healCount=Number(next.healCount||0)+1;
     }
     if(ultimate){bonus+=.035;technique='Hunter Fest';}
