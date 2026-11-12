@@ -152,7 +152,7 @@ test('dormir protege de batalha e roubo antes do cooldown e concede XP ao acorda
 test('regressões conhecidas de escopo não reaparecem',async()=>{
   const source=await readFile(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(source,/const text=fixed\[cmd\][\s\S]{0,160}mentions:\[target\]/)
-  assert.match(source,/handleQuickGameFlow\(\{chat,sender,body,reply,msg,isOwner,isGroup\}\)/)
+  assert.match(source,/handleQuickGameFlow\(\{sock,chat,sender,body,reply,msg,isOwner,isGroup\}\)/)
   assert.ok(
     source.indexOf('function petStatusBonus') < source.indexOf('async function start()'),
     'petStatusBonus precisa estar no escopo do dispatcher principal'
