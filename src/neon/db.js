@@ -3155,7 +3155,8 @@ const snapshot=fighter=>{
 const critNoPet=Math.max(0,Number(fighter.crit||0)+Number(fighter.collabCrit||0))
 const critWithPet=Math.max(0,critNoPet+Number(fighter.petBonus?.crit||0))
 return {
-jid:fighter.jid,name:fighter.name,heroId:fighter.heroId,heroMasteryStage:fighter.heroId?fighter.heroMasteryStage:null,heroGear:fighter.heroId?fighter.heroGear:null,\nclassId:fighter.classId,classApplied:fighter.classApplied,awakeningStage:fighter.awakeningStage,weaponName:(fighter===A?aeW:beW).name||null,armorName:(fighter===A?aeA:beA).name||null,hp:fighter.hp,maxHp:fighter.maxHp,
+jid:fighter.jid,name:fighter.name,heroId:fighter.heroId,heroMasteryStage:fighter.heroId?fighter.heroMasteryStage:null,heroGear:fighter.heroId?fighter.heroGear:null,
+classId:fighter.classId,classApplied:fighter.classApplied,awakeningStage:fighter.awakeningStage,weaponName:(fighter===A?aeW:beW).name||null,armorName:(fighter===A?aeA:beA).name||null,hp:fighter.hp,maxHp:fighter.maxHp,
 atk:fighter.atk,def:fighter.def,spd:fighter.spd,crit:critWithPet,
 shieldName:fighter.shieldName||null,shieldCritResist:Number(fighter.shieldCritResist||0),shieldCritGuard:Number(fighter.shieldCritGuard||0),
 petName:fighter.petName||null,petSpecies:fighter.petSpecies||null,
