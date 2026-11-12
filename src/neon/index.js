@@ -1410,6 +1410,15 @@ return {jid:phoneJid || canonicalPlayerJid(jid),aliases:[...aliases]}
 async function resolvePlayerJid(sock,chat,jid,msg=null) {
 return (await resolvePlayerIdentity(sock,chat,jid,msg)).jid
 }
+// Owner menus and direct commands MUST resolve @lid mentions through the same
+// verified mapping used by !saldo, PIX and combat before touching player data.
+async function resolveVerifiedAdminTarget(sock,chat,mention,msg){
+  const identity=await resolvePlayerIdentity(sock,chat,mention,msg)
+  const jid=String(identity?.jid||'')
+  if(!/^\d{10,15}@s\.whatsapp\.net$/.test(jid))return null
+  await consolidateUserIdentity(jid,identity.aliases)
+  return jid
+}
 async function resolveClanInviteTarget(sock,chat,mention,msg){
 const identity=await resolvePlayerIdentity(sock,chat,mention,msg)
 if(!String(identity?.jid||'').endsWith('@s.whatsapp.net')){
@@ -4634,7 +4643,7 @@ async function openRaidPetVoucherMenu(chat,sender,reply,raidLevel=null){
     ...voucherPetFlowTools(chat,sender),...voucherPetFlowDeps()
   })
 }
-async function handleQuickGameFlow({chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
+async function handleQuickGameFlow({sock,chat,sender,body,reply,msg,isOwner=false,isGroup=false}){
 let flow=getQuickFlow(chat,sender)
 if(!flow){
 flow=await recoverQuickFlow(chat,sender)
@@ -6250,6 +6259,7 @@ await reply(
 `👤 *ESCOLHA O JOGADOR*
 1️⃣ Aplicar em mim
 ou marque a pessoa com *@*.
+🔎 O destinatário será validado antes de qualquer crédito.
 9️⃣ Voltar
 0️⃣ Sair`
 )
@@ -6259,9 +6269,9 @@ if(flow.stage==='admin_player_target'){
 if(input==='9') return await adminPlayersMenu(),true
 const action=flow.data.action
 const mentioned=mentionsOf(msg)[0]
-const target=input==='1'?sender:mentioned
-if(!target){
-await reply('👤 Marque a pessoa com *@* ou mande *1* para aplicar em você.')
+const target=input==='1'?sender:mentioned?await resolveVerifiedAdminTarget(sock,chat,mentioned,msg):null
+if(!target || !/^\d{10,15}@s\.whatsapp\.net$/.test(target)){
+await reply('⚠️ Não identifiquei o número verificado do destinatário. Peça que a pessoa use *!saldo* no grupo, marque-a novamente ou envie *1* para selecionar sua própria conta. Nenhuma alteração realizada.')
 return true
 }
 if(action==='resetplayer'){
@@ -6635,7 +6645,7 @@ return true
 }
 if(data.action==='addsaldo'){
 const p=await ownerAddBalance(data.target,data.amount)
-await reply(`✅ Saldo adicionado. Novo saldo: *R$ ${fmt(p.cash)}*.`,{mentions:data.target===sender?[]:[data.target]})
+await reply(`✅ *CRÉDITO ADMINISTRATIVO CONFIRMADO*\n🎯 Destino: *${data.target===sender?'sua conta':'jogador marcado'}*\n➕ Valor: *R$ ${fmt(data.amount)}*\n🪙 Carteira após o crédito: *R$ ${fmt(p.cash)}*\n🏦 Banco: *R$ ${fmt(p.bank)}*`,{mentions:data.target===sender?[]:[data.target]})
 }else if(data.action==='setsaldo'){
 const r=await ownerSetBalance(data.target,data.amount)
 await reply(`✅ Saldo definido: *R$ ${fmt(r.oldCash)} → R$ ${fmt(r.cash)}*.\n🏦 Banco mantido: *R$ ${fmt(r.bank)}*.`,{mentions:data.target===sender?[]:[data.target]})
@@ -10338,7 +10348,7 @@ await reply('🔒 O acesso deste grupo terminou. Use *!statusgrupo*, *!assinar* 
 continue
 }
 }
-await handleQuickGameFlow({chat,sender,body,reply,msg,isOwner,isGroup})
+await handleQuickGameFlow({sock,chat,sender,body,reply,msg,isOwner,isGroup})
 continue
 }
 await ensureUser(sender,msg.pushName || '')
@@ -10349,7 +10359,18 @@ const compactMarketBuy=rawCmdLower.match(/^comprar#(\d+)$/)
 const spacedMarketBuy=rawCmdLower==='comprar' && /^#\d+$/.test(String(args[0]||''))
 if(compactMarketBuy) args.unshift('#'+compactMarketBuy[1])
 const cmd=(compactMarketBuy||spacedMarketBuy)?'compraritem':rawCmdLower
-const ownerTarget=mentionsOf(msg)[0] || sender
+let ownerTarget=sender
+// A menção crua do WhatsApp pode ser @lid; nunca passar isso ao financeiro.
+if(isOwner && ['reset','resetsaldo','resetxp','resetinventario','resettotal','set','setsaldo','addsaldo','remsaldo','addexp','setnivel'].includes(cmd)){
+  const ownerMention=mentionsOf(msg)[0]
+  if(ownerMention){
+    ownerTarget=await resolveVerifiedAdminTarget(sock,chat,ownerMention,msg)
+    if(!ownerTarget){
+      await reply('⚠️ Não foi possível verificar o número da pessoa marcada. Peça *!saldo* no grupo e marque novamente. Nenhuma alteração realizada.')
+      continue
+    }
+  }
+}
 await collectOverdueLoansForBorrower(sender).catch(err=>console.error('[Empréstimos] cobrança ao comando falhou',err?.message||err))
 timingMarks.loans=Date.now()
 if(['escolherpet','resgatarvale','usardomador'].includes(cmd)){
@@ -13489,7 +13510,7 @@ if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
 const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))
 if(!amount) return await reply(`Uso: *${prefix}addsaldo 50000* ou *${prefix}addsaldo @pessoa 50000*`)
 const p=await ownerAddBalance(ownerTarget,amount)
-await reply(`👑 Saldo adicionado.\n💰 Novo saldo: R$ ${fmt(p.cash)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
+await reply(`👑 Saldo adicionado na *${ownerTarget===sender?'sua carteira':'carteira da pessoa marcada'}*.\n➕ Crédito: R$ ${fmt(amount)}\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${fmt(p.bank)}`,{mentions:ownerTarget===sender?[]:[ownerTarget]})
 } else if(['remsaldo'].includes(cmd)){
 if(!isOwner) return await reply('⛔ Comando não disponível para Beta.')
 const amount=parseAmount(args.find(a=>/^\d[\d.,]*$/.test(a)))

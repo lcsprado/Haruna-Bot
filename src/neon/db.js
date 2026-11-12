@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import {requireVerifiedAdminWalletJid} from './admin-wallet-identity.js'
 import {claimFirst500Title,transferFirst500Title} from './first-level-500-title.js'
 import {VITAL_PETS,resolveVitalTeam,applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal,VITAL_TEAM_BONUS} from './vital-pets.js'
 import {createRecentEnsureCache} from './recent-ensure.js'
@@ -3474,22 +3475,26 @@ groupSettingsCache.delete(chatJid)
 return rows[0]
 }
 export async function ownerAddBalance(jid, amount) {
+jid=requireVerifiedAdminWalletJid(jid)
 amount=Number(amount)
-if(!Number.isInteger(amount) || amount<=0) throw new Error('Valor inválido.')
+if(!Number.isSafeInteger(amount) || amount<=0) throw new Error('Valor inválido.')
 await ensureUser(jid)
-await transaction(async client=>{
-await client.query(
-'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
+return transaction(async client=>{
+const r=await client.query(
+'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2 RETURNING cash,bank',
 [amount,jid]
 )
+if(r.rowCount!==1)throw new Error('Carteira do destinatário não encontrada; crédito cancelado.')
 await client.query(`
 INSERT INTO transactions(from_jid,to_jid,amount,type,note)
 VALUES('owner',$1,$2,'owner_credit','admin')
 `,[jid,amount])
+// Saldo confirmado pelo UPDATE dentro do commit, sem consultar carteira alias.
+return {cash:Number(r.rows[0].cash),bank:Number(r.rows[0].bank),jid}
 })
-return getProfile(jid)
 }
 export async function ownerRemoveBalance(jid, amount) {
+jid=requireVerifiedAdminWalletJid(jid)
 amount=Number(amount)
 if(!Number.isInteger(amount) || amount<=0) throw new Error('Valor inválido.')
 await ensureUser(jid)
@@ -3509,6 +3514,7 @@ return { removed, cash:current-removed }
 })
 }
 export async function ownerSetBalance(jid, amount) {
+jid=requireVerifiedAdminWalletJid(jid)
 amount=Number(amount)
 if(!Number.isSafeInteger(amount) || amount<0) throw new Error('Valor inválido.')
 await ensureUser(jid)
@@ -3527,6 +3533,7 @@ return { oldCash, cash:amount, bank:Number(r.rows[0]?.bank||0) }
 })
 }
 export async function ownerResetBalance(jid) {
+jid=requireVerifiedAdminWalletJid(jid)
 await ensureUser(jid)
 return transaction(async client=>{
 const r=await client.query('SELECT cash,bank FROM wallets WHERE jid=$1 FOR UPDATE',[jid])
