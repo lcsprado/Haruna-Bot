@@ -117,6 +117,7 @@ import {createRaidLoteWorker} from './raid-lote-worker.js'
 import {getRaidLotePublicBoard,getRaidLoteCurrentProgress,formatRaidLoteProgress,formatRaidLotePublicBoard} from './raid-lote-public.js'
 import {formatRaidLoteMaterials} from './raid-lote-material-summary.js'
 import {summarizeRaidLoteXp} from './raid-lote-xp-summary.js'
+import {formatRaidLotePrivateReceipt,createRaidLoteNoticeWorker} from './raid-lote-notice-outbox.js'
 const raidLoteV1Enabled=process.env.RAID_LOTE_V1_ENABLED==='true'
 import {startAuctionNotificationPilot,handleAuctionNotificationPilotCommand} from './auction-notification-pilot.js'
 import {startCofreEvent,handleCofreCommand} from './cofre-sombras.js'
@@ -2488,28 +2489,18 @@ delayBetweenTriesMs:500
 if(raidLoteV1Enabled){
   const raidLoteWorker=createRaidLoteWorker({
     db,startRaid,raidRound,
-    onFinished:async(jid,jobId,result)=>{
-      const job=await getRaidLoteJob(db,jid)
-      if(!job||String(job.id)!==String(jobId))return
-      const records=await getRaidLoteAttemptReports(db,jid,jobId)
-      const totalCash=records.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((sum,v)=>sum+Number(v.cash||0),0),0)
-      const {totalXp:totalExp,bonusXp:totalBoostXp}=summarizeRaidLoteXp(records)
-      const completed=records.filter(x=>x.status==='won').length
-      const statusText=job.status==='won'?'Pacote concluido':job.status==='lost'?'Pacote perdido':'Pacote cancelado'
-      const report='⚔️ *RAIDLOTE V1 — '+statusText+'*'
-        +'\n🎯 Raid Lv.'+job.level+' • '+completed+'/'+job.requested+' vitorias'
-        +'\n🔑 Tentativas iniciadas: '+job.started
-        +'\n💰 Premio recebido: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
-        +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
-        +(totalBoostXp>0?'\n⏳ Ampulheta/Elixir — bônus XP: +'+Math.floor(totalBoostXp).toLocaleString('pt-BR')+' (já incluído no XP acima)':'')
-        +formatRaidLoteMaterials(records)
-        +'\n💳 Pacote pago: R$ '+Number(job.total_paid).toLocaleString('pt-BR')
-        +'\n📌 Nao ha reembolso de tentativas nao utilizadas.'
-      await sock.sendMessage(jid,{text:report})
-    },
+    // Relatorios privados saem pela fila persistente, gravada na mesma
+    // transacao da recompensa. Nao tentar enviar durante o settle: se a
+    // conexao cair, o recibo deve continuar pendente no banco.
     onError:(jobId,error)=>console.error('[RAIDLOTE V1]',jobId,error?.message||error)
   })
   raidLoteWorker.start({enabled:true,intervalMs:8000})
+  const raidLoteNoticeWorker=createRaidLoteNoticeWorker({
+    db,
+    sendMessage:async(jid,text)=>sock.sendMessage(jid,{text}),
+    isConnected:()=>trevoHealth.whatsapp==='open'
+  })
+  raidLoteNoticeWorker.start({intervalMs:8000})
 }
 // A criptografia Signal dos grupos usa chaves mutáveis compartilhadas.
 // Serializar TODO envio por grupo (inclusive eventos automáticos) impede
@@ -13019,6 +13010,8 @@ if(action==='status'){
     :'⚔️ Você ainda não comprou nenhum pacote de Raids. Consulte *!raidlote painel* para acompanhar os jogadores.')
   const reports=await getRaidLoteAttemptReports(db,target,job.id)
   const totalCash=reports.reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((m,p)=>m+Number(p.cash||0),0),0)
+  const {totalXp:totalExp,bonusXp:totalBoostXp}=summarizeRaidLoteXp(reports)
+  const totalPetXp=reports.filter(x=>x.status==='won').reduce((n,x)=>n+(x.reward_summary?.rewards||[]).reduce((m,p)=>m+Number(p.petXp||0),0),0)
   const progress=await getRaidLoteCurrentProgress(db,job)
   const label=requestedMention?(await db.query('SELECT push_name FROM users WHERE jid=$1',[target])).rows[0]?.push_name:null
   const displayName=label?'\n👤 '+String(label).replace(/[\r\n*_~]/g,' ').slice(0,45):''
@@ -13027,10 +13020,30 @@ if(action==='status'){
     +'\n⚔️ Tentativas iniciadas: '+job.started
     +(progress?'\n'+formatRaidLoteProgress(progress):'')
     +'\n💰 Prêmios: R$ '+Math.floor(totalCash).toLocaleString('pt-BR')
+    +'\n✨ XP jogador: +'+Math.floor(totalExp).toLocaleString('pt-BR')
+    +'\n🐾 XP pets: +'+Math.floor(totalPetXp).toLocaleString('pt-BR')
+    +(totalBoostXp>0?'\n⏳ Bônus XP: +'+Math.floor(totalBoostXp).toLocaleString('pt-BR')+' (incluso)':'')
+    +formatRaidLoteMaterials(reports)
     +'\n💳 Pago antecipadamente: R$ '+Number(job.total_paid).toLocaleString('pt-BR')
     +'\n🔑 Chaves próprias usadas: '+Number(job.owned_keys_spent||0)
     +'\n\n*No grupo:* !raidlote painel • !raidlote status @jogador'
     +'\n*Seu pacote:* !raidlote historico • !raidlote cancelar')
+}
+if(['recibo','comprovante'].includes(action)){
+  const job=await getRaidLoteJob(db,sender)
+  if(!job)return await reply('📜 Você ainda não tem pacote de Raids.')
+  if(!['won','lost','cancelled'].includes(job.status))
+    return await reply('⏳ Seu pacote ainda está em andamento. Use *!raidlote status* para acompanhar.')
+  const reports=await getRaidLoteAttemptReports(db,sender,job.id)
+  const receipt=formatRaidLotePrivateReceipt(job,reports)
+  if(!isGroup)return await reply(receipt)
+  try{
+    await sock.sendMessage(sender,{text:receipt})
+    return await reply('✅ Recibo detalhado enviado ao seu privado. Nenhuma recompensa foi creditada novamente.')
+  }catch(err){
+    console.warn('[RAIDLOTE RECIBO] envio sob demanda falhou',String(err?.message||err).slice(0,130))
+    return await reply('⚠️ Não consegui entregar no privado agora. Abra a conversa do Alpha Bot e use *!raidlote recibo*. As recompensas já foram registradas.')
+  }
 }
 if(action==='historico'){
   const rows=await getRaidLoteHistory(db,sender,5)
@@ -13051,7 +13064,7 @@ const level=collabRaidNumber(confirmation?args[1]:args[0])
 const count=Number(confirmation?args[2]:args[1])
 const cfg=getRaidCatalog().find(x=>Number(x.level)===level)
 if(!cfg||!Number.isInteger(count)||count<1||count>RAID_LOTE_V1.maxAttempts)
-  return await reply('⚔️ *RAIDLOTE V1*\nComprar: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nAcompanhar: !raidlote status • !raidlote painel\nVer outro jogador no grupo: !raidlote status @jogador\nTodos os comandos funcionam no grupo e no privado.')
+  return await reply('⚔️ *RAIDLOTE V1*\nComprar: !raidlote 75 10\nConfirmar: !raidlote confirmar 75 10\nAcompanhar: !raidlote status • !raidlote painel • !raidlote recibo\nVer outro jogador no grupo: !raidlote status @jogador\nTodos os comandos funcionam no grupo e no privado.')
 if(confirmation){
   const messageId=String(msg?.key?.id||'')
   if(!messageId)throw new Error('Identificador da mensagem indisponível; compra bloqueada para evitar duplicidade.')
