@@ -138,7 +138,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
         AND created_at >= ((NOW() AT TIME ZONE $2::text)::date::timestamp AT TIME ZONE $2::text)
     `,[jid,RAID_LOTE_V1.dailyResetTimeZone])).rows[0]
     if(Number(today?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
-      throw new Error('Limite diario de 10 tentativas. Renova as 00:00 (horario de Brasilia).')
+      throw new Error('Limite de 10 tentativas por dia. Renova as 00:00 (horario de Brasilia).')
     const publicRaid=(await c.query(`
       SELECT 1 FROM trevo_games
       WHERE (game_type='raid' OR game_type LIKE 'raid:%')
