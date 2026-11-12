@@ -88,7 +88,7 @@ export function formatPvpBattleReport(r){
   for(const p of [attacker,defender].filter(Boolean)){
     if(p.heroId==='pecado_ban'){
       const attacks=events.filter(e=>!e.petHeal&&!e.classHeal&&(e.fromJid||e.from)===(p.jid||p.name)).length
-      if(attacks<3)lines.push(`ℹ️ Ban (${name(p.name)}): cura periódica começa no 3º ataque e pode repetir no 6º; nesta luta foram ${attacks}.`)
+      if(attacks<6)lines.push(`ℹ️ Ban (${name(p.name)}): cura periódica começa no 3º ataque e pode repetir no 6º; nesta luta foram ${attacks}.`)
     }
   }
   lines.push('','📊 *RESUMO DO DUELO*')
