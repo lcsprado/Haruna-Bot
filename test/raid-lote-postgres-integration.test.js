@@ -11,7 +11,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
     return
   }
   const db=new Pool({connectionString:process.env.RAID_LOTE_TEST_DATABASE_URL,max:4})
-  const jid='raid-lote-integration@s.whatsapp.net'
+  const jid='5511999000001@s.whatsapp.net'
   const catalog=()=>[{level:75,minLevel:75,keyPrice:480000,keyId:'raid_key_75'}]
   const request={jid,level:75,attempts:10,requestKey:'postgres-real-purchase-0001',confirmed:true}
   try{
@@ -53,7 +53,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
 
     // Segunda conta fictícia no banco descartável: 10 vitórias sequenciais,
     // com liquidação repetida para comprovar idempotência e término exato.
-    const secondJid='raid-lote-ten-wins@s.whatsapp.net'
+    const secondJid='5511999000002@s.whatsapp.net'
     await db.query('INSERT INTO users VALUES($1,600)',[secondJid])
     await db.query('INSERT INTO stats VALUES($1,8000)',[secondJid])
     await db.query('INSERT INTO wallets VALUES($1,6000000,0)',[secondJid])
@@ -89,7 +89,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
 
     // Integração do worker com Postgres real e combate sintético de duas rodadas:
     // preserva a fila/identidade do motor, mas não substitui teste do motor games.js.
-    const workerJid='raid-lote-worker-restart@s.whatsapp.net'
+    const workerJid='5511999000003@s.whatsapp.net'
     await db.query('INSERT INTO users VALUES($1,600)',[workerJid])
     await db.query('INSERT INTO stats VALUES($1,8000)',[workerJid])
     await db.query('INSERT INTO wallets VALUES($1,2000000,0)',[workerJid])
@@ -144,7 +144,7 @@ test('PostgreSQL real: pacote antecipado é atômico, idempotente e sem reembols
     assert.deepEqual(completed.map(x=>x.status),['won','won'])
 
     // Derrota após a primeira tentativa: proíbe nova reserva e qualquer estorno.
-    const deadJid='raid-lote-death@s.whatsapp.net'
+    const deadJid='5511999000004@s.whatsapp.net'
     await db.query('INSERT INTO users VALUES($1,600)',[deadJid])
     await db.query('INSERT INTO stats VALUES($1,8000)',[deadJid])
     await db.query('INSERT INTO wallets VALUES($1,3000000,0)',[deadJid])

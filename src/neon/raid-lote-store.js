@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import {raidLoteQuote,RAID_LOTE_V1} from './raid-lote-policy.js'
+import {initRaidLoteNoticeOutbox,enqueueRaidLoteNotice} from './raid-lote-notice-outbox.js'
 
 // RAIDLOTE V1 — persistencia transacional em TESTE. Nao importar para ativar.
 // Nenhuma operacao acontece no import; nunca chamar init em producao antes da homologacao.
@@ -93,6 +94,7 @@ export async function initRaidLoteStore(db){
     )
   `)
   await db.query("INSERT INTO raid_lote_municipality(id,balance) VALUES(1,0) ON CONFLICT(id) DO NOTHING")
+  await initRaidLoteNoticeOutbox(db)
 }
 export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirmed},{getCatalog}={}){
   if(!jid||typeof jid!=='string')throw new Error('Jogador invalido')
@@ -328,6 +330,11 @@ export async function settleRaidLoteAttempt(db,attemptId){
         updated_at=NOW(),finished_at=CASE WHEN $3 IN ('won','lost','cancelled') THEN NOW() ELSE finished_at END
       WHERE id=$1
     `,[job.id,newWins,jobStatus])
+    // Persistir a pendencia na MESMA transacao do encerramento, antes do commit.
+    // Falha de conexao WhatsApp nao reabre o job nem repete as recompensas.
+    if(['won','lost','cancelled'].includes(jobStatus)){
+      await enqueueRaidLoteNotice(c,job.id,job.jid)
+    }
     // Jamais realizar estorno: as tentativas nao iniciadas estavam quitadas no pacote.
     return {status:finishedStatus,jobStatus,wins:newWins,started:Number(job.started),paid:Number(job.total_paid)}
   })

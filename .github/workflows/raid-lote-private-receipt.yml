@@ -1,0 +1,27 @@
+name: Raid Lote private receipts and retry
+on:
+  push:
+    paths:
+      - 'src/neon/raid-lote-notice-outbox.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'src/neon/index.js'
+      - 'test/raid-lote-private-receipt-20261112.test.mjs'
+      - '.github/workflows/raid-lote-private-receipt.yml'
+  pull_request:
+    paths:
+      - 'src/neon/raid-lote-notice-outbox.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'src/neon/index.js'
+      - 'test/raid-lote-private-receipt-20261112.test.mjs'
+      - '.github/workflows/raid-lote-private-receipt.yml'
+jobs:
+  receipt-retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/raid-lote-private-receipt-20261112.test.mjs test/raid-lote-public.test.js test/raid-lote-worker.test.js test/raid-lote-material-summary-20261111.test.mjs test/raid-lote-ampulheta-20261111.test.mjs
+      - run: node --check src/neon/index.js && node --check src/neon/raid-lote-store.js && node --check src/neon/raid-lote-notice-outbox.js
