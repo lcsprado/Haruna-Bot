@@ -93,15 +93,24 @@ export function heroMasteryNext(stage){
   return Number(stage)>=5?null:{stage:next,xp:HERO_MASTERY_XP[next-1],cost:HERO_MASTERY_COST[next-1]};
 }
 export function heroCollabGearBonus(heroId,weaponId=null,armorId=null,context='raid'){
-  if(!playableHero(heroId))return {weapon:false,armor:false,attack:0,defense:0,heal:0};
+  const empty={weapon:false,armor:false,set:false,attack:0,defense:0,heal:0,
+    weaponDamage:0,setDamage:0,finalDamage:0,finalReduction:0,crit:0};
+  if(!playableHero(heroId))return empty;
   const suffix=String(heroId).replace(/^pecado_/,'');
   const heroIndex=PECADOS_HEROES.findIndex(h=>h.species===heroId);
   const weapon=heroIndex>=0&&PECADOS_WEAPONS[heroIndex]?.id===weaponId;
   const armor=PECADOS_ARMORS.some(a=>a.id===armorId&&a.id.endsWith('_'+suffix));
-  // PvP: sinergia só desempata lutas próximas, jamais corrige dezenas de níveis.
-  const pvp=context==='pvp';
-  return {weapon,armor,attack:weapon?(pvp?.015:.04):0,
-    defense:armor?(pvp?.02:.04):0,heal:heroId==='pecado_ban'&&weapon?(pvp?.005:.02):0};
+  const set=weapon&&armor;
+  // Boss/Raid conservam integralmente a regra anterior da collab.
+  if(context!=='pvp')return {weapon,armor,set,attack:weapon?.04:0,
+    defense:armor?.04:0,heal:heroId==='pecado_ban'&&weapon?.02:0};
+  // PvP V2: efeitos finais independentes dos tetos de técnicas (+8% / -10%).
+  // Mesmo conjunto-base para todos os sete; nenhuma ativação por item emprestado.
+  const weaponDamage=weapon?.04:0,setDamage=set?.02:0;
+  return {weapon,armor,set,attack:0,defense:0,
+    heal:heroId==='pecado_ban'&&weapon?(set?.014:.009):0,
+    weaponDamage,setDamage,finalDamage:weaponDamage+setDamage,
+    finalReduction:armor?.04:0,crit:set?.015:0};
 }
 // Técnica PvP própria, sem alterar a vantagem de níveis/equipamentos/Despertar.
 // No máximo +8% por ataque, -10% recebido e uma suprema por duelo.
@@ -109,6 +118,7 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
   const next={...(state||{})},stage=Math.min(5,Math.max(1,Math.floor(Number(masteryStage)||1)));
   const base=Math.max(1,Math.round(Number(damage)||1)),index=Math.max(1,Math.floor(Number(attackIndex)||1));
   let bonus=Number(gear.attack||0),heal=0,technique=null;
+  let finalDamage=Math.max(0,Number(gear.finalDamage||0));
   const id=String(heroId||'');
   // Duels frequently end before attack 12: iconic techniques must actually trigger.
   const apex=id==='pecado_meliodas'||id==='pecado_escanor';
@@ -117,13 +127,14 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
   if(!HERO_COMBAT_PROFILES[id])return {damage:base,heal:0,state:next,technique:null};
   if(id==='pecado_meliodas'){
     bonus+=.04;
-    if(Number(next.counterCharge||0)>0){bonus+=.045;technique='Full Counter';next.counterCharge=0;}
+    if(Number(next.counterCharge||0)>0){bonus+=.045;finalDamage+=gear.set?.015:0;technique='Full Counter';next.counterCharge=0;}
     if(special){next.counterReady=true;technique=technique||'Full Counter preparado';}
     if(ultimate){bonus+=.055;technique='Revenge Counter';}
   }else if(id==='pecado_ban'){
     if(special){bonus+=.025;next.snatchBlocks=2;technique='Snatch';}
     if(index%6===0&&Number(next.healCount||0)<2){
-      heal=Math.ceil(Math.max(1,Number(maxHp))*Math.min(.01,.006+Number(gear.heal||0)));
+      const healCap=gear.set?.02:gear.weapon?.015:.01;
+      heal=Math.ceil(Math.max(1,Number(maxHp))*Math.min(healCap,.006+Number(gear.heal||0)));
       next.healCount=Number(next.healCount||0)+1;
     }
     if(ultimate){bonus+=.035;technique='Hunter Fest';}
@@ -148,7 +159,8 @@ export function heroPvpAttack({heroId,damage=0,attackIndex=1,masteryStage=1,stat
   if(ultimate)next.ultimateUsed=true;
   if(stage>=4)bonus+=.005;
   if(stage>=5)bonus+=.005;
-  return {damage:Math.max(1,Math.round(base*(1+Math.min(.08,Math.max(0,bonus))))),
+  const techniqueDamage=Math.max(1,Math.round(base*(1+Math.min(.08,Math.max(0,bonus)))));
+  return {damage:Math.max(1,Math.round(techniqueDamage*(1+Math.min(.075,finalDamage)))),
     heal:Math.max(0,heal),state:next,technique};
 }
 export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
@@ -158,15 +170,17 @@ export function heroPvpDefense({heroId,damage=0,state={},gear={}}={}){
     rate+=.02; // Demonic endurance. Full Counter absorbs a little while reflecting.
     if(next.counterReady&&incoming>0){rate+=.03;next.counterCharge=1;next.counterReady=false;technique='Full Counter';}
   }
-  if(incoming>0&&heroId==='pecado_ban'&&Number(next.snatchBlocks||0)>0){rate+=.045;next.snatchBlocks--;technique='Snatch';}
+  if(incoming>0&&heroId==='pecado_ban'&&Number(next.snatchBlocks||0)>0){rate+=.045+(gear.set?.015:0);next.snatchBlocks--;technique='Snatch';}
   if(heroId==='pecado_diane'){
     rate+=.025;
-    if(incoming>0&&Number(next.rockGuard||0)>0){rate+=.06;next.rockGuard--;technique='Heavy Metal';}
+    if(incoming>0&&Number(next.rockGuard||0)>0){rate+=.06+(gear.set?.01:0);next.rockGuard--;technique='Heavy Metal';}
   }
   if(incoming>0&&heroId==='pecado_king'&&Number(next.fairyGuard||0)>0){rate+=.06;next.fairyGuard--;technique='Chastiefol Guardian';}
   if(incoming>0&&heroId==='pecado_gowther'&&Number(next.confuse||0)>0){rate+=.045;next.confuse--;technique='Rewrite Light';}
   if(incoming>0&&heroId==='pecado_merlin'&&Number(next.cube||0)>0){rate+=.08;next.cube--;technique='Perfect Cube';}
-  return {damage:Math.max(0,Math.round(incoming*(1-Math.min(.10,rate)))),state:next,technique};
+  const techniqueDamage=Math.max(0,Math.round(incoming*(1-Math.min(.10,rate))));
+  const finalReduction=Math.min(.04,Math.max(0,Number(gear.finalReduction||0)));
+  return {damage:Math.max(0,Math.round(techniqueDamage*(1-finalReduction))),state:next,technique};
 }
 
 // Curva monotônica de atributos do HERÓI. Não depende de forja ou equipamentos.
