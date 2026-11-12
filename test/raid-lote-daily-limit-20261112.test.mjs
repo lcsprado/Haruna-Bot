@@ -25,7 +25,7 @@ test('purchase quota query uses local midnight, never rolling 24 hours',()=>{
   assert.match(store,/created_at\s*>=\s*\(\(NOW\(\) AT TIME ZONE \$2::text\)::date::timestamp AT TIME ZONE \$2::text\)/)
   assert.match(store,/\[jid,RAID_LOTE_V1\.dailyResetTimeZone\]/)
   assert.doesNotMatch(store,/NOW\(\)\s*-\s*INTERVAL\s*'24 hours'/i)
-  assert.match(store,/Limite diario de 10 tentativas\. Renova as 00:00/)
+  assert.match(store,/Limite de 10 tentativas por dia\. Renova as 00:00/)
 })
 
 test('quota counts attempts across multiple packages on the same day',()=>{
