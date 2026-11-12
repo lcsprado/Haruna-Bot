@@ -436,7 +436,9 @@ test('Equipamento sagrado corresponde exatamente a cada Pecado',()=>{
     assert.equal(full.weapon,true,hero);assert.equal(full.armor,true,hero);
     assert.equal(full.attack,.04);assert.equal(full.defense,.04);
     const pvp=heroCollabGearBonus(hero,weapon,armor,'pvp');
-    assert.equal(pvp.attack,.015);assert.equal(pvp.defense,.02);
+    assert.equal(pvp.attack,0);assert.equal(pvp.defense,0);
+    assert.equal(pvp.set,true);assert.equal(pvp.finalDamage,.06);
+    assert.equal(pvp.finalReduction,.04);assert.equal(pvp.crit,.015);
     const wrong=heroCollabGearBonus(hero,weapon==='pecados_lostvayne'?'pecados_rhitta':'pecados_lostvayne',
       armor==='pecados_armadura_merlin'?'pecados_armadura_ban':'pecados_armadura_merlin','pvp');
     assert.equal(wrong.attack,0);assert.equal(wrong.defense,0);
