@@ -47,21 +47,34 @@ test('weapons apply damage AFTER the hero 8 percent technique ceiling; armor app
   }
 });
 
-test('Ban survives better with weapon then full set; healing limited to two sixth-attack activations',()=>{
-  const idx=1;
-  const none=heroPvpAttack({heroId:'pecado_ban',damage:1000,attackIndex:6,maxHp:10000});
-  const weapon=heroPvpAttack({heroId:'pecado_ban',damage:1000,attackIndex:6,maxHp:10000,gear:gearFor(idx,'weapon')});
-  const full=heroPvpAttack({heroId:'pecado_ban',damage:1000,attackIndex:6,maxHp:10000,gear:gearFor(idx)});
-  assert.deepEqual([none.heal,weapon.heal,full.heal],[60,150,200]);
-  const naked=heroPvpDefense({heroId:'pecado_ban',damage:1000,state:{snatchBlocks:1}}).damage;
-  const guarded=heroPvpDefense({heroId:'pecado_ban',damage:1000,state:{snatchBlocks:1},gear:gearFor(idx)}).damage;
-  assert.ok(guarded<naked);
-  let state={},healed=0;
-  for(let attackIndex=1;attackIndex<=24;attackIndex++){
-    const hit=heroPvpAttack({heroId:'pecado_ban',damage:1000,maxHp:10000,attackIndex,masteryStage:5,state,gear:gearFor(idx)});
-    healed+=hit.heal;state=hit.state;
+test('Ban PvP heals 1 percent naked, 3 percent with weapon, 5 percent with full set on hits 3 and 6 only',()=>{
+  const idx=1,heroId='pecado_ban',maxHp=6000;
+  const build=(gear,attackIndex,state={})=>heroPvpAttack({
+    heroId,damage:1000,attackIndex,maxHp,masteryStage:5,state,gear
+  });
+  const none=build({},3),armor=build(gearFor(idx,'armor'),3);
+  const weapon=build(gearFor(idx,'weapon'),3),full=build(gearFor(idx),3);
+  assert.deepEqual([none.heal,armor.heal,weapon.heal,full.heal],[60,60,180,300]);
+  assert.equal(gearFor(idx,'weapon').heal,.03);
+  assert.equal(gearFor(idx).heal,.05);
+  assert.equal(build(gearFor(idx),2).heal,0,'no healing before the 3rd hit');
+  assert.equal(build(gearFor(idx),4).heal,0,'no healing on hit 4');
+  assert.equal(build(gearFor(idx),5).heal,0,'no healing on hit 5');
+  const naked=heroPvpDefense({heroId,damage:1000,state:{snatchBlocks:1}}).damage;
+  const guarded=heroPvpDefense({heroId,damage:1000,state:{snatchBlocks:1},gear:gearFor(idx)}).damage;
+  assert.ok(guarded<naked,'full set must strengthen Snatch defense');
+
+  for(const [gear,perProc] of [[{},60],[gearFor(idx,'weapon'),180],[gearFor(idx),300]]){
+    let state={},healed=0,healingIndices=[];
+    for(let attackIndex=1;attackIndex<=24;attackIndex++){
+      const hit=build(gear,attackIndex,state);
+      if(hit.heal){healed+=hit.heal;healingIndices.push(attackIndex);}
+      state=hit.state;
+    }
+    assert.deepEqual(healingIndices,[3,6],'only third and sixth attacks trigger Ban heal');
+    assert.equal(healed,perProc*2,'Ban must never heal more than twice per duel');
+    assert.equal(state.healCount,2,'heal counter persists through the duel');
   }
-  assert.equal(healed,400,'two heals of 2 percent maximum');
 });
 
 test('Meliodas full set reinforces counter without removing counter cap; Diane full set strengthens Heavy Metal',()=>{
