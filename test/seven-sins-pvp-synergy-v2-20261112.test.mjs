@@ -92,7 +92,7 @@ test('real PvP reads matched set critical once for each fighter and reports bonu
 test('deterministic duel audit actually includes both complete sets and raises hero stats against Samurai',()=>{
   const before=buildFairFighter('pecado_ban',{gear:true,collab:false});
   const after=buildFairFighter('pecado_ban',{gear:true,collab:true});
-  assert.equal(after.crit-before.crit,.015);
+  assert.ok(Math.abs(after.crit-before.crit-.015)<1e-9);
   assert.equal(after.heroGear.set,true);
   for(const id of ['pecado_ban','pecado_meliodas','pecado_diane']){
     const noSet=simulateFairDuel(id,'samurai',{seed:20261112,gear:true,collab:false});
