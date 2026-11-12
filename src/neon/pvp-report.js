@@ -20,8 +20,9 @@ function openingLine(icon,p){
     ?'\n🗡️ Arma em uso: *'+(p.weaponName||'Nenhuma')+'* • 🥋 Armadura: *'+(p.armorName||'Nenhuma')+'*'
     :''
   const gear=p.heroId&&p.heroGear
-    ?'\n🌈 Collab: '+(p.heroGear.weapon?'🗡️ Arma correspondente +'+percent(p.heroGear.attack)+' dano':'Arma correspondente não equipada')+
-      ' • '+(p.heroGear.armor?'🥋 Armadura correspondente -'+percent(p.heroGear.defense)+' dano recebido':'Armadura correspondente não equipada')
+    ?'\n🌈 Collab: '+(p.heroGear.weapon?'🗡️ Arma vinculada +'+percent(p.heroGear.weaponDamage||p.heroGear.finalDamage)+' dano final':'Arma correspondente não equipada')+
+      ' • '+(p.heroGear.armor?'🥋 Armadura vinculada -'+percent(p.heroGear.finalReduction)+' dano recebido':'Armadura correspondente não equipada')+
+      (p.heroGear.set?'\n🌈 Conjunto sagrado: +'+percent(p.heroGear.setDamage)+' dano final • +'+percent(p.heroGear.crit).replace('%',' p.p.')+' CRIT':'')
     :''
   const vital=Number(p.vitalHpRate||0)>0
     ?'\n🧬 HP de combate +'+percent(p.vitalHpRate)+' • Coração Eterno: '+(Number(p.vitalPulseRate||0)>0?'cura uma vez abaixo de 35%':'inativo')
