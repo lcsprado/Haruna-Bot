@@ -135,7 +135,7 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       SELECT COALESCE(SUM(requested),0)::bigint AS purchased
       FROM raid_lote_jobs
       WHERE jid=$1
-        AND created_at >= ((NOW() AT TIME ZONE $2::text)::date AT TIME ZONE $2::text)
+        AND created_at >= ((NOW() AT TIME ZONE $2::text)::date::timestamp AT TIME ZONE $2::text)
     `,[jid,RAID_LOTE_V1.dailyResetTimeZone])).rows[0]
     if(Number(today?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
       throw new Error('Limite diario de 10 tentativas. Renova as 00:00 (horario de Brasilia).')
