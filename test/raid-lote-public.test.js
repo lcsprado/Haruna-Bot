@@ -30,6 +30,16 @@ test('painel consulta apenas jogos e nomes, sem saldo ou mutacao',async()=>{
   assert.match(output,/há 10s/)
   assert.doesNotMatch(output,/5511000000000/)
 })
+test('painel mostra XP e fragmentos conquistados sem expor identidade ou duplicar premios',()=>{
+  const row={player_name:'Joao Pedro',jid:'5511000000000@s.whatsapp.net',
+    level:75,status:'won',started:10,won_count:10,requested:10,
+    earned_xp:'174000',earned_pet_xp:'16800',earned_fragments:'40',earned_cash:'5068800'}
+  const msg=formatRaidLotePublicBoard([row])
+  assert.match(msg,/XP \+174\.000/)
+  assert.match(msg,/Frag \+40/)
+  assert.match(msg,/Pet XP \+16\.800/)
+  assert.doesNotMatch(msg,/5511000000000/)
+})
 test('painel lista derrota, termino e fila; nenhum jogador ficticio se vazio',()=>{
   const rows=[{player_name:'*NOME\nINJETADO*',level:75,status:'lost',won_count:0,requested:5,started:1},
     {player_name:'Guto',level:10,status:'won',won_count:10,requested:10,started:10},
