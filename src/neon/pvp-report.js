@@ -1,5 +1,6 @@
 // Relatório detalhado do PvP: não altera dano, regras nem recompensas.
 import {PECADOS_HEROES} from './sete-pecados-catalog.js'
+import {getPlayerClass} from './game-catalog.js'
 const heroName=id=>PECADOS_HEROES.find(h=>h.species===id)?.name||'Herói'
 
 const fmt=value=>Math.max(0,Number(value)||0).toLocaleString('pt-BR')
@@ -12,6 +13,12 @@ function openingLine(icon,p){
     ?`🐾 ${p.petName} — PvP: 💥 +${percent(bonus?.damage)} dano • 🛡️ -${percent(bonus?.defense)} recebido • 🎯 +${percent(bonus?.crit)} p.p. CRIT • 🌀 ${percent(bonus?.dodge)} esquiva${Number(bonus?.speed||0)>0?` • 👢 +${fmt(bonus.speed)} VEL`:''}`
     :'🐾 Sem pet apto para bônus individuais no PvP'
   const hero=p.heroId?'\n🌈⚔️ Personagem: *'+heroName(p.heroId)+'* • Maestria '+fmt(p.heroMasteryStage||1)+'/5':''
+  const classMode=!p.heroId&&p.classApplied&&p.classId
+    ?'\n🧙 Classe: *'+(getPlayerClass(p.classId)?.name||p.classId)+'* • Despertar '+fmt(p.awakeningStage||0)+'/5'
+    :''
+  const equipment=(p.weaponName||p.armorName)
+    ?'\n🗡️ Arma em uso: *'+(p.weaponName||'Nenhuma')+'* • 🥋 Armadura: *'+(p.armorName||'Nenhuma')+'*'
+    :''
   const gear=p.heroId&&p.heroGear
     ?'\n🌈 Collab: '+(p.heroGear.weapon?'🗡️ Arma correspondente +'+percent(p.heroGear.attack)+' dano':'Arma correspondente não equipada')+
       ' • '+(p.heroGear.armor?'🥋 Armadura correspondente -'+percent(p.heroGear.defense)+' dano recebido':'Armadura correspondente não equipada')
@@ -20,7 +27,7 @@ function openingLine(icon,p){
     ?'\n🧬 HP de combate +'+percent(p.vitalHpRate)+' • Coração Eterno: '+(Number(p.vitalPulseRate||0)>0?'cura uma vez abaixo de 35%':'inativo')
     :''
   const shield=p.shieldName?'\n🛡️ Escudo: *'+p.shieldName+'* • -'+percent(p.shieldCritResist).replace('%',' p.p.')+' chance CRIT adversária • -'+percent(p.shieldCritGuard)+' bônus de dano CRIT':''
-  return `${icon} *${name(p.name)}*${hero}${gear}\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}${vital}${shield}`
+  return `${icon} *${name(p.name)}*${hero}${classMode}${gear}${equipment}\n❤️ ${fmt(p.hp)}/${fmt(p.maxHp)} • ⚔️ ${fmt(p.atk)} • 🛡️ ${fmt(p.def)}\n🎯 ${percent(p.crit)} CRIT • 👢 ${fmt(p.spd)} VEL\n${pet}${vital}${shield}`
 }
 export function formatPvpBattleReport(r){
   if(!r?.ok||!r?.winner||!r?.loser)throw new Error('Resultado de PvP inválido.')
