@@ -28,8 +28,8 @@ test('Combate nao ignora ampulheta e recibo persiste XP total e bonus',()=>{
  assert.match(src,/exp:p\.awardedExp/)
 })
 test('Resumo final inclui XP adicional separadamente, sem somar duas vezes',()=>{
- const src=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
- assert.match(src,/summarizeRaidLoteXp\(records\)/)
- assert.match(src,/totalBoostXp>0/)
- assert.match(src,/já incluído no XP acima/)
+ const src=readFileSync(new URL('../src/neon/raid-lote-notice-outbox.js',import.meta.url),'utf8')
+ assert.match(src,/summarizeRaidLoteXp\(earned\)/)
+ assert.match(src,/bonusXp>0/)
+ assert.match(src,/incluído no XP acima/)
 })
