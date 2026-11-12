@@ -56,7 +56,7 @@ J. PÓS-RELEASE: observar logs/erros, validar função sem mutar conta real, doc
 - Mudanças SQL: atomicidade, rollback de transações e compatibilidade retroativa.
 
 ## 5. Casos pendentes observados em 12/11/2026
-- PR #316 aberto para destinatário ADMIN via @lid; a descrição afirma reconciliação prévia de dinheiro. NÃO repetir crédito sem reconciliação independente e aprovação.
+- PR #316 foi mesclado em whatsapp-only em 12/11/2026 às 11h33 (Brasília), com deploy Render live no commit 8014fdddd5ed3516c058429f35b0ec1eb5d2fd38 às 11h34. A descrição afirma reconciliação prévia de dinheiro, mas isso NÃO foi revalidado nesta auditoria. NÃO repetir crédito sem reconciliação independente e aprovação.
 - PRs #288 e #289: duas propostas abertas de Raid Lote; escolher uma fonte de verdade e evitar merge cruzado.
 - Release Web alpha-web-rpg observado a partir de branch funcional específica, e domínio alphabot.lcsprado.com.br associado a outro projeto Vercel: mapear a rota de publicação.
 - GitHub Actions da revisão #316 tinham vários checks concluídos, porém pelo menos um estava QUEUED no instante da consulta. Revalidar no momento da aprovação.
