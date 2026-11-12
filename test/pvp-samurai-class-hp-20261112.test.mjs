@@ -30,17 +30,17 @@ test('production class switch reads equipment and uses the same HP projection fo
 });
 
 test('Samurai PvP awakening bonus is bounded without changing base attack or PvE skills',()=>{
-  assert.equal(PVP_AWAKENING_ROLES.samurai.attack,.12);
-  assert.equal(PVP_AWAKENING_ROLES.samurai.defense,.06);
+  assert.equal(PVP_AWAKENING_ROLES.samurai.attack,.17);
+  assert.equal(PVP_AWAKENING_ROLES.samurai.defense,.07);
   const noAwakening=classPvpAttack({classId:'samurai',damage:1000,awakeningStage:0,attackIndex:1});
   const base=classPvpAttack({classId:'samurai',damage:1000,awakeningStage:5,attackIndex:1});
   assert.equal(noAwakening.damage,1000);
-  assert.equal(base.damage,1120);
+  assert.equal(base.damage,1170);
   const burst=classPvpAttack({classId:'samurai',damage:1000,critical:true,awakeningStage:5,attackIndex:4,awakeningState:{focus:3}});
   assert.ok(burst.damage>base.damage);
-  assert.ok(burst.damage<=1400,'Samurai stacked crit burst exceeds reviewed PvP ceiling');
+  assert.ok(burst.damage<=1550,'Samurai stacked crit burst exceeds reviewed PvP ceiling');
   const reduced=classPvpDefense({classId:'samurai',damage:1000,awakeningStage:5,roll:.5,hp:5000,maxHp:5000});
-  assert.equal(reduced.damage,940);
+  assert.equal(reduced.damage,930);
 });
 
 test('PvP report identifies active class and equipment separately from collab synergy',()=>{
