@@ -10651,7 +10651,7 @@ continue
 let chosen=/^\d+$/.test(raw)?classes[Number(raw)-1]:classes.find(c=>c.id===raw||c.name.toLowerCase()===raw)
 if(!chosen){await reply('❌ Classe inválida. Use *!classe*.');continue}
 const result=await setPlayerClass(sender,chosen.id)
-await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP • ⚔️ ${result.stats.atk} ATK • 🛡️ ${result.stats.def} DEF • 💨 ${result.stats.spd} SPD\n⚜️ *${getClassPassive(chosen.id)?.name}* — ${getClassPassive(chosen.id)?.description}`)
+await reply(`🧙 *${chosen.name.toUpperCase()} ATIVO*\n❤️ ${result.stats.hp}/${result.stats.maxHp} HP (com equipamentos) • ⚔️ ${result.stats.atk} ATK base • 🛡️ ${result.stats.def} DEF base • 💨 ${result.stats.spd} SPD base\n⚜️ *${getClassPassive(chosen.id)?.name}* — ${getClassPassive(chosen.id)?.description}\n📋 Use *!status* para ver todos os atributos com itens.`)
 continue
 }
 if(cmd==='web'){

@@ -2,6 +2,19 @@
 // Never persists bonus attributes into stats (avoids double-counting on class swaps).
 // A hero's full build must remain superior on average at equal gear/mastery.
 export const CLASS_LEVEL_CAP=100;
+/**
+ * Convert a player's stored HP during a class transition without confusing
+ * base max HP with equipment HP (which is included in stored current HP).
+ * Does not heal or change equipment and is also safe for display-only calls.
+ */
+export function classHpWithEquipment(currentHp,currentBaseMaxHp,nextBaseMaxHp,equipmentHp=0){
+  const equipment=Math.max(0,Number(equipmentHp)||0);
+  const oldMax=Math.max(1,(Number(currentBaseMaxHp)||1)+equipment);
+  const newMax=Math.max(1,(Number(nextBaseMaxHp)||1)+equipment);
+  const hp=Math.max(0,Math.min(oldMax,Number(currentHp)||0));
+  return {hp:Math.round(newMax*hp/oldMax),maxHp:newMax};
+}
+
 // Papel de combate: classes nunca recebem o bônus do herói nem somam equipamentos aqui.
 // Progressão capada no nível 100, sem alterar stats, Despertar, inventário ou XP.
 export const CLASS_ROLE_GROWTH=Object.freeze({
