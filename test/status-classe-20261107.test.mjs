@@ -36,7 +36,7 @@ test('Despertar V apresenta ganho de função atualizado, sem evoluir classe',()
   const result=formatSavedClassStatus({...base,class_id:'samurai',class_hp_bonus:60,class_atk_bonus:18,class_def_bonus:10,class_spd_bonus:14},5,false)
   assert.match(result,/SAMURAI/)
   assert.match(result,/Despertar: \*V\/V\*/)
-  assert.match(result,/20% dano.*8% dano recebido/)
+  assert.match(result,/12% dano.*6% dano recebido/)
   assert.match(result,/Corte da Lua/)
 })
 
