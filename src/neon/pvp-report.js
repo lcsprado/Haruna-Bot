@@ -19,9 +19,20 @@ function openingLine(icon,p){
   const equipment=(p.weaponName||p.armorName)
     ?'\n🗡️ Arma em uso: *'+(p.weaponName||'Nenhuma')+'* • 🥋 Armadura: *'+(p.armorName||'Nenhuma')+'*'
     :''
-  const gear=p.heroId&&p.heroGear
-    ?'\n🌈 Collab: '+(p.heroGear.weapon?'🗡️ Arma correspondente +'+percent(p.heroGear.attack)+' dano':'Arma correspondente não equipada')+
-      ' • '+(p.heroGear.armor?'🥋 Armadura correspondente -'+percent(p.heroGear.defense)+' dano recebido':'Armadura correspondente não equipada')
+  const collab=p.heroId?p.heroGear:null
+  // Capturas anteriores à V2 ainda podem ter o contrato legado (attack/defense);
+  // preserve a leitura correta desses relatórios sem fingir bônus V2 retroativos.
+  const weaponLabel=collab?.weapon
+    ?('weaponDamage' in collab?'🗡️ Arma vinculada +'+percent(collab.weaponDamage)+' dano final':
+      '🗡️ Arma correspondente +'+percent(collab.attack)+' dano')
+    :'Arma correspondente não equipada'
+  const armorLabel=collab?.armor
+    ?('finalReduction' in collab?'🥋 Armadura vinculada -'+percent(collab.finalReduction)+' dano recebido':
+      '🥋 Armadura correspondente -'+percent(collab.defense)+' dano recebido')
+    :'Armadura correspondente não equipada'
+  const gear=collab
+    ?'\n🌈 Collab: '+weaponLabel+' • '+armorLabel+
+      (collab.set?'\n🌈 Conjunto sagrado: +'+percent(collab.setDamage)+' dano final • +'+percent(collab.crit).replace('%',' p.p.')+' CRIT':'')
     :''
   const vital=Number(p.vitalHpRate||0)>0
     ?'\n🧬 HP de combate +'+percent(p.vitalHpRate)+' • Coração Eterno: '+(Number(p.vitalPulseRate||0)>0?'cura uma vez abaixo de 35%':'inativo')

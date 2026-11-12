@@ -51,7 +51,8 @@ test('cada arma/armadura da collab recebe bônus EXCLUSIVO somente com herói co
     const raid=heroCollabGearBonus(id,weapon,armor,'raid')
     const pvp=heroCollabGearBonus(id,weapon,armor,'pvp')
     assert.deepEqual([raid.weapon,raid.armor,raid.attack,raid.defense],[true,true,.04,.04],id)
-    assert.deepEqual([pvp.weapon,pvp.armor,pvp.attack,pvp.defense],[true,true,.015,.02],id)
+    assert.deepEqual([pvp.weapon,pvp.armor,pvp.attack,pvp.defense],[true,true,0,0],id)
+    assert.deepEqual([pvp.set,pvp.finalDamage,pvp.finalReduction,pvp.crit],[true,.06,.04,.015],id)
     const mismatched=heroCollabGearBonus(id,PECADOS_WEAPONS[(index+1)%7].id,PECADOS_ARMORS[(index+1)%7].id,'raid')
     assert.deepEqual([mismatched.weapon,mismatched.armor,mismatched.attack,mismatched.defense],[false,false,0,0],id)
   }
