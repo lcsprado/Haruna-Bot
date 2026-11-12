@@ -15,7 +15,7 @@ import {COLLAB_FRAGMENT_ITEM} from './collab-fragment-rules.js'
 import {sevenSinsForgePlan} from './seven-sins-forge-plan.js'
 import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearBonus,heroPvpAttack,heroPvpDefense} from './playable-heroes-core.js'
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
-import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance} from './class-combat-balance.js'
+import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
@@ -956,15 +956,27 @@ const next=getPlayerClass(key)
 const RECLASS_ITEM='pergaminho_reclassificacao'
 return transaction(async client=>{
 const st=(await client.query(
-'SELECT hp,max_hp,atk,def,spd,class_id,class_applied,class_hp_bonus,class_atk_bonus,class_def_bonus,class_spd_bonus FROM stats WHERE jid=$1 FOR UPDATE',
+'SELECT hp,max_hp,atk,def,spd,class_id,class_applied,class_hp_bonus,class_atk_bonus,class_def_bonus,class_spd_bonus,weapon_id,armor_id,boot_id,helmet_id FROM stats WHERE jid=$1 FOR UPDATE',
 [jid]
 )).rows[0]
 if(!st) throw new Error('Status do jogador não encontrado.')
+// Stored current HP already includes equipped item HP; stored max_hp is base-only.
+const equippedIds=[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean);
+const equippedLevels=equippedIds.length?(await client.query(
+  'SELECT item_id,level FROM equipment_upgrades WHERE jid=$1 AND item_id=ANY($2::text[])',
+  [jid,equippedIds]
+)).rows:[];
+const equippedStars=await getEquipmentStarLevels(jid,[st.weapon_id,st.armor_id],client);
+const gearHp=equippedIds.reduce((sum,id)=>{
+  const level=Number(equippedLevels.find(row=>row.item_id===id)?.level||1);
+  return sum+Number(equipmentStatsAtLevel(id,level,Number(equippedStars[id]||1))?.hp||0);
+},0);
+const currentDisplay=classHpWithEquipment(st.hp,st.max_hp,st.max_hp,gearHp);
 const applied=Boolean(st.class_applied)
 if(applied&&String(st.class_id)===next.id){
 await client.query('UPDATE player_hero_mode SET hero_species=NULL,updated_at='+nowSql+' WHERE jid=$1',[jid])
 return {ok:true,unchanged:true,firstChoice:false,classId:next.id,classInfo:next,stats:{
-hp:Number(st.hp),maxHp:Number(st.max_hp),atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
+hp:currentDisplay.hp,maxHp:currentDisplay.maxHp,atk:Number(st.atk),def:Number(st.def),spd:Number(st.spd)
 }}
 }
 // Jogadores de classes antigas mantêm os atributos, Despertares e o registro.
@@ -995,7 +1007,6 @@ def:Number(st.class_def_bonus||0),
 spd:Number(st.class_spd_bonus||0)
 }
 const oldMax=Math.max(1,Number(st.max_hp||100))
-const hpRatio=Math.max(0,Math.min(1,Number(st.hp||0)/oldMax))
 const neutralMax=Math.max(1,oldMax-prev.hp)
 const neutralAtk=Math.max(1,Number(st.atk||10)-prev.atk)
 const neutralDef=Math.max(1,Number(st.def||5)-prev.def)
@@ -1004,7 +1015,8 @@ const maxHp=Math.max(1,neutralMax+Number(next.hp||0))
 const atk=Math.max(1,neutralAtk+Number(next.atk||0))
 const def=Math.max(1,neutralDef+Number(next.def||0))
 const spd=Math.max(1,neutralSpd+Number(next.spd||0))
-const hp=Math.max(1,Math.min(maxHp,Math.round(maxHp*hpRatio)))
+const convertedHp=classHpWithEquipment(st.hp,oldMax,maxHp,gearHp)
+const hp=Math.max(1,convertedHp.hp)
 await client.query(
 'UPDATE stats SET hp=$1,max_hp=$2,atk=$3,def=$4,spd=$5,class_id=$6,class_applied=TRUE,class_hp_bonus=$7,class_atk_bonus=$8,class_def_bonus=$9,class_spd_bonus=$10,updated_at='+nowSql+' WHERE jid=$11',
 [hp,maxHp,atk,def,spd,next.id,Number(next.hp||0),Number(next.atk||0),Number(next.def||0),Number(next.spd||0),jid]
@@ -1016,7 +1028,7 @@ await checkpointAwakeningAfterClassChange(client,jid)
 await client.query('UPDATE player_hero_mode SET hero_species=NULL,updated_at='+nowSql+' WHERE jid=$1',[jid])
 return {
 ok:true,firstChoice:!applied,consumedScroll,nextChangeAt,
-classId:next.id,classInfo:next,stats:{hp,maxHp,atk,def,spd}
+classId:next.id,classInfo:next,stats:{hp,maxHp:convertedHp.maxHp,atk,def,spd}
 }
 })
 }
