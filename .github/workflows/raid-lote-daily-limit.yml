@@ -1,0 +1,27 @@
+name: RaidLote - daily reset Brasilia
+
+on:
+  push:
+    paths:
+      - 'src/neon/raid-lote-policy.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'test/raid-lote-daily-limit-20261112.test.mjs'
+      - '.github/workflows/raid-lote-daily-limit.yml'
+  pull_request:
+    paths:
+      - 'src/neon/raid-lote-policy.js'
+      - 'src/neon/raid-lote-store.js'
+      - 'test/raid-lote-daily-limit-20261112.test.mjs'
+      - '.github/workflows/raid-lote-daily-limit.yml'
+
+jobs:
+  daily-limit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/raid-lote-daily-limit-20261112.test.mjs
+      - run: node --check src/neon/raid-lote-policy.js && node --check src/neon/raid-lote-store.js

@@ -128,12 +128,17 @@ export async function purchaseRaidLote(db,{jid,level,attempts,requestKey,confirm
       [jid,openStatuses]
     )).rows[0]
     if(active)throw new Error('Ja existe pacote de Raid em andamento')
-    const last24h=(await c.query(`
+    // Renova as 00:00 de Brasilia, nao 24h apos a compra anterior.
+    // Calcula o inicio do dia no fuso do jogo antes de comparar TIMESTAMPTZ;
+    // o limite vale para todos os pacotes comprados na mesma data local.
+    const today=(await c.query(`
       SELECT COALESCE(SUM(requested),0)::bigint AS purchased
-      FROM raid_lote_jobs WHERE jid=$1 AND created_at>NOW()-INTERVAL '24 hours'
-    `,[jid])).rows[0]
-    if(Number(last24h?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
-      throw new Error('Limite de 10 tentativas compradas em 24 horas')
+      FROM raid_lote_jobs
+      WHERE jid=$1
+        AND created_at >= ((NOW() AT TIME ZONE $2::text)::date::timestamp AT TIME ZONE $2::text)
+    `,[jid,RAID_LOTE_V1.dailyResetTimeZone])).rows[0]
+    if(Number(today?.purchased||0)+initialQuote.attempts>RAID_LOTE_V1.maxAttempts)
+      throw new Error('Limite de 10 tentativas por dia. Renova as 00:00 (horario de Brasilia).')
     const publicRaid=(await c.query(`
       SELECT 1 FROM trevo_games
       WHERE (game_type='raid' OR game_type LIKE 'raid:%')

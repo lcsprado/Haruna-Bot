@@ -1,6 +1,6 @@
 // RAIDLOTE V1 — politica pura, sem I/O, sempre desligada ate homologacao.
 export const RAID_LOTE_V1=Object.freeze({
-  maxAttempts:10,rollingWindowHours:24,minimumManualWins:3,
+  maxAttempts:10,dailyResetTimeZone:'America/Sao_Paulo',minimumManualWins:3,
   paymentMode:'prepaid_no_refund', // compra pacote INTEIRO antes da primeira rodada
   feeBasisPoints:1000,
   cashBasisPoints:8000,
