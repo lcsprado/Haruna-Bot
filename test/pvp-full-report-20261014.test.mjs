@@ -75,7 +75,7 @@ test('relatorio identifica Ban, arma correta e bônus real de collab no PvP',()=
   assert.match(msg,/Personagem: \*Ban\* • Maestria 1\/5/);
   assert.match(msg,/Arma correspondente \+1,5% dano/);
   assert.match(msg,/Armadura correspondente não equipada/);
-  assert.match(msg,/cura periódica somente a partir do 6º ataque/);
+  assert.match(msg,/cura periódica começa no 3º ataque/);
   assert.match(db,/heroGear:fighter\.heroId\?fighter\.heroGear:null/);
 });
 test('relatorio identifica habilidades dos heróis sem confundir cura com classe',()=>{
