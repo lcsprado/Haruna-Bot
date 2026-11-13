@@ -1522,19 +1522,20 @@ COALESCE(eu.level,1)::int AS equipment_level,
 COALESCE(cu.levels,'[]'::jsonb) AS upgraded_copies,
 COALESCE(sf.stars,1)::int AS equipment_stars,
 COALESCE(sf.level,0)::int AS forged_level,
-(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) AS equipped,
+(s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id OR ar.item_id=i.item_id) AS equipped,
 CASE
 WHEN s.weapon_id=i.item_id THEN 'weapon'
 WHEN s.armor_id=i.item_id THEN 'armor'
 WHEN s.boot_id=i.item_id THEN 'boots'
 WHEN s.helmet_id=i.item_id THEN 'helmet'
 WHEN s.shield_id=i.item_id THEN 'shield'
+WHEN ar.item_id=i.item_id THEN 'relic'
 ELSE NULL
 END AS equipped_slot,
 CASE WHEN it.sellable=FALSE THEN 0 ELSE GREATEST(
 0,
 i.quantity-GREATEST(COALESCE(bi.quantity,0),
-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) THEN 1 ELSE 0 END)
+CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id OR ar.item_id=i.item_id) THEN 1 ELSE 0 END)
 ) END::int AS sellable_quantity,
 CASE
 WHEN it.sellable=FALSE THEN 0
@@ -1567,6 +1568,7 @@ END::bigint AS sell_unit
 FROM inventories i
 JOIN items it ON it.id=i.item_id
 LEFT JOIN stats s ON s.jid=i.jid
+LEFT JOIN player_active_relics ar ON ar.jid=i.jid
 LEFT JOIN equipment_upgrades eu ON eu.jid=i.jid AND eu.item_id=i.item_id
 LEFT JOIN equipment_star_forges sf ON sf.jid=i.jid AND sf.item_id=i.item_id
 LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('level',level,'quantity',quantity)
@@ -1578,7 +1580,7 @@ FROM bound_inventory_items b WHERE b.jid=i.jid AND b.item_id=i.item_id
 ) bi ON TRUE
 WHERE i.jid=$1 AND i.quantity>0
 ORDER BY
-CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id) THEN 0 ELSE 1 END,
+CASE WHEN (s.weapon_id=i.item_id OR s.armor_id=i.item_id OR s.boot_id=i.item_id OR s.helmet_id=i.item_id OR s.shield_id=i.item_id OR ar.item_id=i.item_id) THEN 0 ELSE 1 END,
 CASE it.category
 WHEN 'weapon' THEN 1
 WHEN 'armor' THEN 2
@@ -1613,14 +1615,62 @@ return [...paid,...(basic?[{level:1,quantity:basic}]:[]),...(r.forged_level?[{le
 })(),
 bound_quantity:Number(r.bound_quantity||0),
 nontransferable:r.sellable===false||Number(r.bound_quantity||0)>0,
-sellable_quantity:sale.maxSellable,
-regular_sellable_quantity:sale.regularSellable,
-can_sell_all:sale.canSellAll,
+sellable_quantity:Math.max(0,Number(r.quantity||0)-(r.equipped?1:0)),
+regular_sellable_quantity:Math.max(0,Number(r.quantity||0)-(r.equipped?1:0)),
+can_sell_all:!r.equipped,
 upgrade_refund:sale.canSellAll&&['weapon','armor','boots','helmet'].includes(r.category)
 ? (upgradeRows.length?refundFromCopies:equipmentUpgradeSellRefund(r.rarity,r.equipment_level))
 : 0
 })
 })
+}
+async function reconcileUnequippedSaleCopies(client,jid,itemId,owned,qty,equipped){
+const tiers=(await client.query(
+  'SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 ORDER BY level ASC FOR UPDATE',[jid,itemId]
+)).rows
+const forge=(await client.query(
+  'SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId]
+)).rows[0]
+const tierCount=tiers.reduce((sum,row)=>sum+Number(row.quantity||0),0)
+const basic=owned-tierCount-(forge?1:0)
+if(basic<0)throw new Error('Cópias de equipamento inconsistentes; venda cancelada.')
+const keepForge=Boolean(equipped&&forge)
+const keepTier=equipped&&!keepForge&&tiers.length?Number(tiers[tiers.length-1].level):null
+const keepBasic=equipped&&!keepForge&&keepTier===null?1:0
+let pending=qty
+pending-=Math.min(pending,Math.max(0,basic-keepBasic))
+for(const tier of tiers){
+  const level=Number(tier.level),count=Number(tier.quantity)
+  const limit=Math.max(0,count-(keepTier===level?1:0))
+  const take=Math.min(pending,limit)
+  if(take>0){
+    if(take===count)await client.query(
+      'DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 AND level=$3',[jid,itemId,level])
+    else await client.query(
+      'UPDATE equipment_upgrade_copies SET quantity=quantity-$4 WHERE jid=$1 AND item_id=$2 AND level=$3',[jid,itemId,level,take])
+    pending-=take
+  }
+}
+if(pending>0&&forge&&!keepForge){
+  await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
+  pending--
+}
+if(pending!==0)throw new Error('Não foi possível separar as cópias livres; venda cancelada.')
+// Itens vinculados podem ser vendidos, mas vínculos antigos não podem exceder
+// a quantidade restante: caso contrário futuras cópias ficariam bloqueadas.
+const binds=(await client.query(
+  'SELECT source_key,quantity FROM bound_inventory_items WHERE jid=$1 AND item_id=$2 ORDER BY created_at DESC,source_key DESC FOR UPDATE',[jid,itemId]
+)).rows
+let excess=Math.max(0,binds.reduce((n,b)=>n+Number(b.quantity),0)-(owned-qty))
+for(const row of binds){
+  if(excess===0)break
+  const take=Math.min(excess,Number(row.quantity))
+  if(take===Number(row.quantity))await client.query(
+    'DELETE FROM bound_inventory_items WHERE jid=$1 AND item_id=$2 AND source_key=$3',[jid,itemId,row.source_key])
+  else await client.query(
+    'UPDATE bound_inventory_items SET quantity=quantity-$4 WHERE jid=$1 AND item_id=$2 AND source_key=$3',[jid,itemId,row.source_key,take])
+  excess-=take
+}
 }
 export async function sellItem(jid, itemId, qty=1) {
 qty=Number(qty)
@@ -1642,9 +1692,9 @@ const statsR=await client.query(
 [jid]
 )
 const stats=statsR.rows[0]||{}
-const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId || stats.shield_id===itemId) ? 1 : 0
-const bound=await boundItemQuantity(client,jid,itemId)
-const sellable=Math.max(0,owned-Math.max(equipped,bound))
+const activeRelic=(await client.query('SELECT item_id FROM player_active_relics WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.item_id
+const equipped=(stats.weapon_id===itemId || stats.armor_id===itemId || stats.boot_id===itemId || stats.helmet_id===itemId || stats.shield_id===itemId || activeRelic===itemId) ? 1 : 0
+const sellable=Math.max(0,owned-equipped)
 if(sellable<1){
 throw new Error('Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
 }
@@ -1661,11 +1711,6 @@ else if(item.rarity==='uncommon') unit=2500
 else unit=500
 const remaining=owned-qty
 const upgradeRows=(await client.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows
-const forged=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])).rows[0]
-const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,upgradedQuantity:upgradeRows.reduce((n,r)=>n+Number(r.quantity||0),0),hasForge:Boolean(forged)})
-if(sale.inconsistent)throw new Error('Divergência nos upgrades deste item. Nenhuma venda efetuada.')
-if(!equipmentSaleQuantityAllowed(sale,qty,owned))
-throw new Error('Só é possível vender cópias Lv.1 avulsas. Cópias aprimoradas exigem venda integral, sem equipamento equipado, vinculado ou forjado.')
 const upR=['weapon','armor','boots','helmet'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,itemId])
 : {rows:[]}
@@ -1675,6 +1720,7 @@ const upgradeRefund=(remaining===0 && ['weapon','armor','boots','helmet'].includ
 : 0
 const baseTotal=unit*qty
 const total=baseTotal+upgradeRefund
+await reconcileUnequippedSaleCopies(client,jid,itemId,owned,qty,equipped)
 await client.query(
 'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
 [qty,jid,itemId]
@@ -1683,6 +1729,8 @@ if(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category))
 await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,itemId])
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,itemId])
+}else if(['weapon','armor','boots','helmet'].includes(item.category)){
+await syncEffectiveGear(client,jid,itemId)
 }
 await client.query(
 'UPDATE wallets SET cash=cash+$1,updated_at='+nowSql+' WHERE jid=$2',
@@ -1730,6 +1778,7 @@ const statsR=await client.query(
 [jid]
 )
 const stats=statsR.rows[0]||{}
+const activeRelic=(await client.query('SELECT item_id FROM player_active_relics WHERE jid=$1 FOR UPDATE',[jid])).rows[0]?.item_id
 const sold=[]
 let grandTotal=0
 let totalUnits=0
@@ -1744,9 +1793,8 @@ const itemR=await client.query('SELECT * FROM items WHERE id=$1',[sel.itemId])
 const item=itemR.rows[0]
 if(!item) throw new Error('Item não encontrado.')
 if(item.sellable===false) throw new Error('Um dos itens selecionados não pode ser vendido.')
-const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId || stats.shield_id===sel.itemId)
-const bound=await boundItemQuantity(client,jid,sel.itemId)
-const minimumKeep=Math.max(equipped?1:0,bound)
+const equipped=(stats.weapon_id===sel.itemId || stats.armor_id===sel.itemId || stats.boot_id===sel.itemId || stats.helmet_id===sel.itemId || stats.shield_id===sel.itemId || activeRelic===sel.itemId)
+const minimumKeep=equipped?1:0
 const maxBatch=Math.max(0,owned-minimumKeep)
 if(sel.qty>maxBatch){
 throw new Error(equipped
@@ -1763,11 +1811,6 @@ else if(item.rarity==='uncommon') unit=2500
 else unit=500
 const remaining=owned-sel.qty
 const upgradeRows=(await client.query('SELECT level,quantity FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])).rows
-const forged=(await client.query('SELECT stars FROM equipment_star_forges WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])).rows[0]
-const sale=equipmentSalePolicy({quantity:owned,equipped,boundQuantity:bound,upgradedQuantity:upgradeRows.reduce((n,r)=>n+Number(r.quantity||0),0),hasForge:Boolean(forged)})
-if(sale.inconsistent)throw new Error('Divergência nos upgrades deste item. Nenhuma venda efetuada.')
-if(!equipmentSaleQuantityAllowed(sale,sel.qty,owned))
-throw new Error('Só é possível vender cópias Lv.1 avulsas. Cópias aprimoradas exigem venda integral, sem equipamento equipado, vinculado ou forjado.')
 const upR=['weapon','armor','boots','helmet'].includes(item.category)
 ? await client.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,sel.itemId])
 : {rows:[]}
@@ -1777,6 +1820,7 @@ const upgradeRefund=(remaining===0 && ['weapon','armor','boots','helmet'].includ
 : 0
 const baseTotal=unit*sel.qty
 const total=baseTotal+upgradeRefund
+await reconcileUnequippedSaleCopies(client,jid,sel.itemId,owned,sel.qty,equipped)
 await client.query(
 'UPDATE inventories SET quantity=quantity-$1 WHERE jid=$2 AND item_id=$3',
 [sel.qty,jid,sel.itemId]
@@ -1785,6 +1829,8 @@ if(remaining===0 && ['weapon','armor','boots','helmet'].includes(item.category))
 await client.query('DELETE FROM equipment_upgrade_copies WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
 await client.query('DELETE FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
 await client.query('DELETE FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,sel.itemId])
+}else if(['weapon','armor','boots','helmet'].includes(item.category)){
+await syncEffectiveGear(client,jid,sel.itemId)
 }
 sold.push({
 itemId:item.id,

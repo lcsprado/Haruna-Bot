@@ -1,0 +1,33 @@
+name: Venda de itens forjados - seguranca de equipados
+on:
+  push:
+    branches:
+      - fix/sell-unequipped-forged-20261113-whatsapp
+      - fix/sell-unequipped-forged-20261113-web
+  pull_request:
+    branches:
+      - whatsapp-only
+      - feat/web-aiven-beta-protegido-20261021
+  workflow_dispatch:
+jobs:
+  targeted-sale:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax of sale backends
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/index.js
+      - name: Targeted sale scenarios (no database connection)
+        run: |
+          if [ -f test/unequipped-forged-sales-20261113.test.mjs ]; then
+            node --test test/unequipped-forged-sales-20261113.test.mjs
+          fi
+          if [ -f test/web-equipped-shield-sale-20261113.test.mjs ]; then
+            node --test test/web-equipped-shield-sale-20261113.test.mjs
+          fi

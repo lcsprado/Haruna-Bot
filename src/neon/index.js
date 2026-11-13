@@ -4525,8 +4525,9 @@ const p=await getCombatProfile(sender)
 const equippedIds=new Set([p.weapon_id,p.armor_id,p.boot_id,p.helmet_id,p.shield_id].filter(Boolean))
 const equipment=items.filter(i=>['weapon','armor','boots','helmet','shield'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
 const potions=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
-const raid=items.filter(i=>RAID_SELL_IDS.includes(i.item_id))
-if(!equipment.length&&!potions.length&&!raid.length){
+const raid=items.filter(i=>RAID_SELL_IDS.includes(i.item_id)&&Number(i.sellable_quantity||0)>0)
+const others=items.filter(i=>!['weapon','armor','boots','helmet','shield'].includes(i.category)&&!POTION_SELL_IDS.includes(i.item_id)&&!RAID_SELL_IDS.includes(i.item_id)&&Number(i.sellable_quantity||0)>0)
+if(!equipment.length&&!potions.length&&!raid.length&&!others.length){
 clearQuickFlow(chat,sender)
 await reply('💰 Você não possui itens vendáveis agora.')
 return
@@ -4535,11 +4536,12 @@ setQuickFlow(chat,sender,'inventory_sell_category',{},5*60*1000)
 await reply(
 `💰 *VENDER ITENS*
 Escolha o que deseja vender:
-1️⃣ ⚔️ *Equipamentos* — inclui lendários não equipados e não vinculados
+1️⃣ ⚔️ *Equipamentos* — inclusive lendários e forjados livres
 2️⃣ 🧪 *Poções e cura* — jogador e pet
-3️⃣ 🧩 *Itens de Raid* — materiais por R$ 100/un. e chaves
-🔒 Cópias equipadas e vinculadas são protegidas; lendários podem ser vendidos à loja, não a outros jogadores.
-🌘 Itens protegidos/de evento não aparecem.
+3️⃣ 🧩 *Itens de Raid* — materiais e chaves
+4️⃣ 🎁 *Outros* — eventos, insígnias reservas e materiais especiais
+🔒 Apenas a cópia equipada/insígnia ativa fica protegida.
+⚠️ Venda de forjados e itens exclusivos é definitiva.
 9️⃣ Voltar ao inventário
 0️⃣ Sair`
 )
@@ -4555,10 +4557,13 @@ title='⚔️ *VENDER EQUIPAMENTOS*'
 filtered=items.filter(i=>['weapon','armor','boots','helmet','shield'].includes(i.category)&&Number(i.sellable_quantity||0)>0)
 }else if(category==='potions'){
 title='🧪 *VENDER POÇÕES E CURA*'
-filtered=items.filter(i=>POTION_SELL_IDS.includes(i.item_id))
+filtered=items.filter(i=>POTION_SELL_IDS.includes(i.item_id)&&Number(i.sellable_quantity||0)>0)
 }else if(category==='raid'){
 title='🧩 *VENDER ITENS DE RAID*'
-filtered=items.filter(i=>RAID_SELL_IDS.includes(i.item_id))
+filtered=items.filter(i=>RAID_SELL_IDS.includes(i.item_id)&&Number(i.sellable_quantity||0)>0)
+}else if(category==='other'){
+title='🎁 *VENDER OUTROS ITENS*'
+filtered=items.filter(i=>!['weapon','armor','boots','helmet','shield'].includes(i.category)&&!POTION_SELL_IDS.includes(i.item_id)&&!RAID_SELL_IDS.includes(i.item_id)&&Number(i.sellable_quantity||0)>0)
 }else{
 return showSellMenu(chat,sender,reply)
 }
@@ -4573,7 +4578,7 @@ filtered.forEach((i,idx)=>{
 const levelLine=['weapon','armor','boots'].includes(i.category)&&Number(i.equipment_level||1)>1 ? ' • ⭐ Lv.'+Number(i.equipment_level) : ''
 text+='*'+(idx+1)+'.* '+rarityLabel(i.rarity)+' — *'+i.name+'* ×'+i.quantity+levelLine+'\n'
 text+='   Venda: *R$ '+fmt(i.sell_unit)+' cada*\n'
-if(Number(i.sellable_quantity||0)>1&&Number(i.regular_sellable_quantity||0)<Number(i.sellable_quantity||0))text+='   🔒 Avulsa: *'+Number(i.regular_sellable_quantity||0)+'* cópia(s) Lv.1; aprimoradas somente na venda integral.\n'
+if(Number(i.forged_level||0)>0) text+='   🌟 Forjado: pode vender a cópia não equipada.\n'
 if(Number(i.upgrade_refund||0)>0) text+='   ♻️ Venda integral: *+R$ '+fmt(i.upgrade_refund)+'* pelos upgrades\n'
 })
 text+='\n🚀 *VENDA EM MASSA*\nDigite *T* — vender TODOS os itens desta lista\nDigite *R* — vender só os repetidos (mantém 1 de cada)\n'
@@ -8203,9 +8208,9 @@ if(input==='9'){
 await inventoryMenu()
 return true
 }
-const category={1:'equipment',2:'potions',3:'raid'}[input]
+const category={1:'equipment',2:'potions',3:'raid',4:'other'}[input]
 if(!category){
-await reply('💰 Escolha *1 Equipamentos*, *2 Poções e cura* ou *3 Itens de Raid*.')
+await reply('💰 Escolha *1 Equipamentos*, *2 Poções e cura*, *3 Itens de Raid* ou *4 Outros*.')
 return true
 }
 await sellItemsMenu(category)
@@ -8232,7 +8237,7 @@ const p=await getCombatProfile(sender)
 const prepared=[]
 const protectedItems=[]
 for(const item of selected){
-const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id || p.helmet_id===item.item_id)
+const equipped=Boolean(item.equipped || p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id || p.helmet_id===item.item_id || p.shield_id===item.item_id)
 const maxAll=Math.max(0,Number(item.sellable_quantity||0))
 const regularSellable=Math.max(0,Number(item.regular_sellable_quantity||0))
 const duplicates=Math.min(maxAll,regularSellable,Math.max(0,Number(item.quantity)-1))
@@ -8256,7 +8261,7 @@ duplicates
 })
 }
 if(!prepared.length){
-await reply('🔒 Nenhum dos itens escolhidos pode ser alterado em lote. Equipados e vinculados ficam protegidos.')
+await reply('🔒 Nenhuma cópia livre para venda. Equipamentos e insígnias em uso ficam protegidos.')
 return true
 }
 if(selectAll){
@@ -8281,15 +8286,15 @@ await reply('💰 Escolha um item pelo número.')
 return true
 }
 const p=await getCombatProfile(sender)
-const equipped=(p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id || p.helmet_id===item.item_id)
+const equipped=Boolean(item.equipped || p.weapon_id===item.item_id || p.armor_id===item.item_id || p.boot_id===item.item_id || p.helmet_id===item.item_id || p.shield_id===item.item_id)
 const sellable=Math.max(0,Number(item.sellable_quantity||0))
 if(sellable<1){
 await reply('🔒 Essa é sua única cópia equipada. Troque o equipamento antes de vender.')
 return true
 }
-setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable,quantity:Number(item.quantity),equipped,equipmentLevel:Number(item.equipment_level||1),upgradeRefund:Number(item.upgrade_refund||0),regularSellable:Number(item.regular_sellable_quantity||0),canSellAll:Boolean(item.can_sell_all)},90000)
+setQuickFlow(chat,sender,'inventory_sell_qty',{itemId:item.item_id,name:item.name,rarity:item.rarity,unit:Number(item.sell_unit),sellable,quantity:Number(item.quantity),equipped,equipmentLevel:Number(item.equipment_level||1),upgradeRefund:Number(item.upgrade_refund||0),regularSellable:Number(item.regular_sellable_quantity||0),canSellAll:Boolean(item.can_sell_all),forgedLevel:Number(item.forged_level||0)},90000)
 const upInfo=Number(item.upgrade_refund||0)>0&&!equipped ? '\n♻️ Vendendo todas as cópias: *+R$ '+fmt(item.upgrade_refund)+'* de recuperação dos upgrades.' : ''
-const saleRuleHint=sellable>1&&Number(item.regular_sellable_quantity||0)<sellable?'\n🔒 Venda avulsa: '+Number(item.regular_sellable_quantity||0)+' cópia(s) Lv.1. Para vender as aprimoradas, escolha *Vender tudo*.':''
+const saleRuleHint=Number(item.forged_level||0)>0?'\n🌟 Cópias forjadas livres também podem ser vendidas.':''
 await reply('💰 *VENDER '+item.name.toUpperCase()+'*\n\nVocê pode vender: *'+sellable+'*\nValor unitário: *R$ '+fmt(item.sell_unit)+'*'+(Number(item.equipment_level||1)>1?'\n⭐ Nível do equipamento: *Lv.'+Number(item.equipment_level)+'*':'')+upInfo+saleRuleHint+'\n\n1️⃣ Vender 1\n2️⃣ Vender 5\n3️⃣ Vender 10\n4️⃣ Vender tudo\n5️⃣ Escolher quantidade\n\n9️⃣ Voltar\n0️⃣ Sair')
 return true
 }
@@ -8353,7 +8358,7 @@ return true
 }
 const upgradeRefundApplied=(!flow.data.equipped&&qty===Number(flow.data.quantity))?Number(flow.data.upgradeRefund||0):0
 setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty,upgradeRefundApplied},90000)
-const warn=flow.data.rarity==='legendary'?'\n🌟 *ATENÇÃO: ESTE É UM ITEM LENDÁRIO!*\n':''
+const warn=(['legendary','event'].includes(flow.data.rarity)?'\n⚠️ Item lendário/de evento.':'')+(flow.data.forgedLevel>0?'\n🌟 Cópia forjada: a venda pode remover suas estrelas e melhorias.':'')
 const refundText=upgradeRefundApplied>0?'\n♻️ Recuperação dos upgrades: *+R$ '+fmt(upgradeRefundApplied)+'*':''
 await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVenda base: *R$ '+fmt(Number(flow.data.unit)*qty)+'*'+refundText+'\n💵 Total: *R$ '+fmt(Number(flow.data.unit)*qty+upgradeRefundApplied)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
 return true
@@ -8370,7 +8375,7 @@ return true
 }
 const upgradeRefundApplied=(!flow.data.equipped&&qty===Number(flow.data.quantity))?Number(flow.data.upgradeRefund||0):0
 setQuickFlow(chat,sender,'inventory_sell_confirm',{...flow.data,qty,upgradeRefundApplied},90000)
-const warn=flow.data.rarity==='legendary'?'\n🌟 *ATENÇÃO: ESTE É UM ITEM LENDÁRIO!*\n':''
+const warn=(['legendary','event'].includes(flow.data.rarity)?'\n⚠️ Item lendário/de evento.':'')+(flow.data.forgedLevel>0?'\n🌟 Cópia forjada: a venda pode remover suas estrelas e melhorias.':'')
 const refundText=upgradeRefundApplied>0?'\n♻️ Recuperação dos upgrades: *+R$ '+fmt(upgradeRefundApplied)+'*':''
 await reply('⚠️ *CONFIRMAR VENDA*\n\nItem: *'+flow.data.name+'*\nQuantidade: *'+qty+'*\nVenda base: *R$ '+fmt(Number(flow.data.unit)*qty)+'*'+refundText+'\n💵 Total: *R$ '+fmt(Number(flow.data.unit)*qty+upgradeRefundApplied)+'*\n'+warn+'\n1️⃣ Confirmar venda\n2️⃣ Cancelar')
 return true
