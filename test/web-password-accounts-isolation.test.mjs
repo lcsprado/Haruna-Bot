@@ -145,3 +145,16 @@ test('existing browser username login continues working during safe backend-firs
   await assert.rejects(loginWebPassword(db,{username:'original_name',password:'wrong password'}),/incorretos/)
   await assert.rejects(loginWebPassword(db,{username:'admin',password:'Legacy password 123'}),/incorretos/)
 })
+
+test('old registration form keeps its requested username during staged migration',async()=>{
+  const db=dbFixture(),jid='5511999991234@s.whatsapp.net'
+  db.addCode('ABCD2345',jid)
+  const session=await registerWebPassword(db,{code:'ABCD2345',username:'old_browser',password:'Old browser pass 123'})
+  assert.equal(db.accounts.get(jid).username,'old_browser')
+  assert.equal(db.accounts.get(jid).phone_e164,'5511999991234')
+  assert.equal(db.sessions.get(webTokenHash(session.token)).jid,jid)
+  const legacy=await loginWebPassword(db,{username:'old_browser',password:'Old browser pass 123'})
+  const modern=await loginWebPassword(db,{phone:'11999991234',password:'Old browser pass 123'})
+  assert.equal(db.sessions.get(webTokenHash(legacy.token)).jid,jid)
+  assert.equal(db.sessions.get(webTokenHash(modern.token)).jid,jid)
+})
