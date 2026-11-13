@@ -14,6 +14,20 @@ export function normalizeWebUsername(value){
   return username
 }
 
+// Login is a verified Brazilian WhatsApp phone; it never replaces the RPG player's JID.
+export function normalizeWebPhone(value){
+  const raw=String(value??'').trim()
+  if(!/^\+?[0-9 ().-]+$/.test(raw))
+    throw new Error('Informe um telefone brasileiro com DDD.')
+  if(raw.startsWith('+')&&!raw.startsWith('+55'))
+    throw new Error('Informe um telefone brasileiro com DDD.')
+  let digits=raw.replace(/\D/g,'')
+  if(digits.length===10||digits.length===11)digits='55'+digits
+  if(!/^55[1-9][0-9][0-9]{8,9}$/.test(digits))
+    throw new Error('Informe um telefone brasileiro com DDD.')
+  return digits
+}
+
 export function assertWebPassword(value){
   if(typeof value!=='string'||value.length<PASSWORD_MIN_LENGTH||value.length>128||value.includes('\0')||!value.trim())
     throw new Error('A senha precisa ter entre 10 e 128 caracteres.')
