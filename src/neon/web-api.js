@@ -136,6 +136,9 @@ async function ensureWebTables(){
       CREATE INDEX IF NOT EXISTS web_sessions_jid_idx
         ON web_sessions(jid,expires_at DESC);
 
+      -- A session created by legacy code-only exchange is not password authentication.
+      ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS auth_method TEXT NOT NULL DEFAULT 'legacy';
+
       -- Rate limit is shared across API processes. Identifiers are HMACs, not IPs.
       CREATE TABLE IF NOT EXISTS web_auth_rate_limits(
         scope_hash TEXT PRIMARY KEY,
@@ -286,7 +289,7 @@ async function authSession(req){
   await ensureWebTables()
   const tokenHash=sha256(match[1])
   const row=(await db.query(
-    'SELECT jid,chat_jid,expires_at,last_seen_at FROM web_sessions WHERE token_hash=$1',
+    'SELECT s.jid,s.chat_jid,s.expires_at,s.last_seen_at FROM web_sessions s JOIN web_password_accounts a ON a.jid=s.jid WHERE s.token_hash=$1 AND s.auth_method=\'password\'',
     [tokenHash]
   )).rows[0]
   if(!row || Number(row.expires_at)<now()){
@@ -1494,19 +1497,8 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='POST' && url.pathname==='/api/v1/auth/exchange'){
-      await ensureWebTables()
-      try{
-        await consumeWebAuthAttempt(db,req)
-      }catch(err){
-        if(err?.code!=='WEB_AUTH_RATE_LIMITED')throw err
-        res.setHeader('Retry-After',String(err.retryAfterSeconds||60))
-        json(res,429,{ok:false,error:err.message})
-        return true
-      }
-      const body=await readJson(req)
-      const session=await exchangeWebLinkCode(body.code)
-      console.info('[Web Auth] code exchange success',session.groupLinked?'group':'private')
-      json(res,200,{ok:true,...session})
+      // Code-only authentication is forbidden after the phone+password rollout.
+      json(res,410,{ok:false,error:'Use o aplicativo oficial Alpha RPG com telefone e senha.'})
       return true
     }
 
