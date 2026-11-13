@@ -13226,9 +13226,12 @@ if(choice){
 const r=await getWeeklyGolemChoiceStatus(sender)
 if(!r.available)return await reply('👹 *PRÊMIO DO GOLEM*\n🔒 Você ainda não possui o Direito de Escolha.\n🏆 Ele é concedido somente ao 1º e ao 2º colocados com pelo menos 10.000 de dano, quando o evento for liquidado.')
 return await reply('👹🏆 *ESCOLHA SEU EQUIPAMENTO DO GOLEM!*\n\n'+
-r.gear.map((g,i)=>(i+1)+'️⃣ *'+g.name+'* — FORJADO ★★★★★ Lv.10\n'+
-'⚔️ +'+Number(g.atk||0)+' ATK • 🛡️ +'+Number(g.def||0)+' DEF • ❤️ +'+Number(g.hp||0)+' HP'+
-(g.crit?' • 🎯 +'+(g.crit*100).toLocaleString('pt-BR')+'% CRIT':'')).join('\n\n')+
+r.gear.map((g,i)=>{
+ const st=equipmentStatsAtLevel(g.id,10,5)||g
+ return (i+1)+'️⃣ *'+g.name+'* — FORJADO ★★★★★ Lv.10\n'+
+ '⚔️ +'+Number(st.atk||0)+' ATK • 🛡️ +'+Number(st.def||0)+' DEF • ❤️ +'+Number(st.hp||0)+' HP'+
+ (st.crit?' • 🎯 +'+(st.crit*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'% CRIT':'')
+}).join('\n\n')+
 '\n\n✅ Escolha *!golempremio 1*, *2* ou *3*. O direito é consumido uma única vez.')
 } else if(['boss'].includes(cmd)){
 const r=await startBoss(chat)
