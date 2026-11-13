@@ -2871,6 +2871,15 @@ export async function deactivateBossEvent(chat){
 // O Boss semanal é único para todos os grupos. Migra o progresso já causado em
 // Bosses de grupo durante o fim de semana sem duplicar HP nem recompensas.
 const GLOBAL_WEEKLY_BOSS_CHAT='__alpha_global_weekly_boss__'
+// 13/11/2026: XP por classificacao em dano, sem alterar outras edicoes.
+// Apenas participantes com pelo menos 10.000 de dano sao elegiveis.
+const GOLEM_20261113_XP=Object.freeze([40_000,30_000,20_000,10_000,5_000])
+function golem20261113Xp(weekendKey,position,damage){
+ if(String(weekendKey)!==WEEKLY_GOLEM_V2_KEY)return null
+ if(!Number.isFinite(Number(damage))||Number(damage)<10_000)return 0
+ const rank=Number(position)
+ return Number.isInteger(rank)&&rank>=1?(GOLEM_20261113_XP[rank-1]??2_500):0
+}
 
 // Prêmio de escolha é concedido uma só vez, na transação que encerra o evento.
 async function grantWeeklyGolemChoice(c,jid){
@@ -2896,11 +2905,13 @@ export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
   for(let i=0;i<entries.length;i++){
    const p=entries[i],position=i+1
    const cash=weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage})
+   const exp=golem20261113Xp(s.weekendKey,position,p.damage)??0
    if(cash>0)await credit(c,p.jid,cash,'boss_weekend_timeout_20261113')
+   if(exp>0)await grantExpInTransaction(c,p.jid,exp)
    const drops=[]
    if(weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
      drops.push(await grantWeeklyGolemChoice(c,p.jid))
-   rewards.push({...p,position,cash,exp:0,petXp:0,petXpTeam:[],drops})
+   rewards.push({...p,position,cash,exp,petXp:0,petXpTeam:[],drops})
   }
   const marker={mode:'completed',name:s.name,hp:Number(s.hp),
     maxHp:Number(s.maxHp),participants:{},weekendKey:s.weekendKey,
@@ -3798,7 +3809,11 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           }):{cash:0,xp:0}
           cash=(weekly?5000+Math.floor(150000*share)+tier.cash+golemBonus.cash:150+Math.floor(2500*share))*moneyMultiplier
            + (weekly?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage}):0)
-          exp=Math.floor((weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)*(1+pb.xp))*xpMultiplier
+          const weeklyNov13Xp=weekly?golem20261113Xp(s.weekendKey,position,p.damage):null
+          const baseXp=weeklyNov13Xp===null
+            ?(weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)
+            :weeklyNov13Xp
+          exp=Math.floor(baseXp*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
           await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
           if(pp){
