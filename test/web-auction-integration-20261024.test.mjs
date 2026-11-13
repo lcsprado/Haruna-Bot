@@ -12,7 +12,7 @@ test('interface de leilão web contém incremento rápido de 50 mil e valor dire
   // O PWA rico usa imports ES Modules para a garagem/cerco; vm.Script valida o restante.
   assert.doesNotThrow(()=>new Script(app.replace(/^import\s+[^\n]+;\s*$/gm,'')))
   assert.match(app,/\['auction','🔨','Leilão'\]/)
-  assert.match(app,/auctionBid\('\+50000'\)/)
+  assert.ok(app.includes("auctionBid('+50000')") || app.includes("auctionBid('+'+String(ui.auction?.step||100000))"), 'Leilão precisa de incremento rápido fixo ou conforme passo autoritativo da API')
   assert.match(app,/data-auction-form/)
   assert.match(app,/data-auction-amount/)
   assert.match(app,/\/api\/v1\/me\/auction/)
