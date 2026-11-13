@@ -9,7 +9,8 @@ const api=read('../src/neon/web-api.js')
 const app=read('../web/app.js')
 
 test('interface de leilão web contém incremento rápido de 50 mil e valor direto',()=>{
-  assert.doesNotThrow(()=>new Script(app))
+  // O PWA rico usa imports ES Modules para a garagem/cerco; vm.Script valida o restante.
+  assert.doesNotThrow(()=>new Script(app.replace(/^import\\s+[^\\n]+;\\s*$/gm,'')))
   assert.match(app,/\['auction','🔨','Leilão'\]/)
   assert.match(app,/auctionBid\('\+50000'\)/)
   assert.match(app,/data-auction-form/)
