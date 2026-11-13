@@ -9,6 +9,7 @@ import {getOwnerEventMultiplier} from './owner-event-center.js'
 import { db, ensureUser, equipmentStatsAtLevel, getEquipmentStarLevels, grantExpInTransaction, petMaxHp, petMaxEnergy, getDoubleEventMultiplier, getPetXpEventMultiplier, petTeamSynergy } from './db.js'
 import { petCombatSpecialty, classCritBonus, classAttack, classDefense } from './game-catalog.js'
 import {getActivePlayableHero,getPlayableHeroLevel,getPlayableHeroMasteryStage,awardPlayableHeroMastery,awardPlayableHeroLevel} from './playable-heroes.js'
+import {rebaseRaidHeroHp} from './raid-hero-hp-sync.js'
 import {heroCombatStats,heroEffectiveCombatHp,persistHeroHpDelta,heroAttack,heroDefense,excludeActiveHeroPet,heroCollabGearBonus,raid75MasteryBonusActive,raid75MasteryAwardXp} from './playable-heroes-core.js'
 import {classCombatStats,classCombatHp} from './class-combat-balance.js'
 import {raidAttackSkillEvents,raidDefenseSkillEvents,incrementRaidSkillCounts} from './raid-skill-summary.js'
@@ -1783,10 +1784,17 @@ export async function raidRound(chat,level){
           combatMaxHp:player.maxHp,persistentMaxHp:player.heroPersistentMaxHp,
           remainder:player.heroHpRemainder
         });
-        player.heroStoredHp=settled.hp;
+        // Le a vida persistida sob lock, depois dos debitos da rodada.
+        // Reaplica a cura/dano externo ocorrido enquanto a sala estava ativa.
+        const liveStoredHp=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[player.jid])).rows[0]?.hp;
+        const rebased=rebaseRaidHeroHp({trackedStoredHp:player.heroStoredHp,
+          liveStoredHp,projectedStoredHp:settled.hp,storedMaxHp:player.heroPersistentMaxHp,
+          combatMaxHp:player.maxHp});
+        player.heroStoredHp=rebased.storedHp;
+        if(rebased.externalDelta!==0)player.hp=rebased.combatHp;
         player.heroLastHp=player.hp;
         player.heroHpRemainder=settled.remainder;
-        await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[settled.hp,player.jid]);
+        await c.query('UPDATE stats SET hp=$1 WHERE jid=$2',[rebased.storedHp,player.jid]);
       }
       s.status='completed';s.completedAt=Date.now()
       const rewards=await finishRaidRewards(c,s,cfg,chat)
@@ -1990,7 +1998,12 @@ export async function raidRound(chat,level){
           currentCombatHp:p.hp,combatMaxHp:p.maxHp,persistentMaxHp:p.heroPersistentMaxHp,
           remainder:p.heroHpRemainder
         });
-        recordedHp=settled.hp;
+        const liveStoredHp=(await c.query('SELECT hp FROM stats WHERE jid=$1 FOR UPDATE',[p.jid])).rows[0]?.hp;
+        const rebased=rebaseRaidHeroHp({trackedStoredHp:p.heroStoredHp,
+          liveStoredHp,projectedStoredHp:settled.hp,storedMaxHp:p.heroPersistentMaxHp,
+          combatMaxHp:p.maxHp});
+        recordedHp=rebased.storedHp;
+        if(rebased.externalDelta!==0)p.hp=rebased.combatHp;
         p.heroStoredHp=recordedHp;
         p.heroLastHp=p.hp;
         p.heroHpRemainder=settled.remainder;

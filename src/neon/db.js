@@ -19,6 +19,7 @@ import {heroCombatStats,heroEffectiveCombatHp,heroHpToPersistent,heroCollabGearB
 import {classPvpAttack,classPvpDefense} from './pvp-class-powers.js'
 import {classCombatStats,classCombatHp,classPersistentHp,classLevelAdvance,classHpWithEquipment} from './class-combat-balance.js'
 import {pvpCritChance} from './pvp-crit.js'
+import {pvpWinnerByHealth} from './pvp-outcome-policy.js'
 import pg from 'pg'
 import {createTtlCache} from './resource-guards.js'
 import {trackBandwidthStream,countBandwidth} from './bandwidth.js'
@@ -3343,7 +3344,7 @@ const pvpMetrics=Object.fromEntries([A,B].map(fighter=>{
 const persistentPvpHp=fighter=>fighter.heroId
   ?heroHpToPersistent(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp)
   :classPersistentHp(fighter.hp,fighter.maxHp,fighter.heroPersistentMaxHp);
-let winner=A.hp===B.hp ? (Math.random()<0.5?A:B) : (A.hp>B.hp?A:B)
+let winner=pvpWinnerByHealth(A,B)
 let loser=winner===A?B:A
 if(A.hp>0 && B.hp>0){
 loser.hp=0

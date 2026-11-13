@@ -107,7 +107,12 @@ export function formatPvpBattleReport(r){
   if(r.ending&&attacker&&defender){
     lines.push(`❤️ HP ao fim das trocas: ${name(attacker.name)} ${fmt(r.ending.attackerHp)} • ${name(defender.name)} ${fmt(r.ending.defenderHp)}`)
   }
-  if(r.decidedByLimit)lines.push('⚖️ Limite de 20 rodadas: vitória decidida pelo HP restante.')
+  if(r.decidedByLimit){
+    const aRate=attacker?Math.max(0,Number(r.ending?.attackerHp||0))/Math.max(1,Number(attacker.maxHp||1)):0
+    const bRate=defender?Math.max(0,Number(r.ending?.defenderHp||0))/Math.max(1,Number(defender.maxHp||1)):0
+    lines.push('⚖️ Limite de 20 rodadas: vencedor decidido pela porcentagem de HP restante, não pelo HP bruto.')
+    if(attacker&&defender)lines.push(`❤️ Vida proporcional: ${name(attacker.name)} ${percent(aRate)} (${fmt(r.ending?.attackerHp)}/${fmt(attacker.maxHp)}) • ${name(defender.name)} ${percent(bRate)} (${fmt(r.ending?.defenderHp)}/${fmt(defender.maxHp)})`)
+  }
   lines.push('',
     `🏆 *Vencedor: ${name(r.winner.name)}* — ❤️ ${fmt(r.winner.hp)} HP restante`,
     `💰 Prêmio: R$ ${fmt(r.reward)}`,
