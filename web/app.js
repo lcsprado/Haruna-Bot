@@ -668,13 +668,54 @@ async function syncAvatar(force=false){
   }catch{}
 }
 
-async function exchange(code){
+let pendingWebCode='';
+
+function showPasswordLogin(){
+  pendingWebCode='';
+  $('#passwordLoginForm').classList.remove('hidden');
+  $('#showCodeFormBtn').classList.remove('hidden');
+  $('#codePanel').classList.add('hidden');
+  $('#linkForm').classList.remove('hidden');
+  $('#registerForm').classList.add('hidden');
+  $('#recoverForm').classList.add('hidden');
+  $('#linkError').textContent='';
+}
+
+function showCodePanel(){
+  $('#passwordLoginForm').classList.add('hidden');
+  $('#showCodeFormBtn').classList.add('hidden');
+  $('#codePanel').classList.remove('hidden');
+  $('#linkForm').classList.remove('hidden');
+  $('#registerForm').classList.add('hidden');
+  $('#recoverForm').classList.add('hidden');
+  $('#linkError').textContent='';
+}
+
+async function openWebCode(code){
   const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(!clean) throw new Error('Informe o código gerado pelo !web.');
-  const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
-  ui.token=body.token;
+  const state=await api('/api/v1/auth/code/status',{method:'POST',body:JSON.stringify({code:clean})});
+  pendingWebCode=clean;
+  $('#linkCode').value=clean;
+  $('#linkForm').classList.add('hidden');
+  $('#registerForm').classList.toggle('hidden',state.mode!=='register');
+  $('#recoverForm').classList.toggle('hidden',state.mode!=='recover');
+  if(state.mode!=='register'&&state.mode!=='recover')throw new Error('Estado do código inválido.');
+  $('#linkError').textContent='';
+}
+
+async function finishWebLogin(session){
+  if(!session?.token)throw new Error('O servidor não confirmou a sessão.');
+  ui.token=session.token;
   localStorage.setItem(TOKEN_KEY,ui.token);
-  return body;
+  pendingWebCode='';
+  $('#loginPassword').value='';
+  $('#registerPassword').value='';
+  $('#registerConfirm').value='';
+  $('#recoverPassword').value='';
+  $('#recoverConfirm').value='';
+  history.replaceState({},document.title,'/rpg');
+  await sync(false);
 }
 
 async function sync(silent){
@@ -2703,14 +2744,51 @@ function toggleBossAuto(){
   render();
 }
 
-$('#linkForm').addEventListener('submit',async e=>{
+$('#showCodeFormBtn').onclick=()=>showCodePanel();
+$('#backToPasswordBtn').onclick=()=>{
+  history.replaceState({},document.title,'/rpg');
+  showPasswordLogin();
+};
+
+$('#passwordLoginForm').addEventListener('submit',async e=>{
   e.preventDefault();
   $('#linkError').textContent='';
   try{
-    await exchange($('#linkCode').value);
-    history.replaceState({},document.title,'/rpg');
-    await sync(false);
+    const session=await api('/api/v1/auth/login',{method:'POST',
+      body:JSON.stringify({username:$('#loginUsername').value,password:$('#loginPassword').value})});
+    await finishWebLogin(session);
   }catch(err){ $('#linkError').textContent=err.message; }
+});
+
+$('#linkForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  $('#linkError').textContent='';
+  try{await openWebCode($('#linkCode').value);}
+  catch(err){$('#linkError').textContent=err.message;}
+});
+
+$('#registerForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  $('#linkError').textContent='';
+  try{
+    const password=$('#registerPassword').value;
+    if(password!==$('#registerConfirm').value)throw new Error('As senhas não conferem.');
+    const session=await api('/api/v1/auth/register',{method:'POST',
+      body:JSON.stringify({code:pendingWebCode,username:$('#registerUsername').value,password})});
+    await finishWebLogin(session);
+  }catch(err){$('#linkError').textContent=err.message;}
+});
+
+$('#recoverForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  $('#linkError').textContent='';
+  try{
+    const password=$('#recoverPassword').value;
+    if(password!==$('#recoverConfirm').value)throw new Error('As senhas não conferem.');
+    const session=await api('/api/v1/auth/recover',{method:'POST',
+      body:JSON.stringify({code:pendingWebCode,password})});
+    await finishWebLogin(session);
+  }catch(err){$('#linkError').textContent=err.message;}
 });
 $('#logoutBtn').onclick=()=>logout(true);
 $('#menuBtn').onclick=()=>setMenu(!$('#sidebar').classList.contains('open'));
@@ -2738,34 +2816,15 @@ setInterval(()=>{
   const params=new URLSearchParams(location.search);
   const hashParams=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
   const linked=hashParams.get('code') || params.get('link');
-  const tokenFromLink=params.get('token');
-
-  if(tokenFromLink){
-    ui.token=tokenFromLink;
-    localStorage.setItem(TOKEN_KEY,ui.token);
-    history.replaceState({},document.title,'/rpg');
-  }
-
-  // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
-  // Só o navegador executa o POST que consome o código.
+  // Código individual em fragmento: nunca transmitir credenciais por URL.
+  // O código só é consumido após cadastro ou recuperação explícita da senha.
   if(linked){
+    showCodePanel();
     $('#linkCode').value=linked;
-    try{
-      await exchange(linked);
-      history.replaceState({},document.title,'/rpg');
-      await sync(false);
-      return;
-    }catch(err){
-      // Se o aparelho já tem sessão válida, um código antigo/consumido não deve derrubá-la.
-      if(ui.token){
-        history.replaceState({},document.title,'/rpg');
-        showApp();
-        await sync(true);
-        if(ui.token) return;
-      }
-      showLogin(err.message+' Gere um novo !web e toque no novo link. O código vale por 30 minutos.');
-      return;
-    }
+    showLogin();
+    try{await openWebCode(linked);}
+    catch(err){$('#linkError').textContent=err.message;}
+    return;
   }
 
   if(ui.token){

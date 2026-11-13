@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
 import {buildOfficialWebLoginUrl} from './web-official-link.js'
+import {ensureWebPasswordTables,getWebCodeMode,registerWebPassword,recoverWebPassword,loginWebPassword} from './web-password-accounts.js'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
   db, ensureUser, getProfile, getShop, getInventory, getDailyStreak, getCareer,
@@ -123,6 +124,7 @@ async function ensureWebTables(){
       CREATE INDEX IF NOT EXISTS web_pending_group_links_expiry_idx
         ON web_pending_group_links(expires_at);
     `)
+    await ensureWebPasswordTables(db)
     webTablesReady=true
   })().finally(()=>{ webTablesPromise=null })
   return webTablesPromise
@@ -186,6 +188,8 @@ export async function createWebLinkCode(jid,chatJid=null){
       'UPDATE web_sessions SET chat_jid=$1,last_seen_at=$2 WHERE jid=$3 AND expires_at>$2',
       [group,t,jid]
     ).catch(()=>{})
+    // Logins permanentes preservam o contexto de grupo ao reemitir !web.
+    await db.query('UPDATE web_password_accounts SET chat_jid=$1 WHERE jid=$2',[group,jid]).catch(()=>{})
   }
   // Mantém até 3 códigos recentes por jogador para não invalidar o link anterior
   // quando !web é enviado novamente no grupo. Todos continuam sendo uso único.
@@ -276,12 +280,9 @@ async function webAuthSelfTest(){
   )
   let tokenHash=''
   try{
-    const session=await exchangeWebLinkCode(code)
-    tokenHash=sha256(session.token)
-    const row=(await db.query('SELECT jid,chat_jid,expires_at FROM web_sessions WHERE token_hash=$1',[tokenHash])).rows[0]
-    if(!row||row.jid!==jid||Number(row.expires_at)<=created) throw new Error('Sessão de teste não foi persistida.')
-    if(row.chat_jid!==group||!session.groupLinked) throw new Error('Vínculo de grupo do Web não foi persistido.')
-    return {ok:true,codeExchange:true,sessionPersisted:true,groupLinked:true}
+    const state=await getWebCodeMode(db,code)
+    if(state.mode!=='register')throw new Error('Código de teste não retornou primeiro acesso.')
+    return {ok:true,codeValidated:true,sessionAuthMode:'password'}
   }finally{
     if(tokenHash) await db.query('DELETE FROM web_sessions WHERE token_hash=$1',[tokenHash]).catch(()=>{})
     await db.query('DELETE FROM web_link_codes WHERE code_hash=$1',[codeHash]).catch(()=>{})
@@ -295,7 +296,7 @@ async function authSession(req){
   if(!match) return null
   const tokenHash=sha256(match[1])
   const row=(await db.query(
-    'SELECT jid,chat_jid,expires_at FROM web_sessions WHERE token_hash=$1',
+    'SELECT s.jid,s.chat_jid,s.expires_at FROM web_sessions s JOIN web_password_accounts a ON a.jid=s.jid WHERE s.token_hash=$1',
     [tokenHash]
   )).rows[0]
   if(!row || Number(row.expires_at)<now()){
@@ -1375,11 +1376,39 @@ export async function handleWebApi(req,res){
       return true
     }
 
-    if(req.method==='POST' && url.pathname==='/api/v1/auth/exchange'){
+    if(req.method==='POST' && url.pathname==='/api/v1/auth/code/status'){
       const body=await readJson(req)
-      const session=await exchangeWebLinkCode(body.code)
-      console.info('[Web Auth] code exchange success',session.groupLinked?'group':'private')
+      const state=await getWebCodeMode(db,body.code)
+      json(res,200,{ok:true,...state})
+      return true
+    }
+
+    if(req.method==='POST' && url.pathname==='/api/v1/auth/register'){
+      const body=await readJson(req)
+      const session=await registerWebPassword(db,body)
+      console.info('[Web Auth] first access registered',session.groupLinked?'group':'private')
       json(res,200,{ok:true,...session})
+      return true
+    }
+
+    if(req.method==='POST' && url.pathname==='/api/v1/auth/recover'){
+      const body=await readJson(req)
+      const session=await recoverWebPassword(db,body)
+      console.info('[Web Auth] account recovered',session.groupLinked?'group':'private')
+      json(res,200,{ok:true,...session})
+      return true
+    }
+
+    if(req.method==='POST' && url.pathname==='/api/v1/auth/login'){
+      const body=await readJson(req)
+      const session=await loginWebPassword(db,{...body,ip:req.socket?.remoteAddress||'unknown'})
+      json(res,200,{ok:true,...session})
+      return true
+    }
+
+    // Bloqueia o fluxo antigo que permitia entrar apenas com codigo, sem cadastrar senha.
+    if(req.method==='POST' && url.pathname==='/api/v1/auth/exchange'){
+      json(res,410,{ok:false,error:'Atualize o aplicativo e use Primeiro acesso para criar sua senha.'})
       return true
     }
 
@@ -1456,8 +1485,8 @@ export async function handleWebApi(req,res){
     return true
   }catch(err){
     const message=String(err?.message||'Erro interno.')
-    const status=/inválid|expirad|não autorizad/i.test(message)?400:500
-    console.error('[Web API]',req.method,url.pathname,err)
+    const status=/muitas tentativas/i.test(message)?429:/inválid|expirad|não autorizad|senha|usuário|código|conta|indisponível|primeiro acesso/i.test(message)?400:500
+    if(status>=500)console.error('[Web API]',req.method,url.pathname,err)
     // Mensagens SQL, exceções de runtime e nomes internos nunca chegam à interface.
     const technical=/invalid input syntax|syntax error|stack trace|TypeError|ReferenceError|Cannot read properties|column .* does not exist|relation .* does not exist|constraint|ECONN|ETIMEDOUT|SELECT |INSERT INTO |UPDATE |DELETE FROM |\\bNaN\\b|undefined is not/i.test(message)
     json(res,status,{ok:false,error:technical?'Não foi possível concluir a ação. Tente novamente.':message})
