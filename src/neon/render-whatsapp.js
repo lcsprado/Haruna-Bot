@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import {qrPageHtml} from './qr-page.js'
 import {bandwidthSnapshot,trackBandwidthStream,startBandwidthReporting,auditDatabaseBandwidth} from './bandwidth.js'
 import { healthPageHtml } from './health-page.js'
+import {handleWebApi} from './web-api.js'
 
 // A dependência Signal pode imprimir sessões criptográficas completas em texto.
 // Silencia exclusivamente esse diagnóstico verboso, protegendo as chaves e a CPU;
@@ -23,6 +24,20 @@ startBandwidthReporting()
 http.createServer((req,res)=>{
   trackBandwidthStream('http',req.socket)
   const url=new URL(req.url||'/', 'http://localhost')
+
+  // API autenticada do RPG para o PWA na Vercel; nao abre uma segunda sessao WhatsApp.
+  if(url.pathname.startsWith('/api/v1/')){
+    void handleWebApi(req,res).then(handled=>{
+      if(!handled&&!res.writableEnded){res.writeHead(404);res.end('Not found')}
+    }).catch(err=>{
+      console.error('[Web API HTTP] falha',err?.code||'handler_error')
+      if(!res.writableEnded){
+        if(!res.headersSent)res.writeHead(500,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'})
+        res.end(JSON.stringify({ok:false,error:'Erro interno.'}))
+      }
+    })
+    return
+  }
 
   if(url.pathname==='/parear' && req.method==='GET'){
     if(!process.env.ALPHA_QR_SECRET){res.writeHead(404);return res.end('Not found')}
