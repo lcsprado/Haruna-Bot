@@ -41,6 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm ci --ignore-scripts
+      # Repo usa npm install no Render; o lock atual não suporta npm ci.
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - run: node --test test/whatsapp-outbound-durable-retry-20261113.test.mjs test/whatsapp-outbound-retry-store.test.mjs
       - run: node --check src/neon/index.js && node --check src/neon/whatsapp-outbound-durable-retry.js
