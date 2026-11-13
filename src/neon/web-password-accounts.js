@@ -1,6 +1,6 @@
 
 import {
-  normalizeWebPhone,normalizeWebCode,
+  normalizeWebPhone,normalizeWebUsername,normalizeWebCode,
   makeWebPassword,verifyWebPassword,fakeWebPasswordVerification,webSessionToken,webTokenHash
 } from './web-password-auth.js'
 
@@ -175,24 +175,33 @@ async function enforceLoginRate(db,scope,limit){
   return hash
 }
 
-export async function loginWebPassword(db,{phone,password,ip='unknown'}){
+export async function loginWebPassword(db,{phone,username,password,ip='unknown'}){
   await ensureWebPasswordTables(db)
+  // Deploy order: old browser username+password must keep working until the
+  // phone-login PWA is promoted. New clients send only 'phone'.
+  const legacyLogin=phone===undefined && username!==undefined
   let normalized
-  try{normalized=normalizeWebPhone(phone)}
+  try{normalized=legacyLogin?normalizeWebUsername(username):normalizeWebPhone(phone)}
   catch{
     await fakeWebPasswordVerification(password)
     throw new Error('Número ou senha incorretos.')
   }
   const ipKey=String(ip).slice(0,100)
+  const loginScope=legacyLogin?'legacy-user:':'phone:'
   const [userRate,comboRate]=await Promise.all([
-    enforceLoginRate(db,'phone:'+normalized,30),
-    enforceLoginRate(db,'phoneip:'+normalized+':'+ipKey,8)
+    enforceLoginRate(db,loginScope+normalized,30),
+    enforceLoginRate(db,loginScope+normalized+':'+ipKey,8)
   ])
-  const accounts=(await db.query(`
-    SELECT jid,username,phone_e164,password_hash,password_salt,chat_jid
-    FROM web_password_accounts
-    WHERE phone_e164=$1 OR (phone_e164 IS NULL AND jid=$2) LIMIT 2
-  `,[normalized,normalized+'@s.whatsapp.net'])).rows
+  const accounts=legacyLogin
+    ?(await db.query(`
+      SELECT jid,username,phone_e164,password_hash,password_salt,chat_jid
+      FROM web_password_accounts WHERE username=$1 LIMIT 2
+    `,[normalized])).rows
+    :(await db.query(`
+      SELECT jid,username,phone_e164,password_hash,password_salt,chat_jid
+      FROM web_password_accounts
+      WHERE phone_e164=$1 OR (phone_e164 IS NULL AND jid=$2) LIMIT 2
+    `,[normalized,normalized+'@s.whatsapp.net'])).rows
   const account=accounts.length===1?accounts[0]:null
   const correct=account
     ?await verifyWebPassword(password,account.password_salt,account.password_hash)
@@ -204,5 +213,5 @@ export async function loginWebPassword(db,{phone,password,ip='unknown'}){
     INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at)
     VALUES($1,$2,$3,$4,$5,$5)
   `,[webTokenHash(token),account.jid,account.chat_jid||null,expiresAt,stamp])
-  return {token,expiresAt,phone:normalized,groupLinked:Boolean(account.chat_jid)}
+  return {token,expiresAt,phone:legacyLogin?(account.phone_e164||null):normalized,groupLinked:Boolean(account.chat_jid)}
 }
