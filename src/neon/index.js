@@ -21,6 +21,7 @@ import {groupFlashPolicy} from './group-flash-policy.js'
 import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
+import {createDurableOutboundRetry} from './whatsapp-outbound-durable-retry.js'
 import {routePrivateReply} from './private-reply-routing.js'
 import {createVerifiedLidDirectory,canonicalLid,canonicalPhone,pairFromGroupMember} from './verified-lid-directory.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
@@ -2444,6 +2445,12 @@ const { version }=await fetchLatestBaileysVersion()
 const groupMetadataCache=createTtlCache({ttlMs:5*60*1000,maxEntries:128})
 const whatsappMediaCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false,maxKeys:2048})
 const outboundRetryStore=createOutboundRetryStore()
+const durableOutboundRetry=createDurableOutboundRetry({
+  db,memory:outboundRetryStore,
+  log:(action,code)=>console.warn('[WhatsApp Retry] durable '+action,code)
+})
+try{await durableOutboundRetry.init()}
+catch(err){console.error('[WhatsApp Retry] banco de reenvio indisponível; cache local mantido',err?.code||'init_failed')}
 const msgRetryCounterCache=new NodeCache({stdTTL:3600,checkperiod:600,useClones:false})
 let loadGroupMetadata
 const sock=makeWASocket({
@@ -2462,14 +2469,15 @@ mediaCache:whatsappMediaCache,
 // Baileys usa o conteúdo ORIGINAL para refazer a criptografia quando o
 // destinatário recebe "Aguardando mensagem". Nunca retornar texto vazio.
 getMessage:async key=>{
-  const original=outboundRetryStore.getMessage(key)
-  // Somente estado do reenvio; jamais registrar mensagem, código !web, ID ou contato.
+  const recovered=await durableOutboundRetry.lookup(key)
+  // Diagnostico agregado; nunca imprimir mensagens, IDs, tickets ou codigos.
   console.warn('[WhatsApp Retry] lookup',JSON.stringify({
-    found:Boolean(original),
+    found:Boolean(recovered.message),
+    source:recovered.source,
     channel:String(key?.remoteJid||'').endsWith('@lid')?'lid':
       String(key?.remoteJid||'').endsWith('@g.us')?'group':'phone'
   }))
-  return original
+  return recovered.message
 },
 msgRetryCounterCache,
 connectTimeoutMs:60000,
@@ -2515,7 +2523,9 @@ const scheduleOutbound=createBoundedOutboundScheduler({
 })
 sock.sendMessage=(chat,content,options)=>scheduleOutbound(chat,options,async()=>{
   const sent=await sendWithoutQueue(chat,content,options)
-  outboundRetryStore.remember(sent)
+  // Inclui notificacoes de suporte, RaidLote e texto comum. O WhatsApp
+  // pode pedir recriptografia depois de um redeploy ou troca de conta.
+  await durableOutboundRetry.remember(sent,{chat,content})
   return sent
 },content?.text?'text':'other')
 const privateQrState=globalThis.__alphaPairingQr||(globalThis.__alphaPairingQr={value:null,updatedAt:0})
