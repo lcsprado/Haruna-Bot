@@ -10733,7 +10733,7 @@ const groupLine=link.chatJid
 const urlLine=link.url
 ? `\n🌐 *TOQUE AQUI PARA ENTRAR DIRETO:*\n${link.url}`
 : '\n🌐 Abra o RPG Web e informe este código na tela de conexão.'
-const privateMessage=`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ *Primeiro acesso:* abra o link e crie seu usuário e senha, vinculados à sua conta do WhatsApp.\n🔑 *Já tem senha?* Entre no site com usuário e senha. Este código também permite recuperar o acesso.\n⚠️ Código de uso único. Não compartilhe.`
+const privateMessage=`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ *Primeiro acesso:* abra o link, confirme seu número do WhatsApp e crie uma senha. Seu personagem será vinculado automaticamente.\n🔑 *Já tem senha?* Entre no site com seu número de telefone e senha. Este código também permite recuperar o acesso.\n⚠️ Código de uso único. Não compartilhe.`
 await reply(privateMessage)
 continue
 }
