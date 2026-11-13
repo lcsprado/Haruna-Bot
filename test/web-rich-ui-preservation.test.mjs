@@ -49,3 +49,14 @@ test('Cerco routes to dedicated V5/V6 engine while other RPG APIs use primary ba
     assert.ok(siegeUi.includes(needle),'Cerco V5/V6 interaction missing: '+needle)
   assert.equal(ui.includes("const WEB_BUILD_ID='alpha-siege-v5-20261108'"),true)
 })
+
+test('login and game stay styled when a mobile WebView cannot load external CSS',()=>{
+  const source=readFileSync(new URL('../web/styles.css',import.meta.url),'utf8');
+  const match=html.match(/<style id="alpha-inline-styles">\s*([\s\S]*?)\s*<\/style>/);
+  assert.ok(match,'Full stylesheet must be embedded in HTML as a WebView-safe fallback');
+  assert.equal(match[1].trim(),source.trim(),'Inline CSS fallback is stale: synchronize with web/styles.css');
+  for(const marker of ['.hidden{display:none!important}', '.login-overlay{', '.login-card{', '.app{', '@media(max-width:820px)']){
+    assert.ok(match[1].includes(marker),'Lost login/layout fallback: '+marker);
+  }
+  assert.ok(html.includes('href="/styles.css?v=20261113-rich-web-phone-v4"'));
+});
