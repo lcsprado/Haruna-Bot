@@ -21,13 +21,31 @@ test('Garage, events, NPCs, clan preview and live Boss survive the password rele
   assert.ok(css.includes('.race'),'Garage visual CSS not restored');
   assert.ok(manifest.includes('/racing-ui.js'),'PWA not caching garage assets');
 });
-test('restoring richer interface does not bypass username/password authentication',()=>{
-  for(const id of ['passwordLoginForm','registerForm','recoverForm','linkForm'])
+test('restoring richer interface does not bypass phone/password authentication',()=>{
+  for(const id of ['passwordLoginForm','loginPhone','verifiedPhoneHint','registerForm','recoverForm','linkForm'])
     assert.ok(html.includes('id="'+id+'"'),'Login form missing: '+id);
   for(const route of ['/api/v1/auth/login','/api/v1/auth/register','/api/v1/auth/recover','/api/v1/auth/code/status'])
     assert.ok(ui.includes(route),'UI missing secure route: '+route);
   assert.ok(backend.includes('JOIN web_password_accounts'),'Web sessions must be password-linked');
+  assert.ok(ui.includes("phone:$('#loginPhone').value"),'Phone must replace editable username login');
+  assert.ok(!html.includes('registerUsername'),'Registration must bind only the WhatsApp verified phone');
+  assert.ok(!html.includes('loginUsername'),'Username must not be used for login');
   assert.ok(backend.includes('getWebCodeMode'),'WhatsApp code must be checked');
   assert.ok(!ui.includes("api('/api/v1/auth/exchange'"),'UI still uses insecure code-only session creation');
   assert.ok(!ui.includes("ui.token=tokenFromLink"),'UI accepts bearer token via URL query');
 });
+
+test('Cerco routes to dedicated V5/V6 engine while other RPG APIs use primary backend',()=>{
+  const config=JSON.parse(readFileSync(new URL('../web/vercel.json',import.meta.url),'utf8'))
+  const paths=config.rewrites
+  assert.equal(paths[0].source,'/api/v1/me/clan-siege')
+  assert.equal(paths[0].destination,'https://alpha-web-api-beta.onrender.com/api/v1/me/clan-siege')
+  assert.equal(paths[1].source,'/api/v1/me/clan-siege/:path*')
+  assert.equal(paths[1].destination,'https://alpha-web-api-beta.onrender.com/api/v1/me/clan-siege/:path*')
+  assert.equal(paths[2].source,'/api/v1/:path*')
+  assert.equal(paths[2].destination,'https://alpha-bot-whatsapp-m3lc.onrender.com/api/v1/:path*')
+  const siegeUi=readFileSync(new URL('../web/clan-siege-ui.js',import.meta.url),'utf8')
+  for(const needle of ['myTurn','nextTurns','rulesVersion','fortress-upgrade','data-siege-preview','data-siege-target'])
+    assert.ok(siegeUi.includes(needle),'Cerco V5/V6 interaction missing: '+needle)
+  assert.equal(ui.includes("const WEB_BUILD_ID='alpha-siege-v5-20261108'"),true)
+})
