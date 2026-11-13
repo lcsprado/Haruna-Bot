@@ -12,22 +12,41 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/assets/icons/alpha-192.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/alpha-192.png">
-  <link rel="stylesheet" href="/styles.css?v=20261104-duel-portrait-v1-raid-tabs-top-v1">
+  <link rel="stylesheet" href="/styles.css?v=20261104-duel-portrait-v1-raid-tabs-top-v1-password-auth-20261113">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
-    <form id="linkForm" class="login-card">
+    <form id="loginForm" class="login-card">
       <div class="brand-mark">A</div>
       <p class="eyebrow">ALPHA BOT // RPG</p>
-      <h1>Conectar ao WhatsApp</h1>
-      <p class="muted">No grupo onde vocês jogam, envie <b>!web</b>. Digite aqui o código de uso único recebido do Alpha Bot.</p>
-      <label for="linkCode">Código</label>
-      <input id="linkCode" autocomplete="one-time-code" maxlength="12" placeholder="ABCD1234" required>
-      <button class="btn primary" type="submit">Conectar</button>
+      <h1>Entrar na sua conta</h1>
+      <p class="muted">Entre com o WhatsApp vinculado ao seu personagem e a senha que você criou.</p>
+      <label for="loginPhone">WhatsApp com DDD</label>
+      <input id="loginPhone" type="tel" inputmode="tel" autocomplete="username" placeholder="(11) 99999-9999" required>
+      <label for="loginPassword">Senha</label>
+      <input id="loginPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" required>
+      <button class="btn primary" type="submit">Entrar</button>
+      <button id="showSetupBtn" class="btn" type="button">Primeiro acesso ou esqueci a senha</button>
       <button class="btn" type="button" data-pwa-install hidden>📲 Instalar Alpha RPG</button>
-      <button class="btn" id="resumeSessionBtn" type="button" hidden>Voltar à sessão já salva neste aparelho</button>
-      <p id="linkError" class="form-error"></p>
-      <small>Use <b>!web</b> dentro do grupo para que Raid e Boss do navegador usem a mesma sessão do WhatsApp.</small>
+      <p id="loginError" class="form-error" role="alert"></p>
+      <small>Primeiro acesso? Envie <b>!web</b> no privado do Alpha Bot e abra seu link para criar a senha. O personagem será vinculado automaticamente.</small>
+    </form>
+
+    <form id="setupForm" class="login-card hidden">
+      <div class="brand-mark">A</div>
+      <p class="eyebrow">ALPHA BOT // SEGURANÇA</p>
+      <h1>Criar ou recuperar senha</h1>
+      <p class="muted">Use o código recebido no privado do Alpha Bot. Ele dura 10 minutos e só funciona uma vez.</p>
+      <label for="setupCode">Código do !web</label>
+      <input id="setupCode" autocomplete="one-time-code" minlength="8" maxlength="8" placeholder="ABCD1234" required>
+      <label for="setupPassword">Nova senha</label>
+      <input id="setupPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required>
+      <label for="setupConfirm">Confirme a senha</label>
+      <input id="setupConfirm" type="password" autocomplete="new-password" minlength="10" maxlength="128" required>
+      <button class="btn primary" type="submit">Vincular meu personagem</button>
+      <button id="showLoginBtn" class="btn" type="button">Já tenho uma senha</button>
+      <p id="setupError" class="form-error" role="alert"></p>
+      <small>Se você já possuía senha, este processo a substitui e encerra o acesso de aparelhos antigos.</small>
     </form>
   </div>
 
@@ -120,6 +139,6 @@
       refreshInstallButtons();
     })();
   </script>
-  <script type="module" src="/app.js?v=20261104-duel-portrait-v1-auth-isolation-v1-siege-2130-weekly-saturday-v1-pet-exclusives-20261105-v1-adoption-disabled-v1-raid-tabs-top-v1-alpha-siege-v5-20261108-unified-1-inventory-sale-20261111-v1"></script>
+  <script type="module" src="/app.js?v=20261104-duel-portrait-v1-auth-isolation-v1-siege-2130-weekly-saturday-v1-pet-exclusives-20261105-v1-adoption-disabled-v1-raid-tabs-top-v1-alpha-siege-v5-20261108-unified-1-inventory-sale-20261111-v1-password-auth-20261113"></script>
 </body>
 </html>
