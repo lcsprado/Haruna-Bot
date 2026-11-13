@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
+import {normalizeWebPhone,validateWebPassword,hashWebPassword,verifyWebPassword} from './web-password-crypto.js'
 import {buildOfficialWebLoginUrl} from './web-official-link.js'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
@@ -48,7 +49,7 @@ import {getAuctionWebStatus,placeAuctionWebBid} from './auction-bonus-20261101.j
 import { listNpcShops, getNpcShop, buyNpcShopItem } from './npc-shops.js'
 
 const WEB_RAID_MAX_LEVEL=Math.max(...getRaidCatalog().map(raid=>Number(raid.level)||0))
-const CODE_TTL_MS = 30 * 60 * 1000
+const CODE_TTL_MS = 10 * 60 * 1000
 const PENDING_WEB_GROUP_TTL_MS = 10 * 60 * 1000
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
 let webTablesReady = false
@@ -122,6 +123,20 @@ async function ensureWebTables(){
       );
       CREATE INDEX IF NOT EXISTS web_pending_group_links_expiry_idx
         ON web_pending_group_links(expires_at);
+
+      CREATE TABLE IF NOT EXISTS web_accounts(
+        jid TEXT PRIMARY KEY REFERENCES users(jid) ON DELETE CASCADE,
+        phone TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        chat_jid TEXT,
+        created_at BIGINT NOT NULL,
+        password_changed_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS web_auth_throttles(
+        key_hash TEXT PRIMARY KEY,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        reset_at BIGINT NOT NULL
+      );
     `)
     webTablesReady=true
   })().finally(()=>{ webTablesPromise=null })
@@ -186,6 +201,7 @@ export async function createWebLinkCode(jid,chatJid=null){
       'UPDATE web_sessions SET chat_jid=$1,last_seen_at=$2 WHERE jid=$3 AND expires_at>$2',
       [group,t,jid]
     ).catch(()=>{})
+    await db.query('UPDATE web_accounts SET chat_jid=$1 WHERE jid=$2',[group,jid])
   }
   // Mantém até 3 códigos recentes por jogador para não invalidar o link anterior
   // quando !web é enviado novamente no grupo. Todos continuam sendo uso único.
@@ -260,6 +276,96 @@ async function exchangeWebLinkCode(code){
   }finally{
     client.release()
   }
+}
+
+
+async function throttleWebAuth(key,limit=12,windowMs=15*60*1000){
+  await ensureWebTables()
+  const hash=sha256('web-auth:'+String(key))
+  const t=now()
+  const result=await db.query(`
+    INSERT INTO web_auth_throttles(key_hash,attempts,reset_at)
+    VALUES($1,1,$2)
+    ON CONFLICT(key_hash) DO UPDATE SET
+      attempts=CASE WHEN web_auth_throttles.reset_at<$3 THEN 1 ELSE web_auth_throttles.attempts+1 END,
+      reset_at=CASE WHEN web_auth_throttles.reset_at<$3 THEN $2 ELSE web_auth_throttles.reset_at END
+    RETURNING attempts
+  `,[hash,t+windowMs,t])
+  if(Number(result.rows[0]?.attempts||0)>limit) throw new Error('Muitas tentativas. Tente novamente em alguns minutos.')
+}
+
+async function issueWebSession(client,jid,chatJid=null){
+  const token=crypto.randomBytes(32).toString('base64url')
+  const timestamp=now()
+  const expiresAt=timestamp+SESSION_TTL_MS
+  await client.query(
+    'INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at) VALUES($1,$2,$3,$4,$5,$5)',
+    [sha256(token),jid,chatJid,expiresAt,timestamp]
+  )
+  return {token,expiresAt,groupLinked:Boolean(chatJid)}
+}
+
+// Primeira vinculação ou recuperação. O token de WhatsApp não autentica
+// diretamente: ele autoriza uma única definição de senha, consumida na transação.
+async function setupWebPassword(code,password){
+  validateWebPassword(password)
+  const normalized=String(code||'').trim().toUpperCase()
+  if(!/^[A-HJ-NP-Z2-9]{8}$/.test(normalized)) throw new Error('Código inválido ou expirado.')
+  await ensureWebTables()
+  const passwordHash=await hashWebPassword(password)
+  const client=await db.connect()
+  try{
+    await client.query('BEGIN')
+    const row=(await client.query(
+      'SELECT jid,chat_jid,used_at,expires_at FROM web_link_codes WHERE code_hash=$1 FOR UPDATE',
+      [sha256(normalized)]
+    )).rows[0]
+    if(!row||row.used_at||Number(row.expires_at)<now()||!String(row.jid).endsWith('@s.whatsapp.net'))
+      throw new Error('Código inválido ou expirado.')
+    const oldAccount=(await client.query('SELECT chat_jid FROM web_accounts WHERE jid=$1 FOR UPDATE',[row.jid])).rows[0]
+    const previousGroup=(await client.query(
+      'SELECT chat_jid FROM web_sessions WHERE jid=$1 AND chat_jid IS NOT NULL ORDER BY last_seen_at DESC LIMIT 1',[row.jid]
+    )).rows[0]?.chat_jid||null
+    const chatJid=cleanChatJid(row.chat_jid)||cleanChatJid(oldAccount?.chat_jid)||cleanChatJid(previousGroup)
+    const phone=String(row.jid).replace(/@s\.whatsapp\.net$/,'')
+    const timestamp=now()
+    await client.query(`
+      INSERT INTO web_accounts(jid,phone,password_hash,chat_jid,created_at,password_changed_at)
+      VALUES($1,$2,$3,$4,$5,$5)
+      ON CONFLICT(jid) DO UPDATE SET
+        password_hash=EXCLUDED.password_hash,
+        chat_jid=COALESCE(EXCLUDED.chat_jid,web_accounts.chat_jid),
+        password_changed_at=EXCLUDED.password_changed_at
+    `,[row.jid,phone,passwordHash,chatJid,timestamp])
+    // Uma recuperação elimina TODAS as sessões anteriores, inclusive de aparelhos antigos.
+    await client.query('DELETE FROM web_sessions WHERE jid=$1',[row.jid])
+    await client.query('UPDATE web_link_codes SET used_at=$1 WHERE code_hash=$2',[timestamp,sha256(normalized)])
+    await client.query('DELETE FROM web_link_codes WHERE jid=$1 AND used_at IS NULL',[row.jid])
+    const session=await issueWebSession(client,row.jid,chatJid)
+    await client.query('COMMIT')
+    return {...session,phone,firstAccess:!oldAccount}
+  }catch(err){
+    await client.query('ROLLBACK').catch(()=>{})
+    throw err
+  }finally{client.release()}
+}
+
+async function loginWebPassword(phoneInput,password){
+  const phone=normalizeWebPhone(phoneInput)
+  await throttleWebAuth('password-login:'+phone)
+  if(typeof password!=='string'||password.length>128) throw new Error('WhatsApp ou senha inválidos.')
+  await ensureWebTables()
+  const row=(await db.query('SELECT jid,chat_jid,password_hash FROM web_accounts WHERE phone=$1',[phone])).rows[0]
+  const valid=await verifyWebPassword(password,row?.password_hash)
+  if(!valid||!row) throw new Error('WhatsApp ou senha inválidos.')
+  const client=await db.connect()
+  try{
+    await client.query('BEGIN')
+    const session=await issueWebSession(client,row.jid,cleanChatJid(row.chat_jid))
+    await client.query('COMMIT')
+    return {...session,phone}
+  }catch(err){await client.query('ROLLBACK').catch(()=>{});throw err}
+  finally{client.release()}
 }
 
 
@@ -1376,9 +1482,21 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='POST' && url.pathname==='/api/v1/auth/exchange'){
+      json(res,410,{ok:false,error:'Atualize o aplicativo e defina sua senha pelo link do !web.'})
+      return true
+    }
+
+    if(req.method==='POST' && url.pathname==='/api/v1/auth/setup'){
+      await throttleWebAuth('web-setup:'+String(req.headers['x-forwarded-for']||req.socket?.remoteAddress||'unknown'),20)
       const body=await readJson(req)
-      const session=await exchangeWebLinkCode(body.code)
-      console.info('[Web Auth] code exchange success',session.groupLinked?'group':'private')
+      const session=await setupWebPassword(body.code,body.password)
+      json(res,200,{ok:true,...session})
+      return true
+    }
+
+    if(req.method==='POST' && url.pathname==='/api/v1/auth/login'){
+      const body=await readJson(req)
+      const session=await loginWebPassword(body.phone,body.password)
       json(res,200,{ok:true,...session})
       return true
     }
@@ -1456,7 +1574,7 @@ export async function handleWebApi(req,res){
     return true
   }catch(err){
     const message=String(err?.message||'Erro interno.')
-    const status=/inválid|expirad|não autorizad/i.test(message)?400:500
+    const status=/Muitas tentativas/i.test(message)?429:/inválid|expirad|não autorizad|senha precisa|Informe seu WhatsApp|caracteres de controle/i.test(message)?400:500
     console.error('[Web API]',req.method,url.pathname,err)
     // Mensagens SQL, exceções de runtime e nomes internos nunca chegam à interface.
     const technical=/invalid input syntax|syntax error|stack trace|TypeError|ReferenceError|Cannot read properties|column .* does not exist|relation .* does not exist|constraint|ECONN|ETIMEDOUT|SELECT |INSERT INTO |UPDATE |DELETE FROM |\\bNaN\\b|undefined is not/i.test(message)
