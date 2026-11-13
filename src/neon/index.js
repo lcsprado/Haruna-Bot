@@ -22,6 +22,7 @@ import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
 import {createDurableOutboundRetry} from './whatsapp-outbound-durable-retry.js'
+import {createVerifiedPrivateLidRouter} from './whatsapp-private-lid-router.js'
 import {routePrivateReply} from './private-reply-routing.js'
 import {createVerifiedLidDirectory,canonicalLid,canonicalPhone,pairFromGroupMember} from './verified-lid-directory.js'
 import {shouldRouteQuizContinuation} from './menu-routing.js'
@@ -2514,6 +2515,9 @@ if(raidLoteV1Enabled){
 // Serializar TODO envio por grupo (inclusive eventos automáticos) impede
 // disputas de sender-key que produzem mensagens impossíveis de ler.
 const sendWithoutQueue=sock.sendMessage.bind(sock)
+const privateLidRouter=createVerifiedPrivateLidRouter({
+  db,log:(step,code)=>console.warn('[WhatsApp Private Route]',step,code)
+})
 const scheduleOutbound=createBoundedOutboundScheduler({
   maxConcurrentPerChat:1,
   onTiming:({queueMs,transportMs,kind})=>{
@@ -2522,10 +2526,16 @@ const scheduleOutbound=createBoundedOutboundScheduler({
   }
 })
 sock.sendMessage=(chat,content,options)=>scheduleOutbound(chat,options,async()=>{
-  const sent=await sendWithoutQueue(chat,content,options)
-  // Inclui notificacoes de suporte, RaidLote e texto comum. O WhatsApp
-  // pode pedir recriptografia depois de um redeploy ou troca de conta.
-  await durableOutboundRetry.remember(sent,{chat,content})
+  // Piloto para diagnosticar sessões PN x LID: só para o telefone autorizado
+  // em trevo_settings e validado contra o mapeamento WhatsApp verificado.
+  // Outras conversas e todos os grupos seguem rota original, sem exceções.
+  const route=typeof content?.text==='string'
+    ?await privateLidRouter.resolve(chat)
+    :{chat,mode:'unchanged'}
+  const sent=await sendWithoutQueue(route.chat,content,options)
+  if(route.mode==='verified-lid')
+    console.warn('[WhatsApp Private Route] verified-lid sent')
+  await durableOutboundRetry.remember(sent,{chat:route.chat,content})
   return sent
 },content?.text?'text':'other')
 const privateQrState=globalThis.__alphaPairingQr||(globalThis.__alphaPairingQr={value:null,updatedAt:0})
