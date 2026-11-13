@@ -1,0 +1,44 @@
+name: Alpha Bot - especializacoes lendarias
+
+on:
+  pull_request:
+    branches: [whatsapp-only]
+    paths:
+      - src/neon/legendary-pve-traits.js
+      - src/neon/games.js
+      - src/neon/index.js
+      - test/legendary-pve-specialization-20261110.test.mjs
+      - .github/workflows/legendary-pve-validation.yml
+  push:
+    branches: [whatsapp-only]
+    paths:
+      - src/neon/legendary-pve-traits.js
+      - src/neon/games.js
+      - src/neon/index.js
+      - test/legendary-pve-specialization-20261110.test.mjs
+      - .github/workflows/legendary-pve-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar-lendarias:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe da regra e motores do bot
+        run: |
+          node --check src/neon/legendary-pve-traits.js
+          node --check src/neon/games.js
+          node --check src/neon/index.js
+      - name: Testar bonus lendarios isoladamente, sem banco
+        run: node --test test/legendary-pve-specialization-20261110.test.mjs
+      - name: Impedir acesso a banco na verificacao
+        run: test -z "$DATABASE_URL"

@@ -80,6 +80,7 @@ import {formatPvpBattleReport} from './pvp-report.js'
 import {formatClanDonors,formatClanDonationTotals,formatClanDonationOverview,formatOwnClanDonations} from './clan-donation-ranking.js'
 import {pvpCritChance} from './pvp-crit.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,critResistancePercent} from './boss-crit-resistance.js'
+import {LEGENDARY_PVE_RULES,legendaryPveTrait} from './legendary-pve-traits.js'
 import {isNaturalBossEndError,weeklyBossResultMessages} from './boss-final-results.js'
 import {bossFinalNoticeIsRecent,bossFinalNoticeFailureState,BOSS_FINAL_NOTICE_MAX_ATTEMPTS} from './boss-final-outbox-policy.js'
 import {isUnarchivedWeeklyBoss20261030,loadBossArchive20261030} from './boss-archive-20261030.js'
@@ -5140,6 +5141,7 @@ const commandPages={
 *!uparitem* — melhora arma/armadura do Lv.1 ao Lv.10
 *!forjar* — Forja Estelar de armas, armaduras e escudos (até 5 estrelas)
 *!forja5* — compra e evolui automaticamente equipamento da loja até ★5 Lv.10 (taxa R$ 500 mil)
+*!lendarias* — especializações de armas e armaduras de Raid ★3–5
 *!usar* — usa um consumível (incluindo elixires e pergaminhos de XP)
 *!buffxp* — mostra elixir ativo, tempo e itens de XP
 *!usarxp NOME* — ativa elixir ou tomo de experiência
@@ -12434,6 +12436,23 @@ text+=`\n📦 ${itemLabels[itemId]||itemId} ×${qty}`
 }
 text+=`\n\n💡 A cada *5 níveis* há uma nova recompensa. O *!nível* resgata automaticamente tudo que estiver liberado e ainda não tiver sido recebido.`
 await reply(text)
+} else if(['lendarias','lendarios'].includes(cmd)){
+ let text='🏆 *ESPECIALIZAÇÕES LENDÁRIAS — RAIDS 40–70*\n\n'
+ text+='⚔️ *ARMAS* — dano extra:\n'
+ for(const [id,rule] of Object.entries(LEGENDARY_PVE_RULES)){
+  if(rule.category!=='weapon')continue
+  text+='• '+(getEquipmentInfo(id)?.name||id)+' — Boss +'+Math.round(rule.boss*100)+'% • Raid +'+Math.round(rule.raid*100)+'%\n'
+ }
+ text+='\n🛡️ *ARMADURAS* — redução do dano recebido:\n'
+ for(const [id,rule] of Object.entries(LEGENDARY_PVE_RULES)){
+  if(rule.category!=='armor')continue
+  text+='• '+(getEquipmentInfo(id)?.name||id)+' — Boss -'+Math.round(rule.boss*100)+'% • Raid -'+Math.round(rule.raid*100)+'%\n'
+ }
+ text+='\n🔒 Ativação: item *equipado e Lv.10*. ★3 libera 1/3, ★4 libera 2/3, ★5 libera 100% dos percentuais acima.\n'
+ text+='📌 Ao forjar uma estrela, a peça retorna ao Lv.1; a especialização só volta no Lv.10.\n'
+ text+='⚖️ Não afeta PvP nem armas de collab. Não acumula com outra arma ou armadura da mesma categoria.\n'
+ text+='🔎 *!status* mostra os bônus equipados e ativos.'
+ return await reply(text)
 } else if(['status'].includes(cmd)){
 const mentioned=mentionsOf(msg)[0]
 const statusTarget=await resolvePlayerJid(sock,chat,mentioned || sender,msg)
@@ -12461,6 +12480,15 @@ const pvpCritPct=pvpCritChance({equipmentCrit:p.equipment_crit,classId:p.class_i
  classApplied:p.class_applied,awakeningStage:Number(statusContext.awakening_stage||0),
  heroActive:Boolean(heroSheetStatus),collabCrit:statusSynergy.collabCrit,petCrit:statusPetCrit})*100
 const bossCritPct=Math.max(0,10+gearCritPct+Number(statusPetBonus.critPct||0))
+const legendaryWeaponBoss=legendaryPveTrait(p.weapon_id,p.weapon_level,p.weapon_stars,'boss')
+const legendaryWeaponRaid=legendaryPveTrait(p.weapon_id,p.weapon_level,p.weapon_stars,'raid')
+const legendaryArmorBoss=legendaryPveTrait(p.armor_id,p.armor_level,p.armor_stars,'boss')
+const legendaryArmorRaid=legendaryPveTrait(p.armor_id,p.armor_level,p.armor_stars,'raid')
+const legendaryPct=value=>(value*100).toLocaleString('pt-BR',{maximumFractionDigits:1})
+const legendaryStatus=[
+ legendaryWeaponBoss.active?'⚔️ Especialização lendária: Boss +'+legendaryPct(legendaryWeaponBoss.damage)+'% • Raid +'+legendaryPct(legendaryWeaponRaid.damage)+'% de dano':null,
+ legendaryArmorBoss.active?'🛡️ Armadura lendária: Boss -'+legendaryPct(legendaryArmorBoss.reduction)+'% • Raid -'+legendaryPct(legendaryArmorRaid.reduction)+'% de dano recebido':null
+].filter(Boolean).join('\n')
 await reply(
 `⚔️ *STATUS RPG — ${p.push_name || 'Jogador'}*
 ⭐ Nível: ${p.level}
@@ -12474,7 +12502,7 @@ ${heroSheetStatus?formatPlayableHeroCombatSheet(heroSheetStatus,{compact:true}):
 🥋 Armadura: ${p.armor_name} *Lv.${p.armor_level||1}*
 👢 Botas: ${p.boot_name||'Nenhuma'} *Lv.${p.boot_level||1}*
 🪖 Elmo: *${p.helmet_name||'Nenhum'}*
-🛡️ Escudo: *${p.shield_name||'Nenhum'}*${p.shield_id?' Lv.'+p.shield_level+' • -'+Number(p.shield_crit_resist*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+' p.p. CRIT adversário':''}
+🛡️ Escudo: *${p.shield_name||'Nenhum'}*${p.shield_id?' Lv.'+p.shield_level+' • -'+Number(p.shield_crit_resist*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+' p.p. CRIT adversário':''}${legendaryStatus?'\n'+legendaryStatus:''}
 🏆 Vitórias: ${p.win}
 💀 Derrotas: ${p.loss}`
 )

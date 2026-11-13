@@ -3,6 +3,7 @@ import {RAID_LOTE_V1,raidLoteReward,raidLoteGearChance} from './raid-lote-policy
 import {raidGoUnavailableMessage,raidJoinUnavailableMessage,RAID_LOBBY_TTL_MS} from './raid-go-diagnostics.js'
 import {BOSS_CRIT_RESISTANCE,raidBossCritResistance,effectivePveCritChance} from './boss-crit-resistance.js'
 import {DAMAGE_SAMPLE_LIMIT,damageHeroKey,summarizeDamageSamples} from './damage-hero-stats.js'
+import {legendaryPveTrait} from './legendary-pve-traits.js'
 import {applyVitalCombatHp,restoreVitalPersistentHp,vitalPulseHeal} from './vital-pets.js'
 import {bossSettlementSnapshot} from './boss-final-results.js'
 import {getOwnerEventMultiplier} from './owner-event-center.js'
@@ -962,7 +963,10 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
       jid,name:name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,
       atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,
       classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,
-      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
+      pet:combatPet,reservePet,teamPassives,teamSynergy:petTeamSynergy(teamPassives),halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,
+      legendaryRaidDamage:legendaryPveTrait(st.weapon_id,w.level,w.stars,'raid').damage,
+      legendaryRaidReduction:legendaryPveTrait(st.armor_id,a.level,a.stars,'raid').reduction,
+      relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)
     }}
     vitalRaidOpening(s.players[jid])
     // Escala pelo pico de participantes simultâneos, não pelo número de entradas.
@@ -1232,7 +1236,10 @@ export async function startRaid(chat,host,level=null,options={}){
       const teamPassives=teamPets
       const raidShieldActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='selo_guardiao')
       const raidOilActive=raidBuffs.some(row=>row.jid===jid&&row.item_id==='oleo_sombras')
-      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
+      s.players[jid]={jid,name:s.players[jid]?.name||u?.push_name||'Jogador',hp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):classCombatHp(st.hp,Number(st.max_hp)+gearHp,Number(classStats?.maxHp??st.max_hp)+gearHp),maxHp:Number(heroStats?.maxHp??classStats?.maxHp??st.max_hp)+gearHp,atk:Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(w?.atk||0)+Number(a?.atk||0)+Number(b?.atk||0)+Number(h?.atk||0)+ench.atk)*(1+Number(ench.attackPct||0))),def:Number(heroStats?.def??classStats?.def??st.def)+Number(w?.def||0)+Number(a?.def||0)+Number(b?.def||0)+Number(h?.def||0)+ench.def,classId:st.class_id,classApplied:Boolean(st.class_applied)&&!heroId,awakeningStage,heroId,heroMasteryStage,heroGear,heroState:{},heroCombatMaxHp:heroStats?.maxHp||null,heroPersistentMaxHp:Number(st.max_hp)+gearHp,heroStoredHp:heroId?Number(st.hp):null,heroLastHp:heroStats?heroEffectiveCombatHp(st,heroStats,gearHp):null,heroHpRemainder:0,crit:Math.max(0,.10+Number(w?.crit||0)+Number(a?.crit||0)+Number(b?.crit||0)+Number(h?.crit||0)+ench.crit+classCritBonus(st.class_id,st.class_applied&&!heroId,awakeningStage,'raid')),damage:0,petBonusDamage:0,petSkillHealing:0,classHealing:0,classHealingActivations:0,classHealingOpportunities:0,potionHealing:0,petPotionHealing:0,petPotionUses:0,alive:true,heals:0,pet:combatPet,reservePet,teamSynergy,teamPassives,halloweenHelmetId:st.helmet_id,enchantDamage:ench.damage,
+      legendaryRaidDamage:legendaryPveTrait(st.weapon_id,w.level,w.stars,'raid').damage,
+      legendaryRaidReduction:legendaryPveTrait(st.armor_id,a.level,a.stars,'raid').reduction,
+      raidShieldActive,raidOilActive,raidRevivesUsed:0,relicRaidDefense:Number((await activeRelic(c,jid))?.raid||0)}
       vitalRaidOpening(s.players[jid])
       if(raidShieldActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='selo_guardiao'",[jid])
       if(raidOilActive) await c.query("UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id='oleo_sombras'",[jid])
@@ -1737,7 +1744,9 @@ export async function raidRound(chat,level){
       if(p.heroId){p.heroState=classHit.state;p.heroAttacks=heroAttackIndex;}
       p.classLastProcAttack=classHit.lastProcAttack
       p.awakeningState=classHit.awakeningState
-      const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))+Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
+      const dmg=classHit.damage+Math.round(classHit.damage*Number(equippedRaidRelic?.raidAttack||0))
+        +Math.round(raw*(crit?1.5:1)*3*Number(p.enchantDamage||0))
+        +Math.round(classHit.damage*Number(p.legendaryRaidDamage||0))
       const actualDamage=Math.min(Math.max(0,dmg),Math.max(0,Number(s.hp||0)))
       if(p.classId==='paladin'&&p.classApplied&&Number(p.awakeningStage||0)>=1&&s.round%8===0){
         p.classHealingOpportunities=Number(p.classHealingOpportunities||0)+1
@@ -1838,9 +1847,10 @@ export async function raidRound(chat,level){
         Number(ally.hp)>0&&ally.classId==='paladin'&&ally.classApplied&&
         Number(ally.awakeningStage||0)>=4)
       const protectedDamage=guardianAura?Math.max(0,Math.round(hitDamage*.98)):hitDamage
+      const legendaryProtectedDamage=Math.max(0,Math.round(protectedDamage*(1-Number(p.legendaryRaidReduction||0))))
       const passiveDefense=p.heroId
-        ?{...heroDefense({heroId:p.heroId,damage:protectedDamage,state:p.heroState,gear:p.heroGear}),awakeningState:p.awakeningState}
-        :classDefense({classId:p.classId,applied:p.classApplied,damage:protectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
+        ?{...heroDefense({heroId:p.heroId,damage:legendaryProtectedDamage,state:p.heroState,gear:p.heroGear}),awakeningState:p.awakeningState}
+        :classDefense({classId:p.classId,applied:p.classApplied,damage:legendaryProtectedDamage,context:'raid',hp:p.hp,maxHp:p.maxHp,awakeningStage:p.awakeningStage||0,awakeningState:p.awakeningState})
       p.skillActivations=incrementRaidSkillCounts(p.skillActivations,raidDefenseSkillEvents({
         heroId:p.heroId,classId:p.classId,classApplied:p.classApplied,
         awakeningStage:p.awakeningStage,previousState:p.awakeningState,result:passiveDefense
@@ -3373,6 +3383,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const itemLevel=itemId=>Number(upgradeRows.find(r=>r.item_id===itemId)?.level||1)
     const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id),Number(combatSnapshot?.weapon_stars||1)):{atk:0,def:0,hp:0,crit:0}
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id),Number(combatSnapshot?.armor_stars||1)):{atk:0,def:0,hp:0,crit:0}
+    const legendaryBossWeapon=legendaryPveTrait(st.weapon_id,weapon.level,weapon.stars,'boss')
+    const legendaryBossArmor=legendaryPveTrait(st.armor_id,armor.level,armor.stars,'boss')
     const boots=st.boot_id?equipmentStatsAtLevel(st.boot_id,itemLevel(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
     const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
     const atk=Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
@@ -3417,7 +3429,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const faseAnterior=ruptura?Math.max(1,Number(s.phase||1)):1
     const eclipseRelic=equippedRelic
     const relicDamage=eclipseRelic?.boss?Math.max(1,Math.round(passiveHit.damage*eclipseRelic.boss)):0
-    let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage+Math.round(rawBase*(crit?1.5:1)*Number(enchanted.damage||0))
+    let damage=(ruptura&&faseAnterior===3?Math.floor(passiveHit.damage*1.10):passiveHit.damage)+relicDamage
+      +Math.round(rawBase*(crit?1.5:1)*Number(enchanted.damage||0))
+      +Math.round(passiveHit.damage*legendaryBossWeapon.damage)
     if(s.eventId===COLLAB_FARM_ID){
       // Cada participante pode remover no máximo 60% do HP da fase, sem exceções.
       // O cap vale para ataques manuais e automáticos, incluindo críticos e pets.
@@ -3453,10 +3467,11 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       const dodged=petBonus.dodge>0&&Math.random()<petBonus.dodge
       bossCritical=!dodged&&Math.random()<.05
       const bossRawDamage=dodged?0:Math.max(1,Math.round((Number(s.atk||18)*(ruptura?(faseAnterior===2?1.15:faseAnterior===3?1.20:1):1)-def*.22)*(.8+Math.random()*.4)*(1-petBonus.defense)*(1-Number(teamSynergy.defense||0))*(bossCritical?1.5:1)))
+      const legendaryBossIncoming=Math.max(0,Math.round(bossRawDamage*(1-legendaryBossArmor.reduction)))
       const defResult=heroId
-        ?{...heroDefense({heroId,damage:bossRawDamage,state:s.participants[jid].heroState,gear:heroGear}),
+        ?{...heroDefense({heroId,damage:legendaryBossIncoming,state:s.participants[jid].heroState,gear:heroGear}),
           awakeningState:s.participants[jid].awakeningState}
-        :classDefense({classId:st.class_id,applied:st.class_applied,damage:bossRawDamage,context:'boss',hp:php,maxHp:effectiveMaxHp,awakeningStage,awakeningState:s.participants[jid].awakeningState})
+        :classDefense({classId:st.class_id,applied:st.class_applied,damage:legendaryBossIncoming,context:'boss',hp:php,maxHp:effectiveMaxHp,awakeningStage,awakeningState:s.participants[jid].awakeningState})
       if(heroId)s.participants[jid].heroState=defResult.state
       bossDamage=defResult.damage
       s.participants[jid].awakeningState=defResult.awakeningState
