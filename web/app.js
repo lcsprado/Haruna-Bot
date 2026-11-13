@@ -889,6 +889,7 @@ async function finishWebLogin(session){
   localStorage.setItem(TOKEN_KEY,ui.token);
   pendingWebCode='';
   $('#loginPassword').value='';
+  $('#registerPhone').value='';
   $('#registerPassword').value='';
   $('#registerConfirm').value='';
   $('#recoverPassword').value='';
@@ -3807,7 +3808,7 @@ $('#passwordLoginForm').addEventListener('submit',async e=>{
   $('#linkError').textContent='';
   try{
     const session=await api('/api/v1/auth/login',{method:'POST',
-      body:JSON.stringify({username:$('#loginUsername').value,password:$('#loginPassword').value})});
+      body:JSON.stringify({phone:$('#loginPhone').value,password:$('#loginPassword').value})});
     await finishWebLogin(session);
   }catch(err){ $('#linkError').textContent=err.message; }
 });
@@ -3826,7 +3827,7 @@ $('#registerForm').addEventListener('submit',async e=>{
     const password=$('#registerPassword').value;
     if(password!==$('#registerConfirm').value)throw new Error('As senhas não conferem.');
     const session=await api('/api/v1/auth/register',{method:'POST',
-      body:JSON.stringify({code:pendingWebCode,username:$('#registerUsername').value,password})});
+      body:JSON.stringify({code:pendingWebCode,phone:$('#registerPhone').value,password})});
     await finishWebLogin(session);
   }catch(err){$('#linkError').textContent=err.message;}
 });
