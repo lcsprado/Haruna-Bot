@@ -96,7 +96,7 @@ export async function getWebCodeMode(db,code,{skipPhoneVerification=false}={}){
   return {mode:row.registered?'recover':'register',phoneHint:'••••'+phone.slice(-4)}
 }
 
-export async function registerWebPassword(db,{code,password}){
+export async function registerWebPassword(db,{code,password,username}){
   await ensureWebPasswordTables(db)
   const secret=await makeWebPassword(password)
   const client=await db.connect()
@@ -104,6 +104,9 @@ export async function registerWebPassword(db,{code,password}){
     await client.query('BEGIN')
     const link=await readCode(client,code)
     const phone=await verifiedPhoneForJid(client,link.jid)
+    // Transitional support: old deployed browsers submit a username; newer
+    // builds omit it and create the verified phone-based account instead.
+    const loginAlias=username===undefined?phone:normalizeWebUsername(username)
     const account=(await client.query('SELECT jid FROM web_password_accounts WHERE jid=$1',[link.jid])).rows[0]
     if(account)throw new Error('Esta conta já tem senha. Use recuperação com o código !web.')
     const oldGroup=link.chatJid||(await client.query(
@@ -113,7 +116,7 @@ export async function registerWebPassword(db,{code,password}){
     await client.query(`
       INSERT INTO web_password_accounts(jid,username,phone_e164,password_hash,password_salt,chat_jid,created_at,updated_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$7)
-    `,[link.jid,phone,phone,secret.passwordHash,secret.passwordSalt,oldGroup,stamp])
+    `,[link.jid,loginAlias,phone,secret.passwordHash,secret.passwordSalt,oldGroup,stamp])
     await client.query('UPDATE web_link_codes SET used_at=$1 WHERE code_hash=$2',[stamp,link.codeHash])
     // Um cadastro novo invalida TODAS as sessoes antigas que nunca exigiram senha.
     await client.query('DELETE FROM web_sessions WHERE jid=$1',[link.jid])
