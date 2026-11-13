@@ -22,6 +22,7 @@ import {startWebActionConsumer} from './web-activity-relay.js'
 import {groupIncomingByPlayer,createBoundedOutboundScheduler} from './whatsapp-concurrency.js'
 import {createOutboundRetryStore} from './whatsapp-outbound-retry-store.js'
 import {createDurableOutboundRetry} from './whatsapp-outbound-durable-retry.js'
+import {lookupOutboundWithGrace} from './whatsapp-retry-lookup-grace.js'
 import {createVerifiedPrivateLidRouter} from './whatsapp-private-lid-router.js'
 import {routePrivateReply} from './private-reply-routing.js'
 import {createVerifiedLidDirectory,canonicalLid,canonicalPhone,pairFromGroupMember} from './verified-lid-directory.js'
@@ -2472,7 +2473,7 @@ mediaCache:whatsappMediaCache,
 // Baileys usa o conteúdo ORIGINAL para refazer a criptografia quando o
 // destinatário recebe "Aguardando mensagem". Nunca retornar texto vazio.
 getMessage:async key=>{
-  const recovered=await durableOutboundRetry.lookup(key)
+  const recovered=await lookupOutboundWithGrace(k=>durableOutboundRetry.lookup(k),key)
   // Diagnostico agregado; nunca imprimir mensagens, IDs, tickets ou codigos.
   console.warn('[WhatsApp Retry] lookup',JSON.stringify({
     found:Boolean(recovered.message),
