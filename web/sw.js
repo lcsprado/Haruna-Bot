@@ -1,4 +1,4 @@
-const CACHE='alpha-rpg-pwa-20261113-rich-web-phone-v3';
+const CACHE='alpha-rpg-pwa-20261113-rich-web-phone-v4';
 const SHELL=[
   '/rpg','/styles.css','/app.js','/racing-ui.js','/clan-siege-ui.js','/version.json','/manifest.webmanifest',
   '/assets/icons/alpha-192.png','/assets/icons/alpha-512.png',
