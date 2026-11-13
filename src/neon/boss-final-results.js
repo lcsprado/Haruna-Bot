@@ -29,9 +29,11 @@ export function bossSettlementSnapshot(state,rewards){
 export function weeklyBossResultMessages(state,maxLength=3500){
   if(state?.mode!=='completed'||!state?.weeklyCompleted||!Array.isArray(state?.result?.rewards)||!state.result.rewards.length) return []
   const rewards=[...state.result.rewards].sort((a,b)=>Number(a.position||0)-Number(b.position||0))
-  const heading='🏆 *SUPERBOSS SEMANAL DERROTADO!*\n'+
+  const defeated=state.result.defeated!==false
+  const heading=(defeated?'🏆 *SUPERBOSS SEMANAL DERROTADO!*\n':'⏰ *SUPERBOSS SEMANAL ENCERRADO POR PRAZO!*\n')+
     '👹 *'+safeName(state.result.bossName||state.name)+'*\n'+
-    '❤️ HP eliminado: *'+fmt(state.result.maxHp||state.maxHp)+'*\n\n'+
+    (defeated?'❤️ HP eliminado: *'+fmt(state.result.maxHp||state.maxHp)+'*\n\n':
+      '🛡️ O Golem resistiu com *'+fmt(state.result.remainingHp||state.hp)+' HP*.\n🎁 Prêmios especiais pagos por contribuição.\n\n')+
     '🏅 *COLOCAÇÃO E PRÊMIOS*'
   const footer='\n\n✅ *Prêmios já creditados.* Esta mensagem não distribui recompensas novamente.'
   const messages=[]
