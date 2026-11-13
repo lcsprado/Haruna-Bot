@@ -14,6 +14,36 @@ export function normalizeWebUsername(value){
   return username
 }
 
+
+const PHONE_LOGIN_ERROR='Informe um número de WhatsApp brasileiro com DDD (ex.: 11 99999-9999).'
+
+// O telefone digitado é apenas um identificador de login. O vínculo com o jogador
+// só vem do JID verificado pelo WhatsApp que emitiu o código !web.
+export function normalizeWebPhone(value){
+  const raw=String(value??'').trim()
+  if(raw.length<10||raw.length>40||!/^[+()\d\s.-]+$/.test(raw))
+    throw new Error(PHONE_LOGIN_ERROR)
+  const digits=raw.replace(/\D/g,'')
+  const phone=/^\d{10,11}$/.test(digits)?'55'+digits:digits
+  if(!/^55[1-9]\d{9,10}$/.test(phone))throw new Error(PHONE_LOGIN_ERROR)
+  return phone
+}
+
+export async function verifiedWebPhoneFromJid(client,jid){
+  const value=String(jid||'')
+  const pn=/^(\d{12,13})@s[.]whatsapp[.]net$/.exec(value)
+  if(pn)return normalizeWebPhone(pn[1])
+  if(/^\d{6,25}@lid$/.test(value)){
+    const row=(await client.query(
+      'SELECT phone_jid FROM verified_whatsapp_lid_links WHERE lid_jid=$1 ORDER BY updated_at DESC LIMIT 1',
+      [value]
+    )).rows[0]
+    const match=/^(\d{12,13})@s[.]whatsapp[.]net$/.exec(String(row?.phone_jid||''))
+    if(match)return normalizeWebPhone(match[1])
+  }
+  throw new Error('O WhatsApp não confirmou seu telefone. Envie !web no privado e tente novamente.')
+}
+
 export function assertWebPassword(value){
   if(typeof value!=='string'||value.length<PASSWORD_MIN_LENGTH||value.length>128||value.includes('\0')||!value.trim())
     throw new Error('A senha precisa ter entre 10 e 128 caracteres.')
