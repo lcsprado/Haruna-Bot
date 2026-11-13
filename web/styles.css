@@ -1596,3 +1596,9 @@ body.loot-open{overflow:hidden!important}
 .combat-techniques{display:block;font-size:10px;margin-top:4px;color:#b5d5f2;line-height:1.55}
 .combat-techniques small{display:block}
 @media(max-width:620px){.combat-fighters-opening{grid-template-columns:1fr}}
+
+/* Login do Alpha RPG com senha: campos legíveis e formulários roláveis no celular. */
+.login-overlay{overflow-y:auto;align-content:safe center}
+.login-card input[type=password],.login-card input[type=tel]{text-transform:none;letter-spacing:normal}
+.login-card button:disabled{opacity:.6;cursor:wait}
+@media(max-height:750px){.login-overlay{align-content:start}.login-card{margin:auto 0}}
