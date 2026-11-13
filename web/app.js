@@ -1,6 +1,7 @@
 const API_BASE = window.location.origin;
 const TOKEN_KEY = 'alphaWebTokenV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
+const LOGIN_PHONE_KEY = 'alphaWebPhoneV1';
 
 const ui = {
   token: localStorage.getItem(TOKEN_KEY) || '',
@@ -668,13 +669,22 @@ async function syncAvatar(force=false){
   }catch{}
 }
 
-async function exchange(code){
-  const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
-  if(!clean) throw new Error('Informe o código gerado pelo !web.');
-  const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
+function saveWebSession(body){
+  if(!body?.token) throw new Error('O servidor não retornou uma sessão válida.');
   ui.token=body.token;
   localStorage.setItem(TOKEN_KEY,ui.token);
+  if(body.phone) localStorage.setItem(LOGIN_PHONE_KEY,body.phone);
   return body;
+}
+async function loginWithPassword(phone,password){
+  const body=await api('/api/v1/auth/login',{method:'POST',body:JSON.stringify({phone,password})});
+  return saveWebSession(body);
+}
+async function setupWithWhatsappCode(code,password){
+  const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(clean.length!==8) throw new Error('Informe o código de 8 caracteres do !web.');
+  const body=await api('/api/v1/auth/setup',{method:'POST',body:JSON.stringify({code:clean,password})});
+  return saveWebSession(body);
 }
 
 async function sync(silent){
@@ -803,7 +813,18 @@ function showApp(){
 function showLogin(error){
   $('#app').classList.add('hidden');
   $('#loginOverlay').classList.remove('hidden');
-  $('#linkError').textContent=error||'';
+  $('#loginForm').classList.remove('hidden');
+  $('#setupForm').classList.add('hidden');
+  $('#loginPhone').value=localStorage.getItem(LOGIN_PHONE_KEY)||$('#loginPhone').value||'';
+  $('#loginError').textContent=error||'';
+}
+function showSetup(code=''){
+  $('#app').classList.add('hidden');
+  $('#loginOverlay').classList.remove('hidden');
+  $('#loginForm').classList.add('hidden');
+  $('#setupForm').classList.remove('hidden');
+  if(code) $('#setupCode').value=String(code).toUpperCase().replace(/[^A-Z0-9]/g,'');
+  $('#setupError').textContent='';
 }
 async function logout(remote){
   stopRaidAuto();
@@ -2703,15 +2724,45 @@ function toggleBossAuto(){
   render();
 }
 
-$('#linkForm').addEventListener('submit',async e=>{
+$('#loginForm').addEventListener('submit',async e=>{
   e.preventDefault();
-  $('#linkError').textContent='';
+  $('#loginError').textContent='';
+  const button=$('#loginForm button[type="submit"]');
+  button.disabled=true;
   try{
-    await exchange($('#linkCode').value);
-    history.replaceState({},document.title,'/rpg');
+    await loginWithPassword($('#loginPhone').value,$('#loginPassword').value);
+    $('#loginPassword').value='';
     await sync(false);
-  }catch(err){ $('#linkError').textContent=err.message; }
+  }catch(err){ $('#loginError').textContent=err.message; }
+  finally{button.disabled=false;}
 });
+$('#setupForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  $('#setupError').textContent='';
+  const password=$('#setupPassword').value;
+  if(password!==$('#setupConfirm').value){
+    $('#setupError').textContent='As senhas não são iguais.';
+    return;
+  }
+  const button=$('#setupForm button[type="submit"]');
+  button.disabled=true;
+  try{
+    const response=await setupWithWhatsappCode($('#setupCode').value,password);
+    $('#setupPassword').value='';
+    $('#setupConfirm').value='';
+    $('#setupCode').value='';
+    history.replaceState({},document.title,'/rpg');
+    if(response.firstAccess) toast('Conta vinculada ao WhatsApp. Sua senha foi criada.');
+    else toast('Senha redefinida. Sessões antigas foram encerradas.');
+    await sync(false);
+  }catch(err){ $('#setupError').textContent=err.message; }
+  finally{button.disabled=false;}
+});
+$('#showSetupBtn').onclick=()=>showSetup();
+$('#showLoginBtn').onclick=()=>{
+  history.replaceState({},document.title,'/rpg');
+  showLogin();
+};
 $('#logoutBtn').onclick=()=>logout(true);
 $('#menuBtn').onclick=()=>setMenu(!$('#sidebar').classList.contains('open'));
 $('#menuBackdrop').onclick=()=>setMenu(false);
@@ -2737,42 +2788,17 @@ setInterval(()=>{
   renderNav();
   const params=new URLSearchParams(location.search);
   const hashParams=new URLSearchParams(String(location.hash||'').replace(/^#/,''));
+  // O link do WhatsApp é autorização para definir senha, NÃO uma sessão autenticada.
+  // O código fica no fragmento e só será consumido após envio do formulário.
   const linked=hashParams.get('code') || params.get('link');
-  const tokenFromLink=params.get('token');
-
-  if(tokenFromLink){
-    ui.token=tokenFromLink;
-    localStorage.setItem(TOKEN_KEY,ui.token);
-    history.replaceState({},document.title,'/rpg');
-  }
-
-  // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
-  // Só o navegador executa o POST que consome o código.
   if(linked){
-    $('#linkCode').value=linked;
-    try{
-      await exchange(linked);
-      history.replaceState({},document.title,'/rpg');
-      await sync(false);
-      return;
-    }catch(err){
-      // Se o aparelho já tem sessão válida, um código antigo/consumido não deve derrubá-la.
-      if(ui.token){
-        history.replaceState({},document.title,'/rpg');
-        showApp();
-        await sync(true);
-        if(ui.token) return;
-      }
-      showLogin(err.message+' Gere um novo !web e toque no novo link. O código vale por 30 minutos.');
-      return;
-    }
+    showSetup(linked);
+    return;
   }
-
   if(ui.token){
     showApp();
     await sync(true);
     if(ui.token) return;
   }
-
   showLogin();
 })();
