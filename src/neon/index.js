@@ -11649,6 +11649,13 @@ await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${
     const footer=historical
       ?'_Dados anteriores sem identificação de herói, preservados para consulta; não representam o personagem atual._'
       :'_Apenas golpes deste combatente após a atualização. Os dados anteriores estão preservados em !dano historico._';
+    const modeLine=part=>{
+      if(!part)return 'sem registros';
+      const detail=damageReportBreakdown(part);
+      return '*'+fmt(part.average)+'* ('+part.count+' ataques)\n'+
+        '   ⚔️ Normal: *'+(detail.normalCount?fmt(detail.normalAverage):'—')+'* ('+detail.normalCount+')'+
+        ' • 🎯 CRIT: *'+(detail.critCount?fmt(detail.critAverage):'—')+'* ('+detail.critCount+')';
+    };
     await reply('⚔️ *ANÁLISE DE DANO — '+label+'*\n\n'+
       '🎭 Combatente: *'+combatant+'*\n'+
       '💥 Média por ataque: *'+fmt(combined.average)+'*\n'+
@@ -11657,8 +11664,9 @@ await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${
       '📈 Taxa CRIT observada: *'+(split.critPercent===null?'—':split.critPercent.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%')+'*\n'+
       '🔥 Maior dano: *'+fmt(combined.max)+'*\n'+
       '📊 Ataques analisados: *'+combined.count+'* (até '+windowSize+' Boss + '+windowSize+' Raid)\n\n'+
-      '👹 Boss: *'+(boss?fmt(boss.average)+' ('+boss.count+' ataques)':'sem registros')+'*\n'+
-      '🐉 Raid: *'+(raid?fmt(raid.average)+' ('+raid.count+' ataques)':'sem registros')+'*\n\n'+footer);
+      '👹 Boss: '+modeLine(boss)+'\n'+
+      '🐉 Raid: '+modeLine(raid)+'\n\n'+
+      'ℹ️ Compare médias dentro da mesma modalidade; Raid e Boss usam multiplicadores diferentes.\n\n'+footer);
   }
 } else if(['perfil','profile'].includes(cmd)){
 const mentioned=mentionsOf(msg)[0]
