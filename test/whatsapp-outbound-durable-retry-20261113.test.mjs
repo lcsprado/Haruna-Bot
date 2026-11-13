@@ -89,7 +89,7 @@ test('quando mensagem não existe, nunca fabrica payload vazio',async()=>{
 test('integração: dispatcher armazena original e callback Baileys consulta o banco',()=>{
   const src=readFileSync(new URL('../src/neon/index.js',import.meta.url),'utf8')
   assert.match(src,/await durableOutboundRetry\.init\(\)/)
-  assert.match(src,/await durableOutboundRetry\.lookup\(key\)/)
+  assert.match(src,/await lookupOutboundWithGrace\(k=>durableOutboundRetry\.lookup\(k\),key\)/)
   assert.match(src,/await durableOutboundRetry\.remember\(sent,\{chat:route\.chat,content\}\)/)
   assert.match(src,/return recovered\.message/)
   assert.doesNotMatch(src,/const original=outboundRetryStore\.getMessage\(key\)/)
