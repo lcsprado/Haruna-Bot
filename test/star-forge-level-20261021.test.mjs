@@ -101,7 +101,7 @@ test('level-up restores actual max HP including equipped armor, helmet and star 
   assert.match(levelup,/fw\.level=COALESCE\(uw\.level,1\)/)
   assert.match(levelup,/fa\.level=COALESCE\(ua\.level,1\)/)
   assert.match(levelup,/equipmentStatsAtLevel\(st\.armor_id,st\.armor_level,st\.armor_stars\)/)
-  assert.match(levelup,/equipmentStatsAtLevel\(st\.helmet_id,st\.helmet_level\)/)
+  assert.match(levelup,/equipmentStatsAtLevel\(st\.helmet_id,st\.helmet_level,st\.helmet_stars\)/)
   assert.match(levelup,/Number\(st\?\.max_hp\|\|100\)\+levels\*8\+gearHp/)
   assert.match(levelup,/hp=\$5/)
   assert.doesNotMatch(levelup,/(?:^|\n)\s*hp=max_hp\+\$1/)
