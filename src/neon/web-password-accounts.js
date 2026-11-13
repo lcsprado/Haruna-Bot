@@ -80,7 +80,7 @@ async function issueSession(client,jid,chatJid){
   return {token,expiresAt,groupLinked:Boolean(chatJid)}
 }
 
-export async function getWebCodeMode(db,code){
+export async function getWebCodeMode(db,code,{skipPhoneVerification=false}={}){
   await ensureWebPasswordTables(db)
   const hash=webTokenHash(normalizeWebCode(code))
   const row=(await db.query(`
@@ -90,6 +90,8 @@ export async function getWebCodeMode(db,code){
     WHERE l.code_hash=$1 AND l.used_at IS NULL AND l.expires_at>$2
   `,[hash,Date.now()])).rows[0]
   if(!row)throw new Error('Código inválido ou expirado. Envie !web no WhatsApp para gerar outro.')
+  // Internal health probe uses a synthetic JID; public code status always verifies the phone.
+  if(skipPhoneVerification)return {mode:row.registered?'recover':'register'}
   const phone=await verifiedPhoneForJid(db,row.jid)
   return {mode:row.registered?'recover':'register',phoneHint:'••••'+phone.slice(-4)}
 }
