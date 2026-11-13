@@ -211,6 +211,8 @@ const pokemonQuizReplyThrottle=new Map()
 let bossEventScheduler=null
 let setePecadosBroadcaster=null
 let bossProgressScheduler=null
+// O runner vive fora de start(); o anuncio depende do socket inicializado dentro de start().
+let announceCompletedWeeklyBossFromSession=null
 let reconnectTimer=null
 let reconnecting=false
 let reconnectAttempts=0
@@ -507,7 +509,7 @@ continue
 return
 }
 if(r.mode==='weekly'){
-  await announceCompletedWeeklyBoss()
+  if(announceCompletedWeeklyBossFromSession)await announceCompletedWeeklyBossFromSession()
   return
 }
 await reply(text); return
@@ -537,7 +539,7 @@ await reply(`⚔️ *SESSÃO DE BOSS CONCLUÍDA!*\n\n🥊 Ataques: *${attacks}*\
       )).rows[0]?.state
       if(sessionMode==='weekly'&&state?.mode==='completed'&&Number(state.hp)<=0){
         completed=true
-        await announceCompletedWeeklyBoss()
+        if(announceCompletedWeeklyBossFromSession)await announceCompletedWeeklyBossFromSession()
         return
       }
       if(sessionMode==='common'&&state?.mode==='completed'&&Number(state.hp)<=0){
@@ -2829,6 +2831,7 @@ async function announceCompletedWeeklyBoss(){
     console.error('[Boss Final] falha ao publicar resultado',err?.message||err)
   }finally{completedWeeklyBossNoticeBusy=false}
 }
+announceCompletedWeeklyBossFromSession=announceCompletedWeeklyBoss
 
 let eclipseResultBroadcastBusy=false
 async function announceCompletedEclipse(){
