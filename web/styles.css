@@ -1049,3 +1049,11 @@ body.loot-open{overflow:hidden!important}
   .collab-hero-card-art{height:260px!important;min-height:260px!important;}
   .combat-fighter.player .collab-hero-portrait.combat-character-art{height:148px!important;max-height:148px!important;}
 }
+
+/* Login e cadastro: senhas nunca sao transformadas visualmente em maiusculas. */
+.login-card{max-height:calc(100dvh - 32px);overflow-y:auto;scrollbar-width:thin}
+.login-card input:not(#linkCode){text-transform:none;letter-spacing:.015em;font-size:16px}
+.login-card label{margin:13px 0 5px}
+.login-card .muted{font-size:13px;line-height:1.5}
+.login-card .btn{height:46px}
+.login-card .hidden{display:none!important}
