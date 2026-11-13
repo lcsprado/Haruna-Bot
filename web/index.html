@@ -12,7 +12,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/assets/icons/alpha-192.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/alpha-192.png">
-  <link rel="stylesheet" href="/styles.css?v=20261113-rich-web-password-v2">
+  <link rel="stylesheet" href="/styles.css?v=20261113-rich-web-phone-v3">
 </head>
 <body>
   <div id="loginOverlay" class="login-overlay">
@@ -20,11 +20,11 @@
       <div class="brand-mark">A</div>
       <p class="eyebrow">ALPHA BOT // RPG</p>
       <h1>Entrar no Alpha RPG</h1>
-      <p class="muted">Sua conta do jogo continua vinculada ao seu WhatsApp. Entre com o usuário e a senha que você cadastrou.</p>
+      <p class="muted">Seu personagem continua vinculado ao WhatsApp. Entre com seu número de telefone e senha.</p>
 
       <form id="passwordLoginForm">
-        <label for="loginUsername">Usuário</label>
-        <input id="loginUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="24" placeholder="seu_usuario" required>
+        <label for="loginPhone">Telefone com DDD</label>
+        <input id="loginPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="(11) 99999-9999" required>
         <label for="loginPassword">Senha</label>
         <input id="loginPassword" type="password" autocomplete="current-password" minlength="10" maxlength="128" placeholder="Sua senha" required>
         <button class="btn primary" type="submit">Entrar</button>
@@ -40,10 +40,9 @@
           <button class="btn primary" type="submit">Validar código</button>
         </form>
 
+        <p id="verifiedPhoneHint" class="muted hidden"></p>
         <form id="registerForm" class="hidden">
-          <p class="muted">Primeiro acesso: escolha seu usuário e crie uma senha. Não cria personagem novo.</p>
-          <label for="registerUsername">Escolher usuário</label>
-          <input id="registerUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="24" placeholder="exemplo_123" required>
+          <p class="muted">Primeiro acesso: crie uma senha para o número confirmado pelo WhatsApp. Seu personagem não será recriado.</p>
           <label for="registerPassword">Criar senha</label>
           <input id="registerPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Mínimo de 10 caracteres" required>
           <label for="registerConfirm">Confirmar senha</label>
@@ -151,6 +150,6 @@
       refreshInstallButtons();
     })();
   </script>
-  <script type="module" src="/app.js?v=20261113-rich-web-password-v2"></script>
+  <script type="module" src="/app.js?v=20261113-rich-web-phone-v3"></script>
 </body>
 </html>
