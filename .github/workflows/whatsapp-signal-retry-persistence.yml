@@ -1,0 +1,46 @@
+name: WhatsApp Signal retry persistence
+
+on:
+  pull_request:
+    paths:
+      - 'src/neon/whatsapp-outbound-durable-retry.js'
+      - 'src/neon/whatsapp-outbound-retry-store.js'
+      - 'src/neon/index.js'
+      - 'test/whatsapp-outbound-durable-retry-20261113.test.mjs'
+      - '.github/workflows/whatsapp-signal-retry-persistence.yml'
+  push:
+    paths:
+      - 'src/neon/whatsapp-outbound-durable-retry.js'
+      - 'src/neon/whatsapp-outbound-retry-store.js'
+      - 'src/neon/index.js'
+      - 'test/whatsapp-outbound-durable-retry-20261113.test.mjs'
+      - '.github/workflows/whatsapp-signal-retry-persistence.yml'
+
+jobs:
+  signal-retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      OUTBOUND_RETRY_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - run: node --test test/whatsapp-outbound-durable-retry-20261113.test.mjs test/whatsapp-outbound-retry-store.test.mjs
+      - run: node --check src/neon/index.js && node --check src/neon/whatsapp-outbound-durable-retry.js
