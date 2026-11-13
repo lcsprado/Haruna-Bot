@@ -119,6 +119,9 @@ async function ensureWebTables(){
       CREATE INDEX IF NOT EXISTS web_sessions_jid_idx
         ON web_sessions(jid,expires_at DESC);
 
+      -- Tokens minted by the former code-only Web login are NOT password proof.
+      ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS auth_method TEXT NOT NULL DEFAULT 'legacy';
+
       CREATE TABLE IF NOT EXISTS web_pending_group_links(
         jid TEXT PRIMARY KEY,
         chat_jid TEXT NOT NULL,
@@ -300,7 +303,7 @@ async function authSession(req){
   if(!match) return null
   const tokenHash=sha256(match[1])
   const row=(await db.query(
-    'SELECT s.jid,s.chat_jid,s.expires_at FROM web_sessions s JOIN web_password_accounts a ON a.jid=s.jid WHERE s.token_hash=$1',
+    'SELECT s.jid,s.chat_jid,s.expires_at FROM web_sessions s JOIN web_password_accounts a ON a.jid=s.jid WHERE s.token_hash=$1 AND s.auth_method=\'password\'',
     [tokenHash]
   )).rows[0]
   if(!row || Number(row.expires_at)<now()){
@@ -1429,6 +1432,7 @@ export async function handleWebApi(req,res){
     }
 
     if(req.method==='POST' && url.pathname==='/api/v1/auth/login'){
+      await ensureWebTables()
       const body=await readJson(req)
       const session=await loginWebPassword(db,{...body,ip:req.socket?.remoteAddress||'unknown'})
       json(res,200,{ok:true,...session})

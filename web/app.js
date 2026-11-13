@@ -2,7 +2,7 @@ import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
-const WEB_ASSET_ID='alpha-rich-phone-20261113-v4';
+const WEB_ASSET_ID='alpha-rich-phone-20261113-v5';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
@@ -3890,6 +3890,12 @@ setInterval(()=>{
   // Código individual em fragmento: nunca transmitir credenciais por URL.
   // O código só é consumido após cadastro ou recuperação explícita da senha.
   if(linked){
+    // A new !web proof MUST NOT inherit an old session from this browser.
+    // Otherwise visibility/polling or a reload could open another player's RPG
+    // before any password is typed, even while the recovery form is visible.
+    ui.token='';
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(SWITCH_PENDING_KEY);
     showCodePanel();
     $('#linkCode').value=linked;
     showLogin();

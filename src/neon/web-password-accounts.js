@@ -74,7 +74,7 @@ async function issueSession(client,jid,chatJid){
   const now=Date.now()
   const expiresAt=now+SESSION_TTL_MS
   await client.query(
-    'INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at) VALUES($1,$2,$3,$4,$5,$5)',
+    'INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at,auth_method) VALUES($1,$2,$3,$4,$5,$5,\'password\')',
     [webTokenHash(token),jid,chatJid||null,expiresAt,now]
   )
   return {token,expiresAt,groupLinked:Boolean(chatJid)}
@@ -213,8 +213,8 @@ export async function loginWebPassword(db,{phone,username,password,ip='unknown'}
   await db.query('DELETE FROM web_auth_rate_limits WHERE scope_hash=ANY($1::text[])',[userRate,comboRate]).catch(()=>{})
   const token=webSessionToken(),stamp=Date.now(),expiresAt=stamp+SESSION_TTL_MS
   await db.query(`
-    INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at)
-    VALUES($1,$2,$3,$4,$5,$5)
+    INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at,auth_method)
+    VALUES($1,$2,$3,$4,$5,$5,'password')
   `,[webTokenHash(token),account.jid,account.chat_jid||null,expiresAt,stamp])
   return {token,expiresAt,phone:legacyLogin?(account.phone_e164||null):normalized,groupLinked:Boolean(account.chat_jid)}
 }
