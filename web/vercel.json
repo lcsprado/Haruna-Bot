@@ -1,6 +1,7 @@
 {
   "cleanUrls": true,
   "rewrites": [
+    { "source": "/api/v1/:path*", "destination": "https://alpha-bot-whatsapp-m3lc.onrender.com/api/v1/:path*" },
     { "source": "/rpg", "destination": "/index.html" },
     { "source": "/rpg/:path*", "destination": "/:path*" }
   ]
