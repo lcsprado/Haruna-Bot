@@ -6,6 +6,7 @@ const WEB_BUILD_ID='alpha-siege-v5-20261108';
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
 const CHARACTER_KEY = 'alphaWebCharacterV1';
+const LOGIN_PHONE_KEY = 'alphaWebPhoneV1';
 
 const ui = {
   token: localStorage.getItem(TOKEN_KEY) || '',
@@ -844,20 +845,11 @@ async function syncAvatar(force=false){
   }catch{}
 }
 
-async function exchange(code){
-  const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
-  if(!clean) throw new Error('Informe o código gerado pelo !web.');
-  // Preserva o token antigo no armazenamento, mas nunca o utiliza durante
-  // uma tentativa de trocar de identidade.
-  if(localStorage.getItem(TOKEN_KEY))localStorage.setItem(SWITCH_PENDING_KEY,'1');
-  ui.token='';
-  const body=await api('/api/v1/auth/exchange',{method:'POST',body:JSON.stringify({code:clean})});
+function applyPasswordSession(body){
   if(typeof body?.token!=='string'||!body.token.trim())throw new Error('O servidor não retornou uma sessão válida.');
-  stopRaidAuto();
-  stopBossAuto();
+  stopRaidAuto();stopBossAuto();
   if(ui.avatarUrl)URL.revokeObjectURL(ui.avatarUrl);
-  ui.avatarUrl='';ui.avatarFetchedAt=0;
-  ui.token=body.token;
+  ui.avatarUrl='';ui.avatarFetchedAt=0;ui.token=body.token;
   ui.data=null;ui.catalog=null;ui.extras=null;ui.extrasFetchedAt=0;
   ui.eventCenter=null;ui.eventCenterFetchedAt=0;
   ui.siege=null;ui.siegeFetchedAt=0;ui.siegeError='';
@@ -865,7 +857,20 @@ async function exchange(code){
   ui.lastFullSyncAt=0;ui.syncing=false;
   localStorage.setItem(TOKEN_KEY,body.token);
   localStorage.removeItem(SWITCH_PENDING_KEY);
+  if(body.phone)localStorage.setItem(LOGIN_PHONE_KEY,body.phone);
   return body;
+}
+async function loginWithPassword(phone,password){
+  ui.token='';
+  const body=await api('/api/v1/auth/login',{method:'POST',body:JSON.stringify({phone,password})});
+  return applyPasswordSession(body);
+}
+async function setupWithWhatsappCode(code,password){
+  const clean=String(code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(clean.length!==8)throw new Error('Informe o código de 8 caracteres do !web.');
+  ui.token='';
+  const body=await api('/api/v1/auth/setup',{method:'POST',body:JSON.stringify({code:clean,password})});
+  return applyPasswordSession(body);
 }
 
 async function sync(silent,force=false){
@@ -1138,9 +1143,18 @@ function showApp(){
 function showLogin(error){
   $('#app').classList.add('hidden');
   $('#loginOverlay').classList.remove('hidden');
-  $('#linkError').textContent=error||'';
-  const previous=$('#resumeSessionBtn');
-  if(previous)previous.hidden=!localStorage.getItem(TOKEN_KEY);
+  $('#loginForm').classList.remove('hidden');
+  $('#setupForm').classList.add('hidden');
+  $('#loginPhone').value=localStorage.getItem(LOGIN_PHONE_KEY)||$('#loginPhone').value||'';
+  $('#loginError').textContent=error||'';
+}
+function showSetup(code=''){
+  $('#app').classList.add('hidden');
+  $('#loginOverlay').classList.remove('hidden');
+  $('#loginForm').classList.add('hidden');
+  $('#setupForm').classList.remove('hidden');
+  if(code)$('#setupCode').value=String(code).toUpperCase().replace(/[^A-Z0-9]/g,'');
+  $('#setupError').textContent='';
 }
 async function logout(remote){
   stopRaidAuto();
@@ -3723,31 +3737,32 @@ function toggleBossAuto(){
   render();
 }
 
-$('#linkForm').addEventListener('submit',async e=>{
-  e.preventDefault();
-  $('#linkError').textContent='';
-  try{
-    await exchange($('#linkCode').value);
-    history.replaceState({},document.title,'/rpg');
-    await sync(false);
-  }catch(err){showLogin(err.message+' Gere um novo !web se o código expirou.');}
+$('#loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();$('#loginError').textContent='';
+  const button=$('#loginForm button[type="submit"]');button.disabled=true;
+  try{await loginWithPassword($('#loginPhone').value,$('#loginPassword').value);$('#loginPassword').value='';await sync(false,true);}
+  catch(err){$('#loginError').textContent=err.message;}
+  finally{button.disabled=false;}
 });
-$('#resumeSessionBtn').onclick=async()=>{
-  const saved=localStorage.getItem(TOKEN_KEY)||'';
-  if(!saved){showLogin('Não existe sessão anterior neste aparelho. Gere um novo !web.');return;}
-  ui.token=saved;
-  ui.data=null;
-  ui.lastFullSyncAt=0;
-  showLogin('Validando a sessão anterior neste aparelho...');
-  await sync(true,true);
-  if(ui.token&&ui.data){
-    localStorage.removeItem(SWITCH_PENDING_KEY);
-    showApp();
-  }else{
-    ui.token='';
-    showLogin('Não foi possível validar a sessão anterior. Tente novamente ou gere um novo !web.');
-  }
+$('#setupForm').addEventListener('submit',async e=>{
+  e.preventDefault();$('#setupError').textContent='';
+  const password=$('#setupPassword').value;
+  if(password!==$('#setupConfirm').value){$('#setupError').textContent='As senhas não são iguais.';return;}
+  const button=$('#setupForm button[type="submit"]');button.disabled=true;
+  try{
+    const result=await setupWithWhatsappCode($('#setupCode').value,password);
+    $('#setupPassword').value='';$('#setupConfirm').value='';$('#setupCode').value='';
+    history.replaceState({},document.title,'/rpg');
+    toast(result.firstAccess?'Conta vinculada ao WhatsApp e senha criada.':'Senha redefinida; outros aparelhos desconectados.');
+    await sync(false,true);
+  }catch(err){$('#setupError').textContent=err.message;}
+  finally{button.disabled=false;}
+});
+$('#showSetupBtn').onclick=()=>{
+  if(localStorage.getItem(TOKEN_KEY))localStorage.setItem(SWITCH_PENDING_KEY,'1');
+  ui.token='';showSetup();
 };
+$('#showLoginBtn').onclick=()=>{history.replaceState({},document.title,'/rpg');showLogin();};
 $('#logoutBtn').onclick=()=>logout(true);
 $('#menuBtn').onclick=()=>setMenu(!$('#sidebar').classList.contains('open'));
 $('#menuBackdrop').onclick=()=>setMenu(false);
@@ -3801,26 +3816,14 @@ setInterval(()=>{
     return;
   }
 
-  // Um código de !web fica no fragmento (#code=...), invisível para crawlers e previews.
-  // Só o navegador executa o POST que consome o código.
+  // Código no fragmento autoriza a criação da senha, sem abrir a conta automaticamente.
   if(linked){
-    $('#linkCode').value=linked;
-    try{
-      await exchange(linked);
-      history.replaceState({},document.title,'/rpg');
-      await sync(false,true);
-      return;
-    }catch(err){
-      // Nunca expõe automaticamente a sessão anterior ao tentar outra conta.
-      ui.token='';
-      history.replaceState({},document.title,'/rpg');
-      showLogin(err.message+' Gere um novo !web ou escolha explicitamente voltar à sessão anterior.');
-      return;
-    }
+    if(localStorage.getItem(TOKEN_KEY))localStorage.setItem(SWITCH_PENDING_KEY,'1');
+    ui.token='';showSetup(linked);return;
   }
   if(localStorage.getItem(SWITCH_PENDING_KEY)){
     ui.token='';
-    showLogin('Há uma sessão anterior salva neste aparelho. Se quiser usá-la, selecione a opção abaixo.');
+    showLogin('Entre com seu WhatsApp e senha. Para recuperar acesso, envie !web ao bot.');
     return;
   }
 
