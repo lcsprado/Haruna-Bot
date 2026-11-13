@@ -24,7 +24,7 @@ test('production class switch reads equipment and uses the same HP projection fo
   const src=readFileSync(new URL('../src/neon/db.js',import.meta.url),'utf8');
   const body=src.slice(src.indexOf('export async function setPlayerClass('),src.indexOf('export async function claimCooldown('));
   assert.match(body,/weapon_id,armor_id,boot_id,helmet_id FROM stats/);
-  assert.match(body,/const equippedStars=await getEquipmentStarLevels\(jid,\[st\.weapon_id,st\.armor_id\],client\)/);
+  assert.match(body,/const equippedStars=await getEquipmentStarLevels\(jid,\[st\.weapon_id,st\.armor_id,st\.helmet_id\],client\)/);
   assert.match(body,/currentDisplay=classHpWithEquipment\(st\.hp,st\.max_hp,st\.max_hp,gearHp\)/);
   assert.match(body,/convertedHp=classHpWithEquipment\(st\.hp,oldMax,maxHp,gearHp\)/);
 });
