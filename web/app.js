@@ -2,6 +2,7 @@ import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
+const WEB_ASSET_ID='alpha-rich-phone-20261113-v3';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
@@ -857,6 +858,7 @@ function showPasswordLogin(){
   $('#linkForm').classList.remove('hidden');
   $('#registerForm').classList.add('hidden');
   $('#recoverForm').classList.add('hidden');
+  $('#verifiedPhoneHint').classList.add('hidden');
   $('#linkError').textContent='';
 }
 
@@ -879,6 +881,8 @@ async function openWebCode(code){
   $('#linkForm').classList.add('hidden');
   $('#registerForm').classList.toggle('hidden',state.mode!=='register');
   $('#recoverForm').classList.toggle('hidden',state.mode!=='recover');
+  $('#verifiedPhoneHint').textContent='📱 Telefone confirmado: final '+String(state.phoneHint||'indisponível');
+  $('#verifiedPhoneHint').classList.remove('hidden');
   if(state.mode!=='register'&&state.mode!=='recover')throw new Error('Estado do código inválido.');
   $('#linkError').textContent='';
 }
@@ -3807,7 +3811,7 @@ $('#passwordLoginForm').addEventListener('submit',async e=>{
   $('#linkError').textContent='';
   try{
     const session=await api('/api/v1/auth/login',{method:'POST',
-      body:JSON.stringify({username:$('#loginUsername').value,password:$('#loginPassword').value})});
+      body:JSON.stringify({phone:$('#loginPhone').value,password:$('#loginPassword').value})});
     await finishWebLogin(session);
   }catch(err){ $('#linkError').textContent=err.message; }
 });
@@ -3826,7 +3830,7 @@ $('#registerForm').addEventListener('submit',async e=>{
     const password=$('#registerPassword').value;
     if(password!==$('#registerConfirm').value)throw new Error('As senhas não conferem.');
     const session=await api('/api/v1/auth/register',{method:'POST',
-      body:JSON.stringify({code:pendingWebCode,username:$('#registerUsername').value,password})});
+      body:JSON.stringify({code:pendingWebCode,password})});
     await finishWebLogin(session);
   }catch(err){$('#linkError').textContent=err.message;}
 });
@@ -3854,7 +3858,7 @@ async function checkWebBuild(){
     const res=await fetch('/version.json?ts='+Date.now(),{cache:'no-store'});
     if(!res.ok)return;
     const latest=await res.json();
-    if(latest.buildId&&latest.buildId!==WEB_BUILD_ID){
+    if((latest.buildId&&latest.buildId!==WEB_BUILD_ID)||(latest.assetVersion&&latest.assetVersion!==WEB_ASSET_ID)){
       toast('Nova versão Alpha Web disponível. Atualizando...');
       const registration=await navigator.serviceWorker?.getRegistration('/');
       await registration?.update().catch(()=>null);
