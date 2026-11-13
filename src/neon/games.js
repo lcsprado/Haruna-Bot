@@ -16,6 +16,7 @@ import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount} from './weekly-golem-payouts.js'
+import {isWeeklyBossPoolEdition,weeklyBossCashPoolShares} from './weekly-boss-prize-pool.js'
 import {WEEKLY_GOLEM_V2_KEY,WEEKLY_GOLEM_V2_VOUCHER,WEEKLY_GOLEM_V2_GEAR,weeklyGolemV2Cash,weeklyGolemV2Choice,weeklyGolemV2GearSelection,weeklyGolemV2Ranking} from './weekly-golem-v2-20261113.js'
 import {syncEffectiveGear} from './equipment-star-logic.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
@@ -2894,19 +2895,25 @@ async function grantWeeklyGolemChoice(c,jid){
 // Carimbo de conclusão + crédito em UMA transação, com a mesma trava do ataque.
 // Não ressuscita o Boss nem altera o dano/HP acumulado.
 export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
- if(nowMs<Date.parse('2026-11-15T00:00:00-03:00')||
-    nowMs>Date.parse('2026-11-17T00:00:00-03:00'))return null
  return tx(async c=>{
   const s=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
-  if(!s||s.mode!=='weekly'||s.weekendKey!==WEEKLY_GOLEM_V2_KEY||
-     Number(s.hp)<=0||nowMs<=Number(s.endsAt||0))return null
+  if(!s||s.mode!=='weekly'||Number(s.hp)<=0||nowMs<=Number(s.endsAt||0))return null
+  const specialNov13=s.weekendKey===WEEKLY_GOLEM_V2_KEY
+  const proportionalPool=isWeeklyBossPoolEdition(s.weekendKey)
+  if(!specialNov13&&!proportionalPool)return null
+  // Nao retroagir nem prolongar o evento de 13/11; eventos futuros seguem o prazo no estado.
+  if(specialNov13&&(nowMs<Date.parse('2026-11-15T00:00:00-03:00')||
+      nowMs>Date.parse('2026-11-17T00:00:00-03:00')))return null
   const entries=weeklyGolemV2Ranking(s.participants)
+  const weeklyCashShares=weeklyBossCashPoolShares(s.weekendKey,entries)
   const rewards=[]
   for(let i=0;i<entries.length;i++){
    const p=entries[i],position=i+1
-   const cash=weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage})
+   const cash=weeklyCashShares===null
+     ?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage})
+     :(weeklyCashShares.get(p.jid)||0)
    const exp=golem20261113Xp(s.weekendKey,position,p.damage)??0
-   if(cash>0)await credit(c,p.jid,cash,'boss_weekend_timeout_20261113')
+   if(cash>0)await credit(c,p.jid,cash,proportionalPool?'boss_weekend_pool_timeout':'boss_weekend_timeout_20261113')
    if(exp>0)await grantExpInTransaction(c,p.jid,exp)
    const drops=[]
    if(weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
@@ -3730,6 +3737,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
       const moneyMultiplier=await getDoubleEventMultiplier(c,'money')
       const xpMultiplier=await getDoubleEventMultiplier(c,'xp')
       const total=entries.reduce((n,x)=>n+x.damage,0)||1,rewards=[]
+      const weeklyCashShares=s.mode==='weekly'?weeklyBossCashPoolShares(s.weekendKey,entries):null
       for(let i=0;i<entries.length;i++){
         const p=entries[i],position=i+1,share=p.damage/total
         const pp=(await c.query('SELECT species,name,level FROM pets WHERE jid=$1',[p.jid])).rows[0]||null
@@ -3807,8 +3815,12 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           const golemBonus=weekly?weeklyGolemPayoutIncrease({
             weekendKey:s.weekendKey,position,damage:p.damage
           }):{cash:0,xp:0}
-          cash=(weekly?5000+Math.floor(150000*share)+tier.cash+golemBonus.cash:150+Math.floor(2500*share))*moneyMultiplier
-           + (weekly?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage}):0)
+          // A partir de 20/11, o dinheiro do Superboss soma exatamente R$ 50 mi.
+          // Sem multiplicador nem cash fixo por posicao ou por evento.
+          cash=weeklyCashShares===null
+            ?(weekly?5000+Math.floor(150000*share)+tier.cash+golemBonus.cash:150+Math.floor(2500*share))*moneyMultiplier
+              +(weekly?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage}):0)
+            :(weeklyCashShares.get(p.jid)||0)
           const weeklyNov13Xp=weekly?golem20261113Xp(s.weekendKey,position,p.damage):null
           const baseXp=weeklyNov13Xp===null
             ?(weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)
