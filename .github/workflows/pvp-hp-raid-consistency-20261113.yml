@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - fix/pvp-hp-raid-rebase-and-timeout-20261113
+  pull_request:
+    branches:
+      - whatsapp-only
   workflow_dispatch:
 jobs:
   hp-consistency:
