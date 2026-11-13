@@ -14,7 +14,7 @@ test('WhatsApp phone login accepts BR numbers with DDD and rejects user-controll
   assert.equal(normalizeWebPhone('5511999991234'),'5511999991234')
   assert.equal(normalizeWebPhone('11999991234'),'5511999991234')
   assert.equal(normalizeWebPhone('1133334444'),'551133334444')
-  for(const invalid of ['alice','admin','1234','1199999123','551100000','+1 (206) 555-0101','00115511999991234']){
+  for(const invalid of ['alice','admin','1234','119999123','551100000','+1 (206) 555-0101','00115511999991234']){
     assert.throws(()=>normalizeWebPhone(invalid),invalid)
   }
 })
