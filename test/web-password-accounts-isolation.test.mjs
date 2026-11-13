@@ -65,7 +65,9 @@ function dbFixture(){
       a.count++;limits.set(params[0],a);return {rows:[{attempts:a.count}]}
     }
     if(q.startsWith('SELECT JID,USERNAME,PHONE_E164,PASSWORD_HASH,PASSWORD_SALT,CHAT_JID FROM WEB_PASSWORD_ACCOUNTS')){
-      const matches=[...accounts.values()].filter(x=>x.phone_e164===params[0]||(!x.phone_e164&&x.jid===params[1]))
+      const matches=q.includes('WHERE USERNAME=$1')
+        ?[...accounts.values()].filter(x=>x.username===params[0])
+        :[...accounts.values()].filter(x=>x.phone_e164===params[0]||(!x.phone_e164&&x.jid===params[1]))
       return {rows:matches.slice(0,2)}
     }
     if(q.startsWith('DELETE FROM WEB_AUTH_RATE_LIMITS')){
@@ -131,4 +133,15 @@ test('verified WhatsApp LID mapping supports phone login without exposing numeri
   assert.equal(account.phone,'5511999991234')
   const session=await loginWebPassword(db,{phone:'11999991234',password:'A good password 123'})
   assert.equal(db.sessions.get(webTokenHash(session.token)).jid,jid)
+})
+
+test('existing browser username login continues working during safe backend-first rollout',async()=>{
+  const db=dbFixture(),jid='5511999991234@s.whatsapp.net'
+  const secret=await makeWebPassword('Legacy password 123')
+  db.accounts.set(jid,{jid,username:'original_name',phone_e164:null,
+    password_hash:secret.passwordHash,password_salt:secret.passwordSalt,chat_jid:null})
+  const session=await loginWebPassword(db,{username:'original_name',password:'Legacy password 123'})
+  assert.equal(db.sessions.get(webTokenHash(session.token)).jid,jid)
+  await assert.rejects(loginWebPassword(db,{username:'original_name',password:'wrong password'}),/incorretos/)
+  await assert.rejects(loginWebPassword(db,{username:'admin',password:'Legacy password 123'}),/incorretos/)
 })
