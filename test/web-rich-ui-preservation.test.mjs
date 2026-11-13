@@ -60,3 +60,26 @@ test('login and game stay styled when a mobile WebView cannot load external CSS'
   }
   assert.ok(html.includes('href="/styles.css?v=20261113-rich-web-phone-v4"'));
 });
+
+test('new !web link cannot restore a previous cached session without a password',()=>{
+  const start=ui.indexOf('if(linked){',ui.indexOf('(async function boot(){'))
+  const end=ui.indexOf('if(ui.token){',start)
+  assert.ok(start>0&&end>start,'Boot route with linked WhatsApp code missing')
+  const linkedBranch=ui.slice(start,end)
+  for(const required of ["ui.token='';","localStorage.removeItem(TOKEN_KEY);","localStorage.removeItem(SWITCH_PENDING_KEY);","await openWebCode(linked)"]){
+    assert.ok(linkedBranch.includes(required),'Missing anti-session-reuse guard: '+required)
+  }
+  assert.ok(linkedBranch.indexOf("ui.token='';")<linkedBranch.indexOf('await openWebCode(linked)'),
+    'Cached session must be removed BEFORE the code-status request')
+  assert.ok(ui.includes("const WEB_ASSET_ID='alpha-rich-phone-20261113-v5'"),
+    'Version must invalidate old cached PWA Javascript')
+})
+
+test('backend rejects old code-only sessions and marks new sessions as password verified',()=>{
+  const accounts=readFileSync(new URL('../src/neon/web-password-accounts.js',import.meta.url),'utf8')
+  assert.match(backend,/ALTER TABLE web_sessions ADD COLUMN IF NOT EXISTS auth_method TEXT NOT NULL DEFAULT 'legacy'/)
+  assert.match(backend,/s\.auth_method=\\'password\\'/)
+  assert.match(backend,/json\(res,410,\{ok:false,error:/)
+  assert.match(accounts,/web_sessions\(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at,auth_method\)/)
+  assert.match(accounts,/VALUES\(\$1,\$2,\$3,\$4,\$5,\$5,'password'\)/)
+})
