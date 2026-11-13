@@ -284,7 +284,7 @@ async function webAuthSelfTest(){
   )
   let tokenHash=''
   try{
-    const state=await getWebCodeMode(db,code)
+    const state=await getWebCodeMode(db,code,{skipPhoneVerification:true})
     if(state.mode!=='register')throw new Error('Código de teste não retornou primeiro acesso.')
     return {ok:true,codeValidated:true,sessionAuthMode:'password'}
   }finally{
