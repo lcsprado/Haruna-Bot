@@ -1,0 +1,31 @@
+name: EXPERIMENTAL Baileys PN-LID compatibility (no production deploy)
+on:
+  pull_request:
+    paths:
+      - 'scripts/diagnose-baileys-compat.mjs'
+      - '.github/workflows/baileys-signal-compat-matrix.yml'
+  workflow_dispatch:
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        baileys-version: ['6.7.24','7.0.0-rc14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated candidate (does not change committed package.json)
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm install --ignore-scripts --no-save --no-audit --no-fund "baileys@${{ matrix.baileys-version }}"
+      - name: Confirm installed candidate
+        run: node -e "console.log(require('./node_modules/baileys/package.json').version)"
+      - name: Validate API used by Alpha Bot and Signal auth store
+        run: node scripts/diagnose-baileys-compat.mjs
+      - name: Test Alpha Bot auth, Signal retry and wallet-independent regression
+        run: node --test test/auth-jsonb-patch-20261014.test.mjs test/auth-bandwidth-20261014.test.mjs test/whatsapp-outbound-durable-retry-20261113.test.mjs test/whatsapp-outbound-retry-store.test.mjs
