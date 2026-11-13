@@ -1,6 +1,10 @@
 import 'dotenv/config'
 import crypto from 'node:crypto'
 import {buildOfficialWebLoginUrl} from './web-official-link.js'
+import {getWebEventCenter} from './web-event-center.js'
+import {relicStatus,selectRelic,relicCatalog} from './relics.js'
+import {raceState,raceBuy,raceEquip,racePaint,raceUpgrade,raceRepair,raceSolo,raceChallenge,raceAccept,raceCancel,raceRanking,raceHistory} from './racing-alpha.js'
+import {RACING_CARS,RACING_COLORS,RACING_PARTS,RACING_UPGRADES,RACING_TRACKS,RACING_STRATEGIES,RACING_TIERS,RACING_TOTAL_UPGRADE_COST} from './racing-rules.js'
 import {ensureWebPasswordTables,getWebCodeMode,registerWebPassword,recoverWebPassword,loginWebPassword} from './web-password-accounts.js'
 import {ensureWebActionOutbox,enqueueWebAction} from './web-activity-relay.js'
 import {
@@ -13,9 +17,9 @@ import {
   setPetTeam, summonLegendaryPet, getCombatProfile, setPlayerClass, getGroupSettings, resolvePlayerSleep, petTeamSynergy,
   transfer, battle, petDuel, dungeon, robPlayer,
   createMarketListing, listMarket, buyMarketListing, cancelMarketListing,
-  openLootBoxes, openLuckyBoxes, sellDuplicateEquipment,
+  openLootBoxes, openLuckyBoxes, sellDuplicateEquipment, sellItemsBatch,
   startPlayerSleep, wakePlayerEarly, getCarpinarPlans, startPlayerCarpinar, leavePlayerCarpinarEarly,
-  petAdventure, startPetExpedition, resolvePetExpeditions,
+  petAdventure, startPetExpedition, startAllPetExpeditions, resolvePetExpeditions,
   claimLevelRewards, getLevelRewardPreview, getClaimedLevelRewards, leaderboard, combatLeaderboard, petLeaderboard,
   weeklyActivityLeaderboard, getPlayerRanks,
   proposeRelationship, getRelationshipProposals, acceptRelationship, rejectRelationship, divorceRelationship
@@ -620,6 +624,7 @@ async function publicCatalog(){
     generatedAt:now(),
     pets:petCatalog(),
     raids:getRaidCatalog(),
+    relics:relicCatalog,
     shop,
     allItems,
     houses:HOUSES,
@@ -712,7 +717,7 @@ function webActionModule(name){
   const action=String(name||'')
   if(action.startsWith('game.')||action.startsWith('boss.')) return 'games_enabled'
   if(action.startsWith('clan.')||action.startsWith('groupMission.')||action.startsWith('groupEvent.')||
-     action.startsWith('house.')||action.startsWith('car.')||action.startsWith('motorcycle.')||
+     action.startsWith('house.')||action.startsWith('car.')||action.startsWith('racing.')||action.startsWith('motorcycle.')||
      action.startsWith('business.')||action.startsWith('cltUber.')||action.startsWith('sleep.')||
      action.startsWith('carpinar.')||action.startsWith('missions.')||action.startsWith('level.')) return 'progression_enabled'
   if(action==='daily'||action==='work'||action==='all'||action==='deposit'||action==='withdraw'||
@@ -1158,6 +1163,18 @@ async function runAction(session,name,body={}){
   })
   await enforceWebActionPolicy(session,name)
   switch(name){
+    case 'racing.buy': return raceBuy(jid,String(body.modelId||''))
+    case 'racing.equip': return raceEquip(jid,String(body.carId||''))
+    case 'racing.paint': return racePaint(jid,String(body.carId||''),String(body.colorId||''))
+    case 'racing.upgrade': return raceUpgrade(jid,String(body.partId||''))
+    case 'racing.repair': return raceRepair(jid)
+    case 'racing.solo': return raceSolo(jid,[String(body.tier||'rua'),String(body.track||'cidade'),String(body.strategy||'equilibrada')])
+    case 'racing.challenge': {
+      const member=await groupTarget(session,body.targetJid)
+      return withTargetMeta(await raceChallenge(jid,member.jid,requireGroup(session),[String(body.track||'cidade'),String(body.strategy||'equilibrada')],await playerDisplayName(jid)),member)
+    }
+    case 'racing.accept': return raceAccept(jid,requireGroup(session),String(body.strategy||'equilibrada'))
+    case 'racing.cancel': return raceCancel(jid)
     case 'daily': return claimDaily(jid)
     case 'missions.claim': return claimDailyMissions(jid)
     case 'level.claim': return claimLevelRewards(jid)
@@ -1203,6 +1220,17 @@ async function runAction(session,name,body={}){
     case 'hero.select': return setPlayableHeroMode(jid,String(body.heroId||''))
     case 'hero.class': return setPlayableHeroMode(jid,null)
     case 'npc.buy': return buyNpcShopItem(jid,String(body.npcId||''),positiveInt(body.number,'Oferta',99))
+    case 'item.sellBatch': {
+      const selections=body.selections
+      if(!Array.isArray(selections)||selections.length<1||selections.length>50)throw new Error('Lote de venda inválido.')
+      if(new Set(selections.map(x=>String(x?.itemId||''))).size!==selections.length)throw new Error('Não repita um item no mesmo lote.')
+      const itemIds=selections.map(x=>String(x?.itemId||''))
+      const {rows}=await db.query('SELECT id,rarity,sellable FROM items WHERE id=ANY($1::text[])',[itemIds])
+      if(rows.length!==itemIds.length || rows.some(item=>item.sellable===false || item.rarity==='legendary' || item.rarity==='event'))throw new Error('A venda em lote só aceita itens não lendários e vendáveis.')
+      return sellItemsBatch(jid,selections)
+    }
+    case 'relic.equip': return selectRelic(jid,String(body.itemId||''))
+    case 'relic.unequip': return selectRelic(jid,'nenhuma')
     case 'item.buy': return buyItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',99))
     case 'item.sell': return sellItem(jid,String(body.itemId||''),positiveInt(body.qty||1,'Quantidade',9999))
     case 'item.equip': return equipItem(jid,String(body.itemId||''))
@@ -1223,6 +1251,7 @@ async function runAction(session,name,body={}){
     case 'carpinar.start': return startPlayerCarpinar(jid,positiveInt(body.hours,'Horas',24))
     case 'carpinar.leave': return leavePlayerCarpinarEarly(jid)
     case 'pet.adventure': return petAdventure(jid)
+    case 'pet.expedition.all': return startAllPetExpeditions(jid,positiveInt(body.hours||4,'Horas',8))
     case 'pet.expedition.start': return startPetExpedition(jid,positiveInt(body.petId,'Pet'),positiveInt(body.hours||4,'Horas',24))
     case 'pet.expedition.resolve': return resolvePetExpeditions(jid)
 
@@ -1424,6 +1453,13 @@ export async function handleWebApi(req,res){
       return true
     }
 
+    if(req.method==='GET' && url.pathname==='/api/v1/me/event-center'){
+      const center=await getWebEventCenter(db,session.jid)
+      res.setHeader('cache-control','no-store')
+      json(res,200,{ok:true,data:center})
+      return true
+    }
+
     if(req.method==='GET' && url.pathname==='/api/v1/me/avatar'){
       const avatar=await getProfileAvatar(session.jid)
       if(!avatar){
@@ -1440,6 +1476,29 @@ export async function handleWebApi(req,res){
       return true
     }
 
+    if(req.method==='GET' && url.pathname==='/api/v1/me/boss-live'){
+      // One small indexed group-state query: never loads wallets, inventory, pets or rankings.
+      if(!session.chatJid){
+        json(res,200,{ok:true,data:{changed:false,version:'none'}})
+        return true
+      }
+      const {rows}=await db.query(
+        "SELECT game_type,state->>'hp' AS hp,state->>'maxHp' AS max_hp,state->>'status' AS status,updated_at FROM trevo_games WHERE chat_jid=$1 AND game_type IN ('boss','boss_event') ORDER BY game_type",
+        [session.chatJid]
+      )
+      const states={}
+      for(const r of rows){
+        states[r.game_type]={
+          hp:Number(r.hp||0),maxHp:Number(r.max_hp||0),
+          status:String(r.status||''),updatedAt:Number(r.updated_at||0)
+        }
+      }
+      const version=sha256(JSON.stringify(states)).slice(0,20)
+      const unchanged=String(url.searchParams.get('v')||'')===version
+      json(res,200,{ok:true,data:unchanged?{changed:false,version}:{changed:true,version,boss:states.boss||null,bossEvent:states.boss_event||null}})
+      return true
+    }
+
     if(req.method==='GET' && url.pathname==='/api/v1/me/auction'){
       const data=await getAuctionWebStatus({chat:requireGroup(session),sender:session.jid})
       json(res,200,{ok:true,data})
@@ -1452,6 +1511,43 @@ export async function handleWebApi(req,res){
       return true
     }
 
+    if(req.method==='GET' && url.pathname==='/api/v1/me/pet-team-preview'){
+      // Read-only preview: no equipment, pet state, inventory or wallets changed.
+      const raw=String(url.searchParams.get('ids')||'')
+      const ids=raw?raw.split(',').map(Number):[]
+      if(ids.length>3||ids.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(ids).size!==ids.length){
+        json(res,400,{ok:false,error:'Seleção de pets inválida.'})
+        return true
+      }
+      if(!ids.length){
+        json(res,200,{ok:true,data:{synergy:null,styles:[],selected:0}})
+        return true
+      }
+      const {rows}=await db.query(
+        'SELECT id,species FROM pet_collection WHERE jid=$1 AND id=ANY($2::bigint[])',
+        [session.jid,ids]
+      )
+      if(rows.length!==ids.length){
+        json(res,400,{ok:false,error:'Um dos pets não está na sua coleção.'})
+        return true
+      }
+      const ordered=ids.map(id=>rows.find(p=>Number(p.id)===id))
+      if(new Set(ordered.map(p=>String(p.species))).size!==ordered.length){
+        json(res,400,{ok:false,error:'Selecione espécies diferentes para a sinergia.'})
+        return true
+      }
+      json(res,200,{ok:true,data:{
+        synergy:petTeamSynergy(ordered),
+        styles:ordered.map(p=>petStyleLabel(p.species)),
+        selected:ordered.length
+      }})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/relics'){
+      json(res,200,{ok:true,data:await relicStatus(session.jid)})
+      return true
+    }
     if(req.method==='GET' && url.pathname==='/api/v1/me/contracts'){
       json(res,200,{ok:true,data:await getAlphaContractBoard(session.jid)})
       return true
@@ -1461,6 +1557,18 @@ export async function handleWebApi(req,res){
       const listing=await listNpcShops(session.jid)
       const shops=await Promise.all(listing.merchants.map(n=>getNpcShop(session.jid,n.id)))
       json(res,200,{ok:true,data:{karma:listing.karma,title:listing.title,shops}})
+      return true
+    }
+
+    if(req.method==='GET' && url.pathname==='/api/v1/me/racing'){
+      // Endpoint sob demanda (apenas página de corridas): sem polling e sem imagens pesadas.
+      const [garage,ranking,history,challenges]=await Promise.all([
+        raceState(session.jid),raceRanking(),raceHistory(session.jid),
+        session.chatJid?db.query("SELECT c.id,c.challenger,c.challenged,c.track_id,c.strategy_id,c.created_at,c.expires_at, u.push_name AS challenger_name FROM racing_challenges_alpha c LEFT JOIN users u ON u.jid=c.challenger WHERE c.chat=$1 AND c.status='pending' AND c.expires_at>$2 AND (c.challenger=$3 OR c.challenged=$3) ORDER BY c.id DESC LIMIT 5",[session.chatJid,Math.floor(Date.now()/1000),session.jid]):Promise.resolve({rows:[]})
+      ])
+      res.setHeader('cache-control','private, no-store')
+      json(res,200,{ok:true,data:sanitizePrivateRefs({garage,ranking,history,challenges:challenges.rows,
+        catalog:{cars:RACING_CARS,colors:RACING_COLORS,parts:RACING_PARTS,levels:RACING_UPGRADES,tracks:RACING_TRACKS,strategies:RACING_STRATEGIES,tiers:RACING_TIERS,totalUpgradeCost:RACING_TOTAL_UPGRADE_COST},serverTime:Date.now()},session)})
       return true
     }
 
