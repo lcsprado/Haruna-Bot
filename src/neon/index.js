@@ -10730,9 +10730,9 @@ const groupLine=link.chatJid
 ? '🔗 Seu acesso foi vinculado ao grupo onde você solicitou o link.'
 : 'ℹ️ Código gerado no privado. Para vincular Bosses/Raids do grupo, use *!web* no grupo e depois *!web* aqui no privado.'
 const urlLine=link.url
-? `\n🌐 *TOQUE AQUI PARA ENTRAR DIRETO:*\n${link.url}`
-: '\n🌐 Abra o RPG Web e informe este código na tela de conexão.'
-const privateMessage=`🌐 *CONECTAR ALPHA RPG WEB*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ O link acima faz a conexão automaticamente.\n⚠️ O código é de uso único. Não envie para outras pessoas.`
+? `\n🌐 *TOQUE AQUI PARA CRIAR OU RECUPERAR SUA SENHA:*\n${link.url}`
+: '\n🌐 Abra o RPG Web e informe este código na tela de criação de senha.'
+const privateMessage=`🌐 *ALPHA RPG WEB — LOGIN COM SENHA*\n\n🔐 Código: *${link.code}*\n⏳ Expira em: *${expiresMin} min*\n\n${groupLine}${urlLine}\n\n✅ No primeiro acesso, crie sua senha: ela fica vinculada ao seu personagem.\n🔑 Depois, use seu número do WhatsApp com DDD e a senha para entrar.\n♻️ Esqueceu a senha? Envie *!web* novamente aqui no privado e cadastre outra.\n⚠️ O código é individual e de uso único. Não compartilhe.`
 await reply(privateMessage)
 continue
 }
