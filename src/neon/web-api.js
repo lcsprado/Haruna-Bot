@@ -1593,7 +1593,7 @@ export async function handleWebApi(req,res){
     return true
   }catch(err){
     const message=String(err?.message||'Erro interno.')
-    const status=/muitas tentativas/i.test(message)?429:/inválid|expirad|não autorizad|senha|usuário|código|conta|indisponível|primeiro acesso/i.test(message)?400:500
+    const status=/muitas tentativas/i.test(message)?429:/inválid|expirad|não autorizad|senha|usuário|telefone|número|código|conta|indisponível|primeiro acesso/i.test(message)?400:500
     if(status>=500)console.error('[Web API]',req.method,url.pathname,err)
     // Mensagens SQL, exceções de runtime e nomes internos nunca chegam à interface.
     const technical=/invalid input syntax|syntax error|stack trace|TypeError|ReferenceError|Cannot read properties|column .* does not exist|relation .* does not exist|constraint|ECONN|ETIMEDOUT|SELECT |INSERT INTO |UPDATE |DELETE FROM |\\bNaN\\b|undefined is not/i.test(message)
