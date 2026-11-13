@@ -2,7 +2,7 @@ import {renderRacing,bindRacing,updateRacingClocks} from './racing-ui.js';
 import {renderClanSiegePreview,bindClanSiegePreview} from './clan-siege-ui.js';
 const API_BASE = window.location.origin;
 const WEB_BUILD_ID='alpha-siege-v5-20261108';
-const WEB_ASSET_ID='alpha-rich-phone-20261113-v3';
+const WEB_ASSET_ID='alpha-rich-phone-20261113-v4';
 // O servidor aceita lances apenas quando este build V5 está presente.
 const TOKEN_KEY = 'alphaWebTokenV1';
 const SWITCH_PENDING_KEY = 'alphaWebIdentitySwitchPendingV1';
