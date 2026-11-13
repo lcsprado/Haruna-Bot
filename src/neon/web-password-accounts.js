@@ -1,6 +1,6 @@
 
 import {
-  normalizeWebUsername,assertWebPassword,normalizeWebCode,
+  normalizeWebPhone,normalizeWebUsername,normalizeWebCode,
   makeWebPassword,verifyWebPassword,fakeWebPasswordVerification,webSessionToken,webTokenHash
 } from './web-password-auth.js'
 
@@ -23,6 +23,14 @@ export function ensureWebPasswordTables(db){
         );
         CREATE INDEX IF NOT EXISTS web_password_accounts_username_idx
           ON web_password_accounts(username);
+        ALTER TABLE web_password_accounts ADD COLUMN IF NOT EXISTS phone_e164 TEXT;
+        CREATE UNIQUE INDEX IF NOT EXISTS web_password_accounts_phone_idx
+          ON web_password_accounts(phone_e164) WHERE phone_e164 IS NOT NULL;
+        -- Existing players retain their JID, username, password hash, and sessions.
+        UPDATE web_password_accounts a SET phone_e164=split_part(a.jid,'@',1)
+        WHERE a.phone_e164 IS NULL AND a.jid ~ '^55[1-9][0-9]{9,10}@s[.]whatsapp[.]net$'
+          AND NOT EXISTS (SELECT 1 FROM web_password_accounts b
+            WHERE b.phone_e164=split_part(a.jid,'@',1) AND b.jid<>a.jid);
         CREATE TABLE IF NOT EXISTS web_auth_rate_limits(
           scope_hash TEXT PRIMARY KEY,
           window_started_at BIGINT NOT NULL,
@@ -33,6 +41,20 @@ export function ensureWebPasswordTables(db){
     })().catch(err=>{readyPromise=null;throw err})
   }
   return readyPromise
+}
+
+// Only the verified WhatsApp JID (or trusted LID mapping) can bind the login phone.
+async function verifiedPhoneForJid(client,jid){
+  const value=String(jid||'')
+  if(/^\d+@s[.]whatsapp[.]net$/.test(value))
+    return normalizeWebPhone(value.split('@')[0])
+  if(/^\d+@lid$/.test(value)){
+    const row=(await client.query(
+      'SELECT phone_jid FROM verified_whatsapp_lid_links WHERE lid_jid=$1',[value]
+    )).rows[0]
+    if(row?.phone_jid)return normalizeWebPhone(String(row.phone_jid).split('@')[0])
+  }
+  throw new Error('Número do WhatsApp não confirmado. Envie !web novamente no privado.')
 }
 
 async function readCode(client,code){
@@ -58,7 +80,7 @@ async function issueSession(client,jid,chatJid){
   return {token,expiresAt,groupLinked:Boolean(chatJid)}
 }
 
-export async function getWebCodeMode(db,code){
+export async function getWebCodeMode(db,code,{skipPhoneVerification=false}={}){
   await ensureWebPasswordTables(db)
   const hash=webTokenHash(normalizeWebCode(code))
   const row=(await db.query(`
@@ -68,17 +90,23 @@ export async function getWebCodeMode(db,code){
     WHERE l.code_hash=$1 AND l.used_at IS NULL AND l.expires_at>$2
   `,[hash,Date.now()])).rows[0]
   if(!row)throw new Error('Código inválido ou expirado. Envie !web no WhatsApp para gerar outro.')
-  return {mode:row.registered?'recover':'register'}
+  // Internal health probe uses a synthetic JID; public code status always verifies the phone.
+  if(skipPhoneVerification)return {mode:row.registered?'recover':'register'}
+  const phone=await verifiedPhoneForJid(db,row.jid)
+  return {mode:row.registered?'recover':'register',phoneHint:'••••'+phone.slice(-4)}
 }
 
-export async function registerWebPassword(db,{code,username,password}){
+export async function registerWebPassword(db,{code,password,username}){
   await ensureWebPasswordTables(db)
-  const normalizedUsername=normalizeWebUsername(username)
   const secret=await makeWebPassword(password)
   const client=await db.connect()
   try{
     await client.query('BEGIN')
     const link=await readCode(client,code)
+    const phone=await verifiedPhoneForJid(client,link.jid)
+    // Transitional support: old deployed browsers submit a username; newer
+    // builds omit it and create the verified phone-based account instead.
+    const loginAlias=username===undefined?phone:normalizeWebUsername(username)
     const account=(await client.query('SELECT jid FROM web_password_accounts WHERE jid=$1',[link.jid])).rows[0]
     if(account)throw new Error('Esta conta já tem senha. Use recuperação com o código !web.')
     const oldGroup=link.chatJid||(await client.query(
@@ -86,18 +114,18 @@ export async function registerWebPassword(db,{code,username,password}){
     )).rows[0]?.chat_jid||null
     const stamp=Date.now()
     await client.query(`
-      INSERT INTO web_password_accounts(jid,username,password_hash,password_salt,chat_jid,created_at,updated_at)
-      VALUES($1,$2,$3,$4,$5,$6,$6)
-    `,[link.jid,normalizedUsername,secret.passwordHash,secret.passwordSalt,oldGroup,stamp])
+      INSERT INTO web_password_accounts(jid,username,phone_e164,password_hash,password_salt,chat_jid,created_at,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$7)
+    `,[link.jid,loginAlias,phone,secret.passwordHash,secret.passwordSalt,oldGroup,stamp])
     await client.query('UPDATE web_link_codes SET used_at=$1 WHERE code_hash=$2',[stamp,link.codeHash])
     // Um cadastro novo invalida TODAS as sessoes antigas que nunca exigiram senha.
     await client.query('DELETE FROM web_sessions WHERE jid=$1',[link.jid])
     const session=await issueSession(client,link.jid,oldGroup)
     await client.query('COMMIT')
-    return {...session,username:normalizedUsername}
+    return {...session,phone}
   }catch(err){
     await client.query('ROLLBACK').catch(()=>{})
-    if(err?.code==='23505')throw new Error('Nome de usuário indisponível. Escolha outro.')
+    if(err?.code==='23505')throw new Error('Este número já pertence a outra conta. Solicite suporte.')
     throw err
   }finally{client.release()}
 }
@@ -109,6 +137,7 @@ export async function recoverWebPassword(db,{code,password}){
   try{
     await client.query('BEGIN')
     const link=await readCode(client,code)
+    const phone=await verifiedPhoneForJid(client,link.jid)
     const account=(await client.query(
       'SELECT username,chat_jid FROM web_password_accounts WHERE jid=$1 FOR UPDATE',[link.jid]
     )).rows[0]
@@ -117,15 +146,18 @@ export async function recoverWebPassword(db,{code,password}){
     const stamp=Date.now()
     await client.query(`
       UPDATE web_password_accounts
-      SET password_hash=$1,password_salt=$2,chat_jid=$3,updated_at=$4 WHERE jid=$5
-    `,[secret.passwordHash,secret.passwordSalt,group,stamp,link.jid])
+      SET password_hash=$1,password_salt=$2,phone_e164=$3,chat_jid=$4,updated_at=$5 WHERE jid=$6
+    `,[secret.passwordHash,secret.passwordSalt,phone,group,stamp,link.jid])
     await client.query('UPDATE web_link_codes SET used_at=$1 WHERE code_hash=$2',[stamp,link.codeHash])
     await client.query('DELETE FROM web_sessions WHERE jid=$1',[link.jid])
     const session=await issueSession(client,link.jid,group)
     await client.query('COMMIT')
-    return {...session,username:account.username}
-  }catch(err){await client.query('ROLLBACK').catch(()=>{});throw err}
-  finally{client.release()}
+    return {...session,phone}
+  }catch(err){
+    await client.query('ROLLBACK').catch(()=>{})
+    if(err?.code==='23505')throw new Error('Este número já pertence a outra conta. Solicite suporte.')
+    throw err
+  }finally{client.release()}
 }
 
 async function enforceLoginRate(db,scope,limit){
@@ -146,32 +178,43 @@ async function enforceLoginRate(db,scope,limit){
   return hash
 }
 
-export async function loginWebPassword(db,{username,password,ip='unknown'}){
+export async function loginWebPassword(db,{phone,username,password,ip='unknown'}){
   await ensureWebPasswordTables(db)
+  // Deploy order: old browser username+password must keep working until the
+  // phone-login PWA is promoted. New clients send only 'phone'.
+  const legacyLogin=phone===undefined && username!==undefined
   let normalized
-  try{normalized=normalizeWebUsername(username)}
+  try{normalized=legacyLogin?normalizeWebUsername(username):normalizeWebPhone(phone)}
   catch{
     await fakeWebPasswordVerification(password)
-    throw new Error('Usuário ou senha incorretos.')
+    throw new Error('Número ou senha incorretos.')
   }
   const ipKey=String(ip).slice(0,100)
+  const loginScope=legacyLogin?'legacy-user:':'phone:'
   const [userRate,comboRate]=await Promise.all([
-    enforceLoginRate(db,'user:'+normalized,30),
-    enforceLoginRate(db,'userip:'+normalized+':'+ipKey,8)
+    enforceLoginRate(db,loginScope+normalized,30),
+    enforceLoginRate(db,loginScope+normalized+':'+ipKey,8)
   ])
-  const account=(await db.query(`
-    SELECT jid,username,password_hash,password_salt,chat_jid
-    FROM web_password_accounts WHERE username=$1
-  `,[normalized])).rows[0]
+  const accounts=legacyLogin
+    ?(await db.query(`
+      SELECT jid,username,phone_e164,password_hash,password_salt,chat_jid
+      FROM web_password_accounts WHERE username=$1 LIMIT 2
+    `,[normalized])).rows
+    :(await db.query(`
+      SELECT jid,username,phone_e164,password_hash,password_salt,chat_jid
+      FROM web_password_accounts
+      WHERE phone_e164=$1 OR (phone_e164 IS NULL AND jid=$2) LIMIT 2
+    `,[normalized,normalized+'@s.whatsapp.net'])).rows
+  const account=accounts.length===1?accounts[0]:null
   const correct=account
     ?await verifyWebPassword(password,account.password_salt,account.password_hash)
     :(await fakeWebPasswordVerification(password),false)
-  if(!correct)throw new Error('Usuário ou senha incorretos.')
+  if(!correct)throw new Error('Número ou senha incorretos.')
   await db.query('DELETE FROM web_auth_rate_limits WHERE scope_hash=ANY($1::text[])',[userRate,comboRate]).catch(()=>{})
   const token=webSessionToken(),stamp=Date.now(),expiresAt=stamp+SESSION_TTL_MS
   await db.query(`
     INSERT INTO web_sessions(token_hash,jid,chat_jid,expires_at,created_at,last_seen_at)
     VALUES($1,$2,$3,$4,$5,$5)
   `,[webTokenHash(token),account.jid,account.chat_jid||null,expiresAt,stamp])
-  return {token,expiresAt,username:account.username,groupLinked:Boolean(account.chat_jid)}
+  return {token,expiresAt,phone:legacyLogin?(account.phone_e164||null):normalized,groupLinked:Boolean(account.chat_jid)}
 }
