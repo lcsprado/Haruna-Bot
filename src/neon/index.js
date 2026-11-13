@@ -100,7 +100,7 @@ import {startBingoRebootScheduler,handleBingoRebootCommand} from './bingo-reboot
 import {handleBauGolpeCommand,announceBauGolpeEvent} from './bau-golpe-alpha.js'
 import {handleSetePecadosCollabCommand} from './sete-pecados-collab.js'
 import {initPlayableHeroes,handlePlayableHeroCommand,getPlayableHeroCombatSheet,formatPlayableHeroCombatSheet,getActivePlayableHero} from './playable-heroes.js'
-import {DAMAGE_SAMPLE_LIMIT,combineDamageStats} from './damage-hero-stats.js'
+import {DAMAGE_SAMPLE_LIMIT,combineDamageStats,damageReportBreakdown} from './damage-hero-stats.js'
 import {formatProfileCombatBonuses} from './profile-combat-summary.js'
 import {formatProfileShieldStars} from './profile-shield-stars.js'
 import {applyVitalCombatHp} from './vital-pets.js'
@@ -11640,6 +11640,7 @@ await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${
   const stats=await getPlayerDamageStats(target,heroId,{historical});
   const boss=stats.boss||null,raid=stats.raid||null;
   const combined=combineDamageStats(boss,raid);
+  const split=damageReportBreakdown(boss,raid);
   const label=String(profile?.push_name||profile?.name||'Jogador').replace(/[\r\n*_~]/g,' ').slice(0,60);
   if(!combined.count){
     await reply('⚔️ *ANÁLISE DE DANO — '+label+'*\n\n🎭 Combatente: *'+combatant+'*\n\nAinda não há ataques de Boss ou Raid registrados para este combatente na janela atual.\n📚 Os registros anteriores continuam disponíveis em *!dano historico*.');
@@ -11648,15 +11649,24 @@ await reply(`💰 *Saldo*\n\n🪙 Carteira: R$ ${fmt(p.cash)}\n🏦 Banco: R$ ${
     const footer=historical
       ?'_Dados anteriores sem identificação de herói, preservados para consulta; não representam o personagem atual._'
       :'_Apenas golpes deste combatente após a atualização. Os dados anteriores estão preservados em !dano historico._';
+    const modeLine=part=>{
+      if(!part)return 'sem registros';
+      const detail=damageReportBreakdown(part);
+      return '*'+fmt(part.average)+'* ('+part.count+' ataques)\n'+
+        '   ⚔️ Normal: *'+(detail.normalCount?fmt(detail.normalAverage):'—')+'* ('+detail.normalCount+')'+
+        ' • 🎯 CRIT: *'+(detail.critCount?fmt(detail.critAverage):'—')+'* ('+detail.critCount+')';
+    };
     await reply('⚔️ *ANÁLISE DE DANO — '+label+'*\n\n'+
       '🎭 Combatente: *'+combatant+'*\n'+
       '💥 Média por ataque: *'+fmt(combined.average)+'*\n'+
-      '⚔️ Média normal: *'+(combined.count>combined.critCount?fmt(combined.normalAverage):'—')+'*\n'+
-      '🎯 Média crítica: *'+(combined.critCount?fmt(combined.critAverage):'—')+'*\n'+
+      '⚔️ Média normal: *'+(split.normalCount?fmt(split.normalAverage):'—')+'* ('+split.normalCount+' golpes)\n'+
+      '🎯 Média crítica: *'+(split.critCount?fmt(split.critAverage):'—')+'* ('+split.critCount+' golpes)\n'+
+      '📈 Taxa CRIT observada: *'+(split.critPercent===null?'—':split.critPercent.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%')+'*\n'+
       '🔥 Maior dano: *'+fmt(combined.max)+'*\n'+
       '📊 Ataques analisados: *'+combined.count+'* (até '+windowSize+' Boss + '+windowSize+' Raid)\n\n'+
-      '👹 Boss: *'+(boss?fmt(boss.average)+' ('+boss.count+' ataques)':'sem registros')+'*\n'+
-      '🐉 Raid: *'+(raid?fmt(raid.average)+' ('+raid.count+' ataques)':'sem registros')+'*\n\n'+footer);
+      '👹 Boss: '+modeLine(boss)+'\n'+
+      '🐉 Raid: '+modeLine(raid)+'\n\n'+
+      'ℹ️ Compare médias dentro da mesma modalidade; Raid e Boss usam multiplicadores diferentes.\n\n'+footer);
   }
 } else if(['perfil','profile'].includes(cmd)){
 const mentioned=mentionsOf(msg)[0]

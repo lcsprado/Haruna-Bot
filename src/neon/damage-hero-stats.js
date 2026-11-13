@@ -32,3 +32,25 @@ export function combineDamageStats(boss=null,raid=null){
     normalAverage:normalCount?Math.round((total-critTotal)/normalCount):0,
     max:Math.max(Number(boss?.max||0),Number(raid?.max||0))};
 }
+
+/**
+ * Resumo independente para o relatório !dano.
+ * Usa contagens e somas dos golpes classificados, sem inferir crítico
+ * a partir do valor do dano. As modalidades são ponderadas por golpes,
+ * e a ausência de uma categoria não elimina a média da outra.
+ */
+export function damageReportBreakdown(boss=null,raid=null){
+  const parts=[boss,raid].filter(Boolean);
+  const finite=n=>Number.isFinite(Number(n))?Math.max(0,Number(n)):0;
+  const normalCount=parts.reduce((total,p)=>total+finite(p.normalCount),0);
+  const critCount=parts.reduce((total,p)=>total+finite(p.critCount),0);
+  const normalTotal=parts.reduce((total,p)=>total+finite(p.normalTotal ?? (finite(p.total)-finite(p.critTotal))),0);
+  const critTotal=parts.reduce((total,p)=>total+finite(p.critTotal),0);
+  const count=normalCount+critCount;
+  return {
+    normalCount,critCount,
+    normalAverage:normalCount?Math.round(normalTotal/normalCount):null,
+    critAverage:critCount?Math.round(critTotal/critCount):null,
+    critPercent:count?Number((100*critCount/count).toFixed(1)):null
+  };
+}
