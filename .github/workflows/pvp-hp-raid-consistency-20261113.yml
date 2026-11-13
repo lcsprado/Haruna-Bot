@@ -1,0 +1,25 @@
+name: PVP HP Raid consistency - 13 novembro
+on:
+  push:
+    branches:
+      - fix/pvp-hp-raid-rebase-and-timeout-20261113
+  workflow_dispatch:
+jobs:
+  hp-consistency:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check src/neon/db.js
+          node --check src/neon/games.js
+          node --check src/neon/pvp-report.js
+          node --check src/neon/raid-hero-hp-sync.js
+          node --check src/neon/pvp-outcome-policy.js
+      - name: Unit tests - no production changes
+        run: node --test test/pvp-hp-raid-consistency-20261113.test.mjs
