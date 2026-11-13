@@ -16,6 +16,8 @@ import {activeRelic} from './relics.js'
 import {saturdayRaidXpMultiplier} from './raid-saturday-hunt.js'
 import {weeklyInsignia} from './weekly-boss-insignias.js'
 import {weeklyGolemPayoutIncrease,weeklyGolemLegendaryBoxCount} from './weekly-golem-payouts.js'
+import {WEEKLY_GOLEM_V2_KEY,WEEKLY_GOLEM_V2_VOUCHER,WEEKLY_GOLEM_V2_GEAR,weeklyGolemV2Cash,weeklyGolemV2Choice,weeklyGolemV2GearSelection,weeklyGolemV2Ranking} from './weekly-golem-v2-20261113.js'
+import {syncEffectiveGear} from './equipment-star-logic.js'
 import {getEquippedEnchants} from './enchantments-alpha.js'
 import {scaleRaidHpOnLateJoin} from './raid-hp-scaling.js'
 import {autoHealBossCombatPet} from './boss-pet-autocure.js'
@@ -931,11 +933,11 @@ export async function joinRaid(chat,jid,name='Jogador',level=null){
     // Dano começa em zero, portanto não há crédito pelas rodadas anteriores.
     await c.query('UPDATE inventories SET quantity=quantity-1 WHERE jid=$1 AND item_id=$2',[jid,cfg.keyId])
     const lev=async itemId=>itemId?Number((await c.query('SELECT level FROM equipment_upgrades WHERE jid=$1 AND item_id=$2',[jid,itemId])).rows[0]?.level||1):1
-    const forgeStars=await getEquipmentStarLevels(jid,[st.weapon_id,st.armor_id],c)
+    const forgeStars=await getEquipmentStarLevels(jid,[st.weapon_id,st.armor_id,st.helmet_id],c)
     const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,await lev(st.weapon_id),forgeStars[st.weapon_id]||1):{atk:0,def:0,hp:0,crit:0}
     const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,await lev(st.armor_id),forgeStars[st.armor_id]||1):{atk:0,def:0,hp:0,crit:0}
     const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,await lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
-    const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
+    const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,await lev(st.helmet_id),forgeStars[st.helmet_id]||1):{atk:0,def:0,hp:0,crit:0}
     const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
     const heroId=await getActivePlayableHero(c,jid)
@@ -1211,7 +1213,7 @@ export async function startRaid(chat,host,level=null,options={}){
       const w=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,lev(st.weapon_id),weaponStars):{atk:0,def:0,hp:0,crit:0}
       const a=st.armor_id?equipmentStatsAtLevel(st.armor_id,lev(st.armor_id),armorStars):{atk:0,def:0,hp:0,crit:0}
       const b=st.boot_id?equipmentStatsAtLevel(st.boot_id,lev(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
-      const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
+      const h=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,lev(st.helmet_id),activeStars(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
       const gearHp=Number(w?.hp||0)+Number(a?.hp||0)+Number(b?.hp||0)+Number(h?.hp||0)
       const ench=await getEquippedEnchants(c,jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id])
       let reservePet=await raidReservePet(c,jid)
@@ -2869,6 +2871,80 @@ export async function deactivateBossEvent(chat){
 // O Boss semanal é único para todos os grupos. Migra o progresso já causado em
 // Bosses de grupo durante o fim de semana sem duplicar HP nem recompensas.
 const GLOBAL_WEEKLY_BOSS_CHAT='__alpha_global_weekly_boss__'
+
+// Prêmio de escolha é concedido uma só vez, na transação que encerra o evento.
+async function grantWeeklyGolemChoice(c,jid){
+ const inserted=await c.query(`INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)
+ ON CONFLICT(jid,item_id) DO UPDATE SET quantity=GREATEST(inventories.quantity,1)
+ RETURNING quantity`,[jid,WEEKLY_GOLEM_V2_VOUCHER])
+ if(Number(inserted.rows[0]?.quantity||0)<1)throw new Error('Vale de escolha não persistido.')
+ return {id:WEEKLY_GOLEM_V2_VOUCHER,name:'Direito de Escolha — Equipamento ★★★★★ Lv.10 (!golempremio)',rarity:'Evento Único'}
+}
+
+// Se o Golem resistir até sábado 23:59, ainda há prêmio de ranking.
+// Carimbo de conclusão + crédito em UMA transação, com a mesma trava do ataque.
+// Não ressuscita o Boss nem altera o dano/HP acumulado.
+export async function settleExpiredWeeklyBoss(nowMs=Date.now()){
+ if(nowMs<Date.parse('2026-11-15T00:00:00-03:00')||
+    nowMs>Date.parse('2026-11-17T00:00:00-03:00'))return null
+ return tx(async c=>{
+  const s=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
+  if(!s||s.mode!=='weekly'||s.weekendKey!==WEEKLY_GOLEM_V2_KEY||
+     Number(s.hp)<=0||nowMs<=Number(s.endsAt||0))return null
+  const entries=weeklyGolemV2Ranking(s.participants)
+  const rewards=[]
+  for(let i=0;i<entries.length;i++){
+   const p=entries[i],position=i+1
+   const cash=weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage})
+   if(cash>0)await credit(c,p.jid,cash,'boss_weekend_timeout_20261113')
+   const drops=[]
+   if(weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
+     drops.push(await grantWeeklyGolemChoice(c,p.jid))
+   rewards.push({...p,position,cash,exp:0,petXp:0,petXpTeam:[],drops})
+  }
+  const marker={mode:'completed',name:s.name,hp:Number(s.hp),
+    maxHp:Number(s.maxHp),participants:{},weekendKey:s.weekendKey,
+    weeklyCompleted:true,endsAt:s.endsAt,completedAt:Date.now(),
+    result:{bossName:s.name,maxHp:Number(s.maxHp),remainingHp:Number(s.hp),
+      defeated:false,rewards}}
+  await saveGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss',marker)
+  return {settled:true,defeated:false,remainingHp:marker.hp,rewards:rewards.length}
+ })
+}
+
+export async function getWeeklyGolemChoiceStatus(jid){
+ const r=await db.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2',[jid,WEEKLY_GOLEM_V2_VOUCHER])
+ return {available:Number(r.rows[0]?.quantity||0)>0,gear:WEEKLY_GOLEM_V2_GEAR}
+}
+
+export async function claimWeeklyGolemChoice(jid,selection){
+ const gear=weeklyGolemV2GearSelection(selection)
+ if(!gear)throw new Error('Escolha 1 para arma, 2 para armadura ou 3 para elmo.')
+ return tx(async c=>{
+  const voucher=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',
+   [jid,WEEKLY_GOLEM_V2_VOUCHER])).rows[0]
+  if(Number(voucher?.quantity||0)<1)throw new Error('Você não possui Direito de Escolha do Golem. Apenas o 1º e o 2º colocados elegíveis recebem.')
+  // Não substituir uma forja maior do mesmo modelo nem consumir recursos do jogador.
+  const existing=(await c.query('SELECT quantity FROM inventories WHERE jid=$1 AND item_id=$2 FOR UPDATE',[jid,gear.id])).rows[0]
+  if(Number(existing?.quantity||0)>0)throw new Error('Você já possui essa peça exclusiva. Escolha outro modelo.')
+  const consumed=await c.query('DELETE FROM inventories WHERE jid=$1 AND item_id=$2 AND quantity=1 RETURNING 1',
+    [jid,WEEKLY_GOLEM_V2_VOUCHER])
+  if(consumed.rowCount!==1)throw new Error('Vale indisponível para resgate.')
+  await c.query('INSERT INTO inventories(jid,item_id,quantity) VALUES($1,$2,1)',[jid,gear.id])
+  await c.query(`INSERT INTO bound_inventory_items(jid,item_id,source_key,quantity)
+    VALUES($1,$2,$3,1) ON CONFLICT(jid,item_id,source_key)
+    DO UPDATE SET quantity=GREATEST(bound_inventory_items.quantity,1)`,
+    [jid,gear.id,'weekly-boss:'+WEEKLY_GOLEM_V2_KEY])
+  await c.query(`INSERT INTO equipment_star_forges(jid,item_id,stars,level,updated_at)
+    VALUES($1,$2,5,10,EXTRACT(EPOCH FROM NOW())::BIGINT)
+    ON CONFLICT(jid,item_id) DO UPDATE SET stars=5,level=10,updated_at=EXCLUDED.updated_at`,
+    [jid,gear.id])
+  await syncEffectiveGear(c,jid,gear.id)
+  const forged=(await c.query('SELECT stars,level FROM equipment_star_forges WHERE jid=$1 AND item_id=$2',[jid,gear.id])).rows[0]
+  if(Number(forged?.stars)!==5||Number(forged?.level)!==10)throw new Error('Forja completa não confirmada.')
+  return {gear,stars:5,level:10}
+ })
+}
 async function loadWeeklyBoss(c,weekend,{create=false}={}){
   const current=await loadGame(c,GLOBAL_WEEKLY_BOSS_CHAT,'boss')
   if(current?.weekendKey===weekend.weekendKey) return current
@@ -3361,8 +3437,9 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
           FROM equipment_upgrades u
           WHERE u.jid=$1 AND u.item_id=ANY($2::text[])),'[]'::jsonb) AS upgrade_rows,
         COALESCE((SELECT sf.stars FROM equipment_star_forges sf WHERE sf.jid=$1 AND sf.item_id=$3 AND sf.level=COALESCE((SELECT u.level FROM equipment_upgrades u WHERE u.jid=sf.jid AND u.item_id=sf.item_id),1)),1) AS weapon_stars,
-        COALESCE((SELECT sf.stars FROM equipment_star_forges sf WHERE sf.jid=$1 AND sf.item_id=$4 AND sf.level=COALESCE((SELECT u.level FROM equipment_upgrades u WHERE u.jid=sf.jid AND u.item_id=sf.item_id),1)),1) AS armor_stars
-    `,[jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean),st.weapon_id,st.armor_id])).rows[0]
+        COALESCE((SELECT sf.stars FROM equipment_star_forges sf WHERE sf.jid=$1 AND sf.item_id=$4 AND sf.level=COALESCE((SELECT u.level FROM equipment_upgrades u WHERE u.jid=sf.jid AND u.item_id=sf.item_id),1)),1) AS armor_stars,
+        COALESCE((SELECT sf.stars FROM equipment_star_forges sf WHERE sf.jid=$1 AND sf.item_id=$5 AND sf.level=COALESCE((SELECT u.level FROM equipment_upgrades u WHERE u.jid=sf.jid AND u.item_id=sf.item_id),1)),1) AS helmet_stars
+    `,[jid,[st.weapon_id,st.armor_id,st.boot_id,st.helmet_id].filter(Boolean),st.weapon_id,st.armor_id,st.helmet_id])).rows[0]
     const awakeningStage=Number(combatSnapshot?.awakening_stage||0)
     const teamPets=excludeActiveHeroPet(combatSnapshot?.team_pets||[],heroId)
     const petBonus=pet?squadCombatBonus(petBossBonus(pet),activePetSlot,teamPets):petBossBonus(null)
@@ -3374,7 +3451,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
     const weapon=st.weapon_id?equipmentStatsAtLevel(st.weapon_id,itemLevel(st.weapon_id),Number(combatSnapshot?.weapon_stars||1)):{atk:0,def:0,hp:0,crit:0}
     const armor=st.armor_id?equipmentStatsAtLevel(st.armor_id,itemLevel(st.armor_id),Number(combatSnapshot?.armor_stars||1)):{atk:0,def:0,hp:0,crit:0}
     const boots=st.boot_id?equipmentStatsAtLevel(st.boot_id,itemLevel(st.boot_id)):{atk:0,def:0,hp:0,crit:0}
-    const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id)):{atk:0,def:0,hp:0,crit:0}
+    const helmet=st.helmet_id?equipmentStatsAtLevel(st.helmet_id,itemLevel(st.helmet_id),Number(combatSnapshot?.helmet_stars||1)):{atk:0,def:0,hp:0,crit:0}
     const atk=Math.round((Number(heroStats?.atk??classStats?.atk??st.atk)+Number(weapon?.atk||0)+Number(armor?.atk||0)+Number(boots?.atk||0)+Number(helmet?.atk||0)+enchanted.atk)*(1+Number(enchanted.attackPct||0)))
     const def=Number(heroStats?.def??classStats?.def??st.def)+Number(weapon?.def||0)+Number(armor?.def||0)+Number(boots?.def||0)+Number(helmet?.def||0)+enchanted.def
     const gearHp=Number(weapon?.hp||0)+Number(armor?.hp||0)+Number(boots?.hp||0)+Number(helmet?.hp||0)
@@ -3720,6 +3797,7 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             weekendKey:s.weekendKey,position,damage:p.damage
           }):{cash:0,xp:0}
           cash=(weekly?5000+Math.floor(150000*share)+tier.cash+golemBonus.cash:150+Math.floor(2500*share))*moneyMultiplier
+           + (weekly?weeklyGolemV2Cash({weekendKey:s.weekendKey,position,damage:p.damage}):0)
           exp=Math.floor((weekly?150+1000*share+tier.xp+golemBonus.xp:10+35*share)*(1+pb.xp))*xpMultiplier
           await credit(c,p.jid,cash,weekly?'boss_weekend':'boss_common')
           await grantExpInTransaction(c,p.jid,await halloweenPveXp(c,p.jid,exp),{chatJid:chat})
@@ -3730,6 +3808,8 @@ export async function attackBoss(chat,jid,name,usePet=true,options={}){
             petXpTeam=await grantTeamPetXp(c,p.jid,petXp)
           }
           drops=weekly?await giveBossDrops(c,p.jid,position,pb.drop,'weekly-boss:'+String(s.weekendKey||'unknown'),position<=5?tier:null):(Math.random()<.03+Math.min(.02,pb.drop)?[await grantBossItem(c,p.jid,{id:'caixa_sorte',name:'Caixa da Sorte',rarity:'Comum'})]:[])
+           if(weeklyGolemV2Choice({weekendKey:s.weekendKey,position,damage:p.damage}))
+             drops.push(await grantWeeklyGolemChoice(c,p.jid))
           // Top 3 do Superboss: lendárias garantidas por vitória e dano real.
           // Apenas um UPSERT de inventário por vencedor, sem timers ou consultas extra.
           // A liquidação inteira permanece na transação existente do Boss.

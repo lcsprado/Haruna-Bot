@@ -52,7 +52,7 @@ test('os escudos entram na lista e a forja debita uma cópia e dinheiro atomicam
 })
 
 test('perfil e duelo PvP usam estrelas de escudo e bônus efetivos',()=>{
-  assert.match(db,/const stars=await getEquipmentStarLevels\(jid,\[p\.weapon_id,p\.armor_id,p\.shield_id\]\)/)
+  assert.match(db,/const stars=await getEquipmentStarLevels\(jid,\[p\.weapon_id,p\.armor_id,p\.helmet_id,p\.shield_id\]\)/)
   assert.match(db,/levels\[p\.shield_id\]\|\|1,stars\[p\.shield_id\]\|\|1/)
   assert.match(db,/shield_stars:Number\(sh\.stars\|\|1\)/)
   assert.match(db,/starLevel\(attackerJid,a\.shield_id\)/)

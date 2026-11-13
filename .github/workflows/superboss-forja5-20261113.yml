@@ -1,0 +1,33 @@
+name: Alpha Bot - Superboss Golem Forja V 13-14 novembro
+on:
+  pull_request:
+    branches: [whatsapp-only]
+  push:
+    branches: [feat/superboss-forja5-20261113, whatsapp-only]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validar-superboss:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Sintaxe dos arquivos alterados
+        run: |
+          node --check src/neon/weekly-golem-v2-20261113.js
+          node --check src/neon/db.js
+          node --check src/neon/games.js
+          node --check src/neon/index.js
+          node --check src/neon/boss-final-results.js
+      - name: Regras novas + regressão de Boss, forja, equipamentos
+        run: |
+          node --test test/superboss-forja5-20261113.test.mjs test/weekly-golem-20261024.test.mjs test/weekly-golem-legendary-20261030.test.mjs test/weekly-golem-payouts-20261030.test.mjs test/star-forge-level-20261021.test.mjs test/boss-final-results-20261030.test.mjs
+      - name: Dependências para regressão geral
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Smoke tests gerais
+        run: node --test test/regression-smoke.test.mjs test/regressions.test.mjs

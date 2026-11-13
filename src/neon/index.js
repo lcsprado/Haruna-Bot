@@ -56,7 +56,7 @@ initGames, roulette, createGroupRoulette, joinGroupRoulette, spinGroupRoulette, 
 startHangman, hangmanLetter, hangmanWord,
 startQuiz, answerQuiz, expireQuiz,
 startNumberGame, guessNumber,
-startBoss, attackBoss, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
+startBoss, attackBoss, settleExpiredWeeklyBoss,getWeeklyGolemChoiceStatus,claimWeeklyGolemChoice, compensateFrozenWeeklyBoss20261009, rectifyFrozenWeeklyBossShare20261009, activateBossEvent, deactivateBossEvent, getBossEventStatus, autoStartBossEvent, iniciarRupturaEstelar, encerrarRupturaEstelar, autoStartNightBossEvent, autoStartInicioMadrugada, autoStartSiegeBossEvent, autoStartAuroraBossEvent, autoStartCamEvent,
 tickSetePecados, tickCalcanharBoss, tickTitanInvasion, getPlayerDamageStats, getRaidCatalog, getRaidStatus, getRaidStatuses, createRaid, joinRaid, cancelRaid, withdrawRaid, startRaid, raidRound, profileCombatPetBonuses
 } from './games.js'
 import {
@@ -2920,6 +2920,21 @@ await sendScheduledGroupNotice(chat,'ruptura-estelar-09-10-end',
 }
 if(publicNotice) await sendScheduledGroupNotice(chat,'economy-audit-20261008',String(publicNotice))
 const now=Date.now()
+if(now>=Date.parse('2026-11-13T00:01:00-03:00')&&now<Date.parse('2026-11-15T00:00:00-03:00')){
+ await sendScheduledGroupNotice(chat,'golem-v2-forja5-20261113',
+ '👹🏆 *SUPERBOSS SEMANAL — TESOURO ANCESTRAL!*\n\n'+
+ '🎁 *PRÊMIOS EXCLUSIVOS JÁ FORJADOS ★★★★★ Lv.10*\n'+
+ '🥇 1º lugar: escolhe Martelo, Armadura ou Elmo.\n'+
+ '🥈 2º lugar: também escolhe um dos três.\n'+
+ '💰 DINHEIRO EXTRA por contribuição:\n'+
+ '🥇 R$ 12 milhões • 🥈 R$ 10 milhões\n'+
+ '🥉 R$ 8 milhões • 4º R$ 6 milhões\n'+
+ '5º R$ 5 milhões • demais R$ 3 milhões.\n'+
+ '🎯 Mínimo: *10.000 de dano real* para os prêmios especiais.\n'+
+ '✅ Se o Golem resistir até sábado 23:59, o ranking ainda recebe esses novos prêmios.\n'+
+ '🔐 A escolha é individual por *!golempremio*, após a liquidação.\n'+
+ '⚔️ *!atacar* para participar. Os prêmios antigos por vitória continuam.')
+}
 const weeklyStart=Date.parse('2026-10-09T00:01:00-03:00')
 const weeklyEnd=Date.parse('2026-10-11T00:00:00-03:00')
 if(now>=weeklyStart&&now<weeklyEnd){
@@ -3245,7 +3260,7 @@ bossProgressBroadcastRunning=false
 }
 }
 if(bossProgressScheduler) clearInterval(bossProgressScheduler)
-bossProgressScheduler=setInterval(()=>{void broadcastBossProgressEvery30Minutes();void announceCompletedWeeklyBoss()},20*1000)
+bossProgressScheduler=setInterval(()=>{void broadcastBossProgressEvery30Minutes();void settleExpiredWeeklyBoss().then(()=>announceCompletedWeeklyBoss()).catch(err=>console.error('[Golem V2] falha na liquidação por prazo',err?.message||err))},20*1000)
 bossProgressScheduler.unref?.()
 if(neonEcoMode)setTimeout(async()=>{
 try{
@@ -3257,7 +3272,7 @@ bossProgressKnownActiveUntil=Math.max(bossProgressKnownActiveUntil,Number(state.
 }
 }catch(err){console.warn('[Neon Eco] leitura de Boss ativo',err?.message||err)}
 },1000).unref?.()
-setTimeout(()=>{void broadcastBossProgressEvery30Minutes();void announceCompletedWeeklyBoss()},3000).unref?.()
+setTimeout(()=>{void broadcastBossProgressEvery30Minutes();void settleExpiredWeeklyBoss().then(()=>announceCompletedWeeklyBoss()).catch(err=>console.error('[Golem V2] retomada pendente',err?.message||err))},3000).unref?.()
 setTimeout(async()=>{
 try{
 const {rows}=await db.query(
@@ -4393,7 +4408,7 @@ const equipmentCopyLabel=i=>i.sourceKind==='star'
 ?'🌟 *FORJADA '+forgeStarsIcon(i.stars)+'* • bônus *'+forgeBonusText(i.stars)+'*'
 :'⚪ *COMUM* • ×'+Number(i.tierQuantity||1)+' cópia(s)'
 const activeCopyLabel=(p,category)=>{
-const stars=Number(category==='weapon'?p?.weapon_stars:category==='armor'?p?.armor_stars:category==='shield'?p?.shield_stars:1)
+const stars=Number(category==='weapon'?p?.weapon_stars:category==='armor'?p?.armor_stars:category==='helmet'?p?.helmet_stars:category==='shield'?p?.shield_stars:1)
 const level=Number(category==='weapon'?p?.weapon_level:category==='armor'?p?.armor_level:category==='helmet'?p?.helmet_level:category==='shield'?p?.shield_level:p?.boot_level)||1
 return (stars>1?'🌟 FORJADA '+forgeStarsIcon(stars)+' ('+forgeBonusText(stars)+')':'⚪ COMUM')+' • ⭐ Lv.'+level
 }
@@ -4424,7 +4439,7 @@ await reply(
 🗡️ Arma atual: *${p.weapon_name} Lv.${Number(p.weapon_level||1)}${Number(p.weapon_stars||1)>1?' • 🌟 '+Number(p.weapon_stars)+'/5':''}* — ${gearStatsText(decorated(p.weapon_id,weaponStats),'weapon')}
 🛡️ Armadura atual: *${p.armor_name} Lv.${Number(p.armor_level||1)}${Number(p.armor_stars||1)>1?' • 🌟 '+Number(p.armor_stars)+'/5':''}* — ${gearStatsText(decorated(p.armor_id,armorStats),'armor')}
 👢 Botas atuais: *${p.boot_name||'Nenhuma'} Lv.${Number(p.boot_level||1)}* — ${gearStatsText(decorated(p.boot_id,bootStats),'boots')}
-🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(upgradeables.find(i=>i.item_id===p.helmet_id)?.level||1)}* — ${gearStatsText(decorated(p.helmet_id,helmetStats),'helmet')}
+🪖 Elmo atual: *${p.helmet_name||'Nenhum'} Lv.${Number(upgradeables.find(i=>i.item_id===p.helmet_id)?.level||1)}${Number(p.helmet_stars||1)>1?' • 🌟 '+Number(p.helmet_stars)+'/5':''}* — ${gearStatsText(decorated(p.helmet_id,helmetStats),'helmet')}
 🛡️ Escudo atual: *${p.shield_name||'Nenhum'} Lv.${Number(p.shield_level||1)}* — ${p.shield_id?gearStatsText(shieldStats,'shield'):'Nenhum'}
 O que deseja trocar?
 1️⃣ ⚔️ *Arma* — ${weapons.length} opção(ões)
@@ -13201,6 +13216,23 @@ return
 const r=await getBossEventStatus(chat)
 if(!r) return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO: INATIVO*\n\n⏰ Próximo spawn automático: *sexta às 19:00* (horário de São Paulo).\n\nQuando ativado, o mesmo HP/ranking/cooldown vale para todos os grupos.\nO comando *${prefix}eventoboss ativar* continua disponível apenas como acionamento manual de emergência.`)
 return await reply(`🌘 *BOSS UNIVERSAL DE EVENTO: ATIVO*\n\n👹 *${r.name}*\n❤️ HP global: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*\n⚔️ ATK: *${r.atk}*\n\n🌐 Mesmo Boss e ranking em todos os grupos.\n🔒 Trocar de grupo não libera ataque extra.\n\nPara encerrar manualmente: *${prefix}eventoboss desativar*.`)
+} else if(['golempremio','premiogolem'].includes(cmd)){
+const choice=String(args[0]||'').trim()
+if(choice){
+ const r=await claimWeeklyGolemChoice(sender,choice)
+ return await reply('🏆 *PRÊMIO DO GOLEM RESGATADO!*\n🎁 '+r.gear.name+
+ '\n🌟 FORJADO ★★★★★ • ⭐ Lv.10\n✅ Equipamento entregue no inventário e protegido.\n⚙️ Use *!equipar* para equipá-lo.')
+}
+const r=await getWeeklyGolemChoiceStatus(sender)
+if(!r.available)return await reply('👹 *PRÊMIO DO GOLEM*\n🔒 Você ainda não possui o Direito de Escolha.\n🏆 Ele é concedido somente ao 1º e ao 2º colocados com pelo menos 10.000 de dano, quando o evento for liquidado.')
+return await reply('👹🏆 *ESCOLHA SEU EQUIPAMENTO DO GOLEM!*\n\n'+
+r.gear.map((g,i)=>{
+ const st=equipmentStatsAtLevel(g.id,10,5)||g
+ return (i+1)+'️⃣ *'+g.name+'* — FORJADO ★★★★★ Lv.10\n'+
+ '⚔️ +'+Number(st.atk||0)+' ATK • 🛡️ +'+Number(st.def||0)+' DEF • ❤️ +'+Number(st.hp||0)+' HP'+
+ (st.crit?' • 🎯 +'+(st.crit*100).toLocaleString('pt-BR',{maximumFractionDigits:2})+'% CRIT':'')
+}).join('\n\n')+
+'\n\n✅ Escolha *!golempremio 1*, *2* ou *3*. O direito é consumido uma única vez.')
 } else if(['boss'].includes(cmd)){
 const r=await startBoss(chat)
 if(r.finished){
@@ -13221,17 +13253,18 @@ const petLine=bossPetBonus?`\n🐾 Seu pet: *${bossPet.name}* — ${bossPetBonus
 const bossLabel=r.mode==='event'?'BOSS DE EVENTO':(r.mode==='weekly'?'SUPERBOSS SEMANAL':'BOSS COMUM')
 const bossCritLine='\n🛡️ Resistência CRIT: *'+critResistancePercent(BOSS_CRIT_RESISTANCE)+' p.p.*'
 const schedule=r.mode==='weekly'?`\n📅 Sexta 00:01 → sábado 23:59\n⏰ Encerra: *${r.endsLabel}* (São Paulo)`:(r.mode==='event'?'\n🌘 Evento especial em andamento.':'')
+const golemRewards=r.mode==='weekly'&&r.weekendKey==='2026-11-13'?'\n🏆 *PRÊMIOS EXCLUSIVOS* — 🥇 e 🥈 escolhem 1 equipamento FORJADO ★★★★★ Lv.10.\n💰 Dinheiro extra: 12M / 10M / 8M / 6M / 5M; demais 3M (mínimo 10 mil dano).\n🎁 Resgate após encerramento: *!golempremio*.\n✅ Novos prêmios pagos mesmo se o Golem resistir ao prazo.':''
 const displayedSchedule=r.eventId==='sete_pecados'
 ?'\n🌑 *INVASÃO DOS SETE PECADOS* • Fase '+(Number(r.phaseIndex||0)+1)+'/8\n⏰ Até 20:00 (Brasília)\n🎯 10.000 de dano em cada um dos 8 Bosses para obter a insígnia.\n⚜️ +2% dano e +1pp crítico Boss/Raid.'
 :r.eventId==='ruptura_estelar'
 ?'\n🌌 *RUPTURA ESTELAR ATÉ 21H* • Fase '+Number(r.phase||1)+'/3\n🥇 20 Caixas Épicas ao 1º; 5 ao 2º; 3 ao 3º.\n🏅 Insígnia Guardião da Ruptura.'
 :schedule
-if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${bossCritLine}${displayedSchedule}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
+if(r.already) return await reply(`👹 *${bossLabel} — ${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${bossCritLine}${displayedSchedule}${golemRewards}${petLine}\n\n⚔️ *${prefix}atacar* leva o pet.\n🛡️ *${prefix}atacar sempet* luta sozinho e preserva a energia dele.`)
 await progressDailyMission(sender,'game')
 const rewardInfo=r.mode==='event'
 ?(r.eventId==='sete_pecados'?'🌑 *Sete Pecados:* recompensas após cada Boss; insígnia para 10.000 dano em cada um dos oito, ou 7 essências se já possui.':r.eventId==='ruptura_estelar'?'✨ *Ruptura Estelar:* 2x EXP de jogador; 1,5x EXP de pet; Insígnia Guardião da Ruptura.':'✨ *Evento especial:* muita EXP para jogador e pet, caixas por colocação e chance da *Insígnia do Eclipse (Evento Único)*.')
 :(r.mode==='weekly'?'🏆 Top 1: *R$ 1 milhão, 12 mil XP, 15 Caixas Épicas*. Demais posições com prêmios melhores. ⚜️ Insígnia inédita por edição (mínimo 10 mil de dano), equipável em !reliquias; 1 ativa por vez. Fundo proporcional: *R$ 150 mil*.':'💰 Recompensas comuns proporcionais ao dano. O Superboss volta na próxima sexta-feira.')
-await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${bossCritLine}${displayedSchedule}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
+await reply(`👹 *${bossLabel} APARECEU!*\n\n*${r.name}*\n❤️ HP: *${Number(r.hp).toLocaleString('pt-BR')}/${Number(r.maxHp).toLocaleString('pt-BR')}*${bossCritLine}${displayedSchedule}${golemRewards}\n${rewardInfo}${petLine}\n\n⚔️ Todos podem usar *${prefix}atacar* para iniciar o combate automático.`)
 } else if(['pararatacar','pararboss'].includes(cmd)){
 const existing=bossSessions.get(sender)
 if(existing&&existing.chat!==chat) return await reply('⚠️ Você deve controlar o combate pelo grupo em que começou.')
